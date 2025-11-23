@@ -3353,7 +3353,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	}
 
 	static boolean checkComputable(Producer<?> p) {
-		if (p instanceof CollectionProducerComputation) {
+		if (p instanceof CollectionProducerComputation || p instanceof CollectionProviderProducer) {
 			return true;
 		} else if (p instanceof ReshapeProducer) {
 			return checkComputable(((ReshapeProducer) p).getComputation());

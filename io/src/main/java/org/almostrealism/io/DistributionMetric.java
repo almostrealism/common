@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,9 +16,9 @@
 
 package org.almostrealism.io;
 
-import java.util.Comparator;
 import java.util.Map;
 import java.util.function.UnaryOperator;
+import java.util.stream.Stream;
 
 /**
  * A metric for tracking distributions of numeric values across named categories.
@@ -61,7 +61,9 @@ public class DistributionMetric extends MetricBase {
 	 * Maximum number of entries to include in a summary output.
 	 * Entries are sorted by value descending, and only the top entries are shown.
 	 */
-	public static int MAX_SUMMARY_ENTRIES = 50;
+	public static int MAX_SUMMARY_ENTRIES = 30;
+
+	public static double MIN_SUMMARY_PERCENTAGE = 0.01;
 
 	private double scale;
 	private double threshold;
@@ -169,6 +171,19 @@ public class DistributionMetric extends MetricBase {
 		return summary(displayName, s -> s);
 	}
 
+	public Stream<Map.Entry<String, Double>> entries(boolean summary) {
+		double all = getTotal();
+
+		Stream<Map.Entry<String, Double>> s = getEntries().entrySet().stream()
+				.sorted(Map.Entry.<String, Double>comparingByValue().reversed());
+		if (summary) {
+			s = s.filter(entry -> (entry.getValue() / all) > MIN_SUMMARY_PERCENTAGE)
+					.limit(MAX_SUMMARY_ENTRIES);
+		}
+
+		return s;
+	}
+
 	/**
 	 * Returns a formatted summary string showing totals and percentage breakdown by entry.
 	 * Entries are sorted by value in descending order.
@@ -190,13 +205,10 @@ public class DistributionMetric extends MetricBase {
 
 		String form = "\t%s: %d | %d%%\n";
 
-		getEntries().entrySet().stream()
-				.sorted(Comparator.comparing((Map.Entry<String, Double> ent) -> ent.getValue()).reversed())
-				.limit(MAX_SUMMARY_ENTRIES)
-				.forEachOrdered(entry -> {
-					builder.append(String.format(form, entry.getKey(), getCounts().get(entry.getKey()),
+		entries(true).forEachOrdered(entry -> {
+			builder.append(String.format(form, entry.getKey(), getCounts().get(entry.getKey()),
 							(int) (100 * entry.getValue() / all)));
-				});
+		});
 
 		return builder.toString();
 	}

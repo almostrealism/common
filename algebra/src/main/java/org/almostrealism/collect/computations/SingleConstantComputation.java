@@ -28,6 +28,7 @@ import org.almostrealism.collect.CollectionProducerParallelProcess;
 import org.almostrealism.collect.PackedCollection;
 
 import java.util.List;
+import java.util.OptionalDouble;
 
 /**
  * A {@link SingleConstantComputation} represents a computation that produces a 
@@ -85,7 +86,7 @@ public class SingleConstantComputation<T extends PackedCollection<?>> extends Co
 	/**
 	 * Creates a new SingleConstantComputation with the specified shape and constant value.
 	 * The computation will be named using the format "constant(value)" where value is
-	 * formatted using {@link NumberFormats#formatNumber(double)}.
+	 * formatted using {@link NumberFormats#formatNumber(Number)}.
 	 * 
 	 * @param shape The traversal policy defining the dimensions and structure of the output collection
 	 * @param value The constant value to fill every element of the collection
@@ -121,6 +122,9 @@ public class SingleConstantComputation<T extends PackedCollection<?>> extends Co
 	protected ConstantCollectionExpression getExpression(TraversableExpression... args) {
 		return new ConstantCollectionExpression(getShape(), e(value));
 	}
+
+	@Override
+	public OptionalDouble getConstant() { return OptionalDouble.of(value); }
 
 	/**
 	 * Returns the constant value that this computation produces for every element.

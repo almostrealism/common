@@ -115,14 +115,12 @@ public class TimingMetric extends DistributionMetric {
 
 		String form = "\t%s: %d [%ss tot | %sms avg] %d%%\n";
 
-		getEntries().entrySet().stream()
-				.sorted(Comparator.comparing((Map.Entry<String, Double> ent) -> ent.getValue()).reversed())
-				.forEachOrdered(entry -> {
-					builder.append(String.format(form, keyFormatter.apply(entry.getKey()), getCounts().get(entry.getKey()),
+		entries(true).forEachOrdered(entry -> {
+			builder.append(String.format(form, keyFormatter.apply(entry.getKey()), getCounts().get(entry.getKey()),
 							format.getValue().format(entry.getValue()),
 							format.getValue().format(1000 * entry.getValue() / getCounts().get(entry.getKey())),
 							(int) (100 * entry.getValue() / all)));
-				});
+		});
 
 		return builder.toString();
 	}

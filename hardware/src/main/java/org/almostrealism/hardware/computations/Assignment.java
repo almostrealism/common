@@ -18,6 +18,7 @@ package org.almostrealism.hardware.computations;
 
 import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.code.ExpressionAssignment;
+import io.almostrealism.collect.Algebraic;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.collect.Shape;
@@ -25,6 +26,7 @@ import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.relation.Computable;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.compute.Process;
 import io.almostrealism.compute.ProcessContext;
@@ -41,11 +43,14 @@ import org.almostrealism.hardware.DestinationEvaluable;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.OperationComputationAdapter;
 import org.almostrealism.hardware.MemoryData;
+import org.almostrealism.hardware.jvm.JVMMemory;
 import org.almostrealism.hardware.mem.MemoryDataArgumentMap;
 
 import java.util.List;
+import java.util.OptionalDouble;
 import java.util.OptionalLong;
 import java.util.function.Supplier;
+import java.util.stream.IntStream;
 
 /**
  * {@link OperationComputationAdapter} that assigns computed values to a destination memory location.
@@ -346,6 +351,18 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 			ev = ((HardwareEvaluable<?>) ev).getKernel().getValue();
 		}
 
+		OptionalDouble s = Algebraic.getConstant(in);
+
+		if (Computable.provider(out) && s.isPresent()) {
+			MemoryData d = ((Provider<MemoryData>) out.get()).get();
+
+			if (d.getMem() instanceof JVMMemory) {
+				double v = s.getAsDouble();
+				int len = getCount() * memLength;
+				return () -> IntStream.range(0, len).parallel().forEach(i -> d.setMem(i, v));
+			}
+		}
+
 		boolean shortCircuit = ev instanceof AcceleratedOperation<?> || ev instanceof Provider<?>;
 
 		if (!enableAggregatedShortCircuit &&
@@ -382,7 +399,7 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 	 */
 	@Override
 	public Process<Process<?, ?>, Runnable> optimize(ProcessContext ctx, Process<Process<?, ?>, Runnable> process) {
-		if (process == (Supplier) getInputs().get(0))
+		if (process == (Producer) getInputs().get(0))
 			return process;
 
 		return super.optimize(ctx, process);
@@ -398,7 +415,7 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 	 */
 	@Override
 	public Process<Process<?, ?>, Runnable> isolate(Process<Process<?, ?>, Runnable> process) {
-		if (process == (Supplier) getInputs().get(0))
+		if (process == (Producer) getInputs().get(0))
 			return process;
 
 		return super.isolate(process);

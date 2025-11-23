@@ -332,6 +332,8 @@ public class ReshapeProducer<T extends Shape<T>>
 		return producer.isConstant();
 	}
 
+	public boolean isProvider() { return producer.isProvider(); }
+
 	/**
 	 * Returns whether this reshape operation represents a zero value.
 	 * For algebraic producers, delegates to the underlying producer's zero check.

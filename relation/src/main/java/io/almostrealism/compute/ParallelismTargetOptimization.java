@@ -191,8 +191,8 @@ public class ParallelismTargetOptimization implements ProcessOptimizationStrateg
 		} else if (enableNarrowMax && max > targetCount && context.getCountLong() >= minCount) {
 			isolate = false;
 		} else if (altScore < currentScore) {
-			System.out.println("Skipping isolation to avoid score " +
-					altScore + " (" + currentScore + " current)");
+//			System.out.println("Skipping isolation to avoid score " +
+//					altScore + " (" + currentScore + " current)");
 			isolate = false;
 		}
 

@@ -222,9 +222,10 @@ public class CollectionProviderProducer<T extends Shape>
 	 * @return The {@link TraversalPolicy} of the provided value
 	 */
 	@Override
-	public TraversalPolicy getShape() {
-		return value.getShape();
-	}
+	public TraversalPolicy getShape() { return value.getShape(); }
+
+	@Override
+	public boolean isProvider() { return true; }
 
 	/**
 	 * Creates a traversal view of this producer along the specified axis.
@@ -243,7 +244,7 @@ public class CollectionProviderProducer<T extends Shape>
 	/**
 	 * Creates a reshaped view of this producer with the specified shape.
 	 *
-	 * <p>Delegates to the {@link CollectionFeatures#reshape(TraversalPolicy, Object)} helper
+	 * <p>Delegates to the {@link CollectionFeatures#reshape(TraversalPolicy, Producer)} helper
 	 * method to create a reshaped view without modifying this producer.</p>
 	 *
 	 * @param shape The target {@link TraversalPolicy} for reshaping

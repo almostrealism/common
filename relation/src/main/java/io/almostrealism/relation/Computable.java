@@ -42,12 +42,6 @@ package io.almostrealism.relation;
  * compile time and does not depend on runtime inputs. Constant computations
  * can be evaluated once and their results inlined, avoiding repeated computation.</p>
  *
- * <h2>Type Hierarchy</h2>
- * <ul>
- *   <li>{@link Producer} extends {@link Computable} - computation descriptions</li>
- *   <li>{@link Evaluable} extends {@link Computable} - executable computations</li>
- * </ul>
- *
  * @see Producer
  * @see Evaluable
  *
@@ -71,6 +65,24 @@ public interface Computable {
 	 * @return {@code true} if this computation is constant, {@code false} otherwise
 	 */
 	default boolean isConstant() {
+		return false;
+	}
+
+	default boolean isProvider() { return false; }
+
+	static <T> boolean constant(T c) {
+		if (c instanceof Computable) {
+			return ((Computable) c).isConstant();
+		}
+
+		return false;
+	}
+
+	static <T> boolean provider(T c) {
+		if (c instanceof Computable) {
+			return ((Computable) c).isProvider();
+		}
+
 		return false;
 	}
 }

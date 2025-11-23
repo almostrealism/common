@@ -19,6 +19,7 @@ package io.almostrealism.collect;
 import io.almostrealism.relation.Computable;
 
 import java.util.Optional;
+import java.util.OptionalDouble;
 
 /**
  * Represents a data structure, system, or process that adheres to the rules of
@@ -179,6 +180,10 @@ public interface Algebraic extends Computable {
 		return equals(other);
 	}
 
+	default OptionalDouble getConstant() {
+		return OptionalDouble.empty();
+	}
+
 	/**
 	 * Static utility method to check if an arbitrary value represents a zero
 	 * transformation. This method performs type checking before delegating
@@ -241,6 +246,14 @@ public interface Algebraic extends Computable {
 		}
 
 		return ((Algebraic) value).getDiagonalScalar(width);
+	}
+
+	static <T> OptionalDouble getConstant(T value) {
+		if (!(value instanceof Algebraic)) {
+			return OptionalDouble.empty();
+		}
+
+		return ((Algebraic) value).getConstant();
 	}
 }
 
