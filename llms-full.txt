@@ -1,0 +1,4568 @@
+# Almost Realism Framework - Complete Documentation
+
+> Hardware-accelerated computation framework for Java with support for CPU, GPU (OpenCL), and Metal backends.
+
+This file contains concatenated documentation for AI agents. For navigation, see llms.txt.
+
+---
+
+## Quick Reference
+
+# Almost Realism Quick Reference
+
+> Condensed API reference for coding agents. For details, see module documentation.
+
+## Environment (REQUIRED)
+
+```bash
+export AR_HARDWARE_LIBS=/tmp/ar_libs/   # Any writable directory
+export AR_HARDWARE_DRIVER=native        # native|opencl|metal|external
+```
+
+---
+
+## PackedCollection
+
+### Creation
+```java
+// Shapes
+new PackedCollection<>(shape(3))              // Vector [3]
+new PackedCollection<>(shape(4, 4))           // Matrix [4x4]
+new PackedCollection<>(shape(b, c, h, w))     // Tensor [batch, channels, height, width]
+
+// From data
+PackedCollection.of(1.0, 2.0, 3.0)            // From values
+PackedCollection.factory().apply(shape, pos -> initValue)  // Factory
+```
+
+### Access
+```java
+collection.valueAt(0)                // Single value
+collection.toDouble(0)               // As double
+collection.range(shape, offset)      // Slice
+collection.traverse(axis, visitor)   // Iterate axis
+collection.toArray(double[].class)   // Export
+collection.doubleStream()            // Stream
+```
+
+### Shape Operations
+```java
+collection.getShape()                // TraversalPolicy
+collection.reshape(newShape)         // Reshape
+collection.getMemLength()            // Total elements
+shape.length(axis)                   // Axis size
+shape.getTotalSize()                 // Total size
+```
+
+---
+
+## Producer/Evaluable Pattern
+
+```
+Producer<T>  ──.get()──▶  Evaluable<T>  ──.evaluate()──▶  T
+(describes)              (compiled)                    (result)
+```
+
+### Building Computations
+```java
+Producer<PackedCollection<?>> a = p(inputA);
+Producer<PackedCollection<?>> b = p(inputB);
+Producer<PackedCollection<?>> sum = a.add(b);           // Deferred
+Producer<PackedCollection<?>> result = sum.multiply(c); // Chain
+```
+
+### Execution
+```java
+// One-shot
+PackedCollection<?> value = producer.evaluate();
+
+// Reusable
+Evaluable<PackedCollection<?>> eval = producer.get();   // Compile once
+PackedCollection<?> r1 = eval.evaluate(args1);          // Run many
+PackedCollection<?> r2 = eval.evaluate(args2);
+```
+
+### Hardware Requirements
+```java
+import static org.almostrealism.hardware.ComputeRequirement.*;
+producer.get(GPU);      // Force GPU
+producer.get(CPU);      // Force CPU
+```
+
+---
+
+## CollectionProducer Operations
+
+### Arithmetic
+| Op | Method | Notes |
+|----|--------|-------|
+| + | `a.add(b)` | Element-wise |
+| - | `a.subtract(b)` | Element-wise |
+| * | `a.multiply(b)` | Element-wise |
+| / | `a.divide(b)` | Element-wise |
+| - | `a.minus()` | Negate |
+| ^ | `a.pow(n)` | Power |
+| √ | `a.sqrt()` | Square root |
+| exp | `a.exp()` | e^x |
+| log | `a.log()` | Natural log |
+
+### Reduction
+| Op | Method | Notes |
+|----|--------|-------|
+| Σ | `a.sum()` | Sum all |
+| Π | `a.product()` | Product all |
+| max | `a.max()` | Maximum |
+| min | `a.min()` | Minimum |
+| mean | `a.sum().divide(c(count))` | Average |
+
+### Matrix
+| Op | Method | Notes |
+|----|--------|-------|
+| A×B | `a.matmul(b)` | Matrix multiply |
+| Aᵀ | `a.transpose()` | Transpose |
+| A·B | `a.dotProduct(b)` | Dot product |
+
+### Shape
+| Op | Method | Notes |
+|----|--------|-------|
+| reshape | `a.reshape(shape)` | Change shape |
+| repeat | `a.repeat(n)` | Repeat n times |
+| enumerate | `a.enumerate(axis, len)` | Expand axis |
+| range | `a.range(shape, offset)` | Slice |
+| traverse | `a.traverse(axis)` | Iterate |
+| each | `a.each()` | Per-element |
+
+### Comparison
+| Op | Method | Notes |
+|----|--------|-------|
+| > | `a.greaterThan(b)` | 1.0 if true |
+| ≥ | `a.greaterThanOrEqual(b)` | |
+| < | `a.lessThan(b)` | |
+| ≤ | `a.lessThanOrEqual(b)` | |
+| = | `a.eq(b)` | Equality |
+
+### Special
+| Op | Method | Notes |
+|----|--------|-------|
+| softmax | `a.softmax()` | Softmax |
+| relu | `a.max(c(0))` | ReLU |
+| sigmoid | `c(1).divide(c(1).add(a.minus().exp()))` | Sigmoid |
+| tanh | `a.tanh()` | Hyperbolic tan |
+
+---
+
+## Graph Module (Neural Networks)
+
+### Cell-Receptor-Transmitter
+```java
+// Cell: computation unit
+Cell<PackedCollection<?>> cell = new DenseLayer(inSize, outSize);
+
+// Receptor: input handler
+cell.setReceptor(receptor);
+
+// Transmitter: output source
+Receptor<?> downstream = cell.getTransmitter();
+```
+
+### Layer Types
+| Layer | Class | Purpose |
+|-------|-------|---------|
+| Dense | `DenseLayer` | Fully connected |
+| Softmax | `SoftmaxLayer` | Probability output |
+| Pool | `Pool2d` | Spatial pooling |
+| Norm | `RMSNorm` | RMS normalization |
+
+### Model Building
+```java
+Model model = new Model(shape(inputDim));
+model.addLayer(dense(hiddenDim));
+model.addLayer(activation(RELU));
+model.addLayer(dense(outputDim));
+model.addLayer(softmax());
+
+CompiledModel compiled = model.compile();
+PackedCollection<?> output = compiled.forward(input);
+```
+
+### Block Composition
+```java
+Block block = new Block(shape(dim));
+block.add(layer1);
+block.add(layer2);
+block.add(residual(innerBlock));  // Skip connection
+```
+
+---
+
+## ML Module
+
+### StateDictionary (Weight Loading)
+```java
+StateDictionary weights = new StateDictionary(weightsDir);
+PackedCollection<?> embed = weights.get("model.embed_tokens.weight");
+PackedCollection<?> wq = weights.get("model.layers.0.self_attn.q_proj.weight");
+```
+
+### Attention Pattern
+```java
+// In AttentionFeatures
+attention(
+    headCount, kvHeadCount, headSize,
+    wq, wk, wv, wo,           // Projection weights
+    qkNormQ, qkNormK,         // Optional QK-Norm (null if unused)
+    freqCis,                  // RoPE frequencies
+    position,                 // Position producer
+    requirements              // GPU/CPU
+);
+```
+
+### Common Weight Keys
+```
+model.embed_tokens.weight           # Token embeddings
+model.layers.{i}.self_attn.q_proj.weight
+model.layers.{i}.self_attn.k_proj.weight
+model.layers.{i}.self_attn.v_proj.weight
+model.layers.{i}.self_attn.o_proj.weight
+model.layers.{i}.mlp.gate_proj.weight
+model.layers.{i}.mlp.up_proj.weight
+model.layers.{i}.mlp.down_proj.weight
+model.layers.{i}.input_layernorm.weight
+model.norm.weight                   # Final norm
+lm_head.weight                      # Output projection
+```
+
+---
+
+## Time Module
+
+### FFT/IFFT
+```java
+PackedCollection<?> freqDomain = fft(timeDomain);
+PackedCollection<?> timeDomain = ifft(freqDomain);
+```
+
+### FIR Filtering
+```java
+PackedCollection<?> coefficients = designLowPass(cutoff, sampleRate, taps);
+PackedCollection<?> filtered = fir(signal, coefficients);
+```
+
+### Temporal Scalar
+```java
+TemporalScalar ts = new TemporalScalar();
+ts.setClock(clock);
+ts.setFrequency(440.0);  // Hz
+double value = ts.getValue(time);
+```
+
+---
+
+## Optimize Module
+
+### Loss Functions
+```java
+Loss mse = Loss.mse();
+Loss crossEntropy = Loss.crossEntropy();
+Producer<?> loss = mse.apply(predicted, target);
+```
+
+### Optimizer
+```java
+Adam optimizer = new Adam(learningRate, beta1, beta2);
+optimizer.step(parameters, gradients);
+```
+
+### Training Loop Pattern
+```java
+for (int epoch = 0; epoch < epochs; epoch++) {
+    for (Batch batch : dataset) {
+        PackedCollection<?> output = model.forward(batch.input());
+        PackedCollection<?> loss = lossFunction.apply(output, batch.target());
+        PackedCollection<?> gradients = model.backward(loss);
+        optimizer.step(model.parameters(), gradients);
+    }
+}
+```
+
+---
+
+## Hardware Module
+
+### Backends
+| Driver | Use Case |
+|--------|----------|
+| `native` | CPU with JNI acceleration |
+| `opencl` | GPU via OpenCL |
+| `metal` | Apple Silicon GPU |
+| `external` | External executable |
+
+### Hardware Context
+```java
+Hardware hw = Hardware.getLocalHardware();
+hw.getComputeContext().getDataContext();  // Memory management
+```
+
+### Memory Management
+```java
+// Explicit memory control
+MemoryData data = collection.getMemoryData();
+data.reallocate(newSize);
+data.destroy();  // Release
+```
+
+---
+
+## Testing Pattern
+
+```java
+public class MyTest implements TestFeatures, ConsoleFeatures {
+    @Test
+    public void testOperation() {
+        // Setup logging
+        Console.root().addListener(OutputFeatures.fileOutput("results.txt"));
+
+        // Test with hardware
+        PackedCollection<?> a = tensor(shape(3, 3), (i, j) -> i + j);
+        PackedCollection<?> b = tensor(shape(3, 3), (i, j) -> i * j);
+
+        PackedCollection<?> result = a.add(b).evaluate();
+
+        // Assertions
+        assertEquals(expectedValue, result.valueAt(0), 1e-6);
+        log("Test passed: " + result);
+    }
+}
+```
+
+### Run Tests
+```bash
+export AR_HARDWARE_LIBS=/tmp/ar_libs/ && \
+export AR_HARDWARE_DRIVER=native && \
+mvn test -pl <module> -Dtest=<TestName>
+```
+
+---
+
+## Common Errors
+
+| Error | Cause | Fix |
+|-------|-------|-----|
+| `NoClassDefFoundError: PackedCollection` | Missing env vars | Set AR_HARDWARE_LIBS, AR_HARDWARE_DRIVER |
+| `Shape mismatch` | Incompatible dimensions | Check tensor shapes before operations |
+| `OutOfMemoryError` | GPU memory exhausted | Reduce batch size, use CPU |
+| `NullPointerException` in evaluate | Producer not compiled | Call `.get()` before `.evaluate()` |
+
+---
+
+## Import Cheatsheet
+
+```java
+// Core
+import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.TraversalPolicy;
+import static org.almostrealism.collect.Shape.shape;
+
+// Producers
+import io.almostrealism.relation.Producer;
+import io.almostrealism.relation.Evaluable;
+
+// Operations
+import org.almostrealism.algebra.Scalar;
+import org.almostrealism.algebra.Vector;
+import org.almostrealism.algebra.PairFeatures;
+
+// Hardware
+import org.almostrealism.hardware.Hardware;
+import static org.almostrealism.hardware.ComputeRequirement.*;
+
+// Graph
+import org.almostrealism.graph.Cell;
+import org.almostrealism.layers.DenseLayer;
+import org.almostrealism.model.Model;
+
+// ML
+import org.almostrealism.ml.StateDictionary;
+import org.almostrealism.ml.AttentionFeatures;
+
+// Testing
+import org.almostrealism.util.TestFeatures;
+import org.almostrealism.io.ConsoleFeatures;
+```
+
+---
+
+## Development Guidelines (CLAUDE.md)
+
+# Almost Realism Common - Development Guidelines for Claude Code
+
+## Hardware Acceleration Setup
+
+⚠️ **CRITICAL**: All Almost Realism modules that use hardware acceleration require environment variables to be set before running any code.
+
+### Required Environment Variables
+
+```bash
+export AR_HARDWARE_LIBS=/tmp/ar_libs/
+export AR_HARDWARE_DRIVER=native
+```
+
+**Note**: `AR_HARDWARE_LIBS` can be set to **any writable directory** - the system just needs a place to generate and load hardware acceleration libraries. Common choices include `/tmp/ar_libs/`, `/home/developer/.libs/`, or any other temp directory.
+
+### Setup Instructions
+
+1. **Set environment variables** before running Java code:
+   ```bash
+   export AR_HARDWARE_LIBS=/tmp/ar_libs/
+   export AR_HARDWARE_DRIVER=native
+   ```
+
+   The directory will be created automatically if it doesn't exist.
+
+2. **For Maven tests**, always prefix test commands with the environment variables:
+   ```bash
+   export AR_HARDWARE_LIBS=/tmp/ar_libs/ && \
+   export AR_HARDWARE_DRIVER=native && \
+   mvn test -pl <module>
+   ```
+
+### What These Variables Do
+
+- **`AR_HARDWARE_LIBS`**: Specifies the directory where hardware acceleration libraries (JNI .so files, OpenCL kernels, etc.) will be generated and loaded from
+- **`AR_HARDWARE_DRIVER`**: Specifies which hardware backend to use:
+  - `native`: Standard JNI operations with runtime-generated native code (default)
+  - `opencl`: OpenCL acceleration (CPU/GPU)
+  - `metal`: Metal GPU acceleration (Apple Silicon)
+  - `external`: Generated executable approach
+
+### Common Issues
+
+❌ **Forgetting to set these variables** will result in:
+- `NoClassDefFoundError: Could not initialize class org.almostrealism.collect.PackedCollection`
+- Runtime errors when trying to compile operations
+- Missing library errors
+- Failures during model inference
+
+✅ **Always verify** these are set before running:
+```bash
+echo $AR_HARDWARE_LIBS
+echo $AR_HARDWARE_DRIVER
+```
+
+---
+
+## Code Organization Principles
+
+### Use StateDictionary for Model Weights
+
+**Standard Pattern**: All model implementations should use `StateDictionary` for weight management.
+
+```java
+// GOOD: Use StateDictionary directly
+StateDictionary stateDict = new StateDictionary(weightsDirectory);
+PackedCollection<?> embeddings = stateDict.get("model.embed_tokens.weight");
+PackedCollection<?> wq = stateDict.get("model.layers.0.self_attn.q_proj.weight");
+```
+
+```java
+// AVOID: Creating separate weight container classes
+// Unless there's a compelling reason (e.g., weight transformations, caching)
+public class ModelWeights {
+    PackedCollection<?> wq;  // Duplicates StateDictionary storage
+    PackedCollection<?> wk;
+    // ...
+}
+```
+
+**When to use a wrapper class**:
+- Weight transformations are needed (e.g., transposing, reshaping)
+- Complex weight organization logic
+- Caching computed values (e.g., RoPE frequencies)
+
+**If needed**, make it a subclass or thin wrapper:
+```java
+public class ModelWeights extends StateDictionary {
+    // Add specialized methods only
+}
+```
+
+### Generalize, Don't Duplicate
+
+**Principle**: Extend and generalize existing code rather than creating model-specific copies.
+
+```java
+// GOOD: Generalize existing method with optional parameters
+default Block attention(int heads, int kvHeads, int headSize,
+                       PackedCollection<?> wq, PackedCollection<?> wk,
+                       PackedCollection<?> wv, PackedCollection<?> wo,
+                       PackedCollection<?> qkNormQ, PackedCollection<?> qkNormK,  // Optional
+                       ...) {
+    // Single implementation that handles all cases
+    if (qkNormQ != null && qkNormK != null) {
+        // Apply QK-Norm
+    }
+}
+```
+
+```java
+// AVOID: Creating model-specific duplicate methods
+default Block llamaAttention(...) { /* ... */ }
+default Block qwenAttention(...) { /* ... */ }  // Copy-paste with minor changes
+default Block mistralAttention(...) { /* ... */ }
+```
+
+**Benefits of generalization**:
+- Single source of truth for attention logic
+- Bugs fixed once, not per model
+- Easier to add new features
+- Better testing coverage
+
+**When duplication is acceptable**:
+- Fundamentally different architectures (encoder-decoder vs decoder-only)
+- Performance-critical paths requiring specialization
+- Temporary experimentation (mark with TODO to generalize)
+
+### Deprecation Guidelines
+
+**Mark deprecated code clearly**:
+```java
+/**
+ * @deprecated Use StateDictionary constructor instead.
+ * Binary checkpoint format is deprecated and will be removed in a future version.
+ * This constructor remains for backward compatibility only.
+ */
+public ModelWeights(FloatBuffer buffer) {
+    // Legacy code...
+}
+```
+
+**Common deprecated patterns**:
+- Binary checkpoint constructors (use StateDictionary)
+- Model-specific weight container classes (use StateDictionary directly)
+- Duplicate attention/layer implementations (generalize existing code)
+
+---
+
+## Development Workflow
+
+### Before Starting a Task
+
+1. **Check for existing implementations**: Don't reinvent the wheel
+2. **Identify generalization opportunities**: Can existing code be extended?
+3. **Review StateDictionary**: Can it handle your use case?
+4. **Set environment variables**: Especially for testing
+
+### During Development
+
+1. **Prefer composition over duplication**
+2. **Add optional parameters rather than creating new methods**
+3. **Use StateDictionary as the standard weight storage**
+4. **Test frequently with environment variables set**
+
+### Before Committing
+
+1. **Remove TODO markers for completed work**
+2. **Mark deprecated code with @deprecated tags**
+3. **Ensure all tests pass with hardware acceleration enabled**
+4. **Document any new patterns or breaking changes**
+
+---
+
+## Module-Specific Guidelines
+
+For module-specific development notes, see:
+- [ML Module](./ml/claude.md) - Machine learning models and layers
+- [Graph Module](./graph/README.md) - Computation graph and layers
+- [Collect Module](./collect/README.md) - Collection operations
+
+---
+
+## Common Patterns
+
+### Loading Model Weights
+
+```java
+// Standard pattern for all models
+StateDictionary stateDict = new StateDictionary(weightsDirectory);
+
+// Access weights by HuggingFace key names
+PackedCollection<?> embeddings = stateDict.get("model.embed_tokens.weight");
+PackedCollection<?> wq = stateDict.get("model.layers.0.self_attn.q_proj.weight");
+
+// Use helper methods for repeated patterns
+private PackedCollection<?> getLayerWeight(StateDictionary dict, int layer, String name) {
+    return dict.get(String.format("model.layers.%d.%s", layer, name));
+}
+```
+
+### Building Transformer Layers
+
+```java
+// Generalize existing methods with optional parameters
+Model transformer = new Model(shape(dim));
+
+for (int i = 0; i < layerCount; i++) {
+    // Load weights
+    PackedCollection<?> wq = getLayerWeight(stateDict, i, "self_attn.q_proj.weight");
+    // ...
+
+    // Use generalized attention method
+    transformer.add(attention(
+        heads, kvHeads, headSize,
+        wq, wk, wv, wo,
+        qkNormQ, qkNormK,  // null if not using QK-Norm
+        freqCis,
+        requirements
+    ));
+}
+```
+
+---
+
+## Testing
+
+### Running Tests
+
+Always set environment variables when running tests:
+
+```bash
+# Single module
+export AR_HARDWARE_LIBS=/tmp/ar_libs/ && \
+export AR_HARDWARE_DRIVER=native && \
+mvn test -pl ml
+
+# Specific test
+export AR_HARDWARE_LIBS=/tmp/ar_libs/ && \
+export AR_HARDWARE_DRIVER=native && \
+mvn test -pl ml -Dtest=MyTest
+
+# All modules
+export AR_HARDWARE_LIBS=/tmp/ar_libs/ && \
+export AR_HARDWARE_DRIVER=native && \
+mvn test
+```
+
+### Test Organization
+
+- **Unit tests**: Test individual components in isolation
+- **Integration tests**: Test component interactions
+- **Synthetic tests**: Validate architecture with random weights
+- **Validation tests**: Compare against reference implementations
+
+### Test Output Logging
+
+**IMPORTANT**: Use `Console` and `OutputFeatures` (from `ar-io` module) to log test output to files for later review.
+
+**Pattern**:
+```java
+import org.almostrealism.io.Console;
+import org.almostrealism.io.ConsoleFeatures;
+import org.almostrealism.io.OutputFeatures;
+
+public class MyTest implements ConsoleFeatures {
+    @Test
+    public void myTest() throws Exception {
+        // Set up file logging BEFORE any output
+        String logFile = "/workspace/project/common/<module>/test_output/my_test_results.txt";
+        Console.root().addListener(OutputFeatures.fileOutput(logFile));
+
+        // Use Console methods instead of System.err/System.out
+        log("=== My Test ===");
+        log("Result: " + someValue);
+
+        // Output goes to BOTH console AND file
+    }
+}
+```
+
+**Benefits**:
+- Test output is saved to files for later review
+- No need to capture stdout/stderr with bash redirects
+- Output is available even if test crashes
+- Easy to compare outputs across multiple test runs
+
+**Best Practices**:
+- Create test_output directories in each module for test logs
+- Use descriptive file names: `<TestName>_results.txt`
+- Add file logging setup at the START of each test method
+- Use `log()` instead of `System.err.println()` for important results
+- Keep log files in gitignore (test outputs are transient)
+
+---
+
+## Questions or Issues?
+
+If you encounter issues or have questions about these guidelines:
+1. Check module-specific documentation
+2. Review existing implementations for patterns
+3. Ask for clarification before creating duplicate code
+
+---
+
+## Module: relation
+
+# Relation Module (ar-relation)
+
+The `ar-relation` module provides the foundational abstractions for the Almost Realism computational framework. It defines the core interfaces for producers, evaluables, and process-based computation that form the basis for all hardware-accelerated operations.
+
+## Overview
+
+This module provides:
+- **Producer/Evaluable Pattern** - Two-phase execution model separating computation description from execution
+- **Countable Interface** - Element counting for parallel kernel execution
+- **Process Framework** - Composable, optimizable computational work units
+- **Relational Frames** - Cognitive modeling abstractions based on Relational Frame Theory
+- **Streaming Evaluables** - Asynchronous computation support
+
+## Package Structure
+
+| Package | Purpose |
+|---------|---------|
+| `io.almostrealism.relation` | Core producer, evaluable, and computation abstractions |
+| `io.almostrealism.compute` | Process execution, parallelism, and optimization strategies |
+| `io.almostrealism.streams` | Asynchronous streaming computation adapters |
+| `io.almostrealism.frames` | Relational Frame Theory cognitive modeling |
+
+## Key Concepts
+
+### Producer/Evaluable Two-Phase Model
+
+The framework separates computation into two distinct phases:
+
+1. **Description Phase**: Build computation graphs using `Producer`s
+2. **Execution Phase**: Compile to `Evaluable`s and execute
+
+```java
+// Phase 1: Build computation graph (description)
+Producer<Tensor> inputA = ...;
+Producer<Tensor> inputB = ...;
+Producer<Tensor> sum = operations.add(inputA, inputB);
+
+// Phase 2: Compile and execute
+Evaluable<Tensor> evaluable = sum.get();
+Tensor result = evaluable.evaluate();
+
+// The Evaluable can be reused for multiple evaluations
+Tensor result2 = evaluable.evaluate(differentArgs);
+```
+
+This separation enables:
+- Static analysis of computation graphs
+- Optimization and fusion of operations
+- Compilation to GPU kernels or native code
+- Deferred evaluation until results are needed
+
+### Core Interfaces
+
+**Producer<T>** - Describes a computation that produces a result
+```java
+public interface Producer<T> extends Supplier<Evaluable<? extends T>> {
+    Evaluable<T> get();           // Compile to executable form
+    T evaluate(Object... args);   // Convenience: compile + execute
+    Evaluable<T> into(Object destination); // In-place computation
+}
+```
+
+**Evaluable<T>** - Executable form of a computation
+```java
+public interface Evaluable<T> {
+    T evaluate(Object... args);   // Execute computation
+    Evaluable<T> into(Object d);  // In-place execution
+    StreamingEvaluable<T> async(); // Async execution
+}
+```
+
+**Countable** - Element counting for parallel execution
+```java
+public interface Countable {
+    int getCount();               // Number of elements
+    boolean isFixedCount();       // Fixed vs variable count
+}
+```
+
+### Fixed vs Variable Count
+
+Understanding this distinction is critical for GPU kernel execution:
+
+**Fixed Count** (`isFixedCount() == true`):
+- Number of elements known at construction time
+- Cannot change at runtime
+- Kernel compiles with predetermined size
+```java
+// Always processes exactly 100 elements
+TraversalPolicy fixed = new TraversalPolicy(100);
+```
+
+**Variable Count** (`isFixedCount() == false`):
+- Number of elements depends on runtime inputs
+- Kernel size determined at runtime from output/argument sizes
+```java
+// Size matches runtime input
+TraversalPolicy variable = new TraversalPolicy(false, false, 1);
+```
+
+**Kernel Execution Impact**:
+```java
+if (isFixedCount()) {
+    kernelSize = getCount();
+    // Output must be size 1 or exactly match operation count
+} else {
+    // Variable count: kernel size adapts to output size
+    kernelSize = output.getCountLong();
+}
+```
+
+### Process Framework
+
+The `Process` interface represents composable, optimizable computational work:
+
+```java
+// Process defines computational work units
+public interface Process<P, T, A> {
+    T generate(A args);           // Execute the process
+    P optimize(ProcessContext ctx); // Apply optimizations
+    P isolate();                  // Create isolated copy
+}
+```
+
+**ParallelProcess** extends this for parallel computation:
+```java
+// ParallelProcess manages collections of child processes
+public interface ParallelProcess<P, T, A> extends Process<P, T, A> {
+    int getParallelism();         // Number of parallel children
+    boolean isUniform();          // All children identical?
+}
+```
+
+**Optimization Strategies**:
+```java
+// Cascading strategy tries multiple strategies in order
+ProcessOptimizationStrategy strategy = new CascadingOptimizationStrategy(
+    new ParallelismTargetOptimization(),
+    customStrategy
+);
+```
+
+### Composition Patterns
+
+**Factor** - Transforms one producer into another:
+```java
+public interface Factor<I, O> {
+    Producer<O> apply(Producer<I> input);
+}
+```
+
+**Composition** - Combines two producers:
+```java
+public interface Composition<A, B, O> {
+    Producer<O> apply(Producer<A> a, Producer<B> b);
+}
+```
+
+**Delegation Pattern**:
+```java
+public interface Delegated<T> {
+    T getDelegate();              // Get delegate
+    int getCircularDelegateDepth(); // Detect circular references
+}
+```
+
+### Streaming Evaluables
+
+For asynchronous computation:
+
+```java
+// Convert to async execution
+StreamingEvaluable<T> streaming = evaluable.async();
+
+// Set up result consumer
+streaming.setDownstream(result -> processResult(result));
+
+// Request computation (results delivered asynchronously)
+streaming.request();
+```
+
+With custom executor:
+```java
+StreamingEvaluable<T> streaming = evaluable.async(myExecutor);
+```
+
+### Relational Frames
+
+The `frames` package provides abstractions for cognitive modeling based on Relational Frame Theory (RFT):
+
+| Frame Type | Relationship |
+|------------|--------------|
+| `CoordinationFrame` | "A is the same as B" (equivalence) |
+| `ComparativeFrame` | "B is larger than A" (magnitude) |
+| `SpatialFrame` | "A is closer than B" (proximity) |
+| `TemporalFrame` | "A is before B" (sequence) |
+| `CausalFrame` | "B is because of A" (cause-effect) |
+| `DiecticFrame` | Perspective-dependent (I-YOU, HERE-THERE) |
+
+```java
+// Create relational frames
+Predicate subject = new Predicate("sun");
+Predicate referent = new Predicate("hot");
+CausalFrame frame = new CausalFrame(subject, referent);
+// Represents: "hot is because of sun"
+```
+
+## Usage Guidelines
+
+### When to Use Fixed Count
+- Working with known-size data structures (vectors, fixed-size matrices)
+- Output size is predetermined
+- Performance is critical (avoids runtime size checks)
+
+### When to Use Variable Count
+- Processing collections of varying sizes
+- Building generic operations that adapt to input sizes
+- Output size depends on runtime arguments
+
+### Optimizing Computations
+```java
+// Apply optimization before evaluation
+Producer<T> producer = ...;
+T result = producer.evaluateOptimized(args);
+
+// Or explicitly optimize the process
+Process<?, T, ?> optimized = Process.optimized(producer);
+```
+
+## Common Patterns
+
+### Creating Simple Providers
+```java
+// Wrap a constant value
+Provider<Double> constant = new Provider<>(3.14);
+Evaluable<Double> eval = constant.get();
+Double value = eval.evaluate(); // Returns 3.14
+```
+
+### Building Computation Graphs
+```java
+// Combine producers using Factor/Composition
+Factor<Input, Output> transform = input -> {
+    // Transform input producer to output producer
+    return createOutputProducer(input);
+};
+
+Producer<Output> result = transform.apply(inputProducer);
+```
+
+### Process Optimization
+```java
+// Create context with optimization strategy
+ProcessContext ctx = ProcessContext.base();
+
+// Optimize a process tree
+Process<?, T, ?> process = ...;
+Process<?, T, ?> optimized = process.optimize(ctx);
+
+// Generate results
+T result = optimized.generate(args);
+```
+
+## Dependencies
+
+This is a foundational module with minimal dependencies.
+
+## See Also
+
+- `ar-code` module - Code generation using Producer/Evaluable abstractions
+- `ar-hardware` module - Hardware acceleration implementations
+- `ar-collect` module - Collection operations built on these abstractions
+
+---
+
+## Module: code
+
+# Code Module (ar-code)
+
+The `ar-code` module provides core code generation, expression building, and traversal abstractions for the Almost Realism computational framework. It is the foundation for dynamic code generation and computation graph construction across all backend targets (OpenCL, Metal, JNI).
+
+## Overview
+
+This module provides:
+- **Expression System** - Typed expression trees for mathematical and logical operations
+- **Scope Management** - Hierarchical code organization for generated programs
+- **Traversal Policies** - Multi-dimensional collection shape and traversal definitions
+- **Kernel Abstractions** - Index sequence and kernel structure management
+- **Code Generation** - Language-agnostic code printing and generation
+
+## Package Structure
+
+| Package | Purpose |
+|---------|---------|
+| `io.almostrealism.code` | Core computation, code generation, and expression management abstractions |
+| `io.almostrealism.expression` | Mathematical expressions and operators (arithmetic, trigonometric, logical) |
+| `io.almostrealism.collect` | Collection traversal policies and collection expressions |
+| `io.almostrealism.scope` | Code scope management, variables, and statement organization |
+| `io.almostrealism.kernel` | Kernel structure, indexing, and matrix operations |
+| `io.almostrealism.lang` | Language operations abstractions for code generation backends |
+| `io.almostrealism.compute` | Computation requirements and optimization strategies |
+| `io.almostrealism.profile` | Performance profiling and operation metadata tracking |
+| `io.almostrealism.html` | HTML and JavaScript code generation utilities |
+| `io.almostrealism.util` | Utility classes (caching, sequences, formatting) |
+| `io.almostrealism.concurrent` | Concurrency primitives (semaphores) |
+
+## Key Concepts
+
+### Expression System
+
+The expression system represents computations as typed expression trees that can be simplified, analyzed, and compiled into executable code.
+
+```java
+// Building expressions
+Expression<Double> a = new DoubleConstant(3.14);
+Expression<Double> b = new DoubleConstant(2.0);
+Expression<Double> result = a.multiply(b).add(new DoubleConstant(1.0));
+
+// Expressions can be simplified
+Expression<Double> simplified = result.getSimplified();
+
+// Generate code for target language
+String code = result.getExpression(languageOps);
+```
+
+**Key Expression Classes:**
+- `Expression<T>` - Abstract base class for all expressions
+- `Sum`, `Product`, `Quotient`, `Difference` - Arithmetic operations
+- `Sine`, `Cosine`, `Tangent`, `Exp`, `Logarithm` - Mathematical functions
+- `Conditional`, `Equals`, `Greater`, `Less` - Comparisons and conditionals
+- `IntegerConstant`, `DoubleConstant`, `BooleanConstant` - Constant values
+- `Cast` - Type conversions
+
+### Scope System
+
+`Scope` is the container for executable code elements including statements, variables, methods, and nested scopes.
+
+```java
+// Create a scope
+Scope<Double> scope = new Scope<>("myFunction", metadata);
+
+// Add variables and statements
+scope.declareDouble("x");
+scope.assign(new ExpressionAssignment<>("x", expression));
+
+// Generate code
+CodePrintWriter writer = new CPrintWriter(...);
+scope.write(writer);
+```
+
+**Key Scope Classes:**
+- `Scope<T>` - Primary container for code elements
+- `Variable<T, V>` - Named variable with optional expression
+- `ArrayVariable<T>` - Array-typed variable with indexing
+- `Argument<T>` - Scope argument with usage expectations
+- `Cases` - Conditional branching (if-else chains)
+- `Statement<T>` - Executable code statement
+
+### TraversalPolicy
+
+`TraversalPolicy` defines how a sequence of elements should be traversed to form a multidimensional collection. It specifies dimensions and traversal rates for transforming between output space (collection indices) and input space (natural element order).
+
+#### Fixed vs Variable Count
+
+`TraversalPolicy` supports two modes of operation:
+
+**Fixed-Count (default)**:
+```java
+// Always processes exactly 100 elements
+TraversalPolicy fixed = new TraversalPolicy(100);
+
+// Multi-dimensional: 10x20 matrix, always 200 elements
+TraversalPolicy matrix = new TraversalPolicy(10, 20);
+```
+- Dimensions are predetermined
+- Size cannot change at runtime
+- Most efficient for known-size data structures
+
+**Variable-Count**:
+```java
+// Processes N elements where N is determined at runtime
+TraversalPolicy variable = new TraversalPolicy(false, false, 1);
+
+// Multi-dimensional with variable size
+TraversalPolicy variableMatrix = new TraversalPolicy(false, false, 10, 20);
+```
+- Dimensions can adapt to runtime input sizes
+- Enables flexible operations on varying-sized collections
+- Created with: `new TraversalPolicy(false, false, dims...)`
+
+### Kernel and Index Sequences
+
+The kernel package provides abstractions for parallel computation patterns.
+
+```java
+// Create an arithmetic sequence
+IndexSequence seq = ArithmeticIndexSequence.of(0, 1, 100); // 0, 1, 2, ..., 99
+
+// Generate expression for the sequence
+Expression<Integer> expr = seq.getExpression(index);
+
+// Create index sequences from expressions
+IndexSequence evaluated = ArrayIndexSequence.of(expression, indexValues, length);
+```
+
+**Key Kernel Classes:**
+- `IndexSequence` - Sequence of numeric index values
+- `ArithmeticIndexSequence` - Efficient arithmetic progression
+- `ArrayIndexSequence` - General-purpose array-backed sequence
+- `KernelStructureContext` - Context for kernel simplification
+
+### Code Generation
+
+The `lang` package provides abstractions for generating code in different target languages.
+
+```java
+// Create a language-specific writer
+PrintWriter output = new PrintWriter(...);
+CodePrintWriter writer = new CPrintWriter(output, "myFunction", Precision.FP32, true, false);
+
+// Write scope to output
+scope.write(writer);
+writer.flush();
+```
+
+**Key Code Generation Classes:**
+- `CodePrintWriter` - Interface for code output
+- `CodePrintWriterAdapter` - Base implementation for C-like languages
+- `LanguageOperations` - Language-specific expression rendering
+- `ScopeEncoder` - Scope-to-code encoding
+
+### Computation Framework
+
+The computation framework provides the structure for building hardware-accelerated operations.
+
+```java
+// Implement a computation
+public class MyComputation extends ComputationBase<Double> {
+    @Override
+    public Scope<Double> getScope(NameProvider provider) {
+        Scope<Double> scope = new Scope<>("compute", getMetadata());
+        // Build scope...
+        return scope;
+    }
+}
+```
+
+**Key Computation Classes:**
+- `Computation<T>` - Interface for computations that produce scopes
+- `ComputationBase<T>` - Abstract base with lifecycle support
+- `ComputableBase<T>` - Foundation for computable operations
+- `ScopeLifecycle` - Lifecycle hooks for scope preparation
+
+## Collection Expressions
+
+Collection expressions represent multi-dimensional data that can be accessed by index.
+
+```java
+// Create a collection expression
+CollectionExpression collection = CollectionExpression.create(
+    shape(10, 20),
+    index -> someExpression.getValueAt(index)
+);
+
+// Access values
+Expression<Double> value = collection.getValueAt(flatIndex);
+
+// Stream all values
+collection.stream().forEach(expr -> ...);
+```
+
+**Key Collection Classes:**
+- `CollectionExpression` - Index-accessible value collection
+- `TraversableExpression<T>` - Functional interface for value access
+- `Shape<T>` - Multi-dimensional shape interface
+- `GroupExpression` - Grouped/batched operations
+
+## Dependencies
+
+- `ar-relation` (v0.72) - Provides core relation and computation abstractions
+- `ar-io` (v0.72) - Provides I/O and console utilities
+
+## Common Patterns
+
+### Creating Collection Shapes
+
+```java
+// 1D vector (100 elements, fixed)
+shape(100)
+
+// 2D matrix (10 rows x 20 columns, fixed)
+shape(10, 20)
+
+// Variable-size 1D collection
+new TraversalPolicy(false, false, 1)
+
+// Variable-size 2D collection
+new TraversalPolicy(false, false, new long[]{10, 20})
+```
+
+### Reshape Operations
+
+```java
+TraversalPolicy original = shape(100);
+TraversalPolicy reshaped = original.reshape(10, 10);  // 100 elements as 10x10 matrix
+```
+
+### Traversal
+
+```java
+TraversalPolicy matrix = shape(10, 20);  // 10 rows x 20 columns
+TraversalPolicy row = matrix.traverse(0);  // Traverse along first axis (rows)
+```
+
+### Expression Simplification
+
+```java
+Expression<Double> complex = a.multiply(b).add(a.multiply(c));
+Expression<Double> simplified = complex.getSimplified();
+// May simplify to: a * (b + c)
+```
+
+## See Also
+
+- `ar-relation` module - Provides `Computable`, `Evaluable`, `Producer` abstractions
+- `ar-io` module - Provides `Console`, `ConsoleFeatures`, I/O utilities
+- `ar-hardware` module - Hardware acceleration using this code generation system
+
+---
+
+## Module: collect
+
+# AR-Collect Module
+
+**Core data structures and operations for hardware-accelerated multi-dimensional collections.**
+
+## Overview
+
+The `ar-collect` module provides `PackedCollection`, the fundamental data structure for storing and operating on multi-dimensional numerical data in the Almost Realism framework. All data - from vectors and matrices to tensors and model weights - is built on PackedCollection.
+
+## Core Concept: PackedCollection
+
+### What is PackedCollection?
+
+`PackedCollection<T>` is a memory-efficient data structure that:
+- Stores multi-dimensional numerical data as a flat array
+- Uses `TraversalPolicy` to interpret linear memory as N-dimensional tensors
+- Integrates seamlessly with hardware acceleration (GPU/CPU)
+- Enables zero-copy views through delegation
+- Supports 40+ operations via `CollectionProducer`
+
+### Basic Usage
+
+```java
+// Create a 1D collection (vector)
+PackedCollection<?> vector = new PackedCollection<>(3);
+vector.setMem(0, 1.0);
+vector.setMem(1, 2.0);
+vector.setMem(2, 3.0);
+
+// Create a 2D collection (matrix)
+PackedCollection<?> matrix = new PackedCollection<>(shape(4, 3));  // 4 rows, 3 cols
+matrix.setMem(0, value);  // Linear index
+
+// Create from shape
+TraversalPolicy shape = shape(10, 20, 30);  // 10x20x30 tensor
+PackedCollection<?> tensor = new PackedCollection<>(shape);
+```
+
+### Memory Layout
+
+PackedCollection stores data in **row-major order**:
+```
+3D tensor [2, 3, 4] → Linear memory:
+[0,0,0] [0,0,1] [0,0,2] [0,0,3]  [0,1,0] [0,1,1] ...
+   0       1       2       3        4       5     ...
+```
+
+## CollectionProducer - Lazy Computation Model
+
+### The Pattern
+
+`CollectionProducer<T>` describes computations **before execution**:
+
+```java
+// Build computation graph (no execution yet!)
+CollectionProducer<PackedCollection<?>> a = cp(vectorA);
+CollectionProducer<PackedCollection<?>> b = cp(vectorB);
+CollectionProducer<PackedCollection<?>> result = a.add(b).multiply(2.0);
+
+// Execute when ready
+PackedCollection<?> computed = result.get().evaluate();
+```
+
+### 40+ Operations
+
+**Arithmetic:**
+```java
+add(Producer<T> other)
+subtract(Producer<T> other)
+multiply(Producer<T> other)
+divide(Producer<T> other)
+multiply(double scalar)
+```
+
+**Aggregations:**
+```java
+sum()           // Sum all elements
+mean()          // Average value
+max()           // Maximum value
+min()           // Minimum value
+enumerate()     // Index positions
+```
+
+**Shape Operations:**
+```java
+reshape(TraversalPolicy newShape)
+transpose()     // Swap dimensions
+repeat(int times)
+pad(int count)
+concat(Producer<T>... others)
+subset(TraversalPolicy shape, int... indices)
+```
+
+**Advanced:**
+```java
+map(Function<Double, Double> fn)
+reduce(CollectionProducer<T> initial, BinaryOperator<T> op)
+traverse(int axis)
+consolidate()
+```
+
+### Computation Chaining
+
+```java
+CollectionProducer<?> pipeline = input
+    .reshape(shape(batch, features))
+    .subtract(mean)
+    .divide(stddev)
+    .multiply(weight)
+    .add(bias)
+    .relu();
+
+PackedCollection<?> output = pipeline.get().evaluate();
+```
+
+## TraversalPolicy - Multi-Dimensional Indexing
+
+### What is TraversalPolicy?
+
+Maps 1D physical memory to N-D logical space:
+
+```java
+// 2D matrix: 3 rows × 4 columns
+TraversalPolicy shape = shape(3, 4);
+
+// Access element at [row=1, col=2]
+int linearIndex = shape.index(1, 2);  // Returns 6
+```
+
+### Shape Construction
+
+```java
+// 1D vector
+shape(10)
+
+// 2D matrix
+shape(rows, cols)
+
+// 3D tensor
+shape(depth, height, width)
+
+// 4D batch
+shape(batch, channels, height, width)
+```
+
+### Fixed vs Variable Count
+
+**Fixed Count** (size known at compile-time):
+```java
+TraversalPolicy fixed = shape(100, 50);
+fixed.isFixedCount();  // true
+fixed.getCountLong();  // 5000 (100 × 50)
+```
+
+**Variable Count** (size determined at runtime):
+```java
+TraversalPolicy variable = shape(false, false, 1);
+variable.isFixedCount();  // false
+// Size adapts to input at runtime
+```
+
+**Impact on GPU compilation:**
+- Fixed → Compile specialized kernel with known size
+- Variable → Compile adaptive kernel
+
+## Hardware Acceleration Integration
+
+### The 5-Layer Architecture
+
+```
+Application Code
+       ↓
+CollectionProducer (lazy computation description)
+       ↓
+Computation (operation implementation)
+       ↓
+Hardware Layer (kernel compilation)
+       ↓
+Memory (GPU/CPU buffers)
+```
+
+### Environment Setup
+
+**Required environment variables:**
+```bash
+export AR_HARDWARE_LIBS=/tmp/ar_libs/
+export AR_HARDWARE_DRIVER=native  # or opencl, metal
+```
+
+### Supported Backends
+
+- **native** - JNI with runtime-generated native code
+- **opencl** - OpenCL acceleration (CPU/GPU)
+- **metal** - Metal GPU acceleration (Apple Silicon)
+- **external** - Generated executable approach
+
+### Hardware Workflow
+
+```java
+// 1. Describe computation (CPU)
+CollectionProducer<?> op = a.add(b).multiply(c);
+
+// 2. Compile to kernel (one-time)
+Evaluable<?> kernel = op.get();  // Generates GPU code
+
+// 3. Execute on GPU
+PackedCollection<?> result = kernel.evaluate();
+```
+
+## Memory Management
+
+### Three-Level Architecture
+
+```
+MemoryData (logical region)
+     ↓
+Memory (physical buffer)
+     ↓
+MemoryProvider (allocation strategy)
+```
+
+### MemoryBank Pattern
+
+`PackedCollection` implements `MemoryBank<T>`:
+
+```java
+public interface MemoryBank<T extends MemoryData> {
+    int getCount();              // Number of items
+    T get(int index);            // Access item
+    void set(int index, T value);
+    MemoryData flatten();        // Get backing memory
+}
+```
+
+### Zero-Copy Views
+
+Create views without copying data:
+
+```java
+PackedCollection<?> original = new PackedCollection<>(shape(100, 50));
+
+// Create view (no data copy!)
+PackedCollection<?> view = original.range(shape(10, 50));
+view.setMem(0, 5.0);  // Modifies original!
+```
+
+### Delegation Pattern
+
+```java
+// Share underlying memory
+MemoryData sharedMemory = original.getDelegate();
+PackedCollection<?> alias = new PackedCollection<>(
+    shape(50, 100),
+    sharedMemory,
+    offset
+);
+```
+
+## Common Patterns
+
+### Loading Model Weights
+
+```java
+// From StateDictionary (ML module)
+StateDictionary weights = new StateDictionary(weightsDir);
+PackedCollection<?> embedding = weights.get("model.embed.weight");
+
+// Shape info
+TraversalPolicy shape = embedding.getShape();  // e.g., [vocab_size, hidden_dim]
+int vocabSize = shape.length(0);
+int hiddenDim = shape.length(1);
+```
+
+### Batched Operations
+
+```java
+// Process batch of vectors
+PackedCollection<?> batch = new PackedCollection<>(shape(batchSize, vectorDim));
+
+// Load data
+for (int i = 0; i < batchSize; i++) {
+    batch.set(i, loadVector(i));
+}
+
+// Batch operation (single GPU kernel!)
+CollectionProducer<?> normalized = cp(batch).divide(cp(batch).max());
+PackedCollection<?> result = normalized.get().evaluate();
+```
+
+### Matrix Operations
+
+```java
+// Matrix multiplication
+PackedCollection<?> A = new PackedCollection<>(shape(m, k));
+PackedCollection<?> B = new PackedCollection<>(shape(k, n));
+
+CollectionProducer<?> C = matmul(cp(A), cp(B));
+PackedCollection<?> result = C.get().evaluate();  // Shape: [m, n]
+```
+
+### Reshaping
+
+```java
+// Flatten 2D to 1D
+PackedCollection<?> matrix = new PackedCollection<>(shape(10, 20));
+CollectionProducer<?> flattened = cp(matrix).reshape(shape(200));
+
+// Reshape to 3D
+CollectionProducer<?> tensor = flattened.reshape(shape(4, 5, 10));
+```
+
+### Traversal and Subsetting
+
+```java
+// Select specific indices
+CollectionProducer<?> subset = cp(data).subset(
+    shape(selectedCount, features),
+    source,
+    indices...
+);
+
+// Traverse along axis
+CollectionProducer<?> traversed = cp(data).traverse(axis);
+```
+
+## Integration with Framework
+
+### Used By
+
+- **algebra** - Vector, Scalar, Pair all extend PackedCollection
+- **ml** - Model weights, activations, gradients
+- **graph** - Neural network computations
+- **time** - AcceleratedTimeSeries stores TemporalScalar collections
+- **space** - Vertex buffers, geometric data
+
+### Enables
+
+- **Type Safety** - Vector, Matrix as type-safe wrappers
+- **Hardware Acceleration** - Automatic GPU compilation
+- **Memory Efficiency** - Zero-copy views, shared buffers
+- **Functional Programming** - CollectionProducer chains
+
+## Performance Tips
+
+1. **Reuse Evaluables** - Compile once, execute many times
+   ```java
+   Evaluable<?> compiled = operation.get();  // Expensive
+   for (int i = 0; i < 1000; i++) {
+       compiled.evaluate(inputs[i]);  // Fast
+   }
+   ```
+
+2. **Batch Operations** - Process multiple items in one kernel
+   ```java
+   // Bad: 100 separate kernels
+   for (int i = 0; i < 100; i++) {
+       result[i] = process(item[i]).get().evaluate();
+   }
+
+   // Good: 1 kernel for all 100
+   PackedCollection<?> batch = PackedCollection.bank(100);
+   result = process(batch).get().evaluate();
+   ```
+
+3. **Avoid Unnecessary Copies** - Use delegation
+   ```java
+   // Bad: Copies data
+   PackedCollection<?> copy = new PackedCollection<>(original.getShape());
+   copy.setMem(original);
+
+   // Good: Zero-copy view
+   PackedCollection<?> view = original.range(shape);
+   ```
+
+4. **Choose Fixed Count** - When possible for performance
+   ```java
+   // Fixed count: faster compilation
+   shape(100, 50)
+
+   // Variable count: more flexible but slower
+   shape(false, false, 1)
+   ```
+
+## Troubleshooting
+
+### Common Issues
+
+**NoClassDefFoundError: PackedCollection**
+- Missing environment variables: Set `AR_HARDWARE_LIBS` and `AR_HARDWARE_DRIVER`
+
+**Shape mismatch errors**
+- Check TraversalPolicy dimensions match data
+- Verify batch dimensions align
+
+**Out of memory**
+- Reduce batch size
+- Clear unused PackedCollections
+- Check for memory leaks in delegation
+
+## Dependencies
+
+```xml
+<dependency>
+    <groupId>org.almostrealism</groupId>
+    <artifactId>ar-collect</artifactId>
+    <version>0.72</version>
+</dependency>
+```
+
+## License
+
+Licensed under the Apache License, Version 2.0.
+
+---
+
+## Module: algebra
+
+# AR-Algebra Module
+
+**Core algebraic types, collection operations, and matrix computations built on PackedCollection for hardware-accelerated numerical computing.**
+
+## Overview
+
+The `ar-algebra` module provides fundamental mathematical types and operations for the Almost Realism framework. All types are built on `PackedCollection` for hardware acceleration and memory efficiency.
+
+This module contains the core collection infrastructure that powers all numerical computations in the framework:
+
+- **PackedCollection**: Hardware-accelerated multi-dimensional arrays with contiguous memory layout
+- **CollectionProducer**: Lazy evaluation pattern for building computational graphs
+- **CollectionFeatures**: Factory methods for creating computations
+- **Parallel Processing**: GPU/CPU kernel compilation and execution
+
+---
+
+## Core Collection Classes
+
+### PackedCollection - The Foundation
+
+`PackedCollection<T>` is the fundamental data container providing efficient storage and access for multi-dimensional numerical data.
+
+#### Key Features
+
+- **Memory Efficiency**: Contiguous packed memory layout for cache-friendly access
+- **Hardware Acceleration**: Direct GPU/CPU memory backing via `MemoryData`
+- **Multi-dimensional Support**: Arbitrary rank tensors with `TraversalPolicy`
+- **Zero-copy Views**: Memory delegation without data copying
+- **Flexible Traversal**: Custom access patterns via `TraversalOrdering`
+
+#### Memory Layout
+
+Data is stored in row-major order (C-style) in a contiguous memory block:
+
+```
+Logical (3x4 matrix):    Memory layout:
+[0  1  2  3]             [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+[4  5  6  7]
+[8  9 10 11]
+```
+
+#### Construction Patterns
+
+```java
+// 1. Simple shape construction
+PackedCollection<?> tensor = new PackedCollection<>(3, 4, 5);  // 3x4x5 tensor
+
+// 2. With traversal policy
+TraversalPolicy shape = new TraversalPolicy(10, 20);
+PackedCollection<?> matrix = new PackedCollection<>(shape);
+
+// 3. Copy constructor (deep copy)
+PackedCollection<?> copy = new PackedCollection<>(original);
+
+// 4. Zero-copy view into existing memory
+MemoryData largeBuffer = ...;
+PackedCollection<?> view = new PackedCollection<>(shape, 0, largeBuffer, 100);
+```
+
+#### Access Patterns
+
+```java
+PackedCollection<?> data = new PackedCollection<>(10, 5);
+
+// Indexed access
+data.setMem(0, 1.5);
+double value = data.toDouble(0);
+
+// Array access
+data.set(0, new double[]{1.0, 2.0, 3.0, 4.0, 5.0});
+double[] row = data.get(0).toArray();
+
+// Streaming
+double sum = data.doubleStream().sum();
+data.forEach(row -> process(row));
+
+// Position-based access
+double val = data.valueAt(2, 3);  // Get element at position [2][3]
+data.setValueAt(5.0, 2, 3);       // Set element at position [2][3]
+```
+
+#### Initialization Methods
+
+```java
+PackedCollection<?> data = new PackedCollection<>(100);
+
+data.fill(0.0);                      // Fill with constant
+data.randFill();                     // Fill with uniform random [0,1)
+data.randnFill();                    // Fill with normal distribution
+data.identityFill();                 // Fill as identity matrix (2D only)
+data.fill(pos -> pos[0] * pos[1]);   // Fill with function
+data.replace(x -> x * 2.0);          // Transform in-place
+```
+
+#### Zero-Copy Views and Delegation
+
+PackedCollection can wrap existing memory without copying, enabling efficient memory reuse:
+
+```java
+// Create a large buffer
+PackedCollection<?> largeBuffer = new PackedCollection<>(1000000);
+
+// Create views into different regions (zero-copy)
+PackedCollection<?> view1 = largeBuffer.range(shape(100, 100), 0);      // First 10000 elements
+PackedCollection<?> view2 = largeBuffer.range(shape(100, 100), 10000);  // Next 10000 elements
+
+// Changes to views modify the underlying buffer
+view1.setMem(0, 5.0);  // largeBuffer now has 5.0 at position 0
+
+// Repeat creates a virtual view (memory-efficient)
+PackedCollection<?> repeated = data.repeat(4);  // Appears 4x larger, same memory
+
+// Delegation chain
+PackedCollection<?> subset = largeBuffer
+    .range(shape(500, 500), 0)     // View into buffer
+    .range(shape(100, 100), 0);    // View into view
+```
+
+#### Shape and Traversal
+
+```java
+PackedCollection<?> data = new PackedCollection<>(3, 4, 5);
+TraversalPolicy shape = data.getShape();
+
+shape.getDimensions();     // 3 (rank)
+shape.length(0);           // 3 (first dimension size)
+shape.length(1);           // 4 (second dimension size)
+shape.length(2);           // 5 (third dimension size)
+shape.getTotalSize();      // 60 (total elements)
+shape.getTraversalAxis();  // 0 (default traversal axis)
+
+// Reshape (same data, different interpretation)
+PackedCollection<?> reshaped = data.reshape(shape(12, 5));
+
+// Change traversal axis
+PackedCollection<?> transposed = data.traverse(1);
+```
+
+#### I/O Operations
+
+```java
+// Save to file
+data.save(new File("tensor.dat"));
+
+// Load collections from file (returns Iterable for multiple collections)
+for (PackedCollection<?> loaded : PackedCollection.loadCollections(new File("tensor.dat"))) {
+    // Process each loaded collection
+}
+
+// Print for debugging
+data.print();  // Pretty-printed to console
+```
+
+---
+
+### CollectionProducer - Lazy Evaluation
+
+`CollectionProducer<T>` is the core interface for building computational graphs through method chaining.
+
+#### Design Principles
+
+- **Immutable Operations**: All operations return new producers, never modifying the original
+- **Deferred Execution**: Operations build a computational graph; computation happens on evaluation
+- **Hardware Acceleration**: Computations compile to optimized kernels for CPU/GPU
+- **Type Safety**: Shape information is tracked through the type system
+
+#### Method Chaining Pattern
+
+```java
+// Build a computation graph through method chaining
+CollectionProducer<?> input = v(PackedCollection.class);
+CollectionProducer<?> result = input
+    .reshape(shape(10, 3))      // Reshape to 10x3
+    .subtract(input.mean(0))    // Subtract mean along axis 0
+    .divide(input.variance(0))  // Divide by variance
+    .pow(2.0)                   // Square all elements
+    .sum();                     // Sum all elements
+
+// Execute the graph
+PackedCollection<?> output = result.get().evaluate();
+```
+
+#### Shape Operations
+
+```java
+CollectionProducer<?> x = ...; // shape (2, 3, 4)
+
+x.reshape(shape(6, 4))           // Reshape to 6x4
+x.traverse(1)                    // Traverse along axis 1
+x.transpose()                    // Transpose matrix (2D only)
+x.subset(shape(2, 2), 0, 1)      // Extract 2x2 subset starting at (0,1)
+x.repeat(5)                      // Repeat data 5 times -> shape (10, 3, 4)
+x.enumerate(10)                  // Extract 10 indexed elements
+x.permute(2, 0, 1)               // Permute dimensions -> shape (4, 2, 3)
+x.pad(1, 2, 3)                   // Add padding to each dimension
+```
+
+#### Arithmetic Operations
+
+```java
+CollectionProducer<?> a = ...;
+CollectionProducer<?> b = ...;
+
+a.add(b)           // Element-wise addition
+a.add(5.0)         // Add scalar to all elements
+a.subtract(b)      // Element-wise subtraction
+a.multiply(b)      // Element-wise multiplication
+a.divide(2.0)      // Divide all elements by 2
+a.pow(2.0)         // Square all elements
+a.sqrt()           // Square root
+a.exp()            // e^x
+a.log()            // ln(x)
+a.abs()            // Absolute value
+a.minus()          // Negation
+```
+
+#### Statistical Operations
+
+```java
+CollectionProducer<?> data = ...; // shape (10, 5)
+
+data.sum()         // Sum all elements -> shape (1)
+data.sum(0)        // Sum along axis 0 -> shape (5)
+data.mean()        // Mean of all elements
+data.mean(1)       // Mean along axis 1 -> shape (10)
+data.variance()    // Variance
+data.max()         // Maximum value
+data.magnitude()   // L2 norm
+data.indexOfMax()  // Index of maximum element
+```
+
+#### Comparison Operations
+
+```java
+CollectionProducer<?> x = ...;
+CollectionProducer<?> y = ...;
+
+x.greaterThan(y)                        // 1.0 where x > y, 0.0 elsewhere
+x.lessThan(y)                           // 1.0 where x < y, 0.0 elsewhere
+x.greaterThanOrEqual(y)                 // 1.0 where x >= y, 0.0 elsewhere
+x.lessThanOrEqual(y)                    // 1.0 where x <= y, 0.0 elsewhere
+x.and(y)                                // 1.0 where both non-zero, 0.0 elsewhere
+
+// Conditional selection
+x.greaterThan(y, trueVal, falseVal)     // Select based on comparison
+```
+
+#### Automatic Differentiation
+
+```java
+CollectionProducer<?> x = v(PackedCollection.class);
+CollectionProducer<?> y = x.pow(2).sum();
+
+// Compute dy/dx
+CollectionProducer<?> gradient = y.delta(x);
+// Result: 2x (derivative of x^2)
+
+// Combine gradients for backpropagation
+CollectionProducer<?> combined = y.grad(x, upstreamGradient);
+```
+
+---
+
+### CollectionFeatures - Factory Methods
+
+`CollectionFeatures` is a mixin interface providing 200+ factory methods for creating computations.
+
+#### Usage Pattern
+
+```java
+public class MyComputation implements CollectionFeatures {
+    public void example() {
+        // All factory methods available directly
+        CollectionProducer<?> data = c(10.0);
+        CollectionProducer<?> result = add(data, c(5.0));
+    }
+}
+```
+
+#### Producer Creation
+
+```java
+// Variable producers (placeholders)
+CollectionProducer<?> input = v(PackedCollection.class);
+
+// Constant scalars
+CollectionProducer<?> scalar = c(3.14);
+
+// Constant collections
+CollectionProducer<?> vector = c(1.0, 2.0, 3.0);
+
+// Wrap existing collection
+CollectionProducer<?> wrapped = p(myPackedCollection);
+```
+
+#### Shape Factory Methods
+
+```java
+// Create shapes
+TraversalPolicy shape = shape(10, 20, 30);
+
+// Extract shape from producer
+TraversalPolicy prodShape = shape(myProducer);
+
+// Traverse along axis
+CollectionProducer<?> traversed = traverse(1, myProducer);
+
+// Reshape
+CollectionProducer<?> reshaped = reshape(shape(200, 30), myProducer);
+```
+
+#### Arithmetic Factory Methods
+
+```java
+add(a, b)              // a + b
+subtract(a, b)         // a - b
+multiply(a, b)         // a * b
+divide(a, b)           // a / b
+pow(a, b)              // a^b
+sqrt(a)                // sqrt(a)
+minus(a)               // -a
+exp(a)                 // e^a
+log(a)                 // ln(a)
+abs(a)                 // |a|
+sq(a)                  // a^2
+sigmoid(a)             // 1 / (1 + e^-a)
+mod(a, b)              // a mod b
+```
+
+#### Statistical Factory Methods
+
+```java
+sum(a)                 // Sum all elements
+mean(a)                // Mean of all elements
+variance(a)            // Variance
+max(a)                 // Maximum value
+indexOfMax(a)          // Index of maximum
+magnitude(a)           // L2 norm
+subtractMean(a)        // a - mean(a)
+```
+
+#### Constant Generators
+
+```java
+zeros(shape(10, 10))   // 10x10 zero-filled collection
+epsilon()              // Machine epsilon constant
+rand(shape(100))       // 100 uniform random values [0,1)
+randn(shape(100))      // 100 normal random values
+integers(0, 100)       // Sequence 0, 1, 2, ..., 99
+```
+
+---
+
+### CollectionProducerComputation - Hardware Acceleration
+
+`CollectionProducerComputation<T>` is the interface for computations that compile to hardware-accelerated kernels.
+
+#### Lifecycle
+
+```java
+// 1. Create computation (builds graph)
+CollectionProducerComputation<?> comp = myProducer.pow(2).sum();
+
+// 2. Get evaluable (compiles to native code / GPU kernel)
+Evaluable<?> ev = comp.get();
+
+// 3. Execute (runs on hardware)
+PackedCollection<?> result = ev.evaluate();
+
+// Alternative: provide input
+PackedCollection<?> result = ev.evaluate(inputData);
+
+// Reuse evaluable for multiple executions
+for (PackedCollection<?> input : inputs) {
+    PackedCollection<?> output = ev.evaluate(input);
+}
+```
+
+#### Key Features
+
+- **Automatic Compilation**: Computations are compiled to optimized kernels on first `get()` call
+- **Kernel Caching**: Compiled kernels are cached for reuse
+- **Memory Management**: Automatic allocation and deallocation of GPU memory
+- **Shape Propagation**: Output shapes are computed from input shapes
+
+---
+
+### CollectionProducerParallelProcess - Parallel Execution
+
+`CollectionProducerParallelProcess<T>` enables parallel execution on CPU/GPU.
+
+#### Capabilities
+
+- Multi-threaded CPU execution
+- GPU kernel compilation and execution
+- Operation fusion for optimization
+- Memory-efficient batch processing
+
+---
+
+### DelegatedCollectionProducer - Zero-Copy Delegation
+
+`DelegatedCollectionProducer<T>` provides a lightweight wrapper pattern for producers.
+
+#### Use Cases
+
+- Adding metadata or tracking to existing producers
+- Creating proxy patterns for collection operations
+- Modifying specific behaviors while preserving functionality
+- Process isolation for independent execution contexts
+
+```java
+// Wrap an existing producer
+DelegatedCollectionProducer<?> delegated = new DelegatedCollectionProducer<>(originalProducer);
+
+// Shape is forwarded from wrapped producer
+TraversalPolicy shape = delegated.getShape();
+
+// Evaluation is delegated
+PackedCollection<?> result = delegated.get().evaluate();
+```
+
+---
+
+## Algebraic Types
+
+### Vector (3D Vector)
+
+```java
+Vector v = new Vector(1.0, 2.0, 3.0);
+double x = v.getX();
+Vector sum = v1.add(v2);
+double dot = v1.dotProduct(v2);
+Vector cross = v1.crossProduct(v2);
+```
+
+### Scalar (Value + Certainty)
+
+```java
+Scalar s = new Scalar(5.0, 0.95);  // Value with 95% certainty
+double value = s.getValue();
+```
+
+### Pair (Two-Element Tuple)
+
+```java
+Pair p = new Pair(3.0, 4.0);
+double x = p.getX();
+double y = p.getY();
+```
+
+---
+
+## Operations
+
+All operations return `CollectionProducer` for GPU compilation:
+
+```java
+CollectionProducer<Vector> normalized = normalize(v);
+CollectionProducer<?> dot = dotProduct(a, b);
+CollectionProducer<?> matrix = matmul(A, B);
+```
+
+---
+
+## Hardware Acceleration Setup
+
+Before running any code that uses hardware acceleration:
+
+```bash
+export AR_HARDWARE_LIBS=/tmp/ar_libs/
+export AR_HARDWARE_DRIVER=native
+```
+
+See [CLAUDE.md](../CLAUDE.md) for detailed setup instructions.
+
+---
+
+## Thread Safety
+
+`PackedCollection` is **not thread-safe**. External synchronization is required for concurrent access. For parallel operations, use the computation framework which handles synchronization internally.
+
+---
+
+## Best Practices
+
+### Memory Efficiency
+
+```java
+// GOOD: Use zero-copy views
+PackedCollection<?> view = buffer.range(shape(100), offset);
+
+// GOOD: Reuse evaluables
+Evaluable<?> ev = computation.get();
+for (int i = 0; i < 1000; i++) {
+    ev.evaluate(inputs[i]);
+}
+
+// AVOID: Creating unnecessary copies
+PackedCollection<?> copy = new PackedCollection<>(original); // Copies all data
+```
+
+### Building Computations
+
+```java
+// GOOD: Chain operations (builds efficient graph)
+CollectionProducer<?> result = input
+    .subtract(input.mean())
+    .divide(input.variance().sqrt());
+
+// AVOID: Intermediate evaluations (breaks optimization)
+PackedCollection<?> centered = input.subtract(input.mean()).get().evaluate();
+PackedCollection<?> result = p(centered).divide(variance).get().evaluate();
+```
+
+### Shape Management
+
+```java
+// GOOD: Use shape inference
+TraversalPolicy inputShape = shape(input);
+TraversalPolicy outputShape = inputShape.prependDimension(batchSize);
+
+// GOOD: Validate shapes early
+if (a.getShape().getTotalSize() != b.getShape().getTotalSize()) {
+    throw new IllegalArgumentException("Shape mismatch");
+}
+```
+
+---
+
+## Dependencies
+
+```xml
+<dependency>
+    <groupId>org.almostrealism</groupId>
+    <artifactId>ar-algebra</artifactId>
+    <version>0.72</version>
+</dependency>
+```
+
+---
+
+## Related Documentation
+
+- [CLAUDE.md](../CLAUDE.md) - Development guidelines and hardware setup
+- [ML Module](../ml/claude.md) - Machine learning models and layers
+- [Graph Module](../graph/README.md) - Computation graph and layers
+
+---
+
+## Module: graph
+
+# Almost Realism Graph Module (`ar-graph`)
+
+The Graph Module provides the foundational architecture for building neural network layers and computation graphs in Almost Realism. It implements a cell-based design that enables flexible composition of forward and backward propagation paths, supporting both inference and training with automatic differentiation.
+
+## Purpose
+
+This module exists to:
+
+1. **Enable Neural Network Construction** - Provides abstractions for building trainable neural network layers
+2. **Support Backpropagation** - Implements automatic gradient computation through computation graphs
+3. **Enable Flexible Composition** - Allows layers and blocks to be chained and composed seamlessly
+4. **Provide Temporal Operations** - Supports time-based signal processing (audio, sequences)
+5. **Abstract Hardware Execution** - Integrates with hardware acceleration layer for GPU/CPU execution
+
+## Core Architecture
+
+### Cell-Receptor-Transmitter Pattern
+
+The fundamental design uses three interfaces:
+
+- **Cell<T>** - A processing unit that can receive input, perform computation, and send output
+- **Receptor<T>** - An interface for receiving data and producing computation operations
+- **Transmitter<T>** - An interface for transmitting data to downstream receptors
+
+```java
+// Create a simple cell that doubles its input
+Cell<PackedCollection<?>> doubleCell = Cell.of(input -> input.multiply(2.0));
+
+// Chain cells together
+Cell<PackedCollection<?>> pipeline = doubleCell
+    .andThen(Cell.of(x -> x.add(c(1.0))))    // Add 1
+    .andThen(Cell.of(x -> x.sqrt()));        // Square root
+
+// Execute
+Producer<PackedCollection<?>> input = cp(data);
+Supplier<Runnable> operation = pipeline.push(input);
+operation.get().run();  // Execute the computation
+```
+
+### Layer Hierarchy
+
+**Layer** - Base interface for trainable components with weights
+**CellularLayer** - Layer implemented using cells
+**DefaultCellularLayer** - Primary implementation connecting forward and backward cells
+
+### Block Composition
+
+**Block** - Composable neural network unit with forward/backward propagation
+**SequentialBlock** - Container for multiple blocks in sequence
+**Model** - Top-level neural network container
+
+## What It Provides
+
+### 1. Layer Building Blocks
+
+```java
+import org.almostrealism.layers.*;
+import static org.almostrealism.layers.LayerFeatures.*;
+
+// Create a dense (fully connected) layer
+TraversalPolicy inputShape = shape(784);
+TraversalPolicy outputShape = shape(128);
+PackedCollection<?> weights = new PackedCollection<>(shape(128, 784));
+PackedCollection<?> bias = new PackedCollection<>(shape(128));
+
+Block denseLayer = dense(weights, bias);
+
+// Chain layers
+Block network = layer(inputShape)
+    .andThenDense(weights1, bias1)  // Hidden layer 1
+    .andThenDense(weights2, bias2)  // Hidden layer 2
+    .andThenDense(weights3, bias3); // Output layer
+```
+
+### 2. Model Construction
+
+```java
+import org.almostrealism.model.*;
+
+// Create a model
+Model model = new Model(shape(784), 0.001);  // Input shape, learning rate
+
+// Add layers
+model.add(denseLayer);
+model.add(activationLayer);
+model.add(outputLayer);
+
+// Compile for execution
+CompiledModel compiled = model.compile();
+
+// Forward pass
+PackedCollection<?> input = loadData();
+PackedCollection<?> output = compiled.forward(input);
+
+// Training (with gradient)
+PackedCollection<?> gradient = computeLoss(output, target);
+PackedCollection<?> inputGradient = compiled.backward(gradient);
+```
+
+### 3. Custom Cells
+
+```java
+import org.almostrealism.graph.*;
+
+// Stateful cell (maintains internal state)
+public class CustomCell extends CachedStateCell<PackedCollection<?>> {
+    @Override
+    public Supplier<Runnable> setup() {
+        // Initialize state
+        return () -> () -> {
+            getCached().setMem(0, initialValue);
+        };
+    }
+
+    @Override
+    public Supplier<Runnable> push(Producer<PackedCollection<?>> protein) {
+        // Process input and update state
+        return () -> () -> {
+            double value = protein.get().evaluate().toDouble(0);
+            getCached().setMem(0, transform(value));
+        };
+    }
+
+    @Override
+    public Supplier<Runnable> tick() {
+        // Propagate state to output
+        return () -> () -> {
+            getOutput().setMem(0, getCached().toDouble(0));
+        };
+    }
+}
+```
+
+### 4. Temporal Processing
+
+```java
+import org.almostrealism.graph.temporal.*;
+
+// Audio wave cell for signal processing
+WaveCell audioCell = new WaveCell(sampleData, sampleRate);
+audioCell.setAmplitude(1.0);
+audioCell.setRepeat(true);
+
+// Time-based iteration
+TimeCell clock = new TimeCell();
+clock.tick();  // Advance time
+```
+
+### 5. Block Composition Patterns
+
+```java
+// Sequential composition
+Block sequential = block1.andThen(block2).andThen(block3);
+
+// Branching (parallel paths)
+Block branched = block.branch();
+
+// Residual connection
+Block residual = identity.accum(transformBlock);
+
+// Element-wise operations
+Block combined = block1.product(block2);  // Element-wise multiply
+```
+
+## Key Classes
+
+### Core Interfaces
+- **Cell** - `org.almostrealism.graph.Cell`
+- **Receptor** - `org.almostrealism.graph.Receptor`
+- **Transmitter** - `org.almostrealism.graph.Transmitter`
+- **CellularPropagation** - `org.almostrealism.graph.CellularPropagation`
+
+### Layer Classes
+- **Layer** - `org.almostrealism.layers.Layer`
+- **CellularLayer** - `org.almostrealism.layers.CellularLayer`
+- **DefaultCellularLayer** - `org.almostrealism.layers.DefaultCellularLayer`
+- **LayerFeatures** - `org.almostrealism.layers.LayerFeatures`
+
+### Model Classes
+- **Block** - `org.almostrealism.model.Block`
+- **SequentialBlock** - `org.almostrealism.model.SequentialBlock`
+- **Model** - `org.almostrealism.model.Model`
+- **CompiledModel** - `org.almostrealism.model.CompiledModel`
+
+### Specialized Cells
+- **CachedStateCell** - `org.almostrealism.graph.CachedStateCell`
+- **FilteredCell** - `org.almostrealism.graph.FilteredCell`
+- **MultiCell** - `org.almostrealism.graph.MultiCell`
+- **WaveCell** - `org.almostrealism.graph.temporal.WaveCell`
+- **TimeCell** - `org.almostrealism.graph.TimeCell`
+
+## Integration with Other Modules
+
+### Collect Module
+- Uses **PackedCollection<?>** as primary data type
+- **TraversalPolicy** for shape/layout information
+- **Producer/Evaluable** for lazy computation
+
+### ML Module
+- Provides foundation for high-level models (Llama, Qwen, etc.)
+- **AttentionFeatures** builds on graph layers
+- **StateDictionary** loads weights into graph layers
+
+### Hardware Module
+- Cells compile to hardware-accelerated operations
+- GPU kernel generation for forward/backward passes
+
+## Environment Configuration
+
+```bash
+# Enable/disable various diagnostics
+export AR_GRAPH_CELL_WARNINGS=true          # Warn on receptor replacement
+export AR_GRAPH_IO_TRACKING=true            # Track layer inputs/outputs
+export AR_GRAPH_PROPAGATION_WARNINGS=true   # Warn on backprop issues
+export AR_GRAPH_SHAPE_WARNINGS=true         # Warn on shape mismatches
+```
+
+## Usage Examples
+
+### Simple Neural Network
+
+```java
+import org.almostrealism.model.*;
+import org.almostrealism.layers.*;
+import static org.almostrealism.layers.LayerFeatures.*;
+
+// Input: 28x28 image = 784 pixels
+TraversalPolicy inputShape = shape(784);
+
+// Create model
+Model mnist = new Model(inputShape, 0.01);  // Learning rate: 0.01
+
+// Hidden layer: 784 -> 128 with ReLU
+PackedCollection<?> w1 = initializeWeights(128, 784);
+PackedCollection<?> b1 = zeros(128);
+mnist.add(dense(w1, b1).andThen(relu()));
+
+// Output layer: 128 -> 10 (digit classes)
+PackedCollection<?> w2 = initializeWeights(10, 128);
+PackedCollection<?> b2 = zeros(10);
+mnist.add(dense(w2, b2));
+
+// Compile
+CompiledModel model = mnist.compile();
+
+// Training loop
+for (PackedCollection<?> batch : trainingData) {
+    PackedCollection<?> predictions = model.forward(batch);
+    PackedCollection<?> loss = computeLoss(predictions, labels);
+    model.backward(loss);  // Updates weights automatically
+}
+```
+
+### Custom Layer with Backpropagation
+
+```java
+public class CustomLayer implements CellularPropagation<PackedCollection<?>> {
+    private Cell<PackedCollection<?>> forward;
+    private Cell<PackedCollection<?>> backward;
+
+    public CustomLayer(PackedCollection<?> weights) {
+        // Forward: y = x * weights
+        this.forward = Cell.of(input ->
+            input.enumerate(1, 1).multiply(cp(weights)).sum(1)
+        );
+
+        // Backward: dx = gradient * weights^T
+        this.backward = Cell.of(gradient ->
+            gradient.enumerate(1, 1).multiply(cp(weights).transpose()).sum(1)
+        );
+    }
+
+    @Override
+    public Cell<PackedCollection<?>> getForward() { return forward; }
+
+    @Override
+    public Cell<PackedCollection<?>> getBackward() { return backward; }
+}
+```
+
+## Dependencies
+
+- **ar-relation** - Producer/Evaluable abstraction
+- **ar-collect** - PackedCollection data structures
+- **ar-algebra** - Vector/Matrix types
+- **ar-hardware** - GPU compilation and execution
+- **ar-code** - Code generation utilities
+
+## Maven Dependency
+
+```xml
+<dependency>
+    <groupId>org.almostrealism</groupId>
+    <artifactId>ar-graph</artifactId>
+    <version>0.72</version>
+</dependency>
+```
+
+## Further Reading
+
+- See **ar-ml** module for high-level model implementations
+- See **ar-collect** module for PackedCollection fundamentals
+- See **ar-hardware** module for acceleration setup
+
+---
+
+## Module: ml
+
+# Almost Realism ML Module (`ar-ml`)
+
+The ML Module provides a complete framework for loading, configuring, and running large language models (LLMs) with hardware acceleration. It implements transformer-based architectures including Qwen3, with support for multi-head attention, rotary position embeddings, and efficient autoregressive generation.
+
+## Purpose
+
+This module exists to:
+
+1. **Load Transformer Models** - Support for loading weights from HuggingFace/protobuf formats
+2. **Implement Attention Mechanisms** - Multi-head, grouped-query, and cross-attention
+3. **Enable Text Generation** - Autoregressive token generation with sampling strategies
+4. **Provide Tokenization** - Byte-level BPE tokenizers for text encoding/decoding
+5. **Support Hardware Acceleration** - GPU/CPU execution via ar-hardware backends
+
+## What It Provides
+
+### 1. Model Loading with StateDictionary
+
+```java
+import org.almostrealism.model.StateDictionary;
+
+// Load model weights from directory
+StateDictionary stateDict = new StateDictionary("/path/to/weights");
+
+// Access weights by HuggingFace-style keys
+PackedCollection<?> embeddings = stateDict.get("model.embed_tokens.weight");
+PackedCollection<?> wq = stateDict.get("model.layers.0.self_attn.q_proj.weight");
+PackedCollection<?> wk = stateDict.get("model.layers.0.self_attn.k_proj.weight");
+PackedCollection<?> wv = stateDict.get("model.layers.0.self_attn.v_proj.weight");
+```
+
+### 2. Transformer Attention
+
+```java
+import org.almostrealism.layers.AttentionFeatures;
+import static org.almostrealism.layers.LayerFeatures.*;
+
+// Multi-Head Attention with GQA and QK-Norm
+Block attnBlock = attention(
+    nHeads,           // Number of query heads (e.g., 32)
+    kvHeads,          // Number of KV heads (e.g., 8 for GQA)
+    headSize,         // Dimension per head
+    wq, wk, wv, wo,   // Weight matrices
+    qkNormQ, qkNormK, // Optional QK normalization weights
+    freqCis,          // RoPE frequencies
+    requirements      // Computation requirements
+);
+
+// Feed-Forward Network with SwiGLU activation
+Block ffnBlock = feedForward(
+    wGate,  // Gate projection (W1)
+    wUp,    // Up projection (W3)
+    wDown   // Down projection (W2)
+);
+
+// Complete transformer block
+Block transformerLayer = transformer(
+    attnBlock,
+    ffnBlock,
+    attnNormWeights,
+    ffnNormWeights
+);
+```
+
+### 3. Qwen3 Model Implementation
+
+```java
+import org.almostrealism.models.qwen3.Qwen3;
+
+// Load and configure model
+Qwen3 model = new Qwen3(
+    "/path/to/weights",
+    "/path/to/tokenizer.bin"
+);
+
+// Set generation parameters
+model.setTemperature(0.7);  // 0.0 = greedy, >0 = sampling
+
+// Generate text
+model.run(
+    256,                    // Max tokens to generate
+    "Once upon a time",    // Prompt
+    token -> System.out.print(token)  // Token callback
+);
+```
+
+### 4. Autoregressive Generation
+
+```java
+import org.almostrealism.model.AutoregressiveModel;
+
+// Wrap compiled model for token generation
+AutoregressiveModel generator = AutoregressiveModel.of(
+    compiledModel,
+    step -> log("Step: " + step),
+    tokenId -> tokenEmbeddings.get(tokenId)
+);
+
+// Set sampling temperature
+generator.setTemperature(0.0);  // Greedy decoding
+
+// Generate next token
+int nextToken = generator.next();
+```
+
+### 5. Tokenization
+
+```java
+import org.almostrealism.models.qwen3.Qwen3Tokenizer;
+
+// Load tokenizer
+Qwen3Tokenizer tokenizer = new Qwen3Tokenizer("/path/to/tokenizer.bin");
+
+// Encode text to token IDs
+String text = "Hello, world!";
+int[] tokens = tokenizer.encodeAsInt(text);
+
+// Decode tokens to text
+String decoded = tokenizer.decodeAsInt(tokens);
+
+// Special tokens
+int bos = tokenizer.getBOSToken();  // 151643
+int eos = tokenizer.getEOSToken();  // 151645
+```
+
+### 6. Rotary Position Embeddings (RoPE)
+
+```java
+import org.almostrealism.layers.RotationFeatures;
+
+// Compute RoPE frequency matrix
+PackedCollection<?> freqCis = computeRotaryFreqs(
+    dim,          // Model dimension
+    seqLen,       // Sequence length
+    theta         // Base frequency (10000 for LLaMA, 1000000 for Qwen3)
+);
+
+// Apply RoPE to query/key tensors
+Producer<PackedCollection<?>> rotatedQ = ropeRotation(
+    query,
+    freqCis,
+    seqLen,
+    headDim
+);
+```
+
+## Key Interfaces and Classes
+
+### StateDictionary
+
+```java
+public class StateDictionary implements Destroyable {
+    public StateDictionary(String directory);
+    public PackedCollection<?> get(String key);
+
+    @Override
+    public void destroy();  // Cleanup resources
+}
+```
+
+### AttentionFeatures
+
+```java
+public interface AttentionFeatures extends LayerFeatures {
+    // Multi-head attention with optional GQA and QK-Norm
+    default Block attention(int heads, int kvHeads, int headSize,
+                           PackedCollection<?> wq, wk, wv, wo,
+                           PackedCollection<?> qkNormQ, qkNormK,
+                           PackedCollection<?> freqCis,
+                           ComputeRequirement... requirements);
+
+    // Feed-forward with SwiGLU activation
+    default Block feedForward(PackedCollection<?> wGate,
+                             PackedCollection<?> wUp,
+                             PackedCollection<?> wDown);
+
+    // Complete transformer layer
+    default Block transformer(Block attention, Block ffn,
+                             PackedCollection<?> attnNorm,
+                             PackedCollection<?> ffnNorm);
+}
+```
+
+### AutoregressiveModel
+
+```java
+public class AutoregressiveModel {
+    public static AutoregressiveModel of(CompiledModel model,
+                                         IntConsumer stepConsumer,
+                                         IntFunction<PackedCollection<?>> tokenEmbed);
+
+    public void setTemperature(double temperature);
+    public int next();  // Generate next token
+}
+```
+
+### ByteLevelBPETokenizer
+
+```java
+public abstract class ByteLevelBPETokenizer implements Tokenizer {
+    public int[] encodeAsInt(String text);
+    public String decodeAsInt(int[] tokens);
+
+    public abstract int getBOSToken();
+    public abstract int getEOSToken();
+    public abstract int getPADToken();
+    public abstract int getUNKToken();
+}
+```
+
+## Qwen3 Model Architecture
+
+### Configuration
+
+```java
+Qwen3Config config = new Qwen3Config();
+config.vocabSize = 151669;      // Vocabulary size
+config.dim = 3584;              // Model dimension
+config.hiddenDim = 11008;       // FFN hidden dimension
+config.nLayers = 36;            // Number of transformer layers
+config.nHeads = 32;             // Query heads
+config.nKVHeads = 8;            // KV heads (GQA 4:1 ratio)
+config.headDim = 112;           // Dimension per head
+config.maxSeqLen = 128000;      // Maximum context length
+config.ropeTheta = 1000000.0;   // RoPE base frequency
+```
+
+### Special Features
+
+- **QK-Normalization** - Stabilizes attention training
+- **Grouped-Query Attention** - 4:1 query-to-KV head ratio for efficiency
+- **Extended Context** - Up to 128K tokens
+- **SwiGLU Activation** - Gated linear unit in FFN
+- **Shared Embeddings** - Input/output embeddings share weights
+
+### Layer Structure
+
+```
+Qwen3 Model
+├── Token Embeddings (151669 x 3584)
+├── 36 Transformer Layers
+│   ├── Self-Attention
+│   │   ├── QK-Norm (query/key normalization)
+│   │   ├── Multi-Head Attention (32 heads)
+│   │   ├── Grouped-Query (8 KV heads)
+│   │   └── RoPE (rotary position embeddings)
+│   ├── Feed-Forward
+│   │   ├── Gate Projection (W1)
+│   │   ├── Up Projection (W3)
+│   │   ├── SwiGLU Activation
+│   │   └── Down Projection (W2)
+│   └── RMSNorm (pre-attention, pre-FFN)
+└── Output Projection (shared with embeddings)
+```
+
+## Common Patterns
+
+### Pattern 1: Loading and Running Qwen3
+
+```java
+// Initialize model
+Qwen3 model = new Qwen3(
+    "/models/qwen3-4b",
+    "/models/tokenizer.bin"
+);
+
+// Configure generation
+model.setTemperature(0.7);
+
+// Generate text with callback
+model.run(
+    100,                          // Max 100 tokens
+    "Explain quantum computing:", // Prompt
+    token -> {
+        System.out.print(token);
+        System.out.flush();
+    }
+);
+```
+
+### Pattern 2: Custom Model with Attention
+
+```java
+import static org.almostrealism.layers.AttentionFeatures.*;
+
+Model customModel = new Model(shape(dim));
+
+for (int layer = 0; layer < nLayers; layer++) {
+    // Load weights for this layer
+    PackedCollection<?> wq = stateDict.get("layer." + layer + ".attn.wq");
+    PackedCollection<?> wk = stateDict.get("layer." + layer + ".attn.wk");
+    PackedCollection<?> wv = stateDict.get("layer." + layer + ".attn.wv");
+    PackedCollection<?> wo = stateDict.get("layer." + layer + ".attn.wo");
+
+    // Add attention block
+    customModel.add(attention(
+        nHeads, kvHeads, headDim,
+        wq, wk, wv, wo,
+        null, null,  // No QK-Norm
+        freqCis,
+        ComputeRequirement.ACROSS_CELLS
+    ));
+
+    // Add FFN
+    customModel.add(feedForward(wGate, wUp, wDown));
+}
+
+// Compile model
+CompiledModel compiled = customModel.compile();
+```
+
+### Pattern 3: Temperature-Based Sampling
+
+```java
+// Greedy decoding (deterministic)
+generator.setTemperature(0.0);
+int token = generator.next();  // Always picks highest probability
+
+// Sampling with temperature
+generator.setTemperature(0.7);  // Lower = more focused
+int token = generator.next();   // Samples from distribution
+
+generator.setTemperature(1.5);  // Higher = more random
+int token = generator.next();
+```
+
+### Pattern 4: Custom Tokenization
+
+```java
+public class MyTokenizer extends ByteLevelBPETokenizer {
+    @Override
+    public int getBOSToken() { return 1; }
+
+    @Override
+    public int getEOSToken() { return 2; }
+
+    @Override
+    public int getPADToken() { return 0; }
+
+    @Override
+    public int getUNKToken() { return 3; }
+
+    @Override
+    protected void loadVocabulary(String path) {
+        // Load vocabulary from file
+    }
+}
+```
+
+### Pattern 5: Manual Token Loop
+
+```java
+// Encode prompt
+int[] promptTokens = tokenizer.encodeAsInt("Hello, world!");
+
+// Initialize model state
+PackedCollection<?> input = tokenEmbeddings.get(promptTokens[0]);
+
+// Generation loop
+for (int step = 0; step < maxTokens; step++) {
+    // Forward pass
+    PackedCollection<?> logits = model.forward(input);
+
+    // Sample next token
+    int nextToken = sampleFromLogits(logits, temperature);
+
+    // Decode and print
+    String tokenText = tokenizer.decodeAsInt(new int[]{nextToken});
+    System.out.print(tokenText);
+
+    // Check for EOS
+    if (nextToken == tokenizer.getEOSToken()) break;
+
+    // Update input for next iteration
+    input = tokenEmbeddings.get(nextToken);
+}
+```
+
+## Integration with Other Modules
+
+### Graph Module
+- Uses **Model** and **Block** for layer composition
+- **CompiledModel** for optimized execution
+- **LayerFeatures** for building layers
+
+### Collect Module
+- **PackedCollection** for weight storage
+- **TraversalPolicy** for tensor shapes
+- **Producer/Evaluable** for lazy computation
+
+### Hardware Module
+- GPU/CPU acceleration via **HardwareOperator**
+- **ComputeContext** for kernel compilation
+- **MemoryData** for efficient memory management
+
+## Environment Configuration
+
+Hardware acceleration requires environment variables:
+
+```bash
+export AR_HARDWARE_LIBS=/tmp/ar_libs/
+export AR_HARDWARE_DRIVER=native  # or opencl, metal
+```
+
+## Performance Features
+
+- **KV Caching** - Attention keys/values cached to avoid recomputation
+- **Grouped-Query Attention** - Reduces KV cache size by 4x
+- **Hardware Compilation** - JIT compilation to native/GPU code
+- **Memory Efficiency** - Zero-initialized caches prevent numerical issues
+- **Batch Processing** - Support for processing multiple sequences
+
+## Testing
+
+Tests are organized by component:
+
+```bash
+# Run all ML tests
+mvn test -pl ml
+
+# Specific test
+mvn test -pl ml -Dtest=Qwen3SyntheticTest
+```
+
+Test output is logged to files for review:
+```java
+Console.root().addListener(OutputFeatures.fileOutput("test_output.txt"));
+```
+
+## Dependencies
+
+```xml
+<dependency>
+    <groupId>org.almostrealism</groupId>
+    <artifactId>ar-graph</artifactId>
+    <version>0.72</version>
+</dependency>
+
+<dependency>
+    <groupId>org.almostrealism</groupId>
+    <artifactId>ar-collect</artifactId>
+    <version>0.72</version>
+</dependency>
+
+<dependency>
+    <groupId>com.google.protobuf</groupId>
+    <artifactId>protobuf-java</artifactId>
+    <version>3.25.1</version>
+</dependency>
+```
+
+## Maven Dependency
+
+```xml
+<dependency>
+    <groupId>org.almostrealism</groupId>
+    <artifactId>ar-ml</artifactId>
+    <version>0.72</version>
+</dependency>
+```
+
+## Further Reading
+
+- See **ar-graph** module for Model and Block composition
+- See **ar-collect** module for PackedCollection fundamentals
+- See **ar-hardware** module for acceleration setup
+- See **CLAUDE.md** for development guidelines and patterns
+
+---
+
+## Module: hardware
+
+# Hardware Module
+
+The **hardware** module is the foundational layer for hardware-accelerated computation in Almost Realism. It provides abstractions for memory management, operation compilation, and multi-backend execution (CPU, GPU, OpenCL, Metal) with zero-code configuration.
+
+## Table of Contents
+
+- [Overview](#overview)
+- [Quick Start](#quick-start)
+- [Architecture](#architecture)
+  - [Key Components](#key-components)
+  - [Backend Packages](#backend-packages)
+- [Core Concepts](#core-concepts)
+- [Memory Management Patterns](#memory-management-patterns)
+- [Environment Configuration](#environment-configuration)
+- [Common Usage Patterns](#common-usage-patterns)
+- [Performance Optimization](#performance-optimization)
+- [Advanced Topics](#advanced-topics)
+- [Troubleshooting](#troubleshooting)
+
+## Overview
+
+The hardware module enables:
+
+- **Hardware Acceleration**: Execute computations on CPU, GPU, or specialized accelerators
+- **Multi-Backend Support**: OpenCL, Metal, and JNI backends with automatic selection
+- **Memory Abstraction**: Unified memory interface across heap, off-heap, and device memory
+- **Kernel Caching**: Multi-level caching to minimize compilation overhead
+- **Zero-Code Configuration**: Control behavior via environment variables
+- **Type-Safe Operations**: Strongly-typed producers and computations
+
+## Quick Start
+
+### 1. Environment Setup
+
+Before using any Almost Realism functionality, set these **required** environment variables:
+
+```bash
+export AR_HARDWARE_LIBS=/tmp/ar_libs/
+export AR_HARDWARE_DRIVER=native
+```
+
+- `AR_HARDWARE_LIBS`: Directory for generated native libraries
+- `AR_HARDWARE_DRIVER`: Execution backend (`native`, `cl`, `mtl`, `gpu`, `cpu`, `*`)
+
+### 2. Basic Usage
+
+```java
+import org.almostrealism.hardware.HardwareFeatures;
+import org.almostrealism.collect.PackedCollection;
+import io.almostrealism.relation.Producer;
+
+public class Example implements HardwareFeatures {
+    public void run() {
+        // Create data
+        PackedCollection<?> a = new PackedCollection<>(1000);
+        PackedCollection<?> b = new PackedCollection<>(1000);
+
+        // Build computation
+        Producer<?> result = multiply(p(a), p(b));
+
+        // Execute (auto-compiles to hardware kernel)
+        PackedCollection<?> output = result.get().evaluate();
+    }
+}
+```
+
+### 3. Test Execution
+
+Always set environment variables when running tests:
+
+```bash
+export AR_HARDWARE_LIBS=/tmp/ar_libs/ && \
+export AR_HARDWARE_DRIVER=native && \
+mvn test
+```
+
+## Architecture
+
+```
+┌───────────────────────────────────────────────────────────────┐
+│                      Hardware Module                           │
+├───────────────────────────────────────────────────────────────┤
+│                                                                │
+│  ┌─────────────┐        ┌──────────────┐                      │
+│  │  Hardware   │───────▶│DefaultComputer│                     │
+│  │  (Config)   │        │  (Caching)    │                     │
+│  └─────────────┘        └──────────────┘                      │
+│         │                       │                              │
+│         │                       │                              │
+│    ┌────▼────────────────────────▼─────┐                      │
+│    │     DataContext (per backend)     │                      │
+│    ├────────────────────────────────────┤                     │
+│    │  • CLDataContext (OpenCL)          │                     │
+│    │  • MetalDataContext (Metal)        │                     │
+│    │  • NativeDataContext (JNI)         │                     │
+│    │                                    │                     │
+│    │  Provides:                         │                     │
+│    │  • MemoryProvider (allocation)     │                     │
+│    │  • ComputeContext (compilation)    │                     │
+│    └────────────────────────────────────┘                     │
+│                                                                │
+│  ┌──────────────────────────────────────────┐                 │
+│  │         Memory Abstraction                │                 │
+│  ├──────────────────────────────────────────┤                 │
+│  │  MemoryData ◄─── MemoryBank              │                 │
+│  │      ▲              (Collection)          │                 │
+│  │      │                                    │                 │
+│  │      └──── PackedCollection               │                 │
+│  └──────────────────────────────────────────┘                 │
+│                                                                │
+│  ┌──────────────────────────────────────────┐                 │
+│  │      Computation Framework                │                 │
+│  ├──────────────────────────────────────────┤                 │
+│  │  Producer ──▶ Computation ──▶ Evaluable   │                 │
+│  │      │             │             │         │                 │
+│  │      │             │             ▼         │                 │
+│  │      │             │      Hardware Kernel  │                 │
+│  │      │             │                       │                 │
+│  │      └──▶ OperationList (composition)      │                 │
+│  └──────────────────────────────────────────┘                 │
+│                                                                │
+└───────────────────────────────────────────────────────────────┘
+```
+
+### Key Components
+
+| Component | Purpose | Documentation |
+|-----------|---------|---------------|
+| **Hardware** | Configuration and initialization | [Hardware.java](src/main/java/org/almostrealism/hardware/Hardware.java) |
+| **DefaultComputer** | Compilation and caching coordination | [DefaultComputer.java](src/main/java/org/almostrealism/hardware/DefaultComputer.java) |
+| **HardwareFeatures** | Feature interface for building operations | [HardwareFeatures.java](src/main/java/org/almostrealism/hardware/HardwareFeatures.java) |
+| **MemoryData** | Hardware-accessible data abstraction | [MemoryData.java](src/main/java/org/almostrealism/hardware/MemoryData.java) |
+| **MemoryBank** | Collection of MemoryData in single allocation | [MemoryBank.java](src/main/java/org/almostrealism/hardware/MemoryBank.java) |
+| **OperationList** | Composable operation sequences | [OperationList.java](src/main/java/org/almostrealism/hardware/OperationList.java) |
+| **PassThroughProducer** | Dynamic input placeholders | [PassThroughProducer.java](src/main/java/org/almostrealism/hardware/PassThroughProducer.java) |
+
+### Backend Packages
+
+The hardware module includes comprehensive implementations for multiple acceleration backends:
+
+| Backend Package | Purpose | Key Classes |
+|----------------|---------|-------------|
+| **[cl](src/main/java/org/almostrealism/hardware/cl/)** | OpenCL GPU/CPU acceleration | CLDataContext, CLMemoryProvider, CLOperator |
+| **[metal](src/main/java/org/almostrealism/hardware/metal/)** | Apple Metal GPU acceleration | MetalDataContext, MetalMemoryProvider, MTLDevice |
+| **[jni](src/main/java/org/almostrealism/hardware/jni/)** | Native C execution via JNI | NativeCompiler, NativeExecution, NativeDataContext |
+| **[mem](src/main/java/org/almostrealism/hardware/mem/)** | Memory management abstractions | MemoryProvider, Heap, RAM, Bytes |
+| **[ctx](src/main/java/org/almostrealism/hardware/ctx/)** | Context management | AbstractDataContext, AbstractComputeContext |
+| **[instructions](src/main/java/org/almostrealism/hardware/instructions/)** | Kernel compilation and caching | InstructionsManager, InstructionSetCompiler |
+
+> **📚 API Documentation:** Comprehensive JavaDoc is available for all 128+ classes in the hardware module. Generate it with `mvn javadoc:aggregate` and view at `target/site/apidocs/index.html`.
+
+## Core Concepts
+
+### MemoryData: Hardware-Accessible Data
+
+`MemoryData` is the fundamental interface for all data that can be transferred to/from hardware accelerators:
+
+```java
+PackedCollection<?> data = new PackedCollection<>(1000);
+data.setMem(0, 3.14);  // Write to memory
+double value = data.toDouble(0);  // Read from memory
+
+// Transfer to GPU (automatic)
+Producer<?> p = p(data);  // Wraps as Producer
+p.get().evaluate();  // Data transferred to GPU, computation executed
+```
+
+**Key Features:**
+- Unified interface for heap, off-heap, and device memory
+- Zero-copy views via delegation
+- Automatic hardware transfer
+- Traversal policies for complex layouts
+
+### OperationList: Composing Operations
+
+`OperationList` combines multiple operations into a single executable unit:
+
+```java
+OperationList ops = new OperationList("Training Step");
+ops.add(forwardPass);
+ops.add(backwardPass);
+ops.add(updateWeights);
+
+// Can compile to single kernel if all ops are Computations
+Runnable training = ops.get();
+training.run();  // Executes entire sequence
+```
+
+**Dual Execution Strategy:**
+- **Compiled**: All operations merged into single kernel (fast)
+- **Sequential**: Operations executed one-by-one (flexible)
+
+### PassThroughProducer: Dynamic Inputs
+
+`PassThroughProducer` creates placeholder inputs that allow kernel reuse:
+
+```java
+// Create filter with dynamic input
+Producer<?> input = v(shape(1000), 0);  // Argument 0: dynamic
+MultiOrderFilter filter = highPass(input, c(1000.0), 44100);
+
+// Reuse filter with different data
+filter.get().evaluate(data1);
+filter.get().evaluate(data2);  // Same kernel, different data
+```
+
+**Benefits:**
+- Kernel compiled once, reused many times
+- No recompilation overhead
+- Supports variable-size inputs
+
+### Instruction Caching
+
+The `instruct()` pattern caches compiled operations for reuse:
+
+```java
+// First call: compiles and caches
+Producer<?> result1 = instruct("scale_2x",
+    args -> multiply(args[0], c(2.0)),
+    data1
+);
+
+// Subsequent calls: reuse cached kernel
+Producer<?> result2 = instruct("scale_2x",
+    args -> multiply(args[0], c(2.0)),
+    data2  // Only recomputation: argument substitution
+);
+```
+
+**Performance Impact:**
+- First call: ~100ms (compilation)
+- Subsequent calls: ~0.01ms (substitution only)
+- **10,000x speedup** for repeated operations
+
+## Memory Management Patterns
+
+The hardware module implements sophisticated memory management strategies to minimize allocation overhead, enable zero-copy operations, and automatically handle cross-provider transfers.
+
+### Zero-Copy Delegation
+
+`MemoryDataAdapter` enables zero-copy views into existing memory through delegation:
+
+```java
+// Original memory block
+PackedCollection<?> original = new PackedCollection<>(10000);
+
+// Zero-copy view of elements 100-200 (no data copied)
+MemoryData view = new Bytes(100, original, 100);
+
+// Modifications to view affect original
+view.setMem(0, 42.0);  // Also modifies original at offset 100
+```
+
+**Use Cases:**
+- Reshaping collections without copying
+- Extracting subarrays for operations
+- Implementing sliding windows over data streams
+
+**Safety Constraints:**
+- Delegation depth limited to 25 levels
+- Circular references prevented automatically
+- Bounds checking enforced
+
+### Thread-Local Arena Allocation (Heap)
+
+`Heap` provides thread-local arena allocation for temporary memory:
+
+```java
+// Create heap for temporary allocations
+Heap heap = new Heap(10000);
+heap.use(() -> {
+    // Temporary allocations come from heap (fast)
+    Bytes temp1 = Heap.getDefault().allocate(100);
+    Bytes temp2 = Heap.getDefault().allocate(50);
+
+    // Use temporaries...
+
+    // Auto-destroyed when scope exits
+});
+```
+
+**Benefits:**
+- Single large allocation instead of many small ones
+- Automatic cleanup via staged allocation
+- Thread-local default heap for implicit usage
+
+**Staged Allocation:**
+
+```java
+Heap.stage(() -> {
+    // Allocations in stage 1
+    Bytes temp1 = Heap.getDefault().allocate(100);
+
+    Heap.stage(() -> {
+        // Nested stage 2
+        Bytes temp2 = Heap.getDefault().allocate(50);
+        // temp2 destroyed on exit
+    });
+
+    // temp1 still valid here
+});
+// All stage allocations destroyed
+```
+
+### GC-Integrated Native Memory
+
+`HardwareMemoryProvider` integrates native memory with Java's garbage collector:
+
+```java
+// When Java object is GC'd, native memory is automatically freed
+RAM memory = provider.allocate(1000);
+// NativeRef (phantom reference) created automatically
+
+memory = null;  // Only reference lost
+System.gc();    // Eventually: native memory freed automatically
+```
+
+**How It Works:**
+1. Allocation creates `NativeRef` (phantom reference) tracking address/size
+2. Reference registered with `ReferenceQueue`
+3. Background threads monitor queue for GC'd objects
+4. Native memory freed when reference appears in queue
+
+**Leak Detection:**
+
+```java
+// If memory not destroyed, allocation stack trace preserved
+RAM leaked = findLeakedMemory();
+for (StackTraceElement frame : leaked.getAllocationStackTrace()) {
+    System.err.println("  at " + frame);
+}
+// Output shows exact allocation location
+```
+
+**Configuration:**
+
+```bash
+# Enable/disable allocation tracking
+export AR_HARDWARE_ALLOCATION_TRACE_FRAMES=16  # Capture 16 frames (default)
+export AR_HARDWARE_ALLOCATION_TRACE_FRAMES=0   # Disable (production)
+
+# Enable/disable warnings
+export AR_HARDWARE_MEMORY_WARNINGS=true
+```
+
+### Memory Versioning
+
+`MemoryDataAdapter` caches memory versions for different providers:
+
+```java
+MemoryData data = new Bytes(1000);
+
+// Allocate on CPU provider
+data.reallocate(cpuProvider);  // Allocates + copies
+
+// Switch to GPU provider
+data.reallocate(gpuProvider);  // Allocates GPU, keeps CPU version
+
+// Switch back to CPU
+data.reallocate(cpuProvider);  // Reuses cached CPU version (fast!)
+```
+
+**Benefits:**
+- Eliminates redundant transfers when switching providers
+- Cached versions reused automatically
+- Transparent to calling code
+
+### Argument Aggregation
+
+`MemoryDataArgumentMap` automatically aggregates small memory arguments:
+
+```java
+// Without aggregation: 3 separate kernel arguments
+kernel.execute(cpuMem1, cpuMem2, cpuMem3);  // 3 CPU→GPU transfers
+
+// With aggregation (automatic):
+// All 3 arguments packed into single buffer
+// kernel.execute(aggregatedBuffer);  // 1 CPU→GPU transfer
+```
+
+**Aggregation Rules:**
+- Enabled by default (`AR_HARDWARE_ARGUMENT_AGGREGATION=true`)
+- Only aggregates memory from non-kernel providers
+- Respects size threshold (default: 1MB)
+- Root delegates grouped to minimize copies
+
+**Configuration:**
+
+```bash
+# Enable/disable argument aggregation
+export AR_HARDWARE_ARGUMENT_AGGREGATION=true   # Default
+
+# Include off-heap memory in aggregation
+export AR_HARDWARE_OFF_HEAP_AGGREGATION=false  # Default
+
+# Max size for aggregation (bytes)
+export AR_HARDWARE_AGGREGATE_MAX=1048576       # 1MB default
+```
+
+### Memory Replacement for Kernels
+
+`MemoryReplacementManager` handles three-phase memory substitution:
+
+```java
+MemoryReplacementManager mgr = new MemoryReplacementManager(
+    gpuProvider,
+    (size, atomic) -> new Bytes(size, atomic)
+);
+
+// Process arguments: identifies CPU memory to aggregate
+Object[] kernelArgs = mgr.processArguments(originalArgs);
+
+// Phase 1: Prepare - Copy to temp aggregate
+mgr.getPrepare().get().run();
+
+// Phase 2: Execute kernel with aggregated args
+kernel.execute(kernelArgs);
+
+// Phase 3: Postprocess - Copy results back
+mgr.getPostprocess().get().run();
+```
+
+**Root Delegate Grouping:**
+
+```java
+MemoryData root = new Bytes(10000);
+MemoryData view1 = root.range(0, 100);    // Offset 0
+MemoryData view2 = root.range(500, 200);  // Offset 500
+
+// Both views share root → Single temp allocation
+// Temp covers min offset (0) to max offset (700)
+// Only 700 bytes allocated instead of 300
+```
+
+### Best Practices
+
+**Use Delegation for Views:**
+```java
+// GOOD: Zero-copy view
+MemoryData subset = original.range(start, length);
+
+// AVOID: Copying data
+MemoryData subset = new Bytes(length);
+subset.setMem(0, original, start, length);
+```
+
+**Use Heap for Temporaries:**
+```java
+// GOOD: Arena allocation
+Heap.stage(() -> {
+    Bytes temp = Heap.getDefault().allocate(100);
+    // Use temp...
+});
+
+// AVOID: Individual allocations
+Bytes temp = new Bytes(100);
+// ... use temp ...
+temp.destroy();
+```
+
+**Leverage Argument Aggregation:**
+```java
+// Aggregation happens automatically when:
+// 1. Multiple small arguments (<1MB each)
+// 2. From non-kernel provider (e.g., CPU → GPU)
+// 3. AR_HARDWARE_ARGUMENT_AGGREGATION=true
+
+// No code changes needed - just configure environment
+export AR_HARDWARE_ARGUMENT_AGGREGATION=true
+```
+
+**Explicit Cleanup for Long-Lived Objects:**
+```java
+// GC integration handles most cases, but for long-lived objects:
+MemoryData data = new Bytes(largeSize);
+try {
+    // Use data...
+} finally {
+    data.destroy();  // Explicit cleanup
+}
+```
+
+## Environment Configuration
+
+### Required Variables
+
+```bash
+# Directory for generated libraries (REQUIRED)
+export AR_HARDWARE_LIBS=/tmp/ar_libs/
+
+# Execution backend (REQUIRED)
+export AR_HARDWARE_DRIVER=native
+```
+
+### Backend Selection
+
+```bash
+# CPU Backends
+export AR_HARDWARE_DRIVER=native  # JNI (fast CPU execution)
+export AR_HARDWARE_DRIVER=cpu     # Abstract CPU (auto-selects)
+
+# GPU Backends
+export AR_HARDWARE_DRIVER=cl      # OpenCL (cross-platform GPU)
+export AR_HARDWARE_DRIVER=mtl     # Metal (Apple Silicon GPU)
+export AR_HARDWARE_DRIVER=gpu     # Abstract GPU (auto-selects)
+
+# Multi-Backend
+export AR_HARDWARE_DRIVER=cl,native  # OpenCL + JNI fallback
+
+# Auto-Select (recommended for development)
+export AR_HARDWARE_DRIVER=*
+```
+
+### Precision Configuration
+
+```bash
+# Use 32-bit floats (faster GPU execution)
+export AR_HARDWARE_PRECISION=FP32
+
+# Use 64-bit doubles (default, higher precision)
+export AR_HARDWARE_PRECISION=FP64
+```
+
+### Memory Configuration
+
+```bash
+# Maximum memory allocation (2^SCALE × 64MB)
+export AR_HARDWARE_MEMORY_SCALE=4   # 1GB (default)
+export AR_HARDWARE_MEMORY_SCALE=6   # 4GB
+export AR_HARDWARE_MEMORY_SCALE=8   # 16GB
+
+# Memory location (OpenCL only)
+export AR_HARDWARE_MEMORY_LOCATION=device   # GPU memory (fastest)
+export AR_HARDWARE_MEMORY_LOCATION=host     # System RAM
+export AR_HARDWARE_MEMORY_LOCATION=delegate # Native buffer
+
+# Enable shared memory (Apple Silicon unified memory)
+export AR_HARDWARE_NIO_MEMORY=true
+```
+
+### Development vs Production
+
+**Development (Fast Compilation, Easy Debugging):**
+```bash
+export AR_HARDWARE_LIBS=/tmp/ar_libs/
+export AR_HARDWARE_DRIVER=native
+export AR_HARDWARE_PRECISION=FP64
+```
+
+**Production GPU (Maximum Performance):**
+```bash
+export AR_HARDWARE_LIBS=/var/ar_libs/
+export AR_HARDWARE_DRIVER=gpu
+export AR_HARDWARE_PRECISION=FP32
+export AR_HARDWARE_MEMORY_SCALE=6
+export AR_HARDWARE_MEMORY_LOCATION=device
+```
+
+## Common Usage Patterns
+
+### Pattern 1: Feature Interface Mixin
+
+```java
+public class MyProcessor implements HardwareFeatures {
+    public void process() {
+        // All HardwareFeatures methods available
+        Producer<?> a = cp(data1);
+        Producer<?> b = cp(data2);
+        Producer<?> result = multiply(a, b);
+
+        result.get().evaluate();
+    }
+}
+```
+
+### Pattern 2: Cached Operations
+
+```java
+public class FilterBank implements HardwareFeatures {
+    private static final String LOWPASS_KEY = "lowpass_1000hz";
+
+    public Producer<?> lowpass(Producer<?> input) {
+        // Kernel cached under LOWPASS_KEY
+        return instruct(LOWPASS_KEY,
+            args -> lowPass(args[0], c(1000.0), 44100),
+            input
+        );
+    }
+}
+```
+
+### Pattern 3: Pre-Allocated Output
+
+```java
+// Avoid repeated allocation in loops
+PackedCollection<?> output = new PackedCollection<>(1000);
+
+for (int i = 0; i < iterations; i++) {
+    computation.get()
+        .into(output.traverseEach())
+        .evaluate(input);
+
+    // Process output...
+}
+```
+
+### Pattern 4: GPU/CPU Switching
+
+```java
+OperationList gpuOps = new OperationList("GPU Phase");
+gpuOps.setComputeRequirements(List.of(ComputeRequirement.GPU));
+gpuOps.add(heavyComputation);
+
+OperationList cpuOps = new OperationList("CPU Phase");
+cpuOps.setComputeRequirements(List.of(ComputeRequirement.CPU));
+cpuOps.add(lightComputation);
+
+// Execute with proper backends
+gpuOps.get().run();  // On GPU
+cpuOps.get().run();  // On CPU
+```
+
+### Pattern 5: MemoryBank for Batch Operations
+
+```java
+// Single allocation for 1000 vectors
+MemoryBank<Vector> vectors = Vector.bank(1000);
+
+// Populate
+for (int i = 0; i < 1000; i++) {
+    vectors.get(i).setX(i);
+}
+
+// Transfer entire bank to GPU as single operation
+Producer<?> p = cp(vectors);
+computation.get().evaluate();
+```
+
+## Performance Optimization
+
+### 1. Use Instruction Caching
+
+```java
+// ✗ BAD: Recompiles every time
+for (int i = 0; i < 1000; i++) {
+    multiply(v1, v2).get().evaluate();
+}
+
+// ✓ GOOD: Compile once, reuse 1000 times
+Evaluable<?> cached = multiply(v1, v2).get();
+for (int i = 0; i < 1000; i++) {
+    cached.evaluate();
+}
+
+// ✓ BEST: Use instruct() for automatic caching
+Producer<?> result = instruct("multiply",
+    args -> multiply(args[0], args[1]),
+    v1, v2
+);
+for (int i = 0; i < 1000; i++) {
+    result.get().evaluate();  // Automatic kernel reuse
+}
+```
+
+### 2. Use PassThroughProducer for Kernel Reuse
+
+```java
+// ✗ BAD: Bakes data into kernel
+Producer<?> static = multiply(cp(data), c(2.0));
+static.get().evaluate();  // Can't reuse with different data
+
+// ✓ GOOD: Dynamic input allows reuse
+Producer<?> dynamic = multiply(v(shape(1000), 0), c(2.0));
+dynamic.get().evaluate(data1);
+dynamic.get().evaluate(data2);  // Same kernel, different data
+```
+
+### 3. Minimize Memory Transfers
+
+```java
+// ✗ BAD: Multiple transfers
+PackedCollection<?> a = new PackedCollection<>(1000);
+operation1.get().into(a.traverseEach()).evaluate();
+PackedCollection<?> b = new PackedCollection<>(1000);
+operation2.get().into(b.traverseEach()).evaluate();
+
+// ✓ GOOD: Compose on GPU
+OperationList composed = new OperationList();
+composed.add(operation1);
+composed.add(operation2);
+composed.get().run();  // Single transfer of final result
+```
+
+### 4. Choose Appropriate Backend
+
+```java
+// Sequential operations → CPU
+if (count == 1) {
+    op.setComputeRequirements(List.of(ComputeRequirement.CPU));
+}
+
+// Parallel operations → GPU
+if (count > 1000) {
+    op.setComputeRequirements(List.of(ComputeRequirement.GPU));
+}
+```
+
+### 5. Use MemoryBank for Batch Data
+
+```java
+// ✗ BAD: Individual allocations
+for (int i = 0; i < 1000; i++) {
+    PackedCollection<?> v = new PackedCollection<>(3);
+    // 1000 separate GPU buffers
+}
+
+// ✓ GOOD: Single bank allocation
+MemoryBank<PackedCollection<?>> bank =
+    new MemoryBankAdapter<>(1000, 3, ...);
+// 1 GPU buffer, 1000 elements
+```
+
+## Advanced Topics
+
+### Custom ComputeRequirements
+
+```java
+// Stack-based requirements
+DefaultComputer computer = Hardware.getLocalHardware().getComputer();
+
+computer.pushRequirements(List.of(ComputeRequirement.GPU));
+try {
+    // All operations in this block prefer GPU
+    operation.get().run();
+} finally {
+    computer.popRequirements();
+}
+```
+
+### Shared Memory (Apple Silicon)
+
+```bash
+# Enable unified memory between Metal and JNI
+export AR_HARDWARE_DRIVER=*
+export AR_HARDWARE_NIO_MEMORY=true
+
+# JNI now shares memory with Metal GPU
+# Zero-copy data sharing between CPU and GPU operations
+```
+
+### Profiling
+
+```java
+OperationProfile profile = new DefaultProfile();
+Hardware.getLocalHardware().assignProfile(profile);
+
+// Run operations...
+computation.get().run();
+
+// Analyze timing
+System.out.println("Total: " + profile.getTotalTime());
+System.out.println("Compilation: " + profile.getCompilationTime());
+System.out.println("Execution: " + profile.getExecutionTime());
+
+Hardware.getLocalHardware().clearProfile();
+```
+
+### Depth Limits
+
+```bash
+# Control maximum OperationList nesting
+export AR_HARDWARE_MAX_DEPTH=1000
+```
+
+Or programmatically:
+```java
+Hardware.getLocalHardware().setMaximumOperationDepth(1000);
+
+// Deep lists can be flattened
+OperationList deep = ...;
+if (deep.getDepth() > 500) {
+    deep = deep.flatten();
+}
+```
+
+## Troubleshooting
+
+### Error: NoClassDefFoundError
+
+**Cause:** Missing `AR_HARDWARE_LIBS` environment variable.
+
+**Solution:**
+```bash
+export AR_HARDWARE_LIBS=/tmp/ar_libs/
+export AR_HARDWARE_DRIVER=native
+```
+
+### Slow First Execution
+
+**Cause:** Kernel compilation overhead on first run.
+
+**Expected:** First execution takes 100-1000ms, subsequent executions take 1-10ms.
+
+**Solution:** Use instruction caching patterns to amortize compilation cost.
+
+### OperationList Not Compiling
+
+**Cause:** Mixed Computation and non-Computation operations.
+
+**Check:**
+```java
+boolean canCompile = ops.isComputation();
+System.out.println("Compilable: " + canCompile);
+```
+
+**Solution:** Separate compiled and non-compiled operations.
+
+### GPU Out of Memory
+
+**Cause:** Insufficient GPU memory allocation.
+
+**Solution:**
+```bash
+# Increase memory scale
+export AR_HARDWARE_MEMORY_SCALE=6  # 4GB
+
+# Or use host memory
+export AR_HARDWARE_MEMORY_LOCATION=host
+```
+
+## Module Dependencies
+
+```xml
+<dependency>
+    <groupId>org.almostrealism</groupId>
+    <artifactId>ar-hardware</artifactId>
+    <version>${project.version}</version>
+</dependency>
+```
+
+**Depends on:**
+- `ar-code` - Computation and scope abstractions
+- `ar-io` - Console and logging utilities
+- `ar-relation` - Producer and evaluation framework
+
+**Used by:**
+- `ar-algebra` - PackedCollection implementations
+- `ar-time` - Temporal operations
+- `ar-graph` - Neural network layers
+- `ar-ml` - Machine learning models
+
+## Contributing
+
+When adding new hardware-accelerated operations:
+
+1. Implement `HardwareFeatures` for convenient access
+2. Use `Computation` interface for GPU-compilable operations
+3. Provide JavaDoc with usage examples
+4. Add performance tests measuring compilation and execution overhead
+5. Document any new environment variables
+
+## License
+
+Copyright 2025 Michael Murray
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+
+---
+
+## Module: time
+
+# AR-Time Module
+
+**Temporal/time-series processing framework with hardware-accelerated signal processing.**
+
+## Overview
+
+The `ar-time` module provides abstractions and accelerated computations for:
+- **Temporal synchronization** - coordinating sequential operations with tick-based execution
+- **Time-series data management** - storing, interpolating, querying time-indexed values
+- **Signal processing** - FFT/IFFT, FIR filtering, frequency-domain operations
+- **Time-based iteration** - running operations with timing control and lifecycle management
+- **Hardware acceleration** - GPU/OpenCL/Metal execution for all computations
+
+## Core Components
+
+### Temporal Operations
+
+#### Temporal Interface
+Functional interface for sequential operations performed as timed steps:
+
+```java
+public interface Temporal {
+    Supplier<Runnable> tick();
+}
+```
+
+**Usage:**
+```java
+Temporal myOperation = () -> () -> System.out.println("Tick!");
+Supplier<Runnable> looped = myOperation.iter(10);  // Run 10 times
+```
+
+#### TemporalFeatures
+Mixin interface providing convenience methods:
+
+```java
+public class MyProcessor implements TemporalFeatures {
+    public void process() {
+        // Frequency
+        Frequency freq = bpm(120);  // 120 beats per minute
+
+        // Iteration
+        Supplier<Runnable> repeated = loop(() -> doWork(), 100);
+
+        // Signal processing
+        FourierTransform fft = fft(512, inputSignal);
+        MultiOrderFilter filtered = lowPass(signal, cutoffFreq, sampleRate, 40);
+    }
+}
+```
+
+#### TemporalRunner
+Orchestrates setup and execution of temporal operations:
+
+```java
+TemporalRunner runner = myTemporal.buffer(frames);
+runner.setup();  // Initialize
+runner.tick();   // Execute one step
+```
+
+### Time-Series Data
+
+#### TemporalScalar
+Represents a time-value pair:
+
+```java
+TemporalScalar point = new TemporalScalar(0.5, 1.25);  // time=0.5, value=1.25
+double time = point.getTime();
+double value = point.getValue();
+```
+
+#### TimeSeries
+Basic in-memory time-series with TreeSet-backed storage:
+
+```java
+TimeSeries series = new TimeSeries();
+series.add(new TemporalScalar(0.0, 1.0));
+series.add(new TemporalScalar(1.0, 2.0));
+
+// Linear interpolation
+double interpolated = series.valueAt(0.5);  // Returns 1.5
+
+// Remove old data
+series.purge(0.5);  // Removes all points before time 0.5
+```
+
+#### AcceleratedTimeSeries
+GPU-accelerated time-series (up to 10MB by default):
+
+```java
+AcceleratedTimeSeries series = new AcceleratedTimeSeries(1024);
+
+// Add values (GPU-accelerated)
+Producer<TemporalScalar> addOp = series.add(scalarProducer);
+addOp.get().run();
+
+// Query with interpolation (GPU-accelerated)
+Producer<PackedCollection<?>> valueOp = series.valueAt(cursorProducer);
+double value = valueOp.get().evaluate().toDouble(0);
+
+// Purge old data (GPU-accelerated)
+Producer<PackedCollection<?>> purgeOp = series.purge(cursorProducer);
+purgeOp.get().run();
+```
+
+### Signal Processing
+
+#### Fourier Transform
+Fast Fourier Transform for frequency analysis:
+
+```java
+Producer<PackedCollection<?>> signal = ...;
+
+// Forward FFT
+FourierTransform fft = features.fft(512, signal);
+PackedCollection<?> spectrum = fft.get().evaluate();
+
+// Inverse FFT
+FourierTransform ifft = features.ifft(512, spectrum);
+PackedCollection<?> reconstructed = ifft.get().evaluate();
+```
+
+**Output format:** Complex numbers as (real, imaginary) pairs
+
+#### Filtering
+Multi-order low-pass and high-pass filters:
+
+```java
+Producer<PackedCollection<?>> signal = ...;
+double cutoffFreq = 1000.0;  // Hz
+double sampleRate = 44100.0; // Hz
+int filterOrder = 40;
+
+// Low-pass filter
+MultiOrderFilter lowPass = features.lowPass(signal, cutoffFreq, sampleRate, filterOrder);
+
+// High-pass filter
+MultiOrderFilter highPass = features.highPass(signal, cutoffFreq, sampleRate, filterOrder);
+
+PackedCollection<?> filtered = lowPass.get().evaluate();
+```
+
+**Uses Hamming window coefficients**
+
+### Advanced Signal Processing
+
+#### Custom FIR Filters
+Create filters with arbitrary coefficients:
+
+```java
+// Gaussian smoothing kernel
+double[] coeffs = {0.06136, 0.24477, 0.38774, 0.24477, 0.06136};
+PackedCollection<?> kernel = new PackedCollection<>(coeffs.length);
+for (int i = 0; i < coeffs.length; i++) {
+    kernel.set(i, coeffs[i]);
+}
+
+MultiOrderFilter smoothing = MultiOrderFilter.create(signal, c(kernel));
+PackedCollection<?> smoothed = smoothing.get().evaluate();
+```
+
+#### Timing Regularization
+Maintain consistent timing in real-time systems:
+
+```java
+// Target 60 FPS = 16.67ms per frame
+TimingRegularizer regularizer = new TimingRegularizer(16_666_667L);
+
+while (rendering) {
+    long frameStart = System.nanoTime();
+    renderFrame();
+    long frameTime = System.nanoTime() - frameStart;
+
+    regularizer.addMeasuredDuration(frameTime);
+    long adjustment = regularizer.getTimingDifference();
+
+    if (adjustment > 0) {
+        Thread.sleep(adjustment / 1_000_000);  // Sleep to maintain timing
+    }
+}
+```
+
+#### Interpolation
+Linear interpolation on time-series data:
+
+```java
+Producer<PackedCollection<?>> series = ...;
+Producer<PackedCollection<?>> position = ...;
+double sampleRate = 44100.0;
+
+Interpolate interp = features.interpolate(series, position, sampleRate);
+PackedCollection<?> interpolated = interp.get().evaluate();
+```
+
+### Utilities
+
+#### Frequency
+Frequency conversions and utilities:
+
+```java
+// Create from BPM
+Frequency tempo = Frequency.forBPM(120.0);
+
+// Convert
+double hz = tempo.asHertz();        // 2.0 Hz
+double bpm = tempo.asBPM();         // 120.0 BPM
+double wavelength = tempo.getWaveLength();  // 0.5 seconds per cycle
+```
+
+#### TemporalList
+Collection of synchronized temporals:
+
+```java
+TemporalList group = new TemporalList();
+group.add(temporal1);
+group.add(temporal2);
+
+// Tick all together
+Supplier<Runnable> allTicks = group.tick();
+allTicks.get().run();
+
+// Reset all
+group.reset();
+```
+
+## Common Patterns
+
+### Audio Processing Pipeline
+
+```java
+public class AudioProcessor implements TemporalFeatures {
+    private AcceleratedTimeSeries inputBuffer;
+    private double sampleRate = 44100.0;
+
+    public void process() {
+        // Load audio
+        inputBuffer = new AcceleratedTimeSeries(4096);
+
+        // Apply low-pass filter
+        MultiOrderFilter filtered = lowPass(
+            inputBuffer.valueAt(cursor),
+            5000.0,    // 5kHz cutoff
+            sampleRate,
+            40         // filter order
+        );
+
+        // Analyze spectrum
+        FourierTransform fft = fft(2048, filtered);
+
+        // Process
+        PackedCollection<?> spectrum = fft.get().evaluate();
+    }
+}
+```
+
+### Real-Time Animation
+
+```java
+public class Animator implements Temporal {
+    private int frame = 0;
+    private Frequency frameRate = Frequency.forBPM(3600);  // 60 FPS
+
+    @Override
+    public Supplier<Runnable> tick() {
+        return () -> () -> {
+            frame++;
+            updateAnimation(frame);
+        };
+    }
+
+    public void run() {
+        Supplier<Runnable> loop = iter(1000);  // 1000 frames
+        loop.get().run();
+    }
+}
+```
+
+### Time-Series Monitoring
+
+```java
+TimeSeries metrics = new TimeSeries();
+
+// Collect metrics
+metrics.add(new TemporalScalar(getCurrentTime(), getCpuUsage()));
+
+// Query recent average
+double avgRecent = IntStream.range(0, 60)
+    .mapToDouble(i -> metrics.valueAt(getCurrentTime() - i))
+    .average()
+    .orElse(0.0);
+
+// Clean up old data
+metrics.purge(getCurrentTime() - 300);  // Keep last 5 minutes
+```
+
+## Hardware Acceleration
+
+All computations in the time module can execute on GPU/accelerator hardware for high performance.
+
+### Setup/Tick Pattern
+
+The module uses a two-phase execution model:
+1. **Setup phase**: Compile kernels, allocate memory, prepare operations
+2. **Tick phase**: Execute the compiled operation (many times, efficiently)
+
+```java
+Temporal processor = createProcessor();
+
+// Phase 1: Setup (once)
+TemporalRunner runner = processor.buffer(512);
+runner.get();  // Triggers compilation and initialization
+
+// Phase 2: Tick (many times, fast)
+for (int i = 0; i < 10000; i++) {
+    runner.getContinue().run();  // Execute without re-setup
+}
+```
+
+### Performance Characteristics
+
+| Operation | CPU Time | GPU Time | Speedup |
+|-----------|----------|----------|---------|
+| FFT (2048 bins) | 500µs | 25µs | 20× |
+| Low-Pass Filter (order 40) | 300µs | 15µs | 20× |
+| Time-Series Add (1000 points) | 10ms | 0.5ms | 20× |
+| Interpolation (single query) | 50µs | 5µs | 10× |
+
+### Optimization Flags
+
+```java
+// Enable operation graph flattening (reduces overhead)
+TemporalRunner.enableFlatten = true;
+
+// Enable operation optimization (may increase setup time)
+TemporalRunner.enableOptimization = false;
+
+// Enable operation isolation (safer but slower)
+TemporalRunner.enableIsolation = false;
+```
+
+## Module Structure
+
+### Core Interfaces
+- `Temporal` - Tick-based execution interface
+- `TemporalFeatures` - Convenience methods for creating operations
+- `Updatable` - Simple periodic update interface (legacy)
+
+### Data Structures
+- `TemporalScalar` - Time-value pair
+- `TimeSeries` - CPU-based time-series with TreeSet storage
+- `AcceleratedTimeSeries` - GPU-accelerated time-series (10M+ capacity)
+- `TemporalList` - Synchronized collection of temporals
+- `Frequency` - Hz/BPM conversions and wavelength calculations
+
+### Execution
+- `TemporalRunner` - Setup/tick orchestration with optimization
+- `TimingRegularizer` - Real-time timing adjustment (3-sample rolling window)
+
+### Computations (`org.almostrealism.time.computations`)
+- `FourierTransform` - FFT/IFFT with radix-2/4 algorithm
+- `Interpolate` - Linear interpolation with custom time mapping
+- `MultiOrderFilter` - FIR filtering with arbitrary coefficients
+- `AcceleratedTimeSeriesAdd` - GPU-accelerated series append
+- `AcceleratedTimeSeriesPurge` - GPU-accelerated old data removal
+- `AcceleratedTimeSeriesValueAt` - GPU interpolation (deprecated, use `Interpolate`)
+
+### Utilities
+- `CursorPair` - Dual cursor tracking (deprecated)
+
+## Integration with Other Modules
+
+- **ar-geometry** (parent): Uses geometric operations and shapes
+- **ar-hardware**: All computations compile to GPU kernels via code generation
+- **ar-ml**: Time-series operations used in RNNs, LSTMs, and sequential models
+- **ar-audio**: Real-time signal processing pipelines and synthesis
+- **ar-io**: Console logging for test output and debugging
+
+## Dependencies
+
+```xml
+<dependency>
+    <groupId>org.almostrealism</groupId>
+    <artifactId>ar-time</artifactId>
+    <version>0.72</version>
+</dependency>
+```
+
+## Key Classes Summary
+
+### Temporal
+Functional interface for tick-based sequential operations. Provides:
+- `tick()` - Execute one time step
+- `iter(int)` - Run multiple iterations
+- `buffer(int)` - Create runner for frame buffering
+
+### AcceleratedTimeSeries
+High-capacity (10M+ entries) GPU-accelerated time-series. Features:
+- O(1) add operations
+- Linear interpolation with custom time mapping
+- Efficient purging via cursor adjustment
+- Full Producer/Computation integration
+
+### TemporalFeatures
+Feature interface providing factory methods for:
+- FFT and IFFT operations
+- Low-pass and high-pass filters
+- Interpolation with various configurations
+- Coefficient generation (Hamming window)
+- Iteration and looping utilities
+
+### FourierTransform
+Radix-2/4 FFT implementation. Supports:
+- Powers of 2 bin counts (512, 1024, 2048, etc.)
+- Forward and inverse transforms
+- Batch processing (multiple signals in parallel)
+- Complex number interleaved format (real, imaginary)
+
+### MultiOrderFilter
+Configurable FIR filter. Capabilities:
+- Arbitrary filter coefficients
+- Low, high, and band-pass modes
+- Order 3-101+ (higher = sharper cutoff)
+- Zero-padding at signal boundaries
+
+## Best Practices
+
+1. **Use AcceleratedTimeSeries for large datasets**: Capacity up to 10M entries with GPU acceleration
+2. **Prefer TimeSeries for small data**: Simpler API, thread-safe, easier debugging
+3. **Batch operations when possible**: GPU excels at parallel processing
+4. **Reuse TemporalRunner instances**: Setup cost is high, execution is fast
+5. **Profile before optimizing**: Enable `TemporalRunner.enableOptimization` only if needed
+6. **Use appropriate filter orders**: Balance between selectivity (high order) and performance (low order)
+7. **Implement TemporalFeatures**: Gain access to all convenience methods
+8. **Test with synthetic data first**: Verify algorithms before using real data
+
+## Troubleshooting
+
+### Common Issues
+
+**Issue**: `RuntimeException: AcceleratedTimeSeries is full`
+- **Solution**: Increase capacity or purge old data periodically
+
+**Issue**: FFT produces unexpected results
+- **Solution**: Ensure input is complex format (real, imaginary pairs) and bin count is power of 2
+
+**Issue**: Filter has no effect on signal
+- **Solution**: Check cutoff frequency is within Nyquist limit (< sampleRate/2)
+
+**Issue**: Temporal operations run slowly
+- **Solution**: Use `TemporalRunner` with setup/tick separation instead of calling `tick()` directly
+
+**Issue**: Memory leaks when using TemporalRunner
+- **Solution**: Call `destroy()` when done, or use try-with-resources if Destroyable
+
+## Further Reading
+
+- JavaDoc for all classes: See comprehensive documentation in source files
+- Hardware acceleration setup: See `/workspace/project/common/CLAUDE.md`
+- Examples: See `time/src/test/java/` for usage patterns
+- Performance tuning: See `TemporalRunner` optimization flags
+
+## License
+
+Licensed under the Apache License, Version 2.0.
+
+---
+
+## ML Development Notes
+
+# AR-ML Development Notes for Claude Code
+
+> **Note**: For general AR framework guidelines (environment setup, code organization principles), see [../claude.md](../claude.md)
+
+## ML-Specific Patterns
+
+### Model Implementation
+
+When implementing a new language model (e.g., Llama, Qwen, Mistral):
+
+1. **Use StateDictionary for weights** (see [../claude.md](../claude.md))
+2. **Generalize existing attention/layer methods** rather than creating model-specific copies
+3. **Follow the AutoregressiveModel pattern** for inference
+
+### Package Structure
+
+```
+org.almostrealism.ml/
+├── AttentionFeatures.java      # Generalized attention mechanisms
+├── LayerFeatures.java           # Layer utilities (inherited from graph module)
+├── AutoregressiveModel.java    # Autoregressive inference wrapper
+├── StateDictionary.java         # Standard weight storage
+├── BPE.java                     # Tokenization utilities
+└── <model>/                     # Model-specific implementations
+    ├── <Model>Config.java       # Configuration
+    ├── <Model>Tokenizer.java    # Tokenizer (if model-specific)
+    └── <Model>.java             # Main model class
+```
+
+### Example: Implementing a New Model
+
+```java
+public class Qwen3 implements AttentionFeatures {
+    private Qwen3Config config;
+    private StateDictionary stateDict;  // Use directly, no wrapper class
+    private Qwen3Tokenizer tokenizer;
+    private AutoregressiveModel model;
+
+    public Qwen3(String weightsDir, String tokenizerPath) throws IOException {
+        // Load weights using StateDictionary
+        this.stateDict = new StateDictionary(weightsDir);
+
+        // Infer config from weights
+        this.config = inferConfigFromWeights(stateDict);
+
+        // Load tokenizer
+        this.tokenizer = new Qwen3Tokenizer(tokenizerPath);
+
+        // Build model using generalized methods
+        this.model = buildModel();
+    }
+
+    private AutoregressiveModel buildModel() {
+        Model transformer = new Model(shape(config.dim));
+
+        for (int i = 0; i < config.layerCount; i++) {
+            // Access weights directly from StateDictionary
+            PackedCollection<?> wq = stateDict.get(
+                String.format("model.layers.%d.self_attn.q_proj.weight", i));
+            // ...
+
+            // Use generalized attention method, not model-specific copy
+            transformer.add(attention(
+                config.headCount, config.kvHeadCount, config.headSize,
+                wq, wk, wv, wo,
+                qkNormQ, qkNormK,  // Optional parameters for QK-Norm
+                freqCis, position, requirements
+            ));
+        }
+
+        return AutoregressiveModel.of(transformer.compile(), /* ... */);
+    }
+}
+```
+
+## Weight Export from HuggingFace
+
+Use the provided Python scripts to export weights to StateDictionary format:
+
+```bash
+# Export model weights to protobuf format
+python extract_<model>_weights.py \
+    <HuggingFace/Model-Name> \
+    ./weights_output \
+    --bf16  # Optional: use bfloat16 precision
+```
+
+This creates a directory of `.pb` files that StateDictionary can load directly.
+
+## Testing ML Models
+
+### Environment Variables Required
+
+See [../claude.md](../claude.md) for AR_HARDWARE setup instructions.
+
+### Test Structure
+
+```bash
+export AR_HARDWARE_LIBS=/home/developer/.libs/ && \
+export AR_HARDWARE_DRIVER=native && \
+mvn test -pl ml -Dtest=<TestName>
+```
+
+### Test Output Logging
+
+**IMPORTANT**: Use `Console` and `OutputFeatures` to log test output to files for later review.
+
+**Pattern**:
+```java
+import org.almostrealism.io.Console;
+import org.almostrealism.io.ConsoleFeatures;
+import org.almostrealism.io.OutputFeatures;
+
+public class MyTest implements ConsoleFeatures {
+    @Test
+    public void myTest() throws Exception {
+        // Set up file logging BEFORE any output
+        String logFile = "/workspace/project/common/ml/results/my_test.out";
+        Console.root().addListener(OutputFeatures.fileOutput(logFile));
+
+        // Use Console methods instead of System.err/System.out
+        log("=== My Test ===");
+        log("Result: " + someValue);
+
+        // Output goes to BOTH console AND file
+    }
+}
+```
+
+**Benefits**:
+- Test output is saved to files for later review
+- No need to capture stdout/stderr with bash redirects
+- Output is available even if test crashes
+- Easy to compare outputs across multiple test runs
+
+**Best Practices**:
+- Create `common/ml/results/` directory for test logs
+- Use descriptive file names: `<TestName>_<date>.out` or `<TestName>.out`
+- Add file logging setup at the START of each test method
+- Use `log()` instead of `System.err.println()` for important results
+- Keep log files in gitignore (test outputs are transient)
+
+**Example Test with File Logging**:
+```java
+@Test
+public void compareLogits() throws Exception {
+    // Setup file logging
+    String logFile = "/workspace/project/common/ml/test_output/logits_comparison.txt";
+    Console.root().addListener(OutputFeatures.fileOutput(logFile));
+
+    log("\n=== Logits Comparison Test ===\n");
+
+    // ... test logic ...
+
+    log(String.format("Mean Absolute Difference: %.6f", meanDiff));
+    log(String.format("RMSE: %.6f", rmse));
+
+    log("\nResults saved to: " + logFile);
+}
+```
+
+### Test Types
+
+1. **Synthetic Tests**: Validate architecture with random weights
+   - Proves model constructs without crashing
+   - Validates weight shapes
+   - Does NOT prove numerical correctness
+
+2. **Tokenizer Tests**: Validate encoding/decoding
+   - Test special tokens
+   - Test UTF-8 handling
+   - Test encode/decode roundtrip
+
+3. **Validation Tests**: Compare with reference implementation
+   - Load real weights
+   - Compare outputs token-by-token
+   - Compare intermediate layer outputs
+
+## Common ML Patterns
+
+### Attention Mechanisms
+
+**Don't create model-specific attention methods**. Instead, generalize existing ones:
+
+```java
+// In AttentionFeatures.java
+
+// ✅ GOOD: Generalized method with optional parameters
+default Block attention(int heads, int kvHeads, int headSize,
+                       PackedCollection<?> wq,
+                       PackedCollection<?> wk,
+                       PackedCollection<?> wv,
+                       PackedCollection<?> wo,
+                       PackedCollection<?> qkNormQ,  // Optional: null if not using
+                       PackedCollection<?> qkNormK,  // Optional: null if not using
+                       PackedCollection<?> freqCis,
+                       Producer<PackedCollection<?>> position,
+                       ComputeRequirement... requirements) {
+    // Unified implementation
+    // Apply QK-Norm only if weights provided
+    // Handle GQA when heads != kvHeads
+}
+```
+
+```java
+// ❌ AVOID: Model-specific duplicate methods
+default Block qwen3Attention(...) { /* copy-paste */ }
+default Block llamaAttention(...) { /* copy-paste */ }
+```
+
+### Positional Embeddings
+
+```java
+// Generalize RoPE with configurable theta
+default PackedCollection<?> computeRopeFreqs(int seqLen, int headSize, double theta) {
+    // Works for Llama (theta=10000), Qwen3 (theta=1000000), etc.
+}
+```
+
+### Normalization Layers
+
+```java
+// RMSNorm is already generalized
+rmsnorm(weights, epsilon, requirements);
+
+// For new norm types, add optional parameters
+norm(weights, bias, epsilon, requirements);  // Handles RMSNorm, LayerNorm, QK-Norm
+```
+
+## References
+
+- [Common AR Guidelines](../claude.md) - General framework patterns
+- [AR Framework Documentation](../../README.md)
+

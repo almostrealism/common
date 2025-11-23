@@ -1,0 +1,113 @@
+# Almost Realism Framework
+
+> Hardware-accelerated computation framework for Java with support for CPU, GPU (OpenCL), and Metal backends. Provides PackedCollection for memory-efficient multi-dimensional data, Producer/Evaluable pattern for deferred execution, and modules for machine learning, ray tracing, and scientific computing.
+
+## Quick Start
+
+- [CLAUDE.md](CLAUDE.md): Development guidelines and environment setup
+- [Quick Reference](docs/QUICK_REFERENCE.md): Condensed API reference card
+- [Documentation Index](docs/index.html): Full documentation portal
+
+## Environment Setup (REQUIRED)
+
+```bash
+export AR_HARDWARE_LIBS=/tmp/ar_libs/
+export AR_HARDWARE_DRIVER=native
+```
+
+## Core Modules
+
+### Foundation & Infrastructure
+- [uml](uml/README.md): Core annotations (@Function, @ModelEntity), lifecycle interfaces, metadata patterns | [Details](docs/modules/uml.html)
+- [io](io/README.md): Console logging, metrics, alerts, file output utilities | [Details](docs/modules/io.html)
+- [relation](relation/README.md): Producer/Evaluable abstraction, deferred execution foundation | [Details](docs/modules/relation.html)
+
+### Data & Computation
+- [code](code/README.md): Expression trees, Scope management, code generation infrastructure | [Details](docs/modules/code.html)
+- [collect](collect/README.md): PackedCollection - memory-efficient multi-dimensional arrays, TraversalPolicy
+- [hardware](hardware/README.md): Hardware acceleration backends (JNI, OpenCL, Metal) | [Details](docs/modules/hardware.html)
+
+### Mathematics
+- [algebra](algebra/README.md): Vector, Matrix, Scalar, Pair types with 40+ CollectionProducer operations | [Details](docs/modules/algebra.html)
+- [geometry](geometry/README.md): Ray, TransformMatrix, intersection testing, camera systems | [Details](docs/modules/geometry.html)
+- [time](time/README.md): Temporal operations, FFT/IFFT, FIR filtering, CursorPair | [Details](docs/modules/time.html)
+- [stats](stats/README.md): Probability distributions, statistical sampling
+
+### Domain Modules
+- [graph](graph/README.md): Cell-Receptor-Transmitter pattern, neural network layers, Model/Block composition | [Details](docs/modules/graph.html)
+- [color](color/README.md): RGB/RGBA, lighting, shaders, textures | [Details](docs/modules/color.html)
+- [physics](physics/README.md): Quantum mechanics, photon fields, atomic structure | [Details](docs/modules/physics.html)
+- [space](space/README.md): Scene management, meshes, spatial acceleration | [Details](docs/modules/space.html)
+- [heredity](heredity/README.md): Genetic algorithms, Gene/Chromosome/Genome hierarchy | [Details](docs/modules/heredity.html)
+- [chemistry](chemistry/README.md): Periodic table, elements, molecular structures | [Details](docs/modules/chemistry.html)
+
+### Application Layer
+- [ml](ml/README.md): Transformer models (Qwen3), StateDictionary, attention mechanisms | [Details](docs/modules/ml.html)
+- [optimize](optimize/README.md): Loss functions, Adam optimizer, PopulationOptimizer | [Details](docs/modules/optimize.html)
+- [render](render/README.md): Ray tracing engine, RenderParameters, lighting | [Details](docs/modules/render.html)
+- [utils](utils/README.md): Testing framework, TestFeatures, model validation | [Details](docs/modules/utils.html)
+
+### Utilities
+- [tools](tools/README.md): JavaFX/Swing UI for operation profiling
+- [llvm](llvm/README.md): LLVM/C interoperability for native code
+
+## Tutorials
+
+- [Tutorial 1](docs/tutorials/tutorial1.html): Introduction to the framework
+- [Tutorial 2](docs/tutorials/tutorial2.html): Working with PackedCollection
+- [Tutorial 3](docs/tutorials/tutorial3.html): Producer/Evaluable pattern
+- [Tutorial 4](docs/tutorials/tutorial4.html): Hardware acceleration
+- [Tutorial 5](docs/tutorials/tutorial5.html): Building computation graphs
+- [Tutorial 6](docs/tutorials/tutorial6.html): Neural network layers
+- [Tutorial 7](docs/tutorials/tutorial7.html): Advanced topics
+
+## API Documentation
+
+- [JavaDoc](docs/apidocs/index.html): Complete API reference
+
+## Key Patterns
+
+### Producer/Evaluable (Deferred Execution)
+```java
+Producer<PackedCollection<?>> computation = a.add(b).multiply(c);
+Evaluable<PackedCollection<?>> compiled = computation.get();
+PackedCollection<?> result = compiled.evaluate();
+```
+
+### PackedCollection (Multi-dimensional Data)
+```java
+PackedCollection<?> tensor = new PackedCollection<>(shape(batch, channels, height, width));
+tensor.traverse(1, (pos, value) -> process(value));
+```
+
+### Cell-Receptor-Transmitter (Computation Graphs)
+```java
+Cell<PackedCollection<?>> cell = new CellularLayer();
+cell.setReceptor(input -> processInput(input));
+Receptor<PackedCollection<?>> output = cell.getTransmitter();
+```
+
+## Common Operations
+
+| Operation | Code |
+|-----------|------|
+| Create vector | `new PackedCollection<>(shape(3))` |
+| Element-wise add | `a.add(b)` |
+| Matrix multiply | `a.matmul(b)` |
+| Reshape | `collection.reshape(newShape)` |
+| GPU execution | `ComputeRequirement.GPU` |
+| Compile | `producer.get()` |
+| Execute | `evaluable.evaluate()` |
+
+## Module Dependencies
+
+```
+uml (foundation)
+ └── io, relation
+      └── code
+           └── collect
+                └── hardware
+                     └── algebra, time, stats
+                          └── geometry, graph, color, physics
+                               └── space, ml, render, optimize
+```

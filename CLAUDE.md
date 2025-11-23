@@ -1,5 +1,13 @@
 # Almost Realism Common - Development Guidelines for Claude Code
 
+## Quick Links
+
+- **[Quick Reference](docs/QUICK_REFERENCE.md)** - Condensed API cheatsheet
+- **[llms.txt](llms.txt)** - Documentation index for AI agents
+- **[Documentation Portal](docs/index.html)** - Full HTML documentation
+
+---
+
 ## Hardware Acceleration Setup
 
 ⚠️ **CRITICAL**: All Almost Realism modules that use hardware acceleration require environment variables to be set before running any code.
@@ -291,6 +299,51 @@ public class MyTest implements ConsoleFeatures {
 - Add file logging setup at the START of each test method
 - Use `log()` instead of `System.err.println()` for important results
 - Keep log files in gitignore (test outputs are transient)
+
+---
+
+## Module Overview
+
+Quick reference for what each module provides:
+
+### Foundation & Core
+| Module | Purpose | Key Classes |
+|--------|---------|-------------|
+| **uml** | Annotations, lifecycle, metadata | `@Function`, `Lifecycle`, `Named` |
+| **io** | Logging, metrics, file I/O | `Console`, `ConsoleFeatures`, `OutputFeatures` |
+| **relation** | Producer/Evaluable pattern | `Producer`, `Evaluable`, `Countable` |
+
+### Data & Computation
+| Module | Purpose | Key Classes |
+|--------|---------|-------------|
+| **code** | Expression trees, code generation | `Expression`, `Scope`, `TraversalPolicy` |
+| **collect** | Multi-dimensional arrays | `PackedCollection`, `CollectionProducer`, `Shape` |
+| **hardware** | Hardware acceleration | `Hardware`, `ComputeRequirement`, `MemoryData` |
+
+### Mathematics
+| Module | Purpose | Key Classes |
+|--------|---------|-------------|
+| **algebra** | Linear algebra operations | `Vector`, `Scalar`, `Pair`, `PairFeatures` |
+| **geometry** | 3D geometry, ray tracing | `Ray`, `TransformMatrix`, `Intersection` |
+| **time** | Temporal, FFT, filtering | `Temporal`, `TemporalScalar`, `CursorPair` |
+
+### Domain
+| Module | Purpose | Key Classes |
+|--------|---------|-------------|
+| **graph** | Neural network layers | `Cell`, `Receptor`, `Layer`, `Model` |
+| **ml** | Transformer models | `StateDictionary`, `AttentionFeatures`, `AutoregressiveModel` |
+| **color** | Color and lighting | `RGB`, `Light`, `Shader` |
+| **space** | Scene management | `Scene`, `Mesh`, `Triangle` |
+| **physics** | Physical simulation | `Atom`, `PhotonField`, `RigidBody` |
+| **heredity** | Genetic algorithms | `Gene`, `Chromosome`, `Genome` |
+
+### Application
+| Module | Purpose | Key Classes |
+|--------|---------|-------------|
+| **optimize** | Training, optimization | `Loss`, `Adam`, `PopulationOptimizer` |
+| **render** | Ray tracing engine | `RayTracer`, `RenderParameters` |
+
+For detailed documentation on any module, see `docs/modules/<module>.html`.
 
 ---
 
