@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AR-Relation Module - Almost Realism Framework</title>
+    <link rel="stylesheet" href="../css/style.css">
+    <style>
+        .key-concepts { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin: 20px 0; }
+        .concept-card { background: #f8f9fa; border-left: 4px solid #00796b; padding: 15px; border-radius: 4px; }
+        .concept-card h4 { margin-top: 0; color: #00796b; }
+        .performance-table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+        .performance-table th, .performance-table td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
+        .performance-table th { background-color: #e0f2f1; color: #00796b; font-weight: bold; }
+        .performance-table tr:hover { background-color: #f5f5f5; }
+        .comparison-table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+        .comparison-table th, .comparison-table td { padding: 10px; border: 1px solid #ddd; text-align: left; }
+        .comparison-table th { background-color: #e0f2f1; color: #00796b; }
+        .class-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 15px; margin: 20px 0; }
+        .class-item { background: #fff; border: 1px solid #ddd; padding: 12px; border-radius: 4px; }
+        .class-item h4 { margin: 0 0 8px 0; color: #00796b; font-size: 1.1em; }
+        .class-item p { margin: 0; font-size: 0.9em; color: #666; }
+        .code-example { background: #f5f5f5; border-left: 4px solid #00796b; padding: 15px; margin: 15px 0; border-radius: 4px; }
+        .highlight { background-color: #b2dfdb; padding: 2px 4px; }
+        .warning { background-color: #ffebee; border-left: 4px solid #c62828; padding: 12px; margin: 15px 0; }
+        .info-box { background-color: #e0f2f1; border-left: 4px solid #00796b; padding: 12px; margin: 15px 0; border-radius: 4px; }
+        .flow-diagram { background: #fff; border: 2px solid #00796b; border-radius: 8px; padding: 20px; margin: 20px 0; text-align: center; }
+        .flow-diagram .phase { display: inline-block; background: #e0f2f1; padding: 15px 25px; border-radius: 8px; margin: 0 10px; }
+        .flow-diagram .arrow { display: inline-block; font-size: 24px; color: #00796b; margin: 0 5px; vertical-align: middle; }
+        .flow-diagram .phase-label { font-size: 0.8em; color: #666; display: block; margin-top: 5px; }
+        .count-diagram { display: flex; justify-content: space-around; margin: 20px 0; flex-wrap: wrap; gap: 20px; }
+        .count-box { background: #fff; border: 2px solid #00796b; border-radius: 8px; padding: 20px; flex: 1; min-width: 280px; max-width: 400px; }
+        .count-box h4 { margin-top: 0; color: #00796b; border-bottom: 2px solid #e0f2f1; padding-bottom: 10px; }
+        .count-box ul { margin: 0; padding-left: 20px; }
+        .count-box li { margin: 8px 0; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>AR-Relation Module</h1>
+            <p class="tagline">Core Abstractions for Two-Phase Computation</p>
+            <nav>
+                <a href="../index.html">Home</a>
+                <a href="#overview">Overview</a>
+                <a href="#architecture">Architecture</a>
+                <a href="#concepts">Core Concepts</a>
+                <a href="#countable">Countable</a>
+                <a href="#examples">Examples</a>
+                <a href="#resources">Resources</a>
+            </nav>
+        </header>
+
+        <main>
+            <section id="overview">
+                <h2>Overview</h2>
+                <p>The <strong>ar-relation</strong> module provides the foundational abstractions for the Almost Realism computational framework. It defines the core interfaces for producers, evaluables, and process-based computation that form the basis for <strong>all hardware-accelerated operations</strong> across the entire framework.</p>
+
+                <div class="info-box">
+                    <strong>Foundation Module:</strong> This module is used by ALL other modules in the Almost Realism framework. Understanding the Producer/Evaluable pattern is essential for working with any part of the system.
+                </div>
+
+                <div class="key-concepts">
+                    <div class="concept-card">
+                        <h4>Two-Phase Execution</h4>
+                        <p>Separates computation description (Producer) from execution (Evaluable), enabling static analysis, optimization, and compilation to GPU kernels.</p>
+                    </div>
+                    <div class="concept-card">
+                        <h4>Countable Interface</h4>
+                        <p>Element counting for parallel kernel execution. Distinguishes fixed vs variable count for optimal GPU performance.</p>
+                    </div>
+                    <div class="concept-card">
+                        <h4>Process Framework</h4>
+                        <p>Composable, optimizable computational work units with support for parallelism, isolation, and cascading optimization strategies.</p>
+                    </div>
+                    <div class="concept-card">
+                        <h4>Composition Patterns</h4>
+                        <p>Factor and Composition interfaces for building complex computation graphs through producer transformation and combination.</p>
+                    </div>
+                </div>
+            </section>
+
+            <section id="architecture">
+                <h2>Module Architecture</h2>
+
+                <h3>The Producer to Evaluable Flow</h3>
+                <p>The framework uses a two-phase execution model that enables powerful optimizations:</p>
+
+                <div class="flow-diagram">
+                    <div class="phase">
+                        <strong>Producer&lt;T&gt;</strong>
+                        <span class="phase-label">Description Phase</span>
+                    </div>
+                    <span class="arrow">&rarr;</span>
+                    <div class="phase">
+                        <strong>.get()</strong>
+                        <span class="phase-label">Compilation</span>
+                    </div>
+                    <span class="arrow">&rarr;</span>
+                    <div class="phase">
+                        <strong>Evaluable&lt;T&gt;</strong>
+                        <span class="phase-label">Execution Phase</span>
+                    </div>
+                    <span class="arrow">&rarr;</span>
+                    <div class="phase">
+                        <strong>.evaluate()</strong>
+                        <span class="phase-label">Result</span>
+                    </div>
+                </div>
+
+                <div class="code-example">
+                    <strong>Phase 1: Description</strong> (lazy, composable)<br>
+                    - Build computation graphs using Producers<br>
+                    - No actual computation occurs<br>
+                    - Static analysis and optimization possible<br>
+                    - Operations can be fused and reordered<br><br>
+                    <strong>Phase 2: Execution</strong> (compiled, fast)<br>
+                    - Producer.get() compiles to Evaluable<br>
+                    - GPU kernels or native code generated<br>
+                    - Evaluable.evaluate() executes computation<br>
+                    - Evaluable can be reused for multiple evaluations
+                </div>
+
+                <h3>Package Structure</h3>
+                <table class="comparison-table">
+                    <tr>
+                        <th>Package</th>
+                        <th>Purpose</th>
+                    </tr>
+                    <tr>
+                        <td><code>io.almostrealism.relation</code></td>
+                        <td>Core producer, evaluable, and computation abstractions</td>
+                    </tr>
+                    <tr>
+                        <td><code>io.almostrealism.compute</code></td>
+                        <td>Process execution, parallelism, and optimization strategies</td>
+                    </tr>
+                    <tr>
+                        <td><code>io.almostrealism.streams</code></td>
+                        <td>Asynchronous streaming computation adapters</td>
+                    </tr>
+                    <tr>
+                        <td><code>io.almostrealism.frames</code></td>
+                        <td>Relational Frame Theory cognitive modeling</td>
+                    </tr>
+                </table>
+            </section>
+
+            <section id="concepts">
+                <h2>Core Concepts</h2>
+
+                <h3>Producer&lt;T&gt;</h3>
+                <p>Describes a computation that produces a result of type T. Producers are lazy - they don't execute until compiled to an Evaluable.</p>
+                <div class="class-list">
+                    <div class="class-item">
+                        <h4>get()</h4>
+                        <p>Compile to executable Evaluable form. This triggers code generation and optimization.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>evaluate(args...)</h4>
+                        <p>Convenience method that compiles and executes in one step. Use get() + evaluate() for repeated execution.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>into(destination)</h4>
+                        <p>In-place computation that writes results directly to the destination, avoiding memory allocation.</p>
+                    </div>
+                </div>
+
+                <h3>Evaluable&lt;T&gt;</h3>
+                <p>Executable form of a computation. Once compiled, an Evaluable can be executed multiple times efficiently.</p>
+                <div class="class-list">
+                    <div class="class-item">
+                        <h4>evaluate(args...)</h4>
+                        <p>Execute the computation with optional arguments. Returns the computed result.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>into(destination)</h4>
+                        <p>Execute in-place, writing results to the specified destination.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>async()</h4>
+                        <p>Convert to StreamingEvaluable for asynchronous execution with custom executors.</p>
+                    </div>
+                </div>
+
+                <h3>Process Framework</h3>
+                <p>The Process interface represents composable, optimizable computational work units.</p>
+                <div class="class-list">
+                    <div class="class-item">
+                        <h4>Process&lt;P, T, A&gt;</h4>
+                        <p>Base interface for computational work. Supports generate(), optimize(), and isolate() operations.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>ParallelProcess</h4>
+                        <p>Extends Process for parallel computation with getParallelism() and isUniform() methods.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>ProcessOptimizationStrategy</h4>
+                        <p>Hook for applying custom optimizations. Use CascadingOptimizationStrategy to chain multiple strategies.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>ProcessContext</h4>
+                        <p>Context for optimization passes. Carries optimization strategy and execution parameters.</p>
+                    </div>
+                </div>
+
+                <h3>Composition Patterns</h3>
+                <div class="class-list">
+                    <div class="class-item">
+                        <h4>Factor&lt;I, O&gt;</h4>
+                        <p>Transforms one producer into another. apply(Producer&lt;I&gt;) returns Producer&lt;O&gt;.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>Composition&lt;A, B, O&gt;</h4>
+                        <p>Combines two producers into one. apply(Producer&lt;A&gt;, Producer&lt;B&gt;) returns Producer&lt;O&gt;.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>Delegated&lt;T&gt;</h4>
+                        <p>Delegation pattern with getDelegate() and circular reference detection via getCircularDelegateDepth().</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>Provider&lt;T&gt;</h4>
+                        <p>Simple wrapper for constant values. Creates a Producer that always returns the same value.</p>
+                    </div>
+                </div>
+            </section>
+
+            <section id="countable">
+                <h2>Fixed vs Variable Count</h2>
+                <p>Understanding the Countable interface is critical for efficient GPU kernel execution. The distinction between fixed and variable count determines how kernel size is calculated.</p>
+
+                <div class="count-diagram">
+                    <div class="count-box">
+                        <h4>Fixed Count</h4>
+                        <p><code>isFixedCount() == true</code></p>
+                        <ul>
+                            <li>Number of elements known at <strong>construction time</strong></li>
+                            <li>Cannot change at runtime</li>
+                            <li>Kernel compiles with predetermined size</li>
+                            <li>Output must be size 1 or exactly match operation count</li>
+                            <li>Best for known-size data structures</li>
+                        </ul>
+                        <div class="code-example" style="margin-top: 15px;">
+                            <code>// Always processes exactly 100 elements<br>
+TraversalPolicy fixed = new TraversalPolicy(100);</code>
+                        </div>
+                    </div>
+                    <div class="count-box">
+                        <h4>Variable Count</h4>
+                        <p><code>isFixedCount() == false</code></p>
+                        <ul>
+                            <li>Number of elements depends on <strong>runtime inputs</strong></li>
+                            <li>Kernel size determined at execution time</li>
+                            <li>Adapts to output size automatically</li>
+                            <li>More flexible but slightly more overhead</li>
+                            <li>Best for generic operations</li>
+                        </ul>
+                        <div class="code-example" style="margin-top: 15px;">
+                            <code>// Size matches runtime input<br>
+TraversalPolicy variable = new TraversalPolicy(false, false, 1);</code>
+                        </div>
+                    </div>
+                </div>
+
+                <h3>Kernel Execution Impact</h3>
+                <div class="code-example">
+                    <pre><code>if (isFixedCount()) {
+    // Fixed: kernel size determined at compile time
+    kernelSize = getCount();
+    // Output must be size 1 or exactly match operation count
+} else {
+    // Variable: kernel size adapts to output size
+    kernelSize = output.getCountLong();
+    // More flexible, handles varying input sizes
+}</code></pre>
+                </div>
+
+                <h3>When to Use Each</h3>
+                <table class="comparison-table">
+                    <tr>
+                        <th>Scenario</th>
+                        <th>Recommended</th>
+                        <th>Reason</th>
+                    </tr>
+                    <tr>
+                        <td>Fixed-size vectors/matrices</td>
+                        <td>Fixed Count</td>
+                        <td>Known size enables optimal kernel compilation</td>
+                    </tr>
+                    <tr>
+                        <td>Performance-critical paths</td>
+                        <td>Fixed Count</td>
+                        <td>Avoids runtime size checks</td>
+                    </tr>
+                    <tr>
+                        <td>Varying input sizes</td>
+                        <td>Variable Count</td>
+                        <td>Automatically adapts to input</td>
+                    </tr>
+                    <tr>
+                        <td>Generic operations</td>
+                        <td>Variable Count</td>
+                        <td>Works with any input size</td>
+                    </tr>
+                    <tr>
+                        <td>Output depends on arguments</td>
+                        <td>Variable Count</td>
+                        <td>Size not known until execution</td>
+                    </tr>
+                </table>
+            </section>
+
+            <section id="examples">
+                <h2>Usage Examples</h2>
+
+                <h3>Basic Producer/Evaluable Flow</h3>
+                <pre><code class="language-java">// Phase 1: Build computation graph (description)
+Producer&lt;Tensor&gt; inputA = ...;
+Producer&lt;Tensor&gt; inputB = ...;
+Producer&lt;Tensor&gt; sum = operations.add(inputA, inputB);
+
+// Phase 2: Compile and execute
+Evaluable&lt;Tensor&gt; evaluable = sum.get();
+Tensor result = evaluable.evaluate();
+
+// The Evaluable can be reused for multiple evaluations
+Tensor result2 = evaluable.evaluate(differentArgs);</code></pre>
+
+                <h3>Creating Simple Providers</h3>
+                <pre><code class="language-java">// Wrap a constant value
+Provider&lt;Double&gt; constant = new Provider&lt;&gt;(3.14);
+Evaluable&lt;Double&gt; eval = constant.get();
+Double value = eval.evaluate(); // Returns 3.14</code></pre>
+
+                <h3>Using Factor for Transformation</h3>
+                <pre><code class="language-java">// Define a transformation using Factor
+Factor&lt;Input, Output&gt; transform = input -> {
+    // Transform input producer to output producer
+    return createOutputProducer(input);
+};
+
+// Apply the transformation
+Producer&lt;Output&gt; result = transform.apply(inputProducer);</code></pre>
+
+                <h3>Process Optimization</h3>
+                <pre><code class="language-java">// Create context with optimization strategy
+ProcessContext ctx = ProcessContext.base();
+
+// Optimize a process tree
+Process&lt;?, T, ?&gt; process = ...;
+Process&lt;?, T, ?&gt; optimized = process.optimize(ctx);
+
+// Generate results
+T result = optimized.generate(args);</code></pre>
+
+                <h3>Cascading Optimization Strategies</h3>
+                <pre><code class="language-java">// Chain multiple optimization strategies
+ProcessOptimizationStrategy strategy = new CascadingOptimizationStrategy(
+    new ParallelismTargetOptimization(),
+    customStrategy
+);
+
+// Apply to process
+Process optimizedProcess = process.optimize(new ProcessContext(strategy));</code></pre>
+
+                <h3>Streaming Evaluables</h3>
+                <pre><code class="language-java">// Convert to async execution
+StreamingEvaluable&lt;T&gt; streaming = evaluable.async();
+
+// Set up result consumer
+streaming.setDownstream(result -> processResult(result));
+
+// Request computation (results delivered asynchronously)
+streaming.request();
+
+// Or use a custom executor
+StreamingEvaluable&lt;T&gt; streaming = evaluable.async(myExecutor);</code></pre>
+
+                <h3>In-Place Computation</h3>
+                <pre><code class="language-java">// Allocate output buffer once
+PackedCollection&lt;?&gt; output = new PackedCollection&lt;&gt;(1000);
+
+// Execute computation writing directly to output
+Producer&lt;PackedCollection&lt;?&gt;&gt; computation = ...;
+Evaluable&lt;PackedCollection&lt;?&gt;&gt; eval = computation.into(output);
+
+// Reuse output buffer for multiple evaluations
+eval.evaluate(input1);  // Results written to 'output'
+eval.evaluate(input2);  // Same buffer reused</code></pre>
+            </section>
+
+            <section id="troubleshooting">
+                <h2>Troubleshooting</h2>
+
+                <h3>Common Issues</h3>
+
+                <div class="warning">
+                    <strong>Issue:</strong> <code>NullPointerException when calling producer.get()</code><br>
+                    <strong>Solution:</strong> Ensure all input producers are properly initialized before building the computation graph.
+                </div>
+
+                <div class="warning">
+                    <strong>Issue:</strong> Kernel size mismatch errors<br>
+                    <strong>Solution:</strong> Check isFixedCount() settings. Fixed count operations require output size to match exactly.
+                </div>
+
+                <div class="warning">
+                    <strong>Issue:</strong> Circular delegate reference detected<br>
+                    <strong>Solution:</strong> Review Delegated implementations. Use getCircularDelegateDepth() to identify the cycle.
+                </div>
+
+                <div class="warning">
+                    <strong>Issue:</strong> Optimization not applied<br>
+                    <strong>Solution:</strong> Ensure ProcessContext has the correct optimization strategy. Use evaluateOptimized() for convenience.
+                </div>
+
+                <div class="warning">
+                    <strong>Issue:</strong> Slow repeated evaluations<br>
+                    <strong>Solution:</strong> Call get() once to compile, then reuse the Evaluable. Don't call evaluate() on Producer repeatedly.
+                </div>
+            </section>
+
+            <section id="resources">
+                <h2>Additional Resources</h2>
+                <ul>
+                    <li><a href="../../relation/README.md">Relation Module README</a> - Comprehensive module documentation</li>
+                    <li><a href="../apidocs/io/almostrealism/relation/package-summary.html">JavaDoc API - relation package</a> - Core interfaces</li>
+                    <li><a href="../apidocs/io/almostrealism/compute/package-summary.html">JavaDoc API - compute package</a> - Process framework</li>
+                    <li><a href="collect.html">Collect Module</a> - Collection operations built on these abstractions</li>
+                    <li><a href="hardware.html">Hardware Module</a> - Hardware acceleration implementations</li>
+                </ul>
+
+                <h3>Related Modules</h3>
+                <table class="comparison-table">
+                    <tr>
+                        <th>Module</th>
+                        <th>Relationship</th>
+                    </tr>
+                    <tr>
+                        <td>ar-code</td>
+                        <td>Code generation using Producer/Evaluable abstractions</td>
+                    </tr>
+                    <tr>
+                        <td>ar-hardware</td>
+                        <td>Hardware acceleration implementations</td>
+                    </tr>
+                    <tr>
+                        <td>ar-collect</td>
+                        <td>Collection operations built on these abstractions</td>
+                    </tr>
+                    <tr>
+                        <td>ar-time</td>
+                        <td>Temporal operations using the Process framework</td>
+                    </tr>
+                </table>
+            </section>
+        </main>
+
+        <footer>
+            <p><a href="../index.html">&larr; Back to Framework Documentation</a></p>
+            <p>&copy; 2024 Michael Murray. Licensed under the Apache License, Version 2.0.</p>
+        </footer>
+    </div>
+
+    <script src="../js/docs.js"></script>
+</body>
+</html>

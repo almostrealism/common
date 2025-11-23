@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AR-Graph Module - Almost Realism Framework</title>
+    <link rel="stylesheet" href="../css/style.css">
+    <style>
+        .key-concepts { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin: 20px 0; }
+        .concept-card { background: #f8f9fa; border-left: 4px solid #1565c0; padding: 15px; border-radius: 4px; }
+        .concept-card h4 { margin-top: 0; color: #1565c0; }
+        .class-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 15px; margin: 20px 0; }
+        .class-item { background: #fff; border: 1px solid #ddd; padding: 12px; border-radius: 4px; }
+        .class-item h4 { margin: 0 0 8px 0; color: #1565c0; font-size: 1.1em; }
+        .class-item p { margin: 0; font-size: 0.9em; color: #666; }
+        .code-example { background: #f5f5f5; border-left: 4px solid #1565c0; padding: 15px; margin: 15px 0; border-radius: 4px; }
+        .comparison-table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+        .comparison-table th, .comparison-table td { padding: 10px; border: 1px solid #ddd; text-align: left; }
+        .comparison-table th { background-color: #e3f2fd; color: #1565c0; }
+        .highlight { background-color: #fff9c4; padding: 2px 4px; }
+        .warning { background-color: #ffebee; border-left: 4px solid #c62828; padding: 12px; margin: 15px 0; }
+        .tip { background-color: #e8f5e9; border-left: 4px solid #2e7d32; padding: 12px; margin: 15px 0; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>AR-Graph Module</h1>
+            <p class="tagline">Neural Network Layers & Computation Graph Architecture</p>
+            <nav>
+                <a href="../index.html">Home</a>
+                <a href="#overview">Overview</a>
+                <a href="#architecture">Architecture</a>
+                <a href="#concepts">Core Concepts</a>
+                <a href="#examples">Examples</a>
+                <a href="#resources">Resources</a>
+            </nav>
+        </header>
+
+        <main>
+            <section id="overview">
+                <h2>Overview</h2>
+                <p>The <strong>ar-graph</strong> module provides the foundational architecture for building neural network layers and computation graphs in Almost Realism. It implements a cell-based design that enables flexible composition of forward and backward propagation paths, supporting both inference and training with automatic differentiation.</p>
+
+                <div class="key-concepts">
+                    <div class="concept-card">
+                        <h4>Cell-Receptor-Transmitter</h4>
+                        <p>Core pattern for push-based data flow. Cells process input, Receptors receive data, and Transmitters send data to downstream components. Enables flexible graph construction.</p>
+                    </div>
+                    <div class="concept-card">
+                        <h4>Layer Hierarchy</h4>
+                        <p>Trainable component abstraction with Layer, CellularLayer, and DefaultCellularLayer. Supports weight management and gradient computation for backpropagation.</p>
+                    </div>
+                    <div class="concept-card">
+                        <h4>Block Composition</h4>
+                        <p>Composable neural network units with Block, SequentialBlock, and Model. Chain operations seamlessly with forward/backward propagation support.</p>
+                    </div>
+                    <div class="concept-card">
+                        <h4>Hardware Integration</h4>
+                        <p>Cells compile to hardware-accelerated operations. GPU kernel generation for forward and backward passes with automatic memory management.</p>
+                    </div>
+                </div>
+            </section>
+
+            <section id="architecture">
+                <h2>Module Architecture</h2>
+
+                <h3>Core Interfaces</h3>
+                <div class="class-list">
+                    <div class="class-item">
+                        <h4>Cell&lt;T&gt;</h4>
+                        <p>Processing unit that receives input, performs computation, and sends output. Foundation of all graph operations.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>Receptor&lt;T&gt;</h4>
+                        <p>Interface for receiving data and producing computation operations. Defines the input side of data flow.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>Transmitter&lt;T&gt;</h4>
+                        <p>Interface for transmitting data to downstream receptors. Defines the output side of data flow.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>CellularPropagation</h4>
+                        <p>Combines forward and backward cells for bidirectional propagation. Essential for training neural networks.</p>
+                    </div>
+                </div>
+
+                <h3>Layer Classes</h3>
+                <div class="class-list">
+                    <div class="class-item">
+                        <h4>Layer</h4>
+                        <p>Base interface for trainable components with weights. Defines the contract for neural network layers.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>CellularLayer</h4>
+                        <p>Layer implemented using cells. Bridges the cell abstraction to the layer interface.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>DefaultCellularLayer</h4>
+                        <p>Primary implementation connecting forward and backward cells. Standard choice for custom layers.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>LayerFeatures</h4>
+                        <p>Factory methods for common layers: dense, activation, normalization. Simplifies layer construction.</p>
+                    </div>
+                </div>
+
+                <h3>Model Classes</h3>
+                <div class="class-list">
+                    <div class="class-item">
+                        <h4>Block</h4>
+                        <p>Composable neural network unit with forward/backward propagation. Building block for complex architectures.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>SequentialBlock</h4>
+                        <p>Container for multiple blocks in sequence. Automatically chains forward and backward passes.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>Model</h4>
+                        <p>Top-level neural network container. Manages layers, learning rate, and compilation.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>CompiledModel</h4>
+                        <p>Optimized execution form. Hardware-accelerated forward and backward passes ready for inference or training.</p>
+                    </div>
+                </div>
+
+                <h3>Specialized Cells</h3>
+                <div class="class-list">
+                    <div class="class-item">
+                        <h4>CachedStateCell</h4>
+                        <p>Maintains internal state between ticks. Useful for recurrent patterns and stateful computations.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>FilteredCell</h4>
+                        <p>Conditionally processes input based on filter criteria. Enables selective data flow.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>MultiCell</h4>
+                        <p>Manages multiple cells as a unit. Coordinates parallel or branching computations.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>WaveCell</h4>
+                        <p>Audio wave processing for signal applications. Supports amplitude, repeat, and sample rate control.</p>
+                    </div>
+                </div>
+
+                <h3>Class Hierarchy</h3>
+                <div class="code-example">
+<pre>Cell&lt;T&gt;                       &lt;- Core processing interface
+|-- CachedStateCell           &lt;- Stateful cell with cached values
+|-- FilteredCell              &lt;- Conditional processing
+|-- MultiCell                 &lt;- Multi-cell coordination
++-- TimeCell                  &lt;- Time-based operations
+
+Layer                         &lt;- Trainable component interface
++-- CellularLayer             &lt;- Cell-based implementation
+    +-- DefaultCellularLayer  &lt;- Standard layer implementation
+
+Block                         &lt;- Composable network unit
+|-- SequentialBlock           &lt;- Sequential composition
++-- Model                     &lt;- Top-level container
+    +-- CompiledModel         &lt;- Optimized execution</pre>
+                </div>
+            </section>
+
+            <section id="concepts">
+                <h2>Core Concepts</h2>
+
+                <h3>Cell-Receptor-Transmitter Pattern</h3>
+                <p>The fundamental design pattern uses three interfaces for push-based data flow:</p>
+
+                <div class="code-example">
+<pre><code class="language-java">// Create a simple cell that doubles its input
+Cell&lt;PackedCollection&lt;?&gt;&gt; doubleCell = Cell.of(input -> input.multiply(2.0));
+
+// Chain cells together
+Cell&lt;PackedCollection&lt;?&gt;&gt; pipeline = doubleCell
+    .andThen(Cell.of(x -> x.add(c(1.0))))    // Add 1
+    .andThen(Cell.of(x -> x.sqrt()));        // Square root
+
+// Execute
+Producer&lt;PackedCollection&lt;?&gt;&gt; input = cp(data);
+Supplier&lt;Runnable&gt; operation = pipeline.push(input);
+operation.get().run();  // Execute the computation</code></pre>
+                </div>
+
+                <h3>Layer Building</h3>
+                <p>Use LayerFeatures to construct common neural network layers:</p>
+
+                <div class="code-example">
+<pre><code class="language-java">import org.almostrealism.layers.*;
+import static org.almostrealism.layers.LayerFeatures.*;
+
+// Create a dense (fully connected) layer
+TraversalPolicy inputShape = shape(784);
+TraversalPolicy outputShape = shape(128);
+PackedCollection&lt;?&gt; weights = new PackedCollection&lt;&gt;(shape(128, 784));
+PackedCollection&lt;?&gt; bias = new PackedCollection&lt;&gt;(shape(128));
+
+Block denseLayer = dense(weights, bias);
+
+// Chain layers
+Block network = layer(inputShape)
+    .andThenDense(weights1, bias1)  // Hidden layer 1
+    .andThenDense(weights2, bias2)  // Hidden layer 2
+    .andThenDense(weights3, bias3); // Output layer</code></pre>
+                </div>
+
+                <h3>Block Composition Patterns</h3>
+                <p>Blocks support various composition patterns for building complex architectures:</p>
+
+                <div class="code-example">
+<pre><code class="language-java">// Sequential composition
+Block sequential = block1.andThen(block2).andThen(block3);
+
+// Branching (parallel paths)
+Block branched = block.branch();
+
+// Residual connection
+Block residual = identity.accum(transformBlock);
+
+// Element-wise operations
+Block combined = block1.product(block2);  // Element-wise multiply</code></pre>
+                </div>
+
+                <h3>Model Construction and Compilation</h3>
+                <p>Models are top-level containers that compile to optimized execution:</p>
+
+                <div class="code-example">
+<pre><code class="language-java">import org.almostrealism.model.*;
+
+// Create a model
+Model model = new Model(shape(784), 0.001);  // Input shape, learning rate
+
+// Add layers
+model.add(denseLayer);
+model.add(activationLayer);
+model.add(outputLayer);
+
+// Compile for execution
+CompiledModel compiled = model.compile();
+
+// Forward pass
+PackedCollection&lt;?&gt; input = loadData();
+PackedCollection&lt;?&gt; output = compiled.forward(input);
+
+// Training (with gradient)
+PackedCollection&lt;?&gt; gradient = computeLoss(output, target);
+PackedCollection&lt;?&gt; inputGradient = compiled.backward(gradient);</code></pre>
+                </div>
+
+                <h3>Custom Cells</h3>
+                <p>Extend CachedStateCell for stateful processing:</p>
+
+                <div class="code-example">
+<pre><code class="language-java">import org.almostrealism.graph.*;
+
+// Stateful cell (maintains internal state)
+public class CustomCell extends CachedStateCell&lt;PackedCollection&lt;?&gt;&gt; {
+    @Override
+    public Supplier&lt;Runnable&gt; setup() {
+        // Initialize state
+        return () -> () -> {
+            getCached().setMem(0, initialValue);
+        };
+    }
+
+    @Override
+    public Supplier&lt;Runnable&gt; push(Producer&lt;PackedCollection&lt;?&gt;&gt; protein) {
+        // Process input and update state
+        return () -> () -> {
+            double value = protein.get().evaluate().toDouble(0);
+            getCached().setMem(0, transform(value));
+        };
+    }
+
+    @Override
+    public Supplier&lt;Runnable&gt; tick() {
+        // Propagate state to output
+        return () -> () -> {
+            getOutput().setMem(0, getCached().toDouble(0));
+        };
+    }
+}</code></pre>
+                </div>
+
+                <h3>Custom Layer with Backpropagation</h3>
+                <p>Implement CellularPropagation for trainable custom layers:</p>
+
+                <div class="code-example">
+<pre><code class="language-java">public class CustomLayer implements CellularPropagation&lt;PackedCollection&lt;?&gt;&gt; {
+    private Cell&lt;PackedCollection&lt;?&gt;&gt; forward;
+    private Cell&lt;PackedCollection&lt;?&gt;&gt; backward;
+
+    public CustomLayer(PackedCollection&lt;?&gt; weights) {
+        // Forward: y = x * weights
+        this.forward = Cell.of(input ->
+            input.enumerate(1, 1).multiply(cp(weights)).sum(1)
+        );
+
+        // Backward: dx = gradient * weights^T
+        this.backward = Cell.of(gradient ->
+            gradient.enumerate(1, 1).multiply(cp(weights).transpose()).sum(1)
+        );
+    }
+
+    @Override
+    public Cell&lt;PackedCollection&lt;?&gt;&gt; getForward() { return forward; }
+
+    @Override
+    public Cell&lt;PackedCollection&lt;?&gt;&gt; getBackward() { return backward; }
+}</code></pre>
+                </div>
+            </section>
+
+            <section id="examples">
+                <h2>Usage Examples</h2>
+
+                <h3>Simple Neural Network</h3>
+                <div class="code-example">
+<pre><code class="language-java">import org.almostrealism.model.*;
+import org.almostrealism.layers.*;
+import static org.almostrealism.layers.LayerFeatures.*;
+
+// Input: 28x28 image = 784 pixels
+TraversalPolicy inputShape = shape(784);
+
+// Create model
+Model mnist = new Model(inputShape, 0.01);  // Learning rate: 0.01
+
+// Hidden layer: 784 -> 128 with ReLU
+PackedCollection&lt;?&gt; w1 = initializeWeights(128, 784);
+PackedCollection&lt;?&gt; b1 = zeros(128);
+mnist.add(dense(w1, b1).andThen(relu()));
+
+// Output layer: 128 -> 10 (digit classes)
+PackedCollection&lt;?&gt; w2 = initializeWeights(10, 128);
+PackedCollection&lt;?&gt; b2 = zeros(10);
+mnist.add(dense(w2, b2));
+
+// Compile
+CompiledModel model = mnist.compile();
+
+// Training loop
+for (PackedCollection&lt;?&gt; batch : trainingData) {
+    PackedCollection&lt;?&gt; predictions = model.forward(batch);
+    PackedCollection&lt;?&gt; loss = computeLoss(predictions, labels);
+    model.backward(loss);  // Updates weights automatically
+}</code></pre>
+                </div>
+
+                <h3>Temporal Processing</h3>
+                <div class="code-example">
+<pre><code class="language-java">import org.almostrealism.graph.temporal.*;
+
+// Audio wave cell for signal processing
+WaveCell audioCell = new WaveCell(sampleData, sampleRate);
+audioCell.setAmplitude(1.0);
+audioCell.setRepeat(true);
+
+// Time-based iteration
+TimeCell clock = new TimeCell();
+clock.tick();  // Advance time</code></pre>
+                </div>
+
+                <h3>Transformer-Style Architecture</h3>
+                <div class="code-example">
+<pre><code class="language-java">import org.almostrealism.model.*;
+import org.almostrealism.layers.*;
+
+// Build a transformer block
+TraversalPolicy inputShape = shape(sequenceLength, embedDim);
+Model transformer = new Model(inputShape);
+
+// Self-attention layer
+Block attention = multiHeadAttention(
+    numHeads, headDim,
+    wq, wk, wv, wo  // Weight matrices
+);
+
+// Feed-forward layer
+Block ffn = feedForward(
+    w1, b1,  // First linear
+    w2, b2   // Second linear
+);
+
+// Add with residual connections and normalization
+transformer.add(residual(layerNorm(attention)));
+transformer.add(residual(layerNorm(ffn)));
+
+CompiledModel compiled = transformer.compile();</code></pre>
+                </div>
+
+                <div class="tip">
+                    <strong>Tip:</strong> Always compile models before inference or training. CompiledModel provides hardware-accelerated execution with optimized memory management.
+                </div>
+            </section>
+
+            <section id="integration">
+                <h2>Integration with Other Modules</h2>
+
+                <table class="comparison-table">
+                    <tr>
+                        <th>Module</th>
+                        <th>Integration</th>
+                    </tr>
+                    <tr>
+                        <td>ar-collect</td>
+                        <td>Uses PackedCollection as primary data type, TraversalPolicy for shape/layout, Producer/Evaluable for lazy computation</td>
+                    </tr>
+                    <tr>
+                        <td>ar-ml</td>
+                        <td>Provides foundation for high-level models (Llama, Qwen, etc.), AttentionFeatures builds on graph layers</td>
+                    </tr>
+                    <tr>
+                        <td>ar-hardware</td>
+                        <td>Cells compile to hardware-accelerated operations, GPU kernel generation for forward/backward passes</td>
+                    </tr>
+                    <tr>
+                        <td>ar-algebra</td>
+                        <td>Vector/Matrix types, mathematical operations, automatic differentiation support</td>
+                    </tr>
+                </table>
+            </section>
+
+            <section id="configuration">
+                <h2>Environment Configuration</h2>
+
+                <p>Configure graph module behavior using environment variables:</p>
+
+                <div class="code-example">
+<pre><code class="language-bash"># Enable/disable various diagnostics
+export AR_GRAPH_CELL_WARNINGS=true          # Warn on receptor replacement
+export AR_GRAPH_IO_TRACKING=true            # Track layer inputs/outputs
+export AR_GRAPH_PROPAGATION_WARNINGS=true   # Warn on backprop issues
+export AR_GRAPH_SHAPE_WARNINGS=true         # Warn on shape mismatches</code></pre>
+                </div>
+
+                <div class="warning">
+                    <strong>Important:</strong> Remember to set hardware acceleration environment variables before running graph operations:
+                    <pre>export AR_HARDWARE_LIBS=/tmp/ar_libs/
+export AR_HARDWARE_DRIVER=native</pre>
+                </div>
+            </section>
+
+            <section id="troubleshooting">
+                <h2>Troubleshooting</h2>
+
+                <h3>Common Issues</h3>
+
+                <div class="warning">
+                    <strong>Issue:</strong> <code>NullPointerException in Cell.push()</code><br>
+                    <strong>Solution:</strong> Ensure all cells in the chain are properly initialized and connected before calling push().
+                </div>
+
+                <div class="warning">
+                    <strong>Issue:</strong> Shape mismatch during forward pass<br>
+                    <strong>Solution:</strong> Verify that layer input/output shapes are compatible. Use shape() to inspect TraversalPolicy.
+                </div>
+
+                <div class="warning">
+                    <strong>Issue:</strong> Gradients are not flowing during backpropagation<br>
+                    <strong>Solution:</strong> Ensure CellularPropagation is properly implemented with both forward and backward cells.
+                </div>
+
+                <div class="warning">
+                    <strong>Issue:</strong> CompiledModel throws hardware errors<br>
+                    <strong>Solution:</strong> Verify AR_HARDWARE_LIBS and AR_HARDWARE_DRIVER environment variables are set correctly.
+                </div>
+            </section>
+
+            <section id="resources">
+                <h2>Additional Resources</h2>
+                <ul>
+                    <li><a href="../../graph/README.md">Graph Module README</a> - Comprehensive module documentation</li>
+                    <li><a href="../apidocs/org/almostrealism/graph/package-summary.html">JavaDoc API - Graph</a> - Core graph classes</li>
+                    <li><a href="../apidocs/org/almostrealism/layers/package-summary.html">JavaDoc API - Layers</a> - Layer implementations</li>
+                    <li><a href="../apidocs/org/almostrealism/model/package-summary.html">JavaDoc API - Model</a> - Model and block classes</li>
+                    <li><a href="collect.html">Collect Module</a> - PackedCollection fundamentals</li>
+                    <li><a href="algebra.html">Algebra Module</a> - Vector and matrix operations</li>
+                </ul>
+
+                <h3>Maven Dependency</h3>
+                <div class="code-example">
+<pre><code class="language-xml">&lt;dependency&gt;
+    &lt;groupId&gt;org.almostrealism&lt;/groupId&gt;
+    &lt;artifactId&gt;ar-graph&lt;/artifactId&gt;
+    &lt;version&gt;0.72&lt;/version&gt;
+&lt;/dependency&gt;</code></pre>
+                </div>
+
+                <h3>Dependencies</h3>
+                <ul>
+                    <li><strong>ar-relation</strong> - Producer/Evaluable abstraction</li>
+                    <li><strong>ar-collect</strong> - PackedCollection data structures</li>
+                    <li><strong>ar-algebra</strong> - Vector/Matrix types</li>
+                    <li><strong>ar-hardware</strong> - GPU compilation and execution</li>
+                    <li><strong>ar-code</strong> - Code generation utilities</li>
+                </ul>
+            </section>
+        </main>
+
+        <footer>
+            <p><a href="../index.html">Back to Framework Documentation</a></p>
+            <p>2024 Michael Murray. Licensed under the Apache License, Version 2.0.</p>
+        </footer>
+    </div>
+
+    <script src="../js/docs.js"></script>
+</body>
+</html>

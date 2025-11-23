@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AR-Algebra Module - Almost Realism Framework</title>
+    <link rel="stylesheet" href="../css/style.css">
+    <style>
+        .key-concepts { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin: 20px 0; }
+        .concept-card { background: #f8f9fa; border-left: 4px solid #1565c0; padding: 15px; border-radius: 4px; }
+        .concept-card h4 { margin-top: 0; color: #1565c0; }
+        .class-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 15px; margin: 20px 0; }
+        .class-item { background: #fff; border: 1px solid #ddd; padding: 12px; border-radius: 4px; }
+        .class-item h4 { margin: 0 0 8px 0; color: #1565c0; font-size: 1.1em; }
+        .class-item p { margin: 0; font-size: 0.9em; color: #666; }
+        .code-example { background: #f5f5f5; border-left: 4px solid #1565c0; padding: 15px; margin: 15px 0; border-radius: 4px; }
+        .comparison-table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+        .comparison-table th, .comparison-table td { padding: 10px; border: 1px solid #ddd; text-align: left; }
+        .comparison-table th { background-color: #e3f2fd; color: #1565c0; }
+        .highlight { background-color: #fff9c4; padding: 2px 4px; }
+        .warning { background-color: #ffebee; border-left: 4px solid #c62828; padding: 12px; margin: 15px 0; }
+        .tip { background-color: #e8f5e9; border-left: 4px solid #2e7d32; padding: 12px; margin: 15px 0; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>AR-Algebra Module</h1>
+            <p class="tagline">Core Data Types & Hardware-Accelerated Collection Operations</p>
+            <nav>
+                <a href="../index.html">Home</a>
+                <a href="#overview">Overview</a>
+                <a href="#architecture">Architecture</a>
+                <a href="#types">Data Types</a>
+                <a href="#operations">Operations</a>
+                <a href="#examples">Examples</a>
+            </nav>
+        </header>
+
+        <main>
+            <section id="overview">
+                <h2>Overview</h2>
+                <p>The <strong>ar-algebra</strong> module is the foundation of Almost Realism's data processing capabilities. It provides <code>PackedCollection</code> - the core data structure for all numerical computations - along with type-safe wrappers like <code>Vector</code>, <code>Scalar</code>, and <code>Pair</code>, and 40+ hardware-accelerated operations through <code>CollectionProducer</code>.</p>
+
+                <div class="key-concepts">
+                    <div class="concept-card">
+                        <h4>📦 PackedCollection</h4>
+                        <p>Memory-efficient multi-dimensional data structure. Stores data as flat arrays with TraversalPolicy-based shape interpretation. Enables zero-copy views and GPU memory management.</p>
+                    </div>
+                    <div class="concept-card">
+                        <h4>🔢 Type-Safe Wrappers</h4>
+                        <p>Vector (3D), Scalar (value+certainty), Pair (2-element), Tensor (N-D). All extend PackedCollection for seamless integration with hardware acceleration.</p>
+                    </div>
+                    <div class="concept-card">
+                        <h4>⚡ CollectionProducer</h4>
+                        <p>Lazy computation interface with 40+ operations. Chain operations without intermediate evaluation, then compile to GPU kernels for execution.</p>
+                    </div>
+                    <div class="concept-card">
+                        <h4>🧮 Matrix Operations</h4>
+                        <p>Matrix multiplication, transpose, identity, diagonal. Optimized for transformer attention patterns with automatic broadcasting.</p>
+                    </div>
+                </div>
+            </section>
+
+            <section id="architecture">
+                <h2>Module Architecture</h2>
+
+                <h3>Package Structure</h3>
+                <div class="class-list">
+                    <div class="class-item">
+                        <h4>org.almostrealism.algebra</h4>
+                        <p>Core types: Vector, Scalar, Pair, Tensor, ComplexNumber, Matrix3D. Feature interfaces for operations.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>org.almostrealism.collect</h4>
+                        <p>PackedCollection, CollectionProducer, CollectionFeatures. The heart of the data model.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>org.almostrealism.collect.computations</h4>
+                        <p>40+ computation classes: Add, Multiply, Sum, Max, FFT, Reshape, Subset, etc.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>org.almostrealism.calculus</h4>
+                        <p>Automatic differentiation support: DeltaFeatures, gradient computation.</p>
+                    </div>
+                </div>
+
+                <h3>Type Hierarchy</h3>
+                <div class="code-example">
+<pre>PackedCollection&lt;?&gt;          ← Base class for all data
+├── Pair                      ← 2 elements (x, y)
+│   ├── Scalar                ← Value + certainty
+│   ├── ComplexNumber         ← Real + imaginary
+│   └── TemporalScalar        ← Time + value
+├── Vector                    ← 3 elements (x, y, z)
+└── Tensor                    ← N-dimensional (recursive)</pre>
+                </div>
+
+                <h3>Memory Layout</h3>
+                <p>PackedCollection stores data in <strong>row-major order</strong> as a contiguous flat array:</p>
+                <div class="code-example">
+<pre>3D tensor shape [2, 3, 4] → Linear memory:
+[0,0,0] [0,0,1] [0,0,2] [0,0,3] [0,1,0] [0,1,1] ...
+   0       1       2       3       4       5     ...
+
+Index calculation: index = i * (3*4) + j * 4 + k</pre>
+                </div>
+            </section>
+
+            <section id="types">
+                <h2>Core Data Types</h2>
+
+                <h3>PackedCollection</h3>
+                <p>The fundamental data structure for all numerical operations.</p>
+                <pre><code class="language-java">// Create collections with various shapes
+PackedCollection&lt;?&gt; vector = new PackedCollection&lt;&gt;(100);           // 1D: 100 elements
+PackedCollection&lt;?&gt; matrix = new PackedCollection&lt;&gt;(shape(10, 20)); // 2D: 10×20
+PackedCollection&lt;?&gt; tensor = new PackedCollection&lt;&gt;(shape(4, 8, 16)); // 3D: 4×8×16
+
+// Access elements
+matrix.setMem(0, 3.14);           // Set by linear index
+double val = matrix.toDouble(0);  // Get by linear index
+
+// Zero-copy views (no data copying!)
+PackedCollection&lt;?&gt; view = matrix.range(shape(5, 20)); // First 5 rows
+view.setMem(0, 99.0);  // Modifies original!</code></pre>
+
+                <h3>Vector (3D)</h3>
+                <p>Three-dimensional vector with x, y, z components.</p>
+                <pre><code class="language-java">// Create vectors
+Vector v1 = new Vector(1.0, 2.0, 3.0);
+Vector v2 = new Vector(4.0, 5.0, 6.0);
+
+// Access components
+double x = v1.getX();
+double y = v1.getY();
+double z = v1.getZ();
+
+// Vector operations (CPU)
+Vector sum = v1.add(v2);
+double dot = v1.dotProduct(v2);
+Vector cross = v1.crossProduct(v2);
+double length = v1.length();
+
+// GPU-accelerated operations
+CollectionProducer&lt;Vector&gt; gpuSum = v(v1).add(v(v2));
+Vector result = gpuSum.get().evaluate();</code></pre>
+
+                <h3>Scalar</h3>
+                <p>Value with optional certainty (extends Pair).</p>
+                <pre><code class="language-java">// Create scalars
+Scalar s1 = new Scalar(5.0);           // Value only
+Scalar s2 = new Scalar(5.0, 0.95);     // Value + 95% certainty
+
+// Access
+double value = s1.getValue();
+double certainty = s1.getCertainty();
+
+// Create collections of scalars
+PackedCollection&lt;Scalar&gt; scalars = Scalar.bank(100);
+scalars.get(0).setValue(3.14);</code></pre>
+
+                <h3>Pair</h3>
+                <p>Two-element tuple with semantic aliases (x/y, a/b, left/right, etc.).</p>
+                <pre><code class="language-java">// Create pairs
+Pair p = new Pair(3.0, 4.0);
+
+// Multiple accessors (all equivalent)
+double x = p.getX();      // Same as getA(), getLeft()
+double y = p.getY();      // Same as getB(), getRight()
+
+// For complex numbers
+double real = p.r();      // Real part
+double imag = p.i();      // Imaginary part</code></pre>
+
+                <h3>Tensor</h3>
+                <p>Arbitrary-dimension recursive structure.</p>
+                <pre><code class="language-java">// Create tensor
+Tensor&lt;Double&gt; tensor = new Tensor&lt;&gt;();
+tensor.insert(0.0, 0, 0, 0);
+tensor.insert(1.0, 0, 0, 1);
+tensor.insert(2.0, 0, 1, 0);
+
+// Convert to PackedCollection for GPU operations
+PackedCollection&lt;?&gt; packed = tensor.pack();</code></pre>
+            </section>
+
+            <section id="operations">
+                <h2>CollectionProducer Operations</h2>
+
+                <p>Operations are <strong>lazy</strong> - they build a computation graph without executing. Call <code>.get().evaluate()</code> to compile and run.</p>
+
+                <h3>Arithmetic Operations</h3>
+                <table class="comparison-table">
+                    <tr>
+                        <th>Method</th>
+                        <th>Description</th>
+                        <th>Example</th>
+                    </tr>
+                    <tr>
+                        <td><code>add(other)</code></td>
+                        <td>Element-wise addition</td>
+                        <td><code>a.add(b)</code></td>
+                    </tr>
+                    <tr>
+                        <td><code>subtract(other)</code></td>
+                        <td>Element-wise subtraction</td>
+                        <td><code>a.subtract(b)</code></td>
+                    </tr>
+                    <tr>
+                        <td><code>multiply(other)</code></td>
+                        <td>Element-wise multiplication</td>
+                        <td><code>a.multiply(b)</code></td>
+                    </tr>
+                    <tr>
+                        <td><code>divide(other)</code></td>
+                        <td>Element-wise division</td>
+                        <td><code>a.divide(b)</code></td>
+                    </tr>
+                    <tr>
+                        <td><code>multiply(scalar)</code></td>
+                        <td>Scalar multiplication</td>
+                        <td><code>a.multiply(2.0)</code></td>
+                    </tr>
+                    <tr>
+                        <td><code>pow(exp)</code></td>
+                        <td>Element-wise power</td>
+                        <td><code>a.pow(2)</code></td>
+                    </tr>
+                    <tr>
+                        <td><code>sqrt()</code></td>
+                        <td>Square root</td>
+                        <td><code>a.sqrt()</code></td>
+                    </tr>
+                    <tr>
+                        <td><code>exp()</code></td>
+                        <td>Exponential (e^x)</td>
+                        <td><code>a.exp()</code></td>
+                    </tr>
+                    <tr>
+                        <td><code>log()</code></td>
+                        <td>Natural logarithm</td>
+                        <td><code>a.log()</code></td>
+                    </tr>
+                </table>
+
+                <h3>Aggregation Operations</h3>
+                <table class="comparison-table">
+                    <tr>
+                        <th>Method</th>
+                        <th>Description</th>
+                        <th>Output Shape</th>
+                    </tr>
+                    <tr>
+                        <td><code>sum()</code></td>
+                        <td>Sum all elements</td>
+                        <td>Scalar</td>
+                    </tr>
+                    <tr>
+                        <td><code>sum(axis)</code></td>
+                        <td>Sum along axis</td>
+                        <td>Reduced shape</td>
+                    </tr>
+                    <tr>
+                        <td><code>mean()</code></td>
+                        <td>Average of elements</td>
+                        <td>Scalar</td>
+                    </tr>
+                    <tr>
+                        <td><code>max()</code></td>
+                        <td>Maximum element</td>
+                        <td>Scalar</td>
+                    </tr>
+                    <tr>
+                        <td><code>min()</code></td>
+                        <td>Minimum element</td>
+                        <td>Scalar</td>
+                    </tr>
+                    <tr>
+                        <td><code>magnitude()</code></td>
+                        <td>L2 norm</td>
+                        <td>Scalar</td>
+                    </tr>
+                </table>
+
+                <h3>Shape Operations</h3>
+                <table class="comparison-table">
+                    <tr>
+                        <th>Method</th>
+                        <th>Description</th>
+                        <th>Example</th>
+                    </tr>
+                    <tr>
+                        <td><code>reshape(shape)</code></td>
+                        <td>Change shape (same total elements)</td>
+                        <td><code>a.reshape(shape(10, 10))</code></td>
+                    </tr>
+                    <tr>
+                        <td><code>transpose()</code></td>
+                        <td>Swap dimensions</td>
+                        <td><code>matrix.transpose()</code></td>
+                    </tr>
+                    <tr>
+                        <td><code>repeat(n)</code></td>
+                        <td>Repeat data n times</td>
+                        <td><code>row.repeat(100)</code></td>
+                    </tr>
+                    <tr>
+                        <td><code>enumerate(axis, len)</code></td>
+                        <td>Expand with indices</td>
+                        <td><code>a.enumerate(1, 10)</code></td>
+                    </tr>
+                    <tr>
+                        <td><code>subset(shape, idx)</code></td>
+                        <td>Extract subset</td>
+                        <td><code>a.subset(shape(5), 0, 10)</code></td>
+                    </tr>
+                    <tr>
+                        <td><code>pad(count)</code></td>
+                        <td>Add zeros</td>
+                        <td><code>a.pad(10)</code></td>
+                    </tr>
+                    <tr>
+                        <td><code>traverse(axis)</code></td>
+                        <td>Iterate along axis</td>
+                        <td><code>batch.traverse(0)</code></td>
+                    </tr>
+                </table>
+
+                <h3>Matrix Operations</h3>
+                <pre><code class="language-java">// Matrix multiplication
+CollectionProducer&lt;?&gt; C = matmul(A, B);  // [M,K] × [K,N] → [M,N]
+
+// Identity matrix
+CollectionProducer&lt;?&gt; I = identity(dim);
+
+// Diagonal matrix
+CollectionProducer&lt;?&gt; D = diagonal(values);
+
+// Scaled dot product (for attention)
+CollectionProducer&lt;?&gt; attn = scaledDotProduct(Q, K, V, headDim);</code></pre>
+            </section>
+
+            <section id="examples">
+                <h2>Usage Examples</h2>
+
+                <h3>Basic Computation Pipeline</h3>
+                <pre><code class="language-java">// Build computation graph (no execution yet)
+CollectionProducer&lt;?&gt; input = cp(data);
+CollectionProducer&lt;?&gt; normalized = input
+    .subtract(input.mean())
+    .divide(input.magnitude());
+CollectionProducer&lt;?&gt; result = normalized.multiply(weight).add(bias);
+
+// Compile to GPU kernel and execute
+PackedCollection&lt;?&gt; output = result.get().evaluate();
+
+// Reuse compiled kernel for efficiency
+Evaluable&lt;?&gt; compiled = result.get();
+for (PackedCollection&lt;?&gt; batch : batches) {
+    PackedCollection&lt;?&gt; out = compiled.evaluate(batch);
+}</code></pre>
+
+                <h3>Matrix Multiplication</h3>
+                <pre><code class="language-java">// Create matrices
+PackedCollection&lt;?&gt; A = new PackedCollection&lt;&gt;(shape(64, 128));
+PackedCollection&lt;?&gt; B = new PackedCollection&lt;&gt;(shape(128, 256));
+
+// Initialize with values
+A.fill(pos -> Math.random());
+B.fill(pos -> Math.random());
+
+// Matrix multiply on GPU
+CollectionProducer&lt;?&gt; C = matmul(cp(A), cp(B));
+PackedCollection&lt;?&gt; result = C.get().evaluate();  // Shape: [64, 256]</code></pre>
+
+                <h3>Neural Network Layer</h3>
+                <pre><code class="language-java">public class DenseLayer implements CollectionFeatures {
+    private PackedCollection&lt;?&gt; weights;
+    private PackedCollection&lt;?&gt; bias;
+
+    public CollectionProducer&lt;?&gt; forward(CollectionProducer&lt;?&gt; input) {
+        // y = x @ W^T + b
+        return matmul(input, cp(weights).transpose())
+            .add(cp(bias));
+    }
+}</code></pre>
+
+                <h3>Vector Operations</h3>
+                <pre><code class="language-java">public class RayTracer implements VectorFeatures {
+    public CollectionProducer&lt;Vector&gt; reflect(
+            CollectionProducer&lt;Vector&gt; incident,
+            CollectionProducer&lt;Vector&gt; normal) {
+        // r = i - 2(i·n)n
+        CollectionProducer&lt;?&gt; dot = dotProduct(incident, normal);
+        return incident.subtract(
+            normal.multiply(dot.multiply(2.0))
+        );
+    }
+}</code></pre>
+
+                <h3>Batch Processing</h3>
+                <pre><code class="language-java">// Process batch of 32 vectors
+PackedCollection&lt;?&gt; batch = new PackedCollection&lt;&gt;(shape(32, 3));
+
+// Normalize each vector in parallel (single GPU kernel)
+CollectionProducer&lt;?&gt; magnitudes = cp(batch)
+    .traverse(0)           // Iterate over batch dimension
+    .pow(2).sum(1).sqrt(); // Per-vector magnitude
+
+CollectionProducer&lt;?&gt; normalized = cp(batch)
+    .divide(magnitudes.reshape(shape(32, 1)));
+
+PackedCollection&lt;?&gt; result = normalized.get().evaluate();</code></pre>
+
+                <div class="tip">
+                    <strong>Performance Tip:</strong> Always reuse compiled <code>Evaluable</code> instances when processing multiple batches. Compilation is expensive; execution is fast.
+                </div>
+            </section>
+
+            <section id="best-practices">
+                <h2>Best Practices</h2>
+
+                <h3>Memory Efficiency</h3>
+                <ul>
+                    <li><strong>Use zero-copy views:</strong> <code>range()</code>, <code>repeat()</code> don't copy data</li>
+                    <li><strong>Reuse PackedCollections:</strong> Pre-allocate and reuse instead of creating new instances</li>
+                    <li><strong>Use <code>into(destination)</code>:</strong> Write results directly to existing memory</li>
+                </ul>
+
+                <h3>Computation Efficiency</h3>
+                <ul>
+                    <li><strong>Chain operations:</strong> Build full pipeline before <code>.get().evaluate()</code></li>
+                    <li><strong>Avoid intermediate evaluations:</strong> Each <code>evaluate()</code> incurs kernel launch overhead</li>
+                    <li><strong>Cache compiled kernels:</strong> Store <code>Evaluable</code> instances for repeated use</li>
+                </ul>
+
+                <h3>Shape Management</h3>
+                <ul>
+                    <li><strong>Use <code>shape()</code> helper:</strong> <code>shape(10, 20)</code> is clearer than <code>new TraversalPolicy(10, 20)</code></li>
+                    <li><strong>Verify shapes:</strong> Mismatched shapes cause runtime errors</li>
+                    <li><strong>Document tensor layouts:</strong> Comment whether using NCHW or NHWC format</li>
+                </ul>
+
+                <div class="warning">
+                    <strong>Thread Safety:</strong> PackedCollection is NOT thread-safe. Use separate instances per thread or synchronize access.
+                </div>
+            </section>
+
+            <section id="resources">
+                <h2>Additional Resources</h2>
+                <ul>
+                    <li><a href="../../algebra/README.md">Algebra Module README</a> - Detailed module documentation</li>
+                    <li><a href="../apidocs/org/almostrealism/algebra/package-summary.html">Algebra JavaDoc</a> - API reference</li>
+                    <li><a href="../apidocs/org/almostrealism/collect/package-summary.html">Collect JavaDoc</a> - PackedCollection API</li>
+                    <li><a href="../tutorials/02-packedcollection-basics.html">PackedCollection Tutorial</a> - Step-by-step guide</li>
+                </ul>
+            </section>
+        </main>
+
+        <footer>
+            <p><a href="../index.html">← Back to Framework Documentation</a></p>
+            <p>&copy; 2024 Michael Murray. Licensed under the Apache License, Version 2.0.</p>
+        </footer>
+    </div>
+
+    <script src="../js/docs.js"></script>
+</body>
+</html>

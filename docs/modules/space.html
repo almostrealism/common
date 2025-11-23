@@ -1,0 +1,728 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AR-Space Module - Almost Realism Framework</title>
+    <link rel="stylesheet" href="../css/style.css">
+    <style>
+        .key-concepts { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin: 20px 0; }
+        .concept-card { background: #f8f9fa; border-left: 4px solid #512da8; padding: 15px; border-radius: 4px; }
+        .concept-card h4 { margin-top: 0; color: #512da8; }
+        .performance-table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+        .performance-table th, .performance-table td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
+        .performance-table th { background-color: #ede7f6; color: #512da8; font-weight: bold; }
+        .performance-table tr:hover { background-color: #f5f5f5; }
+        .comparison-table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+        .comparison-table th, .comparison-table td { padding: 10px; border: 1px solid #ddd; text-align: left; }
+        .comparison-table th { background-color: #ede7f6; color: #512da8; }
+        .class-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 15px; margin: 20px 0; }
+        .class-item { background: #fff; border: 1px solid #ddd; padding: 12px; border-radius: 4px; }
+        .class-item h4 { margin: 0 0 8px 0; color: #512da8; font-size: 1.1em; }
+        .class-item p { margin: 0; font-size: 0.9em; color: #666; }
+        .code-example { background: #f5f5f5; border-left: 4px solid #512da8; padding: 15px; margin: 15px 0; border-radius: 4px; }
+        .highlight { background-color: #e1bee7; padding: 2px 4px; }
+        .warning { background-color: #ffebee; border-left: 4px solid #c62828; padding: 12px; margin: 15px 0; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>AR-Space Module</h1>
+            <p class="tagline">3D Scene Management & Hardware-Accelerated Ray Tracing</p>
+            <nav>
+                <a href="../index.html">Home</a>
+                <a href="#overview">Overview</a>
+                <a href="#scene-management">Scene Management</a>
+                <a href="#primitives">Primitives</a>
+                <a href="#mesh-support">Mesh Support</a>
+                <a href="#spatial-queries">Spatial Queries</a>
+                <a href="#integration">Integration</a>
+            </nav>
+        </header>
+
+        <main>
+            <section id="overview">
+                <h2>Overview</h2>
+                <p>The <strong>ar-space</strong> module provides comprehensive 3D geometry primitives, scene management, mesh representation, and spatial acceleration structures for ray tracing and rendering. All operations support hardware acceleration through GPU/OpenCL/Metal backends for high-performance real-time rendering.</p>
+
+                <div class="key-concepts">
+                    <div class="concept-card">
+                        <h4>Scene Graphs</h4>
+                        <p>Hierarchical scene organization with Scene and SurfaceGroup containers. Manage surfaces, lights, and cameras in a unified structure.</p>
+                    </div>
+                    <div class="concept-card">
+                        <h4>Surface Primitives</h4>
+                        <p>Built-in primitives including Plane, Volume, and custom surfaces. Support for material properties, shading, and transformations.</p>
+                    </div>
+                    <div class="concept-card">
+                        <h4>Polygon Meshes</h4>
+                        <p>Triangle and Mesh classes for complex geometry. Smooth shading, vertex colors, texture coordinates, and efficient intersection.</p>
+                    </div>
+                    <div class="concept-card">
+                        <h4>Spatial Acceleration</h4>
+                        <p>BSP trees and KdTree structures for fast ray intersection. CachedMeshIntersectionKernel for batch-optimized rendering.</p>
+                    </div>
+                </div>
+            </section>
+
+            <section id="scene-management">
+                <h2>Scene Management</h2>
+
+                <h3>Core Scene Classes</h3>
+                <div class="class-list">
+                    <div class="class-item">
+                        <h4>Scene</h4>
+                        <p>Complete 3D scene container with surfaces, lights, and camera. Extends SurfaceList for hierarchical organization.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>SurfaceList</h4>
+                        <p>Generic ArrayList-based container for Gradient/surface objects. Base class for scene and group containers.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>SurfaceGroup</h4>
+                        <p>Groups multiple surfaces with shared transformations. Supports nested hierarchies and collective operations.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>ShadableSurface</h4>
+                        <p>Interface for renderable surfaces with shading support. Defines intersection, normal, and color methods.</p>
+                    </div>
+                </div>
+
+                <h3>Scene Construction</h3>
+                <div class="code-example">
+                    <strong>Building a Complete Scene:</strong>
+                </div>
+                <pre><code class="language-java">import org.almostrealism.space.Scene;
+import org.almostrealism.color.ShadableSurface;
+import org.almostrealism.color.Light;
+import org.almostrealism.color.PointLight;
+import org.almostrealism.projection.PinholeCamera;
+import org.almostrealism.algebra.Vector;
+import org.almostrealism.color.RGB;
+
+// Create an empty scene
+Scene&lt;ShadableSurface&gt; scene = new Scene&lt;&gt;();
+
+// Add surfaces to the scene
+Sphere sphere = new Sphere(new Vector(0, 0, 0), 1.0, new RGB(1, 0, 0));
+scene.add(sphere);
+
+Plane ground = new Plane(Plane.XZ);
+ground.setLocation(new Vector(0, -2, 0));
+scene.add(ground);
+
+// Add lighting
+Light keyLight = new PointLight(
+    new Vector(5, 5, -5),     // Position
+    1.0,                       // Intensity
+    new RGB(1, 1, 1)          // Color
+);
+scene.addLight(keyLight);
+
+// Configure camera
+PinholeCamera camera = new PinholeCamera(
+    new Vector(0, 0, -10),    // Eye position
+    new Vector(0, 0, 1),      // Look direction
+    new Vector(0, 1, 0)       // Up vector
+);
+scene.setCamera(camera);
+
+// Calculate scene bounds for optimization
+BoundingSolid bounds = scene.calculateBoundingSolid();</code></pre>
+
+                <h3>Scene API Reference</h3>
+                <table class="comparison-table">
+                    <tr>
+                        <th>Method</th>
+                        <th>Description</th>
+                    </tr>
+                    <tr>
+                        <td><code>add(T surface)</code></td>
+                        <td>Add a surface to the scene (inherited from ArrayList)</td>
+                    </tr>
+                    <tr>
+                        <td><code>addLight(Light light)</code></td>
+                        <td>Add a light source to illuminate the scene</td>
+                    </tr>
+                    <tr>
+                        <td><code>setCamera(Camera camera)</code></td>
+                        <td>Set the viewpoint camera for rendering</td>
+                    </tr>
+                    <tr>
+                        <td><code>getLights()</code></td>
+                        <td>Get the list of all lights in the scene</td>
+                    </tr>
+                    <tr>
+                        <td><code>getSurfaces()</code></td>
+                        <td>Get array of all surfaces in the scene</td>
+                    </tr>
+                    <tr>
+                        <td><code>calculateBoundingSolid()</code></td>
+                        <td>Compute the axis-aligned bounding box for the entire scene</td>
+                    </tr>
+                    <tr>
+                        <td><code>clone()</code></td>
+                        <td>Create a shallow copy of the scene</td>
+                    </tr>
+                </table>
+            </section>
+
+            <section id="primitives">
+                <h2>Primitives</h2>
+
+                <h3>Surface Primitive Classes</h3>
+                <div class="class-list">
+                    <div class="class-item">
+                        <h4>AbstractSurface</h4>
+                        <p>Base class for all surface types. Provides material properties, transformations, and shading support.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>Plane</h4>
+                        <p>Infinite planar surface with XY, XZ, or YZ orientation. Fast ray intersection with simple math.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>Volume</h4>
+                        <p>Interface for bounded 3D regions. Supports inside/outside tests and surface coordinate mapping.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>DistanceEstimator</h4>
+                        <p>Interface for ray marching. Estimates minimum distance to surface for sphere tracing algorithms.</p>
+                    </div>
+                </div>
+
+                <h3>Plane Primitive</h3>
+                <pre><code class="language-java">import org.almostrealism.space.Plane;
+import org.almostrealism.algebra.Vector;
+import org.almostrealism.color.RGB;
+
+// Create planes with different orientations
+Plane xyPlane = new Plane(Plane.XY);  // Normal along Z axis
+Plane xzPlane = new Plane(Plane.XZ);  // Normal along Y axis (floor/ceiling)
+Plane yzPlane = new Plane(Plane.YZ);  // Normal along X axis (walls)
+
+// Configure plane with color
+Plane coloredPlane = new Plane(Plane.XZ, new RGB(0.3, 0.3, 0.3));
+
+// Position the plane
+coloredPlane.setLocation(new Vector(0, -5, 0));
+
+// Apply transformations
+coloredPlane.setScale(2.0);
+coloredPlane.setRotationX(Math.PI / 6);  // Tilt 30 degrees
+
+// Set material properties
+coloredPlane.setReflectedPercentage(0.2);  // 20% reflective</code></pre>
+
+                <h3>Volume Interface</h3>
+                <pre><code class="language-java">import org.almostrealism.space.Volume;
+import org.almostrealism.algebra.Vector;
+import io.almostrealism.relation.Producer;
+
+// Volume defines a bounded 3D region
+public interface Volume&lt;T&gt; extends Curve&lt;T&gt; {
+    // Test if a point is inside the volume
+    boolean inside(Producer&lt;Vector&gt; point);
+
+    // Calculate intersection distance along a ray
+    double intersect(Vector position, Vector direction);
+
+    // Convert 3D point to 2D surface coordinates (UV mapping)
+    double[] getSurfaceCoords(Producer&lt;Vector&gt; xyz);
+
+    // Convert 2D surface coordinates to 3D position
+    double[] getSpatialCoords(double[] uv);
+}
+
+// Example: Check if a point is inside a volume
+Volume&lt;?&gt; sphere = createSphereVolume(center, radius);
+Producer&lt;Vector&gt; testPoint = v(new Vector(0.5, 0.5, 0.5));
+boolean isInside = sphere.inside(testPoint);</code></pre>
+
+                <h3>Surface Properties</h3>
+                <table class="comparison-table">
+                    <tr>
+                        <th>Property</th>
+                        <th>Method</th>
+                        <th>Description</th>
+                    </tr>
+                    <tr>
+                        <td>Color</td>
+                        <td><code>setColor(RGB)</code></td>
+                        <td>Base surface color</td>
+                    </tr>
+                    <tr>
+                        <td>Reflection</td>
+                        <td><code>setReflectedPercentage(double)</code></td>
+                        <td>Amount of light reflected (0.0-1.0)</td>
+                    </tr>
+                    <tr>
+                        <td>Refraction</td>
+                        <td><code>setRefractedPercentage(double)</code></td>
+                        <td>Amount of light transmitted (0.0-1.0)</td>
+                    </tr>
+                    <tr>
+                        <td>IOR</td>
+                        <td><code>setIndexOfRefraction(double)</code></td>
+                        <td>Index of refraction (1.0=air, 1.5=glass)</td>
+                    </tr>
+                    <tr>
+                        <td>Absorption</td>
+                        <td><code>setAbsorbtionCoefficient(double)</code></td>
+                        <td>Light absorption in transparent materials</td>
+                    </tr>
+                    <tr>
+                        <td>Back Face</td>
+                        <td><code>setShadeBack(boolean)</code></td>
+                        <td>Whether to render back-facing surfaces</td>
+                    </tr>
+                </table>
+            </section>
+
+            <section id="mesh-support">
+                <h2>Mesh Support</h2>
+
+                <h3>Mesh Classes</h3>
+                <div class="class-list">
+                    <div class="class-item">
+                        <h4>Mesh</h4>
+                        <p>Container for triangle-based geometry. Supports shared vertices, smooth shading, and BSP acceleration.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>Triangle</h4>
+                        <p>Single triangle primitive. Hardware-accelerated intersection using Moller-Trumbore algorithm.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>Vertex</h4>
+                        <p>Mesh vertex with position, normal, and color. Supports normal averaging for smooth shading.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>MeshData</h4>
+                        <p>Packed triangle data for GPU processing. Precomputed edge vectors and normals.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>VertexData</h4>
+                        <p>Interface for vertex attribute access. Abstraction for different storage backends.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>DefaultVertexData</h4>
+                        <p>Standard VertexData implementation with per-vertex positions, colors, and texture coords.</p>
+                    </div>
+                </div>
+
+                <h3>Creating Meshes</h3>
+                <pre><code class="language-java">import org.almostrealism.space.Mesh;
+import org.almostrealism.space.Triangle;
+import org.almostrealism.algebra.Vector;
+import org.almostrealism.color.RGB;
+
+// Create an empty mesh
+Mesh mesh = new Mesh();
+
+// Add vertices (returns unique index)
+int v0 = mesh.addVector(new Vector(0, 0, 0));
+int v1 = mesh.addVector(new Vector(1, 0, 0));
+int v2 = mesh.addVector(new Vector(0.5, 1, 0));
+int v3 = mesh.addVector(new Vector(0.5, 0.5, 1));
+
+// Add triangles using vertex indices
+mesh.addTriangle(v0, v1, v2);  // Base triangle
+mesh.addTriangle(v0, v1, v3);  // Side 1
+mesh.addTriangle(v1, v2, v3);  // Side 2
+mesh.addTriangle(v2, v0, v3);  // Side 3
+
+// Enable smooth shading (interpolate vertex normals)
+mesh.setSmooth(true);
+
+// Enable vertex color interpolation
+mesh.setInterpolateColor(true);
+
+// Build BSP tree for fast intersection
+mesh.loadTree();</code></pre>
+
+                <h3>Working with Triangles</h3>
+                <pre><code class="language-java">import org.almostrealism.space.Triangle;
+import org.almostrealism.algebra.Vector;
+import org.almostrealism.color.RGB;
+
+// Create a standalone triangle
+Triangle triangle = new Triangle(
+    new Vector(0, 0, 0),      // Vertex 1
+    new Vector(1, 0, 0),      // Vertex 2
+    new Vector(0.5, 1, 0),    // Vertex 3
+    new RGB(1, 0, 0)          // Color
+);
+
+// Enable smooth shading
+triangle.setSmooth(true);
+
+// Enable vertex color interpolation
+triangle.setInterpolateVertexColor(true);
+
+// Get precomputed data for GPU intersection
+PackedCollection&lt;Vector&gt; triangleData = triangle.getData();
+
+// Access vertex positions
+Vector[] vertices = triangle.getVertices();
+
+// Get texture coordinates (for mesh triangles)
+float[][] texCoords = triangle.getTextureCoordinates();</code></pre>
+
+                <h3>Mesh Grid Example</h3>
+                <pre><code class="language-java">// Create a height-mapped terrain mesh
+int gridSize = 64;
+Mesh terrain = new Mesh();
+
+// Add vertices in a grid pattern
+for (int z = 0; z < gridSize; z++) {
+    for (int x = 0; x < gridSize; x++) {
+        double height = Math.sin(x * 0.2) * Math.cos(z * 0.2);
+        terrain.addVector(new Vector(x, height, z));
+    }
+}
+
+// Connect vertices into triangles
+for (int z = 0; z < gridSize - 1; z++) {
+    for (int x = 0; x < gridSize - 1; x++) {
+        int i0 = z * gridSize + x;
+        int i1 = i0 + 1;
+        int i2 = i0 + gridSize;
+        int i3 = i2 + 1;
+
+        // Two triangles per grid cell
+        terrain.addTriangle(i0, i1, i2, false);  // Don't clear cache
+        terrain.addTriangle(i1, i3, i2, false);
+    }
+}
+
+// Clear cache once after adding all triangles
+terrain.clearTriangleCache();
+
+// Build acceleration structure
+terrain.loadTree();</code></pre>
+
+                <h3>Triangle Data Format</h3>
+                <p>Triangles store precomputed data in a 4x3 packed format for efficient GPU intersection:</p>
+                <table class="comparison-table">
+                    <tr>
+                        <th>Row</th>
+                        <th>Content</th>
+                        <th>Purpose</th>
+                    </tr>
+                    <tr>
+                        <td>0</td>
+                        <td>Edge vector (p2 - p1)</td>
+                        <td>First edge for Moller-Trumbore</td>
+                    </tr>
+                    <tr>
+                        <td>1</td>
+                        <td>Edge vector (p3 - p1)</td>
+                        <td>Second edge for Moller-Trumbore</td>
+                    </tr>
+                    <tr>
+                        <td>2</td>
+                        <td>Origin offset data</td>
+                        <td>Precomputed intersection terms</td>
+                    </tr>
+                    <tr>
+                        <td>3</td>
+                        <td>Face normal vector</td>
+                        <td>Surface normal for shading</td>
+                    </tr>
+                </table>
+            </section>
+
+            <section id="spatial-queries">
+                <h2>Spatial Queries</h2>
+
+                <h3>Spatial Acceleration Classes</h3>
+                <div class="class-list">
+                    <div class="class-item">
+                        <h4>SpacePartition</h4>
+                        <p>BSP tree implementation for surfaces. Recursively subdivides space for fast ray intersection.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>BoundingSolid</h4>
+                        <p>Axis-aligned bounding box (AABB). Used for quick rejection tests before detailed intersection.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>KdTree</h4>
+                        <p>K-dimensional tree for spatial indexing. Efficient nearest-neighbor queries on vertices.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>CachedMeshIntersectionKernel</h4>
+                        <p>Batch-optimized intersection kernel. Caches results for dimension-aware rendering.</p>
+                    </div>
+                </div>
+
+                <h3>BSP Tree Partitioning</h3>
+                <pre><code class="language-java">import org.almostrealism.space.SpacePartition;
+import org.almostrealism.space.Triangle;
+
+// Create a BSP tree for triangle surfaces
+SpacePartition&lt;Triangle&gt; partition = new SpacePartition&lt;&gt;();
+
+// Add triangles to the partition
+for (Triangle t : triangles) {
+    partition.addSurface(t);
+}
+
+// Build the BSP tree (required before queries)
+partition.loadTree();
+
+// Query intersection using the accelerated tree
+ContinuousField intersection = partition.intersectAt(rayProducer);
+
+// Check if tree is ready
+if (partition.isTreeLoaded()) {
+    // Tree-accelerated intersection
+}</code></pre>
+
+                <h3>CachedMeshIntersectionKernel</h3>
+                <pre><code class="language-java">import org.almostrealism.space.CachedMeshIntersectionKernel;
+import org.almostrealism.space.MeshData;
+
+// Create kernel for batch mesh intersection
+MeshData meshData = mesh.getMeshData();
+CachedMeshIntersectionKernel kernel = new CachedMeshIntersectionKernel(
+    meshData,
+    rayProducer
+);
+
+// Set render dimensions for cache indexing
+kernel.setDimensions(width, height, ssw, ssh);
+
+// Batch evaluation - populates cache for all pixels
+MemoryBank&lt;Scalar&gt; destination = Scalar.scalarBank(width * height);
+kernel.into(destination).evaluate(args);
+
+// Individual queries now use cached results
+Pair pixelPos = new Pair(x, y);
+Scalar distance = kernel.evaluate(new Object[]{pixelPos});
+
+// Get normal at intersection point
+Evaluable&lt;Vector&gt; normalEval = kernel.getClosestNormal();
+Vector normal = normalEval.evaluate(new Object[]{pixelPos});</code></pre>
+
+                <h3>Spatial Query Performance</h3>
+                <table class="performance-table">
+                    <thead>
+                        <tr>
+                            <th>Structure</th>
+                            <th>Build Time</th>
+                            <th>Query Time</th>
+                            <th>Use Case</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Linear Search</td>
+                            <td>O(1)</td>
+                            <td>O(n)</td>
+                            <td>Small scenes (&lt;100 surfaces)</td>
+                        </tr>
+                        <tr>
+                            <td>BSP Tree</td>
+                            <td>O(n log n)</td>
+                            <td>O(log n)</td>
+                            <td>Static scenes with many surfaces</td>
+                        </tr>
+                        <tr>
+                            <td>KdTree</td>
+                            <td>O(n log n)</td>
+                            <td>O(log n)</td>
+                            <td>Vertex lookups, nearest-neighbor</td>
+                        </tr>
+                        <tr>
+                            <td>CachedMeshKernel</td>
+                            <td>O(n)</td>
+                            <td>O(1)*</td>
+                            <td>Batch rendering (cached results)</td>
+                        </tr>
+                    </tbody>
+                </table>
+                <p><small>* O(1) for cached queries; initial batch evaluation is O(rays x triangles)</small></p>
+
+                <h3>Bounding Volume Hierarchy</h3>
+                <pre><code class="language-java">import org.almostrealism.geometry.BoundingSolid;
+
+// Calculate bounds for individual surfaces
+BoundingSolid sphereBounds = sphere.calculateBoundingSolid();
+
+// Calculate bounds for entire scene
+Scene&lt;ShadableSurface&gt; scene = buildScene();
+BoundingSolid sceneBounds = scene.calculateBoundingSolid();
+
+// Combine bounding volumes
+BoundingSolid combined = bounds1.combine(bounds2);
+
+// Use for quick rejection in ray intersection
+// (Implemented internally by SpacePartition)</code></pre>
+            </section>
+
+            <section id="integration">
+                <h2>Integration</h2>
+
+                <h3>Module Dependencies</h3>
+                <table class="comparison-table">
+                    <tr>
+                        <th>Module</th>
+                        <th>Purpose</th>
+                        <th>Key Classes Used</th>
+                    </tr>
+                    <tr>
+                        <td>ar-geometry</td>
+                        <td>Core geometry primitives</td>
+                        <td>Ray, Camera, TransformMatrix, BoundingSolid</td>
+                    </tr>
+                    <tr>
+                        <td>ar-color</td>
+                        <td>Color and shading</td>
+                        <td>RGB, Light, Shader, ShadableSurface</td>
+                    </tr>
+                    <tr>
+                        <td>ar-physics</td>
+                        <td>Rigid body dynamics</td>
+                        <td>RigidBody, Absorber</td>
+                    </tr>
+                    <tr>
+                        <td>ar-graph</td>
+                        <td>Spatial indexing</td>
+                        <td>KdTree</td>
+                    </tr>
+                </table>
+
+                <h3>Maven Dependency</h3>
+                <pre><code class="language-xml">&lt;dependency&gt;
+    &lt;groupId&gt;org.almostrealism&lt;/groupId&gt;
+    &lt;artifactId&gt;ar-space&lt;/artifactId&gt;
+    &lt;version&gt;0.72&lt;/version&gt;
+&lt;/dependency&gt;</code></pre>
+
+                <h3>Ray Tracing Integration</h3>
+                <pre><code class="language-java">import org.almostrealism.space.Scene;
+import org.almostrealism.color.ShadableSurface;
+import org.almostrealism.geometry.Ray;
+import org.almostrealism.geometry.ContinuousField;
+
+// Build a scene
+Scene&lt;ShadableSurface&gt; scene = new Scene&lt;&gt;();
+scene.add(createSphere());
+scene.add(createPlane());
+scene.addLight(createLight());
+scene.setCamera(createCamera());
+
+// For each pixel, trace a ray through the scene
+Producer&lt;Ray&gt; primaryRay = camera.createRay(pixelX, pixelY);
+
+// Find closest intersection across all surfaces
+ContinuousField closestHit = null;
+double closestDist = Double.MAX_VALUE;
+
+for (ShadableSurface surface : scene) {
+    ContinuousField hit = surface.intersectAt(primaryRay);
+    if (hit != null) {
+        double dist = hit.getDistance().evaluate().getValue();
+        if (dist > 0 && dist < closestDist) {
+            closestDist = dist;
+            closestHit = hit;
+        }
+    }
+}
+
+// Shade the intersection point
+if (closestHit != null) {
+    RGB color = shade(closestHit, scene.getLights());
+}</code></pre>
+
+                <h3>Mesh Loading Workflow</h3>
+                <pre><code class="language-java">import org.almostrealism.space.Mesh;
+import org.almostrealism.space.MeshSource;
+
+// Load mesh from external source
+Mesh mesh = new Mesh();
+mesh.setMeshSource(objFileSource);
+
+// Configure mesh properties
+mesh.setSmooth(true);           // Enable normal interpolation
+mesh.setRemoveBackFaces(true);  // Cull back-facing triangles
+mesh.setInterpolateColor(true); // Enable vertex colors
+
+// Build spatial acceleration structure
+mesh.loadTree();
+
+// Add to scene
+scene.add(mesh);</code></pre>
+
+                <h3>Hardware Acceleration Setup</h3>
+                <div class="warning">
+                    <strong>Important:</strong> Set environment variables before running space module code:
+                    <pre><code>export AR_HARDWARE_LIBS=/tmp/ar_libs/
+export AR_HARDWARE_DRIVER=native</code></pre>
+                </div>
+
+                <pre><code class="language-java">// Hardware-accelerated mesh intersection
+Mesh mesh = loadMesh();
+MeshData gpuData = mesh.getMeshData();  // Packed for GPU
+
+// Create cached kernel for batch processing
+CachedMeshIntersectionKernel kernel = new CachedMeshIntersectionKernel(
+    gpuData,
+    rayProducer
+);
+
+// Process all rays in parallel on GPU
+kernel.setDimensions(width, height, 1, 1);
+kernel.into(destinationBank).evaluate(batchArgs);</code></pre>
+            </section>
+
+            <section id="troubleshooting">
+                <h2>Troubleshooting</h2>
+
+                <h3>Common Issues</h3>
+
+                <div class="warning">
+                    <strong>Issue:</strong> <code>NullPointerException</code> when calling <code>intersectAt()</code><br>
+                    <strong>Solution:</strong> Ensure mesh is properly loaded and <code>loadTree()</code> has been called for BSP acceleration.
+                </div>
+
+                <div class="warning">
+                    <strong>Issue:</strong> Mesh appears faceted instead of smooth<br>
+                    <strong>Solution:</strong> Call <code>mesh.setSmooth(true)</code> before rendering to enable normal interpolation.
+                </div>
+
+                <div class="warning">
+                    <strong>Issue:</strong> Missing triangles in rendered output<br>
+                    <strong>Solution:</strong> Check winding order (vertex order determines front face). Try <code>setShadeBack(true)</code> or <code>setRemoveBackFaces(false)</code>.
+                </div>
+
+                <div class="warning">
+                    <strong>Issue:</strong> Slow intersection performance on large meshes<br>
+                    <strong>Solution:</strong> Build the BSP tree with <code>mesh.loadTree()</code> or use <code>CachedMeshIntersectionKernel</code> for batch processing.
+                </div>
+
+                <div class="warning">
+                    <strong>Issue:</strong> <code>UnsupportedOperationException</code> from <code>calculateBoundingSolid()</code><br>
+                    <strong>Solution:</strong> Some primitives (Triangle, Mesh) have incomplete bounding implementations. Use scene-level bounds calculation instead.
+                </div>
+            </section>
+
+            <section id="resources">
+                <h2>Additional Resources</h2>
+                <ul>
+                    <li><a href="../../space/README.md">Space Module README</a> - Comprehensive module documentation</li>
+                    <li><a href="../apidocs/org/almostrealism/space/package-summary.html">JavaDoc API</a> - Complete API reference</li>
+                    <li><a href="time.html">Time Module</a> - Temporal operations and signal processing</li>
+                </ul>
+            </section>
+        </main>
+
+        <footer>
+            <p><a href="../index.html">&larr; Back to Framework Documentation</a></p>
+            <p>&copy; 2024 Michael Murray. Licensed under the Apache License, Version 2.0.</p>
+        </footer>
+    </div>
+
+    <script src="../js/docs.js"></script>
+</body>
+</html>

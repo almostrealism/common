@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AR-Color Module - Almost Realism Framework</title>
+    <link rel="stylesheet" href="../css/style.css">
+    <style>
+        .key-concepts { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin: 20px 0; }
+        .concept-card { background: #f8f9fa; border-left: 4px solid #ad1457; padding: 15px; border-radius: 4px; }
+        .concept-card h4 { margin-top: 0; color: #ad1457; }
+        .performance-table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+        .performance-table th, .performance-table td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
+        .performance-table th { background-color: #fce4ec; color: #ad1457; font-weight: bold; }
+        .performance-table tr:hover { background-color: #f5f5f5; }
+        .comparison-table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+        .comparison-table th, .comparison-table td { padding: 10px; border: 1px solid #ddd; text-align: left; }
+        .comparison-table th { background-color: #fce4ec; color: #ad1457; }
+        .class-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 15px; margin: 20px 0; }
+        .class-item { background: #fff; border: 1px solid #ddd; padding: 12px; border-radius: 4px; }
+        .class-item h4 { margin: 0 0 8px 0; color: #ad1457; font-size: 1.1em; }
+        .class-item p { margin: 0; font-size: 0.9em; color: #666; }
+        .code-example { background: #f5f5f5; border-left: 4px solid #ad1457; padding: 15px; margin: 15px 0; border-radius: 4px; }
+        .highlight { background-color: #fce4ec; padding: 2px 4px; }
+        .warning { background-color: #ffebee; border-left: 4px solid #c62828; padding: 12px; margin: 15px 0; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>AR-Color Module</h1>
+            <p class="tagline">Color Representation, Shading Systems & Lighting Models</p>
+            <nav>
+                <a href="../index.html">Home</a>
+                <a href="#overview">Overview</a>
+                <a href="#architecture">Architecture</a>
+                <a href="#classes">Core Concepts</a>
+                <a href="#examples">Examples</a>
+                <a href="#resources">Resources</a>
+            </nav>
+        </header>
+
+        <main>
+            <section id="overview">
+                <h2>Overview</h2>
+                <p>The <strong>ar-color</strong> module provides comprehensive color representation, shading systems, lighting models, and texture support for the Almost Realism rendering pipeline. It bridges low-level color arithmetic with high-level rendering abstractions through composable shaders and physically-based lighting.</p>
+
+                <div class="key-concepts">
+                    <div class="concept-card">
+                        <h4>Color Types</h4>
+                        <p>RGB and RGBA color models with 0.0-1.0 range, wavelength-based construction (350-780nm), and full arithmetic operations.</p>
+                    </div>
+                    <div class="concept-card">
+                        <h4>Lighting System</h4>
+                        <p>Point lights, ambient lights, and directional lights with configurable intensity and distance attenuation coefficients.</p>
+                    </div>
+                    <div class="concept-card">
+                        <h4>Shading Models</h4>
+                        <p>Composable shader system with DiffuseShader, HighlightShader, and BlendingShader for physically-based and stylized rendering.</p>
+                    </div>
+                    <div class="concept-card">
+                        <h4>Texture System</h4>
+                        <p>Image-based textures with spherical and planar projections, UV scaling, and offset controls for surface mapping.</p>
+                    </div>
+                </div>
+            </section>
+
+            <section id="architecture">
+                <h2>Module Architecture</h2>
+
+                <h3>Color Representation</h3>
+                <div class="class-list">
+                    <div class="class-item">
+                        <h4>RGB</h4>
+                        <p>Three-component color (red, green, blue) extending PackedCollection. Supports wavelength construction and arithmetic.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>RGBA</h4>
+                        <p>Four-component color with alpha channel for transparency. Extends RGB with opacity control.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>RGBFeatures</h4>
+                        <p>Mixin interface with factory methods: rgb(), white(), black(), and hardware-accelerated color producers.</p>
+                    </div>
+                </div>
+
+                <h3>Lighting System</h3>
+                <div class="class-list">
+                    <div class="class-item">
+                        <h4>Light</h4>
+                        <p>Base interface for all light sources. Provides color, intensity, and attenuation configuration.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>PointLight</h4>
+                        <p>Omnidirectional light at a specific position. Supports distance-based attenuation.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>AmbientLight</h4>
+                        <p>Uniform lighting from all directions. Provides base illumination without shadows.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>DirectionalAmbientLight</h4>
+                        <p>Directional light source (like sunlight). Parallel rays with uniform intensity.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>LightingContext</h4>
+                        <p>Container for lights, view direction, and surface properties during shading.</p>
+                    </div>
+                </div>
+
+                <h3>Shading System</h3>
+                <div class="class-list">
+                    <div class="class-item">
+                        <h4>Shader</h4>
+                        <p>Base interface for surface shading. Takes context and normals, produces RGB color.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>DiffuseShader</h4>
+                        <p>Lambertian diffuse shading. Intensity proportional to light-normal dot product.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>HighlightShader</h4>
+                        <p>Phong specular highlights. Configurable exponent for shininess control.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>BlendingShader</h4>
+                        <p>Two-color blending based on light angle. Useful for stylized/toon rendering.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>ShaderSet</h4>
+                        <p>Combines multiple shaders additively. Compose complex materials from simple shaders.</p>
+                    </div>
+                </div>
+
+                <h3>Texture System</h3>
+                <div class="class-list">
+                    <div class="class-item">
+                        <h4>Texture</h4>
+                        <p>Base interface for texture mapping. Maps 3D points to RGB colors.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>ImageTexture</h4>
+                        <p>Image-based texture with projection modes. Supports spherical and planar projections.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>GraphicsConverter</h4>
+                        <p>Image I/O utilities. Load/save images, convert between color formats.</p>
+                    </div>
+                </div>
+
+                <h3>Shading Pipeline</h3>
+                <div class="code-example">
+                    <strong>Step 1:</strong> Ray intersects surface<br>
+                    <strong>Step 2:</strong> Compute surface normal<br>
+                    <strong>Step 3:</strong> Create ShaderContext with lights, view direction, surface properties<br>
+                    <strong>Step 4:</strong> Shader.shade() produces RGB color<br>
+                    <strong>Step 5:</strong> Final pixel color output
+                </div>
+            </section>
+
+            <section id="classes">
+                <h2>Core Concepts Deep Dive</h2>
+
+                <h3>RGB and RGBA Colors</h3>
+                <p>Colors use 0.0 to 1.0 range for component values. RGB extends PackedCollection for hardware acceleration.</p>
+                <div class="code-example">
+                    <pre><code class="language-java">import org.almostrealism.color.RGB;
+import org.almostrealism.color.RGBA;
+import static org.almostrealism.color.RGBFeatures.*;
+
+// Create colors from components (0.0 to 1.0 range)
+RGB red = new RGB(1.0, 0.0, 0.0);
+RGB green = new RGB(0.0, 1.0, 0.0);
+RGB blue = new RGB(0.0, 0.0, 1.0);
+
+// Create from wavelength (350-780 nm)
+RGB spectralRed = new RGB(650.0);    // Red wavelength
+RGB spectralBlue = new RGB(470.0);   // Blue wavelength
+
+// With transparency (alpha channel)
+RGBA semiTransparent = new RGBA(1.0, 0.0, 0.0, 0.5);  // 50% transparent red
+
+// Using factory methods
+CollectionProducer&lt;RGB&gt; white = white();
+CollectionProducer&lt;RGB&gt; black = black();
+CollectionProducer&lt;RGB&gt; custom = rgb(0.5, 0.7, 0.2);</code></pre>
+                </div>
+
+                <h3>Color Arithmetic</h3>
+                <p>Full arithmetic operations for color blending, scaling, and manipulation.</p>
+                <div class="code-example">
+                    <pre><code class="language-java">RGB red = new RGB(1.0, 0.0, 0.0);
+RGB blue = new RGB(0.0, 0.0, 1.0);
+
+// Addition (creates new color)
+RGB purple = red.add(blue);           // Creates purple
+
+// In-place addition
+red.addTo(blue);                      // Modifies red
+
+// Multiplication (scaling brightness)
+RGB dimRed = red.multiply(0.5);       // 50% brightness
+red.multiplyBy(2.0);                  // In-place scaling
+
+// Division
+RGB normalized = color.divide(255.0);
+
+// Subtraction
+RGB difference = color1.subtract(color2);</code></pre>
+                </div>
+
+                <h3>Light Sources</h3>
+                <p>Multiple light types with configurable attenuation for realistic falloff.</p>
+                <div class="code-example">
+                    <pre><code class="language-java">import org.almostrealism.color.Light;
+import org.almostrealism.color.PointLight;
+import org.almostrealism.color.LightingContext;
+
+// Create a point light
+Light light = new PointLight(
+    new Vector(5, 5, 5),           // Position
+    1.0,                            // Intensity
+    new RGB(1.0, 1.0, 1.0)         // White light
+);
+
+// Set distance attenuation: intensity = color / (da + db*d + dc*d^2)
+light.setAttenuationCoefficients(
+    0.0,   // da - Constant term
+    0.0,   // db - Linear term
+    1.0    // dc - Quadratic term (realistic falloff)
+);
+
+// Get light color at a point (includes attenuation)
+Producer&lt;RGB&gt; colorAtPoint = light.getColorAt(pointProducer);</code></pre>
+                </div>
+
+                <h3>Shader Interface</h3>
+                <p>Shaders compute surface color from lighting context and surface normals.</p>
+                <div class="code-example">
+                    <pre><code class="language-java">public interface Shader&lt;C extends LightingContext&gt; extends Node, Editable {
+    // Compute shaded color for surface
+    Producer&lt;RGB&gt; shade(C context, DiscreteField normals);
+}</code></pre>
+                </div>
+
+                <h3>Diffuse and Specular Shading</h3>
+                <p>Combine Lambertian diffuse with Phong specular for realistic materials.</p>
+                <div class="code-example">
+                    <pre><code class="language-java">import org.almostrealism.color.computations.*;
+
+// Diffuse (Lambertian) shading
+DiffuseShader diffuse = new DiffuseShader();
+diffuse.setFrontShade(true);   // Shade front faces
+diffuse.setBackShade(false);   // Don't shade back faces
+
+// Phong specular highlights
+HighlightShader specular = new HighlightShader();
+specular.setHighlightColor(new RGB(1.0, 1.0, 1.0));  // White highlights
+specular.setExponent(32.0);    // Shininess (higher = sharper)
+
+// Stylized blending shader (toon rendering)
+BlendingShader toon = new BlendingShader(
+    new RGB(1.0, 0.5, 0.0),    // Hot color (fully lit)
+    new RGB(0.2, 0.1, 0.0)     // Cold color (in shadow)
+);</code></pre>
+                </div>
+
+                <h3>Texture Mapping</h3>
+                <p>Image-based textures with multiple projection modes for surface mapping.</p>
+                <div class="code-example">
+                    <pre><code class="language-java">import org.almostrealism.texture.ImageTexture;
+
+// Create image texture with spherical projection
+ImageTexture texture = new ImageTexture(
+    ImageTexture.SPHERICAL_PROJECTION,  // Projection mode
+    new URL("http://example.com/texture.jpg"),
+    1.0,   // U scale
+    1.0,   // V scale
+    0.0,   // U offset
+    0.0    // V offset
+);
+
+// Get color at 3D point
+RGB colorAtPoint = texture.operate(pointVector);
+
+// Available projection modes:
+// - SPHERICAL_PROJECTION    - Wraps around spheres
+// - PLANAR_XY_PROJECTION    - Projects onto XY plane
+// - PLANAR_XZ_PROJECTION    - Projects onto XZ plane
+// - PLANAR_YZ_PROJECTION    - Projects onto YZ plane</code></pre>
+                </div>
+
+                <h3>Image I/O</h3>
+                <p>Load and save images with format conversion utilities.</p>
+                <div class="code-example">
+                    <pre><code class="language-java">import org.almostrealism.color.GraphicsConverter;
+import static org.almostrealism.color.RGBFeatures.*;
+
+// Load image as RGB array
+PackedCollection&lt;RGB&gt; image = GraphicsConverter.loadRgb(new File("input.png"));
+
+// Save RGB array as image
+Supplier&lt;Runnable&gt; saveOp = saveRgb("output.png", colorProducer);
+saveOp.get().run();
+
+// Convert between formats
+RGB rgb = GraphicsConverter.convertToRGB(awtColor);
+Color awtColor = GraphicsConverter.convertToAWTColor(rgb);
+
+// Load as raw channels
+PackedCollection&lt;?&gt; channels = channels(new File("image.png"));</code></pre>
+                </div>
+            </section>
+
+            <section id="examples">
+                <h2>Usage Examples</h2>
+
+                <h3>Setting Up Scene Lighting</h3>
+                <pre><code class="language-java">public class SceneLighting {
+    public LightingContext createThreePointLighting() {
+        RGB white = new RGB(1.0, 1.0, 1.0);
+
+        // Key light (main light source)
+        Light keyLight = new PointLight(new Vector(5, 5, 5), 1.0, white);
+        keyLight.setAttenuationCoefficients(0.0, 0.0, 1.0);  // Quadratic falloff
+
+        // Fill light (softer, colored)
+        Light fillLight = new PointLight(
+            new Vector(-3, 2, 4),
+            0.5,
+            new RGB(0.7, 0.7, 1.0)  // Slight blue tint
+        );
+        fillLight.setAttenuationCoefficients(0.0, 0.0, 1.0);
+
+        // Back light (rim lighting)
+        Light backLight = new PointLight(new Vector(0, 0, -5), 0.3, white);
+
+        // Build lighting context
+        LightingContext context = new LightingContext();
+        context.setLight(keyLight);
+        context.addLight(fillLight);
+        context.addLight(backLight);
+
+        return context;
+    }
+}</code></pre>
+
+                <h3>Composing Shaders for Materials</h3>
+                <pre><code class="language-java">public class MaterialBuilder {
+    public ShaderSet&lt;ShaderContext&gt; createPlasticMaterial() {
+        // Diffuse base color
+        DiffuseShader diffuse = new DiffuseShader();
+        diffuse.setFrontShade(true);
+        diffuse.setBackShade(false);
+
+        // Specular highlights (plastic is shiny)
+        HighlightShader specular = new HighlightShader();
+        specular.setHighlightColor(new RGB(1.0, 1.0, 1.0));
+        specular.setExponent(64.0);  // Sharp highlights
+
+        // Combine into material
+        ShaderSet&lt;ShaderContext&gt; plastic = new ShaderSet&lt;&gt;();
+        plastic.add(diffuse);
+        plastic.add(specular);
+
+        return plastic;
+    }
+
+    public ShaderSet&lt;ShaderContext&gt; createMatteMaterial() {
+        // Diffuse only (no specular)
+        DiffuseShader diffuse = new DiffuseShader();
+        diffuse.setFrontShade(true);
+
+        ShaderSet&lt;ShaderContext&gt; matte = new ShaderSet&lt;&gt;();
+        matte.add(diffuse);
+
+        return matte;
+    }
+}</code></pre>
+
+                <h3>Wavelength-Based Spectral Colors</h3>
+                <pre><code class="language-java">public class SpectralColors {
+    public void createRainbow() {
+        // Create spectral colors from wavelengths
+        RGB violet = new RGB(400.0);   // 400 nm - Violet
+        RGB blue = new RGB(470.0);     // 470 nm - Blue
+        RGB cyan = new RGB(500.0);     // 500 nm - Cyan
+        RGB green = new RGB(530.0);    // 530 nm - Green
+        RGB yellow = new RGB(580.0);   // 580 nm - Yellow
+        RGB orange = new RGB(610.0);   // 610 nm - Orange
+        RGB red = new RGB(650.0);      // 650 nm - Red
+
+        // Render full spectrum
+        List&lt;RGB&gt; spectrum = new ArrayList&lt;&gt;();
+        for (double wavelength = 380.0; wavelength &lt;= 780.0; wavelength += 5.0) {
+            spectrum.add(new RGB(wavelength));
+        }
+    }
+}</code></pre>
+
+                <h3>Textured Surface with Custom Projection</h3>
+                <pre><code class="language-java">public class TexturedSurface {
+    public ImageTexture createWoodTexture() throws MalformedURLException {
+        // Wood grain texture with planar projection
+        ImageTexture wood = new ImageTexture(
+            ImageTexture.PLANAR_XY_PROJECTION,
+            new File("wood_grain.jpg").toURI().toURL(),
+            2.0,   // Repeat texture 2x in U direction
+            2.0,   // Repeat texture 2x in V direction
+            0.0,   // No U offset
+            0.0    // No V offset
+        );
+
+        return wood;
+    }
+
+    public ImageTexture createEarthTexture() throws MalformedURLException {
+        // Earth texture with spherical projection
+        ImageTexture earth = new ImageTexture(
+            ImageTexture.SPHERICAL_PROJECTION,
+            new URL("https://example.com/earth_texture.jpg"),
+            1.0, 1.0,  // No UV scaling
+            0.0, 0.0   // No offset
+        );
+
+        return earth;
+    }
+}</code></pre>
+
+                <h3>Hardware-Accelerated Color Operations</h3>
+                <pre><code class="language-java">import static org.almostrealism.color.RGBFeatures.*;
+
+public class AcceleratedColors {
+    public void blendColors() {
+        // Create color producers (lazy evaluation)
+        CollectionProducer&lt;RGB&gt; color1 = rgb(1.0, 0.0, 0.0);  // Red
+        CollectionProducer&lt;RGB&gt; color2 = rgb(0.0, 1.0, 0.0);  // Green
+
+        // Compose operations (compiled to native/GPU code)
+        CollectionProducer&lt;RGB&gt; blended = color1.multiply(c(0.5))
+                                                 .add(color2.multiply(c(0.5)));
+
+        // Evaluate on hardware
+        Evaluable&lt;PackedCollection&lt;?&gt;&gt; eval = blended.get();
+        PackedCollection&lt;?&gt; result = eval.evaluate();
+
+        // Convert to RGB
+        RGB finalColor = new RGB(result, 0);
+
+        System.out.printf("Blended: (%.2f, %.2f, %.2f)%n",
+            finalColor.getRed(),
+            finalColor.getGreen(),
+            finalColor.getBlue());
+    }
+}</code></pre>
+
+                <h3>Complete Shading Example</h3>
+                <pre><code class="language-java">public class ShadingExample {
+    public Producer&lt;RGB&gt; shadePoint(
+            Vector surfacePoint,
+            Vector surfaceNormal,
+            Light light,
+            Vector viewDirection) {
+
+        // Create lighting context
+        LightingContext context = new LightingContext();
+        context.setLight(light);
+        context.setViewDirection(v(viewDirection));
+        context.setSurfacePoint(v(surfacePoint));
+
+        // Create normal field
+        DiscreteField normals = new DiscreteField();
+        normals.add(v(surfaceNormal));
+
+        // Create composite shader
+        ShaderSet&lt;ShaderContext&gt; material = new ShaderSet&lt;&gt;();
+
+        DiffuseShader diffuse = new DiffuseShader();
+        material.add(diffuse);
+
+        HighlightShader specular = new HighlightShader();
+        specular.setExponent(32.0);
+        material.add(specular);
+
+        // Compute shaded color
+        return material.shade(context, normals);
+    }
+}</code></pre>
+            </section>
+
+            <section id="integration">
+                <h2>Module Integration</h2>
+
+                <table class="comparison-table">
+                    <tr>
+                        <th>Module</th>
+                        <th>Integration</th>
+                    </tr>
+                    <tr>
+                        <td>Geometry Module</td>
+                        <td>Uses Vector for light positions, Ray for light directions and reflections</td>
+                    </tr>
+                    <tr>
+                        <td>Space Module</td>
+                        <td>ShadableSurface combines Intersectable with shading; AbstractSurface references shaders</td>
+                    </tr>
+                    <tr>
+                        <td>Collect Module</td>
+                        <td>PackedCollection for efficient color storage; RGB extends PackedCollection</td>
+                    </tr>
+                    <tr>
+                        <td>Render Module</td>
+                        <td>Ray tracing engine uses shaders to compute pixel colors via ShaderContext</td>
+                    </tr>
+                </table>
+            </section>
+
+            <section id="troubleshooting">
+                <h2>Troubleshooting</h2>
+
+                <div class="warning">
+                    <strong>Issue:</strong> Colors appear washed out or too bright<br>
+                    <strong>Solution:</strong> Ensure color components are in 0.0-1.0 range. Clamp values after arithmetic operations.
+                </div>
+
+                <div class="warning">
+                    <strong>Issue:</strong> Specular highlights not visible<br>
+                    <strong>Solution:</strong> Check that view direction is set correctly in LightingContext and exponent is not too high.
+                </div>
+
+                <div class="warning">
+                    <strong>Issue:</strong> Texture appears stretched or distorted<br>
+                    <strong>Solution:</strong> Use appropriate projection mode for your geometry. Spheres need SPHERICAL_PROJECTION.
+                </div>
+
+                <div class="warning">
+                    <strong>Issue:</strong> Hardware acceleration errors<br>
+                    <strong>Solution:</strong> Set environment variables: AR_HARDWARE_LIBS=/tmp/ar_libs/ AR_HARDWARE_DRIVER=native
+                </div>
+            </section>
+
+            <section id="resources">
+                <h2>Additional Resources</h2>
+                <ul>
+                    <li><a href="../../color/README.md">Color Module README</a> - Comprehensive module documentation</li>
+                    <li><a href="../apidocs/org/almostrealism/color/package-summary.html">JavaDoc API</a> - Complete API reference</li>
+                    <li><a href="physics.html">Physics Module</a> - Photon simulation and light interaction</li>
+                    <li><a href="time.html">Time Module</a> - Temporal operations for animation</li>
+                </ul>
+
+                <h3>Environment Configuration</h3>
+                <div class="code-example">
+                    <pre><code class="language-bash">export AR_HARDWARE_LIBS=/tmp/ar_libs/
+export AR_HARDWARE_DRIVER=native  # or opencl, metal</code></pre>
+                </div>
+
+                <h3>Maven Dependency</h3>
+                <div class="code-example">
+                    <pre><code class="language-xml">&lt;dependency&gt;
+    &lt;groupId&gt;org.almostrealism&lt;/groupId&gt;
+    &lt;artifactId&gt;ar-color&lt;/artifactId&gt;
+    &lt;version&gt;0.72&lt;/version&gt;
+&lt;/dependency&gt;</code></pre>
+                </div>
+            </section>
+        </main>
+
+        <footer>
+            <p><a href="../index.html">&larr; Back to Framework Documentation</a></p>
+            <p>&copy; 2024 Michael Murray. Licensed under the Apache License, Version 2.0.</p>
+        </footer>
+    </div>
+
+    <script src="../js/docs.js"></script>
+</body>
+</html>
