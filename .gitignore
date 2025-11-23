@@ -13,8 +13,8 @@
 **/*.hwcache/**
 **/*.hprof
 **/hs_err_pid**
+**/results/**
 /utils/data/**
-/utils/results/**
 /utils/generated_images/**
 
 # Javac argument files
