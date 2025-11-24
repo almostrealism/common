@@ -109,11 +109,12 @@ public class TriangleIntersectAt extends LessThanCollection {
 											   Producer<PackedCollection<?>> u,
 											   Producer<PackedCollection<?>> v,
 											   Producer<PackedCollection<?>> t) {
-		// Create component conditions using new pattern
-		CollectionProducer<PackedCollection<?>> cond1 = CollectionFeatures.getInstance().greaterThan((Producer) u, Ops.o().c(0.0));
-		CollectionProducer<PackedCollection<?>> cond2 = CollectionFeatures.getInstance().lessThan((Producer) u, Ops.o().c(1.0));
-		CollectionProducer<PackedCollection<?>> cond3 = CollectionFeatures.getInstance().greaterThan((Producer) v, Ops.o().c(0.0));
-		CollectionProducer<PackedCollection<?>> cond4 = CollectionFeatures.getInstance().lessThan((Producer) Ops.o().add(u, v), Ops.o().c(1.0));
+		// Create component conditions using non-strict inequalities
+		// to include edge cases (standard Moller-Trumbore algorithm)
+		CollectionProducer<PackedCollection<?>> cond1 = CollectionFeatures.getInstance().greaterThanOrEqual((Producer) u, Ops.o().c(0.0));
+		CollectionProducer<PackedCollection<?>> cond2 = CollectionFeatures.getInstance().lessThanOrEqual((Producer) u, Ops.o().c(1.0));
+		CollectionProducer<PackedCollection<?>> cond3 = CollectionFeatures.getInstance().greaterThanOrEqual((Producer) v, Ops.o().c(0.0));
+		CollectionProducer<PackedCollection<?>> cond4 = CollectionFeatures.getInstance().lessThanOrEqual((Producer) Ops.o().add(u, v), Ops.o().c(1.0));
 
 		// Chain with AND operations: ((cond1 AND cond2) AND cond3) AND cond4
 		CollectionProducer<PackedCollection<?>> conjunction = CollectionFeatures.getInstance().and(

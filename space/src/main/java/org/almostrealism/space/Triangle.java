@@ -101,7 +101,7 @@ public class Triangle extends AbstractSurface implements ParticleGroup, Triangle
 
 	static {
 		CollectionProducer<PackedCollection<Vector>> triangle =
-				triangleFeat.triangle(Input.value(new TraversalPolicy(3, 3), 0));
+				triangleFeat.triangle(Input.value(new TraversalPolicy(false, false, 3, 3), 0));
 		dataProducer = triangle.get();
 
 		intersectAt = TriangleIntersectAt.construct(Input.value(new TraversalPolicy(4, 3), 1),
