@@ -95,13 +95,6 @@ package org.almostrealism.hardware.instructions;
  * }
  * }</pre>
  *
- * <h2>Implementations</h2>
- *
- * <ul>
- *   <li><strong>{@link ScopeInstructionsManager}:</strong> Standard implementation with output tracking</li>
- *   <li><strong>{@link ProcessTreeInstructionsManager}:</strong> Deprecated tree-based approach</li>
- * </ul>
- *
  * @param <K> The {@link ExecutionKey} type used for operation lookup
  * @see InstructionSetManager
  * @see ScopeInstructionsManager

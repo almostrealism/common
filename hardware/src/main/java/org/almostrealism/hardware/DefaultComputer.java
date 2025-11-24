@@ -26,10 +26,6 @@ import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.util.FrequencyCache;
-import org.almostrealism.hardware.arguments.AcceleratedOperationContainer;
-import org.almostrealism.hardware.arguments.AcceleratedSubstitutionEvaluable;
-import io.almostrealism.relation.ProducerSubstitution;
-import org.almostrealism.hardware.instructions.ProcessTreeInstructionsManager;
 import org.almostrealism.hardware.instructions.ScopeInstructionsManager;
 import org.almostrealism.hardware.instructions.ScopeSignatureExecutionKey;
 import org.almostrealism.hardware.mem.Heap;
@@ -37,15 +33,11 @@ import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Stack;
-import java.util.function.BiFunction;
 import java.util.function.Consumer;
-import java.util.function.Function;
 import java.util.function.Supplier;
 
 /**
@@ -195,51 +187,11 @@ import java.util.function.Supplier;
  * <p><strong>Note:</strong> {@link OperationList#setComputeRequirements} automatically
  * manages the requirements stack, so manual push/pop is rarely needed.</p>
  *
- * <h2>Multi-Level Instruction Caching</h2>
  *
- * <p>{@link DefaultComputer} maintains three levels of caching to minimize compilation overhead:</p>
+ * <h3>Scope Instructions Cache</h3>
  *
- * <h3>Level 1: Operation Container Cache</h3>
- * <p>Caches entire instruction patterns created via {@link HardwareFeatures#instruct}:</p>
- * <pre>{@code
- * // First call: Compiles and caches under "scale_2x"
- * Producer<PackedCollection<?>> scaled1 = instruct("scale_2x",
- *     args -> multiply(args[0], c(2.0)),
- *     inputData1
- * );
+ * <p>{@link DefaultComputer} maintains caching to minimize compilation overhead</p>
  *
- * // Second call: Reuses cached container, applies argument substitution
- * Producer<PackedCollection<?>> scaled2 = instruct("scale_2x",
- *     args -> multiply(args[0], c(2.0)),  // Not re-executed
- *     inputData2  // New data substituted into cached operation
- * );
- * }</pre>
- *
- * <p><strong>Cache Properties:</strong></p>
- * <ul>
- *   <li>Type: {@link HashMap} (unbounded)</li>
- *   <li>Key: String instruction key</li>
- *   <li>Value: {@link OperationContainer} with compiled operation and argument templates</li>
- *   <li>Lifetime: Process lifetime (no eviction)</li>
- * </ul>
- *
- * <h3>Level 2: Process Tree Cache</h3>
- * <p>Caches {@link ProcessTreeInstructionsManager}s for operation graph transformations:</p>
- * <pre>{@code
- * // Extracts instruction patterns from process tree
- * ProcessTreeInstructionsManager mgr = computer.getProcessTreeInstructionsManager("key");
- * Process optimized = mgr.extractAll(originalProcess);
- * }</pre>
- *
- * <p><strong>Cache Properties:</strong></p>
- * <ul>
- *   <li>Type: {@link FrequencyCache} (LFU-based)</li>
- *   <li>Capacity: 500 entries</li>
- *   <li>Eviction Threshold: 0.4 (40% least frequently used evicted when full)</li>
- *   <li>Lifetime: Eviction-based (frequently used entries retained)</li>
- * </ul>
- *
- * <h3>Level 3: Scope Instructions Cache</h3>
  * <p>Caches {@link ScopeInstructionsManager}s for scope-level compilation:</p>
  * <pre>{@code
  * // Manages compiled kernels for specific scope signatures
@@ -278,28 +230,19 @@ import java.util.function.Supplier;
  * <pre>
  * 1. Check operationsCache for key
  *    - Found: Reuse container
- *    -         Create substitution evaluable
  *    -         Apply argument substitutions
  *    -         Return delegated producer
  *    -
  *    - Not Found: Create new container
  *                  Apply function to arguments
  *                  Extract/apply instruction managers
- *                  Create AcceleratedOperationContainer
  *                  Cache container
- *                  Create substitution evaluable
  *                  Return delegated producer
  * </pre>
  *
  * <h3>Argument Substitution</h3>
- * <p>Containers store argument templates and substitute actual data at evaluation time:</p>
- * <pre>{@code
- * // Cached container has template arguments: [arg0Template]
- * // Actual evaluation with different data:
- * AcceleratedSubstitutionEvaluable eval = new AcceleratedSubstitutionEvaluable(container);
- * eval.addSubstitution(substitution.apply(arg0Template, actualData));
- * // Evaluation uses actualData instead of arg0Template
- * }</pre>
+ * <p>Containers store argument templates and substitute actual data at evaluation time.
+ * The argument evaluator handles mapping template arguments to actual data during evaluation.</p>
  *
  * <h2>Compilation Methods</h2>
  *
@@ -473,7 +416,6 @@ import java.util.function.Supplier;
  * @see Hardware
  * @see ComputeContext
  * @see ComputeRequirement
- * @see HardwareFeatures#instruct
  * @see FrequencyCache
  *
  * @author  Michael Murray
@@ -484,12 +426,6 @@ public class DefaultComputer implements Computer<MemoryData>, ConsoleFeatures {
 
 	/** Thread-local stack of compute requirements for context selection. */
 	private ThreadLocal<Stack<List<ComputeRequirement>>> requirements;
-
-	/** Cache of operation containers for instruction reuse (unlimited capacity). */
-	private Map<String, OperationContainer> operationsCache;
-
-	/** Frequency-based cache of process tree instruction managers (capacity: 500, eviction: 0.4). */
-	private FrequencyCache<String, ProcessTreeInstructionsManager> processTreeCache;
 
 	/** Frequency-based cache of scope instruction managers with auto-destroy on eviction. */
 	private FrequencyCache<String, ScopeInstructionsManager<ScopeSignatureExecutionKey>> instructionsCache;
@@ -503,8 +439,6 @@ public class DefaultComputer implements Computer<MemoryData>, ConsoleFeatures {
 	public DefaultComputer(Hardware hardware) {
 		this.hardware = hardware;
 		this.requirements = ThreadLocal.withInitial(Stack::new);
-		this.operationsCache = new HashMap<>();
-		this.processTreeCache = new FrequencyCache<>(500, 0.4);
 		this.instructionsCache = new FrequencyCache<>(500, 0.4);
 		this.instructionsCache.setEvictionListener(
 				(key, mgr) -> mgr.destroy());
@@ -596,19 +530,6 @@ public class DefaultComputer implements Computer<MemoryData>, ConsoleFeatures {
 	}
 
 	/**
-	 * Returns a {@link ProcessTreeInstructionsManager} for the given key, creating if absent.
-	 *
-	 * <p>Managers are cached in a frequency-based cache (capacity: 500, eviction: 0.4).
-	 * Accessing a manager updates its frequency count, making it less likely to be evicted.</p>
-	 *
-	 * @param key Unique identifier for this instruction manager
-	 * @return The instruction manager for this key
-	 */
-	public ProcessTreeInstructionsManager getProcessTreeInstructionsManager(String key) {
-		return processTreeCache.computeIfAbsent(key, k -> new ProcessTreeInstructionsManager());
-	}
-
-	/**
 	 * Returns a {@link ScopeInstructionsManager} for the given signature, creating if absent.
 	 *
 	 * <p>Scope instruction managers compile and cache kernels for operations with matching
@@ -651,81 +572,6 @@ public class DefaultComputer implements Computer<MemoryData>, ConsoleFeatures {
 
 					return mgr;
 				});
-	}
-
-	/**
-	 * Creates or retrieves a cached operation container for the given key.
-	 *
-	 * <p>If a container exists for the key, reuses it with argument substitution.
-	 * Otherwise, creates a new container by applying the function to arguments,
-	 * extracting instruction patterns, and caching the result.</p>
-	 *
-	 * @param <P>          the process type
-	 * @param <T>          the result type
-	 * @param <V>          the process implementation type
-	 * @param <M>          the memory data type
-	 * @param key          unique key for caching this operation pattern
-	 * @param func         function that creates the producer from arguments
-	 * @param substitution function to create substitutions between template and actual arguments
-	 * @param delegate     function to create a delegated producer from result and evaluable
-	 * @param args         the arguments to apply
-	 * @return a producer that uses the cached or newly created container
-	 */
-	public <P extends Process<?, ?>, T, V extends Process<P, T>, M extends MemoryData>
-			Producer<M> createContainer(String key,
-								Function<Producer[], Producer<M>> func,
-								BiFunction<Producer, Producer, ProducerSubstitution> substitution,
-								BiFunction<Producer, Producer, Producer> delegate,
-								Producer... args) {
-		OperationContainer container;
-
-		if (operationsCache.containsKey(key)) {
-			container = operationsCache.get(key);
-		} else {
-			Producer<M> producer = func.apply(args);
-
-			if (!(producer instanceof Process)) {
-				return producer;
-			}
-
-			Process<?, ?> operation = applyInstructionsManager(key, (Process) producer);
-			AcceleratedOperationContainer c = getProcessTreeInstructionsManager(key).applyContainer(operation);
-			if (c == null) {
-				return producer;
-			}
-
-			container = new OperationContainer(c, args, producer);
-			operationsCache.put(key, container);
-		}
-
-		AcceleratedSubstitutionEvaluable evaluable = new AcceleratedSubstitutionEvaluable<>(container.container);
-		for (int i = 0; i < args.length; i++) {
-			evaluable.addSubstitution(substitution.apply(container.arguments[i], args[i]));
-		}
-		return delegate.apply(container.result, () -> evaluable);
-	}
-
-	/**
-	 * Applies or replaces instruction managers for the given process.
-	 *
-	 * <p>If the key already exists in the process tree cache, replaces
-	 * existing patterns in the process. Otherwise, extracts patterns
-	 * from the process and caches them.</p>
-	 *
-	 * @param <P>     the process type
-	 * @param <T>     the result type
-	 * @param <V>     the process implementation type
-	 * @param key     unique key for the instruction manager
-	 * @param process the process to apply instruction management to
-	 * @return the process with instruction management applied
-	 */
-	public <P extends Process<?, ?>, T, V extends Process<P, T>> Process<P, T>
-			applyInstructionsManager(String key, V process) {
-		if (processTreeCache.containsKey(key)) {
-			return getProcessTreeInstructionsManager(key).replaceAll(process);
-		} else {
-			return getProcessTreeInstructionsManager(key).extractAll(process);
-		}
 	}
 
 	/**
@@ -825,31 +671,4 @@ public class DefaultComputer implements Computer<MemoryData>, ConsoleFeatures {
 	/** Returns the console for logging output. */
 	@Override
 	public Console console() { return Hardware.console; }
-
-	/**
-	 * Internal container for caching operation patterns with their arguments and results.
-	 */
-	class OperationContainer {
-		/** The accelerated operation container holding the compiled operation. */
-		private AcceleratedOperationContainer container;
-
-		/** The template arguments used when the container was created. */
-		private Producer arguments[];
-
-		/** The result producer from the original operation. */
-		private Producer result;
-
-		/**
-		 * Constructs a new operation container.
-		 *
-		 * @param container the accelerated operation container
-		 * @param arguments the template arguments
-		 * @param result    the result producer
-		 */
-		public OperationContainer(AcceleratedOperationContainer container, Producer arguments[], Producer result) {
-			this.container = container;
-			this.arguments = arguments;
-			this.result = result;
-		}
-	}
 }

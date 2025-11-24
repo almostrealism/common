@@ -130,11 +130,11 @@ public class MyNativeEnabledApplication implements CodeFeatures {
 		Producer<PackedCollection<?>> sum = add(c(1.0), c(2.0));
 		Producer<PackedCollection<?>> product = multiply(c(3.0), c(2.0));
 
-		cc(() -> a(2, p(result), sum).get().run(), ComputeRequirement.CPU);
-		System.out.println("Result = " + result.toArrayString());
+		cc(() -> a(1, p(result), sum).get().run(), ComputeRequirement.CPU);
+		log("Result = " + result.toArrayString());
 
-		cc(() -> a(2, p(result), product).get().run(), ComputeRequirement.GPU);
-		System.out.println("Result = " + result.toArrayString());
+		cc(() -> a(1, p(result), product).get().run(), ComputeRequirement.GPU);
+		log("Result = " + result.toArrayString());
 	}
 
 	@Test

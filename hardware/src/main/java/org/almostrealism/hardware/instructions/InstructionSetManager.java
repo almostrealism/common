@@ -65,7 +65,6 @@ import io.almostrealism.lifecycle.Destroyable;
  * <ul>
  *   <li><strong>{@link ScopeInstructionsManager}:</strong> Standard implementation with InstructionSet caching</li>
  *   <li><strong>{@link ComputationInstructionsManager}:</strong> Specialized for single-function scopes</li>
- *   <li><strong>{@link ProcessTreeInstructionsManager}:</strong> Deprecated tree-based approach</li>
  * </ul>
  *
  * <h2>Thread Safety</h2>

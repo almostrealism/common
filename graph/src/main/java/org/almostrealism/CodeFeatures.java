@@ -130,11 +130,6 @@ public interface CodeFeatures extends LayerFeatures,
 								TemporalFeatures, ComputerFeatures {
 	boolean enableFixedCollections = true;
 
-	@Override
-	default <T> Producer<?> delegate(Producer<T> original, Producer<T> actual) {
-		return LayerFeatures.super.delegate(original, actual);
-	}
-
 	default <T> Producer<T> v(T v) {
 		if (v instanceof TraversalPolicy) {
 			warn("TraversalPolicy provided as Producer value");

@@ -37,7 +37,6 @@ import java.util.stream.IntStream;
  * hardware-accelerated operations in the Almost Realism framework. It extends multiple feature
  * interfaces to provide a unified API for:
  * <ul>
- *   <li>Producer creation and manipulation ({@link ProducerFeatures})</li>
  *   <li>Memory operations ({@link MemoryDataFeatures})</li>
  *   <li>Logging and debugging ({@link ConsoleFeatures})</li>
  *   <li>Hardware-specific optimizations and delegation</li>
@@ -219,23 +218,8 @@ import java.util.stream.IntStream;
  * @see Hardware
  * @see DefaultComputer
  */
-public interface HardwareFeatures extends ProducerFeatures, MemoryDataFeatures, ConsoleFeatures {
+public interface HardwareFeatures extends MemoryDataFeatures, ConsoleFeatures {
 	boolean outputMonitoring = SystemUtils.isEnabled("AR_HARDWARE_OUTPUT_MONITORING").orElse(false);
-
-	default <T extends MemoryData> Producer<T> instruct(String key,
-														Function<Producer[], Producer<T>> func,
-														Producer... args) {
-		Producer delegates[] = Arrays.stream(args)
-				.map(arg -> delegate(arg))
-				.toArray(Producer[]::new);
-		return (Producer) Hardware.getLocalHardware().getComputer()
-					.createContainer(key, func, this::substitute, this::delegate, delegates);
-	}
-
-	@Override
-	default <T> Producer<?> delegate(Producer<T> original, Producer<T> actual) {
-		return new DelegatedProducer<>(actual);
-	}
 
 	default Supplier<Runnable> loop(Computation<Void> c, int iterations) {
 		if (c instanceof OperationList && !((OperationList) c).isComputation()) {
