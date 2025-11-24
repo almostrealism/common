@@ -265,17 +265,19 @@ public interface VectorFeatures extends ScalarFeatures {
 	default CollectionProducer<Vector> crossProduct(Producer<Vector> a, Producer<Vector> b) {
 		return new DefaultTraversableExpressionComputation<>("crossProduct", shape(3), args ->
 				CollectionExpression.create(shape(3), idx -> {
+					// Use getValueAt instead of getValueRelative since we're accessing
+					// fixed vector components (0, 1, 2), not kernel-relative positions
 					Expression x = Sum.of(
-							Product.of(args[1].getValueRelative(e(1)), args[2].getValueRelative(e(2))),
-							Product.of(args[1].getValueRelative(e(2)), args[2].getValueRelative(e(1))).minus()
+							Product.of(args[1].getValueAt(e(1)), args[2].getValueAt(e(2))),
+							Product.of(args[1].getValueAt(e(2)), args[2].getValueAt(e(1))).minus()
 					);
 					Expression y = Sum.of(
-							Product.of(args[1].getValueRelative(e(2)), args[2].getValueRelative(e(0))),
-							Product.of(args[1].getValueRelative(e(0)), args[2].getValueRelative(e(2))).minus()
+							Product.of(args[1].getValueAt(e(2)), args[2].getValueAt(e(0))),
+							Product.of(args[1].getValueAt(e(0)), args[2].getValueAt(e(2))).minus()
 					);
 					Expression z = Sum.of(
-							Product.of(args[1].getValueRelative(e(0)), args[2].getValueRelative(e(1))),
-							Product.of(args[1].getValueRelative(e(1)), args[2].getValueRelative(e(0))).minus()
+							Product.of(args[1].getValueAt(e(0)), args[2].getValueAt(e(1))),
+							Product.of(args[1].getValueAt(e(1)), args[2].getValueAt(e(0))).minus()
 					);
 
 					Expression p = idx.imod(3);

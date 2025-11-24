@@ -529,13 +529,16 @@ public class CollectionMathTests implements TestFeatures {
 	public void lessThanLargeBatch() {
 		// Test lessThan with 256 elements to check for batch size limits
 		int batchSize = 256;
-		PackedCollection<?> input = new PackedCollection<>(shape(batchSize, 2).traverse(1));
+
+		// Use separate inputs like lessThanSmallBatch (combined input format doesn't work with v(shape, argIndex))
+		PackedCollection<?> valuesA = new PackedCollection<>(shape(batchSize, 1).traverse(1));
+		PackedCollection<?> valuesB = new PackedCollection<>(shape(batchSize, 1).traverse(1));
 
 		// Fill with test data: a[i] = i, b[i] = 255 - i
 		// Expected: min(i, 255-i)
 		for (int i = 0; i < batchSize; i++) {
-			double v = i;
-			input.setMem(i * 2, v, 255 - v);
+			valuesA.setMem(i, (double) i);
+			valuesB.setMem(i, (double) (255 - i));
 		}
 
 		Producer a = v(shape(-1, 1), 0);
@@ -545,7 +548,7 @@ public class CollectionMathTests implements TestFeatures {
 		Producer result = lessThan(a, b, a, b);
 
 		PackedCollection<?> resultData = new PackedCollection<>(shape(batchSize, 1).traverse(1));
-		result.get().into(resultData.each()).evaluate(input);
+		result.get().into(resultData.each()).evaluate(valuesA, valuesB);
 
 		System.out.println("lessThan large batch (size=" + batchSize + "):");
 		System.out.println("  [0]: " + resultData.valueAt(0, 0) + " (expected 0.0)");

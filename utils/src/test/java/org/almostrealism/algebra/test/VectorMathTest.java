@@ -123,23 +123,23 @@ public class VectorMathTest implements TestFeatures {
 		Vector v = new Vector(cp.get().evaluate(), 0);
 		v.print();
 
-		assertEquals(-0.894427191, v.getX());
-		assertEquals(-0.447213595, v.getY());
+		// Expected values: -2/sqrt(5) and -1/sqrt(5)
+		assertEquals(-0.8944271909999159, v.getX());
+		assertEquals(-0.4472135954999579, v.getY());
 		assertEquals(0, v.getZ());
 	}
 
 	@Test
 	public void normalizedCrossProduct2() {
-		if (skipGeometryIssues) return;
-
 		CollectionProducer<Vector> cp = normalize(crossProduct(v(shape(3), 0)));
 		Evaluable<Vector> ev = cp.get();
 
 		Vector v = new Vector(ev.evaluate(new Vector(100, -200, 0)), 0);
 		v.print();
 
-		assertEquals(-0.894427191, v.getX());
-		assertEquals(-0.447213595, v.getY());
+		// Expected values: -2/sqrt(5) and -1/sqrt(5)
+		assertEquals(-0.8944271909999159, v.getX());
+		assertEquals(-0.4472135954999579, v.getY());
 		assertEquals(0, v.getZ());
 	}
 
