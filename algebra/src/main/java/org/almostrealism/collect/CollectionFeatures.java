@@ -281,7 +281,7 @@ import java.util.stream.Stream;
  * @see MatrixFeatures
  * @see DeltaFeatures
  */
-public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures {
+public interface CollectionFeatures extends ExpressionFeatures {
 	boolean enableShapelessWarning = false;
 	boolean enableVariableRepeat = false;
 
@@ -787,30 +787,6 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 				}
 			};
 		}
-	}
-
-	@Override
-	default <T> Producer<?> delegate(Producer<T> original, Producer<T> actual) {
-		if (actual == null) return null;
-
-		TraversalPolicy shape = null;
-		boolean fixedCount = Countable.isFixedCount(actual);
-
-		if (actual instanceof Shape && ((Shape) actual).getShape().getSize() == 1) {
-			shape = new TraversalPolicy(1);
-			fixedCount = false;
-		} else if (!(actual instanceof CollectionProducer) && original instanceof Shape) {
-			shape = ((Shape) original).getShape();
-			fixedCount = Countable.isFixedCount(original);
-		}
-
-		if (shape != null) {
-			Evaluable ev = actual.get();
-			actual = new DynamicCollectionProducer(new TraversalPolicy(1),
-					args -> ev.evaluate((Object[]) args), false, fixedCount);
-		}
-
-		return new DelegatedCollectionProducer<>(c(actual), false, false);
 	}
 
 	/**

@@ -69,20 +69,11 @@ import java.util.Objects;
  * ProcessTreePositionKey grandchild = child0.append(2);  // [0, 2]
  * }</pre>
  *
- * <h2>Use with ProcessTreeInstructionsManager</h2>
+ * <h2>Historical Context</h2>
  *
- * <p>This key type is primarily used with {@link ProcessTreeInstructionsManager} (now deprecated)
- * for traversing and compiling Process trees:</p>
- *
- * <pre>{@code
- * ProcessTreeInstructionsManager manager = new ProcessTreeInstructionsManager();
- *
- * // Extract all operations from process tree
- * manager.traverseAll(argumentList, (key, operation) -> {
- *     System.out.println("Position: " + key.describe());
- *     // Compile and cache operation at this position
- * });
- * }</pre>
+ * <p>This key type was primarily used with the now-removed {@code ProcessTreeInstructionsManager}
+ * for traversing and compiling Process trees. Modern code should use
+ * {@link ScopeSignatureExecutionKey} instead.</p>
  *
  * <h2>Equality and Hashing</h2>
  *
@@ -98,10 +89,9 @@ import java.util.Objects;
  * key1.equals(key3);  // false - different depth
  * }</pre>
  *
- * @deprecated This key type is associated with the deprecated {@link ProcessTreeInstructionsManager}.
+ * @deprecated This key type is associated with the now-removed {@code ProcessTreeInstructionsManager}.
  *             Modern code should use {@link ScopeSignatureExecutionKey} instead.
  * @see ExecutionKey
- * @see ProcessTreeInstructionsManager
  * @see io.almostrealism.compute.Process
  */
 public class ProcessTreePositionKey implements ExecutionKey, Describable {

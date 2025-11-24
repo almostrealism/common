@@ -136,25 +136,6 @@ public class TriangleTest implements TestFeatures {
 	}
 
 	@Test
-	public void originComposition() {
-		if (skipGeometryIssues) return;
-
-		Producer<Vector> o = originPointProducer();
-		Evaluable<Vector> evo = o.get();
-
-		Vector vo = evo.evaluate();
-		vo.print();
-		Assert.assertEquals(new Vector(0.0, 0.0, 0.0), vo);
-
-		Producer<Vector> d = originDirectionProducer();
-		Evaluable<Vector> evd = d.get();
-
-		Vector vd = evd.evaluate();
-		System.out.println(vd);
-		Assert.assertEquals(new Vector(0.0, 0.0, -1.0), vd);
-	}
-
-	@Test
 	public void origin() {
 		CollectionProducer<Vector> at = vector(originProducer());
 		Evaluable<Vector> ev = at.get();

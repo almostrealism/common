@@ -21,12 +21,13 @@ import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.geometry.Ray;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.util.TestFeatures;
 import org.junit.Assert;
 import org.junit.Test;
 
 import java.util.stream.IntStream;
 
-public class AcceleratedConjunctionTests extends AcceleratedConditionalStatementTests {
+public class AcceleratedConjunctionTests implements TestFeatures {
 	protected CollectionProducer<PackedCollection<?>> conjunction(
 			Producer<PackedCollection<?>> a, Producer<PackedCollection<?>> b,
 			Producer<PackedCollection<?>> c, Producer<PackedCollection<?>> d) {

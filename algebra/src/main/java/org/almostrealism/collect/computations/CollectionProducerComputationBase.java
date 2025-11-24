@@ -756,21 +756,6 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 	}
 
 	/**
-	 * Delegates producer substitution to the parent interface implementation.
-	 * This method is used in optimization scenarios where producers need to be
-	 * replaced with more efficient alternatives.
-	 * 
-	 * @param original The original producer to replace
-	 * @param actual The actual producer to use instead
-	 * @param <T> The type of the producer
-	 * @return The result of the delegation
-	 */
-	@Override
-	public <T> Producer<?> delegate(Producer<T> original, Producer<T> actual) {
-		return CollectionProducerComputation.super.delegate(original, actual);
-	}
-
-	/**
 	 * Generates a signature string for this computation including shape information.
 	 * The signature is used for computation caching and deduplication.
 	 * It combines the base signature with the detailed shape representation.

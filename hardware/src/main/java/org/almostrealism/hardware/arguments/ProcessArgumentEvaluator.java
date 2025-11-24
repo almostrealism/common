@@ -46,7 +46,6 @@ import io.almostrealism.uml.Multiple;
  *
  * <ul>
  *   <li><strong>{@link ProcessArgumentMap}:</strong> Maps arguments by tree position with substitution support</li>
- *   <li><strong>{@link AcceleratedOperationContainer}:</strong> Thread-local substitution-based resolution</li>
  * </ul>
  *
  * <h2>Usage in Process Trees</h2>
@@ -97,7 +96,6 @@ import io.almostrealism.uml.Multiple;
  * }</pre>
  *
  * @see ProcessArgumentMap
- * @see AcceleratedOperationContainer
  * @see ArrayVariable
  */
 public interface ProcessArgumentEvaluator {
