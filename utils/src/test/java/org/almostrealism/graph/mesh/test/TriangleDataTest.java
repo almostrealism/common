@@ -73,7 +73,7 @@ public class TriangleDataTest implements TestFeatures {
 	@Test
 	public void triangleData() {
 		PackedCollection<PackedCollection<Vector>> points = points();
-		CollectionProducer<PackedCollection<Vector>> td = triangle(
+		CollectionProducer<PackedCollection<?>> td = triangle(
 											v(points.get(0).get(0)),
 											v(points.get(0).get(1)),
 											v(points.get(0).get(2)));
@@ -83,7 +83,7 @@ public class TriangleDataTest implements TestFeatures {
 	@Test
 	public void triangleDataKernel() {
 		PackedCollection<PackedCollection<Vector>> points = points();
-		Producer<PackedCollection<Vector>> td = triangle(points(0));
+		Producer<PackedCollection<?>> td = triangle(points(0));
 
 		MeshData output = new MeshData(1);
 		td.get().into(output).evaluate(points);

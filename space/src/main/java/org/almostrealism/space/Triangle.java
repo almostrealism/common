@@ -85,13 +85,13 @@ public class Triangle extends AbstractSurface implements ParticleGroup, Triangle
 	private boolean useT = true;
 
 	/** Precomputed triangle data for hardware-accelerated intersection. */
-	private PackedCollection<Vector> data;
+	private PackedCollection<?> data;
 
 	/**
 	 * Evaluable that computes precomputed triangle data from vertex positions.
 	 * The output format is a 4x3 matrix containing edge vectors and face normal.
 	 */
-	public static final Evaluable<PackedCollection<Vector>> dataProducer;
+	public static final Evaluable<PackedCollection<?>> dataProducer;
 
 	/**
 	 * Evaluable for computing ray-triangle intersections.
@@ -100,7 +100,7 @@ public class Triangle extends AbstractSurface implements ParticleGroup, Triangle
 	public static final Evaluable<PackedCollection<?>> intersectAt;
 
 	static {
-		CollectionProducer<PackedCollection<Vector>> triangle =
+		CollectionProducer<PackedCollection<?>> triangle =
 				triangleFeat.triangle(Input.value(new TraversalPolicy(false, false, 3, 3), 0));
 		dataProducer = triangle.get();
 
@@ -196,7 +196,7 @@ public class Triangle extends AbstractSurface implements ParticleGroup, Triangle
 	 *
 	 * @return the precomputed triangle data
 	 */
-	public PackedCollection<Vector> getData() { return data; }
+	public PackedCollection<?> getData() { return data; }
 	
 	/**
 	 * Sets the vertices of this triangle to the specified positions.
@@ -351,9 +351,9 @@ public class Triangle extends AbstractSurface implements ParticleGroup, Triangle
 			Vector triple = point.get().evaluate(args);
 			if (dc.length() < Intersection.e * 100) return new RGB(0.0, 0.0, 0.0);
 
-			Vector abc = data.get(0);
-			Vector def = data.get(1);
-			Vector jkl = data.get(2);
+			Vector abc = new Vector(data.get(0), 0);
+			Vector def = new Vector(data.get(1), 0);
+			Vector jkl = new Vector(data.get(2), 0);
 
 			if (intcolor) {
 				double g = triple.getX();
@@ -420,9 +420,9 @@ public class Triangle extends AbstractSurface implements ParticleGroup, Triangle
 				double h = point.getY();
 				double i = point.getZ();
 
-				Vector abc = data.get(0);
-				Vector def = data.get(1);
-				Vector jkl = data.get(2);
+				Vector abc = new Vector(data.get(0), 0);
+				Vector def = new Vector(data.get(1), 0);
+				Vector jkl = new Vector(data.get(2), 0);
 
 				double m = abc.getX() * (def.getY() * i - h * def.getZ()) +
 						abc.getY() * (g * def.getZ() - def.getX() * i) +
@@ -456,7 +456,7 @@ public class Triangle extends AbstractSurface implements ParticleGroup, Triangle
 		} else {
 			if (useT && getTransform(true) != null) {
 				return getTransform(true).getInverse().transform(
-						v(data.get(3)),
+						v(new Vector(data.get(3), 0)),
 						TransformMatrix.TRANSFORM_AS_NORMAL);
 			} else {
 				return vector(c(((PackedCollection<?>) data.get(3)).clone()));

@@ -17,16 +17,15 @@
 package org.almostrealism.graph.mesh;
 
 import io.almostrealism.collect.CollectionExpression;
-import io.almostrealism.collect.IndexProjectionExpression;
-import io.almostrealism.collect.TraversableExpression;
+import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorFeatures;
-import io.almostrealism.relation.Evaluable;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 import org.almostrealism.collect.computations.DefaultTraversableExpressionComputation;
+import org.almostrealism.collect.computations.IndexProjectionProducerComputation;
 
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -117,7 +116,7 @@ public interface TriangleFeatures extends VectorFeatures {
 	 * @param points supplier for a packed collection containing 3 vertices (9 floats)
 	 * @return producer for the triangle data structure
 	 */
-	default CollectionProducer<PackedCollection<Vector>> triangle(Supplier<Evaluable<? extends PackedCollection<?>>> points) {
+	default CollectionProducer<PackedCollection<?>> triangle(Producer<PackedCollection<?>> points) {
 		return triangle(
 				point(points, 0),
 				point(points, 1),
@@ -134,11 +133,10 @@ public interface TriangleFeatures extends VectorFeatures {
 	 * @param p3 producer for the third vertex
 	 * @return producer for the triangle data structure
 	 */
-	default CollectionProducer<PackedCollection<Vector>> triangle(Producer<Vector> p1,
-																	 Producer<Vector> p2,
-																	 Producer<Vector> p3) {
-		Producer<Vector> abc = subtract(p2, p1);
-		Producer<Vector> def = subtract(p3, p1);
+	default <T extends PackedCollection<?>> CollectionProducer<PackedCollection<?>> triangle(
+			Producer<T> p1, Producer<T> p2, Producer<T> p3) {
+		CollectionProducer abc = subtract(p2, p1);
+		CollectionProducer def = subtract(p3, p1);
 		Producer jkl = p1;
 		return triangle(abc, def, jkl, normalize(crossProduct(abc, def)));
 	}
@@ -154,27 +152,58 @@ public interface TriangleFeatures extends VectorFeatures {
 	 */
 	default CollectionProducer<PackedCollection<Vector>> triangle(Producer<Vector> abc, Producer<Vector> def,
 																  Producer<Vector> jkl, Producer<Vector> normal) {
-		return concat(shape(4, 3),
-				reshape(shape(1, 3), abc),
-				reshape(shape(1, 3), def),
-				reshape(shape(1, 3), jkl),
-				reshape(shape(1, 3), normal));
+		// For batch processing, inputs have shape (N, 3) and we need output shape (N, 4, 3)
+		// Create custom computation to arrange the 4 vectors into triangle structure
+		return new DefaultTraversableExpressionComputation<>("triangle", new TraversalPolicy(false, false, 4, 3), args ->
+			CollectionExpression.create(new TraversalPolicy(false, false, 4, 3), idx -> {
+				// idx ranges from 0 to N*12-1 (N triangles * 4 vectors * 3 components)
+				// For each output position:
+				// - triangleIdx = idx / 12 (which triangle)
+				// - vectorIdx = (idx % 12) / 3 (which of the 4 vectors: 0=abc, 1=def, 2=jkl, 3=normal)
+				// - componentIdx = idx % 3 (which component: x, y, or z)
+
+				Expression triangleIdx = idx.divide(e(12));
+				Expression localIdx = idx.imod(12);
+				Expression vectorIdx = localIdx.divide(e(3));
+				Expression componentIdx = localIdx.imod(3);
+
+				// Base index in each input array (N, 3)
+				Expression inputIdx = triangleIdx.multiply(e(3)).add(componentIdx);
+
+				// Select from appropriate input based on vectorIdx
+				Expression fromAbc = args[1].getValueAt(inputIdx);
+				Expression fromDef = args[2].getValueAt(inputIdx);
+				Expression fromJkl = args[3].getValueAt(inputIdx);
+				Expression fromNormal = args[4].getValueAt(inputIdx);
+
+				// Return the appropriate value based on vectorIdx
+				Expression result = conditional(vectorIdx.eq(1), fromDef, fromAbc);
+				result = conditional(vectorIdx.eq(2), fromJkl, result);
+				result = conditional(vectorIdx.eq(3), fromNormal, result);
+
+				return result;
+			}), (Producer) abc, (Producer) def, (Producer) jkl, (Producer) normal);
 	}
 
 	/**
-	 * Extracts a single point from a packed collection of vertices.
+	 * Extracts a vertex from a packed collection of points.
+	 *
 	 *
 	 * @param points supplier for the vertex collection
-	 * @param index  the vertex index (0, 1, or 2)
-	 * @return producer for the extracted point as a Vector
+	 * @param vertexIndex  the vertex index within each group
+	 * @return producer for the extracted vertex/vertices as Vector(s)
 	 */
-	default CollectionProducerComputationBase<Vector, Vector> point(Supplier<Evaluable<? extends PackedCollection<?>>> points, int index) {
-		return new DefaultTraversableExpressionComputation<>("point", shape(3),
-				(Function<TraversableExpression[], CollectionExpression>) args ->
-						new IndexProjectionExpression(shape(3),
-							idx -> e(index * 3).add(idx.imod(3)), args[1]),
-						(Producer) points)
-				.setPostprocessor(Vector.postprocessor());
+	default CollectionProducer<PackedCollection<?>> point(Producer<PackedCollection<?>> points, int vertexIndex) {
+		TraversalPolicy inputShape = shape(points);
+
+		int group = inputShape.getDimensions() - 2;
+		int stride = inputShape.length(group);
+
+		IndexProjectionProducerComputation<PackedCollection<?>> projection = new IndexProjectionProducerComputation<>(
+				"point", new TraversalPolicy(false, false, 3),
+				idx -> idx.divide(e(3)).multiply(e(stride)).add(e(vertexIndex * 3)).add(idx.imod(3)),
+				points);
+		return projection;
 	}
 
 	/**

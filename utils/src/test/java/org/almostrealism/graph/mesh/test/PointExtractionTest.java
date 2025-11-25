@@ -260,11 +260,11 @@ public class PointExtractionTest implements TestFeatures {
 		PackedCollection<?> crossDebug = new PackedCollection<>(shape(2, 3));
 		PackedCollection<?> normalDebug = new PackedCollection<>(shape(2, 3));
 
-		CollectionProducer<Vector> p1 = point(c(p(reshaped)), 0);
-		CollectionProducer<Vector> p2 = point(c(p(reshaped)), 1);
-		CollectionProducer<Vector> p3 = point(c(p(reshaped)), 2);
-		CollectionProducer<Vector> abcProducer = (CollectionProducer<Vector>) subtract((Producer) p2, (Producer) p1);
-		CollectionProducer<Vector> defProducer = (CollectionProducer<Vector>) subtract((Producer) p3, (Producer) p1);
+		CollectionProducer<PackedCollection<?>> p1 = point(c(p(reshaped)), 0);
+		CollectionProducer<PackedCollection<?>> p2 = point(c(p(reshaped)), 1);
+		CollectionProducer<PackedCollection<?>> p3 = point(c(p(reshaped)), 2);
+		CollectionProducer<PackedCollection<?>> abcProducer = subtract(p2, p1);
+		CollectionProducer<PackedCollection<?>> defProducer = subtract(p3, p1);
 
 		abcProducer.get().into(abcDebug.traverse(1)).evaluate();
 		defProducer.get().into(defDebug.traverse(1)).evaluate();
@@ -426,40 +426,34 @@ public class PointExtractionTest implements TestFeatures {
 
 	@Test
 	public void meshDataStructure() {
-		// Test with a properly flattened structure (not hierarchical)
-		// Create flat data matching (3, 9, 3) shape: 3 triangles, 9 vectors each (only first 3 used), 3 components each
-		PackedCollection<?> flatData = new PackedCollection<>(shape(3 * 9 * 3));  // 81 scalars total
-
-		// Initialize all values to 0
-		for (int i = 0; i < 81; i++) {
-			flatData.setMem(i, 0.0);
-		}
+		// Test with proper (N, 3, 3) shape: N triangles, 3 vertices per triangle, 3 components per vertex
+		PackedCollection<?> flatData = new PackedCollection<>(shape(3 * 3 * 3));  // 27 scalars total
 
 		// Triangle 0: vertices (0,1,0), (-1,-1,0), (1,-1,0)
-		// Occupies indices 0-26 (27 scalars)
+		// Occupies indices 0-8 (9 scalars)
 		flatData.setMem(0, 0.0); flatData.setMem(1, 1.0); flatData.setMem(2, 0.0);    // v0
 		flatData.setMem(3, -1.0); flatData.setMem(4, -1.0); flatData.setMem(5, 0.0);  // v1
 		flatData.setMem(6, 1.0); flatData.setMem(7, -1.0); flatData.setMem(8, 0.0);   // v2
 
 		// Triangle 1: vertices (-1,1,-1), (-1,-1,0), (0,1,0)
-		// Occupies indices 27-53
-		flatData.setMem(27, -1.0); flatData.setMem(28, 1.0); flatData.setMem(29, -1.0);  // v0
-		flatData.setMem(30, -1.0); flatData.setMem(31, -1.0); flatData.setMem(32, 0.0);  // v1
-		flatData.setMem(33, 0.0); flatData.setMem(34, 1.0); flatData.setMem(35, 0.0);    // v2
+		// Occupies indices 9-17
+		flatData.setMem(9, -1.0); flatData.setMem(10, 1.0); flatData.setMem(11, -1.0);   // v0
+		flatData.setMem(12, -1.0); flatData.setMem(13, -1.0); flatData.setMem(14, 0.0);  // v1
+		flatData.setMem(15, 0.0); flatData.setMem(16, 1.0); flatData.setMem(17, 0.0);    // v2
 
 		// Triangle 2: vertices (0,1,0), (1,-1,0), (1,1,-1)
-		// Occupies indices 54-80
-		flatData.setMem(54, 0.0); flatData.setMem(55, 1.0); flatData.setMem(56, 0.0);    // v0
-		flatData.setMem(57, 1.0); flatData.setMem(58, -1.0); flatData.setMem(59, 0.0);   // v1
-		flatData.setMem(60, 1.0); flatData.setMem(61, 1.0); flatData.setMem(62, -1.0);   // v2
+		// Occupies indices 18-26
+		flatData.setMem(18, 0.0); flatData.setMem(19, 1.0); flatData.setMem(20, 0.0);    // v0
+		flatData.setMem(21, 1.0); flatData.setMem(22, -1.0); flatData.setMem(23, 0.0);   // v1
+		flatData.setMem(24, 1.0); flatData.setMem(25, 1.0); flatData.setMem(26, -1.0);   // v2
 
-		log("\n=== Mesh Data Structure Test (Flat) ===");
+		log("\n=== Mesh Data Structure Test ===");
 
-		// Reshape to (3, 9, 3)
-		PackedCollection<?> reshaped = flatData.reshape(shape(3, 9, 3));
+		// Reshape to (3, 3, 3)
+		PackedCollection<?> reshaped = flatData.reshape(shape(3, 3, 3));
 		log("Reshaped shape: " + reshaped.getShape());
-		log("First 27 values (triangle 0):");
-		reshaped.range(shape(9, 3)).print();
+		log("First 9 values (triangle 0):");
+		reshaped.range(shape(3, 3)).print();
 
 		// Use Triangle.dataProducer to compute triangle data (edges and normal)
 		MeshData result = new MeshData(3);
@@ -477,5 +471,15 @@ public class PointExtractionTest implements TestFeatures {
 		assertEquals(0.0, result.get(0).get(3).toDouble(0));
 		assertEquals(0.0, result.get(0).get(3).toDouble(1));
 		assertEquals(1.0, result.get(0).get(3).toDouble(2));
+
+		// Triangle 1 and 2 should also have correct normals now
+		// (previously they showed NaN because of the (N, 9, 3) shape mismatch)
+		assertEquals(-2.0 / 3.0, result.get(1).get(3).toDouble(0));
+		assertEquals(1.0 / 3.0, result.get(1).get(3).toDouble(1));
+		assertEquals(2.0 / 3.0, result.get(1).get(3).toDouble(2));
+
+		assertEquals(2.0 / 3.0, result.get(2).get(3).toDouble(0));
+		assertEquals(1.0 / 3.0, result.get(2).get(3).toDouble(1));
+		assertEquals(2.0 / 3.0, result.get(2).get(3).toDouble(2));
 	}
 }

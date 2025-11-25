@@ -168,11 +168,11 @@ public interface CodeFeatures extends LayerFeatures,
 		return new DynamicProducer<>(function);
 	}
 
-	default Supplier<Evaluable<? extends Vector>> vector(int argIndex) { return value(Vector.shape(), argIndex); }
+	default Producer<PackedCollection<?>> vector(int argIndex) { return value(Vector.shape(), argIndex); }
 
-	default Supplier<Evaluable<? extends PackedCollection<?>>> triangle(int argIndex) { return value(shape(4, 3), argIndex); }
+	default Producer<PackedCollection<?>> triangle(int argIndex) { return value(shape(4, 3), argIndex); }
 
-	default Supplier<Evaluable<? extends PackedCollection<?>>> points(int argIndex) { return value(shape(3, 3), argIndex); }
+	default Producer<PackedCollection<?>> points(int argIndex) { return value(shape(3, 3), argIndex); }
 
 	default <T> Producer<T> value(T v) {
 		if (v instanceof Scalar) {

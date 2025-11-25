@@ -17,7 +17,6 @@
 package org.almostrealism.algebra.test;
 
 import io.almostrealism.code.AdaptEvaluable;
-import io.almostrealism.code.ComputableBase;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
@@ -55,10 +54,10 @@ public class TriangleTest implements TestFeatures {
 		data.set(1, new Vector(-1.0, 1.0, -1.0));
 		data.set(2, new Vector(0.0, -1.0, -1.0));
 
-		Vector v = point(Input.value(new TraversalPolicy(3, 3), 0), 1)
+		PackedCollection<?> v = point(Input.value(new TraversalPolicy(3, 3), 0), 1)
 				.evaluate(data.traverse(0));
 		v.print();
-		Assert.assertEquals(new Vector(-1.0, 1.0, -1.0), v);
+		assertEquals(new Vector(-1.0, 1.0, -1.0), v);
 	}
 
 	/**
@@ -122,17 +121,6 @@ public class TriangleTest implements TestFeatures {
 		}
 
 		return (CollectionProducer<Vector>) ((CollectionProducerComputationBase) originVector).getInputs().get(1);
-	}
-
-	protected Producer<Vector> originPointProducer() {
-		CollectionProducer<Vector> origin = originProducer();
-
-		return vector((Producer) ((ComputableBase) origin).getInputs().get(1));
-	}
-
-	protected Producer<Vector> originDirectionProducer() {
-		CollectionProducer<Vector> origin = originProducer();
-		return vector((Producer) ((ComputableBase) origin).getInputs().get(2));
 	}
 
 	@Test

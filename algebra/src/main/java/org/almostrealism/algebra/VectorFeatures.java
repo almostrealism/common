@@ -19,6 +19,7 @@ package org.almostrealism.algebra;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.IndexProjectionExpression;
 import io.almostrealism.collect.TraversableExpression;
+import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.Product;
 import io.almostrealism.expression.Sum;
@@ -240,12 +241,17 @@ public interface VectorFeatures extends ScalarFeatures {
 	 * Computes the dot product (inner product) of two vectors.
 	 * Returns a . b = a1b1 + a2b2 + a3b3.
 	 *
+	 * <p>For batch processing with shape (N, 3), this computes the dot product for each
+	 * of the N vector pairs, returning a shape (N, 1) result.</p>
+	 *
 	 * @param a  the first vector
 	 * @param b  the second vector
 	 * @return a producer for the scalar dot product
 	 */
 	default CollectionProducer<PackedCollection<?>> dotProduct(Producer<Vector> a, Producer<Vector> b) {
-		return multiply((Producer) a, (Producer) b).sum();
+		// For batch processing: multiply gives (N, 3), sum(1) sums along axis 1 to give (N, 1)
+		// For single vectors: multiply gives (3), sum(1) sums to give (1)
+		return multiply((Producer) a, (Producer) b).sum(1);
 	}
 
 	/**
@@ -263,26 +269,34 @@ public interface VectorFeatures extends ScalarFeatures {
 	 * @return a producer for the cross product vector
 	 */
 	default CollectionProducer<Vector> crossProduct(Producer<Vector> a, Producer<Vector> b) {
-		return new DefaultTraversableExpressionComputation<>("crossProduct", shape(3), args ->
-				CollectionExpression.create(shape(3), idx -> {
-					// Use getValueAt instead of getValueRelative since we're accessing
-					// fixed vector components (0, 1, 2), not kernel-relative positions
-					Expression x = Sum.of(
-							Product.of(args[1].getValueAt(e(1)), args[2].getValueAt(e(2))),
-							Product.of(args[1].getValueAt(e(2)), args[2].getValueAt(e(1))).minus()
-					);
-					Expression y = Sum.of(
-							Product.of(args[1].getValueAt(e(2)), args[2].getValueAt(e(0))),
-							Product.of(args[1].getValueAt(e(0)), args[2].getValueAt(e(2))).minus()
-					);
-					Expression z = Sum.of(
-							Product.of(args[1].getValueAt(e(0)), args[2].getValueAt(e(1))),
-							Product.of(args[1].getValueAt(e(1)), args[2].getValueAt(e(0))).minus()
-					);
+		// Use variable-count shape to support batch processing
+		return new DefaultTraversableExpressionComputation<>("crossProduct", new TraversalPolicy(false, false, 3), args ->
+				CollectionExpression.create(new TraversalPolicy(false, false, 3), idx -> {
+					// For batch processing with shape (N, 3):
+					// idx ranges from 0 to N*3-1
+					// batchIdx = idx / 3, componentIdx = idx % 3
+					Expression batchIdx = idx.divide(e(3));
+					Expression componentIdx = idx.imod(3);
 
-					Expression p = idx.imod(3);
-					Expression result = conditional(p.eq(1), y, x);
-					result = conditional(p.eq(2), z, result);
+					// Calculate base indices for this batch item
+					Expression base = batchIdx.multiply(e(3));
+
+					// Access components using batch-aware indexing
+					Expression a0 = args[1].getValueAt(base.add(e(0)));
+					Expression a1 = args[1].getValueAt(base.add(e(1)));
+					Expression a2 = args[1].getValueAt(base.add(e(2)));
+					Expression b0 = args[2].getValueAt(base.add(e(0)));
+					Expression b1 = args[2].getValueAt(base.add(e(1)));
+					Expression b2 = args[2].getValueAt(base.add(e(2)));
+
+					// Compute cross product components
+					Expression x = Sum.of(Product.of(a1, b2), Product.of(a2, b1).minus());
+					Expression y = Sum.of(Product.of(a2, b0), Product.of(a0, b2).minus());
+					Expression z = Sum.of(Product.of(a0, b1), Product.of(a1, b0).minus());
+
+					// Select component based on idx % 3
+					Expression result = conditional(componentIdx.eq(1), y, x);
+					result = conditional(componentIdx.eq(2), z, result);
 					return result;
 				}), (Producer) a, (Producer) b);
 	}
@@ -334,7 +348,7 @@ public interface VectorFeatures extends ScalarFeatures {
 	 * @return a producer for the squared vector length
 	 */
 	default <T extends PackedCollection<?>> CollectionProducer<T> lengthSq(Producer<?> value) {
-		return multiply((Producer) value, (Producer) value).sum();
+		return multiply((Producer) value, (Producer) value).sum(1);
 	}
 
 	/**
