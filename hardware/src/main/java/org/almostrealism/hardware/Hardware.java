@@ -518,14 +518,13 @@ public final class Hardware {
 			} else if ("gpu".equalsIgnoreCase(driver)) {
 				requirements.add(ComputeRequirement.GPU);
 			} else if ("*".equalsIgnoreCase(driver)) {
-				if (aarch) {
+				if (SystemUtils.isMacOS()) {
 					requirements.add(ComputeRequirement.JNI);
-					requirements.add(ComputeRequirement.MTL);
+					if (aarch) requirements.add(ComputeRequirement.MTL);
 					requirements.add(ComputeRequirement.CL);
 				} else {
 					requirements.add(ComputeRequirement.CL);
-					if (!SystemUtils.isMacOS())
-						requirements.add(ComputeRequirement.JNI);
+					requirements.add(ComputeRequirement.JNI);
 				}
 
 				if (drivers.length <= 1 && requirements.contains(ComputeRequirement.MTL)) {
@@ -644,51 +643,56 @@ public final class Hardware {
 			if (type == ComputeRequirement.CPU) {
 				type = SystemUtils.isAarch64() ? ComputeRequirement.JNI : ComputeRequirement.CL;
 			} else if (type == ComputeRequirement.GPU) {
-				type = SystemUtils.isAarch64() ? ComputeRequirement.MTL : ComputeRequirement.CL;
+				type = SystemUtils.isMacOS() ? ComputeRequirement.MTL : ComputeRequirement.CL;
 			}
 
 			if (done.contains(type)) continue r;
 
-			boolean locationUsed = false;
-			DataContext ctx;
+			try {
+				boolean locationUsed = false;
+				DataContext ctx;
 
-			if (type == ComputeRequirement.CL) {
-				ctx = new CLDataContext("CL", this.maxReservation, getOffHeapSize(type), this.location);
-				((CLDataContext) ctx).setDelegateMemoryProvider(nioMemory);
-				locationUsed = true;
-				kernelFriendly = true;
-			} else if (type == ComputeRequirement.MTL) {
-				ctx = new MetalDataContext("MTL", this.maxReservation, getOffHeapSize(type));
-				kernelFriendly = true;
-			} else {
-				ctx = new NativeDataContext("JNI", precision, this.maxReservation);
-			}
-
-			if (locationUsed) {
-				if (location == Location.HEAP)
-					System.out.println("Hardware[" + ctx.getName() + "]: Heap RAM enabled");
-				if (location == Location.HOST)
-					System.out.println("Hardware[" + ctx.getName() + "]: Host RAM enabled");
-				if (location == Location.DELEGATE)
-					System.out.println("Hardware[" + ctx.getName() + "]: Delegate RAM enabled");
-			}
-
-			done.add(type);
-			ctx.init();
-
-			System.out.println("Hardware[" + ctx.getName() + "]: Max RAM is " +
-					ctx.getPrecision().bytes() * maxReservation / 1000000 + " Megabytes (" +
-					ctx.getPrecision().name() + ")");
-
-			if (KernelPreferences.isEnableSharedMemory() && sharedMemoryCtx == null) {
-				if (!(ctx instanceof NativeDataContext)) {
-					sharedMemoryCtx = ctx;
+				if (type == ComputeRequirement.CL) {
+					ctx = new CLDataContext("CL", this.maxReservation, getOffHeapSize(type), this.location);
+					((CLDataContext) ctx).setDelegateMemoryProvider(nioMemory);
+					locationUsed = true;
+					kernelFriendly = true;
+				} else if (type == ComputeRequirement.MTL) {
+					ctx = new MetalDataContext("MTL", this.maxReservation, getOffHeapSize(type));
+					kernelFriendly = true;
+				} else {
+					ctx = new NativeDataContext("JNI", precision, this.maxReservation);
 				}
+
+				if (locationUsed) {
+					if (location == Location.HEAP)
+						System.out.println("Hardware[" + ctx.getName() + "]: Heap RAM enabled");
+					if (location == Location.HOST)
+						System.out.println("Hardware[" + ctx.getName() + "]: Host RAM enabled");
+					if (location == Location.DELEGATE)
+						System.out.println("Hardware[" + ctx.getName() + "]: Delegate RAM enabled");
+				}
+
+				done.add(type);
+				ctx.init();
+
+				System.out.println("Hardware[" + ctx.getName() + "]: Max RAM is " +
+						ctx.getPrecision().bytes() * maxReservation / 1000000 + " Megabytes (" +
+						ctx.getPrecision().name() + ")");
+
+				if (KernelPreferences.isEnableSharedMemory() && sharedMemoryCtx == null) {
+					if (!(ctx instanceof NativeDataContext)) {
+						sharedMemoryCtx = ctx;
+					}
+				}
+
+				contexts.add(ctx);
+
+				forEachContextListener(l -> l.contextStarted(getDataContext()));
+			} catch (Exception | LinkageError e) {
+				console.warn("Unable to load context due to " +
+						Optional.ofNullable(e.getMessage()).orElse(e.getClass().getSimpleName()));
 			}
-
-			contexts.add(ctx);
-
-			forEachContextListener(l -> l.contextStarted(getDataContext()));
 		}
 
 		MemoryProvider<? extends Memory> provider = null;

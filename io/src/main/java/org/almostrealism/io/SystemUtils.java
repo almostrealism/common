@@ -61,7 +61,7 @@ import java.util.OptionalInt;
  * <pre>{@code
  * // Get app-specific paths
  * Path appSupport = SystemUtils.getAppSupportPath("MyApp");
- * Path caches = SystemUtils.getCachesPath("MyApp");
+ * Path caches = SystemUtils.getCachesPath();
  * Path shared = SystemUtils.getSharedContainer("TEAM.MyApp");
  * }</pre>
  *
@@ -238,19 +238,10 @@ public class SystemUtils {
 	}
 
 	/**
-	 * Returns the path for Java extensions on macOS.
-	 *
-	 * @return the extensions path, or null if not on macOS
+	 * Returns the path for Java extensions.
 	 */
 	public static Path getExtensionsPath() {
-		if (!isMacOS()) return null;
-
-		return getMacApp().map(SystemUtils::getCachesPath)
-				.map(p -> p.resolve("Extensions"))
-				.orElse(Path.of(getHome())
-						.resolve("Library")
-						.resolve("Java")
-						.resolve("Extensions"));
+		return getCachesPath().resolve("Extensions");
 	}
 
 	/**
@@ -280,14 +271,17 @@ public class SystemUtils {
 	}
 
 	/**
-	 * Returns the Caches path for the specified app on macOS.
+	 * Returns the Caches path for the specified app.
+	 * On macOS, returns Library/Caches directory.
+	 * On other platforms, returns system temporary directory.
 	 * Creates the directory if it does not exist.
 	 *
-	 * @param appName the application name
 	 * @return the Caches path
 	 */
-	public static Path getCachesPath(String appName) {
-		Path path = Paths.get(getHome(), "Library", "Caches", appName);
+	public static Path getCachesPath() {
+		Path path = getMacApp().map(s -> Paths.get(getHome(), "Library", "Caches", s))
+				.orElseGet(() -> Paths.get(System.getProperty("java.io.tmpdir"), "ar-cache"));
+
 		ensureDirectoryExists(path);
 		return path;
 	}

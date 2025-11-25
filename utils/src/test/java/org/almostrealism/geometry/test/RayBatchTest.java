@@ -168,18 +168,18 @@ public class RayBatchTest implements TestFeatures {
 		// Create a batch of 3 rays
 		Producer<Ray> rays = v(shape(-1, 6), 0);
 
-		// Create test data
-		PackedCollection<?> rayData = new PackedCollection<>(shape(3, 6));
+		// Create test data with traverse(1) for batch processing
+		PackedCollection<?> rayData = new PackedCollection<>(shape(3, 6).traverse(1));
 		rayData.setMem(0, 0, 0, 3, 0, 0, -1);     // Ray 0: (0,0,3) dot (0,0,-1) = -3
 		rayData.setMem(6, 1, 0, 0, 1, 0, 0);      // Ray 1: (1,0,0) dot (1,0,0) = 1
 		rayData.setMem(12, 1, 2, 3, 2, 3, 4);     // Ray 2: (1,2,3) dot (2,3,4) = 20
 
-		// Create destination - try (3, 1) shape
-		PackedCollection<?> destination = new PackedCollection<>(shape(3, 1));
+		// Create destination with traverse(1) for batch output
+		PackedCollection<?> destination = new PackedCollection<>(shape(3, 1).traverse(1));
 
-		// Evaluate using into()
+		// Evaluate using into() with .each() for batch evaluation
 		Evaluable<?> ev = oDotd(rays).get();
-		ev.into(destination).evaluate(rayData);
+		ev.into(destination.each()).evaluate(rayData);
 
 		System.out.println("Destination shape: " + destination.getShape());
 		System.out.println("Results:");

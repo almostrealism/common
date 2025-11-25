@@ -422,7 +422,7 @@ public class NativeCompiler implements Destroyable, ConsoleFeatures {
 
 			boolean localToolchain = libCompiler == null || !libCompiler.contains("/");
 
-			if (libDir == null && SystemUtils.isMacOS()) {
+			if (libDir == null) {
 				libDir = SystemUtils.getExtensionsPath().toFile().getPath();
 			}
 

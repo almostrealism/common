@@ -114,9 +114,20 @@ public class TriangleDataTest implements TestFeatures {
 
 	protected Mesh mesh() { return new Mesh(data()); }
 
-	// TODO @Test
+	@Test
 	public void fromMesh() {
-		MeshData data = mesh().getMeshData();
+		Mesh m = mesh();
+		PackedCollection<PackedCollection<Vector>> points = m.getMeshPointData();
+		System.out.println("getMeshPointData shape: " + points.getShape());
+		System.out.println("Triangle count: " + m.getVertexData().getTriangleCount());
+
+		MeshData data = m.getMeshData();
+		System.out.println("MeshData shape: " + data.getShape());
+
+		System.out.println("Triangle 0 normal: [" + data.get(0).get(3).toDouble(0) + ", " + data.get(0).get(3).toDouble(1) + ", " + data.get(0).get(3).toDouble(2) + "]");
+		System.out.println("Triangle 1 normal: [" + data.get(1).get(3).toDouble(0) + ", " + data.get(1).get(3).toDouble(1) + ", " + data.get(1).get(3).toDouble(2) + "]");
+		System.out.println("Triangle 2 normal: [" + data.get(2).get(3).toDouble(0) + ", " + data.get(2).get(3).toDouble(1) + ", " + data.get(2).get(3).toDouble(2) + "]");
+
 		Assert.assertEquals(0, data.get(0).get(3).toDouble(0), Math.pow(10, -10));
 		Assert.assertEquals(0, data.get(0).get(3).toDouble(1), Math.pow(10, -10));
 		Assert.assertEquals(1, data.get(0).get(3).toDouble(2), Math.pow(10, -10));
