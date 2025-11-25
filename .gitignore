@@ -2,8 +2,7 @@
 **/.DS_Store
 
 .fleet/**
-.idea/*.xml
-.idea/codeStyles/**
+.idea/**
 
 **/.qodana/**
 
