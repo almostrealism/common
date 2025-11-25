@@ -16,7 +16,6 @@
 
 package org.almostrealism.graph.model.test;
 
-import io.almostrealism.collect.WeightedSumExpression;
 import io.almostrealism.kernel.KernelTraversalProvider;
 import io.almostrealism.profile.OperationProfileNode;
 import io.almostrealism.compute.ParallelProcess;

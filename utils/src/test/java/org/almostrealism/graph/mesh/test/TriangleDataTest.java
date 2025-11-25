@@ -19,7 +19,6 @@ package org.almostrealism.graph.mesh.test;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.hardware.computations.HardwareEvaluable;
 import org.almostrealism.space.DefaultVertexData;
 import org.almostrealism.space.Mesh;
 import org.almostrealism.space.MeshData;
@@ -52,20 +51,20 @@ public class TriangleDataTest implements TestFeatures {
 
 		Producer<Vector> edge1 = vector(subtract(v(points.get(0).get(1)), v(points.get(0).get(0))));
 		Vector value = edge1.get().evaluate();
-		System.out.println(value);
+		log(value);
 		Assert.assertEquals(-1, value.getX(), Math.pow(10, -10));
 		Assert.assertEquals(-2, value.getY(), Math.pow(10, -10));
 		Assert.assertEquals(0, value.getZ(), Math.pow(10, -10));
 
 		Producer<Vector> edge2 = vector(subtract(v(points.get(0).get(2)), v(points.get(0).get(0))));
 		value = edge2.get().evaluate();
-		System.out.println(value);
+		log(value);
 		Assert.assertEquals(1, value.getX(), Math.pow(10, -10));
 		Assert.assertEquals(-2, value.getY(), Math.pow(10, -10));
 		Assert.assertEquals(0, value.getZ(), Math.pow(10, -10));
 
 		value = new Vector(crossProduct(vector(0.0, 0.0, -1.0), edge2).get().evaluate(), 0);
-		System.out.println(value);
+		log(value);
 		Assert.assertEquals(-2, value.getX(), Math.pow(10, -10));
 		Assert.assertEquals(-1, value.getY(), Math.pow(10, -10));
 		Assert.assertEquals(0, value.getZ(), Math.pow(10, -10));
@@ -118,15 +117,18 @@ public class TriangleDataTest implements TestFeatures {
 	public void fromMesh() {
 		Mesh m = mesh();
 		PackedCollection<PackedCollection<Vector>> points = m.getMeshPointData();
-		System.out.println("getMeshPointData shape: " + points.getShape());
-		System.out.println("Triangle count: " + m.getVertexData().getTriangleCount());
+		log("getMeshPointData shape: " + points.getShape());
+		log("Triangle count: " + m.getVertexData().getTriangleCount());
+
+		log("Triangle 0 vertices:");
+		points.get(0).print();
 
 		MeshData data = m.getMeshData();
-		System.out.println("MeshData shape: " + data.getShape());
+		log("MeshData shape: " + data.getShape());
 
-		System.out.println("Triangle 0 normal: [" + data.get(0).get(3).toDouble(0) + ", " + data.get(0).get(3).toDouble(1) + ", " + data.get(0).get(3).toDouble(2) + "]");
-		System.out.println("Triangle 1 normal: [" + data.get(1).get(3).toDouble(0) + ", " + data.get(1).get(3).toDouble(1) + ", " + data.get(1).get(3).toDouble(2) + "]");
-		System.out.println("Triangle 2 normal: [" + data.get(2).get(3).toDouble(0) + ", " + data.get(2).get(3).toDouble(1) + ", " + data.get(2).get(3).toDouble(2) + "]");
+		log("Triangle 0 normal: [" + data.get(0).get(3).toDouble(0) + ", " + data.get(0).get(3).toDouble(1) + ", " + data.get(0).get(3).toDouble(2) + "]");
+		log("Triangle 1 normal: [" + data.get(1).get(3).toDouble(0) + ", " + data.get(1).get(3).toDouble(1) + ", " + data.get(1).get(3).toDouble(2) + "]");
+		log("Triangle 2 normal: [" + data.get(2).get(3).toDouble(0) + ", " + data.get(2).get(3).toDouble(1) + ", " + data.get(2).get(3).toDouble(2) + "]");
 
 		Assert.assertEquals(0, data.get(0).get(3).toDouble(0), Math.pow(10, -10));
 		Assert.assertEquals(0, data.get(0).get(3).toDouble(1), Math.pow(10, -10));

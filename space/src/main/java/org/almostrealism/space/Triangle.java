@@ -91,7 +91,7 @@ public class Triangle extends AbstractSurface implements ParticleGroup, Triangle
 	 * Evaluable that computes precomputed triangle data from vertex positions.
 	 * The output format is a 4x3 matrix containing edge vectors and face normal.
 	 */
-	protected static final Evaluable<PackedCollection<Vector>> dataProducer;
+	public static final Evaluable<PackedCollection<Vector>> dataProducer;
 
 	/**
 	 * Evaluable for computing ray-triangle intersections.

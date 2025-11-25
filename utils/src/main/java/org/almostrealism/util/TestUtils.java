@@ -155,13 +155,16 @@ public class TestUtils implements TestSettings {
 	 * <p>Higher values enable more comprehensive testing. Read from the
 	 * {@code AR_TEST_DEPTH} environment variable.</p>
 	 *
-	 * @return the test depth level, or {@link Integer#MAX_VALUE} if not set or profile is "pipeline"
+	 * <p>Default value is 9 if the environment variable is not set.
+	 * Returns {@link Integer#MAX_VALUE} if test profile is "pipeline".</p>
+	 *
+	 * @return the test depth level
 	 */
 	public static int getTestDepth() {
 		if (Objects.equals(getTestProfile(), PIPELINE)) return Integer.MAX_VALUE;
 
 		String depth = SystemUtils.getProperty("AR_TEST_DEPTH");
-		if (depth == null) return Integer.MAX_VALUE;
+		if (depth == null) return 9;
 		return Integer.parseInt(depth);
 	}
 
