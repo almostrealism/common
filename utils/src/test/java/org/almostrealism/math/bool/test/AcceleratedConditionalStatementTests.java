@@ -120,14 +120,14 @@ public class AcceleratedConditionalStatementTests implements TestFeatures {
 			double c = i * Math.random();
 			double d = i * Math.random();
 
-			Producer<PackedCollection<?>> pa = scalar(a);
-			Producer<PackedCollection<?>> pb = scalar(b);
-			Producer<PackedCollection<?>> pc = scalar(c);
-			Producer<PackedCollection<?>> pd = scalar(d);
+			Producer<PackedCollection<?>> pa = c(a);
+			Producer<PackedCollection<?>> pb = c(b);
+			Producer<PackedCollection<?>> pc = c(c);
+			Producer<PackedCollection<?>> pd = c(d);
 
 			CollectionProducer<PackedCollection<?>> lt1 = lessThan(pa, pb, pa, pb);
-			CollectionProducer<PackedCollection<?>> lt2 = lessThan(pb, pc, lt1, scalar(-a));
-			CollectionProducer<PackedCollection<?>> lt3 = lessThan(pc, pd, lt2, scalar(-b));
+			CollectionProducer<PackedCollection<?>> lt2 = lessThan(pb, pc, lt1, c(-a));
+			CollectionProducer<PackedCollection<?>> lt3 = lessThan(pc, pd, lt2, c(-b));
 
 			CollectionProducer<PackedCollection<?>> top = lt3;
 
@@ -137,15 +137,15 @@ public class AcceleratedConditionalStatementTests implements TestFeatures {
 			if (c < d) {
 				if (b < c) {
 					if (a < b) {
-						assertEquals(a, s.getValue());
+						assertEquals(a, s.toDouble());
 					} else {
-						assertEquals(b, s.getValue());
+						assertEquals(b, s.toDouble());
 					}
 				} else {
-					assertEquals(-a, s.getValue());
+					assertEquals(-a, s.toDouble());
 				}
 			} else {
-				assertEquals(-b, s.getValue());
+				assertEquals(-b, s.toDouble());
 			}
 		});
 	}
