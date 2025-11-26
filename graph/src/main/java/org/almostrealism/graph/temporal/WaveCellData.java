@@ -17,7 +17,6 @@
 package org.almostrealism.graph.temporal;
 
 import io.almostrealism.relation.Producer;
-import org.almostrealism.algebra.Scalar;
 import org.almostrealism.collect.PackedCollection;
 
 /**
@@ -44,18 +43,18 @@ import org.almostrealism.collect.PackedCollection;
 public interface WaveCellData extends BaseAudioData {
 
 	/**
-	 * Returns the scalar storage for the wave index position.
+	 * Returns the storage for the wave index position.
 	 *
-	 * @return the wave index scalar at slot 3
+	 * @return the wave index storage at slot 3
 	 */
-	default Scalar waveIndex() { return get(3); }
+	default PackedCollection<?> waveIndex() { return get(3); }
 
 	/**
-	 * Returns the scalar storage for the wave sample count.
+	 * Returns the storage for the wave sample count.
 	 *
-	 * @return the wave count scalar at slot 4
+	 * @return the wave count storage at slot 4
 	 */
-	default Scalar waveCount() { return get(4); }
+	default PackedCollection<?> waveCount() { return get(4); }
 
 	/**
 	 * Returns the current output value as a single-element collection.
@@ -76,7 +75,7 @@ public interface WaveCellData extends BaseAudioData {
 	 *
 	 * @param count the starting index within the wave data
 	 */
-	default void setWaveIndex(int count) { waveIndex().setValue(count); }
+	default void setWaveIndex(int count) { waveIndex().setMem(0, count); }
 
 	/**
 	 * Returns a producer for the wave sample count.
@@ -90,6 +89,6 @@ public interface WaveCellData extends BaseAudioData {
 	 *
 	 * @param count the number of samples in the wave data
 	 */
-	default void setWaveCount(int count) { waveCount().setValue(count); }
+	default void setWaveCount(int count) { waveCount().setMem(0, count); }
 }
 

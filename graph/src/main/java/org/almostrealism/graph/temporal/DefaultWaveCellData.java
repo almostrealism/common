@@ -16,7 +16,6 @@
 
 package org.almostrealism.graph.temporal;
 
-import org.almostrealism.algebra.Scalar;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.MemoryData;
@@ -25,8 +24,8 @@ import org.almostrealism.hardware.MemoryData;
  * Default implementation of {@link WaveCellData} backed by a {@link PackedCollection}.
  *
  * <p>{@code DefaultWaveCellData} provides concrete storage for wave cell audio
- * processing state. It allocates a packed collection of {@link Scalar} values
- * organized as a 15x2 memory structure (SIZE=15 scalars, each with 2 elements).</p>
+ * processing state. It allocates a packed collection organized as a 15x2 memory
+ * structure (SIZE=15 slots, each with 2 elements).</p>
  *
  * <p>This class implements the memory layout defined by {@link BaseAudioData}
  * and {@link WaveCellData}, providing indexed access to:</p>
@@ -41,8 +40,8 @@ import org.almostrealism.hardware.MemoryData;
  * @see BaseAudioData
  * @see WaveCell
  */
-public class DefaultWaveCellData extends PackedCollection<Scalar> implements WaveCellData {
-	/** Total number of scalar slots in the data structure. */
+public class DefaultWaveCellData extends PackedCollection<PackedCollection<?>> implements WaveCellData {
+	/** Total number of slots in the data structure. */
 	public static final int SIZE = 15;
 
 	/**
@@ -50,7 +49,8 @@ public class DefaultWaveCellData extends PackedCollection<Scalar> implements Wav
 	 */
 	public DefaultWaveCellData() {
 		super(new TraversalPolicy(SIZE, 2), 1, delegateSpec ->
-				new Scalar(delegateSpec.getDelegate(), delegateSpec.getOffset()));
+				new PackedCollection<>(new TraversalPolicy(2), 1, null,
+						delegateSpec.getDelegate(), delegateSpec.getOffset()));
 	}
 
 	/**
@@ -61,7 +61,8 @@ public class DefaultWaveCellData extends PackedCollection<Scalar> implements Wav
 	 */
 	public DefaultWaveCellData(MemoryData delegate, int delegateOffset) {
 		super(new TraversalPolicy(SIZE, 2), 1, delegateSpec ->
-				new Scalar(delegateSpec.getDelegate(), delegateSpec.getOffset()),
+				new PackedCollection<>(new TraversalPolicy(2), 1, null,
+						delegateSpec.getDelegate(), delegateSpec.getOffset()),
 				delegate, delegateOffset);
 	}
 }

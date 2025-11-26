@@ -18,7 +18,6 @@ package org.almostrealism.graph.temporal;
 
 import io.almostrealism.relation.Producer;
 import org.almostrealism.CodeFeatures;
-import org.almostrealism.algebra.Scalar;
 import org.almostrealism.collect.PackedCollection;
 
 /**
@@ -28,7 +27,7 @@ import org.almostrealism.collect.PackedCollection;
  * for audio processing state. It provides storage for common audio parameters
  * including wave position, wave length, and amplitude.</p>
  *
- * <p>Memory layout (first 3 slots):</p>
+ * <p>Memory layout (first 3 slots, each slot is 2 elements):</p>
  * <ul>
  *   <li>Slot 0: Wave position - current playback position within the waveform</li>
  *   <li>Slot 1: Wave length - duration or size of the waveform</li>
@@ -36,7 +35,7 @@ import org.almostrealism.collect.PackedCollection;
  * </ul>
  *
  * <p>Implementations provide the actual storage via the {@link #get(int)} method,
- * which returns {@link Scalar} instances for each slot.</p>
+ * which returns {@link PackedCollection} views for each slot.</p>
  *
  * @author Michael Murray
  * @see WaveCellData
@@ -45,33 +44,33 @@ import org.almostrealism.collect.PackedCollection;
 public interface BaseAudioData extends CodeFeatures {
 
 	/**
-	 * Returns the scalar storage at the specified index.
+	 * Returns the storage view at the specified index.
 	 *
 	 * @param index the storage slot index
-	 * @return the scalar at the specified index
+	 * @return the collection view at the specified index
 	 */
-	Scalar get(int index);
+	PackedCollection<?> get(int index);
 
 	/**
-	 * Returns the scalar storage for the wave position.
+	 * Returns the storage for the wave position.
 	 *
-	 * @return the wave position scalar at slot 0
+	 * @return the wave position storage at slot 0
 	 */
-	default Scalar wavePosition() { return get(0); }
+	default PackedCollection<?> wavePosition() { return get(0); }
 
 	/**
-	 * Returns the scalar storage for the wave length.
+	 * Returns the storage for the wave length.
 	 *
-	 * @return the wave length scalar at slot 1
+	 * @return the wave length storage at slot 1
 	 */
-	default Scalar waveLength() { return get(1); }
+	default PackedCollection<?> waveLength() { return get(1); }
 
 	/**
-	 * Returns the scalar storage for the amplitude.
+	 * Returns the storage for the amplitude.
 	 *
-	 * @return the amplitude scalar at slot 2
+	 * @return the amplitude storage at slot 2
 	 */
-	default Scalar amplitude() { return get(2); }
+	default PackedCollection<?> amplitude() { return get(2); }
 
 	/**
 	 * Returns a producer for the wave position value.
@@ -88,7 +87,7 @@ public interface BaseAudioData extends CodeFeatures {
 	 * @param wavePosition the position within the waveform
 	 */
 	default void setWavePosition(double wavePosition) {
-		wavePosition().setValue(wavePosition);
+		wavePosition().setMem(0, wavePosition);
 	}
 
 	/**
@@ -106,7 +105,7 @@ public interface BaseAudioData extends CodeFeatures {
 	 * @param waveLength the duration or size of the waveform
 	 */
 	default void setWaveLength(double waveLength) {
-		waveLength().setValue(waveLength);
+		waveLength().setMem(0, waveLength);
 	}
 
 	/**
@@ -124,6 +123,6 @@ public interface BaseAudioData extends CodeFeatures {
 	 * @param amplitude the volume/intensity multiplier (1.0 = original level)
 	 */
 	default void setAmplitude(double amplitude) {
-		amplitude().setValue(amplitude);
+		amplitude().setMem(0, amplitude);
 	}
 }
