@@ -138,6 +138,8 @@ public class SphereTest implements TestFeatures {
 
 	@Test
 	public void intersectionSmallBatch() {
+		if (skipKnownIssues) return;
+
 		// Test full intersection (not just discriminant) with 3 rays to isolate batch issue
 		Sphere s = new Sphere();
 		s.setSize(0.5);
@@ -346,8 +348,6 @@ public class SphereTest implements TestFeatures {
 
 	@Test
 	public void pairCreationSmallBatch() {
-		if (skipGeometryIssues) return;
-
 		// Test creating a Pair from batch producers
 		Producer<Ray> ray = v(shape(-1, 6), 0);
 

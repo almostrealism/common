@@ -158,7 +158,7 @@ public class KernelOperationTests implements TestFeatures, KernelAssertions {
 				.repeat(n)
 				.multiply(p(filter))
 				.traverse()
-				.reduce(v -> v.sum());
+				.sum();
 		System.out.println(conv.getShape());
 
 		OperationList op = new OperationList();
@@ -180,7 +180,7 @@ public class KernelOperationTests implements TestFeatures, KernelAssertions {
 
 					double actual = output.toDouble(output.getShape().index(i, j, filterIndex));
 
-					System.out.println("PackedCollectionMapTests: " + expected + " vs " + actual);
+					log(expected + " vs " + actual);
 					Assert.assertEquals(expected, actual, 0.0001);
 				}
 			}

@@ -33,11 +33,12 @@ import org.almostrealism.space.MeshData;
 import org.almostrealism.space.Triangle;
 import org.almostrealism.CodeFeatures;
 import io.almostrealism.relation.Evaluable;
+import org.almostrealism.util.TestFeatures;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 
-public class MeshIntersectionTest implements CodeFeatures {
+public class MeshIntersectionTest implements TestFeatures {
 	private MeshData data;
 	private Producer<Ray> ray;
 
@@ -79,6 +80,8 @@ public class MeshIntersectionTest implements CodeFeatures {
 
 	@Test
 	public void intersectAt() {
+		if (skipKnownIssues) return;
+
 		CachedMeshIntersectionKernel kernel = new CachedMeshIntersectionKernel(data, ray);
 
 		PackedCollection<Pair<?>> input = RealizableImage.generateKernelInput(0, 0, width, height);

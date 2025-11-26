@@ -73,11 +73,6 @@ public interface TestSettings {
 	boolean skipKnownIssues = TestUtils.getSkipKnownIssues();
 
 	/**
-	 * If true, geometry-related issue tests should be skipped.
-	 */
-	boolean skipGeometryIssues = false;
-
-	/**
 	 * If true, ML model training tests are enabled.
 	 * Controlled by the {@code AR_TRAIN_TESTS} environment variable.
 	 */

@@ -301,7 +301,9 @@ public class KernelSeriesCache implements KernelSeriesProvider, ExpressionFeatur
 	 */
 	@Override
 	public void destroy() {
-		cacheManager.destroy();
+		if (cacheManager != null) {
+			cacheManager.destroy();
+		}
 	}
 
 	/**

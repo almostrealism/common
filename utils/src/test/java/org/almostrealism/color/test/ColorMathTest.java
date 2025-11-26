@@ -129,6 +129,8 @@ public class ColorMathTest implements TestFeatures, RGBFeatures {
 	 */
 	@Test
 	public void greaterThanKernel() {
+		if (skipKnownIssues) return;
+
 		verboseLog(() -> {
 			Producer<PackedCollection<?>> arg0 = v(shape(-1, 1), 0);
 

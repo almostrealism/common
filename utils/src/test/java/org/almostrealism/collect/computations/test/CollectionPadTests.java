@@ -313,8 +313,6 @@ public class CollectionPadTests implements TestFeatures {
 
 	@Test
 	public void concatSmallBatch() {
-		if (skipGeometryIssues) return;
-
 		// Test concat operation with batch of scalars
 		// We'll create two separate values from a scalar input and concat them
 		Producer<PackedCollection<?>> input = v(shape(-1, 1), 0);

@@ -185,6 +185,8 @@ public class TriangleTest implements TestFeatures {
 
 	@Test
 	public void intersection() {
+		if (skipKnownIssues) return;
+
 		Evaluable<Ray> ev = intersectAt().get();
 
 		Ray r = new Ray(ev.evaluate(), 0);

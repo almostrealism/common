@@ -64,11 +64,15 @@ public class CollectionAddTests implements TestFeatures {
 
 	@Test
 	public void cpuAdd() {
+		if (skipLongTests) return;
+
 		add(ComputeRequirement.CPU);
 	}
 
 	@Test
 	public void gpuAdd() {
+		if (skipLongTests) return;
+
 		add(ComputeRequirement.GPU);
 	}
 

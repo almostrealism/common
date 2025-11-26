@@ -37,8 +37,6 @@ public class RankedChoiceEvaluableTest implements TestFeatures {
 
 	@Test
 	public void highestRank() {
-		if (skipGeometryIssues) return;
-
 		IntStream.range(0, 5).forEach(i -> {
 			Scalar in = new Scalar(1.0);
 			Pair out = RankedChoiceEvaluable.highestRank.evaluate(
