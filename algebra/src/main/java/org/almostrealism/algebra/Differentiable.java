@@ -34,11 +34,10 @@ import io.almostrealism.relation.Function;
  * </ul>
  *
  * <p>
- * Implementations typically represent mathematical functions f: R^3 -> T where T is often
- * {@link Scalar} for scalar fields or other types for more complex field representations.
+ * Implementations typically represent mathematical functions f: R^3 -> T
  * </p>
  *
- * @param <T>  the type of value produced by the function (often {@link Scalar})
+ * @param <T>  the type of value produced by the function
  * @author  Michael Murray
  * @see Gradient
  * @see Function

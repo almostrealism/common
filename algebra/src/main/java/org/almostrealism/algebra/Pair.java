@@ -92,17 +92,8 @@ import java.util.function.BiFunction;
  * PackedCollection<PackedCollection<Pair<?>>> table = Pair.table(10, 20);
  * }</pre>
  *
- * <h2>Subclasses</h2>
- * <p>
- * {@link Pair} is the base class for more specialized types:
- * </p>
- * <ul>
- *   <li>{@link Scalar} - A value with an associated certainty coefficient</li>
- * </ul>
- *
  * @param <T>  the type parameter extending {@link PackedCollection}
  * @see PackedCollection
- * @see Scalar
  * @see MemoryData
  */
 public class Pair<T extends PackedCollection> extends PackedCollection<T> {
