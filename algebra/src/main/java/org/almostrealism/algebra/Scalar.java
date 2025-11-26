@@ -89,45 +89,7 @@ import java.util.function.IntFunction;
 @Deprecated
 public class Scalar extends Pair<Scalar> implements Comparable<Scalar> {
 
-	/**
-	 * Creates a new {@link Scalar} with the specified value and full certainty (1.0).
-	 *
-	 * @param v  the scalar value
-	 */
-	public Scalar(double v) { setValue(v); setCertainty(1.0); }
-
-	/**
-	 * Creates a new {@link Scalar} with the specified value and certainty.
-	 *
-	 * @param v  the scalar value
-	 * @param c  the certainty coefficient (typically 0.0 to 1.0)
-	 */
-	public Scalar(double v, double c) { setValue(v); setCertainty(c); }
-
-	/**
-	 * Creates a new {@link Scalar} backed by the specified {@link MemoryData}.
-	 * The delegate must have a length of at least 2 to store both value and certainty.
-	 *
-	 * @param delegate  the memory data to use as backing storage
-	 */
-	public Scalar(MemoryData delegate) {
-		this(delegate, 0);
-
-		if (delegate.getMemLength() != 2) {
-			warn("Scalar created with delegate of length " +
-					delegate.getMemLength() + " (expected 2)");
-		}
-	}
-
-	/**
-	 * Creates a new {@link Scalar} backed by the specified {@link MemoryData} at the given offset.
-	 *
-	 * @param delegate        the memory data to use as backing storage
-	 * @param delegateOffset  the offset within the delegate where this scalar's data begins
-	 */
-	public Scalar(MemoryData delegate, int delegateOffset) {
-		super(delegate, delegateOffset);
-	}
+	private Scalar() { }
 
 	@Override
 	protected void init() {
@@ -199,84 +161,6 @@ public class Scalar extends Pair<Scalar> implements Comparable<Scalar> {
 	 */
 	public static TraversalPolicy shape() {
 		return new TraversalPolicy(2);
-	}
-
-	/**
-	 * Creates a {@link PackedCollection} containing the specified number of {@link Scalar}s.
-	 * Each scalar in the bank can be accessed and modified independently.
-	 *
-	 * <pre>{@code
-	 * PackedCollection<Scalar> scalars = Scalar.scalarBank(100);
-	 * scalars.get(0).setValue(5.0);
-	 * }</pre>
-	 *
-	 * @param count  the number of scalars to allocate
-	 * @return a packed collection of scalars
-	 */
-	public static PackedCollection<Scalar> scalarBank(int count) {
-		return new PackedCollection<>(new TraversalPolicy(count, 2), 1, delegateSpec ->
-				new Scalar(delegateSpec.getDelegate(), delegateSpec.getOffset()));
-	}
-
-	/**
-	 * Creates a {@link PackedCollection} of {@link Scalar}s backed by the specified {@link MemoryData}.
-	 *
-	 * @param count     the number of scalars to allocate
-	 * @param delegate  the memory data to use as backing storage
-	 * @return a packed collection of scalars
-	 */
-	public static PackedCollection<Scalar> scalarBank(int count, MemoryData delegate) {
-		return scalarBank(count, delegate, 0);
-	}
-
-	/**
-	 * Creates a {@link PackedCollection} of {@link Scalar}s backed by the specified {@link MemoryData}
-	 * starting at the given offset.
-	 *
-	 * @param count           the number of scalars to allocate
-	 * @param delegate        the memory data to use as backing storage
-	 * @param delegateOffset  the offset within the delegate where the scalar bank begins
-	 * @return a packed collection of scalars
-	 */
-	public static PackedCollection<Scalar> scalarBank(int count, MemoryData delegate, int delegateOffset) {
-		return new PackedCollection<>(new TraversalPolicy(count, 2), 1, delegateSpec ->
-				new Scalar(delegateSpec.getDelegate(), delegateSpec.getOffset()),
-				delegate, delegateOffset);
-	}
-
-	/**
-	 * Creates a supplier function that produces {@link Scalar}s from a memory allocation function.
-	 * This is useful for creating scalars within computation graphs.
-	 *
-	 * @param supply  a function that allocates memory for scalars
-	 * @return a function that creates scalars with specified values
-	 */
-	public static DoubleFunction<Scalar> supply(IntFunction<PackedCollection<?>> supply) {
-		return v -> {
-			Scalar s = new Scalar(supply.apply(2), 0);
-			s.setValue(v);
-			return s;
-		};
-	}
-
-	/**
-	 * Returns a postprocessor function that creates {@link Scalar}s from {@link MemoryData}.
-	 * Used internally by the computation framework.
-	 *
-	 * @return a function that creates scalars from memory data
-	 */
-	public static BiFunction<MemoryData, Integer, Pair<?>> postprocessor() {
-		return (delegate, offset) -> new Scalar(delegate, offset);
-	}
-
-	/**
-	 * Returns a postprocessor function that creates {@link PackedCollection}s of {@link Scalar}s
-	 * from {@link MemoryData}. Used internally by the computation framework.
-	 *
-	 * @return a function that creates scalar banks from memory data
-	 */
-	public static BiFunction<MemoryData, Integer, PackedCollection<Scalar>> scalarBankPostprocessor() {
-		return (output, offset) -> Scalar.scalarBank(output.getMemLength() / 2, output, offset);
 	}
 
 	/**

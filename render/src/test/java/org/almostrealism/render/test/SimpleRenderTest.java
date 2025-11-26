@@ -189,7 +189,7 @@ public class SimpleRenderTest implements TestFeatures {
 		input.get(0).setMem(new double[] { 0.0, 0.0 });  // Single pixel at (0, 0)
 
 		// Evaluate with batch input like rank cache does
-		org.almostrealism.collect.PackedCollection<org.almostrealism.algebra.Scalar> rankCollection =
+		org.almostrealism.collect.PackedCollection<?> rankCollection =
 			new org.almostrealism.collect.PackedCollection<>(shape(1, 1).traverse(1));
 		variableIntersection.getDistance().get().into(rankCollection.each()).evaluate(input);
 

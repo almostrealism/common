@@ -16,23 +16,23 @@
 
 package org.almostrealism.primitives;
 
-import java.util.ArrayList;
-import java.util.Iterator;
-import java.util.List;
-
-import org.almostrealism.algebra.*;
+import io.almostrealism.code.Operator;
+import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Producer;
+import org.almostrealism.CodeFeatures;
+import org.almostrealism.algebra.Vector;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.color.RGB;
 import org.almostrealism.geometry.Intersection;
 import org.almostrealism.geometry.Ray;
-import io.almostrealism.code.Operator;
-import io.almostrealism.relation.Producer;
+import org.almostrealism.geometry.ShadableIntersection;
 import org.almostrealism.geometry.TransformMatrix;
 import org.almostrealism.hardware.DynamicProducerForMemoryData;
 import org.almostrealism.space.AbstractSurface;
-import org.almostrealism.geometry.ShadableIntersection;
-import org.almostrealism.CodeFeatures;
-import io.almostrealism.relation.Evaluable;
+
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
 
 // TODO Add ParticleGroup implementation.
 
@@ -81,7 +81,7 @@ public class Cone extends AbstractSurface implements CodeFeatures {
 
 		final Producer<Ray> fr = r;
 
-		Producer<Scalar> s = new DynamicProducerForMemoryData<>(args -> {
+		Producer<PackedCollection<?>> s = new DynamicProducerForMemoryData<>(args -> {
 				Ray ray = fr.get().evaluate(args);
 
 				Vector d = ray.getDirection().divide(ray.getDirection().length());
@@ -141,7 +141,8 @@ public class Cone extends AbstractSurface implements CodeFeatures {
 				if (t == Double.MAX_VALUE) {
 					return null;
 				} else {
-					Scalar ts = new Scalar(t);
+					PackedCollection<?> ts = new PackedCollection<>(1);
+					ts.setMem(0, t);
 					return ts;
 				}
 			});

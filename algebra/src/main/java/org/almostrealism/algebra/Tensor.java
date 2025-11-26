@@ -94,7 +94,7 @@ import org.almostrealism.hardware.MemoryData;
  *
  * <h3>HTML and CSV Export</h3>
  * <pre>{@code
- * Tensor<Scalar> data = new Tensor<>();
+ * Tensor<PackedCollection<?>> data = new Tensor<>();
  * // ... populate data ...
  *
  * String html = data.toHTML();  // Generate HTML table
@@ -322,7 +322,7 @@ public class Tensor<T> implements HTMLContent {
 	 * </p>
 	 * <ul>
 	 *   <li>{@link HTMLContent} objects - rendered via their toHTML() method</li>
-	 *   <li>{@link Scalar} objects - displays the scalar value</li>
+	 *   <li>{@link PackedCollection} objects - displays the first value</li>
 	 *   <li>{@link String} objects - displayed as-is</li>
 	 *   <li>Other objects - displays the class simple name</li>
 	 * </ul>
@@ -351,10 +351,10 @@ public class Tensor<T> implements HTMLContent {
 					cell.addStyleClass("tensor-cell");
 					cell.add(new HTMLString((String) o));
 					row.add(cell);
-				} else if (o instanceof Scalar) {
+				} else if (o instanceof PackedCollection) {
 					Div cell = new Div();
 					cell.addStyleClass("tensor-cell");
-					cell.add(new HTMLString(String.valueOf(((Scalar) o).getValue())));
+					cell.add(new HTMLString(String.valueOf(((PackedCollection<?>) o).toDouble(0))));
 					row.add(cell);
 				} else {
 					Div cell = new Div();
@@ -378,7 +378,7 @@ public class Tensor<T> implements HTMLContent {
 	 * Value handling:
 	 * </p>
 	 * <ul>
-	 *   <li>{@link Scalar} objects - exports the scalar value</li>
+	 *   <li>{@link PackedCollection} objects - exports the first value</li>
 	 *   <li>{@link Number} objects - exports the numeric value</li>
 	 *   <li>{@link String} objects - exported as-is</li>
 	 *   <li>Other objects - exports the class simple name</li>
@@ -399,8 +399,8 @@ public class Tensor<T> implements HTMLContent {
 
 				if (o instanceof String) {
 					buf.append((String) o);
-				} else if (o instanceof Scalar) {
-					buf.append(((Scalar) o).getValue());
+				} else if (o instanceof PackedCollection) {
+					buf.append(((PackedCollection<?>) o).toDouble(0));
 				} else if (o instanceof Number) {
 					buf.append(o);
 				} else {

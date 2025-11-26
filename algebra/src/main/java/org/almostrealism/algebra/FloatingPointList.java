@@ -17,10 +17,10 @@
 package org.almostrealism.algebra;
 
 /**
- * A dynamically-resizing array of {@link Scalar} values.
+ * A dynamically-resizing array of double values.
  *
  * <p>
- * {@link FloatingPointList} provides an ArrayList-like structure for storing scalar values
+ * {@link FloatingPointList} provides an ArrayList-like structure for storing double values
  * with automatic capacity management. The internal array doubles in size when full,
  * providing amortized O(1) append operations.
  * </p>
@@ -29,22 +29,19 @@ package org.almostrealism.algebra;
  * <pre>{@code
  * FloatingPointList list = new FloatingPointList();
  *
- * // Add scalar values
- * list.add(new Scalar(1.0));
+ * // Add values
+ * list.add(1.0);
  * list.add(2.0, 3.0, 4.0);  // Varargs convenience method
  *
  * // Access values
- * Scalar value = list.get(0);  // Returns Scalar(1.0)
+ * double value = list.get(0);  // Returns 1.0
  * int size = list.size();       // 4
  *
  * // Trim excess capacity
  * list.trim();
  * }</pre>
  *
- * @deprecated This class will be replaced with ScalarBank for better integration
- *             with hardware-accelerated operations.
  * @author  Michael Murray
- * @see Scalar
  */
 public class FloatingPointList {
 	private static final int DEFAULT_SIZE = 10;
@@ -59,22 +56,11 @@ public class FloatingPointList {
 	 */
 	public void add(double... d) {
 		for (double v : d) {
-			add(new Scalar(v));
+			if (numElements == data.length) {
+				resize(1 + numElements);
+			}
+			data[numElements++] = v;
 		}
-	}
-
-	/**
-	 * Adds a {@link Scalar} to this list, resizing if necessary.
-	 *
-	 * @param f  the scalar to add
-	 */
-	public void add(Scalar f) {
-		if (numElements == data.length) {
-			resize(1 + numElements);
-		}
-
-		data[numElements++] = f.getValue();
-		assert numElements <= data.length;
 	}
 
 	/**
@@ -87,18 +73,18 @@ public class FloatingPointList {
 	}
 
 	/**
-	 * Returns the {@link Scalar} at the specified index.
+	 * Returns the value at the specified index.
 	 *
 	 * @param index  the index
-	 * @return the scalar at that position
+	 * @return the value at that position
 	 * @throws ArrayIndexOutOfBoundsException if index is out of bounds
 	 */
-	public Scalar get(int index) {
+	public double get(int index) {
 		if (index >= numElements) {
 			throw new ArrayIndexOutOfBoundsException(index);
 		}
 
-		return new Scalar(data[index]);
+		return data[index];
 	}
 
 	/**
@@ -108,7 +94,7 @@ public class FloatingPointList {
 	 * @param val    the new value
 	 * @throws ArrayIndexOutOfBoundsException if index is out of bounds
 	 */
-	public void put(int index, float val) {
+	public void put(int index, double val) {
 		if (index >= numElements) {
 			throw new ArrayIndexOutOfBoundsException(index);
 		}

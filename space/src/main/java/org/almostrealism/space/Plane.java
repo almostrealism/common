@@ -152,7 +152,7 @@ public class Plane extends AbstractSurface implements ParticleGroup, RayFeatures
 
 		// tr = new RayFromVectors(new RayOrigin(tr), new RayDirection(tr).normalize());
 
-		Producer<Scalar> s;
+		Producer<PackedCollection<?>> s;
 
 		if (type == Plane.XY) {
 			s = minus(z(origin(tr))).divide(z(direction(tr)));

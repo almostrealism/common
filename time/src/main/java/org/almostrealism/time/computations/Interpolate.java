@@ -83,7 +83,7 @@ import java.util.function.Function;
  * // Query at t=0.5 (between first two points)
  * Producer<PackedCollection<?>> seriesP = p(series);
  * Producer<PackedCollection<?>> timeP = c(p(new Pair(0.5, 0.0)));
- * Producer<PackedCollection<?>> rateP = c(p(new Scalar(1.0)));
+ * Producer<PackedCollection<?>> rateP = c(pack(1.0));
  *
  * Interpolate interp = new Interpolate(seriesP, timeP, rateP);
  * double result = interp.get().evaluate().toDouble(0);
@@ -139,7 +139,7 @@ import java.util.function.Function;
  * <p>The optional {@code rate} parameter scales the time axis:</p>
  * <pre>{@code
  * // Double-speed playback (2x rate)
- * Producer<PackedCollection<?>> rate = c(p(new Scalar(2.0)));
+ * Producer<PackedCollection<?>> rate = c(pack(2.0));
  * Interpolate fastPlayback = new Interpolate(series, position, rate);
  *
  * // Query at t=1.0 in output time maps to t=2.0 in series time
