@@ -17,7 +17,6 @@
 package org.almostrealism.time.computations.test;
 
 import io.almostrealism.relation.Evaluable;
-import org.almostrealism.algebra.Scalar;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.AcceleratedComputationOperation;
 import org.almostrealism.hardware.OperationList;

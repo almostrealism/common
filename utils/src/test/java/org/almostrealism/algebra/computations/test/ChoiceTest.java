@@ -17,7 +17,6 @@
 package org.almostrealism.algebra.computations.test;
 
 import io.almostrealism.relation.Evaluable;
-import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.computations.Choice;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.util.TestFeatures;
@@ -26,9 +25,9 @@ import org.junit.Test;
 public class ChoiceTest implements TestFeatures {
 	@Test
 	public void oneOrTwo() {
-		PackedCollection<Scalar> bank = Scalar.scalarBank(2);
-		bank.set(0, 1.0, 1.0);
-		bank.set(1, 2.0, 1.0);
+		PackedCollection<?> bank = new PackedCollection<>(shape(2, 2));
+		bank.setMem(0, 1.0, 1.0);
+		bank.setMem(2, 2.0, 1.0);
 
 		bank.print();
 

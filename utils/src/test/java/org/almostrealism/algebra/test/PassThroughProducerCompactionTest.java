@@ -17,47 +17,47 @@
 package org.almostrealism.algebra.test;
 
 import io.almostrealism.relation.Evaluable;
-import org.almostrealism.algebra.Scalar;
 import org.almostrealism.collect.CollectionProducer;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.hardware.Input;
 import org.junit.Assert;
 import org.junit.Test;
 
 public class PassThroughProducerCompactionTest implements CodeFeatures {
-	protected CollectionProducer<Scalar> sum() {
+	protected CollectionProducer<PackedCollection<?>> sum() {
 		return add(
-				Input.value(Scalar.shape(), 0),
-				Input.value(Scalar.shape(), 1));
+				Input.value(shape(1), 0),
+				Input.value(shape(1), 1));
 	}
 
 	@Test
 	public void applySum() {
-		Evaluable<Scalar> ev = sum().get();
-		Scalar s = new Scalar(ev.evaluate(new Scalar(1.0), new Scalar(2.0)));
-		Assert.assertEquals(3.0, s.getValue(), Math.pow(10, -10));
+		Evaluable<PackedCollection<?>> ev = sum().get();
+		PackedCollection<?> s = ev.evaluate(pack(1.0), pack(2.0));
+		Assert.assertEquals(3.0, s.toDouble(0), Math.pow(10, -10));
 	}
 
-	protected Evaluable<Scalar> product() {
-		return multiply(sum(), Input.value(Scalar.shape(), 2)).get();
+	protected Evaluable<PackedCollection<?>> product() {
+		return multiply(sum(), Input.value(shape(1), 2)).get();
 	}
 
 	@Test
 	public void applyProduct() {
-		Scalar s = new Scalar(product().evaluate(
+		PackedCollection<?> s = product().evaluate(
 									c(1.0).get().evaluate(),
 									c(2.0).get().evaluate(),
-									c(3.0).get().evaluate()));
-		System.out.println(s.getValue());
-		System.out.println(s.getValue());
-		Assert.assertEquals(9.0, s.getValue(), Math.pow(10, -10));
+									c(3.0).get().evaluate());
+		System.out.println(s.toDouble(0));
+		System.out.println(s.toDouble(0));
+		Assert.assertEquals(9.0, s.toDouble(0), Math.pow(10, -10));
 	}
 
 	@Test
 	public void applyProductCompact() {
-		Evaluable<Scalar> p = product();
+		Evaluable<PackedCollection<?>> p = product();
 
-		Scalar s = new Scalar(p.evaluate(new Scalar(1.0), new Scalar(2.0), new Scalar(3.0)));
-		Assert.assertEquals(9.0, s.getValue(), Math.pow(10, -10));
+		PackedCollection<?> s = p.evaluate(pack(1.0), pack(2.0), pack(3.0));
+		Assert.assertEquals(9.0, s.toDouble(0), Math.pow(10, -10));
 	}
 }

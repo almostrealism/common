@@ -22,7 +22,6 @@ import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.ProducerWithRank;
 import io.almostrealism.relation.Provider;
-import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.collect.computations.GreaterThanCollection;
 import org.almostrealism.collect.CollectionProducer;
@@ -174,7 +173,7 @@ public class TriangleTest implements TestFeatures {
 				Input.value(shape(-1, 6), 0));
 
 		GreaterThanCollection gts = (GreaterThanCollection) intersectAt.getInputs().get(4);
-		Evaluable<Scalar> ev = gts.get();
+		Evaluable<PackedCollection<?>> ev = gts.get();
 
 		PackedCollection<?> distance = ev.evaluate(in, td.traverse(0));
 		assertEquals(1.0, distance.toDouble());

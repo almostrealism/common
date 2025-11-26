@@ -1,13 +1,29 @@
+/*
+ * Copyright 2025 Michael Murray
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ */
+
 package org.almostrealism.primitives.test;
 
 import org.almostrealism.color.PointLight;
 import org.almostrealism.color.DiffuseShader;
 import io.almostrealism.relation.Producer;
-import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.geometry.ContinuousField;
 import org.almostrealism.geometry.Ray;
+import org.almostrealism.geometry.ShadableIntersection;
 import org.almostrealism.primitives.Sphere;
 import org.almostrealism.space.AbstractSurface;
 import org.almostrealism.util.TestFeatures;
@@ -53,33 +69,19 @@ public class BasicIntersectionTest implements TestFeatures {
 		Producer<Ray> ray = ray(0.0, 0.0, 10.0, 0.0, 0.0, -1.0);
 
 		// Compute intersection
-		ContinuousField intersection = sphere.intersectAt(ray);
+		ShadableIntersection intersection = sphere.intersectAt(ray);
 
-		// Try to get the distance
-		try {
-			// Check if this is a ShadableIntersection (from ar-common)
-			if (intersection instanceof org.almostrealism.geometry.ShadableIntersection) {
-				org.almostrealism.geometry.ShadableIntersection shadableInt =
-					(org.almostrealism.geometry.ShadableIntersection) intersection;
+		if (intersection != null) {
+			Producer<PackedCollection<?>> distance = intersection.getDistance();
+			log("Distance producer: " + distance);
 
-				Producer<PackedCollection<?>> distance = shadableInt.getDistance();
-				log("Distance producer: " + distance);
+			if (distance != null) {
+				PackedCollection<?> distanceValue = distance.get().evaluate();
 
-				if (distance != null) {
-					PackedCollection<?> distanceValue = distance.get().evaluate();
-					log("Distance value: " + distanceValue);
-
-					// Expected distance should be around 9.0 (10.0 from camera to surface - 1.0 radius)
-					if (distanceValue instanceof Scalar) {
-						double d = ((Scalar) distanceValue).getValue();
-						log("Intersection distance: " + d);
-						assertEquals("Distance should be ~9.0", 9.0, d);
-					}
-				}
+				double d = distanceValue.toDouble();
+				log("Intersection distance: " + d);
+				assertEquals("Distance should be ~9.0", 9.0, d);
 			}
-		} catch (ClassCastException e) {
-			log("ClassCastException getting distance: " + e.getMessage());
-			// This might fail due to ar-common API changes - that's OK for now
 		}
 	}
 

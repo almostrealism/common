@@ -19,8 +19,6 @@ package org.almostrealism.graph.test;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
 import org.almostrealism.algebra.Pair;
-import org.almostrealism.algebra.Scalar;
-import org.almostrealism.algebra.ScalarFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.TimeCell;

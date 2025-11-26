@@ -18,7 +18,6 @@ package org.almostrealism.algebra.test;
 
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
-import org.almostrealism.algebra.Scalar;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.AcceleratedComputationOperation;
 import org.almostrealism.hardware.OperationList;
@@ -49,17 +48,17 @@ public class ExpressionDelegationTest implements TestFeatures {
 
 	@Test
 	public void assignmentFromProduct() {
-		Scalar a = new Scalar(1.0);
-		Scalar b = new Scalar(2.0);
-		Scalar r = new Scalar(0.0);
+		PackedCollection<?> a = pack(1.0);
+		PackedCollection<?> b = pack(2.0);
+		PackedCollection<?> r = pack(0.0);
 
 		OperationList l = new OperationList("Assignment from product");
-		l.add(a(1, p(r), v(a).multiply(p(b))));
+		l.add(a(1, p(r), cp(a).multiply(p(b))));
 
 		AcceleratedComputationOperation op = (AcceleratedComputationOperation) l.get();
 
 		op.run();
-		System.out.println(r);
+		System.out.println(r.toDouble(0));
 		assertEquals(2.0, r);
 	}
 }

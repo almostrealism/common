@@ -18,7 +18,6 @@ package org.almostrealism.primitives.test;
 
 import org.almostrealism.projection.ThinLensCamera;
 import io.almostrealism.relation.Producer;
-import org.almostrealism.algebra.Scalar;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.geometry.Intersection;
 import org.almostrealism.algebra.Pair;
@@ -85,19 +84,19 @@ public class MeshIntersectionTest implements TestFeatures {
 		CachedMeshIntersectionKernel kernel = new CachedMeshIntersectionKernel(data, ray);
 
 		PackedCollection<Pair<?>> input = RealizableImage.generateKernelInput(0, 0, width, height);
-		PackedCollection<Scalar> distances = Scalar.scalarBank(input.getCount());
+		PackedCollection<?> distances = new PackedCollection<>(shape(input.getCount(), 2));
 		kernel.setDimensions(width, height, 1, 1);
 		kernel.into(distances).evaluate(input);
 
 		Evaluable<Vector> closestNormal = kernel.getClosestNormal();
 
 		int pos = 0;
-		System.out.println("distance(" + pos + ") = " + distances.get(pos).getValue());
-		Assert.assertEquals(-1.0, distances.get(pos).getValue(), Math.pow(10, -10));
+		System.out.println("distance(" + pos + ") = " + distances.valueAt(pos, 0));
+		Assert.assertEquals(-1.0, distances.valueAt(pos, 0), Math.pow(10, -10));
 
 		pos = (height / 2) * width + width / 2;
-		System.out.println("distance(" + pos + ") = " + distances.get(pos).getValue());
-		Assert.assertEquals(1.0, distances.get(pos).getValue(), Math.pow(10, -10));
+		System.out.println("distance(" + pos + ") = " + distances.valueAt(pos, 0));
+		Assert.assertEquals(1.0, distances.valueAt(pos, 0), Math.pow(10, -10));
 
 		PackedCollection<?> n = closestNormal.evaluate(input.get(pos));
 		System.out.println("normal(" + pos + ") = " + n);
@@ -106,8 +105,8 @@ public class MeshIntersectionTest implements TestFeatures {
 		Assert.assertEquals(1.0, n.toDouble(2), Math.pow(10, -10));
 
 		pos = (height / 2) * width + 3 * width / 8;
-		System.out.println("distance(" + pos + ") = " + distances.get(pos).getValue());
-		Assert.assertEquals(1.042412281036377, distances.get(pos).getValue(), Math.pow(10, -10));
+		System.out.println("distance(" + pos + ") = " + distances.valueAt(pos, 0));
+		Assert.assertEquals(1.042412281036377, distances.valueAt(pos, 0), Math.pow(10, -10));
 
 		n = closestNormal.evaluate(input.get(pos));
 		System.out.println("normal(" + pos + ") = " + n);
@@ -119,12 +118,12 @@ public class MeshIntersectionTest implements TestFeatures {
 	@Test
 	public void triangleIntersectAtKernel() {
 		PackedCollection<Ray> in = Ray.bank(1);
-		PackedCollection<Scalar> distances = Scalar.scalarBank(1);
+		PackedCollection<?> distances = new PackedCollection<>(shape(1, 2));
 
 		in.set(0, 0.0, 0.0, 1.0, 0.0, 0.0, -1.0);
 		Triangle.intersectAt.into(distances).evaluate(in, data);
-		System.out.println("distance = " + distances.get(0).getValue());
-		Assert.assertEquals(1.0, distances.get(0).getValue(), Math.pow(10, -10));
+		System.out.println("distance = " + distances.valueAt(0, 0));
+		Assert.assertEquals(1.0, distances.valueAt(0, 0), Math.pow(10, -10));
 
 		PackedCollection<Pair<?>> out = Pair.bank(1);
 		PackedCollection<Pair<?>> conf = Pair.bank(1);

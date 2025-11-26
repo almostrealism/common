@@ -22,7 +22,6 @@ import io.almostrealism.relation.DynamicProducer;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Operation;
 import io.almostrealism.relation.Producer;
-import org.almostrealism.algebra.Scalar;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.DynamicIndexProjectionProducerComputation;
@@ -165,7 +164,7 @@ public class CollectionComputationTests implements TestFeatures {
 		int size = 10;
 
 		PackedCollection<?> gain = pack(0.5);
-		PackedCollection<?> input = new Scalar(3.0);
+		PackedCollection<?> input = pack(3.0);
 		PackedCollection<?> in = pack(2.0, 7.0, 5.0);
 		PackedCollection<?> out = pack(0.0, 0.0, 0.0);
 		PackedCollection<?> feedback = empty(shape(count, count))

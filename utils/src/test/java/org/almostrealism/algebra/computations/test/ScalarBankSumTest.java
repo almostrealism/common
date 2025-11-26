@@ -17,7 +17,6 @@
 package org.almostrealism.algebra.computations.test;
 
 import io.almostrealism.relation.Producer;
-import org.almostrealism.algebra.Scalar;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
@@ -25,11 +24,11 @@ import org.junit.Test;
 public class ScalarBankSumTest implements TestFeatures {
 	@Test
 	public void sum() {
-		PackedCollection<Scalar> bank = Scalar.scalarBank(4);
-		bank.set(0, 1);
-		bank.set(1, 2);
-		bank.set(2, 3);
-		bank.set(3, 4);
+		PackedCollection<?> bank = new PackedCollection<>(shape(4, 2));
+		bank.setMem(0, 1, 0);
+		bank.setMem(2, 2, 0);
+		bank.setMem(4, 3, 0);
+		bank.setMem(6, 4, 0);
 
 		Producer<PackedCollection<?>> s = subset(shape(4, 1), p(bank), 0).sum();
 		assertEquals(10, s.get().evaluate());
