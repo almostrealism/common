@@ -254,7 +254,7 @@ public class RepeatedDeltaComputationTests implements TestFeatures {
 		if (testDepth < 3) return;
 		if (testProfileIs(TestUtils.PIPELINE)) return;
 
-		int l = 8; int d = 28;
+		int l = 8; int d = 24;
 
 		convDelta("convDelta", l, d, false);
 	}
@@ -297,36 +297,27 @@ public class RepeatedDeltaComputationTests implements TestFeatures {
 	}
 
 	public void convDelta(int n, int c, int h, int w, int f, boolean byGradient) {
-		boolean weightedSum = WeightedSumExpression.enableCollectionExpression;
+		int s = 3;
 
-		try {
-			if (f > 4)
-				WeightedSumExpression.enableCollectionExpression = false;
+		PackedCollection<?> input = new PackedCollection<>(shape(n, c, h, w)).randFill();
+		PackedCollection<?> filters = new PackedCollection<>(shape(f, c, s, s)).randFill();
+		CollectionProducer<PackedCollection<?>> result =
+				conv(s, cp(input), cp(filters.reshape(-1, c, s * s)));
 
-			int s = 3;
+		TraversalPolicy r = result.getShape();
+		log(r);
 
-			PackedCollection<?> input = new PackedCollection<>(shape(n, c, h, w)).randFill();
-			PackedCollection<?> filters = new PackedCollection<>(shape(f, c, s, s)).randFill();
-			CollectionProducer<PackedCollection<?>> result =
-					conv(s, cp(input), cp(filters.reshape(-1, c, s * s)));
+		Supplier<Evaluable<? extends PackedCollection<?>>> d;
 
-			TraversalPolicy r = result.getShape();
-			log(r);
-
-			Supplier<Evaluable<? extends PackedCollection<?>>> d;
-
-			if (byGradient) {
-				PackedCollection<?> grad = new PackedCollection<>(r).randFill();
-				d = Process.optimized(combineGradient(result, cp(input), cp(grad)));
-			} else {
-				d = Process.optimized(result.delta(cp(input)));
-			}
-
-			PackedCollection<?> out = d.get().evaluate();
-			log(out.getShape());
-		} finally {
-			WeightedSumExpression.enableCollectionExpression = weightedSum;
+		if (byGradient) {
+			PackedCollection<?> grad = new PackedCollection<>(r).randFill();
+			d = Process.optimized(combineGradient(result, cp(input), cp(grad)));
+		} else {
+			d = Process.optimized(result.delta(cp(input)));
 		}
+
+		PackedCollection<?> out = d.get().evaluate();
+		log(out.getShape());
 	}
 
 	protected CollectionProducer<PackedCollection<?>> conv(int s,

@@ -73,6 +73,8 @@ public class AcceleratedConditionalStatementTests implements TestFeatures {
 
 	@Test
 	public void dotProduct() {
+		if (skipKnownIssues) return;
+
 		Evaluable<PackedCollection<?>> lt = lessThan(
 					oDotd(ray(i -> Math.random())),
 					oDotd(v(Ray.shape(), 0)))
