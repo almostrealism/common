@@ -260,16 +260,31 @@ public class PointExtractionTest implements TestFeatures {
 		PackedCollection<?> crossDebug = new PackedCollection<>(shape(2, 3));
 		PackedCollection<?> normalDebug = new PackedCollection<>(shape(2, 3));
 
-		CollectionProducer<PackedCollection<?>> p1 = point(c(p(reshaped)), 0);
-		CollectionProducer<PackedCollection<?>> p2 = point(c(p(reshaped)), 1);
-		CollectionProducer<PackedCollection<?>> p3 = point(c(p(reshaped)), 2);
+		Producer<PackedCollection<?>> rawP = p(reshaped);
+		log("rawP class: " + rawP.getClass().getSimpleName());
+		if (rawP instanceof io.almostrealism.collect.Shape) {
+			log("rawP shape: " + ((io.almostrealism.collect.Shape) rawP).getShape());
+		}
+		CollectionProducer<PackedCollection<?>> cP = c(rawP);
+		log("cP class: " + cP.getClass().getSimpleName());
+		log("cP shape: " + cP.getShape());
+
+		CollectionProducer<PackedCollection<?>> p1 = point((Producer) cP, 0);
+		CollectionProducer<PackedCollection<?>> p2 = point((Producer) cP, 1);
+		CollectionProducer<PackedCollection<?>> p3 = point((Producer) cP, 2);
+		log("p1 shape: " + p1.getShape());
+		log("p2 shape: " + p2.getShape());
+		log("p3 shape: " + p3.getShape());
 		CollectionProducer<PackedCollection<?>> abcProducer = subtract(p2, p1);
 		CollectionProducer<PackedCollection<?>> defProducer = subtract(p3, p1);
+		log("abcProducer shape: " + abcProducer.getShape());
+		log("defProducer shape: " + defProducer.getShape());
 
 		abcProducer.get().into(abcDebug.traverse(1)).evaluate();
 		defProducer.get().into(defDebug.traverse(1)).evaluate();
 
 		CollectionProducer<?> crossProducer = crossProduct((Producer) abcProducer, (Producer) defProducer);
+		log("crossProducer shape: " + crossProducer.getShape());
 		crossProducer.get().into(crossDebug.traverse(1)).evaluate();
 
 		// Debug lengthSq components
@@ -455,17 +470,11 @@ public class PointExtractionTest implements TestFeatures {
 		log("First 9 values (triangle 0):");
 		reshaped.range(shape(3, 3)).print();
 
-		// Use Triangle.dataProducer to compute triangle data (edges and normal)
+		// Use triangle() method directly for proper batch processing with shape (3, 3, 3)
+		// Note: Triangle.dataProducer expects single triangle (3, 3) input, so we use triangle() directly
 		MeshData result = new MeshData(3);
-		Triangle.dataProducer.into(result.traverse(1)).evaluate(reshaped);
-
-		log("\nTriangle results:");
-		for (int t = 0; t < 3; t++) {
-			log("Triangle " + t + " normal: [" +
-				result.get(t).get(3).toDouble(0) + ", " +
-				result.get(t).get(3).toDouble(1) + ", " +
-				result.get(t).get(3).toDouble(2) + "]");
-		}
+		CollectionProducer<?> triangleProducer = triangle(c(p(reshaped)));
+		triangleProducer.get().into(result.traverse(1)).evaluate();
 
 		// Triangle 0 should have normal [0, 0, 1]
 		assertEquals(0.0, result.get(0).get(3).toDouble(0));
@@ -473,7 +482,6 @@ public class PointExtractionTest implements TestFeatures {
 		assertEquals(1.0, result.get(0).get(3).toDouble(2));
 
 		// Triangle 1 and 2 should also have correct normals now
-		// (previously they showed NaN because of the (N, 9, 3) shape mismatch)
 		assertEquals(-2.0 / 3.0, result.get(1).get(3).toDouble(0));
 		assertEquals(1.0 / 3.0, result.get(1).get(3).toDouble(1));
 		assertEquals(2.0 / 3.0, result.get(1).get(3).toDouble(2));

@@ -157,7 +157,7 @@ public interface VectorFeatures extends ScalarFeatures {
 	 * @param <T>  the collection type (typically scalar-valued)
 	 * @return a producer that combines the three components into a vector
 	 */
-	default <T extends PackedCollection<?>> CollectionProducer<Vector> vector(
+	default <T extends PackedCollection<?>> CollectionProducer<PackedCollection<?>> vector(
 												Producer<T> x,
 												Producer<T> y,
 												Producer<T> z) {
@@ -211,7 +211,7 @@ public interface VectorFeatures extends ScalarFeatures {
 	 * @param <T>  the collection type
 	 * @return a producer for the x component
 	 */
-	default <T extends PackedCollection<?>> CollectionProducer<T> x(Producer<Vector> v) {
+	default <T extends PackedCollection<?>> CollectionProducer<T> x(Producer<T> v) {
 		return c(v, 0);
 	}
 
@@ -222,7 +222,7 @@ public interface VectorFeatures extends ScalarFeatures {
 	 * @param <T>  the collection type
 	 * @return a producer for the y component
 	 */
-	default <T extends PackedCollection<?>> CollectionProducer<T> y(Producer<Vector> v) {
+	default <T extends PackedCollection<?>> CollectionProducer<T> y(Producer<T> v) {
 		return c(v, 1);
 	}
 
@@ -233,13 +233,12 @@ public interface VectorFeatures extends ScalarFeatures {
 	 * @param <T>  the collection type
 	 * @return a producer for the z component
 	 */
-	default <T extends PackedCollection<?>> CollectionProducer<T> z(Producer<Vector> v) {
+	default <T extends PackedCollection<?>> CollectionProducer<T> z(Producer<T> v) {
 		return c(v, 2);
 	}
 
 	/**
 	 * Computes the dot product (inner product) of two vectors.
-	 * Returns a . b = a1b1 + a2b2 + a3b3.
 	 *
 	 * <p>For batch processing with shape (N, 3), this computes the dot product for each
 	 * of the N vector pairs, returning a shape (N, 1) result.</p>
@@ -248,10 +247,12 @@ public interface VectorFeatures extends ScalarFeatures {
 	 * @param b  the second vector
 	 * @return a producer for the scalar dot product
 	 */
-	default CollectionProducer<PackedCollection<?>> dotProduct(Producer<Vector> a, Producer<Vector> b) {
-		// For batch processing: multiply gives (N, 3), sum(1) sums along axis 1 to give (N, 1)
-		// For single vectors: multiply gives (3), sum(1) sums to give (1)
-		return multiply((Producer) a, (Producer) b).sum(1);
+	default <T extends PackedCollection<?>> CollectionProducer<PackedCollection<?>>
+			dotProduct(Producer<T> a, Producer<T> b) {
+		CollectionProducer p = multiply(a, b);
+
+		int axis = p.getShape().getDimensions() - 1;
+		return multiply((Producer) a, (Producer) b).sum(axis);
 	}
 
 	/**
@@ -268,14 +269,16 @@ public interface VectorFeatures extends ScalarFeatures {
 	 * @param b  the second vector
 	 * @return a producer for the cross product vector
 	 */
-	default CollectionProducer<Vector> crossProduct(Producer<Vector> a, Producer<Vector> b) {
-		// Use variable-count shape to support batch processing
-		return new DefaultTraversableExpressionComputation<>("crossProduct", new TraversalPolicy(false, false, 3), args ->
-				CollectionExpression.create(new TraversalPolicy(false, false, 3), idx -> {
+	default <T extends PackedCollection<?>> CollectionProducer<PackedCollection<?>>
+			crossProduct(Producer<T> a, Producer<T> b) {
+		TraversalPolicy inputShape = shape(a);
+
+		return new DefaultTraversableExpressionComputation<>("crossProduct", inputShape, args ->
+				CollectionExpression.create(inputShape, idx -> {
 					// For batch processing with shape (N, 3):
 					// idx ranges from 0 to N*3-1
 					// batchIdx = idx / 3, componentIdx = idx % 3
-					Expression batchIdx = idx.divide(e(3));
+					Expression batchIdx = idx.divide(e(3)).floor();
 					Expression componentIdx = idx.imod(3);
 
 					// Calculate base indices for this batch item
@@ -299,19 +302,6 @@ public interface VectorFeatures extends ScalarFeatures {
 					result = conditional(componentIdx.eq(2), z, result);
 					return result;
 				}), (Producer) a, (Producer) b);
-	}
-
-	/**
-	 * Multiplies a vector by a scalar value.
-	 *
-	 * @param a  the vector
-	 * @param b  the scalar multiplier
-	 * @return a producer for the scaled vector
-	 * @deprecated Use standard multiplication operations from {@link org.almostrealism.collect.CollectionFeatures} instead
-	 */
-	@Deprecated
-	default CollectionProducer<Vector> scalarMultiply(Producer<Vector> a, Producer<Scalar> b) {
-		return vector(multiply(a, vector(b, b, b)));
 	}
 
 	/**
@@ -343,24 +333,45 @@ public interface VectorFeatures extends ScalarFeatures {
 	 * This is more efficient than {@link #length(Producer)} when only comparisons are needed,
 	 * as it avoids the square root computation.
 	 *
+	 * <p>For batch vectors with shape (N, M), this returns shape (N, 1).
+	 * For a single vector with shape (M), this returns shape (1).</p>
+	 *
 	 * @param value  the vector producer
 	 * @param <T>  the collection type
 	 * @return a producer for the squared vector length
 	 */
 	default <T extends PackedCollection<?>> CollectionProducer<T> lengthSq(Producer<?> value) {
-		return multiply((Producer) value, (Producer) value).sum(1);
+		CollectionProducer<?> squared = multiply((Producer) value, (Producer) value);
+
+		int axis = shape(value).getDimensions() - 1;
+		return squared.sum(axis);
 	}
 
 	/**
 	 * Normalizes a vector to unit length: v_hat = v / ||v||.
 	 * The resulting vector has the same direction as the input but magnitude 1.
 	 *
+	 * <p>For batch vectors with shape (N, M), the length has shape (N, 1),
+	 * which is repeated M times to match the input shape for element-wise division.</p>
+	 *
 	 * @param value  the vector producer
 	 * @param <T>  the collection type
 	 * @return a producer for the normalized (unit) vector
 	 */
 	default <T extends PackedCollection<?>> CollectionProducer<T> normalize(Producer<T> value) {
-		return multiply(value, length(value).pow(-1.0));
+		TraversalPolicy valueShape = shape(value);
+		CollectionProducer<?> invLen = length(value).pow(-1.0);
+
+		// For batch vectors (N, M), length produces (N, 1)
+		// We need to repeat along the innermost axis to get (N, M) for proper broadcasting
+		if (valueShape.getDimensions() >= 2) {
+			int vectorDim = valueShape.length(valueShape.getDimensions() - 1);
+			// repeat adds a dimension: (N, 1) -> (N, 1, M)
+			// We need to reshape back to (N, M) to match the input shape
+			invLen = repeat(vectorDim, invLen).reshape(valueShape);
+		}
+
+		return multiply(value, (Producer) invLen);
 	}
 
 	/**

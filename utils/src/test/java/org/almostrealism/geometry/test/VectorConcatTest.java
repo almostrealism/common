@@ -3,6 +3,7 @@ package org.almostrealism.geometry.test;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorFeatures;
 import org.almostrealism.collect.CollectionProducer;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
 
@@ -29,11 +30,11 @@ public class VectorConcatTest implements TestFeatures, VectorFeatures {
 
 		// Try to create a vector from them
 		try {
-			CollectionProducer<Vector> vec = vector(x, y, z);
+			CollectionProducer vec = vector(x, y, z);
 			log("Vector created: " + vec);
 
 			// Vector is now a view over PackedCollection
-			Vector result = new Vector(vec.get().evaluate(), 0);
+			Vector result = new Vector((PackedCollection) vec.get().evaluate(), 0);
 			log("Vector result: " + result);
 
 			assertEquals("X should be 1.0", 1.0, result.getX());

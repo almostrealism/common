@@ -153,18 +153,30 @@ public interface TriangleFeatures extends VectorFeatures {
 	default CollectionProducer<PackedCollection<Vector>> triangle(Producer<Vector> abc, Producer<Vector> def,
 																  Producer<Vector> jkl, Producer<Vector> normal) {
 		// For batch processing, inputs have shape (N, 3) and we need output shape (N, 4, 3)
+		// Determine batch size from input shape
+		TraversalPolicy inputShape = shape(abc);
+		TraversalPolicy outputShape;
+		if (inputShape.getDimensions() >= 2) {
+			// Input is (N, 3), output should be (N, 4, 3)
+			int batchSize = (int) inputShape.length(0);
+			outputShape = new TraversalPolicy(false, false, batchSize, 4, 3);
+		} else {
+			// Single triangle: input is (3), output is (4, 3)
+			outputShape = new TraversalPolicy(false, false, 4, 3);
+		}
+
 		// Create custom computation to arrange the 4 vectors into triangle structure
-		return new DefaultTraversableExpressionComputation<>("triangle", new TraversalPolicy(false, false, 4, 3), args ->
-			CollectionExpression.create(new TraversalPolicy(false, false, 4, 3), idx -> {
+		return new DefaultTraversableExpressionComputation<>("triangle", outputShape, args ->
+			CollectionExpression.create(outputShape, idx -> {
 				// idx ranges from 0 to N*12-1 (N triangles * 4 vectors * 3 components)
 				// For each output position:
 				// - triangleIdx = idx / 12 (which triangle)
 				// - vectorIdx = (idx % 12) / 3 (which of the 4 vectors: 0=abc, 1=def, 2=jkl, 3=normal)
 				// - componentIdx = idx % 3 (which component: x, y, or z)
 
-				Expression triangleIdx = idx.divide(e(12));
+				Expression triangleIdx = idx.divide(e(12)).floor();
 				Expression localIdx = idx.imod(12);
-				Expression vectorIdx = localIdx.divide(e(3));
+				Expression vectorIdx = localIdx.divide(e(3)).floor();
 				Expression componentIdx = localIdx.imod(3);
 
 				// Base index in each input array (N, 3)
@@ -196,12 +208,33 @@ public interface TriangleFeatures extends VectorFeatures {
 	default CollectionProducer<PackedCollection<?>> point(Producer<PackedCollection<?>> points, int vertexIndex) {
 		TraversalPolicy inputShape = shape(points);
 
-		int group = inputShape.getDimensions() - 2;
-		int stride = inputShape.length(group);
+		// stride = number of floats per batch item (vertices per group * 3 components)
+		// For shapes like (N, M, 3), stride = M * 3
+		// For shapes like (M, 3), stride = M * 3
+		int stride;
+		TraversalPolicy outputShape;
+		if (inputShape.getDimensions() >= 3) {
+			// Input is (N, M, 3) - batch of triangles
+			// Output is (N, 3) - batch of vertices
+			int batchDim = inputShape.getDimensions() - 3;
+			int batchSize = (int) inputShape.length(batchDim);
+			int group = inputShape.getDimensions() - 2;
+			stride = (int) inputShape.length(group) * 3;
+			outputShape = new TraversalPolicy(false, false, batchSize, 3);
+		} else if (inputShape.getDimensions() == 2) {
+			// Input is (M, 3) - single triangle's vertices
+			// Output is (3) - single vertex
+			stride = (int) inputShape.length(0) * 3;
+			outputShape = new TraversalPolicy(false, false, 3);
+		} else {
+			stride = 3;  // Single vector
+			outputShape = new TraversalPolicy(false, false, 3);
+		}
 
+		int vertexOffset = vertexIndex * 3;
 		IndexProjectionProducerComputation<PackedCollection<?>> projection = new IndexProjectionProducerComputation<>(
-				"point", new TraversalPolicy(false, false, 3),
-				idx -> idx.divide(e(3)).multiply(e(stride)).add(e(vertexIndex * 3)).add(idx.imod(3)),
+				"point_v" + vertexIndex + "_s" + stride, outputShape,
+				idx -> idx.divide(e(3)).floor().multiply(e(stride)).add(e(vertexOffset)).add(idx.imod(3)),
 				points);
 		return projection;
 	}

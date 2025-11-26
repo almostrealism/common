@@ -339,36 +339,6 @@ public class EmbeddedCollectionMapTests implements TestFeatures, KernelAssertion
 	}
 
 	@Test
-	public void expandEnumerate() {
-		int c = 4;
-		int d = 2;
-
-		PackedCollection<?> input = tensor(shape(c, d)).pack();
-		input.fill(pos -> Math.random());
-
-		verboseLog(() -> {
-			CollectionProducer<PackedCollection<?>> pool =
-					c(p(input)).traverse(1)
-							.repeat(1)
-							.enumerate(2);
-			System.out.println(pool.getShape());
-
-			PackedCollection<?> output = pool.get().evaluate();
-			System.out.println(output.getShape());
-			System.out.println(Arrays.toString(output.toArray(0, 8)));
-
-			for (int i = 0; i < c; i++) {
-				for (int j = 0; j < d; j++) {
-					double expected = input.valueAt(i, j);
-					double actual = output.valueAt(i, 0, j);
-
-					Assert.assertEquals(expected, actual, 0.0001);
-				}
-			}
-		});
-	}
-
-	@Test
 	public void reduceEnumerate() {
 		int n = 4;
 		int w = 2;

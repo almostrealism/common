@@ -38,7 +38,7 @@ public class AcceleratedComputationEvaluableTests implements TestFeatures {
 
 	@Test
 	public void scalarFromVector() {
-		CollectionProducer<PackedCollection<?>> res = y(vector(0.0, 1.0, 2.0));
+		CollectionProducer res = y(vector(0.0, 1.0, 2.0));
 		Evaluable<PackedCollection<?>> ev = res.get();
 		try (PackedCollection<?> s = ev.evaluate()) {
 			s.print();

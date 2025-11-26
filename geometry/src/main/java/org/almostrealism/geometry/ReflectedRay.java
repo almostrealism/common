@@ -61,7 +61,7 @@ public class ReflectedRay implements ProducerComputation<Ray>, GeometryFeatures 
 	public ReflectedRay(Producer<Vector> point, Producer<Vector> incident, Producer<Vector> normal, double blur) {
 		this.point = point;
 		this.normal = normal;
-		this.reflected = reflect(incident, normal);
+		this.reflected = reflect((Producer) incident, (Producer) normal);
 		this.blur = blur;
 	}
 

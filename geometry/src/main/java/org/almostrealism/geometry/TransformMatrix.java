@@ -179,11 +179,6 @@ public class TransformMatrix extends PackedCollection<PackedCollection<?>> imple
 	@Override
 	public Heap getDefaultDelegate() { return Heap.getDefault(); }
 
-	@Deprecated
-	public Evaluable<Vector> transform(Evaluable<Vector> vector, int type) {
-		return transform(() -> vector, type).get();
-	}
-
 	public Producer<Vector> transform(Producer<Vector> vector, int type) {
 		if (this.isIdentity) return vector;
 

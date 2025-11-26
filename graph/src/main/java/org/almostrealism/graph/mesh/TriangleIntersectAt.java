@@ -153,7 +153,7 @@ public class TriangleIntersectAt extends LessThanCollection {
 	 * @return producer for the h vector
 	 */
 	// TODO  Make private
-	public static CollectionProducer<Vector> h(Producer<Vector> def, Producer<Vector> direction) {
+	public static CollectionProducer h(Producer<Vector> def, Producer<Vector> direction) {
 		return Ops.o().crossProduct(direction, def);
 	}
 
@@ -202,7 +202,7 @@ public class TriangleIntersectAt extends LessThanCollection {
 	 * @return producer for the q vector
 	 */
 	// TODO  Make private
-	public static CollectionProducer<Vector> q(Producer<Vector> abc, Producer<Vector> s) {
+	public static CollectionProducer q(Producer<Vector> abc, Producer<Vector> s) {
 		return Ops.o().crossProduct(s, abc);
 	}
 

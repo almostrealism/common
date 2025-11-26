@@ -89,8 +89,9 @@ public interface RayFeatures extends VectorFeatures {
 	 * @param direction the producer for the ray direction
 	 * @return a producer that yields a ray composed of the origin and direction
 	 */
-	default CollectionProducer<Ray> ray(Producer<Vector> origin, Producer<Vector> direction) {
-		return concat(shape(6), (Producer) origin, (Producer) direction);
+	default <T extends PackedCollection<?>> CollectionProducer<Ray>
+			ray(Producer<T> origin, Producer<T> direction) {
+		return (CollectionProducer) concat(shape(6), (Producer) origin, (Producer) direction);
 	}
 
 	/**

@@ -100,6 +100,8 @@ public class Triangle extends AbstractSurface implements ParticleGroup, Triangle
 	public static final Evaluable<PackedCollection<?>> intersectAt;
 
 	static {
+		// Note: Input shape is (3, 3) for a single triangle - 3 vertices with 3 components each
+		// For batch processing with shape (N, 3, 3), use TriangleFeatures.triangle(Producer) directly
 		CollectionProducer<PackedCollection<?>> triangle =
 				triangleFeat.triangle(Input.value(new TraversalPolicy(false, false, 3, 3), 0));
 		dataProducer = triangle.get();

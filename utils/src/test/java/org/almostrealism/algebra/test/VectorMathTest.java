@@ -56,15 +56,6 @@ public class VectorMathTest implements TestFeatures {
 	}
 
 	@Test
-	public void productFromVectors1() {
-		Producer<Vector> a = vector(1.0, 2.0, 3.0);
-		Producer<Vector> b = vector(4.0, 5.0, 6.0);
-		Producer<Scalar> s = y(a).multiply(z(b));
-		Evaluable<Scalar> so = s.get();
-		// Assert.assertEquals(1, so.getArgsCount());
-	}
-
-	@Test
 	public void productFromVectors2() {
 		Producer<Vector> a = vector(1.0, 2.0, 3.0);
 		Producer<Vector> b = vector(4.0, 5.0, 6.0);
@@ -87,7 +78,7 @@ public class VectorMathTest implements TestFeatures {
 		verboseLog(() -> {
 			Producer<Vector> a = vector(1.0, 2.0, 3.0);
 			Producer<Vector> b = vector(4.0, 5.0, 6.0);
-			Producer<PackedCollection<?>> s = y(a).multiply(z(b)).subtract(z(a).multiply(y(b)));
+			CollectionProducer s = y(a).multiply(z(b)).subtract(z(a).multiply(y(b)));
 			HardwareEvaluable<PackedCollection<?>> so = (HardwareEvaluable<PackedCollection<?>>) s.get();
 			assertEquals(-3.0, so.evaluate());
 			Assert.assertEquals(1, so.getArgsCount());

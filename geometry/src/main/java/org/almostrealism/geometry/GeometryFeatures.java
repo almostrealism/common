@@ -141,9 +141,9 @@ public interface GeometryFeatures extends ScalarFeatures, PairFeatures, RayFeatu
 	 * @param normal the surface normal
 	 * @return a producer for the reflected vector
 	 */
-	default Producer<Vector> reflect(Producer<Vector> vector, Producer<Vector> normal) {
-		Producer<Vector> newVector = minus(vector);
-		Producer<Scalar> s = scalar(2).multiply(dotProduct(newVector, normal).divide(lengthSq(normal)));
-		return subtract(newVector, scalarMultiply(normal, s));
+	default Producer<PackedCollection<?>> reflect(Producer<PackedCollection<?>> vector, Producer<PackedCollection<?>> normal) {
+		Producer<PackedCollection<?>> newVector = minus(vector);
+		Producer<PackedCollection<?>> s = scalar(2).multiply(dotProduct(newVector, normal).divide(lengthSq(normal)));
+		return subtract(newVector, multiply(normal, s));
 	}
 }

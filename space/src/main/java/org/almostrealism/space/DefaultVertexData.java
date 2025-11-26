@@ -179,11 +179,13 @@ public class DefaultVertexData implements Mesh.VertexData, CodeFeatures {
 	 *
 	 * <p>This implementation iterates over all triangles and builds a packed collection
 	 * of vertex position data suitable for hardware-accelerated processing.
+	 *
+	 * <p>Returns shape (N, 3, 3) where N is the triangle count - 3 vertices with 3 components each.
 	 */
 	// TODO Kernelize
 	@Override
 	public PackedCollection<PackedCollection<Vector>> getMeshPointData() {
-		PackedCollection<PackedCollection<Vector>> points = Vector.table(9, getTriangleCount());
+		PackedCollection<PackedCollection<Vector>> points = Vector.table(3, getTriangleCount());
 
 		Producer<PackedCollection<Vector>> producer =
 				points(

@@ -34,6 +34,7 @@ import org.almostrealism.geometry.Positioned;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.geometry.ContinuousField;
 import org.almostrealism.graph.KdTree;
+import org.almostrealism.graph.mesh.TriangleFeatures;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.geometry.DimensionAwareKernel;
 import org.almostrealism.geometry.TransformMatrix;
@@ -431,7 +432,8 @@ public class Mesh extends SpacePartition<Triangle> implements Graph<Vector> {
   	public MeshData getMeshData() {
 		MeshData tdata = new MeshData(tcache.length);
 		PackedCollection<PackedCollection<Vector>> points = getMeshPointData();
-		Triangle.dataProducer.into(tdata).evaluate(points);
+		TriangleFeatures tf = TriangleFeatures.getInstance();
+		tf.triangle(tf.c(tf.p(points))).get().into(tdata.traverse(1)).evaluate();
   		return tdata;
 	}
 
