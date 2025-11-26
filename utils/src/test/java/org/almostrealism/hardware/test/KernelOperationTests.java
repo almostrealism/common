@@ -156,8 +156,7 @@ public class KernelOperationTests implements TestFeatures, KernelAssertions {
 				.enumerate(1, w, s)
 				.traverse(2)
 				.repeat(n)
-				.multiply(p(filter))
-				.traverse()
+				.multiply(cp(filter))
 				.sum();
 		System.out.println(conv.getShape());
 
