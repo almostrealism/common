@@ -25,7 +25,6 @@ import io.almostrealism.scope.Repeated;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.Variable;
 import org.almostrealism.algebra.Pair;
-import org.almostrealism.algebra.Scalar;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.CollectionProducerComputationBase;
@@ -53,7 +52,7 @@ import org.almostrealism.collect.computations.CollectionProducerComputationBase;
  * <pre>{@code
  * // Distance array: [0.0, 0.5, 0.3, 0.0, 0.8]
  * // Configuration: (5, epsilon)
- * Producer<PackedCollection<Scalar>> distances = ...;
+ * Producer<PackedCollection<?>> distances = ...;
  * Producer<Pair<?>> config = pair(5.0, epsilon);
  *
  * HighestRank highestRank = new HighestRank(distances, config);
@@ -63,7 +62,7 @@ import org.almostrealism.collect.computations.CollectionProducerComputationBase;
  * @author  Michael Murray
  * @see Pair
  */
-public class HighestRank extends CollectionProducerComputationBase<PackedCollection<Scalar>, Pair<?>> {
+public class HighestRank extends CollectionProducerComputationBase<PackedCollection<?>, Pair<?>> {
 	private int varIdx = 0;
 
 	/**
@@ -72,7 +71,7 @@ public class HighestRank extends CollectionProducerComputationBase<PackedCollect
 	 * @param distances  producer for the array of distance/score values
 	 * @param conf  producer for configuration pair containing (count, epsilon)
 	 */
-	public HighestRank(Producer<PackedCollection<Scalar>> distances, Producer<Pair<?>> conf) {
+	public HighestRank(Producer<PackedCollection<?>> distances, Producer<Pair<?>> conf) {
 		super("highestRank", CollectionFeatures.getInstance().shape(distances), distances, (Producer) conf);
 		setPostprocessor(Pair.postprocessor());
 	}
@@ -125,7 +124,7 @@ public class HighestRank extends CollectionProducerComputationBase<PackedCollect
 		Repeated loop = new Repeated<>(i, i.ref().lessThan(count));
 		Scope<?> loopBody = new Scope<>(); {
 			Expression<Double> value = loopBody.declareDouble(varName("value"),
-									distances.reference(i.ref().multiply(2)));
+									distances.reference(i.ref()));
 
 			Scope updateClosest = new Scope<>();
 			updateClosest.assign(closest, value);

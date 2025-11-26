@@ -20,6 +20,7 @@ import io.almostrealism.code.Computation;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.collect.CollectionProducer;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.AcceleratedOperation;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.util.TestFeatures;
@@ -30,10 +31,10 @@ import java.util.Arrays;
 
 public class SwitchTest implements TestFeatures {
 	public Switch choice(Scalar output, Scalar decision, Scalar multiplier) {
-		return choice(output, v(decision), v(multiplier));
+		return choice(output, p(decision), p(multiplier));
 	}
 
-	public Switch choice(Scalar output, Producer<Scalar> decision, Producer<Scalar> multiplier) {
+	public Switch choice(Scalar output, Producer<PackedCollection<?>> decision, Producer<PackedCollection<?>> multiplier) {
 		Computation<Void> firstChoice = a(1, p(output), multiply(multiplier, c(2.0)));
 		Computation<Void> secondChoice = a(1, p(output), multiply(multiplier, c(4.0)));
 		Computation<Void> thirdChoice = a(1, p(output), multiply(multiplier, c(8.0)));
@@ -82,21 +83,21 @@ public class SwitchTest implements TestFeatures {
 
 	@Test
 	public void nestedChoiceList() {
-		Producer<Scalar> multiplier = scalar(2.0);
+		Producer<PackedCollection<?>> multiplier = c(2.0);
 
 		Scalar output1a = new Scalar(0.0);
 		Scalar output1b = new Scalar(0.0);
-		Producer<Scalar> decisionA = scalar(0.4);
+		Producer<PackedCollection<?>> decisionA = c(0.4);
 		Scalar output2a = new Scalar(0.0);
 		Scalar output2b = new Scalar(0.0);
-		Producer<Scalar> decisionB = multiply(c(0.4), multiplier);
+		Producer<PackedCollection<?>> decisionB = multiply(c(0.4), multiplier);
 
 		OperationList embeddedList = new OperationList("Embedded Choice List");
 		embeddedList.add(choice(output2a, decisionA, multiplier));
-		embeddedList.add(choice(output2b, decisionB, scalar(1.0)));
+		embeddedList.add(choice(output2b, decisionB, c(1.0)));
 
 		OperationList list = new OperationList("Choice List");
-		list.add(choice(output1a, decisionA, scalar(1.0)));
+		list.add(choice(output1a, decisionA, c(1.0)));
 		list.add(choice(output1b, decisionB, multiplier));
 		list.add(embeddedList);
 

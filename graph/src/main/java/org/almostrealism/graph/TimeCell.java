@@ -22,7 +22,6 @@ import io.almostrealism.relation.Provider;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.PairFeatures;
-import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.computations.TimeCellReset;

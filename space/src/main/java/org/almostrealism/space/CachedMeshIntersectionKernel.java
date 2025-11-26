@@ -16,9 +16,9 @@
 
 package org.almostrealism.space;
 
+import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Pair;
-import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.ZeroVector;
 import org.almostrealism.collect.PackedCollection;
@@ -54,7 +54,7 @@ import java.util.stream.Stream;
  * kernel.into(destinationBank).evaluate(args);
  *
  * // Individual queries (uses cache)
- * Scalar distance = kernel.evaluate(new Object[]{new Pair(x, y)});
+ * PackedCollection<?> distance = kernel.evaluate(new Object[]{new Pair(x, y)});
  *
  * // Get normal at closest intersection
  * Vector normal = kernel.getClosestNormal().evaluate(args);
@@ -65,7 +65,7 @@ import java.util.stream.Stream;
  * @see Mesh
  * @see DimensionAware
  */
-public class CachedMeshIntersectionKernel implements Evaluable<Scalar>, DimensionAware {
+public class CachedMeshIntersectionKernel implements Evaluable<PackedCollection<?>>, DimensionAware {
 	private MeshData data;
 	private Evaluable<Ray> ray;
 	private Evaluable<Vector> closestNormal;
@@ -105,7 +105,9 @@ public class CachedMeshIntersectionKernel implements Evaluable<Scalar>, Dimensio
 	 * @return a new scalar memory bank of the specified size
 	 */
 	@Override
-	public MemoryBank<Scalar> createDestination(int size) { return Scalar.scalarBank(size); }
+	public MemoryBank<PackedCollection<?>> createDestination(int size) {
+		return new PackedCollection<>(new TraversalPolicy(size, 1));
+	}
 
 	/**
 	 * Creates an evaluable that computes intersections for all rays and stores results
@@ -135,17 +137,19 @@ public class CachedMeshIntersectionKernel implements Evaluable<Scalar>, Dimensio
 	 * Otherwise, it computes the intersection directly.
 	 *
 	 * @param args arguments containing a {@link Pair} with the pixel (x, y) position as the first element
-	 * @return the intersection distance as a {@link Scalar}, or a negative value if no intersection
+	 * @return the intersection distance as a {@link PackedCollection}, or a negative value if no intersection
 	 */
 	@Override
-	public Scalar evaluate(Object[] args) {
+	public PackedCollection<?> evaluate(Object[] args) {
+		PackedCollection<?> result = new PackedCollection<>(1);
 		if (cache == null) {
-			return new Scalar(data.evaluateIntersection(ray, args).getA());
+			result.setMem(0, data.evaluateIntersection(ray, args).getA());
 		} else {
 			Pair pos = (Pair) args[0];
 			int n = DimensionAware.getPosition(pos.getX(), pos.getY(), width, height, ssw, ssh);
-			return new Scalar(cache.get(n).getA());
+			result.setMem(0, cache.get(n).getA());
 		}
+		return result;
 	}
 
 	/**

@@ -18,7 +18,6 @@ package org.almostrealism.color;
 
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
-import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
@@ -330,7 +329,7 @@ public interface RGBFeatures extends ScalarFeatures {
 	 * @return a producer yielding the attenuated color
 	 */
 	default Producer<RGB> attenuation(double da, double db, double dc,
-									  Producer<RGB> color, Producer<Scalar> distanceSq) {
+									  Producer<RGB> color, Producer<PackedCollection<?>> distanceSq) {
 		return multiply(color, multiply(c(da), distanceSq)
 				.add(c(db).multiply(pow(distanceSq, c(0.5))))
 				.add(c(dc)));

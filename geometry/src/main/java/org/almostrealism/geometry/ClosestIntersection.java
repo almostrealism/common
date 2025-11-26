@@ -16,8 +16,8 @@
 
 package org.almostrealism.geometry;
 
-import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
+import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Evaluable;
 
@@ -35,7 +35,7 @@ import java.util.stream.Stream;
  *
  * <p>Usage example:</p>
  * <pre>{@code
- * List<Intersectable<Scalar>> surfaces = scene.getSurfaces();
+ * List<Intersectable<PackedCollection<?>>> surfaces = scene.getSurfaces();
  * ClosestIntersection closest = new ClosestIntersection(ray, surfaces);
  * Producer<Ray> hitNormal = closest.get(0);  // Gets intersection position and normal
  * }</pre>
@@ -70,10 +70,10 @@ public class ClosestIntersection extends ArrayList<Producer<Ray>> implements Con
 			for (ContinuousField in : s) {
 				if (in == null) continue p;
 
-				Scalar s = (Scalar) ((Evaluable) ((ShadableIntersection) in).getDistance().get()).evaluate(args);
-				if (s == null) continue p;
+				PackedCollection<?> dist = (PackedCollection<?>) ((Evaluable) ((ShadableIntersection) in).getDistance().get()).evaluate(args);
+				if (dist == null) continue p;
 
-				double v = s.getValue();
+				double v = dist.toDouble(0);
 				if (v >= 0.0 && v < d) {
 					d = v;
 					intersection = in;
@@ -100,10 +100,10 @@ public class ClosestIntersection extends ArrayList<Producer<Ray>> implements Con
 			for (ContinuousField in : s) {
 				if (in == null) continue p;
 
-				Scalar s = (Scalar) ((Evaluable) ((ShadableIntersection) in).getDistance().get()).evaluate(args);
-				if (s == null) continue p;
+				PackedCollection<?> dist = (PackedCollection<?>) ((Evaluable) ((ShadableIntersection) in).getDistance().get()).evaluate(args);
+				if (dist == null) continue p;
 
-				double v = s.getValue();
+				double v = dist.toDouble(0);
 				if (v >= 0.0 && v < d) {
 					d = v;
 					normal = in.getNormalAt(point).get().evaluate(args);

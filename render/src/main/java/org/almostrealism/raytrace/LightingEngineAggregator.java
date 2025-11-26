@@ -17,7 +17,6 @@
 package org.almostrealism.raytrace;
 
 import io.almostrealism.relation.Evaluable;
-import org.almostrealism.algebra.Scalar;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.geometry.Intersectable;
 import org.almostrealism.geometry.Intersection;
@@ -68,7 +67,7 @@ public class LightingEngineAggregator extends RankedChoiceEvaluableForRGB implem
 	public static boolean enableVerbose = false;
 
 	private PackedCollection<Pair<?>> input;
-	private List<PackedCollection<Scalar>> ranks;
+	private List<PackedCollection<?>> ranks;
 
 	private boolean kernel;
 	private int width, height, ssw, ssh;
@@ -129,9 +128,8 @@ public class LightingEngineAggregator extends RankedChoiceEvaluableForRGB implem
 
 		this.ranks = new ArrayList<>();
 		for (int i = 0; i < size(); i++) {
-			// CRITICAL: Never use Scalar.scalarBank here, it doesn't have the correct shape
 			// CRITICAL: Use .each() to properly evaluate batch of rays - without it, only first ray processes correctly
-			PackedCollection<Scalar> rankCollection = new PackedCollection<>(shape(input.getCount(), 1).traverse(1));
+			PackedCollection<?> rankCollection = new PackedCollection<>(shape(input.getCount(), 1).traverse(1));
 			this.ranks.add(rankCollection);
 
 			// Evaluate the rank producer
@@ -200,7 +198,7 @@ public class LightingEngineAggregator extends RankedChoiceEvaluableForRGB implem
 		}
 
 		r: for (int i = 0; i < size(); i++) {
-			ProducerWithRank<RGB, Scalar> p = get(i);
+			ProducerWithRank<RGB, PackedCollection<?>> p = get(i);
 
 			// Use valueAt(position, 0) for shape (N, 1) instead of get(position).getValue() for Scalar
 			double r = ranks.get(i).valueAt(position, 0);

@@ -36,14 +36,14 @@ import java.util.stream.Collectors;
  * <h2>Architecture</h2>
  * <pre>
  * Parameters (PackedCollection)
- *     │
- *     ▼ (shared by all chromosomes)
+ *      |
+ *     v (shared by all chromosomes)
  * ProjectedChromosome(s)
- *     │
- *     ▼ (each gene has projection weights)
+ *      |
+ *     v (each gene has projection weights)
  * ProjectedGene(s)
- *     │
- *     ▼ (computed via weighted projection)
+ *      |
+ *     v (computed via weighted projection)
  * Factor values
  * </pre>
  *

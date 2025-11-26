@@ -16,7 +16,8 @@
 
 package org.almostrealism.color;
 
-import org.almostrealism.algebra.Scalar;
+import org.almostrealism.collect.CollectionProducer;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.color.computations.GeneratedColorProducer;
 import org.almostrealism.geometry.DiscreteField;
 import org.almostrealism.algebra.Vector;
@@ -114,8 +115,9 @@ public class BlendingShader implements Shader<LightingContext>, Editable, RGBFea
 		
 		Producer<Vector> l = p.getLightDirection();
 
-		Producer<Scalar> k = dotProduct(direction(n), l).add(scalar(1.0));
-		Producer<Scalar> oneMinusK = scalar(1.0).subtract(k);
+		CollectionProducer<PackedCollection<?>> dp = dotProduct(direction(n), l);
+		Producer<PackedCollection<?>> k = dp.add(c(1.0));
+		Producer<PackedCollection<?>> oneMinusK = c(1.0).subtract(k);
 		
 		RGB hc = this.hotColor.get().evaluate(p);
 		RGB cc = this.coldColor.get().evaluate(p);

@@ -19,7 +19,6 @@ package org.almostrealism.primitives.test;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Pair;
-import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.geometry.ShadableIntersection;
@@ -69,7 +68,7 @@ public class SphereTest implements TestFeatures {
 
 		// Ray from (0, 0, 3) pointing towards sphere at origin
 		Producer<Ray> ray = v(shape(-1, 6), 0);
-		Producer<Scalar> d = s.discriminant(ray);
+		Producer<?> d = s.discriminant(ray);
 
 		PackedCollection<?> singleRay = new PackedCollection<>(shape(1, 6).traverse(1));
 		singleRay.setMem(0, 0, 0, 3, 0, 0, -1); // origin (0,0,3), direction (0,0,-1)
@@ -90,7 +89,7 @@ public class SphereTest implements TestFeatures {
 		s.setSize(0.5);
 
 		Producer<Ray> ray = v(shape(-1, 6), 0);
-		Producer<Scalar> d = s.discriminant(ray);
+		Producer<?> d = s.discriminant(ray);
 
 		// Create 3 rays: 2 that hit, 1 that misses
 		PackedCollection<?> rays = new PackedCollection<>(shape(3, 6).traverse(1));
@@ -176,7 +175,7 @@ public class SphereTest implements TestFeatures {
 		s.setSize(0.5);
 
 		Producer<Ray> ray = v(shape(-1, 6), 0);
-		Producer<Scalar> dSqrt = s.discriminantSqrt(ray);
+		Producer<?> dSqrt = s.discriminantSqrt(ray);
 
 		// Create 3 rays: 2 that hit, 1 that misses
 		PackedCollection<?> rays = new PackedCollection<>(shape(3, 6).traverse(1));
@@ -205,9 +204,9 @@ public class SphereTest implements TestFeatures {
 		Producer<Ray> ray = v(shape(-1, 6), 0);
 
 		// Access the private t() method via reflection or test discriminantSqrt and arithmetic
-		Producer<Scalar> dS = s.discriminantSqrt(ray);
-		Producer<Scalar> minusODotD = oDotd(ray).minus();
-		Producer<Scalar> dDotDInv = dDotd(ray).pow(-1.0);
+		Producer<?> dS = s.discriminantSqrt(ray);
+		Producer<?> minusODotD = oDotd(ray).minus();
+		Producer<?> dDotDInv = dDotd(ray).pow(-1.0);
 
 		// Create a single ray that hits
 		PackedCollection<?> rays = new PackedCollection<>(shape(3, 6).traverse(1));
@@ -398,7 +397,7 @@ public class SphereTest implements TestFeatures {
 
 		PackedCollection<?> destination = new PackedCollection<>(shape(h, w, 1).traverse(2));
 
-		Producer<Scalar> d = s.discriminant(ray); // oDotd(ray).pow(2.0).subtract(dDotd(ray).multiply(oDoto(ray).add(-1.0)));
+		Producer<?> d = s.discriminant(ray); // oDotd(ray).pow(2.0).subtract(dDotd(ray).multiply(oDoto(ray).add(-1.0)));
 		Evaluable<PackedCollection<?>> ev = greaterThan(c(d), c(0.0), c(1.0), c(-1.0)).get();
 		ev.into(destination.each()).evaluate(rays);
 

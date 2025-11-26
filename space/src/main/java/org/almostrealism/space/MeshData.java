@@ -16,7 +16,6 @@
 
 package org.almostrealism.space;
 
-import org.almostrealism.algebra.Scalar;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.geometry.Intersection;
@@ -70,7 +69,7 @@ public class MeshData extends PackedCollection<PackedCollection<?>> {
 	 */
 	public static boolean enablePartialKernel = true;
 
-	private PackedCollection<Scalar> distances;
+	private PackedCollection<?> distances;
 
 	/**
 	 * Constructs a new {@link MeshData} instance with capacity for the specified
@@ -81,7 +80,7 @@ public class MeshData extends PackedCollection<PackedCollection<?>> {
 	public MeshData(int triangles) {
 		super(new TraversalPolicy(triangles, 4, 3), 1, delegateSpec ->
 				new PackedCollection<>(new TraversalPolicy(4, 3), 1, delegateSpec.getDelegate(), delegateSpec.getOffset()));
-		distances = Scalar.scalarBank(getCount());
+		distances = new PackedCollection<>(new TraversalPolicy(getCount(), 1));
 	}
 
 	/**
@@ -152,7 +151,7 @@ public class MeshData extends PackedCollection<PackedCollection<?>> {
 		dim.set(0, new Pair(this.getCount(), rays.getCount()));
 
 		if (enablePartialKernel) {
-			PackedCollection<Scalar> distances = Scalar.scalarBank(getCount());
+			PackedCollection<?> distances = new PackedCollection<>(new TraversalPolicy(getCount(), 1));
 			PackedCollection<Ray> in = Ray.bank(1);
 			PackedCollection<Pair<?>> out = Pair.bank(1);
 
@@ -169,7 +168,7 @@ public class MeshData extends PackedCollection<PackedCollection<?>> {
 			if (HardwareOperator.enableVerboseLog)
 				log(rays.getCountLong() + " intersection kernels evaluated");
 		} else {
-			PackedCollection<Scalar> distances = Scalar.scalarBank(this.getCount() * rays.getCount());
+			PackedCollection<?> distances = new PackedCollection<>(new TraversalPolicy(this.getCount() * rays.getCount(), 1));
 
 			startTime = System.currentTimeMillis();
 			Triangle.intersectAt.into(distances).evaluate(rays, this, dim);

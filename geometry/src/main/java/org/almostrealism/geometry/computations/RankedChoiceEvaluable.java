@@ -18,7 +18,7 @@ package org.almostrealism.geometry.computations;
 
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.algebra.Pair;
-import org.almostrealism.algebra.Scalar;
+import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.relation.ProducerWithRank;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
@@ -40,7 +40,7 @@ import java.util.ArrayList;
  * @author Michael Murray
  * @see ProducerWithRank
  */
-public class RankedChoiceEvaluable<T> extends ArrayList<ProducerWithRank<T, Scalar>> implements Evaluable<T> {
+public class RankedChoiceEvaluable<T> extends ArrayList<ProducerWithRank<T, PackedCollection<?>>> implements Evaluable<T> {
 	/** The epsilon threshold - ranks below this value are considered invalid. */
 	protected double e;
 	/** Whether to allow returning null if no valid candidate is found. */
@@ -98,11 +98,11 @@ public class RankedChoiceEvaluable<T> extends ArrayList<ProducerWithRank<T, Scal
 			System.out.println("RankedChoiceProducer: There are " + size() + " Producers to choose from");
 		}
 
-		r: for (ProducerWithRank<T, Scalar> p : this) {
-			Scalar rs = p.getRank().get().evaluate(args);
+		r: for (ProducerWithRank<T, PackedCollection<?>> p : this) {
+			PackedCollection<?> rs = p.getRank().get().evaluate(args);
 			if (rs == null) continue r;
 
-			double r = rs.getValue();
+			double r = rs.toDouble(0);
 			if (r < e && printLog) System.out.println(p + " was skipped due to being less than " + e);
 			if (r < e) continue r;
 

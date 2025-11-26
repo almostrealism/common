@@ -16,8 +16,8 @@
 
 package org.almostrealism.primitives;
 
-import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.algebra.ZeroVector;
 import org.almostrealism.color.Light;
 import org.almostrealism.color.PointLight;
@@ -140,12 +140,12 @@ public class PointLightGrid extends AbstractSurface implements Light {
 	}
 
 	@Override
-	public Operator<Scalar> expect() {
+	public Operator<PackedCollection<?>> expect() {
 		return null;
 	}
 
 	@Override
-	public Operator<Scalar> get() {
+	public Operator<PackedCollection<?>> get() {
 		return null;
 	}
 }

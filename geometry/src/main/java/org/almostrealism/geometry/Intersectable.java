@@ -30,11 +30,11 @@ import java.util.function.Supplier;
  *
  * <p>The interface is parameterized by type {@code T}, which represents
  * the type of value used to determine if an intersection occurred
- * (typically {@link org.almostrealism.algebra.Scalar} for distance values).</p>
+ * (typically {@link org.almostrealism.collect.PackedCollection} for distance values).</p>
  *
  * <p>Usage example:</p>
  * <pre>{@code
- * Intersectable<Scalar> surface = getSurface();
+ * Intersectable<PackedCollection<?>> surface = getSurface();
  * ContinuousField intersections = surface.intersectAt(ray);
  * Producer<Ray> hitNormal = intersections.get(0);
  * }</pre>

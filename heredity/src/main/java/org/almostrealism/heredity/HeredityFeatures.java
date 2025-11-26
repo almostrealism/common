@@ -18,7 +18,6 @@ package org.almostrealism.heredity;
 
 import io.almostrealism.relation.Factor;
 import io.almostrealism.relation.Producer;
-import org.almostrealism.algebra.Scalar;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
@@ -130,7 +129,7 @@ public interface HeredityFeatures extends CollectionFeatures {
 	 * @param factors the scalar producers for each factor
 	 * @return a new gene with the specified producers as factors
 	 */
-	default Gene<PackedCollection<?>> g(Producer<Scalar>... factors) {
+	default Gene<PackedCollection<?>> g(Producer<PackedCollection<?>>... factors) {
 		return g(Stream.of(factors).map(f -> (Factor) protein -> f).toArray(Factor[]::new));
 	}
 

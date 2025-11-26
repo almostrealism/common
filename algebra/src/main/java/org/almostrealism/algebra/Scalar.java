@@ -74,10 +74,19 @@ import java.util.function.IntFunction;
  * double confidence = measurement.getCertainty(); // 0.8
  * }</pre>
  *
+ * @deprecated This class is deprecated for computational use. The certainty field is not
+ *             widely used and having Scalar extend Pair causes Java generics covariance
+ *             issues with batch processing. For computational purposes, use
+ *             {@link PackedCollection} with size 1 instead. Scalar may still be used as
+ *             a convenient wrapper for debugging and testing, but should not be used in
+ *             Producer/Evaluable type parameters. Methods that previously used
+ *             {@code Producer<Scalar>} should now use {@code Producer<PackedCollection<?>>}.
+ *
  * @see Pair
  * @see PackedCollection
  * @see ScalarFeatures
  */
+@Deprecated
 public class Scalar extends Pair<Scalar> implements Comparable<Scalar> {
 
 	/**

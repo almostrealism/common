@@ -22,10 +22,9 @@ import org.almostrealism.algebra.computations.Choice;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.computations.DefaultTraversableExpressionComputation;
 
 /**
- * Provides convenient factory methods for creating {@link Scalar} computations.
+ * Provides convenient factory methods for creating scalar computations.
  *
  * <p>
  * {@link ScalarFeatures} extends {@link CollectionFeatures} to provide specialized methods
@@ -36,48 +35,21 @@ import org.almostrealism.collect.computations.DefaultTraversableExpressionComput
  * <h2>Usage Examples</h2>
  * <pre>{@code
  * public class MyComputation implements ScalarFeatures {
- *     public Producer<Scalar> compute() {
- *         // Create constant scalar
- *         CollectionProducer<Scalar> s1 = scalar(5.0);
+ *     public Producer<PackedCollection<?>> compute() {
+ *         // Create constant scalar (size 1)
+ *         CollectionProducer<?> s1 = scalar(5.0);
  *
- *         // Create from existing Scalar
- *         Scalar existing = new Scalar(10.0);
- *         CollectionProducer<Scalar> s2 = value(existing);
- *
- *         // Short form
- *         CollectionProducer<Scalar> s3 = v(existing);
- *
- *         return s1.add(s2);
+ *         // Scalar operations
+ *         return s1.add(scalar(10.0));
  *     }
  * }
  * }</pre>
  *
  * @author  Michael Murray
- * @see Scalar
  * @see CollectionFeatures
  * @see CollectionProducer
  */
 public interface ScalarFeatures extends CollectionFeatures {
-
-	/**
-	 * Creates an {@link CollectionProducer} that produces a constant {@link Scalar} value.
-	 * This method creates a computation that returns the values from the provided {@link Scalar},
-	 * effectively creating a constant computation that always returns the same values.
-	 * 
-	 * @param value The {@link Scalar} containing the constant values
-	 * @return An {@link CollectionProducer} that evaluates to the specified {@link Scalar}
-	 */
-	static CollectionProducer<Scalar> of(Scalar value) {
-		return (CollectionProducer) DefaultTraversableExpressionComputation.fixed(value, Scalar.postprocessor());
-	}
-
-	/**
-	 * Short form of {@link #value(Scalar)}.
-	 *
-	 * @param value  the scalar value
-	 * @return a producer for the constant scalar
-	 */
-	default CollectionProducer<Scalar> v(Scalar value) { return value(value); }
 
 	/**
 	 * Creates a {@link CollectionProducer} for a constant scalar value.
@@ -86,17 +58,7 @@ public interface ScalarFeatures extends CollectionFeatures {
 	 * @param value  the scalar value
 	 * @return a producer for the constant scalar
 	 */
-	default CollectionProducer scalar(double value) { return c(value); }
-
-	/**
-	 * Creates a {@link CollectionProducer} that produces a constant {@link Scalar} value.
-	 *
-	 * @param value  the scalar containing the constant value
-	 * @return a producer that evaluates to the specified scalar
-	 */
-	default CollectionProducer<Scalar> value(Scalar value) {
-		return (CollectionProducer) DefaultTraversableExpressionComputation.fixed(value, Scalar.postprocessor());
-	}
+	default CollectionProducer<?> scalar(double value) { return c(value); }
 
 	/**
 	 * Creates a {@link Choice} computation that selects from multiple options based on a decision value.

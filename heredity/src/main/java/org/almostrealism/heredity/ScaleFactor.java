@@ -18,7 +18,6 @@ package org.almostrealism.heredity;
 
 import io.almostrealism.relation.Factor;
 import io.almostrealism.util.NumberFormats;
-import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarFeatures;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionFeatures;
@@ -52,26 +51,32 @@ import java.util.Optional;
  * @see Factor
  */
 public class ScaleFactor implements Factor<PackedCollection<?>>, ScalarFeatures, CollectionFeatures {
-	private Scalar scale;
+	private PackedCollection<?> scale;
 
 	/**
 	 * Constructs a new {@code ScaleFactor} with a scale of 0.0.
 	 */
-	public ScaleFactor() { scale = new Scalar(0.0); }
+	public ScaleFactor() {
+		scale = new PackedCollection<>(1);
+		scale.setMem(0, 0.0);
+	}
 
 	/**
 	 * Constructs a new {@code ScaleFactor} with the specified scale value.
 	 *
 	 * @param scale the scalar multiplier value
 	 */
-	public ScaleFactor(double scale) { this.scale = new Scalar(scale); }
+	public ScaleFactor(double scale) {
+		this.scale = new PackedCollection<>(1);
+		this.scale.setMem(0, scale);
+	}
 
 	/**
-	 * Constructs a new {@code ScaleFactor} using the specified {@link Scalar}.
+	 * Constructs a new {@code ScaleFactor} using the specified {@link PackedCollection}.
 	 *
-	 * @param scale the Scalar object containing the multiplier value
+	 * @param scale the PackedCollection containing the multiplier value
 	 */
-	public ScaleFactor(Scalar scale) { this.scale = scale; }
+	public ScaleFactor(PackedCollection<?> scale) { this.scale = scale; }
 
 	/**
 	 * Returns a producer that multiplies the input by this factor's scale value.
@@ -81,7 +86,7 @@ public class ScaleFactor implements Factor<PackedCollection<?>>, ScalarFeatures,
 	 */
 	@Override
 	public Producer<PackedCollection<?>> getResultant(Producer<PackedCollection<?>> value) {
-		return multiply(value, (Producer) v(scale), args -> {
+		return multiply(value, (Producer) p(scale), args -> {
 			PackedCollection<?> result = new PackedCollection<>(1);
 
 //			if (value instanceof StaticCollectionComputation) {
@@ -99,21 +104,24 @@ public class ScaleFactor implements Factor<PackedCollection<?>>, ScalarFeatures,
 	 *
 	 * @param s the new scale value
 	 */
-	public void setScaleValue(double s) { this.scale = new Scalar(s); }
+	public void setScaleValue(double s) {
+		this.scale = new PackedCollection<>(1);
+		this.scale.setMem(0, s);
+	}
 
 	/**
 	 * Returns the current scale value.
 	 *
 	 * @return the scale value, or 0.0 if the scale is null
 	 */
-	public double getScaleValue() { return Optional.ofNullable(this.scale).map(Scalar::getValue).orElse(0.0); }
+	public double getScaleValue() { return Optional.ofNullable(this.scale).map(c -> c.toDouble(0)).orElse(0.0); }
 
 	/**
-	 * Returns the underlying {@link Scalar} object.
+	 * Returns the underlying {@link PackedCollection} object.
 	 *
-	 * @return the Scalar containing the scale value
+	 * @return the PackedCollection containing the scale value
 	 */
-	public Scalar getScale() { return scale; }
+	public PackedCollection<?> getScale() { return scale; }
 
 	/**
 	 * Returns a unique signature for this factor based on its scale value.
@@ -123,7 +131,7 @@ public class ScaleFactor implements Factor<PackedCollection<?>>, ScalarFeatures,
 	 */
 	@Override
 	public String signature() {
-		return Double.toHexString(scale.getValue());
+		return Double.toHexString(scale.toDouble(0));
 	}
 
 	/**
@@ -132,5 +140,5 @@ public class ScaleFactor implements Factor<PackedCollection<?>>, ScalarFeatures,
 	 * @return the formatted scale value
 	 */
 	@Override
-	public String toString() { return NumberFormats.displayFormat.format(scale.getValue()); }
+	public String toString() { return NumberFormats.displayFormat.format(scale.toDouble(0)); }
 }

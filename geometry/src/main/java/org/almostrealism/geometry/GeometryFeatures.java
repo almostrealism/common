@@ -19,7 +19,6 @@ package org.almostrealism.geometry;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.PairFeatures;
-import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarFeatures;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.collect.CollectionProducer;

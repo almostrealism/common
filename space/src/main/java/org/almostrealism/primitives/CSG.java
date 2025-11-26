@@ -20,6 +20,7 @@ import java.util.Arrays;
 import java.util.function.Supplier;
 
 import org.almostrealism.algebra.*;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.geometry.ClosestIntersection;
 import org.almostrealism.geometry.ContinuousField;
 import org.almostrealism.geometry.Ray;
@@ -186,7 +187,7 @@ public class CSG extends AbstractSurface {
     }
 
     @Override
-    public Operator<Scalar> expect() {
+    public Operator<PackedCollection<?>> expect() {
         return null;
     }
 
@@ -230,7 +231,7 @@ public class CSG extends AbstractSurface {
     }
 
     @Override
-    public Operator<Scalar> get() {
+    public Operator<PackedCollection<?>> get() {
         return null;
     }
 }

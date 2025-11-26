@@ -19,7 +19,6 @@ package org.almostrealism.space;
 import io.almostrealism.code.AdaptEvaluable;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.algebra.ParticleGroup;
-import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
@@ -486,13 +485,15 @@ public class Triangle extends AbstractSurface implements ParticleGroup, Triangle
 	}
 
 	@Override
-	public Operator<Scalar> get() {
+	public Operator<PackedCollection<?>> get() {
 		return null;
 	}
 
 	@Override
-	public Operator<Scalar> expect() {
-		return new Constant<>(new Scalar(0));
+	public Operator<PackedCollection<?>> expect() {
+		PackedCollection<?> zero = new PackedCollection<>(1);
+		zero.setMem(0, 0.0);
+		return new Constant<>(zero);
 	}
 
 	public String toString() {

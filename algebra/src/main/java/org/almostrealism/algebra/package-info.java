@@ -17,7 +17,6 @@
  *
  * <h3>Fundamental Types</h3>
  * <ul>
- *   <li>{@link org.almostrealism.algebra.Scalar} - Single-element value (0-dimensional tensor)</li>
  *   <li>{@link org.almostrealism.algebra.Vector} - 3-dimensional vector with x, y, z components</li>
  *   <li>{@link org.almostrealism.algebra.Pair} - 2-element tuple for complex numbers and coordinate pairs</li>
  *   <li>{@link org.almostrealism.algebra.Tensor} - Generic multi-dimensional array with arbitrary shape</li>
@@ -38,7 +37,7 @@
  * factory methods and operations:
  * </p>
  * <ul>
- *   <li>{@link org.almostrealism.algebra.ScalarFeatures} - Factory methods for scalar operations</li>
+ *   <li>{@link org.almostrealism.algebra.ScalarFeatures} - Factory methods for scalar (size-1) operations</li>
  *   <li>{@link org.almostrealism.algebra.VectorFeatures} - Factory methods for vector operations (dot, cross, normalize)</li>
  *   <li>{@link org.almostrealism.algebra.PairFeatures} - Factory methods for pairs and complex number operations</li>
  *   <li>{@link org.almostrealism.algebra.MatrixFeatures} - Matrix operations (identity, diagonal, multiplication, attention)</li>
@@ -168,7 +167,7 @@
  * CollectionProducer<Vector> v2 = vector(4.0, 5.0, 6.0);
  *
  * // Component extraction
- * CollectionProducer<Scalar> xComp = x(v1);
+ * CollectionProducer<?> xComp = x(v1);
  *
  * // Vector arithmetic
  * CollectionProducer<PackedCollection<?>> dot = dotProduct(v1, v2);

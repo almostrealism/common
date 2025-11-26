@@ -31,8 +31,8 @@ import io.almostrealism.code.Constant;
 import io.almostrealism.code.Operator;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Evaluable;
-import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
+import org.almostrealism.collect.PackedCollection;
 
 /** A {@link Polynomial} represents a 3d polynomial surface. */
 public class Polynomial extends AbstractSurface {
@@ -348,7 +348,7 @@ public class Polynomial extends AbstractSurface {
 	 */
 	@Override
 	public ShadableIntersection intersectAt(Producer<Ray> r) {
-		Producer<Scalar> s = () -> args -> {
+		Producer<PackedCollection<?>> s = () -> args -> {
 			Ray ray = r.get().evaluate(args);
 			ray = ray.transform(getTransform(true).getInverse());
 
@@ -452,32 +452,38 @@ public class Polynomial extends AbstractSurface {
 				}
 			}
 
-			return new Scalar(closest);
+			PackedCollection<?> result = new PackedCollection<>(1);
+			result.setMem(0, closest);
+			return result;
 		};
 
 		return new ShadableIntersection(Polynomial.this, r, s);
 	}
 
 	@Override
-	public Operator<Scalar> expect() {
-		return new Constant<>(new Scalar(0));
+	public Operator<PackedCollection<?>> expect() {
+		PackedCollection<?> zero = new PackedCollection<>(1);
+		zero.setMem(0, 0.0);
+		return new Constant<>(zero);
 	}
 
 	@Override
-	public Operator<Scalar> get() {
+	public Operator<PackedCollection<?>> get() {
 		return new Operator<>() {
 			@Override
-			public Evaluable<Scalar> get() {
+			public Evaluable<PackedCollection<?>> get() {
 				return args -> {
 					// TODO  Preserve uncertainty in the Vector so that the scalar is as uncertain or more
 					Vector v = getInput().get().evaluate(args);
-					return new Scalar(Polynomial.this.evaluate(v.getX(), v.getY(), v.getZ()));
+					PackedCollection<?> result = new PackedCollection<>(1);
+					result.setMem(0, Polynomial.this.evaluate(v.getX(), v.getY(), v.getZ()));
+					return result;
 				};
 			}
 
 			@Override
-			public Scope<Scalar> getScope(KernelStructureContext context) {
-				Scope<Scalar> s = new Scope<>();
+			public Scope<PackedCollection<?>> getScope(KernelStructureContext context) {
+				Scope<PackedCollection<?>> s = new Scope<>();
 				// TODO  This is not correct
 				// s.getVariables().add(new Variable("scalar", get().evaluate()));
 				return s;

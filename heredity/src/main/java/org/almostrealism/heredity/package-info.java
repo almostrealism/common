@@ -10,9 +10,9 @@
  * <p>The core data structures follow a hierarchical organization:
  * <pre>
  * Genome&lt;T&gt;
- *   └─ Contains multiple: Chromosome&lt;T&gt;
- *        └─ Contains multiple: Gene&lt;T&gt;
- *             └─ Contains multiple: Factor&lt;T&gt;
+ *   +- Contains multiple: Chromosome&lt;T&gt;
+ *        +- Contains multiple: Gene&lt;T&gt;
+ *             +- Contains multiple: Factor&lt;T&gt;
  * </pre>
  *
  * <h2>Core Interfaces</h2>

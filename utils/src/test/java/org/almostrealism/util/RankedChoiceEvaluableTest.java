@@ -16,13 +16,13 @@
 
 package org.almostrealism.util;
 
+import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.ProducerWithRank;
 import org.almostrealism.algebra.computations.ProducerWithRankAdapter;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.geometry.Intersection;
 import org.almostrealism.algebra.Pair;
-import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.geometry.computations.RankedChoiceEvaluable;
 import org.almostrealism.geometry.computations.RankedChoiceEvaluableForVector;
@@ -40,7 +40,8 @@ public class RankedChoiceEvaluableTest implements TestFeatures {
 		if (skipKnownIssues) return;
 
 		IntStream.range(0, 5).forEach(i -> {
-			Scalar in = new Scalar(1.0);
+			PackedCollection<?> in = new PackedCollection<>(1);
+			in.setMem(0, 1.0);
 			Pair out = RankedChoiceEvaluable.highestRank.evaluate(
 					in, new Pair(3, Intersection.e));
 
@@ -51,11 +52,11 @@ public class RankedChoiceEvaluableTest implements TestFeatures {
 
 	@Test
 	public void highestRankKernel() {
-		PackedCollection<Scalar> in = Scalar.scalarBank(4);
-		in.set(0, new Scalar(0.0));
-		in.set(1, new Scalar(2.0));
-		in.set(2, new Scalar(1.0));
-		in.set(3, new Scalar(3.0));
+		PackedCollection<?> in = new PackedCollection<>(new TraversalPolicy(4, 1));
+		in.setMem(0, 0.0);
+		in.setMem(1, 2.0);
+		in.setMem(2, 1.0);
+		in.setMem(3, 3.0);
 
 		PackedCollection<Pair<?>> out = Pair.bank(1);
 
@@ -68,16 +69,11 @@ public class RankedChoiceEvaluableTest implements TestFeatures {
 		Assert.assertEquals(1.0, out.get(0).getA(), Math.pow(10, -10));
 	}
 
+	@SuppressWarnings({"unchecked", "rawtypes"})
 	protected RankedChoiceEvaluableForVector getRankedChoiceProducer1() {
-		ProducerWithRank<Vector, Scalar> v1 =
-				new ProducerWithRankAdapter<>(vector(1, 2, 3),
-						scalar(2));
-		ProducerWithRank<Vector, Scalar> v2 =
-				new ProducerWithRankAdapter<>(vector(4, 5, 6),
-						scalar(1));
-		ProducerWithRank<Vector, Scalar> v3 =
-				new ProducerWithRankAdapter<>(vector(7, 8, 9),
-						scalar(3));
+		ProducerWithRankAdapter v1 = new ProducerWithRankAdapter<>(vector(1, 2, 3), c(2.0));
+		ProducerWithRankAdapter v2 = new ProducerWithRankAdapter<>(vector(4, 5, 6), c(1.0));
+		ProducerWithRankAdapter v3 = new ProducerWithRankAdapter<>(vector(7, 8, 9), c(3.0));
 
 		RankedChoiceEvaluableForVector rcp = new RankedChoiceEvaluableForVector(Intersection.e);
 		rcp.add(v1);
@@ -86,13 +82,10 @@ public class RankedChoiceEvaluableTest implements TestFeatures {
 		return rcp;
 	}
 
+	@SuppressWarnings({"unchecked", "rawtypes"})
 	protected RankedChoiceEvaluableForVector getRankedChoiceProducer2() {
-		ProducerWithRank<Vector, Scalar> v1 =
-				new ProducerWithRankAdapter<>(vector(0.7034, 0.7034, 0.7034),
-						scalar(0.9002));
-		ProducerWithRank<Vector, Scalar> v2 =
-				new ProducerWithRankAdapter<>(vector(0.0, 0.0, 0.0),
-						scalar(-17.274));
+		ProducerWithRankAdapter v1 = new ProducerWithRankAdapter<>(vector(0.7034, 0.7034, 0.7034), c(0.9002));
+		ProducerWithRankAdapter v2 = new ProducerWithRankAdapter<>(vector(0.0, 0.0, 0.0), c(-17.274));
 
 		RankedChoiceEvaluableForVector rcp = new RankedChoiceEvaluableForVector(Intersection.e);
 		rcp.add(v1);

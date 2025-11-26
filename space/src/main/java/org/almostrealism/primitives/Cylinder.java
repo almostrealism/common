@@ -16,8 +16,8 @@
 
 package org.almostrealism.primitives;
 
-import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.color.RGB;
 import org.almostrealism.geometry.Ray;
 import io.almostrealism.relation.Producer;
@@ -91,7 +91,7 @@ public class Cylinder extends AbstractSurface implements CodeFeatures {
 
 		final Supplier<Evaluable<? extends Ray>> fr = sr;
 
-		Producer<Scalar> s = new DynamicProducerForMemoryData<>(args -> {
+		Producer<PackedCollection<?>> s = new DynamicProducerForMemoryData<>(args -> {
 				Ray ray = fr.get().evaluate(args);
 
 				Vector a = ray.getOrigin();
@@ -121,12 +121,12 @@ public class Cylinder extends AbstractSurface implements CodeFeatures {
 				double l0 = ray.pointAt(c(t0)).get().evaluate(args).getY();
 				double l1 = ray.pointAt(c(t1)).get().evaluate(args).getY();
 
-				Scalar sc;
+				PackedCollection<?> sc = new PackedCollection<>(1);
 
 				if (l0 >= 0 && l0 <= 1.0)
-					sc = new Scalar(l0);
+					sc.setMem(0, l0);
 				else if (l1 >= 0 && l1 <= 1.0)
-					sc = new Scalar(l1);
+					sc.setMem(0, l1);
 				else
 					return null;
 
@@ -137,12 +137,12 @@ public class Cylinder extends AbstractSurface implements CodeFeatures {
 	}
 
 	@Override
-	public Operator<Scalar> expect() {
+	public Operator<PackedCollection<?>> expect() {
 		return null;
 	}
 
 	@Override
-	public Operator<Scalar> get() {
+	public Operator<PackedCollection<?>> get() {
 		return null;
 	}
 }

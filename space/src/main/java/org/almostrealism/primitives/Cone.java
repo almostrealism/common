@@ -21,6 +21,7 @@ import java.util.Iterator;
 import java.util.List;
 
 import org.almostrealism.algebra.*;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.color.RGB;
 import org.almostrealism.geometry.Intersection;
 import org.almostrealism.geometry.Ray;
@@ -149,12 +150,12 @@ public class Cone extends AbstractSurface implements CodeFeatures {
 	}
 
 	@Override
-	public Operator<Scalar> expect() {
+	public Operator<PackedCollection<?>> expect() {
 		return null;
 	}
 
 	@Override
-	public Operator<Scalar> get() {
+	public Operator<PackedCollection<?>> get() {
 		return null;
 	}
 }

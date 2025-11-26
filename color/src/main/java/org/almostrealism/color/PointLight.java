@@ -17,8 +17,8 @@
 package org.almostrealism.color;
 
 import io.almostrealism.relation.Producer;
-import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.color.computations.GeneratedColorProducer;
 import org.almostrealism.geometry.Positioned;
@@ -191,7 +191,7 @@ public class PointLight implements Light, Positioned, RayFeatures, RGBFeatures {
 	 */
 	@Override
 	public Producer<RGB> getColorAt(Producer<Vector> point) {
-		Producer<Scalar> d = lengthSq(add(point, minus(v(location))));
+		Producer<PackedCollection<?>> d = lengthSq(add(point, minus(v(location))));
 
 		RGB color = getColor().multiply(getIntensity());
 		return GeneratedColorProducer.fromProducer(this, attenuation(da, db, dc, v(color), d));

@@ -135,10 +135,10 @@ public class CodeFeaturesTests implements TestFeatures {
 	@Test
 	public void addToProvider() {
 		Scalar value = new Scalar(1.0);
-		Producer<Scalar> s = add(scalar(1), p(value));
+		Producer<PackedCollection<?>> s = add(c(1), p(value));
 		value.setValue(2);
 
-		Evaluable<Scalar> ev = s.get();
+		Evaluable<PackedCollection<?>> ev = s.get();
 		PackedCollection out = ev.evaluate();
 		assertEquals(3.0, out.toDouble(0));
 
@@ -151,7 +151,7 @@ public class CodeFeaturesTests implements TestFeatures {
 	public void addToProviderAndAssign() {
 		Scalar value = new Scalar(1.0);
 		Scalar dest = new Scalar(0.0);
-		Supplier<Runnable> s = a(1, p(dest), add(scalar(1), p(value)).divide(scalar(2.0)));
+		Supplier<Runnable> s = a(1, p(dest), add(c(1), p(value)).divide(c(2.0)));
 		value.setValue(2);
 
 		Runnable r = s.get();
@@ -168,7 +168,7 @@ public class CodeFeaturesTests implements TestFeatures {
 	public void loop1() {
 		Scalar value = new Scalar(1.0);
 		Scalar dest = new Scalar(0.0);
-		Supplier<Runnable> s = lp(a(1, p(dest), add(scalar(1), p(value)).divide(scalar(2.0))), 2);
+		Supplier<Runnable> s = lp(a(1, p(dest), add(c(1), p(value)).divide(c(2.0))), 2);
 		value.setValue(2);
 
 		Runnable r = s.get();
@@ -184,7 +184,7 @@ public class CodeFeaturesTests implements TestFeatures {
 	@Test
 	public void loop2() {
 		Scalar dest = new Scalar(0.0);
-		Supplier<Runnable> s = lp(a(1, p(dest), add(scalar(1.0), p(dest))), 3);
+		Supplier<Runnable> s = lp(a(1, p(dest), add(c(1.0), p(dest))), 3);
 		Runnable r = s.get();
 
 		r.run();

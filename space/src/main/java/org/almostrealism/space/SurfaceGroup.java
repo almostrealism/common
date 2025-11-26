@@ -24,8 +24,8 @@ import java.util.stream.Stream;
 
 import io.almostrealism.relation.NodeGroup;
 import org.almostrealism.algebra.Gradient;
-import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.color.RGB;
 import org.almostrealism.color.ShadableSurface;
 import org.almostrealism.color.ShaderContext;
@@ -195,14 +195,16 @@ public class SurfaceGroup<T extends ShadableSurface> extends AbstractSurface imp
 	}
 
 	@Override
-	public Operator<Scalar> get() {
+	public Operator<PackedCollection<?>> get() {
 		// TODO  Aggregate the operators for each surface some how?
 		return null;
 	}
 
 	@Override
-	public Operator<Scalar> expect() {
+	public Operator<PackedCollection<?>> expect() {
 		// TODO  This isn't right
-		return new Constant<>(new Scalar(0));
+		PackedCollection<?> zero = new PackedCollection<>(1);
+		zero.setMem(0, 0.0);
+		return new Constant<>(zero);
 	}
 }

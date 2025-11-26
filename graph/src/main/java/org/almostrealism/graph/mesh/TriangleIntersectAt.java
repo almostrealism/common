@@ -19,7 +19,6 @@ package org.almostrealism.graph.mesh;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.Ops;
-import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.collect.computations.GreaterThanCollection;
 import org.almostrealism.collect.computations.LessThanCollection;
@@ -190,7 +189,7 @@ public class TriangleIntersectAt extends LessThanCollection {
 	 * @return producer for the u coordinate
 	 */
 	// TODO  Make private
-	public static Producer<PackedCollection<?>> u(Producer<Vector> s, Producer<Vector> h, CollectionProducer<Scalar> f) {
+	public static Producer<PackedCollection<?>> u(Producer<Vector> s, Producer<Vector> h, CollectionProducer<PackedCollection<?>> f) {
 		return f.multiply(Ops.o().dotProduct(s, h));
 	}
 

@@ -31,7 +31,6 @@ import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.PairFeatures;
-import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarFeatures;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorFeatures;
@@ -175,9 +174,7 @@ public interface CodeFeatures extends LayerFeatures,
 	default Producer<PackedCollection<?>> points(int argIndex) { return value(shape(3, 3), argIndex); }
 
 	default <T> Producer<T> value(T v) {
-		if (v instanceof Scalar) {
-			return (ProducerComputation<T>) ScalarFeatures.of((Scalar) v);
-		} else if (v instanceof Pair) {
+		if (v instanceof Pair) {
 			return (ProducerComputation<T>) PairFeatures.getInstance().value((Pair) v);
 		} else if (v instanceof Vector) {
 			return (ProducerComputation<T>) VectorFeatures.getInstance().value((Vector) v);

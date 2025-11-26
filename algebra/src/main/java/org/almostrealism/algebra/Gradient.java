@@ -36,7 +36,7 @@ import io.almostrealism.relation.Producer;
  * <h2>Usage Examples</h2>
  * <pre>{@code
  * // Implement a gradient for a sphere
- * public class SphereGradient implements Gradient<Scalar> {
+ * public class SphereGradient implements Gradient<PackedCollection<?>> {
  *     @Override
  *     public Producer<Vector> getNormalAt(Producer<Vector> point) {
  *         // For a sphere centered at origin, normal = point / ||point||
@@ -44,14 +44,14 @@ import io.almostrealism.relation.Producer;
  *     }
  *
  *     @Override
- *     public Producer<Scalar> getValueAt(Producer<Vector> point) {
+ *     public Producer<PackedCollection<?>> getValueAt(Producer<Vector> point) {
  *         // Sphere implicit function: f(p) = ||p||^2 - r^2
  *         return subtract(length(point).pow(2), scalar(radius * radius));
  *     }
  * }
  * }</pre>
  *
- * @param <T>  the type of value produced by the differentiable function (typically {@link Scalar})
+ * @param <T>  the type of value produced by the differentiable function
  * @author  Michael Murray
  * @see Differentiable
  * @see Vector

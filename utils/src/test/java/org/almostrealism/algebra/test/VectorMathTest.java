@@ -37,10 +37,14 @@ public class VectorMathTest implements TestFeatures {
 
 	@Test
 	public void scalarPowDynamic() {
-		Producer<Scalar> d = new DynamicCollectionProducer<>(shape(2), args -> new Scalar(3));
-		CollectionProducer<Scalar> s = scalar(3);
-		Producer<Scalar> p = s.pow(d);
-		Evaluable<Scalar> ev = p.get();
+		Producer<PackedCollection<?>> d = new DynamicCollectionProducer<>(shape(1), args -> {
+			PackedCollection<?> result = new PackedCollection<>(1);
+			result.setMem(0, 3);
+			return result;
+		});
+		CollectionProducer<PackedCollection<?>> s = c(3);
+		Producer<PackedCollection<?>> p = s.pow(d);
+		Evaluable<PackedCollection<?>> ev = p.get();
 		PackedCollection<?> out = ev.evaluate();
 		double result = out.toDouble(0);
 		assertEquals(27, result);
@@ -59,8 +63,9 @@ public class VectorMathTest implements TestFeatures {
 	public void productFromVectors2() {
 		Producer<Vector> a = vector(1.0, 2.0, 3.0);
 		Producer<Vector> b = vector(4.0, 5.0, 6.0);
-		Producer<Scalar> s = y(a).multiply(z(b)).add(scalar(1));
-		HardwareEvaluable<Scalar> so = (HardwareEvaluable<Scalar>) s.get();
+		CollectionProducer<?> yTimesZ = y(a).multiply(z(b));
+		Producer<PackedCollection<?>> s = add((Producer) yTimesZ, c(1));
+		HardwareEvaluable<PackedCollection<?>> so = (HardwareEvaluable<PackedCollection<?>>) s.get();
 		Assert.assertEquals(1, so.getArgsCount());
 	}
 
@@ -68,8 +73,9 @@ public class VectorMathTest implements TestFeatures {
 	public void productFromVectors3() {
 		Producer<Vector> a = vector(1.0, 2.0, 3.0);
 		Producer<Vector> b = vector(4.0, 5.0, 6.0);
-		Producer<Scalar> s = y(a).multiply(z(b)).subtract(scalar(1));
-		HardwareEvaluable<Scalar> so = (HardwareEvaluable<Scalar>) s.get();
+		CollectionProducer<?> yTimesZ = y(a).multiply(z(b));
+		Producer<PackedCollection<?>> s = subtract((Producer) yTimesZ, c(1));
+		HardwareEvaluable<PackedCollection<?>> so = (HardwareEvaluable<PackedCollection<?>>) s.get();
 		Assert.assertEquals(1, so.getArgsCount());
 	}
 

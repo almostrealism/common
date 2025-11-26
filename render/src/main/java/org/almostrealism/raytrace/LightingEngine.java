@@ -24,9 +24,9 @@ import org.almostrealism.Ops;
 import org.almostrealism.algebra.computations.ProducerWithRankAdapter;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.color.RGBFeatures;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.geometry.ContinuousField;
 import org.almostrealism.geometry.Intersectable;
-import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.color.Light;
 import org.almostrealism.color.RGB;
@@ -85,7 +85,7 @@ public class LightingEngine<T extends ContinuousField> extends ProducerWithRankA
 	private Curve<RGB> surface;
 
 	private Producer<RGB> color;
-	private Producer<Scalar> distance;
+	private Producer<PackedCollection<?>> distance;
 
 	public LightingEngine(T intersections,
 						  Curve<RGB> surface,
@@ -164,7 +164,7 @@ public class LightingEngine<T extends ContinuousField> extends ProducerWithRankA
 	public Producer<RGB> getProducer() { return color; }
 
 	@Override
-	public Producer<Scalar> getRank() { return distance; }
+	public Producer<PackedCollection<?>> getRank() { return distance; }
 
 	/**
 	 * Performs the lighting calculations for the specified surface at the specified point of intersection

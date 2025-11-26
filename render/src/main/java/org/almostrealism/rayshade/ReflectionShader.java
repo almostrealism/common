@@ -20,8 +20,8 @@ import org.almostrealism.raytrace.LightingEngineAggregator;
 import io.almostrealism.relation.Editable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
-import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.computations.DynamicCollectionProducer;
 import org.almostrealism.color.Light;
@@ -170,7 +170,7 @@ public class ReflectionShader extends ShaderSet<ShaderContext> implements
 		Producer<Ray> transform = transform(((AbstractSurface) p.getSurface()).getTransform(true), p.getIntersection().get(0));
 		CollectionProducer<Vector> loc = origin(transform);
 
-		Producer<Scalar> cp = length(nor).multiply(length(n));
+		Producer<PackedCollection<?>> cp = length(nor).multiply(length(n));
 
 		Producer<RGB> tc = null;
 
@@ -195,7 +195,7 @@ public class ReflectionShader extends ShaderSet<ShaderContext> implements
 			}
 			 */
 
-			Producer<Scalar> c = scalar(1).subtract(dotProduct(minus(n), nor).divide(cp));
+			Producer<PackedCollection<?>> c = scalar(1).subtract(dotProduct(minus(n), nor).divide(cp));
 			CollectionProducer<?> reflective = add(c(reflectivity),
 					c(1 - reflectivity).multiply(pow(c, c(5.0))));
 			Producer<RGB> fcolor = color;
@@ -228,9 +228,10 @@ public class ReflectionShader extends ShaderSet<ShaderContext> implements
 			}
 			 */
 
-			Producer<Scalar> c = scalar(1).subtract(dotProduct(minus(n), nor).divide(cp));
-			Producer<Scalar> reflective = scalar(reflectivity).add(
-					scalar(1 - reflectivity).multiply(pow(c, scalar(5.0))));
+			Producer<PackedCollection<?>> c = c(1.0).subtract(dotProduct(minus(n), nor).divide(cp));
+			CollectionProducer<PackedCollection<?>> powResult = pow(c, c(5.0));
+			Producer<PackedCollection<?>> reflective = c(reflectivity).add(
+					c(1 - reflectivity).multiply(powResult));
 			Producer<RGB> fcolor = color;
 			color = multiply(fcolor, multiply(fr, cfromScalar(reflective)));
 

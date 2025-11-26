@@ -35,9 +35,9 @@ import java.util.stream.IntStream;
  * <h2>Genetic Hierarchy</h2>
  * <pre>
  * Genome&lt;T&gt;  &lt;-- You are here
- *   └─ Contains multiple: Chromosome&lt;T&gt;
- *        └─ Contains multiple: Gene&lt;T&gt;
- *             └─ Contains multiple: Factor&lt;T&gt;
+ *   +- Contains multiple: Chromosome&lt;T&gt;
+ *        +- Contains multiple: Gene&lt;T&gt;
+ *             +- Contains multiple: Factor&lt;T&gt;
  * </pre>
  *
  * <h2>Common Implementations</h2>

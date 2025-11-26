@@ -20,6 +20,7 @@ import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.compute.Process;
 import io.almostrealism.scope.Scope;
 import org.almostrealism.algebra.*;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.color.RGB;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.geometry.RayFeatures;
@@ -167,30 +168,32 @@ public class Plane extends AbstractSurface implements ParticleGroup, RayFeatures
 	}
 
 	@Override
-	public Operator<Scalar> expect() {
-		return new Constant<>(new Scalar(0));
+	public Operator<PackedCollection<?>> expect() {
+		PackedCollection<?> zero = new PackedCollection<>(1);
+		zero.setMem(0, 0.0);
+		return new Constant<>(zero);
 	}
 
 	@Override
-	public Operator<Scalar> get() {
+	public Operator<PackedCollection<?>> get() {
 		return new Operator<>() {
 			@Override
-			public Evaluable<Scalar> get() {
+			public Evaluable<PackedCollection<?>> get() {
 				return args -> {
+					PackedCollection<?> result = new PackedCollection<>(1);
 					if (type == Plane.XY)
-						return new Scalar(getInput().get().evaluate(args).getZ());
+						result.setMem(0, getInput().get().evaluate(args).getZ());
 					else if (type == Plane.XZ)
-						return new Scalar(getInput().get().evaluate(args).getY());
+						result.setMem(0, getInput().get().evaluate(args).getY());
 					else if (type == Plane.YZ)
-						return new Scalar(getInput().get().evaluate(args).getX());
-					else
-						return null;
+						result.setMem(0, getInput().get().evaluate(args).getX());
+					return result;
 				};
 			}
 
 			@Override
-			public Scope<Scalar> getScope(KernelStructureContext context) {
-				Scope<Scalar> s = new Scope<>();
+			public Scope<PackedCollection<?>> getScope(KernelStructureContext context) {
+				Scope<PackedCollection<?>> s = new Scope<>();
 				// TODO  This is not correct
 				// s.getVariables().add(new Variable("scalar", get().evaluate()));
 				return s;

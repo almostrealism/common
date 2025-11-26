@@ -20,7 +20,6 @@ import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.compute.Process;
 import io.almostrealism.scope.Scope;
 import org.almostrealism.algebra.Pair;
-import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.color.RGB;
@@ -37,6 +36,7 @@ import org.almostrealism.space.Mesh;
 import org.almostrealism.geometry.ShadableIntersection;
 import org.almostrealism.CodeFeatures;
 import io.almostrealism.relation.Evaluable;
+import org.almostrealism.collect.PackedCollection;
 
 import java.util.Collection;
 import java.util.Collections;
@@ -233,7 +233,7 @@ public class Sphere extends AbstractSurface implements DistanceEstimator, CodeFe
 												closest(t(fr)), c(-1.0));
 			return new ShadableIntersection(this, r, distance);
 		} else {
-			Evaluable<Scalar> s = args -> {
+			Evaluable<PackedCollection<?>> s = args -> {
 				Ray ray = fr.get().evaluate(args);
 
 				double b = ray.oDotd().evaluate(args).toDouble();
@@ -242,8 +242,10 @@ public class Sphere extends AbstractSurface implements DistanceEstimator, CodeFe
 
 				double discriminant = (b * b) - (g) * (c - 1);
 
+				PackedCollection<?> result = new PackedCollection<>(1);
 				if (discriminant < 0) {
-					return new Scalar(-1);
+					result.setMem(0, -1.0);
+					return result;
 				}
 
 				double discriminantSqrt = Math.sqrt(discriminant);
@@ -253,24 +255,25 @@ public class Sphere extends AbstractSurface implements DistanceEstimator, CodeFe
 				t[0] = (-b + discriminantSqrt) / (g);
 				t[1] = (-b - discriminantSqrt) / (g);
 
-				Scalar st;
+				double st;
 
 				if (t[0] > 0 && t[1] > 0) {
 					if (t[0] < t[1]) {
-						st = new Scalar(t[0]);
+						st = t[0];
 					} else {
-						st = new Scalar(t[1]);
+						st = t[1];
 					}
 				} else if (t[0] > 0) {
-					st = new Scalar(t[0]);
+					st = t[0];
 				} else if (t[1] > 0) {
-					st = new Scalar(t[1]);
+					st = t[1];
 				} else {
-					return new Scalar(-1);
-					// return null;
+					result.setMem(0, -1.0);
+					return result;
 				}
 
-				return st;
+				result.setMem(0, st);
+				return result;
 			};
 
 			return new ShadableIntersection(this, r, () -> s);
@@ -283,17 +286,21 @@ public class Sphere extends AbstractSurface implements DistanceEstimator, CodeFe
 	}
 
 	@Override
-	public Operator<Scalar> get() {
+	public Operator<PackedCollection<?>> get() {
 		return new Operator<>() {
 
 			@Override
-			public Evaluable<Scalar> get() {
-				return args -> new Scalar(getInput().get().evaluate(args).lengthSq());
+			public Evaluable<PackedCollection<?>> get() {
+				return args -> {
+					PackedCollection<?> result = new PackedCollection<>(1);
+					result.setMem(0, getInput().get().evaluate(args).lengthSq());
+					return result;
+				};
 			}
 
 			@Override
-			public Scope<Scalar> getScope(KernelStructureContext context) {
-				Scope<Scalar> s = new Scope();
+			public Scope<PackedCollection<?>> getScope(KernelStructureContext context) {
+				Scope<PackedCollection<?>> s = new Scope();
 
 				// TODO  This is not correct
 				// s.getVariables().add(assign("scalar", get().evaluate()));
@@ -308,8 +315,10 @@ public class Sphere extends AbstractSurface implements DistanceEstimator, CodeFe
 	}
 
 	@Override
-	public Operator<Scalar> expect() {
-		return new Constant<>(new Scalar(1.0));
+	public Operator<PackedCollection<?>> expect() {
+		PackedCollection<?> one = new PackedCollection<>(1);
+		one.setMem(0, 1.0);
+		return new Constant<>(one);
 	}
 
 	@Override
@@ -321,13 +330,13 @@ public class Sphere extends AbstractSurface implements DistanceEstimator, CodeFe
 	}
 
 	// TODO  Make private
-	public Producer<Scalar> discriminant(Producer<Ray> ray) {
+	public Producer<PackedCollection<?>> discriminant(Producer<Ray> ray) {
 		// return oDotd(ray).pow(2.0).add(dDotd(ray).multiply(oDoto(ray).add(-1.0)).multiply(-1));
 		return oDotd(ray).pow(2.0).subtract(dDotd(ray).multiply(oDoto(ray).subtract(1.0)));
 	}
 
 	// TODO  Make private
-	public Producer<Scalar> discriminantSqrt(Producer<Ray> ray) {
+	public Producer<PackedCollection<?>> discriminantSqrt(Producer<Ray> ray) {
 		return pow(discriminant(ray), c(0.5));
 	}
 
@@ -394,9 +403,9 @@ public class Sphere extends AbstractSurface implements DistanceEstimator, CodeFe
 	}
 
 	private CollectionProducer<Pair<?>> t(Producer<Ray> ray) {
-		Producer<Scalar> dS = discriminantSqrt(ray);
-		Producer<Scalar> minusODotD = oDotd(ray).minus();
-		Producer<Scalar> dDotDInv = dDotd(ray).pow(-1.0);
+		Producer<PackedCollection<?>> dS = discriminantSqrt(ray);
+		Producer<PackedCollection<?>> minusODotD = oDotd(ray).minus();
+		Producer<PackedCollection<?>> dDotDInv = dDotd(ray).pow(-1.0);
 		return pair((Producer) add(minusODotD, dS).multiply(dDotDInv),
 				    (Producer) add(minusODotD, minus(dS)).multiply(dDotDInv));
 	}

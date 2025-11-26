@@ -19,7 +19,6 @@ package org.almostrealism.projection;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.PairFeatures;
-import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
@@ -132,10 +131,10 @@ public interface ProjectionFeatures extends PairFeatures, RayFeatures {
 
 	private CollectionProducer<PackedCollection<?>> u(Producer<PackedCollection<?>> w,
 													  Producer<PackedCollection<?>> t) {
-		CollectionProducer<Scalar> x = y(t).multiply(z(w)).add(z(t).multiply(y(w)).multiply(c(-1.0)));
-		CollectionProducer<Scalar> y = z(t).multiply(x(w)).add(x(t).multiply(z(w)).multiply(c(-1.0)));
-		CollectionProducer<Scalar> z = x(t).multiply(y(w)).add(y(t).multiply(x(w)).multiply(c(-1.0)));
-		return normalize(vector(x, y, z));
+		CollectionProducer<PackedCollection<?>> x = y(t).multiply(z(w)).add(z(t).multiply(y(w)).multiply(c(-1.0)));
+		CollectionProducer<PackedCollection<?>> y = z(t).multiply(x(w)).add(x(t).multiply(z(w)).multiply(c(-1.0)));
+		CollectionProducer<PackedCollection<?>> z = x(t).multiply(y(w)).add(y(t).multiply(x(w)).multiply(c(-1.0)));
+		return normalize(vector((Producer) x, (Producer) y, (Producer) z));
 	}
 
 	private CollectionProducer<PackedCollection<?>> v(CollectionProducer<PackedCollection<?>> w, CollectionProducer<PackedCollection<?>> u) {

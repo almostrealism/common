@@ -22,10 +22,10 @@ import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.kernel.KernelStructureContext;
-import org.almostrealism.algebra.Scalar;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.ProducerWithRank;
+import org.almostrealism.collect.PackedCollection;
 
 import java.util.stream.Stream;
 
@@ -52,14 +52,14 @@ import java.util.stream.Stream;
  * <pre>{@code
  * // Create producer with confidence rank
  * Producer<Vector> prediction = ...;
- * Producer<Scalar> confidence = c(0.95);
+ * Producer<PackedCollection<?>> confidence = c(0.95);
  *
  * ProducerWithRankAdapter<Vector> rankedPrediction =
  *     new ProducerWithRankAdapter<>(prediction, confidence);
  *
  * // Access the producer and its rank
  * Producer<Vector> p = rankedPrediction.getProducer();
- * Producer<Scalar> rank = rankedPrediction.getRank();
+ * Producer<PackedCollection<?>> rank = rankedPrediction.getRank();
  * }</pre>
  *
  * @param <T>  the type produced by the wrapped producer
@@ -67,9 +67,9 @@ import java.util.stream.Stream;
  * @see HighestRank
  * @see ProducerWithRank
  */
-public class ProducerWithRankAdapter<T> implements ProducerWithRank<T, Scalar>, ScopeLifecycle, Shape<T> {
+public class ProducerWithRankAdapter<T> implements ProducerWithRank<T, PackedCollection<?>>, ScopeLifecycle, Shape<T> {
 	private Producer<T> p;
-	private Producer<Scalar> rank;
+	private Producer<PackedCollection<?>> rank;
 
 	/**
 	 * Protected constructor for subclasses that implement their own producer logic.
@@ -107,7 +107,7 @@ public class ProducerWithRankAdapter<T> implements ProducerWithRank<T, Scalar>, 
 	 * @return the rank value producer
 	 */
 	@Override
-	public Producer<Scalar> getRank() { return rank; }
+	public Producer<PackedCollection<?>> getRank() { return rank; }
 
 	/**
 	 * Prepares arguments for both the producer and rank.

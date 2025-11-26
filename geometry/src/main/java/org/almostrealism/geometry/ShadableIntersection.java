@@ -22,7 +22,6 @@ import java.util.function.Supplier;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.Gradient;
-import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.computations.ProducerWithRankAdapter;
 import org.almostrealism.collect.PackedCollection;
