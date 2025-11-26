@@ -19,7 +19,6 @@ package org.almostrealism.hardware.test;
 import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.profile.OperationProfile;
 import io.almostrealism.relation.Producer;
-import org.almostrealism.algebra.Scalar;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.util.TestFeatures;

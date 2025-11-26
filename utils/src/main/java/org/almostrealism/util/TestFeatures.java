@@ -28,7 +28,6 @@ import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ScopeSettings;
 import org.almostrealism.CodeFeatures;
-import org.almostrealism.algebra.Scalar;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.ReshapeProducer;
@@ -58,7 +57,7 @@ import java.util.stream.LongStream;
  * to provide a unified API for:</p>
  * <ul>
  *   <li><b>Assertions</b> - Standard assertions ({@link #assertTrue}, {@link #assertEquals}, etc.)
- *       with support for {@link PackedCollection} and {@link Scalar} comparisons</li>
+ *       with support for {@link PackedCollection} comparisons</li>
  *   <li><b>Collection Comparison</b> - Methods like {@link #assertSimilar} for tolerance-based
  *       floating-point comparisons accounting for hardware precision</li>
  *   <li><b>Kernel Testing</b> - {@link #kernelTest} for validating kernel operations across
@@ -308,28 +307,6 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 	}
 
 	/**
-	 * Asserts that two {@link Scalar} values are equal.
-	 *
-	 * @param a the expected scalar value
-	 * @param b the actual scalar value
-	 * @throws AssertionError if the scalar values differ
-	 */
-	default void assertEquals(Scalar a, Scalar b) {
-		assertEquals(a.getValue(), b.getValue());
-	}
-
-	/**
-	 * Asserts that a double value equals a {@link Scalar} value.
-	 *
-	 * @param a the expected double value
-	 * @param b the actual scalar value
-	 * @throws AssertionError if the values differ
-	 */
-	default void assertEquals(double a, Scalar b) {
-		assertEquals(a, b.getValue());
-	}
-
-	/**
 	 * Asserts that two double values are equal within hardware precision tolerance.
 	 * The tolerance is determined by the local hardware's precision epsilon.
 	 *
@@ -385,28 +362,6 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 		if (actual != expected) {
 			throw new AssertionError(actual + " != " + expected);
 		}
-	}
-
-	/**
-	 * Asserts that two {@link Scalar} values are not equal.
-	 *
-	 * @param a the first scalar value
-	 * @param b the second scalar value that should differ
-	 * @throws AssertionError if the values are equal
-	 */
-	default void assertNotEquals(Scalar a, Scalar b) {
-		assertNotEquals(a.getValue(), b.getValue());
-	}
-
-	/**
-	 * Asserts that a double value does not equal a {@link Scalar} value.
-	 *
-	 * @param a the double value
-	 * @param b the scalar value that should differ
-	 * @throws AssertionError if the values are equal
-	 */
-	default void assertNotEquals(double a, Scalar b) {
-		assertNotEquals(a, b.getValue());
 	}
 
 	/**
