@@ -131,8 +131,8 @@ import java.util.stream.Stream;
  * ProcessDetailsFactory.enableConstantCache = true;
  *
  * // Constant argument
- * Producer<Scalar> constant = c(42.0);
- * Evaluable<Scalar> eval = constant.get();
+ * Producer<PackedCollection<?>> constant = c(42.0);
+ * Evaluable<PackedCollection<?>> eval = constant.get();
  *
  * // First execution: evaluates and caches
  * factory1.init(output, args).construct();  // Evaluates 42.0, caches result

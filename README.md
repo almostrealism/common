@@ -535,10 +535,9 @@ but there are some unique things that make sense only for a pair of values. Some
 are listed below.
 
 1. **ComplexNumber** - A pair of real numbers, used together to represent a complex number.
-2. **TemporalScalar** - A pair of a number and a time, used to represent a scalar values distributed along a timeseries.
-3. **Scalar** - A number and a corresponding uncertainty, used to represent a measurement that may not be precisely known.
-4. **Photon** - A wavelength and a phase, used to represent a photon in a manner that accounts for quantum interference.
-5. **CursorPair** - A pair of values that form an interval.
+2. **TemporalScalar** - A pair of a number and a time, used to represent scalar values distributed along a timeseries.
+3. **Photon** - A wavelength and a phase, used to represent a photon in a manner that accounts for quantum interference.
+4. **CursorPair** - A pair of values that form an interval.
 
 #### Vector
 

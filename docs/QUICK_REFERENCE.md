@@ -358,8 +358,8 @@ import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Evaluable;
 
 // Operations
-import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
+import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.PairFeatures;
 
 // Hardware

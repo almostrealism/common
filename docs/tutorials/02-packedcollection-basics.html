@@ -131,17 +131,17 @@ data.fill(pos -&gt; pos[0] + pos[1]);  // Element [i][j] = i + j</code></pre>
                 <p>Almost Realism provides typed wrappers for common algebra types:</p>
 
                 <pre><code class="language-java">import org.almostrealism.algebra.Vector;
-import org.almostrealism.algebra.Scalar;
+import org.almostrealism.algebra.Pair;
 
 // Bank of Vectors (collection of 3D vectors)
 PackedCollection&lt;Vector&gt; vectors = Vector.bank(100);  // 100 vectors
 vectors.set(0, new Vector(1.0, 2.0, 3.0));
 Vector v = vectors.get(0);
 
-// Bank of Scalars (collection of single values)
-PackedCollection&lt;Scalar&gt; scalars = Scalar.bank(50);  // 50 scalars
-scalars.set(0, new Scalar(42.0));
-Scalar s = scalars.get(0);</code></pre>
+// Bank of Pairs (collection of 2D coordinates)
+PackedCollection&lt;Pair&lt;?&gt;&gt; pairs = Pair.bank(50);  // 50 pairs
+pairs.set(0, new Pair(42.0, 0.0));
+Pair&lt;?&gt; p = pairs.get(0);</code></pre>
 
                 <p><strong>Key Insight:</strong> <code>Vector.bank(100)</code> creates a PackedCollection with shape (100, 3) - 100 rows, 3 columns.</p>
             </section>
@@ -276,11 +276,11 @@ for (int i = 0; i < 10; i++) {
                 <h3>Pattern 3: Type Safety with Generics</h3>
                 <pre><code class="language-java">// Use typed banks for compile-time safety
 PackedCollection&lt;Vector&gt; vectors = Vector.bank(100);
-PackedCollection&lt;Scalar&gt; scalars = Scalar.bank(100);
+PackedCollection&lt;Pair&lt;?&gt;&gt; pairs = Pair.bank(100);
 
 // Type-safe access
 Vector v = vectors.get(0);  // Returns Vector, not Object
-Scalar s = scalars.get(0);  // Returns Scalar, not Object</code></pre>
+Pair&lt;?&gt; p = pairs.get(0);   // Returns Pair, not Object</code></pre>
             </section>
 
             <section>
@@ -300,7 +300,7 @@ Scalar s = scalars.get(0);  // Returns Scalar, not Object</code></pre>
                     <li>✓ What PackedCollection is and why it's memory-efficient</li>
                     <li>✓ Creating multi-dimensional collections with TraversalPolicy</li>
                     <li>✓ Setting and getting values with multi-dimensional indexing</li>
-                    <li>✓ Using typed collections (Vector.bank, Scalar.bank)</li>
+                    <li>✓ Using typed collections (Vector.bank, Pair.bank)</li>
                     <li>✓ Understanding TraversalPolicy and memory layout</li>
                     <li>✓ Wrapping collections for GPU operations with CollectionProducer</li>
                     <li>✓ Practical patterns for efficient data manipulation</li>

@@ -119,10 +119,10 @@ OrthographicCamera ortho = new OrthographicCamera(
 ```java
 import org.almostrealism.geometry.*;
 
-// Surfaces implement Intersectable<Scalar>
+// Surfaces implement Intersectable<PackedCollection<?>>
 public interface Intersectable<T> {
     ContinuousField intersectAt(Producer<Ray> ray);
-    Operator<Scalar> expect();
+    Operator<PackedCollection<?>> expect();
 }
 
 // Test ray against surface
@@ -279,7 +279,7 @@ Producer<Ray> ray = camera.rayAt(
 );
 
 // 2. Find closest intersection
-List<Intersectable<Scalar>> surfaces = scene.getSurfaces();
+List<Intersectable<PackedCollection<?>>> surfaces = scene.getSurfaces();
 ClosestIntersection closest = new ClosestIntersection(ray, surfaces);
 
 // 3. Get intersection data
@@ -441,7 +441,7 @@ Producer<Vector> gradient = field.getGradient(position);
 
 ### Algebra Module
 - Uses **Vector** for 3D positions and directions
-- Uses **Scalar** for distance values
+- Uses **PackedCollection** for distance values
 - Uses **Pair** for 2D screen coordinates
 
 ### Space Module
@@ -484,7 +484,7 @@ Producer<Vector> gradient = field.getGradient(position);
 
 ## Further Reading
 
-- See **ar-algebra** module for Vector, Scalar, and Matrix fundamentals
+- See **ar-algebra** module for Vector, Pair, and Matrix fundamentals
 - See **ar-space** module for concrete surface implementations
 - See **ar-color** module for shading and lighting
 - See **ar-render** module for complete ray tracing pipeline

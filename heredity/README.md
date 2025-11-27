@@ -10,7 +10,7 @@ This module exists to:
 2. **Enable Evolutionary Operations** - Breeding/crossover and mutation mechanisms
 3. **Support Probabilistic Selection** - Factory pattern for stochastic genetic choices
 4. **Integrate with Temporal Systems** - Time-stepped evolution for optimization
-5. **Provide Flexible Gene Representations** - Scalar, projected, choice, and transformable genes
+5. **Provide Flexible Gene Representations** - Numeric, projected, choice, and transformable genes
 
 ## What It Provides
 
@@ -42,8 +42,8 @@ Genome<T>
 ```java
 import org.almostrealism.heredity.*;
 
-// Scalar gene - Simple numeric factors
-Gene<PackedCollection<?>> scalarGene = HeredityFeatures.getInstance().g(0.1, 0.5, 0.9);
+// Numeric gene - Simple numeric factors
+Gene<PackedCollection<?>> numericGene = HeredityFeatures.getInstance().g(0.1, 0.5, 0.9);
 
 // Projected gene - Weighted transformation of source data
 ProjectedGene projected = new ProjectedGene(sourceData, weights, outputDimension);

@@ -121,18 +121,18 @@ import org.almostrealism.hardware.mem.Bytes;
  *
  * <pre>{@code
  * // Compute loss
- * Producer<Scalar> loss = computeLoss(predictions, labels);
+ * Producer<PackedCollection<?>> loss = computeLoss(predictions, labels);
  *
  * // Add metric tracking
- * MetricComputation<Scalar> lossMetric = new MetricComputation<>(
+ * MetricComputation<PackedCollection<?>> lossMetric = new MetricComputation<>(
  *     "Training Loss", 10, loss, 0, 1);  // Log every 10 steps
  *
  * // Compute gradients
  * Producer<Matrix> gradients = computeGradients(loss);
  *
  * // Track gradient norm
- * Producer<Scalar> gradNorm = norm(gradients);
- * MetricComputation<Scalar> gradMetric = new MetricComputation<>(
+ * Producer<PackedCollection<?>> gradNorm = norm(gradients);
+ * MetricComputation<PackedCollection<?>> gradMetric = new MetricComputation<>(
  *     "Gradient Norm", 10, gradNorm, 0, 1);
  *
  * // Combined training step with metrics

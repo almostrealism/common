@@ -99,12 +99,12 @@ import java.util.function.IntFunction;
  * <p>If the wrapped {@link ProducerComputation} is constant (produces the same value every time),
  * {@link #isConstant()} returns true, enabling optimizations:</p>
  * <pre>{@code
- * Producer<Scalar> constant = c(42.0);  // Constant value
- * Evaluable<Scalar> eval = constant.get();
+ * Producer<PackedCollection<?>> constant = c(42.0);  // Constant value
+ * Evaluable<PackedCollection<?>> eval = constant.get();
  *
  * if (eval.isConstant()) {
  *     // Can cache result, skip compilation, etc.
- *     Scalar cached = eval.evaluate();
+ *     PackedCollection<?> cached = eval.evaluate();
  * }
  * }</pre>
  *

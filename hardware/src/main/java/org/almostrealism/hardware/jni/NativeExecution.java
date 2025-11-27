@@ -123,7 +123,7 @@ import java.util.stream.Collectors;
  *
  * // prepared[0] = PackedCollection (MemoryData)
  * // prepared[1] = Vector (MemoryData)
- * // prepared[2] = Scalar wrapped as MemoryData
+ * // prepared[2] = PackedCollection wrapped as MemoryData
  * }</pre>
  *
  * <h2>Supported Memory</h2>

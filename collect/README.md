@@ -326,7 +326,7 @@ CollectionProducer<?> traversed = cp(data).traverse(axis);
 
 ### Used By
 
-- **algebra** - Vector, Scalar, Pair all extend PackedCollection
+- **algebra** - Vector, Pair all extend PackedCollection
 - **ml** - Model weights, activations, gradients
 - **graph** - Neural network computations
 - **time** - AcceleratedTimeSeries stores TemporalScalar collections

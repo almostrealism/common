@@ -323,7 +323,7 @@ Quick reference for what each module provides:
 ### Mathematics
 | Module | Purpose | Key Classes |
 |--------|---------|-------------|
-| **algebra** | Linear algebra operations | `Vector`, `Scalar`, `Pair`, `PairFeatures` |
+| **algebra** | Linear algebra operations | `Vector`, `Pair`, `PairFeatures`, `VectorFeatures` |
 | **geometry** | 3D geometry, ray tracing | `Ray`, `TransformMatrix`, `Intersection` |
 | **time** | Temporal, FFT, filtering | `Temporal`, `TemporalScalar`, `CursorPair` |
 

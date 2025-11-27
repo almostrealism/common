@@ -40,7 +40,7 @@
         <main>
             <section id="overview">
                 <h2>Overview</h2>
-                <p>The <strong>ar-algebra</strong> module is the foundation of Almost Realism's data processing capabilities. It provides <code>PackedCollection</code> - the core data structure for all numerical computations - along with type-safe wrappers like <code>Vector</code>, <code>Scalar</code>, and <code>Pair</code>, and 40+ hardware-accelerated operations through <code>CollectionProducer</code>.</p>
+                <p>The <strong>ar-algebra</strong> module is the foundation of Almost Realism's data processing capabilities. It provides <code>PackedCollection</code> - the core data structure for all numerical computations - along with type-safe wrappers like <code>Vector</code> and <code>Pair</code>, and 40+ hardware-accelerated operations through <code>CollectionProducer</code>.</p>
 
                 <div class="key-concepts">
                     <div class="concept-card">
@@ -49,7 +49,7 @@
                     </div>
                     <div class="concept-card">
                         <h4>🔢 Type-Safe Wrappers</h4>
-                        <p>Vector (3D), Scalar (value+certainty), Pair (2-element), Tensor (N-D). All extend PackedCollection for seamless integration with hardware acceleration.</p>
+                        <p>Vector (3D), Pair (2-element), Tensor (N-D). All extend PackedCollection for seamless integration with hardware acceleration.</p>
                     </div>
                     <div class="concept-card">
                         <h4>⚡ CollectionProducer</h4>
@@ -69,7 +69,7 @@
                 <div class="class-list">
                     <div class="class-item">
                         <h4>org.almostrealism.algebra</h4>
-                        <p>Core types: Vector, Scalar, Pair, Tensor, ComplexNumber, Matrix3D. Feature interfaces for operations.</p>
+                        <p>Core types: Vector, Pair, Tensor, ComplexNumber, Matrix3D. Feature interfaces for operations.</p>
                     </div>
                     <div class="class-item">
                         <h4>org.almostrealism.collect</h4>
@@ -89,7 +89,6 @@
                 <div class="code-example">
 <pre>PackedCollection&lt;?&gt;          ← Base class for all data
 ├── Pair                      ← 2 elements (x, y)
-│   ├── Scalar                ← Value + certainty
 │   ├── ComplexNumber         ← Real + imaginary
 │   └── TemporalScalar        ← Time + value
 ├── Vector                    ← 3 elements (x, y, z)
@@ -145,20 +144,6 @@ double length = v1.length();
 // GPU-accelerated operations
 CollectionProducer&lt;Vector&gt; gpuSum = v(v1).add(v(v2));
 Vector result = gpuSum.get().evaluate();</code></pre>
-
-                <h3>Scalar</h3>
-                <p>Value with optional certainty (extends Pair).</p>
-                <pre><code class="language-java">// Create scalars
-Scalar s1 = new Scalar(5.0);           // Value only
-Scalar s2 = new Scalar(5.0, 0.95);     // Value + 95% certainty
-
-// Access
-double value = s1.getValue();
-double certainty = s1.getCertainty();
-
-// Create collections of scalars
-PackedCollection&lt;Scalar&gt; scalars = Scalar.bank(100);
-scalars.get(0).setValue(3.14);</code></pre>
 
                 <h3>Pair</h3>
                 <p>Two-element tuple with semantic aliases (x/y, a/b, left/right, etc.).</p>
@@ -254,7 +239,7 @@ PackedCollection&lt;?&gt; packed = tensor.pack();</code></pre>
                     <tr>
                         <td><code>sum()</code></td>
                         <td>Sum all elements</td>
-                        <td>Scalar</td>
+                        <td>Single value</td>
                     </tr>
                     <tr>
                         <td><code>sum(axis)</code></td>
@@ -264,22 +249,22 @@ PackedCollection&lt;?&gt; packed = tensor.pack();</code></pre>
                     <tr>
                         <td><code>mean()</code></td>
                         <td>Average of elements</td>
-                        <td>Scalar</td>
+                        <td>Single value</td>
                     </tr>
                     <tr>
                         <td><code>max()</code></td>
                         <td>Maximum element</td>
-                        <td>Scalar</td>
+                        <td>Single value</td>
                     </tr>
                     <tr>
                         <td><code>min()</code></td>
                         <td>Minimum element</td>
-                        <td>Scalar</td>
+                        <td>Single value</td>
                     </tr>
                     <tr>
                         <td><code>magnitude()</code></td>
                         <td>L2 norm</td>
-                        <td>Scalar</td>
+                        <td>Single value</td>
                     </tr>
                 </table>
 

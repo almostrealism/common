@@ -435,13 +435,6 @@ double dot = v1.dotProduct(v2);
 Vector cross = v1.crossProduct(v2);
 ```
 
-### Scalar (Value + Certainty)
-
-```java
-Scalar s = new Scalar(5.0, 0.95);  // Value with 95% certainty
-double value = s.getValue();
-```
-
 ### Pair (Two-Element Tuple)
 
 ```java

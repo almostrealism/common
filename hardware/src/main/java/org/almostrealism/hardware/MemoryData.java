@@ -206,7 +206,7 @@ import java.util.stream.IntStream;
  * which provides standard delegation support and memory management. Key implementations:
  * <ul>
  *   <li><strong>PackedCollection:</strong> Multi-dimensional arrays with shape tracking</li>
- *   <li><strong>Scalar/Pair/Vector:</strong> Fixed-size geometric primitives</li>
+ *   <li><strong>Pair/Vector:</strong> Fixed-size geometric primitives</li>
  *   <li><strong>Bytes:</strong> Raw byte buffer access for custom data structures</li>
  * </ul>
  *

@@ -493,12 +493,12 @@ CachedMeshIntersectionKernel kernel = new CachedMeshIntersectionKernel(
 kernel.setDimensions(width, height, ssw, ssh);
 
 // Batch evaluation - populates cache for all pixels
-MemoryBank&lt;Scalar&gt; destination = Scalar.scalarBank(width * height);
+PackedCollection&lt;?&gt; destination = new PackedCollection&lt;&gt;(shape(width * height));
 kernel.into(destination).evaluate(args);
 
 // Individual queries now use cached results
 Pair pixelPos = new Pair(x, y);
-Scalar distance = kernel.evaluate(new Object[]{pixelPos});
+PackedCollection&lt;?&gt; distance = kernel.evaluate(new Object[]{pixelPos});
 
 // Get normal at intersection point
 Evaluable&lt;Vector&gt; normalEval = kernel.getClosestNormal();
