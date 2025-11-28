@@ -17,6 +17,7 @@
 package org.almostrealism.algebra.computations;
 
 import io.almostrealism.collect.CollectionExpression;
+import io.almostrealism.collect.CollectionProducerBase;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.relation.Producer;
@@ -121,6 +122,9 @@ public class Choice<T extends PackedCollection> extends TraversableExpressionCom
 
 		TraversalPolicy shape = ((Shape) choices).getShape();
 		if (shape.getCount() != choiceCount) {
+			if (shape.length(0) == choiceCount && shape.getTotalSize() / shape.length(0) == memLength) {
+				return (Producer<PackedCollection>) ((CollectionProducerBase) choices).traverse(1);
+			}
 			throw new IllegalArgumentException();
 		} else if (shape.getSize() != memLength) {
 			throw new IllegalArgumentException();

@@ -25,7 +25,7 @@ import org.junit.Test;
 public class ChoiceTest implements TestFeatures {
 	@Test
 	public void oneOrTwo() {
-		PackedCollection bank = new PackedCollection(shape(2, 2));
+		PackedCollection bank = new PackedCollection(shape(2, 2).traverse(1));
 		bank.setMem(0, 1.0, 1.0);
 		bank.setMem(2, 2.0, 1.0);
 
