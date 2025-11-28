@@ -73,7 +73,7 @@ public class TriangleDataTest implements TestFeatures {
 	@Test
 	public void triangleData() {
 		PackedCollection points = points();
-		CollectionProducer<PackedCollection> td = triangle(
+		CollectionProducer td = triangle(
 											v(points.get(0).get(0)),
 											v(points.get(0).get(1)),
 											v(points.get(0).get(2)));

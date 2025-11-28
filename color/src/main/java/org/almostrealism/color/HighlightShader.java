@@ -127,14 +127,14 @@ public class HighlightShader extends ShaderSet<ShaderContext> implements
 		}
 		
 		n = multiply(n, length(n).pow(-1.0));
-		CollectionProducer<PackedCollection> h = vector(add(p.getIntersection().getNormalAt((Producer) v(point)), p.getLightDirection()));
+		CollectionProducer h = vector(add(p.getIntersection().getNormalAt((Producer) v(point)), p.getLightDirection()));
 		h = multiply(h, length(h).pow(-1.0));
 
 		Producer hc = v((RGB) this.getHighlightColor().get().evaluate(p));
 		if (super.size() > 0) hc = multiply(hc, super.shade(p, normals));
 
-		CollectionProducer<PackedCollection> cFront = (CollectionProducer) dotProduct(h, n);
-		CollectionProducer<PackedCollection> cBack = (CollectionProducer) dotProduct(h, minus(n));
+		CollectionProducer cFront = (CollectionProducer) dotProduct(h, n);
+		CollectionProducer cBack = (CollectionProducer) dotProduct(h, minus(n));
 
 		Producer fhc = hc;
 

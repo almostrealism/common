@@ -20,7 +20,6 @@ import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.relation.Evaluable;
 import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
@@ -305,8 +304,8 @@ public class ConstantRepeatedProducerComputation
 	 * @see RepeatedProducerComputation#attemptDelta(Producer)
 	 */
 	@Override
-	public CollectionProducer<PackedCollection> delta(Producer<?> target) {
-		CollectionProducer<PackedCollection> delta = attemptDelta(target);
+	public CollectionProducer delta(Producer<?> target) {
+		CollectionProducer delta = attemptDelta(target);
 		if (delta != null) return delta;
 
 		return ConstantRepeatedDeltaComputation.create(

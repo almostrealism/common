@@ -16,7 +16,7 @@
 
 package org.almostrealism.geometry;
 
-import org.almostrealism.algebra.Pair;
+import org.almostrealism.collect.CollectionProducer;
 import io.almostrealism.relation.Producer;
 
 /**
@@ -56,5 +56,5 @@ public interface Camera {
 	 * @return a {@link Producer} that produces a {@link Ray} representing the
 	 *         viewing ray from the camera through the specified screen point
 	 */
-	Producer<Ray> rayAt(Producer<Pair> screenPosition, Producer<Pair> screenDimensions);
+	CollectionProducer rayAt(Producer<?> screenPosition, Producer<?> screenDimensions);
 }

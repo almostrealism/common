@@ -130,7 +130,7 @@ public class IdentityMatrixComputation extends ScalarMatrixComputation {
 	 * @return this computation as a parallel process
 	 */
 	@Override
-	public CollectionProducerParallelProcess<PackedCollection> generate(List<Process<?, ?>> children) {
+	public CollectionProducerParallelProcess generate(List<Process<?, ?>> children) {
 		return this;
 	}
 }

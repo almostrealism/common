@@ -24,6 +24,7 @@ import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.Gradient;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.computations.ProducerWithRankAdapter;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 
 /**
@@ -61,7 +62,7 @@ public class ShadableIntersection extends Intersection implements ContinuousFiel
 	 * @param r the incident ray
 	 * @param distance the parametric distance to the intersection
 	 */
-	public ShadableIntersection(Gradient surface, Producer<Ray> r, Producer distance) {
+	public ShadableIntersection(Gradient surface, Producer<?> r, Producer distance) {
 		this(surface,
 				RayFeatures.getInstance().pointAt(r, distance),
 				RayFeatures.getInstance().direction(r), distance);
@@ -74,7 +75,7 @@ public class ShadableIntersection extends Intersection implements ContinuousFiel
 	 * @param normal the surface normal at the intersection
 	 * @param distance the parametric distance to the intersection
 	 */
-	public ShadableIntersection(Producer<Ray> r, Producer<PackedCollection> normal,
+	public ShadableIntersection(Producer<?> r, Producer<PackedCollection> normal,
 								Producer<PackedCollection> distance) {
 		this(RayFeatures.getInstance().pointAt(r, distance),
 				RayFeatures.getInstance().direction(r),
@@ -109,8 +110,8 @@ public class ShadableIntersection extends Intersection implements ContinuousFiel
 
 		this.incident = incident;
 
-		Producer<Ray> p = ray(getPoint(), normal);
-		this.normal = new ProducerWithRankAdapter<>(p, (Producer) distance);
+		CollectionProducer p = ray(getPoint(), normal);
+		this.normal = new ProducerWithRankAdapter<>((Producer) p, (Producer) distance);
 	}
 
 	/**

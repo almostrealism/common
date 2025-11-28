@@ -163,7 +163,7 @@ public class ScalarMatrixComputation extends MatrixExpressionComputation {
 	 * @return a new scalar matrix computation with the child scalar producer
 	 */
 	@Override
-	public CollectionProducerParallelProcess<PackedCollection> generate(List<Process<?, ?>> children) {
+	public CollectionProducerParallelProcess generate(List<Process<?, ?>> children) {
 		return new ScalarMatrixComputation(getShape(), (Producer) children.get(1));
 	}
 }

@@ -80,7 +80,7 @@ public class GeneratedColorProducer<T> implements Generated<T, Producer<PackedCo
 	public long getCountLong() { return getShape().getCountLong(); }
 
 	@Override
-	public CollectionProducer<PackedCollection> reshape(TraversalPolicy shape) {
+	public CollectionProducer reshape(TraversalPolicy shape) {
 		return (CollectionProducer) ((Shape) getGenerated()).reshape(shape);
 	}
 

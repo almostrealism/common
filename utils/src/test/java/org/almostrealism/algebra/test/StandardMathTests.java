@@ -18,10 +18,8 @@ package org.almostrealism.algebra.test;
 
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
-import org.almostrealism.algebra.Pair;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Assert;
 import org.junit.Test;
@@ -29,7 +27,7 @@ import org.junit.Test;
 public class StandardMathTests implements TestFeatures {
 	@Test
 	public void add() {
-		CollectionProducer<PackedCollection> sum = add(c(1.0), c(2.0));
+		CollectionProducer sum = add(c(1.0), c(2.0));
 		Evaluable ev = sum.get();
 		System.out.println(ev.evaluate());
 		assertEquals(3.0, ev.evaluate());
@@ -39,8 +37,8 @@ public class StandardMathTests implements TestFeatures {
 	public void divide() {
 		int dim = 256;
 		PackedCollection in = new PackedCollection(dim).randnFill();
-		CollectionProducer<PackedCollection> inp = cp(in);
-		CollectionProducer<PackedCollection> o = divide(c(1.0), inp.traverseEach());
+		CollectionProducer inp = cp(in);
+		CollectionProducer o = divide(c(1.0), inp.traverseEach());
 
 		Assert.assertEquals(1, o.getShape().getDimensions());
 		Assert.assertEquals(256, o.getShape().length(0));
@@ -81,7 +79,7 @@ public class StandardMathTests implements TestFeatures {
 	public void silu() {
 		int dim = 256;
 		PackedCollection in = new PackedCollection(dim).randnFill();
-		CollectionProducer<PackedCollection> inp = cp(in);
+		CollectionProducer inp = cp(in);
 		Producer<PackedCollection> o = inp.traverseEach().sigmoid().multiply(inp.traverseEach());
 
 		PackedCollection out = o.get().evaluate();

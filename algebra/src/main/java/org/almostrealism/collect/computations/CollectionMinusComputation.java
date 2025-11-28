@@ -283,7 +283,7 @@ public class CollectionMinusComputation extends TransitiveDeltaExpressionComputa
 	 * 
 	 * // During compilation, generate() is called to create the executable process
 	 * List<Process<?, ?>> childProcesses = Arrays.asList(outputProcess, inputProcess);
-	 * CollectionProducerParallelProcess<PackedCollection> executableProcess =
+	 * CollectionProducerParallelProcess executableProcess =
 	 *     computation.generate(childProcesses);
 	 * 
 	 * // The process can then be executed to perform the computation
@@ -296,7 +296,7 @@ public class CollectionMinusComputation extends TransitiveDeltaExpressionComputa
 	 * @see io.almostrealism.compute.Process
 	 */
 	@Override
-	public CollectionProducerParallelProcess<PackedCollection> generate(List<Process<?, ?>> children) {
+	public CollectionProducerParallelProcess generate(List<Process<?, ?>> children) {
 		if (children.size() != 2) {
 			throw new IllegalArgumentException();
 		}

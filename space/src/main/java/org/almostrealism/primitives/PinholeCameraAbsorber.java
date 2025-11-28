@@ -16,7 +16,6 @@
 
 package org.almostrealism.primitives;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.hardware.MemoryBank;
 
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.Vector;
@@ -24,7 +23,9 @@ import org.almostrealism.algebra.VectorMath;
 import org.almostrealism.color.Colorable;
 import org.almostrealism.color.RGB;
 import org.almostrealism.geometry.Ray;
-import org.almostrealism.hardware.DynamicProducerForMemoryData;
+import org.almostrealism.collect.CollectionProducer;
+import org.almostrealism.collect.computations.DynamicCollectionProducer;
+import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.physics.Absorber;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.space.Volume;
@@ -137,10 +138,10 @@ public class PinholeCameraAbsorber extends PinholeCamera implements Absorber, Vo
 	public double getFNumber() { return getFocalLength() / (2.0 * this.pinhole.getRadius()); }
 
 	@Override
-	public Producer<Ray> rayAt(Producer<Pair> pos, Producer<Pair> sd) {
-		return new DynamicProducerForMemoryData<Ray>(args -> {
-				Pair ij = pos.get().evaluate(args);
-				Pair screenDim = sd.get().evaluate(args);
+	public CollectionProducer rayAt(Producer<?> pos, Producer<?> sd) {
+		return new DynamicCollectionProducer(new TraversalPolicy(6), args -> {
+				Pair ij = new Pair((PackedCollection) pos.get().evaluate(args), 0);
+				Pair screenDim = new Pair((PackedCollection) sd.get().evaluate(args), 0);
 
 				double u = ij.getX() / (screenDim.getX());
 				double v = (ij.getY() / screenDim.getY());
@@ -202,7 +203,7 @@ public class PinholeCameraAbsorber extends PinholeCamera implements Absorber, Vo
 				vx.addTo(location);
 
 				return new Ray(vx, vd);
-			}, size -> (MemoryBank) Ray.bank(size));
+			});
 	}
 
 	@Override

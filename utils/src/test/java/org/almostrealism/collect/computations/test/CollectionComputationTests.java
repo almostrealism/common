@@ -60,7 +60,7 @@ public class CollectionComputationTests implements TestFeatures {
 		PackedCollection result = new PackedCollection(shape(6));
 
 		verboseLog(() -> {
-			CollectionProducer<PackedCollection> value = index(shape(3, 5), p(x), p(y));
+			CollectionProducer value = index(shape(3, 5), p(x), p(y));
 			value.into(result).evaluate();
 		});
 
@@ -80,7 +80,7 @@ public class CollectionComputationTests implements TestFeatures {
 		PackedCollection result = new PackedCollection(shape(len, 1).traverse(1));
 
 		verboseLog(() -> {
-			CollectionProducer<PackedCollection> product = c(p(in), integers(0, len)).traverseEach().multiply(c(2.0));
+			CollectionProducer product = c(p(in), integers(0, len)).traverseEach().multiply(c(2.0));
 			product.get().into(result).evaluate();
 		});
 
@@ -95,12 +95,12 @@ public class CollectionComputationTests implements TestFeatures {
 		PackedCollection result = new PackedCollection(shape(2));
 
 		verboseLog(() -> {
-			CollectionProducer<PackedCollection> value = c(p(in),
+			CollectionProducer value = c(p(in),
 																shape(2, len, 1),
 																c(0, 1),
 																c(4, 8),
 																c(0, 0));
-			CollectionProducer<PackedCollection> product = value.multiply(c(2.0));
+			CollectionProducer product = value.multiply(c(2.0));
 			product.get().into(result).evaluate();
 		});
 
@@ -260,9 +260,9 @@ public class CollectionComputationTests implements TestFeatures {
 		PackedCollection va = new PackedCollection(n, hd).fill(pos -> 1.0 + pos[1] + 10 * pos[0]);
 		PackedCollection vb = new PackedCollection(n, hd).fill(pos -> -(1.0 + pos[1] + 10 * pos[0]));
 
-		CollectionProducer<PackedCollection> a = pad(shape(n, dim), cp(va), 0, 0);
-		CollectionProducer<PackedCollection> b = pad(shape(n, dim), cp(vb), 0, hd);
-		CollectionProducer<PackedCollection> concat = add(a, b);
+		CollectionProducer a = pad(shape(n, dim), cp(va), 0, 0);
+		CollectionProducer b = pad(shape(n, dim), cp(vb), 0, hd);
+		CollectionProducer concat = add(a, b);
 		PackedCollection output = concat.get().evaluate();
 		output.traverse(1).print();
 
@@ -285,17 +285,17 @@ public class CollectionComputationTests implements TestFeatures {
 		PackedCollection va = new PackedCollection(hd).fill(pos -> 1.0 + pos[0]);
 		PackedCollection alt = pack(-1.0, 1.0).reshape(n, 1);
 
-		CollectionProducer<PackedCollection> product =
+		CollectionProducer product =
 				multiply(
 						cp(alt).repeat(1, hd).reshape(n, hd),
 						cp(va).repeat(n).reshape(n, hd));
 
-		CollectionProducer<PackedCollection> a = pad(shape(n, dim),
+		CollectionProducer a = pad(shape(n, dim),
 				product.multiply(c(10)), 0, 0);
-		CollectionProducer<PackedCollection> b = pad(shape(n, dim),
+		CollectionProducer b = pad(shape(n, dim),
 				product.multiply(c(100)), 0, hd);
 
-		CollectionProducer<PackedCollection> concat = add(a, b);
+		CollectionProducer concat = add(a, b);
 		PackedCollection output = concat.get().evaluate();
 		output.traverse(1).print();
 
@@ -317,12 +317,12 @@ public class CollectionComputationTests implements TestFeatures {
 		PackedCollection va = new PackedCollection(hd).fill(pos -> 1.0 + pos[0]);
 		PackedCollection alt = pack(-1.0, 1.0).reshape(n, 1);
 
-		CollectionProducer<PackedCollection> product =
+		CollectionProducer product =
 				multiply(
 						cp(alt).repeat(1, hd).reshape(n, hd),
 						cp(va).repeat(n).reshape(n, hd));
 
-		CollectionProducer<PackedCollection> concat = concat(shape(n, dim), sin(product), cos(product));
+		CollectionProducer concat = concat(shape(n, dim), sin(product), cos(product));
 		PackedCollection output = concat.get().evaluate();
 		output.traverse(1).print();
 
@@ -457,7 +457,7 @@ public class CollectionComputationTests implements TestFeatures {
 
 		PackedCollection output = new PackedCollection(shape(2, 3, 1)).traverse(2);
 
-//		PackedCollection m = max(new DynamicCollectionProducer<PackedCollection>(shape(2, 3, 2), args -> value, false)).get().evaluate();
+//		PackedCollection m = max(new DynamicCollectionProducer(shape(2, 3, 2), args -> value, false)).get().evaluate();
 		PackedCollection m = max(new DynamicProducer<PackedCollection>(args -> value)).get().into(output).evaluate();
 		System.out.println(m.getShape());
 		m.print();
@@ -521,8 +521,8 @@ public class CollectionComputationTests implements TestFeatures {
 		System.out.println(series.traverse(0).getCountLong() + " series");
 
 		PackedCollection dest = new PackedCollection(1);
-		CollectionProducer<PackedCollection> max = cp(series.traverse(0)).max();
-		CollectionProducer<PackedCollection> auto = max.greaterThan(c(0.0), c(0.8).divide(max), c(1.0));
+		CollectionProducer max = cp(series.traverse(0)).max();
+		CollectionProducer auto = max.greaterThan(c(0.0), c(0.8).divide(max), c(1.0));
 
 		verboseLog(() -> {
 			OperationList op = new OperationList("greaterThanMax");
@@ -668,7 +668,7 @@ public class CollectionComputationTests implements TestFeatures {
 
 		// Test: AND with custom true/false values
 		// 1.0 AND 1.0 should return 100.0 (trueValue)
-		CollectionProducer<PackedCollection> andOp = and(c(1.0), c(1.0), c(100.0), c(-1.0));
+		CollectionProducer andOp = and(c(1.0), c(1.0), c(100.0), c(-1.0));
 		a(1, p(result), andOp).get().run();
 		assertEquals(100.0, result.toDouble(0));
 
@@ -683,12 +683,12 @@ public class CollectionComputationTests implements TestFeatures {
 		PackedCollection result = new PackedCollection(1);
 
 		// Complex: (5 > 3) AND (7 > 2) AND (10 < 20) should be true
-		CollectionProducer<PackedCollection> cond1 = greaterThan(c(5.0), c(3.0));
-		CollectionProducer<PackedCollection> cond2 = greaterThan(c(7.0), c(2.0));
-		CollectionProducer<PackedCollection> cond3 = lessThan(c(10.0), c(20.0));
+		CollectionProducer cond1 = greaterThan(c(5.0), c(3.0));
+		CollectionProducer cond2 = greaterThan(c(7.0), c(2.0));
+		CollectionProducer cond3 = lessThan(c(10.0), c(20.0));
 
 		// Chain the conditions: (cond1 AND cond2) AND cond3
-		CollectionProducer<PackedCollection> chained = and(and(cond1, cond2), cond3, c(100.0), c(-1.0));
+		CollectionProducer chained = and(and(cond1, cond2), cond3, c(100.0), c(-1.0));
 
 		a(1, p(result), chained).get().run();
 		assertEquals(100.0, result.toDouble(0));

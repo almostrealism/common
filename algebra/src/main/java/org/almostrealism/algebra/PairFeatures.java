@@ -26,7 +26,6 @@ import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 import org.almostrealism.collect.computations.DefaultTraversableExpressionComputation;
-import org.almostrealism.hardware.MemoryData;
 
 import java.util.function.BiFunction;
 import java.util.function.Function;
@@ -86,7 +85,7 @@ public interface PairFeatures extends CollectionFeatures {
 	 * @param y  the second value (right/b component)
 	 * @return a producer for the constant pair (x, y)
 	 */
-	default CollectionProducer<Pair> pair(double x, double y) { return value(new Pair(x, y)); }
+	default CollectionProducer pair(double x, double y) { return value(new Pair(x, y)); }
 
 	/**
 	 * Creates a {@link CollectionProducer} for a dynamic pair by concatenating two component producers.
@@ -96,9 +95,9 @@ public interface PairFeatures extends CollectionFeatures {
 	 * @param y  producer for the second component
 	 * @return a producer that combines the two components into a pair
 	 */
-	default CollectionProducer<Pair> pair(Producer<PackedCollection> x,
-											 Producer<PackedCollection> y) {
-		return concat(shape(2), x, y);
+	default CollectionProducer pair(Producer<PackedCollection> x,
+									Producer<PackedCollection> y) {
+		return (CollectionProducer) concat(shape(2), x, y);
 	}
 
 	/**
@@ -107,7 +106,7 @@ public interface PairFeatures extends CollectionFeatures {
 	 * @param value  the pair value
 	 * @return a producer for the constant pair
 	 */
-	default CollectionProducer<Pair> v(Pair value) { return value(value); }
+	default CollectionProducer v(Pair value) { return value(value); }
 
 	/**
 	 * Creates a {@link CollectionProducer} that produces a constant {@link Pair} value.
@@ -117,8 +116,8 @@ public interface PairFeatures extends CollectionFeatures {
 	 * @param value  the {@link Pair} containing the constant values
 	 * @return a {@link CollectionProducer} that evaluates to the specified {@link Pair}
 	 */
-	default CollectionProducer<Pair> value(Pair value) {
-		return (CollectionProducer<Pair>) (CollectionProducer) DefaultTraversableExpressionComputation.fixed((Pair) value, (BiFunction) Pair.postprocessor());
+	default CollectionProducer value(Pair value) {
+		return (CollectionProducer) (CollectionProducer) DefaultTraversableExpressionComputation.fixed((Pair) value, (BiFunction) Pair.postprocessor());
 	}
 
 	/**
@@ -127,7 +126,7 @@ public interface PairFeatures extends CollectionFeatures {
 	 * @param p  the pair producer
 	 * @return a producer for the left component
 	 */
-	default CollectionProducer<PackedCollection> l(Producer<Pair> p) {
+	default CollectionProducer l(Producer<?> p) {
 		return subset(shape(1), p, 0);
 	}
 
@@ -137,7 +136,7 @@ public interface PairFeatures extends CollectionFeatures {
 	 * @param p  the pair producer
 	 * @return a producer for the right component
 	 */
-	default CollectionProducer<PackedCollection> r(Producer<Pair> p) {
+	default CollectionProducer r(Producer<?> p) {
 		return subset(shape(1), p, 1);
 	}
 
@@ -186,8 +185,8 @@ public interface PairFeatures extends CollectionFeatures {
 	 * @return a producer for the complex numbers (as Pairs)
 	 * @throws IllegalArgumentException if the real and imaginary collections have different sizes
 	 */
-	default CollectionProducer<PackedCollection> complexFromParts(Producer<PackedCollection> real,
-													     Producer<PackedCollection> imag) {
+	default CollectionProducer complexFromParts(Producer<PackedCollection> real,
+												Producer<PackedCollection> imag) {
 		long size = shape(real).getTotalSizeLong();
 		if (shape(imag).getTotalSizeLong() != size) {
 			throw new IllegalArgumentException();

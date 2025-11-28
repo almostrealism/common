@@ -191,7 +191,7 @@ public class DefaultTraversableExpressionComputation
 	 * @return A new {@link DefaultTraversableExpressionComputation} with the specified children
 	 */
 	@Override
-	public CollectionProducerParallelProcess<PackedCollection> generate(List<Process<?, ?>> children) {
+	public CollectionProducerParallelProcess generate(List<Process<?, ?>> children) {
 		return new DefaultTraversableExpressionComputation(getName(), getShape(),
 						getDeltaStrategy(), generateSignature, expression,
 					children.stream().skip(1).toArray(Producer[]::new))

@@ -24,7 +24,7 @@ public class PairBankTest implements TestFeatures {
 		Producer<PackedCollection> l = v(shape(-1, 1), 0);
 		Producer<PackedCollection> r = v(shape(-1, 1), 1);
 
-		CollectionProducer<PackedCollection> concat = concat(shape(2), l, r);
+		CollectionProducer concat = concat(shape(2), l, r);
 
 		PackedCollection left = new PackedCollection(shape(4, 1));
 		left.setMem(1.0, 2.0, 3.0, 4.0);
@@ -46,7 +46,7 @@ public class PairBankTest implements TestFeatures {
 	public void concat2() {
 		Producer<PackedCollection> in = v(shape(-1, 4, 1), 0);
 
-		CollectionProducer<PackedCollection> concat = concat(shape(4, 2), in, in);
+		CollectionProducer concat = concat(shape(4, 2), in, in);
 
 		PackedCollection timeline = new PackedCollection(shape(4, 1));
 		timeline.setMem(1.0, 2.0, 3.0, 4.0);
@@ -66,7 +66,7 @@ public class PairBankTest implements TestFeatures {
 
 		Producer<PackedCollection> in = v(shape(4, 1), 0);
 
-		CollectionProducer<PackedCollection> concat = map(shape(2), traverse(1, in),
+		CollectionProducer concat = map(shape(2), traverse(1, in),
 				v -> concat(c(2.0).multiply(v), c(2.0).multiply(v).add(c(1.0))));
 
 		PackedCollection timeline = new PackedCollection(shape(4, 1));

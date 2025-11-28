@@ -87,7 +87,7 @@ public class Cylinder extends AbstractSurface implements CodeFeatures {
 	public ShadableIntersection intersectAt(Producer r) {
 		TransformMatrix m = getTransform(true);
 		Producer<Ray> sr = r;
-		if (m != null) sr = m.getInverse().transform(sr);
+		if (m != null) sr = (Producer) m.getInverse().transform(sr);
 
 		final Supplier<Evaluable<? extends Ray>> fr = sr;
 

@@ -118,7 +118,7 @@ public class CollectionZerosComputationTest implements TestFeatures {
 				new CollectionZerosComputation(matrixShape);
 
 		// Traverse along axis 1
-		CollectionProducer<PackedCollection> traversedZeros = zeroMatrix.traverse(1);
+		CollectionProducer traversedZeros = zeroMatrix.traverse(1);
 
 		assertTrue("Traversed computation should still be zeros",
 				traversedZeros instanceof CollectionZerosComputation);
@@ -147,7 +147,7 @@ public class CollectionZerosComputationTest implements TestFeatures {
 		Producer<?> mockTarget = new SingleConstantComputation(targetShape, 1.0);
 
 		// Compute delta (derivative)
-		CollectionProducer<PackedCollection> delta = zeros.delta(mockTarget);
+		CollectionProducer delta = zeros.delta(mockTarget);
 
 		assertTrue("Delta of zeros should still be zeros", delta instanceof CollectionZerosComputation);
 		assertTrue("Delta should be detected as zero",
@@ -251,13 +251,13 @@ public class CollectionZerosComputationTest implements TestFeatures {
 				((CollectionZerosComputation) reshapedZeros).isZero());
 
 		// Zero property should be preserved through traversal
-		CollectionProducer<PackedCollection> traversedZeros = zeros.traverse(1);
+		CollectionProducer traversedZeros = zeros.traverse(1);
 		assertTrue("Traversed zeros should maintain zero property",
 				((CollectionZerosComputation) traversedZeros).isZero());
 
 		// Delta of zeros should be zeros
 		Producer<?> target = new SingleConstantComputation(new TraversalPolicy(2), 1.0);
-		CollectionProducer<PackedCollection> deltaZeros = zeros.delta(target);
+		CollectionProducer deltaZeros = zeros.delta(target);
 		assertTrue("Delta of zeros should be zero",
 				((CollectionZerosComputation) deltaZeros).isZero());
 	}

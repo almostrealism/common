@@ -524,8 +524,8 @@ public abstract class CollectionProducerComputationAdapter
 	 * @see org.almostrealism.collect.CollectionFeatures#shape(Supplier)
 	 */
 	@Override
-	public CollectionProducer<PackedCollection> delta(Producer<?> target) {
-		CollectionProducer<PackedCollection> delta = attemptDelta(target);
+	public CollectionProducer delta(Producer<?> target) {
+		CollectionProducer delta = attemptDelta(target);
 		if (delta != null) return delta;
 
 		delta = TraversableDeltaComputation.create("delta", getShape(), shape(target),

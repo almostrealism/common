@@ -131,7 +131,7 @@ public class EpsilonConstantComputation extends SingleConstantComputation {
 	 * @see CollectionProducerParallelProcess
 	 */
 	@Override
-	public CollectionProducerParallelProcess<PackedCollection> generate(List<Process<?, ?>> children) {
+	public CollectionProducerParallelProcess generate(List<Process<?, ?>> children) {
 		return this;
 	}
 
@@ -150,7 +150,7 @@ public class EpsilonConstantComputation extends SingleConstantComputation {
 	 * @see TraversalPolicy#traverse(int)
 	 */
 	@Override
-	public CollectionProducer<PackedCollection> traverse(int axis) {
+	public CollectionProducer traverse(int axis) {
 		return new EpsilonConstantComputation(getShape().traverse(axis));
 	}
 

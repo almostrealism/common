@@ -42,7 +42,7 @@ public class TransformInversionTest implements TransformMatrixFeatures, TestFeat
 		log("========================================");
 
 		// Create translation matrix for (3, 2, 1)
-		Producer<TransformMatrix> tmProducer = translationMatrix(vector(3.0, 2.0, 1.0));
+		Producer<TransformMatrix> tmProducer = (Producer) translationMatrix(vector(3.0, 2.0, 1.0));
 		TransformMatrix mat = new TransformMatrix(tmProducer.get().evaluate(), 0);
 
 		log("Created translation matrix for (3, 2, 1)");
@@ -66,7 +66,7 @@ public class TransformInversionTest implements TransformMatrixFeatures, TestFeat
 		log("========================================");
 
 		// Create scale(2,2,2) matrix
-		Producer<TransformMatrix> tmProducer = scaleMatrix(vector(2.0, 2.0, 2.0));
+		Producer<TransformMatrix> tmProducer = (Producer) scaleMatrix(vector(2.0, 2.0, 2.0));
 		TransformMatrix mat = new TransformMatrix(tmProducer.get().evaluate(), 0);
 
 		log("Created scale(2,2,2) matrix");
@@ -97,7 +97,7 @@ public class TransformInversionTest implements TransformMatrixFeatures, TestFeat
 		log("========================================");
 
 		// Create scale(2,3,4) matrix
-		Producer<TransformMatrix> tmProducer = scaleMatrix(vector(2.0, 3.0, 4.0));
+		Producer<TransformMatrix> tmProducer = (Producer) scaleMatrix(vector(2.0, 3.0, 4.0));
 		TransformMatrix mat = new TransformMatrix(tmProducer.get().evaluate(), 0);
 
 		log("Created scale(2,3,4) matrix");
@@ -128,7 +128,7 @@ public class TransformInversionTest implements TransformMatrixFeatures, TestFeat
 		log("========================================");
 
 		// Create scale(2,2,2) matrix
-		Producer<TransformMatrix> tmProducer = scaleMatrix(vector(2.0, 2.0, 2.0));
+		Producer<TransformMatrix> tmProducer = (Producer) scaleMatrix(vector(2.0, 2.0, 2.0));
 		TransformMatrix mat = new TransformMatrix(tmProducer.get().evaluate(), 0);
 		TransformMatrix inverse = mat.getInverse();
 
@@ -155,7 +155,7 @@ public class TransformInversionTest implements TransformMatrixFeatures, TestFeat
 		log("========================================");
 
 		// Create scale(2,2,2) matrix
-		Producer<TransformMatrix> tmProducer = scaleMatrix(vector(2.0, 2.0, 2.0));
+		Producer<TransformMatrix> tmProducer = (Producer) scaleMatrix(vector(2.0, 2.0, 2.0));
 		TransformMatrix original = new TransformMatrix(tmProducer.get().evaluate(), 0);
 
 		log("Original scale(2,2,2) matrix:");
@@ -182,7 +182,7 @@ public class TransformInversionTest implements TransformMatrixFeatures, TestFeat
 		log("========================================");
 
 		// Create scale(0.5,0.5,0.5) matrix
-		Producer<TransformMatrix> tmProducer = scaleMatrix(vector(0.5, 0.5, 0.5));
+		Producer<TransformMatrix> tmProducer = (Producer) scaleMatrix(vector(0.5, 0.5, 0.5));
 		TransformMatrix mat = new TransformMatrix(tmProducer.get().evaluate(), 0);
 
 		log("Created scale(0.5,0.5,0.5) matrix");
@@ -213,7 +213,7 @@ public class TransformInversionTest implements TransformMatrixFeatures, TestFeat
 		log("========================================");
 
 		// Create simple scale(2,2,2) matrix
-		Producer<TransformMatrix> tmProducer = scaleMatrix(vector(2.0, 2.0, 2.0));
+		Producer<TransformMatrix> tmProducer = (Producer) scaleMatrix(vector(2.0, 2.0, 2.0));
 		TransformMatrix mat = new TransformMatrix(tmProducer.get().evaluate(), 0);
 
 		log("Testing adjoint calculation for scale(2,2,2)");

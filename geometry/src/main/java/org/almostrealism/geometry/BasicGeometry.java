@@ -264,7 +264,7 @@ public class BasicGeometry implements Positioned, Oriented, Scaled, DecodePostPr
 						new TransformMatrix((TransformMatrix) translationMatrix((Producer) v(getLocation())).get().evaluate(), 0));
 			}
 
-			CollectionProducer<TransformMatrix> sm;
+			CollectionProducer sm;
 
 			if (size == 1.0) {
 				sm = scaleMatrix((Producer) v(scale));

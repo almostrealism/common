@@ -36,12 +36,12 @@ public class VectorMathTest implements TestFeatures {
 
 	@Test
 	public void scalarPowDynamic() {
-		Producer<PackedCollection> d = new DynamicCollectionProducer<>(shape(1), args -> {
+		Producer<PackedCollection> d = new DynamicCollectionProducer(shape(1), args -> {
 			PackedCollection result = new PackedCollection(1);
 			result.setMem(0, 3);
 			return result;
 		});
-		CollectionProducer<PackedCollection> s = c(3);
+		CollectionProducer s = c(3);
 		Producer<PackedCollection> p = s.pow(d);
 		Evaluable<PackedCollection> ev = p.get();
 		PackedCollection out = ev.evaluate();
@@ -51,7 +51,7 @@ public class VectorMathTest implements TestFeatures {
 
 	@Test
 	public void scalarMultiply() {
-		CollectionProducer<PackedCollection> product = vector(1, 2, 3).multiply(c(2));
+		CollectionProducer product = vector(1, 2, 3).multiply(c(2));
 		Vector result = new Vector(product.get().evaluate(), 0);
 		assertEquals(2, result.toDouble(0));
 		assertEquals(4, result.toDouble(1));
@@ -62,7 +62,7 @@ public class VectorMathTest implements TestFeatures {
 	public void productFromVectors2() {
 		Producer<PackedCollection> a = vector(1.0, 2.0, 3.0);
 		Producer<PackedCollection> b = vector(4.0, 5.0, 6.0);
-		CollectionProducer<?> yTimesZ = y(a).multiply(z(b));
+		CollectionProducer yTimesZ = y(a).multiply(z(b));
 		Producer<PackedCollection> s = add(yTimesZ, c(1));
 		HardwareEvaluable<PackedCollection> so = (HardwareEvaluable<PackedCollection>) s.get();
 		Assert.assertEquals(1, so.getArgsCount());
@@ -72,7 +72,7 @@ public class VectorMathTest implements TestFeatures {
 	public void productFromVectors3() {
 		Producer<PackedCollection> a = vector(1.0, 2.0, 3.0);
 		Producer<PackedCollection> b = vector(4.0, 5.0, 6.0);
-		CollectionProducer<?> yTimesZ = y(a).multiply(z(b));
+		CollectionProducer yTimesZ = y(a).multiply(z(b));
 		Producer<PackedCollection> s = subtract(yTimesZ, c(1));
 		HardwareEvaluable<PackedCollection> so = (HardwareEvaluable<PackedCollection>) s.get();
 		Assert.assertEquals(1, so.getArgsCount());
@@ -90,13 +90,13 @@ public class VectorMathTest implements TestFeatures {
 		});
 	}
 
-	protected CollectionProducer<PackedCollection> crossProduct(Producer<PackedCollection> v) {
+	protected CollectionProducer crossProduct(Producer<PackedCollection> v) {
 		return crossProduct(vector(0.0, 0.0, -1.0), v);
 	}
 
 	@Test
 	public void crossProduct() {
-		CollectionProducer<PackedCollection> cp = crossProduct(vector(100.0, -200.0, 0.0));
+		CollectionProducer cp = crossProduct(vector(100.0, -200.0, 0.0));
 
 		HardwareEvaluable<PackedCollection> cpo = (HardwareEvaluable<PackedCollection>) cp.get();
 		assertEquals(1, cpo.getArgsCount());
@@ -111,7 +111,7 @@ public class VectorMathTest implements TestFeatures {
 
 	@Test
 	public void normalizedCrossProduct1() {
-		CollectionProducer<PackedCollection> cp = normalize(crossProduct(vector(100.0, -200.0, 0.0)));
+		CollectionProducer cp = normalize(crossProduct(vector(100.0, -200.0, 0.0)));
 
 		HardwareEvaluable<PackedCollection> cpo = (HardwareEvaluable<PackedCollection>) cp.get();
 		assertEquals(1, cpo.getArgsCount());
@@ -127,7 +127,7 @@ public class VectorMathTest implements TestFeatures {
 
 	@Test
 	public void normalizedCrossProduct2() {
-		CollectionProducer<PackedCollection> cp = normalize(crossProduct(v(shape(3), 0)));
+		CollectionProducer cp = normalize(crossProduct(v(shape(3), 0)));
 		Evaluable<PackedCollection> ev = cp.get();
 
 		Vector v = new Vector(ev.evaluate(new Vector(100, -200, 0)), 0);

@@ -33,7 +33,7 @@ public class MatrixTransformTests implements TestFeatures {
 
 	@Test
 	public void transformAsLocation1() {
-		TransformMatrix matrix = translationMatrix(vector(0.0, 10.0, 0.0)).evaluate();
+		TransformMatrix matrix = new TransformMatrix(translationMatrix(vector(0.0, 10.0, 0.0)).evaluate(), 0);
 		Vector v = new Vector(transformAsLocation(matrix, vector(1.0, 2.0, 3.0)).evaluate(), 0);
 
 		assertEquals(1.0, v.toDouble(0));
@@ -43,7 +43,7 @@ public class MatrixTransformTests implements TestFeatures {
 
 	@Test
 	public void transformAsLocation2() {
-		TransformMatrix matrix = scaleMatrix(vector(2.0, 1.0, 3.0)).evaluate();
+		TransformMatrix matrix = new TransformMatrix(scaleMatrix(vector(2.0, 1.0, 3.0)).evaluate(), 0);
 		Vector v = new Vector(transformAsLocation(matrix, vector(1.0, 2.0, 3.0)).evaluate(), 0);
 
 		assertEquals(2.0, v.toDouble(0));
@@ -53,13 +53,13 @@ public class MatrixTransformTests implements TestFeatures {
 
 	@Test
 	public void transformAsOffset() {
-		TransformMatrix matrix = translationMatrix(vector(0.0, 10.0, 0.0)).evaluate();
+		TransformMatrix matrix = new TransformMatrix(translationMatrix(vector(0.0, 10.0, 0.0)).evaluate(), 0);
 		Vector v = new Vector(transformAsOffset(matrix, vector(1.0, 2.0, 3.0)).evaluate(), 0);
 		assertEquals(1.0, v.toDouble(0));
 		assertEquals(2.0, v.toDouble(1));
 		assertEquals(3.0, v.toDouble(2));
 
-		matrix = scaleMatrix(vector(2.0, 1.0, 3.0)).evaluate();
+		matrix = new TransformMatrix(scaleMatrix(vector(2.0, 1.0, 3.0)).evaluate(), 0);
 		v = new Vector(transformAsOffset(matrix, vector(1.0, 2.0, 3.0)).evaluate(), 0);
 		assertEquals(2.0, v.toDouble(0));
 		assertEquals(2.0, v.toDouble(1));
@@ -68,7 +68,7 @@ public class MatrixTransformTests implements TestFeatures {
 
 	@Test
 	public void applyInverse() {
-		TransformMatrix m = translationMatrix(vector(0.0, -10.0, 0.0)).evaluate();
+		TransformMatrix m = new TransformMatrix(translationMatrix(vector(0.0, -10.0, 0.0)).evaluate(), 0);
 
 		Ray r = new Ray(new Vector(1.0, 2.0, 3.0), new Vector(4.0, 5.0, 6.0));
 		r = new Ray(transform(m.getInverse(), v(r)).evaluate(), 0);
@@ -93,7 +93,7 @@ public class MatrixTransformTests implements TestFeatures {
 
 		CollectionProducer transform = transform(matrix,
 				ray(1.0, 2.0, 3.0,4.0, 5.0, 6.0));
-		Ray r = new Ray((PackedCollection) transform.evaluate(), 0);
+		Ray r = new Ray(transform.evaluate(), 0);
 		log(r);
 
 		assertEquals(0.25, r.getOrigin().toDouble(0));

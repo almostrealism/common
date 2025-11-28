@@ -157,7 +157,7 @@ public class CollectionAddComputation extends TransitiveDeltaExpressionComputati
 	 * @see org.almostrealism.collect.CollectionFeatures#add(List)
 	 */
 	@Override
-	public CollectionProducerParallelProcess<PackedCollection> generate(List<Process<?, ?>> children) {
+	public CollectionProducerParallelProcess generate(List<Process<?, ?>> children) {
 		List<Producer<?>> args = children.stream().skip(1)
 				.map(p -> (Producer<?>) p).collect(Collectors.toList());
 		return (CollectionProducerParallelProcess) add(args);

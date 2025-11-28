@@ -50,7 +50,7 @@ public class RandomColorGenerator implements ProducerComputation<PackedCollectio
 
 	@Override
 	public Evaluable<PackedCollection> get() {
-		return new DynamicCollectionProducer<PackedCollection>(RGB.shape(), args -> {
+		return new DynamicCollectionProducer(RGB.shape(), args -> {
 			PackedCollection baseResult = this.baseRGB.get().evaluate(args);
 			PackedCollection offResult = this.offsetRGB.get().evaluate(args);
 

@@ -94,7 +94,7 @@ public class DefaultGradientPropagation implements BackPropagation, Learning, Na
 
 		TraversalPolicy shape = shape(input);
 
-		Supplier<CollectionProducer<PackedCollection>> function = () -> (CollectionProducer<PackedCollection>) operator.getResultant(input);
+		Supplier<CollectionProducer> function = () -> (CollectionProducer) operator.getResultant(input);
 		PackedCollection gradIn = new PackedCollection(shape(gradient));
 		PackedCollection gradOut = next == null ? null : new PackedCollection(shape);
 

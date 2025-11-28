@@ -249,13 +249,13 @@ public abstract class TransitiveDeltaExpressionComputation
 	 * @see org.almostrealism.collect.CollectionProducer#reshape(TraversalPolicy)
 	 */
 	@Override
-	public CollectionProducer<PackedCollection> delta(Producer<?> target) {
-		CollectionProducer<PackedCollection> delta = attemptDelta(target);
+	public CollectionProducer delta(Producer<?> target) {
+		CollectionProducer delta = attemptDelta(target);
 		if (delta != null) return delta;
 
 		TraversalPolicy targetShape = shape(target);
 
-		List<CollectionProducer<PackedCollection>> operands = List.of(
+		List<CollectionProducer> operands = List.of(
 				getChildren().stream().skip(1)
 						.filter(p -> p instanceof CollectionProducer)
 						.toArray(CollectionProducer[]::new));

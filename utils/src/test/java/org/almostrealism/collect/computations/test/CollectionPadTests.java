@@ -35,7 +35,7 @@ public class CollectionPadTests implements TestFeatures {
 		Producer<PackedCollection> multiplier = func(shape(1), args -> pack(2.0));
 
 		PackedCollection data = pack(1.0, 2.0, 3.0, 4.0, 5.0, 6.0);
-		CollectionProducer<PackedCollection> subset1 = c(data).subset(shape(3), 3);
+		CollectionProducer subset1 = c(data).subset(shape(3), 3);
 		PackedCollection result = pad(shape(6), subset1.multiply(multiplier), 0).evaluate();
 		result.print();
 

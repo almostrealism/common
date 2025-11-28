@@ -449,8 +449,8 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 	 * @param result   the producer yielding the actual values to compare
 	 * @throws AssertionError if shapes differ or any element values differ
 	 */
-	default void compare(CollectionProducer<PackedCollection> expected,
-						 CollectionProducer<PackedCollection> result) {
+	default void compare(CollectionProducer expected,
+						 CollectionProducer result) {
 		PackedCollection e = expected.evaluate();
 		PackedCollection o = result.evaluate();
 
@@ -705,7 +705,7 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 	default Predicate<Process> operationFilter(String classSubstringOrFunctionName) {
 		return p -> {
 			while (p instanceof ReshapeProducer) {
-				p = ((ReshapeProducer<?>) p).getChildren().iterator().next();
+				p = ((ReshapeProducer) p).getChildren().iterator().next();
 			}
 
 			return p.getClass().getSimpleName().contains(classSubstringOrFunctionName) ||

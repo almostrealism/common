@@ -68,7 +68,7 @@ public class MyNativeEnabledApplication implements CodeFeatures {
 		p.insert(5.0, 2);
 
 		// Prepare the computation
-		CollectionProducer<PackedCollection> product = multiply(c(t.pack()), c(p.pack()));
+		CollectionProducer product = multiply(c(t.pack()), c(p.pack()));
 
 		// Compile the computation and evaluate it
 		product.get().evaluate().print();
@@ -226,7 +226,7 @@ public class MyNativeEnabledApplication implements CodeFeatures {
 		PackedCollection a = new PackedCollection(shape(10, 10, 10));
 		a.fill(Math::random);
 
-		CollectionProducer<PackedCollection> producer = subset(shape(w, h, d), c(a), x0, y0, z0);
+		CollectionProducer producer = subset(shape(w, h, d), c(a), x0, y0, z0);
 		Evaluable<PackedCollection> ev = producer.get();
 		PackedCollection subset = ev.evaluate();
 
@@ -244,7 +244,7 @@ public class MyNativeEnabledApplication implements CodeFeatures {
 	@Test
 	public void polynomialDelta() {
 		// x^2 + 3x + 1
-		CollectionProducer<PackedCollection> c = x().sq().add(x().mul(3)).add(1);
+		CollectionProducer c = x().sq().add(x().mul(3)).add(1);
 
 		// y = f(x)
 		Evaluable<PackedCollection> y = c.get();
@@ -266,10 +266,10 @@ public class MyNativeEnabledApplication implements CodeFeatures {
 				.mapToDouble(Double::valueOf).toArray())
 				.reshape(count, dim).traverse();
 		PackedCollection w = pack(4, -3, 2);
-		CollectionProducer<PackedCollection> x = x(dim);
+		CollectionProducer x = x(dim);
 
 		// w * x
-		CollectionProducer<PackedCollection> c = x.mul(p(w));
+		CollectionProducer c = x.mul(p(w));
 
 		// y = f(x)
 		Evaluable<PackedCollection> y = c.get();

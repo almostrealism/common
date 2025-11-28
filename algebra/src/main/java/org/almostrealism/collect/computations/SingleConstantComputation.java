@@ -178,7 +178,7 @@ public class SingleConstantComputation extends CollectionConstantComputation {
 	 * @return This computation instance as it serves as its own process
 	 */
 	@Override
-	public CollectionProducerParallelProcess<PackedCollection> generate(List<Process<?, ?>> children) {
+	public CollectionProducerParallelProcess generate(List<Process<?, ?>> children) {
 		return this;
 	}
 
@@ -209,7 +209,7 @@ public class SingleConstantComputation extends CollectionConstantComputation {
 	 * @see TraversalPolicy#traverse(int)
 	 */
 	@Override
-	public CollectionProducer<PackedCollection> traverse(int axis) {
+	public CollectionProducer traverse(int axis) {
 		return new SingleConstantComputation(getShape().traverse(axis), value);
 	}
 

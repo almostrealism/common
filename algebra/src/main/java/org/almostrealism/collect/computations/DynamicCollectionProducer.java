@@ -75,7 +75,7 @@ import java.util.stream.Stream;
  * 
  * @author Michael Murray
  */
-public class DynamicCollectionProducer<T extends PackedCollection> extends DynamicProducerForMemoryData<T> implements CollectionProducer<T> {
+public class DynamicCollectionProducer extends DynamicProducerForMemoryData<PackedCollection> implements CollectionProducer {
 	/** The shape/traversal policy that defines the dimensions of the output collection */
 	private TraversalPolicy shape;
 	
@@ -86,7 +86,7 @@ public class DynamicCollectionProducer<T extends PackedCollection> extends Dynam
 	private boolean fixedCount;
 
 	/** Function that takes input collections and returns a function for generating output */
-	private Function<PackedCollection[], Function<Object[], T>> inputFunction;
+	private Function<PackedCollection[], Function<Object[], PackedCollection>> inputFunction;
 	
 	/** Array of producer arguments that will be evaluated to provide inputs to the computation */
 	private Producer<?> args[];
@@ -98,7 +98,7 @@ public class DynamicCollectionProducer<T extends PackedCollection> extends Dynam
 	 * @param shape The {@link TraversalPolicy} defining the output collection's dimensions
 	 * @param function The function that generates the output collection from input arguments
 	 */
-	public DynamicCollectionProducer(TraversalPolicy shape, Function<Object[], T> function) {
+	public DynamicCollectionProducer(TraversalPolicy shape, Function<Object[], PackedCollection> function) {
 		this(shape, function, true);
 	}
 
@@ -109,7 +109,7 @@ public class DynamicCollectionProducer<T extends PackedCollection> extends Dynam
 	 * @param function The function that generates the output collection from input arguments
 	 * @param kernel Whether to use kernel execution (single function call) vs element-wise execution (multiple calls)
 	 */
-	public DynamicCollectionProducer(TraversalPolicy shape, Function<Object[], T> function, boolean kernel) {
+	public DynamicCollectionProducer(TraversalPolicy shape, Function<Object[], PackedCollection> function, boolean kernel) {
 		this(shape, function, kernel, true);
 	}
 
@@ -121,7 +121,7 @@ public class DynamicCollectionProducer<T extends PackedCollection> extends Dynam
 	 * @param kernel Whether to use kernel execution (single function call) vs element-wise execution (multiple calls)
 	 * @param fixedCount Whether this producer has a deterministic output size
 	 */
-	public DynamicCollectionProducer(TraversalPolicy shape, Function<Object[], T> function,
+	public DynamicCollectionProducer(TraversalPolicy shape, Function<Object[], PackedCollection> function,
 									 boolean kernel, boolean fixedCount) {
 		this(shape, inputs -> function, kernel, fixedCount, new Producer[0]);
 	}
@@ -138,7 +138,7 @@ public class DynamicCollectionProducer<T extends PackedCollection> extends Dynam
 	 * @param argument The first producer argument to be evaluated as input
 	 * @param args Additional producer arguments to be evaluated as inputs
 	 */
-	public DynamicCollectionProducer(TraversalPolicy shape, Function<PackedCollection[], Function<Object[], T>> function,
+	public DynamicCollectionProducer(TraversalPolicy shape, Function<PackedCollection[], Function<Object[], PackedCollection>> function,
 										boolean kernel, boolean fixedCount, Producer argument, Producer<?>... args) {
 		this(shape, function, kernel, fixedCount, Stream.concat(Stream.of(argument), Stream.of(args)).toArray(Producer[]::new));
 	}
@@ -161,10 +161,10 @@ public class DynamicCollectionProducer<T extends PackedCollection> extends Dynam
 	 * @param fixedCount Whether this producer has a deterministic output size
 	 * @param args Array of producers whose outputs will be used as inputs to the function
 	 */
-	public DynamicCollectionProducer(TraversalPolicy shape, Function<PackedCollection[], Function<Object[], T>> function,
+	public DynamicCollectionProducer(TraversalPolicy shape, Function<PackedCollection[], Function<Object[], PackedCollection>> function,
 									 boolean kernel, boolean fixedCount, Producer args[]) {
 		super(args.length > 0 ? null : function.apply(null),
-				len -> (MemoryBank<T>) new PackedCollection(shape.prependDimension(len)));
+				len -> (MemoryBank<PackedCollection>) new PackedCollection(shape.prependDimension(len)));
 		this.shape = shape;
 		this.kernel = kernel;
 		this.fixedCount = fixedCount;
@@ -216,14 +216,14 @@ public class DynamicCollectionProducer<T extends PackedCollection> extends Dynam
 	 * @return A function that takes Object[] arguments and returns the output collection
 	 */
 	@Override
-	protected Function<Object[], T> getFunction() {
+	protected Function<Object[], PackedCollection> getFunction() {
 		if (args != null && args.length > 0) {
 			Evaluable eval[] = Stream.of(args).map(Producer::get).toArray(Evaluable[]::new);
 			return args -> {
 				PackedCollection[] inputs = Stream.of(eval)
 						.map(ev -> ev.evaluate(args))
 						.toArray(PackedCollection[]::new);
-				Function<Object[], T> func = inputFunction.apply(inputs);
+				Function<Object[], PackedCollection> func = inputFunction.apply(inputs);
 				return func.apply(args);
 			};
 		}
@@ -240,7 +240,7 @@ public class DynamicCollectionProducer<T extends PackedCollection> extends Dynam
 	 * @return A new ReshapeProducer configured for axis traversal
 	 */
 	@Override
-	public CollectionProducer<T> traverse(int axis) {
+	public CollectionProducer traverse(int axis) {
 		return new ReshapeProducer(axis, this);
 	}
 
@@ -253,7 +253,7 @@ public class DynamicCollectionProducer<T extends PackedCollection> extends Dynam
 	 * @return A new ReshapeProducer configured with the specified shape
 	 */
 	@Override
-	public CollectionProducer<T> reshape(TraversalPolicy shape) {
+	public CollectionProducer reshape(TraversalPolicy shape) {
 		return new ReshapeProducer(shape, this);
 	}
 
@@ -271,7 +271,7 @@ public class DynamicCollectionProducer<T extends PackedCollection> extends Dynam
 	 * @return An evaluable that produces collections of type T when executed
 	 */
 	@Override
-	public Evaluable<T> get() {
+	public Evaluable<PackedCollection> get() {
 		if (kernel) {
 			return super.get();
 		} else {

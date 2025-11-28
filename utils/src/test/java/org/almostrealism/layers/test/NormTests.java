@@ -137,8 +137,8 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 		o.fill(pos -> Math.random());
 
 		kernelTest(() -> {
-					CollectionProducer<?> input = cp(o).reshape(-1, groups, shape.getTotalSize() / groups);
-					CollectionProducer<PackedCollection> out = input
+					CollectionProducer input = cp(o).reshape(-1, groups, shape.getTotalSize() / groups);
+					CollectionProducer out = input
 							.subtractMean(2)
 							.divide(input.variance(2).add(c(eps)).sqrt())
 							.reshape(-1, shape.getTotalSize());
@@ -172,8 +172,8 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 		o.fill(pos -> Math.random());
 
 		kernelTest(() -> {
-					CollectionProducer<?> input = cp(o).reshape(-1, groups, shape.getTotalSize() / groups);
-					CollectionProducer<PackedCollection> out = input
+					CollectionProducer input = cp(o).reshape(-1, groups, shape.getTotalSize() / groups);
+					CollectionProducer out = input
 							.subtractMean(2)
 							.divide(input.variance(2).add(c(eps)).sqrt())
 							.reshape(-1, shape.getTotalSize());

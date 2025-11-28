@@ -20,7 +20,6 @@ import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Assert;
 import org.junit.Test;
@@ -49,7 +48,7 @@ public class CollectionMathTests implements TestFeatures {
 		verboseLog(() -> {
 			PackedCollection result = new PackedCollection(shape(10));
 
-			CollectionProducer<PackedCollection> product =
+			CollectionProducer product =
 					multiply(v(shape(-1), 0), v(shape(1), 1));
 			product.get().into(result.each()).evaluate(a.each(), pack(2.0));
 
@@ -168,8 +167,8 @@ public class CollectionMathTests implements TestFeatures {
 		int steps = 300;
 		double betaStart = 0.0001;
 		double betaEnd = 0.02;
-		CollectionProducer<PackedCollection> inputs = linear(betaStart, betaEnd, steps);
-		CollectionProducer<PackedCollection> products =
+		CollectionProducer inputs = linear(betaStart, betaEnd, steps);
+		CollectionProducer products =
 				cumulativeProduct(c(1.0).subtract(inputs), false);
 
 		double in[] = products.evaluate().toArray();
@@ -200,7 +199,7 @@ public class CollectionMathTests implements TestFeatures {
 
 
 		kernelTest(() -> {
-					CollectionProducer<PackedCollection> ss = pow(traverseEach(p(x)), c(2.0));
+					CollectionProducer ss = pow(traverseEach(p(x)), c(2.0));
 					return ss;
 				},
 				output -> {
@@ -225,7 +224,7 @@ public class CollectionMathTests implements TestFeatures {
 
 
 		kernelTest(() -> {
-					CollectionProducer<PackedCollection> ss = pow(traverseEach(p(x)), c(2.0)).traverse(0).sum();
+					CollectionProducer ss = pow(traverseEach(p(x)), c(2.0)).traverse(0).sum();
 					ss = ss.divide(c(size)).add(c(1e-5));
 					ss = c(1.0).divide(ss.pow(c(0.5)));
 					return ss;
@@ -258,7 +257,7 @@ public class CollectionMathTests implements TestFeatures {
 
 
 		kernelTest(() -> {
-					CollectionProducer<PackedCollection> ss = pow(traverseEach(p(x)), c(2.0)).traverse(0).sum();
+					CollectionProducer ss = pow(traverseEach(p(x)), c(2.0)).traverse(0).sum();
 					ss = ss.divide(c(size)).add(c(1e-5));
 					ss = c(1.0).divide(ss.pow(c(0.5)));
 					return multiply(traverseEach(p(weight)), traverseEach(p(x))).multiply(ss);
@@ -421,7 +420,7 @@ public class CollectionMathTests implements TestFeatures {
 		o.fill(pos -> Math.random());
 
 		kernelTest(() -> {
-					CollectionProducer<?> input = cp(o).reshape(-1, g, v);
+					CollectionProducer input = cp(o).reshape(-1, g, v);
 					return input
 							.subtractMean(2)
 							.divide(input.variance(2))

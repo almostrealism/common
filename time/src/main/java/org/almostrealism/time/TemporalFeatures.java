@@ -300,9 +300,9 @@ public interface TemporalFeatures extends GeometryFeatures {
 	 * @param value Producer providing the value
 	 * @return A producer for the temporal scalar
 	 */
-	default CollectionProducer<TemporalScalar> temporal(Producer<PackedCollection> time,
-														Producer<PackedCollection> value) {
-		return concat(shape(2), time, value);
+	default CollectionProducer temporal(Producer<PackedCollection> time,
+										Producer<PackedCollection> value) {
+		return (CollectionProducer) concat(shape(2), time, value);
 	}
 
 	/**
@@ -476,26 +476,26 @@ public interface TemporalFeatures extends GeometryFeatures {
 	 * @param filterOrder Filter order (number of coefficients - 1)
 	 * @return Producer providing filter coefficients
 	 */
-	default CollectionProducer<PackedCollection> lowPassCoefficients(
+	default CollectionProducer lowPassCoefficients(
 			Producer<PackedCollection> cutoff,
 			int sampleRate, int filterOrder) {
-		CollectionProducer<PackedCollection> normalizedCutoff =
+		CollectionProducer normalizedCutoff =
 				c(2).multiply(cutoff).divide(sampleRate);
 
 		int center = filterOrder / 2;
-		CollectionProducer<PackedCollection> index =
+		CollectionProducer index =
 				c(IntStream.range(0, filterOrder + 1).mapToDouble(i -> i).toArray());
 //		CollectionProducer<PackedCollection> index = integers(0, filterOrder + 1);
-		CollectionProducer<PackedCollection> k = index.subtract(c(center)).multiply(c(PI));
+		CollectionProducer k = index.subtract(c(center)).multiply(c(PI));
 		k = k.repeat(shape(cutoff).getSize());
 
 		normalizedCutoff = normalizedCutoff.traverse(1).repeat(shape(index).getSize());
 
-		CollectionProducer<PackedCollection> coeff =
+		CollectionProducer coeff =
 				sin(k.multiply(normalizedCutoff)).divide(k);
 		coeff = equals(index, c(center), normalizedCutoff, coeff);
 
-		CollectionProducer<PackedCollection> alt =
+		CollectionProducer alt =
 				c(0.54).subtract(c(0.46)
 						.multiply(cos(c(2).multiply(PI).multiply(index).divide(filterOrder))));
 		return coeff.multiply(alt).consolidate();
@@ -509,11 +509,11 @@ public interface TemporalFeatures extends GeometryFeatures {
 	 * @param filterOrder Filter order (number of coefficients - 1)
 	 * @return Producer providing filter coefficients
 	 */
-	default CollectionProducer<PackedCollection> highPassCoefficients(
+	default CollectionProducer highPassCoefficients(
 			Producer<PackedCollection> cutoff,
 			int sampleRate, int filterOrder) {
 		int center = filterOrder / 2;
-		CollectionProducer<PackedCollection> index =
+		CollectionProducer index =
 				c(IntStream.range(0, filterOrder + 1).mapToDouble(i -> i).toArray());
 		return equals(index, c(center), c(1.0), c(0.0))
 				.subtract(lowPassCoefficients(cutoff, sampleRate, filterOrder));

@@ -188,7 +188,7 @@ public class CollectionZerosComputation extends CollectionConstantComputation {
 	 * @see CollectionProducerParallelProcess
 	 */
 	@Override
-	public CollectionProducerParallelProcess<PackedCollection> generate(List<Process<?, ?>> children) {
+	public CollectionProducerParallelProcess generate(List<Process<?, ?>> children) {
 		return this;
 	}
 
@@ -227,7 +227,7 @@ public class CollectionZerosComputation extends CollectionConstantComputation {
 	 * @see CollectionProducer
 	 */
 	@Override
-	public CollectionProducer<PackedCollection> traverse(int axis) {
+	public CollectionProducer traverse(int axis) {
 		return new CollectionZerosComputation(getShape().traverse(axis));
 	}
 
@@ -297,7 +297,7 @@ public class CollectionZerosComputation extends CollectionConstantComputation {
 	 * @see org.almostrealism.calculus.DeltaFeatures
 	 */
 	@Override
-	public CollectionProducer<PackedCollection> delta(Producer<?> target) {
+	public CollectionProducer delta(Producer<?> target) {
 		return new CollectionZerosComputation(getShape().append(shape(target)));
 	}
 }

@@ -458,7 +458,7 @@ public class PackedCollectionRepeat
 	@Override
 	public Process<Process<?, ?>, Evaluable<? extends PackedCollection>> isolate() {
 		Producer in = (Producer) getInputs().get(1);
-		if (in instanceof ReshapeProducer) in = ((ReshapeProducer<?>) in).getComputation();
+		if (in instanceof ReshapeProducer) in = ((ReshapeProducer) in).getComputation();
 
 		boolean computable = in instanceof Computation;
 

@@ -30,21 +30,21 @@ import org.junit.Test;
 public class RayTest implements TestFeatures {
 	@Test
 	public void pointAtTest1() {
-		CollectionProducer<PackedCollection> p = pointAt(ray(0.0, 0.0, 0.0, 0.0, 1.0, 0.5), c(10));
+		CollectionProducer p = pointAt(ray(0.0, 0.0, 0.0, 0.0, 1.0, 0.5), c(10));
 		assertEquals(new Vector(0.0, 10.0, 5.0), p.get().evaluate());
 		assertEquals(new Vector(0.0, 10.0, 5.0), p.get().evaluate());
 	}
 
 	@Test
 	public void pointAtTest2() {
-		CollectionProducer<PackedCollection> at = pointAt(ray(0.0, 0.0, 1.0, 0.0, 0.5, -1.0), c(-20));
+		CollectionProducer at = pointAt(ray(0.0, 0.0, 1.0, 0.0, 0.5, -1.0), c(-20));
 		assertEquals(new Vector(0.0, -10.0, 21.0), at.get().evaluate());
 	}
 
 	@Test
 	public void dynamicPointAt() {
-		Producer<PackedCollection> d = func(shape(1), new AdaptEvaluable<>(c(-20).get())::evaluate);
-		CollectionProducer<PackedCollection> at = pointAt(ray(0.0, 0.0, 1.0, 0.0, 0.5, -1.0), (Producer) d);
+		Producer<PackedCollection> d = (Producer) func(shape(1), new AdaptEvaluable<>(c(-20).get())::evaluate);
+		CollectionProducer at = pointAt(ray(0.0, 0.0, 1.0, 0.0, 0.5, -1.0), d);
 		assertEquals(new Vector(0.0, -10.0, 21.0), at.get().evaluate());
 	}
 
@@ -84,7 +84,7 @@ public class RayTest implements TestFeatures {
 
 	@Test
 	public void staticComputation() {
-		Producer<Ray> comp = value(new Ray(new Vector(1.0, 2.0, 3.0),
+		Producer<Ray> comp = (Producer) value(new Ray(new Vector(1.0, 2.0, 3.0),
 															new Vector(4.0, 5.0, 6.0)));
 		Evaluable<Ray> ev = comp.get();
 

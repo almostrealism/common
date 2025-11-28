@@ -398,7 +398,7 @@ public class IndexProjectionProducerComputation
 
 	 */
 	@Override
-	public CollectionProducer<PackedCollection> delta(Producer<?> target) {
+	public CollectionProducer delta(Producer<?> target) {
 		Supplier in = getInputs().get(1);
 
 		if (AlgebraFeatures.cannotMatch(in, target)) {
@@ -407,7 +407,7 @@ public class IndexProjectionProducerComputation
 			return zeros(shape.append(targetShape));
 		}
 
-		CollectionProducer<PackedCollection> delta = null;
+		CollectionProducer delta = null;
 
 		if (in instanceof CollectionProducer) {
 			delta = ((CollectionProducer) in).delta(target);

@@ -327,7 +327,7 @@ public class CollectionExponentComputation extends TraversableExpressionComputat
 	 * @throws UnsupportedOperationException if variable count operands are encountered when custom delta is enabled
 	 */
 	@Override
-	public CollectionProducer<PackedCollection> delta(Producer<?> target) {
+	public CollectionProducer delta(Producer<?> target) {
 		if (!enableCustomDelta) {
 			return super.delta(target);
 		}
@@ -350,10 +350,10 @@ public class CollectionExponentComputation extends TraversableExpressionComputat
 		TraversalPolicy targetShape = shape(target);
 		TraversalPolicy shape = getShape().append(targetShape);
 
-		CollectionProducer<PackedCollection> u = (CollectionProducer) operands.get(0);
-		CollectionProducer<PackedCollection> v = (CollectionProducer) operands.get(1);
-		CollectionProducer<PackedCollection> uDelta = u.delta(target);
-		CollectionProducer<PackedCollection> scale = v.multiply(u.pow(v.add(c(-1.0))));
+		CollectionProducer u = (CollectionProducer) operands.get(0);
+		CollectionProducer v = (CollectionProducer) operands.get(1);
+		CollectionProducer uDelta = u.delta(target);
+		CollectionProducer scale = v.multiply(u.pow(v.add(c(-1.0))));
 
 		scale = scale.flatten();
 		uDelta = uDelta.reshape(v.getShape().getTotalSize(), -1).traverse(0);

@@ -217,20 +217,20 @@ public class CollectionExponentialComputation extends TraversableExpressionCompu
 	 * @return A {@link CollectionProducer} that computes the derivative
 	 */
 	@Override
-	public CollectionProducer<PackedCollection> delta(Producer<?> target) {
-		CollectionProducer<PackedCollection> delta = MatrixFeatures.getInstance().attemptDelta(this, target);
+	public CollectionProducer delta(Producer<?> target) {
+		CollectionProducer delta = MatrixFeatures.getInstance().attemptDelta(this, target);
 		if (delta != null) {
 			return delta;
 		}
 
 		TraversalPolicy targetShape = shape(target);
 		TraversalPolicy shape = getShape().append(targetShape);
-		CollectionProducer<PackedCollection> input = (CollectionProducer) getInputs().get(1);
+		CollectionProducer input = (CollectionProducer) getInputs().get(1);
 
-		CollectionProducer<PackedCollection> d = input.delta(target);
+		CollectionProducer d = input.delta(target);
 		d = d.reshape(getShape().getTotalSize(), -1).traverse(0);
 
-		CollectionProducer<PackedCollection> scale = isIgnoreZero() ? expIgnoreZero((Producer) input) : exp((Producer) input);
+		CollectionProducer scale = isIgnoreZero() ? expIgnoreZero((Producer) input) : exp((Producer) input);
 		scale = scale.flatten();
 
 		return expandAndMultiply(scale, d).reshape(shape);

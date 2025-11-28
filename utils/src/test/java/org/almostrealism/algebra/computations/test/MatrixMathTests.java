@@ -77,7 +77,7 @@ public class MatrixMathTests implements TestFeatures {
 		PackedCollection a = pack(2, 0, 0, 2).reshape(shape(n, m));
 		PackedCollection b = pack(1, 1, 0, 0, 0, 0, 1, 1).reshape(shape(m, p));
 
-		CollectionProducer<PackedCollection> product = matmul(cp(a), cp(b));
+		CollectionProducer product = matmul(cp(a), cp(b));
 
 		PackedCollection c = product.get().evaluate();
 		c.traverse(1).print();
@@ -103,7 +103,7 @@ public class MatrixMathTests implements TestFeatures {
 		PackedCollection a = new PackedCollection(shape(n, m)).fill(Math::random);
 		PackedCollection b = new PackedCollection(shape(m, p)).fill(Math::random);
 
-		CollectionProducer<PackedCollection> product =
+		CollectionProducer product =
 				cp(b).enumerate(1, 1)
 				.reshape(p, m)
 				.traverse(1)

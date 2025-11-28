@@ -569,10 +569,10 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 		PackedCollection biases = bias ? new PackedCollection(biasShape) : null;
 
 		Factor<PackedCollection> operator = input -> {
-			CollectionProducer<PackedCollection> in = c(input);
-			CollectionProducer<PackedCollection> conv =
+			CollectionProducer in = c(input);
+			CollectionProducer conv =
 					in.reshape(-1, 1, channels, height, width);
-			CollectionProducer<PackedCollection> filter =
+			CollectionProducer filter =
 					cp(filters.reshape(1, filterCount, channels, size, size));
 
 			int bs = conv.getShape().length(0);
@@ -588,7 +588,7 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 					.withRate(4, size, outWidth);
 			TraversalPolicy groupShape =
 					shape(1, 1, channels, size, size);
-			CollectionProducer<PackedCollection> result =
+			CollectionProducer result =
 					weightedSum("convolutionFilter",
 							inputPositions, filterPositions,
 							groupShape, conv, filter);
@@ -763,16 +763,16 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 
 		if (enableLogStability) {
 			return layer("softmax2d", shape, shape, input -> {
-				CollectionProducer<PackedCollection> max = traverse(axis, input).max();
-				CollectionProducer<PackedCollection> stable =
+				CollectionProducer max = traverse(axis, input).max();
+				CollectionProducer stable =
 						traverse(axis + 1, input).subtract(max.expand(seqLen));
-				CollectionProducer<PackedCollection> logSum =
+				CollectionProducer logSum =
 						stable.exp().traverse(axis).sum().log().expand(seqLen);
 				return stable.subtract(logSum).exp();
 			}, requirements);
 		} else {
 			return layer("softmax2d", shape, shape, input -> {
-				CollectionProducer<PackedCollection> o = traverse(axis, input);
+				CollectionProducer o = traverse(axis, input);
 
 				if (subtractMax) {
 					if (enableIgnoreZero) {
@@ -975,10 +975,10 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 		} else {
 			return compose("weightedSum", v, shape(batchSize, heads, size, dimHead),
 					(a, b) -> {
-						CollectionProducer<PackedCollection> pa = c(a)
+						CollectionProducer pa = c(a)
 								.traverse(4)
 								.repeat(dimHead);
-						CollectionProducer<PackedCollection> pb = c(b)
+						CollectionProducer pb = c(b)
 								.traverse(2)
 								.enumerate(3, 1)
 								.traverse(2)
@@ -1019,9 +1019,9 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 	default CellularLayer gelu(TraversalPolicy shape, ComputeRequirement... requirements) {
 		// 0.5 * x * (1 + math.tanh(sqrt(2 / pi) * (x + 0.044715 * x^3)))
 		return layer("gelu", shape, shape, input -> {
-			CollectionProducer<PackedCollection> x = c(input).traverseEach();
-			CollectionProducer<PackedCollection> x3 = pow(x, c(3));
-			CollectionProducer<PackedCollection> tanh =
+			CollectionProducer x = c(input).traverseEach();
+			CollectionProducer x3 = pow(x, c(3));
+			CollectionProducer tanh =
 					tanh(x.add(x3.multiply(c(0.044715)))
 						.multiply(c(ROOT_2_BY_PI)));
 			return c(0.5).multiply(x).multiply(tanh.add(c(1)));
@@ -1149,8 +1149,8 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 		}
 
 		return layer("norm", shape.traverse(1), shape.traverse(1), input -> {
-			CollectionProducer<?> in = c(input).reshape(-1, groups, Math.toIntExact(size / groups));
-			CollectionProducer<?> out = in.subtractMean(2).divide(in.variance(2).add(c(eps)).sqrt());
+			CollectionProducer in = c(input).reshape(-1, groups, Math.toIntExact(size / groups));
+			CollectionProducer out = in.subtractMean(2).divide(in.variance(2).add(c(eps)).sqrt());
 			out = out.reshape(-1, Math.toIntExact(size)).traverse(1);
 
 			if (w != null) out = out.multiply(cp(w));
@@ -1201,7 +1201,7 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 		int axis = shape.getDimensions() - 1;
 
 		return layer("rmsnorm", shape, shape, input -> {
-			CollectionProducer<PackedCollection> ss = pow(traverseEach(input), c(2.0)).traverse(axis).sum();
+			CollectionProducer ss = pow(traverseEach(input), c(2.0)).traverse(axis).sum();
 			ss = ss.divide(c(size)).add(c(1e-5));
 			ss = c(1.0).divide(ss.pow(c(0.5)));
 

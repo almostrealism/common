@@ -419,12 +419,12 @@ public class AggregatedProducerComputation extends TraversableRepeatedProducerCo
 	}
 
 	@Override
-	public CollectionProducer<PackedCollection> delta(Producer<?> target) {
-		CollectionProducer<?> delta = attemptDelta(target);
+	public CollectionProducer delta(Producer<?> target) {
+		CollectionProducer delta = attemptDelta(target);
 		if (delta != null) return (CollectionProducer) delta;
 
 		if (enableTransitiveDelta && getInputs().size() == 2 && getInputs().get(1) instanceof CollectionProducer) {
-			int outLength = ((CollectionProducer<PackedCollection>) getInputs().get(1)).getShape().getTotalSize();
+			int outLength = ((CollectionProducer) getInputs().get(1)).getShape().getTotalSize();
 			int inLength = shape(target).getTotalSize();
 
 			if (AlgebraFeatures.match(getInputs().get(1), target)) {

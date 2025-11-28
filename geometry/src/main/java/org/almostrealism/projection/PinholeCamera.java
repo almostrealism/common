@@ -18,13 +18,14 @@ package org.almostrealism.projection;
 
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.Vector;
+import org.almostrealism.collect.CollectionProducer;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.geometry.Ray;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.uml.ModelEntity;
 
-import org.almostrealism.hardware.DynamicProducerForMemoryData;
-
-import java.util.function.IntFunction;
+import org.almostrealism.collect.computations.DynamicCollectionProducer;
+import io.almostrealism.collect.TraversalPolicy;
 
 /**
  * A PinholeCamera object represents a camera in 3D. A PinholeCamera object stores the
@@ -155,7 +156,7 @@ public class PinholeCamera extends OrthographicCamera implements ProjectionFeatu
 	 * camera surface. This effect can be used to produce large images from small scenes while retaining accuracy.
 	 */
 	@Override
-	public Producer<Ray> rayAt(Producer<Pair> posP, Producer<Pair> sdP) {
+	public CollectionProducer rayAt(Producer<?> posP, Producer<?> sdP) {
 //		if (Settings.produceOutput && Settings.produceCameraOutput) {
 //			Settings.cameraOut.println("CAMERA: U = " + this.u.toString() + ", V = " + this.v.toString() + ", W = " + this.w.toString());
 //		}
@@ -164,9 +165,9 @@ public class PinholeCamera extends OrthographicCamera implements ProjectionFeatu
 			return rayAt(posP, sdP, getLocation(), getProjectionDimensions(),
 											blur, focalLength, u, v, w);
 		} else {
-			return new DynamicProducerForMemoryData<>(args -> {
-					Pair pos = posP.get().evaluate(args);
-					Pair screenDim = sdP.get().evaluate(args);
+			return new DynamicCollectionProducer(new TraversalPolicy(6), args -> {
+					Pair pos = new Pair((PackedCollection) posP.get().evaluate(args), 0);
+					Pair screenDim = new Pair((PackedCollection) sdP.get().evaluate(args), 0);
 
 					double au = -(getProjectionWidth() / 2);
 					double av = -(getProjectionHeight() / 2);
@@ -218,7 +219,7 @@ public class PinholeCamera extends OrthographicCamera implements ProjectionFeatu
 //					}
 
 					return ray;
-				}, (IntFunction) Ray::bank);
+				});
 		}
 	}
 	

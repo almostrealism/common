@@ -104,8 +104,8 @@ public interface AlgebraFeatures extends CollectionFeatures {
 	 * @param <T>  the collection type
 	 * @return a producer for the broadcast result
 	 */
-	default <T extends PackedCollection> CollectionProducer<T> broadcast(Producer<T> left,
-																			   Producer<T> right) {
+	default <T extends PackedCollection> CollectionProducer broadcast(Producer<T> left,
+																	  Producer<T> right) {
 		TraversalPolicy groupShape = TraversalPolicy.uniform(1, shape(left).getDimensions());
 		return broadcastSum("broadcast", groupShape, left, right);
 	}
@@ -139,10 +139,10 @@ public interface AlgebraFeatures extends CollectionFeatures {
 	 * @return a producer for the broadcast sum result
 	 * @throws IllegalArgumentException if shapes are incompatible with the group shape
 	 */
-	default <T extends PackedCollection> CollectionProducer<T> broadcastSum(String name,
-																			   	TraversalPolicy groupShape,
-																				Producer<T> left,
-																				Producer<T> right) {
+	default <T extends PackedCollection> CollectionProducer broadcastSum(String name,
+																		 TraversalPolicy groupShape,
+																		 Producer<T> left,
+																		 Producer<T> right) {
 		TraversalPolicy leftShape = shape(left);
 		TraversalPolicy rightShape = shape(right);
 		if (leftShape.getDimensions() != groupShape.getDimensions() ||
@@ -204,12 +204,12 @@ public interface AlgebraFeatures extends CollectionFeatures {
 	 * @param <T>  the collection type
 	 * @return a producer for the weighted sum result
 	 */
-	default <T extends PackedCollection> CollectionProducer<T> weightedSum(String name,
-																			  TraversalPolicy inputPositions,
-																			  TraversalPolicy weightPositions,
-																			  TraversalPolicy groupShape,
-																			  Producer<T> input,
-																			  Producer<T> weights) {
+	default <T extends PackedCollection> CollectionProducer weightedSum(String name,
+																		TraversalPolicy inputPositions,
+																		TraversalPolicy weightPositions,
+																		TraversalPolicy groupShape,
+																		Producer<T> input,
+																		Producer<T> weights) {
 		return weightedSum(name, inputPositions, weightPositions, groupShape, groupShape, input, weights);
 	}
 
@@ -227,13 +227,13 @@ public interface AlgebraFeatures extends CollectionFeatures {
 	 * @param <T>  the collection type
 	 * @return a producer for the weighted sum result
 	 */
-	default <T extends PackedCollection> CollectionProducer<T> weightedSum(String name,
-																			  TraversalPolicy inputPositions,
-																			  TraversalPolicy weightPositions,
-																			  TraversalPolicy inputGroupShape,
-																			  TraversalPolicy weightGroupShape,
-																			  Producer<T> input,
-																			  Producer<T> weights) {
+	default <T extends PackedCollection> CollectionProducer weightedSum(String name,
+																		TraversalPolicy inputPositions,
+																		TraversalPolicy weightPositions,
+																		TraversalPolicy inputGroupShape,
+																		TraversalPolicy weightGroupShape,
+																		Producer<T> input,
+																		Producer<T> weights) {
 		return weightedSum(name, new TraversalPolicy(inputPositions.extent()),
 				inputPositions, weightPositions, inputGroupShape, weightGroupShape, input, weights);
 	}
@@ -262,15 +262,15 @@ public interface AlgebraFeatures extends CollectionFeatures {
 	 * @param <T>  the collection type
 	 * @return a producer for the weighted sum result
 	 */
-	default <T extends PackedCollection> CollectionProducer<T> weightedSum(String name,
-																			  TraversalPolicy resultShape,
-																			  TraversalPolicy inputPositions,
-																			  TraversalPolicy weightPositions,
-																			  TraversalPolicy inputGroupShape,
-																			  TraversalPolicy weightGroupShape,
-																			  Producer<T> input,
-																			  Producer<T> weights) {
-		return (CollectionProducer<T>) new WeightedSumComputation(
+	default <T extends PackedCollection> CollectionProducer weightedSum(String name,
+																		TraversalPolicy resultShape,
+																		TraversalPolicy inputPositions,
+																		TraversalPolicy weightPositions,
+																		TraversalPolicy inputGroupShape,
+																		TraversalPolicy weightGroupShape,
+																		Producer<T> input,
+																		Producer<T> weights) {
+		return (CollectionProducer) new WeightedSumComputation(
 						resultShape,
 						inputPositions, weightPositions,
 						inputGroupShape, weightGroupShape,
@@ -406,7 +406,7 @@ public interface AlgebraFeatures extends CollectionFeatures {
 	static Supplier<?> getRoot(Supplier<?> p) {
 		while (p instanceof ReshapeProducer || p instanceof MemoryDataDestinationProducer) {
 			if (p instanceof ReshapeProducer) {
-				p = ((ReshapeProducer<?>) p).getChildren().iterator().next();
+				p = ((ReshapeProducer) p).getChildren().iterator().next();
 			} else {
 				p = (Producer<?>) ((MemoryDataDestinationProducer) p).getDelegate();
 			}

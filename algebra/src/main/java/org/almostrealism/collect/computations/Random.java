@@ -71,7 +71,7 @@ import java.util.stream.IntStream;
  * @see PackedCollection
  * @since 0.52
  */
-public class Random implements CollectionProducer<PackedCollection>, OperationInfo {
+public class Random implements CollectionProducer, OperationInfo {
 	/** Static seed used by the xorshift random number generator in {@link #nextInt()} and {@link #nextFloat()} */
 	private static long seed;
 
@@ -248,7 +248,7 @@ public class Random implements CollectionProducer<PackedCollection>, OperationIn
 	 * @return a new Producer that provides traversal functionality
 	 */
 	@Override
-	public CollectionProducer<PackedCollection> traverse(int axis) {
+	public CollectionProducer traverse(int axis) {
 		return new ReshapeProducer(axis, this);
 	}
 
@@ -259,7 +259,7 @@ public class Random implements CollectionProducer<PackedCollection>, OperationIn
 	 * @return a new Producer with the specified shape
 	 */
 	@Override
-	public CollectionProducer<PackedCollection> reshape(TraversalPolicy shape) {
+	public CollectionProducer reshape(TraversalPolicy shape) {
 		return new ReshapeProducer(shape, this);
 	}
 

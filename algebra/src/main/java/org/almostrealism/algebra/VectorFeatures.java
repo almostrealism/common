@@ -26,9 +26,7 @@ import io.almostrealism.expression.Sum;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 import org.almostrealism.collect.computations.DefaultTraversableExpressionComputation;
-import org.almostrealism.collect.computations.TraversableExpressionComputation;
 
 import java.util.function.Function;
 import java.util.function.IntFunction;
@@ -102,7 +100,7 @@ public interface VectorFeatures extends ScalarFeatures {
 	 * @param value  the vector value
 	 * @return a producer for the constant vector
 	 */
-	default CollectionProducer<PackedCollection> v(Vector value) { return value(value); }
+	default CollectionProducer v(Vector value) { return value(value); }
 
 	/**
 	 * Creates a {@link CollectionProducer} that produces a constant {@link Vector} value.
@@ -112,7 +110,7 @@ public interface VectorFeatures extends ScalarFeatures {
 	 * @param value  the {@link Vector} containing the constant values
 	 * @return a {@link CollectionProducer} that evaluates to the specified {@link Vector}
 	 */
-	default CollectionProducer<PackedCollection> value(Vector value) {
+	default CollectionProducer value(Vector value) {
 		return DefaultTraversableExpressionComputation.fixed(value);
 	}
 
@@ -124,7 +122,7 @@ public interface VectorFeatures extends ScalarFeatures {
 	 * @param z  the z coordinate
 	 * @return a producer for the constant vector (x, y, z)
 	 */
-	default CollectionProducer<PackedCollection> vector(double x, double y, double z) { return value(new Vector(x, y, z)); }
+	default CollectionProducer vector(double x, double y, double z) { return value(new Vector(x, y, z)); }
 
 	/**
 	 * Creates a {@link CollectionProducer} for a constant vector from an array of coordinates.
@@ -134,7 +132,7 @@ public interface VectorFeatures extends ScalarFeatures {
 	 * @return a producer for the constant vector
 	 * @throws ArrayIndexOutOfBoundsException if the array has fewer than 3 elements
 	 */
-	default CollectionProducer<PackedCollection> vector(double v[]) { return vector(v[0], v[1], v[2]); }
+	default CollectionProducer vector(double v[]) { return vector(v[0], v[1], v[2]); }
 
 	/**
 	 * Creates a {@link CollectionProducer} for a constant vector from a function.
@@ -143,7 +141,7 @@ public interface VectorFeatures extends ScalarFeatures {
 	 * @param values  function mapping index to coordinate value
 	 * @return a producer for the constant vector
 	 */
-	default CollectionProducer<PackedCollection> vector(IntFunction<Double> values) {
+	default CollectionProducer vector(IntFunction<Double> values) {
 		return vector(values.apply(0), values.apply(1), values.apply(2));
 	}
 
@@ -157,7 +155,7 @@ public interface VectorFeatures extends ScalarFeatures {
 	 * @param <T>  the collection type (typically scalar-valued)
 	 * @return a producer that combines the three components into a vector
 	 */
-	default <T extends PackedCollection> CollectionProducer<PackedCollection> vector(
+	default <T extends PackedCollection> CollectionProducer vector(
 												Producer<T> x,
 												Producer<T> y,
 												Producer<T> z) {
@@ -172,7 +170,7 @@ public interface VectorFeatures extends ScalarFeatures {
 	 * @param index  the index of the vector to extract (0-based)
 	 * @return a producer for the vector at the specified index
 	 */
-	default CollectionProducer<PackedCollection> vector(Producer<PackedCollection> bank, int index) {
+	default CollectionProducer vector(Producer<PackedCollection> bank, int index) {
 		return c(shape(3), bank, c(3 * index, 3 * index + 1, 3 * index + 2));
 	}
 
@@ -183,7 +181,7 @@ public interface VectorFeatures extends ScalarFeatures {
 	 * @param value  the producer to wrap
 	 * @return a vector producer wrapping the input producer
 	 */
-	default CollectionProducer<PackedCollection> vector(Producer<?> value) {
+	default CollectionProducer vector(Producer<?> value) {
 		return new DefaultTraversableExpressionComputation(
 				"vector", shape(3),
 				(Function<TraversableExpression[], CollectionExpression>) args ->
@@ -206,7 +204,7 @@ public interface VectorFeatures extends ScalarFeatures {
 	 * @param <T>  the collection type
 	 * @return a producer for the x component
 	 */
-	default <T extends PackedCollection> CollectionProducer<T> x(Producer<T> v) {
+	default <T extends PackedCollection> CollectionProducer x(Producer<T> v) {
 		return c(v, 0);
 	}
 
@@ -217,7 +215,7 @@ public interface VectorFeatures extends ScalarFeatures {
 	 * @param <T>  the collection type
 	 * @return a producer for the y component
 	 */
-	default <T extends PackedCollection> CollectionProducer<T> y(Producer<T> v) {
+	default <T extends PackedCollection> CollectionProducer y(Producer<T> v) {
 		return c(v, 1);
 	}
 
@@ -228,7 +226,7 @@ public interface VectorFeatures extends ScalarFeatures {
 	 * @param <T>  the collection type
 	 * @return a producer for the z component
 	 */
-	default <T extends PackedCollection> CollectionProducer<T> z(Producer<T> v) {
+	default <T extends PackedCollection> CollectionProducer z(Producer<T> v) {
 		return c(v, 2);
 	}
 
@@ -242,8 +240,8 @@ public interface VectorFeatures extends ScalarFeatures {
 	 * @param b  the second vector
 	 * @return a producer for the scalar dot product
 	 */
-	default <T extends PackedCollection> CollectionProducer<PackedCollection>
-			dotProduct(Producer<T> a, Producer<T> b) {
+	default <T extends PackedCollection> CollectionProducer
+	dotProduct(Producer<T> a, Producer<T> b) {
 		CollectionProducer p = multiply(a, b);
 
 		int axis = p.getShape().getDimensions() - 1;
@@ -264,8 +262,8 @@ public interface VectorFeatures extends ScalarFeatures {
 	 * @param b  the second vector
 	 * @return a producer for the cross product vector
 	 */
-	default <T extends PackedCollection> CollectionProducer<PackedCollection>
-			crossProduct(Producer<T> a, Producer<T> b) {
+	default <T extends PackedCollection> CollectionProducer
+	crossProduct(Producer<T> a, Producer<T> b) {
 		TraversalPolicy inputShape = shape(a);
 
 		return new DefaultTraversableExpressionComputation("crossProduct", inputShape, args ->
@@ -308,7 +306,7 @@ public interface VectorFeatures extends ScalarFeatures {
 	 * @param <T>  the collection type
 	 * @return a producer for the length
 	 */
-	default <T extends PackedCollection> CollectionProducer<T> length(int depth, Producer<T> value) {
+	default <T extends PackedCollection> CollectionProducer length(int depth, Producer<T> value) {
 		return length(traverse(depth, value));
 	}
 
@@ -319,7 +317,7 @@ public interface VectorFeatures extends ScalarFeatures {
 	 * @param <T>  the collection type
 	 * @return a producer for the vector length
 	 */
-	default <T extends PackedCollection> CollectionProducer<T> length(Producer<?> value) {
+	default <T extends PackedCollection> CollectionProducer length(Producer<?> value) {
 		return sqrt(lengthSq(value));
 	}
 
@@ -335,8 +333,8 @@ public interface VectorFeatures extends ScalarFeatures {
 	 * @param <T>  the collection type
 	 * @return a producer for the squared vector length
 	 */
-	default <T extends PackedCollection> CollectionProducer<T> lengthSq(Producer<?> value) {
-		CollectionProducer<?> squared = multiply((Producer) value, (Producer) value);
+	default <T extends PackedCollection> CollectionProducer lengthSq(Producer<?> value) {
+		CollectionProducer squared = multiply((Producer) value, (Producer) value);
 
 		int axis = shape(value).getDimensions() - 1;
 		return squared.sum(axis);
@@ -353,9 +351,9 @@ public interface VectorFeatures extends ScalarFeatures {
 	 * @param <T>  the collection type
 	 * @return a producer for the normalized (unit) vector
 	 */
-	default <T extends PackedCollection> CollectionProducer<T> normalize(Producer<T> value) {
+	default <T extends PackedCollection> CollectionProducer normalize(Producer<T> value) {
 		TraversalPolicy valueShape = shape(value);
-		CollectionProducer<?> invLen = length(value).pow(-1.0);
+		CollectionProducer invLen = length(value).pow(-1.0);
 
 		// For batch vectors (N, M), length produces (N, 1)
 		// We need to repeat along the innermost axis to get (N, M) for proper broadcasting

@@ -56,7 +56,7 @@ public class AverageColor implements ProducerComputation<PackedCollection> {
 
 	@Override
 	public Evaluable<PackedCollection> get() {
-		return new DynamicCollectionProducer<PackedCollection>(RGB.shape(), args -> {
+		return new DynamicCollectionProducer(RGB.shape(), args -> {
 			RGB c = new RGB(0.0, 0.0, 0.0);
 			Iterator itr = this.colors.iterator();
 

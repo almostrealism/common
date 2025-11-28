@@ -153,7 +153,7 @@ public abstract class CollectionProducerComputationBase
 	private HardwareEvaluable<PackedCollection> evaluable;
 
 	/** Alternative producer for delta computations (derivatives/gradients). */
-	private CollectionProducer<PackedCollection> deltaAlternate;
+	private CollectionProducer deltaAlternate;
 	
 	/** Custom description function for generating human-readable computation descriptions. */
 	private Function<List<String>, String> description;
@@ -248,7 +248,7 @@ public abstract class CollectionProducerComputationBase
 	 * @see #setDeltaAlternate(CollectionProducer)
 	 */
 	@Override
-	public CollectionProducer<PackedCollection> getDeltaAlternate() {
+	public CollectionProducer getDeltaAlternate() {
 		return deltaAlternate;
 	}
 
@@ -260,7 +260,7 @@ public abstract class CollectionProducerComputationBase
 	 * @param deltaAlternate The delta alternate producer to set
 	 * @see #getDeltaAlternate()
 	 */
-	public void setDeltaAlternate(CollectionProducer<PackedCollection> deltaAlternate) {
+	public void setDeltaAlternate(CollectionProducer deltaAlternate) {
 		this.deltaAlternate = deltaAlternate;
 	}
 
@@ -517,7 +517,7 @@ public abstract class CollectionProducerComputationBase
 			return this;
 		}
 
-		return new CollectionProducerComputation.IsolatedProcess<>(this);
+		return new CollectionProducerComputation.IsolatedProcess(this);
 	}
 
 	/**
@@ -849,8 +849,8 @@ public abstract class CollectionProducerComputationBase
 	 * @see #setDeltaAlternate(CollectionProducer)
 	 * @see ReshapeProducer
 	 */
-	public static CollectionProducer<PackedCollection> assignDeltaAlternate(
-			CollectionProducer<PackedCollection> producer, CollectionProducer<PackedCollection> alternate) {
+	public static CollectionProducer assignDeltaAlternate(
+			CollectionProducer producer, CollectionProducer alternate) {
 		Producer computation;
 
 		if (producer instanceof ReshapeProducer) {

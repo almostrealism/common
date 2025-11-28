@@ -28,7 +28,7 @@ import org.junit.Test;
 import java.util.stream.IntStream;
 
 public class AcceleratedConjunctionTests implements TestFeatures {
-	protected CollectionProducer<PackedCollection> conjunction(
+	protected CollectionProducer conjunction(
 			Producer<PackedCollection> a, Producer<PackedCollection> b,
 			Producer<PackedCollection> c, Producer<PackedCollection> d) {
 		CollectionProducer l1 = lessThan(a, b);
@@ -59,15 +59,15 @@ public class AcceleratedConjunctionTests implements TestFeatures {
 				.forEach(Runnable::run);
 	}
 
-	protected CollectionProducer<PackedCollection> dotProductConjunction(Producer<Ray> r) {
-		return conjunction(oDotd(
+	protected CollectionProducer dotProductConjunction(Producer<Ray> r) {
+		return conjunction((Producer) oDotd(
 				ray(i -> Math.random())), c(1),
-				oDotd(v(Ray.shape(), 0)), c(1));
+				(Producer) oDotd(v(Ray.shape(), 0)), c(1));
 	}
 
 	@Test
 	public void dotProductInConjunction() {
-		CollectionProducer<PackedCollection> c = dotProductConjunction(v(Ray.shape(), 0));
+		CollectionProducer c = dotProductConjunction(v(Ray.shape(), 0));
 
 		double v = c.evaluate(ray(i -> Math.random()).get().evaluate()).toDouble();
 		System.out.println(v);
@@ -76,7 +76,7 @@ public class AcceleratedConjunctionTests implements TestFeatures {
 
 	@Test
 	public void dotProductInNestedConjunction1() {
-		CollectionProducer<PackedCollection> c = dotProductConjunction(ray(i -> Math.random()));
+		CollectionProducer c = dotProductConjunction((Producer) ray(i -> Math.random()));
 		c = conjunction(c, v(shape(1), 0), c(Math.random()), c(Math.random()));
 
 		double v = c.evaluate(scalar(Math.random()).get().evaluate()).toDouble();
@@ -86,7 +86,7 @@ public class AcceleratedConjunctionTests implements TestFeatures {
 
 	@Test
 	public void dotProductInNestedConjunction2() {
-		CollectionProducer<PackedCollection> c = dotProductConjunction(ray(i -> Math.random()));
+		CollectionProducer c = dotProductConjunction((Producer) ray(i -> Math.random()));
 		c = conjunction(c, c(Math.random()), v(shape(1), 0), c(Math.random()));
 
 		double v = c.evaluate(c(Math.random()).get().evaluate()).toDouble();
@@ -96,7 +96,7 @@ public class AcceleratedConjunctionTests implements TestFeatures {
 
 	@Test
 	public void dotProductInNestedConjunction3() {
-		CollectionProducer<PackedCollection> c = dotProductConjunction(v(Ray.shape(), 0));
+		CollectionProducer c = dotProductConjunction(v(Ray.shape(), 0));
 		c = conjunction(c, c(Math.random()), c(Math.random()), c(Math.random()));
 
 		double v = c.evaluate(ray(i -> Math.random()).get().evaluate()).toDouble();
@@ -106,7 +106,7 @@ public class AcceleratedConjunctionTests implements TestFeatures {
 
 	@Test
 	public void dotProductInNestedConjunction4() {
-		CollectionProducer<PackedCollection> c = dotProductConjunction(v(Ray.shape(), 0));
+		CollectionProducer c = dotProductConjunction(v(Ray.shape(), 0));
 		c = conjunction(c, v(shape(1), 1),
 				c(Math.random()), v(shape(1), 2));
 

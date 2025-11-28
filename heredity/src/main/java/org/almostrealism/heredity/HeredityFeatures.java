@@ -187,7 +187,7 @@ public interface HeredityFeatures extends CollectionFeatures {
 	 * @param exp the exponent for the transformation
 	 * @return a producer that computes the transformed value
 	 */
-	default CollectionProducer<PackedCollection> oneToInfinity(Factor<PackedCollection> f, double exp) {
+	default CollectionProducer oneToInfinity(Factor<PackedCollection> f, double exp) {
 		return oneToInfinity(f.getResultant(c(1.0)), exp);
 	}
 
@@ -198,7 +198,7 @@ public interface HeredityFeatures extends CollectionFeatures {
 	 * @param exp the exponent for the transformation
 	 * @return a producer that computes the transformed value
 	 */
-	default CollectionProducer<PackedCollection> oneToInfinity(Producer<PackedCollection> arg, double exp) {
+	default CollectionProducer oneToInfinity(Producer<PackedCollection> arg, double exp) {
 		return oneToInfinity(arg, c(exp));
 	}
 
@@ -210,9 +210,9 @@ public interface HeredityFeatures extends CollectionFeatures {
 	 * @param exp the exponent producer
 	 * @return a producer that computes the transformed value
 	 */
-	default CollectionProducer<PackedCollection> oneToInfinity(Producer<PackedCollection> arg, Producer<PackedCollection> exp) {
-		CollectionProducer<PackedCollection> pow = pow(arg, exp);
-		CollectionProducer<PackedCollection> out = minus(pow);
+	default CollectionProducer oneToInfinity(Producer<PackedCollection> arg, Producer<PackedCollection> exp) {
+		CollectionProducer pow = pow(arg, exp);
+		CollectionProducer out = minus(pow);
 		out = add(out, c(1.0));
 		out = pow(out, c(-1.0));
 		out = add(out, c(-1.0));

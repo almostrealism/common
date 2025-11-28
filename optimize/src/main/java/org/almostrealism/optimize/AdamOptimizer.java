@@ -16,14 +16,12 @@
 
 package org.almostrealism.optimize;
 
-import io.almostrealism.code.Precision;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.layers.ParameterUpdate;
 
@@ -157,8 +155,8 @@ public class AdamOptimizer implements ParameterUpdate<PackedCollection>, CodeFea
 		ops.add(a(name + " (\u0394 velocity)", cp(v),
 				c(beta2).multiply(cp(v)).add(c(1.0).subtract(c(beta2)).multiply(c(gradient).sq()))));
 
-		CollectionProducer<PackedCollection> mt = cp(m).divide(c(1.0).subtract(c(beta1).pow(cp(c))));
-		CollectionProducer<PackedCollection> vt = cp(v).divide(c(1.0).subtract(c(beta2).pow(cp(c))));
+		CollectionProducer mt = cp(m).divide(c(1.0).subtract(c(beta1).pow(cp(c))));
+		CollectionProducer vt = cp(v).divide(c(1.0).subtract(c(beta2).pow(cp(c))));
 		ops.add(a(name + " (\u0394 weights)", c(weights).each(),
 				c(weights).each().subtract(c(learningRate).multiply(mt).divide(vt.sqrt().add(eps)))));
 		return ops;

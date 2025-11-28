@@ -229,7 +229,7 @@ public class PointLight implements Light, Positioned, RayFeatures, RGBFeatures {
 	 */
 	// TODO  This should be a method of the Light interface
 	public Producer<PackedCollection> forShadable(Shadable surface, Producer<Ray> intersection, ShaderContext context) {
-		CollectionProducer<PackedCollection> point = origin(intersection);
+		CollectionProducer point = origin(intersection);
 		Producer<PackedCollection> direction = add(point, minus(v(getLocation())));
 		direction = minus(normalize(direction));
 		context.setLightDirection(direction);

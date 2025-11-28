@@ -29,7 +29,6 @@ import org.almostrealism.geometry.ContinuousField;
 import org.almostrealism.geometry.Intersectable;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.color.Light;
-import org.almostrealism.color.RGB;
 import org.almostrealism.color.Shadable;
 import org.almostrealism.color.ShaderContext;
 import org.almostrealism.geometry.Curve;
@@ -98,10 +97,10 @@ public class LightingEngine<T extends ContinuousField> extends ProducerWithRankA
 		this.distance = (Producer) ((ShadableIntersection) intersections).getDistance();
 	}
 
-	protected CollectionProducer<PackedCollection> shadowAndShadeProduct(ContinuousField intersections,
-															Curve<PackedCollection> surface,
-															Collection<Curve<PackedCollection>> otherSurfaces,
-															Light light, Iterable<Light> otherLights, ShaderContext p) {
+	protected CollectionProducer shadowAndShadeProduct(ContinuousField intersections,
+													   Curve<PackedCollection> surface,
+													   Collection<Curve<PackedCollection>> otherSurfaces,
+													   Light light, Iterable<Light> otherLights, ShaderContext p) {
 		Supplier shadowAndShade[] = shadowAndShade(intersections, surface, otherSurfaces, light, otherLights, p);
 		return multiply((Producer) shadowAndShade[0], (Producer) shadowAndShade[1]);
 	}

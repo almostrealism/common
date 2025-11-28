@@ -21,7 +21,6 @@ import org.almostrealism.algebra.Vector;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.space.MeshData;
-import org.almostrealism.space.Triangle;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
 
@@ -265,25 +264,25 @@ public class PointExtractionTest implements TestFeatures {
 		if (rawP instanceof io.almostrealism.collect.Shape) {
 			log("rawP shape: " + ((io.almostrealism.collect.Shape) rawP).getShape());
 		}
-		CollectionProducer<PackedCollection> cP = c(rawP);
+		CollectionProducer cP = c(rawP);
 		log("cP class: " + cP.getClass().getSimpleName());
 		log("cP shape: " + cP.getShape());
 
-		CollectionProducer<PackedCollection> p1 = point((Producer) cP, 0);
-		CollectionProducer<PackedCollection> p2 = point((Producer) cP, 1);
-		CollectionProducer<PackedCollection> p3 = point((Producer) cP, 2);
+		CollectionProducer p1 = point((Producer) cP, 0);
+		CollectionProducer p2 = point((Producer) cP, 1);
+		CollectionProducer p3 = point((Producer) cP, 2);
 		log("p1 shape: " + p1.getShape());
 		log("p2 shape: " + p2.getShape());
 		log("p3 shape: " + p3.getShape());
-		CollectionProducer<PackedCollection> abcProducer = subtract(p2, p1);
-		CollectionProducer<PackedCollection> defProducer = subtract(p3, p1);
+		CollectionProducer abcProducer = subtract(p2, p1);
+		CollectionProducer defProducer = subtract(p3, p1);
 		log("abcProducer shape: " + abcProducer.getShape());
 		log("defProducer shape: " + defProducer.getShape());
 
 		abcProducer.get().into(abcDebug.traverse(1)).evaluate();
 		defProducer.get().into(defDebug.traverse(1)).evaluate();
 
-		CollectionProducer<?> crossProducer = crossProduct((Producer) abcProducer, (Producer) defProducer);
+		CollectionProducer crossProducer = crossProduct((Producer) abcProducer, (Producer) defProducer);
 		log("crossProducer shape: " + crossProducer.getShape());
 		crossProducer.get().into(crossDebug.traverse(1)).evaluate();
 
@@ -473,7 +472,7 @@ public class PointExtractionTest implements TestFeatures {
 		// Use triangle() method directly for proper batch processing with shape (3, 3, 3)
 		// Note: Triangle.dataProducer expects single triangle (3, 3) input, so we use triangle() directly
 		MeshData result = new MeshData(3);
-		CollectionProducer<?> triangleProducer = triangle(c(p(reshaped)));
+		CollectionProducer triangleProducer = triangle(c(p(reshaped)));
 		triangleProducer.get().into(result.traverse(1)).evaluate();
 
 		// Triangle 0 should have normal [0, 0, 1]

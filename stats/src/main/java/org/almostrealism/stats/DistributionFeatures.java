@@ -109,7 +109,7 @@ public interface DistributionFeatures extends CollectionFeatures {
 	 * @param input the input logits
 	 * @return a producer that computes the softmax probabilities
 	 */
-	default <T extends PackedCollection> CollectionProducer<T> softmax(CollectionProducer<T> input) {
+	default <T extends PackedCollection> CollectionProducer softmax(CollectionProducer input) {
 		return softmax(input, true);
 	}
 
@@ -121,9 +121,9 @@ public interface DistributionFeatures extends CollectionFeatures {
 	 * @param subtractMax if true, subtracts the max value before exp for numerical stability
 	 * @return a producer that computes the softmax probabilities
 	 */
-	default <T extends PackedCollection> CollectionProducer<T> softmax(CollectionProducer<T> input, boolean subtractMax) {
+	default <T extends PackedCollection> CollectionProducer softmax(CollectionProducer input, boolean subtractMax) {
 		int size = shape(input).getSize();
-		CollectionProducer<PackedCollection> o = (CollectionProducer) input;
+		CollectionProducer o = (CollectionProducer) input;
 
 		if (subtractMax) {
 			o = o.max();

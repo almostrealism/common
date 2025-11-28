@@ -141,7 +141,7 @@ public class AtomicConstantComputation extends SingleConstantComputation {
 	 * @return A new {@link AtomicConstantComputation} with traversed shape
 	 */
 	@Override
-	public CollectionProducer<PackedCollection> traverse(int axis) {
+	public CollectionProducer traverse(int axis) {
 		return new AtomicConstantComputation(getShape().traverse(1), value);
 	}
 

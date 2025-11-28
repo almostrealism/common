@@ -269,7 +269,7 @@ public class CompiledModel implements Destroyable, CodeFeatures {
 	}
 
 	protected static class InputManager implements Consumer<PackedCollection>,
-			Supplier<DynamicCollectionProducer<PackedCollection>>, ConsoleFeatures {
+			Supplier<DynamicCollectionProducer>, ConsoleFeatures {
 		private TraversalPolicy shape;
 		private PackedCollection input;
 
@@ -291,8 +291,8 @@ public class CompiledModel implements Destroyable, CodeFeatures {
 			this.input = input;
 		}
 
-		public DynamicCollectionProducer<PackedCollection> get() {
-			return new DynamicCollectionProducer<>(shape, args -> input);
+		public DynamicCollectionProducer get() {
+			return new DynamicCollectionProducer(shape, args -> input);
 		}
 
 		@Override

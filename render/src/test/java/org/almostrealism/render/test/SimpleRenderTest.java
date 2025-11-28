@@ -1,4 +1,5 @@
 package org.almostrealism.render.test;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 
 import org.almostrealism.color.PointLight;
@@ -159,7 +160,7 @@ public class SimpleRenderTest implements TestFeatures {
 
 		// TEST 1: Working approach - static ray
 		log("\n=== TEST 1: Static ray (working) ===");
-		Producer<Ray> staticRay = ray(0.0, 0.0, 10.0, 0.0, 0.0, -1.0);
+		CollectionProducer staticRay = ray(0.0, 0.0, 10.0, 0.0, 0.0, -1.0);
 		org.almostrealism.geometry.ShadableIntersection staticIntersection = sphere.intersectAt(staticRay);
 		org.almostrealism.collect.PackedCollection staticDistance = staticIntersection.getDistance().get().evaluate();
 		double staticDistValue = staticDistance.toDouble(0);
@@ -168,9 +169,9 @@ public class SimpleRenderTest implements TestFeatures {
 
 		// TEST 2: Dynamic ray from camera - evaluate with pixel position
 		log("\n=== TEST 2: Dynamic ray from camera (should work) ===");
-		Producer<org.almostrealism.algebra.Pair> pixelPos = pair(0.0, 0.0);
-		Producer<org.almostrealism.algebra.Pair> screenDim = pair(1.0, 1.0);
-		Producer<Ray> dynamicRay = camera.rayAt(pixelPos, screenDim);
+		CollectionProducer pixelPos = pair(0.0, 0.0);
+		CollectionProducer screenDim = pair(1.0, 1.0);
+		CollectionProducer dynamicRay = camera.rayAt(pixelPos, screenDim);
 		org.almostrealism.geometry.ShadableIntersection dynamicIntersection = sphere.intersectAt(dynamicRay);
 		org.almostrealism.collect.PackedCollection dynamicDistance = dynamicIntersection.getDistance().get().evaluate();
 		double dynamicDistValue = dynamicDistance.toDouble(0);
@@ -179,9 +180,9 @@ public class SimpleRenderTest implements TestFeatures {
 
 		// TEST 3: Dynamic ray with variable input - like rank cache does
 		log("\n=== TEST 3: Dynamic ray with v(shape(-1, 2), 0) (rank cache approach) ===");
-		Producer<org.almostrealism.algebra.Pair> variablePixelPos = v(shape(-1, 2), 0);
-		Producer<org.almostrealism.algebra.Pair> constantScreenDim = pair(1.0, 1.0);
-		Producer<Ray> variableRay = camera.rayAt(variablePixelPos, constantScreenDim);
+		Producer<?> variablePixelPos = v(shape(-1, 2), 0);
+		CollectionProducer constantScreenDim = pair(1.0, 1.0);
+		CollectionProducer variableRay = camera.rayAt(variablePixelPos, constantScreenDim);
 		org.almostrealism.geometry.ShadableIntersection variableIntersection = sphere.intersectAt(variableRay);
 
 		// Create input like initRankCache does
@@ -232,9 +233,9 @@ public class SimpleRenderTest implements TestFeatures {
 
 		// Test with hardware acceleration
 		log("\n=== With hardware acceleration ===");
-		Producer<org.almostrealism.algebra.Pair> pixelPos = pair(0.0, 0.0);
-		Producer<org.almostrealism.algebra.Pair> screenDim = pair(1.0, 1.0);
-		Producer<Ray> rayProducer = camera.rayAt(pixelPos, screenDim);
+		CollectionProducer pixelPos = pair(0.0, 0.0);
+		CollectionProducer screenDim = pair(1.0, 1.0);
+		CollectionProducer rayProducer = camera.rayAt(pixelPos, screenDim);
 
 		// Evaluate the ray
 		org.almostrealism.collect.PackedCollection rayData = rayProducer.get().evaluate();
@@ -298,7 +299,7 @@ public class SimpleRenderTest implements TestFeatures {
 
 		// Create a camera ray from (0, 0, 10) pointing towards sphere at (0, 0, -1)
 		// This should hit the sphere at approximately (0, 0, 1) on the front surface
-		Producer<org.almostrealism.geometry.Ray> testRay = ray(0.0, 0.0, 10.0, 0.0, 0.0, -1.0);
+		CollectionProducer testRay = ray(0.0, 0.0, 10.0, 0.0, 0.0, -1.0);
 		log("Created ray: origin (0, 0, 10), direction (0, 0, -1)");
 
 		// Create shader context
@@ -348,7 +349,7 @@ public class SimpleRenderTest implements TestFeatures {
 		sphere.setSize(1.0);
 
 		// Create a ray from camera position (0, 0, 10) pointing towards sphere (0, 0, -1)
-		Producer<Ray> testRay = ray(0.0, 0.0, 10.0, 0.0, 0.0, -1.0);
+		CollectionProducer testRay = ray(0.0, 0.0, 10.0, 0.0, 0.0, -1.0);
 
 		log("Ray created: origin (0, 0, 10), direction (0, 0, -1)");
 		log("Sphere at origin (0, 0, 0), size 1.0");
@@ -383,10 +384,10 @@ public class SimpleRenderTest implements TestFeatures {
 
 		// Generate ray for center pixel using width x height screen
 		// Center pixel is at (32, 32) in the width x height grid
-		Producer<org.almostrealism.algebra.Pair> centerPos = pair(width / 2.0, height / 2.0);
-		Producer<org.almostrealism.algebra.Pair> screenDim = pair(width, height);
+		CollectionProducer centerPos = pair(width / 2.0, height / 2.0);
+		CollectionProducer screenDim = pair(width, height);
 
-		Producer<Ray> cameraRay = camera.rayAt(centerPos, screenDim);
+		CollectionProducer cameraRay = camera.rayAt(centerPos, screenDim);
 
 		// Evaluate the ray - use Ray view wrapper
 		Ray ray = new Ray(cameraRay.get().evaluate(), 0);

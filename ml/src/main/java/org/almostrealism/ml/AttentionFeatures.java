@@ -307,8 +307,8 @@ public interface AttentionFeatures extends RotationFeatures {
 			Producer<PackedCollection> v = reshape(shape(seqLength, dim), expandedValues);
 			v = enumerate(1, 1, v).reshape(shape(heads, headSize, seqLength));
 
-			CollectionProducer<PackedCollection> a = traverse(1, input).repeat(headSize);
-			CollectionProducer<PackedCollection> o = multiply(traverseEach(a), traverseEach(v)).traverse(2).sum();
+			CollectionProducer a = traverse(1, input).repeat(headSize);
+			CollectionProducer o = multiply(traverseEach(a), traverseEach(v)).traverse(2).sum();
 			return o.reshape(shape(dim).traverseEach());
 		}, requirements);
 	}
@@ -442,11 +442,11 @@ public interface AttentionFeatures extends RotationFeatures {
 
 		// Add dynamic causal mask: mask[i] = -10000 if i > position, else 0
 		// This prevents attention from seeing future positions in the KV cache
-		CollectionProducer<?> indices = integers(0, seqLen);
-		CollectionProducer<PackedCollection> maskRow =
+		CollectionProducer indices = integers(0, seqLen);
+		CollectionProducer maskRow =
 			greaterThan(indices, position, c(-10000.0), c(0.0), false);
 		// Reshape to (1, 1, seqLen) and repeat for all heads -> (heads, 1, seqLen)
-		CollectionProducer<PackedCollection> causalMask = maskRow.reshape(1, 1, seqLen).repeat(heads);
+		CollectionProducer causalMask = maskRow.reshape(1, 1, seqLen).repeat(heads);
 
 		// Create a block to add the causal mask to the attention scores
 		attention.add(layer("causal_mask", attentionShape, attentionShape,
@@ -1032,10 +1032,10 @@ public interface AttentionFeatures extends RotationFeatures {
 		}
 
 		return compose("context", v, shape(batchSize, heads, dimHead, dimHead), (a, b) -> {
-			CollectionProducer<PackedCollection> pa = c(a)
+			CollectionProducer pa = c(a)
 					.traverse(3)
 					.repeat(dimHead);
-			CollectionProducer<PackedCollection> pb = c(b)
+			CollectionProducer pb = c(b)
 					.traverse(2)
 					.repeat(dimHead);
 			return multiply(pa, pb).sum(4);

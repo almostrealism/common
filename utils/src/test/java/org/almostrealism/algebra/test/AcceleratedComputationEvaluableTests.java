@@ -47,7 +47,7 @@ public class AcceleratedComputationEvaluableTests implements TestFeatures {
 
 	@Test
 	public void scalarProduct() {
-		CollectionProducer<PackedCollection> x = c(3.0);
+		CollectionProducer x = c(3.0);
 		Evaluable<PackedCollection> res = multiply(x, c(0.5)).get();
 
 		PackedCollection s = res.evaluate();

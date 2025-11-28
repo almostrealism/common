@@ -19,7 +19,6 @@ package org.almostrealism.graph.mesh;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.Ops;
-import org.almostrealism.algebra.Vector;
 import org.almostrealism.collect.computations.GreaterThanCollection;
 import org.almostrealism.collect.computations.LessThanCollection;
 import org.almostrealism.collect.CollectionFeatures;
@@ -73,50 +72,50 @@ public class TriangleIntersectAt extends LessThanCollection {
 				TriangleFeatures.getInstance().normal(t), RayFeatures.getInstance().origin(r), RayFeatures.getInstance().direction(r));
 	}
 
-	private static TriangleIntersectAt create(CollectionProducer<PackedCollection> abc, CollectionProducer<PackedCollection> def, CollectionProducer<PackedCollection> jkl,
-								  CollectionProducer<PackedCollection> normal, CollectionProducer<PackedCollection> origin, CollectionProducer<PackedCollection> direction) {
+	private static TriangleIntersectAt create(CollectionProducer abc, CollectionProducer def, CollectionProducer jkl,
+											  CollectionProducer normal, CollectionProducer origin, CollectionProducer direction) {
 		return create(abc, def, jkl, normal, origin, direction, s(jkl, origin));
 	}
 
-	private static TriangleIntersectAt create(CollectionProducer<PackedCollection> abc, CollectionProducer<PackedCollection> def, CollectionProducer<PackedCollection> jkl,
-								  CollectionProducer<PackedCollection> normal, CollectionProducer<PackedCollection> origin, CollectionProducer<PackedCollection> direction,
-								  Producer<PackedCollection> s) {
+	private static TriangleIntersectAt create(CollectionProducer abc, CollectionProducer def, CollectionProducer jkl,
+											  CollectionProducer normal, CollectionProducer origin, CollectionProducer direction,
+											  Producer<PackedCollection> s) {
 		return create(abc, def, jkl, normal, origin, direction, f(abc, h(def, direction)), q(abc, s), s);
 	}
 
-	private static TriangleIntersectAt create(CollectionProducer<PackedCollection> abc, CollectionProducer<PackedCollection> def, CollectionProducer<PackedCollection> jkl,
-											  CollectionProducer<PackedCollection> normal, CollectionProducer<PackedCollection> origin, CollectionProducer<PackedCollection> direction,
-											  CollectionProducer<PackedCollection> f, CollectionProducer<PackedCollection> q, Producer<PackedCollection> s) {
+	private static TriangleIntersectAt create(CollectionProducer abc, CollectionProducer def, CollectionProducer jkl,
+											  CollectionProducer normal, CollectionProducer origin, CollectionProducer direction,
+											  CollectionProducer f, CollectionProducer q, Producer<PackedCollection> s) {
 		return createv(abc, def, jkl, normal, origin, direction, f, q, s, v(direction, f.pow(-1.0), q));
 	}
 
-	private static TriangleIntersectAt createv(CollectionProducer<PackedCollection> abc, CollectionProducer<PackedCollection> def, CollectionProducer<PackedCollection> jkl,
-								  			   CollectionProducer<PackedCollection> normal, CollectionProducer<PackedCollection> origin, CollectionProducer<PackedCollection> direction,
-								               CollectionProducer<PackedCollection> f, CollectionProducer<PackedCollection> q, Producer<PackedCollection> s,
+	private static TriangleIntersectAt createv(CollectionProducer abc, CollectionProducer def, CollectionProducer jkl,
+											   CollectionProducer normal, CollectionProducer origin, CollectionProducer direction,
+											   CollectionProducer f, CollectionProducer q, Producer<PackedCollection> s,
 											   Producer<PackedCollection> v) {
 		return createu(abc, def, jkl, normal, origin, direction, f, q, s, u(s, h(def, direction), f.pow(-1.0)), v);
 	}
 
-	private static TriangleIntersectAt createu(CollectionProducer<PackedCollection> abc, CollectionProducer<PackedCollection> def, CollectionProducer<PackedCollection> jkl,
-								  CollectionProducer<PackedCollection> normal, CollectionProducer<PackedCollection> origin, CollectionProducer<PackedCollection> direction,
-								  CollectionProducer<PackedCollection> f, CollectionProducer<PackedCollection> q, Producer<PackedCollection> s,
-								  Producer<PackedCollection> u, Producer<PackedCollection> v) {
+	private static TriangleIntersectAt createu(CollectionProducer abc, CollectionProducer def, CollectionProducer jkl,
+											   CollectionProducer normal, CollectionProducer origin, CollectionProducer direction,
+											   CollectionProducer f, CollectionProducer q, Producer<PackedCollection> s,
+											   Producer<PackedCollection> u, Producer<PackedCollection> v) {
 		return createt(f, u, v, t(def, f.pow(-1.0), q));
 	}
 
-	private static TriangleIntersectAt createt(CollectionProducer<PackedCollection> f,
+	private static TriangleIntersectAt createt(CollectionProducer f,
 											   Producer<PackedCollection> u,
 											   Producer<PackedCollection> v,
 											   Producer<PackedCollection> t) {
 		// Create component conditions using non-strict inequalities
 		// to include edge cases (standard Moller-Trumbore algorithm)
-		CollectionProducer<PackedCollection> cond1 = CollectionFeatures.getInstance().greaterThanOrEqual((Producer) u, Ops.o().c(0.0));
-		CollectionProducer<PackedCollection> cond2 = CollectionFeatures.getInstance().lessThanOrEqual((Producer) u, Ops.o().c(1.0));
-		CollectionProducer<PackedCollection> cond3 = CollectionFeatures.getInstance().greaterThanOrEqual((Producer) v, Ops.o().c(0.0));
-		CollectionProducer<PackedCollection> cond4 = CollectionFeatures.getInstance().lessThanOrEqual((Producer) Ops.o().add(u, v), Ops.o().c(1.0));
+		CollectionProducer cond1 = CollectionFeatures.getInstance().greaterThanOrEqual((Producer) u, Ops.o().c(0.0));
+		CollectionProducer cond2 = CollectionFeatures.getInstance().lessThanOrEqual((Producer) u, Ops.o().c(1.0));
+		CollectionProducer cond3 = CollectionFeatures.getInstance().greaterThanOrEqual((Producer) v, Ops.o().c(0.0));
+		CollectionProducer cond4 = CollectionFeatures.getInstance().lessThanOrEqual((Producer) Ops.o().add(u, v), Ops.o().c(1.0));
 
 		// Chain with AND operations: ((cond1 AND cond2) AND cond3) AND cond4
-		CollectionProducer<PackedCollection> conjunction = CollectionFeatures.getInstance().and(
+		CollectionProducer conjunction = CollectionFeatures.getInstance().and(
 				(Producer) CollectionFeatures.getInstance().and(
 						(Producer) CollectionFeatures.getInstance().and((Producer) cond1, (Producer) cond2),
 						(Producer) cond3),
@@ -134,8 +133,8 @@ public class TriangleIntersectAt extends LessThanCollection {
 	 * @param f         the determinant producer (used for parallel ray check)
 	 * @param trueValue the value to return when intersection is valid
 	 */
-	protected TriangleIntersectAt(CollectionProducer<PackedCollection> f,
-								  CollectionProducer<PackedCollection> trueValue) {
+	protected TriangleIntersectAt(CollectionProducer f,
+								  CollectionProducer trueValue) {
 		super(new TraversalPolicy(1), f, CollectionFeatures.getInstance().c(-Intersection.e), trueValue,
 				new GreaterThanCollection(new TraversalPolicy(1),
 						f, CollectionFeatures.getInstance().c(Intersection.e),
@@ -164,7 +163,7 @@ public class TriangleIntersectAt extends LessThanCollection {
 	 * @return producer for the f scalar (determinant)
 	 */
 	// TODO  Make private
-	public static CollectionProducer<PackedCollection> f(Producer<PackedCollection> abc, CollectionProducer<PackedCollection> h) {
+	public static CollectionProducer f(Producer<PackedCollection> abc, CollectionProducer h) {
 		return Ops.o().dotProduct(abc, h);
 	}
 
@@ -189,7 +188,7 @@ public class TriangleIntersectAt extends LessThanCollection {
 	 * @return producer for the u coordinate
 	 */
 	// TODO  Make private
-	public static Producer<PackedCollection> u(Producer<PackedCollection> s, Producer<PackedCollection> h, CollectionProducer<PackedCollection> f) {
+	public static Producer<PackedCollection> u(Producer<PackedCollection> s, Producer<PackedCollection> h, CollectionProducer f) {
 		return f.multiply(Ops.o().dotProduct(s, h));
 	}
 
@@ -215,8 +214,8 @@ public class TriangleIntersectAt extends LessThanCollection {
 	 */
 	// TODO  Make private
 	public static Producer<PackedCollection> v(Producer<PackedCollection> direction,
-												  CollectionProducer<PackedCollection> f,
-												  CollectionProducer<PackedCollection> q) {
+												  CollectionProducer f,
+												  CollectionProducer q) {
 		return f.multiply(Ops.o().dotProduct(direction, q));
 	}
 
@@ -228,7 +227,7 @@ public class TriangleIntersectAt extends LessThanCollection {
 	 * @param q   the q vector from {@link #q(Producer, Producer)}
 	 * @return producer for the t parameter (intersection distance)
 	 */
-	private static Producer<PackedCollection> t(Producer<PackedCollection> def, Producer<PackedCollection> f, CollectionProducer<PackedCollection> q) {
+	private static Producer<PackedCollection> t(Producer<PackedCollection> def, Producer<PackedCollection> f, CollectionProducer q) {
 		return Ops.o().multiply(f, Ops.o().dotProduct(def, q));
 	}
 

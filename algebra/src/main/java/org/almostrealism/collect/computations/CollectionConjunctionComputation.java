@@ -210,7 +210,7 @@ public class CollectionConjunctionComputation extends CollectionComparisonComput
 	 * @return A new {@link CollectionProducerParallelProcess} for parallel execution
 	 */
 	@Override
-	public CollectionProducerParallelProcess<PackedCollection> generate(List<Process<?, ?>> children) {
+	public CollectionProducerParallelProcess generate(List<Process<?, ?>> children) {
 		return (CollectionProducerParallelProcess)
 				and((Producer) children.get(1), (Producer) children.get(2),
 						(Producer) children.get(3), (Producer) children.get(4));

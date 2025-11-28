@@ -100,7 +100,7 @@ public class RayTracedScene implements Realization<RealizableImage, RenderParame
 	public RenderParameters getRenderParameters() { return p; }
 
 	public Producer<PackedCollection> operate(Producer<Pair> uv, Producer<Pair> sd) {
-		Future<Producer<PackedCollection>> color = tracer.trace(camera.rayAt(uv, sd));
+		Future<Producer<PackedCollection>> color = tracer.trace((Producer) camera.rayAt(uv, sd));
 
 		if (color == null) {
 			color = new Future<>() {
@@ -138,7 +138,7 @@ public class RayTracedScene implements Realization<RealizableImage, RenderParame
 
 	public Producer<PackedCollection> getProducer(RenderParameters p) {
 		// Use shape(-1, 2) for variable-count to allow kernel size to adapt to output
-		Producer<PackedCollection> producer = operate(v(shape(-1, 2), 0), pair(p.width, p.height));
+		Producer<PackedCollection> producer = operate(v(shape(-1, 2), 0), (Producer) pair(p.width, p.height));
 
 		if (producer instanceof DimensionAware) {
 			((DimensionAware) producer).setDimensions(p.width, p.height, p.ssWidth, p.ssHeight);

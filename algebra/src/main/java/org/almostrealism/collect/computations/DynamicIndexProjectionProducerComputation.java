@@ -24,11 +24,9 @@ import io.almostrealism.compute.Process;
 import io.almostrealism.kernel.Index;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
-import org.almostrealism.collect.PackedCollection;
 
 import java.util.List;
 import java.util.function.BiFunction;
-import java.util.function.Supplier;
 
 /**
  * A specialized {@link IndexProjectionProducerComputation} that supports dynamic, runtime-computed
@@ -203,7 +201,7 @@ public class DynamicIndexProjectionProducerComputation
 	}
 
 	@Override
-	public CollectionProducer<PackedCollection> delta(Producer<?> target) {
+	public CollectionProducer delta(Producer<?> target) {
 		if (enableChainDelta) {
 			TraversableDeltaComputation delta =
 					TraversableDeltaComputation.create("delta", getShape(), shape(target),
@@ -223,7 +221,7 @@ public class DynamicIndexProjectionProducerComputation
 			TraversalPolicy deltaShape = shape(inSize, targetSize);
 			TraversalPolicy overallShape = shape(outSize, targetSize);
 
-			CollectionProducer<PackedCollection> delta = ((CollectionProducer) getInputs().get(1)).delta(target);
+			CollectionProducer delta = ((CollectionProducer) getInputs().get(1)).delta(target);
 
 			TraversalPolicy shape = outShape.append(targetShape);
 			int traversalAxis = shape.getTraversalAxis();

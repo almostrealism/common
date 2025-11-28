@@ -58,7 +58,7 @@ public class AggregatedComputationTests implements TestFeatures {
 		PackedCollection b = new PackedCollection(shape(w, d))
 				.randFill();
 
-		CollectionProducer<PackedCollection> sum =
+		CollectionProducer sum =
 				multiply(cp(a).repeat(w).each(),
 							cp(b).traverse(1).repeat(h).each())
 						.traverse(2)

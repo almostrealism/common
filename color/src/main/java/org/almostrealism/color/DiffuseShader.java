@@ -17,7 +17,6 @@
 package org.almostrealism.color;
 
 import io.almostrealism.relation.Editable;
-import org.almostrealism.algebra.Vector;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.geometry.DiscreteField;
@@ -61,10 +60,10 @@ public class DiffuseShader implements Shader<ShaderContext>, Editable, RGBFeatur
 	/** Method specified by the {@link Shader} interface. */
 	@Override
 	public Producer<PackedCollection> shade(ShaderContext p, DiscreteField normals) {
-		CollectionProducer<PackedCollection> point = origin(normals.get(0));
-		CollectionProducer<PackedCollection> n = normalize(direction(normals.get(0)));
-		CollectionProducer<PackedCollection> scaleFront = (CollectionProducer) dotProduct(n, p.getLightDirection());
-		CollectionProducer<PackedCollection> scaleBack = (CollectionProducer) dotProduct(minus(n), p.getLightDirection());
+		CollectionProducer point = origin(normals.get(0));
+		CollectionProducer n = normalize(direction(normals.get(0)));
+		CollectionProducer scaleFront = (CollectionProducer) dotProduct(n, p.getLightDirection());
+		CollectionProducer scaleBack = (CollectionProducer) dotProduct(minus(n), p.getLightDirection());
 		Producer lightColor = p.getLight().getColorAt(point);
 		Producer surfaceColor = p.getSurface().getValueAt(point);
 

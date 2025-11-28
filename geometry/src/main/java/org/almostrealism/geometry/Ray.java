@@ -152,7 +152,7 @@ public class Ray extends PackedCollection implements GeometryFeatures, Cloneable
 	 * @return  The point on the ray represented by this {@link Ray} at distance t from the origin
 	 *          as a {@link PackedCollection}.
 	 */
-	public CollectionProducer<PackedCollection> pointAt(Producer<PackedCollection> t) {
+	public CollectionProducer pointAt(Producer<PackedCollection> t) {
 		return pointAt(v(this), t);
 	}
 

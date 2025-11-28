@@ -659,7 +659,7 @@ public class RGB extends PackedCollection implements Externalizable, Cloneable {
 	 * @return a {@link Producer} that yields black RGB colors (0, 0, 0)
 	 */
 	public static Producer<PackedCollection> blank() {
-		return new DynamicCollectionProducer<>(RGB.shape(), args -> new RGB(defaultDepth, 0, 0, 0, false));
+		return new DynamicCollectionProducer(RGB.shape(), args -> new RGB(defaultDepth, 0, 0, 0, false));
 	}
 
 	/**

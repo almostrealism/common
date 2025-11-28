@@ -21,9 +21,6 @@ import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.collect.WeightedSumExpression;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.Product;
-import io.almostrealism.expression.Sum;
-import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.MatrixFeatures;
 import org.almostrealism.collect.CollectionProducer;
@@ -33,11 +30,8 @@ import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 import org.almostrealism.collect.computations.DefaultTraversableExpressionComputation;
 import org.almostrealism.collect.computations.ReshapeProducer;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.function.BiFunction;
 import java.util.function.Function;
-import java.util.function.Supplier;
 
 /**
  * A feature interface providing factory methods for creating and manipulating transformation matrices.
@@ -64,7 +58,7 @@ public interface TransformMatrixFeatures extends MatrixFeatures {
 	 * @param v the matrix to wrap
 	 * @return a producer that yields the specified matrix
 	 */
-	default CollectionProducer<TransformMatrix> v(TransformMatrix v) { return value(v); }
+	default CollectionProducer v(TransformMatrix v) { return value(v); }
 
 	/**
 	 * Creates a fixed producer for the given {@link TransformMatrix} value.
@@ -72,8 +66,8 @@ public interface TransformMatrixFeatures extends MatrixFeatures {
 	 * @param v the matrix to wrap
 	 * @return a producer that yields the specified matrix
 	 */
-	default CollectionProducer<TransformMatrix> value(TransformMatrix v) {
-		return (CollectionProducer<TransformMatrix>) (CollectionProducer) DefaultTraversableExpressionComputation.fixed(v, (BiFunction) TransformMatrix.postprocessor());
+	default CollectionProducer value(TransformMatrix v) {
+		return (CollectionProducer) (CollectionProducer) DefaultTraversableExpressionComputation.fixed(v, (BiFunction) TransformMatrix.postprocessor());
 	}
 
 	/**
@@ -83,7 +77,7 @@ public interface TransformMatrixFeatures extends MatrixFeatures {
 	 * @param offset the translation offset vector
 	 * @return a producer for the translation matrix
 	 */
-	default CollectionProducer<TransformMatrix> translationMatrix(Producer<PackedCollection> offset) {
+	default CollectionProducer translationMatrix(Producer<PackedCollection> offset) {
 		CollectionProducer m = pad(shape(4, 4), c(offset).reshape(3, 1), 0, 3)
 				.add(identity(4));
 
@@ -105,10 +99,10 @@ public interface TransformMatrixFeatures extends MatrixFeatures {
 	 * @param scale a vector containing (scaleX, scaleY, scaleZ) factors
 	 * @return a producer for the scale matrix
 	 */
-	default CollectionProducer<TransformMatrix> scaleMatrix(Producer<PackedCollection> scale) {
+	default CollectionProducer scaleMatrix(Producer<PackedCollection> scale) {
 		CollectionProducerComputationBase m = (CollectionProducerComputationBase)
 				diagonal(concat(shape(4), (Producer) scale, c(1.0)));
-		return (CollectionProducer<TransformMatrix>) (CollectionProducer) m.setPostprocessor((BiFunction) TransformMatrix.postprocessor());
+		return (CollectionProducer) (CollectionProducer) m.setPostprocessor((BiFunction) TransformMatrix.postprocessor());
 	}
 
 	/**
@@ -120,7 +114,7 @@ public interface TransformMatrixFeatures extends MatrixFeatures {
 	 */
 	default CollectionProducerComputation<PackedCollection> transformAsLocation(TransformMatrix matrix,
 																	  Producer<PackedCollection> vector) {
-		return transformAsLocation(v(matrix), vector);
+		return transformAsLocation((Producer) v(matrix), vector);
 	}
 
 	/**
@@ -145,7 +139,7 @@ public interface TransformMatrixFeatures extends MatrixFeatures {
 	 */
 	default CollectionProducerComputation<PackedCollection> transformAsOffset(TransformMatrix matrix,
 																	Producer<PackedCollection> vector) {
-		return transformAsOffset(v(matrix), vector);
+		return transformAsOffset((Producer) v(matrix), vector);
 	}
 
 	/**

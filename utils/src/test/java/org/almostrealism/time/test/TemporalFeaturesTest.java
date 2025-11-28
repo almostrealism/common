@@ -149,10 +149,10 @@ public class TemporalFeaturesTest implements TestFeatures {
 		Producer<PackedCollection> decision = cp(pack(c));
 		Producer<PackedCollection> cutoff = c(8000);
 
-		CollectionProducer<PackedCollection> hpCoefficients =
+		CollectionProducer hpCoefficients =
 				highPassCoefficients(cutoff, sampleRate, filterOrder)
 						.reshape(1, filterOrder + 1);
-		CollectionProducer<PackedCollection> lpCoefficients =
+		CollectionProducer lpCoefficients =
 				lowPassCoefficients(cutoff, sampleRate, filterOrder)
 						.reshape(1, filterOrder + 1);
 

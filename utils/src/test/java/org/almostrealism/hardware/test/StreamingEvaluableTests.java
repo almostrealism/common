@@ -31,12 +31,12 @@ public class StreamingEvaluableTests implements TestFeatures {
 		PackedCollection a = new PackedCollection(shape(count)).randFill();
 		PackedCollection b = new PackedCollection(shape(count)).randFill();
 
-		CollectionProducer<PackedCollection> pa = func(shape(count), args -> {
+		CollectionProducer pa = func(shape(count), args -> {
 			log("Providing value 'a' on thread " + Thread.currentThread().getName());
 			return a;
 		});
 
-		CollectionProducer<PackedCollection> pb = func(shape(count), args -> {
+		CollectionProducer pb = func(shape(count), args -> {
 			log("Providing value 'b' on thread " + Thread.currentThread().getName());
 			return b;
 		});

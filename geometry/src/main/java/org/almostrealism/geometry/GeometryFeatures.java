@@ -20,7 +20,6 @@ import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.PairFeatures;
 import org.almostrealism.algebra.ScalarFeatures;
-import org.almostrealism.algebra.Vector;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 
@@ -58,7 +57,7 @@ public interface GeometryFeatures extends ScalarFeatures, PairFeatures, RayFeatu
 	 * @param input the input values
 	 * @return a producer for the sine of the input
 	 */
-	default <T extends PackedCollection> CollectionProducer<T> sin(Supplier<Evaluable<? extends PackedCollection>> input) {
+	default <T extends PackedCollection> CollectionProducer sin(Supplier<Evaluable<? extends PackedCollection>> input) {
 		// TODO  Add shortcircuit
 		return compute("sin",
 				shape -> args -> sin(shape, args[1]), (Producer) input);
@@ -71,7 +70,7 @@ public interface GeometryFeatures extends ScalarFeatures, PairFeatures, RayFeatu
 	 * @param input the input values
 	 * @return a producer for the cosine of the input
 	 */
-	default <T extends PackedCollection> CollectionProducer<T> cos(Supplier<Evaluable<? extends PackedCollection>> input) {
+	default <T extends PackedCollection> CollectionProducer cos(Supplier<Evaluable<? extends PackedCollection>> input) {
 		// TODO  Add shortcircuit
 		return compute("cos",
 				shape -> args -> cos(shape, args[1]), (Producer) input);
@@ -84,7 +83,7 @@ public interface GeometryFeatures extends ScalarFeatures, PairFeatures, RayFeatu
 	 * @param input the input values
 	 * @return a producer for the tangent of the input
 	 */
-	default <T extends PackedCollection> CollectionProducer<T> tan(Supplier<Evaluable<? extends PackedCollection>> input) {
+	default <T extends PackedCollection> CollectionProducer tan(Supplier<Evaluable<? extends PackedCollection>> input) {
 		// TODO  Add shortcircuit
 		return compute("tan",
 				shape -> args -> tan(shape, args[1]), (Producer) input);
@@ -97,7 +96,7 @@ public interface GeometryFeatures extends ScalarFeatures, PairFeatures, RayFeatu
 	 * @param input the input values
 	 * @return a producer for the hyperbolic tangent of the input
 	 */
-	default <T extends PackedCollection> CollectionProducer<T> tanh(Supplier<Evaluable<? extends PackedCollection>> input) {
+	default <T extends PackedCollection> CollectionProducer tanh(Supplier<Evaluable<? extends PackedCollection>> input) {
 		return compute("tanh",
 				shape -> args -> tanh(shape, args[1]), (Producer) input);
 	}
@@ -110,9 +109,9 @@ public interface GeometryFeatures extends ScalarFeatures, PairFeatures, RayFeatu
 	 * @param amp the amplitude of the wave
 	 * @return a producer for the wave value
 	 */
-	default CollectionProducer<PackedCollection> sinw(Producer<PackedCollection> input,
-														 Producer<PackedCollection> wavelength,
-														 Producer<PackedCollection> amp) {
+	default CollectionProducer sinw(Producer<PackedCollection> input,
+									Producer<PackedCollection> wavelength,
+									Producer<PackedCollection> amp) {
 		return sin(c(TWO_PI).multiply(input).divide(wavelength)).multiply(amp);
 	}
 
@@ -125,10 +124,10 @@ public interface GeometryFeatures extends ScalarFeatures, PairFeatures, RayFeatu
 	 * @param amp the amplitude of the wave
 	 * @return a producer for the wave value
 	 */
-	default CollectionProducer<PackedCollection> sinw(Producer<PackedCollection> input,
-														 Producer<PackedCollection> wavelength,
-														 Producer<PackedCollection> phase,
-														 Producer<PackedCollection> amp) {
+	default CollectionProducer sinw(Producer<PackedCollection> input,
+									Producer<PackedCollection> wavelength,
+									Producer<PackedCollection> phase,
+									Producer<PackedCollection> amp) {
 		return sin(c(TWO_PI).multiply(divide(input, wavelength).subtract(phase))).multiply(amp);
 	}
 

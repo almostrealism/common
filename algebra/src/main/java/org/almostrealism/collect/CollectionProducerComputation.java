@@ -15,7 +15,6 @@
  */
 
 package org.almostrealism.collect;
-import org.almostrealism.collect.PackedCollection;
 
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.ComputeContext;
@@ -96,7 +95,7 @@ import java.util.stream.Stream;
  * @see DefaultCollectionEvaluable
  */
 public interface CollectionProducerComputation<T extends PackedCollection> extends
-		 ProducerComputation<T>, CollectionProducerParallelProcess<T> {
+		 ProducerComputation<PackedCollection>, CollectionProducerParallelProcess {
 	boolean isolationLogging = SystemUtils.isEnabled("AR_ISOLATION_LOGGING").orElse(false);
 
 	/**
@@ -107,8 +106,8 @@ public interface CollectionProducerComputation<T extends PackedCollection> exten
 	boolean enableShapeTrim = false;
 
 	@Override
-	default <V extends PackedCollection> CollectionProducer<V> applyDeltaStrategy(CollectionProducer<V> producer,
-																		  Producer<?> target) {
+	default <V extends PackedCollection> CollectionProducer applyDeltaStrategy(CollectionProducer producer,
+																			   Producer<?> target) {
 		Collection<Producer<?>> terms;
 
 		if (producer instanceof Parent) {
@@ -124,7 +123,7 @@ public interface CollectionProducerComputation<T extends PackedCollection> exten
 	}
 
 	@Override
-	default CollectionProducerParallelProcess<T> generate(List<Process<?, ?>> children) {
+	default CollectionProducerParallelProcess generate(List<Process<?, ?>> children) {
 		throw new UnsupportedOperationException(getClass().getName());
 	}
 
@@ -134,11 +133,11 @@ public interface CollectionProducerComputation<T extends PackedCollection> exten
 				.filter(f -> !(f instanceof MemoryDataDestinationProducer));
 	}
 
-	default T createDestination(int len) {
+	default PackedCollection createDestination(int len) {
 		throw new UnsupportedOperationException();
 	}
 
-	default T postProcessOutput(MemoryData output, int offset) {
+	default PackedCollection postProcessOutput(MemoryData output, int offset) {
 		TraversalPolicy shape = getShape();
 
 		s: if (output instanceof Shape) {
@@ -159,11 +158,11 @@ public interface CollectionProducerComputation<T extends PackedCollection> exten
 			}
 
 			if (offset == 0 && shape.equals(((Shape) output).getShape())) {
-				return (T) output;
+				return (PackedCollection) output;
 			}
 		}
 
-		return (T) new PackedCollection(shape, shape.getTraversalAxis(), output, offset);
+		return new PackedCollection(shape, shape.getTraversalAxis(), output, offset);
 	}
 
 	/**
@@ -200,9 +199,9 @@ public interface CollectionProducerComputation<T extends PackedCollection> exten
 	 * @see AcceleratedComputationEvaluable#compile()
 	 */
 	@Override
-	default Evaluable<T> get() {
+	default Evaluable<PackedCollection> get() {
 		ComputeContext<MemoryData> ctx = Hardware.getLocalHardware().getComputer().getContext(this);
-		AcceleratedComputationEvaluable<T> ev = new DefaultCollectionEvaluable<>(
+		AcceleratedComputationEvaluable<PackedCollection> ev = new DefaultCollectionEvaluable<>(
 				ctx, getShape(), this,
 				this::createDestination, this::postProcessOutput);
 		ev.load();
@@ -210,12 +209,12 @@ public interface CollectionProducerComputation<T extends PackedCollection> exten
 	}
 
 	@Override
-	default CollectionProducer<T> traverse(int axis) {
+	default CollectionProducer traverse(int axis) {
 		return new ReshapeProducer(axis, this);
 	}
 
 	@Override
-	default CollectionProducer<T> reshape(TraversalPolicy shape) {
+	default CollectionProducer reshape(TraversalPolicy shape) {
 		return new ReshapeProducer(shape, this);
 	}
 
@@ -226,7 +225,7 @@ public interface CollectionProducerComputation<T extends PackedCollection> exten
 		return data;
 	}
 
-	static <T extends PackedCollection> Function<List<Producer<?>>, CollectionProducer<T>>
+	static <T extends PackedCollection> Function<List<Producer<?>>, CollectionProducer>
 				producerFactory(CollectionProducerComputation<T> original) {
 		return args -> {
 			List<Producer<?>> terms = new ArrayList<>();
@@ -235,7 +234,7 @@ public interface CollectionProducerComputation<T extends PackedCollection> exten
 			if (terms.isEmpty()) {
 				throw new IllegalArgumentException();
 			} else if (terms.size() == 1) {
-				return (CollectionProducer<T>) terms.get(0);
+				return (CollectionProducer) terms.get(0);
 			} else {
 				return original.generate((List) args.stream()
 						.map(t -> (Process) t).collect(Collectors.toList()));
@@ -243,7 +242,7 @@ public interface CollectionProducerComputation<T extends PackedCollection> exten
 		};
 	}
 
-	static <T extends PackedCollection> boolean isIsolationPermitted(CollectionProducer<T> op) {
+	static <T extends PackedCollection> boolean isIsolationPermitted(CollectionProducer op) {
 		return Process.isolationPermitted(op) &&
 				op.getShape().getTotalSizeLong() <= MemoryProvider.MAX_RESERVATION;
 	}
@@ -292,9 +291,9 @@ public interface CollectionProducerComputation<T extends PackedCollection> exten
 		return shape;
 	}
 
-	class IsolatedProcess<T extends PackedCollection> extends DelegatedCollectionProducer<T> {
+	class IsolatedProcess extends DelegatedCollectionProducer<PackedCollection> {
 
-		public IsolatedProcess(CollectionProducer<T> op) {
+		public IsolatedProcess(CollectionProducer op) {
 			super(op);
 
 			if (isolationLogging)

@@ -15,7 +15,6 @@
  */
 
 package org.almostrealism.collect;
-import org.almostrealism.collect.PackedCollection;
 
 import io.almostrealism.collect.CollectionProducerBase;
 import io.almostrealism.collect.TraversalPolicy;
@@ -58,8 +57,8 @@ import org.almostrealism.hardware.computations.DelegatedProducer;
  * @see org.almostrealism.hardware.computations.DelegatedProducer
  */
 public class DelegatedCollectionProducer<T extends PackedCollection>
-						extends DelegatedProducer<T>
-						implements CollectionProducerBase<T, Producer<T>> {
+						extends DelegatedProducer<PackedCollection>
+						implements CollectionProducerBase<PackedCollection, CollectionProducer> {
 	private boolean fixedCount;
 
 	/**
@@ -67,7 +66,7 @@ public class DelegatedCollectionProducer<T extends PackedCollection>
 	 *
 	 * @param op  the collection producer to wrap
 	 */
-	public DelegatedCollectionProducer(CollectionProducer<T> op) {
+	public DelegatedCollectionProducer(CollectionProducer op) {
 		this(op, true);
 	}
 
@@ -77,7 +76,7 @@ public class DelegatedCollectionProducer<T extends PackedCollection>
 	 * @param op  the collection producer to wrap
 	 * @param directDelegate  true for direct delegation, false for indirect
 	 */
-	public DelegatedCollectionProducer(CollectionProducer<T> op, boolean directDelegate) {
+	public DelegatedCollectionProducer(CollectionProducer op, boolean directDelegate) {
 		this(op, directDelegate, true);
 	}
 
@@ -88,8 +87,8 @@ public class DelegatedCollectionProducer<T extends PackedCollection>
 	 * @param directDelegate  true for direct delegation, false for indirect
 	 * @param fixedCount  true to delegate isFixedCount(), false to always return false
 	 */
-	public DelegatedCollectionProducer(CollectionProducer<T> op, boolean directDelegate, boolean fixedCount) {
-		super(op, directDelegate);
+	public DelegatedCollectionProducer(CollectionProducer op, boolean directDelegate, boolean fixedCount) {
+		super((Producer) op, directDelegate);
 		this.fixedCount = fixedCount;
 	}
 
@@ -109,7 +108,7 @@ public class DelegatedCollectionProducer<T extends PackedCollection>
 	 * @throws UnsupportedOperationException always thrown
 	 */
 	@Override
-	public Producer<T> traverse(int axis) { throw new UnsupportedOperationException(); }
+	public CollectionProducer traverse(int axis) { throw new UnsupportedOperationException(); }
 
 	/**
 	 * Reshape operation is not supported on delegated producers.
@@ -117,7 +116,7 @@ public class DelegatedCollectionProducer<T extends PackedCollection>
 	 * @throws UnsupportedOperationException always thrown
 	 */
 	@Override
-	public Producer<T> reshape(TraversalPolicy shape) {
+	public CollectionProducer reshape(TraversalPolicy shape) {
 		throw new UnsupportedOperationException();
 	}
 

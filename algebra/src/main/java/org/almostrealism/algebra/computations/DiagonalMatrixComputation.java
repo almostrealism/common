@@ -107,7 +107,7 @@ public class DiagonalMatrixComputation extends MatrixExpressionComputation {
 	 * @return the parallel process implementation
 	 */
 	@Override
-	public CollectionProducerParallelProcess<PackedCollection> generate(List<Process<?, ?>> children) {
+	public CollectionProducerParallelProcess generate(List<Process<?, ?>> children) {
 		return (CollectionProducerParallelProcess) diagonal((Producer) children.get(1));
 	}
 }

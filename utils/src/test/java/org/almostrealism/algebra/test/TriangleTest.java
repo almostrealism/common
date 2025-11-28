@@ -80,7 +80,7 @@ public class TriangleTest implements TestFeatures {
 	public void distance() {
 		Triangle t = basicTriangle();
 
-		Evaluable<Ray> r = ray(0.0, 0.0, 0.0, 0.0, 0.0, -1.0).get();
+		Evaluable<Ray> r = ((Producer) ray(0.0, 0.0, 0.0, 0.0, 0.0, -1.0)).get();
 		Producer<PackedCollection> distance = () -> new AdaptEvaluable<>(Triangle.intersectAt, r, new Provider<>(t.getData().traverse(0)));
 		PackedCollection s = distance.get().evaluate();
 		s.print();
@@ -94,7 +94,7 @@ public class TriangleTest implements TestFeatures {
 	 */
 	@Test
 	public void intersectAtDistance() {
-		Ray in = ray(0.0, 0.0, 0.0, 0.0, 0.0, -1.0).get().evaluate();
+		Ray in = new Ray((PackedCollection) ((Producer) ray(0.0, 0.0, 0.0, 0.0, 0.0, -1.0)).get().evaluate(), 0);
 		PackedCollection td = triangle();
 
 		PackedCollection distance = Triangle.intersectAt.evaluate(in, td.traverse(0));
@@ -103,28 +103,28 @@ public class TriangleTest implements TestFeatures {
 	}
 
 	protected Producer<Ray> intersectAt() {
-		return basicTriangle().intersectAt(
+		return (Producer) basicTriangle().intersectAt(
 				ray(0.0, 0.0, 0.0, 0.0, 0.0, -1.0)).get(0);
 	}
 
-	protected CollectionProducer<PackedCollection> originProducer() {
-		Producer<Ray> noRank = ((ProducerWithRank) intersectAt()).getProducer();
+	protected CollectionProducer originProducer() {
+		Producer noRank = ((ProducerWithRank) intersectAt()).getProducer();
 		if (noRank instanceof ReshapeProducer)
-			noRank = (Producer<Ray>) ((ReshapeProducer) noRank).getComputation();
+			noRank = (Producer) ((ReshapeProducer) noRank).getComputation();
 
-		CollectionProducer<PackedCollection> originVector =
+		CollectionProducer originVector =
 				(CollectionProducer)
-						((CollectionProducerComputationBase) (Producer) noRank).getInputs().get(1);
+						((CollectionProducerComputationBase) noRank).getInputs().get(1);
 		if (originVector instanceof ReshapeProducer) {
-			originVector = (CollectionProducer<PackedCollection>) ((ReshapeProducer) originVector).getComputation();
+			originVector = (CollectionProducer) ((ReshapeProducer) originVector).getComputation();
 		}
 
-		return (CollectionProducer<PackedCollection>) ((CollectionProducerComputationBase) originVector).getInputs().get(1);
+		return (CollectionProducer) ((CollectionProducerComputationBase) originVector).getInputs().get(1);
 	}
 
 	@Test
 	public void origin() {
-		CollectionProducer<PackedCollection> at = vector(originProducer());
+		CollectionProducer at = vector(originProducer());
 		Evaluable<PackedCollection> ev = at.get();
 
 		Vector p = new Vector(ev.evaluate(), 0);
@@ -133,7 +133,7 @@ public class TriangleTest implements TestFeatures {
 	}
 
 	protected PackedCollection triangle() {
-		Ray in = ray(0.0, 0.0, 0.0, 0.0, 0.0, -1.0).get().evaluate();
+		Ray in = new Ray((PackedCollection) ((Producer) ray(0.0, 0.0, 0.0, 0.0, 0.0, -1.0)).get().evaluate(), 0);
 		System.out.println(in);
 
 		PackedCollection data = new PackedCollection(9);
@@ -166,7 +166,7 @@ public class TriangleTest implements TestFeatures {
 
 	@Test
 	public void choiceTest() {
-		Ray in = ray(0.0, 0.0, 0.0, 0.0, 0.0, -1.0).get().evaluate();
+		Ray in = new Ray((PackedCollection) ((Producer) ray(0.0, 0.0, 0.0, 0.0, 0.0, -1.0)).get().evaluate(), 0);
 		PackedCollection td = triangle();
 
 		TriangleIntersectAt intersectAt = TriangleIntersectAt.construct(Input.value(shape(4, 3), 1),

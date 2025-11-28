@@ -58,7 +58,7 @@ public interface Intersectable<T> extends Supplier<Operator<T>> {
 	 * @return a {@link ContinuousField} containing intersection data (position and normal),
 	 *         or an empty field if no intersection occurs
 	 */
-	ContinuousField intersectAt(Producer<Ray> ray);
+	ContinuousField intersectAt(Producer<?> ray);
 
 	/**
 	 * Returns an {@link Operator} representing the expected value for a valid intersection.

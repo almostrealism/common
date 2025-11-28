@@ -56,7 +56,7 @@ public interface RayFeatures extends VectorFeatures {
 	 * @param value the ray to wrap
 	 * @return a producer that yields the specified ray
 	 */
-	default CollectionProducer<Ray> v(Ray value) { return value(value); }
+	default CollectionProducer v(Ray value) { return value(value); }
 
 	/**
 	 * Creates a fixed producer for the given {@link Ray} value.
@@ -64,8 +64,8 @@ public interface RayFeatures extends VectorFeatures {
 	 * @param value the ray to wrap
 	 * @return a producer that yields the specified ray
 	 */
-	default CollectionProducer<Ray> value(Ray value) {
-		return (CollectionProducer<Ray>) (CollectionProducer) DefaultTraversableExpressionComputation.fixed(value, (BiFunction) Ray.postprocessor());
+	default CollectionProducer value(Ray value) {
+		return (CollectionProducer) (CollectionProducer) DefaultTraversableExpressionComputation.fixed(value, (BiFunction) Ray.postprocessor());
 	}
 
 	/**
@@ -79,7 +79,7 @@ public interface RayFeatures extends VectorFeatures {
 	 * @param dz the z-component of the direction
 	 * @return a producer that yields a ray with the specified origin and direction
 	 */
-	default CollectionProducer<Ray> ray(double x, double y, double z, double dx, double dy, double dz) {
+	default CollectionProducer ray(double x, double y, double z, double dx, double dy, double dz) {
 		return value(new Ray(new Vector(x, y, z), new Vector(dx, dy, dz)));
 	}
 
@@ -90,8 +90,8 @@ public interface RayFeatures extends VectorFeatures {
 	 * @param direction the producer for the ray direction
 	 * @return a producer that yields a ray composed of the origin and direction
 	 */
-	default <T extends PackedCollection> CollectionProducer<Ray>
-			ray(Producer<T> origin, Producer<T> direction) {
+	default <T extends PackedCollection> CollectionProducer
+	ray(Producer<T> origin, Producer<T> direction) {
 		return (CollectionProducer) concat(shape(6), (Producer) origin, (Producer) direction);
 	}
 
@@ -102,7 +102,7 @@ public interface RayFeatures extends VectorFeatures {
 	 * @param values a function that returns coordinate values for each index
 	 * @return a producer that yields the constructed ray
 	 */
-	default CollectionProducer<Ray> ray(IntFunction<Double> values) {
+	default CollectionProducer ray(IntFunction<Double> values) {
 		return ray(values.apply(0), values.apply(1), values.apply(2),
 				values.apply(3), values.apply(4), values.apply(5));
 	}
@@ -113,7 +113,7 @@ public interface RayFeatures extends VectorFeatures {
 	 * @param r the ray producer
 	 * @return a producer for the origin vector (first 3 components)
 	 */
-	default CollectionProducer<PackedCollection> origin(Producer<Ray> r) {
+	default CollectionProducer origin(Producer<?> r) {
 		return subset(shape(3), r, 0);
 	}
 
@@ -123,7 +123,7 @@ public interface RayFeatures extends VectorFeatures {
 	 * @param r the ray producer
 	 * @return a producer for the direction vector (last 3 components)
 	 */
-	default CollectionProducer<PackedCollection> direction(Producer<Ray> r) {
+	default CollectionProducer direction(Producer<?> r) {
 		return subset(shape(3), r, 3);
 	}
 
@@ -135,7 +135,7 @@ public interface RayFeatures extends VectorFeatures {
 	 * @param t the parametric distance along the ray
 	 * @return a producer for the point at distance t from the origin
 	 */
-	default CollectionProducer<PackedCollection> pointAt(Producer<Ray> r, Producer<PackedCollection> t) {
+	default CollectionProducer pointAt(Producer<?> r, Producer<PackedCollection> t) {
 		return direction(r).multiply(t).add(origin(r));
 	}
 
@@ -145,7 +145,7 @@ public interface RayFeatures extends VectorFeatures {
 	 * @param r the ray producer
 	 * @return a producer for origin dot origin
 	 */
-	default CollectionProducer<PackedCollection> oDoto(Producer<Ray> r) { return dotProduct(origin(r), origin(r)); }
+	default CollectionProducer oDoto(Producer<?> r) { return dotProduct(origin(r), origin(r)); }
 
 	/**
 	 * Computes the dot product of the ray direction with itself (direction squared length).
@@ -153,7 +153,7 @@ public interface RayFeatures extends VectorFeatures {
 	 * @param r the ray producer
 	 * @return a producer for direction dot direction
 	 */
-	default CollectionProducer<PackedCollection> dDotd(Producer<Ray> r) { return dotProduct(direction(r), direction(r)); }
+	default CollectionProducer dDotd(Producer<?> r) { return dotProduct(direction(r), direction(r)); }
 
 	/**
 	 * Computes the dot product of the ray origin with the direction.
@@ -161,7 +161,7 @@ public interface RayFeatures extends VectorFeatures {
 	 * @param r the ray producer
 	 * @return a producer for origin dot direction
 	 */
-	default CollectionProducer<PackedCollection> oDotd(Producer<Ray> r) { return dotProduct(origin(r), direction(r)); }
+	default CollectionProducer oDotd(Producer<?> r) { return dotProduct(origin(r), direction(r)); }
 
 	/**
 	 * Transforms a ray by a transformation matrix.
@@ -172,7 +172,7 @@ public interface RayFeatures extends VectorFeatures {
 	 * @param r the ray to transform
 	 * @return a producer for the transformed ray
 	 */
-	default CollectionProducer<Ray> transform(TransformMatrix t, Producer<Ray> r) {
+	default CollectionProducer transform(TransformMatrix t, Producer<?> r) {
 		return ray(
 				TransformMatrixFeatures.getInstance().transformAsLocation(t, origin(r)),
 				TransformMatrixFeatures.getInstance().transformAsOffset(t, direction(r)));

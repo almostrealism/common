@@ -82,8 +82,8 @@ import java.util.List;
  * @see DeltaFeatures#replaceInput
  */
 // TODO  This should probably extend DelegatedProducer
-public class InputStub<T extends PackedCollection> implements CollectionProducer<T>,
-														ParallelProcess<Process<?, ?>, Evaluable<? extends T>>,
+public class InputStub<T extends PackedCollection> implements CollectionProducer,
+														ParallelProcess<Process<?, ?>, Evaluable<? extends PackedCollection>>,
 														Algebraic, OperationInfo {
 	private final OperationMetadata metadata;
 	private final Producer<T> producer;
@@ -168,9 +168,9 @@ public class InputStub<T extends PackedCollection> implements CollectionProducer
 	 * @throws UnsupportedOperationException if the wrapped producer is not a CollectionProducer
 	 */
 	@Override
-	public CollectionProducer<T> reshape(TraversalPolicy shape) {
+	public CollectionProducer reshape(TraversalPolicy shape) {
 		if (producer instanceof CollectionProducer) {
-			return new InputStub<>(((CollectionProducer<T>) producer).reshape(shape));
+			return new InputStub<>(((CollectionProducer) producer).reshape(shape));
 		}
 
 		throw new UnsupportedOperationException();
@@ -184,16 +184,16 @@ public class InputStub<T extends PackedCollection> implements CollectionProducer
 	 * @throws UnsupportedOperationException if the wrapped producer is not a CollectionProducer
 	 */
 	@Override
-	public CollectionProducer<T> traverse(int axis) {
+	public CollectionProducer traverse(int axis) {
 		if (producer instanceof CollectionProducer) {
-			return new InputStub<>(((CollectionProducer<T>) producer).traverse(axis));
+			return new InputStub<>(((CollectionProducer) producer).traverse(axis));
 		}
 
 		throw new UnsupportedOperationException();
 	}
 
 	@Override
-	public ParallelProcess<Process<?, ?>, Evaluable<? extends T>> optimize(ProcessContext ctx) {
+	public ParallelProcess<Process<?, ?>, Evaluable<? extends PackedCollection>> optimize(ProcessContext ctx) {
 		return ParallelProcess.super.optimize(ctx);
 	}
 
@@ -203,13 +203,13 @@ public class InputStub<T extends PackedCollection> implements CollectionProducer
 	}
 
 	@Override
-	public ParallelProcess<Process<?, ?>, Evaluable<? extends T>> generate(List<Process<?, ?>> children) {
+	public ParallelProcess<Process<?, ?>, Evaluable<? extends PackedCollection>> generate(List<Process<?, ?>> children) {
 		return new InputStub<>(metadata, (Producer) children.iterator().next());
 	}
 
 	@Override
-	public Evaluable<T> get() {
-		return producer.get();
+	public Evaluable<PackedCollection> get() {
+		return (Evaluable) producer.get();
 	}
 
 	/**

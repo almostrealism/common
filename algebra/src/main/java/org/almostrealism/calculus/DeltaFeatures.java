@@ -19,7 +19,6 @@ package org.almostrealism.calculus;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.ComputationBase;
 import io.almostrealism.collect.Algebraic;
-import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.compute.Process;
@@ -163,8 +162,8 @@ public interface DeltaFeatures extends MatrixFeatures {
 	 * @param <T>  the shape type
 	 * @return the isolated delta computation
 	 */
-	default <T extends PackedCollection> CollectionProducer<T> generateIsolatedDelta(ComputationBase<T, T, Evaluable<T>> producer,
-																			 Producer<?> input) {
+	default <T extends PackedCollection> CollectionProducer generateIsolatedDelta(ComputationBase<T, T, Evaluable<T>> producer,
+																				  Producer<?> input) {
 		Map<Producer<?>, Producer<?>> replacements = new HashMap<>();
 		List toReplace = enableTotalIsolation ? producer.getInputs() : Collections.singletonList(input);
 
@@ -222,8 +221,8 @@ public interface DeltaFeatures extends MatrixFeatures {
 	 * @param <T>  the shape type
 	 * @return the gradient computation, or null if unable to compute
 	 */
-	default <T extends PackedCollection> CollectionProducer<T> attemptDelta(CollectionProducer<T> producer, Producer<?> target) {
-		CollectionProducer<T> result = MatrixFeatures.super.attemptDelta(producer, target);
+	default <T extends PackedCollection> CollectionProducer attemptDelta(CollectionProducer producer, Producer<?> target) {
+		CollectionProducer result = MatrixFeatures.super.attemptDelta(producer, target);
 		if (result != null) return result;
 
 		TraversalPolicy shape = shape(producer);
@@ -236,15 +235,15 @@ public interface DeltaFeatures extends MatrixFeatures {
 				return null;
 			}
 
-			Optional<Producer<T>> match = AlgebraFeatures.matchInput(producer, target);
+			Optional<Producer<?>> match = AlgebraFeatures.matchInput((Producer) producer, target);
 
 			if (match == null) {
 				return null;
 			} else if (match.isEmpty()) {
-				return (CollectionProducer<T>) zeros(shape.append(targetShape));
+				return (CollectionProducer) zeros(shape.append(targetShape));
 			}
 
-			Producer<T> in = match.get();
+			Producer<?> in = match.get();
 
 			if (AlgebraFeatures.match(in, target)) {
 				return applyDeltaStrategy(producer, target);
@@ -255,7 +254,7 @@ public interface DeltaFeatures extends MatrixFeatures {
 			Producer f = generateIsolatedDelta((ComputationBase) producer, in);
 			if (f == null) return null;
 
-			Producer g = ((CollectionProducer<T>) in).delta(target);
+			Producer g = ((CollectionProducer) in).delta(target);
 
 			int finalLength = shape.getTotalSize();
 			int outLength = shape(in).getTotalSize();
@@ -282,8 +281,8 @@ public interface DeltaFeatures extends MatrixFeatures {
 	 * @param <T>  the shape type
 	 * @return the gradient computation, or null to use default behavior
 	 */
-	default <T extends PackedCollection> CollectionProducer<T> applyDeltaStrategy(CollectionProducer<T> producer,
-																		  Producer<?> target) {
+	default <T extends PackedCollection> CollectionProducer applyDeltaStrategy(CollectionProducer producer,
+																			   Producer<?> target) {
 		return null;
 	}
 
@@ -310,9 +309,9 @@ public interface DeltaFeatures extends MatrixFeatures {
 	 * @param <T>  the shape type
 	 * @return a function that processes term collections and returns gradients
 	 */
-	default <T extends PackedCollection> Function<Collection<Producer<?>>, CollectionProducer<T>>
+	default <T extends PackedCollection> Function<Collection<Producer<?>>, CollectionProducer>
 			deltaStrategyProcessor(MultiTermDeltaStrategy strategy,
-					  Function<List<Producer<?>>, CollectionProducer<T>> producerFactory,
+					  Function<List<Producer<?>>, CollectionProducer> producerFactory,
 					  TraversalPolicy producerShape, Producer<?> target) {
 		return terms -> {
 			if (strategy == MultiTermDeltaStrategy.NONE) {
@@ -363,13 +362,13 @@ public interface DeltaFeatures extends MatrixFeatures {
 	 * @param <T>  the shape type
 	 * @return a new producer with inputs replaced by stubs
 	 */
-	default <T extends PackedCollection> CollectionProducer<T> replaceInput(
+	default <T extends PackedCollection> CollectionProducer replaceInput(
 			Producer<T> producer,
 			List<Supplier> toReplace,
 			Map<Producer<?>, Producer<?>> replacements) {
 		if (producer instanceof ReshapeProducer) {
 			return ((ReshapeProducer) producer).generate(List.of(
-						replaceInput((Producer) ((ReshapeProducer) producer).getChildren().iterator().next(),
+						(Process) replaceInput((Producer) ((ReshapeProducer) producer).getChildren().iterator().next(),
 					toReplace, replacements)));
 		} else {
 			return (CollectionProducer) replaceInput((ComputationBase) producer, toReplace, replacements);
@@ -420,14 +419,14 @@ public interface DeltaFeatures extends MatrixFeatures {
 	 */
 	// TODO  It seems like this should be something that is just
 	// TODO  part of MatrixFeatures, or even an option for matmul
-	default <V extends PackedCollection> CollectionProducer<V> expandAndMultiply(
-			CollectionProducer<V> vector, CollectionProducer<V> matrix) {
+	default <V extends PackedCollection> CollectionProducer expandAndMultiply(
+			CollectionProducer vector, CollectionProducer matrix) {
 		if (vector.getShape().getDimensions() != 1) {
 			throw new IllegalArgumentException();
 		} else if (Algebraic.isIdentity(shape(vector).length(0), matrix)) {
 			return diagonal(vector);
 		} else {
-			CollectionProducer<V> expanded = vector.traverse(1).repeat(matrix.getShape().length(1));
+			CollectionProducer expanded = vector.traverse(1).repeat(matrix.getShape().length(1));
 			return multiply(expanded, matrix);
 		}
 	}

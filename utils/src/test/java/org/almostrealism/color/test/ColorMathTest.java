@@ -67,7 +67,7 @@ public class ColorMathTest implements TestFeatures, RGBFeatures {
 			Producer<PackedCollection> arg0 = v(shape(1), 0);
 			Producer<PackedCollection> arg1 = v(RGB.shape(), 1);
 
-			CollectionProducer<PackedCollection> greater =
+			CollectionProducer greater =
 					greaterThan(arg0, c(0.0), (Producer) arg1, (Producer) black());
 			RGB result = new RGB(greater.get().evaluate(pack(0.1), new RGB(0.0, 1.0, 0.0)), 0);
 			assertEquals(0.0, result.toDouble(0));
@@ -144,7 +144,7 @@ public class ColorMathTest implements TestFeatures, RGBFeatures {
 
 			input.print();
 
-			CollectionProducer<PackedCollection> greater =
+			CollectionProducer greater =
 					greaterThan(arg0, c(0.0), (Producer) white(), black());
 			greater.get().into(result.each()).evaluate(input);  // Use .each() for batched processing
 			result.print();

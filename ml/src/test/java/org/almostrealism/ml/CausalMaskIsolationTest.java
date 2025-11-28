@@ -30,10 +30,10 @@ public class CausalMaskIsolationTest implements AttentionFeatures {
         Model model = new Model(shape(heads, seqLen));
 
         // Generate causal mask using the same approach as in attention()
-        CollectionProducer<?> indices = integers(0, seqLen);
-        CollectionProducer<PackedCollection> maskRow =
+        CollectionProducer indices = integers(0, seqLen);
+        CollectionProducer maskRow =
             greaterThan(indices, cp(position), c(-10000.0), c(0.0), false);
-        CollectionProducer<PackedCollection> causalMask = maskRow.reshape(1, seqLen).repeat(heads);
+        CollectionProducer causalMask = maskRow.reshape(1, seqLen).repeat(heads);
 
         // Add the mask using the layer approach
         TraversalPolicy maskShape = shape(heads, seqLen);
@@ -109,10 +109,10 @@ public class CausalMaskIsolationTest implements AttentionFeatures {
         // Create model with causal mask
         Model model = new Model(shape(heads, seqLen));
 
-        CollectionProducer<?> indices = integers(0, seqLen);
-        CollectionProducer<PackedCollection> maskRow =
+        CollectionProducer indices = integers(0, seqLen);
+        CollectionProducer maskRow =
             greaterThan(indices, cp(position), c(-10000.0), c(0.0), false);
-        CollectionProducer<PackedCollection> causalMask = maskRow.reshape(1, seqLen).repeat(heads);
+        CollectionProducer causalMask = maskRow.reshape(1, seqLen).repeat(heads);
 
         TraversalPolicy maskShape = shape(heads, seqLen);
         model.add(layer("causal_mask", maskShape, maskShape, input -> add(input, causalMask)));

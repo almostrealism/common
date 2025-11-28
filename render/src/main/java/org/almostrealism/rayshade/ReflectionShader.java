@@ -139,7 +139,7 @@ public class ReflectionShader extends ShaderSet<ShaderContext> implements
 	@Override
 	public Producer<PackedCollection> shade(ShaderContext p, DiscreteField normals) {
 		if (p.getReflectionCount() > ReflectionShader.maxReflections) {
-			return new DynamicCollectionProducer<>(RGB.shape(), args -> {
+			return new DynamicCollectionProducer(RGB.shape(), args -> {
 					Vector point = p.getIntersection().get(0).get().evaluate(args).getOrigin();
 					PackedCollection surfaceValue = (PackedCollection) p.getSurface().getValueAt((Producer) v(point)).get().evaluate();
 					PackedCollection reflColor = reflectiveColor.get().evaluate(p);
@@ -172,7 +172,7 @@ public class ReflectionShader extends ShaderSet<ShaderContext> implements
 		Producer n = direction(normals.iterator().next());
 		Producer nor = p.getIntersection().getNormalAt((Producer) point);
 
-		Producer<Ray> transform = transform(((AbstractSurface) p.getSurface()).getTransform(true), p.getIntersection().get(0));
+		Producer<Ray> transform = (Producer) transform(((AbstractSurface) p.getSurface()).getTransform(true), p.getIntersection().get(0));
 		Producer loc = origin(transform);
 
 		Producer<PackedCollection> cp = length(nor).multiply(length(n));
@@ -201,7 +201,7 @@ public class ReflectionShader extends ShaderSet<ShaderContext> implements
 			 */
 
 			Producer<PackedCollection> c = scalar(1).subtract(dotProduct(minus(n), nor).divide(cp));
-			CollectionProducer<?> reflective = add(c(reflectivity),
+			CollectionProducer reflective = add(c(reflectivity),
 					c(1 - reflectivity).multiply(pow(c, c(5.0))));
 			Producer<PackedCollection> fcolor = color;
 			color = reflective.multiply(fr).multiply(fcolor);
@@ -234,7 +234,7 @@ public class ReflectionShader extends ShaderSet<ShaderContext> implements
 			 */
 
 			Producer<PackedCollection> c = c(1.0).subtract(dotProduct(minus(n), nor).divide(cp));
-			CollectionProducer<PackedCollection> powResult = pow(c, c(5.0));
+			CollectionProducer powResult = pow(c, c(5.0));
 			Producer<PackedCollection> reflective = c(reflectivity).add(
 					c(1 - reflectivity).multiply(powResult));
 			Producer<PackedCollection> fcolor = color;

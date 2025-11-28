@@ -197,10 +197,10 @@ public class CollectionProductComputation extends TraversableExpressionComputati
 	 * @see org.almostrealism.collect.CollectionProducer#reshape(int...)
 	 */
 	@Override
-	public CollectionProducer<PackedCollection> delta(Producer<?> target) {
+	public CollectionProducer delta(Producer<?> target) {
 		TraversalPolicy targetShape = shape(target);
 
-		List<CollectionProducer<PackedCollection>> operands = List.of(
+		List<CollectionProducer> operands = List.of(
 				getChildren().stream().skip(1)
 					.filter(p -> p instanceof CollectionProducer)
 					.toArray(CollectionProducer[]::new));
@@ -223,10 +223,10 @@ public class CollectionProductComputation extends TraversableExpressionComputati
 
 		TraversalPolicy shape = getShape().append(targetShape);
 
-		CollectionProducer<PackedCollection> u = operands.get(0);
-		CollectionProducer<PackedCollection> v = operands.get(1);
-		CollectionProducer<PackedCollection> uDelta = u.delta(target);
-		CollectionProducer<PackedCollection> vDelta = v.delta(target);
+		CollectionProducer u = operands.get(0);
+		CollectionProducer v = operands.get(1);
+		CollectionProducer uDelta = u.delta(target);
+		CollectionProducer vDelta = v.delta(target);
 
 		uDelta = uDelta.reshape(v.getShape().getTotalSize(), -1).traverse(0);
 		vDelta = vDelta.reshape(u.getShape().getTotalSize(), -1).traverse(0);

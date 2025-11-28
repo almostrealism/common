@@ -101,7 +101,7 @@ public class Triangle extends AbstractSurface implements ParticleGroup, Triangle
 	static {
 		// Note: Input shape is (3, 3) for a single triangle - 3 vertices with 3 components each
 		// For batch processing with shape (N, 3, 3), use TriangleFeatures.triangle(Producer) directly
-		CollectionProducer<PackedCollection> triangle =
+		CollectionProducer triangle =
 				triangleFeat.triangle(Input.value(new TraversalPolicy(false, false, 3, 3), 0));
 		dataProducer = triangle.get();
 
@@ -476,7 +476,7 @@ public class Triangle extends AbstractSurface implements ParticleGroup, Triangle
 		TransformMatrix t = getTransform(true);
 		boolean ut = useT && t != null;
 		Producer<Ray> r = ray;
-		if (ut) r = t.getInverse().transform(ray);
+		if (ut) r = (Producer) t.getInverse().transform(ray);
 
 		Evaluable<Ray> er = r.get();
 		// TODO  Perhaps r should be ray...

@@ -45,7 +45,7 @@ public class BasicIntersectionTest implements TestFeatures {
 		sphere.setSize(1.0);
 
 		// Create a ray from (0, 0, 10) pointing toward sphere (0, 0, -1)
-		Producer<Ray> ray = ray(0.0, 0.0, 10.0, 0.0, 0.0, -1.0);
+		Producer<Ray> ray = (Producer) ray(0.0, 0.0, 10.0, 0.0, 0.0, -1.0);
 
 		// Compute intersection
 		ContinuousField intersection = sphere.intersectAt(ray);
@@ -66,7 +66,7 @@ public class BasicIntersectionTest implements TestFeatures {
 		sphere.setSize(1.0);
 
 		// Create a ray from (0, 0, 10) pointing toward sphere (0, 0, -1)
-		Producer<Ray> ray = ray(0.0, 0.0, 10.0, 0.0, 0.0, -1.0);
+		Producer<Ray> ray = (Producer) ray(0.0, 0.0, 10.0, 0.0, 0.0, -1.0);
 
 		// Compute intersection
 		ShadableIntersection intersection = sphere.intersectAt(ray);

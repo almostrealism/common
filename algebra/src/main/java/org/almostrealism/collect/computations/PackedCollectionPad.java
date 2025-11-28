@@ -240,7 +240,7 @@ public class PackedCollectionPad extends TraversableExpressionComputation {
 	 * @see TraversableExpressionComputation#delta(Producer)
 	 */
 	@Override
-	public CollectionProducer<PackedCollection> delta(Producer<?> target) {
+	public CollectionProducer delta(Producer<?> target) {
 		Supplier in = getInputs().get(1);
 
 		TraversalPolicy shape = getShape();

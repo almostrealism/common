@@ -115,7 +115,7 @@ public interface RotationFeatures extends PairFeatures, LayerFeatures {
 
 		return layer("ropeRotation", shape, shape, input -> {
 			Producer<PackedCollection> pos = pad(shape(3), position, 0);
-			CollectionProducer<PackedCollection> r = subset(shape(1, headSize, 2), c(p(weights)), pos);
+			CollectionProducer r = subset(shape(1, headSize, 2), c(p(weights)), pos);
 			return multiplyComplex(traverse(1, input), r.traverse(1));
 		}, List.of(weights), requirements);
 	}
@@ -197,16 +197,16 @@ public interface RotationFeatures extends PairFeatures, LayerFeatures {
 
 		return layer("sequenceRotaryEmbedding", inputShape, inputShape, input -> {
 			// Extract the rotary part (first rotaryDim dimensions)
-			CollectionProducer<PackedCollection> rotaryPart =
+			CollectionProducer rotaryPart =
 					c(input).subset(shape(batchSize, heads, seqLen, rotaryDim), 0, 0, 0, 0);
 
 			// Extract the non-rotary part (remaining dimensions)
-			CollectionProducer<PackedCollection> nonRotaryPart =
+			CollectionProducer nonRotaryPart =
 					c(input).subset(shape(batchSize, heads, seqLen, dimHead - rotaryDim),
 							0, 0, 0, rotaryDim);
 
 			// Apply rotation to the rotary part
-			CollectionProducer<PackedCollection> rotated = applyRotaryTransform(
+			CollectionProducer rotated = applyRotaryTransform(
 					rotaryPart, cp(freqs), batchSize, heads, seqLen, rotaryDim);
 
 			// Concatenate rotated and non-rotary parts along dimension 3
@@ -228,9 +228,9 @@ public interface RotationFeatures extends PairFeatures, LayerFeatures {
 	 * @param rotaryDim Dimension to apply rotation (typically dimHead/2)
 	 * @return Rotated tensor with same shape as input
 	 */
-	default CollectionProducer<PackedCollection> applyRotaryTransform(
-			CollectionProducer<PackedCollection> input,
-			CollectionProducer<PackedCollection> freqs,
+	default CollectionProducer applyRotaryTransform(
+			CollectionProducer input,
+			CollectionProducer freqs,
 			int batchSize, int heads, int seqLen, int rotaryDim) {
 	
 		// Validate input shapes
@@ -245,14 +245,14 @@ public interface RotationFeatures extends PairFeatures, LayerFeatures {
 		}
 
 		// Expand freqs from (seqLen, rotaryDim) to (batchSize, heads, seqLen, rotaryDim)
-		CollectionProducer<PackedCollection> expandedFreqs = freqs
+		CollectionProducer expandedFreqs = freqs
 				.repeat(0, batchSize)    // (batchSize, seqLen, rotaryDim)
 				.repeat(1, heads);       // (batchSize, heads, seqLen, rotaryDim)
 
-		CollectionProducer<PackedCollection> cosFreqs = cos(expandedFreqs);
-		CollectionProducer<PackedCollection> sinFreqs = sin(expandedFreqs);
+		CollectionProducer cosFreqs = cos(expandedFreqs);
+		CollectionProducer sinFreqs = sin(expandedFreqs);
 
-		CollectionProducer<PackedCollection> rotateHalfInput =
+		CollectionProducer rotateHalfInput =
 				rotateHalf(input, batchSize, heads, seqLen, rotaryDim);
 
 		// input * cos(freqs) + rotate_half(input) * sin(freqs)
@@ -278,18 +278,18 @@ public interface RotationFeatures extends PairFeatures, LayerFeatures {
 	 * @param rotaryDim Dimension being rotated (must be even)
 	 * @return Tensor with halves swapped and first half negated
 	 */
-	default CollectionProducer<PackedCollection> rotateHalf(
-			CollectionProducer<PackedCollection> input,
+	default CollectionProducer rotateHalf(
+			CollectionProducer input,
 			int batchSize, int heads, int seqLen, int rotaryDim) {
 		int halfDim = rotaryDim / 2;
 		
 		// Extract first half (x1)
-		CollectionProducer<PackedCollection> x1 =
+		CollectionProducer x1 =
 				input.subset(shape(batchSize, heads, seqLen, halfDim),
 						0, 0, 0, 0);
 		
 		// Extract second half (x2)
-		CollectionProducer<PackedCollection> x2 =
+		CollectionProducer x2 =
 				input.subset(shape(batchSize, heads, seqLen, halfDim),
 						0, 0, 0, halfDim);
 		

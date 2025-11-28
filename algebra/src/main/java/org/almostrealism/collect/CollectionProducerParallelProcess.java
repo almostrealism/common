@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -15,10 +15,8 @@
  */
 
 package org.almostrealism.collect;
-import org.almostrealism.collect.PackedCollection;
 
 import io.almostrealism.code.ComputableParallelProcess;
-import io.almostrealism.collect.Shape;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.compute.Process;
 
@@ -42,12 +40,11 @@ import io.almostrealism.compute.Process;
  *   <li>Memory-efficient batch processing</li>
  * </ul>
  *
- * @param <T>  the shape type produced by this process
  * @author  Michael Murray
  * @see CollectionProducer
  * @see ComputableParallelProcess
  * @see org.almostrealism.collect.computations.CollectionProducerComputationBase
  */
-public interface CollectionProducerParallelProcess<T extends PackedCollection> extends
-			CollectionProducer<T>, ComputableParallelProcess<Process<?, ?>, Evaluable<? extends T>> {
+public interface CollectionProducerParallelProcess extends
+			CollectionProducer, ComputableParallelProcess<Process<?, ?>, Evaluable<? extends PackedCollection>> {
 }

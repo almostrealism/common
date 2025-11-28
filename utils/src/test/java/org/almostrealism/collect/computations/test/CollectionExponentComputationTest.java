@@ -16,7 +16,6 @@
 
 package org.almostrealism.collect.computations.test;
 
-import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.CollectionExponentComputation;
@@ -59,7 +58,7 @@ public class CollectionExponentComputationTest implements TestFeatures {
 		PackedCollection base = pack(2.0, 3.0, 4.0);
 		
 		// Using the CollectionFeatures pow method which internally uses CollectionExponentComputation
-		CollectionProducer<PackedCollection> cubed = cp(base).pow(c(3.0));
+		CollectionProducer cubed = cp(base).pow(c(3.0));
 		PackedCollection result = cubed.get().evaluate();
 		
 		Assert.assertEquals(8.0, result.valueAt(0), 1e-10);
@@ -104,7 +103,7 @@ public class CollectionExponentComputationTest implements TestFeatures {
 		PackedCollection values = pack(4.0, 8.0, 16.0, 25.0);
 		
 		// Square roots (x^0.5)
-		CollectionProducer<PackedCollection> sqrt = cp(values).pow(c(0.5));
+		CollectionProducer sqrt = cp(values).pow(c(0.5));
 		PackedCollection sqrtResult = sqrt.get().evaluate();
 		assertEquals(2.0, sqrtResult.valueAt(0));
 		assertEquals(2.828427124746, sqrtResult.valueAt(1)); // sqrt(8)
@@ -112,7 +111,7 @@ public class CollectionExponentComputationTest implements TestFeatures {
 		assertEquals(5.0, sqrtResult.valueAt(3));
 		
 		// Cubes (x^3)
-		CollectionProducer<PackedCollection> cubes = cp(values).pow(c(3.0));
+		CollectionProducer cubes = cp(values).pow(c(3.0));
 		PackedCollection cubeResult = cubes.get().evaluate();
 		assertEquals(64.0, cubeResult.valueAt(0));    // 4^3
 		assertEquals(512.0, cubeResult.valueAt(1));   // 8^3
@@ -120,7 +119,7 @@ public class CollectionExponentComputationTest implements TestFeatures {
 		assertEquals(15625.0, cubeResult.valueAt(3)); // 25^3
 		
 		// Reciprocals (x^-1)
-		CollectionProducer<PackedCollection> reciprocals = cp(values).pow(c(-1.0));
+		CollectionProducer reciprocals = cp(values).pow(c(-1.0));
 		PackedCollection recipResult = reciprocals.get().evaluate();
 		assertEquals(0.25, recipResult.valueAt(0));    // 1/4
 		assertEquals(0.125, recipResult.valueAt(1));   // 1/8
@@ -136,11 +135,11 @@ public class CollectionExponentComputationTest implements TestFeatures {
 	public void deltaComputation() {
 		// Test f(x) = x^3, df/dx = 3*x^2
 		PackedCollection testValues = pack(1.0, 2.0, 3.0);
-		CollectionProducer<PackedCollection> x = cp(testValues);
-		CollectionProducer<PackedCollection> f = x.pow(c(3.0));
+		CollectionProducer x = cp(testValues);
+		CollectionProducer f = x.pow(c(3.0));
 		
 		// Compute derivative
-		CollectionProducer<PackedCollection> df_dx = f.delta(x);
+		CollectionProducer df_dx = f.delta(x);
 		PackedCollection derivative = df_dx.get().evaluate();
 
 		derivative.print();
@@ -158,14 +157,14 @@ public class CollectionExponentComputationTest implements TestFeatures {
 	public void edgeCases() {
 		// Test x^0 = 1 (for non-zero x)
 		PackedCollection nonZeroValues = pack(2.0, 5.0, 10.0);
-		CollectionProducer<PackedCollection> powerZero = cp(nonZeroValues).pow(c(0.0));
+		CollectionProducer powerZero = cp(nonZeroValues).pow(c(0.0));
 		PackedCollection result = powerZero.get().evaluate();
 		Assert.assertEquals(1.0, result.valueAt(0), 1e-10);
 		Assert.assertEquals(1.0, result.valueAt(1), 1e-10);
 		Assert.assertEquals(1.0, result.valueAt(2), 1e-10);
 		
 		// Test x^1 = x
-		CollectionProducer<PackedCollection> powerOne = cp(nonZeroValues).pow(c(1.0));
+		CollectionProducer powerOne = cp(nonZeroValues).pow(c(1.0));
 		PackedCollection identityResult = powerOne.get().evaluate();
 		Assert.assertEquals(2.0, identityResult.valueAt(0), 1e-10);
 		Assert.assertEquals(5.0, identityResult.valueAt(1), 1e-10);
@@ -173,7 +172,7 @@ public class CollectionExponentComputationTest implements TestFeatures {
 		
 		// Test 1^x = 1
 		PackedCollection exponents = pack(2.0, 10.0, 100.0);
-		CollectionProducer<PackedCollection> oneToX = c(1.0).pow(cp(exponents));
+		CollectionProducer oneToX = c(1.0).pow(cp(exponents));
 		PackedCollection onesResult = oneToX.get().evaluate();
 		Assert.assertEquals(1.0, onesResult.valueAt(0), 1e-10);
 		Assert.assertEquals(1.0, onesResult.valueAt(1), 1e-10);
@@ -193,10 +192,10 @@ public class CollectionExponentComputationTest implements TestFeatures {
 			// Test with custom delta enabled (default)
 			CollectionExponentComputation.enableCustomDelta = true;
 			PackedCollection testValues = pack(2.0, 3.0);
-			CollectionProducer<PackedCollection> x = cp(testValues);
-			CollectionProducer<PackedCollection> f = x.pow(c(2.0));
+			CollectionProducer x = cp(testValues);
+			CollectionProducer f = x.pow(c(2.0));
 			
-			CollectionProducer<PackedCollection> df_dx_custom = f.delta(x);
+			CollectionProducer df_dx_custom = f.delta(x);
 			PackedCollection customResult = df_dx_custom.get().evaluate();
 
 			customResult.print();
@@ -207,7 +206,7 @@ public class CollectionExponentComputationTest implements TestFeatures {
 			
 			// Test with custom delta disabled
 			CollectionExponentComputation.enableCustomDelta = false;
-			CollectionProducer<PackedCollection> df_dx_default = f.delta(x);
+			CollectionProducer df_dx_default = f.delta(x);
 			PackedCollection defaultResult = df_dx_default.get().evaluate();
 			
 			// Should still compute correctly but potentially less efficiently

@@ -21,7 +21,6 @@ import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.test.KernelAssertions;
 import org.almostrealism.hardware.AcceleratedComputationOperation;
-import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Assert;
@@ -151,7 +150,7 @@ public class KernelOperationTests implements TestFeatures, KernelAssertions {
 
 		PackedCollection output = new PackedCollection(shape(8, 8, 4, 1));
 
-		CollectionProducer<PackedCollection> conv = c(p(input))
+		CollectionProducer conv = c(p(input))
 				.enumerate(1, w, s)
 				.enumerate(1, w, s)
 				.traverse(2)

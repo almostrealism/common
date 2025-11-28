@@ -25,7 +25,7 @@ import org.junit.Assert;
 import org.junit.Test;
 
 public class PassThroughProducerCompactionTest implements CodeFeatures {
-	protected CollectionProducer<PackedCollection> sum() {
+	protected CollectionProducer sum() {
 		return add(
 				Input.value(shape(1), 0),
 				Input.value(shape(1), 1));

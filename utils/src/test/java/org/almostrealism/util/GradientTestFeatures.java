@@ -47,7 +47,7 @@ public interface GradientTestFeatures extends CodeFeatures {
 			PackedCollection fixedInput = inputGenerator.apply(1);
 			fixedInput = fixedInput.reshape(fixedInput.getShape().item());
 
-			CollectionProducer<PackedCollection> p = cp(fixedInput);
+			CollectionProducer p = cp(fixedInput);
 
 			Producer<PackedCollection> c = operation.getResultant(p);
 			PackedCollection out = c.get().evaluate();
@@ -59,7 +59,7 @@ public interface GradientTestFeatures extends CodeFeatures {
 		if (variable) {
 			log("Validating variable input...");
 			PackedCollection variableInput = inputGenerator.apply(4);
-			CollectionProducer<PackedCollection> x = x(-1, dim);
+			CollectionProducer x = x(-1, dim);
 
 			Producer<PackedCollection> c = operation.getResultant(x);
 			PackedCollection out = c.get().evaluate(variableInput);
@@ -67,8 +67,8 @@ public interface GradientTestFeatures extends CodeFeatures {
 		}
 	}
 
-	default Producer<PackedCollection> applyGradient(CollectionProducer<?> delta,
-														CollectionProducer<?> gradient) {
+	default Producer<PackedCollection> applyGradient(CollectionProducer delta,
+														CollectionProducer gradient) {
 		CollectionFeatures cf = CollectionFeatures.getInstance();
 		int outSize = cf.shape(gradient).getTotalSize();
 		int inSize = cf.shape(delta).getTotalSize() / outSize;

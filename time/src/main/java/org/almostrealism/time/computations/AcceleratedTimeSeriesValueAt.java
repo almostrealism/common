@@ -102,7 +102,7 @@ public class AcceleratedTimeSeriesValueAt extends CollectionProducerComputationB
 	}
 
 	@Override
-	public CollectionProducerParallelProcess<PackedCollection> generate(List<Process<?, ?>> children) {
+	public CollectionProducerParallelProcess generate(List<Process<?, ?>> children) {
 		return new AcceleratedTimeSeriesValueAt(children.stream().skip(1).toArray(Producer[]::new));
 	}
 

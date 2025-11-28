@@ -36,7 +36,7 @@ public class PlaneTest implements TestFeatures {
 		Plane p = new Plane(Plane.XZ);
 		p.setLocation(new Vector(0.0, -10, 0.0));
 
-		return (ShadableIntersection) p.intersectAt(ray(0.0, 0.0, 1.0, 0.0, 0.5, -1.0));
+		return (ShadableIntersection) p.intersectAt((Producer) ray(0.0, 0.0, 1.0, 0.0, 0.5, -1.0));
 	}
 
 	// TODO @Test
@@ -66,7 +66,7 @@ public class PlaneTest implements TestFeatures {
 
 	@Test
 	public void intersectionTest2() {
-		Producer<Ray> r = ray(0.0, 1.0, 1.0, 0.0, 0.1, 1.0);
+		Producer<Ray> r = (Producer) ray(0.0, 1.0, 1.0, 0.0, 0.1, 1.0);
 
 		Plane p = new Plane(Plane.XZ);
 		p.setLocation(new Vector(0.0, 0, 0.0));
@@ -84,17 +84,17 @@ public class PlaneTest implements TestFeatures {
 		Plane p = new Plane(Plane.XZ);
 		p.setLocation(new Vector(0.0, -10, 0.0));
 
-		Producer<Ray> t = transform(p.getTransform(true),
+		Producer<Ray> t = (Producer) transform(p.getTransform(true),
 					ray(0.0, 0.0, 1.0, 0.0, 0.5, -1.0));
 		Assert.assertEquals(new Ray(new Vector(0.0, -10.0, 1.0),
 				new Vector(0.0, 0.5, -1.0)), t.get().evaluate());
 
-		t = transform(p.getTransform(true).getInverse(),
+		t = (Producer) transform(p.getTransform(true).getInverse(),
 					ray(0.0, 0.0, 1.0, 0.0, 0.5, -1.0));
 		Assert.assertEquals(new Ray(new Vector(0.0, 10.0, 1.0),
 				new Vector(0.0, 0.5, -1.0)), t.get().evaluate());
 
-		Vector v = new Vector(t.get().evaluate().pointAt(c(-20)).get().evaluate(), 0);
+		Vector v = new Vector(((Evaluable<PackedCollection>) t.get().evaluate().pointAt(c(-20)).get()).evaluate(), 0);
 		Assert.assertEquals(new Vector(0.0, 0.0, 21.0), v);
 	}
 }

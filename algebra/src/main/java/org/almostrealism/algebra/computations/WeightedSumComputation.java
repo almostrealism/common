@@ -185,7 +185,7 @@ public class WeightedSumComputation
 	 * @return the delta computation
 	 */
 	@Override
-	public CollectionProducer<PackedCollection> delta(Producer<?> target) {
+	public CollectionProducer delta(Producer<?> target) {
 		if (AlgebraFeatures.match(getInputs().get(1), target) && AlgebraFeatures.cannotMatch(getInputs().get(2), target)) {
 			return new DefaultTraversableExpressionComputation("weightedSumDelta",
 					getShape().append(shape(target)),

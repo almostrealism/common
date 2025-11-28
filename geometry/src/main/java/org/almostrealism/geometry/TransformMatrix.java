@@ -20,6 +20,7 @@ import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Provider;
 import org.almostrealism.algebra.Vector;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.geometry.computations.TransformMatrixAdjoint;
@@ -236,8 +237,8 @@ public class TransformMatrix extends PackedCollection implements TransformMatrix
 		return (Vector) transform((Producer) v(vector), TRANSFORM_AS_NORMAL).get().evaluate();
 	}
 
-	public Producer<Ray> transform(Producer<Ray> ray) {
-		return transform(this, ray);
+	public CollectionProducer transform(Producer<?> ray) {
+		return RayFeatures.getInstance().transform(this, ray);
 	}
 
 	/**

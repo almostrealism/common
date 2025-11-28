@@ -499,7 +499,7 @@ public class TraversableDeltaComputation
 	 * @throws UnsupportedOperationException Always thrown - second-order derivatives not supported
 	 */
 	@Override
-	public CollectionProducer<PackedCollection> delta(Producer<?> target) {
+	public CollectionProducer delta(Producer<?> target) {
 		throw new UnsupportedOperationException();
 	}
 

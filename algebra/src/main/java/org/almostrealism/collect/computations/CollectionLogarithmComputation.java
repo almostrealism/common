@@ -178,24 +178,24 @@ public class CollectionLogarithmComputation extends TraversableExpressionComputa
 	 *         to the parent if custom delta is disabled
 	 */
 	@Override
-	public CollectionProducer<PackedCollection> delta(Producer<?> target) {
+	public CollectionProducer delta(Producer<?> target) {
 		if (!enableCustomDelta) {
 			return super.delta(target);
 		}
 
-		CollectionProducer<PackedCollection> delta = MatrixFeatures.getInstance().attemptDelta(this, target);
+		CollectionProducer delta = MatrixFeatures.getInstance().attemptDelta(this, target);
 		if (delta != null) {
 			return delta;
 		}
 
 		TraversalPolicy targetShape = shape(target);
 		TraversalPolicy shape = getShape().append(targetShape);
-		CollectionProducer<PackedCollection> input = (CollectionProducer) getInputs().get(1);
+		CollectionProducer input = (CollectionProducer) getInputs().get(1);
 
-		CollectionProducer<PackedCollection> d = input.delta(target);
+		CollectionProducer d = input.delta(target);
 		d = d.reshape(getShape().getTotalSize(), -1).traverse(0);
 
-		CollectionProducer<PackedCollection> scale = pow(input, c(-1));
+		CollectionProducer scale = pow(input, c(-1));
 		scale = scale.flatten();
 
 		return expandAndMultiply(scale, d).reshape(shape);

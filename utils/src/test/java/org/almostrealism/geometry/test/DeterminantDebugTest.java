@@ -41,7 +41,7 @@ public class DeterminantDebugTest implements TransformMatrixFeatures, TestFeatur
 		assertTrue("Identity determinant should be 1.0", Math.abs(identityDet - 1.0) < 0.001);
 
 		// Test scale(2,2,2) matrix (det should be 8)
-		Producer<TransformMatrix> scale2Producer = scaleMatrix(vector(2.0, 2.0, 2.0));
+		Producer<TransformMatrix> scale2Producer = (Producer) scaleMatrix(vector(2.0, 2.0, 2.0));
 		TransformMatrix scale2 = new TransformMatrix(scale2Producer.get().evaluate(), 0);
 		printMatrix("Scale(2,2,2)", scale2);
 		double scale2Det = scale2.determinant();
@@ -50,7 +50,7 @@ public class DeterminantDebugTest implements TransformMatrixFeatures, TestFeatur
 		assertTrue("Scale(2,2,2) determinant should be 8.0", Math.abs(scale2Det - 8.0) < 0.001);
 
 		// Test scale(3,3,3) matrix (det should be 27)
-		Producer<TransformMatrix> scale3Producer = scaleMatrix(vector(3.0, 3.0, 3.0));
+		Producer<TransformMatrix> scale3Producer = (Producer) scaleMatrix(vector(3.0, 3.0, 3.0));
 		TransformMatrix scale3 = new TransformMatrix(scale3Producer.get().evaluate(), 0);
 		double scale3Det = scale3.determinant();
 		log("Scale(3,3,3) determinant: " + scale3Det);
@@ -89,7 +89,7 @@ public class DeterminantDebugTest implements TransformMatrixFeatures, TestFeatur
 		log("========================================");
 
 		// For a diagonal matrix, upper triangular conversion should be a no-op
-		Producer<TransformMatrix> scaleProducer = scaleMatrix(vector(2.0, 2.0, 2.0));
+		Producer<TransformMatrix> scaleProducer = (Producer) scaleMatrix(vector(2.0, 2.0, 2.0));
 		TransformMatrix scale = new TransformMatrix(scaleProducer.get().evaluate(), 0);
 
 		log("Original matrix:");

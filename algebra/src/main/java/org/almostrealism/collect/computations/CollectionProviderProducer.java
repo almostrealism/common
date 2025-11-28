@@ -238,7 +238,7 @@ public class CollectionProviderProducer<T extends Shape>
 	 */
 	@Override
 	public Producer<T> traverse(int axis) {
-		return traverse(axis, (Producer) this);
+		return (Producer) traverse(axis, (Producer) this);
 	}
 
 	/**
@@ -252,7 +252,7 @@ public class CollectionProviderProducer<T extends Shape>
 	 */
 	@Override
 	public Producer<T> reshape(TraversalPolicy shape) {
-		return reshape(shape, this);
+		return (Producer) reshape(shape, this);
 	}
 
 	/**

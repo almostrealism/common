@@ -87,7 +87,7 @@ public class PoolTests implements TestFeatures, KernelAssertions {
 	public void pool(int r, int c, int d, int w, boolean kernel) {
 		PackedCollection input = new PackedCollection(shape(r, c, d)).randFill();
 
-		Supplier<CollectionProducer<PackedCollection>> pool =
+		Supplier<CollectionProducer> pool =
 				() -> cp(input)
 						.enumerate(2, 1)
 						.enumerate(2, w)

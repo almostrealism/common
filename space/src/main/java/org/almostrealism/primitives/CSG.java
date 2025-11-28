@@ -83,7 +83,7 @@ public class CSG extends AbstractSurface {
     public ContinuousField intersectAt(Producer ray) {
         TransformMatrix m  = getTransform(true);
         Producer<Ray> r = ray;
-        if (m != null) r = m.getInverse().transform(r);
+        if (m != null) r = (Producer) m.getInverse().transform(r);
 
         final Supplier<Evaluable<? extends Ray>> fr = r;
         

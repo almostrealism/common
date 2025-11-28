@@ -145,9 +145,9 @@ public class Plane extends AbstractSurface implements ParticleGroup, RayFeatures
 	 * {@link Ray} that intersection between the ray and this {@link Plane} occurs.
 	 */
 	@Override
-	public ContinuousField intersectAt(Producer<Ray> r) {
+	public ContinuousField intersectAt(Producer<?> r) {
 		TransformMatrix m = getTransform(true);
-		Producer<Ray> tr = r;
+		Producer<?> tr = r;
 		if (m != null) tr = m.getInverse().transform(tr);
 
 		// tr = new RayFromVectors(new RayOrigin(tr), new RayDirection(tr).normalize());

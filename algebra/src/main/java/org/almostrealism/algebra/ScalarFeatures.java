@@ -58,7 +58,7 @@ public interface ScalarFeatures extends CollectionFeatures {
 	 * @param value  the scalar value
 	 * @return a producer for the constant scalar
 	 */
-	default CollectionProducer<?> scalar(double value) { return c(value); }
+	default CollectionProducer scalar(double value) { return c(value); }
 
 	/**
 	 * Creates a {@link Choice} computation that selects from multiple options based on a decision value.

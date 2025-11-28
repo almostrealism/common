@@ -20,7 +20,6 @@ import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.color.computations.GeneratedColorProducer;
 import org.almostrealism.geometry.DiscreteField;
-import org.almostrealism.algebra.Vector;
 import org.almostrealism.geometry.Ray;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Editable;
@@ -115,7 +114,7 @@ public class BlendingShader implements Shader<LightingContext>, Editable, RGBFea
 		
 		Producer<PackedCollection> l = p.getLightDirection();
 
-		CollectionProducer<PackedCollection> dp = (CollectionProducer) dotProduct(direction(n), l);
+		CollectionProducer dp = (CollectionProducer) dotProduct(direction(n), l);
 		Producer<PackedCollection> k = dp.add(c(1.0));
 		Producer<PackedCollection> oneMinusK = c(1.0).subtract((Producer) k);
 		

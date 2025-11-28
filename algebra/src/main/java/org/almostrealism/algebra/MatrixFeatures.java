@@ -17,7 +17,6 @@
 package org.almostrealism.algebra;
 
 import io.almostrealism.collect.Algebraic;
-import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.collect.WeightedSumExpression;
 import io.almostrealism.relation.Computable;
@@ -99,7 +98,7 @@ public interface MatrixFeatures extends AlgebraFeatures {
 	 * @param <T>  the collection type
 	 * @return a producer for the size x size identity matrix
 	 */
-	default <T extends PackedCollection> CollectionProducer<T> identity(int size) {
+	default <T extends PackedCollection> CollectionProducer identity(int size) {
 		return identity(shape(size, size));
 	}
 
@@ -112,12 +111,12 @@ public interface MatrixFeatures extends AlgebraFeatures {
 	 * @return a producer for the identity matrix
 	 * @throws IllegalArgumentException if the shape is not 2-dimensional
 	 */
-	default <T extends PackedCollection> CollectionProducer<T> identity(TraversalPolicy shape) {
+	default <T extends PackedCollection> CollectionProducer identity(TraversalPolicy shape) {
 		if (shape.getDimensions() != 2) {
 			throw new IllegalArgumentException();
 		}
 
-		return (CollectionProducer<T>) new IdentityMatrixComputation(shape.traverseEach());
+		return (CollectionProducer) new IdentityMatrixComputation(shape.traverseEach());
 	}
 
 	/**
@@ -138,7 +137,7 @@ public interface MatrixFeatures extends AlgebraFeatures {
 	 * @return a producer for the diagonal matrix
 	 * @throws IllegalArgumentException if the input is not 1-dimensional
 	 */
-	default <T extends PackedCollection> CollectionProducer<T> diagonal(Producer<T> vector) {
+	default <T extends PackedCollection> CollectionProducer diagonal(Producer<T> vector) {
 		TraversalPolicy shape = shape(vector);
 
 		if (shape.getDimensions() != 1) {
@@ -148,7 +147,7 @@ public interface MatrixFeatures extends AlgebraFeatures {
 		}
 
 		TraversalPolicy diagonalShape = shape(shape.length(0), shape.length(0)).traverse(1);
-		return (CollectionProducer<T>) new DiagonalMatrixComputation(diagonalShape, (Producer) vector);
+		return (CollectionProducer) new DiagonalMatrixComputation(diagonalShape, (Producer) vector);
 	}
 
 	/**
@@ -179,7 +178,7 @@ public interface MatrixFeatures extends AlgebraFeatures {
 	 * @return a producer for the multiplication result
 	 * @throws IllegalArgumentException if shapes are incompatible
 	 */
-	default <T extends PackedCollection> CollectionProducer<T> matmul(Producer<T> matrix, Producer<T> vector) {
+	default <T extends PackedCollection> CollectionProducer matmul(Producer<T> matrix, Producer<T> vector) {
 		TraversalPolicy mShape = shape(matrix);
 		TraversalPolicy vShape = shape(vector);
 
@@ -224,8 +223,8 @@ public interface MatrixFeatures extends AlgebraFeatures {
 
 			int batchAxis = vShape.getDimensions();
 			int outputSize = mShape.length(0);
-			CollectionProducer<PackedCollection> a = c(matrix);
-			CollectionProducer<PackedCollection> b = repeat(outputSize, vector);
+			CollectionProducer a = c(matrix);
+			CollectionProducer b = repeat(outputSize, vector);
 			return multiply(traverseEach(a), traverseEach(b)).traverse(batchAxis).sum();
 		}
 
@@ -306,7 +305,7 @@ public interface MatrixFeatures extends AlgebraFeatures {
 	 *             for identity matrices, diagonal matrices, and zero matrices
 	 */
 	@Deprecated
-	default <T extends PackedCollection> CollectionProducer<T> mproduct(Producer<T> a, Producer<T> b) {
+	default <T extends PackedCollection> CollectionProducer mproduct(Producer<T> a, Producer<T> b) {
 		if (WeightedSumExpression.enableCollectionExpression) {
 			return matmul(traverse(0, a), traverse(0, b));
 		}
@@ -343,9 +342,9 @@ public interface MatrixFeatures extends AlgebraFeatures {
 	 */
 	// TODO  This should support any shapes that can be coerced to
 	// TODO  (N, A, D) and (N, D, B) for constant values N, D, A and B
-	default CollectionProducer<PackedCollection> scaledDotProduct(
-			CollectionProducer<PackedCollection> a,
-			CollectionProducer<PackedCollection> b) {
+	default CollectionProducer scaledDotProduct(
+			CollectionProducer a,
+			CollectionProducer b) {
 		return scaledDotProduct(a, b, false);
 	}
 
@@ -371,9 +370,9 @@ public interface MatrixFeatures extends AlgebraFeatures {
 	 */
 	// TODO  This should support any shapes that can be coerced to
 	// TODO  (N, A, D) and (N, D, B) for constant values N, D, A and B
-	default CollectionProducer<PackedCollection> scaledDotProduct(
-			CollectionProducer<PackedCollection> a,
-			CollectionProducer<PackedCollection> b,
+	default CollectionProducer scaledDotProduct(
+			CollectionProducer a,
+			CollectionProducer b,
 			boolean transposeB) {
 		TraversalPolicy leftShape = a.getShape();
 		TraversalPolicy rightShape = b.getShape();
@@ -437,10 +436,10 @@ public interface MatrixFeatures extends AlgebraFeatures {
 	 * @param <T>  the shape type
 	 * @return the delta computation, or null if no simplified form is available
 	 */
-	default <T extends PackedCollection> CollectionProducer<T> attemptDelta(Producer<T> producer,
-																	Producer<?> target) {
+	default <T extends PackedCollection> CollectionProducer attemptDelta(Producer<T> producer,
+																		 Producer<?> target) {
 		if (producer instanceof DeltaAlternate) {
-			CollectionProducer<T> alt = ((DeltaAlternate) producer).getDeltaAlternate();
+			CollectionProducer alt = ((DeltaAlternate) producer).getDeltaAlternate();
 			if (alt != null) return alt.delta(target);
 		}
 

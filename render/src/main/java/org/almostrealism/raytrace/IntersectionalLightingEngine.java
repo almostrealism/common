@@ -76,7 +76,7 @@ public class IntersectionalLightingEngine extends LightingEngine<ContinuousField
 	 * @param otherLights   All other lights in the scene (for multi-light scenarios)
 	 * @param p             The shader context containing rendering parameters
 	 */
-    public IntersectionalLightingEngine(Producer<Ray> ray, Intersectable surface, Collection<Curve<PackedCollection>> otherSurfaces,
+    public IntersectionalLightingEngine(Producer<?> ray, Intersectable surface, Collection<Curve<PackedCollection>> otherSurfaces,
 										Light light, Iterable<Light> otherLights, ShaderContext p) {
         super(surface.intersectAt(ray), (Curve<PackedCollection>) surface, otherSurfaces, light, otherLights, p);
     }

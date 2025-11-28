@@ -40,12 +40,12 @@ public class DeltaFeaturesTests implements DeltaFeatures, TestFeatures {
 				.reshape(count, dim).traverse();
 		PackedCollection w1 = pack(4, -3, 2);
 		PackedCollection w2 = pack(2, 1, 5);
-		CollectionProducer<PackedCollection> x = x(-1, dim);
+		CollectionProducer x = x(-1, dim);
 
 		// f(x) = w2 * x
 		// g(x) = w1 * x
 		// f(g(x)) = w2 * w1 * x
-		CollectionProducer<PackedCollection> c = x.mul(p(w1)).mul(p(w2));
+		CollectionProducer c = x.mul(p(w1)).mul(p(w2));
 
 		// dy = f'(g(x))
 		//    = w2
@@ -78,10 +78,10 @@ public class DeltaFeaturesTests implements DeltaFeatures, TestFeatures {
 				.mapToDouble(Double::valueOf).toArray())
 				.reshape(count, dim).traverse();
 
-		CollectionProducer<PackedCollection> x = x(dim);
+		CollectionProducer x = x(dim);
 
 		// f(x) = x^2
-		CollectionProducer<PackedCollection> c = x.each().pow(2.0);
+		CollectionProducer c = x.each().pow(2.0);
 
 		// dy = f'(x)
 		//    = 2x
@@ -114,7 +114,7 @@ public class DeltaFeaturesTests implements DeltaFeatures, TestFeatures {
 		PackedCollection input =
 				pack(1, 2, 3, 4)
 				.reshape(dim, dim);
-		CollectionProducer<PackedCollection> c =
+		CollectionProducer c =
 				cp(input)
 				.sum(1)
 				.multiply(cp(w));
@@ -146,7 +146,7 @@ public class DeltaFeaturesTests implements DeltaFeatures, TestFeatures {
 
 		PackedCollection w = pack(4, -3);
 		PackedCollection input = pack(3);
-		CollectionProducer<PackedCollection> c =
+		CollectionProducer c =
 				cp(input)
 						.repeat(2)
 						.multiply(cp(w));

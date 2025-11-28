@@ -72,12 +72,12 @@ public class LightingEngineAggregator extends RankedChoiceEvaluableForRGB implem
 	private boolean kernel;
 	private int width, height, ssw, ssh;
 
-	public LightingEngineAggregator(Producer<Ray> r, Iterable<Curve<PackedCollection>> surfaces,
+	public LightingEngineAggregator(Producer<?> r, Iterable<Curve<PackedCollection>> surfaces,
 									Iterable<Light> lights, ShaderContext context) {
 		this(r, surfaces, lights, context, false);
 	}
 
-	public LightingEngineAggregator(Producer<Ray> r, Iterable<Curve<PackedCollection>> surfaces,
+	public LightingEngineAggregator(Producer<?> r, Iterable<Curve<PackedCollection>> surfaces,
 									Iterable<Light> lights, ShaderContext context, boolean kernel) {
 		super(Intersection.e);
 		this.kernel = kernel;
@@ -147,7 +147,7 @@ public class LightingEngineAggregator extends RankedChoiceEvaluableForRGB implem
 	}
 
 	// TODO  Rename this class to SurfaceLightingAggregator and have LightingEngineAggregator sum the lights instead of rank choice them
-	protected void init(Producer<Ray> r, Iterable<Curve<PackedCollection>> surfaces, Iterable<Light> lights, ShaderContext context) {
+	protected void init(Producer<?> r, Iterable<Curve<PackedCollection>> surfaces, Iterable<Light> lights, ShaderContext context) {
 		for (Curve<PackedCollection> s : surfaces) {
 			for (Light l : lights) {
 				Collection<Curve<PackedCollection>> otherSurfaces = CollectionUtils.separate(s, surfaces);

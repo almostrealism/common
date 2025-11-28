@@ -43,7 +43,7 @@ public class OperationOptimizationTests implements TestFeatures {
 
 		values.fill(pos -> Math.random());
 
-		CollectionProducer<PackedCollection> v =
+		CollectionProducer v =
 				c(p(values)).reshape(shape(seqLength, dim))
 				.enumerate(1, 1)
 				.reshape(shape(heads, headSize, seqLength).traverseEach());

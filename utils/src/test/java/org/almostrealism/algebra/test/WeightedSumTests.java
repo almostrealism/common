@@ -22,7 +22,6 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
 
-import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -57,7 +56,7 @@ public class WeightedSumTests implements TestFeatures {
 			log("result" + s(pos) + " = a" + s(left) + " * b" + s(right));
 		}
 
-		CollectionProducer<PackedCollection> result =
+		CollectionProducer result =
 				weightedSum("broadcast",
 						resultShape,
 						leftPosition, rightPosition,
@@ -113,7 +112,7 @@ public class WeightedSumTests implements TestFeatures {
 			log("result" + s(pos) + " = a" + s(left) + " * b" + s(right));
 		}
 
-		CollectionProducer<PackedCollection> result =
+		CollectionProducer result =
 				weightedSum("sumColumn",
 						resultShape,
 						leftPosition, rightPosition,
@@ -145,7 +144,7 @@ public class WeightedSumTests implements TestFeatures {
 		TraversalPolicy rightPosition = rightShape.repeat(2, c1);
 		TraversalPolicy groupShape = shape(1, r, 1, 1);
 
-		CollectionProducer<PackedCollection> result =
+		CollectionProducer result =
 				weightedSum("sumColumn",
 						resultShape,
 						leftPosition, rightPosition,
@@ -170,18 +169,18 @@ public class WeightedSumTests implements TestFeatures {
 		PackedCollection a = new PackedCollection(shape(bs, r, c1)).randFill();
 		PackedCollection b = new PackedCollection(shape(bs, r, c2)).randFill();
 
-		CollectionProducer<PackedCollection> pa = c(a)
+		CollectionProducer pa = c(a)
 				.traverse(d)
 				.enumerate(d + 1, 1)
 				// -> (bs, c1, r)
 				.traverse(d + 1)
 				.repeat(c2); // -> (bs, c1, c2, r)
-		CollectionProducer<PackedCollection> pb = c(b)
+		CollectionProducer pb = c(b)
 				.traverse(d)
 				.enumerate(d + 1, 1)
 				// -> (bs, c2, r)
 				.repeat(c1); // -> (bs, c1, c2, r)
-		CollectionProducer<PackedCollection> out = multiply(pa, pb).sum(d + 2)
+		CollectionProducer out = multiply(pa, pb).sum(d + 2)
 				.reshape(bs, c1, c2).traverseEach();
 		sumColumnAssertions(
 				a.reshape(bs, r, c1),
@@ -224,18 +223,18 @@ public class WeightedSumTests implements TestFeatures {
 		PackedCollection a = new PackedCollection(shape(bs, c, dim, s1)).randFill();
 		PackedCollection b = new PackedCollection(shape(bs, c, dim, s2)).randFill();
 
-		CollectionProducer<PackedCollection> pa = c(a)
+		CollectionProducer pa = c(a)
 				.traverse(2)
 				.enumerate(3, 1)
 				// -> (bs, c, s1, dim)
 				.traverse(3)
 				.repeat(s2); // -> (bs, c, s1, s2, dim)
-		CollectionProducer<PackedCollection> pb = c(b)
+		CollectionProducer pb = c(b)
 				.traverse(2)
 				.enumerate(3, 1)
 				// -> (bs, c, s2, dim)
 				.repeat(s1); // -> (bs, c, s1, s2, dim)
-		CollectionProducer<PackedCollection> out = multiply(pa, pb).sum(4)
+		CollectionProducer out = multiply(pa, pb).sum(4)
 				.reshape(bs, c, s1, s2);
 
 		TraversalPolicy leftShape = shape(bs, c, dim, s1, 1);
@@ -246,7 +245,7 @@ public class WeightedSumTests implements TestFeatures {
 		TraversalPolicy rightPosition = rightShape.repeat(3, s1);
 		TraversalPolicy groupShape = shape(1, 1, dim, 1, 1);
 
-		CollectionProducer<PackedCollection> result =
+		CollectionProducer result =
 				weightedSum("similarity",
 						resultShape,
 						leftPosition, rightPosition,
@@ -292,7 +291,7 @@ public class WeightedSumTests implements TestFeatures {
 			}
 		}
 
-		CollectionProducer<PackedCollection> result = scaledDotProduct(cp(a), cp(b));
+		CollectionProducer result = scaledDotProduct(cp(a), cp(b));
 		PackedCollection actual = result.evaluate();
 
 		// Verify shapes match
@@ -346,11 +345,11 @@ public class WeightedSumTests implements TestFeatures {
 
 		// Test with transposed K
 		// We need to transpose last two dimensions of k: (batch, heads, seqLen, dim) -> (batch, heads, dim, seqLen)
-		CollectionProducer<PackedCollection> kTransposed = cp(k)
+		CollectionProducer kTransposed = cp(k)
 				.reshape(batchSize, heads, seqLen, dim)
 				.permute(0, 1, 3, 2);
 
-		CollectionProducer<PackedCollection> result = scaledDotProduct(cp(q), kTransposed);
+		CollectionProducer result = scaledDotProduct(cp(q), kTransposed);
 		PackedCollection actual = result.evaluate();
 
 		// Verify shapes match
@@ -397,7 +396,7 @@ public class WeightedSumTests implements TestFeatures {
 			}
 		}
 		
-		CollectionProducer<PackedCollection> result = scaledDotProduct(cp(q), cp(k), true);
+		CollectionProducer result = scaledDotProduct(cp(q), cp(k), true);
 		PackedCollection actual = result.evaluate();
 
 		// Verify shapes match

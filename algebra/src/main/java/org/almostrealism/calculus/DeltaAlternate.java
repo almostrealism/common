@@ -80,5 +80,5 @@ public interface DeltaAlternate<T extends PackedCollection> {
 	 *
 	 * @return the alternative gradient computation
 	 */
-	CollectionProducer<T> getDeltaAlternate();
+	CollectionProducer getDeltaAlternate();
 }

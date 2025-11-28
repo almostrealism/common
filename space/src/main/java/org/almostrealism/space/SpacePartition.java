@@ -387,7 +387,7 @@ public class SpacePartition<T extends ShadableSurface> extends SurfaceGroup<T> {
 		TransformMatrix t = getTransform(true);
 		boolean ut = t != null;
 		Producer<Ray> r = ray;
-		if (ut) r = t.getInverse().transform(r);
+		if (ut) r = (Producer) t.getInverse().transform(r);
 		return this.root.intersectAt(r);
 	}
 }

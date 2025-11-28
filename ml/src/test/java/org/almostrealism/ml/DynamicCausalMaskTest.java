@@ -1,9 +1,7 @@
 package org.almostrealism.ml;
 
-import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.hardware.OperationList;
 import org.junit.Test;
 
 import static org.junit.Assert.*;
@@ -26,12 +24,12 @@ public class DynamicCausalMaskTest implements AttentionFeatures {
         // integers(0, seqLen) creates [0, 1, 2, ..., seqLen-1]
         // greaterThan(index, position, trueValue, falseValue) returns trueValue if index > position, else falseValue
 
-        CollectionProducer<?> indices = integers(0, seqLen);
-        CollectionProducer<?> position = cp(positionValue);
+        CollectionProducer indices = integers(0, seqLen);
+        CollectionProducer position = cp(positionValue);
 
         // Create mask: if index > position then -10000 else 0
         // Use 5-parameter version: greaterThan(a, b, trueValue, falseValue, includeEqual)
-        CollectionProducer<PackedCollection> mask = greaterThan(indices, position, c(-10000.0), c(0.0), false);
+        CollectionProducer mask = greaterThan(indices, position, c(-10000.0), c(0.0), false);
 
         // Evaluate the mask
         PackedCollection result = mask.get().evaluate();
@@ -63,9 +61,9 @@ public class DynamicCausalMaskTest implements AttentionFeatures {
             PackedCollection positionValue = new PackedCollection(shape(1));
             positionValue.setMem(0, pos);
 
-            CollectionProducer<?> indices = integers(0, seqLen);
-            CollectionProducer<?> position = cp(positionValue);
-            CollectionProducer<PackedCollection> mask = greaterThan(indices, position, c(-10000.0), c(0.0), false);
+            CollectionProducer indices = integers(0, seqLen);
+            CollectionProducer position = cp(positionValue);
+            CollectionProducer mask = greaterThan(indices, position, c(-10000.0), c(0.0), false);
 
             PackedCollection result = mask.get().evaluate();
 
@@ -97,12 +95,12 @@ public class DynamicCausalMaskTest implements AttentionFeatures {
 
         // Create mask for all heads
         // Shape should be (heads, seqLen)
-        CollectionProducer<?> indices = integers(0, seqLen);
-        CollectionProducer<?> position = cp(positionValue);
-        CollectionProducer<PackedCollection> maskRow = greaterThan(indices, position, c(-10000.0), c(0.0), false);
+        CollectionProducer indices = integers(0, seqLen);
+        CollectionProducer position = cp(positionValue);
+        CollectionProducer maskRow = greaterThan(indices, position, c(-10000.0), c(0.0), false);
 
         // Repeat for all heads
-        CollectionProducer<?> mask = repeat(heads, maskRow);
+        CollectionProducer mask = repeat(heads, maskRow);
 
         PackedCollection result = (PackedCollection) mask.get().evaluate();
 

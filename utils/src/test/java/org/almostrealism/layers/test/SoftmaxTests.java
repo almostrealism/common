@@ -63,7 +63,7 @@ public class SoftmaxTests implements LayerFeatures, DistributionFeatures, TestFe
 		boolean subtractMax = true;
 		Producer<PackedCollection> input = p(in);
 
-		CollectionProducer<PackedCollection> o = softmax(traverse(1, input));
+		CollectionProducer o = softmax(traverse(1, input));
 
 		PackedCollection output = new PackedCollection(heads, len);
 
@@ -109,9 +109,9 @@ public class SoftmaxTests implements LayerFeatures, DistributionFeatures, TestFe
 	protected void logSoftmaxDelta(boolean optimize) {
 		PackedCollection input = new PackedCollection(4).fill(2.0);
 
-		CollectionProducer<PackedCollection> softmax = cp(input).traverse(1).subtract(
+		CollectionProducer softmax = cp(input).traverse(1).subtract(
 				cp(input).traverse(1).exp().traverse(0).sum().log());
-		CollectionProducer<PackedCollection> delta = softmax.delta(cp(input));
+		CollectionProducer delta = softmax.delta(cp(input));
 
 		PackedCollection result = (optimize ? Process.optimized(delta) : delta).get().evaluate();
 		result.print();
@@ -340,19 +340,19 @@ public class SoftmaxTests implements LayerFeatures, DistributionFeatures, TestFe
 		int seqLen = 20;
 
 		PackedCollection originalInput = new PackedCollection(shape(1, seqLen)).randFill();
-		CollectionProducer<PackedCollection> input = cp(copy(originalInput));
+		CollectionProducer input = cp(copy(originalInput));
 
 		double values[] = originalInput.toArray();
 		softmax(values, 0, seqLen);
 
 		int axis = input.getShape().getDimensions() - 1;
 
-		CollectionProducer<PackedCollection> max = traverse(axis, input).max();
-		CollectionProducer<PackedCollection> stable =
+		CollectionProducer max = traverse(axis, input).max();
+		CollectionProducer stable =
 				traverse(axis + 1, input).subtract(max.expand(seqLen));
-		CollectionProducer<PackedCollection> logSum =
+		CollectionProducer logSum =
 				stable.exp().traverse(axis).sum().log().expand(seqLen);
-		CollectionProducer<PackedCollection> result = stable.subtract(logSum).exp();
+		CollectionProducer result = stable.subtract(logSum).exp();
 
 		compare(null, result.evaluate(), values);
 	}
@@ -387,7 +387,7 @@ public class SoftmaxTests implements LayerFeatures, DistributionFeatures, TestFe
 
 		verboseLog(() -> {
 			Producer<PackedCollection> in = traverseEach(p(input));
-			CollectionProducer<PackedCollection> subset = c(subset(shape(1, seqLength), in, h, 0));
+			CollectionProducer subset = c(subset(shape(1, seqLength), in, h, 0));
 
 			Producer<PackedCollection> p = softmax(subset.getShape(), true).apply(subset);
 

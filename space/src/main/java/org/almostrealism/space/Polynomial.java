@@ -347,9 +347,9 @@ public class Polynomial extends AbstractSurface {
 	 * represented by this {@link Polynomial} object occurs.
 	 */
 	@Override
-	public ShadableIntersection intersectAt(Producer<Ray> r) {
+	public ShadableIntersection intersectAt(Producer<?> r) {
 		Producer<PackedCollection> s = () -> args -> {
-			Ray ray = r.get().evaluate(args);
+			Ray ray = new Ray((PackedCollection) r.get().evaluate(args), 0);
 			ray = ray.transform(getTransform(true).getInverse());
 
 			Vector o = ray.getOrigin();

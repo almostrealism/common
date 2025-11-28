@@ -17,15 +17,12 @@
 package org.almostrealism.collect.computations.test;
 
 import io.almostrealism.code.ComputationBase;
-import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.kernel.KernelPreferences;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.Producer;
 import io.almostrealism.uml.Signature;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.hardware.PassThroughProducer;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
 
@@ -45,7 +42,7 @@ public class CollectionAddTests implements TestFeatures {
 
 		log("Native parallelism = " + KernelPreferences.getCpuParallelism());
 
-		CollectionProducer<PackedCollection> add = add(v(shape(1), 0), v(shape(1), 1));
+		CollectionProducer add = add(v(shape(1), 0), v(shape(1), 1));
 		((ComputationBase) add).setComputeRequirements(List.of(req));
 		log("signature = " + Signature.of(add) + ", req = " + ((ComputationBase) add).getComputeRequirements());
 

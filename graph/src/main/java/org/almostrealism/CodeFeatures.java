@@ -26,12 +26,10 @@ import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.profile.OperationProfile;
 import io.almostrealism.profile.OperationProfileNode;
 import io.almostrealism.relation.DynamicProducer;
-import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.PairFeatures;
-import org.almostrealism.algebra.ScalarFeatures;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorFeatures;
 import org.almostrealism.algebra.computations.Switch;
@@ -147,19 +145,19 @@ public interface CodeFeatures extends LayerFeatures,
 		return value(shape, argIndex);
 	}
 
-	default CollectionProducer<PackedCollection> x(int... dims) {
+	default CollectionProducer x(int... dims) {
 		return c(value(dims.length == 0 ? shape(-1, 1) : shape(dims), 0));
 	}
 
-	default CollectionProducer<PackedCollection> y(int... dims) {
+	default CollectionProducer y(int... dims) {
 		return c(value(dims.length == 0 ? shape(-1, 1) : shape(dims), 1));
 	}
 
-	default CollectionProducer<PackedCollection> z(int... dims) {
+	default CollectionProducer z(int... dims) {
 		return c(value(dims.length == 0 ? shape(-1, 1) : shape(dims), 2));
 	}
 
-	default <T extends PackedCollection> CollectionProducer<T> cv(TraversalPolicy shape, int argIndex) {
+	default <T extends PackedCollection> CollectionProducer cv(TraversalPolicy shape, int argIndex) {
 		return c(value(shape, argIndex));
 	}
 
@@ -212,8 +210,8 @@ public interface CodeFeatures extends LayerFeatures,
 		}
 
 		if (enableAssignmentCopy) {
-			if (sourceShape != null) source = new ReshapeProducer(sourceShape.traverseEach(), source);
-			if (targetShape != null) target = new ReshapeProducer(targetShape.traverseEach(), target);
+			if (sourceShape != null) source = new ReshapeProducer(sourceShape.traverseEach(), (Producer) source);
+			if (targetShape != null) target = new ReshapeProducer(targetShape.traverseEach(), (Producer) target);
 			return new Assignment(1, target, source);
 		} else {
 			return new MemoryDataCopy(name, source.get()::evaluate, target.get()::evaluate, length);

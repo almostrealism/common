@@ -217,13 +217,13 @@ public class Sphere extends AbstractSurface implements DistanceEstimator, CodeFe
 	 * results. The math works correctly with scaled directions.</p>
 	 */
 	@Override
-	public ShadableIntersection intersectAt(Producer<Ray> r) {
+	public ShadableIntersection intersectAt(Producer<?> r) {
 		TransformMatrix m = getTransform(true);
 
-		Producer<Ray> tr = r;
+		Producer<?> tr = r;
 		if (m != null && enableTransform) tr = m.getInverse().transform(tr);
 
-		final Producer<Ray> fr = tr;
+		final Producer<?> fr = tr;
 
 		if (enableHardwareAcceleration) {
 			// return new ShadableIntersection(this, r, new SphereIntersectAt(fr));
@@ -234,7 +234,7 @@ public class Sphere extends AbstractSurface implements DistanceEstimator, CodeFe
 			return new ShadableIntersection(this, r, distance);
 		} else {
 			Evaluable<PackedCollection> s = args -> {
-				Ray ray = fr.get().evaluate(args);
+				Ray ray = new Ray((PackedCollection) fr.get().evaluate(args), 0);
 
 				double b = ray.oDotd().evaluate(args).toDouble();
 				double c = ray.oDoto().evaluate(args).toDouble();
@@ -330,13 +330,13 @@ public class Sphere extends AbstractSurface implements DistanceEstimator, CodeFe
 	}
 
 	// TODO  Make private
-	public Producer<PackedCollection> discriminant(Producer<Ray> ray) {
+	public Producer<PackedCollection> discriminant(Producer<?> ray) {
 		// return oDotd(ray).pow(2.0).add(dDotd(ray).multiply(oDoto(ray).add(-1.0)).multiply(-1));
 		return oDotd(ray).pow(2.0).subtract(dDotd(ray).multiply(oDoto(ray).subtract(1.0)));
 	}
 
 	// TODO  Make private
-	public Producer<PackedCollection> discriminantSqrt(Producer<Ray> ray) {
+	public Producer<PackedCollection> discriminantSqrt(Producer<?> ray) {
 		return pow(discriminant(ray), c(0.5));
 	}
 
@@ -354,7 +354,7 @@ public class Sphere extends AbstractSurface implements DistanceEstimator, CodeFe
 	 * @param t A {@link Producer} of {@link Pair} containing two intersection distance solutions
 	 * @return A {@link Producer} yielding the minimum positive intersection distance, or -1.0 if no valid intersection
 	 */
-	public Producer closest(Producer<Pair> t) {
+	public Producer closest(Producer<?> t) {
 		Producer leftDist = l(t);
 		Producer rightDist = r(t);
 
@@ -402,7 +402,7 @@ public class Sphere extends AbstractSurface implements DistanceEstimator, CodeFe
 		);
 	}
 
-	private CollectionProducer<Pair> t(Producer<Ray> ray) {
+	private CollectionProducer t(Producer<?> ray) {
 		Producer<PackedCollection> dS = discriminantSqrt(ray);
 		Producer<PackedCollection> minusODotD = oDotd(ray).minus();
 		Producer<PackedCollection> dDotDInv = dDotd(ray).pow(-1.0);
