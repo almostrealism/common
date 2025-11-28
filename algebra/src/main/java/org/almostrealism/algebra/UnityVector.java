@@ -18,6 +18,7 @@ package org.almostrealism.algebra;
 
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.collect.PackedCollection;
 
 /**
  * A utility class providing access to the unity vector (1, 1, 1).
@@ -32,7 +33,7 @@ import io.almostrealism.relation.Producer;
  * <h2>Usage Examples</h2>
  * <pre>{@code
  * // Get a producer for the unity vector
- * Producer<Vector> unityProducer = UnityVector.getInstance();
+ * Producer<PackedCollection> unityProducer = UnityVector.getInstance();
  *
  * // Get an evaluable for direct evaluation
  * Evaluable<Vector> unityEval = UnityVector.getEvaluable();
@@ -54,14 +55,14 @@ public class UnityVector {
 	 *
 	 * @return a producer for the unity vector
 	 */
-	public static Producer<Vector> getInstance() { return VectorFeatures.getInstance().vector(1.0, 1.0, 1.0); }
+	public static Producer<PackedCollection> getInstance() { return (Producer) VectorFeatures.getInstance().vector(1.0, 1.0, 1.0); }
 
 	/**
 	 * Returns an {@link Evaluable} that produces the unity vector (1, 1, 1).
 	 *
 	 * @return an evaluable for the unity vector
 	 */
-	public static Evaluable<Vector> getEvaluable() {
+	public static Evaluable<PackedCollection> getEvaluable() {
 		return getInstance().get();
 	}
 }

@@ -69,10 +69,10 @@ public class PoolTests implements TestFeatures, KernelAssertions {
 		int d = 8;
 		int w = 2;
 
-		PackedCollection<?> input = tensor(shape(r, c, d)).pack();
+		PackedCollection input = tensor(shape(r, c, d)).pack();
 		input.fill(pos -> Math.random());
 
-		Supplier<Producer<PackedCollection<?>>> pool =
+		Supplier<Producer<PackedCollection>> pool =
 				() -> (Producer) Process.optimized(cp(input)
 						.enumerate(2, 1)
 						.enumerate(2, w)
@@ -85,9 +85,9 @@ public class PoolTests implements TestFeatures, KernelAssertions {
 	}
 
 	public void pool(int r, int c, int d, int w, boolean kernel) {
-		PackedCollection<?> input = new PackedCollection<>(shape(r, c, d)).randFill();
+		PackedCollection input = new PackedCollection(shape(r, c, d)).randFill();
 
-		Supplier<CollectionProducer<PackedCollection<?>>> pool =
+		Supplier<CollectionProducer<PackedCollection>> pool =
 				() -> cp(input)
 						.enumerate(2, 1)
 						.enumerate(2, w)

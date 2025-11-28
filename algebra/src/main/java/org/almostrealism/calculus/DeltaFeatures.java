@@ -67,17 +67,17 @@ import java.util.stream.Collectors;
  * <h2>Chain Rule Example</h2>
  * <pre>{@code
  * // Compute gradient of h(x) = ReLU(Wx + b) with respect to W
- * CollectionProducer<PackedCollection<?>> W = v(weights);
- * CollectionProducer<PackedCollection<?>> x = v(input);
- * CollectionProducer<PackedCollection<?>> b = v(bias);
+ * CollectionProducer<PackedCollection> W = v(weights);
+ * CollectionProducer<PackedCollection> x = v(input);
+ * CollectionProducer<PackedCollection> b = v(bias);
  *
  * // Forward pass: linear = Wx + b, h = ReLU(linear)
- * CollectionProducer<PackedCollection<?>> linear = matmul(W, x).add(b);
- * CollectionProducer<PackedCollection<?>> h = relu(linear);
+ * CollectionProducer<PackedCollection> linear = matmul(W, x).add(b);
+ * CollectionProducer<PackedCollection> h = relu(linear);
  *
  * // Gradient computation using chain rule
  * // dh/dW = dReLU/dlinear . dlinear/dW
- * CollectionProducer<PackedCollection<?>> gradient = h.delta(W);
+ * CollectionProducer<PackedCollection> gradient = h.delta(W);
  * }</pre>
  *
  * <h2>Isolated Delta Computation</h2>
@@ -163,7 +163,7 @@ public interface DeltaFeatures extends MatrixFeatures {
 	 * @param <T>  the shape type
 	 * @return the isolated delta computation
 	 */
-	default <T extends Shape<?>> CollectionProducer<T> generateIsolatedDelta(ComputationBase<T, T, Evaluable<T>> producer,
+	default <T extends PackedCollection> CollectionProducer<T> generateIsolatedDelta(ComputationBase<T, T, Evaluable<T>> producer,
 																			 Producer<?> input) {
 		Map<Producer<?>, Producer<?>> replacements = new HashMap<>();
 		List toReplace = enableTotalIsolation ? producer.getInputs() : Collections.singletonList(input);
@@ -222,7 +222,7 @@ public interface DeltaFeatures extends MatrixFeatures {
 	 * @param <T>  the shape type
 	 * @return the gradient computation, or null if unable to compute
 	 */
-	default <T extends Shape<?>> CollectionProducer<T> attemptDelta(CollectionProducer<T> producer, Producer<?> target) {
+	default <T extends PackedCollection> CollectionProducer<T> attemptDelta(CollectionProducer<T> producer, Producer<?> target) {
 		CollectionProducer<T> result = MatrixFeatures.super.attemptDelta(producer, target);
 		if (result != null) return result;
 
@@ -282,7 +282,7 @@ public interface DeltaFeatures extends MatrixFeatures {
 	 * @param <T>  the shape type
 	 * @return the gradient computation, or null to use default behavior
 	 */
-	default <T extends Shape<?>> CollectionProducer<T> applyDeltaStrategy(CollectionProducer<T> producer,
+	default <T extends PackedCollection> CollectionProducer<T> applyDeltaStrategy(CollectionProducer<T> producer,
 																		  Producer<?> target) {
 		return null;
 	}
@@ -310,7 +310,7 @@ public interface DeltaFeatures extends MatrixFeatures {
 	 * @param <T>  the shape type
 	 * @return a function that processes term collections and returns gradients
 	 */
-	default <T extends Shape<?>> Function<Collection<Producer<?>>, CollectionProducer<T>>
+	default <T extends PackedCollection> Function<Collection<Producer<?>>, CollectionProducer<T>>
 			deltaStrategyProcessor(MultiTermDeltaStrategy strategy,
 					  Function<List<Producer<?>>, CollectionProducer<T>> producerFactory,
 					  TraversalPolicy producerShape, Producer<?> target) {
@@ -363,7 +363,7 @@ public interface DeltaFeatures extends MatrixFeatures {
 	 * @param <T>  the shape type
 	 * @return a new producer with inputs replaced by stubs
 	 */
-	default <T extends Shape<?>> CollectionProducer<T> replaceInput(
+	default <T extends PackedCollection> CollectionProducer<T> replaceInput(
 			Producer<T> producer,
 			List<Supplier> toReplace,
 			Map<Producer<?>, Producer<?>> replacements) {
@@ -376,7 +376,7 @@ public interface DeltaFeatures extends MatrixFeatures {
 		}
 	}
 
-	default <T extends Shape<?>> ComputationBase<T, T, Evaluable<T>> replaceInput(
+	default <T extends PackedCollection> ComputationBase<T, T, Evaluable<T>> replaceInput(
 			ComputationBase<T, T, Evaluable<T>> producer,
 			List<Supplier> toReplace,
 			Map<Producer<?>, Producer<?>> replacements) {
@@ -420,7 +420,7 @@ public interface DeltaFeatures extends MatrixFeatures {
 	 */
 	// TODO  It seems like this should be something that is just
 	// TODO  part of MatrixFeatures, or even an option for matmul
-	default <V extends PackedCollection<?>> CollectionProducer<V> expandAndMultiply(
+	default <V extends PackedCollection> CollectionProducer<V> expandAndMultiply(
 			CollectionProducer<V> vector, CollectionProducer<V> matrix) {
 		if (vector.getShape().getDimensions() != 1) {
 			throw new IllegalArgumentException();

@@ -26,13 +26,13 @@ import org.almostrealism.hardware.OperationList;
 
 import java.util.function.Supplier;
 
-public class BackPropagationCell implements Cell<PackedCollection<?>>, Learning, Nameable, CodeFeatures {
+public class BackPropagationCell implements Cell<PackedCollection>, Learning, Nameable, CodeFeatures {
 	private String name;
 
 	private final BackPropagation propagation;
-	private PackedCollection<?> input;
+	private PackedCollection input;
 
-	private Receptor<PackedCollection<?>> next;
+	private Receptor<PackedCollection> next;
 
 	public BackPropagationCell(String name, BackPropagation propagation) {
 		setName(name);
@@ -50,7 +50,7 @@ public class BackPropagationCell implements Cell<PackedCollection<?>>, Learning,
 	public void setName(String name) { this.name = name; }
 
 	@Override
-	public void setParameterUpdate(ParameterUpdate<PackedCollection<?>> update) {
+	public void setParameterUpdate(ParameterUpdate<PackedCollection> update) {
 		if (propagation instanceof Learning) {
 			((Learning) propagation).setParameterUpdate(update);
 		}
@@ -60,16 +60,16 @@ public class BackPropagationCell implements Cell<PackedCollection<?>>, Learning,
 	public Supplier<Runnable> setup() { return new OperationList(); }
 
 	@Override
-	public Supplier<Runnable> push(Producer<PackedCollection<?>> gradient) {
+	public Supplier<Runnable> push(Producer<PackedCollection> gradient) {
 		return propagation.propagate(gradient, p(input), next);
 	}
 
-	public void setForwardInput(PackedCollection<?> input) {
+	public void setForwardInput(PackedCollection input) {
 		this.input = input;
 	}
 
 	@Override
-	public void setReceptor(Receptor<PackedCollection<?>> next) {
+	public void setReceptor(Receptor<PackedCollection> next) {
 		if (this.next != null) {
 			warn("Replacing receptor");
 		}

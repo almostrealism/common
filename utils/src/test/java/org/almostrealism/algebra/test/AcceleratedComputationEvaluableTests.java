@@ -27,8 +27,8 @@ import org.junit.Test;
 public class AcceleratedComputationEvaluableTests implements TestFeatures {
 	@Test
 	public void staticProducer() {
-		Producer<Vector> res = vector(0.0, 1.0, 2.0);
-		Vector v = res.get().evaluate();
+		Producer<PackedCollection> res = vector(0.0, 1.0, 2.0);
+		Vector v = new Vector(res.get().evaluate(), 0);
 		System.out.println(v);
 		assert v.getX() == 0.0;
 		assert v.getY() == 1.0;
@@ -38,8 +38,8 @@ public class AcceleratedComputationEvaluableTests implements TestFeatures {
 	@Test
 	public void scalarFromVector() {
 		CollectionProducer res = y(vector(0.0, 1.0, 2.0));
-		Evaluable<PackedCollection<?>> ev = res.get();
-		try (PackedCollection<?> s = ev.evaluate()) {
+		Evaluable<PackedCollection> ev = res.get();
+		try (PackedCollection s = ev.evaluate()) {
 			s.print();
 			assertEquals(1.0, s);
 		}
@@ -47,10 +47,10 @@ public class AcceleratedComputationEvaluableTests implements TestFeatures {
 
 	@Test
 	public void scalarProduct() {
-		CollectionProducer<PackedCollection<?>> x = c(3.0);
-		Evaluable<PackedCollection<?>> res = multiply(x, c(0.5)).get();
+		CollectionProducer<PackedCollection> x = c(3.0);
+		Evaluable<PackedCollection> res = multiply(x, c(0.5)).get();
 
-		PackedCollection<?> s = res.evaluate();
+		PackedCollection s = res.evaluate();
 		s.print();
 		assertEquals(1.5, s.toDouble());
 	}

@@ -38,12 +38,12 @@ public class OperationOptimizationTests implements TestFeatures {
 
 		TraversalPolicy valueShape = shape(seqLength, heads, headSize);
 
-		PackedCollection<?> values = new PackedCollection<>(valueShape);
-		PackedCollection<?> out = new PackedCollection<>(shape(heads, headSize, seqLength));
+		PackedCollection values = new PackedCollection(valueShape);
+		PackedCollection out = new PackedCollection(shape(heads, headSize, seqLength));
 
 		values.fill(pos -> Math.random());
 
-		CollectionProducer<PackedCollection<?>> v =
+		CollectionProducer<PackedCollection> v =
 				c(p(values)).reshape(shape(seqLength, dim))
 				.enumerate(1, 1)
 				.reshape(shape(heads, headSize, seqLength).traverseEach());
@@ -68,9 +68,9 @@ public class OperationOptimizationTests implements TestFeatures {
 	@Test
 	public void matmulLoop() {
 		int dim = 256;
-		PackedCollection<?> in = new PackedCollection<>(shape(dim));
-		PackedCollection<?> matrix = new PackedCollection<>(shape(dim, dim));
-		PackedCollection<?> out = new PackedCollection<>(shape(dim));
+		PackedCollection in = new PackedCollection(shape(dim));
+		PackedCollection matrix = new PackedCollection(shape(dim, dim));
+		PackedCollection out = new PackedCollection(shape(dim));
 
 		in.fill(pos -> Math.random());
 		matrix.fill(pos -> Math.random());
@@ -86,9 +86,9 @@ public class OperationOptimizationTests implements TestFeatures {
 
 		int itr = 2000000;
 		int dim = 64;
-		PackedCollection<?> in = new PackedCollection<>(shape(dim));
-		PackedCollection<?> matrix = new PackedCollection<>(shape(dim, dim));
-		PackedCollection<?> out = new PackedCollection<>(shape(dim));
+		PackedCollection in = new PackedCollection(shape(dim));
+		PackedCollection matrix = new PackedCollection(shape(dim, dim));
+		PackedCollection out = new PackedCollection(shape(dim));
 
 		in.fill(pos -> Math.random());
 		matrix.fill(pos -> Math.random());

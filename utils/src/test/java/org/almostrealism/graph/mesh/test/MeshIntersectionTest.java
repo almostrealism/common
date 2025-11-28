@@ -37,10 +37,10 @@ import org.junit.Before;
 import org.junit.Test;
 
 public class MeshIntersectionTest implements TestFeatures {
-	private Producer<Vector> origin1 = vector(0.0, 1.0, 1.0);
-	private Producer<Vector> direction1 = vector(0.0, 0.0, -1.0);
-	private Producer<Vector> origin2 = vector( -0.1, -1.0, 1.0);
-	private Producer<Vector> direction2 = vector(0.0, 0.0, -1.0);
+	private Producer<PackedCollection> origin1 = vector(0.0, 1.0, 1.0);
+	private Producer<PackedCollection> direction1 = vector(0.0, 0.0, -1.0);
+	private Producer<PackedCollection> origin2 = vector( -0.1, -1.0, 1.0);
+	private Producer<PackedCollection> direction2 = vector(0.0, 0.0, -1.0);
 
 	private MeshData data1, data2;
 
@@ -70,10 +70,10 @@ public class MeshIntersectionTest implements TestFeatures {
 		data2 = mesh2().getMeshData();
 	}
 
-	protected Producer<Vector> abc(MeshData data) { return v(new Vector(data.get(0).get(0), 0)); }
-	protected Producer<Vector> def(MeshData data) { return v(new Vector(data.get(0).get(1), 0)); }
-	protected Producer<Vector> jkl(MeshData data) { return v(new Vector(data.get(0).get(2), 0)); }
-	protected Producer<Vector> normal(MeshData data) { return v(new Vector(data.get(0).get(3), 0)); }
+	protected Producer<PackedCollection> abc(MeshData data) { return v(new Vector(data.get(0).get(0), 0)); }
+	protected Producer<PackedCollection> def(MeshData data) { return v(new Vector(data.get(0).get(1), 0)); }
+	protected Producer<PackedCollection> jkl(MeshData data) { return v(new Vector(data.get(0).get(2), 0)); }
+	protected Producer<PackedCollection> normal(MeshData data) { return v(new Vector(data.get(0).get(3), 0)); }
 
 	protected TriangleIntersectAt intersection() {
 		return TriangleIntersectAt.construct(Input.value(shape(4, 3), 0),
@@ -83,7 +83,7 @@ public class MeshIntersectionTest implements TestFeatures {
 
 	@Test
 	public void normal1() {
-		Vector normal = normal(data1).get().evaluate();
+		Vector normal = new Vector(normal(data1).get().evaluate(), 0);
 		System.out.println("normal = " + normal);
 	}
 
@@ -91,13 +91,13 @@ public class MeshIntersectionTest implements TestFeatures {
 	public void data1() {
 		System.out.println(def(data1).get().evaluate());
 
-		CollectionProducer<Vector> h = TriangleIntersectAt.h(def(data1), direction1);
+		CollectionProducer<PackedCollection> h = TriangleIntersectAt.h(def(data1), direction1);
 		System.out.println("h = " + h.get().evaluate());
 
-		CollectionProducer<PackedCollection<?>> f = TriangleIntersectAt.f(abc(data1), h);
+		CollectionProducer<PackedCollection> f = TriangleIntersectAt.f(abc(data1), h);
 		System.out.println("f = " + f.get().evaluate().toDouble());
 
-		Producer<PackedCollection<?>> u = TriangleIntersectAt.u(
+		Producer<PackedCollection> u = TriangleIntersectAt.u(
 												TriangleIntersectAt.s(jkl(data1), origin1),
 												TriangleIntersectAt.h(def(data1), direction1),
 												f.pow(-1.0));
@@ -108,47 +108,47 @@ public class MeshIntersectionTest implements TestFeatures {
 	public void data2() {
 		if (testDepth < 1) return;
 
-		Producer<Vector> abc = abc(data2);
-		Producer<Vector> def = def(data2);
-		Producer<Vector> jkl = jkl(data2);
+		Producer<PackedCollection> abc = abc(data2);
+		Producer<PackedCollection> def = def(data2);
+		Producer<PackedCollection> jkl = jkl(data2);
 
 		System.out.println("abc = " + abc.get().evaluate());
 		System.out.println("def = " + def.get().evaluate());
 		System.out.println("jkl = " + jkl.get().evaluate());
 
-		CollectionProducer<Vector> h = TriangleIntersectAt.h(def(data2), direction2);
+		CollectionProducer<PackedCollection> h = TriangleIntersectAt.h(def(data2), direction2);
 		System.out.println("h = " + h.get().evaluate());
 
-		CollectionProducer<PackedCollection<?>> f = TriangleIntersectAt.f(abc(data2), h);
+		CollectionProducer<PackedCollection> f = TriangleIntersectAt.f(abc(data2), h);
 		System.out.println("f = " + f.get().evaluate().toDouble());
 
-		Producer<PackedCollection<?>> u = TriangleIntersectAt.u(
+		Producer<PackedCollection> u = TriangleIntersectAt.u(
 				TriangleIntersectAt.s(jkl(data2), origin2),
 				TriangleIntersectAt.h(def(data2), direction2),
 				f.pow(-1.0));
 		System.out.println("u = " + u.get().evaluate().toDouble());
 
-		Producer<Vector> s = TriangleIntersectAt.s(jkl(data2), origin2);
+		Producer<PackedCollection> s = TriangleIntersectAt.s(jkl(data2), origin2);
 		System.out.println("s = " + s.get().evaluate());
 
-		CollectionProducer<Vector> q = TriangleIntersectAt.q(abc(data2), s);
+		CollectionProducer<PackedCollection> q = TriangleIntersectAt.q(abc(data2), s);
 		System.out.println("q = " + q.get().evaluate());
 
-		Producer<PackedCollection<?>> v = TriangleIntersectAt.v(direction2, f.pow(-1.0), q);
+		Producer<PackedCollection> v = TriangleIntersectAt.v(direction2, f.pow(-1.0), q);
 		System.out.println("v = " + v.get().evaluate().toDouble());
 	}
 
 	@Test
 	public void intersectAt1() {
 		TriangleIntersectAt intersect = intersection();
-		Evaluable<PackedCollection<?>> ev = intersect.get();
+		Evaluable<PackedCollection> ev = intersect.get();
 		double distance = ev.evaluate(data1.get(0).traverse(0), origin1.get().evaluate(), direction1.get().evaluate()).toDouble();
 		assertEquals(1.0, distance);
 	}
 
 	@Test
 	public void intersectionKernel1() {
-		PackedCollection<PackedCollection<?>> distances = new PackedCollection<>(shape(1, 1).traverse(1));
+		PackedCollection distances = new PackedCollection(shape(1, 1).traverse(1));
 		Producer<Ray> ray = ray(origin1, direction1);
 		data1.evaluateIntersectionKernelScalar(ray.get(), distances, new MemoryBank[0]);
 		System.out.println("distance = " + distances.get(0).toDouble());
@@ -165,7 +165,7 @@ public class MeshIntersectionTest implements TestFeatures {
 
 	@Test
 	public void intersectionKernel2() {
-		PackedCollection<PackedCollection<?>> distances = new PackedCollection<>(shape(1, 1).traverse(1));
+		PackedCollection distances = new PackedCollection(shape(1, 1).traverse(1));
 		CollectionProducer<Ray> ray = ray(origin2, direction2);
 		data2.evaluateIntersectionKernelScalar(ray.get(), distances, new MemoryBank[0]);
 		System.out.println("distance = " + distances.get(0).toDouble());
@@ -175,7 +175,7 @@ public class MeshIntersectionTest implements TestFeatures {
 	@Test
 	public void intersectionKernel3() {
 		Evaluable<Ray> ray = new DynamicProducerForMemoryData<>(args -> ray(i -> Math.random()).get().evaluate()).get();
-		PackedCollection<PackedCollection<?>> distances = new PackedCollection<>(shape(200, 1).traverse(1));
+		PackedCollection distances = new PackedCollection(shape(200, 1).traverse(1));
 		data2.evaluateIntersectionKernelScalar(ray, distances, new MemoryBank[0]);
 		// TODO  Assertions
 	}

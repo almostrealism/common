@@ -112,10 +112,10 @@ public class Sphere extends AbstractSurface implements DistanceEstimator, CodeFe
 	 * by the specified Vector object.
 	 */
 	@Override
-	public Producer<Vector> getNormalAt(Producer<Vector> point) {
-		Producer<Vector> normal = add(point, v(getLocation()).minus());
+	public Producer<PackedCollection> getNormalAt(Producer<PackedCollection> point) {
+		Producer<PackedCollection> normal = add(point, v(getLocation()).minus());
 		if (getTransform(true) != null) {
-			Producer<Vector> fnormal = normal;
+			Producer<PackedCollection> fnormal = normal;
 			normal = getTransform(true).transform(fnormal, TransformMatrix.TRANSFORM_AS_NORMAL);
 		}
 
@@ -233,7 +233,7 @@ public class Sphere extends AbstractSurface implements DistanceEstimator, CodeFe
 												closest(t(fr)), c(-1.0));
 			return new ShadableIntersection(this, r, distance);
 		} else {
-			Evaluable<PackedCollection<?>> s = args -> {
+			Evaluable<PackedCollection> s = args -> {
 				Ray ray = fr.get().evaluate(args);
 
 				double b = ray.oDotd().evaluate(args).toDouble();
@@ -242,7 +242,7 @@ public class Sphere extends AbstractSurface implements DistanceEstimator, CodeFe
 
 				double discriminant = (b * b) - (g) * (c - 1);
 
-				PackedCollection<?> result = new PackedCollection<>(1);
+				PackedCollection result = new PackedCollection(1);
 				if (discriminant < 0) {
 					result.setMem(0, -1.0);
 					return result;
@@ -286,21 +286,21 @@ public class Sphere extends AbstractSurface implements DistanceEstimator, CodeFe
 	}
 
 	@Override
-	public Operator<PackedCollection<?>> get() {
+	public Operator<PackedCollection> get() {
 		return new Operator<>() {
 
 			@Override
-			public Evaluable<PackedCollection<?>> get() {
+			public Evaluable<PackedCollection> get() {
 				return args -> {
-					PackedCollection<?> result = new PackedCollection<>(1);
+					PackedCollection result = new PackedCollection(1);
 					result.setMem(0, getInput().get().evaluate(args).lengthSq());
 					return result;
 				};
 			}
 
 			@Override
-			public Scope<PackedCollection<?>> getScope(KernelStructureContext context) {
-				Scope<PackedCollection<?>> s = new Scope();
+			public Scope<PackedCollection> getScope(KernelStructureContext context) {
+				Scope<PackedCollection> s = new Scope();
 
 				// TODO  This is not correct
 				// s.getVariables().add(assign("scalar", get().evaluate()));
@@ -315,8 +315,8 @@ public class Sphere extends AbstractSurface implements DistanceEstimator, CodeFe
 	}
 
 	@Override
-	public Operator<PackedCollection<?>> expect() {
-		PackedCollection<?> one = new PackedCollection<>(1);
+	public Operator<PackedCollection> expect() {
+		PackedCollection one = new PackedCollection(1);
 		one.setMem(0, 1.0);
 		return new Constant<>(one);
 	}
@@ -330,13 +330,13 @@ public class Sphere extends AbstractSurface implements DistanceEstimator, CodeFe
 	}
 
 	// TODO  Make private
-	public Producer<PackedCollection<?>> discriminant(Producer<Ray> ray) {
+	public Producer<PackedCollection> discriminant(Producer<Ray> ray) {
 		// return oDotd(ray).pow(2.0).add(dDotd(ray).multiply(oDoto(ray).add(-1.0)).multiply(-1));
 		return oDotd(ray).pow(2.0).subtract(dDotd(ray).multiply(oDoto(ray).subtract(1.0)));
 	}
 
 	// TODO  Make private
-	public Producer<PackedCollection<?>> discriminantSqrt(Producer<Ray> ray) {
+	public Producer<PackedCollection> discriminantSqrt(Producer<Ray> ray) {
 		return pow(discriminant(ray), c(0.5));
 	}
 
@@ -354,7 +354,7 @@ public class Sphere extends AbstractSurface implements DistanceEstimator, CodeFe
 	 * @param t A {@link Producer} of {@link Pair} containing two intersection distance solutions
 	 * @return A {@link Producer} yielding the minimum positive intersection distance, or -1.0 if no valid intersection
 	 */
-	public Producer closest(Producer<Pair<?>> t) {
+	public Producer closest(Producer<Pair> t) {
 		Producer leftDist = l(t);
 		Producer rightDist = r(t);
 
@@ -402,10 +402,10 @@ public class Sphere extends AbstractSurface implements DistanceEstimator, CodeFe
 		);
 	}
 
-	private CollectionProducer<Pair<?>> t(Producer<Ray> ray) {
-		Producer<PackedCollection<?>> dS = discriminantSqrt(ray);
-		Producer<PackedCollection<?>> minusODotD = oDotd(ray).minus();
-		Producer<PackedCollection<?>> dDotDInv = dDotd(ray).pow(-1.0);
+	private CollectionProducer<Pair> t(Producer<Ray> ray) {
+		Producer<PackedCollection> dS = discriminantSqrt(ray);
+		Producer<PackedCollection> minusODotD = oDotd(ray).minus();
+		Producer<PackedCollection> dDotDInv = dDotd(ray).pow(-1.0);
 		return pair((Producer) add(minusODotD, dS).multiply(dDotDInv),
 				    (Producer) add(minusODotD, minus(dS)).multiply(dDotDInv));
 	}

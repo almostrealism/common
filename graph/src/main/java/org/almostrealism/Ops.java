@@ -15,6 +15,7 @@
  */
 
 package org.almostrealism;
+import org.almostrealism.collect.PackedCollection;
 
 import java.util.function.Function;
 
@@ -45,7 +46,7 @@ import java.util.function.Function;
  * <h3>Functional Style</h3>
  * <pre>{@code
  * // Use op() for functional composition
- * PackedCollection<?> result = Ops.op(o -> o.multiply(o.c(2.0), o.p(input))).evaluate();
+ * PackedCollection result = Ops.op(o -> o.multiply(o.c(2.0), o.p(input))).evaluate();
  * }</pre>
  *
  * <h3>In Classes Implementing CodeFeatures</h3>

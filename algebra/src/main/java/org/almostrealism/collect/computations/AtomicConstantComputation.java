@@ -50,30 +50,30 @@ import org.almostrealism.collect.PackedCollection;
  *
  * <p><strong>Default unit constant (1.0):</strong></p>
  * <pre>{@code
- * AtomicConstantComputation<PackedCollection<?>> one = new AtomicConstantComputation<>();
- * PackedCollection<?> result = one.get().evaluate();
+ * AtomicConstantComputation<PackedCollection> one = new AtomicConstantComputation<>();
+ * PackedCollection result = one.get().evaluate();
  * // Result: [1.0]  (single element)
  * }</pre>
  *
  * <p><strong>Custom scalar constant:</strong></p>
  * <pre>{@code
- * AtomicConstantComputation<PackedCollection<?>> pi = new AtomicConstantComputation<>(3.14159);
- * PackedCollection<?> result = pi.get().evaluate();
+ * AtomicConstantComputation<PackedCollection> pi = new AtomicConstantComputation<>(3.14159);
+ * PackedCollection result = pi.get().evaluate();
  * // Result: [3.14159]  (single element)
  * }</pre>
  *
  * <p><strong>Using as a scaling factor:</strong></p>
  * <pre>{@code
- * CollectionProducer<PackedCollection<?>> data = c(1.0, 2.0, 3.0);
- * CollectionProducer<PackedCollection<?>> scale = new AtomicConstantComputation<>(2.0);
- * CollectionProducer<PackedCollection<?>> scaled = data.multiply(scale);
+ * CollectionProducer<PackedCollection> data = c(1.0, 2.0, 3.0);
+ * CollectionProducer<PackedCollection> scale = new AtomicConstantComputation<>(2.0);
+ * CollectionProducer<PackedCollection> scaled = data.multiply(scale);
  * // Result: [2.0, 4.0, 6.0]  (scale is broadcast)
  * }</pre>
  *
  * <p><strong>Invalid usage (throws exception):</strong></p>
  * <pre>{@code
  * // This will throw IllegalArgumentException at construction time:
- * AtomicConstantComputation<PackedCollection<?>> invalid =
+ * AtomicConstantComputation<PackedCollection> invalid =
  *     new AtomicConstantComputation<>(shape(3), 1.0);  // ERROR: size != 1
  * }</pre>
  *
@@ -101,7 +101,7 @@ import org.almostrealism.collect.PackedCollection;
  *
  * @author Michael Murray
  */
-public class AtomicConstantComputation<T extends PackedCollection<?>> extends SingleConstantComputation<T> {
+public class AtomicConstantComputation<T extends PackedCollection> extends SingleConstantComputation<T> {
 	/**
 	 * Constructs an atomic constant with the default value of 1.0.
 	 * The resulting collection will have exactly one element with value 1.0.

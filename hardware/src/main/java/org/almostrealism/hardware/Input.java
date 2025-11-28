@@ -38,13 +38,13 @@ import java.util.stream.IntStream;
  * <h3>Example:</h3>
  * <pre>{@code
  * // Build a computation that multiplies input[0] by input[1]
- * Producer<PackedCollection<?>> x = Input.value(1000, 0);  // References arg 0
- * Producer<PackedCollection<?>> y = Input.value(1000, 1);  // References arg 1
- * Producer<PackedCollection<?>> result = multiply(x, y);
+ * Producer<PackedCollection> x = Input.value(1000, 0);  // References arg 0
+ * Producer<PackedCollection> y = Input.value(1000, 1);  // References arg 1
+ * Producer<PackedCollection> result = multiply(x, y);
  *
  * // Compile and evaluate with actual values
- * Evaluable<PackedCollection<?>> evaluable = result.get();
- * PackedCollection<?> output = evaluable.evaluate(actualX, actualY);
+ * Evaluable<PackedCollection> evaluable = result.get();
+ * PackedCollection output = evaluable.evaluate(actualX, actualY);
  * //                                              arg[0]   arg[1]
  * }</pre>
  *
@@ -53,25 +53,25 @@ import java.util.stream.IntStream;
  * <h3>Single Input Reference</h3>
  * <pre>{@code
  * // Reference the first argument (index 0)
- * Producer<PackedCollection<?>> input = Input.value(1000, 0);
+ * Producer<PackedCollection> input = Input.value(1000, 0);
  *
  * // Build computation using that input
- * Producer<PackedCollection<?>> scaled = multiply(input, c(2.0));
+ * Producer<PackedCollection> scaled = multiply(input, c(2.0));
  *
  * // Evaluate - provide actual data for arg 0
- * PackedCollection<?> data = new PackedCollection<>(1000);
- * PackedCollection<?> result = scaled.get().evaluate(data);
+ * PackedCollection data = new PackedCollection(1000);
+ * PackedCollection result = scaled.get().evaluate(data);
  * }</pre>
  *
  * <h3>Multiple Inputs</h3>
  * <pre>{@code
- * Producer<PackedCollection<?>> a = Input.value(shape, 0);
- * Producer<PackedCollection<?>> b = Input.value(shape, 1);
- * Producer<PackedCollection<?>> c = Input.value(shape, 2);
+ * Producer<PackedCollection> a = Input.value(shape, 0);
+ * Producer<PackedCollection> b = Input.value(shape, 1);
+ * Producer<PackedCollection> c = Input.value(shape, 2);
  *
  * // Computation: (a + b) * c
- * Producer<PackedCollection<?>> sum = add(a, b);
- * Producer<PackedCollection<?>> product = multiply(sum, c);
+ * Producer<PackedCollection> sum = add(a, b);
+ * Producer<PackedCollection> product = multiply(sum, c);
  *
  * // Evaluate with 3 arguments
  * result = product.get().evaluate(dataA, dataB, dataC);
@@ -83,7 +83,7 @@ import java.util.stream.IntStream;
  * Producer[] inputs = Input.generateArguments(1000, 0, 10);
  *
  * // Useful for variadic operations
- * Producer<PackedCollection<?>> sum = sum(inputs);  // Sums all 10 inputs
+ * Producer<PackedCollection> sum = sum(inputs);  // Sums all 10 inputs
  *
  * // Evaluate with 10 actual arguments
  * result = sum.get().evaluate(
@@ -160,7 +160,7 @@ public class Input {
 	 * <pre>{@code
 	 * // Reference a 10x100 matrix at argument index 0
 	 * TraversalPolicy matrixShape = new TraversalPolicy(10, 100);
-	 * Producer<PackedCollection<?>> matrix = Input.value(matrixShape, 0);
+	 * Producer<PackedCollection> matrix = Input.value(matrixShape, 0);
 	 * }</pre>
 	 *
 	 * @param shape The expected shape of the argument
@@ -181,7 +181,7 @@ public class Input {
 	 * <h3>Example:</h3>
 	 * <pre>{@code
 	 * // Reference a flat array of 1000 elements at argument index 0
-	 * Producer<PackedCollection<?>> data = Input.value(1000, 0);
+	 * Producer<PackedCollection> data = Input.value(1000, 0);
 	 * }</pre>
 	 *
 	 * @param memLength The number of elements in the argument
@@ -206,7 +206,7 @@ public class Input {
 	 * // Returns: [Input.value(1000, 0), Input.value(1000, 1), ..., Input.value(1000, 4)]
 	 *
 	 * // Use with variadic sum operation
-	 * Producer<PackedCollection<?>> total = sum(inputs);
+	 * Producer<PackedCollection> total = sum(inputs);
 	 *
 	 * // Evaluate with 5 arguments
 	 * result = total.get().evaluate(data0, data1, data2, data3, data4);

@@ -39,7 +39,7 @@ public class SingleConstantComputationTest implements TestFeatures {
 	public void basicConstantCreation() {
 		// Create a 2x3 matrix filled with the value 5.0
 		TraversalPolicy shape = new TraversalPolicy(2, 3);
-		SingleConstantComputation<PackedCollection<?>> constant = 
+		SingleConstantComputation<PackedCollection> constant = 
 			new SingleConstantComputation<>(shape, 5.0);
 		
 		// Verify the constant value is stored correctly
@@ -59,11 +59,11 @@ public class SingleConstantComputationTest implements TestFeatures {
 	public void shortCircuitEvaluation() {
 		TraversalPolicy shape = new TraversalPolicy(3);
 		double constantValue = 7.5;
-		SingleConstantComputation<PackedCollection<?>> constant = 
+		SingleConstantComputation<PackedCollection> constant = 
 			new SingleConstantComputation<>(shape, constantValue);
 		
 		// Use short-circuit evaluation
-		PackedCollection<?> result = constant.getShortCircuit().evaluate();
+		PackedCollection result = constant.getShortCircuit().evaluate();
 		
 		// Verify all elements have the constant value
 		assertEquals(3, result.getMemLength());
@@ -80,26 +80,26 @@ public class SingleConstantComputationTest implements TestFeatures {
 	@Test
 	public void optimizationMethods() {
 		// Test zero detection
-		SingleConstantComputation<PackedCollection<?>> zero = 
+		SingleConstantComputation<PackedCollection> zero = 
 			new SingleConstantComputation<>(new TraversalPolicy(5), 0.0);
 		assertTrue("Zero constant should be detected", zero.isZero());
 		
 		// Test non-zero
-		SingleConstantComputation<PackedCollection<?>> nonZero = 
+		SingleConstantComputation<PackedCollection> nonZero = 
 			new SingleConstantComputation<>(new TraversalPolicy(5), 3.14);
 		assertFalse("Non-zero constant should not be detected as zero", nonZero.isZero());
 		
 		// Test identity detection (scalar 1.0)
-		SingleConstantComputation<PackedCollection<?>> identity = 
+		SingleConstantComputation<PackedCollection> identity = 
 			new SingleConstantComputation<>(new TraversalPolicy(1), 1.0);
 		assertTrue("Scalar 1.0 should be detected as identity", identity.isIdentity(1));
 		
 		// Test non-identity cases
-		SingleConstantComputation<PackedCollection<?>> notIdentity1 = 
+		SingleConstantComputation<PackedCollection> notIdentity1 = 
 			new SingleConstantComputation<>(new TraversalPolicy(1), 2.0);
 		assertFalse("Scalar 2.0 should not be identity", notIdentity1.isIdentity(1));
 		
-		SingleConstantComputation<PackedCollection<?>> notIdentity2 = 
+		SingleConstantComputation<PackedCollection> notIdentity2 = 
 			new SingleConstantComputation<>(new TraversalPolicy(3), 1.0);
 		assertFalse("Vector of 1.0s should not be scalar identity", notIdentity2.isIdentity(1));
 	}
@@ -113,13 +113,13 @@ public class SingleConstantComputationTest implements TestFeatures {
 	public void reshapeOperation() {
 		double constantValue = 2.5;
 		TraversalPolicy originalShape = new TraversalPolicy(2, 3); // 2x3 matrix
-		SingleConstantComputation<PackedCollection<?>> original = 
+		SingleConstantComputation<PackedCollection> original = 
 			new SingleConstantComputation<>(originalShape, constantValue);
 		
 		// Reshape to a vector
 		TraversalPolicy newShape = new TraversalPolicy(6); // 6-element vector
-		SingleConstantComputation<PackedCollection<?>> reshaped = 
-			(SingleConstantComputation<PackedCollection<?>>) original.reshape(newShape);
+		SingleConstantComputation<PackedCollection> reshaped = 
+			(SingleConstantComputation<PackedCollection>) original.reshape(newShape);
 		
 		// Verify the constant value is preserved
 		assertEquals(constantValue, reshaped.getConstantValue());
@@ -138,12 +138,12 @@ public class SingleConstantComputationTest implements TestFeatures {
 	public void traverseOperation() {
 		double constantValue = -1.5;
 		TraversalPolicy originalShape = new TraversalPolicy(3, 4); // 3x4 matrix
-		SingleConstantComputation<PackedCollection<?>> original = 
+		SingleConstantComputation<PackedCollection> original = 
 			new SingleConstantComputation<>(originalShape, constantValue);
 		
 		// Traverse along axis 1
-		SingleConstantComputation<PackedCollection<?>> traversed = 
-			(SingleConstantComputation<PackedCollection<?>>) original.traverse(1);
+		SingleConstantComputation<PackedCollection> traversed = 
+			(SingleConstantComputation<PackedCollection>) original.traverse(1);
 		
 		// Verify the constant value is preserved
 		assertEquals(constantValue, traversed.getConstantValue());
@@ -159,7 +159,7 @@ public class SingleConstantComputationTest implements TestFeatures {
 	 */
 	@Test
 	public void description() {
-		SingleConstantComputation<PackedCollection<?>> constant = 
+		SingleConstantComputation<PackedCollection> constant = 
 			new SingleConstantComputation<>(new TraversalPolicy(2), 3.14159);
 		
 		String description = constant.description();
@@ -180,8 +180,8 @@ public class SingleConstantComputationTest implements TestFeatures {
 		double value = 42.0;
 		
 		// Create a test subclass to access the protected constructor
-		SingleConstantComputation<PackedCollection<?>> constant = 
-			new SingleConstantComputation<PackedCollection<?>>(customName, shape, value) {};
+		SingleConstantComputation<PackedCollection> constant = 
+			new SingleConstantComputation<PackedCollection>(customName, shape, value) {};
 		
 		assertEquals(value, constant.getConstantValue());
 		assertEquals(shape.getTotalSize(), constant.getShape().getTotalSize());

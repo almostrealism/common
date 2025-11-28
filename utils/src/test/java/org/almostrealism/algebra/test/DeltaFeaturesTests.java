@@ -35,23 +35,23 @@ public class DeltaFeaturesTests implements DeltaFeatures, TestFeatures {
 		int dim = 3;
 		int count = 2;
 
-		PackedCollection<?> v = pack(IntStream.range(0, count * dim).boxed()
+		PackedCollection v = pack(IntStream.range(0, count * dim).boxed()
 				.mapToDouble(Double::valueOf).toArray())
 				.reshape(count, dim).traverse();
-		PackedCollection<?> w1 = pack(4, -3, 2);
-		PackedCollection<?> w2 = pack(2, 1, 5);
-		CollectionProducer<PackedCollection<?>> x = x(-1, dim);
+		PackedCollection w1 = pack(4, -3, 2);
+		PackedCollection w2 = pack(2, 1, 5);
+		CollectionProducer<PackedCollection> x = x(-1, dim);
 
 		// f(x) = w2 * x
 		// g(x) = w1 * x
 		// f(g(x)) = w2 * w1 * x
-		CollectionProducer<PackedCollection<?>> c = x.mul(p(w1)).mul(p(w2));
+		CollectionProducer<PackedCollection> c = x.mul(p(w1)).mul(p(w2));
 
 		// dy = f'(g(x))
 		//    = w2
-		Producer<PackedCollection<?>> in = AlgebraFeatures.matchInput(c, x).get();
-		Evaluable<PackedCollection<?>> dy = generateIsolatedDelta((ComputationBase) c, in).get();
-		PackedCollection<?> dout = dy.evaluate(v);
+		Producer<PackedCollection> in = AlgebraFeatures.matchInput(c, x).get();
+		Evaluable<PackedCollection> dy = generateIsolatedDelta((ComputationBase) c, in).get();
+		PackedCollection dout = dy.evaluate(v);
 		dout.print();
 
 		for (int i = 0; i < count; i++) {
@@ -74,20 +74,20 @@ public class DeltaFeaturesTests implements DeltaFeatures, TestFeatures {
 		int dim = 3;
 		int count = 2;
 
-		PackedCollection<?> v = pack(IntStream.range(0, count * dim).boxed()
+		PackedCollection v = pack(IntStream.range(0, count * dim).boxed()
 				.mapToDouble(Double::valueOf).toArray())
 				.reshape(count, dim).traverse();
 
-		CollectionProducer<PackedCollection<?>> x = x(dim);
+		CollectionProducer<PackedCollection> x = x(dim);
 
 		// f(x) = x^2
-		CollectionProducer<PackedCollection<?>> c = x.each().pow(2.0);
+		CollectionProducer<PackedCollection> c = x.each().pow(2.0);
 
 		// dy = f'(x)
 		//    = 2x
-		Producer<PackedCollection<?>> in = AlgebraFeatures.matchInput(c, x).get();
-		Evaluable<PackedCollection<?>> dy = generateIsolatedDelta((ComputationBase) c, in).get();
-		PackedCollection<?> dout = dy.evaluate(v);
+		Producer<PackedCollection> in = AlgebraFeatures.matchInput(c, x).get();
+		Evaluable<PackedCollection> dy = generateIsolatedDelta((ComputationBase) c, in).get();
+		PackedCollection dout = dy.evaluate(v);
 		dout.print();
 
 		for (int i = 0; i < count; i++) {
@@ -110,20 +110,20 @@ public class DeltaFeaturesTests implements DeltaFeatures, TestFeatures {
 		// f(g(x)) = w0 * (x0 + x1), w1 * (x2 + x3)
 		int dim = 2;
 
-		PackedCollection<?> w = pack(4, -3);
-		PackedCollection<?> input =
+		PackedCollection w = pack(4, -3);
+		PackedCollection input =
 				pack(1, 2, 3, 4)
 				.reshape(dim, dim);
-		CollectionProducer<PackedCollection<?>> c =
+		CollectionProducer<PackedCollection> c =
 				cp(input)
 				.sum(1)
 				.multiply(cp(w));
 
 		// dy = f'(g(x))
 		//    = w0, w1
-		Producer<PackedCollection<?>> in = AlgebraFeatures.matchInput(c, cp(input)).get();
-		Evaluable<PackedCollection<?>> dy = generateIsolatedDelta((ComputationBase) c, in).get();
-		PackedCollection<?> dout = dy.evaluate();
+		Producer<PackedCollection> in = AlgebraFeatures.matchInput(c, cp(input)).get();
+		Evaluable<PackedCollection> dy = generateIsolatedDelta((ComputationBase) c, in).get();
+		PackedCollection dout = dy.evaluate();
 		dout.traverse().print();
 
 		for (int j = 0 ; j < dim; j++) {
@@ -144,18 +144,18 @@ public class DeltaFeaturesTests implements DeltaFeatures, TestFeatures {
 		// f(g(x)) = w0 * (x0), w1 * (x0)
 		int dim = 2;
 
-		PackedCollection<?> w = pack(4, -3);
-		PackedCollection<?> input = pack(3);
-		CollectionProducer<PackedCollection<?>> c =
+		PackedCollection w = pack(4, -3);
+		PackedCollection input = pack(3);
+		CollectionProducer<PackedCollection> c =
 				cp(input)
 						.repeat(2)
 						.multiply(cp(w));
 
 		// dy = f'(g(x))
 		//    = w0, w1
-		Producer<PackedCollection<?>> in = AlgebraFeatures.matchInput(c, cp(input)).get();
-		Evaluable<PackedCollection<?>> dy = generateIsolatedDelta((ComputationBase) c, in).get();
-		PackedCollection<?> dout = dy.evaluate();
+		Producer<PackedCollection> in = AlgebraFeatures.matchInput(c, cp(input)).get();
+		Evaluable<PackedCollection> dy = generateIsolatedDelta((ComputationBase) c, in).get();
+		PackedCollection dout = dy.evaluate();
 		dout.traverse().print();
 
 		for (int j = 0 ; j < dim; j++) {

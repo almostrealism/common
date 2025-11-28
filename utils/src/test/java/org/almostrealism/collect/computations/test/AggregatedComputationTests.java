@@ -34,9 +34,9 @@ public class AggregatedComputationTests implements TestFeatures {
 		int r = 1024;
 		int c = 1024;
 
-		PackedCollection<?> a = new PackedCollection<>(r, c);
+		PackedCollection a = new PackedCollection(r, c);
 
-		PackedCollection<?> out = cp(a).sum(1).evaluate();
+		PackedCollection out = cp(a).sum(1).evaluate();
 
 		for (int i = 0; i < r; i++) {
 			assertEquals(
@@ -53,19 +53,19 @@ public class AggregatedComputationTests implements TestFeatures {
 		int h = 8192;
 		int d = 1024;
 
-		PackedCollection<?> a = new PackedCollection<>(shape(h, d))
+		PackedCollection a = new PackedCollection(shape(h, d))
 				.randFill();
-		PackedCollection<?> b = new PackedCollection<>(shape(w, d))
+		PackedCollection b = new PackedCollection(shape(w, d))
 				.randFill();
 
-		CollectionProducer<PackedCollection<?>> sum =
+		CollectionProducer<PackedCollection> sum =
 				multiply(cp(a).repeat(w).each(),
 							cp(b).traverse(1).repeat(h).each())
 						.traverse(2)
 						.sum();
 		log(Signature.of(sum));
 
-		PackedCollection<?> out = enableOptimization ?
+		PackedCollection out = enableOptimization ?
 				Process.optimized(sum).get().evaluate() : sum.evaluate();
 		log("NaN Count = " + out.count(Double::isNaN));
 

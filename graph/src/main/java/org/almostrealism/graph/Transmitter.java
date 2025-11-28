@@ -15,6 +15,7 @@
  */
 
 package org.almostrealism.graph;
+import org.almostrealism.collect.PackedCollection;
 
 /**
  * A data-transmitting component in the Almost Realism computation graph architecture.
@@ -36,8 +37,8 @@ package org.almostrealism.graph;
  *
  * <pre>{@code
  * // Connect cells in a pipeline
- * Cell<PackedCollection<?>> cell1 = ...;
- * Cell<PackedCollection<?>> cell2 = ...;
+ * Cell<PackedCollection> cell1 = ...;
+ * Cell<PackedCollection> cell2 = ...;
  * cell1.setReceptor(cell2);  // cell1's output flows to cell2
  * }</pre>
  *

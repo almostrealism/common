@@ -22,7 +22,7 @@ import org.almostrealism.util.TestSettings;
 import org.junit.Assert;
 
 public interface KernelAssertions extends TestSettings, ConsoleFeatures {
-	default void pool2d(int r, int c, int d, int w, PackedCollection<?> input, PackedCollection<?> output) {
+	default void pool2d(int r, int c, int d, int w, PackedCollection input, PackedCollection output) {
 		System.out.println("Validate Pool2D: Output shape = " + output.getShape());
 		System.out.println("Validate Pool2D: Output size = " + output.getShape().getSize());
 

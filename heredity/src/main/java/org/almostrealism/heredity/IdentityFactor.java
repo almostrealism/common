@@ -15,6 +15,7 @@
  */
 
 package org.almostrealism.heredity;
+import org.almostrealism.collect.PackedCollection;
 
 import io.almostrealism.relation.Factor;
 import io.almostrealism.relation.Producer;
@@ -30,11 +31,11 @@ import io.almostrealism.relation.Producer;
  * <h2>Example Usage</h2>
  * <pre>{@code
  * // Create an identity factor
- * Factor<PackedCollection<?>> passThrough = new IdentityFactor<>();
+ * Factor<PackedCollection> passThrough = new IdentityFactor<>();
  *
  * // Apply to input - returns the same producer
- * Producer<PackedCollection<?>> input = ...;
- * Producer<PackedCollection<?>> result = passThrough.getResultant(input);
+ * Producer<PackedCollection> input = ...;
+ * Producer<PackedCollection> result = passThrough.getResultant(input);
  * // result == input
  * }</pre>
  *

@@ -73,15 +73,15 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 		model.add(softmax);
 
 		Tensor<Double> t = tensor(shape(size));
-		PackedCollection<?> input = t.pack();
+		PackedCollection input = t.pack();
 
-		PackedCollection<?> biases = dense.getWeights().get(1);
+		PackedCollection biases = dense.getWeights().get(1);
 		IntStream.range(0, nodes).forEach(i -> biases.setMem(i, Math.random()));
 
 		model.compile().forward(input);
 
-		PackedCollection<?> weights = dense.getWeights().get(0);
-		PackedCollection<?> output =  ((DefaultCellularLayer) dense).getOutput();
+		PackedCollection weights = dense.getWeights().get(0);
+		PackedCollection output =  ((DefaultCellularLayer) dense).getOutput();
 
 		for (int i = 0; i < nodes; i++) {
 			double expected = 0;
@@ -136,11 +136,11 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 		model.add(pool);
 
 		Tensor<Double> t = tensor(inputShape);
-		PackedCollection<?> input = t.pack();
+		PackedCollection input = t.pack();
 
 		model.compile().forward(input);
 
-		PackedCollection<?> output = ((DefaultCellularLayer) pool).getOutput();
+		PackedCollection output = ((DefaultCellularLayer) pool).getOutput();
 
 		pool2d(inputShape.length(0), inputShape.length(1), 8, 2, input, output);
 	}
@@ -155,14 +155,14 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 		model.add(pool);
 
 		Tensor<Double> t = tensor(inputShape);
-		PackedCollection<?> input = t.pack();
+		PackedCollection input = t.pack();
 
-		PackedCollection<?> in = input;
+		PackedCollection in = input;
 		verboseLog(() -> model.compile().forward(in));
 
-		PackedCollection<?> filter = conv.getWeights().get(0);
+		PackedCollection filter = conv.getWeights().get(0);
 
-		PackedCollection<?> output = ((DefaultCellularLayer) conv).getOutput();
+		PackedCollection output = ((DefaultCellularLayer) conv).getOutput();
 		TraversalPolicy outputShape = output.getShape();
 
 		for (int n = 0; n < outputShape.length(0); n++) {
@@ -231,7 +231,7 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 
 		int dim = 3;
 		Tensor<Double> t = tensor(shape(dim, dim));
-		PackedCollection<?> input = t.pack();
+		PackedCollection input = t.pack();
 		train(input, model(dim, dim, 2, 2, 1, 10));
 	}
 
@@ -242,7 +242,7 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 		try {
 			int dim = 8;
 			Tensor<Double> t = tensor(shape(dim, dim));
-			PackedCollection<?> input = t.pack();
+			PackedCollection input = t.pack();
 			train(input, model(dim, dim, 3, 4, 1, 10), 2);
 		} finally {
 			ParallelProcess.explicitIsolationTargets.clear();
@@ -261,7 +261,7 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 		int dim = 28;
 		int filters = 8;
 		Tensor<Double> t = tensor(shape(dim, dim));
-		PackedCollection<?> input = t.pack();
+		PackedCollection input = t.pack();
 		train(input, model(dim, dim, 3, filters, 2, 10));
 	}
 
@@ -272,7 +272,7 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 		int dim = 54;
 		int filters = 8;
 		Tensor<Double> t = tensor(shape(dim, dim));
-		PackedCollection<?> input = t.pack();
+		PackedCollection input = t.pack();
 		train(input, model(dim, dim, 3, filters, 3, 10));
 	}
 
@@ -284,7 +284,7 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 			int dim = 72;
 			int filters = 8;
 			Tensor<Double> t = tensor(shape(dim, dim));
-			PackedCollection<?> input = t.pack();
+			PackedCollection input = t.pack();
 			train(input, model(dim, dim, 3, filters, 4, 10));
 		} finally {
 			ParallelProcess.isolationFlags.clear();
@@ -301,18 +301,18 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 			int s = (int) size;
 
 			Tensor<Double> t = tensor(shape(s, s));
-			PackedCollection<?> input = t.pack();
+			PackedCollection input = t.pack();
 			train(input, model(s, s, 3, 8, 2, 10));
 
 			size = size * 1.2;
 		}
 	}
 
-	protected void train(PackedCollection<?> input, Model model) throws IOException {
+	protected void train(PackedCollection input, Model model) throws IOException {
 		train(input, model, trainingTests ? 80 : 2);
 	}
 
-	protected void train(PackedCollection<?> input, Model model, int epochCount) throws IOException {
+	protected void train(PackedCollection input, Model model, int epochCount) throws IOException {
 		OperationProfileNode profile = new OperationProfileNode("Model");
 		CompiledModel compiled = model.compile(profile);
 		log("Model compiled");

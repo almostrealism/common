@@ -89,12 +89,12 @@ import org.almostrealism.hardware.MemoryData;
  * t.insert(4.0, 1, 1);
  *
  * // Pack into a PackedCollection for hardware acceleration
- * PackedCollection<?> packed = t.pack();
+ * PackedCollection packed = t.pack();
  * }</pre>
  *
  * <h3>HTML and CSV Export</h3>
  * <pre>{@code
- * Tensor<PackedCollection<?>> data = new Tensor<>();
+ * Tensor<PackedCollection> data = new Tensor<>();
  * // ... populate data ...
  *
  * String html = data.toHTML();  // Generate HTML table
@@ -246,14 +246,14 @@ public class Tensor<T> implements HTMLContent {
 	 * @return a {@link PackedCollection} containing the tensor data
 	 * @throws ClassCastException if tensor contains non-numeric, non-MemoryData values
 	 */
-	public PackedCollection<?> pack() {
+	public PackedCollection pack() {
 		TraversalPolicy shape = new TraversalPolicy(IntStream.range(0, getDimensions()).mapToObj(i -> new int[i]).mapToInt(this::length).toArray());
 		if (get(new int[shape.getDimensions()]) instanceof MemoryData) {
 			TraversalPolicy targetShape = shape.appendDimension(((MemoryData) get(new int[shape.getDimensions()])).getMemLength());
 			return packMem(shape, targetShape);
 		}
 
-		PackedCollection<?> c = new PackedCollection<>(shape);
+		PackedCollection c = new PackedCollection(shape);
 
 		AtomicInteger index = new AtomicInteger();
 		shape.stream().forEach(pos -> c.setMem(index.getAndIncrement(), ((Number) get(pos)).doubleValue()));
@@ -267,8 +267,8 @@ public class Tensor<T> implements HTMLContent {
 	 * @param targetShape  the target shape including memory data dimensions
 	 * @return a packed collection containing all memory data
 	 */
-	private PackedCollection<?> packMem(TraversalPolicy shape, TraversalPolicy targetShape) {
-		PackedCollection<?> c = new PackedCollection<>(targetShape);
+	private PackedCollection packMem(TraversalPolicy shape, TraversalPolicy targetShape) {
+		PackedCollection c = new PackedCollection(targetShape);
 
 		AtomicInteger index = new AtomicInteger();
 		shape.stream().forEach(pos -> {
@@ -354,7 +354,7 @@ public class Tensor<T> implements HTMLContent {
 				} else if (o instanceof PackedCollection) {
 					Div cell = new Div();
 					cell.addStyleClass("tensor-cell");
-					cell.add(new HTMLString(String.valueOf(((PackedCollection<?>) o).toDouble(0))));
+					cell.add(new HTMLString(String.valueOf(((PackedCollection) o).toDouble(0))));
 					row.add(cell);
 				} else {
 					Div cell = new Div();
@@ -400,7 +400,7 @@ public class Tensor<T> implements HTMLContent {
 				if (o instanceof String) {
 					buf.append((String) o);
 				} else if (o instanceof PackedCollection) {
-					buf.append(((PackedCollection<?>) o).toDouble(0));
+					buf.append(((PackedCollection) o).toDouble(0));
 				} else if (o instanceof Number) {
 					buf.append(o);
 				} else {

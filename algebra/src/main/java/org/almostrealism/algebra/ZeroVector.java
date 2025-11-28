@@ -18,6 +18,7 @@ package org.almostrealism.algebra;
 
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.collect.PackedCollection;
 
 /**
  * A utility class providing access to the zero vector (0, 0, 0).
@@ -31,7 +32,7 @@ import io.almostrealism.relation.Producer;
  * <h2>Usage Examples</h2>
  * <pre>{@code
  * // Get a producer for the zero vector
- * Producer<Vector> zeroProducer = ZeroVector.getInstance();
+ * Producer<PackedCollection> zeroProducer = ZeroVector.getInstance();
  *
  * // Get an evaluable for direct evaluation
  * Evaluable<Vector> zeroEval = ZeroVector.getEvaluable();
@@ -54,12 +55,12 @@ public class ZeroVector {
 	 *
 	 * @return a producer for the zero vector
 	 */
-	public static Producer<Vector> getInstance() { return VectorFeatures.getInstance().vector(0, 0, 0); }
+	public static Producer<PackedCollection> getInstance() { return (Producer) VectorFeatures.getInstance().vector(0, 0, 0); }
 
 	/**
 	 * Returns an {@link Evaluable} that produces the zero vector (0, 0, 0).
 	 *
 	 * @return an evaluable for the zero vector
 	 */
-	public static Evaluable<Vector> getEvaluable() { return getInstance().get(); }
+	public static Evaluable<PackedCollection> getEvaluable() { return getInstance().get(); }
 }

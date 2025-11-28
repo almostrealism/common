@@ -62,7 +62,7 @@ import java.util.stream.Collectors;
  * <p>Subclasses typically override {@link #isTransitiveArgumentIndex(int)} to specify which
  * arguments should have transitive delta propagation:</p>
  * <pre>{@code
- * public class MyDeltaComputation extends TransitiveDeltaExpressionComputation<PackedCollection<?>> {
+ * public class MyDeltaComputation extends TransitiveDeltaExpressionComputation<PackedCollection> {
  *     @Override
  *     protected boolean isTransitiveArgumentIndex(int index) {
  *         return index == 1 || index == 2; // Apply delta to first two arguments
@@ -85,7 +85,7 @@ import java.util.stream.Collectors;
  *
  * @author Michael Murray
  */
-public abstract class TransitiveDeltaExpressionComputation<T extends PackedCollection<?>>
+public abstract class TransitiveDeltaExpressionComputation<T extends PackedCollection>
 												extends TraversableExpressionComputation<T> {
 	/**
 	 * Global flag enabling atomic kernel generation for transitive delta computations.
@@ -108,7 +108,7 @@ public abstract class TransitiveDeltaExpressionComputation<T extends PackedColle
 	 * @param arguments Variable number of input {@link Producer} arguments providing the data collections
 	 */
 	protected TransitiveDeltaExpressionComputation(String name, TraversalPolicy shape,
-												   Producer<PackedCollection<?>>... arguments) {
+												   Producer<PackedCollection>... arguments) {
 		super(name, shape, MultiTermDeltaStrategy.NONE, arguments);
 	}
 
@@ -257,7 +257,7 @@ public abstract class TransitiveDeltaExpressionComputation<T extends PackedColle
 
 		TraversalPolicy targetShape = shape(target);
 
-		List<CollectionProducer<PackedCollection<?>>> operands = List.of(
+		List<CollectionProducer<PackedCollection>> operands = List.of(
 				getChildren().stream().skip(1)
 						.filter(p -> p instanceof CollectionProducer)
 						.toArray(CollectionProducer[]::new));

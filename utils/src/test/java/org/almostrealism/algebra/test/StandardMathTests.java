@@ -29,7 +29,7 @@ import org.junit.Test;
 public class StandardMathTests implements TestFeatures {
 	@Test
 	public void add() {
-		CollectionProducer<PackedCollection<?>> sum = add(c(1.0), c(2.0));
+		CollectionProducer<PackedCollection> sum = add(c(1.0), c(2.0));
 		Evaluable ev = sum.get();
 		System.out.println(ev.evaluate());
 		assertEquals(3.0, ev.evaluate());
@@ -38,14 +38,14 @@ public class StandardMathTests implements TestFeatures {
 	@Test
 	public void divide() {
 		int dim = 256;
-		PackedCollection<?> in = new PackedCollection(dim).randnFill();
-		CollectionProducer<PackedCollection<?>> inp = cp(in);
-		CollectionProducer<PackedCollection<?>> o = divide(c(1.0), inp.traverseEach());
+		PackedCollection in = new PackedCollection(dim).randnFill();
+		CollectionProducer<PackedCollection> inp = cp(in);
+		CollectionProducer<PackedCollection> o = divide(c(1.0), inp.traverseEach());
 
 		Assert.assertEquals(1, o.getShape().getDimensions());
 		Assert.assertEquals(256, o.getShape().length(0));
 
-		PackedCollection<?> out = o.get().evaluate();
+		PackedCollection out = o.get().evaluate();
 		Assert.assertEquals(1, out.getShape().getDimensions());
 		Assert.assertEquals(256, out.getShape().length(0));
 
@@ -58,12 +58,12 @@ public class StandardMathTests implements TestFeatures {
 
 	@Test
 	public void multiplyBroadcast() {
-		PackedCollection<?> in = new PackedCollection<Pair<?>>(shape(12, 32, 2)).randFill();
-		PackedCollection<?> x = new PackedCollection<Pair<?>>(shape(32, 2)).randFill();
-		Producer<PackedCollection<?>> o = c(p(in)).traverse(1).multiply(c(p(x)));
+		PackedCollection in = new PackedCollection(shape(12, 32, 2)).randFill();
+		PackedCollection x = new PackedCollection(shape(32, 2)).randFill();
+		Producer<PackedCollection> o = c(p(in)).traverse(1).multiply(c(p(x)));
 
 		verboseLog(() -> {
-			PackedCollection<?> result = o.get().evaluate();
+			PackedCollection result = o.get().evaluate();
 
 			for (int n = 0; n < 12; n++) {
 				for (int i = 0; i < 32; i++) {
@@ -80,11 +80,11 @@ public class StandardMathTests implements TestFeatures {
 	@Test
 	public void silu() {
 		int dim = 256;
-		PackedCollection<?> in = new PackedCollection(dim).randnFill();
-		CollectionProducer<PackedCollection<?>> inp = cp(in);
-		Producer<PackedCollection<?>> o = inp.traverseEach().sigmoid().multiply(inp.traverseEach());
+		PackedCollection in = new PackedCollection(dim).randnFill();
+		CollectionProducer<PackedCollection> inp = cp(in);
+		Producer<PackedCollection> o = inp.traverseEach().sigmoid().multiply(inp.traverseEach());
 
-		PackedCollection<?> out = o.get().evaluate();
+		PackedCollection out = o.get().evaluate();
 
 		for (int i = 0; i < dim; i++) {
 			double expected = in.valueAt(i) / (1.0f + Math.exp(-in.valueAt(i)));

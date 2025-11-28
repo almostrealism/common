@@ -29,9 +29,9 @@ public class ConditionalTest implements TestFeatures {
 		CollectionProducerBase b = c(2);
 		CollectionProducerBase c = c(3);
 		CollectionProducerBase d = c(5);
-		Evaluable<PackedCollection<?>> ev = equals(a, b, c, d).get();
+		Evaluable<PackedCollection> ev = equals(a, b, c, d).get();
 
-		PackedCollection<?> result = ev.evaluate();
+		PackedCollection result = ev.evaluate();
 		System.out.println(result.toDouble(0));
 		assertEquals(3, result.toDouble(0));
 	}
@@ -42,9 +42,9 @@ public class ConditionalTest implements TestFeatures {
 		CollectionProducerBase b = c(1);
 		CollectionProducerBase c = c(3);
 		CollectionProducerBase d = c(5);
-		Evaluable<PackedCollection<?>> ev = equals(a, b, c, d).get();
+		Evaluable<PackedCollection> ev = equals(a, b, c, d).get();
 
-		PackedCollection<?> result = ev.evaluate();
+		PackedCollection result = ev.evaluate();
 		System.out.println(result.toDouble(0));
 		assertEquals(5, result.toDouble(0));
 	}

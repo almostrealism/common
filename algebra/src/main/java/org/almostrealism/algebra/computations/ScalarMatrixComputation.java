@@ -45,8 +45,8 @@ import java.util.Optional;
  * <h2>Example</h2>
  * <pre>{@code
  * // Create a 3x3 matrix with 5.0 on the diagonal
- * CollectionProducer<PackedCollection<?>> scalar = c(5.0);
- * ScalarMatrixComputation<PackedCollection<?>> comp =
+ * CollectionProducer<PackedCollection> scalar = c(5.0);
+ * ScalarMatrixComputation<PackedCollection> comp =
  *     new ScalarMatrixComputation<>(shape(3, 3).traverseEach(), scalar);
  *
  * // Result:
@@ -62,7 +62,7 @@ import java.util.Optional;
  * @see IdentityMatrixComputation
  * @see DiagonalMatrixComputation
  */
-public class ScalarMatrixComputation<T extends PackedCollection<?>> extends MatrixExpressionComputation<T> {
+public class ScalarMatrixComputation<T extends PackedCollection> extends MatrixExpressionComputation<T> {
 	/**
 	 * Creates a scalar matrix computation with default name "scalarMatrix".
 	 *
@@ -70,7 +70,7 @@ public class ScalarMatrixComputation<T extends PackedCollection<?>> extends Matr
 	 * @param scalar  producer for the scalar value (must produce exactly 1 value)
 	 * @throws IllegalArgumentException if scalar does not produce exactly 1 value
 	 */
-	public ScalarMatrixComputation(TraversalPolicy shape, Producer<PackedCollection<?>> scalar) {
+	public ScalarMatrixComputation(TraversalPolicy shape, Producer<PackedCollection> scalar) {
 		this("scalarMatrix", shape, scalar);
 	}
 
@@ -83,7 +83,7 @@ public class ScalarMatrixComputation<T extends PackedCollection<?>> extends Matr
 	 * @throws IllegalArgumentException if scalar does not produce exactly 1 value
 	 */
 	public ScalarMatrixComputation(String name, TraversalPolicy shape,
-								   Producer<PackedCollection<?>> scalar) {
+								   Producer<PackedCollection> scalar) {
 		super(name, shape, scalar);
 
 		if (shape.getTotalSizeLong() == 1) {

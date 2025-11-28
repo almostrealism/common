@@ -44,8 +44,8 @@ import java.util.function.Supplier;
 import java.util.stream.Stream;
 
 @Deprecated
-public class PackedCollectionMap<T extends PackedCollection<?>>
-		extends CollectionProducerComputationBase<PackedCollection<?>, T>
+public class PackedCollectionMap<T extends PackedCollection>
+		extends CollectionProducerComputationBase<PackedCollection, T>
 		implements TraversableExpression<Double> {
 	public static boolean enableAtomicKernel = false;
 	public static boolean enableChainDelta = false;
@@ -193,7 +193,7 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 		TraversableDeltaComputation<T> deltaOut = TraversableDeltaComputation.create("delta", shape(outSize), shape(inSize),
 				args -> CollectionExpression.create(getShape(), idx -> args[1].getValueAt(idx)),
 				stub, (Producer) new PackedCollectionMap<>(getShape(), stub, mapper));
-		Producer deltaIn = ((CollectionProducer<PackedCollection<?>>) getInputs().get(1))
+		Producer deltaIn = ((CollectionProducer<PackedCollection>) getInputs().get(1))
 							.delta(target).reshape(shape(inSize, targetSize));
 		if (deltaIn instanceof ScopeLifecycle) deltaOut.addDependentLifecycle((ScopeLifecycle) deltaIn);
 		return MatrixFeatures.getInstance().mproduct(deltaOut, deltaIn);
@@ -235,10 +235,10 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 		return ((Shape) collection).getShape();
 	}
 
-	private static class ItemComputation<T extends PackedCollection<?>> extends DefaultTraversableExpressionComputation<T> {
+	private static class ItemComputation<T extends PackedCollection> extends DefaultTraversableExpressionComputation<T> {
 		public ItemComputation(TraversalPolicy shape,
 							   Function<TraversableExpression[], CollectionExpression> expression,
-							   Producer<PackedCollection<?>>... args) {
+							   Producer<PackedCollection>... args) {
 			super("mapItem", shape, expression, args);
 		}
 

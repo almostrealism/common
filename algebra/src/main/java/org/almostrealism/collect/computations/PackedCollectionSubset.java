@@ -50,53 +50,53 @@ import java.util.stream.Stream;
  * <p><em>1. Basic 2D subset extraction:</em></p>
  * <pre>{@code
  * // Create a 10x10 collection
- * PackedCollection<?> input = new PackedCollection<>(shape(10, 10));
+ * PackedCollection input = new PackedCollection(shape(10, 10));
  * input.fill(Math::random);
  * 
  * // Extract a 3x3 subset starting at position (2, 3)
- * CollectionProducer<PackedCollection<?>> producer = subset(shape(3, 3), p(input), 2, 3);
- * PackedCollection<?> result = producer.get().evaluate();
+ * CollectionProducer<PackedCollection> producer = subset(shape(3, 3), p(input), 2, 3);
+ * PackedCollection result = producer.get().evaluate();
  * 
  * // Result is a 3x3 collection containing values from input[2:5, 3:6]
  * }</pre>
  *
  * <p><em>2. 3D subset with static positions:</em></p>
  * <pre>{@code
- * PackedCollection<?> volume = new PackedCollection<>(shape(100, 100, 50));
+ * PackedCollection volume = new PackedCollection(shape(100, 100, 50));
  * volume.fill(Math::random);
  * 
  * // Extract a 10x10x5 cube starting at (20, 30, 10)
- * CollectionProducer<PackedCollection<?>> cubeProducer = 
+ * CollectionProducer<PackedCollection> cubeProducer =
  *     subset(shape(10, 10, 5), p(volume), 20, 30, 10);
- * PackedCollection<?> cube = cubeProducer.get().evaluate();
+ * PackedCollection cube = cubeProducer.get().evaluate();
  * }</pre>
  *
  * <p><em>3. Dynamic subset with computed positions:</em></p>
  * <pre>{@code
- * PackedCollection<?> data = new PackedCollection<>(shape(50, 50));
+ * PackedCollection data = new PackedCollection(shape(50, 50));
  * data.fill(Math::random);
  * 
  * // Position determined at runtime
- * PackedCollection<?> position = new PackedCollection<>(2);
+ * PackedCollection position = new PackedCollection(2);
  * position.set(0, 15.0); // x-offset
  * position.set(1, 25.0); // y-offset
  * 
  * // Extract 5x5 subset at dynamic position
- * CollectionProducer<PackedCollection<?>> dynamicProducer = 
+ * CollectionProducer<PackedCollection> dynamicProducer =
  *     subset(shape(5, 5), p(data), p(position));
- * PackedCollection<?> window = dynamicProducer.get().evaluate();
+ * PackedCollection window = dynamicProducer.get().evaluate();
  * }</pre>
  *
  * <p><em>4. Integration with other operations:</em></p>
  * <pre>{@code
  * // Subset can be combined with other operations like convolution
- * PackedCollection<?> image = new PackedCollection<>(shape(256, 256));
- * PackedCollection<?> kernel = new PackedCollection<>(shape(3, 3));
+ * PackedCollection image = new PackedCollection(shape(256, 256));
+ * PackedCollection kernel = new PackedCollection(shape(3, 3));
  * 
  * // Extract patches for convolution
  * for (int y = 0; y < 254; y++) {
  *     for (int x = 0; x < 254; x++) {
- *         CollectionProducer<PackedCollection<?>> patch = 
+ *         CollectionProducer<PackedCollection> patch =
  *             subset(shape(3, 3), p(image), x, y);
  *         // Apply kernel to patch...
  *     }
@@ -122,7 +122,7 @@ import java.util.stream.Stream;
  * @author Michael Murray
  * @since 0.68
  */
-public class PackedCollectionSubset<T extends PackedCollection<?>>
+public class PackedCollectionSubset<T extends PackedCollection>
 		extends IndexProjectionProducerComputation<T> {
 	private Expression pos[];
 
@@ -133,7 +133,7 @@ public class PackedCollectionSubset<T extends PackedCollection<?>>
 	 * <p>Example usage:</p>
 	 * <pre>{@code
 	 * // Extract a 5x5 subset starting at position (10, 15) from a 2D collection
-	 * PackedCollectionSubset<PackedCollection<?>> subset = 
+	 * PackedCollectionSubset<PackedCollection> subset =
 	 *     new PackedCollectionSubset<>(shape(5, 5), collection, 10, 15);
 	 * }</pre>
 	 *
@@ -157,7 +157,7 @@ public class PackedCollectionSubset<T extends PackedCollection<?>>
 	 * // Extract subset with computed starting positions
 	 * Expression xOffset = e(baseX).add(e(deltaX));
 	 * Expression yOffset = e(baseY).add(e(deltaY));
-	 * PackedCollectionSubset<PackedCollection<?>> subset = 
+	 * PackedCollectionSubset<PackedCollection> subset =
 	 *     new PackedCollectionSubset<>(shape(3, 3), collection, xOffset, yOffset);
 	 * }</pre>
 	 *
@@ -183,13 +183,13 @@ public class PackedCollectionSubset<T extends PackedCollection<?>>
 	 * <p>Example usage:</p>
 	 * <pre>{@code
 	 * // Create position vector
-	 * PackedCollection<?> position = new PackedCollection<>(3); // for 3D subset
+	 * PackedCollection position = new PackedCollection(3); // for 3D subset
 	 * position.set(0, 20.0); // x-offset
 	 * position.set(1, 30.0); // y-offset  
 	 * position.set(2, 10.0); // z-offset
 	 * 
 	 * // Extract subset at dynamic position
-	 * PackedCollectionSubset<PackedCollection<?>> subset = 
+	 * PackedCollectionSubset<PackedCollection> subset =
 	 *     new PackedCollectionSubset<>(shape(5, 5, 5), collection, p(position));
 	 * }</pre>
 	 *
@@ -258,7 +258,7 @@ public class PackedCollectionSubset<T extends PackedCollection<?>>
 		if (len != getShape().getTotalSize())
 			throw new IllegalArgumentException("Subset kernel size must match subset shape (" + getShape().getTotalSize() + ")");
 
-		return (T) new PackedCollection<>(getShape().traverseEach());
+		return (T) new PackedCollection(getShape().traverseEach());
 	}
 
 	/**

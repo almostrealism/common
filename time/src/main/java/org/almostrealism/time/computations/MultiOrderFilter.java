@@ -82,29 +82,29 @@ import java.util.List;
  * <h3>Basic Smoothing</h3>
  * <pre>{@code
  * // Noisy signal
- * Producer<PackedCollection<?>> signal = p(noisyData);
+ * Producer<PackedCollection> signal = p(noisyData);
  *
  * // 5-tap averaging filter
- * PackedCollection<?> coeffs = new PackedCollection<>(5);
+ * PackedCollection coeffs = new PackedCollection(5);
  * for (int i = 0; i < 5; i++) {
  *     coeffs.set(i, 0.2);  // Each coefficient: 1/5
  * }
  *
  * MultiOrderFilter smoother = MultiOrderFilter.create(signal, c(coeffs));
- * PackedCollection<?> smoothed = smoother.get().evaluate();
+ * PackedCollection smoothed = smoother.get().evaluate();
  * }</pre>
  *
  * <h3>Gaussian Smoothing</h3>
  * <pre>{@code
  * // Gaussian kernel (sigma = 1.0)
  * double[] gaussian = {0.06136, 0.24477, 0.38774, 0.24477, 0.06136};
- * PackedCollection<?> kernel = new PackedCollection<>(gaussian.length);
+ * PackedCollection kernel = new PackedCollection(gaussian.length);
  * for (int i = 0; i < gaussian.length; i++) {
  *     kernel.set(i, gaussian[i]);
  * }
  *
  * MultiOrderFilter gaussianFilter = MultiOrderFilter.create(signal, c(kernel));
- * PackedCollection<?> result = gaussianFilter.get().evaluate();
+ * PackedCollection result = gaussianFilter.get().evaluate();
  * }</pre>
  *
  * <h3>Real-Time Audio Filtering</h3>
@@ -114,7 +114,7 @@ import java.util.List;
  *
  * // 11-tap low-pass filter (cutoff ~1kHz at 44.1kHz sample rate)
  * double[] lpCoeffs = designLowPassFilter(11, 1000.0, 44100.0);
- * PackedCollection<?> filterKernel = new PackedCollection<>(lpCoeffs.length);
+ * PackedCollection filterKernel = new PackedCollection(lpCoeffs.length);
  * // ... fill kernel
  *
  * MultiOrderFilter lpFilter = MultiOrderFilter.create(p(audioStream), c(filterKernel));
@@ -128,12 +128,12 @@ import java.util.List;
  * <h3>Batch Processing</h3>
  * <pre>{@code
  * // Filter multiple signals simultaneously
- * PackedCollection<?> batchSignals = new PackedCollection<>(10, 1024);  // 10 signals
- * Producer<PackedCollection<?>> batchP = c(batchSignals);
+ * PackedCollection batchSignals = new PackedCollection(10, 1024);  // 10 signals
+ * Producer<PackedCollection> batchP = c(batchSignals);
  *
  * // Same filter applied to all signals
  * MultiOrderFilter batchFilter = MultiOrderFilter.create(batchP, c(coeffs));
- * PackedCollection<?> filteredBatch = batchFilter.get().evaluate();
+ * PackedCollection filteredBatch = batchFilter.get().evaluate();
  * }</pre>
  *
  * <h2>Filter Design Considerations</h2>
@@ -177,12 +177,12 @@ import java.util.List;
  * Analyze frequency response using FFT:</p>
  * <pre>{@code
  * // Pad coefficients to power of 2
- * PackedCollection<?> paddedCoeffs = new PackedCollection<>(2, 512);
+ * PackedCollection paddedCoeffs = new PackedCollection(2, 512);
  * // Copy coeffs and zero-pad...
  *
  * // Compute FFT to see frequency response
  * FourierTransform fft = new FourierTransform(512, c(paddedCoeffs));
- * PackedCollection<?> freqResponse = fft.get().evaluate();
+ * PackedCollection freqResponse = fft.get().evaluate();
  *
  * // Magnitude at each frequency shows filter gain
  * for (int i = 0; i < 256; i++) {
@@ -220,7 +220,7 @@ import java.util.List;
  *
  * @author Michael Murray
  */
-public class MultiOrderFilter extends CollectionProducerComputationBase<PackedCollection<?>, PackedCollection<?>> {
+public class MultiOrderFilter extends CollectionProducerComputationBase<PackedCollection, PackedCollection> {
 	private int filterOrder;
 
 	/**
@@ -231,7 +231,7 @@ public class MultiOrderFilter extends CollectionProducerComputationBase<PackedCo
 	 * @param coefficients Producer providing the filter coefficients
 	 * @throws UnsupportedOperationException if series or coefficients have size <= 1
 	 */
-	public MultiOrderFilter(TraversalPolicy shape, Producer<PackedCollection<?>> series, Producer<PackedCollection<?>> coefficients) {
+	public MultiOrderFilter(TraversalPolicy shape, Producer<PackedCollection> series, Producer<PackedCollection> coefficients) {
 		super("multiOrderFilter", shape, series, coefficients);
 
 		TraversalPolicy seriesShape = CollectionFeatures.getInstance().shape(series);
@@ -249,8 +249,8 @@ public class MultiOrderFilter extends CollectionProducerComputationBase<PackedCo
 	}
 
 	@Override
-	public Scope<PackedCollection<?>> getScope(KernelStructureContext context) {
-		Scope<PackedCollection<?>> scope = super.getScope(context);
+	public Scope<PackedCollection> getScope(KernelStructureContext context) {
+		Scope<PackedCollection> scope = super.getScope(context);
 
 		CollectionVariable output = getCollectionArgumentVariable(0);
 		CollectionVariable input = getCollectionArgumentVariable(1);
@@ -306,19 +306,19 @@ public class MultiOrderFilter extends CollectionProducerComputationBase<PackedCo
 	 *
 	 * <h3>Example</h3>
 	 * <pre>{@code
-	 * Producer<PackedCollection<?>> signal = p(audioData);
-	 * PackedCollection<?> coeffs = new PackedCollection<>(5);
+	 * Producer<PackedCollection> signal = p(audioData);
+	 * PackedCollection coeffs = new PackedCollection(5);
 	 * // Fill coeffs...
 	 *
 	 * MultiOrderFilter filter = MultiOrderFilter.create(signal, c(coeffs));
-	 * PackedCollection<?> filtered = filter.get().evaluate();
+	 * PackedCollection filtered = filter.get().evaluate();
 	 * }</pre>
 	 *
 	 * @param series Producer providing the input signal
 	 * @param coefficients Producer providing the filter coefficients (length = order + 1)
 	 * @return A new MultiOrderFilter instance ready for evaluation
 	 */
-	public static MultiOrderFilter create(Producer<PackedCollection<?>> series, Producer<PackedCollection<?>> coefficients) {
+	public static MultiOrderFilter create(Producer<PackedCollection> series, Producer<PackedCollection> coefficients) {
 		TraversalPolicy shape = CollectionFeatures.getInstance().shape(series);
 		if (shape.getTraversalAxis() != shape.getDimensions() - 1) {
 			series = CollectionFeatures.getInstance().traverse(shape.getDimensions() - 1, series);

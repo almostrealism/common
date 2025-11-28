@@ -69,8 +69,8 @@ import java.util.stream.Collectors;
  * execution.setGlobalWorkOffset(0);
  *
  * // Execute with arguments
- * PackedCollection<?> input = ...;
- * PackedCollection<?> output = ...;
+ * PackedCollection input = ...;
+ * PackedCollection output = ...;
  * Semaphore result = execution.accept(new Object[] { input, output }, null);
  *
  * // Wait for completion (already done, but can be passed to next operation)

@@ -83,10 +83,10 @@ import java.util.function.Supplier;
  * <h3>Basic Element-wise Operation</h3>
  * <pre>{@code
  * // Example implementation for element-wise addition
- * public class AdditionComputation extends CollectionProducerComputationAdapter<PackedCollection<?>, PackedCollection<?>> {
+ * public class AdditionComputation extends CollectionProducerComputationAdapter<PackedCollection, PackedCollection> {
  *     public AdditionComputation(TraversalPolicy shape, 
- *                               Supplier<Evaluable<? extends PackedCollection<?>>> a,
- *                               Supplier<Evaluable<? extends PackedCollection<?>>> b) {
+ *                               Supplier<Evaluable<? extends PackedCollection>> a,
+ *                               Supplier<Evaluable<? extends PackedCollection>> b) {
  *         super("addition", shape, a, b);
  *     }
  *     
@@ -140,7 +140,7 @@ import java.util.function.Supplier;
  * @see io.almostrealism.kernel.KernelStructureContext
  * @see io.almostrealism.scope.ScopeSettings
  */
-public abstract class CollectionProducerComputationAdapter<I extends PackedCollection<?>, O extends PackedCollection<?>>
+public abstract class CollectionProducerComputationAdapter<I extends PackedCollection, O extends PackedCollection>
 		extends CollectionProducerComputationBase<I, O>
 		implements TraversableExpression<Double> {
 
@@ -156,10 +156,10 @@ public abstract class CollectionProducerComputationAdapter<I extends PackedColle
 	 * <p><strong>Example Usage:</strong></p>
 	 * <pre>{@code
 	 * // Create a computation with input suppliers
-	 * public class MyComputationImplementation extends CollectionProducerComputationAdapter<PackedCollection<?>, PackedCollection<?>> {
+	 * public class MyComputationImplementation extends CollectionProducerComputationAdapter<PackedCollection, PackedCollection> {
 	 *     public MyComputationImplementation(String name, TraversalPolicy shape,
-	 *                                       Supplier<Evaluable<? extends PackedCollection<?>>> a,
-	 *                                       Supplier<Evaluable<? extends PackedCollection<?>>> b) {
+	 *                                       Supplier<Evaluable<? extends PackedCollection>> a,
+	 *                                       Supplier<Evaluable<? extends PackedCollection>> b) {
 	 *         super(name, shape, a, b);
 	 *     }
 	 *     
@@ -557,16 +557,16 @@ public abstract class CollectionProducerComputationAdapter<I extends PackedColle
 	 * <p><strong>Usage Example:</strong>
 	 * <pre>{@code
 	 * // Original computation using traversable approach
-	 * CollectionProducerComputationAdapter<PackedCollection<?>> addOp = 
+	 * CollectionProducerComputationAdapter<PackedCollection> addOp =
 	 *     add(v(shape(1000), 0), v(shape(1000), 1));
 	 * 
 	 * // Convert to repeated computation approach
-	 * RepeatedProducerComputationAdapter<PackedCollection<?>> repeatedAdd = 
+	 * RepeatedProducerComputationAdapter<PackedCollection> repeatedAdd =
 	 *     addOp.toRepeated();
 	 * 
 	 * // Both produce identical results but use different execution patterns
-	 * PackedCollection<?> result1 = addOp.get().evaluate(dataA, dataB);
-	 * PackedCollection<?> result2 = repeatedAdd.get().evaluate(dataA, dataB);
+	 * PackedCollection result1 = addOp.get().evaluate(dataA, dataB);
+	 * PackedCollection result2 = repeatedAdd.get().evaluate(dataA, dataB);
 	 * // result1 equals result2
 	 * }</pre>
 	 * 

@@ -77,7 +77,7 @@ import java.util.function.Supplier;
  * <h3>Hardware-Accelerated Increment</h3>
  * <pre>{@code
  * CursorPair pair = new CursorPair(0.0, 1.0);
- * Producer<PackedCollection<?>> delta = c(p(new Pair(1.0, 0.0)));
+ * Producer<PackedCollection> delta = c(p(new Pair(1.0, 0.0)));
  *
  * // Create increment operation
  * Supplier<Runnable> op = pair.increment(delta);
@@ -184,7 +184,7 @@ public class CursorPair extends Pair {
 	 * <h3>Example</h3>
 	 * <pre>{@code
 	 * CursorPair pair = new CursorPair(0.0, 1.0);
-	 * Producer<PackedCollection<?>> delta = c(p(new Pair(1.0, 0.0)));
+	 * Producer<PackedCollection> delta = c(p(new Pair(1.0, 0.0)));
 	 *
 	 * Supplier<Runnable> incrementOp = pair.increment(delta);
 	 * incrementOp.get().run();  // Both cursors incremented
@@ -193,7 +193,7 @@ public class CursorPair extends Pair {
 	 * @param value Producer providing the increment value (repeated for both cursors)
 	 * @return A compilable increment operation
 	 */
-	public Supplier<Runnable> increment(Producer<PackedCollection<?>> value) {
+	public Supplier<Runnable> increment(Producer<PackedCollection> value) {
 		return a("CursorPair Increment", p(this), add(p(this), c(value).repeat(2)));
 	}
 }

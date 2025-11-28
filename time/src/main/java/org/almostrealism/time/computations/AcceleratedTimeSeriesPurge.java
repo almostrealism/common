@@ -94,7 +94,7 @@ import java.util.function.Consumer;
  *
  * @author Michael Murray
  */
-public class AcceleratedTimeSeriesPurge extends OperationComputationAdapter<PackedCollection<?>> {
+public class AcceleratedTimeSeriesPurge extends OperationComputationAdapter<PackedCollection> {
 	private double wavelength;
 
 	/**
@@ -105,7 +105,7 @@ public class AcceleratedTimeSeriesPurge extends OperationComputationAdapter<Pack
 	 * @param frequency How often to purge (1.0 = every call, 0.5 = every other call, etc.)
 	 */
 	public AcceleratedTimeSeriesPurge(Producer<AcceleratedTimeSeries> series, Producer<CursorPair> cursors, double frequency) {
-		super(new Producer[] { series, cursors, () -> new Provider<>(new PackedCollection<>(1)) });
+		super(new Producer[] { series, cursors, () -> new Provider<>(new PackedCollection(1)) });
 		this.wavelength = 1.0 / frequency;
 	}
 
@@ -115,7 +115,7 @@ public class AcceleratedTimeSeriesPurge extends OperationComputationAdapter<Pack
 	 * @param wavelength Inverse of frequency (wavelength = 1 / frequency)
 	 * @param arguments Producer arguments (series, cursors, counter)
 	 */
-	private AcceleratedTimeSeriesPurge(double wavelength, Producer<PackedCollection<?>>... arguments) {
+	private AcceleratedTimeSeriesPurge(double wavelength, Producer<PackedCollection>... arguments) {
 		super(arguments);
 		this.wavelength = wavelength;
 	}

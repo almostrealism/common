@@ -85,17 +85,17 @@ import java.util.function.Supplier;
 public class AutoregressiveModel implements DistributionFeatures, CodeFeatures {
 	private final IntConsumer step;
 	private final IntConsumer token;
-	private final Supplier<PackedCollection<?>> logits;
+	private final Supplier<PackedCollection> logits;
 	private final int vocabSize;
 
-	private Evaluable<PackedCollection<?>> indexOfMax;
-	private Evaluable<PackedCollection<?>> rescale;
-	private Evaluable<? extends PackedCollection<?>> softmax;
+	private Evaluable<PackedCollection> indexOfMax;
+	private Evaluable<PackedCollection> rescale;
+	private Evaluable<? extends PackedCollection> softmax;
 
 	private int currentStep;
 	private int currentToken;
 
-	private PackedCollection<?> temperature;
+	private PackedCollection temperature;
 	private int[] prompt;
 	private int promptTokens;
 
@@ -107,12 +107,12 @@ public class AutoregressiveModel implements DistributionFeatures, CodeFeatures {
 	 * @param logits Supplier that executes the model forward pass and returns output logits
 	 * @param vocabSize Size of the vocabulary (number of possible output tokens)
 	 */
-	public AutoregressiveModel(IntConsumer step, IntConsumer token, Supplier<PackedCollection<?>> logits, int vocabSize) {
+	public AutoregressiveModel(IntConsumer step, IntConsumer token, Supplier<PackedCollection> logits, int vocabSize) {
 		this.step = step;
 		this.token = token;
 		this.logits = logits;
 		this.vocabSize = vocabSize;
-		this.temperature = new PackedCollection<>(1);
+		this.temperature = new PackedCollection(1);
 
 		this.indexOfMax = indexOfMax(x(vocabSize)).get();
 		this.rescale = (Evaluable) x(vocabSize).divide(cp(temperature)).get();
@@ -206,7 +206,7 @@ public class AutoregressiveModel implements DistributionFeatures, CodeFeatures {
 		step.accept(currentStep);
 		token.accept(currentToken);
 
-		PackedCollection<?> logit = logits.get();
+		PackedCollection logit = logits.get();
 
 		if (currentStep < promptTokens) {
 			currentToken = prompt[currentStep];
@@ -237,8 +237,8 @@ public class AutoregressiveModel implements DistributionFeatures, CodeFeatures {
 	 * @param tokenEmbed Function that returns the embedding for a given token ID
 	 * @return A new AutoregressiveModel ready for generation
 	 */
-	public static AutoregressiveModel of(CompiledModel model, IntConsumer step, IntFunction<PackedCollection<?>> tokenEmbed) {
-		PackedCollection<?> in = new PackedCollection<>(model.getInputShape());
+	public static AutoregressiveModel of(CompiledModel model, IntConsumer step, IntFunction<PackedCollection> tokenEmbed) {
+		PackedCollection in = new PackedCollection(model.getInputShape());
 		return new AutoregressiveModel(
 				step,
 				t ->

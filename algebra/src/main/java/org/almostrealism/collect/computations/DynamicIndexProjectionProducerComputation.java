@@ -90,7 +90,7 @@ import java.util.function.Supplier;
  * @author Michael Murray
  * @since 0.68
  */
-public class DynamicIndexProjectionProducerComputation<T extends PackedCollection<?>>
+public class DynamicIndexProjectionProducerComputation<T extends PackedCollection>
 		extends IndexProjectionProducerComputation<T> {
 	/**
 	 * Enables specialized delta computation for traverse-each operations.
@@ -225,7 +225,7 @@ public class DynamicIndexProjectionProducerComputation<T extends PackedCollectio
 			TraversalPolicy deltaShape = shape(inSize, targetSize);
 			TraversalPolicy overallShape = shape(outSize, targetSize);
 
-			CollectionProducer<PackedCollection<?>> delta = ((CollectionProducer) getInputs().get(1)).delta(target);
+			CollectionProducer<PackedCollection> delta = ((CollectionProducer) getInputs().get(1)).delta(target);
 
 			TraversalPolicy shape = outShape.append(targetShape);
 			int traversalAxis = shape.getTraversalAxis();

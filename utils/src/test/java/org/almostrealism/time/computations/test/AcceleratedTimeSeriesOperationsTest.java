@@ -34,7 +34,7 @@ import java.util.stream.IntStream;
 public class AcceleratedTimeSeriesOperationsTest implements CodeFeatures {
 	private CursorPair cursors;
 	private AcceleratedTimeSeries series;
-	private PackedCollection<?> value;
+	private PackedCollection value;
 
 	protected AcceleratedTimeSeries series() {
 		AcceleratedTimeSeries series = new AcceleratedTimeSeries(100);
@@ -78,7 +78,7 @@ public class AcceleratedTimeSeriesOperationsTest implements CodeFeatures {
 	public void valueAt() {
 		AcceleratedTimeSeries series = series();
 		AcceleratedTimeSeriesValueAt valueAt = new AcceleratedTimeSeriesValueAt(p(series), p(cursors(3.25)));
-		Evaluable<PackedCollection<?>> compiled = valueAt.get();
+		Evaluable<PackedCollection> compiled = valueAt.get();
 		Assert.assertEquals(series.valueAt(3.25).toDouble(1), compiled.evaluate().toDouble(), Math.pow(10, -10));
 	}
 
@@ -92,7 +92,7 @@ public class AcceleratedTimeSeriesOperationsTest implements CodeFeatures {
 	protected void init() {
 		cursors = cursors(5);
 		series = series();
-		value = new PackedCollection<>(1);
+		value = new PackedCollection(1);
 	}
 
 	protected Supplier<Runnable> add() {

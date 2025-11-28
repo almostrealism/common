@@ -16,6 +16,7 @@
 
 package org.almostrealism.render;
 
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.color.RGB;
 import io.almostrealism.relation.Producer;
 
@@ -47,7 +48,7 @@ import io.almostrealism.relation.Producer;
  * // Set samples from traced rays
  * for (int i = 0; i < 2; i++) {
  *     for (int j = 0; j < 2; j++) {
- *         Producer<RGB> color = engine.trace(ray[i][j]);
+ *         Producer<PackedCollection> color = engine.trace(ray[i][j]);
  *         pixel.setSample(i, j, color);
  *     }
  * }
@@ -83,7 +84,7 @@ public class Pixel extends SuperSampler {
 	 * @param s  The color producer for this sample position (must not be null)
 	 * @throws IllegalArgumentException if the sample producer is null
 	 */
-	public synchronized void setSample(int sx, int sy, Producer<RGB> s) {
+	public synchronized void setSample(int sx, int sy, Producer<PackedCollection> s) {
 		if (s == null) {
 			throw new IllegalArgumentException("Null sample not supported");
 		}

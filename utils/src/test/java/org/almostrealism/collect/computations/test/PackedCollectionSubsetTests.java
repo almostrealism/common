@@ -46,7 +46,7 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 			return x >= x0 && x < x1 && y >= y0 && y < y1 && z >= z0 && z < z1;
 		});
 
-		PackedCollection<?> input = t.pack();
+		PackedCollection input = t.pack();
 		TraversalPolicy inputShape = input.getShape();
 		System.out.println("PackedCollectionSubsetTests: input shape = " + inputShape);
 
@@ -59,9 +59,9 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 		Assert.assertEquals(433, index);
 
 		verboseLog(() -> {
-			CollectionProducer<PackedCollection<?>> producer = subset(shape(w, h, d), p(input), x0, y0, z0);
-			Evaluable<PackedCollection<?>> ev = producer.get();
-			PackedCollection<?> subset = ev.evaluate();
+			CollectionProducer<PackedCollection> producer = subset(shape(w, h, d), p(input), x0, y0, z0);
+			Evaluable<PackedCollection> ev = producer.get();
+			PackedCollection subset = ev.evaluate();
 
 			Assert.assertEquals(w, subset.getShape().length(0));
 			Assert.assertEquals(h, subset.getShape().length(1));
@@ -91,17 +91,17 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 			return x >= x0 && x < x1;
 		});
 
-		PackedCollection<?> input = t.pack();
+		PackedCollection input = t.pack();
 		TraversalPolicy inputShape = input.getShape();
 		System.out.println("PackedCollectionSubsetTests: input shape = " + inputShape);
 
-		PackedCollection<?> pc = new PackedCollection<>(1).traverseEach();
+		PackedCollection pc = new PackedCollection(1).traverseEach();
 		pc.set(0, (double) x0);
 
 		verboseLog(() -> {
-			CollectionProducer<PackedCollection<?>> producer = subset(shape(w), p(input), p(pc));
-			Evaluable<PackedCollection<?>> ev = producer.get();
-			PackedCollection<?> subset = ev.evaluate();
+			CollectionProducer<PackedCollection> producer = subset(shape(w), p(input), p(pc));
+			Evaluable<PackedCollection> ev = producer.get();
+			PackedCollection subset = ev.evaluate();
 
 			Assert.assertEquals(w, subset.getShape().length(0));
 
@@ -127,18 +127,18 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 			return x >= x0 && x < x1 && y >= y0 && y < y1;
 		});
 
-		PackedCollection<?> input = t.pack();
+		PackedCollection input = t.pack();
 		TraversalPolicy inputShape = input.getShape();
 		System.out.println("PackedCollectionSubsetTests: input shape = " + inputShape);
 
-		PackedCollection<?> pc = new PackedCollection<>(2).traverseEach();
+		PackedCollection pc = new PackedCollection(2).traverseEach();
 		pc.set(0, (double) x0);
 		pc.set(1, (double) y0);
 
 		verboseLog(() -> {
-			CollectionProducer<PackedCollection<?>> producer = subset(shape(w, h), p(input), p(pc));
-			Evaluable<PackedCollection<?>> ev = producer.get();
-			PackedCollection<?> subset = ev.evaluate();
+			CollectionProducer<PackedCollection> producer = subset(shape(w, h), p(input), p(pc));
+			Evaluable<PackedCollection> ev = producer.get();
+			PackedCollection subset = ev.evaluate();
 
 			Assert.assertEquals(w, subset.getShape().length(0));
 			Assert.assertEquals(h, subset.getShape().length(1));
@@ -169,19 +169,19 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 			return x >= x0 && x < x1 && y >= y0 && y < y1 && z >= z0 && z < z1;
 		});
 
-		PackedCollection<?> input = t.pack();
+		PackedCollection input = t.pack();
 		TraversalPolicy inputShape = input.getShape();
 		System.out.println("PackedCollectionSubsetTests: input shape = " + inputShape);
 
-		PackedCollection<?> pc = new PackedCollection<>(3).traverseEach();
+		PackedCollection pc = new PackedCollection(3).traverseEach();
 		pc.set(0, (double) x0);
 		pc.set(1, (double) y0);
 		pc.set(2, (double) z0);
 
 		verboseLog(() -> {
-			CollectionProducer<PackedCollection<?>> producer = subset(shape(w, h, d), p(input), p(pc));
-			Evaluable<PackedCollection<?>> ev = producer.get();
-			PackedCollection<?> subset = ev.evaluate();
+			CollectionProducer<PackedCollection> producer = subset(shape(w, h, d), p(input), p(pc));
+			Evaluable<PackedCollection> ev = producer.get();
+			PackedCollection subset = ev.evaluate();
 
 			Assert.assertEquals(w, subset.getShape().length(0));
 			Assert.assertEquals(h, subset.getShape().length(1));
@@ -215,21 +215,21 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 		TraversalPolicy filterShape = shape(size, size);
 
 		Tensor<Double> f = tensor(filterShape, (int[] c) -> true);
-		PackedCollection<?> filter = f.pack();
+		PackedCollection filter = f.pack();
 
 		Tensor<Double> t = tensor(shape(10, 10), (int[] c) -> {
 			int x = c[0], y = c[1];
 			return x >= x0 && x < x1 && y >= y0 && y < y1;
 		});
 
-		PackedCollection<?> input = t.pack();
+		PackedCollection input = t.pack();
 
 		verboseLog(() -> {
-			CollectionProducer<PackedCollection<?>> subset = subset(shape(size, size), p(input), x0, y0);
-			Producer<PackedCollection<?>> product = multiply(traverseEach(cp(filter)), traverseEach(subset));
-//			Producer<PackedCollection<?>> product = relativeMultiply(p(filter), subset, null);
-			Evaluable<PackedCollection<?>> ev = product.get();
-			PackedCollection<?> result = ev.evaluate();
+			CollectionProducer<PackedCollection> subset = subset(shape(size, size), p(input), x0, y0);
+			Producer<PackedCollection> product = multiply(traverseEach(cp(filter)), traverseEach(subset));
+//			Producer<PackedCollection> product = relativeMultiply(p(filter), subset, null);
+			Evaluable<PackedCollection> ev = product.get();
+			PackedCollection result = ev.evaluate();
 
 			Assert.assertEquals(size, result.getShape().length(0));
 			Assert.assertEquals(size, result.getShape().length(1));
@@ -247,17 +247,17 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 
 	// @Test
 	public void subsetAssignment() {
-		PackedCollection<?> originalInput = new PackedCollection<>(shape(10, 20));
+		PackedCollection originalInput = new PackedCollection(shape(10, 20));
 		originalInput.fill(pos -> Math.random());
 
-		PackedCollection<?> input = new PackedCollection<>(shape(10, 20));
+		PackedCollection input = new PackedCollection(shape(10, 20));
 		input.fill(pos -> originalInput.valueAt(pos));
 
-		PackedCollection<?> filter = new PackedCollection<>(shape(1, 20));
+		PackedCollection filter = new PackedCollection(shape(1, 20));
 		filter.fill(pos -> Math.random());
 
-		CollectionProducer<PackedCollection<?>> in = c(p(input));
-		CollectionProducer<PackedCollection<?>> subset = subset(shape(1, 20), in, 4, 0).traverseEach();
+		CollectionProducer<PackedCollection> in = c(p(input));
+		CollectionProducer<PackedCollection> subset = subset(shape(1, 20), in, 4, 0).traverseEach();
 
 		verboseLog(() -> {
 			a(subset, subset.add(c(p(filter))).traverseEach()).get().run();
@@ -280,19 +280,19 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 
 		int halfDim = rotaryDim / 2;
 
-		PackedCollection<?> input = new PackedCollection<>(shape(batchSize, heads, seqLen, rotaryDim)).randFill();
+		PackedCollection input = new PackedCollection(shape(batchSize, heads, seqLen, rotaryDim)).randFill();
 
 		// Extract first half (x1)
-		CollectionProducer<PackedCollection<?>> x1 =
+		CollectionProducer<PackedCollection> x1 =
 				cp(input).subset(shape(batchSize, heads, seqLen, halfDim),
 						0, 0, 0, 0);
-		PackedCollection<?> result1 = x1.evaluate();
+		PackedCollection result1 = x1.evaluate();
 
 		// Extract second half (x2)
-		CollectionProducer<PackedCollection<?>> x2 =
+		CollectionProducer<PackedCollection> x2 =
 				cp(input).subset(shape(batchSize, heads, seqLen, halfDim),
 						0, 0, 0, halfDim).minus();
-		PackedCollection<?> result2 = x2.evaluate();
+		PackedCollection result2 = x2.evaluate();
 
 		for (int h = 0; h < heads; h++) {
 			for (int s = 0; s < seqLen; s++) {
@@ -310,14 +310,14 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 		int dim = 16;
 		int halfDim = dim / 2;
 
-		PackedCollection<?> input = new PackedCollection<>(shape(seqLen, dim)).randFill();
+		PackedCollection input = new PackedCollection(shape(seqLen, dim)).randFill();
 
-		CollectionProducer<PackedCollection<?>> x =
+		CollectionProducer<PackedCollection> x =
 				cp(input).subset(shape(seqLen, halfDim), 0, 0);
-		CollectionProducer<PackedCollection<?>> padded =
+		CollectionProducer<PackedCollection> padded =
 				pad(shape(seqLen, dim), x, 0, halfDim);
 
-		PackedCollection<?> result = padded.evaluate();
+		PackedCollection result = padded.evaluate();
 		result.traverse(1).print();
 
 		for (int s = 0; s < seqLen; s++) {
@@ -358,15 +358,15 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 		int dim = 16;
 		int halfDim = dim / 2;
 
-		PackedCollection<?> input = new PackedCollection<>(shape(seqLen, dim)).randFill();
-		PackedCollection<?> plus = new PackedCollection<>(shape(seqLen, dim)).randFill();
+		PackedCollection input = new PackedCollection(shape(seqLen, dim)).randFill();
+		PackedCollection plus = new PackedCollection(shape(seqLen, dim)).randFill();
 
-		CollectionProducer<PackedCollection<?>> x =
+		CollectionProducer<PackedCollection> x =
 				cp(input).subset(shape(seqLen, halfDim), 0, halfDim);
-		CollectionProducer<PackedCollection<?>> padded =
+		CollectionProducer<PackedCollection> padded =
 				pad(shape(seqLen, dim), x, 0, 0);
 
-		PackedCollection<?> result = padded.add(cp(plus)).evaluate();
+		PackedCollection result = padded.add(cp(plus)).evaluate();
 
 		for (int s = 0; s < seqLen; s++) {
 			for (int d = 0; d < dim; d++) {
@@ -388,14 +388,14 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 		int dim = 16;
 		int halfDim = dim / 2;
 
-		PackedCollection<?> input = new PackedCollection<>(shape(seqLen, dim)).randFill();
+		PackedCollection input = new PackedCollection(shape(seqLen, dim)).randFill();
 
-		CollectionProducer<PackedCollection<?>> x =
+		CollectionProducer<PackedCollection> x =
 				cp(input).subset(shape(seqLen, halfDim), 0, halfDim);
-		CollectionProducer<PackedCollection<?>> padded =
+		CollectionProducer<PackedCollection> padded =
 				pad(shape(seqLen, dim), x, 0, 0);
 
-		PackedCollection<?> result = padded.add(cp(input)).evaluate();
+		PackedCollection result = padded.add(cp(input)).evaluate();
 
 		for (int s = 0; s < seqLen; s++) {
 			for (int d = 0; d < dim; d++) {
@@ -418,16 +418,16 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 		int dim = 16;
 		int halfDim = dim / 2;
 
-		PackedCollection<?> input = new PackedCollection<>(shape(seqLen, dim)).randFill();
+		PackedCollection input = new PackedCollection(shape(seqLen, dim)).randFill();
 
-		CollectionProducer<PackedCollection<?>> x =
+		CollectionProducer<PackedCollection> x =
 				cp(input).subset(shape(seqLen, halfDim), 0, halfDim);
-		CollectionProducer<PackedCollection<?>> padLeft =
+		CollectionProducer<PackedCollection> padLeft =
 				pad(shape(seqLen, dim), x, 0, 0);
-		CollectionProducer<PackedCollection<?>> padRight =
+		CollectionProducer<PackedCollection> padRight =
 				pad(shape(seqLen, dim), x, 0, halfDim);
 
-		PackedCollection<?> result = padLeft.add(padRight).evaluate();
+		PackedCollection result = padLeft.add(padRight).evaluate();
 
 		for (int s = 0; s < seqLen; s++) {
 			for (int d = 0; d < dim; d++) {
@@ -443,12 +443,12 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 		int dim = 64;
 		int halfDim = dim / 2;
 
-		PackedCollection<?> input = new PackedCollection<>(shape(dim)).randFill();
-		CollectionProducer<PackedCollection<?>> x1 = cp(input).subset(shape(halfDim), 0);
-		CollectionProducer<PackedCollection<?>> x2 = cp(input).subset(shape(halfDim), halfDim);
+		PackedCollection input = new PackedCollection(shape(dim)).randFill();
+		CollectionProducer<PackedCollection> x1 = cp(input).subset(shape(halfDim), 0);
+		CollectionProducer<PackedCollection> x2 = cp(input).subset(shape(halfDim), halfDim);
 
-		CollectionProducer<PackedCollection<?>> concat = concat(0, x2, x1);
-		PackedCollection<?> result = concat.evaluate();
+		CollectionProducer<PackedCollection> concat = concat(0, x2, x1);
+		PackedCollection result = concat.evaluate();
 
 		for (int d = 0; d < dim; d++) {
 			double actual = result.valueAt(d);
@@ -469,15 +469,15 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 		int dim = 16;
 		int halfDim = dim / 2;
 
-		PackedCollection<?> input = new PackedCollection<>(shape(seqLen, dim)).randFill();
+		PackedCollection input = new PackedCollection(shape(seqLen, dim)).randFill();
 
-		CollectionProducer<PackedCollection<?>> x1 =
+		CollectionProducer<PackedCollection> x1 =
 				cp(input).subset(shape(seqLen, halfDim), 0, 0);
-		CollectionProducer<PackedCollection<?>> x2 =
+		CollectionProducer<PackedCollection> x2 =
 				cp(input).subset(shape(seqLen, halfDim), 0, halfDim);
 
-		CollectionProducer<PackedCollection<?>> concat = concat(1, x2, x1);
-		PackedCollection<?> result = concat.evaluate();
+		CollectionProducer<PackedCollection> concat = concat(1, x2, x1);
+		PackedCollection result = concat.evaluate();
 
 		for (int s = 0; s < seqLen; s++) {
 			for (int d = 0; d < dim; d++) {

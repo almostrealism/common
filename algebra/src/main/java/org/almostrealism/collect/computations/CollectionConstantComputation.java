@@ -61,7 +61,7 @@ import org.almostrealism.collect.PackedCollection;
  * <h2>Usage Pattern</h2>
  * <pre>{@code
  * // Typical subclass implementation:
- * public class MyConstantComputation<T extends PackedCollection<?>>
+ * public class MyConstantComputation<T extends PackedCollection>
  *         extends CollectionConstantComputation<T> {
  *
  *     public MyConstantComputation(TraversalPolicy shape) {
@@ -96,7 +96,7 @@ import org.almostrealism.collect.PackedCollection;
  *
  * @author Michael Murray
  */
-public abstract class CollectionConstantComputation<T extends PackedCollection<?>> extends TraversableExpressionComputation<T> {
+public abstract class CollectionConstantComputation<T extends PackedCollection> extends TraversableExpressionComputation<T> {
 	/**
 	 * Constructs a constant computation with the specified name and output shape.
 	 *

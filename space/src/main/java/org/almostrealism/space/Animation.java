@@ -15,6 +15,7 @@
  */
 
 package org.almostrealism.space;
+import io.almostrealism.relation.Producer;
 
 import java.io.*;
 import java.util.ArrayList;
@@ -185,7 +186,7 @@ public class Animation<T extends ShadableSurface> extends Scene<T> implements Ru
 					Gradient<?> grad = f.apply((RigidBody) s);
 
 					if (grad != null) {
-						g.addTo(grad.getNormalAt(v(((RigidBody) s).getState().getLocation())).get()
+						g.addTo((Vector) grad.getNormalAt((Producer) v(((RigidBody) s).getState().getLocation())).get()
 								.evaluate(new Object[] { ((RigidBody) s).getState() }));
 					}
 				}

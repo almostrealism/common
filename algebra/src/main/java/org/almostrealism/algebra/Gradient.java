@@ -17,6 +17,7 @@
 package org.almostrealism.algebra;
 
 import io.almostrealism.relation.Producer;
+import org.almostrealism.collect.PackedCollection;
 
 /**
  * A continuously evaluable function that provides surface normal vectors at each position.
@@ -36,15 +37,15 @@ import io.almostrealism.relation.Producer;
  * <h2>Usage Examples</h2>
  * <pre>{@code
  * // Implement a gradient for a sphere
- * public class SphereGradient implements Gradient<PackedCollection<?>> {
+ * public class SphereGradient implements Gradient<PackedCollection> {
  *     @Override
- *     public Producer<Vector> getNormalAt(Producer<Vector> point) {
+ *     public Producer<PackedCollection> getNormalAt(Producer<PackedCollection> point) {
  *         // For a sphere centered at origin, normal = point / ||point||
  *         return normalize(point);
  *     }
  *
  *     @Override
- *     public Producer<PackedCollection<?>> getValueAt(Producer<Vector> point) {
+ *     public Producer<PackedCollection> getValueAt(Producer<PackedCollection> point) {
  *         // Sphere implicit function: f(p) = ||p||^2 - r^2
  *         return subtract(length(point).pow(2), scalar(radius * radius));
  *     }
@@ -69,5 +70,5 @@ public interface Gradient<T> extends Differentiable<T> {
 	 * @param point  a producer for the 3D position where the normal should be computed
 	 * @return a producer that generates the normal vector at the specified point
 	 */
-	Producer<Vector> getNormalAt(Producer<Vector> point);
+	Producer<PackedCollection> getNormalAt(Producer<PackedCollection> point);
 }

@@ -15,6 +15,8 @@
  */
 
 package org.almostrealism.primitives;
+import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.hardware.MemoryBank;
 
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.Vector;
@@ -62,7 +64,7 @@ public class PinholeCameraAbsorber extends PinholeCamera implements Absorber, Vo
 		
 		this.pinhole = new Pinhole();
 		this.pinhole.setRadius(focalLength / (2.0 * fNum));
-		this.pinhole.setSurfaceNormal(vector(norm[0], norm[1], norm[2]));
+		this.pinhole.setSurfaceNormal((Producer) vector(norm[0], norm[1], norm[2]));
 		this.pinhole.setOrientation(orient);
 		
 		this.planePos = VectorMath.multiply(norm, -focalLength, true);
@@ -83,7 +85,7 @@ public class PinholeCameraAbsorber extends PinholeCamera implements Absorber, Vo
 	protected void initPlane(double norm[], double orient[]) {
 		if (this.plane == null) {
 			this.plane = new AbsorptionPlane();
-			this.plane.setSurfaceNormal(vector(norm[0], norm[1], norm[2]));
+			this.plane.setSurfaceNormal((Producer) vector(norm[0], norm[1], norm[2]));
 			this.plane.setOrientation(VectorMath.clone(orient));
 		}
 	}
@@ -113,12 +115,12 @@ public class PinholeCameraAbsorber extends PinholeCamera implements Absorber, Vo
 	@Override
 	public void setViewingDirection(Vector v) {
 		initPlane(v.toArray(), new double[3]);
-		this.plane.setSurfaceNormal(value(v));
+		this.plane.setSurfaceNormal((Producer) value(v));
 	}
 
 	@Override
 	public Vector getViewingDirection() {
-		return plane.getSurfaceNormal().get().evaluate();
+		return new Vector(plane.getSurfaceNormal().get().evaluate(), 0);
 	}
 
 	@Override
@@ -135,8 +137,8 @@ public class PinholeCameraAbsorber extends PinholeCamera implements Absorber, Vo
 	public double getFNumber() { return getFocalLength() / (2.0 * this.pinhole.getRadius()); }
 
 	@Override
-	public Producer<Ray> rayAt(Producer<Pair<?>> pos, Producer<Pair<?>> sd) {
-		return new DynamicProducerForMemoryData<>(args -> {
+	public Producer<Ray> rayAt(Producer<Pair> pos, Producer<Pair> sd) {
+		return new DynamicProducerForMemoryData<Ray>(args -> {
 				Pair ij = pos.get().evaluate(args);
 				Pair screenDim = sd.get().evaluate(args);
 
@@ -200,7 +202,7 @@ public class PinholeCameraAbsorber extends PinholeCamera implements Absorber, Vo
 				vx.addTo(location);
 
 				return new Ray(vx, vd);
-			}, Ray::bank);
+			}, size -> (MemoryBank) Ray.bank(size));
 	}
 
 	@Override
@@ -210,13 +212,13 @@ public class PinholeCameraAbsorber extends PinholeCamera implements Absorber, Vo
 	public Clock getClock() { return this.clock; }
 
 	@Override
-	public boolean inside(Producer<Vector> x) { return pinhole.inside(x) || plane.inside(x); }
+	public boolean inside(Producer<PackedCollection> x) { return pinhole.inside(x) || plane.inside(x); }
 
 	@Override
 	public Producer getValueAt(Producer point) { return null; }
 
 	@Override
-	public Producer<Vector> getNormalAt(Producer<Vector> x) { return plane.getNormalAt(x); }
+	public Producer<PackedCollection> getNormalAt(Producer<PackedCollection> x) { return plane.getNormalAt(x); }
 
 	@Override
 	public double intersect(Vector x, Vector p) {
@@ -224,7 +226,7 @@ public class PinholeCameraAbsorber extends PinholeCamera implements Absorber, Vo
 	}
 
 	@Override
-	public double[] getSurfaceCoords(Producer<Vector> xyz) { return plane.getSurfaceCoords(xyz); }
+	public double[] getSurfaceCoords(Producer<PackedCollection> xyz) { return plane.getSurfaceCoords(xyz); }
 
 	@Override
 	public double[] getSpatialCoords(double uv[]) { return plane.getSpatialCoords(uv); }
@@ -240,13 +242,13 @@ public class PinholeCameraAbsorber extends PinholeCamera implements Absorber, Vo
 	}
 
 	@Override
-	public Producer<Vector> emit() { return null; }
+	public Producer<PackedCollection> emit() { return null; }
 
 	@Override
 	public double getEmitEnergy() { return 0.0; }
 
 	@Override
-	public Producer<Vector> getEmitPosition() { return null; }
+	public Producer<PackedCollection> getEmitPosition() { return null; }
 
 	@Override
 	public double getNextEmit() { return Integer.MAX_VALUE; }

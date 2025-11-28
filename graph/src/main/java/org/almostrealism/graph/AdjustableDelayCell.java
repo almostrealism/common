@@ -33,20 +33,20 @@ public class AdjustableDelayCell extends SummationCell implements TemporalFeatur
 	private final AcceleratedTimeSeries buffer;
 	private CursorPair cursors;
 
-	private final Producer<PackedCollection<?>> delay;
-	private final Producer<PackedCollection<?>> scale;
+	private final Producer<PackedCollection> delay;
+	private final Producer<PackedCollection> scale;
 
 	public AdjustableDelayCell(int sampleRate, double delay) {
 		this(sampleRate, Ops.o().c(delay));
 	}
 
-	public AdjustableDelayCell(int sampleRate, Producer<PackedCollection<?>> delay) {
+	public AdjustableDelayCell(int sampleRate, Producer<PackedCollection> delay) {
 		this(sampleRate, delay, Ops.o().c(1.0));
 	}
 
 	public AdjustableDelayCell(int sampleRate,
-							   Producer<PackedCollection<?>> delay,
-							   Producer<PackedCollection<?>> scale) {
+							   Producer<PackedCollection> delay,
+							   Producer<PackedCollection> scale) {
 		this.sampleRate = sampleRate;
 		initCursors();
 		buffer = AcceleratedTimeSeries.defaultSeries();
@@ -62,15 +62,15 @@ public class AdjustableDelayCell extends SummationCell implements TemporalFeatur
 
 	public AcceleratedTimeSeries getBuffer() { return buffer; }
 
-	public Producer<PackedCollection<?>> getDelay() { return delay; }
+	public Producer<PackedCollection> getDelay() { return delay; }
 
-	public Producer<PackedCollection<?>> getScale() { return scale; }
+	public Producer<PackedCollection> getScale() { return scale; }
 
-	protected Producer<PackedCollection<?>> getLeftCursor()	{
+	protected Producer<PackedCollection> getLeftCursor()	{
 		return p(cursors.range(shape(1)));
 	}
 
-	protected Producer<PackedCollection<?>> getRightCursor() {
+	protected Producer<PackedCollection> getRightCursor() {
 		return p(cursors.range(shape(1), 1));
 	}
 

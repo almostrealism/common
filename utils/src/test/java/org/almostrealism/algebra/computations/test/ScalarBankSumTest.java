@@ -24,13 +24,13 @@ import org.junit.Test;
 public class ScalarBankSumTest implements TestFeatures {
 	@Test
 	public void sum() {
-		PackedCollection<?> bank = new PackedCollection<>(shape(4, 2));
+		PackedCollection bank = new PackedCollection(shape(4, 2));
 		bank.setMem(0, 1, 0);
 		bank.setMem(2, 2, 0);
 		bank.setMem(4, 3, 0);
 		bank.setMem(6, 4, 0);
 
-		Producer<PackedCollection<?>> s = subset(shape(4, 1), p(bank), 0).sum();
+		Producer<PackedCollection> s = subset(shape(4, 1), p(bank), 0).sum();
 		assertEquals(10, s.get().evaluate());
 	}
 }

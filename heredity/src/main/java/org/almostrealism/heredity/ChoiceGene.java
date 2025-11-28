@@ -42,11 +42,11 @@ import org.almostrealism.collect.PackedCollection;
  * <h2>Example Usage</h2>
  * <pre>{@code
  * // Define discrete choices
- * PackedCollection<?> strategies = new PackedCollection<>(3);  // 3 strategies
+ * PackedCollection strategies = new PackedCollection(3);  // 3 strategies
  * strategies.setMem(0, 1.0, 2.0, 3.0);  // Strategy values
  *
  * // Create underlying gene that produces values in [0, 1]
- * Gene<PackedCollection<?>> continuousGene = HeredityFeatures.getInstance().g(0.0, 0.5, 1.0);
+ * Gene<PackedCollection> continuousGene = HeredityFeatures.getInstance().g(0.0, 0.5, 1.0);
  *
  * // Create choice gene
  * ChoiceGene choiceGene = new ChoiceGene(continuousGene, strategies);
@@ -54,16 +54,16 @@ import org.almostrealism.collect.PackedCollection;
  * // Factor at position 0 with value 0.0 selects choice 0
  * // Factor at position 1 with value 0.5 selects choice 1
  * // Factor at position 2 with value ~1.0 selects choice 2
- * Factor<PackedCollection<?>> factor = choiceGene.valueAt(1);
+ * Factor<PackedCollection> factor = choiceGene.valueAt(1);
  * }</pre>
  *
  * @see ProjectedChromosome#addChoiceGene(PackedCollection, int)
  * @see Gene
  * @see GeneParameters
  */
-public class ChoiceGene implements Gene<PackedCollection<?>>, GeneParameters, ScalarFeatures, CollectionFeatures {
-	private PackedCollection<?> choices;
-	private Gene<PackedCollection<?>> values;
+public class ChoiceGene implements Gene<PackedCollection>, GeneParameters, ScalarFeatures, CollectionFeatures {
+	private PackedCollection choices;
+	private Gene<PackedCollection> values;
 
 	/**
 	 * Constructs a new {@code ChoiceGene} that wraps the given gene and maps to the given choices.
@@ -71,7 +71,7 @@ public class ChoiceGene implements Gene<PackedCollection<?>>, GeneParameters, Sc
 	 * @param values the underlying gene providing continuous values
 	 * @param choices the collection of discrete choices to select from
 	 */
-	public ChoiceGene(Gene<PackedCollection<?>> values, PackedCollection<?> choices) {
+	public ChoiceGene(Gene<PackedCollection> values, PackedCollection choices) {
 		this.choices = choices;
 		this.values = values;
 	}
@@ -84,7 +84,7 @@ public class ChoiceGene implements Gene<PackedCollection<?>>, GeneParameters, Sc
 	 * @throws ClassCastException if the underlying gene doesn't implement GeneParameters
 	 */
 	@Override
-	public PackedCollection<?> getParameters() {
+	public PackedCollection getParameters() {
 		return ((GeneParameters) values).getParameters();
 	}
 
@@ -96,7 +96,7 @@ public class ChoiceGene implements Gene<PackedCollection<?>>, GeneParameters, Sc
 	 * @throws ClassCastException if the underlying gene doesn't implement GeneParameters
 	 */
 	@Override
-	public PackedCollection<?> getParameterRanges() {
+	public PackedCollection getParameterRanges() {
 		return ((GeneParameters) values).getParameterRanges();
 	}
 
@@ -109,10 +109,10 @@ public class ChoiceGene implements Gene<PackedCollection<?>>, GeneParameters, Sc
 	 * @return a factor that produces a discrete choice based on the underlying continuous value
 	 */
 	@Override
-	public Factor<PackedCollection<?>> valueAt(int pos) {
+	public Factor<PackedCollection> valueAt(int pos) {
 		return new Factor<>() {
 			@Override
-			public Producer<PackedCollection<?>> getResultant(Producer<PackedCollection<?>> value) {
+			public Producer<PackedCollection> getResultant(Producer<PackedCollection> value) {
 				value = values.valueAt(pos).getResultant(value);
 				return c(shape(1), p(choices), multiply(value, c(choices.getMemLength())));
 			}

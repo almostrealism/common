@@ -58,7 +58,7 @@ public interface GeometryFeatures extends ScalarFeatures, PairFeatures, RayFeatu
 	 * @param input the input values
 	 * @return a producer for the sine of the input
 	 */
-	default <T extends PackedCollection<?>> CollectionProducer<T> sin(Supplier<Evaluable<? extends PackedCollection<?>>> input) {
+	default <T extends PackedCollection> CollectionProducer<T> sin(Supplier<Evaluable<? extends PackedCollection>> input) {
 		// TODO  Add shortcircuit
 		return compute("sin",
 				shape -> args -> sin(shape, args[1]), (Producer) input);
@@ -71,7 +71,7 @@ public interface GeometryFeatures extends ScalarFeatures, PairFeatures, RayFeatu
 	 * @param input the input values
 	 * @return a producer for the cosine of the input
 	 */
-	default <T extends PackedCollection<?>> CollectionProducer<T> cos(Supplier<Evaluable<? extends PackedCollection<?>>> input) {
+	default <T extends PackedCollection> CollectionProducer<T> cos(Supplier<Evaluable<? extends PackedCollection>> input) {
 		// TODO  Add shortcircuit
 		return compute("cos",
 				shape -> args -> cos(shape, args[1]), (Producer) input);
@@ -84,7 +84,7 @@ public interface GeometryFeatures extends ScalarFeatures, PairFeatures, RayFeatu
 	 * @param input the input values
 	 * @return a producer for the tangent of the input
 	 */
-	default <T extends PackedCollection<?>> CollectionProducer<T> tan(Supplier<Evaluable<? extends PackedCollection<?>>> input) {
+	default <T extends PackedCollection> CollectionProducer<T> tan(Supplier<Evaluable<? extends PackedCollection>> input) {
 		// TODO  Add shortcircuit
 		return compute("tan",
 				shape -> args -> tan(shape, args[1]), (Producer) input);
@@ -97,7 +97,7 @@ public interface GeometryFeatures extends ScalarFeatures, PairFeatures, RayFeatu
 	 * @param input the input values
 	 * @return a producer for the hyperbolic tangent of the input
 	 */
-	default <T extends PackedCollection<?>> CollectionProducer<T> tanh(Supplier<Evaluable<? extends PackedCollection<?>>> input) {
+	default <T extends PackedCollection> CollectionProducer<T> tanh(Supplier<Evaluable<? extends PackedCollection>> input) {
 		return compute("tanh",
 				shape -> args -> tanh(shape, args[1]), (Producer) input);
 	}
@@ -110,9 +110,9 @@ public interface GeometryFeatures extends ScalarFeatures, PairFeatures, RayFeatu
 	 * @param amp the amplitude of the wave
 	 * @return a producer for the wave value
 	 */
-	default CollectionProducer<PackedCollection<?>> sinw(Producer<PackedCollection<?>> input,
-														 Producer<PackedCollection<?>> wavelength,
-														 Producer<PackedCollection<?>> amp) {
+	default CollectionProducer<PackedCollection> sinw(Producer<PackedCollection> input,
+														 Producer<PackedCollection> wavelength,
+														 Producer<PackedCollection> amp) {
 		return sin(c(TWO_PI).multiply(input).divide(wavelength)).multiply(amp);
 	}
 
@@ -125,10 +125,10 @@ public interface GeometryFeatures extends ScalarFeatures, PairFeatures, RayFeatu
 	 * @param amp the amplitude of the wave
 	 * @return a producer for the wave value
 	 */
-	default CollectionProducer<PackedCollection<?>> sinw(Producer<PackedCollection<?>> input,
-														 Producer<PackedCollection<?>> wavelength,
-														 Producer<PackedCollection<?>> phase,
-														 Producer<PackedCollection<?>> amp) {
+	default CollectionProducer<PackedCollection> sinw(Producer<PackedCollection> input,
+														 Producer<PackedCollection> wavelength,
+														 Producer<PackedCollection> phase,
+														 Producer<PackedCollection> amp) {
 		return sin(c(TWO_PI).multiply(divide(input, wavelength).subtract(phase))).multiply(amp);
 	}
 
@@ -140,9 +140,9 @@ public interface GeometryFeatures extends ScalarFeatures, PairFeatures, RayFeatu
 	 * @param normal the surface normal
 	 * @return a producer for the reflected vector
 	 */
-	default Producer<PackedCollection<?>> reflect(Producer<PackedCollection<?>> vector, Producer<PackedCollection<?>> normal) {
-		Producer<PackedCollection<?>> newVector = minus(vector);
-		Producer<PackedCollection<?>> s = scalar(2).multiply(dotProduct(newVector, normal).divide(lengthSq(normal)));
+	default Producer<PackedCollection> reflect(Producer<PackedCollection> vector, Producer<PackedCollection> normal) {
+		Producer<PackedCollection> newVector = minus(vector);
+		Producer<PackedCollection> s = scalar(2).multiply(dotProduct(newVector, normal).divide(lengthSq(normal)));
 		return subtract(newVector, multiply(normal, s));
 	}
 }

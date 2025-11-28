@@ -53,10 +53,10 @@ import org.almostrealism.hardware.mem.MemoryDataCopy;
  *
  * <p><strong>Providing constant data to a computation:</strong></p>
  * <pre>{@code
- * PackedCollection<?> weights = new PackedCollection<>(shape(10, 5));
+ * PackedCollection weights = new PackedCollection(shape(10, 5));
  * weights.fill(pos -> Math.random());
  *
- * CollectionProvider<PackedCollection<?>> weightsProvider = new CollectionProvider<>(weights);
+ * CollectionProvider<PackedCollection> weightsProvider = new CollectionProvider<>(weights);
  *
  * // Use in a computation graph
  * CollectionProducer<?> result = input.multiply(weightsProvider);
@@ -64,20 +64,20 @@ import org.almostrealism.hardware.mem.MemoryDataCopy;
  *
  * <p><strong>Creating destination buffers:</strong></p>
  * <pre>{@code
- * CollectionProvider<PackedCollection<?>> provider = new CollectionProvider<>(sourceData);
- * Multiple<PackedCollection<?>> destination = provider.createDestination(batchSize);
+ * CollectionProvider<PackedCollection> provider = new CollectionProvider<>(sourceData);
+ * Multiple<PackedCollection> destination = provider.createDestination(batchSize);
  * // Destination has same shape as source data
  * }</pre>
  *
  * <p><strong>Efficient copying into existing buffer:</strong></p>
  * <pre>{@code
- * PackedCollection<?> source = new PackedCollection<>(shape(100));
+ * PackedCollection source = new PackedCollection(shape(100));
  * source.fill(pos -> pos[0]);
  *
- * CollectionProvider<PackedCollection<?>> provider = new CollectionProvider<>(source);
- * PackedCollection<?> destination = new PackedCollection<>(shape(100));
+ * CollectionProvider<PackedCollection> provider = new CollectionProvider<>(source);
+ * PackedCollection destination = new PackedCollection(shape(100));
  *
- * Evaluable<PackedCollection<?>> copyOp = provider.into(destination);
+ * Evaluable<PackedCollection> copyOp = provider.into(destination);
  * copyOp.evaluate();  // Efficiently copies source to destination
  * }</pre>
  *
@@ -106,7 +106,7 @@ import org.almostrealism.hardware.mem.MemoryDataCopy;
  *
  * @author Michael Murray
  */
-public class CollectionProvider<T extends PackedCollection<?>> extends Provider<T> implements CollectionFeatures {
+public class CollectionProvider<T extends PackedCollection> extends Provider<T> implements CollectionFeatures {
 	/**
 	 * Constructs a provider that supplies the specified {@link PackedCollection}.
 	 *
@@ -135,7 +135,7 @@ public class CollectionProvider<T extends PackedCollection<?>> extends Provider<
 	 */
 	@Override
 	public Multiple<T> createDestination(int size) {
-		return new PackedCollection<>(shape(get()));
+		return (Multiple<T>) new PackedCollection(shape(get()));
 	}
 
 	/**

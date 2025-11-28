@@ -27,7 +27,7 @@ import io.almostrealism.uml.ModelEntity;
  * ray-surface intersections.
  */
 @ModelEntity
-public interface ShadableSurface extends ShadableCurve, Intersectable<PackedCollection<?>> {
+public interface ShadableSurface extends ShadableCurve, Intersectable<PackedCollection> {
 	/**
 	 * Returns true if the front side of this Surface object should be shaded.
 	 * The "front side" is the side that the Vector object returned by the

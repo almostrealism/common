@@ -50,19 +50,19 @@ import java.util.function.Supplier;
  *
  * <pre>{@code
  * // Hardware-accelerated operation
- * Producer<PackedCollection<?>> scaled = multiply(input, c(2.0));
+ * Producer<PackedCollection> scaled = multiply(input, c(2.0));
  *
  * // Java function wrapped as producer
- * Producer<PackedCollection<?>> normalized = new DynamicProducerForMemoryData<>(
+ * Producer<PackedCollection> normalized = new DynamicProducerForMemoryData<>(
  *     args -> {
- *         PackedCollection<?> data = (PackedCollection<?>) args[0];
+ *         PackedCollection data = (PackedCollection) args[0];
  *         double max = Arrays.stream(data.toArray()).max().orElse(1.0);
  *         return data.divide(max);  // Pure Java normalization
  *     }
  * );
  *
  * // Compose into single graph
- * Producer<PackedCollection<?>> result = normalize(scale(input));
+ * Producer<PackedCollection> result = normalize(scale(input));
  * }</pre>
  *
  * <h2>Common Usage Patterns</h2>
@@ -70,12 +70,12 @@ import java.util.function.Supplier;
  * <h3>Wrapping Suppliers</h3>
  * <pre>{@code
  * // Constant value producer
- * Producer<PackedCollection<?>> constant = new DynamicProducerForMemoryData<>(
- *     () -> new PackedCollection<>(1000).fill(42.0)
+ * Producer<PackedCollection> constant = new DynamicProducerForMemoryData<>(
+ *     () -> new PackedCollection(1000).fill(42.0)
  * );
  *
  * // Lazy initialization
- * Producer<Vector> lazyVector = new DynamicProducerForMemoryData<>(
+ * Producer<PackedCollection> lazyVector = new DynamicProducerForMemoryData<>(
  *     () -> {
  *         Vector v = new Vector();
  *         v.setX(computeX());
@@ -88,12 +88,12 @@ import java.util.function.Supplier;
  * <h3>Argument-Dependent Functions</h3>
  * <pre>{@code
  * // Function that processes evaluation arguments
- * Producer<PackedCollection<?>> processor = new DynamicProducerForMemoryData<>(
+ * Producer<PackedCollection> processor = new DynamicProducerForMemoryData<>(
  *     args -> {
- *         PackedCollection<?> input = (PackedCollection<?>) args[0];
+ *         PackedCollection input = (PackedCollection) args[0];
  *         double threshold = (Double) args[1];
  *
- *         PackedCollection<?> output = new PackedCollection<>(input.getMemLength());
+ *         PackedCollection output = new PackedCollection(input.getMemLength());
  *         for (int i = 0; i < input.getMemLength(); i++) {
  *             output.setMem(i, input.toDouble(i) > threshold ? 1.0 : 0.0);
  *         }
@@ -102,19 +102,19 @@ import java.util.function.Supplier;
  * );
  *
  * // Evaluate with arguments
- * PackedCollection<?> result = processor.get().evaluate(data, 0.5);
+ * PackedCollection result = processor.get().evaluate(data, 0.5);
  * }</pre>
  *
  * <h3>With Destination Factory</h3>
  * <pre>{@code
  * // Producer that can create output banks for batch operations
- * Producer<PackedCollection<?>> batchProcessor = new DynamicProducerForMemoryData<>(
- *     args -> processSingle((PackedCollection<?>) args[0]),
+ * Producer<PackedCollection> batchProcessor = new DynamicProducerForMemoryData<>(
+ *     args -> processSingle((PackedCollection) args[0]),
  *     size -> PackedCollection.bank(size, 1000)  // Destination factory
  * );
  *
  * // Use with .into() for batch writing
- * MemoryBank<PackedCollection<?>> outputBank = PackedCollection.bank(100, 1000);
+ * MemoryBank<PackedCollection> outputBank = PackedCollection.bank(100, 1000);
  * batchProcessor.get().into(outputBank).evaluate(inputBatch);
  * }</pre>
  *

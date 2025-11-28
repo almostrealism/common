@@ -44,8 +44,8 @@ public class TimeCellTest implements TestFeatures {
 
 	@Test
 	public void fmod() {
-		Pair<?> time = new Pair<>();
-		Producer<PackedCollection<?>> loopDuration = c(2.0);
+		Pair time = new Pair();
+		Producer<PackedCollection> loopDuration = c(2.0);
 
 		CollectionProducer left = l(cp(time));
 		left = greaterThan(loopDuration, c(0.0),

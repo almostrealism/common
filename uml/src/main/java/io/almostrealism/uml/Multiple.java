@@ -96,8 +96,8 @@ package io.almostrealism.uml;
  *
  * <p><strong>Batch operation results:</strong></p>
  * <pre>{@code
- * public Multiple<PackedCollection<?>> executeBatch(List<Operation> operations) {
- *     List<PackedCollection<?>> results = new ArrayList<>();
+ * public Multiple<PackedCollection> executeBatch(List<Operation> operations) {
+ *     List<PackedCollection> results = new ArrayList<>();
  *     for (Operation op : operations) {
  *         results.add(op.execute());
  *     }
@@ -105,9 +105,9 @@ package io.almostrealism.uml;
  * }
  *
  * // Usage
- * Multiple<PackedCollection<?>> results = executeBatch(ops);
- * PackedCollection<?> first = results.get(0);
- * PackedCollection<?> second = results.get(1);
+ * Multiple<PackedCollection> results = executeBatch(ops);
+ * PackedCollection first = results.get(0);
+ * PackedCollection second = results.get(1);
  * }</pre>
  *
  * <p><strong>Computed on demand:</strong></p>

@@ -47,7 +47,7 @@ import org.almostrealism.collect.PackedCollection;
  * Factory<Strategy> balanced = () -> new BalancedStrategy();
  *
  * // Create gene with probabilities (70%, 20%, 10%)
- * Gene<PackedCollection<?>> probabilities = HeredityFeatures.getInstance().g(0.7, 0.2, 0.1);
+ * Gene<PackedCollection> probabilities = HeredityFeatures.getInstance().g(0.7, 0.2, 0.1);
  *
  * // Create probabilistic factory
  * List<Factory<Strategy>> strategies = Arrays.asList(aggressive, defensive, balanced);
@@ -82,10 +82,10 @@ public class ProbabilisticFactory<V> extends HashMap<Factory<V>, Double> impleme
 	 * @param factories the list of factories to choose from
 	 * @param probabilities a gene whose factors provide the selection probabilities
 	 */
-	public ProbabilisticFactory(List<? extends Factory<V>> factories, Gene<PackedCollection<?>> probabilities) {
+	public ProbabilisticFactory(List<? extends Factory<V>> factories, Gene<PackedCollection> probabilities) {
 		for (int i = 0; i < factories.size(); i++) {
-			Evaluable<PackedCollection<?>> ev = probabilities.valueAt(i).getResultant(() -> {
-				PackedCollection<?> s = new PackedCollection<>(1);
+			Evaluable<PackedCollection> ev = probabilities.valueAt(i).getResultant(() -> {
+				PackedCollection s = new PackedCollection(1);
 				s.setMem(1.0);
 				return new Provider(s);
 			}).get();

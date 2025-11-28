@@ -20,6 +20,8 @@ import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.hardware.MemoryBank;
 
+import java.util.function.IntFunction;
+
 /**
  * A specialized {@link RankedChoiceEvaluableForMemoryData} for {@link Vector} values.
  * This class provides vector-specific acceleration and memory management.
@@ -54,7 +56,7 @@ public class RankedChoiceEvaluableForVector extends RankedChoiceEvaluableForMemo
 	 * @return an accelerated evaluable for vectors
 	 */
 	public Evaluable<Vector> getAccelerated() {
-		return getAccelerated(3, Vector::new, Vector::bank);
+		return getAccelerated(3, Vector::new, (IntFunction) Vector::bank);
 	}
 
 	/**
@@ -63,6 +65,7 @@ public class RankedChoiceEvaluableForVector extends RankedChoiceEvaluableForMemo
 	 * @param size the number of vectors to store
 	 * @return a new memory bank for vectors
 	 */
+	@SuppressWarnings("unchecked")
 	@Override
-	public MemoryBank<Vector> createDestination(int size) { return Vector.bank(size); }
+	public MemoryBank<Vector> createDestination(int size) { return (MemoryBank) Vector.bank(size); }
 }

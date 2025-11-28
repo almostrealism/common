@@ -1,7 +1,7 @@
 package org.almostrealism.geometry;
 
 import org.almostrealism.algebra.Gradient;
-import org.almostrealism.algebra.Vector;
+import org.almostrealism.collect.PackedCollection;
 
 /**
  * A {@link ContinuousField} extends {@link DiscreteField} to represent a set of points
@@ -31,6 +31,6 @@ import org.almostrealism.algebra.Vector;
  * @see DiscreteField
  * @see Gradient
  */
-public interface ContinuousField extends DiscreteField, Gradient<Vector> {
+public interface ContinuousField extends DiscreteField, Gradient<PackedCollection> {
 
 }

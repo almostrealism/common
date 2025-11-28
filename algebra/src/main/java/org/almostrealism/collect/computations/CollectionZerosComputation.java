@@ -64,7 +64,7 @@ import java.util.List;
  * // result: 2x3x4 tensor with all 24 elements as 0.0
  * 
  * // Using with CollectionFeatures
- * CollectionProducer<PackedCollection<?>> zeros = zeros(shape(10));
+ * CollectionProducer<PackedCollection> zeros = zeros(shape(10));
  * PackedCollection result = zeros.get().evaluate();
  * // result: 10-element vector of zeros
  * }</pre>
@@ -114,7 +114,7 @@ import java.util.List;
  * @see org.almostrealism.collect.CollectionFeatures#zeros(TraversalPolicy)
  * @see org.almostrealism.collect.CollectionFeatures#constant(TraversalPolicy, double)
  */
-public class CollectionZerosComputation<T extends PackedCollection<?>> extends CollectionConstantComputation<T> {
+public class CollectionZerosComputation<T extends PackedCollection> extends CollectionConstantComputation<T> {
 	/**
 	 * Creates a new CollectionZerosComputation that will produce a zero-filled collection
 	 * with the specified shape. The computation is automatically named "zeros" to clearly

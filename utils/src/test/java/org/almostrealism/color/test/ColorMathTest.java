@@ -40,11 +40,11 @@ public class ColorMathTest implements TestFeatures, RGBFeatures {
 	@Test
 	public void fixedSum() {
 		verboseLog(() -> {
-			Producer<RGB> p1 = black();
-			Producer<RGB> p2 = white();
-			Producer<RGB> sum = add(p1, p2);
+			Producer<PackedCollection> p1 = black();
+			Producer<PackedCollection> p2 = white();
+			Producer<PackedCollection> sum = add(p1, p2);
 
-			PackedCollection<?> result = sum.get().evaluate();
+			PackedCollection result = sum.get().evaluate();
 			assertEquals(1.0, result.toDouble(0));
 			assertEquals(1.0, result.toDouble(1));
 			assertEquals(1.0, result.toDouble(2));
@@ -64,15 +64,15 @@ public class ColorMathTest implements TestFeatures, RGBFeatures {
 	@Test
 	public void greaterThan() {
 		verboseLog(() -> {
-			Producer<PackedCollection<?>> arg0 = v(shape(1), 0);
-			Producer<RGB> arg1 = v(RGB.shape(), 1);
+			Producer<PackedCollection> arg0 = v(shape(1), 0);
+			Producer<PackedCollection> arg1 = v(RGB.shape(), 1);
 
-			CollectionProducer<PackedCollection<?>> greater =
+			CollectionProducer<PackedCollection> greater =
 					greaterThan(arg0, c(0.0), (Producer) arg1, (Producer) black());
 			RGB result = new RGB(greater.get().evaluate(pack(0.1), new RGB(0.0, 1.0, 0.0)), 0);
-			assertEquals(0.0, result.getRed());
-			assertEquals(1.0, result.getGreen());
-			assertEquals(0.0, result.getBlue());
+			assertEquals(0.0, result.toDouble(0));
+			assertEquals(1.0, result.toDouble(1));
+			assertEquals(0.0, result.toDouble(2));
 		});
 	}
 
@@ -132,10 +132,10 @@ public class ColorMathTest implements TestFeatures, RGBFeatures {
 		if (skipKnownIssues) return;
 
 		verboseLog(() -> {
-			Producer<PackedCollection<?>> arg0 = v(shape(-1, 1), 0);
+			Producer<PackedCollection> arg0 = v(shape(-1, 1), 0);
 
-			PackedCollection<RGB> result = RGB.bank(5);
-			PackedCollection<?> input = new PackedCollection<>(5, 1).traverse(1);
+			PackedCollection result = RGB.bank(5);
+			PackedCollection input = new PackedCollection(5, 1).traverse(1);
 			input.set(0, 0.0);
 			input.set(1, -1.0);
 			input.set(2, 1.0);
@@ -144,16 +144,16 @@ public class ColorMathTest implements TestFeatures, RGBFeatures {
 
 			input.print();
 
-			CollectionProducer<PackedCollection<?>> greater =
+			CollectionProducer<PackedCollection> greater =
 					greaterThan(arg0, c(0.0), (Producer) white(), black());
 			greater.get().into(result.each()).evaluate(input);  // Use .each() for batched processing
 			result.print();
 
-			assertEquals(0.0, result.get(0).getGreen());
-			assertEquals(0.0, result.get(1).getGreen());
-			assertEquals(1.0, result.get(2).getGreen());
-			assertEquals(0.0, result.get(3).getGreen());
-			assertEquals(1.0, result.get(4).getGreen());
+			assertEquals(0.0, result.get(0).toDouble(1));
+			assertEquals(0.0, result.get(1).toDouble(1));
+			assertEquals(1.0, result.get(2).toDouble(1));
+			assertEquals(0.0, result.get(3).toDouble(1));
+			assertEquals(1.0, result.get(4).toDouble(1));
 		});
 	}
 }

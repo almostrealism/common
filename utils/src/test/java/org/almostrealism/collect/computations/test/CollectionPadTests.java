@@ -32,11 +32,11 @@ public class CollectionPadTests implements TestFeatures {
 	 */
 	@Test
 	public void padSubset() {
-		Producer<PackedCollection<?>> multiplier = func(shape(1), args -> pack(2.0));
+		Producer<PackedCollection> multiplier = func(shape(1), args -> pack(2.0));
 
-		PackedCollection<?> data = pack(1.0, 2.0, 3.0, 4.0, 5.0, 6.0);
-		CollectionProducer<PackedCollection<?>> subset1 = c(data).subset(shape(3), 3);
-		PackedCollection<?> result = pad(shape(6), subset1.multiply(multiplier), 0).evaluate();
+		PackedCollection data = pack(1.0, 2.0, 3.0, 4.0, 5.0, 6.0);
+		CollectionProducer<PackedCollection> subset1 = c(data).subset(shape(3), 3);
+		PackedCollection result = pad(shape(6), subset1.multiply(multiplier), 0).evaluate();
 		result.print();
 
 		assertEquals(6, result.getShape().length(0));
@@ -56,11 +56,11 @@ public class CollectionPadTests implements TestFeatures {
 	@Test
 	public void pad2d1() {
 		// Create a 2x3 input collection with random data
-		PackedCollection<?> data = new PackedCollection<>(2, 3).randFill();
+		PackedCollection data = new PackedCollection(2, 3).randFill();
 		
 		// Apply padding: 0 zeros before, 1 zero after in dimension 1
 		// This creates a 2x5 output (2x3 original + 0+1 padding in dim 1)
-		PackedCollection<?> out = cp(data).pad(0, 1).traverse(1).evaluate();
+		PackedCollection out = cp(data).pad(0, 1).traverse(1).evaluate();
 		out.print();
 
 		// Verify output dimensions
@@ -89,8 +89,8 @@ public class CollectionPadTests implements TestFeatures {
 	@Test
 	public void pad2d1Delta() {
 		// Create input data and compute its padded version with delta
-		PackedCollection<?> data = new PackedCollection<>(2, 3).randFill();
-		PackedCollection<?> out = cp(data).pad(0, 1)
+		PackedCollection data = new PackedCollection(2, 3).randFill();
+		PackedCollection out = cp(data).pad(0, 1)
 								.delta(cp(data)).evaluate();
 		log(out.getShape());
 		out.traverse(2).print();
@@ -127,11 +127,11 @@ public class CollectionPadTests implements TestFeatures {
 	@Test
 	public void pad2d2() {
 		// Create a 2x3 input collection
-		PackedCollection<?> data = new PackedCollection<>(2, 3).randFill();
+		PackedCollection data = new PackedCollection(2, 3).randFill();
 		
 		// Apply symmetric padding: 1 unit on all sides of both dimensions
 		// This creates a 4x5 output (2+2 x 3+2 = 4x5)
-		PackedCollection<?> out = cp(data).pad(1, 1).traverse(1).evaluate();
+		PackedCollection out = cp(data).pad(1, 1).traverse(1).evaluate();
 		out.print();
 
 		// Verify output dimensions
@@ -162,11 +162,11 @@ public class CollectionPadTests implements TestFeatures {
 		int n = 2;
 
 		// Create a 3D input collection: 2x2x3
-		PackedCollection<?> data = new PackedCollection<>(n, 2, 3).randFill();
+		PackedCollection data = new PackedCollection(n, 2, 3).randFill();
 		
 		// Apply padding: 0 in dim 0, 1 in dim 1, 1 in dim 2
 		// This creates a 2x4x5 output (2+0, 2+2, 3+2)
-		PackedCollection<?> out = cp(data).pad(0, 1, 1).traverse(1).evaluate();
+		PackedCollection out = cp(data).pad(0, 1, 1).traverse(1).evaluate();
 		out.traverse(2).print();
 
 		// Verify output dimensions  
@@ -200,8 +200,8 @@ public class CollectionPadTests implements TestFeatures {
 		int n = 2;
 
 		// Create 3D input and compute delta through padding operation
-		PackedCollection<?> data = new PackedCollection<>(n, 2, 3).randFill();
-		PackedCollection<?> out = cp(data)
+		PackedCollection data = new PackedCollection(n, 2, 3).randFill();
+		PackedCollection out = cp(data)
 								.pad(0, 1, 1).delta(cp(data))
 								.evaluate();
 		log(out.getShape());
@@ -249,11 +249,11 @@ public class CollectionPadTests implements TestFeatures {
 		int c = 4; // Number of channels
 
 		// Create 4D input: [batch, channels, height, width] = [2, 4, 2, 3]
-		PackedCollection<?> data = new PackedCollection<>(n, c, 2, 3).randFill();
+		PackedCollection data = new PackedCollection(n, c, 2, 3).randFill();
 		
 		// Apply padding only to spatial dimensions (height and width)
 		// Padding: [0, 0, 1, 1] means no padding for batch/channels, 1 unit padding for spatial dims
-		PackedCollection<?> out = cp(data).pad(0, 0, 1, 1).traverse(1).evaluate();
+		PackedCollection out = cp(data).pad(0, 0, 1, 1).traverse(1).evaluate();
 		out.print();
 
 		// Verify output dimensions
@@ -285,17 +285,17 @@ public class CollectionPadTests implements TestFeatures {
 	public void padSmallBatch() {
 		// Test padding operation with a batch of scalars
 		// We want to pad each scalar in the batch to position 0 of shape(2)
-		Producer<PackedCollection<?>> input = v(shape(-1, 1), 0);
-		Producer<PackedCollection<?>> padded = pad(shape(2), input, 0);
+		Producer<PackedCollection> input = v(shape(-1, 1), 0);
+		Producer<PackedCollection> padded = pad(shape(2), input, 0);
 
 		// Create batch of 3 scalars
-		PackedCollection<?> scalars = new PackedCollection<>(shape(3, 1).traverse(1));
+		PackedCollection scalars = new PackedCollection(shape(3, 1).traverse(1));
 		scalars.setMem(0, 5.0);   // Batch 0
 		scalars.setMem(1, 10.0);  // Batch 1
 		scalars.setMem(2, 15.0);  // Batch 2
 
 		// Pad to shape(2) - should give [5.0, 0.0], [10.0, 0.0], [15.0, 0.0]
-		PackedCollection<?> result = new PackedCollection<>(shape(3, 2).traverse(1));
+		PackedCollection result = new PackedCollection(shape(3, 2).traverse(1));
 		padded.get().into(result.each()).evaluate(scalars);
 
 		System.out.println("Pad batch test:");
@@ -315,18 +315,18 @@ public class CollectionPadTests implements TestFeatures {
 	public void concatSmallBatch() {
 		// Test concat operation with batch of scalars
 		// We'll create two separate values from a scalar input and concat them
-		Producer<PackedCollection<?>> input = v(shape(-1, 1), 0);
-		Producer<PackedCollection<?>> doubled = c(input).multiply(c(2.0));
-		Producer<PackedCollection<?>> concatenated = concat(shape(2), input, doubled);
+		Producer<PackedCollection> input = v(shape(-1, 1), 0);
+		Producer<PackedCollection> doubled = c(input).multiply(c(2.0));
+		Producer<PackedCollection> concatenated = concat(shape(2), input, doubled);
 
 		// Create batch of 3 scalars: [5, 10, 15]
 		// Expected: concat([5, 10], [10, 20], [15, 30])
-		PackedCollection<?> scalars = new PackedCollection<>(shape(3, 1).traverse(1));
+		PackedCollection scalars = new PackedCollection(shape(3, 1).traverse(1));
 		scalars.setMem(0, 5.0);   // Batch 0: concat([5], [10]) -> [5, 10]
 		scalars.setMem(1, 10.0);  // Batch 1: concat([10], [20]) -> [10, 20]
 		scalars.setMem(2, 15.0);  // Batch 2: concat([15], [30]) -> [15, 30]
 
-		PackedCollection<?> result = new PackedCollection<>(shape(3, 2).traverse(1));
+		PackedCollection result = new PackedCollection(shape(3, 2).traverse(1));
 		concatenated.get().into(result.each()).evaluate(scalars);
 
 		System.out.println("Concat batch test:");
@@ -345,17 +345,17 @@ public class CollectionPadTests implements TestFeatures {
 	@Test
 	public void concatLargeBatch() {
 		// Test concat with exactly 256 elements to check for batch size limit
-		Producer<PackedCollection<?>> input = v(shape(-1, 1), 0);
-		Producer<PackedCollection<?>> doubled = c(input).multiply(c(2.0));
-		Producer<PackedCollection<?>> concatenated = concat(shape(2), input, doubled);
+		Producer<PackedCollection> input = v(shape(-1, 1), 0);
+		Producer<PackedCollection> doubled = c(input).multiply(c(2.0));
+		Producer<PackedCollection> concatenated = concat(shape(2), input, doubled);
 
 		int batchSize = 256;
-		PackedCollection<?> scalars = new PackedCollection<>(shape(batchSize, 1).traverse(1));
+		PackedCollection scalars = new PackedCollection(shape(batchSize, 1).traverse(1));
 		for (int i = 0; i < batchSize; i++) {
 			scalars.setMem(i, (double) i);
 		}
 
-		PackedCollection<?> result = new PackedCollection<>(shape(batchSize, 2).traverse(1));
+		PackedCollection result = new PackedCollection(shape(batchSize, 2).traverse(1));
 		concatenated.get().into(result.each()).evaluate(scalars);
 
 		System.out.println("Concat large batch test (size=" + batchSize + "):");
@@ -382,21 +382,21 @@ public class CollectionPadTests implements TestFeatures {
 	@Test
 	public void concat2DTraversal() {
 		// Test concat with 2D traversal
-		Producer<PackedCollection<?>> input = v(shape(-1, 1), 0);
-		Producer<PackedCollection<?>> doubled = c(input).multiply(c(2.0));
-		Producer<PackedCollection<?>> concatenated = concat(shape(2), input, doubled);
+		Producer<PackedCollection> input = v(shape(-1, 1), 0);
+		Producer<PackedCollection> doubled = c(input).multiply(c(2.0));
+		Producer<PackedCollection> concatenated = concat(shape(2), input, doubled);
 
 		// Use 16x16 grid (256 elements total) with .traverse(2)
 		int h = 16;
 		int w = 16;
-		PackedCollection<?> scalars = new PackedCollection<>(shape(h, w, 1).traverse(2));
+		PackedCollection scalars = new PackedCollection(shape(h, w, 1).traverse(2));
 		for (int y = 0; y < h; y++) {
 			for (int x = 0; x < w; x++) {
 				scalars.setMem(scalars.getShape().index(y, x, 0), (double) (y * w + x));
 			}
 		}
 
-		PackedCollection<?> result = new PackedCollection<>(shape(h, w, 2).traverse(2));
+		PackedCollection result = new PackedCollection(shape(h, w, 2).traverse(2));
 		concatenated.get().into(result.each()).evaluate(scalars);
 
 		System.out.println("Concat 2D traversal test (size=" + (h*w) + "):");

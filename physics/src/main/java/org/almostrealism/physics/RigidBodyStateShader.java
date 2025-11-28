@@ -16,10 +16,10 @@
 
 package org.almostrealism.physics;
 
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.color.RGBFeatures;
 import org.almostrealism.geometry.DiscreteField;
 import org.almostrealism.algebra.Vector;
-import org.almostrealism.color.RGB;
 import org.almostrealism.color.Shader;
 import org.almostrealism.color.ShaderContext;
 
@@ -76,26 +76,26 @@ public class RigidBodyStateShader<T extends ShaderContext> implements Shader<T>,
 	 * @see org.almostrealism.color.Shader#shade(LightingContext, DiscreteField)
 	 */
 	@Override
-	public Producer<RGB> shade(T p, DiscreteField f) {
+	public Producer<PackedCollection> shade(T p, DiscreteField f) {
 		if (p.getSurface() instanceof RigidBody == false)
 			return white();
-		
+
 		RigidBody.State state = ((RigidBody) p.getSurface()).getState();
-		
+
 		Vector d;
-		
+
 		if (this.type == RigidBodyStateShader.VELOCITY)
 			d = state.getLinearVelocity();
 		else
 			d = state.getForce();
-		
+
 		double m = (d.length() - this.min) / (this.max - this.min);
 		if (m < 0.0) m = 0.0;
 		if (m > 1.0) m = 1.0;
-		
+
 		d.divideBy(d.length());
-		p.setLightDirection(v(d));
-		
+		p.setLightDirection((Producer) v(d));
+
 		return multiply(rgb(m), shader.shade(p, f));
 	}
 }

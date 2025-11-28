@@ -34,14 +34,14 @@ import java.util.function.Supplier;
 public class BranchBlock implements Block {
 	private TraversalPolicy shape;
 
-	private Cell<PackedCollection<?>> entry;
-	private Receptor<PackedCollection<?>> push;
-	private Receptor<PackedCollection<?>> downstream;
+	private Cell<PackedCollection> entry;
+	private Receptor<PackedCollection> push;
+	private Receptor<PackedCollection> downstream;
 
-	private Cell<PackedCollection<?>> backwards;
-	private List<CellularPropagation<PackedCollection<?>>> children;
-	private PackedCollection<?> gradient;
-	private Receptor<PackedCollection<?>> aggregator;
+	private Cell<PackedCollection> backwards;
+	private List<CellularPropagation<PackedCollection>> children;
+	private PackedCollection gradient;
+	private Receptor<PackedCollection> aggregator;
 
 	public BranchBlock(TraversalPolicy shape) {
 		this.shape = shape;
@@ -54,7 +54,7 @@ public class BranchBlock implements Block {
 		};
 
 		this.children = new ArrayList<>();
-		this.gradient = new PackedCollection<>(shape);
+		this.gradient = new PackedCollection(shape);
 
 		if (DefaultGradientPropagation.enableDiagnosticGrad) {
 			this.aggregator = (input) -> {
@@ -88,21 +88,21 @@ public class BranchBlock implements Block {
 		return shape;
 	}
 
-	public List<CellularPropagation<PackedCollection<?>>> getChildren() {
+	public List<CellularPropagation<PackedCollection>> getChildren() {
 		return Collections.unmodifiableList(children);
 	}
 
 	@Override
-	public Cell<PackedCollection<?>> getForward() {
+	public Cell<PackedCollection> getForward() {
 		if (entry == null) {
 			entry = new Cell<>() {
 				@Override
-				public Supplier<Runnable> push(Producer<PackedCollection<?>> in) {
+				public Supplier<Runnable> push(Producer<PackedCollection> in) {
 					return push.push(in);
 				}
 
 				@Override
-				public void setReceptor(Receptor<PackedCollection<?>> r) {
+				public void setReceptor(Receptor<PackedCollection> r) {
 					if (cellWarnings && BranchBlock.this.downstream != null) {
 						warn("Replacing receptor");
 					}
@@ -116,7 +116,7 @@ public class BranchBlock implements Block {
 	}
 
 	@Override
-	public Cell<PackedCollection<?>> getBackward() {
+	public Cell<PackedCollection> getBackward() {
 		if (backwards == null) {
 			backwards = Cell.of((input, next) -> {
 				OperationList op = new OperationList("BranchBlock Backward");
@@ -130,7 +130,7 @@ public class BranchBlock implements Block {
 		return backwards;
 	}
 
-	public <T extends CellularPropagation<PackedCollection<?>>> T append(T l) {
+	public <T extends CellularPropagation<PackedCollection>> T append(T l) {
 		children.add(l);
 		l.getBackward().setReceptor(aggregator);
 		return l;

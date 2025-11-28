@@ -49,35 +49,35 @@ public interface BaseAudioData extends CodeFeatures {
 	 * @param index the storage slot index
 	 * @return the collection view at the specified index
 	 */
-	PackedCollection<?> get(int index);
+	PackedCollection get(int index);
 
 	/**
 	 * Returns the storage for the wave position.
 	 *
 	 * @return the wave position storage at slot 0
 	 */
-	default PackedCollection<?> wavePosition() { return get(0); }
+	default PackedCollection wavePosition() { return get(0); }
 
 	/**
 	 * Returns the storage for the wave length.
 	 *
 	 * @return the wave length storage at slot 1
 	 */
-	default PackedCollection<?> waveLength() { return get(1); }
+	default PackedCollection waveLength() { return get(1); }
 
 	/**
 	 * Returns the storage for the amplitude.
 	 *
 	 * @return the amplitude storage at slot 2
 	 */
-	default PackedCollection<?> amplitude() { return get(2); }
+	default PackedCollection amplitude() { return get(2); }
 
 	/**
 	 * Returns a producer for the wave position value.
 	 *
 	 * @return producer providing the current wave position
 	 */
-	default Producer<PackedCollection<?>> getWavePosition() {
+	default Producer<PackedCollection> getWavePosition() {
 		return p(wavePosition().range(shape(1)));
 	}
 
@@ -95,7 +95,7 @@ public interface BaseAudioData extends CodeFeatures {
 	 *
 	 * @return producer providing the wave length
 	 */
-	default Producer<PackedCollection<?>> getWaveLength() {
+	default Producer<PackedCollection> getWaveLength() {
 		return p(waveLength().range(shape(1)));
 	}
 
@@ -113,7 +113,7 @@ public interface BaseAudioData extends CodeFeatures {
 	 *
 	 * @return producer providing the amplitude multiplier
 	 */
-	default Producer<PackedCollection<?>> getAmplitude() {
+	default Producer<PackedCollection> getAmplitude() {
 		return p(amplitude().range(shape(1)));
 	}
 

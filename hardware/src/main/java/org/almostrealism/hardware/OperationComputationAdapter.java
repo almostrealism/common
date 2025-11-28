@@ -43,8 +43,8 @@ import java.util.stream.Stream;
  * that perform actions:</p>
  * <pre>{@code
  * // Value-producing computation
- * Computation<PackedCollection<?>> producer = multiply(a, b);
- * PackedCollection<?> result = producer.get().evaluate(args);
+ * Computation<PackedCollection> producer = multiply(a, b);
+ * PackedCollection result = producer.get().evaluate(args);
  *
  * // Side-effect operation (extends OperationComputationAdapter)
  * OperationComputation<Void> operation = updateState(destination, newValue);
@@ -55,10 +55,10 @@ import java.util.stream.Stream;
  *
  * <h3>In-Place Updates</h3>
  * <pre>{@code
- * public class IncrementOperation extends OperationComputationAdapter<PackedCollection<?>> {
- *     private final Producer<PackedCollection<?>> target;
+ * public class IncrementOperation extends OperationComputationAdapter<PackedCollection> {
+ *     private final Producer<PackedCollection> target;
  *
- *     public IncrementOperation(Producer<PackedCollection<?>> target) {
+ *     public IncrementOperation(Producer<PackedCollection> target) {
  *         super(target);  // Register as input
  *         this.target = target;
  *     }
@@ -70,7 +70,7 @@ import java.util.stream.Stream;
  *             @Override
  *             public Runnable getRunnable() {
  *                 return () -> {
- *                     PackedCollection<?> data = target.get().evaluate();
+ *                     PackedCollection data = target.get().evaluate();
  *                     for (int i = 0; i < data.getMemLength(); i++) {
  *                         data.setMem(i, data.toDouble(i) + 1.0);
  *                     }
@@ -87,12 +87,12 @@ import java.util.stream.Stream;
  *
  * <h3>Multi-Input Side Effects</h3>
  * <pre>{@code
- * public class CopyOperation extends OperationComputationAdapter<PackedCollection<?>> {
- *     private final Producer<PackedCollection<?>> source;
- *     private final Producer<PackedCollection<?>> destination;
+ * public class CopyOperation extends OperationComputationAdapter<PackedCollection> {
+ *     private final Producer<PackedCollection> source;
+ *     private final Producer<PackedCollection> destination;
  *
- *     public CopyOperation(Producer<PackedCollection<?>> source,
- *                         Producer<PackedCollection<?>> destination) {
+ *     public CopyOperation(Producer<PackedCollection> source,
+ *                         Producer<PackedCollection> destination) {
  *         super(source, destination);  // Both are inputs
  *         this.source = source;
  *         this.destination = destination;
@@ -104,8 +104,8 @@ import java.util.stream.Stream;
  *             @Override
  *             public Runnable getRunnable() {
  *                 return () -> {
- *                     PackedCollection<?> src = source.get().evaluate();
- *                     PackedCollection<?> dst = destination.get().evaluate();
+ *                     PackedCollection src = source.get().evaluate();
+ *                     PackedCollection dst = destination.get().evaluate();
  *                     dst.setMem(src);  // Copy source to destination
  *                 };
  *             }
@@ -116,12 +116,12 @@ import java.util.stream.Stream;
  *
  * <h3>With Dependent Computations</h3>
  * <pre>{@code
- * public class ComputeAndStoreOperation extends OperationComputationAdapter<PackedCollection<?>> {
- *     private final Computation<PackedCollection<?>> computation;
- *     private final Producer<PackedCollection<?>> destination;
+ * public class ComputeAndStoreOperation extends OperationComputationAdapter<PackedCollection> {
+ *     private final Computation<PackedCollection> computation;
+ *     private final Producer<PackedCollection> destination;
  *
- *     public ComputeAndStoreOperation(Computation<PackedCollection<?>> computation,
- *                                    Producer<PackedCollection<?>> destination) {
+ *     public ComputeAndStoreOperation(Computation<PackedCollection> computation,
+ *                                    Producer<PackedCollection> destination) {
  *         super(destination);  // Destination is input
  *         this.computation = computation;
  *         this.destination = destination;
@@ -138,8 +138,8 @@ import java.util.stream.Stream;
  *             @Override
  *             public Runnable getRunnable() {
  *                 return () -> {
- *                     PackedCollection<?> result = computation.get().evaluate();
- *                     PackedCollection<?> dst = destination.get().evaluate();
+ *                     PackedCollection result = computation.get().evaluate();
+ *                     PackedCollection dst = destination.get().evaluate();
  *                     dst.setMem(result);  // Store computed result
  *                 };
  *             }

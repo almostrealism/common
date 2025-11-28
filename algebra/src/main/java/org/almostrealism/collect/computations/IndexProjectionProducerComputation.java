@@ -148,7 +148,7 @@ import java.util.stream.Collectors;
  * @author Michael Murray
  * @since 0.68
  */
-public class IndexProjectionProducerComputation<T extends PackedCollection<?>>
+public class IndexProjectionProducerComputation<T extends PackedCollection>
 		extends TraversableExpressionComputation<T> {
 	/**
 	 * Enables delegated isolation optimization for improved memory efficiency.
@@ -280,7 +280,7 @@ public class IndexProjectionProducerComputation<T extends PackedCollection<?>>
 	 * 
 	 * @return A {@link CollectionProducerComputation} that produces the index mapping matrix
 	 */
-	public CollectionProducerComputation<PackedCollection<?>> getIndex() {
+	public CollectionProducerComputation<PackedCollection> getIndex() {
 		int outSize = getShape().getTotalSize();
 		int inSize = shape(getInputs().get(1)).getTotalSize();
 		TraversalPolicy shape = shape(outSize, inSize);
@@ -409,7 +409,7 @@ public class IndexProjectionProducerComputation<T extends PackedCollection<?>>
 			return zeros(shape.append(targetShape));
 		}
 
-		CollectionProducer<PackedCollection<?>> delta = null;
+		CollectionProducer<PackedCollection> delta = null;
 
 		if (in instanceof CollectionProducer) {
 			delta = ((CollectionProducer) in).delta(target);

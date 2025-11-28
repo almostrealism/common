@@ -57,22 +57,22 @@ public class AttentionTests implements AttentionFeatures, TestFeatures {
 		TraversalPolicy keyShape = shape(seqLength, heads, headSize);
 		TraversalPolicy outputShape = shape(heads, seqLength);
 
-		PackedCollection<?> q = new PackedCollection<>(inputShape); // (heads, headSize)
-		PackedCollection<?> keyCache = new PackedCollection<>(keyShape); // (seqLength, heads, headSize)
+		PackedCollection q = new PackedCollection(inputShape); // (heads, headSize)
+		PackedCollection keyCache = new PackedCollection(keyShape); // (seqLength, heads, headSize)
 
 		q.fill(pos -> Math.random());
 		keyCache.fill(pos -> Math.random());
 
-		Producer<PackedCollection<?>> o = c(p(keyCache)).traverse(1).map(v -> v.multiply(p(q)))
+		Producer<PackedCollection> o = c(p(keyCache)).traverse(1).map(v -> v.multiply(p(q)))
 											.traverse(2).sum()
 											.divide(c(Math.sqrt(headSize)))
 											.reshape(shape(seqLength, heads))
 											.enumerate(1, 1)
 											.reshape(outputShape);
 
-//		PackedCollection<?> att = o.get().evaluate();
+//		PackedCollection att = o.get().evaluate();
 		// TODO This should not require optimization to pass, but currently it does
-		PackedCollection<?> att = ((Evaluable<PackedCollection<?>>) ((ParallelProcess) o).optimize().get()).evaluate();
+		PackedCollection att = ((Evaluable<PackedCollection>) ((ParallelProcess) o).optimize().get()).evaluate();
 
 //		int p = (int) (0.8 * seqLength);
 		int p = seqLength - 1;
@@ -106,9 +106,9 @@ public class AttentionTests implements AttentionFeatures, TestFeatures {
 		TraversalPolicy outputShape = shape(heads, headSize);
 		TraversalPolicy finalShape = outputShape.flatten();
 
-		PackedCollection<?> att = new PackedCollection<>(inputShape); // (heads, seqLength)
-		PackedCollection<?> values = new PackedCollection<>(valueShape); // (seqLength, heads, headSize)
-		PackedCollection<?> out = new PackedCollection<>(finalShape); // (heads, headSize)
+		PackedCollection att = new PackedCollection(inputShape); // (heads, seqLength)
+		PackedCollection values = new PackedCollection(valueShape); // (seqLength, heads, headSize)
+		PackedCollection out = new PackedCollection(finalShape); // (heads, headSize)
 
 		att.fill(pos -> Math.random());
 		values.fill(pos -> Math.random());
@@ -116,11 +116,11 @@ public class AttentionTests implements AttentionFeatures, TestFeatures {
 //		int p = (int) (0.8 * seqLength);
 		int p = seqLength - 1;
 
-		CollectionProducer<PackedCollection<?>> v = c(p(values)).reshape(shape(seqLength, dim))
+		CollectionProducer<PackedCollection> v = c(p(values)).reshape(shape(seqLength, dim))
 														.enumerate(1, 1)
 														.reshape(shape(heads, headSize, seqLength));
-		CollectionProducer<PackedCollection<?>> a = c(p(att)).traverse(1).repeat(headSize);
-		CollectionProducer<PackedCollection<?>> o = multiply(traverseEach(a), traverseEach(v)).traverse(2).sum().reshape(finalShape);
+		CollectionProducer<PackedCollection> a = c(p(att)).traverse(1).repeat(headSize);
+		CollectionProducer<PackedCollection> o = multiply(traverseEach(a), traverseEach(v)).traverse(2).sum().reshape(finalShape);
 
 		OperationProfile profiles = new OperationProfile();
 
@@ -154,8 +154,8 @@ public class AttentionTests implements AttentionFeatures, TestFeatures {
 		int rows = 4;
 		int cols = 4;
 
-		PackedCollection<?> input =
-				new PackedCollection<>(shape(batchSize, inputChannels, rows, cols)).randnFill();
+		PackedCollection input =
+				new PackedCollection(shape(batchSize, inputChannels, rows, cols)).randnFill();
 
 		Block b = linearAttention(batchSize, dim, inputChannels, rows, cols);
 		b.setup().get().run();
@@ -173,7 +173,7 @@ public class AttentionTests implements AttentionFeatures, TestFeatures {
 		int embedDim = 16;
 
 		// Create a simple input that's easy to verify
-		PackedCollection<?> input = new PackedCollection<>(shape(batchSize, seqLen, embedDim * 3));
+		PackedCollection input = new PackedCollection(shape(batchSize, seqLen, embedDim * 3));
 		input.fill(pos -> (double) pos[0] * seqLen * embedDim * 3 + pos[1] * embedDim * 3 + pos[2]);
 
 		// Create a model that simulates the QKV split
@@ -187,9 +187,9 @@ public class AttentionTests implements AttentionFeatures, TestFeatures {
 		SequentialBlock k = (SequentialBlock) qkv.get(1).reshape(batchSize, seqLen, embedDim);
 		SequentialBlock v = (SequentialBlock) qkv.get(2).reshape(batchSize, seqLen, embedDim);
 
-		PackedCollection<?> qOut = new PackedCollection<>(shape(batchSize, seqLen, embedDim));
-		PackedCollection<?> kOut = new PackedCollection<>(shape(batchSize, seqLen, embedDim));
-		PackedCollection<?> vOut = new PackedCollection<>(shape(batchSize, seqLen, embedDim));
+		PackedCollection qOut = new PackedCollection(shape(batchSize, seqLen, embedDim));
+		PackedCollection kOut = new PackedCollection(shape(batchSize, seqLen, embedDim));
+		PackedCollection vOut = new PackedCollection(shape(batchSize, seqLen, embedDim));
 
 		q.andThen(into(qOut));
 		k.andThen(into(kOut));
@@ -237,7 +237,7 @@ public class AttentionTests implements AttentionFeatures, TestFeatures {
 				.forEach(key -> System.out.println("\t" + key + " " + referenceData.get(key).getShape()));
 
 		// Extract test configuration
-		PackedCollection<?> testConfig = referenceData.get("test_config");
+		PackedCollection testConfig = referenceData.get("test_config");
 		int batchSize = (int) testConfig.valueAt(0);
 		int heads = (int) testConfig.valueAt(1);
 		int seqLen = (int) testConfig.valueAt(2);
@@ -248,14 +248,14 @@ public class AttentionTests implements AttentionFeatures, TestFeatures {
 				", seqLen=" + seqLen + ", dimHead=" + dimHead);
 
 		// Load test data
-		PackedCollection<?> qInput = referenceData.get("q_input");
-		PackedCollection<?> kInput = referenceData.get("k_input");
-		PackedCollection<?> qNormWeight = referenceData.get("q_norm_weight");
-		PackedCollection<?> qNormBias = referenceData.get("q_norm_bias");
-		PackedCollection<?> kNormWeight = referenceData.get("k_norm_weight");
-		PackedCollection<?> kNormBias = referenceData.get("k_norm_bias");
-		PackedCollection<?> qExpectedOutput = referenceData.get("q_expected_output");
-		PackedCollection<?> kExpectedOutput = referenceData.get("k_expected_output");
+		PackedCollection qInput = referenceData.get("q_input");
+		PackedCollection kInput = referenceData.get("k_input");
+		PackedCollection qNormWeight = referenceData.get("q_norm_weight");
+		PackedCollection qNormBias = referenceData.get("q_norm_bias");
+		PackedCollection kNormWeight = referenceData.get("k_norm_weight");
+		PackedCollection kNormBias = referenceData.get("k_norm_bias");
+		PackedCollection qExpectedOutput = referenceData.get("q_expected_output");
+		PackedCollection kExpectedOutput = referenceData.get("k_expected_output");
 
 		// Test Q normalization
 		Model qModel = new Model(shape(batchSize, heads, seqLen, dimHead));
@@ -263,7 +263,7 @@ public class AttentionTests implements AttentionFeatures, TestFeatures {
 		qMain.add(norm(qNormWeight, qNormBias, 1e-6));
 
 		CompiledModel qCompiled = qModel.compile(false);
-		PackedCollection<?> qActualOutput = qCompiled.forward(qInput);
+		PackedCollection qActualOutput = qCompiled.forward(qInput);
 
 		// Test K normalization
 		Model kModel = new Model(shape(batchSize, heads, seqLen, dimHead));
@@ -271,7 +271,7 @@ public class AttentionTests implements AttentionFeatures, TestFeatures {
 		kMain.add(norm(kNormWeight, kNormBias, 1e-6));
 
 		CompiledModel kCompiled = kModel.compile(false);
-		PackedCollection<?> kActualOutput = kCompiled.forward(kInput);
+		PackedCollection kActualOutput = kCompiled.forward(kInput);
 
 		// Compare results
 		double qDiff = compare(qExpectedOutput, qActualOutput);
@@ -304,10 +304,10 @@ public class AttentionTests implements AttentionFeatures, TestFeatures {
 				.forEach(key -> System.out.println("\t" + key + " " + referenceData.get(key).getShape()));
 
 		// Extract test inputs and expected output
-		PackedCollection<?> q = referenceData.get("q");
-		PackedCollection<?> k = referenceData.get("k");
-		PackedCollection<?> v = referenceData.get("v");
-		PackedCollection<?> expectedOutput = referenceData.get("expected_output");
+		PackedCollection q = referenceData.get("q");
+		PackedCollection k = referenceData.get("k");
+		PackedCollection v = referenceData.get("v");
+		PackedCollection expectedOutput = referenceData.get("expected_output");
 
 		assertNotNull("Q tensor not found", q);
 		assertNotNull("K tensor not found", k);
@@ -330,7 +330,7 @@ public class AttentionTests implements AttentionFeatures, TestFeatures {
 		model.add(scaledDotProductAttention(batchSize, seqLen, heads, dimHead, k, v));
 
 		CompiledModel compiled = model.compile(false);
-		PackedCollection<?> actualOutput = compiled.forward(q);
+		PackedCollection actualOutput = compiled.forward(q);
 		log("Expected output total: " + expectedOutput.doubleStream().map(Math::abs).sum());
 		log("Actual output total: " + actualOutput.doubleStream().map(Math::abs).sum());
 
@@ -352,10 +352,10 @@ public class AttentionTests implements AttentionFeatures, TestFeatures {
 		int dimHead = embedDim / heads;
 
 		// Create simple test data
-		PackedCollection<?> input = new PackedCollection<>(shape(batchSize, seqLen, embedDim)).randnFill();
+		PackedCollection input = new PackedCollection(shape(batchSize, seqLen, embedDim)).randnFill();
 		
 		// QKV weight that keeps values mostly unchanged (near-identity)
-		PackedCollection<?> toQKV = new PackedCollection<>(shape(embedDim * 3, embedDim));
+		PackedCollection toQKV = new PackedCollection(shape(embedDim * 3, embedDim));
 		toQKV.fill(pos -> {
 			int outIdx = pos[0];
 			int inIdx = pos[1];
@@ -367,17 +367,17 @@ public class AttentionTests implements AttentionFeatures, TestFeatures {
 		});
 		
 		// Identity output projection
-		PackedCollection<?> toOut = new PackedCollection<>(shape(embedDim, embedDim));
+		PackedCollection toOut = new PackedCollection(shape(embedDim, embedDim));
 		toOut.fill(pos -> pos[0] == pos[1] ? 1.0 : 0.0);
 		
 		// Identity norms
-		PackedCollection<?> qNormWeight = new PackedCollection<>(shape(dimHead)).fill(pos -> 1.0);
-		PackedCollection<?> qNormBias = new PackedCollection<>(shape(dimHead)).fill(pos -> 0.0);
-		PackedCollection<?> kNormWeight = new PackedCollection<>(shape(dimHead)).fill(pos -> 1.0);
-		PackedCollection<?> kNormBias = new PackedCollection<>(shape(dimHead)).fill(pos -> 0.0);
+		PackedCollection qNormWeight = new PackedCollection(shape(dimHead)).fill(pos -> 1.0);
+		PackedCollection qNormBias = new PackedCollection(shape(dimHead)).fill(pos -> 0.0);
+		PackedCollection kNormWeight = new PackedCollection(shape(dimHead)).fill(pos -> 1.0);
+		PackedCollection kNormBias = new PackedCollection(shape(dimHead)).fill(pos -> 0.0);
 		
 		// Simple inv_freq for rotary
-		PackedCollection<?> invFreq = new PackedCollection<>(shape(dimHead / 4)).fill(pos -> 0.01);
+		PackedCollection invFreq = new PackedCollection(shape(dimHead / 4)).fill(pos -> 0.01);
 
 		// Run through attention
 		Block attention = sequenceAttention(
@@ -392,7 +392,7 @@ public class AttentionTests implements AttentionFeatures, TestFeatures {
 		model.sequential().add(attention);
 		
 		CompiledModel compiled = model.compile(false);
-		PackedCollection<?> output = compiled.forward(input);
+		PackedCollection output = compiled.forward(input);
 
 		log("Simplified attention test:");
 		log("Input shape: " + input.getShape() + ", total: " + input.doubleStream().map(Math::abs).sum());
@@ -420,8 +420,8 @@ public class AttentionTests implements AttentionFeatures, TestFeatures {
 				.forEach(key -> System.out.println("\t" + key + " " + referenceData.get(key).getShape()));
 
 		// Extract input and expected output
-		PackedCollection<?> referenceInput = referenceData.get("input");
-		PackedCollection<?> expectedOutput = referenceData.get("expected_output");
+		PackedCollection referenceInput = referenceData.get("input");
+		PackedCollection expectedOutput = referenceData.get("expected_output");
 
 		assertNotNull("Reference input not found", referenceInput);
 		assertNotNull("Expected output not found", expectedOutput);
@@ -429,13 +429,13 @@ public class AttentionTests implements AttentionFeatures, TestFeatures {
 		System.out.println("Reference input total is " + referenceInput.doubleStream().map(Math::abs).sum());
 
 		// Load all weights
-		PackedCollection<?> toQKV = referenceData.get("model.model.transformer.layers.0.self_attn.to_qkv.weight");
-		PackedCollection<?> toOut = referenceData.get("model.model.transformer.layers.0.self_attn.to_out.weight");
-		PackedCollection<?> qNormWeight = referenceData.get("model.model.transformer.layers.0.self_attn.q_norm.weight");
-		PackedCollection<?> qNormBias = referenceData.get("model.model.transformer.layers.0.self_attn.q_norm.bias");
-		PackedCollection<?> kNormWeight = referenceData.get("model.model.transformer.layers.0.self_attn.k_norm.weight");
-		PackedCollection<?> kNormBias = referenceData.get("model.model.transformer.layers.0.self_attn.k_norm.bias");
-		PackedCollection<?> invFreq = referenceData.get("model.model.transformer.rotary_pos_emb.inv_freq");
+		PackedCollection toQKV = referenceData.get("model.model.transformer.layers.0.self_attn.to_qkv.weight");
+		PackedCollection toOut = referenceData.get("model.model.transformer.layers.0.self_attn.to_out.weight");
+		PackedCollection qNormWeight = referenceData.get("model.model.transformer.layers.0.self_attn.q_norm.weight");
+		PackedCollection qNormBias = referenceData.get("model.model.transformer.layers.0.self_attn.q_norm.bias");
+		PackedCollection kNormWeight = referenceData.get("model.model.transformer.layers.0.self_attn.k_norm.weight");
+		PackedCollection kNormBias = referenceData.get("model.model.transformer.layers.0.self_attn.k_norm.bias");
+		PackedCollection invFreq = referenceData.get("model.model.transformer.rotary_pos_emb.inv_freq");
 
 		// Verify all weights were loaded
 		assertNotNull("toQKV not found", toQKV);
@@ -479,7 +479,7 @@ public class AttentionTests implements AttentionFeatures, TestFeatures {
 
 		// Compile and run the model
 		CompiledModel compiled = model.compile(false);
-		PackedCollection<?> actualOutput = compiled.forward(referenceInput);
+		PackedCollection actualOutput = compiled.forward(referenceInput);
 
 		log("Expected output total is " + expectedOutput.doubleStream().map(Math::abs).sum());
 		log("Actual output total is " + actualOutput.doubleStream().map(Math::abs).sum());
@@ -509,7 +509,7 @@ public class AttentionTests implements AttentionFeatures, TestFeatures {
 				.forEach(key -> System.out.println("\t" + key + " " + referenceData.get(key).getShape()));
 
 		// Extract test configuration
-		PackedCollection<?> testConfig = referenceData.get("test_config");
+		PackedCollection testConfig = referenceData.get("test_config");
 		int batchSize = (int) testConfig.valueAt(0);
 		int querySeqLen = (int) testConfig.valueAt(1);
 		int contextSeqLen = (int) testConfig.valueAt(2);
@@ -523,22 +523,22 @@ public class AttentionTests implements AttentionFeatures, TestFeatures {
 		log("  embedDim=" + embedDim + ", contextDim=" + contextDim + ", heads=" + heads + ", dimHead=" + dimHead);
 
 		// Extract inputs and expected output
-		PackedCollection<?> mainInput = referenceData.get("main_input");
-		PackedCollection<?> contextInput = referenceData.get("context_input");
-		PackedCollection<?> expectedOutput = referenceData.get("expected_output");
+		PackedCollection mainInput = referenceData.get("main_input");
+		PackedCollection contextInput = referenceData.get("context_input");
+		PackedCollection expectedOutput = referenceData.get("expected_output");
 
 		assertNotNull("Main input not found", mainInput);
 		assertNotNull("Context input not found", contextInput);
 		assertNotNull("Expected output not found", expectedOutput);
 
 		// Load cross-attention weights
-		PackedCollection<?> toQ = referenceData.get("to_q.weight");
-		PackedCollection<?> toKv = referenceData.get("to_kv.weight");
-		PackedCollection<?> toOut = referenceData.get("to_out.weight");
-		PackedCollection<?> qNormWeight = referenceData.get("q_norm.weight");
-		PackedCollection<?> qNormBias = referenceData.get("q_norm.bias");
-		PackedCollection<?> kNormWeight = referenceData.get("k_norm.weight");
-		PackedCollection<?> kNormBias = referenceData.get("k_norm.bias");
+		PackedCollection toQ = referenceData.get("to_q.weight");
+		PackedCollection toKv = referenceData.get("to_kv.weight");
+		PackedCollection toOut = referenceData.get("to_out.weight");
+		PackedCollection qNormWeight = referenceData.get("q_norm.weight");
+		PackedCollection qNormBias = referenceData.get("q_norm.bias");
+		PackedCollection kNormWeight = referenceData.get("k_norm.weight");
+		PackedCollection kNormBias = referenceData.get("k_norm.bias");
 
 		// Verify all weights were loaded
 		assertNotNull("toQ not found", toQ);
@@ -586,7 +586,7 @@ public class AttentionTests implements AttentionFeatures, TestFeatures {
 		contextModel.compile(false).forward(contextInput);
 		
 		// Run main model with cross-attention
-		PackedCollection<?> actualOutput = mainCompiled.forward(mainInput);
+		PackedCollection actualOutput = mainCompiled.forward(mainInput);
 
 		log("Expected output total: " + expectedOutput.doubleStream().map(Math::abs).sum());
 		log("Actual output total: " + actualOutput.doubleStream().map(Math::abs).sum());
@@ -617,7 +617,7 @@ public class AttentionTests implements AttentionFeatures, TestFeatures {
 				.forEach(key -> System.out.println("\t" + key + " " + referenceData.get(key).getShape()));
 
 		// Extract test configuration
-		PackedCollection<?> testConfig = referenceData.get("test_config");
+		PackedCollection testConfig = referenceData.get("test_config");
 		int batchSize = (int) testConfig.valueAt(0);
 		int seqLen = (int) testConfig.valueAt(1);
 		int dim = (int) testConfig.valueAt(2);
@@ -628,16 +628,16 @@ public class AttentionTests implements AttentionFeatures, TestFeatures {
 				", dim=" + dim + ", innerDim=" + innerDim);
 
 		// Load test data
-		PackedCollection<?> input = referenceData.get("input");
-		PackedCollection<?> expectedOutput = referenceData.get("expected_output");
+		PackedCollection input = referenceData.get("input");
+		PackedCollection expectedOutput = referenceData.get("expected_output");
 
 		// Load weights
-		PackedCollection<?> w1Weight = referenceData.get("w1_weight");
-		PackedCollection<?> w1Bias = referenceData.get("w1_bias");
-		PackedCollection<?> w2Weight = referenceData.get("w2_weight");
-		PackedCollection<?> w2Bias = referenceData.get("w2_bias");
-		PackedCollection<?> normWeight = referenceData.get("norm_weight");
-		PackedCollection<?> normBias = referenceData.get("norm_bias");
+		PackedCollection w1Weight = referenceData.get("w1_weight");
+		PackedCollection w1Bias = referenceData.get("w1_bias");
+		PackedCollection w2Weight = referenceData.get("w2_weight");
+		PackedCollection w2Bias = referenceData.get("w2_bias");
+		PackedCollection normWeight = referenceData.get("norm_weight");
+		PackedCollection normBias = referenceData.get("norm_bias");
 
 		// Verify all weights were loaded
 		assertNotNull("w1Weight not found", w1Weight);
@@ -656,7 +656,7 @@ public class AttentionTests implements AttentionFeatures, TestFeatures {
 		Model model = new Model(shape(batchSize, seqLen, dim));
 		SequentialBlock main = model.sequential();
 
-		List<PackedCollection<?>> states = new ArrayList<>();
+		List<PackedCollection> states = new ArrayList<>();
 
 		// Add feed-forward block
 		main.add(gatedLinearFeedForward(
@@ -668,7 +668,7 @@ public class AttentionTests implements AttentionFeatures, TestFeatures {
 
 		// Compile and run the model
 		CompiledModel compiled = model.compile(false);
-		PackedCollection<?> actualOutput = compiled.forward(input);
+		PackedCollection actualOutput = compiled.forward(input);
 
 		log("Expected output total: " + expectedOutput.doubleStream().map(Math::abs).sum());
 		log("Actual output total: " + actualOutput.doubleStream().map(Math::abs).sum());
@@ -699,7 +699,7 @@ public class AttentionTests implements AttentionFeatures, TestFeatures {
 				.forEach(key -> System.out.println("\t" + key + " " + referenceData.get(key).getShape()));
 
 		// Extract test configuration
-		PackedCollection<?> testConfig = referenceData.get("test_config");
+		PackedCollection testConfig = referenceData.get("test_config");
 		int batchSize = (int) testConfig.valueAt(0);
 		int seqLen = (int) testConfig.valueAt(1);
 		int contextSeqLen = (int) testConfig.valueAt(2);
@@ -713,9 +713,9 @@ public class AttentionTests implements AttentionFeatures, TestFeatures {
 		log("  dim=" + dim + ", contextDim=" + contextDim + ", heads=" + heads + ", dimHead=" + dimHead);
 
 		// Extract inputs and expected output
-		PackedCollection<?> mainInput = referenceData.get("main_input");
-		PackedCollection<?> contextInput = referenceData.get("context_input");
-		PackedCollection<?> expectedOutput = referenceData.get("expected_output");
+		PackedCollection mainInput = referenceData.get("main_input");
+		PackedCollection contextInput = referenceData.get("context_input");
+		PackedCollection expectedOutput = referenceData.get("expected_output");
 
 		assertNotNull("Main input not found", mainInput);
 		assertNotNull("Context input not found", contextInput);
@@ -723,40 +723,40 @@ public class AttentionTests implements AttentionFeatures, TestFeatures {
 
 		// Load all transformer block weights
 		// Self-attention weights
-		PackedCollection<?> selfQkv = referenceData.get("self_attn.to_qkv.weight");
-		PackedCollection<?> selfWo = referenceData.get("self_attn.to_out.weight");
-		PackedCollection<?> selfQNormWeight = referenceData.get("self_attn.q_norm.weight");
-		PackedCollection<?> selfQNormBias = referenceData.get("self_attn.q_norm.bias");
-		PackedCollection<?> selfKNormWeight = referenceData.get("self_attn.k_norm.weight");
-		PackedCollection<?> selfKNormBias = referenceData.get("self_attn.k_norm.bias");
+		PackedCollection selfQkv = referenceData.get("self_attn.to_qkv.weight");
+		PackedCollection selfWo = referenceData.get("self_attn.to_out.weight");
+		PackedCollection selfQNormWeight = referenceData.get("self_attn.q_norm.weight");
+		PackedCollection selfQNormBias = referenceData.get("self_attn.q_norm.bias");
+		PackedCollection selfKNormWeight = referenceData.get("self_attn.k_norm.weight");
+		PackedCollection selfKNormBias = referenceData.get("self_attn.k_norm.bias");
 
 		// Cross-attention weights
-		PackedCollection<?> crossWq = referenceData.get("cross_attn.to_q.weight");
-		PackedCollection<?> crossKv = referenceData.get("cross_attn.to_kv.weight");
-		PackedCollection<?> crossWo = referenceData.get("cross_attn.to_out.weight");
-		PackedCollection<?> crossQNormWeight = referenceData.get("cross_attn.q_norm.weight");
-		PackedCollection<?> crossQNormBias = referenceData.get("cross_attn.q_norm.bias");
-		PackedCollection<?> crossKNormWeight = referenceData.get("cross_attn.k_norm.weight");
-		PackedCollection<?> crossKNormBias = referenceData.get("cross_attn.k_norm.bias");
+		PackedCollection crossWq = referenceData.get("cross_attn.to_q.weight");
+		PackedCollection crossKv = referenceData.get("cross_attn.to_kv.weight");
+		PackedCollection crossWo = referenceData.get("cross_attn.to_out.weight");
+		PackedCollection crossQNormWeight = referenceData.get("cross_attn.q_norm.weight");
+		PackedCollection crossQNormBias = referenceData.get("cross_attn.q_norm.bias");
+		PackedCollection crossKNormWeight = referenceData.get("cross_attn.k_norm.weight");
+		PackedCollection crossKNormBias = referenceData.get("cross_attn.k_norm.bias");
 
 		// Layer normalization weights
-		PackedCollection<?> preNormWeight = referenceData.get("pre_norm.gamma");
-		PackedCollection<?> preNormBias = referenceData.get("pre_norm.beta");
-		PackedCollection<?> crossAttPreNormWeight = referenceData.get("cross_attend_norm.gamma");
-		PackedCollection<?> crossAttPreNormBias = referenceData.get("cross_attend_norm.beta");
-		PackedCollection<?> ffnNormWeight = referenceData.get("ff_norm.gamma");
-		PackedCollection<?> ffnNormBias = referenceData.get("ff_norm.beta");
+		PackedCollection preNormWeight = referenceData.get("pre_norm.gamma");
+		PackedCollection preNormBias = referenceData.get("pre_norm.beta");
+		PackedCollection crossAttPreNormWeight = referenceData.get("cross_attend_norm.gamma");
+		PackedCollection crossAttPreNormBias = referenceData.get("cross_attend_norm.beta");
+		PackedCollection ffnNormWeight = referenceData.get("ff_norm.gamma");
+		PackedCollection ffnNormBias = referenceData.get("ff_norm.beta");
 
 		// Feed-forward weights
-		PackedCollection<?> w1Weight = referenceData.get("ff.w1_weight");
-		PackedCollection<?> w1Bias = referenceData.get("ff.w1_bias");
-		PackedCollection<?> w2Weight = referenceData.get("ff.w2_weight");
-		PackedCollection<?> w2Bias = referenceData.get("ff.w2_bias");
-		PackedCollection<?> w3Weight = referenceData.get("ff.w3_weight");
-		PackedCollection<?> w3Bias = referenceData.get("ff.w3_bias");
+		PackedCollection w1Weight = referenceData.get("ff.w1_weight");
+		PackedCollection w1Bias = referenceData.get("ff.w1_bias");
+		PackedCollection w2Weight = referenceData.get("ff.w2_weight");
+		PackedCollection w2Bias = referenceData.get("ff.w2_bias");
+		PackedCollection w3Weight = referenceData.get("ff.w3_weight");
+		PackedCollection w3Bias = referenceData.get("ff.w3_bias");
 
 		// Rotary embeddings
-		PackedCollection<?> invFreq = referenceData.get("rope.inv_freq");
+		PackedCollection invFreq = referenceData.get("rope.inv_freq");
 
 		// Verify all weights were loaded
 		assertNotNull("Self QKV weight not found", selfQkv);
@@ -812,7 +812,7 @@ public class AttentionTests implements AttentionFeatures, TestFeatures {
 
 		// Compile and run the model with both inputs
 		CompiledModel compiled = model.compile(false);
-		PackedCollection<?> actualOutput = compiled.forward(mainInput, contextInput);
+		PackedCollection actualOutput = compiled.forward(mainInput, contextInput);
 
 		log("Expected output total: " + expectedOutput.doubleStream().map(Math::abs).sum());
 		log("Actual output total: " + actualOutput.doubleStream().map(Math::abs).sum());

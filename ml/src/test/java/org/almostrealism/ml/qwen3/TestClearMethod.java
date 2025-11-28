@@ -13,7 +13,7 @@ public class TestClearMethod {
         System.out.println("\n=== Testing PackedCollection.clear() ===");
 
         // Create a PackedCollection
-        PackedCollection<?> cache = new PackedCollection<>(10, 5, 64);
+        PackedCollection cache = new PackedCollection(10, 5, 64);
 
         System.out.println("Before clear:");
         boolean hasNonZero = cache.doubleStream().anyMatch(v -> v != 0.0);

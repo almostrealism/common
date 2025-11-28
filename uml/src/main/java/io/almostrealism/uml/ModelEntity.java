@@ -53,7 +53,7 @@ import java.lang.annotation.Target;
  * @ModelEntity
  * public class NeuralNetwork {
  *     private final List<Layer> layers;
- *     private final PackedCollection<?>[] weights;
+ *     private final PackedCollection[] weights;
  *
  *     // Expensive: trained over hours/days
  *     public void train(Dataset data, int epochs) { ... }
@@ -68,7 +68,7 @@ import java.lang.annotation.Target;
  * <pre>{@code
  * @ModelEntity
  * public class PrecomputedFrequencies {
- *     private final PackedCollection<?> frequencyCis;
+ *     private final PackedCollection frequencyCis;
  *     private final int maxSeqLength;
  *
  *     // Expensive: computed once and cached
@@ -101,8 +101,8 @@ import java.lang.annotation.Target;
  * <pre>{@code
  * @ModelEntity
  * public class LayerWeights {
- *     private final PackedCollection<?> weights;
- *     private final PackedCollection<?> biases;
+ *     private final PackedCollection weights;
+ *     private final PackedCollection biases;
  *     private final String layerName;
  *
  *     // Loaded from checkpoint file

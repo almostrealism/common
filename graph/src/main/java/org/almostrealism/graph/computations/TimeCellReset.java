@@ -60,7 +60,7 @@ import java.util.function.Consumer;
  * @see org.almostrealism.graph.TimeCell
  * @see OperationComputationAdapter
  */
-public class TimeCellReset extends OperationComputationAdapter<PackedCollection<?>> implements ExpressionFeatures {
+public class TimeCellReset extends OperationComputationAdapter<PackedCollection> implements ExpressionFeatures {
 	/** The hybrid scope containing the generated conditional reset code. */
 	protected HybridScope scope;
 
@@ -73,7 +73,7 @@ public class TimeCellReset extends OperationComputationAdapter<PackedCollection<
 	 * @param time   producer for the time pair (looping counter, total counter)
 	 * @param resets the collection of scheduled reset frame numbers (-1 = disabled)
 	 */
-	public TimeCellReset(Producer<Pair<?>> time, PackedCollection<?> resets) {
+	public TimeCellReset(Producer<Pair> time, PackedCollection resets) {
 		super((Producer) time, () -> new Provider<>(resets));
 		len = resets.getMemLength();
 	}
@@ -84,7 +84,7 @@ public class TimeCellReset extends OperationComputationAdapter<PackedCollection<
 	 * @param len       the number of reset slots
 	 * @param arguments the producer arguments (time, resets)
 	 */
-	private TimeCellReset(int len, Producer<PackedCollection<?>>... arguments) {
+	private TimeCellReset(int len, Producer<PackedCollection>... arguments) {
 		super(arguments);
 		this.len = len;
 	}

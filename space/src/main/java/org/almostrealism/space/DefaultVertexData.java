@@ -62,11 +62,11 @@ import org.almostrealism.color.RGB;
  * @see Mesh.VertexData
  */
 public class DefaultVertexData implements Mesh.VertexData, CodeFeatures {
-	private PackedCollection<Vector> vertices;
-	private PackedCollection<RGB> colors;
-	private PackedCollection<Pair<?>> texCoords;
+	private PackedCollection vertices;
+	private PackedCollection colors;
+	private PackedCollection texCoords;
 
-	// TODO Convert to a vertex bank so that conversion to PackedCollection<PackedCollection<Vector>> can be kernelized
+	// TODO Convert to a vertex bank so that conversion to PackedCollection can be kernelized
 	private int triangles[][];
 
 	/**
@@ -88,65 +88,71 @@ public class DefaultVertexData implements Mesh.VertexData, CodeFeatures {
 	 *
 	 * @return the vertex position collection
 	 */
-	public PackedCollection<Vector> getVertices() { return vertices; }
+	public PackedCollection getVertices() { return vertices; }
 
 	/**
 	 * Returns the packed collection containing all vertex colors.
 	 *
 	 * @return the vertex color collection
 	 */
-	public PackedCollection<RGB> getColors() { return colors; }
+	public PackedCollection getColors() { return colors; }
 
 	/**
 	 * Returns the packed collection containing all texture coordinates.
 	 *
 	 * @return the texture coordinate collection
 	 */
-	public PackedCollection<Pair<?>> getTextureCoordinates() { return texCoords; }
+	public PackedCollection getTextureCoordinates() { return texCoords; }
 
 	/** {@inheritDoc} */
 	@Override
-	public RGB getColor(int index) { return getColors().get(index); }
+	public RGB getColor(int index) {
+		return new RGB(colors.toDouble(index * 3), colors.toDouble(index * 3 + 1), colors.toDouble(index * 3 + 2));
+	}
 
 	/** {@inheritDoc} */
 	@Override
-	public Vector getPosition(int index) { return getVertices().get(index); }
+	public Vector getPosition(int index) {
+		return new Vector(vertices.toDouble(index * 3), vertices.toDouble(index * 3 + 1), vertices.toDouble(index * 3 + 2));
+	}
 
 	/** {@inheritDoc} */
 	@Override
-	public Pair getTexturePosition(int index) { return getTextureCoordinates().get(index); }
+	public Pair getTexturePosition(int index) {
+		return new Pair(texCoords.toDouble(index * 2), texCoords.toDouble(index * 2 + 1));
+	}
 
 	/** {@inheritDoc} */
 	@Override
-	public double getX(int index) { return vertices.get(index).getX(); }
+	public double getX(int index) { return vertices.toDouble(index * 3); }
 
 	/** {@inheritDoc} */
 	@Override
-	public double getY(int index) { return vertices.get(index).getY(); }
+	public double getY(int index) { return vertices.toDouble(index * 3 + 1); }
 
 	/** {@inheritDoc} */
 	@Override
-	public double getZ(int index) { return vertices.get(index).getZ(); }
+	public double getZ(int index) { return vertices.toDouble(index * 3 + 2); }
 
 	/** {@inheritDoc} */
 	@Override
-	public double getRed(int index) { return colors.get(index).getRed(); }
+	public double getRed(int index) { return colors.toDouble(index * 3); }
 
 	/** {@inheritDoc} */
 	@Override
-	public double getGreen(int index) { return colors.get(index).getGreen(); }
+	public double getGreen(int index) { return colors.toDouble(index * 3 + 1); }
 
 	/** {@inheritDoc} */
 	@Override
-	public double getBlue(int index) { return colors.get(index).getBlue(); }
+	public double getBlue(int index) { return colors.toDouble(index * 3 + 2); }
 
 	/** {@inheritDoc} */
 	@Override
-	public double getTextureU(int index) { return texCoords.get(index).getX(); }
+	public double getTextureU(int index) { return texCoords.toDouble(index * 2); }
 
 	/** {@inheritDoc} */
 	@Override
-	public double getTextureV(int index) { return texCoords.get(index).getY(); }
+	public double getTextureV(int index) { return texCoords.toDouble(index * 2 + 1); }
 
 	/**
 	 * Sets the vertex indices for the triangle at the specified index.
@@ -184,21 +190,21 @@ public class DefaultVertexData implements Mesh.VertexData, CodeFeatures {
 	 */
 	// TODO Kernelize
 	@Override
-	public PackedCollection<PackedCollection<Vector>> getMeshPointData() {
-		PackedCollection<PackedCollection<Vector>> points = Vector.table(3, getTriangleCount());
+	public PackedCollection getMeshPointData() {
+		PackedCollection points = Vector.table(3, getTriangleCount());
 
-		Producer<PackedCollection<Vector>> producer =
+		Producer<PackedCollection> producer =
 				points(
 						func(shape(1, 3),
-								args -> vertices.get(((int[]) args[0])[0])),
+								args -> vertices.range(shape(3), ((int[]) args[0])[0] * 3)),
 						func(shape(1, 3),
-								args -> vertices.get(((int[]) args[0])[1])),
+								args -> vertices.range(shape(3), ((int[]) args[0])[1] * 3)),
 						func(shape(1, 3),
-								args -> vertices.get(((int[]) args[0])[2])));
-		Evaluable<PackedCollection<Vector>> ev = producer.get();
+								args -> vertices.range(shape(3), ((int[]) args[0])[2] * 3)));
+		Evaluable<PackedCollection> ev = producer.get();
 
 		for (int i = 0; i < triangles.length; i++) {
-			points.set(i, ev.evaluate(triangles[i]));
+			points.setMem(i * 9, ev.evaluate(triangles[i]), 0, 9);
 		}
 
 		return points;

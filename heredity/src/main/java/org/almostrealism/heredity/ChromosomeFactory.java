@@ -15,6 +15,7 @@
  */
 
 package org.almostrealism.heredity;
+import org.almostrealism.collect.PackedCollection;
 
 /**
  * A factory interface for generating {@link Chromosome} instances.
@@ -25,15 +26,15 @@ package org.almostrealism.heredity;
  *
  * <h2>Example Usage</h2>
  * <pre>{@code
- * ChromosomeFactory<PackedCollection<?>> factory = ...;
+ * ChromosomeFactory<PackedCollection> factory = ...;
  *
  * // Configure chromosome dimensions
  * factory.setChromosomeSize(10, 5);  // 10 genes, 5 factors each
  *
  * // Generate chromosomes with different random seeds
- * Chromosome<PackedCollection<?>> chr1 = factory.generateChromosome(0.1);
- * Chromosome<PackedCollection<?>> chr2 = factory.generateChromosome(0.5);
- * Chromosome<PackedCollection<?>> chr3 = factory.generateChromosome(0.9);
+ * Chromosome<PackedCollection> chr1 = factory.generateChromosome(0.1);
+ * Chromosome<PackedCollection> chr2 = factory.generateChromosome(0.5);
+ * Chromosome<PackedCollection> chr3 = factory.generateChromosome(0.9);
  * }</pre>
  *
  * @param <T> the type of data that chromosomes operate on

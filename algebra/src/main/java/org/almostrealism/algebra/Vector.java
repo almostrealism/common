@@ -97,7 +97,7 @@ import java.util.function.Supplier;
  * <h3>Creating Vector Collections</h3>
  * <pre>{@code
  * // Bank of 100 vectors
- * PackedCollection<Vector> vectors = Vector.bank(100);
+ * PackedCollection vectors = Vector.bank(100);
  *
  * // Access individual vectors
  * Vector first = vectors.get(0);
@@ -106,17 +106,17 @@ import java.util.function.Supplier;
  * first.setZ(3.0);
  *
  * // Table of vectors (2D array)
- * PackedCollection<PackedCollection<Vector>> table = Vector.table(10, 100);
+ * PackedCollection<PackedCollection> table = Vector.table(10, 100);
  * }</pre>
  *
  * <h3>Hardware-Accelerated Computations</h3>
  * <pre>{@code
  * // Using VectorFeatures for computation graph operations
- * Producer<Vector> a = vector(1.0, 2.0, 3.0);
- * Producer<Vector> b = vector(4.0, 5.0, 6.0);
+ * Producer<PackedCollection> a = vector(1.0, 2.0, 3.0);
+ * Producer<PackedCollection> b = vector(4.0, 5.0, 6.0);
  *
  * // Hardware-accelerated cross product
- * Producer<Vector> cross = crossProduct(a, b);
+ * Producer<PackedCollection> cross = crossProduct(a, b);
  * Vector result = cross.get().evaluate();
  * }</pre>
  *
@@ -132,7 +132,7 @@ import java.util.function.Supplier;
  * @see VectorFeatures
  * @see MemoryData
  */
-public class Vector extends PackedCollection<Vector> implements VectorFeatures, Cloneable {
+public class Vector extends PackedCollection implements VectorFeatures, Cloneable {
 	public static final int CARTESIAN_COORDINATES = 0;
 	public static final int SPHERICAL_COORDINATES = 1;
 
@@ -263,36 +263,27 @@ public class Vector extends PackedCollection<Vector> implements VectorFeatures, 
 	 * Sets the X coordinate of this {@link Vector}.
 	 *
 	 * @param x  the new X coordinate
-	 * @deprecated Prefer using {@link #setMem(double, double, double)} to set all coordinates at once,
-	 *             or use computation graph operations for better performance.
 	 */
-	@Deprecated
 	public void setX(double x) {
-		this.setMem(0, new Vector(x, 0, 0),0,1);
+		this.setMem(0, x);
 	}
 
 	/**
 	 * Sets the Y coordinate of this {@link Vector}.
 	 *
 	 * @param y  the new Y coordinate
-	 * @deprecated Prefer using {@link #setMem(double, double, double)} to set all coordinates at once,
-	 *             or use computation graph operations for better performance.
 	 */
-	@Deprecated
 	public void setY(double y) {
-		this.setMem(1, new Vector(0, y, 0),1,1);
+		this.setMem(1, y);
 	}
 
 	/**
 	 * Sets the Z coordinate of this {@link Vector}.
 	 *
 	 * @param z  the new Z coordinate
-	 * @deprecated Prefer using {@link #setMem(double, double, double)} to set all coordinates at once,
-	 *             or use computation graph operations for better performance.
 	 */
-	@Deprecated
 	public void setZ(double z) {
-		this.setMem(2, new Vector(0, 0, z),2,1);
+		this.setMem(2, z);
 	}
 
 	/**
@@ -329,9 +320,7 @@ public class Vector extends PackedCollection<Vector> implements VectorFeatures, 
 	 * @param v  the value to set
 	 * @return this {@link Vector} for method chaining
 	 * @throws IndexOutOfBoundsException if i is not in the range [0, 2]
-	 * @deprecated Use {@link #setMem(double, double, double)} or computation graph operations instead.
 	 */
-	@Deprecated
 	public Vector set(int i, double v) {
 		switch (i) {
 			case 0:
@@ -670,9 +659,9 @@ public class Vector extends PackedCollection<Vector> implements VectorFeatures, 
 	 *
 	 * @return a producer that creates new vectors
 	 */
-	public static Producer<Vector> blank() {
-		Supplier<Vector> s = Vector::new;
-		IntFunction<MemoryBank<Vector>> b = Vector::bank;
+	public static Producer<PackedCollection> blank() {
+		Supplier<PackedCollection> s = () -> new Vector();
+		IntFunction<MemoryBank<PackedCollection>> b = (IntFunction) Vector::bank;
 		return new DynamicProducerForMemoryData<>(s, b);
 	}
 
@@ -681,15 +670,15 @@ public class Vector extends PackedCollection<Vector> implements VectorFeatures, 
 	 * Each vector in the bank can be accessed and modified independently.
 	 *
 	 * <pre>{@code
-	 * PackedCollection<Vector> vectors = Vector.bank(100);
+	 * PackedCollection vectors = Vector.bank(100);
 	 * vectors.get(0).setMem(1.0, 2.0, 3.0);
 	 * }</pre>
 	 *
 	 * @param count  the number of vectors to allocate
 	 * @return a packed collection of vectors
 	 */
-	public static PackedCollection<Vector> bank(int count) {
-		return new PackedCollection<>(new TraversalPolicy(count, 3), 1, delegateSpec ->
+	public static PackedCollection bank(int count) {
+		return new PackedCollection(new TraversalPolicy(count, 3), 1, delegateSpec ->
 				new Vector(delegateSpec.getDelegate(), delegateSpec.getOffset()));
 	}
 
@@ -701,8 +690,8 @@ public class Vector extends PackedCollection<Vector> implements VectorFeatures, 
 	 * @param delegateOffset  the offset within the delegate where the vector bank begins
 	 * @return a packed collection of vectors
 	 */
-	public static PackedCollection<Vector> bank(int count, MemoryData delegate, int delegateOffset) {
-		return new PackedCollection<>(new TraversalPolicy(count, 3), 1, delegateSpec ->
+	public static PackedCollection bank(int count, MemoryData delegate, int delegateOffset) {
+		return new PackedCollection(new TraversalPolicy(count, 3), 1, delegateSpec ->
 				new Vector(delegateSpec.getDelegate(), delegateSpec.getOffset()),
 				delegate, delegateOffset);
 	}
@@ -715,8 +704,8 @@ public class Vector extends PackedCollection<Vector> implements VectorFeatures, 
 	 * @param count  the number of rows
 	 * @return a 2D collection of vectors
 	 */
-	public static PackedCollection<PackedCollection<Vector>> table(int width, int count) {
-		return new PackedCollection<>(new TraversalPolicy(count, width, 3), 1, delegateSpec ->
+	public static PackedCollection table(int width, int count) {
+		return new PackedCollection(new TraversalPolicy(count, width, 3), 1, delegateSpec ->
 				Vector.bank(width, delegateSpec.getDelegate(), delegateSpec.getOffset()));
 	}
 
@@ -729,8 +718,8 @@ public class Vector extends PackedCollection<Vector> implements VectorFeatures, 
 	 * @param delegateOffset  the offset within the delegate where the table begins
 	 * @return a 2D collection of vectors
 	 */
-	public static PackedCollection<PackedCollection<Vector>> table(int width, int count, MemoryData delegate, int delegateOffset) {
-		return new PackedCollection<>(new TraversalPolicy(count, width, 3), 1, delegateSpec ->
+	public static PackedCollection table(int width, int count, MemoryData delegate, int delegateOffset) {
+		return new PackedCollection(new TraversalPolicy(count, width, 3), 1, delegateSpec ->
 					Vector.bank(width, delegateSpec.getDelegate(), delegateSpec.getOffset()),
 				delegate, delegateOffset);
 	}

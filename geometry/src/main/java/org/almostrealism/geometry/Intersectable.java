@@ -15,6 +15,7 @@
  */
 
 package org.almostrealism.geometry;
+import org.almostrealism.collect.PackedCollection;
 
 import org.almostrealism.algebra.Vector;
 import io.almostrealism.code.Operator;
@@ -34,7 +35,7 @@ import java.util.function.Supplier;
  *
  * <p>Usage example:</p>
  * <pre>{@code
- * Intersectable<PackedCollection<?>> surface = getSurface();
+ * Intersectable<PackedCollection> surface = getSurface();
  * ContinuousField intersections = surface.intersectAt(ray);
  * Producer<Ray> hitNormal = intersections.get(0);
  * }</pre>

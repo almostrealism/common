@@ -39,10 +39,10 @@ public class RepeatedDeltaComputationTests implements TestFeatures {
 
 	@Test
 	public void repeatProduct() {
-		PackedCollection<?> in = pack(2.0, 1.5);
-		PackedCollection<?> multiplier = pack(4.0, 3.0);
+		PackedCollection in = pack(2.0, 1.5);
+		PackedCollection multiplier = pack(4.0, 3.0);
 
-		CollectionProducer<PackedCollection<?>> c =
+		CollectionProducer<PackedCollection> c =
 					cp(in).traverse(1).repeat(2)
 							.multiply(cp(multiplier).repeat(2))
 							.delta(cp(in));
@@ -51,8 +51,8 @@ public class RepeatedDeltaComputationTests implements TestFeatures {
 
 	@Test
 	public void sum() {
-		PackedCollection<?> in = pack(2.0, 1.0, 4.0, 3.0).reshape(2, 2).traverse(1);
-		PackedCollection<?> out = cp(in).sum().delta(cp(in)).evaluate();
+		PackedCollection in = pack(2.0, 1.0, 4.0, 3.0).reshape(2, 2).traverse(1);
+		PackedCollection out = cp(in).sum().delta(cp(in)).evaluate();
 		out.print();
 
 		assertEquals(1.0, out.valueAt(0, 0, 0, 0));
@@ -67,9 +67,9 @@ public class RepeatedDeltaComputationTests implements TestFeatures {
 
 	@Test
 	public void productSum() {
-		PackedCollection<?> multiplier = pack(4.0, 3.0, 2.0, 1.0).reshape(2, 2).traverse(1);
-		PackedCollection<?> in = pack(2.0, 1.0, 4.0, 3.0).reshape(2, 2).traverse(1);
-		PackedCollection<?> out = cp(in).multiply(cp(multiplier)).sum().delta(cp(in)).evaluate();
+		PackedCollection multiplier = pack(4.0, 3.0, 2.0, 1.0).reshape(2, 2).traverse(1);
+		PackedCollection in = pack(2.0, 1.0, 4.0, 3.0).reshape(2, 2).traverse(1);
+		PackedCollection out = cp(in).multiply(cp(multiplier)).sum().delta(cp(in)).evaluate();
 		out.print();
 
 		assertEquals(4.0, out.valueAt(0, 0, 0, 0));
@@ -84,18 +84,18 @@ public class RepeatedDeltaComputationTests implements TestFeatures {
 
 	@Test
 	public void productSumIndex() {
-		PackedCollection<?> multiplier = pack(4.0, 3.0, 2.0, 1.0).reshape(2, 2).traverse(1);
-		PackedCollection<?> in = pack(2.0, 1.0, 4.0, 3.0).reshape(2, 2).traverse(1);
+		PackedCollection multiplier = pack(4.0, 3.0, 2.0, 1.0).reshape(2, 2).traverse(1);
+		PackedCollection in = pack(2.0, 1.0, 4.0, 3.0).reshape(2, 2).traverse(1);
 
 		HardwareOperator.verboseLog(() -> {
-			CollectionProducer<PackedCollection<?>> c = cp(in).multiply(cp(multiplier)).sum().delta(cp(in))
+			CollectionProducer<PackedCollection> c = cp(in).multiply(cp(multiplier)).sum().delta(cp(in))
 					.reshape(2, 4);
 			c = new IndexProjectionProducerComputation<>(null, c.getShape().traverseEach(), index -> index, c) {
 				@Override
 				public int getMemLength() {return 1;}
 			};
 
-			PackedCollection<?> out = c.evaluate();
+			PackedCollection out = c.evaluate();
 			out.print();
 
 			assertEquals(4.0, out.valueAt(0, 0));
@@ -111,12 +111,12 @@ public class RepeatedDeltaComputationTests implements TestFeatures {
 
 	@Test
 	public void productSumIndex2() {
-		PackedCollection<?> multiplier = pack(4.0, 3.0, 2.0, 1.0).reshape(2, 2)
+		PackedCollection multiplier = pack(4.0, 3.0, 2.0, 1.0).reshape(2, 2)
 			.traverse(1);
-		PackedCollection<?> in = pack(2.0, 1.0, 4.0, 3.0).reshape(2, 2)
+		PackedCollection in = pack(2.0, 1.0, 4.0, 3.0).reshape(2, 2)
 			.traverse(1);
 
-		CollectionProducer<PackedCollection<?>> c = cp(in).multiply(cp(multiplier)).sum().delta(cp(in))
+		CollectionProducer<PackedCollection> c = cp(in).multiply(cp(multiplier)).sum().delta(cp(in))
 				.reshape(2, 4);
 		c = new PackedCollectionEnumerate<>(shape(2, 1).traverse(), new TraversalPolicy(true, 0, 1).traverse(), c) {
 			@Override
@@ -125,7 +125,7 @@ public class RepeatedDeltaComputationTests implements TestFeatures {
 			}
 		};
 
-		PackedCollection<?> out = c.evaluate();
+		PackedCollection out = c.evaluate();
 		out.traverse(1).print();
 
 		assertEquals(4.0, out.valueAt(0, 0));
@@ -140,17 +140,17 @@ public class RepeatedDeltaComputationTests implements TestFeatures {
 
 	@Test
 	public void productRepeatSum1() {
-		PackedCollection<?> multiplier = pack(4.0, 3.0, 2.0, 1.0).reshape(2, 2);
-		PackedCollection<?> in = pack(2.0, 1.0, 4.0, 3.0).reshape(2, 2);
+		PackedCollection multiplier = pack(4.0, 3.0, 2.0, 1.0).reshape(2, 2);
+		PackedCollection in = pack(2.0, 1.0, 4.0, 3.0).reshape(2, 2);
 
-		CollectionProducer<PackedCollection<?>> c = cp(in)
+		CollectionProducer<PackedCollection> c = cp(in)
 				.multiply(cp(multiplier)).delta(cp(in))
 				.reshape(4, 4)
 				.traverse()
 				.repeat(3)
 				.sum(2);
 
-		PackedCollection<?> out = c.evaluate().reshape(4, 3);
+		PackedCollection out = c.evaluate().reshape(4, 3);
 		out.traverse(1).print();
 
 		for (int i = 0; i < 4; i++) {
@@ -162,15 +162,15 @@ public class RepeatedDeltaComputationTests implements TestFeatures {
 
 	@Test
 	public void productEnumerate() {
-		PackedCollection<?> multiplier = pack(4.0, 3.0, 2.0, 1.0).reshape(2, 2);
-		PackedCollection<?> in = pack(2.0, 1.0, 4.0, 3.0).reshape(2, 2);
+		PackedCollection multiplier = pack(4.0, 3.0, 2.0, 1.0).reshape(2, 2);
+		PackedCollection in = pack(2.0, 1.0, 4.0, 3.0).reshape(2, 2);
 
-		CollectionProducer<PackedCollection<?>> c = cp(in)
+		CollectionProducer<PackedCollection> c = cp(in)
 				.multiply(cp(multiplier)).delta(cp(in))
 				.reshape(4, 4)
 				.enumerate(1, 1);
 
-		PackedCollection<?> out = c.evaluate().reshape(4, 4);
+		PackedCollection out = c.evaluate().reshape(4, 4);
 		out.traverse(1).print();
 
 		for (int i = 0; i < 4; i++) {
@@ -182,10 +182,10 @@ public class RepeatedDeltaComputationTests implements TestFeatures {
 
 	@Test
 	public void productEnumerateLarge() {
-		PackedCollection<?> multiplier = new PackedCollection<>(10).fill(pos -> pos[0] + 1.0);
-		PackedCollection<?> in = new PackedCollection<>(10);
+		PackedCollection multiplier = new PackedCollection(10).fill(pos -> pos[0] + 1.0);
+		PackedCollection in = new PackedCollection(10);
 
-		CollectionProducer<PackedCollection<?>> id = cp(new PackedCollection<>(10, 10));
+		CollectionProducer<PackedCollection> id = cp(new PackedCollection(10, 10));
 		id = new PackedCollectionEnumerate<>(shape(10, 1).traverse(), new TraversalPolicy(true, 0, 1).traverse(), id) {
 			@Override
 			public Expression getValueAt(Expression index) {
@@ -196,12 +196,12 @@ public class RepeatedDeltaComputationTests implements TestFeatures {
 
 		id.evaluate().reshape(10, 10).traverse(1).print();
 
-		CollectionProducer<PackedCollection<?>> c = cp(in)
+		CollectionProducer<PackedCollection> c = cp(in)
 				.multiply(cp(multiplier)).delta(cp(in))
 				.reshape(10, 10)
 				.enumerate(1, 1);
 
-		PackedCollection<?> out = c.evaluate().reshape(10, 10);
+		PackedCollection out = c.evaluate().reshape(10, 10);
 		out.traverse(1).print();
 
 		for (int i = 0; i < 10; i++) {
@@ -222,11 +222,11 @@ public class RepeatedDeltaComputationTests implements TestFeatures {
 	}
 
 	public void productSumEnumerate(boolean optimize) {
-		PackedCollection<?> multiplier = pack(4.0, 3.0, 2.0, 1.0).reshape(2, 2).traverse(1);
-		PackedCollection<?> in = pack(1.0, 1.0, 1.0, 1.0).reshape(2, 2).traverse(1);
+		PackedCollection multiplier = pack(4.0, 3.0, 2.0, 1.0).reshape(2, 2).traverse(1);
+		PackedCollection in = pack(1.0, 1.0, 1.0, 1.0).reshape(2, 2).traverse(1);
 
-		CollectionProducer<PackedCollection<?>> c = cp(in).multiply(cp(multiplier)).sum().delta(cp(in)).reshape(2, 4).enumerate(1, 1);
-		PackedCollection<?> out = optimize ? Process.optimized(c).get().evaluate() : c.evaluate();
+		CollectionProducer<PackedCollection> c = cp(in).multiply(cp(multiplier)).sum().delta(cp(in)).reshape(2, 4).enumerate(1, 1);
+		PackedCollection out = optimize ? Process.optimized(c).get().evaluate() : c.evaluate();
 		out.traverse(1).print();
 
 		assertEquals(4.0, out.valueAt(0, 0));
@@ -299,30 +299,30 @@ public class RepeatedDeltaComputationTests implements TestFeatures {
 	public void convDelta(int n, int c, int h, int w, int f, boolean byGradient) {
 		int s = 3;
 
-		PackedCollection<?> input = new PackedCollection<>(shape(n, c, h, w)).randFill();
-		PackedCollection<?> filters = new PackedCollection<>(shape(f, c, s, s)).randFill();
-		CollectionProducer<PackedCollection<?>> result =
+		PackedCollection input = new PackedCollection(shape(n, c, h, w)).randFill();
+		PackedCollection filters = new PackedCollection(shape(f, c, s, s)).randFill();
+		CollectionProducer<PackedCollection> result =
 				conv(s, cp(input), cp(filters.reshape(-1, c, s * s)));
 
 		TraversalPolicy r = result.getShape();
 		log(r);
 
-		Supplier<Evaluable<? extends PackedCollection<?>>> d;
+		Supplier<Evaluable<? extends PackedCollection>> d;
 
 		if (byGradient) {
-			PackedCollection<?> grad = new PackedCollection<>(r).randFill();
+			PackedCollection grad = new PackedCollection(r).randFill();
 			d = Process.optimized(combineGradient(result, cp(input), cp(grad)));
 		} else {
 			d = Process.optimized(result.delta(cp(input)));
 		}
 
-		PackedCollection<?> out = d.get().evaluate();
+		PackedCollection out = d.get().evaluate();
 		log(out.getShape());
 	}
 
-	protected CollectionProducer<PackedCollection<?>> conv(int s,
-														   CollectionProducer<PackedCollection<?>> input,
-														   CollectionProducer<PackedCollection<?>> filters) {
+	protected CollectionProducer<PackedCollection> conv(int s,
+														   CollectionProducer<PackedCollection> input,
+														   CollectionProducer<PackedCollection> filters) {
 		TraversalPolicy shape = shape(input);
 		int n = shape.length(0);
 		int c = shape.length(1);
@@ -331,7 +331,7 @@ public class RepeatedDeltaComputationTests implements TestFeatures {
 		int f = filters.getShape().length(0);
 		int diff = s - 1;
 
-		CollectionProducer<PackedCollection<?>> conv =
+		CollectionProducer<PackedCollection> conv =
 				input.reshape(n, c, h * w)
 						.traverse(1).enumerate(2, 1)
 						.reshape(n, h, w, c);
@@ -344,7 +344,7 @@ public class RepeatedDeltaComputationTests implements TestFeatures {
 
 		int bs = conv.getShape().length(0);
 
-		CollectionProducer<PackedCollection<?>> filter =
+		CollectionProducer<PackedCollection> filter =
 				filters
 						.traverse(1).enumerate(2, 1)
 						.reshape(-1, s, s, c);
@@ -360,8 +360,8 @@ public class RepeatedDeltaComputationTests implements TestFeatures {
 
 	@Test
 	public void max() {
-		PackedCollection<?> in = pack(1.0, 2.0, 4.0, 3.0).reshape(2, 2).traverse(1);
-		PackedCollection<?> out = cp(in).max().delta(cp(in)).evaluate();
+		PackedCollection in = pack(1.0, 2.0, 4.0, 3.0).reshape(2, 2).traverse(1);
+		PackedCollection out = cp(in).max().delta(cp(in)).evaluate();
 		out.print();
 
 		assertEquals(0.0, out.valueAt(0, 0, 0, 0));
@@ -383,9 +383,9 @@ public class RepeatedDeltaComputationTests implements TestFeatures {
 		int ro = r / s;
 		int co = c / s;
 
-		PackedCollection<?> in = new PackedCollection<>(r * c).fill(pos -> (double) pos[0])
+		PackedCollection in = new PackedCollection(r * c).fill(pos -> (double) pos[0])
 									.reshape(r, c, 1).traverse(1);
-		PackedCollection<?> out = Process.optimized(cp(in)
+		PackedCollection out = Process.optimized(cp(in)
 						.traverse(0)
 						.enumerate(2, 1)
 						.enumerate(2, s)
@@ -473,9 +473,9 @@ public class RepeatedDeltaComputationTests implements TestFeatures {
 			int pad = size - 1;
 			TraversalPolicy outputShape = shape(inputShape.length(0) - pad, inputShape.length(1) - pad, filterCount);
 			TraversalPolicy filterShape = shape(filterCount, size, size);
-			PackedCollection<?> filters = new PackedCollection<>(filterShape).randnFill();
+			PackedCollection filters = new PackedCollection(filterShape).randnFill();
 
-			PackedCollection<?> input = new PackedCollection<>(inputShape).randnFill();
+			PackedCollection input = new PackedCollection(inputShape).randnFill();
 			Process.optimized(cp(input).enumerate(1, size, 1)
 					.enumerate(1, size, 1)
 					.traverse(2)

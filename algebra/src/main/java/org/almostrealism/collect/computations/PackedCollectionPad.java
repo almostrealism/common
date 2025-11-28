@@ -46,30 +46,30 @@ import java.util.function.Supplier;
  * <p><strong>2D Padding Example:</strong></p>
  * <pre>{@code
  * // Create a 2x3 input collection
- * PackedCollection<?> input = new PackedCollection<>(2, 3).randFill();
+ * PackedCollection input = new PackedCollection(2, 3).randFill();
  * 
  * // Pad with 1 zero on the right (axis 1)
- * PackedCollection<?> padded = cp(input).pad(0, 1).traverse(1).evaluate();
+ * PackedCollection padded = cp(input).pad(0, 1).traverse(1).evaluate();
  * // Result: 2x5 collection with input data and 1 column of zeros
  * }</pre>
  * 
  * <p><strong>Symmetric Padding Example:</strong></p>
  * <pre>{@code
  * // Create a 2x3 input collection  
- * PackedCollection<?> input = new PackedCollection<>(2, 3).randFill();
+ * PackedCollection input = new PackedCollection(2, 3).randFill();
  * 
  * // Pad with 1 zero on all sides
- * PackedCollection<?> padded = cp(input).pad(1, 1).traverse(1).evaluate();
+ * PackedCollection padded = cp(input).pad(1, 1).traverse(1).evaluate();
  * // Result: 4x5 collection with input data centered and surrounded by zeros
  * }</pre>
  * 
  * <p><strong>Multi-dimensional Padding:</strong></p>
  * <pre>{@code
  * // Create a 2x4x2x3 input collection
- * PackedCollection<?> input = new PackedCollection<>(2, 4, 2, 3).randFill();
+ * PackedCollection input = new PackedCollection(2, 4, 2, 3).randFill();
  * 
  * // Pad only the last two dimensions
- * PackedCollection<?> padded = cp(input).pad(0, 0, 1, 1).traverse(1).evaluate();
+ * PackedCollection padded = cp(input).pad(0, 0, 1, 1).traverse(1).evaluate();
  * // Result: 2x4x4x5 collection with padding on dimensions 2 and 3
  * }</pre>
  * 
@@ -97,7 +97,7 @@ import java.util.function.Supplier;
  * @see PackedCollection
  * @see org.almostrealism.collect.CollectionFeatures#pad(TraversalPolicy, TraversalPolicy, Producer)
  */
-public class PackedCollectionPad<T extends PackedCollection<?>> extends TraversableExpressionComputation<T> {
+public class PackedCollectionPad<T extends PackedCollection> extends TraversableExpressionComputation<T> {
 	public static boolean enableConditionSimplify = true;
 
 	/** The shape/dimensions of the input collection being padded */

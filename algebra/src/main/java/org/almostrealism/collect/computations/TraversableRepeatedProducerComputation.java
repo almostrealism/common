@@ -107,7 +107,7 @@ import java.util.function.BiFunction;
  * 
  * @author Michael Murray
  */
-public class TraversableRepeatedProducerComputation<T extends PackedCollection<?>>
+public class TraversableRepeatedProducerComputation<T extends PackedCollection>
 		extends ConstantRepeatedProducerComputation<T> implements TraversableExpression<Double> {
 	
 	/**
@@ -189,7 +189,7 @@ public class TraversableRepeatedProducerComputation<T extends PackedCollection<?
 	public TraversableRepeatedProducerComputation(String name, TraversalPolicy shape, int count,
 												  BiFunction<TraversableExpression[], Expression, Expression> initial,
 												  BiFunction<TraversableExpression[], Expression, TraversableExpression<Double>> expression,
-												  Producer<PackedCollection<?>>... arguments) {
+												  Producer<PackedCollection>... arguments) {
 		super(name, shape, count, initial, null, arguments);
 		this.expression = expression;
 		this.count = count;

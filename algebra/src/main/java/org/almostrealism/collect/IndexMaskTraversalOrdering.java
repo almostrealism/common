@@ -15,6 +15,7 @@
  */
 
 package org.almostrealism.collect;
+import org.almostrealism.collect.PackedCollection;
 
 import io.almostrealism.collect.TraversalOrdering;
 import io.almostrealism.expression.Expression;
@@ -43,7 +44,7 @@ import java.util.OptionalInt;
  * <h2>Example</h2>
  * <pre>{@code
  * // Mask indicating we want elements at positions 5, 2, 8, 1
- * PackedCollection<?> mask = new PackedCollection<>(4);
+ * PackedCollection mask = new PackedCollection(4);
  * mask.setMem(0, 5.0);
  * mask.setMem(1, 2.0);
  * mask.setMem(2, 8.0);
@@ -61,14 +62,14 @@ import java.util.OptionalInt;
  * @see io.almostrealism.collect.TraversalOrdering
  */
 public class IndexMaskTraversalOrdering implements TraversalOrdering {
-	private PackedCollection<?> mask;
+	private PackedCollection mask;
 
 	/**
 	 * Creates a new index mask traversal ordering with the specified mask.
 	 *
 	 * @param mask  collection containing the physical indices to access
 	 */
-	public IndexMaskTraversalOrdering(PackedCollection<?> mask) {
+	public IndexMaskTraversalOrdering(PackedCollection mask) {
 		this.mask = mask;
 	}
 

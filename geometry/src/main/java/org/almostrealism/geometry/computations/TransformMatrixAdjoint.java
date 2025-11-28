@@ -43,7 +43,7 @@ import java.util.List;
  * @author Michael Murray
  * @see TransformMatrix
  */
-public class TransformMatrixAdjoint extends CollectionProducerComputationBase<PackedCollection<?>, TransformMatrix> {
+public class TransformMatrixAdjoint extends CollectionProducerComputationBase<PackedCollection, TransformMatrix> {
 	private int varIdx = 0;
 
 	/**

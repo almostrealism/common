@@ -15,6 +15,7 @@
  */
 
 package org.almostrealism.primitives;
+import org.almostrealism.collect.PackedCollection;
 
 import org.almostrealism.color.PointLight;
 import org.almostrealism.color.SurfaceLight;
@@ -68,7 +69,7 @@ public class SphericalLight extends Sphere implements SurfaceLight {
 	 * Delegates to {@link #getValueAt(Producer)}.
 	 */
 	@Override
-	public Producer<RGB> getColorAt(Producer<Vector> point) { return getValueAt(point); }
+	public Producer<PackedCollection> getColorAt(Producer<PackedCollection> point) { return getValueAt(point); }
 
 	/**
 	 * Sets the number of samples to use for this SphericalLight object.
@@ -100,11 +101,13 @@ public class SphericalLight extends Sphere implements SurfaceLight {
 			double y = r * Math.sin(u) * Math.sin(v);
 			double z = r * Math.cos(u);
 			
-			Supplier<Evaluable<? extends Vector>> p = getTransform(true).transform(vector(x, y, z),
+			Supplier<Evaluable<? extends Vector>> p = getTransform(true).transform((Producer) vector(x, y, z),
 									TransformMatrix.TRANSFORM_AS_LOCATION);
 
 			// TODO  This should pass along the ColorProucer directly rather than evaluating it
-			l[i] = new PointLight(p.get().evaluate(), in, getColorAt(() -> (Evaluable<Vector>) p.get()).get().evaluate());
+			PackedCollection colorResult = getColorAt(() -> (Evaluable<PackedCollection>) (Evaluable<?>) p.get()).get().evaluate();
+			RGB color = colorResult instanceof RGB ? (RGB) colorResult : new RGB(colorResult.toDouble(0), colorResult.toDouble(1), colorResult.toDouble(2));
+			l[i] = new PointLight(p.get().evaluate(), in, color);
 			l[i].setAttenuationCoefficients(this.atta, this.attb, this.attc);
 		}
 		

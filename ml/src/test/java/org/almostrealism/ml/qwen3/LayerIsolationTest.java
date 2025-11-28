@@ -103,7 +103,7 @@ public class LayerIsolationTest implements AttentionFeatures, ConsoleFeatures {
             return Double.MAX_VALUE;
         }
 
-        PackedCollection<?> input = new PackedCollection<>(shape(config.dim));
+        PackedCollection input = new PackedCollection(shape(config.dim));
         for (int i = 0; i < config.dim; i++) {
             input.setMem(i, inputData[i]);
         }
@@ -113,7 +113,7 @@ public class LayerIsolationTest implements AttentionFeatures, ConsoleFeatures {
 
         // Compile and run
         org.almostrealism.model.CompiledModel compiled = singleLayer.compile();
-        PackedCollection<?> output = compiled.forward(input);
+        PackedCollection output = compiled.forward(input);
 
         // Load expected output
         String outputFile = String.format("after_layer_%d.bin", layerIndex);
@@ -182,34 +182,34 @@ public class LayerIsolationTest implements AttentionFeatures, ConsoleFeatures {
         String prefix = String.format("model.layers.%d", layerIndex);
 
         // Load all weights for this layer
-        PackedCollection<?> layerRmsAtt = stateDict.get(prefix + ".input_layernorm.weight");
-        PackedCollection<?> layerRmsFfn = stateDict.get(prefix + ".post_attention_layernorm.weight");
+        PackedCollection layerRmsAtt = stateDict.get(prefix + ".input_layernorm.weight");
+        PackedCollection layerRmsFfn = stateDict.get(prefix + ".post_attention_layernorm.weight");
 
         // Attention weights
-        PackedCollection<?> layerWq = stateDict.get(prefix + ".self_attn.q_proj.weight");
-        PackedCollection<?> layerWk = stateDict.get(prefix + ".self_attn.k_proj.weight");
-        PackedCollection<?> layerWv = stateDict.get(prefix + ".self_attn.v_proj.weight");
-        PackedCollection<?> layerWo = stateDict.get(prefix + ".self_attn.o_proj.weight");
+        PackedCollection layerWq = stateDict.get(prefix + ".self_attn.q_proj.weight");
+        PackedCollection layerWk = stateDict.get(prefix + ".self_attn.k_proj.weight");
+        PackedCollection layerWv = stateDict.get(prefix + ".self_attn.v_proj.weight");
+        PackedCollection layerWo = stateDict.get(prefix + ".self_attn.o_proj.weight");
 
         // Attention biases
-        PackedCollection<?> layerBq = stateDict.get(prefix + ".self_attn.q_proj.bias");
-        PackedCollection<?> layerBk = stateDict.get(prefix + ".self_attn.k_proj.bias");
-        PackedCollection<?> layerBv = stateDict.get(prefix + ".self_attn.v_proj.bias");
+        PackedCollection layerBq = stateDict.get(prefix + ".self_attn.q_proj.bias");
+        PackedCollection layerBk = stateDict.get(prefix + ".self_attn.k_proj.bias");
+        PackedCollection layerBv = stateDict.get(prefix + ".self_attn.v_proj.bias");
 
         // QK-Norm weights
-        PackedCollection<?> layerQkNormQ = stateDict.get(prefix + ".self_attn.q_norm.weight");
-        PackedCollection<?> layerQkNormK = stateDict.get(prefix + ".self_attn.k_norm.weight");
+        PackedCollection layerQkNormQ = stateDict.get(prefix + ".self_attn.q_norm.weight");
+        PackedCollection layerQkNormK = stateDict.get(prefix + ".self_attn.k_norm.weight");
 
         // FFN weights
-        PackedCollection<?> layerW1 = stateDict.get(prefix + ".mlp.gate_proj.weight");
-        PackedCollection<?> layerW2 = stateDict.get(prefix + ".mlp.down_proj.weight");
-        PackedCollection<?> layerW3 = stateDict.get(prefix + ".mlp.up_proj.weight");
+        PackedCollection layerW1 = stateDict.get(prefix + ".mlp.gate_proj.weight");
+        PackedCollection layerW2 = stateDict.get(prefix + ".mlp.down_proj.weight");
+        PackedCollection layerW3 = stateDict.get(prefix + ".mlp.up_proj.weight");
 
         // Compute RoPE frequencies
-        PackedCollection<?> freqCis = computeRopeFreqs(config);
+        PackedCollection freqCis = computeRopeFreqs(config);
 
         // Position at 0 (first token)
-        PackedCollection<?> position = new PackedCollection<>(shape(1));
+        PackedCollection position = new PackedCollection(shape(1));
         position.setMem(0, 0.0);
 
         // Add the transformer layer
@@ -228,13 +228,13 @@ public class LayerIsolationTest implements AttentionFeatures, ConsoleFeatures {
         return model;
     }
 
-    private PackedCollection<?> computeRopeFreqs(Qwen3Config config) {
+    private PackedCollection computeRopeFreqs(Qwen3Config config) {
         int headSize = config.headSize;
         int seqLen = 10;  // Small for testing single token
         double theta = config.ropeTheta;
 
         int freqDim = headSize / 2;
-        PackedCollection<?> freqCis = new PackedCollection<>(shape(seqLen, freqDim, 2));
+        PackedCollection freqCis = new PackedCollection(shape(seqLen, freqDim, 2));
 
         for (int pos = 0; pos < seqLen; pos++) {
             for (int i = 0; i < freqDim; i++) {

@@ -38,16 +38,16 @@ public class ShapeDiagnosticTest implements ConsoleFeatures, LayerFeatures, Atte
         // Test 1: Model with single RMSNorm
         log("\n--- Test 1: Single RMSNorm ---");
         Model model1 = new Model(shape(dim));
-        PackedCollection<?> rmsWeight = stateDict.get("model.layers.0.input_layernorm.weight");
+        PackedCollection rmsWeight = stateDict.get("model.layers.0.input_layernorm.weight");
         model1.add(rmsnorm(rmsWeight));
 
-        PackedCollection<?> input1 = new PackedCollection<>(shape(dim));
+        PackedCollection input1 = new PackedCollection(shape(dim));
         for (int i = 0; i < dim; i++) {
             input1.setMem(i, Math.random());
         }
 
         org.almostrealism.model.CompiledModel compiled1 = model1.compile();
-        PackedCollection<?> output1 = compiled1.forward(input1);
+        PackedCollection output1 = compiled1.forward(input1);
 
         log(String.format("Input shape: %s", input1.getShape()));
         log(String.format("Output shape: %s", output1.getShape()));
@@ -60,7 +60,7 @@ public class ShapeDiagnosticTest implements ConsoleFeatures, LayerFeatures, Atte
         model2.add(rmsnorm(rmsWeight));
 
         org.almostrealism.model.CompiledModel compiled2 = model2.compile();
-        PackedCollection<?> output2 = compiled2.forward(input1);
+        PackedCollection output2 = compiled2.forward(input1);
 
         log(String.format("Input shape: %s", input1.getShape()));
         log(String.format("Output shape: %s", output2.getShape()));
@@ -69,11 +69,11 @@ public class ShapeDiagnosticTest implements ConsoleFeatures, LayerFeatures, Atte
         // Test 3: Model with dense layer
         log("\n--- Test 3: Dense Layer ---");
         Model model3 = new Model(shape(dim));
-        PackedCollection<?> denseWeight = stateDict.get("model.layers.0.self_attn.q_proj.weight");
+        PackedCollection denseWeight = stateDict.get("model.layers.0.self_attn.q_proj.weight");
         model3.add(dense(denseWeight));
 
         org.almostrealism.model.CompiledModel compiled3 = model3.compile();
-        PackedCollection<?> output3 = compiled3.forward(input1);
+        PackedCollection output3 = compiled3.forward(input1);
 
         log(String.format("Input shape: %s", input1.getShape()));
         log(String.format("Output shape: %s", output3.getShape()));
@@ -88,7 +88,7 @@ public class ShapeDiagnosticTest implements ConsoleFeatures, LayerFeatures, Atte
         model4.add(rmsnorm(rmsWeight));
 
         org.almostrealism.model.CompiledModel compiled4 = model4.compile();
-        PackedCollection<?> output4 = compiled4.forward(input1);
+        PackedCollection output4 = compiled4.forward(input1);
 
         log(String.format("Input shape: %s", input1.getShape()));
         log(String.format("Output shape: %s", output4.getShape()));
@@ -108,20 +108,20 @@ public class ShapeDiagnosticTest implements ConsoleFeatures, LayerFeatures, Atte
 
             // Load weights for layer 0
             String prefix = "model.layers.0";
-            PackedCollection<?> rmsAttWeight = stateDict.get(prefix + ".input_layernorm.weight");
-            PackedCollection<?> wq = stateDict.get(prefix + ".self_attn.q_proj.weight");
-            PackedCollection<?> wk = stateDict.get(prefix + ".self_attn.k_proj.weight");
-            PackedCollection<?> wv = stateDict.get(prefix + ".self_attn.v_proj.weight");
-            PackedCollection<?> wo = stateDict.get(prefix + ".self_attn.o_proj.weight");
+            PackedCollection rmsAttWeight = stateDict.get(prefix + ".input_layernorm.weight");
+            PackedCollection wq = stateDict.get(prefix + ".self_attn.q_proj.weight");
+            PackedCollection wk = stateDict.get(prefix + ".self_attn.k_proj.weight");
+            PackedCollection wv = stateDict.get(prefix + ".self_attn.v_proj.weight");
+            PackedCollection wo = stateDict.get(prefix + ".self_attn.o_proj.weight");
 
             // Create minimal RoPE frequencies
             int headSize = dim / headCount;
-            PackedCollection<?> freqCis = new PackedCollection<>(shape(10, headSize/2, 2));
+            PackedCollection freqCis = new PackedCollection(shape(10, headSize/2, 2));
             for (int i = 0; i < freqCis.getShape().getSize(); i++) {
                 freqCis.setMem(i, 1.0);
             }
 
-            PackedCollection<?> position = new PackedCollection<>(shape(1));
+            PackedCollection position = new PackedCollection(shape(1));
             position.setMem(0, 0.0);
 
             // Add just the attention block (no FFN)
@@ -132,13 +132,13 @@ public class ShapeDiagnosticTest implements ConsoleFeatures, LayerFeatures, Atte
                                freqCis, p(position)));
 
             // Test with input
-            PackedCollection<?> input = new PackedCollection<>(shape(dim));
+            PackedCollection input = new PackedCollection(shape(dim));
             for (int i = 0; i < dim; i++) {
                 input.setMem(i, Math.random());
             }
 
             org.almostrealism.model.CompiledModel compiled = model.compile();
-            PackedCollection<?> output = compiled.forward(input);
+            PackedCollection output = compiled.forward(input);
 
             log(String.format("Attention Input shape: %s", input.getShape()));
             log(String.format("Attention Output shape: %s", output.getShape()));

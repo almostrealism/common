@@ -36,16 +36,16 @@ import io.almostrealism.code.Computation;
  *
  * <pre>{@code
  * // Computation that always produces 1000 doubles
- * MemoryDataComputation<PackedCollection<?>> fixedSize = new MemoryDataComputation<>() {
+ * MemoryDataComputation<PackedCollection> fixedSize = new MemoryDataComputation<>() {
  *     @Override
  *     public int getMemLength() {
  *         return 1000;  // Always 1000 elements
  *     }
  *
  *     @Override
- *     public Evaluable<PackedCollection<?>> get() {
+ *     public Evaluable<PackedCollection> get() {
  *         return args -> {
- *             PackedCollection<?> result = new PackedCollection<>(1000);
+ *             PackedCollection result = new PackedCollection(1000);
  *             // ... compute result ...
  *             return result;
  *         };
@@ -98,14 +98,14 @@ import io.almostrealism.code.Computation;
  * <h3>Fixed-Size Array Operations</h3>
  * <pre>{@code
  * // Operation that always produces arrays of 256 elements
- * MemoryDataComputation<PackedCollection<?>> fftOp =
+ * MemoryDataComputation<PackedCollection> fftOp =
  *     new MemoryDataComputation<>() {
  *         @Override
  *         public int getMemLength() { return 256; }
  *
  *         @Override
- *         public Evaluable<PackedCollection<?>> get() {
- *             return args -> performFFT((PackedCollection<?>) args[0]);
+ *         public Evaluable<PackedCollection> get() {
+ *             return args -> performFFT((PackedCollection) args[0]);
  *         }
  *     };
  * }</pre>
@@ -128,12 +128,12 @@ import io.almostrealism.code.Computation;
  *
  * <p>Many accelerated operations implement this interface to declare their output size:</p>
  * <pre>{@code
- * public class ScalarMultiply extends AcceleratedComputationOperation<PackedCollection<?>>
- *         implements MemoryDataComputation<PackedCollection<?>> {
+ * public class ScalarMultiply extends AcceleratedComputationOperation<PackedCollection>
+ *         implements MemoryDataComputation<PackedCollection> {
  *
  *     private final int length;
  *
- *     public ScalarMultiply(int length, Producer<PackedCollection<?>> input, double scalar) {
+ *     public ScalarMultiply(int length, Producer<PackedCollection> input, double scalar) {
  *         super(input);
  *         this.length = length;
  *     }

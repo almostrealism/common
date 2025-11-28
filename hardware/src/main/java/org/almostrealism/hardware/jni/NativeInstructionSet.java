@@ -85,8 +85,8 @@ import java.util.stream.Stream;
  * compiler.compile(instructionSet, generatedCCode);
  *
  * // Execute
- * PackedCollection<?> input = ...;
- * PackedCollection<?> output = ...;
+ * PackedCollection input = ...;
+ * PackedCollection output = ...;
  * instructionSet.apply(0, 1000, input, output);
  * // Native code runs, modifies output in-place
  * }</pre>

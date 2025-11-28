@@ -159,8 +159,8 @@ import java.util.List;
  * <h3>Creating a Kernel Operation</h3>
  * <pre>{@code
  * public class VectorAddOperation extends AcceleratedComputationOperation {
- *     public VectorAddOperation(Producer<PackedCollection<?>> a,
- *                               Producer<PackedCollection<?>> b) {
+ *     public VectorAddOperation(Producer<PackedCollection> a,
+ *                               Producer<PackedCollection> b) {
  *         super(Hardware.getLocalHardware().getComputeContext(), true,
  *               a.get().evaluate(), b.get().evaluate());
  *     }
@@ -176,7 +176,7 @@ import java.util.List;
  * <pre>{@code
  * // Compile and execute synchronously
  * VectorAddOperation op = new VectorAddOperation(a, b);
- * PackedCollection<?> result = op.evaluate();  // Blocks until complete
+ * PackedCollection result = op.evaluate();  // Blocks until complete
  *
  * // Execute asynchronously
  * AcceleratedProcessDetails process = op.apply(output, args);

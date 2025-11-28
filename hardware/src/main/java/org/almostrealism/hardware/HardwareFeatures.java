@@ -50,8 +50,8 @@ import java.util.stream.IntStream;
  * public class MyProcessor implements HardwareFeatures {
  *     public void processData() {
  *         // All HardwareFeatures methods available directly
- *         Producer<PackedCollection<?>> data = cp(myCollection);
- *         Producer<PackedCollection<?>> result = multiply(data, c(2.0));
+ *         Producer<PackedCollection> data = cp(myCollection);
+ *         Producer<PackedCollection> result = multiply(data, c(2.0));
  *         result.get().evaluate();
  *     }
  * }
@@ -159,7 +159,7 @@ import java.util.stream.IntStream;
  * <h3>Building Computation Graphs</h3>
  * <pre>{@code
  * public class DataProcessor implements HardwareFeatures {
- *     public Producer<PackedCollection<?>> process(Producer<PackedCollection<?>> input) {
+ *     public Producer<PackedCollection> process(Producer<PackedCollection> input) {
  *         // Chain operations using feature methods
  *         Producer<?> scaled = multiply(input, c(2.0));
  *         Producer<?> offset = add(scaled, c(10.0));
@@ -174,7 +174,7 @@ import java.util.stream.IntStream;
  * public class FilterBank implements HardwareFeatures {
  *     private static final String FILTER_KEY = "gaussian_blur_3x3";
  *
- *     public Producer<PackedCollection<?>> blur(Producer<PackedCollection<?>> image) {
+ *     public Producer<PackedCollection> blur(Producer<PackedCollection> image) {
  *         return instruct(FILTER_KEY,
  *             args -> applyConvolution(args[0], getGaussianKernel()),
  *             image);

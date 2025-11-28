@@ -37,7 +37,7 @@ import java.util.stream.IntStream;
  * 
  * @author  Michael Murray
  */
-public class Ray extends PackedCollection<Ray> implements GeometryFeatures, Cloneable {
+public class Ray extends PackedCollection implements GeometryFeatures, Cloneable {
 	private Ray(double coords[]) {
 		this();
 		this.setMem(coords);
@@ -111,7 +111,7 @@ public class Ray extends PackedCollection<Ray> implements GeometryFeatures, Clon
 	/**
 	 * @return  The dot product of the origin of this ray with itself.
 	 */
-	public Evaluable<PackedCollection<?>> oDoto() {
+	public Evaluable<PackedCollection> oDoto() {
 		// TODO  Cache
 		return origin(cp(this)).multiply(origin(cp(this))).sum().get();
 	}
@@ -119,7 +119,7 @@ public class Ray extends PackedCollection<Ray> implements GeometryFeatures, Clon
 	/**
 	 * @return  The dot product of the direction of this ray with itself.
 	 */
-	public Evaluable<PackedCollection<?>> dDotd() {
+	public Evaluable<PackedCollection> dDotd() {
 		// TODO  Cache
 		return direction(cp(this)).multiply(direction(cp(this))).sum().get();
 	}
@@ -127,7 +127,7 @@ public class Ray extends PackedCollection<Ray> implements GeometryFeatures, Clon
 	/**
 	 * @return  The dot product of the origin of this ray with the direction of this ray.
 	 */
-	public Evaluable<PackedCollection<?>> oDotd() {
+	public Evaluable<PackedCollection> oDotd() {
 		// TODO  Cache
 		return origin(cp(this)).multiply(direction(cp(this))).sum().get();
 	}
@@ -150,9 +150,9 @@ public class Ray extends PackedCollection<Ray> implements GeometryFeatures, Clon
 	
 	/**
 	 * @return  The point on the ray represented by this {@link Ray} at distance t from the origin
-	 *          as a {@link Vector}.
+	 *          as a {@link PackedCollection}.
 	 */
-	public CollectionProducer<Vector> pointAt(Producer<PackedCollection<?>> t) {
+	public CollectionProducer<PackedCollection> pointAt(Producer<PackedCollection> t) {
 		return pointAt(v(this), t);
 	}
 
@@ -195,27 +195,27 @@ public class Ray extends PackedCollection<Ray> implements GeometryFeatures, Clon
 
 	public static Producer<Ray> blank() {
 		Supplier<Ray> r = Ray::new;
-		IntFunction<MemoryBank<Ray>> b = Ray::bank;
+		IntFunction<MemoryBank<Ray>> b = (IntFunction) Ray::bank;
 		return new DynamicProducerForMemoryData<>(r, b);
 	}
 
-	public static PackedCollection<Ray> bank(int count) {
-		return new PackedCollection<>(new TraversalPolicy(count, 6), 1, delegateSpec ->
+	public static PackedCollection bank(int count) {
+		return new PackedCollection(new TraversalPolicy(count, 6), 1, delegateSpec ->
 				new Ray(delegateSpec.getDelegate(), delegateSpec.getOffset()));
 	}
 
 	@Deprecated
-	public static PackedCollection<Ray> bank(int count, Supplier<Evaluable<? extends Ray>> source) {
-		PackedCollection<Ray> bank = Ray.bank(count);
+	public static PackedCollection bank(int count, Supplier<Evaluable<? extends Ray>> source) {
+		PackedCollection bank = Ray.bank(count);
 		for (int i = 0; i < bank.getCountLong(); i++) {
-			bank.set(i, source.get().evaluate());
+			bank.set(i, (Ray) source.get().evaluate());
 		}
 
 		return bank;
 	}
 
-	public static PackedCollection<Ray> bank(int count, MemoryData delegate, int delegateOffset) {
-		return new PackedCollection<>(new TraversalPolicy(count, 6), 1, delegateSpec ->
+	public static PackedCollection bank(int count, MemoryData delegate, int delegateOffset) {
+		return new PackedCollection(new TraversalPolicy(count, 6), 1, delegateSpec ->
 				new Ray(delegateSpec.getDelegate(), delegateSpec.getOffset()),
 				delegate, delegateOffset);
 	}

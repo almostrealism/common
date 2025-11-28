@@ -15,6 +15,7 @@
  */
 
 package org.almostrealism.space;
+import org.almostrealism.collect.PackedCollection;
 
 import java.util.ArrayList;
 import java.util.Hashtable;
@@ -115,12 +116,12 @@ public class LSystem implements CodeFeatures {
 				
 				d = (Vector) d.clone();
 
-				Producer<Vector> dp = v(d);
+				Producer dp = v(d);
 
 				dp = mx.transform(dp, TransformMatrix.TRANSFORM_AS_OFFSET);
 				dp = my.transform(dp, TransformMatrix.TRANSFORM_AS_OFFSET);
 				dp = mz.transform(dp, TransformMatrix.TRANSFORM_AS_OFFSET);
-				d = dp.get().evaluate();
+				PackedCollection result = (PackedCollection) dp.get().evaluate(); d = new Vector(result.toDouble(0), result.toDouble(1), result.toDouble(2));
 				
 				continue i;
 			} else if (data[i].equals(LSystem.BACKWARD)) {
@@ -130,12 +131,12 @@ public class LSystem implements CodeFeatures {
 				
 				d = (Vector) d.clone();
 
-				Producer<Vector> dp = v(d);
+				Producer dp = v(d);
 				
 				dp = mx.transform(dp, TransformMatrix.TRANSFORM_AS_OFFSET);
 				dp = my.transform(dp, TransformMatrix.TRANSFORM_AS_OFFSET);
 				dp = mz.transform(dp, TransformMatrix.TRANSFORM_AS_OFFSET);
-				d = dp.get().evaluate();
+				PackedCollection result = (PackedCollection) dp.get().evaluate(); d = new Vector(result.toDouble(0), result.toDouble(1), result.toDouble(2));
 				
 				continue i;
 			} else if (data[i].equals(LSystem.LEFT)) {
@@ -145,12 +146,12 @@ public class LSystem implements CodeFeatures {
 				
 				d = (Vector) d.clone();
 
-				Producer<Vector> dp = v(d);
+				Producer dp = v(d);
 				
 				dp = mx.transform(dp, TransformMatrix.TRANSFORM_AS_OFFSET);
 				dp = my.transform(dp, TransformMatrix.TRANSFORM_AS_OFFSET);
 				dp = mz.transform(dp, TransformMatrix.TRANSFORM_AS_OFFSET);
-				d = dp.get().evaluate();
+				PackedCollection result = (PackedCollection) dp.get().evaluate(); d = new Vector(result.toDouble(0), result.toDouble(1), result.toDouble(2));
 				
 				continue i;
 			} else if (data[i].equals(LSystem.RIGHT)) {
@@ -160,12 +161,12 @@ public class LSystem implements CodeFeatures {
 				
 				d = (Vector) d.clone();
 
-				Producer<Vector> dp = v(d);
+				Producer dp = v(d);
 				
 				dp = mx.transform(dp, TransformMatrix.TRANSFORM_AS_OFFSET);
 				dp = my.transform(dp, TransformMatrix.TRANSFORM_AS_OFFSET);
 				dp = mz.transform(dp, TransformMatrix.TRANSFORM_AS_OFFSET);
-				d = dp.get().evaluate();
+				PackedCollection result = (PackedCollection) dp.get().evaluate(); d = new Vector(result.toDouble(0), result.toDouble(1), result.toDouble(2));
 				
 				continue i;
 			} else if (data[i].equals(LSystem.PUSH)) {

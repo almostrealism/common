@@ -34,9 +34,9 @@ public class KernelOperationTests implements TestFeatures, KernelAssertions {
 
 	@Test
 	public void assignment() {
-		PackedCollection<?> x = new PackedCollection<>(shape(10)).traverse();
-		PackedCollection<?> a = tensor(shape(10)).pack().traverse();
-		PackedCollection<?> b = tensor(shape(10)).pack().traverse();
+		PackedCollection x = new PackedCollection(shape(10)).traverse();
+		PackedCollection a = tensor(shape(10)).pack().traverse();
+		PackedCollection b = tensor(shape(10)).pack().traverse();
 
 		verboseLog(() -> {
 			OperationList op = new OperationList();
@@ -51,10 +51,10 @@ public class KernelOperationTests implements TestFeatures, KernelAssertions {
 
 	@Test
 	public void doubleAssignment() {
-		PackedCollection<?> x = new PackedCollection<>(shape(10)).traverse();
-		PackedCollection<?> y = new PackedCollection<>(shape(10)).traverse();
-		PackedCollection<?> a = tensor(shape(10)).pack().traverse();
-		PackedCollection<?> b = tensor(shape(10)).pack().traverse();
+		PackedCollection x = new PackedCollection(shape(10)).traverse();
+		PackedCollection y = new PackedCollection(shape(10)).traverse();
+		PackedCollection a = tensor(shape(10)).pack().traverse();
+		PackedCollection b = tensor(shape(10)).pack().traverse();
 
 		OperationList op = new OperationList();
 		op.add(a(1, traverse(1, p(x)), add(traverse(1, p(a)), traverse(1, p(b)))));
@@ -71,10 +71,10 @@ public class KernelOperationTests implements TestFeatures, KernelAssertions {
 
 	@Test
 	public void doubleAssignmentMultipleCount() {
-		PackedCollection<?> x = new PackedCollection<>(shape(10)).traverse();
-		PackedCollection<?> y = new PackedCollection<>(shape(6)).traverse();
-		PackedCollection<?> a = tensor(shape(10)).pack().traverse();
-		PackedCollection<?> b = tensor(shape(6)).pack().traverse();
+		PackedCollection x = new PackedCollection(shape(10)).traverse();
+		PackedCollection y = new PackedCollection(shape(6)).traverse();
+		PackedCollection a = tensor(shape(10)).pack().traverse();
+		PackedCollection b = tensor(shape(6)).pack().traverse();
 
 		OperationList op = new OperationList();
 		op.add(a(1, traverse(1, p(x)), add(traverse(1, p(a)), traverse(1, p(a)))));
@@ -94,9 +94,9 @@ public class KernelOperationTests implements TestFeatures, KernelAssertions {
 
 	@Test
 	public void doubleAssignmentReduceCount() {
-		PackedCollection<?> x = new PackedCollection<>(shape(1)).traverse();
-		PackedCollection<?> a = new PackedCollection<>(shape(2048)).fill(Math::random);
-		PackedCollection<?> b = new PackedCollection<>(shape(2048)).fill(Math::random);
+		PackedCollection x = new PackedCollection(shape(1)).traverse();
+		PackedCollection a = new PackedCollection(shape(2048)).fill(Math::random);
+		PackedCollection b = new PackedCollection(shape(2048)).fill(Math::random);
 
 		OperationList op = new OperationList();
 		op.add(a(1, traverse(1, p(x)), multiply(traverse(1, p(a)), traverse(1, p(b))).traverse(0).sum()));
@@ -123,15 +123,15 @@ public class KernelOperationTests implements TestFeatures, KernelAssertions {
 
 	// @Test
 	public void kernelList() {
-		PackedCollection<?> timeline = new PackedCollection<>(shape(10), 1);
+		PackedCollection timeline = new PackedCollection(shape(10), 1);
 		IntStream.range(0, 10).forEach(i -> timeline.set(i, i + 1));
 
-		PackedCollection<?> params = new PackedCollection<>(shape(5), 1);
+		PackedCollection params = new PackedCollection(shape(5), 1);
 		IntStream.range(0, 5).forEach(i -> params.set(i, i + 1));
 
-		PackedCollection<?> destination = new PackedCollection<>(shape(5, 10));
+		PackedCollection destination = new PackedCollection(shape(5, 10));
 
-		Evaluable<PackedCollection<?>> ev = c(p(params)).traverseEach().map(v -> v.multiply(traverseEach(p(timeline)))).get();
+		Evaluable<PackedCollection> ev = c(p(params)).traverseEach().map(v -> v.multiply(traverseEach(p(timeline)))).get();
 		ev.into(destination.traverseEach()).evaluate();
 		System.out.println(Arrays.toString(destination.toArray(20, 10)));
 	}
@@ -146,12 +146,12 @@ public class KernelOperationTests implements TestFeatures, KernelAssertions {
 
 		int n = 4; // 8;
 
-		PackedCollection<?> input = tensor(shape(r, c)).pack();
-		PackedCollection<?> filter = tensor(shape(n, w, w)).pack();
+		PackedCollection input = tensor(shape(r, c)).pack();
+		PackedCollection filter = tensor(shape(n, w, w)).pack();
 
-		PackedCollection<?> output = new PackedCollection<>(shape(8, 8, 4, 1));
+		PackedCollection output = new PackedCollection(shape(8, 8, 4, 1));
 
-		CollectionProducer<PackedCollection<?>> conv = c(p(input))
+		CollectionProducer<PackedCollection> conv = c(p(input))
 				.enumerate(1, w, s)
 				.enumerate(1, w, s)
 				.traverse(2)

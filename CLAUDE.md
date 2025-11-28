@@ -8,19 +8,6 @@
 
 ---
 
-## Hardware Acceleration Setup
-
-⚠️ **CRITICAL**: All Almost Realism modules that use hardware acceleration require environment variables to be set before running any code.
-
-### Required Environment Variables
-
-```bash
-export AR_HARDWARE_LIBS=/tmp/ar_libs/
-export AR_HARDWARE_DRIVER=native
-```
-
-**Note**: `AR_HARDWARE_LIBS` can be set to **any writable directory** - the system just needs a place to generate and load hardware acceleration libraries. Common choices include `/tmp/ar_libs/`, `/home/developer/.libs/`, or any other temp directory.
-
 ### Setup Instructions
 
 1. **Set environment variables** before running Java code:
@@ -64,6 +51,10 @@ echo $AR_HARDWARE_DRIVER
 ---
 
 ## Code Organization Principles
+
+1. Never use @SuppressWarnings
+2. Always include javadoc documentation for newly introduced code
+3. Do not include excessive comments within method implementations
 
 ### Use StateDictionary for Model Weights
 

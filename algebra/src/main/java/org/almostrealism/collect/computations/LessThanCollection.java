@@ -57,34 +57,34 @@ import java.util.List;
  * <p><strong>Basic less-than comparison (returning 1.0 or 0.0):</strong></p>
  * <pre>{@code
  * TraversalPolicy shape = shape(5);
- * CollectionProducer<PackedCollection<?>> a = c(3.0, 7.0, 2.0, 9.0, 5.0);
- * CollectionProducer<PackedCollection<?>> b = c(5.0, 5.0, 5.0, 5.0, 5.0);
+ * CollectionProducer<PackedCollection> a = c(3.0, 7.0, 2.0, 9.0, 5.0);
+ * CollectionProducer<PackedCollection> b = c(5.0, 5.0, 5.0, 5.0, 5.0);
  *
- * LessThanCollection<PackedCollection<?>> lt =
+ * LessThanCollection<PackedCollection> lt =
  *     new LessThanCollection<>(shape, a, b,
  *         c(1.0), c(0.0));  // true -> 1.0, false -> 0.0
  *
- * PackedCollection<?> result = lt.get().evaluate();
+ * PackedCollection result = lt.get().evaluate();
  * // Result: [1.0, 0.0, 1.0, 0.0, 0.0]  (3<5 and 2<5 are true)
  * }</pre>
  *
  * <p><strong>Less-than-or-equal comparison:</strong></p>
  * <pre>{@code
- * LessThanCollection<PackedCollection<?>> lte =
+ * LessThanCollection<PackedCollection> lte =
  *     new LessThanCollection<>(shape, a, b,
  *         c(1.0), c(0.0),
  *         true);  // includeEqual = true
  *
- * PackedCollection<?> result = lte.get().evaluate();
+ * PackedCollection result = lte.get().evaluate();
  * // Result: [1.0, 0.0, 1.0, 0.0, 1.0]  (3<=5, 2<=5, 5<=5 are true)
  * }</pre>
  *
  * <p><strong>Using via CollectionFeatures:</strong></p>
  * <pre>{@code
  * // More common usage through helper methods
- * CollectionProducer<PackedCollection<?>> x = c(1.0, 2.0, 3.0);
- * CollectionProducer<PackedCollection<?>> threshold = c(2.0, 2.0, 2.0);
- * CollectionProducer<PackedCollection<?>> result =
+ * CollectionProducer<PackedCollection> x = c(1.0, 2.0, 3.0);
+ * CollectionProducer<PackedCollection> threshold = c(2.0, 2.0, 2.0);
+ * CollectionProducer<PackedCollection> result =
  *     lessThan(x, threshold, c(1.0), c(0.0));
  * // Result: [1.0, 0.0, 0.0]
  * }</pre>
@@ -92,9 +92,9 @@ import java.util.List;
  * <p><strong>Value clipping example:</strong></p>
  * <pre>{@code
  * // Clip values to maximum threshold: min(value, threshold)
- * CollectionProducer<PackedCollection<?>> values = c(1.0, 5.0, 3.0);
- * CollectionProducer<PackedCollection<?>> threshold = c(4.0);
- * CollectionProducer<PackedCollection<?>> clipped =
+ * CollectionProducer<PackedCollection> values = c(1.0, 5.0, 3.0);
+ * CollectionProducer<PackedCollection> threshold = c(4.0);
+ * CollectionProducer<PackedCollection> clipped =
  *     lessThan(values, threshold,
  *         values,      // if value < threshold, keep value
  *         threshold);  // else use threshold
@@ -117,7 +117,7 @@ import java.util.List;
  *
  * @author Michael Murray
  */
-public class LessThanCollection<T extends PackedCollection<?>> extends CollectionComparisonComputation<T> {
+public class LessThanCollection<T extends PackedCollection> extends CollectionComparisonComputation<T> {
 	/**
 	 * Flag controlling whether the comparison includes equality (<=) or is strict (<).
 	 * When true, performs less-than-or-equal comparison (<=).
@@ -155,8 +155,8 @@ public class LessThanCollection<T extends PackedCollection<?>> extends Collectio
 	 */
 	public LessThanCollection(
 			TraversalPolicy shape,
-			Producer<PackedCollection<?>> left, Producer<PackedCollection<?>> right,
-			Producer<PackedCollection<?>> trueValue, Producer<PackedCollection<?>> falseValue,
+			Producer<PackedCollection> left, Producer<PackedCollection> right,
+			Producer<PackedCollection> trueValue, Producer<PackedCollection> falseValue,
 			boolean includeEqual) {
 		super("lessThan", shape,  left, right, trueValue, falseValue);
 		this.includeEqual = includeEqual;

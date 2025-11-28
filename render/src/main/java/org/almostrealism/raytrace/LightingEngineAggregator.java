@@ -66,18 +66,18 @@ import java.util.List;
 public class LightingEngineAggregator extends RankedChoiceEvaluableForRGB implements DimensionAware {
 	public static boolean enableVerbose = false;
 
-	private PackedCollection<Pair<?>> input;
-	private List<PackedCollection<?>> ranks;
+	private PackedCollection input;
+	private List<PackedCollection> ranks;
 
 	private boolean kernel;
 	private int width, height, ssw, ssh;
 
-	public LightingEngineAggregator(Producer<Ray> r, Iterable<Curve<RGB>> surfaces,
+	public LightingEngineAggregator(Producer<Ray> r, Iterable<Curve<PackedCollection>> surfaces,
 									Iterable<Light> lights, ShaderContext context) {
 		this(r, surfaces, lights, context, false);
 	}
 
-	public LightingEngineAggregator(Producer<Ray> r, Iterable<Curve<RGB>> surfaces,
+	public LightingEngineAggregator(Producer<Ray> r, Iterable<Curve<PackedCollection>> surfaces,
 									Iterable<Light> lights, ShaderContext context, boolean kernel) {
 		super(Intersection.e);
 		this.kernel = kernel;
@@ -94,11 +94,12 @@ public class LightingEngineAggregator extends RankedChoiceEvaluableForRGB implem
 		int totalWidth = w * ssw;
 		int totalHeight = h * ssh;
 
-		PackedCollection<Pair<?>> pixelLocations = Pair.bank(totalWidth * totalHeight);
+		PackedCollection pixelLocations = Pair.bank(totalWidth * totalHeight);
 
 		for (double i = 0; i < totalWidth; i++) {
 			for (double j = 0; j < totalHeight; j++) {
-				Pair p = pixelLocations.get((int) (j * totalWidth + i));
+				int index = (int) (j * totalWidth + i);
+				Pair p = new Pair(pixelLocations, index * 2);
 				p.setMem(new double[] { i / ssw, j / ssh });
 			}
 		}
@@ -113,7 +114,7 @@ public class LightingEngineAggregator extends RankedChoiceEvaluableForRGB implem
 	 * Provide a {@link MemoryBank} to use when evaluating the rank for each
 	 * {@link LightingEngine}.
 	 */
-	private void setKernelInput(PackedCollection<Pair<?>> input) {
+	private void setKernelInput(PackedCollection input) {
 		this.input = input;
 		resetRankCache();
 	}
@@ -129,7 +130,7 @@ public class LightingEngineAggregator extends RankedChoiceEvaluableForRGB implem
 		this.ranks = new ArrayList<>();
 		for (int i = 0; i < size(); i++) {
 			// CRITICAL: Use .each() to properly evaluate batch of rays - without it, only first ray processes correctly
-			PackedCollection<?> rankCollection = new PackedCollection<>(shape(input.getCount(), 1).traverse(1));
+			PackedCollection rankCollection = new PackedCollection(shape(input.getCount(), 1).traverse(1));
 			this.ranks.add(rankCollection);
 
 			// Evaluate the rank producer
@@ -146,10 +147,10 @@ public class LightingEngineAggregator extends RankedChoiceEvaluableForRGB implem
 	}
 
 	// TODO  Rename this class to SurfaceLightingAggregator and have LightingEngineAggregator sum the lights instead of rank choice them
-	protected void init(Producer<Ray> r, Iterable<Curve<RGB>> surfaces, Iterable<Light> lights, ShaderContext context) {
-		for (Curve<RGB> s : surfaces) {
+	protected void init(Producer<Ray> r, Iterable<Curve<PackedCollection>> surfaces, Iterable<Light> lights, ShaderContext context) {
+		for (Curve<PackedCollection> s : surfaces) {
 			for (Light l : lights) {
-				Collection<Curve<RGB>> otherSurfaces = CollectionUtils.separate(s, surfaces);
+				Collection<Curve<PackedCollection>> otherSurfaces = CollectionUtils.separate(s, surfaces);
 				Collection<Light> otherLights = CollectionUtils.separate(l, lights);
 
 				ShaderContext c;
@@ -176,14 +177,14 @@ public class LightingEngineAggregator extends RankedChoiceEvaluableForRGB implem
 	}
 
 	@Override
-	public RGB evaluate(Object args[]) {
+	public PackedCollection evaluate(Object args[]) {
 		if (!kernel) return super.evaluate(args);
 
 		initRankCache();
 
 		Pair pos = (Pair) args[0];
 
-		Producer<RGB> best = null;
+		Producer<PackedCollection> best = null;
 		double rank = Double.MAX_VALUE;
 
 		int position = DimensionAware.getPosition(pos.getX(), pos.getY(), width, height, ssw, ssh);
@@ -198,7 +199,7 @@ public class LightingEngineAggregator extends RankedChoiceEvaluableForRGB implem
 		}
 
 		r: for (int i = 0; i < size(); i++) {
-			ProducerWithRank<RGB, PackedCollection<?>> p = get(i);
+			ProducerWithRank p = get(i);
 
 			// Use valueAt(position, 0) for shape (N, 1) instead of get(position).getValue() for Scalar
 			double r = ranks.get(i).valueAt(position, 0);
@@ -208,12 +209,12 @@ public class LightingEngineAggregator extends RankedChoiceEvaluableForRGB implem
 
 			if (best == null) {
 				if (printLog) System.out.println(p + " was assigned (rank = " + r + ")");
-				best = p.getProducer();
+				best = (Producer<PackedCollection>) p.getProducer();
 				rank = r;
 			} else {
 				if (r >= e && r < rank) {
 					if (printLog) System.out.println(p + " was assigned (rank = " + r + ")");
-					best = p.getProducer();
+					best = (Producer<PackedCollection>) p.getProducer();
 					rank = r;
 				}
 			}
@@ -230,7 +231,7 @@ public class LightingEngineAggregator extends RankedChoiceEvaluableForRGB implem
 		if (result instanceof RGB) {
 			color = (RGB) result;
 		} else if (result instanceof PackedCollection) {
-			color = new RGB((PackedCollection<?>) result, 0);
+			color = new RGB((PackedCollection) result, 0);
 		} else {
 			throw new IllegalStateException("Unexpected result type: " +
 				(result == null ? "null" : result.getClass().getName()));
@@ -244,7 +245,7 @@ public class LightingEngineAggregator extends RankedChoiceEvaluableForRGB implem
 	}
 
 	@Override
-	public Evaluable<RGB> into(Object destination) {
+	public Evaluable<PackedCollection> into(Object destination) {
 		return new DestinationEvaluable<>(this, (MemoryBank) destination);
 	}
 }

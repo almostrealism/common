@@ -29,11 +29,11 @@ import org.almostrealism.algebra.computations.Switch;
 import java.util.Arrays;
 
 public class SwitchTest implements TestFeatures {
-	public Switch choice(PackedCollection<?> output, PackedCollection<?> decision, PackedCollection<?> multiplier) {
+	public Switch choice(PackedCollection output, PackedCollection decision, PackedCollection multiplier) {
 		return choice(output, p(decision), p(multiplier));
 	}
 
-	public Switch choice(PackedCollection<?> output, Producer<PackedCollection<?>> decision, Producer<PackedCollection<?>> multiplier) {
+	public Switch choice(PackedCollection output, Producer<PackedCollection> decision, Producer<PackedCollection> multiplier) {
 		Computation<Void> firstChoice = a(1, p(output), multiply(multiplier, c(2.0)));
 		Computation<Void> secondChoice = a(1, p(output), multiply(multiplier, c(4.0)));
 		Computation<Void> thirdChoice = a(1, p(output), multiply(multiplier, c(8.0)));
@@ -42,9 +42,9 @@ public class SwitchTest implements TestFeatures {
 
 	@Test
 	public void threeChoices() {
-		PackedCollection<?> output = new PackedCollection<>(1);
+		PackedCollection output = new PackedCollection(1);
 		output.setMem(0, 0.0);
-		PackedCollection<?> decision = new PackedCollection<>(1);
+		PackedCollection decision = new PackedCollection(1);
 		decision.setMem(0, 0.4);
 
 		Switch choice = choice(output, decision, pack(1.0));
@@ -61,13 +61,13 @@ public class SwitchTest implements TestFeatures {
 
 	@Test
 	public void choiceList() {
-		PackedCollection<?> output1 = new PackedCollection<>(1);
+		PackedCollection output1 = new PackedCollection(1);
 		output1.setMem(0, 0.0);
-		PackedCollection<?> decision1 = new PackedCollection<>(1);
+		PackedCollection decision1 = new PackedCollection(1);
 		decision1.setMem(0, 0.4);
-		PackedCollection<?> output2 = new PackedCollection<>(1);
+		PackedCollection output2 = new PackedCollection(1);
 		output2.setMem(0, 0.0);
-		PackedCollection<?> decision2 = new PackedCollection<>(1);
+		PackedCollection decision2 = new PackedCollection(1);
 		decision2.setMem(0, 0.8);
 
 		OperationList list = new OperationList("Choice List");
@@ -88,18 +88,18 @@ public class SwitchTest implements TestFeatures {
 
 	@Test
 	public void nestedChoiceList() {
-		Producer<PackedCollection<?>> multiplier = c(2.0);
+		Producer<PackedCollection> multiplier = c(2.0);
 
-		PackedCollection<?> output1a = new PackedCollection<>(1);
+		PackedCollection output1a = new PackedCollection(1);
 		output1a.setMem(0, 0.0);
-		PackedCollection<?> output1b = new PackedCollection<>(1);
+		PackedCollection output1b = new PackedCollection(1);
 		output1b.setMem(0, 0.0);
-		Producer<PackedCollection<?>> decisionA = c(0.4);
-		PackedCollection<?> output2a = new PackedCollection<>(1);
+		Producer<PackedCollection> decisionA = c(0.4);
+		PackedCollection output2a = new PackedCollection(1);
 		output2a.setMem(0, 0.0);
-		PackedCollection<?> output2b = new PackedCollection<>(1);
+		PackedCollection output2b = new PackedCollection(1);
 		output2b.setMem(0, 0.0);
-		Producer<PackedCollection<?>> decisionB = multiply(c(0.4), multiplier);
+		Producer<PackedCollection> decisionB = multiply(c(0.4), multiplier);
 
 		OperationList embeddedList = new OperationList("Embedded Choice List");
 		embeddedList.add(choice(output2a, decisionA, multiplier));

@@ -22,19 +22,19 @@ import org.almostrealism.collect.PackedCollection;
 
 import java.util.function.Supplier;
 
-public class CollectionCachedStateCell extends CachedStateCell<PackedCollection<?>> implements CodeFeatures {
+public class CollectionCachedStateCell extends CachedStateCell<PackedCollection> implements CodeFeatures {
 	public CollectionCachedStateCell() {
 		super(PackedCollection.blank(1).get());
 	}
 
 	@Override
-	protected Supplier<Runnable> assign(Producer<PackedCollection<?>> out,
-										Producer<PackedCollection<?>> in) {
+	protected Supplier<Runnable> assign(Producer<PackedCollection> out,
+										Producer<PackedCollection> in) {
 		return a(1, out, in);
 	}
 
 	@Override
-	public Supplier<Runnable> reset(Producer<PackedCollection<?>> out) {
+	public Supplier<Runnable> reset(Producer<PackedCollection> out) {
 		return a(1, out, c(0));
 	}
 }

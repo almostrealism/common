@@ -75,7 +75,7 @@ import java.util.stream.LongStream;
  *         initKernelMetrics();
  *
  *         // Create operation
- *         Producer<PackedCollection<?>> op = createOperation();
+ *         Producer<PackedCollection> op = createOperation();
  *
  *         // Run kernel test with validation
  *         kernelTest(() -> op, result -> {
@@ -111,7 +111,7 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 	 * @param colWidth the number of columns per row
 	 * @param value    the collection to print
 	 */
-	default void print(int rows, int colWidth, PackedCollection<?> value) {
+	default void print(int rows, int colWidth, PackedCollection value) {
 		if (value.getShape().getTotalSize() > (rows * colWidth)) {
 			value = value.range(shape(rows * colWidth), 0);
 		}
@@ -224,7 +224,7 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 	 */
 	default void assertEquals(Object expected, Object actual) {
 		if (actual instanceof PackedCollection) {
-			assertEquals(expected, (PackedCollection<?>) actual);
+			assertEquals(expected, (PackedCollection) actual);
 		} else if (!Objects.equals(expected, actual)) {
 			throw new AssertionError(actual + " != " + expected);
 		}
@@ -238,11 +238,11 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 	 * @param actual   the actual collection value
 	 * @throws AssertionError if the values are not equal
 	 */
-	default void assertEquals(Object expected, PackedCollection<?> actual) {
+	default void assertEquals(Object expected, PackedCollection actual) {
 		if (expected instanceof Number) {
 			assertEquals(((Number) expected).doubleValue(), actual.toDouble());
 		} else if (expected instanceof PackedCollection) {
-			assertEquals((PackedCollection<?>) expected, actual);
+			assertEquals((PackedCollection) expected, actual);
 		} else if (!Objects.equals(expected, actual)) {
 			throw new AssertionError(actual + " != " + expected);
 		}
@@ -256,7 +256,7 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 	 * @param actual   the actual collection to compare
 	 * @throws AssertionError if the collections are not equal
 	 */
-	default void assertEquals(String msg, PackedCollection<?> expected, PackedCollection<?> actual) {
+	default void assertEquals(String msg, PackedCollection expected, PackedCollection actual) {
 		try {
 			assertEquals(expected, actual);
 		} catch (AssertionError e) {
@@ -276,7 +276,7 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 	 * @param actual   the actual collection values
 	 * @return the average absolute difference between corresponding elements
 	 */
-	default double compare(PackedCollection<?> expected, PackedCollection<?> actual) {
+	default double compare(PackedCollection expected, PackedCollection actual) {
 		double exp[] = expected.toArray();
 		double act[] = actual.toArray();
 		return IntStream.range(0, exp.length)
@@ -292,7 +292,7 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 	 * @param actual   the actual collection to compare
 	 * @throws AssertionError if shapes differ or any element values differ
 	 */
-	default void assertEquals(PackedCollection<?> expected, PackedCollection<?> actual) {
+	default void assertEquals(PackedCollection expected, PackedCollection actual) {
 		if (!expected.getShape().equalsIgnoreAxis(actual.getShape())) {
 			throw new AssertionError(actual.getShape() + " != " + expected.getShape());
 		}
@@ -449,10 +449,10 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 	 * @param result   the producer yielding the actual values to compare
 	 * @throws AssertionError if shapes differ or any element values differ
 	 */
-	default void compare(CollectionProducer<PackedCollection<?>> expected,
-						 CollectionProducer<PackedCollection<?>> result) {
-		PackedCollection<?> e = expected.evaluate();
-		PackedCollection<?> o = result.evaluate();
+	default void compare(CollectionProducer<PackedCollection> expected,
+						 CollectionProducer<PackedCollection> result) {
+		PackedCollection e = expected.evaluate();
+		PackedCollection o = result.evaluate();
 
 		if (!e.getShape().equals(o.getShape())) {
 			log(o.getShape().toStringDetail() + " != " + e.getShape().toStringDetail());
@@ -478,8 +478,8 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 	 * @param validate a consumer that validates the output collection
 	 * @see #kernelTest(String, Supplier, Consumer, boolean, boolean, boolean)
 	 */
-	default void kernelTest(Supplier<? extends Producer<PackedCollection<?>>> supply,
-							Consumer<PackedCollection<?>> validate) {
+	default void kernelTest(Supplier<? extends Producer<PackedCollection>> supply,
+							Consumer<PackedCollection> validate) {
 		kernelTest(supply, validate, true, true, true);
 	}
 
@@ -492,8 +492,8 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 	 * @return the operation profile node containing timing information, or null if name was null
 	 */
 	default OperationProfileNode kernelTest(String name,
-											Supplier<? extends Producer<PackedCollection<?>>> supply,
-											Consumer<PackedCollection<?>> validate) {
+											Supplier<? extends Producer<PackedCollection>> supply,
+											Consumer<PackedCollection> validate) {
 		return kernelTest(name, supply, validate, true, true, true);
 	}
 
@@ -506,8 +506,8 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 	 * @param operation if true, tests operation list execution
 	 * @param optimized if true, tests optimized parallel process execution
 	 */
-	default void kernelTest(Supplier<? extends Producer<PackedCollection<?>>> supply,
-							Consumer<PackedCollection<?>> validate,
+	default void kernelTest(Supplier<? extends Producer<PackedCollection>> supply,
+							Consumer<PackedCollection> validate,
 							boolean kernel, boolean operation, boolean optimized) {
 		kernelTest(null, supply, validate, kernel, operation, optimized);
 	}
@@ -532,17 +532,17 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 	 * @return the operation profile node containing timing information, or null if name was null
 	 */
 	default OperationProfileNode kernelTest(String name,
-							Supplier<? extends Producer<PackedCollection<?>>> supply, Consumer<PackedCollection<?>> validate,
+							Supplier<? extends Producer<PackedCollection>> supply, Consumer<PackedCollection> validate,
 							boolean kernel, boolean operation, boolean optimized) {
 		OperationProfileNode profile = name == null ? null : new OperationProfileNode(name);
 
-		AtomicReference<PackedCollection<?>> outputRef = new AtomicReference<>();
+		AtomicReference<PackedCollection> outputRef = new AtomicReference<>();
 
 		if (kernel) {
 			System.out.println("TestFeatures: Running kernel evaluation...");
-			Producer<PackedCollection<?>> p = supply.get();
+			Producer<PackedCollection> p = supply.get();
 			profile(profile, () -> {
-				PackedCollection<?> output = p.get().evaluate();
+				PackedCollection output = p.get().evaluate();
 				log("Output Shape = " + output.getShape() +
 						" [" + output.getShape().getCountLong() + "x" + output.getShape().getSize() + "]");
 				log("Validating kernel output...");
@@ -550,13 +550,13 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 				outputRef.set(output);
 			});
 		} else {
-			outputRef.set(new PackedCollection<>(shape(supply.get())));
+			outputRef.set(new PackedCollection(shape(supply.get())));
 		}
 
 		if (operation) {
 			outputRef.get().clear();
 
-			PackedCollection<?> output = outputRef.get();
+			PackedCollection output = outputRef.get();
 
 			log("Running kernel operation...");
 			OperationList op = new OperationList();
@@ -569,8 +569,8 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 		if (optimized) {
 			outputRef.get().clear();
 
-			PackedCollection<?> output = outputRef.get();
-			PackedCollection<?> dest = new PackedCollection<>(output.getShape());
+			PackedCollection output = outputRef.get();
+			PackedCollection dest = new PackedCollection(output.getShape());
 
 			log("Running optimized kernel operation...");
 			OperationList op = new OperationList();

@@ -39,7 +39,7 @@ import java.util.function.LongSupplier;
  * <h2>Example Usage</h2>
  * <pre>{@code
  * // Create source data
- * PackedCollection<?> source = new PackedCollection<>(100);
+ * PackedCollection source = new PackedCollection(100);
  *
  * // Create chromosome
  * ProjectedChromosome chromosome = new ProjectedChromosome(source);
@@ -49,7 +49,7 @@ import java.util.function.LongSupplier;
  * ProjectedGene gene2 = chromosome.addGene(10);  // 10 factors
  *
  * // Add a choice gene for discrete selection
- * PackedCollection<?> choices = new PackedCollection<>(3);  // 3 choices
+ * PackedCollection choices = new PackedCollection(3);  // 3 choices
  * ChoiceGene choiceGene = chromosome.addChoiceGene(choices, 1);
  *
  * // Initialize weights and compute values
@@ -58,7 +58,7 @@ import java.util.function.LongSupplier;
  * chromosome.refreshValues();
  *
  * // Access genes
- * Gene<PackedCollection<?>> first = chromosome.valueAt(0);
+ * Gene<PackedCollection> first = chromosome.valueAt(0);
  * }</pre>
  *
  * @see ProjectedGene
@@ -66,18 +66,18 @@ import java.util.function.LongSupplier;
  * @see ChoiceGene
  * @see Chromosome
  */
-public class ProjectedChromosome implements Chromosome<PackedCollection<?>>, CollectionFeatures {
-	private final PackedCollection<?> source;
+public class ProjectedChromosome implements Chromosome<PackedCollection>, CollectionFeatures {
+	private final PackedCollection source;
 
 	private List<ProjectedGene> projections;
-	private List<Gene<PackedCollection<?>>> genes;
+	private List<Gene<PackedCollection>> genes;
 
 	/**
 	 * Constructs a new {@code ProjectedChromosome} with the specified source data.
 	 *
 	 * @param source the source data that all genes in this chromosome will project from
 	 */
-	public ProjectedChromosome(PackedCollection<?> source) {
+	public ProjectedChromosome(PackedCollection source) {
 		this.source = source;
 		this.projections = new ArrayList<>();
 		this.genes = new ArrayList<>();
@@ -115,7 +115,7 @@ public class ProjectedChromosome implements Chromosome<PackedCollection<?>>, Col
 	 */
 	protected ProjectedGene createGene(int length) {
 		int input = source.getShape().getTotalSize();
-		PackedCollection<?> weight = new PackedCollection<>(shape(length, input).traverse(1));
+		PackedCollection weight = new PackedCollection(shape(length, input).traverse(1));
 		ProjectedGene gene = new ProjectedGene(source, weight);
 		projections.add(gene);
 		return gene;
@@ -141,7 +141,7 @@ public class ProjectedChromosome implements Chromosome<PackedCollection<?>>, Col
 	 * @param length the number of factors in the underlying projected gene
 	 * @return the newly created and added ChoiceGene
 	 */
-	public ChoiceGene addChoiceGene(PackedCollection<?> choices, int length) {
+	public ChoiceGene addChoiceGene(PackedCollection choices, int length) {
 		ChoiceGene gene = new ChoiceGene(createGene(length), choices);
 		genes.add(gene);
 		return gene;
@@ -168,7 +168,7 @@ public class ProjectedChromosome implements Chromosome<PackedCollection<?>>, Col
 	 * @return the gene at that position
 	 */
 	@Override
-	public Gene<PackedCollection<?>> valueAt(int pos) {
+	public Gene<PackedCollection> valueAt(int pos) {
 		return genes.get(pos);
 	}
 

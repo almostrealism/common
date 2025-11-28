@@ -33,7 +33,7 @@ public class Qwen3SyntheticTest {
 	 */
 	private static StateDictionary createRandomWeights(Qwen3Config config, long seed) {
 		Random random = new Random(seed);
-		Map<String, PackedCollection<?>> weights = new HashMap<>();
+		Map<String, PackedCollection> weights = new HashMap<>();
 
 		int kvDim = config.dim * config.kvHeadCount / config.headCount;
 
@@ -92,9 +92,9 @@ public class Qwen3SyntheticTest {
 		return new StateDictionary(weights);
 	}
 
-	private static PackedCollection<?> randomCollection(Random random, int... dims) {
+	private static PackedCollection randomCollection(Random random, int... dims) {
 		TraversalPolicy shape = new TraversalPolicy(dims);
-		PackedCollection<?> collection = new PackedCollection<>(shape);
+		PackedCollection collection = new PackedCollection(shape);
 
 		// Fill with small random values (-0.1 to 0.1)
 		int size = shape.getTotalSize();
@@ -199,32 +199,32 @@ public class Qwen3SyntheticTest {
 		StateDictionary stateDict = createRandomWeights(config, 12345L);
 
 		// Check token embeddings
-		PackedCollection<?> embeddings = stateDict.get("model.embed_tokens.weight");
+		PackedCollection embeddings = stateDict.get("model.embed_tokens.weight");
 		assertNotNull("Token embeddings should exist", embeddings);
 		assertEquals("tokenEmbeddings shape",
 			config.vocabSize * config.dim,
 			embeddings.getShape().getTotalSize());
 
 		// Check first layer attention weights
-		PackedCollection<?> wq = stateDict.get("model.layers.0.self_attn.q_proj.weight");
+		PackedCollection wq = stateDict.get("model.layers.0.self_attn.q_proj.weight");
 		assertNotNull("Query weights should exist", wq);
 		assertEquals("wq shape per layer",
 			config.dim * config.dim,
 			wq.getShape().getTotalSize());
 
-		PackedCollection<?> wk = stateDict.get("model.layers.0.self_attn.k_proj.weight");
+		PackedCollection wk = stateDict.get("model.layers.0.self_attn.k_proj.weight");
 		assertNotNull("Key weights should exist", wk);
 		assertEquals("wk shape per layer (GQA)",
 			kvDim * config.dim,
 			wk.getShape().getTotalSize());
 
-		PackedCollection<?> qkNormQ = stateDict.get("model.layers.0.self_attn.q_norm.weight");
+		PackedCollection qkNormQ = stateDict.get("model.layers.0.self_attn.q_norm.weight");
 		assertNotNull("QK-Norm Q should exist", qkNormQ);
 		assertEquals("qkNormQ shape per layer",
 			config.headCount * config.headSize,
 			qkNormQ.getShape().getTotalSize());
 
-		PackedCollection<?> qkNormK = stateDict.get("model.layers.0.self_attn.k_norm.weight");
+		PackedCollection qkNormK = stateDict.get("model.layers.0.self_attn.k_norm.weight");
 		assertNotNull("QK-Norm K should exist", qkNormK);
 		assertEquals("qkNormK shape per layer (GQA)",
 			config.kvHeadCount * config.headSize,

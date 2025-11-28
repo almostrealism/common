@@ -77,19 +77,19 @@ import java.util.function.Supplier;
  * @see org.almostrealism.geometry.ShadableIntersection
  */
 // TODO  T must extend ShadableIntersection so that distance can be used as the rank
-public class LightingEngine<T extends ContinuousField> extends ProducerWithRankAdapter<RGB>
+public class LightingEngine<T extends ContinuousField> extends ProducerWithRankAdapter<PackedCollection>
 				implements DimensionAware, CodeFeatures, RGBFeatures {
 	public static boolean enableShadows = false;
 
 	private T intersections;
-	private Curve<RGB> surface;
+	private Curve<PackedCollection> surface;
 
-	private Producer<RGB> color;
-	private Producer<PackedCollection<?>> distance;
+	private Producer<PackedCollection> color;
+	private Producer<PackedCollection> distance;
 
 	public LightingEngine(T intersections,
-						  Curve<RGB> surface,
-						  Collection<Curve<RGB>> otherSurfaces,
+						  Curve<PackedCollection> surface,
+						  Collection<Curve<PackedCollection>> otherSurfaces,
 						  Light light, Iterable<Light> otherLights, ShaderContext p) {
 		super(((ShadableIntersection) intersections).getDistance());
 		this.color = shadowAndShadeProduct(intersections, surface, otherSurfaces, light, otherLights, p);
@@ -98,19 +98,19 @@ public class LightingEngine<T extends ContinuousField> extends ProducerWithRankA
 		this.distance = (Producer) ((ShadableIntersection) intersections).getDistance();
 	}
 
-	protected CollectionProducer<RGB> shadowAndShadeProduct(ContinuousField intersections,
-															Curve<RGB> surface,
-															Collection<Curve<RGB>> otherSurfaces,
+	protected CollectionProducer<PackedCollection> shadowAndShadeProduct(ContinuousField intersections,
+															Curve<PackedCollection> surface,
+															Collection<Curve<PackedCollection>> otherSurfaces,
 															Light light, Iterable<Light> otherLights, ShaderContext p) {
 		Supplier shadowAndShade[] = shadowAndShade(intersections, surface, otherSurfaces, light, otherLights, p);
 		return multiply((Producer) shadowAndShade[0], (Producer) shadowAndShade[1]);
 	}
 
 	protected Supplier[] shadowAndShade(ContinuousField intersections,
-											   Curve<RGB> surface,
-											   Collection<Curve<RGB>> otherSurfaces,
+											   Curve<PackedCollection> surface,
+											   Collection<Curve<PackedCollection>> otherSurfaces,
 											   Light light, Iterable<Light> otherLights, ShaderContext p) {
-		Supplier<Evaluable<? extends RGB>> shadow, shade;
+		Supplier shadow, shade;
 
 		List<Intersectable> allSurfaces = new ArrayList<>();
 		if (surface instanceof Intersectable) allSurfaces.add((Intersectable) surface);
@@ -139,7 +139,7 @@ public class LightingEngine<T extends ContinuousField> extends ProducerWithRankA
 			Vector l = (directionalLight.getDirection().divide(
 					directionalLight.getDirection().length())).minus();
 
-			context.setLightDirection(Ops.o().v(l));
+			context.setLightDirection((Producer) Ops.o().v(l));
 
 			shade = surface instanceof Shadable ? ((Shadable) surface).shade(context) : null;
 		} else if (light instanceof AmbientLight) {
@@ -158,13 +158,13 @@ public class LightingEngine<T extends ContinuousField> extends ProducerWithRankA
 		}
 	}
 
-	public Curve<RGB> getSurface() { return surface; }
+	public Curve<PackedCollection> getSurface() { return surface; }
 
 	@Override
-	public Producer<RGB> getProducer() { return color; }
+	public Producer<PackedCollection> getProducer() { return color; }
 
 	@Override
-	public Producer<PackedCollection<?>> getRank() { return distance; }
+	public Producer<PackedCollection> getRank() { return distance; }
 
 	/**
 	 * Performs the lighting calculations for the specified surface at the specified point of intersection
@@ -173,10 +173,10 @@ public class LightingEngine<T extends ContinuousField> extends ProducerWithRankA
 	 * for reflection/shadowing. This list does not include the specified surface for which the lighting
 	 * calculations are to be done.
 	 */
-	public Producer<RGB> lightingCalculation(ContinuousField intersection, Evaluable<Vector> point,
-																		 Curve<RGB> surface, Iterable<Curve<RGB>> otherSurfaces,
+	public Producer<PackedCollection> lightingCalculation(ContinuousField intersection, Evaluable<? extends PackedCollection> point,
+																		 Curve<PackedCollection> surface, Iterable<Curve<PackedCollection>> otherSurfaces,
 																		 Light lights[], ShaderContext p) {
-		Producer<RGB> color = null;
+		Producer<PackedCollection> color = null;
 
 		for (int i = 0; i < lights.length; i++) {
 			Light otherLights[] = new Light[lights.length - 1];
@@ -184,7 +184,7 @@ public class LightingEngine<T extends ContinuousField> extends ProducerWithRankA
 			for (int j = 0; j < i; j++) { otherLights[j] = lights[j]; }
 			for (int j = i + 1; j < lights.length; j++) { otherLights[j - 1] = lights[j]; }
 
-			Producer<RGB> c = lightingCalculation(intersection, point, surface,
+			Producer<PackedCollection> c = lightingCalculation(intersection, point, surface,
 										otherSurfaces, lights[i], otherLights, p);
 			if (c != null) {
 				if (color == null) {
@@ -206,12 +206,12 @@ public class LightingEngine<T extends ContinuousField> extends ProducerWithRankA
 	 * include the specified surface for which the lighting calculations are to be done.
 	 */
 	@Deprecated
-	public Producer<RGB> lightingCalculation(ContinuousField intersection, Evaluable<Vector> point,
-																		 Curve<RGB> surface,
-																		 Iterable<Curve<RGB>> otherSurfaces, Light light,
+	public Producer<PackedCollection> lightingCalculation(ContinuousField intersection, Evaluable<? extends PackedCollection> point,
+																		 Curve<PackedCollection> surface,
+																		 Iterable<Curve<PackedCollection>> otherSurfaces, Light light,
 																		 Light otherLights[], ShaderContext p) {
-		List<Curve<RGB>> allSurfaces = new ArrayList<>();
-		for (Curve<RGB> s : otherSurfaces) allSurfaces.add(s);
+		List<Curve<PackedCollection>> allSurfaces = new ArrayList<>();
+		for (Curve<PackedCollection> s : otherSurfaces) allSurfaces.add(s);
 		allSurfaces.add(surface);
 
 		if (light instanceof SurfaceLight) {

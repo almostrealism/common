@@ -42,15 +42,15 @@ import java.util.stream.IntStream;
  * // Create uniform random values with shape [3, 4]
  * TraversalPolicy shape = new TraversalPolicy(3, 4);
  * Random uniformRandom = new Random(shape);
- * PackedCollection<?> uniformValues = uniformRandom.get().evaluate();
+ * PackedCollection uniformValues = uniformRandom.get().evaluate();
  * 
  * // Create normal distribution random values
  * Random normalRandom = new Random(shape, true);
- * PackedCollection<?> normalValues = normalRandom.get().evaluate();
+ * PackedCollection normalValues = normalRandom.get().evaluate();
  * 
  * // Using convenience methods from CollectionFeatures
- * Producer<PackedCollection<?>> rand = rand(3, 4);  // uniform
- * Producer<PackedCollection<?>> randn = randn(3, 4); // normal
+ * Producer<PackedCollection> rand = rand(3, 4);  // uniform
+ * Producer<PackedCollection> randn = randn(3, 4); // normal
  * }</pre>
  * 
  * <p>The class maintains an internal cache of generated values that can be refreshed
@@ -71,7 +71,7 @@ import java.util.stream.IntStream;
  * @see PackedCollection
  * @since 0.52
  */
-public class Random implements CollectionProducer<PackedCollection<?>>, OperationInfo {
+public class Random implements CollectionProducer<PackedCollection>, OperationInfo {
 	/** Static seed used by the xorshift random number generator in {@link #nextInt()} and {@link #nextFloat()} */
 	private static long seed;
 
@@ -206,26 +206,26 @@ public class Random implements CollectionProducer<PackedCollection<?>>, Operatio
 	 * @return an Evaluable that generates PackedCollection instances filled with random values
 	 */
 	@Override
-	public Evaluable<PackedCollection<?>> get() {
+	public Evaluable<PackedCollection> get() {
 		return new Evaluable<>() {
 			@Override
-			public Multiple<PackedCollection<?>> createDestination(int size) {
-				return new PackedCollection<>(getShape().prependDimension(size));
+			public Multiple<PackedCollection> createDestination(int size) {
+				return new PackedCollection(getShape().prependDimension(size));
 			}
 
 			@Override
-			public PackedCollection<?> evaluate(Object... args) {
-				PackedCollection<?> destination = new PackedCollection<>(getShape());
+			public PackedCollection evaluate(Object... args) {
+				PackedCollection destination = new PackedCollection(getShape());
 				into(destination).evaluate(args);
 				return destination;
 			}
 
 			@Override
-			public Evaluable<PackedCollection<?>> into(Object destination) {
+			public Evaluable<PackedCollection> into(Object destination) {
 				return args -> {
 					initValues();
 					((MemoryBank) destination).setMem(values);
-					return (PackedCollection<?>) destination;
+					return (PackedCollection) destination;
 				};
 			}
 		};
@@ -248,7 +248,7 @@ public class Random implements CollectionProducer<PackedCollection<?>>, Operatio
 	 * @return a new Producer that provides traversal functionality
 	 */
 	@Override
-	public CollectionProducer<PackedCollection<?>> traverse(int axis) {
+	public CollectionProducer<PackedCollection> traverse(int axis) {
 		return new ReshapeProducer(axis, this);
 	}
 
@@ -259,7 +259,7 @@ public class Random implements CollectionProducer<PackedCollection<?>>, Operatio
 	 * @return a new Producer with the specified shape
 	 */
 	@Override
-	public CollectionProducer<PackedCollection<?>> reshape(TraversalPolicy shape) {
+	public CollectionProducer<PackedCollection> reshape(TraversalPolicy shape) {
 		return new ReshapeProducer(shape, this);
 	}
 

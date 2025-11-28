@@ -15,6 +15,7 @@
  */
 
 package org.almostrealism.collect;
+import org.almostrealism.collect.PackedCollection;
 
 import io.almostrealism.code.ComputableParallelProcess;
 import io.almostrealism.collect.Shape;
@@ -47,6 +48,6 @@ import io.almostrealism.compute.Process;
  * @see ComputableParallelProcess
  * @see org.almostrealism.collect.computations.CollectionProducerComputationBase
  */
-public interface CollectionProducerParallelProcess<T extends Shape<?>> extends
+public interface CollectionProducerParallelProcess<T extends PackedCollection> extends
 			CollectionProducer<T>, ComputableParallelProcess<Process<?, ?>, Evaluable<? extends T>> {
 }

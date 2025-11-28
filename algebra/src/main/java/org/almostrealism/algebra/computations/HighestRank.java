@@ -52,8 +52,8 @@ import org.almostrealism.collect.computations.CollectionProducerComputationBase;
  * <pre>{@code
  * // Distance array: [0.0, 0.5, 0.3, 0.0, 0.8]
  * // Configuration: (5, epsilon)
- * Producer<PackedCollection<?>> distances = ...;
- * Producer<Pair<?>> config = pair(5.0, epsilon);
+ * Producer<PackedCollection> distances = ...;
+ * Producer<Pair> config = pair(5.0, epsilon);
  *
  * HighestRank highestRank = new HighestRank(distances, config);
  * // Result: (0.3, 2) - value 0.3 at index 2 is the smallest non-zero distance
@@ -62,7 +62,7 @@ import org.almostrealism.collect.computations.CollectionProducerComputationBase;
  * @author  Michael Murray
  * @see Pair
  */
-public class HighestRank extends CollectionProducerComputationBase<PackedCollection<?>, Pair<?>> {
+public class HighestRank extends CollectionProducerComputationBase<PackedCollection, Pair> {
 	private int varIdx = 0;
 
 	/**
@@ -71,7 +71,7 @@ public class HighestRank extends CollectionProducerComputationBase<PackedCollect
 	 * @param distances  producer for the array of distance/score values
 	 * @param conf  producer for configuration pair containing (count, epsilon)
 	 */
-	public HighestRank(Producer<PackedCollection<?>> distances, Producer<Pair<?>> conf) {
+	public HighestRank(Producer<PackedCollection> distances, Producer<Pair> conf) {
 		super("highestRank", CollectionFeatures.getInstance().shape(distances), distances, (Producer) conf);
 		setPostprocessor(Pair.postprocessor());
 	}
@@ -108,8 +108,8 @@ public class HighestRank extends CollectionProducerComputationBase<PackedCollect
 	 * @return the scope containing the search logic
 	 */
 	@Override
-	public Scope<Pair<?>> getScope(KernelStructureContext context) {
-		HybridScope<Pair<?>> scope = new HybridScope<>(this);
+	public Scope<Pair> getScope(KernelStructureContext context) {
+		HybridScope<Pair> scope = new HybridScope<>(this);
 
 		ArrayVariable distances = getArgument(1);
 		ArrayVariable conf = getArgument(2);

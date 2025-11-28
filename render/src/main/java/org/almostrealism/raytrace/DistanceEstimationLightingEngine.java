@@ -15,6 +15,7 @@
  */
 
 package org.almostrealism.raytrace;
+import org.almostrealism.collect.PackedCollection;
 
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.geometry.ContinuousField;
@@ -87,8 +88,8 @@ public class DistanceEstimationLightingEngine extends LightingEngine {
 	private DistanceEstimator estimator;
 	private ShaderSet shaders;
 
-	public DistanceEstimationLightingEngine(Evaluable<Ray> ray, Curve<RGB> surface,
-											Collection<? extends Curve<RGB>> otherSurfaces,
+	public DistanceEstimationLightingEngine(Evaluable<Ray> ray, Curve<PackedCollection> surface,
+											Collection<? extends Curve<PackedCollection>> otherSurfaces,
 											Light light, Iterable<Light> otherLights,
 											ShaderContext p, DistanceEstimator estimator, ShaderSet shaders) {
 		// TODO
@@ -146,7 +147,7 @@ public class DistanceEstimationLightingEngine extends LightingEngine {
 	 * with the ContinuousField interface.</p>
 	 */
 	public static class Locus extends ArrayList<Producer<Ray>>
-			implements ContinuousField, Callable<Producer<RGB>>, Shadable, CodeFeatures {
+			implements ContinuousField, Callable<Producer<PackedCollection>>, Shadable, CodeFeatures {
 		private ShaderSet shaders;
 		private ShaderContext params;
 
@@ -165,7 +166,7 @@ public class DistanceEstimationLightingEngine extends LightingEngine {
 		}
 
 		@Override
-		public Producer<Vector> getNormalAt(Producer<Vector> vector) {
+		public Producer<PackedCollection> getNormalAt(Producer<PackedCollection> vector) {
 			return direction(get(0));
 		}
 
@@ -183,9 +184,9 @@ public class DistanceEstimationLightingEngine extends LightingEngine {
 		}
 
 		@Override
-		public Producer<RGB> shade(ShaderContext parameters) {
+		public Producer<PackedCollection> shade(ShaderContext parameters) {
 			try {
-				Producer<RGB> color = null;
+				Producer<PackedCollection> color = null;
 
 				if (shaders != null)
 					color = shaders.shade(parameters, this);
@@ -198,7 +199,7 @@ public class DistanceEstimationLightingEngine extends LightingEngine {
 		}
 
 		@Override
-		public Producer<RGB> call() {
+		public Producer<PackedCollection> call() {
 			return shade(params);
 		}
 	}

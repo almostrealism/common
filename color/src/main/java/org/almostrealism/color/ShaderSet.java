@@ -19,6 +19,7 @@ package org.almostrealism.color;
 import java.util.HashSet;
 import java.util.Iterator;
 
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.geometry.DiscreteField;
 import io.almostrealism.relation.Producer;
 
@@ -44,7 +45,7 @@ import io.almostrealism.relation.Producer;
  * material.add(new HighlightShader(white(), 32.0)); // Sharp specular
  *
  * // Apply the combined shader
- * Producer<RGB> finalColor = material.shade(context, normalField);
+ * Producer<PackedCollection> finalColor = material.shade(context, normalField);
  * }</pre>
  *
  * <h2>Color Combination</h2>
@@ -71,9 +72,9 @@ public class ShaderSet<C extends LightingContext> extends HashSet<Shader<C>> imp
 	 *         or {@code null} if the set is empty
 	 */
 	@Override
-	public Producer<RGB> shade(C p, DiscreteField normals) {
+	public Producer<PackedCollection> shade(C p, DiscreteField normals) {
 		Iterator<Shader<C>> itr = super.iterator();
-		Producer<RGB> colors = null;
+		Producer<PackedCollection> colors = null;
 
 		while (itr.hasNext()) {
 			colors = colors == null ? itr.next().shade(p, normals) : add(colors, itr.next().shade(p, normals));

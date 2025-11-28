@@ -334,9 +334,9 @@ public class Polynomial extends AbstractSurface {
 	 * {@link Evaluable}.
 	 */
 	@Override
-	public Producer<Vector> getNormalAt(Producer<Vector> p) {
+	public Producer<PackedCollection> getNormalAt(Producer<PackedCollection> p) {
 		return () -> args -> {
-			Vector point = p.get().evaluate(args);
+			Vector point = new Vector(p.get().evaluate(args), 0);
 			return evaluateGradient(point.getX(), point.getY(), point.getZ());
 		};
 	}
@@ -348,7 +348,7 @@ public class Polynomial extends AbstractSurface {
 	 */
 	@Override
 	public ShadableIntersection intersectAt(Producer<Ray> r) {
-		Producer<PackedCollection<?>> s = () -> args -> {
+		Producer<PackedCollection> s = () -> args -> {
 			Ray ray = r.get().evaluate(args);
 			ray = ray.transform(getTransform(true).getInverse());
 
@@ -452,7 +452,7 @@ public class Polynomial extends AbstractSurface {
 				}
 			}
 
-			PackedCollection<?> result = new PackedCollection<>(1);
+			PackedCollection result = new PackedCollection(1);
 			result.setMem(0, closest);
 			return result;
 		};
@@ -461,29 +461,29 @@ public class Polynomial extends AbstractSurface {
 	}
 
 	@Override
-	public Operator<PackedCollection<?>> expect() {
-		PackedCollection<?> zero = new PackedCollection<>(1);
+	public Operator<PackedCollection> expect() {
+		PackedCollection zero = new PackedCollection(1);
 		zero.setMem(0, 0.0);
 		return new Constant<>(zero);
 	}
 
 	@Override
-	public Operator<PackedCollection<?>> get() {
+	public Operator<PackedCollection> get() {
 		return new Operator<>() {
 			@Override
-			public Evaluable<PackedCollection<?>> get() {
+			public Evaluable<PackedCollection> get() {
 				return args -> {
 					// TODO  Preserve uncertainty in the Vector so that the scalar is as uncertain or more
 					Vector v = getInput().get().evaluate(args);
-					PackedCollection<?> result = new PackedCollection<>(1);
+					PackedCollection result = new PackedCollection(1);
 					result.setMem(0, Polynomial.this.evaluate(v.getX(), v.getY(), v.getZ()));
 					return result;
 				};
 			}
 
 			@Override
-			public Scope<PackedCollection<?>> getScope(KernelStructureContext context) {
-				Scope<PackedCollection<?>> s = new Scope<>();
+			public Scope<PackedCollection> getScope(KernelStructureContext context) {
+				Scope<PackedCollection> s = new Scope<>();
 				// TODO  This is not correct
 				// s.getVariables().add(new Variable("scalar", get().evaluate()));
 				return s;

@@ -37,16 +37,16 @@ import org.almostrealism.hardware.MemoryData;
  * <h2>Usage Example</h2>
  * <pre>{@code
  * // Create a simple input-output pair
- * PackedCollection<?> input = loadImage();
- * PackedCollection<?> label = oneHotEncode(classIndex);
- * ValueTarget<PackedCollection<?>> sample = ValueTarget.of(input, label);
+ * PackedCollection input = loadImage();
+ * PackedCollection label = oneHotEncode(classIndex);
+ * ValueTarget<PackedCollection> sample = ValueTarget.of(input, label);
  *
  * // Access during training
- * PackedCollection<?> x = sample.getInput();
- * PackedCollection<?> y = sample.getExpectedOutput();
+ * PackedCollection x = sample.getInput();
+ * PackedCollection y = sample.getExpectedOutput();
  *
  * // With additional arguments for multi-input models
- * ValueTarget<PackedCollection<?>> multiInput = sample.withArguments(mask, positions);
+ * ValueTarget<PackedCollection> multiInput = sample.withArguments(mask, positions);
  * }</pre>
  *
  * @param <T> the type of data stored (typically {@link PackedCollection})
@@ -62,7 +62,7 @@ public interface ValueTarget<T extends MemoryData> {
 	 *
 	 * @return the input tensor
 	 */
-	PackedCollection<T> getInput();
+	PackedCollection getInput();
 
 	/**
 	 * Returns additional arguments for multi-input models.
@@ -73,7 +73,7 @@ public interface ValueTarget<T extends MemoryData> {
 	 *
 	 * @return an array of additional input tensors; empty array by default
 	 */
-	default PackedCollection<?>[] getArguments() {
+	default PackedCollection[] getArguments() {
 		return new PackedCollection[0];
 	}
 
@@ -82,7 +82,7 @@ public interface ValueTarget<T extends MemoryData> {
 	 *
 	 * @return the target tensor
 	 */
-	PackedCollection<T> getExpectedOutput();
+	PackedCollection getExpectedOutput();
 
 	/**
 	 * Creates a new value target with additional arguments.
@@ -96,22 +96,22 @@ public interface ValueTarget<T extends MemoryData> {
 	 * @param args the additional arguments to include
 	 * @return a new value target with the specified arguments
 	 */
-	default <V extends PackedCollection<?>> ValueTarget<V> withArguments(PackedCollection<?>... args) {
+	default <V extends PackedCollection> ValueTarget<V> withArguments(PackedCollection... args) {
 		ValueTarget<T> original = this;
 
 		return new ValueTarget<>() {
 			@Override
-			public PackedCollection<V> getInput() {
+			public PackedCollection getInput() {
 				return (PackedCollection) original.getInput();
 			}
 
 			@Override
-			public PackedCollection<?>[] getArguments() {
+			public PackedCollection[] getArguments() {
 				return args;
 			}
 
 			@Override
-			public PackedCollection<V> getExpectedOutput() {
+			public PackedCollection getExpectedOutput() {
 				return (PackedCollection) original.getExpectedOutput();
 			}
 		};
@@ -125,16 +125,16 @@ public interface ValueTarget<T extends MemoryData> {
 	 * @param expectedOutput the target tensor
 	 * @return a new value target wrapping the input-output pair
 	 */
-	static <T extends MemoryData> ValueTarget<T> of(PackedCollection<?> input, PackedCollection<?> expectedOutput) {
+	static <T extends MemoryData> ValueTarget<T> of(PackedCollection input, PackedCollection expectedOutput) {
 		return new ValueTarget<T>() {
 			@Override
-			public PackedCollection<T> getInput() {
-				return (PackedCollection<T>) input;
+			public PackedCollection getInput() {
+				return (PackedCollection) input;
 			}
 
 			@Override
-			public PackedCollection<T> getExpectedOutput() {
-				return (PackedCollection<T>) expectedOutput;
+			public PackedCollection getExpectedOutput() {
+				return (PackedCollection) expectedOutput;
 			}
 		};
 	}

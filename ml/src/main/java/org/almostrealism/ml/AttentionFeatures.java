@@ -133,7 +133,7 @@ import java.util.function.Function;
  *
  *         for (int layer = 0; layer < config.layerCount; layer++) {
  *             // Load weights for this layer
- *             PackedCollection<?> wq = weights.get("layers." + layer + ".self_attn.q_proj.weight");
+ *             PackedCollection wq = weights.get("layers." + layer + ".self_attn.q_proj.weight");
  *             // ... load other weights ...
  *
  *             // Use generalized attention method
@@ -170,7 +170,7 @@ public interface AttentionFeatures extends RotationFeatures {
 	 * @param requirements Compute requirements
 	 * @return A function that creates an attention keys layer for a given input shape
 	 */
-	default Function<TraversalPolicy, CellularLayer> attentionKeys(Producer<PackedCollection<?>> keys,
+	default Function<TraversalPolicy, CellularLayer> attentionKeys(Producer<PackedCollection> keys,
 																   ComputeRequirement... requirements) {
 		return inputShape -> attentionKeys(inputShape, keys, requirements);
 	}
@@ -188,7 +188,7 @@ public interface AttentionFeatures extends RotationFeatures {
 	 * @return Attention keys layer producing (heads, seqLength) scores
 	 */
 	default CellularLayer attentionKeys(TraversalPolicy inputShape,
-										Producer<PackedCollection<?>> keys,
+										Producer<PackedCollection> keys,
 										ComputeRequirement... requirements) {
 		TraversalPolicy keyShape = shape(keys); // (seqLength, kvHeads, headSize)
 
@@ -213,7 +213,7 @@ public interface AttentionFeatures extends RotationFeatures {
 
 		// Expand KV heads if needed (GQA), otherwise use keys directly
 		int headsPerKvGroup = heads / kvHeads;
-		final Producer<PackedCollection<?>> expandedKeys = (kvHeads != heads)
+		final Producer<PackedCollection> expandedKeys = (kvHeads != heads)
 				? expandKeysForGQA(keys, seqLength, kvHeads, heads, headSize, headsPerKvGroup)
 				: keys;
 
@@ -238,12 +238,12 @@ public interface AttentionFeatures extends RotationFeatures {
 	 * - kvHead[0] -> queryHeads[0..6]
 	 * - kvHead[1] -> queryHeads[7..13]
 	 */
-	default Producer<PackedCollection<?>> expandKeysForGQA(
-			Producer<PackedCollection<?>> keys,
+	default Producer<PackedCollection> expandKeysForGQA(
+			Producer<PackedCollection> keys,
 			int seqLength, int kvHeads, int heads, int headSize, int headsPerKvGroup) {
 		// (seqLength, kvHeads, headSize) -> (seqLength, kvHeads, headsPerKvGroup, headSize)
 		// traverse(2) traverses first 2 dims, repeat inserts new dimension
-		Producer<PackedCollection<?>> repeated = traverse(2, keys).repeat(headsPerKvGroup);
+		Producer<PackedCollection> repeated = traverse(2, keys).repeat(headsPerKvGroup);
 
 		// (seqLength, kvHeads, headsPerKvGroup, headSize) -> (seqLength, heads, headSize)
 		return reshape(shape(seqLength, heads, headSize), repeated);
@@ -256,7 +256,7 @@ public interface AttentionFeatures extends RotationFeatures {
 	 * @param requirements Compute requirements
 	 * @return A function that creates an attention values layer for a given input shape
 	 */
-	default Function<TraversalPolicy, CellularLayer> attentionValues(Producer<PackedCollection<?>> values,
+	default Function<TraversalPolicy, CellularLayer> attentionValues(Producer<PackedCollection> values,
 																     ComputeRequirement... requirements) {
 		return inputShape -> attentionValues(inputShape, values, requirements);
 	}
@@ -274,7 +274,7 @@ public interface AttentionFeatures extends RotationFeatures {
 	 * @return Attention values layer producing (dim) output
 	 */
 	default CellularLayer attentionValues(TraversalPolicy inputShape,
-										  Producer<PackedCollection<?>> values,
+										  Producer<PackedCollection> values,
 										  ComputeRequirement... requirements) {
 		TraversalPolicy valueShape = shape(values); // (seqLength, kvHeads, headSize)
 
@@ -299,16 +299,16 @@ public interface AttentionFeatures extends RotationFeatures {
 
 		// Expand KV heads if needed (GQA), otherwise use values directly
 		int headsPerKvGroup = heads / kvHeads;
-		final Producer<PackedCollection<?>> expandedValues = (kvHeads != heads)
+		final Producer<PackedCollection> expandedValues = (kvHeads != heads)
 				? expandValuesForGQA(values, seqLength, kvHeads, heads, headSize, headsPerKvGroup)
 				: values;
 
 		return layer("attentionValues", inputShape, outputShape, input -> {
-			Producer<PackedCollection<?>> v = reshape(shape(seqLength, dim), expandedValues);
+			Producer<PackedCollection> v = reshape(shape(seqLength, dim), expandedValues);
 			v = enumerate(1, 1, v).reshape(shape(heads, headSize, seqLength));
 
-			CollectionProducer<PackedCollection<?>> a = traverse(1, input).repeat(headSize);
-			CollectionProducer<PackedCollection<?>> o = multiply(traverseEach(a), traverseEach(v)).traverse(2).sum();
+			CollectionProducer<PackedCollection> a = traverse(1, input).repeat(headSize);
+			CollectionProducer<PackedCollection> o = multiply(traverseEach(a), traverseEach(v)).traverse(2).sum();
 			return o.reshape(shape(dim).traverseEach());
 		}, requirements);
 	}
@@ -319,11 +319,11 @@ public interface AttentionFeatures extends RotationFeatures {
 	 * Same logic as expandKeysForGQA - transforms (seqLength, kvHeads, headSize)
 	 * to (seqLength, heads, headSize).
 	 */
-	default Producer<PackedCollection<?>> expandValuesForGQA(
-			Producer<PackedCollection<?>> values,
+	default Producer<PackedCollection> expandValuesForGQA(
+			Producer<PackedCollection> values,
 			int seqLength, int kvHeads, int heads, int headSize, int headsPerKvGroup) {
 		// (seqLength, kvHeads, headSize) -> (seqLength, kvHeads, headsPerKvGroup, headSize)
-		Producer<PackedCollection<?>> repeated = traverse(2, values).repeat(headsPerKvGroup);
+		Producer<PackedCollection> repeated = traverse(2, values).repeat(headsPerKvGroup);
 
 		// (seqLength, kvHeads, headsPerKvGroup, headSize) -> (seqLength, heads, headSize)
 		return reshape(shape(seqLength, heads, headSize), repeated);
@@ -334,11 +334,11 @@ public interface AttentionFeatures extends RotationFeatures {
 	 * Delegates to the full attention method with null optional parameters.
 	 */
 	default Block attention(int heads,
-							PackedCollection<?> rmsAttWeight,
-							PackedCollection<?> wk, PackedCollection<?> wv,
-							PackedCollection<?> wq, PackedCollection<?> wo,
-							PackedCollection<?> freqCis,
-							Producer<PackedCollection<?>> position,
+							PackedCollection rmsAttWeight,
+							PackedCollection wk, PackedCollection wv,
+							PackedCollection wq, PackedCollection wo,
+							PackedCollection freqCis,
+							Producer<PackedCollection> position,
 							ComputeRequirement... requirements) {
 		return attention(heads, heads, rmsAttWeight, wk, wv, wq, wo,
 				null, null, null, null, null, freqCis, position, requirements);
@@ -372,14 +372,14 @@ public interface AttentionFeatures extends RotationFeatures {
 	 * @return Attention block
 	 */
 	default Block attention(int heads, int kvHeads,
-							PackedCollection<?> rmsAttWeight,
-							PackedCollection<?> wk, PackedCollection<?> wv,
-							PackedCollection<?> wq, PackedCollection<?> wo,
-							PackedCollection<?> bk, PackedCollection<?> bv,
-							PackedCollection<?> bq,
-							PackedCollection<?> qkNormQ, PackedCollection<?> qkNormK,
-							PackedCollection<?> freqCis,
-							Producer<PackedCollection<?>> position,
+							PackedCollection rmsAttWeight,
+							PackedCollection wk, PackedCollection wv,
+							PackedCollection wq, PackedCollection wo,
+							PackedCollection bk, PackedCollection bv,
+							PackedCollection bq,
+							PackedCollection qkNormQ, PackedCollection qkNormK,
+							PackedCollection freqCis,
+							Producer<PackedCollection> position,
 							ComputeRequirement... requirements) {
 		int dim = rmsAttWeight.getShape().length(0);
 		int headSize = freqCis.getShape().length(1) * 2; // freqCis is (seqLen, headSize/2, 2)
@@ -388,8 +388,8 @@ public interface AttentionFeatures extends RotationFeatures {
 
 		SequentialBlock attention = new SequentialBlock(shape(dim));
 
-		PackedCollection<?> keyCache = new PackedCollection<>(seqLen, kvHeads, headSize);
-		PackedCollection<?> valueCache = new PackedCollection<>(seqLen, kvHeads, headSize);
+		PackedCollection keyCache = new PackedCollection(seqLen, kvHeads, headSize);
+		PackedCollection valueCache = new PackedCollection(seqLen, kvHeads, headSize);
 
 		// Zero-initialize caches to prevent garbage values from causing numerical explosions
 		keyCache.clear();
@@ -443,10 +443,10 @@ public interface AttentionFeatures extends RotationFeatures {
 		// Add dynamic causal mask: mask[i] = -10000 if i > position, else 0
 		// This prevents attention from seeing future positions in the KV cache
 		CollectionProducer<?> indices = integers(0, seqLen);
-		CollectionProducer<PackedCollection<?>> maskRow =
+		CollectionProducer<PackedCollection> maskRow =
 			greaterThan(indices, position, c(-10000.0), c(0.0), false);
 		// Reshape to (1, 1, seqLen) and repeat for all heads -> (heads, 1, seqLen)
-		CollectionProducer<PackedCollection<?>> causalMask = maskRow.reshape(1, 1, seqLen).repeat(heads);
+		CollectionProducer<PackedCollection> causalMask = maskRow.reshape(1, 1, seqLen).repeat(heads);
 
 		// Create a block to add the causal mask to the attention scores
 		attention.add(layer("causal_mask", attentionShape, attentionShape,
@@ -486,10 +486,10 @@ public interface AttentionFeatures extends RotationFeatures {
 	 * @return Sequence attention block
 	 */
 	default Block sequenceAttention(int batchSize, int seqLen, int dim, int heads,
-									PackedCollection<?> toQkvWeight, PackedCollection<?> toOutWeight,
-									PackedCollection<?> qNormWeight, PackedCollection<?> qNormBias,
-									PackedCollection<?> kNormWeight, PackedCollection<?> kNormBias,
-									PackedCollection<?> invFreq) {
+									PackedCollection toQkvWeight, PackedCollection toOutWeight,
+									PackedCollection qNormWeight, PackedCollection qNormBias,
+									PackedCollection kNormWeight, PackedCollection kNormBias,
+									PackedCollection invFreq) {
 		int dimHead = dim / heads;
 
 		SequentialBlock attention = new SequentialBlock(shape(batchSize, seqLen, dim));
@@ -519,8 +519,8 @@ public interface AttentionFeatures extends RotationFeatures {
 		k.add(applyRotaryPositionEmbedding(shape(batchSize, heads, seqLen, dimHead), invFreq));
 
 		// 6. Store K and V tensors for use in attention computation
-		PackedCollection<?> kTensor = new PackedCollection<>(shape(batchSize, heads, seqLen, dimHead));
-		PackedCollection<?> vTensor = new PackedCollection<>(shape(batchSize, heads, seqLen, dimHead));
+		PackedCollection kTensor = new PackedCollection(shape(batchSize, heads, seqLen, dimHead));
+		PackedCollection vTensor = new PackedCollection(shape(batchSize, heads, seqLen, dimHead));
 
 		k.andThen(into(kTensor));
 		v.andThen(into(vTensor));
@@ -571,11 +571,11 @@ public interface AttentionFeatures extends RotationFeatures {
 	 */
 	default Block sequenceCrossAttention(int batchSize, int querySeqLen, int contextSeqLen,
 										 int dim, int heads,
-										 PackedCollection<?> toQWeight, PackedCollection<?> toKvWeight,
-										 PackedCollection<?> toOutWeight,
-										 PackedCollection<?> qNormWeight, PackedCollection<?> qNormBias,
-										 PackedCollection<?> kNormWeight, PackedCollection<?> kNormBias,
-										 Block contextInput, Receptor<PackedCollection<?>> attentionScores) {
+										 PackedCollection toQWeight, PackedCollection toKvWeight,
+										 PackedCollection toOutWeight,
+										 PackedCollection qNormWeight, PackedCollection qNormBias,
+										 PackedCollection kNormWeight, PackedCollection kNormBias,
+										 Block contextInput, Receptor<PackedCollection> attentionScores) {
 		int dimHead = dim / heads;
 
 		SequentialBlock crossAttention = new SequentialBlock(shape(batchSize, querySeqLen, dim));
@@ -605,8 +605,8 @@ public interface AttentionFeatures extends RotationFeatures {
 		k.add(norm(kNormWeight, kNormBias, 1e-6));
 
 		// 6. Store K and V tensors for use in attention computation
-		PackedCollection<?> kTensor = new PackedCollection<>(shape(batchSize, heads, contextSeqLen, dimHead));
-		PackedCollection<?> vTensor = new PackedCollection<>(shape(batchSize, heads, contextSeqLen, dimHead));
+		PackedCollection kTensor = new PackedCollection(shape(batchSize, heads, contextSeqLen, dimHead));
+		PackedCollection vTensor = new PackedCollection(shape(batchSize, heads, contextSeqLen, dimHead));
 
 		k.andThen(into(kTensor));
 		v.andThen(into(vTensor));
@@ -638,8 +638,8 @@ public interface AttentionFeatures extends RotationFeatures {
 	 * @return Feed-forward block
 	 */
 	default Block feedForward(
-			PackedCollection<?> rms,
-			PackedCollection<?> w1, PackedCollection<?> w2, PackedCollection<?> w3,
+			PackedCollection rms,
+			PackedCollection w1, PackedCollection w2, PackedCollection w3,
 			ComputeRequirement... requirements) {
 		int dim = w2.getShape().length(0);
 		return feedForward(shape(dim), rms, null,
@@ -667,9 +667,9 @@ public interface AttentionFeatures extends RotationFeatures {
 	 */
 	default Block feedForward(
 			TraversalPolicy shape,
-			PackedCollection<?> normWeights, PackedCollection<?> normBiases,
-			PackedCollection<?> w1, PackedCollection<?> w2, PackedCollection<?> w3,
-			PackedCollection<?> w1Bias, PackedCollection<?> w2Bias, PackedCollection<?> w3Bias,
+			PackedCollection normWeights, PackedCollection normBiases,
+			PackedCollection w1, PackedCollection w2, PackedCollection w3,
+			PackedCollection w1Bias, PackedCollection w2Bias, PackedCollection w3Bias,
 			ComputeRequirement... requirements) {
 		SequentialBlock feedForward = new SequentialBlock(shape);
 		feedForward.add(rmsnorm(normWeights, normBiases, requirements));
@@ -690,8 +690,8 @@ public interface AttentionFeatures extends RotationFeatures {
 	 * @param bias Linear projection bias
 	 * @return A function that creates a GLU block for a given input shape
 	 */
-	default Function<TraversalPolicy, Block> gatedLinear(PackedCollection<?> weight,
-														 PackedCollection<?> bias) {
+	default Function<TraversalPolicy, Block> gatedLinear(PackedCollection weight,
+														 PackedCollection bias) {
 		return inputShape -> gatedLinear(inputShape, weight, bias);
 	}
 
@@ -708,8 +708,8 @@ public interface AttentionFeatures extends RotationFeatures {
 	 * @return Gated linear block
 	 */
 	default Block gatedLinear(TraversalPolicy inputShape,
-							  PackedCollection<?> weight,
-							  PackedCollection<?> bias) {
+							  PackedCollection weight,
+							  PackedCollection bias) {
 		SequentialBlock glu = new SequentialBlock(inputShape);
 		glu.add(dense(weight, bias));
 
@@ -736,9 +736,9 @@ public interface AttentionFeatures extends RotationFeatures {
 	 * @param requirements Compute requirements
 	 * @return A function that creates a gated linear FFN block for a given input shape
 	 */
-	default Function<TraversalPolicy, Block> gatedLinearFeedForward(PackedCollection<?> normWeights, PackedCollection<?> normBiases,
-																	 PackedCollection<?> weightIn, PackedCollection<?> biasIn,
-																	 PackedCollection<?> weightOut, PackedCollection<?> biasOut,
+	default Function<TraversalPolicy, Block> gatedLinearFeedForward(PackedCollection normWeights, PackedCollection normBiases,
+																	 PackedCollection weightIn, PackedCollection biasIn,
+																	 PackedCollection weightOut, PackedCollection biasOut,
 																	ComputeRequirement... requirements) {
 		return inputShape ->
 				gatedLinearFeedForward(inputShape, normWeights, normBiases,
@@ -763,9 +763,9 @@ public interface AttentionFeatures extends RotationFeatures {
 	 * @return Gated linear feed-forward block
 	 */
 	default Block gatedLinearFeedForward(TraversalPolicy inputShape,
-										 PackedCollection<?> normWeights, PackedCollection<?> normBiases,
-										 PackedCollection<?> weightIn, PackedCollection<?> biasIn,
-										 PackedCollection<?> weightOut, PackedCollection<?> biasOut,
+										 PackedCollection normWeights, PackedCollection normBiases,
+										 PackedCollection weightIn, PackedCollection biasIn,
+										 PackedCollection weightOut, PackedCollection biasOut,
 										 ComputeRequirement... requirements) {
 		SequentialBlock feedForward = new SequentialBlock(inputShape);
 		feedForward.add(norm(normWeights, normBiases, requirements));
@@ -815,20 +815,20 @@ public interface AttentionFeatures extends RotationFeatures {
 								   boolean crossAttend,
 								   int contextSeqLen, Block context,
 								   // Self-attention weights
-								   PackedCollection<?> preNormWeight, PackedCollection<?> preNormBias,
-								   PackedCollection<?> selfQkv, PackedCollection<?> selfWo,
-								   PackedCollection<?> selfQNormWeight, PackedCollection<?> selfQNormBias,
-								   PackedCollection<?> selfKNormWeight, PackedCollection<?> selfKNormBias,
-								   PackedCollection<?> invFreq,
+								   PackedCollection preNormWeight, PackedCollection preNormBias,
+								   PackedCollection selfQkv, PackedCollection selfWo,
+								   PackedCollection selfQNormWeight, PackedCollection selfQNormBias,
+								   PackedCollection selfKNormWeight, PackedCollection selfKNormBias,
+								   PackedCollection invFreq,
 								   // Cross-attention weights
-								   PackedCollection<?> crossAttPreNormWeight, PackedCollection<?> crossAttPreNormBias,
-								   PackedCollection<?> crossWq, PackedCollection<?> crossKv, PackedCollection<?> crossWo,
-								   PackedCollection<?> crossQNormWeight, PackedCollection<?> crossQNormBias,
-								   PackedCollection<?> crossKNormWeight, PackedCollection<?> crossKNormBias,
+								   PackedCollection crossAttPreNormWeight, PackedCollection crossAttPreNormBias,
+								   PackedCollection crossWq, PackedCollection crossKv, PackedCollection crossWo,
+								   PackedCollection crossQNormWeight, PackedCollection crossQNormBias,
+								   PackedCollection crossKNormWeight, PackedCollection crossKNormBias,
 								   // Feed-forward weights
-								   PackedCollection<?> ffnNormWeight, PackedCollection<?> ffnNormBias,
-								   PackedCollection<?> w1, PackedCollection<?> w2,
-								   PackedCollection<?> w1Bias, PackedCollection<?> w2Bias) {
+								   PackedCollection ffnNormWeight, PackedCollection ffnNormBias,
+								   PackedCollection w1, PackedCollection w2,
+								   PackedCollection w1Bias, PackedCollection w2Bias) {
 		return transformerBlock(batchSize, dim, seqLen, heads, crossAttend,
 				contextSeqLen, context,
 				preNormWeight, preNormBias,
@@ -894,21 +894,21 @@ public interface AttentionFeatures extends RotationFeatures {
 								   boolean crossAttend,
 								   int contextSeqLen, Block context,
 								   // Self-attention weights
-								   PackedCollection<?> preNormWeight, PackedCollection<?> preNormBias,
-								   PackedCollection<?> selfQkv, PackedCollection<?> selfWo,
-								   PackedCollection<?> selfQNormWeight, PackedCollection<?> selfQNormBias,
-								   PackedCollection<?> selfKNormWeight, PackedCollection<?> selfKNormBias,
-								   PackedCollection<?> invFreq,
+								   PackedCollection preNormWeight, PackedCollection preNormBias,
+								   PackedCollection selfQkv, PackedCollection selfWo,
+								   PackedCollection selfQNormWeight, PackedCollection selfQNormBias,
+								   PackedCollection selfKNormWeight, PackedCollection selfKNormBias,
+								   PackedCollection invFreq,
 								   // Cross-attention weights
-								   PackedCollection<?> crossAttPreNormWeight, PackedCollection<?> crossAttPreNormBias,
-								   PackedCollection<?> crossWq, PackedCollection<?> crossKv, PackedCollection<?> crossWo,
-								   PackedCollection<?> crossQNormWeight, PackedCollection<?> crossQNormBias,
-								   PackedCollection<?> crossKNormWeight, PackedCollection<?> crossKNormBias,
+								   PackedCollection crossAttPreNormWeight, PackedCollection crossAttPreNormBias,
+								   PackedCollection crossWq, PackedCollection crossKv, PackedCollection crossWo,
+								   PackedCollection crossQNormWeight, PackedCollection crossQNormBias,
+								   PackedCollection crossKNormWeight, PackedCollection crossKNormBias,
 								   // Feed-forward weights
-								   PackedCollection<?> ffnNormWeight, PackedCollection<?> ffnNormBias,
-								   PackedCollection<?> w1, PackedCollection<?> w2,
-								   PackedCollection<?> w1Bias, PackedCollection<?> w2Bias,
-								   Receptor<PackedCollection<?>> attentionScores) {
+								   PackedCollection ffnNormWeight, PackedCollection ffnNormBias,
+								   PackedCollection w1, PackedCollection w2,
+								   PackedCollection w1Bias, PackedCollection w2Bias,
+								   Receptor<PackedCollection> attentionScores) {
 		SequentialBlock block = new SequentialBlock(shape(batchSize, seqLen, dim));
 
 		// Self-attention with pre-normalization inside residual branch
@@ -953,13 +953,13 @@ public interface AttentionFeatures extends RotationFeatures {
 	 * Delegates to the full transformer method with null optional parameters.
 	 */
 	default Block transformer(int heads,
-							  PackedCollection<?> rmsAttWeight,
-							  PackedCollection<?> wk, PackedCollection<?> wv,
-							  PackedCollection<?> wq, PackedCollection<?> wo,
-							  PackedCollection<?> freqCis,
-							  PackedCollection<?> rmsFfnWeight,
-							  PackedCollection<?> w1, PackedCollection<?> w2, PackedCollection<?> w3,
-							  Producer<PackedCollection<?>> position,
+							  PackedCollection rmsAttWeight,
+							  PackedCollection wk, PackedCollection wv,
+							  PackedCollection wq, PackedCollection wo,
+							  PackedCollection freqCis,
+							  PackedCollection rmsFfnWeight,
+							  PackedCollection w1, PackedCollection w2, PackedCollection w3,
+							  Producer<PackedCollection> position,
 							  ComputeRequirement... requirements) {
 		return transformer(heads, heads, rmsAttWeight, wk, wv, wq, wo,
 				null, null, null, null, null, freqCis, rmsFfnWeight, w1, w2, w3, position, requirements);
@@ -993,16 +993,16 @@ public interface AttentionFeatures extends RotationFeatures {
 	 * @return Complete transformer layer block
 	 */
 	default Block transformer(int heads, int kvHeads,
-							  PackedCollection<?> rmsAttWeight,
-							  PackedCollection<?> wk, PackedCollection<?> wv,
-							  PackedCollection<?> wq, PackedCollection<?> wo,
-							  PackedCollection<?> bk, PackedCollection<?> bv,
-							  PackedCollection<?> bq,
-							  PackedCollection<?> qkNormQ, PackedCollection<?> qkNormK,
-							  PackedCollection<?> freqCis,
-							  PackedCollection<?> rmsFfnWeight,
-							  PackedCollection<?> w1, PackedCollection<?> w2, PackedCollection<?> w3,
-							  Producer<PackedCollection<?>> position,
+							  PackedCollection rmsAttWeight,
+							  PackedCollection wk, PackedCollection wv,
+							  PackedCollection wq, PackedCollection wo,
+							  PackedCollection bk, PackedCollection bv,
+							  PackedCollection bq,
+							  PackedCollection qkNormQ, PackedCollection qkNormK,
+							  PackedCollection freqCis,
+							  PackedCollection rmsFfnWeight,
+							  PackedCollection w1, PackedCollection w2, PackedCollection w3,
+							  Producer<PackedCollection> position,
 							  ComputeRequirement... requirements) {
 		int dim = rmsAttWeight.getShape().length(0);
 		SequentialBlock transformer = new SequentialBlock(shape(dim));
@@ -1032,10 +1032,10 @@ public interface AttentionFeatures extends RotationFeatures {
 		}
 
 		return compose("context", v, shape(batchSize, heads, dimHead, dimHead), (a, b) -> {
-			CollectionProducer<PackedCollection<?>> pa = c(a)
+			CollectionProducer<PackedCollection> pa = c(a)
 					.traverse(3)
 					.repeat(dimHead);
-			CollectionProducer<PackedCollection<?>> pb = c(b)
+			CollectionProducer<PackedCollection> pb = c(b)
 					.traverse(2)
 					.repeat(dimHead);
 			return multiply(pa, pb).sum(4);
@@ -1130,13 +1130,13 @@ public interface AttentionFeatures extends RotationFeatures {
 	}
 
 	default Block scaledDotProductAttention(int batchSize, int seqLen, int heads, int dimHead,
-											PackedCollection<?> k, PackedCollection<?> v) {
+											PackedCollection k, PackedCollection v) {
 		return scaledDotProductAttention(batchSize, seqLen, seqLen, heads, dimHead, k, v, null);
 	}
 
 	default Block scaledDotProductAttention(int batchSize, int seqLen, int heads, int dimHead,
-											PackedCollection<?> k, PackedCollection<?> v,
-											Receptor<PackedCollection<?>> attentionScores) {
+											PackedCollection k, PackedCollection v,
+											Receptor<PackedCollection> attentionScores) {
 		return scaledDotProductAttention(batchSize, seqLen, seqLen, heads, dimHead, k, v, attentionScores);
 	}
 
@@ -1153,8 +1153,8 @@ public interface AttentionFeatures extends RotationFeatures {
 	 * @param v value tensor data (batch, heads, seqLenV, dimHead)
 	 */
 	default Block scaledDotProductAttention(int batchSize, int querySeqLen, int contextSeqLen, int heads, int dimHead,
-											PackedCollection<?> k, PackedCollection<?> v,
-											Receptor<PackedCollection<?>> attentionScores) {
+											PackedCollection k, PackedCollection v,
+											Receptor<PackedCollection> attentionScores) {
 		if (batchSize != 1) {
 			throw new UnsupportedOperationException("Batches of more than 1 are not currently supported");
 		}

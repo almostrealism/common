@@ -34,8 +34,8 @@ public class SharedEmbeddingsTest implements ConsoleFeatures {
         StateDictionary stateDict = new StateDictionary(WEIGHTS_DIR);
 
         // Check if lm_head exists separately
-        PackedCollection<?> lmHead = stateDict.get("lm_head.weight");
-        PackedCollection<?> embeddings = stateDict.get("model.embed_tokens.weight");
+        PackedCollection lmHead = stateDict.get("lm_head.weight");
+        PackedCollection embeddings = stateDict.get("model.embed_tokens.weight");
 
         log("Token embeddings shape: " + embeddings.getShape());
         log("Token embeddings address: " + System.identityHashCode(embeddings));
@@ -93,7 +93,7 @@ public class SharedEmbeddingsTest implements ConsoleFeatures {
         Qwen3Tokenizer tokenizer = new Qwen3Tokenizer(WEIGHTS_DIR + "/tokenizer.bin");
         Qwen3 model = new Qwen3(config, stateDict, tokenizer);
 
-        PackedCollection<?> modelEmbeddings = model.getTokenEmbeddings();
+        PackedCollection modelEmbeddings = model.getTokenEmbeddings();
         log("Model embeddings address: " + System.identityHashCode(modelEmbeddings));
         log("Model embeddings == state dict embeddings: " + (modelEmbeddings == embeddings));
 

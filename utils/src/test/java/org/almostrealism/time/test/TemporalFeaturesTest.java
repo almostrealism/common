@@ -71,9 +71,9 @@ public class TemporalFeaturesTest implements TestFeatures {
 	public void lowPassCoefficientsMultiple() {
 		int filterOrder = 30;
 		int sampleRate = 44100;
-		PackedCollection<?> cutoffs = pack(1000, 2000, 3000);
+		PackedCollection cutoffs = pack(1000, 2000, 3000);
 
-		PackedCollection<?> result = lowPassCoefficients(cp(cutoffs), sampleRate, filterOrder).get().evaluate();
+		PackedCollection result = lowPassCoefficients(cp(cutoffs), sampleRate, filterOrder).get().evaluate();
 
 		int len = filterOrder + 1;
 
@@ -91,9 +91,9 @@ public class TemporalFeaturesTest implements TestFeatures {
 	public void highPassCoefficientsMultiple() {
 		int filterOrder = 30;
 		int sampleRate = 44100;
-		PackedCollection<?> cutoffs = pack(1000, 2000, 3000);
+		PackedCollection cutoffs = pack(1000, 2000, 3000);
 
-		PackedCollection<?> result = highPassCoefficients(cp(cutoffs), sampleRate, filterOrder).get().evaluate();
+		PackedCollection result = highPassCoefficients(cp(cutoffs), sampleRate, filterOrder).get().evaluate();
 
 		int len = filterOrder + 1;
 
@@ -111,14 +111,14 @@ public class TemporalFeaturesTest implements TestFeatures {
 	public void lowPassCoefficientsArguments() {
 		int filterOrder = 30;
 		int sampleRate = 44100;
-		PackedCollection<?> cutoffs = pack(1000, 2000, 3000);
+		PackedCollection cutoffs = pack(1000, 2000, 3000);
 
-		PackedCollection<?> result = new PackedCollection<>(shape(cutoffs.getShape().getTotalSize(), (filterOrder + 1)));
+		PackedCollection result = new PackedCollection(shape(cutoffs.getShape().getTotalSize(), (filterOrder + 1)));
 		lowPassCoefficients(
 				v(shape(-1), 0), sampleRate, filterOrder)
 				.get().into(result.traverse(1)).evaluate(cutoffs);
 
-//		PackedCollection<?> result =
+//		PackedCollection result =
 //				lowPassCoefficients(
 //					v(shape(1), 0), sampleRate, filterOrder)
 //				.get().evaluate(cutoffs);
@@ -146,24 +146,24 @@ public class TemporalFeaturesTest implements TestFeatures {
 		int sampleRate = 44100;
 		int filterOrder = 20;
 
-		Producer<PackedCollection<?>> decision = cp(pack(c));
-		Producer<PackedCollection<?>> cutoff = c(8000);
+		Producer<PackedCollection> decision = cp(pack(c));
+		Producer<PackedCollection> cutoff = c(8000);
 
-		CollectionProducer<PackedCollection<?>> hpCoefficients =
+		CollectionProducer<PackedCollection> hpCoefficients =
 				highPassCoefficients(cutoff, sampleRate, filterOrder)
 						.reshape(1, filterOrder + 1);
-		CollectionProducer<PackedCollection<?>> lpCoefficients =
+		CollectionProducer<PackedCollection> lpCoefficients =
 				lowPassCoefficients(cutoff, sampleRate, filterOrder)
 						.reshape(1, filterOrder + 1);
 
-		Producer<PackedCollection<?>> coefficients = choice(2,
+		Producer<PackedCollection> coefficients = choice(2,
 				shape(filterOrder + 1),
 				decision,
 				concat(shape(2, filterOrder + 1), hpCoefficients, lpCoefficients).traverse(1));
 
-		PackedCollection<?> result = coefficients.evaluate();
+		PackedCollection result = coefficients.evaluate();
 
-		PackedCollection<?> expected;
+		PackedCollection expected;
 
 		if (c < 0.5) {
 			expected = highPassCoefficients(cutoff, sampleRate, filterOrder).evaluate();

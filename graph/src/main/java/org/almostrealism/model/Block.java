@@ -97,7 +97,7 @@ import java.util.function.Supplier;
  * @see Model
  * @author Michael Murray
  */
-public interface Block extends Component, CellularPropagation<PackedCollection<?>>, Setup, LayerFeatures {
+public interface Block extends Component, CellularPropagation<PackedCollection>, Setup, LayerFeatures {
 	/**
 	 * Flag to enable automatic count alignment when reshaping.
 	 */
@@ -116,7 +116,7 @@ public interface Block extends Component, CellularPropagation<PackedCollection<?
 	 * @param input the input data collection
 	 * @return a runnable that executes the forward pass when run
 	 */
-	default Runnable forward(PackedCollection<?> input) {
+	default Runnable forward(PackedCollection input) {
 		return getForward().push(CollectionFeatures.getInstance().cp(input)).get();
 	}
 
@@ -126,7 +126,7 @@ public interface Block extends Component, CellularPropagation<PackedCollection<?
 	 * @param input the input data producer
 	 * @return a supplier of the forward pass operations
 	 */
-	default Supplier<Runnable> forward(Producer<PackedCollection<?>> input) {
+	default Supplier<Runnable> forward(Producer<PackedCollection> input) {
 		return getForward().push(input);
 	}
 
@@ -251,7 +251,7 @@ public interface Block extends Component, CellularPropagation<PackedCollection<?
 	 * @param requirements optional compute requirements
 	 * @return a new block with the dense layer appended
 	 */
-	default Block andThenDense(PackedCollection<?> weights, ComputeRequirement... requirements) {
+	default Block andThenDense(PackedCollection weights, ComputeRequirement... requirements) {
 		return andThen(dense(weights, requirements));
 	}
 
@@ -263,8 +263,8 @@ public interface Block extends Component, CellularPropagation<PackedCollection<?
 	 * @param requirements optional compute requirements
 	 * @return a new block with the dense layer appended
 	 */
-	default Block andThenDense(PackedCollection<?> weights,
-							   PackedCollection<?> biases,
+	default Block andThenDense(PackedCollection weights,
+							   PackedCollection biases,
 							   ComputeRequirement... requirements) {
 		return andThen(dense(weights, biases, requirements));
 	}
@@ -307,14 +307,14 @@ public interface Block extends Component, CellularPropagation<PackedCollection<?
 		return andThen(next.apply(getOutputShape()));
 	}
 
-	default <T extends Receptor<PackedCollection<?>>> T andThen(T next) {
+	default <T extends Receptor<PackedCollection>> T andThen(T next) {
 		if (Layer.propagationWarnings)
 			warn("andThen(" + next + ") may not support backpropagation");
 		getForward().setReceptor(next);
 		return next;
 	}
 
-	default CollectionReceptor andThen(PackedCollection<?> destination) {
+	default CollectionReceptor andThen(PackedCollection destination) {
 		if (Layer.propagationWarnings)
 			warn("andThen(" + destination + ") may not support backpropagation");
 		CollectionReceptor r = new CollectionReceptor(destination);

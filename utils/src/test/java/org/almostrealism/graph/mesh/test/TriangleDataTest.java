@@ -35,7 +35,7 @@ public class TriangleDataTest implements TestFeatures {
 		data.getVertices().set(2, new Vector(1.0, -1.0, 0.0));
 		data.getVertices().set(3, new Vector(-1.0, 1.0, -1.0));
 		data.getVertices().set(4, new Vector(1.0, 1.0, -1.0));
-		assertEquals(-1.0, data.getVertices().get(1).getX());
+		assertEquals(-1.0, data.getVertices().get(1).toDouble(0));
 
 		data.setTriangle(0, 0, 1, 2);
 		data.setTriangle(1, 3, 1, 0);
@@ -43,37 +43,37 @@ public class TriangleDataTest implements TestFeatures {
 		return data;
 	}
 
-	protected PackedCollection<PackedCollection<Vector>> points() { return data().getMeshPointData(); }
+	protected PackedCollection points() { return data().getMeshPointData(); }
 
 	@Test
 	public void edges() {
-		PackedCollection<PackedCollection<Vector>> points = points();
+		PackedCollection points = points();
 
-		Producer<Vector> edge1 = vector(subtract(v(points.get(0).get(1)), v(points.get(0).get(0))));
-		Vector value = edge1.get().evaluate();
+		Producer<PackedCollection> edge1 = vector(subtract(v(points.get(0).get(1)), v(points.get(0).get(0))));
+		Vector value = new Vector(edge1.get().evaluate(), 0);
 		log(value);
-		Assert.assertEquals(-1, value.getX(), Math.pow(10, -10));
-		Assert.assertEquals(-2, value.getY(), Math.pow(10, -10));
-		Assert.assertEquals(0, value.getZ(), Math.pow(10, -10));
+		Assert.assertEquals(-1, value.toDouble(0), Math.pow(10, -10));
+		Assert.assertEquals(-2, value.toDouble(1), Math.pow(10, -10));
+		Assert.assertEquals(0, value.toDouble(2), Math.pow(10, -10));
 
-		Producer<Vector> edge2 = vector(subtract(v(points.get(0).get(2)), v(points.get(0).get(0))));
-		value = edge2.get().evaluate();
+		Producer<PackedCollection> edge2 = vector(subtract(v(points.get(0).get(2)), v(points.get(0).get(0))));
+		value = new Vector(edge2.get().evaluate(), 0);
 		log(value);
-		Assert.assertEquals(1, value.getX(), Math.pow(10, -10));
-		Assert.assertEquals(-2, value.getY(), Math.pow(10, -10));
-		Assert.assertEquals(0, value.getZ(), Math.pow(10, -10));
+		Assert.assertEquals(1, value.toDouble(0), Math.pow(10, -10));
+		Assert.assertEquals(-2, value.toDouble(1), Math.pow(10, -10));
+		Assert.assertEquals(0, value.toDouble(2), Math.pow(10, -10));
 
 		value = new Vector(crossProduct(vector(0.0, 0.0, -1.0), edge2).get().evaluate(), 0);
 		log(value);
-		Assert.assertEquals(-2, value.getX(), Math.pow(10, -10));
-		Assert.assertEquals(-1, value.getY(), Math.pow(10, -10));
-		Assert.assertEquals(0, value.getZ(), Math.pow(10, -10));
+		Assert.assertEquals(-2, value.toDouble(0), Math.pow(10, -10));
+		Assert.assertEquals(-1, value.toDouble(1), Math.pow(10, -10));
+		Assert.assertEquals(0, value.toDouble(2), Math.pow(10, -10));
 	}
 
 	@Test
 	public void triangleData() {
-		PackedCollection<PackedCollection<Vector>> points = points();
-		CollectionProducer<PackedCollection<?>> td = triangle(
+		PackedCollection points = points();
+		CollectionProducer<PackedCollection> td = triangle(
 											v(points.get(0).get(0)),
 											v(points.get(0).get(1)),
 											v(points.get(0).get(2)));
@@ -82,15 +82,15 @@ public class TriangleDataTest implements TestFeatures {
 
 	@Test
 	public void triangleDataKernel() {
-		PackedCollection<PackedCollection<Vector>> points = points();
-		Producer<PackedCollection<?>> td = triangle(points(0));
+		PackedCollection points = points();
+		Producer<PackedCollection> td = triangle(points(0));
 
 		MeshData output = new MeshData(1);
 		td.get().into(output).evaluate(points);
 		triangleDataAssertions(output.get(0));
 	}
 
-	protected void triangleDataAssertions(PackedCollection<?> value) {
+	protected void triangleDataAssertions(PackedCollection value) {
 		Assert.assertEquals(shape(4, 3).traverse(1), value.getShape());
 		value.print();
 
@@ -116,7 +116,7 @@ public class TriangleDataTest implements TestFeatures {
 	@Test
 	public void fromMesh() {
 		Mesh m = mesh();
-		PackedCollection<PackedCollection<Vector>> points = m.getMeshPointData();
+		PackedCollection points = m.getMeshPointData();
 		log("getMeshPointData shape: " + points.getShape());
 		log("Triangle count: " + m.getVertexData().getTriangleCount());
 

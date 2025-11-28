@@ -75,8 +75,8 @@ import java.util.stream.Stream;
  * <p>Example of kernel size inference:</p>
  * <pre>{@code
  * // Operation declares count = 1, but output requires 1000
- * Producer<PackedCollection<?>> op = ...; // count = 1
- * PackedCollection<?> output = PackedCollection.create(1000);
+ * Producer<PackedCollection> op = ...; // count = 1
+ * PackedCollection output = PackedCollection.create(1000);
  *
  * // ProcessDetailsFactory infers kernel size = 1000 from output
  * ProcessDetailsFactory factory = ...;
@@ -131,8 +131,8 @@ import java.util.stream.Stream;
  * ProcessDetailsFactory.enableConstantCache = true;
  *
  * // Constant argument
- * Producer<PackedCollection<?>> constant = c(42.0);
- * Evaluable<PackedCollection<?>> eval = constant.get();
+ * Producer<PackedCollection> constant = c(42.0);
+ * Evaluable<PackedCollection> eval = constant.get();
  *
  * // First execution: evaluates and caches
  * factory1.init(output, args).construct();  // Evaluates 42.0, caches result
@@ -149,7 +149,7 @@ import java.util.stream.Stream;
  * Hardware.enableAsync = true;
  *
  * // Complex argument requiring computation
- * Producer<PackedCollection<?>> complexArg = input.multiply(weights).add(bias);
+ * Producer<PackedCollection> complexArg = input.multiply(weights).add(bias);
  *
  * ProcessDetailsFactory factory = ...;
  * AcceleratedProcessDetails details = factory.construct();

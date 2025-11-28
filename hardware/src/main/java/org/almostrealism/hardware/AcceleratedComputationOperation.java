@@ -68,7 +68,7 @@ import java.util.function.Supplier;
  * <p>The wrapped {@link Computation} is compiled into executable code via {@link ComputationScopeCompiler}:</p>
  * <pre>{@code
  * // Create computation
- * Computation<PackedCollection<?>> multiply = c -> c.multiply(2.0);
+ * Computation<PackedCollection> multiply = c -> c.multiply(2.0);
  *
  * // Wrap for acceleration
  * AcceleratedComputationOperation op = new AcceleratedComputationOperation(
@@ -87,13 +87,13 @@ import java.util.function.Supplier;
  * a signature, compiled kernels are cached and shared across multiple instances:</p>
  * <pre>{@code
  * // First computation with signature "vectorAdd"
- * Computation<PackedCollection<?>> add1 = ...;
+ * Computation<PackedCollection> add1 = ...;
  * add1.getMetadata().setSignature("vectorAdd");
  * AcceleratedComputationOperation op1 = new AcceleratedComputationOperation(..., add1, true);
  * op1.prepareScope();  // Compiles and caches under signature "vectorAdd"
  *
  * // Second computation with same signature
- * Computation<PackedCollection<?>> add2 = ...;
+ * Computation<PackedCollection> add2 = ...;
  * add2.getMetadata().setSignature("vectorAdd");
  * AcceleratedComputationOperation op2 = new AcceleratedComputationOperation(..., add2, true);
  * op2.prepareScope();  // Reuses cached kernel from "vectorAdd"
@@ -163,7 +163,7 @@ import java.util.function.Supplier;
  * <h3>Creating from Computation</h3>
  * <pre>{@code
  * // Define computation
- * Computation<PackedCollection<?>> normalize = c -> c.divide(c.max());
+ * Computation<PackedCollection> normalize = c -> c.divide(c.max());
  *
  * // Wrap for GPU execution
  * AcceleratedComputationOperation normalizeOp = new AcceleratedComputationOperation(
@@ -179,7 +179,7 @@ import java.util.function.Supplier;
  * ScopeSettings.enableInstructionSetReuse = true;
  *
  * // Create computation with signature
- * Computation<PackedCollection<?>> op = ...;
+ * Computation<PackedCollection> op = ...;
  * op.getMetadata().setSignature("myOperation");
  *
  * // All operations with this signature share compiled kernels

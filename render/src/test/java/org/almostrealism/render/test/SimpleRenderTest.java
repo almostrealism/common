@@ -1,4 +1,5 @@
 package org.almostrealism.render.test;
+import org.almostrealism.collect.PackedCollection;
 
 import org.almostrealism.color.PointLight;
 import org.almostrealism.color.Shader;
@@ -160,37 +161,37 @@ public class SimpleRenderTest implements TestFeatures {
 		log("\n=== TEST 1: Static ray (working) ===");
 		Producer<Ray> staticRay = ray(0.0, 0.0, 10.0, 0.0, 0.0, -1.0);
 		org.almostrealism.geometry.ShadableIntersection staticIntersection = sphere.intersectAt(staticRay);
-		org.almostrealism.collect.PackedCollection<?> staticDistance = staticIntersection.getDistance().get().evaluate();
+		org.almostrealism.collect.PackedCollection staticDistance = staticIntersection.getDistance().get().evaluate();
 		double staticDistValue = staticDistance.toDouble(0);
 		log("Static ray distance: " + staticDistValue);
 		log("Expected: ~9.0");
 
 		// TEST 2: Dynamic ray from camera - evaluate with pixel position
 		log("\n=== TEST 2: Dynamic ray from camera (should work) ===");
-		Producer<org.almostrealism.algebra.Pair<?>> pixelPos = pair(0.0, 0.0);
-		Producer<org.almostrealism.algebra.Pair<?>> screenDim = pair(1.0, 1.0);
+		Producer<org.almostrealism.algebra.Pair> pixelPos = pair(0.0, 0.0);
+		Producer<org.almostrealism.algebra.Pair> screenDim = pair(1.0, 1.0);
 		Producer<Ray> dynamicRay = camera.rayAt(pixelPos, screenDim);
 		org.almostrealism.geometry.ShadableIntersection dynamicIntersection = sphere.intersectAt(dynamicRay);
-		org.almostrealism.collect.PackedCollection<?> dynamicDistance = dynamicIntersection.getDistance().get().evaluate();
+		org.almostrealism.collect.PackedCollection dynamicDistance = dynamicIntersection.getDistance().get().evaluate();
 		double dynamicDistValue = dynamicDistance.toDouble(0);
 		log("Dynamic ray distance: " + dynamicDistValue);
 		log("Expected: ~9.0");
 
 		// TEST 3: Dynamic ray with variable input - like rank cache does
 		log("\n=== TEST 3: Dynamic ray with v(shape(-1, 2), 0) (rank cache approach) ===");
-		Producer<org.almostrealism.algebra.Pair<?>> variablePixelPos = v(shape(-1, 2), 0);
-		Producer<org.almostrealism.algebra.Pair<?>> constantScreenDim = pair(1.0, 1.0);
+		Producer<org.almostrealism.algebra.Pair> variablePixelPos = v(shape(-1, 2), 0);
+		Producer<org.almostrealism.algebra.Pair> constantScreenDim = pair(1.0, 1.0);
 		Producer<Ray> variableRay = camera.rayAt(variablePixelPos, constantScreenDim);
 		org.almostrealism.geometry.ShadableIntersection variableIntersection = sphere.intersectAt(variableRay);
 
 		// Create input like initRankCache does
-		org.almostrealism.collect.PackedCollection<org.almostrealism.algebra.Pair<?>> input =
+		org.almostrealism.collect.PackedCollection input =
 			org.almostrealism.algebra.Pair.bank(1);
 		input.get(0).setMem(new double[] { 0.0, 0.0 });  // Single pixel at (0, 0)
 
 		// Evaluate with batch input like rank cache does
-		org.almostrealism.collect.PackedCollection<?> rankCollection =
-			new org.almostrealism.collect.PackedCollection<>(shape(1, 1).traverse(1));
+		org.almostrealism.collect.PackedCollection rankCollection =
+			new org.almostrealism.collect.PackedCollection(shape(1, 1).traverse(1));
 		variableIntersection.getDistance().get().into(rankCollection.each()).evaluate(input);
 
 		double variableDistValue = rankCollection.valueAt(0, 0);
@@ -231,12 +232,12 @@ public class SimpleRenderTest implements TestFeatures {
 
 		// Test with hardware acceleration
 		log("\n=== With hardware acceleration ===");
-		Producer<org.almostrealism.algebra.Pair<?>> pixelPos = pair(0.0, 0.0);
-		Producer<org.almostrealism.algebra.Pair<?>> screenDim = pair(1.0, 1.0);
+		Producer<org.almostrealism.algebra.Pair> pixelPos = pair(0.0, 0.0);
+		Producer<org.almostrealism.algebra.Pair> screenDim = pair(1.0, 1.0);
 		Producer<Ray> rayProducer = camera.rayAt(pixelPos, screenDim);
 
 		// Evaluate the ray
-		org.almostrealism.collect.PackedCollection<?> rayData = rayProducer.get().evaluate();
+		org.almostrealism.collect.PackedCollection rayData = rayProducer.get().evaluate();
 		log("Ray data count: " + rayData.getCount());
 		log("Ray data memory size: " + rayData.getMemLength());
 
@@ -311,7 +312,7 @@ public class SimpleRenderTest implements TestFeatures {
 		log("Created IntersectionalLightingEngine");
 
 		// Get the color producer
-		Producer<RGB> colorProducer = engine.getProducer();
+		Producer<PackedCollection> colorProducer = engine.getProducer();
 		log("Got color producer: " + colorProducer);
 
 		// Evaluate with a pixel position argument (doesn't matter which, just need to match expected args)
@@ -323,7 +324,7 @@ public class SimpleRenderTest implements TestFeatures {
 		if (result instanceof RGB) {
 			color = (RGB) result;
 		} else if (result instanceof org.almostrealism.collect.PackedCollection) {
-			color = new RGB((org.almostrealism.collect.PackedCollection<?>) result, 0);
+			color = new RGB((org.almostrealism.collect.PackedCollection) result, 0);
 		} else {
 			throw new IllegalStateException("Unexpected result type: " + result.getClass().getName());
 		}
@@ -356,7 +357,7 @@ public class SimpleRenderTest implements TestFeatures {
 		org.almostrealism.geometry.ShadableIntersection intersection = sphere.intersectAt(testRay);
 
 		// Evaluate the distance
-		org.almostrealism.collect.PackedCollection<?> distance = intersection.getDistance().get().evaluate();
+		org.almostrealism.collect.PackedCollection distance = intersection.getDistance().get().evaluate();
 
 		log("Distance value: " + distance.toDouble(0));
 		log("Expected: around 9.0 (10 - radius of 1)");
@@ -382,8 +383,8 @@ public class SimpleRenderTest implements TestFeatures {
 
 		// Generate ray for center pixel using width x height screen
 		// Center pixel is at (32, 32) in the width x height grid
-		Producer<org.almostrealism.algebra.Pair<?>> centerPos = pair(width / 2.0, height / 2.0);
-		Producer<org.almostrealism.algebra.Pair<?>> screenDim = pair(width, height);
+		Producer<org.almostrealism.algebra.Pair> centerPos = pair(width / 2.0, height / 2.0);
+		Producer<org.almostrealism.algebra.Pair> screenDim = pair(width, height);
 
 		Producer<Ray> cameraRay = camera.rayAt(centerPos, screenDim);
 
@@ -403,7 +404,7 @@ public class SimpleRenderTest implements TestFeatures {
 		sphere.setSize(1.0);
 
 		org.almostrealism.geometry.ShadableIntersection intersection = sphere.intersectAt(cameraRay);
-		org.almostrealism.collect.PackedCollection<?> distance = intersection.getDistance().get().evaluate();
+		org.almostrealism.collect.PackedCollection distance = intersection.getDistance().get().evaluate();
 
 		log("Intersection distance from camera ray: " + distance.toDouble(0));
 		double dist = distance.toDouble(0);

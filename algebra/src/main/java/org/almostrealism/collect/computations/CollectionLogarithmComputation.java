@@ -57,29 +57,29 @@ import java.util.List;
  * <p><strong>Basic natural logarithm:</strong></p>
  * <pre>{@code
  * TraversalPolicy shape = shape(4);
- * CollectionProducer<PackedCollection<?>> input = c(1.0, 2.718, 7.389, 20.086);
+ * CollectionProducer<PackedCollection> input = c(1.0, 2.718, 7.389, 20.086);
  *
- * CollectionLogarithmComputation<PackedCollection<?>> log =
+ * CollectionLogarithmComputation<PackedCollection> log =
  *     new CollectionLogarithmComputation<>(shape, input);
  *
- * PackedCollection<?> result = log.get().evaluate();
+ * PackedCollection result = log.get().evaluate();
  * // Result: [0.0, 1.0, 2.0, 3.0]
  * }</pre>
  *
  * <p><strong>Using via CollectionFeatures:</strong></p>
  * <pre>{@code
  * // More common usage through helper methods
- * CollectionProducer<PackedCollection<?>> x = c(1.0, Math.E, Math.E * Math.E);
- * CollectionProducer<PackedCollection<?>> logX = log(x);
+ * CollectionProducer<PackedCollection> x = c(1.0, Math.E, Math.E * Math.E);
+ * CollectionProducer<PackedCollection> logX = log(x);
  * // Result: [0.0, 1.0, 2.0]
  * }</pre>
  *
  * <p><strong>Computing gradients:</strong></p>
  * <pre>{@code
  * // f(x) = ln(x), df/dx = 1/x
- * CollectionProducer<PackedCollection<?>> x = x(5);
- * CollectionProducer<PackedCollection<?>> f = log(x);
- * CollectionProducer<PackedCollection<?>> df_dx = f.delta(x);
+ * CollectionProducer<PackedCollection> x = x(5);
+ * CollectionProducer<PackedCollection> f = log(x);
+ * CollectionProducer<PackedCollection> df_dx = f.delta(x);
  * // Result: element-wise 1/x
  * }</pre>
  *
@@ -107,7 +107,7 @@ import java.util.List;
  *
  * @author Michael Murray
  */
-public class CollectionLogarithmComputation<T extends PackedCollection<?>> extends TraversableExpressionComputation<T> {
+public class CollectionLogarithmComputation<T extends PackedCollection> extends TraversableExpressionComputation<T> {
 	/**
 	 * Enables optimized analytical derivative computation using the logarithm rule.
 	 * When true, the {@link #delta(Producer)} method applies d/dx[ln(x)] = 1/x
@@ -122,7 +122,7 @@ public class CollectionLogarithmComputation<T extends PackedCollection<?>> exten
 	 * @param input The {@link Producer} providing the input values (must be positive)
 	 */
 	public CollectionLogarithmComputation(TraversalPolicy shape,
-										  Producer<PackedCollection<?>> input) {
+										  Producer<PackedCollection> input) {
 		this("log", shape, input);
 	}
 
@@ -134,7 +134,7 @@ public class CollectionLogarithmComputation<T extends PackedCollection<?>> exten
 	 * @param input The {@link Producer} providing the input values
 	 */
 	protected CollectionLogarithmComputation(String name, TraversalPolicy shape,
-											   Producer<PackedCollection<?>> input) {
+											   Producer<PackedCollection> input) {
 		super(name, shape, MultiTermDeltaStrategy.NONE, input);
 	}
 

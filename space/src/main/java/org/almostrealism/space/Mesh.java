@@ -163,7 +163,7 @@ public class Mesh extends SpacePartition<Triangle> implements Graph<Vector> {
 		 * Returns the mesh vertex data as a packed collection suitable for hardware-accelerated processing.
 		 * @return packed collection of vertex position data organized by triangle
 		 */
-		PackedCollection<PackedCollection<Vector>> getMeshPointData();
+		PackedCollection getMeshPointData();
 	}
 	
   private List points, triangles;
@@ -283,8 +283,8 @@ public class Mesh extends SpacePartition<Triangle> implements Graph<Vector> {
 
 		Triangle t = new Triangle(v1, v2, v3);
 
-		Producer<Vector> tnp = t.getNormalAt(Vector.blank());
-		Vector tn = tnp.get().evaluate();
+		Producer<PackedCollection> tnp = t.getNormalAt(Vector.blank());
+		Vector tn = new Vector(tnp.get().evaluate(), 0);
 
 		if (this.triangles.add(new int[] {p1, p2, p3})) {
 			v1.addNormal(tn);
@@ -431,7 +431,7 @@ public class Mesh extends SpacePartition<Triangle> implements Graph<Vector> {
 	 */
   	public MeshData getMeshData() {
 		MeshData tdata = new MeshData(tcache.length);
-		PackedCollection<PackedCollection<Vector>> points = getMeshPointData();
+		PackedCollection points = getMeshPointData();
 		TriangleFeatures tf = TriangleFeatures.getInstance();
 		tf.triangle(tf.c(tf.p(points))).get().into(tdata.traverse(1)).evaluate();
   		return tdata;
@@ -443,7 +443,7 @@ public class Mesh extends SpacePartition<Triangle> implements Graph<Vector> {
 	 * @return packed collection of vertex positions organized by triangle
 	 * @throws RuntimeException if no vertex data provider is configured
 	 */
-	public PackedCollection<PackedCollection<Vector>> getMeshPointData() {
+	public PackedCollection getMeshPointData() {
   		if (vertexData == null) {
   			throw new RuntimeException("Not implemented");
 		}
@@ -648,7 +648,7 @@ public class Mesh extends SpacePartition<Triangle> implements Graph<Vector> {
 	 */
 	public int extrudeFace(int face, double l) {
 		return this.extrudeFace(face,
-				((Triangle) this.triangles.get(face)).getNormalAt(Vector.blank()).get().evaluate().multiply(l));
+				new Vector(((Triangle) this.triangles.get(face)).getNormalAt(Vector.blank()).get().evaluate(), 0).multiply(l));
 	}
 	
 	/**
@@ -752,8 +752,8 @@ public class Mesh extends SpacePartition<Triangle> implements Graph<Vector> {
 			}
 
 			Vector trv = tcache[i].getVertices()[0].subtract(r.getOrigin());
-			double dt = tcache[i].getNormalAt(Vector.blank()).get()
-					.evaluate().dotProduct(trv);
+			double dt = new Vector(tcache[i].getNormalAt(Vector.blank()).get()
+					.evaluate(), 0).dotProduct(trv);
 
 			if ((!getShadeFront() && !getShadeBack()) ||
 					(!getShadeFront() && dt < 0.0) ||

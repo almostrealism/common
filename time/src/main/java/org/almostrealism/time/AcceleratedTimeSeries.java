@@ -381,7 +381,7 @@ public class AcceleratedTimeSeries extends MemoryBankAdapter<TemporalScalar> imp
 	 * @return A producer that yields interpolated values
 	 * @deprecated Hardware-accelerated interpolation; consider using {@link #valueAt(double)} for CPU queries
 	 */
-	public Producer<PackedCollection<?>> valueAt(Producer<CursorPair> cursor) {
+	public Producer<PackedCollection> valueAt(Producer<CursorPair> cursor) {
 		return new AcceleratedTimeSeriesValueAt(() -> new Provider<>(this), cursor);
 	}
 

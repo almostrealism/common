@@ -35,7 +35,7 @@ public class SphereTest implements TestFeatures {
 	public void intersectionTests() {
 		Sphere s = new Sphere();
 		ShadableIntersection f = s.intersectAt(ray(0.0, 0.0, 3.0, 0.0, 0.0, 1.0));
-		PackedCollection<?> distance = f.getDistance().get().evaluate();
+		PackedCollection distance = f.getDistance().get().evaluate();
 		distance.print();
 		assertEquals(-1, distance);
 
@@ -70,11 +70,11 @@ public class SphereTest implements TestFeatures {
 		Producer<Ray> ray = v(shape(-1, 6), 0);
 		Producer<?> d = s.discriminant(ray);
 
-		PackedCollection<?> singleRay = new PackedCollection<>(shape(1, 6).traverse(1));
+		PackedCollection singleRay = new PackedCollection(shape(1, 6).traverse(1));
 		singleRay.setMem(0, 0, 0, 3, 0, 0, -1); // origin (0,0,3), direction (0,0,-1)
 
-		PackedCollection<?> result = new PackedCollection<>(shape(1, 1).traverse(1));
-		Evaluable<PackedCollection<?>> ev = greaterThan(c(d), c(0.0), c(1.0), c(-1.0)).get();
+		PackedCollection result = new PackedCollection(shape(1, 1).traverse(1));
+		Evaluable<PackedCollection> ev = greaterThan(c(d), c(0.0), c(1.0), c(-1.0)).get();
 		ev.into(result.each()).evaluate(singleRay);
 
 		System.out.println("Single ray discriminant test: " + result.valueAt(0, 0));
@@ -92,7 +92,7 @@ public class SphereTest implements TestFeatures {
 		Producer<?> d = s.discriminant(ray);
 
 		// Create 3 rays: 2 that hit, 1 that misses
-		PackedCollection<?> rays = new PackedCollection<>(shape(3, 6).traverse(1));
+		PackedCollection rays = new PackedCollection(shape(3, 6).traverse(1));
 		rays.setMem(0, 0, 0, 3, 0, 0, -1);      // Ray 0: hits (center)
 		rays.setMem(6, 0.1, 0.1, 3, 0, 0, -1);  // Ray 1: hits (slightly off-center)
 		rays.setMem(12, 5, 5, 3, 0, 0, -1);     // Ray 2: misses (far off to side)
@@ -100,20 +100,20 @@ public class SphereTest implements TestFeatures {
 		// Test each component of discriminant formula
 		// Formula: oDotd^2 - dDotd * (oDoto - 1)
 
-		PackedCollection<?> oDotdVals = new PackedCollection<>(shape(3, 1).traverse(1));
+		PackedCollection oDotdVals = new PackedCollection(shape(3, 1).traverse(1));
 		oDotd(ray).get().into(oDotdVals.each()).evaluate(rays);
 		System.out.println("oDotd values: " + oDotdVals.valueAt(0, 0) + ", " + oDotdVals.valueAt(1, 0) + ", " + oDotdVals.valueAt(2, 0));
 
-		PackedCollection<?> dDotdVals = new PackedCollection<>(shape(3, 1).traverse(1));
+		PackedCollection dDotdVals = new PackedCollection(shape(3, 1).traverse(1));
 		dDotd(ray).get().into(dDotdVals.each()).evaluate(rays);
 		System.out.println("dDotd values: " + dDotdVals.valueAt(0, 0) + ", " + dDotdVals.valueAt(1, 0) + ", " + dDotdVals.valueAt(2, 0));
 
-		PackedCollection<?> oDotoVals = new PackedCollection<>(shape(3, 1).traverse(1));
+		PackedCollection oDotoVals = new PackedCollection(shape(3, 1).traverse(1));
 		oDoto(ray).get().into(oDotoVals.each()).evaluate(rays);
 		System.out.println("oDoto values: " + oDotoVals.valueAt(0, 0) + ", " + oDotoVals.valueAt(1, 0) + ", " + oDotoVals.valueAt(2, 0));
 
 		// First, check the raw discriminant values
-		PackedCollection<?> discriminantValues = new PackedCollection<>(shape(3, 1).traverse(1));
+		PackedCollection discriminantValues = new PackedCollection(shape(3, 1).traverse(1));
 		d.get().into(discriminantValues.each()).evaluate(rays);
 		System.out.println("Raw discriminant values:");
 		System.out.println("  Ray 0: " + discriminantValues.valueAt(0, 0) + " (should be > 0 for hit)");
@@ -121,8 +121,8 @@ public class SphereTest implements TestFeatures {
 		System.out.println("  Ray 2: " + discriminantValues.valueAt(2, 0) + " (should be < 0 for miss)");
 
 		// Now test the conditional
-		PackedCollection<?> result = new PackedCollection<>(shape(3, 1).traverse(1));
-		Evaluable<PackedCollection<?>> ev = greaterThan(c(d), c(0.0), c(1.0), c(-1.0)).get();
+		PackedCollection result = new PackedCollection(shape(3, 1).traverse(1));
+		Evaluable<PackedCollection> ev = greaterThan(c(d), c(0.0), c(1.0), c(-1.0)).get();
 		ev.into(result.each()).evaluate(rays);
 
 		System.out.println("Small batch discriminant test:");
@@ -147,13 +147,13 @@ public class SphereTest implements TestFeatures {
 		ShadableIntersection f = s.intersectAt(ray);
 
 		// Create 3 rays: 2 that hit, 1 that misses
-		PackedCollection<?> rays = new PackedCollection<>(shape(3, 6).traverse(1));
+		PackedCollection rays = new PackedCollection(shape(3, 6).traverse(1));
 		rays.setMem(0, 0, 0, 3, 0, 0, -1);      // Ray 0: hits (center) - should get distance ~2.5
 		rays.setMem(6, 0.1, 0.1, 3, 0, 0, -1);  // Ray 1: hits (slightly off-center) - should get distance ~2.5
 		rays.setMem(12, 5, 5, 3, 0, 0, -1);     // Ray 2: misses (far off to side) - should get distance -1.0
 
 		// Get the distance for each ray
-		PackedCollection<?> distances = new PackedCollection<>(shape(3, 1).traverse(1));
+		PackedCollection distances = new PackedCollection(shape(3, 1).traverse(1));
 		f.getDistance().get().into(distances.each()).evaluate(rays);
 
 		System.out.println("Small batch intersection test:");
@@ -178,12 +178,12 @@ public class SphereTest implements TestFeatures {
 		Producer<?> dSqrt = s.discriminantSqrt(ray);
 
 		// Create 3 rays: 2 that hit, 1 that misses
-		PackedCollection<?> rays = new PackedCollection<>(shape(3, 6).traverse(1));
+		PackedCollection rays = new PackedCollection(shape(3, 6).traverse(1));
 		rays.setMem(0, 0, 0, 3, 0, 0, -1);      // Ray 0: hits (discriminant = 1.0, sqrt = 1.0)
 		rays.setMem(6, 0.1, 0.1, 3, 0, 0, -1);  // Ray 1: hits (discriminant = 0.98, sqrt = 0.99)
 		rays.setMem(12, 5, 5, 3, 0, 0, -1);     // Ray 2: misses (discriminant = -49, sqrt = NaN)
 
-		PackedCollection<?> sqrtVals = new PackedCollection<>(shape(3, 1).traverse(1));
+		PackedCollection sqrtVals = new PackedCollection(shape(3, 1).traverse(1));
 		dSqrt.get().into(sqrtVals.each()).evaluate(rays);
 
 		System.out.println("Discriminant sqrt test:");
@@ -209,21 +209,21 @@ public class SphereTest implements TestFeatures {
 		Producer<?> dDotDInv = dDotd(ray).pow(-1.0);
 
 		// Create a single ray that hits
-		PackedCollection<?> rays = new PackedCollection<>(shape(3, 6).traverse(1));
+		PackedCollection rays = new PackedCollection(shape(3, 6).traverse(1));
 		rays.setMem(0, 0, 0, 3, 0, 0, -1);      // Ray 0: hits (center)
 		rays.setMem(6, 0.1, 0.1, 3, 0, 0, -1);  // Ray 1: hits (slightly off)
 		rays.setMem(12, 5, 5, 3, 0, 0, -1);     // Ray 2: misses
 
 		// Test discriminantSqrt
-		PackedCollection<?> dSqrtVals = new PackedCollection<>(shape(3, 1).traverse(1));
+		PackedCollection dSqrtVals = new PackedCollection(shape(3, 1).traverse(1));
 		dS.get().into(dSqrtVals.each()).evaluate(rays);
 
 		// Test -oDotd
-		PackedCollection<?> minusODotDVals = new PackedCollection<>(shape(3, 1).traverse(1));
+		PackedCollection minusODotDVals = new PackedCollection(shape(3, 1).traverse(1));
 		minusODotD.get().into(minusODotDVals.each()).evaluate(rays);
 
 		// Test 1/dDotd
-		PackedCollection<?> dDotDInvVals = new PackedCollection<>(shape(3, 1).traverse(1));
+		PackedCollection dDotDInvVals = new PackedCollection(shape(3, 1).traverse(1));
 		dDotDInv.get().into(dDotDInvVals.each()).evaluate(rays);
 
 		System.out.println("t() calculation components:");
@@ -248,7 +248,7 @@ public class SphereTest implements TestFeatures {
 		ShadableIntersection f = s.intersectAt(v(shape(-1, 6), 0));
 
 		int batchSize = 129;
-		PackedCollection<?> rays = new PackedCollection<>(shape(batchSize, 6).traverse(1));
+		PackedCollection rays = new PackedCollection(shape(batchSize, 6).traverse(1));
 
 		// Create rays - all should hit the sphere at origin
 		for (int i = 0; i < batchSize; i++) {
@@ -257,7 +257,7 @@ public class SphereTest implements TestFeatures {
 			rays.setMem(i * 6, offset, offset, 3.0, 0.0, 0.0, -1.0);
 		}
 
-		PackedCollection<?> distances = new PackedCollection<>(shape(batchSize, 1).traverse(1));
+		PackedCollection distances = new PackedCollection(shape(batchSize, 1).traverse(1));
 		f.getDistance().get().into(distances.each()).evaluate(rays);
 
 		System.out.println("Intersection 1D batch (size=" + batchSize + "):");
@@ -287,7 +287,7 @@ public class SphereTest implements TestFeatures {
 
 		// Create batch of pairs representing [near, far] intersection distances
 		int batchSize = 256;
-		PackedCollection<?> pairs = new PackedCollection<>(shape(batchSize, 2).traverse(1));
+		PackedCollection pairs = new PackedCollection(shape(batchSize, 2).traverse(1));
 
 		// Test cases:
 		// Elements 0-63: Both positive, left < right (should return left)
@@ -308,10 +308,10 @@ public class SphereTest implements TestFeatures {
 		}
 
 		// Apply closest() to the batch
-		Producer<Pair<?>> pairProducer = v(shape(-1, 2), 0);
+		Producer<Pair> pairProducer = (Producer) v(shape(-1, 2), 0);
 		Producer<?> result = s.closest(pairProducer);
 
-		PackedCollection<?> distances = new PackedCollection<>(shape(batchSize, 1).traverse(1));
+		PackedCollection distances = new PackedCollection(shape(batchSize, 1).traverse(1));
 		result.get().into(distances.each()).evaluate(pairs);
 
 		System.out.println("Closest batch test (size=" + batchSize + "):");
@@ -356,13 +356,13 @@ public class SphereTest implements TestFeatures {
 
 		Producer testPair = pair(minusODotD, plusODotD);
 
-		PackedCollection<?> rays = new PackedCollection<>(shape(3, 6).traverse(1));
+		PackedCollection rays = new PackedCollection(shape(3, 6).traverse(1));
 		rays.setMem(0, 0, 0, 3, 0, 0, -1);      // origin=[0,0,3], dir=[0,0,-1], oDotd = 0*0 + 0*0 + 3*(-1) = -3
 		rays.setMem(6, 0.1, 0.1, 3, 0, 0, -1);  // origin=[0.1,0.1,3], dir=[0,0,-1], oDotd = -3
 		rays.setMem(12, 5, 5, 15, 0, 0, -1);    // origin=[5,5,15], dir=[0,0,-1], oDotd = 5*0 + 5*0 + 15*(-1) = -15
 
 		// Evaluate the pair
-		PackedCollection<?> pairResult = new PackedCollection<>(shape(3, 2).traverse(1));
+		PackedCollection pairResult = new PackedCollection(shape(3, 2).traverse(1));
 		testPair.get().into(pairResult.each()).evaluate(rays);
 
 		System.out.println("Pair creation test:");
@@ -388,17 +388,17 @@ public class SphereTest implements TestFeatures {
 		Sphere s = new Sphere();
 		s.setSize(0.5);
 
-		PackedCollection<?> rays = new PackedCollection<>(shape(h, w, 6).traverse(2));
+		PackedCollection rays = new PackedCollection(shape(h, w, 6).traverse(2));
 		for (int x = 0; x < w; x++) {
 			for (int y = 0; y < h; y++) {
 				rays.setMem(rays.getShape().index(y, x, 0), (x - (w / 2)) * 0.1, (y - (h / 2)) * 0.1, 3, 0, 0, -1);
 			}
 		}
 
-		PackedCollection<?> destination = new PackedCollection<>(shape(h, w, 1).traverse(2));
+		PackedCollection destination = new PackedCollection(shape(h, w, 1).traverse(2));
 
 		Producer<?> d = s.discriminant(ray); // oDotd(ray).pow(2.0).subtract(dDotd(ray).multiply(oDoto(ray).add(-1.0)));
-		Evaluable<PackedCollection<?>> ev = greaterThan(c(d), c(0.0), c(1.0), c(-1.0)).get();
+		Evaluable<PackedCollection> ev = greaterThan(c(d), c(0.0), c(1.0), c(-1.0)).get();
 		ev.into(destination.each()).evaluate(rays);
 
 		int hits = 0;
@@ -421,11 +421,11 @@ public class SphereTest implements TestFeatures {
 		ShadableIntersection f = s.intersectAt(v(shape(-1, 6), 0));
 
 		// Ray from (0, 0, 3) pointing towards sphere at origin
-		PackedCollection<?> singleRay = new PackedCollection<>(shape(1, 6).traverse(1));
+		PackedCollection singleRay = new PackedCollection(shape(1, 6).traverse(1));
 		singleRay.setMem(0, 0, 3, 0, 0, -1); // origin (0,0,3), direction (0,0,-1)
 
-		PackedCollection<?> destination = new PackedCollection<>(shape(1, 1).traverse(1));
-		Evaluable<PackedCollection<?>> ev = f.getDistance().get();
+		PackedCollection destination = new PackedCollection(shape(1, 1).traverse(1));
+		Evaluable<PackedCollection> ev = f.getDistance().get();
 		ev.into(destination.each()).evaluate(singleRay);
 
 		double distance = destination.valueAt(0, 0);
@@ -444,16 +444,16 @@ public class SphereTest implements TestFeatures {
 
 		ShadableIntersection f = s.intersectAt(v(shape(-1, 6), 0));
 
-		PackedCollection<?> rays = new PackedCollection<>(shape(h, w, 6).traverse(2));
+		PackedCollection rays = new PackedCollection(shape(h, w, 6).traverse(2));
 		for (int x = 0; x < w; x++) {
 			for (int y = 0; y < h; y++) {
 				rays.setMem(rays.getShape().index(y, x, 0), (x - (w / 2)) * 0.1, (y - (h / 2)) * 0.1, 3, 0, 0, -1);
 			}
 		}
 
-		PackedCollection<?> destination = new PackedCollection<>(shape(h, w, 1).traverse(2));
+		PackedCollection destination = new PackedCollection(shape(h, w, 1).traverse(2));
 
-		Evaluable<PackedCollection<?>> ev = f.getDistance().get();
+		Evaluable<PackedCollection> ev = f.getDistance().get();
 		ev.into(destination.each()).evaluate(rays);
 
 		int hits = 0;
@@ -506,12 +506,12 @@ public class SphereTest implements TestFeatures {
 
 		c.rayAt(v(shape(w * h, 2), 0), pair(w, h));
 
-		PackedCollection<?> positions = new PackedCollection<>(shape(w * h, 2), 1);
+		PackedCollection positions = new PackedCollection(shape(w * h, 2), 1);
 		// TODO  Setup positions
 
-		PackedCollection<?> destination = new PackedCollection<>(shape(h, w, 2), 2);
+		PackedCollection destination = new PackedCollection(shape(h, w, 2), 2);
 
-		Evaluable<PackedCollection<?>> ev = f.getDistance().get();
+		Evaluable<PackedCollection> ev = f.getDistance().get();
 		ev.into(destination).evaluate(positions);
 
 		int hits = 0;

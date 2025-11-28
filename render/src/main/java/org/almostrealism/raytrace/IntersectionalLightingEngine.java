@@ -19,6 +19,7 @@ package org.almostrealism.raytrace;
 import org.almostrealism.geometry.ContinuousField;
 import org.almostrealism.geometry.Intersectable;
 import org.almostrealism.color.Light;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.color.RGB;
 import org.almostrealism.color.ShaderContext;
 import org.almostrealism.geometry.Curve;
@@ -75,9 +76,9 @@ public class IntersectionalLightingEngine extends LightingEngine<ContinuousField
 	 * @param otherLights   All other lights in the scene (for multi-light scenarios)
 	 * @param p             The shader context containing rendering parameters
 	 */
-    public IntersectionalLightingEngine(Producer<Ray> ray, Intersectable surface, Collection<Curve<RGB>> otherSurfaces,
+    public IntersectionalLightingEngine(Producer<Ray> ray, Intersectable surface, Collection<Curve<PackedCollection>> otherSurfaces,
 										Light light, Iterable<Light> otherLights, ShaderContext p) {
-        super(surface.intersectAt(ray), (Curve<RGB>) surface, otherSurfaces, light, otherLights, p);
+        super(surface.intersectAt(ray), (Curve<PackedCollection>) surface, otherSurfaces, light, otherLights, p);
     }
 
 	@Override

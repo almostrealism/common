@@ -86,17 +86,16 @@ import java.util.function.BiFunction;
  * <h3>Creating Pair Collections</h3>
  * <pre>{@code
  * // Bank of 100 pairs
- * PackedCollection<Pair<?>> pairs = Pair.bank(100);
+ * PackedCollection pairs = Pair.bank(100);
  *
  * // Table of pairs (2D array)
- * PackedCollection<PackedCollection<Pair<?>>> table = Pair.table(10, 20);
+ * PackedCollection<PackedCollection> table = Pair.table(10, 20);
  * }</pre>
  *
- * @param <T>  the type parameter extending {@link PackedCollection}
  * @see PackedCollection
  * @see MemoryData
  */
-public class Pair<T extends PackedCollection> extends PackedCollection<T> {
+public class Pair extends PackedCollection {
 	/**
 	 * Constructs a new {@link Pair} with both values initialized to zero.
 	 */
@@ -342,16 +341,16 @@ public class Pair<T extends PackedCollection> extends PackedCollection<T> {
 	 * Each pair in the bank can be accessed and modified independently.
 	 *
 	 * <pre>{@code
-	 * PackedCollection<Pair<?>> pairs = Pair.bank(100);
+	 * PackedCollection pairs = Pair.bank(100);
 	 * pairs.get(0).setX(1.0).setY(2.0);
 	 * }</pre>
 	 *
 	 * @param count  the number of pairs to allocate
 	 * @return a packed collection of pairs
 	 */
-	public static PackedCollection<Pair<?>> bank(int count) {
-		return new PackedCollection<>(new TraversalPolicy(count, 2), 1, delegateSpec ->
-				new Pair<>(delegateSpec.getDelegate(), delegateSpec.getOffset()));
+	public static PackedCollection bank(int count) {
+		return new PackedCollection(new TraversalPolicy(count, 2), 1, delegateSpec ->
+				new Pair(delegateSpec.getDelegate(), delegateSpec.getOffset()));
 	}
 
 	/**
@@ -362,9 +361,9 @@ public class Pair<T extends PackedCollection> extends PackedCollection<T> {
 	 * @param delegateOffset  the offset within the delegate where the pair bank begins
 	 * @return a packed collection of pairs
 	 */
-	public static PackedCollection<Pair<?>> bank(int count, MemoryData delegate, int delegateOffset) {
-		return new PackedCollection<>(new TraversalPolicy(count, 2), 1, delegateSpec ->
-				new Pair<>(delegateSpec.getDelegate(), delegateSpec.getOffset()),
+	public static PackedCollection bank(int count, MemoryData delegate, int delegateOffset) {
+		return new PackedCollection(new TraversalPolicy(count, 2), 1, delegateSpec ->
+				new Pair(delegateSpec.getDelegate(), delegateSpec.getOffset()),
 				delegate, delegateOffset);
 	}
 
@@ -376,8 +375,8 @@ public class Pair<T extends PackedCollection> extends PackedCollection<T> {
 	 * @param count  the number of rows
 	 * @return a 2D collection of pairs
 	 */
-	public static PackedCollection<PackedCollection<Pair<?>>> table(int width, int count) {
-		return new PackedCollection<>(new TraversalPolicy(count, width, 2), 1, delegateSpec ->
+	public static PackedCollection table(int width, int count) {
+		return new PackedCollection(new TraversalPolicy(count, width, 2), 1, delegateSpec ->
 				Pair.bank(width, delegateSpec.getDelegate(), delegateSpec.getOffset()));
 	}
 
@@ -390,8 +389,8 @@ public class Pair<T extends PackedCollection> extends PackedCollection<T> {
 	 * @param delegateOffset  the offset within the delegate where the table begins
 	 * @return a 2D collection of pairs
 	 */
-	public static PackedCollection<PackedCollection<Pair<?>>> table(int width, int count, MemoryData delegate, int delegateOffset) {
-		return new PackedCollection<>(new TraversalPolicy(count, width, 2), 1, delegateSpec ->
+	public static PackedCollection table(int width, int count, MemoryData delegate, int delegateOffset) {
+		return new PackedCollection(new TraversalPolicy(count, width, 2), 1, delegateSpec ->
 				Pair.bank(width, delegateSpec.getDelegate(), delegateSpec.getOffset()), delegate, delegateOffset);
 	}
 
@@ -401,8 +400,8 @@ public class Pair<T extends PackedCollection> extends PackedCollection<T> {
 	 *
 	 * @return a function that creates pairs from memory data and offset
 	 */
-	public static BiFunction<MemoryData, Integer, Pair<?>> postprocessor() {
-		return (delegate, offset) -> new Pair<>(delegate, offset);
+	public static BiFunction<MemoryData, Integer, Pair> postprocessor() {
+		return (delegate, offset) -> new Pair(delegate, offset);
 	}
 
 	/**
@@ -411,7 +410,7 @@ public class Pair<T extends PackedCollection> extends PackedCollection<T> {
 	 *
 	 * @return a function that creates pair banks from memory data
 	 */
-	public static BiFunction<MemoryData, Integer, PackedCollection<Pair<?>>> bankPostprocessor() {
+	public static BiFunction<MemoryData, Integer, PackedCollection> bankPostprocessor() {
 		return (output, offset) -> {
 			TraversalPolicy shape = ((PackedCollection) output).getShape();
 			return Pair.bank(shape.getTotalSize() / 2, output, offset);

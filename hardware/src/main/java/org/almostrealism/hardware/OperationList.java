@@ -237,7 +237,7 @@ import java.util.stream.Stream;
  * abort checks to prevent runaway execution:</p>
  * <pre>{@code
  * // Set abort flag before execution
- * MemoryData abortFlag = new PackedCollection<>(1).traverse(0);
+ * MemoryData abortFlag = new PackedCollection(1).traverse(0);
  * OperationList.setAbortFlag(abortFlag);
  *
  * try {

@@ -16,14 +16,15 @@
 
 package org.almostrealism.color;
 
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.geometry.Curve;
 
 /**
- * A {@link ShadableCurve} is a {@link Curve} with an {@link RGB} value
+ * A {@link ShadableCurve} is a {@link Curve} with a {@link PackedCollection} color value
  * for the points in space.
  *
  * @author  Michael Murray
  */
-public interface ShadableCurve extends Curve<RGB>, Shadable {
+public interface ShadableCurve extends Curve<PackedCollection>, Shadable {
 
 }

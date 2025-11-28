@@ -15,6 +15,7 @@
  */
 
 package org.almostrealism.heredity;
+import org.almostrealism.collect.PackedCollection;
 
 import io.almostrealism.relation.Factor;
 import org.almostrealism.hardware.OperationList;
@@ -37,10 +38,10 @@ import java.util.function.Supplier;
  * <h2>Example Usage</h2>
  * <pre>{@code
  * // Create a temporal factor
- * TemporalFactor<PackedCollection<?>> decayingFactor = new MyDecayingFactor(1.0);
+ * TemporalFactor<PackedCollection> decayingFactor = new MyDecayingFactor(1.0);
  *
  * // Chain with another factor
- * Factor<PackedCollection<?>> combined = decayingFactor.andThen(otherFactor);
+ * Factor<PackedCollection> combined = decayingFactor.andThen(otherFactor);
  *
  * // In time-stepped simulation:
  * decayingFactor.tick().get().run();  // Advance time by one step

@@ -15,6 +15,7 @@
  */
 
 package org.almostrealism.color;
+import org.almostrealism.collect.PackedCollection;
 
 /**
  * Represents a color in the RGBA (Red, Green, Blue, Alpha) color space.

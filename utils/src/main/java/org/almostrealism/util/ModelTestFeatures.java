@@ -81,13 +81,13 @@ public interface ModelTestFeatures extends TestFeatures {
 	 * @param outShape the shape of output (target) tensors
 	 * @return a list of input-output value pairs for training
 	 */
-	default List<ValueTarget<PackedCollection<?>>> generateDataset(TraversalPolicy inShape, TraversalPolicy outShape) {
-		List<ValueTarget<PackedCollection<?>>> data = new ArrayList<>();
+	default List<ValueTarget<PackedCollection>> generateDataset(TraversalPolicy inShape, TraversalPolicy outShape) {
+		List<ValueTarget<PackedCollection>> data = new ArrayList<>();
 
 		log("Generating data...");
 		for (int i = 0; i < datasetSize; i++) {
-			PackedCollection<?> input = new PackedCollection<>(inShape).fill(Math::random);
-			data.add(ValueTarget.of(input, new PackedCollection<>(outShape).fill(Math::random)));
+			PackedCollection input = new PackedCollection(inShape).fill(Math::random);
+			data.add(ValueTarget.of(input, new PackedCollection(outShape).fill(Math::random)));
 		}
 
 		return data;

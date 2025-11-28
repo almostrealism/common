@@ -15,6 +15,7 @@
  */
 
 package org.almostrealism.heredity;
+import org.almostrealism.collect.PackedCollection;
 
 import io.almostrealism.relation.Factor;
 import io.almostrealism.relation.Producer;
@@ -32,18 +33,18 @@ import java.util.stream.IntStream;
  * form {@link Genome}s.
  *
  * <p>The generic type parameter {@code T} represents the data type that factors operate on,
- * typically {@code PackedCollection<?>} for numerical computations.
+ * typically {@code PackedCollection} for numerical computations.
  *
  * <h2>Example Usage</h2>
  * <pre>{@code
  * // Create a gene with scalar factors
- * Gene<PackedCollection<?>> gene = HeredityFeatures.getInstance().g(0.1, 0.5, 0.9);
+ * Gene<PackedCollection> gene = HeredityFeatures.getInstance().g(0.1, 0.5, 0.9);
  *
  * // Access individual factors
- * Factor<PackedCollection<?>> factor = gene.valueAt(0);
+ * Factor<PackedCollection> factor = gene.valueAt(0);
  *
  * // Apply factor to input
- * Producer<PackedCollection<?>> result = gene.getResultant(0, inputProducer);
+ * Producer<PackedCollection> result = gene.getResultant(0, inputProducer);
  *
  * // Get gene signature for identification
  * String sig = gene.signature();
@@ -105,7 +106,7 @@ public interface Gene<T> extends Plural<Factor<T>>, IntFunction<Factor<T>> {
 	 *
 	 * <h3>Example</h3>
 	 * <pre>{@code
-	 * Gene<PackedCollection<?>> gene = Gene.of(3, pos -> new ScaleFactor(pos * 0.1));
+	 * Gene<PackedCollection> gene = Gene.of(3, pos -> new ScaleFactor(pos * 0.1));
 	 * }</pre>
 	 *
 	 * @param <T> the type of data that factors operate on

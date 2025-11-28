@@ -79,7 +79,7 @@ import java.lang.annotation.Target;
  *     }
  *
  *     @Override
- *     public Double evaluate(PackedCollection<?> a, PackedCollection<?> b) {
+ *     public Double evaluate(PackedCollection a, PackedCollection b) {
  *         // Pure computation - no state modified
  *         double sum = 0;
  *         for (int i = 0; i < dimensions; i++) {
@@ -95,12 +95,12 @@ import java.lang.annotation.Target;
  * @Stateless
  * public class VectorNormalizer {
  *     // Produces new results without modifying state
- *     public PackedCollection<?> normalize(PackedCollection<?> input) {
+ *     public PackedCollection normalize(PackedCollection input) {
  *         double magnitude = computeMagnitude(input);
  *         return input.divide(magnitude);  // Returns new collection
  *     }
  *
- *     private double computeMagnitude(PackedCollection<?> v) {
+ *     private double computeMagnitude(PackedCollection v) {
  *         // Pure helper method
  *         return Math.sqrt(v.stream().map(x -> x * x).sum());
  *     }
@@ -112,15 +112,15 @@ import java.lang.annotation.Target;
  * @Stateless
  * public class OperationFactory {
  *     // Creates objects but maintains no state
- *     public Producer<PackedCollection<?>> createAddition(
- *             Producer<PackedCollection<?>> a,
- *             Producer<PackedCollection<?>> b) {
+ *     public Producer<PackedCollection> createAddition(
+ *             Producer<PackedCollection> a,
+ *             Producer<PackedCollection> b) {
  *         return new Add(a, b);
  *     }
  *
- *     public Producer<PackedCollection<?>> createMultiplication(
- *             Producer<PackedCollection<?>> a,
- *             Producer<PackedCollection<?>> b) {
+ *     public Producer<PackedCollection> createMultiplication(
+ *             Producer<PackedCollection> a,
+ *             Producer<PackedCollection> b) {
  *         return new Multiply(a, b);
  *     }
  * }

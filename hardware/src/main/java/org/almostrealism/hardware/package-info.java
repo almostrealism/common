@@ -44,13 +44,13 @@
  * HardwareOperator.enableKernelLog = false;
  *
  * // Create computation
- * Producer<PackedCollection<?>> computation = vectorAdd(a, b);
+ * Producer<PackedCollection> computation = vectorAdd(a, b);
  *
  * // Compile to hardware
- * Evaluable<PackedCollection<?>> kernel = computation.get();
+ * Evaluable<PackedCollection> kernel = computation.get();
  *
  * // Execute on hardware
- * PackedCollection<?> result = kernel.evaluate(arg1, arg2);
+ * PackedCollection result = kernel.evaluate(arg1, arg2);
  * }</pre>
  *
  * <h2>PassThroughProducer Behavior</h2>

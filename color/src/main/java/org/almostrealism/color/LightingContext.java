@@ -15,6 +15,7 @@
  */
 
 package org.almostrealism.color;
+import org.almostrealism.collect.PackedCollection;
 
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Vector;
@@ -40,7 +41,7 @@ import java.util.List;
  *     ctx.setLightDirection(computeDirection(light, surfacePoint));
  *     ctx.setOtherLights(getOtherLights(light, sceneLights));
  *
- *     Producer<RGB> contribution = shader.shade(shaderContext);
+ *     Producer<PackedCollection> contribution = shader.shade(shaderContext);
  *     // Accumulate contribution...
  * }
  * }</pre>
@@ -57,7 +58,7 @@ import java.util.List;
  */
 public class LightingContext {
 	/** Direction vector pointing toward the light source. */
-	private Producer<Vector> lightDirection;
+	private Producer<PackedCollection> lightDirection;
 	/** The primary light being processed. */
 	private Light light;
 	/** Other lights in the scene (for multi-light rendering). */
@@ -68,12 +69,12 @@ public class LightingContext {
 	 * 
 	 * @param l  Vector object to use.
 	 */
-	public void setLightDirection(Producer<Vector> l) { this.lightDirection = l; }
+	public void setLightDirection(Producer<PackedCollection> l) { this.lightDirection = l; }
 	
 	/**
 	 * @return  A {@link Vector} {@link Producer} representing the direction toward the light (this can be expected to be unit length).
 	 */
-	public Producer<Vector> getLightDirection() { return this.lightDirection; }
+	public Producer<PackedCollection> getLightDirection() { return this.lightDirection; }
 	
 	/**
 	 * Sets the Light to the specified Light object.

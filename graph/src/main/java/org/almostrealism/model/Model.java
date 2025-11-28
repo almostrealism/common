@@ -67,8 +67,8 @@ import java.util.stream.Stream;
  *
  * // Training loop
  * for (batch : data) {
- *     PackedCollection<?> output = compiled.forward(input);
- *     PackedCollection<?> gradient = computeGradient(output, target);
+ *     PackedCollection output = compiled.forward(input);
+ *     PackedCollection gradient = computeGradient(output, target);
  *     compiled.backward(gradient);
  * }
  * }</pre>
@@ -99,7 +99,7 @@ public class Model implements Setup, Destroyable, CodeFeatures {
 	private SequentialBlock blocks;
 	private List<Block> inputs;
 
-	private ParameterUpdate<PackedCollection<?>> parameterUpdate;
+	private ParameterUpdate<PackedCollection> parameterUpdate;
 
 	/**
 	 * Creates a new model with no initial shape.
@@ -133,7 +133,7 @@ public class Model implements Setup, Destroyable, CodeFeatures {
 	 * @param shape the expected input shape for the model
 	 * @param parameterUpdate the strategy for updating model parameters during training
 	 */
-	public Model(TraversalPolicy shape, ParameterUpdate<PackedCollection<?>> parameterUpdate) {
+	public Model(TraversalPolicy shape, ParameterUpdate<PackedCollection> parameterUpdate) {
 		this.blocks = new SequentialBlock(shape);
 		this.inputs = new ArrayList<>();
 		setParameterUpdate(parameterUpdate);
@@ -144,7 +144,7 @@ public class Model implements Setup, Destroyable, CodeFeatures {
 	 *
 	 * @param update the parameter update strategy to use during training
 	 */
-	public void setParameterUpdate(ParameterUpdate<PackedCollection<?>> update) {
+	public void setParameterUpdate(ParameterUpdate<PackedCollection> update) {
 		this.parameterUpdate = update;
 		blocks.setParameterUpdate(update);
 	}
@@ -264,7 +264,7 @@ public class Model implements Setup, Destroyable, CodeFeatures {
 	 *
 	 * @return a list of forward cells
 	 */
-	public List<Cell<PackedCollection<?>>> forward() {
+	public List<Cell<PackedCollection>> forward() {
 		return Stream.concat(Stream.of(
 							blocks.getForward()),
 							inputs.stream().map(CellularPropagation::getForward))
@@ -276,7 +276,7 @@ public class Model implements Setup, Destroyable, CodeFeatures {
 	 *
 	 * @return the backward cell
 	 */
-	public Cell<PackedCollection<?>> backward() { return blocks.getBackward(); }
+	public Cell<PackedCollection> backward() { return blocks.getBackward(); }
 
 	/**
 	 * Compiles this model with backpropagation enabled.

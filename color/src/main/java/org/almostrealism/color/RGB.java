@@ -74,7 +74,7 @@ import org.almostrealism.hardware.NoOpMemoryData;
  * @see PackedCollection
  * @author Michael Murray
  */
-public class RGB extends PackedCollection<RGB> implements Externalizable, Cloneable {
+public class RGB extends PackedCollection implements Externalizable, Cloneable {
 	protected interface Data extends MemoryData {
 		void add(int i, double r);
 		void scale(int i, double r);
@@ -658,7 +658,7 @@ public class RGB extends PackedCollection<RGB> implements Externalizable, Clonea
 	 *
 	 * @return a {@link Producer} that yields black RGB colors (0, 0, 0)
 	 */
-	public static Producer<RGB> blank() {
+	public static Producer<PackedCollection> blank() {
 		return new DynamicCollectionProducer<>(RGB.shape(), args -> new RGB(defaultDepth, 0, 0, 0, false));
 	}
 
@@ -671,9 +671,11 @@ public class RGB extends PackedCollection<RGB> implements Externalizable, Clonea
 	 * @param count the number of RGB colors to allocate space for
 	 * @return a {@link PackedCollection} with shape {@code [count, 3]}
 	 */
-	public static PackedCollection<RGB> bank(int count) {
-		return new PackedCollection<>(new TraversalPolicy(count, 3), 1, delegateSpec ->
-				new RGB(delegateSpec.getDelegate(), delegateSpec.getOffset()));
+	public static PackedCollection bank(int count) {
+		return new PackedCollection(new TraversalPolicy(count, 3), 1, delegateSpec -> {
+				PackedCollection.DelegateSpec spec = (PackedCollection.DelegateSpec) delegateSpec;
+				return new RGB(spec.getDelegate(), spec.getOffset());
+		});
 	}
 
 	/**
@@ -687,10 +689,11 @@ public class RGB extends PackedCollection<RGB> implements Externalizable, Clonea
 	 * @param delegateOffset the offset within the delegate where data starts
 	 * @return a {@link PackedCollection} view into the delegate memory
 	 */
-	public static PackedCollection<RGB> bank(int count, MemoryData delegate, int delegateOffset) {
-		return new PackedCollection<>(new TraversalPolicy(count, 3), 1, delegateSpec ->
-				new RGB(delegateSpec.getDelegate(), delegateSpec.getOffset()),
-				delegate, delegateOffset);
+	public static PackedCollection bank(int count, MemoryData delegate, int delegateOffset) {
+		return new PackedCollection(new TraversalPolicy(count, 3), 1, delegateSpec -> {
+				PackedCollection.DelegateSpec spec = (PackedCollection.DelegateSpec) delegateSpec;
+				return new RGB(spec.getDelegate(), spec.getOffset());
+		}, delegate, delegateOffset);
 	}
 
 	/**

@@ -79,8 +79,8 @@ public class SubsetTraversalTests implements TestFeatures {
 		TraversalPolicy groupShape =
 				shape(1, 1, channels, size, size);
 
-		PackedCollection<?> conv = new PackedCollection<>(shape(batch, 1, channels, height, width));
-		PackedCollection<?> filter = new PackedCollection<>(1, filterCount, channels, size, size);
+		PackedCollection conv = new PackedCollection(shape(batch, 1, channels, height, width));
+		PackedCollection filter = new PackedCollection(1, filterCount, channels, size, size);
 
 		WeightedSumComputation sum = (WeightedSumComputation)
 				weightedSum("convolutionFilter",

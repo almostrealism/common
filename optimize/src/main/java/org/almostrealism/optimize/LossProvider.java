@@ -42,7 +42,7 @@ import org.almostrealism.collect.PackedCollection;
  * double lossValue = mse.loss(modelOutput, target);
  *
  * // Compute gradient for backpropagation
- * Producer<PackedCollection<?>> grad = mse.gradient(
+ * Producer<PackedCollection> grad = mse.gradient(
  *     outputProducer,
  *     targetProducer
  * );
@@ -60,12 +60,12 @@ import org.almostrealism.collect.PackedCollection;
  * public class HuberLoss implements LossProvider {
  *     private double delta;
  *
- *     public double loss(PackedCollection<?> output, PackedCollection<?> target) {
+ *     public double loss(PackedCollection output, PackedCollection target) {
  *         // Huber loss: quadratic for small errors, linear for large errors
  *         // ...
  *     }
  *
- *     public Producer<PackedCollection<?>> gradient(...) {
+ *     public Producer<PackedCollection> gradient(...) {
  *         // Gradient: linear for small errors, constant for large errors
  *         // ...
  *     }
@@ -92,7 +92,7 @@ public interface LossProvider {
 	 * @param target the expected target values
 	 * @return the scalar loss value; lower is better
 	 */
-	double loss(PackedCollection<?> output, PackedCollection<?> target);
+	double loss(PackedCollection output, PackedCollection target);
 
 	/**
 	 * Computes the gradient of the loss with respect to the model outputs.
@@ -105,7 +105,7 @@ public interface LossProvider {
 	 * @param target producer for the expected target values
 	 * @return a producer for the loss gradient with the same shape as output
 	 */
-	Producer<PackedCollection<?>> gradient(
-			Producer<PackedCollection<?>> output,
-			Producer<PackedCollection<?>> target);
+	Producer<PackedCollection> gradient(
+			Producer<PackedCollection> output,
+			Producer<PackedCollection> target);
 }

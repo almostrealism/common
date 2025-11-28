@@ -153,14 +153,14 @@ public class LayerConfigurationTest implements ConsoleFeatures {
 
     private boolean checkExists(StateDictionary stateDict, String key) {
         try {
-            PackedCollection<?> tensor = stateDict.get(key);
+            PackedCollection tensor = stateDict.get(key);
             return tensor != null;
         } catch (Exception e) {
             return false;
         }
     }
 
-    private double computeMean(PackedCollection<?> tensor) {
+    private double computeMean(PackedCollection tensor) {
         if (tensor == null) return 0.0;
         double sum = 0.0;
         int count = tensor.getShape().getSize();
@@ -170,7 +170,7 @@ public class LayerConfigurationTest implements ConsoleFeatures {
         return sum / count;
     }
 
-    private double computeStd(PackedCollection<?> tensor) {
+    private double computeStd(PackedCollection tensor) {
         if (tensor == null) return 0.0;
         double mean = computeMean(tensor);
         double sumSq = 0.0;
@@ -199,7 +199,7 @@ public class LayerConfigurationTest implements ConsoleFeatures {
 
         for (String key : weightKeys) {
             try {
-                PackedCollection<?> tensor = stateDict.get(prefix + key);
+                PackedCollection tensor = stateDict.get(prefix + key);
                 if (tensor != null) {
                     count += tensor.getShape().getSize();
                 }

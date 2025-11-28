@@ -21,7 +21,7 @@ public class Qwen3EmbeddingTest implements AttentionFeatures {
 
         // Load embeddings
         StateDictionary stateDict = new StateDictionary(WEIGHTS_DIR);
-        PackedCollection<?> embeddings = stateDict.get("model.embed_tokens.weight");
+        PackedCollection embeddings = stateDict.get("model.embed_tokens.weight");
 
         System.out.println("Embedding table shape: " + embeddings.getShape());
         System.out.println("Embedding size: " + embeddings.getMemLength());
@@ -37,7 +37,7 @@ public class Qwen3EmbeddingTest implements AttentionFeatures {
         System.out.println("Expected embedding index: " + token + " * " + dim + " = " + (token * dim));
 
         // Extract embedding using range (as model does)
-        PackedCollection<?> embedding = embeddings.range(shape(dim), token * dim);
+        PackedCollection embedding = embeddings.range(shape(dim), token * dim);
 
         System.out.println("Embedding first 10 values:");
         for (int i = 0; i < 10; i++) {
@@ -65,7 +65,7 @@ public class Qwen3EmbeddingTest implements AttentionFeatures {
         System.out.println("\n\"Tell me a story\" tokens: " + Arrays.toString(testTokens));
 
         for (int i = 0; i < testTokens.length && i < testWords.length; i++) {
-            PackedCollection<?> emb = embeddings.range(shape(dim), testTokens[i] * dim);
+            PackedCollection emb = embeddings.range(shape(dim), testTokens[i] * dim);
             double norm = 0;
             for (int j = 0; j < dim; j++) {
                 norm += Math.abs(emb.toDouble(j));

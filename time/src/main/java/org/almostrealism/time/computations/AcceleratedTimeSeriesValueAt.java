@@ -80,7 +80,7 @@ import java.util.function.Consumer;
  * @author Michael Murray
  */
 @Deprecated
-public class AcceleratedTimeSeriesValueAt extends CollectionProducerComputationBase<PackedCollection<?>, PackedCollection<?>> {
+public class AcceleratedTimeSeriesValueAt extends CollectionProducerComputationBase<PackedCollection, PackedCollection> {
 	/**
 	 * Constructs an interpolation operation for the specified series and cursor.
 	 *
@@ -97,18 +97,18 @@ public class AcceleratedTimeSeriesValueAt extends CollectionProducerComputationB
 	 *
 	 * @param arguments Producer arguments (series, cursors)
 	 */
-	private AcceleratedTimeSeriesValueAt(Producer<PackedCollection<?>>... arguments) {
+	private AcceleratedTimeSeriesValueAt(Producer<PackedCollection>... arguments) {
 		super("timeSeriesValueAt", new TraversalPolicy(1).traverse(0), arguments);
 	}
 
 	@Override
-	public CollectionProducerParallelProcess<PackedCollection<?>> generate(List<Process<?, ?>> children) {
+	public CollectionProducerParallelProcess<PackedCollection> generate(List<Process<?, ?>> children) {
 		return new AcceleratedTimeSeriesValueAt(children.stream().skip(1).toArray(Producer[]::new));
 	}
 
 	@Override
-	public Scope<PackedCollection<?>> getScope(KernelStructureContext context) {
-		HybridScope<PackedCollection<?>> scope = new HybridScope<>(this);
+	public Scope<PackedCollection> getScope(KernelStructureContext context) {
+		HybridScope<PackedCollection> scope = new HybridScope<>(this);
 
 		ArrayVariable<?> outputVariable = (ArrayVariable) getOutputVariable();
 

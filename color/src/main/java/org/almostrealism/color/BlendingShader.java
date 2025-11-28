@@ -76,15 +76,15 @@ public class BlendingShader implements Shader<LightingContext>, Editable, RGBFea
   private static final String desc[] = { "Color for hot (lit) area.", "Color for cold (dim) area." };
   private static final Class types[] = { Producer.class, Producer.class };
   
-  private Producer<RGB> hotColor, coldColor;
+  private Producer<PackedCollection> hotColor, coldColor;
 
 	/**
 	 * Constructs a new BlendingShader using white as a hot color
 	 * and black as a cold color.
 	 */
 	public BlendingShader() {
-		this.hotColor = white();
-		this.coldColor = black();
+		this.hotColor = (Producer) white();
+		this.coldColor = (Producer) black();
 	}
 	
 	/**
@@ -93,7 +93,7 @@ public class BlendingShader implements Shader<LightingContext>, Editable, RGBFea
 	 * @param hot  ColorProducer to use for hot color.
 	 * @param cold  ColorProducer to use for cold color.
 	 */
-	public BlendingShader(Producer<RGB> hot, Producer<RGB> cold) {
+	public BlendingShader(Producer<PackedCollection> hot, Producer<PackedCollection> cold) {
 		this.hotColor = hot;
 		this.coldColor = cold;
 	}
@@ -101,7 +101,7 @@ public class BlendingShader implements Shader<LightingContext>, Editable, RGBFea
 	/**
 	 * @see  Shader#shade(LightingContext, DiscreteField)
 	 */
-	public Producer<RGB> shade(LightingContext p, DiscreteField normals) {
+	public Producer<PackedCollection> shade(LightingContext p, DiscreteField normals) {
 		// TODO  Put evaluation into producer
 
 		Producer<Ray> n;
@@ -113,19 +113,19 @@ public class BlendingShader implements Shader<LightingContext>, Editable, RGBFea
 			return null;
 		}
 		
-		Producer<Vector> l = p.getLightDirection();
+		Producer<PackedCollection> l = p.getLightDirection();
 
-		CollectionProducer<PackedCollection<?>> dp = dotProduct(direction(n), l);
-		Producer<PackedCollection<?>> k = dp.add(c(1.0));
-		Producer<PackedCollection<?>> oneMinusK = c(1.0).subtract(k);
+		CollectionProducer<PackedCollection> dp = (CollectionProducer) dotProduct(direction(n), l);
+		Producer<PackedCollection> k = dp.add(c(1.0));
+		Producer<PackedCollection> oneMinusK = c(1.0).subtract((Producer) k);
 		
-		RGB hc = this.hotColor.get().evaluate(p);
-		RGB cc = this.coldColor.get().evaluate(p);
-		
-		Producer<RGB> c = multiply(v(hc), cfromScalar(k));
-		c = add(c, multiply(v(cc), cfromScalar(oneMinusK)));
+		PackedCollection hc = this.hotColor.get().evaluate(p);
+		PackedCollection cc = this.coldColor.get().evaluate(p);
 
-		return GeneratedColorProducer.fromProducer(this, c);
+		Producer c = multiply(value(hc), cfromScalar((Producer) k));
+		c = add(c, multiply(value(cc), cfromScalar((Producer) oneMinusK)));
+
+		return GeneratedColorProducer.fromProducer(this, (Producer) c);
 	}
 
 	/**

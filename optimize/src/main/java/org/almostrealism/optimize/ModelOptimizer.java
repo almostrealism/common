@@ -62,7 +62,7 @@ import java.util.function.Supplier;
  * <h2>Usage Example</h2>
  * <pre>{@code
  * // Prepare dataset
- * List<ValueTarget<PackedCollection<?>>> data = new ArrayList<>();
+ * List<ValueTarget<PackedCollection>> data = new ArrayList<>();
  * for (int i = 0; i < 1000; i++) {
  *     data.add(ValueTarget.of(inputs[i], targets[i]));
  * }
@@ -117,8 +117,8 @@ public class ModelOptimizer implements CodeFeatures {
 	private int logFrequency;
 	private Consumer<String> log;
 
-	private Evaluable<PackedCollection<?>> dloss;
-	private BiFunction<PackedCollection<?>, PackedCollection<?>, Double> loss;
+	private Evaluable<PackedCollection> dloss;
+	private BiFunction<PackedCollection, PackedCollection, Double> loss;
 	private double averageLoss;
 	private double lossTarget;
 	private int totalIterations;
@@ -348,15 +348,15 @@ public class ModelOptimizer implements CodeFeatures {
 
 			v: for (ValueTarget<?> target : data) {
 				// Input
-				PackedCollection<?> input = target.getInput();
-				PackedCollection<?>[] arguments = target.getArguments();
+				PackedCollection input = target.getInput();
+				PackedCollection[] arguments = target.getArguments();
 
 				// Target
-				PackedCollection<?> valid = target.getExpectedOutput();
+				PackedCollection valid = target.getExpectedOutput();
 
 				// Forward pass and loss
-				PackedCollection<?> out = model.forward(input, arguments);
-				PackedCollection<?> grad = dloss.evaluate(out.each(), valid.each());
+				PackedCollection out = model.forward(input, arguments);
+				PackedCollection grad = dloss.evaluate(out.each(), valid.each());
 
 				double ls = loss.apply(out.each(), valid.each());
 				if (Double.isNaN(ls)) continue v;
@@ -417,7 +417,7 @@ public class ModelOptimizer implements CodeFeatures {
 	 *                  the expected output; receives (expected, predicted)
 	 * @return the accuracy as a ratio from 0.0 to 1.0
 	 */
-	public double accuracy(BiPredicate<PackedCollection<?>, PackedCollection<?>> validator) {
+	public double accuracy(BiPredicate<PackedCollection, PackedCollection> validator) {
 		Dataset<?> data = dataset.get();
 
 		double totalLoss = 0.0;
@@ -425,10 +425,10 @@ public class ModelOptimizer implements CodeFeatures {
 		int count = 0;
 
 		for (ValueTarget<?> target : data) {
-			PackedCollection<?> input = target.getInput();
+			PackedCollection input = target.getInput();
 
-			PackedCollection<?> valid = target.getExpectedOutput();
-			PackedCollection<?> out = model.forward(input);
+			PackedCollection valid = target.getExpectedOutput();
+			PackedCollection out = model.forward(input);
 			double ls = loss.apply(out, valid);
 			totalLoss += ls;
 			count++;

@@ -54,7 +54,7 @@ import java.util.stream.Stream;
  * kernel.into(destinationBank).evaluate(args);
  *
  * // Individual queries (uses cache)
- * PackedCollection<?> distance = kernel.evaluate(new Object[]{new Pair(x, y)});
+ * PackedCollection distance = kernel.evaluate(new Object[]{new Pair(x, y)});
  *
  * // Get normal at closest intersection
  * Vector normal = kernel.getClosestNormal().evaluate(args);
@@ -65,12 +65,12 @@ import java.util.stream.Stream;
  * @see Mesh
  * @see DimensionAware
  */
-public class CachedMeshIntersectionKernel implements Evaluable<PackedCollection<?>>, DimensionAware {
+public class CachedMeshIntersectionKernel implements Evaluable<PackedCollection>, DimensionAware {
 	private MeshData data;
 	private Evaluable<Ray> ray;
 	private Evaluable<Vector> closestNormal;
 
-	private PackedCollection<Pair<?>> cache;
+	private PackedCollection cache;
 
 	private int width = -1, height = -1, ssw = -1, ssh = -1;
 
@@ -105,8 +105,8 @@ public class CachedMeshIntersectionKernel implements Evaluable<PackedCollection<
 	 * @return a new scalar memory bank of the specified size
 	 */
 	@Override
-	public MemoryBank<PackedCollection<?>> createDestination(int size) {
-		return new PackedCollection<>(new TraversalPolicy(size, 1));
+	public MemoryBank<PackedCollection> createDestination(int size) {
+		return new PackedCollection(new TraversalPolicy(size, 1));
 	}
 
 	/**
@@ -122,7 +122,7 @@ public class CachedMeshIntersectionKernel implements Evaluable<PackedCollection<
 			cache = Pair.bank(((MemoryBank) destination).getCount());
 			data.evaluateIntersectionKernel(ray, cache, Stream.of(args).map(MemoryData.class::cast).toArray(MemoryData[]::new));
 			for (int i = 0; i < cache.getCountLong(); i++) {
-				((MemoryData) ((MemoryBank) destination).get(i)).setMem(cache.get(i).getA(), 1.0);
+				((MemoryData) ((MemoryBank) destination).get(i)).setMem(cache.toDouble(i * 2), 1.0);
 			}
 
 			return destination;
@@ -140,14 +140,14 @@ public class CachedMeshIntersectionKernel implements Evaluable<PackedCollection<
 	 * @return the intersection distance as a {@link PackedCollection}, or a negative value if no intersection
 	 */
 	@Override
-	public PackedCollection<?> evaluate(Object[] args) {
-		PackedCollection<?> result = new PackedCollection<>(1);
+	public PackedCollection evaluate(Object[] args) {
+		PackedCollection result = new PackedCollection(1);
 		if (cache == null) {
 			result.setMem(0, data.evaluateIntersection(ray, args).getA());
 		} else {
 			Pair pos = (Pair) args[0];
 			int n = DimensionAware.getPosition(pos.getX(), pos.getY(), width, height, ssw, ssh);
-			result.setMem(0, cache.get(n).getA());
+			result.setMem(0, cache.toDouble(n * 2));
 		}
 		return result;
 	}
@@ -163,18 +163,18 @@ public class CachedMeshIntersectionKernel implements Evaluable<PackedCollection<
 	 */
 	public Evaluable<Vector> getClosestNormal() {
 		if (closestNormal == null) {
-			closestNormal = new HardwareEvaluable<>(() -> args -> {
+			closestNormal = new HardwareEvaluable<Vector>(() -> args -> {
 				if (cache == null) {
-					return new Vector(data.get((int) data.evaluateIntersection(ray, args).getB()).get(4), 0);
+					return new Vector(data.range(new TraversalPolicy(3), ((int) data.evaluateIntersection(ray, args).getB()) * 12 + 9), 0);
 				} else {
 					Pair pos = (Pair) args[0];
 					int n = DimensionAware.getPosition(pos.getX(), pos.getY(), width, height, ssw, ssh);
-					if (n < 0) return ZeroVector.getEvaluable().evaluate();
-					int a = (int) cache.get(n).getB();
-					if (a < 0) return ZeroVector.getEvaluable().evaluate();
-					return new Vector(data.get(a).get(4), 0);
+					if (n < 0) return new Vector(ZeroVector.getEvaluable().evaluate(), 0);
+					int a = (int) cache.toDouble(n * 2 + 1);
+					if (a < 0) return new Vector(ZeroVector.getEvaluable().evaluate(), 0);
+					return new Vector(data.range(new TraversalPolicy(3), a * 12 + 9), 0);
 				}
-			}, new MemoryDataDestination<>(Vector::bank), null, true);
+			}, new MemoryDataDestination<Vector>(size -> (MemoryBank) Vector.bank(size)), null, true);
 		}
 
 		return closestNormal;

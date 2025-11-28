@@ -15,6 +15,7 @@
  */
 
 package org.almostrealism.graph.temporal;
+import org.almostrealism.collect.PackedCollection;
 
 import io.almostrealism.relation.Producer;
 import org.almostrealism.graph.Cell;
@@ -45,10 +46,10 @@ import java.util.function.Supplier;
  *
  * <p>Example usage:</p>
  * <pre>{@code
- * Cell<PackedCollection<?>> cell = new WaveCell(audioData, sampleRate);
- * Producer<PackedCollection<?>> destination = ...;
+ * Cell<PackedCollection> cell = new WaveCell(audioData, sampleRate);
+ * Producer<PackedCollection> destination = ...;
  *
- * TemporalFactorFromCell<PackedCollection<?>> factor = new TemporalFactorFromCell<>(
+ * TemporalFactorFromCell<PackedCollection> factor = new TemporalFactorFromCell<>(
  *     cell,
  *     destination,
  *     dest -> new AssignmentReceptor(dest),

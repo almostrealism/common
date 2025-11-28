@@ -28,11 +28,11 @@ import org.junit.Test;
 public class CollectionMathTests implements TestFeatures {
 	@Test
 	public void broadcastProduct1() {
-		PackedCollection<?> a = new PackedCollection<>(shape(10));
+		PackedCollection a = new PackedCollection(shape(10));
 		a.fill(pos -> Math.random());
 
 		verboseLog(() -> {
-			PackedCollection<?> result = cp(a).multiply(c(2.0)).get().evaluate();
+			PackedCollection result = cp(a).multiply(c(2.0)).get().evaluate();
 			log(result.getShape().toStringDetail());
 
 			for (int i = 0; i < 10; i++) {
@@ -43,13 +43,13 @@ public class CollectionMathTests implements TestFeatures {
 
 	@Test
 	public void broadcastProduct2() {
-		PackedCollection<?> a = new PackedCollection<>(shape(10));
+		PackedCollection a = new PackedCollection(shape(10));
 		a.fill(pos -> Math.random());
 
 		verboseLog(() -> {
-			PackedCollection<?> result = new PackedCollection<>(shape(10));
+			PackedCollection result = new PackedCollection(shape(10));
 
-			CollectionProducer<PackedCollection<?>> product =
+			CollectionProducer<PackedCollection> product =
 					multiply(v(shape(-1), 0), v(shape(1), 1));
 			product.get().into(result.each()).evaluate(a.each(), pack(2.0));
 
@@ -63,11 +63,11 @@ public class CollectionMathTests implements TestFeatures {
 
 	@Test
 	public void traverseProduct() {
-		PackedCollection<?> a = new PackedCollection<>(shape(10)).randFill();
-		PackedCollection<?> b = new PackedCollection<>(shape(10)).randFill();
+		PackedCollection a = new PackedCollection(shape(10)).randFill();
+		PackedCollection b = new PackedCollection(shape(10)).randFill();
 
 		verboseLog(() -> {
-			PackedCollection<?> result = cp(a).multiply(cp(b.traverse(1))).get().evaluate();
+			PackedCollection result = cp(a).multiply(cp(b.traverse(1))).get().evaluate();
 			System.out.println(result.getShape().toStringDetail());
 			Assert.assertEquals(1, result.getShape().getTraversalAxis());
 
@@ -79,11 +79,11 @@ public class CollectionMathTests implements TestFeatures {
 
 	@Test
 	public void repeatProduct() {
-		PackedCollection<?> a = new PackedCollection<>(shape(2, 5)).randFill();
-		PackedCollection<?> b = new PackedCollection<>(shape(2)).randFill();
+		PackedCollection a = new PackedCollection(shape(2, 5)).randFill();
+		PackedCollection b = new PackedCollection(shape(2)).randFill();
 
 		verboseLog(() -> {
-			PackedCollection<?> result = cp(a).multiply(cp(b)).get().evaluate();
+			PackedCollection result = cp(a).multiply(cp(b)).get().evaluate();
 			System.out.println(result.getShape().toStringDetail());
 
 			for (int i = 0; i < 2; i++) {
@@ -99,10 +99,10 @@ public class CollectionMathTests implements TestFeatures {
 		int r = 6;
 		int c = 40;
 
-		PackedCollection<?> a = new PackedCollection<>(shape(r)).randFill();
-		PackedCollection<?> b = new PackedCollection<>(shape(c)).randFill();
+		PackedCollection a = new PackedCollection(shape(r)).randFill();
+		PackedCollection b = new PackedCollection(shape(c)).randFill();
 
-		PackedCollection<?> result = cp(a).multiply(cp(b).repeat(r)).get().evaluate();
+		PackedCollection result = cp(a).multiply(cp(b).repeat(r)).get().evaluate();
 
 		for (int i = 0; i < r; i++) {
 			for (int j = 0; j < c; j++) {
@@ -116,12 +116,12 @@ public class CollectionMathTests implements TestFeatures {
 		int r = 3;
 		int c = 4;
 
-		// PackedCollection<?> a = pack(1.0, 0.1, 0.01);
-		PackedCollection<?> a = new PackedCollection<>(shape(r)).randFill();
-		// PackedCollection<?> b = pack(1, 2, 3, 4);
-		PackedCollection<?> b = new PackedCollection<>(shape(c)).randFill();
+		// PackedCollection a = pack(1.0, 0.1, 0.01);
+		PackedCollection a = new PackedCollection(shape(r)).randFill();
+		// PackedCollection b = pack(1, 2, 3, 4);
+		PackedCollection b = new PackedCollection(shape(c)).randFill();
 
-		PackedCollection<?> result =
+		PackedCollection result =
 				cv(shape(r), 0).traverse(1).repeat(c)
 					.multiply(cv(shape(c), 1).repeat(r))
 				.get().evaluate(a, b);
@@ -140,7 +140,7 @@ public class CollectionMathTests implements TestFeatures {
 	public void sum() {
 		int size = 768;
 
-		PackedCollection<?> x = new PackedCollection<>(shape(size)).randFill();
+		PackedCollection x = new PackedCollection(shape(size)).randFill();
 
 		kernelTest(() -> c(p(x)).sum(),
 				output -> {
@@ -156,7 +156,7 @@ public class CollectionMathTests implements TestFeatures {
 
 	@Test
 	public void linear() {
-		PackedCollection<?> out = linear(0, 5, 10).evaluate();
+		PackedCollection out = linear(0, 5, 10).evaluate();
 		Assert.assertEquals(10, out.getShape().length(0));
 		assertEquals(0.0, out.valueAt(0));
 		assertEquals(10.0 / 3.0, out.valueAt(6));
@@ -168,8 +168,8 @@ public class CollectionMathTests implements TestFeatures {
 		int steps = 300;
 		double betaStart = 0.0001;
 		double betaEnd = 0.02;
-		CollectionProducer<PackedCollection<?>> inputs = linear(betaStart, betaEnd, steps);
-		CollectionProducer<PackedCollection<?>> products =
+		CollectionProducer<PackedCollection> inputs = linear(betaStart, betaEnd, steps);
+		CollectionProducer<PackedCollection> products =
 				cumulativeProduct(c(1.0).subtract(inputs), false);
 
 		double in[] = products.evaluate().toArray();
@@ -189,18 +189,18 @@ public class CollectionMathTests implements TestFeatures {
 	public void squares() {
 		int size = 768;
 
-		PackedCollection<?> o = new PackedCollection<>(shape(size));
+		PackedCollection o = new PackedCollection(shape(size));
 		o.fill(pos -> Math.random());
 
-		PackedCollection<?> x = new PackedCollection<>(shape(size));
+		PackedCollection x = new PackedCollection(shape(size));
 		x.fill(pos -> Math.random());
 
-		PackedCollection<?> weight = new PackedCollection<>(shape(size));
+		PackedCollection weight = new PackedCollection(shape(size));
 		weight.fill(pos -> Math.random());
 
 
 		kernelTest(() -> {
-					CollectionProducer<PackedCollection<?>> ss = pow(traverseEach(p(x)), c(2.0));
+					CollectionProducer<PackedCollection> ss = pow(traverseEach(p(x)), c(2.0));
 					return ss;
 				},
 				output -> {
@@ -214,18 +214,18 @@ public class CollectionMathTests implements TestFeatures {
 	public void sumOfSquares() {
 		int size = 768;
 
-		PackedCollection<?> o = new PackedCollection<>(shape(size));
+		PackedCollection o = new PackedCollection(shape(size));
 		o.fill(pos -> Math.random());
 
-		PackedCollection<?> x = new PackedCollection<>(shape(size));
+		PackedCollection x = new PackedCollection(shape(size));
 		x.fill(pos -> Math.random());
 
-		PackedCollection<?> weight = new PackedCollection<>(shape(size));
+		PackedCollection weight = new PackedCollection(shape(size));
 		weight.fill(pos -> Math.random());
 
 
 		kernelTest(() -> {
-					CollectionProducer<PackedCollection<?>> ss = pow(traverseEach(p(x)), c(2.0)).traverse(0).sum();
+					CollectionProducer<PackedCollection> ss = pow(traverseEach(p(x)), c(2.0)).traverse(0).sum();
 					ss = ss.divide(c(size)).add(c(1e-5));
 					ss = c(1.0).divide(ss.pow(c(0.5)));
 					return ss;
@@ -247,18 +247,18 @@ public class CollectionMathTests implements TestFeatures {
 	public void sumOfSquaresProduct() {
 		int size = 768;
 
-		PackedCollection<?> o = new PackedCollection<>(shape(size));
+		PackedCollection o = new PackedCollection(shape(size));
 		o.fill(pos -> Math.random());
 
-		PackedCollection<?> x = new PackedCollection<>(shape(size));
+		PackedCollection x = new PackedCollection(shape(size));
 		x.fill(pos -> Math.random());
 
-		PackedCollection<?> weight = new PackedCollection<>(shape(size));
+		PackedCollection weight = new PackedCollection(shape(size));
 		weight.fill(pos -> Math.random());
 
 
 		kernelTest(() -> {
-					CollectionProducer<PackedCollection<?>> ss = pow(traverseEach(p(x)), c(2.0)).traverse(0).sum();
+					CollectionProducer<PackedCollection> ss = pow(traverseEach(p(x)), c(2.0)).traverse(0).sum();
 					ss = ss.divide(c(size)).add(c(1e-5));
 					ss = c(1.0).divide(ss.pow(c(0.5)));
 					return multiply(traverseEach(p(weight)), traverseEach(p(x))).multiply(ss);
@@ -286,7 +286,7 @@ public class CollectionMathTests implements TestFeatures {
 
 		TraversalPolicy shape = shape(c, g, v);
 
-		PackedCollection<?> o = new PackedCollection<>(shape);
+		PackedCollection o = new PackedCollection(shape);
 		o.fill(pos -> Math.random());
 
 		kernelTest(() -> cp(o).mean(2),
@@ -311,7 +311,7 @@ public class CollectionMathTests implements TestFeatures {
 
 		TraversalPolicy shape = shape(c, g, v);
 
-		PackedCollection<?> o = new PackedCollection<>(shape);
+		PackedCollection o = new PackedCollection(shape);
 		o.fill(pos -> Math.random());
 
 		kernelTest(() -> cp(o).subtractMean(2),
@@ -341,7 +341,7 @@ public class CollectionMathTests implements TestFeatures {
 
 		TraversalPolicy shape = shape(c, g, v);
 
-		PackedCollection<?> o = new PackedCollection<>(shape);
+		PackedCollection o = new PackedCollection(shape);
 		o.fill(pos -> Math.random());
 
 		kernelTest(() -> sq(cp(o).subtractMean(2)),
@@ -381,7 +381,7 @@ public class CollectionMathTests implements TestFeatures {
 
 		TraversalPolicy shape = shape(c, g, v);
 
-		PackedCollection<?> o = new PackedCollection<>(shape);
+		PackedCollection o = new PackedCollection(shape);
 		o.fill(pos -> Math.random());
 
 		kernelTest(() -> cp(o).variance(2),
@@ -417,7 +417,7 @@ public class CollectionMathTests implements TestFeatures {
 
 		TraversalPolicy shape = shape(n, g, v);
 
-		PackedCollection<?> o = new PackedCollection<>(shape.getTotalSize());
+		PackedCollection o = new PackedCollection(shape.getTotalSize());
 		o.fill(pos -> Math.random());
 
 		kernelTest(() -> {
@@ -429,7 +429,7 @@ public class CollectionMathTests implements TestFeatures {
 				},
 				output -> {
 					output = output.reshape(n, g, v);
-					PackedCollection<?> in = o.reshape(n, g, v);
+					PackedCollection in = o.reshape(n, g, v);
 
 					for (int i = 0; i < n; i++) {
 						for (int j = 0; j < g; j++) {
@@ -460,13 +460,13 @@ public class CollectionMathTests implements TestFeatures {
 	public void addInPlace() {
 		int size = 10;
 
-		PackedCollection<?> aOrig = new PackedCollection<>(shape(size));
+		PackedCollection aOrig = new PackedCollection(shape(size));
 		aOrig.fill(pos -> Math.random());
 
-		PackedCollection<?> a = new PackedCollection<>(shape(size));
+		PackedCollection a = new PackedCollection(shape(size));
 		a.fill(pos -> aOrig.valueAt(pos));
 
-		PackedCollection<?> b = new PackedCollection<>(shape(size));
+		PackedCollection b = new PackedCollection(shape(size));
 		b.fill(pos -> Math.random());
 
 		Runnable op = (Runnable) a(traverseEach(p(a)), add(traverseEach(p(a)), traverseEach(p(b)))).optimize().get();
@@ -480,13 +480,13 @@ public class CollectionMathTests implements TestFeatures {
 	@Test
 	public void lessThanSingleValue() {
 		// Test lessThan with single scalar values
-		Producer<PackedCollection<?>> a = c(5.0);
-		Producer<PackedCollection<?>> b = c(10.0);
+		Producer<PackedCollection> a = c(5.0);
+		Producer<PackedCollection> b = c(10.0);
 
 		// if a < b, return a, else return b
-		Producer<PackedCollection<?>> result = lessThan(a, b, a, b);
+		Producer<PackedCollection> result = lessThan(a, b, a, b);
 
-		try (PackedCollection<?> value = result.get().evaluate()) {
+		try (PackedCollection value = result.get().evaluate()) {
 			System.out.println("lessThan single: " + value.toDouble() + " (expected 5.0)");
 			Assert.assertEquals(5.0, value.toDouble(), 0.001);
 		}
@@ -495,12 +495,12 @@ public class CollectionMathTests implements TestFeatures {
 	@Test
 	public void lessThanSmallBatch() {
 		// Test lessThan with a small batch of 3 elements
-		PackedCollection<?> valuesA = new PackedCollection<>(shape(3, 1).traverse(1));
+		PackedCollection valuesA = new PackedCollection(shape(3, 1).traverse(1));
 		valuesA.setMem(0, 2.0);  // a[0] = 2.0
 		valuesA.setMem(1, 8.0);  // a[1] = 8.0
 		valuesA.setMem(2, 5.0);  // a[2] = 5.0
 
-		PackedCollection<?> valuesB = new PackedCollection<>(shape(3, 1).traverse(1));
+		PackedCollection valuesB = new PackedCollection(shape(3, 1).traverse(1));
 		valuesB.setMem(0, 7.0);  // b[0] = 7.0
 		valuesB.setMem(1, 3.0);  // b[1] = 3.0
 		valuesB.setMem(2, 5.0);  // b[2] = 5.0
@@ -511,7 +511,7 @@ public class CollectionMathTests implements TestFeatures {
 		// if a < b, return a, else return b (essentially min(a, b))
 		Producer result = lessThan(a, b, a, b);
 
-		PackedCollection<?> resultData = new PackedCollection<>(shape(3, 1).traverse(1));
+		PackedCollection resultData = new PackedCollection(shape(3, 1).traverse(1));
 
 		result.get().into(resultData.each()).evaluate(valuesA, valuesB);
 
@@ -531,8 +531,8 @@ public class CollectionMathTests implements TestFeatures {
 		int batchSize = 256;
 
 		// Use separate inputs like lessThanSmallBatch (combined input format doesn't work with v(shape, argIndex))
-		PackedCollection<?> valuesA = new PackedCollection<>(shape(batchSize, 1).traverse(1));
-		PackedCollection<?> valuesB = new PackedCollection<>(shape(batchSize, 1).traverse(1));
+		PackedCollection valuesA = new PackedCollection(shape(batchSize, 1).traverse(1));
+		PackedCollection valuesB = new PackedCollection(shape(batchSize, 1).traverse(1));
 
 		// Fill with test data: a[i] = i, b[i] = 255 - i
 		// Expected: min(i, 255-i)
@@ -547,7 +547,7 @@ public class CollectionMathTests implements TestFeatures {
 		// if a < b, return a, else return b
 		Producer result = lessThan(a, b, a, b);
 
-		PackedCollection<?> resultData = new PackedCollection<>(shape(batchSize, 1).traverse(1));
+		PackedCollection resultData = new PackedCollection(shape(batchSize, 1).traverse(1));
 		result.get().into(resultData.each()).evaluate(valuesA, valuesB);
 
 		System.out.println("lessThan large batch (size=" + batchSize + "):");

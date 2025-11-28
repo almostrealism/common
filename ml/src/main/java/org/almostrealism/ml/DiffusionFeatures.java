@@ -78,7 +78,7 @@ public interface DiffusionFeatures extends LayerFeatures {
 	 * @param downscaleFreqShift Shift applied to frequency downscaling
 	 * @return Factor that computes timestep embeddings from input timesteps
 	 */
-	default Factor<PackedCollection<?>> timesteps(int inputCount, boolean flip, double downscaleFreqShift) {
+	default Factor<PackedCollection> timesteps(int inputCount, boolean flip, double downscaleFreqShift) {
 		return timesteps(inputCount, flip, downscaleFreqShift, 1.0);
 	}
 
@@ -91,7 +91,7 @@ public interface DiffusionFeatures extends LayerFeatures {
 	 * @param scale Scaling factor for the embeddings
 	 * @return Factor that computes timestep embeddings from input timesteps
 	 */
-	default Factor<PackedCollection<?>> timesteps(int inputCount, boolean flip, double downscaleFreqShift, double scale) {
+	default Factor<PackedCollection> timesteps(int inputCount, boolean flip, double downscaleFreqShift, double scale) {
 		return timesteps(inputCount, flip, downscaleFreqShift, scale, 10000);
 	}
 
@@ -110,10 +110,10 @@ public interface DiffusionFeatures extends LayerFeatures {
 	 * @param maxPeriod Maximum period for the sinusoidal functions (default 10000)
 	 * @return Factor that computes timestep embeddings from input timesteps
 	 */
-	default Factor<PackedCollection<?>> timesteps(int inputCount, boolean flip, double downscaleFreqShift, double scale, int maxPeriod) {
+	default Factor<PackedCollection> timesteps(int inputCount, boolean flip, double downscaleFreqShift, double scale, int maxPeriod) {
 		int hDim = inputCount / 2;
 
-		PackedCollection<?> exp = integers(0, hDim)
+		PackedCollection exp = integers(0, hDim)
 				.multiply(-Math.log(maxPeriod) / (hDim - downscaleFreqShift)).exp()
 				.get().evaluate();
 

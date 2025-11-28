@@ -25,7 +25,7 @@ import org.junit.Test;
 public class ChoiceTest implements TestFeatures {
 	@Test
 	public void oneOrTwo() {
-		PackedCollection<?> bank = new PackedCollection<>(shape(2, 2));
+		PackedCollection bank = new PackedCollection(shape(2, 2));
 		bank.setMem(0, 1.0, 1.0);
 		bank.setMem(2, 2.0, 1.0);
 
@@ -33,8 +33,8 @@ public class ChoiceTest implements TestFeatures {
 
 		verboseLog(() -> {
 			Choice choice = new Choice(shape(2), 2, c(0.7), cp(bank));
-			Evaluable<PackedCollection<?>> ev = choice.get();
-			PackedCollection<?> result = ev.evaluate();
+			Evaluable<PackedCollection> ev = choice.get();
+			PackedCollection result = ev.evaluate();
 			result.print();
 
 			assertEquals(2.0, result.toDouble(0));

@@ -50,10 +50,10 @@ import java.lang.annotation.Target;
  * <p><strong>Computational graph operations:</strong></p>
  * <pre>{@code
  * @Function
- * public class AddOperation implements Producer<PackedCollection<?>> {
- *     public PackedCollection<?> evaluate(Object... args) {
- *         PackedCollection<?> a = (PackedCollection<?>) args[0];
- *         PackedCollection<?> b = (PackedCollection<?>) args[1];
+ * public class AddOperation implements Producer<PackedCollection> {
+ *     public PackedCollection evaluate(Object... args) {
+ *         PackedCollection a = (PackedCollection) args[0];
+ *         PackedCollection b = (PackedCollection) args[1];
  *         return a.add(b);
  *     }
  * }
@@ -62,14 +62,14 @@ import java.lang.annotation.Target;
  * <p><strong>Parameterized transformations:</strong></p>
  * <pre>{@code
  * @Function
- * public class ScalarMultiply implements Evaluable<PackedCollection<?>> {
+ * public class ScalarMultiply implements Evaluable<PackedCollection> {
  *     private final double scalar;
  *
  *     public ScalarMultiply(double scalar) {
  *         this.scalar = scalar;
  *     }
  *
- *     public PackedCollection<?> evaluate(PackedCollection<?> input) {
+ *     public PackedCollection evaluate(PackedCollection input) {
  *         return input.multiply(scalar);
  *     }
  * }

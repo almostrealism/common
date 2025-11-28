@@ -315,10 +315,10 @@ import java.util.function.Consumer;
  * <pre>{@code
  * // Create new isolated data context
  * Hardware hw = Hardware.getLocalHardware();
- * PackedCollection<?> result = hw.dataContext(() -> {
+ * PackedCollection result = hw.dataContext(() -> {
  *     // This code runs in a fresh DataContext
  *     // Allocated memory is automatically cleaned up
- *     PackedCollection<?> temp = new PackedCollection<>(1000);
+ *     PackedCollection temp = new PackedCollection(1000);
  *     temp.fill(Math::random);
  *     return temp.copy();  // Return must be copied out
  * });
@@ -919,8 +919,8 @@ public final class Hardware {
 	 *
 	 * <p>Example:</p>
 	 * <pre>{@code
-	 * PackedCollection<?> result = Hardware.getLocalHardware().dataContext(() -> {
-	 *     PackedCollection<?> temp = new PackedCollection<>(1000);
+	 * PackedCollection result = Hardware.getLocalHardware().dataContext(() -> {
+	 *     PackedCollection temp = new PackedCollection(1000);
 	 *     temp.fill(Math::random);
 	 *     return temp.copy();  // Must copy before returning
 	 * });

@@ -52,7 +52,7 @@ import java.util.stream.IntStream;
  * <h2>Example</h2>
  * <pre>{@code
  * // Create switch with 3 computation branches
- * Producer<PackedCollection<?>> decision = c(0.4);  // Will execute branch 1
+ * Producer<PackedCollection> decision = c(0.4);  // Will execute branch 1
  *
  * List<Computation<?>> branches = Arrays.asList(
  *     computation0,  // Executes when decision in [0.0, 0.33)
@@ -66,7 +66,7 @@ import java.util.stream.IntStream;
  * @author  Michael Murray
  * @see Choice
  */
-public class Switch extends OperationComputationAdapter<PackedCollection<?>> implements ExpressionFeatures {
+public class Switch extends OperationComputationAdapter<PackedCollection> implements ExpressionFeatures {
 	private final List<Computation<?>> choices;
 
 	/**
@@ -75,7 +75,7 @@ public class Switch extends OperationComputationAdapter<PackedCollection<?>> imp
 	 * @param decision  producer providing the decision value that determines which branch to execute
 	 * @param choices  list of computation branches to choose from
 	 */
-	public Switch(Producer<PackedCollection<?>> decision, List<Computation<?>> choices) {
+	public Switch(Producer<PackedCollection> decision, List<Computation<?>> choices) {
 		super(new Producer[] { decision });
 		this.choices = choices;
 	}

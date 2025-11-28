@@ -63,7 +63,7 @@ import java.util.function.Function;
  * <h2>Usage Example (Autoregressive)</h2>
  * <pre>{@code
  * // Precompute frequency tensor
- * PackedCollection<?> freqCis = computeRopeFreqs(seqLen, headSize, theta);
+ * PackedCollection freqCis = computeRopeFreqs(seqLen, headSize, theta);
  *
  * // In attention layer
  * keys.add(ropeRotation(shape(kvHeads, headSize/2, 2), freqCis, position));
@@ -73,7 +73,7 @@ import java.util.function.Function;
  * <h2>Usage Example (Full Sequence)</h2>
  * <pre>{@code
  * // Precompute inverse frequencies
- * PackedCollection<?> invFreq = computeInvFreq(dimHead, theta);
+ * PackedCollection invFreq = computeInvFreq(dimHead, theta);
  *
  * // Apply to full sequence
  * queries.add(applyRotaryPositionEmbedding(shape(batch, heads, seqLen, dimHead), invFreq));
@@ -98,8 +98,8 @@ public interface RotationFeatures extends PairFeatures, LayerFeatures {
 	 * @return CellularLayer that applies RoPE rotation
 	 * @throws IllegalArgumentException if shape is not 3D or doesn't end with dimension 2
 	 */
-	default CellularLayer ropeRotation(TraversalPolicy shape, PackedCollection<?> weights,
-									   Producer<PackedCollection<?>> position,
+	default CellularLayer ropeRotation(TraversalPolicy shape, PackedCollection weights,
+									   Producer<PackedCollection> position,
 									   ComputeRequirement... requirements) {
 		if (shape.getDimensions() != 3 || shape.length(2) != 2)
 			throw new IllegalArgumentException();
@@ -114,8 +114,8 @@ public interface RotationFeatures extends PairFeatures, LayerFeatures {
 		int headSize = shape.length(1);
 
 		return layer("ropeRotation", shape, shape, input -> {
-			Producer<PackedCollection<?>> pos = pad(shape(3), position, 0);
-			CollectionProducer<PackedCollection<?>> r = subset(shape(1, headSize, 2), c(p(weights)), pos);
+			Producer<PackedCollection> pos = pad(shape(3), position, 0);
+			CollectionProducer<PackedCollection> r = subset(shape(1, headSize, 2), c(p(weights)), pos);
 			return multiplyComplex(traverse(1, input), r.traverse(1));
 		}, List.of(weights), requirements);
 	}
@@ -130,11 +130,11 @@ public interface RotationFeatures extends PairFeatures, LayerFeatures {
 	 * @param invFreq Inverse frequency tensor of shape (dimHead/4)
 	 * @return Frequency tensor of shape (seqLen, dimHead/2) ready for cos/sin computation
 	 */
-	default PackedCollection<?> computeRotaryFreqs(int seqLen, PackedCollection<?> invFreq) {
+	default PackedCollection computeRotaryFreqs(int seqLen, PackedCollection invFreq) {
 		int freqDim = invFreq.getShape().getTotalSize(); // (dimHead / 4)
 		int rotaryDim = freqDim * 2; // (dimHead / 2)
 
-		PackedCollection<?> freqs = new PackedCollection<>(shape(seqLen, rotaryDim));
+		PackedCollection freqs = new PackedCollection(shape(seqLen, rotaryDim));
 
 		// Compute position * inv_freq for each position and frequency
 		for (int pos = 0; pos < seqLen; pos++) {
@@ -154,7 +154,7 @@ public interface RotationFeatures extends PairFeatures, LayerFeatures {
 	 * @param invFreq Inverse frequency tensor for computing rotations
 	 * @return Function mapping input shape to a CellularLayer that applies RoPE
 	 */
-	default Function<TraversalPolicy, CellularLayer> applyRotaryPositionEmbedding(PackedCollection<?> invFreq) {
+	default Function<TraversalPolicy, CellularLayer> applyRotaryPositionEmbedding(PackedCollection invFreq) {
 		return inputShape -> applyRotaryPositionEmbedding(inputShape, invFreq);
 	}
 
@@ -178,7 +178,7 @@ public interface RotationFeatures extends PairFeatures, LayerFeatures {
 	 * @return CellularLayer that applies RoPE to the input
 	 * @throws IllegalArgumentException if inputShape is not 4-dimensional
 	 */
-	default CellularLayer applyRotaryPositionEmbedding(TraversalPolicy inputShape, PackedCollection<?> invFreq) {
+	default CellularLayer applyRotaryPositionEmbedding(TraversalPolicy inputShape, PackedCollection invFreq) {
 		if (inputShape.getDimensions() != 4) {
 			throw new IllegalArgumentException("Expected 4D input for sequence rotary embedding");
 		}
@@ -189,7 +189,7 @@ public interface RotationFeatures extends PairFeatures, LayerFeatures {
 		int dimHead = inputShape.length(3);
 
 		// Precompute the frequency tensor
-		PackedCollection<?> freqs = computeRotaryFreqs(seqLen, invFreq);
+		PackedCollection freqs = computeRotaryFreqs(seqLen, invFreq);
 		int rotaryDim = freqs.getShape().length(1);
 		if (freqs.getShape().length(0) != seqLen) {
 			throw new IllegalArgumentException();
@@ -197,16 +197,16 @@ public interface RotationFeatures extends PairFeatures, LayerFeatures {
 
 		return layer("sequenceRotaryEmbedding", inputShape, inputShape, input -> {
 			// Extract the rotary part (first rotaryDim dimensions)
-			CollectionProducer<PackedCollection<?>> rotaryPart =
+			CollectionProducer<PackedCollection> rotaryPart =
 					c(input).subset(shape(batchSize, heads, seqLen, rotaryDim), 0, 0, 0, 0);
 
 			// Extract the non-rotary part (remaining dimensions)
-			CollectionProducer<PackedCollection<?>> nonRotaryPart =
+			CollectionProducer<PackedCollection> nonRotaryPart =
 					c(input).subset(shape(batchSize, heads, seqLen, dimHead - rotaryDim),
 							0, 0, 0, rotaryDim);
 
 			// Apply rotation to the rotary part
-			CollectionProducer<PackedCollection<?>> rotated = applyRotaryTransform(
+			CollectionProducer<PackedCollection> rotated = applyRotaryTransform(
 					rotaryPart, cp(freqs), batchSize, heads, seqLen, rotaryDim);
 
 			// Concatenate rotated and non-rotary parts along dimension 3
@@ -228,9 +228,9 @@ public interface RotationFeatures extends PairFeatures, LayerFeatures {
 	 * @param rotaryDim Dimension to apply rotation (typically dimHead/2)
 	 * @return Rotated tensor with same shape as input
 	 */
-	default CollectionProducer<PackedCollection<?>> applyRotaryTransform(
-			CollectionProducer<PackedCollection<?>> input,
-			CollectionProducer<PackedCollection<?>> freqs,
+	default CollectionProducer<PackedCollection> applyRotaryTransform(
+			CollectionProducer<PackedCollection> input,
+			CollectionProducer<PackedCollection> freqs,
 			int batchSize, int heads, int seqLen, int rotaryDim) {
 	
 		// Validate input shapes
@@ -245,14 +245,14 @@ public interface RotationFeatures extends PairFeatures, LayerFeatures {
 		}
 
 		// Expand freqs from (seqLen, rotaryDim) to (batchSize, heads, seqLen, rotaryDim)
-		CollectionProducer<PackedCollection<?>> expandedFreqs = freqs
+		CollectionProducer<PackedCollection> expandedFreqs = freqs
 				.repeat(0, batchSize)    // (batchSize, seqLen, rotaryDim)
 				.repeat(1, heads);       // (batchSize, heads, seqLen, rotaryDim)
 
-		CollectionProducer<PackedCollection<?>> cosFreqs = cos(expandedFreqs);
-		CollectionProducer<PackedCollection<?>> sinFreqs = sin(expandedFreqs);
+		CollectionProducer<PackedCollection> cosFreqs = cos(expandedFreqs);
+		CollectionProducer<PackedCollection> sinFreqs = sin(expandedFreqs);
 
-		CollectionProducer<PackedCollection<?>> rotateHalfInput =
+		CollectionProducer<PackedCollection> rotateHalfInput =
 				rotateHalf(input, batchSize, heads, seqLen, rotaryDim);
 
 		// input * cos(freqs) + rotate_half(input) * sin(freqs)
@@ -278,18 +278,18 @@ public interface RotationFeatures extends PairFeatures, LayerFeatures {
 	 * @param rotaryDim Dimension being rotated (must be even)
 	 * @return Tensor with halves swapped and first half negated
 	 */
-	default CollectionProducer<PackedCollection<?>> rotateHalf(
-			CollectionProducer<PackedCollection<?>> input,
+	default CollectionProducer<PackedCollection> rotateHalf(
+			CollectionProducer<PackedCollection> input,
 			int batchSize, int heads, int seqLen, int rotaryDim) {
 		int halfDim = rotaryDim / 2;
 		
 		// Extract first half (x1)
-		CollectionProducer<PackedCollection<?>> x1 =
+		CollectionProducer<PackedCollection> x1 =
 				input.subset(shape(batchSize, heads, seqLen, halfDim),
 						0, 0, 0, 0);
 		
 		// Extract second half (x2)
-		CollectionProducer<PackedCollection<?>> x2 =
+		CollectionProducer<PackedCollection> x2 =
 				input.subset(shape(batchSize, heads, seqLen, halfDim),
 						0, 0, 0, halfDim);
 		

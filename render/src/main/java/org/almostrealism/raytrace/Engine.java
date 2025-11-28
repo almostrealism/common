@@ -15,6 +15,7 @@
  */
 
 package org.almostrealism.raytrace;
+import org.almostrealism.collect.PackedCollection;
 
 import io.almostrealism.relation.Producer;
 import org.almostrealism.color.RGB;
@@ -55,5 +56,5 @@ public interface Engine {
 	 * @param r A {@link Producer} that generates the ray to trace
 	 * @return A {@link Producer} that will compute the RGB color for the ray
 	 */
-	Producer<RGB> trace(Producer<Ray> r);
+	Producer<PackedCollection> trace(Producer<Ray> r);
 }

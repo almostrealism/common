@@ -39,13 +39,13 @@ import org.almostrealism.collect.computations.TraversableExpressionComputation;
  * <h2>Usage Example</h2>
  * <pre>{@code
  * // Select from 3 pre-computed options based on a decision value
- * CollectionProducer<PackedCollection<?>> decision = c(0.7);  // Will select option 2
- * CollectionProducer<PackedCollection<?>> options = c(
+ * CollectionProducer<PackedCollection> decision = c(0.7);  // Will select option 2
+ * CollectionProducer<PackedCollection> options = c(
  *     shape(3, 5),  // 3 options, each of size 5
  *     option1_data, option2_data, option3_data
  * );
  *
- * Choice<PackedCollection<?>> choice = new Choice<>(
+ * Choice<PackedCollection> choice = new Choice<>(
  *     shape(5),    // Result shape
  *     3,           // Number of choices
  *     decision,
@@ -61,7 +61,7 @@ import org.almostrealism.collect.computations.TraversableExpressionComputation;
  * @author  Michael Murray
  * @see org.almostrealism.algebra.ScalarFeatures#choice(int, TraversalPolicy, Producer, Producer)
  */
-public class Choice<T extends PackedCollection<?>> extends TraversableExpressionComputation<T> {
+public class Choice<T extends PackedCollection> extends TraversableExpressionComputation<T> {
 	private int choiceCount;
 
 	/**
@@ -74,8 +74,8 @@ public class Choice<T extends PackedCollection<?>> extends TraversableExpression
 	 * @throws IllegalArgumentException if the choices shape doesn't match expectations
 	 */
 	public Choice(TraversalPolicy shape, int choiceCount,
-				  Producer<PackedCollection<?>> decision,
-				  Producer<PackedCollection<?>> choices) {
+				  Producer<PackedCollection> decision,
+				  Producer<PackedCollection> choices) {
 		super("choice", shape, decision, adjustChoices(shape.getTotalSize(), choiceCount, choices));
 		this.choiceCount = choiceCount;
 	}
@@ -115,8 +115,8 @@ public class Choice<T extends PackedCollection<?>> extends TraversableExpression
 	 * @return the choices producer (unchanged if valid)
 	 * @throws IllegalArgumentException if the choices shape doesn't match expectations
 	 */
-	protected static <T extends PackedCollection<?>> Producer<PackedCollection<?>>
-			adjustChoices(int memLength, int choiceCount, Producer<PackedCollection<?>> choices) {
+	protected static <T extends PackedCollection> Producer<PackedCollection>
+			adjustChoices(int memLength, int choiceCount, Producer<PackedCollection> choices) {
 		if (!(choices instanceof Shape)) return choices;
 
 		TraversalPolicy shape = ((Shape) choices).getShape();

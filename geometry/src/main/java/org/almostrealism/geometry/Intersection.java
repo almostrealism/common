@@ -44,8 +44,8 @@ public class Intersection implements DimensionAware {
 	 */
 	public static final double e = 0.00000001;
 
-	private Producer<Vector> point;
-	private Producer<PackedCollection<?>> distance;
+	private Producer<PackedCollection> point;
+	private Producer<PackedCollection> distance;
 
 	/**
 	 * Constructs a new {@link Intersection} with the specified intersection point and distance.
@@ -53,8 +53,8 @@ public class Intersection implements DimensionAware {
 	 * @param point a producer for the 3D intersection point
 	 * @param distance a producer for the parametric distance along the ray
 	 */
-	public Intersection(Producer<Vector> point,
-						Producer<PackedCollection<?>> distance) {
+	public Intersection(Producer<PackedCollection> point,
+						Producer<PackedCollection> distance) {
 		this.point = point;
 		this.distance = distance;
 	}
@@ -64,7 +64,7 @@ public class Intersection implements DimensionAware {
 	 *
 	 * @return a producer for the intersection point
 	 */
-	public Producer<Vector> getPoint() { return point; }
+	public Producer<PackedCollection> getPoint() { return point; }
 
 	/**
 	 * Returns the parametric distance from the ray origin to the intersection point.
@@ -72,7 +72,7 @@ public class Intersection implements DimensionAware {
 	 *
 	 * @return a producer for the distance value
 	 */
-	public Producer<PackedCollection<?>> getDistance() { return distance; }
+	public Producer<PackedCollection> getDistance() { return distance; }
 
 	@Override
 	public void setDimensions(int width, int height, int ssw, int ssh) {

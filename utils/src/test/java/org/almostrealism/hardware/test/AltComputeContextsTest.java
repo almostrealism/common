@@ -28,10 +28,10 @@ public class AltComputeContextsTest implements TestFeatures {
 	// TODO  @Test
 	public void clAndNative() {
 		dc(() -> {
-			PackedCollection<?> result = new PackedCollection<>(1);
+			PackedCollection result = new PackedCollection(1);
 
-			Producer<PackedCollection<?>> sum = add(c(1.0), c(2.0));
-			Producer<PackedCollection<?>> product = multiply(c(3.0), c(2.0));
+			Producer<PackedCollection> sum = add(c(1.0), c(2.0));
+			Producer<PackedCollection> product = multiply(c(3.0), c(2.0));
 
 			cc(() -> a(1, p(result), sum).get().run(), ComputeRequirement.CL);
 			log("Result = " + result.getValue());
@@ -49,9 +49,9 @@ public class AltComputeContextsTest implements TestFeatures {
 		int width = 64;
 //		int width = 2048;
 
-		PackedCollection<?> matrix = new PackedCollection<>(dim, width);
-		PackedCollection<?> vector = new PackedCollection<>(width);
-		PackedCollection<?> result = new PackedCollection<>(dim);
+		PackedCollection matrix = new PackedCollection(dim, width);
+		PackedCollection vector = new PackedCollection(width);
+		PackedCollection result = new PackedCollection(dim);
 
 		matrix.fill(pos -> Math.random());
 		vector.fill(pos -> Math.random());

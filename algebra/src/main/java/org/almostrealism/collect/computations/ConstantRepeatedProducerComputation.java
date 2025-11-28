@@ -131,7 +131,7 @@ import java.util.function.Supplier;
  * @see TraversableRepeatedProducerComputation
  * @see ConstantRepeatedDeltaComputation
  */
-public class ConstantRepeatedProducerComputation<T extends PackedCollection<?>>
+public class ConstantRepeatedProducerComputation<T extends PackedCollection>
 		extends RepeatedProducerComputation<T> {
 	
 	/** 
@@ -185,7 +185,7 @@ public class ConstantRepeatedProducerComputation<T extends PackedCollection<?>>
 	public ConstantRepeatedProducerComputation(String name, TraversalPolicy shape, int count,
 											   BiFunction<TraversableExpression[], Expression, Expression> initial,
 											   BiFunction<TraversableExpression[], Expression, Expression> expression,
-											   Producer<PackedCollection<?>>... args) {
+											   Producer<PackedCollection>... args) {
 		this(name, shape, 1, count, initial, expression, args);
 	}
 
@@ -239,7 +239,7 @@ public class ConstantRepeatedProducerComputation<T extends PackedCollection<?>>
 	public ConstantRepeatedProducerComputation(String name, TraversalPolicy shape, int size, int count,
 											   BiFunction<TraversableExpression[], Expression, Expression> initial,
 											   BiFunction<TraversableExpression[], Expression, Expression> expression,
-											   Producer<PackedCollection<?>>... inputs) {
+											   Producer<PackedCollection>... inputs) {
 		super(name, shape, size, initial,
 				(args, index) ->
 						index.lessThan(new IntegerConstant(count)), expression, inputs);

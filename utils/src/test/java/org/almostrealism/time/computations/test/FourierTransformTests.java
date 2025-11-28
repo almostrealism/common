@@ -49,7 +49,7 @@ public class FourierTransformTests implements TestFeatures {
 	public void compile(ComputeRequirement requirement) {
 		int bins = 256;
 
-		PackedCollection<?> input = new PackedCollection<>(bins, 2);
+		PackedCollection input = new PackedCollection(bins, 2);
 		FourierTransform ft = new FourierTransform(bins, cp(input));
 		ft.setComputeRequirements(List.of(requirement));
 		ft.get().evaluate();
@@ -65,7 +65,7 @@ public class FourierTransformTests implements TestFeatures {
 		Frequency f1 = new Frequency(440.00);
 		Frequency f2 = new Frequency(587.33);
 
-		PackedCollection<?> input = new PackedCollection<>(2, bins);
+		PackedCollection input = new PackedCollection(2, bins);
 
 		a(cp(input.range(shape(bins)).each()),
 				add(
@@ -75,12 +75,12 @@ public class FourierTransformTests implements TestFeatures {
 		log("In Total = " + input.doubleStream().map(Math::abs).sum());
 
 		FourierTransform ft = fft(bins, cp(input), requirement);
-		PackedCollection<?> out = ft.get().evaluate();
+		PackedCollection out = ft.get().evaluate();
 		log(out.getShape());
 		log("Out Total = " + out.doubleStream().map(Math::abs).sum());
 
 		FourierTransform ift = fft(bins, true, cp(out), requirement);
-		PackedCollection<?> reversed = ift.get().evaluate();
+		PackedCollection reversed = ift.get().evaluate();
 		log(reversed.getShape());
 		log("Reversed Total = " + reversed.doubleStream().map(Math::abs).sum());
 
@@ -92,11 +92,11 @@ public class FourierTransformTests implements TestFeatures {
 		}
 	}
 
-	protected PackedCollection<?> generateWaves(int sampleRate, int frames, TraversalPolicy shape) {
+	protected PackedCollection generateWaves(int sampleRate, int frames, TraversalPolicy shape) {
 		Frequency f1 = new Frequency(440.00);
 		Frequency f2 = new Frequency(587.33);
 
-		PackedCollection<?> input = new PackedCollection<>(shape);
+		PackedCollection input = new PackedCollection(shape);
 		a(cp(input.range(shape(frames)).each()),
 				add(
 						sinw(integers(0, frames).divide(sampleRate), c(f1.getWaveLength()), c(0.9)),
@@ -114,7 +114,7 @@ public class FourierTransformTests implements TestFeatures {
 		int totalSlices = 2;
 		int comparisonSlice = 1;
 
-		PackedCollection<?> input = generateWaves(sampleRate, bins, shape(2, bins));
+		PackedCollection input = generateWaves(sampleRate, bins, shape(2, bins));
 		input = cp(input).repeat(totalSlices).evaluate();
 
 		// Confirm that the input slices are identical
@@ -127,7 +127,7 @@ public class FourierTransformTests implements TestFeatures {
 		// Apply the transform to the batches
 		FourierTransform ft = fft(bins, (Producer) cp(input).traverse(1),
 									ComputeRequirement.CPU);
-		PackedCollection<?> out = ft.get().evaluate();
+		PackedCollection out = ft.get().evaluate();
 		log(out.getShape());
 
 		int total = 0;
@@ -193,12 +193,12 @@ public class FourierTransformTests implements TestFeatures {
 	protected void multiBatchTransformAndReverse(int sampleRate, int bins,
 												 int totalSlices, int comparisonSlice,
 												 boolean embedExpansion,
-												 Factor<PackedCollection<?>> expansion) {
+												 Factor<PackedCollection> expansion) {
 		Frequency f1 = new Frequency(440.00);
 		Frequency f2 = new Frequency(587.33);
 
 		int frames = totalSlices * bins;
-		PackedCollection<?> input = new PackedCollection<>(frames / bins, bins);
+		PackedCollection input = new PackedCollection(frames / bins, bins);
 
 		a(cp(input.range(shape(frames)).each()),
 				add(
@@ -219,16 +219,16 @@ public class FourierTransformTests implements TestFeatures {
 		FourierTransform ft = fft(bins,
 				(Producer) (embedExpansion ? expansion.getResultant(cp(input)) : cp(input).traverse(1)),
 				ComputeRequirement.CPU);
-		PackedCollection<?> out = ft.get().evaluate();
+		PackedCollection out = ft.get().evaluate();
 		log(out.getShape());
 
 		FourierTransform ift = ifft(bins,
 				cp(out.range(shape(2, bins), comparisonSlice * 2 * bins)),
 				ComputeRequirement.CPU);
-		PackedCollection<?> reversed = ift.get().evaluate();
+		PackedCollection reversed = ift.get().evaluate();
 		log(reversed.getShape());
 
-		PackedCollection<?> range = embedExpansion ?
+		PackedCollection range = embedExpansion ?
 				input.range(shape(bins), comparisonSlice * bins) :
 				input.range(shape(bins), comparisonSlice * 2 * bins);
 

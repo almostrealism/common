@@ -53,32 +53,32 @@ import java.util.List;
  *
  * <p><strong>Summing a vector:</strong></p>
  * <pre>{@code
- * CollectionProducer<PackedCollection<?>> vector = c(1.0, 2.0, 3.0, 4.0, 5.0);
- * CollectionSumComputation<PackedCollection<?>> sum =
+ * CollectionProducer<PackedCollection> vector = c(1.0, 2.0, 3.0, 4.0, 5.0);
+ * CollectionSumComputation<PackedCollection> sum =
  *     new CollectionSumComputation<>(vector);
  *
- * PackedCollection<?> result = sum.get().evaluate();
+ * PackedCollection result = sum.get().evaluate();
  * // Result: [15.0]  (1 + 2 + 3 + 4 + 5)
  * }</pre>
  *
  * <p><strong>Summing a matrix (all elements):</strong></p>
  * <pre>{@code
- * CollectionProducer<PackedCollection<?>> matrix = c(shape(2, 3),
+ * CollectionProducer<PackedCollection> matrix = c(shape(2, 3),
  *     1.0, 2.0, 3.0,
  *     4.0, 5.0, 6.0);
  *
- * CollectionSumComputation<PackedCollection<?>> sum =
+ * CollectionSumComputation<PackedCollection> sum =
  *     new CollectionSumComputation<>(matrix);
  *
- * PackedCollection<?> result = sum.get().evaluate();
+ * PackedCollection result = sum.get().evaluate();
  * // Result: [21.0]  (1 + 2 + 3 + 4 + 5 + 6)
  * }</pre>
  *
  * <p><strong>Using via CollectionFeatures:</strong></p>
  * <pre>{@code
  * // More commonly used through helper methods
- * CollectionProducer<PackedCollection<?>> data = c(10.0, 20.0, 30.0);
- * CollectionProducer<PackedCollection<?>> total = sum(data);
+ * CollectionProducer<PackedCollection> data = c(10.0, 20.0, 30.0);
+ * CollectionProducer<PackedCollection> total = sum(data);
  * // Result: [60.0]
  * }</pre>
  *
@@ -105,14 +105,14 @@ import java.util.List;
  *
  * @author Michael Murray
  */
-public class CollectionSumComputation<T extends PackedCollection<?>> extends AggregatedProducerComputation<T> {
+public class CollectionSumComputation<T extends PackedCollection> extends AggregatedProducerComputation<T> {
 	/**
 	 * Constructs a sum computation that reduces the input collection to a single sum value.
 	 * The input shape is automatically determined from the producer.
 	 *
 	 * @param input The {@link Producer} providing the collection to be summed
 	 */
-	public CollectionSumComputation(Producer<PackedCollection<?>> input) {
+	public CollectionSumComputation(Producer<PackedCollection> input) {
 		this(CollectionFeatures.getInstance().shape(input), input);
 	}
 
@@ -130,7 +130,7 @@ public class CollectionSumComputation<T extends PackedCollection<?>> extends Agg
 	 * @param shape The {@link TraversalPolicy} of the input collection
 	 * @param input The {@link Producer} providing the collection to be summed
 	 */
-	protected CollectionSumComputation(TraversalPolicy shape, Producer<PackedCollection<?>> input) {
+	protected CollectionSumComputation(TraversalPolicy shape, Producer<PackedCollection> input) {
 		super("sum", shape.replace(new TraversalPolicy(1)), shape.getSize(),
 				(args, index) -> new DoubleConstant(0.0),
 				(out, arg) -> out.add(arg),

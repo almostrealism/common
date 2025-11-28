@@ -55,12 +55,12 @@ import java.util.function.Supplier;
  * <p><strong>Static Approach (Inefficient):</strong></p>
  * <pre>{@code
  * // BAD: Data baked into computation graph
- * PackedCollection<?> data1 = loadData1();
+ * PackedCollection data1 = loadData1();
  * Producer<?> result1 = multiply(cp(data1), c(2.0));
  * result1.get().evaluate();  // Compiles kernel with data1
  *
  * // New data requires rebuilding and recompiling
- * PackedCollection<?> data2 = loadData2();
+ * PackedCollection data2 = loadData2();
  * Producer<?> result2 = multiply(cp(data2), c(2.0));  // Must recompile
  * result2.get().evaluate();
  * }</pre>
@@ -86,14 +86,14 @@ import java.util.function.Supplier;
  * <p>Created with: {@code new TraversalPolicy(size)} or {@code shape(size)}</p>
  * <pre>{@code
  * // Fixed-count: expects exactly 3 elements
- * Producer<Vector> input = v(shape(3), 0);
+ * Producer<PackedCollection> input = v(shape(3), 0);
  *
  * // Kernel size is predetermined: 3 work items
  * Producer<?> doubled = multiply(input, c(2.0));
  *
  * // MUST provide 3-element input at evaluation
  * doubled.get().evaluate(new Vector(1, 2, 3));  // OK
- * doubled.get().evaluate(new PackedCollection<>(5));  // ERROR if output size != 1 or 3
+ * doubled.get().evaluate(new PackedCollection(5));  // ERROR if output size != 1 or 3
  * }</pre>
  *
  * <p><strong>Use fixed-count when:</strong></p>
@@ -107,14 +107,14 @@ import java.util.function.Supplier;
  * <p>Created with: {@code new TraversalPolicy(false, false, elementSize)} or {@code shape(-1, elementSize)}</p>
  * <pre>{@code
  * // Variable-count: adapts to input size
- * Producer<PackedCollection<?>> input = v(shape(-1, 100), 0);
+ * Producer<PackedCollection> input = v(shape(-1, 100), 0);
  *
  * // Kernel size determined at runtime from output
  * Producer<?> processed = filter(input);
  *
  * // Works with any size input (multiples of 100)
- * processed.get().evaluate(new PackedCollection<>(1000));   // OK: 10 x 100
- * processed.get().evaluate(new PackedCollection<>(5000));   // OK: 50 x 100
+ * processed.get().evaluate(new PackedCollection(1000));   // OK: 10 x 100
+ * processed.get().evaluate(new PackedCollection(5000));   // OK: 50 x 100
  * }</pre>
  *
  * <p><strong>Use variable-count when:</strong></p>
@@ -152,16 +152,16 @@ import java.util.function.Supplier;
  * <h3>Single Dynamic Input</h3>
  * <pre>{@code
  * public class DataProcessor implements HardwareFeatures {
- *     private final Evaluable<PackedCollection<?>> operation;
+ *     private final Evaluable<PackedCollection> operation;
  *
  *     public DataProcessor() {
  *         // Build computation graph with dynamic input
- *         Producer<PackedCollection<?>> input = v(shape(-1, 1), 0);
+ *         Producer<PackedCollection> input = v(shape(-1, 1), 0);
  *         Producer<?> normalized = divide(input, max(input));
  *         this.operation = normalized.get();  // Compile once
  *     }
  *
- *     public PackedCollection<?> process(PackedCollection<?> data) {
+ *     public PackedCollection process(PackedCollection data) {
  *         return operation.evaluate(data);  // Reuse compiled kernel
  *     }
  * }
@@ -175,7 +175,7 @@ import java.util.function.Supplier;
  * Producer<?> combined = add(multiply(a, c(2.0)), multiply(b, c(3.0)));
  *
  * Evaluable<?> op = combined.get();
- * PackedCollection<?> result = op.evaluate(inputA, inputB);  // Two arguments
+ * PackedCollection result = op.evaluate(inputA, inputB);  // Two arguments
  * }</pre>
  *
  * <h3>Mixed Static and Dynamic</h3>
@@ -240,7 +240,7 @@ import java.util.function.Supplier;
  * <pre>{@code
  * // WRONG: Fixed size 100, output size 200
  * Producer<?> input = v(shape(100), 0);  // Fixed: 100 elements
- * PackedCollection<?> output = new PackedCollection<>(200);
+ * PackedCollection output = new PackedCollection(200);
  * input.get().into(output.traverseEach()).evaluate(data);
  * // ERROR: Output size (200) doesn't match fixed count (100) or 1
  * }</pre>
@@ -249,7 +249,7 @@ import java.util.function.Supplier;
  * <pre>{@code
  * // CORRECT: Variable-count adapts to output size
  * Producer<?> input = v(shape(-1, 1), 0);
- * PackedCollection<?> output = new PackedCollection<>(200);
+ * PackedCollection output = new PackedCollection(200);
  * input.get().into(output.traverseEach()).evaluate(data);  // OK
  * }</pre>
  *

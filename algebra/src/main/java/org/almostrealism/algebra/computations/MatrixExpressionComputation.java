@@ -37,7 +37,7 @@ import org.almostrealism.collect.computations.TraversableExpressionComputation;
  * @see DiagonalMatrixComputation
  * @see ScalarMatrixComputation
  */
-public abstract class MatrixExpressionComputation<T extends PackedCollection<?>> extends TraversableExpressionComputation<T> {
+public abstract class MatrixExpressionComputation<T extends PackedCollection> extends TraversableExpressionComputation<T> {
 	/**
 	 * Creates a new matrix expression computation.
 	 *
@@ -47,7 +47,7 @@ public abstract class MatrixExpressionComputation<T extends PackedCollection<?>>
 	 */
 	@SafeVarargs
 	public MatrixExpressionComputation(String name, TraversalPolicy shape,
-									   Producer<PackedCollection<?>>... args) {
+									   Producer<PackedCollection>... args) {
 		super(name, shape, args);
 	}
 }

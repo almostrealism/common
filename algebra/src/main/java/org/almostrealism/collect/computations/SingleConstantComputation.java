@@ -76,7 +76,7 @@ import java.util.OptionalDouble;
  * @see TraversalPolicy
  * @see org.almostrealism.collect.CollectionFeatures#constant(TraversalPolicy, double)
  */
-public class SingleConstantComputation<T extends PackedCollection<?>> extends CollectionConstantComputation<T> {
+public class SingleConstantComputation<T extends PackedCollection> extends CollectionConstantComputation<T> {
 	/**
 	 * The constant value that will fill every element of the produced collection.
 	 * This value is immutable once set during construction.

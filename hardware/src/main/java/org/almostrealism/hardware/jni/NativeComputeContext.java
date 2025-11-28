@@ -60,7 +60,7 @@ import org.almostrealism.hardware.metal.MetalMemoryProvider;
  * NativeComputeContext computeContext = new NativeComputeContext(dataContext, compiler);
  *
  * // Deliver a computation scope
- * Scope<PackedCollection<?>> scope = computation.getScope();
+ * Scope<PackedCollection> scope = computation.getScope();
  * InstructionSet instructions = computeContext.deliver(scope);
  *
  * // Execute compiled code

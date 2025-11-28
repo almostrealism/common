@@ -15,6 +15,7 @@
  */
 
 package org.almostrealism.time;
+import org.almostrealism.collect.PackedCollection;
 
 import io.almostrealism.relation.Producer;
 import org.almostrealism.hardware.HardwareFeatures;
@@ -109,12 +110,12 @@ import java.util.function.Supplier;
  * {@link io.almostrealism.cycle.Setup}, temporal operations gain additional capabilities:</p>
  * <pre>{@code
  * public class StatefulOperation implements Temporal, Lifecycle, Setup {
- *     private PackedCollection<?> state;
+ *     private PackedCollection state;
  *
  *     @Override
  *     public Supplier<Runnable> setup() {
  *         return () -> () -> {
- *             state = new PackedCollection<>(1024);
+ *             state = new PackedCollection(1024);
  *             // Initialize state...
  *         };
  *     }

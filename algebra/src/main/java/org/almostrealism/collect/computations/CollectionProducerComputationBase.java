@@ -79,10 +79,10 @@ import java.util.stream.Stream;
  * <h2>Usage Example:</h2>
  * <pre>{@code
  * // Example of a concrete implementation for element-wise addition
- * public class AdditionComputation extends CollectionProducerComputationBase<PackedCollection<?>, PackedCollection<?>> {
+ * public class AdditionComputation extends CollectionProducerComputationBase<PackedCollection, PackedCollection> {
  *     public AdditionComputation(TraversalPolicy shape, 
- *                               Supplier<Evaluable<? extends PackedCollection<?>>> a,
- *                               Supplier<Evaluable<? extends PackedCollection<?>>> b) {
+ *                               Supplier<Evaluable<? extends PackedCollection>> a,
+ *                               Supplier<Evaluable<? extends PackedCollection>> b) {
  *         super("addition", shape, a, b);
  *     }
  *     
@@ -95,10 +95,10 @@ import java.util.stream.Stream;
  * 
  * // Usage
  * TraversalPolicy shape = new TraversalPolicy(100, 50); // 100x50 matrix
- * Producer<PackedCollection<?>> sourceA = ...; // First input producer
- * Producer<PackedCollection<?>> sourceB = ...; // Second input producer
+ * Producer<PackedCollection> sourceA = ...; // First input producer
+ * Producer<PackedCollection> sourceB = ...; // Second input producer
  * AdditionComputation computation = new AdditionComputation(shape, sourceA, sourceB);
- * PackedCollection<?> result = computation.get().evaluate();
+ * PackedCollection result = computation.get().evaluate();
  * }</pre>
  * 
  * <h2>Thread Safety:</h2>
@@ -121,7 +121,7 @@ import java.util.stream.Stream;
  * @see TraversalPolicy  
  * @see PackedCollection
  */
-public abstract class CollectionProducerComputationBase<I extends PackedCollection<?>, O extends PackedCollection<?>>
+public abstract class CollectionProducerComputationBase<I extends PackedCollection, O extends PackedCollection>
 												extends ProducerComputationBase<I, O>
 												implements CollectionProducerComputation<O>, IndexSet,
 															DeltaAlternate<O>, MemoryDataComputation<O>,
@@ -392,13 +392,13 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 		if (!(existing instanceof PackedCollection) || existing.getMem() == null ||
 				((PackedCollection) existing).getShape().getTotalSize() < shape.getTotalSize()) {
 			if (existing != null) existing.getRootDelegate().destroy();
-			return new PackedCollection<>(shape);
+			return (MemoryBank<I>) new PackedCollection(shape);
 		}
 
-		if (((PackedCollection<?>) existing).getShape().equals(shape))
-			return (MemoryBank) existing;
+		if (((PackedCollection) existing).getShape().equals(shape))
+			return (MemoryBank<I>) existing;
 
-		return ((PackedCollection) existing).range(shape);
+		return (MemoryBank<I>) ((PackedCollection) existing).range(shape);
 	}
 
 	/**
@@ -805,7 +805,7 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 	 * @return The same array of suppliers after validation
 	 * @throws NullPointerException if any supplier is null
 	 */
-	public static Producer[] validateArgs(Producer<PackedCollection<?>>... args) {
+	public static Producer[] validateArgs(Producer<PackedCollection>... args) {
 		Stream.of(args).forEach(Objects::requireNonNull);
 		return args;
 	}
@@ -852,7 +852,7 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 	 * @see #setDeltaAlternate(CollectionProducer)
 	 * @see ReshapeProducer
 	 */
-	public static <T extends PackedCollection<?>> CollectionProducer<T> assignDeltaAlternate(
+	public static <T extends PackedCollection> CollectionProducer<T> assignDeltaAlternate(
 			CollectionProducer<T> producer, CollectionProducer<T> alternate) {
 		Producer computation;
 

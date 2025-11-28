@@ -15,6 +15,7 @@
  */
 
 package org.almostrealism.render;
+import org.almostrealism.collect.PackedCollection;
 
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
@@ -60,9 +61,9 @@ public class RayTracer {
 		this.pool = pool;
 	}
 
-	public Future<Producer<RGB>> trace(Producer<Ray> r) {
+	public Future<Producer<PackedCollection>> trace(Producer<Ray> r) {
 		if (enableThreadPool) {
-			Callable<Producer<RGB>> c = () -> engine.trace(r);
+			Callable<Producer<PackedCollection>> c = () -> engine.trace(r);
 			return pool.submit(c);
 		} else {
 			return CompletableFuture.completedFuture(engine.trace(r));

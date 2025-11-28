@@ -53,7 +53,7 @@ import java.util.function.Supplier;
  * @see WaveCellPush
  * @see WaveCellData
  */
-public abstract class WaveCellComputation extends OperationComputationAdapter<PackedCollection<?>> {
+public abstract class WaveCellComputation extends OperationComputationAdapter<PackedCollection> {
 	/** The hybrid scope for this computation, if custom scope generation is used. */
 	protected HybridScope scope;
 
@@ -66,9 +66,9 @@ public abstract class WaveCellComputation extends OperationComputationAdapter<Pa
 	 * @param output the destination for computed values
 	 */
 	public WaveCellComputation(WaveCellData data,
-							   PackedCollection<?> wave,
-							   Producer<PackedCollection<?>> frame,
-							   PackedCollection<?> output) {
+							   PackedCollection wave,
+							   Producer<PackedCollection> frame,
+							   PackedCollection output) {
 		this(data, () -> new Provider<>(wave), frame, output);
 	}
 
@@ -82,9 +82,9 @@ public abstract class WaveCellComputation extends OperationComputationAdapter<Pa
 	 * @throws NullPointerException if frame is null
 	 */
 	public WaveCellComputation(WaveCellData data,
-							   Producer<PackedCollection<?>> wave,
-							   Producer<PackedCollection<?>> frame,
-							   PackedCollection<?> output) {
+							   Producer<PackedCollection> wave,
+							   Producer<PackedCollection> frame,
+							   PackedCollection output) {
 		super(() -> new Provider<>(output), wave,
 				Objects.requireNonNull(frame),
 				data.getWaveLength(),

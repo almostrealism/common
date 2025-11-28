@@ -65,14 +65,14 @@
  * <pre>{@code
  * // Create genes from scalar values
  * HeredityFeatures features = HeredityFeatures.getInstance();
- * Gene<PackedCollection<?>> gene1 = features.g(0.1, 0.5, 0.9);
- * Gene<PackedCollection<?>> gene2 = features.g(-1.0, 0.0, 1.0);
+ * Gene<PackedCollection> gene1 = features.g(0.1, 0.5, 0.9);
+ * Gene<PackedCollection> gene2 = features.g(-1.0, 0.0, 1.0);
  *
  * // Create chromosome from genes
- * Chromosome<PackedCollection<?>> chromosome = features.c(gene1, gene2);
+ * Chromosome<PackedCollection> chromosome = features.c(gene1, gene2);
  *
  * // Access factors
- * Factor<PackedCollection<?>> factor = chromosome.valueAt(0, 1);
+ * Factor<PackedCollection> factor = chromosome.valueAt(0, 1);
  * }</pre>
  *
  * @see org.almostrealism.heredity.Gene
@@ -81,3 +81,4 @@
  * @see org.almostrealism.heredity.HeredityFeatures
  */
 package org.almostrealism.heredity;
+import org.almostrealism.collect.PackedCollection;

@@ -46,8 +46,8 @@ import java.util.function.Supplier;
  *
  * <pre>{@code
  * // Same argument index referenced twice
- * Producer<PackedCollection<?>> input1 = Input.value(1000, 0);  // arg 0
- * Producer<PackedCollection<?>> input2 = Input.value(1000, 0);  // arg 0 (same!)
+ * Producer<PackedCollection> input1 = Input.value(1000, 0);  // arg 0
+ * Producer<PackedCollection> input2 = Input.value(1000, 0);  // arg 0 (same!)
  *
  * // Without ProviderAwareArgumentMap:
  * map.get(input1) -> variable "arg0"
@@ -93,12 +93,12 @@ import java.util.function.Supplier;
  *
  * <h3>Deduplication of Input References</h3>
  * <pre>{@code
- * ProviderAwareArgumentMap<PackedCollection<?>, Double> map = new ProviderAwareArgumentMap<>();
+ * ProviderAwareArgumentMap<PackedCollection, Double> map = new ProviderAwareArgumentMap<>();
  *
  * // Multiple references to arg 0
- * Producer<PackedCollection<?>> a = Input.value(1000, 0);
- * Producer<PackedCollection<?>> b = Input.value(1000, 0);
- * Producer<PackedCollection<?>> c = Input.value(1000, 0);
+ * Producer<PackedCollection> a = Input.value(1000, 0);
+ * Producer<PackedCollection> b = Input.value(1000, 0);
+ * Producer<PackedCollection> c = Input.value(1000, 0);
  *
  * ArrayVariable<?> var1 = map.get(a, nameProvider);  // "arg0"
  * ArrayVariable<?> var2 = map.get(b, nameProvider);  // "arg0" (reused!)
@@ -110,9 +110,9 @@ import java.util.function.Supplier;
  * <h3>Provider Deduplication</h3>
  * <pre>{@code
  * // Same data provider wrapped differently
- * PackedCollection<?> data = new PackedCollection<>(1000);
- * Producer<PackedCollection<?>> p1 = () -> data;
- * Producer<PackedCollection<?>> p2 = () -> data;
+ * PackedCollection data = new PackedCollection(1000);
+ * Producer<PackedCollection> p1 = () -> data;
+ * Producer<PackedCollection> p2 = () -> data;
  *
  * ArrayVariable<?> var1 = map.get(p1, nameProvider);  // "data"
  * ArrayVariable<?> var2 = map.get(p2, nameProvider);  // "data" (same!)
@@ -123,8 +123,8 @@ import java.util.function.Supplier;
  * <h3>Computation Graph Optimization</h3>
  * <pre>{@code
  * // Operation uses same input multiple times
- * Producer<PackedCollection<?>> input = Input.value(1000, 0);
- * Producer<PackedCollection<?>> sum = add(input, input);  // Uses arg 0 twice
+ * Producer<PackedCollection> input = Input.value(1000, 0);
+ * Producer<PackedCollection> sum = add(input, input);  // Uses arg 0 twice
  *
  * // During kernel compilation:
  * ProviderAwareArgumentMap map = new ProviderAwareArgumentMap<>();

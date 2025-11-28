@@ -56,5 +56,5 @@ public interface Camera {
 	 * @return a {@link Producer} that produces a {@link Ray} representing the
 	 *         viewing ray from the camera through the specified screen point
 	 */
-	Producer<Ray> rayAt(Producer<Pair<?>> screenPosition, Producer<Pair<?>> screenDimensions);
+	Producer<Ray> rayAt(Producer<Pair> screenPosition, Producer<Pair> screenDimensions);
 }

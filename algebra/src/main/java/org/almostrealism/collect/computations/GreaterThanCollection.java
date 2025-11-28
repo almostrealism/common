@@ -57,34 +57,34 @@ import java.util.List;
  * <p><strong>Basic greater-than comparison (returning 1.0 or 0.0):</strong></p>
  * <pre>{@code
  * TraversalPolicy shape = shape(5);
- * CollectionProducer<PackedCollection<?>> a = c(3.0, 7.0, 2.0, 9.0, 5.0);
- * CollectionProducer<PackedCollection<?>> b = c(5.0, 5.0, 5.0, 5.0, 5.0);
+ * CollectionProducer<PackedCollection> a = c(3.0, 7.0, 2.0, 9.0, 5.0);
+ * CollectionProducer<PackedCollection> b = c(5.0, 5.0, 5.0, 5.0, 5.0);
  *
- * GreaterThanCollection<PackedCollection<?>> gt =
+ * GreaterThanCollection<PackedCollection> gt =
  *     new GreaterThanCollection<>(shape, a, b,
  *         c(1.0), c(0.0));  // true -> 1.0, false -> 0.0
  *
- * PackedCollection<?> result = gt.get().evaluate();
+ * PackedCollection result = gt.get().evaluate();
  * // Result: [0.0, 1.0, 0.0, 1.0, 0.0]  (7>5 and 9>5 are true)
  * }</pre>
  *
  * <p><strong>Greater-than-or-equal comparison:</strong></p>
  * <pre>{@code
- * GreaterThanCollection<PackedCollection<?>> gte =
+ * GreaterThanCollection<PackedCollection> gte =
  *     new GreaterThanCollection<>(shape, a, b,
  *         c(1.0), c(0.0),
  *         true);  // includeEqual = true
  *
- * PackedCollection<?> result = gte.get().evaluate();
+ * PackedCollection result = gte.get().evaluate();
  * // Result: [0.0, 1.0, 0.0, 1.0, 1.0]  (7>=5, 9>=5, 5>=5 are true)
  * }</pre>
  *
  * <p><strong>Using via CollectionFeatures:</strong></p>
  * <pre>{@code
  * // More common usage through helper methods
- * CollectionProducer<PackedCollection<?>> x = c(1.0, 2.0, 3.0);
- * CollectionProducer<PackedCollection<?>> threshold = c(2.0, 2.0, 2.0);
- * CollectionProducer<PackedCollection<?>> result =
+ * CollectionProducer<PackedCollection> x = c(1.0, 2.0, 3.0);
+ * CollectionProducer<PackedCollection> threshold = c(2.0, 2.0, 2.0);
+ * CollectionProducer<PackedCollection> result =
  *     greaterThan(x, threshold, c(1.0), c(0.0));
  * // Result: [0.0, 0.0, 1.0]
  * }</pre>
@@ -92,9 +92,9 @@ import java.util.List;
  * <p><strong>Value clipping example:</strong></p>
  * <pre>{@code
  * // Clip values to minimum threshold: max(value, threshold)
- * CollectionProducer<PackedCollection<?>> values = c(1.0, 5.0, 3.0);
- * CollectionProducer<PackedCollection<?>> threshold = c(2.0);
- * CollectionProducer<PackedCollection<?>> clipped =
+ * CollectionProducer<PackedCollection> values = c(1.0, 5.0, 3.0);
+ * CollectionProducer<PackedCollection> threshold = c(2.0);
+ * CollectionProducer<PackedCollection> clipped =
  *     greaterThan(values, threshold,
  *         values,      // if value > threshold, keep value
  *         threshold);  // else use threshold
@@ -117,7 +117,7 @@ import java.util.List;
  *
  * @author Michael Murray
  */
-public class GreaterThanCollection<T extends PackedCollection<?>> extends CollectionComparisonComputation<T> {
+public class GreaterThanCollection<T extends PackedCollection> extends CollectionComparisonComputation<T> {
 	/**
 	 * Flag controlling whether the comparison includes equality (>=) or is strict (>).
 	 * When true, performs greater-than-or-equal comparison (>=).
@@ -155,8 +155,8 @@ public class GreaterThanCollection<T extends PackedCollection<?>> extends Collec
 	 */
 	public GreaterThanCollection(
 			TraversalPolicy shape,
-			Producer<PackedCollection<?>> left, Producer<PackedCollection<?>> right,
-			Producer<PackedCollection<?>> trueValue, Producer<PackedCollection<?>> falseValue,
+			Producer<PackedCollection> left, Producer<PackedCollection> right,
+			Producer<PackedCollection> trueValue, Producer<PackedCollection> falseValue,
 			boolean includeEqual) {
 		super("greaterThan", shape,  left, right, trueValue, falseValue);
 		this.includeEqual = includeEqual;

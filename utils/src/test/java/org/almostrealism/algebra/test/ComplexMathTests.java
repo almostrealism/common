@@ -31,10 +31,10 @@ import java.util.function.Supplier;
 public class ComplexMathTests implements TestFeatures {
 	@Test
 	public void complexFromPartsBatches1() {
-		PackedCollection<?> values = new PackedCollection<>(10, 2, 1024).randFill();
+		PackedCollection values = new PackedCollection(10, 2, 1024).randFill();
 
-		Producer<Pair<?>> c = cp(values).transpose(2);
-		PackedCollection<?> out = c.evaluate();
+		Producer<PackedCollection> c = cp(values).transpose(2);
+		PackedCollection out = c.evaluate();
 
 		Assert.assertEquals(10, out.getShape().length(0));
 		Assert.assertEquals(1024, out.getShape().length(1));
@@ -57,12 +57,12 @@ public class ComplexMathTests implements TestFeatures {
 	public void complexFromPartsBatches2() {
 		if (skipKnownIssues) return;
 
-		PackedCollection<?> values = new PackedCollection<>(10, 2, 1024).fill(Math::random);
+		PackedCollection values = new PackedCollection(10, 2, 1024).fill(Math::random);
 
-		Producer<Pair<?>> c = complexFromParts(
+		Producer<PackedCollection> c = complexFromParts(
 				subset(shape(10, 1, 1024), cp(values), 0, 0, 0),
 				subset(shape(10, 1, 1024), cp(values), 0, 1, 0));
-		PackedCollection<?> out = c.evaluate();
+		PackedCollection out = c.evaluate();
 
 		Assert.assertEquals(10, out.getShape().length(0));
 		Assert.assertEquals(1, out.getShape().length(1));
@@ -86,15 +86,15 @@ public class ComplexMathTests implements TestFeatures {
 
 	@Test
 	public void complexFromPartsMagnitude() {
-		Evaluable<PackedCollection<?>> m =
+		Evaluable<PackedCollection> m =
 				complexFromParts(
 						v(shape(1024).traverseEach(), 0),
 						v(shape(1024).traverseEach(), 1))
 				.magnitude().get();
 
-		PackedCollection<?> real = new PackedCollection<>(1024).fill(Math::random);
-		PackedCollection<?> imag = new PackedCollection<>(1024).fill(Math::random);
-		PackedCollection<?> out = new PackedCollection<>(1024, 1);
+		PackedCollection real = new PackedCollection(1024).fill(Math::random);
+		PackedCollection imag = new PackedCollection(1024).fill(Math::random);
+		PackedCollection out = new PackedCollection(1024, 1);
 
 		verboseLog(() -> {
 			m.into(out.traverseEach()).evaluate(real.traverseEach(), imag.traverseEach());
@@ -109,11 +109,11 @@ public class ComplexMathTests implements TestFeatures {
 
 	@Test
 	public void multiply() {
-		PackedCollection<Pair<?>> a = new PackedCollection<Pair<?>>(shape(32, 2)).randFill();
-		PackedCollection<Pair<?>> b = new PackedCollection<Pair<?>>(shape(32, 2)).randFill();
+		PackedCollection a = new PackedCollection(shape(32, 2)).randFill();
+		PackedCollection b = new PackedCollection(shape(32, 2)).randFill();
 
 		verboseLog(() -> {
-			PackedCollection<Pair<?>> result = multiplyComplex(traverse(1, p(a)), traverse(1, p(b))).get().evaluate();
+			PackedCollection result = multiplyComplex(traverse(1, p(a)), traverse(1, p(b))).get().evaluate();
 
 			for (int i = 0; i < 32; i++) {
 				double expected = multiplyComplexL(
@@ -136,12 +136,12 @@ public class ComplexMathTests implements TestFeatures {
 		int w = 12;
 		int h = 32;
 
-		PackedCollection<Pair<?>> in = new PackedCollection<Pair<?>>(shape(w, h, 2)).randFill();
-		PackedCollection<Pair<?>> x = new PackedCollection<Pair<?>>(shape(h, 2)).randFill();
-		Producer<PackedCollection<Pair<?>>> o = multiplyComplex(traverse(1, p(in)), p(x));
+		PackedCollection in = new PackedCollection(shape(w, h, 2)).randFill();
+		PackedCollection x = new PackedCollection(shape(h, 2)).randFill();
+		Producer<PackedCollection> o = multiplyComplex(traverse(1, p(in)), p(x));
 
 		verboseLog(() -> {
-			PackedCollection<Pair<?>> result = o.get().evaluate();
+			PackedCollection result = o.get().evaluate();
 
 			for (int n = 0; n < w; n++) {
 				for (int i = 0; i < h; i++) {

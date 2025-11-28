@@ -15,6 +15,7 @@
  */
 
 package org.almostrealism.primitives;
+import org.almostrealism.collect.PackedCollection;
 
 import org.almostrealism.color.SurfaceLight;
 
@@ -188,7 +189,7 @@ public class RigidSphere extends Sphere implements RigidBody, ParticleGroup, Sur
 	 * Delegates to {@link #getValueAt(Producer)}.
 	 */
 	@Override
-	public Producer<RGB> getColorAt(Producer<Vector> point) { return getValueAt(point); }
+	public Producer<PackedCollection> getColorAt(Producer<PackedCollection> point) { return getValueAt(point); }
 
 	/**
 	 * @see org.almostrealism.algebra.ParticleGroup#getParticleVertices()

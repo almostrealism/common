@@ -40,8 +40,8 @@ import java.util.List;
  * <h2>Example</h2>
  * <pre>{@code
  * // Create diagonal matrix from vector [1, 2, 3]
- * CollectionProducer<PackedCollection<?>> diagonal = c(1.0, 2.0, 3.0);
- * DiagonalMatrixComputation<PackedCollection<?>> comp =
+ * CollectionProducer<PackedCollection> diagonal = c(1.0, 2.0, 3.0);
+ * DiagonalMatrixComputation<PackedCollection> comp =
  *     new DiagonalMatrixComputation<>(shape(3, 3).traverse(1), diagonal);
  *
  * // Result:
@@ -55,7 +55,7 @@ import java.util.List;
  * @see org.almostrealism.algebra.MatrixFeatures#diagonal(Producer)
  * @see IdentityMatrixComputation
  */
-public class DiagonalMatrixComputation<T extends PackedCollection<?>> extends MatrixExpressionComputation<T> {
+public class DiagonalMatrixComputation<T extends PackedCollection> extends MatrixExpressionComputation<T> {
 	/**
 	 * Creates a diagonal matrix computation with default name "diagonal".
 	 *

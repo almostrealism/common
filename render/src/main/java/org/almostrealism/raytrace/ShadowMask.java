@@ -16,6 +16,7 @@
 
 package org.almostrealism.raytrace;
 
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.color.DirectionalAmbientLight;
 import org.almostrealism.color.PointLight;
 import org.almostrealism.geometry.ClosestIntersection;
@@ -74,7 +75,7 @@ import java.util.function.Supplier;
 public class ShadowMask implements Evaluable<RGB>, Supplier<Evaluable<? extends RGB>> {
 	private Light light;
 	private Iterable<Intersectable> surfaces;
-	private Evaluable<Vector> point;
+	private Evaluable<? extends PackedCollection> point;
 
 	/**
 	 * Constructs a new {@link ShadowMask} for computing shadows from a specific light.
@@ -83,7 +84,7 @@ public class ShadowMask implements Evaluable<RGB>, Supplier<Evaluable<? extends 
 	 * @param surfaces The scene surfaces that may cast shadows
 	 * @param point    An evaluable that provides the surface point to test
 	 */
-	public ShadowMask(Light light, Iterable<Intersectable> surfaces, Evaluable<Vector> point) {
+	public ShadowMask(Light light, Iterable<Intersectable> surfaces, Evaluable<? extends PackedCollection> point) {
 		this.light = light;
 		this.surfaces = surfaces;
 		this.point = point;
@@ -110,8 +111,9 @@ public class ShadowMask implements Evaluable<RGB>, Supplier<Evaluable<? extends 
 	 */
 	@Override
 	public RGB evaluate(Object[] args) {
-		Vector p = point.evaluate(args);
-		if (p == null) return new RGB(1.0, 1.0, 1.0);
+		PackedCollection pc = point.evaluate(args);
+		if (pc == null) return new RGB(1.0, 1.0, 1.0);
+		Vector p = new Vector(pc, 0);
 
 		double maxDistance = -1.0;
 		Vector direction;

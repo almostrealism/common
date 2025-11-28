@@ -31,20 +31,20 @@ import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerComputation;
-import org.almostrealism.color.RGB;
+import org.almostrealism.collect.PackedCollection;
 
 import java.util.Collection;
 import java.util.Collections;
 
-public class GeneratedColorProducer<T> implements Generated<T, Producer<RGB>>, CollectionProducerComputation<RGB> {
-	private Producer<RGB> p;
+public class GeneratedColorProducer<T> implements Generated<T, Producer<PackedCollection>>, CollectionProducerComputation<PackedCollection> {
+	private Producer<PackedCollection> p;
 	private T generator;
 
 	protected GeneratedColorProducer(T generator) {
 		this.generator = generator;
 	}
 
-	protected GeneratedColorProducer(T generator, Producer<RGB> p) {
+	protected GeneratedColorProducer(T generator, Producer<PackedCollection> p) {
 		this.generator = generator;
 		this.p = p;
 	}
@@ -60,11 +60,11 @@ public class GeneratedColorProducer<T> implements Generated<T, Producer<RGB>>, C
 
 	public T getGenerator() { return generator; }
 
-	public Producer<RGB> getProducer() {
+	public Producer<PackedCollection> getProducer() {
 		return p;
 	}
 
-	public Producer<RGB> getGenerated() { return p; }
+	public Producer<PackedCollection> getGenerated() { return p; }
 
 	@Override
 	public TraversalPolicy getShape() {
@@ -80,7 +80,7 @@ public class GeneratedColorProducer<T> implements Generated<T, Producer<RGB>>, C
 	public long getCountLong() { return getShape().getCountLong(); }
 
 	@Override
-	public CollectionProducer<RGB> reshape(TraversalPolicy shape) {
+	public CollectionProducer<PackedCollection> reshape(TraversalPolicy shape) {
 		return (CollectionProducer) ((Shape) getGenerated()).reshape(shape);
 	}
 
@@ -99,12 +99,12 @@ public class GeneratedColorProducer<T> implements Generated<T, Producer<RGB>>, C
 	}
 
 	@Override
-	public Scope<RGB> getScope(KernelStructureContext context) { return ((Computation) p).getScope(context); }
+	public Scope<PackedCollection> getScope(KernelStructureContext context) { return ((Computation) p).getScope(context); }
 
 	@Override
-	public Evaluable<RGB> get() { return p.get(); }
+	public Evaluable<PackedCollection> get() { return p.get(); }
 
-	public static <T> GeneratedColorProducer<T> fromProducer(T generator, Producer<? extends RGB> p) {
+	public static <T> GeneratedColorProducer<T> fromProducer(T generator, Producer<? extends PackedCollection> p) {
 		return new GeneratedColorProducer(generator, p);
 	}
 }

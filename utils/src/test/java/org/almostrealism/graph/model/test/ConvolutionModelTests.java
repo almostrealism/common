@@ -59,18 +59,18 @@ public class ConvolutionModelTests implements ModelFeatures, TestFeatures, Kerne
 		model.add(conv);
 
 		Tensor<Double> t = tensor(inputShape);
-		PackedCollection<?> input = t.pack();
+		PackedCollection input = t.pack();
 
 		model.compile().forward(input);
 
-		PackedCollection<?> filter = conv.getWeights().get(0);
+		PackedCollection filter = conv.getWeights().get(0);
 		TraversalPolicy filterShape = filter.getShape();
 		Assert.assertEquals(filterCount, filterShape.length(0));
 		Assert.assertEquals(1, filterShape.length(1));
 		Assert.assertEquals(convSize, filterShape.length(2));
 		Assert.assertEquals(convSize, filterShape.length(3));
 
-		PackedCollection<?> output = ((DefaultCellularLayer) conv).getOutput();
+		PackedCollection output = ((DefaultCellularLayer) conv).getOutput();
 		validateConv(input.reshape(1, 1, h, w), filter, output, convSize);
 	}
 
@@ -98,18 +98,18 @@ public class ConvolutionModelTests implements ModelFeatures, TestFeatures, Kerne
 		CellularLayer conv = (CellularLayer) convolution2d(inputShape, filterCount, convSize, false);
 		model.add(conv);
 
-		PackedCollection<?> input = new PackedCollection<>(inputShape).randFill();
+		PackedCollection input = new PackedCollection(inputShape).randFill();
 
 		model.compile().forward(input);
 
-		PackedCollection<?> filter = conv.getWeights().get(0);
+		PackedCollection filter = conv.getWeights().get(0);
 		TraversalPolicy filterShape = filter.getShape();
 		Assert.assertEquals(filterCount, filterShape.length(0));
 		Assert.assertEquals(c, filterShape.length(1));
 		Assert.assertEquals(convSize, filterShape.length(2));
 		Assert.assertEquals(convSize, filterShape.length(3));
 
-		PackedCollection<?> output = ((DefaultCellularLayer) conv).getOutput();
+		PackedCollection output = ((DefaultCellularLayer) conv).getOutput();
 		validateConv(input, filter, output, convSize);
 	}
 
@@ -180,21 +180,21 @@ public class ConvolutionModelTests implements ModelFeatures, TestFeatures, Kerne
 		CellularLayer layer = conv instanceof SequentialBlock ?
 				(CellularLayer) ((SequentialBlock) conv).getBlocks().get(1) : (CellularLayer) conv;
 
-		Cell.CaptureReceptor<PackedCollection<?>> receptor = new Cell.CaptureReceptor<>();
+		Cell.CaptureReceptor<PackedCollection> receptor = new Cell.CaptureReceptor<>();
 		layer.getBackward().setReceptor(receptor);
 		((Learning) layer).setParameterUpdate(ParameterUpdate.disabled());
 		layer.setup().get().run();
 
-		PackedCollection<?> filter = layer.getWeights().get(0);
+		PackedCollection filter = layer.getWeights().get(0);
 		log(filter.getShape()); // (filterCount, c, convSize, convSize)
 
-		PackedCollection<?> inputGradient =
-				new PackedCollection<>(layer.getOutputShape()).randFill();
+		PackedCollection inputGradient =
+				new PackedCollection(layer.getOutputShape()).randFill();
 
 		Supplier<Runnable> op = layer.getBackward().push(cp(inputGradient));
 		op.get().run();
 
-		PackedCollection<?> outputGradient = receptor.getReceipt().evaluate();
+		PackedCollection outputGradient = receptor.getReceipt().evaluate();
 		log(outputGradient.getShape());
 
 		int outH = layer.getOutputShape().length(2);
@@ -247,13 +247,13 @@ public class ConvolutionModelTests implements ModelFeatures, TestFeatures, Kerne
 		OperationProfileNode profile = new OperationProfileNode(name);
 
 		try {
-			PackedCollection<?> gradient =
-					new PackedCollection<>(model.getOutputShape()).randFill();
+			PackedCollection gradient =
+					new PackedCollection(model.getOutputShape()).randFill();
 
 			CompiledModel compiled = model.compile(profile);
 			profile(profile, () -> compiled.backward(gradient));
 
-			PackedCollection<?> filter = layer.getWeights().get(0);
+			PackedCollection filter = layer.getWeights().get(0);
 			TraversalPolicy filterShape = filter.getShape();
 			Assert.assertEquals(filterCount, filterShape.length(0));
 			Assert.assertEquals(c, filterShape.length(1));
@@ -264,7 +264,7 @@ public class ConvolutionModelTests implements ModelFeatures, TestFeatures, Kerne
 		}
 	}
 
-	protected void validateConv(PackedCollection<?> input, PackedCollection<?> filter, PackedCollection<?> output, int convSize) {
+	protected void validateConv(PackedCollection input, PackedCollection filter, PackedCollection output, int convSize) {
 		int batches = input.getShape().length(0);
 		int channels = input.getShape().length(1);
 		TraversalPolicy outputShape = output.getShape();

@@ -29,18 +29,18 @@ public class ExpressionDelegationTest implements TestFeatures {
 	@Test
 	public void scalarFromTemporalScalar() {
 		TemporalScalar t = new TemporalScalar(4, 8);
-		Evaluable<PackedCollection<?>> ev = r(p(t)).get();
+		Evaluable<PackedCollection> ev = r(p(t)).get();
 		assertEquals(8.0, ev.evaluate());
 	}
 
 	@Test
 	public void scalarFromTemporalScalarFromScalars() {
 		verboseLog(() -> {
-			PackedCollection<?> a = pack(1.0);
-			PackedCollection<?> b = pack(2.0);
-			Evaluable<PackedCollection<?>> ev = r((Producer) temporal(p(a), p(b))).get();
+			PackedCollection a = pack(1.0);
+			PackedCollection b = pack(2.0);
+			Evaluable<PackedCollection> ev = r((Producer) temporal(p(a), p(b))).get();
 
-			PackedCollection<?> s = ev.evaluate();
+			PackedCollection s = ev.evaluate();
 			System.out.println(s);
 			assertEquals(2.0, s);
 		});
@@ -48,9 +48,9 @@ public class ExpressionDelegationTest implements TestFeatures {
 
 	@Test
 	public void assignmentFromProduct() {
-		PackedCollection<?> a = pack(1.0);
-		PackedCollection<?> b = pack(2.0);
-		PackedCollection<?> r = pack(0.0);
+		PackedCollection a = pack(1.0);
+		PackedCollection b = pack(2.0);
+		PackedCollection r = pack(0.0);
 
 		OperationList l = new OperationList("Assignment from product");
 		l.add(a(1, p(r), cp(a).multiply(p(b))));

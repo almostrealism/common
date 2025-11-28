@@ -61,13 +61,13 @@ import java.util.stream.IntStream;
  * @see org.almostrealism.raytrace.RenderParameters
  * @author Michael Murray
  */
-public class SuperSampler implements Producer<RGB> {
+public class SuperSampler implements Producer<PackedCollection> {
 
 	/**
 	 * The 2D grid of sample color producers. First index is horizontal (x),
 	 * second index is vertical (y).
 	 */
-	protected Producer<RGB> samples[][];
+	protected Producer<PackedCollection> samples[][];
 
 	/**
 	 * Scale factor applied to each sample when averaging.
@@ -81,7 +81,7 @@ public class SuperSampler implements Producer<RGB> {
 	 * @param samples A 2D array of color producers, one for each sub-pixel sample position.
 	 *                The array dimensions determine the supersampling factor.
 	 */
-	public SuperSampler(Producer<RGB> samples[][]) {
+	public SuperSampler(Producer<PackedCollection> samples[][]) {
 		this.samples = samples;
 		scale = 1.0 / (this.samples.length * this.samples[0].length);
 	}
@@ -96,8 +96,8 @@ public class SuperSampler implements Producer<RGB> {
 	 * @return An Evaluable that produces the averaged RGB color when evaluated with a pixel position
 	 */
 	@Override
-	public Evaluable<RGB> get() {
-		Evaluable<RGB> ev[][] = new Evaluable[samples.length][samples[0].length];
+	public Evaluable<PackedCollection> get() {
+		Evaluable<PackedCollection> ev[][] = new Evaluable[samples.length][samples[0].length];
 		IntStream.range(0, samples.length).forEach(i ->
 			IntStream.range(0, samples[i].length).forEach(j -> {
 				ev[i][j] = samples[i][j].get();
@@ -106,12 +106,7 @@ public class SuperSampler implements Producer<RGB> {
 		return new Evaluable<>() {
 
 			@Override
-			public MemoryBank<RGB> createDestination(int size) {
-				return RGB.bank(size);
-			}
-
-			@Override
-			public RGB evaluate(Object... args) {
+			public PackedCollection evaluate(Object... args) {
 				Pair pos = (Pair) args[0];
 
 				RGB c = new RGB(0.0, 0.0, 0.0);
@@ -122,9 +117,10 @@ public class SuperSampler implements Producer<RGB> {
 						double r = pos.getX() + ((double) i / (double) ev.length);
 						double q = pos.getY() + ((double) j / (double) ev[i].length);
 
-						RGB rgb = ev[i][j].evaluate(new Pair(r, q));
-						if (rgb == null) continue j;
+						PackedCollection result = ev[i][j].evaluate(new Pair(r, q));
+						if (result == null) continue j;
 
+						RGB rgb = result instanceof RGB ? (RGB) result : new RGB(result.toDouble(0), result.toDouble(1), result.toDouble(2));
 						rgb.multiplyBy(scale);
 						c.addTo(rgb);
 					}
@@ -139,8 +135,8 @@ public class SuperSampler implements Producer<RGB> {
 					int w = ev.length;
 					int h = ev[0].length;
 
-					PackedCollection<Pair<?>> allSamples = Pair.bank(((MemoryBank) args[0]).getCount());
-					PackedCollection<RGB> out[][] = new PackedCollection[w][h];
+					PackedCollection allSamples = Pair.bank(((MemoryBank) args[0]).getCount());
+					PackedCollection out[][] = new PackedCollection[w][h];
 
 					System.out.println("SuperSampler: Evaluating sample kernels...");
 					for (int i = 0; i < ev.length; i++) {
@@ -165,7 +161,9 @@ public class SuperSampler implements Producer<RGB> {
 						for (int i = 0; i < ev.length; i++) {
 							j:
 							for (int j = 0; j < ev[i].length; j++) {
-								((RGB) ((MemoryBank) destination).get(k)).addTo(out[i][j].get(k).multiply(scale));
+								PackedCollection sample = out[i][j].range(RGB.shape(), k * 3);
+								RGB sampleRgb = new RGB(sample.toDouble(0) * scale, sample.toDouble(1) * scale, sample.toDouble(2) * scale);
+								((RGB) ((MemoryBank) destination).get(k)).addTo(sampleRgb);
 							}
 						}
 					}

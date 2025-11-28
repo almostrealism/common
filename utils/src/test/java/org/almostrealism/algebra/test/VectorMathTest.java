@@ -36,129 +36,129 @@ public class VectorMathTest implements TestFeatures {
 
 	@Test
 	public void scalarPowDynamic() {
-		Producer<PackedCollection<?>> d = new DynamicCollectionProducer<>(shape(1), args -> {
-			PackedCollection<?> result = new PackedCollection<>(1);
+		Producer<PackedCollection> d = new DynamicCollectionProducer<>(shape(1), args -> {
+			PackedCollection result = new PackedCollection(1);
 			result.setMem(0, 3);
 			return result;
 		});
-		CollectionProducer<PackedCollection<?>> s = c(3);
-		Producer<PackedCollection<?>> p = s.pow(d);
-		Evaluable<PackedCollection<?>> ev = p.get();
-		PackedCollection<?> out = ev.evaluate();
+		CollectionProducer<PackedCollection> s = c(3);
+		Producer<PackedCollection> p = s.pow(d);
+		Evaluable<PackedCollection> ev = p.get();
+		PackedCollection out = ev.evaluate();
 		double result = out.toDouble(0);
 		assertEquals(27, result);
 	}
 
 	@Test
 	public void scalarMultiply() {
-		CollectionProducer<PackedCollection<?>> product = vector(1, 2, 3).multiply(c(2));
+		CollectionProducer<PackedCollection> product = vector(1, 2, 3).multiply(c(2));
 		Vector result = new Vector(product.get().evaluate(), 0);
-		assertEquals(2, result.getX());
-		assertEquals(4, result.getY());
-		assertEquals(6, result.getZ());
+		assertEquals(2, result.toDouble(0));
+		assertEquals(4, result.toDouble(1));
+		assertEquals(6, result.toDouble(2));
 	}
 
 	@Test
 	public void productFromVectors2() {
-		Producer<Vector> a = vector(1.0, 2.0, 3.0);
-		Producer<Vector> b = vector(4.0, 5.0, 6.0);
+		Producer<PackedCollection> a = (Producer<PackedCollection>) (Producer) vector(1.0, 2.0, 3.0);
+		Producer<PackedCollection> b = (Producer<PackedCollection>) (Producer) vector(4.0, 5.0, 6.0);
 		CollectionProducer<?> yTimesZ = y(a).multiply(z(b));
-		Producer<PackedCollection<?>> s = add((Producer) yTimesZ, c(1));
-		HardwareEvaluable<PackedCollection<?>> so = (HardwareEvaluable<PackedCollection<?>>) s.get();
+		Producer<PackedCollection> s = add((Producer) yTimesZ, c(1));
+		HardwareEvaluable<PackedCollection> so = (HardwareEvaluable<PackedCollection>) s.get();
 		Assert.assertEquals(1, so.getArgsCount());
 	}
 
 	@Test
 	public void productFromVectors3() {
-		Producer<Vector> a = vector(1.0, 2.0, 3.0);
-		Producer<Vector> b = vector(4.0, 5.0, 6.0);
+		Producer<PackedCollection> a = (Producer<PackedCollection>) (Producer) vector(1.0, 2.0, 3.0);
+		Producer<PackedCollection> b = (Producer<PackedCollection>) (Producer) vector(4.0, 5.0, 6.0);
 		CollectionProducer<?> yTimesZ = y(a).multiply(z(b));
-		Producer<PackedCollection<?>> s = subtract((Producer) yTimesZ, c(1));
-		HardwareEvaluable<PackedCollection<?>> so = (HardwareEvaluable<PackedCollection<?>>) s.get();
+		Producer<PackedCollection> s = subtract((Producer) yTimesZ, c(1));
+		HardwareEvaluable<PackedCollection> so = (HardwareEvaluable<PackedCollection>) s.get();
 		Assert.assertEquals(1, so.getArgsCount());
 	}
 
 	@Test
 	public void productDifference() {
 		verboseLog(() -> {
-			Producer<Vector> a = vector(1.0, 2.0, 3.0);
-			Producer<Vector> b = vector(4.0, 5.0, 6.0);
+			Producer<PackedCollection> a = (Producer<PackedCollection>) (Producer) vector(1.0, 2.0, 3.0);
+			Producer<PackedCollection> b = (Producer<PackedCollection>) (Producer) vector(4.0, 5.0, 6.0);
 			CollectionProducer s = y(a).multiply(z(b)).subtract(z(a).multiply(y(b)));
-			HardwareEvaluable<PackedCollection<?>> so = (HardwareEvaluable<PackedCollection<?>>) s.get();
+			HardwareEvaluable<PackedCollection> so = (HardwareEvaluable<PackedCollection>) s.get();
 			assertEquals(-3.0, so.evaluate());
 			Assert.assertEquals(1, so.getArgsCount());
 		});
 	}
 
-	protected CollectionProducer<Vector> crossProduct(Producer<Vector> v) {
-		return vector(crossProduct(vector(0.0, 0.0, -1.0), v));
+	protected CollectionProducer<PackedCollection> crossProduct(Producer<PackedCollection> v) {
+		return (CollectionProducer<PackedCollection>) crossProduct((Producer) vector(0.0, 0.0, -1.0), v);
 	}
 
 	@Test
 	public void crossProduct() {
-		CollectionProducer<Vector> cp = crossProduct(vector(100.0, -200.0, 0.0));
+		CollectionProducer<PackedCollection> cp = crossProduct((Producer<PackedCollection>) (Producer) vector(100.0, -200.0, 0.0));
 
-		HardwareEvaluable<Vector> cpo = (HardwareEvaluable<Vector>) cp.get();
+		HardwareEvaluable<PackedCollection> cpo = (HardwareEvaluable<PackedCollection>) cp.get();
 		assertEquals(1, cpo.getArgsCount());
 
-		Vector v = cp.get().evaluate();
+		Vector v = new Vector(cp.get().evaluate(), 0);
 		System.out.println(v);
 
-		assertEquals(-200, v.getX());
-		assertEquals(-100, v.getY());
-		assertEquals(0, v.getZ());
+		assertEquals(-200, v.toDouble(0));
+		assertEquals(-100, v.toDouble(1));
+		assertEquals(0, v.toDouble(2));
 	}
 
 	@Test
 	public void normalizedCrossProduct1() {
-		CollectionProducer<Vector> cp = normalize(crossProduct(vector(100.0, -200.0, 0.0)));
+		CollectionProducer<PackedCollection> cp = normalize(crossProduct((Producer<PackedCollection>) (Producer) vector(100.0, -200.0, 0.0)));
 
-		HardwareEvaluable<Vector> cpo = (HardwareEvaluable<Vector>) cp.get();
+		HardwareEvaluable<PackedCollection> cpo = (HardwareEvaluable<PackedCollection>) cp.get();
 		assertEquals(1, cpo.getArgsCount());
 
 		Vector v = new Vector(cp.get().evaluate(), 0);
 		v.print();
 
 		// Expected values: -2/sqrt(5) and -1/sqrt(5)
-		assertEquals(-0.8944271909999159, v.getX());
-		assertEquals(-0.4472135954999579, v.getY());
-		assertEquals(0, v.getZ());
+		assertEquals(-0.8944271909999159, v.toDouble(0));
+		assertEquals(-0.4472135954999579, v.toDouble(1));
+		assertEquals(0, v.toDouble(2));
 	}
 
 	@Test
 	public void normalizedCrossProduct2() {
-		CollectionProducer<Vector> cp = normalize(crossProduct(v(shape(3), 0)));
-		Evaluable<Vector> ev = cp.get();
+		CollectionProducer<PackedCollection> cp = normalize(crossProduct(v(shape(3), 0)));
+		Evaluable<PackedCollection> ev = cp.get();
 
 		Vector v = new Vector(ev.evaluate(new Vector(100, -200, 0)), 0);
 		v.print();
 
 		// Expected values: -2/sqrt(5) and -1/sqrt(5)
-		assertEquals(-0.8944271909999159, v.getX());
-		assertEquals(-0.4472135954999579, v.getY());
-		assertEquals(0, v.getZ());
+		assertEquals(-0.8944271909999159, v.toDouble(0));
+		assertEquals(-0.4472135954999579, v.toDouble(1));
+		assertEquals(0, v.toDouble(2));
 	}
 
 	@Test
 	public void vectorPow() {
 		Vector in = new Vector(3, 4, 5);
-		Vector result = vector(c(in).pow(2)).get().evaluate();
-		assertEquals(9, result.getX());
-		assertEquals(16, result.getY());
-		assertEquals(25, result.getZ());
+		Vector result = new Vector(vector(c(in).pow(2)).get().evaluate(), 0);
+		assertEquals(9, result.toDouble(0));
+		assertEquals(16, result.toDouble(1));
+		assertEquals(25, result.toDouble(2));
 	}
 
 	@Test
 	public void normalize() {
-		PackedCollection<?> v = new PackedCollection<>(3).randFill();
-		PackedCollection<?> result = normalize(cp(v)).evaluate();
+		PackedCollection v = new PackedCollection(3).randFill();
+		PackedCollection result = normalize(cp(v)).evaluate();
 		double length = result.doubleStream().map(d -> d * d).sum();
 		assertEquals(1.0, length);
 	}
 
 	@Test
 	public void normalizeRandom() {
-		PackedCollection<?> result = normalize(new Random(shape(2))).evaluate();
+		PackedCollection result = normalize(new Random(shape(2))).evaluate();
 		double length = result.doubleStream().map(d -> d * d).sum();
 		assertEquals(1.0, length);
 	}

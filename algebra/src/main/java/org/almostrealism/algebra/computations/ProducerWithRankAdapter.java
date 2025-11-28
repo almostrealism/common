@@ -51,15 +51,15 @@ import java.util.stream.Stream;
  * <h2>Example</h2>
  * <pre>{@code
  * // Create producer with confidence rank
- * Producer<Vector> prediction = ...;
- * Producer<PackedCollection<?>> confidence = c(0.95);
+ * Producer<PackedCollection> prediction = ...;
+ * Producer<PackedCollection> confidence = c(0.95);
  *
  * ProducerWithRankAdapter<Vector> rankedPrediction =
  *     new ProducerWithRankAdapter<>(prediction, confidence);
  *
  * // Access the producer and its rank
- * Producer<Vector> p = rankedPrediction.getProducer();
- * Producer<PackedCollection<?>> rank = rankedPrediction.getRank();
+ * Producer<PackedCollection> p = rankedPrediction.getProducer();
+ * Producer<PackedCollection> rank = rankedPrediction.getRank();
  * }</pre>
  *
  * @param <T>  the type produced by the wrapped producer
@@ -67,9 +67,9 @@ import java.util.stream.Stream;
  * @see HighestRank
  * @see ProducerWithRank
  */
-public class ProducerWithRankAdapter<T> implements ProducerWithRank<T, PackedCollection<?>>, ScopeLifecycle, Shape<T> {
+public class ProducerWithRankAdapter<T> implements ProducerWithRank<T, PackedCollection>, ScopeLifecycle, Shape<T> {
 	private Producer<T> p;
-	private Producer<PackedCollection<?>> rank;
+	private Producer<PackedCollection> rank;
 
 	/**
 	 * Protected constructor for subclasses that implement their own producer logic.
@@ -107,7 +107,7 @@ public class ProducerWithRankAdapter<T> implements ProducerWithRank<T, PackedCol
 	 * @return the rank value producer
 	 */
 	@Override
-	public Producer<PackedCollection<?>> getRank() { return rank; }
+	public Producer<PackedCollection> getRank() { return rank; }
 
 	/**
 	 * Prepares arguments for both the producer and rank.

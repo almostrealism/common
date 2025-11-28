@@ -50,7 +50,7 @@ import java.util.function.Supplier;
  * <p><strong>Element-wise operations:</strong>
  * <pre>{@code
  * // Create a computation that squares each element
- * DefaultTraversableExpressionComputation<PackedCollection<?>> square = 
+ * DefaultTraversableExpressionComputation<PackedCollection> square =
  *     new DefaultTraversableExpressionComputation<>(
  *         "square", inputShape,
  *         args -> DefaultCollectionExpression.create(inputShape,
@@ -63,7 +63,7 @@ import java.util.function.Supplier;
  * <p><strong>Reduction operations:</strong>
  * <pre>{@code
  * // Sum pairs of adjacent elements
- * DefaultTraversableExpressionComputation<PackedCollection<?>> pairSum = 
+ * DefaultTraversableExpressionComputation<PackedCollection> pairSum =
  *     new DefaultTraversableExpressionComputation<>(
  *         "pairSum", outputShape,
  *         args -> DefaultCollectionExpression.create(outputShape,
@@ -81,7 +81,7 @@ import java.util.function.Supplier;
  * 
  * @author Michael Murray
  */
-public class DefaultTraversableExpressionComputation<T extends PackedCollection<?>>
+public class DefaultTraversableExpressionComputation<T extends PackedCollection>
 		extends TraversableExpressionComputation<T> {
 
 	/**
@@ -112,7 +112,7 @@ public class DefaultTraversableExpressionComputation<T extends PackedCollection<
 	@SafeVarargs
 	public DefaultTraversableExpressionComputation(String name, TraversalPolicy shape,
 												   Function<TraversableExpression[], CollectionExpression> expression,
-												   Producer<PackedCollection<?>>... args) {
+												   Producer<PackedCollection>... args) {
 		this(name, shape, MultiTermDeltaStrategy.NONE, false, expression, args);
 	}
 
@@ -134,7 +134,7 @@ public class DefaultTraversableExpressionComputation<T extends PackedCollection<
 												   MultiTermDeltaStrategy deltaStrategy,
 												   boolean generateSignature,
 												   Function<TraversableExpression[], CollectionExpression> expression,
-												   Producer<PackedCollection<?>>... args) {
+												   Producer<PackedCollection>... args) {
 		super(name, shape, deltaStrategy, validateArgs(args));
 		this.expression = expression;
 		this.generateSignature = generateSignature;
@@ -226,7 +226,7 @@ public class DefaultTraversableExpressionComputation<T extends PackedCollection<
 	 * @param value The fixed collection value to return
 	 * @return A {@link DefaultTraversableExpressionComputation} that always produces the fixed value
 	 */
-	public static <T extends PackedCollection<?>> DefaultTraversableExpressionComputation<T> fixed(T value) {
+	public static <T extends PackedCollection> DefaultTraversableExpressionComputation<T> fixed(T value) {
 		return fixed(value, null);
 	}
 
@@ -240,7 +240,7 @@ public class DefaultTraversableExpressionComputation<T extends PackedCollection<
 	 * @param postprocessor Optional function for post-processing the output, or null for no post-processing
 	 * @return A {@link DefaultTraversableExpressionComputation} that always produces the fixed value
 	 */
-	public static <T extends PackedCollection<?>> DefaultTraversableExpressionComputation<T> fixed(
+	public static <T extends PackedCollection> DefaultTraversableExpressionComputation<T> fixed(
 			T value, BiFunction<MemoryData, Integer, T> postprocessor) {
 		return (DefaultTraversableExpressionComputation<T>)
 				new DefaultTraversableExpressionComputation<T>("constant", value.getShape(),

@@ -147,19 +147,19 @@ public interface CodeFeatures extends LayerFeatures,
 		return value(shape, argIndex);
 	}
 
-	default CollectionProducer<PackedCollection<?>> x(int... dims) {
+	default CollectionProducer<PackedCollection> x(int... dims) {
 		return c(value(dims.length == 0 ? shape(-1, 1) : shape(dims), 0));
 	}
 
-	default CollectionProducer<PackedCollection<?>> y(int... dims) {
+	default CollectionProducer<PackedCollection> y(int... dims) {
 		return c(value(dims.length == 0 ? shape(-1, 1) : shape(dims), 1));
 	}
 
-	default CollectionProducer<PackedCollection<?>> z(int... dims) {
+	default CollectionProducer<PackedCollection> z(int... dims) {
 		return c(value(dims.length == 0 ? shape(-1, 1) : shape(dims), 2));
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducer<T> cv(TraversalPolicy shape, int argIndex) {
+	default <T extends PackedCollection> CollectionProducer<T> cv(TraversalPolicy shape, int argIndex) {
 		return c(value(shape, argIndex));
 	}
 
@@ -167,11 +167,11 @@ public interface CodeFeatures extends LayerFeatures,
 		return new DynamicProducer<>(function);
 	}
 
-	default Producer<PackedCollection<?>> vector(int argIndex) { return value(Vector.shape(), argIndex); }
+	default Producer<PackedCollection> vector(int argIndex) { return value(Vector.shape(), argIndex); }
 
-	default Producer<PackedCollection<?>> triangle(int argIndex) { return value(shape(4, 3), argIndex); }
+	default Producer<PackedCollection> triangle(int argIndex) { return value(shape(4, 3), argIndex); }
 
-	default Producer<PackedCollection<?>> points(int argIndex) { return value(shape(3, 3), argIndex); }
+	default Producer<PackedCollection> points(int argIndex) { return value(shape(3, 3), argIndex); }
 
 	default <T> Producer<T> value(T v) {
 		if (v instanceof Pair) {
@@ -220,7 +220,7 @@ public interface CodeFeatures extends LayerFeatures,
 		}
 	}
 
-	default <T> Switch choice(Producer<PackedCollection<?>> decision, Computation<T>... choices) {
+	default <T> Switch choice(Producer<PackedCollection> decision, Computation<T>... choices) {
 		return new Switch(decision, Arrays.asList(choices));
 	}
 

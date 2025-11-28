@@ -15,6 +15,7 @@
  */
 
 package org.almostrealism.color;
+import org.almostrealism.collect.PackedCollection;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -55,7 +56,7 @@ import io.almostrealism.relation.Evaluable;
  * );
  *
  * // Compute shaded color
- * Producer<RGB> color = surface.shade(ctx);
+ * Producer<PackedCollection> color = surface.shade(ctx);
  * }</pre>
  *
  * <h2>Reflection/Refraction Tracking</h2>
@@ -82,8 +83,8 @@ import io.almostrealism.relation.Evaluable;
 public class ShaderContext extends LightingContext {
 	private ContinuousField intersection;
 	
-	private Curve<RGB> surface;
-	private Curve<RGB> otherSurfaces[];
+	private Curve<PackedCollection> surface;
+	private Curve<PackedCollection> otherSurfaces[];
 	
 	public RGB fogColor;
 	public double fogRatio, fogDensity;
@@ -91,7 +92,7 @@ public class ShaderContext extends LightingContext {
 	private int refCount;
 	private int exit, enter;
 
-	public ShaderContext(Curve<RGB> surface, Light l) {
+	public ShaderContext(Curve<PackedCollection> surface, Light l) {
 		this.surface = surface;
 		this.setLight(l);
 	}
@@ -105,13 +106,13 @@ public class ShaderContext extends LightingContext {
 	 * @param otherLights  Array of Light objects representing other lights in the scene.
 	 * @param otherSurfaces  Collection of other Surface objects in the scene.
 	 */
-	public ShaderContext(ContinuousField intersection, Producer<Vector> lightDirection, Light light,
-						 Iterable<Light> otherLights, Collection<Curve<RGB>> otherSurfaces) {
+	public ShaderContext(ContinuousField intersection, Producer<PackedCollection> lightDirection, Light light,
+						 Iterable<Light> otherLights, Collection<Curve<PackedCollection>> otherSurfaces) {
 		this(intersection, lightDirection, light, otherLights, otherSurfaces.toArray(new Curve[0]));
 	}
 	
-	private ShaderContext(ContinuousField intersection, Producer<Vector> lightDirection, Light light,
-						  Iterable<Light> otherLights, Curve<RGB> otherSurfaces[]) {
+	private ShaderContext(ContinuousField intersection, Producer<PackedCollection> lightDirection, Light light,
+						  Iterable<Light> otherLights, Curve<PackedCollection> otherSurfaces[]) {
 		this(intersection, lightDirection, light, otherLights, null, otherSurfaces);
 	}
 	
@@ -125,8 +126,8 @@ public class ShaderContext extends LightingContext {
 	 * @param surface  Surface object to be shaded.
 	 * @param otherSurfaces  Array of other Surface objects in the scene.
 	 */
-	public ShaderContext(ContinuousField intersection, Producer<Vector> lightDirection, Light light,
-						 Iterable<Light> otherLights, Curve<RGB> surface, Curve<RGB> otherSurfaces[]) {
+	public ShaderContext(ContinuousField intersection, Producer<PackedCollection> lightDirection, Light light,
+						 Iterable<Light> otherLights, Curve<PackedCollection> surface, Curve<PackedCollection> otherSurfaces[]) {
 		this.intersection = intersection;
 		this.setLightDirection(lightDirection);
 		this.setLight(light);
@@ -144,33 +145,33 @@ public class ShaderContext extends LightingContext {
 	/**
 	 * @param surface  The new Surface object.
 	 */
-	public void setSurface(Curve<RGB> surface) { this.surface = surface; }
+	public void setSurface(Curve<PackedCollection> surface) { this.surface = surface; }
 	
-	public Curve<RGB> getSurface() { return this.surface; }
+	public Curve<PackedCollection> getSurface() { return this.surface; }
 	
 	/**
 	 * Sets the other Surfaces to those stored in the specified array.
 	 * 
 	 * @param s  Array of Surface objects to use.
 	 */
-	public void setOtherSurfaces(Curve<RGB>... s) { this.otherSurfaces = s; }
+	public void setOtherSurfaces(Curve<PackedCollection>... s) { this.otherSurfaces = s; }
 	
 	/**
 	 * Sets the other {@link Curve}s to those stored in the specified array.
 	 * 
 	 * @param s  Array of Surface objects to use.
 	 */
-	public void setOtherSurfaces(Collection<Curve<RGB>> s) {
-		this.otherSurfaces = (Curve<RGB>[]) s.toArray(new Curve[0]);
+	public void setOtherSurfaces(Collection<Curve<PackedCollection>> s) {
+		this.otherSurfaces = (Curve<PackedCollection>[]) s.toArray(new Curve[0]);
 	}
 	
 	/**
 	 * @return  An array of other {@link Curve}s in the scene.
 	 */
-	public Curve<RGB>[] getOtherSurfaces() { return this.otherSurfaces; }
+	public Curve<PackedCollection>[] getOtherSurfaces() { return this.otherSurfaces; }
 
-	public Iterable<? extends Curve<RGB>> getAllSurfaces() {
-		List<Curve<RGB>> l = new ArrayList<>();
+	public Iterable<? extends Curve<PackedCollection>> getAllSurfaces() {
+		List<Curve<PackedCollection>> l = new ArrayList<>();
 		if (getSurface() != null) l.add(getSurface());
 		l.addAll(Arrays.asList(getOtherSurfaces()));
 		return l;

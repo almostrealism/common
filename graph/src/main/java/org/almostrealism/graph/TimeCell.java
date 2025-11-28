@@ -70,11 +70,11 @@ import java.util.stream.IntStream;
  * @see Temporal
  * @see TimeCellReset
  */
-public class TimeCell implements Cell<PackedCollection<?>>, Temporal, Destroyable, CodeFeatures {
+public class TimeCell implements Cell<PackedCollection>, Temporal, Destroyable, CodeFeatures {
 	private Receptor r;
-	private Pair<?> time;
-	private Producer<PackedCollection<?>> initial, loopDuration;
-	private PackedCollection<?> resets;
+	private Pair time;
+	private Producer<PackedCollection> initial, loopDuration;
+	private PackedCollection resets;
 
 	/**
 	 * Creates a new TimeCell with default settings and a single reset slot.
@@ -89,8 +89,8 @@ public class TimeCell implements Cell<PackedCollection<?>>, Temporal, Destroyabl
 	 * @param maxResets the maximum number of scheduled reset points
 	 */
 	public TimeCell(int maxResets) {
-		this.time = new Pair<>();
-		this.resets = new PackedCollection<>(maxResets);
+		this.time = new Pair();
+		this.resets = new PackedCollection(maxResets);
 		initResets();
 	}
 
@@ -100,7 +100,7 @@ public class TimeCell implements Cell<PackedCollection<?>>, Temporal, Destroyabl
 	 * @param initial      producer for the initial frame offset, or null to start at 0
 	 * @param loopDuration producer for the loop duration in frames, or null for no looping
 	 */
-	public TimeCell(Producer<PackedCollection<?>> initial, Producer<PackedCollection<?>> loopDuration) {
+	public TimeCell(Producer<PackedCollection> initial, Producer<PackedCollection> loopDuration) {
 		this(initial, loopDuration, 1);
 	}
 
@@ -111,7 +111,7 @@ public class TimeCell implements Cell<PackedCollection<?>>, Temporal, Destroyabl
 	 * @param loopDuration producer for the loop duration in frames, or null for no looping
 	 * @param maxResets    the maximum number of scheduled reset points
 	 */
-	public TimeCell(Producer<PackedCollection<?>> initial, Producer<PackedCollection<?>> loopDuration, int maxResets) {
+	public TimeCell(Producer<PackedCollection> initial, Producer<PackedCollection> loopDuration, int maxResets) {
 		this(maxResets);
 		this.initial = initial;
 		this.loopDuration = loopDuration;
@@ -172,7 +172,7 @@ public class TimeCell implements Cell<PackedCollection<?>>, Temporal, Destroyabl
 	 * @return a supplier that provides the push operation
 	 */
 	@Override
-	public Supplier<Runnable> push(Producer<PackedCollection<?>> protein) {
+	public Supplier<Runnable> push(Producer<PackedCollection> protein) {
 		return r == null ? new OperationList("TimeCell Push") : r.push(frame());
 	}
 
@@ -193,12 +193,12 @@ public class TimeCell implements Cell<PackedCollection<?>>, Temporal, Destroyabl
 			tick.add(a(cp(time),
 					add(cp(time), c(1.0).repeat(2))));
 		} else {
-			Producer<PackedCollection<?>> ld = c(loopDuration, 0);
-			Producer<PackedCollection<?>> left = cp(time.range(shape(1)));
+			Producer<PackedCollection> ld = c(loopDuration, 0);
+			Producer<PackedCollection> left = cp(time.range(shape(1)));
 			left = add(left, c(1.0));
 			left = greaterThanConditional(ld, c(0.0), mod(left, ld), left, false);
 
-			Producer<PackedCollection<?>> right = cp(time.range(shape(1), 1));
+			Producer<PackedCollection> right = cp(time.range(shape(1), 1));
 			right = add(right, c(1.0));
 
 			tick.add(a(cp(time.range(shape(1))), left));
@@ -217,7 +217,7 @@ public class TimeCell implements Cell<PackedCollection<?>>, Temporal, Destroyabl
 	 * @param r the receptor to connect, or null to disconnect
 	 */
 	@Override
-	public void setReceptor(Receptor<PackedCollection<?>> r) {
+	public void setReceptor(Receptor<PackedCollection> r) {
 		if (cellWarnings && this.r != null) {
 			warn("Replacing receptor");
 		}
@@ -252,7 +252,7 @@ public class TimeCell implements Cell<PackedCollection<?>>, Temporal, Destroyabl
 	 *
 	 * @return producer providing the current frame value
 	 */
-	public Producer<PackedCollection<?>> frame() { return cp(time.range(shape(1))); }
+	public Producer<PackedCollection> frame() { return cp(time.range(shape(1))); }
 
 	/**
 	 * Returns a producer for the current time in seconds.
@@ -260,7 +260,7 @@ public class TimeCell implements Cell<PackedCollection<?>>, Temporal, Destroyabl
 	 * @param sampleRate the sample rate in Hz to convert frames to seconds
 	 * @return producer providing the time in seconds (frame / sampleRate)
 	 */
-	public Producer<PackedCollection<?>> time(double sampleRate) {
+	public Producer<PackedCollection> time(double sampleRate) {
 		return divide(frame(), c(sampleRate));
 	}
 

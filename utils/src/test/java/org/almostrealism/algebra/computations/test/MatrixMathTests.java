@@ -74,16 +74,16 @@ public class MatrixMathTests implements TestFeatures {
 		int m = 2;
 		int p = 4;
 
-		PackedCollection<?> a = pack(2, 0, 0, 2).reshape(shape(n, m));
-		PackedCollection<?> b = pack(1, 1, 0, 0, 0, 0, 1, 1).reshape(shape(m, p));
+		PackedCollection a = pack(2, 0, 0, 2).reshape(shape(n, m));
+		PackedCollection b = pack(1, 1, 0, 0, 0, 0, 1, 1).reshape(shape(m, p));
 
-		CollectionProducer<PackedCollection<?>> product = matmul(cp(a), cp(b));
+		CollectionProducer<PackedCollection> product = matmul(cp(a), cp(b));
 
-		PackedCollection<?> c = product.get().evaluate();
+		PackedCollection c = product.get().evaluate();
 		c.traverse(1).print();
 		System.out.println("--");
 
-		PackedCollection<?> reference = new PackedCollection<>(shape(n, p));
+		PackedCollection reference = new PackedCollection(shape(n, p));
 		multiplyMatrices(n, m, p, a, b, reference);
 		reference.traverse().print();
 
@@ -100,10 +100,10 @@ public class MatrixMathTests implements TestFeatures {
 		int m = 3;
 		int p = 4;
 
-		PackedCollection<?> a = new PackedCollection<>(shape(n, m)).fill(Math::random);
-		PackedCollection<?> b = new PackedCollection<>(shape(m, p)).fill(Math::random);
+		PackedCollection a = new PackedCollection(shape(n, m)).fill(Math::random);
+		PackedCollection b = new PackedCollection(shape(m, p)).fill(Math::random);
 
-		CollectionProducer<PackedCollection<?>> product =
+		CollectionProducer<PackedCollection> product =
 				cp(b).enumerate(1, 1)
 				.reshape(p, m)
 				.traverse(1)
@@ -116,11 +116,11 @@ public class MatrixMathTests implements TestFeatures {
 				.enumerate(1, 1)
 				.reshape(n, p);
 
-		PackedCollection<?> c = product.get().evaluate();
+		PackedCollection c = product.get().evaluate();
 
 		print(n, p, c);
 
-		PackedCollection<?> reference = new PackedCollection<>(shape(n, p));
+		PackedCollection reference = new PackedCollection(shape(n, p));
 		multiplyMatrices(n, m, p, a, b, reference);
 
 		for (int i = 0; i < n; i++) {
@@ -131,9 +131,9 @@ public class MatrixMathTests implements TestFeatures {
 	}
 
 	private void multiplyMatrices(int n, int m, int p,
-								  PackedCollection<?> matrix1,
-								  PackedCollection<?> matrix2,
-								  PackedCollection<?> destination) {
+								  PackedCollection matrix1,
+								  PackedCollection matrix2,
+								  PackedCollection destination) {
 		int rows1 = n;
 		int cols1 = m;
 		int cols2 = p;
@@ -152,16 +152,16 @@ public class MatrixMathTests implements TestFeatures {
 	}
 
 	protected void matmul(int batches, int dim, int width, boolean optimize, boolean validate) {
-		PackedCollection<?> matrix = new PackedCollection<>(dim, width);
-		PackedCollection<?> vector;
-		PackedCollection<?> result;
+		PackedCollection matrix = new PackedCollection(dim, width);
+		PackedCollection vector;
+		PackedCollection result;
 
 		if (batches > 0) {
-			vector = new PackedCollection<>(batches, width, 1);
-			result = new PackedCollection<>(batches, dim);
+			vector = new PackedCollection(batches, width, 1);
+			result = new PackedCollection(batches, dim);
 		} else {
-			vector = new PackedCollection<>(width);
-			result = new PackedCollection<>(dim);
+			vector = new PackedCollection(width);
+			result = new PackedCollection(dim);
 		}
 
 		matrix.fill(pos -> Math.random());
@@ -222,8 +222,8 @@ public class MatrixMathTests implements TestFeatures {
 	}
 
 	protected void sum(int count, int dim) {
-		PackedCollection<?> vectors = new PackedCollection<>(count, dim);
-		PackedCollection<?> result = new PackedCollection<>(count);
+		PackedCollection vectors = new PackedCollection(count, dim);
+		PackedCollection result = new PackedCollection(count);
 
 		vectors.fill(pos -> Math.random());
 

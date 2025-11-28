@@ -15,6 +15,7 @@
  */
 
 package org.almostrealism.primitives;
+import org.almostrealism.collect.PackedCollection;
 
 import java.awt.Graphics;
 import java.io.IOException;
@@ -110,20 +111,20 @@ public class AbsorptionPlane extends Plane implements Absorber, Fast {
 
 	@Override
 	public boolean absorb(Vector x, Vector p, double energy) {
-		double d = Math.abs(x.dotProduct(normal.get().evaluate()));
+		double d = Math.abs(x.dotProduct(new Vector(normal.get().evaluate(), 0)));
 		double r = 1.0;
 //		if (AbsorptionPlane.verbose > 0.0) r = Math.random();
 //
 //		if (r < AbsorptionPlane.verbose)
 //			System.out.println("AbsorptionPlane: " + d);
-		
+
 		if (d > this.thick) return false;
-		
+
 		if (this.energy == null)
 			this.energy = new double[this.w][this.h];
-		
+
 		if (this.across == null)
-			this.across = new Vector(this.up).crossProduct(normal.get().evaluate()).toArray();
+			this.across = new Vector(this.up).crossProduct(new Vector(normal.get().evaluate(), 0)).toArray();
 		
 		if (this.image == null) {
 			this.image = new RGB[this.w][this.h];
@@ -174,13 +175,13 @@ public class AbsorptionPlane extends Plane implements Absorber, Fast {
 	}
 
 	@Override
-	public Producer<Vector> emit() { return null; }
+	public Producer<PackedCollection> emit() { return null; }
 
 	@Override
 	public double getEmitEnergy() { return 0; }
 
 	@Override
-	public Producer<Vector> getEmitPosition() { return null; }
+	public Producer<PackedCollection> getEmitPosition() { return null; }
 
 	@Override
 	public double getNextEmit() { return Double.MAX_VALUE; }

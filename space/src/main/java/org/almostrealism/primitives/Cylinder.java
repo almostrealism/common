@@ -65,10 +65,10 @@ public class Cylinder extends AbstractSurface implements CodeFeatures {
 	 *          at the point represented by the specified Vector object.
 	 */
 	@Override
-	public Producer<Vector> getNormalAt(Producer<Vector> point) {
-		Producer<Vector> normal = add(point, v(getLocation().minus()));
+	public Producer<PackedCollection> getNormalAt(Producer<PackedCollection> point) {
+		Producer normal = add((Producer) point, (Producer) v(getLocation().minus()));
 		normal = super.getTransform(true).transform(normal, TransformMatrix.TRANSFORM_AS_NORMAL);
-		normal = multiply(normal, vector(1.0, 0.0, 1.0));
+		normal = multiply(normal, (Producer) vector(1.0, 0.0, 1.0));
 		return normal;
 	}
 	
@@ -91,7 +91,7 @@ public class Cylinder extends AbstractSurface implements CodeFeatures {
 
 		final Supplier<Evaluable<? extends Ray>> fr = sr;
 
-		Producer<PackedCollection<?>> s = new DynamicProducerForMemoryData<>(args -> {
+		Producer<PackedCollection> s = new DynamicProducerForMemoryData<>(args -> {
 				Ray ray = fr.get().evaluate(args);
 
 				Vector a = ray.getOrigin();
@@ -118,10 +118,10 @@ public class Cylinder extends AbstractSurface implements CodeFeatures {
 				t0 = (-b / g) + discriminantSqrt;
 				t1 = (-b / g) - discriminantSqrt;
 
-				double l0 = ray.pointAt(c(t0)).get().evaluate(args).getY();
-				double l1 = ray.pointAt(c(t1)).get().evaluate(args).getY();
+				double l0 = new Vector(ray.pointAt(c(t0)).get().evaluate(args), 0).getY();
+				double l1 = new Vector(ray.pointAt(c(t1)).get().evaluate(args), 0).getY();
 
-				PackedCollection<?> sc = new PackedCollection<>(1);
+				PackedCollection sc = new PackedCollection(1);
 
 				if (l0 >= 0 && l0 <= 1.0)
 					sc.setMem(0, l0);
@@ -137,12 +137,12 @@ public class Cylinder extends AbstractSurface implements CodeFeatures {
 	}
 
 	@Override
-	public Operator<PackedCollection<?>> expect() {
+	public Operator<PackedCollection> expect() {
 		return null;
 	}
 
 	@Override
-	public Operator<PackedCollection<?>> get() {
+	public Operator<PackedCollection> get() {
 		return null;
 	}
 }

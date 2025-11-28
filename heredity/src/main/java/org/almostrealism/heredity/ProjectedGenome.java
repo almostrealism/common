@@ -74,7 +74,7 @@ import java.util.stream.Collectors;
  * genome.refreshValues();
  *
  * // Access genetic information
- * Factor<PackedCollection<?>> factor = genome.valueAt(0, 0, 0);
+ * Factor<PackedCollection> factor = genome.valueAt(0, 0, 0);
  *
  * // Create offspring with 10% mutation rate
  * ProjectedGenome offspring = genome.variation(
@@ -92,13 +92,13 @@ import java.util.stream.Collectors;
  * @see ProjectedGene
  * @see Genome
  */
-public class ProjectedGenome implements Genome<PackedCollection<?>> {
+public class ProjectedGenome implements Genome<PackedCollection> {
 	/**
 	 * Default seed used for deterministic weight initialization.
 	 */
 	public static final long initialSeed = 0xDEAD;
 
-	private PackedCollection<?> parameters;
+	private PackedCollection parameters;
 	private List<ProjectedChromosome> chromosomes;
 
 	/**
@@ -116,7 +116,7 @@ public class ProjectedGenome implements Genome<PackedCollection<?>> {
 	 *
 	 * @param parameters the parameter collection that drives gene values
 	 */
-	public ProjectedGenome(PackedCollection<?> parameters) {
+	public ProjectedGenome(PackedCollection parameters) {
 		this.parameters = parameters;
 		this.chromosomes = new ArrayList<>();
 	}
@@ -178,7 +178,7 @@ public class ProjectedGenome implements Genome<PackedCollection<?>> {
 	 *
 	 * @return the parameters
 	 */
-	public PackedCollection<?> getParameters() { return parameters; }
+	public PackedCollection getParameters() { return parameters; }
 
 	/**
 	 * Assigns new parameter values from the provided collection.
@@ -188,7 +188,7 @@ public class ProjectedGenome implements Genome<PackedCollection<?>> {
 	 * @param parameters the new parameter values
 	 * @throws IllegalArgumentException if the parameter sizes don't match
 	 */
-	public void assignTo(PackedCollection<?> parameters) {
+	public void assignTo(PackedCollection parameters) {
 		if (parameters.getShape().getTotalSize() != this.parameters.getShape().getTotalSize())
 			throw new IllegalArgumentException();
 
@@ -205,7 +205,7 @@ public class ProjectedGenome implements Genome<PackedCollection<?>> {
 	 * @return the chromosome at that position
 	 */
 	@Override
-	public Chromosome<PackedCollection<?>> valueAt(int pos) {
+	public Chromosome<PackedCollection> valueAt(int pos) {
 		return chromosomes.get(pos);
 	}
 
@@ -236,7 +236,7 @@ public class ProjectedGenome implements Genome<PackedCollection<?>> {
 	 * @return a new ProjectedGenome with mutated parameters
 	 */
 	public ProjectedGenome variation(double min, double max, double rate, DoubleSupplier delta) {
-		PackedCollection<?> variation = new PackedCollection<>(parameters.getShape());
+		PackedCollection variation = new PackedCollection(parameters.getShape());
 		variation.fill(pos -> {
 			double v = parameters.valueAt(pos);
 
@@ -260,7 +260,7 @@ public class ProjectedGenome implements Genome<PackedCollection<?>> {
 	 * @return a new ProjectedGenome with random parameters
 	 */
 	public ProjectedGenome random() {
-		return new ProjectedGenome(new PackedCollection<>(parameters.getShape()).randFill());
+		return new ProjectedGenome(new PackedCollection(parameters.getShape()).randFill());
 	}
 
 	/**

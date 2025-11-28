@@ -47,14 +47,14 @@ import java.util.stream.Stream;
  *
  * <p>Normally, evaluables allocate their own output memory:</p>
  * <pre>{@code
- * Evaluable<PackedCollection<?>> op = multiply(a, b).get();
- * PackedCollection<?> result = op.evaluate(dataA, dataB);  // Allocates new memory
+ * Evaluable<PackedCollection> op = multiply(a, b).get();
+ * PackedCollection result = op.evaluate(dataA, dataB);  // Allocates new memory
  * }</pre>
  *
  * <p>With {@link DestinationEvaluable}, the destination is provided upfront:</p>
  * <pre>{@code
- * MemoryBank<PackedCollection<?>> output = PackedCollection.bank(100, 1000);
- * Evaluable<PackedCollection<?>> destOp = new DestinationEvaluable<>(op, output);
+ * MemoryBank<PackedCollection> output = PackedCollection.bank(100, 1000);
+ * Evaluable<PackedCollection> destOp = new DestinationEvaluable<>(op, output);
  *
  * destOp.evaluate(batchA, batchB);  // Writes to output bank, no allocation
  * // output now contains results
@@ -91,12 +91,12 @@ import java.util.stream.Stream;
  *
  * <h3>Batch Processing Without Allocation</h3>
  * <pre>{@code
- * Evaluable<PackedCollection<?>> normalize = normalizeOp.get();
- * MemoryBank<PackedCollection<?>> output = PackedCollection.bank(1000, 256);
+ * Evaluable<PackedCollection> normalize = normalizeOp.get();
+ * MemoryBank<PackedCollection> output = PackedCollection.bank(1000, 256);
  *
  * // Reuse output bank for all batches
  * for (int batch = 0; batch < 100; batch++) {
- *     MemoryBank<PackedCollection<?>> input = loadBatch(batch);
+ *     MemoryBank<PackedCollection> input = loadBatch(batch);
  *     new DestinationEvaluable<>(normalize, output).evaluate(input);
  *     processBatch(output);
  *     // No allocation occurred
@@ -120,9 +120,9 @@ import java.util.stream.Stream;
  * <h3>Async Streaming Evaluation</h3>
  * <pre>{@code
  * Executor executor = Executors.newFixedThreadPool(4);
- * MemoryBank<PackedCollection<?>> output = PackedCollection.bank(1000, 256);
+ * MemoryBank<PackedCollection> output = PackedCollection.bank(1000, 256);
  *
- * StreamingEvaluable<MemoryBank<PackedCollection<?>>> stream =
+ * StreamingEvaluable<MemoryBank<PackedCollection>> stream =
  *     new DestinationEvaluable<>(op, output).async(executor);
  *
  * stream.setDownstream(result -> {
@@ -158,8 +158,8 @@ import java.util.stream.Stream;
  * <p>Many evaluables provide an {@code into(destination)} method that returns a
  * {@link DestinationEvaluable}:</p>
  * <pre>{@code
- * Evaluable<PackedCollection<?>> op = multiply(a, b).get();
- * MemoryBank<PackedCollection<?>> output = PackedCollection.bank(100, 1000);
+ * Evaluable<PackedCollection> op = multiply(a, b).get();
+ * MemoryBank<PackedCollection> output = PackedCollection.bank(100, 1000);
  *
  * // These are equivalent:
  * op.into(output).evaluate(batchA, batchB);

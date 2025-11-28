@@ -23,7 +23,7 @@ import java.util.function.Supplier;
 
 public class SummationCell extends CollectionCachedStateCell {
 	@Override
-	public Supplier<Runnable> push(Producer<PackedCollection<?>> protein) {
+	public Supplier<Runnable> push(Producer<PackedCollection> protein) {
 		if (protein == null) throw new NullPointerException();
 		return a(1, p(getCachedValue()), add(p(getCachedValue()), protein));
 	}

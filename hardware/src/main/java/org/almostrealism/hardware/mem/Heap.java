@@ -100,7 +100,7 @@ import java.util.stream.Stream;
  *     Heap.addCompiled(op);
  *
  *     // Track created memory
- *     PackedCollection<?> data = new PackedCollection<>(100);
+ *     PackedCollection data = new PackedCollection(100);
  *     Heap.addCreatedMemory(data);
  * });
  * heap.destroy();  // Destroys op and data automatically

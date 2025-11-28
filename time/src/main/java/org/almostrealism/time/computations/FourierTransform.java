@@ -80,19 +80,19 @@ import java.util.List;
  * <pre>{@code
  * // Create 512-bin FFT
  * int bins = 512;  // Must be power of 2
- * Producer<PackedCollection<?>> signal = ...; // Complex time-domain signal
+ * Producer<PackedCollection> signal = ...; // Complex time-domain signal
  *
  * FourierTransform fft = new FourierTransform(bins, signal);
- * PackedCollection<?> frequencyDomain = fft.get().evaluate();
+ * PackedCollection frequencyDomain = fft.get().evaluate();
  * }</pre>
  *
  * <h3>Inverse FFT</h3>
  * <pre>{@code
  * // Convert frequency domain back to time domain
- * Producer<PackedCollection<?>> frequencyData = ...;
+ * Producer<PackedCollection> frequencyData = ...;
  *
  * FourierTransform ifft = new FourierTransform(1, 512, true, frequencyData);
- * PackedCollection<?> timeDomain = ifft.get().evaluate();
+ * PackedCollection timeDomain = ifft.get().evaluate();
  * }</pre>
  *
  * <h3>Batch Processing</h3>
@@ -100,10 +100,10 @@ import java.util.List;
  * // Process 10 signals simultaneously
  * int count = 10;
  * int bins = 1024;
- * Producer<PackedCollection<?>> batch = ...;  // Shape: [10, 2, 1024]
+ * Producer<PackedCollection> batch = ...;  // Shape: [10, 2, 1024]
  *
  * FourierTransform batchFFT = new FourierTransform(count, bins, batch);
- * PackedCollection<?> results = batchFFT.get().evaluate();
+ * PackedCollection results = batchFFT.get().evaluate();
  * }</pre>
  *
  * <h3>Frequency Analysis</h3>
@@ -113,7 +113,7 @@ import java.util.List;
  * // Fill with audio samples...
  *
  * // Convert to complex format (real + 0*i)
- * PackedCollection<?> complexSignal = new PackedCollection<>(2, 512);
+ * PackedCollection complexSignal = new PackedCollection(2, 512);
  * for (int i = 0; i < 512; i++) {
  *     complexSignal.set(2*i, audio.get(i).getValue());     // Real
  *     complexSignal.set(2*i + 1, 0.0);                     // Imaginary
@@ -121,7 +121,7 @@ import java.util.List;
  *
  * // Compute FFT
  * FourierTransform fft = new FourierTransform(512, c(complexSignal));
- * PackedCollection<?> spectrum = fft.get().evaluate();
+ * PackedCollection spectrum = fft.get().evaluate();
  *
  * // Extract magnitude at each frequency
  * for (int i = 0; i < 512; i++) {
@@ -140,7 +140,7 @@ import java.util.List;
  *
  * // Forward FFT
  * FourierTransform fft = new FourierTransform(512, signal);
- * PackedCollection<?> freq = fft.get().evaluate();
+ * PackedCollection freq = fft.get().evaluate();
  *
  * // Zero high frequencies
  * for (int i = cutoffBin; i < 512; i++) {
@@ -150,7 +150,7 @@ import java.util.List;
  *
  * // Inverse FFT to get filtered signal
  * FourierTransform ifft = new FourierTransform(1, 512, true, c(freq));
- * PackedCollection<?> filtered = ifft.get().evaluate();
+ * PackedCollection filtered = ifft.get().evaluate();
  * }</pre>
  *
  * <h2>Performance Characteristics</h2>
@@ -194,7 +194,7 @@ import java.util.List;
  *
  * @author Michael Murray
  */
-public class FourierTransform extends CollectionProducerComputationBase<PackedCollection<?>, PackedCollection<?>> {
+public class FourierTransform extends CollectionProducerComputationBase<PackedCollection, PackedCollection> {
 	/**
 	 * Enables recursive method calls in generated kernels.
 	 * When true, uses function recursion for FFT subdivisions.
@@ -217,7 +217,7 @@ public class FourierTransform extends CollectionProducerComputationBase<PackedCo
 	 * @param bins Number of frequency bins (should be power of 2)
 	 * @param input Producer providing the complex time-domain signal
 	 */
-	public FourierTransform(int bins, Producer<PackedCollection<?>> input) {
+	public FourierTransform(int bins, Producer<PackedCollection> input) {
 		this(1, bins, input);
 	}
 
@@ -228,7 +228,7 @@ public class FourierTransform extends CollectionProducerComputationBase<PackedCo
 	 * @param bins Number of frequency bins per signal (should be power of 2)
 	 * @param input Producer providing the batch of complex signals
 	 */
-	public FourierTransform(int count, int bins, Producer<PackedCollection<?>> input) {
+	public FourierTransform(int count, int bins, Producer<PackedCollection> input) {
 		this(count, bins, false, input);
 	}
 
@@ -240,7 +240,7 @@ public class FourierTransform extends CollectionProducerComputationBase<PackedCo
 	 * @param inverse If true, performs inverse FFT; if false, performs forward FFT
 	 * @param input Producer providing the input signals (time-domain if !inverse, frequency-domain if inverse)
 	 */
-	public FourierTransform(int count, int bins, boolean inverse, Producer<PackedCollection<?>> input) {
+	public FourierTransform(int count, int bins, boolean inverse, Producer<PackedCollection> input) {
 		super(inverse ? "fourierTransformInverse"  : "fourierTransform",
 				enableRelative ?
 						new TraversalPolicy(count, 2, bins).traverse(1) :
@@ -250,8 +250,8 @@ public class FourierTransform extends CollectionProducerComputationBase<PackedCo
 	}
 
 	@Override
-	public Scope<PackedCollection<?>> getScope(KernelStructureContext context) {
-		HybridScope<PackedCollection<?>> scope = new HybridScope<>(this);
+	public Scope<PackedCollection> getScope(KernelStructureContext context) {
+		HybridScope<PackedCollection> scope = new HybridScope<>(this);
 		scope.setMetadata(new OperationMetadata(getFunctionName(), "FourierTransform"));
 
 		int size = getShape().getSize();
@@ -291,7 +291,7 @@ public class FourierTransform extends CollectionProducerComputationBase<PackedCo
 	protected Scope<?> calculateTransform(Expression<Integer> outputPosition, int size, int totalSize) {
 		OperationMetadata calculateTransformMetadata = new OperationMetadata
 				(getFunctionName() + "_calculateTransform", "Calculate Transform");
-		Scope<PackedCollection<?>> calculateTransform = new Scope<>(getFunctionName() + "_calculateTransform", calculateTransformMetadata);
+		Scope<PackedCollection> calculateTransform = new Scope<>(getFunctionName() + "_calculateTransform", calculateTransformMetadata);
 
 		ArrayVariable<Double> output = addParameter(calculateTransform, "output", size);
 		ArrayVariable<Double> input = addParameter(calculateTransform, "input", size);
@@ -556,7 +556,7 @@ public class FourierTransform extends CollectionProducerComputationBase<PackedCo
 	protected Scope<?> radix2(Expression<Integer> outputPosition, int size, int totalSize) {
 		OperationMetadata radix2Metadata = new OperationMetadata
 				(getFunctionName() + "_radix2", "Radix 2");
-		Scope<PackedCollection<?>> radix2 = new Scope<>(getFunctionName() + "_radix2", radix2Metadata);
+		Scope<PackedCollection> radix2 = new Scope<>(getFunctionName() + "_radix2", radix2Metadata);
 
 		ArrayVariable<Double> output = addParameter(radix2, "output", size);
 		ArrayVariable<Double> input = addParameter(radix2, "input", size);

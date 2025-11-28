@@ -65,8 +65,8 @@ public class Cone extends AbstractSurface implements CodeFeatures {
 	 * cone at the point represented by the specified Vector object.
 	 */
 	@Override
-	public Producer<Vector> getNormalAt(Producer<Vector> point) {
-		Producer<Vector> normal = multiply(point, vector(1.0, -1.0, 1.0));
+	public Producer<PackedCollection> getNormalAt(Producer<PackedCollection> point) {
+		Producer normal = multiply((Producer) point, (Producer) vector(1.0, -1.0, 1.0));
 		return super.getTransform(true).transform(normal, TransformMatrix.TRANSFORM_AS_NORMAL);
 	}
 
@@ -81,7 +81,7 @@ public class Cone extends AbstractSurface implements CodeFeatures {
 
 		final Producer<Ray> fr = r;
 
-		Producer<PackedCollection<?>> s = new DynamicProducerForMemoryData<>(args -> {
+		Producer<PackedCollection> s = new DynamicProducerForMemoryData<>(args -> {
 				Ray ray = fr.get().evaluate(args);
 
 				Vector d = ray.getDirection().divide(ray.getDirection().length());
@@ -108,21 +108,21 @@ public class Cone extends AbstractSurface implements CodeFeatures {
 						double invC2 = 1.0 / c2;
 
 						double t = (-c1 - root) * invC2;
-						Vector p = ray.pointAt(c(t)).get().evaluate(args);
+						Vector p = new Vector(ray.pointAt(c(t)).get().evaluate(args), 0);
 						if (p.getY() > 0.0 && p.getY() < 1.0) inter.add(t);
 
 						t = (-c1 + root) * invC2;
-						p = ray.pointAt(c(t)).get().evaluate(args);
+						p = new Vector(ray.pointAt(c(t)).get().evaluate(args), 0);
 						if (p.getY() > 0.0 && p.getY() < 1.0) inter.add(t);
 					} else {
 						double t = -c1 / c2;
-						Vector p = ray.pointAt(c(t)).get().evaluate(args);
+						Vector p = new Vector(ray.pointAt(c(t)).get().evaluate(args), 0);
 
 						if (p.getY() > 0.0 && p.getY() < 1.0) inter.add(t);
 					}
 				} else if (Math.abs(c1) >= Intersection.e) {
 					double t = -0.5 * c0 / c1;
-					Vector p = ray.pointAt(c(t)).get().evaluate(args);
+					Vector p = new Vector(ray.pointAt(c(t)).get().evaluate(args), 0);
 					if (p.getY() > 0.0 && p.getY() < 1.0) inter.add(t);
 				} else if (Math.abs(c0) < Intersection.e) {
 					inter.add(0.0);
@@ -141,7 +141,7 @@ public class Cone extends AbstractSurface implements CodeFeatures {
 				if (t == Double.MAX_VALUE) {
 					return null;
 				} else {
-					PackedCollection<?> ts = new PackedCollection<>(1);
+					PackedCollection ts = new PackedCollection(1);
 					ts.setMem(0, t);
 					return ts;
 				}
@@ -151,12 +151,12 @@ public class Cone extends AbstractSurface implements CodeFeatures {
 	}
 
 	@Override
-	public Operator<PackedCollection<?>> expect() {
+	public Operator<PackedCollection> expect() {
 		return null;
 	}
 
 	@Override
-	public Operator<PackedCollection<?>> get() {
+	public Operator<PackedCollection> get() {
 		return null;
 	}
 }

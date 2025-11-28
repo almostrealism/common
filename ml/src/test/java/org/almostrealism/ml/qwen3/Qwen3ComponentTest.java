@@ -24,15 +24,15 @@ public class Qwen3ComponentTest implements AttentionFeatures, LayerFeatures, Tes
 		System.out.println("=== Testing RMSNorm ===");
 		
 		StateDictionary referenceData = new StateDictionary(referenceDir);
-		PackedCollection<?> testConfig = referenceData.get("test_config");
+		PackedCollection testConfig = referenceData.get("test_config");
 		int dim = (int) testConfig.valueAt(2);
 
 		// Load test data
-		PackedCollection<?> input = referenceData.get("input");
-		PackedCollection<?> normWeights = referenceData.get("input_layernorm.weight");
+		PackedCollection input = referenceData.get("input");
+		PackedCollection normWeights = referenceData.get("input_layernorm.weight");
 
 		// Extract first token from input (batch=0, position=0)
-		PackedCollection<?> firstToken = new PackedCollection<>(shape(dim));
+		PackedCollection firstToken = new PackedCollection(shape(dim));
 		for (int d = 0; d < dim; d++) {
 			firstToken.setMem(d, input.valueAt(0, 0, d));
 		}
@@ -53,12 +53,12 @@ public class Qwen3ComponentTest implements AttentionFeatures, LayerFeatures, Tes
 		org.almostrealism.model.Model normModel = new org.almostrealism.model.Model(shape(dim));
 		normModel.add(rmsnorm(normWeights));
 		org.almostrealism.model.CompiledModel compiled = normModel.compile(false);
-		PackedCollection<?> rawOutput = compiled.forward(firstToken);
+		PackedCollection rawOutput = compiled.forward(firstToken);
 
 		// Handle 2D output if needed
-		PackedCollection<?> output = rawOutput;
+		PackedCollection output = rawOutput;
 		if (rawOutput.getShape().getDimensions() == 2 && rawOutput.getShape().length(0) == 1) {
-			output = new PackedCollection<>(shape(dim));
+			output = new PackedCollection(shape(dim));
 			for (int d = 0; d < dim; d++) {
 				output.setMem(d, rawOutput.valueAt(0, d));
 			}
@@ -105,7 +105,7 @@ public class Qwen3ComponentTest implements AttentionFeatures, LayerFeatures, Tes
 		};
 
 		for (String key : weightKeys) {
-			PackedCollection<?> weights = referenceData.get(key);
+			PackedCollection weights = referenceData.get(key);
 			double[] stats = computeStats(weights);
 			System.out.println("\n" + key + ":");
 			System.out.println("  Shape: " + weights.getShape());
@@ -132,15 +132,15 @@ public class Qwen3ComponentTest implements AttentionFeatures, LayerFeatures, Tes
 		System.out.println("\n=== Testing Dense Layer (Q Projection) ===");
 		
 		StateDictionary referenceData = new StateDictionary(referenceDir);
-		PackedCollection<?> testConfig = referenceData.get("test_config");
+		PackedCollection testConfig = referenceData.get("test_config");
 		int dim = (int) testConfig.valueAt(2);
 
 		// Load test data
-		PackedCollection<?> input = referenceData.get("input");
-		PackedCollection<?> wq = referenceData.get("self_attn.q_proj.weight");
+		PackedCollection input = referenceData.get("input");
+		PackedCollection wq = referenceData.get("self_attn.q_proj.weight");
 
 		// Extract first token
-		PackedCollection<?> firstToken = new PackedCollection<>(shape(dim));
+		PackedCollection firstToken = new PackedCollection(shape(dim));
 		for (int d = 0; d < dim; d++) {
 			firstToken.setMem(d, input.valueAt(0, 0, d));
 		}
@@ -160,12 +160,12 @@ public class Qwen3ComponentTest implements AttentionFeatures, LayerFeatures, Tes
 		org.almostrealism.model.Model denseModel = new org.almostrealism.model.Model(shape(dim));
 		denseModel.add(dense(wq));
 		org.almostrealism.model.CompiledModel compiled = denseModel.compile(false);
-		PackedCollection<?> rawOutput = compiled.forward(firstToken);
+		PackedCollection rawOutput = compiled.forward(firstToken);
 
 		// Handle 2D output if needed
-		PackedCollection<?> output = rawOutput;
+		PackedCollection output = rawOutput;
 		if (rawOutput.getShape().getDimensions() == 2 && rawOutput.getShape().length(0) == 1) {
-			output = new PackedCollection<>(shape(dim));
+			output = new PackedCollection(shape(dim));
 			for (int d = 0; d < dim; d++) {
 				output.setMem(d, rawOutput.valueAt(0, d));
 			}
@@ -191,7 +191,7 @@ public class Qwen3ComponentTest implements AttentionFeatures, LayerFeatures, Tes
 		referenceData.destroy();
 	}
 
-	private double[] computeStats(PackedCollection<?> data) {
+	private double[] computeStats(PackedCollection data) {
 		double sum = data.doubleStream().sum();
 		double mean = data.doubleStream().average().orElse(0);
 		double variance = data.doubleStream()
@@ -211,16 +211,16 @@ public class Qwen3ComponentTest implements AttentionFeatures, LayerFeatures, Tes
 		System.out.println("\n=== Testing RMSNorm + Dense (chained) ===");
 		
 		StateDictionary referenceData = new StateDictionary(referenceDir);
-		PackedCollection<?> testConfig = referenceData.get("test_config");
+		PackedCollection testConfig = referenceData.get("test_config");
 		int dim = (int) testConfig.valueAt(2);
 
 		// Load test data
-		PackedCollection<?> input = referenceData.get("input");
-		PackedCollection<?> normWeights = referenceData.get("input_layernorm.weight");
-		PackedCollection<?> wq = referenceData.get("self_attn.q_proj.weight");
+		PackedCollection input = referenceData.get("input");
+		PackedCollection normWeights = referenceData.get("input_layernorm.weight");
+		PackedCollection wq = referenceData.get("self_attn.q_proj.weight");
 
 		// Extract first token
-		PackedCollection<?> firstToken = new PackedCollection<>(shape(dim));
+		PackedCollection firstToken = new PackedCollection(shape(dim));
 		for (int d = 0; d < dim; d++) {
 			firstToken.setMem(d, input.valueAt(0, 0, d));
 		}
@@ -234,12 +234,12 @@ public class Qwen3ComponentTest implements AttentionFeatures, LayerFeatures, Tes
 		model.add(dense(wq));
 		org.almostrealism.model.CompiledModel compiled = model.compile(false);
 		
-		PackedCollection<?> rawOutput = compiled.forward(firstToken);
+		PackedCollection rawOutput = compiled.forward(firstToken);
 
 		// Handle 2D output
-		PackedCollection<?> output = rawOutput;
+		PackedCollection output = rawOutput;
 		if (rawOutput.getShape().getDimensions() == 2 && rawOutput.getShape().length(0) == 1) {
-			output = new PackedCollection<>(shape(dim));
+			output = new PackedCollection(shape(dim));
 			for (int d = 0; d < dim; d++) {
 				output.setMem(d, rawOutput.valueAt(0, d));
 			}
@@ -270,19 +270,19 @@ public class Qwen3ComponentTest implements AttentionFeatures, LayerFeatures, Tes
 		System.out.println("\n=== Testing RoPE Frequency Computation ===");
 		
 		StateDictionary referenceData = new StateDictionary(referenceDir);
-		PackedCollection<?> testConfig = referenceData.get("test_config");
+		PackedCollection testConfig = referenceData.get("test_config");
 		int seqLen = (int) testConfig.valueAt(1);
 		int headSize = (int) testConfig.valueAt(6);
 
 		System.out.println("Config: seqLen=" + seqLen + ", headSize=" + headSize);
 
 		// Compute RoPE frequencies
-		PackedCollection<?> freqCis = computeRopeFreqs(seqLen, headSize, 1000000.0);
+		PackedCollection freqCis = computeRopeFreqs(seqLen, headSize, 1000000.0);
 		System.out.println("Computed freqCis shape: " + freqCis.getShape());
 
 		// Load PyTorch reference
-		PackedCollection<?> refCos = referenceData.get("position_cos");
-		PackedCollection<?> refSin = referenceData.get("position_sin");
+		PackedCollection refCos = referenceData.get("position_cos");
+		PackedCollection refSin = referenceData.get("position_sin");
 		System.out.println("Reference cos shape: " + refCos.getShape());
 		System.out.println("Reference sin shape: " + refSin.getShape());
 
@@ -316,17 +316,17 @@ public class Qwen3ComponentTest implements AttentionFeatures, LayerFeatures, Tes
 		referenceData.destroy();
 	}
 
-	private PackedCollection<?> computeRopeFreqs(int seqLen, int headSize, double theta) {
+	private PackedCollection computeRopeFreqs(int seqLen, int headSize, double theta) {
 		int freqDim = headSize / 2;
 
 		// Compute inverse frequencies
-		PackedCollection<?> invFreq = new PackedCollection<>(shape(freqDim));
+		PackedCollection invFreq = new PackedCollection(shape(freqDim));
 		for (int i = 0; i < freqDim; i++) {
 			invFreq.setMem(i, 1.0 / Math.pow(theta, (2.0 * i) / headSize));
 		}
 
 		// Compute position * inv_freq for each position
-		PackedCollection<?> freqs = new PackedCollection<>(shape(seqLen, freqDim, 2));
+		PackedCollection freqs = new PackedCollection(shape(seqLen, freqDim, 2));
 		for (int pos = 0; pos < seqLen; pos++) {
 			for (int i = 0; i < freqDim; i++) {
 				double freq = pos * invFreq.toDouble(i);
@@ -347,19 +347,19 @@ public class Qwen3ComponentTest implements AttentionFeatures, LayerFeatures, Tes
 		System.out.println("\n=== Testing RoPE Rotation ===");
 		
 		StateDictionary referenceData = new StateDictionary(referenceDir);
-		PackedCollection<?> testConfig = referenceData.get("test_config");
+		PackedCollection testConfig = referenceData.get("test_config");
 		int dim = (int) testConfig.valueAt(2);
 		int seqLen = (int) testConfig.valueAt(1);
 		int headSize = (int) testConfig.valueAt(6);
 		int heads = (int) testConfig.valueAt(4);
 
 		// Load test data
-		PackedCollection<?> input = referenceData.get("input");
-		PackedCollection<?> normWeights = referenceData.get("input_layernorm.weight");
-		PackedCollection<?> wq = referenceData.get("self_attn.q_proj.weight");
+		PackedCollection input = referenceData.get("input");
+		PackedCollection normWeights = referenceData.get("input_layernorm.weight");
+		PackedCollection wq = referenceData.get("self_attn.q_proj.weight");
 
 		// Extract first token
-		PackedCollection<?> firstToken = new PackedCollection<>(shape(dim));
+		PackedCollection firstToken = new PackedCollection(shape(dim));
 		for (int d = 0; d < dim; d++) {
 			firstToken.setMem(d, input.valueAt(0, 0, d));
 		}
@@ -375,8 +375,8 @@ public class Qwen3ComponentTest implements AttentionFeatures, LayerFeatures, Tes
 		model.add(reshape(shape(dim), shape(heads, headSize)));
 		
 		// Compute RoPE frequencies
-		PackedCollection<?> freqCis = computeRopeFreqs(seqLen, headSize, 1000000.0);
-		PackedCollection<?> position = new PackedCollection<>(1);
+		PackedCollection freqCis = computeRopeFreqs(seqLen, headSize, 1000000.0);
+		PackedCollection position = new PackedCollection(1);
 		position.setMem(0, 0.0);
 
 		// Apply RoPE rotation
@@ -386,7 +386,7 @@ public class Qwen3ComponentTest implements AttentionFeatures, LayerFeatures, Tes
 		org.almostrealism.model.CompiledModel compiled = model.compile(false);
 		
 		System.out.println("Running forward pass...");
-		PackedCollection<?> rawOutput = compiled.forward(firstToken);
+		PackedCollection rawOutput = compiled.forward(firstToken);
 
 		System.out.println("Output shape: " + rawOutput.getShape());
 		double sum = rawOutput.doubleStream().sum();
@@ -414,7 +414,7 @@ public class Qwen3ComponentTest implements AttentionFeatures, LayerFeatures, Tes
 		System.out.println("\n=== Testing Attention (without FFN) ===");
 		
 		StateDictionary referenceData = new StateDictionary(referenceDir);
-		PackedCollection<?> testConfig = referenceData.get("test_config");
+		PackedCollection testConfig = referenceData.get("test_config");
 		int dim = (int) testConfig.valueAt(2);
 		int seqLen = (int) testConfig.valueAt(1);
 		int headSize = (int) testConfig.valueAt(6);
@@ -422,15 +422,15 @@ public class Qwen3ComponentTest implements AttentionFeatures, LayerFeatures, Tes
 		int kvHeads = (int) testConfig.valueAt(5);
 
 		// Load test data
-		PackedCollection<?> input = referenceData.get("input");
-		PackedCollection<?> attnNorm = referenceData.get("input_layernorm.weight");
-		PackedCollection<?> wq = referenceData.get("self_attn.q_proj.weight");
-		PackedCollection<?> wk = referenceData.get("self_attn.k_proj.weight");
-		PackedCollection<?> wv = referenceData.get("self_attn.v_proj.weight");
-		PackedCollection<?> wo = referenceData.get("self_attn.o_proj.weight");
+		PackedCollection input = referenceData.get("input");
+		PackedCollection attnNorm = referenceData.get("input_layernorm.weight");
+		PackedCollection wq = referenceData.get("self_attn.q_proj.weight");
+		PackedCollection wk = referenceData.get("self_attn.k_proj.weight");
+		PackedCollection wv = referenceData.get("self_attn.v_proj.weight");
+		PackedCollection wo = referenceData.get("self_attn.o_proj.weight");
 
 		// Extract first token
-		PackedCollection<?> firstToken = new PackedCollection<>(shape(dim));
+		PackedCollection firstToken = new PackedCollection(shape(dim));
 		for (int d = 0; d < dim; d++) {
 			firstToken.setMem(d, input.valueAt(0, 0, d));
 		}
@@ -439,8 +439,8 @@ public class Qwen3ComponentTest implements AttentionFeatures, LayerFeatures, Tes
 			", max=" + firstToken.doubleStream().map(Math::abs).max().orElse(0));
 
 		// Build attention block (no FFN)
-		PackedCollection<?> freqCis = computeRopeFreqs(seqLen, headSize, 1000000.0);
-		PackedCollection<?> position = new PackedCollection<>(1);
+		PackedCollection freqCis = computeRopeFreqs(seqLen, headSize, 1000000.0);
+		PackedCollection position = new PackedCollection(1);
 		position.setMem(0, 0.0);
 
 		org.almostrealism.model.Model model = new org.almostrealism.model.Model(shape(dim));
@@ -451,12 +451,12 @@ public class Qwen3ComponentTest implements AttentionFeatures, LayerFeatures, Tes
 		org.almostrealism.model.CompiledModel compiled = model.compile(false);
 		
 		System.out.println("Running forward pass...");
-		PackedCollection<?> rawOutput = compiled.forward(firstToken);
+		PackedCollection rawOutput = compiled.forward(firstToken);
 
 		// Handle 2D output
-		PackedCollection<?> output = rawOutput;
+		PackedCollection output = rawOutput;
 		if (rawOutput.getShape().getDimensions() == 2 && rawOutput.getShape().length(0) == 1) {
-			output = new PackedCollection<>(shape(dim));
+			output = new PackedCollection(shape(dim));
 			for (int d = 0; d < dim; d++) {
 				output.setMem(d, rawOutput.valueAt(0, d));
 			}
@@ -494,7 +494,7 @@ public class Qwen3ComponentTest implements AttentionFeatures, LayerFeatures, Tes
 		System.out.println("\n=== Testing Cache Initialization ===");
 		
 		// Test if PackedCollection initializes to zero
-		PackedCollection<?> cache = new PackedCollection<>(10, 5, 64);
+		PackedCollection cache = new PackedCollection(10, 5, 64);
 		System.out.println("Cache shape: " + cache.getShape());
 		System.out.println("Cache mem length: " + cache.getMemLength());
 		
@@ -533,7 +533,7 @@ public class Qwen3ComponentTest implements AttentionFeatures, LayerFeatures, Tes
 		int heads = 14;
 		int headsPerKvGroup = heads / kvHeads; // 7
 		
-		PackedCollection<?> kvCache = new PackedCollection<>(seqLen, kvHeads, headSize);
+		PackedCollection kvCache = new PackedCollection(seqLen, kvHeads, headSize);
 		
 		// Fill with pattern: seqPos * 100 + kvHead * 10 + dim
 		for (int s = 0; s < seqLen; s++) {
@@ -550,12 +550,12 @@ public class Qwen3ComponentTest implements AttentionFeatures, LayerFeatures, Tes
 			kvCache.valueAt(0, 0, 1) + ", " + kvCache.valueAt(0, 1, 0));
 		
 		// Test expansion using the same logic as AttentionFeatures
-		Producer<PackedCollection<?>> keys = p(kvCache);
-		Producer<PackedCollection<?>> repeated = traverse(2, keys).repeat(headsPerKvGroup);
-		Producer<PackedCollection<?>> expanded = reshape(shape(seqLen, heads, headSize), repeated);
+		Producer<PackedCollection> keys = p(kvCache);
+		Producer<PackedCollection> repeated = traverse(2, keys).repeat(headsPerKvGroup);
+		Producer<PackedCollection> expanded = reshape(shape(seqLen, heads, headSize), repeated);
 		
 		// Compile and evaluate
-		PackedCollection<?> result = new PackedCollection<>(seqLen, heads, headSize);
+		PackedCollection result = new PackedCollection(seqLen, heads, headSize);
 		expanded.get().into(result).evaluate();
 		
 		System.out.println("Output shape: " + result.getShape());
@@ -585,7 +585,7 @@ public class Qwen3ComponentTest implements AttentionFeatures, LayerFeatures, Tes
 		System.out.println("\n=== Testing Attention WITH Residual Connection ===");
 
 		StateDictionary referenceData = new StateDictionary(referenceDir);
-		PackedCollection<?> testConfig = referenceData.get("test_config");
+		PackedCollection testConfig = referenceData.get("test_config");
 		int dim = (int) testConfig.valueAt(2);
 		int heads = (int) testConfig.valueAt(4);
 		int kvHeads = (int) testConfig.valueAt(5);
@@ -593,20 +593,20 @@ public class Qwen3ComponentTest implements AttentionFeatures, LayerFeatures, Tes
 		int seqLen = (int) testConfig.valueAt(1);
 
 		// Load test data
-		PackedCollection<?> input = referenceData.get("input");
-		PackedCollection<?> attnNorm = referenceData.get("input_layernorm.weight");
-		PackedCollection<?> wq = referenceData.get("self_attn.q_proj.weight");
-		PackedCollection<?> wk = referenceData.get("self_attn.k_proj.weight");
-		PackedCollection<?> wv = referenceData.get("self_attn.v_proj.weight");
-		PackedCollection<?> wo = referenceData.get("self_attn.o_proj.weight");
+		PackedCollection input = referenceData.get("input");
+		PackedCollection attnNorm = referenceData.get("input_layernorm.weight");
+		PackedCollection wq = referenceData.get("self_attn.q_proj.weight");
+		PackedCollection wk = referenceData.get("self_attn.k_proj.weight");
+		PackedCollection wv = referenceData.get("self_attn.v_proj.weight");
+		PackedCollection wo = referenceData.get("self_attn.o_proj.weight");
 
 		// Compute RoPE frequencies
-		PackedCollection<?> freqCis = computeRopeFreqs(seqLen, headSize, 1000000.0);
-		PackedCollection<?> position = new PackedCollection<>(1);
+		PackedCollection freqCis = computeRopeFreqs(seqLen, headSize, 1000000.0);
+		PackedCollection position = new PackedCollection(1);
 		position.setMem(0, 0.0);
 
 		// Extract first token
-		PackedCollection<?> firstToken = new PackedCollection<>(shape(dim));
+		PackedCollection firstToken = new PackedCollection(shape(dim));
 		for (int d = 0; d < dim; d++) {
 			firstToken.setMem(d, input.valueAt(0, 0, d));
 		}
@@ -624,12 +624,12 @@ public class Qwen3ComponentTest implements AttentionFeatures, LayerFeatures, Tes
 		org.almostrealism.model.CompiledModel compiled = model.compile(false);
 
 		System.out.println("Running forward pass...");
-		PackedCollection<?> rawOutput = compiled.forward(firstToken);
+		PackedCollection rawOutput = compiled.forward(firstToken);
 
 		// Handle 2D output
-		PackedCollection<?> output = rawOutput;
+		PackedCollection output = rawOutput;
 		if (rawOutput.getShape().getDimensions() == 2 && rawOutput.getShape().length(0) == 1) {
-			output = new PackedCollection<>(shape(dim));
+			output = new PackedCollection(shape(dim));
 			for (int d = 0; d < dim; d++) {
 				output.setMem(d, rawOutput.valueAt(0, d));
 			}
@@ -658,7 +658,7 @@ public class Qwen3ComponentTest implements AttentionFeatures, LayerFeatures, Tes
 		System.out.println("\n=== Testing Transformer Block Step-by-Step ===");
 
 		StateDictionary referenceData = new StateDictionary(referenceDir);
-		PackedCollection<?> testConfig = referenceData.get("test_config");
+		PackedCollection testConfig = referenceData.get("test_config");
 		int dim = (int) testConfig.valueAt(2);
 		int heads = (int) testConfig.valueAt(4);
 		int kvHeads = (int) testConfig.valueAt(5);
@@ -666,28 +666,28 @@ public class Qwen3ComponentTest implements AttentionFeatures, LayerFeatures, Tes
 		int seqLen = (int) testConfig.valueAt(1);
 
 		// Load all weights
-		PackedCollection<?> input = referenceData.get("input");
-		PackedCollection<?> attnNorm = referenceData.get("input_layernorm.weight");
-		PackedCollection<?> wq = referenceData.get("self_attn.q_proj.weight");
-		PackedCollection<?> wk = referenceData.get("self_attn.k_proj.weight");
-		PackedCollection<?> wv = referenceData.get("self_attn.v_proj.weight");
-		PackedCollection<?> wo = referenceData.get("self_attn.o_proj.weight");
-		PackedCollection<?> bq = referenceData.get("self_attn.q_proj.bias");
-		PackedCollection<?> bk = referenceData.get("self_attn.k_proj.bias");
-		PackedCollection<?> bv = referenceData.get("self_attn.v_proj.bias");
-		PackedCollection<?> ffnNorm = referenceData.get("post_attention_layernorm.weight");
-		PackedCollection<?> wGate = referenceData.get("mlp.gate_proj.weight");
-		PackedCollection<?> wUp = referenceData.get("mlp.up_proj.weight");
-		PackedCollection<?> wDown = referenceData.get("mlp.down_proj.weight");
-		PackedCollection<?> expectedOutput = referenceData.get("expected_output");
+		PackedCollection input = referenceData.get("input");
+		PackedCollection attnNorm = referenceData.get("input_layernorm.weight");
+		PackedCollection wq = referenceData.get("self_attn.q_proj.weight");
+		PackedCollection wk = referenceData.get("self_attn.k_proj.weight");
+		PackedCollection wv = referenceData.get("self_attn.v_proj.weight");
+		PackedCollection wo = referenceData.get("self_attn.o_proj.weight");
+		PackedCollection bq = referenceData.get("self_attn.q_proj.bias");
+		PackedCollection bk = referenceData.get("self_attn.k_proj.bias");
+		PackedCollection bv = referenceData.get("self_attn.v_proj.bias");
+		PackedCollection ffnNorm = referenceData.get("post_attention_layernorm.weight");
+		PackedCollection wGate = referenceData.get("mlp.gate_proj.weight");
+		PackedCollection wUp = referenceData.get("mlp.up_proj.weight");
+		PackedCollection wDown = referenceData.get("mlp.down_proj.weight");
+		PackedCollection expectedOutput = referenceData.get("expected_output");
 
 		// Compute RoPE frequencies
-		PackedCollection<?> freqCis = computeRopeFreqs(seqLen, headSize, 1000000.0);
-		PackedCollection<?> position = new PackedCollection<>(1);
+		PackedCollection freqCis = computeRopeFreqs(seqLen, headSize, 1000000.0);
+		PackedCollection position = new PackedCollection(1);
 		position.setMem(0, 0.0);
 
 		// Extract first token
-		PackedCollection<?> firstToken = new PackedCollection<>(shape(dim));
+		PackedCollection firstToken = new PackedCollection(shape(dim));
 		for (int d = 0; d < dim; d++) {
 			firstToken.setMem(d, input.valueAt(0, 0, d));
 		}
@@ -702,9 +702,9 @@ public class Qwen3ComponentTest implements AttentionFeatures, LayerFeatures, Tes
 		attnModel.add(attention(heads, kvHeads, attnNorm, wk, wv, wq, wo,
 				bk, bv, bq, null, null, freqCis, p(position)));
 		org.almostrealism.model.CompiledModel attnCompiled = attnModel.compile(false);
-		PackedCollection<?> attnOut = attnCompiled.forward(firstToken);
+		PackedCollection attnOut = attnCompiled.forward(firstToken);
 		if (attnOut.getShape().getDimensions() == 2) {
-			PackedCollection<?> squeezed = new PackedCollection<>(shape(dim));
+			PackedCollection squeezed = new PackedCollection(shape(dim));
 			for (int d = 0; d < dim; d++) squeezed.setMem(d, attnOut.valueAt(0, d));
 			attnOut = squeezed;
 		}
@@ -713,7 +713,7 @@ public class Qwen3ComponentTest implements AttentionFeatures, LayerFeatures, Tes
 
 		// Step 3: Input + Attention (manual residual)
 		System.out.println("\n--- STEP 3: Input + Attention (manual residual) ---");
-		PackedCollection<?> afterAttnResidual = new PackedCollection<>(shape(dim));
+		PackedCollection afterAttnResidual = new PackedCollection(shape(dim));
 		for (int d = 0; d < dim; d++) {
 			afterAttnResidual.setMem(d, firstToken.valueAt(d) + attnOut.valueAt(d));
 		}
@@ -725,9 +725,9 @@ public class Qwen3ComponentTest implements AttentionFeatures, LayerFeatures, Tes
 		org.almostrealism.model.Model ffnModel = new org.almostrealism.model.Model(shape(dim));
 		ffnModel.add(feedForward(ffnNorm, wGate, wDown, wUp));
 		org.almostrealism.model.CompiledModel ffnCompiled = ffnModel.compile(false);
-		PackedCollection<?> ffnOut = ffnCompiled.forward(afterAttnResidual);
+		PackedCollection ffnOut = ffnCompiled.forward(afterAttnResidual);
 		if (ffnOut.getShape().getDimensions() == 2) {
-			PackedCollection<?> squeezed = new PackedCollection<>(shape(dim));
+			PackedCollection squeezed = new PackedCollection(shape(dim));
 			for (int d = 0; d < dim; d++) squeezed.setMem(d, ffnOut.valueAt(0, d));
 			ffnOut = squeezed;
 		}
@@ -736,7 +736,7 @@ public class Qwen3ComponentTest implements AttentionFeatures, LayerFeatures, Tes
 
 		// Step 5: Final output (after FFN residual)
 		System.out.println("\n--- STEP 5: Final Output (after FFN residual) ---");
-		PackedCollection<?> finalOutput = new PackedCollection<>(shape(dim));
+		PackedCollection finalOutput = new PackedCollection(shape(dim));
 		for (int d = 0; d < dim; d++) {
 			finalOutput.setMem(d, afterAttnResidual.valueAt(d) + ffnOut.valueAt(d));
 		}
@@ -744,7 +744,7 @@ public class Qwen3ComponentTest implements AttentionFeatures, LayerFeatures, Tes
 				", max=" + finalOutput.doubleStream().map(Math::abs).max().orElse(0));
 
 		// Compare with expected
-		PackedCollection<?> expectedFirstToken = new PackedCollection<>(shape(dim));
+		PackedCollection expectedFirstToken = new PackedCollection(shape(dim));
 		for (int d = 0; d < dim; d++) {
 			expectedFirstToken.setMem(d, expectedOutput.valueAt(0, 0, d));
 		}
@@ -771,7 +771,7 @@ public class Qwen3ComponentTest implements AttentionFeatures, LayerFeatures, Tes
 		System.out.println("\n=== Testing PyTorch Intermediate Values ===");
 
 		StateDictionary referenceData = new StateDictionary(referenceDir);
-		PackedCollection<?> testConfig = referenceData.get("test_config");
+		PackedCollection testConfig = referenceData.get("test_config");
 		int dim = (int) testConfig.valueAt(2);
 
 		// Load PyTorch intermediate outputs
@@ -788,10 +788,10 @@ public class Qwen3ComponentTest implements AttentionFeatures, LayerFeatures, Tes
 
 		for (String key : intermediateKeys) {
 			try {
-				PackedCollection<?> tensor = referenceData.get(key);
+				PackedCollection tensor = referenceData.get(key);
 				if (tensor != null) {
 					// Extract first token (batch=0, position=0)
-					PackedCollection<?> firstToken = new PackedCollection<>(shape(dim));
+					PackedCollection firstToken = new PackedCollection(shape(dim));
 					for (int d = 0; d < dim; d++) {
 						firstToken.setMem(d, tensor.valueAt(0, 0, d));
 					}
@@ -808,10 +808,10 @@ public class Qwen3ComponentTest implements AttentionFeatures, LayerFeatures, Tes
 		}
 
 		// Also check input and expected output
-		PackedCollection<?> input = referenceData.get("input");
-		PackedCollection<?> expectedOutput = referenceData.get("expected_output");
+		PackedCollection input = referenceData.get("input");
+		PackedCollection expectedOutput = referenceData.get("expected_output");
 
-		PackedCollection<?> inputFirstToken = new PackedCollection<>(shape(dim));
+		PackedCollection inputFirstToken = new PackedCollection(shape(dim));
 		for (int d = 0; d < dim; d++) {
 			inputFirstToken.setMem(d, input.valueAt(0, 0, d));
 		}
@@ -819,7 +819,7 @@ public class Qwen3ComponentTest implements AttentionFeatures, LayerFeatures, Tes
 		System.out.println("  sum=" + inputFirstToken.doubleStream().sum() +
 				", max=" + inputFirstToken.doubleStream().map(Math::abs).max().orElse(0));
 
-		PackedCollection<?> expectedFirstToken = new PackedCollection<>(shape(dim));
+		PackedCollection expectedFirstToken = new PackedCollection(shape(dim));
 		for (int d = 0; d < dim; d++) {
 			expectedFirstToken.setMem(d, expectedOutput.valueAt(0, 0, d));
 		}
@@ -839,16 +839,16 @@ public class Qwen3ComponentTest implements AttentionFeatures, LayerFeatures, Tes
 		System.out.println("\n=== Testing Input Normalization ===");
 
 		StateDictionary referenceData = new StateDictionary(referenceDir);
-		PackedCollection<?> testConfig = referenceData.get("test_config");
+		PackedCollection testConfig = referenceData.get("test_config");
 		int dim = (int) testConfig.valueAt(2);
 
 		// Load test data
-		PackedCollection<?> input = referenceData.get("input");
-		PackedCollection<?> attnNorm = referenceData.get("input_layernorm.weight");
-		PackedCollection<?> expectedAfterNorm = referenceData.get("intermediate.after_input_norm");
+		PackedCollection input = referenceData.get("input");
+		PackedCollection attnNorm = referenceData.get("input_layernorm.weight");
+		PackedCollection expectedAfterNorm = referenceData.get("intermediate.after_input_norm");
 
 		// Extract first token
-		PackedCollection<?> firstToken = new PackedCollection<>(shape(dim));
+		PackedCollection firstToken = new PackedCollection(shape(dim));
 		for (int d = 0; d < dim; d++) {
 			firstToken.setMem(d, input.valueAt(0, 0, d));
 		}
@@ -861,11 +861,11 @@ public class Qwen3ComponentTest implements AttentionFeatures, LayerFeatures, Tes
 		org.almostrealism.model.Model normModel = new org.almostrealism.model.Model(shape(dim));
 		normModel.add(rmsnorm(attnNorm));
 		org.almostrealism.model.CompiledModel normCompiled = normModel.compile(false);
-		PackedCollection<?> normOut = normCompiled.forward(firstToken);
+		PackedCollection normOut = normCompiled.forward(firstToken);
 
 		// Handle potential shape mismatch
 		if (normOut.getShape().getDimensions() == 2) {
-			PackedCollection<?> squeezed = new PackedCollection<>(shape(dim));
+			PackedCollection squeezed = new PackedCollection(shape(dim));
 			for (int d = 0; d < dim; d++) squeezed.setMem(d, normOut.valueAt(0, d));
 			normOut = squeezed;
 		}
@@ -875,7 +875,7 @@ public class Qwen3ComponentTest implements AttentionFeatures, LayerFeatures, Tes
 				", max=" + normOut.doubleStream().map(Math::abs).max().orElse(0));
 
 		// Extract PyTorch expected
-		PackedCollection<?> expectedFirstToken = new PackedCollection<>(shape(dim));
+		PackedCollection expectedFirstToken = new PackedCollection(shape(dim));
 		for (int d = 0; d < dim; d++) {
 			expectedFirstToken.setMem(d, expectedAfterNorm.valueAt(0, 0, d));
 		}
@@ -904,19 +904,19 @@ public class Qwen3ComponentTest implements AttentionFeatures, LayerFeatures, Tes
 		System.out.println("\n=== Testing Query Projection ===");
 
 		StateDictionary referenceData = new StateDictionary(referenceDir);
-		PackedCollection<?> testConfig = referenceData.get("test_config");
+		PackedCollection testConfig = referenceData.get("test_config");
 		int dim = (int) testConfig.valueAt(2);
 		int heads = (int) testConfig.valueAt(4);
 		int headSize = dim / heads;
 
 		// Load test data
-		PackedCollection<?> input = referenceData.get("input");
-		PackedCollection<?> attnNorm = referenceData.get("input_layernorm.weight");
-		PackedCollection<?> wq = referenceData.get("self_attn.q_proj.weight");
-		PackedCollection<?> qBias = referenceData.get("self_attn.q_proj.bias");
+		PackedCollection input = referenceData.get("input");
+		PackedCollection attnNorm = referenceData.get("input_layernorm.weight");
+		PackedCollection wq = referenceData.get("self_attn.q_proj.weight");
+		PackedCollection qBias = referenceData.get("self_attn.q_proj.bias");
 
 		// Extract first token
-		PackedCollection<?> firstToken = new PackedCollection<>(shape(dim));
+		PackedCollection firstToken = new PackedCollection(shape(dim));
 		for (int d = 0; d < dim; d++) {
 			firstToken.setMem(d, input.valueAt(0, 0, d));
 		}
@@ -929,9 +929,9 @@ public class Qwen3ComponentTest implements AttentionFeatures, LayerFeatures, Tes
 		org.almostrealism.model.Model normModel = new org.almostrealism.model.Model(shape(dim));
 		normModel.add(rmsnorm(attnNorm));
 		org.almostrealism.model.CompiledModel normCompiled = normModel.compile(false);
-		PackedCollection<?> normalized = normCompiled.forward(firstToken);
+		PackedCollection normalized = normCompiled.forward(firstToken);
 		if (normalized.getShape().getDimensions() == 2) {
-			PackedCollection<?> squeezed = new PackedCollection<>(shape(dim));
+			PackedCollection squeezed = new PackedCollection(shape(dim));
 			for (int d = 0; d < dim; d++) squeezed.setMem(d, normalized.valueAt(0, d));
 			normalized = squeezed;
 		}
@@ -951,7 +951,7 @@ public class Qwen3ComponentTest implements AttentionFeatures, LayerFeatures, Tes
 		// Compute Q projection manually using PyTorch convention: Q = input @ W^T + bias
 		// PyTorch Linear layer has weights of shape (out_features, in_features)
 		// and computes: output = input @ weight.T + bias
-		PackedCollection<?> qOut = new PackedCollection<>(shape(dim));
+		PackedCollection qOut = new PackedCollection(shape(dim));
 		for (int out = 0; out < dim; out++) {
 			double sum = 0;
 			for (int in = 0; in < dim; in++) {
@@ -969,7 +969,7 @@ public class Qwen3ComponentTest implements AttentionFeatures, LayerFeatures, Tes
 				", max=" + qOut.doubleStream().map(Math::abs).max().orElse(0));
 
 		// Also try transposed version in case AR uses different convention
-		PackedCollection<?> qOutTransposed = new PackedCollection<>(shape(dim));
+		PackedCollection qOutTransposed = new PackedCollection(shape(dim));
 		for (int out = 0; out < dim; out++) {
 			double sum = 0;
 			for (int in = 0; in < dim; in++) {
@@ -988,8 +988,8 @@ public class Qwen3ComponentTest implements AttentionFeatures, LayerFeatures, Tes
 
 		// Load PyTorch's Q projection and extract first token
 		try {
-			PackedCollection<?> pytorchQ = referenceData.get("intermediate.after_q_proj");
-			PackedCollection<?> pytorchQFirstToken = new PackedCollection<>(shape(dim));
+			PackedCollection pytorchQ = referenceData.get("intermediate.after_q_proj");
+			PackedCollection pytorchQFirstToken = new PackedCollection(shape(dim));
 			for (int d = 0; d < dim; d++) {
 				pytorchQFirstToken.setMem(d, pytorchQ.valueAt(0, 0, d));
 			}
@@ -1029,16 +1029,16 @@ public class Qwen3ComponentTest implements AttentionFeatures, LayerFeatures, Tes
 		System.out.println("\n=== Testing FFN (Feed-Forward Network) ===");
 
 		StateDictionary referenceData = new StateDictionary(referenceDir);
-		PackedCollection<?> testConfig = referenceData.get("test_config");
+		PackedCollection testConfig = referenceData.get("test_config");
 		int dim = (int) testConfig.valueAt(2);
 		int hiddenDim = (int) testConfig.valueAt(3);
 
 		// Load test data
-		PackedCollection<?> input = referenceData.get("input");
-		PackedCollection<?> ffnNorm = referenceData.get("post_attention_layernorm.weight");
-		PackedCollection<?> wGate = referenceData.get("mlp.gate_proj.weight");
-		PackedCollection<?> wUp = referenceData.get("mlp.up_proj.weight");
-		PackedCollection<?> wDown = referenceData.get("mlp.down_proj.weight");
+		PackedCollection input = referenceData.get("input");
+		PackedCollection ffnNorm = referenceData.get("post_attention_layernorm.weight");
+		PackedCollection wGate = referenceData.get("mlp.gate_proj.weight");
+		PackedCollection wUp = referenceData.get("mlp.up_proj.weight");
+		PackedCollection wDown = referenceData.get("mlp.down_proj.weight");
 
 		// Build FFN block
 		org.almostrealism.model.Model model = new org.almostrealism.model.Model(shape(dim));
@@ -1048,7 +1048,7 @@ public class Qwen3ComponentTest implements AttentionFeatures, LayerFeatures, Tes
 		org.almostrealism.model.CompiledModel compiled = model.compile(false);
 
 		// Extract first token
-		PackedCollection<?> firstToken = new PackedCollection<>(shape(dim));
+		PackedCollection firstToken = new PackedCollection(shape(dim));
 		for (int d = 0; d < dim; d++) {
 			firstToken.setMem(d, input.valueAt(0, 0, d));
 		}
@@ -1057,12 +1057,12 @@ public class Qwen3ComponentTest implements AttentionFeatures, LayerFeatures, Tes
 				", max=" + firstToken.doubleStream().map(Math::abs).max().orElse(0));
 
 		System.out.println("Running FFN forward pass...");
-		PackedCollection<?> rawOutput = compiled.forward(firstToken);
+		PackedCollection rawOutput = compiled.forward(firstToken);
 
 		// Handle potential 2D output
-		PackedCollection<?> output = rawOutput;
+		PackedCollection output = rawOutput;
 		if (rawOutput.getShape().getDimensions() == 2 && rawOutput.getShape().length(0) == 1) {
-			output = new PackedCollection<>(shape(dim));
+			output = new PackedCollection(shape(dim));
 			for (int d = 0; d < dim; d++) {
 				output.setMem(d, rawOutput.valueAt(0, d));
 			}

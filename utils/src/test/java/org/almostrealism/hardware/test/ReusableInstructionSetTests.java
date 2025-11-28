@@ -27,19 +27,19 @@ public class ReusableInstructionSetTests implements TestFeatures {
 	public void add() {
 		int n = 6;
 
-		PackedCollection<?> a = new PackedCollection<>(shape(n))
+		PackedCollection a = new PackedCollection(shape(n))
 				.randFill().traverseEach();
-		PackedCollection<?> b = new PackedCollection<>(shape(n))
+		PackedCollection b = new PackedCollection(shape(n))
 				.randFill().traverseEach();
 
-		Producer<PackedCollection<?>> sum = add(cp(a), cp(b));
-		PackedCollection<?> out = sum.get().evaluate();
+		Producer<PackedCollection> sum = add(cp(a), cp(b));
+		PackedCollection out = sum.get().evaluate();
 
 		for (int i = 0; i < n; i++) {
 			assertEquals(a.toDouble(i) + b.toDouble(i), out.toDouble(i));
 		}
 
-		PackedCollection<?> alt = new PackedCollection<>(shape(n))
+		PackedCollection alt = new PackedCollection(shape(n))
 				.randFill().traverseEach();
 
 		sum = add(cp(alt), cp(b));

@@ -35,11 +35,11 @@ import java.util.function.Supplier;
  * <pre>{@code
  * public class Example implements MemoryDataFeatures {
  *     public void updateMemory() {
- *         Producer<PackedCollection<?>> destination = ...;
- *         Producer<PackedCollection<?>> newValue = ...;
+ *         Producer<PackedCollection> destination = ...;
+ *         Producer<PackedCollection> newValue = ...;
  *
  *         // Create assignment: destination = newValue
- *         Assignment<PackedCollection<?>> assignment = a(1000, destination, newValue);
+ *         Assignment<PackedCollection> assignment = a(1000, destination, newValue);
  *         assignment.get().run();  // Execute assignment
  *     }
  * }
@@ -82,8 +82,8 @@ import java.util.function.Supplier;
  * <p>Methods accept both {@link Producer} and {@link Supplier}:</p>
  * <pre>{@code
  * // Using Producers (preferred for computation graphs)
- * Producer<PackedCollection<?>> src = ...;
- * Producer<PackedCollection<?>> dst = ...;
+ * Producer<PackedCollection> src = ...;
+ * Producer<PackedCollection> dst = ...;
  * Supplier<Runnable> copy1 = copy(src, dst, 1000);
  *
  * // Using Suppliers (for direct memory references)
@@ -110,9 +110,9 @@ import java.util.function.Supplier;
  * <h3>Batch Assignment</h3>
  * <pre>{@code
  * public class Batch implements MemoryDataFeatures {
- *     public void updateAll(List<Producer<PackedCollection<?>>> destinations,
- *                           Producer<PackedCollection<?>> value) {
- *         for (Producer<PackedCollection<?>> dest : destinations) {
+ *     public void updateAll(List<Producer<PackedCollection>> destinations,
+ *                           Producer<PackedCollection> value) {
+ *         for (Producer<PackedCollection> dest : destinations) {
  *             a(1000, dest, value).get().run();
  *         }
  *     }

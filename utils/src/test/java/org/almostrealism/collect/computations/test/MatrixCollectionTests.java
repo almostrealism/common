@@ -29,10 +29,10 @@ public class MatrixCollectionTests implements TestFeatures {
 		int n = size;
 		int d = size;
 
-		PackedCollection<?> x = new PackedCollection<>(shape(n));
+		PackedCollection x = new PackedCollection(shape(n));
 		x.fill(pos -> Math.random());
 
-		PackedCollection<?> weight = new PackedCollection<>(shape(d, n));
+		PackedCollection weight = new PackedCollection(shape(d, n));
 		weight.fill(pos -> Math.random());
 
 		kernelTest(() -> reduce(traverse(1, p(weight)),
@@ -56,10 +56,10 @@ public class MatrixCollectionTests implements TestFeatures {
 		int n = size;
 		int d = size;
 
-		PackedCollection<?> x = new PackedCollection<>(shape(n));
+		PackedCollection x = new PackedCollection(shape(n));
 		x.fill(pos -> Math.random());
 
-		PackedCollection<?> weight = new PackedCollection<>(shape(d, n));
+		PackedCollection weight = new PackedCollection(shape(d, n));
 		weight.fill(pos -> Math.random());
 
 		kernelTest(() -> multiply(traverseEach(p(weight)), traverseEach(repeat(d, p(x)))).traverse(1).sum(),

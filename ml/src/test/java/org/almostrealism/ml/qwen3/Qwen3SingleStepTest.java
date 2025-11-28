@@ -45,8 +45,8 @@ public class Qwen3SingleStepTest implements AttentionFeatures {
         System.out.println("[OK] Tokenization correct: [9707]\n");
 
         // Get embedding for token 9707
-        PackedCollection<?> embeddings = stateDict.get("model.embed_tokens.weight");
-        PackedCollection<?> tokenEmbedding = embeddings.range(shape(896), 9707 * 896);
+        PackedCollection embeddings = stateDict.get("model.embed_tokens.weight");
+        PackedCollection tokenEmbedding = embeddings.range(shape(896), 9707 * 896);
 
         System.out.println("Token embedding shape: " + tokenEmbedding.getShape());
         System.out.println("Token embedding first 5 values:");
@@ -116,7 +116,7 @@ public class Qwen3SingleStepTest implements AttentionFeatures {
         stateDict.destroy();
     }
 
-    private double computeL1Norm(PackedCollection<?> vec, int size) {
+    private double computeL1Norm(PackedCollection vec, int size) {
         double sum = 0;
         for (int i = 0; i < size; i++) {
             sum += Math.abs(vec.toDouble(i));

@@ -52,14 +52,14 @@ import java.util.stream.Stream;
  * HeredityFeatures features = HeredityFeatures.getInstance();
  *
  * // Create genes from scalar values
- * Gene<PackedCollection<?>> gene1 = features.g(0.1, 0.5, 0.9);
- * Gene<PackedCollection<?>> gene2 = features.g(-1.0, 0.0, 1.0);
+ * Gene<PackedCollection> gene1 = features.g(0.1, 0.5, 0.9);
+ * Gene<PackedCollection> gene2 = features.g(-1.0, 0.0, 1.0);
  *
  * // Create chromosome from genes
- * Chromosome<PackedCollection<?>> chromosome = features.c(gene1, gene2);
+ * Chromosome<PackedCollection> chromosome = features.c(gene1, gene2);
  *
  * // Access factors
- * Factor<PackedCollection<?>> factor = chromosome.valueAt(0, 1);
+ * Factor<PackedCollection> factor = chromosome.valueAt(0, 1);
  *
  * // Transform value from [0,1) to [0, infinity)
  * double expanded = features.oneToInfinity(0.9, 2.0);  // Returns a large value
@@ -76,7 +76,7 @@ public interface HeredityFeatures extends CollectionFeatures {
 	 * @param genes the list of genes to include in the chromosome
 	 * @return a new chromosome containing the specified genes
 	 */
-	default Chromosome<PackedCollection<?>> chromosome(List<? extends Gene<PackedCollection<?>>> genes) {
+	default Chromosome<PackedCollection> chromosome(List<? extends Gene<PackedCollection>> genes) {
 		return new Chromosome<>() {
 			@Override
 			public int length() {
@@ -84,7 +84,7 @@ public interface HeredityFeatures extends CollectionFeatures {
 			}
 
 			@Override
-			public Gene<PackedCollection<?>> valueAt(int pos) {
+			public Gene<PackedCollection> valueAt(int pos) {
 				return genes.get(pos);
 			}
 		};
@@ -97,7 +97,7 @@ public interface HeredityFeatures extends CollectionFeatures {
 	 * @param genes the genes to include in the chromosome
 	 * @return a new chromosome containing the specified genes
 	 */
-	default Chromosome<PackedCollection<?>> c(Gene<PackedCollection<?>>... genes) {
+	default Chromosome<PackedCollection> c(Gene<PackedCollection>... genes) {
 		return new Chromosome<>() {
 			@Override
 			public int length() {
@@ -105,7 +105,7 @@ public interface HeredityFeatures extends CollectionFeatures {
 			}
 
 			@Override
-			public Gene<PackedCollection<?>> valueAt(int pos) {
+			public Gene<PackedCollection> valueAt(int pos) {
 				return genes[pos];
 			}
 		};
@@ -118,7 +118,7 @@ public interface HeredityFeatures extends CollectionFeatures {
 	 * @param factors the scalar values for each factor
 	 * @return a new gene with ScaleFactor instances at each position
 	 */
-	default Gene<PackedCollection<?>> g(double... factors) {
+	default Gene<PackedCollection> g(double... factors) {
 		return g(IntStream.range(0, factors.length).mapToObj(i -> new ScaleFactor(factors[i])).toArray(Factor[]::new));
 	}
 
@@ -129,7 +129,7 @@ public interface HeredityFeatures extends CollectionFeatures {
 	 * @param factors the scalar producers for each factor
 	 * @return a new gene with the specified producers as factors
 	 */
-	default Gene<PackedCollection<?>> g(Producer<PackedCollection<?>>... factors) {
+	default Gene<PackedCollection> g(Producer<PackedCollection>... factors) {
 		return g(Stream.of(factors).map(f -> (Factor) protein -> f).toArray(Factor[]::new));
 	}
 
@@ -140,15 +140,15 @@ public interface HeredityFeatures extends CollectionFeatures {
 	 * @param factors the factors to include in the gene
 	 * @return a new gene containing the specified factors
 	 */
-	default Gene<PackedCollection<?>> g(Factor<PackedCollection<?>>... factors) {
-		return new Gene<PackedCollection<?>>() {
+	default Gene<PackedCollection> g(Factor<PackedCollection>... factors) {
+		return new Gene<PackedCollection>() {
 			@Override
 			public int length() {
 				return factors.length;
 			}
 
 			@Override
-			public Factor<PackedCollection<?>> valueAt(int pos) {
+			public Factor<PackedCollection> valueAt(int pos) {
 				return factors[pos];
 			}
 		};
@@ -187,7 +187,7 @@ public interface HeredityFeatures extends CollectionFeatures {
 	 * @param exp the exponent for the transformation
 	 * @return a producer that computes the transformed value
 	 */
-	default CollectionProducer<PackedCollection<?>> oneToInfinity(Factor<PackedCollection<?>> f, double exp) {
+	default CollectionProducer<PackedCollection> oneToInfinity(Factor<PackedCollection> f, double exp) {
 		return oneToInfinity(f.getResultant(c(1.0)), exp);
 	}
 
@@ -198,7 +198,7 @@ public interface HeredityFeatures extends CollectionFeatures {
 	 * @param exp the exponent for the transformation
 	 * @return a producer that computes the transformed value
 	 */
-	default CollectionProducer<PackedCollection<?>> oneToInfinity(Producer<PackedCollection<?>> arg, double exp) {
+	default CollectionProducer<PackedCollection> oneToInfinity(Producer<PackedCollection> arg, double exp) {
 		return oneToInfinity(arg, c(exp));
 	}
 
@@ -210,9 +210,9 @@ public interface HeredityFeatures extends CollectionFeatures {
 	 * @param exp the exponent producer
 	 * @return a producer that computes the transformed value
 	 */
-	default CollectionProducer<PackedCollection<?>> oneToInfinity(Producer<PackedCollection<?>> arg, Producer<PackedCollection<?>> exp) {
-		CollectionProducer<PackedCollection<?>> pow = pow(arg, exp);
-		CollectionProducer<PackedCollection<?>> out = minus(pow);
+	default CollectionProducer<PackedCollection> oneToInfinity(Producer<PackedCollection> arg, Producer<PackedCollection> exp) {
+		CollectionProducer<PackedCollection> pow = pow(arg, exp);
+		CollectionProducer<PackedCollection> out = minus(pow);
 		out = add(out, c(1.0));
 		out = pow(out, c(-1.0));
 		out = add(out, c(-1.0));

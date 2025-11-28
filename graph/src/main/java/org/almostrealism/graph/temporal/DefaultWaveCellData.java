@@ -40,7 +40,7 @@ import org.almostrealism.hardware.MemoryData;
  * @see BaseAudioData
  * @see WaveCell
  */
-public class DefaultWaveCellData extends PackedCollection<PackedCollection<?>> implements WaveCellData {
+public class DefaultWaveCellData extends PackedCollection implements WaveCellData {
 	/** Total number of slots in the data structure. */
 	public static final int SIZE = 15;
 
@@ -48,9 +48,11 @@ public class DefaultWaveCellData extends PackedCollection<PackedCollection<?>> i
 	 * Creates a new DefaultWaveCellData with its own memory allocation.
 	 */
 	public DefaultWaveCellData() {
-		super(new TraversalPolicy(SIZE, 2), 1, delegateSpec ->
-				new PackedCollection<>(new TraversalPolicy(2), 1, null,
-						delegateSpec.getDelegate(), delegateSpec.getOffset()));
+		super(new TraversalPolicy(SIZE, 2), 1, delegateSpec -> {
+				PackedCollection.DelegateSpec spec = (PackedCollection.DelegateSpec) delegateSpec;
+				return new PackedCollection(new TraversalPolicy(2), 1, null,
+						spec.getDelegate(), spec.getOffset());
+		});
 	}
 
 	/**
@@ -60,9 +62,10 @@ public class DefaultWaveCellData extends PackedCollection<PackedCollection<?>> i
 	 * @param delegateOffset the offset within the delegate memory
 	 */
 	public DefaultWaveCellData(MemoryData delegate, int delegateOffset) {
-		super(new TraversalPolicy(SIZE, 2), 1, delegateSpec ->
-				new PackedCollection<>(new TraversalPolicy(2), 1, null,
-						delegateSpec.getDelegate(), delegateSpec.getOffset()),
-				delegate, delegateOffset);
+		super(new TraversalPolicy(SIZE, 2), 1, delegateSpec -> {
+				PackedCollection.DelegateSpec spec = (PackedCollection.DelegateSpec) delegateSpec;
+				return new PackedCollection(new TraversalPolicy(2), 1, null,
+						spec.getDelegate(), spec.getOffset());
+		}, delegate, delegateOffset);
 	}
 }

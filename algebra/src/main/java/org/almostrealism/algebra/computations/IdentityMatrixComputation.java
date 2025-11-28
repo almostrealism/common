@@ -46,7 +46,7 @@ import java.util.Optional;
  * <h2>Example</h2>
  * <pre>{@code
  * // Create 3x3 identity matrix
- * IdentityMatrixComputation<PackedCollection<?>> I =
+ * IdentityMatrixComputation<PackedCollection> I =
  *     new IdentityMatrixComputation<>(shape(3, 3).traverseEach());
  *
  * // Result:
@@ -65,7 +65,7 @@ import java.util.Optional;
  * @see org.almostrealism.algebra.MatrixFeatures#identity(TraversalPolicy)
  * @see DiagonalMatrixComputation
  */
-public class IdentityMatrixComputation<T extends PackedCollection<?>> extends ScalarMatrixComputation<T> {
+public class IdentityMatrixComputation<T extends PackedCollection> extends ScalarMatrixComputation<T> {
 	/**
 	 * Creates an identity matrix computation.
 	 *

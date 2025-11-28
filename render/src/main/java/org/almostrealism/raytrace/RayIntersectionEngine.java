@@ -15,6 +15,7 @@
  */
 
 package org.almostrealism.raytrace;
+import org.almostrealism.collect.PackedCollection;
 
 import org.almostrealism.color.RGB;
 import org.almostrealism.color.ShaderContext;
@@ -82,8 +83,8 @@ public class RayIntersectionEngine implements Engine {
 	 * @return A {@link Producer} that computes the RGB color where the ray intersects the scene
 	 */
 	@Override
-	public Producer<RGB> trace(Producer<Ray> r) {
-		List<Curve<RGB>> surfaces = new ArrayList<>();
+	public Producer<PackedCollection> trace(Producer<Ray> r) {
+		List<Curve<PackedCollection>> surfaces = new ArrayList<>();
 		for (ShadableSurface s : scene) surfaces.add(s);
 		LightingEngineAggregator agg = new LightingEngineAggregator(r, surfaces, scene.getLights(), sparams, true);
 		return enableAcceleratedAggregator ? () -> agg.getAccelerated() : new DimensionAwareKernel<>(agg);

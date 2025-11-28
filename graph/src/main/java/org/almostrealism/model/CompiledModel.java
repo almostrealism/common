@@ -55,7 +55,7 @@ import java.util.stream.Collectors;
  * // ... add layers ...
  * CompiledModel compiled = model.compile(false);  // Inference only
  *
- * PackedCollection<?> output = compiled.forward(input);
+ * PackedCollection output = compiled.forward(input);
  * }</pre>
  *
  * <h2>Training Usage</h2>
@@ -67,8 +67,8 @@ import java.util.stream.Collectors;
  * // Training loop
  * for (int epoch = 0; epoch < epochs; epoch++) {
  *     for (batch : data) {
- *         PackedCollection<?> output = compiled.forward(input);
- *         PackedCollection<?> gradient = lossFunction.gradient(output, target);
+ *         PackedCollection output = compiled.forward(input);
+ *         PackedCollection gradient = lossFunction.gradient(output, target);
  *         compiled.backward(gradient);
  *     }
  * }
@@ -78,7 +78,7 @@ import java.util.stream.Collectors;
  * <p>For models with auxiliary inputs:</p>
  * <pre>{@code
  * // Primary input + additional inputs as varargs
- * PackedCollection<?> output = compiled.forward(query, key, value);
+ * PackedCollection output = compiled.forward(query, key, value);
  * }</pre>
  *
  * <h2>Gradient Return</h2>
@@ -87,7 +87,7 @@ import java.util.stream.Collectors;
  * input sensitivities:</p>
  * <pre>{@code
  * CompiledModel compiled = model.compile(true, true);  // backprop + return gradient
- * PackedCollection<?> inputGradient = compiled.backward(outputGradient);
+ * PackedCollection inputGradient = compiled.backward(outputGradient);
  * }</pre>
  *
  * @see Model#compile()
@@ -100,12 +100,12 @@ public class CompiledModel implements Destroyable, CodeFeatures {
 
 	private Runnable setup;
 
-	private List<? extends Consumer<PackedCollection<?>>> updateInput;
-	private Supplier<PackedCollection<?>> retrieveOutput;
+	private List<? extends Consumer<PackedCollection>> updateInput;
+	private Supplier<PackedCollection> retrieveOutput;
 	private Runnable forward;
 
-	private Consumer<PackedCollection<?>> updateGradient;
-	private Supplier<PackedCollection<?>> retrieveGradient;
+	private Consumer<PackedCollection> updateGradient;
+	private Supplier<PackedCollection> retrieveGradient;
 	private Runnable backward;
 
 	/**
@@ -123,11 +123,11 @@ public class CompiledModel implements Destroyable, CodeFeatures {
 	 * @param backward the compiled backward pass operation
 	 */
 	protected CompiledModel(List<TraversalPolicy> inputShapes, TraversalPolicy outputShape,
-							Runnable setup, List<? extends Consumer<PackedCollection<?>>> updateInput,
-							Supplier<PackedCollection<?>> retrieveOutput,
+							Runnable setup, List<? extends Consumer<PackedCollection>> updateInput,
+							Supplier<PackedCollection> retrieveOutput,
 							Runnable forward,
-							Consumer<PackedCollection<?>> updateGradient,
-							Supplier<PackedCollection<?>> retrieveGradient,
+							Consumer<PackedCollection> updateGradient,
+							Supplier<PackedCollection> retrieveGradient,
 							Runnable backward) {
 		this.inputShapes = inputShapes;
 		this.outputShape = outputShape;
@@ -161,7 +161,7 @@ public class CompiledModel implements Destroyable, CodeFeatures {
 	 * @param args additional inputs for multi-input models
 	 * @return the model output
 	 */
-	public PackedCollection<?> forward(PackedCollection<?> input, PackedCollection<?>... args) {
+	public PackedCollection forward(PackedCollection input, PackedCollection... args) {
 		updateInput.get(0).accept(input);
 		for (int i = 1; i < updateInput.size(); i++) {
 			int a = i - 1;
@@ -180,7 +180,7 @@ public class CompiledModel implements Destroyable, CodeFeatures {
 	 * @param gradient the gradient of the loss with respect to model output
 	 * @return the gradient with respect to input, or null if not configured to return gradients
 	 */
-	public PackedCollection<?> backward(PackedCollection<?> gradient) {
+	public PackedCollection backward(PackedCollection gradient) {
 		updateGradient.accept(gradient);
 		backward.run();
 		return retrieveGradient == null ? null : retrieveGradient.get();
@@ -223,21 +223,21 @@ public class CompiledModel implements Destroyable, CodeFeatures {
 
 		InputManager grad = new InputManager(model.lastBlock().getOutputShape());
 
-		PackedCollection<?> output = new PackedCollection<>(model.lastBlock().getOutputShape());
+		PackedCollection output = new PackedCollection(model.lastBlock().getOutputShape());
 		model.lastBlock().getForward().setReceptor(out ->
 				Ops.o().copy("Model Forward Output", out, Ops.o().p(output), output.getMemLength()));
 
-		PackedCollection<?> gradOut;
+		PackedCollection gradOut;
 
 		if (returnGradient) {
-			gradOut = new PackedCollection<>(model.firstBlock().getInputShape());
+			gradOut = new PackedCollection(model.firstBlock().getInputShape());
 			model.firstBlock().getBackward().setReceptor(out ->
 					Ops.o().copy("Model Backward Output", out, Ops.o().p(gradOut), gradOut.getMemLength()));
 		} else {
 			gradOut = null;
 		}
 
-		List<Cell<PackedCollection<?>>> cells = model.forward();
+		List<Cell<PackedCollection>> cells = model.forward();
 		OperationList forward = new OperationList("CompiledModel Forward");
 		for (int i = cells.size() - 1; i >= 0; i--) {
 			forward.add(cells.get(i).push(in.get(i).get()));
@@ -268,10 +268,10 @@ public class CompiledModel implements Destroyable, CodeFeatures {
 		return compiled;
 	}
 
-	protected static class InputManager implements Consumer<PackedCollection<?>>,
-			Supplier<DynamicCollectionProducer<PackedCollection<?>>>, ConsoleFeatures {
+	protected static class InputManager implements Consumer<PackedCollection>,
+			Supplier<DynamicCollectionProducer<PackedCollection>>, ConsoleFeatures {
 		private TraversalPolicy shape;
-		private PackedCollection<?> input;
+		private PackedCollection input;
 
 		public InputManager(TraversalPolicy shape) {
 			this.shape = shape;
@@ -280,7 +280,7 @@ public class CompiledModel implements Destroyable, CodeFeatures {
 		public TraversalPolicy getShape() { return shape; }
 
 		@Override
-		public void accept(PackedCollection<?> input) {
+		public void accept(PackedCollection input) {
 			if (input == null) {
 				warn("null input");
 			} else if (input.getShape().getTotalSizeLong() != shape.getTotalSizeLong()) {
@@ -291,7 +291,7 @@ public class CompiledModel implements Destroyable, CodeFeatures {
 			this.input = input;
 		}
 
-		public DynamicCollectionProducer<PackedCollection<?>> get() {
+		public DynamicCollectionProducer<PackedCollection> get() {
 			return new DynamicCollectionProducer<>(shape, args -> input);
 		}
 

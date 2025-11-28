@@ -73,7 +73,7 @@ public class MultiCell<T> extends CellAdapter<T> {
 			source.setReceptor(Receptor.to(passthrough, afterPassthrough));
 		}
 
-		CellPair<T> pair = new CellPair<>(afterPassthrough, m, null, new IdentityFactor<>());
+		CellPair<T> pair = new CellPair(afterPassthrough, m, null, new IdentityFactor<>());
 		if (adapter != null) {
 			pair.setAdapterB(cell -> {
 				adapter.setReceptor(cell);

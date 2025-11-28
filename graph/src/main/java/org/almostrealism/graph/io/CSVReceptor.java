@@ -131,7 +131,7 @@ public class CSVReceptor<T> extends ReceptorConsumer<T> implements AutoCloseable
 	 */
 	private static String process(Object o) {
 		if (o instanceof PackedCollection) {
-			return String.valueOf(((PackedCollection<?>) o).toDouble(0));
+			return String.valueOf(((PackedCollection) o).toDouble(0));
 		}
 
 		return String.valueOf(o);

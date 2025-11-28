@@ -59,9 +59,9 @@ public class WaveCellPush extends WaveCellComputation implements ExpressionFeatu
 	 * @param output the destination for the computed sample value
 	 */
 	public WaveCellPush(WaveCellData data,
-						Producer<PackedCollection<?>> wave,
-						Producer<PackedCollection<?>> frame,
-						PackedCollection<?> output) {
+						Producer<PackedCollection> wave,
+						Producer<PackedCollection> frame,
+						PackedCollection output) {
 		super(data, wave, frame, output);
 	}
 

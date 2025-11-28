@@ -15,6 +15,7 @@
  */
 
 package org.almostrealism.heredity;
+import org.almostrealism.collect.PackedCollection;
 
 import org.almostrealism.hardware.OperationList;
 
@@ -39,11 +40,11 @@ import java.util.function.Supplier;
  *
  * <h2>Example Implementation</h2>
  * <pre>{@code
- * public class AdaptiveFactor implements CellularTemporalFactor<PackedCollection<?>> {
+ * public class AdaptiveFactor implements CellularTemporalFactor<PackedCollection> {
  *     private double scale = 1.0;
  *
  *     @Override
- *     public Producer<PackedCollection<?>> getResultant(Producer<PackedCollection<?>> value) {
+ *     public Producer<PackedCollection> getResultant(Producer<PackedCollection> value) {
  *         return multiply(value, c(scale));
  *     }
  *

@@ -87,20 +87,20 @@ import java.util.List;
  * <p><strong>Using the default equality comparison:</strong></p>
  * <pre>{@code
  * TraversalPolicy shape = shape(3);
- * CollectionProducer<PackedCollection<?>> a = c(1.0, 2.0, 3.0);
- * CollectionProducer<PackedCollection<?>> b = c(1.0, 0.0, 3.0);
+ * CollectionProducer<PackedCollection> a = c(1.0, 2.0, 3.0);
+ * CollectionProducer<PackedCollection> b = c(1.0, 0.0, 3.0);
  *
- * CollectionComparisonComputation<PackedCollection<?>> equals =
+ * CollectionComparisonComputation<PackedCollection> equals =
  *     new CollectionComparisonComputation<>("equals", shape, a, b,
  *         c(1.0), c(0.0));  // true -> 1.0, false -> 0.0
  *
- * PackedCollection<?> result = equals.get().evaluate();
+ * PackedCollection result = equals.get().evaluate();
  * // Result: [1.0, 0.0, 1.0]  (a[0]==b[0], a[2]==b[2])
  * }</pre>
  *
  * <p><strong>Subclassing for custom comparisons:</strong></p>
  * <pre>{@code
- * public class NotEqualCollection<T extends PackedCollection<?>>
+ * public class NotEqualCollection<T extends PackedCollection>
  *         extends CollectionComparisonComputation<T> {
  *
  *     @Override
@@ -129,7 +129,7 @@ import java.util.List;
  *
  * @author Michael Murray
  */
-public class CollectionComparisonComputation<T extends PackedCollection<?>> extends TransitiveDeltaExpressionComputation<T> {
+public class CollectionComparisonComputation<T extends PackedCollection> extends TransitiveDeltaExpressionComputation<T> {
 	/**
 	 * Constructs a comparison computation with four operands: two comparison values
 	 * and two conditional result values.
@@ -142,10 +142,10 @@ public class CollectionComparisonComputation<T extends PackedCollection<?>> exte
 	 * @param negative The {@link Producer} providing values to use when comparison is false
 	 */
 	public CollectionComparisonComputation(String name, TraversalPolicy shape,
-										   Producer<PackedCollection<?>> left,
-										   Producer<PackedCollection<?>> right,
-										   Producer<PackedCollection<?>> positive,
-										   Producer<PackedCollection<?>> negative) {
+										   Producer<PackedCollection> left,
+										   Producer<PackedCollection> right,
+										   Producer<PackedCollection> positive,
+										   Producer<PackedCollection> negative) {
 		super(name, shape, left, right, positive, negative);
 	}
 

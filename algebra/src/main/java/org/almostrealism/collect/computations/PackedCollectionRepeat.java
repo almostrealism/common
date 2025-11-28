@@ -54,26 +54,26 @@ import java.util.function.Supplier;
  * <h4>Basic Collection Repetition</h4>
  * <pre>{@code
  * // Create a 2x3 collection
- * PackedCollection<?> input = new PackedCollection<>(shape(2, 3));
+ * PackedCollection input = new PackedCollection(shape(2, 3));
  * input.fill(pos -> Math.random());
  * 
  * // Repeat the collection 4 times along a new first dimension
- * PackedCollection<?> repeated = cp(input).repeat(4).get().evaluate();
+ * PackedCollection repeated = cp(input).repeat(4).get().evaluate();
  * // Result shape: (4, 2, 3) - same data repeated 4 times
  * }</pre>
  * 
  * <h4>Item-level Repetition with Traversal</h4>
  * <pre>{@code
  * // Repeat each item within the collection structure
- * PackedCollection<?> itemRepeated = cp(input).traverse().repeat(3).get().evaluate();
+ * PackedCollection itemRepeated = cp(input).traverse().repeat(3).get().evaluate();
  * // Result: each individual element is repeated 3 times
  * }</pre>
  * 
  * <h4>Broadcasting for Neural Networks</h4>
  * <pre>{@code
  * // Typical use in dense layer computation
- * PackedCollection<?> weights = new PackedCollection<>(shape(inputSize, outputSize));
- * PackedCollection<?> input = new PackedCollection<>(shape(inputSize));
+ * PackedCollection weights = new PackedCollection(shape(inputSize, outputSize));
+ * PackedCollection input = new PackedCollection(shape(inputSize));
  * 
  * // Repeat input for each output node
  * CollectionProducer<?> result = cp(input).repeat(outputSize).traverseEach()
@@ -84,8 +84,8 @@ import java.util.function.Supplier;
  * <h4>Upsampling Operations</h4>
  * <pre>{@code
  * // 2x2 upsampling of image data
- * PackedCollection<?> image = pack(1.0, 2.0, 3.0, 4.0).reshape(1, 1, 2, 2);
- * PackedCollection<?> upsampled = cp(image)
+ * PackedCollection image = pack(1.0, 2.0, 3.0, 4.0).reshape(1, 1, 2, 2);
+ * PackedCollection upsampled = cp(image)
  *     .repeat(4, 2)  // Repeat along axis 4 with factor 2
  *     .repeat(3, 2)  // Repeat along axis 3 with factor 2
  *     .evaluate()
@@ -127,7 +127,7 @@ import java.util.function.Supplier;
  * @author Michael Murray
  * @since 0.68
  */
-public class PackedCollectionRepeat<T extends PackedCollection<?>>
+public class PackedCollectionRepeat<T extends PackedCollection>
 		extends IndexProjectionProducerComputation<T> {
 	
 	public static boolean enableUniqueIndexOptimization = true;
@@ -150,7 +150,7 @@ public class PackedCollectionRepeat<T extends PackedCollection<?>>
 	 * <h4>Example Usage:</h4>
 	 * <pre>{@code
 	 * // Repeat a 3x4 collection 5 times
-	 * PackedCollection<?> input = new PackedCollection<>(shape(3, 4));
+	 * PackedCollection input = new PackedCollection(shape(3, 4));
 	 * PackedCollectionRepeat<?> repeat = new PackedCollectionRepeat<>(5, cp(input));
 	 * // Result shape: (5, 3, 4)
 	 * }</pre>
@@ -179,7 +179,7 @@ public class PackedCollectionRepeat<T extends PackedCollection<?>>
 	 * <h4>Example Usage:</h4>
 	 * <pre>{@code
 	 * // Repeat specific 2x2 blocks from a 4x4 collection, 3 times
-	 * PackedCollection<?> input = new PackedCollection<>(shape(4, 4));
+	 * PackedCollection input = new PackedCollection(shape(4, 4));
 	 * TraversalPolicy blockShape = shape(2, 2);
 	 * PackedCollectionRepeat<?> repeat = new PackedCollectionRepeat<>(blockShape, 3, cp(input));
 	 * }</pre>

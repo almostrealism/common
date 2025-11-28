@@ -62,25 +62,25 @@ import java.util.stream.Stream;
  * <p><strong>Adding two vectors:</strong></p>
  * <pre>{@code
  * TraversalPolicy shape = shape(100); // 100-element vectors
- * CollectionProducer<PackedCollection<?>> a = c(new PackedCollection<>(shape));
- * CollectionProducer<PackedCollection<?>> b = c(new PackedCollection<>(shape));
+ * CollectionProducer<PackedCollection> a = c(new PackedCollection(shape));
+ * CollectionProducer<PackedCollection> b = c(new PackedCollection(shape));
  *
- * CollectionAddComputation<PackedCollection<?>> add =
+ * CollectionAddComputation<PackedCollection> add =
  *     new CollectionAddComputation<>(shape, a, b);
  *
- * PackedCollection<?> result = add.get().evaluate();
+ * PackedCollection result = add.get().evaluate();
  * }</pre>
  *
  * <p><strong>Adding multiple collections:</strong></p>
  * <pre>{@code
  * TraversalPolicy shape = shape(10, 10); // 10x10 matrices
- * CollectionProducer<PackedCollection<?>>[] matrices = new CollectionProducer[5];
+ * CollectionProducer<PackedCollection>[] matrices = new CollectionProducer[5];
  * // ... initialize matrices ...
  *
- * CollectionAddComputation<PackedCollection<?>> sumAll =
+ * CollectionAddComputation<PackedCollection> sumAll =
  *     new CollectionAddComputation<>(shape, matrices);
  *
- * PackedCollection<?> sum = sumAll.get().evaluate();
+ * PackedCollection sum = sumAll.get().evaluate();
  * }</pre>
  *
  * <h2>Performance Characteristics</h2>
@@ -100,7 +100,7 @@ import java.util.stream.Stream;
  *
  * @author Michael Murray
  */
-public class CollectionAddComputation<T extends PackedCollection<?>> extends TransitiveDeltaExpressionComputation<T> {
+public class CollectionAddComputation<T extends PackedCollection> extends TransitiveDeltaExpressionComputation<T> {
 
 	/**
 	 * Constructs a new addition computation with default name "add".
@@ -108,7 +108,7 @@ public class CollectionAddComputation<T extends PackedCollection<?>> extends Tra
 	 * @param shape The {@link TraversalPolicy} defining the output shape and traversal pattern
 	 * @param arguments Variable number of input {@link Producer}s to be added together
 	 */
-	public CollectionAddComputation(TraversalPolicy shape, Producer<PackedCollection<?>>... arguments) {
+	public CollectionAddComputation(TraversalPolicy shape, Producer<PackedCollection>... arguments) {
 		this("add", shape, arguments);
 	}
 
@@ -122,7 +122,7 @@ public class CollectionAddComputation<T extends PackedCollection<?>> extends Tra
 	 * @param arguments Variable number of input {@link Producer}s to be added together
 	 */
 	protected CollectionAddComputation(String name, TraversalPolicy shape,
-									   Producer<PackedCollection<?>>... arguments) {
+									   Producer<PackedCollection>... arguments) {
 		super(name, shape, arguments);
 	}
 

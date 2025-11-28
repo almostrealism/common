@@ -16,6 +16,7 @@
 
 package org.almostrealism.geometry;
 
+import io.almostrealism.relation.Producer;
 import io.almostrealism.uml.ModelEntity;
 import org.almostrealism.algebra.UnityVector;
 import org.almostrealism.algebra.Vector;
@@ -45,7 +46,7 @@ public class BasicGeometry implements Positioned, Oriented, Scaled, DecodePostPr
 	protected boolean transformCurrent;
 	
 	public BasicGeometry() {
-		this(ZeroVector.getEvaluable().evaluate());
+		this(new Vector(ZeroVector.getEvaluable().evaluate(), 0));
 		transformCurrent = true;
 	}
 	
@@ -260,15 +261,15 @@ public class BasicGeometry implements Positioned, Oriented, Scaled, DecodePostPr
 
 			if (getLocation() != null) {
 				completeTransform = completeTransform.multiply(
-						new TransformMatrix(translationMatrix(v(getLocation())).get().evaluate(), 0));
+						new TransformMatrix((TransformMatrix) translationMatrix((Producer) v(getLocation())).get().evaluate(), 0));
 			}
 
 			CollectionProducer<TransformMatrix> sm;
 
 			if (size == 1.0) {
-				sm = scaleMatrix(v(scale));
+				sm = scaleMatrix((Producer) v(scale));
 			} else {
-				sm = scaleMatrix(v(scale.multiply(size)));
+				sm = scaleMatrix((Producer) v(scale.multiply(size)));
 			}
 
 			this.completeTransform = this.completeTransform.multiply(

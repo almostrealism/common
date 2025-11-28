@@ -37,7 +37,7 @@ import org.almostrealism.collect.PackedCollection;
  * {@link #getDeltaAlternate()} instead of using the standard delta computation chain:
  * </p>
  * <pre>{@code
- * public class CustomOperation<T extends PackedCollection<?>>
+ * public class CustomOperation<T extends PackedCollection>
  *         extends CollectionProducerComputationBase<T, T>
  *         implements DeltaAlternate<T> {
  *
@@ -67,7 +67,7 @@ import org.almostrealism.collect.PackedCollection;
  * @see org.almostrealism.collect.CollectionProducer#delta
  * @see DeltaFeatures
  */
-public interface DeltaAlternate<T extends PackedCollection<?>> {
+public interface DeltaAlternate<T extends PackedCollection> {
 	/**
 	 * Returns an alternative delta (gradient) computation for this producer.
 	 *

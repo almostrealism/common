@@ -53,32 +53,32 @@ import java.util.List;
  *
  * <p><strong>Finding maximum in a vector:</strong></p>
  * <pre>{@code
- * CollectionProducer<PackedCollection<?>> vector = c(3.0, 7.0, 2.0, 9.0, 5.0);
- * CollectionMaxComputation<PackedCollection<?>> max =
+ * CollectionProducer<PackedCollection> vector = c(3.0, 7.0, 2.0, 9.0, 5.0);
+ * CollectionMaxComputation<PackedCollection> max =
  *     new CollectionMaxComputation<>(vector);
  *
- * PackedCollection<?> result = max.get().evaluate();
+ * PackedCollection result = max.get().evaluate();
  * // Result: [9.0]
  * }</pre>
  *
  * <p><strong>Finding maximum in a matrix (all elements):</strong></p>
  * <pre>{@code
- * CollectionProducer<PackedCollection<?>> matrix = c(shape(2, 3),
+ * CollectionProducer<PackedCollection> matrix = c(shape(2, 3),
  *     1.0, 8.0, 3.0,
  *     4.0, 2.0, 6.0);
  *
- * CollectionMaxComputation<PackedCollection<?>> max =
+ * CollectionMaxComputation<PackedCollection> max =
  *     new CollectionMaxComputation<>(matrix);
  *
- * PackedCollection<?> result = max.get().evaluate();
+ * PackedCollection result = max.get().evaluate();
  * // Result: [8.0]
  * }</pre>
  *
  * <p><strong>Using via CollectionFeatures:</strong></p>
  * <pre>{@code
  * // More commonly used through helper methods
- * CollectionProducer<PackedCollection<?>> data = c(-5.0, 10.0, 3.0);
- * CollectionProducer<PackedCollection<?>> maximum = max(data);
+ * CollectionProducer<PackedCollection> data = c(-5.0, 10.0, 3.0);
+ * CollectionProducer<PackedCollection> maximum = max(data);
  * // Result: [10.0]
  * }</pre>
  *
@@ -108,14 +108,14 @@ import java.util.List;
  *
  * @author Michael Murray
  */
-public class CollectionMaxComputation<T extends PackedCollection<?>> extends AggregatedProducerComputation<T> {
+public class CollectionMaxComputation<T extends PackedCollection> extends AggregatedProducerComputation<T> {
 	/**
 	 * Constructs a max computation that reduces the input collection to a single maximum value.
 	 * The input shape is automatically determined from the producer.
 	 *
 	 * @param input The {@link Producer} providing the collection to find the maximum of
 	 */
-	public CollectionMaxComputation(Producer<PackedCollection<?>> input) {
+	public CollectionMaxComputation(Producer<PackedCollection> input) {
 		this(CollectionFeatures.getInstance().shape(input), input);
 	}
 
@@ -132,7 +132,7 @@ public class CollectionMaxComputation<T extends PackedCollection<?>> extends Agg
 	 * @param shape The {@link TraversalPolicy} of the input collection
 	 * @param input The {@link Producer} providing the collection to find the maximum of
 	 */
-	protected CollectionMaxComputation(TraversalPolicy shape, Producer<PackedCollection<?>> input) {
+	protected CollectionMaxComputation(TraversalPolicy shape, Producer<PackedCollection> input) {
 		super("max", shape.replace(new TraversalPolicy(1)), shape.getSize(),
 				(args, index) -> new MinimumValue(),
 				(out, arg) -> Max.of(out, arg),

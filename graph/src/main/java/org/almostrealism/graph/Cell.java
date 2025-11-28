@@ -55,10 +55,10 @@ import java.util.function.Supplier;
  * <h2>Usage Example</h2>
  * <pre>{@code
  * // Create a cell that doubles its input
- * Cell<PackedCollection<?>> doubler = Cell.of(input -> multiply(input, c(2.0)));
+ * Cell<PackedCollection> doubler = Cell.of(input -> multiply(input, c(2.0)));
  *
  * // Chain cells together
- * Cell<PackedCollection<?>> pipeline = doubler.andThen(anotherCell);
+ * Cell<PackedCollection> pipeline = doubler.andThen(anotherCell);
  *
  * // Execute the pipeline
  * pipeline.push(inputProducer).get().run();
@@ -358,7 +358,7 @@ public interface Cell<T> extends Transmitter<T>, Receptor<T>, Cellular {
 	 *
 	 * <p>Example usage:</p>
 	 * <pre>{@code
-	 * Cell<PackedCollection<?>> doubler = Cell.of(input -> multiply(input, c(2.0)));
+	 * Cell<PackedCollection> doubler = Cell.of(input -> multiply(input, c(2.0)));
 	 * }</pre>
 	 *
 	 * @param <T> the data type
@@ -400,7 +400,7 @@ public interface Cell<T> extends Transmitter<T>, Receptor<T>, Cellular {
 	 *
 	 * <p>Example usage:</p>
 	 * <pre>{@code
-	 * Cell<PackedCollection<?>> custom = Cell.of((input, receptor) -> {
+	 * Cell<PackedCollection> custom = Cell.of((input, receptor) -> {
 	 *     OperationList ops = new OperationList();
 	 *     ops.add(receptor.push(transform(input)));
 	 *     ops.add(sideEffect());

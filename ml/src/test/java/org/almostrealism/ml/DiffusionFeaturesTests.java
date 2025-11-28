@@ -15,10 +15,10 @@ public class DiffusionFeaturesTests implements DiffusionFeatures, TestFeatures {
 		int h = 14;
 		int w = 14;
 
-		PackedCollection<?> input =
-				new PackedCollection<>(shape(batchSize, inputChannels, h, w)).randFill();
+		PackedCollection input =
+				new PackedCollection(shape(batchSize, inputChannels, h, w)).randFill();
 
-		Cell.CaptureReceptor<PackedCollection<?>> receptor =
+		Cell.CaptureReceptor<PackedCollection> receptor =
 				new Cell.CaptureReceptor<>();
 
 		Block upsample = upsample(inputChannels, inputChannels).apply(input.getShape());

@@ -23,11 +23,11 @@ public interface Tokenizer {
 
 	String decodeAsInt(int[] tokens);
 
-	default PackedCollection<?> encode(String text) {
+	default PackedCollection encode(String text) {
 		throw new UnsupportedOperationException();
 	}
 
-	default String decode(PackedCollection<?> tokens) {
+	default String decode(PackedCollection tokens) {
 		throw new UnsupportedOperationException();
 	}
 }

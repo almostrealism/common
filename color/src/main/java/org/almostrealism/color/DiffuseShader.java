@@ -60,24 +60,24 @@ public class DiffuseShader implements Shader<ShaderContext>, Editable, RGBFeatur
 	
 	/** Method specified by the {@link Shader} interface. */
 	@Override
-	public Producer<RGB> shade(ShaderContext p, DiscreteField normals) {
-		CollectionProducer<Vector> point = origin(normals.get(0));
-		CollectionProducer<Vector> n = normalize(direction(normals.get(0)));
-		CollectionProducer<PackedCollection<?>> scaleFront = dotProduct(n, p.getLightDirection());
-		CollectionProducer<PackedCollection<?>> scaleBack = dotProduct(minus(n), p.getLightDirection());
-		Producer<RGB> lightColor = p.getLight().getColorAt(point);
-		Producer<RGB> surfaceColor = p.getSurface().getValueAt(point);
+	public Producer<PackedCollection> shade(ShaderContext p, DiscreteField normals) {
+		CollectionProducer<PackedCollection> point = origin(normals.get(0));
+		CollectionProducer<PackedCollection> n = normalize(direction(normals.get(0)));
+		CollectionProducer<PackedCollection> scaleFront = (CollectionProducer) dotProduct(n, p.getLightDirection());
+		CollectionProducer<PackedCollection> scaleBack = (CollectionProducer) dotProduct(minus(n), p.getLightDirection());
+		Producer lightColor = p.getLight().getColorAt(point);
+		Producer surfaceColor = p.getSurface().getValueAt(point);
 
-		Producer<RGB> front = null, back = null;
+		Producer front = null, back = null;
 
 		if (p.getSurface() instanceof ShadableSurface == false || ((ShadableSurface) p.getSurface()).getShadeFront()) {
-			Producer<RGB> color = multiply(surfaceColor, lightColor).multiply(cfromScalar(scaleFront));
-			front = greaterThan(scaleFront, c(0), color, black());
+			Producer color = multiply(surfaceColor, lightColor).multiply(cfromScalar((Producer) scaleFront));
+			front = greaterThan((Producer) scaleFront, c(0), color, (Producer) black());
 		}
 
 		if (p.getSurface() instanceof ShadableSurface == false || ((ShadableSurface) p.getSurface()).getShadeBack()) {
-			Producer<RGB> color = multiply(surfaceColor, lightColor).multiply(cfromScalar(scaleBack));
-			back = greaterThan(scaleBack, c(0), color, black());
+			Producer color = multiply(surfaceColor, lightColor).multiply(cfromScalar((Producer) scaleBack));
+			back = greaterThan((Producer) scaleBack, c(0), color, (Producer) black());
 		}
 
 		if (front != null && back != null) {

@@ -24,24 +24,24 @@ public class MinMaxTests implements TestFeatures {
 
 	@Test
 	public void floorKernel() {
-		PackedCollection<?> timeline = tensor(shape(60000, 1)).pack().traverse(1);
-		PackedCollection<?> speedUp = new PackedCollection<>(shape(1, 1), 1);
+		PackedCollection timeline = tensor(shape(60000, 1)).pack().traverse(1);
+		PackedCollection speedUp = new PackedCollection(shape(1, 1), 1);
 		speedUp.set(0, 40);
 
-		Producer<PackedCollection<?>> in = value(timeline.getShape(), 0);
-		Producer<PackedCollection<?>> speedUpDuration = value(shape(1, 1).traverse(1), 1);
+		Producer<PackedCollection> in = value(timeline.getShape(), 0);
+		Producer<PackedCollection> speedUpDuration = value(shape(1, 1).traverse(1), 1);
 
 		verboseLog(() -> {
-			Evaluable<PackedCollection<?>> ev = divide(in, speedUpDuration).get();
-			PackedCollection<?> out = ev.evaluate(timeline, speedUp);
+			Evaluable<PackedCollection> ev = divide(in, speedUpDuration).get();
+			PackedCollection out = ev.evaluate(timeline, speedUp);
 			System.out.println(out.toDouble(10 * 4410));
 			System.out.println(timeline.toDouble(10 * 4410) / speedUp.toDouble(0));
 			assertEquals(timeline.toDouble(10 * 4410) / speedUp.toDouble(0), out.toDouble(10 * 4410));
 		});
 
 		verboseLog(() -> {
-			Evaluable<PackedCollection<?>> ev = floor(divide(in, speedUpDuration)).get();
-			PackedCollection<?> out = ev.evaluate(timeline, speedUp);
+			Evaluable<PackedCollection> ev = floor(divide(in, speedUpDuration)).get();
+			PackedCollection out = ev.evaluate(timeline, speedUp);
 			System.out.println(out.toDouble(10 * 4410));
 			System.out.println(Math.floor(timeline.toDouble(10 * 4410) / speedUp.toDouble(0)));
 			assertEquals(Math.floor(timeline.toDouble(10 * 4410) / speedUp.toDouble(0)), out.toDouble(10 * 4410));

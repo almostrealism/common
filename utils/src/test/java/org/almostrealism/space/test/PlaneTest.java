@@ -54,7 +54,7 @@ public class PlaneTest implements TestFeatures {
 	public void intersectionTest1Compact() {
 		ShadableIntersection intersection = test1();
 
-		Producer<PackedCollection<?>> p = intersection.getDistance();
+		Producer<PackedCollection> p = intersection.getDistance();
 
 		double distance = p.get().evaluate().toDouble();
 		System.out.println("distance = " + distance);
@@ -94,7 +94,7 @@ public class PlaneTest implements TestFeatures {
 		Assert.assertEquals(new Ray(new Vector(0.0, 10.0, 1.0),
 				new Vector(0.0, 0.5, -1.0)), t.get().evaluate());
 
-		Vector v = t.get().evaluate().pointAt(c(-20)).get().evaluate();
+		Vector v = new Vector(t.get().evaluate().pointAt(c(-20)).get().evaluate(), 0);
 		Assert.assertEquals(new Vector(0.0, 0.0, 21.0), v);
 	}
 }

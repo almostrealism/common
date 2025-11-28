@@ -19,6 +19,7 @@ package org.almostrealism.collect.computations;
 import io.almostrealism.code.ComputeContext;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.uml.Multiple;
 import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
@@ -187,9 +188,9 @@ public class DefaultCollectionEvaluable<T extends PackedCollection>
 	 * @throws IllegalArgumentException if len is negative or if shape calculations result in invalid dimensions
 	 */
 	@Override
-	public T createDestination(int len) {
+	public Multiple<T> createDestination(int len) {
 		if (enableDestinationFactory) {
-			return destinationFactory.apply(len);
+			return (Multiple<T>) destinationFactory.apply(len);
 		}
 
 		TraversalPolicy shape =
@@ -197,7 +198,7 @@ public class DefaultCollectionEvaluable<T extends PackedCollection>
 						this.shape.getCount(),
 						Countable.isFixedCount(getComputation()),
 						len);
-		return (T) new PackedCollection<>(shape);
+		return (Multiple<T>) new PackedCollection(shape);
 	}
 
 	/**

@@ -280,7 +280,7 @@ public class MultiOrderFilterPerformanceTest implements TestFeatures, ConsoleFea
 		log("");
 
 		// Create input collection with random data
-		PackedCollection<?> inputSeries = new PackedCollection<>(collectionSize);
+		PackedCollection inputSeries = new PackedCollection(collectionSize);
 		for (int i = 0; i < collectionSize; i++) {
 			inputSeries.setMem(i, Math.random());
 		}
@@ -300,7 +300,7 @@ public class MultiOrderFilterPerformanceTest implements TestFeatures, ConsoleFea
 		filter.setComputeRequirements(List.of(requirement));
 
 		// Create output collection
-		PackedCollection<?> output = new PackedCollection<>(collectionSize);
+		PackedCollection output = new PackedCollection(collectionSize);
 
 		log("Filter built successfully with " + requirement + " compute requirements");
 		log("  Using PassThroughProducer for dynamic input evaluation");

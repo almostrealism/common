@@ -15,6 +15,7 @@
  */
 
 package org.almostrealism.texture;
+import org.almostrealism.collect.PackedCollection;
 
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.color.RGB;
@@ -68,7 +69,7 @@ public interface Texture {
 	 * @deprecated Use {@link #operate(Vector)} instead for simpler texture lookup
 	 */
 	@Deprecated
-	Evaluable<RGB> getColorAt(Object args[]);
+	Evaluable<PackedCollection> getColorAt(Object args[]);
 
 	/**
 	 * Returns the color at the specified 3D point.

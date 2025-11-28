@@ -45,14 +45,14 @@ public class CollectionAddTests implements TestFeatures {
 
 		log("Native parallelism = " + KernelPreferences.getCpuParallelism());
 
-		CollectionProducer<PackedCollection<?>> add = add(v(shape(1), 0), v(shape(1), 1));
+		CollectionProducer<PackedCollection> add = add(v(shape(1), 0), v(shape(1), 1));
 		((ComputationBase) add).setComputeRequirements(List.of(req));
 		log("signature = " + Signature.of(add) + ", req = " + ((ComputationBase) add).getComputeRequirements());
 
-		Evaluable<PackedCollection<?>> ev = add.get();
+		Evaluable<PackedCollection> ev = add.get();
 
-		PackedCollection<?> a = new PackedCollection<>(shape(size));
-		PackedCollection<?> b = new PackedCollection<>(shape(size));
+		PackedCollection a = new PackedCollection(shape(size));
+		PackedCollection b = new PackedCollection(shape(size));
 
 		long start = System.currentTimeMillis();
 		for (int i = 0; i < iter; i++) {

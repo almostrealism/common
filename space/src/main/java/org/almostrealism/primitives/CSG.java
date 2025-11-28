@@ -74,7 +74,7 @@ public class CSG extends AbstractSurface {
 	
     /** @return  null. */
     @Override
-    public Producer<Vector> getNormalAt(Producer<Vector> point) { return null; }
+    public Producer<PackedCollection> getNormalAt(Producer<PackedCollection> point) { return null; }
 
     /**
      * @see  org.almostrealism.geometry.Intersectable#intersectAt(Producer)
@@ -187,7 +187,7 @@ public class CSG extends AbstractSurface {
     }
 
     @Override
-    public Operator<PackedCollection<?>> expect() {
+    public Operator<PackedCollection> expect() {
         return null;
     }
 
@@ -231,7 +231,7 @@ public class CSG extends AbstractSurface {
     }
 
     @Override
-    public Operator<PackedCollection<?>> get() {
+    public Operator<PackedCollection> get() {
         return null;
     }
 }

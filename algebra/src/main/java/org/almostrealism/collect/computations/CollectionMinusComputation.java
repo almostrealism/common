@@ -63,27 +63,27 @@ import java.util.List;
  * <p><strong>Basic negation through CollectionFeatures:</strong></p>
  * <pre>{@code
  * // Negate a vector
- * CollectionProducer<PackedCollection<?>> vector = c(1.0, -2.0, 3.0);
- * CollectionProducer<PackedCollection<?>> negated = minus(vector);
+ * CollectionProducer<PackedCollection> vector = c(1.0, -2.0, 3.0);
+ * CollectionProducer<PackedCollection> negated = minus(vector);
  * // Result: [-1.0, 2.0, -3.0]
  * 
  * // Negate a matrix
- * CollectionProducer<PackedCollection<?>> matrix = c(shape(2, 2), 1.0, 2.0, 3.0, 4.0);
- * CollectionProducer<PackedCollection<?>> negatedMatrix = minus(matrix);
+ * CollectionProducer<PackedCollection> matrix = c(shape(2, 2), 1.0, 2.0, 3.0, 4.0);
+ * CollectionProducer<PackedCollection> negatedMatrix = minus(matrix);
  * // Result: 2x2 matrix [[-1.0, -2.0], [-3.0, -4.0]]
  * }</pre>
  * 
  * <p><strong>Usage in mathematical expressions:</strong></p>
  * <pre>{@code
  * // Subtraction using negation: a - b = a + (-b)
- * CollectionProducer<PackedCollection<?>> a = c(5.0, 8.0, 12.0);
- * CollectionProducer<PackedCollection<?>> b = c(2.0, 3.0, 4.0);
- * CollectionProducer<PackedCollection<?>> difference = add(a, minus(b));
+ * CollectionProducer<PackedCollection> a = c(5.0, 8.0, 12.0);
+ * CollectionProducer<PackedCollection> b = c(2.0, 3.0, 4.0);
+ * CollectionProducer<PackedCollection> difference = add(a, minus(b));
  * // Result: [3.0, 5.0, 8.0]
  * 
  * // Mean centering: data - mean(data)
- * CollectionProducer<PackedCollection<?>> data = c(1.0, 2.0, 3.0, 4.0, 5.0);
- * CollectionProducer<PackedCollection<?>> centered = add(data, minus(mean(data).repeat(5)));
+ * CollectionProducer<PackedCollection> data = c(1.0, 2.0, 3.0, 4.0, 5.0);
+ * CollectionProducer<PackedCollection> centered = add(data, minus(mean(data).repeat(5)));
  * // Result: data with zero mean
  * }</pre>
  * 
@@ -91,12 +91,12 @@ import java.util.List;
  * <pre>{@code
  * // Create minus computation directly
  * TraversalPolicy shape = new TraversalPolicy(3);
- * Producer<PackedCollection<?>> input = c(2.0, -4.0, 6.0);
- * CollectionMinusComputation<PackedCollection<?>> computation = 
+ * Producer<PackedCollection> input = c(2.0, -4.0, 6.0);
+ * CollectionMinusComputation<PackedCollection> computation =
  *     new CollectionMinusComputation<>(shape, input);
  * 
  * // Evaluate the computation
- * PackedCollection<?> result = computation.get().evaluate();
+ * PackedCollection result = computation.get().evaluate();
  * // Result: [-2.0, 4.0, -6.0]
  * }</pre>
  * 
@@ -104,11 +104,11 @@ import java.util.List;
  * <p>The computation supports automatic differentiation through the delta method:</p>
  * <pre>{@code
  * // Create a computation with gradient tracking
- * CollectionProducer<PackedCollection<?>> x = c(1.0, 2.0, 3.0);
- * CollectionProducer<PackedCollection<?>> y = minus(x);
+ * CollectionProducer<PackedCollection> x = c(1.0, 2.0, 3.0);
+ * CollectionProducer<PackedCollection> y = minus(x);
  * 
  * // Compute gradient: d(-x)/dx = -1
- * CollectionProducer<PackedCollection<?>> gradient = y.delta(x);
+ * CollectionProducer<PackedCollection> gradient = y.delta(x);
  * // Result: constant -1 for each element
  * }</pre>
  * 
@@ -124,7 +124,7 @@ import java.util.List;
  * @author Michael Murray
  * @since 0.69
  */
-public class CollectionMinusComputation<T extends PackedCollection<?>> extends TransitiveDeltaExpressionComputation<T> {
+public class CollectionMinusComputation<T extends PackedCollection> extends TransitiveDeltaExpressionComputation<T> {
 
 	/**
 	 * Creates a new CollectionMinusComputation with the specified shape and producer arguments.
@@ -147,15 +147,15 @@ public class CollectionMinusComputation<T extends PackedCollection<?>> extends T
 	 * <p><strong>Usage Example:</strong></p>
 	 * <pre>{@code
 	 * // Create a producer for input data
-	 * Producer<PackedCollection<?>> inputProducer = () -> pack(1.0, -2.0, 3.0);
+	 * Producer<PackedCollection> inputProducer = () -> pack(1.0, -2.0, 3.0);
 	 * 
 	 * // Create minus computation
 	 * TraversalPolicy shape = new TraversalPolicy(3);
-	 * CollectionMinusComputation<PackedCollection<?>> computation = 
+	 * CollectionMinusComputation<PackedCollection> computation =
 	 *     new CollectionMinusComputation<>(shape, inputProducer);
 	 * 
 	 * // Evaluate to get negated result
-	 * PackedCollection<?> result = computation.get().evaluate();
+	 * PackedCollection result = computation.get().evaluate();
 	 * // Result: [-1.0, 2.0, -3.0]
 	 * }</pre>
 	 * 
@@ -163,7 +163,7 @@ public class CollectionMinusComputation<T extends PackedCollection<?>> extends T
 	 * @see TraversalPolicy
 	 * @see Producer
 	 */
-	public CollectionMinusComputation(TraversalPolicy shape, Producer<PackedCollection<?>>... arguments) {
+	public CollectionMinusComputation(TraversalPolicy shape, Producer<PackedCollection>... arguments) {
 		this("minus", shape, arguments);
 	}
 
@@ -190,11 +190,11 @@ public class CollectionMinusComputation<T extends PackedCollection<?>> extends T
 	 * <p><strong>Usage Example (Advanced):</strong></p>
 	 * <pre>{@code
 	 * // Create a custom-named minus computation for debugging
-	 * Supplier<Evaluable<PackedCollection<?>>> inputSupplier = () -> 
+	 * Supplier<Evaluable<PackedCollection>> inputSupplier = () ->
 	 *     () -> pack(1.0, 2.0, 3.0);
 	 * 
 	 * TraversalPolicy shape = new TraversalPolicy(3);
-	 * CollectionMinusComputation<PackedCollection<?>> computation = 
+	 * CollectionMinusComputation<PackedCollection> computation =
 	 *     new CollectionMinusComputation<>("debug_negate", shape, inputSupplier);
 	 * 
 	 * // The custom name appears in operation metadata
@@ -204,7 +204,7 @@ public class CollectionMinusComputation<T extends PackedCollection<?>> extends T
 	 * @see TransitiveDeltaExpressionComputation#TransitiveDeltaExpressionComputation(String, TraversalPolicy, Producer[])
 	 */
 	protected CollectionMinusComputation(String name, TraversalPolicy shape,
-										 Producer<PackedCollection<?>>... arguments) {
+										 Producer<PackedCollection>... arguments) {
 		super(name, shape, arguments);
 	}
 
@@ -280,16 +280,16 @@ public class CollectionMinusComputation<T extends PackedCollection<?>> extends T
 	 * <p><strong>Usage in Computation Pipeline:</strong></p>
 	 * <pre>{@code
 	 * // This method is typically called internally during compilation:
-	 * CollectionMinusComputation<PackedCollection<?>> computation = 
+	 * CollectionMinusComputation<PackedCollection> computation =
 	 *     new CollectionMinusComputation<>(shape, inputProducer);
 	 * 
 	 * // During compilation, generate() is called to create the executable process
 	 * List<Process<?, ?>> childProcesses = Arrays.asList(outputProcess, inputProcess);
-	 * CollectionProducerParallelProcess<PackedCollection<?>> executableProcess = 
+	 * CollectionProducerParallelProcess<PackedCollection> executableProcess =
 	 *     computation.generate(childProcesses);
 	 * 
 	 * // The process can then be executed to perform the computation
-	 * PackedCollection<?> result = executableProcess.get().evaluate();
+	 * PackedCollection result = executableProcess.get().evaluate();
 	 * }</pre>
 	 * 
 	 * @see CollectionProducerParallelProcess

@@ -15,6 +15,7 @@
  */
 
 package org.almostrealism.collect;
+import org.almostrealism.collect.PackedCollection;
 
 import io.almostrealism.collect.CollectionProducerBase;
 import io.almostrealism.collect.TraversalPolicy;
@@ -56,7 +57,7 @@ import org.almostrealism.hardware.computations.DelegatedProducer;
  * @see CollectionProducer
  * @see org.almostrealism.hardware.computations.DelegatedProducer
  */
-public class DelegatedCollectionProducer<T extends PackedCollection<?>>
+public class DelegatedCollectionProducer<T extends PackedCollection>
 						extends DelegatedProducer<T>
 						implements CollectionProducerBase<T, Producer<T>> {
 	private boolean fixedCount;

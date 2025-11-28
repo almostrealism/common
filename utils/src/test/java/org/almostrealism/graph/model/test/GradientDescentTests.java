@@ -34,13 +34,13 @@ import java.util.stream.IntStream;
 public class GradientDescentTests implements ModelTestFeatures {
 	private double coeff[] = { 0.24, -0.1, 0.36 };
 
-	private UnaryOperator<PackedCollection<?>> func1 =
+	private UnaryOperator<PackedCollection> func1 =
 			in -> PackedCollection.of(1.5 * in.valueAt(0));
-	private UnaryOperator<PackedCollection<?>> func2 =
+	private UnaryOperator<PackedCollection> func2 =
 			in -> PackedCollection.of(in.valueAt(0) * 2 + in.valueAt(1));
-	private UnaryOperator<PackedCollection<?>> func3 =
+	private UnaryOperator<PackedCollection> func3 =
 			in -> PackedCollection.of(coeff[0] * in.valueAt(0) + coeff[1] * in.valueAt(1) + coeff[2] * in.valueAt(2));
-	private UnaryOperator<PackedCollection<?>> func3x3 =
+	private UnaryOperator<PackedCollection> func3x3 =
 			in -> PackedCollection.of(coeff[0] * in.valueAt(0), coeff[1] * in.valueAt(1), coeff[2] * in.valueAt(2));
 
 	@Test
@@ -59,7 +59,7 @@ public class GradientDescentTests implements ModelTestFeatures {
 		int steps = 100;
 
 		Supplier<Dataset<?>> data = () -> Dataset.of(IntStream.range(0, steps)
-				.mapToObj(i -> new PackedCollection<>(shape(1)))
+				.mapToObj(i -> new PackedCollection(shape(1)))
 				.map(input -> input.fill(pos -> 2.0 + 3 * Math.random()))
 				.map(input -> ValueTarget.of(input, func1.apply(input)))
 				.collect(Collectors.toList()));
@@ -83,7 +83,7 @@ public class GradientDescentTests implements ModelTestFeatures {
 		int steps = 320;
 
 		Supplier<Dataset<?>> data = () -> Dataset.of(IntStream.range(0, steps)
-				.mapToObj(i -> new PackedCollection<>(shape(2)))
+				.mapToObj(i -> new PackedCollection(shape(2)))
 				.map(input -> input.fill(pos -> 5 + 2 * Math.random()))
 				.map(input -> ValueTarget.of(input, func2.apply(input)))
 				.collect(Collectors.toList()));
@@ -103,7 +103,7 @@ public class GradientDescentTests implements ModelTestFeatures {
 		int steps = 260;
 
 		Supplier<Dataset<?>> data = () -> Dataset.of(IntStream.range(0, steps)
-				.mapToObj(i -> new PackedCollection<>(shape(3)))
+				.mapToObj(i -> new PackedCollection(shape(3)))
 				.map(input -> input.fill(pos -> 4 + 3 * Math.random()))
 				.map(input -> ValueTarget.of(input, func3x3.apply(input)))
 				.collect(Collectors.toList()));
@@ -126,7 +126,7 @@ public class GradientDescentTests implements ModelTestFeatures {
 		int steps = 260;
 
 		Supplier<Dataset<?>> data = () -> Dataset.of(IntStream.range(0, steps)
-				.mapToObj(i -> new PackedCollection<>(shape(3)))
+				.mapToObj(i -> new PackedCollection(shape(3)))
 				.map(input -> input.fill(pos -> 4 + 3 * Math.random()))
 				.map(input -> ValueTarget.of(input, func3.apply(input)))
 				.collect(Collectors.toList()));
@@ -156,7 +156,7 @@ public class GradientDescentTests implements ModelTestFeatures {
 			int steps = 125;
 
 			Supplier<Dataset<?>> data = () -> Dataset.of(IntStream.range(0, steps)
-					.mapToObj(i -> new PackedCollection<>(shape(inChannels)))
+					.mapToObj(i -> new PackedCollection(shape(inChannels)))
 					.map(input -> input.fill(pos -> 5 + 4 * Math.random()))
 					.map(input -> ValueTarget.of(input, func3.apply(input)))
 					.collect(Collectors.toList()));

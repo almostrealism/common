@@ -68,43 +68,43 @@ import java.util.stream.Collectors;
  * <p><strong>Basic Element-wise Power:</strong>
  * <pre>{@code
  * // Square each element: [2, 3, 4] -> [4, 9, 16]
- * PackedCollection<?> base = pack(2.0, 3.0, 4.0);
- * PackedCollection<?> exponent = pack(2.0, 2.0, 2.0);
+ * PackedCollection base = pack(2.0, 3.0, 4.0);
+ * PackedCollection exponent = pack(2.0, 2.0, 2.0);
  * 
- * CollectionExponentComputation<PackedCollection<?>> power = 
+ * CollectionExponentComputation<PackedCollection> power =
  *     new CollectionExponentComputation<>(shape(3), p(base), p(exponent));
- * PackedCollection<?> result = power.get().evaluate();
+ * PackedCollection result = power.get().evaluate();
  * }</pre>
  * 
  * <p><strong>Broadcasting Scalar Exponent:</strong>
  * <pre>{@code
  * // Cube all elements: [2, 3, 4] -> [8, 27, 64]
- * PackedCollection<?> base = pack(2.0, 3.0, 4.0);
- * CollectionProducer<PackedCollection<?>> cubed = 
+ * PackedCollection base = pack(2.0, 3.0, 4.0);
+ * CollectionProducer<PackedCollection> cubed =
  *     cp(base).pow(c(3.0));  // Uses CollectionExponentComputation internally
- * PackedCollection<?> result = cubed.get().evaluate();
+ * PackedCollection result = cubed.get().evaluate();
  * }</pre>
  * 
  * <p><strong>Multi-dimensional Power Operations:</strong>
  * <pre>{@code
  * // Matrix element-wise power
- * PackedCollection<?> matrix = new PackedCollection<>(shape(2, 3));
+ * PackedCollection matrix = new PackedCollection(shape(2, 3));
  * matrix.fill(pos -> pos[0] + pos[1] + 1.0);  // [[1,2,3], [2,3,4]]
  * 
- * CollectionExponentComputation<PackedCollection<?>> matrixPower = 
+ * CollectionExponentComputation<PackedCollection> matrixPower =
  *     new CollectionExponentComputation<>(shape(2, 3), p(matrix), c(2.0));
- * PackedCollection<?> squared = matrixPower.get().evaluate();
+ * PackedCollection squared = matrixPower.get().evaluate();
  * // Result: [[1,4,9], [4,9,16]]
  * }</pre>
  * 
  * <p><strong>Derivative Computation for Optimization:</strong>
  * <pre>{@code
  * // Computing gradient of x^3 for backpropagation
- * CollectionProducer<PackedCollection<?>> x = x(3);
- * CollectionProducer<PackedCollection<?>> f = x.pow(c(3.0));
+ * CollectionProducer<PackedCollection> x = x(3);
+ * CollectionProducer<PackedCollection> f = x.pow(c(3.0));
  * 
  * // df/dx = 3*x^2
- * CollectionProducer<PackedCollection<?>> gradient = f.delta(x);
+ * CollectionProducer<PackedCollection> gradient = f.delta(x);
  * }</pre>
  * 
  * <h3>Configuration Options</h3>
@@ -133,7 +133,7 @@ import java.util.stream.Collectors;
  * @see io.almostrealism.expression.Exponent
  * @author Michael Murray
  */
-public class CollectionExponentComputation<T extends PackedCollection<?>> extends TraversableExpressionComputation<T> {
+public class CollectionExponentComputation<T extends PackedCollection> extends TraversableExpressionComputation<T> {
 	/**
 	 * Enables optimized analytical derivative computation using the power rule for automatic differentiation.
 	 * When {@code true}, the {@link #delta(Producer)} method applies the mathematical power rule:
@@ -174,8 +174,8 @@ public class CollectionExponentComputation<T extends PackedCollection<?>> extend
 	 *                 Can be a scalar (broadcasted) or collection matching base dimensions.
 	 */
 	public CollectionExponentComputation(TraversalPolicy shape,
-										 Producer<? extends PackedCollection<?>> base,
-										 Producer<? extends PackedCollection<?>> exponent) {
+										 Producer<? extends PackedCollection> base,
+										 Producer<? extends PackedCollection> exponent) {
 		this("pow", shape, (Producer) base, (Producer) exponent);
 	}
 
@@ -193,8 +193,8 @@ public class CollectionExponentComputation<T extends PackedCollection<?>> extend
 	 * @param exponent The {@link Supplier} providing {@link Evaluable} instances that produce exponent values
 	 */
 	protected CollectionExponentComputation(String name, TraversalPolicy shape,
-											Producer<PackedCollection<?>> base,
-											Producer<PackedCollection<?>> exponent) {
+											Producer<PackedCollection> base,
+											Producer<PackedCollection> exponent) {
 		super(name, shape, MultiTermDeltaStrategy.NONE, base, exponent);
 	}
 
@@ -296,18 +296,18 @@ public class CollectionExponentComputation<T extends PackedCollection<?>> extend
 	 * <p><strong>Basic Power Rule:</strong>
 	 * <pre>{@code
 	 * // f(x) = x^3, df/dx = 3*x^2
-	 * CollectionProducer<PackedCollection<?>> x = x(5);
-	 * CollectionProducer<PackedCollection<?>> f = x.pow(c(3.0));
-	 * CollectionProducer<PackedCollection<?>> df_dx = f.delta(x);
+	 * CollectionProducer<PackedCollection> x = x(5);
+	 * CollectionProducer<PackedCollection> f = x.pow(c(3.0));
+	 * CollectionProducer<PackedCollection> df_dx = f.delta(x);
 	 * }</pre>
 	 * 
 	 * <p><strong>Composite Function:</strong>
 	 * <pre>{@code
 	 * // f(g(x)) = (2*x + 1)^4, df/dx = 4*(2*x + 1)^3 * 2
-	 * CollectionProducer<PackedCollection<?>> x = x(3);
-	 * CollectionProducer<PackedCollection<?>> g = x.multiply(c(2.0)).add(c(1.0));
-	 * CollectionProducer<PackedCollection<?>> f = g.pow(c(4.0));
-	 * CollectionProducer<PackedCollection<?>> df_dx = f.delta(x);
+	 * CollectionProducer<PackedCollection> x = x(3);
+	 * CollectionProducer<PackedCollection> g = x.multiply(c(2.0)).add(c(1.0));
+	 * CollectionProducer<PackedCollection> f = g.pow(c(4.0));
+	 * CollectionProducer<PackedCollection> df_dx = f.delta(x);
 	 * }</pre>
 	 * 
 	 * <h4>Performance Considerations</h4>
@@ -352,10 +352,10 @@ public class CollectionExponentComputation<T extends PackedCollection<?>> extend
 		TraversalPolicy targetShape = shape(target);
 		TraversalPolicy shape = getShape().append(targetShape);
 
-		CollectionProducer<PackedCollection<?>> u = (CollectionProducer) operands.get(0);
-		CollectionProducer<PackedCollection<?>> v = (CollectionProducer) operands.get(1);
-		CollectionProducer<PackedCollection<?>> uDelta = u.delta(target);
-		CollectionProducer<PackedCollection<?>> scale = v.multiply(u.pow(v.add(c(-1.0))));
+		CollectionProducer<PackedCollection> u = (CollectionProducer) operands.get(0);
+		CollectionProducer<PackedCollection> v = (CollectionProducer) operands.get(1);
+		CollectionProducer<PackedCollection> uDelta = u.delta(target);
+		CollectionProducer<PackedCollection> scale = v.multiply(u.pow(v.add(c(-1.0))));
 
 		scale = scale.flatten();
 		uDelta = uDelta.reshape(v.getShape().getTotalSize(), -1).traverse(0);

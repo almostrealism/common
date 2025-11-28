@@ -52,7 +52,7 @@ public interface ProjectionFeatures extends PairFeatures, RayFeatures {
 	 * @param w the camera's negative view direction vector
 	 * @return a producer for the camera ray
 	 */
-	default CollectionProducer<Ray> rayAt(Producer<Pair<?>> pos, Producer<Pair<?>> sd,
+	default CollectionProducer<Ray> rayAt(Producer<Pair> pos, Producer<Pair> sd,
 										  Vector location, Pair projectionDimensions,
 										  double blur, double focalLength,
 										  Vector u, Vector v, Vector w) {
@@ -75,16 +75,16 @@ public interface ProjectionFeatures extends PairFeatures, RayFeatures {
 	 * @param blur the blur amount (x, y) for depth of field
 	 * @return a producer for the normalized ray direction
 	 */
-	default CollectionProducer<PackedCollection<?>> direction(Producer<Pair<?>> pos, Producer<Pair<?>> sd,
+	default CollectionProducer<PackedCollection> direction(Producer<Pair> pos, Producer<Pair> sd,
 												 Pair projectionDimensions, double focalLength,
 												 Vector u, Vector v, Vector w, Pair blur) {
-		Producer<Pair<?>> pd = v(projectionDimensions);
+		Producer<Pair> pd = v(projectionDimensions);
 
-		CollectionProducer<PackedCollection<?>> sdx = l(sd);
-		CollectionProducer<PackedCollection<?>> sdy = r(sd);
+		CollectionProducer<PackedCollection> sdx = l(sd);
+		CollectionProducer<PackedCollection> sdy = r(sd);
 
-		CollectionProducer<PackedCollection<?>> pdx = l(pd);
-		CollectionProducer<PackedCollection<?>> pdy = r(pd);
+		CollectionProducer<PackedCollection> pdx = l(pd);
+		CollectionProducer<PackedCollection> pdy = r(pd);
 
 		var p = pdx.multiply(l(pos))
 								.multiply(sdx.add(c(-1.0)).pow(c(-1.0))).add(pdx.multiply(c(-0.5)));
@@ -96,17 +96,17 @@ public interface ProjectionFeatures extends PairFeatures, RayFeatures {
 		var y = p.multiply(c(u.getY())).add(q.multiply(c(v.getY()))).add(r.multiply(c(w.getY())));
 		var z = p.multiply(c(u.getZ())).add(q.multiply(c(v.getZ()))).add(r.multiply(c(w.getZ())));
 
-		CollectionProducer<PackedCollection<?>> pqr = vector(x, y, z);
-		Producer<PackedCollection<?>> len = length(pqr);
+		CollectionProducer<PackedCollection> pqr = vector(x, y, z);
+		Producer<PackedCollection> len = length(pqr);
 
 		if (blur.getX() != 0.0 || blur.getY() != 0.0) {
-			CollectionProducer<PackedCollection<?>> wv = normalize(pqr);
-			CollectionProducer<PackedCollection<?>> uv = u(wv, t(pqr));
-			CollectionProducer<PackedCollection<?>> vv = v(wv, uv);
+			CollectionProducer<PackedCollection> wv = normalize(pqr);
+			CollectionProducer<PackedCollection> uv = u(wv, t(pqr));
+			CollectionProducer<PackedCollection> vv = v(wv, uv);
 
-			Producer<PackedCollection<?>> random = rand(2);
-			Producer<PackedCollection<?>> rx = add(c(-0.5), c(random, 0));
-			Producer<PackedCollection<?>> ry = add(c(-0.5), c(random, 1));
+			Producer<PackedCollection> random = rand(2);
+			Producer<PackedCollection> rx = add(c(-0.5), c(random, 0));
+			Producer<PackedCollection> ry = add(c(-0.5), c(random, 1));
 
 			pqr = pqr.add(multiply(uv, c(blur.getX())).multiply(rx));
 			pqr = pqr.add(multiply(vv, c(blur.getY())).multiply(ry));
@@ -121,26 +121,26 @@ public interface ProjectionFeatures extends PairFeatures, RayFeatures {
 		return pqr;
 	}
 
-	private Producer<PackedCollection<?>> t(CollectionProducer<PackedCollection<?>> pqr) {
-		Producer<PackedCollection<?>> t = lessThan(y(pqr), x(pqr)).and(lessThan(y(pqr), z(pqr)),
+	private Producer<PackedCollection> t(CollectionProducer<PackedCollection> pqr) {
+		Producer<PackedCollection> t = lessThan(y(pqr), x(pqr)).and(lessThan(y(pqr), z(pqr)),
 								vector(x(pqr), c(1.0), z(pqr)),
 								vector(x(pqr), y(pqr), c(1.0)));
 		return lessThan(x(pqr), y(pqr)).and(lessThan(y(pqr), z(pqr)),
 					vector(c(1.0), y(pqr), z(pqr)), t);
 	}
 
-	private CollectionProducer<PackedCollection<?>> u(Producer<PackedCollection<?>> w,
-													  Producer<PackedCollection<?>> t) {
-		CollectionProducer<PackedCollection<?>> x = y(t).multiply(z(w)).add(z(t).multiply(y(w)).multiply(c(-1.0)));
-		CollectionProducer<PackedCollection<?>> y = z(t).multiply(x(w)).add(x(t).multiply(z(w)).multiply(c(-1.0)));
-		CollectionProducer<PackedCollection<?>> z = x(t).multiply(y(w)).add(y(t).multiply(x(w)).multiply(c(-1.0)));
+	private CollectionProducer<PackedCollection> u(Producer<PackedCollection> w,
+													  Producer<PackedCollection> t) {
+		CollectionProducer<PackedCollection> x = y(t).multiply(z(w)).add(z(t).multiply(y(w)).multiply(c(-1.0)));
+		CollectionProducer<PackedCollection> y = z(t).multiply(x(w)).add(x(t).multiply(z(w)).multiply(c(-1.0)));
+		CollectionProducer<PackedCollection> z = x(t).multiply(y(w)).add(y(t).multiply(x(w)).multiply(c(-1.0)));
 		return normalize(vector((Producer) x, (Producer) y, (Producer) z));
 	}
 
-	private CollectionProducer<PackedCollection<?>> v(CollectionProducer<PackedCollection<?>> w, CollectionProducer<PackedCollection<?>> u) {
-		CollectionProducer<PackedCollection<?>>  x = y(w).multiply(z(u)).add(z(w).multiply(y(u)).multiply(c(-1.0)));
-		CollectionProducer<PackedCollection<?>>  y = z(w).multiply(x(u)).add(x(w).multiply(z(u)).multiply(c(-1.0)));
-		CollectionProducer<PackedCollection<?>>  z = x(w).multiply(y(u)).add(y(w).multiply(x(u)).multiply(c(-1.0)));
+	private CollectionProducer<PackedCollection> v(CollectionProducer<PackedCollection> w, CollectionProducer<PackedCollection> u) {
+		CollectionProducer<PackedCollection>  x = y(w).multiply(z(u)).add(z(w).multiply(y(u)).multiply(c(-1.0)));
+		CollectionProducer<PackedCollection>  y = z(w).multiply(x(u)).add(x(w).multiply(z(u)).multiply(c(-1.0)));
+		CollectionProducer<PackedCollection>  z = x(w).multiply(y(u)).add(y(w).multiply(x(u)).multiply(c(-1.0)));
 		return vector(x, y, z);
 	}
 }

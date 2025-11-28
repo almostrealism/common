@@ -114,7 +114,7 @@ import java.util.stream.IntStream;
  * @see io.almostrealism.collect.TraversalPolicy
  * @see IndexProjectionProducerComputation
  */
-public class PackedCollectionEnumerate<T extends PackedCollection<?>>
+public class PackedCollectionEnumerate<T extends PackedCollection>
 		extends IndexProjectionProducerComputation<T> {
 	/**
 	 * Enable optimization for preferring isolation in parallel processing.

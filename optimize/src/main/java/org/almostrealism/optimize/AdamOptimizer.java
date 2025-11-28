@@ -86,10 +86,10 @@ import java.util.function.Supplier;
  *
  * @author Michael Murray
  */
-public class AdamOptimizer implements ParameterUpdate<PackedCollection<?>>, CodeFeatures {
-	private Producer<PackedCollection<?>> learningRate;
-	private Producer<PackedCollection<?>> beta1;
-	private Producer<PackedCollection<?>> beta2;
+public class AdamOptimizer implements ParameterUpdate<PackedCollection>, CodeFeatures {
+	private Producer<PackedCollection> learningRate;
+	private Producer<PackedCollection> beta1;
+	private Producer<PackedCollection> beta2;
 
 	/**
 	 * Creates an Adam optimizer with the specified hyperparameters.
@@ -115,9 +115,9 @@ public class AdamOptimizer implements ParameterUpdate<PackedCollection<?>>, Code
 	 * @param beta1        producer for the first moment decay rate
 	 * @param beta2        producer for the second moment decay rate
 	 */
-	public AdamOptimizer(Producer<PackedCollection<?>> learningRate,
-						 Producer<PackedCollection<?>> beta1,
-						 Producer<PackedCollection<?>> beta2) {
+	public AdamOptimizer(Producer<PackedCollection> learningRate,
+						 Producer<PackedCollection> beta1,
+						 Producer<PackedCollection> beta2) {
 		this.learningRate = learningRate;
 		this.beta1 = beta1;
 		this.beta2 = beta2;
@@ -141,13 +141,13 @@ public class AdamOptimizer implements ParameterUpdate<PackedCollection<?>>, Code
 	 */
 	@Override
 	public Supplier<Runnable> apply(String name,
-									Producer<PackedCollection<?>> weights,
-									Producer<PackedCollection<?>> gradient) {
+									Producer<PackedCollection> weights,
+									Producer<PackedCollection> gradient) {
 		TraversalPolicy shape = shape(weights);
 
-		PackedCollection<?> c = new PackedCollection<>(1);
-		PackedCollection<?> m = new PackedCollection<>(shape.traverseEach());
-		PackedCollection<?> v = new PackedCollection<>(shape.traverseEach());
+		PackedCollection c = new PackedCollection(1);
+		PackedCollection m = new PackedCollection(shape.traverseEach());
+		PackedCollection v = new PackedCollection(shape.traverseEach());
 		double eps = 1e-7; // Hardware.getLocalHardware().epsilon();
 
 		OperationList ops = new OperationList();
@@ -157,8 +157,8 @@ public class AdamOptimizer implements ParameterUpdate<PackedCollection<?>>, Code
 		ops.add(a(name + " (\u0394 velocity)", cp(v),
 				c(beta2).multiply(cp(v)).add(c(1.0).subtract(c(beta2)).multiply(c(gradient).sq()))));
 
-		CollectionProducer<PackedCollection<?>> mt = cp(m).divide(c(1.0).subtract(c(beta1).pow(cp(c))));
-		CollectionProducer<PackedCollection<?>> vt = cp(v).divide(c(1.0).subtract(c(beta2).pow(cp(c))));
+		CollectionProducer<PackedCollection> mt = cp(m).divide(c(1.0).subtract(c(beta1).pow(cp(c))));
+		CollectionProducer<PackedCollection> vt = cp(v).divide(c(1.0).subtract(c(beta2).pow(cp(c))));
 		ops.add(a(name + " (\u0394 weights)", c(weights).each(),
 				c(weights).each().subtract(c(learningRate).multiply(mt).divide(vt.sqrt().add(eps)))));
 		return ops;

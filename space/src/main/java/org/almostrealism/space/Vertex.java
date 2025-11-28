@@ -61,7 +61,7 @@ public class Vertex extends Vector {
 	 */
 	public Vertex(Vector p) {
 		super(p.getX(), p.getY(), p.getZ());
-		this.setNormal(ZeroVector.getEvaluable().evaluate());
+		this.setNormal(new Vector(ZeroVector.getEvaluable().evaluate(), 0));
 	}
 
 	/**

@@ -17,6 +17,7 @@
 package org.almostrealism.color;
 
 import io.almostrealism.relation.Producer;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.geometry.DiscreteField;
 
 /**
@@ -47,7 +48,7 @@ import org.almostrealism.geometry.DiscreteField;
  * ctx.setSurface(surface);
  *
  * // Compute the shaded color
- * Producer<RGB> color = diffuse.shade(ctx, normalField);
+ * Producer<PackedCollection> color = diffuse.shade(ctx, normalField);
  * RGB result = color.get().evaluate();
  * }</pre>
  *
@@ -74,5 +75,5 @@ public interface Shader<C extends LightingContext> {
 	 * @param normals a discrete field providing surface normal vectors at intersection points
 	 * @return a {@link Producer} that yields the computed {@link RGB} color
 	 */
-	Producer<RGB> shade(C parameters, DiscreteField normals);
+	Producer<PackedCollection> shade(C parameters, DiscreteField normals);
 }

@@ -51,7 +51,7 @@ import java.util.function.Supplier;
  *
  * <p>Example usage:</p>
  * <pre>{@code
- * PackedCollection<?> audioData = loadAudioFile("sample.wav");
+ * PackedCollection audioData = loadAudioFile("sample.wav");
  * WaveCell cell = new WaveCell(audioData, 44100, 0.8);
  * cell.setup().get().run();
  *
@@ -70,11 +70,11 @@ import java.util.function.Supplier;
  */
 public class WaveCell extends CollectionTemporalCellAdapter {
 	private final WaveCellData data;
-	private final Producer<PackedCollection<?>> wave;
+	private final Producer<PackedCollection> wave;
 
 	private final TimeCell clock;
-	private final Producer<PackedCollection<?>> frameIndex, frameCount;
-	private final Producer<PackedCollection<?>> frame;
+	private final Producer<PackedCollection> frameIndex, frameCount;
+	private final Producer<PackedCollection> frame;
 
 	private double amplitude;
 	private double waveLength;
@@ -86,7 +86,7 @@ public class WaveCell extends CollectionTemporalCellAdapter {
 	 * @param wav        the audio waveform data as a packed collection of samples
 	 * @param sampleRate the sample rate in Hz (e.g., 44100 for CD quality)
 	 */
-	public WaveCell(PackedCollection<?> wav, int sampleRate) {
+	public WaveCell(PackedCollection wav, int sampleRate) {
 		this(wav, sampleRate, 1.0);
 	}
 
@@ -97,7 +97,7 @@ public class WaveCell extends CollectionTemporalCellAdapter {
 	 * @param sampleRate the sample rate in Hz (e.g., 44100 for CD quality)
 	 * @param amplitude  the amplitude multiplier for output samples (1.0 = original level)
 	 */
-	public WaveCell(PackedCollection<?> wav, int sampleRate, double amplitude) {
+	public WaveCell(PackedCollection wav, int sampleRate, double amplitude) {
 		this(wav, sampleRate, amplitude, null, null);
 	}
 
@@ -110,8 +110,8 @@ public class WaveCell extends CollectionTemporalCellAdapter {
 	 * @param offset     producer for the time offset in seconds before playback starts, or null for no offset
 	 * @param repeat     producer for the repeat duration in seconds for looping, or null for no looping
 	 */
-	public WaveCell(PackedCollection<?> wav, int sampleRate, double amplitude,
-					Producer<PackedCollection<?>> offset, Producer<PackedCollection<?>> repeat) {
+	public WaveCell(PackedCollection wav, int sampleRate, double amplitude,
+					Producer<PackedCollection> offset, Producer<PackedCollection> repeat) {
 		this(wav, sampleRate, amplitude, offset, repeat, Ops.o().c(0.0), Ops.o().c(wav.getCountLong()));
 	}
 
@@ -126,9 +126,9 @@ public class WaveCell extends CollectionTemporalCellAdapter {
 	 * @param frameIndex producer for the starting frame index within the wave data
 	 * @param frameCount producer for the number of frames to process
 	 */
-	public WaveCell(PackedCollection<?> wav, int sampleRate, double amplitude,
-					Producer<PackedCollection<?>> offset, Producer<PackedCollection<?>> repeat,
-					Producer<PackedCollection<?>> frameIndex, Producer<PackedCollection<?>> frameCount) {
+	public WaveCell(PackedCollection wav, int sampleRate, double amplitude,
+					Producer<PackedCollection> offset, Producer<PackedCollection> repeat,
+					Producer<PackedCollection> frameIndex, Producer<PackedCollection> frameCount) {
 		this(new DefaultWaveCellData(), wav, sampleRate, amplitude, offset, repeat, frameIndex, frameCount);
 	}
 
@@ -144,24 +144,24 @@ public class WaveCell extends CollectionTemporalCellAdapter {
 	 * @param frameIndex producer for the starting frame index within the wave data
 	 * @param frameCount producer for the number of frames to process
 	 */
-	public WaveCell(WaveCellData data, PackedCollection<?> wav, int sampleRate, double amplitude,
-					Producer<PackedCollection<?>> offset, Producer<PackedCollection<?>> repeat,
-					Producer<PackedCollection<?>> frameIndex, Producer<PackedCollection<?>> frameCount) {
+	public WaveCell(WaveCellData data, PackedCollection wav, int sampleRate, double amplitude,
+					Producer<PackedCollection> offset, Producer<PackedCollection> repeat,
+					Producer<PackedCollection> frameIndex, Producer<PackedCollection> frameCount) {
 		this(data, () -> new Provider<>(wav), sampleRate, amplitude,
 				offset, repeat, frameIndex, frameCount);
 	}
 
-	public WaveCell(WaveCellData data, Producer<PackedCollection<?>> wav,
+	public WaveCell(WaveCellData data, Producer<PackedCollection> wav,
 					int sampleRate, double amplitude,
-					Producer<PackedCollection<?>> offset, Producer<PackedCollection<?>> repeat,
-					Producer<PackedCollection<?>> frameIndex, Producer<PackedCollection<?>> frameCount) {
+					Producer<PackedCollection> offset, Producer<PackedCollection> repeat,
+					Producer<PackedCollection> frameIndex, Producer<PackedCollection> frameCount) {
 		this.data = data;
 		this.amplitude = amplitude;
 		this.wave = validate(wav);
 
 		this.waveLength = 1;
 
-		Producer<PackedCollection<?>> initial;
+		Producer<PackedCollection> initial;
 
 		if (offset != null) {
 			initial = multiply(offset, c(-sampleRate));
@@ -169,7 +169,7 @@ public class WaveCell extends CollectionTemporalCellAdapter {
 			initial = null;
 		}
 
-		Producer<PackedCollection<?>> duration;
+		Producer<PackedCollection> duration;
 
 		if (repeat != null) {
 			duration = multiply(repeat, c(sampleRate));
@@ -190,7 +190,7 @@ public class WaveCell extends CollectionTemporalCellAdapter {
 	 * @param wav   the audio waveform data as a packed collection of samples
 	 * @param clock the TimeCell to use for frame timing
 	 */
-	public WaveCell(PackedCollection<?> wav, TimeCell clock) {
+	public WaveCell(PackedCollection wav, TimeCell clock) {
 		this(wav, clock.frame());
 	}
 
@@ -200,7 +200,7 @@ public class WaveCell extends CollectionTemporalCellAdapter {
 	 * @param wav   the audio waveform data as a packed collection of samples
 	 * @param frame producer for the current frame position
 	 */
-	public WaveCell(PackedCollection<?> wav, Producer<PackedCollection<?>> frame) {
+	public WaveCell(PackedCollection wav, Producer<PackedCollection> frame) {
 		this(wav, 1.0, frame);
 	}
 
@@ -211,7 +211,7 @@ public class WaveCell extends CollectionTemporalCellAdapter {
 	 * @param amplitude the amplitude multiplier for output samples
 	 * @param frame     producer for the current frame position
 	 */
-	public WaveCell(PackedCollection<?> wav, double amplitude, Producer<PackedCollection<?>> frame) {
+	public WaveCell(PackedCollection wav, double amplitude, Producer<PackedCollection> frame) {
 		this(new DefaultWaveCellData(), wav, amplitude, frame);
 	}
 
@@ -223,7 +223,7 @@ public class WaveCell extends CollectionTemporalCellAdapter {
 	 * @param amplitude the amplitude multiplier for output samples
 	 * @param frame     producer for the current frame position
 	 */
-	public WaveCell(WaveCellData data, PackedCollection<?> wav, double amplitude, Producer<PackedCollection<?>> frame) {
+	public WaveCell(WaveCellData data, PackedCollection wav, double amplitude, Producer<PackedCollection> frame) {
 		this(data, wav, amplitude, frame, Ops.o().c(0.0), Ops.o().c(wav.getCountLong()));
 	}
 
@@ -237,10 +237,10 @@ public class WaveCell extends CollectionTemporalCellAdapter {
 	 * @param frameIndex producer for the starting frame index within the wave data
 	 * @param frameCount producer for the number of frames to process
 	 */
-	public WaveCell(WaveCellData data, PackedCollection<?> wav, double amplitude,
-					Producer<PackedCollection<?>> frame,
-					Producer<PackedCollection<?>> frameIndex,
-					Producer<PackedCollection<?>> frameCount) {
+	public WaveCell(WaveCellData data, PackedCollection wav, double amplitude,
+					Producer<PackedCollection> frame,
+					Producer<PackedCollection> frameIndex,
+					Producer<PackedCollection> frameCount) {
 		this(data, () -> new Provider<>(wav), amplitude, frame, frameIndex, frameCount);
 	}
 
@@ -254,10 +254,10 @@ public class WaveCell extends CollectionTemporalCellAdapter {
 	 * @param frameIndex producer for the starting frame index within the wave data
 	 * @param frameCount producer for the number of frames to process
 	 */
-	public WaveCell(WaveCellData data, Producer<PackedCollection<?>> wav, double amplitude,
-					Producer<PackedCollection<?>> frame,
-					Producer<PackedCollection<?>> frameIndex,
-					Producer<PackedCollection<?>> frameCount) {
+	public WaveCell(WaveCellData data, Producer<PackedCollection> wav, double amplitude,
+					Producer<PackedCollection> frame,
+					Producer<PackedCollection> frameIndex,
+					Producer<PackedCollection> frameCount) {
 		this.data = data;
 		this.amplitude = amplitude;
 		this.wave = validate(wav);
@@ -296,7 +296,7 @@ public class WaveCell extends CollectionTemporalCellAdapter {
 	 *
 	 * @return the frame position producer
 	 */
-	public Producer<PackedCollection<?>> getFrame() { return frame; }
+	public Producer<PackedCollection> getFrame() { return frame; }
 
 	/**
 	 * {@inheritDoc}
@@ -336,7 +336,7 @@ public class WaveCell extends CollectionTemporalCellAdapter {
 	 * @return a supplier that provides the push operation
 	 */
 	@Override
-	public Supplier<Runnable> push(Producer<PackedCollection<?>> protein) {
+	public Supplier<Runnable> push(Producer<PackedCollection> protein) {
 		OperationList push = new OperationList("WavCell Push");
 		push.add(new WaveCellPush(data, wave, frame, data.value()));
 		push.add(super.push(p(data.value())));
@@ -364,11 +364,11 @@ public class WaveCell extends CollectionTemporalCellAdapter {
 	 *
 	 * @return a Factor that wraps this cell's functionality
 	 */
-	public Factor<PackedCollection<?>> toFactor() {
-		return toFactor(() -> new PackedCollection<>(shape(1)), p -> protein -> new Assignment<>(1, p, protein));
+	public Factor<PackedCollection> toFactor() {
+		return toFactor(() -> new PackedCollection(shape(1)), p -> protein -> new Assignment<>(1, p, protein));
 	}
 
-	private static Producer<PackedCollection<?>> validate(Producer<PackedCollection<?>> wav) {
+	private static Producer<PackedCollection> validate(Producer<PackedCollection> wav) {
 		if (!(wav instanceof Shape)) return wav;
 
 		TraversalPolicy shape = ((Shape) wav).getShape();

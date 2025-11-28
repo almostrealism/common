@@ -70,32 +70,32 @@ import java.util.List;
  * <p><strong>Basic exponential:</strong></p>
  * <pre>{@code
  * TraversalPolicy shape = shape(4);
- * CollectionProducer<PackedCollection<?>> input = c(0.0, 1.0, 2.0, 3.0);
+ * CollectionProducer<PackedCollection> input = c(0.0, 1.0, 2.0, 3.0);
  *
- * CollectionExponentialComputation<PackedCollection<?>> exp =
+ * CollectionExponentialComputation<PackedCollection> exp =
  *     new CollectionExponentialComputation<>(shape, input);
  *
- * PackedCollection<?> result = exp.get().evaluate();
+ * PackedCollection result = exp.get().evaluate();
  * // Result: [1.0, 2.718, 7.389, 20.086]
  * }</pre>
  *
  * <p><strong>Exponential with ignore zero (sparse data):</strong></p>
  * <pre>{@code
  * TraversalPolicy shape = shape(5);
- * CollectionProducer<PackedCollection<?>> sparseInput = c(0.0, 1.0, 0.0, 2.0, 0.0);
+ * CollectionProducer<PackedCollection> sparseInput = c(0.0, 1.0, 0.0, 2.0, 0.0);
  *
- * CollectionExponentialComputation<PackedCollection<?>> exp =
+ * CollectionExponentialComputation<PackedCollection> exp =
  *     new CollectionExponentialComputation<>(shape, true, sparseInput);
  *
- * PackedCollection<?> result = exp.get().evaluate();
+ * PackedCollection result = exp.get().evaluate();
  * // Result: [0.0, 2.718, 0.0, 7.389, 0.0]  (zeros preserved)
  * }</pre>
  *
  * <p><strong>Using via CollectionFeatures:</strong></p>
  * <pre>{@code
  * // More common usage through helper methods
- * CollectionProducer<PackedCollection<?>> x = c(-1.0, 0.0, 1.0, 2.0);
- * CollectionProducer<PackedCollection<?>> expX = exp(x);
+ * CollectionProducer<PackedCollection> x = c(-1.0, 0.0, 1.0, 2.0);
+ * CollectionProducer<PackedCollection> expX = exp(x);
  * // Result: [0.368, 1.0, 2.718, 7.389]
  * }</pre>
  *
@@ -116,7 +116,7 @@ import java.util.List;
  *
  * @author Michael Murray
  */
-public class CollectionExponentialComputation<T extends PackedCollection<?>> extends TraversableExpressionComputation<T> {
+public class CollectionExponentialComputation<T extends PackedCollection> extends TraversableExpressionComputation<T> {
 	/**
 	 * Flag controlling whether to skip exponential evaluation for zero-valued elements.
 	 * When true, zero inputs produce zero outputs without computing e^0, improving
@@ -131,7 +131,7 @@ public class CollectionExponentialComputation<T extends PackedCollection<?>> ext
 	 * @param input The {@link Producer} providing the input values for exponential computation
 	 */
 	public CollectionExponentialComputation(TraversalPolicy shape,
-											Producer<PackedCollection<?>> input) {
+											Producer<PackedCollection> input) {
 		this(shape, false, input);
 	}
 
@@ -143,7 +143,7 @@ public class CollectionExponentialComputation<T extends PackedCollection<?>> ext
 	 * @param input The {@link Producer} providing the input values for exponential computation
 	 */
 	public CollectionExponentialComputation(TraversalPolicy shape, boolean ignoreZero,
-											Producer<PackedCollection<?>> input) {
+											Producer<PackedCollection> input) {
 		this(ignoreZero ? "expIgnoreZero" : "exp", shape, ignoreZero, input);
 	}
 
@@ -156,7 +156,7 @@ public class CollectionExponentialComputation<T extends PackedCollection<?>> ext
 	 * @param input The {@link Producer} providing the input values
 	 */
 	protected CollectionExponentialComputation(String name, TraversalPolicy shape, boolean ignoreZero,
-											   Producer<PackedCollection<?>> input) {
+											   Producer<PackedCollection> input) {
 		super(name, shape, MultiTermDeltaStrategy.NONE, input);
 		this.ignoreZero = ignoreZero;
 	}

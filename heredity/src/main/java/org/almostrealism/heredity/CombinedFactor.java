@@ -15,6 +15,7 @@
  */
 
 package org.almostrealism.heredity;
+import org.almostrealism.collect.PackedCollection;
 
 import io.almostrealism.cycle.Setup;
 import io.almostrealism.relation.Factor;
@@ -42,14 +43,14 @@ import java.util.function.Supplier;
  * <h2>Example Usage</h2>
  * <pre>{@code
  * // Create two factors
- * Factor<PackedCollection<?>> scale = new ScaleFactor(2.0);
- * Factor<PackedCollection<?>> offset = ...;  // Some offset factor
+ * Factor<PackedCollection> scale = new ScaleFactor(2.0);
+ * Factor<PackedCollection> offset = ...;  // Some offset factor
  *
  * // Combine them: first scale, then offset
- * CombinedFactor<PackedCollection<?>> combined = new CombinedFactor<>(scale, offset);
+ * CombinedFactor<PackedCollection> combined = new CombinedFactor<>(scale, offset);
  *
  * // Apply combined factor
- * Producer<PackedCollection<?>> result = combined.getResultant(input);
+ * Producer<PackedCollection> result = combined.getResultant(input);
  * // Equivalent to: offset.getResultant(scale.getResultant(input))
  * }</pre>
  *

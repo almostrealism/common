@@ -60,7 +60,7 @@ import org.almostrealism.geometry.computations.RankedChoiceEvaluable;
  * @see Triangle
  * @see CachedMeshIntersectionKernel
  */
-public class MeshData extends PackedCollection<PackedCollection<?>> {
+public class MeshData extends PackedCollection {
 	/**
 	 * Flag to enable partial kernel mode for memory-constrained environments.
 	 * When enabled, rays are processed one at a time instead of in a single batch.
@@ -69,7 +69,7 @@ public class MeshData extends PackedCollection<PackedCollection<?>> {
 	 */
 	public static boolean enablePartialKernel = true;
 
-	private PackedCollection<?> distances;
+	private PackedCollection distances;
 
 	/**
 	 * Constructs a new {@link MeshData} instance with capacity for the specified
@@ -79,8 +79,8 @@ public class MeshData extends PackedCollection<PackedCollection<?>> {
 	 */
 	public MeshData(int triangles) {
 		super(new TraversalPolicy(triangles, 4, 3), 1, delegateSpec ->
-				new PackedCollection<>(new TraversalPolicy(4, 3), 1, delegateSpec.getDelegate(), delegateSpec.getOffset()));
-		distances = new PackedCollection<>(new TraversalPolicy(getCount(), 1));
+				new PackedCollection(new TraversalPolicy(4, 3), 1, delegateSpec.getDelegate(), delegateSpec.getOffset()));
+		distances = new PackedCollection(new TraversalPolicy(getCount(), 1));
 	}
 
 	/**
@@ -96,16 +96,17 @@ public class MeshData extends PackedCollection<PackedCollection<?>> {
 	 *         (or negative if no intersection) and {@code getB()} is the triangle index
 	 */
 	public synchronized Pair evaluateIntersection(Evaluable<Ray> ray, Object args[]) {
-		PackedCollection<Ray> in = Ray.bank(1);
-		PackedCollection<Pair<?>> out = Pair.bank(1);
+		PackedCollection in = Ray.bank(1);
+		PackedCollection out = Pair.bank(1);
 
-		PackedCollection<Pair<?>> conf = Pair.bank(1);
-		conf.set(0, new Pair(getCountLong(), Intersection.e));
+		PackedCollection conf = Pair.bank(1);
+		conf.setMem(0, new Pair(getCountLong(), Intersection.e), 0, 2);
 
-		in.set(0, ray.evaluate(args));
+		in.setMem(0, ray.evaluate(args), 0, 6);
 		Triangle.intersectAt.into(distances).evaluate(in, this);
 		RankedChoiceEvaluable.highestRank.into(out).evaluate(distances, conf);
-		return out.get(0);
+		PackedCollection result = out.range(shape(2), 0);
+		return new Pair(result.toDouble(0), result.toDouble(1));
 	}
 
 	/**
@@ -116,11 +117,11 @@ public class MeshData extends PackedCollection<PackedCollection<?>> {
 	 * @param destination collection to receive scalar intersection distances
 	 * @param args        additional arguments passed to the ray evaluable
 	 */
-	public void evaluateIntersectionKernelScalar(Evaluable<Ray> ray, PackedCollection<PackedCollection<?>> destination, MemoryData args[]) {
-		PackedCollection<Pair<?>> result = Pair.bank(destination.getCount());
+	public void evaluateIntersectionKernelScalar(Evaluable<Ray> ray, PackedCollection destination, MemoryData args[]) {
+		PackedCollection result = Pair.bank(destination.getCount());
 		evaluateIntersectionKernel(ray, result, args);
 		for (int i = 0; i < result.getCountLong(); i++) {
-			destination.get(i).setMem(result.get(i).getA());
+			destination.setMem(i, result.toDouble(i * 2));
 		}
 	}
 
@@ -138,37 +139,37 @@ public class MeshData extends PackedCollection<PackedCollection<?>> {
 	 * @param destination collection to receive intersection results (distance, triangle index pairs)
 	 * @param args        additional arguments passed to the ray evaluable
 	 */
-	public void evaluateIntersectionKernel(Evaluable<Ray> ray, PackedCollection<Pair<?>> destination, MemoryData args[]) {
+	public void evaluateIntersectionKernel(Evaluable<Ray> ray, PackedCollection destination, MemoryData args[]) {
 		long startTime = System.currentTimeMillis();
-		PackedCollection<Ray> rays = Ray.bank(destination.getCount());
+		PackedCollection rays = Ray.bank(destination.getCount());
 		ray.into(rays).evaluate(args);
 
 		if (HardwareOperator.enableVerboseLog) {
 			log("Evaluated ray kernel in " + (System.currentTimeMillis() - startTime) + " msec");
 		}
 
-		PackedCollection<Pair<?>> dim = Pair.bank(1);
-		dim.set(0, new Pair(this.getCount(), rays.getCount()));
+		PackedCollection dim = Pair.bank(1);
+		dim.setMem(0, new Pair(this.getCount(), rays.getCount()), 0, 2);
 
 		if (enablePartialKernel) {
-			PackedCollection<?> distances = new PackedCollection<>(new TraversalPolicy(getCount(), 1));
-			PackedCollection<Ray> in = Ray.bank(1);
-			PackedCollection<Pair<?>> out = Pair.bank(1);
+			PackedCollection distances = new PackedCollection(new TraversalPolicy(getCount(), 1));
+			PackedCollection in = Ray.bank(1);
+			PackedCollection out = Pair.bank(1);
 
-			PackedCollection<Pair<?>> conf = Pair.bank(1);
-			conf.set(0, new Pair(getCount(), Intersection.e));
+			PackedCollection conf = Pair.bank(1);
+			conf.setMem(0, new Pair(getCount(), Intersection.e), 0, 2);
 
 			for (int i = 0; i < rays.getCount(); i++) {
-				in.set(0, rays.get(i));
+				in.setMem(0, rays.range(shape(6), i * 6), 0, 6);
 				Triangle.intersectAt.into(distances).evaluate(in, this, dim);
 				RankedChoiceEvaluable.highestRank.into(out).evaluate(distances, conf);
-				destination.set(i, out.get(0));
+				destination.setMem(i * 2, out, 0, 2);
 			}
 
 			if (HardwareOperator.enableVerboseLog)
 				log(rays.getCountLong() + " intersection kernels evaluated");
 		} else {
-			PackedCollection<?> distances = new PackedCollection<>(new TraversalPolicy(this.getCount() * rays.getCount(), 1));
+			PackedCollection distances = new PackedCollection(new TraversalPolicy(this.getCount() * rays.getCount(), 1));
 
 			startTime = System.currentTimeMillis();
 			Triangle.intersectAt.into(distances).evaluate(rays, this, dim);

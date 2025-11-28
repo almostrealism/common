@@ -42,18 +42,18 @@ import java.util.Optional;
  * <h2>Usage Examples</h2>
  * <pre>{@code
  * public class MatrixComputation implements MatrixFeatures {
- *     public Producer<PackedCollection<?>> compute() {
+ *     public Producer<PackedCollection> compute() {
  *         // Create identity matrix
- *         CollectionProducer<PackedCollection<?>> I = identity(3);  // 3x3 identity
+ *         CollectionProducer<PackedCollection> I = identity(3);  // 3x3 identity
  *
  *         // Create diagonal matrix from vector
- *         CollectionProducer<PackedCollection<?>> vec = c(1.0, 2.0, 3.0);
- *         CollectionProducer<PackedCollection<?>> diag = diagonal(vec);
+ *         CollectionProducer<PackedCollection> vec = c(1.0, 2.0, 3.0);
+ *         CollectionProducer<PackedCollection> diag = diagonal(vec);
  *
  *         // Matrix-vector multiplication
- *         CollectionProducer<PackedCollection<?>> A = c(shape(3, 3), ...);
- *         CollectionProducer<PackedCollection<?>> x = c(shape(3), ...);
- *         CollectionProducer<PackedCollection<?>> b = matmul(A, x);
+ *         CollectionProducer<PackedCollection> A = c(shape(3, 3), ...);
+ *         CollectionProducer<PackedCollection> x = c(shape(3), ...);
+ *         CollectionProducer<PackedCollection> b = matmul(A, x);
  *
  *         return b;
  *     }
@@ -63,13 +63,13 @@ import java.util.Optional;
  * <h2>Matrix Multiplication</h2>
  * <pre>{@code
  * // Matrix-vector multiplication: Ax = b
- * CollectionProducer<PackedCollection<?>> A = c(shape(3, 4), ...);  // 3x4 matrix
- * CollectionProducer<PackedCollection<?>> x = c(shape(4), ...);     // 4-vector
- * CollectionProducer<PackedCollection<?>> b = matmul(A, x);         // 3-vector
+ * CollectionProducer<PackedCollection> A = c(shape(3, 4), ...);  // 3x4 matrix
+ * CollectionProducer<PackedCollection> x = c(shape(4), ...);     // 4-vector
+ * CollectionProducer<PackedCollection> b = matmul(A, x);         // 3-vector
  *
  * // Matrix-matrix multiplication: AB = C
- * CollectionProducer<PackedCollection<?>> B = c(shape(4, 2), ...);  // 4x2 matrix
- * CollectionProducer<PackedCollection<?>> C = matmul(A, B);         // 3x2 matrix
+ * CollectionProducer<PackedCollection> B = c(shape(4, 2), ...);  // 4x2 matrix
+ * CollectionProducer<PackedCollection> C = matmul(A, B);         // 3x2 matrix
  * }</pre>
  *
  * <h2>Attention Mechanisms</h2>
@@ -77,12 +77,12 @@ import java.util.Optional;
  * // Scaled dot product for transformer attention
  * // Q: (batch, heads, seqLen, dim)
  * // K: (batch, heads, dim, seqLen)
- * CollectionProducer<PackedCollection<?>> Q = ...;
- * CollectionProducer<PackedCollection<?>> K = ...;
- * CollectionProducer<PackedCollection<?>> scores = scaledDotProduct(Q, K);
+ * CollectionProducer<PackedCollection> Q = ...;
+ * CollectionProducer<PackedCollection> K = ...;
+ * CollectionProducer<PackedCollection> scores = scaledDotProduct(Q, K);
  *
  * // With transpose (when K is stored as seqLen x dim)
- * CollectionProducer<PackedCollection<?>> scores2 = scaledDotProduct(Q, K, true);
+ * CollectionProducer<PackedCollection> scores2 = scaledDotProduct(Q, K, true);
  * }</pre>
  *
  * @author  Michael Murray
@@ -99,7 +99,7 @@ public interface MatrixFeatures extends AlgebraFeatures {
 	 * @param <T>  the collection type
 	 * @return a producer for the size x size identity matrix
 	 */
-	default <T extends PackedCollection<?>> CollectionProducer<T> identity(int size) {
+	default <T extends PackedCollection> CollectionProducer<T> identity(int size) {
 		return identity(shape(size, size));
 	}
 
@@ -112,7 +112,7 @@ public interface MatrixFeatures extends AlgebraFeatures {
 	 * @return a producer for the identity matrix
 	 * @throws IllegalArgumentException if the shape is not 2-dimensional
 	 */
-	default <T extends PackedCollection<?>> CollectionProducer<T> identity(TraversalPolicy shape) {
+	default <T extends PackedCollection> CollectionProducer<T> identity(TraversalPolicy shape) {
 		if (shape.getDimensions() != 2) {
 			throw new IllegalArgumentException();
 		}
@@ -138,7 +138,7 @@ public interface MatrixFeatures extends AlgebraFeatures {
 	 * @return a producer for the diagonal matrix
 	 * @throws IllegalArgumentException if the input is not 1-dimensional
 	 */
-	default <T extends PackedCollection<?>> CollectionProducer<T> diagonal(Producer<T> vector) {
+	default <T extends PackedCollection> CollectionProducer<T> diagonal(Producer<T> vector) {
 		TraversalPolicy shape = shape(vector);
 
 		if (shape.getDimensions() != 1) {
@@ -179,7 +179,7 @@ public interface MatrixFeatures extends AlgebraFeatures {
 	 * @return a producer for the multiplication result
 	 * @throws IllegalArgumentException if shapes are incompatible
 	 */
-	default <T extends PackedCollection<?>> CollectionProducer<T> matmul(Producer<T> matrix, Producer<T> vector) {
+	default <T extends PackedCollection> CollectionProducer<T> matmul(Producer<T> matrix, Producer<T> vector) {
 		TraversalPolicy mShape = shape(matrix);
 		TraversalPolicy vShape = shape(vector);
 
@@ -224,8 +224,8 @@ public interface MatrixFeatures extends AlgebraFeatures {
 
 			int batchAxis = vShape.getDimensions();
 			int outputSize = mShape.length(0);
-			CollectionProducer<PackedCollection<?>> a = c(matrix);
-			CollectionProducer<PackedCollection<?>> b = repeat(outputSize, vector);
+			CollectionProducer<PackedCollection> a = c(matrix);
+			CollectionProducer<PackedCollection> b = repeat(outputSize, vector);
 			return multiply(traverseEach(a), traverseEach(b)).traverse(batchAxis).sum();
 		}
 
@@ -306,7 +306,7 @@ public interface MatrixFeatures extends AlgebraFeatures {
 	 *             for identity matrices, diagonal matrices, and zero matrices
 	 */
 	@Deprecated
-	default <T extends PackedCollection<?>> CollectionProducer<T> mproduct(Producer<T> a, Producer<T> b) {
+	default <T extends PackedCollection> CollectionProducer<T> mproduct(Producer<T> a, Producer<T> b) {
 		if (WeightedSumExpression.enableCollectionExpression) {
 			return matmul(traverse(0, a), traverse(0, b));
 		}
@@ -343,9 +343,9 @@ public interface MatrixFeatures extends AlgebraFeatures {
 	 */
 	// TODO  This should support any shapes that can be coerced to
 	// TODO  (N, A, D) and (N, D, B) for constant values N, D, A and B
-	default CollectionProducer<PackedCollection<?>> scaledDotProduct(
-			CollectionProducer<PackedCollection<?>> a,
-			CollectionProducer<PackedCollection<?>> b) {
+	default CollectionProducer<PackedCollection> scaledDotProduct(
+			CollectionProducer<PackedCollection> a,
+			CollectionProducer<PackedCollection> b) {
 		return scaledDotProduct(a, b, false);
 	}
 
@@ -371,9 +371,9 @@ public interface MatrixFeatures extends AlgebraFeatures {
 	 */
 	// TODO  This should support any shapes that can be coerced to
 	// TODO  (N, A, D) and (N, D, B) for constant values N, D, A and B
-	default CollectionProducer<PackedCollection<?>> scaledDotProduct(
-			CollectionProducer<PackedCollection<?>> a,
-			CollectionProducer<PackedCollection<?>> b,
+	default CollectionProducer<PackedCollection> scaledDotProduct(
+			CollectionProducer<PackedCollection> a,
+			CollectionProducer<PackedCollection> b,
 			boolean transposeB) {
 		TraversalPolicy leftShape = a.getShape();
 		TraversalPolicy rightShape = b.getShape();
@@ -437,7 +437,7 @@ public interface MatrixFeatures extends AlgebraFeatures {
 	 * @param <T>  the shape type
 	 * @return the delta computation, or null if no simplified form is available
 	 */
-	default <T extends Shape<?>> CollectionProducer<T> attemptDelta(Producer<T> producer,
+	default <T extends PackedCollection> CollectionProducer<T> attemptDelta(Producer<T> producer,
 																	Producer<?> target) {
 		if (producer instanceof DeltaAlternate) {
 			CollectionProducer<T> alt = ((DeltaAlternate) producer).getDeltaAlternate();

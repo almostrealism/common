@@ -82,7 +82,7 @@ import java.util.List;
  * @see PackedCollection
  * @see TraversalPolicy
  */
-public class EpsilonConstantComputation<T extends PackedCollection<?>> extends SingleConstantComputation<T> {
+public class EpsilonConstantComputation<T extends PackedCollection> extends SingleConstantComputation<T> {
 	/**
 	 * Creates a new EpsilonConstantComputation with the specified shape.
 	 * The computation will produce a collection where every element contains

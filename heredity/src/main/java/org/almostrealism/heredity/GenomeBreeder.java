@@ -15,6 +15,7 @@
  */
 
 package org.almostrealism.heredity;
+import org.almostrealism.collect.PackedCollection;
 
 /**
  * A functional interface for combining two {@link Genome}s to produce offspring.
@@ -33,9 +34,9 @@ package org.almostrealism.heredity;
  * <h2>Example Usage</h2>
  * <pre>{@code
  * // Define a genome breeder that uses a chromosome breeder for each chromosome
- * ChromosomeBreeder<PackedCollection<?>> chrBreeder = ...;
+ * ChromosomeBreeder<PackedCollection> chrBreeder = ...;
  *
- * GenomeBreeder<PackedCollection<?>> breeder = (g1, g2) -> {
+ * GenomeBreeder<PackedCollection> breeder = (g1, g2) -> {
  *     // Breed each corresponding chromosome pair
  *     int count = Math.min(g1.count(), g2.count());
  *     ProjectedGenome offspring = new ProjectedGenome(parameterCount);

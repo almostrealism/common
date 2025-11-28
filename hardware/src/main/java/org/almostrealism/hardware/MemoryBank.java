@@ -96,10 +96,10 @@ import io.almostrealism.uml.Multiple;
  * MemoryBank<Vector> output = Vector.bank(10000);
  *
  * // Entire bank transfers to GPU as single operation
- * Producer<PackedCollection<?>> inputProducer = cp(input);
+ * Producer<PackedCollection> inputProducer = cp(input);
  *
  * // Apply computation across all vectors
- * Producer<PackedCollection<?>> scaled = multiply(inputProducer, c(2.0));
+ * Producer<PackedCollection> scaled = multiply(inputProducer, c(2.0));
  *
  * // Write results back to output bank
  * scaled.get().into(output.traverseEach()).evaluate();

@@ -27,11 +27,11 @@ public class LossTests implements TestFeatures {
 	@Test
 	public void meanSquaredError() {
 		TraversalPolicy outputShape = new TraversalPolicy(1, 1, 28, 28).traverseEach();
-		PackedCollection<?> input = new PackedCollection<>(shape(1, 1, 28, 28));
-		PackedCollection<?> target = new PackedCollection<>(shape(1, 1, 28, 28));
+		PackedCollection input = new PackedCollection(shape(1, 1, 28, 28));
+		PackedCollection target = new PackedCollection(shape(1, 1, 28, 28));
 
 		MeanSquaredError mse = new MeanSquaredError(outputShape);
-		PackedCollection<?> grad = mse.gradient(cv(outputShape, 0), cv(outputShape, 1)).get()
+		PackedCollection grad = mse.gradient(cv(outputShape, 0), cv(outputShape, 1)).get()
 				.evaluate(input.each(), target.each());
 		Assert.assertEquals(outputShape, grad.getShape());
 	}

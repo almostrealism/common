@@ -44,13 +44,13 @@ import java.util.function.Function;
  * <h2>Creating Datasets</h2>
  * <pre>{@code
  * // From a list of ValueTargets
- * List<ValueTarget<PackedCollection<?>>> pairs = new ArrayList<>();
+ * List<ValueTarget<PackedCollection>> pairs = new ArrayList<>();
  * pairs.add(ValueTarget.of(input1, target1));
  * pairs.add(ValueTarget.of(input2, target2));
- * Dataset<PackedCollection<?>> dataset = Dataset.of(pairs);
+ * Dataset<PackedCollection> dataset = Dataset.of(pairs);
  *
  * // Functional dataset (on-the-fly generation)
- * Dataset<PackedCollection<?>> functional = Dataset.of(
+ * Dataset<PackedCollection> functional = Dataset.of(
  *     inputsList,
  *     input -> Collections.singletonList(ValueTarget.of(input, computeTarget(input)))
  * );
@@ -59,16 +59,16 @@ import java.util.function.Function;
  * <h2>Train/Validation Split</h2>
  * <pre>{@code
  * // 80% training, 20% validation
- * List<Dataset<PackedCollection<?>>> splits = dataset.split(0.8);
- * Dataset<PackedCollection<?>> trainSet = splits.get(0);
- * Dataset<PackedCollection<?>> validSet = splits.get(1);
+ * List<Dataset<PackedCollection>> splits = dataset.split(0.8);
+ * Dataset<PackedCollection> trainSet = splits.get(0);
+ * Dataset<PackedCollection> validSet = splits.get(1);
  * }</pre>
  *
  * <h2>Batching</h2>
  * <pre>{@code
  * // Create batches of 32 samples
- * Dataset<PackedCollection<?>> batched = dataset.batch(32);
- * for (ValueTarget<PackedCollection<?>> batch : batched) {
+ * Dataset<PackedCollection> batched = dataset.batch(32);
+ * for (ValueTarget<PackedCollection> batch : batched) {
  *     // batch.getInput() shape: [32, input_features...]
  *     // batch.getExpectedOutput() shape: [32, output_features...]
  * }
@@ -121,7 +121,7 @@ public interface Dataset<T extends MemoryData> extends Iterable<ValueTarget<T>> 
 	 * @param batchSize the number of samples per batch
 	 * @return a new dataset yielding batched samples
 	 */
-	default Dataset<PackedCollection<?>> batch(int batchSize) {
+	default Dataset<PackedCollection> batch(int batchSize) {
 		return batches(batchSize, (Iterable) this);
 	}
 
@@ -148,9 +148,9 @@ public interface Dataset<T extends MemoryData> extends Iterable<ValueTarget<T>> 
 	 * @param function a function that generates value targets from an input
 	 * @return a new functional dataset
 	 */
-	static <T extends PackedCollection<?>> FunctionalDataset<T> of(Iterable<PackedCollection<?>> inputs,
-														  Function<PackedCollection<?>, Collection<ValueTarget<T>>> function) {
-		List<PackedCollection<?>> list = new ArrayList<>();
+	static <T extends PackedCollection> FunctionalDataset<T> of(Iterable<PackedCollection> inputs,
+																Function<PackedCollection, Collection<ValueTarget<T>>> function) {
+		List<PackedCollection> list = new ArrayList<>();
 		inputs.forEach(list::add);
 		return new FunctionalDataset(list, function);
 	}
@@ -167,22 +167,22 @@ public interface Dataset<T extends MemoryData> extends Iterable<ValueTarget<T>> 
 	 * @param targets   the iterable of individual value targets
 	 * @return a dataset yielding batched value targets
 	 */
-	static <T extends PackedCollection<?>> Dataset<PackedCollection<?>> batches(int batchSize, Iterable<ValueTarget<T>> targets) {
+	static <T extends PackedCollection> Dataset<PackedCollection> batches(int batchSize, Iterable<ValueTarget<T>> targets) {
 		TraversalPolicy inputItem;
 		TraversalPolicy targetItem;
-		List<ValueTarget<PackedCollection<?>>> data = new ArrayList<>();
+		List<ValueTarget<PackedCollection>> data = new ArrayList<>();
 
 		int n = -1;
-		PackedCollection<PackedCollection<?>> currentInput = null;
-		PackedCollection<PackedCollection<?>> currentTarget = null;
+		PackedCollection currentInput = null;
+		PackedCollection currentTarget = null;
 
 		f: for (ValueTarget<T> target : targets) {
 			if (n < 0) {
 				inputItem = target.getInput().getShape();
-				currentInput = new PackedCollection<>(inputItem.prependDimension(batchSize).traverse(1));
+				currentInput = new PackedCollection(inputItem.prependDimension(batchSize).traverse(1));
 
 				targetItem = target.getExpectedOutput().getShape();
-				currentTarget = new PackedCollection<>(targetItem.prependDimension(batchSize).traverse(1));
+				currentTarget = new PackedCollection(targetItem.prependDimension(batchSize).traverse(1));
 
 				n = 0;
 			}
@@ -193,8 +193,8 @@ public interface Dataset<T extends MemoryData> extends Iterable<ValueTarget<T>> 
 
 			if (n >= batchSize) {
 				data.add(ValueTarget.of(currentInput, currentTarget));
-				currentInput = new PackedCollection<>(currentInput.getShape());
-				currentTarget = new PackedCollection<>(currentTarget.getShape());
+				currentInput = new PackedCollection(currentInput.getShape());
+				currentTarget = new PackedCollection(currentTarget.getShape());
 				n = 0;
 			}
 		}

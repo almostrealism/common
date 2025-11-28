@@ -62,33 +62,33 @@ import java.util.stream.IntStream;
  *
  * <p><strong>Simple index sequence [0, 1, 2, ...]:</strong></p>
  * <pre>{@code
- * ArithmeticSequenceComputation<PackedCollection<?>> indices =
+ * ArithmeticSequenceComputation<PackedCollection> indices =
  *     new ArithmeticSequenceComputation<>(shape(10), 0.0);
- * PackedCollection<?> result = indices.get().evaluate();
+ * PackedCollection result = indices.get().evaluate();
  * // Result: [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0]
  * }</pre>
  *
  * <p><strong>Sequence starting at 10 with step 2:</strong></p>
  * <pre>{@code
- * ArithmeticSequenceComputation<PackedCollection<?>> seq =
+ * ArithmeticSequenceComputation<PackedCollection> seq =
  *     new ArithmeticSequenceComputation<>(shape(5), true, 10.0, 2.0);
- * PackedCollection<?> result = seq.get().evaluate();
+ * PackedCollection result = seq.get().evaluate();
  * // Result: [10.0, 12.0, 14.0, 16.0, 18.0]
  * }</pre>
  *
  * <p><strong>Negative rate (descending sequence):</strong></p>
  * <pre>{@code
- * ArithmeticSequenceComputation<PackedCollection<?>> descending =
+ * ArithmeticSequenceComputation<PackedCollection> descending =
  *     new ArithmeticSequenceComputation<>(shape(6), true, 100.0, -10.0);
- * PackedCollection<?> result = descending.get().evaluate();
+ * PackedCollection result = descending.get().evaluate();
  * // Result: [100.0, 90.0, 80.0, 70.0, 60.0, 50.0]
  * }</pre>
  *
  * <p><strong>Scaling a sequence:</strong></p>
  * <pre>{@code
- * ArithmeticSequenceComputation<PackedCollection<?>> original =
+ * ArithmeticSequenceComputation<PackedCollection> original =
  *     new ArithmeticSequenceComputation<>(shape(4), 1.0);
- * ArithmeticSequenceComputation<PackedCollection<?>> scaled = original.multiply(5.0);
+ * ArithmeticSequenceComputation<PackedCollection> scaled = original.multiply(5.0);
  * // Original: [1.0, 2.0, 3.0, 4.0]
  * // Scaled:   [5.0, 10.0, 15.0, 20.0]
  * }</pre>
@@ -114,7 +114,7 @@ import java.util.stream.IntStream;
  *
  * @author Michael Murray
  */
-public class ArithmeticSequenceComputation<T extends PackedCollection<?>> extends TraversableExpressionComputation<T> {
+public class ArithmeticSequenceComputation<T extends PackedCollection> extends TraversableExpressionComputation<T> {
 	/**
 	 * Whether the sequence length is fixed at construction time (true) or
 	 * can be determined dynamically at runtime (false).

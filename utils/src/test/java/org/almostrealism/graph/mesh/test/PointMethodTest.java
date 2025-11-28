@@ -36,7 +36,7 @@ public class PointMethodTest implements TestFeatures {
 	@Test
 	public void singleTriangleVertex0() {
 		// Create a single triangle's vertex data: shape (1, 3, 3) = 9 floats
-		PackedCollection<?> input = new PackedCollection<>(shape(1, 3, 3));
+		PackedCollection input = new PackedCollection(shape(1, 3, 3));
 
 		// Triangle vertices: v0=(1,2,3), v1=(4,5,6), v2=(7,8,9)
 		input.setMem(0, 1.0); input.setMem(1, 2.0); input.setMem(2, 3.0);   // v0
@@ -46,7 +46,7 @@ public class PointMethodTest implements TestFeatures {
 		log("=== Single Triangle Vertex 0 ===");
 		log("Input shape: " + input.getShape());
 
-		PackedCollection<?> output = new PackedCollection<>(shape(1, 3));
+		PackedCollection output = new PackedCollection(shape(1, 3));
 		point(c(p(input)), 0).get().into(output.traverse(1)).evaluate();
 
 		log("Output: [" + output.toDouble(0) + ", " + output.toDouble(1) + ", " + output.toDouble(2) + "]");
@@ -62,7 +62,7 @@ public class PointMethodTest implements TestFeatures {
 	 */
 	@Test
 	public void singleTriangleVertex1() {
-		PackedCollection<?> input = new PackedCollection<>(shape(1, 3, 3));
+		PackedCollection input = new PackedCollection(shape(1, 3, 3));
 
 		// Triangle vertices: v0=(1,2,3), v1=(4,5,6), v2=(7,8,9)
 		input.setMem(0, 1.0); input.setMem(1, 2.0); input.setMem(2, 3.0);   // v0
@@ -71,7 +71,7 @@ public class PointMethodTest implements TestFeatures {
 
 		log("=== Single Triangle Vertex 1 ===");
 
-		PackedCollection<?> output = new PackedCollection<>(shape(1, 3));
+		PackedCollection output = new PackedCollection(shape(1, 3));
 		point(c(p(input)), 1).get().into(output.traverse(1)).evaluate();
 
 		log("Output: [" + output.toDouble(0) + ", " + output.toDouble(1) + ", " + output.toDouble(2) + "]");
@@ -87,7 +87,7 @@ public class PointMethodTest implements TestFeatures {
 	 */
 	@Test
 	public void singleTriangleVertex2() {
-		PackedCollection<?> input = new PackedCollection<>(shape(1, 3, 3));
+		PackedCollection input = new PackedCollection(shape(1, 3, 3));
 
 		// Triangle vertices: v0=(1,2,3), v1=(4,5,6), v2=(7,8,9)
 		input.setMem(0, 1.0); input.setMem(1, 2.0); input.setMem(2, 3.0);   // v0
@@ -96,7 +96,7 @@ public class PointMethodTest implements TestFeatures {
 
 		log("=== Single Triangle Vertex 2 ===");
 
-		PackedCollection<?> output = new PackedCollection<>(shape(1, 3));
+		PackedCollection output = new PackedCollection(shape(1, 3));
 		point(c(p(input)), 2).get().into(output.traverse(1)).evaluate();
 
 		log("Output: [" + output.toDouble(0) + ", " + output.toDouble(1) + ", " + output.toDouble(2) + "]");
@@ -114,7 +114,7 @@ public class PointMethodTest implements TestFeatures {
 	@Test
 	public void multipleTrianglesVertex0() {
 		// Create 3 triangles' vertex data: shape (3, 3, 3) = 27 floats
-		PackedCollection<?> input = new PackedCollection<>(shape(3, 3, 3));
+		PackedCollection input = new PackedCollection(shape(3, 3, 3));
 
 		// Triangle 0: v0=(1,1,1), v1=(2,2,2), v2=(3,3,3)
 		input.setMem(0, 1.0); input.setMem(1, 1.0); input.setMem(2, 1.0);   // v0
@@ -134,7 +134,7 @@ public class PointMethodTest implements TestFeatures {
 		log("=== Multiple Triangles Vertex 0 ===");
 		log("Input shape: " + input.getShape());
 
-		PackedCollection<?> output = new PackedCollection<>(shape(3, 3));
+		PackedCollection output = new PackedCollection(shape(3, 3));
 		point(c(p(input)), 0).get().into(output.traverse(1)).evaluate();
 
 		log("Triangle 0 v0: [" + output.toDouble(0) + ", " + output.toDouble(1) + ", " + output.toDouble(2) + "]");
@@ -162,7 +162,7 @@ public class PointMethodTest implements TestFeatures {
 	 */
 	@Test
 	public void multipleTrianglesVertex1() {
-		PackedCollection<?> input = new PackedCollection<>(shape(3, 3, 3));
+		PackedCollection input = new PackedCollection(shape(3, 3, 3));
 
 		// Triangle 0: v0=(1,1,1), v1=(2,2,2), v2=(3,3,3)
 		input.setMem(0, 1.0); input.setMem(1, 1.0); input.setMem(2, 1.0);
@@ -181,7 +181,7 @@ public class PointMethodTest implements TestFeatures {
 
 		log("=== Multiple Triangles Vertex 1 ===");
 
-		PackedCollection<?> output = new PackedCollection<>(shape(3, 3));
+		PackedCollection output = new PackedCollection(shape(3, 3));
 		point(c(p(input)), 1).get().into(output.traverse(1)).evaluate();
 
 		log("Triangle 0 v1: [" + output.toDouble(0) + ", " + output.toDouble(1) + ", " + output.toDouble(2) + "]");
@@ -209,7 +209,7 @@ public class PointMethodTest implements TestFeatures {
 	 */
 	@Test
 	public void multipleTrianglesVertex2() {
-		PackedCollection<?> input = new PackedCollection<>(shape(3, 3, 3));
+		PackedCollection input = new PackedCollection(shape(3, 3, 3));
 
 		// Triangle 0: v0=(1,1,1), v1=(2,2,2), v2=(3,3,3)
 		input.setMem(0, 1.0); input.setMem(1, 1.0); input.setMem(2, 1.0);
@@ -228,7 +228,7 @@ public class PointMethodTest implements TestFeatures {
 
 		log("=== Multiple Triangles Vertex 2 ===");
 
-		PackedCollection<?> output = new PackedCollection<>(shape(3, 3));
+		PackedCollection output = new PackedCollection(shape(3, 3));
 		point(c(p(input)), 2).get().into(output.traverse(1)).evaluate();
 
 		log("Triangle 0 v2: [" + output.toDouble(0) + ", " + output.toDouble(1) + ", " + output.toDouble(2) + "]");
@@ -258,7 +258,7 @@ public class PointMethodTest implements TestFeatures {
 	@Test
 	public void flatSingleTriangle() {
 		// Create vertex data in flat (3, 3) format - single triangle
-		PackedCollection<?> input = new PackedCollection<>(shape(3, 3));
+		PackedCollection input = new PackedCollection(shape(3, 3));
 
 		// Vertices: v0=(1,2,3), v1=(4,5,6), v2=(7,8,9)
 		input.setMem(0, 1.0); input.setMem(1, 2.0); input.setMem(2, 3.0);   // v0
@@ -269,9 +269,9 @@ public class PointMethodTest implements TestFeatures {
 		log("Input shape: " + input.getShape());
 
 		// Extract each vertex
-		PackedCollection<?> v0 = point(c(p(input)), 0).get().evaluate();
-		PackedCollection<?> v1 = point(c(p(input)), 1).get().evaluate();
-		PackedCollection<?> v2 = point(c(p(input)), 2).get().evaluate();
+		PackedCollection v0 = point(c(p(input)), 0).get().evaluate();
+		PackedCollection v1 = point(c(p(input)), 1).get().evaluate();
+		PackedCollection v2 = point(c(p(input)), 2).get().evaluate();
 
 		log("v0: " + v0);
 		log("v1: " + v1);

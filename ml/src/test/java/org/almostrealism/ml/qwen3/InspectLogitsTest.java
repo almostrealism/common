@@ -34,10 +34,10 @@ public class InspectLogitsTest implements AttentionFeatures {
 
         // Get components for manual forward pass
         CompiledModel compiledModel = model.getCompiledModel();
-        PackedCollection<?> tokenEmbeddings = model.getTokenEmbeddings();
+        PackedCollection tokenEmbeddings = model.getTokenEmbeddings();
 
         // Create input: embedding for token 9707 ("Hello") at position 0
-        PackedCollection<?> input = tokenEmbeddings.range(shape(896), 9707 * 896);
+        PackedCollection input = tokenEmbeddings.range(shape(896), 9707 * 896);
 
         System.err.println("Input token: 9707 (\"Hello\")");
         System.err.println("Position: 0");

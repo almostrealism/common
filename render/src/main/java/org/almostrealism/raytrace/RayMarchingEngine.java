@@ -15,6 +15,7 @@
  */
 
 package org.almostrealism.raytrace;
+import org.almostrealism.collect.PackedCollection;
 
 import java.util.ArrayList;
 
@@ -72,13 +73,13 @@ public class RayMarchingEngine extends ArrayList<Producer<Ray>> implements Engin
 	private FogParameters fparams;
 
 	private DistanceEstimator estimator;
-	private Iterable<? extends Producer<RGB>> allSurfaces;
+	private Iterable<? extends Producer<PackedCollection>> allSurfaces;
 	private Light allLights[];
 
 	private Light lights[];
 	private ShaderSet<? extends LightingContext> shaders;
 	
-	public RayMarchingEngine(Iterable<? extends Producer<RGB>> allSurfaces,
+	public RayMarchingEngine(Iterable<? extends Producer<PackedCollection>> allSurfaces,
 							 Light allLights[], Light l, DistanceEstimator e, ShaderSet shaders) {
 		this.allSurfaces = allSurfaces;
 		this.allLights = allLights;
@@ -91,25 +92,25 @@ public class RayMarchingEngine extends ArrayList<Producer<Ray>> implements Engin
 	}
 
 	@Override
-	public Producer<RGB> trace(Producer<Ray> r) {
+	public Producer<PackedCollection> trace(Producer<Ray> r) {
 		// TODO
 //		return new DistanceEstimationLightingEngine(r, allSurfaces, allLights, sparams, estimator, shaders);
 		return null;
 	}
 
 	@Override
-	public Producer<RGB> getValueAt(Producer<Vector> point) {
+	public Producer<PackedCollection> getValueAt(Producer<PackedCollection> point) {
 		return rgb(0.8, 0.8, 0.8);  // TODO  Support colors
 	}
 
 	@Override
-	public Producer<Vector> getNormalAt(Producer<Vector> point) {
+	public Producer<PackedCollection> getNormalAt(Producer<PackedCollection> point) {
 		return direction(iterator().next());
 	}
 
 	@Override
-	public Producer<RGB> shade(ShaderContext parameters) {
-		Producer<RGB> c = null;
+	public Producer<PackedCollection> shade(ShaderContext parameters) {
+		Producer<PackedCollection> c = null;
 		
 		for (Shader s : shaders) {
 			if (c == null) {

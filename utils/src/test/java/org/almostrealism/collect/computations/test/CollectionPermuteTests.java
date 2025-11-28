@@ -39,8 +39,8 @@ public class CollectionPermuteTests implements TestFeatures {
 	 */
 	@Test
 	public void permute2() {
-		PackedCollection<?> input = new PackedCollection<>(shape(2, 4)).randFill();
-		PackedCollection<?> out = cp(input).permute(1, 0).evaluate();
+		PackedCollection input = new PackedCollection(shape(2, 4)).randFill();
+		PackedCollection out = cp(input).permute(1, 0).evaluate();
 
 		assertEquals(4, out.getShape().length(0));
 		assertEquals(2, out.getShape().length(1));
@@ -65,8 +65,8 @@ public class CollectionPermuteTests implements TestFeatures {
 	 */
 	@Test
 	public void permute4() {
-		PackedCollection<?> input = new PackedCollection<>(shape(2, 4, 3, 8)).randFill();
-		PackedCollection<?> out = cp(input).permute(0, 2, 1, 3).evaluate();
+		PackedCollection input = new PackedCollection(shape(2, 4, 3, 8)).randFill();
+		PackedCollection out = cp(input).permute(0, 2, 1, 3).evaluate();
 
 		assertEquals(2, out.getShape().length(0));
 		assertEquals(3, out.getShape().length(1));

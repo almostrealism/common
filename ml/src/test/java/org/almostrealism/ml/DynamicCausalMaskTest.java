@@ -19,7 +19,7 @@ public class DynamicCausalMaskTest implements AttentionFeatures {
         int currentPosition = 2;
 
         // Create position as a PackedCollection
-        PackedCollection<?> positionValue = new PackedCollection<>(shape(1));
+        PackedCollection positionValue = new PackedCollection(shape(1));
         positionValue.setMem(0, currentPosition);
 
         // Create the dynamic mask using Producer operations
@@ -31,10 +31,10 @@ public class DynamicCausalMaskTest implements AttentionFeatures {
 
         // Create mask: if index > position then -10000 else 0
         // Use 5-parameter version: greaterThan(a, b, trueValue, falseValue, includeEqual)
-        CollectionProducer<PackedCollection<?>> mask = greaterThan(indices, position, c(-10000.0), c(0.0), false);
+        CollectionProducer<PackedCollection> mask = greaterThan(indices, position, c(-10000.0), c(0.0), false);
 
         // Evaluate the mask
-        PackedCollection<?> result = mask.get().evaluate();
+        PackedCollection result = mask.get().evaluate();
 
         System.out.println("Position: " + currentPosition);
         System.out.println("Mask values:");
@@ -60,14 +60,14 @@ public class DynamicCausalMaskTest implements AttentionFeatures {
         int seqLen = 8;
 
         for (int pos = 0; pos < 5; pos++) {
-            PackedCollection<?> positionValue = new PackedCollection<>(shape(1));
+            PackedCollection positionValue = new PackedCollection(shape(1));
             positionValue.setMem(0, pos);
 
             CollectionProducer<?> indices = integers(0, seqLen);
             CollectionProducer<?> position = cp(positionValue);
-            CollectionProducer<PackedCollection<?>> mask = greaterThan(indices, position, c(-10000.0), c(0.0), false);
+            CollectionProducer<PackedCollection> mask = greaterThan(indices, position, c(-10000.0), c(0.0), false);
 
-            PackedCollection<?> result = mask.get().evaluate();
+            PackedCollection result = mask.get().evaluate();
 
             System.out.println("\nPosition " + pos + ":");
             for (int i = 0; i < seqLen; i++) {
@@ -92,19 +92,19 @@ public class DynamicCausalMaskTest implements AttentionFeatures {
         int seqLen = 32768;
         int currentPosition = 5;
 
-        PackedCollection<?> positionValue = new PackedCollection<>(shape(1));
+        PackedCollection positionValue = new PackedCollection(shape(1));
         positionValue.setMem(0, currentPosition);
 
         // Create mask for all heads
         // Shape should be (heads, seqLen)
         CollectionProducer<?> indices = integers(0, seqLen);
         CollectionProducer<?> position = cp(positionValue);
-        CollectionProducer<PackedCollection<?>> maskRow = greaterThan(indices, position, c(-10000.0), c(0.0), false);
+        CollectionProducer<PackedCollection> maskRow = greaterThan(indices, position, c(-10000.0), c(0.0), false);
 
         // Repeat for all heads
         CollectionProducer<?> mask = repeat(heads, maskRow);
 
-        PackedCollection<?> result = (PackedCollection<?>) mask.get().evaluate();
+        PackedCollection result = (PackedCollection) mask.get().evaluate();
 
         System.out.println("\nMask with heads:");
         System.out.println("  Shape: " + result.getShape());

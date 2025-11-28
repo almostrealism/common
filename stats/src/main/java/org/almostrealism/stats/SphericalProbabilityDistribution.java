@@ -15,6 +15,7 @@
  */
 
 package org.almostrealism.stats;
+import org.almostrealism.collect.PackedCollection;
 
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Vector;
@@ -45,7 +46,7 @@ import io.almostrealism.relation.Evaluable;
  * double[] surfaceNormal = {0.0, 0.0, 1.0}; // Pointing up
  *
  * // Sample an outgoing reflection direction
- * Producer<Vector> outgoingDir = brdf.getSample(incomingDir, surfaceNormal);
+ * Producer<PackedCollection> outgoingDir = brdf.getSample(incomingDir, surfaceNormal);
  * }</pre>
  *
  * <h2>Common Implementations</h2>
@@ -69,5 +70,5 @@ public interface SphericalProbabilityDistribution {
 	 * @param orient the surface orientation/normal vector (typically normalized)
 	 * @return a producer that generates a sampled outgoing direction
 	 */
-	Producer<Vector> getSample(double in[], double orient[]);
+	Producer<PackedCollection> getSample(double in[], double orient[]);
 }

@@ -44,7 +44,7 @@ public class CollectionZerosComputationTest implements TestFeatures {
 	public void basicZeroCreation() {
 		// Test vector creation
 		TraversalPolicy vectorShape = new TraversalPolicy(5);
-		CollectionZerosComputation<PackedCollection<?>> zeroVector = 
+		CollectionZerosComputation<PackedCollection> zeroVector =
 				new CollectionZerosComputation<>(vectorShape);
 		
 		assertEquals("Vector should have correct size", 5, zeroVector.getShape().getSize());
@@ -53,7 +53,7 @@ public class CollectionZerosComputationTest implements TestFeatures {
 		
 		// Test matrix creation
 		TraversalPolicy matrixShape = new TraversalPolicy(3, 4);
-		CollectionZerosComputation<PackedCollection<?>> zeroMatrix = 
+		CollectionZerosComputation<PackedCollection> zeroMatrix =
 				new CollectionZerosComputation<>(matrixShape);
 		
 		assertEquals("Matrix should have correct size", 12, zeroMatrix.getShape().getSize());
@@ -69,7 +69,7 @@ public class CollectionZerosComputationTest implements TestFeatures {
 	@Test
 	public void optimizationMethods() {
 		// Test zero detection
-		CollectionZerosComputation<PackedCollection<?>> zeros = 
+		CollectionZerosComputation<PackedCollection> zeros =
 				new CollectionZerosComputation<>(new TraversalPolicy(10));
 		assertTrue("Zero computation should always be detected as zero", zeros.isZero());
 		
@@ -87,12 +87,12 @@ public class CollectionZerosComputationTest implements TestFeatures {
 	public void reshapeOperation() {
 		// Create initial zero vector
 		TraversalPolicy originalShape = new TraversalPolicy(12);
-		CollectionZerosComputation<PackedCollection<?>> originalZeros = 
+		CollectionZerosComputation<PackedCollection> originalZeros =
 				new CollectionZerosComputation<>(originalShape);
 		
 		// Reshape to matrix
 		TraversalPolicy matrixShape = new TraversalPolicy(3, 4);
-		CollectionProducerComputation<PackedCollection<?>> reshapedZeros = 
+		CollectionProducerComputation<PackedCollection> reshapedZeros =
 				originalZeros.reshape(matrixShape);
 		
 		assertTrue("Reshaped computation should still be zeros", 
@@ -114,11 +114,11 @@ public class CollectionZerosComputationTest implements TestFeatures {
 	public void traverseOperation() {
 		// Create 2D zero matrix
 		TraversalPolicy matrixShape = new TraversalPolicy(3, 4);
-		CollectionZerosComputation<PackedCollection<?>> zeroMatrix = 
+		CollectionZerosComputation<PackedCollection> zeroMatrix =
 				new CollectionZerosComputation<>(matrixShape);
 		
 		// Traverse along axis 1
-		CollectionProducer<PackedCollection<?>> traversedZeros = zeroMatrix.traverse(1);
+		CollectionProducer<PackedCollection> traversedZeros = zeroMatrix.traverse(1);
 		
 		assertTrue("Traversed computation should still be zeros", 
 				traversedZeros instanceof CollectionZerosComputation);
@@ -139,7 +139,7 @@ public class CollectionZerosComputationTest implements TestFeatures {
 	public void deltaComputation() {
 		// Create zero vector
 		TraversalPolicy zerosShape = new TraversalPolicy(3);
-		CollectionZerosComputation<PackedCollection<?>> zeros = 
+		CollectionZerosComputation<PackedCollection> zeros =
 				new CollectionZerosComputation<>(zerosShape);
 		
 		// Create a mock target with known shape
@@ -147,7 +147,7 @@ public class CollectionZerosComputationTest implements TestFeatures {
 		Producer<?> mockTarget = new SingleConstantComputation<>(targetShape, 1.0);
 		
 		// Compute delta (derivative)
-		CollectionProducer<PackedCollection<?>> delta = zeros.delta(mockTarget);
+		CollectionProducer<PackedCollection> delta = zeros.delta(mockTarget);
 		
 		assertTrue("Delta of zeros should still be zeros", delta instanceof CollectionZerosComputation);
 		assertTrue("Delta should be detected as zero", 
@@ -166,7 +166,7 @@ public class CollectionZerosComputationTest implements TestFeatures {
 	 */
 	@Test
 	public void parallelProcessGeneration() {
-		CollectionZerosComputation<PackedCollection<?>> zeros = 
+		CollectionZerosComputation<PackedCollection> zeros =
 				new CollectionZerosComputation<>(new TraversalPolicy(5));
 		
 		// Generate parallel process (should return self)
@@ -185,7 +185,7 @@ public class CollectionZerosComputationTest implements TestFeatures {
 	 */
 	@Test(expected = UnsupportedOperationException.class)
 	public void isolationNotSupported() {
-		CollectionZerosComputation<PackedCollection<?>> zeros = 
+		CollectionZerosComputation<PackedCollection> zeros =
 				new CollectionZerosComputation<>(new TraversalPolicy(3));
 		
 		// This should throw UnsupportedOperationException
@@ -199,7 +199,7 @@ public class CollectionZerosComputationTest implements TestFeatures {
 	 */
 	@Test
 	public void nameAndDescription() {
-		CollectionZerosComputation<PackedCollection<?>> zeros = 
+		CollectionZerosComputation<PackedCollection> zeros =
 				new CollectionZerosComputation<>(new TraversalPolicy(3));
 		
 		// The computation should be named "zeros"
@@ -216,7 +216,7 @@ public class CollectionZerosComputationTest implements TestFeatures {
 	public void edgeCases() {
 		// Test scalar zeros (single element)
 		TraversalPolicy scalarShape = new TraversalPolicy(1);
-		CollectionZerosComputation<PackedCollection<?>> scalarZeros = 
+		CollectionZerosComputation<PackedCollection> scalarZeros =
 				new CollectionZerosComputation<>(scalarShape);
 		
 		assertTrue("Scalar zeros should be detected as zero", scalarZeros.isZero());
@@ -224,7 +224,7 @@ public class CollectionZerosComputationTest implements TestFeatures {
 		
 		// Test high-dimensional zeros
 		TraversalPolicy highDimShape = new TraversalPolicy(2, 3, 4, 5);
-		CollectionZerosComputation<PackedCollection<?>> highDimZeros = 
+		CollectionZerosComputation<PackedCollection> highDimZeros =
 				new CollectionZerosComputation<>(highDimShape);
 		
 		assertTrue("High-dimensional zeros should be detected as zero", highDimZeros.isZero());
@@ -241,23 +241,23 @@ public class CollectionZerosComputationTest implements TestFeatures {
 	@Test
 	public void mathematicalProperties() {
 		TraversalPolicy shape = new TraversalPolicy(4, 4);
-		CollectionZerosComputation<PackedCollection<?>> zeros = 
+		CollectionZerosComputation<PackedCollection> zeros =
 				new CollectionZerosComputation<>(shape);
 		
 		// Zero property should be preserved through reshaping
-		CollectionProducerComputation<PackedCollection<?>> reshapedZeros = 
+		CollectionProducerComputation<PackedCollection> reshapedZeros =
 				zeros.reshape(new TraversalPolicy(2, 8));
 		assertTrue("Reshaped zeros should maintain zero property", 
 				((CollectionZerosComputation<?>) reshapedZeros).isZero());
 		
 		// Zero property should be preserved through traversal
-		CollectionProducer<PackedCollection<?>> traversedZeros = zeros.traverse(1);
+		CollectionProducer<PackedCollection> traversedZeros = zeros.traverse(1);
 		assertTrue("Traversed zeros should maintain zero property", 
 				((CollectionZerosComputation<?>) traversedZeros).isZero());
 		
 		// Delta of zeros should be zeros
 		Producer<?> target = new SingleConstantComputation<>(new TraversalPolicy(2), 1.0);
-		CollectionProducer<PackedCollection<?>> deltaZeros = zeros.delta(target);
+		CollectionProducer<PackedCollection> deltaZeros = zeros.delta(target);
 		assertTrue("Delta of zeros should be zero", 
 				((CollectionZerosComputation<?>) deltaZeros).isZero());
 	}

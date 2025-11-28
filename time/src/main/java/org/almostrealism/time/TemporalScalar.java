@@ -116,7 +116,7 @@ import java.util.function.BiFunction;
  *
  * @author Michael Murray
  */
-public class TemporalScalar extends Pair<TemporalScalar> {
+public class TemporalScalar extends Pair {
 	/**
 	 * Constructs an uninitialized temporal scalar with time and value both set to 0.0.
 	 */
@@ -182,7 +182,7 @@ public class TemporalScalar extends Pair<TemporalScalar> {
 	 *
 	 * @return A function that creates temporal scalar views given memory data and offset
 	 */
-	public static BiFunction<MemoryData, Integer, Pair<?>> postprocessor() {
+	public static BiFunction<MemoryData, Integer, Pair> postprocessor() {
 		return (delegate, offset) -> new TemporalScalar(delegate, offset);
 	}
 }

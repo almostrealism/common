@@ -38,28 +38,28 @@ import java.util.List;
  * ConfigurableChromosome chromosome = ...;
  *
  * // Access gene parameters
- * PackedCollection<?> gene0Params = chromosome.getParameters(0);
+ * PackedCollection gene0Params = chromosome.getParameters(0);
  *
  * // Get valid ranges for gene parameters
- * PackedCollection<?> gene0Ranges = chromosome.getParameterRanges(0);
+ * PackedCollection gene0Ranges = chromosome.getParameterRanges(0);
  *
  * // Get the appropriate breeder for this chromosome type
- * ChromosomeBreeder<PackedCollection<?>> breeder = chromosome.getBreeder();
- * Chromosome<PackedCollection<?>> offspring = breeder.combine(chromosome, otherChromosome);
+ * ChromosomeBreeder<PackedCollection> breeder = chromosome.getBreeder();
+ * Chromosome<PackedCollection> offspring = breeder.combine(chromosome, otherChromosome);
  * }</pre>
  *
  * @see Chromosome
  * @see GeneParameters
  * @see ChromosomeBreeder
  */
-public abstract class ConfigurableChromosome implements Chromosome<PackedCollection<?>> {
+public abstract class ConfigurableChromosome implements Chromosome<PackedCollection> {
 	/**
 	 * Returns the underlying parameters for the gene at the specified index.
 	 *
 	 * @param gene the zero-based index of the gene
 	 * @return the parameter collection for that gene
 	 */
-	public abstract PackedCollection<?> getParameters(int gene);
+	public abstract PackedCollection getParameters(int gene);
 
 	/**
 	 * Returns the valid parameter ranges for the gene at the specified index.
@@ -67,7 +67,7 @@ public abstract class ConfigurableChromosome implements Chromosome<PackedCollect
 	 * @param gene the zero-based index of the gene
 	 * @return the parameter ranges for that gene
 	 */
-	public abstract PackedCollection<?> getParameterRanges(int gene);
+	public abstract PackedCollection getParameterRanges(int gene);
 
 	/**
 	 * Returns a breeder suitable for combining this chromosome with another.
@@ -76,5 +76,5 @@ public abstract class ConfigurableChromosome implements Chromosome<PackedCollect
 	 *
 	 * @return a chromosome breeder for this chromosome type
 	 */
-	public abstract ChromosomeBreeder<PackedCollection<?>> getBreeder();
+	public abstract ChromosomeBreeder<PackedCollection> getBreeder();
 }

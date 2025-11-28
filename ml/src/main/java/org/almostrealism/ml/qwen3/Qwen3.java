@@ -183,7 +183,7 @@ public class Qwen3 implements AttentionFeatures {
 	 */
 	private static Qwen3Config inferConfigFromWeights(StateDictionary stateDict) {
 		// Get embedding shape to determine dim and vocabSize
-		PackedCollection<?> embeddings = stateDict.get("model.embed_tokens.weight");
+		PackedCollection embeddings = stateDict.get("model.embed_tokens.weight");
 		if (embeddings == null) {
 			throw new IllegalArgumentException("Cannot find model.embed_tokens.weight in StateDictionary");
 		}
@@ -198,7 +198,7 @@ public class Qwen3 implements AttentionFeatures {
 		}
 
 		// Get head count from q_norm shape
-		PackedCollection<?> qNorm = stateDict.get("model.layers.0.self_attn.q_norm.weight");
+		PackedCollection qNorm = stateDict.get("model.layers.0.self_attn.q_norm.weight");
 		if (qNorm == null) {
 			throw new IllegalArgumentException("Cannot find QK-Norm weights");
 		}
@@ -206,11 +206,11 @@ public class Qwen3 implements AttentionFeatures {
 		int headSize = qNorm.getShape().length(1);
 
 		// Get KV head count
-		PackedCollection<?> kNorm = stateDict.get("model.layers.0.self_attn.k_norm.weight");
+		PackedCollection kNorm = stateDict.get("model.layers.0.self_attn.k_norm.weight");
 		int kvHeadCount = kNorm.getShape().length(0);
 
 		// Get hidden dim from FFN
-		PackedCollection<?> w1 = stateDict.get("model.layers.0.mlp.gate_proj.weight");
+		PackedCollection w1 = stateDict.get("model.layers.0.mlp.gate_proj.weight");
 		int hiddenDim = w1.getShape().length(0);
 
 		// Use default values for seqLen (128K) and sharedWeights
@@ -267,7 +267,7 @@ public class Qwen3 implements AttentionFeatures {
 	/**
 	 * For testing: Get the token embeddings.
 	 */
-	public PackedCollection<?> getTokenEmbeddings() {
+	public PackedCollection getTokenEmbeddings() {
 		return stateDict.get("model.embed_tokens.weight");
 	}
 
@@ -295,19 +295,19 @@ public class Qwen3 implements AttentionFeatures {
 		Model transformer = new Model(shape(config.dim));
 
 		// Placeholder for the index of the current step (position in sequence)
-		PackedCollection<?> position = new PackedCollection<>(1);
+		PackedCollection position = new PackedCollection(1);
 
 		int dim = config.dim;
 		int kvDim = config.dim * config.kvHeadCount / config.headCount;
 
 		// Get token embeddings and output weights
-		PackedCollection<?> tokenEmbeddings = stateDict.get("model.embed_tokens.weight");
-		PackedCollection<?> wcls = config.sharedWeights ? tokenEmbeddings :
+		PackedCollection tokenEmbeddings = stateDict.get("model.embed_tokens.weight");
+		PackedCollection wcls = config.sharedWeights ? tokenEmbeddings :
 				stateDict.get("lm_head.weight");
-		PackedCollection<?> rmsFinalWeight = stateDict.get("model.norm.weight");
+		PackedCollection rmsFinalWeight = stateDict.get("model.norm.weight");
 
 		// Compute RoPE frequencies (not stored in state dict)
-		PackedCollection<?> freqCis = computeRopeFreqs(config);
+		PackedCollection freqCis = computeRopeFreqs(config);
 
 		// Build transformer stack: 36 layers for Qwen3-4B
 		for (int i = 0; i < config.layerCount; i++) {
@@ -318,28 +318,28 @@ public class Qwen3 implements AttentionFeatures {
 			// Load weights directly from StateDictionary
 			String prefix = String.format("model.layers.%d", i);
 
-			PackedCollection<?> layerRmsAtt = stateDict.get(prefix + ".input_layernorm.weight");
-			PackedCollection<?> layerRmsFfn = stateDict.get(prefix + ".post_attention_layernorm.weight");
+			PackedCollection layerRmsAtt = stateDict.get(prefix + ".input_layernorm.weight");
+			PackedCollection layerRmsFfn = stateDict.get(prefix + ".post_attention_layernorm.weight");
 
 			// Attention weights
-			PackedCollection<?> layerWq = stateDict.get(prefix + ".self_attn.q_proj.weight");
-			PackedCollection<?> layerWk = stateDict.get(prefix + ".self_attn.k_proj.weight");
-			PackedCollection<?> layerWv = stateDict.get(prefix + ".self_attn.v_proj.weight");
-			PackedCollection<?> layerWo = stateDict.get(prefix + ".self_attn.o_proj.weight");
+			PackedCollection layerWq = stateDict.get(prefix + ".self_attn.q_proj.weight");
+			PackedCollection layerWk = stateDict.get(prefix + ".self_attn.k_proj.weight");
+			PackedCollection layerWv = stateDict.get(prefix + ".self_attn.v_proj.weight");
+			PackedCollection layerWo = stateDict.get(prefix + ".self_attn.o_proj.weight");
 
 			// Attention biases (Qwen2.5 has biases for Q/K/V but not O)
-			PackedCollection<?> layerBq = stateDict.get(prefix + ".self_attn.q_proj.bias");
-			PackedCollection<?> layerBk = stateDict.get(prefix + ".self_attn.k_proj.bias");
-			PackedCollection<?> layerBv = stateDict.get(prefix + ".self_attn.v_proj.bias");
+			PackedCollection layerBq = stateDict.get(prefix + ".self_attn.q_proj.bias");
+			PackedCollection layerBk = stateDict.get(prefix + ".self_attn.k_proj.bias");
+			PackedCollection layerBv = stateDict.get(prefix + ".self_attn.v_proj.bias");
 
 			// QK-Norm weights
-			PackedCollection<?> layerQkNormQ = stateDict.get(prefix + ".self_attn.q_norm.weight");
-			PackedCollection<?> layerQkNormK = stateDict.get(prefix + ".self_attn.k_norm.weight");
+			PackedCollection layerQkNormQ = stateDict.get(prefix + ".self_attn.q_norm.weight");
+			PackedCollection layerQkNormK = stateDict.get(prefix + ".self_attn.k_norm.weight");
 
 			// FFN weights
-			PackedCollection<?> layerW1 = stateDict.get(prefix + ".mlp.gate_proj.weight");
-			PackedCollection<?> layerW2 = stateDict.get(prefix + ".mlp.down_proj.weight");
-			PackedCollection<?> layerW3 = stateDict.get(prefix + ".mlp.up_proj.weight");
+			PackedCollection layerW1 = stateDict.get(prefix + ".mlp.gate_proj.weight");
+			PackedCollection layerW2 = stateDict.get(prefix + ".mlp.down_proj.weight");
+			PackedCollection layerW3 = stateDict.get(prefix + ".mlp.up_proj.weight");
 
 			// Add complete transformer layer
 			transformer.add(transformer(
@@ -375,7 +375,7 @@ public class Qwen3 implements AttentionFeatures {
 	/**
 	 * Compute RoPE frequency embeddings.
 	 */
-	private static PackedCollection<?> computeRopeFreqs(Qwen3Config config) {
+	private static PackedCollection computeRopeFreqs(Qwen3Config config) {
 		int headSize = config.headSize;
 		int seqLen = config.seqLen;
 		double theta = config.ropeTheta;
@@ -387,7 +387,7 @@ public class Qwen3 implements AttentionFeatures {
 		}
 
 		TraversalPolicy shape = new TraversalPolicy(seqLen, freqDim, 2);
-		PackedCollection<?> freqCis = new PackedCollection<>(shape);
+		PackedCollection freqCis = new PackedCollection(shape);
 
 		for (int pos = 0; pos < seqLen; pos++) {
 			for (int i = 0; i < freqDim; i++) {

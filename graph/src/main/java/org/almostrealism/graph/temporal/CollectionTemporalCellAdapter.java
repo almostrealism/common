@@ -99,10 +99,10 @@ public abstract class CollectionTemporalCellAdapter extends CollectionCachedStat
 	 * @param p the producer to wrap
 	 * @return a new temporal cell adapter that reads from the producer
 	 */
-	public static CollectionTemporalCellAdapter from(Producer<PackedCollection<?>> p) {
+	public static CollectionTemporalCellAdapter from(Producer<PackedCollection> p) {
 		return new CollectionTemporalCellAdapter() {
 			@Override
-			public Supplier<Runnable> push(Producer<PackedCollection<?>> protein) {
+			public Supplier<Runnable> push(Producer<PackedCollection> protein) {
 				return assign(() -> new Provider<>(getCachedValue()), p);
 			}
 		};

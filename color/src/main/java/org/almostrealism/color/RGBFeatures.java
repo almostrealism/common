@@ -41,12 +41,12 @@ import java.util.function.Supplier;
  * <h2>Color Creation</h2>
  * <pre>{@code
  * // Create colors from components
- * CollectionProducer<RGB> red = rgb(1.0, 0.0, 0.0);
- * CollectionProducer<RGB> white = white();
- * CollectionProducer<RGB> gray = cfromScalar(0.5);
+ * CollectionProducer<PackedCollection> red = rgb(1.0, 0.0, 0.0);
+ * CollectionProducer<PackedCollection> white = white();
+ * CollectionProducer<PackedCollection> gray = cfromScalar(0.5);
  *
  * // Create colors from producers (for computation graphs)
- * CollectionProducer<RGB> dynamic = rgb(redProducer, greenProducer, blueProducer);
+ * CollectionProducer<PackedCollection> dynamic = rgb(redProducer, greenProducer, blueProducer);
  * }</pre>
  *
  * <h2>Image I/O</h2>
@@ -62,7 +62,7 @@ import java.util.function.Supplier;
  * <h2>Lighting Calculations</h2>
  * <pre>{@code
  * // Calculate light attenuation
- * Producer<RGB> attenuated = attenuation(0.0, 0.0, 1.0, lightColor, distanceSq);
+ * Producer<PackedCollection> attenuated = attenuation(0.0, 0.0, 1.0, lightColor, distanceSq);
  * }</pre>
  *
  * @see RGB
@@ -77,7 +77,7 @@ public interface RGBFeatures extends ScalarFeatures {
 	 * @param value the RGB color to wrap
 	 * @return a producer that yields the given RGB value
 	 */
-	default CollectionProducer<RGB> v(RGB value) { return value(value); }
+	default CollectionProducer<PackedCollection> v(RGB value) { return value(value); }
 
 	/**
 	 * Creates an RGB color producer from individual channel values.
@@ -87,7 +87,7 @@ public interface RGBFeatures extends ScalarFeatures {
 	 * @param b the blue channel value (0.0 to 1.0)
 	 * @return a producer that yields the specified RGB color
 	 */
-	default CollectionProducer<RGB> rgb(double r, double g, double b) { return value(new RGB(r, g, b)); }
+	default CollectionProducer<PackedCollection> rgb(double r, double g, double b) { return value(new RGB(r, g, b)); }
 
 	/**
 	 * Creates an RGB color producer by concatenating channel producers.
@@ -100,10 +100,10 @@ public interface RGBFeatures extends ScalarFeatures {
 	 * @param b producer for the blue channel
 	 * @return a producer that combines the channels into an RGB color
 	 */
-	default CollectionProducer<RGB> rgb(Producer<PackedCollection<?>> r,
-										Producer<PackedCollection<?>> g,
-										Producer<PackedCollection<?>> b) {
-		return concat(shape(3), r, g, b);
+	default CollectionProducer<PackedCollection> rgb(Producer<PackedCollection> r,
+										Producer<PackedCollection> g,
+										Producer<PackedCollection> b) {
+		return (CollectionProducer) concat(shape(3), (Producer) r, (Producer) g, (Producer) b);
 	}
 
 	/**
@@ -116,8 +116,8 @@ public interface RGBFeatures extends ScalarFeatures {
 	 * @return a producer yielding the image as a packed RGB collection
 	 * @throws IOException if the file cannot be read or decoded
 	 */
-	default CollectionProducer<PackedCollection<RGB>> rgb(File file) throws IOException {
-		return DefaultTraversableExpressionComputation.fixed(GraphicsConverter.loadRgb(file));
+	default CollectionProducer<PackedCollection> rgb(File file) throws IOException {
+		return (CollectionProducer) DefaultTraversableExpressionComputation.fixed(GraphicsConverter.loadRgb(file));
 	}
 
 	/**
@@ -130,8 +130,8 @@ public interface RGBFeatures extends ScalarFeatures {
 	 * @return a producer yielding the image in channels-first format
 	 * @throws IOException if the file cannot be read or decoded
 	 */
-	default CollectionProducer<PackedCollection<?>> channels(File file) throws IOException {
-		return DefaultTraversableExpressionComputation.fixed(GraphicsConverter.loadRgb(file, true));
+	default CollectionProducer<PackedCollection> channels(File file) throws IOException {
+		return (CollectionProducer) DefaultTraversableExpressionComputation.fixed(GraphicsConverter.loadRgb(file, true));
 	}
 
 	/**
@@ -145,7 +145,7 @@ public interface RGBFeatures extends ScalarFeatures {
 	 * @param values producer of the color data to save
 	 * @return a supplier that when invoked returns a runnable to perform the save
 	 */
-	default <T extends PackedCollection<?>> Supplier<Runnable> saveRgb(String file, CollectionProducer<T> values) {
+	default Supplier<Runnable> saveRgb(String file, CollectionProducer<?> values) {
 		return saveImage(file, false, values);
 	}
 
@@ -158,8 +158,8 @@ public interface RGBFeatures extends ScalarFeatures {
 	 * @param values producer of the color data to save
 	 * @return a supplier that when invoked returns a runnable to perform the save
 	 */
-	default <T extends PackedCollection<?>> Supplier<Runnable> saveRgb(File file, String format,
-																	   CollectionProducer<T> values) {
+	default Supplier<Runnable> saveRgb(File file, String format,
+																	   CollectionProducer<?> values) {
 		return saveImage(file, format, false, values);
 	}
 
@@ -174,7 +174,7 @@ public interface RGBFeatures extends ScalarFeatures {
 	 * @param values producer of the channels-first color data
 	 * @return a supplier that when invoked returns a runnable to perform the save
 	 */
-	default <T extends PackedCollection<?>> Supplier<Runnable> saveChannels(String file, Producer<T> values) {
+	default Supplier<Runnable> saveChannels(String file, Producer<?> values) {
 		return saveImage(file, true, values);
 	}
 
@@ -187,8 +187,8 @@ public interface RGBFeatures extends ScalarFeatures {
 	 * @param values producer of the channels-first color data
 	 * @return a supplier that when invoked returns a runnable to perform the save
 	 */
-	default <T extends PackedCollection<?>> Supplier<Runnable> saveChannels(File file, String format,
-																			Producer<T> values) {
+	default Supplier<Runnable> saveChannels(File file, String format,
+																			Producer<?> values) {
 		return saveImage(file, format, true, values);
 	}
 
@@ -205,9 +205,9 @@ public interface RGBFeatures extends ScalarFeatures {
 	 * @return a supplier that when invoked returns a runnable to perform the save
 	 * @throws IllegalArgumentException if the file extension is not recognized
 	 */
-	default <T extends PackedCollection<?>> Supplier<Runnable> saveImage(String file,
+	default Supplier<Runnable> saveImage(String file,
 																		 boolean channelsFirst,
-																		 Producer<T> values) {
+																		 Producer<?> values) {
 		if (file.endsWith("png")) {
 			return saveImage(new File(file), "png", channelsFirst, values);
 		} else if (file.endsWith("jpg")) {
@@ -235,15 +235,15 @@ public interface RGBFeatures extends ScalarFeatures {
 	 * @param values producer of the image data
 	 * @return a supplier that when invoked returns a runnable to perform the save
 	 */
-	default <T extends PackedCollection<?>> Supplier<Runnable> saveImage(File file, String format,
+	default Supplier<Runnable> saveImage(File file, String format,
 																		 boolean channelsFirst,
-																		 Producer<T> values) {
+																		 Producer<?> values) {
 		return () -> {
-			Evaluable<T> ev = values.get();
+			Evaluable<?> ev = values.get();
 
 			return () -> {
 				try {
-					BufferedImage img = GraphicsConverter.convertToAWTImage(ev.evaluate(), channelsFirst);
+					BufferedImage img = GraphicsConverter.convertToAWTImage((PackedCollection) ev.evaluate(), channelsFirst);
 					ImageIO.write(img, format, file);
 				} catch (IOException e) {
 					throw new RuntimeException(e);
@@ -260,21 +260,21 @@ public interface RGBFeatures extends ScalarFeatures {
 	 * @param v the grayscale intensity (0.0 = black, 1.0 = white)
 	 * @return a producer yielding the grayscale RGB color
 	 */
-	default CollectionProducer<RGB> rgb(double v) { return cfromScalar(v); }
+	default CollectionProducer<PackedCollection> rgb(double v) { return cfromScalar(v); }
 
 	/**
 	 * Creates a white color producer.
 	 *
 	 * @return a producer yielding RGB(1.0, 1.0, 1.0)
 	 */
-	default CollectionProducer<RGB> white() { return rgb(1.0, 1.0, 1.0); }
+	default CollectionProducer<PackedCollection> white() { return rgb(1.0, 1.0, 1.0); }
 
 	/**
 	 * Creates a black color producer.
 	 *
 	 * @return a producer yielding RGB(0.0, 0.0, 0.0)
 	 */
-	default CollectionProducer<RGB> black() { return rgb(0.0, 0.0, 0.0); }
+	default CollectionProducer<PackedCollection> black() { return rgb(0.0, 0.0, 0.0); }
 
 	/**
 	 * Wraps an RGB value as a fixed producer.
@@ -282,8 +282,18 @@ public interface RGBFeatures extends ScalarFeatures {
 	 * @param value the RGB color to wrap
 	 * @return a producer that yields the given RGB value
 	 */
-	default CollectionProducer<RGB> value(RGB value) {
-		return DefaultTraversableExpressionComputation.fixed(value, RGB.postprocessor());
+	default CollectionProducer<PackedCollection> value(RGB value) {
+		return (CollectionProducer) DefaultTraversableExpressionComputation.fixed(value, RGB.postprocessor());
+	}
+
+	/**
+	 * Wraps a PackedCollection value as a fixed producer.
+	 *
+	 * @param value the PackedCollection to wrap
+	 * @return a producer that yields the given value
+	 */
+	default CollectionProducer<PackedCollection> value(PackedCollection value) {
+		return (CollectionProducer) DefaultTraversableExpressionComputation.fixed(value);
 	}
 
 	/**
@@ -293,7 +303,7 @@ public interface RGBFeatures extends ScalarFeatures {
 	 * @param value producer of the scalar value to broadcast
 	 * @return a producer yielding RGB with all channels equal to the scalar
 	 */
-	default <T extends PackedCollection<?>> CollectionProducer<RGB> cfromScalar(Producer<T> value) {
+	default CollectionProducer<PackedCollection> cfromScalar(Producer<?> value) {
 		return rgb((Producer) value, (Producer) value, (Producer) value);
 	}
 
@@ -303,7 +313,7 @@ public interface RGBFeatures extends ScalarFeatures {
 	 * @param value the scalar value for all channels
 	 * @return a producer yielding RGB with all channels equal to value
 	 */
-	default CollectionProducer<RGB> cfromScalar(double value) {
+	default CollectionProducer<PackedCollection> cfromScalar(double value) {
 		return cfromScalar(c(value));
 	}
 
@@ -328,8 +338,8 @@ public interface RGBFeatures extends ScalarFeatures {
 	 * @param distanceSq the squared distance from the light source
 	 * @return a producer yielding the attenuated color
 	 */
-	default Producer<RGB> attenuation(double da, double db, double dc,
-									  Producer<RGB> color, Producer<PackedCollection<?>> distanceSq) {
+	default Producer<PackedCollection> attenuation(double da, double db, double dc,
+									  Producer<PackedCollection> color, Producer<PackedCollection> distanceSq) {
 		return multiply(color, multiply(c(da), distanceSq)
 				.add(c(db).multiply(pow(distanceSq, c(0.5))))
 				.add(c(dc)));

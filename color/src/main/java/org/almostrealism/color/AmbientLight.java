@@ -15,6 +15,7 @@
  */
 
 package org.almostrealism.color;
+import org.almostrealism.collect.PackedCollection;
 
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.color.computations.GeneratedColorProducer;
@@ -43,7 +44,7 @@ import io.almostrealism.relation.Producer;
  * AmbientLight ambient = new AmbientLight(0.2, new RGB(0.8, 0.85, 1.0));
  *
  * // Use in lighting calculations
- * Producer<RGB> surfaceColor = ambient.lightingCalculation(surface, pointProducer);
+ * Producer<PackedCollection> surfaceColor = ambient.lightingCalculation(surface, pointProducer);
  * }</pre>
  *
  * <h2>Typical Values</h2>
@@ -62,7 +63,7 @@ public class AmbientLight implements Light, RGBFeatures {
 	private double intensity;
 	private RGB color;
 
-	private Producer<RGB> colorProducer = GeneratedColorProducer.fromProducer(this, multiply(() -> args -> color, c(intensity)));
+	private Producer<PackedCollection> colorProducer = GeneratedColorProducer.fromProducer(this, multiply(() -> args -> color, c(intensity)));
 
 	/**
 	 * Constructs an AmbientLight object with the default intensity and color.
@@ -110,7 +111,7 @@ public class AmbientLight implements Light, RGBFeatures {
 
 	/** Returns the {@link RGB} {@link Producer} for this {@link AmbientLight}. */
 	@Override
-	public Producer<RGB> getColorAt(Producer<Vector> point) {
+	public Producer<PackedCollection> getColorAt(Producer<PackedCollection> point) {
 		return GeneratedColorProducer.fromProducer(this,
 				multiply(v(color), rgb(intensity)));
 	}
@@ -122,9 +123,9 @@ public class AmbientLight implements Light, RGBFeatures {
 	 * other surfaces in the scene must be specified for reflection/shadowing. This list does
 	 * not include the specified surface for which the lighting calculations are to be done.
 	 */
-	public Producer<RGB> lightingCalculation(Curve<RGB> surface, Producer<Vector> point) {
-		Producer<RGB> color = multiply(v(getColor()), c(getIntensity()));
-		return multiply(color, surface.getValueAt(point));
+	public Producer<PackedCollection> lightingCalculation(Curve<PackedCollection> surface, Producer<PackedCollection> point) {
+		Producer<PackedCollection> color = multiply(v(getColor()), c(getIntensity()));
+		return multiply(color, (Producer) surface.getValueAt(point));
 	}
 	
 	/** Returns "Ambient Light". */

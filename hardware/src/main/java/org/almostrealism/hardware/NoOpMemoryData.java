@@ -64,7 +64,7 @@ import io.almostrealism.collect.TraversalOrdering;
  * <h3>Optional Output Parameters</h3>
  * <pre>{@code
  * public MemoryData processWithOptionalDebug(boolean debug) {
- *     MemoryData debugOutput = debug ? new PackedCollection<>(1000) : new NoOpMemoryData();
+ *     MemoryData debugOutput = debug ? new PackedCollection(1000) : new NoOpMemoryData();
  *
  *     for (int i = 0; i < 1000; i++) {
  *         double result = compute(i);

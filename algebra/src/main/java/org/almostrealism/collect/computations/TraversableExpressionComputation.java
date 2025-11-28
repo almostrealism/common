@@ -50,7 +50,7 @@ import org.almostrealism.hardware.HardwareFeatures;
  * TraversalPolicy inputShape = shape(3, 2);  // 3 rows, 2 columns
  * TraversalPolicy outputShape = shape(3, 1); // 3 rows, 1 column (sums)
  * 
- * DefaultTraversableExpressionComputation<PackedCollection<?>> pairSum = 
+ * DefaultTraversableExpressionComputation<PackedCollection> pairSum =
  *     new DefaultTraversableExpressionComputation<>(
  *         "pairSum", 
  *         outputShape,
@@ -60,13 +60,13 @@ import org.almostrealism.hardware.HardwareFeatures;
  *                 args[1].getValueRelative(new IntegerConstant(1)))),
  *         inputProducer);
  * 
- * PackedCollection<?> result = pairSum.get().evaluate();
+ * PackedCollection result = pairSum.get().evaluate();
  * }</pre>
  * 
  * <p><strong>Element-wise Mathematical Operations:</strong>
  * <pre>{@code
  * // Square each element in a collection
- * DefaultTraversableExpressionComputation<PackedCollection<?>> square = 
+ * DefaultTraversableExpressionComputation<PackedCollection> square =
  *     new DefaultTraversableExpressionComputation<>(
  *         "square", 
  *         inputShape,
@@ -100,7 +100,7 @@ import org.almostrealism.hardware.HardwareFeatures;
  * 
  * @author Michael Murray
  */
-public abstract class TraversableExpressionComputation<T extends PackedCollection<?>>
+public abstract class TraversableExpressionComputation<T extends PackedCollection>
 		extends CollectionProducerComputationAdapter<T, T> implements HardwareFeatures {
 
 	/**
@@ -123,7 +123,7 @@ public abstract class TraversableExpressionComputation<T extends PackedCollectio
 	 */
 	@SafeVarargs
 	public TraversableExpressionComputation(String name, TraversalPolicy shape,
-											Producer<PackedCollection<?>>... args) {
+											Producer<PackedCollection>... args) {
 		this(name, shape, MultiTermDeltaStrategy.NONE, args);
 	}
 
@@ -145,7 +145,7 @@ public abstract class TraversableExpressionComputation<T extends PackedCollectio
 	@SafeVarargs
 	public TraversableExpressionComputation(String name, TraversalPolicy shape,
 											MultiTermDeltaStrategy deltaStrategy,
-											Producer<PackedCollection<?>>... args) {
+											Producer<PackedCollection>... args) {
 		super(name, shape, validateArgs(args));
 		this.deltaStrategy = deltaStrategy;
 

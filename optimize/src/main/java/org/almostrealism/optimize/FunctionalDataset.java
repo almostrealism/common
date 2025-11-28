@@ -41,11 +41,11 @@ import java.util.function.Function;
  * <h2>Usage Example</h2>
  * <pre>{@code
  * // Create functional dataset with data augmentation
- * List<PackedCollection<?>> images = loadImages();
- * FunctionalDataset<PackedCollection<?>> dataset = new FunctionalDataset<>(
+ * List<PackedCollection> images = loadImages();
+ * FunctionalDataset<PackedCollection> dataset = new FunctionalDataset<>(
  *     images,
  *     image -> {
- *         List<ValueTarget<PackedCollection<?>>> augmented = new ArrayList<>();
+ *         List<ValueTarget<PackedCollection>> augmented = new ArrayList<>();
  *         augmented.add(ValueTarget.of(image, computeLabel(image)));
  *         augmented.add(ValueTarget.of(flip(image), computeLabel(image)));
  *         augmented.add(ValueTarget.of(rotate(image), computeLabel(image)));
@@ -54,7 +54,7 @@ import java.util.function.Function;
  * );
  *
  * // Iterate over all augmented samples
- * for (ValueTarget<PackedCollection<?>> sample : dataset) {
+ * for (ValueTarget<PackedCollection> sample : dataset) {
  *     // Process sample...
  * }
  * }</pre>
@@ -66,9 +66,9 @@ import java.util.function.Function;
  *
  * @author Michael Murray
  */
-public class FunctionalDataset<T extends PackedCollection<?>> implements Dataset<T> {
-	private List<PackedCollection<?>> inputs;
-	private Function<PackedCollection<?>, Collection<ValueTarget<T>>> function;
+public class FunctionalDataset<T extends PackedCollection> implements Dataset<T> {
+	private List<PackedCollection> inputs;
+	private Function<PackedCollection, Collection<ValueTarget<T>>> function;
 
 	/**
 	 * Creates a functional dataset with the given inputs and transformation function.
@@ -77,8 +77,8 @@ public class FunctionalDataset<T extends PackedCollection<?>> implements Dataset
 	 * @param function a function that generates value targets from each input;
 	 *                 may return multiple targets per input for data augmentation
 	 */
-	public FunctionalDataset(List<PackedCollection<?>> inputs,
-							 Function<PackedCollection<?>, Collection<ValueTarget<T>>> function) {
+	public FunctionalDataset(List<PackedCollection> inputs,
+							 Function<PackedCollection, Collection<ValueTarget<T>>> function) {
 		this.inputs = inputs;
 		this.function = function;
 	}
@@ -113,8 +113,8 @@ public class FunctionalDataset<T extends PackedCollection<?>> implements Dataset
 	 */
 	@Override
 	public List<Dataset<T>> split(double ratio) {
-		List<PackedCollection<?>> a = new ArrayList<>();
-		List<PackedCollection<?>> b = new ArrayList<>();
+		List<PackedCollection> a = new ArrayList<>();
+		List<PackedCollection> b = new ArrayList<>();
 
 		inputs.forEach(v -> {
 			if (Math.random() < ratio) {

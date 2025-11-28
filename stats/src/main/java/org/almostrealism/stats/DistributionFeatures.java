@@ -36,7 +36,7 @@ import java.util.Random;
  * <pre>{@code
  * DistributionFeatures features = new DistributionFeatures() {};
  *
- * PackedCollection<?> probs = new PackedCollection<>(3);
+ * PackedCollection probs = new PackedCollection(3);
  * probs.set(0, 0.2);  // 20%
  * probs.set(1, 0.5);  // 50%
  * probs.set(2, 0.3);  // 30%
@@ -67,7 +67,7 @@ public interface DistributionFeatures extends CollectionFeatures {
 	 * @param distribution the probability distribution
 	 * @return a sampled index from 0 to distribution.getMemLength()-1
 	 */
-	default int sample(PackedCollection<?> distribution) {
+	default int sample(PackedCollection distribution) {
 		return sample(distribution, distribution.getMemLength());
 	}
 
@@ -80,7 +80,7 @@ public interface DistributionFeatures extends CollectionFeatures {
 	 * @param n the number of elements to sample from
 	 * @return a sampled index from 0 to n-1
 	 */
-	default int sample(PackedCollection<?> distribution, int n) {
+	default int sample(PackedCollection distribution, int n) {
 		double probabilities[] = distribution.toArray(0, n);
 		double r = rand.nextDouble();
 		double d = 0.0;
@@ -109,7 +109,7 @@ public interface DistributionFeatures extends CollectionFeatures {
 	 * @param input the input logits
 	 * @return a producer that computes the softmax probabilities
 	 */
-	default <T extends PackedCollection<?>> CollectionProducer<T> softmax(CollectionProducer<T> input) {
+	default <T extends PackedCollection> CollectionProducer<T> softmax(CollectionProducer<T> input) {
 		return softmax(input, true);
 	}
 
@@ -121,9 +121,9 @@ public interface DistributionFeatures extends CollectionFeatures {
 	 * @param subtractMax if true, subtracts the max value before exp for numerical stability
 	 * @return a producer that computes the softmax probabilities
 	 */
-	default <T extends PackedCollection<?>> CollectionProducer<T> softmax(CollectionProducer<T> input, boolean subtractMax) {
+	default <T extends PackedCollection> CollectionProducer<T> softmax(CollectionProducer<T> input, boolean subtractMax) {
 		int size = shape(input).getSize();
-		CollectionProducer<PackedCollection<?>> o = (CollectionProducer) input;
+		CollectionProducer<PackedCollection> o = (CollectionProducer) input;
 
 		if (subtractMax) {
 			o = o.max();

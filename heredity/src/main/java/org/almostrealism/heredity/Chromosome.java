@@ -15,6 +15,7 @@
  */
 
 package org.almostrealism.heredity;
+import org.almostrealism.collect.PackedCollection;
 
 import io.almostrealism.relation.Factor;
 import io.almostrealism.relation.Producer;
@@ -47,15 +48,15 @@ import java.util.stream.IntStream;
  * <pre>{@code
  * // Create chromosome from genes
  * HeredityFeatures features = HeredityFeatures.getInstance();
- * Gene<PackedCollection<?>> gene1 = features.g(0.1, 0.5);
- * Gene<PackedCollection<?>> gene2 = features.g(0.2, 0.8);
- * Chromosome<PackedCollection<?>> chromosome = features.c(gene1, gene2);
+ * Gene<PackedCollection> gene1 = features.g(0.1, 0.5);
+ * Gene<PackedCollection> gene2 = features.g(0.2, 0.8);
+ * Chromosome<PackedCollection> chromosome = features.c(gene1, gene2);
  *
  * // Access genes
- * Gene<PackedCollection<?>> firstGene = chromosome.valueAt(0);
+ * Gene<PackedCollection> firstGene = chromosome.valueAt(0);
  *
  * // Access factor directly
- * Factor<PackedCollection<?>> factor = chromosome.valueAt(1, 0);  // Gene 1, Factor 0
+ * Factor<PackedCollection> factor = chromosome.valueAt(1, 0);  // Gene 1, Factor 0
  *
  * // Iterate over genes
  * chromosome.forEach(gene -> System.out.println(gene.signature()));

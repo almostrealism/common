@@ -72,11 +72,11 @@ public class BasicIntersectionTest implements TestFeatures {
 		ShadableIntersection intersection = sphere.intersectAt(ray);
 
 		if (intersection != null) {
-			Producer<PackedCollection<?>> distance = intersection.getDistance();
+			Producer<PackedCollection> distance = intersection.getDistance();
 			log("Distance producer: " + distance);
 
 			if (distance != null) {
-				PackedCollection<?> distanceValue = distance.get().evaluate();
+				PackedCollection distanceValue = distance.get().evaluate();
 
 				double d = distanceValue.toDouble();
 				log("Intersection distance: " + d);
@@ -101,17 +101,17 @@ public class BasicIntersectionTest implements TestFeatures {
 		log("Sphere created with color and diffuse shader");
 
 		// Create a point at the surface
-		Producer<Vector> point = vector(0.0, 0.0, 1.0);
+		Producer<PackedCollection> point = vector(0.0, 0.0, 1.0);
 
 		// Get color at that point
 		try {
-			org.almostrealism.color.RGB color = sphere.getValueAt(point).get().evaluate();
+			org.almostrealism.color.RGB color = new org.almostrealism.color.RGB(sphere.getValueAt(point).get().evaluate(), 0);
 			log("Color at point: " + color);
 
 			// Should get back the red color we set
-			assertEquals("Red component should be 0.8", 0.8, color.getRed());
-			assertEquals("Green component should be 0.2", 0.2, color.getGreen());
-			assertEquals("Blue component should be 0.2", 0.2, color.getBlue());
+			assertEquals("Red component should be 0.8", 0.8, color.toDouble(0));
+			assertEquals("Green component should be 0.2", 0.2, color.toDouble(1));
+			assertEquals("Blue component should be 0.2", 0.2, color.toDouble(2));
 		} catch (Exception e) {
 			log("Exception getting color: " + e.getMessage());
 			e.printStackTrace();
@@ -131,11 +131,11 @@ public class BasicIntersectionTest implements TestFeatures {
 
 		// Try to get color at a point
 		try {
-			Producer<Vector> point = vector(0.0, 0.0, 0.0);
-			Producer<org.almostrealism.color.RGB> colorProducer = light.getColorAt(point);
+			Producer<PackedCollection> point = vector(0.0, 0.0, 0.0);
+			Producer<PackedCollection> colorProducer = light.getColorAt(point);
 
 			if (colorProducer != null) {
-				org.almostrealism.color.RGB color = colorProducer.get().evaluate();
+				org.almostrealism.color.RGB color = new org.almostrealism.color.RGB(colorProducer.get().evaluate(), 0);
 				log("Light color at origin: " + color);
 			}
 		} catch (Exception e) {

@@ -40,33 +40,33 @@ public class RankedChoiceEvaluableTest implements TestFeatures {
 		if (skipKnownIssues) return;
 
 		IntStream.range(0, 5).forEach(i -> {
-			PackedCollection<?> in = new PackedCollection<>(1);
+			PackedCollection in = new PackedCollection(1);
 			in.setMem(0, 1.0);
 			Pair out = RankedChoiceEvaluable.highestRank.evaluate(
 					in, new Pair(3, Intersection.e));
 
-			System.out.println("rank = " + out.getA());
-			assertEquals(1.0, out.getA());
+			System.out.println("rank = " + out.toDouble(0));
+			assertEquals(1.0, out.toDouble(0));
 		});
 	}
 
 	@Test
 	public void highestRankKernel() {
-		PackedCollection<?> in = new PackedCollection<>(new TraversalPolicy(4, 1));
+		PackedCollection in = new PackedCollection(new TraversalPolicy(4, 1));
 		in.setMem(0, 0.0);
 		in.setMem(1, 2.0);
 		in.setMem(2, 1.0);
 		in.setMem(3, 3.0);
 
-		PackedCollection<Pair<?>> out = Pair.bank(1);
+		PackedCollection out = Pair.bank(1);
 
-		PackedCollection<Pair<?>> conf = Pair.bank(1);
+		PackedCollection conf = Pair.bank(1);
 		conf.set(0, new Pair(4, Intersection.e));
 
 		RankedChoiceEvaluable.highestRank.into(out).evaluate(in, conf);
 
 		out.get(0).print();
-		Assert.assertEquals(1.0, out.get(0).getA(), Math.pow(10, -10));
+		Assert.assertEquals(1.0, out.get(0).toDouble(0), Math.pow(10, -10));
 	}
 
 	@SuppressWarnings({"unchecked", "rawtypes"})

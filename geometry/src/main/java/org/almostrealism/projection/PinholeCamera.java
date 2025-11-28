@@ -24,6 +24,8 @@ import io.almostrealism.uml.ModelEntity;
 
 import org.almostrealism.hardware.DynamicProducerForMemoryData;
 
+import java.util.function.IntFunction;
+
 /**
  * A PinholeCamera object represents a camera in 3D. A PinholeCamera object stores the
  * location, viewing direction, up direction, focal length, and projection dimensions
@@ -153,7 +155,7 @@ public class PinholeCamera extends OrthographicCamera implements ProjectionFeatu
 	 * camera surface. This effect can be used to produce large images from small scenes while retaining accuracy.
 	 */
 	@Override
-	public Producer<Ray> rayAt(Producer<Pair<?>> posP, Producer<Pair<?>> sdP) {
+	public Producer<Ray> rayAt(Producer<Pair> posP, Producer<Pair> sdP) {
 //		if (Settings.produceOutput && Settings.produceCameraOutput) {
 //			Settings.cameraOut.println("CAMERA: U = " + this.u.toString() + ", V = " + this.v.toString() + ", W = " + this.w.toString());
 //		}
@@ -216,7 +218,7 @@ public class PinholeCamera extends OrthographicCamera implements ProjectionFeatu
 //					}
 
 					return ray;
-				}, Ray::bank);
+				}, (IntFunction) Ray::bank);
 		}
 	}
 	

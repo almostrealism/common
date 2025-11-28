@@ -82,7 +82,7 @@ import java.util.List;
  * @see DeltaFeatures#replaceInput
  */
 // TODO  This should probably extend DelegatedProducer
-public class InputStub<T extends PackedCollection<?>> implements CollectionProducer<T>,
+public class InputStub<T extends PackedCollection> implements CollectionProducer<T>,
 														ParallelProcess<Process<?, ?>, Evaluable<? extends T>>,
 														Algebraic, OperationInfo {
 	private final OperationMetadata metadata;

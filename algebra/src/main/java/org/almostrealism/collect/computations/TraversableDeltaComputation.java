@@ -144,7 +144,7 @@ import java.util.function.Supplier;
  * @author Michael Murray
  */
 // TODO  Should extend TraversableExpressionComputation
-public class TraversableDeltaComputation<T extends PackedCollection<?>>
+public class TraversableDeltaComputation<T extends PackedCollection>
 		extends CollectionProducerComputationAdapter<T, T>
 		implements HardwareFeatures {
 	/**
@@ -216,7 +216,7 @@ public class TraversableDeltaComputation<T extends PackedCollection<?>>
 	protected TraversableDeltaComputation(String name, TraversalPolicy shape,
 										  Function<TraversableExpression[], CollectionExpression> expression,
 										  Producer<?> target,
-										  Producer<PackedCollection<?>>... args) {
+										  Producer<PackedCollection>... args) {
 		super(name, shape, validateArgs(args));
 		this.expression = expression;
 		this.target = target;
@@ -542,11 +542,11 @@ public class TraversableDeltaComputation<T extends PackedCollection<?>>
 	 * @param args Input {@link Producer}s that provide data to the expression
 	 * @return A new {@link TraversableDeltaComputation} configured for gradient computation
 	 */
-	public static <T extends PackedCollection<?>> TraversableDeltaComputation<T> create(
+	public static <T extends PackedCollection> TraversableDeltaComputation<T> create(
 			String name, TraversalPolicy deltaShape, TraversalPolicy targetShape,
 			Function<TraversableExpression[], CollectionExpression> expression,
 			Producer<?> target,
-			Producer<PackedCollection<?>>... args) {
+			Producer<PackedCollection>... args) {
 		return new TraversableDeltaComputation<>(name, deltaShape.append(targetShape), expression, target, args);
 	}
 }

@@ -56,13 +56,13 @@ import java.util.function.Supplier;
  * <h2>Broadcasting Examples</h2>
  * <pre>{@code
  * // Simple broadcast addition
- * CollectionProducer<PackedCollection<?>> a = c(shape(3, 1), ...);  // (3, 1)
- * CollectionProducer<PackedCollection<?>> b = c(shape(1, 4), ...);  // (1, 4)
- * CollectionProducer<PackedCollection<?>> result = broadcast(a, b); // (3, 4)
+ * CollectionProducer<PackedCollection> a = c(shape(3, 1), ...);  // (3, 1)
+ * CollectionProducer<PackedCollection> b = c(shape(1, 4), ...);  // (1, 4)
+ * CollectionProducer<PackedCollection> result = broadcast(a, b); // (3, 4)
  *
  * // Custom broadcast with grouping
  * TraversalPolicy groupShape = shape(2, 1, 1);
- * CollectionProducer<PackedCollection<?>> sum = broadcastSum("add", groupShape, a, b);
+ * CollectionProducer<PackedCollection> sum = broadcastSum("add", groupShape, a, b);
  * }</pre>
  *
  * <h2>Weighted Sum Examples</h2>
@@ -71,7 +71,7 @@ import java.util.function.Supplier;
  * TraversalPolicy inputPos = shape(3, 4);
  * TraversalPolicy weightPos = shape(3, 4);
  * TraversalPolicy groupShape = shape(1, 4);  // Sum over dimension 1
- * CollectionProducer<PackedCollection<?>> result = weightedSum(
+ * CollectionProducer<PackedCollection> result = weightedSum(
  *     "matmul", inputPos, weightPos, groupShape, matrix, vector);
  * }</pre>
  *
@@ -104,7 +104,7 @@ public interface AlgebraFeatures extends CollectionFeatures {
 	 * @param <T>  the collection type
 	 * @return a producer for the broadcast result
 	 */
-	default <T extends PackedCollection<?>> CollectionProducer<T> broadcast(Producer<T> left,
+	default <T extends PackedCollection> CollectionProducer<T> broadcast(Producer<T> left,
 																			   Producer<T> right) {
 		TraversalPolicy groupShape = TraversalPolicy.uniform(1, shape(left).getDimensions());
 		return broadcastSum("broadcast", groupShape, left, right);
@@ -139,7 +139,7 @@ public interface AlgebraFeatures extends CollectionFeatures {
 	 * @return a producer for the broadcast sum result
 	 * @throws IllegalArgumentException if shapes are incompatible with the group shape
 	 */
-	default <T extends PackedCollection<?>> CollectionProducer<T> broadcastSum(String name,
+	default <T extends PackedCollection> CollectionProducer<T> broadcastSum(String name,
 																			   	TraversalPolicy groupShape,
 																				Producer<T> left,
 																				Producer<T> right) {
@@ -204,7 +204,7 @@ public interface AlgebraFeatures extends CollectionFeatures {
 	 * @param <T>  the collection type
 	 * @return a producer for the weighted sum result
 	 */
-	default <T extends PackedCollection<?>> CollectionProducer<T> weightedSum(String name,
+	default <T extends PackedCollection> CollectionProducer<T> weightedSum(String name,
 																			  TraversalPolicy inputPositions,
 																			  TraversalPolicy weightPositions,
 																			  TraversalPolicy groupShape,
@@ -227,7 +227,7 @@ public interface AlgebraFeatures extends CollectionFeatures {
 	 * @param <T>  the collection type
 	 * @return a producer for the weighted sum result
 	 */
-	default <T extends PackedCollection<?>> CollectionProducer<T> weightedSum(String name,
+	default <T extends PackedCollection> CollectionProducer<T> weightedSum(String name,
 																			  TraversalPolicy inputPositions,
 																			  TraversalPolicy weightPositions,
 																			  TraversalPolicy inputGroupShape,
@@ -262,7 +262,7 @@ public interface AlgebraFeatures extends CollectionFeatures {
 	 * @param <T>  the collection type
 	 * @return a producer for the weighted sum result
 	 */
-	default <T extends PackedCollection<?>> CollectionProducer<T> weightedSum(String name,
+	default <T extends PackedCollection> CollectionProducer<T> weightedSum(String name,
 																			  TraversalPolicy resultShape,
 																			  TraversalPolicy inputPositions,
 																			  TraversalPolicy weightPositions,

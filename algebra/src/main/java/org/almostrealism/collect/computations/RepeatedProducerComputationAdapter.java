@@ -54,16 +54,16 @@ import java.util.function.Supplier;
  * <p>Integration with existing computations via {@code toRepeated()}:
  * <pre>{@code
  * // Start with a collection computation
- * CollectionProducerComputationAdapter<PackedCollection<?>> computation = 
+ * CollectionProducerComputationAdapter<PackedCollection> computation =
  *     add(v(shape(100), 0), v(shape(100), 1));  // Element-wise addition
  * 
  * // Convert to repeated form for different execution strategy
- * RepeatedProducerComputationAdapter<PackedCollection<?>> repeated = 
+ * RepeatedProducerComputationAdapter<PackedCollection> repeated =
  *     computation.toRepeated();
  * 
  * // Both forms produce identical results but use different execution patterns
- * PackedCollection<?> directResult = computation.get().evaluate(a, b);
- * PackedCollection<?> repeatedResult = repeated.get().evaluate(a, b);
+ * PackedCollection directResult = computation.get().evaluate(a, b);
+ * PackedCollection repeatedResult = repeated.get().evaluate(a, b);
  * }</pre>
  * 
  * <p><strong>Performance Characteristics:</strong>
@@ -94,7 +94,7 @@ import java.util.function.Supplier;
  * 
  * @author Michael Murray
  */
-public class RepeatedProducerComputationAdapter<T extends PackedCollection<?>> extends RepeatedProducerComputation<T> {
+public class RepeatedProducerComputationAdapter<T extends PackedCollection> extends RepeatedProducerComputation<T> {
 
 	/**
 	 * Creates a new adapter that converts the specified {@link TraversableExpression}
@@ -126,7 +126,7 @@ public class RepeatedProducerComputationAdapter<T extends PackedCollection<?>> e
 	@SafeVarargs
 	public RepeatedProducerComputationAdapter(TraversalPolicy shape,
 											  TraversableExpression expression,
-											  Producer<PackedCollection<?>>... arguments) {
+											  Producer<PackedCollection>... arguments) {
 		super(null, shape,
 				(args, index) ->
 						new DoubleConstant(0.0),

@@ -54,14 +54,14 @@ import java.util.function.Supplier;
  * TriangleFeatures tf = TriangleFeatures.getInstance();
  *
  * // Create triangle from three points
- * Producer<Vector> p1 = tf.vector(0, 0, 0);
- * Producer<Vector> p2 = tf.vector(1, 0, 0);
- * Producer<Vector> p3 = tf.vector(0, 1, 0);
- * CollectionProducer<PackedCollection<Vector>> triangle = tf.triangle(p1, p2, p3);
+ * Producer<PackedCollection> p1 = tf.vector(0, 0, 0);
+ * Producer<PackedCollection> p2 = tf.vector(1, 0, 0);
+ * Producer<PackedCollection> p3 = tf.vector(0, 1, 0);
+ * CollectionProducer<PackedCollection> triangle = tf.triangle(p1, p2, p3);
  *
  * // Access triangle components
- * CollectionProducer<Vector> edge1 = tf.abc(triangleData);
- * CollectionProducer<Vector> normal = tf.normal(triangleData);
+ * CollectionProducer<PackedCollection> edge1 = tf.abc(triangleData);
+ * CollectionProducer<PackedCollection> normal = tf.normal(triangleData);
  * }</pre>
  *
  * @author Michael Murray
@@ -76,7 +76,7 @@ public interface TriangleFeatures extends VectorFeatures {
 	 * @param t the triangle data producer
 	 * @return producer for the first edge vector (vertex2 - vertex1)
 	 */
-	default CollectionProducer<Vector> abc(Producer<PackedCollection<?>> t) {
+	default CollectionProducer<PackedCollection> abc(Producer<PackedCollection> t) {
 		return vector(t, 0);
 	}
 
@@ -86,7 +86,7 @@ public interface TriangleFeatures extends VectorFeatures {
 	 * @param t the triangle data producer
 	 * @return producer for the second edge vector (vertex3 - vertex1)
 	 */
-	default CollectionProducer<Vector> def(Producer<PackedCollection<?>> t) {
+	default CollectionProducer<PackedCollection> def(Producer<PackedCollection> t) {
 		return vector(t, 1);
 	}
 
@@ -96,7 +96,7 @@ public interface TriangleFeatures extends VectorFeatures {
 	 * @param t the triangle data producer
 	 * @return producer for the position vector (vertex1)
 	 */
-	default CollectionProducer<Vector> jkl(Producer<PackedCollection<?>> t) {
+	default CollectionProducer<PackedCollection> jkl(Producer<PackedCollection> t) {
 		return vector(t, 2);
 	}
 
@@ -106,7 +106,7 @@ public interface TriangleFeatures extends VectorFeatures {
 	 * @param t the triangle data producer
 	 * @return producer for the unit normal vector
 	 */
-	default CollectionProducer<Vector> normal(Producer<PackedCollection<?>> t) {
+	default CollectionProducer<PackedCollection> normal(Producer<PackedCollection> t) {
 		return vector(t, 4);
 	}
 
@@ -116,7 +116,7 @@ public interface TriangleFeatures extends VectorFeatures {
 	 * @param points supplier for a packed collection containing 3 vertices (9 floats)
 	 * @return producer for the triangle data structure
 	 */
-	default CollectionProducer<PackedCollection<?>> triangle(Producer<PackedCollection<?>> points) {
+	default CollectionProducer<PackedCollection> triangle(Producer<PackedCollection> points) {
 		return triangle(
 				point(points, 0),
 				point(points, 1),
@@ -133,7 +133,7 @@ public interface TriangleFeatures extends VectorFeatures {
 	 * @param p3 producer for the third vertex
 	 * @return producer for the triangle data structure
 	 */
-	default <T extends PackedCollection<?>> CollectionProducer<PackedCollection<?>> triangle(
+	default <T extends PackedCollection> CollectionProducer<PackedCollection> triangle(
 			Producer<T> p1, Producer<T> p2, Producer<T> p3) {
 		CollectionProducer abc = subtract(p2, p1);
 		CollectionProducer def = subtract(p3, p1);
@@ -150,8 +150,8 @@ public interface TriangleFeatures extends VectorFeatures {
 	 * @param normal the unit normal vector
 	 * @return producer for the triangle data structure as a 4x3 packed collection
 	 */
-	default CollectionProducer<PackedCollection<Vector>> triangle(Producer<Vector> abc, Producer<Vector> def,
-																  Producer<Vector> jkl, Producer<Vector> normal) {
+	default CollectionProducer<PackedCollection> triangle(Producer<PackedCollection> abc, Producer<PackedCollection> def,
+																  Producer<PackedCollection> jkl, Producer<PackedCollection> normal) {
 		// For batch processing, inputs have shape (N, 3) and we need output shape (N, 4, 3)
 		// Determine batch size from input shape
 		TraversalPolicy inputShape = shape(abc);
@@ -205,7 +205,7 @@ public interface TriangleFeatures extends VectorFeatures {
 	 * @param vertexIndex  the vertex index within each group
 	 * @return producer for the extracted vertex/vertices as Vector(s)
 	 */
-	default CollectionProducer<PackedCollection<?>> point(Producer<PackedCollection<?>> points, int vertexIndex) {
+	default CollectionProducer<PackedCollection> point(Producer<PackedCollection> points, int vertexIndex) {
 		TraversalPolicy inputShape = shape(points);
 
 		// stride = number of floats per batch item (vertices per group * 3 components)
@@ -232,7 +232,7 @@ public interface TriangleFeatures extends VectorFeatures {
 		}
 
 		int vertexOffset = vertexIndex * 3;
-		IndexProjectionProducerComputation<PackedCollection<?>> projection = new IndexProjectionProducerComputation<>(
+		IndexProjectionProducerComputation<PackedCollection> projection = new IndexProjectionProducerComputation<>(
 				"point_v" + vertexIndex + "_s" + stride, outputShape,
 				idx -> idx.divide(e(3)).floor().multiply(e(stride)).add(e(vertexOffset)).add(idx.imod(3)),
 				points);
@@ -247,9 +247,9 @@ public interface TriangleFeatures extends VectorFeatures {
 	 * @param p3 producer for the third vertex
 	 * @return producer for the packed vertex collection
 	 */
-	default CollectionProducer<PackedCollection<Vector>> points(Producer<Vector> p1,
-																Producer<Vector> p2,
-																Producer<Vector> p3) {
+	default CollectionProducer<PackedCollection> points(Producer<PackedCollection> p1,
+																Producer<PackedCollection> p2,
+																Producer<PackedCollection> p3) {
 		return concat(shape(3, 3), (Producer) p1, (Producer) p2, (Producer)  p3);
 	}
 

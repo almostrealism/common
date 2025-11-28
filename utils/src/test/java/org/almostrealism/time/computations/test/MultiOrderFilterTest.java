@@ -27,8 +27,8 @@ public class MultiOrderFilterTest implements TestFeatures {
 	public void compile() {
 		int order = 30;
 
-		PackedCollection<?> series = new PackedCollection<>(10000);
-		PackedCollection<?> coefficients = new PackedCollection<>(order + 1);
+		PackedCollection series = new PackedCollection(10000);
+		PackedCollection coefficients = new PackedCollection(order + 1);
 
 		MultiOrderFilter filter = MultiOrderFilter.create(traverseEach(cp(series)), p(coefficients));
 		filter.get().evaluate();

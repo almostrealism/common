@@ -61,12 +61,12 @@ import java.util.stream.IntStream;
  * <pre>{@code
  * public class MyProcessor implements TemporalFeatures {
  *     public void processAudio() {
- *         Producer<PackedCollection<?>> signal = ...;
- *         Producer<PackedCollection<?>> cutoff = c(1000.0);
+ *         Producer<PackedCollection> signal = ...;
+ *         Producer<PackedCollection> cutoff = c(1000.0);
  *
  *         // Use TemporalFeatures methods directly
  *         MultiOrderFilter lpf = lowPass(signal, cutoff, 44100);
- *         PackedCollection<?> filtered = lpf.get().evaluate();
+ *         PackedCollection filtered = lpf.get().evaluate();
  *     }
  * }
  * }</pre>
@@ -89,9 +89,9 @@ import java.util.stream.IntStream;
  * <h3>Frequency Analysis Pipeline</h3>
  * <pre>{@code
  * class SpectrumAnalyzer implements TemporalFeatures {
- *     PackedCollection<?> analyze(Producer<PackedCollection<?>> audio) {
+ *     PackedCollection analyze(Producer<PackedCollection> audio) {
  *         // Convert to complex format
- *         Producer<PackedCollection<?>> complex = ...;
+ *         Producer<PackedCollection> complex = ...;
  *
  *         // Compute FFT
  *         FourierTransform fft = fft(512, complex);
@@ -103,13 +103,13 @@ import java.util.stream.IntStream;
  * <h3>Audio Filter Chain</h3>
  * <pre>{@code
  * class FilterChain implements TemporalFeatures {
- *     Producer<PackedCollection<?>> process(Producer<PackedCollection<?>> input) {
+ *     Producer<PackedCollection> process(Producer<PackedCollection> input) {
  *         // High-pass at 80Hz (remove rumble)
- *         Producer<PackedCollection<?>> hp =
+ *         Producer<PackedCollection> hp =
  *             highPass(input, c(80.0), 44100, 20).get();
  *
  *         // Low-pass at 12kHz (anti-aliasing)
- *         Producer<PackedCollection<?>> lp =
+ *         Producer<PackedCollection> lp =
  *             lowPass(hp, c(12000.0), 44100, 40).get();
  *
  *         return lp;
@@ -120,9 +120,9 @@ import java.util.stream.IntStream;
  * <h3>Time-Series Resampling</h3>
  * <pre>{@code
  * class Resampler implements TemporalFeatures {
- *     PackedCollection<?> resample(AcceleratedTimeSeries series,
+ *     PackedCollection resample(AcceleratedTimeSeries series,
  *                                   double newRate) {
- *         Producer<PackedCollection<?>> position = ...;
+ *         Producer<PackedCollection> position = ...;
  *         Interpolate interp = interpolate(p(series), position, 44100.0);
  *         return interp.get().evaluate();
  *     }
@@ -300,8 +300,8 @@ public interface TemporalFeatures extends GeometryFeatures {
 	 * @param value Producer providing the value
 	 * @return A producer for the temporal scalar
 	 */
-	default CollectionProducer<TemporalScalar> temporal(Producer<PackedCollection<?>> time,
-														Producer<PackedCollection<?>> value) {
+	default CollectionProducer<TemporalScalar> temporal(Producer<PackedCollection> time,
+														Producer<PackedCollection> value) {
 		return concat(shape(2), time, value);
 	}
 
@@ -313,8 +313,8 @@ public interface TemporalFeatures extends GeometryFeatures {
 	 * @return An interpolation computation
 	 * @see Interpolate
 	 */
-	default Interpolate interpolate(Producer<PackedCollection<?>> series,
-									Producer<PackedCollection<?>> position) {
+	default Interpolate interpolate(Producer<PackedCollection> series,
+									Producer<PackedCollection> position) {
 		return interpolate(series, position, c(1.0));
 	}
 
@@ -327,9 +327,9 @@ public interface TemporalFeatures extends GeometryFeatures {
 	 * @return An interpolation computation
 	 * @see Interpolate
 	 */
-	default Interpolate interpolate(Producer<PackedCollection<?>> series,
-									Producer<PackedCollection<?>> position,
-									Producer<PackedCollection<?>> rate) {
+	default Interpolate interpolate(Producer<PackedCollection> series,
+									Producer<PackedCollection> position,
+									Producer<PackedCollection> rate) {
 		return new Interpolate(series, position, rate);
 	}
 
@@ -344,8 +344,8 @@ public interface TemporalFeatures extends GeometryFeatures {
 	 * @return An interpolation computation
 	 * @see Interpolate
 	 */
-	default Interpolate interpolate(Producer<PackedCollection<?>> series,
-									Producer<PackedCollection<?>> time,
+	default Interpolate interpolate(Producer<PackedCollection> series,
+									Producer<PackedCollection> time,
 									double sampleRate) {
 		return new Interpolate(series, time,
 				v -> Product.of(v, e(1.0 / sampleRate)),
@@ -362,9 +362,9 @@ public interface TemporalFeatures extends GeometryFeatures {
 	 * @return An interpolation computation
 	 * @see Interpolate
 	 */
-	default Interpolate interpolate(Producer<PackedCollection<?>> series,
-									Producer<PackedCollection<?>> time,
-									Producer<PackedCollection<?>> rate,
+	default Interpolate interpolate(Producer<PackedCollection> series,
+									Producer<PackedCollection> time,
+									Producer<PackedCollection> rate,
 									double sampleRate) {
 		return new Interpolate(series, time, rate,
 				v -> Product.of(v, e(1.0 / sampleRate)),
@@ -385,9 +385,9 @@ public interface TemporalFeatures extends GeometryFeatures {
 	 * @see Interpolate
 	 */
 	default Interpolate interpolate(
-									Producer<PackedCollection<?>> series,
-									Producer<PackedCollection<?>> position,
-									Producer<PackedCollection<?>> rate,
+									Producer<PackedCollection> series,
+									Producer<PackedCollection> position,
+									Producer<PackedCollection> rate,
 									Function<Expression, Expression> timeForIndex,
 									Function<Expression, Expression> indexForTime) {
 		return new Interpolate(series, position, rate, timeForIndex, indexForTime);
@@ -401,8 +401,8 @@ public interface TemporalFeatures extends GeometryFeatures {
 	 * @return A filter computation
 	 * @see MultiOrderFilter
 	 */
-	default MultiOrderFilter aggregate(Producer<PackedCollection<?>> series,
-									   Producer<PackedCollection<?>> coefficients) {
+	default MultiOrderFilter aggregate(Producer<PackedCollection> series,
+									   Producer<PackedCollection> coefficients) {
 		return MultiOrderFilter.create(series, coefficients);
 	}
 
@@ -415,7 +415,7 @@ public interface TemporalFeatures extends GeometryFeatures {
 	 * @return An FFT computation
 	 * @see FourierTransform
 	 */
-	default FourierTransform fft(int bins, Producer<PackedCollection<?>> input,
+	default FourierTransform fft(int bins, Producer<PackedCollection> input,
 								 ComputeRequirement... requirements) {
 		return fft(bins, false, input, requirements);
 	}
@@ -429,7 +429,7 @@ public interface TemporalFeatures extends GeometryFeatures {
 	 * @return An IFFT computation
 	 * @see FourierTransform
 	 */
-	default FourierTransform ifft(int bins, Producer<PackedCollection<?>> input,
+	default FourierTransform ifft(int bins, Producer<PackedCollection> input,
 								  ComputeRequirement... requirements) {
 		return fft(bins, true, input, requirements);
 	}
@@ -445,7 +445,7 @@ public interface TemporalFeatures extends GeometryFeatures {
 	 * @see FourierTransform
 	 */
 	default FourierTransform fft(int bins, boolean inverse,
-								 Producer<PackedCollection<?>> input,
+								 Producer<PackedCollection> input,
 								 ComputeRequirement... requirements) {
 		TraversalPolicy shape = shape(input);
 
@@ -476,26 +476,26 @@ public interface TemporalFeatures extends GeometryFeatures {
 	 * @param filterOrder Filter order (number of coefficients - 1)
 	 * @return Producer providing filter coefficients
 	 */
-	default CollectionProducer<PackedCollection<?>> lowPassCoefficients(
-			Producer<PackedCollection<?>> cutoff,
+	default CollectionProducer<PackedCollection> lowPassCoefficients(
+			Producer<PackedCollection> cutoff,
 			int sampleRate, int filterOrder) {
-		CollectionProducer<PackedCollection<?>> normalizedCutoff =
+		CollectionProducer<PackedCollection> normalizedCutoff =
 				c(2).multiply(cutoff).divide(sampleRate);
 
 		int center = filterOrder / 2;
-		CollectionProducer<PackedCollection<?>> index =
+		CollectionProducer<PackedCollection> index =
 				c(IntStream.range(0, filterOrder + 1).mapToDouble(i -> i).toArray());
-//		CollectionProducer<PackedCollection<?>> index = integers(0, filterOrder + 1);
-		CollectionProducer<PackedCollection<?>> k = index.subtract(c(center)).multiply(c(PI));
+//		CollectionProducer<PackedCollection> index = integers(0, filterOrder + 1);
+		CollectionProducer<PackedCollection> k = index.subtract(c(center)).multiply(c(PI));
 		k = k.repeat(shape(cutoff).getSize());
 
 		normalizedCutoff = normalizedCutoff.traverse(1).repeat(shape(index).getSize());
 
-		CollectionProducer<PackedCollection<?>> coeff =
+		CollectionProducer<PackedCollection> coeff =
 				sin(k.multiply(normalizedCutoff)).divide(k);
 		coeff = equals(index, c(center), normalizedCutoff, coeff);
 
-		CollectionProducer<PackedCollection<?>> alt =
+		CollectionProducer<PackedCollection> alt =
 				c(0.54).subtract(c(0.46)
 						.multiply(cos(c(2).multiply(PI).multiply(index).divide(filterOrder))));
 		return coeff.multiply(alt).consolidate();
@@ -509,11 +509,11 @@ public interface TemporalFeatures extends GeometryFeatures {
 	 * @param filterOrder Filter order (number of coefficients - 1)
 	 * @return Producer providing filter coefficients
 	 */
-	default CollectionProducer<PackedCollection<?>> highPassCoefficients(
-			Producer<PackedCollection<?>> cutoff,
+	default CollectionProducer<PackedCollection> highPassCoefficients(
+			Producer<PackedCollection> cutoff,
 			int sampleRate, int filterOrder) {
 		int center = filterOrder / 2;
-		CollectionProducer<PackedCollection<?>> index =
+		CollectionProducer<PackedCollection> index =
 				c(IntStream.range(0, filterOrder + 1).mapToDouble(i -> i).toArray());
 		return equals(index, c(center), c(1.0), c(0.0))
 				.subtract(lowPassCoefficients(cutoff, sampleRate, filterOrder));
@@ -528,8 +528,8 @@ public interface TemporalFeatures extends GeometryFeatures {
 	 * @return A low-pass filter computation
 	 * @see #lowPass(Producer, Producer, int, int)
 	 */
-	default MultiOrderFilter lowPass(Producer<PackedCollection<?>> series,
-									  Producer<PackedCollection<?>> cutoff,
+	default MultiOrderFilter lowPass(Producer<PackedCollection> series,
+									  Producer<PackedCollection> cutoff,
 									  int sampleRate) {
 		return lowPass(series, cutoff, sampleRate, 40);
 	}
@@ -545,8 +545,8 @@ public interface TemporalFeatures extends GeometryFeatures {
 	 * @param order Filter order (affects steepness)
 	 * @return A low-pass filter computation
 	 */
-	default MultiOrderFilter lowPass(Producer<PackedCollection<?>> series,
-									 Producer<PackedCollection<?>> cutoff,
+	default MultiOrderFilter lowPass(Producer<PackedCollection> series,
+									 Producer<PackedCollection> cutoff,
 									 int sampleRate, int order) {
 		TraversalPolicy shape = CollectionFeatures.getInstance().shape(series);
 		if (shape.getTraversalAxis() != shape.getDimensions() - 1) {
@@ -565,8 +565,8 @@ public interface TemporalFeatures extends GeometryFeatures {
 	 * @return A high-pass filter computation
 	 * @see #highPass(Producer, Producer, int, int)
 	 */
-	default MultiOrderFilter highPass(Producer<PackedCollection<?>> series,
-									  Producer<PackedCollection<?>> cutoff,
+	default MultiOrderFilter highPass(Producer<PackedCollection> series,
+									  Producer<PackedCollection> cutoff,
 									  int sampleRate) {
 		return highPass(series, cutoff, sampleRate, 40);
 	}
@@ -582,8 +582,8 @@ public interface TemporalFeatures extends GeometryFeatures {
 	 * @param order Filter order (affects steepness)
 	 * @return A high-pass filter computation
 	 */
-	default MultiOrderFilter highPass(Producer<PackedCollection<?>> series,
-									  Producer<PackedCollection<?>> cutoff,
+	default MultiOrderFilter highPass(Producer<PackedCollection> series,
+									  Producer<PackedCollection> cutoff,
 									  int sampleRate, int order) {
 		TraversalPolicy shape = CollectionFeatures.getInstance().shape(series);
 		if (shape.getTraversalAxis() != shape.getDimensions() - 1) {

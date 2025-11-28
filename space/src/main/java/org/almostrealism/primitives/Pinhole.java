@@ -15,6 +15,7 @@
  */
 
 package org.almostrealism.primitives;
+import org.almostrealism.collect.PackedCollection;
 
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Vector;
@@ -47,13 +48,13 @@ public class Pinhole extends Plane implements Absorber, Fast {
 	public double getRadius() { return this.radius; }
 	
 	public boolean absorb(Vector x, Vector p, double energy) {
-		double d = Math.abs(x.dotProduct(this.normal.get().evaluate()));
+		double d = Math.abs(x.dotProduct(new Vector(this.normal.get().evaluate(), 0)));
 		if (d > this.thick) return false;
-		
+
 		double y = Math.abs(x.dotProduct(new Vector(this.up)));
-		
+
 		if (this.across == null)
-			this.across = new Vector(this.up).crossProduct(this.normal.get().evaluate()).toArray();
+			this.across = new Vector(this.up).crossProduct(new Vector(this.normal.get().evaluate(), 0)).toArray();
 		
 		double z = Math.abs(x.dotProduct(new Vector(this.across)));
 		
@@ -70,7 +71,7 @@ public class Pinhole extends Plane implements Absorber, Fast {
 	public void setOrigPosition(double[] x) { }
 
 	@Override
-	public Producer<Vector> emit() { return null; }
+	public Producer<PackedCollection> emit() { return null; }
 
 	@Override
 	public void setClock(Clock c) { this.clock = c; }
@@ -82,7 +83,7 @@ public class Pinhole extends Plane implements Absorber, Fast {
 	public double getEmitEnergy() { return 0.0; }
 
 	@Override
-	public Producer<Vector> getEmitPosition() { return null; }
+	public Producer<PackedCollection> getEmitPosition() { return null; }
 
 	@Override
 	public double getNextEmit() { return Integer.MAX_VALUE; }

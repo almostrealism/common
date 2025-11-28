@@ -84,24 +84,24 @@ public class Triangle extends AbstractSurface implements ParticleGroup, Triangle
 	private boolean useT = true;
 
 	/** Precomputed triangle data for hardware-accelerated intersection. */
-	private PackedCollection<?> data;
+	private PackedCollection data;
 
 	/**
 	 * Evaluable that computes precomputed triangle data from vertex positions.
 	 * The output format is a 4x3 matrix containing edge vectors and face normal.
 	 */
-	public static final Evaluable<PackedCollection<?>> dataProducer;
+	public static final Evaluable<PackedCollection> dataProducer;
 
 	/**
 	 * Evaluable for computing ray-triangle intersections.
 	 * Takes ray data and triangle data as inputs, returns intersection distance.
 	 */
-	public static final Evaluable<PackedCollection<?>> intersectAt;
+	public static final Evaluable<PackedCollection> intersectAt;
 
 	static {
 		// Note: Input shape is (3, 3) for a single triangle - 3 vertices with 3 components each
 		// For batch processing with shape (N, 3, 3), use TriangleFeatures.triangle(Producer) directly
-		CollectionProducer<PackedCollection<?>> triangle =
+		CollectionProducer<PackedCollection> triangle =
 				triangleFeat.triangle(Input.value(new TraversalPolicy(false, false, 3, 3), 0));
 		dataProducer = triangle.get();
 
@@ -176,8 +176,8 @@ public class Triangle extends AbstractSurface implements ParticleGroup, Triangle
 	 *
 	 * @return a bank of three vectors containing the vertex positions
 	 */
-	public PackedCollection<Vector> getPointData() {
-		PackedCollection<Vector> points = Vector.bank(3);
+	public PackedCollection getPointData() {
+		PackedCollection points = Vector.bank(3);
 		points.set(0, p1);
 		points.set(1, p2);
 		points.set(2, p3);
@@ -197,7 +197,7 @@ public class Triangle extends AbstractSurface implements ParticleGroup, Triangle
 	 *
 	 * @return the precomputed triangle data
 	 */
-	public PackedCollection<?> getData() { return data; }
+	public PackedCollection getData() { return data; }
 	
 	/**
 	 * Sets the vertices of this triangle to the specified positions.
@@ -343,13 +343,14 @@ public class Triangle extends AbstractSurface implements ParticleGroup, Triangle
 	}
 
 	@Override
-	public Producer<RGB> getValueAt(Producer<Vector> point) {
-		Producer<RGB> dcp = getColorAt(point, useT);
+	public Producer<PackedCollection> getValueAt(Producer<PackedCollection> point) {
+		Producer<PackedCollection> dcp = getColorAt(point, useT);
 
 		return func(shape(3), args -> {
-			RGB dc = dcp.get().evaluate(args);
+			PackedCollection dcResult = dcp.get().evaluate(args);
+			RGB dc = dcResult instanceof RGB ? (RGB) dcResult : new RGB(dcResult.toDouble(0), dcResult.toDouble(1), dcResult.toDouble(2));
 
-			Vector triple = point.get().evaluate(args);
+			Vector triple = new Vector(point.get().evaluate(args), 0);
 			if (dc.length() < Intersection.e * 100) return new RGB(0.0, 0.0, 0.0);
 
 			Vector abc = new Vector(data.get(0), 0);
@@ -412,10 +413,10 @@ public class Triangle extends AbstractSurface implements ParticleGroup, Triangle
 	 * at the point represented by the specified {@link Vector} {@link Evaluable}.
 	 */
 	@Override
-	public Producer<Vector> getNormalAt(Producer<Vector> p) {
+	public Producer<PackedCollection> getNormalAt(Producer<PackedCollection> p) {
 		if (smooth && vertexData == null) {
 			return func(shape(3), args -> {
-				Vector point = p.get().evaluate(args);
+				Vector point = new Vector(p.get().evaluate(args), 0);
 
 				double g = point.getX();
 				double h = point.getY();
@@ -457,10 +458,10 @@ public class Triangle extends AbstractSurface implements ParticleGroup, Triangle
 		} else {
 			if (useT && getTransform(true) != null) {
 				return getTransform(true).getInverse().transform(
-						v(new Vector(data.get(3), 0)),
+						(Producer) v(new Vector(data.get(3), 0)),
 						TransformMatrix.TRANSFORM_AS_NORMAL);
 			} else {
-				return vector(c(((PackedCollection<?>) data.get(3)).clone()));
+				return vector(c(((PackedCollection) data.get(3)).clone()));
 			}
 		}
 	}
@@ -485,13 +486,13 @@ public class Triangle extends AbstractSurface implements ParticleGroup, Triangle
 	}
 
 	@Override
-	public Operator<PackedCollection<?>> get() {
+	public Operator<PackedCollection> get() {
 		return null;
 	}
 
 	@Override
-	public Operator<PackedCollection<?>> expect() {
-		PackedCollection<?> zero = new PackedCollection<>(1);
+	public Operator<PackedCollection> expect() {
+		PackedCollection zero = new PackedCollection(1);
 		zero.setMem(0, 0.0);
 		return new Constant<>(zero);
 	}

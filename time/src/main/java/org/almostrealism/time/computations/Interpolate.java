@@ -81,9 +81,9 @@ import java.util.function.Function;
  * series.add(new TemporalScalar(2.0, 2.0));
  *
  * // Query at t=0.5 (between first two points)
- * Producer<PackedCollection<?>> seriesP = p(series);
- * Producer<PackedCollection<?>> timeP = c(p(new Pair(0.5, 0.0)));
- * Producer<PackedCollection<?>> rateP = c(pack(1.0));
+ * Producer<PackedCollection> seriesP = p(series);
+ * Producer<PackedCollection> timeP = c(p(new Pair(0.5, 0.0)));
+ * Producer<PackedCollection> rateP = c(pack(1.0));
  *
  * Interpolate interp = new Interpolate(seriesP, timeP, rateP);
  * double result = interp.get().evaluate().toDouble(0);
@@ -116,7 +116,7 @@ import java.util.function.Function;
  *     double targetTime = i / 48000.0;
  *     double sourceTime = targetTime * ratio;
  *
- *     Producer<PackedCollection<?>> timeP = c(p(new Pair(sourceTime, 0.0)));
+ *     Producer<PackedCollection> timeP = c(p(new Pair(sourceTime, 0.0)));
  *     Interpolate interp = new Interpolate(p(audio44k), timeP, null);
  *     double sample = interp.get().evaluate().toDouble(0);
  *     audio48k.add(new TemporalScalar(targetTime, sample));
@@ -139,7 +139,7 @@ import java.util.function.Function;
  * <p>The optional {@code rate} parameter scales the time axis:</p>
  * <pre>{@code
  * // Double-speed playback (2x rate)
- * Producer<PackedCollection<?>> rate = c(pack(2.0));
+ * Producer<PackedCollection> rate = c(pack(2.0));
  * Interpolate fastPlayback = new Interpolate(series, position, rate);
  *
  * // Query at t=1.0 in output time maps to t=2.0 in series time
@@ -182,7 +182,7 @@ import java.util.function.Function;
  *
  * @author Michael Murray
  */
-public class Interpolate extends CollectionProducerComputationBase<PackedCollection<?>, PackedCollection<?>> {
+public class Interpolate extends CollectionProducerComputationBase<PackedCollection, PackedCollection> {
 	/**
 	 * When true, output shape is scalar (1 element).
 	 * When false, output shape matches position shape.
@@ -208,7 +208,7 @@ public class Interpolate extends CollectionProducerComputationBase<PackedCollect
 	 * @param position Producer providing the query time(s)
 	 * @param rate Producer providing the playback rate multiplier
 	 */
-	public Interpolate(Producer<PackedCollection<?>> series, Producer<PackedCollection<?>> position, Producer<PackedCollection<?>> rate) {
+	public Interpolate(Producer<PackedCollection> series, Producer<PackedCollection> position, Producer<PackedCollection> rate) {
 		this(series, position, rate, v -> v, v -> v);
 	}
 
@@ -220,7 +220,7 @@ public class Interpolate extends CollectionProducerComputationBase<PackedCollect
 	 * @param timeForIndex Function mapping array index to timestamp
 	 * @param indexForTime Function mapping timestamp to array index
 	 */
-	public Interpolate(Producer<PackedCollection<?>> series, Producer<PackedCollection<?>> position,
+	public Interpolate(Producer<PackedCollection> series, Producer<PackedCollection> position,
 					   Function<Expression, Expression> timeForIndex,
 					   Function<Expression, Expression> indexForTime) {
 		this(series, position, null, timeForIndex, indexForTime);
@@ -235,8 +235,8 @@ public class Interpolate extends CollectionProducerComputationBase<PackedCollect
 	 * @param timeForIndex Function mapping array index to timestamp
 	 * @param indexForTime Function mapping timestamp to array index
 	 */
-	public Interpolate(Producer<PackedCollection<?>> series, Producer<PackedCollection<?>> position,
-					   Producer<PackedCollection<?>> rate,
+	public Interpolate(Producer<PackedCollection> series, Producer<PackedCollection> position,
+					   Producer<PackedCollection> rate,
 					   Function<Expression, Expression> timeForIndex,
 					   Function<Expression, Expression> indexForTime) {
 		super("interpolate", computeShape(series, position),
@@ -284,8 +284,8 @@ public class Interpolate extends CollectionProducerComputationBase<PackedCollect
 	}
 
 	@Override
-	public Scope<PackedCollection<?>> getScope(KernelStructureContext context) {
-		HybridScope<PackedCollection<?>> scope = new HybridScope<>(this);
+	public Scope<PackedCollection> getScope(KernelStructureContext context) {
+		HybridScope<PackedCollection> scope = new HybridScope<>(this);
 
 		Expression idx = new StaticReference(Integer.class, getNameProvider().getVariableName(0));
 		Expression left = new StaticReference(Integer.class, getNameProvider().getVariableName(1));
@@ -366,7 +366,7 @@ public class Interpolate extends CollectionProducerComputationBase<PackedCollect
 		return null;
 	}
 
-	protected static TraversalPolicy computeShape(Producer<PackedCollection<?>> series, Producer<PackedCollection<?>> position) {
+	protected static TraversalPolicy computeShape(Producer<PackedCollection> series, Producer<PackedCollection> position) {
 		if (enableAtomicShape) {
 			return new TraversalPolicy(1);
 		}

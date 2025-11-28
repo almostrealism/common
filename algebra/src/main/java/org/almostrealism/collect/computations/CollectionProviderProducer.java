@@ -82,10 +82,10 @@ import java.util.List;
  *
  * <p><strong>Providing model weights:</strong></p>
  * <pre>{@code
- * PackedCollection<?> weights = new PackedCollection<>(shape(128, 64));
+ * PackedCollection weights = new PackedCollection(shape(128, 64));
  * weights.fill(pos -> Math.random() * 0.1);
  *
- * CollectionProviderProducer<PackedCollection<?>> weightsProducer =
+ * CollectionProviderProducer<PackedCollection> weightsProducer =
  *     new CollectionProviderProducer<>(weights);
  *
  * // Use in computation graph
@@ -94,20 +94,20 @@ import java.util.List;
  *
  * <p><strong>Traversing and reshaping:</strong></p>
  * <pre>{@code
- * PackedCollection<?> data = new PackedCollection<>(shape(10, 5, 3));
- * CollectionProviderProducer<PackedCollection<?>> dataProducer =
+ * PackedCollection data = new PackedCollection(shape(10, 5, 3));
+ * CollectionProviderProducer<PackedCollection> dataProducer =
  *     new CollectionProviderProducer<>(data);
  *
  * // Traverse along axis 1 (5 elements)
- * Producer<PackedCollection<?>> traversed = dataProducer.traverse(1);
+ * Producer<PackedCollection> traversed = dataProducer.traverse(1);
  *
  * // Reshape to different dimensions
- * Producer<PackedCollection<?>> reshaped = dataProducer.reshape(shape(50, 3));
+ * Producer<PackedCollection> reshaped = dataProducer.reshape(shape(50, 3));
  * }</pre>
  *
  * <p><strong>Checking identity in graph analysis:</strong></p>
  * <pre>{@code
- * PackedCollection<?> sharedData = new PackedCollection<>(shape(100));
+ * PackedCollection sharedData = new PackedCollection(shape(100));
  * CollectionProviderProducer<?> producer1 = new CollectionProviderProducer<>(sharedData);
  * CollectionProviderProducer<?> producer2 = new CollectionProviderProducer<>(sharedData);
  *
@@ -210,7 +210,7 @@ public class CollectionProviderProducer<T extends Shape>
 	@Override
 	public Evaluable get() {
 		return value instanceof PackedCollection ?
-				new CollectionProvider((PackedCollection<?>) value) : new Provider(value);
+				new CollectionProvider((PackedCollection) value) : new Provider(value);
 	}
 
 	/**

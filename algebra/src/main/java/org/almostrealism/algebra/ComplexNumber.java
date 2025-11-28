@@ -149,14 +149,14 @@ public class ComplexNumber extends Pair {
 	 *
 	 * @return a function that creates complex number(s) from memory data
 	 */
-	public static BiFunction<MemoryData, Integer, PackedCollection<Pair<?>>> complexPostprocessor() {
+	public static BiFunction<MemoryData, Integer, PackedCollection> complexPostprocessor() {
 		return (delegate, offset) -> {
 			TraversalPolicy shape = CollectionFeatures.getInstance().shape(delegate);
 
 			if (shape.getTotalSize() == 2 || offset != 0) {
 				return new ComplexNumber(delegate, offset);
 			} else {
-				return new PackedCollection<>(shape, 1,
+				return new PackedCollection(shape, 1,
 						spec -> new ComplexNumber(spec.getDelegate(), spec.getOffset()),
 						delegate, offset);
 			}

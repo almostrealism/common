@@ -34,36 +34,36 @@ public class MatrixTransformTests implements TestFeatures {
 	@Test
 	public void transformAsLocation1() {
 		TransformMatrix matrix = translationMatrix(vector(0.0, 10.0, 0.0)).evaluate();
-		Vector v = transformAsLocation(matrix, vector(1.0, 2.0, 3.0)).evaluate();
+		Vector v = new Vector(transformAsLocation(matrix, vector(1.0, 2.0, 3.0)).evaluate(), 0);
 
-		assertEquals(1.0, v.getX());
-		assertEquals(12.0, v.getY());
-		assertEquals(3.0, v.getZ());
+		assertEquals(1.0, v.toDouble(0));
+		assertEquals(12.0, v.toDouble(1));
+		assertEquals(3.0, v.toDouble(2));
 	}
 
 	@Test
 	public void transformAsLocation2() {
 		TransformMatrix matrix = scaleMatrix(vector(2.0, 1.0, 3.0)).evaluate();
-		Vector v = transformAsLocation(matrix, vector(1.0, 2.0, 3.0)).evaluate();
+		Vector v = new Vector(transformAsLocation(matrix, vector(1.0, 2.0, 3.0)).evaluate(), 0);
 
-		assertEquals(2.0, v.getX());
-		assertEquals(2.0, v.getY());
-		assertEquals(9.0, v.getZ());
+		assertEquals(2.0, v.toDouble(0));
+		assertEquals(2.0, v.toDouble(1));
+		assertEquals(9.0, v.toDouble(2));
 	}
 
 	@Test
 	public void transformAsOffset() {
 		TransformMatrix matrix = translationMatrix(vector(0.0, 10.0, 0.0)).evaluate();
-		Vector v = transformAsOffset(matrix, vector(1.0, 2.0, 3.0)).evaluate();
-		assertEquals(1.0, v.getX());
-		assertEquals(2.0, v.getY());
-		assertEquals(3.0, v.getZ());
+		Vector v = new Vector(transformAsOffset(matrix, vector(1.0, 2.0, 3.0)).evaluate(), 0);
+		assertEquals(1.0, v.toDouble(0));
+		assertEquals(2.0, v.toDouble(1));
+		assertEquals(3.0, v.toDouble(2));
 
 		matrix = scaleMatrix(vector(2.0, 1.0, 3.0)).evaluate();
-		v = transformAsOffset(matrix, vector(1.0, 2.0, 3.0)).evaluate();
-		assertEquals(2.0, v.getX());
-		assertEquals(2.0, v.getY());
-		assertEquals(9.0, v.getZ());
+		v = new Vector(transformAsOffset(matrix, vector(1.0, 2.0, 3.0)).evaluate(), 0);
+		assertEquals(2.0, v.toDouble(0));
+		assertEquals(2.0, v.toDouble(1));
+		assertEquals(9.0, v.toDouble(2));
 	}
 
 	@Test
@@ -74,12 +74,12 @@ public class MatrixTransformTests implements TestFeatures {
 		r = new Ray(transform(m.getInverse(), v(r)).evaluate(), 0);
 		r.print();
 
-		assertEquals(1.0, r.getOrigin().getX());
-		assertEquals(12.0, r.getOrigin().getY());
-		assertEquals(3.0, r.getOrigin().getZ());
-		assertEquals(4.0, r.getDirection().getX());
-		assertEquals(5.0, r.getDirection().getY());
-		assertEquals(6.0, r.getDirection().getZ());
+		assertEquals(1.0, r.getOrigin().toDouble(0));
+		assertEquals(12.0, r.getOrigin().toDouble(1));
+		assertEquals(3.0, r.getOrigin().toDouble(2));
+		assertEquals(4.0, r.getDirection().toDouble(0));
+		assertEquals(5.0, r.getDirection().toDouble(1));
+		assertEquals(6.0, r.getDirection().toDouble(2));
 	}
 
 	@Test
@@ -96,11 +96,11 @@ public class MatrixTransformTests implements TestFeatures {
 		Ray r = new Ray((PackedCollection) transform.evaluate(), 0);
 		log(r);
 
-		assertEquals(0.25, r.getOrigin().getX());
-		assertEquals(3.9, r.getOrigin().getY());
-		assertEquals(-2.25, r.getOrigin().getZ());
-		assertEquals(1.0, r.getDirection().getX());
-		assertEquals(1.25, r.getDirection().getY());
-		assertEquals(1.5, r.getDirection().getZ());
+		assertEquals(0.25, r.getOrigin().toDouble(0));
+		assertEquals(3.9, r.getOrigin().toDouble(1));
+		assertEquals(-2.25, r.getOrigin().toDouble(2));
+		assertEquals(1.0, r.getDirection().toDouble(0));
+		assertEquals(1.25, r.getDirection().toDouble(1));
+		assertEquals(1.5, r.getDirection().toDouble(2));
 	}
 }

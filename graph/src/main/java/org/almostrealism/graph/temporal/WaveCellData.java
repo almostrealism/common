@@ -47,28 +47,28 @@ public interface WaveCellData extends BaseAudioData {
 	 *
 	 * @return the wave index storage at slot 3
 	 */
-	default PackedCollection<?> waveIndex() { return get(3); }
+	default PackedCollection waveIndex() { return get(3); }
 
 	/**
 	 * Returns the storage for the wave sample count.
 	 *
 	 * @return the wave count storage at slot 4
 	 */
-	default PackedCollection<?> waveCount() { return get(4); }
+	default PackedCollection waveCount() { return get(4); }
 
 	/**
 	 * Returns the current output value as a single-element collection.
 	 *
 	 * @return the current sample value at slot 9
 	 */
-	default PackedCollection<?> value() { return get(9).range(shape(1)); }
+	default PackedCollection value() { return get(9).range(shape(1)); }
 
 	/**
 	 * Returns a producer for the wave index position.
 	 *
 	 * @return producer providing the wave index value
 	 */
-	default Producer<PackedCollection<?>> getWaveIndex() { return p(waveIndex().range(shape(1))); }
+	default Producer<PackedCollection> getWaveIndex() { return p(waveIndex().range(shape(1))); }
 
 	/**
 	 * Sets the wave index position.
@@ -82,7 +82,7 @@ public interface WaveCellData extends BaseAudioData {
 	 *
 	 * @return producer providing the wave count value
 	 */
-	default Producer<PackedCollection<?>> getWaveCount() { return p(waveCount().range(shape(1))); }
+	default Producer<PackedCollection> getWaveCount() { return p(waveCount().range(shape(1))); }
 
 	/**
 	 * Sets the total number of samples to process.

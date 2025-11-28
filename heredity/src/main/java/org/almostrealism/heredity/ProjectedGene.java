@@ -45,10 +45,10 @@ import java.util.stream.IntStream;
  * <h2>Example Usage</h2>
  * <pre>{@code
  * // Create source data (shared across genes)
- * PackedCollection<?> source = new PackedCollection<>(100);  // 100 parameters
+ * PackedCollection source = new PackedCollection(100);  // 100 parameters
  *
  * // Create weights for this gene (5 factors, each weighted by 100 source values)
- * PackedCollection<?> weights = new PackedCollection<>(shape(5, 100).traverse(1));
+ * PackedCollection weights = new PackedCollection(shape(5, 100).traverse(1));
  *
  * // Create the projected gene
  * ProjectedGene gene = new ProjectedGene(source, weights);
@@ -63,7 +63,7 @@ import java.util.stream.IntStream;
  * gene.refreshValues();
  *
  * // Access factor
- * Factor<PackedCollection<?>> factor = gene.valueAt(0);
+ * Factor<PackedCollection> factor = gene.valueAt(0);
  * }</pre>
  *
  * @see TransformableGene
@@ -71,11 +71,11 @@ import java.util.stream.IntStream;
  * @see ProjectedGenome
  */
 public class ProjectedGene extends TransformableGene implements VectorFeatures {
-	private final PackedCollection<?> source;
-	private final PackedCollection<?> weights;
-	private final PackedCollection<?> ranges;
+	private final PackedCollection source;
+	private final PackedCollection weights;
+	private final PackedCollection ranges;
 
-	private final PackedCollection<?> values;
+	private final PackedCollection values;
 
 	/**
 	 * Constructs a new {@code ProjectedGene} with the specified source data and weights.
@@ -88,13 +88,13 @@ public class ProjectedGene extends TransformableGene implements VectorFeatures {
 	 * @throws IllegalArgumentException if source is not 1D, weights is not 2D,
 	 *         or weight dimensions don't match source length
 	 */
-	public ProjectedGene(PackedCollection<?> source,
-						 PackedCollection<?> weights) {
+	public ProjectedGene(PackedCollection source,
+						 PackedCollection weights) {
 		super(weights.getShape().length(0));
 		this.source = source;
 		this.weights = weights;
-		this.ranges = new PackedCollection<>(shape(length(), 2)).traverse(1);
-		this.values = new PackedCollection<>(shape(length()));
+		this.ranges = new PackedCollection(shape(length(), 2)).traverse(1);
+		this.values = new PackedCollection(shape(length()));
 
 		int sourceLength = source.getShape().length(0);
 
@@ -185,9 +185,9 @@ public class ProjectedGene extends TransformableGene implements VectorFeatures {
 	 * @return a factor that produces the projected and transformed value
 	 */
 	@Override
-	public Factor<PackedCollection<?>> valueAt(int pos) {
+	public Factor<PackedCollection> valueAt(int pos) {
 		return in -> {
-			Producer<PackedCollection<?>> result = transform(pos, cp(values.range(shape(1), pos)));
+			Producer<PackedCollection> result = transform(pos, cp(values.range(shape(1), pos)));
 			return in == null ? result : multiply(in, result);
 		};
 	}

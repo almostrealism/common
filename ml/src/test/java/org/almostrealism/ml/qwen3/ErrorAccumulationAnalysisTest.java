@@ -73,17 +73,17 @@ public class ErrorAccumulationAnalysisTest implements AttentionFeatures, Console
 
         // Get embeddings for token 9707 ("Hello")
         int tokenId = 9707;
-        PackedCollection<?> embeddings = stateDict.get("model.embed_tokens.weight");
-        PackedCollection<?> input = embeddings.range(
+        PackedCollection embeddings = stateDict.get("model.embed_tokens.weight");
+        PackedCollection input = embeddings.range(
             shape(config.dim),
             tokenId * config.dim
         );
 
         // Compute RoPE frequencies once
-        PackedCollection<?> freqCis = computeRopeFreqs(config);
+        PackedCollection freqCis = computeRopeFreqs(config);
 
         // Position tracker (always 0 for first token)
-        PackedCollection<?> position = new PackedCollection<>(shape(1));
+        PackedCollection position = new PackedCollection(shape(1));
         position.setMem(0, 0.0);
 
         // Storage for all layer statistics
@@ -101,7 +101,7 @@ public class ErrorAccumulationAnalysisTest implements AttentionFeatures, Console
 
             // Compile and run
             org.almostrealism.model.CompiledModel compiled = partial.compile();
-            PackedCollection<?> output = compiled.forward(input);
+            PackedCollection output = compiled.forward(input);
 
             // Load PyTorch reference for this layer
             String refFile = String.format("after_layer_%d.bin", numLayers - 1);
@@ -140,36 +140,36 @@ public class ErrorAccumulationAnalysisTest implements AttentionFeatures, Console
      * Build a partial model with only the specified number of transformer layers.
      */
     private Model buildPartialModel(Qwen3Config config, StateDictionary stateDict,
-                                   int numLayers, PackedCollection<?> freqCis,
-                                   PackedCollection<?> position) {
+                                   int numLayers, PackedCollection freqCis,
+                                   PackedCollection position) {
         Model model = new Model(shape(config.dim));
 
         for (int i = 0; i < numLayers; i++) {
             String prefix = String.format("model.layers.%d", i);
 
             // Load all weights for this layer (same as Qwen3 does)
-            PackedCollection<?> layerRmsAtt = stateDict.get(prefix + ".input_layernorm.weight");
-            PackedCollection<?> layerRmsFfn = stateDict.get(prefix + ".post_attention_layernorm.weight");
+            PackedCollection layerRmsAtt = stateDict.get(prefix + ".input_layernorm.weight");
+            PackedCollection layerRmsFfn = stateDict.get(prefix + ".post_attention_layernorm.weight");
 
             // Attention weights
-            PackedCollection<?> layerWq = stateDict.get(prefix + ".self_attn.q_proj.weight");
-            PackedCollection<?> layerWk = stateDict.get(prefix + ".self_attn.k_proj.weight");
-            PackedCollection<?> layerWv = stateDict.get(prefix + ".self_attn.v_proj.weight");
-            PackedCollection<?> layerWo = stateDict.get(prefix + ".self_attn.o_proj.weight");
+            PackedCollection layerWq = stateDict.get(prefix + ".self_attn.q_proj.weight");
+            PackedCollection layerWk = stateDict.get(prefix + ".self_attn.k_proj.weight");
+            PackedCollection layerWv = stateDict.get(prefix + ".self_attn.v_proj.weight");
+            PackedCollection layerWo = stateDict.get(prefix + ".self_attn.o_proj.weight");
 
             // Attention biases
-            PackedCollection<?> layerBq = stateDict.get(prefix + ".self_attn.q_proj.bias");
-            PackedCollection<?> layerBk = stateDict.get(prefix + ".self_attn.k_proj.bias");
-            PackedCollection<?> layerBv = stateDict.get(prefix + ".self_attn.v_proj.bias");
+            PackedCollection layerBq = stateDict.get(prefix + ".self_attn.q_proj.bias");
+            PackedCollection layerBk = stateDict.get(prefix + ".self_attn.k_proj.bias");
+            PackedCollection layerBv = stateDict.get(prefix + ".self_attn.v_proj.bias");
 
             // QK-Norm weights
-            PackedCollection<?> layerQkNormQ = stateDict.get(prefix + ".self_attn.q_norm.weight");
-            PackedCollection<?> layerQkNormK = stateDict.get(prefix + ".self_attn.k_norm.weight");
+            PackedCollection layerQkNormQ = stateDict.get(prefix + ".self_attn.q_norm.weight");
+            PackedCollection layerQkNormK = stateDict.get(prefix + ".self_attn.k_norm.weight");
 
             // FFN weights (SwiGLU: gate, up, down)
-            PackedCollection<?> layerW1 = stateDict.get(prefix + ".mlp.gate_proj.weight");
-            PackedCollection<?> layerW2 = stateDict.get(prefix + ".mlp.down_proj.weight");
-            PackedCollection<?> layerW3 = stateDict.get(prefix + ".mlp.up_proj.weight");
+            PackedCollection layerW1 = stateDict.get(prefix + ".mlp.gate_proj.weight");
+            PackedCollection layerW2 = stateDict.get(prefix + ".mlp.down_proj.weight");
+            PackedCollection layerW3 = stateDict.get(prefix + ".mlp.up_proj.weight");
 
             // Add complete transformer layer using the same method as Qwen3
             model.add(transformer(
@@ -374,14 +374,14 @@ public class ErrorAccumulationAnalysisTest implements AttentionFeatures, Console
     /**
      * Compute RoPE frequency embeddings (reduced seqLen to avoid overflow).
      */
-    private PackedCollection<?> computeRopeFreqs(Qwen3Config config) {
+    private PackedCollection computeRopeFreqs(Qwen3Config config) {
         int headSize = config.headSize;
         // For testing single token, we only need position 0-9
         int seqLen = 10;  // Reduced from config.seqLen to avoid integer overflow
         double theta = config.ropeTheta;
 
         int freqDim = headSize / 2;
-        PackedCollection<?> freqCis = new PackedCollection<>(shape(seqLen, freqDim, 2));
+        PackedCollection freqCis = new PackedCollection(shape(seqLen, freqDim, 2));
 
         for (int pos = 0; pos < seqLen; pos++) {
             for (int i = 0; i < freqDim; i++) {

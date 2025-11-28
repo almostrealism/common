@@ -33,13 +33,13 @@ import java.util.Optional;
  * <p>Classes implement this interface to gain access to compilation methods:</p>
  * <pre>{@code
  * public class MyProcessor implements ComputerFeatures {
- *     public void processData(PackedCollection<?> input) {
+ *     public void processData(PackedCollection input) {
  *         // Define computation
- *         Computation<PackedCollection<?>> transform = c -> c.multiply(2.0);
+ *         Computation<PackedCollection> transform = c -> c.multiply(2.0);
  *
  *         // Compile and execute using inherited method
- *         Evaluable<PackedCollection<?>> evaluable = compileProducer(transform);
- *         PackedCollection<?> result = evaluable.evaluate(input);
+ *         Evaluable<PackedCollection> evaluable = compileProducer(transform);
+ *         PackedCollection result = evaluable.evaluate(input);
  *     }
  *
  *     public void runProcess() {
@@ -88,7 +88,7 @@ import java.util.Optional;
  * <h3>Compiling Producers</h3>
  * <pre>{@code
  * public class DataProcessor implements ComputerFeatures {
- *     public Evaluable<PackedCollection<?>> createNormalizer() {
+ *     public Evaluable<PackedCollection> createNormalizer() {
  *         return compileProducer(c -> c.divide(c.max()));
  *     }
  * }
@@ -97,7 +97,7 @@ import java.util.Optional;
  * <h3>Compiling Runnables</h3>
  * <pre>{@code
  * public class BatchProcessor implements ComputerFeatures {
- *     public Runnable createBatchJob(List<PackedCollection<?>> batches) {
+ *     public Runnable createBatchJob(List<PackedCollection> batches) {
  *         return compileRunnable(c -> batches.forEach(this::process));
  *     }
  * }
@@ -140,12 +140,12 @@ public interface ComputerFeatures extends HardwareFeatures {
 	 *
 	 * <p>Example:</p>
 	 * <pre>{@code
-	 * Computation<PackedCollection<?>> multiply = c -> c.multiply(2.0);
+	 * Computation<PackedCollection> multiply = c -> c.multiply(2.0);
 	 *
-	 * Evaluable<PackedCollection<?>> doubler = compileProducer(multiply);
+	 * Evaluable<PackedCollection> doubler = compileProducer(multiply);
 	 *
-	 * PackedCollection<?> input = PackedCollection.create(1000);
-	 * PackedCollection<?> result = doubler.evaluate(input);
+	 * PackedCollection input = PackedCollection.create(1000);
+	 * PackedCollection result = doubler.evaluate(input);
 	 * }</pre>
 	 *
 	 * @param c The computation to compile

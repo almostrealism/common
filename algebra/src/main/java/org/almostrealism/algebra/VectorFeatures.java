@@ -45,20 +45,20 @@ import java.util.function.IntFunction;
  * <h2>Usage Examples</h2>
  * <pre>{@code
  * public class VectorComputation implements VectorFeatures {
- *     public Producer<Vector> compute() {
+ *     public Producer<PackedCollection> compute() {
  *         // Create constant vectors
- *         CollectionProducer<Vector> v1 = vector(1.0, 0.0, 0.0);
- *         CollectionProducer<Vector> v2 = value(new Vector(0, 1, 0));
+ *         CollectionProducer<PackedCollection> v1 = vector(1.0, 0.0, 0.0);
+ *         CollectionProducer<PackedCollection> v2 = value(new Vector(0, 1, 0));
  *
  *         // Vector operations
- *         CollectionProducer<PackedCollection<?>> dot = dotProduct(v1, v2);
- *         CollectionProducer<Vector> cross = crossProduct(v1, v2);
- *         CollectionProducer<Vector> normalized = normalize(v1);
+ *         CollectionProducer<PackedCollection> dot = dotProduct(v1, v2);
+ *         CollectionProducer<PackedCollection> cross = crossProduct(v1, v2);
+ *         CollectionProducer<PackedCollection> normalized = normalize(v1);
  *
  *         // Component extraction
- *         CollectionProducer<PackedCollection<?>> x = x(v1);
- *         CollectionProducer<PackedCollection<?>> y = y(v1);
- *         CollectionProducer<PackedCollection<?>> z = z(v1);
+ *         CollectionProducer<PackedCollection> x = x(v1);
+ *         CollectionProducer<PackedCollection> y = y(v1);
+ *         CollectionProducer<PackedCollection> z = z(v1);
  *
  *         // Dynamic vector from components
  *         return vector(x, y, z);
@@ -69,25 +69,25 @@ import java.util.function.IntFunction;
  * <h2>Vector Construction Patterns</h2>
  * <pre>{@code
  * // From explicit coordinates
- * CollectionProducer<Vector> v1 = vector(1.0, 2.0, 3.0);
+ * CollectionProducer<PackedCollection> v1 = vector(1.0, 2.0, 3.0);
  *
  * // From array
  * double[] coords = {1, 2, 3};
- * CollectionProducer<Vector> v2 = vector(coords);
+ * CollectionProducer<PackedCollection> v2 = vector(coords);
  *
  * // From function
- * CollectionProducer<Vector> v3 = vector(i -> i * 2.0);  // (0, 2, 4)
+ * CollectionProducer<PackedCollection> v3 = vector(i -> i * 2.0);  // (0, 2, 4)
  *
  * // From existing Vector
  * Vector existing = new Vector(1, 2, 3);
- * CollectionProducer<Vector> v4 = v(existing);
+ * CollectionProducer<PackedCollection> v4 = v(existing);
  *
  * // From component producers
- * CollectionProducer<Vector> v5 = vector(scalar(1.0), scalar(2.0), scalar(3.0));
+ * CollectionProducer<PackedCollection> v5 = vector(scalar(1.0), scalar(2.0), scalar(3.0));
  *
  * // From vector bank at index
- * Producer<PackedCollection<?>> bank = vectorBank(10);
- * CollectionProducer<Vector> v6 = vector(bank, 5);  // 6th vector
+ * Producer<PackedCollection> bank = vectorBank(10);
+ * CollectionProducer<PackedCollection> v6 = vector(bank, 5);  // 6th vector
  * }</pre>
  *
  * @author  Michael Murray
@@ -102,7 +102,7 @@ public interface VectorFeatures extends ScalarFeatures {
 	 * @param value  the vector value
 	 * @return a producer for the constant vector
 	 */
-	default CollectionProducer<Vector> v(Vector value) { return value(value); }
+	default CollectionProducer<PackedCollection> v(Vector value) { return value(value); }
 
 	/**
 	 * Creates a {@link CollectionProducer} that produces a constant {@link Vector} value.
@@ -112,8 +112,8 @@ public interface VectorFeatures extends ScalarFeatures {
 	 * @param value  the {@link Vector} containing the constant values
 	 * @return a {@link CollectionProducer} that evaluates to the specified {@link Vector}
 	 */
-	default CollectionProducer<Vector> value(Vector value) {
-		return DefaultTraversableExpressionComputation.fixed(value, Vector.postprocessor());
+	default CollectionProducer<PackedCollection> value(Vector value) {
+		return DefaultTraversableExpressionComputation.fixed(value);
 	}
 
 	/**
@@ -124,7 +124,7 @@ public interface VectorFeatures extends ScalarFeatures {
 	 * @param z  the z coordinate
 	 * @return a producer for the constant vector (x, y, z)
 	 */
-	default CollectionProducer<Vector> vector(double x, double y, double z) { return value(new Vector(x, y, z)); }
+	default CollectionProducer<PackedCollection> vector(double x, double y, double z) { return value(new Vector(x, y, z)); }
 
 	/**
 	 * Creates a {@link CollectionProducer} for a constant vector from an array of coordinates.
@@ -134,7 +134,7 @@ public interface VectorFeatures extends ScalarFeatures {
 	 * @return a producer for the constant vector
 	 * @throws ArrayIndexOutOfBoundsException if the array has fewer than 3 elements
 	 */
-	default CollectionProducer<Vector> vector(double v[]) { return vector(v[0], v[1], v[2]); }
+	default CollectionProducer<PackedCollection> vector(double v[]) { return vector(v[0], v[1], v[2]); }
 
 	/**
 	 * Creates a {@link CollectionProducer} for a constant vector from a function.
@@ -143,7 +143,7 @@ public interface VectorFeatures extends ScalarFeatures {
 	 * @param values  function mapping index to coordinate value
 	 * @return a producer for the constant vector
 	 */
-	default CollectionProducer<Vector> vector(IntFunction<Double> values) {
+	default CollectionProducer<PackedCollection> vector(IntFunction<Double> values) {
 		return vector(values.apply(0), values.apply(1), values.apply(2));
 	}
 
@@ -157,7 +157,7 @@ public interface VectorFeatures extends ScalarFeatures {
 	 * @param <T>  the collection type (typically scalar-valued)
 	 * @return a producer that combines the three components into a vector
 	 */
-	default <T extends PackedCollection<?>> CollectionProducer<PackedCollection<?>> vector(
+	default <T extends PackedCollection> CollectionProducer<PackedCollection> vector(
 												Producer<T> x,
 												Producer<T> y,
 												Producer<T> z) {
@@ -172,11 +172,8 @@ public interface VectorFeatures extends ScalarFeatures {
 	 * @param index  the index of the vector to extract (0-based)
 	 * @return a producer for the vector at the specified index
 	 */
-	default CollectionProducer<Vector> vector(Producer<PackedCollection<?>> bank, int index) {
-		CollectionProducerComputationBase c = (CollectionProducerComputationBase)
-				c(shape(3), bank, c(3 * index, 3 * index + 1, 3 * index + 2));
-		c.setPostprocessor(Vector.postprocessor());
-		return c;
+	default CollectionProducer<PackedCollection> vector(Producer<PackedCollection> bank, int index) {
+		return c(shape(3), bank, c(3 * index, 3 * index + 1, 3 * index + 2));
 	}
 
 	/**
@@ -186,14 +183,12 @@ public interface VectorFeatures extends ScalarFeatures {
 	 * @param value  the producer to wrap
 	 * @return a vector producer wrapping the input producer
 	 */
-	default CollectionProducer<Vector> vector(Producer<?> value) {
-		TraversableExpressionComputation c = new DefaultTraversableExpressionComputation(
+	default CollectionProducer<PackedCollection> vector(Producer<?> value) {
+		return new DefaultTraversableExpressionComputation(
 				"vector", shape(3),
 				(Function<TraversableExpression[], CollectionExpression>) args ->
 						new IndexProjectionExpression(shape(3), i -> i, args[1]),
 				(Producer) value);
-		c.setPostprocessor(Vector.postprocessor());
-		return c;
 	}
 
 	/**
@@ -202,7 +197,7 @@ public interface VectorFeatures extends ScalarFeatures {
 	 *
 	 * @return a blank vector producer
 	 */
-	default Producer<Vector> vector() { return Vector.blank(); }
+	default Producer<PackedCollection> vector() { return Vector.blank(); }
 
 	/**
 	 * Extracts the x component (first element) from a vector producer.
@@ -211,7 +206,7 @@ public interface VectorFeatures extends ScalarFeatures {
 	 * @param <T>  the collection type
 	 * @return a producer for the x component
 	 */
-	default <T extends PackedCollection<?>> CollectionProducer<T> x(Producer<T> v) {
+	default <T extends PackedCollection> CollectionProducer<T> x(Producer<T> v) {
 		return c(v, 0);
 	}
 
@@ -222,7 +217,7 @@ public interface VectorFeatures extends ScalarFeatures {
 	 * @param <T>  the collection type
 	 * @return a producer for the y component
 	 */
-	default <T extends PackedCollection<?>> CollectionProducer<T> y(Producer<T> v) {
+	default <T extends PackedCollection> CollectionProducer<T> y(Producer<T> v) {
 		return c(v, 1);
 	}
 
@@ -233,7 +228,7 @@ public interface VectorFeatures extends ScalarFeatures {
 	 * @param <T>  the collection type
 	 * @return a producer for the z component
 	 */
-	default <T extends PackedCollection<?>> CollectionProducer<T> z(Producer<T> v) {
+	default <T extends PackedCollection> CollectionProducer<T> z(Producer<T> v) {
 		return c(v, 2);
 	}
 
@@ -247,7 +242,7 @@ public interface VectorFeatures extends ScalarFeatures {
 	 * @param b  the second vector
 	 * @return a producer for the scalar dot product
 	 */
-	default <T extends PackedCollection<?>> CollectionProducer<PackedCollection<?>>
+	default <T extends PackedCollection> CollectionProducer<PackedCollection>
 			dotProduct(Producer<T> a, Producer<T> b) {
 		CollectionProducer p = multiply(a, b);
 
@@ -269,7 +264,7 @@ public interface VectorFeatures extends ScalarFeatures {
 	 * @param b  the second vector
 	 * @return a producer for the cross product vector
 	 */
-	default <T extends PackedCollection<?>> CollectionProducer<PackedCollection<?>>
+	default <T extends PackedCollection> CollectionProducer<PackedCollection>
 			crossProduct(Producer<T> a, Producer<T> b) {
 		TraversalPolicy inputShape = shape(a);
 
@@ -313,7 +308,7 @@ public interface VectorFeatures extends ScalarFeatures {
 	 * @param <T>  the collection type
 	 * @return a producer for the length
 	 */
-	default <T extends PackedCollection<?>> CollectionProducer<T> length(int depth, Producer<T> value) {
+	default <T extends PackedCollection> CollectionProducer<T> length(int depth, Producer<T> value) {
 		return length(traverse(depth, value));
 	}
 
@@ -324,7 +319,7 @@ public interface VectorFeatures extends ScalarFeatures {
 	 * @param <T>  the collection type
 	 * @return a producer for the vector length
 	 */
-	default <T extends PackedCollection<?>> CollectionProducer<T> length(Producer<?> value) {
+	default <T extends PackedCollection> CollectionProducer<T> length(Producer<?> value) {
 		return sqrt(lengthSq(value));
 	}
 
@@ -340,7 +335,7 @@ public interface VectorFeatures extends ScalarFeatures {
 	 * @param <T>  the collection type
 	 * @return a producer for the squared vector length
 	 */
-	default <T extends PackedCollection<?>> CollectionProducer<T> lengthSq(Producer<?> value) {
+	default <T extends PackedCollection> CollectionProducer<T> lengthSq(Producer<?> value) {
 		CollectionProducer<?> squared = multiply((Producer) value, (Producer) value);
 
 		int axis = shape(value).getDimensions() - 1;
@@ -358,7 +353,7 @@ public interface VectorFeatures extends ScalarFeatures {
 	 * @param <T>  the collection type
 	 * @return a producer for the normalized (unit) vector
 	 */
-	default <T extends PackedCollection<?>> CollectionProducer<T> normalize(Producer<T> value) {
+	default <T extends PackedCollection> CollectionProducer<T> normalize(Producer<T> value) {
 		TraversalPolicy valueShape = shape(value);
 		CollectionProducer<?> invLen = length(value).pow(-1.0);
 

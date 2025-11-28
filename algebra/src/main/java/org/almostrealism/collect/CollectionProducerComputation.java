@@ -15,6 +15,7 @@
  */
 
 package org.almostrealism.collect;
+import org.almostrealism.collect.PackedCollection;
 
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.ComputeContext;
@@ -70,13 +71,13 @@ import java.util.stream.Stream;
  * <h2>Lifecycle</h2>
  * <pre>{@code
  * // 1. Create computation
- * CollectionProducerComputation<PackedCollection<?>> comp = ...;
+ * CollectionProducerComputation<PackedCollection> comp = ...;
  *
  * // 2. Get evaluable (compiles to hardware)
- * Evaluable<PackedCollection<?>> ev = comp.get();
+ * Evaluable<PackedCollection> ev = comp.get();
  *
  * // 3. Execute
- * PackedCollection<?> result = ev.evaluate();
+ * PackedCollection result = ev.evaluate();
  * }</pre>
  *
  * <h2>Configuration Flags</h2>
@@ -94,7 +95,7 @@ import java.util.stream.Stream;
  * @see PackedCollection
  * @see DefaultCollectionEvaluable
  */
-public interface CollectionProducerComputation<T extends PackedCollection<?>> extends
+public interface CollectionProducerComputation<T extends PackedCollection> extends
 		 ProducerComputation<T>, CollectionProducerParallelProcess<T> {
 	boolean isolationLogging = SystemUtils.isEnabled("AR_ISOLATION_LOGGING").orElse(false);
 
@@ -106,7 +107,7 @@ public interface CollectionProducerComputation<T extends PackedCollection<?>> ex
 	boolean enableShapeTrim = false;
 
 	@Override
-	default <V extends Shape<?>> CollectionProducer<V> applyDeltaStrategy(CollectionProducer<V> producer,
+	default <V extends PackedCollection> CollectionProducer<V> applyDeltaStrategy(CollectionProducer<V> producer,
 																		  Producer<?> target) {
 		Collection<Producer<?>> terms;
 
@@ -225,7 +226,7 @@ public interface CollectionProducerComputation<T extends PackedCollection<?>> ex
 		return data;
 	}
 
-	static <T extends PackedCollection<?>> Function<List<Producer<?>>, CollectionProducer<T>>
+	static <T extends PackedCollection> Function<List<Producer<?>>, CollectionProducer<T>>
 				producerFactory(CollectionProducerComputation<T> original) {
 		return args -> {
 			List<Producer<?>> terms = new ArrayList<>();
@@ -242,7 +243,7 @@ public interface CollectionProducerComputation<T extends PackedCollection<?>> ex
 		};
 	}
 
-	static <T extends Shape<?>> boolean isIsolationPermitted(CollectionProducer<T> op) {
+	static <T extends PackedCollection> boolean isIsolationPermitted(CollectionProducer<T> op) {
 		return Process.isolationPermitted(op) &&
 				op.getShape().getTotalSizeLong() <= MemoryProvider.MAX_RESERVATION;
 	}
@@ -291,7 +292,7 @@ public interface CollectionProducerComputation<T extends PackedCollection<?>> ex
 		return shape;
 	}
 
-	class IsolatedProcess<T extends PackedCollection<?>> extends DelegatedCollectionProducer<T> {
+	class IsolatedProcess<T extends PackedCollection> extends DelegatedCollectionProducer<T> {
 
 		public IsolatedProcess(CollectionProducer<T> op) {
 			super(op);

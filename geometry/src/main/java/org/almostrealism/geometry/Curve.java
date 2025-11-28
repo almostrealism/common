@@ -15,6 +15,7 @@
  */
 
 package org.almostrealism.geometry;
+import org.almostrealism.collect.PackedCollection;
 
 import io.almostrealism.relation.Node;
 import io.almostrealism.relation.Producer;
@@ -41,5 +42,5 @@ public interface Curve<T> extends Gradient<T>, Node {
 	 * @param point the position in 3D space at which to evaluate the curve
 	 * @return a {@link Producer} that produces the value at the specified point
 	 */
-	Producer<T> getValueAt(Producer<Vector> point);
+	Producer<T> getValueAt(Producer<PackedCollection> point);
 }

@@ -69,7 +69,7 @@ import java.util.List;
  * delegate is automatically reallocated to a supported provider:</p>
  * <pre>{@code
  * // CPU memory -> GPU kernel
- * PackedCollection<?> cpuData = PackedCollection.create(1000);  // JVM heap
+ * PackedCollection cpuData = PackedCollection.create(1000);  // JVM heap
  * GPUKernel kernel = ...;
  *
  * // Automatic migration during accept():

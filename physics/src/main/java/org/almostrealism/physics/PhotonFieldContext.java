@@ -15,6 +15,7 @@
  */
 
 package org.almostrealism.physics;
+import org.almostrealism.collect.PackedCollection;
 
 import io.almostrealism.relation.Producer;
 import org.almostrealism.geometry.ContinuousField;
@@ -69,7 +70,7 @@ public class PhotonFieldContext<T extends PhotonField, F extends Absorber> exten
 	 * @param field   the photon field
 	 * @param film    the film/absorber for capturing photons
 	 */
-	public PhotonFieldContext(Curve<RGB> surface, Light l, T field, F film) {
+	public PhotonFieldContext(Curve<PackedCollection> surface, Light l, T field, F film) {
 		super(surface, l);
 		this.field = field;
 		this.film = film;
@@ -86,9 +87,9 @@ public class PhotonFieldContext<T extends PhotonField, F extends Absorber> exten
 	 * @param field          the photon field
 	 * @param film           the film/absorber for capturing photons
 	 */
-	public PhotonFieldContext(ContinuousField intersection, Producer<Vector> lightDirection,
+	public PhotonFieldContext(ContinuousField intersection, Producer<PackedCollection> lightDirection,
 							  Light light, Iterable<Light> otherLights,
-							  Collection<Curve<RGB>> otherSurfaces,
+							  Collection<Curve<PackedCollection>> otherSurfaces,
 							  T field, F film) {
 		super(intersection, lightDirection, light, otherLights, otherSurfaces);
 		this.field = field;
@@ -107,9 +108,9 @@ public class PhotonFieldContext<T extends PhotonField, F extends Absorber> exten
 	 * @param field          the photon field
 	 * @param film           the film/absorber for capturing photons
 	 */
-	public PhotonFieldContext(ContinuousField intersection, Producer<Vector> lightDirection,
+	public PhotonFieldContext(ContinuousField intersection, Producer<PackedCollection> lightDirection,
 							  Light light, Iterable<Light> otherLights,
-							  Curve<RGB> surface, Curve<RGB>[] otherSurfaces,
+							  Curve<PackedCollection> surface, Curve<PackedCollection>[] otherSurfaces,
 							  T field, F film) {
 		super(intersection, lightDirection, light, otherLights, surface, otherSurfaces);
 		this.field = field;

@@ -15,6 +15,7 @@
  */
 
 package org.almostrealism.space;
+import org.almostrealism.collect.PackedCollection;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -194,18 +195,18 @@ public class Scene<T extends ShadableSurface> extends SurfaceList<T> {
 	}
 
 	@Deprecated
-	public static List<Curve<RGB>> combineSurfaces(Curve<RGB> surface,
-										Iterator<Curve<RGB>> otherSurfaces) {
-		List<Curve<RGB>> allSurfaces = new ArrayList<>();
+	public static List<Curve<PackedCollection>> combineSurfaces(Curve<PackedCollection> surface,
+										Iterator<Curve<PackedCollection>> otherSurfaces) {
+		List<Curve<PackedCollection>> allSurfaces = new ArrayList<>();
 		while (otherSurfaces.hasNext()) { allSurfaces.add(otherSurfaces.next()); }
 		allSurfaces.add(surface);
 		return allSurfaces;
 	}
 
 	@Deprecated
-	public static List<Curve<RGB>> combineSurfaces(Curve<RGB> surface, Iterable<? extends Curve<RGB>> otherSurfaces) {
-		List<Curve<RGB>> allSurfaces = new ArrayList<>();
-		for (Curve<RGB> s : otherSurfaces) { allSurfaces.add(s); }
+	public static List<Curve<PackedCollection>> combineSurfaces(Curve<PackedCollection> surface, Iterable<? extends Curve<PackedCollection>> otherSurfaces) {
+		List<Curve<PackedCollection>> allSurfaces = new ArrayList<>();
+		for (Curve<PackedCollection> s : otherSurfaces) { allSurfaces.add(s); }
 		allSurfaces.add(surface);
 		return allSurfaces;
 	}

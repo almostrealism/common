@@ -51,7 +51,7 @@ public class Plane extends AbstractSurface implements ParticleGroup, RayFeatures
   
 	private int type;
 
-	private Producer<Vector> normal;
+	private Producer<PackedCollection> normal;
 
 	/**
 	 * Constructs a {@link Plane} that represents an XY plane that is black.
@@ -124,7 +124,7 @@ public class Plane extends AbstractSurface implements ParticleGroup, RayFeatures
 			else
 				n = null;
 
-			normal = value(n); // This causes us to avoid infinite regress
+			normal = (Producer) value(n); // This causes us to avoid infinite regress
 
 			TransformMatrix m = getTransform(true);
 
@@ -135,7 +135,7 @@ public class Plane extends AbstractSurface implements ParticleGroup, RayFeatures
 	}
 
 	@Override
-	public Producer<Vector> getNormalAt(Producer<Vector> p) {
+	public Producer<PackedCollection> getNormalAt(Producer<PackedCollection> p) {
 		calculateTransform();
 		return normal;
 	}
@@ -152,7 +152,7 @@ public class Plane extends AbstractSurface implements ParticleGroup, RayFeatures
 
 		// tr = new RayFromVectors(new RayOrigin(tr), new RayDirection(tr).normalize());
 
-		Producer<PackedCollection<?>> s;
+		Producer<PackedCollection> s;
 
 		if (type == Plane.XY) {
 			s = minus(z(origin(tr))).divide(z(direction(tr)));
@@ -168,19 +168,19 @@ public class Plane extends AbstractSurface implements ParticleGroup, RayFeatures
 	}
 
 	@Override
-	public Operator<PackedCollection<?>> expect() {
-		PackedCollection<?> zero = new PackedCollection<>(1);
+	public Operator<PackedCollection> expect() {
+		PackedCollection zero = new PackedCollection(1);
 		zero.setMem(0, 0.0);
 		return new Constant<>(zero);
 	}
 
 	@Override
-	public Operator<PackedCollection<?>> get() {
+	public Operator<PackedCollection> get() {
 		return new Operator<>() {
 			@Override
-			public Evaluable<PackedCollection<?>> get() {
+			public Evaluable<PackedCollection> get() {
 				return args -> {
-					PackedCollection<?> result = new PackedCollection<>(1);
+					PackedCollection result = new PackedCollection(1);
 					if (type == Plane.XY)
 						result.setMem(0, getInput().get().evaluate(args).getZ());
 					else if (type == Plane.XZ)
@@ -192,8 +192,8 @@ public class Plane extends AbstractSurface implements ParticleGroup, RayFeatures
 			}
 
 			@Override
-			public Scope<PackedCollection<?>> getScope(KernelStructureContext context) {
-				Scope<PackedCollection<?>> s = new Scope<>();
+			public Scope<PackedCollection> getScope(KernelStructureContext context) {
+				Scope<PackedCollection> s = new Scope<>();
 				// TODO  This is not correct
 				// s.getVariables().add(new Variable("scalar", get().evaluate()));
 				return s;

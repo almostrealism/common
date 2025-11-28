@@ -1,4 +1,5 @@
 package org.almostrealism.geometry.test;
+import org.almostrealism.collect.PackedCollection;
 
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Vector;
@@ -21,7 +22,7 @@ public class TransformMatrixTest implements RayFeatures, TransformMatrixFeatures
 
 		// First check what translationMatrix produces
 		Producer<org.almostrealism.geometry.TransformMatrix> tmProducer = translationMatrix(vector(2.0, 0.0, 0.0));
-		org.almostrealism.collect.PackedCollection<?> tmResult = tmProducer.get().evaluate();
+		org.almostrealism.collect.PackedCollection tmResult = tmProducer.get().evaluate();
 		log("TranslationMatrix producer evaluated, result type: " + tmResult.getClass().getName());
 		log("Result count: " + tmResult.getCount() + ", mem length: " + tmResult.getMemLength());
 
@@ -71,18 +72,18 @@ public class TransformMatrixTest implements RayFeatures, TransformMatrixFeatures
 
 		log("Original ray: origin (2, 0, 10), direction (0, 0, -1)");
 		log("Inverse transformed ray:");
-		log("  origin: (" + result.getOrigin().getX() + ", " + result.getOrigin().getY() + ", " + result.getOrigin().getZ() + ")");
-		log("  direction: (" + result.getDirection().getX() + ", " + result.getDirection().getY() + ", " + result.getDirection().getZ() + ")");
+		log("  origin: (" + result.getOrigin().toDouble(0) + ", " + result.getOrigin().toDouble(1) + ", " + result.getOrigin().toDouble(2) + ")");
+		log("  direction: (" + result.getDirection().toDouble(0) + ", " + result.getDirection().toDouble(1) + ", " + result.getDirection().toDouble(2) + ")");
 
 		// Check origin was translated by (-2, 0, 0)
-		assertTrue("Transformed origin X should be 0.0 (was " + result.getOrigin().getX() + ")",
-			Math.abs(result.getOrigin().getX() - 0.0) < 0.001);
-		assertTrue("Transformed origin Z should be 10.0 (was " + result.getOrigin().getZ() + ")",
-			Math.abs(result.getOrigin().getZ() - 10.0) < 0.001);
+		assertTrue("Transformed origin X should be 0.0 (was " + result.getOrigin().toDouble(0) + ")",
+			Math.abs(result.getOrigin().toDouble(0) - 0.0) < 0.001);
+		assertTrue("Transformed origin Z should be 10.0 (was " + result.getOrigin().toDouble(2) + ")",
+			Math.abs(result.getOrigin().toDouble(2) - 10.0) < 0.001);
 
 		// Check direction was NOT affected
-		assertTrue("Transformed direction Z should be -1.0 (was " + result.getDirection().getZ() + ")",
-			Math.abs(result.getDirection().getZ() - (-1.0)) < 0.001);
+		assertTrue("Transformed direction Z should be -1.0 (was " + result.getDirection().toDouble(2) + ")",
+			Math.abs(result.getDirection().toDouble(2) - (-1.0)) < 0.001);
 
 		log("Transform matrix inverse test passed!");
 	}
@@ -124,19 +125,19 @@ public class TransformMatrixTest implements RayFeatures, TransformMatrixFeatures
 		// Ray from (2, 0, 10) towards (0, 0, -1) - should hit sphere at (2, 0, 0)
 		Producer<Ray> ray2 = ray(2.0, 0.0, 10.0, 0.0, 0.0, -1.0);
 		Ray ray2Eval = new Ray(ray2.get().evaluate(), 0);
-		log("  Original ray origin: (" + ray2Eval.getOrigin().getX() + ", " +
-			ray2Eval.getOrigin().getY() + ", " + ray2Eval.getOrigin().getZ() + ")");
-		log("  Original ray direction: (" + ray2Eval.getDirection().getX() + ", " +
-			ray2Eval.getDirection().getY() + ", " + ray2Eval.getDirection().getZ() + ")");
+		log("  Original ray origin: (" + ray2Eval.getOrigin().toDouble(0) + ", " +
+			ray2Eval.getOrigin().toDouble(1) + ", " + ray2Eval.getOrigin().toDouble(2) + ")");
+		log("  Original ray direction: (" + ray2Eval.getDirection().toDouble(0) + ", " +
+			ray2Eval.getDirection().toDouble(1) + ", " + ray2Eval.getDirection().toDouble(2) + ")");
 
 		// Transform the ray manually to see what happens
 		if (sphere2.getTransform(true) != null) {
 			Producer<Ray> transformedRay = sphere2.getTransform(true).getInverse().transform(ray2);
 			Ray transformedEval = new Ray(transformedRay.get().evaluate(), 0);
-			log("  Transformed ray origin: (" + transformedEval.getOrigin().getX() + ", " +
-				transformedEval.getOrigin().getY() + ", " + transformedEval.getOrigin().getZ() + ")");
-			log("  Transformed ray direction: (" + transformedEval.getDirection().getX() + ", " +
-				transformedEval.getDirection().getY() + ", " + transformedEval.getDirection().getZ() + ")");
+			log("  Transformed ray origin: (" + transformedEval.getOrigin().toDouble(0) + ", " +
+				transformedEval.getOrigin().toDouble(1) + ", " + transformedEval.getOrigin().toDouble(2) + ")");
+			log("  Transformed ray direction: (" + transformedEval.getDirection().toDouble(0) + ", " +
+				transformedEval.getDirection().toDouble(1) + ", " + transformedEval.getDirection().toDouble(2) + ")");
 		}
 
 		org.almostrealism.geometry.ShadableIntersection intersection2 = sphere2.intersectAt(ray2);
@@ -183,7 +184,7 @@ public class TransformMatrixTest implements RayFeatures, TransformMatrixFeatures
 
 		// Create translation matrix for (3, 2, 1)
 		Producer<org.almostrealism.geometry.TransformMatrix> tmProducer = translationMatrix(vector(3.0, 2.0, 1.0));
-		org.almostrealism.collect.PackedCollection<?> tmResult = tmProducer.get().evaluate();
+		org.almostrealism.collect.PackedCollection tmResult = tmProducer.get().evaluate();
 		org.almostrealism.geometry.TransformMatrix mat = new org.almostrealism.geometry.TransformMatrix(tmResult, 0);
 
 		// Create ray at origin
@@ -194,12 +195,12 @@ public class TransformMatrixTest implements RayFeatures, TransformMatrixFeatures
 		Ray result = new Ray(transformed.get().evaluate(), 0);
 
 		log("  Original ray origin: (0, 0, 0)");
-		log("  Forward transformed origin: (" + result.getOrigin().getX() + ", " +
-			result.getOrigin().getY() + ", " + result.getOrigin().getZ() + ")");
+		log("  Forward transformed origin: (" + result.getOrigin().toDouble(0) + ", " +
+			result.getOrigin().toDouble(1) + ", " + result.getOrigin().toDouble(2) + ")");
 
-		assertTrue("X should be 3.0", Math.abs(result.getOrigin().getX() - 3.0) < 0.001);
-		assertTrue("Y should be 2.0", Math.abs(result.getOrigin().getY() - 2.0) < 0.001);
-		assertTrue("Z should be 1.0", Math.abs(result.getOrigin().getZ() - 1.0) < 0.001);
+		assertTrue("X should be 3.0", Math.abs(result.getOrigin().toDouble(0) - 3.0) < 0.001);
+		assertTrue("Y should be 2.0", Math.abs(result.getOrigin().toDouble(1) - 2.0) < 0.001);
+		assertTrue("Z should be 1.0", Math.abs(result.getOrigin().toDouble(2) - 1.0) < 0.001);
 
 		log("  Ray origin translation test passed!");
 	}
@@ -210,7 +211,7 @@ public class TransformMatrixTest implements RayFeatures, TransformMatrixFeatures
 
 		// Create translation matrix for (5, -3, 2)
 		Producer<org.almostrealism.geometry.TransformMatrix> tmProducer = translationMatrix(vector(5.0, -3.0, 2.0));
-		org.almostrealism.collect.PackedCollection<?> tmResult = tmProducer.get().evaluate();
+		org.almostrealism.collect.PackedCollection tmResult = tmProducer.get().evaluate();
 		org.almostrealism.geometry.TransformMatrix mat = new org.almostrealism.geometry.TransformMatrix(tmResult, 0);
 
 		// Create ray at (5, -3, 2)
@@ -221,12 +222,12 @@ public class TransformMatrixTest implements RayFeatures, TransformMatrixFeatures
 		Ray result = new Ray(transformed.get().evaluate(), 0);
 
 		log("  Original ray origin: (5, -3, 2)");
-		log("  Inverse transformed origin: (" + result.getOrigin().getX() + ", " +
-			result.getOrigin().getY() + ", " + result.getOrigin().getZ() + ")");
+		log("  Inverse transformed origin: (" + result.getOrigin().toDouble(0) + ", " +
+			result.getOrigin().toDouble(1) + ", " + result.getOrigin().toDouble(2) + ")");
 
-		assertTrue("X should be 0.0", Math.abs(result.getOrigin().getX() - 0.0) < 0.001);
-		assertTrue("Y should be 0.0", Math.abs(result.getOrigin().getY() - 0.0) < 0.001);
-		assertTrue("Z should be 0.0", Math.abs(result.getOrigin().getZ() - 0.0) < 0.001);
+		assertTrue("X should be 0.0", Math.abs(result.getOrigin().toDouble(0) - 0.0) < 0.001);
+		assertTrue("Y should be 0.0", Math.abs(result.getOrigin().toDouble(1) - 0.0) < 0.001);
+		assertTrue("Z should be 0.0", Math.abs(result.getOrigin().toDouble(2) - 0.0) < 0.001);
 
 		log("  Ray origin inverse translation test passed!");
 	}
@@ -237,7 +238,7 @@ public class TransformMatrixTest implements RayFeatures, TransformMatrixFeatures
 
 		// Create translation matrix
 		Producer<org.almostrealism.geometry.TransformMatrix> tmProducer = translationMatrix(vector(10.0, 20.0, 30.0));
-		org.almostrealism.collect.PackedCollection<?> tmResult = tmProducer.get().evaluate();
+		org.almostrealism.collect.PackedCollection tmResult = tmProducer.get().evaluate();
 		org.almostrealism.geometry.TransformMatrix mat = new org.almostrealism.geometry.TransformMatrix(tmResult, 0);
 
 		// Create ray with direction (0, 0, -1)
@@ -248,12 +249,12 @@ public class TransformMatrixTest implements RayFeatures, TransformMatrixFeatures
 		Ray result = new Ray(transformed.get().evaluate(), 0);
 
 		log("  Original direction: (0, 0, -1)");
-		log("  Transformed direction: (" + result.getDirection().getX() + ", " +
-			result.getDirection().getY() + ", " + result.getDirection().getZ() + ")");
+		log("  Transformed direction: (" + result.getDirection().toDouble(0) + ", " +
+			result.getDirection().toDouble(1) + ", " + result.getDirection().toDouble(2) + ")");
 
-		assertTrue("Direction X should be 0.0", Math.abs(result.getDirection().getX() - 0.0) < 0.001);
-		assertTrue("Direction Y should be 0.0", Math.abs(result.getDirection().getY() - 0.0) < 0.001);
-		assertTrue("Direction Z should be -1.0", Math.abs(result.getDirection().getZ() - (-1.0)) < 0.001);
+		assertTrue("Direction X should be 0.0", Math.abs(result.getDirection().toDouble(0) - 0.0) < 0.001);
+		assertTrue("Direction Y should be 0.0", Math.abs(result.getDirection().toDouble(1) - 0.0) < 0.001);
+		assertTrue("Direction Z should be -1.0", Math.abs(result.getDirection().toDouble(2) - (-1.0)) < 0.001);
 
 		log("  Direction unaffected by translation test passed!");
 	}
@@ -304,13 +305,13 @@ public class TransformMatrixTest implements RayFeatures, TransformMatrixFeatures
 
 		// Create translation matrix for (1, 2, 3)
 		Producer<org.almostrealism.geometry.TransformMatrix> t1 = translationMatrix(vector(1.0, 2.0, 3.0));
-		org.almostrealism.collect.PackedCollection<?> t1Result = t1.get().evaluate();
+		org.almostrealism.collect.PackedCollection t1Result = t1.get().evaluate();
 		org.almostrealism.geometry.TransformMatrix translateMat =
 			new org.almostrealism.geometry.TransformMatrix(t1Result, 0);
 
 		// Create scale matrix (2x in all directions)
 		Producer<org.almostrealism.geometry.TransformMatrix> t2 = scaleMatrix(vector(2.0, 2.0, 2.0));
-		org.almostrealism.collect.PackedCollection<?> t2Result = t2.get().evaluate();
+		org.almostrealism.collect.PackedCollection t2Result = t2.get().evaluate();
 		org.almostrealism.geometry.TransformMatrix scaleMat =
 			new org.almostrealism.geometry.TransformMatrix(t2Result, 0);
 
@@ -323,13 +324,13 @@ public class TransformMatrixTest implements RayFeatures, TransformMatrixFeatures
 		Ray result = new Ray(transformed.get().evaluate(), 0);
 
 		log("  Original origin: (0, 0, 0)");
-		log("  Combined transformed origin: (" + result.getOrigin().getX() + ", " +
-			result.getOrigin().getY() + ", " + result.getOrigin().getZ() + ")");
+		log("  Combined transformed origin: (" + result.getOrigin().toDouble(0) + ", " +
+			result.getOrigin().toDouble(1) + ", " + result.getOrigin().toDouble(2) + ")");
 
 		// Origin should be at (1, 2, 3) after scaling (0,0,0) then translating
-		assertTrue("X should be 1.0", Math.abs(result.getOrigin().getX() - 1.0) < 0.001);
-		assertTrue("Y should be 2.0", Math.abs(result.getOrigin().getY() - 2.0) < 0.001);
-		assertTrue("Z should be 3.0", Math.abs(result.getOrigin().getZ() - 3.0) < 0.001);
+		assertTrue("X should be 1.0", Math.abs(result.getOrigin().toDouble(0) - 1.0) < 0.001);
+		assertTrue("Y should be 2.0", Math.abs(result.getOrigin().toDouble(1) - 2.0) < 0.001);
+		assertTrue("Z should be 3.0", Math.abs(result.getOrigin().toDouble(2) - 3.0) < 0.001);
 
 		log("  Combined transform test passed!");
 	}
@@ -488,30 +489,30 @@ public class TransformMatrixTest implements RayFeatures, TransformMatrixFeatures
 		Producer<Ray> r = ray(0.0, 0.0, 10.0, 0.0, 0.0, -1.0);
 		Ray originalRay = new Ray(r.get().evaluate(), 0);
 		log("Original ray:");
-		log("  Origin: (" + originalRay.getOrigin().getX() + ", " +
-			originalRay.getOrigin().getY() + ", " + originalRay.getOrigin().getZ() + ")");
-		log("  Direction: (" + originalRay.getDirection().getX() + ", " +
-			originalRay.getDirection().getY() + ", " + originalRay.getDirection().getZ() + ")");
+		log("  Origin: (" + originalRay.getOrigin().toDouble(0) + ", " +
+			originalRay.getOrigin().toDouble(1) + ", " + originalRay.getOrigin().toDouble(2) + ")");
+		log("  Direction: (" + originalRay.getDirection().toDouble(0) + ", " +
+			originalRay.getDirection().toDouble(1) + ", " + originalRay.getDirection().toDouble(2) + ")");
 
 		// Apply inverse transform
 		Producer<Ray> transformedProducer = inverse.transform(r);
 		Ray transformedRay = new Ray(transformedProducer.get().evaluate(), 0);
 		log("Transformed ray (after inverse scale 0.5):");
-		log("  Origin: (" + transformedRay.getOrigin().getX() + ", " +
-			transformedRay.getOrigin().getY() + ", " + transformedRay.getOrigin().getZ() + ")");
-		log("  Direction: (" + transformedRay.getDirection().getX() + ", " +
-			transformedRay.getDirection().getY() + ", " + transformedRay.getDirection().getZ() + ")");
+		log("  Origin: (" + transformedRay.getOrigin().toDouble(0) + ", " +
+			transformedRay.getOrigin().toDouble(1) + ", " + transformedRay.getOrigin().toDouble(2) + ")");
+		log("  Direction: (" + transformedRay.getDirection().toDouble(0) + ", " +
+			transformedRay.getDirection().toDouble(1) + ", " + transformedRay.getDirection().toDouble(2) + ")");
 
 		// Expected: origin scaled to (0,0,5), direction scaled to (0,0,-0.5)
 		log("Expected: origin=(0,0,5), direction=(0,0,-0.5)");
-		assertTrue("Origin Z should be 5.0", Math.abs(transformedRay.getOrigin().getZ() - 5.0) < 0.001);
-		assertTrue("Direction Z should be -0.5", Math.abs(transformedRay.getDirection().getZ() - (-0.5)) < 0.001);
+		assertTrue("Origin Z should be 5.0", Math.abs(transformedRay.getOrigin().toDouble(2) - 5.0) < 0.001);
+		assertTrue("Direction Z should be -0.5", Math.abs(transformedRay.getDirection().toDouble(2) - (-0.5)) < 0.001);
 
 		// Check direction length
 		double dirLength = Math.sqrt(
-			transformedRay.getDirection().getX() * transformedRay.getDirection().getX() +
-			transformedRay.getDirection().getY() * transformedRay.getDirection().getY() +
-			transformedRay.getDirection().getZ() * transformedRay.getDirection().getZ()
+			transformedRay.getDirection().toDouble(0) * transformedRay.getDirection().toDouble(0) +
+			transformedRay.getDirection().toDouble(1) * transformedRay.getDirection().toDouble(1) +
+			transformedRay.getDirection().toDouble(2) * transformedRay.getDirection().toDouble(2)
 		);
 		log("Transformed direction length: " + dirLength);
 		assertTrue("Direction length should be 0.5", Math.abs(dirLength - 0.5) < 0.001);
@@ -582,7 +583,7 @@ public class TransformMatrixTest implements RayFeatures, TransformMatrixFeatures
 
 		// Create a scale matrix with zero in one dimension
 		Producer<org.almostrealism.geometry.TransformMatrix> tmProducer = scaleMatrix(vector(1.0, 0.0, 1.0));
-		org.almostrealism.collect.PackedCollection<?> tmResult = tmProducer.get().evaluate();
+		org.almostrealism.collect.PackedCollection tmResult = tmProducer.get().evaluate();
 		org.almostrealism.geometry.TransformMatrix mat = new org.almostrealism.geometry.TransformMatrix(tmResult, 0);
 
 		double[] matData = mat.toArray(0, 16);
@@ -599,9 +600,9 @@ public class TransformMatrixTest implements RayFeatures, TransformMatrixFeatures
 		Ray result = new Ray(transformed.get().evaluate(), 0);
 
 		log("  Original origin Y: 5.0");
-		log("  Transformed origin Y: " + result.getOrigin().getY());
+		log("  Transformed origin Y: " + result.getOrigin().toDouble(1));
 
-		assertTrue("Y should be ~0.0", Math.abs(result.getOrigin().getY()) < 0.001);
+		assertTrue("Y should be ~0.0", Math.abs(result.getOrigin().toDouble(1)) < 0.001);
 
 		log("  Zero scale test passed!");
 	}

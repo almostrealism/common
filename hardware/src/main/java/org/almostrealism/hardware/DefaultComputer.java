@@ -132,12 +132,12 @@ import java.util.function.Supplier;
  * <h3>Example: Context Selection in Action</h3>
  * <pre>{@code
  * // Sequential operation (count=1) -> CPU
- * Computation<PackedCollection<?>> single = multiply(v1, v2);  // count=1
+ * Computation<PackedCollection> single = multiply(v1, v2);  // count=1
  * ComputeContext ctx1 = computer.getContext(single);
  * // Result: NativeDataContext (CPU/JNI)
  *
  * // Parallel operation (count=10000) -> GPU
- * Computation<PackedCollection<?>> parallel = multiply(
+ * Computation<PackedCollection> parallel = multiply(
  *     v(shape(10000, 3), 0),
  *     v(shape(10000, 3), 1)
  * );  // count=10000
@@ -145,7 +145,7 @@ import java.util.function.Supplier;
  * // Result: CLDataContext or MetalDataContext (GPU)
  *
  * // Variable count -> GPU
- * Computation<PackedCollection<?>> variable = multiply(
+ * Computation<PackedCollection> variable = multiply(
  *     v(shape(-1, 3), 0),  // count unknown
  *     v(shape(-1, 3), 1)
  * );
@@ -257,9 +257,9 @@ import java.util.function.Supplier;
  * <h3>Producer Compilation</h3>
  * <p>Compile value-producing computations into {@link Evaluable}s:</p>
  * <pre>{@code
- * Computation<PackedCollection<?>> computation = multiply(a, b);
- * Evaluable<PackedCollection<?>> evaluable = computer.compileProducer(computation);
- * PackedCollection<?> result = evaluable.evaluate();
+ * Computation<PackedCollection> computation = multiply(a, b);
+ * Evaluable<PackedCollection> evaluable = computer.compileProducer(computation);
+ * PackedCollection result = evaluable.evaluate();
  * }</pre>
  *
  * <p><strong>Note:</strong> Producer compilation bypasses {@code postProcessOutput} methods.
@@ -306,7 +306,7 @@ import java.util.function.Supplier;
  * public class AudioProcessor implements HardwareFeatures {
  *     private static final String FILTER_KEY = "lowpass_1000hz";
  *
- *     public Producer<PackedCollection<?>> filter(Producer<PackedCollection<?>> input) {
+ *     public Producer<PackedCollection> filter(Producer<PackedCollection> input) {
  *         // First call: compiles and caches
  *         // Subsequent calls: reuse cached kernel with new input
  *         return instruct(FILTER_KEY,
@@ -605,9 +605,9 @@ public class DefaultComputer implements Computer<MemoryData>, ConsoleFeatures {
 	 *
 	 * <p>Example:</p>
 	 * <pre>{@code
-	 * Computation<PackedCollection<?>> multiply = ...;
-	 * Evaluable<PackedCollection<?>> evaluable = computer.compileProducer(multiply);
-	 * PackedCollection<?> result = evaluable.evaluate();
+	 * Computation<PackedCollection> multiply = ...;
+	 * Evaluable<PackedCollection> evaluable = computer.compileProducer(multiply);
+	 * PackedCollection result = evaluable.evaluate();
 	 * }</pre>
 	 *
 	 * @param c The computation to compile

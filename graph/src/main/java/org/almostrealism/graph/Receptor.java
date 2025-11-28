@@ -15,6 +15,7 @@
  */
 
 package org.almostrealism.graph;
+import org.almostrealism.collect.PackedCollection;
 
 import io.almostrealism.relation.Producer;
 import org.almostrealism.hardware.OperationList;
@@ -46,12 +47,12 @@ import java.util.stream.Stream;
  * <h2>Usage Example</h2>
  * <pre>{@code
  * // Create a receptor that stores values into a collection
- * Receptor<PackedCollection<?>> storage = input -> {
+ * Receptor<PackedCollection> storage = input -> {
  *     return assign(destination, input);
  * };
  *
  * // Create a multi-target receptor
- * Receptor<PackedCollection<?>> broadcast = Receptor.to(receptor1, receptor2, receptor3);
+ * Receptor<PackedCollection> broadcast = Receptor.to(receptor1, receptor2, receptor3);
  * }</pre>
  *
  * @param <T> the type of data received, typically {@link org.almostrealism.collect.PackedCollection}

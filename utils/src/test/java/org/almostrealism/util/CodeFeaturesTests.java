@@ -26,11 +26,11 @@ import java.util.function.Supplier;
 public class CodeFeaturesTests implements TestFeatures {
 	@Test
 	public void partialComputation1() {
-		Producer<PackedCollection<?>> p = multiply(c(1.0), c(2.0));
-		Producer<PackedCollection<?>> q = add(c(5.0), p);
+		Producer<PackedCollection> p = multiply(c(1.0), c(2.0));
+		Producer<PackedCollection> q = add(c(5.0), p);
 
-		Evaluable<PackedCollection<?>> pev = p.get();
-		Evaluable<PackedCollection<?>> qev = q.get();
+		Evaluable<PackedCollection> pev = p.get();
+		Evaluable<PackedCollection> qev = q.get();
 
 		assertEquals(2.0, pev.evaluate());
 		assertEquals(7.0, qev.evaluate());
@@ -38,11 +38,11 @@ public class CodeFeaturesTests implements TestFeatures {
 
 	@Test
 	public void partialComputation2() {
-		Producer<PackedCollection<?>> p = multiply(c(1.0), c(2.0));
-		Producer<PackedCollection<?>> q = add(c(5.0), p);
+		Producer<PackedCollection> p = multiply(c(1.0), c(2.0));
+		Producer<PackedCollection> q = add(c(5.0), p);
 
-		Evaluable<PackedCollection<?>> pev = p.get();
-		Evaluable<PackedCollection<?>> qev = q.get();
+		Evaluable<PackedCollection> pev = p.get();
+		Evaluable<PackedCollection> qev = q.get();
 
 		assertEquals(2.0, pev.evaluate());
 		assertEquals(7.0, qev.evaluate());
@@ -50,12 +50,12 @@ public class CodeFeaturesTests implements TestFeatures {
 
 	@Test
 	public void partialComputation3() {
-		PackedCollection<?> multiplier = pack(1.0);
-		Producer<PackedCollection<?>> p = multiply(p(multiplier), c(2.0));
-		Producer<PackedCollection<?>> q = add(c(5.0), p);
+		PackedCollection multiplier = pack(1.0);
+		Producer<PackedCollection> p = multiply(p(multiplier), c(2.0));
+		Producer<PackedCollection> q = add(c(5.0), p);
 
-		Evaluable<PackedCollection<?>> pev = p.get();
-		Evaluable<PackedCollection<?>> qev = q.get();
+		Evaluable<PackedCollection> pev = p.get();
+		Evaluable<PackedCollection> qev = q.get();
 
 		assertEquals(2.0, pev.evaluate());
 		assertEquals(7.0, qev.evaluate());
@@ -67,14 +67,14 @@ public class CodeFeaturesTests implements TestFeatures {
 
 	@Test
 	public void partialComputation4() {
-		PackedCollection<?> multiplier = pack(1.0);
-		Producer<PackedCollection<?>> p = multiply(p(multiplier), c(2.0));
-		Producer<PackedCollection<?>> q = add(c(5.0), p);
+		PackedCollection multiplier = pack(1.0);
+		Producer<PackedCollection> p = multiply(p(multiplier), c(2.0));
+		Producer<PackedCollection> q = add(c(5.0), p);
 
-		Evaluable<PackedCollection<?>> qev = q.get();
+		Evaluable<PackedCollection> qev = q.get();
 		assertEquals(7.0, qev.evaluate());
 
-		Evaluable<PackedCollection<?>> pev = p.get();
+		Evaluable<PackedCollection> pev = p.get();
 		assertEquals(2.0, pev.evaluate());
 
 		// Make sure the process respects the update to a provided value
@@ -89,13 +89,13 @@ public class CodeFeaturesTests implements TestFeatures {
 
 	@Test
 	public void partialComputation5() {
-		Producer<PackedCollection<?>> p = multiply(c(1.0), c(2.0));
-		Producer<PackedCollection<?>> q = add(c(5.0), p);
-		Producer<PackedCollection<?>> r = multiply(c(5.0), p);
+		Producer<PackedCollection> p = multiply(c(1.0), c(2.0));
+		Producer<PackedCollection> q = add(c(5.0), p);
+		Producer<PackedCollection> r = multiply(c(5.0), p);
 
-		Evaluable<PackedCollection<?>> pev = p.get();
-		Evaluable<PackedCollection<?>> qev = q.get();
-		Evaluable<PackedCollection<?>> rev = r.get();
+		Evaluable<PackedCollection> pev = p.get();
+		Evaluable<PackedCollection> qev = q.get();
+		Evaluable<PackedCollection> rev = r.get();
 
 		assertEquals(2.0, pev.evaluate());
 		assertEquals(7.0, qev.evaluate());
@@ -104,10 +104,10 @@ public class CodeFeaturesTests implements TestFeatures {
 
 	@Test
 	public void partialComputation6() {
-		PackedCollection<?> multiplier = pack(1.0);
-		Producer<PackedCollection<?>> p = multiply(p(multiplier), c(2.0));
-		Producer<PackedCollection<?>> q = add(c(5.0), p);
-		Producer<PackedCollection<?>> r = multiply(c(5.0), p);
+		PackedCollection multiplier = pack(1.0);
+		Producer<PackedCollection> p = multiply(p(multiplier), c(2.0));
+		Producer<PackedCollection> q = add(c(5.0), p);
+		Producer<PackedCollection> r = multiply(c(5.0), p);
 
 		assertEquals(10.0, r.get().evaluate());
 		assertEquals(2.0, p.get().evaluate());
@@ -116,10 +116,10 @@ public class CodeFeaturesTests implements TestFeatures {
 
 	@Test
 	public void partialComputation7() {
-		PackedCollection<?> multiplier = pack(1.0);
-		Producer<PackedCollection<?>> p = multiply(func(shape(1), args -> multiplier), c(2.0));
-		Producer<PackedCollection<?>> q = add(c(5.0), p);
-		Producer<PackedCollection<?>> r = multiply(c(5.0), p);
+		PackedCollection multiplier = pack(1.0);
+		Producer<PackedCollection> p = multiply(func(shape(1), args -> multiplier), c(2.0));
+		Producer<PackedCollection> q = add(c(5.0), p);
+		Producer<PackedCollection> r = multiply(c(5.0), p);
 
 		assertEquals(10.0, r.get().evaluate());
 		assertEquals(2.0, p.get().evaluate());
@@ -133,12 +133,12 @@ public class CodeFeaturesTests implements TestFeatures {
 
 	@Test
 	public void addToProvider() {
-		PackedCollection<?> value = pack(1.0);
-		Producer<PackedCollection<?>> s = add(c(1), p(value));
+		PackedCollection value = pack(1.0);
+		Producer<PackedCollection> s = add(c(1), p(value));
 		value.setMem(0, 2.0);
 
-		Evaluable<PackedCollection<?>> ev = s.get();
-		PackedCollection<?> out = ev.evaluate();
+		Evaluable<PackedCollection> ev = s.get();
+		PackedCollection out = ev.evaluate();
 		assertEquals(3.0, out.toDouble(0));
 
 		value.setMem(0, 3.0);
@@ -148,8 +148,8 @@ public class CodeFeaturesTests implements TestFeatures {
 
 	@Test
 	public void addToProviderAndAssign() {
-		PackedCollection<?> value = pack(1.0);
-		PackedCollection<?> dest = pack(0.0);
+		PackedCollection value = pack(1.0);
+		PackedCollection dest = pack(0.0);
 		Supplier<Runnable> s = a(1, p(dest), add(c(1), p(value)).divide(c(2.0)));
 		value.setMem(0, 2.0);
 
@@ -165,8 +165,8 @@ public class CodeFeaturesTests implements TestFeatures {
 
 	@Test
 	public void loop1() {
-		PackedCollection<?> value = pack(1.0);
-		PackedCollection<?> dest = pack(0.0);
+		PackedCollection value = pack(1.0);
+		PackedCollection dest = pack(0.0);
 		Supplier<Runnable> s = lp(a(1, p(dest), add(c(1), p(value)).divide(c(2.0))), 2);
 		value.setMem(0, 2.0);
 
@@ -182,7 +182,7 @@ public class CodeFeaturesTests implements TestFeatures {
 
 	@Test
 	public void loop2() {
-		PackedCollection<?> dest = pack(0.0);
+		PackedCollection dest = pack(0.0);
 		Supplier<Runnable> s = lp(a(1, p(dest), add(c(1.0), p(dest))), 3);
 		Runnable r = s.get();
 

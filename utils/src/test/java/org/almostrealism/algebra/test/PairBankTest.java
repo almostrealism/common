@@ -10,29 +10,29 @@ import org.junit.Test;
 public class PairBankTest implements TestFeatures {
 	@Test
 	public void test() {
-		PackedCollection<Pair<?>> bank = Pair.bank(2);
+		PackedCollection bank = Pair.bank(2);
 		bank.set(0, new Pair(1, 2));
 		bank.set(1, new Pair(3, 4));
-		assertEquals(1.0, bank.get(0).getX());
-		assertEquals(2.0, bank.get(0).getY());
-		assertEquals(3.0, bank.get(1).getX());
-		assertEquals(4.0, bank.get(1).getY());
+		assertEquals(1.0, bank.get(0).toDouble(0));
+		assertEquals(2.0, bank.get(0).toDouble(1));
+		assertEquals(3.0, bank.get(1).toDouble(0));
+		assertEquals(4.0, bank.get(1).toDouble(1));
 	}
 
 	@Test
 	public void concat1() {
-		Producer<PackedCollection<?>> l = v(shape(-1, 1), 0);
-		Producer<PackedCollection<?>> r = v(shape(-1, 1), 1);
+		Producer<PackedCollection> l = v(shape(-1, 1), 0);
+		Producer<PackedCollection> r = v(shape(-1, 1), 1);
 
-		CollectionProducer<PackedCollection<?>> concat = concat(shape(2), l, r);
+		CollectionProducer<PackedCollection> concat = concat(shape(2), l, r);
 
-		PackedCollection<?> left = new PackedCollection<>(shape(4, 1));
+		PackedCollection left = new PackedCollection(shape(4, 1));
 		left.setMem(1.0, 2.0, 3.0, 4.0);
 
-		PackedCollection<?> right = new PackedCollection<>(shape(4, 1));
+		PackedCollection right = new PackedCollection(shape(4, 1));
 		right.setMem(5.0, 6.0, 7.0, 8.0);
 
-		PackedCollection<?> destination = new PackedCollection<>(shape(4, 2));
+		PackedCollection destination = new PackedCollection(shape(4, 2));
 
 		concat.get().into(destination.traverse(1))
 				.evaluate(left.traverse(1), right.traverse(1));
@@ -44,14 +44,14 @@ public class PairBankTest implements TestFeatures {
 
 	@Test
 	public void concat2() {
-		Producer<PackedCollection<?>> in = v(shape(-1, 4, 1), 0);
+		Producer<PackedCollection> in = v(shape(-1, 4, 1), 0);
 
-		CollectionProducer<PackedCollection<?>> concat = concat(shape(4, 2), in, in);
+		CollectionProducer<PackedCollection> concat = concat(shape(4, 2), in, in);
 
-		PackedCollection<?> timeline = new PackedCollection<>(shape(4, 1));
+		PackedCollection timeline = new PackedCollection(shape(4, 1));
 		timeline.setMem(1.0, 2.0, 3.0, 4.0);
 
-		PackedCollection<?> destination = new PackedCollection<>(shape(4, 2));
+		PackedCollection destination = new PackedCollection(shape(4, 2));
 
 		concat.get().into(destination.traverse(1)).evaluate(timeline.traverse(1));
 		destination.traverse(1).print();
@@ -64,15 +64,15 @@ public class PairBankTest implements TestFeatures {
 	public void map() {
 		if (skipKnownIssues) return;
 
-		Producer<PackedCollection<?>> in = v(shape(4, 1), 0);
+		Producer<PackedCollection> in = v(shape(4, 1), 0);
 
-		CollectionProducer<PackedCollection<?>> concat = map(shape(2), traverse(1, in),
+		CollectionProducer<PackedCollection> concat = map(shape(2), traverse(1, in),
 				v -> concat(c(2.0).multiply(v), c(2.0).multiply(v).add(c(1.0))));
 
-		PackedCollection<?> timeline = new PackedCollection<>(shape(4, 1));
+		PackedCollection timeline = new PackedCollection(shape(4, 1));
 		timeline.setMem(1.0, 2.0, 3.0, 4.0);
 
-		PackedCollection<?> destination = new PackedCollection<>(shape(4, 2));
+		PackedCollection destination = new PackedCollection(shape(4, 2));
 
 		verboseLog(() -> {
 			concat.get().into(destination.traverse(1)).evaluate(timeline.traverse(1));
@@ -85,7 +85,7 @@ public class PairBankTest implements TestFeatures {
 
 	@Test
 	public void pairFromPairBank() {
-		PackedCollection<Pair<?>> bank = Pair.bank(10);
+		PackedCollection bank = Pair.bank(10);
 		bank.set(0, new Pair(1, 2));
 		bank.set(1, new Pair(3, 4));
 		bank.set(2, new Pair(5, 6));
@@ -97,14 +97,14 @@ public class PairBankTest implements TestFeatures {
 		bank.set(8, new Pair(17, 18));
 		bank.set(9, new Pair(19, 20));
 
-		Producer<PackedCollection<?>> index = c(2).multiply(v(shape(4, 1), 1)).add(c(1.0));
-		Producer<Pair<?>> pairFromPairBank =
-				pairFromBank(v(shape(10, 2), 0), index);
+		Producer<PackedCollection> index = c(2).multiply(v(shape(4, 1), 1)).add(c(1.0));
+		Producer<PackedCollection> pairFromPairBank =
+				(Producer<PackedCollection>) (Producer) pairFromBank(v(shape(10, 2), 0), index);
 
-		PackedCollection<?> timeline = new PackedCollection<>(shape(4, 1));
+		PackedCollection timeline = new PackedCollection(shape(4, 1));
 		timeline.setMem(1.0, 2.0, 3.0, 4.0);
 
-		PackedCollection<?> destination = new PackedCollection<>(shape(4, 2));
+		PackedCollection destination = new PackedCollection(shape(4, 2));
 
 		pairFromPairBank.get().into(destination.traverse(1))
 				.evaluate(bank, timeline.traverse(1));

@@ -60,7 +60,7 @@ import java.util.List;
  * TraversalPolicy weightPos = shape(3, 4);  // Position policy for x
  * TraversalPolicy groupShape = shape(1, 4); // Sum over dimension 1
  *
- * WeightedSumComputation<PackedCollection<?>> matmul =
+ * WeightedSumComputation<PackedCollection> matmul =
  *     new WeightedSumComputation<>(
  *         resultShape, inputPos, weightPos,
  *         groupShape, groupShape,
@@ -73,7 +73,7 @@ import java.util.List;
  * @see org.almostrealism.algebra.AlgebraFeatures#weightedSum
  * @see org.almostrealism.algebra.MatrixFeatures#matmul
  */
-public class WeightedSumComputation <T extends PackedCollection<?>>
+public class WeightedSumComputation <T extends PackedCollection>
 		extends TraversableExpressionComputation<T> {
 	private TraversalPolicy resultShape;
 	private TraversalPolicy inputPositions, weightPositions;
@@ -98,8 +98,8 @@ public class WeightedSumComputation <T extends PackedCollection<?>>
 								  TraversalPolicy weightPositions,
 								  TraversalPolicy inputGroupShape,
 								  TraversalPolicy weightGroupShape,
-								  Producer<PackedCollection<?>> input,
-								  Producer<PackedCollection<?>> weights) {
+								  Producer<PackedCollection> input,
+								  Producer<PackedCollection> weights) {
 		super("weightedSum", resultShape.traverseEach(), input, weights);
 		this.resultShape = resultShape;
 		this.inputPositions = inputPositions;

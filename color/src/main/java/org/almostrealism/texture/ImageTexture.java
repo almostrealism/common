@@ -15,6 +15,7 @@
  */
 
 package org.almostrealism.texture;
+import org.almostrealism.collect.PackedCollection;
 
 import java.awt.Color;
 import java.awt.Image;
@@ -280,7 +281,7 @@ public class ImageTexture implements Texture, Editable {
 	 * 
 	 * @see org.almostrealism.texture.Texture#getColorAt(java.lang.Object[])
 	 */
-	public Evaluable<RGB> getColorAt(Object params[]) {
+	public Evaluable<PackedCollection> getColorAt(Object params[]) {
 		return GeneratedColorProducer.fromProducer(this, () -> args -> {
 			Vector l = args.length > 0 ? (Vector) args[0] : new Vector(1.0, 1.0, 1.0);
 			Vector point = new Vector(l.getX(), l.getY(), l.getZ());

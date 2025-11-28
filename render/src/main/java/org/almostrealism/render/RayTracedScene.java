@@ -15,6 +15,7 @@
  */
 
 package org.almostrealism.render;
+import org.almostrealism.collect.PackedCollection;
 
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -98,13 +99,13 @@ public class RayTracedScene implements Realization<RealizableImage, RenderParame
 
 	public RenderParameters getRenderParameters() { return p; }
 
-	public Producer<RGB> operate(Producer<Pair<?>> uv, Producer<Pair<?>> sd) {
-		Future<Producer<RGB>> color = tracer.trace(camera.rayAt(uv, sd));
+	public Producer<PackedCollection> operate(Producer<Pair> uv, Producer<Pair> sd) {
+		Future<Producer<PackedCollection>> color = tracer.trace(camera.rayAt(uv, sd));
 
 		if (color == null) {
 			color = new Future<>() {
 				@Override
-				public Producer<RGB> get() {
+				public Producer<PackedCollection> get() {
 					return black();
 				}
 
@@ -118,7 +119,7 @@ public class RayTracedScene implements Realization<RealizableImage, RenderParame
 				public boolean isDone() {return true;}
 
 				@Override
-				public Producer<RGB> get(long timeout, TimeUnit unit)
+				public Producer<PackedCollection> get(long timeout, TimeUnit unit)
 						throws InterruptedException, ExecutionException, TimeoutException {
 					return get();
 				}
@@ -133,11 +134,11 @@ public class RayTracedScene implements Realization<RealizableImage, RenderParame
 		}
 	}
 
-	public Producer<RGB> getProducer() { return getProducer(getRenderParameters()); }
+	public Producer<PackedCollection> getProducer() { return getProducer(getRenderParameters()); }
 
-	public Producer<RGB> getProducer(RenderParameters p) {
+	public Producer<PackedCollection> getProducer(RenderParameters p) {
 		// Use shape(-1, 2) for variable-count to allow kernel size to adapt to output
-		Producer<RGB> producer = operate(v(shape(-1, 2), 0), pair(p.width, p.height));
+		Producer<PackedCollection> producer = operate(v(shape(-1, 2), 0), pair(p.width, p.height));
 
 		if (producer instanceof DimensionAware) {
 			((DimensionAware) producer).setDimensions(p.width, p.height, p.ssWidth, p.ssHeight);
@@ -151,7 +152,7 @@ public class RayTracedScene implements Realization<RealizableImage, RenderParame
 		this.p = p;
 
 		Pixel px = new Pixel(p.ssWidth, p.ssHeight);
-		Producer<RGB> producer = getProducer(p);
+		Producer<PackedCollection> producer = getProducer(p);
 
 		for (int i = 0; i < p.ssWidth; i++) {
 			for (int j = 0; j < p.ssHeight; j++) {

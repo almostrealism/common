@@ -6,20 +6,20 @@ import org.almostrealism.graph.Receptor;
 
 import java.util.function.Supplier;
 
-public class CollectionReceptor implements Receptor<PackedCollection<?>> {
-	private PackedCollection<?> dest;
-	private Producer<PackedCollection<?>> pos;
+public class CollectionReceptor implements Receptor<PackedCollection> {
+	private PackedCollection dest;
+	private Producer<PackedCollection> pos;
 	private Runnable r;
 
-	public CollectionReceptor(PackedCollection<?> dest) {
+	public CollectionReceptor(PackedCollection dest) {
 		this(dest, null);
 	}
 
-	public CollectionReceptor(PackedCollection<?> dest, Producer<PackedCollection<?>> pos) {
+	public CollectionReceptor(PackedCollection dest, Producer<PackedCollection> pos) {
 		this(dest, pos, null);
 	}
 
-	public CollectionReceptor(PackedCollection<?> dest, Producer<PackedCollection<?>> pos, Runnable r) {
+	public CollectionReceptor(PackedCollection dest, Producer<PackedCollection> pos, Runnable r) {
 		if (pos != null && dest.getShape().getDimensions() != 2)
 			throw new IllegalArgumentException();
 
@@ -29,9 +29,9 @@ public class CollectionReceptor implements Receptor<PackedCollection<?>> {
 	}
 
 	@Override
-	public Supplier<Runnable> push(Producer<PackedCollection<?>> protein) {
+	public Supplier<Runnable> push(Producer<PackedCollection> protein) {
 		return () -> () -> {
-			PackedCollection<?> in = protein.get().evaluate();
+			PackedCollection in = protein.get().evaluate();
 			int p = pos == null ? 0 : (int) pos.get().evaluate().toDouble(0);
 
 			int length = pos == null ? dest.getShape().getTotalSize() : dest.getShape().length(1);

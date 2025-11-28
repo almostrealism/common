@@ -35,7 +35,7 @@ import java.util.stream.Stream;
  *
  * <p>Usage example:</p>
  * <pre>{@code
- * List<Intersectable<PackedCollection<?>>> surfaces = scene.getSurfaces();
+ * List<Intersectable<PackedCollection>> surfaces = scene.getSurfaces();
  * ClosestIntersection closest = new ClosestIntersection(ray, surfaces);
  * Producer<Ray> hitNormal = closest.get(0);  // Gets intersection position and normal
  * }</pre>
@@ -70,7 +70,7 @@ public class ClosestIntersection extends ArrayList<Producer<Ray>> implements Con
 			for (ContinuousField in : s) {
 				if (in == null) continue p;
 
-				PackedCollection<?> dist = (PackedCollection<?>) ((Evaluable) ((ShadableIntersection) in).getDistance().get()).evaluate(args);
+				PackedCollection dist = ((Intersection) in).getDistance().get().evaluate(args);
 				if (dist == null) continue p;
 
 				double v = dist.toDouble(0);
@@ -91,16 +91,16 @@ public class ClosestIntersection extends ArrayList<Producer<Ray>> implements Con
 	 * @return a producer for the surface normal vector at the closest intersection
 	 */
 	@Override
-	public Producer<Vector> getNormalAt(Producer<Vector> point) {
+	public Producer<PackedCollection> getNormalAt(Producer<PackedCollection> point) {
 		return () -> args -> {
 			double d = Double.MAX_VALUE;
-			Vector normal = null;
+			PackedCollection normal = null;
 
 			p:
 			for (ContinuousField in : s) {
 				if (in == null) continue p;
 
-				PackedCollection<?> dist = (PackedCollection<?>) ((Evaluable) ((ShadableIntersection) in).getDistance().get()).evaluate(args);
+				PackedCollection dist = (PackedCollection) ((Evaluable) ((ShadableIntersection) in).getDistance().get()).evaluate(args);
 				if (dist == null) continue p;
 
 				double v = dist.toDouble(0);

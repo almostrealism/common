@@ -62,7 +62,7 @@ import org.almostrealism.geometry.RayFeatures;
  * light.setAttenuationCoefficients(1.0, 0.0, 0.0);
  *
  * // Get the attenuated color at a specific point
- * Producer<RGB> colorAtSurface = light.getColorAt(surfacePointProducer);
+ * Producer<PackedCollection> colorAtSurface = light.getColorAt(surfacePointProducer);
  * }</pre>
  *
  * @see Light
@@ -190,8 +190,8 @@ public class PointLight implements Light, Positioned, RayFeatures, RGBFeatures {
 	 * specified point as an RGB object.
 	 */
 	@Override
-	public Producer<RGB> getColorAt(Producer<Vector> point) {
-		Producer<PackedCollection<?>> d = lengthSq(add(point, minus(v(location))));
+	public Producer<PackedCollection> getColorAt(Producer<PackedCollection> point) {
+		Producer<PackedCollection> d = lengthSq(add(point, minus(v(location))));
 
 		RGB color = getColor().multiply(getIntensity());
 		return GeneratedColorProducer.fromProducer(this, attenuation(da, db, dc, v(color), d));
@@ -228,9 +228,9 @@ public class PointLight implements Light, Positioned, RayFeatures, RGBFeatures {
 	 * based on intensity.
 	 */
 	// TODO  This should be a method of the Light interface
-	public Producer<RGB> forShadable(Shadable surface, Producer<Ray> intersection, ShaderContext context) {
-		CollectionProducer<Vector> point = origin(intersection);
-		Producer<Vector> direction = add(point, minus(v(getLocation())));
+	public Producer<PackedCollection> forShadable(Shadable surface, Producer<Ray> intersection, ShaderContext context) {
+		CollectionProducer<PackedCollection> point = origin(intersection);
+		Producer<PackedCollection> direction = add(point, minus(v(getLocation())));
 		direction = minus(normalize(direction));
 		context.setLightDirection(direction);
 		return surface.shade(context);

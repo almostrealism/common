@@ -28,8 +28,8 @@ public class EmbeddedCollectionMapTests implements TestFeatures, KernelAssertion
 
 	@Test
 	public void multiply() {
-		PackedCollection<?> a = tensor(shape(8, 1)).pack();
-		PackedCollection<?> b = tensor(shape(8, 1)).pack();
+		PackedCollection a = tensor(shape(8, 1)).pack();
+		PackedCollection b = tensor(shape(8, 1)).pack();
 
 		multiply(p(a.traverseEach()), p(b.traverseEach())).get().evaluate();
 	}
@@ -38,13 +38,13 @@ public class EmbeddedCollectionMapTests implements TestFeatures, KernelAssertion
 	public void multiplyMap() {
 		int n = 2;
 
-		PackedCollection<?> input = tensor(shape(8, n)).pack();
-		PackedCollection<?> filter = tensor(shape(n)).pack();
+		PackedCollection input = tensor(shape(8, n)).pack();
+		PackedCollection filter = tensor(shape(n)).pack();
 		filter.fill(pos -> Math.random());
 
 		verboseLog(() -> {
-			CollectionProducer<PackedCollection<?>> product = traverse(1, p(input)).map(v -> v.multiply(p(filter)));
-			PackedCollection<?> output = product.get().evaluate();
+			CollectionProducer<PackedCollection> product = traverse(1, p(input)).map(v -> v.multiply(p(filter)));
+			PackedCollection output = product.get().evaluate();
 			System.out.println(output.getShape());
 
 			Assert.assertEquals(8, output.getShape().length(0));
@@ -65,15 +65,15 @@ public class EmbeddedCollectionMapTests implements TestFeatures, KernelAssertion
 		int d = 1;
 		int w = 2;
 
-		PackedCollection<?> input = tensor(shape(c / w, w, d)).pack();
+		PackedCollection input = tensor(shape(c / w, w, d)).pack();
 		input.fill(pos -> Math.random());
 
 		verboseLog(() -> {
-			CollectionProducer<PackedCollection<?>> pool =
+			CollectionProducer<PackedCollection> pool =
 					c(p(input)).traverse(1).max();
 			System.out.println(pool.getShape());
 
-			PackedCollection<?> output = pool.get().evaluate().reshape(c / w, d);
+			PackedCollection output = pool.get().evaluate().reshape(c / w, d);
 			System.out.println(output.getShape());
 
 			int c2 = c / w;
@@ -94,13 +94,13 @@ public class EmbeddedCollectionMapTests implements TestFeatures, KernelAssertion
 		int c = 16;
 		int d = 1;
 
-		PackedCollection<?> input = tensor(shape(1, c, d)).pack();
+		PackedCollection input = tensor(shape(1, c, d)).pack();
 
-		CollectionProducer<PackedCollection<?>> pool = enumerate(shape(1, c, d), cp(input));
+		CollectionProducer<PackedCollection> pool = enumerate(shape(1, c, d), cp(input));
 		System.out.println(pool.getShape());
 		input.print();
 
-		PackedCollection<?> output = pool.get().evaluate();
+		PackedCollection output = pool.get().evaluate();
 		System.out.println(output.getShape());
 
 		for (int copy = 0; copy < d; copy++) {
@@ -119,17 +119,17 @@ public class EmbeddedCollectionMapTests implements TestFeatures, KernelAssertion
 		int c = 16;
 		int d = 1;
 
-		PackedCollection<?> input = tensor(shape(1, c, d)).pack();
+		PackedCollection input = tensor(shape(1, c, d)).pack();
 
 		for (int i = 0; i < 10; i++) {
 			input.fill(pos -> Math.random());
 
-			CollectionProducer<PackedCollection<?>> pool =
+			CollectionProducer<PackedCollection> pool =
 					enumerate(shape(1, c, d), cp(input)).traverse(1).max();
 			System.out.println(pool.getShape());
 			input.print();
 
-			PackedCollection<?> output = pool.get().evaluate().reshape(d, 1);
+			PackedCollection output = pool.get().evaluate().reshape(d, 1);
 			System.out.println(output.getShape());
 
 			input.print();
@@ -153,18 +153,18 @@ public class EmbeddedCollectionMapTests implements TestFeatures, KernelAssertion
 		int c = 16;
 		int d = 1;
 
-		PackedCollection<?> input = tensor(shape(1, c, d)).pack();
+		PackedCollection input = tensor(shape(1, c, d)).pack();
 
 		for (int i = 0; i < 10; i++) {
 			input.fill(pos -> Math.random());
 
-			CollectionProducer<PackedCollection<?>> pool =
+			CollectionProducer<PackedCollection> pool =
 //					enumerate(shape(1, c, d), cp(input)).traverse(1).max();
 					enumerate(shape(1, c, d), cp(input)).traverse(1).reduce(slice -> max(slice));
 			System.out.println(pool.getShape());
 			input.print();
 
-			PackedCollection<?> output = pool.get().evaluate().reshape(d, 1);
+			PackedCollection output = pool.get().evaluate().reshape(d, 1);
 			System.out.println(output.getShape());
 
 			input.print();
@@ -189,16 +189,16 @@ public class EmbeddedCollectionMapTests implements TestFeatures, KernelAssertion
 		int d = 1;
 		int w = 2;
 
-		PackedCollection<?> input = tensor(shape(c, d)).pack();
+		PackedCollection input = tensor(shape(c, d)).pack();
 		input.fill(pos -> Math.random());
 
 		verboseLog(() -> {
-			CollectionProducer<PackedCollection<?>> pool =
+			CollectionProducer<PackedCollection> pool =
 					enumerate(shape(w, d), c(p(input)))
 							.traverse(1).reduce(slice -> max(slice));
 			System.out.println(pool.getShape());
 
-			PackedCollection<?> output = pool.get().evaluate();
+			PackedCollection output = pool.get().evaluate();
 			System.out.println(output.getShape());
 
 			int c2 = c / w;
@@ -225,18 +225,18 @@ public class EmbeddedCollectionMapTests implements TestFeatures, KernelAssertion
 		int d = 1;
 		int w = 1;
 
-		PackedCollection<?> input = tensor(shape(c / w, w, d)).pack();
+		PackedCollection input = tensor(shape(c / w, w, d)).pack();
 		input.fill(pos -> Math.random());
 
 		verboseLog(() -> {
-			CollectionProducer<PackedCollection<?>> pool =
+			CollectionProducer<PackedCollection> pool =
 					c(p(input)).traverse(1)
 							.reduce(v ->
 									enumerate(shape(w, 1), v)
 											.traverse(1).reduce(slice -> max(slice)));
 			System.out.println(pool.getShape());
 
-			PackedCollection<?> output = pool.get().evaluate();
+			PackedCollection output = pool.get().evaluate();
 			System.out.println(output.getShape());
 
 			for (int copy = 0; copy < d; copy++) {
@@ -255,15 +255,15 @@ public class EmbeddedCollectionMapTests implements TestFeatures, KernelAssertion
 		int c = 8;
 		int d = 2;
 
-		PackedCollection<?> input = tensor(shape(c, d)).pack();
+		PackedCollection input = tensor(shape(c, d)).pack();
 		input.fill(pos -> Math.random());
 
 		verboseLog(() -> {
-			CollectionProducer<PackedCollection<?>> repeat =
+			CollectionProducer<PackedCollection> repeat =
 					c(p(input)).traverse(1).repeat(2);
 			System.out.println(repeat.getShape());
 
-			PackedCollection<?> output = repeat.get().evaluate();
+			PackedCollection output = repeat.get().evaluate();
 			System.out.println(output.getShape());
 
 			for (int i = 0; i < c; i++) {
@@ -285,16 +285,16 @@ public class EmbeddedCollectionMapTests implements TestFeatures, KernelAssertion
 		int d = 4;
 		int n = 2;
 
-		PackedCollection<?> filter = tensor(shape(n, d)).pack();
-		PackedCollection<?> input = tensor(shape(d)).pack();
+		PackedCollection filter = tensor(shape(n, d)).pack();
+		PackedCollection input = tensor(shape(d)).pack();
 		filter.fill(pos -> Math.random());
 		input.fill(pos -> Math.random());
 
 		verboseLog(() -> {
-			CollectionProducer<PackedCollection<?>> repeat = c(p(input)).repeat(2).each().multiply(p(filter));
+			CollectionProducer<PackedCollection> repeat = c(p(input)).repeat(2).each().multiply(p(filter));
 			System.out.println(repeat.getShape());
 
-			PackedCollection<?> output = repeat.get().evaluate();
+			PackedCollection output = repeat.get().evaluate();
 			System.out.println(output.getShape());
 
 			for (int i = 0; i < d; i++) {
@@ -313,17 +313,17 @@ public class EmbeddedCollectionMapTests implements TestFeatures, KernelAssertion
 		int d = 2;
 		int n = 2;
 
-		PackedCollection<?> filter = tensor(shape(n, d)).pack();
-		PackedCollection<?> input = tensor(shape(c, d)).pack();
+		PackedCollection filter = tensor(shape(n, d)).pack();
+		PackedCollection input = tensor(shape(c, d)).pack();
 		filter.fill(pos -> Math.random());
 		input.fill(pos -> Math.random());
 
 		verboseLog(() -> {
-			CollectionProducer<PackedCollection<?>> repeat =
+			CollectionProducer<PackedCollection> repeat =
 					c(p(input)).traverse(1).repeat(n).each().multiply(p(filter));
 			System.out.println(repeat.getShape());
 
-			PackedCollection<?> output = repeat.get().evaluate();
+			PackedCollection output = repeat.get().evaluate();
 			System.out.println(output.getShape());
 
 			for (int i = 0; i < c; i++) {
@@ -343,18 +343,18 @@ public class EmbeddedCollectionMapTests implements TestFeatures, KernelAssertion
 		int n = 4;
 		int w = 2;
 
-		PackedCollection<?> input = tensor(shape(n, w)).pack();
+		PackedCollection input = tensor(shape(n, w)).pack();
 		input.fill(pos -> Math.random());
 
 		verboseLog(() -> {
-			CollectionProducer<PackedCollection<?>> pool =
+			CollectionProducer<PackedCollection> pool =
 					c(p(input)).traverse(1)
 							.reduce(v ->
 									enumerate(shape(w), v)
 											.traverse(1).reduce(slice -> max(slice)));
 			System.out.println(pool.getShape());
 
-			PackedCollection<?> output = pool.get().evaluate();
+			PackedCollection output = pool.get().evaluate();
 			System.out.println(output.getShape());
 
 			for (int i = 0; i < n; i++) {
@@ -372,19 +372,19 @@ public class EmbeddedCollectionMapTests implements TestFeatures, KernelAssertion
 		int w = 2;
 		int d = 3;
 
-		PackedCollection<?> input = tensor(shape(n, w, d)).pack();
+		PackedCollection input = tensor(shape(n, w, d)).pack();
 		input.fill(pos -> Math.random());
 
 		System.out.println(Arrays.toString(input.toArray(0, 8)));
 
 		verboseLog(() -> {
-			CollectionProducer<PackedCollection<?>> pool =
+			CollectionProducer<PackedCollection> pool =
 					c(p(input)).traverse(1)
 							.map(shape(d, 1, w, 1),
 									v -> enumerate(shape(w, 1), v));
 			System.out.println(pool.getShape());
 
-			PackedCollection<?> output = pool.get().evaluate();
+			PackedCollection output = pool.get().evaluate();
 			System.out.println(output.getShape());
 			System.out.println(Arrays.toString(output.toArray(0, 4)));
 
@@ -407,15 +407,15 @@ public class EmbeddedCollectionMapTests implements TestFeatures, KernelAssertion
 		int d = 6;
 		int w = 2;
 
-		PackedCollection<?> input = tensor(shape(n, d)).pack();
+		PackedCollection input = tensor(shape(n, d)).pack();
 		input.fill(pos -> Math.random());
 
 		verboseLog(() -> {
-			CollectionProducer<PackedCollection<?>> en = enumerate(shape(n, w), c(p(input)));
+			CollectionProducer<PackedCollection> en = enumerate(shape(n, w), c(p(input)));
 
 			System.out.println(en.getShape());
 
-			PackedCollection<?> output = en.get().evaluate();
+			PackedCollection output = en.get().evaluate();
 			System.out.println(output.getShape());
 
 			for (int i = 0; i < n; i++) {
@@ -435,19 +435,19 @@ public class EmbeddedCollectionMapTests implements TestFeatures, KernelAssertion
 		int d = 6;
 		int w = 2;
 
-		PackedCollection<?> a = tensor(shape(n, d)).pack();
-		PackedCollection<?> b = tensor(shape(n, d)).pack();
+		PackedCollection a = tensor(shape(n, d)).pack();
+		PackedCollection b = tensor(shape(n, d)).pack();
 		a.fill(pos -> Math.random());
 		b.fill(pos -> Math.random());
 
 		verboseLog(() -> {
-			CollectionProducer<PackedCollection<?>> product =
+			CollectionProducer<PackedCollection> product =
 					multiply(c(p(a)).traverse(1), c(p(b)).traverse(1));
 			product = enumerate(shape(n, w), product.traverse(0));
 
 			log(product.getShape());
 
-			PackedCollection<?> output = product.get().evaluate();
+			PackedCollection output = product.get().evaluate();
 			log(output.getShape());
 
 			for (int i = 0; i < n; i++) {
@@ -466,18 +466,18 @@ public class EmbeddedCollectionMapTests implements TestFeatures, KernelAssertion
 		int w = 2;
 		int d = 1;
 
-		PackedCollection<?> input = tensor(shape(n, w, d)).pack();
+		PackedCollection input = tensor(shape(n, w, d)).pack();
 		input.fill(pos -> Math.random());
 
 		verboseLog(() -> {
-			CollectionProducer<PackedCollection<?>> pool =
+			CollectionProducer<PackedCollection> pool =
 					c(p(input)).traverse(1)
 							.reduce(v ->
 									enumerate(shape(w, 1), v)
 											.traverse(1).reduce(slice -> max(slice)));
 			System.out.println(pool.getShape());
 
-			PackedCollection<?> output = pool.get().evaluate();
+			PackedCollection output = pool.get().evaluate();
 			System.out.println(output.getShape());
 
 			for (int i = 0; i < n; i++) {
@@ -496,9 +496,9 @@ public class EmbeddedCollectionMapTests implements TestFeatures, KernelAssertion
 		int d = 3;
 		int w = 2;
 
-		PackedCollection<?> input = tensor(shape(c, d)).pack();
+		PackedCollection input = tensor(shape(c, d)).pack();
 		input.fill(pos -> Math.random());
-		CollectionProducer<PackedCollection<?>> pool =
+		CollectionProducer<PackedCollection> pool =
 				cp(input)
 						.enumerate(1, 1)
 						.enumerate(1, w)
@@ -506,7 +506,7 @@ public class EmbeddedCollectionMapTests implements TestFeatures, KernelAssertion
 						.max();
 		System.out.println(pool.getShape());
 
-		PackedCollection<?> output = pool.get().evaluate().reshape(4, 3);
+		PackedCollection output = pool.get().evaluate().reshape(4, 3);
 		System.out.println(output.getShape());
 
 		int c2 = c / w;

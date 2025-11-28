@@ -86,8 +86,8 @@ public class RawLogitsComparisonTest implements AttentionFeatures, ConsoleFeatur
      */
     private float[] runSingleForwardPass(Qwen3 model, int tokenId, int position) {
         // Get token embedding
-        PackedCollection<?> tokenEmbeddings = model.getTokenEmbeddings();
-        PackedCollection<?> input = tokenEmbeddings.range(
+        PackedCollection tokenEmbeddings = model.getTokenEmbeddings();
+        PackedCollection input = tokenEmbeddings.range(
             shape(model.getConfig().dim),
             tokenId * model.getConfig().dim
         );
@@ -115,7 +115,7 @@ public class RawLogitsComparisonTest implements AttentionFeatures, ConsoleFeatur
         // Unfortunately AutoregressiveModel doesn't expose raw logits
 
         // Let's try direct approach: model.forward() should return logits
-        PackedCollection<?> output = compiled.forward(input);
+        PackedCollection output = compiled.forward(input);
 
         // Extract logits - use toDouble() to get the raw values
         int vocabSize = model.getConfig().vocabSize;

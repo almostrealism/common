@@ -15,6 +15,7 @@
  */
 
 package org.almostrealism.texture;
+import org.almostrealism.collect.PackedCollection;
 
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.color.computations.GeneratedColorProducer;
@@ -69,14 +70,16 @@ public class StripeTexture implements Texture, Editable {
 	 *          object at the specified point as an RGB object.
 	 */
 	public RGB operate(Vector t) {
-		return this.props == null ? null : this.getColorAt(this.props).evaluate(t);
+		if (this.props == null) return null;
+		PackedCollection result = this.getColorAt(this.props).evaluate(t);
+		return result instanceof RGB ? (RGB) result : new RGB(result.toDouble(0), result.toDouble(1), result.toDouble(2));
 	}
 
 	/**
 	 * @throws IllegalArgumentException  If one of the objects specified is not of the correct type.
 	 * @return  The color of the texture represented by this StripeTexture object at the specified point as an RGB object.
 	 */
-	public Evaluable<RGB> getColorAt(Object props[]) {
+	public Evaluable<PackedCollection> getColorAt(Object props[]) {
 		return GeneratedColorProducer.fromProducer(this, () -> args -> {
 			Vector l = args.length > 0 ? (Vector) args[0] : new Vector(1.0, 1.0, 1.0);
 			Vector point = new Vector(l.getX(), l.getY(), l.getZ());

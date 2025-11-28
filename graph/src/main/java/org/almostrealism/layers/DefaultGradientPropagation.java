@@ -42,16 +42,16 @@ public class DefaultGradientPropagation implements BackPropagation, Learning, Na
 	public static boolean enableDiagnosticGrad = SystemUtils.isEnabled("AR_DIAGNOSTIC_GRADIENT").orElse(false);
 	public static boolean enableDiagnosticWeight = false;
 
-	private final Factor<PackedCollection<?>> operator;
-	private final ParameterUpdate<PackedCollection<?>>[] updates;
-	private final Producer<PackedCollection<?>>[] weights;
+	private final Factor<PackedCollection> operator;
+	private final ParameterUpdate<PackedCollection>[] updates;
+	private final Producer<PackedCollection>[] weights;
 
 	private String name;
 
 	protected DefaultGradientPropagation(String name,
-										 Factor<PackedCollection<?>> operator,
-									     ParameterUpdate<PackedCollection<?>>[] updates,
-									     Producer<PackedCollection<?>>[] weights) {
+										 Factor<PackedCollection> operator,
+									     ParameterUpdate<PackedCollection>[] updates,
+									     Producer<PackedCollection>[] weights) {
 		setName(name);
 		this.operator = operator;
 		this.updates = updates;
@@ -69,18 +69,18 @@ public class DefaultGradientPropagation implements BackPropagation, Learning, Na
 	public void setName(String name) { this.name = name; }
 
 	@Override
-	public void setParameterUpdate(ParameterUpdate<PackedCollection<?>> update) {
+	public void setParameterUpdate(ParameterUpdate<PackedCollection> update) {
 		Arrays.fill(updates, update);
 	}
 
-	public void setParameterUpdate(int index, ParameterUpdate<PackedCollection<?>> update) {
+	public void setParameterUpdate(int index, ParameterUpdate<PackedCollection> update) {
 		updates[index] = update;
 	}
 
 	@Override
-	public Supplier<Runnable> propagate(Producer<PackedCollection<?>> gradient,
-										Producer<PackedCollection<?>> input,
-										Receptor<PackedCollection<?>> next) {
+	public Supplier<Runnable> propagate(Producer<PackedCollection> gradient,
+										Producer<PackedCollection> input,
+										Receptor<PackedCollection> next) {
 		for (int i = 0; i < weights.length; i++) {
 			if (updates[i] == null) {
 				throw new IllegalArgumentException("No ParameterUpdate for weights");
@@ -94,9 +94,9 @@ public class DefaultGradientPropagation implements BackPropagation, Learning, Na
 
 		TraversalPolicy shape = shape(input);
 
-		Supplier<CollectionProducer<PackedCollection<?>>> function = () -> (CollectionProducer<PackedCollection<?>>) operator.getResultant(input);
-		PackedCollection<?> gradIn = new PackedCollection<>(shape(gradient));
-		PackedCollection<?> gradOut = next == null ? null : new PackedCollection<>(shape);
+		Supplier<CollectionProducer<PackedCollection>> function = () -> (CollectionProducer<PackedCollection>) operator.getResultant(input);
+		PackedCollection gradIn = new PackedCollection(shape(gradient));
+		PackedCollection gradOut = next == null ? null : new PackedCollection(shape);
 
 		int inSize = shape.getTotalSize();
 		int outSize = shape(gradient).getTotalSize();
@@ -104,17 +104,17 @@ public class DefaultGradientPropagation implements BackPropagation, Learning, Na
 		OperationList op = new OperationList("Gradient Propagation");
 
 		if (next != null) {
-			Producer<PackedCollection<?>> deltaOutDeltaIn = function.get().grad(input, gradient);
+			Producer<PackedCollection> deltaOutDeltaIn = function.get().grad(input, gradient);
 
 			if (enableDiagnosticGrad) {
-				PackedCollection<?> deltaOut = new PackedCollection<>(shape(outSize, inSize)).traverse(1);
-				Producer<PackedCollection<?>> delta = function.get().delta(input).reshape(outSize, inSize).traverse(1);
+				PackedCollection deltaOut = new PackedCollection(shape(outSize, inSize)).traverse(1);
+				Producer<PackedCollection> delta = function.get().delta(input).reshape(outSize, inSize).traverse(1);
 
 				op.add(OperationWithInfo.of(new OperationMetadata(getName() + " delta", getName() + " (\u03B4Out/\u03B4In)"), () -> {
-					Evaluable<PackedCollection<?>> d = delta.get();
-					Evaluable<PackedCollection<?>> grad = enableOptimizedDiagnostics ?
+					Evaluable<PackedCollection> d = delta.get();
+					Evaluable<PackedCollection> grad = enableOptimizedDiagnostics ?
 							(Evaluable) Process.optimized(deltaOutDeltaIn).get() : deltaOutDeltaIn.get();
-					Evaluable<PackedCollection<?>> inputGrad = gradient.get();
+					Evaluable<PackedCollection> inputGrad = gradient.get();
 
 					return () -> {
 						String name = getName() + " (" + outSize + "x" + inSize + ")";
@@ -131,9 +131,9 @@ public class DefaultGradientPropagation implements BackPropagation, Learning, Na
 
 		for (int i = 0; i < weights.length; i++) {
 			int weightSize = shape(weights[i]).getTotalSize();
-			Producer<PackedCollection<?>> weightFlat = reshape(shape(weightSize), weights[i]);
+			Producer<PackedCollection> weightFlat = reshape(shape(weightSize), weights[i]);
 
-			Producer<PackedCollection<?>> deltaOutDeltaWeight = function.get().delta(weights[i])
+			Producer<PackedCollection> deltaOutDeltaWeight = function.get().delta(weights[i])
 					.reshape(outSize, weightSize)
 					.traverse(1)
 					.multiply(c(gradient).reshape(outSize).traverse(1).repeat(weightSize))
@@ -163,22 +163,22 @@ public class DefaultGradientPropagation implements BackPropagation, Learning, Na
 	}
 
 	public static DefaultGradientPropagation create(String name,
-													Factor<PackedCollection<?>> operator,
-												    Stream<Producer<PackedCollection<?>>> weights) {
+													Factor<PackedCollection> operator,
+												    Stream<Producer<PackedCollection>> weights) {
 		return create(name, operator, weights.toArray(Producer[]::new));
 	}
 
 	public static DefaultGradientPropagation create(String name,
-													Factor<PackedCollection<?>> operator,
-													Producer<PackedCollection<?>>... weights) {
+													Factor<PackedCollection> operator,
+													Producer<PackedCollection>... weights) {
 		return create(name, operator, null, weights);
 	}
 
 	public static DefaultGradientPropagation create(String name,
-													Factor<PackedCollection<?>> operator,
-													ParameterUpdate<PackedCollection<?>> update,
-												    Producer<PackedCollection<?>>... weights) {
-		ParameterUpdate<PackedCollection<?>>[] updates = new ParameterUpdate[weights.length];
+													Factor<PackedCollection> operator,
+													ParameterUpdate<PackedCollection> update,
+												    Producer<PackedCollection>... weights) {
+		ParameterUpdate<PackedCollection>[] updates = new ParameterUpdate[weights.length];
 		Arrays.fill(updates, update);
 
 		return new DefaultGradientPropagation(name, operator, updates, weights);

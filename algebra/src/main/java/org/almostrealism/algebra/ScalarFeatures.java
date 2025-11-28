@@ -35,7 +35,7 @@ import org.almostrealism.collect.PackedCollection;
  * <h2>Usage Examples</h2>
  * <pre>{@code
  * public class MyComputation implements ScalarFeatures {
- *     public Producer<PackedCollection<?>> compute() {
+ *     public Producer<PackedCollection> compute() {
  *         // Create constant scalar (size 1)
  *         CollectionProducer<?> s1 = scalar(5.0);
  *
@@ -70,8 +70,8 @@ public interface ScalarFeatures extends CollectionFeatures {
 	 * @return a choice computation
 	 */
 	default Choice choice(int choiceCount, TraversalPolicy resultShape,
-						  Producer<PackedCollection<?>> decision,
-						  Producer<PackedCollection<?>> choices) {
+						  Producer<PackedCollection> decision,
+						  Producer<PackedCollection> choices) {
 		return new Choice(resultShape, choiceCount, decision, choices);
 	}
 

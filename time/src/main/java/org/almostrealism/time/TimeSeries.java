@@ -15,6 +15,7 @@
  */
 
 package org.almostrealism.time;
+import org.almostrealism.collect.PackedCollection;
 
 import java.util.ArrayList;
 import java.util.Comparator;

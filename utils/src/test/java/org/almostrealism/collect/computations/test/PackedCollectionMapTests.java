@@ -50,13 +50,13 @@ public class PackedCollectionMapTests implements TestFeatures {
 		int n = 5;
 		int m = 2;
 
-		PackedCollection<?> c = empty(shape(n)).fill(Math::random);
-		PackedCollection<?> d = empty(shape(m)).fill(Math::random);
-		Supplier<CollectionProducerComputation<PackedCollection<?>>> product =
+		PackedCollection c = empty(shape(n)).fill(Math::random);
+		PackedCollection d = empty(shape(m)).fill(Math::random);
+		Supplier<CollectionProducerComputation<PackedCollection>> product =
 				() -> cp(c).each().map(shape(m), v ->
 						v.repeat(2).mul(cp(d)));
 
-		Consumer<PackedCollection<?>> valid = output -> {
+		Consumer<PackedCollection> valid = output -> {
 			Assert.assertEquals(5, output.getShape().length(0));
 			Assert.assertEquals(2, output.getShape().length(1));
 
@@ -81,13 +81,13 @@ public class PackedCollectionMapTests implements TestFeatures {
 	 */
 	@Test
 	public void map3d() {
-		PackedCollection<?> input = tensor(shape(8, 3, 3)).pack();
-		PackedCollection<?> filter = tensor(shape(3, 3)).pack();
+		PackedCollection input = tensor(shape(8, 3, 3)).pack();
+		PackedCollection filter = tensor(shape(3, 3)).pack();
 
-		Supplier<Producer<PackedCollection<?>>> product =
+		Supplier<Producer<PackedCollection>> product =
 				() -> traverse(1, p(input)).multiply(repeat(8, p(filter)));
 
-		Consumer<PackedCollection<?>> valid = output -> {
+		Consumer<PackedCollection> valid = output -> {
 			Assert.assertEquals(8, output.getShape().length(0));
 			Assert.assertEquals(3, output.getShape().length(1));
 			Assert.assertEquals(3, output.getShape().length(2));
@@ -114,20 +114,20 @@ public class PackedCollectionMapTests implements TestFeatures {
 	 */
 	// @Test
 	public void scale() {
-		PackedCollection<?> timeline = new PackedCollection<>(shape(10), 1);
+		PackedCollection timeline = new PackedCollection(shape(10), 1);
 		IntStream.range(0, 10).forEach(i -> timeline.set(i, i + 1));
 
-		PackedCollection<?> scale = new PackedCollection<>(shape(5), 1);
+		PackedCollection scale = new PackedCollection(shape(5), 1);
 		IntStream.range(0, 5).forEach(i -> scale.set(i, i + 2));
 		log(Arrays.toString(scale.toArray(0, 5)));
 
 		verboseLog(() -> {
-			Producer<PackedCollection<?>> repeated = c(p(scale)).traverse(1).repeat(10);
+			Producer<PackedCollection> repeated = c(p(scale)).traverse(1).repeat(10);
 
-			Producer<PackedCollection<?>> repeatedTimeline = c(p(timeline)).traverse(0).repeat(5);
+			Producer<PackedCollection> repeatedTimeline = c(p(timeline)).traverse(0).repeat(5);
 
-			Evaluable<PackedCollection<?>> ev = multiply(traverseEach(repeated), traverseEach(repeatedTimeline)).get();
-			PackedCollection<?> destination = ev.evaluate();
+			Evaluable<PackedCollection> ev = multiply(traverseEach(repeated), traverseEach(repeatedTimeline)).get();
+			PackedCollection destination = ev.evaluate();
 			log(destination.getShape());
 			log(Arrays.toString(destination.toArray(0, 10)));
 			log(Arrays.toString(destination.toArray(10, 10)));
@@ -148,14 +148,14 @@ public class PackedCollectionMapTests implements TestFeatures {
 	 */
 	@Test
 	public void simpleReduce() {
-		PackedCollection<?> input = tensor(shape(8, 3, 3)).pack();
-		PackedCollection<?> source = tensor(shape(3, 1)).pack();
-		PackedCollection<?> filter = tensor(shape(3, 1)).pack();
+		PackedCollection input = tensor(shape(8, 3, 3)).pack();
+		PackedCollection source = tensor(shape(3, 1)).pack();
+		PackedCollection filter = tensor(shape(3, 1)).pack();
 
-		Supplier<Producer<PackedCollection<?>>> product =
+		Supplier<Producer<PackedCollection>> product =
 				() -> traverse(1, p(input)).map(shape(3, 1), v -> add(p(source), p(filter)));
 
-		Consumer<PackedCollection<?>> valid = output -> {
+		Consumer<PackedCollection> valid = output -> {
 			Assert.assertEquals(8, output.getShape().length(0));
 			Assert.assertEquals(3, output.getShape().length(1));
 			Assert.assertEquals(1, output.getShape().length(2));
@@ -183,11 +183,11 @@ public class PackedCollectionMapTests implements TestFeatures {
 	 */
 	@Test
 	public void sumByReduce() {
-		PackedCollection<?> input = tensor(shape(8, 6)).pack();
+		PackedCollection input = tensor(shape(8, 6)).pack();
 
 		verboseLog(() -> {
-			CollectionProducer<PackedCollection<?>> product = traverse(1, p(input)).reduce(v -> v.sum());
-			PackedCollection<?> output = product.get().evaluate();
+			CollectionProducer<PackedCollection> product = traverse(1, p(input)).reduce(v -> v.sum());
+			PackedCollection output = product.get().evaluate();
 			log(output.getShape());
 
 			Assert.assertEquals(8, output.getShape().length(0));
@@ -212,12 +212,12 @@ public class PackedCollectionMapTests implements TestFeatures {
 		int size = 1;
 		int count = 3;
 
-		PackedCollection<?> input = tensor(shape(size, size, count)).pack();
+		PackedCollection input = tensor(shape(size, size, count)).pack();
 
 		verboseLog(() -> {
-			CollectionProducer<PackedCollection<?>> enumerated = enumerate(shape(size, size, 1), p(input));
-			CollectionProducer<PackedCollection<?>> sum = enumerated.traverse(1).reduce(slice -> sum(slice));
-			PackedCollection<?> output = sum.get().evaluate();
+			CollectionProducer<PackedCollection> enumerated = enumerate(shape(size, size, 1), p(input));
+			CollectionProducer<PackedCollection> sum = enumerated.traverse(1).reduce(slice -> sum(slice));
+			PackedCollection output = sum.get().evaluate();
 			log(output.getShape());
 
 			Assert.assertEquals(count, output.getShape().length(0));
@@ -244,12 +244,12 @@ public class PackedCollectionMapTests implements TestFeatures {
 		int size = 4;
 		int count = 3;
 
-		PackedCollection<?> input = tensor(shape(size, size, count)).pack();
+		PackedCollection input = tensor(shape(size, size, count)).pack();
 
 		verboseLog(() -> {
-			CollectionProducer<PackedCollection<?>> enumerated = enumerate(shape(size, size, 1), p(input));
-			CollectionProducer<PackedCollection<?>> sum = enumerated.traverse(1).reduce(slice -> sum(slice));
-			PackedCollection<?> output = sum.get().evaluate();
+			CollectionProducer<PackedCollection> enumerated = enumerate(shape(size, size, 1), p(input));
+			CollectionProducer<PackedCollection> sum = enumerated.traverse(1).reduce(slice -> sum(slice));
+			PackedCollection output = sum.get().evaluate();
 			log(output.getShape());
 
 			Assert.assertEquals(count, output.getShape().length(0));
@@ -276,12 +276,12 @@ public class PackedCollectionMapTests implements TestFeatures {
 		int size = 4;
 		int count = 3;
 
-		PackedCollection<?> input = tensor(shape(size, size, count)).pack();
+		PackedCollection input = tensor(shape(size, size, count)).pack();
 
 		verboseLog(() -> {
-			CollectionProducer<PackedCollection<?>> enumerated = enumerate(shape(size, size, 1), p(input));
-			CollectionProducer<PackedCollection<?>> max = enumerated.traverse(1).max();
-			PackedCollection<?> output = max.get().evaluate().reshape(shape(count, 1));
+			CollectionProducer<PackedCollection> enumerated = enumerate(shape(size, size, 1), p(input));
+			CollectionProducer<PackedCollection> max = enumerated.traverse(1).max();
+			PackedCollection output = max.get().evaluate().reshape(shape(count, 1));
 			log(output.getShape());
 
 			Assert.assertEquals(count, output.getShape().length(0));
@@ -305,15 +305,15 @@ public class PackedCollectionMapTests implements TestFeatures {
 
 	@Test
 	public void mapReduce() {
-		PackedCollection<?> input = tensor(shape(8, 3, 3)).pack();
-		PackedCollection<?> filter = tensor(shape(3, 3)).pack();
+		PackedCollection input = tensor(shape(8, 3, 3)).pack();
+		PackedCollection filter = tensor(shape(3, 3)).pack();
 
-		Supplier<Producer<PackedCollection<?>>> product =
+		Supplier<Producer<PackedCollection>> product =
 				() -> traverse(1, p(input))
 					.map(v -> v.multiply(p(filter)))
 					.reduce(v -> v.sum());
 
-		Consumer<PackedCollection<?>> validate = output -> {
+		Consumer<PackedCollection> validate = output -> {
 			for (int i = 0; i < 8; i++) {
 				double expected = 0;
 
@@ -351,16 +351,16 @@ public class PackedCollectionMapTests implements TestFeatures {
 		int c = 3;
 		int w = 2;
 
-		PackedCollection<?> input = tensor(shape(r, c)).pack();
-		PackedCollection<?> filter = tensor(shape(w, c)).pack();
+		PackedCollection input = tensor(shape(r, c)).pack();
+		PackedCollection filter = tensor(shape(w, c)).pack();
 
-		Supplier<CollectionProducer<PackedCollection<?>>> product =
+		Supplier<CollectionProducer<PackedCollection>> product =
 				() -> traverse(1, p(input))
 						.repeat(w)
 						.multiply(cp(filter))
 						.sum();
 
-		Consumer<PackedCollection<?>> validate = output -> {
+		Consumer<PackedCollection> validate = output -> {
 			for (int i = 0; i < r; i++) {
 				for (int j = 0; j < w; j++) {
 					double expected = 0;
@@ -389,20 +389,20 @@ public class PackedCollectionMapTests implements TestFeatures {
 		TraversalPolicy inShape = shape(w, h, d);
 		TraversalPolicy outputShape = shape(h, w);
 
-		PackedCollection<?> x = new PackedCollection<>(xShape);
-		PackedCollection<?> in = new PackedCollection<>(inShape);
+		PackedCollection x = new PackedCollection(xShape);
+		PackedCollection in = new PackedCollection(inShape);
 
 		x.fill(pos -> Math.random());
 		in.fill(pos -> Math.random());
 
-		Producer<PackedCollection<?>> o =
+		Producer<PackedCollection> o =
 				c(p(in)).traverse(1)
 						.map(v -> v.multiply(p(x)))
 						.traverse(2).sum()
 						.reshape(shape(w, h))
 						.enumerate(1, 1)
 						.reshape(outputShape);
-		PackedCollection<?> out = o.get().evaluate();
+		PackedCollection out = o.get().evaluate();
 
 		for (int n = 0; n < h; n++) {
 			for (int t = 0; t < w; t++) {
@@ -427,21 +427,21 @@ public class PackedCollectionMapTests implements TestFeatures {
 		int s = 1;
 		int pad = 1;
 
-		PackedCollection<?> input = tensor(shape(r, c)).pack();
-		PackedCollection<?> filter = tensor(shape(w, w)).pack();
+		PackedCollection input = tensor(shape(r, c)).pack();
+		PackedCollection filter = tensor(shape(w, w)).pack();
 
 		input.fill(pos -> pos[0] + pos[1] * 0.1);
 		filter.fill(pos -> 1.0);
 
 		verboseLog(() -> {
-			CollectionProducer<PackedCollection<?>> conv = c(p(input))
+			CollectionProducer<PackedCollection> conv = c(p(input))
 					.enumerate(1, w, s)
 					.enumerate(1, w, s)
 					.traverse(2)
 					.map(v -> v.multiply(p(filter)));
 			log(conv.getShape());
 
-			PackedCollection<?> output = conv.get().evaluate();
+			PackedCollection output = conv.get().evaluate();
 			log(output.getShape());
 
 			for (int i = 0; i < r - pad; i++) {
@@ -483,11 +483,11 @@ public class PackedCollectionMapTests implements TestFeatures {
 		int s = 1;
 		int pad = 2;
 
-		PackedCollection<?> input = tensor(shape(r, c)).pack();
-		PackedCollection<?> filter = tensor(shape(w, w)).pack();
+		PackedCollection input = tensor(shape(r, c)).pack();
+		PackedCollection filter = tensor(shape(w, w)).pack();
 
 		verboseLog(() -> {
-			CollectionProducer<PackedCollection<?>> conv = c(p(input))
+			CollectionProducer<PackedCollection> conv = c(p(input))
 					.enumerate(1, w, s)
 					.enumerate(1, w, s)
 					.traverse(2)
@@ -495,7 +495,7 @@ public class PackedCollectionMapTests implements TestFeatures {
 							v.multiply(p(filter)));
 			log(conv.getShape());
 
-			PackedCollection<?> output = conv.get().evaluate();
+			PackedCollection output = conv.get().evaluate();
 			log(output.getShape());
 
 			for (int i = 0; i < r - pad; i++) {
@@ -525,11 +525,11 @@ public class PackedCollectionMapTests implements TestFeatures {
 		int s = 1;
 		int pad = 2;
 
-		PackedCollection<?> input = tensor(shape(r, c)).pack();
-		PackedCollection<?> filter = tensor(shape(w, w)).pack();
+		PackedCollection input = tensor(shape(r, c)).pack();
+		PackedCollection filter = tensor(shape(w, w)).pack();
 
 		verboseLog(() -> {
-			CollectionProducer<PackedCollection<?>> conv = c(p(input))
+			CollectionProducer<PackedCollection> conv = c(p(input))
 					.enumerate(1, w, s)
 					.enumerate(1, w, s)
 					.traverse(2)
@@ -537,7 +537,7 @@ public class PackedCollectionMapTests implements TestFeatures {
 							v.traverseEach().multiply(traverseEach(p(filter))));
 			log(conv.getShape());
 
-			PackedCollection<?> output = conv.get().evaluate();
+			PackedCollection output = conv.get().evaluate();
 			log(output.getShape());
 
 			for (int i = 0; i < r - pad; i++) {
@@ -565,18 +565,18 @@ public class PackedCollectionMapTests implements TestFeatures {
 		int w = 3;
 		int s = 1;
 
-		PackedCollection<?> input = tensor(shape(r, c)).pack();
-		PackedCollection<?> filter = tensor(shape(w, w)).pack();
+		PackedCollection input = tensor(shape(r, c)).pack();
+		PackedCollection filter = tensor(shape(w, w)).pack();
 
 		verboseLog(() -> {
-			CollectionProducer<PackedCollection<?>> conv = c(p(input))
+			CollectionProducer<PackedCollection> conv = c(p(input))
 					.enumerate(1, w, s)
 					.enumerate(1, w, s)
 					.traverse(2)
 					.multiply(p(filter))
 					.sum();
 
-			PackedCollection<?> output = conv.get().evaluate();
+			PackedCollection output = conv.get().evaluate();
 			log(output.getShape());
 
 			for (int i = 0; i < 8; i++) {
@@ -608,14 +608,14 @@ public class PackedCollectionMapTests implements TestFeatures {
 		int s = 1;
 		int pad = 1;
 
-		PackedCollection<?> input = tensor(shape(r, c)).pack();
-		PackedCollection<?> filter = tensor(shape(2, w, w)).pack();
+		PackedCollection input = tensor(shape(r, c)).pack();
+		PackedCollection filter = tensor(shape(2, w, w)).pack();
 
 		input.fill(pos -> pos[0] + pos[1] * 0.1);
 
 		IntStream.range(0, 5).forEach(n -> {
 			verboseLog(() -> {
-				CollectionProducer<PackedCollection<?>> conv = c(p(input))
+				CollectionProducer<PackedCollection> conv = c(p(input))
 						.enumerate(1, w, s)
 						.enumerate(1, w, s)
 						.traverse(2)
@@ -625,7 +625,7 @@ public class PackedCollectionMapTests implements TestFeatures {
 				log("Input shape: " + input.getShape());
 				log("Filter shape: " + filter.getShape());
 				log("Conv shape: " + conv.getShape());
-				PackedCollection<?> output = conv.get().evaluate();
+				PackedCollection output = conv.get().evaluate();
 				log("Output shape: " + output.getShape());
 
 				// Print some actual values
@@ -683,11 +683,11 @@ public class PackedCollectionMapTests implements TestFeatures {
 		int w = 2, s = 1, pad = 1;
 		int n = 3;
 
-		PackedCollection<?> input = tensor(shape(r, c)).pack();
-		PackedCollection<?> filter = tensor(shape(n, w, w)).pack();
+		PackedCollection input = tensor(shape(r, c)).pack();
+		PackedCollection filter = tensor(shape(n, w, w)).pack();
 
 		verboseLog(() -> {
-			CollectionProducer<PackedCollection<?>> conv = c(p(input))
+			CollectionProducer<PackedCollection> conv = c(p(input))
 					.enumerate(1, w, s)
 					.enumerate(1, w, s)
 					.traverse(2)
@@ -695,8 +695,8 @@ public class PackedCollectionMapTests implements TestFeatures {
 					.multiply(cp(filter))
 					.sum();
 
-			Evaluable<PackedCollection<?>> ev = conv.get();
-			PackedCollection<?> output = ev.evaluate();
+			Evaluable<PackedCollection> ev = conv.get();
+			PackedCollection output = ev.evaluate();
 			output = output.reshape(shape(r - pad, c - pad, n));
 
 			print(4, 3, output);
@@ -757,11 +757,11 @@ public class PackedCollectionMapTests implements TestFeatures {
 
 		int n = 4;
 
-		PackedCollection<?> input = tensor(shape(r, c)).pack();
-		PackedCollection<?> filter = tensor(shape(n, w, w)).pack();
+		PackedCollection input = tensor(shape(r, c)).pack();
+		PackedCollection filter = tensor(shape(n, w, w)).pack();
 
 		verboseLog(() -> {
-			CollectionProducer<PackedCollection<?>> conv = c(p(input))
+			CollectionProducer<PackedCollection> conv = c(p(input))
 					.enumerate(1, w, s)
 					.enumerate(1, w, s)
 					.traverse(2)
@@ -769,8 +769,8 @@ public class PackedCollectionMapTests implements TestFeatures {
 					.multiply(cp(filter))
 					.sum();
 
-			Evaluable<PackedCollection<?>> ev = conv.get();
-			PackedCollection<?> output = ev.evaluate();
+			Evaluable<PackedCollection> ev = conv.get();
+			PackedCollection output = ev.evaluate();
 			output = output.reshape(shape(8, 8, 4));
 
 			for (int filterIndex = 0; filterIndex < n; filterIndex++) {
@@ -828,11 +828,11 @@ public class PackedCollectionMapTests implements TestFeatures {
 
 		int n = 4;
 
-		PackedCollection<?> input = tensor(shape(r, c)).pack();
-		PackedCollection<?> filter = tensor(shape(n, w, w)).pack();
+		PackedCollection input = tensor(shape(r, c)).pack();
+		PackedCollection filter = tensor(shape(n, w, w)).pack();
 
 		verboseLog(() -> {
-			CollectionProducer<PackedCollection<?>> conv = c(p(input))
+			CollectionProducer<PackedCollection> conv = c(p(input))
 					.enumerate(1, w, s)
 					.enumerate(1, w, s)
 					.traverse(2)
@@ -843,8 +843,8 @@ public class PackedCollectionMapTests implements TestFeatures {
 					.reduce(v -> v.sum());
 			log(conv.getShape());
 
-			Evaluable<PackedCollection<?>> ev = conv.get();
-			PackedCollection<?> output = ev.evaluate();
+			Evaluable<PackedCollection> ev = conv.get();
+			PackedCollection output = ev.evaluate();
 			log(output.getShape());
 			output = output.reshape(shape(8, 8, 4));
 
@@ -899,11 +899,11 @@ public class PackedCollectionMapTests implements TestFeatures {
 		int d = 1;
 		int w = 2;
 
-		PackedCollection<?> input = tensor(shape(r, c, d)).pack();
+		PackedCollection input = tensor(shape(r, c, d)).pack();
 		input.fill(pos -> (3 + (pos[0] % 3) * 0.75) - (3 + (pos[1] % 5) * 1.25));
 
 		verboseLog(() -> {
-			CollectionProducer<PackedCollection<?>> pool =
+			CollectionProducer<PackedCollection> pool =
 					c(p(input))
 					.enumerate(2, 1)
 					.enumerate(2, w)
@@ -915,7 +915,7 @@ public class PackedCollectionMapTests implements TestFeatures {
 			int r2 = r / w;
 			int c2 = c / w;
 
-			PackedCollection<?> output = pool.get().evaluate().reshape(r2, c2, d);
+			PackedCollection output = pool.get().evaluate().reshape(r2, c2, d);
 			log(output.getShape());
 
 			for (int copy = 0; copy < d; copy++) {
@@ -948,16 +948,16 @@ public class PackedCollectionMapTests implements TestFeatures {
 		int c = 10;
 		int s = 3;
 
-		PackedCollection<?> input = tensor(shape(r, c, s)).pack();
-		PackedCollection<?> addOn = tensor(shape(s)).pack();
+		PackedCollection input = tensor(shape(r, c, s)).pack();
+		PackedCollection addOn = tensor(shape(s)).pack();
 
 		verboseLog(() -> {
-			CollectionProducer<PackedCollection<?>> conv = traverse(2, p(input))
+			CollectionProducer<PackedCollection> conv = traverse(2, p(input))
 					.map(v ->
 							concat(shape(1, 1, 2 * s), (Producer) v, p(addOn)));
 			log(conv.getShape());
 
-			PackedCollection<?> output = conv.get().evaluate();
+			PackedCollection output = conv.get().evaluate();
 			log(output.getShape());
 
 			for (int i = 0; i < 10; i++) {

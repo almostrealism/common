@@ -40,7 +40,7 @@
  * DistributionFeatures features = new DistributionFeatures() {};
  *
  * // Create a probability distribution
- * PackedCollection<?> distribution = new PackedCollection<>(3);
+ * PackedCollection distribution = new PackedCollection(3);
  * distribution.set(0, 0.2);  // 20% probability for index 0
  * distribution.set(1, 0.5);  // 50% probability for index 1
  * distribution.set(2, 0.3);  // 30% probability for index 2
@@ -51,10 +51,11 @@
  *
  * <h3>Softmax</h3>
  * <pre>{@code
- * CollectionProducer<PackedCollection<?>> logits = ...;
- * CollectionProducer<PackedCollection<?>> probabilities = features.softmax(logits);
+ * CollectionProducer<PackedCollection> logits = ...;
+ * CollectionProducer<PackedCollection> probabilities = features.softmax(logits);
  * }</pre>
  *
  * @author Michael Murray
  */
 package org.almostrealism.stats;
+import org.almostrealism.collect.PackedCollection;

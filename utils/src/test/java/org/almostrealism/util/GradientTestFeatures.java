@@ -30,27 +30,27 @@ import java.util.function.IntFunction;
 public interface GradientTestFeatures extends CodeFeatures {
 
 	default void runTest(String name, int dim,
-						 IntFunction<PackedCollection<?>> inputGenerator,
-						 Factor<PackedCollection<?>> operation,
-						 BiConsumer<PackedCollection<?>, PackedCollection<?>> validate) {
+						 IntFunction<PackedCollection> inputGenerator,
+						 Factor<PackedCollection> operation,
+						 BiConsumer<PackedCollection, PackedCollection> validate) {
 		runTest(name, dim, inputGenerator, operation, validate, true, true);
 	}
 
 	default void runTest(String name, int dim,
-						 IntFunction<PackedCollection<?>> inputGenerator,
-						 Factor<PackedCollection<?>> operation,
-						 BiConsumer<PackedCollection<?>, PackedCollection<?>> validate,
+						 IntFunction<PackedCollection> inputGenerator,
+						 Factor<PackedCollection> operation,
+						 BiConsumer<PackedCollection, PackedCollection> validate,
 						 boolean fixed, boolean variable) {
 		if (fixed) {
 			// TODO  Should use kernelTest
 			log("Validating fixed input...");
-			PackedCollection<?> fixedInput = inputGenerator.apply(1);
+			PackedCollection fixedInput = inputGenerator.apply(1);
 			fixedInput = fixedInput.reshape(fixedInput.getShape().item());
 
-			CollectionProducer<PackedCollection<?>> p = cp(fixedInput);
+			CollectionProducer<PackedCollection> p = cp(fixedInput);
 
-			Producer<PackedCollection<?>> c = operation.getResultant(p);
-			PackedCollection<?> out = c.get().evaluate();
+			Producer<PackedCollection> c = operation.getResultant(p);
+			PackedCollection out = c.get().evaluate();
 			validate.accept(
 					fixedInput.reshape(fixedInput.getShape().prependDimension(1)),
 					out.reshape(out.getShape().prependDimension(1)));
@@ -58,16 +58,16 @@ public interface GradientTestFeatures extends CodeFeatures {
 
 		if (variable) {
 			log("Validating variable input...");
-			PackedCollection<?> variableInput = inputGenerator.apply(4);
-			CollectionProducer<PackedCollection<?>> x = x(-1, dim);
+			PackedCollection variableInput = inputGenerator.apply(4);
+			CollectionProducer<PackedCollection> x = x(-1, dim);
 
-			Producer<PackedCollection<?>> c = operation.getResultant(x);
-			PackedCollection<?> out = c.get().evaluate(variableInput);
+			Producer<PackedCollection> c = operation.getResultant(x);
+			PackedCollection out = c.get().evaluate(variableInput);
 			validate.accept(variableInput, out);
 		}
 	}
 
-	default Producer<PackedCollection<?>> applyGradient(CollectionProducer<?> delta,
+	default Producer<PackedCollection> applyGradient(CollectionProducer<?> delta,
 														CollectionProducer<?> gradient) {
 		CollectionFeatures cf = CollectionFeatures.getInstance();
 		int outSize = cf.shape(gradient).getTotalSize();
@@ -82,10 +82,10 @@ public interface GradientTestFeatures extends CodeFeatures {
 				.each();
 	}
 
-	default PackedCollection<?> normBackwards(PackedCollection<?> xGroup,
-											  PackedCollection<?> gradient,
-											  PackedCollection<?> weights,
-											  PackedCollection<?> bias) {
+	default PackedCollection normBackwards(PackedCollection xGroup,
+											  PackedCollection gradient,
+											  PackedCollection weights,
+											  PackedCollection bias) {
 		double eps = Hardware.getLocalHardware().epsilon();
 		int groupSize = xGroup.getShape().getTotalSize();
 
@@ -93,23 +93,23 @@ public interface GradientTestFeatures extends CodeFeatures {
 		double varG = variance(cp(xGroup)).evaluate().toDouble();
 		double stdG = Math.sqrt(varG + eps);
 
-		PackedCollection<?> xHatGroup = cp(xGroup).subtract(c(muG)).divide(c(stdG)).evaluate();
+		PackedCollection xHatGroup = cp(xGroup).subtract(c(muG)).divide(c(stdG)).evaluate();
 
-		PackedCollection<?> dLdBeta = gradient;
-		PackedCollection<?> dLdGamma = cp(gradient).multiply(cp(xHatGroup)).evaluate();
+		PackedCollection dLdBeta = gradient;
+		PackedCollection dLdGamma = cp(gradient).multiply(cp(xHatGroup)).evaluate();
 
-		PackedCollection<?> dLdHatXGroup;
+		PackedCollection dLdHatXGroup;
 
 		if (weights == null) {
 			dLdHatXGroup = gradient;
 		} else {
 			// dLdHatXGroup = cp(gradient).multiply(cp(weights)).evaluate();
-			dLdHatXGroup = new PackedCollection<>(gradient.getShape())
+			dLdHatXGroup = new PackedCollection(gradient.getShape())
 					.fill(pos -> gradient.valueAt(pos) * weights.valueAt(pos));
 		}
 
 		double dLdHatXGroupMean = dLdHatXGroup.doubleStream().sum() / groupSize;
-		PackedCollection<?> dLdHatXGroupXHatGroup = cp(dLdHatXGroup).multiply(cp(xHatGroup)).evaluate();
+		PackedCollection dLdHatXGroupXHatGroup = cp(dLdHatXGroup).multiply(cp(xHatGroup)).evaluate();
 
 		double dLdHatXGroupXHatGroupMean = dLdHatXGroupXHatGroup.doubleStream().sum() / groupSize;
 
@@ -119,19 +119,19 @@ public interface GradientTestFeatures extends CodeFeatures {
 				.replace(v -> v / stdG);
 	}
 
-	default PackedCollection<?> dlDxGroup(int c, PackedCollection<?> o, PackedCollection<?> g) {
+	default PackedCollection dlDxGroup(int c, PackedCollection o, PackedCollection g) {
 		double eps = 1e-5;
 		double muG = o.doubleStream().sum() / c;
 		double varG = variance(cp(o)).evaluate().toDouble();
 		double stdG = Math.sqrt(varG + eps);
 
-		PackedCollection<?> normalized =
+		PackedCollection normalized =
 				cp(o).subtract(c(muG))
 						.divide(c(stdG))
 						.evaluate();
 
 		double gradientMean = g.doubleStream().sum() / c;
-		PackedCollection<?> gradientByInput = cp(g).multiply(cp(normalized)).evaluate();
+		PackedCollection gradientByInput = cp(g).multiply(cp(normalized)).evaluate();
 
 		double gradientByInputMean = gradientByInput.doubleStream().sum() / c;
 		return dlDxGroup(
@@ -139,11 +139,11 @@ public interface GradientTestFeatures extends CodeFeatures {
 	}
 
 	// TODO  Make private
-	default PackedCollection<?> dlDxGroup(PackedCollection<?> dLdHatXGroup,
+	default PackedCollection dlDxGroup(PackedCollection dLdHatXGroup,
 										  double dLdHatXGroupMean,
-										  PackedCollection<?> xHatGroup,
+										  PackedCollection xHatGroup,
 										  double dLdHatXGroupXHatGroupMean) {
-		return new PackedCollection<>(dLdHatXGroup.getShape())
+		return new PackedCollection(dLdHatXGroup.getShape())
 				.fill(pos -> dLdHatXGroup.valueAt(pos) - dLdHatXGroupMean
 						- xHatGroup.valueAt(pos) * dLdHatXGroupXHatGroupMean);
 

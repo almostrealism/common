@@ -83,8 +83,8 @@ public class MeshIntersectionTest implements TestFeatures {
 
 		CachedMeshIntersectionKernel kernel = new CachedMeshIntersectionKernel(data, ray);
 
-		PackedCollection<Pair<?>> input = RealizableImage.generateKernelInput(0, 0, width, height);
-		PackedCollection<?> distances = new PackedCollection<>(shape(input.getCount(), 2));
+		PackedCollection input = RealizableImage.generateKernelInput(0, 0, width, height);
+		PackedCollection distances = new PackedCollection(shape(input.getCount(), 2));
 		kernel.setDimensions(width, height, 1, 1);
 		kernel.into(distances).evaluate(input);
 
@@ -98,7 +98,7 @@ public class MeshIntersectionTest implements TestFeatures {
 		System.out.println("distance(" + pos + ") = " + distances.valueAt(pos, 0));
 		Assert.assertEquals(1.0, distances.valueAt(pos, 0), Math.pow(10, -10));
 
-		PackedCollection<?> n = closestNormal.evaluate(input.get(pos));
+		Vector n = closestNormal.evaluate(input.get(pos));
 		System.out.println("normal(" + pos + ") = " + n);
 		Assert.assertEquals(0.0, n.toDouble(0), Math.pow(10, -10));
 		Assert.assertEquals(0.0, n.toDouble(1), Math.pow(10, -10));
@@ -117,20 +117,20 @@ public class MeshIntersectionTest implements TestFeatures {
 
 	@Test
 	public void triangleIntersectAtKernel() {
-		PackedCollection<Ray> in = Ray.bank(1);
-		PackedCollection<?> distances = new PackedCollection<>(shape(1, 2));
+		PackedCollection in = Ray.bank(1);
+		PackedCollection distances = new PackedCollection(shape(1, 2));
 
 		in.set(0, 0.0, 0.0, 1.0, 0.0, 0.0, -1.0);
 		Triangle.intersectAt.into(distances).evaluate(in, data);
 		System.out.println("distance = " + distances.valueAt(0, 0));
 		Assert.assertEquals(1.0, distances.valueAt(0, 0), Math.pow(10, -10));
 
-		PackedCollection<Pair<?>> out = Pair.bank(1);
-		PackedCollection<Pair<?>> conf = Pair.bank(1);
+		PackedCollection out = Pair.bank(1);
+		PackedCollection conf = Pair.bank(1);
 		conf.set(0, new Pair(1, Intersection.e));
 		RankedChoiceEvaluable.highestRank.into(out).evaluate(distances, conf);
 		System.out.println("highest rank: " + out.get(0));
-		Assert.assertEquals(1.0, out.get(0).getA(), Math.pow(10, -10));
-		Assert.assertEquals(0.0, out.get(0).getB(), Math.pow(10, -10));
+		Assert.assertEquals(1.0, out.get(0).toDouble(0), Math.pow(10, -10));
+		Assert.assertEquals(0.0, out.get(0).toDouble(1), Math.pow(10, -10));
 	}
 }

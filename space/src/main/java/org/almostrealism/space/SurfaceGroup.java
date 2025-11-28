@@ -126,8 +126,8 @@ public class SurfaceGroup<T extends ShadableSurface> extends AbstractSurface imp
 	
 	/** {@link ShadableSurface#shade(ShaderContext)} */
 	@Override
-	public Producer<RGB> shade(ShaderContext p) {
-		Producer<RGB> color = null;
+	public Producer<PackedCollection> shade(ShaderContext p) {
+		Producer<PackedCollection> color = null;
 		
 		if (getShaderSet() != null) {
 			color = getShaderSet().shade(p, p.getIntersection());
@@ -137,7 +137,7 @@ public class SurfaceGroup<T extends ShadableSurface> extends AbstractSurface imp
 			if (color == null) {
 				color = getParent().shade(p);
 			} else {
-				final Producer<RGB> fc = color;
+				final Producer<PackedCollection> fc = color;
 				color = add(fc, getParent().shade(p));
 			}
 		}
@@ -147,7 +147,7 @@ public class SurfaceGroup<T extends ShadableSurface> extends AbstractSurface imp
 	
 	/** Returns null. */
 	@Override
-	public Producer<Vector> getNormalAt(Producer<Vector> point) { return null; } // TODO?
+	public Producer<PackedCollection> getNormalAt(Producer<PackedCollection> point) { return null; } // TODO?
 
 	@Override
 	public Mesh triangulate() {
@@ -195,15 +195,15 @@ public class SurfaceGroup<T extends ShadableSurface> extends AbstractSurface imp
 	}
 
 	@Override
-	public Operator<PackedCollection<?>> get() {
+	public Operator<PackedCollection> get() {
 		// TODO  Aggregate the operators for each surface some how?
 		return null;
 	}
 
 	@Override
-	public Operator<PackedCollection<?>> expect() {
+	public Operator<PackedCollection> expect() {
 		// TODO  This isn't right
-		PackedCollection<?> zero = new PackedCollection<>(1);
+		PackedCollection zero = new PackedCollection(1);
 		zero.setMem(0, 0.0);
 		return new Constant<>(zero);
 	}

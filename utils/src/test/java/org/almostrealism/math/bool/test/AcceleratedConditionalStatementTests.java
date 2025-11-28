@@ -32,10 +32,10 @@ public class AcceleratedConditionalStatementTests implements TestFeatures {
 
 	@Test
 	public void randomLessThanKernel() {
-		PackedCollection<?> x = rand(shape(100, 2)).get().evaluate();
-		PackedCollection<?> y = rand(shape(100, 2)).get().evaluate();
+		PackedCollection x = rand(shape(100, 2)).get().evaluate();
+		PackedCollection y = rand(shape(100, 2)).get().evaluate();
 
-		PackedCollection<?> less = new PackedCollection<>(shape(100, 2), 1);
+		PackedCollection less = new PackedCollection(shape(100, 2), 1);
 		lessThan().get().into(less).evaluate(x.traverse(1), y.traverse(1));
 
 		Assert.assertEquals(100, less.getShape().length(0));
@@ -55,9 +55,9 @@ public class AcceleratedConditionalStatementTests implements TestFeatures {
 		});
 	}
 
-	protected CollectionProducer<PackedCollection<?>> lessThan() {
-		Producer<PackedCollection<?>> one = v(shape(-1, 1), 0);
-		Producer<PackedCollection<?>> two = v(shape(-1, 1), 1);
+	protected CollectionProducer<PackedCollection> lessThan() {
+		Producer<PackedCollection> one = v(shape(-1, 1), 0);
+		Producer<PackedCollection> two = v(shape(-1, 1), 1);
 		return lessThan(one, two, one, two, false);
 	}
 
@@ -75,12 +75,12 @@ public class AcceleratedConditionalStatementTests implements TestFeatures {
 	public void dotProduct() {
 		if (skipKnownIssues) return;
 
-		Evaluable<PackedCollection<?>> lt = lessThan(
+		Evaluable<PackedCollection> lt = lessThan(
 					oDotd(ray(i -> Math.random())),
 					oDotd(v(Ray.shape(), 0)))
 				.get();
 
-		PackedCollection<?> r = lt.evaluate(ray(i -> Math.random()).evaluate());
+		PackedCollection r = lt.evaluate(ray(i -> Math.random()).evaluate());
 		r.print();
 
 		Assert.assertNotEquals(0.0, r.toDouble());
@@ -88,10 +88,10 @@ public class AcceleratedConditionalStatementTests implements TestFeatures {
 
 	@Test
 	public void crossProduct() {
-		CollectionProducer<PackedCollection<?>> lt1 = lessThan(
+		CollectionProducer<PackedCollection> lt1 = lessThan(
 				oDotd(ray(i -> Math.random())),
 				oDotd(v(Ray.shape(), 0)));
-		CollectionProducer<PackedCollection<?>> lt2 =
+		CollectionProducer<PackedCollection> lt2 =
 				lessThan(length(crossProduct(vector(i -> Math.random()), v(Vector.shape(), 1))),
 														lt1, c(1), c(2), false);
 
@@ -102,9 +102,9 @@ public class AcceleratedConditionalStatementTests implements TestFeatures {
 		assertTrue(v == 1.0 || v == 2.0);
 	}
 
-	private void check(CollectionProducer<PackedCollection<?>> lt,
-					   PackedCollection<?> a, PackedCollection<?> b) {
-		PackedCollection<?> s = lt.evaluate(a, b);
+	private void check(CollectionProducer<PackedCollection> lt,
+					   PackedCollection a, PackedCollection b) {
+		PackedCollection s = lt.evaluate(a, b);
 		s.print();
 
 		if (a.toDouble() < b.toDouble()) {
@@ -122,18 +122,18 @@ public class AcceleratedConditionalStatementTests implements TestFeatures {
 			double c = i * Math.random();
 			double d = i * Math.random();
 
-			Producer<PackedCollection<?>> pa = c(a);
-			Producer<PackedCollection<?>> pb = c(b);
-			Producer<PackedCollection<?>> pc = c(c);
-			Producer<PackedCollection<?>> pd = c(d);
+			Producer<PackedCollection> pa = c(a);
+			Producer<PackedCollection> pb = c(b);
+			Producer<PackedCollection> pc = c(c);
+			Producer<PackedCollection> pd = c(d);
 
-			CollectionProducer<PackedCollection<?>> lt1 = lessThan(pa, pb, pa, pb);
-			CollectionProducer<PackedCollection<?>> lt2 = lessThan(pb, pc, lt1, c(-a));
-			CollectionProducer<PackedCollection<?>> lt3 = lessThan(pc, pd, lt2, c(-b));
+			CollectionProducer<PackedCollection> lt1 = lessThan(pa, pb, pa, pb);
+			CollectionProducer<PackedCollection> lt2 = lessThan(pb, pc, lt1, c(-a));
+			CollectionProducer<PackedCollection> lt3 = lessThan(pc, pd, lt2, c(-b));
 
-			CollectionProducer<PackedCollection<?>> top = lt3;
+			CollectionProducer<PackedCollection> top = lt3;
 
-			PackedCollection<?> s = top.evaluate();
+			PackedCollection s = top.evaluate();
 			s.print();
 
 			if (c < d) {

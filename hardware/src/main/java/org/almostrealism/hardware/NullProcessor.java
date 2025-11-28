@@ -50,18 +50,18 @@ package org.almostrealism.hardware;
  *
  * <h3>Providing Default Values</h3>
  * <pre>{@code
- * public class CachedOperation implements Evaluable<PackedCollection<?>>, NullProcessor<PackedCollection<?>> {
- *     private PackedCollection<?> cache;
+ * public class CachedOperation implements Evaluable<PackedCollection>, NullProcessor<PackedCollection> {
+ *     private PackedCollection cache;
  *
  *     @Override
- *     public PackedCollection<?> evaluate(Object... args) {
+ *     public PackedCollection evaluate(Object... args) {
  *         return cache;  // May be null if not yet cached
  *     }
  *
  *     @Override
- *     public PackedCollection<?> replaceNull(Object[] args) {
+ *     public PackedCollection replaceNull(Object[] args) {
  *         // Create default value when cache is null
- *         cache = new PackedCollection<>(1000);
+ *         cache = new PackedCollection(1000);
  *         compute(cache, args);
  *         return cache;
  *     }
@@ -70,7 +70,7 @@ package org.almostrealism.hardware;
  *
  * <h3>Lazy Initialization</h3>
  * <pre>{@code
- * public class LazyProducer implements Producer<Vector>, NullProcessor<Vector> {
+ * public class LazyProducer implements Producer<PackedCollection>, NullProcessor<Vector> {
  *     private Vector result;
  *
  *     @Override
@@ -92,9 +92,9 @@ package org.almostrealism.hardware;
  *
  * <h3>Conditional Computation</h3>
  * <pre>{@code
- * public class ConditionalOperation implements Evaluable<PackedCollection<?>>, NullProcessor<PackedCollection<?>> {
+ * public class ConditionalOperation implements Evaluable<PackedCollection>, NullProcessor<PackedCollection> {
  *     @Override
- *     public PackedCollection<?> evaluate(Object... args) {
+ *     public PackedCollection evaluate(Object... args) {
  *         boolean condition = checkCondition(args);
  *         if (condition) {
  *             return computeResult(args);
@@ -103,9 +103,9 @@ package org.almostrealism.hardware;
  *     }
  *
  *     @Override
- *     public PackedCollection<?> replaceNull(Object[] args) {
+ *     public PackedCollection replaceNull(Object[] args) {
  *         // Provide alternative when condition fails
- *         return new PackedCollection<>(1000).fill(0.0);  // Empty result
+ *         return new PackedCollection(1000).fill(0.0);  // Empty result
  *     }
  * }
  * }</pre>

@@ -90,10 +90,10 @@ import java.util.function.BiFunction;
  *
  * <h2>Subclass Implementation Pattern</h2>
  * <pre>{@code
- * public class CollectionSumComputation<T extends PackedCollection<?>>
+ * public class CollectionSumComputation<T extends PackedCollection>
  *         extends AggregatedProducerComputation<T> {
  *
- *     public CollectionSumComputation(Producer<PackedCollection<?>> input) {
+ *     public CollectionSumComputation(Producer<PackedCollection> input) {
  *         super("sum", outputShape, elementCount,
  *             (args, index) -> new DoubleConstant(0.0),  // Initial value
  *             (accumulator, element) -> accumulator.add(element),  // Sum operation
@@ -107,17 +107,17 @@ import java.util.function.BiFunction;
  *
  * <p><strong>Sum reduction (via subclass):</strong></p>
  * <pre>{@code
- * CollectionProducer<PackedCollection<?>> data = c(1.0, 2.0, 3.0, 4.0, 5.0);
- * CollectionSumComputation<PackedCollection<?>> sum = new CollectionSumComputation<>(data);
- * PackedCollection<?> result = sum.get().evaluate();
+ * CollectionProducer<PackedCollection> data = c(1.0, 2.0, 3.0, 4.0, 5.0);
+ * CollectionSumComputation<PackedCollection> sum = new CollectionSumComputation<>(data);
+ * PackedCollection result = sum.get().evaluate();
  * // Result: [15.0]  (1 + 2 + 3 + 4 + 5)
  * }</pre>
  *
  * <p><strong>Max reduction (via subclass):</strong></p>
  * <pre>{@code
- * CollectionProducer<PackedCollection<?>> data = c(3.0, 7.0, 2.0, 9.0, 5.0);
- * CollectionMaxComputation<PackedCollection<?>> max = new CollectionMaxComputation<>(data);
- * PackedCollection<?> result = max.get().evaluate();
+ * CollectionProducer<PackedCollection> data = c(3.0, 7.0, 2.0, 9.0, 5.0);
+ * CollectionMaxComputation<PackedCollection> max = new CollectionMaxComputation<>(data);
+ * PackedCollection result = max.get().evaluate();
  * // Result: [9.0]
  * }</pre>
  *
@@ -145,7 +145,7 @@ import java.util.function.BiFunction;
  *
  * @author Michael Murray
  */
-public class AggregatedProducerComputation<T extends PackedCollection<?>> extends TraversableRepeatedProducerComputation<T> {
+public class AggregatedProducerComputation<T extends PackedCollection> extends TraversableRepeatedProducerComputation<T> {
 	/**
 	 * Enables efficient gradient computation for aggregations using transitive delta propagation.
 	 * When true, {@link #delta(Producer)} computes gradients by distributing them through
@@ -227,7 +227,7 @@ public class AggregatedProducerComputation<T extends PackedCollection<?>> extend
 	public AggregatedProducerComputation(String name, TraversalPolicy shape, int count,
 										 BiFunction<TraversableExpression[], Expression, Expression> initial,
 										 BiFunction<Expression, Expression, Expression> expression,
-										 Producer<PackedCollection<?>>... arguments) {
+										 Producer<PackedCollection>... arguments) {
 		super(name, shape, count, initial, null, arguments);
 		this.expression = expression;
 		this.count = count;

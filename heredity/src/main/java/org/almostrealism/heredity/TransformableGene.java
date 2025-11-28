@@ -53,10 +53,10 @@ import java.util.function.UnaryOperator;
  * @see ProjectedGene
  * @see Gene
  */
-public abstract class TransformableGene implements Gene<PackedCollection<?>> {
+public abstract class TransformableGene implements Gene<PackedCollection> {
 
-	private UnaryOperator<Producer<PackedCollection<?>>> transform;
-	private UnaryOperator<Producer<PackedCollection<?>>> transforms[];
+	private UnaryOperator<Producer<PackedCollection>> transform;
+	private UnaryOperator<Producer<PackedCollection>> transforms[];
 
 	/**
 	 * Constructs a new {@code TransformableGene} with the specified number of factors.
@@ -72,7 +72,7 @@ public abstract class TransformableGene implements Gene<PackedCollection<?>> {
 	 *
 	 * @return the global transformation, or {@code null} if none is set
 	 */
-	public UnaryOperator<Producer<PackedCollection<?>>> getTransform() {
+	public UnaryOperator<Producer<PackedCollection>> getTransform() {
 		return transform;
 	}
 
@@ -82,7 +82,7 @@ public abstract class TransformableGene implements Gene<PackedCollection<?>> {
 	 *
 	 * @param transform the global transformation function, or {@code null} to remove
 	 */
-	public void setTransform(UnaryOperator<Producer<PackedCollection<?>>> transform) {
+	public void setTransform(UnaryOperator<Producer<PackedCollection>> transform) {
 		this.transform = transform;
 	}
 
@@ -92,7 +92,7 @@ public abstract class TransformableGene implements Gene<PackedCollection<?>> {
 	 * @param pos the zero-based position of the factor
 	 * @return the transformation for that position, or {@code null} if none is set
 	 */
-	public UnaryOperator<Producer<PackedCollection<?>>> getTransform(int pos) {
+	public UnaryOperator<Producer<PackedCollection>> getTransform(int pos) {
 		return transforms[pos];
 	}
 
@@ -103,7 +103,7 @@ public abstract class TransformableGene implements Gene<PackedCollection<?>> {
 	 * @param pos the zero-based position of the factor
 	 * @param transform the transformation function, or {@code null} to remove
 	 */
-	public void setTransform(int pos, UnaryOperator<Producer<PackedCollection<?>>> transform) {
+	public void setTransform(int pos, UnaryOperator<Producer<PackedCollection>> transform) {
 		this.transforms[pos] = transform;
 	}
 
@@ -116,7 +116,7 @@ public abstract class TransformableGene implements Gene<PackedCollection<?>> {
 	 * @param value the raw value to transform
 	 * @return the transformed value
 	 */
-	protected Producer<PackedCollection<?>> transform(int pos, Producer<PackedCollection<?>> value) {
+	protected Producer<PackedCollection> transform(int pos, Producer<PackedCollection> value) {
 		if (transforms[pos] != null) value = transforms[pos].apply(value);
 		return transform == null ? value : transform.apply(value);
 	}

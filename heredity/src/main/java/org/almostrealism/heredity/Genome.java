@@ -15,6 +15,7 @@
  */
 
 package org.almostrealism.heredity;
+import org.almostrealism.collect.PackedCollection;
 
 import io.almostrealism.relation.Factor;
 import io.almostrealism.uml.Plural;
@@ -57,13 +58,13 @@ import java.util.stream.IntStream;
  * genome.refreshValues();
  *
  * // Access chromosome
- * Chromosome<PackedCollection<?>> firstChromosome = genome.valueAt(0);
+ * Chromosome<PackedCollection> firstChromosome = genome.valueAt(0);
  *
  * // Access gene directly
- * Gene<PackedCollection<?>> gene = genome.valueAt(0, 0);  // Chromosome 0, Gene 0
+ * Gene<PackedCollection> gene = genome.valueAt(0, 0);  // Chromosome 0, Gene 0
  *
  * // Access factor directly
- * Factor<PackedCollection<?>> factor = genome.valueAt(0, 0, 0);  // Chr 0, Gene 0, Factor 0
+ * Factor<PackedCollection> factor = genome.valueAt(0, 0, 0);  // Chr 0, Gene 0, Factor 0
  *
  * // Create offspring with mutations
  * ProjectedGenome offspring = genome.variation(-1.0, 1.0, 0.1, () -> Math.random() * 0.2 - 0.1);

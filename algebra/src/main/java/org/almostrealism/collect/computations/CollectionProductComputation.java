@@ -55,27 +55,27 @@ import java.util.stream.Stream;
  * <p><strong>Element-wise multiplication of two vectors:</strong></p>
  * <pre>{@code
  * TraversalPolicy shape = shape(5);
- * CollectionProducer<PackedCollection<?>> a = c(1.0, 2.0, 3.0, 4.0, 5.0);
- * CollectionProducer<PackedCollection<?>> b = c(2.0, 2.0, 2.0, 2.0, 2.0);
+ * CollectionProducer<PackedCollection> a = c(1.0, 2.0, 3.0, 4.0, 5.0);
+ * CollectionProducer<PackedCollection> b = c(2.0, 2.0, 2.0, 2.0, 2.0);
  *
- * CollectionProductComputation<PackedCollection<?>> product =
+ * CollectionProductComputation<PackedCollection> product =
  *     new CollectionProductComputation<>(shape, a, b);
  *
- * PackedCollection<?> result = product.get().evaluate();
+ * PackedCollection result = product.get().evaluate();
  * // Result: [2.0, 4.0, 6.0, 8.0, 10.0]
  * }</pre>
  *
  * <p><strong>Multiple operand multiplication:</strong></p>
  * <pre>{@code
  * TraversalPolicy shape = shape(3);
- * CollectionProducer<PackedCollection<?>> x = c(2.0, 3.0, 4.0);
- * CollectionProducer<PackedCollection<?>> y = c(3.0, 2.0, 1.0);
- * CollectionProducer<PackedCollection<?>> z = c(0.5, 1.0, 2.0);
+ * CollectionProducer<PackedCollection> x = c(2.0, 3.0, 4.0);
+ * CollectionProducer<PackedCollection> y = c(3.0, 2.0, 1.0);
+ * CollectionProducer<PackedCollection> z = c(0.5, 1.0, 2.0);
  *
- * CollectionProductComputation<PackedCollection<?>> product =
+ * CollectionProductComputation<PackedCollection> product =
  *     new CollectionProductComputation<>(shape, x, y, z);
  *
- * PackedCollection<?> result = product.get().evaluate();
+ * PackedCollection result = product.get().evaluate();
  * // Result: [3.0, 6.0, 8.0]  (2x3x0.5, 3x2x1, 4x1x2)
  * }</pre>
  *
@@ -95,7 +95,7 @@ import java.util.stream.Stream;
  *
  * @author Michael Murray
  */
-public class CollectionProductComputation<T extends PackedCollection<?>> extends TraversableExpressionComputation<T> {
+public class CollectionProductComputation<T extends PackedCollection> extends TraversableExpressionComputation<T> {
 
 	/**
 	 * Constructs a new product computation with default name "multiply".
@@ -104,7 +104,7 @@ public class CollectionProductComputation<T extends PackedCollection<?>> extends
 	 * @param arguments Variable number of input {@link Producer}s to be multiplied together
 	 */
 	public CollectionProductComputation(TraversalPolicy shape,
-										Producer<PackedCollection<?>>... arguments) {
+										Producer<PackedCollection>... arguments) {
 		this("multiply", shape, arguments);
 	}
 
@@ -121,7 +121,7 @@ public class CollectionProductComputation<T extends PackedCollection<?>> extends
 	 * @param arguments Variable number of input {@link Producer}s to be multiplied together
 	 */
 	protected CollectionProductComputation(String name, TraversalPolicy shape,
-										   Producer<PackedCollection<?>>... arguments) {
+										   Producer<PackedCollection>... arguments) {
 		super(name, shape, MultiTermDeltaStrategy.NONE, arguments);
 	}
 
@@ -202,7 +202,7 @@ public class CollectionProductComputation<T extends PackedCollection<?>> extends
 	public CollectionProducer<T> delta(Producer<?> target) {
 		TraversalPolicy targetShape = shape(target);
 
-		List<CollectionProducer<PackedCollection<?>>> operands = List.of(
+		List<CollectionProducer<PackedCollection>> operands = List.of(
 				getChildren().stream().skip(1)
 					.filter(p -> p instanceof CollectionProducer)
 					.toArray(CollectionProducer[]::new));
@@ -225,10 +225,10 @@ public class CollectionProductComputation<T extends PackedCollection<?>> extends
 
 		TraversalPolicy shape = getShape().append(targetShape);
 
-		CollectionProducer<PackedCollection<?>> u = operands.get(0);
-		CollectionProducer<PackedCollection<?>> v = operands.get(1);
-		CollectionProducer<PackedCollection<?>> uDelta = u.delta(target);
-		CollectionProducer<PackedCollection<?>> vDelta = v.delta(target);
+		CollectionProducer<PackedCollection> u = operands.get(0);
+		CollectionProducer<PackedCollection> v = operands.get(1);
+		CollectionProducer<PackedCollection> uDelta = u.delta(target);
+		CollectionProducer<PackedCollection> vDelta = v.delta(target);
 
 		uDelta = uDelta.reshape(v.getShape().getTotalSize(), -1).traverse(0);
 		vDelta = vDelta.reshape(u.getShape().getTotalSize(), -1).traverse(0);

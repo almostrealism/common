@@ -41,18 +41,18 @@ import java.util.List;
  * <p><strong>Usage Examples:</strong></p>
  * <pre>{@code
  * // Example 1: Simple 2D transpose (swap dimensions)
- * PackedCollection<?> input = new PackedCollection<>(shape(2, 4));  // Shape: (2, 4)
- * PackedCollection<?> result = cp(input).permute(1, 0).evaluate(); // Shape: (4, 2)
+ * PackedCollection input = new PackedCollection(shape(2, 4));  // Shape: (2, 4)
+ * PackedCollection result = cp(input).permute(1, 0).evaluate(); // Shape: (4, 2)
  * // Element at input[i][j] is now at result[j][i]
  * 
  * // Example 2: 4D dimension reordering  
- * PackedCollection<?> input = new PackedCollection<>(shape(2, 4, 3, 8));     // Shape: (2, 4, 3, 8)
- * PackedCollection<?> result = cp(input).permute(0, 2, 1, 3).evaluate();    // Shape: (2, 3, 4, 8)
+ * PackedCollection input = new PackedCollection(shape(2, 4, 3, 8));     // Shape: (2, 4, 3, 8)
+ * PackedCollection result = cp(input).permute(0, 2, 1, 3).evaluate();    // Shape: (2, 3, 4, 8)
  * // Element at input[i][j][k][l] is now at result[i][k][j][l]
  * 
  * // Example 3: More complex reordering
- * PackedCollection<?> input = new PackedCollection<>(shape(5, 6, 7));        // Shape: (5, 6, 7)
- * PackedCollection<?> result = cp(input).permute(2, 0, 1).evaluate();       // Shape: (7, 5, 6)
+ * PackedCollection input = new PackedCollection(shape(5, 6, 7));        // Shape: (5, 6, 7)
+ * PackedCollection result = cp(input).permute(2, 0, 1).evaluate();       // Shape: (7, 5, 6)
  * // Element at input[i][j][k] is now at result[k][i][j]
  * }</pre>
  * 
@@ -81,7 +81,7 @@ import java.util.List;
  * 
  * @author Michael Murray
  */
-public class CollectionPermute<T extends PackedCollection<?>>
+public class CollectionPermute<T extends PackedCollection>
 		extends IndexProjectionProducerComputation<T> {
 	/** 
 	 * The dimension permutation order array. Each element specifies which dimension 

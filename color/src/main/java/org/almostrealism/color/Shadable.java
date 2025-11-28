@@ -18,6 +18,7 @@ package org.almostrealism.color;
 
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Evaluable;
+import org.almostrealism.collect.PackedCollection;
 
 /**
  * Represents an object that can be shaded to produce a color based on lighting conditions.
@@ -35,7 +36,7 @@ import io.almostrealism.relation.Evaluable;
  * public class MySurface implements Shadable {
  *     private Shader<ShaderContext> shader = new DiffuseShader();
  *
- *     public Producer<RGB> shade(ShaderContext ctx) {
+ *     public Producer<PackedCollection> shade(ShaderContext ctx) {
  *         return shader.shade(ctx, getNormalField());
  *     }
  * }
@@ -60,5 +61,5 @@ public interface Shadable {
 	 * @return a {@link Producer} that yields the computed {@link RGB} color
 	 * @see Shader
 	 */
-	Producer<RGB> shade(ShaderContext parameters);
+	Producer<PackedCollection> shade(ShaderContext parameters);
 }

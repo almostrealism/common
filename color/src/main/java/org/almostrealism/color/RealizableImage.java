@@ -26,11 +26,11 @@ import org.almostrealism.io.ConsoleFeatures;
 import java.util.function.Function;
 
 public class RealizableImage implements Producer<RGB[][]>, ConsoleFeatures {
-	private Producer<RGB> source;
+	private Producer<PackedCollection> source;
 	private Function<Pair, RGB> func;
 	private Pair dim;
 
-	public RealizableImage(Producer<RGB> source, Pair dimensions) {
+	public RealizableImage(Producer<PackedCollection> source, Pair dimensions) {
 		this.source = source;
 		this.dim = dimensions;
 	}
@@ -40,11 +40,11 @@ public class RealizableImage implements Producer<RGB[][]>, ConsoleFeatures {
 		this.dim = dimensions;
 	}
 
-	public Producer<RGB> getSource() { return source; }
+	public Producer<PackedCollection> getSource() { return source; }
 
 	public Pair getDimensions() { return dim; }
 
-	// TODO  This should be Evaluable<PackedCollection<?>>
+	// TODO  This should be Evaluable<PackedCollection>
 	@Override
 	public Evaluable<RGB[][]> get() {
 		return args -> {
@@ -61,13 +61,13 @@ public class RealizableImage implements Producer<RGB[][]>, ConsoleFeatures {
 			int w = (int) dim.getX();
 			int h = (int) dim.getY();
 			int size = w * h;
-			PackedCollection<Pair<?>> input = generateKernelInput(x, y, w, h);
-			PackedCollection<RGB> output = RGB.bank(size);
+			PackedCollection input = generateKernelInput(x, y, w, h);
+			PackedCollection output = RGB.bank(size);
 
 			if (source != null) {
 				source.get().into(output).evaluate(input);
 			} else if (func != null) {
-				RGB result[] = input.stream().map(func).toArray(RGB[]::new);
+				RGB result[] = input.stream().map(p -> func.apply((Pair) p)).toArray(RGB[]::new);
 				for (int i = 0; i < result.length; i++) output.set(i, result[i]);
 			} else {
 				throw new UnsupportedOperationException();
@@ -77,9 +77,9 @@ public class RealizableImage implements Producer<RGB[][]>, ConsoleFeatures {
 		};
 	}
 
-	public static PackedCollection<Pair<?>> generateKernelInput(int x, int y, int width, int height) {
+	public static PackedCollection generateKernelInput(int x, int y, int width, int height) {
 		int size = width * height;
-		PackedCollection<Pair<?>> input = Pair.bank(size);
+		PackedCollection input = Pair.bank(size);
 
 		for (int i = 0; i < width; i++) {
 			for (int j = 0; j < height; j++) {
@@ -90,12 +90,12 @@ public class RealizableImage implements Producer<RGB[][]>, ConsoleFeatures {
 		return input;
 	}
 
-	public static RGB[][] processKernelOutput(int w, int h, PackedCollection<RGB> output) {
+	public static RGB[][] processKernelOutput(int w, int h, PackedCollection output) {
 		RGB image[][] = new RGB[w][h];
 
 		for (int i = 0; i < w; i++) {
 			for (int j = 0; j < h; j++) {
-				image[i][j] = output.get(j * w + i);
+				image[i][j] = (RGB) output.get(j * w + i);
 			}
 		}
 

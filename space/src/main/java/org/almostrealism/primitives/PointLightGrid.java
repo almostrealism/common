@@ -123,7 +123,7 @@ public class PointLightGrid extends AbstractSurface implements Light {
 	
 	/** Returns a zero vector. */
 	@Override
-	public Producer<Vector> getNormalAt(Producer<Vector> point) {
+	public Producer<PackedCollection> getNormalAt(Producer<PackedCollection> point) {
 		return ZeroVector.getInstance();
 	}
 
@@ -131,7 +131,7 @@ public class PointLightGrid extends AbstractSurface implements Light {
 	 * Delegates to {@link #getValueAt(Producer)}.
 	 */
 	@Override
-	public Producer<RGB> getColorAt(Producer<Vector> point) { return getValueAt(point); }
+	public Producer<PackedCollection> getColorAt(Producer<PackedCollection> point) { return getValueAt(point); }
 
 	/** Returns null. */
 	@Override
@@ -140,12 +140,12 @@ public class PointLightGrid extends AbstractSurface implements Light {
 	}
 
 	@Override
-	public Operator<PackedCollection<?>> expect() {
+	public Operator<PackedCollection> expect() {
 		return null;
 	}
 
 	@Override
-	public Operator<PackedCollection<?>> get() {
+	public Operator<PackedCollection> get() {
 		return null;
 	}
 }

@@ -15,6 +15,7 @@
  */
 
 package org.almostrealism.space;
+import org.almostrealism.collect.PackedCollection;
 
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.geometry.Curve;
@@ -36,7 +37,7 @@ public interface Volume<T> extends Curve<T> {
 	 * @param x  {x, y, z} - The point in space to test.
 	 * @return  True if the point is within this volume, false otherwise.
 	 */
-	boolean inside(Producer<Vector> x);
+	boolean inside(Producer<PackedCollection> x);
 	
 	/**
 	 * Calculates the distance along the line defined by the specified position
@@ -60,7 +61,7 @@ public interface Volume<T> extends Curve<T> {
 	 * @return  {u, v} - Position in surface coordinates (u,v between 0.0 and 1.0).
 	 */
 	// TODO  Return Producer<Pair>
-	double[] getSurfaceCoords(Producer<Vector> xyz);
+	double[] getSurfaceCoords(Producer<PackedCollection> xyz);
 	
 	/**
 	 * Returns 3D coordinates on the surface of this volume at the specified point

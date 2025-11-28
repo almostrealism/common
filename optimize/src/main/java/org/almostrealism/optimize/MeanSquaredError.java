@@ -59,7 +59,7 @@ import org.almostrealism.collect.PackedCollection;
  * double loss = mse.loss(predictions, targets);
  *
  * // Get gradient for backpropagation
- * Producer<PackedCollection<?>> grad = mse.gradient(outputProducer, targetProducer);
+ * Producer<PackedCollection> grad = mse.gradient(outputProducer, targetProducer);
  * }</pre>
  *
  * @see MeanAbsoluteError
@@ -70,7 +70,7 @@ import org.almostrealism.collect.PackedCollection;
  */
 public class MeanSquaredError implements LossProvider, CodeFeatures {
 	private TraversalPolicy outputShape;
-	private Evaluable<PackedCollection<?>> loss;
+	private Evaluable<PackedCollection> loss;
 
 	/**
 	 * Creates a Mean Squared Error loss function for the specified output shape.
@@ -90,7 +90,7 @@ public class MeanSquaredError implements LossProvider, CodeFeatures {
 	 * @return the mean of squared differences
 	 */
 	@Override
-	public double loss(PackedCollection<?> output, PackedCollection<?> target) {
+	public double loss(PackedCollection output, PackedCollection target) {
 		return loss.evaluate(output, target).doubleStream().average().orElse(0);
 	}
 
@@ -102,8 +102,8 @@ public class MeanSquaredError implements LossProvider, CodeFeatures {
 	 * @return a producer for the loss gradient
 	 */
 	@Override
-	public Producer<PackedCollection<?>> gradient(Producer<PackedCollection<?>> output,
-												  Producer<PackedCollection<?>> target) {
+	public Producer<PackedCollection> gradient(Producer<PackedCollection> output,
+												  Producer<PackedCollection> target) {
 		return c(2.0 / outputShape.getTotalSize())
 				.multiply(c(output).subtract(c(target)));
 	}

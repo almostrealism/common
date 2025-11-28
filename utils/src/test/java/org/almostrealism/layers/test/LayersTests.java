@@ -49,14 +49,14 @@ public class LayersTests implements LayerFeatures, DistributionFeatures, TestFea
 
 	@Test
 	public void exponent() {
-		PackedCollection<?> in = new PackedCollection<>(SIZE).traverseEach();
+		PackedCollection in = new PackedCollection(SIZE).traverseEach();
 		in.fill(pos -> Math.random());
 
-		PackedCollection<?> weights = new PackedCollection<>(SIZE).traverseEach();
+		PackedCollection weights = new PackedCollection(SIZE).traverseEach();
 		weights.fill(pos -> Math.random());
 
-		PackedCollection<?> cpuOut = new PackedCollection<>(SIZE);
-		PackedCollection<?> gpuOut = new PackedCollection<>(SIZE);
+		PackedCollection cpuOut = new PackedCollection(SIZE);
+		PackedCollection gpuOut = new PackedCollection(SIZE);
 
 		verboseLog(() -> {
 			OperationList cop = new OperationList();
@@ -86,16 +86,16 @@ public class LayersTests implements LayerFeatures, DistributionFeatures, TestFea
 
 	@Test
 	public void rmsnorm() {
-		PackedCollection<?> in = new PackedCollection<>(shape(SIZE));
+		PackedCollection in = new PackedCollection(shape(SIZE));
 		in.fill(pos -> Math.random());
 
-		PackedCollection<?> weights = new PackedCollection<>(shape(SIZE));
+		PackedCollection weights = new PackedCollection(shape(SIZE));
 		weights.fill(pos -> Math.random());
 
 		SequentialBlock cpuModel = new SequentialBlock(shape(SIZE));
 		cpuModel.add(rmsnorm(weights));
 		cpuModel.getForward().setReceptor(out -> () -> () -> {
-			PackedCollection<?> o = out.get().evaluate();
+			PackedCollection o = out.get().evaluate();
 			cpuOut = new float[SIZE];
 			o.getMem(0, cpuOut, 0, SIZE);
 		});
@@ -103,7 +103,7 @@ public class LayersTests implements LayerFeatures, DistributionFeatures, TestFea
 		SequentialBlock gpuModel = new SequentialBlock(shape(SIZE));
 		gpuModel.add(rmsnorm(weights, ComputeRequirement.GPU));
 		gpuModel.getForward().setReceptor(out -> () -> () -> {
-			PackedCollection<?> o = out.get().evaluate();
+			PackedCollection o = out.get().evaluate();
 			gpuOut = new float[SIZE];
 			o.getMem(0, gpuOut, 0, SIZE);
 		});
@@ -146,7 +146,7 @@ public class LayersTests implements LayerFeatures, DistributionFeatures, TestFea
 		OperationProfile profile = new OperationProfile("Model");
 
 		Supplier<Dataset<?>> data = () -> Dataset.of(IntStream.range(0, steps)
-				.mapToObj(i -> new PackedCollection<>(shape(size)))
+				.mapToObj(i -> new PackedCollection(shape(size)))
 				.map(input -> input.fill(pos -> 1 + 2 * Math.random()))
 				.map(input -> ValueTarget.of(input, input))
 				.collect(Collectors.toList()));
@@ -174,7 +174,7 @@ public class LayersTests implements LayerFeatures, DistributionFeatures, TestFea
 		OperationProfileNode profile = new OperationProfileNode("Silu Model");
 
 		Supplier<Dataset<?>> data = () -> Dataset.of(IntStream.range(0, steps)
-				.mapToObj(i -> new PackedCollection<>(shape(size)))
+				.mapToObj(i -> new PackedCollection(shape(size)))
 				.map(input -> input.fill(pos -> 1 + 2 * Math.random()))
 				.map(input -> ValueTarget.of(input, input))
 				.collect(Collectors.toList()));
@@ -196,7 +196,7 @@ public class LayersTests implements LayerFeatures, DistributionFeatures, TestFea
 		int size = 100;
 		
 		// Create random input values in range [-2, 2] for numerical stability
-		PackedCollection<?> input = new PackedCollection<>(shape(size));
+		PackedCollection input = new PackedCollection(shape(size));
 		input.fill(pos -> (Math.random() - 0.5) * 4.0);
 		
 		// Create SILU layer
@@ -204,9 +204,9 @@ public class LayersTests implements LayerFeatures, DistributionFeatures, TestFea
 		model.add(silu());
 		
 		// Capture output
-		PackedCollection<?> actualOutput = new PackedCollection<>(shape(size));
+		PackedCollection actualOutput = new PackedCollection(shape(size));
 		model.getForward().setReceptor(out -> () -> () -> {
-			PackedCollection<?> result = out.get().evaluate();
+			PackedCollection result = out.get().evaluate();
 			actualOutput.setMem(0, result.toArray(0, size), 0, size);
 		});
 		

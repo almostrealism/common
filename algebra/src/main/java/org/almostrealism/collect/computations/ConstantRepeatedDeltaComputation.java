@@ -64,7 +64,7 @@ import java.util.function.Supplier;
  * TraversalPolicy targetShape = shape(5);      // Shape of the target w.r.t. which delta is computed
  * int iterationCount = 3;                      // Number of iterations
  *
- * ConstantRepeatedDeltaComputation<PackedCollection<?>> delta =
+ * ConstantRepeatedDeltaComputation<PackedCollection> delta =
  *     new ConstantRepeatedDeltaComputation<>(
  *         deltaShape, targetShape, iterationCount,
  *         (args, index) -> computeExpression(args, index),  // Expression function
@@ -73,7 +73,7 @@ import java.util.function.Supplier;
  *     );
  *
  * // Evaluate to get the gradient
- * PackedCollection<?> gradient = delta.get().evaluate(inputs...);
+ * PackedCollection gradient = delta.get().evaluate(inputs...);
  * }</pre>
  *
  * <h2>Integration with Automatic Differentiation</h2>
@@ -90,7 +90,7 @@ import java.util.function.Supplier;
  *
  * @author Michael Murray
  */
-public class ConstantRepeatedDeltaComputation<T extends PackedCollection<?>> extends ConstantRepeatedProducerComputation<T> implements TraversableExpression<Double> {
+public class ConstantRepeatedDeltaComputation<T extends PackedCollection> extends ConstantRepeatedProducerComputation<T> implements TraversableExpression<Double> {
 	/** The shape of the delta (gradient) computation output, before appending target dimensions. */
 	private TraversalPolicy deltaShape, targetShape;
 
@@ -125,7 +125,7 @@ public class ConstantRepeatedDeltaComputation<T extends PackedCollection<?>> ext
 	public ConstantRepeatedDeltaComputation(TraversalPolicy deltaShape, TraversalPolicy targetShape, int count,
 											BiFunction<TraversableExpression[], Expression, Expression> expression,
 											Producer<?> target,
-											Producer<PackedCollection<?>>... inputs) {
+											Producer<PackedCollection>... inputs) {
 		this(deltaShape, targetShape, 1, count, expression, target, inputs);
 	}
 
@@ -148,7 +148,7 @@ public class ConstantRepeatedDeltaComputation<T extends PackedCollection<?>> ext
 	public ConstantRepeatedDeltaComputation(TraversalPolicy deltaShape, TraversalPolicy targetShape, int size, int count,
 											BiFunction<TraversableExpression[], Expression, Expression> expression,
 											Producer<?> target,
-											Producer<PackedCollection<?>>... inputs) {
+											Producer<PackedCollection>... inputs) {
 		super(null, deltaShape.append(targetShape), size, count, null, null, inputs);
 		this.deltaShape	= deltaShape;
 		this.targetShape = targetShape;
@@ -305,7 +305,7 @@ public class ConstantRepeatedDeltaComputation<T extends PackedCollection<?>> ext
 	 *
 	 * <p>Usage Example:</p>
 	 * <pre>{@code
-	 * ConstantRepeatedDeltaComputation<PackedCollection<?>> delta =
+	 * ConstantRepeatedDeltaComputation<PackedCollection> delta =
 	 *     ConstantRepeatedDeltaComputation.create(
 	 *         shape(10), shape(5), 3,
 	 *         (args, index) -> computeExpression(args, index),
@@ -323,11 +323,11 @@ public class ConstantRepeatedDeltaComputation<T extends PackedCollection<?>> ext
 	 * @param arguments Input producers providing data collections
 	 * @return A new {@link ConstantRepeatedDeltaComputation} instance
 	 */
-	public static <T extends PackedCollection<?>> ConstantRepeatedDeltaComputation<T> create(
+	public static <T extends PackedCollection> ConstantRepeatedDeltaComputation<T> create(
 			TraversalPolicy deltaShape, TraversalPolicy targetShape, int count,
 			BiFunction<TraversableExpression[], Expression, Expression> expression,
 			Producer<?> target,
-			Producer<PackedCollection<?>>... arguments) {
+			Producer<PackedCollection>... arguments) {
 		return new ConstantRepeatedDeltaComputation<>(
 				deltaShape, targetShape, count, expression,
 				target, arguments);

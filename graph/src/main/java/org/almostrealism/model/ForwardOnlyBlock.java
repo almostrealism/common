@@ -46,12 +46,12 @@ public class ForwardOnlyBlock implements Block {
 	}
 
 	@Override
-	public Cell<PackedCollection<?>> getForward() {
+	public Cell<PackedCollection> getForward() {
 		return block.getForward();
 	}
 
 	@Override
-	public Cell<PackedCollection<?>> getBackward() {
+	public Cell<PackedCollection> getBackward() {
 		return Cell.of((input, next) -> new OperationList());
 	}
 }

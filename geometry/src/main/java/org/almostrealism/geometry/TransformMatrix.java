@@ -34,7 +34,7 @@ import java.util.function.BiFunction;
  * methods for transforming various types of vectors. The TransformMatrix class also provides
  * some static methods that generate certain useful matrices.
  */
-public class TransformMatrix extends PackedCollection<PackedCollection<?>> implements TransformMatrixFeatures, RayFeatures {
+public class TransformMatrix extends PackedCollection implements TransformMatrixFeatures, RayFeatures {
 	public static final int TRANSFORM_AS_LOCATION = 1;
 	public static final int TRANSFORM_AS_OFFSET = 2;
 	public static final int TRANSFORM_AS_NORMAL = 4;
@@ -179,7 +179,7 @@ public class TransformMatrix extends PackedCollection<PackedCollection<?>> imple
 	@Override
 	public Heap getDefaultDelegate() { return Heap.getDefault(); }
 
-	public Producer<Vector> transform(Producer<Vector> vector, int type) {
+	public Producer<PackedCollection> transform(Producer<PackedCollection> vector, int type) {
 		if (this.isIdentity) return vector;
 
 		if (type == TransformMatrix.TRANSFORM_AS_LOCATION) {
@@ -197,7 +197,7 @@ public class TransformMatrix extends PackedCollection<PackedCollection<?>> imple
 	public double[] transform(double x, double y, double z, int type) {
 		if (this.isIdentity) return new double[] {x, y, z};
 
-		return transform(vector(x, y, z), type).get().evaluate().toArray();
+		return ((PackedCollection) transform((Producer) vector(x, y, z), type).get().evaluate()).toArray();
 	}
 
 	/**
@@ -209,7 +209,7 @@ public class TransformMatrix extends PackedCollection<PackedCollection<?>> imple
 		vector = vector.clone();
 		if (this.isIdentity) return vector;
 
-		return transform(v(vector), TRANSFORM_AS_LOCATION).get().evaluate();
+		return (Vector) transform((Producer) v(vector), TRANSFORM_AS_LOCATION).get().evaluate();
 	}
 
 	/**
@@ -221,7 +221,7 @@ public class TransformMatrix extends PackedCollection<PackedCollection<?>> imple
 		vector = vector.clone();
 		if (this.isIdentity) return vector;
 
-		return transform(v(vector), TRANSFORM_AS_OFFSET).get().evaluate();
+		return (Vector) transform((Producer) v(vector), TRANSFORM_AS_OFFSET).get().evaluate();
 	}
 
 	/**
@@ -233,7 +233,7 @@ public class TransformMatrix extends PackedCollection<PackedCollection<?>> imple
 		vector = vector.clone();
 		if (this.isIdentity) return vector;
 
-		return transform(v(vector), TRANSFORM_AS_NORMAL).get().evaluate();
+		return (Vector) transform((Producer) v(vector), TRANSFORM_AS_NORMAL).get().evaluate();
 	}
 
 	public Producer<Ray> transform(Producer<Ray> ray) {
@@ -384,8 +384,8 @@ public class TransformMatrix extends PackedCollection<PackedCollection<?>> imple
 		return data;
 	}
 
-	public static PackedCollection<TransformMatrix> bank(int count) {
-		return new PackedCollection<>(new TraversalPolicy(count, 16), 1, delegateSpec ->
+	public static PackedCollection bank(int count) {
+		return new PackedCollection(new TraversalPolicy(count, 16), 1, delegateSpec ->
 				new TransformMatrix(delegateSpec.getDelegate(), delegateSpec.getOffset()));
 	}
 

@@ -37,9 +37,9 @@ public class VectorConcatTest implements TestFeatures, VectorFeatures {
 			Vector result = new Vector((PackedCollection) vec.get().evaluate(), 0);
 			log("Vector result: " + result);
 
-			assertEquals("X should be 1.0", 1.0, result.getX());
-			assertEquals("Y should be 2.0", 2.0, result.getY());
-			assertEquals("Z should be 3.0", 3.0, result.getZ());
+			assertEquals("X should be 1.0", 1.0, result.toDouble(0));
+			assertEquals("Y should be 2.0", 2.0, result.toDouble(1));
+			assertEquals("Z should be 3.0", 3.0, result.toDouble(2));
 		} catch (Exception e) {
 			log("Exception: " + e.getMessage());
 			e.printStackTrace();

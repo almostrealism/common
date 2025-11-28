@@ -15,6 +15,7 @@
  */
 
 package org.almostrealism.heredity;
+import org.almostrealism.collect.PackedCollection;
 
 /**
  * A functional interface for combining two {@link Chromosome}s to produce offspring.
@@ -32,10 +33,10 @@ package org.almostrealism.heredity;
  * <h2>Example Usage</h2>
  * <pre>{@code
  * // Define a simple averaging breeder
- * ChromosomeBreeder<PackedCollection<?>> breeder = (c1, c2) -> {
+ * ChromosomeBreeder<PackedCollection> breeder = (c1, c2) -> {
  *     // Custom crossover logic
  *     int length = Math.min(c1.length(), c2.length());
- *     Gene<PackedCollection<?>>[] genes = new Gene[length];
+ *     Gene<PackedCollection>[] genes = new Gene[length];
  *
  *     for (int i = 0; i < length; i++) {
  *         // Select gene from either parent
@@ -46,7 +47,7 @@ package org.almostrealism.heredity;
  * };
  *
  * // Use the breeder
- * Chromosome<PackedCollection<?>> offspring = breeder.combine(parent1, parent2);
+ * Chromosome<PackedCollection> offspring = breeder.combine(parent1, parent2);
  * }</pre>
  *
  * @param <T> the type of data that chromosomes operate on

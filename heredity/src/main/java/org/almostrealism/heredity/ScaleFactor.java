@@ -40,8 +40,8 @@ import java.util.Optional;
  * ScaleFactor negative = new ScaleFactor(-1.0);
  *
  * // Apply factor to a producer
- * Producer<PackedCollection<?>> input = ...;
- * Producer<PackedCollection<?>> scaled = half.getResultant(input);
+ * Producer<PackedCollection> input = ...;
+ * Producer<PackedCollection> scaled = half.getResultant(input);
  *
  * // Modify scale value
  * half.setScaleValue(0.75);
@@ -50,14 +50,14 @@ import java.util.Optional;
  * @see HeredityFeatures#g(double...)
  * @see Factor
  */
-public class ScaleFactor implements Factor<PackedCollection<?>>, ScalarFeatures, CollectionFeatures {
-	private PackedCollection<?> scale;
+public class ScaleFactor implements Factor<PackedCollection>, ScalarFeatures, CollectionFeatures {
+	private PackedCollection scale;
 
 	/**
 	 * Constructs a new {@code ScaleFactor} with a scale of 0.0.
 	 */
 	public ScaleFactor() {
-		scale = new PackedCollection<>(1);
+		scale = new PackedCollection(1);
 		scale.setMem(0, 0.0);
 	}
 
@@ -67,7 +67,7 @@ public class ScaleFactor implements Factor<PackedCollection<?>>, ScalarFeatures,
 	 * @param scale the scalar multiplier value
 	 */
 	public ScaleFactor(double scale) {
-		this.scale = new PackedCollection<>(1);
+		this.scale = new PackedCollection(1);
 		this.scale.setMem(0, scale);
 	}
 
@@ -76,7 +76,7 @@ public class ScaleFactor implements Factor<PackedCollection<?>>, ScalarFeatures,
 	 *
 	 * @param scale the PackedCollection containing the multiplier value
 	 */
-	public ScaleFactor(PackedCollection<?> scale) { this.scale = scale; }
+	public ScaleFactor(PackedCollection scale) { this.scale = scale; }
 
 	/**
 	 * Returns a producer that multiplies the input by this factor's scale value.
@@ -85,9 +85,9 @@ public class ScaleFactor implements Factor<PackedCollection<?>>, ScalarFeatures,
 	 * @return a producer that produces the scaled result
 	 */
 	@Override
-	public Producer<PackedCollection<?>> getResultant(Producer<PackedCollection<?>> value) {
+	public Producer<PackedCollection> getResultant(Producer<PackedCollection> value) {
 		return multiply(value, (Producer) p(scale), args -> {
-			PackedCollection<?> result = new PackedCollection<>(1);
+			PackedCollection result = new PackedCollection(1);
 
 //			if (value instanceof StaticCollectionComputation) {
 //				result.setMem(((StaticCollectionComputation) value).getValue().toDouble(0) * scale.toDouble(0));
@@ -105,7 +105,7 @@ public class ScaleFactor implements Factor<PackedCollection<?>>, ScalarFeatures,
 	 * @param s the new scale value
 	 */
 	public void setScaleValue(double s) {
-		this.scale = new PackedCollection<>(1);
+		this.scale = new PackedCollection(1);
 		this.scale.setMem(0, s);
 	}
 
@@ -121,7 +121,7 @@ public class ScaleFactor implements Factor<PackedCollection<?>>, ScalarFeatures,
 	 *
 	 * @return the PackedCollection containing the scale value
 	 */
-	public PackedCollection<?> getScale() { return scale; }
+	public PackedCollection getScale() { return scale; }
 
 	/**
 	 * Returns a unique signature for this factor based on its scale value.

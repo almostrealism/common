@@ -89,7 +89,7 @@ import io.almostrealism.uml.Multiple;
  *
  * <pre>{@code
  * // Single value
- * Evaluable<? extends Multiple<PackedCollection<?>>> scalar = evaluator.getEvaluable(scalarArg);
+ * Evaluable<? extends Multiple<PackedCollection>> scalar = evaluator.getEvaluable(scalarArg);
  *
  * // Multiple values (batch)
  * Evaluable<? extends Multiple<Matrix>> batch = evaluator.getEvaluable(batchArg);

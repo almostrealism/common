@@ -15,6 +15,7 @@
  */
 
 package org.almostrealism.primitives;
+import org.almostrealism.collect.PackedCollection;
 
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.color.RGB;
@@ -28,7 +29,7 @@ public class Plane implements Volume<RGB>, CodeFeatures {
 	protected double w, h;
 	protected double thick = 0.5;
 	protected double up[], across[];
-	protected Producer<Vector> normal;
+	protected Producer<PackedCollection> normal;
 	
 	/** @param t  The thickness of the plane (usually measured in micrometers). */
 	public void setThickness(double t) { this.thick = t; }
@@ -55,14 +56,14 @@ public class Plane implements Volume<RGB>, CodeFeatures {
 	/**
 	 * @param p  {x, y, z} - The vector normal to the absorption plane.
 	 */
-	public void setSurfaceNormal(Producer<Vector> p) {
+	public void setSurfaceNormal(Producer<PackedCollection> p) {
 		this.normal = p; this.across = null;
 	}
 
 	/**
 	 * @return  {x, y, z} - The vector normal to the plane.
 	 */
-	public Producer<Vector> getSurfaceNormal() { return this.normal; }
+	public Producer<PackedCollection> getSurfaceNormal() { return this.normal; }
 	
 	/**
 	 * @param p  {x, y, z} - The vector pointing upwards across the surface of this
@@ -76,35 +77,35 @@ public class Plane implements Volume<RGB>, CodeFeatures {
 	 */
 	public double[] getOrientation() { return this.up; }
 	
-	public double[] getAcross() { 
+	public double[] getAcross() {
 		if (this.across == null)
-			this.across = new Vector(this.up).crossProduct(normal.get().evaluate()).toArray();
-		
+			this.across = new Vector(this.up).crossProduct(new Vector(normal.get().evaluate(), 0)).toArray();
+
 		return this.across;
 	}
 
 	@Override
-	public boolean inside(Producer<Vector> x) {
-		double d = Math.abs(dotProduct(x, normal).get().evaluate().toDouble());
+	public boolean inside(Producer<PackedCollection> x) {
+		double d = Math.abs(((PackedCollection) dotProduct((Producer) x, (Producer) normal).get().evaluate()).toDouble(0));
 		Plane.d = d;
 		if (d > this.thick) return false;
-		
-		double y = Math.abs(dotProduct(x, vector(up[0], up[1], up[2])).get().evaluate().toDouble());
+
+		double y = Math.abs(((PackedCollection) dotProduct((Producer) x, (Producer) vector(up[0], up[1], up[2])).get().evaluate()).toDouble(0));
 		if (y > this.h / 2.0) return false;
-		
+
 		if (this.across == null)
-			this.across = new Vector(this.up).crossProduct(normal.get().evaluate()).toArray();
-		
-		double z = Math.abs(dotProduct(x, vector(across[0], across[1], across[2])).get().evaluate().toDouble());
+			this.across = new Vector(this.up).crossProduct(new Vector(normal.get().evaluate(), 0)).toArray();
+
+		double z = Math.abs(((PackedCollection) dotProduct((Producer) x, (Producer) vector(across[0], across[1], across[2])).get().evaluate()).toDouble(0));
 		if (z > this.w / 2.0) return false;
-		
+
 		return true;
 	}
 
 	@Override
 	public double intersect(Vector p, Vector d) {
-		double a = p.dotProduct(normal.get().evaluate());
-		double b = d.dotProduct(normal.get().evaluate());
+		double a = p.dotProduct(new Vector(normal.get().evaluate(), 0));
+		double b = d.dotProduct(new Vector(normal.get().evaluate(), 0));
 		
 		double d1 = (this.thick - a) / b;
 		double d2 = (-this.thick - a) / b;
@@ -113,14 +114,14 @@ public class Plane implements Volume<RGB>, CodeFeatures {
 			d1 = Double.MAX_VALUE - 1.0;
 		} else {
 			Vector x = d.multiply(d1 + this.thick / 2.0).add(p);
-			if (!this.inside(value(x))) d1 = Double.MAX_VALUE - 1.0;
+			if (!this.inside((Producer) value(x))) d1 = Double.MAX_VALUE - 1.0;
 		}
-		
+
 		if (d2 < 0.0) {
 			d2 = Double.MAX_VALUE - 1.0;
 		} else {
 			Vector x = d.multiply(d2 - this.thick / 2.0).add(p);
-			if (!this.inside(value(x))) d2 = Double.MAX_VALUE - 1.0;
+			if (!this.inside((Producer) value(x))) d2 = Double.MAX_VALUE - 1.0;
 		}
 		
 		
@@ -132,23 +133,23 @@ public class Plane implements Volume<RGB>, CodeFeatures {
 	public Producer getValueAt(Producer point) { return null; }
 
 	@Override
-	public Producer<Vector> getNormalAt(Producer<Vector> x) { return normal; }
+	public Producer<PackedCollection> getNormalAt(Producer<PackedCollection> x) { return normal; }
 
 	@Override
 	public double[] getSpatialCoords(double uv[]) {
 		if (this.across == null)
-			this.across = new Vector(this.up).crossProduct(normal.get().evaluate()).toArray();
-		
+			this.across = new Vector(this.up).crossProduct(new Vector(normal.get().evaluate(), 0)).toArray();
+
 		return new Vector(this.across).multiply((uv[0] - 0.5) * this.w)
 				.add(new Vector(this.up).multiply((0.5 - uv[1]) * this.h)).toArray();
 	}
 
 	@Override
-	public double[] getSurfaceCoords(Producer<Vector> v) {
+	public double[] getSurfaceCoords(Producer<PackedCollection> v) {
 		double xyz[] = v.get().evaluate().toArray();
 
 		if (this.across == null)
-			this.across = new Vector(this.up).crossProduct(normal.get().evaluate()).toArray();
+			this.across = new Vector(this.up).crossProduct(new Vector(normal.get().evaluate(), 0)).toArray();
 		
 		return new double[] { 0.5 + new Vector(this.across).dotProduct(new Vector(xyz)) / this.w,
 							0.5 - new Vector(this.up).dotProduct(new Vector(xyz)) / this.h };

@@ -93,5 +93,5 @@ public interface Layer extends Component, Setup {
 	 * @return a list of packed collections representing the layer's weights,
 	 *         or an empty list if the layer has no learnable parameters
 	 */
-	List<PackedCollection<?>> getWeights();
+	List<PackedCollection> getWeights();
 }

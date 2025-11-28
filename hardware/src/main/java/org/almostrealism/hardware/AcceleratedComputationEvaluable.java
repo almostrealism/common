@@ -45,13 +45,13 @@ import java.util.function.IntFunction;
  * and invoking evaluate():</p>
  * <pre>{@code
  * // Create producer
- * Producer<PackedCollection<?>> producer = c(2.0).multiply(c(3.0));
+ * Producer<PackedCollection> producer = c(2.0).multiply(c(3.0));
  *
  * // Get evaluable (returns AcceleratedComputationEvaluable)
- * Evaluable<PackedCollection<?>> evaluable = producer.get();
+ * Evaluable<PackedCollection> evaluable = producer.get();
  *
  * // Evaluate to produce result
- * PackedCollection<?> result = evaluable.evaluate();  // Result: 6.0
+ * PackedCollection result = evaluable.evaluate();  // Result: 6.0
  * }</pre>
  *
  * <h2>Destination Management</h2>
@@ -59,7 +59,7 @@ import java.util.function.IntFunction;
  * <p>Results can be computed into existing memory via {@link #into(Object)}:</p>
  * <pre>{@code
  * // Allocate output buffer
- * PackedCollection<?> output = PackedCollection.create(1000);
+ * PackedCollection output = PackedCollection.create(1000);
  *
  * // Compute directly into output (zero-copy)
  * producer.get().into(output).evaluate();
@@ -75,14 +75,14 @@ import java.util.function.IntFunction;
  * eval.setDestinationFactory(size -> new PackedCollection(size, () -> customMemory(size)));
  *
  * // Destinations created with custom factory
- * PackedCollection<?> result = eval.evaluate();
+ * PackedCollection result = eval.evaluate();
  * }</pre>
  *
  * <h2>Streaming Support</h2>
  *
  * <p>Implements {@link StreamingEvaluable} for integration with data pipelines:</p>
  * <pre>{@code
- * AcceleratedComputationEvaluable<PackedCollection<?>> transform = ...;
+ * AcceleratedComputationEvaluable<PackedCollection> transform = ...;
  *
  * // Set downstream consumer
  * transform.setDownstream(result -> {
@@ -99,12 +99,12 @@ import java.util.function.IntFunction;
  * <p>If the wrapped {@link ProducerComputation} is constant (produces the same value every time),
  * {@link #isConstant()} returns true, enabling optimizations:</p>
  * <pre>{@code
- * Producer<PackedCollection<?>> constant = c(42.0);  // Constant value
- * Evaluable<PackedCollection<?>> eval = constant.get();
+ * Producer<PackedCollection> constant = c(42.0);  // Constant value
+ * Evaluable<PackedCollection> eval = constant.get();
  *
  * if (eval.isConstant()) {
  *     // Can cache result, skip compilation, etc.
- *     PackedCollection<?> cached = eval.evaluate();
+ *     PackedCollection cached = eval.evaluate();
  * }
  * }</pre>
  *
@@ -154,21 +154,21 @@ import java.util.function.IntFunction;
  *
  * <h3>Simple Evaluation</h3>
  * <pre>{@code
- * Producer<PackedCollection<?>> multiply = a.multiply(b);
- * PackedCollection<?> result = multiply.get().evaluate();
+ * Producer<PackedCollection> multiply = a.multiply(b);
+ * PackedCollection result = multiply.get().evaluate();
  * }</pre>
  *
  * <h3>In-Place Evaluation</h3>
  * <pre>{@code
- * PackedCollection<?> buffer = PackedCollection.create(1000);
+ * PackedCollection buffer = PackedCollection.create(1000);
  * transform.get().into(buffer).evaluate();
  * // buffer modified in-place
  * }</pre>
  *
  * <h3>Streaming Pipeline</h3>
  * <pre>{@code
- * AcceleratedComputationEvaluable<PackedCollection<?>> stage1 = ...;
- * AcceleratedComputationEvaluable<PackedCollection<?>> stage2 = ...;
+ * AcceleratedComputationEvaluable<PackedCollection> stage1 = ...;
+ * AcceleratedComputationEvaluable<PackedCollection> stage2 = ...;
  *
  * stage1.setDownstream(result -> stage2.evaluate(result));
  * stage1.evaluate();  // Triggers entire pipeline
@@ -288,7 +288,7 @@ public class AcceleratedComputationEvaluable<T extends MemoryData>
 	 *
 	 * <p>Example:</p>
 	 * <pre>{@code
-	 * PackedCollection<?> buffer = PackedCollection.create(1000);
+	 * PackedCollection buffer = PackedCollection.create(1000);
 	 * producer.get().into(buffer).evaluate();
 	 * // buffer now contains the result
 	 * }</pre>

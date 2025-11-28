@@ -46,16 +46,16 @@ public class SequentialBlock implements Block, Learning, LayerFeatures {
 
 	private List<Block> blocks;
 
-	private Cell<PackedCollection<?>> entry;
-	private Receptor<PackedCollection<?>> push;
-	private Receptor<PackedCollection<?>> downstream;
+	private Cell<PackedCollection> entry;
+	private Receptor<PackedCollection> push;
+	private Receptor<PackedCollection> downstream;
 
-	private Cell<PackedCollection<?>> propagate;
-	private Receptor<PackedCollection<?>> back;
-	private Receptor<PackedCollection<?>> upstream;
+	private Cell<PackedCollection> propagate;
+	private Receptor<PackedCollection> back;
+	private Receptor<PackedCollection> upstream;
 
-	private Producer<PackedCollection<?>> learningRate;
-	private ParameterUpdate<PackedCollection<?>> parameterUpdate;
+	private Producer<PackedCollection> learningRate;
+	private ParameterUpdate<PackedCollection> parameterUpdate;
 
 	public SequentialBlock(TraversalPolicy inputShape) {
 		this.inputShape = inputShape;
@@ -75,7 +75,7 @@ public class SequentialBlock implements Block, Learning, LayerFeatures {
 	}
 
 	@Override
-	public void setParameterUpdate(ParameterUpdate<PackedCollection<?>> update) {
+	public void setParameterUpdate(ParameterUpdate<PackedCollection> update) {
 		this.parameterUpdate = update;
 
 		blocks.forEach(b -> {
@@ -88,13 +88,13 @@ public class SequentialBlock implements Block, Learning, LayerFeatures {
 		add(factory.apply(getOutputShape()));
 	}
 
-	public CellularLayer add(String name, Factor<PackedCollection<?>> operator,
+	public CellularLayer add(String name, Factor<PackedCollection> operator,
 							 ComputeRequirement... requirements) {
 		return add(name, getOutputShape(), operator, requirements);
 	}
 
 	public CellularLayer add(String name, TraversalPolicy outputShape,
-							 Factor<PackedCollection<?>> operator,
+							 Factor<PackedCollection> operator,
 							 ComputeRequirement... requirements) {
 		return add(layer(name, getOutputShape(), outputShape, operator, requirements));
 	}
@@ -105,7 +105,7 @@ public class SequentialBlock implements Block, Learning, LayerFeatures {
 					" input to a SequentialBlock that produces " + getOutputShape());
 
 		Block last = lastBlock();
-		Receptor<PackedCollection<?>> prev;
+		Receptor<PackedCollection> prev;
 		if (last != null) {
 			last.getForward().setReceptor(block.getForward());
 			prev = last.getBackward();
@@ -321,11 +321,11 @@ public class SequentialBlock implements Block, Learning, LayerFeatures {
 	}
 
 	@Override
-	public Cell<PackedCollection<?>> getForward() {
+	public Cell<PackedCollection> getForward() {
 		if (entry == null) {
 			entry = new Cell<>() {
 				@Override
-				public Supplier<Runnable> push(Producer<PackedCollection<?>> in) {
+				public Supplier<Runnable> push(Producer<PackedCollection> in) {
 					Block first = firstBlock();
 
 					if (first == null) {
@@ -336,7 +336,7 @@ public class SequentialBlock implements Block, Learning, LayerFeatures {
 				}
 
 				@Override
-				public void setReceptor(Receptor<PackedCollection<?>> r) {
+				public void setReceptor(Receptor<PackedCollection> r) {
 					if (cellWarnings && SequentialBlock.this.downstream != null) {
 						warn("Replacing receptor");
 					}
@@ -350,11 +350,11 @@ public class SequentialBlock implements Block, Learning, LayerFeatures {
 	}
 
 	@Override
-	public Cell<PackedCollection<?>> getBackward() {
+	public Cell<PackedCollection> getBackward() {
 		if (propagate == null) {
 			propagate = new Cell<>() {
 				@Override
-				public Supplier<Runnable> push(Producer<PackedCollection<?>> in) {
+				public Supplier<Runnable> push(Producer<PackedCollection> in) {
 					Block last = lastBlock();
 
 					if (last == null) {
@@ -365,7 +365,7 @@ public class SequentialBlock implements Block, Learning, LayerFeatures {
 				}
 
 				@Override
-				public void setReceptor(Receptor<PackedCollection<?>> r) {
+				public void setReceptor(Receptor<PackedCollection> r) {
 					if (cellWarnings && SequentialBlock.this.upstream != null) {
 						warn("Replacing receptor");
 					}

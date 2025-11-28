@@ -15,6 +15,7 @@
  */
 
 package org.almostrealism.graph;
+import org.almostrealism.collect.PackedCollection;
 
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionFeatures;
@@ -41,7 +42,7 @@ import java.util.function.Supplier;
  * pushed data. This is useful for monitoring, debugging, or logging data flow:</p>
  *
  * <pre>{@code
- * CellAdapter<PackedCollection<?>> cell = new MyCellAdapter();
+ * CellAdapter<PackedCollection> cell = new MyCellAdapter();
  * cell.setMeter(data -> {
  *     System.out.println("Data flowing through: " + data);
  *     return new OperationList();

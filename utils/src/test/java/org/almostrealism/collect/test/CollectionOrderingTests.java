@@ -29,8 +29,8 @@ public class CollectionOrderingTests implements TestFeatures {
 	public void repeatOrdering() {
 		if (skipKnownIssues) return;
 
-		PackedCollection<?> root = pack(2.0, 3.0, 1.0);
-		PackedCollection<?> repeated = new PackedCollection<>(shape(4, 3), 1,
+		PackedCollection root = pack(2.0, 3.0, 1.0);
+		PackedCollection repeated = new PackedCollection(shape(4, 3), 1,
 										root, 0, new RepeatTraversalOrdering(3));
 		repeated.print();
 
@@ -44,12 +44,12 @@ public class CollectionOrderingTests implements TestFeatures {
 
 	@Test
 	public void repeatOrderingProduct() {
-		PackedCollection<?> root = pack(2.0, 3.0, 1.0);
-		PackedCollection<?> repeated = new PackedCollection<>(shape(4, 3), 1,
+		PackedCollection root = pack(2.0, 3.0, 1.0);
+		PackedCollection repeated = new PackedCollection(shape(4, 3), 1,
 				root, 0, new RepeatTraversalOrdering(3));
 
 		verboseLog(() -> {
-			PackedCollection<?> product = c(2).multiply(cp(repeated)).evaluate();
+			PackedCollection product = c(2).multiply(cp(repeated)).evaluate();
 			product.print();
 
 			assertEquals(4.0, product.valueAt(0, 0));
@@ -65,10 +65,10 @@ public class CollectionOrderingTests implements TestFeatures {
 	public void compactOrdering() {
 		if (skipKnownIssues) return;
 
-		PackedCollection<?> values = pack(2.0, 3.0);
+		PackedCollection values = pack(2.0, 3.0);
 
 		ExplicitIndexTraversalOrdering order = new ExplicitIndexTraversalOrdering(pack(0, -1, -1, 1));
-		PackedCollection<?> compact = new PackedCollection<>(shape(2, 2), 1, values, 0, order);
+		PackedCollection compact = new PackedCollection(shape(2, 2), 1, values, 0, order);
 
 		compact.print();
 
@@ -82,11 +82,11 @@ public class CollectionOrderingTests implements TestFeatures {
 	public void maskOrdering() {
 		if (skipKnownIssues) return;
 
-		PackedCollection<?> values = pack(2.0, 3.0);
-		PackedCollection<?> indices = pack(0, 3);
+		PackedCollection values = pack(2.0, 3.0);
+		PackedCollection indices = pack(0, 3);
 
 		IndexMaskTraversalOrdering order = new IndexMaskTraversalOrdering(indices);
-		PackedCollection<?> compact = new PackedCollection<>(shape(2, 2), 1, values, 0, order);
+		PackedCollection compact = new PackedCollection(shape(2, 2), 1, values, 0, order);
 
 		compact.print();
 

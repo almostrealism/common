@@ -15,6 +15,7 @@
  */
 
 package org.almostrealism.collect;
+import org.almostrealism.collect.PackedCollection;
 
 import io.almostrealism.collect.IndexExpressionTraversalOrdering;
 
@@ -32,7 +33,7 @@ import java.util.OptionalInt;
  * <h2>Usage</h2>
  * <pre>{@code
  * // Create a collection with custom index ordering: [2, 0, 3, 1]
- * PackedCollection<?> indices = new PackedCollection<>(4);
+ * PackedCollection indices = new PackedCollection(4);
  * indices.setMem(0, 2.0);  // First access element 2
  * indices.setMem(1, 0.0);  // Then element 0
  * indices.setMem(2, 3.0);  // Then element 3
@@ -58,7 +59,7 @@ public class ExplicitIndexTraversalOrdering extends IndexExpressionTraversalOrde
 	 *
 	 * @param indices  collection containing the explicit index values defining the traversal order
 	 */
-	public ExplicitIndexTraversalOrdering(PackedCollection<?> indices) {
+	public ExplicitIndexTraversalOrdering(PackedCollection indices) {
 		super(indices);
 	}
 

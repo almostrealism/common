@@ -26,8 +26,8 @@ import io.almostrealism.expression.Sum;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.MatrixFeatures;
-import org.almostrealism.algebra.Vector;
 import org.almostrealism.collect.CollectionProducer;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 import org.almostrealism.collect.computations.DefaultTraversableExpressionComputation;
@@ -82,7 +82,7 @@ public interface TransformMatrixFeatures extends MatrixFeatures {
 	 * @param offset the translation offset vector
 	 * @return a producer for the translation matrix
 	 */
-	default CollectionProducer<TransformMatrix> translationMatrix(Producer<Vector> offset) {
+	default CollectionProducer<TransformMatrix> translationMatrix(Producer<PackedCollection> offset) {
 		CollectionProducer m = pad(shape(4, 4), c(offset).reshape(3, 1), 0, 3)
 				.add(identity(4));
 
@@ -104,7 +104,7 @@ public interface TransformMatrixFeatures extends MatrixFeatures {
 	 * @param scale a vector containing (scaleX, scaleY, scaleZ) factors
 	 * @return a producer for the scale matrix
 	 */
-	default CollectionProducer<TransformMatrix> scaleMatrix(Producer<Vector> scale) {
+	default CollectionProducer<TransformMatrix> scaleMatrix(Producer<PackedCollection> scale) {
 		CollectionProducerComputationBase m = (CollectionProducerComputationBase)
 				diagonal(concat(shape(4), (Producer) scale, c(1.0)));
 		return m.setPostprocessor(TransformMatrix.postprocessor());
@@ -117,8 +117,8 @@ public interface TransformMatrixFeatures extends MatrixFeatures {
 	 * @param vector the vector to transform
 	 * @return a producer for the transformed vector
 	 */
-	default CollectionProducerComputation<Vector> transformAsLocation(TransformMatrix matrix,
-																	  Producer<Vector> vector) {
+	default CollectionProducerComputation<PackedCollection> transformAsLocation(TransformMatrix matrix,
+																	  Producer<PackedCollection> vector) {
 		return transformAsLocation(v(matrix), vector);
 	}
 
@@ -129,8 +129,8 @@ public interface TransformMatrixFeatures extends MatrixFeatures {
 	 * @param vector the vector to transform
 	 * @return a producer for the transformed vector
 	 */
-	default CollectionProducerComputation<Vector> transformAsLocation(Producer<TransformMatrix> matrix,
-																	  Producer<Vector> vector) {
+	default CollectionProducerComputation<PackedCollection> transformAsLocation(Producer<TransformMatrix> matrix,
+																	  Producer<PackedCollection> vector) {
 		return transform(matrix, vector, true);
 	}
 
@@ -142,8 +142,8 @@ public interface TransformMatrixFeatures extends MatrixFeatures {
 	 * @param vector the vector to transform
 	 * @return a producer for the transformed vector
 	 */
-	default CollectionProducerComputation<Vector> transformAsOffset(TransformMatrix matrix,
-																	Producer<Vector> vector) {
+	default CollectionProducerComputation<PackedCollection> transformAsOffset(TransformMatrix matrix,
+																	Producer<PackedCollection> vector) {
 		return transformAsOffset(v(matrix), vector);
 	}
 
@@ -155,8 +155,8 @@ public interface TransformMatrixFeatures extends MatrixFeatures {
 	 * @param vector the vector to transform
 	 * @return a producer for the transformed vector
 	 */
-	default CollectionProducerComputation<Vector> transformAsOffset(Producer<TransformMatrix> matrix,
-																	Producer<Vector> vector) {
+	default CollectionProducerComputation<PackedCollection> transformAsOffset(Producer<TransformMatrix> matrix,
+																	Producer<PackedCollection> vector) {
 		return transform(matrix, vector, false);
 	}
 
@@ -168,8 +168,8 @@ public interface TransformMatrixFeatures extends MatrixFeatures {
 	 * @param includeTranslation if true, includes translation (for points); if false, excludes it (for directions)
 	 * @return a producer for the transformed vector
 	 */
-	default CollectionProducerComputation<Vector> transform(Producer<TransformMatrix> matrix,
-															Producer<Vector> vector, boolean includeTranslation) {
+	default CollectionProducerComputation<PackedCollection> transform(Producer<TransformMatrix> matrix,
+															Producer<PackedCollection> vector, boolean includeTranslation) {
 		TraversalPolicy shape = shape(3);
 
 		vector = concat(shape(4), (Producer) vector, c(1.0));
@@ -187,7 +187,6 @@ public interface TransformMatrixFeatures extends MatrixFeatures {
 									}
 								}),
 				(Producer) vector, (Producer) matrix);
-		c.setPostprocessor(Vector.postprocessor());
 		return c;
 	}
 

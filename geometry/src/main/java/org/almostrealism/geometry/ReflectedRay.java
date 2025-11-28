@@ -15,6 +15,7 @@
  */
 
 package org.almostrealism.geometry;
+import org.almostrealism.collect.PackedCollection;
 
 import io.almostrealism.code.ProducerComputation;
 import io.almostrealism.kernel.KernelStructureContext;
@@ -45,9 +46,9 @@ import io.almostrealism.relation.Evaluable;
  * @see GeometryFeatures#reflect(Producer, Producer)
  */
 public class ReflectedRay implements ProducerComputation<Ray>, GeometryFeatures {
-	private Producer<Vector> point;
-	private Producer<Vector> normal;
-	private Producer<Vector> reflected;
+	private Producer<PackedCollection> point;
+	private Producer<PackedCollection> normal;
+	private Producer<PackedCollection> reflected;
 	private double blur;
 
 	/**
@@ -58,7 +59,7 @@ public class ReflectedRay implements ProducerComputation<Ray>, GeometryFeatures 
 	 * @param normal the surface normal at the intersection point
 	 * @param blur the amount of random perturbation for glossy reflections (0.0 = perfect mirror)
 	 */
-	public ReflectedRay(Producer<Vector> point, Producer<Vector> incident, Producer<Vector> normal, double blur) {
+	public ReflectedRay(Producer<PackedCollection> point, Producer<PackedCollection> incident, Producer<PackedCollection> normal, double blur) {
 		this.point = point;
 		this.normal = normal;
 		this.reflected = reflect((Producer) incident, (Producer) normal);
@@ -74,17 +75,18 @@ public class ReflectedRay implements ProducerComputation<Ray>, GeometryFeatures 
 	 */
 	@Override
 	public Evaluable<Ray> get() {
-		Evaluable<Vector> nor = normal.get();
-		Evaluable<Vector> refl = reflected.get();
+		Evaluable<PackedCollection> nor = normal.get();
+		Evaluable<PackedCollection> refl = reflected.get();
 
 		return new Evaluable<>() {
+			@SuppressWarnings("unchecked")
 			@Override
-			public MemoryBank<Ray> createDestination(int size) { return Ray.bank(size); }
+			public MemoryBank<Ray> createDestination(int size) { return (MemoryBank) Ray.bank(size); }
 
 			@Override
 			public Ray evaluate(Object[] args) {
-				Vector n = nor.evaluate(args);
-				Vector ref = refl.evaluate(args);
+				Vector n = new Vector(nor.evaluate(args), 0);
+				Vector ref = new Vector(refl.evaluate(args), 0);
 
 				if (blur != 0.0) {
 					double a = blur * (-0.5 + Math.random());
@@ -114,7 +116,7 @@ public class ReflectedRay implements ProducerComputation<Ray>, GeometryFeatures 
 					ref.divideBy(ref.length());
 				}
 
-				return new Ray(point.get().evaluate(args), ref);
+				return new Ray(new Vector(point.get().evaluate(args), 0), ref);
 			}
 		};
 	}

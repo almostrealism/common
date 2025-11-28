@@ -94,3 +94,4 @@
  * @see org.almostrealism.optimize.HealthComputation
  */
 package org.almostrealism.optimize;
+import org.almostrealism.collect.PackedCollection;

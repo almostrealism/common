@@ -15,6 +15,7 @@
  */
 
 package org.almostrealism.color;
+import org.almostrealism.collect.PackedCollection;
 
 import java.util.Collection;
 import java.util.List;
@@ -52,7 +53,7 @@ import io.almostrealism.relation.Producer;
  * DirectionalAmbientLight sun = new DirectionalAmbientLight(1.0, new RGB(1.0, 0.95, 0.8), sunDirection);
  *
  * // The light direction is used for shading calculations
- * Producer<RGB> shadedColor = sun.lightingCalculation(intersection, surface, otherSurfaces, otherLights, context);
+ * Producer<PackedCollection> shadedColor = sun.lightingCalculation(intersection, surface, otherSurfaces, otherLights, context);
  * }</pre>
  *
  * @see AmbientLight
@@ -118,18 +119,18 @@ public class DirectionalAmbientLight extends AmbientLight implements VectorFeatu
 	 *           during a single set of ray casting events (reflections, refractions,
 	 *           etc.) (null is accepted).
 	 */
-	public Producer<RGB> lightingCalculation(ContinuousField intersection, Curve<RGB> surface,
-											 Collection<Curve<RGB>> otherSurfaces,
+	public Producer<PackedCollection> lightingCalculation(ContinuousField intersection, Curve<PackedCollection> surface,
+											 Collection<Curve<PackedCollection>> otherSurfaces,
 											 List<Light> otherLights, ShaderContext p) {
-		Producer<RGB> color;
+		Producer<PackedCollection> color;
 
 		Vector l = (getDirection().divide(getDirection().length())).minus();
 
 		if (p == null) {
-			color = surface instanceof Shadable ? ((Shadable) surface).shade(new ShaderContext(intersection, v(l), this, otherLights, otherSurfaces)) : null;
+			color = surface instanceof Shadable ? ((Shadable) surface).shade(new ShaderContext(intersection, (Producer) v(l), this, otherLights, otherSurfaces)) : null;
 		} else {
 			p.setIntersection(intersection);
-			p.setLightDirection(v(l));
+			p.setLightDirection((Producer) v(l));
 			p.setLight(this);
 			p.setOtherLights(otherLights);
 			p.setOtherSurfaces(otherSurfaces);

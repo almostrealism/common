@@ -17,6 +17,7 @@
 package org.almostrealism.color;
 
 import org.almostrealism.algebra.Vector;
+import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.texture.Texture;
 
@@ -48,7 +49,7 @@ import org.almostrealism.texture.Texture;
  * LightingContext ctx = new LightingContext();
  * ctx.setLight(new PointLight(position, 1.0, new RGB(1.0, 1.0, 1.0)));
  * ctx.setLightDirection(directionProducer);
- * Producer<RGB> shadedColor = shader.shade(ctx, normalField);
+ * Producer<PackedCollection> shadedColor = shader.shade(ctx, normalField);
  * }</pre>
  *
  * @see PointLight
@@ -108,5 +109,5 @@ public interface Light {
 	 * @param point a {@link Producer} yielding the 3D point at which to evaluate the light
 	 * @return a {@link Producer} yielding the attenuated/modified {@link RGB} color at that point
 	 */
-	Producer<RGB> getColorAt(Producer<Vector> point);
+	Producer<PackedCollection> getColorAt(Producer<PackedCollection> point);
 }

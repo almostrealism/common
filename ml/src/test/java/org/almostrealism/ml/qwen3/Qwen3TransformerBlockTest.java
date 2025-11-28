@@ -39,7 +39,7 @@ public class Qwen3TransformerBlockTest implements AttentionFeatures, LayerFeatur
 				.forEach(key -> System.out.println("\t" + key + " " + referenceData.get(key).getShape()));
 
 		// Extract test configuration
-		PackedCollection<?> testConfig = referenceData.get("test_config");
+		PackedCollection testConfig = referenceData.get("test_config");
 		int batchSize = (int) testConfig.valueAt(0);
 		int seqLen = (int) testConfig.valueAt(1);
 		int dim = (int) testConfig.valueAt(2);
@@ -53,34 +53,34 @@ public class Qwen3TransformerBlockTest implements AttentionFeatures, LayerFeatur
 		System.out.println("  hiddenDim=" + hiddenDim + ", heads=" + heads + ", kvHeads=" + kvHeads + ", headSize=" + headSize);
 
 		// Load test data
-		PackedCollection<?> input = referenceData.get("input");
-		PackedCollection<?> expectedOutput = referenceData.get("expected_output");
+		PackedCollection input = referenceData.get("input");
+		PackedCollection expectedOutput = referenceData.get("expected_output");
 
 		// Load position embeddings
-		PackedCollection<?> positionIds = referenceData.get("position_ids");
-		PackedCollection<?> posCos = referenceData.get("position_cos");
-		PackedCollection<?> posSin = referenceData.get("position_sin");
+		PackedCollection positionIds = referenceData.get("position_ids");
+		PackedCollection posCos = referenceData.get("position_cos");
+		PackedCollection posSin = referenceData.get("position_sin");
 
 		// Load attention weights
 		// Note: PyTorch and AR both use (out, in) format for dense layers - no transpose needed
-		PackedCollection<?> wq = referenceData.get("self_attn.q_proj.weight");
-		PackedCollection<?> wk = referenceData.get("self_attn.k_proj.weight");
-		PackedCollection<?> wv = referenceData.get("self_attn.v_proj.weight");
-		PackedCollection<?> wo = referenceData.get("self_attn.o_proj.weight");
+		PackedCollection wq = referenceData.get("self_attn.q_proj.weight");
+		PackedCollection wk = referenceData.get("self_attn.k_proj.weight");
+		PackedCollection wv = referenceData.get("self_attn.v_proj.weight");
+		PackedCollection wo = referenceData.get("self_attn.o_proj.weight");
 
 		// Load attention biases (Q/K/V have biases, O does not)
-		PackedCollection<?> bq = referenceData.get("self_attn.q_proj.bias");
-		PackedCollection<?> bk = referenceData.get("self_attn.k_proj.bias");
-		PackedCollection<?> bv = referenceData.get("self_attn.v_proj.bias");
+		PackedCollection bq = referenceData.get("self_attn.q_proj.bias");
+		PackedCollection bk = referenceData.get("self_attn.k_proj.bias");
+		PackedCollection bv = referenceData.get("self_attn.v_proj.bias");
 
 		// Load normalization weights (1D, no transpose needed)
-		PackedCollection<?> attnNorm = referenceData.get("input_layernorm.weight");
-		PackedCollection<?> ffnNorm = referenceData.get("post_attention_layernorm.weight");
+		PackedCollection attnNorm = referenceData.get("input_layernorm.weight");
+		PackedCollection ffnNorm = referenceData.get("post_attention_layernorm.weight");
 
 		// Load FFN weights (same (out, in) format - no transpose needed)
-		PackedCollection<?> wGate = referenceData.get("mlp.gate_proj.weight");
-		PackedCollection<?> wUp = referenceData.get("mlp.up_proj.weight");
-		PackedCollection<?> wDown = referenceData.get("mlp.down_proj.weight");
+		PackedCollection wGate = referenceData.get("mlp.gate_proj.weight");
+		PackedCollection wUp = referenceData.get("mlp.up_proj.weight");
+		PackedCollection wDown = referenceData.get("mlp.down_proj.weight");
 
 		System.out.println("\nWeight shapes:");
 		System.out.println("  wq: " + wq.getShape());
@@ -104,11 +104,11 @@ public class Qwen3TransformerBlockTest implements AttentionFeatures, LayerFeatur
 
 		// Compute RoPE frequencies
 		// Qwen uses theta=1000000.0 for extended context
-		PackedCollection<?> freqCis = computeRopeFreqs(seqLen, headSize, 1000000.0);
+		PackedCollection freqCis = computeRopeFreqs(seqLen, headSize, 1000000.0);
 		System.out.println("  RoPE freqs shape: " + freqCis.getShape());
 
 		// Position placeholder (will test position 0)
-		PackedCollection<?> position = new PackedCollection<>(1);
+		PackedCollection position = new PackedCollection(1);
 		position.setMem(0, 0.0);  // Test first position
 
 		// Build full transformer block
@@ -128,7 +128,7 @@ public class Qwen3TransformerBlockTest implements AttentionFeatures, LayerFeatur
 		CompiledModel compiled = model.compile(false);
 
 		// Extract first token from input (batch=0, position=0)
-		PackedCollection<?> firstToken = new PackedCollection<>(shape(dim));
+		PackedCollection firstToken = new PackedCollection(shape(dim));
 		for (int d = 0; d < dim; d++) {
 			firstToken.setMem(d, input.valueAt(0, 0, d));
 		}
@@ -142,7 +142,7 @@ public class Qwen3TransformerBlockTest implements AttentionFeatures, LayerFeatur
 		System.out.println("  Mean: " + inputMean + ", Max abs: " + inputMax);
 
 		System.out.println("\nRunning forward pass on first token...");
-		PackedCollection<?> rawOutput = compiled.forward(firstToken);
+		PackedCollection rawOutput = compiled.forward(firstToken);
 
 		System.out.println("  Raw output shape: " + rawOutput.getShape());
 		System.out.println("  Raw output memLength: " + rawOutput.getMemLength());
@@ -158,10 +158,10 @@ public class Qwen3TransformerBlockTest implements AttentionFeatures, LayerFeatur
 		}
 
 		// Squeeze output if needed (remove batch dimension)
-		PackedCollection<?> actualOutput;
+		PackedCollection actualOutput;
 		if (rawOutput.getShape().getDimensions() == 2 && rawOutput.getShape().length(0) == 1) {
 			// Squeeze (1, dim) -> (dim)
-			actualOutput = new PackedCollection<>(shape(dim));
+			actualOutput = new PackedCollection(shape(dim));
 			for (int d = 0; d < dim; d++) {
 				actualOutput.setMem(d, rawOutput.valueAt(0, d));
 			}
@@ -170,7 +170,7 @@ public class Qwen3TransformerBlockTest implements AttentionFeatures, LayerFeatur
 		}
 
 		// Compare with PyTorch output for first token
-		PackedCollection<?> expectedFirstToken = new PackedCollection<>(shape(dim));
+		PackedCollection expectedFirstToken = new PackedCollection(shape(dim));
 		for (int d = 0; d < dim; d++) {
 			expectedFirstToken.setMem(d, expectedOutput.valueAt(0, 0, d));
 		}
@@ -209,19 +209,19 @@ public class Qwen3TransformerBlockTest implements AttentionFeatures, LayerFeatur
 	 * @param theta RoPE theta parameter (10000.0 for Llama, 1000000.0 for Qwen)
 	 * @return Frequency matrix of shape (seqLen, headSize/2, 2) for complex cos/sin pairs
 	 */
-	private PackedCollection<?> computeRopeFreqs(int seqLen, int headSize, double theta) {
+	private PackedCollection computeRopeFreqs(int seqLen, int headSize, double theta) {
 		// RoPE applies to half the head dimensions (complex number representation)
 		int freqDim = headSize / 2;
 
 		// Compute inverse frequencies
-		PackedCollection<?> invFreq = new PackedCollection<>(shape(freqDim));
+		PackedCollection invFreq = new PackedCollection(shape(freqDim));
 		for (int i = 0; i < freqDim; i++) {
 			invFreq.setMem(i, 1.0 / Math.pow(theta, (2.0 * i) / headSize));
 		}
 
 		// Compute position * inv_freq for each position
 		// Shape: (seqLen, freqDim, 2) where freqDim = headSize/2
-		PackedCollection<?> freqs = new PackedCollection<>(shape(seqLen, freqDim, 2));
+		PackedCollection freqs = new PackedCollection(shape(seqLen, freqDim, 2));
 		for (int pos = 0; pos < seqLen; pos++) {
 			for (int i = 0; i < freqDim; i++) {
 				double freq = pos * invFreq.toDouble(i);
@@ -238,7 +238,7 @@ public class Qwen3TransformerBlockTest implements AttentionFeatures, LayerFeatur
 	/**
 	 * Compare two tensors and return maximum absolute difference.
 	 */
-	public double compare(PackedCollection<?> expected, PackedCollection<?> actual) {
+	public double compare(PackedCollection expected, PackedCollection actual) {
 		double maxDiff = 0.0;
 		int count = expected.getMemLength();
 

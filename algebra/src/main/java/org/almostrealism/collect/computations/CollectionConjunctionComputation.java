@@ -71,34 +71,34 @@ import java.util.List;
  * <p><strong>Basic logical AND (returning 1.0 or 0.0):</strong></p>
  * <pre>{@code
  * TraversalPolicy shape = shape(4);
- * CollectionProducer<PackedCollection<?>> a = c(0.0, 1.0, 0.0, 1.0);
- * CollectionProducer<PackedCollection<?>> b = c(0.0, 0.0, 1.0, 1.0);
+ * CollectionProducer<PackedCollection> a = c(0.0, 1.0, 0.0, 1.0);
+ * CollectionProducer<PackedCollection> b = c(0.0, 0.0, 1.0, 1.0);
  *
- * CollectionConjunctionComputation<PackedCollection<?>> andOp =
+ * CollectionConjunctionComputation<PackedCollection> andOp =
  *     new CollectionConjunctionComputation<>(shape, a, b,
  *         c(1.0), c(0.0));  // true -> 1.0, false -> 0.0
  *
- * PackedCollection<?> result = andOp.get().evaluate();
+ * PackedCollection result = andOp.get().evaluate();
  * // Result: [0.0, 0.0, 0.0, 1.0]  (only both non-zero yields true)
  * }</pre>
  *
  * <p><strong>Using via CollectionFeatures:</strong></p>
  * <pre>{@code
  * // More common usage through helper methods
- * CollectionProducer<PackedCollection<?>> conditionA = greaterThan(x, threshold1, c(1.0), c(0.0));
- * CollectionProducer<PackedCollection<?>> conditionB = lessThan(x, threshold2, c(1.0), c(0.0));
- * CollectionProducer<PackedCollection<?>> both = and(conditionA, conditionB, c(1.0), c(0.0));
+ * CollectionProducer<PackedCollection> conditionA = greaterThan(x, threshold1, c(1.0), c(0.0));
+ * CollectionProducer<PackedCollection> conditionB = lessThan(x, threshold2, c(1.0), c(0.0));
+ * CollectionProducer<PackedCollection> both = and(conditionA, conditionB, c(1.0), c(0.0));
  * // Result: 1.0 where both conditions are true
  * }</pre>
  *
  * <p><strong>Masking with custom values:</strong></p>
  * <pre>{@code
  * // Apply mask only where both conditions are true
- * CollectionProducer<PackedCollection<?>> mask1 = c(1.0, 0.0, 1.0, 1.0);
- * CollectionProducer<PackedCollection<?>> mask2 = c(1.0, 1.0, 0.0, 1.0);
- * CollectionProducer<PackedCollection<?>> data = c(10.0, 20.0, 30.0, 40.0);
+ * CollectionProducer<PackedCollection> mask1 = c(1.0, 0.0, 1.0, 1.0);
+ * CollectionProducer<PackedCollection> mask2 = c(1.0, 1.0, 0.0, 1.0);
+ * CollectionProducer<PackedCollection> data = c(10.0, 20.0, 30.0, 40.0);
  *
- * CollectionProducer<PackedCollection<?>> masked =
+ * CollectionProducer<PackedCollection> masked =
  *     and(mask1, mask2,
  *         data,     // if both masks active, use data
  *         c(0.0));  // else use 0.0
@@ -108,13 +108,13 @@ import java.util.List;
  * <p><strong>Combining multiple conditions:</strong></p>
  * <pre>{@code
  * // Check if value is in range [min, max]
- * CollectionProducer<PackedCollection<?>> x = c(5.0, 15.0, 25.0);
- * CollectionProducer<PackedCollection<?>> min = c(10.0);
- * CollectionProducer<PackedCollection<?>> max = c(20.0);
+ * CollectionProducer<PackedCollection> x = c(5.0, 15.0, 25.0);
+ * CollectionProducer<PackedCollection> min = c(10.0);
+ * CollectionProducer<PackedCollection> max = c(20.0);
  *
- * CollectionProducer<PackedCollection<?>> aboveMin = greaterThanOrEqual(x, min, c(1.0), c(0.0));
- * CollectionProducer<PackedCollection<?>> belowMax = lessThanOrEqual(x, max, c(1.0), c(0.0));
- * CollectionProducer<PackedCollection<?>> inRange = and(aboveMin, belowMax, c(1.0), c(0.0));
+ * CollectionProducer<PackedCollection> aboveMin = greaterThanOrEqual(x, min, c(1.0), c(0.0));
+ * CollectionProducer<PackedCollection> belowMax = lessThanOrEqual(x, max, c(1.0), c(0.0));
+ * CollectionProducer<PackedCollection> inRange = and(aboveMin, belowMax, c(1.0), c(0.0));
  * // Result: [0.0, 1.0, 0.0]  (only 15.0 is in [10, 20])
  * }</pre>
  *
@@ -134,7 +134,7 @@ import java.util.List;
  *
  * @author Michael Murray
  */
-public class CollectionConjunctionComputation<T extends PackedCollection<?>> extends CollectionComparisonComputation<T> {
+public class CollectionConjunctionComputation<T extends PackedCollection> extends CollectionComparisonComputation<T> {
 
 	/**
 	 * Constructs a logical AND computation that evaluates conjunction of two boolean-valued

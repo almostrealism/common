@@ -40,14 +40,14 @@ import java.util.ArrayList;
  * @author Michael Murray
  * @see ProducerWithRank
  */
-public class RankedChoiceEvaluable<T> extends ArrayList<ProducerWithRank<T, PackedCollection<?>>> implements Evaluable<T> {
+public class RankedChoiceEvaluable<T> extends ArrayList<ProducerWithRank<T, PackedCollection>> implements Evaluable<T> {
 	/** The epsilon threshold - ranks below this value are considered invalid. */
 	protected double e;
 	/** Whether to allow returning null if no valid candidate is found. */
 	protected boolean tolerateNull;
 
 	/** Precompiled evaluable for finding the highest rank between two candidates. */
-	public static final Evaluable<Pair<?>> highestRank;
+	public static final Evaluable<Pair> highestRank;
 
 	static {
 		TraversalPolicy inputShape =
@@ -98,8 +98,8 @@ public class RankedChoiceEvaluable<T> extends ArrayList<ProducerWithRank<T, Pack
 			System.out.println("RankedChoiceProducer: There are " + size() + " Producers to choose from");
 		}
 
-		r: for (ProducerWithRank<T, PackedCollection<?>> p : this) {
-			PackedCollection<?> rs = p.getRank().get().evaluate(args);
+		r: for (ProducerWithRank<T, PackedCollection> p : this) {
+			PackedCollection rs = p.getRank().get().evaluate(args);
 			if (rs == null) continue r;
 
 			double r = rs.toDouble(0);

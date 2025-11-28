@@ -28,20 +28,20 @@ public class StreamingEvaluableTests implements TestFeatures {
 	public void product() {
 		int count = 1;
 
-		PackedCollection<?> a = new PackedCollection<>(shape(count)).randFill();
-		PackedCollection<?> b = new PackedCollection<>(shape(count)).randFill();
+		PackedCollection a = new PackedCollection(shape(count)).randFill();
+		PackedCollection b = new PackedCollection(shape(count)).randFill();
 
-		CollectionProducer<PackedCollection<?>> pa = func(shape(count), args -> {
+		CollectionProducer<PackedCollection> pa = func(shape(count), args -> {
 			log("Providing value 'a' on thread " + Thread.currentThread().getName());
 			return a;
 		});
 
-		CollectionProducer<PackedCollection<?>> pb = func(shape(count), args -> {
+		CollectionProducer<PackedCollection> pb = func(shape(count), args -> {
 			log("Providing value 'b' on thread " + Thread.currentThread().getName());
 			return b;
 		});
 
-		try (PackedCollection<?> result = multiply(pa, pb).get().evaluate()) {
+		try (PackedCollection result = multiply(pa, pb).get().evaluate()) {
 			double aTotal = a.doubleStream().sum();
 			double bTotal = b.doubleStream().sum();
 			assertEquals(aTotal * bTotal, result.toDouble());
@@ -52,10 +52,10 @@ public class StreamingEvaluableTests implements TestFeatures {
 	public void sum() {
 		int size = 768;
 
-		PackedCollection<?> x = new PackedCollection<>(shape(size)).randFill();
-		PackedCollection<?> out = new PackedCollection<>(shape(1));
+		PackedCollection x = new PackedCollection(shape(size)).randFill();
+		PackedCollection out = new PackedCollection(shape(1));
 
-		Assignment<PackedCollection<?>> a = a(cp(out), cp(x).sum());
+		Assignment<PackedCollection> a = a(cp(out), cp(x).sum());
 		Process.optimized(a).get().run();
 
 		double expected = 0;
@@ -71,10 +71,10 @@ public class StreamingEvaluableTests implements TestFeatures {
 	public void sumProduct() {
 		int count = 100;
 
-		PackedCollection<?> a = new PackedCollection<>(shape(count)).randFill();
-		PackedCollection<?> b = new PackedCollection<>(shape(count)).randFill();
+		PackedCollection a = new PackedCollection(shape(count)).randFill();
+		PackedCollection b = new PackedCollection(shape(count)).randFill();
 
-		try (PackedCollection<?> result = sum(cp(a)).multiply(sum(cp(b))).get().evaluate()) {
+		try (PackedCollection result = sum(cp(a)).multiply(sum(cp(b))).get().evaluate()) {
 			double aTotal = a.doubleStream().sum();
 			double bTotal = b.doubleStream().sum();
 			assertEquals(aTotal * bTotal, result.toDouble());

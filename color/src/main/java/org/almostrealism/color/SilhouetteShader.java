@@ -16,6 +16,7 @@
 
 package org.almostrealism.color;
 
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.geometry.DiscreteField;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Editable;
@@ -44,7 +45,7 @@ import io.almostrealism.relation.Evaluable;
  * SilhouetteShader objectId = new SilhouetteShader(rgb(1.0, 0.0, 0.0));
  *
  * // Apply the shader
- * Producer<RGB> flatColor = silhouette.shade(context, normalField);
+ * Producer<PackedCollection> flatColor = silhouette.shade(context, normalField);
  * }</pre>
  *
  * <h2>Implementation Note</h2>
@@ -56,32 +57,32 @@ import io.almostrealism.relation.Evaluable;
  * @see DiffuseShader
  * @author Michael Murray
  */
-public class SilhouetteShader implements Evaluable<RGB>, Editable, Shader<LightingContext>, RGBFeatures {
-	private Producer<RGB> color;
+public class SilhouetteShader implements Evaluable<PackedCollection>, Editable, Shader<LightingContext>, RGBFeatures {
+	private Producer<PackedCollection> color;
 
 	private String names[] = { "Color" };
 	private String desc[] = { "The color of the silhouette" };
 	private Class types[] = { Evaluable.class };
-  
-  
+
+
 	/**
 	 * Constructs a new {@link SilhouetteShader} using black as a color.
 	 */
 	public SilhouetteShader() { this.color = black(); }
-	
+
 	/**
 	 * Constructs a new {@link SilhouetteShader} using the specified {@link RGB}
 	 * {@link Evaluable} as a color.
-	 * 
+	 *
 	 * @param color  RGB Producer to use.
 	 */
-	public SilhouetteShader(Producer<RGB> color) { this.color = color; }
-	
+	public SilhouetteShader(Producer<PackedCollection> color) { this.color = color; }
+
 	/**
 	 * @see  Shader#shade(LightingContext, DiscreteField)
 	 */
 	@Override
-	public Producer<RGB> shade(LightingContext p, DiscreteField normals) {
+	public Producer<PackedCollection> shade(LightingContext p, DiscreteField normals) {
 		return color; // GeneratedColorProducer.fromProducer(this, color);
 	}
 
@@ -89,7 +90,7 @@ public class SilhouetteShader implements Evaluable<RGB>, Editable, Shader<Lighti
 	 * @see Evaluable#evaluate(java.lang.Object[])
 	 */
 	@Override
-	public RGB evaluate(Object args[]) { return this.color.get().evaluate(args); }
+	public PackedCollection evaluate(Object args[]) { return this.color.get().evaluate(args); }
 
 	/**
 	 * @see Editable#getPropertyNames()
@@ -121,7 +122,7 @@ public class SilhouetteShader implements Evaluable<RGB>, Editable, Shader<Lighti
 	@Override
 	public void setPropertyValue(Object value, int index) {
 		if (index == 0)
-			this.color = (Producer<RGB>) value;
+			this.color = (Producer<PackedCollection>) value;
 		else
 			throw new IllegalArgumentException("Illegal property index: " + index);
 	}
@@ -131,7 +132,7 @@ public class SilhouetteShader implements Evaluable<RGB>, Editable, Shader<Lighti
 	 */
 	@Override
 	public void setPropertyValues(Object values[]) {
-		if (values.length > 0) this.color = (Producer<RGB>) values[0];
+		if (values.length > 0) this.color = (Producer<PackedCollection>) values[0];
 	}
 
 	/**
@@ -146,11 +147,11 @@ public class SilhouetteShader implements Evaluable<RGB>, Editable, Shader<Lighti
 	@Override
 	public void setInputPropertyValue(int index, Producer p) {
 		if (index == 0)
-			this.color = (Producer<RGB>) p;
+			this.color = (Producer<PackedCollection>) p;
 		else
 			throw new IllegalArgumentException("Illegal property index: " + index);
 	}
-	
+
 	/**
 	 * @return  "Silhouette Shader".
 	 */

@@ -15,6 +15,7 @@
  */
 
 package org.almostrealism.space;
+import org.almostrealism.collect.PackedCollection;
 
 import java.util.Collection;
 import java.util.Iterator;
@@ -507,12 +508,12 @@ public abstract class AbstractSurface extends TriangulatableGeometry implements 
 	 * of this {@link AbstractSurface} and returns this value as an {@link RGB}.
 	 */
 	@Override
-	public Producer<RGB> shade(ShaderContext p) {
+	public Producer<PackedCollection> shade(ShaderContext p) {
 //		System.out.println(this + ".shade(reflections = " + p.getReflectionCount() + ")");
 
 		p.setSurface(this);
 		
-		Producer<RGB> color = null;
+		Producer<PackedCollection> color = null;
 		
 		if (this.shaders != null) {
 			color = this.shaders.shade(p, p.getIntersection());
@@ -550,17 +551,17 @@ public abstract class AbstractSurface extends TriangulatableGeometry implements 
 	public RGB getColor() { return this.color; }
 
 	@Override
-	public Producer<RGB> getValueAt(Producer<Vector> point) { return getColorAt(point, true); }
+	public Producer<PackedCollection> getValueAt(Producer<PackedCollection> point) { return getColorAt(point, true); }
 	
 	/**
 	 * @return  The color of this AbstractSurface at the specified point as an RGB object.
 	 */
-	public Producer<RGB> getColorAt(Producer<Vector> point, boolean transform) {
+	public Producer<PackedCollection> getColorAt(Producer<PackedCollection> point, boolean transform) {
 	    if (transform && getTransform(true) != null)
 	    	point = getTransform(true).getInverse().transform(point, TransformMatrix.TRANSFORM_AS_LOCATION);
 
-		Producer<Vector> fp = point;
-		Producer<RGB> colorAt = v(getColor());
+		Producer<PackedCollection> fp = point;
+		Producer<PackedCollection> colorAt = v(getColor());
 	    
 	    if (textures.length > 0) {
 	        for (int i = 0; i < this.textures.length; i++) {

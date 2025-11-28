@@ -15,6 +15,7 @@
  */
 
 package org.almostrealism.color.computations;
+import org.almostrealism.collect.PackedCollection;
 
 import io.almostrealism.code.ProducerComputation;
 import io.almostrealism.kernel.KernelStructureContext;
@@ -27,7 +28,7 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 
-public class AverageColor implements ProducerComputation<RGB> {
+public class AverageColor implements ProducerComputation<PackedCollection> {
 	private static class Color {
 		double p;
 		RGB c;
@@ -54,8 +55,8 @@ public class AverageColor implements ProducerComputation<RGB> {
 	public void setInvert(boolean invert) { this.invert = invert; }
 
 	@Override
-	public Evaluable<RGB> get() {
-		return new DynamicCollectionProducer<>(RGB.shape(), args -> {
+	public Evaluable<PackedCollection> get() {
+		return new DynamicCollectionProducer<PackedCollection>(RGB.shape(), args -> {
 			RGB c = new RGB(0.0, 0.0, 0.0);
 			Iterator itr = this.colors.iterator();
 
@@ -71,7 +72,7 @@ public class AverageColor implements ProducerComputation<RGB> {
 	}
 
 	@Override
-	public Scope<RGB> getScope(KernelStructureContext context) {
+	public Scope<PackedCollection> getScope(KernelStructureContext context) {
 		throw new RuntimeException("Not implemented");
 	}
 }

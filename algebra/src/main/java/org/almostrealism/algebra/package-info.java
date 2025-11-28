@@ -49,16 +49,16 @@
  * public class MyClass implements VectorFeatures, MatrixFeatures {
  *     public void example() {
  *         // Use factory methods directly
- *         CollectionProducer<Vector> v1 = vector(1.0, 0.0, 0.0);
- *         CollectionProducer<Vector> v2 = vector(0.0, 1.0, 0.0);
+ *         CollectionProducer<PackedCollection> v1 = vector(1.0, 0.0, 0.0);
+ *         CollectionProducer<PackedCollection> v2 = vector(0.0, 1.0, 0.0);
  *
  *         // Vector operations
- *         CollectionProducer<PackedCollection<?>> dot = dotProduct(v1, v2);
- *         CollectionProducer<Vector> cross = crossProduct(v1, v2);
+ *         CollectionProducer<PackedCollection> dot = dotProduct(v1, v2);
+ *         CollectionProducer<PackedCollection> cross = crossProduct(v1, v2);
  *
  *         // Matrix operations
- *         CollectionProducer<PackedCollection<?>> identity = identity(shape(3, 3));
- *         CollectionProducer<PackedCollection<?>> result = matmul(identity, v1);
+ *         CollectionProducer<PackedCollection> identity = identity(shape(3, 3));
+ *         CollectionProducer<PackedCollection> result = matmul(identity, v1);
  *     }
  * }
  * }</pre>
@@ -101,12 +101,12 @@
  * </p>
  * <pre>{@code
  * // Create a computation graph
- * CollectionProducer<Vector> input = v(Vector.class);
- * CollectionProducer<PackedCollection<?>> weights = v(PackedCollection.class);
- * CollectionProducer<PackedCollection<?>> output = matmul(weights, input);
+ * CollectionProducer<PackedCollection> input = v(Vector.class);
+ * CollectionProducer<PackedCollection> weights = v(PackedCollection.class);
+ * CollectionProducer<PackedCollection> output = matmul(weights, input);
  *
  * // Compute gradient with respect to weights
- * CollectionProducer<PackedCollection<?>> gradient = output.delta(weights);
+ * CollectionProducer<PackedCollection> gradient = output.delta(weights);
  * }</pre>
  *
  * <h2>Integration with Other Modules</h2>
@@ -129,7 +129,7 @@
  * </p>
  * <pre>{@code
  * // Broadcasting (3, 1) with (1, 4) -> (3, 4)
- * CollectionProducer<PackedCollection<?>> result = broadcast(
+ * CollectionProducer<PackedCollection> result = broadcast(
  *     shape(3, 4),
  *     vectorA,  // shape (3, 1)
  *     vectorB   // shape (1, 4)
@@ -163,29 +163,29 @@
  * <h3>Vector Operations</h3>
  * <pre>{@code
  * // Vector creation and operations
- * CollectionProducer<Vector> v1 = vector(1.0, 2.0, 3.0);
- * CollectionProducer<Vector> v2 = vector(4.0, 5.0, 6.0);
+ * CollectionProducer<PackedCollection> v1 = vector(1.0, 2.0, 3.0);
+ * CollectionProducer<PackedCollection> v2 = vector(4.0, 5.0, 6.0);
  *
  * // Component extraction
  * CollectionProducer<?> xComp = x(v1);
  *
  * // Vector arithmetic
- * CollectionProducer<PackedCollection<?>> dot = dotProduct(v1, v2);
- * CollectionProducer<Vector> cross = crossProduct(v1, v2);
- * CollectionProducer<Vector> normalized = normalize(v1);
+ * CollectionProducer<PackedCollection> dot = dotProduct(v1, v2);
+ * CollectionProducer<PackedCollection> cross = crossProduct(v1, v2);
+ * CollectionProducer<PackedCollection> normalized = normalize(v1);
  * }</pre>
  *
  * <h3>Matrix Operations</h3>
  * <pre>{@code
  * // Matrix creation
- * CollectionProducer<PackedCollection<?>> identity = identity(shape(4, 4));
- * CollectionProducer<PackedCollection<?>> diagonal = diagonal(vector(1, 2, 3, 4));
- * CollectionProducer<PackedCollection<?>> scalarMat = scalarMatrix(shape(4, 4), c(5.0));
+ * CollectionProducer<PackedCollection> identity = identity(shape(4, 4));
+ * CollectionProducer<PackedCollection> diagonal = diagonal(vector(1, 2, 3, 4));
+ * CollectionProducer<PackedCollection> scalarMat = scalarMatrix(shape(4, 4), c(5.0));
  *
  * // Matrix multiplication
- * CollectionProducer<PackedCollection<?>> matA = ...;
- * CollectionProducer<PackedCollection<?>> vecB = ...;
- * CollectionProducer<PackedCollection<?>> result = matmul(matA, vecB);
+ * CollectionProducer<PackedCollection> matA = ...;
+ * CollectionProducer<PackedCollection> vecB = ...;
+ * CollectionProducer<PackedCollection> result = matmul(matA, vecB);
  * }</pre>
  *
  * <h3>Complex Numbers</h3>
@@ -219,3 +219,4 @@
  * @see org.almostrealism.ml
  */
 package org.almostrealism.algebra;
+import org.almostrealism.collect.PackedCollection;

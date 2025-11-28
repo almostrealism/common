@@ -41,8 +41,8 @@ import org.almostrealism.collect.PackedCollection;
  * <p>Usage in shading:</p>
  * <pre>{@code
  * ShadableIntersection hit = surface.intersectAt(ray);
- * Producer<Vector> point = hit.getPoint();
- * Producer<Vector> normal = hit.getNormalAt(point);
+ * Producer<PackedCollection> point = hit.getPoint();
+ * Producer<PackedCollection> normal = hit.getNormalAt(point);
  * // Use for lighting calculations...
  * }</pre>
  *
@@ -51,7 +51,7 @@ import org.almostrealism.collect.PackedCollection;
  * @see ContinuousField
  */
 public class ShadableIntersection extends Intersection implements ContinuousField, RayFeatures {
-	private Producer<Vector> incident;
+	private Producer<PackedCollection> incident;
 	private Producer<Ray> normal;
 
 	/**
@@ -74,8 +74,8 @@ public class ShadableIntersection extends Intersection implements ContinuousFiel
 	 * @param normal the surface normal at the intersection
 	 * @param distance the parametric distance to the intersection
 	 */
-	public ShadableIntersection(Producer<Ray> r, Producer<Vector> normal,
-								Producer<PackedCollection<?>> distance) {
+	public ShadableIntersection(Producer<Ray> r, Producer<PackedCollection> normal,
+								Producer<PackedCollection> distance) {
 		this(RayFeatures.getInstance().pointAt(r, distance),
 				RayFeatures.getInstance().direction(r),
 				normal, distance);
@@ -90,8 +90,8 @@ public class ShadableIntersection extends Intersection implements ContinuousFiel
 	 * @param distance the parametric distance to the intersection
 	 */
 	public ShadableIntersection(Gradient surface,
-								Producer<Vector> point, Producer<Vector> incident,
-								Producer<PackedCollection<?>> distance) {
+								Producer<PackedCollection> point, Producer<PackedCollection> incident,
+								Producer<PackedCollection> distance) {
 		this(point, incident, surface.getNormalAt(point), distance);
 	}
 
@@ -103,8 +103,8 @@ public class ShadableIntersection extends Intersection implements ContinuousFiel
 	 * @param normal the surface normal at the intersection
 	 * @param distance the parametric distance to the intersection
 	 */
-	public ShadableIntersection(Producer<Vector> point, Producer<Vector> incident,
-								Producer<Vector> normal, Producer<PackedCollection<?>> distance) {
+	public ShadableIntersection(Producer<PackedCollection> point, Producer<PackedCollection> incident,
+								Producer<PackedCollection> normal, Producer<PackedCollection> distance) {
 		super(point, distance);
 
 		this.incident = incident;
@@ -121,7 +121,7 @@ public class ShadableIntersection extends Intersection implements ContinuousFiel
 	 * @return a producer for the negated, normalized incident direction
 	 */
 	@Override
-	public Producer<Vector> getNormalAt(Producer<Vector> point) {
+	public Producer<PackedCollection> getNormalAt(Producer<PackedCollection> point) {
 		return minus(normalize(incident));
 	}
 

@@ -116,14 +116,14 @@ public class LayerConnectionTest implements AttentionFeatures, ConsoleFeatures {
         }
 
         // Build and run layer A
-        PackedCollection<?> inputA = new PackedCollection<>(shape(config.dim));
+        PackedCollection inputA = new PackedCollection(shape(config.dim));
         for (int i = 0; i < config.dim; i++) {
             inputA.setMem(i, inputDataA[i]);
         }
 
         Model modelA = buildSingleLayer(config, stateDict, layerA);
         org.almostrealism.model.CompiledModel compiledA = modelA.compile();
-        PackedCollection<?> outputA = compiledA.forward(inputA);
+        PackedCollection outputA = compiledA.forward(inputA);
 
         // Load expected output for layer A
         float[] expectedA = loadReferenceOutput(String.format("after_layer_%d.bin", layerA));
@@ -133,7 +133,7 @@ public class LayerConnectionTest implements AttentionFeatures, ConsoleFeatures {
         // Now run layer B with the output from layer A
         Model modelB = buildSingleLayer(config, stateDict, layerB);
         org.almostrealism.model.CompiledModel compiledB = modelB.compile();
-        PackedCollection<?> outputB = compiledB.forward(outputA);
+        PackedCollection outputB = compiledB.forward(outputA);
 
         // Load expected output for layer B
         float[] expectedB = loadReferenceOutput(String.format("after_layer_%d.bin", layerB));
@@ -161,7 +161,7 @@ public class LayerConnectionTest implements AttentionFeatures, ConsoleFeatures {
             return;
         }
 
-        PackedCollection<?> input = new PackedCollection<>(shape(config.dim));
+        PackedCollection input = new PackedCollection(shape(config.dim));
         for (int i = 0; i < config.dim; i++) {
             input.setMem(i, inputData[i]);
         }
@@ -177,7 +177,7 @@ public class LayerConnectionTest implements AttentionFeatures, ConsoleFeatures {
 
         // Compile and run
         org.almostrealism.model.CompiledModel compiled = model.compile();
-        PackedCollection<?> output = compiled.forward(input);
+        PackedCollection output = compiled.forward(input);
 
         // Compare with expected output after layer B
         float[] expected = loadReferenceOutput(String.format("after_layer_%d.bin", layerB));
@@ -245,13 +245,13 @@ public class LayerConnectionTest implements AttentionFeatures, ConsoleFeatures {
         model.add(testBlock);
 
         // Run the model
-        PackedCollection<?> input = new PackedCollection<>(shape(config.dim));
+        PackedCollection input = new PackedCollection(shape(config.dim));
         for (int i = 0; i < config.dim; i++) {
             input.setMem(i, inputData[i]);
         }
 
         org.almostrealism.model.CompiledModel compiled = model.compile();
-        PackedCollection<?> output = compiled.forward(input);
+        PackedCollection output = compiled.forward(input);
 
         log("Connection mechanism test complete");
 
@@ -281,7 +281,7 @@ public class LayerConnectionTest implements AttentionFeatures, ConsoleFeatures {
             return;
         }
 
-        PackedCollection<?> input = new PackedCollection<>(shape(config.dim));
+        PackedCollection input = new PackedCollection(shape(config.dim));
         for (int i = 0; i < config.dim; i++) {
             input.setMem(i, inputData[i]);
         }
@@ -293,7 +293,7 @@ public class LayerConnectionTest implements AttentionFeatures, ConsoleFeatures {
         }
 
         org.almostrealism.model.CompiledModel compiled = model.compile();
-        PackedCollection<?> output = compiled.forward(input);
+        PackedCollection output = compiled.forward(input);
 
         // Compare with expected output after last layer
         float[] expected = loadReferenceOutput(String.format("after_layer_%d.bin", layers[2]));
@@ -304,12 +304,12 @@ public class LayerConnectionTest implements AttentionFeatures, ConsoleFeatures {
 
         // Now test each layer individually to see where error accumulates
         log("\nLayer-by-layer errors:");
-        PackedCollection<?> currentInput = input;
+        PackedCollection currentInput = input;
 
         for (int layer : layers) {
             Model singleLayer = buildSingleLayer(config, stateDict, layer);
             org.almostrealism.model.CompiledModel singleCompiled = singleLayer.compile();
-            PackedCollection<?> layerOutput = singleCompiled.forward(currentInput);
+            PackedCollection layerOutput = singleCompiled.forward(currentInput);
 
             float[] layerExpected = loadReferenceOutput(String.format("after_layer_%d.bin", layer));
             double layerError = computeMeanError(layerOutput, layerExpected, config.dim);
@@ -324,26 +324,26 @@ public class LayerConnectionTest implements AttentionFeatures, ConsoleFeatures {
         String prefix = String.format("model.layers.%d", layerIndex);
 
         // Load weights for this layer
-        PackedCollection<?> layerRmsAtt = stateDict.get(prefix + ".input_layernorm.weight");
-        PackedCollection<?> layerRmsFfn = stateDict.get(prefix + ".post_attention_layernorm.weight");
-        PackedCollection<?> layerWq = stateDict.get(prefix + ".self_attn.q_proj.weight");
-        PackedCollection<?> layerWk = stateDict.get(prefix + ".self_attn.k_proj.weight");
-        PackedCollection<?> layerWv = stateDict.get(prefix + ".self_attn.v_proj.weight");
-        PackedCollection<?> layerWo = stateDict.get(prefix + ".self_attn.o_proj.weight");
-        PackedCollection<?> layerBq = stateDict.get(prefix + ".self_attn.q_proj.bias");
-        PackedCollection<?> layerBk = stateDict.get(prefix + ".self_attn.k_proj.bias");
-        PackedCollection<?> layerBv = stateDict.get(prefix + ".self_attn.v_proj.bias");
-        PackedCollection<?> layerW1 = stateDict.get(prefix + ".mlp.gate_proj.weight");
-        PackedCollection<?> layerW2 = stateDict.get(prefix + ".mlp.down_proj.weight");
-        PackedCollection<?> layerW3 = stateDict.get(prefix + ".mlp.up_proj.weight");
+        PackedCollection layerRmsAtt = stateDict.get(prefix + ".input_layernorm.weight");
+        PackedCollection layerRmsFfn = stateDict.get(prefix + ".post_attention_layernorm.weight");
+        PackedCollection layerWq = stateDict.get(prefix + ".self_attn.q_proj.weight");
+        PackedCollection layerWk = stateDict.get(prefix + ".self_attn.k_proj.weight");
+        PackedCollection layerWv = stateDict.get(prefix + ".self_attn.v_proj.weight");
+        PackedCollection layerWo = stateDict.get(prefix + ".self_attn.o_proj.weight");
+        PackedCollection layerBq = stateDict.get(prefix + ".self_attn.q_proj.bias");
+        PackedCollection layerBk = stateDict.get(prefix + ".self_attn.k_proj.bias");
+        PackedCollection layerBv = stateDict.get(prefix + ".self_attn.v_proj.bias");
+        PackedCollection layerW1 = stateDict.get(prefix + ".mlp.gate_proj.weight");
+        PackedCollection layerW2 = stateDict.get(prefix + ".mlp.down_proj.weight");
+        PackedCollection layerW3 = stateDict.get(prefix + ".mlp.up_proj.weight");
 
         // QK-Norm weights for Qwen3
-        PackedCollection<?> layerQkNormQ = stateDict.get(prefix + ".self_attn.q_norm.weight");
-        PackedCollection<?> layerQkNormK = stateDict.get(prefix + ".self_attn.k_norm.weight");
+        PackedCollection layerQkNormQ = stateDict.get(prefix + ".self_attn.q_norm.weight");
+        PackedCollection layerQkNormK = stateDict.get(prefix + ".self_attn.k_norm.weight");
 
         // Compute RoPE frequencies
-        PackedCollection<?> freqCis = computeRopeFreqs(config);
-        PackedCollection<?> position = new PackedCollection<>(shape(1));
+        PackedCollection freqCis = computeRopeFreqs(config);
+        PackedCollection position = new PackedCollection(shape(1));
         position.setMem(0, 0.0);
 
         // Add transformer layer
@@ -364,25 +364,25 @@ public class LayerConnectionTest implements AttentionFeatures, ConsoleFeatures {
         String prefix = String.format("model.layers.%d", layerIndex);
 
         // Load weights (same as above)
-        PackedCollection<?> layerRmsAtt = stateDict.get(prefix + ".input_layernorm.weight");
-        PackedCollection<?> layerRmsFfn = stateDict.get(prefix + ".post_attention_layernorm.weight");
-        PackedCollection<?> layerWq = stateDict.get(prefix + ".self_attn.q_proj.weight");
-        PackedCollection<?> layerWk = stateDict.get(prefix + ".self_attn.k_proj.weight");
-        PackedCollection<?> layerWv = stateDict.get(prefix + ".self_attn.v_proj.weight");
-        PackedCollection<?> layerWo = stateDict.get(prefix + ".self_attn.o_proj.weight");
-        PackedCollection<?> layerBq = stateDict.get(prefix + ".self_attn.q_proj.bias");
-        PackedCollection<?> layerBk = stateDict.get(prefix + ".self_attn.k_proj.bias");
-        PackedCollection<?> layerBv = stateDict.get(prefix + ".self_attn.v_proj.bias");
-        PackedCollection<?> layerW1 = stateDict.get(prefix + ".mlp.gate_proj.weight");
-        PackedCollection<?> layerW2 = stateDict.get(prefix + ".mlp.down_proj.weight");
-        PackedCollection<?> layerW3 = stateDict.get(prefix + ".mlp.up_proj.weight");
+        PackedCollection layerRmsAtt = stateDict.get(prefix + ".input_layernorm.weight");
+        PackedCollection layerRmsFfn = stateDict.get(prefix + ".post_attention_layernorm.weight");
+        PackedCollection layerWq = stateDict.get(prefix + ".self_attn.q_proj.weight");
+        PackedCollection layerWk = stateDict.get(prefix + ".self_attn.k_proj.weight");
+        PackedCollection layerWv = stateDict.get(prefix + ".self_attn.v_proj.weight");
+        PackedCollection layerWo = stateDict.get(prefix + ".self_attn.o_proj.weight");
+        PackedCollection layerBq = stateDict.get(prefix + ".self_attn.q_proj.bias");
+        PackedCollection layerBk = stateDict.get(prefix + ".self_attn.k_proj.bias");
+        PackedCollection layerBv = stateDict.get(prefix + ".self_attn.v_proj.bias");
+        PackedCollection layerW1 = stateDict.get(prefix + ".mlp.gate_proj.weight");
+        PackedCollection layerW2 = stateDict.get(prefix + ".mlp.down_proj.weight");
+        PackedCollection layerW3 = stateDict.get(prefix + ".mlp.up_proj.weight");
 
         // QK-Norm weights for Qwen3
-        PackedCollection<?> layerQkNormQ = stateDict.get(prefix + ".self_attn.q_norm.weight");
-        PackedCollection<?> layerQkNormK = stateDict.get(prefix + ".self_attn.k_norm.weight");
+        PackedCollection layerQkNormQ = stateDict.get(prefix + ".self_attn.q_norm.weight");
+        PackedCollection layerQkNormK = stateDict.get(prefix + ".self_attn.k_norm.weight");
 
-        PackedCollection<?> freqCis = computeRopeFreqs(config);
-        PackedCollection<?> position = new PackedCollection<>(shape(1));
+        PackedCollection freqCis = computeRopeFreqs(config);
+        PackedCollection position = new PackedCollection(shape(1));
         position.setMem(0, 0.0);
 
         block.add(transformer(
@@ -403,13 +403,13 @@ public class LayerConnectionTest implements AttentionFeatures, ConsoleFeatures {
         return model;
     }
 
-    private PackedCollection<?> computeRopeFreqs(Qwen3Config config) {
+    private PackedCollection computeRopeFreqs(Qwen3Config config) {
         int headSize = config.headSize;
         int seqLen = 10;
         double theta = config.ropeTheta;
 
         int freqDim = headSize / 2;
-        PackedCollection<?> freqCis = new PackedCollection<>(shape(seqLen, freqDim, 2));
+        PackedCollection freqCis = new PackedCollection(shape(seqLen, freqDim, 2));
 
         for (int pos = 0; pos < seqLen; pos++) {
             for (int i = 0; i < freqDim; i++) {
@@ -423,7 +423,7 @@ public class LayerConnectionTest implements AttentionFeatures, ConsoleFeatures {
         return freqCis;
     }
 
-    private double computeMeanError(PackedCollection<?> output, float[] expected, int dim) {
+    private double computeMeanError(PackedCollection output, float[] expected, int dim) {
         if (expected == null) return Double.MAX_VALUE;
 
         double sumError = 0.0;

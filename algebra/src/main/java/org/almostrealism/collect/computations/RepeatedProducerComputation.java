@@ -104,7 +104,7 @@ import java.util.function.Supplier;
  * 
  * @author Michael Murray
  */
-public class RepeatedProducerComputation<T extends PackedCollection<?>> extends CollectionProducerComputationBase<T, T> {
+public class RepeatedProducerComputation<T extends PackedCollection> extends CollectionProducerComputationBase<T, T> {
 
 	/** Function that defines how to initialize values at the start of computation. */
 	protected BiFunction<TraversableExpression[], Expression, Expression> initial;
@@ -143,7 +143,7 @@ public class RepeatedProducerComputation<T extends PackedCollection<?>> extends 
 									   BiFunction<TraversableExpression[], Expression, Expression> initial,
 									   BiFunction<TraversableExpression[], Expression, Expression> condition,
 									   BiFunction<TraversableExpression[], Expression, Expression> expression,
-									   Producer<PackedCollection<?>>... args) {
+									   Producer<PackedCollection>... args) {
 		this(name, shape, 1, initial, condition, expression, args);
 	}
 
@@ -172,7 +172,7 @@ public class RepeatedProducerComputation<T extends PackedCollection<?>> extends 
 									   BiFunction<TraversableExpression[], Expression, Expression> initial,
 									   BiFunction<TraversableExpression[], Expression, Expression> condition,
 									   BiFunction<TraversableExpression[], Expression, Expression> expression,
-									   Producer<PackedCollection<?>>... args) {
+									   Producer<PackedCollection>... args) {
 		super(name, shape, (Producer[]) args);
 		this.initial = initial;
 		this.condition = condition;

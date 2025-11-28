@@ -30,10 +30,10 @@ import org.almostrealism.collect.PackedCollection;
  * GeneParameters gene = ...;
  *
  * // Get the parameters
- * PackedCollection<?> params = gene.getParameters();
+ * PackedCollection params = gene.getParameters();
  *
  * // Get the valid ranges for each parameter
- * PackedCollection<?> ranges = gene.getParameterRanges();
+ * PackedCollection ranges = gene.getParameterRanges();
  * // ranges[i] typically contains [min, max] for parameter i
  * }</pre>
  *
@@ -45,7 +45,7 @@ public interface GeneParameters {
 	 *
 	 * @return the parameter collection
 	 */
-	PackedCollection<?> getParameters();
+	PackedCollection getParameters();
 
 	/**
 	 * Returns the valid ranges for each parameter.
@@ -53,5 +53,5 @@ public interface GeneParameters {
 	 *
 	 * @return the parameter ranges collection
 	 */
-	PackedCollection<?> getParameterRanges();
+	PackedCollection getParameterRanges();
 }

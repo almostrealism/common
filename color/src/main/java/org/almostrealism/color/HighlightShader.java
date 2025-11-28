@@ -82,7 +82,7 @@ public class HighlightShader extends ShaderSet<ShaderContext> implements
   private static final String propDesc[] = { "The base color for the highlight", "The exponent used to dampen the highlight (phong exponent)" };
   private static final Class propTypes[] = { Producer.class, Double.class };
   
-  private Producer<RGB> highlightColor;
+  private Producer<PackedCollection> highlightColor;
   private double highlightExponent;
 
 	/**
@@ -90,7 +90,7 @@ public class HighlightShader extends ShaderSet<ShaderContext> implements
 	 * and 1.0 as a highlight exponent.
 	 */
 	public HighlightShader() {
-		this.setHighlightColor(white());
+		this.setHighlightColor((Producer) white());
 		this.setHighlightExponent(1.0);
 	}
 	
@@ -98,14 +98,14 @@ public class HighlightShader extends ShaderSet<ShaderContext> implements
 	 * Constructs a new HighlightShader object using the specified highlight color
 	 * and highlight exponent.
 	 */
-	public HighlightShader(Producer<RGB> color, double exponent) {
+	public HighlightShader(Producer<PackedCollection> color, double exponent) {
 		this.setHighlightColor(color);
 		this.setHighlightExponent(exponent);
 	}
 	
 	/** Method specified by the Shader interface. */
 	@Override
-	public Producer<RGB> shade(ShaderContext p, DiscreteField normals) {
+	public Producer<PackedCollection> shade(ShaderContext p, DiscreteField normals) {
 		Vector point;
 		
 		try {
@@ -115,9 +115,9 @@ public class HighlightShader extends ShaderSet<ShaderContext> implements
 			return null;
 		}
 		
-		RGB lightColor = p.getLight().getColorAt(v(p.getIntersection().getNormalAt(v(point)).get().evaluate())).get().evaluate();
+		RGB lightColor = (RGB) p.getLight().getColorAt((Producer) v((Vector) p.getIntersection().getNormalAt((Producer) v(point)).get().evaluate())).get().evaluate();
 		
-		Producer<Vector> n;
+		Producer<PackedCollection> n;
 		
 		try {
 			n = direction(normals.iterator().next());
@@ -127,26 +127,26 @@ public class HighlightShader extends ShaderSet<ShaderContext> implements
 		}
 		
 		n = multiply(n, length(n).pow(-1.0));
-		CollectionProducer<Vector> h = vector(add(p.getIntersection().getNormalAt(v(point)), p.getLightDirection()));
+		CollectionProducer<PackedCollection> h = vector(add(p.getIntersection().getNormalAt((Producer) v(point)), p.getLightDirection()));
 		h = multiply(h, length(h).pow(-1.0));
 
-		Producer<RGB> hc = v(this.getHighlightColor().get().evaluate(p));
+		Producer hc = v((RGB) this.getHighlightColor().get().evaluate(p));
 		if (super.size() > 0) hc = multiply(hc, super.shade(p, normals));
 
-		CollectionProducer<PackedCollection<?>> cFront = dotProduct(h, n);
-		CollectionProducer<PackedCollection<?>> cBack = dotProduct(h, minus(n));
+		CollectionProducer<PackedCollection> cFront = (CollectionProducer) dotProduct(h, n);
+		CollectionProducer<PackedCollection> cBack = (CollectionProducer) dotProduct(h, minus(n));
 
-		Producer<RGB> fhc = hc;
+		Producer fhc = hc;
 
-		return GeneratedColorProducer.fromProducer(this, new DynamicProducerForMemoryData<>(args -> {
-			Producer<RGB> color = null;
+		return GeneratedColorProducer.fromProducer(this, (Producer) new DynamicProducerForMemoryData<PackedCollection>(args -> {
+			Producer color = null;
 
 			f: if (p.getSurface() instanceof ShadableSurface == false || ((ShadableSurface) p.getSurface()).getShadeFront()) {
-				double c = cFront.get().evaluate(args).toDouble();
+				double c = ((PackedCollection) cFront.get().evaluate(args)).toDouble();
 				if (c < 0) break f;
 				c = Math.pow(c, this.getHighlightExponent());
 
-				Producer<RGB> pr = multiply(v(lightColor), v(fhc.get().evaluate(args))).multiply(v(new RGB(c, c, c)));
+				Producer pr = multiply(v(lightColor), v((RGB) fhc.get().evaluate(args))).multiply(v(new RGB(c, c, c)));
 				if (color == null) {
 					color = pr;
 				} else {
@@ -155,11 +155,11 @@ public class HighlightShader extends ShaderSet<ShaderContext> implements
 			}
 
 			f: if (p.getSurface() instanceof ShadableSurface == false || ((ShadableSurface) p.getSurface()).getShadeBack()) {
-				double c = cBack.get().evaluate(args).toDouble();
+				double c = ((PackedCollection) cBack.get().evaluate(args)).toDouble();
 				if (c < 0) break f;
 				c = Math.pow(c, this.getHighlightExponent());
 
-				Producer<RGB> pr = multiply(v(lightColor), v(fhc.get().evaluate(args))).multiply(v(new RGB(c, c, c)));
+				Producer pr = multiply(v(lightColor), v((RGB) fhc.get().evaluate(args))).multiply(v(new RGB(c, c, c)));
 				if (color == null) {
 					color = pr;
 				} else {
@@ -167,7 +167,7 @@ public class HighlightShader extends ShaderSet<ShaderContext> implements
 				}
 			}
 
-			return color.get().evaluate();
+			return (PackedCollection) color.get().evaluate();
 		}));
 	}
 	
@@ -175,7 +175,7 @@ public class HighlightShader extends ShaderSet<ShaderContext> implements
 	 * Sets the color used for the highlight shaded by this HighlightShader object
 	 * to the color represented by the specifed RGB object.
 	 */
-	public void setHighlightColor(Producer<RGB> color) { this.highlightColor = color; }
+	public void setHighlightColor(Producer<PackedCollection> color) { this.highlightColor = color; }
 	
 	/**
 	 * Sets the highlight exponent (phong exponent) used by this {@link HighlightShader}.
@@ -186,7 +186,7 @@ public class HighlightShader extends ShaderSet<ShaderContext> implements
 	 * Returns the color used for the highlight shaded by this {@link HighlightShader}
 	 * as a {@link Producer}.
 	 */
-	public Producer<RGB> getHighlightColor() { return this.highlightColor; }
+	public Producer<PackedCollection> getHighlightColor() { return this.highlightColor; }
 	
 	/**
 	 * Returns the highlight exponent (phong exponent) used by this HighlightShader object.
@@ -225,7 +225,7 @@ public class HighlightShader extends ShaderSet<ShaderContext> implements
 	public void setPropertyValue(Object value, int index) {
 		if (index == 0) {
 			if (value instanceof Producer)
-				this.setHighlightColor((Producer<RGB>) value);
+				this.setHighlightColor((Producer<PackedCollection>) value);
 			else
 				throw new IllegalArgumentException("Illegal argument: " + value.toString());
 		} else if (index == 1) {
