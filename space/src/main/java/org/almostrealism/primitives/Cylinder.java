@@ -66,9 +66,9 @@ public class Cylinder extends AbstractSurface implements CodeFeatures {
 	 */
 	@Override
 	public Producer<PackedCollection> getNormalAt(Producer<PackedCollection> point) {
-		Producer normal = add((Producer) point, (Producer) v(getLocation().minus()));
+		Producer normal = add(point, v(getLocation().minus()));
 		normal = super.getTransform(true).transform(normal, TransformMatrix.TRANSFORM_AS_NORMAL);
-		normal = multiply(normal, (Producer) vector(1.0, 0.0, 1.0));
+		normal = multiply(normal, vector(1.0, 0.0, 1.0));
 		return normal;
 	}
 	
