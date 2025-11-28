@@ -29,6 +29,8 @@ import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 
+import java.util.function.BiFunction;
+
 /**
  * A computation that finds the highest-ranked (smallest non-zero) value in a distance array.
  *
@@ -62,7 +64,7 @@ import org.almostrealism.collect.computations.CollectionProducerComputationBase;
  * @author  Michael Murray
  * @see Pair
  */
-public class HighestRank extends CollectionProducerComputationBase<PackedCollection, Pair> {
+public class HighestRank extends CollectionProducerComputationBase {
 	private int varIdx = 0;
 
 	/**
@@ -73,7 +75,7 @@ public class HighestRank extends CollectionProducerComputationBase<PackedCollect
 	 */
 	public HighestRank(Producer<PackedCollection> distances, Producer<Pair> conf) {
 		super("highestRank", CollectionFeatures.getInstance().shape(distances), distances, (Producer) conf);
-		setPostprocessor(Pair.postprocessor());
+		setPostprocessor((BiFunction) Pair.postprocessor());
 	}
 
 	/**
@@ -108,8 +110,8 @@ public class HighestRank extends CollectionProducerComputationBase<PackedCollect
 	 * @return the scope containing the search logic
 	 */
 	@Override
-	public Scope<Pair> getScope(KernelStructureContext context) {
-		HybridScope<Pair> scope = new HybridScope<>(this);
+	public Scope<PackedCollection> getScope(KernelStructureContext context) {
+		HybridScope<PackedCollection> scope = new HybridScope<>(this);
 
 		ArrayVariable distances = getArgument(1);
 		ArrayVariable conf = getArgument(2);

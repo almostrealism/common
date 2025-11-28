@@ -125,14 +125,12 @@ import java.util.function.Supplier;
  *   <li><strong>Delta computation:</strong> Specialized delta computation for automatic differentiation</li>
  * </ul>
  * 
- * @param <T> The type of {@link PackedCollection} this computation operates on
- * 
  * @see RepeatedProducerComputation
  * @see TraversableRepeatedProducerComputation
  * @see ConstantRepeatedDeltaComputation
  */
-public class ConstantRepeatedProducerComputation<T extends PackedCollection>
-		extends RepeatedProducerComputation<T> {
+public class ConstantRepeatedProducerComputation
+		extends RepeatedProducerComputation {
 	
 	/** 
 	 * The fixed number of iterations this computation will perform.
@@ -307,8 +305,8 @@ public class ConstantRepeatedProducerComputation<T extends PackedCollection>
 	 * @see RepeatedProducerComputation#attemptDelta(Producer)
 	 */
 	@Override
-	public CollectionProducer<T> delta(Producer<?> target) {
-		CollectionProducer<T> delta = attemptDelta(target);
+	public CollectionProducer<PackedCollection> delta(Producer<?> target) {
+		CollectionProducer<PackedCollection> delta = attemptDelta(target);
 		if (delta != null) return delta;
 
 		return ConstantRepeatedDeltaComputation.create(
@@ -363,8 +361,8 @@ public class ConstantRepeatedProducerComputation<T extends PackedCollection>
 	 * @see Process
 	 */
 	@Override
-	public ConstantRepeatedProducerComputation<T> generate(List<Process<?, ?>> children) {
-		return new ConstantRepeatedProducerComputation<>(
+	public ConstantRepeatedProducerComputation generate(List<Process<?, ?>> children) {
+		return new ConstantRepeatedProducerComputation(
 				getName(), getShape(), getMemLength(), count,
 				initial, expression,
 				children.stream().skip(1).toArray(Producer[]::new));

@@ -52,7 +52,7 @@ public class RankedChoiceEvaluable<T> extends ArrayList<ProducerWithRank<T, Pack
 	static {
 		TraversalPolicy inputShape =
 				new TraversalPolicy(false, false, 2);
-		highestRank = new HighestRank(Input.value(inputShape, 0),
+		highestRank = (Evaluable<Pair>) (Evaluable) new HighestRank(Input.value(inputShape, 0),
 				Input.value(inputShape, 1)).get();
 	}
 

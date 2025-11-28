@@ -53,10 +53,10 @@ public class TraversableExpressionComputationTest implements TestFeatures {
 	 * @param a The input producer providing the collection to process
 	 * @return A computation that sums pairs of elements
 	 */
-	protected <T extends PackedCollection> DefaultTraversableExpressionComputation<T> pairSum(Producer a) {
+	protected DefaultTraversableExpressionComputation pairSum(Producer a) {
 		TraversalPolicy shape = shape(a).replace(shape(1));
 
-		return new DefaultTraversableExpressionComputation<>("pairSum", shape,
+		return new DefaultTraversableExpressionComputation("pairSum", shape,
 				(Function<TraversableExpression[], CollectionExpression>)
 						(args) ->
 								DefaultCollectionExpression.create(shape,
@@ -86,7 +86,7 @@ public class TraversableExpressionComputationTest implements TestFeatures {
 		PackedCollection input = new PackedCollection(shape(r, c));
 		input.fill(pos -> Math.random());
 
-		DefaultTraversableExpressionComputation<?> sum = pairSum(p(input.traverse(1)));
+		DefaultTraversableExpressionComputation sum = pairSum(p(input.traverse(1)));
 		PackedCollection out = sum.get().evaluate();
 		out.print();
 

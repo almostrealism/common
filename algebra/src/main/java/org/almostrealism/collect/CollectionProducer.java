@@ -15,11 +15,9 @@
  */
 
 package org.almostrealism.collect;
-import org.almostrealism.collect.PackedCollection;
 
 import io.almostrealism.collect.Algebraic;
 import io.almostrealism.collect.CollectionProducerBase;
-import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
@@ -355,19 +353,19 @@ public interface CollectionProducer<T extends PackedCollection> extends
 		return pow(c(-1.0));
 	}
 
-	default <T extends PackedCollection> CollectionProducerComputationBase<T, T> minus() {
+	default <T extends PackedCollection> CollectionProducerComputationBase minus() {
 		return minus((Producer) this);
 	}
 
-	default <T extends PackedCollection> CollectionProducerComputationBase<T, T> exp() {
+	default <T extends PackedCollection> CollectionProducerComputationBase exp() {
 		return exp((Producer) this);
 	}
 
-	default <T extends PackedCollection> CollectionProducerComputationBase<T, T> expIgnoreZero() {
+	default <T extends PackedCollection> CollectionProducerComputationBase expIgnoreZero() {
 		return expIgnoreZero((Producer) this);
 	}
 
-	default <T extends PackedCollection> CollectionProducerComputationBase<T, T> log() {
+	default <T extends PackedCollection> CollectionProducerComputationBase log() {
 		return log((Producer) this);
 	}
 
@@ -387,19 +385,19 @@ public interface CollectionProducer<T extends PackedCollection> extends
 		return magnitude(traverse(axis, (Producer) this));
 	}
 
-	default <T extends PackedCollection> CollectionProducerComputationBase<T, T> max(int axis) {
+	default <T extends PackedCollection> CollectionProducerComputationBase max(int axis) {
 		return max(traverse(axis, (Producer) this));
 	}
 
-	default <T extends PackedCollection> CollectionProducerComputationBase<T, T> max() {
+	default <T extends PackedCollection> CollectionProducerComputationBase max() {
 		return max((Producer) this);
 	}
 
-	default <T extends PackedCollection> CollectionProducerComputationBase<T, T> indexOfMax() {
+	default <T extends PackedCollection> CollectionProducerComputationBase indexOfMax() {
 		return indexOfMax((Producer) this);
 	}
 
-	default <T extends PackedCollection> CollectionProducerComputationBase<T, T> min() {
+	default <T extends PackedCollection> CollectionProducerComputationBase min() {
 		// TODO  return min((Producer) this);
 		throw new UnsupportedOperationException();
 	}

@@ -76,8 +76,6 @@ import java.util.stream.Collectors;
  * }
  * }</pre>
  *
- * @param <T> The type of {@link PackedCollection} this computation produces
- *
  * @see TraversableExpressionComputation
  * @see org.almostrealism.collect.CollectionProducer#delta(Producer)
  * @see #delta(Producer)
@@ -85,8 +83,8 @@ import java.util.stream.Collectors;
  *
  * @author Michael Murray
  */
-public abstract class TransitiveDeltaExpressionComputation<T extends PackedCollection>
-												extends TraversableExpressionComputation<T> {
+public abstract class TransitiveDeltaExpressionComputation
+												extends TraversableExpressionComputation {
 	/**
 	 * Global flag enabling atomic kernel generation for transitive delta computations.
 	 * When enabled, computations with fixed counts can generate single atomic kernels
@@ -251,8 +249,8 @@ public abstract class TransitiveDeltaExpressionComputation<T extends PackedColle
 	 * @see org.almostrealism.collect.CollectionProducer#reshape(TraversalPolicy)
 	 */
 	@Override
-	public CollectionProducer<T> delta(Producer<?> target) {
-		CollectionProducer<T> delta = attemptDelta(target);
+	public CollectionProducer<PackedCollection> delta(Producer<?> target) {
+		CollectionProducer<PackedCollection> delta = attemptDelta(target);
 		if (delta != null) return delta;
 
 		TraversalPolicy targetShape = shape(target);

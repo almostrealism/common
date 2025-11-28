@@ -270,7 +270,7 @@ public interface AlgebraFeatures extends CollectionFeatures {
 																			  TraversalPolicy weightGroupShape,
 																			  Producer<T> input,
 																			  Producer<T> weights) {
-		return new WeightedSumComputation<>(
+		return (CollectionProducer<T>) new WeightedSumComputation(
 						resultShape,
 						inputPositions, weightPositions,
 						inputGroupShape, weightGroupShape,

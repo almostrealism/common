@@ -540,7 +540,7 @@ public class CollectionComputationTests implements TestFeatures {
 
 		TraversalPolicy shape = shape(in).flatten(true);
 
-		DynamicIndexProjectionProducerComputation<?> c = new DynamicIndexProjectionProducerComputation<>(null, shape(2), (args, idx) -> {
+		DynamicIndexProjectionProducerComputation c = new DynamicIndexProjectionProducerComputation(null, shape(2), (args, idx) -> {
 			Expression<?> result = null;
 
 			for (int i = 0; i < shape.getSize(); i++) {

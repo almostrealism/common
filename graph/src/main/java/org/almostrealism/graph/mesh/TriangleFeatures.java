@@ -166,7 +166,7 @@ public interface TriangleFeatures extends VectorFeatures {
 		}
 
 		// Create custom computation to arrange the 4 vectors into triangle structure
-		return new DefaultTraversableExpressionComputation<>("triangle", outputShape, args ->
+		return new DefaultTraversableExpressionComputation("triangle", outputShape, args ->
 			CollectionExpression.create(outputShape, idx -> {
 				// idx ranges from 0 to N*12-1 (N triangles * 4 vectors * 3 components)
 				// For each output position:
@@ -232,7 +232,7 @@ public interface TriangleFeatures extends VectorFeatures {
 		}
 
 		int vertexOffset = vertexIndex * 3;
-		IndexProjectionProducerComputation<PackedCollection> projection = new IndexProjectionProducerComputation<>(
+		IndexProjectionProducerComputation projection = new IndexProjectionProducerComputation(
 				"point_v" + vertexIndex + "_s" + stride, outputShape,
 				idx -> idx.divide(e(3)).floor().multiply(e(stride)).add(e(vertexOffset)).add(idx.imod(3)),
 				points);

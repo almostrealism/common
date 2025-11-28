@@ -107,8 +107,6 @@ import java.util.List;
  *   <li><strong>Sparse Optimization:</strong> Ignore zero mode improves performance for sparse data</li>
  * </ul>
  *
- * @param <T> The type of {@link PackedCollection} this computation produces
- *
  * @see TraversableExpressionComputation
  * @see CollectionLogarithmComputation
  * @see io.almostrealism.expression.Exp
@@ -116,7 +114,7 @@ import java.util.List;
  *
  * @author Michael Murray
  */
-public class CollectionExponentialComputation<T extends PackedCollection> extends TraversableExpressionComputation<T> {
+public class CollectionExponentialComputation extends TraversableExpressionComputation {
 	/**
 	 * Flag controlling whether to skip exponential evaluation for zero-valued elements.
 	 * When true, zero inputs produce zero outputs without computing e^0, improving
@@ -198,8 +196,8 @@ public class CollectionExponentialComputation<T extends PackedCollection> extend
 	 * @return A new {@link CollectionExponentialComputation} for parallel execution
 	 */
 	@Override
-	public CollectionProducerParallelProcess<T> generate(List<Process<?, ?>> children) {
-		return new CollectionExponentialComputation<>(getName(), getShape(), isIgnoreZero(),
+	public CollectionProducerParallelProcess generate(List<Process<?, ?>> children) {
+		return new CollectionExponentialComputation(getName(), getShape(), isIgnoreZero(),
 				(Producer) children.get(1))
 				.setPostprocessor(getPostprocessor())
 				.setDescription(getDescription())
@@ -219,20 +217,20 @@ public class CollectionExponentialComputation<T extends PackedCollection> extend
 	 * @return A {@link CollectionProducer} that computes the derivative
 	 */
 	@Override
-	public CollectionProducer<T> delta(Producer<?> target) {
-		CollectionProducer<T> delta = MatrixFeatures.getInstance().attemptDelta(this, target);
+	public CollectionProducer<PackedCollection> delta(Producer<?> target) {
+		CollectionProducer<PackedCollection> delta = MatrixFeatures.getInstance().attemptDelta(this, target);
 		if (delta != null) {
 			return delta;
 		}
 
 		TraversalPolicy targetShape = shape(target);
 		TraversalPolicy shape = getShape().append(targetShape);
-		CollectionProducer<T> input = (CollectionProducer) getInputs().get(1);
+		CollectionProducer<PackedCollection> input = (CollectionProducer) getInputs().get(1);
 
-		CollectionProducer<T> d = input.delta(target);
+		CollectionProducer<PackedCollection> d = input.delta(target);
 		d = d.reshape(getShape().getTotalSize(), -1).traverse(0);
 
-		CollectionProducer<T> scale = isIgnoreZero() ? expIgnoreZero((Producer) input) : exp((Producer) input);
+		CollectionProducer<PackedCollection> scale = isIgnoreZero() ? expIgnoreZero((Producer) input) : exp((Producer) input);
 		scale = scale.flatten();
 
 		return expandAndMultiply(scale, d).reshape(shape);

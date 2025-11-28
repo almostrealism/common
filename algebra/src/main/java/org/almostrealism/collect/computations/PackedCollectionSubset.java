@@ -111,8 +111,6 @@ import java.util.stream.Stream;
  *   <li>Dynamic positions provide runtime flexibility at a small performance cost</li>
  * </ul>
  *
- * @param <T> The type of PackedCollection being subset, maintaining type safety
- *
  * @see CollectionFeatures#subset(TraversalPolicy, Producer, int...)
  * @see CollectionFeatures#subset(TraversalPolicy, Producer, Expression...)
  * @see CollectionFeatures#subset(TraversalPolicy, Producer, Producer)
@@ -122,8 +120,8 @@ import java.util.stream.Stream;
  * @author Michael Murray
  * @since 0.68
  */
-public class PackedCollectionSubset<T extends PackedCollection>
-		extends IndexProjectionProducerComputation<T> {
+public class PackedCollectionSubset
+		extends IndexProjectionProducerComputation {
 	private Expression pos[];
 
 	/**
@@ -254,11 +252,11 @@ public class PackedCollectionSubset<T extends PackedCollection>
 	 */
 	// TODO  This custom destination creation should not be necessary
 	@Override
-	public T createDestination(int len) {
+	public PackedCollection createDestination(int len) {
 		if (len != getShape().getTotalSize())
 			throw new IllegalArgumentException("Subset kernel size must match subset shape (" + getShape().getTotalSize() + ")");
 
-		return (T) new PackedCollection(getShape().traverseEach());
+		return new PackedCollection(getShape().traverseEach());
 	}
 
 	/**
@@ -313,11 +311,11 @@ public class PackedCollectionSubset<T extends PackedCollection>
 	 * @throws UnsupportedOperationException if an unsupported number of children is provided
 	 */
 	@Override
-	public PackedCollectionSubset<T> generate(List<Process<?, ?>> children) {
+	public PackedCollectionSubset generate(List<Process<?, ?>> children) {
 		if (getChildren().size() == 3) {
-			return new PackedCollectionSubset<>(getShape(), (Producer<?>) children.get(1), (Producer<?>) children.get(2));
+			return new PackedCollectionSubset(getShape(), (Producer<?>) children.get(1), (Producer<?>) children.get(2));
 		} else if (getChildren().size() == 2) {
-			return new PackedCollectionSubset<>(getShape(), (Producer<?>) children.get(1), pos);
+			return new PackedCollectionSubset(getShape(), (Producer<?>) children.get(1), pos);
 		} else {
 			throw new UnsupportedOperationException();
 		}

@@ -83,13 +83,13 @@ import java.util.function.Supplier;
  * <h3>Basic Element-wise Operation</h3>
  * <pre>{@code
  * // Example implementation for element-wise addition
- * public class AdditionComputation extends CollectionProducerComputationAdapter<PackedCollection, PackedCollection> {
- *     public AdditionComputation(TraversalPolicy shape, 
- *                               Supplier<Evaluable<? extends PackedCollection>> a,
- *                               Supplier<Evaluable<? extends PackedCollection>> b) {
+ * public class AdditionComputation extends CollectionProducerComputationAdapter {
+ *     public AdditionComputation(TraversalPolicy shape,
+ *                               Producer<PackedCollection> a,
+ *                               Producer<PackedCollection> b) {
  *         super("addition", shape, a, b);
  *     }
- *     
+ *
  *     @Override
  *     public Expression<Double> getValueAt(Expression<?> index) {
  *         TraversableExpression[] args = getTraversableArguments(index);
@@ -125,14 +125,9 @@ import java.util.function.Supplier;
  * the mathematical expression that will be applied to compute output values. This method receives
  * an index expression and should return the computed value at that position.</p>
  * 
- * @param <I> Input collection type, must extend {@link PackedCollection}. Represents the type
- *           of input data that this computation can process.
- * @param <O> Output collection type, must extend {@link PackedCollection}. Represents the type
- *           of output data that this computation produces.
- * 
  * @author Michael Murray
  * @since 0.69
- * 
+ *
  * @see CollectionProducerComputationBase
  * @see TraversableExpression
  * @see TraversalPolicy
@@ -140,8 +135,8 @@ import java.util.function.Supplier;
  * @see io.almostrealism.kernel.KernelStructureContext
  * @see io.almostrealism.scope.ScopeSettings
  */
-public abstract class CollectionProducerComputationAdapter<I extends PackedCollection, O extends PackedCollection>
-		extends CollectionProducerComputationBase<I, O>
+public abstract class CollectionProducerComputationAdapter
+		extends CollectionProducerComputationBase
 		implements TraversableExpression<Double> {
 
 	/**
@@ -156,13 +151,13 @@ public abstract class CollectionProducerComputationAdapter<I extends PackedColle
 	 * <p><strong>Example Usage:</strong></p>
 	 * <pre>{@code
 	 * // Create a computation with input suppliers
-	 * public class MyComputationImplementation extends CollectionProducerComputationAdapter<PackedCollection, PackedCollection> {
+	 * public class MyComputationImplementation extends CollectionProducerComputationAdapter {
 	 *     public MyComputationImplementation(String name, TraversalPolicy shape,
-	 *                                       Supplier<Evaluable<? extends PackedCollection>> a,
-	 *                                       Supplier<Evaluable<? extends PackedCollection>> b) {
+	 *                                       Producer<PackedCollection> a,
+	 *                                       Producer<PackedCollection> b) {
 	 *         super(name, shape, a, b);
 	 *     }
-	 *     
+	 *
 	 *     @Override
 	 *     public Expression<Double> getValueAt(Expression<?> index) {
 	 *         // Implementation details...
@@ -192,7 +187,7 @@ public abstract class CollectionProducerComputationAdapter<I extends PackedColle
 	 */
 	@SafeVarargs
 	public CollectionProducerComputationAdapter(String name, TraversalPolicy outputShape,
-												Producer<I>... arguments) {
+												Producer<PackedCollection>... arguments) {
 		super(name, outputShape, arguments);
 	}
 
@@ -315,8 +310,8 @@ public abstract class CollectionProducerComputationAdapter<I extends PackedColle
 	 * @see io.almostrealism.scope.ArrayVariable#reference(Expression)
 	 */
 	@Override
-	public Scope<O> getScope(KernelStructureContext context) {
-		Scope<O> scope = super.getScope(context);
+	public Scope<PackedCollection> getScope(KernelStructureContext context) {
+		Scope<PackedCollection> scope = super.getScope(context);
 		ArrayVariable<Double> output = (ArrayVariable<Double>) getOutputVariable();
 
 		int statementCount = getStatementCount(context);
@@ -483,7 +478,7 @@ public abstract class CollectionProducerComputationAdapter<I extends PackedColle
 	 * @see CollectionProducerComputationBase#isolate()
 	 */
 	@Override
-	public Process<Process<?, ?>, Evaluable<? extends O>> isolate() {
+	public Process<Process<?, ?>, Evaluable<? extends PackedCollection>> isolate() {
 		if (getMemLength() > ScopeSettings.maxStatements) {
 			warn("Cannot isolate a ProducerComputation which would produce a Scope with "
 					+ getMemLength() + " statements");
@@ -529,8 +524,8 @@ public abstract class CollectionProducerComputationAdapter<I extends PackedColle
 	 * @see org.almostrealism.collect.CollectionFeatures#shape(Supplier)
 	 */
 	@Override
-	public CollectionProducer<O> delta(Producer<?> target) {
-		CollectionProducer<O> delta = attemptDelta(target);
+	public CollectionProducer<PackedCollection> delta(Producer<?> target) {
+		CollectionProducer<PackedCollection> delta = attemptDelta(target);
 		if (delta != null) return delta;
 
 		delta = TraversableDeltaComputation.create("delta", getShape(), shape(target),
@@ -557,13 +552,13 @@ public abstract class CollectionProducerComputationAdapter<I extends PackedColle
 	 * <p><strong>Usage Example:</strong>
 	 * <pre>{@code
 	 * // Original computation using traversable approach
-	 * CollectionProducerComputationAdapter<PackedCollection> addOp =
+	 * CollectionProducerComputationAdapter addOp =
 	 *     add(v(shape(1000), 0), v(shape(1000), 1));
-	 * 
+	 *
 	 * // Convert to repeated computation approach
-	 * RepeatedProducerComputationAdapter<PackedCollection> repeatedAdd =
+	 * RepeatedProducerComputationAdapter repeatedAdd =
 	 *     addOp.toRepeated();
-	 * 
+	 *
 	 * // Both produce identical results but use different execution patterns
 	 * PackedCollection result1 = addOp.get().evaluate(dataA, dataB);
 	 * PackedCollection result2 = repeatedAdd.get().evaluate(dataA, dataB);
@@ -588,8 +583,8 @@ public abstract class CollectionProducerComputationAdapter<I extends PackedColle
 	 * @see CollectionProducerComputationBase#addDependentLifecycle(io.almostrealism.code.ScopeLifecycle)
 	 */
 	@Override
-	public RepeatedProducerComputationAdapter<O> toRepeated() {
-		RepeatedProducerComputationAdapter result = new RepeatedProducerComputationAdapter<>(getShape(), this,
+	public RepeatedProducerComputationAdapter toRepeated() {
+		RepeatedProducerComputationAdapter result = new RepeatedProducerComputationAdapter(getShape(), this,
 				getInputs().stream().skip(1).toArray(Producer[]::new));
 		result.addDependentLifecycle(this);
 		return result;

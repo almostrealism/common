@@ -125,15 +125,13 @@ import java.util.stream.Collectors;
  *   <li>Hardware acceleration via the underlying expression framework</li>
  * </ul>
  * 
- * @param <T> The type of {@link PackedCollection} this computation operates on
- * 
  * @see TraversableExpressionComputation
  * @see PackedCollection
  * @see TraversalPolicy
  * @see io.almostrealism.expression.Exponent
  * @author Michael Murray
  */
-public class CollectionExponentComputation<T extends PackedCollection> extends TraversableExpressionComputation<T> {
+public class CollectionExponentComputation extends TraversableExpressionComputation {
 	/**
 	 * Enables optimized analytical derivative computation using the power rule for automatic differentiation.
 	 * When {@code true}, the {@link #delta(Producer)} method applies the mathematical power rule:
@@ -238,20 +236,20 @@ public class CollectionExponentComputation<T extends PackedCollection> extends T
 	 * Generates a new {@link CollectionProducerParallelProcess} for parallel execution of this computation.
 	 * This method creates a copy of the current computation with the provided child processes,
 	 * preserving all configuration including postprocessors, descriptions, and lifecycle dependencies.
-	 * 
+	 *
 	 * <p>The parallel process enables efficient execution across multiple hardware threads or
 	 * processing units, making it suitable for large-scale power operations in machine learning
 	 * and scientific computing contexts.
-	 * 
+	 *
 	 * @param children The list of child {@link Process} instances, where children.get(1) is the base
 	 *                 and children.get(2) is the exponent
 	 * @return A new {@link CollectionProducerParallelProcess} configured for parallel execution
-	 * 
+	 *
 	 * @see CollectionProducerParallelProcess
 	 */
 	@Override
-	public CollectionProducerParallelProcess<T> generate(List<Process<?, ?>> children) {
-		return new CollectionExponentComputation<>(getName(), getShape(),
+	public CollectionProducerParallelProcess generate(List<Process<?, ?>> children) {
+		return new CollectionExponentComputation(getName(), getShape(),
 				(Producer) children.get(1), (Producer) children.get(2))
 				.setPostprocessor(getPostprocessor())
 				.setDescription(getDescription())
@@ -263,24 +261,24 @@ public class CollectionExponentComputation<T extends PackedCollection> extends T
 	 * Computes the derivative (delta) of this exponentiation computation with respect to a target variable.
 	 * This method implements an optimized analytical approach using the power rule when {@link #enableCustomDelta}
 	 * is true, providing efficient automatic differentiation for machine learning and optimization applications.
-	 * 
+	 *
 	 * <h4>Mathematical Foundation</h4>
-	 * 
+	 *
 	 * <p>For a function f(x) = u(x)^v where u(x) is the base (depends on x) and v is a constant exponent,
 	 * the derivative is computed using the power rule:
 	 * <pre>
 	 * df/dx = v * u(x)^(v-1) * du/dx
 	 * </pre>
-	 * 
+	 *
 	 * <p>This implementation specifically handles the case where:
 	 * <ul>
 	 *   <li>The base operand depends on the target variable (match found in base)</li>
 	 *   <li>The exponent is independent of the target variable</li>
 	 *   <li>All operands have fixed (non-variable) counts for efficient computation</li>
 	 * </ul>
-	 * 
+	 *
 	 * <h4>Implementation Details</h4>
-	 * 
+	 *
 	 * <p>The method performs the following steps:
 	 * <ol>
 	 *   <li>Checks if custom delta computation is enabled via {@link #enableCustomDelta}</li>
@@ -290,9 +288,9 @@ public class CollectionExponentComputation<T extends PackedCollection> extends T
 	 *   <li>Applies the power rule: v * u^(v-1) * du/dx</li>
 	 *   <li>Handles shape broadcasting and tensor operations appropriately</li>
 	 * </ol>
-	 * 
+	 *
 	 * <h4>Usage Examples</h4>
-	 * 
+	 *
 	 * <p><strong>Basic Power Rule:</strong>
 	 * <pre>{@code
 	 * // f(x) = x^3, df/dx = 3*x^2
@@ -300,7 +298,7 @@ public class CollectionExponentComputation<T extends PackedCollection> extends T
 	 * CollectionProducer<PackedCollection> f = x.pow(c(3.0));
 	 * CollectionProducer<PackedCollection> df_dx = f.delta(x);
 	 * }</pre>
-	 * 
+	 *
 	 * <p><strong>Composite Function:</strong>
 	 * <pre>{@code
 	 * // f(g(x)) = (2*x + 1)^4, df/dx = 4*(2*x + 1)^3 * 2
@@ -309,9 +307,9 @@ public class CollectionExponentComputation<T extends PackedCollection> extends T
 	 * CollectionProducer<PackedCollection> f = g.pow(c(4.0));
 	 * CollectionProducer<PackedCollection> df_dx = f.delta(x);
 	 * }</pre>
-	 * 
+	 *
 	 * <h4>Performance Considerations</h4>
-	 * 
+	 *
 	 * <p>This optimized implementation provides significant performance benefits over numerical differentiation:
 	 * <ul>
 	 *   <li>O(1) complexity relative to input size (no finite difference approximation)</li>
@@ -319,22 +317,22 @@ public class CollectionExponentComputation<T extends PackedCollection> extends T
 	 *   <li>Memory-efficient through shape broadcasting and tensor operations</li>
 	 *   <li>Parallel execution support through the collection framework</li>
 	 * </ul>
-	 * 
+	 *
 	 * @param target The {@link Producer} representing the variable with respect to which the derivative is computed
 	 * @return A {@link CollectionProducer} that computes the derivative, or delegates to the parent class
 	 *         if custom delta is disabled or the computation doesn't match the supported pattern
-	 * 
+	 *
 	 * @see org.almostrealism.algebra.AlgebraFeatures#matchInput
 	 * @see #enableCustomDelta
 	 * @throws UnsupportedOperationException if variable count operands are encountered when custom delta is enabled
 	 */
 	@Override
-	public CollectionProducer<T> delta(Producer<?> target) {
+	public CollectionProducer<PackedCollection> delta(Producer<?> target) {
 		if (!enableCustomDelta) {
 			return super.delta(target);
 		}
 
-		Optional<Producer<T>> match = AlgebraFeatures.matchInput(this, target);
+		Optional<Producer<PackedCollection>> match = AlgebraFeatures.matchInput(this, target);
 
 		if (match == null || match.orElse(null) != getInputs().get(1)) {
 			// If there are multiple matches, or the match is
@@ -346,7 +344,7 @@ public class CollectionExponentComputation<T extends PackedCollection> extends T
 			return super.delta(target);
 		}
 
-		List<Supplier<Evaluable<? extends T>>> operands =
+		List<Supplier<Evaluable<? extends PackedCollection>>> operands =
 				getInputs().stream().skip(1).collect(Collectors.toList());
 
 		TraversalPolicy targetShape = shape(target);

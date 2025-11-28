@@ -116,19 +116,17 @@ import java.util.function.Supplier;
  * <li>{@link #enableLargeSlice} - Permits large slice operations</li>
  * <li>{@link #enableShortCircuit} - Short-circuits simple repetitions</li>
  * </ul>
- * 
- * @param <T> the type of PackedCollection being repeated
- * 
+ *
  * @see IndexProjectionProducerComputation
  * @see TraversalPolicy
  * @see PackedCollection#repeat(int)
  * @see org.almostrealism.collect.CollectionFeatures#repeat(int, io.almostrealism.relation.Producer)
- * 
+ *
  * @author Michael Murray
  * @since 0.68
  */
-public class PackedCollectionRepeat<T extends PackedCollection>
-		extends IndexProjectionProducerComputation<T> {
+public class PackedCollectionRepeat
+		extends IndexProjectionProducerComputation {
 	
 	public static boolean enableUniqueIndexOptimization = true;
 	public static boolean enableInputIsolation = true;
@@ -391,24 +389,24 @@ public class PackedCollectionRepeat<T extends PackedCollection>
 	 * @see HardwareEvaluable
 	 */
 	@Override
-	public Evaluable<T> get() {
+	public Evaluable<PackedCollection> get() {
 		if (!enableShortCircuit || sliceShape.getTotalSizeLong() != getShape().getTotalSizeLong()) {
 			return super.get();
 		}
 
-		Evaluable<T> ev = (Evaluable) getInputs().get(1).get();
+		Evaluable<PackedCollection> ev = (Evaluable) getInputs().get(1).get();
 
 		int r = Math.toIntExact(getShape().getTotalSizeLong() / subsetShape.getTotalSizeLong());
 
 		if (ev instanceof Provider) {
 			return p((Provider) ev, v ->
-					(T) ((PackedCollection) v).repeat(r));
+					((PackedCollection) v).repeat(r));
 		}
 
-		HardwareEvaluable<T> hev = new HardwareEvaluable(getInputs().get(1)::get, null, null, false);
+		HardwareEvaluable<PackedCollection> hev = new HardwareEvaluable(getInputs().get(1)::get, null, null, false);
 		hev.setShortCircuit(args -> {
-			T out = hev.getKernel().getValue().evaluate(args);
-			return (T) out.repeat(r);
+			PackedCollection out = hev.getKernel().getValue().evaluate(args);
+			return out.repeat(r);
 		});
 		return hev;
 	}
@@ -429,8 +427,8 @@ public class PackedCollectionRepeat<T extends PackedCollection>
 	 * @see Process#generate(List)
 	 */
 	@Override
-	public PackedCollectionRepeat<T> generate(List<Process<?, ?>> children) {
-		return new PackedCollectionRepeat<>(getShape(), subsetShape, sliceShape, (Producer<?>) children.get(1));
+	public PackedCollectionRepeat generate(List<Process<?, ?>> children) {
+		return new PackedCollectionRepeat(getShape(), subsetShape, sliceShape, (Producer<?>) children.get(1));
 	}
 
 	/**
@@ -455,17 +453,17 @@ public class PackedCollectionRepeat<T extends PackedCollection>
 	 *         in additional isolation infrastructure
 	 * 
 	 * @see Process#isolate()
-	 * @see Process#isolated(Supplier) 
+	 * @see Process#isolated(Supplier)
 	 */
 	@Override
-	public Process<Process<?, ?>, Evaluable<? extends T>> isolate() {
+	public Process<Process<?, ?>, Evaluable<? extends PackedCollection>> isolate() {
 		Producer in = (Producer) getInputs().get(1);
 		if (in instanceof ReshapeProducer) in = ((ReshapeProducer<?>) in).getComputation();
 
 		boolean computable = in instanceof Computation;
 
 		if (!enableIsolation && !computable) {
-			PackedCollectionRepeat<T> isolated = (PackedCollectionRepeat<T>)
+			PackedCollectionRepeat isolated = (PackedCollectionRepeat)
 					generateReplacement(List.of((Process) getInputs().get(0), (Process) getInputs().get(1)));
 			return isolated;
 		}
@@ -473,7 +471,7 @@ public class PackedCollectionRepeat<T extends PackedCollection>
 		if (!enableInputIsolation || !computable)
 			return super.isolate();
 
-		PackedCollectionRepeat<T> isolated = (PackedCollectionRepeat<T>)
+		PackedCollectionRepeat isolated = (PackedCollectionRepeat)
 				generateReplacement(List.of((Process) getInputs().get(0), isolate((Process) getInputs().get(1))));
 
 		return enableIsolation ? (Process) Process.isolated(isolated) : isolated;

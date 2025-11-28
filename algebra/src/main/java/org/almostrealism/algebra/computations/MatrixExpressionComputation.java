@@ -31,13 +31,12 @@ import org.almostrealism.collect.computations.TraversableExpressionComputation;
  * {@link #getExpression(io.almostrealism.collect.TraversableExpression...)}.
  * </p>
  *
- * @param <T>  the packed collection type
  * @author  Michael Murray
  * @see IdentityMatrixComputation
  * @see DiagonalMatrixComputation
  * @see ScalarMatrixComputation
  */
-public abstract class MatrixExpressionComputation<T extends PackedCollection> extends TraversableExpressionComputation<T> {
+public abstract class MatrixExpressionComputation extends TraversableExpressionComputation {
 	/**
 	 * Creates a new matrix expression computation.
 	 *

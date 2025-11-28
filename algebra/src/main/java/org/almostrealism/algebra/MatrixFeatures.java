@@ -117,7 +117,7 @@ public interface MatrixFeatures extends AlgebraFeatures {
 			throw new IllegalArgumentException();
 		}
 
-		return new IdentityMatrixComputation<>(shape.traverseEach());
+		return (CollectionProducer<T>) new IdentityMatrixComputation(shape.traverseEach());
 	}
 
 	/**
@@ -148,7 +148,7 @@ public interface MatrixFeatures extends AlgebraFeatures {
 		}
 
 		TraversalPolicy diagonalShape = shape(shape.length(0), shape.length(0)).traverse(1);
-		return new DiagonalMatrixComputation<>(diagonalShape, vector);
+		return (CollectionProducer<T>) new DiagonalMatrixComputation(diagonalShape, (Producer) vector);
 	}
 
 	/**

@@ -194,7 +194,7 @@ import java.util.List;
  *
  * @author Michael Murray
  */
-public class FourierTransform extends CollectionProducerComputationBase<PackedCollection, PackedCollection> {
+public class FourierTransform extends CollectionProducerComputationBase {
 	/**
 	 * Enables recursive method calls in generated kernels.
 	 * When true, uses function recursion for FFT subdivisions.

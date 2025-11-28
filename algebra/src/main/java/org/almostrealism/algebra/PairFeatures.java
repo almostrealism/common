@@ -26,9 +26,10 @@ import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 import org.almostrealism.collect.computations.DefaultTraversableExpressionComputation;
+import org.almostrealism.hardware.MemoryData;
 
+import java.util.function.BiFunction;
 import java.util.function.Function;
-import java.util.function.Supplier;
 
 /**
  * Provides convenient factory methods for creating {@link Pair} computations and complex number operations.
@@ -117,7 +118,7 @@ public interface PairFeatures extends CollectionFeatures {
 	 * @return a {@link CollectionProducer} that evaluates to the specified {@link Pair}
 	 */
 	default CollectionProducer<Pair> value(Pair value) {
-		return DefaultTraversableExpressionComputation.fixed((Pair) value, Pair.postprocessor());
+		return (CollectionProducer<Pair>) (CollectionProducer) DefaultTraversableExpressionComputation.fixed((Pair) value, (BiFunction) Pair.postprocessor());
 	}
 
 	/**
@@ -155,7 +156,7 @@ public interface PairFeatures extends CollectionFeatures {
 	 * @return a computation that produces the complex product
 	 * @throws IllegalArgumentException if the collections have incompatible sizes
 	 */
-	default <T extends PackedCollection> CollectionProducerComputationBase<T, T> multiplyComplex(Producer<T> a, Producer<T> b) {
+	default <T extends PackedCollection> CollectionProducerComputationBase multiplyComplex(Producer<T> a, Producer<T> b) {
 		TraversalPolicy shape = shape(a);
 		int size = shape(b).getSize();
 
@@ -170,7 +171,7 @@ public interface PairFeatures extends CollectionFeatures {
 			}
 		}
 
-		return new DefaultTraversableExpressionComputation<>("multiplyComplex", shape,
+		return new DefaultTraversableExpressionComputation("multiplyComplex", shape,
 				(Function<TraversableExpression[], CollectionExpression>)
 						args -> new ComplexProductExpression(shape, args[1], args[2]),
 				(Producer) a, (Producer) b).setPostprocessor(ComplexNumber.complexPostprocessor());

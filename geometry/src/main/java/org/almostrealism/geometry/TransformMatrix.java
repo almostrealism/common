@@ -352,7 +352,7 @@ public class TransformMatrix extends PackedCollection implements TransformMatrix
 	 * returning the result as a {@link TransformMatrix}.
 	 */
 	public TransformMatrix adjoint() {
-		return new TransformMatrixAdjoint(() -> new Provider<>(this)).evaluate();
+		return (TransformMatrix) new TransformMatrixAdjoint(() -> new Provider<>(this)).evaluate();
 	}
 
 	@Override

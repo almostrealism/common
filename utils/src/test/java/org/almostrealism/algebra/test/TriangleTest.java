@@ -110,11 +110,11 @@ public class TriangleTest implements TestFeatures {
 	protected CollectionProducer<PackedCollection> originProducer() {
 		Producer<Ray> noRank = ((ProducerWithRank) intersectAt()).getProducer();
 		if (noRank instanceof ReshapeProducer)
-			noRank = ((ReshapeProducer) noRank).getComputation();
+			noRank = (Producer<Ray>) ((ReshapeProducer) noRank).getComputation();
 
 		CollectionProducer<PackedCollection> originVector =
 				(CollectionProducer)
-						((CollectionProducerComputationBase) noRank).getInputs().get(1);
+						((CollectionProducerComputationBase) (Producer) noRank).getInputs().get(1);
 		if (originVector instanceof ReshapeProducer) {
 			originVector = (CollectionProducer<PackedCollection>) ((ReshapeProducer) originVector).getComputation();
 		}

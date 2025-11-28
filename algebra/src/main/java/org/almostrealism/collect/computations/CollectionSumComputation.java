@@ -97,15 +97,13 @@ import java.util.List;
  *   <li><strong>Mean:</strong> Sum divided by count (build on top of this)</li>
  * </ul>
  *
- * @param <T> The type of {@link PackedCollection} this computation produces
- *
  * @see AggregatedProducerComputation
  * @see CollectionAddComputation
  * @see org.almostrealism.collect.CollectionFeatures#sum(io.almostrealism.relation.Producer)
  *
  * @author Michael Murray
  */
-public class CollectionSumComputation<T extends PackedCollection> extends AggregatedProducerComputation<T> {
+public class CollectionSumComputation extends AggregatedProducerComputation {
 	/**
 	 * Constructs a sum computation that reduces the input collection to a single sum value.
 	 * The input shape is automatically determined from the producer.
@@ -147,7 +145,7 @@ public class CollectionSumComputation<T extends PackedCollection> extends Aggreg
 	 * @return A new {@link CollectionSumComputation} for the child input
 	 */
 	@Override
-	public CollectionSumComputation<T> generate(List<Process<?, ?>> children) {
+	public CollectionSumComputation generate(List<Process<?, ?>> children) {
 		return new CollectionSumComputation((Producer) children.get(1));
 	}
 

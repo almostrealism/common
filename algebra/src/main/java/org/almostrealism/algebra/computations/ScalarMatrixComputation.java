@@ -57,12 +57,11 @@ import java.util.Optional;
  * // Equivalent to 5.0 * I
  * }</pre>
  *
- * @param <T>  the packed collection type
  * @author  Michael Murray
  * @see IdentityMatrixComputation
  * @see DiagonalMatrixComputation
  */
-public class ScalarMatrixComputation<T extends PackedCollection> extends MatrixExpressionComputation<T> {
+public class ScalarMatrixComputation extends MatrixExpressionComputation {
 	/**
 	 * Creates a scalar matrix computation with default name "scalarMatrix".
 	 *
@@ -164,7 +163,7 @@ public class ScalarMatrixComputation<T extends PackedCollection> extends MatrixE
 	 * @return a new scalar matrix computation with the child scalar producer
 	 */
 	@Override
-	public CollectionProducerParallelProcess<T> generate(List<Process<?, ?>> children) {
-		return new ScalarMatrixComputation<>(getShape(), (Producer) children.get(1));
+	public CollectionProducerParallelProcess<PackedCollection> generate(List<Process<?, ?>> children) {
+		return new ScalarMatrixComputation(getShape(), (Producer) children.get(1));
 	}
 }

@@ -106,15 +106,13 @@ import java.util.stream.IntStream;
  * {@link ArithmeticSequenceExpression} with a fixed rate of 1, as the general rate scaling
  * can be handled through the {@link #multiply(double)} method.</p>
  *
- * @param <T> The type of {@link PackedCollection} this computation produces
- *
  * @see TraversableExpressionComputation
  * @see ArithmeticSequenceExpression
  * @see org.almostrealism.collect.CollectionFeatures#integers(int)
  *
  * @author Michael Murray
  */
-public class ArithmeticSequenceComputation<T extends PackedCollection> extends TraversableExpressionComputation<T> {
+public class ArithmeticSequenceComputation extends TraversableExpressionComputation {
 	/**
 	 * Whether the sequence length is fixed at construction time (true) or
 	 * can be determined dynamically at runtime (false).
@@ -208,8 +206,8 @@ public class ArithmeticSequenceComputation<T extends PackedCollection> extends T
 	 * @return A new {@link ArithmeticSequenceComputation} with scaled values
 	 */
 	@Override
-	public ArithmeticSequenceComputation<T> multiply(double factor) {
-		return new ArithmeticSequenceComputation<>(getShape(), fixedCount, initial * factor, rate * factor);
+	public ArithmeticSequenceComputation multiply(double factor) {
+		return new ArithmeticSequenceComputation(getShape(), fixedCount, initial * factor, rate * factor);
 	}
 
 	/**
@@ -252,10 +250,10 @@ public class ArithmeticSequenceComputation<T extends PackedCollection> extends T
 	 *
 	 * @return An {@link Evaluable} that computes the arithmetic sequence directly
 	 */
-	public Evaluable<T> get() {
+	public Evaluable<PackedCollection> get() {
 		return args -> {
 			warn("Direct evaluation of arithmetic sequence");
-			return (T) pack(IntStream.range(0, getShape().getTotalSize())
+			return pack(IntStream.range(0, getShape().getTotalSize())
 					.mapToDouble(i -> initial + i * rate).toArray());
 		};
 	}
@@ -270,7 +268,7 @@ public class ArithmeticSequenceComputation<T extends PackedCollection> extends T
 	 * @return This computation (arithmetic sequences have no children to update)
 	 */
 	@Override
-	public CollectionProducerParallelProcess<T> generate(List<Process<?, ?>> children) {
+	public CollectionProducerParallelProcess generate(List<Process<?, ?>> children) {
 		return this;
 	}
 }

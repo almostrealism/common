@@ -82,15 +82,13 @@ import java.util.function.Supplier;
  * iterative computations by maintaining the relationship between iteration indices and
  * gradient values.</p>
  *
- * @param <T> The type of {@link PackedCollection} this computation produces
- *
  * @see ConstantRepeatedProducerComputation
  * @see TraversableDeltaComputation
  * @see org.almostrealism.collect.CollectionProducer#delta(Producer)
  *
  * @author Michael Murray
  */
-public class ConstantRepeatedDeltaComputation<T extends PackedCollection> extends ConstantRepeatedProducerComputation<T> implements TraversableExpression<Double> {
+public class ConstantRepeatedDeltaComputation extends ConstantRepeatedProducerComputation implements TraversableExpression<Double> {
 	/** The shape of the delta (gradient) computation output, before appending target dimensions. */
 	private TraversalPolicy deltaShape, targetShape;
 
@@ -168,7 +166,7 @@ public class ConstantRepeatedDeltaComputation<T extends PackedCollection> extend
 	 * @param fallback The fallback delta computation to use for value access
 	 * @see #getValueAt(Expression)
 	 */
-	protected void setFallback(TraversableDeltaComputation<T> fallback) {
+	protected void setFallback(TraversableDeltaComputation fallback) {
 		addDependentLifecycle(fallback);
 		this.fallback = fallback;
 	}
@@ -290,8 +288,8 @@ public class ConstantRepeatedDeltaComputation<T extends PackedCollection> extend
 	 *         but updated inputs from the child processes
 	 */
 	@Override
-	public ConstantRepeatedDeltaComputation<T> generate(List<Process<?, ?>> children) {
-		return new ConstantRepeatedDeltaComputation<>(
+	public ConstantRepeatedDeltaComputation generate(List<Process<?, ?>> children) {
+		return new ConstantRepeatedDeltaComputation(
 				deltaShape, targetShape,
 				getMemLength(), count,
 				expression, target,
@@ -305,7 +303,7 @@ public class ConstantRepeatedDeltaComputation<T extends PackedCollection> extend
 	 *
 	 * <p>Usage Example:</p>
 	 * <pre>{@code
-	 * ConstantRepeatedDeltaComputation<PackedCollection> delta =
+	 * ConstantRepeatedDeltaComputation delta =
 	 *     ConstantRepeatedDeltaComputation.create(
 	 *         shape(10), shape(5), 3,
 	 *         (args, index) -> computeExpression(args, index),
@@ -314,7 +312,6 @@ public class ConstantRepeatedDeltaComputation<T extends PackedCollection> extend
 	 *     );
 	 * }</pre>
 	 *
-	 * @param <T> The type of {@link PackedCollection} produced
 	 * @param deltaShape The shape of the delta computation output
 	 * @param targetShape The shape of the target for differentiation
 	 * @param count The number of iterations
@@ -323,12 +320,12 @@ public class ConstantRepeatedDeltaComputation<T extends PackedCollection> extend
 	 * @param arguments Input producers providing data collections
 	 * @return A new {@link ConstantRepeatedDeltaComputation} instance
 	 */
-	public static <T extends PackedCollection> ConstantRepeatedDeltaComputation<T> create(
+	public static ConstantRepeatedDeltaComputation create(
 			TraversalPolicy deltaShape, TraversalPolicy targetShape, int count,
 			BiFunction<TraversableExpression[], Expression, Expression> expression,
 			Producer<?> target,
 			Producer<PackedCollection>... arguments) {
-		return new ConstantRepeatedDeltaComputation<>(
+		return new ConstantRepeatedDeltaComputation(
 				deltaShape, targetShape, count, expression,
 				target, arguments);
 	}

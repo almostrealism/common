@@ -104,17 +104,15 @@ import java.util.List;
  *   <li>Implementing sparse data structures</li>
  *   <li>Creating baseline values for gradient computations</li>
  * </ul>
- * 
- * @param <T> The type of PackedCollection this computation produces
- * 
+ *
  * @author Michael Murray
  * @see CollectionConstantComputation
- * @see PackedCollection  
+ * @see PackedCollection
  * @see TraversalPolicy
  * @see org.almostrealism.collect.CollectionFeatures#zeros(TraversalPolicy)
  * @see org.almostrealism.collect.CollectionFeatures#constant(TraversalPolicy, double)
  */
-public class CollectionZerosComputation<T extends PackedCollection> extends CollectionConstantComputation<T> {
+public class CollectionZerosComputation extends CollectionConstantComputation {
 	/**
 	 * Creates a new CollectionZerosComputation that will produce a zero-filled collection
 	 * with the specified shape. The computation is automatically named "zeros" to clearly
@@ -190,7 +188,7 @@ public class CollectionZerosComputation<T extends PackedCollection> extends Coll
 	 * @see CollectionProducerParallelProcess
 	 */
 	@Override
-	public CollectionProducerParallelProcess<T> generate(List<Process<?, ?>> children) {
+	public CollectionProducerParallelProcess<PackedCollection> generate(List<Process<?, ?>> children) {
 		return this;
 	}
 
@@ -208,7 +206,7 @@ public class CollectionZerosComputation<T extends PackedCollection> extends Coll
 	 * @see Process#isolate()
 	 */
 	@Override
-	public Process<Process<?, ?>, Evaluable<? extends T>> isolate() {
+	public Process<Process<?, ?>, Evaluable<? extends PackedCollection>> isolate() {
 		throw new UnsupportedOperationException();
 	}
 
@@ -229,8 +227,8 @@ public class CollectionZerosComputation<T extends PackedCollection> extends Coll
 	 * @see CollectionProducer
 	 */
 	@Override
-	public CollectionProducer<T> traverse(int axis) {
-		return new CollectionZerosComputation<>(getShape().traverse(axis));
+	public CollectionProducer<PackedCollection> traverse(int axis) {
+		return new CollectionZerosComputation(getShape().traverse(axis));
 	}
 
 	/**
@@ -262,8 +260,8 @@ public class CollectionZerosComputation<T extends PackedCollection> extends Coll
 	 * @see CollectionProducerComputation
 	 */
 	@Override
-	public CollectionProducerComputation<T> reshape(TraversalPolicy shape) {
-		return new CollectionZerosComputation<>(shape);
+	public CollectionProducerComputation<PackedCollection> reshape(TraversalPolicy shape) {
+		return new CollectionZerosComputation(shape);
 	}
 
 	/**
@@ -299,8 +297,8 @@ public class CollectionZerosComputation<T extends PackedCollection> extends Coll
 	 * @see org.almostrealism.calculus.DeltaFeatures
 	 */
 	@Override
-	public CollectionProducer<T> delta(Producer<?> target) {
-		return new CollectionZerosComputation<>(getShape().append(shape(target)));
+	public CollectionProducer<PackedCollection> delta(Producer<?> target) {
+		return new CollectionZerosComputation(getShape().append(shape(target)));
 	}
 }
 

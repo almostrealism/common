@@ -72,17 +72,15 @@ import java.util.List;
  *   <li>The transformation is applied through index mapping during evaluation</li>
  *   <li>Memory access patterns may change significantly depending on the permutation order</li>
  * </ul>
- * 
- * @param <T> The type of collection being permuted, must extend {@link PackedCollection}
- * 
+ *
  * @see IndexProjectionProducerComputation
  * @see TraversalPolicy#permute(int...)
  * @see org.almostrealism.collect.CollectionFeatures#permute(io.almostrealism.relation.Producer, int...)
- * 
+ *
  * @author Michael Murray
  */
-public class CollectionPermute<T extends PackedCollection>
-		extends IndexProjectionProducerComputation<T> {
+public class CollectionPermute
+		extends IndexProjectionProducerComputation {
 	/** 
 	 * The dimension permutation order array. Each element specifies which dimension 
 	 * from the input should appear at that position in the output. For example,
@@ -226,12 +224,12 @@ public class CollectionPermute<T extends PackedCollection>
 	 * @see IndexProjectionProducerComputation#generate(List)
 	 */
 	@Override
-	public CollectionPermute<T> generate(List<Process<?, ?>> children) {
+	public CollectionPermute generate(List<Process<?, ?>> children) {
 		if (getChildren().size() != 2) {
 			throw new UnsupportedOperationException();
 		}
 
-		return new CollectionPermute<>((Producer<?>) children.get(1), order);
+		return new CollectionPermute((Producer<?>) children.get(1), order);
 	}
 
 	/**

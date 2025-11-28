@@ -182,7 +182,7 @@ import java.util.function.Function;
  *
  * @author Michael Murray
  */
-public class Interpolate extends CollectionProducerComputationBase<PackedCollection, PackedCollection> {
+public class Interpolate extends CollectionProducerComputationBase {
 	/**
 	 * When true, output shape is scalar (1 element).
 	 * When false, output shape matches position shape.

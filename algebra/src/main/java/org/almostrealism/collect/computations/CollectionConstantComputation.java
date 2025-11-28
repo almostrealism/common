@@ -85,8 +85,6 @@ import org.almostrealism.collect.PackedCollection;
  *   <li>Short-circuit evaluation paths</li>
  * </ul>
  *
- * @param <T> The type of {@link PackedCollection} this computation produces
- *
  * @see TraversableExpressionComputation
  * @see SingleConstantComputation
  * @see CollectionZerosComputation
@@ -96,7 +94,7 @@ import org.almostrealism.collect.PackedCollection;
  *
  * @author Michael Murray
  */
-public abstract class CollectionConstantComputation<T extends PackedCollection> extends TraversableExpressionComputation<T> {
+public abstract class CollectionConstantComputation extends TraversableExpressionComputation {
 	/**
 	 * Constructs a constant computation with the specified name and output shape.
 	 *

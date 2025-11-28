@@ -39,9 +39,9 @@ public class CollectionExponentComputationTest implements TestFeatures {
 	public void elementWisePower() {
 		PackedCollection base = pack(2.0, 3.0, 4.0);
 		PackedCollection exponent = pack(2.0, 2.0, 2.0);
-		
-		CollectionExponentComputation<PackedCollection> power = 
-			new CollectionExponentComputation<>(shape(3), p(base), p(exponent));
+
+		CollectionExponentComputation power =
+			new CollectionExponentComputation(shape(3), p(base), p(exponent));
 		
 		PackedCollection result = power.get().evaluate();
 		
@@ -81,9 +81,9 @@ public class CollectionExponentComputationTest implements TestFeatures {
 		matrix.setValueAt(2.0, 1, 0);
 		matrix.setValueAt(3.0, 1, 1);
 		matrix.setValueAt(4.0, 1, 2);
-		
-		CollectionExponentComputation<PackedCollection> matrixPower = 
-			new CollectionExponentComputation<>(shape(2, 3), p(matrix), c(2.0));
+
+		CollectionExponentComputation matrixPower =
+			new CollectionExponentComputation(shape(2, 3), p(matrix), c(2.0));
 		PackedCollection squared = matrixPower.get().evaluate();
 		
 		// Expected result: [[1,4,9], [4,9,16]]

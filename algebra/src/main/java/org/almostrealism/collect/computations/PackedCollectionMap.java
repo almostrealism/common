@@ -44,8 +44,8 @@ import java.util.function.Supplier;
 import java.util.stream.Stream;
 
 @Deprecated
-public class PackedCollectionMap<T extends PackedCollection>
-		extends CollectionProducerComputationBase<PackedCollection, T>
+public class PackedCollectionMap
+		extends CollectionProducerComputationBase
 		implements TraversableExpression<Double> {
 	public static boolean enableAtomicKernel = false;
 	public static boolean enableChainDelta = false;
@@ -84,8 +84,8 @@ public class PackedCollectionMap<T extends PackedCollection>
 	}
 
 	@Override
-	public Scope<T> getScope(KernelStructureContext context) {
-		Scope<T> scope = super.getScope(context);
+	public Scope<PackedCollection> getScope(KernelStructureContext context) {
+		Scope<PackedCollection> scope = super.getScope(context);
 
 		ArrayVariable<Double> output = (ArrayVariable<Double>) getOutputVariable();
 
@@ -143,7 +143,7 @@ public class PackedCollectionMap<T extends PackedCollection>
 
 		if (mapped instanceof PackedCollectionMap) {
 			warn("Embedded PackedCollectionMap");
-			((PackedCollectionMap<?>) mapped).setIgnoreTraversalAxis(true);
+			((PackedCollectionMap) mapped).setIgnoreTraversalAxis(true);
 		}
 
 		if (mapped instanceof TraversableExpression) {
@@ -170,7 +170,7 @@ public class PackedCollectionMap<T extends PackedCollection>
 	}
 
 	@Override
-	public CollectionProducer<T> delta(Producer<?> target) {
+	public CollectionProducer<PackedCollection> delta(Producer<?> target) {
 		if (!enableChainDelta || !(AlgebraFeatures.deepMatch(getInputs().get(1), target))) {
 			return TraversableDeltaComputation.create("delta", getShape(), shape(target),
 					args -> CollectionExpression.create(getShape(), idx -> args[1].getValueAt(idx)), target,
@@ -190,9 +190,9 @@ public class PackedCollectionMap<T extends PackedCollection>
 
 		Producer<?> stub = func(inShape, args -> null);
 
-		TraversableDeltaComputation<T> deltaOut = TraversableDeltaComputation.create("delta", shape(outSize), shape(inSize),
+		TraversableDeltaComputation deltaOut = TraversableDeltaComputation.create("delta", shape(outSize), shape(inSize),
 				args -> CollectionExpression.create(getShape(), idx -> args[1].getValueAt(idx)),
-				stub, (Producer) new PackedCollectionMap<>(getShape(), stub, mapper));
+				stub, (Producer) new PackedCollectionMap(getShape(), stub, mapper));
 		Producer deltaIn = ((CollectionProducer<PackedCollection>) getInputs().get(1))
 							.delta(target).reshape(shape(inSize, targetSize));
 		if (deltaIn instanceof ScopeLifecycle) deltaOut.addDependentLifecycle((ScopeLifecycle) deltaIn);
@@ -200,8 +200,8 @@ public class PackedCollectionMap<T extends PackedCollection>
 	}
 
 	@Override
-	public PackedCollectionMap<T> generate(List<Process<?, ?>> children) {
-		return new PackedCollectionMap<>(getShape(), (Producer) children.get(1), mapper);
+	public PackedCollectionMap generate(List<Process<?, ?>> children) {
+		return new PackedCollectionMap(getShape(), (Producer) children.get(1), mapper);
 	}
 
 	@Override
@@ -235,7 +235,7 @@ public class PackedCollectionMap<T extends PackedCollection>
 		return ((Shape) collection).getShape();
 	}
 
-	private static class ItemComputation<T extends PackedCollection> extends DefaultTraversableExpressionComputation<T> {
+	private static class ItemComputation extends DefaultTraversableExpressionComputation {
 		public ItemComputation(TraversalPolicy shape,
 							   Function<TraversableExpression[], CollectionExpression> expression,
 							   Producer<PackedCollection>... args) {

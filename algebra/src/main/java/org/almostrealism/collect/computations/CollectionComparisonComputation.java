@@ -120,8 +120,6 @@ import java.util.List;
  *   <li><strong>Branching:</strong> Uses conditional expressions in generated code</li>
  * </ul>
  *
- * @param <T> The type of {@link PackedCollection} this computation produces
- *
  * @see TransitiveDeltaExpressionComputation
  * @see GreaterThanCollection
  * @see LessThanCollection
@@ -129,7 +127,7 @@ import java.util.List;
  *
  * @author Michael Murray
  */
-public class CollectionComparisonComputation<T extends PackedCollection> extends TransitiveDeltaExpressionComputation<T> {
+public class CollectionComparisonComputation extends TransitiveDeltaExpressionComputation {
 	/**
 	 * Constructs a comparison computation with four operands: two comparison values
 	 * and two conditional result values.
@@ -218,7 +216,7 @@ public class CollectionComparisonComputation<T extends PackedCollection> extends
 	 * @return A new {@link CollectionProducerParallelProcess} for parallel execution
 	 */
 	@Override
-	public CollectionProducerParallelProcess<T> generate(List<Process<?, ?>> children) {
+	public CollectionProducerParallelProcess<PackedCollection> generate(List<Process<?, ?>> children) {
 		return (CollectionProducerParallelProcess)
 				equals((Producer) children.get(1), (Producer) children.get(2),
 						(Producer) children.get(3), (Producer) children.get(4));

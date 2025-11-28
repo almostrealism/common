@@ -97,18 +97,16 @@ import java.util.function.BiFunction;
  *   <li>Integrates with {@link org.almostrealism.collect.CollectionFeatures} for high-level operations</li>
  * </ul>
  * 
- * @param <T> The type of {@link PackedCollection} this computation operates on
- * 
  * @see RepeatedProducerComputation
- * @see ConstantRepeatedProducerComputation  
+ * @see ConstantRepeatedProducerComputation
  * @see TraversableExpression
  * @see AggregatedProducerComputation
  * @see org.almostrealism.collect.CollectionFeatures#indexOfMax(io.almostrealism.relation.Producer)
- * 
+ *
  * @author Michael Murray
  */
-public class TraversableRepeatedProducerComputation<T extends PackedCollection>
-		extends ConstantRepeatedProducerComputation<T> implements TraversableExpression<Double> {
+public class TraversableRepeatedProducerComputation
+		extends ConstantRepeatedProducerComputation implements TraversableExpression<Double> {
 	
 	/**
 	 * The threshold for the number of iterations above which this computation
@@ -377,8 +375,8 @@ public class TraversableRepeatedProducerComputation<T extends PackedCollection>
 	 * @see java.util.function.Supplier
 	 */
 	@Override
-	public TraversableRepeatedProducerComputation<T> generate(List<Process<?, ?>> children) {
-		return new TraversableRepeatedProducerComputation<>(getName(), getShape(),
+	public TraversableRepeatedProducerComputation generate(List<Process<?, ?>> children) {
+		return new TraversableRepeatedProducerComputation(getName(), getShape(),
 				count, initial, expression,
 				children.stream().skip(1).toArray(Producer[]::new));
 	}

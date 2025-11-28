@@ -49,10 +49,10 @@ public class DefaultCollectionEvaluableTest {
 	public void basicCreation() {
 		// Create a simple shape for testing
 		TraversalPolicy shape = new TraversalPolicy(3, 2); // 3x2 matrix
-		
+
 		// Create a simple constant computation for testing
-		SingleConstantComputation<PackedCollection> computation =
-			new SingleConstantComputation<>(shape, 5.0);
+		SingleConstantComputation computation =
+			new SingleConstantComputation(shape, 5.0);
 		
 		// Get compute context
 		ComputeContext<MemoryData> context = Hardware.getLocalHardware()
@@ -87,8 +87,8 @@ public class DefaultCollectionEvaluableTest {
 		
 		try {
 			TraversalPolicy shape = new TraversalPolicy(4, 3);
-			SingleConstantComputation<PackedCollection> computation =
-				new SingleConstantComputation<>(shape, 2.5);
+			SingleConstantComputation computation =
+				new SingleConstantComputation(shape, 2.5);
 			
 			ComputeContext<MemoryData> context = Hardware.getLocalHardware()
 				.getComputer().getContext(computation);
@@ -128,8 +128,8 @@ public class DefaultCollectionEvaluableTest {
 		
 		try {
 			TraversalPolicy shape = new TraversalPolicy(2, 5); // 2x5 matrix
-			SingleConstantComputation<PackedCollection> computation =
-				new SingleConstantComputation<>(shape, 1.0);
+			SingleConstantComputation computation =
+				new SingleConstantComputation(shape, 1.0);
 			
 			ComputeContext<MemoryData> context = Hardware.getLocalHardware()
 				.getComputer().getContext(computation);
@@ -157,8 +157,8 @@ public class DefaultCollectionEvaluableTest {
 	@Test
 	public void postProcessingWithCustomProcessor() {
 		TraversalPolicy shape = new TraversalPolicy(3);
-		SingleConstantComputation<PackedCollection> computation =
-			new SingleConstantComputation<>(shape, 3.0);
+		SingleConstantComputation computation =
+			new SingleConstantComputation(shape, 3.0);
 		
 		ComputeContext<MemoryData> context = Hardware.getLocalHardware()
 			.getComputer().getContext(computation);
@@ -195,8 +195,8 @@ public class DefaultCollectionEvaluableTest {
 	@Test
 	public void postProcessingDefault() {
 		TraversalPolicy shape = new TraversalPolicy(2, 2);
-		SingleConstantComputation<PackedCollection> computation =
-			new SingleConstantComputation<>(shape, 7.5);
+		SingleConstantComputation computation =
+			new SingleConstantComputation(shape, 7.5);
 		
 		ComputeContext<MemoryData> context = Hardware.getLocalHardware()
 			.getComputer().getContext(computation);
@@ -218,10 +218,10 @@ public class DefaultCollectionEvaluableTest {
 	public void integrationWithComputationPipeline() {
 		TraversalPolicy shape = new TraversalPolicy(5);
 		double constantValue = 42.0;
-		
+
 		// Create a computation that can be short-circuited for testing
-		SingleConstantComputation<PackedCollection> computation =
-			new SingleConstantComputation<>(shape, constantValue);
+		SingleConstantComputation computation =
+			new SingleConstantComputation(shape, constantValue);
 		
 		ComputeContext<MemoryData> context = Hardware.getLocalHardware()
 			.getComputer().getContext(computation);
@@ -274,8 +274,8 @@ public class DefaultCollectionEvaluableTest {
 		
 		for (int i = 0; i < shapes.length; i++) {
 			TraversalPolicy shape = shapes[i];
-			SingleConstantComputation<PackedCollection> computation =
-				new SingleConstantComputation<>(shape, i + 1.0);
+			SingleConstantComputation computation =
+				new SingleConstantComputation(shape, i + 1.0);
 			
 			ComputeContext<MemoryData> context = Hardware.getLocalHardware()
 				.getComputer().getContext(computation);
@@ -301,8 +301,8 @@ public class DefaultCollectionEvaluableTest {
 	@Test
 	public void errorHandling() {
 		TraversalPolicy shape = new TraversalPolicy(3);
-		SingleConstantComputation<PackedCollection> computation =
-			new SingleConstantComputation<>(shape, 1.0);
+		SingleConstantComputation computation =
+			new SingleConstantComputation(shape, 1.0);
 		
 		ComputeContext<MemoryData> context = Hardware.getLocalHardware()
 			.getComputer().getContext(computation);

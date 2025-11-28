@@ -23,6 +23,7 @@ import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.DefaultTraversableExpressionComputation;
 
+import java.util.function.BiFunction;
 import java.util.function.IntFunction;
 
 /**
@@ -64,7 +65,7 @@ public interface RayFeatures extends VectorFeatures {
 	 * @return a producer that yields the specified ray
 	 */
 	default CollectionProducer<Ray> value(Ray value) {
-		return DefaultTraversableExpressionComputation.fixed(value, Ray.postprocessor());
+		return (CollectionProducer<Ray>) (CollectionProducer) DefaultTraversableExpressionComputation.fixed(value, (BiFunction) Ray.postprocessor());
 	}
 
 	/**

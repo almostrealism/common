@@ -288,7 +288,7 @@ public class MyNativeEnabledApplication implements CodeFeatures {
 		ComplexNumber a = new ComplexNumber(1, 2);
 		ComplexNumber b = new ComplexNumber(3, 4);
 
-		Producer<ComplexNumber> c = multiplyComplex(c(a), c(b));
+		Producer<ComplexNumber> c = (Producer) multiplyComplex(c(a), c(b));
 		System.out.println("(1 + 2i) * (3 + 4i) = ");
 		c.evaluate().print();
 	}

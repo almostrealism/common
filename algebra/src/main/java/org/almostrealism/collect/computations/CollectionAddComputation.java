@@ -91,8 +91,6 @@ import java.util.stream.Stream;
  *   <li><strong>Hardware Acceleration:</strong> Compiles to efficient GPU/CPU kernels</li>
  * </ul>
  *
- * @param <T> The type of {@link PackedCollection} this computation produces
- *
  * @see TransitiveDeltaExpressionComputation
  * @see CollectionMinusComputation
  * @see CollectionProductComputation
@@ -100,7 +98,7 @@ import java.util.stream.Stream;
  *
  * @author Michael Murray
  */
-public class CollectionAddComputation<T extends PackedCollection> extends TransitiveDeltaExpressionComputation<T> {
+public class CollectionAddComputation extends TransitiveDeltaExpressionComputation {
 
 	/**
 	 * Constructs a new addition computation with default name "add".
@@ -159,7 +157,7 @@ public class CollectionAddComputation<T extends PackedCollection> extends Transi
 	 * @see org.almostrealism.collect.CollectionFeatures#add(List)
 	 */
 	@Override
-	public CollectionProducerParallelProcess<T> generate(List<Process<?, ?>> children) {
+	public CollectionProducerParallelProcess<PackedCollection> generate(List<Process<?, ?>> children) {
 		List<Producer<?>> args = children.stream().skip(1)
 				.map(p -> (Producer<?>) p).collect(Collectors.toList());
 		return (CollectionProducerParallelProcess) add(args);

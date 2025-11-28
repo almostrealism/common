@@ -112,19 +112,17 @@ import java.util.List;
  * // Result: constant -1 for each element
  * }</pre>
  * 
- * @param <T> The type of {@link PackedCollection} this computation operates on
- * 
  * @see TransitiveDeltaExpressionComputation
  * @see org.almostrealism.collect.CollectionFeatures#minus(io.almostrealism.relation.Producer)
  * @see org.almostrealism.collect.CollectionFeatures#subtract(io.almostrealism.relation.Producer, io.almostrealism.relation.Producer)
  * @see io.almostrealism.expression.Minus
  * @see org.almostrealism.collect.computations.AtomicConstantComputation
  * @see org.almostrealism.algebra.computations.ScalarMatrixComputation
- * 
+ *
  * @author Michael Murray
  * @since 0.69
  */
-public class CollectionMinusComputation<T extends PackedCollection> extends TransitiveDeltaExpressionComputation<T> {
+public class CollectionMinusComputation extends TransitiveDeltaExpressionComputation {
 
 	/**
 	 * Creates a new CollectionMinusComputation with the specified shape and producer arguments.
@@ -298,7 +296,7 @@ public class CollectionMinusComputation<T extends PackedCollection> extends Tran
 	 * @see io.almostrealism.compute.Process
 	 */
 	@Override
-	public CollectionProducerParallelProcess<T> generate(List<Process<?, ?>> children) {
+	public CollectionProducerParallelProcess<PackedCollection> generate(List<Process<?, ?>> children) {
 		if (children.size() != 2) {
 			throw new IllegalArgumentException();
 		}

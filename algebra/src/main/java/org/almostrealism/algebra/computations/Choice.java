@@ -46,7 +46,7 @@ import org.almostrealism.collect.computations.TraversableExpressionComputation;
  *     option1_data, option2_data, option3_data
  * );
  *
- * Choice<PackedCollection> choice = new Choice<>(
+ * Choice choice = new Choice(
  *     shape(5),    // Result shape
  *     3,           // Number of choices
  *     decision,
@@ -58,11 +58,10 @@ import org.almostrealism.collect.computations.TraversableExpressionComputation;
  * // When decision = 0.66-1.0: selects option 2
  * }</pre>
  *
- * @param <T>  the packed collection type
  * @author  Michael Murray
  * @see org.almostrealism.algebra.ScalarFeatures#choice(int, TraversalPolicy, Producer, Producer)
  */
-public class Choice<T extends PackedCollection> extends TraversableExpressionComputation<T> {
+public class Choice extends TraversableExpressionComputation {
 	private int choiceCount;
 
 	/**
@@ -112,11 +111,10 @@ public class Choice<T extends PackedCollection> extends TraversableExpressionCom
 	 * @param memLength  expected size of each individual choice
 	 * @param choiceCount  expected number of choices
 	 * @param choices  the choices producer to validate
-	 * @param <T>  the packed collection type
 	 * @return the choices producer (unchanged if valid)
 	 * @throws IllegalArgumentException if the choices shape doesn't match expectations
 	 */
-	protected static <T extends PackedCollection> Producer<PackedCollection>
+	protected static Producer<PackedCollection>
 			adjustChoices(int memLength, int choiceCount, Producer<PackedCollection> choices) {
 		if (!(choices instanceof Shape)) return choices;
 

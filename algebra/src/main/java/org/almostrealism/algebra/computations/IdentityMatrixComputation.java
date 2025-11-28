@@ -59,13 +59,12 @@ import java.util.Optional;
  * I.multiply(A).equals(A);  // true
  * }</pre>
  *
- * @param <T>  the packed collection type
  * @author  Michael Murray
  * @see org.almostrealism.algebra.MatrixFeatures#identity(int)
  * @see org.almostrealism.algebra.MatrixFeatures#identity(TraversalPolicy)
  * @see DiagonalMatrixComputation
  */
-public class IdentityMatrixComputation<T extends PackedCollection> extends ScalarMatrixComputation<T> {
+public class IdentityMatrixComputation extends ScalarMatrixComputation {
 	/**
 	 * Creates an identity matrix computation.
 	 *
@@ -131,7 +130,7 @@ public class IdentityMatrixComputation<T extends PackedCollection> extends Scala
 	 * @return this computation as a parallel process
 	 */
 	@Override
-	public CollectionProducerParallelProcess<T> generate(List<Process<?, ?>> children) {
+	public CollectionProducerParallelProcess<PackedCollection> generate(List<Process<?, ?>> children) {
 		return this;
 	}
 }

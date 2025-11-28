@@ -35,6 +35,7 @@ import org.almostrealism.collect.computations.ReshapeProducer;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
@@ -72,7 +73,7 @@ public interface TransformMatrixFeatures extends MatrixFeatures {
 	 * @return a producer that yields the specified matrix
 	 */
 	default CollectionProducer<TransformMatrix> value(TransformMatrix v) {
-		return DefaultTraversableExpressionComputation.fixed(v, TransformMatrix.postprocessor());
+		return (CollectionProducer<TransformMatrix>) (CollectionProducer) DefaultTraversableExpressionComputation.fixed(v, (BiFunction) TransformMatrix.postprocessor());
 	}
 
 	/**
@@ -88,10 +89,10 @@ public interface TransformMatrixFeatures extends MatrixFeatures {
 
 		if (m instanceof ReshapeProducer) {
 			((CollectionProducerComputationBase) ((ReshapeProducer) m).getComputation())
-					.setPostprocessor(TransformMatrix.postprocessor());
+					.setPostprocessor((BiFunction) TransformMatrix.postprocessor());
 		} else {
 			((CollectionProducerComputationBase) m)
-					.setPostprocessor(TransformMatrix.postprocessor());
+					.setPostprocessor((BiFunction) TransformMatrix.postprocessor());
 		}
 
 		return m;
@@ -107,7 +108,7 @@ public interface TransformMatrixFeatures extends MatrixFeatures {
 	default CollectionProducer<TransformMatrix> scaleMatrix(Producer<PackedCollection> scale) {
 		CollectionProducerComputationBase m = (CollectionProducerComputationBase)
 				diagonal(concat(shape(4), (Producer) scale, c(1.0)));
-		return m.setPostprocessor(TransformMatrix.postprocessor());
+		return (CollectionProducer<TransformMatrix>) (CollectionProducer) m.setPostprocessor((BiFunction) TransformMatrix.postprocessor());
 	}
 
 	/**
@@ -174,7 +175,7 @@ public interface TransformMatrixFeatures extends MatrixFeatures {
 
 		vector = concat(shape(4), (Producer) vector, c(1.0));
 
-		DefaultTraversableExpressionComputation c = new DefaultTraversableExpressionComputation<>("transform", shape,
+		DefaultTraversableExpressionComputation c = new DefaultTraversableExpressionComputation("transform", shape,
 				(Function<TraversableExpression[], CollectionExpression>) args ->
 						new WeightedSumExpression(shape, includeTranslation ? 4 : 3, args[1], args[2],
 								(groupIndex, operandIndex) -> outputIndex -> {

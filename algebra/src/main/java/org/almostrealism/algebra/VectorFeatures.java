@@ -268,7 +268,7 @@ public interface VectorFeatures extends ScalarFeatures {
 			crossProduct(Producer<T> a, Producer<T> b) {
 		TraversalPolicy inputShape = shape(a);
 
-		return new DefaultTraversableExpressionComputation<>("crossProduct", inputShape, args ->
+		return new DefaultTraversableExpressionComputation("crossProduct", inputShape, args ->
 				CollectionExpression.create(inputShape, idx -> {
 					// For batch processing with shape (N, 3):
 					// idx ranges from 0 to N*3-1

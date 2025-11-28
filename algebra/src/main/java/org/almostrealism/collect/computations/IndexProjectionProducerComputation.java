@@ -136,20 +136,18 @@ import java.util.stream.Collectors;
  *   <li>{@link org.almostrealism.collect.computations.PackedCollectionEnumerate} - Element enumeration</li>
  * </ul>
  * 
- * @param <T> The type of {@link PackedCollection} produced by this computation
- * 
  * @see TraversableExpressionComputation
  * @see TraversalPolicy
  * @see TraversableExpression
  * @see PackedCollection
  * @see DynamicIndexProjectionProducerComputation
  * @see io.almostrealism.collect.IndexProjectionExpression
- * 
+ *
  * @author Michael Murray
  * @since 0.68
  */
-public class IndexProjectionProducerComputation<T extends PackedCollection>
-		extends TraversableExpressionComputation<T> {
+public class IndexProjectionProducerComputation
+		extends TraversableExpressionComputation {
 	/**
 	 * Enables delegated isolation optimization for improved memory efficiency.
 	 * When true, allows this computation to delegate isolation operations to optimize
@@ -297,10 +295,10 @@ public class IndexProjectionProducerComputation<T extends PackedCollection>
 	 * Forces isolation of this computation, bypassing permission checks.
 	 * This is used internally when isolation is required regardless of the current
 	 * isolation policy settings.
-	 * 
+	 *
 	 * @return An isolated version of this computation
 	 */
-	private Process<Process<?, ?>, Evaluable<? extends T>> isolateForce() {
+	private Process<Process<?, ?>, Evaluable<? extends PackedCollection>> isolateForce() {
 		return Process.isolationPermitted(this) ? super.isolate() : this;
 	}
 
@@ -308,10 +306,10 @@ public class IndexProjectionProducerComputation<T extends PackedCollection>
 	 * Isolates the input computation if it's also an {@link IndexProjectionProducerComputation}.
 	 * This optimization can improve performance for nested index projections by
 	 * creating a more efficient computation graph.
-	 * 
+	 *
 	 * @return An optimized version of this computation with isolated inputs
 	 */
-	private Process<Process<?, ?>, Evaluable<? extends T>> isolateInput() {
+	private Process<Process<?, ?>, Evaluable<? extends PackedCollection>> isolateInput() {
 		IndexProjectionProducerComputation c;
 
 		if (getInputs().get(1) instanceof IndexProjectionProducerComputation) {
@@ -328,7 +326,7 @@ public class IndexProjectionProducerComputation<T extends PackedCollection>
 	 * Creates an isolated version of this computation for memory optimization.
 	 * This method implements sophisticated isolation strategies to minimize memory usage
 	 * while maintaining computational correctness.
-	 * 
+	 *
 	 * <p>The isolation strategy depends on several factors:</p>
 	 * <ul>
 	 *   <li>Whether explicit isolation is enabled globally</li>
@@ -337,11 +335,11 @@ public class IndexProjectionProducerComputation<T extends PackedCollection>
 	 *   <li>Whether the computation is constant</li>
 	 *   <li>Whether inputs are also index projection computations</li>
 	 * </ul>
-	 * 
+	 *
 	 * @return An isolated version of this computation optimized for memory usage
 	 */
 	@Override
-	public Process<Process<?, ?>, Evaluable<? extends T>> isolate() {
+	public Process<Process<?, ?>, Evaluable<? extends PackedCollection>> isolate() {
 		if (Process.isExplicitIsolation() || getMemLength() > ScopeSettings.maxStatements)
 			return super.isolate();
 
@@ -365,13 +363,13 @@ public class IndexProjectionProducerComputation<T extends PackedCollection>
 	 * Generates a new instance of this computation with different child processes.
 	 * This method is used by the optimization framework to create modified versions
 	 * of this computation during graph optimization.
-	 * 
+	 *
 	 * @param children The new child {@link Process} instances to use
 	 * @return A new {@link IndexProjectionProducerComputation} with the specified children
 	 */
 	@Override
-	public IndexProjectionProducerComputation<T> generate(List<Process<?, ?>> children) {
-		return new IndexProjectionProducerComputation<>(getName(), getShape(), indexProjection,
+	public IndexProjectionProducerComputation generate(List<Process<?, ?>> children) {
+		return new IndexProjectionProducerComputation(getName(), getShape(), indexProjection,
 				(Producer<?>) children.get(1),
 				children.stream().skip(2).toArray(Producer[]::new));
 	}
@@ -380,7 +378,7 @@ public class IndexProjectionProducerComputation<T extends PackedCollection>
 	 * Computes the derivative of this computation with respect to a target variable.
 	 * This method implements automatic differentiation for index projection operations,
 	 * which is essential for gradient-based optimization and machine learning applications.
-	 * 
+	 *
 	 * <p>The delta computation works by:</p>
 	 * <ol>
 	 *   <li>Checking if the input can match the target variable</li>
@@ -388,19 +386,19 @@ public class IndexProjectionProducerComputation<T extends PackedCollection>
 	 *   <li>Applying the same index projection to the derivative</li>
 	 *   <li>Adjusting dimensions to account for the derivative structure</li>
 	 * </ol>
-	 * 
+	 *
 	 * <p>If the input cannot contribute to the target (no dependency), this method
 	 * returns a zero collection of appropriate dimensions.</p>
-	 * 
-	 * @param target The {@link Producer} representing the variable with respect to which 
+	 *
+	 * @param target The {@link Producer} representing the variable with respect to which
 	 *               the derivative is computed
 	 * @return A {@link CollectionProducer} representing the derivative of this computation
-	 * 
+	 *
 	 * @see org.almostrealism.algebra.AlgebraFeatures
-	
+
 	 */
 	@Override
-	public CollectionProducer<T> delta(Producer<?> target) {
+	public CollectionProducer<PackedCollection> delta(Producer<?> target) {
 		Supplier in = getInputs().get(1);
 
 		if (AlgebraFeatures.cannotMatch(in, target)) {
@@ -441,7 +439,7 @@ public class IndexProjectionProducerComputation<T extends PackedCollection>
 			};
 
 			return traverse(traversalAxis,
-					new IndexProjectionProducerComputation<>("projectDelta", shape.traverseEach(), project, delta));
+					new IndexProjectionProducerComputation("projectDelta", shape.traverseEach(), project, delta));
 		}
 
 		return super.delta(target);

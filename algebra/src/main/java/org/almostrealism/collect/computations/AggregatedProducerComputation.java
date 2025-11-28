@@ -135,8 +135,6 @@ import java.util.function.BiFunction;
  *   <li><strong>Loop Optimization:</strong> Can replace iteration with direct access via unique offset</li>
  * </ul>
  *
- * @param <T> The type of {@link PackedCollection} this computation produces
- *
  * @see TraversableRepeatedProducerComputation
  * @see CollectionSumComputation
  * @see CollectionMaxComputation
@@ -145,7 +143,7 @@ import java.util.function.BiFunction;
  *
  * @author Michael Murray
  */
-public class AggregatedProducerComputation<T extends PackedCollection> extends TraversableRepeatedProducerComputation<T> {
+public class AggregatedProducerComputation extends TraversableRepeatedProducerComputation {
 	/**
 	 * Enables efficient gradient computation for aggregations using transitive delta propagation.
 	 * When true, {@link #delta(Producer)} computes gradients by distributing them through
@@ -261,7 +259,7 @@ public class AggregatedProducerComputation<T extends PackedCollection> extends T
 	 *
 	 * @see #prepareScope(ScopeInputManager, KernelStructureContext)
 	 */
-	public AggregatedProducerComputation<T> setReplaceLoop(boolean replaceLoop) {
+	public AggregatedProducerComputation setReplaceLoop(boolean replaceLoop) {
 		this.replaceLoop = replaceLoop;
 		return this;
 	}
@@ -326,10 +324,10 @@ public class AggregatedProducerComputation<T extends PackedCollection> extends T
 	}
 
 	@Override
-	public Scope<T> getScope(KernelStructureContext context) {
+	public Scope<PackedCollection> getScope(KernelStructureContext context) {
 		if (uniqueIndex == null) return super.getScope(context);
 
-		Scope<T> scope = new Scope<>(getFunctionName(), getMetadata());
+		Scope<PackedCollection> scope = new Scope<>(getFunctionName(), getMetadata());
 
 		Expression<?> out = getDestination(new KernelIndex(context), ref, e(0));
 		Expression<?> val = inputArg.getValueAt(uniqueIndex.withIndex(row, new KernelIndex(context)));
@@ -421,12 +419,12 @@ public class AggregatedProducerComputation<T extends PackedCollection> extends T
 	}
 
 	@Override
-	public CollectionProducer<T> delta(Producer<?> target) {
+	public CollectionProducer<PackedCollection> delta(Producer<?> target) {
 		CollectionProducer<?> delta = attemptDelta(target);
 		if (delta != null) return (CollectionProducer) delta;
 
 		if (enableTransitiveDelta && getInputs().size() == 2 && getInputs().get(1) instanceof CollectionProducer) {
-			int outLength = ((CollectionProducer<T>) getInputs().get(1)).getShape().getTotalSize();
+			int outLength = ((CollectionProducer<PackedCollection>) getInputs().get(1)).getShape().getTotalSize();
 			int inLength = shape(target).getTotalSize();
 
 			if (AlgebraFeatures.match(getInputs().get(1), target)) {
@@ -439,14 +437,14 @@ public class AggregatedProducerComputation<T extends PackedCollection> extends T
 			}
 
 			delta = delta.enumerate(1, count).traverse(2);
-			return new AggregatedProducerComputation<>(getName(), shape(delta).replace(shape(1)),
+			return new AggregatedProducerComputation(getName(), shape(delta).replace(shape(1)),
 						count, initial, expression, (Producer) delta)
 					.setReplaceLoop(isReplaceLoop())
 					.reshape(getShape().append(shape(target)));
 		} else {
 			delta = super.delta(target);
 			if (delta instanceof ConstantRepeatedDeltaComputation) {
-				TraversableDeltaComputation<T> traversable = TraversableDeltaComputation.create("delta", getShape(), shape(target),
+				TraversableDeltaComputation traversable = TraversableDeltaComputation.create("delta", getShape(), shape(target),
 						args -> CollectionExpression.create(getShape(), this::getValueAt), target,
 						getInputs().stream().skip(1).toArray(Producer[]::new));
 				traversable.addDependentLifecycle(this);
@@ -458,8 +456,8 @@ public class AggregatedProducerComputation<T extends PackedCollection> extends T
 	}
 
 	@Override
-	public AggregatedProducerComputation<T> generate(List<Process<?, ?>> children) {
-		AggregatedProducerComputation<T> c = new AggregatedProducerComputation<>(getName(), getShape(),
+	public AggregatedProducerComputation generate(List<Process<?, ?>> children) {
+		AggregatedProducerComputation c = new AggregatedProducerComputation(getName(), getShape(),
 				count, initial, expression,
 				children.stream().skip(1).toArray(Producer[]::new));
 		c.setReplaceLoop(replaceLoop);

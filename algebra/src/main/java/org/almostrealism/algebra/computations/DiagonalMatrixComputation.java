@@ -50,19 +50,18 @@ import java.util.List;
  * // [0  0  3]
  * }</pre>
  *
- * @param <T>  the packed collection type
  * @author  Michael Murray
  * @see org.almostrealism.algebra.MatrixFeatures#diagonal(Producer)
  * @see IdentityMatrixComputation
  */
-public class DiagonalMatrixComputation<T extends PackedCollection> extends MatrixExpressionComputation<T> {
+public class DiagonalMatrixComputation extends MatrixExpressionComputation {
 	/**
 	 * Creates a diagonal matrix computation with default name "diagonal".
 	 *
 	 * @param shape  the shape of the output matrix (should be square)
 	 * @param values  producer for the diagonal values
 	 */
-	public DiagonalMatrixComputation(TraversalPolicy shape, Producer<T> values) {
+	public DiagonalMatrixComputation(TraversalPolicy shape, Producer<PackedCollection> values) {
 		this("diagonal", shape, values);
 	}
 
@@ -73,7 +72,7 @@ public class DiagonalMatrixComputation<T extends PackedCollection> extends Matri
 	 * @param shape  the shape of the output matrix (should be square)
 	 * @param values  producer for the diagonal values
 	 */
-	public DiagonalMatrixComputation(String name, TraversalPolicy shape, Producer<T> values) {
+	public DiagonalMatrixComputation(String name, TraversalPolicy shape, Producer<PackedCollection> values) {
 		super(name, shape, (Producer) values);
 	}
 
@@ -108,7 +107,7 @@ public class DiagonalMatrixComputation<T extends PackedCollection> extends Matri
 	 * @return the parallel process implementation
 	 */
 	@Override
-	public CollectionProducerParallelProcess<T> generate(List<Process<?, ?>> children) {
+	public CollectionProducerParallelProcess<PackedCollection> generate(List<Process<?, ?>> children) {
 		return (CollectionProducerParallelProcess) diagonal((Producer) children.get(1));
 	}
 }

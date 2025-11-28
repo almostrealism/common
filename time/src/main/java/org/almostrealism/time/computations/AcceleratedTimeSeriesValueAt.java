@@ -80,7 +80,7 @@ import java.util.function.Consumer;
  * @author Michael Murray
  */
 @Deprecated
-public class AcceleratedTimeSeriesValueAt extends CollectionProducerComputationBase<PackedCollection, PackedCollection> {
+public class AcceleratedTimeSeriesValueAt extends CollectionProducerComputationBase {
 	/**
 	 * Constructs an interpolation operation for the specified series and cursor.
 	 *

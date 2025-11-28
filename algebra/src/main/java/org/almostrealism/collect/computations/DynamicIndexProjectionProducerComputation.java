@@ -81,17 +81,15 @@ import java.util.function.Supplier;
  *                                                     maxProjection, matrixProducer);
  * }</pre>
  * 
- * @param <T> The type of {@link PackedCollection} produced by this computation
- * 
  * @see IndexProjectionProducerComputation
  * @see TraversableExpression
  * @see BiFunction
- * 
+ *
  * @author Michael Murray
  * @since 0.68
  */
-public class DynamicIndexProjectionProducerComputation<T extends PackedCollection>
-		extends IndexProjectionProducerComputation<T> {
+public class DynamicIndexProjectionProducerComputation
+		extends IndexProjectionProducerComputation {
 	/**
 	 * Enables specialized delta computation for traverse-each operations.
 	 * When true, allows optimized gradient computation for operations that 
@@ -196,18 +194,18 @@ public class DynamicIndexProjectionProducerComputation<T extends PackedCollectio
 	}
 
 	@Override
-	public DynamicIndexProjectionProducerComputation<T> generate(List<Process<?, ?>> children) {
+	public DynamicIndexProjectionProducerComputation generate(List<Process<?, ?>> children) {
 		return (DynamicIndexProjectionProducerComputation)
-				new DynamicIndexProjectionProducerComputation<>(getName(), getShape(), indexExpression, relative,
+				new DynamicIndexProjectionProducerComputation(getName(), getShape(), indexExpression, relative,
 							(Producer<?>) children.get(1),
 							children.stream().skip(2).toArray(Producer[]::new))
 						.addAllDependentLifecycles(getDependentLifecycles());
 	}
 
 	@Override
-	public CollectionProducer<T> delta(Producer<?> target) {
+	public CollectionProducer<PackedCollection> delta(Producer<?> target) {
 		if (enableChainDelta) {
-			TraversableDeltaComputation<T> delta =
+			TraversableDeltaComputation delta =
 					TraversableDeltaComputation.create("delta", getShape(), shape(target),
 								args -> CollectionExpression.create(getShape(),
 										(idx) -> args[1].getValueAt(projectIndex(args, idx))),

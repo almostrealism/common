@@ -127,14 +127,12 @@ import java.util.List;
  *   <li><strong>Short-circuit:</strong> No short-circuit evaluation (both operands always evaluated)</li>
  * </ul>
  *
- * @param <T> The type of {@link PackedCollection} this computation produces
- *
  * @see CollectionComparisonComputation
  * @see org.almostrealism.collect.CollectionFeatures#and
  *
  * @author Michael Murray
  */
-public class CollectionConjunctionComputation<T extends PackedCollection> extends CollectionComparisonComputation<T> {
+public class CollectionConjunctionComputation extends CollectionComparisonComputation {
 
 	/**
 	 * Constructs a logical AND computation that evaluates conjunction of two boolean-valued
@@ -212,7 +210,7 @@ public class CollectionConjunctionComputation<T extends PackedCollection> extend
 	 * @return A new {@link CollectionProducerParallelProcess} for parallel execution
 	 */
 	@Override
-	public CollectionProducerParallelProcess<T> generate(List<Process<?, ?>> children) {
+	public CollectionProducerParallelProcess<PackedCollection> generate(List<Process<?, ?>> children) {
 		return (CollectionProducerParallelProcess)
 				and((Producer) children.get(1), (Producer) children.get(2),
 						(Producer) children.get(3), (Producer) children.get(4));

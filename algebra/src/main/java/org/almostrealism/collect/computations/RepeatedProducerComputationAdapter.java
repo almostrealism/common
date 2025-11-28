@@ -50,17 +50,17 @@ import java.util.function.Supplier;
  * </ul>
  * 
  * <p><strong>Usage Examples:</strong>
- * 
+ *
  * <p>Integration with existing computations via {@code toRepeated()}:
  * <pre>{@code
  * // Start with a collection computation
- * CollectionProducerComputationAdapter<PackedCollection> computation =
+ * CollectionProducerComputationAdapter computation =
  *     add(v(shape(100), 0), v(shape(100), 1));  // Element-wise addition
- * 
+ *
  * // Convert to repeated form for different execution strategy
- * RepeatedProducerComputationAdapter<PackedCollection> repeated =
+ * RepeatedProducerComputationAdapter repeated =
  *     computation.toRepeated();
- * 
+ *
  * // Both forms produce identical results but use different execution patterns
  * PackedCollection directResult = computation.get().evaluate(a, b);
  * PackedCollection repeatedResult = repeated.get().evaluate(a, b);
@@ -85,16 +85,14 @@ import java.util.function.Supplier;
  * expressions since the expression evaluation replaces these initial values. The condition
  * ensures iteration continues until all elements in the output array are processed.
  * 
- * @param <T> The type of {@link PackedCollection} this adapter operates on
- * 
  * @see RepeatedProducerComputation
- * @see TraversableExpression  
+ * @see TraversableExpression
  * @see CollectionProducerComputationAdapter#toRepeated()
  * @see TraversalPolicy
- * 
+ *
  * @author Michael Murray
  */
-public class RepeatedProducerComputationAdapter<T extends PackedCollection> extends RepeatedProducerComputation<T> {
+public class RepeatedProducerComputationAdapter extends RepeatedProducerComputation {
 
 	/**
 	 * Creates a new adapter that converts the specified {@link TraversableExpression}

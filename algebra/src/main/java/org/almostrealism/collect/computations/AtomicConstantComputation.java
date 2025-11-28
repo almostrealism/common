@@ -93,15 +93,13 @@ import org.almostrealism.collect.PackedCollection;
  *   <li><strong>Broadcasting:</strong> Efficiently handled in element-wise operations</li>
  * </ul>
  *
- * @param <T> The type of {@link PackedCollection} this computation produces
- *
  * @see SingleConstantComputation
  * @see CollectionConstantComputation
  * @see org.almostrealism.collect.CollectionFeatures#c(double)
  *
  * @author Michael Murray
  */
-public class AtomicConstantComputation<T extends PackedCollection> extends SingleConstantComputation<T> {
+public class AtomicConstantComputation extends SingleConstantComputation {
 	/**
 	 * Constructs an atomic constant with the default value of 1.0.
 	 * The resulting collection will have exactly one element with value 1.0.
@@ -143,8 +141,8 @@ public class AtomicConstantComputation<T extends PackedCollection> extends Singl
 	 * @return A new {@link AtomicConstantComputation} with traversed shape
 	 */
 	@Override
-	public CollectionProducer<T> traverse(int axis) {
-		return new AtomicConstantComputation<>(getShape().traverse(1), value);
+	public CollectionProducer<PackedCollection> traverse(int axis) {
+		return new AtomicConstantComputation(getShape().traverse(1), value);
 	}
 
 	/**
@@ -161,9 +159,9 @@ public class AtomicConstantComputation<T extends PackedCollection> extends Singl
 	 * @return An {@link AtomicConstantComputation} if size is 1, otherwise a broadcasted constant
 	 */
 	@Override
-	public CollectionProducerComputation<T> reshape(TraversalPolicy shape) {
+	public CollectionProducerComputation<PackedCollection> reshape(TraversalPolicy shape) {
 		if (shape.getTotalSizeLong() == 1) {
-			return new AtomicConstantComputation<>(shape, value);
+			return new AtomicConstantComputation(shape, value);
 		}
 
 		return super.reshape(shape);

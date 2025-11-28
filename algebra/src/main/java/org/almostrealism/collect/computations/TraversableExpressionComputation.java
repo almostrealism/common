@@ -90,18 +90,16 @@ import org.almostrealism.hardware.HardwareFeatures;
  * which defines how to transform input traversable expressions into a collection expression
  * that represents the desired computation.
  * 
- * @param <T> The type of {@link PackedCollection} this computation produces
- * 
  * @see DefaultTraversableExpressionComputation
  * @see TraversalPolicy
  * @see TraversableExpression
  * @see CollectionExpression
  * @see MultiTermDeltaStrategy
- * 
+ *
  * @author Michael Murray
  */
-public abstract class TraversableExpressionComputation<T extends PackedCollection>
-		extends CollectionProducerComputationAdapter<T, T> implements HardwareFeatures {
+public abstract class TraversableExpressionComputation
+		extends CollectionProducerComputationAdapter implements HardwareFeatures {
 
 	/**
 	 * The strategy used for handling multi-term delta (derivative) computations.
@@ -240,8 +238,8 @@ public abstract class TraversableExpressionComputation<T extends PackedCollectio
 	 * @see TraversableDeltaComputation
 	 */
 	@Override
-	public CollectionProducer<T> delta(Producer<?> target) {
-		CollectionProducer<T> delta = attemptDelta(target);
+	public CollectionProducer<PackedCollection> delta(Producer<?> target) {
+		CollectionProducer<PackedCollection> delta = attemptDelta(target);
 		if (delta != null) return delta;
 
 		delta = TraversableDeltaComputation.create(

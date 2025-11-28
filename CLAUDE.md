@@ -169,6 +169,30 @@ public ModelWeights(FloatBuffer buffer) {
 3. **Ensure all tests pass with hardware acceleration enabled**
 4. **Document any new patterns or breaking changes**
 
+### Build Verification Requirements
+
+**CRITICAL**: Before declaring any task complete, you MUST verify the full build succeeds:
+
+```bash
+export AR_HARDWARE_LIBS=/tmp/ar_libs/ && \
+export AR_HARDWARE_DRIVER=native && \
+mvn clean install -DskipTests
+```
+
+**This command must complete with BUILD SUCCESS.** Do not rely on:
+- `mvn compile` alone (misses test compilation and packaging)
+- `mvn compile -q` (suppresses errors that may appear later)
+- Building individual modules (misses cross-module dependencies)
+
+The full `mvn clean install -DskipTests` command:
+- Compiles all main sources
+- Compiles all test sources
+- Packages all modules
+- Installs to local repository
+- Verifies all inter-module dependencies
+
+**Only after this command succeeds** should you report that the build is working.
+
 ---
 
 ## Module-Specific Guidelines

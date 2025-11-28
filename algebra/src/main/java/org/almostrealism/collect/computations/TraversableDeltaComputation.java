@@ -135,8 +135,6 @@ import java.util.function.Supplier;
  *   <li><strong>Caching:</strong> Results can be cached to avoid recomputation</li>
  * </ul>
  *
- * @param <T> The type of {@link PackedCollection} this computation produces
- *
  * @see CollectionProducerComputationAdapter
  * @see CollectionExpression#delta(CollectionVariable)
  * @see org.almostrealism.calculus.DeltaFeatures
@@ -144,8 +142,8 @@ import java.util.function.Supplier;
  * @author Michael Murray
  */
 // TODO  Should extend TraversableExpressionComputation
-public class TraversableDeltaComputation<T extends PackedCollection>
-		extends CollectionProducerComputationAdapter<T, T>
+public class TraversableDeltaComputation
+		extends CollectionProducerComputationAdapter
 		implements HardwareFeatures {
 	/**
 	 * Enables general optimization of delta computations.
@@ -331,7 +329,7 @@ public class TraversableDeltaComputation<T extends PackedCollection>
 	 * @param process The {@link Process} being considered for optimization
 	 * @return {@code true} if optimization is permitted, {@code false} if it must be prevented
 	 */
-	protected boolean permitOptimization(Process<Process<?, ?>, Evaluable<? extends T>> process) {
+	protected boolean permitOptimization(Process<Process<?, ?>, Evaluable<? extends PackedCollection>> process) {
 		if (enableStubOptimization && !(process instanceof TraversableExpression)) {
 			// There is no harm in optimizing a process which will not reveal an Expression
 			// because there is no information being hidden from the delta Expression due
@@ -355,7 +353,7 @@ public class TraversableDeltaComputation<T extends PackedCollection>
 	 * @return The optimized process, or the original process if optimization is not permitted
 	 */
 	@Override
-	public Process<Process<?, ?>, Evaluable<? extends T>> optimize(ProcessContext ctx, Process<Process<?, ?>, Evaluable<? extends T>> process) {
+	public Process<Process<?, ?>, Evaluable<? extends PackedCollection>> optimize(ProcessContext ctx, Process<Process<?, ?>, Evaluable<? extends PackedCollection>> process) {
 		if (!permitOptimization(process))
 			return process;
 		return super.optimize(ctx, process);
@@ -372,7 +370,7 @@ public class TraversableDeltaComputation<T extends PackedCollection>
 	 * @return The isolated process, or the original process if isolation is not permitted
 	 */
 	@Override
-	public Process<Process<?, ?>, Evaluable<? extends T>> isolate(Process<Process<?, ?>, Evaluable<? extends T>> process) {
+	public Process<Process<?, ?>, Evaluable<? extends PackedCollection>> isolate(Process<Process<?, ?>, Evaluable<? extends PackedCollection>> process) {
 		if (!permitOptimization(process)) return process;
 		return super.isolate(process);
 	}
@@ -402,7 +400,7 @@ public class TraversableDeltaComputation<T extends PackedCollection>
 	 * @return The optimized computation, or this computation if optimization is disabled
 	 */
 	@Override
-	public ComputationBase<T, T, Evaluable<? extends T>> optimize(ProcessContext ctx) {
+	public ComputationBase<PackedCollection, PackedCollection, Evaluable<? extends PackedCollection>> optimize(ProcessContext ctx) {
 		if (!enableOptimization) return this;
 		return super.optimize(ctx);
 	}
@@ -422,9 +420,9 @@ public class TraversableDeltaComputation<T extends PackedCollection>
 	 * @return A new {@link TraversableDeltaComputation} with the specified children
 	 */
 	@Override
-	public TraversableDeltaComputation<T> generate(List<Process<?, ?>> children) {
-		TraversableDeltaComputation<T> result =
-				(TraversableDeltaComputation<T>) new TraversableDeltaComputation(getName(), getShape(), expression, target,
+	public TraversableDeltaComputation generate(List<Process<?, ?>> children) {
+		TraversableDeltaComputation result =
+				(TraversableDeltaComputation) new TraversableDeltaComputation(getName(), getShape(), expression, target,
 					children.stream().skip(1).toArray(Producer[]::new))
 					.setPostprocessor(getPostprocessor()).setShortCircuit(getShortCircuit());
 		getDependentLifecycles().forEach(result::addDependentLifecycle);
@@ -501,7 +499,7 @@ public class TraversableDeltaComputation<T extends PackedCollection>
 	 * @throws UnsupportedOperationException Always thrown - second-order derivatives not supported
 	 */
 	@Override
-	public CollectionProducer<T> delta(Producer<?> target) {
+	public CollectionProducer<PackedCollection> delta(Producer<?> target) {
 		throw new UnsupportedOperationException();
 	}
 
@@ -533,7 +531,6 @@ public class TraversableDeltaComputation<T extends PackedCollection>
 	 * );
 	 * }</pre>
 	 *
-	 * @param <T> The type of {@link PackedCollection} the computation produces
 	 * @param name The operation identifier for this delta computation
 	 * @param deltaShape The {@link TraversalPolicy} defining the shape of the expression being differentiated
 	 * @param targetShape The {@link TraversalPolicy} defining the shape of the target variable
@@ -542,11 +539,11 @@ public class TraversableDeltaComputation<T extends PackedCollection>
 	 * @param args Input {@link Producer}s that provide data to the expression
 	 * @return A new {@link TraversableDeltaComputation} configured for gradient computation
 	 */
-	public static <T extends PackedCollection> TraversableDeltaComputation<T> create(
+	public static TraversableDeltaComputation create(
 			String name, TraversalPolicy deltaShape, TraversalPolicy targetShape,
 			Function<TraversableExpression[], CollectionExpression> expression,
 			Producer<?> target,
 			Producer<PackedCollection>... args) {
-		return new TraversableDeltaComputation<>(name, deltaShape.append(targetShape), expression, target, args);
+		return new TraversableDeltaComputation(name, deltaShape.append(targetShape), expression, target, args);
 	}
 }

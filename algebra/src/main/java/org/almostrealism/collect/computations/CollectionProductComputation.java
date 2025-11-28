@@ -87,15 +87,13 @@ import java.util.stream.Stream;
  *   <li><strong>Hardware Acceleration:</strong> Compiles to efficient GPU/CPU kernels</li>
  * </ul>
  *
- * @param <T> The type of {@link PackedCollection} this computation produces
- *
  * @see TraversableExpressionComputation
  * @see CollectionAddComputation
  * @see org.almostrealism.collect.CollectionFeatures#multiply(io.almostrealism.relation.Producer, io.almostrealism.relation.Producer)
  *
  * @author Michael Murray
  */
-public class CollectionProductComputation<T extends PackedCollection> extends TraversableExpressionComputation<T> {
+public class CollectionProductComputation extends TraversableExpressionComputation {
 
 	/**
 	 * Constructs a new product computation with default name "multiply".
@@ -150,8 +148,8 @@ public class CollectionProductComputation<T extends PackedCollection> extends Tr
 	 *         on the child processes with the same configuration as this instance
 	 */
 	@Override
-	public CollectionProducerParallelProcess<T> generate(List<Process<?, ?>> children) {
-		return (CollectionProductComputation<T>) new CollectionProductComputation(getName(), getShape(),
+	public CollectionProducerParallelProcess generate(List<Process<?, ?>> children) {
+		return (CollectionProductComputation) new CollectionProductComputation(getName(), getShape(),
 				children.stream().skip(1).toArray(Producer[]::new))
 				.setPostprocessor(getPostprocessor())
 				.setDescription(getDescription())
@@ -199,7 +197,7 @@ public class CollectionProductComputation<T extends PackedCollection> extends Tr
 	 * @see org.almostrealism.collect.CollectionProducer#reshape(int...)
 	 */
 	@Override
-	public CollectionProducer<T> delta(Producer<?> target) {
+	public CollectionProducer<PackedCollection> delta(Producer<?> target) {
 		TraversalPolicy targetShape = shape(target);
 
 		List<CollectionProducer<PackedCollection>> operands = List.of(

@@ -30,6 +30,7 @@ import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 import org.almostrealism.geometry.TransformMatrix;
 
 import java.util.List;
+import java.util.function.BiFunction;
 
 /**
  * Computes the adjoint (adjugate) matrix of a 4x4 transformation matrix.
@@ -43,7 +44,7 @@ import java.util.List;
  * @author Michael Murray
  * @see TransformMatrix
  */
-public class TransformMatrixAdjoint extends CollectionProducerComputationBase<PackedCollection, TransformMatrix> {
+public class TransformMatrixAdjoint extends CollectionProducerComputationBase {
 	private int varIdx = 0;
 
 	/**
@@ -53,12 +54,12 @@ public class TransformMatrixAdjoint extends CollectionProducerComputationBase<Pa
 	 */
 	public TransformMatrixAdjoint(Producer<TransformMatrix> input) {
 		super("transformMatrixAdjoint", new TraversalPolicy(4, 4), (Producer) input);
-		setPostprocessor(TransformMatrix.postprocessor());
+		setPostprocessor((BiFunction) TransformMatrix.postprocessor());
 	}
 
 	@Override
-	public Scope<TransformMatrix> getScope(KernelStructureContext context) {
-		HybridScope<TransformMatrix> scope = new HybridScope<>(this);
+	public Scope<PackedCollection> getScope(KernelStructureContext context) {
+		HybridScope<PackedCollection> scope = new HybridScope<>(this);
 		scope.setMetadata(new OperationMetadata(getFunctionName(), "TransformMatrixAdjoint"));
 
 		Scope<?> body = new Scope<>();

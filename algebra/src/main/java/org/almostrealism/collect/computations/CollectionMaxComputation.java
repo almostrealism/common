@@ -98,8 +98,6 @@ import java.util.List;
  *   <li><strong>ArgMax:</strong> Finds the index of the maximum value</li>
  * </ul>
  *
- * @param <T> The type of {@link PackedCollection} this computation produces
- *
  * @see AggregatedProducerComputation
  * @see CollectionSumComputation
  * @see io.almostrealism.expression.Max
@@ -108,7 +106,7 @@ import java.util.List;
  *
  * @author Michael Murray
  */
-public class CollectionMaxComputation<T extends PackedCollection> extends AggregatedProducerComputation<T> {
+public class CollectionMaxComputation extends AggregatedProducerComputation {
 	/**
 	 * Constructs a max computation that reduces the input collection to a single maximum value.
 	 * The input shape is automatically determined from the producer.
@@ -148,7 +146,7 @@ public class CollectionMaxComputation<T extends PackedCollection> extends Aggreg
 	 * @return A new {@link CollectionMaxComputation} for the child input
 	 */
 	@Override
-	public CollectionMaxComputation<T> generate(List<Process<?, ?>> children) {
+	public CollectionMaxComputation generate(List<Process<?, ?>> children) {
 		return new CollectionMaxComputation((Producer) children.get(1));
 	}
 

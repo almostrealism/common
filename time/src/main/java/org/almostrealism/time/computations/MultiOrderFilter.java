@@ -220,7 +220,7 @@ import java.util.List;
  *
  * @author Michael Murray
  */
-public class MultiOrderFilter extends CollectionProducerComputationBase<PackedCollection, PackedCollection> {
+public class MultiOrderFilter extends CollectionProducerComputationBase {
 	private int filterOrder;
 
 	/**

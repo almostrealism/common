@@ -91,13 +91,11 @@ import java.util.function.Supplier;
  * <li>O[i1, i2, ..., in] = 0 otherwise</li>
  * </ul>
  * 
- * @param <T> The type of PackedCollection being padded
- * 
  * @see TraversableExpressionComputation
  * @see PackedCollection
  * @see org.almostrealism.collect.CollectionFeatures#pad(TraversalPolicy, TraversalPolicy, Producer)
  */
-public class PackedCollectionPad<T extends PackedCollection> extends TraversableExpressionComputation<T> {
+public class PackedCollectionPad extends TraversableExpressionComputation {
 	public static boolean enableConditionSimplify = true;
 
 	/** The shape/dimensions of the input collection being padded */
@@ -215,12 +213,12 @@ public class PackedCollectionPad<T extends PackedCollection> extends Traversable
 	/**
 	 * Generates a new PackedCollectionPad computation with the specified child processes.
 	 * This method is part of the computation graph generation system.
-	 * 
+	 *
 	 * @param children The child processes, where children.get(1) should be the input collection producer
 	 * @return A new CollectionProducerComputation that performs the padding operation
 	 */
 	@Override
-	public CollectionProducerComputation<T> generate(List<Process<?, ?>> children) {
+	public CollectionProducerComputation generate(List<Process<?, ?>> children) {
 		return pad(getShape(), position, (Producer<?>) children.get(1));
 	}
 
@@ -228,21 +226,21 @@ public class PackedCollectionPad<T extends PackedCollection> extends Traversable
 	 * Computes the gradient (delta) of the padding operation with respect to a target.
 	 * This method enables backpropagation through padding operations by creating a new
 	 * padding computation that operates on the gradient of the input.
-	 * 
+	 *
 	 * <p>The delta computation extends the dimensionality to include both the output gradient
 	 * shape and the target shape, allowing gradients to flow backward through the padding.</p>
-	 * 
+	 *
 	 * <p><strong>Example:</strong> If the forward padding creates a 4x5 output from a 2x3 input,
 	 * the delta operation will create a 4x5x2x3 result where each output position contains
 	 * the gradient with respect to the corresponding input position (or zero if no correspondence exists).</p>
-	 * 
+	 *
 	 * @param target The target with respect to which the gradient is computed
 	 * @return A CollectionProducer that computes the gradient of the padding operation
-	 * 
+	 *
 	 * @see TraversableExpressionComputation#delta(Producer)
 	 */
 	@Override
-	public CollectionProducer<T> delta(Producer<?> target) {
+	public CollectionProducer<PackedCollection> delta(Producer<?> target) {
 		Supplier in = getInputs().get(1);
 
 		TraversalPolicy shape = getShape();

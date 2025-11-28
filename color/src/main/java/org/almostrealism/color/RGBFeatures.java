@@ -28,6 +28,7 @@ import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
+import java.util.function.BiFunction;
 import java.util.function.Supplier;
 
 /**
@@ -283,7 +284,7 @@ public interface RGBFeatures extends ScalarFeatures {
 	 * @return a producer that yields the given RGB value
 	 */
 	default CollectionProducer<PackedCollection> value(RGB value) {
-		return (CollectionProducer) DefaultTraversableExpressionComputation.fixed(value, RGB.postprocessor());
+		return (CollectionProducer) DefaultTraversableExpressionComputation.fixed(value, (BiFunction) RGB.postprocessor());
 	}
 
 	/**

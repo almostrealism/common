@@ -77,8 +77,6 @@ import java.util.stream.IntStream;
  * should be set before creating instances in multi-threaded environments as they
  * are not synchronized.</p>
  * 
- * @param <T> the type of {@link PackedCollection} being enumerated
- *
  * <h2>Examples</h2>
  *
  * <h3>Basic 1D Sliding Window</h3>
@@ -114,8 +112,8 @@ import java.util.stream.IntStream;
  * @see io.almostrealism.collect.TraversalPolicy
  * @see IndexProjectionProducerComputation
  */
-public class PackedCollectionEnumerate<T extends PackedCollection>
-		extends IndexProjectionProducerComputation<T> {
+public class PackedCollectionEnumerate
+		extends IndexProjectionProducerComputation {
 	/**
 	 * Enable optimization for preferring isolation in parallel processing.
 	 * When enabled, enumeration operations will prefer to run in isolation
@@ -434,9 +432,9 @@ public class PackedCollectionEnumerate<T extends PackedCollection>
 	 *         but using the provided child processes
 	 */
 	@Override
-	public PackedCollectionEnumerate<T> generate(List<Process<?, ?>> children) {
+	public PackedCollectionEnumerate generate(List<Process<?, ?>> children) {
 		return (PackedCollectionEnumerate)
-				new PackedCollectionEnumerate<>(subsetShape, strideShape,
+				new PackedCollectionEnumerate(subsetShape, strideShape,
 								(Producer) children.get(1), traversalDepth)
 						.addAllDependentLifecycles(getDependentLifecycles());
 	}

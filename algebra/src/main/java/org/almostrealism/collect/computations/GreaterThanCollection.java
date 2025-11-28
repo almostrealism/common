@@ -109,15 +109,13 @@ import java.util.List;
  *   <li><strong>Branching:</strong> Uses conditional expressions in generated code</li>
  * </ul>
  *
- * @param <T> The type of {@link PackedCollection} this computation produces
- *
  * @see CollectionComparisonComputation
  * @see LessThanCollection
  * @see org.almostrealism.collect.CollectionFeatures#greaterThan
  *
  * @author Michael Murray
  */
-public class GreaterThanCollection<T extends PackedCollection> extends CollectionComparisonComputation<T> {
+public class GreaterThanCollection extends CollectionComparisonComputation {
 	/**
 	 * Flag controlling whether the comparison includes equality (>=) or is strict (>).
 	 * When true, performs greater-than-or-equal comparison (>=).
@@ -213,7 +211,7 @@ public class GreaterThanCollection<T extends PackedCollection> extends Collectio
 	 * @return A new {@link CollectionProducerParallelProcess} for parallel execution
 	 */
 	@Override
-	public CollectionProducerParallelProcess<T> generate(List<Process<?, ?>> children) {
+	public CollectionProducerParallelProcess<PackedCollection> generate(List<Process<?, ?>> children) {
 		return (CollectionProducerParallelProcess)
 				greaterThan((Producer) children.get(1), (Producer) children.get(2),
 						(Producer) children.get(3), (Producer) children.get(4), includeEqual);

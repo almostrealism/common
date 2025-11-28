@@ -68,13 +68,12 @@ import java.util.List;
  *     );
  * }</pre>
  *
- * @param <T>  the packed collection type
  * @author  Michael Murray
  * @see org.almostrealism.algebra.AlgebraFeatures#weightedSum
  * @see org.almostrealism.algebra.MatrixFeatures#matmul
  */
-public class WeightedSumComputation <T extends PackedCollection>
-		extends TraversableExpressionComputation<T> {
+public class WeightedSumComputation
+		extends TraversableExpressionComputation {
 	private TraversalPolicy resultShape;
 	private TraversalPolicy inputPositions, weightPositions;
 	private TraversalPolicy inputGroupShape, weightGroupShape;
@@ -162,8 +161,8 @@ public class WeightedSumComputation <T extends PackedCollection>
 	 * @return a new weighted sum computation with the child producers
 	 */
 	@Override
-	public CollectionProducerParallelProcess<T> generate(List<Process<?, ?>> children) {
-		return new WeightedSumComputation<>(resultShape,
+	public CollectionProducerParallelProcess generate(List<Process<?, ?>> children) {
+		return new WeightedSumComputation(resultShape,
 				inputPositions, weightPositions,
 				inputGroupShape, weightGroupShape,
 				(Producer) children.get(1),
@@ -186,15 +185,15 @@ public class WeightedSumComputation <T extends PackedCollection>
 	 * @return the delta computation
 	 */
 	@Override
-	public CollectionProducer<T> delta(Producer<?> target) {
+	public CollectionProducer<PackedCollection> delta(Producer<?> target) {
 		if (AlgebraFeatures.match(getInputs().get(1), target) && AlgebraFeatures.cannotMatch(getInputs().get(2), target)) {
-			return new DefaultTraversableExpressionComputation<>("weightedSumDelta",
+			return new DefaultTraversableExpressionComputation("weightedSumDelta",
 					getShape().append(shape(target)),
 					args ->
 							new WeightedSumDeltaExpression(getShape(), shape(target), getInputTraversal(), getWeightsTraversal(), args[1]),
 					(Producer) getInputs().get(2));
 		} else if (AlgebraFeatures.match(getInputs().get(2), target) && AlgebraFeatures.cannotMatch(getInputs().get(1), target)) {
-			return new DefaultTraversableExpressionComputation<>("weightedSumDelta",
+			return new DefaultTraversableExpressionComputation("weightedSumDelta",
 					getShape().append(shape(target)),
 					args ->
 							new WeightedSumDeltaExpression(getShape(), shape(target), getWeightsTraversal(), getInputTraversal(), args[1]),

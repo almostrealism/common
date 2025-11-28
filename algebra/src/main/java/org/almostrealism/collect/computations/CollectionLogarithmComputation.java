@@ -98,8 +98,6 @@ import java.util.List;
  *   <li><strong>Differentiation:</strong> Optimized analytical derivative when enabled</li>
  * </ul>
  *
- * @param <T> The type of {@link PackedCollection} this computation produces
- *
  * @see TraversableExpressionComputation
  * @see CollectionExponentialComputation
  * @see io.almostrealism.expression.Logarithm
@@ -107,7 +105,7 @@ import java.util.List;
  *
  * @author Michael Murray
  */
-public class CollectionLogarithmComputation<T extends PackedCollection> extends TraversableExpressionComputation<T> {
+public class CollectionLogarithmComputation extends TraversableExpressionComputation {
 	/**
 	 * Enables optimized analytical derivative computation using the logarithm rule.
 	 * When true, the {@link #delta(Producer)} method applies d/dx[ln(x)] = 1/x
@@ -158,8 +156,8 @@ public class CollectionLogarithmComputation<T extends PackedCollection> extends 
 	 * @return A new {@link CollectionLogarithmComputation} for parallel execution
 	 */
 	@Override
-	public CollectionProducerParallelProcess<T> generate(List<Process<?, ?>> children) {
-		return new CollectionLogarithmComputation<>(getName(), getShape(),
+	public CollectionProducerParallelProcess generate(List<Process<?, ?>> children) {
+		return new CollectionLogarithmComputation(getName(), getShape(),
 				(Producer) children.get(1))
 				.setPostprocessor(getPostprocessor())
 				.setDescription(getDescription())
@@ -180,24 +178,24 @@ public class CollectionLogarithmComputation<T extends PackedCollection> extends 
 	 *         to the parent if custom delta is disabled
 	 */
 	@Override
-	public CollectionProducer<T> delta(Producer<?> target) {
+	public CollectionProducer<PackedCollection> delta(Producer<?> target) {
 		if (!enableCustomDelta) {
 			return super.delta(target);
 		}
 
-		CollectionProducer<T> delta = MatrixFeatures.getInstance().attemptDelta(this, target);
+		CollectionProducer<PackedCollection> delta = MatrixFeatures.getInstance().attemptDelta(this, target);
 		if (delta != null) {
 			return delta;
 		}
 
 		TraversalPolicy targetShape = shape(target);
 		TraversalPolicy shape = getShape().append(targetShape);
-		CollectionProducer<T> input = (CollectionProducer) getInputs().get(1);
+		CollectionProducer<PackedCollection> input = (CollectionProducer) getInputs().get(1);
 
-		CollectionProducer<T> d = input.delta(target);
+		CollectionProducer<PackedCollection> d = input.delta(target);
 		d = d.reshape(getShape().getTotalSize(), -1).traverse(0);
 
-		CollectionProducer<T> scale = pow(input, c(-1));
+		CollectionProducer<PackedCollection> scale = pow(input, c(-1));
 		scale = scale.flatten();
 
 		return expandAndMultiply(scale, d).reshape(shape);
