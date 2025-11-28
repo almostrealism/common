@@ -638,27 +638,27 @@ public class CollectionComputationTests implements TestFeatures {
 		PackedCollection result = new PackedCollection(1);
 
 		// Test: 1.0 AND 1.0 = 1.0
-		a(1, p(result), and((Producer) c(1.0), (Producer) c(1.0))).get().run();
+		a(1, p(result), and(c(1.0), c(1.0))).get().run();
 		assertEquals(1.0, result.toDouble(0));
 
 		// Test: 1.0 AND 0.0 = 0.0
-		a(1, p(result), and((Producer) c(1.0), (Producer) c(0.0))).get().run();
+		a(1, p(result), and(c(1.0), c(0.0))).get().run();
 		assertEquals(0.0, result.toDouble(0));
 
 		// Test: 0.0 AND 1.0 = 0.0
-		a(1, p(result), and((Producer) c(0.0), (Producer) c(1.0))).get().run();
+		a(1, p(result), and(c(0.0), c(1.0))).get().run();
 		assertEquals(0.0, result.toDouble(0));
 
 		// Test: 0.0 AND 0.0 = 0.0
-		a(1, p(result), and((Producer) c(0.0), (Producer) c(0.0))).get().run();
+		a(1, p(result), and(c(0.0), c(0.0))).get().run();
 		assertEquals(0.0, result.toDouble(0));
 
 		// Test: non-zero values treated as true: 5.0 AND 3.0 = 1.0
-		a(1, p(result), and((Producer) c(5.0), (Producer) c(3.0))).get().run();
+		a(1, p(result), and(c(5.0), c(3.0))).get().run();
 		assertEquals(1.0, result.toDouble(0));
 
 		// Test: 5.0 AND 0.0 = 0.0
-		a(1, p(result), and((Producer) c(5.0), (Producer) c(0.0))).get().run();
+		a(1, p(result), and(c(5.0), c(0.0))).get().run();
 		assertEquals(0.0, result.toDouble(0));
 	}
 
@@ -668,13 +668,13 @@ public class CollectionComputationTests implements TestFeatures {
 
 		// Test: AND with custom true/false values
 		// 1.0 AND 1.0 should return 100.0 (trueValue)
-		CollectionProducer<PackedCollection> andOp = and((Producer) c(1.0), (Producer) c(1.0), c(100.0), c(-1.0));
-		a(1, p(result), (Producer) andOp).get().run();
+		CollectionProducer<PackedCollection> andOp = and(c(1.0), c(1.0), c(100.0), c(-1.0));
+		a(1, p(result), andOp).get().run();
 		assertEquals(100.0, result.toDouble(0));
 
 		// 1.0 AND 0.0 should return -1.0 (falseValue)
-		andOp = and((Producer) c(1.0), (Producer) c(0.0), c(100.0), c(-1.0));
-		a(1, p(result), (Producer) andOp).get().run();
+		andOp = and(c(1.0), c(0.0), c(100.0), c(-1.0));
+		a(1, p(result), andOp).get().run();
 		assertEquals(-1.0, result.toDouble(0));
 	}
 
@@ -683,21 +683,21 @@ public class CollectionComputationTests implements TestFeatures {
 		PackedCollection result = new PackedCollection(1);
 
 		// Complex: (5 > 3) AND (7 > 2) AND (10 < 20) should be true
-		CollectionProducer<PackedCollection> cond1 = greaterThan((Producer) c(5.0), (Producer) c(3.0));
-		CollectionProducer<PackedCollection> cond2 = greaterThan((Producer) c(7.0), (Producer) c(2.0));
-		CollectionProducer<PackedCollection> cond3 = lessThan((Producer) c(10.0), (Producer) c(20.0));
+		CollectionProducer<PackedCollection> cond1 = greaterThan(c(5.0), c(3.0));
+		CollectionProducer<PackedCollection> cond2 = greaterThan(c(7.0), c(2.0));
+		CollectionProducer<PackedCollection> cond3 = lessThan(c(10.0), c(20.0));
 
 		// Chain the conditions: (cond1 AND cond2) AND cond3
-		CollectionProducer<PackedCollection> chained = and((Producer) and((Producer) cond1, (Producer) cond2), (Producer) cond3, c(100.0), c(-1.0));
+		CollectionProducer<PackedCollection> chained = and(and(cond1, cond2), cond3, c(100.0), c(-1.0));
 
-		a(1, p(result), (Producer) chained).get().run();
+		a(1, p(result), chained).get().run();
 		assertEquals(100.0, result.toDouble(0));
 
 		// Test with one false condition: (5 > 3) AND (7 > 2) AND (10 > 20)
-		cond3 = greaterThan((Producer) c(10.0), (Producer) c(20.0));  // This is false
-		chained = and((Producer) and((Producer) cond1, (Producer) cond2), (Producer) cond3, c(100.0), c(-1.0));
+		cond3 = greaterThan(c(10.0), c(20.0));  // This is false
+		chained = and(and(cond1, cond2), cond3, c(100.0), c(-1.0));
 
-		a(1, p(result), (Producer) chained).get().run();
+		a(1, p(result), chained).get().run();
 		assertEquals(-1.0, result.toDouble(0));
 	}
 }

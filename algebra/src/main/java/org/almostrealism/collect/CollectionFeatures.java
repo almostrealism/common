@@ -2286,7 +2286,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	 * // Result: Producer that generates [2.0, 3.0, 4.0]
 	 * }</pre>
 	 */
-	default <T extends PackedCollection> CollectionProducer<T> add(Producer<T> a, Producer<T> b) {
+	default <T extends PackedCollection> CollectionProducer<PackedCollection> add(Producer<T> a, Producer<T> b) {
 		return add(List.of(a, b));
 	}
 
@@ -2376,8 +2376,8 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	 * // Result: Producer that generates [5.0, 15.0, 25.0]
 	 * }</pre>
 	 */
-	default <T extends PackedCollection> CollectionProducer<T> subtract(Producer<T> a, Producer<T> b) {
-		return add(a, (Producer<T>) minus(b));
+	default <T extends PackedCollection> CollectionProducer<PackedCollection> subtract(Producer<T> a, Producer<T> b) {
+		return add(a, minus(b));
 	}
 
 	/**
@@ -3041,16 +3041,16 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		return sum(input).divide(c(shape(input).getSize()));
 	}
 
-	default <T extends PackedCollection> CollectionProducer<T> subtractMean(Producer<T> input) {
+	default <T extends PackedCollection> CollectionProducer<PackedCollection> subtractMean(Producer<T> input) {
 		Producer<T> mean = mean(input);
 		return subtract(input, mean);
 	}
 
-	default <T extends PackedCollection> CollectionProducer<T> variance(Producer<T> input) {
+	default <T extends PackedCollection> CollectionProducer<PackedCollection> variance(Producer<T> input) {
 		return mean(sq(subtractMean(input)));
 	}
 
-	default <T extends PackedCollection> CollectionProducer<T> sigmoid(Producer<T> input) {
+	default <T extends PackedCollection> CollectionProducer<PackedCollection> sigmoid(Producer<T> input) {
 		return divide(c(1.0), minus(input).exp().add(c(1.0)));
 	}
 
