@@ -2265,8 +2265,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	 * Performs element-wise addition of two collections.
 	 * This is one of the fundamental arithmetic operations for collections,
 	 * adding corresponding elements from each input collection.
-	 * 
-	 * @param <T> the type of PackedCollection
+	 *
 	 * @param a the first collection to add
 	 * @param b the second collection to add
 	 * @return a CollectionProducer that generates the element-wise sum
@@ -2286,7 +2285,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	 * // Result: Producer that generates [2.0, 3.0, 4.0]
 	 * }</pre>
 	 */
-	default <T extends PackedCollection> CollectionProducer add(Producer<T> a, Producer<T> b) {
+	default <A extends PackedCollection, B extends PackedCollection> CollectionProducer add(Producer<A> a, Producer<B> b) {
 		return add(List.of(a, b));
 	}
 
@@ -2355,8 +2354,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	 * Performs element-wise subtraction of two collections.
 	 * This operation subtracts corresponding elements of the second collection
 	 * from the first collection, equivalent to {@link #add add(a, minus(b))}.
-	 * 
-	 * @param <T> the type of {@link PackedCollection}
+	 *
 	 * @param a the collection to subtract from (minuend)
 	 * @param b the collection to subtract (subtrahend)
 	 * @return a {@link CollectionProducer} that generates the element-wise difference
@@ -2376,8 +2374,8 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	 * // Result: Producer that generates [5.0, 15.0, 25.0]
 	 * }</pre>
 	 */
-	default <T extends PackedCollection> CollectionProducer subtract(Producer<T> a, Producer<T> b) {
-		return add(a, (Producer) minus(b));
+	default CollectionProducer subtract(Producer<PackedCollection> a, Producer<PackedCollection> b) {
+		return add(a, minus(b));
 	}
 
 	/**
@@ -2420,7 +2418,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 					" from a collection of size " + shape.getSize());
 		}
 
-		CollectionProducer difference = equals(a, b, new EpsilonConstantComputation(shape), add(a, (Producer) minus(b)));
+		CollectionProducer difference = equals(a, b, new EpsilonConstantComputation(shape), add(a, minus(b)));
 		return (CollectionProducerComputation) equals(a, c(0.0), zeros(shape), difference);
 	}
 
@@ -3038,12 +3036,12 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		return sum(input).divide(c(shape(input).getSize()));
 	}
 
-	default <T extends PackedCollection> CollectionProducer subtractMean(Producer<T> input) {
+	default CollectionProducer subtractMean(Producer<PackedCollection> input) {
 		CollectionProducer mean = mean(input);
-		return subtract(input, (Producer<T>) mean);
+		return subtract(input, mean);
 	}
 
-	default <T extends PackedCollection> CollectionProducer variance(Producer<T> input) {
+	default <T extends PackedCollection> CollectionProducer variance(Producer<PackedCollection> input) {
 		return mean(sq(subtractMean(input)));
 	}
 

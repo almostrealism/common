@@ -129,8 +129,8 @@ public interface TriangleFeatures extends VectorFeatures {
 	 * @param p3 producer for the third vertex
 	 * @return producer for the triangle data structure
 	 */
-	default <T extends PackedCollection> CollectionProducer triangle(
-			Producer<T> p1, Producer<T> p2, Producer<T> p3) {
+	default CollectionProducer triangle(
+			Producer<PackedCollection> p1, Producer<PackedCollection> p2, Producer<PackedCollection> p3) {
 		CollectionProducer abc = subtract(p2, p1);
 		CollectionProducer def = subtract(p3, p1);
 		Producer jkl = p1;

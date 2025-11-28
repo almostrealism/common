@@ -153,7 +153,6 @@ import java.util.function.Supplier;
  * // Result: 2x (derivative of x^2)
  * }</pre>
  *
- * @param <T>  the shape type produced by this producer
  * @author  Michael Murray
  * @see CollectionProducerBase
  * @see DeltaFeatures
@@ -302,7 +301,7 @@ public interface CollectionProducer extends
 	}
 
 	default <V extends PackedCollection> CollectionProducer subtract(Producer<V> value) {
-		return subtract((Producer) this, value);
+		return subtract(this, (Producer) value);
 	}
 
 	default <T extends PackedCollection> CollectionProducerComputation<T> subtractIgnoreZero(Producer<T> value) {
