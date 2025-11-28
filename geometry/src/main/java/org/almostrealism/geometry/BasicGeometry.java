@@ -38,7 +38,7 @@ public class BasicGeometry implements Positioned, Oriented, Scaled, DecodePostPr
 	public Vector location;
 	public double size;
 
-	public Vector scale = (Vector) UnityVector.getEvaluable().evaluate().clone();
+	public Vector scale = new Vector(UnityVector.getEvaluable().evaluate().clone(), 0);
 	public double rotateX, rotateY, rotateZ;
 
 	private TransformMatrix transforms[];

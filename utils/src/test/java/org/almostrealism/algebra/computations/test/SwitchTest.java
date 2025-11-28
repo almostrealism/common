@@ -37,7 +37,7 @@ public class SwitchTest implements TestFeatures {
 		Computation<Void> firstChoice = a(1, p(output), multiply(multiplier, c(2.0)));
 		Computation<Void> secondChoice = a(1, p(output), multiply(multiplier, c(4.0)));
 		Computation<Void> thirdChoice = a(1, p(output), multiply(multiplier, c(8.0)));
-		return new Switch((CollectionProducer) decision, Arrays.asList(firstChoice, secondChoice, thirdChoice));
+		return new Switch(decision, Arrays.asList(firstChoice, secondChoice, thirdChoice));
 	}
 
 	@Test
