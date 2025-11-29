@@ -55,9 +55,9 @@ import java.io.PrintWriter;
  * @see ReceptorConsumer
  */
 public class CSVReceptor<T> extends ReceptorConsumer<T> implements AutoCloseable {
-	private PrintWriter ps;
+	private final PrintWriter ps;
 	private long index;
-	private int rate;
+	private final int rate;
 	private String lastValue;
 
 	/**

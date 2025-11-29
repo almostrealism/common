@@ -221,7 +221,7 @@ import java.util.List;
  * @author Michael Murray
  */
 public class MultiOrderFilter extends CollectionProducerComputationBase {
-	private int filterOrder;
+	private final int filterOrder;
 
 	/**
 	 * Constructs a multi-order filter with explicit output shape.

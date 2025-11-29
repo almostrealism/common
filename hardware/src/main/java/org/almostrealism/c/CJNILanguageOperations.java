@@ -37,7 +37,7 @@ import java.util.function.Consumer;
  */
 public class CJNILanguageOperations extends CLanguageOperations {
 	/** List of method names that are library functions and should not receive the global_id parameter. */
-	private List<String> libraryMethods;
+	private final List<String> libraryMethods;
 
 	/**
 	 * Creates JNI-compatible language operations with the specified precision.

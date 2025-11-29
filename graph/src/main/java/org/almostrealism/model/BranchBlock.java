@@ -32,16 +32,16 @@ import java.util.List;
 import java.util.function.Supplier;
 
 public class BranchBlock implements Block {
-	private TraversalPolicy shape;
+	private final TraversalPolicy shape;
 
 	private Cell<PackedCollection> entry;
-	private Receptor<PackedCollection> push;
+	private final Receptor<PackedCollection> push;
 	private Receptor<PackedCollection> downstream;
 
 	private Cell<PackedCollection> backwards;
 	private List<CellularPropagation<PackedCollection>> children;
-	private PackedCollection gradient;
-	private Receptor<PackedCollection> aggregator;
+	private final PackedCollection gradient;
+	private final Receptor<PackedCollection> aggregator;
 
 	public BranchBlock(TraversalPolicy shape) {
 		this.shape = shape;

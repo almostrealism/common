@@ -288,7 +288,7 @@ public abstract class KdTree<T> {
     /**
      * Enumeration representing the status of a node during the running
      */
-    private static enum Status {
+    private enum Status {
         NONE, LEFTVISITED, RIGHTVISITED, ALLVISITED
     }
 

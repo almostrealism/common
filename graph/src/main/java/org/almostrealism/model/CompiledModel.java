@@ -95,18 +95,18 @@ import java.util.stream.Collectors;
  * @author Michael Murray
  */
 public class CompiledModel implements Destroyable, CodeFeatures {
-	private List<TraversalPolicy> inputShapes;
-	private TraversalPolicy outputShape;
+	private final List<TraversalPolicy> inputShapes;
+	private final TraversalPolicy outputShape;
 
-	private Runnable setup;
+	private final Runnable setup;
 
-	private List<? extends Consumer<PackedCollection>> updateInput;
-	private Supplier<PackedCollection> retrieveOutput;
-	private Runnable forward;
+	private final List<? extends Consumer<PackedCollection>> updateInput;
+	private final Supplier<PackedCollection> retrieveOutput;
+	private final Runnable forward;
 
-	private Consumer<PackedCollection> updateGradient;
-	private Supplier<PackedCollection> retrieveGradient;
-	private Runnable backward;
+	private final Consumer<PackedCollection> updateGradient;
+	private final Supplier<PackedCollection> retrieveGradient;
+	private final Runnable backward;
 
 	/**
 	 * Creates a new compiled model with all required components.
@@ -270,7 +270,7 @@ public class CompiledModel implements Destroyable, CodeFeatures {
 
 	protected static class InputManager implements Consumer<PackedCollection>,
 			Supplier<DynamicCollectionProducer>, ConsoleFeatures {
-		private TraversalPolicy shape;
+		private final TraversalPolicy shape;
 		private PackedCollection input;
 
 		public InputManager(TraversalPolicy shape) {

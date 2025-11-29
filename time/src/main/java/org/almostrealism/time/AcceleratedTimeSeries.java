@@ -416,7 +416,7 @@ public class AcceleratedTimeSeries extends MemoryBankAdapter<TemporalScalar> imp
 			if (v.getTime() >= time) {
 				left = i > getBeginCursorIndex() ? get(i - 1) : (v.getTime() == time ? get(i) : null);
 				right = get(i);
-				break i;
+				break;
 			}
 		}
 

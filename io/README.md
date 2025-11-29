@@ -65,7 +65,7 @@ public class MyProcessor implements ConsoleFeatures {
 **Custom Console:**
 ```java
 public class MyClass implements ConsoleFeatures {
-    private Console myConsole = Console.root().child();
+    private final Console myConsole = Console.root().child();
 
     @Override
     public Console console() {

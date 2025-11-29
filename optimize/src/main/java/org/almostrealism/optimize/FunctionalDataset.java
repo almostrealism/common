@@ -67,8 +67,8 @@ import java.util.function.Function;
  * @author Michael Murray
  */
 public class FunctionalDataset<T extends PackedCollection> implements Dataset<T> {
-	private List<PackedCollection> inputs;
-	private Function<PackedCollection, Collection<ValueTarget<T>>> function;
+	private final List<PackedCollection> inputs;
+	private final Function<PackedCollection, Collection<ValueTarget<T>>> function;
 
 	/**
 	 * Creates a functional dataset with the given inputs and transformation function.

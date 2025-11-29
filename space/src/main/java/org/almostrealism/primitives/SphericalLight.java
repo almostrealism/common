@@ -87,7 +87,7 @@ public class SphericalLight extends Sphere implements SurfaceLight {
 	 */
 	@Override
 	public Light[] getSamples(int total) {
-		PointLight l[] = new PointLight[total];
+		PointLight[] l = new PointLight[total];
 		
 		double in = this.intensity / total;
 		
@@ -100,13 +100,13 @@ public class SphericalLight extends Sphere implements SurfaceLight {
 			double y = r * Math.sin(u) * Math.sin(v);
 			double z = r * Math.cos(u);
 			
-			Supplier<Evaluable<? extends Vector>> p = getTransform(true).transform((Producer) vector(x, y, z),
+			Producer<PackedCollection> p = getTransform(true).transform(vector(x, y, z),
 									TransformMatrix.TRANSFORM_AS_LOCATION);
 
 			// TODO  This should pass along the ColorProucer directly rather than evaluating it
-			PackedCollection colorResult = getColorAt(() -> (Evaluable<PackedCollection>) (Evaluable<?>) p.get()).get().evaluate();
+			PackedCollection colorResult = getColorAt(p).get().evaluate();
 			RGB color = colorResult instanceof RGB ? (RGB) colorResult : new RGB(colorResult.toDouble(0), colorResult.toDouble(1), colorResult.toDouble(2));
-			l[i] = new PointLight(p.get().evaluate(), in, color);
+			l[i] = new PointLight(new Vector(p.get().evaluate(), 0), in, color);
 			l[i].setAttenuationCoefficients(this.atta, this.attb, this.attc);
 		}
 		

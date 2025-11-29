@@ -75,7 +75,7 @@ import java.util.function.Function;
  * @author Michael Murray
  */
 public class Ops implements CodeFeatures {
-	private static Ops ops = new Ops();
+	private static final Ops ops = new Ops();
 
 	private Ops() { }
 

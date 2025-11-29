@@ -94,7 +94,7 @@ public class BasicIntersectionTest implements TestFeatures {
 		sphere.setLocation(new Vector(0.0, 0.0, 0.0));
 		sphere.setSize(1.0);
 		sphere.setColor(new org.almostrealism.color.RGB(0.8, 0.2, 0.2)); // Red
-		((AbstractSurface) sphere).setShaders(new org.almostrealism.color.Shader[] {
+		sphere.setShaders(new org.almostrealism.color.Shader[] {
 			DiffuseShader.defaultDiffuseShader
 		});
 

@@ -6,9 +6,9 @@ import org.almostrealism.collect.PackedCollection;
 import java.util.function.Supplier;
 
 public class CollectionReceptor implements Receptor<PackedCollection> {
-	private PackedCollection dest;
-	private Producer<PackedCollection> pos;
-	private Runnable r;
+	private final PackedCollection dest;
+	private final Producer<PackedCollection> pos;
+	private final Runnable r;
 
 	public CollectionReceptor(PackedCollection dest) {
 		this(dest, null);

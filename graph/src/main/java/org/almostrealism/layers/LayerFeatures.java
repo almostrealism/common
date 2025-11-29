@@ -1154,7 +1154,7 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 
 			if (w != null) out = out.multiply(cp(w));
 			if (b != null) out = out.add(cp(b));
-			return (CollectionProducer) out;
+			return out;
 		}, prop, setup, requirements);
 	}
 

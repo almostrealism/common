@@ -123,7 +123,7 @@ public class NativeRead extends BaseNative {
 	 * @return A new array containing all values from the memory
 	 */
 	public double[] apply(MemoryData mem) {
-		double out[] = new double[mem.getMemLength()];
+		double[] out = new double[mem.getMemLength()];
 		apply((NativeMemory) mem.getMem(), out);
 		return out;
 	}
@@ -134,7 +134,7 @@ public class NativeRead extends BaseNative {
 	 * @param mem    The native memory to read from
 	 * @param target The destination array to populate
 	 */
-	public void apply(NativeMemory mem, double target[]) { apply(mem, 0, target); }
+	public void apply(NativeMemory mem, double[] target) { apply(mem, 0, target); }
 
 	/**
 	 * Reads data from native memory starting at the specified offset.
@@ -143,7 +143,7 @@ public class NativeRead extends BaseNative {
 	 * @param offset The starting offset in elements
 	 * @param target The destination array to populate
 	 */
-	public void apply(NativeMemory mem, int offset, double target[]) {
+	public void apply(NativeMemory mem, int offset, double[] target) {
 		apply(mem, offset, target, 0, target.length);
 	}
 
@@ -157,14 +157,14 @@ public class NativeRead extends BaseNative {
 	 * @param length  The number of elements to read
 	 * @throws IllegalArgumentException if the read would exceed memory bounds or array bounds
 	 */
-	public void apply(NativeMemory mem, int offset, double target[], int toffset, int length) {
-		if (mem.getSize() < (offset + length) * getNativeCompiler().getPrecision().bytes()) {
+	public void apply(NativeMemory mem, int offset, double[] target, int toffset, int length) {
+		if (mem.getSize() < (long) (offset + length) * getNativeCompiler().getPrecision().bytes()) {
 			throw new IllegalArgumentException("Attempt to read memory beyond the size of " + mem);
 		} else if (target.length < toffset + length) {
 			throw new IllegalArgumentException("Attempt to read memory into a destination array beyond the array size");
 		}
 
-		double out[] = apply(mem.getContentPointer(), offset, length);
+		double[] out = apply(mem.getContentPointer(), offset, length);
 		if (length >= 0) System.arraycopy(out, 0, target, toffset, length);
 	}
 

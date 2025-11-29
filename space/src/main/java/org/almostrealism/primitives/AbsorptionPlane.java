@@ -45,13 +45,14 @@ public class AbsorptionPlane extends Plane implements Absorber, Fast {
 	private Clock clock;
 	
 	private int w, h;
-	private double max = Math.pow(10.0, 0.0);
+	private final double max = Math.pow(10.0, 0.0);
 	private double pixel;
-	private double energy[][];
-	private RGB image[][];
+	private double[][] energy;
+	private RGB[][] image;
 	
 	private boolean noDisplay;
-	private int displayTicks, displaySleep = 1000;
+	private int displayTicks;
+	private final int displaySleep = 1000;
 	private JPanel display;
 	
 	/**
@@ -100,13 +101,13 @@ public class AbsorptionPlane extends Plane implements Absorber, Fast {
 	 * @param p  {x, y, z} - The vector pointing upwards across the surface of this
 	 *           absorption plane. This vector must be orthagonal to the surface normal.
 	 */
-	public void setOrientation(double p[]) { this.up = p; this.across = null; }
+	public void setOrientation(double[] p) { this.up = p; this.across = null; }
 
 	@Override
 	public void setAbsorbDelay(double t) { }
 
 	@Override
-	public void setOrigPosition(double x[]) { }
+	public void setOrigPosition(double[] x) { }
 
 	@Override
 	public boolean absorb(Vector x, Vector p, double energy) {
@@ -197,13 +198,13 @@ public class AbsorptionPlane extends Plane implements Absorber, Fast {
 	}
 	
 	public void writeImage(OutputStream out) throws IOException {
-		if (this.energy == null) return;
+		if (this.energy == null) {}
 //		TODO  Need to write image
 //		ImageCanvas.writeImage(this.getImage(), out, ImageCanvas.PPMEncoding);
 	}
 	
 	public void saveImage(String file) throws IOException {
-		if (this.energy == null) return;
+		if (this.energy == null) {}
 		
 //		TODO  Need to write image
 		/*
@@ -229,7 +230,7 @@ public class AbsorptionPlane extends Plane implements Absorber, Fast {
 	public RGB[][] getEnergyMap() {
 		if (this.energy == null) return new RGB[1][0];
 		
-		RGB image[][] = new RGB[this.energy.length][this.energy[0].length];
+		RGB[][] image = new RGB[this.energy.length][this.energy[0].length];
 		
 		for (int i = 0; i < image.length; i++) {
 			for (int j = 0; j < image[i].length; j++) {

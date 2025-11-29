@@ -102,7 +102,7 @@ public interface ValueTarget<T extends MemoryData> {
 		return new ValueTarget<>() {
 			@Override
 			public PackedCollection getInput() {
-				return (PackedCollection) original.getInput();
+				return original.getInput();
 			}
 
 			@Override
@@ -112,7 +112,7 @@ public interface ValueTarget<T extends MemoryData> {
 
 			@Override
 			public PackedCollection getExpectedOutput() {
-				return (PackedCollection) original.getExpectedOutput();
+				return original.getExpectedOutput();
 			}
 		};
 	}
@@ -129,12 +129,12 @@ public interface ValueTarget<T extends MemoryData> {
 		return new ValueTarget<T>() {
 			@Override
 			public PackedCollection getInput() {
-				return (PackedCollection) input;
+				return input;
 			}
 
 			@Override
 			public PackedCollection getExpectedOutput() {
-				return (PackedCollection) expectedOutput;
+				return expectedOutput;
 			}
 		};
 	}

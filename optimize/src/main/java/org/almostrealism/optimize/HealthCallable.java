@@ -91,14 +91,14 @@ public class HealthCallable<T extends Temporal, S extends HealthScore> implement
 	public static boolean enableVerbose = false;
 
 	/** Compute requirements for fitness evaluations (e.g., GPU acceleration). */
-	public static ComputeRequirement computeRequirements[] = {};
+	public static ComputeRequirement[] computeRequirements = {};
 
-	private HealthComputation<T, S> health;
-	private Supplier<T> target;
-	private Consumer<S> healthListener;
+	private final HealthComputation<T, S> health;
+	private final Supplier<T> target;
+	private final Consumer<S> healthListener;
 	private Consumer<Exception> errorListener;
-	private HealthScoring scoring;
-	private Runnable cleanup;
+	private final HealthScoring scoring;
+	private final Runnable cleanup;
 
 	private Heap heap;
 

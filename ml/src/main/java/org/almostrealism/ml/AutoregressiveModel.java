@@ -115,7 +115,7 @@ public class AutoregressiveModel implements DistributionFeatures, CodeFeatures {
 		this.temperature = new PackedCollection(1);
 
 		this.indexOfMax = indexOfMax(x(vocabSize)).get();
-		this.rescale = (Evaluable) x(vocabSize).divide(cp(temperature)).get();
+		this.rescale = x(vocabSize).divide(cp(temperature)).get();
 		this.softmax = Process.optimized(softmax(x(vocabSize))).get();
 	}
 

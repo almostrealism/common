@@ -89,7 +89,7 @@ public class RectangularLight extends Plane implements SurfaceLight {
 	 * @see SurfaceLight#getSamples(int)
 	 */
 	public Light[] getSamples(int total) {
-		Light l[] = new Light[total];
+		Light[] l = new Light[total];
 		
 		double in = this.intensity / total;
 		
@@ -110,13 +110,13 @@ public class RectangularLight extends Plane implements SurfaceLight {
 				z = Math.random() * this.height;
 			}
 
-			Supplier<Evaluable<? extends Vector>> p = getTransform(true).transform((Producer) vector(x, y, z),
+			Producer<PackedCollection> p = getTransform(true).transform(vector(x, y, z),
 									TransformMatrix.TRANSFORM_AS_LOCATION);
 
 			// TODO This should hand off the color producer directly
 			PackedCollection colorResult = getColorAt(vector()).get().evaluate();
 			RGB color = colorResult instanceof RGB ? (RGB) colorResult : new RGB(colorResult.toDouble(0), colorResult.toDouble(1), colorResult.toDouble(2));
-			l[i] = new PointLight(p.get().evaluate(), in, color);
+			l[i] = new PointLight(new Vector(p.get().evaluate(), 0), in, color);
 		}
 		
 		return l;

@@ -102,7 +102,7 @@ public class DynamicCausalMaskTest implements AttentionFeatures {
         // Repeat for all heads
         CollectionProducer mask = repeat(heads, maskRow);
 
-        PackedCollection result = (PackedCollection) mask.get().evaluate();
+        PackedCollection result = mask.get().evaluate();
 
         System.out.println("\nMask with heads:");
         System.out.println("  Shape: " + result.getShape());

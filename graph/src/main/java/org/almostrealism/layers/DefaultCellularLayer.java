@@ -36,8 +36,8 @@ public class DefaultCellularLayer implements CellularLayer, CodeFeatures, Learni
 	public static boolean enableMemoryDataCopy = true;
 
 	private TraversalPolicy inputShape;
-	private TraversalPolicy outputShape;
-	private Supplier<Runnable> setup;
+	private final TraversalPolicy outputShape;
+	private final Supplier<Runnable> setup;
 	private Cell<PackedCollection> forward;
 	private Cell<PackedCollection> backward;
 	private List<PackedCollection> weights;

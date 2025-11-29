@@ -154,7 +154,7 @@ public interface TriangleFeatures extends VectorFeatures {
 		TraversalPolicy outputShape;
 		if (inputShape.getDimensions() >= 2) {
 			// Input is (N, 3), output should be (N, 4, 3)
-			int batchSize = (int) inputShape.length(0);
+			int batchSize = inputShape.length(0);
 			outputShape = new TraversalPolicy(false, false, batchSize, 4, 3);
 		} else {
 			// Single triangle: input is (3), output is (4, 3)
@@ -213,14 +213,14 @@ public interface TriangleFeatures extends VectorFeatures {
 			// Input is (N, M, 3) - batch of triangles
 			// Output is (N, 3) - batch of vertices
 			int batchDim = inputShape.getDimensions() - 3;
-			int batchSize = (int) inputShape.length(batchDim);
+			int batchSize = inputShape.length(batchDim);
 			int group = inputShape.getDimensions() - 2;
-			stride = (int) inputShape.length(group) * 3;
+			stride = inputShape.length(group) * 3;
 			outputShape = new TraversalPolicy(false, false, batchSize, 3);
 		} else if (inputShape.getDimensions() == 2) {
 			// Input is (M, 3) - single triangle's vertices
 			// Output is (3) - single vertex
-			stride = (int) inputShape.length(0) * 3;
+			stride = inputShape.length(0) * 3;
 			outputShape = new TraversalPolicy(false, false, 3);
 		} else {
 			stride = 3;  // Single vector

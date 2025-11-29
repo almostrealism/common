@@ -47,10 +47,11 @@ public class CSG extends AbstractSurface {
   /** Integer code for boolean intersection (A & B). */
   public static final int INTERSECTION = 3;
   
-  private int type;
-  private AbstractSurface sa, sb;
+  private final int type;
+  private final AbstractSurface sa;
+	private final AbstractSurface sb;
   
-  private boolean inverted;
+  private final boolean inverted;
 
   	/**
   	 * Constructs a new CSG object using the specified Surface objects.
@@ -190,10 +191,10 @@ public class CSG extends AbstractSurface {
         return null;
     }
 
-    public double[] interval(double intersect[]) {
+    public double[] interval(double[] intersect) {
         if (intersect.length <= 0) return new double[] {0.0, 0.0};
         
-        double o[] = {intersect[0], intersect[0]};
+        double[] o = {intersect[0], intersect[0]};
         
         for (int i = 1; i < intersect.length; i++) {
             if (intersect[i] < o[0])
@@ -205,8 +206,8 @@ public class CSG extends AbstractSurface {
         return o;
     }
     
-    public double[][] intervalDifference(double ia[], double ib[]) {
-        double o[][] = new double[2][2];
+    public double[][] intervalDifference(double[] ia, double[] ib) {
+        double[][] o = new double[2][2];
         
         if (ia[0] >= ib[0]) {
             o[0] = new double[] {0.0, 0.0};
@@ -225,7 +226,7 @@ public class CSG extends AbstractSurface {
         return o;
     }
     
-    public double[] intervalIntersection(double ia[], double ib[]) {
+    public double[] intervalIntersection(double[] ia, double[] ib) {
         return new double[] {Math.max(ia[0], ib[0]), Math.min(ia[1], ib[1])};
     }
 

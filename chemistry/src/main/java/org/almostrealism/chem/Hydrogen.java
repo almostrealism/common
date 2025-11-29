@@ -69,6 +69,6 @@ public class Hydrogen implements Element {
 	 * @return an unmodifiable list containing the single electron shell
 	 */
 	private List<Shell> getShells() {
-		return Collections.unmodifiableList(Arrays.asList(Shell.first(1)));
+		return Collections.unmodifiableList(List.of(Shell.first(1)));
 	}
 }

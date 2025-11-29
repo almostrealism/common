@@ -57,11 +57,8 @@ public class Pinhole extends Plane implements Absorber, Fast {
 			this.across = new Vector(this.up).crossProduct(new Vector(this.normal.get().evaluate(), 0)).toArray();
 		
 		double z = Math.abs(x.dotProduct(new Vector(this.across)));
-		
-		if (Math.sqrt(y * y + z * z) > this.radius)
-			return true;
-		else
-			return false;
+
+		return Math.sqrt(y * y + z * z) > this.radius;
 	}
 
 	@Override

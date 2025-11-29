@@ -78,7 +78,7 @@ public abstract class BaseNative {
 	private String functionName;
 
 	/** Compiler for translating C code to shared libraries and loading them via JNI. */
-	private NativeCompiler compiler;
+	private final NativeCompiler compiler;
 
 	/**
 	 * Creates a new native operation with the specified compiler.

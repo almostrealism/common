@@ -46,10 +46,10 @@ import org.almostrealism.hardware.MemoryBank;
  * @see GeometryFeatures#reflect(Producer, Producer)
  */
 public class ReflectedRay implements ProducerComputation<Ray>, GeometryFeatures {
-	private Producer<PackedCollection> point;
-	private Producer<PackedCollection> normal;
-	private Producer<PackedCollection> reflected;
-	private double blur;
+	private final Producer<PackedCollection> point;
+	private final Producer<PackedCollection> normal;
+	private final Producer<PackedCollection> reflected;
+	private final double blur;
 
 	/**
 	 * Constructs a ReflectedRay computation.
@@ -62,7 +62,7 @@ public class ReflectedRay implements ProducerComputation<Ray>, GeometryFeatures 
 	public ReflectedRay(Producer<PackedCollection> point, Producer<PackedCollection> incident, Producer<PackedCollection> normal, double blur) {
 		this.point = point;
 		this.normal = normal;
-		this.reflected = reflect((Producer) incident, (Producer) normal);
+		this.reflected = reflect(incident, normal);
 		this.blur = blur;
 	}
 
@@ -92,9 +92,9 @@ public class ReflectedRay implements ProducerComputation<Ray>, GeometryFeatures 
 					double a = blur * (-0.5 + Math.random());
 					double b = blur * (-0.5 + Math.random());
 
-					Vector u, v, w = (Vector) n.clone();
+					Vector u, v, w = n.clone();
 
-					Vector t = (Vector) n.clone();
+					Vector t = n.clone();
 
 					if (t.getX() < t.getY() && t.getY() < t.getZ()) {
 						t.setX(1.0);

@@ -28,7 +28,7 @@ public class Plane implements Volume<RGB>, CodeFeatures {
 	
 	protected double w, h;
 	protected double thick = 0.5;
-	protected double up[], across[];
+	protected double[] up, across;
 	protected Producer<PackedCollection> normal;
 	
 	/** @param t  The thickness of the plane (usually measured in micrometers). */
@@ -69,7 +69,7 @@ public class Plane implements Volume<RGB>, CodeFeatures {
 	 * @param p  {x, y, z} - The vector pointing upwards across the surface of this
 	 *           absorption plane. This vector must be orthagonal to the surface normal.
 	 */
-	public void setOrientation(double p[]) { this.up = p; this.across = null; }
+	public void setOrientation(double[] p) { this.up = p; this.across = null; }
 	
 	/**
 	 * @return  {x, y, z} - The vector pointing upwards across the surface of this
@@ -86,20 +86,18 @@ public class Plane implements Volume<RGB>, CodeFeatures {
 
 	@Override
 	public boolean inside(Producer<PackedCollection> x) {
-		double d = Math.abs(((PackedCollection) dotProduct((Producer) x, (Producer) normal).get().evaluate()).toDouble(0));
+		double d = Math.abs(dotProduct(x, normal).get().evaluate().toDouble(0));
 		Plane.d = d;
 		if (d > this.thick) return false;
 
-		double y = Math.abs(((PackedCollection) dotProduct((Producer) x, (Producer) vector(up[0], up[1], up[2])).get().evaluate()).toDouble(0));
+		double y = Math.abs(dotProduct(x, vector(up[0], up[1], up[2])).get().evaluate().toDouble(0));
 		if (y > this.h / 2.0) return false;
 
 		if (this.across == null)
 			this.across = new Vector(this.up).crossProduct(new Vector(normal.get().evaluate(), 0)).toArray();
 
-		double z = Math.abs(((PackedCollection) dotProduct((Producer) x, (Producer) vector(across[0], across[1], across[2])).get().evaluate()).toDouble(0));
-		if (z > this.w / 2.0) return false;
-
-		return true;
+		double z = Math.abs(dotProduct(x, vector(across[0], across[1], across[2])).get().evaluate().toDouble(0));
+		return !(z > this.w / 2.0);
 	}
 
 	@Override
@@ -114,14 +112,14 @@ public class Plane implements Volume<RGB>, CodeFeatures {
 			d1 = Double.MAX_VALUE - 1.0;
 		} else {
 			Vector x = d.multiply(d1 + this.thick / 2.0).add(p);
-			if (!this.inside((Producer) value(x))) d1 = Double.MAX_VALUE - 1.0;
+			if (!this.inside(value(x))) d1 = Double.MAX_VALUE - 1.0;
 		}
 
 		if (d2 < 0.0) {
 			d2 = Double.MAX_VALUE - 1.0;
 		} else {
 			Vector x = d.multiply(d2 - this.thick / 2.0).add(p);
-			if (!this.inside((Producer) value(x))) d2 = Double.MAX_VALUE - 1.0;
+			if (!this.inside(value(x))) d2 = Double.MAX_VALUE - 1.0;
 		}
 		
 		
@@ -136,7 +134,7 @@ public class Plane implements Volume<RGB>, CodeFeatures {
 	public Producer<PackedCollection> getNormalAt(Producer<PackedCollection> x) { return normal; }
 
 	@Override
-	public double[] getSpatialCoords(double uv[]) {
+	public double[] getSpatialCoords(double[] uv) {
 		if (this.across == null)
 			this.across = new Vector(this.up).crossProduct(new Vector(normal.get().evaluate(), 0)).toArray();
 
@@ -146,7 +144,7 @@ public class Plane implements Volume<RGB>, CodeFeatures {
 
 	@Override
 	public double[] getSurfaceCoords(Producer<PackedCollection> v) {
-		double xyz[] = v.get().evaluate().toArray();
+		double[] xyz = v.get().evaluate().toArray();
 
 		if (this.across == null)
 			this.across = new Vector(this.up).crossProduct(new Vector(normal.get().evaluate(), 0)).toArray();

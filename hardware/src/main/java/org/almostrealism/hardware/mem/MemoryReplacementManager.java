@@ -149,12 +149,12 @@ import java.util.function.BiConsumer;
  * @see OperationList
  */
 public class MemoryReplacementManager implements ConsoleFeatures {
-	private MemoryProvider target;
-	private TempMemoryFactory tempFactory;
-	private int aggregationThreshold;
+	private final MemoryProvider target;
+	private final TempMemoryFactory tempFactory;
+	private final int aggregationThreshold;
 
-	private OperationList prepare;
-	private OperationList postprocess;
+	private final OperationList prepare;
+	private final OperationList postprocess;
 
 	public MemoryReplacementManager(MemoryProvider target,
 									TempMemoryFactory tempFactory) {
@@ -178,20 +178,19 @@ public class MemoryReplacementManager implements ConsoleFeatures {
 		return prepare.isEmpty() && postprocess.isEmpty();
 	}
 
-	public Object[] processArguments(Object args[]) {
+	public Object[] processArguments(Object[] args) {
 		Map<MemoryData, Replacement> replacements = new HashMap<>();
 
-		Object result[] = new Object[args.length];
+		Object[] result = new Object[args.length];
 
 		i: for (int i = 0; i < args.length; i++) {
 			Object arg = args[i];
 
-			if (!(arg instanceof MemoryData)) {
+			if (!(arg instanceof MemoryData data)) {
 				result[i] = arg;
 				continue i;
 			}
 
-			MemoryData data = (MemoryData) arg;
 			if (data.getMem() == null) {
 				throw new IllegalArgumentException();
 			} else if (data.getMemOrdering() != null) {

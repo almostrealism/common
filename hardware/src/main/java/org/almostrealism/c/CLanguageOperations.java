@@ -33,9 +33,9 @@ import java.util.function.Consumer;
  */
 public class CLanguageOperations extends DefaultLanguageOperations {
 	/** Whether to generate native JNI-compatible code. */
-	private boolean isNative;
+	private final boolean isNative;
 	/** Whether to enable reading argument offset and size arrays. */
-	private boolean enableArgumentDetailReads;
+	private final boolean enableArgumentDetailReads;
 
 	/**
 	 * Constructs a new CLanguageOperations instance.

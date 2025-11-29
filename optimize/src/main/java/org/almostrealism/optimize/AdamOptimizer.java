@@ -85,9 +85,9 @@ import java.util.function.Supplier;
  * @author Michael Murray
  */
 public class AdamOptimizer implements ParameterUpdate<PackedCollection>, CodeFeatures {
-	private Producer<PackedCollection> learningRate;
-	private Producer<PackedCollection> beta1;
-	private Producer<PackedCollection> beta2;
+	private final Producer<PackedCollection> learningRate;
+	private final Producer<PackedCollection> beta1;
+	private final Producer<PackedCollection> beta2;
 
 	/**
 	 * Creates an Adam optimizer with the specified hyperparameters.

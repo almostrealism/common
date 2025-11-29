@@ -73,7 +73,7 @@ public interface StreamingEvaluable<T> extends Computable {
 	 *
 	 * @see #setDownstream(Consumer)
 	 */
-	void request(Object args[]);
+	void request(Object[] args);
 
 	/**
 	 * Sets the downstream consumer that will receive computation results.

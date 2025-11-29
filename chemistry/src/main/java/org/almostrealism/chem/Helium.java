@@ -80,6 +80,6 @@ public class Helium implements Element {
 	 * @return an unmodifiable list containing the single filled electron shell
 	 */
 	protected List<Shell> getShells() {
-		return Collections.unmodifiableList(Arrays.asList(Shell.first(2)));
+		return Collections.unmodifiableList(List.of(Shell.first(2)));
 	}
 }

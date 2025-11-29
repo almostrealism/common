@@ -42,16 +42,16 @@ public class SequentialBlock implements Block, Learning, LayerFeatures {
 	public static boolean enableWarnings = false;
 	public static boolean enableComposites = true;
 
-	private TraversalPolicy inputShape;
+	private final TraversalPolicy inputShape;
 
 	private List<Block> blocks;
 
 	private Cell<PackedCollection> entry;
-	private Receptor<PackedCollection> push;
+	private final Receptor<PackedCollection> push;
 	private Receptor<PackedCollection> downstream;
 
 	private Cell<PackedCollection> propagate;
-	private Receptor<PackedCollection> back;
+	private final Receptor<PackedCollection> back;
 	private Receptor<PackedCollection> upstream;
 
 	private Producer<PackedCollection> learningRate;
@@ -178,7 +178,7 @@ public class SequentialBlock implements Block, Learning, LayerFeatures {
 
 		int axis;
 
-		int axes[] = superShape.differingAxes(splitShape);
+		int[] axes = superShape.differingAxes(splitShape);
 		if (axes.length > 1) {
 			throw new IllegalArgumentException("Cannot split along multiple dimensions");
 		} else if (axes.length == 1) {

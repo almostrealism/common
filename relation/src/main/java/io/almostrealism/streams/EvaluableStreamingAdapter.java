@@ -52,8 +52,8 @@ import java.util.concurrent.Executor;
  * @author  Michael Murray
  */
 public class EvaluableStreamingAdapter<T> extends StreamingEvaluableBase<T> {
-	private Evaluable<T> evaluable;
-	private Executor executor;
+	private final Evaluable<T> evaluable;
+	private final Executor executor;
 
 	/**
 	 * Creates a new adapter for the specified evaluable using a synchronous executor.

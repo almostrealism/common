@@ -195,9 +195,9 @@ public class Interpolate extends CollectionProducerComputationBase {
 	 */
 	public static boolean enableFunctionalPosition = true;
 
-	private Function<Expression, Expression> timeForIndex;
-	private Function<Expression, Expression> indexForTime;
-	private boolean applyRate;
+	private final Function<Expression, Expression> timeForIndex;
+	private final Function<Expression, Expression> indexForTime;
+	private final boolean applyRate;
 
 	/**
 	 * Constructs an interpolation computation with rate scaling.

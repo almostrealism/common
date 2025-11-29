@@ -52,7 +52,7 @@ package org.almostrealism.optimize;
  * @author Michael Murray
  */
 public class HealthScoring {
-	private int popSize;
+	private final int popSize;
 	private double highestHealth, totalHealth;
 
 	/**

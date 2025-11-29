@@ -66,7 +66,7 @@ public class Cone extends AbstractSurface implements CodeFeatures {
 	 */
 	@Override
 	public Producer<PackedCollection> getNormalAt(Producer<PackedCollection> point) {
-		Producer normal = multiply((Producer) point, (Producer) vector(1.0, -1.0, 1.0));
+		Producer normal = multiply(point, vector(1.0, -1.0, 1.0));
 		return super.getTransform(true).transform(normal, TransformMatrix.TRANSFORM_AS_NORMAL);
 	}
 

@@ -24,7 +24,7 @@ import org.almostrealism.hardware.OperationList;
 import java.util.function.Supplier;
 
 public class ForwardOnlyBlock implements Block {
-	private Block block;
+	private final Block block;
 
 	public ForwardOnlyBlock(Block block) {
 		this.block = block;

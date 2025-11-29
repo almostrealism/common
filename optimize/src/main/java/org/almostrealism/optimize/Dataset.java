@@ -176,7 +176,7 @@ public interface Dataset<T extends MemoryData> extends Iterable<ValueTarget<T>> 
 		PackedCollection currentInput = null;
 		PackedCollection currentTarget = null;
 
-		f: for (ValueTarget<T> target : targets) {
+		for (ValueTarget<T> target : targets) {
 			if (n < 0) {
 				inputItem = target.getInput().getShape();
 				currentInput = new PackedCollection(inputItem.prependDimension(batchSize).traverse(1));

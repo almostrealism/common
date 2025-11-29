@@ -62,10 +62,10 @@ import java.util.function.Supplier;
  * @see Cell
  */
 public class TemporalFactorFromCell<T> implements CellularTemporalFactor<T> {
-	private Cell<T> cell;
-	private Producer<T> destination;
-	private Function<Producer<T>, Receptor<T>> assignment;
-	private BiFunction<Producer<T>, Producer<T>, Producer<T>> combine;
+	private final Cell<T> cell;
+	private final Producer<T> destination;
+	private final Function<Producer<T>, Receptor<T>> assignment;
+	private final BiFunction<Producer<T>, Producer<T>, Producer<T>> combine;
 
 	/**
 	 * Creates a new temporal factor wrapping the specified cell.

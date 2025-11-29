@@ -32,7 +32,7 @@ public class PointLightGrid extends AbstractSurface implements Light {
 	private double intensity;
 	private RGB color;
 
-	private PointLight lights[];
+	private PointLight[] lights;
 
 	/**
 	  Constructs a new PointLightGrid object with the specified width, height,

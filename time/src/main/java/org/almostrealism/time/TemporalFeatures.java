@@ -302,7 +302,7 @@ public interface TemporalFeatures extends GeometryFeatures {
 	 */
 	default CollectionProducer temporal(Producer<PackedCollection> time,
 										Producer<PackedCollection> value) {
-		return (CollectionProducer) concat(shape(2), time, value);
+		return concat(shape(2), time, value);
 	}
 
 	/**

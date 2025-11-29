@@ -69,8 +69,8 @@ import org.almostrealism.collect.PackedCollection;
  * @author Michael Murray
  */
 public class MeanSquaredError implements LossProvider, CodeFeatures {
-	private TraversalPolicy outputShape;
-	private Evaluable<PackedCollection> loss;
+	private final TraversalPolicy outputShape;
+	private final Evaluable<PackedCollection> loss;
 
 	/**
 	 * Creates a Mean Squared Error loss function for the specified output shape.

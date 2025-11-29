@@ -63,7 +63,7 @@ public class NativeMemoryProvider extends HardwareMemoryProvider<NativeMemory> {
 	public static DistributionMetric deallocationSizes = Hardware.console.distribution("nativeDeallocationSizes", 1024 * 1024);
 
 	/** The native compiler for JNI code generation. */
-	private NativeCompiler compiler;
+	private final NativeCompiler compiler;
 
 	/** JNI wrapper for malloc operations. */
 	private Malloc malloc;
@@ -149,7 +149,7 @@ public class NativeMemoryProvider extends HardwareMemoryProvider<NativeMemory> {
 	/** {@inheritDoc} */
 	@Override
 	public synchronized void setMem(NativeMemory mem, int offset, Memory source, int srcOffset, int length) {
-		double value[] = new double[length];
+		double[] value = new double[length];
 		source.getProvider().getMem(source, srcOffset, value, 0, length);
 		setMem(mem, offset, value, 0, length);
 	}

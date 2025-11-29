@@ -117,7 +117,7 @@ public class TimeCell implements Cell<PackedCollection>, Temporal, Destroyable, 
 	 * Initializes all reset slots to -1 (disabled).
 	 */
 	protected void initResets() {
-		double initial[] = new double[resets.getMemLength()];
+		double[] initial = new double[resets.getMemLength()];
 		IntStream.range(0, initial.length).forEach(i -> initial[i] = -1);
 		resets.setMem(initial);
 	}

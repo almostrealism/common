@@ -165,13 +165,13 @@ public class PopulationOptimizer<G, T, O extends Temporal, S extends HealthScore
 	private Population<G, O> population;
 	private Function<List<Genome<G>>, Population> children;
 
-	private Supplier<Supplier<Genome<G>>> generatorSupplier;
+	private final Supplier<Supplier<Genome<G>>> generatorSupplier;
 	private Supplier<Genome<G>> generator;
 
-	private Supplier<HealthComputation<O, S>> healthSupplier;
+	private final Supplier<HealthComputation<O, S>> healthSupplier;
 	private HealthComputation<O, S> health;
 
-	private Supplier<GenomeBreeder<G>> breeder;
+	private final Supplier<GenomeBreeder<G>> breeder;
 
 	private BiConsumer<String, S> healthListener;
 	private Consumer<Exception> errorListener;
@@ -370,7 +370,7 @@ public class PopulationOptimizer<G, T, O extends Temporal, S extends HealthScore
 			for (int i = 0; itr.hasNext(); i++) {
 				g1 = g2;
 				g2 = itr.next();
-				if (genomes.size() >= maxChildren) break w;
+				if (genomes.size() >= maxChildren) break;
 
 				// Combine chromosomes to produce new offspring
 				breed(genomes, g1, g2);

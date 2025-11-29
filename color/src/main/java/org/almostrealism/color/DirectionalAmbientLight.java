@@ -127,10 +127,10 @@ public class DirectionalAmbientLight extends AmbientLight implements VectorFeatu
 		Vector l = (getDirection().divide(getDirection().length())).minus();
 
 		if (p == null) {
-			color = surface instanceof Shadable ? ((Shadable) surface).shade(new ShaderContext(intersection, (Producer) v(l), this, otherLights, otherSurfaces)) : null;
+			color = surface instanceof Shadable ? ((Shadable) surface).shade(new ShaderContext(intersection, v(l), this, otherLights, otherSurfaces)) : null;
 		} else {
 			p.setIntersection(intersection);
-			p.setLightDirection((Producer) v(l));
+			p.setLightDirection(v(l));
 			p.setLight(this);
 			p.setOtherLights(otherLights);
 			p.setOtherSurfaces(otherSurfaces);

@@ -60,9 +60,9 @@ import org.almostrealism.geometry.DiscreteField;
 public class SilhouetteShader implements Evaluable<PackedCollection>, Editable, Shader<LightingContext>, RGBFeatures {
 	private Producer<PackedCollection> color;
 
-	private String names[] = { "Color" };
-	private String desc[] = { "The color of the silhouette" };
-	private Class types[] = { Evaluable.class };
+	private final String[] names = { "Color" };
+	private final String[] desc = { "The color of the silhouette" };
+	private final Class[] types = { Evaluable.class };
 
 
 	/**
@@ -90,7 +90,7 @@ public class SilhouetteShader implements Evaluable<PackedCollection>, Editable, 
 	 * @see Evaluable#evaluate(java.lang.Object[])
 	 */
 	@Override
-	public PackedCollection evaluate(Object args[]) { return this.color.get().evaluate(args); }
+	public PackedCollection evaluate(Object[] args) { return this.color.get().evaluate(args); }
 
 	/**
 	 * @see Editable#getPropertyNames()
@@ -131,7 +131,7 @@ public class SilhouetteShader implements Evaluable<PackedCollection>, Editable, 
 	 * @see Editable#setPropertyValues(java.lang.Object[])
 	 */
 	@Override
-	public void setPropertyValues(Object values[]) {
+	public void setPropertyValues(Object[] values) {
 		if (values.length > 0) this.color = (Producer<PackedCollection>) values[0];
 	}
 

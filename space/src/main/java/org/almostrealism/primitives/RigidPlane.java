@@ -29,7 +29,7 @@ import java.awt.*;
  * @author  Michael Murray
  */
 public class RigidPlane extends Plane implements RigidBody {
-	private State state;
+	private final State state;
 	
 	private TransformMatrix rotateXMatrix, rotateYMatrix, rotateZMatrix;
 
@@ -74,7 +74,7 @@ public class RigidPlane extends Plane implements RigidBody {
 	 */
 	public Vector[] intersect(RigidBody b) {
 		if (b instanceof RigidSphere) {
-			State s = ((RigidSphere)b).getState();
+			State s = b.getState();
 			double d = this.state.x.getY() - s.x.getY();
 			
 			if (Math.abs(d) <= ((RigidSphere)b).getRadius()) {

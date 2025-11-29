@@ -95,7 +95,7 @@ import java.util.function.Consumer;
  * @author Michael Murray
  */
 public class AcceleratedTimeSeriesPurge extends OperationComputationAdapter<PackedCollection> {
-	private double wavelength;
+	private final double wavelength;
 
 	/**
 	 * Constructs a purge operation with frequency control.

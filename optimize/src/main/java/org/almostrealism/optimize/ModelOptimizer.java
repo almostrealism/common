@@ -111,7 +111,7 @@ import java.util.function.Supplier;
  * @author Michael Murray
  */
 public class ModelOptimizer implements CodeFeatures {
-	private CompiledModel model;
+	private final CompiledModel model;
 	private Supplier<Dataset<?>> dataset;
 	private Receptor<Double> receptor;
 	private int logFrequency;

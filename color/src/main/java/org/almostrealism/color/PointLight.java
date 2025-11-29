@@ -160,7 +160,7 @@ public class PointLight implements Light, Positioned, RayFeatures, RGBFeatures {
 	 * Sets the coefficients a, b, and c for the quadratic function used for distance attenuation
 	 * of the light represented by this PointLight object to the specified double values.
 	 */
-	public void setAttenuationCoefficients(double a[]) {
+	public void setAttenuationCoefficients(double[] a) {
 		this.da = a[0];
 		this.db = a[1];
 		this.dc = a[2];
@@ -205,7 +205,7 @@ public class PointLight implements Light, Positioned, RayFeatures, RGBFeatures {
 	 * double values.
 	 */
 	public double[] getAttenuationCoefficients() {
-		double d[] = {this.da, this.db, this.dc};
+		double[] d = {this.da, this.db, this.dc};
 		
 		return d;
 	}

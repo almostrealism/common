@@ -41,7 +41,7 @@ public class PinholeCameraAbsorber extends PinholeCamera implements Absorber, Vo
 	
 	private Pinhole pinhole;
 	private AbsorptionPlane plane;
-	private double planePos[];
+	private double[] planePos;
 	
 	private Colorable colorable;
 	private Vector location;
@@ -58,12 +58,12 @@ public class PinholeCameraAbsorber extends PinholeCamera implements Absorber, Vo
 	}
 
 	protected PinholeCameraAbsorber(double fNum, double focalLength,
-								double norm[], double orient[]) {
+									double[] norm, double[] orient) {
 		initPlane(norm, orient);
 		
 		this.pinhole = new Pinhole();
 		this.pinhole.setRadius(focalLength / (2.0 * fNum));
-		this.pinhole.setSurfaceNormal((Producer) vector(norm[0], norm[1], norm[2]));
+		this.pinhole.setSurfaceNormal(vector(norm[0], norm[1], norm[2]));
 		this.pinhole.setOrientation(orient);
 		
 		this.planePos = VectorMath.multiply(norm, -focalLength, true);
@@ -77,14 +77,14 @@ public class PinholeCameraAbsorber extends PinholeCamera implements Absorber, Vo
 		this.pinhole = pinhole;
 		this.plane = plane;
 		
-		double norm[] = pinhole.getSurfaceNormal().get().evaluate().toArray();
+		double[] norm = pinhole.getSurfaceNormal().get().evaluate().toArray();
 		this.planePos = VectorMath.multiply(norm, -focalLength, true);
 	}
 
-	protected void initPlane(double norm[], double orient[]) {
+	protected void initPlane(double[] norm, double[] orient) {
 		if (this.plane == null) {
 			this.plane = new AbsorptionPlane();
-			this.plane.setSurfaceNormal((Producer) vector(norm[0], norm[1], norm[2]));
+			this.plane.setSurfaceNormal(vector(norm[0], norm[1], norm[2]));
 			this.plane.setOrientation(VectorMath.clone(orient));
 		}
 	}
@@ -114,7 +114,7 @@ public class PinholeCameraAbsorber extends PinholeCamera implements Absorber, Vo
 	@Override
 	public void setViewingDirection(Vector v) {
 		initPlane(v.toArray(), new double[3]);
-		this.plane.setSurfaceNormal((Producer) value(v));
+		this.plane.setSurfaceNormal(value(v));
 	}
 
 	@Override
@@ -150,7 +150,7 @@ public class PinholeCameraAbsorber extends PinholeCamera implements Absorber, Vo
 					RGB c = new RGB(0.0, 0.0, 0.0);
 
 					if (plane.imageAvailable()) {
-						RGB im[][] = plane.getImage();
+						RGB[][] im = plane.getImage();
 						int a = (int) (u * im.length);
 						if (a == im.length) a = im.length -1;
 						int b = (int) (v * im[a].length);
@@ -192,9 +192,9 @@ public class PinholeCameraAbsorber extends PinholeCamera implements Absorber, Vo
 					colorable.setColor(c.getRed(), c.getGreen(), c.getBlue());
 				}
 
-				double x[] = plane.getSpatialCoords(new double[] {u, v});
+				double[] x = plane.getSpatialCoords(new double[] {u, v});
 				VectorMath.addTo(x, planePos);
-				double d[] = VectorMath.multiply(x, -1.0 / VectorMath.length(x), true);
+				double[] d = VectorMath.multiply(x, -1.0 / VectorMath.length(x), true);
 
 				Vector vx = new Vector(x[0], x[1], x[2]);
 				Vector vd = new Vector(d[0], d[1], d[2]);
@@ -228,16 +228,13 @@ public class PinholeCameraAbsorber extends PinholeCamera implements Absorber, Vo
 	public double[] getSurfaceCoords(Producer<PackedCollection> xyz) { return plane.getSurfaceCoords(xyz); }
 
 	@Override
-	public double[] getSpatialCoords(double uv[]) { return plane.getSpatialCoords(uv); }
+	public double[] getSpatialCoords(double[] uv) { return plane.getSpatialCoords(uv); }
 
 	@Override
 	public boolean absorb(Vector x, Vector p, double energy) {
 		if (this.pinhole.absorb(x, p, energy))
 			return true;
-		else if (this.plane.absorb(x.subtract(new Vector(planePos)), p, energy))
-			return true;
-		else
-			return false;
+		else return this.plane.absorb(x.subtract(new Vector(planePos)), p, energy);
 	}
 
 	@Override

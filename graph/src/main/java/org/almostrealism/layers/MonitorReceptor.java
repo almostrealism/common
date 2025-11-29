@@ -28,11 +28,11 @@ import java.util.function.Supplier;
 public class MonitorReceptor implements Receptor<PackedCollection>, ConsoleFeatures {
 	public static boolean enableLargeWarning = false;
 
-	private String name;
-	private TraversalPolicy inputShape;
-	private TraversalPolicy outputShape;
-	private Consumer<PackedCollection> op;
-	private PackedCollection data[];
+	private final String name;
+	private final TraversalPolicy inputShape;
+	private final TraversalPolicy outputShape;
+	private final Consumer<PackedCollection> op;
+	private final PackedCollection[] data;
 
 	public MonitorReceptor(Consumer<PackedCollection> op) {
 		this("monitor", null, null, op);

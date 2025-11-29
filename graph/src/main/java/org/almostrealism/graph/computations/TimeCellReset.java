@@ -65,7 +65,7 @@ public class TimeCellReset extends OperationComputationAdapter<PackedCollection>
 	protected HybridScope scope;
 
 	/** The number of reset slots to check. */
-	private int len;
+	private final int len;
 
 	/**
 	 * Creates a new TimeCellReset computation.

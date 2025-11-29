@@ -49,7 +49,7 @@ public class DefaultWaveCellData extends PackedCollection implements WaveCellDat
 	 */
 	public DefaultWaveCellData() {
 		super(new TraversalPolicy(SIZE, 2), 1, delegateSpec -> {
-				PackedCollection.DelegateSpec spec = (PackedCollection.DelegateSpec) delegateSpec;
+				PackedCollection.DelegateSpec spec = delegateSpec;
 				return new PackedCollection(new TraversalPolicy(2), 1, null,
 						spec.getDelegate(), spec.getOffset());
 		});
@@ -63,7 +63,7 @@ public class DefaultWaveCellData extends PackedCollection implements WaveCellDat
 	 */
 	public DefaultWaveCellData(MemoryData delegate, int delegateOffset) {
 		super(new TraversalPolicy(SIZE, 2), 1, delegateSpec -> {
-				PackedCollection.DelegateSpec spec = (PackedCollection.DelegateSpec) delegateSpec;
+				PackedCollection.DelegateSpec spec = delegateSpec;
 				return new PackedCollection(new TraversalPolicy(2), 1, null,
 						spec.getDelegate(), spec.getOffset());
 		}, delegate, delegateOffset);

@@ -102,7 +102,7 @@ public class Alloy extends ProbabilisticFactory<Atom> implements Atomic {
      */
     @SuppressWarnings("unchecked")
     public Alloy(List<Atomic> components, double... g) {
-        this(components, (Gene) HeredityFeatures.getInstance().g(g));
+        this(components, HeredityFeatures.getInstance().g(g));
     }
 
     /**

@@ -62,7 +62,7 @@ public class AmbientLight implements Light, RGBFeatures {
 	private double intensity;
 	private RGB color;
 
-	private Producer<PackedCollection> colorProducer = GeneratedColorProducer.fromProducer(this, multiply(() -> args -> color, c(intensity)));
+	private final Producer<PackedCollection> colorProducer = GeneratedColorProducer.fromProducer(this, multiply(() -> args -> color, c(intensity)));
 
 	/**
 	 * Constructs an AmbientLight object with the default intensity and color.
@@ -124,7 +124,7 @@ public class AmbientLight implements Light, RGBFeatures {
 	 */
 	public Producer<PackedCollection> lightingCalculation(Curve<PackedCollection> surface, Producer<PackedCollection> point) {
 		Producer<PackedCollection> color = multiply(v(getColor()), c(getIntensity()));
-		return multiply(color, (Producer) surface.getValueAt(point));
+		return multiply(color, surface.getValueAt(point));
 	}
 	
 	/** Returns "Ambient Light". */

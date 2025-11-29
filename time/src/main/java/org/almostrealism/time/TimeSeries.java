@@ -121,8 +121,8 @@ import java.util.TreeSet;
  * @author Michael Murray
  */
 public class TimeSeries {
-	private TreeSet<TemporalScalar> sorted;
-	private Map<Double, TemporalScalar> byTime;
+	private final TreeSet<TemporalScalar> sorted;
+	private final Map<Double, TemporalScalar> byTime;
 
 	/**
 	 * Constructs an empty time-series.
@@ -181,7 +181,7 @@ public class TimeSeries {
 
 		s: for (TemporalScalar s : sorted) {
 			if (s.getTime() >= time) {
-				break s;
+				break;
 			}
 
 			toRemove++;
@@ -239,7 +239,7 @@ public class TimeSeries {
 			if (list.get(i).getTime() >= time) {
 				left = i > 0 ? list.get(i - 1) : null;
 				right = list.get(i);
-				break i;
+				break;
 			}
 		}
 

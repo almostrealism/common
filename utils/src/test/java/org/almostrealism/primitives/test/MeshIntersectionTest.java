@@ -67,7 +67,7 @@ public class MeshIntersectionTest implements TestFeatures {
 
 		width = 100;
 		height = (int)(c.getProjectionHeight() * (width / c.getProjectionWidth()));
-		return (Producer) c.rayAt((Producer) v(Pair.shape(), 0), (Producer) pair(width, height));
+		return (Producer) c.rayAt(v(Pair.shape(), 0), pair(width, height));
 	}
 
 	@Before

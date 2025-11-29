@@ -27,7 +27,7 @@ import java.util.function.Supplier;
  * @author  Michael Murray
  */
 public class RigidBodyPinholeCamera implements Temporal {
-	private RigidBody.State model;
+	private final RigidBody.State model;
 	private PinholeCamera c;
 	
 	public RigidBodyPinholeCamera(RigidBody model, PinholeCamera c) {

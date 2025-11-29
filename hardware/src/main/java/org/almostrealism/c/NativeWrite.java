@@ -118,7 +118,7 @@ public class NativeWrite extends BaseNative {
 	 * @return A new array containing all values from the memory
 	 */
 	public double[] apply(MemoryData mem) {
-		double out[] = new double[mem.getMemLength()];
+		double[] out = new double[mem.getMemLength()];
 		apply((NativeMemory) mem.getMem(), out);
 		return out;
 	}
@@ -129,7 +129,7 @@ public class NativeWrite extends BaseNative {
 	 * @param mem    The native memory to write to
 	 * @param target The source array containing data to write
 	 */
-	public void apply(NativeMemory mem, double target[]) { apply(mem, 0, target); }
+	public void apply(NativeMemory mem, double[] target) { apply(mem, 0, target); }
 
 	/**
 	 * Writes all data from the target array to native memory starting at the specified offset.
@@ -138,7 +138,7 @@ public class NativeWrite extends BaseNative {
 	 * @param offset The starting offset in elements within native memory
 	 * @param target The source array containing data to write
 	 */
-	public void apply(NativeMemory mem, int offset, double target[]) {
+	public void apply(NativeMemory mem, int offset, double[] target) {
 		apply(mem, offset, target, 0, target.length);
 	}
 
@@ -152,8 +152,8 @@ public class NativeWrite extends BaseNative {
 	 * @param length  The number of elements to write
 	 * @throws IllegalArgumentException if the write would exceed memory bounds
 	 */
-	public void apply(NativeMemory mem, int offset, double target[], int toffset, int length) {
-		if (mem.getSize() < (offset + length) * getNativeCompiler().getPrecision().bytes()) {
+	public void apply(NativeMemory mem, int offset, double[] target, int toffset, int length) {
+		if (mem.getSize() < (long) (offset + length) * getNativeCompiler().getPrecision().bytes()) {
 			throw new IllegalArgumentException("Attempt to write memory beyond the size of " + mem);
 		}
 

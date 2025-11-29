@@ -122,7 +122,7 @@ All of the library functionality is provided as default methods of an interface 
 
 ```Java
     public class MyNativeEnabledApplication implements CodeFeatures {
-	    public static void main(String args[]) {
+	    public static void main(String[] args) {
 			new MyNativeEnabledApplication().performMath();
 		}
 		
@@ -659,7 +659,7 @@ is a good example of how to use the framework for these kinds of workloads.
 
 ```Java
 public class MyNativeEnabledApplication implements CodeFeatures {
-	public static void main(String args[]) {
+	public static void main(String[] args) {
 		new MyNativeEnabledApplication().trainCnn();
 	}
 	

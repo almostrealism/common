@@ -26,15 +26,15 @@ import org.almostrealism.hardware.OperationList;
 import java.util.function.Supplier;
 
 public class DefaultBlock implements Block {
-	private TraversalPolicy inputShape;
-	private TraversalPolicy outputShape;
+	private final TraversalPolicy inputShape;
+	private final TraversalPolicy outputShape;
 
-	private Supplier<Runnable> setup;
-	private Cell<PackedCollection> forward;
-	private Cell<PackedCollection> backward;
+	private final Supplier<Runnable> setup;
+	private final Cell<PackedCollection> forward;
+	private final Cell<PackedCollection> backward;
 
 	private Cell<PackedCollection> entry;
-	private Receptor<PackedCollection> push;
+	private final Receptor<PackedCollection> push;
 	private Receptor<PackedCollection> downstream;
 
 	public DefaultBlock(TraversalPolicy inputShape, TraversalPolicy outputShape,

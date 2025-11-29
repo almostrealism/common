@@ -209,7 +209,7 @@ public class FourierTransform extends CollectionProducerComputationBase {
 	public static boolean enableRelative = true;
 
 	private int varIdx = 0;
-	private boolean inverse;
+	private final boolean inverse;
 
 	/**
 	 * Constructs a Fourier transform for a single signal.
@@ -403,11 +403,11 @@ public class FourierTransform extends CollectionProducerComputationBase {
 							Expression aMinusCPlusItsR = aMinusC_r.add(imaginaryTimesSubR);
 							Expression aMinusCPlusItsI = aMinusC_i.add(imaginaryTimesSubI);
 
-							Expression radix4Part1Exp[] = complexProduct(aMinusCMinusItsR, aMinusCMinusItsI, omegaR, omegaI);
+							Expression[] radix4Part1Exp = complexProduct(aMinusCMinusItsR, aMinusCMinusItsI, omegaR, omegaI);
 							body.assign(radix4Part1.reference(k2), radix4Part1Exp[0]);
 							body.assign(radix4Part1.reference(k2.add(1)), radix4Part1Exp[1]);
 
-							Expression radix4Part2Exp[] = complexProduct(aMinusCPlusItsR, aMinusCPlusItsI, omegaToPowerOf3R, omegaToPowerOf3I);
+							Expression[] radix4Part2Exp = complexProduct(aMinusCPlusItsR, aMinusCPlusItsI, omegaToPowerOf3R, omegaToPowerOf3I);
 							body.assign(radix4Part2.reference(k2), radix4Part2Exp[0]);
 							body.assign(radix4Part2.reference(k2.add(1)), radix4Part2Exp[1]);
 
@@ -609,7 +609,7 @@ public class FourierTransform extends CollectionProducerComputationBase {
 					Expression inKMinusInKPlusHalfNr = body.declareDouble("inKMinusInKPlusHalfNr_" + varIdx++, input.reference(k2).subtract(input.reference(kPlusHalfN2)));
 					Expression inKMinusInKPlusHalfNi = body.declareDouble("inKMinusInKPlusHalfNi_" + varIdx++, input.reference(k2.add(1)).subtract(input.reference(kPlusHalfN2.add(1))));
 
-					Expression oddExp[] = complexProduct(inKMinusInKPlusHalfNr, inKMinusInKPlusHalfNi, omegaR, omegaI);
+					Expression[] oddExp = complexProduct(inKMinusInKPlusHalfNr, inKMinusInKPlusHalfNi, omegaR, omegaI);
 					body.assign(odd.reference(k2), oddExp[0]);
 					body.assign(odd.reference(k2.add(1)), oddExp[1]);
 

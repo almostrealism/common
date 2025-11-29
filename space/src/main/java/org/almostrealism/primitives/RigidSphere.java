@@ -33,12 +33,12 @@ import java.awt.*;
  * @author  Michael Murray
  */
 public class RigidSphere extends Sphere implements RigidBody, ParticleGroup, SurfaceLight {
-	private State state;
+	private final State state;
 	
 	private SphericalLight light;
 	
-	private int radialSample;
-	private double vertices[][];
+	private final int radialSample;
+	private final double[][] vertices;
 	
 	private TransformMatrix rotateXMatrix, rotateYMatrix, rotateZMatrix;
 	
@@ -155,7 +155,7 @@ public class RigidSphere extends Sphere implements RigidBody, ParticleGroup, Sur
 		double r = super.getSize();
 		
 		if (b instanceof RigidSphere) {
-			State s = ((RigidSphere)b).getState();
+			State s = b.getState();
 			double sr = ((RigidSphere)b).getSize();
 			
 			Vector d = s.x.subtract(this.state.x);
@@ -167,7 +167,7 @@ public class RigidSphere extends Sphere implements RigidBody, ParticleGroup, Sur
 				return new Vector[0];
 			}
 		} else if (b instanceof RigidPlane) {
-			RigidBody.State p = ((RigidPlane) b).getState();
+			RigidBody.State p = b.getState();
 			double d = this.state.x.getY() - p.x.getY();
 			
 			if (Math.abs(d) <= r) {

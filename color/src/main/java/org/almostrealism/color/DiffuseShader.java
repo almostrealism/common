@@ -62,21 +62,21 @@ public class DiffuseShader implements Shader<ShaderContext>, Editable, RGBFeatur
 	public Producer<PackedCollection> shade(ShaderContext p, DiscreteField normals) {
 		CollectionProducer point = origin(normals.get(0));
 		CollectionProducer n = normalize(direction(normals.get(0)));
-		CollectionProducer scaleFront = (CollectionProducer) dotProduct(n, p.getLightDirection());
-		CollectionProducer scaleBack = (CollectionProducer) dotProduct(minus(n), p.getLightDirection());
+		CollectionProducer scaleFront = dotProduct(n, p.getLightDirection());
+		CollectionProducer scaleBack = dotProduct(minus(n), p.getLightDirection());
 		Producer lightColor = p.getLight().getColorAt(point);
 		Producer surfaceColor = p.getSurface().getValueAt(point);
 
 		Producer front = null, back = null;
 
-		if (p.getSurface() instanceof ShadableSurface == false || ((ShadableSurface) p.getSurface()).getShadeFront()) {
-			Producer color = multiply(surfaceColor, lightColor).multiply(cfromScalar((Producer) scaleFront));
-			front = greaterThan((Producer) scaleFront, c(0), color, (Producer) black());
+		if (!(p.getSurface() instanceof ShadableSurface) || ((ShadableSurface) p.getSurface()).getShadeFront()) {
+			Producer color = multiply(surfaceColor, lightColor).multiply(cfromScalar(scaleFront));
+			front = greaterThan(scaleFront, c(0), color, black());
 		}
 
-		if (p.getSurface() instanceof ShadableSurface == false || ((ShadableSurface) p.getSurface()).getShadeBack()) {
-			Producer color = multiply(surfaceColor, lightColor).multiply(cfromScalar((Producer) scaleBack));
-			back = greaterThan((Producer) scaleBack, c(0), color, (Producer) black());
+		if (!(p.getSurface() instanceof ShadableSurface) || ((ShadableSurface) p.getSurface()).getShadeBack()) {
+			Producer color = multiply(surfaceColor, lightColor).multiply(cfromScalar(scaleBack));
+			back = greaterThan(scaleBack, c(0), color, black());
 		}
 
 		if (front != null && back != null) {
@@ -116,7 +116,7 @@ public class DiffuseShader implements Shader<ShaderContext>, Editable, RGBFeatur
 	 * Does nothing.
 	 */
 	@Override
-	public void setPropertyValues(Object values[]) {}
+	public void setPropertyValues(Object[] values) {}
 	
 	/**
 	 * @return  An empty array.

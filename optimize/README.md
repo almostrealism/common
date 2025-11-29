@@ -356,7 +356,7 @@ for (int gen = 0; gen < 100; gen++) {
 ```java
 public class HuberLoss implements LossProvider {
     private double delta;
-    private CollectionProducer<?> shape;
+    private final CollectionProducer<?> shape;
 
     public HuberLoss(CollectionProducer<?> shape, double delta) {
         this.shape = shape;
