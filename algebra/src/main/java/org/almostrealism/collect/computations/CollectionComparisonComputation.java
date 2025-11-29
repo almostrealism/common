@@ -87,8 +87,8 @@ import java.util.List;
  * <p><strong>Using the default equality comparison:</strong></p>
  * <pre>{@code
  * TraversalPolicy shape = shape(3);
- * CollectionProducer<PackedCollection> a = c(1.0, 2.0, 3.0);
- * CollectionProducer<PackedCollection> b = c(1.0, 0.0, 3.0);
+ * CollectionProducer a = c(1.0, 2.0, 3.0);
+ * CollectionProducer b = c(1.0, 0.0, 3.0);
  *
  * CollectionComparisonComputation<PackedCollection> equals =
  *     new CollectionComparisonComputation<>("equals", shape, a, b,

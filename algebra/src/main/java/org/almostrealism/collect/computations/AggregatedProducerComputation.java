@@ -107,7 +107,7 @@ import java.util.function.BiFunction;
  *
  * <p><strong>Sum reduction (via subclass):</strong></p>
  * <pre>{@code
- * CollectionProducer<PackedCollection> data = c(1.0, 2.0, 3.0, 4.0, 5.0);
+ * CollectionProducer data = c(1.0, 2.0, 3.0, 4.0, 5.0);
  * CollectionSumComputation<PackedCollection> sum = new CollectionSumComputation<>(data);
  * PackedCollection result = sum.get().evaluate();
  * // Result: [15.0]  (1 + 2 + 3 + 4 + 5)
@@ -115,7 +115,7 @@ import java.util.function.BiFunction;
  *
  * <p><strong>Max reduction (via subclass):</strong></p>
  * <pre>{@code
- * CollectionProducer<PackedCollection> data = c(3.0, 7.0, 2.0, 9.0, 5.0);
+ * CollectionProducer data = c(3.0, 7.0, 2.0, 9.0, 5.0);
  * CollectionMaxComputation<PackedCollection> max = new CollectionMaxComputation<>(data);
  * PackedCollection result = max.get().evaluate();
  * // Result: [9.0]

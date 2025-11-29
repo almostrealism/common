@@ -40,8 +40,8 @@ import org.almostrealism.collect.computations.TraversableExpressionComputation;
  * <h2>Usage Example</h2>
  * <pre>{@code
  * // Select from 3 pre-computed options based on a decision value
- * CollectionProducer<PackedCollection> decision = c(0.7);  // Will select option 2
- * CollectionProducer<PackedCollection> options = c(
+ * CollectionProducer decision = c(0.7);  // Will select option 2
+ * CollectionProducer options = c(
  *     shape(3, 5),  // 3 options, each of size 5
  *     option1_data, option2_data, option3_data
  * );

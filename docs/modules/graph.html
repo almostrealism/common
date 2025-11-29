@@ -172,15 +172,15 @@ Block                         &lt;- Composable network unit
 
                 <div class="code-example">
 <pre><code class="language-java">// Create a simple cell that doubles its input
-Cell&lt;PackedCollection&lt;?&gt;&gt; doubleCell = Cell.of(input -> input.multiply(2.0));
+Cell&lt;PackedCollection&gt; doubleCell = Cell.of(input -> input.multiply(2.0));
 
 // Chain cells together
-Cell&lt;PackedCollection&lt;?&gt;&gt; pipeline = doubleCell
+Cell&lt;PackedCollection&gt; pipeline = doubleCell
     .andThen(Cell.of(x -> x.add(c(1.0))))    // Add 1
     .andThen(Cell.of(x -> x.sqrt()));        // Square root
 
 // Execute
-Producer&lt;PackedCollection&lt;?&gt;&gt; input = cp(data);
+Producer&lt;PackedCollection&gt; input = cp(data);
 Supplier&lt;Runnable&gt; operation = pipeline.push(input);
 operation.get().run();  // Execute the computation</code></pre>
                 </div>
@@ -195,8 +195,8 @@ import static org.almostrealism.layers.LayerFeatures.*;
 // Create a dense (fully connected) layer
 TraversalPolicy inputShape = shape(784);
 TraversalPolicy outputShape = shape(128);
-PackedCollection&lt;?&gt; weights = new PackedCollection&lt;&gt;(shape(128, 784));
-PackedCollection&lt;?&gt; bias = new PackedCollection&lt;&gt;(shape(128));
+PackedCollection weights = new PackedCollection(shape(128, 784));
+PackedCollection bias = new PackedCollection(shape(128));
 
 Block denseLayer = dense(weights, bias);
 
@@ -242,12 +242,12 @@ model.add(outputLayer);
 CompiledModel compiled = model.compile();
 
 // Forward pass
-PackedCollection&lt;?&gt; input = loadData();
-PackedCollection&lt;?&gt; output = compiled.forward(input);
+PackedCollection input = loadData();
+PackedCollection output = compiled.forward(input);
 
 // Training (with gradient)
-PackedCollection&lt;?&gt; gradient = computeLoss(output, target);
-PackedCollection&lt;?&gt; inputGradient = compiled.backward(gradient);</code></pre>
+PackedCollection gradient = computeLoss(output, target);
+PackedCollection inputGradient = compiled.backward(gradient);</code></pre>
                 </div>
 
                 <h3>Custom Cells</h3>
@@ -257,7 +257,7 @@ PackedCollection&lt;?&gt; inputGradient = compiled.backward(gradient);</code></p
 <pre><code class="language-java">import org.almostrealism.graph.*;
 
 // Stateful cell (maintains internal state)
-public class CustomCell extends CachedStateCell&lt;PackedCollection&lt;?&gt;&gt; {
+public class CustomCell extends CachedStateCell&lt;PackedCollection&gt; {
     @Override
     public Supplier&lt;Runnable&gt; setup() {
         // Initialize state
@@ -267,7 +267,7 @@ public class CustomCell extends CachedStateCell&lt;PackedCollection&lt;?&gt;&gt;
     }
 
     @Override
-    public Supplier&lt;Runnable&gt; push(Producer&lt;PackedCollection&lt;?&gt;&gt; protein) {
+    public Supplier&lt;Runnable&gt; push(Producer&lt;PackedCollection&gt; protein) {
         // Process input and update state
         return () -> () -> {
             double value = protein.get().evaluate().toDouble(0);
@@ -289,11 +289,11 @@ public class CustomCell extends CachedStateCell&lt;PackedCollection&lt;?&gt;&gt;
                 <p>Implement CellularPropagation for trainable custom layers:</p>
 
                 <div class="code-example">
-<pre><code class="language-java">public class CustomLayer implements CellularPropagation&lt;PackedCollection&lt;?&gt;&gt; {
-    private Cell&lt;PackedCollection&lt;?&gt;&gt; forward;
-    private Cell&lt;PackedCollection&lt;?&gt;&gt; backward;
+<pre><code class="language-java">public class CustomLayer implements CellularPropagation&lt;PackedCollection&gt; {
+    private Cell&lt;PackedCollection&gt; forward;
+    private Cell&lt;PackedCollection&gt; backward;
 
-    public CustomLayer(PackedCollection&lt;?&gt; weights) {
+    public CustomLayer(PackedCollection weights) {
         // Forward: y = x * weights
         this.forward = Cell.of(input ->
             input.enumerate(1, 1).multiply(cp(weights)).sum(1)
@@ -306,10 +306,10 @@ public class CustomCell extends CachedStateCell&lt;PackedCollection&lt;?&gt;&gt;
     }
 
     @Override
-    public Cell&lt;PackedCollection&lt;?&gt;&gt; getForward() { return forward; }
+    public Cell&lt;PackedCollection&gt; getForward() { return forward; }
 
     @Override
-    public Cell&lt;PackedCollection&lt;?&gt;&gt; getBackward() { return backward; }
+    public Cell&lt;PackedCollection&gt; getBackward() { return backward; }
 }</code></pre>
                 </div>
             </section>
@@ -330,22 +330,22 @@ TraversalPolicy inputShape = shape(784);
 Model mnist = new Model(inputShape, 0.01);  // Learning rate: 0.01
 
 // Hidden layer: 784 -> 128 with ReLU
-PackedCollection&lt;?&gt; w1 = initializeWeights(128, 784);
-PackedCollection&lt;?&gt; b1 = zeros(128);
+PackedCollection w1 = initializeWeights(128, 784);
+PackedCollection b1 = zeros(128);
 mnist.add(dense(w1, b1).andThen(relu()));
 
 // Output layer: 128 -> 10 (digit classes)
-PackedCollection&lt;?&gt; w2 = initializeWeights(10, 128);
-PackedCollection&lt;?&gt; b2 = zeros(10);
+PackedCollection w2 = initializeWeights(10, 128);
+PackedCollection b2 = zeros(10);
 mnist.add(dense(w2, b2));
 
 // Compile
 CompiledModel model = mnist.compile();
 
 // Training loop
-for (PackedCollection&lt;?&gt; batch : trainingData) {
-    PackedCollection&lt;?&gt; predictions = model.forward(batch);
-    PackedCollection&lt;?&gt; loss = computeLoss(predictions, labels);
+for (PackedCollection batch : trainingData) {
+    PackedCollection predictions = model.forward(batch);
+    PackedCollection loss = computeLoss(predictions, labels);
     model.backward(loss);  // Updates weights automatically
 }</code></pre>
                 </div>

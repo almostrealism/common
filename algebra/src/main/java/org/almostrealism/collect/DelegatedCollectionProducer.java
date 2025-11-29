@@ -50,12 +50,11 @@ import org.almostrealism.hardware.computations.DelegatedProducer;
  * </ul>
  * </p>
  *
- * @param <T>  the packed collection type
  * @author  Michael Murray
  * @see CollectionProducer
  * @see org.almostrealism.hardware.computations.DelegatedProducer
  */
-public class DelegatedCollectionProducer<T extends PackedCollection>
+public class DelegatedCollectionProducer
 						extends DelegatedProducer<PackedCollection>
 						implements CollectionProducerBase<PackedCollection, CollectionProducer> {
 	private final boolean fixedCount;

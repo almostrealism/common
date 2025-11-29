@@ -45,7 +45,7 @@ import java.util.Optional;
  * <h2>Example</h2>
  * <pre>{@code
  * // Create a 3x3 matrix with 5.0 on the diagonal
- * CollectionProducer<PackedCollection> scalar = c(5.0);
+ * CollectionProducer scalar = c(5.0);
  * ScalarMatrixComputation<PackedCollection> comp =
  *     new ScalarMatrixComputation<>(shape(3, 3).traverseEach(), scalar);
  *

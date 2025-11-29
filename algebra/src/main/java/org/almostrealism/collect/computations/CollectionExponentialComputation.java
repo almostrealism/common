@@ -70,7 +70,7 @@ import java.util.List;
  * <p><strong>Basic exponential:</strong></p>
  * <pre>{@code
  * TraversalPolicy shape = shape(4);
- * CollectionProducer<PackedCollection> input = c(0.0, 1.0, 2.0, 3.0);
+ * CollectionProducer input = c(0.0, 1.0, 2.0, 3.0);
  *
  * CollectionExponentialComputation<PackedCollection> exp =
  *     new CollectionExponentialComputation<>(shape, input);
@@ -82,7 +82,7 @@ import java.util.List;
  * <p><strong>Exponential with ignore zero (sparse data):</strong></p>
  * <pre>{@code
  * TraversalPolicy shape = shape(5);
- * CollectionProducer<PackedCollection> sparseInput = c(0.0, 1.0, 0.0, 2.0, 0.0);
+ * CollectionProducer sparseInput = c(0.0, 1.0, 0.0, 2.0, 0.0);
  *
  * CollectionExponentialComputation<PackedCollection> exp =
  *     new CollectionExponentialComputation<>(shape, true, sparseInput);
@@ -94,8 +94,8 @@ import java.util.List;
  * <p><strong>Using via CollectionFeatures:</strong></p>
  * <pre>{@code
  * // More common usage through helper methods
- * CollectionProducer<PackedCollection> x = c(-1.0, 0.0, 1.0, 2.0);
- * CollectionProducer<PackedCollection> expX = exp(x);
+ * CollectionProducer x = c(-1.0, 0.0, 1.0, 2.0);
+ * CollectionProducer expX = exp(x);
  * // Result: [0.368, 1.0, 2.718, 7.389]
  * }</pre>
  *

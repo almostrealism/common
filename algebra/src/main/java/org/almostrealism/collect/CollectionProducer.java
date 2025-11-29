@@ -54,8 +54,8 @@ import java.util.function.Supplier;
  * <h2>Method Chaining Example</h2>
  * <pre>{@code
  * // Build a computation graph through method chaining
- * CollectionProducer<Vector> input = v(Vector.class);
- * CollectionProducer<PackedCollection> result = input
+ * CollectionProducer input = v(Vector.class);
+ * CollectionProducer result = input
  *     .reshape(shape(10, 3))      // Reshape to 10x3
  *     .subtract(input.mean(0))    // Subtract mean along axis 0
  *     .divide(input.variance(0))  // Divide by variance
@@ -71,7 +71,7 @@ import java.util.function.Supplier;
  * Shape operations manipulate the traversal policy without changing data:
  * </p>
  * <pre>{@code
- * CollectionProducer<PackedCollection> x = ...; // shape (2, 3, 4)
+ * CollectionProducer x = ...; // shape (2, 3, 4)
  *
  * x.reshape(shape(6, 4))           // Reshape to 6x4
  * x.traverse(1)                    // Traverse along axis 1
@@ -84,8 +84,8 @@ import java.util.function.Supplier;
  * Element-wise arithmetic with automatic broadcasting:
  * </p>
  * <pre>{@code
- * CollectionProducer<PackedCollection> a = ...;
- * CollectionProducer<PackedCollection> b = ...;
+ * CollectionProducer a = ...;
+ * CollectionProducer b = ...;
  *
  * a.add(b)           // Element-wise addition
  * a.add(5.0)         // Add scalar to all elements
@@ -102,7 +102,7 @@ import java.util.function.Supplier;
  * Reduction operations with optional axis specification:
  * </p>
  * <pre>{@code
- * CollectionProducer<PackedCollection> data = ...; // shape (10, 5)
+ * CollectionProducer data = ...; // shape (10, 5)
  *
  * data.sum()         // Sum all elements -> shape (1)
  * data.sum(0)        // Sum along axis 0 -> shape (5)
@@ -118,8 +118,8 @@ import java.util.function.Supplier;
  * Boolean operations that produce 1.0 (true) or 0.0 (false):
  * </p>
  * <pre>{@code
- * CollectionProducer<PackedCollection> x = ...;
- * CollectionProducer<PackedCollection> y = ...;
+ * CollectionProducer x = ...;
+ * CollectionProducer y = ...;
  *
  * x.greaterThan(y)           // 1.0 where x > y, 0.0 elsewhere
  * x.lessThan(y)              // 1.0 where x < y, 0.0 elsewhere
@@ -131,7 +131,7 @@ import java.util.function.Supplier;
  *
  * <h2>Advanced Transformations</h2>
  * <pre>{@code
- * CollectionProducer<PackedCollection> x = ...; // shape (3, 4)
+ * CollectionProducer x = ...; // shape (3, 4)
  *
  * x.repeat(5)                // Repeat along axis 0 -> shape (15, 4)
  * x.enumerate(10)            // Enumerate indices -> shape (10)
@@ -145,11 +145,11 @@ import java.util.function.Supplier;
  * Compute gradients for backpropagation:
  * </p>
  * <pre>{@code
- * CollectionProducer<PackedCollection> x = v(PackedCollection.class);
- * CollectionProducer<PackedCollection> y = x.pow(2).sum();
+ * CollectionProducer x = v(PackedCollection.class);
+ * CollectionProducer y = x.pow(2).sum();
  *
  * // Compute dy/dx
- * CollectionProducer<PackedCollection> gradient = y.delta(x);
+ * CollectionProducer gradient = y.delta(x);
  * // Result: 2x (derivative of x^2)
  * }</pre>
  *

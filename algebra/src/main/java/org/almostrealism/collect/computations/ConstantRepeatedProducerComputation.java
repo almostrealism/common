@@ -290,7 +290,7 @@ public class ConstantRepeatedProducerComputation
 	 * ConstantRepeatedProducerComputation<PackedCollection> computation = ...;
 	 * 
 	 * // Compute derivative with respect to input
-	 * CollectionProducer<PackedCollection> derivative = computation.delta(inputProducer);
+	 * CollectionProducer derivative = computation.delta(inputProducer);
 	 * 
 	 * // Use derivative in gradient-based optimization
 	 * PackedCollection grad = derivative.get().evaluate(inputData);

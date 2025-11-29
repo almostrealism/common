@@ -56,13 +56,13 @@ import java.util.function.Supplier;
  * <h2>Broadcasting Examples</h2>
  * <pre>{@code
  * // Simple broadcast addition
- * CollectionProducer<PackedCollection> a = c(shape(3, 1), ...);  // (3, 1)
- * CollectionProducer<PackedCollection> b = c(shape(1, 4), ...);  // (1, 4)
- * CollectionProducer<PackedCollection> result = broadcast(a, b); // (3, 4)
+ * CollectionProducer a = c(shape(3, 1), ...);  // (3, 1)
+ * CollectionProducer b = c(shape(1, 4), ...);  // (1, 4)
+ * CollectionProducer result = broadcast(a, b); // (3, 4)
  *
  * // Custom broadcast with grouping
  * TraversalPolicy groupShape = shape(2, 1, 1);
- * CollectionProducer<PackedCollection> sum = broadcastSum("add", groupShape, a, b);
+ * CollectionProducer sum = broadcastSum("add", groupShape, a, b);
  * }</pre>
  *
  * <h2>Weighted Sum Examples</h2>
@@ -71,7 +71,7 @@ import java.util.function.Supplier;
  * TraversalPolicy inputPos = shape(3, 4);
  * TraversalPolicy weightPos = shape(3, 4);
  * TraversalPolicy groupShape = shape(1, 4);  // Sum over dimension 1
- * CollectionProducer<PackedCollection> result = weightedSum(
+ * CollectionProducer result = weightedSum(
  *     "matmul", inputPos, weightPos, groupShape, matrix, vector);
  * }</pre>
  *

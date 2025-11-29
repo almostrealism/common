@@ -33,9 +33,9 @@ RGB spectralRed = new RGB(650.0);  // Red wavelength
 RGBA semiTransparent = new RGBA(1.0, 0.0, 0.0, 0.8);
 
 // Using features
-CollectionProducer<RGB> white = white();
-CollectionProducer<RGB> black = black();
-CollectionProducer<RGB> custom = rgb(0.5, 0.7, 0.2);
+CollectionProducer white = white();
+CollectionProducer black = black();
+CollectionProducer custom = rgb(0.5, 0.7, 0.2);
 ```
 
 ### 2. Color Arithmetic
@@ -141,7 +141,7 @@ import org.almostrealism.color.GraphicsConverter;
 import static org.almostrealism.color.RGBFeatures.*;
 
 // Load image as RGB array
-PackedCollection<RGB> image = GraphicsConverter.loadRgb(new File("input.png"));
+PackedCollection image = GraphicsConverter.loadRgb(new File("input.png"));
 
 // Save RGB array as image
 Supplier<Runnable> saveOp = saveRgb("output.png", colorProducer);
@@ -152,7 +152,7 @@ RGB rgb = GraphicsConverter.convertToRGB(awtColor);
 Color awtColor = GraphicsConverter.convertToAWTColor(rgb);
 
 // Load as raw channels
-PackedCollection<?> channels = channels(new File("image.png"));
+PackedCollection channels = channels(new File("image.png"));
 ```
 
 ## Key Interfaces
@@ -160,7 +160,7 @@ PackedCollection<?> channels = channels(new File("image.png"));
 ### RGB and RGBA
 
 ```java
-public class RGB extends PackedCollection<RGB> {
+public class RGB extends PackedCollection {
     public RGB(double r, double g, double b);      // From components
     public RGB(double wavelength);                 // From wavelength (350-780 nm)
 
@@ -315,16 +315,16 @@ RGB colorAtPoint = wood.operate(surfacePoint);
 import static org.almostrealism.color.RGBFeatures.*;
 
 // Create color producers (lazy evaluation)
-CollectionProducer<RGB> color1 = rgb(1.0, 0.0, 0.0);
-CollectionProducer<RGB> color2 = rgb(0.0, 1.0, 0.0);
+CollectionProducer color1 = rgb(1.0, 0.0, 0.0);
+CollectionProducer color2 = rgb(0.0, 1.0, 0.0);
 
 // Compose operations (compiled to native code)
-CollectionProducer<RGB> blended = color1.multiply(c(0.5))
+CollectionProducer blended = color1.multiply(c(0.5))
                                          .add(color2.multiply(c(0.5)));
 
 // Evaluate on hardware
-Evaluable<PackedCollection<?>> eval = blended.get();
-PackedCollection<?> result = eval.evaluate();
+Evaluable<PackedCollection> eval = blended.get();
+PackedCollection result = eval.evaluate();
 RGB finalColor = new RGB(result, 0);
 ```
 

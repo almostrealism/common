@@ -63,9 +63,9 @@ import org.almostrealism.collect.CollectionProducerComputation;
  *
  * <p><strong>Using as a scaling factor:</strong></p>
  * <pre>{@code
- * CollectionProducer<PackedCollection> data = c(1.0, 2.0, 3.0);
- * CollectionProducer<PackedCollection> scale = new AtomicConstantComputation<>(2.0);
- * CollectionProducer<PackedCollection> scaled = data.multiply(scale);
+ * CollectionProducer data = c(1.0, 2.0, 3.0);
+ * CollectionProducer scale = new AtomicConstantComputation<>(2.0);
+ * CollectionProducer scaled = data.multiply(scale);
  * // Result: [2.0, 4.0, 6.0]  (scale is broadcast)
  * }</pre>
  *

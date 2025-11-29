@@ -16,9 +16,9 @@ export AR_HARDWARE_DRIVER=native        # native|opencl|metal|external
 ### Creation
 ```java
 // Shapes
-new PackedCollection<>(shape(3))              // Vector [3]
-new PackedCollection<>(shape(4, 4))           // Matrix [4x4]
-new PackedCollection<>(shape(b, c, h, w))     // Tensor [batch, channels, height, width]
+new PackedCollection(shape(3))              // Vector [3]
+new PackedCollection(shape(4, 4))           // Matrix [4x4]
+new PackedCollection(shape(b, c, h, w))     // Tensor [batch, channels, height, width]
 
 // From data
 PackedCollection.of(1.0, 2.0, 3.0)            // From values
@@ -55,21 +55,21 @@ Producer<T>  ──.get()──▶  Evaluable<T>  ──.evaluate()──▶  T
 
 ### Building Computations
 ```java
-Producer<PackedCollection<?>> a = p(inputA);
-Producer<PackedCollection<?>> b = p(inputB);
-Producer<PackedCollection<?>> sum = a.add(b);           // Deferred
-Producer<PackedCollection<?>> result = sum.multiply(c); // Chain
+Producer<PackedCollection> a = p(inputA);
+Producer<PackedCollection> b = p(inputB);
+Producer<PackedCollection> sum = a.add(b);           // Deferred
+Producer<PackedCollection> result = sum.multiply(c); // Chain
 ```
 
 ### Execution
 ```java
 // One-shot
-PackedCollection<?> value = producer.evaluate();
+PackedCollection value = producer.evaluate();
 
 // Reusable
-Evaluable<PackedCollection<?>> eval = producer.get();   // Compile once
-PackedCollection<?> r1 = eval.evaluate(args1);          // Run many
-PackedCollection<?> r2 = eval.evaluate(args2);
+Evaluable<PackedCollection> eval = producer.get();   // Compile once
+PackedCollection r1 = eval.evaluate(args1);          // Run many
+PackedCollection r2 = eval.evaluate(args2);
 ```
 
 ### Hardware Requirements
@@ -146,7 +146,7 @@ producer.get(CPU);      // Force CPU
 ### Cell-Receptor-Transmitter
 ```java
 // Cell: computation unit
-Cell<PackedCollection<?>> cell = new DenseLayer(inSize, outSize);
+Cell<PackedCollection> cell = new DenseLayer(inSize, outSize);
 
 // Receptor: input handler
 cell.setReceptor(receptor);
@@ -172,7 +172,7 @@ model.addLayer(dense(outputDim));
 model.addLayer(softmax());
 
 CompiledModel compiled = model.compile();
-PackedCollection<?> output = compiled.forward(input);
+PackedCollection output = compiled.forward(input);
 ```
 
 ### Block Composition
@@ -190,8 +190,8 @@ block.add(residual(innerBlock));  // Skip connection
 ### StateDictionary (Weight Loading)
 ```java
 StateDictionary weights = new StateDictionary(weightsDir);
-PackedCollection<?> embed = weights.get("model.embed_tokens.weight");
-PackedCollection<?> wq = weights.get("model.layers.0.self_attn.q_proj.weight");
+PackedCollection embed = weights.get("model.embed_tokens.weight");
+PackedCollection wq = weights.get("model.layers.0.self_attn.q_proj.weight");
 ```
 
 ### Attention Pattern
@@ -228,14 +228,14 @@ lm_head.weight                      # Output projection
 
 ### FFT/IFFT
 ```java
-PackedCollection<?> freqDomain = fft(timeDomain);
-PackedCollection<?> timeDomain = ifft(freqDomain);
+PackedCollection freqDomain = fft(timeDomain);
+PackedCollection timeDomain = ifft(freqDomain);
 ```
 
 ### FIR Filtering
 ```java
-PackedCollection<?> coefficients = designLowPass(cutoff, sampleRate, taps);
-PackedCollection<?> filtered = fir(signal, coefficients);
+PackedCollection coefficients = designLowPass(cutoff, sampleRate, taps);
+PackedCollection filtered = fir(signal, coefficients);
 ```
 
 ### Temporal Scalar
@@ -267,9 +267,9 @@ optimizer.step(parameters, gradients);
 ```java
 for (int epoch = 0; epoch < epochs; epoch++) {
     for (Batch batch : dataset) {
-        PackedCollection<?> output = model.forward(batch.input());
-        PackedCollection<?> loss = lossFunction.apply(output, batch.target());
-        PackedCollection<?> gradients = model.backward(loss);
+        PackedCollection output = model.forward(batch.input());
+        PackedCollection loss = lossFunction.apply(output, batch.target());
+        PackedCollection gradients = model.backward(loss);
         optimizer.step(model.parameters(), gradients);
     }
 }
@@ -313,10 +313,10 @@ public class MyTest implements TestFeatures, ConsoleFeatures {
         Console.root().addListener(OutputFeatures.fileOutput("results.txt"));
 
         // Test with hardware
-        PackedCollection<?> a = tensor(shape(3, 3), (i, j) -> i + j);
-        PackedCollection<?> b = tensor(shape(3, 3), (i, j) -> i * j);
+        PackedCollection a = tensor(shape(3, 3), (i, j) -> i + j);
+        PackedCollection b = tensor(shape(3, 3), (i, j) -> i * j);
 
-        PackedCollection<?> result = a.add(b).evaluate();
+        PackedCollection result = a.add(b).evaluate();
 
         // Assertions
         assertEquals(expectedValue, result.valueAt(0), 1e-6);

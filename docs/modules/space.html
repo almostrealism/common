@@ -360,7 +360,7 @@ triangle.setSmooth(true);
 triangle.setInterpolateVertexColor(true);
 
 // Get precomputed data for GPU intersection
-PackedCollection&lt;Vector&gt; triangleData = triangle.getData();
+PackedCollection triangleData = triangle.getData();
 
 // Access vertex positions
 Vector[] vertices = triangle.getVertices();
@@ -493,12 +493,12 @@ CachedMeshIntersectionKernel kernel = new CachedMeshIntersectionKernel(
 kernel.setDimensions(width, height, ssw, ssh);
 
 // Batch evaluation - populates cache for all pixels
-PackedCollection&lt;?&gt; destination = new PackedCollection&lt;&gt;(shape(width * height));
+PackedCollection destination = new PackedCollection(shape(width * height));
 kernel.into(destination).evaluate(args);
 
 // Individual queries now use cached results
 Pair pixelPos = new Pair(x, y);
-PackedCollection&lt;?&gt; distance = kernel.evaluate(new Object[]{pixelPos});
+PackedCollection distance = kernel.evaluate(new Object[]{pixelPos});
 
 // Get normal at intersection point
 Evaluable&lt;Vector&gt; normalEval = kernel.getClosestNormal();

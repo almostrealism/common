@@ -43,16 +43,16 @@ import java.util.Optional;
  * public class MatrixComputation implements MatrixFeatures {
  *     public Producer<PackedCollection> compute() {
  *         // Create identity matrix
- *         CollectionProducer<PackedCollection> I = identity(3);  // 3x3 identity
+ *         CollectionProducer I = identity(3);  // 3x3 identity
  *
  *         // Create diagonal matrix from vector
- *         CollectionProducer<PackedCollection> vec = c(1.0, 2.0, 3.0);
- *         CollectionProducer<PackedCollection> diag = diagonal(vec);
+ *         CollectionProducer vec = c(1.0, 2.0, 3.0);
+ *         CollectionProducer diag = diagonal(vec);
  *
  *         // Matrix-vector multiplication
- *         CollectionProducer<PackedCollection> A = c(shape(3, 3), ...);
- *         CollectionProducer<PackedCollection> x = c(shape(3), ...);
- *         CollectionProducer<PackedCollection> b = matmul(A, x);
+ *         CollectionProducer A = c(shape(3, 3), ...);
+ *         CollectionProducer x = c(shape(3), ...);
+ *         CollectionProducer b = matmul(A, x);
  *
  *         return b;
  *     }
@@ -62,13 +62,13 @@ import java.util.Optional;
  * <h2>Matrix Multiplication</h2>
  * <pre>{@code
  * // Matrix-vector multiplication: Ax = b
- * CollectionProducer<PackedCollection> A = c(shape(3, 4), ...);  // 3x4 matrix
- * CollectionProducer<PackedCollection> x = c(shape(4), ...);     // 4-vector
- * CollectionProducer<PackedCollection> b = matmul(A, x);         // 3-vector
+ * CollectionProducer A = c(shape(3, 4), ...);  // 3x4 matrix
+ * CollectionProducer x = c(shape(4), ...);     // 4-vector
+ * CollectionProducer b = matmul(A, x);         // 3-vector
  *
  * // Matrix-matrix multiplication: AB = C
- * CollectionProducer<PackedCollection> B = c(shape(4, 2), ...);  // 4x2 matrix
- * CollectionProducer<PackedCollection> C = matmul(A, B);         // 3x2 matrix
+ * CollectionProducer B = c(shape(4, 2), ...);  // 4x2 matrix
+ * CollectionProducer C = matmul(A, B);         // 3x2 matrix
  * }</pre>
  *
  * <h2>Attention Mechanisms</h2>
@@ -76,12 +76,12 @@ import java.util.Optional;
  * // Scaled dot product for transformer attention
  * // Q: (batch, heads, seqLen, dim)
  * // K: (batch, heads, dim, seqLen)
- * CollectionProducer<PackedCollection> Q = ...;
- * CollectionProducer<PackedCollection> K = ...;
- * CollectionProducer<PackedCollection> scores = scaledDotProduct(Q, K);
+ * CollectionProducer Q = ...;
+ * CollectionProducer K = ...;
+ * CollectionProducer scores = scaledDotProduct(Q, K);
  *
  * // With transpose (when K is stored as seqLen x dim)
- * CollectionProducer<PackedCollection> scores2 = scaledDotProduct(Q, K, true);
+ * CollectionProducer scores2 = scaledDotProduct(Q, K, true);
  * }</pre>
  *
  * @author  Michael Murray

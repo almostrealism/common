@@ -192,7 +192,7 @@ int[] context = promptTokens;
 
 for (int i = 0; i < 20; i++) {
     // Forward pass
-    PackedCollection&lt;?&gt; logits = compiledModel.forward(context);
+    PackedCollection logits = compiledModel.forward(context);
 
     // Sample next token (greedy decoding)
     int nextToken = argmax(logits);

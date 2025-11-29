@@ -395,19 +395,19 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	 *
 	 * <pre>{@code
 	 * // Extract shape from a {@link CollectionProducer} created with c()
-	 * CollectionProducer<PackedCollection> vector = c(1.0, 2.0, 3.0);
+	 * CollectionProducer vector = c(1.0, 2.0, 3.0);
 	 * TraversalPolicy vectorShape = shape(vector);
 	 * // Result: shape with dimensions [3]
 	 * 
 	 * // Extract shape from arithmetic operation results
-	 * CollectionProducer<PackedCollection> a = c(shape(2, 3), 1, 2, 3, 4, 5, 6);
-	 * CollectionProducer<PackedCollection> b = c(shape(2, 3), 2, 3, 4, 5, 6, 7);
-	 * CollectionProducer<PackedCollection> sum = add(a, b);
+	 * CollectionProducer a = c(shape(2, 3), 1, 2, 3, 4, 5, 6);
+	 * CollectionProducer b = c(shape(2, 3), 2, 3, 4, 5, 6, 7);
+	 * CollectionProducer sum = add(a, b);
 	 * TraversalPolicy resultShape = shape(sum);
 	 * // Result: shape with dimensions [2, 3]
 	 * 
 	 * // Extract shape from reshaped {@link CollectionProducer}
-	 * CollectionProducer<PackedCollection> reshaped = vector.reshape(shape(1, 3));
+	 * CollectionProducer reshaped = vector.reshape(shape(1, 3));
 	 * TraversalPolicy reshapedShape = shape(reshaped);
 	 * // Result: shape with dimensions [1, 3]
 	 * }</pre>
@@ -464,19 +464,19 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	 *
 	 * <pre>{@code
 	 * // Get size of a {@link CollectionProducer} created with c()
-	 * CollectionProducer<PackedCollection> vector = c(1.0, 2.0, 3.0);
+	 * CollectionProducer vector = c(1.0, 2.0, 3.0);
 	 * int vectorSize = size(vector);
 	 * // Result: 3 (3 elements in the vector)
 	 * 
 	 * // Get size of arithmetic operation results
-	 * CollectionProducer<PackedCollection> a = c(shape(2, 3), 1, 2, 3, 4, 5, 6);
-	 * CollectionProducer<PackedCollection> b = c(shape(2, 3), 2, 3, 4, 5, 6, 7);
-	 * CollectionProducer<PackedCollection> sum = add(a, b);
+	 * CollectionProducer a = c(shape(2, 3), 1, 2, 3, 4, 5, 6);
+	 * CollectionProducer b = c(shape(2, 3), 2, 3, 4, 5, 6, 7);
+	 * CollectionProducer sum = add(a, b);
 	 * int matrixSize = size(sum);
 	 * // Result: 6 (2 * 3 matrix elements)
 	 * 
 	 * // Get size of reshaped producers
-	 * CollectionProducer<PackedCollection> reshaped = vector.reshape(shape(1, 3));
+	 * CollectionProducer reshaped = vector.reshape(shape(1, 3));
 	 * int reshapedSize = size(reshaped);
 	 * // Result: 3 (same total elements, different shape)
 	 * }</pre>
@@ -798,16 +798,16 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	 *
 	 * <pre>{@code
 	 * // Create a producer for multiple values
-	 * CollectionProducer<PackedCollection> producer = c(1.0, 2.0, 3.0);
+	 * CollectionProducer producer = c(1.0, 2.0, 3.0);
 	 * // Result: Producer that generates a collection [1.0, 2.0, 3.0]
 	 * 
 	 * // Create a single-value producer (becomes a constant)
-	 * CollectionProducer<PackedCollection> constant = c(42.0);
+	 * CollectionProducer constant = c(42.0);
 	 * // Result: Constant producer that generates [42.0]
 	 * 
 	 * // Create from computed values
 	 * double[] computed = {Math.PI, Math.E, Math.sqrt(2)};
-	 * CollectionProducer<PackedCollection> mathConstants = c(computed);
+	 * CollectionProducer mathConstants = c(computed);
 	 * // Result: Producer with [3.14159..., 2.71828..., 1.41421...]
 	 * }</pre>
 	 */
@@ -835,11 +835,11 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	 *
 	 * <pre>{@code
 	 * // Create a 2x3 matrix producer
-	 * CollectionProducer<PackedCollection> matrix = c(shape(2, 3), 1, 2, 3, 4, 5, 6);
+	 * CollectionProducer matrix = c(shape(2, 3), 1, 2, 3, 4, 5, 6);
 	 * // Result: 2x3 matrix producer with values [[1,2,3], [4,5,6]]
 	 * 
 	 * // Create a single constant with specific shape
-	 * CollectionProducer<PackedCollection> constant = c(shape(1), 42.0);
+	 * CollectionProducer constant = c(shape(1), 42.0);
 	 * // Result: Constant producer with shape [1] containing [42.0]
 	 * }</pre>
 	 */
@@ -867,12 +867,12 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	 *
 	 * <pre>{@code
 	 * // Create a constant producer
-	 * CollectionProducer<PackedCollection> pi = constant(Math.PI);
+	 * CollectionProducer pi = constant(Math.PI);
 	 * // Result: Producer that always generates [3.14159...]
 	 * 
 	 * // Use in mathematical operations
-	 * CollectionProducer<PackedCollection> zero = constant(0.0);
-	 * CollectionProducer<PackedCollection> one = constant(1.0);
+	 * CollectionProducer zero = constant(0.0);
+	 * CollectionProducer one = constant(1.0);
 	 * // These can be used in {@link #add}, {@link #multiply}, etc.
 	 * }</pre>
 	 */
@@ -899,15 +899,15 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	 *
 	 * <pre>{@code
 	 * // Create a 2x3 matrix filled with ones
-	 * CollectionProducer<PackedCollection> ones = constant(shape(2, 3), 1.0);
+	 * CollectionProducer ones = constant(shape(2, 3), 1.0);
 	 * // Result: Producer that generates a 2x3 matrix [[1,1,1], [1,1,1]]
 	 * 
 	 * // Create a 1D vector filled with zeros
-	 * CollectionProducer<PackedCollection> zeros = constant(shape(5), 0.0);
+	 * CollectionProducer zeros = constant(shape(5), 0.0);
 	 * // Result: Producer that generates [0, 0, 0, 0, 0]
 	 * 
 	 * // Create a 3D tensor filled with pi
-	 * CollectionProducer<PackedCollection> piTensor = constant(shape(2, 2, 2), Math.PI);
+	 * CollectionProducer piTensor = constant(shape(2, 2, 2), Math.PI);
 	 * // Result: 2x2x2 tensor where all 8 elements equal pi
 	 * }</pre>
 	 */
@@ -1315,15 +1315,15 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	 *
 	 * <pre>{@code
 	 * // Create a 2D collection and change traversal axis
-	 * CollectionProducer<PackedCollection> matrix = c(shape(3, 4),
+	 * CollectionProducer matrix = c(shape(3, 4),
 	 *     1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12);
 	 * 
 	 * // Traverse along axis 0 (rows)
-	 * CollectionProducer<PackedCollection> rowTraversal = traverse(0, matrix);
+	 * CollectionProducer rowTraversal = traverse(0, matrix);
 	 * // Changes how iteration occurs over the matrix
 	 * 
 	 * // Traverse along axis 1 (columns)
-	 * CollectionProducer<PackedCollection> colTraversal = traverse(1, matrix);
+	 * CollectionProducer colTraversal = traverse(1, matrix);
 	 * // Different traversal pattern for the same data
 	 * }</pre>
 	 */
@@ -1348,7 +1348,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	 *
 	 * <pre>{@code
 	 * // Set up element-wise traversal
-	 * CollectionProducer<PackedCollection> vector = c(1.0, 2.0, 3.0);
+	 * CollectionProducer vector = c(1.0, 2.0, 3.0);
 	 * Producer eachElement = each(vector);
 	 * // Result: Producer configured for element-wise operations
 	 * }</pre>
@@ -1369,12 +1369,12 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	 *
 	 * <pre>{@code
 	 * // Configure for element-wise processing
-	 * CollectionProducer<PackedCollection> matrix = c(shape(2, 3), 1, 2, 3, 4, 5, 6);
+	 * CollectionProducer matrix = c(shape(2, 3), 1, 2, 3, 4, 5, 6);
 	 * Producer elementWise = traverseEach(matrix);
 	 * // Result: Producer that can process each of the 6 elements individually
 	 * 
 	 * // Useful for applying functions to each element
-	 * CollectionProducer<PackedCollection> vector = c(1.0, 4.0, 9.0);
+	 * CollectionProducer vector = c(1.0, 4.0, 9.0);
 	 * Producer sqrt = traverseEach(vector).sqrt(); // hypothetical sqrt operation
 	 * // Would apply sqrt to each element: [1.0, 2.0, 3.0]
 	 * }</pre>
@@ -1397,17 +1397,17 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	 *
 	 * <pre>{@code
 	 * // Reshape a 1D vector to a 2D matrix
-	 * CollectionProducer<PackedCollection> vector = c(1, 2, 3, 4, 5, 6);
+	 * CollectionProducer vector = c(1, 2, 3, 4, 5, 6);
 	 * Producer<PackedCollection> matrix = reshape(shape(2, 3), vector);
 	 * // Result: 2x3 matrix [[1,2,3], [4,5,6]]
 	 * 
 	 * // Reshape a matrix to a different matrix
-	 * CollectionProducer<PackedCollection> matrix2x3 = c(shape(2, 3), 1, 2, 3, 4, 5, 6);
+	 * CollectionProducer matrix2x3 = c(shape(2, 3), 1, 2, 3, 4, 5, 6);
 	 * Producer<PackedCollection> matrix3x2 = reshape(shape(3, 2), matrix2x3);
 	 * // Result: 3x2 matrix [[1,2], [3,4], [5,6]]
 	 * 
 	 * // Flatten a multi-dimensional array
-	 * CollectionProducer<PackedCollection> tensor = c(shape(2, 2, 2), 1, 2, 3, 4, 5, 6, 7, 8);
+	 * CollectionProducer tensor = c(shape(2, 2, 2), 1, 2, 3, 4, 5, 6, 7, 8);
 	 * Producer<PackedCollection> flattened = reshape(shape(8), tensor);
 	 * // Result: 1D vector [1, 2, 3, 4, 5, 6, 7, 8]
 	 * }</pre>
@@ -1441,7 +1441,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	 * PackedCollection image = new PackedCollection(shape(256, 256));
 	 * image.fill(Math::random);
 	 * 
-	 * CollectionProducer<PackedCollection> patch =
+	 * CollectionProducer patch =
 	 *     subset(shape(5, 5), p(image), 100, 150);
 	 * PackedCollection result = patch.get().evaluate();
 	 * 
@@ -1454,7 +1454,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	 * PackedCollection volume = new PackedCollection(shape(100, 100, 50));
 	 * volume.fill(pos -> pos[0] + pos[1] + pos[2]); // example fill
 	 * 
-	 * CollectionProducer<PackedCollection> subVolume =
+	 * CollectionProducer subVolume =
 	 *     subset(shape(10, 10, 5), p(volume), 20, 30, 15);
 	 * PackedCollection result = subVolume.get().evaluate();
 	 * }</pre>
@@ -1496,7 +1496,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	 * Expression startY = centerY.subtract(offset);
 	 * 
 	 * // Extract 10x10 subset around center
-	 * CollectionProducer<PackedCollection> centeredSubset =
+	 * CollectionProducer centeredSubset =
 	 *     subset(shape(10, 10), p(data), startX, startY);
 	 * }</pre>
 	 *
@@ -1538,7 +1538,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	 * for (int i = 0; i < 950; i += 10) {
 	 *     windowStart.set(0, (double) i);
 	 *     
-	 *     CollectionProducer<PackedCollection> window =
+	 *     CollectionProducer window =
 	 *         subset(shape(50), p(timeSeries), p(windowStart));
 	 *     PackedCollection result = window.get().evaluate();
 	 *     
@@ -1557,7 +1557,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	 * roiPosition.set(1, detectedObjectY);
 	 * 
 	 * // Extract region around detected object
-	 * CollectionProducer<PackedCollection> objectRegion =
+	 * CollectionProducer objectRegion =
 	 *     subset(shape(64, 64), p(image), p(roiPosition));
 	 * PackedCollection objectPatch = objectRegion.get().evaluate();
 	 * }</pre>
@@ -1674,7 +1674,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	 * <p><strong>1D Vector Enumeration:</strong></p>
 	 * <pre>{@code
 	 * // Input: [1, 2, 3, 4, 5, 6] (shape: [6])
-	 * CollectionProducer<PackedCollection> vector = c(1, 2, 3, 4, 5, 6);
+	 * CollectionProducer vector = c(1, 2, 3, 4, 5, 6);
 	 * CollectionProducerComputation<PackedCollection> enumerated = enumerate(0, 3, vector);
 	 * // Output: [[1,2,3], [4,5,6]] (shape: [2, 3])
 	 * // Creates 2 non-overlapping sequences of length 3
@@ -1684,7 +1684,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	 * <p><strong>2D Matrix Column Enumeration:</strong></p>
 	 * <pre>{@code
 	 * // Input: 3x6 matrix (shape: [3, 6])
-	 * CollectionProducer<PackedCollection> matrix = c(shape(3, 6), 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18);
+	 * CollectionProducer matrix = c(shape(3, 6), 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18);
 	 * CollectionProducerComputation<PackedCollection> colEnum = enumerate(1, 2, matrix);
 	 * // Output: shape [3, 3, 2] - extracts 3 pairs from each row
 	 * // Each row [1,2,3,4,5,6] becomes [[1,2], [3,4], [5,6]]
@@ -1717,7 +1717,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	 * <p><strong>Overlapping Sliding Windows:</strong></p>
 	 * <pre>{@code
 	 * // Input: [1, 2, 3, 4, 5, 6, 7, 8] (shape: [8])
-	 * CollectionProducer<PackedCollection> vector = c(1, 2, 3, 4, 5, 6, 7, 8);
+	 * CollectionProducer vector = c(1, 2, 3, 4, 5, 6, 7, 8);
 	 * CollectionProducerComputation<PackedCollection> sliding = enumerate(0, 3, 1, vector);
 	 * // Output: [[1,2,3], [2,3,4], [3,4,5], [4,5,6], [5,6,7], [6,7,8]] (shape: [6, 3])
 	 * // Stride of 1 creates overlapping windows
@@ -1727,7 +1727,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	 * <p><strong>Strided Convolution Pattern:</strong></p>
 	 * <pre>{@code
 	 * // Input: 8x10 matrix for 2D stride enumeration
-	 * CollectionProducer<PackedCollection> input = c(shape(8, 10), 1, 2, 3, ...);
+	 * CollectionProducer input = c(shape(8, 10), 1, 2, 3, ...);
 	 * CollectionProducerComputation<PackedCollection> strided = enumerate(1, 2, 1, input);
 	 * // Output: shape [8, 9, 2] - sliding window of size 2 with stride 1 along axis 1
 	 * // Each row [a,b,c,d,e,f,g,h,i,j] becomes [[a,b], [b,c], [c,d], ..., [i,j]]
@@ -1770,7 +1770,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	 * <p><strong>Double Enumeration for 2D Patches:</strong></p>
 	 * <pre>{@code
 	 * // Input: 4x4 matrix 
-	 * CollectionProducer<PackedCollection> matrix = c(shape(4, 4),
+	 * CollectionProducer matrix = c(shape(4, 4),
 	 *     1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16);
 	 * 
 	 * // First enumerate along axis 1, then along axis 0
@@ -1784,7 +1784,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	 * <p><strong>Multi-dimensional Convolution Pattern:</strong></p>
 	 * <pre>{@code
 	 * // Input: 4D tensor (batch, channels, height, width)
-	 * CollectionProducer<PackedCollection> input = c(shape(2, 5, 10, 6), 1, 2, 3, ...);
+	 * CollectionProducer input = c(shape(2, 5, 10, 6), 1, 2, 3, ...);
 	 * CollectionProducerComputation<PackedCollection> conv =
 	 *     cp(input).traverse(2).enumerate(3, 3, 1, 2); // Extract 3x3 patches
 	 * // Applies enumerate twice along spatial dimensions
@@ -1795,7 +1795,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	 * <p><strong>Attention Window Creation:</strong></p>
 	 * <pre>{@code
 	 * // Input: sequence of length 8
-	 * CollectionProducer<PackedCollection> sequence = c(1, 2, 3, 4, 5, 6, 7, 8);
+	 * CollectionProducer sequence = c(1, 2, 3, 4, 5, 6, 7, 8);
 	 * CollectionProducerComputation<PackedCollection> windows =
 	 *     enumerate(0, 3, 1, 3, sequence); // 3 levels of enumeration
 	 * // Creates progressively nested window structures
@@ -1839,7 +1839,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	 *
 	 * <pre>{@code
 	 * // Enumerate 2D patches from a matrix
-	 * CollectionProducer<PackedCollection> matrix = c(shape(10, 10), 1, 2, 3, ...);
+	 * CollectionProducer matrix = c(shape(10, 10), 1, 2, 3, ...);
 	 * CollectionProducerComputation<PackedCollection> patches =
 	 *     enumerate(shape(10, 2), matrix);
 	 * // Output: shape [5, 10, 2] - 5 slices of 10x2 from the input
@@ -1874,7 +1874,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	 *
 	 * <pre>{@code
 	 * // Custom stride enumeration for complex patterns
-	 * CollectionProducer<PackedCollection> data = c(shape(8, 6), 1, 2, 3, ...);
+	 * CollectionProducer data = c(shape(8, 6), 1, 2, 3, ...);
 	 * CollectionProducerComputation<PackedCollection> custom =
 	 *     enumerate(shape(2, 3), shape(1, 1), data);
 	 * // Creates overlapping 2x3 patches with stride 1 in both dimensions
@@ -2271,15 +2271,15 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	 *
 	 * <pre>{@code
 	 * // Add two vectors element-wise
-	 * CollectionProducer<PackedCollection> vec1 = c(1.0, 2.0, 3.0);
-	 * CollectionProducer<PackedCollection> vec2 = c(4.0, 5.0, 6.0);
-	 * CollectionProducer<PackedCollection> sum = add(vec1, vec2);
+	 * CollectionProducer vec1 = c(1.0, 2.0, 3.0);
+	 * CollectionProducer vec2 = c(4.0, 5.0, 6.0);
+	 * CollectionProducer sum = add(vec1, vec2);
 	 * // Result: Producer that generates [5.0, 7.0, 9.0]
 	 * 
 	 * // Add a constant to a vector
-	 * CollectionProducer<PackedCollection> vector = c(1.0, 2.0, 3.0);
-	 * CollectionProducer<PackedCollection> constant = constant(1.0);
-	 * CollectionProducer<PackedCollection> result = add(vector, constant);
+	 * CollectionProducer vector = c(1.0, 2.0, 3.0);
+	 * CollectionProducer constant = constant(1.0);
+	 * CollectionProducer result = add(vector, constant);
 	 * // Result: Producer that generates [2.0, 3.0, 4.0]
 	 * }</pre>
 	 */
@@ -2306,17 +2306,17 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	 *
 	 * <pre>{@code
 	 * // Add three vectors together
-	 * CollectionProducer<PackedCollection> vec1 = c(1.0, 2.0);
-	 * CollectionProducer<PackedCollection> vec2 = c(3.0, 4.0);
-	 * CollectionProducer<PackedCollection> vec3 = c(5.0, 6.0);
-	 * CollectionProducer<PackedCollection> sum = add(List.of(vec1, vec2, vec3));
+	 * CollectionProducer vec1 = c(1.0, 2.0);
+	 * CollectionProducer vec2 = c(3.0, 4.0);
+	 * CollectionProducer vec3 = c(5.0, 6.0);
+	 * CollectionProducer sum = add(List.of(vec1, vec2, vec3));
 	 * // Result: Producer that generates [9.0, 12.0] (1+3+5, 2+4+6)
 	 * 
 	 * // Add multiple constants (optimized)
 	 * List<Producer<?>> constants = List.of(
 	 *     constant(1.0), constant(2.0), constant(3.0)
 	 * );
-	 * CollectionProducer<PackedCollection> total = add(constants);
+	 * CollectionProducer total = add(constants);
 	 * // Result: Producer that generates [6.0] (computed at construction time)
 	 * }</pre>
 	 */
@@ -2360,15 +2360,15 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	 *
 	 * <pre>{@code
 	 * // Subtract two vectors element-wise
-	 * CollectionProducer<PackedCollection> vec1 = c(5.0, 8.0, 12.0);
-	 * CollectionProducer<PackedCollection> vec2 = c(2.0, 3.0, 4.0);
-	 * CollectionProducer<PackedCollection> difference = subtract(vec1, vec2);
+	 * CollectionProducer vec1 = c(5.0, 8.0, 12.0);
+	 * CollectionProducer vec2 = c(2.0, 3.0, 4.0);
+	 * CollectionProducer difference = subtract(vec1, vec2);
 	 * // Result: Producer that generates [3.0, 5.0, 8.0] (5-2, 8-3, 12-4)
 	 * 
 	 * // Subtract a constant from a vector
-	 * CollectionProducer<PackedCollection> vector = c(10.0, 20.0, 30.0);
-	 * CollectionProducer<PackedCollection> constant = constant(5.0);
-	 * CollectionProducer<PackedCollection> result = subtract(vector, constant);
+	 * CollectionProducer vector = c(10.0, 20.0, 30.0);
+	 * CollectionProducer constant = constant(5.0);
+	 * CollectionProducer result = subtract(vector, constant);
 	 * // Result: Producer that generates [5.0, 15.0, 25.0]
 	 * }</pre>
 	 */
@@ -2433,15 +2433,15 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	 *
 	 * <pre>{@code
 	 * // Multiply two vectors element-wise
-	 * CollectionProducer<PackedCollection> vec1 = c(2.0, 3.0, 4.0);
-	 * CollectionProducer<PackedCollection> vec2 = c(5.0, 6.0, 7.0);
-	 * CollectionProducer<PackedCollection> product = multiply(vec1, vec2);
+	 * CollectionProducer vec1 = c(2.0, 3.0, 4.0);
+	 * CollectionProducer vec2 = c(5.0, 6.0, 7.0);
+	 * CollectionProducer product = multiply(vec1, vec2);
 	 * // Result: Producer that generates [10.0, 18.0, 28.0]
 	 * 
 	 * // Scale a vector by a constant
-	 * CollectionProducer<PackedCollection> vector = c(1.0, 2.0, 3.0);
-	 * CollectionProducer<PackedCollection> scale = constant(2.0);
-	 * CollectionProducer<PackedCollection> scaled = multiply(vector, scale);
+	 * CollectionProducer vector = c(1.0, 2.0, 3.0);
+	 * CollectionProducer scale = constant(2.0);
+	 * CollectionProducer scaled = multiply(vector, scale);
 	 * // Result: Producer that generates [2.0, 4.0, 6.0]
 	 * }</pre>
 	 */
@@ -2473,18 +2473,18 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	 *
 	 * <pre>{@code
 	 * // Multiply with potential optimization
-	 * CollectionProducer<PackedCollection> vec1 = c(2.0, 3.0);
-	 * CollectionProducer<PackedCollection> vec2 = c(1.0, 1.0);
+	 * CollectionProducer vec1 = c(2.0, 3.0);
+	 * CollectionProducer vec2 = c(1.0, 1.0);
 	 * 
 	 * // Pre-compute result for optimization
 	 * Evaluable<PackedCollection> precomputed = () -> pack(2.0, 3.0);
-	 * CollectionProducer<PackedCollection> result = multiply(vec1, vec2, precomputed);
+	 * CollectionProducer result = multiply(vec1, vec2, precomputed);
 	 * // May use precomputed result if beneficial
 	 * 
 	 * // Constant multiplication (optimized)
-	 * CollectionProducer<PackedCollection> constant1 = constant(2.0);
-	 * CollectionProducer<PackedCollection> constant2 = constant(3.0);
-	 * CollectionProducer<PackedCollection> product = multiply(constant1, constant2);
+	 * CollectionProducer constant1 = constant(2.0);
+	 * CollectionProducer constant2 = constant(3.0);
+	 * CollectionProducer product = multiply(constant1, constant2);
 	 * // Result: constant(6.0) computed directly without full pipeline
 	 * }</pre>
 	 */
@@ -2536,16 +2536,16 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	 *
 	 * <pre>{@code
 	 * // Scale a vector by 2
-	 * CollectionProducer<PackedCollection> vector = c(1.0, 2.0, 3.0);
-	 * CollectionProducer<PackedCollection> doubled = multiply(2.0, vector);
+	 * CollectionProducer vector = c(1.0, 2.0, 3.0);
+	 * CollectionProducer doubled = multiply(2.0, vector);
 	 * // Result: Producer that generates [2.0, 4.0, 6.0]
 	 * 
 	 * // Scale by zero to create zero vector
-	 * CollectionProducer<PackedCollection> zeros = multiply(0.0, vector);
+	 * CollectionProducer zeros = multiply(0.0, vector);
 	 * // Result: Producer that generates [0.0, 0.0, 0.0]
 	 * 
 	 * // Scale by -1 to negate
-	 * CollectionProducer<PackedCollection> negated = multiply(-1.0, vector);
+	 * CollectionProducer negated = multiply(-1.0, vector);
 	 * // Result: Producer that generates [-1.0, -2.0, -3.0]
 	 * }</pre>
 	 */
@@ -2584,15 +2584,15 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	 *
 	 * <pre>{@code
 	 * // Divide two vectors element-wise
-	 * CollectionProducer<PackedCollection> numerator = c(12.0, 15.0, 20.0);
-	 * CollectionProducer<PackedCollection> denominator = c(3.0, 5.0, 4.0);
-	 * CollectionProducer<PackedCollection> quotient = divide(numerator, denominator);
+	 * CollectionProducer numerator = c(12.0, 15.0, 20.0);
+	 * CollectionProducer denominator = c(3.0, 5.0, 4.0);
+	 * CollectionProducer quotient = divide(numerator, denominator);
 	 * // Result: Producer that generates [4.0, 3.0, 5.0] (12/3, 15/5, 20/4)
 	 * 
 	 * // Divide by a constant (scalar division)
-	 * CollectionProducer<PackedCollection> vector = c(10.0, 20.0, 30.0);
-	 * CollectionProducer<PackedCollection> divisor = constant(2.0);
-	 * CollectionProducer<PackedCollection> halved = divide(vector, divisor);
+	 * CollectionProducer vector = c(10.0, 20.0, 30.0);
+	 * CollectionProducer divisor = constant(2.0);
+	 * CollectionProducer halved = divide(vector, divisor);
 	 * // Result: Producer that generates [5.0, 10.0, 15.0]
 	 * }</pre>
 	 */
@@ -2626,17 +2626,17 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	 *
 	 * <pre>{@code
 	 * // Negate a vector
-	 * CollectionProducer<PackedCollection> vector = c(1.0, -2.0, 3.0, -4.0);
+	 * CollectionProducer vector = c(1.0, -2.0, 3.0, -4.0);
 	 * CollectionProducerComputationBase<PackedCollection, PackedCollection> negated = minus(vector);
 	 * // Result: Producer that generates [-1.0, 2.0, -3.0, 4.0]
 	 *
 	 * // Negate a constant (optimized case)
-	 * CollectionProducer<PackedCollection> constant = constant(5.0);
+	 * CollectionProducer constant = constant(5.0);
 	 * CollectionProducerComputationBase<PackedCollection, PackedCollection> negatedConstant = minus(constant);
 	 * // Result: Producer that generates [-5.0]
 	 *
 	 * // Negate a matrix
-	 * CollectionProducer<PackedCollection> matrix = c(shape(2, 2), 1.0, 2.0, 3.0, 4.0);
+	 * CollectionProducer matrix = c(shape(2, 2), 1.0, 2.0, 3.0, 4.0);
 	 * CollectionProducerComputationBase<PackedCollection, PackedCollection> negatedMatrix = minus(matrix);
 	 * // Result: Producer that generates 2x2 matrix [[-1,-2], [-3,-4]]
 	 * }</pre>
@@ -2667,18 +2667,18 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	 *
 	 * <pre>{@code
 	 * // Compute square roots of elements
-	 * CollectionProducer<PackedCollection> values = c(4.0, 9.0, 16.0, 25.0);
-	 * CollectionProducer<PackedCollection> roots = sqrt(values);
+	 * CollectionProducer values = c(4.0, 9.0, 16.0, 25.0);
+	 * CollectionProducer roots = sqrt(values);
 	 * // Result: Producer that generates [2.0, 3.0, 4.0, 5.0]
 	 * 
 	 * // Square root of a single value
-	 * CollectionProducer<PackedCollection> number = c(64.0);
-	 * CollectionProducer<PackedCollection> root = sqrt(number);
+	 * CollectionProducer number = c(64.0);
+	 * CollectionProducer root = sqrt(number);
 	 * // Result: Producer that generates [8.0]
 	 * 
 	 * // Square root in mathematical expressions
-	 * CollectionProducer<PackedCollection> squares = c(1.0, 4.0, 9.0);
-	 * CollectionProducer<PackedCollection> magnitude = sqrt(sum(squares));
+	 * CollectionProducer squares = c(1.0, 4.0, 9.0);
+	 * CollectionProducer magnitude = sqrt(sum(squares));
 	 * // Result: sqrt(1+4+9) = sqrt(14) ~= 3.74
 	 * }</pre>
 	 */
@@ -2699,21 +2699,21 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	 *
 	 * <pre>{@code
 	 * // Raise elements to specified powers
-	 * CollectionProducer<PackedCollection> base = c(2.0, 3.0, 4.0);
-	 * CollectionProducer<PackedCollection> exponent = c(2.0, 3.0, 0.5);
-	 * CollectionProducer<PackedCollection> powers = pow(base, exponent);
+	 * CollectionProducer base = c(2.0, 3.0, 4.0);
+	 * CollectionProducer exponent = c(2.0, 3.0, 0.5);
+	 * CollectionProducer powers = pow(base, exponent);
 	 * // Result: Producer that generates [4.0, 27.0, 2.0] (2^2, 3^3, 4^0.5)
 	 * 
 	 * // Square all elements (power of 2)
-	 * CollectionProducer<PackedCollection> values = c(1.0, 2.0, 3.0, 4.0);
-	 * CollectionProducer<PackedCollection> two = constant(2.0);
-	 * CollectionProducer<PackedCollection> squares = pow(values, two);
+	 * CollectionProducer values = c(1.0, 2.0, 3.0, 4.0);
+	 * CollectionProducer two = constant(2.0);
+	 * CollectionProducer squares = pow(values, two);
 	 * // Result: Producer that generates [1.0, 4.0, 9.0, 16.0]
 	 * 
 	 * // Square root (power of 0.5)
-	 * CollectionProducer<PackedCollection> numbers = c(4.0, 9.0, 16.0, 25.0);
-	 * CollectionProducer<PackedCollection> half = constant(0.5);
-	 * CollectionProducer<PackedCollection> roots = pow(numbers, half);
+	 * CollectionProducer numbers = c(4.0, 9.0, 16.0, 25.0);
+	 * CollectionProducer half = constant(0.5);
+	 * CollectionProducer roots = pow(numbers, half);
 	 * // Result: Producer that generates [2.0, 3.0, 4.0, 5.0]
 	 * }</pre>
 	 */
@@ -2824,14 +2824,14 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	 *
 	 * <pre>{@code
 	 * // Compute absolute values
-	 * CollectionProducer<PackedCollection> values = c(-3.0, -1.0, 0.0, 2.0, -5.0);
-	 * CollectionProducer<PackedCollection> absolutes = abs(values);
+	 * CollectionProducer values = c(-3.0, -1.0, 0.0, 2.0, -5.0);
+	 * CollectionProducer absolutes = abs(values);
 	 * // Result: Producer that generates [3.0, 1.0, 0.0, 2.0, 5.0]
 	 * 
 	 * // Absolute value of differences
-	 * CollectionProducer<PackedCollection> a = c(10.0, 5.0, 8.0);
-	 * CollectionProducer<PackedCollection> b = c(7.0, 9.0, 3.0);
-	 * CollectionProducer<PackedCollection> distance = abs(subtract(a, b));
+	 * CollectionProducer a = c(10.0, 5.0, 8.0);
+	 * CollectionProducer b = c(7.0, 9.0, 3.0);
+	 * CollectionProducer distance = abs(subtract(a, b));
 	 * // Result: Producer that generates [3.0, 4.0, 5.0] (absolute differences)
 	 * }</pre>
 	 */
@@ -2862,17 +2862,17 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	 *
 	 * <pre>{@code
 	 * // Find maximum in a vector
-	 * CollectionProducer<PackedCollection> values = c(3.0, 7.0, 2.0, 9.0, 5.0);
+	 * CollectionProducer values = c(3.0, 7.0, 2.0, 9.0, 5.0);
 	 * CollectionProducerComputationBase<PackedCollection, PackedCollection> maximum = max(values);
 	 * // Result: Producer that generates [9.0]
 	 * 
 	 * // Find maximum in a matrix (flattened)
-	 * CollectionProducer<PackedCollection> matrix = c(shape(2, 3), 1.0, 8.0, 3.0, 4.0, 2.0, 6.0);
+	 * CollectionProducer matrix = c(shape(2, 3), 1.0, 8.0, 3.0, 4.0, 2.0, 6.0);
 	 * CollectionProducerComputationBase<PackedCollection, PackedCollection> matrixMax = max(matrix);
 	 * // Result: Producer that generates [8.0] (maximum across all elements)
 	 * 
 	 * // Maximum of negative numbers
-	 * CollectionProducer<PackedCollection> negatives = c(-5.0, -2.0, -8.0, -1.0);
+	 * CollectionProducer negatives = c(-5.0, -2.0, -8.0, -1.0);
 	 * CollectionProducerComputationBase<PackedCollection, PackedCollection> negMax = max(negatives);
 	 * // Result: Producer that generates [-1.0] (least negative = maximum)
 	 * }</pre>
@@ -2928,18 +2928,18 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	 *
 	 * <pre>{@code
 	 * // Sum all elements in a vector
-	 * CollectionProducer<PackedCollection> vector = c(1.0, 2.0, 3.0, 4.0);
-	 * CollectionProducer<PackedCollection> total = sum(vector);
+	 * CollectionProducer vector = c(1.0, 2.0, 3.0, 4.0);
+	 * CollectionProducer total = sum(vector);
 	 * // Result: Producer that generates [10.0] (1+2+3+4)
 	 * 
 	 * // Sum elements in a matrix (flattened)
-	 * CollectionProducer<PackedCollection> matrix = c(shape(2, 2), 1.0, 2.0, 3.0, 4.0);
-	 * CollectionProducer<PackedCollection> matrixSum = sum(matrix);
+	 * CollectionProducer matrix = c(shape(2, 2), 1.0, 2.0, 3.0, 4.0);
+	 * CollectionProducer matrixSum = sum(matrix);
 	 * // Result: Producer that generates [10.0] (1+2+3+4)
 	 * 
 	 * // Sum of zeros returns zero
-	 * CollectionProducer<PackedCollection> zeros = zeros(shape(5));
-	 * CollectionProducer<PackedCollection> zeroSum = sum(zeros);
+	 * CollectionProducer zeros = zeros(shape(5));
+	 * CollectionProducer zeroSum = sum(zeros);
 	 * // Result: Producer that generates [0.0]
 	 * }</pre>
 	 */
@@ -3006,18 +3006,18 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	 *
 	 * <pre>{@code
 	 * // Calculate mean of a vector
-	 * CollectionProducer<PackedCollection> vector = c(2.0, 4.0, 6.0, 8.0);
-	 * CollectionProducer<PackedCollection> average = mean(vector);
+	 * CollectionProducer vector = c(2.0, 4.0, 6.0, 8.0);
+	 * CollectionProducer average = mean(vector);
 	 * // Result: Producer that generates [5.0] ((2+4+6+8)/4)
 	 * 
 	 * // Mean of a single element
-	 * CollectionProducer<PackedCollection> single = c(42.0);
-	 * CollectionProducer<PackedCollection> singleMean = mean(single);
+	 * CollectionProducer single = c(42.0);
+	 * CollectionProducer singleMean = mean(single);
 	 * // Result: Producer that generates [42.0] (42/1)
 	 * 
 	 * // Mean of mixed positive/negative values
-	 * CollectionProducer<PackedCollection> mixed = c(-2.0, 0.0, 2.0);
-	 * CollectionProducer<PackedCollection> mixedMean = mean(mixed);
+	 * CollectionProducer mixed = c(-2.0, 0.0, 2.0);
+	 * CollectionProducer mixedMean = mean(mixed);
 	 * // Result: Producer that generates [0.0] ((-2+0+2)/3)
 	 * }</pre>
 	 */

@@ -42,18 +42,18 @@ import java.util.function.Supplier;
  * <h2>Color Creation</h2>
  * <pre>{@code
  * // Create colors from components
- * CollectionProducer<PackedCollection> red = rgb(1.0, 0.0, 0.0);
- * CollectionProducer<PackedCollection> white = white();
- * CollectionProducer<PackedCollection> gray = cfromScalar(0.5);
+ * CollectionProducer red = rgb(1.0, 0.0, 0.0);
+ * CollectionProducer white = white();
+ * CollectionProducer gray = cfromScalar(0.5);
  *
  * // Create colors from producers (for computation graphs)
- * CollectionProducer<PackedCollection> dynamic = rgb(redProducer, greenProducer, blueProducer);
+ * CollectionProducer dynamic = rgb(redProducer, greenProducer, blueProducer);
  * }</pre>
  *
  * <h2>Image I/O</h2>
  * <pre>{@code
  * // Load image as RGB collection
- * CollectionProducer<PackedCollection<RGB>> image = rgb(new File("input.png"));
+ * CollectionProducer image = rgb(new File("input.png"));
  *
  * // Save color data to file
  * Supplier<Runnable> save = saveRgb("output.png", colorProducer);

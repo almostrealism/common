@@ -176,15 +176,15 @@ public class HardwareTest {
 
         // Create large collections
         int size = 1000000;
-        PackedCollection&lt;?&gt; a = new PackedCollection&lt;&gt;(shape(size));
-        PackedCollection&lt;?&gt; b = new PackedCollection&lt;&gt;(shape(size));
+        PackedCollection a = new PackedCollection(shape(size));
+        PackedCollection b = new PackedCollection(shape(size));
 
         a.fill(pos -&gt; Math.random());
         b.fill(pos -&gt; Math.random());
 
         // Build accelerated computation
         long start = System.currentTimeMillis();
-        PackedCollection&lt;?&gt; result = cp(a)
+        PackedCollection result = cp(a)
             .add(cp(b))
             .multiply(2.0)
             .get()
@@ -288,14 +288,14 @@ public class PerformanceBenchmark {
         int[] sizes = {1000, 10000, 100000, 1000000};
 
         for (int size : sizes) {
-            PackedCollection&lt;?&gt; a = new PackedCollection&lt;&gt;(shape(size));
-            PackedCollection&lt;?&gt; b = new PackedCollection&lt;&gt;(shape(size));
+            PackedCollection a = new PackedCollection(shape(size));
+            PackedCollection b = new PackedCollection(shape(size));
             a.fill(pos -&gt; Math.random());
             b.fill(pos -&gt; Math.random());
 
             // Hardware-accelerated path
             long start = System.nanoTime();
-            PackedCollection&lt;?&gt; result = cp(a)
+            PackedCollection result = cp(a)
                 .add(cp(b))
                 .multiply(2.0)
                 .get()

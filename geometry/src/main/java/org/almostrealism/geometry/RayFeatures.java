@@ -35,10 +35,10 @@ import java.util.function.IntFunction;
  * <pre>{@code
  * public class MyRayTracer implements RayFeatures {
  *     public void trace() {
- *         CollectionProducer<Ray> r = ray(origin, direction);
- *         CollectionProducer<PackedCollection> o = origin(r);
- *         CollectionProducer<PackedCollection> d = direction(r);
- *         CollectionProducer<PackedCollection> point = pointAt(r, t);
+ *         CollectionProducer r = ray(origin, direction);
+ *         CollectionProducer o = origin(r);
+ *         CollectionProducer d = direction(r);
+ *         CollectionProducer point = pointAt(r, t);
  *     }
  * }
  * }</pre>

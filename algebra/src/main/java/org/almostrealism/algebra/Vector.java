@@ -105,7 +105,7 @@ import java.util.function.Supplier;
  * first.setZ(3.0);
  *
  * // Table of vectors (2D array)
- * PackedCollection<PackedCollection> table = Vector.table(10, 100);
+ * PackedCollection table = Vector.table(10, 100);
  * }</pre>
  *
  * <h3>Hardware-Accelerated Computations</h3>

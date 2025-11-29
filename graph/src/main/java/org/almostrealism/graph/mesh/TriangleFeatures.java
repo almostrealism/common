@@ -53,11 +53,11 @@ import org.almostrealism.collect.computations.IndexProjectionProducerComputation
  * Producer<PackedCollection> p1 = tf.vector(0, 0, 0);
  * Producer<PackedCollection> p2 = tf.vector(1, 0, 0);
  * Producer<PackedCollection> p3 = tf.vector(0, 1, 0);
- * CollectionProducer<PackedCollection> triangle = tf.triangle(p1, p2, p3);
+ * CollectionProducer triangle = tf.triangle(p1, p2, p3);
  *
  * // Access triangle components
- * CollectionProducer<PackedCollection> edge1 = tf.abc(triangleData);
- * CollectionProducer<PackedCollection> normal = tf.normal(triangleData);
+ * CollectionProducer edge1 = tf.abc(triangleData);
+ * CollectionProducer normal = tf.normal(triangleData);
  * }</pre>
  *
  * @author Michael Murray

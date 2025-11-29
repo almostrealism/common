@@ -89,7 +89,7 @@ import java.util.function.BiFunction;
  * PackedCollection pairs = Pair.bank(100);
  *
  * // Table of pairs (2D array)
- * PackedCollection<PackedCollection> table = Pair.table(10, 20);
+ * PackedCollection table = Pair.table(10, 20);
  * }</pre>
  *
  * @see PackedCollection

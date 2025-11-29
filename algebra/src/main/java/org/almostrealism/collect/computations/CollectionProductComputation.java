@@ -55,8 +55,8 @@ import java.util.stream.Stream;
  * <p><strong>Element-wise multiplication of two vectors:</strong></p>
  * <pre>{@code
  * TraversalPolicy shape = shape(5);
- * CollectionProducer<PackedCollection> a = c(1.0, 2.0, 3.0, 4.0, 5.0);
- * CollectionProducer<PackedCollection> b = c(2.0, 2.0, 2.0, 2.0, 2.0);
+ * CollectionProducer a = c(1.0, 2.0, 3.0, 4.0, 5.0);
+ * CollectionProducer b = c(2.0, 2.0, 2.0, 2.0, 2.0);
  *
  * CollectionProductComputation<PackedCollection> product =
  *     new CollectionProductComputation<>(shape, a, b);
@@ -68,9 +68,9 @@ import java.util.stream.Stream;
  * <p><strong>Multiple operand multiplication:</strong></p>
  * <pre>{@code
  * TraversalPolicy shape = shape(3);
- * CollectionProducer<PackedCollection> x = c(2.0, 3.0, 4.0);
- * CollectionProducer<PackedCollection> y = c(3.0, 2.0, 1.0);
- * CollectionProducer<PackedCollection> z = c(0.5, 1.0, 2.0);
+ * CollectionProducer x = c(2.0, 3.0, 4.0);
+ * CollectionProducer y = c(3.0, 2.0, 1.0);
+ * CollectionProducer z = c(0.5, 1.0, 2.0);
  *
  * CollectionProductComputation<PackedCollection> product =
  *     new CollectionProductComputation<>(shape, x, y, z);

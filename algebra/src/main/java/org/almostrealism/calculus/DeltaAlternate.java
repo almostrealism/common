@@ -42,7 +42,7 @@ import org.almostrealism.collect.PackedCollection;
  *         implements DeltaAlternate<T> {
  *
  *     @Override
- *     public CollectionProducer<T> getDeltaAlternate() {
+ *     public CollectionProducer getDeltaAlternate() {
  *         // Return a custom gradient computation
  *         return efficientGradient();
  *     }
@@ -53,9 +53,9 @@ import org.almostrealism.collect.PackedCollection;
  * <pre>{@code
  * // For f(x) = e^x, the derivative is also e^x
  * // More efficient to reuse the forward computation than to apply chain rule
- * public class ExponentialComputation extends ... implements DeltaAlternate<T> {
+ * public class ExponentialComputation extends ... implements DeltaAlternate {
  *     @Override
- *     public CollectionProducer<T> getDeltaAlternate() {
+ *     public CollectionProducer getDeltaAlternate() {
  *         // Gradient of e^x is e^x, so just return this computation
  *         return this;
  *     }

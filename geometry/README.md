@@ -41,11 +41,11 @@ import org.almostrealism.geometry.TransformMatrix;
 import static org.almostrealism.geometry.TransformMatrixFeatures.*;
 
 // Create transformations using features
-Producer<PackedCollection<?>> translation = translationMatrix(
+Producer<PackedCollection> translation = translationMatrix(
     vector(5.0, 0.0, 0.0)  // Move 5 units in X
 );
 
-Producer<PackedCollection<?>> scale = scaleMatrix(
+Producer<PackedCollection> scale = scaleMatrix(
     vector(2.0, 2.0, 2.0)  // Double size
 );
 
@@ -119,10 +119,10 @@ OrthographicCamera ortho = new OrthographicCamera(
 ```java
 import org.almostrealism.geometry.*;
 
-// Surfaces implement Intersectable<PackedCollection<?>>
+// Surfaces implement Intersectable<PackedCollection>
 public interface Intersectable<T> {
     ContinuousField intersectAt(Producer<Ray> ray);
-    Operator<PackedCollection<?>> expect();
+    Operator<PackedCollection> expect();
 }
 
 // Test ray against surface
@@ -160,7 +160,7 @@ Ray reflected = reflectedRay.evaluate();
 ### Ray
 
 ```java
-public class Ray extends PackedCollection<Ray> {
+public class Ray extends PackedCollection {
     // Stores [ox, oy, oz, dx, dy, dz] in contiguous memory
 
     public Producer<Vector> getOrigin();
@@ -170,19 +170,19 @@ public class Ray extends PackedCollection<Ray> {
     public void setDirection(Vector direction);
 
     // Evaluate point along ray: p = o + t*d
-    public Producer<Vector> pointAt(Producer<PackedCollection<?>> t);
+    public Producer<Vector> pointAt(Producer<PackedCollection> t);
 
     // Dot product utilities
-    public Producer<PackedCollection<?>> oDoto();  // origin · origin
-    public Producer<PackedCollection<?>> dDotd();  // direction · direction
-    public Producer<PackedCollection<?>> oDotd();  // origin · direction
+    public Producer<PackedCollection> oDoto();  // origin · origin
+    public Producer<PackedCollection> dDotd();  // direction · direction
+    public Producer<PackedCollection> oDotd();  // origin · direction
 }
 ```
 
 ### TransformMatrix
 
 ```java
-public class TransformMatrix extends PackedCollection<TransformMatrix> {
+public class TransformMatrix extends PackedCollection {
     // 4x4 homogeneous transformation matrix (16 values)
 
     // Transform types
@@ -197,7 +197,7 @@ public class TransformMatrix extends PackedCollection<TransformMatrix> {
     public TransformMatrix transpose();
     public TransformMatrix getInverse();
 
-    public Producer<PackedCollection<?>> determinant();
+    public Producer<PackedCollection> determinant();
 }
 ```
 
@@ -224,7 +224,7 @@ public class Intersection {
     public static final double e = 0.00000001;  // Epsilon for comparisons
 
     protected Producer<Vector> point;           // 3D intersection location
-    protected Producer<PackedCollection<?>> distance;  // Distance along ray
+    protected Producer<PackedCollection> distance;  // Distance along ray
 }
 ```
 
@@ -279,7 +279,7 @@ Producer<Ray> ray = camera.rayAt(
 );
 
 // 2. Find closest intersection
-List<Intersectable<PackedCollection<?>>> surfaces = scene.getSurfaces();
+List<Intersectable<PackedCollection>> surfaces = scene.getSurfaces();
 ClosestIntersection closest = new ClosestIntersection(ray, surfaces);
 
 // 3. Get intersection data
@@ -368,13 +368,13 @@ public ContinuousField intersectAt(Producer<Ray> ray) {
 
     Producer<Vector> oc = subtract(origin(ray), sphereCenter);
 
-    Producer<PackedCollection<?>> a = dDotd(ray);
-    Producer<PackedCollection<?>> b = multiply(c(2.0), dot(oc, direction(ray)));
-    Producer<PackedCollection<?>> c = subtract(dot(oc, oc),
+    Producer<PackedCollection> a = dDotd(ray);
+    Producer<PackedCollection> b = multiply(c(2.0), dot(oc, direction(ray)));
+    Producer<PackedCollection> c = subtract(dot(oc, oc),
                                                 c(radius * radius));
 
     // Discriminant: b² - 4ac
-    Producer<PackedCollection<?>> discriminant =
+    Producer<PackedCollection> discriminant =
         subtract(multiply(b, b), multiply(c(4.0), multiply(a, c)));
 
     // If discriminant >= 0, ray hits sphere

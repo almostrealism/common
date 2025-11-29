@@ -172,12 +172,12 @@
                 <p>The foundation for all loss functions, providing both loss computation and gradient calculation.</p>
                 <pre><code class="language-java">public interface LossProvider {
     // Compute scalar loss value
-    double loss(PackedCollection&lt;?&gt; output, PackedCollection&lt;?&gt; target);
+    double loss(PackedCollection output, PackedCollection target);
 
     // Compute gradient for backpropagation
-    Producer&lt;PackedCollection&lt;?&gt;&gt; gradient(
-        Producer&lt;PackedCollection&lt;?&gt;&gt; output,
-        Producer&lt;PackedCollection&lt;?&gt;&gt; target
+    Producer&lt;PackedCollection&gt; gradient(
+        Producer&lt;PackedCollection&gt; output,
+        Producer&lt;PackedCollection&gt; target
     );
 }</code></pre>
 
@@ -203,22 +203,22 @@ updateOp.get().run();</code></pre>
                 <h3>Dataset Management</h3>
                 <p>Flexible dataset handling with batching and splitting support.</p>
                 <pre><code class="language-java">// Create dataset from input-output pairs
-List&lt;ValueTarget&lt;PackedCollection&lt;?&gt;&gt;&gt; data = new ArrayList&lt;&gt;();
+List&lt;ValueTarget&lt;PackedCollection&gt;&gt; data = new ArrayList&lt;&gt;();
 for (int i = 0; i &lt; 1000; i++) {
-    PackedCollection&lt;?&gt; input = generateInput();
-    PackedCollection&lt;?&gt; target = computeTarget(input);
+    PackedCollection input = generateInput();
+    PackedCollection target = computeTarget(input);
     data.add(ValueTarget.of(input, target));
 }
 
-Dataset&lt;PackedCollection&lt;?&gt;&gt; dataset = Dataset.of(data);
+Dataset&lt;PackedCollection&gt; dataset = Dataset.of(data);
 
 // Split train/validation (80/20)
-List&lt;Dataset&lt;PackedCollection&lt;?&gt;&gt;&gt; splits = dataset.split(0.8);
-Dataset&lt;PackedCollection&lt;?&gt;&gt; train = splits.get(0);
-Dataset&lt;PackedCollection&lt;?&gt;&gt; validation = splits.get(1);
+List&lt;Dataset&lt;PackedCollection&gt;&gt; splits = dataset.split(0.8);
+Dataset&lt;PackedCollection&gt; train = splits.get(0);
+Dataset&lt;PackedCollection&gt; validation = splits.get(1);
 
 // Batch processing
-Dataset&lt;PackedCollection&lt;?&gt;&gt; batched = dataset.batch(32);</code></pre>
+Dataset&lt;PackedCollection&gt; batched = dataset.batch(32);</code></pre>
 
                 <h3>Health Computation</h3>
                 <p>Fitness evaluation for evolutionary algorithms with lifecycle management.</p>
@@ -259,8 +259,8 @@ Dataset&lt;PackedCollection&lt;?&gt;&gt; batched = dataset.batch(32);</code></pr
 import org.almostrealism.optimize.NegativeLogLikelihood;
 
 // Prepare training data
-List&lt;ValueTarget&lt;PackedCollection&lt;?&gt;&gt;&gt; trainingData = loadMNIST();
-Dataset&lt;PackedCollection&lt;?&gt;&gt; dataset = Dataset.of(trainingData);
+List&lt;ValueTarget&lt;PackedCollection&gt;&gt; trainingData = loadMNIST();
+Dataset&lt;PackedCollection&gt; dataset = Dataset.of(trainingData);
 
 // Build model
 Model model = new Model(shape(784));
@@ -298,10 +298,10 @@ System.out.println("Accuracy: " + (accuracy * 100) + "%");</code></pre>
 import org.almostrealism.optimize.MeanSquaredError;
 
 // Prepare dataset
-List&lt;ValueTarget&lt;PackedCollection&lt;?&gt;&gt;&gt; data = new ArrayList&lt;&gt;();
+List&lt;ValueTarget&lt;PackedCollection&gt;&gt; data = new ArrayList&lt;&gt;();
 for (int i = 0; i &lt; 1000; i++) {
-    PackedCollection&lt;?&gt; input = generateInput();
-    PackedCollection&lt;?&gt; target = computeTarget(input);
+    PackedCollection input = generateInput();
+    PackedCollection target = computeTarget(input);
     data.add(ValueTarget.of(input, target));
 }
 
@@ -325,14 +325,14 @@ System.out.println("Final loss: " + optimizer.getLoss());</code></pre>
                 <pre><code class="language-java">import org.almostrealism.optimize.PopulationOptimizer;
 
 // Define genome generator
-Supplier&lt;Genome&lt;PackedCollection&lt;?&gt;&gt;&gt; generator = () -> {
+Supplier&lt;Genome&lt;PackedCollection&gt;&gt; generator = () -> {
     ProjectedGenome genome = new ProjectedGenome(paramCount);
     genome.initWeights();
     return genome;
 };
 
 // Define breeder (crossover + mutation)
-Supplier&lt;GenomeBreeder&lt;PackedCollection&lt;?&gt;&gt;&gt; breeder = () -> (g1, g2) -> {
+Supplier&lt;GenomeBreeder&lt;PackedCollection&gt;&gt; breeder = () -> (g1, g2) -> {
     ProjectedGenome offspring = g1.crossover(g2);
     offspring.mutate(0.1, () -> Math.random() * 0.2 - 0.1);
     return offspring;
@@ -407,7 +407,7 @@ PopulationOptimizer optimizer = new PopulationOptimizer(
     }
 
     @Override
-    public double loss(PackedCollection&lt;?&gt; output, PackedCollection&lt;?&gt; target) {
+    public double loss(PackedCollection output, PackedCollection target) {
         double totalLoss = 0.0;
         for (int i = 0; i &lt; output.getMemLength(); i++) {
             double diff = Math.abs(output.toDouble(i) - target.toDouble(i));
@@ -421,9 +421,9 @@ PopulationOptimizer optimizer = new PopulationOptimizer(
     }
 
     @Override
-    public Producer&lt;PackedCollection&lt;?&gt;&gt; gradient(
-            Producer&lt;PackedCollection&lt;?&gt;&gt; output,
-            Producer&lt;PackedCollection&lt;?&gt;&gt; target) {
+    public Producer&lt;PackedCollection&gt; gradient(
+            Producer&lt;PackedCollection&gt; output,
+            Producer&lt;PackedCollection&gt; target) {
         // Huber gradient: linear for |error| > delta, quadratic otherwise
         // Implementation details...
     }
@@ -431,12 +431,12 @@ PopulationOptimizer optimizer = new PopulationOptimizer(
 
                 <h3>Train/Validation Split</h3>
                 <pre><code class="language-java">// Load full dataset
-Dataset&lt;PackedCollection&lt;?&gt;&gt; fullDataset = loadData();
+Dataset&lt;PackedCollection&gt; fullDataset = loadData();
 
 // Split 80% train, 20% validation
-List&lt;Dataset&lt;PackedCollection&lt;?&gt;&gt;&gt; splits = fullDataset.split(0.8);
-Dataset&lt;PackedCollection&lt;?&gt;&gt; trainSet = splits.get(0);
-Dataset&lt;PackedCollection&lt;?&gt;&gt; validationSet = splits.get(1);
+List&lt;Dataset&lt;PackedCollection&gt;&gt; splits = fullDataset.split(0.8);
+Dataset&lt;PackedCollection&gt; trainSet = splits.get(0);
+Dataset&lt;PackedCollection&gt; validationSet = splits.get(1);
 
 // Train on train set
 ModelOptimizer trainer = new ModelOptimizer(

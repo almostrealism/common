@@ -51,8 +51,8 @@
  *
  * <h3>Softmax</h3>
  * <pre>{@code
- * CollectionProducer<PackedCollection> logits = ...;
- * CollectionProducer<PackedCollection> probabilities = features.softmax(logits);
+ * CollectionProducer logits = ...;
+ * CollectionProducer probabilities = features.softmax(logits);
  * }</pre>
  *
  * @author Michael Murray

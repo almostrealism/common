@@ -107,10 +107,10 @@ public interface Evaluable&lt;T&gt; extends Computable {
 }
 
 @Function
-public class MatrixMultiply implements Producer&lt;PackedCollection&lt;?&gt;&gt; {
-    public PackedCollection&lt;?&gt; evaluate(Object... args) {
-        PackedCollection&lt;?&gt; a = (PackedCollection&lt;?&gt;) args[0];
-        PackedCollection&lt;?&gt; b = (PackedCollection&lt;?&gt;) args[1];
+public class MatrixMultiply implements Producer&lt;PackedCollection&gt; {
+    public PackedCollection evaluate(Object... args) {
+        PackedCollection a = (PackedCollection) args[0];
+        PackedCollection b = (PackedCollection) args[1];
         return computeMatMul(a, b);
     }
 }</code></pre>
@@ -132,7 +132,7 @@ public class MatrixMultiply implements Producer&lt;PackedCollection&lt;?&gt;&gt;
                 <pre><code class="language-java">@ModelEntity
 public class NeuralNetwork implements Destroyable {
     private final List&lt;Layer&gt; layers;
-    private final PackedCollection&lt;?&gt;[] weights;
+    private final PackedCollection[] weights;
 
     // Expensive: trained over hours/days
     public void train(Dataset data, int epochs) { ... }
@@ -185,7 +185,7 @@ public class DotProduct implements Evaluable&lt;Double&gt; {
     }
 
     @Override
-    public Double evaluate(PackedCollection&lt;?&gt; a, PackedCollection&lt;?&gt; b) {
+    public Double evaluate(PackedCollection a, PackedCollection b) {
         double sum = 0;
         for (int i = 0; i &lt; dimensions; i++) {
             sum += a.valueAt(i) * b.valueAt(i);
@@ -658,7 +658,7 @@ public void saveState() {
                 <h3>Lifecycle Reset for Temporal Systems</h3>
                 <pre><code class="language-java">public class TemporalCell implements Lifecycle {
     private double time = 0.0;
-    private PackedCollection&lt;?&gt; state;
+    private PackedCollection state;
 
     @Override
     public void reset() {
@@ -679,7 +679,7 @@ for (Lifecycle cell : cells) {
 public class TransformerModel implements Named, Signature, Destroyable, Lifecycle {
     private final String name;
     private final StateDictionary weights;
-    private Map&lt;String, PackedCollection&lt;?&gt;&gt; cache = new HashMap&lt;&gt;();
+    private Map&lt;String, PackedCollection&gt; cache = new HashMap&lt;&gt;();
 
     public TransformerModel(String name, Path weightsDir) {
         this.name = name;
@@ -705,7 +705,7 @@ public class TransformerModel implements Named, Signature, Destroyable, Lifecycl
         weights.destroy();  // Release GPU memory
     }
 
-    public PackedCollection&lt;?&gt; forward(PackedCollection&lt;?&gt; input) {
+    public PackedCollection forward(PackedCollection input) {
         // Use cached computations when possible
         String key = Signature.md5(input.toString());
         return cache.computeIfAbsent(key, k -&gt; compute(input));

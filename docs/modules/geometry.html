@@ -370,12 +370,12 @@ Vector point = pointAtT.get().evaluate();  // (0, 0, 5)</code></pre>
 import static org.almostrealism.geometry.TransformMatrixFeatures.*;
 
 // Create translation matrix
-Producer&lt;PackedCollection&lt;?&gt;&gt; translation = translationMatrix(
+Producer&lt;PackedCollection&gt; translation = translationMatrix(
     vector(5.0, 0.0, 0.0)  // Move 5 units in X
 );
 
 // Create scale matrix
-Producer&lt;PackedCollection&lt;?&gt;&gt; scale = scaleMatrix(
+Producer&lt;PackedCollection&gt; scale = scaleMatrix(
     vector(2.0, 2.0, 2.0)  // Double size
 );
 

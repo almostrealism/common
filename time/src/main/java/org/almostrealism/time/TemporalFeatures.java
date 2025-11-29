@@ -485,7 +485,7 @@ public interface TemporalFeatures extends GeometryFeatures {
 		int center = filterOrder / 2;
 		CollectionProducer index =
 				c(IntStream.range(0, filterOrder + 1).mapToDouble(i -> i).toArray());
-//		CollectionProducer<PackedCollection> index = integers(0, filterOrder + 1);
+//		CollectionProducer index = integers(0, filterOrder + 1);
 		CollectionProducer k = index.subtract(c(center)).multiply(c(PI));
 		k = k.repeat(shape(cutoff).getSize());
 

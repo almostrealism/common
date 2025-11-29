@@ -41,12 +41,12 @@ import java.util.function.BiFunction;
  * public class PairComputation implements PairFeatures {
  *     public Producer<Pair> compute() {
  *         // Create constant pairs
- *         CollectionProducer<Pair> p1 = pair(3.0, 4.0);
- *         CollectionProducer<Pair> p2 = value(new Pair(1.0, 2.0));
+ *         CollectionProducer p1 = pair(3.0, 4.0);
+ *         CollectionProducer p2 = value(new Pair(1.0, 2.0));
  *
  *         // Component extraction
- *         CollectionProducer<PackedCollection> left = l(p1);   // 3.0
- *         CollectionProducer<PackedCollection> right = r(p1);  // 4.0
+ *         CollectionProducer left = l(p1);   // 3.0
+ *         CollectionProducer right = r(p1);  // 4.0
  *
  *         // Dynamic pair from components
  *         return pair(left, right);
@@ -57,13 +57,13 @@ import java.util.function.BiFunction;
  * <h2>Complex Number Operations</h2>
  * <pre>{@code
  * // Create complex numbers from real/imaginary parts
- * CollectionProducer<PackedCollection> real = c(3.0);
- * CollectionProducer<PackedCollection> imag = c(4.0);
- * CollectionProducer<Pair> complex = complexFromParts(real, imag);  // 3 + 4i
+ * CollectionProducer real = c(3.0);
+ * CollectionProducer imag = c(4.0);
+ * CollectionProducer complex = complexFromParts(real, imag);  // 3 + 4i
  *
  * // Complex multiplication: (a + bi)(c + di) = (ac - bd) + (ad + bc)i
- * CollectionProducer<Pair> c1 = pair(3.0, 4.0);  // 3 + 4i
- * CollectionProducer<Pair> c2 = pair(1.0, 2.0);  // 1 + 2i
+ * CollectionProducer c1 = pair(3.0, 4.0);  // 3 + 4i
+ * CollectionProducer c2 = pair(1.0, 2.0);  // 1 + 2i
  * CollectionProducerComputationBase result = multiplyComplex(c1, c2);  // -5 + 10i
  * }</pre>
  *

@@ -71,7 +71,7 @@ public class MyFeatureTest implements TestFeatures, ConsoleFeatures {
         log("=== Testing Basic Operation ===");
 
         // Your test code
-        PackedCollection&lt;?&gt; data = new PackedCollection&lt;&gt;(shape(100));
+        PackedCollection data = new PackedCollection(shape(100));
         data.fill(pos -&gt; Math.random());
 
         log("Data created with " + data.getCount() + " elements");
@@ -94,11 +94,11 @@ public class CollectionTest implements TestFeatures {
     @Test
     public void testCollectionOperations() {
         // Create test data
-        PackedCollection&lt;?&gt; a = pack(1.0, 2.0, 3.0);
-        PackedCollection&lt;?&gt; b = pack(4.0, 5.0, 6.0);
+        PackedCollection a = pack(1.0, 2.0, 3.0);
+        PackedCollection b = pack(4.0, 5.0, 6.0);
 
         // Perform operation
-        PackedCollection&lt;?&gt; result = cp(a).add(cp(b)).get().evaluate();
+        PackedCollection result = cp(a).add(cp(b)).get().evaluate();
 
         // Assert with tolerance
         assertEquals(5.0, result.toDouble(0), 0.0001);
@@ -111,8 +111,8 @@ public class CollectionTest implements TestFeatures {
         // Enable verbose logging
         enableVerbose();
 
-        PackedCollection&lt;?&gt; data = pack(1.0, 2.0, 3.0);
-        PackedCollection&lt;?&gt; doubled = cp(data).multiply(2.0).get().evaluate();
+        PackedCollection data = pack(1.0, 2.0, 3.0);
+        PackedCollection doubled = cp(data).multiply(2.0).get().evaluate();
 
         // Log outputs for debugging
         log("Input: " + Arrays.toString(toArray(data)));
@@ -133,7 +133,7 @@ public class CollectionTest implements TestFeatures {
 
                 <pre><code class="language-java">@Test
 public void testNumericalPrecision() {
-    PackedCollection&lt;?&gt; input = new PackedCollection&lt;&gt;(shape(1000));
+    PackedCollection input = new PackedCollection(shape(1000));
     input.fill(pos -&gt; Math.random());
 
     // Expected result (CPU calculation)
@@ -190,7 +190,7 @@ public void testWithRelativeError() {
                 <pre><code class="language-java">@Test
 public void testPerformance() {
     int size = 1000000;
-    PackedCollection&lt;?&gt; data = new PackedCollection&lt;&gt;(shape(size));
+    PackedCollection data = new PackedCollection(shape(size));
     data.fill(pos -&gt; Math.random());
 
     // Build computation
@@ -205,7 +205,7 @@ public void testPerformance() {
     // Measure performance
     long start = System.nanoTime();
     for (int i = 0; i < 100; i++) {
-        PackedCollection&lt;?&gt; result = computation.get().evaluate();
+        PackedCollection result = computation.get().evaluate();
     }
     long elapsed = System.nanoTime() - start;
 
@@ -225,12 +225,12 @@ public void testPerformance() {
                 <pre><code class="language-java">@Test
 public void compareCPUvsGPU() {
     int size = 100000;
-    PackedCollection&lt;?&gt; data = new PackedCollection&lt;&gt;(shape(size));
+    PackedCollection data = new PackedCollection(shape(size));
     data.fill(pos -&gt; Math.random());
 
     // CPU approach (manual loop)
     long cpuStart = System.nanoTime();
-    PackedCollection&lt;?&gt; cpuResult = new PackedCollection&lt;&gt;(shape(size));
+    PackedCollection cpuResult = new PackedCollection(shape(size));
     for (int i = 0; i < size; i++) {
         double val = data.toDouble(i);
         cpuResult.setMem(i, val * 2.0 + 1.0);
@@ -239,7 +239,7 @@ public void compareCPUvsGPU() {
 
     // GPU approach (hardware accelerated)
     long gpuStart = System.nanoTime();
-    PackedCollection&lt;?&gt; gpuResult = cp(data)
+    PackedCollection gpuResult = cp(data)
         .multiply(2.0)
         .add(c(1.0))
         .get()
@@ -270,13 +270,13 @@ public class ModelTest implements ModelTestFeatures {
         int inputSize = 100;
         int outputSize = 10;
 
-        PackedCollection&lt;?&gt; input = new PackedCollection&lt;&gt;(shape(inputSize));
+        PackedCollection input = new PackedCollection(shape(inputSize));
         input.fill(pos -&gt; Math.random());
 
         // Simple linear model: y = Wx + b
-        PackedCollection&lt;?&gt; weights =
-            new PackedCollection&lt;&gt;(shape(outputSize, inputSize));
-        PackedCollection&lt;?&gt; bias = new PackedCollection&lt;&gt;(shape(outputSize));
+        PackedCollection weights =
+            new PackedCollection(shape(outputSize, inputSize));
+        PackedCollection bias = new PackedCollection(shape(outputSize));
 
         weights.fill(pos -&gt; (Math.random() - 0.5) * 0.1);
         bias.fill(pos -&gt; 0.0);
@@ -289,7 +289,7 @@ public class ModelTest implements ModelTestFeatures {
             .add(cp(bias));
 
         // Execute
-        PackedCollection&lt;?&gt; result = output.get().evaluate();
+        PackedCollection result = output.get().evaluate();
 
         // Assertions
         assertEquals(outputSize, result.getCount());
@@ -306,7 +306,7 @@ public class ModelTest implements ModelTestFeatures {
 
     @Test
     public void testGradientComputation() {
-        PackedCollection&lt;?&gt; x = new PackedCollection&lt;&gt;(shape(10));
+        PackedCollection x = new PackedCollection(shape(10));
         x.fill(pos -&gt; pos[0]);  // [0, 1, 2, ..., 9]
 
         // f(x) = x^2
@@ -315,7 +315,7 @@ public class ModelTest implements ModelTestFeatures {
         // df/dx = 2x
         CollectionProducer&lt;?&gt; gradient = y.delta(cp(x));
 
-        PackedCollection&lt;?&gt; grad = gradient.get().evaluate(x);
+        PackedCollection grad = gradient.get().evaluate(x);
 
         // Verify gradient
         for (int i = 0; i < 10; i++) {
@@ -350,7 +350,7 @@ public class LoggingTest implements ConsoleFeatures {
         log("Timestamp: " + System.currentTimeMillis());
 
         // Your test code
-        PackedCollection&lt;?&gt; input = new PackedCollection&lt;&gt;(shape(100));
+        PackedCollection input = new PackedCollection(shape(100));
         input.fill(pos -&gt; Math.random());
 
         CollectionProducer&lt;?&gt; computation = cp(input)
@@ -358,7 +358,7 @@ public class LoggingTest implements ConsoleFeatures {
             .add(c(1.0));
 
         long start = System.nanoTime();
-        PackedCollection&lt;?&gt; result = computation.get().evaluate();
+        PackedCollection result = computation.get().evaluate();
         long elapsed = System.nanoTime() - start;
 
         log("Execution time: " + elapsed / 1_000_000.0 + " ms");
@@ -403,7 +403,7 @@ public class LoggingTest implements ConsoleFeatures {
                 <h3>Empty Collections</h3>
                 <pre><code class="language-java">@Test
 public void testEmptyCollection() {
-    PackedCollection&lt;?&gt; empty = new PackedCollection&lt;&gt;(shape(0));
+    PackedCollection empty = new PackedCollection(shape(0));
 
     // Should not crash
     CollectionProducer&lt;?&gt; result = cp(empty).multiply(2.0);
@@ -417,11 +417,11 @@ public void testEmptyCollection() {
 public void testLargeCollection() {
     int size = 10_000_000;  // 10 million elements
 
-    PackedCollection&lt;?&gt; large = new PackedCollection&lt;&gt;(shape(size));
+    PackedCollection large = new PackedCollection(shape(size));
     large.fill(pos -&gt; 1.0);
 
     // Should handle without memory errors
-    PackedCollection&lt;?&gt; result = cp(large)
+    PackedCollection result = cp(large)
         .multiply(2.0)
         .get()
         .evaluate();
@@ -433,10 +433,10 @@ public void testLargeCollection() {
                 <h3>NaN and Infinity Handling</h3>
                 <pre><code class="language-java">@Test
 public void testNaNHandling() {
-    PackedCollection&lt;?&gt; data = pack(1.0, 0.0, -1.0);
+    PackedCollection data = pack(1.0, 0.0, -1.0);
 
     // Division by zero produces Infinity
-    PackedCollection&lt;?&gt; result = cp(data)
+    PackedCollection result = cp(data)
         .divide(c(0.0))
         .get()
         .evaluate();
@@ -447,13 +447,13 @@ public void testNaNHandling() {
 
 @Test
 public void testInfinityPropagation() {
-    PackedCollection&lt;?&gt; data = pack(
+    PackedCollection data = pack(
         Double.POSITIVE_INFINITY,
         1.0,
         Double.NEGATIVE_INFINITY
     );
 
-    PackedCollection&lt;?&gt; result = cp(data)
+    PackedCollection result = cp(data)
         .multiply(2.0)
         .get()
         .evaluate();
@@ -477,7 +477,7 @@ public void testCompleteWorkflow() {
 
     // Step 1: Load data
     log("Step 1: Loading data...");
-    PackedCollection&lt;?&gt; rawData = loadTestData();
+    PackedCollection rawData = loadTestData();
     log("Loaded " + rawData.getCount() + " samples");
 
     // Step 2: Preprocessing
@@ -485,7 +485,7 @@ public void testCompleteWorkflow() {
     CollectionProducer&lt;?&gt; normalized = cp(rawData)
         .subtract(c(0.5))
         .multiply(2.0);
-    PackedCollection&lt;?&gt; preprocessed = normalized.get().evaluate();
+    PackedCollection preprocessed = normalized.get().evaluate();
     log("Normalization complete");
 
     // Step 3: Feature extraction
@@ -493,7 +493,7 @@ public void testCompleteWorkflow() {
     CollectionProducer&lt;?&gt; features = cp(preprocessed)
         .pow(c(2.0))
         .sum();
-    PackedCollection&lt;?&gt; extracted = features.get().evaluate();
+    PackedCollection extracted = features.get().evaluate();
     log("Features extracted: " + extracted.getCount());
 
     // Step 4: Validation
@@ -532,10 +532,10 @@ public class ParameterizedOperationTest implements TestFeatures {
 
     @Test
     public void testOperationAtSize() {
-        PackedCollection&lt;?&gt; data = new PackedCollection&lt;&gt;(shape(size));
+        PackedCollection data = new PackedCollection(shape(size));
         data.fill(pos -&gt; Math.random());
 
-        PackedCollection&lt;?&gt; result = cp(data)
+        PackedCollection result = cp(data)
             .multiply(2.0)
             .get()
             .evaluate();
@@ -547,12 +547,12 @@ public class ParameterizedOperationTest implements TestFeatures {
 
                 <h3>Setup and Teardown</h3>
                 <pre><code class="language-java">public class TestWithSetup implements TestFeatures {
-    private PackedCollection&lt;?&gt; testData;
+    private PackedCollection testData;
 
     @Before
     public void setUp() {
         log("Setting up test data...");
-        testData = new PackedCollection&lt;&gt;(shape(1000));
+        testData = new PackedCollection(shape(1000));
         testData.fill(pos -&gt; Math.random());
     }
 
@@ -584,7 +584,7 @@ public class ParameterizedOperationTest implements TestFeatures {
 public void testWithDetailedLogging() {
     enableVerbose();  // Enable all debug output
 
-    PackedCollection&lt;?&gt; input = pack(1.0, 2.0, 3.0);
+    PackedCollection input = pack(1.0, 2.0, 3.0);
 
     log("Input values: ");
     for (int i = 0; i < input.getCount(); i++) {
@@ -595,7 +595,7 @@ public void testWithDetailedLogging() {
 
     log("Computation graph built");
 
-    PackedCollection&lt;?&gt; result = computation.get().evaluate();
+    PackedCollection result = computation.get().evaluate();
 
     log("Output values: ");
     for (int i = 0; i < result.getCount(); i++) {
@@ -608,16 +608,16 @@ public void testWithDetailedLogging() {
                 <h3>Intermediate Value Inspection</h3>
                 <pre><code class="language-java">@Test
 public void debugComputationGraph() {
-    PackedCollection&lt;?&gt; x = pack(1.0, 2.0, 3.0);
+    PackedCollection x = pack(1.0, 2.0, 3.0);
 
     // Test each stage separately
-    PackedCollection&lt;?&gt; step1 = cp(x).multiply(2.0).get().evaluate();
+    PackedCollection step1 = cp(x).multiply(2.0).get().evaluate();
     log("After multiply: " + Arrays.toString(toArray(step1)));
 
-    PackedCollection&lt;?&gt; step2 = cp(step1).add(c(1.0)).get().evaluate();
+    PackedCollection step2 = cp(step1).add(c(1.0)).get().evaluate();
     log("After add: " + Arrays.toString(toArray(step2)));
 
-    PackedCollection&lt;?&gt; step3 = cp(step2).sqrt().get().evaluate();
+    PackedCollection step3 = cp(step2).sqrt().get().evaluate();
     log("After sqrt: " + Arrays.toString(toArray(step3)));
 
     // Now we can see exactly where any issue occurs

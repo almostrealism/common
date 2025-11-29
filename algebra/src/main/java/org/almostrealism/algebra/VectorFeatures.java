@@ -43,18 +43,18 @@ import java.util.function.IntFunction;
  * public class VectorComputation implements VectorFeatures {
  *     public Producer<PackedCollection> compute() {
  *         // Create constant vectors
- *         CollectionProducer<PackedCollection> v1 = vector(1.0, 0.0, 0.0);
- *         CollectionProducer<PackedCollection> v2 = value(new Vector(0, 1, 0));
+ *         CollectionProducer v1 = vector(1.0, 0.0, 0.0);
+ *         CollectionProducer v2 = value(new Vector(0, 1, 0));
  *
  *         // Vector operations
- *         CollectionProducer<PackedCollection> dot = dotProduct(v1, v2);
- *         CollectionProducer<PackedCollection> cross = crossProduct(v1, v2);
- *         CollectionProducer<PackedCollection> normalized = normalize(v1);
+ *         CollectionProducer dot = dotProduct(v1, v2);
+ *         CollectionProducer cross = crossProduct(v1, v2);
+ *         CollectionProducer normalized = normalize(v1);
  *
  *         // Component extraction
- *         CollectionProducer<PackedCollection> x = x(v1);
- *         CollectionProducer<PackedCollection> y = y(v1);
- *         CollectionProducer<PackedCollection> z = z(v1);
+ *         CollectionProducer x = x(v1);
+ *         CollectionProducer y = y(v1);
+ *         CollectionProducer z = z(v1);
  *
  *         // Dynamic vector from components
  *         return vector(x, y, z);
@@ -65,25 +65,25 @@ import java.util.function.IntFunction;
  * <h2>Vector Construction Patterns</h2>
  * <pre>{@code
  * // From explicit coordinates
- * CollectionProducer<PackedCollection> v1 = vector(1.0, 2.0, 3.0);
+ * CollectionProducer v1 = vector(1.0, 2.0, 3.0);
  *
  * // From array
  * double[] coords = {1, 2, 3};
- * CollectionProducer<PackedCollection> v2 = vector(coords);
+ * CollectionProducer v2 = vector(coords);
  *
  * // From function
- * CollectionProducer<PackedCollection> v3 = vector(i -> i * 2.0);  // (0, 2, 4)
+ * CollectionProducer v3 = vector(i -> i * 2.0);  // (0, 2, 4)
  *
  * // From existing Vector
  * Vector existing = new Vector(1, 2, 3);
- * CollectionProducer<PackedCollection> v4 = v(existing);
+ * CollectionProducer v4 = v(existing);
  *
  * // From component producers
- * CollectionProducer<PackedCollection> v5 = vector(scalar(1.0), scalar(2.0), scalar(3.0));
+ * CollectionProducer v5 = vector(scalar(1.0), scalar(2.0), scalar(3.0));
  *
  * // From vector bank at index
  * Producer<PackedCollection> bank = vectorBank(10);
- * CollectionProducer<PackedCollection> v6 = vector(bank, 5);  // 6th vector
+ * CollectionProducer v6 = vector(bank, 5);  // 6th vector
  * }</pre>
  *
  * @author  Michael Murray

@@ -87,7 +87,6 @@ import java.util.stream.Stream;
  *       when enabled (default: false)</li>
  * </ul>
  *
- * @param <T>  the packed collection type produced by this computation
  * @author  Michael Murray
  * @see CollectionProducerParallelProcess
  * @see ProducerComputation
@@ -291,7 +290,7 @@ public interface CollectionProducerComputation extends
 		return shape;
 	}
 
-	class IsolatedProcess extends DelegatedCollectionProducer<PackedCollection> {
+	class IsolatedProcess extends DelegatedCollectionProducer {
 
 		public IsolatedProcess(CollectionProducer op) {
 			super(op);

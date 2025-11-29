@@ -44,24 +44,24 @@ Logical (3x4 matrix):    Memory layout:
 
 ```java
 // 1. Simple shape construction
-PackedCollection<?> tensor = new PackedCollection<>(3, 4, 5);  // 3x4x5 tensor
+PackedCollection tensor = new PackedCollection<>(3, 4, 5);  // 3x4x5 tensor
 
 // 2. With traversal policy
 TraversalPolicy shape = new TraversalPolicy(10, 20);
-PackedCollection<?> matrix = new PackedCollection<>(shape);
+PackedCollection matrix = new PackedCollection<>(shape);
 
 // 3. Copy constructor (deep copy)
-PackedCollection<?> copy = new PackedCollection<>(original);
+PackedCollection copy = new PackedCollection<>(original);
 
 // 4. Zero-copy view into existing memory
 MemoryData largeBuffer = ...;
-PackedCollection<?> view = new PackedCollection<>(shape, 0, largeBuffer, 100);
+PackedCollection view = new PackedCollection<>(shape, 0, largeBuffer, 100);
 ```
 
 #### Access Patterns
 
 ```java
-PackedCollection<?> data = new PackedCollection<>(10, 5);
+PackedCollection data = new PackedCollection<>(10, 5);
 
 // Indexed access
 data.setMem(0, 1.5);
@@ -83,7 +83,7 @@ data.setValueAt(5.0, 2, 3);       // Set element at position [2][3]
 #### Initialization Methods
 
 ```java
-PackedCollection<?> data = new PackedCollection<>(100);
+PackedCollection data = new PackedCollection<>(100);
 
 data.fill(0.0);                      // Fill with constant
 data.randFill();                     // Fill with uniform random [0,1)
@@ -99,20 +99,20 @@ PackedCollection can wrap existing memory without copying, enabling efficient me
 
 ```java
 // Create a large buffer
-PackedCollection<?> largeBuffer = new PackedCollection<>(1000000);
+PackedCollection largeBuffer = new PackedCollection<>(1000000);
 
 // Create views into different regions (zero-copy)
-PackedCollection<?> view1 = largeBuffer.range(shape(100, 100), 0);      // First 10000 elements
-PackedCollection<?> view2 = largeBuffer.range(shape(100, 100), 10000);  // Next 10000 elements
+PackedCollection view1 = largeBuffer.range(shape(100, 100), 0);      // First 10000 elements
+PackedCollection view2 = largeBuffer.range(shape(100, 100), 10000);  // Next 10000 elements
 
 // Changes to views modify the underlying buffer
 view1.setMem(0, 5.0);  // largeBuffer now has 5.0 at position 0
 
 // Repeat creates a virtual view (memory-efficient)
-PackedCollection<?> repeated = data.repeat(4);  // Appears 4x larger, same memory
+PackedCollection repeated = data.repeat(4);  // Appears 4x larger, same memory
 
 // Delegation chain
-PackedCollection<?> subset = largeBuffer
+PackedCollection subset = largeBuffer
     .range(shape(500, 500), 0)     // View into buffer
     .range(shape(100, 100), 0);    // View into view
 ```
@@ -120,7 +120,7 @@ PackedCollection<?> subset = largeBuffer
 #### Shape and Traversal
 
 ```java
-PackedCollection<?> data = new PackedCollection<>(3, 4, 5);
+PackedCollection data = new PackedCollection<>(3, 4, 5);
 TraversalPolicy shape = data.getShape();
 
 shape.getDimensions();     // 3 (rank)
@@ -131,10 +131,10 @@ shape.getTotalSize();      // 60 (total elements)
 shape.getTraversalAxis();  // 0 (default traversal axis)
 
 // Reshape (same data, different interpretation)
-PackedCollection<?> reshaped = data.reshape(shape(12, 5));
+PackedCollection reshaped = data.reshape(shape(12, 5));
 
 // Change traversal axis
-PackedCollection<?> transposed = data.traverse(1);
+PackedCollection transposed = data.traverse(1);
 ```
 
 #### I/O Operations
@@ -144,7 +144,7 @@ PackedCollection<?> transposed = data.traverse(1);
 data.save(new File("tensor.dat"));
 
 // Load collections from file (returns Iterable for multiple collections)
-for (PackedCollection<?> loaded : PackedCollection.loadCollections(new File("tensor.dat"))) {
+for (PackedCollection loaded : PackedCollection.loadCollections(new File("tensor.dat"))) {
     // Process each loaded collection
 }
 
@@ -156,7 +156,7 @@ data.print();  // Pretty-printed to console
 
 ### CollectionProducer - Lazy Evaluation
 
-`CollectionProducer<T>` is the core interface for building computational graphs through method chaining.
+`CollectionProducer` is the core interface for building computational graphs through method chaining.
 
 #### Design Principles
 
@@ -169,8 +169,8 @@ data.print();  // Pretty-printed to console
 
 ```java
 // Build a computation graph through method chaining
-CollectionProducer<?> input = v(PackedCollection.class);
-CollectionProducer<?> result = input
+CollectionProducer input = v(PackedCollection.class);
+CollectionProducer result = input
     .reshape(shape(10, 3))      // Reshape to 10x3
     .subtract(input.mean(0))    // Subtract mean along axis 0
     .divide(input.variance(0))  // Divide by variance
@@ -178,13 +178,13 @@ CollectionProducer<?> result = input
     .sum();                     // Sum all elements
 
 // Execute the graph
-PackedCollection<?> output = result.get().evaluate();
+PackedCollection output = result.get().evaluate();
 ```
 
 #### Shape Operations
 
 ```java
-CollectionProducer<?> x = ...; // shape (2, 3, 4)
+CollectionProducer x = ...; // shape (2, 3, 4)
 
 x.reshape(shape(6, 4))           // Reshape to 6x4
 x.traverse(1)                    // Traverse along axis 1
@@ -199,8 +199,8 @@ x.pad(1, 2, 3)                   // Add padding to each dimension
 #### Arithmetic Operations
 
 ```java
-CollectionProducer<?> a = ...;
-CollectionProducer<?> b = ...;
+CollectionProducer a = ...;
+CollectionProducer b = ...;
 
 a.add(b)           // Element-wise addition
 a.add(5.0)         // Add scalar to all elements
@@ -218,7 +218,7 @@ a.minus()          // Negation
 #### Statistical Operations
 
 ```java
-CollectionProducer<?> data = ...; // shape (10, 5)
+CollectionProducer data = ...; // shape (10, 5)
 
 data.sum()         // Sum all elements -> shape (1)
 data.sum(0)        // Sum along axis 0 -> shape (5)
@@ -233,8 +233,8 @@ data.indexOfMax()  // Index of maximum element
 #### Comparison Operations
 
 ```java
-CollectionProducer<?> x = ...;
-CollectionProducer<?> y = ...;
+CollectionProducer x = ...;
+CollectionProducer y = ...;
 
 x.greaterThan(y)                        // 1.0 where x > y, 0.0 elsewhere
 x.lessThan(y)                           // 1.0 where x < y, 0.0 elsewhere
@@ -249,15 +249,15 @@ x.greaterThan(y, trueVal, falseVal)     // Select based on comparison
 #### Automatic Differentiation
 
 ```java
-CollectionProducer<?> x = v(PackedCollection.class);
-CollectionProducer<?> y = x.pow(2).sum();
+CollectionProducer x = v(PackedCollection.class);
+CollectionProducer y = x.pow(2).sum();
 
 // Compute dy/dx
-CollectionProducer<?> gradient = y.delta(x);
+CollectionProducer gradient = y.delta(x);
 // Result: 2x (derivative of x^2)
 
 // Combine gradients for backpropagation
-CollectionProducer<?> combined = y.grad(x, upstreamGradient);
+CollectionProducer combined = y.grad(x, upstreamGradient);
 ```
 
 ---
@@ -272,8 +272,8 @@ CollectionProducer<?> combined = y.grad(x, upstreamGradient);
 public class MyComputation implements CollectionFeatures {
     public void example() {
         // All factory methods available directly
-        CollectionProducer<?> data = c(10.0);
-        CollectionProducer<?> result = add(data, c(5.0));
+        CollectionProducer data = c(10.0);
+        CollectionProducer result = add(data, c(5.0));
     }
 }
 ```
@@ -282,16 +282,16 @@ public class MyComputation implements CollectionFeatures {
 
 ```java
 // Variable producers (placeholders)
-CollectionProducer<?> input = v(PackedCollection.class);
+CollectionProducer input = v(PackedCollection.class);
 
 // Constant scalars
-CollectionProducer<?> scalar = c(3.14);
+CollectionProducer scalar = c(3.14);
 
 // Constant collections
-CollectionProducer<?> vector = c(1.0, 2.0, 3.0);
+CollectionProducer vector = c(1.0, 2.0, 3.0);
 
 // Wrap existing collection
-CollectionProducer<?> wrapped = p(myPackedCollection);
+CollectionProducer wrapped = p(myPackedCollection);
 ```
 
 #### Shape Factory Methods
@@ -304,10 +304,10 @@ TraversalPolicy shape = shape(10, 20, 30);
 TraversalPolicy prodShape = shape(myProducer);
 
 // Traverse along axis
-CollectionProducer<?> traversed = traverse(1, myProducer);
+CollectionProducer traversed = traverse(1, myProducer);
 
 // Reshape
-CollectionProducer<?> reshaped = reshape(shape(200, 30), myProducer);
+CollectionProducer reshaped = reshape(shape(200, 30), myProducer);
 ```
 
 #### Arithmetic Factory Methods
@@ -366,14 +366,14 @@ CollectionProducerComputation<?> comp = myProducer.pow(2).sum();
 Evaluable<?> ev = comp.get();
 
 // 3. Execute (runs on hardware)
-PackedCollection<?> result = ev.evaluate();
+PackedCollection result = ev.evaluate();
 
 // Alternative: provide input
-PackedCollection<?> result = ev.evaluate(inputData);
+PackedCollection result = ev.evaluate(inputData);
 
 // Reuse evaluable for multiple executions
-for (PackedCollection<?> input : inputs) {
-    PackedCollection<?> output = ev.evaluate(input);
+for (PackedCollection input : inputs) {
+    PackedCollection output = ev.evaluate(input);
 }
 ```
 
@@ -401,7 +401,7 @@ for (PackedCollection<?> input : inputs) {
 
 ### DelegatedCollectionProducer - Zero-Copy Delegation
 
-`DelegatedCollectionProducer<T>` provides a lightweight wrapper pattern for producers.
+`DelegatedCollectionProducer` provides a lightweight wrapper pattern for producers.
 
 #### Use Cases
 
@@ -412,13 +412,13 @@ for (PackedCollection<?> input : inputs) {
 
 ```java
 // Wrap an existing producer
-DelegatedCollectionProducer<?> delegated = new DelegatedCollectionProducer<>(originalProducer);
+DelegatedCollectionProducer delegated = new DelegatedCollectionProducer<>(originalProducer);
 
 // Shape is forwarded from wrapped producer
 TraversalPolicy shape = delegated.getShape();
 
 // Evaluation is delegated
-PackedCollection<?> result = delegated.get().evaluate();
+PackedCollection result = delegated.get().evaluate();
 ```
 
 ---
@@ -450,9 +450,9 @@ double y = p.getY();
 All operations return `CollectionProducer` for GPU compilation:
 
 ```java
-CollectionProducer<Vector> normalized = normalize(v);
-CollectionProducer<?> dot = dotProduct(a, b);
-CollectionProducer<?> matrix = matmul(A, B);
+CollectionProducer normalized = normalize(v);
+CollectionProducer dot = dotProduct(a, b);
+CollectionProducer matrix = matmul(A, B);
 ```
 
 ---
@@ -482,7 +482,7 @@ See [CLAUDE.md](../CLAUDE.md) for detailed setup instructions.
 
 ```java
 // GOOD: Use zero-copy views
-PackedCollection<?> view = buffer.range(shape(100), offset);
+PackedCollection view = buffer.range(shape(100), offset);
 
 // GOOD: Reuse evaluables
 Evaluable<?> ev = computation.get();
@@ -491,20 +491,20 @@ for (int i = 0; i < 1000; i++) {
 }
 
 // AVOID: Creating unnecessary copies
-PackedCollection<?> copy = new PackedCollection<>(original); // Copies all data
+PackedCollection copy = new PackedCollection<>(original); // Copies all data
 ```
 
 ### Building Computations
 
 ```java
 // GOOD: Chain operations (builds efficient graph)
-CollectionProducer<?> result = input
+CollectionProducer result = input
     .subtract(input.mean())
     .divide(input.variance().sqrt());
 
 // AVOID: Intermediate evaluations (breaks optimization)
-PackedCollection<?> centered = input.subtract(input.mean()).get().evaluate();
-PackedCollection<?> result = p(centered).divide(variance).get().evaluate();
+PackedCollection centered = input.subtract(input.mean()).get().evaluate();
+PackedCollection result = p(centered).divide(variance).get().evaluate();
 ```
 
 ### Shape Management

@@ -378,11 +378,11 @@ StreamingEvaluable&lt;T&gt; streaming = evaluable.async(myExecutor);</code></pre
 
                 <h3>In-Place Computation</h3>
                 <pre><code class="language-java">// Allocate output buffer once
-PackedCollection&lt;?&gt; output = new PackedCollection&lt;&gt;(1000);
+PackedCollection output = new PackedCollection(1000);
 
 // Execute computation writing directly to output
-Producer&lt;PackedCollection&lt;?&gt;&gt; computation = ...;
-Evaluable&lt;PackedCollection&lt;?&gt;&gt; eval = computation.into(output);
+Producer&lt;PackedCollection&gt; computation = ...;
+Evaluable&lt;PackedCollection&gt; eval = computation.into(output);
 
 // Reuse output buffer for multiple evaluations
 eval.evaluate(input1);  // Results written to 'output'

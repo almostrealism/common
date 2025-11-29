@@ -67,30 +67,30 @@ import org.almostrealism.collect.TraversalPolicy;
 
 // 1D collection (vector of 5 elements)
 TraversalPolicy shape1d = shape(5);
-PackedCollection&lt;?&gt; vector = new PackedCollection&lt;&gt;(shape1d);
+PackedCollection vector = new PackedCollection(shape1d);
 
 // 2D collection (3x4 matrix)
 TraversalPolicy shape2d = shape(3, 4);
-PackedCollection&lt;?&gt; matrix = new PackedCollection&lt;&gt;(shape2d);
+PackedCollection matrix = new PackedCollection(shape2d);
 
 // 3D collection (2x3x4 tensor)
 TraversalPolicy shape3d = shape(2, 3, 4);
-PackedCollection&lt;?&gt; tensor = new PackedCollection&lt;&gt;(shape3d);
+PackedCollection tensor = new PackedCollection(shape3d);
 
 // 4D collection (typical for ML: batch x channels x height x width)
 TraversalPolicy shape4d = shape(8, 3, 224, 224);  // 8 RGB images, 224x224
-PackedCollection&lt;?&gt; imageBatch = new PackedCollection&lt;&gt;(shape4d);</code></pre>
+PackedCollection imageBatch = new PackedCollection(shape4d);</code></pre>
 
                 <h3>Using Size (1D only)</h3>
                 <pre><code class="language-java">// Shorthand for 1D collections
-PackedCollection&lt;?&gt; simple = new PackedCollection&lt;&gt;(10);  // 10 elements</code></pre>
+PackedCollection simple = new PackedCollection(10);  // 10 elements</code></pre>
             </section>
 
             <section>
                 <h2>Step 3: Setting and Getting Values</h2>
 
                 <h3>Direct Memory Access (1D)</h3>
-                <pre><code class="language-java">PackedCollection&lt;?&gt; vector = new PackedCollection&lt;&gt;(5);
+                <pre><code class="language-java">PackedCollection vector = new PackedCollection(5);
 
 // Set individual elements
 vector.setMem(0, 1.5);
@@ -101,7 +101,7 @@ vector.setMem(2, 3.5);
 double val = vector.toDouble(0);  // 1.5</code></pre>
 
                 <h3>Multi-dimensional Indexing</h3>
-                <pre><code class="language-java">PackedCollection&lt;?&gt; matrix = new PackedCollection&lt;&gt;(shape(3, 4));
+                <pre><code class="language-java">PackedCollection matrix = new PackedCollection(shape(3, 4));
 
 // Set element at row 1, column 2
 matrix.setMem(1, 2, 7.0);
@@ -110,12 +110,12 @@ matrix.setMem(1, 2, 7.0);
 double value = matrix.toDouble(1, 2);  // 7.0
 
 // 3D tensor access
-PackedCollection&lt;?&gt; tensor = new PackedCollection&lt;&gt;(shape(2, 3, 4));
+PackedCollection tensor = new PackedCollection(shape(2, 3, 4));
 tensor.setMem(1, 2, 3, 9.5);  // [depth=1][row=2][col=3] = 9.5
 double val = tensor.toDouble(1, 2, 3);  // 9.5</code></pre>
 
                 <h3>Filling with Values</h3>
-                <pre><code class="language-java">PackedCollection&lt;?&gt; data = new PackedCollection&lt;&gt;(shape(3, 3));
+                <pre><code class="language-java">PackedCollection data = new PackedCollection(shape(3, 3));
 
 // Fill all elements with same value
 data.fill(pos -&gt; 0.0);  // Fill with zeros
@@ -134,14 +134,14 @@ data.fill(pos -&gt; pos[0] + pos[1]);  // Element [i][j] = i + j</code></pre>
 import org.almostrealism.algebra.Pair;
 
 // Bank of Vectors (collection of 3D vectors)
-PackedCollection&lt;Vector&gt; vectors = Vector.bank(100);  // 100 vectors
+PackedCollection vectors = Vector.bank(100);  // 100 vectors
 vectors.set(0, new Vector(1.0, 2.0, 3.0));
 Vector v = vectors.get(0);
 
 // Bank of Pairs (collection of 2D coordinates)
-PackedCollection&lt;Pair&lt;?&gt;&gt; pairs = Pair.bank(50);  // 50 pairs
+PackedCollection pairs = Pair.bank(50);  // 50 pairs
 pairs.set(0, new Pair(42.0, 0.0));
-Pair&lt;?&gt; p = pairs.get(0);</code></pre>
+Pair p = pairs.get(0);</code></pre>
 
                 <p><strong>Key Insight:</strong> <code>Vector.bank(100)</code> creates a PackedCollection with shape (100, 3) - 100 rows, 3 columns.</p>
             </section>
@@ -165,7 +165,7 @@ int memIndex = policy.index(1, 2, 3);  // Calculate flat array index
 // [0][1][0]=4, [0][1][1]=5, ..., [1][2][3]=23</code></pre>
 
                 <h3>Traversing All Elements</h3>
-                <pre><code class="language-java">PackedCollection&lt;?&gt; collection = new PackedCollection&lt;&gt;(shape(3, 4));
+                <pre><code class="language-java">PackedCollection collection = new PackedCollection(shape(3, 4));
 collection.fill(pos -&gt; pos[0] * 10 + pos[1]);  // Fill: row*10 + col
 
 // Traverse using policy
@@ -185,19 +185,19 @@ policy.traverse(0, pos -&gt; {
                 <pre><code class="language-java">import static org.almostrealism.collect.CollectionFeatures.*;
 
 // Create data
-PackedCollection&lt;?&gt; data1 = new PackedCollection&lt;&gt;(shape(1000));
-PackedCollection&lt;?&gt; data2 = new PackedCollection&lt;&gt;(shape(1000));
+PackedCollection data1 = new PackedCollection(shape(1000));
+PackedCollection data2 = new PackedCollection(shape(1000));
 data1.fill(pos -&gt; Math.random());
 data2.fill(pos -&gt; Math.random());
 
 // Build computation graph
-CollectionProducer&lt;?&gt; p1 = cp(data1);  // Wrap in producer
-CollectionProducer&lt;?&gt; p2 = cp(data2);
-CollectionProducer&lt;?&gt; sum = p1.add(p2);
-CollectionProducer&lt;?&gt; scaled = sum.multiply(2.0);
+CollectionProducer p1 = cp(data1);  // Wrap in producer
+CollectionProducer p2 = cp(data2);
+CollectionProducer sum = p1.add(p2);
+CollectionProducer scaled = sum.multiply(2.0);
 
 // Execute on GPU
-PackedCollection&lt;?&gt; result = scaled.get().evaluate();
+PackedCollection result = scaled.get().evaluate();
 
 // Result is a new PackedCollection with computed values</code></pre>
             </section>
@@ -211,7 +211,7 @@ double[][][] traditional = new double[100][50][30];
 // Memory: Multiple arrays, scattered in heap, hard to GPU transfer
 
 // PackedCollection approach (efficient)
-PackedCollection&lt;?&gt; efficient = new PackedCollection&lt;&gt;(shape(100, 50, 30));
+PackedCollection efficient = new PackedCollection(shape(100, 50, 30));
 // Memory: Single flat double[150000] array, contiguous, GPU-ready
 
 // Access comparison
@@ -224,7 +224,7 @@ double val2 = efficient.toDouble(10, 20, 15);    // Single array lookup</code></
                 <p>Process a batch of grayscale images using PackedCollection:</p>
 
                 <pre><code class="language-java">// Batch of 10 grayscale 28x28 images (like MNIST)
-PackedCollection&lt;?&gt; images = new PackedCollection&lt;&gt;(shape(10, 28, 28));
+PackedCollection images = new PackedCollection(shape(10, 28, 28));
 
 // Load image data (simplified)
 for (int i = 0; i < 10; i++) {
@@ -237,16 +237,16 @@ for (int i = 0; i < 10; i++) {
 }
 
 // Apply transformations using GPU
-CollectionProducer&lt;?&gt; normalized = cp(images)
+CollectionProducer normalized = cp(images)
     .subtract(c(0.5))     // Center around 0
     .multiply(2.0);       // Scale to [-1, 1]
 
 // Add Gaussian noise
-CollectionProducer&lt;?&gt; noise = randomCollection(shape(10, 28, 28), 0.0, 0.1);
-CollectionProducer&lt;?&gt; augmented = normalized.add(noise);
+CollectionProducer noise = randomCollection(shape(10, 28, 28), 0.0, 0.1);
+CollectionProducer augmented = normalized.add(noise);
 
 // Execute
-PackedCollection&lt;?&gt; processedImages = augmented.get().evaluate();
+PackedCollection processedImages = augmented.get().evaluate();
 
 // All 10 images processed in parallel on GPU!</code></pre>
             </section>
@@ -257,7 +257,7 @@ PackedCollection&lt;?&gt; processedImages = augmented.get().evaluate();
                 <h3>Pattern 1: Creating Working Buffers</h3>
                 <pre><code class="language-java">// Allocate scratch space for intermediate results
 TraversalPolicy shape = shape(1024, 768);
-PackedCollection&lt;?&gt; buffer = new PackedCollection&lt;&gt;(shape);
+PackedCollection buffer = new PackedCollection(shape);
 
 // Reuse buffer across operations to minimize allocations
 performOperation1(input, buffer);
@@ -265,22 +265,22 @@ performOperation2(buffer, output);</code></pre>
 
                 <h3>Pattern 2: Dimension Traversal</h3>
                 <pre><code class="language-java">// Process each 2D slice of a 3D tensor
-PackedCollection&lt;?&gt; tensor = new PackedCollection&lt;&gt;(shape(10, 28, 28));
+PackedCollection tensor = new PackedCollection(shape(10, 28, 28));
 
 for (int i = 0; i < 10; i++) {
     // Get a view of slice i (without copying)
-    PackedCollection&lt;?&gt; slice = tensor.range(shape(28, 28), i * 28 * 28);
+    PackedCollection slice = tensor.range(shape(28, 28), i * 28 * 28);
     processSlice(slice);
 }</code></pre>
 
                 <h3>Pattern 3: Type Safety with Generics</h3>
                 <pre><code class="language-java">// Use typed banks for compile-time safety
-PackedCollection&lt;Vector&gt; vectors = Vector.bank(100);
-PackedCollection&lt;Pair&lt;?&gt;&gt; pairs = Pair.bank(100);
+PackedCollection vectors = Vector.bank(100);
+PackedCollection pairs = Pair.bank(100);
 
 // Type-safe access
 Vector v = vectors.get(0);  // Returns Vector, not Object
-Pair&lt;?&gt; p = pairs.get(0);   // Returns Pair, not Object</code></pre>
+Pair p = pairs.get(0);   // Returns Pair, not Object</code></pre>
             </section>
 
             <section>

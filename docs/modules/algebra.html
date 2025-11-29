@@ -87,7 +87,7 @@
 
                 <h3>Type Hierarchy</h3>
                 <div class="code-example">
-<pre>PackedCollection&lt;?&gt;          ← Base class for all data
+<pre>PackedCollection          ← Base class for all data
 ├── Pair                      ← 2 elements (x, y)
 │   ├── ComplexNumber         ← Real + imaginary
 │   └── TemporalScalar        ← Time + value
@@ -112,16 +112,16 @@ Index calculation: index = i * (3*4) + j * 4 + k</pre>
                 <h3>PackedCollection</h3>
                 <p>The fundamental data structure for all numerical operations.</p>
                 <pre><code class="language-java">// Create collections with various shapes
-PackedCollection&lt;?&gt; vector = new PackedCollection&lt;&gt;(100);           // 1D: 100 elements
-PackedCollection&lt;?&gt; matrix = new PackedCollection&lt;&gt;(shape(10, 20)); // 2D: 10×20
-PackedCollection&lt;?&gt; tensor = new PackedCollection&lt;&gt;(shape(4, 8, 16)); // 3D: 4×8×16
+PackedCollection vector = new PackedCollection(100);           // 1D: 100 elements
+PackedCollection matrix = new PackedCollection(shape(10, 20)); // 2D: 10×20
+PackedCollection tensor = new PackedCollection(shape(4, 8, 16)); // 3D: 4×8×16
 
 // Access elements
 matrix.setMem(0, 3.14);           // Set by linear index
 double val = matrix.toDouble(0);  // Get by linear index
 
 // Zero-copy views (no data copying!)
-PackedCollection&lt;?&gt; view = matrix.range(shape(5, 20)); // First 5 rows
+PackedCollection view = matrix.range(shape(5, 20)); // First 5 rows
 view.setMem(0, 99.0);  // Modifies original!</code></pre>
 
                 <h3>Vector (3D)</h3>
@@ -142,7 +142,7 @@ Vector cross = v1.crossProduct(v2);
 double length = v1.length();
 
 // GPU-accelerated operations
-CollectionProducer&lt;Vector&gt; gpuSum = v(v1).add(v(v2));
+CollectionProducer gpuSum = v(v1).add(v(v2));
 Vector result = gpuSum.get().evaluate();</code></pre>
 
                 <h3>Pair</h3>
@@ -167,7 +167,7 @@ tensor.insert(1.0, 0, 0, 1);
 tensor.insert(2.0, 0, 1, 0);
 
 // Convert to PackedCollection for GPU operations
-PackedCollection&lt;?&gt; packed = tensor.pack();</code></pre>
+PackedCollection packed = tensor.pack();</code></pre>
             </section>
 
             <section id="operations">
@@ -338,18 +338,18 @@ CollectionProducer&lt;?&gt; normalized = input
 CollectionProducer&lt;?&gt; result = normalized.multiply(weight).add(bias);
 
 // Compile to GPU kernel and execute
-PackedCollection&lt;?&gt; output = result.get().evaluate();
+PackedCollection output = result.get().evaluate();
 
 // Reuse compiled kernel for efficiency
 Evaluable&lt;?&gt; compiled = result.get();
-for (PackedCollection&lt;?&gt; batch : batches) {
-    PackedCollection&lt;?&gt; out = compiled.evaluate(batch);
+for (PackedCollection batch : batches) {
+    PackedCollection out = compiled.evaluate(batch);
 }</code></pre>
 
                 <h3>Matrix Multiplication</h3>
                 <pre><code class="language-java">// Create matrices
-PackedCollection&lt;?&gt; A = new PackedCollection&lt;&gt;(shape(64, 128));
-PackedCollection&lt;?&gt; B = new PackedCollection&lt;&gt;(shape(128, 256));
+PackedCollection A = new PackedCollection(shape(64, 128));
+PackedCollection B = new PackedCollection(shape(128, 256));
 
 // Initialize with values
 A.fill(pos -> Math.random());
@@ -357,12 +357,12 @@ B.fill(pos -> Math.random());
 
 // Matrix multiply on GPU
 CollectionProducer&lt;?&gt; C = matmul(cp(A), cp(B));
-PackedCollection&lt;?&gt; result = C.get().evaluate();  // Shape: [64, 256]</code></pre>
+PackedCollection result = C.get().evaluate();  // Shape: [64, 256]</code></pre>
 
                 <h3>Neural Network Layer</h3>
                 <pre><code class="language-java">public class DenseLayer implements CollectionFeatures {
-    private PackedCollection&lt;?&gt; weights;
-    private PackedCollection&lt;?&gt; bias;
+    private PackedCollection weights;
+    private PackedCollection bias;
 
     public CollectionProducer&lt;?&gt; forward(CollectionProducer&lt;?&gt; input) {
         // y = x @ W^T + b
@@ -373,9 +373,9 @@ PackedCollection&lt;?&gt; result = C.get().evaluate();  // Shape: [64, 256]</cod
 
                 <h3>Vector Operations</h3>
                 <pre><code class="language-java">public class RayTracer implements VectorFeatures {
-    public CollectionProducer&lt;Vector&gt; reflect(
-            CollectionProducer&lt;Vector&gt; incident,
-            CollectionProducer&lt;Vector&gt; normal) {
+    public CollectionProducer reflect(
+            CollectionProducer incident,
+            CollectionProducer normal) {
         // r = i - 2(i·n)n
         CollectionProducer&lt;?&gt; dot = dotProduct(incident, normal);
         return incident.subtract(
@@ -386,7 +386,7 @@ PackedCollection&lt;?&gt; result = C.get().evaluate();  // Shape: [64, 256]</cod
 
                 <h3>Batch Processing</h3>
                 <pre><code class="language-java">// Process batch of 32 vectors
-PackedCollection&lt;?&gt; batch = new PackedCollection&lt;&gt;(shape(32, 3));
+PackedCollection batch = new PackedCollection(shape(32, 3));
 
 // Normalize each vector in parallel (single GPU kernel)
 CollectionProducer&lt;?&gt; magnitudes = cp(batch)
@@ -396,7 +396,7 @@ CollectionProducer&lt;?&gt; magnitudes = cp(batch)
 CollectionProducer&lt;?&gt; normalized = cp(batch)
     .divide(magnitudes.reshape(shape(32, 1)));
 
-PackedCollection&lt;?&gt; result = normalized.get().evaluate();</code></pre>
+PackedCollection result = normalized.get().evaluate();</code></pre>
 
                 <div class="tip">
                     <strong>Performance Tip:</strong> Always reuse compiled <code>Evaluable</code> instances when processing multiple batches. Compilation is expensive; execution is fast.

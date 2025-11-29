@@ -412,14 +412,14 @@ export AR_HARDWARE_DRIVER=native  # or opencl, metal</code></pre>
 import org.almostrealism.collect.*;
 
 // Create vectors
-PackedCollection&lt;Vector&gt; vectors = Vector.bank(1000);
+PackedCollection vectors = Vector.bank(1000);
 
 // Hardware-accelerated operations
 CollectionProducer&lt;?&gt; normalized = normalize(cp(vectors));
 CollectionProducer&lt;?&gt; scaled = normalized.multiply(2.0);
 
 // Execute on GPU
-PackedCollection&lt;?&gt; result = scaled.get().evaluate();</code></pre>
+PackedCollection result = scaled.get().evaluate();</code></pre>
             </section>
 
             <section id="tutorials">

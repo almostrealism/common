@@ -129,7 +129,7 @@ Vector zAxis = xAxis.crossProduct(yAxis);  // (0.0, 0.0, 1.0)
 import static org.almostrealism.algebra.VectorFeatures.*;
 
 // Create batch of 1000 vectors
-PackedCollection&lt;Vector&gt; vectors = Vector.bank(1000);
+PackedCollection vectors = Vector.bank(1000);
 
 // Fill with data
 for (int i = 0; i < 1000; i++) {
@@ -141,7 +141,7 @@ CollectionProducer&lt;?&gt; normalized = normalize(cp(vectors));
 CollectionProducer&lt;?&gt; scaled = normalized.multiply(10.0);
 
 // Execute on GPU (single kernel for all 1000 vectors!)
-PackedCollection&lt;?&gt; result = scaled.get().evaluate();
+PackedCollection result = scaled.get().evaluate();
 
 // Access results
 Vector firstResult = result.get(0);</code></pre>

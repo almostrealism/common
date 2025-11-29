@@ -87,7 +87,7 @@ double duration = 2.0;   // 2 seconds
 int numSamples = (int) (sampleRate * duration);
 
 // Generate 440 Hz sine wave (A4 note)
-PackedCollection&lt;?&gt; signal = new PackedCollection&lt;&gt;(shape(numSamples));
+PackedCollection signal = new PackedCollection(shape(numSamples));
 double frequency = 440.0;
 
 signal.fill(pos -&gt; {
@@ -118,18 +118,18 @@ signal.fill(pos -&gt; {
 
 // Ensure signal length is power of 2 for FFT
 int fftSize = 2048;
-PackedCollection&lt;?&gt; signal = new PackedCollection&lt;&gt;(shape(fftSize));
+PackedCollection signal = new PackedCollection(shape(fftSize));
 
 // Fill with signal data
 signal.fill(pos -&gt; generateSignal(pos[0]));
 
 // Perform FFT
 FourierTransform fft = new FourierTransform(fftSize);
-PackedCollection&lt;?&gt; spectrum = fft.forward(signal);
+PackedCollection spectrum = fft.forward(signal);
 
 // spectrum contains complex values: [real0, imag0, real1, imag1, ...]
 // Compute magnitude spectrum
-PackedCollection&lt;?&gt; magnitudes = new PackedCollection&lt;&gt;(shape(fftSize / 2));
+PackedCollection magnitudes = new PackedCollection(shape(fftSize / 2));
 
 for (int i = 0; i < fftSize / 2; i++) {
     double real = spectrum.toDouble(2 * i);
@@ -161,7 +161,7 @@ System.out.println("Dominant frequency: " + dominantFreq + " Hz");</code></pre>
 
 // Simple moving average low-pass filter
 int windowSize = 10;
-PackedCollection&lt;?&gt; filtered = new PackedCollection&lt;&gt;(signal.getShape());
+PackedCollection filtered = new PackedCollection(signal.getShape());
 
 for (int i = 0; i < signal.getCount(); i++) {
     double sum = 0.0;
@@ -179,8 +179,8 @@ for (int i = 0; i < signal.getCount(); i++) {
 
                 <h3>High-Pass Filter (Remove Low Frequencies)</h3>
                 <pre><code class="language-java">// High-pass = Original - Low-pass
-PackedCollection&lt;?&gt; lowPass = applyLowPassFilter(signal);
-PackedCollection&lt;?&gt; highPass = new PackedCollection&lt;&gt;(signal.getShape());
+PackedCollection lowPass = applyLowPassFilter(signal);
+PackedCollection highPass = new PackedCollection(signal.getShape());
 
 for (int i = 0; i < signal.getCount(); i++) {
     double original = signal.toDouble(i);
@@ -194,7 +194,7 @@ double lowFreq = 200.0;
 double highFreq = 2000.0;
 
 // Apply FFT
-PackedCollection&lt;?&gt; spectrum = fft.forward(signal);
+PackedCollection spectrum = fft.forward(signal);
 
 // Zero out frequencies outside band
 int lowBin = (int) (lowFreq * fftSize / sampleRate);
@@ -208,7 +208,7 @@ for (int i = 0; i < fftSize / 2; i++) {
 }
 
 // Inverse FFT to get filtered signal
-PackedCollection&lt;?&gt; filtered = fft.inverse(spectrum);</code></pre>
+PackedCollection filtered = fft.inverse(spectrum);</code></pre>
             </section>
 
             <section>
@@ -217,7 +217,7 @@ PackedCollection&lt;?&gt; filtered = fft.inverse(spectrum);</code></pre>
                 <h3>Linear Interpolation</h3>
                 <pre><code class="language-java">// Upsample signal by factor of 2
 int newSize = signal.getCount() * 2;
-PackedCollection&lt;?&gt; upsampled = new PackedCollection&lt;&gt;(shape(newSize));
+PackedCollection upsampled = new PackedCollection(shape(newSize));
 
 for (int i = 0; i < newSize; i++) {
     double pos = i / 2.0;
@@ -235,7 +235,7 @@ for (int i = 0; i < newSize; i++) {
                 <h3>Downsampling</h3>
                 <pre><code class="language-java">// Downsample signal by factor of 2
 int newSize = signal.getCount() / 2;
-PackedCollection&lt;?&gt; downsampled = new PackedCollection&lt;&gt;(shape(newSize));
+PackedCollection downsampled = new PackedCollection(shape(newSize));
 
 for (int i = 0; i < newSize; i++) {
     downsampled.setMem(i, signal.toDouble(i * 2));
@@ -248,11 +248,11 @@ for (int i = 0; i < newSize; i++) {
 
                 <pre><code class="language-java">// Haar wavelet (simplest wavelet)
 public class HaarWavelet {
-    public static PackedCollection&lt;?&gt; forward(PackedCollection&lt;?&gt; signal) {
+    public static PackedCollection forward(PackedCollection signal) {
         int n = signal.getCount();
         if (n % 2 != 0) throw new IllegalArgumentException("Size must be even");
 
-        PackedCollection&lt;?&gt; result = new PackedCollection&lt;&gt;(shape(n));
+        PackedCollection result = new PackedCollection(shape(n));
 
         // Approximation coefficients (low frequency)
         for (int i = 0; i < n/2; i++) {
@@ -269,9 +269,9 @@ public class HaarWavelet {
         return result;
     }
 
-    public static PackedCollection&lt;?&gt; inverse(PackedCollection&lt;?&gt; coeffs) {
+    public static PackedCollection inverse(PackedCollection coeffs) {
         int n = coeffs.getCount();
-        PackedCollection&lt;?&gt; signal = new PackedCollection&lt;&gt;(shape(n));
+        PackedCollection signal = new PackedCollection(shape(n));
 
         for (int i = 0; i < n/2; i++) {
             double avg = coeffs.toDouble(i);
@@ -291,8 +291,8 @@ public class HaarWavelet {
 
                 <h3>Echo Effect</h3>
                 <pre><code class="language-java">public class EchoEffect {
-    public static PackedCollection&lt;?&gt; apply(
-            PackedCollection&lt;?&gt; input,
+    public static PackedCollection apply(
+            PackedCollection input,
             double delaySeconds,
             double decay,
             int sampleRate) {
@@ -300,7 +300,7 @@ public class HaarWavelet {
         int delaySamples = (int) (delaySeconds * sampleRate);
         int outputSize = input.getCount() + delaySamples;
 
-        PackedCollection&lt;?&gt; output = new PackedCollection&lt;&gt;(shape(outputSize));
+        PackedCollection output = new PackedCollection(shape(outputSize));
         output.fill(pos -&gt; 0.0);
 
         // Copy original signal
@@ -324,15 +324,15 @@ public class HaarWavelet {
 
                 <h3>Reverb Effect (Simple)</h3>
                 <pre><code class="language-java">public class ReverbEffect {
-    public static PackedCollection&lt;?&gt; apply(
-            PackedCollection&lt;?&gt; input,
+    public static PackedCollection apply(
+            PackedCollection input,
             int sampleRate) {
 
         // Multiple echoes with decreasing amplitude
         double[] delays = {0.029, 0.037, 0.041, 0.053};  // seconds
         double[] decays = {0.7, 0.5, 0.3, 0.2};
 
-        PackedCollection&lt;?&gt; output = new PackedCollection&lt;&gt;(input.getShape());
+        PackedCollection output = new PackedCollection(input.getShape());
         output.fill(pos -&gt; 0.0);
 
         // Copy original
@@ -362,8 +362,8 @@ public class HaarWavelet {
                 <p>Analyze time-varying frequency content using Short-Time Fourier Transform (STFT):</p>
 
                 <pre><code class="language-java">public class STFT {
-    public static PackedCollection&lt;?&gt; compute(
-            PackedCollection&lt;?&gt; signal,
+    public static PackedCollection compute(
+            PackedCollection signal,
             int windowSize,
             int hopSize) {
 
@@ -371,8 +371,8 @@ public class HaarWavelet {
         int numFreqs = windowSize / 2;
 
         // Result: [numWindows x numFreqs] spectrogram
-        PackedCollection&lt;?&gt; spectrogram =
-            new PackedCollection&lt;&gt;(shape(numWindows, numFreqs));
+        PackedCollection spectrogram =
+            new PackedCollection(shape(numWindows, numFreqs));
 
         FourierTransform fft = new FourierTransform(windowSize);
 
@@ -380,8 +380,8 @@ public class HaarWavelet {
             int startIdx = w * hopSize;
 
             // Extract window
-            PackedCollection&lt;?&gt; window =
-                new PackedCollection&lt;&gt;(shape(windowSize));
+            PackedCollection window =
+                new PackedCollection(shape(windowSize));
             for (int i = 0; i < windowSize; i++) {
                 // Apply Hann window
                 double hannWeight = 0.5 * (1 - Math.cos(2 * Math.PI * i / windowSize));
@@ -389,7 +389,7 @@ public class HaarWavelet {
             }
 
             // FFT
-            PackedCollection&lt;?&gt; spectrum = fft.forward(window);
+            PackedCollection spectrum = fft.forward(window);
 
             // Compute magnitude and store
             for (int f = 0; f < numFreqs; f++) {
@@ -412,16 +412,16 @@ public class HaarWavelet {
                 <pre><code class="language-java">import org.almostrealism.time.Temporal;
 
 public class RealTimeProcessor implements Temporal {
-    private PackedCollection&lt;?&gt; inputBuffer;
-    private PackedCollection&lt;?&gt; outputBuffer;
+    private PackedCollection inputBuffer;
+    private PackedCollection outputBuffer;
     private int bufferSize;
     private int readPos = 0;
     private int writePos = 0;
 
     public RealTimeProcessor(int bufferSize) {
         this.bufferSize = bufferSize;
-        this.inputBuffer = new PackedCollection&lt;&gt;(shape(bufferSize));
-        this.outputBuffer = new PackedCollection&lt;&gt;(shape(bufferSize));
+        this.inputBuffer = new PackedCollection(shape(bufferSize));
+        this.outputBuffer = new PackedCollection(shape(bufferSize));
     }
 
     @Override
@@ -440,8 +440,8 @@ public class RealTimeProcessor implements Temporal {
         writePos = (writePos + 1) % bufferSize;
     }
 
-    public void processBlock(PackedCollection&lt;?&gt; input,
-                            PackedCollection&lt;?&gt; output) {
+    public void processBlock(PackedCollection input,
+                            PackedCollection output) {
         int blockSize = input.getCount();
 
         // Fill input buffer

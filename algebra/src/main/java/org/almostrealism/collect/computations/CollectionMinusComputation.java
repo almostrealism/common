@@ -63,27 +63,27 @@ import java.util.List;
  * <p><strong>Basic negation through CollectionFeatures:</strong></p>
  * <pre>{@code
  * // Negate a vector
- * CollectionProducer<PackedCollection> vector = c(1.0, -2.0, 3.0);
- * CollectionProducer<PackedCollection> negated = minus(vector);
+ * CollectionProducer vector = c(1.0, -2.0, 3.0);
+ * CollectionProducer negated = minus(vector);
  * // Result: [-1.0, 2.0, -3.0]
  * 
  * // Negate a matrix
- * CollectionProducer<PackedCollection> matrix = c(shape(2, 2), 1.0, 2.0, 3.0, 4.0);
- * CollectionProducer<PackedCollection> negatedMatrix = minus(matrix);
+ * CollectionProducer matrix = c(shape(2, 2), 1.0, 2.0, 3.0, 4.0);
+ * CollectionProducer negatedMatrix = minus(matrix);
  * // Result: 2x2 matrix [[-1.0, -2.0], [-3.0, -4.0]]
  * }</pre>
  * 
  * <p><strong>Usage in mathematical expressions:</strong></p>
  * <pre>{@code
  * // Subtraction using negation: a - b = a + (-b)
- * CollectionProducer<PackedCollection> a = c(5.0, 8.0, 12.0);
- * CollectionProducer<PackedCollection> b = c(2.0, 3.0, 4.0);
- * CollectionProducer<PackedCollection> difference = add(a, minus(b));
+ * CollectionProducer a = c(5.0, 8.0, 12.0);
+ * CollectionProducer b = c(2.0, 3.0, 4.0);
+ * CollectionProducer difference = add(a, minus(b));
  * // Result: [3.0, 5.0, 8.0]
  * 
  * // Mean centering: data - mean(data)
- * CollectionProducer<PackedCollection> data = c(1.0, 2.0, 3.0, 4.0, 5.0);
- * CollectionProducer<PackedCollection> centered = add(data, minus(mean(data).repeat(5)));
+ * CollectionProducer data = c(1.0, 2.0, 3.0, 4.0, 5.0);
+ * CollectionProducer centered = add(data, minus(mean(data).repeat(5)));
  * // Result: data with zero mean
  * }</pre>
  * 
@@ -104,11 +104,11 @@ import java.util.List;
  * <p>The computation supports automatic differentiation through the delta method:</p>
  * <pre>{@code
  * // Create a computation with gradient tracking
- * CollectionProducer<PackedCollection> x = c(1.0, 2.0, 3.0);
- * CollectionProducer<PackedCollection> y = minus(x);
+ * CollectionProducer x = c(1.0, 2.0, 3.0);
+ * CollectionProducer y = minus(x);
  * 
  * // Compute gradient: d(-x)/dx = -1
- * CollectionProducer<PackedCollection> gradient = y.delta(x);
+ * CollectionProducer gradient = y.delta(x);
  * // Result: constant -1 for each element
  * }</pre>
  * 

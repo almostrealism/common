@@ -17,7 +17,7 @@ public class VectorConcatTest implements TestFeatures, VectorFeatures {
 
 		// Create three scalar value producers (size 1 each, NOT Scalar type which is size 2)
 		// Note: scalar(double) now returns c(double) which is size 1
-		// Avoid typing as CollectionProducer<Scalar> since Scalar class is size 2 (legacy)
+		// Note: CollectionProducer is no longer generic
 		var x = c(1.0);
 		var y = c(2.0);
 		var z = c(3.0);

@@ -50,13 +50,13 @@
                 </ul>
 
                 <pre><code class="language-java">// Producer: describes computation, does NOT execute
-CollectionProducer&lt;?&gt; computation = cp(data)
+CollectionProducer computation = cp(data)
     .add(cp(otherData))
     .multiply(2.0);  // Just building a graph
 
 // Evaluable: compiles and executes the graph
 Evaluable&lt;?&gt; evaluable = computation.get();  // Compile
-PackedCollection&lt;?&gt; result = evaluable.evaluate();  // Execute</code></pre>
+PackedCollection result = evaluable.evaluate();  // Execute</code></pre>
 
                 <p><strong>Benefits:</strong></p>
                 <ul>
@@ -76,45 +76,45 @@ import org.almostrealism.collect.CollectionProducer;
 import static org.almostrealism.collect.CollectionFeatures.*;
 
 // Input data
-PackedCollection&lt;?&gt; input = new PackedCollection&lt;&gt;(shape(1000));
+PackedCollection input = new PackedCollection(shape(1000));
 input.fill(pos -&gt; Math.random());
 
 // Build graph: input -> normalize -> scale -> clamp
-CollectionProducer&lt;?&gt; graph = cp(input)
+CollectionProducer graph = cp(input)
     .subtract(c(0.5))           // Center: x - 0.5
     .multiply(2.0)              // Scale: 2 * (x - 0.5)
     .max(c(-1.0))               // Clamp min: max(x, -1)
     .min(c(1.0));               // Clamp max: min(x, 1)
 
 // Execute graph
-PackedCollection&lt;?&gt; result = graph.get().evaluate();
+PackedCollection result = graph.get().evaluate();
 
 // Graph is compiled into single optimized kernel!</code></pre>
 
                 <h3>Branching Graph</h3>
                 <pre><code class="language-java">// Input
-CollectionProducer&lt;?&gt; x = cp(input);
+CollectionProducer x = cp(input);
 
 // Two branches
-CollectionProducer&lt;?&gt; branch1 = x.multiply(2.0).add(c(1.0));  // 2x + 1
-CollectionProducer&lt;?&gt; branch2 = x.pow(c(2.0));               // x^2
+CollectionProducer branch1 = x.multiply(2.0).add(c(1.0));  // 2x + 1
+CollectionProducer branch2 = x.pow(c(2.0));               // x^2
 
 // Combine branches
-CollectionProducer&lt;?&gt; combined = branch1.add(branch2);  // (2x + 1) + x^2
+CollectionProducer combined = branch1.add(branch2);  // (2x + 1) + x^2
 
 // Execute
-PackedCollection&lt;?&gt; result = combined.get().evaluate();</code></pre>
+PackedCollection result = combined.get().evaluate();</code></pre>
             </section>
 
             <section>
                 <h2>Step 3: Lazy Evaluation in Action</h2>
                 <p>Producers are lazy - they don't compute anything until <code>get().evaluate()</code>:</p>
 
-                <pre><code class="language-java">PackedCollection&lt;?&gt; data = new PackedCollection&lt;&gt;(shape(1000000));
+                <pre><code class="language-java">PackedCollection data = new PackedCollection(shape(1000000));
 data.fill(pos -&gt; Math.random());
 
 // Building this is INSTANT - no computation happens
-CollectionProducer&lt;?&gt; complex = cp(data)
+CollectionProducer complex = cp(data)
     .multiply(2.0)
     .add(c(1.0))
     .sqrt()
@@ -125,7 +125,7 @@ System.out.println("Graph built!");  // Prints immediately
 
 // NOW the computation happens
 long start = System.currentTimeMillis();
-PackedCollection&lt;?&gt; result = complex.get().evaluate();
+PackedCollection result = complex.get().evaluate();
 long elapsed = System.currentTimeMillis() - start;
 
 System.out.println("Executed in " + elapsed + "ms");</code></pre>
@@ -138,28 +138,28 @@ System.out.println("Executed in " + elapsed + "ms");</code></pre>
                 <p>Compile once, execute many times with different inputs:</p>
 
                 <pre><code class="language-java">// Build graph with placeholder input
-Supplier&lt;Evaluable&lt;? extends PackedCollection&lt;?&gt;&gt;&gt; inputSupplier =
-    () -&gt; args -&gt; (PackedCollection&lt;?&gt;) args[0];
+Supplier&lt;Evaluable&lt;? extends PackedCollection&gt;&gt; inputSupplier =
+    () -&gt; args -&gt; (PackedCollection) args[0];
 
-Producer&lt;PackedCollection&lt;?&gt;&gt; input = new Producer&lt;&gt;() {
+Producer&lt;PackedCollection&gt; input = new Producer&lt;&gt;() {
     @Override
-    public Evaluable&lt;PackedCollection&lt;?&gt;&gt; get() {
+    public Evaluable&lt;PackedCollection&gt; get() {
         return inputSupplier.get();
     }
 };
 
 // Define transformation
-CollectionProducer&lt;?&gt; transform = input
+CollectionProducer transform = input
     .multiply(2.0)
     .add(c(1.0));
 
 // Compile ONCE
-Evaluable&lt;PackedCollection&lt;?&gt;&gt; compiled = transform.get();
+Evaluable&lt;PackedCollection&gt; compiled = transform.get();
 
 // Execute multiple times with different data
 for (int i = 0; i < 100; i++) {
-    PackedCollection&lt;?&gt; data = createData(i);
-    PackedCollection&lt;?&gt; result = compiled.evaluate(data);
+    PackedCollection data = createData(i);
+    PackedCollection result = compiled.evaluate(data);
     processResult(result);
 }
 
@@ -171,34 +171,34 @@ for (int i = 0; i < 100; i++) {
                 <p>Producers support automatic differentiation via the <code>delta(target)</code> method:</p>
 
                 <pre><code class="language-java">// Forward pass: f(x) = x^2
-CollectionProducer&lt;?&gt; x = cp(new PackedCollection&lt;&gt;(shape(100)));
-CollectionProducer&lt;?&gt; y = x.pow(c(2.0));  // y = x^2
+CollectionProducer x = cp(new PackedCollection(shape(100)));
+CollectionProducer y = x.pow(c(2.0));  // y = x^2
 
 // Backward pass: df/dx = 2x
-CollectionProducer&lt;?&gt; gradient = y.delta(x);
+CollectionProducer gradient = y.delta(x);
 
 // Create input data
-PackedCollection&lt;?&gt; inputData = new PackedCollection&lt;&gt;(shape(100));
+PackedCollection inputData = new PackedCollection(shape(100));
 inputData.fill(pos -&gt; pos[0]);  // [0, 1, 2, 3, ...]
 
 // Compute gradient
-PackedCollection&lt;?&gt; grad = gradient.get().evaluate(inputData);
+PackedCollection grad = gradient.get().evaluate(inputData);
 
 // grad[i] = 2 * inputData[i]
 // grad[0] = 0, grad[1] = 2, grad[2] = 4, grad[3] = 6, ...</code></pre>
 
                 <h3>Complex Function Differentiation</h3>
                 <pre><code class="language-java">// f(x) = (2x + 1) * sqrt(x)
-CollectionProducer&lt;?&gt; x = cp(input);
-CollectionProducer&lt;?&gt; f = x.multiply(2.0)
+CollectionProducer x = cp(input);
+CollectionProducer f = x.multiply(2.0)
                          .add(c(1.0))
                          .multiply(x.sqrt());
 
 // df/dx computed symbolically via chain rule
-CollectionProducer&lt;?&gt; df_dx = f.delta(x);
+CollectionProducer df_dx = f.delta(x);
 
 // Execute to get numerical gradient
-PackedCollection&lt;?&gt; gradient = df_dx.get().evaluate(inputData);</code></pre>
+PackedCollection gradient = df_dx.get().evaluate(inputData);</code></pre>
             </section>
 
             <section>
@@ -206,13 +206,13 @@ PackedCollection&lt;?&gt; gradient = df_dx.get().evaluate(inputData);</code></pr
                 <p>Framework automatically optimizes computation graphs:</p>
 
                 <pre><code class="language-java">// Inefficient manual approach
-PackedCollection&lt;?&gt; step1 = cp(data).multiply(2.0).get().evaluate();
-PackedCollection&lt;?&gt; step2 = cp(step1).add(c(1.0)).get().evaluate();
-PackedCollection&lt;?&gt; step3 = cp(step2).sqrt().get().evaluate();
+PackedCollection step1 = cp(data).multiply(2.0).get().evaluate();
+PackedCollection step2 = cp(step1).add(c(1.0)).get().evaluate();
+PackedCollection step3 = cp(step2).sqrt().get().evaluate();
 // Result: 3 separate kernels, 2 intermediate allocations
 
 // Optimized graph approach
-PackedCollection&lt;?&gt; result = cp(data)
+PackedCollection result = cp(data)
     .multiply(2.0)
     .add(c(1.0))
     .sqrt()
@@ -232,22 +232,22 @@ PackedCollection&lt;?&gt; result = cp(data)
 import static org.almostrealism.collect.CollectionFeatures.*;
 
 public class ImageProcessingPipeline {
-    public static CollectionProducer&lt;?&gt; buildPipeline(
-            CollectionProducer&lt;?&gt; rawImages) {
+    public static CollectionProducer buildPipeline(
+            CollectionProducer rawImages) {
 
         // Stage 1: Normalization
-        CollectionProducer&lt;?&gt; normalized = rawImages
+        CollectionProducer normalized = rawImages
             .divide(c(255.0))              // [0, 255] -> [0, 1]
             .subtract(c(0.5))              // Center
             .multiply(2.0);                // [-1, 1]
 
         // Stage 2: Augmentation
-        CollectionProducer&lt;?&gt; noise = randomCollection(
+        CollectionProducer noise = randomCollection(
             rawImages.getShape(), 0.0, 0.01);
-        CollectionProducer&lt;?&gt; augmented = normalized.add(noise);
+        CollectionProducer augmented = normalized.add(noise);
 
         // Stage 3: Feature extraction (simplified)
-        CollectionProducer&lt;?&gt; features = augmented
+        CollectionProducer features = augmented
             .pow(c(2.0))                   // Square
             .sum(1);                       // Sum over channels
 
@@ -256,17 +256,17 @@ public class ImageProcessingPipeline {
 
     public static void main(String[] args) {
         // Load images
-        PackedCollection&lt;?&gt; images = loadImages("dataset/");
+        PackedCollection images = loadImages("dataset/");
 
         // Build pipeline (lazy)
-        CollectionProducer&lt;?&gt; pipeline = buildPipeline(cp(images));
+        CollectionProducer pipeline = buildPipeline(cp(images));
 
         // Compile pipeline
         Evaluable&lt;?&gt; compiled = pipeline.get();
 
         // Execute on multiple batches
-        for (PackedCollection&lt;?&gt; batch : batches) {
-            PackedCollection&lt;?&gt; features = compiled.evaluate(batch);
+        for (PackedCollection batch : batches) {
+            PackedCollection features = compiled.evaluate(batch);
             processFeatures(features);
         }
     }
@@ -278,18 +278,18 @@ public class ImageProcessingPipeline {
                 <p>Use conditional expressions in computation graphs:</p>
 
                 <pre><code class="language-java">// ReLU activation: max(0, x)
-CollectionProducer&lt;?&gt; x = cp(input);
-CollectionProducer&lt;?&gt; relu = x.max(c(0.0));
+CollectionProducer x = cp(input);
+CollectionProducer relu = x.max(c(0.0));
 
 // Leaky ReLU: x if x > 0 else 0.01*x
-CollectionProducer&lt;?&gt; leakyRelu = x.conditional(
+CollectionProducer leakyRelu = x.conditional(
     x.greaterThan(c(0.0)),    // condition
     x,                         // if true
     x.multiply(0.01)          // if false
 );
 
 // Clipping: clamp(x, min, max)
-CollectionProducer&lt;?&gt; clipped = x
+CollectionProducer clipped = x
     .max(c(-1.0))   // Lower bound
     .min(c(1.0));   // Upper bound</code></pre>
             </section>
@@ -300,14 +300,14 @@ CollectionProducer&lt;?&gt; clipped = x
 
                 <pre><code class="language-java">// Define computation with multiple inputs
 public class MultiInputGraph {
-    public static CollectionProducer&lt;?&gt; build(
-            CollectionProducer&lt;?&gt; input1,
-            CollectionProducer&lt;?&gt; input2,
-            CollectionProducer&lt;?&gt; weights) {
+    public static CollectionProducer build(
+            CollectionProducer input1,
+            CollectionProducer input2,
+            CollectionProducer weights) {
 
         // Weighted combination
-        CollectionProducer&lt;?&gt; weighted1 = input1.multiply(weights);
-        CollectionProducer&lt;?&gt; weighted2 = input2.multiply(
+        CollectionProducer weighted1 = input1.multiply(weights);
+        CollectionProducer weighted2 = input2.multiply(
             weights.multiply(-1.0).add(c(1.0))  // 1 - weights
         );
 
@@ -315,16 +315,16 @@ public class MultiInputGraph {
     }
 
     public static void main(String[] args) {
-        PackedCollection&lt;?&gt; data1 = loadData("source1");
-        PackedCollection&lt;?&gt; data2 = loadData("source2");
-        PackedCollection&lt;?&gt; w = new PackedCollection&lt;&gt;(shape(100));
+        PackedCollection data1 = loadData("source1");
+        PackedCollection data2 = loadData("source2");
+        PackedCollection w = new PackedCollection(shape(100));
         w.fill(pos -&gt; 0.5);  // 50/50 blend
 
-        CollectionProducer&lt;?&gt; blended = build(
+        CollectionProducer blended = build(
             cp(data1), cp(data2), cp(w)
         );
 
-        PackedCollection&lt;?&gt; result = blended.get().evaluate();
+        PackedCollection result = blended.get().evaluate();
     }
 }</code></pre>
             </section>
@@ -334,7 +334,7 @@ public class MultiInputGraph {
 
                 <h3>Inspecting Graph Structure</h3>
                 <pre><code class="language-java">// Build graph
-CollectionProducer&lt;?&gt; graph = cp(data)
+CollectionProducer graph = cp(data)
     .multiply(2.0)
     .add(c(1.0))
     .sqrt();
@@ -347,14 +347,14 @@ System.out.println("Graph info: " + evaluable.getClass().getName());</code></pre
 
                 <h3>Testing Intermediate Results</h3>
                 <pre><code class="language-java">// Test each stage separately
-CollectionProducer&lt;?&gt; stage1 = cp(data).multiply(2.0);
-CollectionProducer&lt;?&gt; stage2 = stage1.add(c(1.0));
-CollectionProducer&lt;?&gt; stage3 = stage2.sqrt();
+CollectionProducer stage1 = cp(data).multiply(2.0);
+CollectionProducer stage2 = stage1.add(c(1.0));
+CollectionProducer stage3 = stage2.sqrt();
 
 // Verify intermediate outputs
-PackedCollection&lt;?&gt; result1 = stage1.get().evaluate();
-PackedCollection&lt;?&gt; result2 = stage2.get().evaluate();
-PackedCollection&lt;?&gt; result3 = stage3.get().evaluate();
+PackedCollection result1 = stage1.get().evaluate();
+PackedCollection result2 = stage2.get().evaluate();
+PackedCollection result3 = stage3.get().evaluate();
 
 System.out.println("After multiply: " + result1.toDouble(0));
 System.out.println("After add: " + result2.toDouble(0));
@@ -366,13 +366,13 @@ System.out.println("After sqrt: " + result3.toDouble(0));</code></pre>
                 <p>Build a dense neural network layer using computation graphs:</p>
 
                 <pre><code class="language-java">public class DenseLayer {
-    private final PackedCollection&lt;?&gt; weights;
-    private final PackedCollection&lt;?&gt; bias;
+    private final PackedCollection weights;
+    private final PackedCollection bias;
 
     public DenseLayer(int inputSize, int outputSize) {
         // Initialize weights and bias
-        this.weights = new PackedCollection&lt;&gt;(shape(outputSize, inputSize));
-        this.bias = new PackedCollection&lt;&gt;(shape(outputSize));
+        this.weights = new PackedCollection(shape(outputSize, inputSize));
+        this.bias = new PackedCollection(shape(outputSize));
 
         // Xavier initialization
         double scale = Math.sqrt(2.0 / inputSize);
@@ -380,13 +380,13 @@ System.out.println("After sqrt: " + result3.toDouble(0));</code></pre>
         bias.fill(pos -&gt; 0.0);
     }
 
-    public CollectionProducer&lt;?&gt; forward(CollectionProducer&lt;?&gt; input) {
+    public CollectionProducer forward(CollectionProducer input) {
         // y = ReLU(W * x + b)
-        CollectionProducer&lt;?&gt; linear = cp(weights)
+        CollectionProducer linear = cp(weights)
             .multiply(input)     // Matrix-vector multiply
             .add(cp(bias));      // Add bias
 
-        CollectionProducer&lt;?&gt; activated = linear.max(c(0.0));  // ReLU
+        CollectionProducer activated = linear.max(c(0.0));  // ReLU
 
         return activated;
     }
@@ -396,13 +396,13 @@ System.out.println("After sqrt: " + result3.toDouble(0));</code></pre>
         DenseLayer layer = new DenseLayer(784, 128);  // MNIST input -> hidden
 
         // Build forward pass graph
-        PackedCollection&lt;?&gt; input = new PackedCollection&lt;&gt;(shape(784));
+        PackedCollection input = new PackedCollection(shape(784));
         input.fill(pos -&gt; Math.random());
 
-        CollectionProducer&lt;?&gt; output = layer.forward(cp(input));
+        CollectionProducer output = layer.forward(cp(input));
 
         // Execute
-        PackedCollection&lt;?&gt; result = output.get().evaluate();
+        PackedCollection result = output.get().evaluate();
         System.out.println("Output shape: " + result.getShape());
     }
 }</code></pre>

@@ -152,13 +152,13 @@
 StateDictionary stateDict = new StateDictionary("/path/to/weights");
 
 // Access weights by HuggingFace-style keys
-PackedCollection&lt;?&gt; embeddings = stateDict.get("model.embed_tokens.weight");
-PackedCollection&lt;?&gt; wq = stateDict.get("model.layers.0.self_attn.q_proj.weight");
-PackedCollection&lt;?&gt; wk = stateDict.get("model.layers.0.self_attn.k_proj.weight");
-PackedCollection&lt;?&gt; wv = stateDict.get("model.layers.0.self_attn.v_proj.weight");
+PackedCollection embeddings = stateDict.get("model.embed_tokens.weight");
+PackedCollection wq = stateDict.get("model.layers.0.self_attn.q_proj.weight");
+PackedCollection wk = stateDict.get("model.layers.0.self_attn.k_proj.weight");
+PackedCollection wv = stateDict.get("model.layers.0.self_attn.v_proj.weight");
 
 // Helper method for repeated patterns
-private PackedCollection&lt;?&gt; getLayerWeight(StateDictionary dict, int layer, String name) {
+private PackedCollection getLayerWeight(StateDictionary dict, int layer, String name) {
     return dict.get(String.format("model.layers.%d.%s", layer, name));
 }
 
@@ -256,14 +256,14 @@ int unk = tokenizer.getUNKToken();  // Unknown token</code></pre>
                 <pre><code class="language-java">import org.almostrealism.layers.RotationFeatures;
 
 // Compute RoPE frequency matrix
-PackedCollection&lt;?&gt; freqCis = computeRotaryFreqs(
+PackedCollection freqCis = computeRotaryFreqs(
     dim,          // Model dimension
     seqLen,       // Sequence length
     theta         // Base frequency (10000 for LLaMA, 1000000 for Qwen3)
 );
 
 // Apply RoPE to query/key tensors
-Producer&lt;PackedCollection&lt;?&gt;&gt; rotatedQ = ropeRotation(
+Producer&lt;PackedCollection&gt; rotatedQ = ropeRotation(
     query,
     freqCis,
     seqLen,
@@ -426,10 +426,10 @@ Model customModel = new Model(shape(dim));
 
 for (int layer = 0; layer < nLayers; layer++) {
     // Load weights for this layer
-    PackedCollection&lt;?&gt; wq = stateDict.get("layer." + layer + ".attn.wq");
-    PackedCollection&lt;?&gt; wk = stateDict.get("layer." + layer + ".attn.wk");
-    PackedCollection&lt;?&gt; wv = stateDict.get("layer." + layer + ".attn.wv");
-    PackedCollection&lt;?&gt; wo = stateDict.get("layer." + layer + ".attn.wo");
+    PackedCollection wq = stateDict.get("layer." + layer + ".attn.wq");
+    PackedCollection wk = stateDict.get("layer." + layer + ".attn.wk");
+    PackedCollection wv = stateDict.get("layer." + layer + ".attn.wv");
+    PackedCollection wo = stateDict.get("layer." + layer + ".attn.wo");
 
     // Add attention block (generalized method)
     customModel.add(attention(
@@ -465,12 +465,12 @@ int token = generator.next();</code></pre>
 int[] promptTokens = tokenizer.encodeAsInt("Hello, world!");
 
 // Initialize model state
-PackedCollection&lt;?&gt; input = tokenEmbeddings.get(promptTokens[0]);
+PackedCollection input = tokenEmbeddings.get(promptTokens[0]);
 
 // Generation loop
 for (int step = 0; step < maxTokens; step++) {
     // Forward pass
-    PackedCollection&lt;?&gt; logits = model.forward(input);
+    PackedCollection logits = model.forward(input);
 
     // Sample next token
     int nextToken = sampleFromLogits(logits, temperature);

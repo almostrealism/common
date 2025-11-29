@@ -143,8 +143,8 @@ public void profilePerformance() {
     initKernelMetrics();
 
     // Run operation
-    Producer&lt;PackedCollection&lt;?&gt;&gt; op = createOperation();
-    PackedCollection&lt;?&gt; result = op.get().evaluate();
+    Producer&lt;PackedCollection&gt; op = createOperation();
+    PackedCollection result = op.get().evaluate();
 
     // Log timing, memory usage, cache statistics
     logKernelMetrics();
@@ -200,7 +200,7 @@ public void profilePerformance() {
     @Test
     public void trainModel() {
         // Generate dataset
-        PackedCollection&lt;?&gt; data = generateDataset(1000, 64);
+        PackedCollection data = generateDataset(1000, 64);
 
         // Create and train model
         Model model = createModel();
@@ -305,7 +305,7 @@ String hash = KeyUtils.sha256(data);</code></pre>
         initKernelMetrics();
 
         // Create operation
-        Producer&lt;PackedCollection&lt;?&gt;&gt; op = createOperation();
+        Producer&lt;PackedCollection&gt; op = createOperation();
 
         // Run comprehensive kernel test (all modes)
         kernelTest(() -> op, result -> {
@@ -316,7 +316,7 @@ String hash = KeyUtils.sha256(data);</code></pre>
             assertSimilar(expectedValue, result.toDouble(0), 0.001);
 
             // Compare to reference implementation
-            PackedCollection&lt;?&gt; reference = computeReference();
+            PackedCollection reference = computeReference();
             assertEquals(reference, result);
         });
 
@@ -326,8 +326,8 @@ String hash = KeyUtils.sha256(data);</code></pre>
 
     @Test
     public void testCollectionComparison() {
-        PackedCollection&lt;?&gt; expected = new PackedCollection&lt;&gt;(100);
-        PackedCollection&lt;?&gt; actual = new PackedCollection&lt;&gt;(100);
+        PackedCollection expected = new PackedCollection(100);
+        PackedCollection actual = new PackedCollection(100);
 
         // Fill with test data...
 
@@ -352,8 +352,8 @@ String hash = KeyUtils.sha256(data);</code></pre>
         initKernelMetrics();
 
         // Generate dataset
-        PackedCollection&lt;?&gt; inputs = generateDataset(1000, 64);
-        PackedCollection&lt;?&gt; targets = generateTargets(1000, 10);
+        PackedCollection inputs = generateDataset(1000, 64);
+        PackedCollection targets = generateTargets(1000, 10);
 
         // Create model
         Model model = new Model(shape(64));
@@ -393,17 +393,17 @@ String hash = KeyUtils.sha256(data);</code></pre>
         int warmIterations = 1000;
 
         // Create input data
-        PackedCollection&lt;?&gt; input = new PackedCollection&lt;&gt;(collectionSize);
+        PackedCollection input = new PackedCollection(collectionSize);
         for (int i = 0; i &lt; collectionSize; i++) {
             input.setMem(i, Math.random());
         }
 
         // Build operation
-        Producer&lt;PackedCollection&lt;?&gt;&gt; op = createOperation(input);
+        Producer&lt;PackedCollection&gt; op = createOperation(input);
 
         // Cold start timing
         long coldStart = System.nanoTime();
-        PackedCollection&lt;?&gt; result = op.get().evaluate();
+        PackedCollection result = op.get().evaluate();
         double coldMs = (System.nanoTime() - coldStart) / 1_000_000.0;
         log("Cold start: " + String.format("%.2f", coldMs) + " ms");
 
@@ -428,15 +428,15 @@ String hash = KeyUtils.sha256(data);</code></pre>
     @Test
     public void compareCpuGpu() {
         int size = 100000;
-        PackedCollection&lt;?&gt; input = new PackedCollection&lt;&gt;(size);
+        PackedCollection input = new PackedCollection(size);
 
         // Test with CPU requirement
-        Producer&lt;PackedCollection&lt;?&gt;&gt; cpuOp = createOperation(input);
+        Producer&lt;PackedCollection&gt; cpuOp = createOperation(input);
         cpuOp.setComputeRequirements(List.of(ComputeRequirement.CPU));
         double cpuTime = timeExecution(cpuOp);
 
         // Test with GPU requirement
-        Producer&lt;PackedCollection&lt;?&gt;&gt; gpuOp = createOperation(input);
+        Producer&lt;PackedCollection&gt; gpuOp = createOperation(input);
         gpuOp.setComputeRequirements(List.of(ComputeRequirement.GPU));
         double gpuTime = timeExecution(gpuOp);
 
@@ -445,7 +445,7 @@ String hash = KeyUtils.sha256(data);</code></pre>
         log("Speedup: " + (cpuTime / gpuTime) + "x");
     }
 
-    private double timeExecution(Producer&lt;PackedCollection&lt;?&gt;&gt; op) {
+    private double timeExecution(Producer&lt;PackedCollection&gt; op) {
         // Warm up
         op.get().evaluate();
 
@@ -472,8 +472,8 @@ public class MultiOrderFilterTest implements TestFeatures {
     public void compile() {
         int order = 30;
 
-        PackedCollection&lt;?&gt; series = new PackedCollection&lt;&gt;(10000);
-        PackedCollection&lt;?&gt; coefficients = new PackedCollection&lt;&gt;(order + 1);
+        PackedCollection series = new PackedCollection(10000);
+        PackedCollection coefficients = new PackedCollection(order + 1);
 
         MultiOrderFilter filter = MultiOrderFilter.create(
             traverseEach(cp(series)),

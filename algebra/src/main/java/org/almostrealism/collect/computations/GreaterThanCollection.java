@@ -57,8 +57,8 @@ import java.util.List;
  * <p><strong>Basic greater-than comparison (returning 1.0 or 0.0):</strong></p>
  * <pre>{@code
  * TraversalPolicy shape = shape(5);
- * CollectionProducer<PackedCollection> a = c(3.0, 7.0, 2.0, 9.0, 5.0);
- * CollectionProducer<PackedCollection> b = c(5.0, 5.0, 5.0, 5.0, 5.0);
+ * CollectionProducer a = c(3.0, 7.0, 2.0, 9.0, 5.0);
+ * CollectionProducer b = c(5.0, 5.0, 5.0, 5.0, 5.0);
  *
  * GreaterThanCollection<PackedCollection> gt =
  *     new GreaterThanCollection<>(shape, a, b,
@@ -82,9 +82,9 @@ import java.util.List;
  * <p><strong>Using via CollectionFeatures:</strong></p>
  * <pre>{@code
  * // More common usage through helper methods
- * CollectionProducer<PackedCollection> x = c(1.0, 2.0, 3.0);
- * CollectionProducer<PackedCollection> threshold = c(2.0, 2.0, 2.0);
- * CollectionProducer<PackedCollection> result =
+ * CollectionProducer x = c(1.0, 2.0, 3.0);
+ * CollectionProducer threshold = c(2.0, 2.0, 2.0);
+ * CollectionProducer result =
  *     greaterThan(x, threshold, c(1.0), c(0.0));
  * // Result: [0.0, 0.0, 1.0]
  * }</pre>
@@ -92,9 +92,9 @@ import java.util.List;
  * <p><strong>Value clipping example:</strong></p>
  * <pre>{@code
  * // Clip values to minimum threshold: max(value, threshold)
- * CollectionProducer<PackedCollection> values = c(1.0, 5.0, 3.0);
- * CollectionProducer<PackedCollection> threshold = c(2.0);
- * CollectionProducer<PackedCollection> clipped =
+ * CollectionProducer values = c(1.0, 5.0, 3.0);
+ * CollectionProducer threshold = c(2.0);
+ * CollectionProducer clipped =
  *     greaterThan(values, threshold,
  *         values,      // if value > threshold, keep value
  *         threshold);  // else use threshold

@@ -42,7 +42,7 @@ import java.util.stream.Stream;
  * <pre>{@code
  * // Create a producer that generates a constant collection
  * TraversalPolicy shape = new TraversalPolicy(3, 4);
- * DynamicCollectionProducer<PackedCollection> producer =
+ * DynamicCollectionProducer producer =
  *     new DynamicCollectionProducer<>(shape, args -> new PackedCollection(shape, 1.0, 2.0, 3.0));
  * PackedCollection result = producer.get().evaluate();
  * }</pre>
@@ -50,7 +50,7 @@ import java.util.stream.Stream;
  * <h4>Kernel-based Computation:</h4>
  * <pre>{@code
  * // Create a producer for kernel execution (single function call)
- * DynamicCollectionProducer<PackedCollection> kernelProducer =
+ * DynamicCollectionProducer kernelProducer =
  *     new DynamicCollectionProducer<>(shape, computationFunction, true);
  * }</pre>
  * 
@@ -61,7 +61,7 @@ import java.util.stream.Stream;
  *     inputs -> args -> processInputs(inputs[0], inputs[1]);
  * Producer<?> input1 = someProducer();
  * Producer<?> input2 = anotherProducer();
- * DynamicCollectionProducer<PackedCollection> dynamicProducer =
+ * DynamicCollectionProducer dynamicProducer =
  *     new DynamicCollectionProducer<>(shape, inputFunction, false, true, input1, input2);
  * }</pre>
  * 

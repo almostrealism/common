@@ -80,7 +80,7 @@ import java.util.stream.Collectors;
  * <pre>{@code
  * // Cube all elements: [2, 3, 4] -> [8, 27, 64]
  * PackedCollection base = pack(2.0, 3.0, 4.0);
- * CollectionProducer<PackedCollection> cubed =
+ * CollectionProducer cubed =
  *     cp(base).pow(c(3.0));  // Uses CollectionExponentComputation internally
  * PackedCollection result = cubed.get().evaluate();
  * }</pre>
@@ -100,11 +100,11 @@ import java.util.stream.Collectors;
  * <p><strong>Derivative Computation for Optimization:</strong>
  * <pre>{@code
  * // Computing gradient of x^3 for backpropagation
- * CollectionProducer<PackedCollection> x = x(3);
- * CollectionProducer<PackedCollection> f = x.pow(c(3.0));
+ * CollectionProducer x = x(3);
+ * CollectionProducer f = x.pow(c(3.0));
  * 
  * // df/dx = 3*x^2
- * CollectionProducer<PackedCollection> gradient = f.delta(x);
+ * CollectionProducer gradient = f.delta(x);
  * }</pre>
  * 
  * <h3>Configuration Options</h3>
@@ -294,18 +294,18 @@ public class CollectionExponentComputation extends TraversableExpressionComputat
 	 * <p><strong>Basic Power Rule:</strong>
 	 * <pre>{@code
 	 * // f(x) = x^3, df/dx = 3*x^2
-	 * CollectionProducer<PackedCollection> x = x(5);
-	 * CollectionProducer<PackedCollection> f = x.pow(c(3.0));
-	 * CollectionProducer<PackedCollection> df_dx = f.delta(x);
+	 * CollectionProducer x = x(5);
+	 * CollectionProducer f = x.pow(c(3.0));
+	 * CollectionProducer df_dx = f.delta(x);
 	 * }</pre>
 	 *
 	 * <p><strong>Composite Function:</strong>
 	 * <pre>{@code
 	 * // f(g(x)) = (2*x + 1)^4, df/dx = 4*(2*x + 1)^3 * 2
-	 * CollectionProducer<PackedCollection> x = x(3);
-	 * CollectionProducer<PackedCollection> g = x.multiply(c(2.0)).add(c(1.0));
-	 * CollectionProducer<PackedCollection> f = g.pow(c(4.0));
-	 * CollectionProducer<PackedCollection> df_dx = f.delta(x);
+	 * CollectionProducer x = x(3);
+	 * CollectionProducer g = x.multiply(c(2.0)).add(c(1.0));
+	 * CollectionProducer f = g.pow(c(4.0));
+	 * CollectionProducer df_dx = f.delta(x);
 	 * }</pre>
 	 *
 	 * <h4>Performance Considerations</h4>

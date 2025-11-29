@@ -10,7 +10,7 @@ The `ar-collect` module provides `PackedCollection`, the fundamental data struct
 
 ### What is PackedCollection?
 
-`PackedCollection<T>` is a memory-efficient data structure that:
+`PackedCollection` is a memory-efficient data structure that:
 - Stores multi-dimensional numerical data as a flat array
 - Uses `TraversalPolicy` to interpret linear memory as N-dimensional tensors
 - Integrates seamlessly with hardware acceleration (GPU/CPU)
@@ -21,18 +21,18 @@ The `ar-collect` module provides `PackedCollection`, the fundamental data struct
 
 ```java
 // Create a 1D collection (vector)
-PackedCollection<?> vector = new PackedCollection<>(3);
+PackedCollection vector = new PackedCollection<>(3);
 vector.setMem(0, 1.0);
 vector.setMem(1, 2.0);
 vector.setMem(2, 3.0);
 
 // Create a 2D collection (matrix)
-PackedCollection<?> matrix = new PackedCollection<>(shape(4, 3));  // 4 rows, 3 cols
+PackedCollection matrix = new PackedCollection<>(shape(4, 3));  // 4 rows, 3 cols
 matrix.setMem(0, value);  // Linear index
 
 // Create from shape
 TraversalPolicy shape = shape(10, 20, 30);  // 10x20x30 tensor
-PackedCollection<?> tensor = new PackedCollection<>(shape);
+PackedCollection tensor = new PackedCollection<>(shape);
 ```
 
 ### Memory Layout
@@ -48,16 +48,16 @@ PackedCollection stores data in **row-major order**:
 
 ### The Pattern
 
-`CollectionProducer<T>` describes computations **before execution**:
+`CollectionProducer` describes computations **before execution**:
 
 ```java
 // Build computation graph (no execution yet!)
-CollectionProducer<PackedCollection<?>> a = cp(vectorA);
-CollectionProducer<PackedCollection<?>> b = cp(vectorB);
-CollectionProducer<PackedCollection<?>> result = a.add(b).multiply(2.0);
+CollectionProducer a = cp(vectorA);
+CollectionProducer b = cp(vectorB);
+CollectionProducer result = a.add(b).multiply(2.0);
 
 // Execute when ready
-PackedCollection<?> computed = result.get().evaluate();
+PackedCollection computed = result.get().evaluate();
 ```
 
 ### 40+ Operations
@@ -93,7 +93,7 @@ subset(TraversalPolicy shape, int... indices)
 **Advanced:**
 ```java
 map(Function<Double, Double> fn)
-reduce(CollectionProducer<T> initial, BinaryOperator<T> op)
+reduce(CollectionProducer initial, BinaryOperator<T> op)
 traverse(int axis)
 consolidate()
 ```
@@ -101,7 +101,7 @@ consolidate()
 ### Computation Chaining
 
 ```java
-CollectionProducer<?> pipeline = input
+CollectionProducer pipeline = input
     .reshape(shape(batch, features))
     .subtract(mean)
     .divide(stddev)
@@ -109,7 +109,7 @@ CollectionProducer<?> pipeline = input
     .add(bias)
     .relu();
 
-PackedCollection<?> output = pipeline.get().evaluate();
+PackedCollection output = pipeline.get().evaluate();
 ```
 
 ## TraversalPolicy - Multi-Dimensional Indexing
@@ -197,13 +197,13 @@ export AR_HARDWARE_DRIVER=native  # or opencl, metal
 
 ```java
 // 1. Describe computation (CPU)
-CollectionProducer<?> op = a.add(b).multiply(c);
+CollectionProducer op = a.add(b).multiply(c);
 
 // 2. Compile to kernel (one-time)
 Evaluable<?> kernel = op.get();  // Generates GPU code
 
 // 3. Execute on GPU
-PackedCollection<?> result = kernel.evaluate();
+PackedCollection result = kernel.evaluate();
 ```
 
 ## Memory Management
@@ -236,10 +236,10 @@ public interface MemoryBank<T extends MemoryData> {
 Create views without copying data:
 
 ```java
-PackedCollection<?> original = new PackedCollection<>(shape(100, 50));
+PackedCollection original = new PackedCollection<>(shape(100, 50));
 
 // Create view (no data copy!)
-PackedCollection<?> view = original.range(shape(10, 50));
+PackedCollection view = original.range(shape(10, 50));
 view.setMem(0, 5.0);  // Modifies original!
 ```
 
@@ -248,7 +248,7 @@ view.setMem(0, 5.0);  // Modifies original!
 ```java
 // Share underlying memory
 MemoryData sharedMemory = original.getDelegate();
-PackedCollection<?> alias = new PackedCollection<>(
+PackedCollection alias = new PackedCollection<>(
     shape(50, 100),
     sharedMemory,
     offset
@@ -262,7 +262,7 @@ PackedCollection<?> alias = new PackedCollection<>(
 ```java
 // From StateDictionary (ML module)
 StateDictionary weights = new StateDictionary(weightsDir);
-PackedCollection<?> embedding = weights.get("model.embed.weight");
+PackedCollection embedding = weights.get("model.embed.weight");
 
 // Shape info
 TraversalPolicy shape = embedding.getShape();  // e.g., [vocab_size, hidden_dim]
@@ -274,7 +274,7 @@ int hiddenDim = shape.length(1);
 
 ```java
 // Process batch of vectors
-PackedCollection<?> batch = new PackedCollection<>(shape(batchSize, vectorDim));
+PackedCollection batch = new PackedCollection<>(shape(batchSize, vectorDim));
 
 // Load data
 for (int i = 0; i < batchSize; i++) {
@@ -282,44 +282,44 @@ for (int i = 0; i < batchSize; i++) {
 }
 
 // Batch operation (single GPU kernel!)
-CollectionProducer<?> normalized = cp(batch).divide(cp(batch).max());
-PackedCollection<?> result = normalized.get().evaluate();
+CollectionProducer normalized = cp(batch).divide(cp(batch).max());
+PackedCollection result = normalized.get().evaluate();
 ```
 
 ### Matrix Operations
 
 ```java
 // Matrix multiplication
-PackedCollection<?> A = new PackedCollection<>(shape(m, k));
-PackedCollection<?> B = new PackedCollection<>(shape(k, n));
+PackedCollection A = new PackedCollection<>(shape(m, k));
+PackedCollection B = new PackedCollection<>(shape(k, n));
 
-CollectionProducer<?> C = matmul(cp(A), cp(B));
-PackedCollection<?> result = C.get().evaluate();  // Shape: [m, n]
+CollectionProducer C = matmul(cp(A), cp(B));
+PackedCollection result = C.get().evaluate();  // Shape: [m, n]
 ```
 
 ### Reshaping
 
 ```java
 // Flatten 2D to 1D
-PackedCollection<?> matrix = new PackedCollection<>(shape(10, 20));
-CollectionProducer<?> flattened = cp(matrix).reshape(shape(200));
+PackedCollection matrix = new PackedCollection<>(shape(10, 20));
+CollectionProducer flattened = cp(matrix).reshape(shape(200));
 
 // Reshape to 3D
-CollectionProducer<?> tensor = flattened.reshape(shape(4, 5, 10));
+CollectionProducer tensor = flattened.reshape(shape(4, 5, 10));
 ```
 
 ### Traversal and Subsetting
 
 ```java
 // Select specific indices
-CollectionProducer<?> subset = cp(data).subset(
+CollectionProducer subset = cp(data).subset(
     shape(selectedCount, features),
     source,
     indices...
 );
 
 // Traverse along axis
-CollectionProducer<?> traversed = cp(data).traverse(axis);
+CollectionProducer traversed = cp(data).traverse(axis);
 ```
 
 ## Integration with Framework
@@ -357,18 +357,18 @@ CollectionProducer<?> traversed = cp(data).traverse(axis);
    }
 
    // Good: 1 kernel for all 100
-   PackedCollection<?> batch = PackedCollection.bank(100);
+   PackedCollection batch = PackedCollection.bank(100);
    result = process(batch).get().evaluate();
    ```
 
 3. **Avoid Unnecessary Copies** - Use delegation
    ```java
    // Bad: Copies data
-   PackedCollection<?> copy = new PackedCollection<>(original.getShape());
+   PackedCollection copy = new PackedCollection<>(original.getShape());
    copy.setMem(original);
 
    // Good: Zero-copy view
-   PackedCollection<?> view = original.range(shape);
+   PackedCollection view = original.range(shape);
    ```
 
 4. **Choose Fixed Count** - When possible for performance

@@ -64,7 +64,7 @@ import java.util.List;
  * // result: 2x3x4 tensor with all 24 elements as 0.0
  * 
  * // Using with CollectionFeatures
- * CollectionProducer<PackedCollection> zeros = zeros(shape(10));
+ * CollectionProducer zeros = zeros(shape(10));
  * PackedCollection result = zeros.get().evaluate();
  * // result: 10-element vector of zeros
  * }</pre>
@@ -284,7 +284,7 @@ public class CollectionZerosComputation extends CollectionConstantComputation {
 	 * Producer<?> target = someVariable; // shape [2]
 	 *
 	 * // Delta result: shape [3, 2] - zero gradient
-	 * CollectionProducer<T> gradient = zeros.delta(target);
+	 * CollectionProducer gradient = zeros.delta(target);
 	 * // Result: 3x2 matrix of zeros representing d(zeros)/d(target) = 0
 	 * }</pre>
 	 * 

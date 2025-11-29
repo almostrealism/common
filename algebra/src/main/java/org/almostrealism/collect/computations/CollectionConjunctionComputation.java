@@ -71,8 +71,8 @@ import java.util.List;
  * <p><strong>Basic logical AND (returning 1.0 or 0.0):</strong></p>
  * <pre>{@code
  * TraversalPolicy shape = shape(4);
- * CollectionProducer<PackedCollection> a = c(0.0, 1.0, 0.0, 1.0);
- * CollectionProducer<PackedCollection> b = c(0.0, 0.0, 1.0, 1.0);
+ * CollectionProducer a = c(0.0, 1.0, 0.0, 1.0);
+ * CollectionProducer b = c(0.0, 0.0, 1.0, 1.0);
  *
  * CollectionConjunctionComputation<PackedCollection> andOp =
  *     new CollectionConjunctionComputation<>(shape, a, b,
@@ -85,20 +85,20 @@ import java.util.List;
  * <p><strong>Using via CollectionFeatures:</strong></p>
  * <pre>{@code
  * // More common usage through helper methods
- * CollectionProducer<PackedCollection> conditionA = greaterThan(x, threshold1, c(1.0), c(0.0));
- * CollectionProducer<PackedCollection> conditionB = lessThan(x, threshold2, c(1.0), c(0.0));
- * CollectionProducer<PackedCollection> both = and(conditionA, conditionB, c(1.0), c(0.0));
+ * CollectionProducer conditionA = greaterThan(x, threshold1, c(1.0), c(0.0));
+ * CollectionProducer conditionB = lessThan(x, threshold2, c(1.0), c(0.0));
+ * CollectionProducer both = and(conditionA, conditionB, c(1.0), c(0.0));
  * // Result: 1.0 where both conditions are true
  * }</pre>
  *
  * <p><strong>Masking with custom values:</strong></p>
  * <pre>{@code
  * // Apply mask only where both conditions are true
- * CollectionProducer<PackedCollection> mask1 = c(1.0, 0.0, 1.0, 1.0);
- * CollectionProducer<PackedCollection> mask2 = c(1.0, 1.0, 0.0, 1.0);
- * CollectionProducer<PackedCollection> data = c(10.0, 20.0, 30.0, 40.0);
+ * CollectionProducer mask1 = c(1.0, 0.0, 1.0, 1.0);
+ * CollectionProducer mask2 = c(1.0, 1.0, 0.0, 1.0);
+ * CollectionProducer data = c(10.0, 20.0, 30.0, 40.0);
  *
- * CollectionProducer<PackedCollection> masked =
+ * CollectionProducer masked =
  *     and(mask1, mask2,
  *         data,     // if both masks active, use data
  *         c(0.0));  // else use 0.0
@@ -108,13 +108,13 @@ import java.util.List;
  * <p><strong>Combining multiple conditions:</strong></p>
  * <pre>{@code
  * // Check if value is in range [min, max]
- * CollectionProducer<PackedCollection> x = c(5.0, 15.0, 25.0);
- * CollectionProducer<PackedCollection> min = c(10.0);
- * CollectionProducer<PackedCollection> max = c(20.0);
+ * CollectionProducer x = c(5.0, 15.0, 25.0);
+ * CollectionProducer min = c(10.0);
+ * CollectionProducer max = c(20.0);
  *
- * CollectionProducer<PackedCollection> aboveMin = greaterThanOrEqual(x, min, c(1.0), c(0.0));
- * CollectionProducer<PackedCollection> belowMax = lessThanOrEqual(x, max, c(1.0), c(0.0));
- * CollectionProducer<PackedCollection> inRange = and(aboveMin, belowMax, c(1.0), c(0.0));
+ * CollectionProducer aboveMin = greaterThanOrEqual(x, min, c(1.0), c(0.0));
+ * CollectionProducer belowMax = lessThanOrEqual(x, max, c(1.0), c(0.0));
+ * CollectionProducer inRange = and(aboveMin, belowMax, c(1.0), c(0.0));
  * // Result: [0.0, 1.0, 0.0]  (only 15.0 is in [10, 20])
  * }</pre>
  *

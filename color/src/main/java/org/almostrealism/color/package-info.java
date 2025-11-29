@@ -60,7 +60,7 @@
  *
  * // Create colors
  * RGB red = new RGB(1.0, 0.0, 0.0);
- * CollectionProducer<PackedCollection> blue = rgb(0.0, 0.0, 1.0);
+ * CollectionProducer blue = rgb(0.0, 0.0, 1.0);
  *
  * // Set up lighting
  * PointLight light = new PointLight(new Vector(5, 5, 5), 1.0, new RGB(1, 1, 1));

@@ -181,9 +181,9 @@ RGB spectralBlue = new RGB(470.0);   // Blue wavelength
 RGBA semiTransparent = new RGBA(1.0, 0.0, 0.0, 0.5);  // 50% transparent red
 
 // Using factory methods
-CollectionProducer&lt;RGB&gt; white = white();
-CollectionProducer&lt;RGB&gt; black = black();
-CollectionProducer&lt;RGB&gt; custom = rgb(0.5, 0.7, 0.2);</code></pre>
+CollectionProducer white = white();
+CollectionProducer black = black();
+CollectionProducer custom = rgb(0.5, 0.7, 0.2);</code></pre>
                 </div>
 
                 <h3>Color Arithmetic</h3>
@@ -297,7 +297,7 @@ RGB colorAtPoint = texture.operate(pointVector);
 import static org.almostrealism.color.RGBFeatures.*;
 
 // Load image as RGB array
-PackedCollection&lt;RGB&gt; image = GraphicsConverter.loadRgb(new File("input.png"));
+PackedCollection image = GraphicsConverter.loadRgb(new File("input.png"));
 
 // Save RGB array as image
 Supplier&lt;Runnable&gt; saveOp = saveRgb("output.png", colorProducer);
@@ -308,7 +308,7 @@ RGB rgb = GraphicsConverter.convertToRGB(awtColor);
 Color awtColor = GraphicsConverter.convertToAWTColor(rgb);
 
 // Load as raw channels
-PackedCollection&lt;?&gt; channels = channels(new File("image.png"));</code></pre>
+PackedCollection channels = channels(new File("image.png"));</code></pre>
                 </div>
             </section>
 
@@ -433,16 +433,16 @@ PackedCollection&lt;?&gt; channels = channels(new File("image.png"));</code></pr
 public class AcceleratedColors {
     public void blendColors() {
         // Create color producers (lazy evaluation)
-        CollectionProducer&lt;RGB&gt; color1 = rgb(1.0, 0.0, 0.0);  // Red
-        CollectionProducer&lt;RGB&gt; color2 = rgb(0.0, 1.0, 0.0);  // Green
+        CollectionProducer color1 = rgb(1.0, 0.0, 0.0);  // Red
+        CollectionProducer color2 = rgb(0.0, 1.0, 0.0);  // Green
 
         // Compose operations (compiled to native/GPU code)
-        CollectionProducer&lt;RGB&gt; blended = color1.multiply(c(0.5))
+        CollectionProducer blended = color1.multiply(c(0.5))
                                                  .add(color2.multiply(c(0.5)));
 
         // Evaluate on hardware
-        Evaluable&lt;PackedCollection&lt;?&gt;&gt; eval = blended.get();
-        PackedCollection&lt;?&gt; result = eval.evaluate();
+        Evaluable&lt;PackedCollection&gt; eval = blended.get();
+        PackedCollection result = eval.evaluate();
 
         // Convert to RGB
         RGB finalColor = new RGB(result, 0);

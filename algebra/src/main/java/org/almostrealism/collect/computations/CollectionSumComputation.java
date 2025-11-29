@@ -53,7 +53,7 @@ import java.util.List;
  *
  * <p><strong>Summing a vector:</strong></p>
  * <pre>{@code
- * CollectionProducer<PackedCollection> vector = c(1.0, 2.0, 3.0, 4.0, 5.0);
+ * CollectionProducer vector = c(1.0, 2.0, 3.0, 4.0, 5.0);
  * CollectionSumComputation<PackedCollection> sum =
  *     new CollectionSumComputation<>(vector);
  *
@@ -63,7 +63,7 @@ import java.util.List;
  *
  * <p><strong>Summing a matrix (all elements):</strong></p>
  * <pre>{@code
- * CollectionProducer<PackedCollection> matrix = c(shape(2, 3),
+ * CollectionProducer matrix = c(shape(2, 3),
  *     1.0, 2.0, 3.0,
  *     4.0, 5.0, 6.0);
  *
@@ -77,8 +77,8 @@ import java.util.List;
  * <p><strong>Using via CollectionFeatures:</strong></p>
  * <pre>{@code
  * // More commonly used through helper methods
- * CollectionProducer<PackedCollection> data = c(10.0, 20.0, 30.0);
- * CollectionProducer<PackedCollection> total = sum(data);
+ * CollectionProducer data = c(10.0, 20.0, 30.0);
+ * CollectionProducer total = sum(data);
  * // Result: [60.0]
  * }</pre>
  *

@@ -62,8 +62,8 @@ import java.util.stream.Stream;
  * <p><strong>Adding two vectors:</strong></p>
  * <pre>{@code
  * TraversalPolicy shape = shape(100); // 100-element vectors
- * CollectionProducer<PackedCollection> a = c(new PackedCollection(shape));
- * CollectionProducer<PackedCollection> b = c(new PackedCollection(shape));
+ * CollectionProducer a = c(new PackedCollection(shape));
+ * CollectionProducer b = c(new PackedCollection(shape));
  *
  * CollectionAddComputation<PackedCollection> add =
  *     new CollectionAddComputation<>(shape, a, b);
@@ -74,7 +74,7 @@ import java.util.stream.Stream;
  * <p><strong>Adding multiple collections:</strong></p>
  * <pre>{@code
  * TraversalPolicy shape = shape(10, 10); // 10x10 matrices
- * CollectionProducer<PackedCollection>[] matrices = new CollectionProducer[5];
+ * CollectionProducer[] matrices = new CollectionProducer[5];
  * // ... initialize matrices ...
  *
  * CollectionAddComputation<PackedCollection> sumAll =

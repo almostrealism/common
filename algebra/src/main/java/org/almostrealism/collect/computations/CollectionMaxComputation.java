@@ -53,7 +53,7 @@ import java.util.List;
  *
  * <p><strong>Finding maximum in a vector:</strong></p>
  * <pre>{@code
- * CollectionProducer<PackedCollection> vector = c(3.0, 7.0, 2.0, 9.0, 5.0);
+ * CollectionProducer vector = c(3.0, 7.0, 2.0, 9.0, 5.0);
  * CollectionMaxComputation<PackedCollection> max =
  *     new CollectionMaxComputation<>(vector);
  *
@@ -63,7 +63,7 @@ import java.util.List;
  *
  * <p><strong>Finding maximum in a matrix (all elements):</strong></p>
  * <pre>{@code
- * CollectionProducer<PackedCollection> matrix = c(shape(2, 3),
+ * CollectionProducer matrix = c(shape(2, 3),
  *     1.0, 8.0, 3.0,
  *     4.0, 2.0, 6.0);
  *
@@ -77,8 +77,8 @@ import java.util.List;
  * <p><strong>Using via CollectionFeatures:</strong></p>
  * <pre>{@code
  * // More commonly used through helper methods
- * CollectionProducer<PackedCollection> data = c(-5.0, 10.0, 3.0);
- * CollectionProducer<PackedCollection> maximum = max(data);
+ * CollectionProducer data = c(-5.0, 10.0, 3.0);
+ * CollectionProducer maximum = max(data);
  * // Result: [10.0]
  * }</pre>
  *

@@ -49,16 +49,16 @@
  * public class MyClass implements VectorFeatures, MatrixFeatures {
  *     public void example() {
  *         // Use factory methods directly
- *         CollectionProducer<PackedCollection> v1 = vector(1.0, 0.0, 0.0);
- *         CollectionProducer<PackedCollection> v2 = vector(0.0, 1.0, 0.0);
+ *         CollectionProducer v1 = vector(1.0, 0.0, 0.0);
+ *         CollectionProducer v2 = vector(0.0, 1.0, 0.0);
  *
  *         // Vector operations
- *         CollectionProducer<PackedCollection> dot = dotProduct(v1, v2);
- *         CollectionProducer<PackedCollection> cross = crossProduct(v1, v2);
+ *         CollectionProducer dot = dotProduct(v1, v2);
+ *         CollectionProducer cross = crossProduct(v1, v2);
  *
  *         // Matrix operations
- *         CollectionProducer<PackedCollection> identity = identity(shape(3, 3));
- *         CollectionProducer<PackedCollection> result = matmul(identity, v1);
+ *         CollectionProducer identity = identity(shape(3, 3));
+ *         CollectionProducer result = matmul(identity, v1);
  *     }
  * }
  * }</pre>
@@ -101,12 +101,12 @@
  * </p>
  * <pre>{@code
  * // Create a computation graph
- * CollectionProducer<PackedCollection> input = v(Vector.class);
- * CollectionProducer<PackedCollection> weights = v(PackedCollection.class);
- * CollectionProducer<PackedCollection> output = matmul(weights, input);
+ * CollectionProducer input = v(Vector.class);
+ * CollectionProducer weights = v(PackedCollection.class);
+ * CollectionProducer output = matmul(weights, input);
  *
  * // Compute gradient with respect to weights
- * CollectionProducer<PackedCollection> gradient = output.delta(weights);
+ * CollectionProducer gradient = output.delta(weights);
  * }</pre>
  *
  * <h2>Integration with Other Modules</h2>
@@ -129,7 +129,7 @@
  * </p>
  * <pre>{@code
  * // Broadcasting (3, 1) with (1, 4) -> (3, 4)
- * CollectionProducer<PackedCollection> result = broadcast(
+ * CollectionProducer result = broadcast(
  *     shape(3, 4),
  *     vectorA,  // shape (3, 1)
  *     vectorB   // shape (1, 4)
@@ -163,37 +163,37 @@
  * <h3>Vector Operations</h3>
  * <pre>{@code
  * // Vector creation and operations
- * CollectionProducer<PackedCollection> v1 = vector(1.0, 2.0, 3.0);
- * CollectionProducer<PackedCollection> v2 = vector(4.0, 5.0, 6.0);
+ * CollectionProducer v1 = vector(1.0, 2.0, 3.0);
+ * CollectionProducer v2 = vector(4.0, 5.0, 6.0);
  *
  * // Component extraction
  * CollectionProducer<?> xComp = x(v1);
  *
  * // Vector arithmetic
- * CollectionProducer<PackedCollection> dot = dotProduct(v1, v2);
- * CollectionProducer<PackedCollection> cross = crossProduct(v1, v2);
- * CollectionProducer<PackedCollection> normalized = normalize(v1);
+ * CollectionProducer dot = dotProduct(v1, v2);
+ * CollectionProducer cross = crossProduct(v1, v2);
+ * CollectionProducer normalized = normalize(v1);
  * }</pre>
  *
  * <h3>Matrix Operations</h3>
  * <pre>{@code
  * // Matrix creation
- * CollectionProducer<PackedCollection> identity = identity(shape(4, 4));
- * CollectionProducer<PackedCollection> diagonal = diagonal(vector(1, 2, 3, 4));
- * CollectionProducer<PackedCollection> scalarMat = scalarMatrix(shape(4, 4), c(5.0));
+ * CollectionProducer identity = identity(shape(4, 4));
+ * CollectionProducer diagonal = diagonal(vector(1, 2, 3, 4));
+ * CollectionProducer scalarMat = scalarMatrix(shape(4, 4), c(5.0));
  *
  * // Matrix multiplication
- * CollectionProducer<PackedCollection> matA = ...;
- * CollectionProducer<PackedCollection> vecB = ...;
- * CollectionProducer<PackedCollection> result = matmul(matA, vecB);
+ * CollectionProducer matA = ...;
+ * CollectionProducer vecB = ...;
+ * CollectionProducer result = matmul(matA, vecB);
  * }</pre>
  *
  * <h3>Complex Numbers</h3>
  * <pre>{@code
  * // Complex number operations
- * CollectionProducer<Pair> c1 = pair(3.0, 4.0);  // 3 + 4i
- * CollectionProducer<Pair> c2 = pair(1.0, 2.0);  // 1 + 2i
- * CollectionProducer<Pair> product = multiplyComplex(c1, c2);  // (3+4i)(1+2i) = -5+10i
+ * CollectionProducer c1 = pair(3.0, 4.0);  // 3 + 4i
+ * CollectionProducer c2 = pair(1.0, 2.0);  // 1 + 2i
+ * CollectionProducer product = multiplyComplex(c1, c2);  // (3+4i)(1+2i) = -5+10i
  * }</pre>
  *
  * <h3>Weighted Sum for Attention</h3>

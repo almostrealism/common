@@ -54,7 +54,7 @@ import java.util.stream.Stream;
  * input.fill(Math::random);
  * 
  * // Extract a 3x3 subset starting at position (2, 3)
- * CollectionProducer<PackedCollection> producer = subset(shape(3, 3), p(input), 2, 3);
+ * CollectionProducer producer = subset(shape(3, 3), p(input), 2, 3);
  * PackedCollection result = producer.get().evaluate();
  * 
  * // Result is a 3x3 collection containing values from input[2:5, 3:6]
@@ -66,7 +66,7 @@ import java.util.stream.Stream;
  * volume.fill(Math::random);
  * 
  * // Extract a 10x10x5 cube starting at (20, 30, 10)
- * CollectionProducer<PackedCollection> cubeProducer =
+ * CollectionProducer cubeProducer =
  *     subset(shape(10, 10, 5), p(volume), 20, 30, 10);
  * PackedCollection cube = cubeProducer.get().evaluate();
  * }</pre>
@@ -82,7 +82,7 @@ import java.util.stream.Stream;
  * position.set(1, 25.0); // y-offset
  * 
  * // Extract 5x5 subset at dynamic position
- * CollectionProducer<PackedCollection> dynamicProducer =
+ * CollectionProducer dynamicProducer =
  *     subset(shape(5, 5), p(data), p(position));
  * PackedCollection window = dynamicProducer.get().evaluate();
  * }</pre>
@@ -96,7 +96,7 @@ import java.util.stream.Stream;
  * // Extract patches for convolution
  * for (int y = 0; y < 254; y++) {
  *     for (int x = 0; x < 254; x++) {
- *         CollectionProducer<PackedCollection> patch =
+ *         CollectionProducer patch =
  *             subset(shape(3, 3), p(image), x, y);
  *         // Apply kernel to patch...
  *     }

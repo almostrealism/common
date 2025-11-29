@@ -66,17 +66,17 @@ import java.util.stream.Collectors;
  * <h2>Chain Rule Example</h2>
  * <pre>{@code
  * // Compute gradient of h(x) = ReLU(Wx + b) with respect to W
- * CollectionProducer<PackedCollection> W = v(weights);
- * CollectionProducer<PackedCollection> x = v(input);
- * CollectionProducer<PackedCollection> b = v(bias);
+ * CollectionProducer W = v(weights);
+ * CollectionProducer x = v(input);
+ * CollectionProducer b = v(bias);
  *
  * // Forward pass: linear = Wx + b, h = ReLU(linear)
- * CollectionProducer<PackedCollection> linear = matmul(W, x).add(b);
- * CollectionProducer<PackedCollection> h = relu(linear);
+ * CollectionProducer linear = matmul(W, x).add(b);
+ * CollectionProducer h = relu(linear);
  *
  * // Gradient computation using chain rule
  * // dh/dW = dReLU/dlinear . dlinear/dW
- * CollectionProducer<PackedCollection> gradient = h.delta(W);
+ * CollectionProducer gradient = h.delta(W);
  * }</pre>
  *
  * <h2>Isolated Delta Computation</h2>
@@ -91,7 +91,7 @@ import java.util.stream.Collectors;
  * ComputationBase<T, T, Evaluable<T>> f = computation(g, h);
  *
  * // Create isolated graph with stub for g
- * CollectionProducer<T> dfdg = generateIsolatedDelta(f, g);
+ * CollectionProducer dfdg = generateIsolatedDelta(f, g);
  * // dfdg now represents df/dg, treating h as constant
  * }</pre>
  *

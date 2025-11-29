@@ -40,7 +40,7 @@ import java.util.List;
  * <h2>Example</h2>
  * <pre>{@code
  * // Create diagonal matrix from vector [1, 2, 3]
- * CollectionProducer<PackedCollection> diagonal = c(1.0, 2.0, 3.0);
+ * CollectionProducer diagonal = c(1.0, 2.0, 3.0);
  * DiagonalMatrixComputation<PackedCollection> comp =
  *     new DiagonalMatrixComputation<>(shape(3, 3).traverse(1), diagonal);
  *

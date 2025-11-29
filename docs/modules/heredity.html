@@ -237,8 +237,8 @@ ScaleFactor half = new ScaleFactor(0.5);
 ScaleFactor negative = new ScaleFactor(-1.0);
 
 // Apply to a producer
-Producer&lt;PackedCollection&lt;?&gt;&gt; input = ...;
-Producer&lt;PackedCollection&lt;?&gt;&gt; scaled = half.getResultant(input);
+Producer&lt;PackedCollection&gt; input = ...;
+Producer&lt;PackedCollection&gt; scaled = half.getResultant(input);
 
 // Modify scale value dynamically
 half.setScaleValue(0.75);
@@ -256,7 +256,7 @@ Factory&lt;Strategy&gt; balanced = () -> new BalancedStrategy();
 
 // Create gene with probabilities (70%, 20%, 10%)
 HeredityFeatures features = HeredityFeatures.getInstance();
-Gene&lt;PackedCollection&lt;?&gt;&gt; probabilities = features.g(0.7, 0.2, 0.1);
+Gene&lt;PackedCollection&gt; probabilities = features.g(0.7, 0.2, 0.1);
 
 // Create probabilistic factory
 List&lt;Factory&lt;Strategy&gt;&gt; strategies = Arrays.asList(aggressive, defensive, balanced);
@@ -321,19 +321,19 @@ public class SimpleGeneExample {
         HeredityFeatures features = HeredityFeatures.getInstance();
 
         // Create genes from scalar values
-        Gene&lt;PackedCollection&lt;?&gt;&gt; gene1 = features.g(0.1, 0.5, 0.9);
-        Gene&lt;PackedCollection&lt;?&gt;&gt; gene2 = features.g(-1.0, 0.0, 1.0);
-        Gene&lt;PackedCollection&lt;?&gt;&gt; gene3 = features.g(0.3, 0.7);
+        Gene&lt;PackedCollection&gt; gene1 = features.g(0.1, 0.5, 0.9);
+        Gene&lt;PackedCollection&gt; gene2 = features.g(-1.0, 0.0, 1.0);
+        Gene&lt;PackedCollection&gt; gene3 = features.g(0.3, 0.7);
 
         // Create chromosome from genes
-        Chromosome&lt;PackedCollection&lt;?&gt;&gt; chromosome = features.c(gene1, gene2, gene3);
+        Chromosome&lt;PackedCollection&gt; chromosome = features.c(gene1, gene2, gene3);
 
         // Access gene
-        Gene&lt;PackedCollection&lt;?&gt;&gt; firstGene = chromosome.valueAt(0);
+        Gene&lt;PackedCollection&gt; firstGene = chromosome.valueAt(0);
         int factorCount = firstGene.length();  // 3
 
         // Access factor directly
-        Factor&lt;PackedCollection&lt;?&gt;&gt; factor = chromosome.valueAt(1, 0);  // Gene 1, Factor 0
+        Factor&lt;PackedCollection&gt; factor = chromosome.valueAt(1, 0);  // Gene 1, Factor 0
 
         // Get chromosome signature
         String signature = chromosome.signature();
@@ -361,7 +361,7 @@ public class NeuralEvolution {
         genome.refreshValues();
 
         // Access genetic information
-        Factor&lt;PackedCollection&lt;?&gt;&gt; factor = genome.valueAt(0, 0, 0);
+        Factor&lt;PackedCollection&gt; factor = genome.valueAt(0, 0, 0);
 
         // Create offspring with 10% mutation rate
         ProjectedGenome offspring = genome.variation(
@@ -380,18 +380,18 @@ public class NeuralEvolution {
                 <pre><code class="language-java">import org.almostrealism.heredity.*;
 import org.almostrealism.collect.PackedCollection;
 
-public class CustomBreeder implements ChromosomeBreeder&lt;PackedCollection&lt;?&gt;&gt; {
+public class CustomBreeder implements ChromosomeBreeder&lt;PackedCollection&gt; {
 
     @Override
-    public Chromosome&lt;PackedCollection&lt;?&gt;&gt; combine(
-            Chromosome&lt;PackedCollection&lt;?&gt;&gt; parent1,
-            Chromosome&lt;PackedCollection&lt;?&gt;&gt; parent2) {
+    public Chromosome&lt;PackedCollection&gt; combine(
+            Chromosome&lt;PackedCollection&gt; parent1,
+            Chromosome&lt;PackedCollection&gt; parent2) {
 
         HeredityFeatures features = HeredityFeatures.getInstance();
 
         // Single-point crossover
         int crossoverPoint = parent1.length() / 2;
-        Gene&lt;PackedCollection&lt;?&gt;&gt;[] childGenes = new Gene[parent1.length()];
+        Gene&lt;PackedCollection&gt;[] childGenes = new Gene[parent1.length()];
 
         for (int i = 0; i &lt; parent1.length(); i++) {
             if (i &lt; crossoverPoint) {
@@ -449,7 +449,7 @@ public class EvolutionaryOptimization {
         };
 
         // Define breeding strategy
-        GenomeBreeder&lt;PackedCollection&lt;?&gt;&gt; breeder = (g1, g2) -> {
+        GenomeBreeder&lt;PackedCollection&gt; breeder = (g1, g2) -> {
             // Custom crossover logic
             return combineGenomes(g1, g2);
         };

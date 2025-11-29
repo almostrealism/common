@@ -551,7 +551,7 @@ public class MaterialEvolution implements HeredityFeatures {
 
     public Alloy createEvolvableAlloy(List&lt;Atomic&gt; components) {
         // Create a gene-controlled composition
-        Gene&lt;PackedCollection&lt;?&gt;&gt; composition = g(components.size());
+        Gene&lt;PackedCollection&gt; composition = g(components.size());
 
         // Create alloy with evolvable composition
         return new Alloy(components, composition);
