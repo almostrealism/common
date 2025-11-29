@@ -15,19 +15,18 @@
  */
 
 package org.almostrealism.render;
+
+import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.geometry.Ray;
+import org.almostrealism.raytrace.Engine;
+import org.almostrealism.raytrace.RayIntersectionEngine;
 
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
-
-import org.almostrealism.raytrace.Engine;
-import org.almostrealism.color.RGB;
-import org.almostrealism.geometry.Ray;
-import io.almostrealism.relation.Producer;
-import org.almostrealism.raytrace.RayIntersectionEngine;
 
 /**
  * {@link RayTracer} is a thin wrapper around an {@link Engine} that optionally provides

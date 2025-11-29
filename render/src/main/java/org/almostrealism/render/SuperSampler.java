@@ -16,12 +16,12 @@
 
 package org.almostrealism.render;
 
+import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.color.RGB;
 import org.almostrealism.hardware.MemoryBank;
-import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.Producer;
 
 import java.util.stream.IntStream;
 

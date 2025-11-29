@@ -16,10 +16,10 @@
 
 package org.almostrealism.color;
 
+import io.almostrealism.uml.ModelEntity;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.geometry.BoundingSolid;
 import org.almostrealism.geometry.Intersectable;
-import io.almostrealism.uml.ModelEntity;
 
 /**
  * The {@link ShadableSurface} interface is implemented by any 3d object which may be

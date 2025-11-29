@@ -1,13 +1,11 @@
 package org.almostrealism.ml.qwen3;
 
-import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.OutputFeatures;
 import org.almostrealism.ml.AttentionFeatures;
 import org.almostrealism.ml.StateDictionary;
-import org.almostrealism.model.Block;
 import org.almostrealism.model.Model;
 import org.junit.Test;
 
@@ -17,8 +15,6 @@ import java.nio.ByteOrder;
 import java.nio.channels.FileChannel;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
-
-import static org.junit.Assert.assertTrue;
 
 /**
  * Tests problematic layers (2, 22, 23) in complete isolation to determine if the

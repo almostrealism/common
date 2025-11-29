@@ -16,9 +16,9 @@
 
 package org.almostrealism.layers;
 
+import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.lifecycle.Destroyable;
 import org.almostrealism.collect.CollectionFeatures;
-import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.io.Describable;
 
 import java.util.Optional;

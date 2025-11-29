@@ -17,7 +17,6 @@
 package org.almostrealism.color;
 
 import io.almostrealism.relation.Producer;
-import io.almostrealism.relation.Evaluable;
 import org.almostrealism.collect.PackedCollection;
 
 /**

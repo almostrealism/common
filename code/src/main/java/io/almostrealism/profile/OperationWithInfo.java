@@ -16,8 +16,8 @@
 
 package io.almostrealism.profile;
 
-import io.almostrealism.relation.Operation;
 import io.almostrealism.compute.Process;
+import io.almostrealism.relation.Operation;
 
 import java.util.Collection;
 import java.util.List;

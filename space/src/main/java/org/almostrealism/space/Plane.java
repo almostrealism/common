@@ -16,25 +16,25 @@
 
 package org.almostrealism.space;
 
-import io.almostrealism.kernel.KernelStructureContext;
-import io.almostrealism.compute.Process;
-import io.almostrealism.scope.Scope;
-import org.almostrealism.algebra.*;
-import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.color.RGB;
-import org.almostrealism.geometry.Ray;
-import org.almostrealism.geometry.RayFeatures;
-import org.almostrealism.geometry.TransformMatrix;
-import org.almostrealism.geometry.ContinuousField;
-import org.almostrealism.geometry.ShadableIntersection;
 import io.almostrealism.code.Constant;
 import io.almostrealism.code.Operator;
+import io.almostrealism.compute.Process;
+import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
+import io.almostrealism.scope.Scope;
+import org.almostrealism.algebra.ParticleGroup;
+import org.almostrealism.algebra.Vector;
+import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.color.RGB;
+import org.almostrealism.geometry.ContinuousField;
+import org.almostrealism.geometry.Ray;
+import org.almostrealism.geometry.RayFeatures;
+import org.almostrealism.geometry.ShadableIntersection;
+import org.almostrealism.geometry.TransformMatrix;
 
 import java.util.Collection;
 import java.util.Collections;
-import java.util.function.Supplier;
 
 /** A {@link Plane} represents an plane in 3d space. */
 public class Plane extends AbstractSurface implements ParticleGroup, RayFeatures {
@@ -124,7 +124,7 @@ public class Plane extends AbstractSurface implements ParticleGroup, RayFeatures
 			else
 				n = null;
 
-			normal = (Producer) value(n); // This causes us to avoid infinite regress
+			normal = value(n); // This causes us to avoid infinite regress
 
 			TransformMatrix m = getTransform(true);
 

@@ -16,23 +16,22 @@
 
 package org.almostrealism.raytrace;
 
+import io.almostrealism.code.CollectionUtils;
 import io.almostrealism.relation.Evaluable;
-import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.geometry.Intersectable;
-import org.almostrealism.geometry.Intersection;
+import io.almostrealism.relation.Producer;
+import io.almostrealism.relation.ProducerWithRank;
 import org.almostrealism.algebra.Pair;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.color.Light;
 import org.almostrealism.color.RGB;
 import org.almostrealism.color.ShaderContext;
+import org.almostrealism.color.computations.RankedChoiceEvaluableForRGB;
 import org.almostrealism.geometry.Curve;
-import org.almostrealism.geometry.Ray;
+import org.almostrealism.geometry.DimensionAware;
+import org.almostrealism.geometry.Intersectable;
+import org.almostrealism.geometry.Intersection;
 import org.almostrealism.hardware.DestinationEvaluable;
 import org.almostrealism.hardware.MemoryBank;
-import io.almostrealism.relation.Producer;
-import io.almostrealism.code.CollectionUtils;
-import org.almostrealism.geometry.DimensionAware;
-import io.almostrealism.relation.ProducerWithRank;
-import org.almostrealism.color.computations.RankedChoiceEvaluableForRGB;
 
 import java.util.ArrayList;
 import java.util.Collection;

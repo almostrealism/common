@@ -16,8 +16,8 @@
 
 package org.almostrealism;
 
-import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.ComplexNumber;
@@ -33,7 +33,7 @@ import org.junit.Test;
 import java.util.stream.IntStream;
 
 public class MyNativeEnabledApplication implements CodeFeatures {
-	public static void main(String args[]) {
+	public static void main(String[] args) {
 		new MyNativeEnabledApplication().performMath();
 	}
 

@@ -27,7 +27,6 @@ import org.almostrealism.hardware.OperationList;
 import org.almostrealism.heredity.Cellular;
 import org.almostrealism.heredity.CellularTemporalFactor;
 import org.almostrealism.io.SystemUtils;
-import org.almostrealism.layers.LayerFeatures;
 
 import java.util.Optional;
 import java.util.function.BiFunction;

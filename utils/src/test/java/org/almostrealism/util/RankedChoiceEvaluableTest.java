@@ -18,12 +18,11 @@ package org.almostrealism.util;
 
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.ProducerWithRank;
+import org.almostrealism.algebra.Pair;
+import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.computations.ProducerWithRankAdapter;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.geometry.Intersection;
-import org.almostrealism.algebra.Pair;
-import org.almostrealism.algebra.Vector;
 import org.almostrealism.geometry.computations.RankedChoiceEvaluable;
 import org.almostrealism.geometry.computations.RankedChoiceEvaluableForVector;
 import org.almostrealism.hardware.Hardware;
@@ -33,7 +32,7 @@ import org.junit.Test;
 import java.util.stream.IntStream;
 
 public class RankedChoiceEvaluableTest implements TestFeatures {
-	private double gap = 10 * Hardware.getLocalHardware().getPrecision().epsilon(true);
+	private final double gap = 10 * Hardware.getLocalHardware().getPrecision().epsilon(true);
 
 	@Test
 	public void highestRank() {

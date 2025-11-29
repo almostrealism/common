@@ -18,7 +18,6 @@ package org.almostrealism.collect;
 
 import io.almostrealism.collect.CollectionProducerBase;
 import io.almostrealism.collect.TraversalPolicy;
-import io.almostrealism.relation.Producer;
 import org.almostrealism.hardware.computations.DelegatedProducer;
 
 /**
@@ -59,7 +58,7 @@ import org.almostrealism.hardware.computations.DelegatedProducer;
 public class DelegatedCollectionProducer<T extends PackedCollection>
 						extends DelegatedProducer<PackedCollection>
 						implements CollectionProducerBase<PackedCollection, CollectionProducer> {
-	private boolean fixedCount;
+	private final boolean fixedCount;
 
 	/**
 	 * Creates a delegated collection producer with direct delegation and fixed count.
@@ -88,7 +87,7 @@ public class DelegatedCollectionProducer<T extends PackedCollection>
 	 * @param fixedCount  true to delegate isFixedCount(), false to always return false
 	 */
 	public DelegatedCollectionProducer(CollectionProducer op, boolean directDelegate, boolean fixedCount) {
-		super((Producer) op, directDelegate);
+		super(op, directDelegate);
 		this.fixedCount = fixedCount;
 	}
 
@@ -141,7 +140,7 @@ public class DelegatedCollectionProducer<T extends PackedCollection>
 	 */
 	@Override
 	public boolean isFixedCount() {
-		return fixedCount ? super.isFixedCount() : false;
+		return fixedCount && super.isFixedCount();
 	}
 
 	/**

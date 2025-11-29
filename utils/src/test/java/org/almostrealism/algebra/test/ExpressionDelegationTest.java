@@ -17,7 +17,6 @@
 package org.almostrealism.algebra.test;
 
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.AcceleratedComputationOperation;
 import org.almostrealism.hardware.OperationList;
@@ -38,7 +37,7 @@ public class ExpressionDelegationTest implements TestFeatures {
 		verboseLog(() -> {
 			PackedCollection a = pack(1.0);
 			PackedCollection b = pack(2.0);
-			Evaluable<PackedCollection> ev = r((Producer) temporal(p(a), p(b))).get();
+			Evaluable<PackedCollection> ev = r(temporal(p(a), p(b))).get();
 
 			PackedCollection s = ev.evaluate();
 			System.out.println(s);

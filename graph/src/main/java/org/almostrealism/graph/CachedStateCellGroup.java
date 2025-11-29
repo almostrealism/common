@@ -16,8 +16,8 @@
 
 package org.almostrealism.graph;
 
-import org.almostrealism.time.Temporal;
 import org.almostrealism.hardware.OperationList;
+import org.almostrealism.time.Temporal;
 
 import java.util.ArrayList;
 import java.util.function.Supplier;

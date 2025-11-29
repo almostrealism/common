@@ -17,15 +17,15 @@
 package org.almostrealism.graph.computations;
 
 import io.almostrealism.code.ExpressionFeatures;
-import io.almostrealism.expression.Expression;
-import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.compute.ParallelProcess;
 import io.almostrealism.compute.Process;
-import io.almostrealism.scope.HybridScope;
-import io.almostrealism.code.ScopeInputManager;
+import io.almostrealism.expression.Expression;
+import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
 import io.almostrealism.scope.ArrayVariable;
+import io.almostrealism.scope.HybridScope;
 import io.almostrealism.scope.Scope;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.collect.PackedCollection;

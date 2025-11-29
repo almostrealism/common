@@ -19,24 +19,24 @@ package org.almostrealism.collect.computations;
 import io.almostrealism.code.ComputableBase;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.ScopeLifecycle;
+import io.almostrealism.collect.CollectionExpression;
+import io.almostrealism.collect.CollectionVariable;
 import io.almostrealism.collect.DefaultCollectionExpression;
+import io.almostrealism.collect.Shape;
+import io.almostrealism.collect.TraversableExpression;
+import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.compute.Process;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.kernel.KernelStructureContext;
-import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
-import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.scope.Scope;
 import org.almostrealism.algebra.AlgebraFeatures;
 import org.almostrealism.algebra.MatrixFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerComputation;
-import io.almostrealism.collect.CollectionVariable;
 import org.almostrealism.collect.PackedCollection;
-import io.almostrealism.collect.Shape;
-import io.almostrealism.collect.TraversableExpression;
-import io.almostrealism.collect.TraversalPolicy;
 
 import java.util.List;
 import java.util.function.Function;
@@ -50,9 +50,9 @@ public class PackedCollectionMap
 	public static boolean enableAtomicKernel = false;
 	public static boolean enableChainDelta = false;
 
-	private Function<CollectionProducerComputation, CollectionProducer> mapper;
+	private final Function<CollectionProducerComputation, CollectionProducer> mapper;
 	private TraversableExpression<Double> mapped;
-	private TraversalPolicy inputShape;
+	private final TraversalPolicy inputShape;
 
 	private boolean ignoreTraversalAxis;
 
@@ -61,7 +61,7 @@ public class PackedCollectionMap
 	}
 
 	public PackedCollectionMap(TraversalPolicy shape, Producer<?> collection, Function<CollectionProducerComputation, CollectionProducer> mapper) {
-		super("map", shape, (Producer) collection);
+		super("map", shape, (Producer<PackedCollection>) collection);
 		this.inputShape = shape(collection);
 		this.mapper = mapper;
 
@@ -117,7 +117,7 @@ public class PackedCollectionMap
 		super.prepareScope(manager, context);
 
 		ArrayVariable arg = getArgumentForInput(getInputs().get(1));
-		if (arg instanceof CollectionVariable == false) {
+		if (!(arg instanceof CollectionVariable)) {
 			throw new IllegalArgumentException("Map input must be a collection");
 		}
 
@@ -174,7 +174,7 @@ public class PackedCollectionMap
 		if (!enableChainDelta || !(AlgebraFeatures.deepMatch(getInputs().get(1), target))) {
 			return TraversableDeltaComputation.create("delta", getShape(), shape(target),
 					args -> CollectionExpression.create(getShape(), idx -> args[1].getValueAt(idx)), target,
-					(Producer) this).addDependentLifecycle(this);
+					this).addDependentLifecycle(this);
 		}
 
 		TraversalPolicy outShape = getShape();
@@ -192,7 +192,7 @@ public class PackedCollectionMap
 
 		TraversableDeltaComputation deltaOut = TraversableDeltaComputation.create("delta", shape(outSize), shape(inSize),
 				args -> CollectionExpression.create(getShape(), idx -> args[1].getValueAt(idx)),
-				stub, (Producer) new PackedCollectionMap(getShape(), stub, mapper));
+				stub, new PackedCollectionMap(getShape(), stub, mapper));
 		Producer deltaIn = ((CollectionProducer) getInputs().get(1))
 							.delta(target).reshape(shape(inSize, targetSize));
 		if (deltaIn instanceof ScopeLifecycle) deltaOut.addDependentLifecycle((ScopeLifecycle) deltaIn);
@@ -201,7 +201,7 @@ public class PackedCollectionMap
 
 	@Override
 	public PackedCollectionMap generate(List<Process<?, ?>> children) {
-		return new PackedCollectionMap(getShape(), (Producer) children.get(1), mapper);
+		return new PackedCollectionMap(getShape(), (Producer<PackedCollection>) children.get(1), mapper);
 	}
 
 	@Override

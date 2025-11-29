@@ -17,20 +17,20 @@
 package org.almostrealism.time.computations;
 
 import io.almostrealism.code.ExpressionAssignment;
-import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.Process;
-import io.almostrealism.scope.HybridScope;
 import io.almostrealism.expression.DoubleConstant;
+import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.expression.StaticReference;
+import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
+import io.almostrealism.scope.HybridScope;
 import io.almostrealism.scope.Scope;
-import io.almostrealism.expression.Expression;
 import org.almostrealism.collect.CollectionProducerParallelProcess;
 import org.almostrealism.collect.PackedCollection;
-import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.computations.CollectionProducerComputationBase;
-import io.almostrealism.relation.Producer;
 import org.almostrealism.time.AcceleratedTimeSeries;
 import org.almostrealism.time.CursorPair;
 

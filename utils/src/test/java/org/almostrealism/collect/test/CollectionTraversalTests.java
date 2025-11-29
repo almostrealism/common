@@ -151,7 +151,7 @@ public class CollectionTraversalTests implements TestFeatures {
 
 		PackedCollection strided = root.range(policy);
 
-		double values[] = strided.doubleStream().toArray();
+		double[] values = strided.doubleStream().toArray();
 		int idx = 0;
 
 		for (int i = 0; i < m; i++) {

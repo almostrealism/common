@@ -17,11 +17,11 @@
 package org.almostrealism.collect.computations.test;
 
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.compute.ParallelProcess;
+import io.almostrealism.compute.Process;
 import io.almostrealism.profile.OperationProfileNode;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Factor;
-import io.almostrealism.compute.ParallelProcess;
-import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
@@ -101,7 +101,7 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 		//    = w
 		Evaluable<PackedCollection> dy = c.delta(x).get();
 		PackedCollection dout = dy.evaluate(v);
-		double d[] = dout.toArray(0, count * dim * dim);
+		double[] d = dout.toArray(0, count * dim * dim);
 		System.out.println(Arrays.toString(d));
 
 		for (int i = 0; i < count; i++) {
@@ -134,7 +134,7 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 		// y = f(x)
 		Evaluable<PackedCollection> y = c.get();
 		PackedCollection out = y.evaluate(v);
-		double l[] = out.toArray(0, count * dim);
+		double[] l = out.toArray(0, count * dim);
 		System.out.println(Arrays.toString(l));
 		assertEquals(1.0, l[0]);
 		assertEquals(-2.0, l[1]);
@@ -143,7 +143,7 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 		//    = w
 		Evaluable<PackedCollection> dy = c.delta(x).get();
 		PackedCollection dout = dy.evaluate(v);
-		double d[] = dout.toArray(0, count * dim * dim);
+		double[] d = dout.toArray(0, count * dim * dim);
 		System.out.println(Arrays.toString(d));
 
 		for (int i = 0; i < count; i++) {

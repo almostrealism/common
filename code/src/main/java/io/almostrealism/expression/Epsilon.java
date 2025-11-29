@@ -20,7 +20,6 @@ import io.almostrealism.code.ExpressionAssignment;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
 
-import java.util.OptionalInt;
 import java.util.OptionalLong;
 
 public class Epsilon extends StaticReference<Double> {

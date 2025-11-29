@@ -19,8 +19,6 @@ package org.almostrealism.hardware;
 import io.almostrealism.code.Computation;
 import io.almostrealism.relation.Evaluable;
 
-import java.util.Optional;
-
 /**
  * Feature interface providing convenient methods for compiling {@link Computation} instances on hardware accelerators.
  *

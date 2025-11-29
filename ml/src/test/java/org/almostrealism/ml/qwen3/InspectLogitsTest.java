@@ -6,11 +6,6 @@ import org.almostrealism.ml.StateDictionary;
 import org.almostrealism.model.CompiledModel;
 import org.junit.Test;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Comparator;
-import java.util.List;
-
 /**
  * Inspect logits values to understand why model predicts token 198 instead of 271.
  */

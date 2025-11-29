@@ -16,11 +16,11 @@
 
 package org.almostrealism.hardware;
 
+import io.almostrealism.code.Computation;
 import io.almostrealism.code.ComputeContext;
+import io.almostrealism.code.ProducerComputation;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.scope.ArrayVariable;
-import io.almostrealism.code.Computation;
-import io.almostrealism.code.ProducerComputation;
 import io.almostrealism.streams.StreamingEvaluable;
 import io.almostrealism.uml.Multiple;
 import org.almostrealism.hardware.instructions.ComputableInstructionSetManager;

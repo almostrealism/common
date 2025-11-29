@@ -20,10 +20,10 @@ import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.collect.CollectionVariable;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
-import io.almostrealism.expression.Expression;
-import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.compute.Process;
 import io.almostrealism.compute.ProcessContext;
+import io.almostrealism.expression.Expression;
+import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
 
@@ -135,7 +135,7 @@ public class TraversableRepeatedProducerComputation
 	 * uses {@link TraversableExpression}s to provide more flexible access patterns
 	 * and better integration with traversable computation graphs.</p>
 	 */
-	private BiFunction<TraversableExpression[], Expression, TraversableExpression<Double>> expression;
+	private final BiFunction<TraversableExpression[], Expression, TraversableExpression<Double>> expression;
 
 	/**
 	 * Constructs a new TraversableRepeatedProducerComputation with the specified
@@ -261,7 +261,7 @@ public class TraversableRepeatedProducerComputation
 	 */
 	@Override
 	public Expression<Double> getValueAt(Expression index) {
-		TraversableExpression args[] = getTraversableArguments(index);
+		TraversableExpression[] args = getTraversableArguments(index);
 
 		Expression value = initial.apply(args, e(0));
 

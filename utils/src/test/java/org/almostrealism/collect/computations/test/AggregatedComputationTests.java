@@ -69,9 +69,9 @@ public class AggregatedComputationTests implements TestFeatures {
 				Process.optimized(sum).get().evaluate() : sum.evaluate();
 		log("NaN Count = " + out.count(Double::isNaN));
 
-		double data[] = out.toArray();
+		double[] data = out.toArray();
 
-		int nanIndices[] = IntStream.range(0, data.length)
+		int[] nanIndices = IntStream.range(0, data.length)
 						.filter(i -> Double.isNaN(data[i]))
 								.toArray();
 		log(Arrays.toString(nanIndices));

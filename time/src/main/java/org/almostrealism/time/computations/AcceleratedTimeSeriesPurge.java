@@ -17,17 +17,17 @@
 package org.almostrealism.time.computations;
 
 import io.almostrealism.code.Precision;
-import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.compute.ParallelProcess;
 import io.almostrealism.compute.Process;
-import io.almostrealism.scope.HybridScope;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.StaticReference;
+import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
+import io.almostrealism.scope.HybridScope;
 import io.almostrealism.scope.Scope;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.OperationComputationAdapter;
-import io.almostrealism.relation.Producer;
 import org.almostrealism.time.AcceleratedTimeSeries;
 import org.almostrealism.time.CursorPair;
 

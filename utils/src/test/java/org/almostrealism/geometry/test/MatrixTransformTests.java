@@ -16,11 +16,10 @@
 
 package org.almostrealism.geometry.test;
 
-import org.almostrealism.collect.CollectionProducer;
-import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.geometry.TransformMatrix;
 import org.almostrealism.algebra.Vector;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.geometry.Ray;
+import org.almostrealism.geometry.TransformMatrix;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
 

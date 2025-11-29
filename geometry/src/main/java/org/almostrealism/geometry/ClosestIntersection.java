@@ -16,14 +16,12 @@
 
 package org.almostrealism.geometry;
 
-import org.almostrealism.algebra.Vector;
-import org.almostrealism.collect.PackedCollection;
-import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Producer;
+import org.almostrealism.collect.PackedCollection;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.stream.Stream;
 
 /**
  * Finds the closest intersection point among multiple surfaces for a given ray.
@@ -44,7 +42,7 @@ import java.util.stream.Stream;
  * @see Intersectable
  * @see ContinuousField
  */
-public class ClosestIntersection extends ArrayList<Producer<Ray>> implements ContinuousField {
+public class ClosestIntersection extends ArrayList<Producer<PackedCollection>> implements ContinuousField {
 	private Producer<Ray> r;
 	private List<ContinuousField> s;
 

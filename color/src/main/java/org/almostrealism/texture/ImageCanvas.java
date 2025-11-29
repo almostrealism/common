@@ -16,22 +16,19 @@
 
 package org.almostrealism.texture;
 
-import java.awt.Color;
-import java.awt.Graphics;
-import java.awt.Image;
+import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Provider;
+import org.almostrealism.color.RGB;
+
+import javax.imageio.ImageIO;
+import javax.swing.*;
+import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.ObjectOutputStream;
 import java.io.OutputStream;
-
-import javax.imageio.ImageIO;
-import javax.swing.JPanel;
-
-import org.almostrealism.color.RGB;
-import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.Provider;
 
 /**
  * An {@link ImageCanvas} object stores image data and paints the parent
@@ -40,11 +37,12 @@ import io.almostrealism.relation.Provider;
  * @author  Michael Murray
  */
 public class ImageCanvas extends JPanel {
-  private int screenX, screenY;
+  private final int screenX;
+	private final int screenY;
   private double xScale, yScale;
   private double xOff, yOff;
   
-  private RGB image[][];
+  private RGB[][] image;
   private RGB color;
   private int next;
   
@@ -138,7 +136,7 @@ public class ImageCanvas extends JPanel {
 	 * 
 	 * @param image  RGB array to use for image data.
 	 */
-	public void setImageData(RGB image[][]) { this.image = image; }
+	public void setImageData(RGB[][] image) { this.image = image; }
 	
 	/**
 	 * @return  The image data stored by this ImageCanvas object.
@@ -225,13 +223,13 @@ public class ImageCanvas extends JPanel {
 			
 			out.flush();
 			
-			if (out.checkError() == true)
+			if (out.checkError())
 				throw new IOException("IO error while writing image data");
 		} else if (encoding == ImageCanvas.PIXEncoding) {
 			int w = image.length;
 			int h = image[0].length;
 			
-			byte b[] = new byte[4 * w * h + 10];
+			byte[] b = new byte[4 * w * h + 10];
 			
 			b[0] = (byte)(w >> 8);
 			b[1] = (byte)w;

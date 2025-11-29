@@ -15,12 +15,11 @@
  */
 
 package org.almostrealism.space;
-import org.almostrealism.collect.PackedCollection;
 
-import org.almostrealism.algebra.Vector;
-import org.almostrealism.geometry.Curve;
-import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.algebra.Vector;
+import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.geometry.Curve;
 
 /**
  * A {@link Volume} represents a region of space in three dimensions
@@ -70,5 +69,5 @@ public interface Volume<T> extends Curve<T> {
 	 * @param uv  {u, v} - Position in surface coordinates (u,v between 0.0 and 1.0).
 	 * @return  {x, y, z} - Position in spatial coordinates.
 	 */
-	double[] getSpatialCoords(double uv[]);
+	double[] getSpatialCoords(double[] uv);
 }

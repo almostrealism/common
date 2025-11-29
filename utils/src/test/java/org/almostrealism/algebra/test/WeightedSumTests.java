@@ -50,9 +50,9 @@ public class WeightedSumTests implements TestFeatures {
 		List<int[]> rightPositions = rightPosition.inputPositions().collect(Collectors.toList());
 
 		for (int i = 0; i < resultPositions.size(); i++) {
-			int pos[] = resultPositions.get(i);
-			int left[] = leftPositions.get(i);
-			int right[] = rightPositions.get(i);
+			int[] pos = resultPositions.get(i);
+			int[] left = leftPositions.get(i);
+			int[] right = rightPositions.get(i);
 			log("result" + s(pos) + " = a" + s(left) + " * b" + s(right));
 		}
 
@@ -106,9 +106,9 @@ public class WeightedSumTests implements TestFeatures {
 		List<int[]> rightPositions = rightPosition.inputPositions().collect(Collectors.toList());
 
 		for (int i = 0; i < resultPositions.size(); i++) {
-			int pos[] = resultPositions.get(i);
-			int left[] = leftPositions.get(i);
-			int right[] = rightPositions.get(i);
+			int[] pos = resultPositions.get(i);
+			int[] left = leftPositions.get(i);
+			int[] right = rightPositions.get(i);
 			log("result" + s(pos) + " = a" + s(left) + " * b" + s(right));
 		}
 

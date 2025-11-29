@@ -53,7 +53,7 @@ public class VectorMath {
 	 * @param x  the vector to copy {x, y, z}
 	 * @return a new vector with the same components
 	 */
-	public static double[] clone(double x[]) { return new double[] {x[0], x[1], x[2]}; }
+	public static double[] clone(double[] x) { return new double[] {x[0], x[1], x[2]}; }
 
 	/**
 	 * Computes the length (magnitude) of a 3D vector: ||v|| = sqrt(x^2 + y^2 + z^2).
@@ -61,7 +61,7 @@ public class VectorMath {
 	 * @param x  the vector {x, y, z}
 	 * @return the length of the vector
 	 */
-	public static double length(double x[]) {
+	public static double length(double[] x) {
 		return Math.sqrt(x[0] * x[0] + x[1] * x[1] + x[2] * x[2]);
 	}
 
@@ -73,7 +73,7 @@ public class VectorMath {
 	 * @param k  the scalar multiplier
 	 * @return the modified vector
 	 */
-	public static double[] multiply(double x[], double k) { return multiply(x, k, false); }
+	public static double[] multiply(double[] x, double k) { return multiply(x, k, false); }
 
 	/**
 	 * Multiplies a vector by a scalar, optionally creating a new vector.
@@ -83,9 +83,9 @@ public class VectorMath {
 	 * @param clone  if true, creates a new vector; if false, modifies the original
 	 * @return the result vector (either new or the modified original)
 	 */
-	public static double[] multiply(double x[], double k, boolean clone) {
+	public static double[] multiply(double[] x, double k, boolean clone) {
 		if (clone) {
-			double c[] = {x[0] * k, x[1] * k, x[2] * k};
+			double[] c = {x[0] * k, x[1] * k, x[2] * k};
 			return c;
 		} else {
 			x[0] *= k;
@@ -104,7 +104,7 @@ public class VectorMath {
 	 * @param k  the scale factor for y
 	 * @return the modified x vector
 	 */
-	public static double[] addMultiple(double x[], double y[], double k) {
+	public static double[] addMultiple(double[] x, double[] y, double k) {
 		x[0] = x[0] + k * y[0];
 		x[1] = x[1] + k * y[1];
 		x[2] = x[2] + k * y[2];
@@ -118,7 +118,7 @@ public class VectorMath {
 	 * @param y  the second vector {x, y, z}
 	 * @return a new vector containing x + y
 	 */
-	public static double[] add(double x[], double y[]) {
+	public static double[] add(double[] x, double[] y) {
 		return new double[] {x[0] + y[0], x[1] + y[1], x[2] + y[2]};
 	}
 
@@ -130,7 +130,7 @@ public class VectorMath {
 	 * @param y  the vector to add {x, y, z}
 	 * @return the modified x vector
 	 */
-	public static double[] addTo(double x[], double y[]) {
+	public static double[] addTo(double[] x, double[] y) {
 		x[0] = x[0] + y[0];
 		x[1] = x[1] + y[1];
 		x[2] = x[2] + y[2];
@@ -144,7 +144,7 @@ public class VectorMath {
 	 * @param y  the second vector {x, y, z}
 	 * @return a new vector containing x - y
 	 */
-	public static double[] subtract(double x[], double y[]) {
+	public static double[] subtract(double[] x, double[] y) {
 		return new double[] {x[0] - y[0], x[1] - y[1], x[2] - y[2]};
 	}
 
@@ -160,7 +160,7 @@ public class VectorMath {
 	 * @param y  the second vector {x, y, z}
 	 * @return the distance between x and y: ||x - y||
 	 */
-	public static double distance(double x[], double y[]) {
+	public static double distance(double[] x, double[] y) {
 		x[0] = x[0] - y[0];
 		x[1] = x[1] - y[1];
 		x[2] = x[2] - y[2];

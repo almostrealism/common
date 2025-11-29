@@ -77,13 +77,13 @@ public class CollectionAddTests implements TestFeatures {
 	public void javaAdd() throws InterruptedException {
 		if (skipLongTests) return;
 
-		double a[] = new double[size];
-		double b[] = new double[size];
+		double[] a = new double[size];
+		double[] b = new double[size];
 
 		CountDownLatch latch = new CountDownLatch(parallelism);
 
 		Function<Integer, Runnable> r = id -> () -> {
-			double out[] = new double[size];
+			double[] out = new double[size];
 
 			for (int it = 0; it < iter; it++) {
 				for (int i = id; i < size; i += parallelism) {

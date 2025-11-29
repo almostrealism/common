@@ -218,7 +218,7 @@ public class CollectionComparisonComputation extends TransitiveDeltaExpressionCo
 	@Override
 	public CollectionProducerParallelProcess generate(List<Process<?, ?>> children) {
 		return (CollectionProducerParallelProcess)
-				equals((Producer) children.get(1), (Producer) children.get(2),
-						(Producer) children.get(3), (Producer) children.get(4));
+				equals((Producer<PackedCollection>) children.get(1), (Producer<PackedCollection>) children.get(2),
+						(Producer<PackedCollection>) children.get(3), (Producer<PackedCollection>) children.get(4));
 	}
 }

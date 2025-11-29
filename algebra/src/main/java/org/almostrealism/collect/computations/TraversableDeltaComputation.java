@@ -20,21 +20,21 @@ import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.code.ComputationBase;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.ScopeLifecycle;
-import io.almostrealism.collect.CollectionVariable;
-import io.almostrealism.expression.Expression;
 import io.almostrealism.collect.CollectionExpression;
-import io.almostrealism.kernel.Index;
-import io.almostrealism.expression.IntegerConstant;
-import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.collect.CollectionVariable;
+import io.almostrealism.collect.TraversableExpression;
+import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.Process;
 import io.almostrealism.compute.ProcessContext;
+import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.IntegerConstant;
+import io.almostrealism.kernel.Index;
+import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.AlgebraFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import io.almostrealism.collect.TraversableExpression;
-import io.almostrealism.collect.TraversalPolicy;
-import io.almostrealism.relation.Evaluable;
 import org.almostrealism.hardware.HardwareFeatures;
 
 import java.util.List;
@@ -178,13 +178,13 @@ public class TraversableDeltaComputation
 	 * The expression function that computes the forward pass values.
 	 * This is differentiated to produce the gradient.
 	 */
-	private Function<TraversableExpression[], CollectionExpression> expression;
+	private final Function<TraversableExpression[], CollectionExpression> expression;
 
 	/**
 	 * The target variable with respect to which we're computing the derivative.
 	 * This is the variable whose gradient we want to find.
 	 */
-	private Producer<?> target;
+	private final Producer<?> target;
 
 	/**
 	 * The collection variable representation of the target, used during gradient computation.

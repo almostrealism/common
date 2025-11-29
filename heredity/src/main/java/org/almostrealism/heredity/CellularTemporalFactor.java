@@ -15,7 +15,6 @@
  */
 
 package org.almostrealism.heredity;
-import org.almostrealism.collect.PackedCollection;
 
 import org.almostrealism.hardware.OperationList;
 

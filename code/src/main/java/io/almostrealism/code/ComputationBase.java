@@ -17,13 +17,13 @@
 package io.almostrealism.code;
 
 import io.almostrealism.compute.ComputeRequirement;
+import io.almostrealism.compute.Process;
+import io.almostrealism.compute.ProcessContext;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.profile.OperationInfo;
 import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.relation.Countable;
-import io.almostrealism.compute.Process;
-import io.almostrealism.compute.ProcessContext;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.Argument;
 import io.almostrealism.scope.Argument.Expectation;

@@ -55,7 +55,7 @@ public interface ProjectionFeatures extends PairFeatures, RayFeatures {
 									 Vector location, Pair projectionDimensions,
 									 double blur, double focalLength,
 									 Vector u, Vector v, Vector w) {
-		return ray((Producer) v(location),
+		return ray(v(location),
 				direction(pos, sd, projectionDimensions, focalLength, u, v, w, new Pair(blur, blur)));
 	}
 
@@ -79,11 +79,11 @@ public interface ProjectionFeatures extends PairFeatures, RayFeatures {
 										 Vector u, Vector v, Vector w, Pair blur) {
 		CollectionProducer pd = v(projectionDimensions);
 
-		CollectionProducer sdx = (CollectionProducer) l(sd);
-		CollectionProducer sdy = (CollectionProducer) r(sd);
+		CollectionProducer sdx = l(sd);
+		CollectionProducer sdy = r(sd);
 
-		CollectionProducer pdx = (CollectionProducer) l(pd);
-		CollectionProducer pdy = (CollectionProducer) r(pd);
+		CollectionProducer pdx = l(pd);
+		CollectionProducer pdy = r(pd);
 
 		var p = pdx.multiply(l(pos))
 								.multiply(sdx.add(c(-1.0)).pow(c(-1.0))).add(pdx.multiply(c(-0.5)));
@@ -133,7 +133,7 @@ public interface ProjectionFeatures extends PairFeatures, RayFeatures {
 		CollectionProducer x = y(t).multiply(z(w)).add(z(t).multiply(y(w)).multiply(c(-1.0)));
 		CollectionProducer y = z(t).multiply(x(w)).add(x(t).multiply(z(w)).multiply(c(-1.0)));
 		CollectionProducer z = x(t).multiply(y(w)).add(y(t).multiply(x(w)).multiply(c(-1.0)));
-		return normalize(vector((Producer) x, (Producer) y, (Producer) z));
+		return normalize(vector(x, y, z));
 	}
 
 	private CollectionProducer v(CollectionProducer w, CollectionProducer u) {

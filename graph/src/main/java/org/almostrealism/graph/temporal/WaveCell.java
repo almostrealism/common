@@ -18,6 +18,7 @@ package org.almostrealism.graph.temporal;
 
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.relation.Factor;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
 import org.almostrealism.Ops;
@@ -25,7 +26,6 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.TimeCell;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.hardware.computations.Assignment;
-import io.almostrealism.relation.Factor;
 import org.almostrealism.io.Console;
 
 import java.util.Objects;

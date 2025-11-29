@@ -2,7 +2,6 @@ package org.almostrealism.graph;
 
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.graph.Receptor;
 
 import java.util.function.Supplier;
 

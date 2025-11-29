@@ -17,13 +17,12 @@
 package org.almostrealism.hardware.cl;
 
 import io.almostrealism.code.ExpressionAssignment;
+import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.InstanceReference;
 import io.almostrealism.expression.StaticReference;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Method;
-import io.almostrealism.scope.Variable;
-import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.InstanceReference;
 import org.almostrealism.hardware.jni.CJNIPrintWriter;
 import org.almostrealism.hardware.jni.DefaultJNIMemoryAccessor;
 import org.almostrealism.io.PrintWriter;

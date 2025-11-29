@@ -17,11 +17,11 @@
 package org.almostrealism.color;
 
 import io.almostrealism.relation.Editable;
+import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.geometry.DiscreteField;
 import org.almostrealism.color.computations.GeneratedColorProducer;
-import io.almostrealism.relation.Producer;
+import org.almostrealism.geometry.DiscreteField;
 import org.almostrealism.geometry.RayFeatures;
 
 /**

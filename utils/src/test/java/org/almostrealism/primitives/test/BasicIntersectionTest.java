@@ -16,11 +16,11 @@
 
 package org.almostrealism.primitives.test;
 
-import org.almostrealism.color.PointLight;
-import org.almostrealism.color.DiffuseShader;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.color.DiffuseShader;
+import org.almostrealism.color.PointLight;
 import org.almostrealism.geometry.ContinuousField;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.geometry.ShadableIntersection;

@@ -18,7 +18,6 @@ package org.almostrealism.algebra;
 
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.IndexProjectionExpression;
-import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.Product;
@@ -28,7 +27,6 @@ import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.DefaultTraversableExpressionComputation;
 
-import java.util.function.Function;
 import java.util.function.IntFunction;
 
 /**
@@ -132,7 +130,7 @@ public interface VectorFeatures extends ScalarFeatures {
 	 * @return a producer for the constant vector
 	 * @throws ArrayIndexOutOfBoundsException if the array has fewer than 3 elements
 	 */
-	default CollectionProducer vector(double v[]) { return vector(v[0], v[1], v[2]); }
+	default CollectionProducer vector(double[] v) { return vector(v[0], v[1], v[2]); }
 
 	/**
 	 * Creates a {@link CollectionProducer} for a constant vector from a function.
@@ -152,14 +150,13 @@ public interface VectorFeatures extends ScalarFeatures {
 	 * @param x  producer for the x coordinate
 	 * @param y  producer for the y coordinate
 	 * @param z  producer for the z coordinate
-	 * @param <T>  the collection type (typically scalar-valued)
 	 * @return a producer that combines the three components into a vector
 	 */
-	default <T extends PackedCollection> CollectionProducer vector(
-												Producer<T> x,
-												Producer<T> y,
-												Producer<T> z) {
-		return concat(shape(3), (Producer) x, (Producer) y, (Producer) z);
+	default CollectionProducer vector(
+												Producer<PackedCollection> x,
+												Producer<PackedCollection> y,
+												Producer<PackedCollection> z) {
+		return concat(shape(3), x, y, z);
 	}
 
 	/**
@@ -181,12 +178,12 @@ public interface VectorFeatures extends ScalarFeatures {
 	 * @param value  the producer to wrap
 	 * @return a vector producer wrapping the input producer
 	 */
-	default CollectionProducer vector(Producer<?> value) {
+	default CollectionProducer vector(Producer<PackedCollection> value) {
 		return new DefaultTraversableExpressionComputation(
 				"vector", shape(3),
-				(Function<TraversableExpression[], CollectionExpression>) args ->
+				args ->
 						new IndexProjectionExpression(shape(3), i -> i, args[1]),
-				(Producer) value);
+				value);
 	}
 
 	/**
@@ -201,10 +198,9 @@ public interface VectorFeatures extends ScalarFeatures {
 	 * Extracts the x component (first element) from a vector producer.
 	 *
 	 * @param v  the vector producer
-	 * @param <T>  the collection type
 	 * @return a producer for the x component
 	 */
-	default <T extends PackedCollection> CollectionProducer x(Producer<T> v) {
+	default CollectionProducer x(Producer<PackedCollection> v) {
 		return c(v, 0);
 	}
 
@@ -212,10 +208,9 @@ public interface VectorFeatures extends ScalarFeatures {
 	 * Extracts the y component (second element) from a vector producer.
 	 *
 	 * @param v  the vector producer
-	 * @param <T>  the collection type
 	 * @return a producer for the y component
 	 */
-	default <T extends PackedCollection> CollectionProducer y(Producer<T> v) {
+	default CollectionProducer y(Producer<PackedCollection> v) {
 		return c(v, 1);
 	}
 
@@ -223,10 +218,9 @@ public interface VectorFeatures extends ScalarFeatures {
 	 * Extracts the z component (third element) from a vector producer.
 	 *
 	 * @param v  the vector producer
-	 * @param <T>  the collection type
 	 * @return a producer for the z component
 	 */
-	default <T extends PackedCollection> CollectionProducer z(Producer<T> v) {
+	default CollectionProducer z(Producer<PackedCollection> v) {
 		return c(v, 2);
 	}
 
@@ -292,7 +286,7 @@ public interface VectorFeatures extends ScalarFeatures {
 					Expression result = conditional(componentIdx.eq(1), y, x);
 					result = conditional(componentIdx.eq(2), z, result);
 					return result;
-				}), (Producer) a, (Producer) b);
+				}), a, b);
 	}
 
 	/**

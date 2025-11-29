@@ -16,12 +16,12 @@
 
 package org.almostrealism.hardware.computations;
 
+import io.almostrealism.compute.Process;
 import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.profile.OperationInfo;
 import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.uml.Signature;
 import org.almostrealism.hardware.mem.MemoryDataArgumentMap;

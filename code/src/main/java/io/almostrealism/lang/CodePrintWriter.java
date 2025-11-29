@@ -18,8 +18,8 @@ package io.almostrealism.lang;
 
 import io.almostrealism.code.Accessibility;
 import io.almostrealism.code.ExpressionAssignment;
-import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.code.Statement;
+import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Fragment;
 import io.almostrealism.scope.Method;

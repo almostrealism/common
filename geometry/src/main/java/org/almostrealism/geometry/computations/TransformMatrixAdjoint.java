@@ -17,14 +17,14 @@
 package org.almostrealism.geometry.computations;
 
 import io.almostrealism.collect.TraversalPolicy;
-import io.almostrealism.kernel.KernelStructureContext;
-import io.almostrealism.relation.Producer;
-import io.almostrealism.scope.Scope;
-import io.almostrealism.profile.OperationMetadata;
+import io.almostrealism.compute.Process;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.profile.OperationMetadata;
+import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.HybridScope;
-import io.almostrealism.compute.Process;
+import io.almostrealism.scope.Scope;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 import org.almostrealism.geometry.TransformMatrix;

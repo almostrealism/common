@@ -16,10 +16,8 @@
 
 package org.almostrealism.color;
 
-import org.almostrealism.algebra.Vector;
-import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.relation.Producer;
-import org.almostrealism.texture.Texture;
+import org.almostrealism.collect.PackedCollection;
 
 /**
  * Represents a light source used for rendering in the Almost Realism graphics pipeline.

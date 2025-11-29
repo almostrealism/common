@@ -15,13 +15,13 @@
  */
 
 package org.almostrealism.primitives;
-import org.almostrealism.collect.PackedCollection;
 
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Vector;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.physics.Absorber;
-import org.almostrealism.physics.Fast;
 import org.almostrealism.physics.Clock;
+import org.almostrealism.physics.Fast;
 
 /**
  * A Pinhole is similar to an AbsorptionPlane except a hole with a specified radius

@@ -34,7 +34,7 @@ public class Qwen3 implements AttentionFeatures {
     private Qwen3Config config;
     private StateDictionary stateDict;  // Use directly, no wrapper class
     private Qwen3Tokenizer tokenizer;
-    private AutoregressiveModel model;
+    private final AutoregressiveModel model;
 
     public Qwen3(String weightsDir, String tokenizerPath) throws IOException {
         // Load weights using StateDictionary

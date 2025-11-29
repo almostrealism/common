@@ -16,8 +16,8 @@
 
 package org.almostrealism.physics;
 
-import org.almostrealism.algebra.Tensor;
 import io.almostrealism.relation.Validity;
+import org.almostrealism.algebra.Tensor;
 
 import java.util.ArrayList;
 import java.util.Arrays;

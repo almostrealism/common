@@ -58,4 +58,3 @@
  * @author Michael Murray
  */
 package org.almostrealism.stats;
-import org.almostrealism.collect.PackedCollection;

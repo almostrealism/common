@@ -32,8 +32,8 @@ package org.almostrealism.algebra;
  */
 @Deprecated
 public class Matrix3D {
-	protected double matrix[][][];
-	protected int intMatrix[][][];
+	protected double[][][] matrix;
+	protected int[][][] intMatrix;
 	protected int x, y, z;
 	protected boolean integer;
 	

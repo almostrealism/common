@@ -76,4 +76,3 @@
  * @author Michael Murray
  */
 package org.almostrealism.color;
-import org.almostrealism.collect.PackedCollection;

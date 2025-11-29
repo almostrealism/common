@@ -15,12 +15,11 @@
  */
 
 package org.almostrealism.color;
-import org.almostrealism.collect.PackedCollection;
 
-import org.almostrealism.algebra.Vector;
+import io.almostrealism.relation.Producer;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.color.computations.GeneratedColorProducer;
 import org.almostrealism.geometry.Curve;
-import io.almostrealism.relation.Producer;
 
 /**
  * Represents an ambient light that illuminates all surfaces uniformly regardless of position.

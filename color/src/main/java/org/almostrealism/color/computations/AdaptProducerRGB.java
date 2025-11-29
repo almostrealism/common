@@ -15,13 +15,13 @@
  */
 
 package org.almostrealism.color.computations;
-import org.almostrealism.collect.PackedCollection;
 
-import org.almostrealism.color.RGB;
 import io.almostrealism.code.AdaptProducer;
-import org.almostrealism.hardware.MemoryBank;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.color.RGB;
+import org.almostrealism.hardware.MemoryBank;
 
 public class AdaptProducerRGB extends AdaptProducer<PackedCollection> {
 	public AdaptProducerRGB(Producer<PackedCollection> p, Producer... args) {

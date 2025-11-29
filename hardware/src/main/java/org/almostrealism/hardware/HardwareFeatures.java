@@ -19,12 +19,10 @@ package org.almostrealism.hardware;
 import io.almostrealism.code.Computation;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.ProducerFeatures;
-import org.almostrealism.hardware.computations.DelegatedProducer;
 import org.almostrealism.hardware.computations.Loop;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.SystemUtils;
 
-import java.util.Arrays;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;

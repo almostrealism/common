@@ -18,16 +18,16 @@ package org.almostrealism.c;
 
 import io.almostrealism.code.Accessibility;
 import io.almostrealism.code.ExpressionAssignment;
-import io.almostrealism.profile.OperationMetadata;
-import io.almostrealism.compute.PhysicalScope;
 import io.almostrealism.code.Precision;
-import io.almostrealism.expression.StaticReference;
-import io.almostrealism.scope.ArrayVariable;
-import io.almostrealism.lang.CodePrintWriterAdapter;
+import io.almostrealism.compute.PhysicalScope;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.InstanceReference;
+import io.almostrealism.expression.StaticReference;
+import io.almostrealism.lang.CodePrintWriterAdapter;
+import io.almostrealism.profile.OperationMetadata;
+import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Metric;
 import io.almostrealism.scope.Variable;
-import io.almostrealism.expression.InstanceReference;
 import org.almostrealism.io.PrintStreamPrintWriter;
 import org.almostrealism.io.PrintWriter;
 

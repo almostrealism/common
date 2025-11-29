@@ -16,7 +16,6 @@
 
 package org.almostrealism.collect.computations.test;
 
-import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Assert;

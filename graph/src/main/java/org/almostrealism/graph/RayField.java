@@ -16,12 +16,19 @@
 
 package org.almostrealism.graph;
 
+import io.almostrealism.relation.Producer;
+import org.almostrealism.algebra.Vector;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.geometry.DiscreteField;
 import org.almostrealism.geometry.Ray;
-import org.almostrealism.algebra.Vector;
-import io.almostrealism.relation.Producer;
 
-import java.util.*;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.List;
+import java.util.ListIterator;
+import java.util.Set;
 
 /**
  * Represents a field of Rays within 3D space.
@@ -29,25 +36,25 @@ import java.util.*;
  * @author Dan Chivers
  */
 public class RayField implements DiscreteField {
-    private final HashSet<Ray> raysSet = new HashSet<>();
-    private final KdTree<Ray> rays = new KdTree.SqrEuclid<>(3, null);
+    private final HashSet<PackedCollection> raysSet = new HashSet<>();
+    private final KdTree<PackedCollection> rays = new KdTree.SqrEuclid<>(3, null);
 
-    public KdTree.Entry<Ray> getClosestRay(Vector vertex) {
+    public KdTree.Entry<PackedCollection> getClosestRay(Vector vertex) {
         return getClosestRays(vertex, 1, false).get(0);
     }
 
-    public List<KdTree.Entry<Ray>> getClosestRays(Vector vertex, int numberOfResults, boolean sorted) {
+    public List<KdTree.Entry<PackedCollection>> getClosestRays(Vector vertex, int numberOfResults, boolean sorted) {
         return rays.nearestNeighbor(vertex.getData(), numberOfResults, sorted);
     }
 
-    public Set<Ray> getRaySet() {
+    public Set<PackedCollection> getRaySet() {
         return Collections.unmodifiableSet(raysSet);
     }
 
     @Override
-    public boolean add(Producer<Ray> rayCallable) {
+    public boolean add(Producer<PackedCollection> rayCallable) {
         try {
-            Ray ray = rayCallable.get().evaluate();
+            Ray ray = new Ray(rayCallable.get().evaluate(), 0);
             raysSet.add(ray);
             rays.addPoint(ray.getOrigin().getData(), ray);
             return true;
@@ -57,9 +64,9 @@ public class RayField implements DiscreteField {
     }
 
     @Override
-    public boolean addAll(Collection<? extends Producer<Ray>> c) {
+    public boolean addAll(Collection<? extends Producer<PackedCollection>> c) {
         boolean allOk = true;
-        for (Producer<Ray> r : c) {
+        for (Producer<PackedCollection> r : c) {
             allOk &= add(r);
         }
         return allOk;
@@ -101,7 +108,7 @@ public class RayField implements DiscreteField {
     }
 
     @Override
-    public Iterator<Producer<Ray>> iterator() {
+    public Iterator<Producer<PackedCollection>> iterator() {
         throw new UnsupportedOperationException();
     }
 
@@ -116,7 +123,7 @@ public class RayField implements DiscreteField {
     }
 
     @Override
-    public boolean addAll(int index, Collection<? extends Producer<Ray>> c) {
+    public boolean addAll(int index, Collection<? extends Producer<PackedCollection>> c) {
         throw new UnsupportedOperationException();
     }
 
@@ -131,22 +138,22 @@ public class RayField implements DiscreteField {
     }
 
     @Override
-    public Producer<Ray> get(int index) {
+    public Producer<PackedCollection> get(int index) {
         throw new UnsupportedOperationException();
     }
 
     @Override
-    public Producer<Ray> set(int index, Producer<Ray> element) {
+    public Producer<PackedCollection> set(int index, Producer<PackedCollection> element) {
         throw new UnsupportedOperationException();
     }
 
     @Override
-    public void add(int index, Producer<Ray> element) {
+    public void add(int index, Producer<PackedCollection> element) {
         throw new UnsupportedOperationException();
     }
 
     @Override
-    public Producer<Ray> remove(int index) {
+    public Producer<PackedCollection> remove(int index) {
         throw new UnsupportedOperationException();
     }
 
@@ -161,17 +168,17 @@ public class RayField implements DiscreteField {
     }
 
     @Override
-    public ListIterator<Producer<Ray>> listIterator() {
+    public ListIterator<Producer<PackedCollection>> listIterator() {
         throw new UnsupportedOperationException();
     }
 
     @Override
-    public ListIterator<Producer<Ray>> listIterator(int index) {
+    public ListIterator<Producer<PackedCollection>> listIterator(int index) {
         throw new UnsupportedOperationException();
     }
 
     @Override
-    public List<Producer<Ray>> subList(int fromIndex, int toIndex) {
+    public List<Producer<PackedCollection>> subList(int fromIndex, int toIndex) {
         throw new UnsupportedOperationException();
     }
 }

@@ -16,17 +16,13 @@
 
 package org.almostrealism.space.test;
 
+import io.almostrealism.relation.Producer;
+import io.almostrealism.relation.Provider;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.geometry.Ray;
-import org.almostrealism.hardware.HardwareFeatures;
-import io.almostrealism.relation.Producer;
-import org.almostrealism.hardware.HardwareOperator;
-import org.almostrealism.space.Plane;
 import org.almostrealism.geometry.ShadableIntersection;
-import org.almostrealism.CodeFeatures;
-import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.Provider;
+import org.almostrealism.space.Plane;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Assert;
 import org.junit.Test;
@@ -36,7 +32,7 @@ public class PlaneTest implements TestFeatures {
 		Plane p = new Plane(Plane.XZ);
 		p.setLocation(new Vector(0.0, -10, 0.0));
 
-		return (ShadableIntersection) p.intersectAt((Producer) ray(0.0, 0.0, 1.0, 0.0, 0.5, -1.0));
+		return (ShadableIntersection) p.intersectAt(ray(0.0, 0.0, 1.0, 0.0, 0.5, -1.0));
 	}
 
 	// TODO @Test
@@ -46,8 +42,7 @@ public class PlaneTest implements TestFeatures {
 		System.out.println("distance = " + distance);
 		Assert.assertEquals(-20.0, distance, Math.pow(10, -10));
 
-		Assert.assertTrue(intersection.get(0).get().evaluate().equals(
-								ray(0.0, -10.0, 21.0, 0.0, 1.0, 0.0).get().evaluate()));
+		Assert.assertEquals(intersection.get(0).get().evaluate(), ray(0.0, -10.0, 21.0, 0.0, 1.0, 0.0).get().evaluate());
 	}
 
 	// TODO  @Test
@@ -94,7 +89,7 @@ public class PlaneTest implements TestFeatures {
 		Assert.assertEquals(new Ray(new Vector(0.0, 10.0, 1.0),
 				new Vector(0.0, 0.5, -1.0)), t.get().evaluate());
 
-		Vector v = new Vector(((Evaluable<PackedCollection>) t.get().evaluate().pointAt(c(-20)).get()).evaluate(), 0);
+		Vector v = new Vector(t.get().evaluate().pointAt(c(-20)).get().evaluate(), 0);
 		Assert.assertEquals(new Vector(0.0, 0.0, 21.0), v);
 	}
 }

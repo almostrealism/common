@@ -21,9 +21,9 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.geometry.Ray;
 import org.almostrealism.geometry.ShadableIntersection;
 import org.almostrealism.primitives.Sphere;
-import org.almostrealism.geometry.Ray;
 import org.almostrealism.projection.OrthographicCamera;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Assert;
@@ -34,29 +34,29 @@ public class SphereTest implements TestFeatures {
 	@Test
 	public void intersectionTests() {
 		Sphere s = new Sphere();
-		ShadableIntersection f = s.intersectAt((Producer) ray(0.0, 0.0, 3.0, 0.0, 0.0, 1.0));
+		ShadableIntersection f = s.intersectAt(ray(0.0, 0.0, 3.0, 0.0, 0.0, 1.0));
 		PackedCollection distance = f.getDistance().get().evaluate();
 		distance.print();
 		assertEquals(-1, distance);
 
-		f = s.intersectAt((Producer) ray(0.0, 0.0, 3.0, 0.0, 0.0, -1.0));
+		f = s.intersectAt(ray(0.0, 0.0, 3.0, 0.0, 0.0, -1.0));
 		distance = f.getDistance().get().evaluate();
 		distance.print();
 		assertEquals(2, distance);
 
-		f = s.intersectAt((Producer) ray(0.5, 0.5, 3.0, 0.0, 0.0, -1.0));
+		f = s.intersectAt(ray(0.5, 0.5, 3.0, 0.0, 0.0, -1.0));
 		distance = f.getDistance().get().evaluate();
 		distance.print();
 		assertEquals(2.2928932188134525, distance);
 
-		Ray r = new Ray(((Evaluable<Ray>) f.get(0).get()).evaluate(), 0);
+		Ray r = new Ray(f.get(0).get().evaluate(), 0);
 		System.out.println(r);
 
-		f = s.intersectAt((Producer) ray(0.0, 0.0, -2.0, 57.22891566265059, 72.32037025267255, 404.1157064026493));
+		f = s.intersectAt(ray(0.0, 0.0, -2.0, 57.22891566265059, 72.32037025267255, 404.1157064026493));
 		distance = f.getDistance().get().evaluate();
 		System.out.println(distance);
 
-		r = new Ray(((Evaluable<Ray>) f.get(0).get()).evaluate(), 0);
+		r = new Ray(f.get(0).get().evaluate(), 0);
 		System.out.println(r);
 	}
 
@@ -74,7 +74,7 @@ public class SphereTest implements TestFeatures {
 		singleRay.setMem(0, 0, 0, 3, 0, 0, -1); // origin (0,0,3), direction (0,0,-1)
 
 		PackedCollection result = new PackedCollection(shape(1, 1).traverse(1));
-		Evaluable<PackedCollection> ev = ((Producer<PackedCollection>) greaterThan((Producer) c(d), c(0.0), c(1.0), c(-1.0))).get();
+		Evaluable<PackedCollection> ev = greaterThan(c(d), c(0.0), c(1.0), c(-1.0)).get();
 		ev.into(result.each()).evaluate(singleRay);
 
 		System.out.println("Single ray discriminant test: " + result.valueAt(0, 0));
@@ -122,7 +122,7 @@ public class SphereTest implements TestFeatures {
 
 		// Now test the conditional
 		PackedCollection result = new PackedCollection(shape(3, 1).traverse(1));
-		Evaluable<PackedCollection> ev = ((Producer<PackedCollection>) greaterThan((Producer) c(d), c(0.0), c(1.0), c(-1.0))).get();
+		Evaluable<PackedCollection> ev = greaterThan(c(d), c(0.0), c(1.0), c(-1.0)).get();
 		ev.into(result.each()).evaluate(rays);
 
 		System.out.println("Small batch discriminant test:");
@@ -308,7 +308,7 @@ public class SphereTest implements TestFeatures {
 		}
 
 		// Apply closest() to the batch
-		Producer<Pair> pairProducer = (Producer) v(shape(-1, 2), 0);
+		Producer<Pair> pairProducer = v(shape(-1, 2), 0);
 		Producer<?> result = s.closest(pairProducer);
 
 		PackedCollection distances = new PackedCollection(shape(batchSize, 1).traverse(1));
@@ -398,7 +398,7 @@ public class SphereTest implements TestFeatures {
 		PackedCollection destination = new PackedCollection(shape(h, w, 1).traverse(2));
 
 		Producer<?> d = s.discriminant(ray); // oDotd(ray).pow(2.0).subtract(dDotd(ray).multiply(oDoto(ray).add(-1.0)));
-		Evaluable<PackedCollection> ev = ((Producer<PackedCollection>) greaterThan((Producer) c(d), c(0.0), c(1.0), c(-1.0))).get();
+		Evaluable<PackedCollection> ev = greaterThan(c(d), c(0.0), c(1.0), c(-1.0)).get();
 		ev.into(destination.each()).evaluate(rays);
 
 		int hits = 0;
@@ -504,7 +504,7 @@ public class SphereTest implements TestFeatures {
 		Sphere s = new Sphere();
 		ShadableIntersection f = s.intersectAt(v(shape(h, w, 6), 0));
 
-		c.rayAt((Producer) v(shape(w * h, 2), 0), (Producer) pair(w, h));
+		c.rayAt(v(shape(w * h, 2), 0), pair(w, h));
 
 		PackedCollection positions = new PackedCollection(shape(w * h, 2), 1);
 		// TODO  Setup positions

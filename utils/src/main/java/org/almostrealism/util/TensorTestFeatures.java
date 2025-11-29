@@ -16,8 +16,8 @@
 
 package org.almostrealism.util;
 
-import org.almostrealism.algebra.Tensor;
 import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.algebra.Tensor;
 
 import java.util.function.Predicate;
 import java.util.stream.IntStream;

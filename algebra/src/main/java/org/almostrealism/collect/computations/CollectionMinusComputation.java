@@ -301,6 +301,6 @@ public class CollectionMinusComputation extends TransitiveDeltaExpressionComputa
 			throw new IllegalArgumentException();
 		}
 
-		return (CollectionProducerParallelProcess) minus((Producer) children.stream().skip(1).findFirst().orElseThrow());
+		return (CollectionProducerParallelProcess) minus((Producer<PackedCollection>) children.stream().skip(1).findFirst().orElseThrow());
 	}
 }

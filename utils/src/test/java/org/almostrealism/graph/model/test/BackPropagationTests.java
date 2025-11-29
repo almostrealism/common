@@ -16,10 +16,10 @@
 
 package org.almostrealism.graph.model.test;
 
+import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.Tensor;
 import org.almostrealism.collect.PackedCollection;
-import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.model.Block;
 import org.almostrealism.model.CompiledModel;
@@ -74,13 +74,13 @@ public class BackPropagationTests implements TestFeatures {
 			System.out.println("Output: " + Arrays.toString(output.toArray(0, output.getMemLength())));
 
 			// double expected[] = new double[]{2.29283592e-12, 1.86271326e-09, 1.51327910e-06, 1.22939676e-03, 9.98769088e-01};
-			double expected[] = new double[]{0.034696079790592194, 0.06780441105365753, 0.13250578939914703, 0.2589479088783264, 0.5060457587242126};
+			double[] expected = new double[]{0.034696079790592194, 0.06780441105365753, 0.13250578939914703, 0.2589479088783264, 0.5060457587242126};
 			for (int i = 0; i < output.getMemLength(); i++) {
 				assertEquals(expected[i], output.valueAt(i));
 			}
 		});
 
-		double result[] = new double[size];
+		double[] result = new double[size];
 
 		dense.getBackward().setReceptor(grad -> () -> {
 			Evaluable<PackedCollection> gr = grad.get();
@@ -104,7 +104,7 @@ public class BackPropagationTests implements TestFeatures {
 //		double expected[] = new double[] { -0.00012475, -0.0001249,  -0.00012506, -0.00012521, -0.00012536, -0.00012551,
 //				-0.00012566, -0.00012581, -0.00012596, -0.00012611, -0.00012626, -0.00012642 };
 
-		double expected[] = new double[] { -0.0023582035209983587, -0.003028743900358677, -0.0036992833483964205,
+		double[] expected = new double[] { -0.0023582035209983587, -0.003028743900358677, -0.0036992833483964205,
 				-0.004369824193418026, -0.005040363874286413, -0.005710904952138662, -0.006381443701684475,
 				-0.007051984313875437, -0.007722523529082537, -0.008393064141273499, -0.009063605219125748, -0.009734145365655422 };
 		for (int i = 0; i < result.length; i++) {

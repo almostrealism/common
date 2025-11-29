@@ -4,10 +4,10 @@ Generate PyTorch logits for full 24-layer Qwen2.5-0.5B model.
 This will serve as ground truth to compare against AR implementation.
 """
 
-import torch
 import numpy as np
-from transformers import AutoModelForCausalLM, AutoTokenizer
 import struct
+import torch
+from transformers import AutoModelForCausalLM, AutoTokenizer
 
 MODEL_NAME = "Qwen/Qwen2.5-0.5B-Instruct"
 OUTPUT_DIR = "/workspace/project/common/ml/qwen3_reference/full_model_logits"

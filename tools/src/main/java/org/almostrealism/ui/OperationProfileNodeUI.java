@@ -19,10 +19,6 @@ package org.almostrealism.ui;
 import io.almostrealism.profile.OperationProfileNode;
 
 import javax.swing.tree.DefaultMutableTreeNode;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.List;
-import java.util.stream.Collectors;
 
 /**
  * A Swing tree node wrapper for displaying {@link OperationProfileNode} data in a {@link javax.swing.JTree}.

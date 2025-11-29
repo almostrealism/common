@@ -15,7 +15,6 @@
  */
 
 package org.almostrealism.collect;
-import org.almostrealism.collect.PackedCollection;
 
 import io.almostrealism.collect.IndexExpressionTraversalOrdering;
 

@@ -16,14 +16,12 @@
 
 package org.almostrealism.physics;
 
-import java.util.Iterator;
-import java.util.Set;
+import org.almostrealism.time.Frequency;
+import org.almostrealism.time.Temporal;
 
 import java.util.HashSet;
+import java.util.Set;
 import java.util.function.Supplier;
-
-import org.almostrealism.time.Temporal;
-import org.almostrealism.time.Frequency;
 
 /**
  * A Clock object keeps track of time (usually measured in microseconds).

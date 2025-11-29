@@ -17,13 +17,13 @@
 package org.almostrealism.time;
 
 import io.almostrealism.code.Computation;
-import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.cycle.Setup;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.Product;
-import io.almostrealism.relation.Producer;
 import io.almostrealism.lifecycle.Lifecycle;
+import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;

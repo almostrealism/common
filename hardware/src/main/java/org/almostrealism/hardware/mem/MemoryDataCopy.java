@@ -1,9 +1,9 @@
 package org.almostrealism.hardware.mem;
 
+import io.almostrealism.compute.Process;
 import io.almostrealism.profile.OperationInfo;
 import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.profile.OperationWithInfo;
-import io.almostrealism.compute.Process;
 import org.almostrealism.hardware.MemoryData;
 
 import java.util.Collection;

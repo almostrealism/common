@@ -15,9 +15,9 @@
  */
 
 package org.almostrealism.color.computations;
-import org.almostrealism.collect.PackedCollection;
 
 import io.almostrealism.relation.Evaluable;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.color.RGB;
 import org.almostrealism.color.RGBFeatures;
 import org.almostrealism.geometry.computations.RankedChoiceEvaluableForMemoryData;

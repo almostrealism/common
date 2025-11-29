@@ -32,15 +32,15 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 public class GradientDescentTests implements ModelTestFeatures {
-	private double coeff[] = { 0.24, -0.1, 0.36 };
+	private final double[] coeff = { 0.24, -0.1, 0.36 };
 
-	private UnaryOperator<PackedCollection> func1 =
+	private final UnaryOperator<PackedCollection> func1 =
 			in -> PackedCollection.of(1.5 * in.valueAt(0));
-	private UnaryOperator<PackedCollection> func2 =
+	private final UnaryOperator<PackedCollection> func2 =
 			in -> PackedCollection.of(in.valueAt(0) * 2 + in.valueAt(1));
-	private UnaryOperator<PackedCollection> func3 =
+	private final UnaryOperator<PackedCollection> func3 =
 			in -> PackedCollection.of(coeff[0] * in.valueAt(0) + coeff[1] * in.valueAt(1) + coeff[2] * in.valueAt(2));
-	private UnaryOperator<PackedCollection> func3x3 =
+	private final UnaryOperator<PackedCollection> func3x3 =
 			in -> PackedCollection.of(coeff[0] * in.valueAt(0), coeff[1] * in.valueAt(1), coeff[2] * in.valueAt(2));
 
 	@Test

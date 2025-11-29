@@ -15,7 +15,6 @@
  */
 
 package org.almostrealism.graph;
-import org.almostrealism.collect.PackedCollection;
 
 import io.almostrealism.relation.Producer;
 

@@ -17,12 +17,11 @@
 package org.almostrealism.hardware.metal;
 
 import io.almostrealism.code.Memory;
+import io.almostrealism.code.Precision;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareException;
-import io.almostrealism.code.Precision;
-import org.almostrealism.hardware.mem.NativeRef;
-import org.almostrealism.hardware.mem.RAM;
 import org.almostrealism.hardware.mem.HardwareMemoryProvider;
+import org.almostrealism.hardware.mem.NativeRef;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.DistributionMetric;
 import org.almostrealism.io.SystemUtils;
@@ -31,11 +30,6 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.DoubleBuffer;
 import java.nio.FloatBuffer;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.List;
-import java.util.Objects;
-import java.util.stream.Stream;
 
 /**
  * {@link io.almostrealism.code.MemoryProvider} for Metal GPU memory management.

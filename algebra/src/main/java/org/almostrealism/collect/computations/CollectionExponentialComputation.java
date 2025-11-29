@@ -21,9 +21,9 @@ import io.almostrealism.collect.ConditionalFilterExpression;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.collect.UniformCollectionExpression;
+import io.almostrealism.compute.Process;
 import io.almostrealism.expression.Exp;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.MatrixFeatures;
 import org.almostrealism.collect.CollectionProducer;
@@ -198,7 +198,7 @@ public class CollectionExponentialComputation extends TraversableExpressionCompu
 	@Override
 	public CollectionProducerParallelProcess generate(List<Process<?, ?>> children) {
 		return new CollectionExponentialComputation(getName(), getShape(), isIgnoreZero(),
-				(Producer) children.get(1))
+				(Producer<PackedCollection>) children.get(1))
 				.setPostprocessor(getPostprocessor())
 				.setDescription(getDescription())
 				.setShortCircuit(getShortCircuit())
@@ -230,7 +230,7 @@ public class CollectionExponentialComputation extends TraversableExpressionCompu
 		CollectionProducer d = input.delta(target);
 		d = d.reshape(getShape().getTotalSize(), -1).traverse(0);
 
-		CollectionProducer scale = isIgnoreZero() ? expIgnoreZero((Producer) input) : exp((Producer) input);
+		CollectionProducer scale = isIgnoreZero() ? expIgnoreZero(input) : exp(input);
 		scale = scale.flatten();
 
 		return expandAndMultiply(scale, d).reshape(shape);

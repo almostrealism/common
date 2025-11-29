@@ -16,16 +16,16 @@
 
 package org.almostrealism.collect.computations;
 
+import io.almostrealism.collect.TraversableExpression;
+import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.compute.Process;
+import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.DefaultIndex;
 import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
-import io.almostrealism.profile.OperationMetadata;
-import io.almostrealism.collect.TraversableExpression;
-import io.almostrealism.collect.TraversalPolicy;
-import io.almostrealism.expression.Expression;
-import io.almostrealism.compute.Process;
 import io.almostrealism.scope.Repeated;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.Variable;
@@ -114,7 +114,7 @@ public class RepeatedProducerComputation extends CollectionProducerComputationBa
 	protected BiFunction<TraversableExpression[], Expression, Expression> expression;
 	
 	/** The number of elements processed by each kernel thread for memory optimization. */
-	private int memLength;
+	private final int memLength;
 
 	/**
 	 * Creates a repeated computation with default memory length of 1.
@@ -171,7 +171,7 @@ public class RepeatedProducerComputation extends CollectionProducerComputationBa
 									   BiFunction<TraversableExpression[], Expression, Expression> condition,
 									   BiFunction<TraversableExpression[], Expression, Expression> expression,
 									   Producer<PackedCollection>... args) {
-		super(name, shape, (Producer[]) args);
+		super(name, shape, args);
 		this.initial = initial;
 		this.condition = condition;
 		this.expression = expression;

@@ -256,7 +256,7 @@ for (PackedCollection<?> batch : trainingData) {
 ```java
 public class CustomLayer implements CellularPropagation<PackedCollection<?>> {
     private Cell<PackedCollection<?>> forward;
-    private Cell<PackedCollection<?>> backward;
+    private final Cell<PackedCollection<?>> backward;
 
     public CustomLayer(PackedCollection<?> weights) {
         // Forward: y = x * weights

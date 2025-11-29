@@ -18,11 +18,11 @@ package org.almostrealism.hardware.computations;
 
 import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.relation.Provider;
 import io.almostrealism.scope.HybridScope;
 import io.almostrealism.scope.Scope;
-import io.almostrealism.relation.Provider;
-import org.almostrealism.hardware.OperationComputationAdapter;
 import org.almostrealism.hardware.MemoryData;
+import org.almostrealism.hardware.OperationComputationAdapter;
 import org.almostrealism.hardware.mem.Bytes;
 
 import java.util.Optional;

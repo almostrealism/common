@@ -16,9 +16,9 @@
 
 package org.almostrealism.algebra.test;
 
+import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.algebra.Tensor;
 import org.almostrealism.collect.PackedCollection;
-import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
 

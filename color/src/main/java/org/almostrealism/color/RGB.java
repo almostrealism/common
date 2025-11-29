@@ -16,21 +16,21 @@
 
 package org.almostrealism.color;
 
+import io.almostrealism.code.Memory;
+import io.almostrealism.collect.TraversalOrdering;
+import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.relation.Producer;
+import io.almostrealism.util.NumberFormats;
+import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.computations.DynamicCollectionProducer;
+import org.almostrealism.hardware.MemoryData;
+import org.almostrealism.hardware.NoOpMemoryData;
+
 import java.io.Externalizable;
 import java.io.IOException;
 import java.io.ObjectInput;
 import java.io.ObjectOutput;
 import java.util.function.BiFunction;
-
-import io.almostrealism.code.Memory;
-import io.almostrealism.collect.TraversalOrdering;
-import io.almostrealism.relation.Producer;
-import io.almostrealism.util.NumberFormats;
-import org.almostrealism.collect.PackedCollection;
-import io.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.collect.computations.DynamicCollectionProducer;
-import org.almostrealism.hardware.MemoryData;
-import org.almostrealism.hardware.NoOpMemoryData;
 
 /**
  * Represents a color in the RGB (Red, Green, Blue) color space.

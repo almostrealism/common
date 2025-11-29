@@ -31,7 +31,7 @@ package org.almostrealism.algebra;
  */
 @Deprecated
 public class IntersectionPoint {
-	private Vector intPt = new Vector();
+	private final Vector intPt = new Vector();
 	private double t;
 
 	/**

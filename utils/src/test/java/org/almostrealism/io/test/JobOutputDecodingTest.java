@@ -42,6 +42,6 @@ public class JobOutputDecodingTest {
 		assert result.get().getOutput().equals("asdfasdf");
 		assert result.get().getUser().equals("user");
 		assert result.get().getPassword().equals("password");
-		assert result.get().getTime() == 1234567l;
+		assert result.get().getTime() == 1234567L;
 	}
 }

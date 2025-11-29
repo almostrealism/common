@@ -16,9 +16,7 @@
 
 package org.almostrealism.collect.computations.test;
 
-import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.DefaultCollectionExpression;
-import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.expression.Sum;
 import io.almostrealism.relation.Producer;
@@ -27,8 +25,6 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.DefaultTraversableExpressionComputation;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
-
-import java.util.function.Function;
 
 /**
  * Test class demonstrating usage patterns for {@link org.almostrealism.collect.computations.TraversableExpressionComputation}
@@ -57,16 +53,15 @@ public class TraversableExpressionComputationTest implements TestFeatures {
 		TraversalPolicy shape = shape(a).replace(shape(1));
 
 		return new DefaultTraversableExpressionComputation("pairSum", shape,
-				(Function<TraversableExpression[], CollectionExpression>)
-						(args) ->
-								DefaultCollectionExpression.create(shape,
-										idx -> {
-											log(shape);
-											return Sum.of(
-													args[1].getValueAt(idx.multiply(2)),
-													args[1].getValueAt(idx.multiply(2).add(1)));
-										}
-								), a);
+				(args) ->
+						DefaultCollectionExpression.create(shape,
+								idx -> {
+									log(shape);
+									return Sum.of(
+											args[1].getValueAt(idx.multiply(2)),
+											args[1].getValueAt(idx.multiply(2).add(1)));
+								}
+						), a);
 	}
 
 	/**

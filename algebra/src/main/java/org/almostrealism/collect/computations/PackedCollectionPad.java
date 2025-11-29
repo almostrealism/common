@@ -20,9 +20,9 @@ import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.DefaultCollectionExpression;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.compute.Process;
 import io.almostrealism.expression.Conjunction;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerComputation;
@@ -99,10 +99,10 @@ public class PackedCollectionPad extends TraversableExpressionComputation {
 	public static boolean enableConditionSimplify = true;
 
 	/** The shape/dimensions of the input collection being padded */
-	private TraversalPolicy inputShape;
+	private final TraversalPolicy inputShape;
 	
 	/** The position/offset where the input data should be placed within the output */
-	private TraversalPolicy position;
+	private final TraversalPolicy position;
 
 	/**
 	 * Constructs a new PackedCollectionPad computation.
@@ -121,7 +121,7 @@ public class PackedCollectionPad extends TraversableExpressionComputation {
 	 */
 	public PackedCollectionPad(TraversalPolicy shape, TraversalPolicy position,
 							   Producer<?> input) {
-		super("pad", shape, (Producer) input);
+		super("pad", shape, (Producer<PackedCollection>) input);
 		this.inputShape = shape(input);
 		this.position = position;
 		init();
@@ -162,8 +162,8 @@ public class PackedCollectionPad extends TraversableExpressionComputation {
 			Expression<?> batchIdx = idx.divide(blockSize);
 			Expression<?> localIdx = idx.imod(blockSize);
 
-			Expression<?> superPos[] = getShape().position(localIdx);
-			Expression<?> innerPos[] = new Expression[superPos.length];
+			Expression<?>[] superPos = getShape().position(localIdx);
+			Expression<?>[] innerPos = new Expression[superPos.length];
 			List<Expression<?>> conditions = new ArrayList<>();
 
 			// For each dimension, compute the input index by subtracting the position offset
@@ -253,7 +253,7 @@ public class PackedCollectionPad extends TraversableExpressionComputation {
 			position = position.appendDimension(0);
 		}
 
-		return pad(deltaShape, position, delta((Producer) in, target));
+		return pad(deltaShape, position, delta((Producer<PackedCollection>) in, target));
 	}
 
 	@Override

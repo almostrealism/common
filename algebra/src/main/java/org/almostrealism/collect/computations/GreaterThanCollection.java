@@ -18,11 +18,11 @@ package org.almostrealism.collect.computations;
 
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.TraversableExpression;
+import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducerParallelProcess;
 import org.almostrealism.collect.PackedCollection;
-import io.almostrealism.collect.TraversalPolicy;
 
 import java.util.List;
 
@@ -121,7 +121,7 @@ public class GreaterThanCollection extends CollectionComparisonComputation {
 	 * When true, performs greater-than-or-equal comparison (>=).
 	 * When false, performs strict greater-than comparison (>).
 	 */
-	private boolean includeEqual;
+	private final boolean includeEqual;
 
 	/**
 	 * Constructs a greater-than comparison computation with strict inequality (>).
@@ -213,7 +213,7 @@ public class GreaterThanCollection extends CollectionComparisonComputation {
 	@Override
 	public CollectionProducerParallelProcess generate(List<Process<?, ?>> children) {
 		return (CollectionProducerParallelProcess)
-				greaterThan((Producer) children.get(1), (Producer) children.get(2),
-						(Producer) children.get(3), (Producer) children.get(4), includeEqual);
+				greaterThan((Producer<PackedCollection>) children.get(1), (Producer<PackedCollection>) children.get(2),
+						(Producer<PackedCollection>) children.get(3), (Producer<PackedCollection>) children.get(4), includeEqual);
 	}
 }

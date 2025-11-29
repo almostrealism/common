@@ -15,24 +15,22 @@
  */
 
 package org.almostrealism.raytrace;
+
+import io.almostrealism.relation.Producer;
+import org.almostrealism.CodeFeatures;
 import org.almostrealism.collect.PackedCollection;
-
-import java.util.ArrayList;
-
-import org.almostrealism.algebra.Vector;
+import org.almostrealism.color.Light;
 import org.almostrealism.color.LightingContext;
 import org.almostrealism.color.RGBFeatures;
-import org.almostrealism.geometry.DiscreteField;
-import org.almostrealism.color.Light;
-import org.almostrealism.color.RGB;
 import org.almostrealism.color.ShadableCurve;
 import org.almostrealism.color.Shader;
 import org.almostrealism.color.ShaderContext;
 import org.almostrealism.color.ShaderSet;
+import org.almostrealism.geometry.DiscreteField;
 import org.almostrealism.geometry.Ray;
-import io.almostrealism.relation.Producer;
 import org.almostrealism.space.DistanceEstimator;
-import org.almostrealism.CodeFeatures;
+
+import java.util.ArrayList;
 
 /**
  * {@link RayMarchingEngine} is an alternative {@link Engine} implementation that uses ray marching
@@ -67,7 +65,7 @@ import org.almostrealism.CodeFeatures;
  * @see DistanceEstimationLightingEngine
  * @author Michael Murray
  */
-public class RayMarchingEngine extends ArrayList<Producer<Ray>> implements Engine, ShadableCurve, DiscreteField, RGBFeatures, CodeFeatures {
+public class RayMarchingEngine extends ArrayList<Producer<PackedCollection>> implements Engine, ShadableCurve, DiscreteField, RGBFeatures, CodeFeatures {
 	private ShaderContext sparams;
 	private RenderParameters params;
 	private FogParameters fparams;

@@ -16,15 +16,15 @@
 
 package org.almostrealism.geometry;
 
+import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.DynamicProducerForMemoryData;
-import org.almostrealism.hardware.MemoryData;
-import io.almostrealism.relation.Producer;
-import io.almostrealism.relation.Evaluable;
 import org.almostrealism.hardware.MemoryBank;
+import org.almostrealism.hardware.MemoryData;
 
 import java.util.function.BiFunction;
 import java.util.function.IntFunction;

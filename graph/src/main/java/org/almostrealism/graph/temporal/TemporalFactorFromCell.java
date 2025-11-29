@@ -15,7 +15,6 @@
  */
 
 package org.almostrealism.graph.temporal;
-import org.almostrealism.collect.PackedCollection;
 
 import io.almostrealism.relation.Producer;
 import org.almostrealism.graph.Cell;

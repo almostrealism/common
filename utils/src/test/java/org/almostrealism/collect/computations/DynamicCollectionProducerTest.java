@@ -21,7 +21,6 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
-import static org.junit.Assert.*;
 
 /**
  * Test cases demonstrating usage patterns and behavior of {@link DynamicCollectionProducer}.

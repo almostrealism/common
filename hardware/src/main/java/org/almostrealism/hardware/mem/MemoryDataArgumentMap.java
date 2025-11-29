@@ -17,17 +17,17 @@
 package org.almostrealism.hardware.mem;
 
 import io.almostrealism.code.ComputeContext;
-import io.almostrealism.profile.OperationMetadata;
-import io.almostrealism.relation.Producer;
-import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.Memory;
 import io.almostrealism.code.NameProvider;
-import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.Provider;
 import io.almostrealism.collect.CollectionScopeInputManager;
+import io.almostrealism.profile.OperationMetadata;
+import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Producer;
+import io.almostrealism.relation.Provider;
+import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.hardware.Hardware;
-import org.almostrealism.hardware.OperationList;
 import org.almostrealism.hardware.MemoryData;
+import org.almostrealism.hardware.OperationList;
 import org.almostrealism.hardware.ProviderAwareArgumentMap;
 import org.almostrealism.hardware.jvm.JVMMemoryProvider;
 import org.almostrealism.io.SystemUtils;

@@ -15,22 +15,24 @@
  */
 
 package org.almostrealism.space;
-import io.almostrealism.relation.Producer;
 
-import java.io.*;
+import org.almostrealism.algebra.Gradient;
+import org.almostrealism.algebra.Vector;
+import org.almostrealism.algebra.VectorFeatures;
+import org.almostrealism.color.ShadableSurface;
+import org.almostrealism.geometry.TransformMatrix;
+import org.almostrealism.physics.Clock;
+import org.almostrealism.physics.RigidBody;
+import org.almostrealism.time.Temporal;
+
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
 import java.util.function.Function;
-
-import org.almostrealism.color.ShadableSurface;
-import org.almostrealism.time.Temporal;
-import org.almostrealism.geometry.TransformMatrix;
-import org.almostrealism.algebra.Vector;
-import org.almostrealism.algebra.VectorFeatures;
-import org.almostrealism.physics.RigidBody;
-import org.almostrealism.physics.Clock;
-import org.almostrealism.algebra.Gradient;
 
 public class Animation<T extends ShadableSurface> extends Scene<T> implements Runnable, VectorFeatures {
 	private int itr;
@@ -38,7 +40,7 @@ public class Animation<T extends ShadableSurface> extends Scene<T> implements Ru
 	private boolean sleep, render;
 	private boolean logState;
 
-	private List<Function<RigidBody, Gradient<?>>> forces;
+	private final List<Function<RigidBody, Gradient<?>>> forces;
 
 	private String dir;
 
@@ -175,10 +177,10 @@ public class Animation<T extends ShadableSurface> extends Scene<T> implements Ru
 				if (s instanceof RigidBody) ((RigidBody) s).getState().update(dt);
 
 			// TODO  Keep this array from iteration to iteration
-			boolean intersected[][] = new boolean[size()][size()];
+			boolean[][] intersected = new boolean[size()][size()];
 
 			s: for (ShadableSurface s : this) {
-				if (s instanceof  RigidBody == false) continue s;
+				if (!(s instanceof RigidBody)) continue s;
 
 				Vector g = new Vector(0.0, 0.0, 0.0);
 
@@ -186,7 +188,7 @@ public class Animation<T extends ShadableSurface> extends Scene<T> implements Ru
 					Gradient<?> grad = f.apply((RigidBody) s);
 
 					if (grad != null) {
-						g.addTo((Vector) grad.getNormalAt((Producer) v(((RigidBody) s).getState().getLocation())).get()
+						g.addTo((Vector) grad.getNormalAt(v(((RigidBody) s).getState().getLocation())).get()
 								.evaluate(new Object[] { ((RigidBody) s).getState() }));
 					}
 				}
@@ -195,17 +197,17 @@ public class Animation<T extends ShadableSurface> extends Scene<T> implements Ru
 			}
 
 			j: for (int j = 0; j < size(); j++) {
-				if (get(j) instanceof RigidBody == false) continue j;
+				if (!(get(j) instanceof RigidBody)) continue j;
 
 				k: for (int k = 0; k < size(); k++) {
 					if (k == j) continue k;
 					if (intersected[j][k]) continue k;
-					if (get(k) instanceof RigidBody == false) continue k;
+					if (!(get(k) instanceof RigidBody)) continue k;
 
 					RigidBody a = (RigidBody) get(j);
 					RigidBody b = (RigidBody) get(k);
 
-					Vector intersect[] = a.intersect(b);
+					Vector[] intersect = a.intersect(b);
 
 					if (intersect.length >= 2) {
 						intersected[j][k] = true;

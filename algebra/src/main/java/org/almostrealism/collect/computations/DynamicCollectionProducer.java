@@ -16,13 +16,12 @@
 
 package org.almostrealism.collect.computations;
 
+import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.DynamicProducerForMemoryData;
-import org.almostrealism.hardware.MemoryBank;
 
 import java.util.function.Function;
 import java.util.stream.Stream;
@@ -77,19 +76,19 @@ import java.util.stream.Stream;
  */
 public class DynamicCollectionProducer extends DynamicProducerForMemoryData<PackedCollection> implements CollectionProducer {
 	/** The shape/traversal policy that defines the dimensions of the output collection */
-	private TraversalPolicy shape;
+	private final TraversalPolicy shape;
 	
 	/** Whether this producer should use kernel execution (single function call) vs element-wise execution (multiple calls) */
-	private boolean kernel;
+	private final boolean kernel;
 	
 	/** Whether this producer has a fixed count (deterministic output size) */
-	private boolean fixedCount;
+	private final boolean fixedCount;
 
 	/** Function that takes input collections and returns a function for generating output */
-	private Function<PackedCollection[], Function<Object[], PackedCollection>> inputFunction;
+	private final Function<PackedCollection[], Function<Object[], PackedCollection>> inputFunction;
 	
 	/** Array of producer arguments that will be evaluated to provide inputs to the computation */
-	private Producer<?> args[];
+	private final Producer<?>[] args;
 
 	/**
 	 * Creates a DynamicCollectionProducer with the simplest configuration.
@@ -162,9 +161,9 @@ public class DynamicCollectionProducer extends DynamicProducerForMemoryData<Pack
 	 * @param args Array of producers whose outputs will be used as inputs to the function
 	 */
 	public DynamicCollectionProducer(TraversalPolicy shape, Function<PackedCollection[], Function<Object[], PackedCollection>> function,
-									 boolean kernel, boolean fixedCount, Producer args[]) {
+									 boolean kernel, boolean fixedCount, Producer[] args) {
 		super(args.length > 0 ? null : function.apply(null),
-				len -> (MemoryBank<PackedCollection>) new PackedCollection(shape.prependDimension(len)));
+				len -> new PackedCollection(shape.prependDimension(len)));
 		this.shape = shape;
 		this.kernel = kernel;
 		this.fixedCount = fixedCount;
@@ -218,7 +217,7 @@ public class DynamicCollectionProducer extends DynamicProducerForMemoryData<Pack
 	@Override
 	protected Function<Object[], PackedCollection> getFunction() {
 		if (args != null && args.length > 0) {
-			Evaluable eval[] = Stream.of(args).map(Producer::get).toArray(Evaluable[]::new);
+			Evaluable[] eval = Stream.of(args).map(Producer::get).toArray(Evaluable[]::new);
 			return args -> {
 				PackedCollection[] inputs = Stream.of(eval)
 						.map(ev -> ev.evaluate(args))

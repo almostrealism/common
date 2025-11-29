@@ -16,11 +16,10 @@ Example:
     python generate_qwen3_reference.py ./qwen3_reference
 """
 
-import sys
-import os
 import numpy as np
+import os
+import sys
 import torch
-import torch.nn.functional as F
 
 # Import protobuf definitions
 sys.path.append('/workspace/project/rings/rings-ml/src/main/python')

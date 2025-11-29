@@ -20,8 +20,8 @@ import io.almostrealism.compute.PhysicalScope;
 import io.almostrealism.expression.InstanceReference;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.uml.Nameable;
 import io.almostrealism.relation.Sortable;
+import io.almostrealism.uml.Nameable;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.Describable;
 

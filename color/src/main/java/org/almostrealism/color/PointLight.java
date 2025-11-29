@@ -18,11 +18,10 @@ package org.almostrealism.color;
 
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Vector;
-import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.CollectionProducer;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.color.computations.GeneratedColorProducer;
 import org.almostrealism.geometry.Positioned;
-import org.almostrealism.geometry.Ray;
 import org.almostrealism.geometry.RayFeatures;
 
 /**
@@ -228,7 +227,7 @@ public class PointLight implements Light, Positioned, RayFeatures, RGBFeatures {
 	 * based on intensity.
 	 */
 	// TODO  This should be a method of the Light interface
-	public Producer<PackedCollection> forShadable(Shadable surface, Producer<Ray> intersection, ShaderContext context) {
+	public Producer<PackedCollection> forShadable(Shadable surface, Producer<PackedCollection> intersection, ShaderContext context) {
 		CollectionProducer point = origin(intersection);
 		Producer<PackedCollection> direction = add(point, minus(v(getLocation())));
 		direction = minus(normalize(direction));

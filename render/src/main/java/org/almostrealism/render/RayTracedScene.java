@@ -15,30 +15,29 @@
  */
 
 package org.almostrealism.render;
+
+import io.almostrealism.relation.Producer;
+import io.almostrealism.relation.Realization;
+import org.almostrealism.CodeFeatures;
+import org.almostrealism.algebra.Pair;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.color.RGB;
+import org.almostrealism.color.RGBFeatures;
+import org.almostrealism.color.RealizableImage;
+import org.almostrealism.color.ShadableSurface;
+import org.almostrealism.geometry.Camera;
+import org.almostrealism.geometry.DimensionAware;
+import org.almostrealism.raytrace.Engine;
+import org.almostrealism.raytrace.FogParameters;
+import org.almostrealism.raytrace.RayIntersectionEngine;
+import org.almostrealism.raytrace.RenderParameters;
+import org.almostrealism.space.Scene;
 
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
-
-import org.almostrealism.raytrace.Engine;
-import org.almostrealism.raytrace.FogParameters;
-import org.almostrealism.raytrace.RayIntersectionEngine;
-import org.almostrealism.raytrace.RenderParameters;
-import io.almostrealism.relation.Realization;
-import org.almostrealism.color.RGBFeatures;
-import org.almostrealism.geometry.Camera;
-import org.almostrealism.algebra.Pair;
-import org.almostrealism.color.RGB;
-import org.almostrealism.color.RealizableImage;
-
-import io.almostrealism.relation.Producer;
-import org.almostrealism.CodeFeatures;
-import org.almostrealism.geometry.DimensionAware;
-import org.almostrealism.space.Scene;
-import org.almostrealism.color.ShadableSurface;
 
 /**
  * {@link RayTracedScene} coordinates the ray tracing process for rendering an image of a scene.

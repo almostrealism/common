@@ -95,10 +95,9 @@ public interface MatrixFeatures extends AlgebraFeatures {
 	 * An identity matrix has 1s on the diagonal and 0s elsewhere.
 	 *
 	 * @param size  the size of the square matrix (both rows and columns)
-	 * @param <T>  the collection type
 	 * @return a producer for the size x size identity matrix
 	 */
-	default <T extends PackedCollection> CollectionProducer identity(int size) {
+	default CollectionProducer identity(int size) {
 		return identity(shape(size, size));
 	}
 
@@ -107,16 +106,15 @@ public interface MatrixFeatures extends AlgebraFeatures {
 	 * An identity matrix has 1s on the diagonal and 0s elsewhere.
 	 *
 	 * @param shape  the shape of the matrix (must be 2-dimensional)
-	 * @param <T>  the collection type
 	 * @return a producer for the identity matrix
 	 * @throws IllegalArgumentException if the shape is not 2-dimensional
 	 */
-	default <T extends PackedCollection> CollectionProducer identity(TraversalPolicy shape) {
+	default CollectionProducer identity(TraversalPolicy shape) {
 		if (shape.getDimensions() != 2) {
 			throw new IllegalArgumentException();
 		}
 
-		return (CollectionProducer) new IdentityMatrixComputation(shape.traverseEach());
+		return new IdentityMatrixComputation(shape.traverseEach());
 	}
 
 	/**
@@ -133,11 +131,10 @@ public interface MatrixFeatures extends AlgebraFeatures {
 	 * </p>
 	 *
 	 * @param vector  the vector containing diagonal values
-	 * @param <T>  the collection type
 	 * @return a producer for the diagonal matrix
 	 * @throws IllegalArgumentException if the input is not 1-dimensional
 	 */
-	default <T extends PackedCollection> CollectionProducer diagonal(Producer<T> vector) {
+	default CollectionProducer diagonal(Producer<PackedCollection> vector) {
 		TraversalPolicy shape = shape(vector);
 
 		if (shape.getDimensions() != 1) {
@@ -147,7 +144,7 @@ public interface MatrixFeatures extends AlgebraFeatures {
 		}
 
 		TraversalPolicy diagonalShape = shape(shape.length(0), shape.length(0)).traverse(1);
-		return (CollectionProducer) new DiagonalMatrixComputation(diagonalShape, (Producer) vector);
+		return new DiagonalMatrixComputation(diagonalShape, vector);
 	}
 
 	/**
@@ -174,11 +171,10 @@ public interface MatrixFeatures extends AlgebraFeatures {
 	 *
 	 * @param matrix  the matrix (left operand)
 	 * @param vector  the vector or matrix (right operand)
-	 * @param <T>  the collection type
 	 * @return a producer for the multiplication result
 	 * @throws IllegalArgumentException if shapes are incompatible
 	 */
-	default <T extends PackedCollection> CollectionProducer matmul(Producer<T> matrix, Producer<T> vector) {
+	default CollectionProducer matmul(Producer<PackedCollection> matrix, Producer<PackedCollection> vector) {
 		TraversalPolicy mShape = shape(matrix);
 		TraversalPolicy vShape = shape(vector);
 
@@ -246,14 +242,14 @@ public interface MatrixFeatures extends AlgebraFeatures {
 		Optional<Computable> scalar =
 				Algebraic.getDiagonalScalar(vectorShape.length(1), matrix);
 		if (scalar.isPresent() && scalar.get() instanceof Producer) {
-			return multiply(c(vector), (Producer) scalar.get());
+			return multiply(c(vector), (Producer<PackedCollection>) scalar.get());
 		}
 
 		// Is the vector just a scalar transform?
 		scalar =
 				Algebraic.getDiagonalScalar(mShape.length(0), vector);
 		if (b == 1 && scalar.isPresent() && scalar.get() instanceof Producer) {
-			return multiply(c(matrix), (Producer) scalar.get());
+			return multiply(c(matrix), (Producer<PackedCollection>) scalar.get());
 		}
 
 		if (Algebraic.isDiagonal(vectorShape.length(1), matrix) ||
@@ -313,7 +309,7 @@ public interface MatrixFeatures extends AlgebraFeatures {
 		int n = shape(a).length(1);
 		int p = shape(b).length(1);
 
-		return (CollectionProducer) c(b).enumerate(1, 1)
+		return c(b).enumerate(1, 1)
 				.reshape(p, n)
 				.traverse(1)
 				.repeat(m)
@@ -432,10 +428,9 @@ public interface MatrixFeatures extends AlgebraFeatures {
 	 *
 	 * @param producer  the producer to differentiate
 	 * @param target    the target variable to differentiate with respect to
-	 * @param <T>  the shape type
 	 * @return the delta computation, or null if no simplified form is available
 	 */
-	default <T extends PackedCollection> CollectionProducer attemptDelta(Producer<T> producer,
+	default CollectionProducer attemptDelta(Producer<PackedCollection> producer,
 																		 Producer<?> target) {
 		if (producer instanceof DeltaAlternate) {
 			CollectionProducer alt = ((DeltaAlternate) producer).getDeltaAlternate();
@@ -446,12 +441,10 @@ public interface MatrixFeatures extends AlgebraFeatures {
 		TraversalPolicy targetShape = shape(target);
 
 		if (AlgebraFeatures.cannotMatch(producer, target)) {
-			return (CollectionProducer)
-					zeros(shape.append(targetShape));
+			return zeros(shape.append(targetShape));
 		} else if (AlgebraFeatures.match(producer, target)) {
-			return (CollectionProducer)
-					identity(shape(shape.getTotalSize(), targetShape.getTotalSize()))
-							.reshape(shape.append(targetShape));
+			return identity(shape(shape.getTotalSize(), targetShape.getTotalSize()))
+					.reshape(shape.append(targetShape));
 		}
 
 		return null;

@@ -16,13 +16,13 @@
 
 package org.almostrealism.layers;
 
+import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.lifecycle.Destroyable;
-import io.almostrealism.uml.Nameable;
 import io.almostrealism.relation.Producer;
+import io.almostrealism.uml.Nameable;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.collect.PackedCollection;
-import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.graph.Cell;
 import org.almostrealism.graph.Receptor;
 import org.almostrealism.hardware.HardwareFeatures;

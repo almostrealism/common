@@ -16,9 +16,9 @@
 
 package io.almostrealism.scope;
 
-import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.code.Statement;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.uml.Nameable;
 
 import java.util.Arrays;

@@ -20,8 +20,8 @@ import io.almostrealism.code.Computation;
 import io.almostrealism.code.ComputationBase;
 import io.almostrealism.collect.Algebraic;
 import io.almostrealism.collect.TraversalPolicy;
-import io.almostrealism.relation.Evaluable;
 import io.almostrealism.compute.Process;
+import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.AlgebraFeatures;
 import org.almostrealism.algebra.MatrixFeatures;
@@ -181,7 +181,7 @@ public interface DeltaFeatures extends MatrixFeatures {
 			delta = replaceInput(delta, restore, originals);
 		}
 
-		return (CollectionProducer) delta;
+		return delta;
 	}
 
 	/**
@@ -218,10 +218,9 @@ public interface DeltaFeatures extends MatrixFeatures {
 	 *
 	 * @param producer  the producer to differentiate
 	 * @param target  the variable to differentiate with respect to
-	 * @param <T>  the shape type
 	 * @return the gradient computation, or null if unable to compute
 	 */
-	default <T extends PackedCollection> CollectionProducer attemptDelta(CollectionProducer producer, Producer<?> target) {
+	default CollectionProducer attemptDelta(CollectionProducer producer, Producer<?> target) {
 		CollectionProducer result = MatrixFeatures.super.attemptDelta(producer, target);
 		if (result != null) return result;
 
@@ -240,7 +239,7 @@ public interface DeltaFeatures extends MatrixFeatures {
 			if (match == null) {
 				return null;
 			} else if (match.isEmpty()) {
-				return (CollectionProducer) zeros(shape.append(targetShape));
+				return zeros(shape.append(targetShape));
 			}
 
 			Producer<?> in = match.get();
@@ -262,7 +261,7 @@ public interface DeltaFeatures extends MatrixFeatures {
 
 			f = reshape(shape(finalLength, outLength), f);
 			g = reshape(shape(outLength, inLength), g);
-			return (CollectionProducer) matmul(f, g).reshape(shape.append(targetShape));
+			return matmul(f, g).reshape(shape.append(targetShape));
 		}
 
 		return null;
@@ -462,6 +461,6 @@ public interface DeltaFeatures extends MatrixFeatures {
 		/** Additive operations - returns identity matrix */
 		IGNORE,
 		/** Multiplicative operations - returns diagonal of non-target terms product */
-		COMBINE;
+		COMBINE
 	}
 }

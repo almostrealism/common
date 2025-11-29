@@ -16,11 +16,11 @@
 
 package org.almostrealism.model;
 
-import io.almostrealism.lifecycle.Destroyable;
-import io.almostrealism.profile.OperationProfile;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.ParallelProcess;
 import io.almostrealism.compute.Process;
+import io.almostrealism.lifecycle.Destroyable;
+import io.almostrealism.profile.OperationProfile;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.Ops;
 import org.almostrealism.collect.PackedCollection;

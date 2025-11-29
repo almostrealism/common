@@ -15,13 +15,12 @@
  */
 
 package org.almostrealism.graph;
-import org.almostrealism.collect.PackedCollection;
 
+import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Factor;
 import io.almostrealism.relation.Producer;
-import org.almostrealism.time.Temporal;
-import io.almostrealism.relation.Evaluable;
 import org.almostrealism.hardware.OperationList;
+import org.almostrealism.time.Temporal;
 
 import java.util.function.Supplier;
 

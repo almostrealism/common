@@ -16,8 +16,8 @@
 
 package org.almostrealism.ml;
 
-import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.PairFeatures;
 import org.almostrealism.collect.CollectionProducer;

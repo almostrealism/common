@@ -15,10 +15,10 @@
  */
 package org.almostrealism.space;
 
+import org.almostrealism.geometry.BasicGeometry;
+
 import java.util.EmptyStackException;
 import java.util.Stack;
-
-import org.almostrealism.geometry.BasicGeometry;
 
 /**
  * {@link GeometryStack} extends {@link BasicGeometry} to allow for convenient
@@ -28,7 +28,7 @@ import org.almostrealism.geometry.BasicGeometry;
  * @author  Michael Murray
  */
 public class GeometryStack extends BasicGeometry {
-	private Stack<BasicGeometry> stack;
+	private final Stack<BasicGeometry> stack;
 	
 	public GeometryStack() {
 		stack = new Stack<>();

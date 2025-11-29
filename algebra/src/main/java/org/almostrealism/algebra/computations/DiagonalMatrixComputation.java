@@ -73,7 +73,7 @@ public class DiagonalMatrixComputation extends MatrixExpressionComputation {
 	 * @param values  producer for the diagonal values
 	 */
 	public DiagonalMatrixComputation(String name, TraversalPolicy shape, Producer<PackedCollection> values) {
-		super(name, shape, (Producer) values);
+		super(name, shape, values);
 	}
 
 	/**
@@ -108,6 +108,6 @@ public class DiagonalMatrixComputation extends MatrixExpressionComputation {
 	 */
 	@Override
 	public CollectionProducerParallelProcess generate(List<Process<?, ?>> children) {
-		return (CollectionProducerParallelProcess) diagonal((Producer) children.get(1));
+		return (CollectionProducerParallelProcess) diagonal((Producer<PackedCollection>) children.get(1));
 	}
 }

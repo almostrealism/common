@@ -18,8 +18,6 @@ package org.almostrealism.heredity;
 
 import org.almostrealism.collect.PackedCollection;
 
-import java.util.List;
-
 /**
  * An abstract {@link Chromosome} that provides access to gene parameters and breeding operations.
  *

@@ -23,13 +23,13 @@ import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.ComputableProcessContext;
 import io.almostrealism.compute.ParallelProcessContext;
+import io.almostrealism.compute.Process;
 import io.almostrealism.compute.ProcessContext;
-import io.almostrealism.kernel.DefaultIndex;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.kernel.DefaultIndex;
 import io.almostrealism.kernel.Index;
 import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.kernel.KernelStructureContext;
-import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.Scope;
 import org.almostrealism.algebra.AlgebraFeatures;
@@ -185,7 +185,7 @@ public class AggregatedProducerComputation extends TraversableRepeatedProducerCo
 	 * The aggregation expression that combines the accumulator with each new element.
 	 * This binary function is applied repeatedly: accumulator = expression(accumulator, element).
 	 */
-	private BiFunction<Expression, Expression, Expression> expression;
+	private final BiFunction<Expression, Expression, Expression> expression;
 
 	/**
 	 * Flag indicating whether to replace the iterative loop with a direct memory access pattern.
@@ -367,7 +367,7 @@ public class AggregatedProducerComputation extends TraversableRepeatedProducerCo
 			Expression e = checkCache(index);
 			if (e != null) return e;
 
-			TraversableExpression args[] = getTraversableArguments(index);
+			TraversableExpression[] args = getTraversableArguments(index);
 
 			Expression value = initial.apply(args, e(0));
 			if (enableLogging)
@@ -421,7 +421,7 @@ public class AggregatedProducerComputation extends TraversableRepeatedProducerCo
 	@Override
 	public CollectionProducer delta(Producer<?> target) {
 		CollectionProducer delta = attemptDelta(target);
-		if (delta != null) return (CollectionProducer) delta;
+		if (delta != null) return delta;
 
 		if (enableTransitiveDelta && getInputs().size() == 2 && getInputs().get(1) instanceof CollectionProducer) {
 			int outLength = ((CollectionProducer) getInputs().get(1)).getShape().getTotalSize();
@@ -438,7 +438,7 @@ public class AggregatedProducerComputation extends TraversableRepeatedProducerCo
 
 			delta = delta.enumerate(1, count).traverse(2);
 			return new AggregatedProducerComputation(getName(), shape(delta).replace(shape(1)),
-						count, initial, expression, (Producer) delta)
+						count, initial, expression, delta)
 					.setReplaceLoop(isReplaceLoop())
 					.reshape(getShape().append(shape(target)));
 		} else {
@@ -451,7 +451,7 @@ public class AggregatedProducerComputation extends TraversableRepeatedProducerCo
 				((ConstantRepeatedDeltaComputation) delta).setFallback(traversable);
 			}
 
-			return (CollectionProducer) delta;
+			return delta;
 		}
 	}
 

@@ -68,8 +68,8 @@ import java.util.stream.Stream;
  * @see ProducerWithRank
  */
 public class ProducerWithRankAdapter<T> implements ProducerWithRank<T, PackedCollection>, ScopeLifecycle, Shape<T> {
-	private Producer<T> p;
-	private Producer<PackedCollection> rank;
+	private final Producer<T> p;
+	private final Producer<PackedCollection> rank;
 
 	/**
 	 * Protected constructor for subclasses that implement their own producer logic.

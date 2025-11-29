@@ -20,7 +20,6 @@ import io.almostrealism.relation.Tree;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.uml.Nameable;
 import io.almostrealism.util.DescribableParent;
-import io.almostrealism.util.FrequencyCache;
 import org.almostrealism.io.SystemUtils;
 import org.almostrealism.io.TimingMetric;
 

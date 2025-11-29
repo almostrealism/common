@@ -16,16 +16,17 @@
 
 package org.almostrealism.geometry;
 
-import java.util.*;
-import java.util.function.Supplier;
-
 import io.almostrealism.relation.Producer;
-import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.Gradient;
-import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.computations.ProducerWithRankAdapter;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
+
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Iterator;
+import java.util.List;
+import java.util.ListIterator;
 
 /**
  * Extends {@link Intersection} to provide metadata that is required for shading,
@@ -53,7 +54,7 @@ import org.almostrealism.collect.PackedCollection;
  */
 public class ShadableIntersection extends Intersection implements ContinuousField, RayFeatures {
 	private Producer<PackedCollection> incident;
-	private Producer<Ray> normal;
+	private Producer<PackedCollection> normal;
 
 	/**
 	 * Constructs a ShadableIntersection from a surface gradient, ray, and distance.
@@ -111,7 +112,7 @@ public class ShadableIntersection extends Intersection implements ContinuousFiel
 		this.incident = incident;
 
 		CollectionProducer p = ray(getPoint(), normal);
-		this.normal = new ProducerWithRankAdapter<>((Producer) p, (Producer) distance);
+		this.normal = new ProducerWithRankAdapter<>((Producer) p, distance);
 	}
 
 	/**
@@ -127,7 +128,7 @@ public class ShadableIntersection extends Intersection implements ContinuousFiel
 	}
 
 	@Override
-	public Producer<Ray> get(int index) { return normal; }
+	public Producer<PackedCollection> get(int index) { return normal; }
 	
 	public int size() { return 1; }
 
@@ -138,7 +139,7 @@ public class ShadableIntersection extends Intersection implements ContinuousFiel
 	public boolean contains(Object o) { return false; }
 
 	@Override
-	public Iterator<Producer<Ray>> iterator() { return Arrays.asList(normal).iterator(); }
+	public Iterator<Producer<PackedCollection>> iterator() { return Arrays.asList(normal).iterator(); }
 
 	@Override
 	public Object[] toArray() { return new Object[] { normal }; }
@@ -147,7 +148,7 @@ public class ShadableIntersection extends Intersection implements ContinuousFiel
 	public <T> T[] toArray(T[] a) { return Arrays.asList(normal).toArray(a); }
 
 	@Override
-	public boolean add(Producer<Ray> e) { return false; }
+	public boolean add(Producer<PackedCollection> e) { return false; }
 
 	@Override
 	public boolean remove(Object o) { return false; }
@@ -156,10 +157,10 @@ public class ShadableIntersection extends Intersection implements ContinuousFiel
 	public boolean containsAll(Collection<?> c) { return false; }
 
 	@Override
-	public boolean addAll(Collection<? extends Producer<Ray>> c) { return false; }
+	public boolean addAll(Collection<? extends Producer<PackedCollection>> c) { return false; }
 
 	@Override
-	public boolean addAll(int index, Collection<? extends Producer<Ray>> c) { return false; }
+	public boolean addAll(int index, Collection<? extends Producer<PackedCollection>> c) { return false; }
 
 	@Override
 	public boolean removeAll(Collection<?> c) { return false; }
@@ -171,13 +172,13 @@ public class ShadableIntersection extends Intersection implements ContinuousFiel
 	public void clear() { }
 
 	@Override
-	public Producer<Ray> set(int index, Producer<Ray> element) { return null; }
+	public Producer<PackedCollection> set(int index, Producer<PackedCollection> element) { return null; }
 
 	@Override
-	public void add(int index, Producer<Ray> element) { }
+	public void add(int index, Producer<PackedCollection> element) { }
 
 	@Override
-	public Producer<Ray> remove(int index) { return null; }
+	public Producer<PackedCollection> remove(int index) { return null; }
 
 	@Override
 	public int indexOf(Object o) { return 0; }
@@ -186,17 +187,17 @@ public class ShadableIntersection extends Intersection implements ContinuousFiel
 	public int lastIndexOf(Object o) { return 0; }
 
 	@Override
-	public ListIterator<Producer<Ray>> listIterator() {
+	public ListIterator<Producer<PackedCollection>> listIterator() {
 		return Arrays.asList(normal).listIterator();
 	}
 
 	@Override
-	public ListIterator<Producer<Ray>> listIterator(int index) {
+	public ListIterator<Producer<PackedCollection>> listIterator(int index) {
 		return Arrays.asList(normal).listIterator();
 	}
 
 	@Override
-	public List<Producer<Ray>> subList(int fromIndex, int toIndex) {
+	public List<Producer<PackedCollection>> subList(int fromIndex, int toIndex) {
 		return Arrays.asList(normal).subList(fromIndex, toIndex);
 	}
 }

@@ -146,7 +146,7 @@ public class CollectionSumComputation extends AggregatedProducerComputation {
 	 */
 	@Override
 	public CollectionSumComputation generate(List<Process<?, ?>> children) {
-		return new CollectionSumComputation((Producer) children.get(1));
+		return new CollectionSumComputation((Producer<PackedCollection>) children.get(1));
 	}
 
 	/**

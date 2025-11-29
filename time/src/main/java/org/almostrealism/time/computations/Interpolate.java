@@ -18,19 +18,19 @@ package org.almostrealism.time.computations;
 
 import io.almostrealism.code.ExpressionAssignment;
 import io.almostrealism.collect.CollectionVariable;
-import io.almostrealism.kernel.KernelStructureContext;
-import io.almostrealism.scope.ArrayVariable;
-import io.almostrealism.scope.HybridScope;
+import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.expression.Exponent;
+import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.Product;
 import io.almostrealism.expression.StaticReference;
+import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.relation.Producer;
+import io.almostrealism.scope.ArrayVariable;
+import io.almostrealism.scope.HybridScope;
 import io.almostrealism.scope.Scope;
-import io.almostrealism.expression.Expression;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
-import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.computations.CollectionProducerComputationBase;
-import io.almostrealism.relation.Producer;
 
 import java.util.function.Consumer;
 import java.util.function.Function;

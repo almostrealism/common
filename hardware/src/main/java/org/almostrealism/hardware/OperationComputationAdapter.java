@@ -17,8 +17,8 @@
 package org.almostrealism.hardware;
 
 import io.almostrealism.code.Computation;
-import io.almostrealism.code.OperationComputation;
 import io.almostrealism.code.ComputationBase;
+import io.almostrealism.code.OperationComputation;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Producer;
 

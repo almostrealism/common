@@ -18,8 +18,8 @@ package org.almostrealism.hardware.metal;
 
 import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;
-import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.concurrent.Semaphore;
+import io.almostrealism.profile.OperationMetadata;
 import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.MemoryData;
 

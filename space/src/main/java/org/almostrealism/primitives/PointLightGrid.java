@@ -16,16 +16,16 @@
 
 package org.almostrealism.primitives;
 
+import io.almostrealism.code.Operator;
+import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Vector;
-import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.algebra.ZeroVector;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.color.Light;
 import org.almostrealism.color.PointLight;
 import org.almostrealism.color.RGB;
-import io.almostrealism.relation.Producer;
-import io.almostrealism.code.Operator;
-import org.almostrealism.space.AbstractSurface;
 import org.almostrealism.geometry.ShadableIntersection;
+import org.almostrealism.space.AbstractSurface;
 
 /** A {@link PointLightGrid} stores a grid of {@link PointLight}s. */
 public class PointLightGrid extends AbstractSurface implements Light {

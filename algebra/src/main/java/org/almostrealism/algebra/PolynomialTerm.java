@@ -191,13 +191,9 @@ public class PolynomialTerm {
 	 * are the same as the specified PolynomialTerm object.
 	 */
 	public boolean isLikeTerm(PolynomialTerm term) {
-		if (this.getExpOfX() == term.getExpOfX() &&
-			this.getExpOfY() == term.getExpOfY() &&
-			this.getExpOfZ() == term.getExpOfZ()) {
-			return true;
-		} else {
-			return false;
-		}
+		return this.getExpOfX() == term.getExpOfX() &&
+				this.getExpOfY() == term.getExpOfY() &&
+				this.getExpOfZ() == term.getExpOfZ();
 	}
 	
 	/**

@@ -15,28 +15,30 @@
  */
 
 package org.almostrealism.space;
-import org.almostrealism.collect.PackedCollection;
 
-import java.util.Collection;
-import java.util.Iterator;
-import java.util.NoSuchElementException;
-import java.util.Set;
-
+import io.almostrealism.code.Constant;
+import io.almostrealism.code.Operator;
+import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Vector;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.color.RGB;
 import org.almostrealism.color.RGBFeatures;
 import org.almostrealism.color.ShadableSurface;
 import org.almostrealism.color.Shader;
 import org.almostrealism.color.ShaderContext;
 import org.almostrealism.color.ShaderSet;
-import org.almostrealism.geometry.BoundingSolid;
-import org.almostrealism.physics.Porous;
-import io.almostrealism.code.Constant;
-import io.almostrealism.relation.Producer;
-import io.almostrealism.code.Operator;
-import org.almostrealism.texture.Texture;
 import org.almostrealism.color.computations.AdaptProducerRGB;
+import org.almostrealism.geometry.BoundingSolid;
 import org.almostrealism.geometry.TransformMatrix;
+import org.almostrealism.physics.Porous;
+import org.almostrealism.texture.Texture;
+
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Iterator;
+import java.util.NoSuchElementException;
+import java.util.Objects;
+import java.util.Set;
 
 /**
  * {@link AbstractSurface} is an abstract implementation of {@link ShadableSurface} that takes
@@ -54,7 +56,7 @@ public abstract class AbstractSurface extends TriangulatableGeometry implements 
 	private double rindex = 1.0, reflectP = 1.0, refractP = 0.0;
 	private double porosity;
 
-	private Texture textures[];
+	private Texture[] textures;
 	private ShaderSet shaders = new ShaderSet();
 
 	private AbstractSurface parent;
@@ -215,7 +217,7 @@ public abstract class AbstractSurface extends TriangulatableGeometry implements 
 	/**
 	 * Sets the Texture objects (used to color this AbstractSurface) to those specified.
 	 */
-	public void setTextures(Texture textures[]) {
+	public void setTextures(Texture[] textures) {
 		this.textures = textures;
 	}
 	
@@ -223,9 +225,9 @@ public abstract class AbstractSurface extends TriangulatableGeometry implements 
 	 * Appends the specified Texture object to the list of Texture objects used to color this AbstractSurface.
 	 */
 	public void addTexture(Texture texture) {
-		Texture newTextures[] = new Texture[this.textures.length + 1];
-		
-		for (int i = 0; i < this.textures.length; i++) { newTextures[i] = this.textures[i]; }
+		Texture[] newTextures = new Texture[this.textures.length + 1];
+
+		System.arraycopy(this.textures, 0, newTextures, 0, this.textures.length);
 		newTextures[newTextures.length - 1] = texture;
 		
 		this.textures = newTextures;
@@ -236,10 +238,11 @@ public abstract class AbstractSurface extends TriangulatableGeometry implements 
 	 * to color this AbstractSurface.
 	 */
 	public void removeTexture(int index) {
-		Texture newTextures[] = new Texture[this.textures.length - 1];
-		
-		for (int i = 0; i < index; i++) { newTextures[i] = this.textures[i]; }
-		for (int i = index + 1; i < newTextures.length; i++) { newTextures[i] = this.textures[i]; }
+		Texture[] newTextures = new Texture[this.textures.length - 1];
+
+		if (index >= 0) System.arraycopy(this.textures, 0, newTextures, 0, index);
+		if (newTextures.length - (index + 1) >= 0)
+			System.arraycopy(this.textures, index + 1, newTextures, index + 1, newTextures.length - (index + 1));
 		
 		this.textures = newTextures;
 	}
@@ -263,10 +266,7 @@ public abstract class AbstractSurface extends TriangulatableGeometry implements 
 					int index = 0;
 
 					public boolean hasNext() {
-						if (index < textures.length)
-							return true;
-						else
-							return false;
+						return index < textures.length;
 					}
 
 					public Texture next() throws NoSuchElementException {
@@ -291,7 +291,7 @@ public abstract class AbstractSurface extends TriangulatableGeometry implements 
 			/**
 			 * @return  An array containing all of the elements stored by this set.
 			 */
-			public Object[] toArray(Object o[]) { return this.toArray(); }
+			public Object[] toArray(Object[] o) { return this.toArray(); }
 			
 			/**
 			 * Adds the specified Object to this set and returns true.
@@ -300,10 +300,10 @@ public abstract class AbstractSurface extends TriangulatableGeometry implements 
 			 * @throws IllegalArgumentException  If the specified Object is not an instance of Texture.
 			 */
 			public boolean add(Texture o) {
-				if (o instanceof Texture == false)
+				if (!(o instanceof Texture))
 					throw new IllegalArgumentException("Illegal argument: " + o.toString());
 				
-				addTexture((Texture)o);
+				addTexture(o);
 				
 				return true;
 			}
@@ -384,7 +384,7 @@ public abstract class AbstractSurface extends TriangulatableGeometry implements 
 				Iterator itr = this.iterator();
 				
 				while (itr.hasNext()) {
-					if (c.contains(itr.next()) == false) {
+					if (!c.contains(itr.next())) {
 						itr.remove();
 						removed = true;
 					}
@@ -402,11 +402,11 @@ public abstract class AbstractSurface extends TriangulatableGeometry implements 
 			 * @return  True if this set contains the specified Object, false otherwise.
 			 */
 			public boolean contains(Object o) {
-				if (o instanceof Texture != true)
+				if (!(o instanceof Texture))
 					return false;
 				
 				for (int i = 0; i < textures.length; i++) {
-					if (o == null ? textures[i] == null : o.equals(textures[i]))
+					if (Objects.equals(o, textures[i]))
 						return true;
 				}
 				
@@ -425,7 +425,7 @@ public abstract class AbstractSurface extends TriangulatableGeometry implements 
 				Iterator itr = c.iterator();
 				
 				while (itr.hasNext()) {
-					if (this.contains(itr.next()) == false)
+					if (!this.contains(itr.next()))
 						return false;
 				}
 				
@@ -437,16 +437,13 @@ public abstract class AbstractSurface extends TriangulatableGeometry implements 
 			 *          are equal to those.
 			 */
 			public boolean equals(Object o) {
-				if (o instanceof Set == false)
+				if (!(o instanceof Set))
 					return false;
 				
 				if (((Set)o).size() != this.size())
 					return false;
-				
-				if (this.containsAll((Set)o))
-					return true;
-				else
-					return false;
+
+				return this.containsAll((Set) o);
 			}
 			
 			/**
@@ -471,12 +468,12 @@ public abstract class AbstractSurface extends TriangulatableGeometry implements 
 	/**
 	 * Sets the Shader objects (used to shade this AbstractSurface) to those specified.
 	 */
-	public void setShaders(Shader shaders[]) {
+	public void setShaders(Shader[] shaders) {
 	    if (this.shaders == null) this.shaders = new ShaderSet();
 	    
 		this.shaders.clear();
-		
-		for (int i = 0; i < shaders.length; i++) this.shaders.add(shaders[i]);
+
+		Collections.addAll(this.shaders, shaders);
 	}
 	
 	/**

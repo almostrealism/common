@@ -19,11 +19,11 @@ package org.almostrealism.graph.mesh;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.Ops;
-import org.almostrealism.collect.computations.GreaterThanCollection;
-import org.almostrealism.collect.computations.LessThanCollection;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.computations.GreaterThanCollection;
+import org.almostrealism.collect.computations.LessThanCollection;
 import org.almostrealism.geometry.Intersection;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.geometry.RayFeatures;
@@ -109,17 +109,17 @@ public class TriangleIntersectAt extends LessThanCollection {
 											   Producer<PackedCollection> t) {
 		// Create component conditions using non-strict inequalities
 		// to include edge cases (standard Moller-Trumbore algorithm)
-		CollectionProducer cond1 = CollectionFeatures.getInstance().greaterThanOrEqual((Producer) u, Ops.o().c(0.0));
-		CollectionProducer cond2 = CollectionFeatures.getInstance().lessThanOrEqual((Producer) u, Ops.o().c(1.0));
-		CollectionProducer cond3 = CollectionFeatures.getInstance().greaterThanOrEqual((Producer) v, Ops.o().c(0.0));
-		CollectionProducer cond4 = CollectionFeatures.getInstance().lessThanOrEqual((Producer) Ops.o().add(u, v), Ops.o().c(1.0));
+		CollectionProducer cond1 = CollectionFeatures.getInstance().greaterThanOrEqual(u, Ops.o().c(0.0));
+		CollectionProducer cond2 = CollectionFeatures.getInstance().lessThanOrEqual(u, Ops.o().c(1.0));
+		CollectionProducer cond3 = CollectionFeatures.getInstance().greaterThanOrEqual(v, Ops.o().c(0.0));
+		CollectionProducer cond4 = CollectionFeatures.getInstance().lessThanOrEqual(Ops.o().add(u, v), Ops.o().c(1.0));
 
 		// Chain with AND operations: ((cond1 AND cond2) AND cond3) AND cond4
 		CollectionProducer conjunction = CollectionFeatures.getInstance().and(
-				(Producer) CollectionFeatures.getInstance().and(
-						(Producer) CollectionFeatures.getInstance().and((Producer) cond1, (Producer) cond2),
-						(Producer) cond3),
-				(Producer) cond4,
+				CollectionFeatures.getInstance().and(
+						CollectionFeatures.getInstance().and(cond1, cond2),
+						cond3),
+				cond4,
 				t,              // true value
 				Ops.o().c(-1.0) // false value
 		);

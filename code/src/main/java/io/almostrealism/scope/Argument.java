@@ -18,8 +18,8 @@ package io.almostrealism.scope;
 
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.uml.Named;
 import io.almostrealism.relation.Sortable;
+import io.almostrealism.uml.Named;
 
 import java.util.Objects;
 import java.util.function.Supplier;

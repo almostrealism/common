@@ -16,8 +16,8 @@
 
 package org.almostrealism.graph.temporal;
 
-import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.MemoryData;
 
 /**

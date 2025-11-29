@@ -16,6 +16,7 @@
 
 package org.almostrealism.collect.computations;
 
+import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.profile.OperationInfo;
 import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.relation.Evaluable;
@@ -23,7 +24,6 @@ import io.almostrealism.relation.Producer;
 import io.almostrealism.uml.Multiple;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.MemoryBank;
 
 import java.util.stream.IntStream;
@@ -76,16 +76,16 @@ public class Random implements CollectionProducer, OperationInfo {
 	private static long seed;
 
 	/** Metadata describing this random generation operation */
-	private OperationMetadata metadata;
+	private final OperationMetadata metadata;
 	
 	/** Java standard library Random instance used for generating uniform and normal distributions */
-	private java.util.Random random;
+	private final java.util.Random random;
 	
 	/** The shape (dimensions) of the random values to be generated */
-	private TraversalPolicy shape;
+	private final TraversalPolicy shape;
 	
 	/** Flag indicating whether to generate normal distribution (true) or uniform distribution (false) */
-	private boolean normal;
+	private final boolean normal;
 
 	/** Cached array of generated random values, null until first initialization */
 	private double[] values;

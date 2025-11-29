@@ -17,7 +17,6 @@
 package org.almostrealism.time.computations.test;
 
 import io.almostrealism.compute.ComputeRequirement;
-import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;

@@ -16,13 +16,13 @@
 
 package org.almostrealism.collect.computations;
 
-import io.almostrealism.profile.OperationInfo;
-import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.collect.CollectionProducerBase;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalPolicy;
-import io.almostrealism.relation.Evaluable;
 import io.almostrealism.compute.Process;
+import io.almostrealism.profile.OperationInfo;
+import io.almostrealism.profile.OperationMetadata;
+import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
 import io.almostrealism.uml.Signature;
@@ -159,13 +159,13 @@ public class CollectionProviderProducer<T extends Shape>
 	 * Metadata for profiling and operation tracking, including the operation name
 	 * and shape details.
 	 */
-	private OperationMetadata metadata;
+	private final OperationMetadata metadata;
 
 	/**
 	 * The {@link Shape} value (typically a {@link PackedCollection}) that this
 	 * producer provides.
 	 */
-	private Shape value;
+	private final Shape value;
 
 	/**
 	 * Constructs a provider producer for the specified {@link Shape} value.
@@ -238,7 +238,7 @@ public class CollectionProviderProducer<T extends Shape>
 	 */
 	@Override
 	public Producer<T> traverse(int axis) {
-		return (Producer) traverse(axis, (Producer) this);
+		return (Producer<T>) traverse(axis, (Producer<PackedCollection>) this);
 	}
 
 	/**
@@ -252,7 +252,7 @@ public class CollectionProviderProducer<T extends Shape>
 	 */
 	@Override
 	public Producer<T> reshape(TraversalPolicy shape) {
-		return (Producer) reshape(shape, this);
+		return (Producer<T>) reshape(shape, this);
 	}
 
 	/**

@@ -16,13 +16,13 @@
 
 package org.almostrealism.color;
 
+import io.almostrealism.uml.Nameable;
+
 import java.io.BufferedReader;
 import java.io.FileReader;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
-
-import io.almostrealism.uml.Nameable;
 
 /**
  * @author Mike Murray and Sam Tepper

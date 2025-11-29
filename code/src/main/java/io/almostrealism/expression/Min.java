@@ -18,7 +18,6 @@ package io.almostrealism.expression;
 
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
-import io.almostrealism.scope.ExpressionCache;
 
 import java.util.List;
 import java.util.OptionalDouble;

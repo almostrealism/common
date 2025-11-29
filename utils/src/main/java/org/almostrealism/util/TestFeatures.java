@@ -17,14 +17,14 @@
 package org.almostrealism.util;
 
 import io.almostrealism.code.OperationAdapter;
+import io.almostrealism.compute.ParallelProcess;
+import io.almostrealism.compute.Process;
+import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.KernelTraversalProvider;
 import io.almostrealism.profile.OperationInfo;
 import io.almostrealism.profile.OperationMetadata;
-import io.almostrealism.expression.Expression;
 import io.almostrealism.profile.OperationProfile;
 import io.almostrealism.profile.OperationProfileNode;
-import io.almostrealism.compute.ParallelProcess;
-import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ScopeSettings;
 import org.almostrealism.CodeFeatures;

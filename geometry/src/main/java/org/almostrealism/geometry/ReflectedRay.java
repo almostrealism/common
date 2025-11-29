@@ -15,15 +15,15 @@
  */
 
 package org.almostrealism.geometry;
-import org.almostrealism.collect.PackedCollection;
 
 import io.almostrealism.code.ProducerComputation;
 import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.Scope;
 import org.almostrealism.algebra.Vector;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.MemoryBank;
-import io.almostrealism.relation.Producer;
-import io.almostrealism.relation.Evaluable;
 
 /**
  * Computes a reflected ray from an intersection point, given an incident direction and surface normal.

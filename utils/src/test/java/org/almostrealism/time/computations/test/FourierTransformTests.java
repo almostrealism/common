@@ -16,10 +16,9 @@
 
 package org.almostrealism.time.computations.test;
 
-import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.relation.Factor;
-import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.time.Frequency;
 import org.almostrealism.time.computations.FourierTransform;
@@ -125,7 +124,7 @@ public class FourierTransformTests implements TestFeatures {
 		}
 
 		// Apply the transform to the batches
-		FourierTransform ft = fft(bins, (Producer) cp(input).traverse(1),
+		FourierTransform ft = fft(bins, cp(input).traverse(1),
 									ComputeRequirement.CPU);
 		PackedCollection out = ft.get().evaluate();
 		log(out.getShape());
@@ -217,7 +216,7 @@ public class FourierTransformTests implements TestFeatures {
 		}
 
 		FourierTransform ft = fft(bins,
-				(Producer) (embedExpansion ? expansion.getResultant(cp(input)) : cp(input).traverse(1)),
+				embedExpansion ? expansion.getResultant(cp(input)) : cp(input).traverse(1),
 				ComputeRequirement.CPU);
 		PackedCollection out = ft.get().evaluate();
 		log(out.getShape());

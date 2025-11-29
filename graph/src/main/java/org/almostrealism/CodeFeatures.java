@@ -88,13 +88,6 @@ import java.util.function.Supplier;
  *   <li>{@link #cc(Runnable, ComputeRequirement...)} - Execute with compute requirements</li>
  * </ul>
  *
- * <h2>Profiling</h2>
- * <p>Performance profiling support:</p>
- * <ul>
- *   <li>{@link #profile(String, Supplier)} - Profile an operation supplier</li>
- *   <li>{@link #profile(OperationProfileNode, Runnable)} - Profile a runnable</li>
- * </ul>
- *
  * <h2>Usage Pattern</h2>
  * <p>Classes implementing CodeFeatures gain access to all operations:</p>
  * <pre>{@code
@@ -181,7 +174,7 @@ public interface CodeFeatures extends LayerFeatures,
 		} else if (v instanceof TransformMatrix) {
 			return (ProducerComputation<T>) TransformMatrixFeatures.getInstance().value((TransformMatrix) v);
 		} else if (enableFixedCollections && v instanceof PackedCollection) {
-			return (Producer) c((PackedCollection) v);
+			return (Producer<T>) c((PackedCollection) v);
 		} else if (v == null) {
 			return null;
 		} else {
@@ -210,8 +203,8 @@ public interface CodeFeatures extends LayerFeatures,
 		}
 
 		if (enableAssignmentCopy) {
-			if (sourceShape != null) source = new ReshapeProducer(sourceShape.traverseEach(), (Producer) source);
-			if (targetShape != null) target = new ReshapeProducer(targetShape.traverseEach(), (Producer) target);
+			if (sourceShape != null) source = new ReshapeProducer(sourceShape.traverseEach(), (Producer<PackedCollection>) source);
+			if (targetShape != null) target = new ReshapeProducer(targetShape.traverseEach(), (Producer<PackedCollection>) target);
 			return new Assignment(1, target, source);
 		} else {
 			return new MemoryDataCopy(name, source.get()::evaluate, target.get()::evaluate, length);

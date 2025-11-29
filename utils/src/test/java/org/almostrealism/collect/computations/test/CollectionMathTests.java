@@ -171,9 +171,9 @@ public class CollectionMathTests implements TestFeatures {
 		CollectionProducer products =
 				cumulativeProduct(c(1.0).subtract(inputs), false);
 
-		double in[] = products.evaluate().toArray();
-		double ad[] = sqrt(products).evaluate().toArray();
-		double bd[] = sqrt(c(1.0).subtract(products)).evaluate().toArray();
+		double[] in = products.evaluate().toArray();
+		double[] ad = sqrt(products).evaluate().toArray();
+		double[] bd = sqrt(c(1.0).subtract(products)).evaluate().toArray();
 
 		Assert.assertEquals(in.length, ad.length);
 		Assert.assertEquals(in.length, bd.length);

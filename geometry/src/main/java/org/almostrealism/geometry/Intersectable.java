@@ -15,9 +15,7 @@
  */
 
 package org.almostrealism.geometry;
-import org.almostrealism.collect.PackedCollection;
 
-import org.almostrealism.algebra.Vector;
 import io.almostrealism.code.Operator;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.uml.Function;

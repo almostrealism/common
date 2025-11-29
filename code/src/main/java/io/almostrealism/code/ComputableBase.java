@@ -21,10 +21,10 @@ import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.profile.OperationInfo;
 import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.uml.Named;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.Argument;
 import io.almostrealism.scope.ArrayVariable;
+import io.almostrealism.uml.Named;
 import io.almostrealism.util.DescribableParent;
 
 import java.util.ArrayList;

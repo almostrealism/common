@@ -15,9 +15,9 @@
  */
 package io.almostrealism.uml;
 
-import static java.lang.annotation.ElementType.TYPE;
-
 import java.lang.annotation.Target;
+
+import static java.lang.annotation.ElementType.TYPE;
 
 /**
  * A marker annotation for types that serve as view models in presentation logic.

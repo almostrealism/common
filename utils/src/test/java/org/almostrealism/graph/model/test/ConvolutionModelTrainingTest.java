@@ -16,8 +16,8 @@
 
 package org.almostrealism.graph.model.test;
 
-import io.almostrealism.profile.OperationProfileNode;
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.profile.OperationProfileNode;
 import io.almostrealism.scope.ScopeSettings;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.io.Console;
@@ -172,7 +172,7 @@ public class ConvolutionModelTrainingTest implements ModelFeatures, ModelTestFea
 				Dataset<PackedCollection> all = Dataset.of(data).batch(batchSize);
 				List<Dataset<PackedCollection>> split = all.split(0.8);
 
-				double accuracy[] =
+				double[] accuracy =
 						optimize("convolution2d_" + rows * cols, compiled,
 								() -> split.get(0), () -> split.get(1),
 								10, data.size(), 0.05);
@@ -192,7 +192,7 @@ public class ConvolutionModelTrainingTest implements ModelFeatures, ModelTestFea
 						 Supplier<Dataset<?>> trainData,
 						 Supplier<Dataset<?>> testData,
 						 int epochs, int steps, double lossTarget) throws IOException {
-		double accuracy[] = new double[epochs];
+		double[] accuracy = new double[epochs];
 
 		ModelOptimizer optimizer = new ModelOptimizer(model, trainData);
 		optimizer.setLossFunction(new NegativeLogLikelihood());
@@ -212,7 +212,7 @@ public class ConvolutionModelTrainingTest implements ModelFeatures, ModelTestFea
 		return accuracy;
 	}
 
-	protected static void append(StringBuilder buf, int values[]) {
+	protected static void append(StringBuilder buf, int[] values) {
 		for (int i = 0; i < values.length; i++) {
 			buf.append(values[i]);
 			buf.append(",");
@@ -220,7 +220,7 @@ public class ConvolutionModelTrainingTest implements ModelFeatures, ModelTestFea
 		buf.append("\n");
 	}
 
-	protected static void append(StringBuilder buf, double values[]) {
+	protected static void append(StringBuilder buf, double[] values) {
 		for (int i = 0; i < values.length; i++) {
 			buf.append(values[i]);
 			buf.append(",");

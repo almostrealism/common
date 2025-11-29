@@ -15,21 +15,20 @@
  */
 
 package org.almostrealism.raytrace;
-import org.almostrealism.collect.PackedCollection;
 
+import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Producer;
+import org.almostrealism.CodeFeatures;
 import org.almostrealism.algebra.Vector;
-import org.almostrealism.geometry.ContinuousField;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.color.Light;
-import org.almostrealism.color.RGB;
 import org.almostrealism.color.Shadable;
 import org.almostrealism.color.ShaderContext;
 import org.almostrealism.color.ShaderSet;
+import org.almostrealism.geometry.ContinuousField;
 import org.almostrealism.geometry.Curve;
 import org.almostrealism.geometry.Ray;
-import io.almostrealism.relation.Producer;
 import org.almostrealism.space.DistanceEstimator;
-import io.almostrealism.relation.Evaluable;
-import org.almostrealism.CodeFeatures;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -146,7 +145,7 @@ public class DistanceEstimationLightingEngine extends LightingEngine {
 	 * and surface normal (direction). This is stored in an ArrayList for compatibility
 	 * with the ContinuousField interface.</p>
 	 */
-	public static class Locus extends ArrayList<Producer<Ray>>
+	public static class Locus extends ArrayList<Producer<PackedCollection>>
 			implements ContinuousField, Callable<Producer<PackedCollection>>, Shadable, CodeFeatures {
 		private ShaderSet shaders;
 		private ShaderContext params;

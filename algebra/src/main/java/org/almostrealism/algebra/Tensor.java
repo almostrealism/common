@@ -16,6 +16,13 @@
 
 package org.almostrealism.algebra;
 
+import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.html.Div;
+import io.almostrealism.html.HTMLContent;
+import io.almostrealism.html.HTMLString;
+import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.hardware.MemoryData;
+
 import java.util.LinkedList;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
@@ -24,13 +31,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.IntStream;
-
-import io.almostrealism.html.Div;
-import io.almostrealism.html.HTMLContent;
-import io.almostrealism.html.HTMLString;
-import org.almostrealism.collect.PackedCollection;
-import io.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.hardware.MemoryData;
 
 /**
  * An arbitrary-dimension tensor implemented as a recursive {@link LinkedList} structure.
@@ -195,9 +195,9 @@ public class Tensor<T> implements HTMLContent {
 	public int getDimensions() {
 		int dims = 0;
 
-		w: while (true) {
+		while (true) {
 			int length = length(new int[dims]);
-			if (length <= 0) break w;
+			if (length <= 0) break;
 			dims++;
 		}
 
@@ -296,7 +296,7 @@ public class Tensor<T> implements HTMLContent {
 	 * @param max          the maximum sizes for each dimension
 	 * @param indexInMax   the current dimension being processed
 	 */
-	private void trim(LinkedList l, int max[], int indexInMax) {
+	private void trim(LinkedList l, int[] max, int indexInMax) {
 		while (l.size() > max[indexInMax]) l.removeLast();
 
 		if (indexInMax < max.length - 1) {
@@ -333,17 +333,17 @@ public class Tensor<T> implements HTMLContent {
 	public String toHTML() {
 		Div d = new Div();
 		d.addStyleClass("tensor-table");
-		
-		i: for (int i = 0; ; i++) {
-			if (get(i, 0) == null) break i;
-			
+
+		for (int i = 0; ; i++) {
+			if (get(i, 0) == null) break;
+
 			Div row = new Div();
 			row.addStyleClass("tensor-row");
-			
-			j: for (int j = 0; ; j++) {
+
+			for (int j = 0; ; j++) {
 				T o = get(i, j);
-				if (o == null) break j;
-				
+				if (o == null) break;
+
 				if (o instanceof HTMLContent) {
 					row.add((HTMLContent) o);
 				} else if (o instanceof String) {
@@ -363,7 +363,7 @@ public class Tensor<T> implements HTMLContent {
 					row.add(cell);
 				}
 			}
-			
+
 			d.add(row);
 		}
 		
@@ -389,12 +389,12 @@ public class Tensor<T> implements HTMLContent {
 	public String toCSV() {
 		StringBuilder buf = new StringBuilder();
 
-		i: for (int i = 0; ; i++) {
-			if (get(i, 0) == null) break i;
+		for (int i = 0; ; i++) {
+			if (get(i, 0) == null) break;
 
-			j: for (int j = 0; ; j++) {
+			for (int j = 0; ; j++) {
 				T o = get(i, j);
-				if (o == null) break j;
+				if (o == null) break;
 				if (j > 0) buf.append(",");
 
 				if (o instanceof String) {

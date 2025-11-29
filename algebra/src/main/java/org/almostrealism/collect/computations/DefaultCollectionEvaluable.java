@@ -16,16 +16,16 @@
 
 package org.almostrealism.collect.computations;
 
+import io.almostrealism.code.Computation;
 import io.almostrealism.code.ComputeContext;
+import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.uml.Multiple;
 import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
-import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.AcceleratedComputationEvaluable;
 import org.almostrealism.hardware.MemoryData;
-import io.almostrealism.code.Computation;
 
 import java.util.function.BiFunction;
 import java.util.function.IntFunction;
@@ -114,7 +114,7 @@ public class DefaultCollectionEvaluable<T extends PackedCollection>
 	 * produced by this evaluable. This policy is used for both destination creation
 	 * and output post-processing to ensure proper collection structure.
 	 */
-	private TraversalPolicy shape;
+	private final TraversalPolicy shape;
 	
 	/**
 	 * Factory function for creating destination objects of type T.
@@ -122,7 +122,7 @@ public class DefaultCollectionEvaluable<T extends PackedCollection>
 	 * instance of the target collection type. Used when {@link #enableDestinationFactory}
 	 * is true.
 	 */
-	private IntFunction<T> destinationFactory;
+	private final IntFunction<T> destinationFactory;
 	
 	/**
 	 * Post-processor function for transforming raw memory data into the target
@@ -130,7 +130,7 @@ public class DefaultCollectionEvaluable<T extends PackedCollection>
 	 * properly constructed collection instance. If null, a default PackedCollection
 	 * will be created.
 	 */
-	private BiFunction<MemoryData, Integer, T> postprocessor;
+	private final BiFunction<MemoryData, Integer, T> postprocessor;
 
 	/**
 	 * Constructs a new DefaultCollectionEvaluable with the specified parameters.

@@ -62,12 +62,12 @@ import org.almostrealism.color.RGB;
  * @see Mesh.VertexData
  */
 public class DefaultVertexData implements Mesh.VertexData, CodeFeatures {
-	private PackedCollection vertices;
-	private PackedCollection colors;
-	private PackedCollection texCoords;
+	private final PackedCollection vertices;
+	private final PackedCollection colors;
+	private final PackedCollection texCoords;
 
 	// TODO Convert to a vertex bank so that conversion to PackedCollection can be kernelized
-	private int triangles[][];
+	private final int[][] triangles;
 
 	/**
 	 * Constructs a new {@link DefaultVertexData} with the specified capacity for

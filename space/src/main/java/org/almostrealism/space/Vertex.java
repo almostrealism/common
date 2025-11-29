@@ -44,7 +44,7 @@ import org.almostrealism.color.RGB;
  * @see Vector
  */
 public class Vertex extends Vector {
-	private Vector n = new Vector();  // Vertex normals
+	private final Vector n = new Vector();  // Vertex normals
 	private double r, g, b;  // Vertex color
 	private double tu, tv;  // TODO  Texture coordinates
 
@@ -115,7 +115,7 @@ public class Vertex extends Vector {
 	 * @return a new {@link Vector} with scaled normal values
 	 */
 	public Vector getNormal(double d) {
-		Vector norm = (Vector) n.clone();
+		Vector norm = n.clone();
 		norm.multiplyBy(d);
 		return norm;
 	}

@@ -16,12 +16,12 @@
 
 package org.almostrealism.time.computations;
 
-import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.compute.Process;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.InstanceReference;
 import io.almostrealism.kernel.KernelStructureContext;
-import io.almostrealism.compute.Process;
+import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Cases;

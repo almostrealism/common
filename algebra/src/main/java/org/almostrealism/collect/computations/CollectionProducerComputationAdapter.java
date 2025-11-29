@@ -18,25 +18,23 @@ package org.almostrealism.collect.computations;
 
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.TraversableExpression;
+import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.Process;
+import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Computable;
 import io.almostrealism.relation.Countable;
+import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
-import io.almostrealism.expression.Expression;
 import io.almostrealism.scope.Scope;
-import io.almostrealism.relation.Evaluable;
 import io.almostrealism.scope.ScopeSettings;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.MemoryDataComputation;
 
-import java.util.List;
 import java.util.Optional;
-import java.util.function.Function;
 import java.util.function.Supplier;
 
 /**
@@ -530,8 +528,8 @@ public abstract class CollectionProducerComputationAdapter
 
 		delta = TraversableDeltaComputation.create("delta", getShape(), shape(target),
 				args -> CollectionExpression.create(getShape(), idx -> args[1].getValueAt(idx)), target,
-				(Producer) this)
-				.setDescription((Function<List<String>, String>) args -> "delta(" + description(args) + ")");
+				this)
+				.setDescription(args -> "delta(" + description(args) + ")");
 		return delta;
 	}
 

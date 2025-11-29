@@ -15,22 +15,21 @@
  */
 
 package org.almostrealism.primitives;
-import org.almostrealism.collect.PackedCollection;
-
-import java.awt.Graphics;
-import java.io.IOException;
-import java.io.OutputStream;
-
-import javax.swing.JPanel;
 
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Vector;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.color.RGB;
 import org.almostrealism.physics.Absorber;
+import org.almostrealism.physics.Clock;
 import org.almostrealism.physics.Fast;
 import org.almostrealism.physics.PhysicalConstants;
 import org.almostrealism.texture.GraphicsConverter;
-import org.almostrealism.physics.Clock;
+
+import javax.swing.*;
+import java.awt.*;
+import java.io.IOException;
+import java.io.OutputStream;
 
 /**
  * An {@link AbsorptionPlane} represents a plane in space that absorbs photons

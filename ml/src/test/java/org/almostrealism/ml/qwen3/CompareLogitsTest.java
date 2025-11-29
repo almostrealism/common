@@ -1,17 +1,15 @@
 package org.almostrealism.ml.qwen3;
 
-import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.ml.AttentionFeatures;
-import org.almostrealism.ml.StateDictionary;
 import org.junit.Test;
 
-import java.io.*;
+import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.channels.FileChannel;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
-import java.util.*;
+import java.util.Arrays;
 
 /**
  * Compare AR logits against PyTorch reference for full 24-layer model.

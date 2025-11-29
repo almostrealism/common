@@ -16,15 +16,14 @@
 
 package org.almostrealism.algebra;
 
+import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.util.NumberFormats;
 import org.almostrealism.collect.PackedCollection;
-import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.DynamicProducerForMemoryData;
-import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.MemoryBank;
+import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.mem.Heap;
-import org.almostrealism.io.Console;
 
 import java.util.function.BiFunction;
 import java.util.function.IntFunction;
@@ -222,7 +221,7 @@ public class Vector extends PackedCollection implements VectorFeatures, Cloneabl
 	 *
 	 * @param v  the array containing [x, y, z] coordinates (must have length >= 3)
 	 */
-	public Vector(double v[]) {
+	public Vector(double[] v) {
 		this(v[0], v[1], v[2]);
 	}
 
@@ -231,7 +230,7 @@ public class Vector extends PackedCollection implements VectorFeatures, Cloneabl
 	 *
 	 * @param v  the array containing [x, y, z] coordinates (must have length >= 3)
 	 */
-	public Vector(float v[]) {
+	public Vector(float[] v) {
 		this(v[0], v[1], v[2]);
 	}
 
@@ -363,7 +362,7 @@ public class Vector extends PackedCollection implements VectorFeatures, Cloneabl
 	 * @return a new {@link Vector} representing -this
 	 */
 	public Vector minus() {
-		double a[] = toArray();
+		double[] a = toArray();
 		return new Vector(-a[0], -a[1], -a[2]);
 	}
 
@@ -389,8 +388,8 @@ public class Vector extends PackedCollection implements VectorFeatures, Cloneabl
 	 * @see #add(Vector)
 	 */
 	public void addTo(Vector vector) {
-		double a[] = toArray();
-		double b[] = vector.toArray();
+		double[] a = toArray();
+		double[] b = vector.toArray();
 		setMem(a[0] + b[0], a[1] + b[1], a[2] + b[2]);
 	}
 
@@ -417,8 +416,8 @@ public class Vector extends PackedCollection implements VectorFeatures, Cloneabl
 	 * @see #subtract(Vector)
 	 */
 	public synchronized void subtractFrom(Vector vector) {
-		double a[] = toArray();
-		double b[] = vector.toArray();
+		double[] a = toArray();
+		double[] b = vector.toArray();
 		setMem(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
 	}
 
@@ -444,7 +443,7 @@ public class Vector extends PackedCollection implements VectorFeatures, Cloneabl
 	 * @see #multiply(double)
 	 */
 	public synchronized void multiplyBy(double value) {
-		double a[] = toArray();
+		double[] a = toArray();
 		setMem(a[0] * value, a[1] * value, a[2] * value);
 	}
 
@@ -469,7 +468,7 @@ public class Vector extends PackedCollection implements VectorFeatures, Cloneabl
 	 * @see #divide(double)
 	 */
 	public synchronized Vector divideBy(double value) {
-		double a[] = toArray();
+		double[] a = toArray();
 		setMem(a[0] / value, a[1] / value, a[2] / value);
 		return this;
 	}
@@ -519,7 +518,7 @@ public class Vector extends PackedCollection implements VectorFeatures, Cloneabl
 	 * @return a new float array containing [x, y, z]
 	 */
 	public float[] toFloat() {
-		double d[] = toArray();
+		double[] d = toArray();
 		return new float[] { (float) d[0], (float) d[1], (float) d[2] };
 	}
 
@@ -551,18 +550,17 @@ public class Vector extends PackedCollection implements VectorFeatures, Cloneabl
 	 * @return a string in the format "[x, y, z]" with formatted numbers
 	 */
 	public String describe() {
-		StringBuffer value = new StringBuffer();
 
-		value.append("[");
-		value.append(NumberFormats.formatNumber(getX()));
-		value.append(", ");
-		value.append(NumberFormats.formatNumber(getY()));
-		value.append(", ");
-		value.append(NumberFormats.formatNumber(getZ()));
-		value.append("]");
+		String value = "[" +
+				NumberFormats.formatNumber(getX()) +
+				", " +
+				NumberFormats.formatNumber(getY()) +
+				", " +
+				NumberFormats.formatNumber(getZ()) +
+				"]";
 
 
-		return value.toString();
+		return value;
 	}
 
 	/**
@@ -598,10 +596,7 @@ public class Vector extends PackedCollection implements VectorFeatures, Cloneabl
 
 		Vector vector = (Vector) obj;
 
-		if (vector.getX() == this.getX() && vector.getY() == this.getY() && vector.getZ() == this.getZ())
-			return true;
-		else
-			return false;
+		return vector.getX() == this.getX() && vector.getY() == this.getY() && vector.getZ() == this.getZ();
 	}
 
 	/**

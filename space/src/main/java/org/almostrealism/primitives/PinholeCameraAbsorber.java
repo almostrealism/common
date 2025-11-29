@@ -15,25 +15,23 @@
  */
 
 package org.almostrealism.primitives;
-import org.almostrealism.collect.PackedCollection;
 
+import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorMath;
+import org.almostrealism.collect.CollectionProducer;
+import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.computations.DynamicCollectionProducer;
 import org.almostrealism.color.Colorable;
 import org.almostrealism.color.RGB;
 import org.almostrealism.geometry.Ray;
-import org.almostrealism.collect.CollectionProducer;
-import org.almostrealism.collect.computations.DynamicCollectionProducer;
-import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.physics.Absorber;
-import io.almostrealism.relation.Producer;
-import org.almostrealism.space.Volume;
 import org.almostrealism.physics.Clock;
-
-import org.almostrealism.utils.PriorityQueue;
-
 import org.almostrealism.projection.PinholeCamera;
+import org.almostrealism.space.Volume;
+import org.almostrealism.utils.PriorityQueue;
 
 /**
  * @author  Michael Murray

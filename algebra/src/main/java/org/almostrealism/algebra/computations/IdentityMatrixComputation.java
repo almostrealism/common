@@ -19,10 +19,9 @@ package org.almostrealism.algebra.computations;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
-import io.almostrealism.relation.Computable;
 import io.almostrealism.compute.Process;
+import io.almostrealism.relation.Computable;
 import org.almostrealism.collect.CollectionProducerParallelProcess;
-import org.almostrealism.collect.PackedCollection;
 
 import java.util.List;
 import java.util.Optional;

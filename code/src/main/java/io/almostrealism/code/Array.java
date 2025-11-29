@@ -17,7 +17,6 @@
 package io.almostrealism.code;
 
 import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.InstanceReference;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.uml.Plural;

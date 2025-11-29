@@ -104,7 +104,7 @@ public interface RGBFeatures extends ScalarFeatures {
 	default CollectionProducer rgb(Producer<PackedCollection> r,
 								   Producer<PackedCollection> g,
 								   Producer<PackedCollection> b) {
-		return (CollectionProducer) concat(shape(3), (Producer) r, (Producer) g, (Producer) b);
+		return concat(shape(3), r, g, b);
 	}
 
 	/**
@@ -300,12 +300,11 @@ public interface RGBFeatures extends ScalarFeatures {
 	/**
 	 * Creates an RGB color from a scalar producer by broadcasting to all channels.
 	 *
-	 * @param <T> the producer type
 	 * @param value producer of the scalar value to broadcast
 	 * @return a producer yielding RGB with all channels equal to the scalar
 	 */
-	default CollectionProducer cfromScalar(Producer<?> value) {
-		return rgb((Producer) value, (Producer) value, (Producer) value);
+	default CollectionProducer cfromScalar(Producer<PackedCollection> value) {
+		return rgb(value, value, value);
 	}
 
 	/**

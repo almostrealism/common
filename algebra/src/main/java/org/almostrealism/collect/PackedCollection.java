@@ -15,7 +15,6 @@
  */
 
 package org.almostrealism.collect;
-import org.almostrealism.collect.PackedCollection;
 
 import io.almostrealism.collect.Collection;
 import io.almostrealism.collect.DefaultTraversalOrdering;
@@ -188,7 +187,7 @@ import java.util.stream.Stream;
  */
 public class PackedCollection extends MemoryDataAdapter
 		implements MemoryBank<PackedCollection>, Collection<PackedCollection, PackedCollection>, CollectionFeatures, Cloneable {
-	private static Evaluable<PackedCollection> clear;
+	private static final Evaluable<PackedCollection> clear;
 
 	static {
 		clear = CollectionFeatures.getInstance().zeros(new TraversalPolicy(false, false, 1)).get();
@@ -357,27 +356,27 @@ public class PackedCollection extends MemoryDataAdapter
 	}
 
 	public PackedCollection fill(double... value) {
-		double data[] = IntStream.range(0, getMemLength()).mapToDouble(i -> value[i % value.length]).toArray();
+		double[] data = IntStream.range(0, getMemLength()).mapToDouble(i -> value[i % value.length]).toArray();
 		setMem(0, data);
 		return this;
 	}
 
 	public PackedCollection fill(DoubleSupplier values) {
-		double data[] = IntStream.range(0, getMemLength()).mapToDouble(i -> values.getAsDouble()).toArray();
+		double[] data = IntStream.range(0, getMemLength()).mapToDouble(i -> values.getAsDouble()).toArray();
 		setMem(0, data);
 		return this;
 	}
 
 	public PackedCollection fill(Function<int[], Double> f) {
-		double data[] = new double[getMemLength()];
+		double[] data = new double[getMemLength()];
 		getShape().stream().forEach(pos -> data[getShape().index(pos)] = f.apply(pos));
 		setMem(0, data);
 		return this;
 	}
 
 	public PackedCollection replace(DoubleUnaryOperator f) {
-		double in[] = toArray(0, getMemLength());
-		double data[] = IntStream.range(0, getMemLength()).mapToDouble(i -> f.applyAsDouble(in[i])).toArray();
+		double[] in = toArray(0, getMemLength());
+		double[] data = IntStream.range(0, getMemLength()).mapToDouble(i -> f.applyAsDouble(in[i])).toArray();
 		setMem(0, data);
 		return this;
 	}
@@ -426,7 +425,7 @@ public class PackedCollection extends MemoryDataAdapter
 		PackedCollection result = new PackedCollection(
 				getShape().length(1),
 				getShape().length(0)).traverse(1);
-		double data[] = toArray();
+		double[] data = toArray();
 		result.setMem(IntStream.range(0, result.getShape().getTotalSize())
 				.mapToObj(result.getShape()::position)
 				.mapToInt(pos -> getShape().index(pos[1], pos[0]))
@@ -528,7 +527,7 @@ public class PackedCollection extends MemoryDataAdapter
 	// TODO  Accelerated version
 	@Deprecated
 	public double lengthSq() {
-		double data[] = toArray(0, getMemLength());
+		double[] data = toArray(0, getMemLength());
 		return IntStream.range(0, getMemLength())
 				.mapToDouble(i -> data[i])
 				.map(v -> v * v)
@@ -717,7 +716,7 @@ public class PackedCollection extends MemoryDataAdapter
 				try {
 					TraversalPolicy shape = TraversalPolicy.load(dis);
 					PackedCollection collection = new PackedCollection(shape);
-					double input[] = new double[shape.getTotalSize()];
+					double[] input = new double[shape.getTotalSize()];
 
 					for (int i = 0; i < shape.getTotalSize(); i++) {
 						input[i] = dis.readDouble();
@@ -776,7 +775,7 @@ public class PackedCollection extends MemoryDataAdapter
 	}
 
 	public static class DelegateSpec {
-		private MemoryData data;
+		private final MemoryData data;
 		private int offset;
 
 		public DelegateSpec(MemoryData data, int offset) {

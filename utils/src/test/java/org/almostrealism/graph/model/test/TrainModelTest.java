@@ -16,12 +16,12 @@
 
 package org.almostrealism.graph.model.test;
 
+import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.compute.ParallelProcess;
 import io.almostrealism.kernel.KernelTraversalProvider;
 import io.almostrealism.profile.OperationProfileNode;
-import io.almostrealism.compute.ParallelProcess;
 import org.almostrealism.algebra.Tensor;
 import org.almostrealism.collect.PackedCollection;
-import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.computations.IndexProjectionProducerComputation;
 import org.almostrealism.collect.computations.test.KernelAssertions;
 import org.almostrealism.hardware.HardwareOperator;
@@ -43,10 +43,10 @@ import java.io.IOException;
 import java.util.stream.IntStream;
 
 public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssertions {
-	private int convSize = 3;
-	private int poolSize = 2;
-	private int w = 10;
-	private int h = 10;
+	private final int convSize = 3;
+	private final int poolSize = 2;
+	private final int w = 10;
+	private final int h = 10;
 	private TraversalPolicy inputShape = shape(h, w);
 
 	static {
@@ -103,7 +103,7 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 		input = output;
 		output = ((DefaultCellularLayer) softmax).getOutput();
 
-		double expValues[] = new double[nodes];
+		double[] expValues = new double[nodes];
 
 		for (int i = 0; i < nodes; i++) {
 			expValues[i] = Math.exp(input.toDouble(i));

@@ -17,17 +17,17 @@
 package org.almostrealism.collect.computations;
 
 import io.almostrealism.code.Computation;
+import io.almostrealism.collect.Shape;
+import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.compute.Process;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.DefaultIndex;
 import io.almostrealism.kernel.Index;
 import io.almostrealism.kernel.IndexValues;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
 import org.almostrealism.collect.PackedCollection;
-import io.almostrealism.collect.Shape;
-import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.computations.HardwareEvaluable;
 
 import java.util.List;
@@ -134,8 +134,8 @@ public class PackedCollectionRepeat
 	public static boolean enableLargeSlice = true;
 	public static boolean enableShortCircuit = false;
 
-	private TraversalPolicy subsetShape;
-	private TraversalPolicy sliceShape;
+	private final TraversalPolicy subsetShape;
+	private final TraversalPolicy sliceShape;
 
 	/**
 	 * Creates a new PackedCollectionRepeat that repeats the entire collection
@@ -394,7 +394,7 @@ public class PackedCollectionRepeat
 			return super.get();
 		}
 
-		Evaluable<PackedCollection> ev = (Evaluable) getInputs().get(1).get();
+		Evaluable<PackedCollection> ev = getInputs().get(1).get();
 
 		int r = Math.toIntExact(getShape().getTotalSizeLong() / subsetShape.getTotalSizeLong());
 
@@ -457,7 +457,7 @@ public class PackedCollectionRepeat
 	 */
 	@Override
 	public Process<Process<?, ?>, Evaluable<? extends PackedCollection>> isolate() {
-		Producer in = (Producer) getInputs().get(1);
+		Producer in = getInputs().get(1);
 		if (in instanceof ReshapeProducer) in = ((ReshapeProducer) in).getComputation();
 
 		boolean computable = in instanceof Computation;

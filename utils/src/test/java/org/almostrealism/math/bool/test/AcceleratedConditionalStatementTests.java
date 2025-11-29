@@ -16,12 +16,12 @@
 
 package org.almostrealism.math.bool.test;
 
+import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Producer;
+import org.almostrealism.algebra.Vector;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import io.almostrealism.relation.Evaluable;
-import org.almostrealism.algebra.Vector;
 import org.almostrealism.geometry.Ray;
-import io.almostrealism.relation.Producer;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Assert;
 import org.junit.Test;

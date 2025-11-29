@@ -16,9 +16,9 @@
 
 package org.almostrealism.space;
 
-import java.util.ArrayList;
-
 import org.almostrealism.algebra.Gradient;
+
+import java.util.ArrayList;
 
 /**
  * A generic list container for surface objects in 3D scenes.

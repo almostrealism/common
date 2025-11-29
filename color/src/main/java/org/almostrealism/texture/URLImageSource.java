@@ -16,20 +16,16 @@
 
 package org.almostrealism.texture;
 
-import java.awt.Image;
-import java.awt.MediaTracker;
-import java.awt.Panel;
-import java.awt.Toolkit;
+import javax.swing.*;
+import java.awt.*;
 import java.awt.image.PixelGrabber;
 import java.net.URL;
 
-import javax.swing.ImageIcon;
-
 public class URLImageSource implements ImageSource {
-	private URL url;
+	private final URL url;
 	
-	private Image image;
-	private int pixels[];
+	private final Image image;
+	private int[] pixels;
 
 	public URLImageSource(URL url) {
 		this.url = url;

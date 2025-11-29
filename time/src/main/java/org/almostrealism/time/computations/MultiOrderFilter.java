@@ -18,10 +18,10 @@ package org.almostrealism.time.computations;
 
 import io.almostrealism.collect.CollectionVariable;
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.compute.Process;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.InstanceReference;
 import io.almostrealism.kernel.KernelStructureContext;
-import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.Repeated;
 import io.almostrealism.scope.Scope;

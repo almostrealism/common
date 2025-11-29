@@ -15,19 +15,18 @@
  */
 
 package org.almostrealism.space;
+
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.color.Light;
+import org.almostrealism.color.ShadableSurface;
+import org.almostrealism.geometry.BoundingSolid;
+import org.almostrealism.geometry.Camera;
+import org.almostrealism.geometry.Curve;
 
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Iterator;
 import java.util.List;
-
-import org.almostrealism.color.ShadableSurface;
-import org.almostrealism.geometry.BoundingSolid;
-import org.almostrealism.geometry.Camera;
-import org.almostrealism.color.Light;
-import org.almostrealism.color.RGB;
-import org.almostrealism.geometry.Curve;
 
 /**
  * A {@link Scene} represents a complete 3D scene containing surfaces, lights, and a camera
@@ -94,7 +93,7 @@ public class Scene<T extends ShadableSurface> extends SurfaceList<T> {
 	 *
 	 * @param surfaces the surfaces to add to the scene
 	 */
-	public Scene(T surfaces[]) {
+	public Scene(T[] surfaces) {
 		this();
 		this.setSurfaces(surfaces);
 	}
@@ -106,7 +105,7 @@ public class Scene<T extends ShadableSurface> extends SurfaceList<T> {
 	 * @param lights   the lights illuminating the scene
 	 * @param surfaces the surfaces in the scene
 	 */
-	public Scene(Camera camera, List<Light> lights, T surfaces[]) {
+	public Scene(Camera camera, List<Light> lights, T[] surfaces) {
 		this.setCamera(camera);
 		this.setLights(lights);
 		this.setSurfaces(surfaces);
@@ -117,7 +116,7 @@ public class Scene<T extends ShadableSurface> extends SurfaceList<T> {
 	 *
 	 * @param surfaces the new surfaces for this scene
 	 */
-	public void setSurfaces(T surfaces[]) {
+	public void setSurfaces(T[] surfaces) {
 		clear();
 		addAll(Arrays.asList(surfaces));
 	}

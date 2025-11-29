@@ -18,14 +18,14 @@ package org.almostrealism.time;
 
 import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.code.OperationComputation;
-import io.almostrealism.lifecycle.Destroyable;
-import io.almostrealism.profile.OperationProfile;
-import io.almostrealism.kernel.KernelStructureContext;
-import io.almostrealism.compute.Process;
-import io.almostrealism.scope.Scope;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.ScopeLifecycle;
+import io.almostrealism.compute.Process;
 import io.almostrealism.cycle.Setup;
+import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.lifecycle.Destroyable;
+import io.almostrealism.profile.OperationProfile;
+import io.almostrealism.scope.Scope;
 import org.almostrealism.hardware.OperationList;
 
 import java.util.Collection;

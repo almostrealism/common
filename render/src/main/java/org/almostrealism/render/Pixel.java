@@ -16,9 +16,8 @@
 
 package org.almostrealism.render;
 
-import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.color.RGB;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.collect.PackedCollection;
 
 /**
  * {@link Pixel} represents a single pixel in a ray traced image, containing multiple

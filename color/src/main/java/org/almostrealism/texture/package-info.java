@@ -74,4 +74,3 @@
  * @author Michael Murray
  */
 package org.almostrealism.texture;
-import org.almostrealism.collect.PackedCollection;

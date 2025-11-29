@@ -16,11 +16,11 @@
 
 package org.almostrealism.color;
 
+import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.HardwareOperator;
-import io.almostrealism.relation.Producer;
-import io.almostrealism.relation.Evaluable;
 import org.almostrealism.io.ConsoleFeatures;
 
 import java.util.function.Function;

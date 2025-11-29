@@ -17,9 +17,9 @@
 package org.almostrealism.heredity;
 
 import io.almostrealism.relation.Factor;
+import io.almostrealism.relation.Producer;
 import io.almostrealism.util.NumberFormats;
 import org.almostrealism.algebra.ScalarFeatures;
-import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 

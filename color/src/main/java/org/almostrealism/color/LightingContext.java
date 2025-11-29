@@ -15,10 +15,10 @@
  */
 
 package org.almostrealism.color;
-import org.almostrealism.collect.PackedCollection;
 
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Vector;
+import org.almostrealism.collect.PackedCollection;
 
 import java.util.ArrayList;
 import java.util.List;

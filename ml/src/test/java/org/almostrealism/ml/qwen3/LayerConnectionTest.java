@@ -1,13 +1,11 @@
 package org.almostrealism.ml.qwen3;
 
-import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.OutputFeatures;
 import org.almostrealism.ml.AttentionFeatures;
 import org.almostrealism.ml.StateDictionary;
-import org.almostrealism.model.Block;
 import org.almostrealism.model.Model;
 import org.almostrealism.model.SequentialBlock;
 import org.junit.Test;
@@ -18,8 +16,6 @@ import java.nio.ByteOrder;
 import java.nio.channels.FileChannel;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
-
-import static org.junit.Assert.assertTrue;
 
 /**
  * Tests how transformer blocks are connected, focusing on the problematic

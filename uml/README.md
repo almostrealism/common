@@ -26,7 +26,7 @@ import io.almostrealism.uml.*;
 public class BasicGeometry implements Positioned, Oriented, Scaled {
     public Vector location;
     public Vector scale;
-    private TransformMatrix transforms[];  // Expensive cached state
+    private TransformMatrix[] transforms;  // Expensive cached state
 }
 
 // Mark types representing computations

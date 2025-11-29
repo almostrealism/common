@@ -24,8 +24,8 @@ import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
 
 public class MatrixMathTests implements TestFeatures {
-	private static boolean enableOptimization = false;
-	private static boolean enableRepeat = true;
+	private static final boolean enableOptimization = false;
+	private static final boolean enableRepeat = true;
 
 	@Test
 	public void matmulVerySmall() {

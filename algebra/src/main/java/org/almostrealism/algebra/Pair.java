@@ -16,9 +16,9 @@
 
 package org.almostrealism.algebra;
 
+import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.util.NumberFormats;
 import org.almostrealism.collect.PackedCollection;
-import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.mem.Heap;
 
@@ -131,7 +131,7 @@ public class Pair extends PackedCollection {
 	 */
 	public Pair(double x, double y) {
 		this();
-		this.setMem(new double[] { x, y });
+		this.setMem(x, y);
 	}
 	
 	/**
@@ -272,7 +272,7 @@ public class Pair extends PackedCollection {
 	 */
 	@Override
 	public boolean equals(Object obj) {
-		if (obj instanceof Pair == false)
+		if (!(obj instanceof Pair))
 			return false;
 
 		Pair pair = (Pair) obj;

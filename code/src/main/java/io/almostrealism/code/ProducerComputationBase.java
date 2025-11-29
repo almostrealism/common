@@ -17,8 +17,8 @@
 package io.almostrealism.code;
 
 import io.almostrealism.compute.ComputeRequirement;
-import io.almostrealism.relation.Evaluable;
 import io.almostrealism.compute.Process;
+import io.almostrealism.relation.Evaluable;
 import io.almostrealism.scope.Variable;
 import io.almostrealism.uml.Signature;
 import io.almostrealism.util.DescribableParent;

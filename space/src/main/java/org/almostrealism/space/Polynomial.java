@@ -16,31 +16,31 @@
 
 package org.almostrealism.space;
 
+import io.almostrealism.code.Constant;
+import io.almostrealism.code.Operator;
+import io.almostrealism.compute.Process;
+import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Producer;
+import io.almostrealism.scope.Scope;
+import org.almostrealism.algebra.PolynomialTerm;
+import org.almostrealism.algebra.Vector;
+import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.geometry.Ray;
+import org.almostrealism.geometry.ShadableIntersection;
+
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 
-import io.almostrealism.kernel.KernelStructureContext;
-import io.almostrealism.compute.Process;
-import org.almostrealism.algebra.PolynomialTerm;
-import io.almostrealism.scope.Scope;
-import org.almostrealism.geometry.Ray;
-import org.almostrealism.geometry.ShadableIntersection;
-import io.almostrealism.code.Constant;
-import io.almostrealism.code.Operator;
-import io.almostrealism.relation.Producer;
-import io.almostrealism.relation.Evaluable;
-import org.almostrealism.algebra.Vector;
-import org.almostrealism.collect.PackedCollection;
-
 /** A {@link Polynomial} represents a 3d polynomial surface. */
 public class Polynomial extends AbstractSurface {
-	private static double maxIntersectionDistance = 100.0;
-	private static double defaultZerosInterval = 0.5;
-	private static int defaultZerosRecursions = 4;
+	private static final double maxIntersectionDistance = 100.0;
+	private static final double defaultZerosInterval = 0.5;
+	private static final int defaultZerosRecursions = 4;
   
-	private PolynomialTerm terms[];
+	private PolynomialTerm[] terms;
 
 	private Polynomial dx;
 	private Polynomial dy;
@@ -52,18 +52,18 @@ public class Polynomial extends AbstractSurface {
 	}
 	
 	/** Constructs a new Polynomial object with the specified terms. */
-	public Polynomial(PolynomialTerm terms[]) {
+	public Polynomial(PolynomialTerm[] terms) {
 		this.setTerms(terms);
 	}
 	
 	/** Sets the terms of this Polynomial object to those specified. */
-	public void setTerms(PolynomialTerm terms[]) {
+	public void setTerms(PolynomialTerm[] terms) {
 		this.terms = terms;
 	}
 	
 	/** Adds the specified PolynomialTerm object to this Polynomial object. */
 	public void addTerm(PolynomialTerm term) {
-		PolynomialTerm newTerms[] = new PolynomialTerm[this.terms.length + 1];
+		PolynomialTerm[] newTerms = new PolynomialTerm[this.terms.length + 1];
 		
 		System.arraycopy(this.terms, 0, newTerms, 0, this.terms.length);
 		newTerms[newTerms.length - 1] = term;
@@ -73,7 +73,7 @@ public class Polynomial extends AbstractSurface {
 	
 	/** Removes the PolynomialTerm object stored at the specified index from this Polynomial object. */
 	public void removeTerm(int index) {
-		PolynomialTerm newTerms[] = new PolynomialTerm[this.terms.length - 1];
+		PolynomialTerm[] newTerms = new PolynomialTerm[this.terms.length - 1];
 		
 		System.arraycopy(this.terms, 0, newTerms, 0, index);
 		if (index != this.terms.length - 1) {
@@ -95,7 +95,7 @@ public class Polynomial extends AbstractSurface {
 				continue i;
 			
 			for(int j = 0; j < newTerms.size(); j++) {
-				PolynomialTerm aTerm = (PolynomialTerm) newTerms.get(j);
+				PolynomialTerm aTerm = newTerms.get(j);
 				
 				if (aTerm.isLikeTerm(this.terms[i])) {
 					aTerm.setCoefficient(aTerm.getCoefficient() + this.terms[i].getCoefficient());
@@ -115,7 +115,7 @@ public class Polynomial extends AbstractSurface {
 	 * and returns the sum as a Polynomial object.
 	 */
 	public Polynomial add(Polynomial polynomial) {
-		PolynomialTerm sumTerms[] = new PolynomialTerm[this.terms.length + polynomial.getTerms().length];
+		PolynomialTerm[] sumTerms = new PolynomialTerm[this.terms.length + polynomial.getTerms().length];
 		
 		System.arraycopy(this.terms, 0, sumTerms, 0, this.terms.length);
 		System.arraycopy(polynomial.getTerms(), 0, sumTerms, this.terms.length, polynomial.getTerms().length);
@@ -128,7 +128,7 @@ public class Polynomial extends AbstractSurface {
 	 * and that of the specified Polynomial object and returns the result as a Polynomial object.
 	 */
 	public Polynomial multiply(Polynomial polynomial) {
-		Polynomial productPolynomials[] = new Polynomial[polynomial.getTerms().length];
+		Polynomial[] productPolynomials = new Polynomial[polynomial.getTerms().length];
 		
 		for(int i = 0; i < polynomial.getTerms().length; i++) {
 			productPolynomials[i] = this.multiply(polynomial.getTerms()[i]);
@@ -148,7 +148,7 @@ public class Polynomial extends AbstractSurface {
 	 * and that of the specified PolynomialTerm object and returns the result as a Polynomial object.
 	 */
 	public Polynomial multiply(PolynomialTerm term) {
-		PolynomialTerm productTerms[] = new PolynomialTerm[this.terms.length];
+		PolynomialTerm[] productTerms = new PolynomialTerm[this.terms.length];
 		
 		for(int i = 0; i < this.terms.length; i++) {
 			productTerms[i] = this.terms[i].multiply(term);
@@ -221,7 +221,7 @@ public class Polynomial extends AbstractSurface {
 			}
 		}
 		
-		double zeros[] = new double[zerosVector.size()];
+		double[] zeros = new double[zerosVector.size()];
 		
 		for(int i = 0; i < zeros.length; i++) {
 			zeros[i] = ((Double)zerosVector.elementAt(i)).doubleValue();
@@ -286,7 +286,7 @@ public class Polynomial extends AbstractSurface {
 	*/
 	
 	public void calculateDx() {
-		PolynomialTerm dxTerms[] = new PolynomialTerm[this.terms.length];
+		PolynomialTerm[] dxTerms = new PolynomialTerm[this.terms.length];
 		
 		for(int i = 0; i < this.terms.length; i++) {
 			dxTerms[i] = this.terms[i].getDx();
@@ -302,7 +302,7 @@ public class Polynomial extends AbstractSurface {
 	*/
 	
 	public void calculateDy() {
-		PolynomialTerm dyTerms[] = new PolynomialTerm[this.terms.length];
+		PolynomialTerm[] dyTerms = new PolynomialTerm[this.terms.length];
 		
 		for(int i = 0; i < this.terms.length; i++) {
 			dyTerms[i] = this.terms[i].getDy();
@@ -318,7 +318,7 @@ public class Polynomial extends AbstractSurface {
 	*/
 	
 	public void calculateDz() {
-		PolynomialTerm dzTerms[] = new PolynomialTerm[this.terms.length];
+		PolynomialTerm[] dzTerms = new PolynomialTerm[this.terms.length];
 		
 		for(int i = 0; i < this.terms.length; i++) {
 			dzTerms[i] = this.terms[i].getDz();
@@ -354,11 +354,11 @@ public class Polynomial extends AbstractSurface {
 
 			Vector o = ray.getOrigin();
 
-			PolynomialTerm pxTerms[] = {new PolynomialTerm(ray.getDirection().getX(), 1, 0, 0),
+			PolynomialTerm[] pxTerms = {new PolynomialTerm(ray.getDirection().getX(), 1, 0, 0),
 					new PolynomialTerm(o.getX(), 0, 0, 0)};
-			PolynomialTerm pyTerms[] = {new PolynomialTerm(ray.getDirection().getY(), 0, 1, 0),
+			PolynomialTerm[] pyTerms = {new PolynomialTerm(ray.getDirection().getY(), 0, 1, 0),
 					new PolynomialTerm(o.getY(), 0, 0, 0)};
-			PolynomialTerm pzTerms[] = {new PolynomialTerm(ray.getDirection().getZ(), 0, 0, 1),
+			PolynomialTerm[] pzTerms = {new PolynomialTerm(ray.getDirection().getZ(), 0, 0, 1),
 					new PolynomialTerm(o.getZ(), 0, 0, 0)};
 
 			Polynomial px = new Polynomial(pxTerms);
@@ -440,7 +440,7 @@ public class Polynomial extends AbstractSurface {
 
 			p.simplify();
 
-			double zeros[] = p.calculateZeros(0, Polynomial.maxIntersectionDistance, Polynomial.defaultZerosInterval, 0.0, 0.0, Polynomial.defaultZerosRecursions);
+			double[] zeros = p.calculateZeros(0, Polynomial.maxIntersectionDistance, Polynomial.defaultZerosInterval, 0.0, 0.0, Polynomial.defaultZerosRecursions);
 
 			if (zeros.length <= 0) return null;
 

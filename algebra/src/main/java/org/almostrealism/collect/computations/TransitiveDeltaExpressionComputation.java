@@ -18,8 +18,8 @@ package org.almostrealism.collect.computations;
 
 import io.almostrealism.collect.Algebraic;
 import io.almostrealism.collect.TraversalPolicy;
-import io.almostrealism.relation.Computable;
 import io.almostrealism.compute.Process;
+import io.almostrealism.relation.Computable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;

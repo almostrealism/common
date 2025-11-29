@@ -15,12 +15,11 @@
  */
 
 package org.almostrealism.heredity;
-import org.almostrealism.collect.PackedCollection;
 
 import io.almostrealism.cycle.Setup;
+import io.almostrealism.lifecycle.Lifecycle;
 import io.almostrealism.relation.Factor;
 import io.almostrealism.relation.Producer;
-import io.almostrealism.lifecycle.Lifecycle;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.time.Temporal;
 

@@ -16,12 +16,12 @@
 
 package org.almostrealism.color;
 
-import java.util.HashSet;
-import java.util.Iterator;
-
+import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.geometry.DiscreteField;
-import io.almostrealism.relation.Producer;
+
+import java.util.HashSet;
+import java.util.Iterator;
 
 /**
  * A composite shader that combines multiple shaders by summing their contributions.

@@ -19,13 +19,13 @@ package org.almostrealism.collect;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.MemoryProvider;
-import io.almostrealism.profile.OperationInfo;
 import io.almostrealism.code.ProducerComputation;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.compute.Process;
+import io.almostrealism.profile.OperationInfo;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Parent;
-import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.computations.DefaultCollectionEvaluable;
 import org.almostrealism.collect.computations.ReshapeProducer;
@@ -111,14 +111,14 @@ public interface CollectionProducerComputation extends
 		Collection<Producer<?>> terms;
 
 		if (producer instanceof Parent) {
-			terms = (Collection) ((Parent<?>) producer).getChildren().stream()
-					.map(t -> (Producer) t)
+			terms = ((Parent<?>) producer).getChildren().stream()
+					.map(t -> (Producer<?>) t)
 					.collect(Collectors.toList());
 		} else {
 			return CollectionProducerParallelProcess.super.applyDeltaStrategy(producer, target);
 		}
 
-		return (CollectionProducer) deltaStrategyProcessor(producer.getDeltaStrategy(),
+		return deltaStrategyProcessor(producer.getDeltaStrategy(),
 				producerFactory(this), shape(producer), target).apply(terms);
 	}
 

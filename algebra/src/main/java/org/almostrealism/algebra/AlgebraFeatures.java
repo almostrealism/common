@@ -19,8 +19,8 @@ package org.almostrealism.algebra;
 import io.almostrealism.code.Computation;
 import io.almostrealism.collect.Algebraic;
 import io.almostrealism.collect.TraversalPolicy;
-import io.almostrealism.relation.Parent;
 import io.almostrealism.compute.Process;
+import io.almostrealism.relation.Parent;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.computations.WeightedSumComputation;
 import org.almostrealism.calculus.DeltaFeatures;
@@ -150,7 +150,7 @@ public interface AlgebraFeatures extends CollectionFeatures {
 			throw new IllegalArgumentException();
 		}
 
-		long resultDims[] = new long[groupShape.getDimensions()];
+		long[] resultDims = new long[groupShape.getDimensions()];
 		TraversalPolicy leftPosition = leftShape;
 		TraversalPolicy rightPosition = rightShape;
 
@@ -270,7 +270,7 @@ public interface AlgebraFeatures extends CollectionFeatures {
 																		TraversalPolicy weightGroupShape,
 																		Producer<T> input,
 																		Producer<T> weights) {
-		return (CollectionProducer) new WeightedSumComputation(
+		return new WeightedSumComputation(
 						resultShape,
 						inputPositions, weightPositions,
 						inputGroupShape, weightGroupShape,

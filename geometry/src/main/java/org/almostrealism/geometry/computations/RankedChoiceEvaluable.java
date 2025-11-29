@@ -17,12 +17,12 @@
 package org.almostrealism.geometry.computations;
 
 import io.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.algebra.Pair;
-import org.almostrealism.collect.PackedCollection;
-import io.almostrealism.relation.ProducerWithRank;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
+import io.almostrealism.relation.ProducerWithRank;
+import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.computations.HighestRank;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.Input;
 
 import java.util.ArrayList;

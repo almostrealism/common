@@ -16,18 +16,18 @@
 
 package org.almostrealism.raytrace;
 
+import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Producer;
+import org.almostrealism.algebra.Vector;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.color.DirectionalAmbientLight;
+import org.almostrealism.color.Light;
 import org.almostrealism.color.PointLight;
+import org.almostrealism.color.RGB;
 import org.almostrealism.geometry.ClosestIntersection;
 import org.almostrealism.geometry.Intersectable;
 import org.almostrealism.geometry.Intersection;
-import org.almostrealism.algebra.Vector;
-import org.almostrealism.color.Light;
-import org.almostrealism.color.RGB;
 import org.almostrealism.geometry.Ray;
-import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.Producer;
 import org.almostrealism.hardware.DynamicProducerForMemoryData;
 
 import java.util.function.Supplier;
@@ -133,7 +133,7 @@ public class ShadowMask implements Evaluable<RGB>, Supplier<Evaluable<? extends 
 		Producer<Ray> shadowRay = new DynamicProducerForMemoryData<>(arguments -> new Ray(p, fdirection));
 
 		ClosestIntersection intersection = new ClosestIntersection(shadowRay, surfaces);
-		Ray r = intersection.get(0).get().evaluate(args);
+		Ray r = new Ray(intersection.get(0).get().evaluate(args), 0);
 		double intersect = 0.0;
 		if (r != null)
 			intersect = r.getOrigin().subtract(p).length();

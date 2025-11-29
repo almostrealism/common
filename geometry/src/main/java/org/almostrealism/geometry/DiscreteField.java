@@ -19,6 +19,7 @@ package org.almostrealism.geometry;
 import io.almostrealism.relation.NodeList;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Gradient;
+import org.almostrealism.collect.PackedCollection;
 
 /**
  * A {@link DiscreteField} is a collection of points in space and corresponding directions,
@@ -43,6 +44,6 @@ import org.almostrealism.algebra.Gradient;
  * @see ContinuousField
  * @see Ray
  */
-public interface DiscreteField extends NodeList<Producer<Ray>> {
+public interface DiscreteField extends NodeList<Producer<PackedCollection>> {
 
 }

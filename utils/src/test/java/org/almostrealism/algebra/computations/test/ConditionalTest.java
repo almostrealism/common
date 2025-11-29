@@ -16,8 +16,8 @@
 
 package org.almostrealism.algebra.computations.test;
 
-import io.almostrealism.relation.Evaluable;
 import io.almostrealism.collect.CollectionProducerBase;
+import io.almostrealism.relation.Evaluable;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Test;

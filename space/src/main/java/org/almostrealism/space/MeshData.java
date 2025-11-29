@@ -16,15 +16,15 @@
 
 package org.almostrealism.space;
 
-import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.geometry.Intersection;
+import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.Pair;
+import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.geometry.Intersection;
 import org.almostrealism.geometry.Ray;
+import org.almostrealism.geometry.computations.RankedChoiceEvaluable;
 import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.MemoryData;
-import io.almostrealism.relation.Evaluable;
-import org.almostrealism.geometry.computations.RankedChoiceEvaluable;
 
 /**
  * {@link MeshData} is a hardware-accelerated data structure that stores triangle mesh data
@@ -69,7 +69,7 @@ public class MeshData extends PackedCollection {
 	 */
 	public static boolean enablePartialKernel = true;
 
-	private PackedCollection distances;
+	private final PackedCollection distances;
 
 	/**
 	 * Constructs a new {@link MeshData} instance with capacity for the specified
@@ -95,7 +95,7 @@ public class MeshData extends PackedCollection {
 	 * @return a {@link Pair} where {@code getA()} is the intersection distance
 	 *         (or negative if no intersection) and {@code getB()} is the triangle index
 	 */
-	public synchronized Pair evaluateIntersection(Evaluable<Ray> ray, Object args[]) {
+	public synchronized Pair evaluateIntersection(Evaluable<Ray> ray, Object[] args) {
 		PackedCollection in = Ray.bank(1);
 		PackedCollection out = Pair.bank(1);
 
@@ -117,7 +117,7 @@ public class MeshData extends PackedCollection {
 	 * @param destination collection to receive scalar intersection distances
 	 * @param args        additional arguments passed to the ray evaluable
 	 */
-	public void evaluateIntersectionKernelScalar(Evaluable<Ray> ray, PackedCollection destination, MemoryData args[]) {
+	public void evaluateIntersectionKernelScalar(Evaluable<Ray> ray, PackedCollection destination, MemoryData[] args) {
 		PackedCollection result = Pair.bank(destination.getCount());
 		evaluateIntersectionKernel(ray, result, args);
 		for (int i = 0; i < result.getCountLong(); i++) {
@@ -139,7 +139,7 @@ public class MeshData extends PackedCollection {
 	 * @param destination collection to receive intersection results (distance, triangle index pairs)
 	 * @param args        additional arguments passed to the ray evaluable
 	 */
-	public void evaluateIntersectionKernel(Evaluable<Ray> ray, PackedCollection destination, MemoryData args[]) {
+	public void evaluateIntersectionKernel(Evaluable<Ray> ray, PackedCollection destination, MemoryData[] args) {
 		long startTime = System.currentTimeMillis();
 		PackedCollection rays = Ray.bank(destination.getCount());
 		ray.into(rays).evaluate(args);

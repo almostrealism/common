@@ -16,7 +16,6 @@
 
 package org.almostrealism.geometry;
 
-import org.almostrealism.algebra.Vector;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
 

@@ -16,13 +16,12 @@
 
 package org.almostrealism.color;
 
+import io.almostrealism.relation.Editable;
+import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.color.computations.GeneratedColorProducer;
 import org.almostrealism.geometry.DiscreteField;
-import org.almostrealism.geometry.Ray;
-import io.almostrealism.relation.Producer;
-import io.almostrealism.relation.Editable;
 import org.almostrealism.geometry.RayFeatures;
 
 /**
@@ -71,9 +70,9 @@ import org.almostrealism.geometry.RayFeatures;
  * @author Michael Murray
  */
 public class BlendingShader implements Shader<LightingContext>, Editable, RGBFeatures, RayFeatures {
-  private static final String names[] = { "Hot color", "Cold color" };
-  private static final String desc[] = { "Color for hot (lit) area.", "Color for cold (dim) area." };
-  private static final Class types[] = { Producer.class, Producer.class };
+  private static final String[] names = { "Hot color", "Cold color" };
+  private static final String[] desc = { "Color for hot (lit) area.", "Color for cold (dim) area." };
+  private static final Class[] types = { Producer.class, Producer.class };
   
   private Producer<PackedCollection> hotColor, coldColor;
 
@@ -82,8 +81,8 @@ public class BlendingShader implements Shader<LightingContext>, Editable, RGBFea
 	 * and black as a cold color.
 	 */
 	public BlendingShader() {
-		this.hotColor = (Producer) white();
-		this.coldColor = (Producer) black();
+		this.hotColor = white();
+		this.coldColor = black();
 	}
 	
 	/**
@@ -103,7 +102,7 @@ public class BlendingShader implements Shader<LightingContext>, Editable, RGBFea
 	public Producer<PackedCollection> shade(LightingContext p, DiscreteField normals) {
 		// TODO  Put evaluation into producer
 
-		Producer<Ray> n;
+		Producer<PackedCollection> n;
 		
 		try {
 			n = normals.iterator().next();
@@ -114,17 +113,17 @@ public class BlendingShader implements Shader<LightingContext>, Editable, RGBFea
 		
 		Producer<PackedCollection> l = p.getLightDirection();
 
-		CollectionProducer dp = (CollectionProducer) dotProduct(direction(n), l);
+		CollectionProducer dp = dotProduct(direction(n), l);
 		Producer<PackedCollection> k = dp.add(c(1.0));
-		Producer<PackedCollection> oneMinusK = c(1.0).subtract((Producer) k);
+		Producer<PackedCollection> oneMinusK = c(1.0).subtract(k);
 		
 		PackedCollection hc = this.hotColor.get().evaluate(p);
 		PackedCollection cc = this.coldColor.get().evaluate(p);
 
-		Producer c = multiply(value(hc), cfromScalar((Producer) k));
-		c = add(c, multiply(value(cc), cfromScalar((Producer) oneMinusK)));
+		Producer c = multiply(value(hc), cfromScalar(k));
+		c = add(c, multiply(value(cc), cfromScalar(oneMinusK)));
 
-		return GeneratedColorProducer.fromProducer(this, (Producer) c);
+		return GeneratedColorProducer.fromProducer(this, c);
 	}
 
 	/**
@@ -155,7 +154,7 @@ public class BlendingShader implements Shader<LightingContext>, Editable, RGBFea
 	/**
 	 * @see Editable#setPropertyValues(java.lang.Object[])
 	 */
-	public void setPropertyValues(Object values[]) {
+	public void setPropertyValues(Object[] values) {
 		for (int i = 0; i < values.length; i++) this.setPropertyValue(values[i], i);
 	}
 

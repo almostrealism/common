@@ -15,11 +15,9 @@
  */
 
 package org.almostrealism.stats;
-import org.almostrealism.collect.PackedCollection;
 
 import io.almostrealism.relation.Producer;
-import org.almostrealism.algebra.Vector;
-import io.almostrealism.relation.Evaluable;
+import org.almostrealism.collect.PackedCollection;
 
 /**
  * Represents a probability distribution over directions on a sphere.
@@ -70,5 +68,5 @@ public interface SphericalProbabilityDistribution {
 	 * @param orient the surface orientation/normal vector (typically normalized)
 	 * @return a producer that generates a sampled outgoing direction
 	 */
-	Producer<PackedCollection> getSample(double in[], double orient[]);
+	Producer<PackedCollection> getSample(double[] in, double[] orient);
 }

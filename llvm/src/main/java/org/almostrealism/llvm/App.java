@@ -16,8 +16,12 @@
 
 package org.almostrealism.llvm;
 
-import java.io.*;
-import org.graalvm.polyglot.*;
+import org.graalvm.polyglot.Context;
+import org.graalvm.polyglot.Source;
+import org.graalvm.polyglot.Value;
+
+import java.io.File;
+import java.io.IOException;
 
 /**
  * Demonstration application for LLVM integration via GraalVM polyglot.

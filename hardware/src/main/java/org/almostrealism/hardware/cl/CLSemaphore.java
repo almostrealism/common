@@ -16,8 +16,8 @@
 
 package org.almostrealism.hardware.cl;
 
-import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.concurrent.Semaphore;
+import io.almostrealism.profile.OperationMetadata;
 import org.almostrealism.hardware.profile.RunData;
 import org.jocl.cl_event;
 

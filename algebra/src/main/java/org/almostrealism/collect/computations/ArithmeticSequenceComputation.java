@@ -117,17 +117,17 @@ public class ArithmeticSequenceComputation extends TraversableExpressionComputat
 	 * Whether the sequence length is fixed at construction time (true) or
 	 * can be determined dynamically at runtime (false).
 	 */
-	private boolean fixedCount;
+	private final boolean fixedCount;
 
 	/**
 	 * The initial value (first element) of the arithmetic sequence.
 	 */
-	private double initial;
+	private final double initial;
 
 	/**
 	 * The rate of change (step size) between consecutive elements.
 	 */
-	private double rate;
+	private final double rate;
 
 	/**
 	 * Constructs a single-element arithmetic sequence with the specified initial value.

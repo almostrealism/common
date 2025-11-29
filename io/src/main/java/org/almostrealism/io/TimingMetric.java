@@ -16,8 +16,6 @@
 
 package org.almostrealism.io;
 
-import java.util.Comparator;
-import java.util.Map;
 import java.util.function.Supplier;
 import java.util.function.UnaryOperator;
 

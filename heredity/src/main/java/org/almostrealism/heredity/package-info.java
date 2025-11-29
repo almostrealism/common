@@ -81,4 +81,3 @@
  * @see org.almostrealism.heredity.HeredityFeatures
  */
 package org.almostrealism.heredity;
-import org.almostrealism.collect.PackedCollection;

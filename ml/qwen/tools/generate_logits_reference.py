@@ -9,10 +9,11 @@ This script:
 4. Saves logits and top-k predictions to a file for Java comparison
 """
 
-import torch
-import numpy as np
-from transformers import AutoModelForCausalLM, AutoTokenizer
 import argparse
+import numpy as np
+import torch
+from transformers import AutoModelForCausalLM, AutoTokenizer
+
 
 def main():
     parser = argparse.ArgumentParser()

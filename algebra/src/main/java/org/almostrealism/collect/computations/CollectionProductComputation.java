@@ -149,7 +149,7 @@ public class CollectionProductComputation extends TraversableExpressionComputati
 	 */
 	@Override
 	public CollectionProducerParallelProcess generate(List<Process<?, ?>> children) {
-		return (CollectionProductComputation) new CollectionProductComputation(getName(), getShape(),
+		return new CollectionProductComputation(getName(), getShape(),
 				children.stream().skip(1).toArray(Producer[]::new))
 				.setPostprocessor(getPostprocessor())
 				.setDescription(getDescription())
@@ -230,7 +230,7 @@ public class CollectionProductComputation extends TraversableExpressionComputati
 
 		uDelta = uDelta.reshape(v.getShape().getTotalSize(), -1).traverse(0);
 		vDelta = vDelta.reshape(u.getShape().getTotalSize(), -1).traverse(0);
-		return (CollectionProducer) expandAndMultiply(u.flatten(), vDelta)
+		return expandAndMultiply(u.flatten(), vDelta)
 				.add(expandAndMultiply(v.flatten(), uDelta)).reshape(shape);
 	}
 }

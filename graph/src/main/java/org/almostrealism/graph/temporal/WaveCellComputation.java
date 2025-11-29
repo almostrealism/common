@@ -17,17 +17,15 @@
 package org.almostrealism.graph.temporal;
 
 import io.almostrealism.kernel.KernelStructureContext;
-import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
+import io.almostrealism.relation.Provider;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.HybridScope;
 import io.almostrealism.scope.Scope;
-import io.almostrealism.relation.Provider;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.OperationComputationAdapter;
 
 import java.util.Objects;
-import java.util.function.Supplier;
 
 /**
  * Abstract base class for wave cell computation operations.

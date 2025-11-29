@@ -15,10 +15,10 @@ Example:
     python extract_qwen3_weights.py Qwen/Qwen3-Instruct-2507-4B ./qwen3_weights
 """
 
-import os
-import sys
 import argparse
 import numpy as np
+import os
+import sys
 from pathlib import Path
 
 try:

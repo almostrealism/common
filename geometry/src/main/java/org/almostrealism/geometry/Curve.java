@@ -15,12 +15,11 @@
  */
 
 package org.almostrealism.geometry;
-import org.almostrealism.collect.PackedCollection;
 
 import io.almostrealism.relation.Node;
 import io.almostrealism.relation.Producer;
-import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.Gradient;
+import org.almostrealism.collect.PackedCollection;
 
 /**
  * A parametric curve interface that maps 3D points in space to values of type {@code T}.

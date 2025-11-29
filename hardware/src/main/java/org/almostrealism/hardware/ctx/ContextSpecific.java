@@ -18,10 +18,10 @@ package org.almostrealism.hardware.ctx;
 
 import io.almostrealism.code.DataContext;
 import io.almostrealism.lifecycle.Destroyable;
+import org.almostrealism.hardware.Hardware;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.lifecycle.SuppliedValue;
-import org.almostrealism.hardware.Hardware;
 
 import java.util.Stack;
 import java.util.function.Consumer;

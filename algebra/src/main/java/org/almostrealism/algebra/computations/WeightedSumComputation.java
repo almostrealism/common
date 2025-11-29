@@ -74,11 +74,14 @@ import java.util.List;
  */
 public class WeightedSumComputation
 		extends TraversableExpressionComputation {
-	private TraversalPolicy resultShape;
-	private TraversalPolicy inputPositions, weightPositions;
-	private TraversalPolicy inputGroupShape, weightGroupShape;
+	private final TraversalPolicy resultShape;
+	private final TraversalPolicy inputPositions;
+	private final TraversalPolicy weightPositions;
+	private final TraversalPolicy inputGroupShape;
+	private final TraversalPolicy weightGroupShape;
 
-	private TraversalPolicy inShape, weightShape;
+	private final TraversalPolicy inShape;
+	private final TraversalPolicy weightShape;
 
 	/**
 	 * Creates a new weighted sum computation.
@@ -191,13 +194,13 @@ public class WeightedSumComputation
 					getShape().append(shape(target)),
 					args ->
 							new WeightedSumDeltaExpression(getShape(), shape(target), getInputTraversal(), getWeightsTraversal(), args[1]),
-					(Producer) getInputs().get(2));
+					getInputs().get(2));
 		} else if (AlgebraFeatures.match(getInputs().get(2), target) && AlgebraFeatures.cannotMatch(getInputs().get(1), target)) {
 			return new DefaultTraversableExpressionComputation("weightedSumDelta",
 					getShape().append(shape(target)),
 					args ->
 							new WeightedSumDeltaExpression(getShape(), shape(target), getWeightsTraversal(), getInputTraversal(), args[1]),
-					(Producer) getInputs().get(1));
+					getInputs().get(1));
 		}
 
 		return super.delta(target);

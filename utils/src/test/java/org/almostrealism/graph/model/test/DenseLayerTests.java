@@ -31,7 +31,7 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 public class DenseLayerTests implements ModelTestFeatures {
-	private double coeff[] = { 0.24, -0.1, 0.36 };
+	private final double[] coeff = { 0.24, -0.1, 0.36 };
 
 	public PackedCollection func3x3(PackedCollection input) {
 		TraversalPolicy shape = padDimensions(input.getShape(), 2);

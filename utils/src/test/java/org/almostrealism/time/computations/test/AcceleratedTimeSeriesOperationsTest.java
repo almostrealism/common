@@ -17,6 +17,7 @@
 package org.almostrealism.time.computations.test;
 
 import io.almostrealism.relation.Evaluable;
+import org.almostrealism.CodeFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.AcceleratedComputationOperation;
 import org.almostrealism.hardware.OperationList;
@@ -24,7 +25,6 @@ import org.almostrealism.time.AcceleratedTimeSeries;
 import org.almostrealism.time.CursorPair;
 import org.almostrealism.time.TemporalScalar;
 import org.almostrealism.time.computations.AcceleratedTimeSeriesValueAt;
-import org.almostrealism.CodeFeatures;
 import org.junit.Assert;
 import org.junit.Test;
 

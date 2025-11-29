@@ -16,13 +16,12 @@
 
 package org.almostrealism.collect.computations;
 
-import io.almostrealism.expression.Expression;
-import io.almostrealism.kernel.KernelStructureContext;
-import io.almostrealism.compute.Process;
-import io.almostrealism.relation.Producer;
-import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.compute.Process;
+import io.almostrealism.expression.Expression;
+import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.relation.Producer;
 
 import java.util.List;
 
@@ -86,7 +85,7 @@ public class CollectionPermute
 	 * from the input should appear at that position in the output. For example,
 	 * order = [1, 0] means dimension 1 becomes dimension 0, and dimension 0 becomes dimension 1.
 	 */
-	private int order[];
+	private final int[] order;
 
 	/**
 	 * Creates a new CollectionPermute computation that reorders the dimensions of a collection.
@@ -200,7 +199,7 @@ public class CollectionPermute
 		TraversalPolicy outputShape = inputShape.permute(order);
 
 		// Convert the output linear index to multi-dimensional coordinates
-		Expression actualPosition[] = getShape().position(index);
+		Expression[] actualPosition = getShape().position(index);
 		
 		// Map these coordinates back to input space using the permuted traversal policy
 		return outputShape.index(actualPosition);

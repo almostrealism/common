@@ -15,19 +15,15 @@
  */
 
 package org.almostrealism.physics;
-import org.almostrealism.collect.PackedCollection;
 
 import io.almostrealism.relation.Producer;
-import org.almostrealism.geometry.ContinuousField;
-import org.almostrealism.algebra.Vector;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.color.Light;
-import org.almostrealism.color.RGB;
 import org.almostrealism.color.ShaderContext;
+import org.almostrealism.geometry.ContinuousField;
 import org.almostrealism.geometry.Curve;
-import io.almostrealism.relation.Evaluable;
 
 import java.util.Collection;
-import java.util.function.Supplier;
 
 /**
  * A specialized shader context that includes photon field and film (absorber) references.

@@ -219,4 +219,3 @@
  * @see org.almostrealism.ml
  */
 package org.almostrealism.algebra;
-import org.almostrealism.collect.PackedCollection;

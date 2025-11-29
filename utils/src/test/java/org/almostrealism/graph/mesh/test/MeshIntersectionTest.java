@@ -22,22 +22,22 @@ import org.almostrealism.algebra.Vector;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.geometry.Ray;
+import org.almostrealism.graph.mesh.TriangleIntersectAt;
+import org.almostrealism.hardware.DynamicProducerForMemoryData;
 import org.almostrealism.hardware.Input;
+import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.space.DefaultVertexData;
 import org.almostrealism.space.Mesh;
 import org.almostrealism.space.MeshData;
-import org.almostrealism.graph.mesh.TriangleIntersectAt;
-import org.almostrealism.hardware.MemoryBank;
-import org.almostrealism.hardware.DynamicProducerForMemoryData;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Before;
 import org.junit.Test;
 
 public class MeshIntersectionTest implements TestFeatures {
-	private Producer<PackedCollection> origin1 = vector(0.0, 1.0, 1.0);
-	private Producer<PackedCollection> direction1 = vector(0.0, 0.0, -1.0);
-	private Producer<PackedCollection> origin2 = vector( -0.1, -1.0, 1.0);
-	private Producer<PackedCollection> direction2 = vector(0.0, 0.0, -1.0);
+	private final Producer<PackedCollection> origin1 = vector(0.0, 1.0, 1.0);
+	private final Producer<PackedCollection> direction1 = vector(0.0, 0.0, -1.0);
+	private final Producer<PackedCollection> origin2 = vector( -0.1, -1.0, 1.0);
+	private final Producer<PackedCollection> direction2 = vector(0.0, 0.0, -1.0);
 
 	private MeshData data1, data2;
 

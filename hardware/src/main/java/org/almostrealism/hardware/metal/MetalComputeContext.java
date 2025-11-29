@@ -19,11 +19,11 @@ package org.almostrealism.hardware.metal;
 import io.almostrealism.code.Accessibility;
 import io.almostrealism.code.InstructionSet;
 import io.almostrealism.lang.LanguageOperations;
-import io.almostrealism.scope.Scope;
 import io.almostrealism.lang.ScopeEncoder;
+import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.ScopeSettings;
-import org.almostrealism.hardware.ctx.AbstractComputeContext;
 import org.almostrealism.hardware.Hardware;
+import org.almostrealism.hardware.ctx.AbstractComputeContext;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 

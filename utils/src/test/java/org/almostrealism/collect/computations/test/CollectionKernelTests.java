@@ -45,8 +45,8 @@ public class CollectionKernelTests implements TestFeatures {
 
 	@Test
 	public void multiply() {
-		double v1[] = { 2.0, 3.0, 4.0, 6.0, 7.0, 8.0, 11.0, 13.0, 15.0, 17.0};
-		double v2[] = { 2.0, 3.0, 0.5, 0.25, 0.1 };
+		double[] v1 = { 2.0, 3.0, 4.0, 6.0, 7.0, 8.0, 11.0, 13.0, 15.0, 17.0};
+		double[] v2 = { 2.0, 3.0, 0.5, 0.25, 0.1 };
 
 		CollectionProducer a = func(shape(2, 5), args ->
 				c(shape(2, 5), v1)
@@ -66,7 +66,7 @@ public class CollectionKernelTests implements TestFeatures {
 			Assert.assertEquals(5, out.getShape().length(1));
 			Assert.assertEquals(2, out.getCountLong());
 
-			double values[] = out.toArray(0, 10);
+			double[] values = out.toArray(0, 10);
 			System.out.println(Arrays.toString(values));
 
 			for (int i = 0; i < 5; i++) {
@@ -78,8 +78,8 @@ public class CollectionKernelTests implements TestFeatures {
 
 	@Test
 	public void divide() {
-		double v1[] = { 2.0, 3.0, 4.0, 6.0, 7.0, 8.0, 11.0, 13.0, 15.0, 17.0};
-		double v2[] = { 2.0 };
+		double[] v1 = { 2.0, 3.0, 4.0, 6.0, 7.0, 8.0, 11.0, 13.0, 15.0, 17.0};
+		double[] v2 = { 2.0 };
 
 		CollectionProducer a = func(shape(2, 5), args ->
 				c(shape(2, 5), v1)
@@ -98,7 +98,7 @@ public class CollectionKernelTests implements TestFeatures {
 			Assert.assertEquals(2, out.getShape().length(0));
 			Assert.assertEquals(5, out.getShape().length(1));
 
-			double values[] = out.toArray(0, 10);
+			double[] values = out.toArray(0, 10);
 			System.out.println(Arrays.toString(values));
 
 			for (int i = 0; i < 10; i++) {

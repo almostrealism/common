@@ -17,12 +17,14 @@
 package org.almostrealism.util;
 
 import org.almostrealism.CodeFeatures;
-import org.almostrealism.geometry.Ray;
 import org.almostrealism.algebra.Vector;
-import org.almostrealism.graph.RayField;
 import org.almostrealism.geometry.BoundingSolid;
+import org.almostrealism.geometry.Ray;
+import org.almostrealism.graph.RayField;
 
-import java.util.*;
+import java.util.HashSet;
+import java.util.Random;
+import java.util.Set;
 
 /**
  * Factory for generating ray fields within a bounding solid for ray tracing operations.

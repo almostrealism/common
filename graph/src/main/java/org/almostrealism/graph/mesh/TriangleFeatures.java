@@ -190,7 +190,7 @@ public interface TriangleFeatures extends VectorFeatures {
 				result = conditional(vectorIdx.eq(3), fromNormal, result);
 
 				return result;
-			}), (Producer) abc, (Producer) def, (Producer) jkl, (Producer) normal);
+			}), abc, def, jkl, normal);
 	}
 
 	/**
@@ -246,7 +246,7 @@ public interface TriangleFeatures extends VectorFeatures {
 	default CollectionProducer points(Producer<PackedCollection> p1,
 									  Producer<PackedCollection> p2,
 									  Producer<PackedCollection> p3) {
-		return concat(shape(3, 3), (Producer) p1, (Producer) p2, (Producer)  p3);
+		return concat(shape(3, 3), p1, p2, p3);
 	}
 
 	/**

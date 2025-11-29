@@ -17,10 +17,10 @@
 package org.almostrealism.graph.test;
 
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.graph.CellPair;
 import org.almostrealism.graph.CollectionCachedStateCell;
 import org.almostrealism.hardware.AcceleratedOperation;
 import org.almostrealism.hardware.OperationList;
-import org.almostrealism.graph.CellPair;
 import org.almostrealism.util.TestFeatures;
 
 public class CellPairTest implements TestFeatures {

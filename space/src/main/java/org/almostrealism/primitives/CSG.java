@@ -16,19 +16,18 @@
 
 package org.almostrealism.primitives;
 
-import java.util.Arrays;
-import java.util.function.Supplier;
-
-import org.almostrealism.algebra.*;
+import io.almostrealism.code.Operator;
+import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.geometry.ClosestIntersection;
 import org.almostrealism.geometry.ContinuousField;
 import org.almostrealism.geometry.Ray;
-import io.almostrealism.code.Operator;
-import io.almostrealism.relation.Producer;
 import org.almostrealism.geometry.TransformMatrix;
 import org.almostrealism.space.AbstractSurface;
-import io.almostrealism.relation.Evaluable;
+
+import java.util.Arrays;
+import java.util.function.Supplier;
 
 // TODO  Add bounding solid to make intersection calculations faster.
 

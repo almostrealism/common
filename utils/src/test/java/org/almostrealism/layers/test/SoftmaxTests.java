@@ -17,9 +17,9 @@
 package org.almostrealism.layers.test;
 
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.compute.Process;
 import io.almostrealism.profile.OperationProfileNode;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
@@ -27,9 +27,9 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.Cell;
 import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.OperationList;
+import org.almostrealism.layers.BackPropagationCell;
 import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.layers.LayerFeatures;
-import org.almostrealism.layers.BackPropagationCell;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.DefaultBlock;
 import org.almostrealism.model.Model;
@@ -79,7 +79,7 @@ public class SoftmaxTests implements LayerFeatures, DistributionFeatures, TestFe
 				}
 			}
 
-			double x[] = new double[len];
+			double[] x = new double[len];
 			double sum = 0.0;
 			for (int i = 0; i < l; i++) {
 				x[i] = subtractMax ? Math.exp(in.valueAt(h, i) - max) : Math.exp(in.valueAt(h, i));
@@ -136,7 +136,7 @@ public class SoftmaxTests implements LayerFeatures, DistributionFeatures, TestFe
 		log("Input = " + Arrays.toString(input.toArray(0, input.getMemLength())));
 		log("Gradient = " + Arrays.toString(gradient.toArray(0, gradient.getMemLength())));
 
-		double result[] = new double[10];
+		double[] result = new double[10];
 
 		CellularLayer layer = softmax(10);
 		layer.getBackward().setReceptor(grad -> () -> {
@@ -155,7 +155,7 @@ public class SoftmaxTests implements LayerFeatures, DistributionFeatures, TestFe
 			layer.getBackward().push(p(gradient)).get().run();
 		});
 
-		double expected[] = new double[] { -1.22242448e-07, -3.32289424e-07, -9.03256303e-07,  1.56203074e-03,
+		double[] expected = new double[] { -1.22242448e-07, -3.32289424e-07, -9.03256303e-07,  1.56203074e-03,
 				-6.67421149e-06, -1.81423878e-05, -4.93161231e-05, -1.34055121e-04,
 				-3.64399601e-04, -9.90540812e-04 };
 
@@ -176,7 +176,7 @@ public class SoftmaxTests implements LayerFeatures, DistributionFeatures, TestFe
 		PackedCollection gradient = new PackedCollection(shape);
 		gradient.setMem(100, 1.0);
 
-		double result[] = new double[shape.getTotalSize()];
+		double[] result = new double[shape.getTotalSize()];
 
 		CellularLayer layer = softmax(shape, true);
 		layer.getBackward().setReceptor(grad -> () -> {
@@ -216,7 +216,7 @@ public class SoftmaxTests implements LayerFeatures, DistributionFeatures, TestFe
 
 		double tot = input.doubleStream().map(Math::exp).sum();
 
-		double result[] = new double[size];
+		double[] result = new double[size];
 
 		CellularLayer layer = logSoftmax(shape(size));
 		layer.getBackward().setReceptor(grad -> () -> {
@@ -232,7 +232,7 @@ public class SoftmaxTests implements LayerFeatures, DistributionFeatures, TestFe
 		((BackPropagationCell) layer.getBackward()).setForwardInput(input);
 		layer.getBackward().push(p(gradient)).get().run();
 
-		double expected[] = IntStream.range(0, size).mapToDouble(i -> Math.exp(input.valueAt(0, i)) / tot).toArray();
+		double[] expected = IntStream.range(0, size).mapToDouble(i -> Math.exp(input.valueAt(0, i)) / tot).toArray();
 		expected[1] -= 1.0;
 
 		for (int i = 0; i < result.length; i++) {
@@ -257,7 +257,7 @@ public class SoftmaxTests implements LayerFeatures, DistributionFeatures, TestFe
 
 		double tot = input.doubleStream().map(Math::exp).sum();
 
-		double result[] = new double[10];
+		double[] result = new double[10];
 
 		CellularLayer layer = logSoftmax(shape(size));
 		layer.getBackward().setReceptor(grad -> () -> {
@@ -273,7 +273,7 @@ public class SoftmaxTests implements LayerFeatures, DistributionFeatures, TestFe
 		((BackPropagationCell) layer.getBackward()).setForwardInput(input);
 		layer.getBackward().push(p(gradient)).get().run();
 
-		double expected[] = IntStream.range(0, size)
+		double[] expected = IntStream.range(0, size)
 				.mapToDouble(i -> -Math.exp(input.valueAt(0, i)) / tot)
 				.toArray();
 		int idx = gradient.argmax();
@@ -300,7 +300,7 @@ public class SoftmaxTests implements LayerFeatures, DistributionFeatures, TestFe
 		System.out.println("Input: " + Arrays.toString(input.toArray(0, input.getMemLength())));
 		System.out.println("Gradient: " + Arrays.toString(gradient.toArray(0, gradient.getMemLength())));
 
-		double result[] = new double[size];
+		double[] result = new double[size];
 
 		Model model = new Model(shape(size));
 		model.add(new DefaultBlock(shape(2), shape(2),
@@ -324,7 +324,7 @@ public class SoftmaxTests implements LayerFeatures, DistributionFeatures, TestFe
 			compiled.backward(gradient);
 
 			double tot = input.doubleStream().map(Math::exp).sum();
-			double expected[] = IntStream.range(0, size).mapToDouble(i -> Math.exp(input.valueAt(i)) / tot).toArray();
+			double[] expected = IntStream.range(0, size).mapToDouble(i -> Math.exp(input.valueAt(i)) / tot).toArray();
 			expected[1] -= 1.0;
 
 			for (int i = 0; i < result.length; i++) {
@@ -342,7 +342,7 @@ public class SoftmaxTests implements LayerFeatures, DistributionFeatures, TestFe
 		PackedCollection originalInput = new PackedCollection(shape(1, seqLen)).randFill();
 		CollectionProducer input = cp(copy(originalInput));
 
-		double values[] = originalInput.toArray();
+		double[] values = originalInput.toArray();
 		softmax(values, 0, seqLen);
 
 		int axis = input.getShape().getDimensions() - 1;
@@ -368,7 +368,7 @@ public class SoftmaxTests implements LayerFeatures, DistributionFeatures, TestFe
 		Producer<PackedCollection> p = softmax(input.getShape(), true).apply(cp(input));
 		PackedCollection destination = p.get().evaluate();
 
-		double values[] = originalInput.toArray();
+		double[] values = originalInput.toArray();
 		softmax(values, 0, seqLength);
 
 		compare(null, destination, values);
@@ -393,7 +393,7 @@ public class SoftmaxTests implements LayerFeatures, DistributionFeatures, TestFe
 
 			// CollectionProducer<PackedCollection> p = subset.exp().divide(subset.exp().traverse(0).sum());
 
-			double values[] = originalInput.toArray(0, originalInput.getShape().getTotalSize());
+			double[] values = originalInput.toArray(0, originalInput.getShape().getTotalSize());
 			softmax(values, h * seqLength, seqLength);
 
 			compare(a(subset.each(), p), input, values);
@@ -401,7 +401,7 @@ public class SoftmaxTests implements LayerFeatures, DistributionFeatures, TestFe
 	}
 
 	protected static void softmax(double[] x, int offset, int size) {
-		double max = x[0 + offset];
+		double max = x[offset];
 		for (int i = 1; i < size; i++) {
 			if (x[i + offset] > max) {
 				max = x[i + offset];
@@ -409,7 +409,7 @@ public class SoftmaxTests implements LayerFeatures, DistributionFeatures, TestFe
 		}
 
 		double sum = 0.0;
-		double stable[] = new double[size];
+		double[] stable = new double[size];
 
 		for (int i = 0; i < size; i++) {
 			stable[i] = x[i + offset] - max;
@@ -429,12 +429,12 @@ public class SoftmaxTests implements LayerFeatures, DistributionFeatures, TestFe
 		}
 	}
 
-	protected void compare(Supplier<Runnable> op, PackedCollection dest, double values[]) {
+	protected void compare(Supplier<Runnable> op, PackedCollection dest, double[] values) {
 		if (op != null) {
 			op.get().run();
 		}
 
-		double out[] = dest.toArray(0, values.length);
+		double[] out = dest.toArray(0, values.length);
 		for (int i = 0; i < values.length; i++) {
 			if (Math.abs(out[i] - values[i]) > 1e-5) {
 				throw new AssertionError("Mismatch at " + i + ": " + out[i] + " != " + values[i]);

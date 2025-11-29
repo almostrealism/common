@@ -268,9 +268,9 @@ public class PointExtractionTest implements TestFeatures {
 		log("cP class: " + cP.getClass().getSimpleName());
 		log("cP shape: " + cP.getShape());
 
-		CollectionProducer p1 = point((Producer) cP, 0);
-		CollectionProducer p2 = point((Producer) cP, 1);
-		CollectionProducer p3 = point((Producer) cP, 2);
+		CollectionProducer p1 = point(cP, 0);
+		CollectionProducer p2 = point(cP, 1);
+		CollectionProducer p3 = point(cP, 2);
 		log("p1 shape: " + p1.getShape());
 		log("p2 shape: " + p2.getShape());
 		log("p3 shape: " + p3.getShape());
@@ -282,7 +282,7 @@ public class PointExtractionTest implements TestFeatures {
 		abcProducer.get().into(abcDebug.traverse(1)).evaluate();
 		defProducer.get().into(defDebug.traverse(1)).evaluate();
 
-		CollectionProducer crossProducer = crossProduct((Producer) abcProducer, (Producer) defProducer);
+		CollectionProducer crossProducer = crossProduct(abcProducer, defProducer);
 		log("crossProducer shape: " + crossProducer.getShape());
 		crossProducer.get().into(crossDebug.traverse(1)).evaluate();
 
@@ -291,11 +291,11 @@ public class PointExtractionTest implements TestFeatures {
 		PackedCollection lengthSqDebug = new PackedCollection(shape(2, 1));
 		PackedCollection lengthDebug = new PackedCollection(shape(2, 1));
 
-		multiply((Producer) crossProducer, (Producer) crossProducer).get().into(squaredDebug.traverse(1)).evaluate();
-		lengthSq((Producer) crossProducer).get().into(lengthSqDebug.traverse(1)).evaluate();
-		length((Producer) crossProducer).get().into(lengthDebug.traverse(1)).evaluate();
+		multiply(crossProducer, crossProducer).get().into(squaredDebug.traverse(1)).evaluate();
+		lengthSq(crossProducer).get().into(lengthSqDebug.traverse(1)).evaluate();
+		length(crossProducer).get().into(lengthDebug.traverse(1)).evaluate();
 
-		normalize((Producer) crossProducer).get().into(normalDebug.traverse(1)).evaluate();
+		normalize(crossProducer).get().into(normalDebug.traverse(1)).evaluate();
 
 		log("\nDebug intermediate values:");
 		log("abc (v1-v0) Triangle 0: [" + abcDebug.toDouble(0) + "," + abcDebug.toDouble(1) + "," + abcDebug.toDouble(2) + "]");

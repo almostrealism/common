@@ -16,11 +16,11 @@
 
 package org.almostrealism.ml;
 
+import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.compute.ParallelProcess;
 import io.almostrealism.compute.Process;
 import io.almostrealism.profile.OperationProfile;
-import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.compute.ParallelProcess;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
@@ -28,9 +28,9 @@ import org.almostrealism.hardware.OperationList;
 import org.almostrealism.layers.MonitorReceptor;
 import org.almostrealism.model.Block;
 import org.almostrealism.model.CompiledModel;
-import org.almostrealism.util.TestFeatures;
-import org.almostrealism.model.SequentialBlock;
 import org.almostrealism.model.Model;
+import org.almostrealism.model.SequentialBlock;
+import org.almostrealism.util.TestFeatures;
 import org.almostrealism.util.TestUtils;
 import org.junit.Test;
 

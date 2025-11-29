@@ -18,8 +18,6 @@ package org.almostrealism.collect.computations;
 
 import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.code.MemoryProvider;
-import io.almostrealism.lifecycle.Destroyable;
-import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.code.ProducerComputationBase;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.ScopeLifecycle;
@@ -27,17 +25,19 @@ import io.almostrealism.collect.CollectionVariable;
 import io.almostrealism.collect.IndexSet;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversableExpression;
+import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.compute.Process;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.lifecycle.Destroyable;
+import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.calculus.DeltaAlternate;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
-import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.hardware.MemoryBank;
@@ -390,13 +390,13 @@ public abstract class CollectionProducerComputationBase
 		if (!(existing instanceof PackedCollection) || existing.getMem() == null ||
 				((PackedCollection) existing).getShape().getTotalSize() < shape.getTotalSize()) {
 			if (existing != null) existing.getRootDelegate().destroy();
-			return (MemoryBank<PackedCollection>) new PackedCollection(shape);
+			return new PackedCollection(shape);
 		}
 
 		if (((PackedCollection) existing).getShape().equals(shape))
 			return (MemoryBank<PackedCollection>) existing;
 
-		return (MemoryBank<PackedCollection>) ((PackedCollection) existing).range(shape);
+		return ((PackedCollection) existing).range(shape);
 	}
 
 	/**
@@ -604,7 +604,7 @@ public abstract class CollectionProducerComputationBase
 	 * @return Array of traversable expressions for each input argument
 	 */
 	protected TraversableExpression[] getTraversableArguments(Expression<?> index) {
-		TraversableExpression vars[] = new TraversableExpression[getInputs().size()];
+		TraversableExpression[] vars = new TraversableExpression[getInputs().size()];
 		for (int i = 0; i < vars.length; i++) {
 			vars[i] = TraversableExpression.traverse(getArgumentForInput(getInputs().get(i)));
 		}
@@ -680,15 +680,15 @@ public abstract class CollectionProducerComputationBase
 					getDestination(),
 					getShortCircuit(), true);
 			this.evaluable.setDestinationProcessor(destination -> {
-				if (destination instanceof Shape) {
-					Shape out = (Shape) destination;
+				if (destination instanceof PackedCollection) {
+					PackedCollection out = (PackedCollection) destination;
 
 					int targetSize = getMemLength();
 
 					if (getCountLong() > 1 || isFixedCount() || (out.getShape().getCountLong() > 1 && getCountLong() == 1)) {
 						for (int axis = out.getShape().getDimensions(); axis >= 0; axis--) {
 							if (out.getShape().traverse(axis).getSize() == targetSize) {
-								return (PackedCollection) (axis == out.getShape().getTraversalAxis() ? out : out.traverse(axis));
+								return axis == out.getShape().getTraversalAxis() ? out : out.traverse(axis);
 							}
 						}
 					}

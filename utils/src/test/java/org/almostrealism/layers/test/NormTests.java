@@ -17,19 +17,19 @@
 package org.almostrealism.layers.test;
 
 import io.almostrealism.collect.TraversalPolicy;
-import io.almostrealism.profile.OperationProfileNode;
-import io.almostrealism.relation.Evaluable;
 import io.almostrealism.compute.ParallelProcess;
 import io.almostrealism.compute.Process;
+import io.almostrealism.profile.OperationProfileNode;
+import io.almostrealism.relation.Evaluable;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.PackedCollectionEnumerate;
 import org.almostrealism.graph.Cell;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.jni.NativeCompiler;
+import org.almostrealism.layers.BackPropagationCell;
 import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.layers.LayerFeatures;
-import org.almostrealism.layers.BackPropagationCell;
 import org.almostrealism.layers.ParameterUpdate;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
@@ -46,7 +46,7 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 	public static boolean enableRandom = true;
 	public static double threshold = 0.005;
 
-	protected static double values[] = {0.5, 1.5, 2.0};
+	protected static double[] values = {0.5, 1.5, 2.0};
 	protected static int pos = 0;
 
 	private static double random() {
@@ -454,11 +454,7 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 		if (testDepth < 1) return;
 
 		ParallelProcess.explicitIsolationTargets.add(t -> {
-			if (t instanceof PackedCollectionEnumerate) {
-				return true;
-			} else {
-				return false;
-			}
+			return t instanceof PackedCollectionEnumerate;
 		});
 
 		try {

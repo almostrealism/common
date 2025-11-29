@@ -18,9 +18,9 @@ package org.almostrealism.hardware.cl;
 
 import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;
+import io.almostrealism.code.Precision;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareException;
-import io.almostrealism.code.Precision;
 import org.almostrealism.hardware.mem.RAM;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;

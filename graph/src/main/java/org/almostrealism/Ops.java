@@ -15,7 +15,6 @@
  */
 
 package org.almostrealism;
-import org.almostrealism.collect.PackedCollection;
 
 import java.util.function.Function;
 

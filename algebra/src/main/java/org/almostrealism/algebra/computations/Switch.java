@@ -17,14 +17,14 @@
 package org.almostrealism.algebra.computations;
 
 import io.almostrealism.code.ArgumentMap;
+import io.almostrealism.code.Computation;
 import io.almostrealism.code.ExpressionFeatures;
+import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
-import io.almostrealism.code.Computation;
 import io.almostrealism.scope.Cases;
 import io.almostrealism.scope.Scope;
-import io.almostrealism.code.ScopeInputManager;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.OperationComputationAdapter;
 
@@ -76,7 +76,7 @@ public class Switch extends OperationComputationAdapter<PackedCollection> implem
 	 * @param choices  list of computation branches to choose from
 	 */
 	public Switch(Producer<PackedCollection> decision, List<Computation<?>> choices) {
-		super(new Producer[] { decision });
+		super(decision);
 		this.choices = choices;
 	}
 

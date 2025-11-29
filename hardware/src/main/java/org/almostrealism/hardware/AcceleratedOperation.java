@@ -16,18 +16,18 @@
 
 package org.almostrealism.hardware;
 
+import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.ComputeContext;
+import io.almostrealism.code.DefaultScopeInputManager;
 import io.almostrealism.code.Execution;
+import io.almostrealism.code.OperationAdapter;
+import io.almostrealism.code.ScopeInputManager;
+import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.concurrent.DefaultLatchSemaphore;
 import io.almostrealism.concurrent.Semaphore;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.scope.Argument;
-import io.almostrealism.code.ArgumentMap;
-import io.almostrealism.code.DefaultScopeInputManager;
-import io.almostrealism.code.OperationAdapter;
-import io.almostrealism.code.ScopeInputManager;
-import io.almostrealism.code.ScopeLifecycle;
 import org.almostrealism.c.NativeMemoryProvider;
 import org.almostrealism.hardware.arguments.ProcessArgumentEvaluator;
 import org.almostrealism.hardware.instructions.ExecutionKey;
@@ -35,9 +35,9 @@ import org.almostrealism.hardware.instructions.InstructionSetManager;
 import org.almostrealism.hardware.jni.NativeCompiler;
 import org.almostrealism.hardware.jni.NativeExecution;
 import org.almostrealism.hardware.kernel.KernelWork;
+import org.almostrealism.hardware.mem.AcceleratedProcessDetails;
 import org.almostrealism.hardware.mem.Bytes;
 import org.almostrealism.hardware.mem.MemoryDataArgumentMap;
-import org.almostrealism.hardware.mem.AcceleratedProcessDetails;
 import org.almostrealism.hardware.mem.MemoryReplacementManager;
 import org.almostrealism.hardware.metal.MTLBuffer;
 import org.almostrealism.hardware.metal.MetalProgram;

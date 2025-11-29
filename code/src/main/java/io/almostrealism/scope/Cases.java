@@ -16,12 +16,12 @@
 
 package io.almostrealism.scope;
 
-import io.almostrealism.lang.CodePrintWriter;
 import io.almostrealism.code.ExpressionAssignment;
-import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.code.Statement;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.lang.CodePrintWriter;
+import io.almostrealism.profile.OperationMetadata;
 
 import java.util.ArrayList;
 import java.util.List;

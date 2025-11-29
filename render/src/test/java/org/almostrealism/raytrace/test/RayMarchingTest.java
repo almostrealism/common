@@ -1,28 +1,26 @@
 package org.almostrealism.raytrace.test;
 
+import org.almostrealism.algebra.Vector;
+import org.almostrealism.color.DiffuseShader;
+import org.almostrealism.color.Light;
+import org.almostrealism.color.PointLight;
+import org.almostrealism.color.RGB;
+import org.almostrealism.color.ShaderSet;
+import org.almostrealism.projection.OrthographicCamera;
+import org.almostrealism.raytrace.RayMarchingEngine;
+import org.almostrealism.raytrace.RenderParameters;
+import org.almostrealism.render.RayTracedScene;
+import org.almostrealism.space.DistanceEstimator;
+import org.almostrealism.texture.Animation;
+import org.almostrealism.texture.ImageCanvas;
+
+import javax.swing.text.NumberFormatter;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.text.NumberFormat;
 import java.text.ParseException;
 import java.util.ArrayList;
-
-import javax.swing.text.NumberFormatter;
-
-import org.almostrealism.color.PointLight;
-import org.almostrealism.algebra.Vector;
-import org.almostrealism.color.Light;
-import org.almostrealism.color.RGB;
-import org.almostrealism.color.ShaderSet;
-import org.almostrealism.space.DistanceEstimator;
-import org.almostrealism.texture.Animation;
-
-import org.almostrealism.projection.OrthographicCamera;
-import org.almostrealism.color.DiffuseShader;
-import org.almostrealism.raytrace.RayMarchingEngine;
-import org.almostrealism.render.RayTracedScene;
-import org.almostrealism.raytrace.RenderParameters;
-import org.almostrealism.texture.ImageCanvas;
 
 public class RayMarchingTest {
 	public static final boolean enableAnimation = false;

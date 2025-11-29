@@ -15,7 +15,6 @@
  */
 
 package org.almostrealism.heredity;
-import org.almostrealism.collect.PackedCollection;
 
 /**
  * A factory interface for generating {@link Chromosome} instances.

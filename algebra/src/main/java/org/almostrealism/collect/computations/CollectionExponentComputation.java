@@ -20,12 +20,12 @@ import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.collect.UniformCollectionExpression;
+import io.almostrealism.compute.Process;
 import io.almostrealism.expression.Exponent;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.Index;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.AlgebraFeatures;
 import org.almostrealism.collect.CollectionProducer;
@@ -174,7 +174,7 @@ public class CollectionExponentComputation extends TraversableExpressionComputat
 	public CollectionExponentComputation(TraversalPolicy shape,
 										 Producer<? extends PackedCollection> base,
 										 Producer<? extends PackedCollection> exponent) {
-		this("pow", shape, (Producer) base, (Producer) exponent);
+		this("pow", shape, (Producer<PackedCollection>) base, (Producer<PackedCollection>) exponent);
 	}
 
 	/**
@@ -250,7 +250,7 @@ public class CollectionExponentComputation extends TraversableExpressionComputat
 	@Override
 	public CollectionProducerParallelProcess generate(List<Process<?, ?>> children) {
 		return new CollectionExponentComputation(getName(), getShape(),
-				(Producer) children.get(1), (Producer) children.get(2))
+				(Producer<PackedCollection>) children.get(1), (Producer<PackedCollection>) children.get(2))
 				.setPostprocessor(getPostprocessor())
 				.setDescription(getDescription())
 				.setShortCircuit(getShortCircuit())
@@ -357,6 +357,6 @@ public class CollectionExponentComputation extends TraversableExpressionComputat
 
 		scale = scale.flatten();
 		uDelta = uDelta.reshape(v.getShape().getTotalSize(), -1).traverse(0);
-		return (CollectionProducer) expandAndMultiply(scale, uDelta).reshape(shape);
+		return expandAndMultiply(scale, uDelta).reshape(shape);
 	}
 }

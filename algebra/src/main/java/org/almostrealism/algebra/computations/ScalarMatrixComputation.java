@@ -22,8 +22,8 @@ import io.almostrealism.collect.ConstantCollectionExpression;
 import io.almostrealism.collect.DiagonalCollectionExpression;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
-import io.almostrealism.relation.Computable;
 import io.almostrealism.compute.Process;
+import io.almostrealism.relation.Computable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducerParallelProcess;
 import org.almostrealism.collect.PackedCollection;
@@ -150,7 +150,7 @@ public class ScalarMatrixComputation extends MatrixExpressionComputation {
 	@Override
 	public Optional<Computable> getDiagonalScalar(int width) {
 		if (width == getShape().length(0)) {
-			return Optional.of((Computable) getInputs().get(1));
+			return Optional.of(getInputs().get(1));
 		}
 
 		return super.getDiagonalScalar(width);
@@ -164,6 +164,6 @@ public class ScalarMatrixComputation extends MatrixExpressionComputation {
 	 */
 	@Override
 	public CollectionProducerParallelProcess generate(List<Process<?, ?>> children) {
-		return new ScalarMatrixComputation(getShape(), (Producer) children.get(1));
+		return new ScalarMatrixComputation(getShape(), (Producer<PackedCollection>) children.get(1));
 	}
 }

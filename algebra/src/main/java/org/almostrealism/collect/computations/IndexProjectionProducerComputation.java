@@ -21,9 +21,9 @@ import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.IndexProjectionExpression;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.compute.Process;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ScopeSettings;
 import org.almostrealism.algebra.AlgebraFeatures;
@@ -173,7 +173,7 @@ public class IndexProjectionProducerComputation
 	 * This function defines how elements from the input collection are mapped to 
 	 * positions in the output collection.
 	 */
-	private UnaryOperator<Expression<?>> indexProjection;
+	private final UnaryOperator<Expression<?>> indexProjection;
 
 	/**
 	 * Creates a new index projection computation with the specified parameters.
@@ -221,7 +221,7 @@ public class IndexProjectionProducerComputation
 												 UnaryOperator<Expression<?>> indexProjection,
 												 Producer<?> collection,
 												 Producer<?>... inputs) {
-		super(name, shape, CollectionUtils.include(new Producer[0], (Producer) collection, (Producer[]) inputs));
+		super(name, shape, CollectionUtils.include(new Producer[0], (Producer<PackedCollection>) collection, (Producer<PackedCollection>[]) inputs));
 		this.indexProjection = indexProjection;
 	}
 
@@ -285,7 +285,7 @@ public class IndexProjectionProducerComputation
 
 		// TODO  This should use DiagonalCollectionExpression
 		return compute(null, CollectionExpression.create(shape.traverse(), idx -> {
-						Expression pos[] = shape.position(idx);
+						Expression[] pos = shape.position(idx);
 						return conditional(pos[0].eq(projectIndex(pos[1])), e(1), e(0));
 					}))
 				.addDependentLifecycle(this);
@@ -434,7 +434,7 @@ public class IndexProjectionProducerComputation
 			int traversalAxis = shape.getTraversalAxis();
 
 			UnaryOperator<Expression<?>> project = idx -> {
-				Expression pos[] = overallShape.position(idx);
+				Expression[] pos = overallShape.position(idx);
 				return deltaShape.index(projectIndex(pos[0]), pos[1]);
 			};
 

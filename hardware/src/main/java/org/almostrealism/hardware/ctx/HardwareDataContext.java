@@ -20,8 +20,8 @@ import io.almostrealism.code.DataContext;
 import io.almostrealism.code.MemoryProvider;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryData;
-import org.almostrealism.hardware.mem.RAM;
 import org.almostrealism.hardware.mem.HardwareMemoryProvider;
+import org.almostrealism.hardware.mem.RAM;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 

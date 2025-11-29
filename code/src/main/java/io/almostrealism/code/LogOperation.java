@@ -16,8 +16,8 @@
 
 package io.almostrealism.code;
 
-import io.almostrealism.relation.Operation;
 import io.almostrealism.compute.Process;
+import io.almostrealism.relation.Operation;
 import io.almostrealism.uml.Named;
 import org.almostrealism.io.Console;
 

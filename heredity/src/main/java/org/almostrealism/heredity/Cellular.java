@@ -17,8 +17,8 @@
 package org.almostrealism.heredity;
 
 import io.almostrealism.cycle.Setup;
-import io.almostrealism.relation.Node;
 import io.almostrealism.lifecycle.Lifecycle;
+import io.almostrealism.relation.Node;
 
 /**
  * An interface representing a cell in a computation graph with lifecycle management.

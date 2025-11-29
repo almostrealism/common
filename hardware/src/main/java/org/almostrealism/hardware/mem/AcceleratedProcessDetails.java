@@ -22,7 +22,6 @@ import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
-import org.almostrealism.io.SystemUtils;
 
 import java.util.ArrayList;
 import java.util.List;

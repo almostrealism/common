@@ -16,26 +16,26 @@
 
 package org.almostrealism.space;
 
-import java.util.ArrayList;
-import java.util.Iterator;
-import java.util.List;
-import java.util.function.Consumer;
-import java.util.stream.Stream;
-
+import io.almostrealism.code.Constant;
+import io.almostrealism.code.Operator;
 import io.almostrealism.relation.NodeGroup;
+import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Gradient;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.color.RGB;
 import org.almostrealism.color.ShadableSurface;
 import org.almostrealism.color.ShaderContext;
+import org.almostrealism.geometry.ClosestIntersection;
 import org.almostrealism.geometry.ContinuousField;
 import org.almostrealism.geometry.Intersectable;
 import org.almostrealism.geometry.TransformMatrix;
-import org.almostrealism.geometry.ClosestIntersection;
-import io.almostrealism.code.Constant;
-import io.almostrealism.relation.Producer;
-import io.almostrealism.code.Operator;
+
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
+import java.util.function.Consumer;
+import java.util.stream.Stream;
 
 /**
  * A {@link SurfaceGroup} object allows {@link ShadableSurface} objects to be grouped together.
@@ -44,7 +44,7 @@ import io.almostrealism.code.Operator;
  * @author  Michael Murray
  */
 public class SurfaceGroup<T extends ShadableSurface> extends AbstractSurface implements NodeGroup<T>, Iterable<T> {
-	private ArrayList<T> surfaces;
+	private final ArrayList<T> surfaces;
 
 	/** Constructs a {@link SurfaceGroup} object with no {@link Gradient} objects. */
 	public SurfaceGroup() {
@@ -53,7 +53,7 @@ public class SurfaceGroup<T extends ShadableSurface> extends AbstractSurface imp
 	}
 	
 	/** Constructs a {@link SurfaceGroup} using the {@link Gradient}s in the specified array. */
-	public SurfaceGroup(T surfaces[]) {
+	public SurfaceGroup(T[] surfaces) {
 		this();
 		this.setSurfaces(surfaces);
 	}
@@ -62,7 +62,7 @@ public class SurfaceGroup<T extends ShadableSurface> extends AbstractSurface imp
 	 * Replaces all of the {@link Gradient} objects of this {@link SurfaceGroup} object with
 	 * those represented by the specified {@link Gradient} array.
 	 */
-	public void setSurfaces(T surfaces[]) {
+	public void setSurfaces(T[] surfaces) {
 		this.surfaces.clear();
 		
 		for (int i = 0; i < surfaces.length; i++)
@@ -111,7 +111,7 @@ public class SurfaceGroup<T extends ShadableSurface> extends AbstractSurface imp
 	@Deprecated
 	public ShadableSurface getSurface(int index) {
 		System.out.println("Call to deprecated getSurface method");
-		return (ShadableSurface) this.surfaces.get(index);
+		return this.surfaces.get(index);
 	}
 
 	@Override
@@ -154,20 +154,20 @@ public class SurfaceGroup<T extends ShadableSurface> extends AbstractSurface imp
 		Mesh mesh = super.triangulate();
 		
 		i: for (Gradient s : this) {
-			if (s instanceof TriangulatableGeometry == false) continue i;
+			if (!(s instanceof TriangulatableGeometry)) continue i;
 			
 			Mesh m = ((TriangulatableGeometry) s).triangulate();
 			
-			Vector v[] = m.getVectors();
-			Triangle t[] = m.getTriangles();
+			Vector[] v = m.getVectors();
+			Triangle[] t = m.getTriangles();
 			
-			int index[] = new int[v.length];
+			int[] index = new int[v.length];
 			for (int j = 0; j < index.length; j++) {
 				index[j] = mesh.addVector(m.getTransform(true).transformAsLocation(v[j]));
 			}
 			
 			for (int j = 0; j < t.length; j++) {
-				Vector tv[] = t[j].getVertices();
+				Vector[] tv = t[j].getVertices();
 				
 				int v0 = index[m.indexOf(tv[0])];
 				int v1 = index[m.indexOf(tv[1])];

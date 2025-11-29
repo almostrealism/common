@@ -18,13 +18,13 @@ package org.almostrealism.hardware.cl;
 
 import io.almostrealism.code.Accessibility;
 import io.almostrealism.code.InstructionSet;
-import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.code.Memory;
-import io.almostrealism.scope.Scope;
-import io.almostrealism.lang.ScopeEncoder;
 import io.almostrealism.code.Precision;
-import org.almostrealism.hardware.ctx.AbstractComputeContext;
+import io.almostrealism.lang.LanguageOperations;
+import io.almostrealism.lang.ScopeEncoder;
+import io.almostrealism.scope.Scope;
 import org.almostrealism.hardware.Hardware;
+import org.almostrealism.hardware.ctx.AbstractComputeContext;
 import org.almostrealism.hardware.profile.ProfileData;
 import org.almostrealism.hardware.profile.RunData;
 import org.jocl.CL;

@@ -17,8 +17,8 @@
 package org.almostrealism.collect;
 
 import io.almostrealism.code.ComputableParallelProcess;
-import io.almostrealism.relation.Evaluable;
 import io.almostrealism.compute.Process;
+import io.almostrealism.relation.Evaluable;
 
 /**
  * A {@link CollectionProducer} that can be executed as a parallel process.

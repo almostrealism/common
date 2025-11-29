@@ -20,10 +20,10 @@ import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.CollectionProducerBase;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversableExpression;
-import io.almostrealism.relation.Producer;
-import io.almostrealism.expression.Expression;
-import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.expression.Expression;
+import io.almostrealism.relation.Producer;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.TraversableExpressionComputation;
 
 /**
@@ -62,7 +62,7 @@ import org.almostrealism.collect.computations.TraversableExpressionComputation;
  * @see org.almostrealism.algebra.ScalarFeatures#choice(int, TraversalPolicy, Producer, Producer)
  */
 public class Choice extends TraversableExpressionComputation {
-	private int choiceCount;
+	private final int choiceCount;
 
 	/**
 	 * Creates a new Choice computation.

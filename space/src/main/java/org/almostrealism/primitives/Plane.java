@@ -15,13 +15,13 @@
  */
 
 package org.almostrealism.primitives;
-import org.almostrealism.collect.PackedCollection;
 
-import org.almostrealism.algebra.Vector;
-import org.almostrealism.color.RGB;
 import io.almostrealism.relation.Producer;
-import org.almostrealism.space.Volume;
 import org.almostrealism.CodeFeatures;
+import org.almostrealism.algebra.Vector;
+import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.color.RGB;
+import org.almostrealism.space.Volume;
 
 public class Plane implements Volume<RGB>, CodeFeatures {
 	public static double d = 0.0;

@@ -16,13 +16,13 @@
 
 package org.almostrealism.primitives;
 
-import java.awt.Graphics;
-
+import org.almostrealism.algebra.Vector;
 import org.almostrealism.geometry.Camera;
 import org.almostrealism.geometry.TransformMatrix;
-import org.almostrealism.algebra.Vector;
 import org.almostrealism.physics.RigidBody;
 import org.almostrealism.space.Plane;
+
+import java.awt.*;
 
 
 /**

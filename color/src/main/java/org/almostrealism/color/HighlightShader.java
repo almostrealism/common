@@ -17,14 +17,15 @@
 package org.almostrealism.color;
 
 import io.almostrealism.relation.Editable;
+import io.almostrealism.relation.Producer;
+import org.almostrealism.algebra.Vector;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.geometry.DiscreteField;
-import org.almostrealism.algebra.Vector;
 import org.almostrealism.color.computations.GeneratedColorProducer;
+import org.almostrealism.geometry.DiscreteField;
+import org.almostrealism.geometry.Ray;
 import org.almostrealism.geometry.RayFeatures;
 import org.almostrealism.hardware.DynamicProducerForMemoryData;
-import io.almostrealism.relation.Producer;
 
 /**
  * Provides specular highlight shading using the Phong reflection model.
@@ -78,9 +79,9 @@ import io.almostrealism.relation.Producer;
  */
 public class HighlightShader extends ShaderSet<ShaderContext> implements
 		Shader<ShaderContext>, Editable, RGBFeatures, RayFeatures {
-  private static final String propNames[] = { "Highlight Color", "Highlight Exponent" };
-  private static final String propDesc[] = { "The base color for the highlight", "The exponent used to dampen the highlight (phong exponent)" };
-  private static final Class propTypes[] = { Producer.class, Double.class };
+  private static final String[] propNames = { "Highlight Color", "Highlight Exponent" };
+  private static final String[] propDesc = { "The base color for the highlight", "The exponent used to dampen the highlight (phong exponent)" };
+  private static final Class[] propTypes = { Producer.class, Double.class };
   
   private Producer<PackedCollection> highlightColor;
   private double highlightExponent;
@@ -90,7 +91,7 @@ public class HighlightShader extends ShaderSet<ShaderContext> implements
 	 * and 1.0 as a highlight exponent.
 	 */
 	public HighlightShader() {
-		this.setHighlightColor((Producer) white());
+		this.setHighlightColor(white());
 		this.setHighlightExponent(1.0);
 	}
 	
@@ -109,13 +110,13 @@ public class HighlightShader extends ShaderSet<ShaderContext> implements
 		Vector point;
 		
 		try {
-			point = p.getIntersection().get(0).get().evaluate().getOrigin();
+			point = new Ray(p.getIntersection().get(0).get().evaluate(), 0).getOrigin();
 		} catch (Exception ex) {
 			ex.printStackTrace();
 			return null;
 		}
 		
-		RGB lightColor = (RGB) p.getLight().getColorAt((Producer) v((Vector) p.getIntersection().getNormalAt((Producer) v(point)).get().evaluate())).get().evaluate();
+		RGB lightColor = (RGB) p.getLight().getColorAt(v((Vector) p.getIntersection().getNormalAt(v(point)).get().evaluate())).get().evaluate();
 		
 		Producer<PackedCollection> n;
 		
@@ -127,22 +128,22 @@ public class HighlightShader extends ShaderSet<ShaderContext> implements
 		}
 		
 		n = multiply(n, length(n).pow(-1.0));
-		CollectionProducer h = vector(add(p.getIntersection().getNormalAt((Producer) v(point)), p.getLightDirection()));
+		CollectionProducer h = vector(add(p.getIntersection().getNormalAt(v(point)), p.getLightDirection()));
 		h = multiply(h, length(h).pow(-1.0));
 
 		Producer hc = v((RGB) this.getHighlightColor().get().evaluate(p));
 		if (super.size() > 0) hc = multiply(hc, super.shade(p, normals));
 
-		CollectionProducer cFront = (CollectionProducer) dotProduct(h, n);
-		CollectionProducer cBack = (CollectionProducer) dotProduct(h, minus(n));
+		CollectionProducer cFront = dotProduct(h, n);
+		CollectionProducer cBack = dotProduct(h, minus(n));
 
 		Producer fhc = hc;
 
-		return GeneratedColorProducer.fromProducer(this, (Producer) new DynamicProducerForMemoryData<PackedCollection>(args -> {
+		return GeneratedColorProducer.fromProducer(this, new DynamicProducerForMemoryData<PackedCollection>(args -> {
 			Producer color = null;
 
-			f: if (p.getSurface() instanceof ShadableSurface == false || ((ShadableSurface) p.getSurface()).getShadeFront()) {
-				double c = ((PackedCollection) cFront.get().evaluate(args)).toDouble();
+			f: if (!(p.getSurface() instanceof ShadableSurface) || ((ShadableSurface) p.getSurface()).getShadeFront()) {
+				double c = cFront.get().evaluate(args).toDouble();
 				if (c < 0) break f;
 				c = Math.pow(c, this.getHighlightExponent());
 
@@ -154,8 +155,8 @@ public class HighlightShader extends ShaderSet<ShaderContext> implements
 				}
 			}
 
-			f: if (p.getSurface() instanceof ShadableSurface == false || ((ShadableSurface) p.getSurface()).getShadeBack()) {
-				double c = ((PackedCollection) cBack.get().evaluate(args)).toDouble();
+			f: if (!(p.getSurface() instanceof ShadableSurface) || ((ShadableSurface) p.getSurface()).getShadeBack()) {
+				double c = cBack.get().evaluate(args).toDouble();
 				if (c < 0) break f;
 				c = Math.pow(c, this.getHighlightExponent());
 
@@ -245,7 +246,7 @@ public class HighlightShader extends ShaderSet<ShaderContext> implements
 	 *                                   (Note: none of the values after the erroneous value will be set)
 	 * @throws IndexOutOfBoundsException  If the length of the specified array is longer than permitted.
 	 */
-	public void setPropertyValues(Object values[]) {
+	public void setPropertyValues(Object[] values) {
 		for (int i = 0; i < values.length; i++) {
 			this.setPropertyValue(values[i], i);
 		}

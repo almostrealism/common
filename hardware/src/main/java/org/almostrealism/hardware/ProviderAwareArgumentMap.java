@@ -16,11 +16,11 @@
 
 package org.almostrealism.hardware;
 
-import io.almostrealism.relation.Delegated;
-import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.NameProvider;
 import io.almostrealism.code.OutputVariablePreservationArgumentMap;
+import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Provider;
+import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 

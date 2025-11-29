@@ -17,8 +17,8 @@
 package org.almostrealism.geometry.computations;
 
 import io.almostrealism.relation.Evaluable;
-import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.MemoryBank;
+import org.almostrealism.hardware.MemoryData;
 
 import java.util.function.IntFunction;
 import java.util.function.Supplier;

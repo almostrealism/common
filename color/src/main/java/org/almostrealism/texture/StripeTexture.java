@@ -15,14 +15,14 @@
  */
 
 package org.almostrealism.texture;
-import org.almostrealism.collect.PackedCollection;
 
-import org.almostrealism.algebra.Vector;
-import org.almostrealism.color.computations.GeneratedColorProducer;
-import org.almostrealism.color.RGB;
-import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Editable;
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Producer;
+import org.almostrealism.algebra.Vector;
+import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.color.RGB;
+import org.almostrealism.color.computations.GeneratedColorProducer;
 
 // TODO  Add vector direction in place of axis selection.
 
@@ -33,26 +33,26 @@ import io.almostrealism.relation.Evaluable;
  */
 // TODO  ColorProducers should be allowed to be specified in place of RGB values.
 public class StripeTexture implements Texture, Editable {
-  private static final String propNames[] = {"Stripe Width", "Smooth", "Axis",
+  private static final String[] propNames = {"Stripe Width", "Smooth", "Axis",
   											"First Color", "Second Color",
 											"Offset"};
-  private static final String propDesc[] = {"The width of each stripe", "Smooth stripes or solid stripes", "The axis for the stripes",
+  private static final String[] propDesc = {"The width of each stripe", "Smooth stripes or solid stripes", "The axis for the stripes",
 						"The first color to use for the stripes", "The second color to use for the stripes",
 						"Stripe offset"};
-  private static final Class propTypes[] = {Double.class, Boolean.class, Editable.Selection.class, RGB.class, RGB.class, Double.class};
-  private static final String axisOptions[] = {"X Axis", "Y Axis", "Z Axis"};
+  private static final Class[] propTypes = {Double.class, Boolean.class, Editable.Selection.class, RGB.class, RGB.class, Double.class};
+  private static final String[] axisOptions = {"X Axis", "Y Axis", "Z Axis"};
   public static final int XAxis = 0;
   public static final int YAxis = 1;
   public static final int ZAxis = 2;
   
-  private Object props[];
+  private Object[] props;
 
 	/**
 	 * Constructs a StripeTexture object that can be used to stripe a surface. The default colors are black and white
 	 * with a stripe width of 1.0 that is solid (not smooth) across the x axis.
 	 */
 	public StripeTexture() {
-		Object props[] = {new Double(0.1), new Boolean(false),
+		Object[] props = {new Double(0.1), Boolean.FALSE,
 							new Editable.Selection(StripeTexture.axisOptions),
 							new RGB(1.0, 1.0, 1.0), new RGB(0.0, 0.0, 0.0),
 							new Double(0.0)};
@@ -61,7 +61,7 @@ public class StripeTexture implements Texture, Editable {
 	}
 	
 	/** Constructs a StripeTexture object using the specified properties. */
-	public StripeTexture(Object props[]) {
+	public StripeTexture(Object[] props) {
 		this.setPropertyValues(props);
 	}
 
@@ -79,13 +79,13 @@ public class StripeTexture implements Texture, Editable {
 	 * @throws IllegalArgumentException  If one of the objects specified is not of the correct type.
 	 * @return  The color of the texture represented by this StripeTexture object at the specified point as an RGB object.
 	 */
-	public Evaluable<PackedCollection> getColorAt(Object props[]) {
+	public Evaluable<PackedCollection> getColorAt(Object[] props) {
 		return GeneratedColorProducer.fromProducer(this, () -> args -> {
 			Vector l = args.length > 0 ? (Vector) args[0] : new Vector(1.0, 1.0, 1.0);
 			Vector point = new Vector(l.getX(), l.getY(), l.getZ());
 
 			for (int i = 0; i < StripeTexture.propTypes.length; i++) {
-				if (StripeTexture.propTypes[i].isInstance(props[i]) == false)
+				if (!StripeTexture.propTypes[i].isInstance(props[i]))
 					throw new IllegalArgumentException("Illegal argument: " + props[i].toString());
 			}
 
@@ -109,7 +109,7 @@ public class StripeTexture implements Texture, Editable {
 			RGB c1 = (RGB) props[3];
 			RGB c2 = (RGB) props[4];
 
-			if (smooth == true) {
+			if (smooth) {
 				double t = (1 + Math.sin(Math.PI * ((value / width) + offset))) / 2.0;
 
 				return (c1.multiply(1.0 - t)).add(c2.multiply(t));
@@ -155,7 +155,7 @@ public class StripeTexture implements Texture, Editable {
 		
 		if (index >= StripeTexture.propTypes.length)
 			throw new IndexOutOfBoundsException("Index out of bounds: " + index);
-		else if (StripeTexture.propTypes[index].isInstance(value) == false)
+		else if (!StripeTexture.propTypes[index].isInstance(value))
 			throw new IllegalArgumentException("Illegal argument: " + value.toString());
 		else
 			this.props[index] = value;
@@ -168,7 +168,7 @@ public class StripeTexture implements Texture, Editable {
 	 *                                   (Note: none of the values after the erroneous value will be set)
 	 * @throws IndexOutOfBoundsException  If the length of the specified array is longer than permitted.
 	 */
-	public void setPropertyValues(Object values[]) {
+	public void setPropertyValues(Object[] values) {
 		for (int i = 0; i < values.length; i++) {
 			this.setPropertyValue(values[i], i);
 		}
@@ -198,7 +198,7 @@ public class StripeTexture implements Texture, Editable {
 	}
 	
 	public void setStripeWidth(double w) { this.props[0] = new Double(w); }
-	public void setSmooth(boolean s) { this.props[1] = new Boolean(s); }
+	public void setSmooth(boolean s) { this.props[1] = Boolean.valueOf(s); }
 	public void setAxis(int axis) { ((Editable.Selection)this.props[2]).setSelected(axis); }
 	public void setFirstColor(RGB color) { this.props[3] = color; }
 	public void setSecondColor(RGB color) { this.props[4] = color; }

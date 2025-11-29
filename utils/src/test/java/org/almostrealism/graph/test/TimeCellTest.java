@@ -17,13 +17,10 @@
 package org.almostrealism.graph.test;
 
 import io.almostrealism.relation.Producer;
-import io.almostrealism.relation.Provider;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.TimeCell;
-import org.almostrealism.hardware.HardwareOperator;
-import org.almostrealism.hardware.cl.CLOperator;
 import org.almostrealism.hardware.computations.Assignment;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Test;

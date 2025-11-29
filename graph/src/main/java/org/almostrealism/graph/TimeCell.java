@@ -18,15 +18,11 @@ package org.almostrealism.graph;
 
 import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.relation.Producer;
-import io.almostrealism.relation.Provider;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.algebra.Pair;
-import org.almostrealism.algebra.PairFeatures;
-import org.almostrealism.algebra.ScalarFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.computations.TimeCellReset;
 import org.almostrealism.hardware.OperationList;
-import org.almostrealism.hardware.computations.Assignment;
 import org.almostrealism.time.Temporal;
 
 import java.util.function.Supplier;

@@ -15,20 +15,18 @@
  */
 
 package org.almostrealism.primitives;
-import org.almostrealism.collect.PackedCollection;
 
-import org.almostrealism.color.SurfaceLight;
-
-import org.almostrealism.geometry.Camera;
-import org.almostrealism.algebra.ParticleGroup;
-import org.almostrealism.geometry.TransformMatrix;
-import org.almostrealism.algebra.Vector;
-import org.almostrealism.color.Light;
-import org.almostrealism.color.RGB;
-import org.almostrealism.physics.RigidBody;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.algebra.ParticleGroup;
+import org.almostrealism.algebra.Vector;
+import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.color.Light;
+import org.almostrealism.color.SurfaceLight;
+import org.almostrealism.geometry.Camera;
+import org.almostrealism.geometry.TransformMatrix;
+import org.almostrealism.physics.RigidBody;
 
-import java.awt.Graphics;
+import java.awt.*;
 
 
 /**

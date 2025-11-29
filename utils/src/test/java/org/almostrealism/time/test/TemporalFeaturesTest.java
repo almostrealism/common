@@ -43,7 +43,7 @@ public class TemporalFeaturesTest implements TestFeatures {
 	}
 
 	protected double[] highPassCoefficients(double cutoff, int sampleRate, int filterOrder) {
-		double lowPassCoefficients[] = lowPassCoefficients(cutoff, sampleRate, filterOrder);
+		double[] lowPassCoefficients = lowPassCoefficients(cutoff, sampleRate, filterOrder);
 
 		double[] highPassCoefficients = new double[filterOrder + 1];
 		for (int i = 0; i <= filterOrder; i++) {
@@ -60,7 +60,7 @@ public class TemporalFeaturesTest implements TestFeatures {
 		double cutoff = 3000;
 
 		double[] coefficients = lowPassCoefficients(cutoff, sampleRate, filterOrder);
-		double result[] = lowPassCoefficients(c(cutoff), sampleRate, filterOrder).get().evaluate().toArray();
+		double[] result = lowPassCoefficients(c(cutoff), sampleRate, filterOrder).get().evaluate().toArray();
 
 		for (int i = 0; i < filterOrder + 1; i++) {
 			assertEquals(coefficients[i], result[i]);

@@ -19,8 +19,8 @@ package org.almostrealism.collect.computations;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
-import io.almostrealism.expression.Expression;
 import io.almostrealism.compute.Process;
+import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.Index;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
@@ -107,14 +107,14 @@ public class DynamicIndexProjectionProducerComputation
 	 * This function receives both the traversable arguments and the output index,
 	 * allowing it to compute projections based on actual data values.
 	 */
-	private BiFunction<TraversableExpression[], Expression, Expression> indexExpression;
+	private final BiFunction<TraversableExpression[], Expression, Expression> indexExpression;
 	
 	/**
 	 * Indicates whether this computation uses relative indexing.
 	 * When true, the computation uses {@link TraversableExpression#getValueRelative}
 	 * for more memory-efficient access patterns.
 	 */
-	private boolean relative;
+	private final boolean relative;
 
 	/**
 	 * Creates a dynamic index projection computation with absolute indexing.
@@ -227,7 +227,7 @@ public class DynamicIndexProjectionProducerComputation
 			int traversalAxis = shape.getTraversalAxis();
 
 			BiFunction<TraversableExpression[], Expression, Expression> project = (args, idx) -> {
-				Expression pos[] = overallShape.position(idx);
+				Expression[] pos = overallShape.position(idx);
 				return deltaShape.index(projectIndex(args, pos[0]), pos[1]);
 			};
 

@@ -18,13 +18,12 @@ package org.almostrealism.algebra.computations.test;
 
 import io.almostrealism.code.Computation;
 import io.almostrealism.relation.Producer;
-import org.almostrealism.collect.CollectionProducer;
+import org.almostrealism.algebra.computations.Switch;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.AcceleratedOperation;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
-import org.almostrealism.algebra.computations.Switch;
 
 import java.util.Arrays;
 

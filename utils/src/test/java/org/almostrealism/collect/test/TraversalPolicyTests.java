@@ -59,8 +59,8 @@ public class TraversalPolicyTests implements TestFeatures {
 					assertEquals(shape.index(i, j, k), permuted.index(j, i, k));
 
 					int originalIndex = shape.index(i, j, k);
-					int originalPosition[] = shape.position(originalIndex);
-					int permutedPosition[] = permuted.position(originalIndex);
+					int[] originalPosition = shape.position(originalIndex);
+					int[] permutedPosition = permuted.position(originalIndex);
 
 					assertEquals(i, originalPosition[0]);
 					assertEquals(j, originalPosition[1]);
@@ -96,8 +96,8 @@ public class TraversalPolicyTests implements TestFeatures {
 						assertEquals(shape.index(i, j, k, l), permuted.index(i, k, j, l));
 
 						int originalIndex = shape.index(i, j, k, l);
-						int originalPosition[] = shape.position(originalIndex);
-						int permutedPosition[] = permuted.position(originalIndex);
+						int[] originalPosition = shape.position(originalIndex);
+						int[] permutedPosition = permuted.position(originalIndex);
 
 						assertEquals(i, originalPosition[0]);
 						assertEquals(j, originalPosition[1]);

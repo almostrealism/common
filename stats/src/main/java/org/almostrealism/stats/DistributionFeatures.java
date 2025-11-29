@@ -81,7 +81,7 @@ public interface DistributionFeatures extends CollectionFeatures {
 	 * @return a sampled index from 0 to n-1
 	 */
 	default int sample(PackedCollection distribution, int n) {
-		double probabilities[] = distribution.toArray(0, n);
+		double[] probabilities = distribution.toArray(0, n);
 		double r = rand.nextDouble();
 		double d = 0.0;
 
@@ -123,7 +123,7 @@ public interface DistributionFeatures extends CollectionFeatures {
 	 */
 	default <T extends PackedCollection> CollectionProducer softmax(CollectionProducer input, boolean subtractMax) {
 		int size = shape(input).getSize();
-		CollectionProducer o = (CollectionProducer) input;
+		CollectionProducer o = input;
 
 		if (subtractMax) {
 			o = o.max();
@@ -133,6 +133,6 @@ public interface DistributionFeatures extends CollectionFeatures {
 
 		o = o.expIgnoreZero().consolidate();
 		o = o.divide(o.sum().expand(size));
-		return (CollectionProducer) o;
+		return o;
 	}
 }

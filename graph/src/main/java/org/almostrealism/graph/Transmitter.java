@@ -15,7 +15,6 @@
  */
 
 package org.almostrealism.graph;
-import org.almostrealism.collect.PackedCollection;
 
 /**
  * A data-transmitting component in the Almost Realism computation graph architecture.

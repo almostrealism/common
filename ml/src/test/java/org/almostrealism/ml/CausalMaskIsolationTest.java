@@ -3,11 +3,11 @@ package org.almostrealism.ml;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.model.Model;
 import org.almostrealism.model.CompiledModel;
+import org.almostrealism.model.Model;
 import org.junit.Test;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
 
 /**
  * Test to verify that the causal mask lambda approach works correctly

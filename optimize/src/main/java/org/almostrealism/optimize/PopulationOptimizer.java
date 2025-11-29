@@ -16,6 +16,15 @@
 
 package org.almostrealism.optimize;
 
+import io.almostrealism.lifecycle.Destroyable;
+import io.almostrealism.relation.Generated;
+import org.almostrealism.CodeFeatures;
+import org.almostrealism.hardware.mem.Heap;
+import org.almostrealism.heredity.Genome;
+import org.almostrealism.heredity.GenomeBreeder;
+import org.almostrealism.io.Console;
+import org.almostrealism.time.Temporal;
+
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -32,18 +41,6 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
-
-import io.almostrealism.lifecycle.Destroyable;
-import io.almostrealism.relation.Generated;
-import org.almostrealism.hardware.HardwareOperator;
-import org.almostrealism.hardware.mem.Heap;
-import org.almostrealism.hardware.mem.MemoryDataArgumentMap;
-import org.almostrealism.heredity.Genome;
-import org.almostrealism.heredity.GenomeBreeder;
-import org.almostrealism.io.Console;
-
-import org.almostrealism.time.Temporal;
-import org.almostrealism.CodeFeatures;
 
 /**
  * Evolutionary optimizer that evolves a population of genomes through fitness-based selection and breeding.

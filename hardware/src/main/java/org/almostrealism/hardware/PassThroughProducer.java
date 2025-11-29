@@ -16,22 +16,22 @@
 
 package org.almostrealism.hardware;
 
-import io.almostrealism.collect.Algebraic;
+import io.almostrealism.code.ArgumentMap;
+import io.almostrealism.code.ProducerArgumentReference;
 import io.almostrealism.code.ProducerComputationBase;
+import io.almostrealism.code.ScopeInputManager;
+import io.almostrealism.collect.Algebraic;
 import io.almostrealism.collect.CollectionExpression;
+import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.compute.Process;
+import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.Index;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.compute.Process;
 import io.almostrealism.scope.Argument;
 import io.almostrealism.scope.Argument.Expectation;
-import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.scope.ArrayVariable;
-import io.almostrealism.code.ProducerArgumentReference;
-import io.almostrealism.code.ScopeInputManager;
-import io.almostrealism.expression.Expression;
 import io.almostrealism.scope.Scope;
-import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.util.DescribableParent;
 import org.almostrealism.hardware.mem.MemoryDataDestinationProducer;
 

@@ -16,8 +16,8 @@
 
 package org.almostrealism.geometry;
 
-import org.almostrealism.collect.CollectionProducer;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.collect.CollectionProducer;
 
 /**
  * An interface for camera implementations that generate viewing rays for rendering.

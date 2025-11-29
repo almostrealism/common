@@ -16,14 +16,14 @@
 
 package org.almostrealism.hardware.mem;
 
+import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.compute.Process;
 import io.almostrealism.util.DescribableParent;
 import org.almostrealism.hardware.DynamicProducerForMemoryData;
-import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.MemoryBank;
+import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.io.Describable;
 
 import java.util.function.BiFunction;

@@ -16,8 +16,8 @@
 
 package org.almostrealism.chem;
 
-import org.almostrealism.physics.Atom;
 import io.almostrealism.relation.Factory;
+import org.almostrealism.physics.Atom;
 
 /**
  * Interface for chemical substances that can construct atomic representations.

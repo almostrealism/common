@@ -20,7 +20,10 @@
 
 package org.almostrealism.graph;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.LinkedList;
+import java.util.List;
 
 /**
  * An efficient well-optimized kd-tree

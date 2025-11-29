@@ -17,10 +17,10 @@
 package org.almostrealism.math.bool.test;
 
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.geometry.Ray;
-import io.almostrealism.relation.Producer;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Assert;
 import org.junit.Test;
@@ -60,9 +60,9 @@ public class AcceleratedConjunctionTests implements TestFeatures {
 	}
 
 	protected CollectionProducer dotProductConjunction(Producer<Ray> r) {
-		return conjunction((Producer) oDotd(
+		return conjunction(oDotd(
 				ray(i -> Math.random())), c(1),
-				(Producer) oDotd(v(Ray.shape(), 0)), c(1));
+				oDotd(v(Ray.shape(), 0)), c(1));
 	}
 
 	@Test

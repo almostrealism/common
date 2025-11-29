@@ -16,16 +16,16 @@
 
 package org.almostrealism.collect.computations;
 
-import io.almostrealism.expression.Expression;
 import io.almostrealism.collect.CollectionExpression;
+import io.almostrealism.collect.TraversableExpression;
+import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.kernel.Index;
 import io.almostrealism.relation.Computable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import io.almostrealism.collect.TraversableExpression;
-import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.HardwareFeatures;
 
 /**
@@ -199,7 +199,7 @@ public abstract class TraversableExpressionComputation
 	@Override
 	public boolean isConstant() {
 		return getInputs().stream().skip(1)
-				.map(c -> c instanceof Computable && ((Computable) c).isConstant())
+				.map(c -> c instanceof Computable && c.isConstant())
 				.reduce(true, (a, b) -> a && b);
 	}
 

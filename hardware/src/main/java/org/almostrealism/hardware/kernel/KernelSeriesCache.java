@@ -18,13 +18,13 @@ package org.almostrealism.hardware.kernel;
 
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.ExpressionFeatures;
-import io.almostrealism.profile.OperationInfo;
-import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.Index;
 import io.almostrealism.kernel.IndexSequence;
 import io.almostrealism.kernel.KernelSeriesProvider;
+import io.almostrealism.profile.OperationInfo;
+import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.ScopeSettings;

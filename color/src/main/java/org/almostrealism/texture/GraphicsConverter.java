@@ -16,25 +16,22 @@
 
 package org.almostrealism.texture;
 
-import java.awt.Color;
-import java.awt.Image;
-import java.awt.Toolkit;
+import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Producer;
+import org.almostrealism.algebra.Pair;
+import org.almostrealism.collect.CollectionFeatures;
+import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.color.RGB;
+
+import javax.imageio.ImageIO;
+import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.awt.image.MemoryImageSource;
 import java.awt.image.RenderedImage;
 import java.io.File;
 import java.io.IOException;
 import java.util.function.Function;
-
-import javax.imageio.ImageIO;
-
-import io.almostrealism.collect.TraversalPolicy;
-import io.almostrealism.relation.Producer;
-import org.almostrealism.algebra.Pair;
-import org.almostrealism.collect.CollectionFeatures;
-import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.color.RGB;
-import io.almostrealism.relation.Evaluable;
 
 /**
  * Provides utilities for converting between Almost Realism color types and AWT graphics types.
@@ -120,7 +117,7 @@ public class GraphicsConverter {
 		bim.setData(im.copyData(null));
 		
 		int index = 2;
-		int rgb[] = new int[2 + w * h];
+		int[] rgb = new int[2 + w * h];
 		rgb[0] = w;
 		rgb[1] = h;
 		
@@ -141,7 +138,7 @@ public class GraphicsConverter {
 		bim.setData(im.copyData(null));
 		
 		int index = 8;
-		byte rgb[] = new byte[8 + w * h];
+		byte[] rgb = new byte[8 + w * h];
 		
 		rgb[0] = (byte) ((w >> 24) & 255);
 		rgb[1] = (byte) ((w >> 16) & 255);
@@ -172,8 +169,8 @@ public class GraphicsConverter {
 		return rgb;
 	}
 	
-	public static RGB[][] convertToRGBArray(int pixel[], int off, int x, int y, int w, int h, int imageW) {
-		RGB rgb[][] = new RGB[w][h];
+	public static RGB[][] convertToRGBArray(int[] pixel, int off, int x, int y, int w, int h, int imageW) {
+		RGB[][] rgb = new RGB[w][h];
 		
 		for(int j = 0; j < h; j++) {
 			for(int i = 0; i < w; i++) {
@@ -196,7 +193,7 @@ public class GraphicsConverter {
 
 	public static PackedCollection loadRgb(File file) throws IOException {
 		// TODO Delegate to to the PackedCollection, and apply an RGB postprocessor for the elements
-		return (PackedCollection) loadRgb(file, false);
+		return loadRgb(file, false);
 	}
 
 	public static PackedCollection loadChannels(File file) throws IOException {
@@ -291,7 +288,7 @@ public class GraphicsConverter {
 	public static double[] histogram(BufferedImage bufferedImage,
 									 int xoff, int yoff, int w, int h,
 									 int buckets) {
-		double histogram[] = new double[buckets];
+		double[] histogram = new double[buckets];
 
 		for(int i = 0; i < w; i++) {
 			for(int j = 0; j < h; j++) {
@@ -315,31 +312,31 @@ public class GraphicsConverter {
 	/**
 	 * Evaluates the specified array of {@link Evaluable}s, producing {@link RGB}s.
 	 */
-	public static RGB[][] convertToRGBArray(Evaluable<PackedCollection> image[][]) {
+	public static RGB[][] convertToRGBArray(Evaluable<PackedCollection>[][] image) {
 		return convertToRGBArray(image, (Producer) null);
 	}
 
 	/**
 	 * Evaluates the specified array of {@link Evaluable}s, producing {@link RGB}s.
 	 */
-	public static RGB[][] convertToRGBArray(Evaluable<PackedCollection> image[][], Producer notify) {
+	public static RGB[][] convertToRGBArray(Evaluable<PackedCollection>[][] image, Producer notify) {
 		return convertToRGBArray(image, p -> new Pair(p.getX(), image[(int) p.getX()].length - 1 - p.getY()), notify);
 	}
 
 	/**
 	 * Evaluates the specified array of {@link Evaluable}s, producing {@link RGB}s.
 	 */
-	public static RGB[][] convertToRGBArray(Evaluable<PackedCollection> image[][], Function<Pair, Pair> positionForImageIndices) {
+	public static RGB[][] convertToRGBArray(Evaluable<PackedCollection>[][] image, Function<Pair, Pair> positionForImageIndices) {
 		return convertToRGBArray(image, positionForImageIndices, null);
 	}
 
 	/**
 	 * Evaluates the specified array of {@link Evaluable}s, producing {@link RGB}s.
 	 */
-	public static RGB[][] convertToRGBArray(Evaluable<PackedCollection> image[][],
+	public static RGB[][] convertToRGBArray(Evaluable<PackedCollection>[][] image,
 											Function<Pair, Pair> positionForImageIndices,
 											Producer notify) {
-		RGB evaluated[][] = new RGB[image.length][image[0].length];
+		RGB[][] evaluated = new RGB[image.length][image[0].length];
 
 		boolean wasNull = false;
 
@@ -370,7 +367,7 @@ public class GraphicsConverter {
 	 * The array locations map to pixels in the image. The image produced
 	 * uses the RGB color model with no alpha channel.
 	 */
-	public static Image convertToAWTImage(Evaluable<PackedCollection> image[][]) {
+	public static Image convertToAWTImage(Evaluable<PackedCollection>[][] image) {
 		return convertToAWTImage(image, null);
 	}
 
@@ -379,7 +376,7 @@ public class GraphicsConverter {
 	 * The array locations map to pixels in the image. The image produced
 	 * uses the RGB color model with no alpha channel.
 	 */
-	public static Image convertToAWTImage(Evaluable<PackedCollection> image[][], Producer notify) {
+	public static Image convertToAWTImage(Evaluable<PackedCollection>[][] image, Producer notify) {
 		return convertToAWTImage(image,  p -> new Pair(p.getX(), image[(int) p.getX()].length - 1 - p.getY()), notify);
 	}
 
@@ -388,8 +385,8 @@ public class GraphicsConverter {
 	 * The array locations map to pixels in the image. The image produced
 	 * uses the RGB color model with no alpha channel.
 	 */
-	public static Image convertToAWTImage(Evaluable<PackedCollection> image[][], Function<Pair, Pair> positionForImageIndices, Producer notify) {
-		int data[] = new int[image.length * image[0].length];
+	public static Image convertToAWTImage(Evaluable<PackedCollection>[][] image, Function<Pair, Pair> positionForImageIndices, Producer notify) {
+		int[] data = new int[image.length * image[0].length];
 		
 		int index = 0;
 		boolean wasNull = false;
@@ -432,7 +429,7 @@ public class GraphicsConverter {
 	 * The array locations map to pixels in the image. The image produced
 	 * uses the RGB color model with no alpha channel.
 	 */
-	public static Image convertToAWTImage(RGB image[][]) {
+	public static Image convertToAWTImage(RGB[][] image) {
 		return convertToAWTImage(image, null);
 	}
 
@@ -442,8 +439,8 @@ public class GraphicsConverter {
 	 * uses the RGB color model with no alpha channel.
 	 */
 	// TODO  Accelerated
-	public static Image convertToAWTImage(RGB image[][], Producer notify) {
-		int data[] = new int[image.length * image[0].length];
+	public static Image convertToAWTImage(RGB[][] image, Producer notify) {
+		int[] data = new int[image.length * image[0].length];
 
 		int index = 0;
 		boolean wasNull = false;
@@ -487,19 +484,19 @@ public class GraphicsConverter {
 		int h = values.getShape().length(axis);
 		int w = values.getShape().length(axis + 1);
 
-		int data[] = new int[h * w];
+		int[] data = new int[h * w];
 		int index = 0;
 
 		for (int j = 0; j < h; j++) {
-			i: for (int i = 0; i < w; i++) {
+			for (int i = 0; i < w; i++) {
 				double rd = channelsFirst ? values.valueAt(0, j, i) : values.valueAt(j, i, 0);
 				double gd = channelsFirst ? values.valueAt(1, j, i) : values.valueAt(j, i, 1);
 				double bd = channelsFirst ? values.valueAt(2, j, i) : values.valueAt(j, i, 2);
 
 				int a = 255;
-				int r = (int)(Math.min(1.0, Math.abs(rd)) * 255);
-				int g = (int)(Math.min(1.0, Math.abs(gd)) * 255);
-				int b = (int)(Math.min(1.0, Math.abs(bd)) * 255);
+				int r = (int) (Math.min(1.0, Math.abs(rd)) * 255);
+				int g = (int) (Math.min(1.0, Math.abs(gd)) * 255);
+				int b = (int) (Math.min(1.0, Math.abs(bd)) * 255);
 
 				data[index++] = a << 24 | r << 16 | g << 8 | b;
 			}

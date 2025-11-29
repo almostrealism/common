@@ -18,11 +18,11 @@ package org.almostrealism.collect.computations;
 
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.TraversableExpression;
+import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducerParallelProcess;
 import org.almostrealism.collect.PackedCollection;
-import io.almostrealism.collect.TraversalPolicy;
 
 import java.util.List;
 
@@ -212,7 +212,7 @@ public class CollectionConjunctionComputation extends CollectionComparisonComput
 	@Override
 	public CollectionProducerParallelProcess generate(List<Process<?, ?>> children) {
 		return (CollectionProducerParallelProcess)
-				and((Producer) children.get(1), (Producer) children.get(2),
-						(Producer) children.get(3), (Producer) children.get(4));
+				and((Producer<PackedCollection>) children.get(1), (Producer<PackedCollection>) children.get(2),
+						(Producer<PackedCollection>) children.get(3), (Producer<PackedCollection>) children.get(4));
 	}
 }

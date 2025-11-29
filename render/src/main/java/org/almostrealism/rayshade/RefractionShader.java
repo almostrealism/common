@@ -16,29 +16,30 @@
 
 package org.almostrealism.rayshade;
 
+import io.almostrealism.relation.Editable;
+import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Producer;
+import org.almostrealism.CodeFeatures;
+import org.almostrealism.algebra.Vector;
+import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.color.Light;
+import org.almostrealism.color.RGBFeatures;
+import org.almostrealism.color.ShadableSurface;
+import org.almostrealism.color.Shader;
+import org.almostrealism.color.ShaderContext;
+import org.almostrealism.color.computations.GeneratedColorProducer;
+import org.almostrealism.geometry.Curve;
+import org.almostrealism.geometry.DiscreteField;
+import org.almostrealism.geometry.Intersection;
+import org.almostrealism.geometry.Ray;
+import org.almostrealism.hardware.DynamicProducerForMemoryData;
+import org.almostrealism.raytrace.LightingEngineAggregator;
+import org.almostrealism.space.AbstractSurface;
+import org.almostrealism.space.Scene;
+
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.function.Supplier;
-
-import org.almostrealism.raytrace.LightingEngineAggregator;
-import io.almostrealism.relation.Editable;
-import io.almostrealism.uml.Multiple;
-import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.geometry.DiscreteField;
-import org.almostrealism.geometry.Intersection;
-import org.almostrealism.algebra.Vector;
-import org.almostrealism.color.*;
-import org.almostrealism.color.computations.GeneratedColorProducer;
-import org.almostrealism.geometry.Curve;
-import org.almostrealism.geometry.Ray;
-import org.almostrealism.hardware.DynamicProducerForMemoryData;
-import io.almostrealism.relation.Producer;
-import org.almostrealism.space.AbstractSurface;
-import org.almostrealism.space.Scene;
-import org.almostrealism.color.ShadableSurface;
-import org.almostrealism.CodeFeatures;
-import io.almostrealism.relation.Evaluable;
 
 /**
  * {@link RefractionShader} provides physically-based refraction rendering for transparent
@@ -141,78 +142,69 @@ public class RefractionShader implements Shader<ShaderContext>, Editable, RGBFea
 	 * @return A Producer that computes the refracted color
 	 */
 	public Producer<PackedCollection> shade(ShaderContext p, DiscreteField normals) {
-		Producer pr = new Producer<PackedCollection>() {
-			@Override
-			public Evaluable<PackedCollection> get() {
-				return new Evaluable<>() {
+		Producer pr = (Producer<PackedCollection>) () -> (Evaluable<PackedCollection>) args -> {
+			p.addReflection();
 
-					@Override
-					public PackedCollection evaluate(Object... args) {
-						p.addReflection();
+			Producer<PackedCollection> color = null;
 
-						Producer<PackedCollection> color = null;
+			Vector po = new Ray(p.getIntersection().get(0).get().evaluate(args), 0).getOrigin();
 
-						Vector po = p.getIntersection().get(0).get().evaluate(args).getOrigin();
+			if (Math.random() < 0.01 &&
+					po.getX() * po.getX() + po.getY() * po.getY() + po.getZ() * po.getZ() - 1.0 > 0.01)
+				System.out.println("RefractionShader: " + po);
 
-						if (Math.random() < 0.01 &&
-								po.getX() * po.getX() + po.getY() * po.getY() + po.getZ() * po.getZ() - 1.0 > 0.01)
-							System.out.println("RefractionShader: " + po);
+			Vector n = new Ray(normals.iterator().next().get().evaluate(args), 0).getDirection();
 
-						Vector n = normals.iterator().next().get().evaluate(args).getDirection();
+			n = n.divide(n.length());
 
-						n = n.divide(n.length());
+			if (p.getSurface() instanceof ShadableSurface == false || ((ShadableSurface) p.getSurface()).getShadeFront()) {
+				Vector point;
 
-						if (p.getSurface() instanceof ShadableSurface == false || ((ShadableSurface) p.getSurface()).getShadeFront()) {
-							Vector point;
+				try {
+					point = new Ray(p.getIntersection().get(0).get().evaluate(args), 0).getOrigin();
+				} catch (Exception e) {
+					e.printStackTrace();
+					return null;
+				}
 
-							try {
-								point = p.getIntersection().get(0).get().evaluate(args).getOrigin();
-							} catch (Exception e) {
-								e.printStackTrace();
-								return null;
-							}
+				Producer<PackedCollection> c = RefractionShader.this.shade(point, new Vector((PackedCollection) p.getIntersection().getNormalAt((Producer) v(point)).get().evaluate(args), 0),
+						p.getLightDirection(), p.getLight(), p.getOtherLights(), p.getSurface(),
+						p.getOtherSurfaces(), n, p);
 
-							Producer<PackedCollection> c = RefractionShader.this.shade(point, new Vector((PackedCollection) p.getIntersection().getNormalAt((Producer) v(point)).get().evaluate(args), 0),
-									p.getLightDirection(), p.getLight(), p.getOtherLights(), p.getSurface(),
-									p.getOtherSurfaces(), n, p);
+				c = multiply(rgb(10, 10, 10), c);
 
-							c = multiply(rgb(10, 10, 10), c);
+				if (Math.random() < 0.01)
+					System.out.println("RefractionShader.shadeFront: " + c.get().evaluate(args));
 
-							if (Math.random() < 0.01)
-								System.out.println("RefractionShader.shadeFront: " + c.get().evaluate(args));
-
-							if (c != null) {
-								if (color == null) {
-									color = c;
-								} else {
-									color = add(color, c);
-								}
-							}
-						}
-
-						if (p.getSurface() instanceof ShadableSurface == false || ((ShadableSurface) p.getSurface()).getShadeBack()) {
-							Vector point = p.getIntersection().get(0).get().evaluate(args).getOrigin();
-
-							Producer<PackedCollection> c = RefractionShader.this.shade(point, new Vector((PackedCollection) p.getIntersection().getNormalAt((Producer) v(point)).get().evaluate(args), 0),
-									p.getLightDirection(), p.getLight(), p.getOtherLights(), p.getSurface(),
-									p.getOtherSurfaces(), n.minus(), p);
-
-							if (Math.random() < 0.01)
-								System.out.println("RefractionShader.shadeBack: " + c.get().evaluate(args));
-
-							if (c != null) {
-								if (color == null) {
-									color = c;
-								} else {
-									color = add(color, c);
-								}
-							}
-						}
-
-						return color.get().evaluate(args);
+				if (c != null) {
+					if (color == null) {
+						color = c;
+					} else {
+						color = add(color, c);
 					}
-				};
+				}
 			}
+
+			if (p.getSurface() instanceof ShadableSurface == false || ((ShadableSurface) p.getSurface()).getShadeBack()) {
+				Vector point = new Ray(p.getIntersection().get(0).get().evaluate(args), 0).getOrigin();
+
+				Producer<PackedCollection> c = RefractionShader.this.shade(point, new Vector((PackedCollection) p.getIntersection().getNormalAt((Producer) v(point)).get().evaluate(args), 0),
+						p.getLightDirection(), p.getLight(), p.getOtherLights(), p.getSurface(),
+						p.getOtherSurfaces(), n.minus(), p);
+
+				if (Math.random() < 0.01)
+					System.out.println("RefractionShader.shadeBack: " + c.get().evaluate(args));
+
+				if (c != null) {
+					if (color == null) {
+						color = c;
+					} else {
+						color = add(color, c);
+					}
+				}
+			}
+
+			return color.get().evaluate(args);
 		};
 		
 		return GeneratedColorProducer.fromProducer(this, pr);

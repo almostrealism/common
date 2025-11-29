@@ -16,8 +16,8 @@
 
 package org.almostrealism.time;
 
-import org.almostrealism.algebra.Pair;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.algebra.Pair;
 import org.almostrealism.collect.PackedCollection;
 
 import java.util.function.Supplier;

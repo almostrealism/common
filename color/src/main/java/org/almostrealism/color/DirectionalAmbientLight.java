@@ -15,16 +15,16 @@
  */
 
 package org.almostrealism.color;
+
+import io.almostrealism.relation.Producer;
+import org.almostrealism.algebra.Vector;
+import org.almostrealism.algebra.VectorFeatures;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.geometry.ContinuousField;
+import org.almostrealism.geometry.Curve;
 
 import java.util.Collection;
 import java.util.List;
-
-import org.almostrealism.algebra.VectorFeatures;
-import org.almostrealism.geometry.ContinuousField;
-import org.almostrealism.algebra.Vector;
-import org.almostrealism.geometry.Curve;
-import io.almostrealism.relation.Producer;
 
 /**
  * Represents a directional light source that illuminates from a specific direction.

@@ -16,10 +16,10 @@
 
 package org.almostrealism.hardware.test;
 
-import io.almostrealism.profile.OperationProfile;
 import io.almostrealism.collect.TraversalPolicy;
-import io.almostrealism.relation.Countable;
 import io.almostrealism.compute.Process;
+import io.almostrealism.profile.OperationProfile;
+import io.almostrealism.relation.Countable;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.OperationList;

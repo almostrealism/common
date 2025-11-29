@@ -19,11 +19,9 @@ package org.almostrealism.hardware.metal;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
-import java.nio.DoubleBuffer;
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 import java.nio.file.Files;
-import java.util.ResourceBundle;
 
 /**
  * JNI bridge to native Metal framework (libMTL.dylib).

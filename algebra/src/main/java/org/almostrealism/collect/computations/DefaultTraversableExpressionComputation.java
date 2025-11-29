@@ -16,15 +16,14 @@
 
 package org.almostrealism.collect.computations;
 
-import io.almostrealism.collect.ConditionalIndexExpression;
 import io.almostrealism.collect.CollectionExpression;
+import io.almostrealism.collect.ConditionalIndexExpression;
+import io.almostrealism.collect.TraversableExpression;
+import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducerParallelProcess;
 import org.almostrealism.collect.PackedCollection;
-import io.almostrealism.collect.TraversableExpression;
-import io.almostrealism.collect.TraversalPolicy;
-import io.almostrealism.relation.Evaluable;
 import org.almostrealism.hardware.MemoryData;
 
 import java.util.List;
@@ -86,7 +85,7 @@ public class DefaultTraversableExpressionComputation
 	 * The function that defines how to transform input traversable expressions
 	 * into a collection expression representing the desired computation.
 	 */
-	private Function<TraversableExpression[], CollectionExpression> expression;
+	private final Function<TraversableExpression[], CollectionExpression> expression;
 
 	/**
 	 * Flag indicating whether this computation should generate a signature for

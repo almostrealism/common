@@ -21,10 +21,9 @@ import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.collect.CollectionVariable;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.compute.Process;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.KernelStructureContext;
-import io.almostrealism.relation.Evaluable;
-import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
 
@@ -90,13 +89,14 @@ import java.util.function.Supplier;
  */
 public class ConstantRepeatedDeltaComputation extends ConstantRepeatedProducerComputation implements TraversableExpression<Double> {
 	/** The shape of the delta (gradient) computation output, before appending target dimensions. */
-	private TraversalPolicy deltaShape, targetShape;
+	private final TraversalPolicy deltaShape;
+	private final TraversalPolicy targetShape;
 
 	/** The expression function that defines the computation at each iteration. */
-	private BiFunction<TraversableExpression[], Expression, Expression> expression;
+	private final BiFunction<TraversableExpression[], Expression, Expression> expression;
 
 	/** The target producer with respect to which the derivative is being computed. */
-	private Producer<?> target;
+	private final Producer<?> target;
 
 	/** The collection variable representing the target during scope preparation. */
 	private CollectionVariable<?> targetVariable;

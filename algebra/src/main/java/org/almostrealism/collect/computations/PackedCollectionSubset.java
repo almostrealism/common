@@ -16,15 +16,15 @@
 
 package org.almostrealism.collect.computations;
 
+import io.almostrealism.collect.Shape;
+import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.compute.Process;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.kernel.KernelStructureContext;
-import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
-import io.almostrealism.collect.Shape;
-import io.almostrealism.collect.TraversalPolicy;
 
 import java.util.List;
 import java.util.stream.Collectors;
@@ -122,7 +122,7 @@ import java.util.stream.Stream;
  */
 public class PackedCollectionSubset
 		extends IndexProjectionProducerComputation {
-	private Expression pos[];
+	private Expression[] pos;
 
 	/**
 	 * Creates a subset computation with static integer positions.
@@ -289,7 +289,7 @@ public class PackedCollectionSubset
 		Expression<?> p;
 
 		if (pos == null) {
-			Expression pos[] = new Expression[inputShape.getDimensions()];
+			Expression[] pos = new Expression[inputShape.getDimensions()];
 			for (int i = 0; i < pos.length; i++)
 				pos[i] = getCollectionArgumentVariable(2).getValueAt(e(i)).toInt();
 

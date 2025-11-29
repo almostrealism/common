@@ -16,16 +16,16 @@
 
 package org.almostrealism.graph;
 
+import io.almostrealism.relation.Factor;
+import io.almostrealism.relation.Producer;
+import org.almostrealism.hardware.OperationList;
+import org.almostrealism.heredity.Gene;
+import org.almostrealism.heredity.IdentityFactor;
+
 import java.util.Iterator;
 import java.util.List;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
-
-import io.almostrealism.relation.Factor;
-import org.almostrealism.heredity.Gene;
-import io.almostrealism.relation.Producer;
-import org.almostrealism.hardware.OperationList;
-import org.almostrealism.heredity.IdentityFactor;
 
 public class MultiCell<T> extends CellAdapter<T> {
 	private final List<Cell<T>> cells;

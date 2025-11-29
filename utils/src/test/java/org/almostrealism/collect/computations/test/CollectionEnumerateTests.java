@@ -17,8 +17,8 @@
 package org.almostrealism.collect.computations.test;
 
 import io.almostrealism.collect.TraversalPolicy;
-import io.almostrealism.relation.Evaluable;
 import io.almostrealism.compute.ParallelProcess;
+import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Tensor;
 import org.almostrealism.collect.CollectionProducer;
@@ -199,8 +199,8 @@ public class CollectionEnumerateTests implements TestFeatures {
 				for (int i = 0; i < slices; i++) {
 					for (int j = 0; j < d; j++) {
 						for (int k = 0; k < len; k++) {
-							int inPos[] = new int[] { np, cp, j, i * stride + k };
-							int outPos[] = new int[] { np, cp, i, j, k };
+							int[] inPos = new int[] { np, cp, j, i * stride + k };
+							int[] outPos = new int[] { np, cp, i, j, k };
 							if (verboseLogs)
 								log(Arrays.toString(inPos) + " -> " + Arrays.toString(outPos));
 							assertEquals(input.valueAt(inPos), enumerated.valueAt(outPos));

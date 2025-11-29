@@ -16,8 +16,6 @@
 
 package io.almostrealism.expression;
 
-import io.almostrealism.kernel.KernelStructureContext;
-
 import java.util.List;
 import java.util.Optional;
 

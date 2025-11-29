@@ -14,14 +14,14 @@ Tools exposed:
     - read_quick_reference: Get the condensed API reference
 """
 
+import json
 import os
 import re
-import json
-from pathlib import Path
-from typing import Optional
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from mcp.types import Tool, TextContent
+from pathlib import Path
+from typing import Optional
 
 # Initialize server
 server = Server("ar-docs")

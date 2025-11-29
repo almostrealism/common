@@ -17,8 +17,8 @@
 package org.almostrealism.collect.test;
 
 import io.almostrealism.collect.SubsetTraversalExpression;
-import io.almostrealism.collect.WeightedSumDeltaExpression;
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.collect.WeightedSumDeltaExpression;
 import io.almostrealism.expression.Expression;
 import org.almostrealism.algebra.computations.WeightedSumComputation;
 import org.almostrealism.collect.PackedCollection;

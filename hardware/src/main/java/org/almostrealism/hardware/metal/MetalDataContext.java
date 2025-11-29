@@ -17,12 +17,12 @@
 package org.almostrealism.hardware.metal;
 
 import io.almostrealism.code.ComputeContext;
-import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;
+import io.almostrealism.code.Precision;
+import io.almostrealism.compute.ComputeRequirement;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryData;
-import io.almostrealism.code.Precision;
 import org.almostrealism.hardware.ctx.HardwareDataContext;
 import org.almostrealism.hardware.jvm.JVMMemoryProvider;
 import org.almostrealism.io.SystemUtils;

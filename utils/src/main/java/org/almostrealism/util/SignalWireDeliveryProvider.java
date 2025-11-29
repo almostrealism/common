@@ -20,7 +20,6 @@ import org.almostrealism.io.Alert;
 import org.almostrealism.io.AlertDeliveryProvider;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
-import org.almostrealism.io.SystemUtils;
 
 import java.io.File;
 import java.io.IOException;

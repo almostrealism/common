@@ -16,13 +16,13 @@
 
 package org.almostrealism.physics;
 
-import java.awt.Graphics;
-import java.util.ArrayList;
-
+import org.almostrealism.algebra.Vector;
 import org.almostrealism.geometry.Camera;
 import org.almostrealism.geometry.TransformMatrix;
-import org.almostrealism.algebra.Vector;
 import org.almostrealism.time.Temporal;
+
+import java.awt.*;
+import java.util.ArrayList;
 
 /**
  * The RigidBody class stores state information for a simulated object.

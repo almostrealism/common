@@ -16,11 +16,12 @@
 
 package org.almostrealism.layers;
 
+import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.compute.Process;
 import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.profile.OperationWithInfo;
-import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.compute.Process;
+import io.almostrealism.relation.Factor;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.uml.Nameable;
 import org.almostrealism.CodeFeatures;
@@ -28,7 +29,6 @@ import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.Receptor;
 import org.almostrealism.hardware.OperationList;
-import io.almostrealism.relation.Factor;
 import org.almostrealism.io.SystemUtils;
 
 import java.util.Arrays;

@@ -15,7 +15,6 @@
  */
 
 package org.almostrealism.collect;
-import org.almostrealism.collect.PackedCollection;
 
 import io.almostrealism.collect.TraversalOrdering;
 import io.almostrealism.expression.Expression;
@@ -62,7 +61,7 @@ import java.util.OptionalInt;
  * @see io.almostrealism.collect.TraversalOrdering
  */
 public class IndexMaskTraversalOrdering implements TraversalOrdering {
-	private PackedCollection mask;
+	private final PackedCollection mask;
 
 	/**
 	 * Creates a new index mask traversal ordering with the specified mask.
@@ -88,7 +87,7 @@ public class IndexMaskTraversalOrdering implements TraversalOrdering {
 	@Override
 	public Expression<Integer> indexOf(Expression<Integer> idx) {
 		int i = idx.intValue().orElseThrow();
-		double m[] = mask.toArray();
+		double[] m = mask.toArray();
 
 		for (int k = 0; k < m.length; k++) {
 			if (((int) m[k]) == i) {

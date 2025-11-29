@@ -15,7 +15,6 @@
  */
 
 package org.almostrealism.heredity;
-import org.almostrealism.collect.PackedCollection;
 
 /**
  * A functional interface for combining two {@link Genome}s to produce offspring.

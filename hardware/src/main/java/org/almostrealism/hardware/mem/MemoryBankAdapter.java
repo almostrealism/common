@@ -16,8 +16,8 @@
 
 package org.almostrealism.hardware.mem;
 
-import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.MemoryBank;
+import org.almostrealism.hardware.MemoryData;
 
 import java.util.HashMap;
 import java.util.List;

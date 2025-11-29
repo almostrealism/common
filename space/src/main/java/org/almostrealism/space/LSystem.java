@@ -15,18 +15,19 @@
  */
 
 package org.almostrealism.space;
+
+import io.almostrealism.relation.Producer;
+import org.almostrealism.CodeFeatures;
+import org.almostrealism.algebra.Vector;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.color.ShadableSurface;
+import org.almostrealism.geometry.TransformMatrix;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Hashtable;
 import java.util.List;
 import java.util.Stack;
-
-import org.almostrealism.color.ShadableSurface;
-import org.almostrealism.geometry.TransformMatrix;
-import org.almostrealism.algebra.Vector;
-import io.almostrealism.relation.Producer;
-import org.almostrealism.CodeFeatures;
 
 /**
  * @author Michael Murray
@@ -40,10 +41,10 @@ public class LSystem implements CodeFeatures {
 	public static final String PUSH = "push";
 	public static final String POP = "pop";
 	
-	public static interface SurfaceFactory { public AbstractSurface next(AbstractSurface current); }
-	public static interface Statement { public String[] evaluate(Object o); }
+	public interface SurfaceFactory { AbstractSurface next(AbstractSurface current); }
+	public interface Statement { String[] evaluate(Object o); }
 	
-	private Hashtable rules;
+	private final Hashtable rules;
 	private SurfaceFactory factory;
 	private Vector left, right, forward, backward;
 	
@@ -81,15 +82,15 @@ public class LSystem implements CodeFeatures {
 			Object o = init.get(i);
 			
 			if (this.rules.containsKey(o)) {
-				Object r[];
+				Object[] r;
 				
 				if (this.rules.get(o) instanceof Statement) {
 					r = ((Statement) this.rules.get(o)).evaluate(o);
 				} else {
 					r = (Object[]) this.rules.get(o);
 				}
-				
-				for (int j = 0; j < r.length; j++) l.add(r[j]);
+
+				Collections.addAll(l, r);
 			} else {
 				l.add(o);
 			}
@@ -98,7 +99,7 @@ public class LSystem implements CodeFeatures {
 		return this.generate(l, --itr);
 	}
 	
-	public ShadableSurface[] generate(Object data[], Vector d) {
+	public ShadableSurface[] generate(Object[] data, Vector d) {
 		List s = new ArrayList();
 		
 		double dl = d.length();
@@ -114,7 +115,7 @@ public class LSystem implements CodeFeatures {
 				TransformMatrix my = TransformMatrix.createRotateYMatrix(this.forward.getY());
 				TransformMatrix mz = TransformMatrix.createRotateZMatrix(this.forward.getZ());
 				
-				d = (Vector) d.clone();
+				d = d.clone();
 
 				Producer dp = v(d);
 
@@ -129,7 +130,7 @@ public class LSystem implements CodeFeatures {
 				TransformMatrix my = TransformMatrix.createRotateYMatrix(this.backward.getY());
 				TransformMatrix mz = TransformMatrix.createRotateZMatrix(this.backward.getZ());
 				
-				d = (Vector) d.clone();
+				d = d.clone();
 
 				Producer dp = v(d);
 				
@@ -144,7 +145,7 @@ public class LSystem implements CodeFeatures {
 				TransformMatrix my = TransformMatrix.createRotateYMatrix(this.left.getY());
 				TransformMatrix mz = TransformMatrix.createRotateZMatrix(this.left.getZ());
 				
-				d = (Vector) d.clone();
+				d = d.clone();
 
 				Producer dp = v(d);
 				
@@ -159,7 +160,7 @@ public class LSystem implements CodeFeatures {
 				TransformMatrix my = TransformMatrix.createRotateYMatrix(this.right.getY());
 				TransformMatrix mz = TransformMatrix.createRotateZMatrix(this.right.getZ());
 				
-				d = (Vector) d.clone();
+				d = d.clone();
 
 				Producer dp = v(d);
 				
@@ -192,7 +193,7 @@ public class LSystem implements CodeFeatures {
 		return (ShadableSurface[]) s.toArray(new ShadableSurface[0]);
 	}
 	
-	public static String print(Object data[]) {
+	public static String print(Object[] data) {
 		StringBuffer b = new StringBuffer();
 		
 		for (int i = 0; i < data.length; i++) {

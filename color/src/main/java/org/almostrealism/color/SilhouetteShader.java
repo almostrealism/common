@@ -16,11 +16,11 @@
 
 package org.almostrealism.color;
 
-import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.geometry.DiscreteField;
-import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Editable;
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Producer;
+import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.geometry.DiscreteField;
 
 /**
  * Provides flat-color shading that ignores lighting, rendering surfaces as solid silhouettes.

@@ -17,26 +17,26 @@
 package org.almostrealism.space;
 
 import io.almostrealism.code.AdaptEvaluable;
+import io.almostrealism.code.Constant;
+import io.almostrealism.code.Operator;
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Producer;
+import io.almostrealism.relation.Provider;
 import org.almostrealism.algebra.ParticleGroup;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.color.RGB;
 import org.almostrealism.geometry.BoundingSolid;
+import org.almostrealism.geometry.ContinuousField;
 import org.almostrealism.geometry.Intersection;
-import org.almostrealism.geometry.TransformMatrix;
 import org.almostrealism.geometry.Ray;
-import org.almostrealism.hardware.Input;
-import io.almostrealism.code.Operator;
-import io.almostrealism.code.Constant;
-import io.almostrealism.relation.Producer;
+import org.almostrealism.geometry.ShadableIntersection;
+import org.almostrealism.geometry.TransformMatrix;
 import org.almostrealism.graph.mesh.TriangleFeatures;
 import org.almostrealism.graph.mesh.TriangleIntersectAt;
-import org.almostrealism.geometry.ShadableIntersection;
-import org.almostrealism.geometry.ContinuousField;
-import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.Provider;
+import org.almostrealism.hardware.Input;
 
 /**
  * A {@link Triangle} represents a triangle in 3D space, serving as the fundamental
@@ -66,7 +66,7 @@ import io.almostrealism.relation.Provider;
  */
 public class Triangle extends AbstractSurface implements ParticleGroup, TriangleFeatures {
 
-	private static TriangleFeatures triangleFeat = TriangleFeatures.getInstance();
+	private static final TriangleFeatures triangleFeat = TriangleFeatures.getInstance();
 
 	private Mesh.VertexData vertexData;
 	private int ind1, ind2, ind3;
@@ -227,7 +227,7 @@ public class Triangle extends AbstractSurface implements ParticleGroup, Triangle
 	 *
 	 * @param v an array of exactly three vectors
 	 */
-	public void setVertices(Vector v[]) {
+	public void setVertices(Vector[] v) {
 		setVertices(v[0], v[1], v[2]);
 	}
 
@@ -458,10 +458,10 @@ public class Triangle extends AbstractSurface implements ParticleGroup, Triangle
 		} else {
 			if (useT && getTransform(true) != null) {
 				return getTransform(true).getInverse().transform(
-						(Producer) v(new Vector(data.get(3), 0)),
+						v(new Vector(data.get(3), 0)),
 						TransformMatrix.TRANSFORM_AS_NORMAL);
 			} else {
-				return vector(c(((PackedCollection) data.get(3)).clone()));
+				return vector(c(data.get(3).clone()));
 			}
 		}
 	}

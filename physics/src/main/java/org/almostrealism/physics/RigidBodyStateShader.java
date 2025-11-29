@@ -16,16 +16,15 @@
 
 package org.almostrealism.physics;
 
-import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.color.RGBFeatures;
-import org.almostrealism.geometry.DiscreteField;
+import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Vector;
+import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.color.LightingContext;
+import org.almostrealism.color.RGBFeatures;
 import org.almostrealism.color.Shader;
 import org.almostrealism.color.ShaderContext;
-
+import org.almostrealism.geometry.DiscreteField;
 import org.almostrealism.geometry.RayFeatures;
-import io.almostrealism.relation.Producer;
-import org.almostrealism.color.LightingContext;
 
 /**
  * A {@link RigidBodyStateShader} can be used to modify the display of other shaders based on a property
@@ -38,9 +37,10 @@ public class RigidBodyStateShader<T extends ShaderContext> implements Shader<T>,
 	public static final int VELOCITY = 1;
 	public static final int FORCE = 2;
 	
-	private int type;
-	private double min, max;
-	private Shader<T> shader;
+	private final int type;
+	private final double min;
+	private final double max;
+	private final Shader<T> shader;
 	
 	/**
 	 * Constructs a new RigidBodyStateShader object that shades based on the
@@ -77,7 +77,7 @@ public class RigidBodyStateShader<T extends ShaderContext> implements Shader<T>,
 	 */
 	@Override
 	public Producer<PackedCollection> shade(T p, DiscreteField f) {
-		if (p.getSurface() instanceof RigidBody == false)
+		if (!(p.getSurface() instanceof RigidBody))
 			return white();
 
 		RigidBody.State state = ((RigidBody) p.getSurface()).getState();
@@ -94,7 +94,7 @@ public class RigidBodyStateShader<T extends ShaderContext> implements Shader<T>,
 		if (m > 1.0) m = 1.0;
 
 		d.divideBy(d.length());
-		p.setLightDirection((Producer) v(d));
+		p.setLightDirection(v(d));
 
 		return multiply(rgb(m), shader.shade(p, f));
 	}

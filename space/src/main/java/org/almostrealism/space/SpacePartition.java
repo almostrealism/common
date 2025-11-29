@@ -16,14 +16,14 @@
 
 package org.almostrealism.space;
 
+import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.color.ShadableSurface;
 import org.almostrealism.geometry.ContinuousField;
-import org.almostrealism.geometry.Ray;
 import org.almostrealism.geometry.Intersection;
+import org.almostrealism.geometry.Ray;
 import org.almostrealism.geometry.ShadableIntersection;
 import org.almostrealism.geometry.TransformMatrix;
-import io.almostrealism.relation.Producer;
 
 /**
  * {@link SpacePartition} implements a Binary Space Partitioning (BSP) tree for accelerating
@@ -70,16 +70,16 @@ public class SpacePartition<T extends ShadableSurface> extends SurfaceGroup<T> {
 	
 	private class Node {
 		public static final int LEFT = 1, RIGHT = 2, SPANNING = 4;
-		private double offsetValues[] = {0.0, 0.0, 0.0, 0.2, 0.2, 0.2};
-		private int maxDepth = 4;
-		private double maxOffset = 0.2;
+		private final double[] offsetValues = {0.0, 0.0, 0.0, 0.2, 0.2, 0.2};
+		private final int maxDepth = 4;
+		private final double maxOffset = 0.2;
 		
-		private int plane;
-		private double offset;
+		private final int plane;
+		private final double offset;
 		private Node left, right;
-		private int surfaces[];
-		private ShadableSurface scache[];
-		private int depth;
+		private int[] surfaces;
+		private ShadableSurface[] scache;
+		private final int depth;
 		private double orient;
 		
 		public Node(int plane) {
@@ -104,19 +104,19 @@ public class SpacePartition<T extends ShadableSurface> extends SurfaceGroup<T> {
 		
 		public Node getLeft() { return this.left; }
 		public Node getRight() { return this.right; }
-		public void setSurfaces(int s[]) { this.surfaces = s; }
+		public void setSurfaces(int[] s) { this.surfaces = s; }
 		public int[] getSurfaces() { return this.surfaces; }
 		
 		public void add(int s) {
 			ShadableSurface sr = SpacePartition.this.getSurface(s);
 			
-			if (this.depth >= this.maxDepth || sr instanceof Triangle == false) {
+			if (this.depth >= this.maxDepth || !(sr instanceof Triangle)) {
 				this.addSurface(s);
 				return;
 			}
 			
 			Triangle t = (Triangle) sr;
-			Vector v[] = t.getVertices();
+			Vector[] v = t.getVertices();
 			
 			boolean right = false, left = false;
 			
@@ -166,8 +166,8 @@ public class SpacePartition<T extends ShadableSurface> extends SurfaceGroup<T> {
 			if (this.surfaces == null) {
 				this.surfaces = new int[] {s};
 			} else {
-				int newSurfaces[] = new int[this.surfaces.length + 1];
-				for (int i = 0; i < this.surfaces.length; i++) newSurfaces[i] = this.surfaces[i];
+				int[] newSurfaces = new int[this.surfaces.length + 1];
+				System.arraycopy(this.surfaces, 0, newSurfaces, 0, this.surfaces.length);
 				newSurfaces[newSurfaces.length - 1] = s;
 				this.surfaces = newSurfaces;
 			}

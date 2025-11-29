@@ -147,7 +147,7 @@ public class CollectionMaxComputation extends AggregatedProducerComputation {
 	 */
 	@Override
 	public CollectionMaxComputation generate(List<Process<?, ?>> children) {
-		return new CollectionMaxComputation((Producer) children.get(1));
+		return new CollectionMaxComputation((Producer<PackedCollection>) children.get(1));
 	}
 
 	/**

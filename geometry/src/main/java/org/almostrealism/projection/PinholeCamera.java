@@ -16,16 +16,15 @@
 
 package org.almostrealism.projection;
 
+import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.relation.Producer;
+import io.almostrealism.uml.ModelEntity;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.geometry.Ray;
-import io.almostrealism.relation.Producer;
-import io.almostrealism.uml.ModelEntity;
-
 import org.almostrealism.collect.computations.DynamicCollectionProducer;
-import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.geometry.Ray;
 
 /**
  * A PinholeCamera object represents a camera in 3D. A PinholeCamera object stores the
@@ -97,7 +96,7 @@ public class PinholeCamera extends OrthographicCamera implements ProjectionFeatu
 	 * @param fov  Camera fields of view (radians) {horizontal FOV, vertical FOV}.
 	 */
 	public PinholeCamera(Vector location, Vector viewDirection, Vector upDirection,
-	        double focalLength, double fov[]) {
+						 double focalLength, double[] fov) {
 	    if (fov.length < 2) throw new IllegalArgumentException("Illegal argument: Wrong size array.");
 
 //		if (Settings.produceOutput && Settings.produceCameraOutput) {
@@ -188,9 +187,9 @@ public class PinholeCamera extends OrthographicCamera implements ProjectionFeatu
 						double a = blur * (-0.5 + Math.random());
 						double b = blur * (-0.5 + Math.random());
 
-						Vector u, v, w = (Vector) rayDirection.clone();
+						Vector u, v, w = rayDirection.clone();
 
-						Vector t = (Vector) rayDirection.clone();
+						Vector t = rayDirection.clone();
 
 						if (t.getX() < t.getY() && t.getY() < t.getZ()) {
 							t.setX(1.0);

@@ -16,15 +16,15 @@
 
 package org.almostrealism.heredity;
 
-import java.util.HashMap;
-import java.util.List;
-import java.util.Random;
-
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Factor;
 import io.almostrealism.relation.Factory;
 import io.almostrealism.relation.Provider;
 import org.almostrealism.collect.PackedCollection;
+
+import java.util.HashMap;
+import java.util.List;
+import java.util.Random;
 
 /**
  * A {@link Factory} implementation that selects from multiple sub-factories based on probabilities.

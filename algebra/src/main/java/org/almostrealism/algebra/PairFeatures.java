@@ -16,9 +16,7 @@
 
 package org.almostrealism.algebra;
 
-import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.ComplexProductExpression;
-import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionFeatures;
@@ -28,7 +26,6 @@ import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 import org.almostrealism.collect.computations.DefaultTraversableExpressionComputation;
 
 import java.util.function.BiFunction;
-import java.util.function.Function;
 
 /**
  * Provides convenient factory methods for creating {@link Pair} computations and complex number operations.
@@ -97,7 +94,7 @@ public interface PairFeatures extends CollectionFeatures {
 	 */
 	default CollectionProducer pair(Producer<PackedCollection> x,
 									Producer<PackedCollection> y) {
-		return (CollectionProducer) concat(shape(2), x, y);
+		return concat(shape(2), x, y);
 	}
 
 	/**
@@ -117,7 +114,7 @@ public interface PairFeatures extends CollectionFeatures {
 	 * @return a {@link CollectionProducer} that evaluates to the specified {@link Pair}
 	 */
 	default CollectionProducer value(Pair value) {
-		return (CollectionProducer) (CollectionProducer) DefaultTraversableExpressionComputation.fixed((Pair) value, (BiFunction) Pair.postprocessor());
+		return DefaultTraversableExpressionComputation.fixed(value, (BiFunction) Pair.postprocessor());
 	}
 
 	/**
@@ -151,11 +148,10 @@ public interface PairFeatures extends CollectionFeatures {
 	 *
 	 * @param a  the first complex number (as a Pair)
 	 * @param b  the second complex number (as a Pair)
-	 * @param <T>  the collection type
 	 * @return a computation that produces the complex product
 	 * @throws IllegalArgumentException if the collections have incompatible sizes
 	 */
-	default <T extends PackedCollection> CollectionProducerComputationBase multiplyComplex(Producer<T> a, Producer<T> b) {
+	default CollectionProducerComputationBase multiplyComplex(Producer<PackedCollection> a, Producer<PackedCollection> b) {
 		TraversalPolicy shape = shape(a);
 		int size = shape(b).getSize();
 
@@ -171,9 +167,8 @@ public interface PairFeatures extends CollectionFeatures {
 		}
 
 		return new DefaultTraversableExpressionComputation("multiplyComplex", shape,
-				(Function<TraversableExpression[], CollectionExpression>)
-						args -> new ComplexProductExpression(shape, args[1], args[2]),
-				(Producer) a, (Producer) b).setPostprocessor(ComplexNumber.complexPostprocessor());
+				args -> new ComplexProductExpression(shape, args[1], args[2]),
+				a, b).setPostprocessor(ComplexNumber.complexPostprocessor());
 	}
 
 	/**
@@ -210,7 +205,7 @@ public interface PairFeatures extends CollectionFeatures {
 		int count = shape(index).getCount();
 		Producer<PackedCollection> pair =
 				add(repeat(2, traverse(1, index)).multiply(2), repeat(count, c(0.0, 1.0)));
-		return (Producer) c(shape(index).append(shape(2)), bank, pair);
+		return c(shape(index).append(shape(2)), bank, pair);
 	}
 
 	/**

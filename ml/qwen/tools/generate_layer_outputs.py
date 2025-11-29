@@ -6,10 +6,11 @@ This script runs the model and saves hidden states after specific layers to comp
 with AR implementation.
 """
 
-import torch
-import struct
-from transformers import AutoModelForCausalLM, AutoTokenizer
 import os
+import struct
+import torch
+from transformers import AutoModelForCausalLM, AutoTokenizer
+
 
 def main():
     model_name = "Qwen/Qwen2.5-0.5B-Instruct"

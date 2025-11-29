@@ -16,27 +16,27 @@
 
 package org.almostrealism.primitives;
 
-import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.code.Constant;
+import io.almostrealism.code.Operator;
 import io.almostrealism.compute.Process;
+import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.Scope;
+import org.almostrealism.CodeFeatures;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.collect.CollectionProducer;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.color.RGB;
+import org.almostrealism.geometry.BoundingSolid;
 import org.almostrealism.geometry.Intersection;
 import org.almostrealism.geometry.Ray;
-import io.almostrealism.code.Constant;
-import io.almostrealism.code.Operator;
-import io.almostrealism.relation.Producer;
+import org.almostrealism.geometry.ShadableIntersection;
 import org.almostrealism.geometry.TransformMatrix;
 import org.almostrealism.space.AbstractSurface;
-import org.almostrealism.geometry.BoundingSolid;
 import org.almostrealism.space.DistanceEstimator;
 import org.almostrealism.space.Mesh;
-import org.almostrealism.geometry.ShadableIntersection;
-import org.almostrealism.CodeFeatures;
-import io.almostrealism.relation.Evaluable;
-import org.almostrealism.collect.PackedCollection;
 
 import java.util.Collection;
 import java.util.Collections;
@@ -46,7 +46,7 @@ import java.util.Collections;
 /** A {@link Sphere} represents a primitive sphere in 3d space. */
 public class Sphere extends AbstractSurface implements DistanceEstimator, CodeFeatures {
 	public static boolean enableTransform = true;
-	private static boolean enableHardwareAcceleration = true;
+	private static final boolean enableHardwareAcceleration = true;
 
 	/** Constructs a {@link Sphere} representing a unit sphere centered at the origin that is black. */
 	public Sphere() { }
@@ -250,7 +250,7 @@ public class Sphere extends AbstractSurface implements DistanceEstimator, CodeFe
 
 				double discriminantSqrt = Math.sqrt(discriminant);
 
-				double t[] = new double[2];
+				double[] t = new double[2];
 
 				t[0] = (-b + discriminantSqrt) / (g);
 				t[1] = (-b - discriminantSqrt) / (g);
@@ -359,12 +359,12 @@ public class Sphere extends AbstractSurface implements DistanceEstimator, CodeFe
 		Producer rightDist = r(t);
 
 		// Check if left > 0
-		Producer leftPositive = greaterThan((Producer) leftDist, (Producer) c(0.0), c(1.0), c(0.0));
+		Producer leftPositive = greaterThan(leftDist, c(0.0), c(1.0), c(0.0));
 		// Check if right > 0
-		Producer rightPositive = greaterThan((Producer) rightDist, (Producer) c(0.0), c(1.0), c(0.0));
+		Producer rightPositive = greaterThan(rightDist, c(0.0), c(1.0), c(0.0));
 
 		// Check if left < right
-		Producer leftLessRight = lessThan((Producer) leftDist, (Producer) rightDist, c(1.0), c(0.0));
+		Producer leftLessRight = lessThan(leftDist, rightDist, c(1.0), c(0.0));
 
 		// If both positive: return min(left, right)
 		// If only left positive: return left
@@ -406,7 +406,7 @@ public class Sphere extends AbstractSurface implements DistanceEstimator, CodeFe
 		Producer<PackedCollection> dS = discriminantSqrt(ray);
 		Producer<PackedCollection> minusODotD = oDotd(ray).minus();
 		Producer<PackedCollection> dDotDInv = dDotd(ray).pow(-1.0);
-		return pair((Producer) add(minusODotD, dS).multiply(dDotDInv),
-				    (Producer) add(minusODotD, minus(dS)).multiply(dDotDInv));
+		return pair(add(minusODotD, dS).multiply(dDotDInv),
+				add(minusODotD, minus(dS)).multiply(dDotDInv));
 	}
 }

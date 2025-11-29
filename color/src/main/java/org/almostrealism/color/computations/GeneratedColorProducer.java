@@ -17,18 +17,18 @@
 package org.almostrealism.color.computations;
 
 import io.almostrealism.code.ArgumentMap;
-import io.almostrealism.profile.OperationInfo;
-import io.almostrealism.profile.OperationMetadata;
-import io.almostrealism.kernel.KernelStructureContext;
-import io.almostrealism.relation.Evaluable;
-import io.almostrealism.compute.Process;
-import io.almostrealism.scope.Scope;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.ScopeInputManager;
-import io.almostrealism.relation.Producer;
-import io.almostrealism.relation.Generated;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.compute.Process;
+import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.profile.OperationInfo;
+import io.almostrealism.profile.OperationMetadata;
+import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Generated;
+import io.almostrealism.relation.Producer;
+import io.almostrealism.scope.Scope;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;

@@ -55,7 +55,7 @@ public class UnityVector {
 	 *
 	 * @return a producer for the unity vector
 	 */
-	public static Producer<PackedCollection> getInstance() { return (Producer) VectorFeatures.getInstance().vector(1.0, 1.0, 1.0); }
+	public static Producer<PackedCollection> getInstance() { return VectorFeatures.getInstance().vector(1.0, 1.0, 1.0); }
 
 	/**
 	 * Returns an {@link Evaluable} that produces the unity vector (1, 1, 1).

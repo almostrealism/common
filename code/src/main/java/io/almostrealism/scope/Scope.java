@@ -16,32 +16,31 @@
 
 package io.almostrealism.scope;
 
-import io.almostrealism.lang.CodePrintWriter;
 import io.almostrealism.code.Computation;
-import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.code.ExpressionAssignment;
 import io.almostrealism.code.NameProvider;
-import io.almostrealism.profile.OperationInfo;
-import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.code.ProducerArgumentReference;
 import io.almostrealism.code.Statement;
+import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.expression.ArrayDeclaration;
-import io.almostrealism.kernel.KernelIndexChild;
-import io.almostrealism.expression.StaticReference;
-import io.almostrealism.kernel.KernelStructureContext;
-import io.almostrealism.kernel.KernelTree;
-import io.almostrealism.profile.ScopeTimingListener;
-import io.almostrealism.relation.Parent;
-import io.almostrealism.scope.Argument.Expectation;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.InstanceReference;
-
+import io.almostrealism.expression.StaticReference;
+import io.almostrealism.kernel.KernelIndexChild;
+import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.kernel.KernelTree;
+import io.almostrealism.lang.CodePrintWriter;
+import io.almostrealism.profile.OperationInfo;
+import io.almostrealism.profile.OperationMetadata;
+import io.almostrealism.profile.ScopeTimingListener;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.DynamicProducer;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.uml.Named;
-import io.almostrealism.uml.Nameable;
+import io.almostrealism.relation.Parent;
 import io.almostrealism.relation.Sortable;
+import io.almostrealism.scope.Argument.Expectation;
+import io.almostrealism.uml.Nameable;
+import io.almostrealism.uml.Named;
 import io.almostrealism.uml.Signature;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;

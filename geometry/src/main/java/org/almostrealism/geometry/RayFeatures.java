@@ -65,7 +65,7 @@ public interface RayFeatures extends VectorFeatures {
 	 * @return a producer that yields the specified ray
 	 */
 	default CollectionProducer value(Ray value) {
-		return (CollectionProducer) (CollectionProducer) DefaultTraversableExpressionComputation.fixed(value, (BiFunction) Ray.postprocessor());
+		return DefaultTraversableExpressionComputation.fixed(value, (BiFunction) Ray.postprocessor());
 	}
 
 	/**
@@ -90,9 +90,8 @@ public interface RayFeatures extends VectorFeatures {
 	 * @param direction the producer for the ray direction
 	 * @return a producer that yields a ray composed of the origin and direction
 	 */
-	default <T extends PackedCollection> CollectionProducer
-	ray(Producer<T> origin, Producer<T> direction) {
-		return (CollectionProducer) concat(shape(6), (Producer) origin, (Producer) direction);
+	default CollectionProducer ray(Producer<PackedCollection> origin, Producer<PackedCollection> direction) {
+		return concat(shape(6), origin, direction);
 	}
 
 	/**

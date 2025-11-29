@@ -99,7 +99,7 @@ public class PairBankTest implements TestFeatures {
 
 		Producer<PackedCollection> index = c(2).multiply(v(shape(4, 1), 1)).add(c(1.0));
 		Producer<PackedCollection> pairFromPairBank =
-				(Producer<PackedCollection>) (Producer) pairFromBank(v(shape(10, 2), 0), index);
+				(Producer<PackedCollection>) pairFromBank(v(shape(10, 2), 0), index);
 
 		PackedCollection timeline = new PackedCollection(shape(4, 1));
 		timeline.setMem(1.0, 2.0, 3.0, 4.0);

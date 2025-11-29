@@ -15,10 +15,9 @@
  */
 
 package org.almostrealism.raytrace;
-import org.almostrealism.collect.PackedCollection;
 
 import io.almostrealism.relation.Producer;
-import org.almostrealism.color.RGB;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.geometry.Ray;
 
 /**

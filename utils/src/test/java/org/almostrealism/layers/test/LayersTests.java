@@ -19,7 +19,6 @@ package org.almostrealism.layers.test;
 import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.profile.OperationProfile;
 import io.almostrealism.profile.OperationProfileNode;
-import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.layers.LayerFeatures;
@@ -42,10 +41,10 @@ import java.util.stream.IntStream;
 public class LayersTests implements LayerFeatures, DistributionFeatures, TestFeatures {
 	private static final int SIZE = 768;
 
-	private float cpuOut[];
-	private float gpuOut[];
-	private double cpuSum = -1.0;
-	private double gpuSum = -1.0;
+	private float[] cpuOut;
+	private float[] gpuOut;
+	private final double cpuSum = -1.0;
+	private final double gpuSum = -1.0;
 
 	@Test
 	public void exponent() {
@@ -70,10 +69,10 @@ public class LayersTests implements LayerFeatures, DistributionFeatures, TestFea
 			cop.get().run();
 			gop.get().run();
 
-			float cpu[] = new float[SIZE];
+			float[] cpu = new float[SIZE];
 			cpuOut.getMem(0, cpu, 0, SIZE);
 
-			float gpu[] = new float[SIZE];
+			float[] gpu = new float[SIZE];
 			gpuOut.getMem(0, gpu, 0, SIZE);
 
 			for (int i = 0; i < SIZE; i++) {

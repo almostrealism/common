@@ -15,19 +15,18 @@
  */
 
 package org.almostrealism.color;
+
+import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Producer;
+import org.almostrealism.algebra.Vector;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.geometry.ContinuousField;
+import org.almostrealism.geometry.Curve;
 
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
-import java.util.function.Supplier;
-
-import io.almostrealism.relation.Producer;
-import org.almostrealism.geometry.ContinuousField;
-import org.almostrealism.algebra.Vector;
-import org.almostrealism.geometry.Curve;
-import io.almostrealism.relation.Evaluable;
 
 /**
  * Extends {@link LightingContext} with surface-specific information for shading.

@@ -16,12 +16,12 @@
 
 package org.almostrealism.collect.computations.test;
 
+import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Tensor;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.util.TestFeatures;
 import org.almostrealism.util.TestUtils;
 import org.junit.Assert;
@@ -53,7 +53,7 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 		TraversalPolicy subsetShape = shape(w, h, d);
 
 		int outIndex = 1;
-		int pos[] = subsetShape.position(outIndex);
+		int[] pos = subsetShape.position(outIndex);
 		int index = inputShape.index(x0 + pos[0], y0 + pos[1], z0 + pos[2]);
 		System.out.println("Position " + outIndex + " maps to " + index + " " + Arrays.toString(inputShape.position(index)));
 		Assert.assertEquals(433, index);
@@ -96,7 +96,7 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 		System.out.println("PackedCollectionSubsetTests: input shape = " + inputShape);
 
 		PackedCollection pc = new PackedCollection(1).traverseEach();
-		pc.set(0, (double) x0);
+		pc.set(0, x0);
 
 		verboseLog(() -> {
 			CollectionProducer producer = subset(shape(w), p(input), p(pc));
@@ -132,8 +132,8 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 		System.out.println("PackedCollectionSubsetTests: input shape = " + inputShape);
 
 		PackedCollection pc = new PackedCollection(2).traverseEach();
-		pc.set(0, (double) x0);
-		pc.set(1, (double) y0);
+		pc.set(0, x0);
+		pc.set(1, y0);
 
 		verboseLog(() -> {
 			CollectionProducer producer = subset(shape(w, h), p(input), p(pc));
@@ -174,9 +174,9 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 		System.out.println("PackedCollectionSubsetTests: input shape = " + inputShape);
 
 		PackedCollection pc = new PackedCollection(3).traverseEach();
-		pc.set(0, (double) x0);
-		pc.set(1, (double) y0);
-		pc.set(2, (double) z0);
+		pc.set(0, x0);
+		pc.set(1, y0);
+		pc.set(2, z0);
 
 		verboseLog(() -> {
 			CollectionProducer producer = subset(shape(w, h, d), p(input), p(pc));

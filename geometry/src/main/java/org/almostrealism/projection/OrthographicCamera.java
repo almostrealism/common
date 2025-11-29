@@ -16,21 +16,20 @@
 
 package org.almostrealism.projection;
 
+import io.almostrealism.relation.Producer;
+import io.almostrealism.uml.ModelEntity;
+import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.PairFeatures;
 import org.almostrealism.algebra.ScalarFeatures;
+import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.geometry.Camera;
-import org.almostrealism.algebra.Pair;
+import org.almostrealism.geometry.Positioned;
 import org.almostrealism.geometry.RayFeatures;
 import org.almostrealism.geometry.TransformMatrix;
-import org.almostrealism.algebra.Vector;
-import org.almostrealism.geometry.Positioned;
-import org.almostrealism.geometry.Ray;
 import org.almostrealism.io.DecodePostProcessing;
-import io.almostrealism.relation.Producer;
-import io.almostrealism.uml.ModelEntity;
 
 /**
  * The {@link OrthographicCamera} provides an orthographic projection camera.

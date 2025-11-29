@@ -20,8 +20,8 @@ import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.collect.UniformCollectionExpression;
-import io.almostrealism.expression.Logarithm;
 import io.almostrealism.compute.Process;
+import io.almostrealism.expression.Logarithm;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.MatrixFeatures;
 import org.almostrealism.collect.CollectionProducer;
@@ -158,7 +158,7 @@ public class CollectionLogarithmComputation extends TraversableExpressionComputa
 	@Override
 	public CollectionProducerParallelProcess generate(List<Process<?, ?>> children) {
 		return new CollectionLogarithmComputation(getName(), getShape(),
-				(Producer) children.get(1))
+				(Producer<PackedCollection>) children.get(1))
 				.setPostprocessor(getPostprocessor())
 				.setDescription(getDescription())
 				.setShortCircuit(getShortCircuit())

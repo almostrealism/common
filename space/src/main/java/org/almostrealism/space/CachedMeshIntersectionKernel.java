@@ -17,15 +17,15 @@
 package org.almostrealism.space;
 
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.ZeroVector;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.geometry.DimensionAware;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.hardware.MemoryBank;
-import org.almostrealism.geometry.DimensionAware;
-import io.almostrealism.relation.Evaluable;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.computations.HardwareEvaluable;
 import org.almostrealism.hardware.mem.MemoryDataDestination;

@@ -15,13 +15,13 @@
  */
 
 package org.almostrealism.color.computations;
-import org.almostrealism.collect.PackedCollection;
 
 import io.almostrealism.code.ProducerComputation;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.Scope;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.DynamicCollectionProducer;
 import org.almostrealism.color.RGB;
 import org.almostrealism.color.RGBFeatures;

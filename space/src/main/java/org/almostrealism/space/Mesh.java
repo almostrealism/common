@@ -16,29 +16,30 @@
 
 package org.almostrealism.space;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.Iterator;
-import java.util.List;
-
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Graph;
+import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.color.RGB;
 import org.almostrealism.color.ShadableSurface;
 import org.almostrealism.geometry.BoundingSolid;
+import org.almostrealism.geometry.ContinuousField;
+import org.almostrealism.geometry.DimensionAwareKernel;
 import org.almostrealism.geometry.Positioned;
 import org.almostrealism.geometry.Ray;
-import org.almostrealism.geometry.ContinuousField;
+import org.almostrealism.geometry.ShadableIntersection;
+import org.almostrealism.geometry.TransformMatrix;
 import org.almostrealism.graph.KdTree;
 import org.almostrealism.graph.mesh.TriangleFeatures;
-import io.almostrealism.relation.Producer;
-import org.almostrealism.geometry.DimensionAwareKernel;
-import org.almostrealism.geometry.TransformMatrix;
-import org.almostrealism.geometry.ShadableIntersection;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Iterator;
+import java.util.List;
 
 // TODO  Add bounding solid to make intersection calc faster.
 
@@ -50,7 +51,7 @@ import org.almostrealism.geometry.ShadableIntersection;
  * @author  Dan Chivers
  */
 public class Mesh extends SpacePartition<Triangle> implements Graph<Vector> {
-	private static RGB white = new RGB(1.0, 1.0, 1.0);
+	private static final RGB white = new RGB(1.0, 1.0, 1.0);
 	
 	/**
 	 * Interface for providing vertex and triangle data to a {@link Mesh}.
@@ -167,8 +168,8 @@ public class Mesh extends SpacePartition<Triangle> implements Graph<Vector> {
 	}
 	
   private List points, triangles;
-  private Triangle tcache[];
-  private boolean ignore[];
+  private Triangle[] tcache;
+  private boolean[] ignore;
   private boolean smooth, removeBackFaces, intcolor;
   
   /** Source for loading mesh data from external files. */
@@ -197,7 +198,7 @@ public class Mesh extends SpacePartition<Triangle> implements Graph<Vector> {
   	 * @param triangles  {{x0, y0, z0}, {x1, y1, z1},...} Where the int values
   	 * 					are indices in the points array.
   	 */
-  	public Mesh(Vector points[], int triangles[][]) {
+  	public Mesh(Vector[] points, int[][] triangles) {
   		this.points = new ArrayList();
   		this.triangles = new ArrayList();
   		this.clearIgnoreCache();
@@ -381,9 +382,9 @@ public class Mesh extends SpacePartition<Triangle> implements Graph<Vector> {
   	 * 
   	 * @param p  Array of Vertex objects to add.
   	 */
-  	public void setVectors(Vertex p[]) {
+  	public void setVectors(Vertex[] p) {
   		this.points.clear();
-  		for (int i = 0; i < p.length; i++) this.points.add(p[i]);
+		Collections.addAll(this.points, p);
   	}
   	
   	/**
@@ -412,7 +413,7 @@ public class Mesh extends SpacePartition<Triangle> implements Graph<Vector> {
 
 	public Iterator iterateVectors() { return this.points.iterator(); }
   	
-  	public void setTriangleData(int data[][]) {
+  	public void setTriangleData(int[][] data) {
   		this.triangles.clear();
   		for (int i = 0; i < data.length; i++) this.triangles.add(data[i]);
   		
@@ -477,10 +478,10 @@ public class Mesh extends SpacePartition<Triangle> implements Graph<Vector> {
 					
 					@Override
 					public Triangle next() {
-						int t[] = vertexData.getTriangle(i);
+						int[] t = vertexData.getTriangle(i);
 						i++;
 						return new Triangle(t[0], t[1], t[2],
-								(RGB) Mesh.white.clone(), vertexData);
+								Mesh.white.clone(), vertexData);
 					}
 				};
 			}
@@ -496,7 +497,7 @@ public class Mesh extends SpacePartition<Triangle> implements Graph<Vector> {
 	
 	/** @return  An array of Triangle objects stored by this {@link Mesh} object. */
 	public Triangle[] getTriangles() {
-		Triangle t[] = new Triangle[this.triangles.size()];
+		Triangle[] t = new Triangle[this.triangles.size()];
 		for (int i = 0; i < t.length; i++) t[i] = getTriangle(i);
 
 		return t;
@@ -528,20 +529,20 @@ public class Mesh extends SpacePartition<Triangle> implements Graph<Vector> {
 		if (this.tcache[face] != null) return this.tcache[face];
 		
 		if (this.vertexData == null) {
-			int v[] = (int[]) this.triangles.get(face);
+			int[] v = (int[]) this.triangles.get(face);
 			
 			Vertex v1 = (Vertex) this.points.get(v[0]);
 			Vertex v2 = (Vertex) this.points.get(v[1]);
 			Vertex v3 = (Vertex) this.points.get(v[2]);
 			
-			t = new Triangle(v1, v2, v3, (RGB) Mesh.white.clone());
+			t = new Triangle(v1, v2, v3, Mesh.white.clone());
 		} else {
-			int d[] = this.vertexData.getTriangle(face);
-			t = new Triangle(d[0], d[1], d[2], (RGB) Mesh.white.clone(), this.vertexData);
+			int[] d = this.vertexData.getTriangle(face);
+			t = new Triangle(d[0], d[1], d[2], Mesh.white.clone(), this.vertexData);
 		}
 		
 		t.setParent(this);
-		t.setColor((RGB) Mesh.white.clone());
+		t.setColor(Mesh.white.clone());
 		t.setSmooth(this.smooth);
 		t.setUseTransform(false);
 		t.setInterpolateVertexColor(this.intcolor);
@@ -616,8 +617,8 @@ public class Mesh extends SpacePartition<Triangle> implements Graph<Vector> {
 	 * @return  The number of ignored triangles.
 	 */
 	public int downsample(double l, double p) {
-		int t[][] = this.getTriangleData(true);
-		Vector v[] = this.getVectors(true);
+		int[][] t = this.getTriangleData(true);
+		Vector[] v = this.getVectors(true);
 		
 		int total = 0;
 		
@@ -739,7 +740,7 @@ public class Mesh extends SpacePartition<Triangle> implements Graph<Vector> {
 		CachedMeshIntersectionKernel kernel = new CachedMeshIntersectionKernel(getMeshData(), tray);
 		return new ShadableIntersection(ray,
 				(Producer) () -> kernel.getClosestNormal(),
-				(Producer) new DimensionAwareKernel<>(kernel));
+				new DimensionAwareKernel<>(kernel));
 	}
 
 	private void removeBackFaces(Ray r) {
@@ -773,7 +774,7 @@ public class Mesh extends SpacePartition<Triangle> implements Graph<Vector> {
 	 * Does nothing.
 	 */
 	@Override
-	public void setSurfaces(Triangle surfaces[]) { }
+	public void setSurfaces(Triangle[] surfaces) { }
 	
 //	/**
 //	 * Adds the specified Surface object to the list of triangles stored by this Mesh object.

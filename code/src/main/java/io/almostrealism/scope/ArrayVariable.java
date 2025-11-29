@@ -17,15 +17,15 @@
 package io.almostrealism.scope;
 
 import io.almostrealism.code.Array;
-import io.almostrealism.expression.Mask;
-import io.almostrealism.expression.SizeValue;
-import io.almostrealism.kernel.KernelIndex;
-import io.almostrealism.compute.PhysicalScope;
 import io.almostrealism.collect.TraversableExpression;
+import io.almostrealism.compute.PhysicalScope;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.InstanceReference;
 import io.almostrealism.expression.IntegerConstant;
+import io.almostrealism.expression.Mask;
+import io.almostrealism.expression.SizeValue;
 import io.almostrealism.expression.StaticReference;
+import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.uml.Multiple;
 

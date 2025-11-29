@@ -15,17 +15,16 @@
  */
 
 package org.almostrealism.primitives;
-import org.almostrealism.collect.PackedCollection;
 
+import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Producer;
+import org.almostrealism.algebra.Vector;
+import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.color.Light;
 import org.almostrealism.color.PointLight;
+import org.almostrealism.color.RGB;
 import org.almostrealism.color.SurfaceLight;
 import org.almostrealism.geometry.TransformMatrix;
-import org.almostrealism.algebra.Vector;
-import org.almostrealism.color.Light;
-
-import org.almostrealism.color.RGB;
-import io.almostrealism.relation.Producer;
-import io.almostrealism.relation.Evaluable;
 
 import java.util.function.Supplier;
 

@@ -16,14 +16,12 @@
 
 package org.almostrealism.optimize;
 
+import org.almostrealism.time.Temporal;
+
 import java.util.ArrayList;
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.List;
 import java.util.function.BiConsumer;
-import java.util.function.Consumer;
-
-import org.almostrealism.time.Temporal;
 
 /**
  * A composite {@link HealthComputation} that averages scores from multiple health computations.

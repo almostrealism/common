@@ -19,7 +19,6 @@ package org.almostrealism.time.computations.test;
 import io.almostrealism.expression.Sum;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.hardware.PassThroughProducer;
 import org.almostrealism.time.computations.Interpolate;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Test;

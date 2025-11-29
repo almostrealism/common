@@ -18,19 +18,19 @@ package org.almostrealism.collect.computations;
 
 import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.collect.Algebraic;
+import io.almostrealism.collect.Shape;
+import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.ParallelismTargetOptimization;
+import io.almostrealism.compute.Process;
+import io.almostrealism.compute.ProcessContext;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.DefaultIndex;
 import io.almostrealism.kernel.Index;
 import io.almostrealism.kernel.IndexValues;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.kernel.NoOpKernelStructureContext;
-import io.almostrealism.compute.Process;
-import io.almostrealism.compute.ProcessContext;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
-import io.almostrealism.collect.Shape;
-import io.almostrealism.collect.TraversalPolicy;
 
 import java.util.List;
 import java.util.stream.IntStream;
@@ -157,14 +157,14 @@ public class PackedCollectionEnumerate
 	public static boolean enableUniqueIndexOptimization = true;
 
 	/** The shape of the input collection after applying traversal transformations */
-	private TraversalPolicy inputShape;
+	private final TraversalPolicy inputShape;
 	/** The depth at which traversal operations are performed */
-	private int traversalDepth;
+	private final int traversalDepth;
 
 	/** The shape of each enumerated subset/window */
-	private TraversalPolicy subsetShape;
+	private final TraversalPolicy subsetShape;
 	/** The stride pattern determining spacing between consecutive enumerations */
-	private TraversalPolicy strideShape;
+	private final TraversalPolicy strideShape;
 
 	/**
 	 * Creates a new enumeration with automatically computed stride.
@@ -238,13 +238,9 @@ public class PackedCollectionEnumerate
 	public boolean isIsolationTarget(ProcessContext context) {
 		if (super.isIsolationTarget(context)) return true;
 
-		if (enablePreferIsolation &&
+		return enablePreferIsolation &&
 				getParallelism() > ParallelismTargetOptimization.minCount &&
-				getOutputSize() <= MemoryProvider.MAX_RESERVATION) {
-			return true;
-		}
-
-		return false;
+				getOutputSize() <= MemoryProvider.MAX_RESERVATION;
 	}
 
 	/**
@@ -336,7 +332,7 @@ public class PackedCollectionEnumerate
 		Expression<?> offset = index.toInt().imod(subsetShape.getTotalSizeLong());
 
 		// Determine the location of the slice
-		Expression<?> p[] = new Expression[subsetShape.getDimensions()];
+		Expression<?>[] p = new Expression[subsetShape.getDimensions()];
 
 		if (enablePositionSimplification) {
 			KernelStructureContext ctx = index.getStructureContext();
@@ -435,7 +431,7 @@ public class PackedCollectionEnumerate
 	public PackedCollectionEnumerate generate(List<Process<?, ?>> children) {
 		return (PackedCollectionEnumerate)
 				new PackedCollectionEnumerate(subsetShape, strideShape,
-								(Producer) children.get(1), traversalDepth)
+								(Producer<PackedCollection>) children.get(1), traversalDepth)
 						.addAllDependentLifecycles(getDependentLifecycles());
 	}
 
@@ -507,7 +503,7 @@ public class PackedCollectionEnumerate
 					.filter(i -> i > 0).min()
 					.orElseThrow(() -> new IllegalArgumentException("Invalid stride"));
 
-		int dims[] = new int[superShape.getDimensions() + 1];
+		int[] dims = new int[superShape.getDimensions() + 1];
 
 		for (int i = 0; i < dims.length; i++) {
 			int axis = i - traversalDepth;
@@ -552,7 +548,7 @@ public class PackedCollectionEnumerate
 	private static TraversalPolicy computeStride(TraversalPolicy shape, Producer<?> collection, int traversalDepth) {
 		TraversalPolicy superShape = shape(collection);
 
-		int dims[] = new int[shape.getDimensions()];
+		int[] dims = new int[shape.getDimensions()];
 		for (int i = 0; i < dims.length; i++) {
 			if (i >= traversalDepth) {
 				int axis = i - traversalDepth;

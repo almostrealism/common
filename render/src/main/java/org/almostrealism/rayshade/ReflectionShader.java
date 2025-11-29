@@ -16,17 +16,17 @@
 
 package org.almostrealism.rayshade;
 
-import org.almostrealism.raytrace.LightingEngineAggregator;
 import io.almostrealism.relation.Editable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Vector;
-import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.CollectionProducer;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.DynamicCollectionProducer;
 import org.almostrealism.color.Light;
 import org.almostrealism.color.RGB;
 import org.almostrealism.color.RGBFeatures;
+import org.almostrealism.color.ShadableSurface;
 import org.almostrealism.color.Shader;
 import org.almostrealism.color.ShaderContext;
 import org.almostrealism.color.ShaderSet;
@@ -36,8 +36,8 @@ import org.almostrealism.geometry.DiscreteField;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.geometry.RayFeatures;
 import org.almostrealism.geometry.ReflectedRay;
+import org.almostrealism.raytrace.LightingEngineAggregator;
 import org.almostrealism.space.AbstractSurface;
-import org.almostrealism.color.ShadableSurface;
 import org.almostrealism.texture.Texture;
 
 import java.util.ArrayList;
@@ -104,12 +104,12 @@ public class ReflectionShader extends ShaderSet<ShaderContext> implements
 	 */
 	public static int maxReflections = 4;
   
-  private static final String propNames[] = {"Reflectivity", "Reflective Color",
+  private static final String[] propNames = {"Reflectivity", "Reflective Color",
   										"Blur factor", "Environment map"};
-  private static final String propDesc[] = {"The reflectivity of the surface at a direct (normal) viewing angle, usually in the range [0,1].",
+  private static final String[] propDesc = {"The reflectivity of the surface at a direct (normal) viewing angle, usually in the range [0,1].",
 										"The base color of the reflection.", "Blur factor.",
 										"Texture to use as an environment map."};
-  private static final Class propTypes[] = {Double.class, Producer.class, Double.class, Texture.class};
+  private static final Class[] propTypes = {Double.class, Producer.class, Double.class, Texture.class};
   
   private double reflectivity, blur;
   private Producer<PackedCollection> reflectiveColor;
@@ -140,8 +140,8 @@ public class ReflectionShader extends ShaderSet<ShaderContext> implements
 	public Producer<PackedCollection> shade(ShaderContext p, DiscreteField normals) {
 		if (p.getReflectionCount() > ReflectionShader.maxReflections) {
 			return new DynamicCollectionProducer(RGB.shape(), args -> {
-					Vector point = p.getIntersection().get(0).get().evaluate(args).getOrigin();
-					PackedCollection surfaceValue = (PackedCollection) p.getSurface().getValueAt((Producer) v(point)).get().evaluate();
+					Vector point = new Ray(p.getIntersection().get(0).get().evaluate(args), 0).getOrigin();
+					PackedCollection surfaceValue = p.getSurface().getValueAt(v(point)).get().evaluate();
 					PackedCollection reflColor = reflectiveColor.get().evaluate(p);
 					return new RGB(
 						reflColor.toDouble(0) * surfaceValue.toDouble(0),
@@ -170,7 +170,7 @@ public class ReflectionShader extends ShaderSet<ShaderContext> implements
 
 		Producer point = origin(p.getIntersection().get(0));
 		Producer n = direction(normals.iterator().next());
-		Producer nor = p.getIntersection().getNormalAt((Producer) point);
+		Producer nor = p.getIntersection().getNormalAt(point);
 
 		Producer<Ray> transform = (Producer) transform(((AbstractSurface) p.getSurface()).getTransform(true), p.getIntersection().get(0));
 		Producer loc = origin(transform);
@@ -182,7 +182,7 @@ public class ReflectionShader extends ShaderSet<ShaderContext> implements
 		// TODO Should surface color be factored in to reflection?
 //		RGB surfaceColor = p.getSurface().getColorAt(p.getPoint());
 
-		f: if (p.getSurface() instanceof ShadableSurface == false || ((ShadableSurface) p.getSurface()).getShadeFront()) {
+		if (!(p.getSurface() instanceof ShadableSurface) || ((ShadableSurface) p.getSurface()).getShadeFront()) {
 			Producer<Ray> reflectedRay = new ReflectedRay(loc, nor, n, blur);
 
 			// TODO  Environment map should be a feature of the aggregator
@@ -213,13 +213,13 @@ public class ReflectionShader extends ShaderSet<ShaderContext> implements
 			}
 		}
 
-		b: if (p.getSurface() instanceof ShadableSurface == false || ((ShadableSurface) p.getSurface()).getShadeBack()) {
+		if (!(p.getSurface() instanceof ShadableSurface) || ((ShadableSurface) p.getSurface()).getShadeBack()) {
 			n = minus(n);
 
 			Producer<Ray> reflectedRay = new ReflectedRay(loc, nor, n, blur);
 
 			// TODO  Environment map should be a feature of the aggregator
-			LightingEngineAggregator aggregator = new LightingEngineAggregator(reflectedRay, allSurfaces, allLights, p);;
+			LightingEngineAggregator aggregator = new LightingEngineAggregator(reflectedRay, allSurfaces, allLights, p);
 			Producer<PackedCollection> color = () -> aggregator;
 			/*
 			if (color == null) {
@@ -247,7 +247,7 @@ public class ReflectionShader extends ShaderSet<ShaderContext> implements
 			}
 		}
 
-		Producer<PackedCollection> lightColor = p.getLight().getColorAt((Producer) point);
+		Producer<PackedCollection> lightColor = p.getLight().getColorAt(point);
 		Producer<PackedCollection> ftc = tc;
 		return GeneratedColorProducer.fromProducer(this, multiply(ftc, lightColor));
 	}
@@ -361,7 +361,7 @@ public class ReflectionShader extends ShaderSet<ShaderContext> implements
      *                                       (Note: none of the values after the erroneous value will be set)
 	 * @throws IndexOutOfBoundsException  If the length of the specified array is longer than permitted.
 	 */
-	public void setPropertyValues(Object values[]) {
+	public void setPropertyValues(Object[] values) {
 		for (int i = 0; i < values.length; i++)
 			this.setPropertyValue(values[i], i);
 	}

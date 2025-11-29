@@ -17,11 +17,11 @@
 package org.almostrealism.hardware.jni;
 
 import io.almostrealism.code.ComputeContext;
-import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.code.DataContext;
 import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.code.Precision;
+import io.almostrealism.compute.ComputeRequirement;
 import org.almostrealism.c.NativeMemoryProvider;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryData;

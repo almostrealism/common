@@ -17,11 +17,11 @@
 package org.almostrealism.graph;
 
 import io.almostrealism.relation.Producer;
-import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.time.CursorPair;
-import org.almostrealism.time.AcceleratedTimeSeries;
-import org.almostrealism.hardware.OperationList;
 import org.almostrealism.Ops;
+import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.hardware.OperationList;
+import org.almostrealism.time.AcceleratedTimeSeries;
+import org.almostrealism.time.CursorPair;
 import org.almostrealism.time.TemporalFeatures;
 
 import java.util.function.Supplier;

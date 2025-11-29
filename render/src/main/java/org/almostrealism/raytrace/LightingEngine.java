@@ -16,27 +16,27 @@
 
 package org.almostrealism.raytrace;
 
-import org.almostrealism.color.AmbientLight;
-import org.almostrealism.color.DirectionalAmbientLight;
-import org.almostrealism.color.PointLight;
-import org.almostrealism.color.SurfaceLight;
+import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Producer;
+import org.almostrealism.CodeFeatures;
 import org.almostrealism.Ops;
+import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.computations.ProducerWithRankAdapter;
 import org.almostrealism.collect.CollectionProducer;
-import org.almostrealism.color.RGBFeatures;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.geometry.ContinuousField;
-import org.almostrealism.geometry.Intersectable;
-import org.almostrealism.algebra.Vector;
+import org.almostrealism.color.AmbientLight;
+import org.almostrealism.color.DirectionalAmbientLight;
 import org.almostrealism.color.Light;
+import org.almostrealism.color.PointLight;
+import org.almostrealism.color.RGBFeatures;
 import org.almostrealism.color.Shadable;
 import org.almostrealism.color.ShaderContext;
+import org.almostrealism.color.SurfaceLight;
+import org.almostrealism.geometry.ContinuousField;
 import org.almostrealism.geometry.Curve;
-import io.almostrealism.relation.Producer;
-import org.almostrealism.geometry.ShadableIntersection;
-import org.almostrealism.CodeFeatures;
 import org.almostrealism.geometry.DimensionAware;
-import io.almostrealism.relation.Evaluable;
+import org.almostrealism.geometry.Intersectable;
+import org.almostrealism.geometry.ShadableIntersection;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -94,7 +94,7 @@ public class LightingEngine<T extends ContinuousField> extends ProducerWithRankA
 		this.color = shadowAndShadeProduct(intersections, surface, otherSurfaces, light, otherLights, p);
 		this.intersections = intersections;
 		this.surface = surface;
-		this.distance = (Producer) ((ShadableIntersection) intersections).getDistance();
+		this.distance = ((ShadableIntersection) intersections).getDistance();
 	}
 
 	protected CollectionProducer shadowAndShadeProduct(ContinuousField intersections,

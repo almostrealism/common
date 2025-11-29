@@ -23,11 +23,11 @@ import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.ProducerWithRank;
 import io.almostrealism.relation.Provider;
 import org.almostrealism.algebra.Vector;
-import org.almostrealism.collect.computations.GreaterThanCollection;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 import org.almostrealism.collect.computations.CollectionProviderProducer;
+import org.almostrealism.collect.computations.GreaterThanCollection;
 import org.almostrealism.collect.computations.ReshapeProducer;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.graph.mesh.TriangleIntersectAt;
@@ -110,7 +110,7 @@ public class TriangleTest implements TestFeatures {
 	protected CollectionProducer originProducer() {
 		Producer noRank = ((ProducerWithRank) intersectAt()).getProducer();
 		if (noRank instanceof ReshapeProducer)
-			noRank = (Producer) ((ReshapeProducer) noRank).getComputation();
+			noRank = ((ReshapeProducer) noRank).getComputation();
 
 		CollectionProducer originVector =
 				(CollectionProducer)
@@ -178,7 +178,7 @@ public class TriangleTest implements TestFeatures {
 		PackedCollection distance = ev.evaluate(in, td.traverse(0));
 		assertEquals(1.0, distance.toDouble());
 
-		distance = (PackedCollection) intersectAt.get().evaluate(in, td.traverse(0));
+		distance = intersectAt.get().evaluate(in, td.traverse(0));
 		assertEquals(1.0, distance.toDouble());
 	}
 

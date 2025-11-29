@@ -44,7 +44,7 @@ import java.io.FileOutputStream;
  */
 public class FilePrintWriter implements PrintWriter {
 	private StringBuffer indent;
-	private java.io.PrintWriter out;
+	private final java.io.PrintWriter out;
 
 	/**
 	 * Creates a new FilePrintWriter that writes to the specified file.

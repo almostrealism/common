@@ -55,7 +55,7 @@ public class ZeroVector {
 	 *
 	 * @return a producer for the zero vector
 	 */
-	public static Producer<PackedCollection> getInstance() { return (Producer) VectorFeatures.getInstance().vector(0, 0, 0); }
+	public static Producer<PackedCollection> getInstance() { return VectorFeatures.getInstance().vector(0, 0, 0); }
 
 	/**
 	 * Returns an {@link Evaluable} that produces the zero vector (0, 0, 0).

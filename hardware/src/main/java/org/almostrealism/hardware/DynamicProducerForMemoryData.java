@@ -16,12 +16,12 @@
 
 package org.almostrealism.hardware;
 
+import io.almostrealism.code.ComputableParallelProcess;
+import io.almostrealism.compute.Process;
 import io.almostrealism.profile.OperationInfo;
 import io.almostrealism.profile.OperationMetadata;
-import io.almostrealism.code.ComputableParallelProcess;
 import io.almostrealism.relation.DynamicProducer;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.compute.Process;
 import io.almostrealism.uml.Multiple;
 
 import java.util.Collection;

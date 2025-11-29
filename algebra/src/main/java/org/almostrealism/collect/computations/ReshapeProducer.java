@@ -17,33 +17,33 @@
 package org.almostrealism.collect.computations;
 
 import io.almostrealism.code.ArgumentMap;
-import io.almostrealism.lifecycle.Destroyable;
-import io.almostrealism.profile.OperationInfo;
-import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.collect.Algebraic;
-import io.almostrealism.expression.Expression;
-import io.almostrealism.kernel.Index;
-import io.almostrealism.kernel.KernelStructureContext;
-import io.almostrealism.relation.Computable;
-import io.almostrealism.relation.Countable;
-import io.almostrealism.relation.Evaluable;
+import io.almostrealism.collect.Shape;
+import io.almostrealism.collect.TraversableExpression;
+import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.ParallelProcess;
 import io.almostrealism.compute.Process;
 import io.almostrealism.compute.ProcessContext;
+import io.almostrealism.expression.Expression;
+import io.almostrealism.kernel.Index;
+import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.lifecycle.Destroyable;
+import io.almostrealism.profile.OperationInfo;
+import io.almostrealism.profile.OperationMetadata;
+import io.almostrealism.relation.Computable;
+import io.almostrealism.relation.Countable;
+import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
 import io.almostrealism.uml.Signature;
 import io.almostrealism.util.DescribableParent;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
-import org.almostrealism.collect.PackedCollection;
-import io.almostrealism.collect.Shape;
-import io.almostrealism.collect.TraversableExpression;
-import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.CollectionProducerParallelProcess;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.computations.HardwareEvaluable;
 import org.almostrealism.io.Describable;
 
@@ -149,7 +149,7 @@ public class ReshapeProducer
 	private int traversalAxis;
 	
 	/** The underlying producer whose output will be reshaped. */
-	private Producer<PackedCollection> producer;
+	private final Producer<PackedCollection> producer;
 
 	/**
 	 * Creates a ReshapeProducer that modifies the traversal axis of the input producer.
@@ -211,7 +211,7 @@ public class ReshapeProducer
 	 */
 	public ReshapeProducer(TraversalPolicy shape, Producer<? extends PackedCollection> producer) {
 		this.shape = shape;
-		this.producer = (Producer) producer;
+		this.producer = (Producer<PackedCollection>) producer;
 
 		if (shape(producer).getTotalSizeLong() != shape.getTotalSizeLong()) {
 			throw new IllegalArgumentException();
@@ -606,7 +606,7 @@ public class ReshapeProducer
 
 		HardwareEvaluable<PackedCollection> hev = new HardwareEvaluable<>(producer::get, null, null, false);
 		hev.setShortCircuit(args -> {
-			PackedCollection out = (PackedCollection) hev.getKernel().getValue().evaluate(args);
+			PackedCollection out = hev.getKernel().getValue().evaluate(args);
 			return apply(out);
 		});
 		return hev;

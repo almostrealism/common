@@ -17,11 +17,11 @@
 package org.almostrealism.graph.temporal;
 
 import io.almostrealism.code.ExpressionFeatures;
-import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.compute.ParallelProcess;
 import io.almostrealism.compute.Process;
-import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
 

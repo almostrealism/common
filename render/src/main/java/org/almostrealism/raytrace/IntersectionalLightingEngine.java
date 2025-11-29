@@ -16,15 +16,13 @@
 
 package org.almostrealism.raytrace;
 
-import org.almostrealism.geometry.ContinuousField;
-import org.almostrealism.geometry.Intersectable;
-import org.almostrealism.color.Light;
-import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.color.RGB;
-import org.almostrealism.color.ShaderContext;
-import org.almostrealism.geometry.Curve;
-import org.almostrealism.geometry.Ray;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.color.Light;
+import org.almostrealism.color.ShaderContext;
+import org.almostrealism.geometry.ContinuousField;
+import org.almostrealism.geometry.Curve;
+import org.almostrealism.geometry.Intersectable;
 
 import java.util.Collection;
 

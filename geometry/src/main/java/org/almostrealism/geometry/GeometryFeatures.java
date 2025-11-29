@@ -16,14 +16,11 @@
 
 package org.almostrealism.geometry;
 
-import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.PairFeatures;
 import org.almostrealism.algebra.ScalarFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-
-import java.util.function.Supplier;
 
 /**
  * A comprehensive feature interface providing geometric and trigonometric operations.
@@ -53,52 +50,48 @@ public interface GeometryFeatures extends ScalarFeatures, PairFeatures, RayFeatu
 	/**
 	 * Computes the sine of each element in the input collection.
 	 *
-	 * @param <T> the collection type
 	 * @param input the input values
 	 * @return a producer for the sine of the input
 	 */
-	default <T extends PackedCollection> CollectionProducer sin(Supplier<Evaluable<? extends PackedCollection>> input) {
+	default CollectionProducer sin(Producer<PackedCollection> input) {
 		// TODO  Add shortcircuit
 		return compute("sin",
-				shape -> args -> sin(shape, args[1]), (Producer) input);
+				shape -> args -> sin(shape, args[1]), input);
 	}
 
 	/**
 	 * Computes the cosine of each element in the input collection.
 	 *
-	 * @param <T> the collection type
 	 * @param input the input values
 	 * @return a producer for the cosine of the input
 	 */
-	default <T extends PackedCollection> CollectionProducer cos(Supplier<Evaluable<? extends PackedCollection>> input) {
+	default CollectionProducer cos(Producer<PackedCollection> input) {
 		// TODO  Add shortcircuit
 		return compute("cos",
-				shape -> args -> cos(shape, args[1]), (Producer) input);
+				shape -> args -> cos(shape, args[1]), input);
 	}
 
 	/**
 	 * Computes the tangent of each element in the input collection.
 	 *
-	 * @param <T> the collection type
 	 * @param input the input values
 	 * @return a producer for the tangent of the input
 	 */
-	default <T extends PackedCollection> CollectionProducer tan(Supplier<Evaluable<? extends PackedCollection>> input) {
+	default CollectionProducer tan(Producer<PackedCollection> input) {
 		// TODO  Add shortcircuit
 		return compute("tan",
-				shape -> args -> tan(shape, args[1]), (Producer) input);
+				shape -> args -> tan(shape, args[1]), input);
 	}
 
 	/**
 	 * Computes the hyperbolic tangent of each element in the input collection.
 	 *
-	 * @param <T> the collection type
 	 * @param input the input values
 	 * @return a producer for the hyperbolic tangent of the input
 	 */
-	default <T extends PackedCollection> CollectionProducer tanh(Supplier<Evaluable<? extends PackedCollection>> input) {
+	default CollectionProducer tanh(Producer<PackedCollection> input) {
 		return compute("tanh",
-				shape -> args -> tanh(shape, args[1]), (Producer) input);
+				shape -> args -> tanh(shape, args[1]), input);
 	}
 
 	/**
