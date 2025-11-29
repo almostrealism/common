@@ -378,12 +378,12 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 			int axis = shape.alignCount(Countable.countLong(in)).getTraversalAxis();
 
 			if (shape.equalsIgnoreAxis(shape(out))) {
-				op.add(a(name, traverse(axis, (Producer) out), traverse(axis, (Producer) in)));
+				op.add(a(name, traverse(axis, out), traverse(axis, in)));
 			} else {
 				if (Layer.shapeWarnings)
 					warn(shape + " does not match " + shape(out) + " for " + name);
 
-				op.add(a(name, reshape(shape, out), (Producer) in));
+				op.add(a(name, reshape(shape, out), in));
 			}
 		} else {
 			if (!DefaultCellularLayer.enableMemoryDataCopy)

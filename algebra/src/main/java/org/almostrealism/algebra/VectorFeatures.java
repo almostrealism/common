@@ -313,7 +313,7 @@ public interface VectorFeatures extends ScalarFeatures {
 	 * @param value  the vector producer
 	 * @return a producer for the vector length
 	 */
-	default CollectionProducer length(Producer<?> value) {
+	default CollectionProducer length(Producer<PackedCollection> value) {
 		return sqrt(lengthSq(value));
 	}
 
@@ -328,8 +328,8 @@ public interface VectorFeatures extends ScalarFeatures {
 	 * @param value  the vector producer
 	 * @return a producer for the squared vector length
 	 */
-	default CollectionProducer lengthSq(Producer<?> value) {
-		CollectionProducer squared = multiply((Producer) value, (Producer) value);
+	default CollectionProducer lengthSq(Producer<PackedCollection> value) {
+		CollectionProducer squared = multiply(value, value);
 
 		int axis = shape(value).getDimensions() - 1;
 		return squared.sum(axis);
@@ -358,7 +358,7 @@ public interface VectorFeatures extends ScalarFeatures {
 			invLen = repeat(vectorDim, invLen).reshape(valueShape);
 		}
 
-		return multiply(value, (Producer) invLen);
+		return multiply(value, invLen);
 	}
 
 	/**
