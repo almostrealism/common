@@ -20,7 +20,6 @@ import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerComputation;
-import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.CollectionZerosComputation;
 import org.almostrealism.collect.computations.SingleConstantComputation;
 import org.almostrealism.util.TestFeatures;
@@ -92,7 +91,7 @@ public class CollectionZerosComputationTest implements TestFeatures {
 
 		// Reshape to matrix
 		TraversalPolicy matrixShape = new TraversalPolicy(3, 4);
-		CollectionProducerComputation<PackedCollection> reshapedZeros =
+		CollectionProducerComputation reshapedZeros =
 				originalZeros.reshape(matrixShape);
 
 		assertTrue("Reshaped computation should still be zeros",
@@ -245,7 +244,7 @@ public class CollectionZerosComputationTest implements TestFeatures {
 				new CollectionZerosComputation(shape);
 
 		// Zero property should be preserved through reshaping
-		CollectionProducerComputation<PackedCollection> reshapedZeros =
+		CollectionProducerComputation reshapedZeros =
 				zeros.reshape(new TraversalPolicy(2, 8));
 		assertTrue("Reshaped zeros should maintain zero property",
 				((CollectionZerosComputation) reshapedZeros).isZero());

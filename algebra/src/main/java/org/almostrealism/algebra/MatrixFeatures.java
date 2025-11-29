@@ -299,13 +299,12 @@ public interface MatrixFeatures extends AlgebraFeatures {
 	 *
 	 * @param a  the first matrix
 	 * @param b  the second matrix
-	 * @param <T>  the collection type
 	 * @return a producer for the matrix product
 	 * @deprecated Use {@link #matmul(Producer, Producer)} instead, which includes optimizations
 	 *             for identity matrices, diagonal matrices, and zero matrices
 	 */
 	@Deprecated
-	default <T extends PackedCollection> CollectionProducer mproduct(Producer<T> a, Producer<T> b) {
+	default CollectionProducer mproduct(Producer<PackedCollection> a, Producer<PackedCollection> b) {
 		if (WeightedSumExpression.enableCollectionExpression) {
 			return matmul(traverse(0, a), traverse(0, b));
 		}

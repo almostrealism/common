@@ -224,7 +224,7 @@ public class SingleConstantComputation extends CollectionConstantComputation {
 	 * @throws IllegalArgumentException if the new shape is not compatible with the total size
 	 */
 	@Override
-	public CollectionProducerComputation<PackedCollection> reshape(TraversalPolicy shape) {
+	public CollectionProducerComputation reshape(TraversalPolicy shape) {
 		return new SingleConstantComputation(shape, value);
 	}
 

@@ -278,7 +278,7 @@ public class IndexProjectionProducerComputation
 	 * 
 	 * @return A {@link CollectionProducerComputation} that produces the index mapping matrix
 	 */
-	public CollectionProducerComputation<PackedCollection> getIndex() {
+	public CollectionProducerComputation getIndex() {
 		int outSize = getShape().getTotalSize();
 		int inSize = shape(getInputs().get(1)).getTotalSize();
 		TraversalPolicy shape = shape(outSize, inSize);

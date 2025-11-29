@@ -121,7 +121,7 @@ import java.util.stream.Stream;
  */
 public abstract class CollectionProducerComputationBase
 		extends ProducerComputationBase<PackedCollection, PackedCollection>
-												implements CollectionProducerComputation<PackedCollection>, IndexSet,
+												implements CollectionProducerComputation, IndexSet,
 															DeltaAlternate<PackedCollection>, MemoryDataComputation<PackedCollection>,
 															HardwareFeatures {
 	/**

@@ -260,7 +260,7 @@ public class CollectionZerosComputation extends CollectionConstantComputation {
 	 * @see CollectionProducerComputation
 	 */
 	@Override
-	public CollectionProducerComputation<PackedCollection> reshape(TraversalPolicy shape) {
+	public CollectionProducerComputation reshape(TraversalPolicy shape) {
 		return new CollectionZerosComputation(shape);
 	}
 

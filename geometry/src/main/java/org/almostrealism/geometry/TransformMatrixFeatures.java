@@ -112,8 +112,8 @@ public interface TransformMatrixFeatures extends MatrixFeatures {
 	 * @param vector the vector to transform
 	 * @return a producer for the transformed vector
 	 */
-	default CollectionProducerComputation<PackedCollection> transformAsLocation(TransformMatrix matrix,
-																	  Producer<PackedCollection> vector) {
+	default CollectionProducerComputation transformAsLocation(TransformMatrix matrix,
+															  Producer<PackedCollection> vector) {
 		return transformAsLocation((Producer) v(matrix), vector);
 	}
 
@@ -124,8 +124,8 @@ public interface TransformMatrixFeatures extends MatrixFeatures {
 	 * @param vector the vector to transform
 	 * @return a producer for the transformed vector
 	 */
-	default CollectionProducerComputation<PackedCollection> transformAsLocation(Producer<TransformMatrix> matrix,
-																	  Producer<PackedCollection> vector) {
+	default CollectionProducerComputation transformAsLocation(Producer<TransformMatrix> matrix,
+															  Producer<PackedCollection> vector) {
 		return transform(matrix, vector, true);
 	}
 
@@ -137,8 +137,8 @@ public interface TransformMatrixFeatures extends MatrixFeatures {
 	 * @param vector the vector to transform
 	 * @return a producer for the transformed vector
 	 */
-	default CollectionProducerComputation<PackedCollection> transformAsOffset(TransformMatrix matrix,
-																	Producer<PackedCollection> vector) {
+	default CollectionProducerComputation transformAsOffset(TransformMatrix matrix,
+															Producer<PackedCollection> vector) {
 		return transformAsOffset((Producer) v(matrix), vector);
 	}
 
@@ -150,8 +150,8 @@ public interface TransformMatrixFeatures extends MatrixFeatures {
 	 * @param vector the vector to transform
 	 * @return a producer for the transformed vector
 	 */
-	default CollectionProducerComputation<PackedCollection> transformAsOffset(Producer<TransformMatrix> matrix,
-																	Producer<PackedCollection> vector) {
+	default CollectionProducerComputation transformAsOffset(Producer<TransformMatrix> matrix,
+															Producer<PackedCollection> vector) {
 		return transform(matrix, vector, false);
 	}
 
@@ -163,8 +163,8 @@ public interface TransformMatrixFeatures extends MatrixFeatures {
 	 * @param includeTranslation if true, includes translation (for points); if false, excludes it (for directions)
 	 * @return a producer for the transformed vector
 	 */
-	default CollectionProducerComputation<PackedCollection> transform(Producer<TransformMatrix> matrix,
-															Producer<PackedCollection> vector, boolean includeTranslation) {
+	default CollectionProducerComputation transform(Producer<TransformMatrix> matrix,
+													Producer<PackedCollection> vector, boolean includeTranslation) {
 		TraversalPolicy shape = shape(3);
 
 		vector = concat(shape(4), (Producer) vector, c(1.0));

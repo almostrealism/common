@@ -19,7 +19,6 @@ package org.almostrealism.collect.computations;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerComputation;
-import org.almostrealism.collect.PackedCollection;
 
 /**
  * A computation that produces a single-element constant value (atomic/scalar constant).
@@ -159,7 +158,7 @@ public class AtomicConstantComputation extends SingleConstantComputation {
 	 * @return An {@link AtomicConstantComputation} if size is 1, otherwise a broadcasted constant
 	 */
 	@Override
-	public CollectionProducerComputation<PackedCollection> reshape(TraversalPolicy shape) {
+	public CollectionProducerComputation reshape(TraversalPolicy shape) {
 		if (shape.getTotalSizeLong() == 1) {
 			return new AtomicConstantComputation(shape, value);
 		}

@@ -172,7 +172,7 @@ public class EpsilonConstantComputation extends SingleConstantComputation {
 	 * @see TraversalPolicy
 	 */
 	@Override
-	public CollectionProducerComputation<PackedCollection> reshape(TraversalPolicy shape) {
+	public CollectionProducerComputation reshape(TraversalPolicy shape) {
 		return new EpsilonConstantComputation(shape);
 	}
 }

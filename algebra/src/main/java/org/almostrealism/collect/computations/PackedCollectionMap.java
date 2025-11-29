@@ -50,17 +50,17 @@ public class PackedCollectionMap
 	public static boolean enableAtomicKernel = false;
 	public static boolean enableChainDelta = false;
 
-	private Function<CollectionProducerComputation<?>, CollectionProducer> mapper;
+	private Function<CollectionProducerComputation, CollectionProducer> mapper;
 	private TraversableExpression<Double> mapped;
 	private TraversalPolicy inputShape;
 
 	private boolean ignoreTraversalAxis;
 
-	public PackedCollectionMap(Producer<?> collection, Function<CollectionProducerComputation<?>, CollectionProducer> mapper) {
+	public PackedCollectionMap(Producer<?> collection, Function<CollectionProducerComputation, CollectionProducer> mapper) {
 		this(shape(collection), collection, mapper);
 	}
 
-	public PackedCollectionMap(TraversalPolicy shape, Producer<?> collection, Function<CollectionProducerComputation<?>, CollectionProducer> mapper) {
+	public PackedCollectionMap(TraversalPolicy shape, Producer<?> collection, Function<CollectionProducerComputation, CollectionProducer> mapper) {
 		super("map", shape, (Producer) collection);
 		this.inputShape = shape(collection);
 		this.mapper = mapper;

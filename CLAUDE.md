@@ -193,6 +193,17 @@ The full `mvn clean install -DskipTests` command:
 
 **Only after this command succeeds** should you report that the build is working.
 
+### Considering something completed
+
+Sometimes you may encounter a summary of earlier work. That summary may indicate that there are other things to do.
+If this happens, that means YOU ARE EXPECTED TO DO THOSE THINGS.
+
+Working on something for a while, writing some commentary about completing more of it later, and then reading the
+commentary back to yourself is NOT a condition for suspending your work.
+
+Before you start working, REPEAT this principle to yourself. If summarization of earlier tasks is ever required,
+REPEAT THIS PRINCIPLE IN THE SUMMARY
+
 ---
 
 ## Module-Specific Guidelines

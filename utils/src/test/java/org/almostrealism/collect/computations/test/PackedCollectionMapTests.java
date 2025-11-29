@@ -52,7 +52,7 @@ public class PackedCollectionMapTests implements TestFeatures {
 
 		PackedCollection c = empty(shape(n)).fill(Math::random);
 		PackedCollection d = empty(shape(m)).fill(Math::random);
-		Supplier<CollectionProducerComputation<PackedCollection>> product =
+		Supplier<CollectionProducerComputation> product =
 				() -> cp(c).each().map(shape(m), v ->
 						v.repeat(2).mul(cp(d)));
 

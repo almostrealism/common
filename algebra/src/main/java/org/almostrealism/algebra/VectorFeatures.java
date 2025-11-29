@@ -240,12 +240,11 @@ public interface VectorFeatures extends ScalarFeatures {
 	 * @param b  the second vector
 	 * @return a producer for the scalar dot product
 	 */
-	default <T extends PackedCollection> CollectionProducer
-	dotProduct(Producer<T> a, Producer<T> b) {
+	default CollectionProducer dotProduct(Producer<PackedCollection> a, Producer<PackedCollection> b) {
 		CollectionProducer p = multiply(a, b);
 
 		int axis = p.getShape().getDimensions() - 1;
-		return multiply((Producer) a, (Producer) b).sum(axis);
+		return multiply(a, b).sum(axis);
 	}
 
 	/**
@@ -262,8 +261,7 @@ public interface VectorFeatures extends ScalarFeatures {
 	 * @param b  the second vector
 	 * @return a producer for the cross product vector
 	 */
-	default <T extends PackedCollection> CollectionProducer
-	crossProduct(Producer<T> a, Producer<T> b) {
+	default CollectionProducer crossProduct(Producer<PackedCollection> a, Producer<PackedCollection> b) {
 		TraversalPolicy inputShape = shape(a);
 
 		return new DefaultTraversableExpressionComputation("crossProduct", inputShape, args ->
@@ -303,10 +301,9 @@ public interface VectorFeatures extends ScalarFeatures {
 	 *
 	 * @param depth  the traversal depth
 	 * @param value  the value producer
-	 * @param <T>  the collection type
 	 * @return a producer for the length
 	 */
-	default <T extends PackedCollection> CollectionProducer length(int depth, Producer<T> value) {
+	default CollectionProducer length(int depth, Producer<PackedCollection> value) {
 		return length(traverse(depth, value));
 	}
 
@@ -314,10 +311,9 @@ public interface VectorFeatures extends ScalarFeatures {
 	 * Computes the length (magnitude) of a vector: ||v|| = sqrt(v1^2 + v2^2 + v3^2).
 	 *
 	 * @param value  the vector producer
-	 * @param <T>  the collection type
 	 * @return a producer for the vector length
 	 */
-	default <T extends PackedCollection> CollectionProducer length(Producer<?> value) {
+	default CollectionProducer length(Producer<?> value) {
 		return sqrt(lengthSq(value));
 	}
 
@@ -330,10 +326,9 @@ public interface VectorFeatures extends ScalarFeatures {
 	 * For a single vector with shape (M), this returns shape (1).</p>
 	 *
 	 * @param value  the vector producer
-	 * @param <T>  the collection type
 	 * @return a producer for the squared vector length
 	 */
-	default <T extends PackedCollection> CollectionProducer lengthSq(Producer<?> value) {
+	default CollectionProducer lengthSq(Producer<?> value) {
 		CollectionProducer squared = multiply((Producer) value, (Producer) value);
 
 		int axis = shape(value).getDimensions() - 1;
@@ -348,10 +343,9 @@ public interface VectorFeatures extends ScalarFeatures {
 	 * which is repeated M times to match the input shape for element-wise division.</p>
 	 *
 	 * @param value  the vector producer
-	 * @param <T>  the collection type
 	 * @return a producer for the normalized (unit) vector
 	 */
-	default <T extends PackedCollection> CollectionProducer normalize(Producer<T> value) {
+	default CollectionProducer normalize(Producer<PackedCollection> value) {
 		TraversalPolicy valueShape = shape(value);
 		CollectionProducer invLen = length(value).pow(-1.0);
 

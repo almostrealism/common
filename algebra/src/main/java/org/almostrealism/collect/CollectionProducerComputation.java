@@ -94,7 +94,7 @@ import java.util.stream.Stream;
  * @see PackedCollection
  * @see DefaultCollectionEvaluable
  */
-public interface CollectionProducerComputation<T extends PackedCollection> extends
+public interface CollectionProducerComputation extends
 		 ProducerComputation<PackedCollection>, CollectionProducerParallelProcess {
 	boolean isolationLogging = SystemUtils.isEnabled("AR_ISOLATION_LOGGING").orElse(false);
 
@@ -226,7 +226,7 @@ public interface CollectionProducerComputation<T extends PackedCollection> exten
 	}
 
 	static <T extends PackedCollection> Function<List<Producer<?>>, CollectionProducer>
-				producerFactory(CollectionProducerComputation<T> original) {
+				producerFactory(CollectionProducerComputation original) {
 		return args -> {
 			List<Producer<?>> terms = new ArrayList<>();
 			args.stream().skip(1).forEach(terms::add);

@@ -36,7 +36,7 @@ import org.almostrealism.collect.PackedCollection;
 import java.util.Collection;
 import java.util.Collections;
 
-public class GeneratedColorProducer<T> implements Generated<T, Producer<PackedCollection>>, CollectionProducerComputation<PackedCollection> {
+public class GeneratedColorProducer<T> implements Generated<T, Producer<PackedCollection>>, CollectionProducerComputation {
 	private Producer<PackedCollection> p;
 	private T generator;
 

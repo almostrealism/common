@@ -118,7 +118,7 @@ public class TraversableExpressionComputationTest implements TestFeatures {
 		PackedCollection input = new PackedCollection(shape(r, c));
 		input.fill(pos -> Math.random());
 
-		CollectionProducerComputation<?> sum = c(p(input.traverse(1))).map(shape(1), v -> pairSum(v));
+		CollectionProducerComputation sum = c(p(input.traverse(1))).map(shape(1), v -> pairSum(v));
 		PackedCollection out = sum.get().evaluate();
 
 		for (int i = 0; i < r; i++) {

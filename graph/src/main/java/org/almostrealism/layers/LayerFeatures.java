@@ -358,17 +358,17 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 		return layer;
 	}
 
-	default <T extends MemoryData> Supplier<Runnable> into(String name,
-														   Producer<T> in, Producer<T> out,
-														   boolean copy,
-														   ComputeRequirement... requirements) {
+	default Supplier<Runnable> into(String name,
+								 Producer<PackedCollection> in, Producer<PackedCollection> out,
+								 boolean copy,
+								 ComputeRequirement... requirements) {
 		return into(name, in, out, copy, requirements.length > 0 ? List.of(requirements) : null);
 	}
 
-	default <T extends MemoryData> Supplier<Runnable> into(String name,
-														   Producer<T> in, Producer<T> out,
-														   boolean copy,
-														   List<ComputeRequirement> requirements) {
+	default Supplier<Runnable> into(String name,
+								 Producer<PackedCollection> in, Producer<PackedCollection> out,
+								 boolean copy,
+								 List<ComputeRequirement> requirements) {
 		TraversalPolicy shape = shape(in);
 
 		OperationList op = new OperationList(name);
@@ -383,7 +383,7 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 				if (Layer.shapeWarnings)
 					warn(shape + " does not match " + shape(out) + " for " + name);
 
-				op.add(a(name, reshape(shape, out), in));
+				op.add(a(name, reshape(shape, out), (Producer) in));
 			}
 		} else {
 			if (!DefaultCellularLayer.enableMemoryDataCopy)
