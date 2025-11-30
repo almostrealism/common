@@ -46,6 +46,7 @@
 		<module>llvm</module>
 		<module>tools</module>
 		<module>render</module>
+		<module>audio</module>
 	</modules>
 
 	<packaging>pom</packaging>
@@ -145,6 +146,12 @@
 				<groupId>com.google.protobuf</groupId>
 				<artifactId>protobuf-java-util</artifactId>
 				<version>${protobuf.version}</version>
+			</dependency>
+
+			<dependency>
+				<groupId>commons-codec</groupId>
+				<artifactId>commons-codec</artifactId>
+				<version>1.16.1</version>
 			</dependency>
 
 			<dependency>
