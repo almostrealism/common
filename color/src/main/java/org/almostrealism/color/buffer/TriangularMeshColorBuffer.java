@@ -80,7 +80,8 @@ public class TriangularMeshColorBuffer implements ColorBuffer {
 			if (n == null) {
 				n = (ByteNode) ns[0];
 			} else if (n instanceof ByteNode &&
-					ns[0] instanceof ByteNode bns) {
+					ns[0] instanceof ByteNode) {
+				ByteNode bns = (ByteNode) ns[0];
 				short[] rgb = bns.interpolate(n, uv);
 				short[] nrgb = (short[]) TriangularMeshColorBuffer.this.colors.get(index);
 				

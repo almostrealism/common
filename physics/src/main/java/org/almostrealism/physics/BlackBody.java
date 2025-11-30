@@ -14,21 +14,11 @@
  * limitations under the License.
  */
 
-
 package org.almostrealism.physics;
 
-import org.almostrealism.chem.ElectronCloud;
-import com.almostrealism.geometry.Sphere;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Vector;
-import org.almostrealism.chem.Alloy;
-import org.almostrealism.chem.PeriodicTable;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.primitives.PinholeCameraAbsorber;
-import org.almostrealism.raytrace.AbsorberHashSet;
-import org.almostrealism.raytrace.DefaultPhotonField;
-
-import static org.almostrealism.Ops.o;
 
 /**
  * A {@link BlackBody} absorbs all photons it detects and keeps track of
