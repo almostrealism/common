@@ -24,13 +24,13 @@ import org.almostrealism.collect.PackedCollection;
  * An {@link Absorber} instance represents a solid object that absorbs and emits energy
  * in a photon field. An Absorber implementation must provide a method for absorbing
  * and emitting energy. An absorber will be initialized with a reference to a Clock
- * object which is used to keep track of when an emmission should occur (see the
+ * object which is used to keep track of when an emission should occur (see the
  * getNextEmit method). Because of conservation of energy, the absorber must only emit
  * a quantity of energy no greater than the energy it has absorbed. The common unit for
  * measuring energy is electron volts. The common unit for measuring distance is micrometers,
  * meaning that a vector of unit length is one micrometer long.
  * 
- * Different Absorber implementations are provided most of which make reference to a Volume
+ * Different Absorber implementations are provided, most of which make reference to a Volume
  * instance, which describes the actually 3D space occupied by the solid. If an Absorber
  * implementation maintains reference to a Volume instance, photons should only be absorbed
  * and emitted within the bounds described by the Volume instance.
