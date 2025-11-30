@@ -14,10 +14,9 @@
  * limitations under the License.
  */
 
-package org.almostrealism.chem;
+package org.almostrealism.physics;
 
 import io.almostrealism.relation.Factory;
-import org.almostrealism.physics.Atom;
 
 /**
  * Interface for chemical substances that can construct atomic representations.
@@ -27,13 +26,6 @@ import org.almostrealism.physics.Atom;
  * configurations. This is the bridge between the chemistry module (element definitions)
  * and the physics module (atomic structure).</p>
  *
- * <p>Implementations of this interface include:</p>
- * <ul>
- *   <li>{@link Element} - Individual chemical elements that construct atoms with
- *       their characteristic electron configurations</li>
- *   <li>{@link Alloy} - Probabilistic mixtures that randomly select which element's
- *       atom to construct based on composition ratios</li>
- * </ul>
  *
  * <p>The primary method inherited from {@link Factory} is {@code construct()},
  * which creates a new {@link Atom} instance:</p>
@@ -48,7 +40,6 @@ import org.almostrealism.physics.Atom;
  * }</pre>
  *
  * @see Element
- * @see Alloy
  * @see Substance
  * @see org.almostrealism.physics.Atom
  * @see io.almostrealism.relation.Factory

@@ -1,4 +1,4 @@
-package org.almostrealism.chem;
+package org.almostrealism.physics;
 
 /**
  * Represents a chemical element from the periodic table.
@@ -16,36 +16,8 @@ package org.almostrealism.chem;
  *   <li>The electron shell configuration needed to construct an {@link org.almostrealism.physics.Atom}</li>
  * </ul>
  *
- * <p>Elements can be accessed through the {@link PeriodicTable} class:</p>
- * <pre>{@code
- * // Access individual elements
- * Element hydrogen = PeriodicTable.Hydrogen;
- * Element carbon = PeriodicTable.Carbon;
- * Element gold = PeriodicTable.Gold;
- *
- * // Get atomic number
- * int atomicNumber = carbon.getAtomicNumber();  // Returns 6
- *
- * // Construct an atom with proper electron configuration
- * Atom carbonAtom = carbon.construct();
- *
- * // Access element groups
- * List<Element> nobleGases = PeriodicTable.nobleGasses();
- * List<Element> transitionMetals = PeriodicTable.transitionMetals();
- * }</pre>
- *
- * <p>Elements can also be used to create alloys (mixtures):</p>
- * <pre>{@code
- * // Create bronze: 88% Copper, 12% Tin
- * Alloy bronze = new Alloy(
- *     Arrays.asList(PeriodicTable.Copper, PeriodicTable.Tin),
- *     0.88, 0.12
- * );
- * }</pre>
  *
  * @see Atomic
- * @see PeriodicTable
- * @see Alloy
  * @see org.almostrealism.physics.Atom
  *
  * @author Michael Murray

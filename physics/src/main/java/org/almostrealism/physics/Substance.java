@@ -14,7 +14,7 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.chem;
+package org.almostrealism.physics;
 
 import io.almostrealism.relation.Node;
 
@@ -31,8 +31,6 @@ import io.almostrealism.relation.Node;
  * <ul>
  *   <li>{@link Atomic} - Substances that can construct atomic representations</li>
  *   <li>{@link Element} - Individual chemical elements from the periodic table</li>
- *   <li>{@link Molecule} - Compounds of multiple elements with graph structure</li>
- *   <li>{@link Alloy} - Probabilistic mixtures of atomic substances</li>
  * </ul>
  *
  * <p>Example usage:</p>
@@ -49,8 +47,6 @@ import io.almostrealism.relation.Node;
  *
  * @see Atomic
  * @see Element
- * @see Molecule
- * @see Alloy
  * @see io.almostrealism.relation.Node
  *
  * @author Michael Murray

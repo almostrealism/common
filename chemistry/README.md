@@ -20,7 +20,7 @@ Access all 118 chemical elements through the `PeriodicTable` class:
 
 ```java
 import org.almostrealism.chem.*;
-import org.almostrealism.physics.Atom;
+import org.almostrealism.physics.*;
 
 // Individual elements
 Element carbon = PeriodicTable.Carbon;

@@ -17,6 +17,8 @@
 package org.almostrealism.chem;
 
 import io.almostrealism.relation.Graph;
+import org.almostrealism.physics.Element;
+import org.almostrealism.physics.Substance;
 
 import java.util.Collection;
 

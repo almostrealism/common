@@ -30,7 +30,7 @@ import org.almostrealism.geometry.Ray;
 import org.almostrealism.physics.Absorber;
 import org.almostrealism.physics.Clock;
 import org.almostrealism.projection.PinholeCamera;
-import org.almostrealism.space.Volume;
+import org.almostrealism.physics.Volume;
 import org.almostrealism.utils.PriorityQueue;
 
 /**

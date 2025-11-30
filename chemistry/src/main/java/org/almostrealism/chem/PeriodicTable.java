@@ -1,5 +1,8 @@
 package org.almostrealism.chem;
 
+import org.almostrealism.physics.Atomic;
+import org.almostrealism.physics.Element;
+
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;

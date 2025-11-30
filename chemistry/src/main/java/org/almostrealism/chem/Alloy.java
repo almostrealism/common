@@ -21,6 +21,8 @@ import org.almostrealism.heredity.Gene;
 import org.almostrealism.heredity.HeredityFeatures;
 import org.almostrealism.heredity.ProbabilisticFactory;
 import org.almostrealism.physics.Atom;
+import org.almostrealism.physics.Atomic;
+import org.almostrealism.physics.Element;
 
 import java.util.List;
 

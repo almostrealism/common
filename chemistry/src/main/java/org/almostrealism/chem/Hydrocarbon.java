@@ -1,5 +1,7 @@
 package org.almostrealism.chem;
 
+import org.almostrealism.physics.Element;
+
 /**
  * Represents a hydrocarbon molecule composed of carbon and hydrogen atoms.
  *

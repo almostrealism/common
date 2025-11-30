@@ -14,7 +14,7 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.space;
+package org.almostrealism.physics;
 
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Vector;

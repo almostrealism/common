@@ -1,9 +1,9 @@
 package org.almostrealism.chem;
 
 import org.almostrealism.physics.Atom;
+import org.almostrealism.physics.Element;
 import org.almostrealism.physics.Shell;
 
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 
