@@ -784,7 +784,7 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 			CollectionProducer result = biases != null ?
 					matmul(p(weights), input).add(traverse(1, p(biases))) :
 					matmul(p(weights), input);
-			// matmul produces (nodes, batched), reshape to declared (batched, nodes)
+			// Ensure output shape matches declared (batched, nodes) format
 			return result.reshape(outputShape);
 		};
 
