@@ -33,6 +33,7 @@
                 <a href="#architecture">Architecture</a>
                 <a href="#concepts">Core Concepts</a>
                 <a href="#examples">Examples</a>
+                <a href="#shape-validation">Shape Validation</a>
                 <a href="#resources">Resources</a>
             </nav>
         </header>
@@ -397,6 +398,48 @@ CompiledModel compiled = transformer.compile();</code></pre>
                 </div>
             </section>
 
+            <section id="shape-validation">
+                <h2>Shape Validation</h2>
+                <p>Layers enforce <strong>strict shape validation at creation time</strong>. When a layer operator is created, the framework validates that it produces the expected output shape. If there's a mismatch, an <code>IllegalArgumentException</code> is thrown immediately rather than allowing silent errors at runtime.</p>
+
+                <h3>Key Validation Methods</h3>
+                <div class="class-list">
+                    <div class="class-item">
+                        <h4>validateFactorShape()</h4>
+                        <p>Validates that an operator produces the expected output shape at layer creation time. Throws IllegalArgumentException on mismatch.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>isShapeCompatible()</h4>
+                        <p>Checks if two shapes are compatible (same dimensions, ignoring traversal axis). Used internally by validation methods.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>into()</h4>
+                        <p>Creates copy operations with strict shape validation. Throws on shape mismatch when copying data between producers.</p>
+                    </div>
+                </div>
+
+                <div class="warning">
+                    <strong>Layer Implementation Responsibility:</strong> Each layer's operator must produce output matching its declared output shape. If internal computations (e.g., matmul) produce different shapes, the operator must include an explicit <code>.reshape(outputShape)</code> call.
+                </div>
+
+                <div class="code-example">
+<pre><code class="language-java">// Example: Creating a layer with shape validation
+TraversalPolicy inputShape = shape(1, 784);
+TraversalPolicy outputShape = shape(1, 128);
+
+// The operator MUST produce outputShape from inputShape
+Factor&lt;PackedCollection&gt; operator = input ->
+    matmul(input, weights).reshape(outputShape);  // Explicit reshape if needed
+
+// This will validate shapes at creation time and throw if mismatched
+Block layer = layer("dense", inputShape, outputShape, operator, weights);</code></pre>
+                </div>
+
+                <div class="tip">
+                    <strong>Tip:</strong> Shape validation catches bugs early. If you see an IllegalArgumentException during layer creation, check that your operator's output shape matches the declared outputShape.
+                </div>
+            </section>
+
             <section id="integration">
                 <h2>Integration with Other Modules</h2>
 
@@ -434,7 +477,7 @@ CompiledModel compiled = transformer.compile();</code></pre>
 export AR_GRAPH_CELL_WARNINGS=true          # Warn on receptor replacement
 export AR_GRAPH_IO_TRACKING=true            # Track layer inputs/outputs
 export AR_GRAPH_PROPAGATION_WARNINGS=true   # Warn on backprop issues
-export AR_GRAPH_SHAPE_WARNINGS=true         # Warn on shape mismatches</code></pre>
+export AR_GRAPH_SHAPE_WARNINGS=true         # Log shape information (validation always enabled)</code></pre>
                 </div>
 
                 <div class="warning">
@@ -455,8 +498,8 @@ export AR_HARDWARE_DRIVER=native</pre>
                 </div>
 
                 <div class="warning">
-                    <strong>Issue:</strong> Shape mismatch during forward pass<br>
-                    <strong>Solution:</strong> Verify that layer input/output shapes are compatible. Use shape() to inspect TraversalPolicy.
+                    <strong>Issue:</strong> IllegalArgumentException during layer creation (shape mismatch)<br>
+                    <strong>Solution:</strong> The layer operator's output shape doesn't match the declared outputShape. Check that your operator produces the correct shape, or add an explicit <code>.reshape(outputShape)</code> call. See <a href="#shape-validation">Shape Validation</a> for details.
                 </div>
 
                 <div class="warning">

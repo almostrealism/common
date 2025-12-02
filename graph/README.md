@@ -205,6 +205,17 @@ Block combined = block1.product(block2);  // Element-wise multiply
 - Cells compile to hardware-accelerated operations
 - GPU kernel generation for forward/backward passes
 
+## Shape Validation
+
+Layers enforce strict shape validation at creation time. When a layer operator is created, the framework validates that it produces the expected output shape. If there's a mismatch, an `IllegalArgumentException` is thrown immediately rather than allowing silent errors at runtime.
+
+**Key validation methods in LayerFeatures:**
+- `validateFactorShape()` - Validates operator output shape at layer creation
+- `isShapeCompatible()` - Checks if two shapes are compatible (same dimensions, ignoring traversal axis)
+- `into()` - Throws on shape mismatch when copying data between producers
+
+**Layer Implementation Responsibility:** Each layer's operator must produce output matching its declared output shape. If internal computations (e.g., matmul) produce different shapes, the operator must include an explicit `.reshape(outputShape)` call.
+
 ## Environment Configuration
 
 ```bash
@@ -212,7 +223,7 @@ Block combined = block1.product(block2);  // Element-wise multiply
 export AR_GRAPH_CELL_WARNINGS=true          # Warn on receptor replacement
 export AR_GRAPH_IO_TRACKING=true            # Track layer inputs/outputs
 export AR_GRAPH_PROPAGATION_WARNINGS=true   # Warn on backprop issues
-export AR_GRAPH_SHAPE_WARNINGS=true         # Warn on shape mismatches
+export AR_GRAPH_SHAPE_WARNINGS=true         # Log shape information (validation always enabled)
 ```
 
 ## Usage Examples
