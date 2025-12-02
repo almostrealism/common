@@ -144,28 +144,16 @@ public class ShapeValidationTest implements LayerFeatures, TestFeatures {
 	 */
 	@Test
 	public void testInto_strictMode() {
-		// Note: strictShapeEnforcement is a compile-time constant
-		// This test documents the expected behavior based on the flag
+		// If strict mode is enabled, verify exception behavior
+		Producer<PackedCollection> in = cp(new PackedCollection(shape(1, 4)));
+		Producer<PackedCollection> out = cp(new PackedCollection(shape(4, 1)));  // Transposed
 
-		if (Layer.strictShapeEnforcement) {
-			// If strict mode is enabled, verify exception behavior
-			Producer<PackedCollection> in = cp(new PackedCollection(shape(1, 4)));
-			Producer<PackedCollection> out = cp(new PackedCollection(shape(4, 1)));  // Transposed
-
-			try {
-				into("test_strict", in, out, false);
-				Assert.fail("Should have thrown for mismatched shapes in strict mode");
-			} catch (IllegalArgumentException e) {
-				// Expected
-				Assert.assertTrue(e.getMessage().contains("Shape mismatch"));
-			}
-		} else {
-			// Strict mode is disabled, so into() should just warn
-			Producer<PackedCollection> in = cp(new PackedCollection(shape(1, 4)));
-			Producer<PackedCollection> out = cp(new PackedCollection(shape(4, 1)));
-
-			// Should not throw in lenient mode
-			into("test_lenient", in, out, false);
+		try {
+			into("test_strict", in, out, false);
+			Assert.fail("Should have thrown for mismatched shapes in strict mode");
+		} catch (IllegalArgumentException e) {
+			// Expected
+			Assert.assertTrue(e.getMessage().contains("Shape mismatch"));
 		}
 	}
 

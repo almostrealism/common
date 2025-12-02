@@ -198,7 +198,7 @@ public class SyntheticDenseTrainingTest implements ModelTestFeatures {
 		// Build classification model with softmax
 		SequentialBlock block = new SequentialBlock(shape(inputSize));
 		block.add(dense(inputSize, numClasses));
-		block.add(softmax(numClasses));
+		block.add(softmax());
 
 		Model model = new Model(shape(inputSize), 1e-3);
 		model.add(block);

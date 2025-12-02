@@ -139,7 +139,7 @@ public class SyntheticActivationTrainingTest implements ModelTestFeatures {
 		// Build model with ReLU activation
 		SequentialBlock block = new SequentialBlock(shape(inputSize));
 		block.add(dense(inputSize, hiddenSize));
-		block.add(relu(shape(hiddenSize)));
+		block.add(relu());
 		block.add(dense(hiddenSize, outputSize));
 
 		Model model = new Model(shape(inputSize), 1e-5);

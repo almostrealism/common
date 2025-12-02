@@ -152,6 +152,64 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 
 	Console console = CollectionFeatures.console.child();
 
+	/**
+	 * Checks if two shapes are compatible for layer output.
+	 * Compatible means: same total size and same effective dimensions
+	 * (ignoring traversal axis differences).
+	 *
+	 * <p>This method is used during shape validation to determine if
+	 * a layer's computed output shape matches its declared output shape.</p>
+	 *
+	 * @param actual The actual shape produced by the layer's operator
+	 * @param expected The declared output shape of the layer
+	 * @return true if shapes are compatible, false otherwise
+	 * @see #validateFactorShape(String, TraversalPolicy, TraversalPolicy, Factor)
+	 */
+	default boolean isShapeCompatible(TraversalPolicy actual, TraversalPolicy expected) {
+		// Must have same total size
+		if (actual.getTotalSize() != expected.getTotalSize()) {
+			return false;
+		}
+
+		// For strict mode: dimensions must match exactly (ignoring traversal axis)
+		return actual.equalsIgnoreAxis(expected);
+	}
+
+	/**
+	 * Validates that a Factor produces output with the expected shape.
+	 * This method applies the operator to a placeholder producer with the input shape
+	 * and verifies the result has the expected output shape.
+	 *
+	 * <p>This validation is used to catch shape mismatches at layer creation time rather than at runtime.</p>
+	 *
+	 * @param name Layer name for error messages
+	 * @param inputShape Expected input shape
+	 * @param outputShape Expected output shape
+	 * @param operator The Factor to validate
+	 * @throws IllegalArgumentException if the operator produces an incompatible shape
+	 * @see #isShapeCompatible(TraversalPolicy, TraversalPolicy)
+	 */
+	default void validateFactorShape(String name,
+									 TraversalPolicy inputShape,
+									 TraversalPolicy outputShape,
+									 Factor<PackedCollection> operator) {
+		// Create a placeholder producer with the input shape
+		Producer<PackedCollection> testInput = cp(new PackedCollection(inputShape));
+
+		// Apply the operator using getResultant
+		Producer<PackedCollection> result = operator.getResultant(testInput);
+
+		// Extract the result shape
+		TraversalPolicy actualShape = shape(result);
+
+		// Validate
+		if (!isShapeCompatible(actualShape, outputShape)) {
+			throw new IllegalArgumentException(
+					"Layer '" + name + "' operator produces shape " + actualShape +
+							" but declared output shape is " + outputShape);
+		}
+	}
+
 	@Deprecated
 	default CellularLayer layer(String name, TraversalPolicy inputShape, TraversalPolicy outputShape,
 								Cell<PackedCollection> forward, BackPropagation backward,
@@ -213,6 +271,8 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 								List<PackedCollection> weights,
 								Supplier<Runnable> setup,
 								ComputeRequirement... requirements) {
+		validateFactorShape(name, inputShape, outputShape, operator);
+
 		return layer(name, inputShape, outputShape, Cell.of(operator),
 				DefaultGradientPropagation.create(name, operator, weights.stream().map(this::cp)),
 				weights, setup, requirements);
@@ -369,6 +429,7 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 								 boolean copy,
 								 List<ComputeRequirement> requirements) {
 		TraversalPolicy shape = shape(in);
+		TraversalPolicy outShape = shape(out);
 
 		OperationList op = new OperationList(name);
 		op.setComputeRequirements(requirements);
@@ -376,13 +437,13 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 		if (!copy || shape.getCountLong() > 1) {
 			int axis = shape.alignCount(Countable.countLong(in)).getTraversalAxis();
 
-			if (shape.equalsIgnoreAxis(shape(out))) {
+			if (shape.equalsIgnoreAxis(outShape)) {
 				op.add(a(name, traverse(axis, out), traverse(axis, in)));
 			} else {
-				if (Layer.shapeWarnings)
-					warn(shape + " does not match " + shape(out) + " for " + name);
-
-				op.add(a(name, reshape(shape, out), in));
+				// Fail fast on shape mismatch
+				throw new IllegalArgumentException(
+						"Shape mismatch in '" + name + "': " +
+								shape + " does not match " + outShape);
 			}
 		} else {
 			if (!DefaultCellularLayer.enableMemoryDataCopy)
@@ -717,8 +778,14 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 			throw new IllegalArgumentException();
 		}
 
-		Factor<PackedCollection> operator = input ->
-				biases != null ? matmul(p(weights), input).add(traverse(1, p(biases))) : matmul(p(weights), input);
+		TraversalPolicy outputShape = shape(batched, nodes);
+		Factor<PackedCollection> operator = input -> {
+			CollectionProducer result = biases != null ?
+					matmul(p(weights), input).add(traverse(1, p(biases))) :
+					matmul(p(weights), input);
+			// matmul produces (nodes, batched), reshape to declared (batched, nodes)
+			return result.reshape(outputShape);
+		};
 
 		OperationList setup = new OperationList("dense " + size + " init");
 		if (init) {
@@ -730,19 +797,25 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 			}
 		}
 
-		return layer("dense " + size, inputShape.traverseEach(), shape(batched, nodes).traverseEach(),
+		return layer("dense " + size, inputShape.traverseEach(), outputShape.traverseEach(),
 				operator, biases != null ? List.of(weights, biases) : List.of(weights),
 				setup,
 				requirements);
 	}
 
+	/**
+	 * Creates a softmax layer factory that accepts any input shape.
+	 * The output shape will match the input shape.
+	 */
 	default Function<TraversalPolicy, CellularLayer> softmax() {
-		return shape -> softmax(shape.getTotalSize());
+		return shape -> softmax(shape);
 	}
 
 	default CellularLayer softmax(int size) {
-		TraversalPolicy shape = shape(size);
+		return softmax(shape(size));
+	}
 
+	default CellularLayer softmax(TraversalPolicy shape) {
 		return layer("softmax", shape, shape,
 				input -> c(input).traverse(1).exp().divide(c(input).traverse(1).exp().traverse(0).sum()));
 	}
@@ -999,6 +1072,10 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 		return layer("scale", shape, shape, input -> multiply(c(input).each(), c(scale)), requirements);
 	}
 
+	default Function<TraversalPolicy, CellularLayer> relu(ComputeRequirement... requirements) {
+		return shape -> relu(shape, requirements);
+	}
+
 	default CellularLayer relu(TraversalPolicy shape, ComputeRequirement... requirements) {
 		return layer("relu", shape, shape, input -> rectify(input), requirements);
 	}
@@ -1054,8 +1131,9 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 	}
 
 	default CellularLayer norm(TraversalPolicy shape, int groups, boolean trainable, ComputeRequirement... requirements) {
-		shape = padDimensions(shape, 1, 3);
-		int size = shape.traverse(1).item().getTotalSize();
+		// Don't pad here - the main norm method will handle padding internally
+		// Just calculate size for weights based on total size
+		int size = shape.getTotalSize() / Math.max(1, shape.length(0));
 		return norm(shape, groups,
 				trainable ? new PackedCollection(size) : null,
 				trainable ? new PackedCollection(size) : null,

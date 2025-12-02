@@ -76,22 +76,6 @@ public class StrictShapeEnforcementTest implements ModelTestFeatures {
 			};
 
 	/**
-	 * Document current strict mode status.
-	 */
-	@Test
-	public void documentStrictModeStatus() {
-		log("=== Strict Shape Enforcement Status ===");
-		log("Layer.strictShapeEnforcement = " + Layer.strictShapeEnforcement);
-		log("Layer.shapeWarnings = " + Layer.shapeWarnings);
-
-		if (Layer.strictShapeEnforcement) {
-			log("STRICT MODE ENABLED: Shape mismatches will throw exceptions");
-		} else {
-			log("LENIENT MODE: Shape mismatches will log warnings and auto-reshape");
-		}
-	}
-
-	/**
 	 * Test dense layer shape compatibility.
 	 * Documents that dense layers currently produce transposed output shapes.
 	 */
@@ -102,28 +86,18 @@ public class StrictShapeEnforcementTest implements ModelTestFeatures {
 		int inputSize = 4;
 		int outputSize = 3;
 
-		try {
-			// Create a simple dense layer
-			CellularLayer denseLayer = dense(inputSize, outputSize).apply(shape(1, inputSize));
+		// Create a simple dense layer
+		CellularLayer denseLayer = dense(inputSize, outputSize).apply(shape(1, inputSize));
 
-			TraversalPolicy inputShape = denseLayer.getInputShape();
-			TraversalPolicy outputShape = denseLayer.getOutputShape();
+		TraversalPolicy inputShape = denseLayer.getInputShape();
+		TraversalPolicy outputShape = denseLayer.getOutputShape();
 
-			log("Dense layer created successfully");
-			log("  Input shape: " + inputShape);
-			log("  Output shape: " + outputShape);
+		log("Dense layer created successfully");
+		log("  Input shape: " + inputShape);
+		log("  Output shape: " + outputShape);
 
-			// Validate the shape declaration
-			validateShapeDeclaration("dense", inputShape, outputShape, inputSize, outputSize);
-
-		} catch (IllegalArgumentException e) {
-			if (Layer.strictShapeEnforcement) {
-				log("EXPECTED in strict mode: " + e.getMessage());
-				log("This layer needs to be fixed for strict mode compatibility");
-			} else {
-				throw e;
-			}
-		}
+		// Validate the shape declaration
+		validateShapeDeclaration("dense", inputShape, outputShape, inputSize, outputSize);
 	}
 
 	/**
@@ -135,23 +109,14 @@ public class StrictShapeEnforcementTest implements ModelTestFeatures {
 
 		int size = 6;
 
-		try {
-			CellularLayer normLayer = norm(1).apply(shape(1, size));
+		CellularLayer normLayer = norm(1).apply(shape(1, size));
 
-			TraversalPolicy inputShape = normLayer.getInputShape();
-			TraversalPolicy outputShape = normLayer.getOutputShape();
+		TraversalPolicy inputShape = normLayer.getInputShape();
+		TraversalPolicy outputShape = normLayer.getOutputShape();
 
-			log("Norm layer created successfully");
-			log("  Input shape: " + inputShape);
-			log("  Output shape: " + outputShape);
-
-		} catch (IllegalArgumentException e) {
-			if (Layer.strictShapeEnforcement) {
-				log("EXPECTED in strict mode: " + e.getMessage());
-			} else {
-				throw e;
-			}
-		}
+		log("Norm layer created successfully");
+		log("  Input shape: " + inputShape);
+		log("  Output shape: " + outputShape);
 	}
 
 	/**
@@ -169,33 +134,23 @@ public class StrictShapeEnforcementTest implements ModelTestFeatures {
 		int epochs = 50;
 		int steps = 50;
 
-		try {
-			SequentialBlock block = new SequentialBlock(shape(inputSize));
-			block.add(dense(inputSize, outputSize));
+		SequentialBlock block = new SequentialBlock(shape(inputSize));
+		block.add(dense(inputSize, outputSize));
 
-			Model model = new Model(shape(inputSize), 1e-5);
-			model.add(block);
+		Model model = new Model(shape(inputSize), 1e-5);
+		model.add(block);
 
-			log("Model created successfully with output shape: " + model.getOutputShape());
+		log("Model created successfully with output shape: " + model.getOutputShape());
 
-			Supplier<Dataset<?>> data = () -> Dataset.of(IntStream.range(0, steps)
-					.mapToObj(i -> new PackedCollection(shape(inputSize)))
-					.map(input -> input.fill(pos -> 4 + 3 * Math.random()))
-					.map(input -> ValueTarget.of(input, linearFunc.apply(input)))
-					.collect(Collectors.toList()));
+		Supplier<Dataset<?>> data = () -> Dataset.of(IntStream.range(0, steps)
+				.mapToObj(i -> new PackedCollection(shape(inputSize)))
+				.map(input -> input.fill(pos -> 4 + 3 * Math.random()))
+				.map(input -> ValueTarget.of(input, linearFunc.apply(input)))
+				.collect(Collectors.toList()));
 
-			train("syntheticDense_currentMode", model, data, epochs, steps, 2.0, 1.0);
+		train("syntheticDense_currentMode", model, data, epochs, steps, 2.0, 1.0);
 
-			log("Training completed successfully in current mode");
-
-		} catch (IllegalArgumentException e) {
-			if (Layer.strictShapeEnforcement) {
-				log("EXPECTED failure in strict mode: " + e.getMessage());
-				log("Dense layer shape mismatch needs to be fixed");
-			} else {
-				throw e;
-			}
-		}
+		log("Training completed successfully in current mode");
 	}
 
 	/**
@@ -210,28 +165,19 @@ public class StrictShapeEnforcementTest implements ModelTestFeatures {
 		int width = 10;
 		int poolSize = 2;
 
-		try {
-			CellularLayer poolLayer = pool2d(poolSize).apply(shape(1, channels, height, width));
+		CellularLayer poolLayer = pool2d(poolSize).apply(shape(1, channels, height, width));
 
-			TraversalPolicy inputShape = poolLayer.getInputShape();
-			TraversalPolicy outputShape = poolLayer.getOutputShape();
+		TraversalPolicy inputShape = poolLayer.getInputShape();
+		TraversalPolicy outputShape = poolLayer.getOutputShape();
 
-			log("Pool2d layer created successfully");
-			log("  Input shape: " + inputShape);
-			log("  Output shape: " + outputShape);
+		log("Pool2d layer created successfully");
+		log("  Input shape: " + inputShape);
+		log("  Output shape: " + outputShape);
 
-			// Expected output shape should be (1, channels, height/poolSize, width/poolSize)
-			int expectedHeight = height / poolSize;
-			int expectedWidth = width / poolSize;
-			log("  Expected output: (1, " + channels + ", " + expectedHeight + ", " + expectedWidth + ")");
-
-		} catch (IllegalArgumentException e) {
-			if (Layer.strictShapeEnforcement) {
-				log("EXPECTED in strict mode: " + e.getMessage());
-			} else {
-				throw e;
-			}
-		}
+		// Expected output shape should be (1, channels, height/poolSize, width/poolSize)
+		int expectedHeight = height / poolSize;
+		int expectedWidth = width / poolSize;
+		log("  Expected output: (1, " + channels + ", " + expectedHeight + ", " + expectedWidth + ")");
 	}
 
 	/**
@@ -243,26 +189,17 @@ public class StrictShapeEnforcementTest implements ModelTestFeatures {
 
 		int size = 8;
 
-		try {
-			CellularLayer siluLayer = silu().apply(shape(1, size));
+		CellularLayer siluLayer = silu().apply(shape(1, size));
 
-			TraversalPolicy inputShape = siluLayer.getInputShape();
-			TraversalPolicy outputShape = siluLayer.getOutputShape();
+		TraversalPolicy inputShape = siluLayer.getInputShape();
+		TraversalPolicy outputShape = siluLayer.getOutputShape();
 
-			log("SiLU layer created successfully");
-			log("  Input shape: " + inputShape);
-			log("  Output shape: " + outputShape);
+		log("SiLU layer created successfully");
+		log("  Input shape: " + inputShape);
+		log("  Output shape: " + outputShape);
 
-			Assert.assertEquals("SiLU should preserve shape",
-					inputShape.getTotalSize(), outputShape.getTotalSize());
-
-		} catch (IllegalArgumentException e) {
-			if (Layer.strictShapeEnforcement) {
-				log("EXPECTED in strict mode: " + e.getMessage());
-			} else {
-				throw e;
-			}
-		}
+		Assert.assertEquals("SiLU should preserve shape",
+				inputShape.getTotalSize(), outputShape.getTotalSize());
 	}
 
 	/**
@@ -274,30 +211,21 @@ public class StrictShapeEnforcementTest implements ModelTestFeatures {
 
 		int size = 4;
 
-		try {
-			SequentialBlock innerBlock = new SequentialBlock(shape(size));
-			innerBlock.add(dense(size, size));
+		SequentialBlock innerBlock = new SequentialBlock(shape(size));
+		innerBlock.add(dense(size, size));
 
-			// residual(Block) returns a Block, not a CellularLayer
-			// We test it by adding to a SequentialBlock
-			SequentialBlock block = new SequentialBlock(shape(size));
-			block.add(residual(innerBlock));
-			block.add(dense(size, size));
+		// residual(Block) returns a Block, not a CellularLayer
+		// We test it by adding to a SequentialBlock
+		SequentialBlock block = new SequentialBlock(shape(size));
+		block.add(residual(innerBlock));
+		block.add(dense(size, size));
 
-			Model model = new Model(shape(size), 1e-5);
-			model.add(block);
+		Model model = new Model(shape(size), 1e-5);
+		model.add(block);
 
-			log("Residual block created successfully");
-			log("  Input shape: " + model.getInputShape());
-			log("  Output shape: " + model.getOutputShape());
-
-		} catch (IllegalArgumentException e) {
-			if (Layer.strictShapeEnforcement) {
-				log("EXPECTED in strict mode: " + e.getMessage());
-			} else {
-				throw e;
-			}
-		}
+		log("Residual block created successfully");
+		log("  Input shape: " + model.getInputShape());
+		log("  Output shape: " + model.getOutputShape());
 	}
 
 	/**
