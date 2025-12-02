@@ -171,7 +171,7 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 			return false;
 		}
 
-		// For strict mode: dimensions must match exactly (ignoring traversal axis)
+		// dimensions must match exactly (ignoring traversal axis)
 		return actual.equalsIgnoreAxis(expected);
 	}
 
@@ -193,8 +193,9 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 									 TraversalPolicy inputShape,
 									 TraversalPolicy outputShape,
 									 Factor<PackedCollection> operator) {
-		// Create a placeholder producer with the input shape
-		Producer<PackedCollection> testInput = cp(new PackedCollection(inputShape));
+		// Create a dynamic producer with the input shape that does nothing
+		// This avoids allocating actual memory for shape validation
+		Producer<PackedCollection> testInput = func(inputShape, args -> null);
 
 		// Apply the operator using getResultant
 		Producer<PackedCollection> result = operator.getResultant(testInput);
