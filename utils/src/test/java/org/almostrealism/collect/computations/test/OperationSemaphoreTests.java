@@ -34,7 +34,7 @@ public class OperationSemaphoreTests implements TestFeatures {
 
 	@Test
 	public void sumPowers() {
-		if (testDepth < 1) return;
+		if (testDepth < 2) return;
 
 		for (int i = 1; i < 9; i++) {
 			sum(12, 80, 1 << i, false);

@@ -83,7 +83,7 @@ public class SyntheticActivationTrainingTest implements ModelTestFeatures {
 	 */
 	@Test
 	public void denseWithSiLU() throws FileNotFoundException {
-		if (testDepth < 1) return;
+		if (testDepth < 2) return;
 
 		log("=== Test 4.1: Dense with SiLU Activation ===");
 

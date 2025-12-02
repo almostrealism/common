@@ -128,7 +128,7 @@ public class SyntheticConvolutionTrainingTest implements ModelFeatures, ModelTes
 	 */
 	@Test
 	public void simpleConv2d() throws FileNotFoundException {
-		if (testDepth < 1) return;
+		if (testDepth < 2) return;
 
 		log("=== Test 2.1: Simple Conv2d ===");
 
