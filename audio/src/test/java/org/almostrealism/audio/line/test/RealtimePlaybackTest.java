@@ -36,7 +36,7 @@ import java.io.File;
  */
 public class RealtimePlaybackTest implements CellFeatures {
 
-	private static final File TEST_FILE = new File("Library/SN_Forever_Future.wav");
+	private static final File TEST_FILE = new File("Library/RAW_IU_BORDER_B.wav");
 
 	/**
 	 * Tests basic buffered real-time playback using BufferedOutputScheduler with a
@@ -47,7 +47,7 @@ public class RealtimePlaybackTest implements CellFeatures {
 	@Test
 	public void bufferedRealtimePlayback() throws Exception {
 		if (!TEST_FILE.exists()) {
-			System.out.println("Test file not found, skipping bufferedRealtimePlayback test");
+			log("Test file not found, skipping bufferedRealtimePlayback test");
 			return;
 		}
 
@@ -88,11 +88,11 @@ public class RealtimePlaybackTest implements CellFeatures {
 
 		// Verify playback is happening
 		int readPos = outputLine.getReadPosition();
-		System.out.println("Read position: " + readPos);
+		log("Read position: " + readPos);
 		Assert.assertTrue("Read position should have advanced", readPos >= 0);
 
 		long renderedFrames = scheduler.getRenderedFrames();
-		System.out.println("Rendered frames: " + renderedFrames);
+		log("Rendered frames: " + renderedFrames);
 		Assert.assertTrue("Should have rendered frames", renderedFrames > 0);
 
 		// Stop the scheduler
@@ -102,7 +102,7 @@ public class RealtimePlaybackTest implements CellFeatures {
 		outputLine.destroy();
 		Assert.assertFalse("Line should be closed after destroy", outputLine.isOpen());
 
-		System.out.println("Successfully played buffered audio");
+		log("Successfully played buffered audio");
 	}
 
 	/**
@@ -112,7 +112,7 @@ public class RealtimePlaybackTest implements CellFeatures {
 	@Test
 	public void bufferedPositionTracking() throws Exception {
 		if (!TEST_FILE.exists()) {
-			System.out.println("Test file not found, skipping bufferedPositionTracking test");
+			log("Test file not found, skipping bufferedPositionTracking test");
 			return;
 		}
 
@@ -142,9 +142,9 @@ public class RealtimePlaybackTest implements CellFeatures {
 		int pos2 = outputLine.getReadPosition();
 		long frames2 = scheduler.getRenderedFrames();
 
-		System.out.println("Position tracking:");
-		System.out.println("  500ms: readPos=" + pos1 + ", renderedFrames=" + frames1);
-		System.out.println("  1000ms: readPos=" + pos2 + ", renderedFrames=" + frames2);
+		log("Position tracking:");
+		log("  500ms: readPos=" + pos1 + ", renderedFrames=" + frames1);
+		log("  1000ms: readPos=" + pos2 + ", renderedFrames=" + frames2);
 
 		// Verify position and frame count are advancing
 		Assert.assertTrue("Rendered frames should increase", frames2 > frames1);
@@ -154,7 +154,7 @@ public class RealtimePlaybackTest implements CellFeatures {
 		scheduler.stop();
 		outputLine.destroy();
 
-		System.out.println("Position tracking test passed");
+		log("Position tracking test passed");
 	}
 
 	/**
@@ -163,7 +163,7 @@ public class RealtimePlaybackTest implements CellFeatures {
 	@Test
 	public void bufferedLifecycleManagement() throws Exception {
 		if (!TEST_FILE.exists()) {
-			System.out.println("Test file not found, skipping bufferedLifecycleManagement test");
+			log("Test file not found, skipping bufferedLifecycleManagement test");
 			return;
 		}
 
@@ -204,7 +204,7 @@ public class RealtimePlaybackTest implements CellFeatures {
 		outputLine.destroy();
 		Assert.assertFalse("Line should not be open after destroy", outputLine.isOpen());
 
-		System.out.println("Lifecycle management test passed");
+		log("Lifecycle management test passed");
 	}
 
 	/**
@@ -213,7 +213,7 @@ public class RealtimePlaybackTest implements CellFeatures {
 	@Test
 	public void bufferedWithCustomBufferSize() throws Exception {
 		if (!TEST_FILE.exists()) {
-			System.out.println("Test file not found, skipping bufferedWithCustomBufferSize test");
+			log("Test file not found, skipping bufferedWithCustomBufferSize test");
 			return;
 		}
 
@@ -245,7 +245,7 @@ public class RealtimePlaybackTest implements CellFeatures {
 		scheduler.stop();
 		outputLine.destroy();
 
-		System.out.println("Custom buffer size test passed");
+		log("Custom buffer size test passed");
 	}
 
 	/**
@@ -259,7 +259,7 @@ public class RealtimePlaybackTest implements CellFeatures {
 	@Test
 	public void bufferedLoopedPlaybackWithVerboseLogging() throws Exception {
 		if (!TEST_FILE.exists()) {
-			System.out.println("Test file not found, skipping bufferedLoopedPlaybackWithVerboseLogging test");
+			log("Test file not found, skipping bufferedLoopedPlaybackWithVerboseLogging test");
 			return;
 		}
 
@@ -283,7 +283,7 @@ public class RealtimePlaybackTest implements CellFeatures {
 
 			// Use larger buffer size from BufferDefaults (like MixerTests)
 			int bufferSize = BufferDefaults.defaultBufferSize;
-			System.out.println("Using buffer size: " + bufferSize + " frames");
+			log("Using buffer size: " + bufferSize + " frames");
 
 			// Calculate and display buffer characteristics
 			BufferDefaults.logBufferInfo(44100, bufferSize, System.out::println);
@@ -295,30 +295,30 @@ public class RealtimePlaybackTest implements CellFeatures {
 
 			SourceDataOutputLine outputLine = new SourceDataOutputLine(line, bufferSize);
 
-			// Load WAV file with loop enabled (repeat=c(1.0) makes it loop)
-			System.out.println("Loading " + TEST_FILE.getPath() + " with looping enabled");
-			CellList cells = w(0, c(1.0), TEST_FILE.getPath());
+			// Load WAV file with 8 beat loop enabled
+			log("Loading " + TEST_FILE.getPath() + " with looping enabled");
+			CellList cells = w(0, c(bpm(125).l(8)), TEST_FILE.getPath());
 
 			// Create BufferedOutputScheduler
 			BufferedOutputScheduler scheduler = cells.buffer(outputLine);
 
-			System.out.println("Starting looped playback with verbose logging...");
-			System.out.println("Monitor the sleep cycle times - very low values (<1ms) indicate");
-			System.out.println("that audio generation cannot keep up with playback rate.");
-			System.out.println("---");
+			log("Starting looped playback with verbose logging...");
+			log("Monitor the sleep cycle times - very low values (<1ms) indicate");
+			log("that audio generation cannot keep up with playback rate.");
+			log("---");
 
 			// Start the scheduled buffered playback
 			scheduler.start();
 
 			// Run for extended time to observe patterns
-			Thread.sleep(15000); // 15 seconds
+			Thread.sleep(120 * 1000);
 
-			System.out.println("---");
-			System.out.println("Playback statistics:");
-			System.out.println("  Rendered frames: " + scheduler.getRenderedFrames());
-			System.out.println("  Rendered count: " + scheduler.getRenderedCount());
-			System.out.println("  Rendering gap: " + scheduler.getRenderingGap() + "ms");
-			System.out.println("  Read position: " + outputLine.getReadPosition());
+			log("---");
+			log("Playback statistics:");
+			log("  Rendered frames: " + scheduler.getRenderedFrames());
+			log("  Rendered count: " + scheduler.getRenderedCount());
+			log("  Rendering gap: " + scheduler.getRenderingGap() + "ms");
+			log("  Read position: " + outputLine.getReadPosition());
 
 			// Verify playback is happening
 			long renderedFrames = scheduler.getRenderedFrames();
@@ -330,8 +330,7 @@ public class RealtimePlaybackTest implements CellFeatures {
 			// Clean up
 			outputLine.destroy();
 
-			System.out.println("Looped playback test completed");
-
+			log("Looped playback test completed");
 		} finally {
 			// Restore previous logging settings
 			BufferedOutputScheduler.enableVerbose = previousVerbose;
