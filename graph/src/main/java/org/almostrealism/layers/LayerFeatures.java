@@ -712,7 +712,8 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 						.traverse(2)
 						.enumerate(3, size)
 						.enumerate(3, size)
-						.max(4);
+						.max(4)
+						.reshape(outputShape);
 		return layer("pool2d", inputShape, outputShape, operator, requirements);
 	}
 
@@ -1190,13 +1191,14 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 							   PackedCollection biases,
 							   double eps, boolean init,
 							   ComputeRequirement... requirements) {
-		shape = padDimensions(shape, 1, 3);
+		// Keep original shape for layer declaration, pad internally for computation
+		TraversalPolicy paddedShape = padDimensions(shape, 1, 3);
 		long size;
 
 		if (weights == null) {
-			size = shape.item().getTotalSizeLong();
+			size = paddedShape.item().getTotalSizeLong();
 		} else {
-			size = shape.alignSize(weights.getShape().getTotalSizeLong()).item().getTotalSizeLong();
+			size = paddedShape.alignSize(weights.getShape().getTotalSizeLong()).item().getTotalSizeLong();
 		}
 
 		if (size % groups != 0) {
@@ -1225,14 +1227,15 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 			if (b != null) setup.add(a(p(b.each()), c(0.0)));
 		}
 
-		return layer("norm", shape.traverse(1), shape.traverse(1), input -> {
+		TraversalPolicy outputShape = shape.traverse(1);
+		return layer("norm", outputShape, outputShape, input -> {
 			CollectionProducer in = c(input).reshape(-1, groups, Math.toIntExact(size / groups));
 			CollectionProducer out = in.subtractMean(2).divide(in.variance(2).add(c(eps)).sqrt());
 			out = out.reshape(-1, Math.toIntExact(size)).traverse(1);
 
 			if (w != null) out = out.multiply(cp(w));
 			if (b != null) out = out.add(cp(b));
-			return out;
+			return out.reshape(outputShape);
 		}, prop, setup, requirements);
 	}
 
