@@ -43,8 +43,8 @@ public class Intersection implements DimensionAware {
 	 */
 	public static final double e = 0.00000001;
 
-	private Producer<PackedCollection> point;
-	private Producer<PackedCollection> distance;
+	private final Producer<PackedCollection> point;
+	private final Producer<PackedCollection> distance;
 
 	/**
 	 * Constructs a new {@link Intersection} with the specified intersection point and distance.

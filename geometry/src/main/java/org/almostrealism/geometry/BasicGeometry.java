@@ -41,7 +41,7 @@ public class BasicGeometry implements Positioned, Oriented, Scaled, DecodePostPr
 	public Vector scale = new Vector(UnityVector.getEvaluable().evaluate().clone(), 0);
 	public double rotateX, rotateY, rotateZ;
 
-	private TransformMatrix transforms[];
+	private TransformMatrix[] transforms;
 	private TransformMatrix transform, completeTransform;
 	protected boolean transformCurrent;
 	
@@ -121,7 +121,7 @@ public class BasicGeometry implements Positioned, Oriented, Scaled, DecodePostPr
 	 * y, and z axes when it is rendered as an array of double values.
 	 */
 	public double[] getRotationCoefficients() {
-		double rotation[] = {this.rotateX, this.rotateY, this.rotateZ};
+		double[] rotation = {this.rotateX, this.rotateY, this.rotateZ};
 		
 		return rotation;
 	}
@@ -200,7 +200,7 @@ public class BasicGeometry implements Positioned, Oriented, Scaled, DecodePostPr
 	 * an IllegalArgumentException will be thrown. This method calls calculateTransform() after it
 	 * is completed.
 	 */
-	public void setTransforms(TransformMatrix transforms[]) throws IllegalArgumentException {
+	public void setTransforms(TransformMatrix[] transforms) throws IllegalArgumentException {
 		if (transforms == null)
 			throw new IllegalArgumentException();
 		
@@ -214,7 +214,7 @@ public class BasicGeometry implements Positioned, Oriented, Scaled, DecodePostPr
 	 * This method calls calculateTransform() after it is completed.
 	 */
 	public void addTransform(TransformMatrix transform) {
-		TransformMatrix newTransforms[] = new TransformMatrix[this.transforms.length + 1];
+		TransformMatrix[] newTransforms = new TransformMatrix[this.transforms.length + 1];
 		
 		System.arraycopy(this.transforms, 0, newTransforms, 0, this.transforms.length);
 		newTransforms[newTransforms.length - 1] = transform;
@@ -229,7 +229,7 @@ public class BasicGeometry implements Positioned, Oriented, Scaled, DecodePostPr
 	 * This method calls calculateTransform() after it is completed.
 	 */
 	public void removeTransform(int index) {
-		TransformMatrix newTransforms[] = new TransformMatrix[this.transforms.length - 1];
+		TransformMatrix[] newTransforms = new TransformMatrix[this.transforms.length - 1];
 		
 		System.arraycopy(this.transforms, 0, newTransforms, 0, index);
 		
@@ -261,15 +261,15 @@ public class BasicGeometry implements Positioned, Oriented, Scaled, DecodePostPr
 
 			if (getLocation() != null) {
 				completeTransform = completeTransform.multiply(
-						new TransformMatrix((TransformMatrix) translationMatrix((Producer) v(getLocation())).get().evaluate(), 0));
+						new TransformMatrix(translationMatrix(v(getLocation())).get().evaluate(), 0));
 			}
 
 			CollectionProducer sm;
 
 			if (size == 1.0) {
-				sm = scaleMatrix((Producer) v(scale));
+				sm = scaleMatrix(v(scale));
 			} else {
-				sm = scaleMatrix((Producer) v(scale.multiply(size)));
+				sm = scaleMatrix(v(scale.multiply(size)));
 			}
 
 			this.completeTransform = this.completeTransform.multiply(

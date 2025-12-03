@@ -118,7 +118,7 @@ public class RankedChoiceEvaluable<T> extends ArrayList<ProducerWithRank<T, Pack
 				}
 			}
 
-			if (rank <= e) break r;
+			if (rank <= e) break;
 		}
 
 		if (printLog) System.out.println(best + " was chosen\n----------");

@@ -33,7 +33,7 @@ import org.almostrealism.hardware.MemoryData;
  * @see DimensionAware
  */
 public class DimensionAwareKernel<T extends MemoryData> implements Producer<T>, DimensionAware {
-	private Evaluable<T> k;
+	private final Evaluable<T> k;
 
 	/**
 	 * Constructs a new DimensionAwareKernel wrapping the specified evaluable.
@@ -42,7 +42,7 @@ public class DimensionAwareKernel<T extends MemoryData> implements Producer<T>, 
 	 * @throws IllegalArgumentException if the provided evaluable does not implement DimensionAware
 	 */
 	public DimensionAwareKernel(Evaluable<T> k) {
-		if (k instanceof DimensionAware == false) {
+		if (!(k instanceof DimensionAware)) {
 			throw new IllegalArgumentException(k == null ? null : k.getClass() +
 												" is not DimensionAware");
 		}

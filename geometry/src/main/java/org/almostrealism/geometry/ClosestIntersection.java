@@ -43,8 +43,8 @@ import java.util.List;
  * @see ContinuousField
  */
 public class ClosestIntersection extends ArrayList<Producer<PackedCollection>> implements ContinuousField {
-	private Producer<Ray> r;
-	private List<ContinuousField> s;
+	private final Producer<Ray> r;
+	private final List<ContinuousField> s;
 
 	/**
 	 * Constructs a ClosestIntersection finder for the given ray and surfaces.

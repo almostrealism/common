@@ -230,7 +230,6 @@ public class ArrayItem<T> implements Sequence<T> {
 	 * @param len       the logical length of the sequence
 	 * @param generator a function to create arrays of the element type
 	 */
-	@SuppressWarnings("unchecked")
 	public ArrayItem(T value, long len, IntFunction<T[]> generator) {
 		this.mod = 1;
 		this.len = len;
@@ -336,7 +335,6 @@ public class ArrayItem<T> implements Sequence<T> {
 	 * @return the runtime class of elements in this sequence
 	 * @throws RuntimeException if the sequence contains elements of multiple incompatible types
 	 */
-	@SuppressWarnings("unchecked")
 	@Override
 	public Class<? extends T> getType() {
 		if (type == null) {

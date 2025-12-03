@@ -40,6 +40,5 @@ public abstract class CurveAdapter<T> implements Curve<T>, VectorFeatures {
 	 * @param v the position at which to evaluate the curve
 	 * @return the value of this curve at the specified position
 	 */
-	@SuppressWarnings("unchecked")
-	public T operate(Vector v) { return (T) getValueAt((Producer) v(v)).get().evaluate(); }
+	public T operate(Vector v) { return (T) getValueAt(v(v)).get().evaluate(); }
 }

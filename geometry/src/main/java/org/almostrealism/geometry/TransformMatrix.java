@@ -40,7 +40,7 @@ public class TransformMatrix extends PackedCollection implements TransformMatrix
 	public static final int TRANSFORM_AS_NORMAL = 4;
 
   	/** The data for the identity matrix. */
-	public static final double identity[][] = {{1.0, 0.0, 0.0, 0.0},
+	public static final double[][] identity = {{1.0, 0.0, 0.0, 0.0},
 											{0.0, 1.0, 0.0, 0.0},
 											{0.0, 0.0, 1.0, 0.0},
 											{0.0, 0.0, 0.0, 1.0}};
@@ -90,7 +90,7 @@ public class TransformMatrix extends PackedCollection implements TransformMatrix
 	 * Constructs a TransformMatrix object with the specified matrix data. Any extra array entries are removed
 	 * and missing array entries are replaced with 0.0.
 	 */
-	public TransformMatrix(double matrix[][]) {
+	public TransformMatrix(double[][] matrix) {
 		super(new TraversalPolicy(16), 0);
 		this.setMatrix(matrix);
 	}
@@ -100,8 +100,8 @@ public class TransformMatrix extends PackedCollection implements TransformMatrix
 	 * Any extra array entries are removed, and missing array entries are
 	 * replaced with 0.0.
 	 */
-	public void setMatrix(double matrix[][]) {
-		double newMatrix[] = new double[16];
+	public void setMatrix(double[][] matrix) {
+		double[] newMatrix = new double[16];
 
 		boolean id = true;
 
@@ -128,7 +128,7 @@ public class TransformMatrix extends PackedCollection implements TransformMatrix
 	 */
 	@Deprecated
 	public double[][] getMatrix() {
-		double m[] = toArray();
+		double[] m = toArray();
 		return new double[][] { { m[0],  m[1],  m[2],  m[3] },
 								{ m[4],  m[5],  m[6],  m[7] },
 								{ m[8],  m[9],  m[10], m[11] },
@@ -152,8 +152,8 @@ public class TransformMatrix extends PackedCollection implements TransformMatrix
 	 */
 	// TODO  Improve the performance of this method using CL
 	public TransformMatrix multiply(double value) {
-		double m[] = toArray();
-		double newMatrix[][] = new double[4][4];
+		double[] m = toArray();
+		double[][] newMatrix = new double[4][4];
 
 		for (int i = 0; i < 4; i++) {
 			for (int j = 0; j < 4; j++) {
@@ -197,7 +197,7 @@ public class TransformMatrix extends PackedCollection implements TransformMatrix
 	public double[] transform(double x, double y, double z, int type) {
 		if (this.isIdentity) return new double[] {x, y, z};
 
-		return ((PackedCollection) transform((Producer) vector(x, y, z), type).get().evaluate()).toArray();
+		return ((PackedCollection) transform(vector(x, y, z), type).get().evaluate()).toArray();
 	}
 
 	/**
@@ -209,7 +209,7 @@ public class TransformMatrix extends PackedCollection implements TransformMatrix
 		vector = vector.clone();
 		if (this.isIdentity) return vector;
 
-		return (Vector) transform((Producer) v(vector), TRANSFORM_AS_LOCATION).get().evaluate();
+		return (Vector) transform(v(vector), TRANSFORM_AS_LOCATION).get().evaluate();
 	}
 
 	/**
@@ -221,7 +221,7 @@ public class TransformMatrix extends PackedCollection implements TransformMatrix
 		vector = vector.clone();
 		if (this.isIdentity) return vector;
 
-		return (Vector) transform((Producer) v(vector), TRANSFORM_AS_OFFSET).get().evaluate();
+		return (Vector) transform(v(vector), TRANSFORM_AS_OFFSET).get().evaluate();
 	}
 
 	/**
@@ -233,7 +233,7 @@ public class TransformMatrix extends PackedCollection implements TransformMatrix
 		vector = vector.clone();
 		if (this.isIdentity) return vector;
 
-		return (Vector) transform((Producer) v(vector), TRANSFORM_AS_NORMAL).get().evaluate();
+		return (Vector) transform(v(vector), TRANSFORM_AS_NORMAL).get().evaluate();
 	}
 
 	public CollectionProducer transform(Producer<?> ray) {
@@ -273,7 +273,7 @@ public class TransformMatrix extends PackedCollection implements TransformMatrix
 	 *          a stored inverse.
 	 */
 	public TransformMatrix getInverse() {
-		if (this.inverted == false)
+		if (!this.inverted)
 			this.calculateInverse();
 
 		return this.inverseMatrix;
@@ -365,7 +365,7 @@ public class TransformMatrix extends PackedCollection implements TransformMatrix
 	public int getMemLength() { return 16; }
 
 	public double[] toArray() {
-		double m[] = new double[16];
+		double[] m = new double[16];
 		getMem(0, m, 0, 16);
 		return m;
 	}
@@ -374,7 +374,7 @@ public class TransformMatrix extends PackedCollection implements TransformMatrix
 	 * @return  A String representation of the data stored by this TransformMatrix object.
 	 */
 	public String toString() {
-		double m[][] = getMatrix();
+		double[][] m = getMatrix();
 
 		String data = "[ " + m[0][0] + ", " + m[0][1] + ", " + m[0][2] + ", " + m[0][3] + " ]\n" +
 				"[ " + m[1][0] + ", " + m[1][1] + ", " + m[1][2] + ", " + m[1][3] + " ]\n" +
@@ -402,7 +402,7 @@ public class TransformMatrix extends PackedCollection implements TransformMatrix
 	@Deprecated
 	public static TransformMatrix createTranslationMatrix(double tx, double ty, double tz) {
 		TransformMatrix translateTransform = new TransformMatrix();
-		double translate[][] = translateTransform.getMatrix();
+		double[][] translate = translateTransform.getMatrix();
 		
 		translate[0][3] = tx;
 		translate[1][3] = ty;
@@ -441,7 +441,7 @@ public class TransformMatrix extends PackedCollection implements TransformMatrix
 	public static TransformMatrix createScaleMatrix(double sx, double sy, double sz) {
 		TransformMatrix scaleTransform = new TransformMatrix();
 		
-		double scale[][] = scaleTransform.getMatrix();
+		double[][] scale = scaleTransform.getMatrix();
 		
 		scale[0][0] = sx;
 		scale[1][1] = sy;
@@ -457,7 +457,7 @@ public class TransformMatrix extends PackedCollection implements TransformMatrix
 	 */
 	public static TransformMatrix createRotateXMatrix(double angle) {
 		TransformMatrix rotateTransform = new TransformMatrix();
-		double rotateX[][] = rotateTransform.getMatrix();
+		double[][] rotateX = rotateTransform.getMatrix();
 		
 		double cos = Math.cos(angle);
 		double sin = Math.sin(angle);
@@ -477,7 +477,7 @@ public class TransformMatrix extends PackedCollection implements TransformMatrix
 	 */
 	public static TransformMatrix createRotateYMatrix(double angle) {
 		TransformMatrix rotateTransform = new TransformMatrix();
-		double rotateY[][] = rotateTransform.getMatrix();
+		double[][] rotateY = rotateTransform.getMatrix();
 		
 		double cos = Math.cos(angle);
 		double sin = Math.sin(angle);
@@ -497,7 +497,7 @@ public class TransformMatrix extends PackedCollection implements TransformMatrix
 	 */
 	public static TransformMatrix createRotateZMatrix(double angle) {
 		TransformMatrix rotateTransform = new TransformMatrix();
-		double rotateZ[][] = rotateTransform.getMatrix();
+		double[][] rotateZ = rotateTransform.getMatrix();
 		
 		double cos = Math.cos(angle);
 		double sin = Math.sin(angle);
@@ -512,11 +512,11 @@ public class TransformMatrix extends PackedCollection implements TransformMatrix
 	}
 
 	public static TransformMatrix createRotateMatrix(double angle, Vector v) {
-		v = (Vector) v.clone();
+		v = v.clone();
 		v.normalize();
 
 		TransformMatrix rotateTransform = new TransformMatrix();
-		double rotate[][] = rotateTransform.getMatrix();
+		double[][] rotate = rotateTransform.getMatrix();
 		double c = Math.cos(angle);
 		double ci = 1.0 - c;
 		double s = Math.sin(angle);

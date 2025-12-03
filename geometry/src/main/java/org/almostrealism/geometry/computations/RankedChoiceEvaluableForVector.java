@@ -65,7 +65,6 @@ public class RankedChoiceEvaluableForVector extends RankedChoiceEvaluableForMemo
 	 * @param size the number of vectors to store
 	 * @return a new memory bank for vectors
 	 */
-	@SuppressWarnings("unchecked")
 	@Override
 	public MemoryBank<Vector> createDestination(int size) { return (MemoryBank) Vector.bank(size); }
 }

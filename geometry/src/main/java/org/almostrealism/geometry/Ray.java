@@ -38,7 +38,7 @@ import java.util.stream.IntStream;
  * @author  Michael Murray
  */
 public class Ray extends PackedCollection implements GeometryFeatures, Cloneable {
-	private Ray(double coords[]) {
+	private Ray(double[] coords) {
 		this();
 		this.setMem(coords);
 	}
@@ -92,10 +92,10 @@ public class Ray extends PackedCollection implements GeometryFeatures, Cloneable
 	public Ray transform(TransformMatrix tm) {
 		// TODO  Hardware accelerate
 
-		double m[][] = tm.getMatrix();
+		double[][] m = tm.getMatrix();
 
-		double inCoords[] = toArray();
-		double outCoords[] = new double[6];
+		double[] inCoords = toArray();
+		double[] outCoords = new double[6];
 
 		outCoords[0] = m[0][0] * inCoords[0] + m[0][1] * inCoords[1] + m[0][2] * inCoords[2] + m[0][3];
 		outCoords[1] = m[1][0] * inCoords[0] + m[1][1] * inCoords[1] + m[1][2] * inCoords[2] + m[1][3];
@@ -136,7 +136,7 @@ public class Ray extends PackedCollection implements GeometryFeatures, Cloneable
 	 * @return  The origin of this Ray object as a Vector object.
 	 */
 	public Vector getOrigin() {
-		double coords[] = toArray();
+		double[] coords = toArray();
 		return new Vector(coords[0], coords[1], coords[2], Vector.CARTESIAN_COORDINATES);
 	}
 	
@@ -144,7 +144,7 @@ public class Ray extends PackedCollection implements GeometryFeatures, Cloneable
 	 * @return  The direction of this Ray object as a Vector object.
 	 */
 	public Vector getDirection() {
-		double coords[] = toArray();
+		double[] coords = toArray();
 		return new Vector(coords[3], coords[4], coords[5], Vector.CARTESIAN_COORDINATES);
 	}
 	
@@ -162,8 +162,8 @@ public class Ray extends PackedCollection implements GeometryFeatures, Cloneable
 	@Override
 	public boolean equals(Object o) {
 		if (!(o instanceof Ray)) return false;
-		double r1[] = this.toArray();
-		double r2[] = ((Ray) o).toArray();
+		double[] r1 = this.toArray();
+		double[] r2 = ((Ray) o).toArray();
 		return IntStream.range(0, 6).noneMatch(i -> r1[i] != r2[i]);
 	}
 
@@ -173,7 +173,7 @@ public class Ray extends PackedCollection implements GeometryFeatures, Cloneable
 	@Override
 	public Ray clone() {
 		// TODO  copy mem directly
-		double coords[] = toArray();
+		double[] coords = toArray();
 		return new Ray(coords);
 	}
 
@@ -184,7 +184,7 @@ public class Ray extends PackedCollection implements GeometryFeatures, Cloneable
 	 */
 	@Override
 	public String toString() {
-		double coords[] = toArray();
+		double[] coords = toArray();
 		return "Ray: [" + coords[0] + ", " + coords[1] + ", " + coords[2] +
 					"] [" + coords[3] + ", " + coords[4] + ", " + coords[5] + "]";
 	}
@@ -208,7 +208,7 @@ public class Ray extends PackedCollection implements GeometryFeatures, Cloneable
 	public static PackedCollection bank(int count, Supplier<Evaluable<? extends Ray>> source) {
 		PackedCollection bank = Ray.bank(count);
 		for (int i = 0; i < bank.getCountLong(); i++) {
-			bank.set(i, (Ray) source.get().evaluate());
+			bank.set(i, source.get().evaluate());
 		}
 
 		return bank;

@@ -34,7 +34,7 @@ import org.almostrealism.algebra.VectorFeatures;
  * @see Vector
  */
 public class UniformSphericalRandom implements Evaluable<Vector>, VectorFeatures {
-	private static UniformSphericalRandom local = new UniformSphericalRandom();
+	private static final UniformSphericalRandom local = new UniformSphericalRandom();
 
 	/**
 	 * Generates a random unit vector uniformly distributed on the unit sphere.
@@ -44,7 +44,7 @@ public class UniformSphericalRandom implements Evaluable<Vector>, VectorFeatures
 	 */
 	@Override
 	public Vector evaluate(Object[] args) {
-		double r[] = new double[3];
+		double[] r = new double[3];
 
 		double y = 2 * Math.PI * Math.random();
 		double z = 2 * Math.PI * Math.random();

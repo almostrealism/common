@@ -67,7 +67,7 @@ public interface TransformMatrixFeatures extends MatrixFeatures {
 	 * @return a producer that yields the specified matrix
 	 */
 	default CollectionProducer value(TransformMatrix v) {
-		return (CollectionProducer) (CollectionProducer) DefaultTraversableExpressionComputation.fixed(v, (BiFunction) TransformMatrix.postprocessor());
+		return DefaultTraversableExpressionComputation.fixed(v, (BiFunction) TransformMatrix.postprocessor());
 	}
 
 	/**
@@ -101,8 +101,8 @@ public interface TransformMatrixFeatures extends MatrixFeatures {
 	 */
 	default CollectionProducer scaleMatrix(Producer<PackedCollection> scale) {
 		CollectionProducerComputationBase m = (CollectionProducerComputationBase)
-				diagonal(concat(shape(4), (Producer) scale, c(1.0)));
-		return (CollectionProducer) (CollectionProducer) m.setPostprocessor((BiFunction) TransformMatrix.postprocessor());
+				diagonal(concat(shape(4), scale, c(1.0)));
+		return m.setPostprocessor((BiFunction) TransformMatrix.postprocessor());
 	}
 
 	/**
@@ -167,10 +167,10 @@ public interface TransformMatrixFeatures extends MatrixFeatures {
 													Producer<PackedCollection> vector, boolean includeTranslation) {
 		TraversalPolicy shape = shape(3);
 
-		vector = concat(shape(4), (Producer) vector, c(1.0));
+		vector = concat(shape(4), vector, c(1.0));
 
 		DefaultTraversableExpressionComputation c = new DefaultTraversableExpressionComputation("transform", shape,
-				(Function<TraversableExpression[], CollectionExpression>) args ->
+				args ->
 						new WeightedSumExpression(shape, includeTranslation ? 4 : 3, args[1], args[2],
 								(groupIndex, operandIndex) -> outputIndex -> {
 									if (operandIndex == 0) {
@@ -181,7 +181,7 @@ public interface TransformMatrixFeatures extends MatrixFeatures {
 										throw new IllegalArgumentException();
 									}
 								}),
-				(Producer) vector, (Producer) matrix);
+				vector, (Producer) matrix);
 		return c;
 	}
 

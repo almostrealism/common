@@ -308,7 +308,6 @@ public abstract class KdTree<T> {
     /**
      * Calculates the nearest 'count' points to 'location'
      */
-    @SuppressWarnings("unchecked")
     public List<Entry<T>> nearestNeighbor(double[] location, int count, boolean sequentialSorting) {
         KdTree<T> cursor = this;
         cursor.status = Status.NONE;

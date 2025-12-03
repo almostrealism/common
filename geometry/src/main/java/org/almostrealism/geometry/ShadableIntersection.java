@@ -24,6 +24,7 @@ import org.almostrealism.collect.PackedCollection;
 
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.ListIterator;
@@ -53,8 +54,8 @@ import java.util.ListIterator;
  * @see ContinuousField
  */
 public class ShadableIntersection extends Intersection implements ContinuousField, RayFeatures {
-	private Producer<PackedCollection> incident;
-	private Producer<PackedCollection> normal;
+	private final Producer<PackedCollection> incident;
+	private final Producer<PackedCollection> normal;
 
 	/**
 	 * Constructs a ShadableIntersection from a surface gradient, ray, and distance.
@@ -139,13 +140,13 @@ public class ShadableIntersection extends Intersection implements ContinuousFiel
 	public boolean contains(Object o) { return false; }
 
 	@Override
-	public Iterator<Producer<PackedCollection>> iterator() { return Arrays.asList(normal).iterator(); }
+	public Iterator<Producer<PackedCollection>> iterator() { return Collections.singletonList(normal).iterator(); }
 
 	@Override
 	public Object[] toArray() { return new Object[] { normal }; }
 
 	@Override
-	public <T> T[] toArray(T[] a) { return Arrays.asList(normal).toArray(a); }
+	public <T> T[] toArray(T[] a) { return Collections.singletonList(normal).toArray(a); }
 
 	@Override
 	public boolean add(Producer<PackedCollection> e) { return false; }
@@ -188,16 +189,16 @@ public class ShadableIntersection extends Intersection implements ContinuousFiel
 
 	@Override
 	public ListIterator<Producer<PackedCollection>> listIterator() {
-		return Arrays.asList(normal).listIterator();
+		return Collections.singletonList(normal).listIterator();
 	}
 
 	@Override
 	public ListIterator<Producer<PackedCollection>> listIterator(int index) {
-		return Arrays.asList(normal).listIterator();
+		return Collections.singletonList(normal).listIterator();
 	}
 
 	@Override
 	public List<Producer<PackedCollection>> subList(int fromIndex, int toIndex) {
-		return Arrays.asList(normal).subList(fromIndex, toIndex);
+		return Collections.singletonList(normal).subList(fromIndex, toIndex);
 	}
 }

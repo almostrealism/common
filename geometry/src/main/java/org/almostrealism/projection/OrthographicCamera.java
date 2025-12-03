@@ -49,7 +49,7 @@ public class OrthographicCamera implements Camera, Positioned, DecodePostProcess
 	private Vector location = new Vector(0.0, 0.0, 0.0);
 	private Vector viewDirection = new Vector(0.0, 0.0, 1.0);
 	private Vector upDirection = new Vector(0.0, 1.0, 0.0);
-	private Pair projectionDimensions = new Pair();
+	private final Pair projectionDimensions = new Pair();
   
 	protected Vector u, v, w;
   
@@ -183,7 +183,7 @@ public class OrthographicCamera implements Camera, Positioned, DecodePostProcess
 	 *          coordinate system described by this {@link Camera} to the standard x, y, z coordinates.
 	 */
 	public TransformMatrix getRotationMatrix() {
-	    double matrix[][] = {{this.u.getX(), this.u.getY(), this.u.getZ()},
+	    double[][] matrix = {{this.u.getX(), this.u.getY(), this.u.getZ()},
 	            				{this.v.getX(), this.v.getY(), this.v.getZ()},
 	            				{this.w.getX(), this.w.getY(), this.w.getZ()}};
 	    
@@ -196,8 +196,8 @@ public class OrthographicCamera implements Camera, Positioned, DecodePostProcess
 		CollectionProducer p = divide((Producer) pos, (Producer) sd).subtract(pair(0.5, 0.5)).multiply(v(getProjectionDimensions()));
 		CollectionProducer xy = vector(l(p), r(p), c(0.0));
 		Producer<PackedCollection> o = getRotationMatrix().getInverse()
-				.transform((Producer) xy, TransformMatrix.TRANSFORM_AS_LOCATION);
-		return ray(o, (Producer) v(viewDirection));
+				.transform(xy, TransformMatrix.TRANSFORM_AS_LOCATION);
+		return ray(o, v(viewDirection));
 	}
 
 	@Override

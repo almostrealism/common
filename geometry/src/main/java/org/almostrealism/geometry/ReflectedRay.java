@@ -79,7 +79,6 @@ public class ReflectedRay implements ProducerComputation<Ray>, GeometryFeatures 
 		Evaluable<PackedCollection> refl = reflected.get();
 
 		return new Evaluable<>() {
-			@SuppressWarnings("unchecked")
 			@Override
 			public MemoryBank<Ray> createDestination(int size) { return (MemoryBank) Ray.bank(size); }
 
