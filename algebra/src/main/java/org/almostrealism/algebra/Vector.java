@@ -154,17 +154,6 @@ public class Vector extends PackedCollection implements VectorFeatures, Cloneabl
 	}
 
 	/**
-	 * Constructs a new {@link Vector} with the same coordinates as the specified {@link Vector}.
-	 * This is a copy constructor that creates an independent copy of the vector data.
-	 *
-	 * @param v  the vector to copy
-	 */
-	public Vector(Vector v) {
-		this();
-		setMem(v.toArray(), 0); // TODO  Directly copy mem (offset needs to be known though)
-	}
-
-	/**
 	 * Constructs a new {@link Vector} using the specified coordinates and coordinate system.
 	 *
 	 * <p>
@@ -675,6 +664,19 @@ public class Vector extends PackedCollection implements VectorFeatures, Cloneabl
 	public static PackedCollection bank(int count) {
 		return new PackedCollection(new TraversalPolicy(count, 3), 1, delegateSpec ->
 				new Vector(delegateSpec.getDelegate(), delegateSpec.getOffset()));
+	}
+
+	public static Vector view(PackedCollection collection) {
+		return view(collection, 0);
+	}
+
+	public static Vector view(PackedCollection collection, int pos) {
+		TraversalPolicy shape = collection.getShape();
+		if (shape.length(shape.getDimensions() - 1) != 3) {
+			throw new IllegalArgumentException();
+		}
+
+		return new Vector(collection.getDelegate(), pos * 3);
 	}
 
 	/**

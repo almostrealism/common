@@ -197,7 +197,7 @@ public class TransformMatrix extends PackedCollection implements TransformMatrix
 	public double[] transform(double x, double y, double z, int type) {
 		if (this.isIdentity) return new double[] {x, y, z};
 
-		return ((PackedCollection) transform(vector(x, y, z), type).get().evaluate()).toArray();
+		return transform(vector(x, y, z), type).get().evaluate().toArray();
 	}
 
 	/**
@@ -209,7 +209,7 @@ public class TransformMatrix extends PackedCollection implements TransformMatrix
 		vector = vector.clone();
 		if (this.isIdentity) return vector;
 
-		return (Vector) transform(v(vector), TRANSFORM_AS_LOCATION).get().evaluate();
+		return Vector.view(transform(v(vector), TRANSFORM_AS_LOCATION).get().evaluate());
 	}
 
 	/**
@@ -221,7 +221,7 @@ public class TransformMatrix extends PackedCollection implements TransformMatrix
 		vector = vector.clone();
 		if (this.isIdentity) return vector;
 
-		return (Vector) transform(v(vector), TRANSFORM_AS_OFFSET).get().evaluate();
+		return Vector.view(transform(v(vector), TRANSFORM_AS_OFFSET).get().evaluate());
 	}
 
 	/**
@@ -233,7 +233,7 @@ public class TransformMatrix extends PackedCollection implements TransformMatrix
 		vector = vector.clone();
 		if (this.isIdentity) return vector;
 
-		return (Vector) transform(v(vector), TRANSFORM_AS_NORMAL).get().evaluate();
+		return Vector.view(transform(v(vector), TRANSFORM_AS_NORMAL).get().evaluate());
 	}
 
 	public CollectionProducer transform(Producer<?> ray) {
