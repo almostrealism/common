@@ -171,7 +171,7 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 			return false;
 		}
 
-		// For strict mode: dimensions must match exactly (ignoring traversal axis)
+		// dimensions must match exactly (ignoring traversal axis)
 		return actual.equalsIgnoreAxis(expected);
 	}
 
@@ -193,8 +193,9 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 									 TraversalPolicy inputShape,
 									 TraversalPolicy outputShape,
 									 Factor<PackedCollection> operator) {
-		// Create a placeholder producer with the input shape
-		Producer<PackedCollection> testInput = cp(new PackedCollection(inputShape));
+		// Create a dynamic producer with the input shape that does nothing
+		// This avoids allocating actual memory for shape validation
+		Producer<PackedCollection> testInput = func(inputShape, args -> null);
 
 		// Apply the operator using getResultant
 		Producer<PackedCollection> result = operator.getResultant(testInput);
@@ -266,6 +267,28 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 		return layer(name, inputShape, outputShape, operator, weights, new OperationList(), requirements);
 	}
 
+	/**
+	 * Creates a cellular layer with shape validation.
+	 *
+	 * <p>This method validates that the operator produces the expected output shape before creating
+	 * the layer. If the operator produces an incompatible shape, an {@link IllegalArgumentException}
+	 * is thrown at layer creation time rather than at runtime.</p>
+	 *
+	 * <p><b>Important:</b> Each layer's operator is responsible for producing output that matches
+	 * the declared output shape. If internal computations produce different shapes (e.g., matmul
+	 * conventions), the operator must include an explicit reshape to the declared output shape.</p>
+	 *
+	 * @param name Layer name for identification and error messages
+	 * @param inputShape Expected input shape for the layer
+	 * @param outputShape Expected output shape for the layer
+	 * @param operator The transformation to apply (must produce outputShape from inputShape)
+	 * @param weights Learnable parameters for this layer
+	 * @param setup Initialization operation for the layer
+	 * @param requirements Optional compute requirements
+	 * @return A new CellularLayer with the validated operator
+	 * @throws IllegalArgumentException if the operator produces an incompatible shape
+	 * @see #validateFactorShape(String, TraversalPolicy, TraversalPolicy, Factor)
+	 */
 	default CellularLayer layer(String name, TraversalPolicy inputShape, TraversalPolicy outputShape,
 								Factor<PackedCollection> operator,
 								List<PackedCollection> weights,
@@ -417,6 +440,23 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 		return layer;
 	}
 
+	/**
+	 * Creates an operation that copies data from one producer to another with strict shape validation.
+	 *
+	 * <p>This method enforces that the input and output shapes match exactly (ignoring traversal axis).
+	 * If shapes do not match, an {@link IllegalArgumentException} is thrown immediately rather than
+	 * allowing silent reshaping. This strict enforcement ensures shape bugs are caught at layer
+	 * creation time rather than causing subtle numerical errors at runtime.</p>
+	 *
+	 * @param name Operation name for error messages
+	 * @param in The source producer
+	 * @param out The destination producer
+	 * @param copy If true and count is 1, uses memory copy; otherwise uses assignment
+	 * @param requirements Optional compute requirements for the operation
+	 * @return A supplier that produces the copy operation
+	 * @throws IllegalArgumentException if shapes do not match
+	 * @see #isShapeCompatible(TraversalPolicy, TraversalPolicy)
+	 */
 	default Supplier<Runnable> into(String name,
 								 Producer<PackedCollection> in, Producer<PackedCollection> out,
 								 boolean copy,
@@ -424,6 +464,23 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 		return into(name, in, out, copy, requirements.length > 0 ? List.of(requirements) : null);
 	}
 
+	/**
+	 * Creates an operation that copies data from one producer to another with strict shape validation.
+	 *
+	 * <p>This method enforces that the input and output shapes match exactly (ignoring traversal axis).
+	 * If shapes do not match, an {@link IllegalArgumentException} is thrown immediately rather than
+	 * allowing silent reshaping. This strict enforcement ensures shape bugs are caught at layer
+	 * creation time rather than causing subtle numerical errors at runtime.</p>
+	 *
+	 * @param name Operation name for error messages
+	 * @param in The source producer
+	 * @param out The destination producer
+	 * @param copy If true and count is 1, uses memory copy; otherwise uses assignment
+	 * @param requirements Optional list of compute requirements for the operation
+	 * @return A supplier that produces the copy operation
+	 * @throws IllegalArgumentException if shapes do not match
+	 * @see #isShapeCompatible(TraversalPolicy, TraversalPolicy)
+	 */
 	default Supplier<Runnable> into(String name,
 								 Producer<PackedCollection> in, Producer<PackedCollection> out,
 								 boolean copy,
@@ -784,7 +841,7 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 			CollectionProducer result = biases != null ?
 					matmul(p(weights), input).add(traverse(1, p(biases))) :
 					matmul(p(weights), input);
-			// matmul produces (nodes, batched), reshape to declared (batched, nodes)
+			// Ensure output shape matches declared (batched, nodes) format
 			return result.reshape(outputShape);
 		};
 

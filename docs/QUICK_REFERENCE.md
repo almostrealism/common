@@ -339,6 +339,7 @@ mvn test -pl <module> -Dtest=<TestName>
 | Error | Cause | Fix |
 |-------|-------|-----|
 | `NoClassDefFoundError: PackedCollection` | Missing env vars | Set AR_HARDWARE_LIBS, AR_HARDWARE_DRIVER |
+| `IllegalArgumentException` at layer creation | Layer output shape doesn't match declared shape | Ensure operator produces correct shape; add `.reshape(outputShape)` if needed |
 | `Shape mismatch` | Incompatible dimensions | Check tensor shapes before operations |
 | `OutOfMemoryError` | GPU memory exhausted | Reduce batch size, use CPU |
 | `NullPointerException` in evaluate | Producer not compiled | Call `.get()` before `.evaluate()` |
