@@ -227,6 +227,34 @@ rmsnorm(weights, epsilon, requirements);
 norm(weights, bias, epsilon, requirements);  // Handles RMSNorm, LayerNorm, QK-Norm
 ```
 
+---
+
+## ABSOLUTELY NO CODE DUPLICATION
+
+**THIS IS NON-NEGOTIABLE.**
+
+If you find yourself copying and pasting code, or writing nearly-identical logic multiple times, **STOP IMMEDIATELY**. This is unacceptable and will never be tolerated.
+
+**The rule**: If you have written more than 3-5 lines that are structurally similar to other code, you MUST refactor to eliminate the duplication BEFORE proceeding. Use:
+- Helper methods with parameters
+- Generic methods with type parameters
+- Factory functions
+- Higher-order functions that accept lambdas/functional interfaces
+- Template method pattern
+- Any other appropriate abstraction
+
+**Examples of violations**:
+- Writing two attention implementations with identical structure but different model names
+- Copy-pasting a layer method and changing a few parameter names
+- Creating model-specific methods when a generalized version would work
+- Duplicating tokenizer logic across different models
+
+**No exceptions. No excuses. Refactor first, then proceed.**
+
+The threshold is NOT 20 lines. If you catch yourself typing similar code a second time, that is already too much. Extract it immediately.
+
+---
+
 ## References
 
 - [Common AR Guidelines](../claude.md) - General framework patterns

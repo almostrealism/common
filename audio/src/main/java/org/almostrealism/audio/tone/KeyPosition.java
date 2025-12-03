@@ -32,4 +32,8 @@ public interface KeyPosition<T extends KeyPosition<T>> {
 			}
 		};
 	}
+
+	static KeyPosition of(String name) {
+		return WesternChromatic.valueOf(name);
+	}
 }

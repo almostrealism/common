@@ -91,6 +91,16 @@ public class ModelWeights extends StateDictionary {
 
 ### Generalize, Don't Duplicate
 
+## ABSOLUTELY NO CODE DUPLICATION - THIS IS NON-NEGOTIABLE
+
+If you find yourself copying and pasting code, or writing nearly-identical logic multiple times, **STOP IMMEDIATELY**. This is unacceptable and will never be tolerated.
+
+**The rule**: If you have written more than 3-5 lines that are structurally similar to other code, you MUST refactor to eliminate the duplication BEFORE proceeding. Use helper methods, generics, factory functions, lambdas, or any appropriate abstraction.
+
+**No exceptions. No excuses. Refactor first, then proceed.**
+
+---
+
 **Principle**: Extend and generalize existing code rather than creating model-specific copies.
 
 ```java
