@@ -29,10 +29,79 @@ import java.util.concurrent.Executors;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
+/**
+ * Manages real-time audio processing by coordinating input reading, audio processing,
+ * and output writing with adaptive timing control to prevent buffer underruns and overruns.
+ *
+ * <h2>Overview</h2>
+ * <p>
+ * {@link BufferedOutputScheduler} acts as a bridge between audio processing logic and
+ * hardware audio lines. It runs a continuous loop that reads from an input line,
+ * processes audio through a {@link TemporalRunner}, and writes to an output line,
+ * all while maintaining timing that keeps pace with real-time playback.
+ * </p>
+ *
+ * <h2>Buffer Safety Model</h2>
+ * <p>
+ * The output buffer is logically divided into groups (determined by
+ * {@link BufferDefaults#groups}). After filling each group, the scheduler pauses
+ * to allow the output line's read position to advance. It automatically resumes
+ * when {@link BufferDefaults#isSafeGroup} confirms the read position has moved
+ * to a safe location, preventing the write position from overwriting unread data.
+ * </p>
+ *
+ * <h2>Timing Control</h2>
+ * <p>
+ * Adaptive sleep durations are calculated based on:
+ * </p>
+ * <ul>
+ *   <li>Historical timing data smoothed by {@link TimingRegularizer}</li>
+ *   <li>The rendering gap (how far ahead rendering is compared to real-time)</li>
+ *   <li>A constant timing pad adjustment ({@link #timingPad})</li>
+ * </ul>
+ * <p>
+ * When paused, the scheduler uses shorter sleep intervals (1/4 of normal) to
+ * enable faster detection of safe resume conditions.
+ * </p>
+ *
+ * <h2>Usage</h2>
+ * <pre>{@code
+ * // Create with a CellList source
+ * BufferedOutputScheduler scheduler = BufferedOutputScheduler.create(
+ *     inputLine, outputLine, cellList);
+ *
+ * // Start processing
+ * scheduler.start();
+ *
+ * // Later, stop processing
+ * scheduler.stop();
+ * }</pre>
+ *
+ * @see AudioBuffer
+ * @see InputLine
+ * @see OutputLine
+ * @see TemporalRunner
+ * @see TimingRegularizer
+ * @see BufferDefaults
+ */
 public class BufferedOutputScheduler implements CellFeatures {
+	/**
+	 * Constant adjustment (in milliseconds) applied to sleep duration calculations.
+	 * A negative value causes slightly shorter sleeps, helping to stay ahead of
+	 * real-time playback and reduce the risk of buffer underruns.
+	 */
 	public static final long timingPad = -3;
 
-	public static boolean enableVerbose = false;
+	/**
+	 * When {@code true}, enables detailed logging of scheduler state during
+	 * active and paused cycles. Useful for debugging timing issues.
+	 */
+	public static boolean enableVerbose = true;
+
+	/**
+	 * Controls how frequently log messages are emitted when {@link #enableVerbose}
+	 * is {@code true}. A message is logged every {@code logRate} cycles.
+	 */
 	public static int logRate = 1024;
 
 	private final Consumer<Runnable> executor;
@@ -56,6 +125,16 @@ public class BufferedOutputScheduler implements CellFeatures {
 	private boolean paused;
 	private long lastPause, totalPaused;
 
+	/**
+	 * Creates a new scheduler with the specified components.
+	 *
+	 * @param executor consumer that accepts and runs the scheduler's main loop
+	 * @param process  the temporal runner that performs audio processing each tick
+	 * @param input    the input line to read audio data from, or {@code null} if no input
+	 * @param output   the output line to write processed audio to
+	 * @param buffer   the audio buffer used for intermediate storage between input,
+	 *                 processing, and output stages
+	 */
 	protected BufferedOutputScheduler(
 			Consumer<Runnable> executor, TemporalRunner process,
 			InputLine input, OutputLine output, AudioBuffer buffer) {
@@ -68,6 +147,15 @@ public class BufferedOutputScheduler implements CellFeatures {
 		this.groupSize = output.getBufferSize() / BufferDefaults.groups;
 	}
 
+	/**
+	 * Initializes and starts the scheduler's processing loop.
+	 * <p>
+	 * This method sets up the temporal process, compiles the operations pipeline,
+	 * initializes the timing regularizer, and submits the main loop to the executor.
+	 * </p>
+	 *
+	 * @throws UnsupportedOperationException if the scheduler has already been started
+	 */
 	public void start() {
 		if (next != null) {
 			throw new UnsupportedOperationException();
@@ -79,8 +167,22 @@ public class BufferedOutputScheduler implements CellFeatures {
 		regularizer = new TimingRegularizer((long) (buffer.getDetails().getDuration() * 10e9));
 
 		executor.accept(this::run);
+		log("Started BufferedOutputScheduler");
 	}
 
+	/**
+	 * Builds the operations pipeline that executes each processing cycle.
+	 * <p>
+	 * The pipeline consists of three stages:
+	 * </p>
+	 * <ol>
+	 *   <li>Read from input line into the buffer's input buffer (if input is available)</li>
+	 *   <li>Tick the temporal process to generate/transform audio</li>
+	 *   <li>Write from the buffer's output buffer to the output line (if output is available)</li>
+	 * </ol>
+	 *
+	 * @return a supplier that provides the compiled runnable operation
+	 */
 	protected Supplier<Runnable> getOperations() {
 		OperationList operations = new OperationList("BufferedOutputScheduler");
 
@@ -101,6 +203,16 @@ public class BufferedOutputScheduler implements CellFeatures {
 		return operations;
 	}
 
+	/**
+	 * Pauses the scheduler after completing a buffer group.
+	 * <p>
+	 * When paused, the scheduler stops processing new audio but continues
+	 * monitoring the output line's read position. It will automatically
+	 * resume via {@link #attemptAutoResume()} when safe to continue writing.
+	 * </p>
+	 *
+	 * @throws UnsupportedOperationException if already paused
+	 */
 	public void pause() {
 		if (paused) {
 			throw new UnsupportedOperationException();
@@ -129,6 +241,16 @@ public class BufferedOutputScheduler implements CellFeatures {
 		}
 	}
 
+	/**
+	 * Resumes the scheduler from a paused state.
+	 * <p>
+	 * If not currently paused, this method waits for a pause notification.
+	 * Upon resuming, it updates the total paused time tracking and resets
+	 * the group timing.
+	 * </p>
+	 *
+	 * @throws InterruptedException if the thread is interrupted while waiting
+	 */
 	public void resume() throws InterruptedException {
 		if (!paused) {
 			log("Waiting");
@@ -143,14 +265,32 @@ public class BufferedOutputScheduler implements CellFeatures {
 		paused = false;
 	}
 
+	/**
+	 * Returns the current write position within the circular output buffer.
+	 *
+	 * @return the buffer index where the next audio frame will be written
+	 */
 	public int getWritePosition() {
 		return (int) ((count * buffer.getDetails().getFrames()) % output.getBufferSize());
 	}
 
+	/**
+	 * Returns the index of the last group that was read from by the output line.
+	 *
+	 * @return the group index based on the last recorded read position
+	 */
 	public int getLastGroup() {
 		return lastReadPosition / groupSize;
 	}
 
+	/**
+	 * Attempts to automatically resume processing if currently paused and safe to do so.
+	 * <p>
+	 * Safety is determined by {@link BufferDefaults#isSafeGroup}, which checks that
+	 * the write position and read position are in different buffer groups, ensuring
+	 * no data will be overwritten before it's played.
+	 * </p>
+	 */
 	protected void attemptAutoResume() {
 		if (!paused) return;
 
@@ -167,25 +307,111 @@ public class BufferedOutputScheduler implements CellFeatures {
 		}
 	}
 
+	/**
+	 * Signals the scheduler to stop processing after the current cycle completes.
+	 */
 	public void stop() { stopped = true; }
 
+	/**
+	 * Returns the audio buffer used for intermediate storage.
+	 *
+	 * @return the audio buffer
+	 */
 	public AudioBuffer getBuffer() { return buffer; }
+
+	/**
+	 * Returns the input line used for reading audio data.
+	 *
+	 * @return the input line, or {@code null} if no input is configured
+	 */
 	public InputLine getInputLine() { return input; }
+
+	/**
+	 * Returns the output line used for writing audio data.
+	 *
+	 * @return the output line
+	 */
 	public OutputLine getOutputLine() { return output; }
 
+	/**
+	 * Converts a duration to "real time" by applying the buffering rate multiplier.
+	 *
+	 * @param t the duration in milliseconds
+	 * @return the adjusted duration
+	 */
 	protected long toRealTime(double t) { return (long) (t * rate); }
+
+	/**
+	 * Converts a "real time" duration back to actual time by removing the buffering rate multiplier.
+	 *
+	 * @param t the adjusted duration
+	 * @return the actual duration in milliseconds
+	 */
 	protected long fromRealTime(double t) { return (long) (t / rate); }
 
+	/**
+	 * Returns the number of processing cycles that have been completed.
+	 *
+	 * @return the cycle count
+	 */
 	public long getRenderedCount() { return count; }
+
+	/**
+	 * Returns the total number of audio frames that have been rendered.
+	 *
+	 * @return the rendered frame count
+	 */
 	public long getRenderedFrames() { return count * buffer.getDetails().getFrames(); }
+
+	/**
+	 * Returns the elapsed real time since the scheduler started, adjusted for pauses.
+	 *
+	 * @return the adjusted elapsed time in milliseconds
+	 */
 	public long getRealTime() { return toRealTime(System.currentTimeMillis() - start - totalPaused); }
+
+	/**
+	 * Returns the duration of audio that has been rendered, in milliseconds.
+	 *
+	 * @return the rendered audio duration
+	 */
 	public long getRenderedTime() { return getRenderedFrames() * 1000 / output.getSampleRate(); }
+
+	/**
+	 * Returns the difference between rendered time and real time.
+	 * <p>
+	 * A positive value indicates rendering is ahead of playback (good),
+	 * while a negative value indicates rendering is behind (risk of underrun).
+	 * </p>
+	 *
+	 * @return the rendering gap in milliseconds
+	 */
 	public long getRenderingGap() { return getRenderedTime() - getRealTime(); }
 
+	/**
+	 * Calculates the target sleep duration for the current cycle.
+	 *
+	 * @return the sleep duration in milliseconds
+	 * @see #getTarget(boolean)
+	 */
 	protected long getTarget() {
 		return getTarget(paused);
 	}
 
+	/**
+	 * Calculates the target sleep duration based on timing state and pause status.
+	 * <p>
+	 * The calculation considers:
+	 * </p>
+	 * <ul>
+	 *   <li>The timing regularizer's smoothed timing difference</li>
+	 *   <li>When not paused: adds half the rendering gap and the timing pad</li>
+	 *   <li>When paused: uses 1/4 of the base target for faster resume detection</li>
+	 * </ul>
+	 *
+	 * @param paused whether the scheduler is currently paused
+	 * @return the sleep duration in milliseconds (minimum 1ms)
+	 */
 	protected long getTarget(boolean paused) {
 		long target = fromRealTime(regularizer.getTimingDifference() / 10e6);
 
@@ -199,6 +425,21 @@ public class BufferedOutputScheduler implements CellFeatures {
 		return target < 1 ? 1 : target;
 	}
 
+	/**
+	 * The main processing loop that runs on the executor thread.
+	 * <p>
+	 * This loop continuously:
+	 * </p>
+	 * <ol>
+	 *   <li>Checks for auto-resume conditions if paused</li>
+	 *   <li>Executes the operations pipeline (input → process → output)</li>
+	 *   <li>Pauses after completing each buffer group</li>
+	 *   <li>Sleeps for an adaptive duration to maintain timing</li>
+	 * </ol>
+	 * <p>
+	 * The loop exits when {@link #stop()} is called.
+	 * </p>
+	 */
 	protected void run() {
 		start = System.currentTimeMillis();
 		long lastDuration = 0;
@@ -250,16 +491,41 @@ public class BufferedOutputScheduler implements CellFeatures {
 		log("Stopped");
 	}
 
+	/**
+	 * Creates a scheduler with a custom executor and default frame size.
+	 *
+	 * @param executor the executor service for running the scheduler loop
+	 * @param input    the input line, or {@code null} for no input
+	 * @param output   the output line
+	 * @param source   the audio processing operation
+	 * @return a new scheduler instance
+	 */
 	public static BufferedOutputScheduler create(ExecutorService executor,
 												 InputLine input, OutputLine output,
 										 	 	 AudioLineOperation source) {
 		return create(executor, input, output, output.getBufferSize() / BufferDefaults.batchCount, source);
 	}
 
+	/**
+	 * Creates a scheduler from a {@link CellList} source with default settings.
+	 *
+	 * @param input  the input line, or {@code null} for no input
+	 * @param output the output line
+	 * @param source the cell list providing audio processing
+	 * @return a new scheduler instance
+	 */
 	public static BufferedOutputScheduler create(InputLine input, OutputLine output, CellList source) {
 		return create(input, output, source.toLineOperation());
 	}
 
+	/**
+	 * Creates a scheduler with default executor and frame size.
+	 *
+	 * @param input  the input line, or {@code null} for no input
+	 * @param output the output line
+	 * @param source the audio processing operation
+	 * @return a new scheduler instance
+	 */
 	public static BufferedOutputScheduler create(InputLine input, OutputLine output,
 												 AudioLineOperation source) {
 		return create(input, output,
@@ -267,6 +533,15 @@ public class BufferedOutputScheduler implements CellFeatures {
 				source);
 	}
 
+	/**
+	 * Creates a scheduler from a {@link CellList} source with a custom frame size.
+	 *
+	 * @param input  the input line, or {@code null} for no input
+	 * @param output the output line
+	 * @param frames the number of audio frames per processing cycle
+	 * @param source the cell list providing audio processing
+	 * @return a new scheduler instance
+	 */
 	public static BufferedOutputScheduler create(InputLine input, OutputLine output, int frames,
 												 CellList source) {
 		return create(Executors.newSingleThreadExecutor(),
@@ -274,12 +549,35 @@ public class BufferedOutputScheduler implements CellFeatures {
 						source.toLineOperation());
 	}
 
+	/**
+	 * Creates a scheduler with a custom frame size and default executor.
+	 *
+	 * @param input  the input line, or {@code null} for no input
+	 * @param output the output line
+	 * @param frames the number of audio frames per processing cycle
+	 * @param source the audio processing operation
+	 * @return a new scheduler instance
+	 */
 	public static BufferedOutputScheduler create(InputLine input, OutputLine output, int frames,
 												 AudioLineOperation source) {
 		return create(Executors.newSingleThreadExecutor(),
 						input, output, frames, source);
 	}
 
+	/**
+	 * Creates a scheduler with a custom executor and frame size.
+	 * <p>
+	 * This method creates an {@link AudioBuffer} based on the output line's
+	 * sample rate and the specified frame count.
+	 * </p>
+	 *
+	 * @param executor the executor service for running the scheduler loop
+	 * @param input    the input line, or {@code null} for no input
+	 * @param output   the output line
+	 * @param frames   the number of audio frames per processing cycle
+	 * @param source   the audio processing operation
+	 * @return a new scheduler instance
+	 */
 	public static BufferedOutputScheduler create(ExecutorService executor,
 												 InputLine input, OutputLine output, int frames,
 												 AudioLineOperation source) {
@@ -288,6 +586,21 @@ public class BufferedOutputScheduler implements CellFeatures {
 				source);
 	}
 
+	/**
+	 * Creates a scheduler with full control over all parameters.
+	 * <p>
+	 * This is the primary factory method that all other {@code create} methods
+	 * delegate to. It initializes the scheduler with the provided audio buffer
+	 * and converts the audio line operation into a temporal runner.
+	 * </p>
+	 *
+	 * @param executor the executor service for running the scheduler loop
+	 * @param input    the input line, or {@code null} for no input
+	 * @param output   the output line
+	 * @param buffer   the audio buffer for intermediate storage
+	 * @param source   the audio processing operation
+	 * @return a new scheduler instance
+	 */
 	public static BufferedOutputScheduler create(ExecutorService executor,
 												 InputLine input, OutputLine output,
 												 AudioBuffer buffer, AudioLineOperation source) {
