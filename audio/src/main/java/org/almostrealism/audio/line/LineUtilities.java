@@ -29,6 +29,7 @@ import java.io.BufferedInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 
 public class LineUtilities {
 	protected static AudioFormat lastFormat;
@@ -43,7 +44,7 @@ public class LineUtilities {
 					OutputLine.sampleRate, false);
 		}
 
-		return getLine(lastFormat);
+		return getLine(lastFormat, BufferDefaults.defaultBufferSize);
 	}
 
 	public static int frameCount(PackedCollection sample) {
@@ -53,11 +54,15 @@ public class LineUtilities {
 			return sample.getShape().length(1);
 		}
 	}
+
+	public static OutputLine getLine(AudioFormat format) {
+		return getLine(format, 1024);
+	}
 	
 	/**
 	 * Returns a SourceDataOutputLine for the specified format.
 	 */
-	public static OutputLine getLine(AudioFormat format) {
+	public static OutputLine getLine(AudioFormat format, int bufferFrames) {
 		SourceDataLine line;
 		DataLine.Info info = new DataLine.Info(SourceDataLine.class, format);
 		if (!AudioSystem.isLineSupported(info)) {
@@ -69,14 +74,14 @@ public class LineUtilities {
 		
 		try {
 			line = (SourceDataLine) AudioSystem.getLine(info);
-			line.open(format);
+			line.open(format, Math.max(1024, bufferFrames * 4));
 			line.start();
 		} catch (LineUnavailableException ex) {
 			System.out.println("Unavailable (" + ex.getMessage() + ")");
 			return null;
 		}
 		
-		return new SourceDataOutputLine(line);
+		return new SourceDataOutputLine(line, bufferFrames);
 	}
 
 	/**
@@ -100,7 +105,7 @@ public class LineUtilities {
 		ByteBuffer buf = ByteBuffer.allocate(sampleCount * frameSize);
 
 		if (!format.isBigEndian()) {
-			buf.order(java.nio.ByteOrder.LITTLE_ENDIAN);
+			buf.order(ByteOrder.LITTLE_ENDIAN);
 		}
 
 		int bitRate = format.getSampleSizeInBits();

@@ -96,13 +96,26 @@ public class BufferedOutputScheduler implements CellFeatures {
 	 * When {@code true}, enables detailed logging of scheduler state during
 	 * active and paused cycles. Useful for debugging timing issues.
 	 */
-	public static boolean enableVerbose = true;
+	public static boolean enableVerbose = false;
 
 	/**
 	 * Controls how frequently log messages are emitted when {@link #enableVerbose}
 	 * is {@code true}. A message is logged every {@code logRate} cycles.
 	 */
 	public static int logRate = 1024;
+
+	/**
+	 * Sleep target threshold (in milliseconds) below which the scheduler enters
+	 * degraded mode. When the calculated sleep time falls to or below this value,
+	 * the system cannot keep up with real-time audio generation.
+	 */
+	public static final long DEGRADED_THRESHOLD = 3;
+
+	/**
+	 * Number of consecutive cycles with good performance required before exiting
+	 * degraded mode. This hysteresis prevents rapid oscillation between modes.
+	 */
+	public static final int RECOVERY_CYCLES = 4;
 
 	private final Consumer<Runnable> executor;
 	private final TemporalRunner process;
@@ -124,6 +137,9 @@ public class BufferedOutputScheduler implements CellFeatures {
 
 	private boolean paused;
 	private long lastPause, totalPaused;
+
+	private boolean degradedMode;
+	private int recoveryCount;
 
 	/**
 	 * Creates a new scheduler with the specified components.
@@ -334,6 +350,19 @@ public class BufferedOutputScheduler implements CellFeatures {
 	public OutputLine getOutputLine() { return output; }
 
 	/**
+	 * Returns whether the scheduler is currently in degraded mode.
+	 * <p>
+	 * Degraded mode is entered when the system cannot generate audio fast enough
+	 * to keep up with real-time playback. In this mode, the pause/resume pattern
+	 * is bypassed to allow continuous (albeit potentially glitchy) audio output
+	 * rather than complete silence.
+	 * </p>
+	 *
+	 * @return {@code true} if in degraded mode, {@code false} otherwise
+	 */
+	public boolean isDegradedMode() { return degradedMode; }
+
+	/**
 	 * Converts a duration to "real time" by applying the buffering rate multiplier.
 	 *
 	 * @param t the duration in milliseconds
@@ -456,11 +485,15 @@ public class BufferedOutputScheduler implements CellFeatures {
 				count++;
 
 				if (getRenderedFrames() % groupSize == 0) {
-					pause();
+					if (!degradedMode) {
+						pause();
+					}
 				}
 
 				target = getTarget();
 				lastDuration = System.nanoTime() - s;
+
+				updateDegradedMode(target);
 
 				if (enableVerbose && count % logRate == 0) {
 					log("Active cycle " + count +
@@ -468,7 +501,8 @@ public class BufferedOutputScheduler implements CellFeatures {
 							" | sleep=" + target + "ms" +
 							" | gap=" + getRenderingGap() + "ms" +
 							" | wp=" + getWritePosition() +
-							" | rp=" + output.getReadPosition());
+							" | rp=" + output.getReadPosition() +
+							(degradedMode ? " | DEGRADED" : ""));
 				}
 			} else {
 				target = getTarget();
@@ -489,6 +523,35 @@ public class BufferedOutputScheduler implements CellFeatures {
 		}
 
 		log("Stopped");
+	}
+
+	/**
+	 * Updates the degraded mode state based on the current sleep target.
+	 * <p>
+	 * Enters degraded mode when the target falls to or below {@link #DEGRADED_THRESHOLD}.
+	 * Exits degraded mode after {@link #RECOVERY_CYCLES} consecutive cycles with
+	 * the target above twice the threshold (hysteresis to prevent oscillation).
+	 * </p>
+	 *
+	 * @param target the current sleep target in milliseconds
+	 */
+	private void updateDegradedMode(long target) {
+		if (!degradedMode && target <= DEGRADED_THRESHOLD) {
+			degradedMode = true;
+			recoveryCount = 0;
+			warn("Entering degraded mode - sleep target: " + target + "ms, gap: " + getRenderingGap() + "ms");
+		} else if (degradedMode) {
+			if (target > DEGRADED_THRESHOLD * 2) {
+				recoveryCount++;
+				if (recoveryCount >= RECOVERY_CYCLES) {
+					degradedMode = false;
+					recoveryCount = 0;
+					log("Exiting degraded mode - performance restored");
+				}
+			} else {
+				recoveryCount = 0;
+			}
+		}
 	}
 
 	/**
