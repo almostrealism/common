@@ -386,7 +386,8 @@ public interface AttentionFeatures extends RotationFeatures {
 		int seqLen = freqCis.getShape().length(0);
 		int kvDim = dim * kvHeads / heads;
 
-		SequentialBlock attention = new SequentialBlock(shape(dim));
+		TraversalPolicy inputShape = shape(1, dim);
+		SequentialBlock attention = new SequentialBlock(inputShape);
 
 		PackedCollection keyCache = new PackedCollection(seqLen, kvHeads, headSize);
 		PackedCollection valueCache = new PackedCollection(seqLen, kvHeads, headSize);
@@ -395,7 +396,7 @@ public interface AttentionFeatures extends RotationFeatures {
 		keyCache.clear();
 		valueCache.clear();
 
-		attention.add(rmsnorm(rmsAttWeight, requirements));
+		attention.add(rmsnorm(inputShape, rmsAttWeight, requirements));
 
 		SequentialBlock keys = attention.branch();
 		SequentialBlock values = attention.branch();
@@ -642,7 +643,7 @@ public interface AttentionFeatures extends RotationFeatures {
 			PackedCollection w1, PackedCollection w2, PackedCollection w3,
 			ComputeRequirement... requirements) {
 		int dim = w2.getShape().length(0);
-		return feedForward(shape(dim), rms, null,
+		return feedForward(shape(1, dim), rms, null,
 				w1, w2, w3, null, null, null,
 				requirements);
 	}
@@ -672,7 +673,7 @@ public interface AttentionFeatures extends RotationFeatures {
 			PackedCollection w1Bias, PackedCollection w2Bias, PackedCollection w3Bias,
 			ComputeRequirement... requirements) {
 		SequentialBlock feedForward = new SequentialBlock(shape);
-		feedForward.add(rmsnorm(normWeights, normBiases, requirements));
+		feedForward.add(rmsnorm(shape, normWeights, normBiases, requirements));
 
 		SequentialBlock hidden = new SequentialBlock(shape);
 		hidden.add(dense(w1, w1Bias));
@@ -1005,7 +1006,8 @@ public interface AttentionFeatures extends RotationFeatures {
 							  Producer<PackedCollection> position,
 							  ComputeRequirement... requirements) {
 		int dim = rmsAttWeight.getShape().length(0);
-		SequentialBlock transformer = new SequentialBlock(shape(dim));
+
+		SequentialBlock transformer = new SequentialBlock(shape(1, dim));
 		transformer.accum(attention(heads, kvHeads, rmsAttWeight, wk, wv, wq, wo,
 				bk, bv, bq, qkNormQ, qkNormK, freqCis, position, requirements), requirements);
 		transformer.accum(feedForward(rmsFfnWeight, w1, w2, w3, requirements), requirements);

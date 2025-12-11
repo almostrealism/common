@@ -287,7 +287,7 @@ public class Qwen3 implements AttentionFeatures {
 	 * @return Autoregressive model ready for inference
 	 */
 	protected AutoregressiveModel model(OperationProfile profile, ComputeRequirement... requirements) {
-		Model transformer = new Model(shape(config.dim));
+		Model transformer = new Model(shape(1, config.dim));
 
 		// Placeholder for the index of the current step (position in sequence)
 		PackedCollection position = new PackedCollection(1);
@@ -352,7 +352,7 @@ public class Qwen3 implements AttentionFeatures {
 		}
 
 		// Final RMS Norm
-		transformer.add(rmsnorm(rmsFinalWeight));
+		transformer.add(rmsnorm(shape(1, dim), rmsFinalWeight));
 
 		// Output logits projection (shared with token embeddings)
 		transformer.add(dense(wcls));
@@ -364,7 +364,7 @@ public class Qwen3 implements AttentionFeatures {
 		return AutoregressiveModel.of(
 				compiledModel,
 				step -> position.setMem((double) step),
-				t -> tokenEmbeddings.range(shape(config.dim), t * config.dim));
+				t -> tokenEmbeddings.range(shape(1, config.dim), t * config.dim));
 	}
 
 	/**
