@@ -125,4 +125,10 @@ mvn test -pl ml -Dtest=ErrorAccumulationAnalysisTest
 
 ---
 
-*This document supersedes ASSESSMENT.md, ERROR_REPORT.md, LAYER_ANALYSIS.md, and PLAN.md for current status.*
+## Related Documentation
+
+- **`PHASE4_SUMMARY.md`** - Tokenization implementation details
+- **`tools/USAGE.md`** - Weight extraction guide
+- **`../test_output/error_accumulation_report.md`** - Detailed layer-by-layer error analysis
+
+*This is the single source of truth for Qwen3 implementation status.*
