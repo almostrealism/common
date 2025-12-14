@@ -22,7 +22,7 @@ import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
 
 public class MemoryAllocationTest implements TestFeatures {
-	@Test
+	@Test(timeout = 30000)
 	public void allocateAndDestroy() throws InterruptedException {
 		if (testDepth < 3) return;
 

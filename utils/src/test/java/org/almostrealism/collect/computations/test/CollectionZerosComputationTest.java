@@ -39,7 +39,7 @@ public class CollectionZerosComputationTest implements TestFeatures {
 	 * Demonstrates how CollectionZerosComputation produces collections where
 	 * every element is exactly 0.0.
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void basicZeroCreation() {
 		// Test vector creation
 		TraversalPolicy vectorShape = new TraversalPolicy(5);
@@ -65,7 +65,7 @@ public class CollectionZerosComputationTest implements TestFeatures {
 	 * Demonstrates how CollectionZerosComputation provides critical optimization
 	 * information for mathematical operations.
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void optimizationMethods() {
 		// Test zero detection
 		CollectionZerosComputation zeros =
@@ -82,7 +82,7 @@ public class CollectionZerosComputationTest implements TestFeatures {
 	 * Demonstrates how CollectionZerosComputation can change its output shape
 	 * without affecting the zero content that fills the collection.
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void reshapeOperation() {
 		// Create initial zero vector
 		TraversalPolicy originalShape = new TraversalPolicy(12);
@@ -109,7 +109,7 @@ public class CollectionZerosComputationTest implements TestFeatures {
 	 * Demonstrates how CollectionZerosComputation handles axis-based transformations
 	 * while maintaining the zero value semantics.
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void traverseOperation() {
 		// Create 2D zero matrix
 		TraversalPolicy matrixShape = new TraversalPolicy(3, 4);
@@ -134,7 +134,7 @@ public class CollectionZerosComputationTest implements TestFeatures {
 	 * Demonstrates how the derivative of zero is always zero, with expanded dimensions
 	 * to account for the target variable's shape.
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void deltaComputation() {
 		// Create zero vector
 		TraversalPolicy zerosShape = new TraversalPolicy(3);
@@ -163,7 +163,7 @@ public class CollectionZerosComputationTest implements TestFeatures {
 	 * Demonstrates how zero computations serve as their own parallel processes
 	 * since they have no dependencies.
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void parallelProcessGeneration() {
 		CollectionZerosComputation zeros =
 				new CollectionZerosComputation(new TraversalPolicy(5));
@@ -196,7 +196,7 @@ public class CollectionZerosComputationTest implements TestFeatures {
 	 * Demonstrates how zero computations are properly identified in
 	 * computation graphs and debugging output.
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void nameAndDescription() {
 		CollectionZerosComputation zeros =
 				new CollectionZerosComputation(new TraversalPolicy(3));
@@ -211,7 +211,7 @@ public class CollectionZerosComputationTest implements TestFeatures {
 	 * Tests edge cases and boundary conditions.
 	 * Demonstrates behavior with special shapes and configurations.
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void edgeCases() {
 		// Test scalar zeros (single element)
 		TraversalPolicy scalarShape = new TraversalPolicy(1);
@@ -237,7 +237,7 @@ public class CollectionZerosComputationTest implements TestFeatures {
 	 * Demonstrates that zero computations maintain their mathematical properties
 	 * through various transformations.
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void mathematicalProperties() {
 		TraversalPolicy shape = new TraversalPolicy(4, 4);
 		CollectionZerosComputation zeros =

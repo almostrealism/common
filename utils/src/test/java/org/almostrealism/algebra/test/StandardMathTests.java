@@ -25,7 +25,7 @@ import org.junit.Assert;
 import org.junit.Test;
 
 public class StandardMathTests implements TestFeatures {
-	@Test
+	@Test(timeout = 30000)
 	public void add() {
 		CollectionProducer sum = add(c(1.0), c(2.0));
 		Evaluable ev = sum.get();
@@ -33,7 +33,7 @@ public class StandardMathTests implements TestFeatures {
 		assertEquals(3.0, ev.evaluate());
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void divide() {
 		int dim = 256;
 		PackedCollection in = new PackedCollection(dim).randnFill();
@@ -54,7 +54,7 @@ public class StandardMathTests implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void multiplyBroadcast() {
 		PackedCollection in = new PackedCollection(shape(12, 32, 2)).randFill();
 		PackedCollection x = new PackedCollection(shape(32, 2)).randFill();
@@ -75,7 +75,7 @@ public class StandardMathTests implements TestFeatures {
 		});
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void silu() {
 		int dim = 256;
 		PackedCollection in = new PackedCollection(dim).randnFill();

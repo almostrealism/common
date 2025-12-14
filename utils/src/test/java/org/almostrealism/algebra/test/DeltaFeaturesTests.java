@@ -29,8 +29,7 @@ import org.junit.Test;
 import java.util.stream.IntStream;
 
 public class DeltaFeaturesTests implements DeltaFeatures, TestFeatures {
-
-	@Test
+	@Test(timeout = 30000)
 	public void embeddedProduct() {
 		int dim = 3;
 		int count = 2;
@@ -67,7 +66,7 @@ public class DeltaFeaturesTests implements DeltaFeatures, TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void embeddedPower() {
 		if (skipKnownIssues) return;
 
@@ -103,7 +102,7 @@ public class DeltaFeaturesTests implements DeltaFeatures, TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void embeddedSum() {
 		// f(x) = x0 + x1, x2 + x3
 		// g(x) = w * x
@@ -137,7 +136,7 @@ public class DeltaFeaturesTests implements DeltaFeatures, TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void embeddedRepeat() {
 		// f(x) = x0, x0
 		// g(x) = w * x

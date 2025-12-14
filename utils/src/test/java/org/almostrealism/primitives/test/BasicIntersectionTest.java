@@ -35,7 +35,7 @@ import org.junit.Test;
  */
 public class BasicIntersectionTest implements TestFeatures {
 
-	@Test
+	@Test(timeout = 30000)
 	public void sphereIntersection() {
 		log("Testing sphere intersection...");
 
@@ -56,7 +56,7 @@ public class BasicIntersectionTest implements TestFeatures {
 		assertNotNull("Intersection should not be null", intersection);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void sphereIntersectionDistance() {
 		log("Testing sphere intersection distance...");
 
@@ -85,7 +85,7 @@ public class BasicIntersectionTest implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void sphereColor() {
 		log("Testing sphere color computation...");
 
@@ -118,7 +118,7 @@ public class BasicIntersectionTest implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void pointLightCreation() {
 		log("Testing point light creation...");
 

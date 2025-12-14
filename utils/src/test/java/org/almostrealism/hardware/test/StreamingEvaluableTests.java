@@ -24,7 +24,7 @@ import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
 
 public class StreamingEvaluableTests implements TestFeatures {
-	@Test
+	@Test(timeout = 30000)
 	public void product() {
 		int count = 1;
 
@@ -48,7 +48,7 @@ public class StreamingEvaluableTests implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void sum() {
 		int size = 768;
 
@@ -67,7 +67,7 @@ public class StreamingEvaluableTests implements TestFeatures {
 		assertEquals(expected, out.valueAt(0));
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void sumProduct() {
 		int count = 100;
 

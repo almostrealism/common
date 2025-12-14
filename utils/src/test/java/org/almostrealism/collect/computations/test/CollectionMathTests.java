@@ -25,7 +25,7 @@ import org.junit.Assert;
 import org.junit.Test;
 
 public class CollectionMathTests implements TestFeatures {
-	@Test
+	@Test(timeout = 30000)
 	public void broadcastProduct1() {
 		PackedCollection a = new PackedCollection(shape(10));
 		a.fill(pos -> Math.random());
@@ -40,7 +40,7 @@ public class CollectionMathTests implements TestFeatures {
 		});
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void broadcastProduct2() {
 		PackedCollection a = new PackedCollection(shape(10));
 		a.fill(pos -> Math.random());
@@ -60,7 +60,7 @@ public class CollectionMathTests implements TestFeatures {
 		});
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void traverseProduct() {
 		PackedCollection a = new PackedCollection(shape(10)).randFill();
 		PackedCollection b = new PackedCollection(shape(10)).randFill();
@@ -76,7 +76,7 @@ public class CollectionMathTests implements TestFeatures {
 		});
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void repeatProduct() {
 		PackedCollection a = new PackedCollection(shape(2, 5)).randFill();
 		PackedCollection b = new PackedCollection(shape(2)).randFill();
@@ -93,7 +93,7 @@ public class CollectionMathTests implements TestFeatures {
 		});
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void doubleBroadcastProduct() {
 		int r = 6;
 		int c = 40;
@@ -110,7 +110,7 @@ public class CollectionMathTests implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void doubleBroadcastProductArguments() {
 		int r = 3;
 		int c = 4;
@@ -135,7 +135,7 @@ public class CollectionMathTests implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void sum() {
 		int size = 768;
 
@@ -153,7 +153,7 @@ public class CollectionMathTests implements TestFeatures {
 				}, false, false, true);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void linear() {
 		PackedCollection out = linear(0, 5, 10).evaluate();
 		Assert.assertEquals(10, out.getShape().length(0));
@@ -162,7 +162,7 @@ public class CollectionMathTests implements TestFeatures {
 		assertEquals(5.0, out.valueAt(9));
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void cumulativeProduct() {
 		int steps = 300;
 		double betaStart = 0.0001;
@@ -184,7 +184,7 @@ public class CollectionMathTests implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void squares() {
 		int size = 768;
 
@@ -209,7 +209,7 @@ public class CollectionMathTests implements TestFeatures {
 				}, false, false, true);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void sumOfSquares() {
 		int size = 768;
 
@@ -242,7 +242,7 @@ public class CollectionMathTests implements TestFeatures {
 				}, false, false, true);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void sumOfSquaresProduct() {
 		int size = 768;
 
@@ -277,7 +277,7 @@ public class CollectionMathTests implements TestFeatures {
 				}, false, false, true);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void mean() {
 		int c = 5;
 		int g = 4;
@@ -302,7 +302,7 @@ public class CollectionMathTests implements TestFeatures {
 				});
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void subtractMean() {
 		int c = 5;
 		int g = 4;
@@ -332,7 +332,7 @@ public class CollectionMathTests implements TestFeatures {
 				});
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void subtractMeanSq() {
 		int c = 5;
 		int g = 4;
@@ -362,14 +362,14 @@ public class CollectionMathTests implements TestFeatures {
 				});
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void variance1() {
 		if (testDepth < 2) return;
 
 		variance(1);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void variance2() {
 		variance(5);
 	}
@@ -408,7 +408,7 @@ public class CollectionMathTests implements TestFeatures {
 				});
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void meanVarianceQuotient() {
 		int n = 1;
 		int g = 4;
@@ -455,7 +455,7 @@ public class CollectionMathTests implements TestFeatures {
 				});
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void addInPlace() {
 		int size = 10;
 
@@ -476,7 +476,7 @@ public class CollectionMathTests implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void lessThanSingleValue() {
 		// Test lessThan with single scalar values
 		Producer<PackedCollection> a = c(5.0);
@@ -491,7 +491,7 @@ public class CollectionMathTests implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void lessThanSmallBatch() {
 		// Test lessThan with a small batch of 3 elements
 		PackedCollection valuesA = new PackedCollection(shape(3, 1).traverse(1));
@@ -524,7 +524,7 @@ public class CollectionMathTests implements TestFeatures {
 		Assert.assertEquals(5.0, resultData.valueAt(2, 0), 0.001);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void lessThanLargeBatch() {
 		// Test lessThan with 256 elements to check for batch size limits
 		int batchSize = 256;

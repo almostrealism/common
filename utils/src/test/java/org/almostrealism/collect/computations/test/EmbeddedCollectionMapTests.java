@@ -26,7 +26,7 @@ import java.util.Arrays;
 
 public class EmbeddedCollectionMapTests implements TestFeatures, KernelAssertions {
 
-	@Test
+	@Test(timeout = 30000)
 	public void multiply() {
 		PackedCollection a = tensor(shape(8, 1)).pack();
 		PackedCollection b = tensor(shape(8, 1)).pack();
@@ -34,7 +34,7 @@ public class EmbeddedCollectionMapTests implements TestFeatures, KernelAssertion
 		multiply(p(a.traverseEach()), p(b.traverseEach())).get().evaluate();
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void multiplyMap() {
 		int n = 2;
 
@@ -59,7 +59,7 @@ public class EmbeddedCollectionMapTests implements TestFeatures, KernelAssertion
 		});
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void reduceMax() {
 		int c = 16;
 		int d = 1;
@@ -89,7 +89,7 @@ public class EmbeddedCollectionMapTests implements TestFeatures, KernelAssertion
 		});
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void singleEnumerate() {
 		int c = 16;
 		int d = 1;
@@ -112,7 +112,7 @@ public class EmbeddedCollectionMapTests implements TestFeatures, KernelAssertion
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void singleEnumerateMax() {
 		if (skipKnownIssues) return;
 
@@ -148,7 +148,7 @@ public class EmbeddedCollectionMapTests implements TestFeatures, KernelAssertion
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void singleEnumerateReduceMax() {
 		int c = 16;
 		int d = 1;
@@ -183,7 +183,7 @@ public class EmbeddedCollectionMapTests implements TestFeatures, KernelAssertion
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void enumerateReduceMax() {
 		int c = 16;
 		int d = 1;
@@ -219,7 +219,7 @@ public class EmbeddedCollectionMapTests implements TestFeatures, KernelAssertion
 		});
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void atomicReduceEnumerate() {
 		int c = 16;
 		int d = 1;
@@ -250,7 +250,7 @@ public class EmbeddedCollectionMapTests implements TestFeatures, KernelAssertion
 		});
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void repeatMap() {
 		int c = 8;
 		int d = 2;
@@ -280,7 +280,7 @@ public class EmbeddedCollectionMapTests implements TestFeatures, KernelAssertion
 		});
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void repeatMultiply() {
 		int d = 4;
 		int n = 2;
@@ -307,7 +307,7 @@ public class EmbeddedCollectionMapTests implements TestFeatures, KernelAssertion
 		});
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void repeatMultiplyMap() {
 		int c = 8;
 		int d = 2;
@@ -338,7 +338,7 @@ public class EmbeddedCollectionMapTests implements TestFeatures, KernelAssertion
 		});
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void reduceEnumerate() {
 		int n = 4;
 		int w = 2;
@@ -366,7 +366,7 @@ public class EmbeddedCollectionMapTests implements TestFeatures, KernelAssertion
 		});
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void mapEnumerate3d() {
 		int n = 4;
 		int w = 2;
@@ -401,7 +401,7 @@ public class EmbeddedCollectionMapTests implements TestFeatures, KernelAssertion
 		});
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void enumerate() {
 		int n = 4;
 		int d = 6;
@@ -429,7 +429,7 @@ public class EmbeddedCollectionMapTests implements TestFeatures, KernelAssertion
 		});
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void enumerateExpression() {
 		int n = 4;
 		int d = 6;
@@ -460,7 +460,7 @@ public class EmbeddedCollectionMapTests implements TestFeatures, KernelAssertion
 		});
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void reduceMaxEnumerate3d() {
 		int n = 8;
 		int w = 2;
@@ -490,7 +490,7 @@ public class EmbeddedCollectionMapTests implements TestFeatures, KernelAssertion
 		});
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void enumerateReduceEnumerateMax() {
 		int c = 8;
 		int d = 3;

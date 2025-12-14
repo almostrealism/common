@@ -28,7 +28,7 @@ import org.junit.Test;
 import java.util.Arrays;
 
 public class CollectionKernelTests implements TestFeatures {
-	@Test
+	@Test(timeout = 30000)
 	public void func() {
 		DynamicCollectionProducer a = func(shape(2, 5), args ->
 				c(shape(2, 5), 2.0, 3.0, 4.0, 6.0, 7.0, 8.0, 11.0, 13.0, 15.0, 17.0)
@@ -43,7 +43,7 @@ public class CollectionKernelTests implements TestFeatures {
 		Assert.assertEquals(2, out.getCountLong());
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void multiply() {
 		double[] v1 = { 2.0, 3.0, 4.0, 6.0, 7.0, 8.0, 11.0, 13.0, 15.0, 17.0};
 		double[] v2 = { 2.0, 3.0, 0.5, 0.25, 0.1 };
@@ -76,7 +76,7 @@ public class CollectionKernelTests implements TestFeatures {
 		});
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void divide() {
 		double[] v1 = { 2.0, 3.0, 4.0, 6.0, 7.0, 8.0, 11.0, 13.0, 15.0, 17.0};
 		double[] v2 = { 2.0 };
@@ -107,7 +107,7 @@ public class CollectionKernelTests implements TestFeatures {
 		});
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void providerAddKernel() {
 		PackedCollection a = tensor(shape(10)).pack().traverse();
 		PackedCollection b = tensor(shape(10)).pack().traverse();
@@ -124,7 +124,7 @@ public class CollectionKernelTests implements TestFeatures {
 		});
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void conditionalKernel() {
 		Producer<PackedCollection> in = v(shape(-1), 0);
 		Producer<PackedCollection> t = integers(0, 100);

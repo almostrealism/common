@@ -37,7 +37,7 @@ public class MyNativeEnabledApplication implements CodeFeatures {
 		new MyNativeEnabledApplication().performMath();
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void performMath() {
 		// Compose the expression
 		Producer<PackedCollection> constantOperation = c(3.0).multiply(c(2.0));
@@ -54,7 +54,7 @@ public class MyNativeEnabledApplication implements CodeFeatures {
 		System.out.println(displayResult);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void createTensor() {
 		// Create the tensor
 		Tensor<Double> t = new Tensor<>();
@@ -79,7 +79,7 @@ public class MyNativeEnabledApplication implements CodeFeatures {
 		product.evaluate().print();
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void variableMath() {
 		// Define argument 0
 		Producer<PackedCollection> arg = v(shape(2), 0);
@@ -99,7 +99,7 @@ public class MyNativeEnabledApplication implements CodeFeatures {
 		compiledOperation.evaluate(pack(5, 4)).print();
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void performThreeExperiments() {
 		for (int i = 0; i < 3; i++) {
 			dc(() -> {
@@ -123,7 +123,7 @@ public class MyNativeEnabledApplication implements CodeFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void useCpuAndGpu() {
 		PackedCollection result = new PackedCollection(shape(1));
 
@@ -137,7 +137,7 @@ public class MyNativeEnabledApplication implements CodeFeatures {
 		log("Result = " + result.toArrayString());
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void kernelEvaluation() {
 		// Define argument 0
 		Producer<PackedCollection> arg = v(shape(-1), 0);
@@ -162,7 +162,7 @@ public class MyNativeEnabledApplication implements CodeFeatures {
 		results.print();
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void shapes() {
 		// The shape is a 3D array with 10x4x2 elements, and 80 elements in total.
 		// However, it will be treated for the purpose of GPU parallelism as one
@@ -190,14 +190,14 @@ public class MyNativeEnabledApplication implements CodeFeatures {
 		// --> And that's just one item from the original shape (which contained 40 of them).
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void repeat() {
 		PackedCollection a = pack(2, 3).reshape(2, 1);
 		PackedCollection b = pack(4, 5).reshape(2);
 		c(a).traverse(1).repeat(2).multiply(c(b)).evaluate().print();
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void enumerate() {
 		PackedCollection a =
 					pack(2, 3, 4, 5, 6, 7, 8, 9)
@@ -213,7 +213,7 @@ public class MyNativeEnabledApplication implements CodeFeatures {
 		// [8.0, 9.0]
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void subset3d() {
 		int w = 2;
 		int h = 4;
@@ -241,7 +241,7 @@ public class MyNativeEnabledApplication implements CodeFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void polynomialDelta() {
 		// x^2 + 3x + 1
 		CollectionProducer c = x().sq().add(x().mul(3)).add(1);
@@ -257,7 +257,7 @@ public class MyNativeEnabledApplication implements CodeFeatures {
 		out.consolidate().print();
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void vectorDelta() {
 		int dim = 3;
 		int count = 2;
@@ -283,7 +283,7 @@ public class MyNativeEnabledApplication implements CodeFeatures {
 		dout.print();
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void complexMath() {
 		ComplexNumber a = new ComplexNumber(1, 2);
 		ComplexNumber b = new ComplexNumber(3, 4);
@@ -293,7 +293,7 @@ public class MyNativeEnabledApplication implements CodeFeatures {
 		c.evaluate().print();
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void trainCnn() {
 		if (!TestSettings.trainingTests) return;
 

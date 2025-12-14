@@ -26,16 +26,15 @@ import org.junit.Test;
  * Test cases demonstrating usage patterns and behavior of {@link DynamicCollectionProducer}.
  * These tests validate the various constructor patterns, execution modes (kernel vs function),
  * and integration with input producers as documented in the class javadoc.
- * 
+ *
  * @author Michael Murray
  */
 public class DynamicCollectionProducerTest implements TestFeatures {
-
 	/**
 	 * Tests the simplest constructor that creates a collection with a static function.
 	 * This validates the basic usage pattern shown in the class documentation.
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void simpleStaticFunction() {
 		TraversalPolicy shape = new TraversalPolicy(2, 3);
 		
@@ -70,7 +69,7 @@ public class DynamicCollectionProducerTest implements TestFeatures {
 	 * Tests the kernel vs non-kernel behavior by creating producers with different modes.
 	 * This validates that the kernel parameter affects the execution path as documented.
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void kernelVsNonKernelMode() {
 		TraversalPolicy shape = new TraversalPolicy(2, 2);
 		
@@ -102,7 +101,7 @@ public class DynamicCollectionProducerTest implements TestFeatures {
 	 * Tests the fixedCount parameter behavior.
 	 * This validates that the fixedCount setting correctly affects the isFixedCount() method.
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void fixedCountBehavior() {
 		TraversalPolicy shape = new TraversalPolicy(3);
 		
@@ -122,7 +121,7 @@ public class DynamicCollectionProducerTest implements TestFeatures {
 	 * Tests reshape and traverse operations.
 	 * This validates that the documented reshape and traverse methods work correctly.
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void reshapeAndTraverse() {
 		TraversalPolicy originalShape = new TraversalPolicy(2, 3);
 		
@@ -146,7 +145,7 @@ public class DynamicCollectionProducerTest implements TestFeatures {
 	 * Tests the producer-based input constructor.
 	 * This validates the complex usage pattern with input dependencies as documented.
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void inputBasedFunction() {
 		TraversalPolicy shape = new TraversalPolicy(2);
 		

@@ -36,7 +36,7 @@ public class ScalarBankDotProductTest implements TestFeatures {
 		return window;
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void scalarBankDotProduct32() {
 		PackedCollection window = window();
 

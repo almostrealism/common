@@ -25,7 +25,7 @@ import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
 
 public class AltComputeContextsTest implements TestFeatures {
-	// TODO  @Test
+	// TODO  @Test(timeout = 30000)
 	public void clAndNative() {
 		dc(() -> {
 			PackedCollection result = new PackedCollection(1);
@@ -41,7 +41,7 @@ public class AltComputeContextsTest implements TestFeatures {
 		});
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void matmul() {
 		boolean enableOptimization = true;
 		boolean validate = true;

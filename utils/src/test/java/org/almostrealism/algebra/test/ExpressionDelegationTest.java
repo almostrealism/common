@@ -25,14 +25,14 @@ import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
 
 public class ExpressionDelegationTest implements TestFeatures {
-	@Test
+	@Test(timeout = 30000)
 	public void scalarFromTemporalScalar() {
 		TemporalScalar t = new TemporalScalar(4, 8);
 		Evaluable<PackedCollection> ev = r(p(t)).get();
 		assertEquals(8.0, ev.evaluate());
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void scalarFromTemporalScalarFromScalars() {
 		verboseLog(() -> {
 			PackedCollection a = pack(1.0);
@@ -45,7 +45,7 @@ public class ExpressionDelegationTest implements TestFeatures {
 		});
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void assignmentFromProduct() {
 		PackedCollection a = pack(1.0);
 		PackedCollection b = pack(2.0);

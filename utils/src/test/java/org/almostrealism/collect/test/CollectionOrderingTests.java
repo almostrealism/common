@@ -24,7 +24,7 @@ import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
 
 public class CollectionOrderingTests implements TestFeatures {
-	@Test
+	@Test(timeout = 10000)
 	public void repeatOrdering() {
 		if (skipKnownIssues) return;
 
@@ -41,7 +41,7 @@ public class CollectionOrderingTests implements TestFeatures {
 		assertEquals(1.0, repeated.valueAt(1, 2));
 	}
 
-	@Test
+	@Test(timeout = 10000)
 	public void repeatOrderingProduct() {
 		PackedCollection root = pack(2.0, 3.0, 1.0);
 		PackedCollection repeated = new PackedCollection(shape(4, 3), 1,
@@ -60,7 +60,7 @@ public class CollectionOrderingTests implements TestFeatures {
 		});
 	}
 
-	@Test
+	@Test(timeout = 10000)
 	public void compactOrdering() {
 		if (skipKnownIssues) return;
 
@@ -77,7 +77,7 @@ public class CollectionOrderingTests implements TestFeatures {
 		assertEquals(3.0, compact.valueAt(1, 1));
 	}
 
-	@Test
+	@Test(timeout = 10000)
 	public void maskOrdering() {
 		if (skipKnownIssues) return;
 

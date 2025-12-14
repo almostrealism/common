@@ -23,7 +23,8 @@ import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
 
 public class ChoiceTest implements TestFeatures {
-	@Test
+
+	@Test(timeout = 30000)
 	public void oneOrTwo() {
 		PackedCollection bank = new PackedCollection(shape(2, 2).traverse(1));
 		bank.setMem(0, 1.0, 1.0);

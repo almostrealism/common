@@ -14,7 +14,7 @@ import org.junit.Test;
  */
 public class TransformInversionTest implements TransformMatrixFeatures, TestFeatures {
 
-	@Test
+	@Test(timeout = 30000)
 	public void testIdentityMatrixInverse() {
 		log("========================================");
 		log("TEST: Identity Matrix Inversion");
@@ -35,7 +35,7 @@ public class TransformInversionTest implements TransformMatrixFeatures, TestFeat
 			0, 0, 0, 1);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void testTranslationMatrixInverse() {
 		log("========================================");
 		log("TEST: Translation Matrix Inversion");
@@ -59,7 +59,7 @@ public class TransformInversionTest implements TransformMatrixFeatures, TestFeat
 			0, 0, 0, 1);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void testUniformScaleMatrixInverse() {
 		log("========================================");
 		log("TEST: Uniform Scale Matrix Inversion");
@@ -90,7 +90,7 @@ public class TransformInversionTest implements TransformMatrixFeatures, TestFeat
 			0,   0,   0,   1);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void testNonUniformScaleMatrixInverse() {
 		log("========================================");
 		log("TEST: Non-uniform Scale Matrix Inversion");
@@ -121,7 +121,7 @@ public class TransformInversionTest implements TransformMatrixFeatures, TestFeat
 			0,    0,     0,    1);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void testMatrixMultiplicationVerification() {
 		log("========================================");
 		log("TEST: Verify M * M^-1 = Identity");
@@ -148,7 +148,7 @@ public class TransformInversionTest implements TransformMatrixFeatures, TestFeat
 			0, 0, 0, 1);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void testInverseOfInverse() {
 		log("========================================");
 		log("TEST: (M^-1)^-1 = M");
@@ -175,7 +175,7 @@ public class TransformInversionTest implements TransformMatrixFeatures, TestFeat
 			0, 0, 0, 1);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void testSmallScaleInverse() {
 		log("========================================");
 		log("TEST: Small Scale Factor Inversion");
@@ -206,7 +206,7 @@ public class TransformInversionTest implements TransformMatrixFeatures, TestFeat
 			0, 0, 0, 1);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void testDebugAdjointCalculation() {
 		log("========================================");
 		log("TEST: Debug Adjoint Calculation");

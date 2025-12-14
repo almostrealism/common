@@ -46,7 +46,7 @@ public class LayersTests implements LayerFeatures, DistributionFeatures, TestFea
 	private final double cpuSum = -1.0;
 	private final double gpuSum = -1.0;
 
-	@Test
+	@Test(timeout = 30000)
 	public void exponent() {
 		PackedCollection in = new PackedCollection(SIZE).traverseEach();
 		in.fill(pos -> Math.random());
@@ -83,7 +83,7 @@ public class LayersTests implements LayerFeatures, DistributionFeatures, TestFea
 		});
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void rmsnorm() {
 		PackedCollection in = new PackedCollection(shape(SIZE));
 		in.fill(pos -> Math.random());
@@ -130,7 +130,7 @@ public class LayersTests implements LayerFeatures, DistributionFeatures, TestFea
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void dense() {
 		if (skipKnownIssues) return;
 
@@ -159,7 +159,7 @@ public class LayersTests implements LayerFeatures, DistributionFeatures, TestFea
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void siluTrain() throws IOException {
 		if (testDepth < 3) return;
 
@@ -190,7 +190,7 @@ public class LayersTests implements LayerFeatures, DistributionFeatures, TestFea
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void siluTransformation() {
 		int size = 100;
 		

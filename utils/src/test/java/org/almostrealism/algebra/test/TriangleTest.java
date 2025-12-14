@@ -46,7 +46,7 @@ public class TriangleTest implements TestFeatures {
 				new Vector(0.0, -1.0, -1.0));
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void point() {
 		PackedCollection data = Vector.bank(3);
 		data.set(0, new Vector(1.0, 1.0, -1.0));
@@ -62,7 +62,7 @@ public class TriangleTest implements TestFeatures {
 	/**
 	 * This test will not pass unless {@link #point()} passes first.
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void data() {
 		HardwareOperator.verboseLog(() -> {
 			PackedCollection data = basicTriangle().getData();
@@ -76,7 +76,7 @@ public class TriangleTest implements TestFeatures {
 	/**
 	 * This test will not pass unless {@link #intersectAtDistance()} passes first.
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void distance() {
 		Triangle t = basicTriangle();
 
@@ -92,7 +92,7 @@ public class TriangleTest implements TestFeatures {
 	 * If {@link #data()} does not pass, then it is likely the values for
 	 * {@link #triangle()} are wrong and so this test will also not pass.
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void intersectAtDistance() {
 		Ray in = new Ray((PackedCollection) ((Producer) ray(0.0, 0.0, 0.0, 0.0, 0.0, -1.0)).get().evaluate(), 0);
 		PackedCollection td = triangle();
@@ -122,7 +122,7 @@ public class TriangleTest implements TestFeatures {
 		return (CollectionProducer) ((CollectionProducerComputationBase) originVector).getInputs().get(1);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void origin() {
 		CollectionProducer at = vector(originProducer());
 		Evaluable<PackedCollection> ev = at.get();
@@ -164,7 +164,7 @@ public class TriangleTest implements TestFeatures {
 		return td;
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void choiceTest() {
 		Ray in = new Ray((PackedCollection) ((Producer) ray(0.0, 0.0, 0.0, 0.0, 0.0, -1.0)).get().evaluate(), 0);
 		PackedCollection td = triangle();
@@ -182,7 +182,7 @@ public class TriangleTest implements TestFeatures {
 		assertEquals(1.0, distance.toDouble());
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void intersection() {
 		if (skipKnownIssues) return;
 

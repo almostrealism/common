@@ -48,7 +48,6 @@ import java.util.stream.IntStream;
  * @author Michael Murray
  */
 public class SyntheticActivationTrainingTest implements ModelTestFeatures {
-
 	static {
 		if (TestUtils.getTrainTests()) {
 			Console.root().addListener(OutputFeatures.fileOutput("results/logs/synthetic_activation_train.out"));
@@ -81,7 +80,7 @@ public class SyntheticActivationTrainingTest implements ModelTestFeatures {
 	 *
 	 * <p>Architecture: Input [4] - Dense [4 - 8] - SiLU - Dense [8 - 4] - Output [4]</p>
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void denseWithSiLU() throws FileNotFoundException {
 		if (testDepth < 2) return;
 
@@ -124,7 +123,7 @@ public class SyntheticActivationTrainingTest implements ModelTestFeatures {
 	 *
 	 * <p>Architecture: Input [4] - Dense [4 - 8] - ReLU - Dense [8 - 4] - Output [4]</p>
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void denseWithReLU() throws FileNotFoundException {
 		if (testDepth < 1) return;
 
@@ -167,7 +166,7 @@ public class SyntheticActivationTrainingTest implements ModelTestFeatures {
 	 *
 	 * <p>Architecture: Input [4] - Dense [4 - 8] - Dense [8 - 4] - Output [4]</p>
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void multiLayerDense() throws FileNotFoundException {
 		if (testDepth < 1) return;
 

@@ -27,39 +27,39 @@ public class MatrixMathTests implements TestFeatures {
 	private static final boolean enableOptimization = false;
 	private static final boolean enableRepeat = true;
 
-	@Test
+	@Test(timeout = 30000)
 	public void matmulVerySmall() {
 		matmul(0, 2, 4, enableOptimization, true);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void matmulVerySmallBatch() {
 		matmul(5, 2, 4, enableOptimization, true);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void matmulSmall() {
 		matmul(0, 12, 4, enableOptimization, true);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void matmulSmallBatch() {
 		matmul(10, 12, 4, enableOptimization, true);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void matmulMedium() {
 		matmul(8, 64, 32, enableOptimization, true);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void matmulLarge() {
 		if (testDepth < 1) return;
 
 		matmul(2, 2048, 1024, enableOptimization, true);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void matmulPowers() {
 		if (testDepth < 1) return;
 
@@ -68,7 +68,7 @@ public class MatrixMathTests implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void matrix1() {
 		int n = 2;
 		int m = 2;
@@ -94,7 +94,7 @@ public class MatrixMathTests implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void matrix2() {
 		int n = 2;
 		int m = 3;
@@ -212,7 +212,7 @@ public class MatrixMathTests implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void sumPowers() {
 		if (testDepth < 3) return;
 
