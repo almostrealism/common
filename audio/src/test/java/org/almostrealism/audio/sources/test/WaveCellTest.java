@@ -42,7 +42,7 @@ import java.util.stream.IntStream;
 
 public class WaveCellTest implements CellFeatures, TestFeatures {
 	protected WaveCell cell() throws IOException {
-		return WaveData.load(new File("src/main/resources/test.wav"))
+		return WaveData.load(new File("Library/Snare Perc DD.wav"))
 						.toCell(0, 1000, null, c(10))
 				.apply(new DefaultWaveCellData());
 	}
