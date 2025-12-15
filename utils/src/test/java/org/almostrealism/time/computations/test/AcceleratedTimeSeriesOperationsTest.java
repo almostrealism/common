@@ -53,7 +53,7 @@ public class AcceleratedTimeSeriesOperationsTest implements CodeFeatures {
 		return cursors;
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void purgeTest() {
 //		dc(() -> {
 			for (int i = 0; i < 2; i++) {
@@ -74,7 +74,7 @@ public class AcceleratedTimeSeriesOperationsTest implements CodeFeatures {
 //		});
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void valueAt() {
 		AcceleratedTimeSeries series = series();
 		AcceleratedTimeSeriesValueAt valueAt = new AcceleratedTimeSeriesValueAt(p(series), p(cursors(3.25)));
@@ -111,7 +111,7 @@ public class AcceleratedTimeSeriesOperationsTest implements CodeFeatures {
 		return cursors.increment(c(1));
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void addTest() {
 		init();
 
@@ -151,7 +151,7 @@ public class AcceleratedTimeSeriesOperationsTest implements CodeFeatures {
 		Assert.assertEquals(30.0, series.valueAt(p(cursors)).get().evaluate().toDouble(), Math.pow(10, -10));
 	}
 
-	// TODO  @Test
+	// TODO  @Test(timeout = 30000)
 	public void allOperationsTest() {
 		init();
 		IntStream.range(0, 25).forEach(this::runAllOperations);
@@ -176,13 +176,13 @@ public class AcceleratedTimeSeriesOperationsTest implements CodeFeatures {
 		});
 	}
 
-	// TODO  @Test
+	// TODO  @Test(timeout = 30000)
 	public void operationListTest() {
 		init();
 		operationListAssertions(operationList(false));
 	}
 
-	// TODO  @Test
+	// TODO  @Test(timeout = 30000)
 	public void operationListCompiledTest() {
 		init();
 		operationListAssertions(operationList(true));

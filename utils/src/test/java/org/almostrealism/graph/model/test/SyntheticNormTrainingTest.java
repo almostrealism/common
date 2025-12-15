@@ -48,7 +48,6 @@ import java.util.stream.IntStream;
  * @author Michael Murray
  */
 public class SyntheticNormTrainingTest implements ModelTestFeatures {
-
 	static {
 		if (TestUtils.getTrainTests()) {
 			Console.root().addListener(OutputFeatures.fileOutput("results/logs/synthetic_norm_train.out"));
@@ -80,7 +79,7 @@ public class SyntheticNormTrainingTest implements ModelTestFeatures {
 	 *
 	 * <p>Architecture: Input [6] - Dense [6 - 6] - Norm - Dense [6 - 3] - Output [3]</p>
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void denseWithNorm() throws FileNotFoundException {
 		if (testDepth < 1) return;
 
@@ -123,7 +122,7 @@ public class SyntheticNormTrainingTest implements ModelTestFeatures {
 	 *
 	 * <p>Architecture: Input [6] - Dense [6 - 6] - Norm - Dense [6 - 6] - Norm - Dense [6 - 3] - Output [3]</p>
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void denseMultiLayerWithNorm() throws FileNotFoundException {
 		if (testDepth < 1) return;
 
@@ -168,7 +167,7 @@ public class SyntheticNormTrainingTest implements ModelTestFeatures {
 	 *
 	 * <p>Architecture: Input [12] - Dense [12 - 12] - Norm [groups=3] - Dense [12 - 6] - Output [6]</p>
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void groupNorm() throws FileNotFoundException {
 		if (testDepth < 1) return;
 

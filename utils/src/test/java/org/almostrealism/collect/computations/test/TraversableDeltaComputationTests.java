@@ -38,7 +38,8 @@ import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
 public class TraversableDeltaComputationTests implements GradientTestFeatures, TestFeatures {
-	@Test
+
+	@Test(timeout = 30000)
 	public void polynomial0() {
 		// x + 1
 		CollectionProducer c = x().add(1);
@@ -53,7 +54,7 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void polynomial1() {
 		// x^2 + 3x + 1
 		CollectionProducer c = x().sq().add(x().mul(3)).add(1);
@@ -78,7 +79,7 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void polynomial2() {
 		int dim = 3;
 		int count = 2;
@@ -117,7 +118,7 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void polynomial3() {
 		int dim = 3;
 		int count = 2;
@@ -159,7 +160,7 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void polynomial4() {
 		int dim = 3;
 
@@ -197,7 +198,7 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void polynomial5() {
 		int dim = 3;
 
@@ -234,7 +235,7 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void polynomial6() {
 		int dim = 3;
 
@@ -270,7 +271,7 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void powerFixed() {
 		int dim = 3;
 
@@ -302,7 +303,7 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void power1() {
 		int dim = 3;
 
@@ -337,7 +338,7 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 		}, true, false);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void power2() {
 		int dim = 3;
 
@@ -396,7 +397,7 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 		});
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void sumPow1() {
 		PackedCollection o = new PackedCollection(2).fill(1.5, 2.5);
 
@@ -420,7 +421,7 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 				});
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void productSum1() {
 		PackedCollection o = new PackedCollection(2).fill(1.5, 2.5);
 
@@ -445,7 +446,7 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 				});
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void productSumPow1() {
 		PackedCollection o = new PackedCollection(2).fill(1.5, 2.5);
 
@@ -507,17 +508,17 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 				}, false, false, true);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void variance1() throws IOException {
 		variance("variance1", 1.0, 1.1).save("results/variance1.xml");
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void variance2() throws IOException {
 		variance("variance2", 1.5, 2.5).save("results/variance2.xml");
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void divide1() {
 		PackedCollection o = new PackedCollection(2).fill(1.5, 2.5);
 
@@ -545,7 +546,7 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 				});
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void divide2() {
 		PackedCollection o = new PackedCollection(2).fill(1.5, 2.5);
 
@@ -573,7 +574,7 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 				});
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void divide3() {
 		PackedCollection o = new PackedCollection(2).fill(1.5, 2.5);
 
@@ -601,7 +602,7 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 				});
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void divide4() {
 		PackedCollection o = new PackedCollection(2).fill(1.0, 1.01);
 		double eps = 1e-5;
@@ -633,7 +634,7 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 				});
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void divide5() {
 		PackedCollection o = new PackedCollection(2).fill(1.0, 1.01);
 		double eps = 1e-5;
@@ -666,7 +667,7 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 				}, false, false, true);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void divide6() {
 		PackedCollection o = new PackedCollection(2).fill(1.5, 2.5);
 
@@ -718,7 +719,7 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void divide7() {
 		if (testDepth < 1) return;
 
@@ -740,7 +741,7 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 				});
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void divide8() {
 		if (testDepth < 1) return;
 
@@ -765,7 +766,7 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 				});
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void divide9() {
 //		PackedCollection o = new PackedCollection(2).fill(1.0, 1.01);
 		PackedCollection o = new PackedCollection(2).fill(1.0, 10);
@@ -784,7 +785,7 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 				});
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void divide10() {
 		if (testDepth < 2) return;
 
@@ -811,7 +812,7 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 				});
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void divide11() {
 		if (testDepth < 1) return;
 
@@ -841,7 +842,7 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 				}, true);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void divideProduct1() {
 		if (testDepth < 1) return;
 
@@ -889,7 +890,7 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 				});
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void divideProduct2() throws IOException {
 		int c = 2;
 
@@ -935,13 +936,13 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 				}, false, true, true).save("results/divideProduct2.xml");
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void divideProduct3() throws IOException {
 		int c = 2;
 		divideProduct("divideProduct3", c, () -> new PackedCollection(c).fill(() -> Math.random() / 10.0));
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void divideProduct4() throws IOException {
 		int c = 2;
 		divideProduct("divideProduct4", c, () -> new PackedCollection(c).fill(1.0, 1.01));
@@ -980,7 +981,7 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 				}, false, false, true).save("results/" + name + ".xml");
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void enumerate() {
 		int count = 1;
 		int dim = 2;
@@ -1007,7 +1008,7 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void embedded1() {
 		int dim = 3;
 		int count = 2;
@@ -1042,7 +1043,7 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void embedded2() {
 		int dim = 3;
 
@@ -1065,7 +1066,7 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void repeatMultiply1() {
 		int dim = 2;
 
@@ -1089,7 +1090,7 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 		});
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void repeatMultiply2() {
 		int dim = 2;
 
@@ -1111,7 +1112,7 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 		assertEquals(5.0, out.toDouble(7));
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void repeatMultiply3() {
 		int dim = 2;
 
@@ -1134,7 +1135,7 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void multiply() {
 		int dim = 4;
 
@@ -1158,7 +1159,7 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void multiplyAdd1() {
 		int dim = 4;
 
@@ -1183,7 +1184,7 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void multiplyAdd2() {
 		int dim = 4;
 
@@ -1209,7 +1210,7 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void multiplySum() {
 		int dim = 4;
 
@@ -1229,7 +1230,7 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void multiplyEnumerate() {
 		int dim = 2;
 
@@ -1258,7 +1259,7 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void enumerateIndex() {
 		int dim = 2;
 
@@ -1288,7 +1289,7 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void enumerateMultiplySum() {
 		boolean enableSum = true;
 		int count = 1;
@@ -1328,7 +1329,7 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void enumerateMap() {
 		boolean enableOptimize = true;
 		boolean enableSum = true;
@@ -1378,12 +1379,12 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void multiplyTwiceSmall() {
 		multiplyTwice(2, false);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void multiplyTwiceLarge() {
 		multiplyTwice(5, false);
 	}
@@ -1418,7 +1419,7 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 		});
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void sumMultiply() {
 		int dim = 2;
 
@@ -1446,7 +1447,7 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 		});
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void enumerateMultiply() {
 		int dim = 5;
 		int size = 2;
@@ -1461,7 +1462,7 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 		assertEquals(80, dout.doubleStream().sum());
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void enumerateSum1() {
 		int count = 2;
 		int dim = 3;
@@ -1491,7 +1492,7 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 		assertEquals(11.0, dout.toDouble(5));
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void enumerateSum2() {
 		int dim = 5;
 		int size = 2;
@@ -1506,7 +1507,7 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 		dout.print();
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void max() {
 		PackedCollection in = pack(10, 100, 1000);
 		CollectionProducer c = cp(in).max();
@@ -1521,7 +1522,7 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void map() {
 		PackedCollection g = pack(3, 5);
 		PackedCollection w = pack(10, 100, 1000);
@@ -1542,7 +1543,7 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void map1d() {
 		int count = 1;
 		int dim = 2;
@@ -1565,7 +1566,7 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 		assertEquals(-9, dout.toDouble(1));
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void map2d() {
 		int count = 2;
 		int dim = 2;
@@ -1595,7 +1596,7 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 //		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void enumerate2d() {
 		int dim = 6;
 		int size = 3;
@@ -1621,7 +1622,7 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 		result.print();
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void conv2d() {
 		int size = 3;
 		int filterCount = 8;
@@ -1643,7 +1644,7 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 		// TODO  assertions
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void conv2dEnumerateProduct() {
 		int h = 3; // 10;
 		int w = 4; // 10;

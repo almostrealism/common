@@ -28,6 +28,7 @@ import org.junit.Test;
 import java.util.Arrays;
 
 public class SwitchTest implements TestFeatures {
+
 	public Switch choice(PackedCollection output, PackedCollection decision, PackedCollection multiplier) {
 		return choice(output, p(decision), p(multiplier));
 	}
@@ -39,7 +40,7 @@ public class SwitchTest implements TestFeatures {
 		return new Switch(decision, Arrays.asList(firstChoice, secondChoice, thirdChoice));
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void threeChoices() {
 		PackedCollection output = new PackedCollection(1);
 		output.setMem(0, 0.0);
@@ -58,7 +59,7 @@ public class SwitchTest implements TestFeatures {
 	}
 
 
-	@Test
+	@Test(timeout = 30000)
 	public void choiceList() {
 		PackedCollection output1 = new PackedCollection(1);
 		output1.setMem(0, 0.0);
@@ -85,7 +86,7 @@ public class SwitchTest implements TestFeatures {
 		assertEquals(8.0, output2);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void nestedChoiceList() {
 		Producer<PackedCollection> multiplier = c(2.0);
 

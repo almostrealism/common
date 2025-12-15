@@ -30,8 +30,7 @@ import java.util.Arrays;
 import java.util.stream.IntStream;
 
 public class KernelOperationTests implements TestFeatures, KernelAssertions {
-
-	@Test
+	@Test(timeout = 30000)
 	public void assignment() {
 		PackedCollection x = new PackedCollection(shape(10)).traverse();
 		PackedCollection a = tensor(shape(10)).pack().traverse();
@@ -48,7 +47,7 @@ public class KernelOperationTests implements TestFeatures, KernelAssertions {
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void doubleAssignment() {
 		PackedCollection x = new PackedCollection(shape(10)).traverse();
 		PackedCollection y = new PackedCollection(shape(10)).traverse();
@@ -68,7 +67,7 @@ public class KernelOperationTests implements TestFeatures, KernelAssertions {
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void doubleAssignmentMultipleCount() {
 		PackedCollection x = new PackedCollection(shape(10)).traverse();
 		PackedCollection y = new PackedCollection(shape(6)).traverse();
@@ -91,7 +90,7 @@ public class KernelOperationTests implements TestFeatures, KernelAssertions {
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void doubleAssignmentReduceCount() {
 		PackedCollection x = new PackedCollection(shape(1)).traverse();
 		PackedCollection a = new PackedCollection(shape(2048)).fill(Math::random);
@@ -120,7 +119,7 @@ public class KernelOperationTests implements TestFeatures, KernelAssertions {
 		assertEquals(expected, x.toDouble(0));
 	}
 
-	// @Test
+	// @Test(timeout = 30000)
 	public void kernelList() {
 		PackedCollection timeline = new PackedCollection(shape(10), 1);
 		IntStream.range(0, 10).forEach(i -> timeline.set(i, i + 1));
@@ -135,7 +134,7 @@ public class KernelOperationTests implements TestFeatures, KernelAssertions {
 		System.out.println(Arrays.toString(destination.toArray(20, 10)));
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void enumerateRepeatMapReduce() {
 		int r = 10;
 		int c = 10;

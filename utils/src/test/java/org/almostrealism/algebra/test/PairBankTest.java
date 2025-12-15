@@ -8,7 +8,7 @@ import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
 
 public class PairBankTest implements TestFeatures {
-	@Test
+	@Test(timeout = 30000)
 	public void test() {
 		PackedCollection bank = Pair.bank(2);
 		bank.set(0, new Pair(1, 2));
@@ -19,7 +19,7 @@ public class PairBankTest implements TestFeatures {
 		assertEquals(4.0, bank.get(1).toDouble(1));
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void concat1() {
 		Producer<PackedCollection> l = v(shape(-1, 1), 0);
 		Producer<PackedCollection> r = v(shape(-1, 1), 1);
@@ -42,7 +42,7 @@ public class PairBankTest implements TestFeatures {
 		assertEquals(7.0, destination.valueAt(2, 1));
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void concat2() {
 		Producer<PackedCollection> in = v(shape(-1, 4, 1), 0);
 
@@ -60,7 +60,7 @@ public class PairBankTest implements TestFeatures {
 		assertEquals(3.0, destination.valueAt(2, 1));
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void map() {
 		if (skipKnownIssues) return;
 
@@ -83,7 +83,7 @@ public class PairBankTest implements TestFeatures {
 		assertEquals(7.0, destination.valueAt(2, 1));
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void pairFromPairBank() {
 		PackedCollection bank = Pair.bank(10);
 		bank.set(0, new Pair(1, 2));

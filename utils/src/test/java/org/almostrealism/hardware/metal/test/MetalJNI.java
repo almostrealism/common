@@ -14,7 +14,7 @@ import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
 
 public class MetalJNI {
-	@Test
+	@Test(timeout = 30000)
 	public void run() throws IOException {
 		if (!(Hardware.getLocalHardware().getComputeContext() instanceof MetalComputeContext)) return;
 

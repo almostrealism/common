@@ -31,7 +31,7 @@ import org.junit.Test;
 
 public class SphereTest implements TestFeatures {
 
-	@Test
+	@Test(timeout = 30000)
 	public void intersectionTests() {
 		Sphere s = new Sphere();
 		ShadableIntersection f = s.intersectAt(ray(0.0, 0.0, 3.0, 0.0, 0.0, 1.0));
@@ -60,7 +60,7 @@ public class SphereTest implements TestFeatures {
 		System.out.println(r);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void discriminantSingleRay() {
 		// Test discriminant with a single ray that should hit
 		Sphere s = new Sphere();
@@ -82,7 +82,7 @@ public class SphereTest implements TestFeatures {
 		Assert.assertEquals(1.0, result.valueAt(0, 0), 0.01);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void discriminantSmallBatch() {
 		// Test discriminant with 3 rays to isolate batch issue
 		Sphere s = new Sphere();
@@ -135,7 +135,7 @@ public class SphereTest implements TestFeatures {
 		Assert.assertEquals(-1.0, result.valueAt(2, 0), 0.01);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void intersectionSmallBatch() {
 		if (skipKnownIssues) return;
 
@@ -168,7 +168,7 @@ public class SphereTest implements TestFeatures {
 		Assert.assertEquals(-1.0, distances.valueAt(2, 0), 0.01);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void discriminantSqrtSmallBatch() {
 		// Test sqrt(discriminant) with 3 rays
 		Sphere s = new Sphere();
@@ -195,7 +195,7 @@ public class SphereTest implements TestFeatures {
 		Assert.assertTrue("Ray 1 sqrt should be close to 0.99", sqrtVals.valueAt(1, 0) > 0.95 && sqrtVals.valueAt(1, 0) < 1.0);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void tCalculationSmallBatch() {
 		// Test the t(ray) calculation that computes both intersection distances
 		Sphere s = new Sphere();
@@ -241,7 +241,7 @@ public class SphereTest implements TestFeatures {
 		Assert.assertEquals(1.0, dDotDInvVals.valueAt(0, 0), 0.01);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void intersection1DBatch256() {
 		// Test intersection with exactly 256 rays in 1D batch (not 2D grid)
 		Sphere s = new Sphere();
@@ -280,7 +280,7 @@ public class SphereTest implements TestFeatures {
 		Assert.assertTrue("Center rays should hit", distances.valueAt(batchSize/2, 0) > 0.0);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void closestBatch256() {
 		// Test Sphere.closest() with >128 elements to verify it doesn't hit the legacy limit
 		Sphere s = new Sphere();
@@ -345,7 +345,7 @@ public class SphereTest implements TestFeatures {
 		Assert.assertTrue("Should handle at least 200 elements correctly", correct >= 200);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void pairCreationSmallBatch() {
 		// Test creating a Pair from batch producers
 		Producer<Ray> ray = v(shape(-1, 6), 0);
@@ -378,7 +378,7 @@ public class SphereTest implements TestFeatures {
 		Assert.assertEquals(-15.0, pairResult.valueAt(2, 1), 0.01);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void discriminantKernel() {
 		Producer<Ray> ray = v(shape(-1, 6), 0);
 
@@ -413,7 +413,7 @@ public class SphereTest implements TestFeatures {
 		Assert.assertEquals(305, hits);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void intersectionSingleRay() {
 		// Test full intersection with a single ray that should hit
 		Sphere s = new Sphere();
@@ -435,7 +435,7 @@ public class SphereTest implements TestFeatures {
 		Assert.assertEquals(2.0, distance, 0.1);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void intersectionKernel() {
 		int w = 100;
 		int h = 100;
@@ -491,7 +491,7 @@ public class SphereTest implements TestFeatures {
 		}
 	}
 
-	// @Test
+	// @Test(timeout = 30000)
 	public void cameraIntersectionKernel() {
 		int w = 100;
 		int h = 100;

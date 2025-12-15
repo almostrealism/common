@@ -29,14 +29,14 @@ import org.junit.Test;
 /**
  * Test class demonstrating usage patterns for {@link org.almostrealism.collect.computations.TraversableExpressionComputation}
  * and its concrete implementation {@link DefaultTraversableExpressionComputation}.
- * 
+ *
  * <p>This class provides practical examples of how to create and use traversable
  * expression computations for common mathematical operations on multi-dimensional collections.
- * 
+ *
  * @author Michael Murray
  */
 public class TraversableExpressionComputationTest implements TestFeatures {
-	
+
 	/**
 	 * Creates a computation that sums pairs of adjacent elements in a collection.
 	 * This is a practical example of how to implement reduction operations using
@@ -73,7 +73,7 @@ public class TraversableExpressionComputationTest implements TestFeatures {
 	 * - Input: 3x2 matrix with random values
 	 * - Output: 3x1 matrix where each element is the sum of the corresponding row pair
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void pair() {
 		int r = 3;
 		int c = 2;
@@ -105,7 +105,7 @@ public class TraversableExpressionComputationTest implements TestFeatures {
 	 * - Process: Map pairSum across the input using traversal
 	 * - Output: 3x1 matrix with summed pairs (same as pair() test but through mapping)
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void map() {
 		int r = 3;
 		int c = 2;

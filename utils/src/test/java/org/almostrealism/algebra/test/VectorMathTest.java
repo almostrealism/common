@@ -29,12 +29,12 @@ import org.junit.Assert;
 import org.junit.Test;
 
 public class VectorMathTest implements TestFeatures {
-	@Test
+	@Test(timeout = 30000)
 	public void scalarPow() {
 		assertEquals(27, c(3).pow(3).evaluate());
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void scalarPowDynamic() {
 		Producer<PackedCollection> d = new DynamicCollectionProducer(shape(1), args -> {
 			PackedCollection result = new PackedCollection(1);
@@ -49,7 +49,7 @@ public class VectorMathTest implements TestFeatures {
 		assertEquals(27, result);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void scalarMultiply() {
 		CollectionProducer product = vector(1, 2, 3).multiply(c(2));
 		Vector result = new Vector(product.get().evaluate(), 0);
@@ -58,7 +58,7 @@ public class VectorMathTest implements TestFeatures {
 		assertEquals(6, result.toDouble(2));
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void productFromVectors2() {
 		Producer<PackedCollection> a = vector(1.0, 2.0, 3.0);
 		Producer<PackedCollection> b = vector(4.0, 5.0, 6.0);
@@ -68,7 +68,7 @@ public class VectorMathTest implements TestFeatures {
 		Assert.assertEquals(1, so.getArgsCount());
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void productFromVectors3() {
 		Producer<PackedCollection> a = vector(1.0, 2.0, 3.0);
 		Producer<PackedCollection> b = vector(4.0, 5.0, 6.0);
@@ -78,7 +78,7 @@ public class VectorMathTest implements TestFeatures {
 		Assert.assertEquals(1, so.getArgsCount());
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void productDifference() {
 		verboseLog(() -> {
 			Producer<PackedCollection> a = vector(1.0, 2.0, 3.0);
@@ -94,7 +94,7 @@ public class VectorMathTest implements TestFeatures {
 		return crossProduct(vector(0.0, 0.0, -1.0), v);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void crossProduct() {
 		CollectionProducer cp = crossProduct(vector(100.0, -200.0, 0.0));
 
@@ -109,7 +109,7 @@ public class VectorMathTest implements TestFeatures {
 		assertEquals(0, v.toDouble(2));
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void normalizedCrossProduct1() {
 		CollectionProducer cp = normalize(crossProduct(vector(100.0, -200.0, 0.0)));
 
@@ -125,7 +125,7 @@ public class VectorMathTest implements TestFeatures {
 		assertEquals(0, v.toDouble(2));
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void normalizedCrossProduct2() {
 		CollectionProducer cp = normalize(crossProduct(v(shape(3), 0)));
 		Evaluable<PackedCollection> ev = cp.get();
@@ -139,7 +139,7 @@ public class VectorMathTest implements TestFeatures {
 		assertEquals(0, v.toDouble(2));
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void vectorPow() {
 		Vector in = new Vector(3, 4, 5);
 		Vector result = new Vector(vector(c(in).pow(2)).get().evaluate(), 0);
@@ -148,7 +148,7 @@ public class VectorMathTest implements TestFeatures {
 		assertEquals(25, result.toDouble(2));
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void normalize() {
 		PackedCollection v = new PackedCollection(3).randFill();
 		PackedCollection result = normalize(cp(v)).evaluate();
@@ -156,7 +156,7 @@ public class VectorMathTest implements TestFeatures {
 		assertEquals(1.0, length);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void normalizeRandom() {
 		PackedCollection result = normalize(new Random(shape(2))).evaluate();
 		double length = result.doubleStream().map(d -> d * d).sum();

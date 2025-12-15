@@ -46,7 +46,6 @@ import java.util.stream.IntStream;
  * @author Michael Murray
  */
 public class SyntheticCompositionTrainingTest implements ModelTestFeatures {
-
 	static {
 		if (TestUtils.getTrainTests()) {
 			Console.root().addListener(OutputFeatures.fileOutput("results/logs/synthetic_composition_train.out"));
@@ -90,7 +89,7 @@ public class SyntheticCompositionTrainingTest implements ModelTestFeatures {
 	 *
 	 * <p>Architecture: Input [4] - [Dense - Dense] + residual - Dense - Output [4]</p>
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void residualBlock() throws FileNotFoundException {
 		if (testDepth < 1) return;
 
@@ -134,7 +133,7 @@ public class SyntheticCompositionTrainingTest implements ModelTestFeatures {
 	 *
 	 * <p>Architecture: Input [4] - Dense - Dense - Dense - Output [4]</p>
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void sequentialComposition() throws FileNotFoundException {
 		if (testDepth < 1) return;
 

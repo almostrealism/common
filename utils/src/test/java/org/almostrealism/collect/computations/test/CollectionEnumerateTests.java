@@ -32,13 +32,12 @@ import java.util.Arrays;
 import java.util.function.Function;
 
 public class CollectionEnumerateTests implements TestFeatures {
-
-	@Test
+	@Test(timeout = 30000)
 	public void transpose() {
 		transpose(64, 256, input -> cp(input).transpose().get().evaluate());
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void transposePassThrough() {
 		int n = 64;
 		int m = 256;
@@ -66,7 +65,7 @@ public class CollectionEnumerateTests implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void enumerateSmall() {
 		PackedCollection input = integers(1, 17).evaluate().reshape(4, 4);
 		input.traverse().print();
@@ -97,7 +96,7 @@ public class CollectionEnumerateTests implements TestFeatures {
 		assertEquals(16.0, out.valueAt(7, 1));
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void enumerate2d() {
 		Tensor<Double> t = tensor(shape(10, 10), (int[] c) -> c[1] < 2);
 		PackedCollection input = t.pack();
@@ -125,7 +124,7 @@ public class CollectionEnumerateTests implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void enumerate4dExplicitShape() {
 		int n = 2;
 		int c = 5;
@@ -156,22 +155,22 @@ public class CollectionEnumerateTests implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void enumerate4d1() {
 		enumerate4d(2, 5, 4, 2, 2);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void enumerate4d2() {
 		enumerate4d(1, 2, 3, 2, 1);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void enumerate4d3() {
 		enumerate4d(2, 5, 10, 2, 2);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void enumerate4d4() {
 		enumerate4d(2, 5, 10, 2, 1);
 	}
@@ -211,7 +210,7 @@ public class CollectionEnumerateTests implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void slices() {
 		int size = 4;
 		int count = 3;
@@ -239,7 +238,7 @@ public class CollectionEnumerateTests implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void dynamicSum() {
 		if (skipKnownIssues) return;
 
@@ -270,7 +269,7 @@ public class CollectionEnumerateTests implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void enumerateProduct() {
 		PackedCollection input = tensor(shape(6, 4)).pack();
 		PackedCollection operand = tensor(shape(4, 6, 1)).pack();
@@ -292,7 +291,7 @@ public class CollectionEnumerateTests implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void enumerateDivide() {
 		int w = 4; // 1024;
 		int h = 9;
@@ -337,7 +336,7 @@ public class CollectionEnumerateTests implements TestFeatures {
 		});
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void enumerate2dProduct1() {
 		Tensor<Double> t = tensor(shape(4, 6));
 		PackedCollection input = t.pack();
@@ -359,7 +358,7 @@ public class CollectionEnumerateTests implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void enumerate2dProduct2() {
 		int c = 2;
 		int h = 6;
@@ -401,7 +400,7 @@ public class CollectionEnumerateTests implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void enumerate2dProduct3() {
 		int c = 2;
 		int h = 6;
@@ -444,7 +443,7 @@ public class CollectionEnumerateTests implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void enumerate2dProduct4() {
 		int c = 2;
 		int h = 6;
@@ -490,7 +489,7 @@ public class CollectionEnumerateTests implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void enumerateDiagonal() {
 		PackedCollection input = new PackedCollection(shape(12)).fill(1);
 		CollectionProducer diagonal = diagonal(cp(input)).traverse(0);
@@ -511,7 +510,7 @@ public class CollectionEnumerateTests implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void stride2dProduct() {
 		Tensor<Double> t = tensor(shape(8, 10));
 		PackedCollection input = t.pack();
@@ -541,7 +540,7 @@ public class CollectionEnumerateTests implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void enumerateTwiceSmall() {
 		PackedCollection input = tensor(shape(4, 4)).pack();
 
@@ -570,7 +569,7 @@ public class CollectionEnumerateTests implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void doubleEnumerateSmall() {
 		int r = 4;
 		int c = 4;
@@ -601,7 +600,7 @@ public class CollectionEnumerateTests implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void singleEnumerate4d() {
 		int n = 2;
 		int c = 5;
@@ -656,7 +655,7 @@ public class CollectionEnumerateTests implements TestFeatures {
 	}
 
 
-	@Test
+	@Test(timeout = 30000)
 	public void doubleEnumerate4d() {
 		int n = 2;
 		int c = 5;
@@ -700,7 +699,7 @@ public class CollectionEnumerateTests implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void enumerateTwice() {
 		PackedCollection input = tensor(shape(10, 10)).pack();
 
@@ -731,7 +730,7 @@ public class CollectionEnumerateTests implements TestFeatures {
 		});
 	}
 
-	// @Test
+	// @Test(timeout = 30000)
 	public void doubleStride2dProduct() {
 		Tensor<Double> t = tensor(shape(8, 10));
 		PackedCollection input = t.pack();

@@ -26,8 +26,7 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 public class WeightedSumTests implements TestFeatures {
-
-	@Test
+	@Test(timeout = 30000)
 	public void broadcast() {
 		int c1 = 3;
 		int c2 = 2;
@@ -84,7 +83,7 @@ public class WeightedSumTests implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void sumColumn() {
 		int r = 3;
 		int c1 = 2;
@@ -126,7 +125,7 @@ public class WeightedSumTests implements TestFeatures {
 				out.reshape(1, c1, c2));
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void sumColumnBatch() {
 		int bs = 1;
 		int r = 3;
@@ -158,7 +157,7 @@ public class WeightedSumTests implements TestFeatures {
 				out.reshape(bs, c1, c2));
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void sumColumnRepeatBatch() {
 		int bs = 1;
 		int r = 3;
@@ -211,7 +210,7 @@ public class WeightedSumTests implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void similarity() {
 		int bs = 3;
 		int c = 4;
@@ -257,7 +256,7 @@ public class WeightedSumTests implements TestFeatures {
 	}
 
 
-	@Test
+	@Test(timeout = 30000)
 	public void scaledDotProduct() {
 		int batchSize = 2;
 		int heads = 3;
@@ -308,7 +307,7 @@ public class WeightedSumTests implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void scaledDotProductPermute() {
 		int batchSize = 2;
 		int heads = 3;
@@ -361,7 +360,7 @@ public class WeightedSumTests implements TestFeatures {
 		assertTrue("Batch matrix multiplication with transpose differs from expected", diff < 1e-6);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void scaledDotProductTranspose() {
 		int batchSize = 2;
 		int heads = 3;

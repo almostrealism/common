@@ -30,8 +30,7 @@ import org.junit.Test;
 import java.util.Arrays;
 
 public class PackedCollectionSubsetTests implements TestFeatures {
-
-	@Test
+	@Test(timeout = 30000)
 	public void subset3d() {
 		int w = 2;
 		int h = 4;
@@ -80,7 +79,7 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 		});
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void dynamicSubset1d() {
 		int w = 2;
 
@@ -114,7 +113,7 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 		});
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void dynamicSubset2d() {
 		int w = 2;
 		int h = 4;
@@ -154,7 +153,7 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 		});
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void dynamicSubset3d() {
 		int n = 10;
 		int w = 2, h = 4, d = 3;
@@ -200,13 +199,13 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 		});
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void subsetTranspose() {
 		// TODO Transpose a matrix and then take a subset
 		// enumerate(shape(10, 1), p(input)).subset(shape(3, 3, 1), 2, 2, 0)
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void subsetProduct() {
 		int size = 3;
 		int x0 = 4, x1 = x0 + size;
@@ -245,7 +244,7 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 		});
 	}
 
-	// @Test
+	// @Test(timeout = 30000)
 	public void subsetAssignment() {
 		PackedCollection originalInput = new PackedCollection(shape(10, 20));
 		originalInput.fill(pos -> Math.random());
@@ -271,7 +270,7 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void subsetHalves() {
 		int batchSize = 1;
 		int heads = 2;
@@ -304,7 +303,7 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void subsetHalfPad2d() {
 		int seqLen = 16;
 		int dim = 16;
@@ -342,7 +341,7 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 	 * @see #subsetHalfPad2dSum2()
 	 * @see #subsetHalfPad2dSum3()
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void subsetHalfPad2dSumAll() {
 		if (testDepth < 3) return;
 		if (testProfileIs(TestUtils.PIPELINE)) return;
@@ -352,7 +351,7 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 		subsetHalfPad2dSum3();
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void subsetHalfPad2dSum1() {
 		int seqLen = 16;
 		int dim = 16;
@@ -382,7 +381,7 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void subsetHalfPad2dSum2() {
 		int seqLen = 16;
 		int dim = 16;
@@ -412,7 +411,7 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void subsetHalfPad2dSum3() {
 		int seqLen = 16;
 		int dim = 16;
@@ -438,7 +437,7 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void subsetHalfConcat1d() {
 		int dim = 64;
 		int halfDim = dim / 2;
@@ -463,7 +462,7 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void subsetHalfConcat2d() {
 		int seqLen = 16;
 		int dim = 16;

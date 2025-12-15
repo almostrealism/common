@@ -56,7 +56,7 @@ public class NormLayerShapeInvestigationTest implements TestFeatures {
 	 * Test 1: Understand padDimensions behavior.
 	 * When norm receives shape (6) from previous layer, what does padDimensions do?
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void testPadDimensionsBehavior() {
 		log("=== Test 1: padDimensions Behavior ===");
 
@@ -89,7 +89,7 @@ public class NormLayerShapeInvestigationTest implements TestFeatures {
 	 * Test 2: Examine the norm layer shape declarations.
 	 * What does the layer claim its input/output shapes are?
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void testNormLayerShapeDeclaration() {
 		log("=== Test 2: Norm Layer Shape Declaration ===");
 
@@ -124,7 +124,7 @@ public class NormLayerShapeInvestigationTest implements TestFeatures {
 	 * Test 3: Trace what happens in the norm computation.
 	 * The internal reshape: input -> (-1, groups, size/groups) -> compute -> (-1, size)
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void testNormInternalReshape() {
 		log("=== Test 3: Norm Internal Reshape ===");
 
@@ -160,7 +160,7 @@ public class NormLayerShapeInvestigationTest implements TestFeatures {
 	/**
 	 * Test 4: Run a simple norm layer and observe the shape warning.
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void testNormLayerWarning() {
 		log("=== Test 4: Norm Layer Shape Warning ===");
 
@@ -200,7 +200,7 @@ public class NormLayerShapeInvestigationTest implements TestFeatures {
 	 * Test 5: Understand what the dense layer outputs.
 	 * The dense layer outputs shape (1, size) due to matmul behavior.
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void testDenseOutputShapeForNorm() {
 		log("=== Test 5: Dense Output Shape for Norm ===");
 
@@ -224,7 +224,7 @@ public class NormLayerShapeInvestigationTest implements TestFeatures {
 	 * Test 6: Compare norm input shape vs actual input record shape.
 	 * This is where the mismatch occurs.
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void testNormInputMismatch() {
 		log("=== Test 6: Norm Input Shape Mismatch ===");
 

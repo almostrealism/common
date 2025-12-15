@@ -40,12 +40,12 @@ import java.util.function.Supplier;
 
 public class ConvolutionModelTests implements ModelFeatures, TestFeatures, KernelAssertions {
 
-	@Test
+	@Test(timeout = 30000)
 	public void convSingleChannelSmall() {
 		convSingleChannel(10, 10, 3, 8);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void convSingleChannelMedium() {
 //		convSingleChannel(54, 54, 3, 6);
 		convSingleChannel(52, 52, 3, 6);
@@ -74,19 +74,19 @@ public class ConvolutionModelTests implements ModelFeatures, TestFeatures, Kerne
 		validateConv(input.reshape(1, 1, h, w), filter, output, convSize);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void convMultiChannelSmall() {
 		convMultiChannel(2, 4, 10, 10, 3, 6);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void convMultiChannelMedium() {
 		if (testDepth < 1) return;
 
 		convMultiChannel(2, 4, 54, 54, 3, 6);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void convMultiChannelLarge() {
 		convMultiChannel(1, 56, 28, 28, 3, 28);
 	}
@@ -113,61 +113,61 @@ public class ConvolutionModelTests implements ModelFeatures, TestFeatures, Kerne
 		validateConv(input, filter, output, convSize);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void convBackwardsSmallAtom() throws IOException {
 		convBackwards("convBackwardsSmallAtom", 1, 3, 4, 4, 1, 3, 0, true);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void convBackwardsMediumAtom() throws IOException {
 		convBackwards("convBackwardsMediumAtom", 1, 28, 28, 28, 1, 28, 0, true);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void convBackwardsMediumAtomPadded() throws IOException {
 		if (skipKnownIssues) return;
 
 		convBackwards("convBackwardsMediumAtomPadded", 1, 28, 28, 28, 1, 28,1, true);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void convBackwardsSmall() throws IOException {
 		convBackwards("convBackwardsSmall", 1, 3, 4, 4, 2, 3,0, true);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void convBackwardsSmallPadded() throws IOException {
 		convBackwards("convBackwardsSmallPadded", 1, 3, 4, 4, 2, 3, 1, true);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void convBackwardsMedium() throws IOException {
 		convBackwards("convBackwardsMedium", 1, 28, 28, 28, 3, 28, 0, true);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void convBackwardsMediumBatch() throws IOException {
 		if (testDepth < 2) return;
 
 		convBackwards("convBackwardsMediumBatch", 4, 28, 28, 28, 3, 28, 0, true);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void convBackwardsLarge() throws IOException {
 		convBackwards("convBackwardsLarge", 1, 168, 7, 7, 3, 112, 1, true);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void convBackwardsMediumPadded() throws IOException {
 		convBackwards("convBackwardsMediumPadded", 1, 28, 28, 28, 3, 28, 1, true);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void convGradientSmallest() throws IOException {
 		convGradient("convGradientSmallest", 1, 1, 4, 4, 2, 1, 0, false);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void convGradientSmall() throws IOException {
 		convGradient("convGradientSmallest", 3, 2, 4, 4, 2, 2, 0, false);
 	}

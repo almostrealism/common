@@ -103,7 +103,7 @@ public class SyntheticDenseTrainingTest implements ModelTestFeatures {
 	 *
 	 * <p>Architecture: Input [5] - Dense [5 - 5] - Output [5]</p>
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void simpleDenseRegression() throws FileNotFoundException {
 		if (testDepth < 1) return;
 
@@ -142,7 +142,7 @@ public class SyntheticDenseTrainingTest implements ModelTestFeatures {
 	 *
 	 * <p>Architecture: Input [3] - Dense [3 - 5] - Dense [5 - 1] - Output [1]</p>
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void denseWithMultipleLayers() throws FileNotFoundException {
 		if (testDepth < 1) return;
 
@@ -184,7 +184,7 @@ public class SyntheticDenseTrainingTest implements ModelTestFeatures {
 	 *
 	 * <p>Architecture: Input [4] - Dense [4 - 2] - Softmax - Output [2]</p>
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void denseClassification() throws FileNotFoundException {
 		if (testDepth < 1) return;
 
@@ -265,7 +265,7 @@ public class SyntheticDenseTrainingTest implements ModelTestFeatures {
 	 *
 	 * <p>Architecture: Input [bs=10, 3] - Dense [3 - 3] - Output [bs=10, 3]</p>
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void denseBatched() throws FileNotFoundException {
 		if (testDepth < 1) return;
 

@@ -34,7 +34,7 @@ public class CollectionExponentComputationTest implements TestFeatures {
 	 * Tests basic element-wise exponentiation with matching dimensions.
 	 * Demonstrates: [2, 3, 4] ^ [2, 2, 2] = [4, 9, 16]
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void elementWisePower() {
 		PackedCollection base = pack(2.0, 3.0, 4.0);
 		PackedCollection exponent = pack(2.0, 2.0, 2.0);
@@ -53,7 +53,7 @@ public class CollectionExponentComputationTest implements TestFeatures {
 	 * Tests broadcasting a scalar exponent to all elements.
 	 * Demonstrates: [2, 3, 4] ^ 3 = [8, 27, 64]
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void scalarExponentBroadcast() {
 		PackedCollection base = pack(2.0, 3.0, 4.0);
 		
@@ -70,7 +70,7 @@ public class CollectionExponentComputationTest implements TestFeatures {
 	 * Tests multi-dimensional power operations on matrices.
 	 * Demonstrates element-wise power on 2x3 matrix.
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void matrixPower() {
 		PackedCollection matrix = new PackedCollection(shape(2, 3));
 		// Fill with [[1,2,3], [2,3,4]]
@@ -98,7 +98,7 @@ public class CollectionExponentComputationTest implements TestFeatures {
 	 * Tests various power operations including fractional exponents.
 	 * Demonstrates square roots, cubes, and reciprocals.
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void variousPowerOperations() {
 		PackedCollection values = pack(4.0, 8.0, 16.0, 25.0);
 		
@@ -131,7 +131,7 @@ public class CollectionExponentComputationTest implements TestFeatures {
 	 * Tests the delta (derivative) computation functionality.
 	 * Demonstrates automatic differentiation using the power rule: d/dx[x^n] = n*x^(n-1)
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void deltaComputation() {
 		// Test f(x) = x^3, df/dx = 3*x^2
 		PackedCollection testValues = pack(1.0, 2.0, 3.0);
@@ -153,7 +153,7 @@ public class CollectionExponentComputationTest implements TestFeatures {
 	/**
 	 * Tests edge cases including powers of zero and one.
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void edgeCases() {
 		// Test x^0 = 1 (for non-zero x)
 		PackedCollection nonZeroValues = pack(2.0, 5.0, 10.0);
@@ -183,7 +183,7 @@ public class CollectionExponentComputationTest implements TestFeatures {
 	 * Tests configuration flag behavior for custom delta computation.
 	 * Temporarily disables custom delta to verify fallback behavior.
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void customDeltaConfiguration() {
 		// Save original state
 		boolean originalCustomDelta = CollectionExponentComputation.enableCustomDelta;

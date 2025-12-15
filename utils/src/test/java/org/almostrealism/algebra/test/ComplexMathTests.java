@@ -24,7 +24,7 @@ import org.junit.Assert;
 import org.junit.Test;
 
 public class ComplexMathTests implements TestFeatures {
-	@Test
+	@Test(timeout = 30000)
 	public void complexFromPartsBatches1() {
 		PackedCollection values = new PackedCollection(10, 2, 1024).randFill();
 
@@ -48,7 +48,7 @@ public class ComplexMathTests implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void complexFromPartsBatches2() {
 		if (skipKnownIssues) return;
 
@@ -79,7 +79,7 @@ public class ComplexMathTests implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void complexFromPartsMagnitude() {
 		Evaluable<PackedCollection> m =
 				complexFromParts(
@@ -102,7 +102,7 @@ public class ComplexMathTests implements TestFeatures {
 		});
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void multiply() {
 		PackedCollection a = new PackedCollection(shape(32, 2)).randFill();
 		PackedCollection b = new PackedCollection(shape(32, 2)).randFill();
@@ -126,7 +126,7 @@ public class ComplexMathTests implements TestFeatures {
 		});
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void broadcastMultiply() {
 		int w = 12;
 		int h = 32;

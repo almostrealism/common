@@ -25,7 +25,7 @@ import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
 
 public class AcceleratedComputationEvaluableTests implements TestFeatures {
-	@Test
+	@Test(timeout = 30000)
 	public void staticProducer() {
 		Producer<PackedCollection> res = vector(0.0, 1.0, 2.0);
 		Vector v = new Vector(res.get().evaluate(), 0);
@@ -35,7 +35,7 @@ public class AcceleratedComputationEvaluableTests implements TestFeatures {
 		assert v.getZ() == 2.0;
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void scalarFromVector() {
 		CollectionProducer res = y(vector(0.0, 1.0, 2.0));
 		Evaluable<PackedCollection> ev = res.get();
@@ -45,7 +45,7 @@ public class AcceleratedComputationEvaluableTests implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void scalarProduct() {
 		CollectionProducer x = c(3.0);
 		Evaluable<PackedCollection> res = multiply(x, c(0.5)).get();

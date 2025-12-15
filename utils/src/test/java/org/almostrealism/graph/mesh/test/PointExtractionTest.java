@@ -26,7 +26,7 @@ import org.junit.Test;
 
 public class PointExtractionTest implements TestFeatures {
 
-	@Test
+	@Test(timeout = 30000)
 	public void batchEdgeComputation() {
 		// Test computing edges from extracted vertices
 		PackedCollection points = Vector.table(3, 2);
@@ -90,7 +90,7 @@ public class PointExtractionTest implements TestFeatures {
 		assertEquals(0.0, normals.toDouble(5));
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void batchSubtract() {
 		// Test batch subtraction
 		PackedCollection v1 = new PackedCollection(shape(2, 3));
@@ -124,7 +124,7 @@ public class PointExtractionTest implements TestFeatures {
 		assertEquals(3.0, result.toDouble(5));
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void batchPointExtractionVertex1() {
 		// Test extracting vertex 1 from batch
 		PackedCollection points = Vector.table(3, 2);
@@ -167,7 +167,7 @@ public class PointExtractionTest implements TestFeatures {
 		assertEquals(0.0, output.toDouble(5));
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void batchPointExtraction() {
 		// Create test data: 2 triangles with distinct vertices
 		PackedCollection points = Vector.table(3, 2);
@@ -211,7 +211,7 @@ public class PointExtractionTest implements TestFeatures {
 		assertEquals(0.0, output.toDouble(5));
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void batchTriangleComputation() {
 		// Create test data: 2 triangles with different orientations
 		PackedCollection points = Vector.table(3, 2);
@@ -330,7 +330,7 @@ public class PointExtractionTest implements TestFeatures {
 		assertEquals(0.0, output.get(1).get(3).toDouble(2));
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void batchCrossProduct() {
 		// Create test data: 2 pairs of vectors to cross
 		PackedCollection vec1 = new PackedCollection(shape(2, 3));
@@ -375,7 +375,7 @@ public class PointExtractionTest implements TestFeatures {
 		assertEquals(0.0, result.toDouble(5));
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void batchNormalize() {
 		// Create test data: 2 vectors with different magnitudes
 		PackedCollection vecs = new PackedCollection(shape(2, 3));
@@ -438,7 +438,7 @@ public class PointExtractionTest implements TestFeatures {
 		assertEquals(12.0 / 13.0, normalized.toDouble(5));
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void meshDataStructure() {
 		// Test with proper (N, 3, 3) shape: N triangles, 3 vertices per triangle, 3 components per vertex
 		PackedCollection flatData = new PackedCollection(shape(3 * 3 * 3));  // 27 scalars total

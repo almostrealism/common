@@ -24,7 +24,7 @@ import org.junit.Assert;
 import org.junit.Test;
 
 public class LossTests implements TestFeatures {
-	@Test
+	@Test(timeout = 30000)
 	public void meanSquaredError() {
 		TraversalPolicy outputShape = new TraversalPolicy(1, 1, 28, 28).traverseEach();
 		PackedCollection input = new PackedCollection(shape(1, 1, 28, 28));

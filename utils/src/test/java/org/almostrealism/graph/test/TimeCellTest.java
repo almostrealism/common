@@ -26,7 +26,7 @@ import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
 
 public class TimeCellTest implements TestFeatures {
-	@Test
+	@Test(timeout = 30000)
 	public void timeCell() {
 		TimeCell cell = new TimeCell(null, c(44100));
 		cell.setup().get().run();
@@ -39,7 +39,7 @@ public class TimeCellTest implements TestFeatures {
 		assertEquals(100.0, cell.frame().evaluate());
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void fmod() {
 		Pair time = new Pair();
 		Producer<PackedCollection> loopDuration = c(2.0);

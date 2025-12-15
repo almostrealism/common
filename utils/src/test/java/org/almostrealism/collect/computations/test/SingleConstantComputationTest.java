@@ -35,7 +35,7 @@ public class SingleConstantComputationTest implements TestFeatures {
 	 * Tests basic creation and evaluation of a SingleConstantComputation.
 	 * Demonstrates how to create a computation that fills a collection with a constant value.
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void basicConstantCreation() {
 		// Create a 2x3 matrix filled with the value 5.0
 		TraversalPolicy shape = new TraversalPolicy(2, 3);
@@ -55,7 +55,7 @@ public class SingleConstantComputationTest implements TestFeatures {
 	 * Demonstrates how SingleConstantComputation can bypass the normal computation
 	 * pipeline for efficiency by directly creating the result collection.
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void shortCircuitEvaluation() {
 		TraversalPolicy shape = new TraversalPolicy(3);
 		double constantValue = 7.5;
@@ -77,7 +77,7 @@ public class SingleConstantComputationTest implements TestFeatures {
 	 * Demonstrates how SingleConstantComputation detects special values
 	 * like zero and identity elements for optimization purposes.
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void optimizationMethods() {
 		// Test zero detection
 		SingleConstantComputation zero =
@@ -109,7 +109,7 @@ public class SingleConstantComputationTest implements TestFeatures {
 	 * Demonstrates how SingleConstantComputation can change its output shape
 	 * without affecting the constant value that fills the collection.
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void reshapeOperation() {
 		double constantValue = 2.5;
 		TraversalPolicy originalShape = new TraversalPolicy(2, 3); // 2x3 matrix
@@ -134,7 +134,7 @@ public class SingleConstantComputationTest implements TestFeatures {
 	 * Demonstrates how SingleConstantComputation handles axis-based transformations
 	 * while maintaining the constant value semantics.
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void traverseOperation() {
 		double constantValue = -1.5;
 		TraversalPolicy originalShape = new TraversalPolicy(3, 4); // 3x4 matrix
@@ -157,7 +157,7 @@ public class SingleConstantComputationTest implements TestFeatures {
 	 * Demonstrates how SingleConstantComputation provides a readable
 	 * representation of the constant value.
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void description() {
 		SingleConstantComputation constant =
 			new SingleConstantComputation(new TraversalPolicy(2), 3.14159);
@@ -173,7 +173,7 @@ public class SingleConstantComputationTest implements TestFeatures {
 	 * Demonstrates the protected constructor that allows custom naming
 	 * of SingleConstantComputation instances.
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void customNameConstructor() {
 		String customName = "myConstant";
 		TraversalPolicy shape = new TraversalPolicy(2, 2);

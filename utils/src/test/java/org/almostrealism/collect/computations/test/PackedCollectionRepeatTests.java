@@ -28,7 +28,7 @@ import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 public class PackedCollectionRepeatTests implements TestFeatures {
-	@Test
+	@Test(timeout = 30000)
 	public void isolatedRepeat() {
 		if (skipKnownIssues) return;
 
@@ -56,7 +56,7 @@ public class PackedCollectionRepeatTests implements TestFeatures {
 		Assert.assertTrue(out.getShape().getOrder() instanceof RepeatTraversalOrdering);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void repeatItem() {
 		int w = 2;
 		int h = 3;
@@ -80,7 +80,7 @@ public class PackedCollectionRepeatTests implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void repeat3d() {
 		int w = 1;
 		int h = 2;
@@ -104,7 +104,7 @@ public class PackedCollectionRepeatTests implements TestFeatures {
 		});
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void repeatSum() {
 		int size = 30;
 		int nodes = 10;
@@ -134,7 +134,7 @@ public class PackedCollectionRepeatTests implements TestFeatures {
 		kernelTest(dense, valid);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void repeatEnumerateMultiply() {
 		int size = 30;
 		int nodes = 10;
@@ -168,7 +168,7 @@ public class PackedCollectionRepeatTests implements TestFeatures {
 		kernelTest(dense, valid);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void repeatEnumerateMultiplyAdd() {
 		int size = 30;
 		int nodes = 10;
@@ -208,7 +208,7 @@ public class PackedCollectionRepeatTests implements TestFeatures {
 		kernelTest(dense, valid);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void maxRepeat() {
 		PackedCollection in = new PackedCollection(8, 4).randFill();
 		in.traverse(1).print();
@@ -232,7 +232,7 @@ public class PackedCollectionRepeatTests implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void upsample() {
 		PackedCollection input = pack(1.0, 2.0, 3.0, 4.0).reshape(1, 1, 2, 2);
 

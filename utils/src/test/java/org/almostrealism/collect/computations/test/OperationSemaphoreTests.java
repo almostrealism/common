@@ -27,12 +27,12 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class OperationSemaphoreTests implements TestFeatures {
-	@Test
+	@Test(timeout = 30000)
 	public void sum() {
 		sum(16, 2048, 1024, false);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void sumPowers() {
 		if (testDepth < 2) return;
 
