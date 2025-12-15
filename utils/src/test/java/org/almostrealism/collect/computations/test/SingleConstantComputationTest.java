@@ -17,7 +17,11 @@
 package org.almostrealism.collect.computations.test;
 
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.relation.Producer;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.computations.CollectionZerosComputation;
+import org.almostrealism.collect.computations.ReshapeProducer;
 import org.almostrealism.collect.computations.SingleConstantComputation;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
@@ -185,5 +189,82 @@ public class SingleConstantComputationTest implements TestFeatures {
 
 		assertEquals(value, constant.getConstantValue());
 		assertEquals(shape.getTotalSize(), constant.getShape().getTotalSize());
+	}
+
+	/**
+	 * Tests that traverseEach on a SingleConstantComputation returns another
+	 * SingleConstantComputation rather than wrapping it in a ReshapeProducer.
+	 * This verifies that the delegation pattern in CollectionFeatures.traverseEach
+	 * properly delegates to the constant's own reshape method.
+	 */
+	@Test(timeout = 30000)
+	public void traverseEachReturnsConstant() {
+		TraversalPolicy shape = new TraversalPolicy(3, 4);
+		double constantValue = 2.5;
+		SingleConstantComputation constant =
+			new SingleConstantComputation(shape, constantValue);
+
+		// Call traverseEach through CollectionFeatures
+		Producer result = traverseEach(constant);
+
+		// Should return a SingleConstantComputation, not a ReshapeProducer
+		assertTrue("traverseEach on SingleConstantComputation should return SingleConstantComputation, not " + result.getClass().getSimpleName(),
+			result instanceof SingleConstantComputation);
+		assertFalse("traverseEach on SingleConstantComputation should not wrap in ReshapeProducer",
+			result instanceof ReshapeProducer);
+
+		// Verify the constant value is preserved
+		SingleConstantComputation resultConstant = (SingleConstantComputation) result;
+		assertEquals(constantValue, resultConstant.getConstantValue());
+	}
+
+	/**
+	 * Tests that traverseEach on a CollectionZerosComputation returns another
+	 * CollectionZerosComputation rather than wrapping it in a ReshapeProducer.
+	 */
+	@Test(timeout = 30000)
+	public void traverseEachZerosReturnsZeros() {
+		TraversalPolicy shape = new TraversalPolicy(3, 4);
+		CollectionZerosComputation zeros = new CollectionZerosComputation(shape);
+
+		// Call traverseEach through CollectionFeatures
+		Producer result = traverseEach(zeros);
+
+		// Should return a CollectionZerosComputation, not a ReshapeProducer
+		assertTrue("traverseEach on CollectionZerosComputation should return CollectionZerosComputation, not " + result.getClass().getSimpleName(),
+			result instanceof CollectionZerosComputation);
+		assertFalse("traverseEach on CollectionZerosComputation should not wrap in ReshapeProducer",
+			result instanceof ReshapeProducer);
+
+		// Verify it's still zero
+		CollectionZerosComputation resultZeros = (CollectionZerosComputation) result;
+		assertTrue("Result should still be zero", resultZeros.isZero());
+	}
+
+	/**
+	 * Tests that reshape on a SingleConstantComputation returns another
+	 * SingleConstantComputation when called through CollectionFeatures.
+	 */
+	@Test(timeout = 30000)
+	public void reshapeConstantReturnsConstant() {
+		TraversalPolicy originalShape = new TraversalPolicy(2, 3);
+		TraversalPolicy newShape = new TraversalPolicy(6);
+		double constantValue = 3.14;
+		SingleConstantComputation constant =
+			new SingleConstantComputation(originalShape, constantValue);
+
+		// Call reshape through CollectionFeatures
+		Producer result = reshape(newShape, constant);
+
+		// Should return a SingleConstantComputation, not a ReshapeProducer
+		assertTrue("reshape on SingleConstantComputation should return SingleConstantComputation, not " + result.getClass().getSimpleName(),
+			result instanceof SingleConstantComputation);
+		assertFalse("reshape on SingleConstantComputation should not wrap in ReshapeProducer",
+			result instanceof ReshapeProducer);
+
+		// Verify the constant value is preserved
+		SingleConstantComputation resultConstant = (SingleConstantComputation) result;
+		assertEquals(constantValue, resultConstant.getConstantValue());
+		assertEquals(newShape.getTotalSize(), resultConstant.getShape().getTotalSize());
 	}
 }

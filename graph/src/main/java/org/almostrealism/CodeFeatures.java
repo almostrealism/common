@@ -35,7 +35,6 @@ import org.almostrealism.algebra.VectorFeatures;
 import org.almostrealism.algebra.computations.Switch;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.computations.ReshapeProducer;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.geometry.RayFeatures;
 import org.almostrealism.geometry.TransformMatrix;
@@ -203,8 +202,8 @@ public interface CodeFeatures extends LayerFeatures,
 		}
 
 		if (enableAssignmentCopy) {
-			if (sourceShape != null) source = new ReshapeProducer(sourceShape.traverseEach(), (Producer<PackedCollection>) source);
-			if (targetShape != null) target = new ReshapeProducer(targetShape.traverseEach(), (Producer<PackedCollection>) target);
+			if (sourceShape != null) source = traverseEach((Producer<PackedCollection>) source);
+			if (targetShape != null) target = traverseEach((Producer<PackedCollection>) target);
 			return new Assignment(1, target, source);
 		} else {
 			return new MemoryDataCopy(name, source.get()::evaluate, target.get()::evaluate, length);

@@ -1380,7 +1380,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	 * }</pre>
 	 */
 	default Producer traverseEach(Producer<PackedCollection> producer) {
-		return new ReshapeProducer(((Shape) producer).getShape().traverseEach(), producer);
+		return reshape(((Shape) producer).getShape().traverseEach(), producer);
 	}
 
 	/**
