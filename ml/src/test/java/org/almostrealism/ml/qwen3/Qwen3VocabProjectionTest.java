@@ -2,9 +2,7 @@ package org.almostrealism.ml.qwen3;
 
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
-import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.layers.LayerFeatures;
 import org.almostrealism.model.Model;
 import org.junit.Test;
@@ -19,6 +17,9 @@ public class Qwen3VocabProjectionTest implements LayerFeatures, ConsoleFeatures 
 
 	/**
 	 * Test dense layer with Qwen3-sized output (151936) in isolation.
+	 *
+	 * <p>This test validates that large vocab projection uses efficient
+	 * MemoryDataCopy for layer output instead of generating unrolled code.</p>
 	 */
 	@Test
 	public void testLargeVocabProjection() {
@@ -54,10 +55,10 @@ public class Qwen3VocabProjectionTest implements LayerFeatures, ConsoleFeatures 
 		model.add(dense(weights));
 		log("    Layer created in " + (System.currentTimeMillis() - start) + "ms");
 
-		// Compile
-		log("\n[4] Compiling model...");
+		// Compile (inference-only, no backprop)
+		log("\n[4] Compiling model (inference-only)...");
 		start = System.currentTimeMillis();
-		var compiled = model.compile();
+		var compiled = model.compile(false);
 		log("    Compiled in " + (System.currentTimeMillis() - start) + "ms");
 
 		// Test forward pass
@@ -99,10 +100,10 @@ public class Qwen3VocabProjectionTest implements LayerFeatures, ConsoleFeatures 
 		model.add(dense(weights));
 		log("    Layer created in " + (System.currentTimeMillis() - start) + "ms");
 
-		// Compile
-		log("\n[3] Compiling model...");
+		// Compile (inference-only, no backprop)
+		log("\n[3] Compiling model (inference-only)...");
 		start = System.currentTimeMillis();
-		var compiled = model.compile();
+		var compiled = model.compile(false);
 		log("    Compiled in " + (System.currentTimeMillis() - start) + "ms");
 
 		// Test forward pass
@@ -143,7 +144,7 @@ public class Qwen3VocabProjectionTest implements LayerFeatures, ConsoleFeatures 
 			log("  Layer: " + (System.currentTimeMillis() - start) + "ms");
 
 			start = System.currentTimeMillis();
-			var compiled = model.compile();
+			var compiled = model.compile(false);  // inference-only
 			log("  Compile: " + (System.currentTimeMillis() - start) + "ms");
 
 			start = System.currentTimeMillis();

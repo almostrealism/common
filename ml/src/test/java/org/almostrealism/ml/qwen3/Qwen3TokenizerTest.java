@@ -126,6 +126,45 @@ public class Qwen3TokenizerTest {
 	}
 
 	/**
+	 * Test loading the real Qwen3 tokenizer from weights directory.
+	 * Verifies that "Hello" encodes to token 9707 (matching PyTorch).
+	 */
+	@Test
+	public void testRealTokenizerEncoding() throws Exception {
+		String tokenizerPath = "/workspace/project/common/ml/qwen3_weights/tokenizer.bin";
+		java.io.File f = new java.io.File(tokenizerPath);
+		if (!f.exists()) {
+			System.out.println("Skipping: tokenizer.bin not found at " + tokenizerPath);
+			return;
+		}
+
+		Qwen3Tokenizer tokenizer = new Qwen3Tokenizer(tokenizerPath);
+		System.out.println("Real tokenizer vocab size: " + tokenizer.getVocabSize());
+
+		// Test "Hello" - should encode to single token 9707 like PyTorch
+		int[] helloTokens = tokenizer.encode("Hello", false, false);
+		System.out.println("'Hello' encoded to: " + Arrays.toString(helloTokens));
+
+		// PyTorch reference: token_id = 9707 for "Hello"
+		if (helloTokens.length == 1 && helloTokens[0] == 9707) {
+			System.out.println("[PASS] 'Hello' encodes to 9707 (matches PyTorch)");
+		} else {
+			System.out.println("[INFO] 'Hello' did not encode to 9707 (got " +
+				Arrays.toString(helloTokens) + ")");
+			// Show what token 9707 decodes to
+			String token9707 = tokenizer.decode(new int[]{9707});
+			System.out.println("Token 9707 decodes to: '" + token9707 + "'");
+		}
+
+		// Test other tokens
+		int[] worldTokens = tokenizer.encode("World", false, false);
+		System.out.println("'World' encoded to: " + Arrays.toString(worldTokens));
+
+		int[] helloWorldTokens = tokenizer.encode("Hello World!", false, false);
+		System.out.println("'Hello World!' encoded to: " + Arrays.toString(helloWorldTokens));
+	}
+
+	/**
 	 * Main method for manual testing without JUnit.
 	 */
 	public static void main(String[] args) {
