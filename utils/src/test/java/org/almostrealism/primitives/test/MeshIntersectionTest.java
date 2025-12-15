@@ -76,7 +76,7 @@ public class MeshIntersectionTest implements TestFeatures {
 		ray = camera();
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 10000)
 	public void intersectAt() {
 		if (skipKnownIssues) return;
 
@@ -114,7 +114,7 @@ public class MeshIntersectionTest implements TestFeatures {
 		Assert.assertEquals(0.6666666865348816, n.toDouble(2), Math.pow(10, -10));
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 10000)
 	public void triangleIntersectAtKernel() {
 		PackedCollection in = Ray.bank(1);
 		PackedCollection distances = new PackedCollection(shape(1, 2));

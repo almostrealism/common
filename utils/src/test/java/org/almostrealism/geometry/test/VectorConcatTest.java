@@ -11,7 +11,7 @@ import org.junit.Test;
  */
 public class VectorConcatTest implements TestFeatures, VectorFeatures {
 
-	@Test(timeout = 30000)
+	@Test(timeout = 10000)
 	public void simpleVectorFromScalars() {
 		log("Creating vector from three scalar values...");
 

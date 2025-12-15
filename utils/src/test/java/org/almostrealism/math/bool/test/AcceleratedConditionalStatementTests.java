@@ -30,7 +30,7 @@ import java.util.stream.IntStream;
 
 public class AcceleratedConditionalStatementTests implements TestFeatures {
 
-	@Test(timeout = 30000)
+	@Test(timeout = 10000)
 	public void randomLessThanKernel() {
 		PackedCollection x = rand(shape(100, 2)).get().evaluate();
 		PackedCollection y = rand(shape(100, 2)).get().evaluate();
@@ -61,7 +61,7 @@ public class AcceleratedConditionalStatementTests implements TestFeatures {
 		return lessThan(one, two, one, two, false);
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 10000)
 	public void withPassThrough() {
 		IntStream.range(0, 5)
 				.mapToObj(i -> pack(Math.random()))
@@ -71,7 +71,7 @@ public class AcceleratedConditionalStatementTests implements TestFeatures {
 				});
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 10000)
 	public void dotProduct() {
 		if (skipKnownIssues) return;
 
@@ -86,7 +86,7 @@ public class AcceleratedConditionalStatementTests implements TestFeatures {
 		Assert.assertNotEquals(0.0, r.toDouble());
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 10000)
 	public void crossProduct() {
 		CollectionProducer lt1 = lessThan(
 				oDotd(ray(i -> Math.random())),
@@ -114,7 +114,7 @@ public class AcceleratedConditionalStatementTests implements TestFeatures {
 		}
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 10000)
 	public void compactNested() {
 		IntStream.range(1, 10).forEach(i -> {
 			double a = i * Math.random();

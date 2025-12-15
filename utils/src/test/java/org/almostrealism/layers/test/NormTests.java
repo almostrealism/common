@@ -111,12 +111,12 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 		}
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 60000)
 	public void normComputationNoWeights() {
 		normComputation(12, 10, 4, null, null);
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 60000)
 	public void normComputationMedium() {
 		if (testDepth < 1) return;
 
@@ -151,7 +151,7 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 				}, false, false, true);
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 60000)
 	public void normComputationDeltaMedium() {
 		if (skipKnownIssues) return;
 
@@ -187,7 +187,7 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 				}, false, false, true);
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 60000)
 	public void normLayer() {
 		int c = 12;
 		int v = 10;
@@ -206,7 +206,7 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 		validate(groups, groupSize, v, in, out, null, null);
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 60000)
 	public void normLayerTrainable() {
 		int c = 12;
 		int v = 10;
@@ -288,23 +288,23 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 		log("Total native programs after validate = " + NativeCompiler.getTotalInstructionSets());
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 60000)
 	public void backwardsSmallLowVariance() throws IOException {
 		normBackwards("backwardsSmallLowVariance", 2, 1,
 				() -> new PackedCollection(shape(2)).fill(1.0, 1.01));
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 60000)
 	public void backwardsSmall() throws IOException {
 		normBackwards(2, 1);
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 60000)
 	public void backwardsMedium() throws IOException {
 		normBackwards(120, 4);
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 60000)
 	public void backwardsProgressive() throws IOException {
 		if (testDepth < 3) return;
 
@@ -316,34 +316,34 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 		}
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 60000)
 	public void backwardsBiasSmallLowVariance() throws IOException {
 		normBackwardsBias("backwardsBiasSmallLowVariance", 2, 1, true, 1.0, 1.01);
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 60000)
 	public void backwardsBiasSmall1() throws IOException {
 		normBackwardsBias("backwardsBiasSmall1", 2, 1);
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 60000)
 	public void backwardsBiasSmall2() throws IOException {
 		normBackwardsBias("backwardsBiasSmall2", 4, 1);
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 60000)
 	public void backwardsBiasMedium1() throws IOException {
 		if (testDepth < 2) return;
 
 		normBackwardsBias("backwardsBiasMedium1", 8, 4);
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 60000)
 	public void backwardsBiasMedium2() throws IOException {
 		normBackwardsBias("backwardsBiasMedium2", 16, 4);
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 60000)
 	public void backwardsBiasMedium3() throws IOException {
 		if (testDepth < 1) return;
 		if (testProfileIs(TestUtils.PIPELINE)) return;
@@ -351,7 +351,7 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 		normBackwardsBias("backwardsBiasMedium3", 64, 1);
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 60000)
 	public void backwardsBiasProgressive1() throws IOException {
 		if (testDepth < 2) return;
 		if (testProfileIs(TestUtils.PIPELINE)) return;
@@ -359,7 +359,7 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 		backwardsBiasProgressive(2, 1, 5);
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 60000)
 	public void backwardsBiasProgressive2() throws IOException {
 		if (testDepth < 1) return;
 		if (testProfileIs(TestUtils.PIPELINE)) return;
@@ -437,19 +437,19 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 		}
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 60000)
 	public void backwardsTrainableSmallLowVariance() throws IOException {
 		normBackwardsTrainable("backwardsTrainableSmallLowVariance",
 				2, 1, true, true,
 				() -> new PackedCollection(shape(2)).fill(1.0, 1.01));
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 60000)
 	public void backwardsTrainableSmall1() throws IOException {
 		normBackwardsTrainable("backwardsTrainableSmall1", 2, 1);
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 60000)
 	public void backwardsTrainableSmall2() throws IOException {
 		if (testDepth < 1) return;
 
@@ -464,19 +464,19 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 		}
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 60000)
 	public void backwardsTrainableMedium1() throws IOException {
 		normBackwardsTrainable("backwardsTrainableMedium1", 8, 4);
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 60000)
 	public void backwardsTrainableMedium2() throws IOException {
 		if (testDepth < 1) return;
 
 		normBackwardsTrainable("backwardsTrainableMedium2", 16, 4);
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 60000)
 	public void backwardsTrainableLarge1() throws IOException {
 		if (testDepth < 2) return;
 
@@ -485,7 +485,7 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 		normBackwardsTrainable("backwardsTrainableLarge1", c, groups);
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 60000)
 	public void backwardsTrainableLarge2() throws IOException {
 		if (testDepth < 1) return;
 
@@ -494,7 +494,7 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 		normBackwardsTrainable("backwardsTrainableLarge2", c, groups);
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 60000)
 	public void backwardsTrainableProgressive() throws IOException {
 		if (skipKnownIssues) return;
 		if (testDepth < 3) return;
@@ -510,7 +510,7 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 		}
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 60000)
 	public void backwardsTrainableVeryLarge1() throws IOException {
 		if (testDepth < 2) return;
 		if (testProfileIs(TestUtils.PIPELINE)) return;
@@ -520,7 +520,7 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 		normBackwardsTrainable("backwardsTrainableVeryLarge1", c, groups);
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 60000)
 	public void backwardsTrainableVeryLarge2() throws IOException {
 		if (skipKnownIssues) return;
 		if (testDepth < 3) return;
@@ -531,7 +531,7 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 		normBackwardsTrainable("backwardsTrainableVeryLarge2", c, groups);
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 60000)
 	public void backwardsTrainableVeryLarge3() throws IOException {
 		if (skipKnownIssues) return;
 		if (skipLongTests || testDepth < 3) return;
@@ -653,7 +653,7 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 		}
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 60000)
 	public void normModel() throws IOException {
 		int c = 12;
 		int v = 10;

@@ -15,7 +15,7 @@ import org.junit.Test;
  */
 public class TransformMatrixTest implements RayFeatures, TransformMatrixFeatures, TestFeatures {
 
-	@Test(timeout = 30000)
+	@Test(timeout = 10000)
 	public void testTransformMatrixInverse() {
 		log("Testing TransformMatrix inverse and ray transformation...");
 
@@ -87,7 +87,7 @@ public class TransformMatrixTest implements RayFeatures, TransformMatrixFeatures
 		log("Transform matrix inverse test passed!");
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 10000)
 	public void testSphereIntersectionWithTransform() {
 		log("Testing sphere intersection WITH transforms enabled...");
 
@@ -177,7 +177,7 @@ public class TransformMatrixTest implements RayFeatures, TransformMatrixFeatures
 			log("All transform tests passed!");
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 10000)
 	public void testRayOriginTranslation() {
 		log("Testing ray origin translation...");
 
@@ -204,7 +204,7 @@ public class TransformMatrixTest implements RayFeatures, TransformMatrixFeatures
 		log("  Ray origin translation test passed!");
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 10000)
 	public void testRayOriginInverseTranslation() {
 		log("Testing ray origin inverse translation...");
 
@@ -231,7 +231,7 @@ public class TransformMatrixTest implements RayFeatures, TransformMatrixFeatures
 		log("  Ray origin inverse translation test passed!");
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 10000)
 	public void testRayDirectionUnaffectedByTranslation() {
 		log("Testing ray direction unaffected by translation...");
 
@@ -258,7 +258,7 @@ public class TransformMatrixTest implements RayFeatures, TransformMatrixFeatures
 		log("  Direction unaffected by translation test passed!");
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 10000)
 	public void testScaledSphereIntersectionDistance() {
 		log("Testing that scaled sphere intersection returns correct WORLD SPACE distance...");
 		log("Per Sphere.java documentation: directions don't need normalization, math compensates");
@@ -298,7 +298,7 @@ public class TransformMatrixTest implements RayFeatures, TransformMatrixFeatures
 	// This test may have incorrect expectations about how TransformMatrix.transform() works.
 	// Need to investigate the actual transform implementation first.
 
-	@Test(timeout = 30000)
+	@Test(timeout = 10000)
 	public void testCombinedTransformOnRay() {
 		log("Testing combined transform (translate + scale) on ray...");
 
@@ -334,7 +334,7 @@ public class TransformMatrixTest implements RayFeatures, TransformMatrixFeatures
 		log("  Combined transform test passed!");
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 10000)
 	public void testIntersectionWithTranslatedSphere() {
 		log("Testing intersection experiment: translated sphere requires inverse transform...");
 
@@ -364,7 +364,7 @@ public class TransformMatrixTest implements RayFeatures, TransformMatrixFeatures
 		log("  Intersection with translated sphere test passed!");
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 10000)
 	public void testIntersectionMissWithIncorrectTransform() {
 		log("Testing that ray MUST be inverse-transformed for correct intersection...");
 
@@ -403,7 +403,7 @@ public class TransformMatrixTest implements RayFeatures, TransformMatrixFeatures
 		log("  Inverse transform requirement test passed!");
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 10000)
 	public void testSphereTransformMatrixCreation() {
 		log("========================================");
 		log("COMPONENT TEST 1: How Sphere.calculateTransform() creates the matrix");
@@ -436,7 +436,7 @@ public class TransformMatrixTest implements RayFeatures, TransformMatrixFeatures
 		assertTrue("M[3,3] should be 1.0", Math.abs(matData[15] - 1.0) < 0.001);
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 10000)
 	public void testSphereInverseTransformMatrix() {
 		log("========================================");
 		log("COMPONENT TEST 2: Inverse transform matrix for scaled sphere");
@@ -469,7 +469,7 @@ public class TransformMatrixTest implements RayFeatures, TransformMatrixFeatures
 		assertTrue("M[3,3] should be 1.0", Math.abs(invData[15] - 1.0) < 0.001);
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 10000)
 	public void testRayTransformationByInverseScale() {
 		log("========================================");
 		log("COMPONENT TEST 3: Ray transformation by inverse scale matrix");
@@ -517,7 +517,7 @@ public class TransformMatrixTest implements RayFeatures, TransformMatrixFeatures
 		assertTrue("Direction length should be 0.5", Math.abs(dirLength - 0.5) < 0.001);
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 10000)
 	public void testManualIntersectionCalculation() {
 		log("========================================");
 		log("COMPONENT TEST 4: Manual intersection calculation step-by-step");
@@ -576,7 +576,7 @@ public class TransformMatrixTest implements RayFeatures, TransformMatrixFeatures
 		log("  Final t value (should be 8.0 for world space): " + t);
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 10000)
 	public void testZeroScaleDetection() {
 		log("Testing edge case: zero scale transform...");
 

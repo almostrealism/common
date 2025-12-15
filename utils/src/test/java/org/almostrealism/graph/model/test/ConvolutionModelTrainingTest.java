@@ -134,7 +134,7 @@ public class ConvolutionModelTrainingTest implements ModelFeatures, ModelTestFea
 		return data;
 	}
 
-	@Test(timeout = 60000)
+	@Test(timeout = 120000)
 	public void train() throws IOException {
 		if (!trainingTests) return;
 

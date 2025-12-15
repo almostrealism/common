@@ -49,7 +49,7 @@ public class NormShapeInvestigationTest implements TestFeatures {
 	/**
 	 * Test norm layer shape declarations vs actual output with 2D input.
 	 */
-	@Test(timeout = 30000)
+	@Test(timeout = 10000)
 	public void testNormLayerShape2D() {
 		log("=== Test: Norm Layer Shape with 2D Input ===");
 
@@ -73,7 +73,7 @@ public class NormShapeInvestigationTest implements TestFeatures {
 	/**
 	 * Test norm layer shape declarations with 3D input.
 	 */
-	@Test(timeout = 30000)
+	@Test(timeout = 10000)
 	public void testNormLayerShape3D() {
 		log("=== Test: Norm Layer Shape with 3D Input ===");
 
@@ -92,7 +92,7 @@ public class NormShapeInvestigationTest implements TestFeatures {
 	/**
 	 * Test norm through a model to verify numerical correctness.
 	 */
-	@Test(timeout = 30000)
+	@Test(timeout = 10000)
 	public void testNormModelInference() {
 		log("=== Test: Norm Model Inference ===");
 
@@ -145,7 +145,7 @@ public class NormShapeInvestigationTest implements TestFeatures {
 	/**
 	 * Test norm operator shape transformation step by step.
 	 */
-	@Test(timeout = 30000)
+	@Test(timeout = 10000)
 	public void testNormOperatorShapeAnalysis() {
 		log("=== Test: Norm Operator Shape Analysis ===");
 
@@ -182,7 +182,7 @@ public class NormShapeInvestigationTest implements TestFeatures {
 	/**
 	 * Test with various input shapes to understand the pattern.
 	 */
-	@Test(timeout = 30000)
+	@Test(timeout = 10000)
 	public void testNormVariousSizes() {
 		log("=== Test: Norm Various Sizes ===");
 

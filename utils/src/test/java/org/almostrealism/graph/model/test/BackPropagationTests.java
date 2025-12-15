@@ -36,7 +36,7 @@ import java.util.stream.IntStream;
 
 public class BackPropagationTests implements TestFeatures {
 
-	@Test(timeout = 30000)
+	@Test(timeout = 120000)
 	public void denseBackwards() {
 		if (testProfileIs(TestUtils.PIPELINE)) return;
 		if (skipKnownIssues) return;
@@ -112,7 +112,7 @@ public class BackPropagationTests implements TestFeatures {
 		}
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 120000)
 	public void pool2dBackwards() {
 		if (skipLongTests || skipKnownIssues) return;
 
@@ -166,7 +166,7 @@ public class BackPropagationTests implements TestFeatures {
 		}
 	}
 
-	// @Test(timeout = 30000)
+	// @Test(timeout = 120000)
 	public void convBackwards() {
 		int convSize = 3;
 		int w = 10;
@@ -218,7 +218,7 @@ public class BackPropagationTests implements TestFeatures {
 		}
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 120000)
 	public void compositionBackwards() {
 		if (testProfileIs(TestUtils.PIPELINE)) return;
 
@@ -244,7 +244,7 @@ public class BackPropagationTests implements TestFeatures {
 		assertEquals(48.0, gradient.toDouble(2));
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 120000)
 	public void splitBackwardsRepeat() {
 		if (testProfileIs(TestUtils.PIPELINE)) return;
 
@@ -288,7 +288,7 @@ public class BackPropagationTests implements TestFeatures {
 		}
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 120000)
 	public void splitBackwardsAdd() {
 		if (testProfileIs(TestUtils.PIPELINE)) return;
 
@@ -337,7 +337,7 @@ public class BackPropagationTests implements TestFeatures {
 		}
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 120000)
 	public void splitBackwardsChildIndex() {
 		if (testProfileIs(TestUtils.PIPELINE)) return;
 

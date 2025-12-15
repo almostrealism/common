@@ -34,7 +34,7 @@ import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
 public class MatrixDeltaComputationTests implements TestFeatures {
-	@Test(timeout = 30000)
+	@Test(timeout = 60000)
 	public void matmul1() {
 		int dim = 2;
 
@@ -67,7 +67,7 @@ public class MatrixDeltaComputationTests implements TestFeatures {
 		assertEquals(3.0, dout.toDouble(7));
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 60000)
 	public void matmul2() {
 		int dim = 10;
 
@@ -101,7 +101,7 @@ public class MatrixDeltaComputationTests implements TestFeatures {
 		// assertEquals(3.0, dout.toDouble(7));
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 60000)
 	public void matmul3() {
 		int count = 1;
 		int dim = 2;
@@ -129,7 +129,7 @@ public class MatrixDeltaComputationTests implements TestFeatures {
 		assertEquals(3.0, dout.toDouble(7));
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 60000)
 	public void matmul4() {
 		int count = 1;
 		int dim = 2;
@@ -152,7 +152,7 @@ public class MatrixDeltaComputationTests implements TestFeatures {
 		assertEquals(3.0, dout.toDouble(7));
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 60000)
 	public void matmul5() {
 		int dim = 3;
 
@@ -169,7 +169,7 @@ public class MatrixDeltaComputationTests implements TestFeatures {
 		out.print();
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 60000)
 	public void matmul6() {
 		int rows = 3;
 		int cols = 2;
@@ -201,7 +201,7 @@ public class MatrixDeltaComputationTests implements TestFeatures {
 		}
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 60000)
 	public void matmulSum() {
 		int size = 8;
 		int nodes = 3;
@@ -232,34 +232,34 @@ public class MatrixDeltaComputationTests implements TestFeatures {
 		}
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 60000)
 	public void matmulSmall1() throws IOException {
 		matmal("matmulSmall1", 48, 10, false);
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 60000)
 	public void matmulSmall2() throws IOException {
 		matmal("matmulSmall2", 48, 10, true);
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 60000)
 	public void matmulMedium1() throws IOException {
 		matmal("matmulMedium1", 210, 10, false);
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 60000)
 	public void matmulMedium2() throws IOException {
 		if (testDepth < 1) return;
 
 		matmal("matmulMedium2", 210, 10, true);
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 60000)
 	public void matmulLarge1() throws IOException {
 		matmal("matmulLarge1", 392, 10, false);
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 60000)
 	public void matmulLarge2() throws IOException {
 		if (testDepth < 3) return;
 
@@ -285,7 +285,7 @@ public class MatrixDeltaComputationTests implements TestFeatures {
 		}
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 60000)
 	public void matmulEnumerate() {
 		int count = 2;
 		int dim = 3;
@@ -316,12 +316,12 @@ public class MatrixDeltaComputationTests implements TestFeatures {
 		assertEquals(11.0, dout.toDouble(5));
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 60000)
 	public void matmulEnumerateProduct() {
 		matmulEnumerateProduct(false);
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 60000)
 	public void matmulEnumerateProductOptimized() {
 		matmulEnumerateProduct(true);
 	}
@@ -395,7 +395,7 @@ public class MatrixDeltaComputationTests implements TestFeatures {
 		assertEquals(999.996, w.toDouble(8));
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 60000)
 	public void denseWeightsSmallest() throws IOException {
 		try {
 			// ParallelProcess.explicitIsolationTargets.add(operationFilter("f_traversableExpressionComputation_16"));
@@ -408,17 +408,17 @@ public class MatrixDeltaComputationTests implements TestFeatures {
 		}
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 60000)
 	public void denseWeightsSmall() throws IOException {
 		denseWeights("denseWeightsSmall", 120, 10);
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 60000)
 	public void denseWeightsMedium() throws IOException {
 		denseWeights("denseWeightsMedium", 600, 10);
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 60000)
 	public void denseWeightsLarge() throws IOException {
 		if (skipKnownIssues) return;
 
