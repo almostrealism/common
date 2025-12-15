@@ -32,6 +32,15 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
+/**
+ * Base class for computations that manage value sequences in the audio framework.
+ * Provides common infrastructure for tracking wave position, duration, and selecting
+ * from multiple value choices based on temporal progression. Subclasses implement
+ * specific behaviors for pushing values or advancing the sequence.
+ *
+ * @see ValueSequencePush
+ * @see ValueSequenceTick
+ */
 public abstract class ValueSequenceComputation extends OperationComputationAdapter<PackedCollection> implements CodeFeatures {
 	protected HybridScope scope;
 	protected final boolean repeat;

@@ -27,6 +27,17 @@ import org.almostrealism.hardware.OperationList;
 
 import java.util.function.Supplier;
 
+/**
+ * A temporal cell that generates sine wave audio with configurable frequency,
+ * amplitude, phase, and envelope. Implements both push and tick operations
+ * for real-time audio generation within the graph framework. Supports dynamic
+ * parameter control through Producer-based setters.
+ *
+ * @see CollectionTemporalCellAdapter
+ * @see SineWaveCellData
+ * @see SineWavePush
+ * @see SineWaveTick
+ */
 // TODO  Reimplement as a function of org.almostrealism.graph.TimeCell
 public class SineWaveCell extends CollectionTemporalCellAdapter implements SamplingFeatures {
 	private Factor<PackedCollection> env;

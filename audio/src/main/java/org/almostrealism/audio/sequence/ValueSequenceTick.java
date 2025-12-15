@@ -25,6 +25,14 @@ import org.almostrealism.graph.temporal.BaseAudioData;
 
 import java.util.function.Consumer;
 
+/**
+ * Advances the wave position in a value sequence by the wave length, with optional
+ * modulo wrapping for repeating sequences. This computation updates the temporal
+ * state without producing output values.
+ *
+ * @see ValueSequenceCell
+ * @see ValueSequenceComputation
+ */
 public class ValueSequenceTick extends ValueSequenceComputation {
 	public ValueSequenceTick(BaseAudioData data,
 							 Producer<PackedCollection> durationFrames,

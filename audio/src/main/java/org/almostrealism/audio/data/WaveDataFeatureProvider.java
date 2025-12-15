@@ -18,6 +18,17 @@ package org.almostrealism.audio.data;
 
 import org.almostrealism.collect.PackedCollection;
 
+/**
+ * Provider of feature vectors computed from audio data.
+ *
+ * <p>WaveDataFeatureProvider defines an interface for extracting feature representations
+ * from audio data, typically used for audio similarity comparison, classification,
+ * or machine learning applications. Features might include spectral characteristics,
+ * MFCCs, or other audio descriptors.</p>
+ *
+ * @see WaveDetails
+ * @see WaveDetailsFactory
+ */
 public interface WaveDataFeatureProvider {
 	default PackedCollection computeFeatures(WaveDataProvider provider) {
 		return computeFeatures(provider.get(getAudioSampleRate()));

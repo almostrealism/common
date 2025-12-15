@@ -23,6 +23,15 @@ import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
 
+/**
+ * Generates a single sine wave sample for the current wave position.
+ * Computes the output value by evaluating sin(2*PI * (wavePosition + phase))
+ * and scaling by envelope, amplitude, and depth. Used by SineWaveCell
+ * to produce audio output during push operations.
+ *
+ * @see SineWaveComputation
+ * @see SineWaveCell
+ */
 public class SineWavePush extends SineWaveComputation implements ExpressionFeatures {
 	public SineWavePush(SineWaveCellData data, Producer<PackedCollection> envelope, PackedCollection output) {
 		super(data, envelope, output);

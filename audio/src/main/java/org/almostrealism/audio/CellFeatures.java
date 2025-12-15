@@ -68,6 +68,51 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
+/**
+ * Primary interface for building audio processing chains in the Almost Realism framework.
+ *
+ * <p>CellFeatures provides a fluent API for creating and composing audio cells, filters,
+ * delays, and output destinations. It extends {@link HeredityFeatures} for genetic
+ * algorithm support, {@link TemporalFeatures} for time-based operations, and
+ * {@link CodeFeatures} for code generation capabilities.</p>
+ *
+ * <h2>Key Methods</h2>
+ * <ul>
+ *   <li>{@code w()} - Create wave cells from audio files</li>
+ *   <li>{@code d()} - Add delay effects</li>
+ *   <li>{@code f()} - Add filters (high-pass, low-pass)</li>
+ *   <li>{@code hp()}, {@code lp()} - Create high-pass and low-pass filters</li>
+ *   <li>{@code silence()} - Create silent audio source</li>
+ *   <li>{@code grid()}, {@code gr()} - Create processing grids for parallel audio</li>
+ * </ul>
+ *
+ * <h2>Example Usage</h2>
+ * <pre>{@code
+ * public class AudioProcessor implements CellFeatures {
+ *     public void process() {
+ *         // Load audio, apply high-pass filter, add delay, output to file
+ *         CellList chain = w(0, "input.wav")
+ *             .f(i -> hp(c(200), scalar(0.1)))  // High-pass at 200Hz
+ *             .d(i -> _100ms())                  // 100ms delay
+ *             .o(i -> new File("output.wav"));
+ *
+ *         chain.sec(30).get().run();  // Process 30 seconds
+ *     }
+ * }
+ * }</pre>
+ *
+ * <h2>Cell Lifecycle</h2>
+ * <p>Audio cells follow a setup/tick pattern:</p>
+ * <ol>
+ *   <li>Setup phase: Initialize cell state (called once)</li>
+ *   <li>Tick phase: Process one sample (called per sample)</li>
+ * </ol>
+ *
+ * @see CellList
+ * @see SamplingFeatures
+ * @see org.almostrealism.audio.filter.AudioPassFilter
+ * @see org.almostrealism.graph.Cell
+ */
 public interface CellFeatures extends HeredityFeatures, TemporalFeatures, CodeFeatures {
 	Console console = Console.root().child();
 

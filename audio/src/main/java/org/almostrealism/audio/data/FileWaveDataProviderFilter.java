@@ -20,6 +20,33 @@ import java.io.File;
 import java.nio.file.Path;
 import java.util.Optional;
 
+/**
+ * Filter for selecting audio files based on path or name patterns.
+ *
+ * <p>FileWaveDataProviderFilter provides flexible matching criteria for filtering
+ * audio files in a {@link FileWaveDataProviderTree}. Filters can match against
+ * file names or paths using various comparison operations.</p>
+ *
+ * <h2>Filter Options</h2>
+ * <ul>
+ *   <li><b>FilterOn</b>: What to match against (NAME or PATH)</li>
+ *   <li><b>FilterType</b>: How to match (EQUALS, STARTS_WITH, ENDS_WITH, CONTAINS, etc.)</li>
+ * </ul>
+ *
+ * <h2>Usage</h2>
+ * <pre>{@code
+ * // Filter for files starting with "kick"
+ * FileWaveDataProviderFilter filter = FileWaveDataProviderFilter.nameStartsWith("kick");
+ *
+ * // Check if a provider matches
+ * if (filter.matches(tree, provider)) {
+ *     // Process matching file
+ * }
+ * }</pre>
+ *
+ * @see FileWaveDataProviderTree
+ * @see FileWaveDataProvider
+ */
 public class FileWaveDataProviderFilter {
 	public static final String[] SEPARATORS = {" ", "-", "_", "."};
 

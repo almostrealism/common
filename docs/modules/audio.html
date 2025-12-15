@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AR-Audio Module - Almost Realism Framework</title>
+    <link rel="stylesheet" href="../css/style.css">
+    <style>
+        .key-concepts { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin: 20px 0; }
+        .concept-card { background: #f8f9fa; border-left: 4px solid #1565c0; padding: 15px; border-radius: 4px; }
+        .concept-card h4 { margin-top: 0; color: #1565c0; }
+        .package-table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+        .package-table th, .package-table td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
+        .package-table th { background-color: #e3f2fd; color: #1565c0; font-weight: bold; }
+        .package-table tr:hover { background-color: #f5f5f5; }
+        .class-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 15px; margin: 20px 0; }
+        .class-item { background: #fff; border: 1px solid #ddd; padding: 12px; border-radius: 4px; }
+        .class-item h4 { margin: 0 0 8px 0; color: #1565c0; font-size: 1.1em; }
+        .class-item p { margin: 0; font-size: 0.9em; color: #666; }
+        .class-item code { background: #e3f2fd; padding: 1px 4px; border-radius: 2px; font-size: 0.85em; }
+        .code-example { background: #f5f5f5; border-left: 4px solid #1565c0; padding: 15px; margin: 15px 0; border-radius: 4px; overflow-x: auto; }
+        .code-example pre { margin: 0; white-space: pre-wrap; }
+        .highlight { background-color: #e3f2fd; padding: 2px 4px; }
+        .warning { background-color: #fff3e0; border-left: 4px solid #ef6c00; padding: 12px; margin: 15px 0; }
+        .tip { background-color: #e8f5e9; border-left: 4px solid #2e7d32; padding: 12px; margin: 15px 0; }
+        .architecture-diagram { background: #fafafa; padding: 20px; border-radius: 8px; margin: 20px 0; font-family: monospace; white-space: pre; overflow-x: auto; }
+        .dep-arrow { color: #1565c0; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>AR-Audio Module</h1>
+            <p class="tagline">Audio Synthesis, Signal Processing & Musical Tuning</p>
+            <nav>
+                <a href="../index.html">Home</a>
+                <a href="#overview">Overview</a>
+                <a href="#architecture">Architecture</a>
+                <a href="#packages">Packages</a>
+                <a href="#patterns">Patterns</a>
+                <a href="#examples">Examples</a>
+            </nav>
+        </header>
+
+        <main>
+            <section id="overview">
+                <h2>Overview</h2>
+                <p>The <strong>ar-audio</strong> module provides comprehensive tools for audio synthesis and the design and optimization of signal generators and filters. It integrates with the Almost Realism framework's computational graph system for real-time, hardware-accelerated audio processing.</p>
+
+                <div class="key-concepts">
+                    <div class="concept-card">
+                        <h4>Waveform Synthesis</h4>
+                        <p>Generate sine waves, noise, and complex waveforms using hardware-accelerated oscillators. Supports frequency modulation, amplitude control, and harmonic overtone series.</p>
+                    </div>
+                    <div class="concept-card">
+                        <h4>Signal Processing</h4>
+                        <p>High-pass and low-pass filters with configurable cutoff and resonance. Delay networks for reverb and echo effects. ADSR envelope processors for dynamic shaping.</p>
+                    </div>
+                    <div class="concept-card">
+                        <h4>Audio I/O</h4>
+                        <p>Read and write WAV files (RIFF/PCM format). Interface with system audio hardware via Java Sound API. Buffered output scheduling for real-time playback.</p>
+                    </div>
+                    <div class="concept-card">
+                        <h4>Musical Tuning</h4>
+                        <p>Western chromatic scale (88 piano keys, A0-C8). Standard 12-TET keyboard tuning. Major and minor scale generation. Musical note abstractions.</p>
+                    </div>
+                </div>
+            </section>
+
+            <section id="architecture">
+                <h2>Module Architecture</h2>
+
+                <h3>Dependency Graph</h3>
+                <p>The audio module builds on several core framework modules:</p>
+
+                <div class="architecture-diagram">
+                              +-----------+
+                              |  ar-audio |
+                              +-----------+
+                                    |
+          +------------+------------+------------+------------+
+          |            |            |            |            |
+          v            v            v            v            v
+    +---------+  +---------+  +---------+  +---------+  +---------+
+    |  graph  |  |  time   |  | collect |  |hardware |  |heredity |
+    +---------+  +---------+  +---------+  +---------+  +---------+
+         |            |            |            |
+         v            v            v            v
+    +---------+  +---------+  +---------+  +---------+
+    |   Cell  |  |Temporal |  | Packed  |  |Operation|
+    | Receptor|  |Frequency|  |Collection |  |  List   |
+    +---------+  +---------+  +---------+  +---------+
+                </div>
+
+                <h3>Key Integration Points</h3>
+                <table class="package-table">
+                    <tr>
+                        <th>Module</th>
+                        <th>Integration</th>
+                        <th>Key Classes Used</th>
+                    </tr>
+                    <tr>
+                        <td><strong>graph</strong></td>
+                        <td>Audio cells extend temporal cells for sample-by-sample processing</td>
+                        <td><code>Cell</code>, <code>Receptor</code>, <code>WaveCell</code>, <code>CollectionTemporalCellAdapter</code></td>
+                    </tr>
+                    <tr>
+                        <td><strong>time</strong></td>
+                        <td>Temporal interface for tick-based execution, frequency calculations</td>
+                        <td><code>Temporal</code>, <code>Frequency</code>, <code>TemporalFeatures</code></td>
+                    </tr>
+                    <tr>
+                        <td><strong>collect</strong></td>
+                        <td>All audio data stored in PackedCollection for GPU acceleration</td>
+                        <td><code>PackedCollection</code>, <code>TraversalPolicy</code></td>
+                    </tr>
+                    <tr>
+                        <td><strong>hardware</strong></td>
+                        <td>Compiled operations for efficient audio processing</td>
+                        <td><code>OperationList</code>, <code>ComputeRequirement</code></td>
+                    </tr>
+                    <tr>
+                        <td><strong>heredity</strong></td>
+                        <td>Factor chains for composable audio processing</td>
+                        <td><code>Factor&lt;PackedCollection&gt;</code>, <code>Gene</code></td>
+                    </tr>
+                </table>
+            </section>
+
+            <section id="packages">
+                <h2>Package Reference</h2>
+
+                <h3>org.almostrealism.audio (Core)</h3>
+                <p>Core audio abstractions and cell management.</p>
+                <div class="class-list">
+                    <div class="class-item">
+                        <h4>CellFeatures</h4>
+                        <p>Mixin interface providing factory methods for audio cells, filters, delays, and output. The primary API for building audio processing chains.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>SamplingFeatures</h4>
+                        <p>Sample rate context management. Provides <code>OutputLine.sampleRate</code> (default 44100 Hz) and time-to-sample conversion utilities.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>CellList</h4>
+                        <p>Hierarchical container for audio cells. Manages setup/teardown lifecycle and provides fluent API for chaining operations.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>WavFile</h4>
+                        <p>Standalone WAV file I/O. Reads/writes RIFF/PCM format with support for various bit depths (8, 16, 24, 32) and sample rates.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>WaveOutput</h4>
+                        <p>Coordinates audio output lifecycle. Manages sample buffer scheduling and output line synchronization.</p>
+                    </div>
+                </div>
+
+                <h3>org.almostrealism.audio.sources</h3>
+                <p>Signal generators and source aggregation.</p>
+                <div class="class-list">
+                    <div class="class-item">
+                        <h4>SineWaveCell</h4>
+                        <p>Sine wave oscillator extending <code>CollectionTemporalCellAdapter</code>. Configurable frequency and amplitude via Producer pattern.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>NoiseGenerator</h4>
+                        <p>White noise generation implementing <code>StatelessSource</code>. Thread-safe random sample generation.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>SummingSourceAggregator</h4>
+                        <p>Mixes multiple audio sources by summation. Implements <code>SourceAggregator</code> for composable mixing.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>AudioBuffer</h4>
+                        <p>In-memory audio buffer for temporary storage. Fixed-size sample array with read/write position tracking.</p>
+                    </div>
+                </div>
+
+                <h3>org.almostrealism.audio.filter</h3>
+                <p>Audio effects and signal filtering.</p>
+                <div class="class-list">
+                    <div class="class-item">
+                        <h4>AudioPassFilter</h4>
+                        <p>High-pass and low-pass filter implementing <code>TemporalFactor</code>. Configurable cutoff frequency and resonance (Q factor).</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>DelayNetwork</h4>
+                        <p>Feedback delay network for reverb effects. Configurable delay times, feedback amount, and wet/dry mix.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>BasicDelayCell</h4>
+                        <p>Simple delay line extending <code>SummationCell</code>. Circular buffer implementation with configurable delay time.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>EnvelopeProcessor</h4>
+                        <p>Interface for ADSR envelope processing. Controls attack, decay, sustain, and release phases of audio amplitude.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>VolumeEnvelopeExtraction</h4>
+                        <p>Extracts volume envelope from audio signal. Implements <code>StatelessFilter</code> for analysis without modification.</p>
+                    </div>
+                </div>
+
+                <h3>org.almostrealism.audio.data</h3>
+                <p>Audio data management and file handling.</p>
+                <div class="class-list">
+                    <div class="class-item">
+                        <h4>WaveData</h4>
+                        <p>Primary audio container. Wraps <code>PackedCollection</code> with metadata (sample rate, channels). Provides FFT analysis (1024 bins) and file I/O.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>WaveDataProvider</h4>
+                        <p>Abstract interface for audio data sources. Extends <code>Supplier&lt;WaveData&gt;</code> with lifecycle management.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>FileWaveDataProvider</h4>
+                        <p>Loads audio from filesystem. Lazy loading with caching. Implements <code>PathResource</code> for path-based access.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>WaveDetails</h4>
+                        <p>Audio file metadata: sample rate, channel count, frame count, duration, and computed features.</p>
+                    </div>
+                </div>
+
+                <h3>org.almostrealism.audio.tone</h3>
+                <p>Musical tuning and scale management.</p>
+                <div class="class-list">
+                    <div class="class-item">
+                        <h4>KeyboardTuning</h4>
+                        <p>Interface for keyboard tuning systems. Maps key positions to frequencies.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>DefaultKeyboardTuning</h4>
+                        <p>Standard 12-tone equal temperament (12-TET). A4 = 440 Hz. Covers full 88-key piano range.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>WesternChromatic</h4>
+                        <p>Enum representing 88 chromatic notes (A0-C8). Implements <code>KeyPosition</code> with note-to-position mapping.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>Scale&lt;T&gt;</h4>
+                        <p>Musical scale abstraction. Collection of key positions with interval-based construction.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>WesternScales</h4>
+                        <p>Factory for common Western scales: <code>major()</code>, <code>minor()</code> with configurable root and octave count.</p>
+                    </div>
+                </div>
+
+                <h3>org.almostrealism.audio.line</h3>
+                <p>Audio hardware interface.</p>
+                <div class="class-list">
+                    <div class="class-item">
+                        <h4>OutputLine</h4>
+                        <p>Interface for audio output. Defines <code>sampleRate</code> constant (44100 Hz) and buffer configuration.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>SourceDataOutputLine</h4>
+                        <p>Java Sound API output implementation. Wraps <code>SourceDataLine</code> for system audio playback.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>BufferedOutputScheduler</h4>
+                        <p>Schedules buffered audio output with timing control. Manages buffer fill level and underrun prevention.</p>
+                    </div>
+                </div>
+
+                <h3>org.almostrealism.audio.synth</h3>
+                <p>Audio synthesis models.</p>
+                <div class="class-list">
+                    <div class="class-item">
+                        <h4>AudioSynthesizer</h4>
+                        <p>Main synthesis engine. Combines oscillators, envelopes, and filters. Implements <code>Temporal</code> and <code>StatelessSource</code>.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>OvertoneSeries</h4>
+                        <p>Harmonic overtone generation. Defines frequency ratios for rich, natural timbres.</p>
+                    </div>
+                </div>
+
+                <h3>org.almostrealism.audio.notes</h3>
+                <p>Sample-based note playback.</p>
+                <div class="class-list">
+                    <div class="class-item">
+                        <h4>NoteAudioProvider</h4>
+                        <p>Manages note audio with caching (200 entry limit). Pitch-shifts base samples to target frequencies.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>NoteAudioFilter</h4>
+                        <p>Interface for note-level effects: reverse playback, tremolo, etc.</p>
+                    </div>
+                </div>
+            </section>
+
+            <section id="patterns">
+                <h2>Core Patterns</h2>
+
+                <h3>Cell-Based Processing</h3>
+                <p>Audio processing uses the graph module's cell system. Each cell processes one sample per tick:</p>
+
+                <div class="code-example">
+<pre>// The Setup/Tick Pattern
+Runnable setup = cell.setup().get();  // Initialize state (once)
+setup.run();
+
+Runnable tick = cell.tick().get();    // Advance one sample (repeated)
+for (int i = 0; i < sampleCount; i++) {
+    tick.run();
+}</pre>
+                </div>
+
+                <h3>CellList Fluent API</h3>
+                <p>The <code>CellFeatures</code> interface provides a fluent API for building processing chains:</p>
+
+                <div class="code-example">
+<pre>// Fluent API Method Reference:
+// w(offset, file)         - Create wave cell from file
+// w(offset, dur, rep, f)  - Create repeating wave cell
+// d(delay)                - Add delay effect
+// f(filter)               - Add filter (hp/lp)
+// m(factor)               - Apply scaling/mixing
+// gr(dur, count, sel)     - Create processing grid
+// o(output)               - Set output destination
+// sec(duration)           - Get Runnable for N seconds
+
+CellList chain = w(0, "drums.wav")           // Load audio
+    .f(i -> hp(c(200), scalar(0.1)))         // High-pass 200Hz
+    .d(i -> _100ms())                         // 100ms delay
+    .m(i -> new ScaleFactor(0.8))            // 80% volume
+    .o(i -> new File("output.wav"));         // Output file
+
+chain.sec(30).get().run();                   // Render 30 seconds</pre>
+                </div>
+
+                <h3>Producer/Evaluable Pattern</h3>
+                <p>Audio parameters use lazy evaluation via the Producer pattern:</p>
+
+                <div class="code-example">
+<pre>// Parameters are Producers (lazy)
+Producer&lt;PackedCollection&gt; cutoff = c(1000);    // Constant 1000
+Producer&lt;PackedCollection&gt; resonance = scalar(0.1);
+
+// Filter doesn't compute until evaluated
+AudioPassFilter filter = new AudioPassFilter(
+    sampleRate, cutoff, resonance, true);
+
+// Get compiled computation
+Producer&lt;PackedCollection&gt; result = filter.getResultant(input);
+
+// Execute
+PackedCollection output = result.get().evaluate();</pre>
+                </div>
+
+                <h3>Factor Chains</h3>
+                <p>Filters implement <code>Factor&lt;PackedCollection&gt;</code> for composable processing:</p>
+
+                <div class="code-example">
+<pre>// Filters are Factors that can be chained
+Factor&lt;PackedCollection&gt; highPass = hp(c(500), scalar(0.1));
+Factor&lt;PackedCollection&gt; lowPass = lp(c(5000), scalar(0.2));
+
+// Apply in sequence via CellList
+cells.f(i -> highPass)
+     .f(i -> lowPass);</pre>
+                </div>
+            </section>
+
+            <section id="examples">
+                <h2>Usage Examples</h2>
+
+                <h3>Generate a Sine Wave</h3>
+                <div class="code-example">
+<pre>public class SineWaveExample implements CellFeatures {
+    public void generateTone(double frequency, double duration) {
+        SineWaveCell cell = new SineWaveCell();
+        cell.setFrequency(c(frequency));
+        cell.setAmplitude(c(0.5));
+
+        int samples = (int)(duration * OutputLine.sampleRate);
+        PackedCollection output = new PackedCollection(samples);
+        cell.setReceptor(protein -> a(1, p(output), protein));
+
+        OperationList ops = new OperationList();
+        ops.add(cell.setup());
+        ops.add(sec(cell, duration));
+        ops.get().run();
+
+        new WaveData(output, OutputLine.sampleRate)
+            .save(new File("tone.wav"));
+    }
+}</pre>
+                </div>
+
+                <h3>Apply Filters to Audio</h3>
+                <div class="code-example">
+<pre>public class FilterExample implements CellFeatures {
+    public void bandPassFilter(String input, String output) {
+        // Load and filter: keep 200Hz - 8kHz
+        CellList cells = w(0, input)
+            .f(i -> hp(c(200), scalar(0.1)))   // Remove &lt; 200Hz
+            .f(i -> lp(c(8000), scalar(0.1)))  // Remove &gt; 8kHz
+            .o(i -> new File(output));
+
+        WaveData source = WaveData.load(new File(input));
+        cells.sec(source.getDuration()).get().run();
+    }
+}</pre>
+                </div>
+
+                <h3>Create a Reverb Effect</h3>
+                <div class="code-example">
+<pre>public class ReverbExample implements CellFeatures {
+    public void addReverb(String input, String output) {
+        CellList cells = w(0, input)
+            .d(i -> {
+                DelayNetwork reverb = new DelayNetwork(
+                    OutputLine.sampleRate, true);
+                reverb.setDecay(0.4);
+                reverb.setWet(0.3);
+                return reverb;
+            })
+            .o(i -> new File(output));
+
+        WaveData source = WaveData.load(new File(input));
+        cells.sec(source.getDuration() + 2.0).get().run();  // +2s tail
+    }
+}</pre>
+                </div>
+
+                <h3>Play a Musical Scale</h3>
+                <div class="code-example">
+<pre>public class ScaleExample implements CellFeatures {
+    public void playScale() {
+        KeyboardTuning tuning = new DefaultKeyboardTuning();
+        Scale&lt;WesternChromatic&gt; cMajor = WesternScales.major(
+            WesternChromatic.C4, 1);
+
+        cMajor.forEach(note -> {
+            double freq = tuning.getFrequency(note);
+            System.out.println(note + " = " + freq + " Hz");
+
+            // Generate 0.5s tone for each note
+            SineWaveCell cell = new SineWaveCell();
+            cell.setFrequency(c(freq));
+            // ... play note
+        });
+    }
+}</pre>
+                </div>
+
+                <h3>Load and Analyze Audio</h3>
+                <div class="code-example">
+<pre>public class AnalysisExample {
+    public void analyzeFile(String path) {
+        WaveData data = WaveData.load(new File(path));
+
+        System.out.println("Sample Rate: " + data.getSampleRate());
+        System.out.println("Channels: " + data.getChannelCount());
+        System.out.println("Duration: " + data.getDuration() + "s");
+        System.out.println("Frames: " + data.getCollection().getMemLength());
+
+        // FFT analysis at position 0
+        PackedCollection spectrum = data.getFrequencyDomain(0);
+        // spectrum contains 1024 frequency bins
+    }
+}</pre>
+                </div>
+            </section>
+
+            <section id="configuration">
+                <h2>Configuration</h2>
+
+                <h3>Sample Rate</h3>
+                <p>Default sample rate is <code>44100 Hz</code>, defined in <code>OutputLine.sampleRate</code>.</p>
+
+                <h3>FFT Size</h3>
+                <p>Frequency analysis uses <code>1024</code> bins, defined in <code>WaveData.FFT_BINS</code>.</p>
+
+                <h3>Note Cache</h3>
+                <p><code>NoteAudioProvider</code> caches up to <code>200</code> computed note audio samples.</p>
+
+                <div class="tip">
+                    <strong>Performance Tip:</strong> For real-time processing, use hardware acceleration by setting <code>AR_HARDWARE_DRIVER=native</code> or <code>opencl</code>.
+                </div>
+
+                <div class="warning">
+                    <strong>Hardware Requirement:</strong> Tests requiring audio playback need system audio hardware. CI environments may need to skip these tests.
+                </div>
+            </section>
+
+            <section id="testing">
+                <h2>Testing</h2>
+
+                <h3>Running Tests</h3>
+                <div class="code-example">
+<pre>export AR_HARDWARE_LIBS=/tmp/ar_libs/
+export AR_HARDWARE_DRIVER=native
+mvn test -pl audio</pre>
+                </div>
+
+                <h3>Test Audio Generation</h3>
+                <p>Use <code>TestAudioData</code> utility for synthetic test signals:</p>
+                <div class="code-example">
+<pre>// Generate test signals
+PackedCollection sine = TestAudioData.sineWave(440.0, 0.5, 44100);
+PackedCollection noise = TestAudioData.whiteNoise(1.0, 44100);
+PackedCollection impulse = TestAudioData.impulse(1000);
+
+// Measure signal properties
+double rms = TestAudioData.rms(signal);
+double peak = TestAudioData.peak(signal);
+boolean silent = TestAudioData.isSilent(signal, 0.001);</pre>
+                </div>
+            </section>
+
+        </main>
+
+        <footer>
+            <p>&copy; Almost Realism Framework. <a href="../index.html">Back to Documentation Home</a></p>
+        </footer>
+    </div>
+</body>
+</html>

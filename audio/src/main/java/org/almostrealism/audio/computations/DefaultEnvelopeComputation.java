@@ -28,6 +28,14 @@ import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 
 import java.util.function.Consumer;
 
+/**
+ * Computes a default envelope curve for audio notes based on position. The envelope
+ * applies a fade-in during the first 10% of the note (0.0 to 0.1), a cosine curve
+ * from 10% to 100% (0.1 to 1.0), and silence beyond the note duration (> 1.0).
+ *
+ * @deprecated This implementation is deprecated and should be replaced with more
+ *             flexible envelope implementations.
+ */
 @Deprecated
 public class DefaultEnvelopeComputation extends CollectionProducerComputationBase implements ProducerComputation<PackedCollection> {
 

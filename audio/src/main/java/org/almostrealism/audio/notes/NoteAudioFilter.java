@@ -20,6 +20,17 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.audio.SamplingFeatures;
 import org.almostrealism.collect.PackedCollection;
 
+/**
+ * Interface for audio effects that can be applied to note-based audio signals.
+ * Filters transform input audio based on note duration and automation level,
+ * enabling dynamic processing that responds to musical timing and control parameters.
+ * Implementations include effects like tremolo, reverse playback, and other
+ * time-based transformations.
+ *
+ * @see ReversePlaybackAudioFilter
+ * @see TremoloAudioFilter
+ * @see SamplingFeatures
+ */
 public interface NoteAudioFilter extends SamplingFeatures {
 	Producer<PackedCollection> apply(Producer<PackedCollection> input,
 										Producer<PackedCollection> noteDuration,

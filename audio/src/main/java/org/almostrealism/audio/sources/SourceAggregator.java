@@ -19,6 +19,18 @@ package org.almostrealism.audio.sources;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
 
+/**
+ * Strategy interface for combining multiple audio sources into a single output.
+ * Implementations define different aggregation strategies such as summing,
+ * frequency-domain filtering, or volume envelope matching. Receives buffer
+ * details, optional parameters, frequency data, and variable-length sources
+ * to produce a combined audio output.
+ *
+ * @see SummingSourceAggregator
+ * @see FrequencyRescalingSourceAggregator
+ * @see VolumeRescalingSourceAggregator
+ * @see ModularSourceAggregator
+ */
 public interface SourceAggregator {
 	Producer<PackedCollection> aggregate(BufferDetails buffer,
 											Producer<PackedCollection> params,

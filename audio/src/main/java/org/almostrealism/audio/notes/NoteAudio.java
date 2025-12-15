@@ -22,6 +22,17 @@ import org.almostrealism.audio.tone.KeyPosition;
 import org.almostrealism.audio.tone.KeyboardTuned;
 import org.almostrealism.collect.PackedCollection;
 
+/**
+ * Interface for audio sources that can produce sound at different musical pitches.
+ * Extends {@link KeyboardTuned} to provide keyboard-based pitch control, allowing
+ * audio to be retrieved at specific key positions with automatic pitch shifting.
+ * Implementations manage the relationship between root pitch, target pitch, and
+ * audio duration adjustments.
+ *
+ * @see NoteAudioProvider
+ * @see KeyboardTuned
+ * @see KeyPosition
+ */
 public interface NoteAudio extends KeyboardTuned {
 	Producer<PackedCollection> getAudio(KeyPosition<?> target, int channel);
 

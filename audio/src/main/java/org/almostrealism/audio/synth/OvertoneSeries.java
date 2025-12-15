@@ -22,6 +22,14 @@ import org.almostrealism.time.Frequency;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * A {@link RelativeFrequencySet} that generates a series of octave-related frequencies
+ * (overtones) above and below a fundamental frequency. Supports optional inharmonic
+ * frequencies positioned between harmonic overtones for richer timbres.
+ *
+ * @see RelativeFrequencySet
+ * @see AudioSynthesizer
+ */
 public class OvertoneSeries implements RelativeFrequencySet {
 	private final int subCount;
 	private final int superCount;

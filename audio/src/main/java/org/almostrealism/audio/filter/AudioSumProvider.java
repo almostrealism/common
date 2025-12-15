@@ -29,6 +29,15 @@ import org.almostrealism.io.TimingMetric;
 
 import java.util.List;
 
+/**
+ * Provider of optimized audio summation and volume scaling operations.
+ *
+ * <p>AudioSumProvider provides hardware-accelerated operations for summing
+ * audio buffers and applying volume adjustments. Operations can run in
+ * parallel (kernel) mode or sequential (repeated) mode.</p>
+ *
+ * @see CellFeatures
+ */
 public class AudioSumProvider implements CellFeatures {
 	public static TimingMetric timing = CellFeatures.console.timing("audioSumProvider");
 

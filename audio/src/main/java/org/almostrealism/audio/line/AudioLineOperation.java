@@ -22,6 +22,20 @@ import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.time.TemporalRunner;
 
+/**
+ * Defines an audio processing operation that transforms input audio to output audio
+ * using the setup/tick pattern via {@link TemporalRunner}. This is the core abstraction
+ * for all audio processing in the framework, bridging {@link Producer}-based computation
+ * with real-time audio I/O.
+ * <p>
+ * Implementations provide the processing logic that runs each audio frame cycle,
+ * converting input samples to output samples through hardware-accelerated operations.
+ * </p>
+ *
+ * @see TemporalRunner
+ * @see BufferedOutputScheduler
+ * @see AudioBuffer
+ */
 public interface AudioLineOperation {
 	default BufferedOutputScheduler buffer(BufferedAudio line) {
 		return BufferedOutputScheduler.create(

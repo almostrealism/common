@@ -26,6 +26,29 @@ import org.almostrealism.hardware.mem.Heap;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
+/**
+ * Multi-purpose audio data storage combining wave cell, sine wave, and filter data.
+ *
+ * <p>PolymorphicAudioData provides unified storage for various audio processing needs,
+ * implementing {@link SineWaveCellData} for oscillators and {@link AudioFilterData}
+ * for filters. This allows a single data structure to be used with different types
+ * of audio processors, useful in polymorphic audio cells.</p>
+ *
+ * <h2>Usage</h2>
+ * <pre>{@code
+ * // Create a bank of audio data for multiple voices
+ * PackedCollection bank = PolymorphicAudioData.bank(8);
+ *
+ * // Access individual data instances
+ * PolymorphicAudioData data = new PolymorphicAudioData(bank, 0);
+ * data.setFrequency(440.0);
+ * data.setResonance(0.7);
+ * }</pre>
+ *
+ * @see SineWaveCellData
+ * @see AudioFilterData
+ * @see org.almostrealism.audio.PolymorphicAudioCell
+ */
 public class PolymorphicAudioData extends DefaultWaveCellData implements SineWaveCellData, AudioFilterData {
 	public PolymorphicAudioData() {
 		super();

@@ -25,6 +25,28 @@ import org.almostrealism.collect.PackedCollection;
 
 import java.util.stream.DoubleStream;
 
+/**
+ * Factory for creating WaveDetails with FFT analysis and feature extraction.
+ *
+ * <p>WaveDetailsFactory computes detailed audio analysis including FFT-based
+ * frequency data and optional feature extraction for similarity comparison.
+ * It uses configurable parameters for FFT bin count and time window size.</p>
+ *
+ * <h2>Analysis Pipeline</h2>
+ * <ol>
+ *   <li>Load audio data at the factory's sample rate</li>
+ *   <li>Compute FFT across time windows</li>
+ *   <li>Pool and summarize frequency bins</li>
+ *   <li>Optionally extract features via WaveDataFeatureProvider</li>
+ * </ol>
+ *
+ * <h2>Similarity Computation</h2>
+ * <p>The factory can compute similarity scores between samples using either
+ * FFT-based difference metrics or feature vector products.</p>
+ *
+ * @see WaveDetails
+ * @see WaveDataFeatureProvider
+ */
 public class WaveDetailsFactory implements CodeFeatures {
 
 	public static boolean enableFreqSimilarity = false;

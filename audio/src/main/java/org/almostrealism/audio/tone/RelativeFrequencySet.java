@@ -20,6 +20,17 @@ import org.almostrealism.time.Frequency;
 
 import java.util.Iterator;
 
+/**
+ * A set of frequencies expressed as ratios relative to a fundamental frequency.
+ *
+ * <p>RelativeFrequencySet defines a collection of frequency ratios that can be
+ * applied to any fundamental frequency to produce a set of absolute frequencies.
+ * This is used for defining overtone series, chord structures, and other
+ * harmonic relationships.</p>
+ *
+ * @see org.almostrealism.audio.synth.OvertoneSeries
+ * @see org.almostrealism.audio.synth.UniformFrequencySeries
+ */
 public interface RelativeFrequencySet extends Iterable<Frequency> {
 	@Override
 	default Iterator<Frequency> iterator() {

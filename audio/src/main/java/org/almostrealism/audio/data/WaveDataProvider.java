@@ -22,6 +22,32 @@ import org.almostrealism.collect.PackedCollection;
 import java.util.Optional;
 import java.util.function.Supplier;
 
+/**
+ * Provider interface for accessing audio waveform data.
+ *
+ * <p>WaveDataProvider is the primary interface for abstracting audio data sources,
+ * whether from files, generated content, or other sources. It provides methods for
+ * accessing audio metadata (sample rate, duration, channel count) and the actual
+ * audio data with optional sample rate conversion and playback rate adjustment.</p>
+ *
+ * <h2>Key Methods</h2>
+ * <ul>
+ *   <li>{@link #get()} - Returns the raw WaveData at the provider's native sample rate</li>
+ *   <li>{@link #get(int)} - Returns WaveData resampled to a specific sample rate</li>
+ *   <li>{@link #getChannelData(int, double)} - Returns a single channel with playback rate scaling</li>
+ * </ul>
+ *
+ * <h2>Implementations</h2>
+ * <ul>
+ *   <li>{@link FileWaveDataProvider} - Loads from WAV files</li>
+ *   <li>{@link DelegateWaveDataProvider} - Extracts a slice of another provider</li>
+ *   <li>{@link SupplierWaveDataProvider} - Wraps a supplier function</li>
+ *   <li>{@link DynamicWaveDataProvider} - Dynamic/generated content</li>
+ * </ul>
+ *
+ * @see WaveData
+ * @see AudioDataProvider
+ */
 public interface WaveDataProvider extends AudioDataProvider, Supplier<WaveData>, Countable, Comparable<WaveDataProvider> {
 
 	String getKey();

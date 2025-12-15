@@ -23,6 +23,19 @@ import org.almostrealism.hardware.OperationList;
 
 import java.util.function.Supplier;
 
+/**
+ * An {@link OutputLine} wrapper that monitors audio levels to detect silence,
+ * useful for automatic recording stop, voice activity detection, or energy-based
+ * processing decisions. The line tracks the maximum sample value and compares it
+ * against a configurable threshold.
+ * <p>
+ * The silence detection is performed using hardware-accelerated max operations
+ * over the entire sample buffer, with the result stored in a {@link PackedCollection}
+ * for querying via {@link #isSilence()}.
+ * </p>
+ *
+ * @see OutputLine
+ */
 public class SilenceDetectionOutputLine implements OutputLine, CellFeatures {
 	private final OutputLine out;
 	private final double threshold;

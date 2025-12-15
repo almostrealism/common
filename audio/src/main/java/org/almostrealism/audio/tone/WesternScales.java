@@ -16,6 +16,39 @@
 
 package org.almostrealism.audio.tone;
 
+/**
+ * Factory class for creating common Western musical scales.
+ *
+ * <p>WesternScales provides static factory methods for creating major and minor scales
+ * using the standard Western interval patterns. Scales are created as {@link SetIntervalScale}
+ * instances that can span multiple octaves.</p>
+ *
+ * <h2>Scale Intervals</h2>
+ * <ul>
+ *   <li><b>Major scale</b>: W-W-H-W-W-W-H (2-2-1-2-2-2-1 semitones)</li>
+ *   <li><b>Minor scale</b>: W-H-W-W-H-W-W (2-1-2-2-1-2-2 semitones)</li>
+ * </ul>
+ * <p>Where W = whole step (2 semitones), H = half step (1 semitone)</p>
+ *
+ * <h2>Usage</h2>
+ * <pre>{@code
+ * // C major scale (C-D-E-F-G-A-B), one octave
+ * Scale<WesternChromatic> cMajor = WesternScales.major(WesternChromatic.C4, 1);
+ *
+ * // A minor scale (A-B-C-D-E-F-G), two octaves
+ * Scale<WesternChromatic> aMinor = WesternScales.minor(WesternChromatic.A3, 2);
+ *
+ * // Iterate through scale notes
+ * KeyboardTuning tuning = new DefaultKeyboardTuning();
+ * cMajor.forEach(note -> {
+ *     System.out.println(note + " = " + tuning.getTone(note).asHertz() + " Hz");
+ * });
+ * }</pre>
+ *
+ * @see Scale
+ * @see SetIntervalScale
+ * @see WesternChromatic
+ */
 public class WesternScales {
 	private WesternScales() { }
 

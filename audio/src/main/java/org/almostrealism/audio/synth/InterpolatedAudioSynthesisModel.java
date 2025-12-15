@@ -25,6 +25,15 @@ import org.almostrealism.audio.tone.KeyPosition;
 import org.almostrealism.audio.tone.KeyboardTuning;
 import org.almostrealism.collect.PackedCollection;
 
+/**
+ * An {@link AudioSynthesisModel} that provides time-varying amplitude levels for different
+ * frequency ratios by interpolating from pre-computed FFT analysis data. Typically created
+ * from recorded audio samples to synthesize realistic instrument sounds.
+ *
+ * @see AudioSynthesisModel
+ * @see NoteAudio
+ * @see WaveData
+ */
 public class InterpolatedAudioSynthesisModel implements AudioSynthesisModel, CellFeatures {
 	private final double[] frequencyRatios;
 	private final double sampleRate;

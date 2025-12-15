@@ -22,6 +22,26 @@ import org.almostrealism.collect.PackedCollection;
 
 import java.util.function.Supplier;
 
+/**
+ * A segment of a multi-phase envelope with chainable construction.
+ *
+ * <p>EnvelopeSection represents one segment of an envelope (attack, decay,
+ * sustain, or release) and supports fluent chaining to build complex
+ * multi-segment envelopes. Sections can be combined using {@code andThen}
+ * methods.</p>
+ *
+ * <h2>Usage</h2>
+ * <pre>{@code
+ * EnvelopeSection env = envelope(attack(c(0.1)))
+ *     .andThenDecay(c(0.1), c(0.2), c(0.7))
+ *     .andThenRelease(c(0.5), c(0.7), c(0.3), c(0.0));
+ *
+ * Factor<PackedCollection> factor = env.get();
+ * }</pre>
+ *
+ * @see EnvelopeFeatures
+ * @see FilterEnvelopeProcessor
+ */
 public class EnvelopeSection implements Supplier<Factor<PackedCollection>>, EnvelopeFeatures {
 	public static boolean enableRepeat = false;
 

@@ -21,6 +21,14 @@ import org.almostrealism.time.Frequency;
 
 import java.util.Arrays;
 
+/**
+ * A {@link RelativeFrequencySet} that generates uniformly-spaced frequency ratios
+ * relative to a fundamental frequency. Can be constructed with evenly-spaced ratios
+ * or from an explicit array of frequency multipliers.
+ *
+ * @see RelativeFrequencySet
+ * @see AudioSynthesizer
+ */
 public class UniformFrequencySeries implements RelativeFrequencySet {
 	private final double[] frequencies;
 

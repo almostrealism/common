@@ -25,6 +25,24 @@ import org.almostrealism.time.Updatable;
 
 import java.util.function.Supplier;
 
+/**
+ * A simple delay line cell with configurable delay time.
+ *
+ * <p>BasicDelayCell implements a circular buffer delay line that can delay
+ * audio signals by a configurable amount of time. It extends {@link SummationCell}
+ * to sum incoming signals into the delay buffer.</p>
+ *
+ * <h2>Usage</h2>
+ * <pre>{@code
+ * // Create a 500ms delay
+ * BasicDelayCell delay = new BasicDelayCell(500);
+ * delay.setReceptor(output);
+ * delay.push(inputSignal);
+ * }</pre>
+ *
+ * @see SummationCell
+ * @see DelayNetwork
+ */
 public class BasicDelayCell extends SummationCell implements CodeFeatures {
 	public static int bufferDuration = 10;
 	

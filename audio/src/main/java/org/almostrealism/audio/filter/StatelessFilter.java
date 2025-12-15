@@ -21,6 +21,16 @@ import org.almostrealism.Ops;
 import org.almostrealism.audio.sources.BufferDetails;
 import org.almostrealism.collect.PackedCollection;
 
+/**
+ * Interface for stateless audio filters that process buffers without maintaining internal state.
+ *
+ * <p>StatelessFilter represents filters where the output depends solely on the input
+ * and parameters, not on any prior processing history. This enables efficient
+ * parallel processing and simplifies resource management.</p>
+ *
+ * @see AudioProcessor
+ * @see VolumeEnvelopeExtraction
+ */
 public interface StatelessFilter {
 	Producer<PackedCollection> filter(BufferDetails buffer,
 										   Producer<PackedCollection> params,
