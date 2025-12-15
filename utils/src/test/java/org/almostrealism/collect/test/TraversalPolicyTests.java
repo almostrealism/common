@@ -22,7 +22,7 @@ import org.junit.Assert;
 import org.junit.Test;
 
 public class TraversalPolicyTests implements TestFeatures {
-	@Test(timeout = 30000)
+	@Test(timeout = 10000)
 	public void flattenRequired1() {
 		TraversalPolicy shape = shape(10, 2048, 1024)
 				.traverse(0)
@@ -31,7 +31,7 @@ public class TraversalPolicyTests implements TestFeatures {
 		Assert.assertEquals(expected, shape);
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 10000)
 	public void flattenRequired2() {
 		TraversalPolicy shape = shape(10, 2048, 1024, 4)
 				.traverse(3)
@@ -40,7 +40,7 @@ public class TraversalPolicyTests implements TestFeatures {
 		Assert.assertEquals(expected, shape);
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 10000)
 	public void permute3() {
 		TraversalPolicy shape = new TraversalPolicy(2, 4, 3);
 		TraversalPolicy permuted = shape.permute(1, 0, 2);
@@ -74,7 +74,7 @@ public class TraversalPolicyTests implements TestFeatures {
 		}
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 10000)
 	public void permute4() {
 		TraversalPolicy shape = new TraversalPolicy(2, 4, 3, 8);
 		TraversalPolicy permuted = shape.permute(0, 2, 1, 3);

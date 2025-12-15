@@ -28,7 +28,7 @@ import org.junit.Test;
 
 public class SubsetTraversalTests implements TestFeatures {
 
-	@Test(timeout = 30000)
+	@Test(timeout = 10000)
 	public void traversal() {
 		TraversalPolicy resultShape = shape(4, 1);
 
@@ -55,7 +55,7 @@ public class SubsetTraversalTests implements TestFeatures {
 		mapping.getValueAt(e(index));
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 10000)
 	public void convolution() {
 		int batch = 1;
 		int channels = 1;

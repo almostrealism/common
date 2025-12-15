@@ -52,7 +52,7 @@ public class AcceleratedConjunctionTests implements TestFeatures {
 		};
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 10000)
 	public void conjunctions() {
 		IntStream.range(0, 10).mapToObj(i ->
 			conjunctionTest(i * Math.random(), i * Math.random(), i * Math.random(), i * Math.random()))
@@ -65,7 +65,7 @@ public class AcceleratedConjunctionTests implements TestFeatures {
 				oDotd(v(Ray.shape(), 0)), c(1));
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 10000)
 	public void dotProductInConjunction() {
 		CollectionProducer c = dotProductConjunction(v(Ray.shape(), 0));
 
@@ -74,7 +74,7 @@ public class AcceleratedConjunctionTests implements TestFeatures {
 		Assert.assertNotEquals(0, v);
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 10000)
 	public void dotProductInNestedConjunction1() {
 		CollectionProducer c = dotProductConjunction((Producer) ray(i -> Math.random()));
 		c = conjunction(c, v(shape(1), 0), c(Math.random()), c(Math.random()));
@@ -84,7 +84,7 @@ public class AcceleratedConjunctionTests implements TestFeatures {
 		Assert.assertNotEquals(0, v);
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 10000)
 	public void dotProductInNestedConjunction2() {
 		CollectionProducer c = dotProductConjunction((Producer) ray(i -> Math.random()));
 		c = conjunction(c, c(Math.random()), v(shape(1), 0), c(Math.random()));
@@ -94,7 +94,7 @@ public class AcceleratedConjunctionTests implements TestFeatures {
 		Assert.assertNotEquals(0, v);
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 10000)
 	public void dotProductInNestedConjunction3() {
 		CollectionProducer c = dotProductConjunction(v(Ray.shape(), 0));
 		c = conjunction(c, c(Math.random()), c(Math.random()), c(Math.random()));
@@ -104,7 +104,7 @@ public class AcceleratedConjunctionTests implements TestFeatures {
 		Assert.assertNotEquals(0, v);
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 10000)
 	public void dotProductInNestedConjunction4() {
 		CollectionProducer c = dotProductConjunction(v(Ray.shape(), 0));
 		c = conjunction(c, v(shape(1), 1),

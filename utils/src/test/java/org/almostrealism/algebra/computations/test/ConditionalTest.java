@@ -24,7 +24,7 @@ import org.junit.Test;
 
 public class ConditionalTest implements TestFeatures {
 
-	@Test(timeout = 30000)
+	@Test(timeout = 10000)
 	public void positive() {
 		CollectionProducerBase a = c(2);
 		CollectionProducerBase b = c(2);
@@ -37,7 +37,7 @@ public class ConditionalTest implements TestFeatures {
 		assertEquals(3, result.toDouble(0));
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 10000)
 	public void negative() {
 		CollectionProducerBase a = c(2);
 		CollectionProducerBase b = c(1);

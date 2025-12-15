@@ -49,7 +49,7 @@ public class Pool2dShapeInvestigationTest implements TestFeatures {
 	/**
 	 * Test pool2d layer shape declarations vs actual output.
 	 */
-	@Test(timeout = 30000)
+	@Test(timeout = 10000)
 	public void testPool2dLayerShapeDeclaration() {
 		log("=== Test: Pool2d Layer Shape Declaration ===");
 
@@ -87,7 +87,7 @@ public class Pool2dShapeInvestigationTest implements TestFeatures {
 	/**
 	 * Test pool2d through a model to verify numerical correctness.
 	 */
-	@Test(timeout = 30000)
+	@Test(timeout = 10000)
 	public void testPool2dModelInference() {
 		log("=== Test: Pool2d Model Inference ===");
 
@@ -144,7 +144,7 @@ public class Pool2dShapeInvestigationTest implements TestFeatures {
 	/**
 	 * Test pool2d operator shape step by step.
 	 */
-	@Test(timeout = 30000)
+	@Test(timeout = 10000)
 	public void testPool2dOperatorShapeAnalysis() {
 		log("=== Test: Pool2d Operator Shape Analysis ===");
 
@@ -182,7 +182,7 @@ public class Pool2dShapeInvestigationTest implements TestFeatures {
 	/**
 	 * Test with different input sizes to understand the pattern.
 	 */
-	@Test(timeout = 30000)
+	@Test(timeout = 10000)
 	public void testPool2dVariousSizes() {
 		log("=== Test: Pool2d Various Sizes ===");
 

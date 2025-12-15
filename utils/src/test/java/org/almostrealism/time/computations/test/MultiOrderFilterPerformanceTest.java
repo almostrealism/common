@@ -116,7 +116,7 @@ public class MultiOrderFilterPerformanceTest implements TestFeatures, ConsoleFea
 	 *
 	 * @throws Exception if test setup or execution fails
 	 */
-	@Test(timeout = 30000)
+	@Test(timeout = 10000)
 	public void highPassPerformanceCPU() throws Exception {
 		// Set up file logging BEFORE any output
 		String logFile = "results/multiorder_filter_performance_cpu.out";
@@ -166,7 +166,7 @@ public class MultiOrderFilterPerformanceTest implements TestFeatures, ConsoleFea
 	 *
 	 * @throws Exception if test setup or execution fails
 	 */
-	@Test(timeout = 30000)
+	@Test(timeout = 10000)
 	public void highPassPerformanceGPU() throws Exception {
 		// Set up file logging BEFORE any output
 		String logFile = "results/multiorder_filter_performance_gpu.out";

@@ -23,7 +23,7 @@ import java.util.Optional;
 import java.util.stream.Stream;
 
 public class JobOutputDecodingTest {
-	@Test(timeout = 30000)
+	@Test(timeout = 10000)
 	public void decode() {
 		JobOutput output = new JobOutput();
 		output.setTaskId("test-task");

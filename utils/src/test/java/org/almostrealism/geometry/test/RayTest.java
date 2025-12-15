@@ -28,27 +28,27 @@ import org.junit.Assert;
 import org.junit.Test;
 
 public class RayTest implements TestFeatures {
-	@Test(timeout = 30000)
+	@Test(timeout = 10000)
 	public void pointAtTest1() {
 		CollectionProducer p = pointAt(ray(0.0, 0.0, 0.0, 0.0, 1.0, 0.5), c(10));
 		assertEquals(new Vector(0.0, 10.0, 5.0), p.get().evaluate());
 		assertEquals(new Vector(0.0, 10.0, 5.0), p.get().evaluate());
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 10000)
 	public void pointAtTest2() {
 		CollectionProducer at = pointAt(ray(0.0, 0.0, 1.0, 0.0, 0.5, -1.0), c(-20));
 		assertEquals(new Vector(0.0, -10.0, 21.0), at.get().evaluate());
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 10000)
 	public void dynamicPointAt() {
 		Producer<PackedCollection> d = func(shape(1), new AdaptEvaluable<>(c(-20).get())::evaluate);
 		CollectionProducer at = pointAt(ray(0.0, 0.0, 1.0, 0.0, 0.5, -1.0), d);
 		assertEquals(new Vector(0.0, -10.0, 21.0), at.get().evaluate());
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 10000)
 	public void directions() {
 		Producer<PackedCollection> directions = direction(v(shape(-1, 6), 0));
 
@@ -67,7 +67,7 @@ public class RayTest implements TestFeatures {
 		assertEquals(new Vector(16, 17, 18), d.get(2));
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 10000)
 	public void dotProductTests() {
 		Producer<Ray> r = v(Ray.shape(), 0);
 
@@ -82,7 +82,7 @@ public class RayTest implements TestFeatures {
 				new Vector(7, 4, 2))));
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 10000)
 	public void staticComputation() {
 		Producer<Ray> comp = (Producer) value(new Ray(new Vector(1.0, 2.0, 3.0),
 															new Vector(4.0, 5.0, 6.0)));
@@ -107,7 +107,7 @@ public class RayTest implements TestFeatures {
 		assertEquals(6.0, r.getDirection().toDouble(2));
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 10000)
 	public void batchMultiply() {
 		Producer<Ray> rays = v(shape(-1, 6), 0);
 
@@ -129,7 +129,7 @@ public class RayTest implements TestFeatures {
 		assertEquals(new Vector(0, 0, 0), result.get(2));
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 10000)
 	public void batchDotProduct() {
 		Producer<Ray> rays = v(shape(-1, 6), 0);
 
@@ -151,7 +151,7 @@ public class RayTest implements TestFeatures {
 		assertEquals(20.0, result.valueAt(2, 0));
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 10000)
 	public void batchODotD() {
 		Producer<Ray> rays = v(shape(-1, 6), 0);
 		Producer<?> oDotdProd = oDotd(rays);
@@ -171,7 +171,7 @@ public class RayTest implements TestFeatures {
 		assertEquals(20.0, result.valueAt(2, 0));
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 10000)
 	public void batchDDotD() {
 		Producer<Ray> rays = v(shape(-1, 6), 0);
 		Producer<?> dDotdProd = dDotd(rays);
@@ -191,7 +191,7 @@ public class RayTest implements TestFeatures {
 		assertEquals(50.0, result.valueAt(2, 0));
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 10000)
 	public void batchODotO() {
 		Producer<Ray> rays = v(shape(-1, 6), 0);
 		Producer<?> oDotoProd = oDoto(rays);
@@ -211,7 +211,7 @@ public class RayTest implements TestFeatures {
 		assertEquals(14.0, result.valueAt(2, 0));
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 10000)
 	public void rayDotProductsSingleRay() {
 		// Test that dot products work for a single ray in batch mode
 		Producer<Ray> ray = v(shape(-1, 6), 0);

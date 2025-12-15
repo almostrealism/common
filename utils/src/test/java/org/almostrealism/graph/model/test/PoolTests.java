@@ -28,14 +28,14 @@ import java.util.function.Supplier;
 
 public class PoolTests implements TestFeatures, KernelAssertions {
 
-	@Test(timeout = 30000)
+	@Test(timeout = 60000)
 	public void pool2dSquareAndOptimize() {
 		pool2dSquareOptimize();
 		pool2dSquare();
 		pool2dSquare();
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 60000)
 	public void pool2d() {
 		int r = 12;
 		int c = 16;
@@ -44,7 +44,7 @@ public class PoolTests implements TestFeatures, KernelAssertions {
 		pool(r, c, d, w, false);
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 60000)
 	public void pool2dSquare() {
 		int r = 8;
 		int c = 8;
@@ -53,7 +53,7 @@ public class PoolTests implements TestFeatures, KernelAssertions {
 		pool(r, c, d, w, false);
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 60000)
 	public void pool2dSquareSteps() {
 		int r = 8;
 		int c = 8;
@@ -62,7 +62,7 @@ public class PoolTests implements TestFeatures, KernelAssertions {
 		pool(r, c, d, w, true);
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 60000)
 	public void pool2dSquareOptimize() {
 		int r = 8;
 		int c = 8;

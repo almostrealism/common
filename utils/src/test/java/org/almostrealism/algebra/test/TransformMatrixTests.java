@@ -21,12 +21,12 @@ import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
 
 public class TransformMatrixTests implements TestFeatures {
-	@Test(timeout = 30000)
+	@Test(timeout = 10000)
 	public void adjoint() {
 		new TransformMatrix().adjoint();
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 10000)
 	public void determinant() {
 		new TransformMatrix().determinant();
 	}

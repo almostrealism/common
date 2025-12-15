@@ -38,7 +38,7 @@ public class ShapeValidationTest implements LayerFeatures, TestFeatures {
 	/**
 	 * Test that identical shapes are compatible.
 	 */
-	@Test(timeout = 30000)
+	@Test(timeout = 10000)
 	public void testIdenticalShapesAreCompatible() {
 		TraversalPolicy shape1 = shape(2, 3, 4);
 		TraversalPolicy shape2 = shape(2, 3, 4);
@@ -50,7 +50,7 @@ public class ShapeValidationTest implements LayerFeatures, TestFeatures {
 	/**
 	 * Test that shapes with different dimensions are incompatible.
 	 */
-	@Test(timeout = 30000)
+	@Test(timeout = 10000)
 	public void testDifferentDimensionsAreIncompatible() {
 		TraversalPolicy shape1 = shape(2, 3);
 		TraversalPolicy shape2 = shape(3, 2);
@@ -63,7 +63,7 @@ public class ShapeValidationTest implements LayerFeatures, TestFeatures {
 	/**
 	 * Test that shapes with different total sizes are incompatible.
 	 */
-	@Test(timeout = 30000)
+	@Test(timeout = 10000)
 	public void testDifferentSizesAreIncompatible() {
 		TraversalPolicy shape1 = shape(2, 3);
 		TraversalPolicy shape2 = shape(2, 4);
@@ -75,7 +75,7 @@ public class ShapeValidationTest implements LayerFeatures, TestFeatures {
 	/**
 	 * Test that shapes with different traversal axes but same dimensions are compatible.
 	 */
-	@Test(timeout = 30000)
+	@Test(timeout = 10000)
 	public void testTraversalAxisIsIgnored() {
 		TraversalPolicy shape1 = shape(2, 3, 4).traverse(1);
 		TraversalPolicy shape2 = shape(2, 3, 4).traverse(2);
@@ -87,7 +87,7 @@ public class ShapeValidationTest implements LayerFeatures, TestFeatures {
 	/**
 	 * Test that validateFactorShape passes for a correct operator.
 	 */
-	@Test(timeout = 30000)
+	@Test(timeout = 10000)
 	public void testValidateFactorShape_correctShape() {
 		TraversalPolicy inputShape = shape(1, 4);
 		TraversalPolicy outputShape = shape(1, 4);
@@ -102,7 +102,7 @@ public class ShapeValidationTest implements LayerFeatures, TestFeatures {
 	/**
 	 * Test that validateFactorShape throws for mismatched shapes.
 	 */
-	@Test(timeout = 30000)
+	@Test(timeout = 10000)
 	public void testValidateFactorShape_mismatchedShape() {
 		TraversalPolicy inputShape = shape(1, 4);
 		TraversalPolicy outputShape = shape(1, 8);  // Wrong size
@@ -126,7 +126,7 @@ public class ShapeValidationTest implements LayerFeatures, TestFeatures {
 	/**
 	 * Test that validateFactorShape works with reshape operators.
 	 */
-	@Test(timeout = 30000)
+	@Test(timeout = 10000)
 	public void testValidateFactorShape_withReshape() {
 		TraversalPolicy inputShape = shape(2, 4);
 		TraversalPolicy outputShape = shape(8);  // Flattened
@@ -142,7 +142,7 @@ public class ShapeValidationTest implements LayerFeatures, TestFeatures {
 	 * Test strict mode flag with into() method.
 	 * When strict mode is enabled, into() should throw for mismatched shapes.
 	 */
-	@Test(timeout = 30000)
+	@Test(timeout = 10000)
 	public void testInto_strictMode() {
 		// If strict mode is enabled, verify exception behavior
 		Producer<PackedCollection> in = cp(new PackedCollection(shape(1, 4)));
@@ -160,7 +160,7 @@ public class ShapeValidationTest implements LayerFeatures, TestFeatures {
 	/**
 	 * Test into() with matching shapes works in all modes.
 	 */
-	@Test(timeout = 30000)
+	@Test(timeout = 10000)
 	public void testInto_matchingShapes() {
 		Producer<PackedCollection> in = cp(new PackedCollection(shape(1, 4)));
 		Producer<PackedCollection> out = cp(new PackedCollection(shape(1, 4)));
@@ -172,7 +172,7 @@ public class ShapeValidationTest implements LayerFeatures, TestFeatures {
 	/**
 	 * Test isShapeCompatible with 1D shapes.
 	 */
-	@Test(timeout = 30000)
+	@Test(timeout = 10000)
 	public void testIsShapeCompatible_1D() {
 		TraversalPolicy shape1 = shape(10);
 		TraversalPolicy shape2 = shape(10);
@@ -184,7 +184,7 @@ public class ShapeValidationTest implements LayerFeatures, TestFeatures {
 	/**
 	 * Test isShapeCompatible with different number of dimensions.
 	 */
-	@Test(timeout = 30000)
+	@Test(timeout = 10000)
 	public void testIsShapeCompatible_differentDimensionCount() {
 		TraversalPolicy shape1 = shape(2, 3);
 		TraversalPolicy shape2 = shape(6);

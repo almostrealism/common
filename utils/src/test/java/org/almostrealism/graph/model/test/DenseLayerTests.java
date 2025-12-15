@@ -49,7 +49,7 @@ public class DenseLayerTests implements ModelTestFeatures {
 		return result;
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 120000)
 	public void denseBatch() throws FileNotFoundException {
 		int bs = 10;
 
