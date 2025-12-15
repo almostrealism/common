@@ -25,7 +25,7 @@ import org.almostrealism.util.TestFeatures;
 
 public class CellPairTest implements TestFeatures {
 
-	// TODO @Test
+	// TODO @Test(timeout = 10000)
 	public void scalarCachedStatePair() {
 		CollectionCachedStateCell cellA = new CollectionCachedStateCell();
 		CollectionCachedStateCell cellB = new CollectionCachedStateCell();
@@ -59,7 +59,7 @@ public class CellPairTest implements TestFeatures {
 		assertEquals(0.0, cellB.getCachedValue().toDouble(0));
 	}
 
-	// TODO @Test
+	// TODO @Test(timeout = 10000)
 	public void scalarCachedStatePairOperationList() {
 		CollectionCachedStateCell cellA = new CollectionCachedStateCell();
 		CollectionCachedStateCell cellB = new CollectionCachedStateCell();

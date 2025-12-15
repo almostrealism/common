@@ -35,7 +35,7 @@ public class PlaneTest implements TestFeatures {
 		return (ShadableIntersection) p.intersectAt(ray(0.0, 0.0, 1.0, 0.0, 0.5, -1.0));
 	}
 
-	// TODO @Test
+	// TODO @Test(timeout = 10000)
 	public void intersectionTest1() {
 		ShadableIntersection intersection = test1();
 		double distance = intersection.getDistance().evaluate().toDouble();
@@ -45,7 +45,7 @@ public class PlaneTest implements TestFeatures {
 		Assert.assertEquals(intersection.get(0).get().evaluate(), ray(0.0, -10.0, 21.0, 0.0, 1.0, 0.0).get().evaluate());
 	}
 
-	// TODO  @Test
+	// TODO  @Test(timeout = 10000)
 	public void intersectionTest1Compact() {
 		ShadableIntersection intersection = test1();
 
@@ -59,7 +59,7 @@ public class PlaneTest implements TestFeatures {
 				new Vector(0.0, 1.0, 0.0)));
 	}
 
-	@Test
+	@Test(timeout = 10000)
 	public void intersectionTest2() {
 		Producer<Ray> r = (Producer) ray(0.0, 1.0, 1.0, 0.0, 0.1, 1.0);
 
@@ -70,7 +70,7 @@ public class PlaneTest implements TestFeatures {
 		Assert.assertTrue(intersection.getDistance().get().evaluate().toDouble() < 0);
 	}
 
-	// TODO @Test
+	// TODO @Test(timeout = 10000)
 	public void transformTest() {
 		Provider<Ray> r = new Provider<>(new Ray(new Vector(0.0, 0.0, 1.0),
 												new Vector(0.0, 0.5, -1.0)));

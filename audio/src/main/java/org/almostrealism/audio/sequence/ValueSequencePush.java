@@ -25,6 +25,14 @@ import org.almostrealism.algebra.computations.Switch;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.temporal.BaseAudioData;
 
+/**
+ * Pushes the current value from a sequence into an output collection based on
+ * the wave position and duration. Uses a switch statement to select the appropriate
+ * value producer from the sequence choices.
+ *
+ * @see ValueSequenceCell
+ * @see ValueSequenceComputation
+ */
 public class ValueSequencePush extends ValueSequenceComputation implements CodeFeatures {
 	private final Switch choice;
 

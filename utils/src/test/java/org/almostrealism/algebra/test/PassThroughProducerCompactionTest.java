@@ -31,7 +31,7 @@ public class PassThroughProducerCompactionTest implements CodeFeatures {
 				Input.value(shape(1), 1));
 	}
 
-	@Test
+	@Test(timeout = 10000)
 	public void applySum() {
 		Evaluable<PackedCollection> ev = sum().get();
 		PackedCollection s = ev.evaluate(pack(1.0), pack(2.0));
@@ -42,7 +42,7 @@ public class PassThroughProducerCompactionTest implements CodeFeatures {
 		return multiply(sum(), Input.value(shape(1), 2)).get();
 	}
 
-	@Test
+	@Test(timeout = 10000)
 	public void applyProduct() {
 		PackedCollection s = product().evaluate(
 									c(1.0).get().evaluate(),
@@ -53,7 +53,7 @@ public class PassThroughProducerCompactionTest implements CodeFeatures {
 		Assert.assertEquals(9.0, s.toDouble(0), Math.pow(10, -10));
 	}
 
-	@Test
+	@Test(timeout = 10000)
 	public void applyProductCompact() {
 		Evaluable<PackedCollection> p = product();
 

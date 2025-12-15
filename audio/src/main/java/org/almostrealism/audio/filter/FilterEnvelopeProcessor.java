@@ -23,6 +23,16 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.TimeCell;
 import org.almostrealism.hardware.mem.MemoryDataCopy;
 
+/**
+ * A low-pass filter with ADSR-controlled cutoff frequency.
+ *
+ * <p>FilterEnvelopeProcessor applies a low-pass filter whose cutoff frequency
+ * varies over time according to an ADSR envelope. The cutoff sweeps from
+ * 0 Hz to {@code filterPeak} Hz based on the envelope shape.</p>
+ *
+ * @see EnvelopeProcessor
+ * @see MultiOrderFilterEnvelopeProcessor
+ */
 // TODO  This should implement AudioProcessor
 public class FilterEnvelopeProcessor implements EnvelopeProcessor, CellFeatures, EnvelopeFeatures {
 	public static double filterPeak = 20000;

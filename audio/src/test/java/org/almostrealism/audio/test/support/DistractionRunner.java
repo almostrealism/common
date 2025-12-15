@@ -14,7 +14,7 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.audio.filter.test;
+package org.almostrealism.audio.test.support;
 
 import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.relation.Evaluable;

@@ -16,6 +16,16 @@
 
 package org.almostrealism.audio.data;
 
+/**
+ * A resource with an associated file system path.
+ *
+ * <p>PathResource provides access to the file system location of a resource,
+ * useful for resources backed by files that need to expose their location
+ * for display, logging, or further file operations.</p>
+ *
+ * @see FileWaveDataProvider
+ * @see FileWaveDataProviderTree
+ */
 public interface PathResource {
 	String getResourcePath();
 }

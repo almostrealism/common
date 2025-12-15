@@ -1352,7 +1352,7 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 				ss = ss.add(traverseEach(cp(biases)));
 			}
 
-			return ss;
+			return ss.reshape(shape);
 		}, biases != null ? List.of(weights, biases) : List.of(weights), requirements);
 	}
 

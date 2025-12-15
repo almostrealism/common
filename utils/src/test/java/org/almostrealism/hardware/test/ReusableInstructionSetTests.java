@@ -22,8 +22,7 @@ import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
 
 public class ReusableInstructionSetTests implements TestFeatures {
-
-	@Test
+	@Test(timeout = 10000)
 	public void add() {
 		int n = 6;
 

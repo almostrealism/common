@@ -26,6 +26,25 @@ import org.almostrealism.heredity.TemporalFactor;
 
 import java.util.function.Supplier;
 
+/**
+ * A feedback delay network for creating reverb and diffusion effects.
+ *
+ * <p>DelayNetwork implements a multi-tap delay network with feedback matrix mixing.
+ * It uses a Householder matrix for the feedback coefficients to ensure stability
+ * and even energy distribution. This is useful for creating diffuse reverb tails
+ * and spatial effects.</p>
+ *
+ * <h2>Architecture</h2>
+ * <ul>
+ *   <li>Multiple parallel delay lines with different lengths</li>
+ *   <li>Householder feedback matrix for mixing between lines</li>
+ *   <li>Randomized delay times for natural-sounding diffusion</li>
+ *   <li>Hardware-accelerated matrix multiplication</li>
+ * </ul>
+ *
+ * @see TemporalFactor
+ * @see BasicDelayCell
+ */
 public class DelayNetwork implements TemporalFactor<PackedCollection>, Lifecycle, CodeFeatures {
 	public static boolean enableIsolation = false;
 

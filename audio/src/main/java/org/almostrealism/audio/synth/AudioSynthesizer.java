@@ -39,6 +39,15 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.function.Supplier;
 
+/**
+ * An audio synthesizer that generates sound by combining multiple sine wave generators
+ * at frequencies determined by a {@link RelativeFrequencySet}. Supports dynamic synthesis
+ * models for controlling amplitude envelopes and frequency modulation over time.
+ *
+ * @see AudioSynthesisModel
+ * @see RelativeFrequencySet
+ * @see OvertoneSeries
+ */
 public class AudioSynthesizer implements Temporal, StatelessSource, SamplingFeatures {
 	private final RelativeFrequencySet tones;
 

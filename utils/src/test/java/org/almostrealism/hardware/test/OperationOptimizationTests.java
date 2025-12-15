@@ -29,7 +29,7 @@ import org.junit.Test;
 import java.util.function.Supplier;
 
 public class OperationOptimizationTests implements TestFeatures {
-	@Test
+	@Test(timeout = 30000)
 	public void reshapeEnumerate() {
 		int seqLength = 1024;
 		int heads = 12;
@@ -65,7 +65,7 @@ public class OperationOptimizationTests implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void matmulLoop() {
 		int dim = 256;
 		PackedCollection in = new PackedCollection(shape(dim));
@@ -79,7 +79,7 @@ public class OperationOptimizationTests implements TestFeatures {
 		System.out.println(Countable.count(loop));
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void matmulLoopComparison() {
 		if (skipLongTests) return;
 		if (testDepth < 3) return;

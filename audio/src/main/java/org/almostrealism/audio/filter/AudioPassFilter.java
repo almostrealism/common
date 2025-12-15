@@ -25,6 +25,51 @@ import org.almostrealism.heredity.TemporalFactor;
 
 import java.util.function.Supplier;
 
+/**
+ * High-pass or low-pass audio filter with configurable cutoff frequency and resonance.
+ *
+ * <p>AudioPassFilter implements {@link TemporalFactor} to provide sample-by-sample
+ * filtering with state management. It uses a biquad filter design for efficient
+ * real-time processing.</p>
+ *
+ * <h2>Creating Filters</h2>
+ * <pre>{@code
+ * // High-pass filter: cutoff 500Hz, resonance 0.1
+ * AudioPassFilter highPass = new AudioPassFilter(44100, c(500), scalar(0.1), true);
+ *
+ * // Low-pass filter: cutoff 2000Hz, resonance 0.2
+ * AudioPassFilter lowPass = new AudioPassFilter(44100, c(2000), scalar(0.2), false);
+ * }</pre>
+ *
+ * <h2>Using with CellFeatures</h2>
+ * <pre>{@code
+ * // Via fluent API
+ * cells.f(i -> hp(c(500), scalar(0.1)))   // High-pass at 500Hz
+ *      .f(i -> lp(c(5000), scalar(0.1))); // Low-pass at 5000Hz
+ * }</pre>
+ *
+ * <h2>Filter Parameters</h2>
+ * <ul>
+ *   <li><b>Frequency</b>: Cutoff frequency in Hz (clamped to {@value #MIN_FREQUENCY}-20000 Hz)</li>
+ *   <li><b>Resonance</b>: Q factor controlling filter sharpness (0.0-1.0 typical)</li>
+ *   <li><b>High</b>: true for high-pass, false for low-pass</li>
+ * </ul>
+ *
+ * <h2>Lifecycle</h2>
+ * <p>AudioPassFilter implements {@link Lifecycle} for state management:</p>
+ * <ul>
+ *   <li>{@link #setup()} - Initialize filter state</li>
+ *   <li>{@link #tick()} - Advance one sample (update internal state)</li>
+ *   <li>{@link #reset()} - Reset filter state to initial values</li>
+ * </ul>
+ *
+ * <p><b>Note:</b> Each AudioPassFilter instance can only be used with one input signal.
+ * Calling {@link #getResultant(Producer)} with a different input will throw an exception.</p>
+ *
+ * @see CellFeatures#hp(Producer, Producer)
+ * @see CellFeatures#lp(Producer, Producer)
+ * @see DelayNetwork
+ */
 public class AudioPassFilter implements TemporalFactor<PackedCollection>, Lifecycle {
 	public static final double MIN_FREQUENCY = 10.0;
 

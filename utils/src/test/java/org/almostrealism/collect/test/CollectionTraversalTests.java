@@ -25,7 +25,8 @@ import org.junit.Test;
 import java.util.Arrays;
 
 public class CollectionTraversalTests implements TestFeatures {
-	@Test
+
+	@Test(timeout = 10000)
 	public void stride1() {
 		PackedCollection root = new PackedCollection(shape(4, 4)).randFill();
 
@@ -46,7 +47,7 @@ public class CollectionTraversalTests implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 10000)
 	public void stride2() {
 		PackedCollection root = new PackedCollection(shape(4, 4)).randFill();
 
@@ -66,7 +67,7 @@ public class CollectionTraversalTests implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 10000)
 	public void stride3() {
 		PackedCollection root = new PackedCollection(shape(4, 4)).randFill();
 
@@ -87,7 +88,7 @@ public class CollectionTraversalTests implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 10000)
 	public void stride4() {
 		PackedCollection root = new PackedCollection(shape(4, 4)).randFill();
 
@@ -108,7 +109,7 @@ public class CollectionTraversalTests implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 10000)
 	public void stride5() {
 		int m = 2;
 		int n = 2;
@@ -135,7 +136,7 @@ public class CollectionTraversalTests implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 10000)
 	public void stride6() {
 		int m = 4;
 		int n = 2;
@@ -164,7 +165,7 @@ public class CollectionTraversalTests implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 10000)
 	public void stride7() {
 		TraversalPolicy left = shape(2, 1)
 				.repeat(1, 2);
@@ -191,7 +192,7 @@ public class CollectionTraversalTests implements TestFeatures {
 		Assert.assertEquals("[0, 0][0, 1][0, 0][0, 1]", result.toString());
 	}
 
-	@Test
+	@Test(timeout = 10000)
 	public void stride8() {
 		TraversalPolicy policy = shape(2, 4)
 				.withRate(0, 3, 2)
@@ -209,7 +210,7 @@ public class CollectionTraversalTests implements TestFeatures {
 				.forEach(System.out::println);
 	}
 
-	@Test
+	@Test(timeout = 10000)
 	public void stride9() {
 		int bs = 1;
 		int r = 3;

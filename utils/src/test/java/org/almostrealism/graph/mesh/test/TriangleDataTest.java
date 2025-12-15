@@ -45,7 +45,7 @@ public class TriangleDataTest implements TestFeatures {
 
 	protected PackedCollection points() { return data().getMeshPointData(); }
 
-	@Test
+	@Test(timeout = 10000)
 	public void edges() {
 		PackedCollection points = points();
 
@@ -70,7 +70,7 @@ public class TriangleDataTest implements TestFeatures {
 		Assert.assertEquals(0, value.toDouble(2), Math.pow(10, -10));
 	}
 
-	@Test
+	@Test(timeout = 10000)
 	public void triangleData() {
 		PackedCollection points = points();
 		CollectionProducer td = triangle(
@@ -80,7 +80,7 @@ public class TriangleDataTest implements TestFeatures {
 		triangleDataAssertions(td.get().evaluate().reshape(shape(4, 3).traverse(1)));
 	}
 
-	@Test
+	@Test(timeout = 10000)
 	public void triangleDataKernel() {
 		PackedCollection points = points();
 		Producer<PackedCollection> td = triangle(points(0));
@@ -113,7 +113,7 @@ public class TriangleDataTest implements TestFeatures {
 
 	protected Mesh mesh() { return new Mesh(data()); }
 
-	@Test
+	@Test(timeout = 10000)
 	public void fromMesh() {
 		Mesh m = mesh();
 		PackedCollection points = m.getMeshPointData();

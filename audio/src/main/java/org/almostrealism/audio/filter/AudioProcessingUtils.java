@@ -24,6 +24,11 @@ import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.mem.Heap;
 
+/**
+ * Utility class providing shared audio processing operations.
+ *
+ * @deprecated Use individual processor classes directly instead.
+ */
 @Deprecated
 public class AudioProcessingUtils {
 	public static final int MAX_SECONDS = 180;

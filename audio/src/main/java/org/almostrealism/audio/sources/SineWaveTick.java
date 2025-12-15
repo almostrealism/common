@@ -21,6 +21,15 @@ import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
 
+/**
+ * Advances sine wave state for the next sample.
+ * Increments wavePosition by waveLength and notePosition by the inverse
+ * of noteLength. Used by SineWaveCell to maintain oscillator state
+ * between sample generations.
+ *
+ * @see SineWaveComputation
+ * @see SineWaveCell
+ */
 public class SineWaveTick extends SineWaveComputation {
 	public SineWaveTick(SineWaveCellData data, Producer<PackedCollection> envelope) {
 		super(data, envelope, new PackedCollection(1));

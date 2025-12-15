@@ -16,6 +16,46 @@
 
 package org.almostrealism.audio.tone;
 
+/**
+ * Enumeration of the 88 notes of a standard piano keyboard in the Western chromatic scale.
+ *
+ * <p>WesternChromatic represents all notes from A0 (27.5 Hz) to C8 (4186 Hz), covering
+ * the full range of a standard 88-key piano. Each note implements {@link KeyPosition}
+ * to provide its position in the chromatic scale.</p>
+ *
+ * <h2>Note Naming Convention</h2>
+ * <ul>
+ *   <li>Natural notes: A, B, C, D, E, F, G followed by octave number</li>
+ *   <li>Sharp notes: Note name + 'S' (e.g., CS4 = C#4, FS3 = F#3)</li>
+ *   <li>Octave numbers: 0-8 (A0 is the lowest, C8 is the highest)</li>
+ * </ul>
+ *
+ * <h2>Key Positions</h2>
+ * <p>Position numbering starts at 0 for A0 and increments chromatically:</p>
+ * <ul>
+ *   <li>A0 = position 0</li>
+ *   <li>A4 (concert pitch) = position 48</li>
+ *   <li>C4 (middle C) = position 39</li>
+ *   <li>C8 = position 87</li>
+ * </ul>
+ *
+ * <h2>Usage</h2>
+ * <pre>{@code
+ * // Get frequency for a note
+ * KeyboardTuning tuning = new DefaultKeyboardTuning();
+ * double freq = tuning.getTone(WesternChromatic.A4).asHertz();  // 440.0
+ *
+ * // Navigate chromatically
+ * WesternChromatic next = WesternChromatic.C4.next();  // CS4
+ *
+ * // Access the full chromatic scale
+ * Scale<WesternChromatic> chromatic = WesternChromatic.scale();
+ * }</pre>
+ *
+ * @see KeyPosition
+ * @see KeyboardTuning
+ * @see Scale
+ */
 public enum WesternChromatic implements KeyPosition<WesternChromatic> {
 	A0, AS0, B0,
 	C1, CS1, D1, DS1, E1, F1, FS1, G1, GS1, A1, AS1, B1,

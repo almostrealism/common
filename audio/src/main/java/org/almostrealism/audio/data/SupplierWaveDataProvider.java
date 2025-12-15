@@ -20,6 +20,16 @@ import org.almostrealism.collect.PackedCollection;
 
 import java.util.function.Supplier;
 
+/**
+ * A wave data provider backed by a supplier of PackedCollection data.
+ *
+ * <p>SupplierWaveDataProvider wraps a supplier that produces audio data on demand,
+ * useful for dynamically generated or computed audio content where the data source
+ * is a programmatic computation rather than a file.</p>
+ *
+ * @see WaveDataProvider
+ * @see WaveData
+ */
 public class SupplierWaveDataProvider extends WaveDataProviderAdapter {
 	private final String key;
 	private final Supplier<PackedCollection> source;

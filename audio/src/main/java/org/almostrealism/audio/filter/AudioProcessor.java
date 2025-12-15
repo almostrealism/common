@@ -25,6 +25,15 @@ import org.almostrealism.collect.PackedCollection;
 
 import java.util.function.Supplier;
 
+/**
+ * Interface for audio processing operations that transform audio data.
+ *
+ * <p>AudioProcessor defines a simple interface for processing audio where
+ * a source is processed and results are written to a destination buffer.
+ * Implementations support reset via the {@link Lifecycle} interface.</p>
+ *
+ * @see EnvelopeProcessor
+ */
 public interface AudioProcessor extends Lifecycle {
 	Supplier<Runnable> process(Producer<PackedCollection> destination,
 							   Producer<PackedCollection> source);

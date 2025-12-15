@@ -22,6 +22,18 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.time.TemporalRunner;
 
+/**
+ * An {@link AudioLineOperation} wrapper that records input audio to an {@link OutputLine}
+ * while simultaneously processing it through another operation. This enables "tapping" the
+ * input stream for monitoring, recording, or debugging without interrupting the main processing flow.
+ * <p>
+ * The operation executes in sequence: first writing the input to the record line, then
+ * running the wrapped operation's processing.
+ * </p>
+ *
+ * @see AudioLineOperation
+ * @see OutputLine
+ */
 public class AudioLineInputRecord implements AudioLineOperation, CellFeatures {
 	private final AudioLineOperation operation;
 	private final OutputLine record;

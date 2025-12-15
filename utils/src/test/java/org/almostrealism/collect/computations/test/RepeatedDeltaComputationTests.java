@@ -36,8 +36,7 @@ import java.io.IOException;
 import java.util.function.Supplier;
 
 public class RepeatedDeltaComputationTests implements TestFeatures {
-
-	@Test
+	@Test(timeout = 60000)
 	public void repeatProduct() {
 		PackedCollection in = pack(2.0, 1.5);
 		PackedCollection multiplier = pack(4.0, 3.0);
@@ -49,7 +48,7 @@ public class RepeatedDeltaComputationTests implements TestFeatures {
 		c.get().evaluate().print();
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void sum() {
 		PackedCollection in = pack(2.0, 1.0, 4.0, 3.0).reshape(2, 2).traverse(1);
 		PackedCollection out = cp(in).sum().delta(cp(in)).evaluate();
@@ -65,7 +64,7 @@ public class RepeatedDeltaComputationTests implements TestFeatures {
 		assertEquals(1.0, out.valueAt(1, 0, 1, 1));
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void productSum() {
 		PackedCollection multiplier = pack(4.0, 3.0, 2.0, 1.0).reshape(2, 2).traverse(1);
 		PackedCollection in = pack(2.0, 1.0, 4.0, 3.0).reshape(2, 2).traverse(1);
@@ -82,7 +81,7 @@ public class RepeatedDeltaComputationTests implements TestFeatures {
 		assertEquals(1.0, out.valueAt(1, 0, 1, 1));
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void productSumIndex() {
 		PackedCollection multiplier = pack(4.0, 3.0, 2.0, 1.0).reshape(2, 2).traverse(1);
 		PackedCollection in = pack(2.0, 1.0, 4.0, 3.0).reshape(2, 2).traverse(1);
@@ -109,7 +108,7 @@ public class RepeatedDeltaComputationTests implements TestFeatures {
 		});
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void productSumIndex2() {
 		PackedCollection multiplier = pack(4.0, 3.0, 2.0, 1.0).reshape(2, 2)
 			.traverse(1);
@@ -138,7 +137,7 @@ public class RepeatedDeltaComputationTests implements TestFeatures {
 		assertEquals(1.0, out.valueAt(3, 1));
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void productRepeatSum1() {
 		PackedCollection multiplier = pack(4.0, 3.0, 2.0, 1.0).reshape(2, 2);
 		PackedCollection in = pack(2.0, 1.0, 4.0, 3.0).reshape(2, 2);
@@ -160,7 +159,7 @@ public class RepeatedDeltaComputationTests implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void productEnumerate() {
 		PackedCollection multiplier = pack(4.0, 3.0, 2.0, 1.0).reshape(2, 2);
 		PackedCollection in = pack(2.0, 1.0, 4.0, 3.0).reshape(2, 2);
@@ -180,7 +179,7 @@ public class RepeatedDeltaComputationTests implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void productEnumerateLarge() {
 		PackedCollection multiplier = new PackedCollection(10).fill(pos -> pos[0] + 1.0);
 		PackedCollection in = new PackedCollection(10);
@@ -211,12 +210,12 @@ public class RepeatedDeltaComputationTests implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void productSumEnumerate() {
 		productSumEnumerate(false);
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void productSumEnumerateOptimized() {
 		productSumEnumerate(true);
 	}
@@ -239,7 +238,7 @@ public class RepeatedDeltaComputationTests implements TestFeatures {
 		assertEquals(1.0, out.valueAt(3, 1));
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void convDeltaSmall() throws IOException {
 		if (testDepth < 2) return;
 		if (testProfileIs(TestUtils.PIPELINE)) return;
@@ -249,7 +248,7 @@ public class RepeatedDeltaComputationTests implements TestFeatures {
 		convDelta("convDeltaSmall", l, d, false);
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void convDeltaMedium() throws IOException {
 		if (testDepth < 3) return;
 		if (testProfileIs(TestUtils.PIPELINE)) return;
@@ -259,7 +258,7 @@ public class RepeatedDeltaComputationTests implements TestFeatures {
 		convDelta("convDelta", l, d, false);
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void convDeltaGradSmall() throws IOException {
 		if (skipLongTests || testDepth < 1) return;
 		if (testProfileIs(TestUtils.PIPELINE)) return;
@@ -274,7 +273,7 @@ public class RepeatedDeltaComputationTests implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void convDeltaGradLarge() throws IOException {
 		if (skipKnownIssues) return;
 
@@ -358,7 +357,7 @@ public class RepeatedDeltaComputationTests implements TestFeatures {
 		return conv.multiply(filter).sum(4);
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void max() {
 		PackedCollection in = pack(1.0, 2.0, 4.0, 3.0).reshape(2, 2).traverse(1);
 		PackedCollection out = cp(in).max().delta(cp(in)).evaluate();
@@ -374,7 +373,7 @@ public class RepeatedDeltaComputationTests implements TestFeatures {
 		assertEquals(0.0, out.valueAt(1, 0, 1, 1));
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void pool2d() {
 		int r = 4;
 		int c = 4;
@@ -426,7 +425,7 @@ public class RepeatedDeltaComputationTests implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void convSmallest() throws IOException {
 		if (testDepth < 1) return;
 		
@@ -437,7 +436,7 @@ public class RepeatedDeltaComputationTests implements TestFeatures {
 		convolution2d("convSmallest", shape(dim, dim), size, filters);
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void convSmall() throws IOException {
 		if (testDepth < 2) return;
 
@@ -448,7 +447,7 @@ public class RepeatedDeltaComputationTests implements TestFeatures {
 		convolution2d("convSmall", shape(dim, dim), size, filters);
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void convLarge() throws IOException {
 		if (skipKnownIssues) return;
 

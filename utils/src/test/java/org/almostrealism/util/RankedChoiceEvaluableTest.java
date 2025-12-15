@@ -34,7 +34,7 @@ import java.util.stream.IntStream;
 public class RankedChoiceEvaluableTest implements TestFeatures {
 	private final double gap = 10 * Hardware.getLocalHardware().getPrecision().epsilon(true);
 
-	@Test
+	@Test(timeout = 10000)
 	public void highestRank() {
 		if (skipKnownIssues) return;
 
@@ -49,7 +49,7 @@ public class RankedChoiceEvaluableTest implements TestFeatures {
 		});
 	}
 
-	@Test
+	@Test(timeout = 10000)
 	public void highestRankKernel() {
 		PackedCollection in = new PackedCollection(new TraversalPolicy(4, 1));
 		in.setMem(0, 0.0);
@@ -92,7 +92,7 @@ public class RankedChoiceEvaluableTest implements TestFeatures {
 		return rcp;
 	}
 
-	// TODO  @Test
+	// TODO  @Test(timeout = 10000)
 	public void rankedChoice1() {
 		RankedChoiceEvaluableForVector rcp = getRankedChoiceProducer1();
 		Evaluable<Vector> acc = rcp.getAccelerated();
@@ -102,7 +102,7 @@ public class RankedChoiceEvaluableTest implements TestFeatures {
 		assert result.equals(new Vector(4, 5, 6));
 	}
 
-	// TODO  @Test
+	// TODO  @Test(timeout = 10000)
 	public void rankedChoice2() {
 		RankedChoiceEvaluableForVector rcp = getRankedChoiceProducer2();
 		Evaluable<Vector> acc = rcp.getAccelerated();
@@ -112,7 +112,7 @@ public class RankedChoiceEvaluableTest implements TestFeatures {
 		assert result.equals(new Vector(0.7034, 0.7034, 0.7034));
 	}
 
-	// TODO  @Test
+	// TODO  @Test(timeout = 10000)
 	public void rankedChoiceCompact1() {
 		RankedChoiceEvaluableForVector rcp = getRankedChoiceProducer1();
 		Evaluable<Vector> acc = rcp.getAccelerated();

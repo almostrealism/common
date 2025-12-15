@@ -21,6 +21,22 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.io.ConsoleFeatures;
 
+/**
+ * An {@link AudioLine} implementation that uses shared memory buffers for inter-process
+ * audio communication. This enables audio data to be passed between separate processes
+ * or threads efficiently without copying, useful for distributed audio processing architectures.
+ * <p>
+ * The shared memory layout includes:
+ * </p>
+ * <ul>
+ *   <li>Control buffer: stores read position and passthrough level</li>
+ *   <li>Input buffer: receives audio data for reading</li>
+ *   <li>Output buffer: provides audio data for writing</li>
+ * </ul>
+ *
+ * @see AudioLine
+ * @see PackedCollection
+ */
 public class SharedMemoryAudioLine implements AudioLine, ConsoleFeatures {
 	public static final int controlSize = 8;
 	public static final int READ_POSITION = 0;

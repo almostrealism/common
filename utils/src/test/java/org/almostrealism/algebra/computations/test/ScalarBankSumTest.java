@@ -22,7 +22,7 @@ import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
 
 public class ScalarBankSumTest implements TestFeatures {
-	@Test
+	@Test(timeout = 10000)
 	public void sum() {
 		PackedCollection bank = new PackedCollection(shape(4, 2));
 		bank.setMem(0, 1, 0);

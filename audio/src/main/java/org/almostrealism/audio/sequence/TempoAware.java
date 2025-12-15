@@ -16,6 +16,10 @@
 
 package org.almostrealism.audio.sequence;
 
+/**
+ * Interface for components that respond to tempo changes in beats per minute (BPM).
+ * Enables dynamic tempo adjustment for audio sequences and temporal operations.
+ */
 public interface TempoAware {
 	void setBpm(double bpm);
 }

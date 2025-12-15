@@ -51,6 +51,50 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+/**
+ * Manages a collection of audio files with metadata analysis and similarity computation.
+ *
+ * <p>AudioLibrary provides asynchronous loading and analysis of audio files, computing
+ * {@link WaveDetails} including frequency analysis and feature extraction for each file.
+ * It supports background processing with priority queuing, progress tracking, and
+ * similarity comparison between audio samples.</p>
+ *
+ * <h2>Key Features</h2>
+ * <ul>
+ *   <li>Asynchronous file scanning and analysis with configurable priority</li>
+ *   <li>Automatic similarity computation between audio samples</li>
+ *   <li>Progress tracking and error reporting via listeners</li>
+ *   <li>Persistent metadata storage for faster subsequent access</li>
+ * </ul>
+ *
+ * <h2>Usage</h2>
+ * <pre>{@code
+ * // Create library from a directory
+ * AudioLibrary library = new AudioLibrary(new File("/path/to/samples"), 44100);
+ *
+ * // Start background analysis
+ * library.refresh().thenRun(() -> {
+ *     // Analysis complete
+ *     library.getAllDetails().forEach(d ->
+ *         System.out.println(d.getIdentifier() + ": " + d.getDuration() + "s")
+ *     );
+ * });
+ *
+ * // Get details for a specific file
+ * WaveDetails details = library.getDetailsAwait(new FileWaveDataProvider("/path/to/file.wav"));
+ * }</pre>
+ *
+ * <h2>Priority Levels</h2>
+ * <ul>
+ *   <li>{@link #BACKGROUND_PRIORITY} (0.0) - Low priority background scanning</li>
+ *   <li>{@link #DEFAULT_PRIORITY} (0.5) - Normal user-initiated requests</li>
+ *   <li>{@link #HIGH_PRIORITY} (1.0) - Immediate processing for blocking requests</li>
+ * </ul>
+ *
+ * @see WaveDetails
+ * @see WaveDetailsFactory
+ * @see FileWaveDataProviderTree
+ */
 public class AudioLibrary implements ConsoleFeatures {
 	public static double BACKGROUND_PRIORITY = 0.0;
 	public static double DEFAULT_PRIORITY = 0.5;

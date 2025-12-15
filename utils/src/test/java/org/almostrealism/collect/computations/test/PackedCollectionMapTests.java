@@ -45,7 +45,7 @@ public class PackedCollectionMapTests implements TestFeatures {
 	 * <p>Operation: For each element in collection c (size 5), repeat it and multiply by collection d (size 2)
 	 * Expected output: 5x2 matrix where output[i,j] = c[i] * d[j]</p>
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void map2d() {
 		int n = 5;
 		int m = 2;
@@ -79,7 +79,7 @@ public class PackedCollectionMapTests implements TestFeatures {
 	 *
 	 * <p>This pattern is common in convolutional layers where filters are applied across feature maps.</p>
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void map3d() {
 		PackedCollection input = tensor(shape(8, 3, 3)).pack();
 		PackedCollection filter = tensor(shape(3, 3)).pack();
@@ -112,7 +112,7 @@ public class PackedCollectionMapTests implements TestFeatures {
 	 *
 	 * <p>Currently disabled (@Test commented out) - may need investigation.</p>
 	 */
-	// @Test
+	// @Test(timeout = 30000)
 	public void scale() {
 		PackedCollection timeline = new PackedCollection(shape(10), 1);
 		IntStream.range(0, 10).forEach(i -> timeline.set(i, i + 1));
@@ -146,7 +146,7 @@ public class PackedCollectionMapTests implements TestFeatures {
 	 *
 	 * <p>This tests that mapped operations can ignore the traversed input and produce fixed results.</p>
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void simpleReduce() {
 		PackedCollection input = tensor(shape(8, 3, 3)).pack();
 		PackedCollection source = tensor(shape(3, 1)).pack();
@@ -181,7 +181,7 @@ public class PackedCollectionMapTests implements TestFeatures {
 	 * <p>Operation: For each of 8 slices (each 6 elements), compute sum.
 	 * Expected: output[i] = sum of input[i, 0:6]</p>
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void sumByReduce() {
 		PackedCollection input = tensor(shape(8, 6)).pack();
 
@@ -207,7 +207,7 @@ public class PackedCollectionMapTests implements TestFeatures {
 		});
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void sumReduceOneByOne() {
 		int size = 1;
 		int count = 3;
@@ -239,7 +239,7 @@ public class PackedCollectionMapTests implements TestFeatures {
 		});
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void sumReduce2d() {
 		int size = 4;
 		int count = 3;
@@ -271,7 +271,7 @@ public class PackedCollectionMapTests implements TestFeatures {
 		});
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void maxReduce() {
 		int size = 4;
 		int count = 3;
@@ -303,7 +303,7 @@ public class PackedCollectionMapTests implements TestFeatures {
 		});
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void mapReduce() {
 		PackedCollection input = tensor(shape(8, 3, 3)).pack();
 		PackedCollection filter = tensor(shape(3, 3)).pack();
@@ -345,7 +345,7 @@ public class PackedCollectionMapTests implements TestFeatures {
 	 *
 	 * <p>This is mathematically equivalent to matrix multiplication: output = input @ filter.T</p>
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void mapRepeatReduce() {
 		int r = 8;
 		int c = 3;
@@ -379,7 +379,7 @@ public class PackedCollectionMapTests implements TestFeatures {
 		kernelTest(product, validate);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void mapEnumerate() {
 		int w = 128;
 		int h = 12;
@@ -419,7 +419,7 @@ public class PackedCollectionMapTests implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void enumerateMapSmall() {
 		int r = 3;
 		int c = 3;
@@ -475,7 +475,7 @@ public class PackedCollectionMapTests implements TestFeatures {
 		});
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void enumerateMap() {
 		int r = 10;
 		int c = 10;
@@ -517,7 +517,7 @@ public class PackedCollectionMapTests implements TestFeatures {
 		});
 	}
 
-	// @Test
+	// @Test(timeout = 30000)
 	public void enumerateMapTraverseEach() {
 		int r = 10;
 		int c = 10;
@@ -558,7 +558,7 @@ public class PackedCollectionMapTests implements TestFeatures {
 		});
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void enumerateMapReduce() {
 		int r = 10;
 		int c = 10;
@@ -600,7 +600,7 @@ public class PackedCollectionMapTests implements TestFeatures {
 	}
 
 
-	@Test
+	@Test(timeout = 30000)
 	public void enumerateRepeatMapSmall() {
 		int r = 3;
 		int c = 3;
@@ -670,7 +670,7 @@ public class PackedCollectionMapTests implements TestFeatures {
 		});
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void enumerateRepeatMapReduceSmall() {
 //		Known to fail
 //		int r = 8;
@@ -747,7 +747,7 @@ public class PackedCollectionMapTests implements TestFeatures {
 	}
 
 
-	@Test
+	@Test(timeout = 30000)
 	public void enumerateRepeatMapReduce() {
 		int r = 10;
 		int c = 10;
@@ -818,7 +818,7 @@ public class PackedCollectionMapTests implements TestFeatures {
 		});
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void enumerateRepeatReduce() {
 		int r = 10;
 		int c = 10;
@@ -892,7 +892,7 @@ public class PackedCollectionMapTests implements TestFeatures {
 		});
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void enumerateReduceEnumerate() {
 		int r = 12;
 		int c = 16;
@@ -942,7 +942,7 @@ public class PackedCollectionMapTests implements TestFeatures {
 		});
 	}
 
-	// @Test
+	// @Test(timeout = 30000)
 	public void mapConcat() {
 		int r = 10;
 		int c = 10;

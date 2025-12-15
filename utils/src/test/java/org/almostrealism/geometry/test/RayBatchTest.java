@@ -32,7 +32,7 @@ import org.junit.Test;
  */
 public class RayBatchTest implements TestFeatures {
 
-	@Test
+	@Test(timeout = 10000)
 	public void testOriginShapeWithBatch() {
 		System.out.println("=== Testing origin() shape with batch ===");
 
@@ -67,7 +67,7 @@ public class RayBatchTest implements TestFeatures {
 		System.out.println("Got: " + originResults.getShape() + " with " + originResults.getMemLength() + " elements");
 	}
 
-	@Test
+	@Test(timeout = 10000)
 	public void testDirectionShapeWithBatch() {
 		System.out.println("\n=== Testing direction() shape with batch ===");
 
@@ -100,7 +100,7 @@ public class RayBatchTest implements TestFeatures {
 		System.out.println("Got: " + directionResults.getShape() + " with " + directionResults.getMemLength() + " elements");
 	}
 
-	@Test
+	@Test(timeout = 10000)
 	public void testMultiplyOriginDirection() {
 		System.out.println("\n=== Testing origin(rays).multiply(direction(rays)) ===");
 
@@ -126,7 +126,7 @@ public class RayBatchTest implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 10000)
 	public void testDotProductWithBatch() {
 		System.out.println("\n=== Testing dotProduct(origin(rays), direction(rays)) ===");
 
@@ -160,7 +160,7 @@ public class RayBatchTest implements TestFeatures {
 		System.out.println("  Ray 2: 20.0");
 	}
 
-	@Test
+	@Test(timeout = 10000)
 	public void testODotDWithInto() {
 		System.out.println("\n=== Testing oDotd() with into() for proper batch evaluation ===");
 

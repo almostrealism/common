@@ -43,6 +43,7 @@ import java.io.IOException;
 import java.util.stream.IntStream;
 
 public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssertions {
+
 	private final int convSize = 3;
 	private final int poolSize = 2;
 	private final int w = 10;
@@ -58,7 +59,7 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 		}
 	}
 
-	@Test
+	@Test(timeout = 120000)
 	public void dense() {
 		if (testProfileIs(TestUtils.PIPELINE)) return;
 		if (skipKnownIssues) return;
@@ -125,7 +126,7 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 		}
 	}
 
-	@Test
+	@Test(timeout = 120000)
 	public void pool() {
 		Block conv = convolution2d(inputShape, 8, convSize, false);
 		TraversalPolicy inputShape = conv.getOutputShape();
@@ -145,7 +146,7 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 		pool2d(inputShape.length(0), inputShape.length(1), 8, 2, input, output);
 	}
 
-	@Test
+	@Test(timeout = 120000)
 	public void convPool() {
 		Model model = new Model(inputShape);
 		CellularLayer conv = (CellularLayer) convolution2d(inputShape, 8, convSize, false);
@@ -225,7 +226,7 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 		return model;
 	}
 
-	@Test
+	@Test(timeout = 120000)
 	public void trainSmallest() throws IOException {
 		if (testDepth < 1) return;
 
@@ -235,7 +236,7 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 		train(input, model(dim, dim, 2, 2, 1, 10));
 	}
 
-	@Test
+	@Test(timeout = 120000)
 	public void trainVerySmall() throws IOException {
 		if (testDepth < 2) return;
 
@@ -250,7 +251,7 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 	}
 
 
-	@Test
+	@Test(timeout = 120000)
 	public void trainSmall() throws IOException {
 		if (testDepth < 3) return;
 		if (testProfileIs(TestUtils.PIPELINE)) return;
@@ -265,7 +266,7 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 		train(input, model(dim, dim, 3, filters, 2, 10));
 	}
 
-	@Test
+	@Test(timeout = 120000)
 	public void trainMedium() throws IOException {
 		if (skipLongTests || !trainingTests) return;
 
@@ -276,7 +277,7 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 		train(input, model(dim, dim, 3, filters, 3, 10));
 	}
 
-	@Test
+	@Test(timeout = 120000)
 	public void trainLarge() throws IOException {
 		if (skipLongTests || !trainingTests) return;
 
@@ -291,7 +292,7 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 		}
 	}
 
-	@Test
+	@Test(timeout = 120000)
 	public void trainProgressive() throws IOException {
 		if (skipLongTests || !trainingTests) return;
 

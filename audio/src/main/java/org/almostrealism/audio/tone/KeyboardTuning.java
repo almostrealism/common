@@ -22,6 +22,37 @@ import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
+/**
+ * Interface for keyboard tuning systems that map key positions to frequencies.
+ *
+ * <p>KeyboardTuning provides the abstraction for different tuning systems (equal temperament,
+ * just intonation, etc.). The default implementation {@link DefaultKeyboardTuning} uses
+ * standard 12-tone equal temperament (12-TET) with A4 = 440 Hz.</p>
+ *
+ * <h2>Basic Usage</h2>
+ * <pre>{@code
+ * KeyboardTuning tuning = new DefaultKeyboardTuning();
+ *
+ * // Get frequency for A4
+ * Frequency a4 = tuning.getTone(WesternChromatic.A4);
+ * double hz = a4.asHertz();  // 440.0
+ *
+ * // Get frequencies for a scale
+ * Scale<WesternChromatic> scale = WesternScales.major(WesternChromatic.C4, 1);
+ * List<Frequency> frequencies = tuning.getTones(scale);
+ * }</pre>
+ *
+ * <h2>Key Numbering</h2>
+ * <p>Keys can be specified using different numbering systems via {@link KeyNumbering}:</p>
+ * <ul>
+ *   <li>{@link KeyNumbering#STANDARD} - Piano key numbering (A0 = 0)</li>
+ *   <li>{@link KeyNumbering#MIDI} - MIDI note numbering (A0 = 21)</li>
+ * </ul>
+ *
+ * @see DefaultKeyboardTuning
+ * @see KeyPosition
+ * @see Scale
+ */
 public interface KeyboardTuning {
 	default Frequency getTone(KeyPosition pos) {
 		if (pos.position() < 0) {

@@ -32,6 +32,23 @@ import org.almostrealism.time.computations.Interpolate;
 import java.util.HashMap;
 import java.util.Map;
 
+/**
+ * Abstract base class for WaveDataProvider implementations with caching and interpolation.
+ *
+ * <p>WaveDataProviderAdapter provides common functionality for wave data providers including
+ * context-specific caching of loaded data and automatic interpolation for playback rate
+ * adjustments. Subclasses only need to implement the {@link #load()} method.</p>
+ *
+ * <h2>Features</h2>
+ * <ul>
+ *   <li>Automatic caching per hardware context</li>
+ *   <li>Time-stretching via interpolation for playback rate changes</li>
+ *   <li>Duration and frame count calculations</li>
+ * </ul>
+ *
+ * @see WaveDataProvider
+ * @see FileWaveDataProvider
+ */
 public abstract class WaveDataProviderAdapter implements WaveDataProvider,
 								Comparable<WaveDataProvider>, CodeFeatures {
 	private static final Map<String, ContextSpecific<WaveData>> loaded;

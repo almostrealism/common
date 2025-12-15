@@ -78,13 +78,13 @@ public class MeshIntersectionTest implements TestFeatures {
 															Input.value(shape(-1, 3), 2)));
 	}
 
-	@Test
+	@Test(timeout = 10000)
 	public void normal1() {
 		Vector normal = new Vector(normal(data1).get().evaluate(), 0);
 		System.out.println("normal = " + normal);
 	}
 
-	@Test
+	@Test(timeout = 10000)
 	public void data1() {
 		System.out.println(def(data1).get().evaluate());
 
@@ -101,7 +101,7 @@ public class MeshIntersectionTest implements TestFeatures {
 		System.out.println("u = " + u.get().evaluate().toDouble());
 	}
 
-	@Test
+	@Test(timeout = 10000)
 	public void data2() {
 		if (testDepth < 1) return;
 
@@ -135,7 +135,7 @@ public class MeshIntersectionTest implements TestFeatures {
 		System.out.println("v = " + v.get().evaluate().toDouble());
 	}
 
-	@Test
+	@Test(timeout = 10000)
 	public void intersectAt1() {
 		TriangleIntersectAt intersect = intersection();
 		Evaluable<PackedCollection> ev = intersect.get();
@@ -143,7 +143,7 @@ public class MeshIntersectionTest implements TestFeatures {
 		assertEquals(1.0, distance);
 	}
 
-	@Test
+	@Test(timeout = 10000)
 	public void intersectionKernel1() {
 		PackedCollection distances = new PackedCollection(shape(1, 1).traverse(1));
 		Producer<Ray> ray = (Producer) ray(origin1, direction1);
@@ -152,7 +152,7 @@ public class MeshIntersectionTest implements TestFeatures {
 		assertEquals(1.0, distances.get(0).toDouble());
 	}
 
-	@Test
+	@Test(timeout = 10000)
 	public void intersectAt2() {
 		double distance = intersection().get().evaluate(
 				data2.get(0).traverse(0), origin2.get().evaluate(), direction2.get().evaluate()).toDouble();
@@ -160,7 +160,7 @@ public class MeshIntersectionTest implements TestFeatures {
 		assertEquals(1.0, distance);
 	}
 
-	@Test
+	@Test(timeout = 10000)
 	public void intersectionKernel2() {
 		PackedCollection distances = new PackedCollection(shape(1, 1).traverse(1));
 		CollectionProducer ray = ray(origin2, direction2);
@@ -169,7 +169,7 @@ public class MeshIntersectionTest implements TestFeatures {
 		assertEquals(1.0, distances.get(0));
 	}
 
-	@Test
+	@Test(timeout = 10000)
 	public void intersectionKernel3() {
 		Evaluable<Ray> ray = (Evaluable) new DynamicProducerForMemoryData<PackedCollection>(args -> (PackedCollection) ((Producer) ray(i -> Math.random())).get().evaluate()).get();
 		PackedCollection distances = new PackedCollection(shape(200, 1).traverse(1));

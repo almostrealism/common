@@ -32,7 +32,6 @@ import java.util.Arrays;
 public class SimpleTransformerValidationTest implements AttentionFeatures, ConsoleFeatures {
 
     private static final String WEIGHTS_DIR = "/workspace/project/common/ml/qwen3_weights";
-    private static final String TOKENIZER_PATH = WEIGHTS_DIR + "/tokenizer.bin";
     private static final String REFERENCE_DIR = "/workspace/project/common/ml/qwen3_reference/layer_outputs";
 
     /**
@@ -55,9 +54,6 @@ public class SimpleTransformerValidationTest implements AttentionFeatures, Conso
         log("Loading weights...");
         StateDictionary stateDict = new StateDictionary(WEIGHTS_DIR);
 
-        log("Loading tokenizer...");
-        Qwen3Tokenizer tokenizer = new Qwen3Tokenizer(TOKENIZER_PATH);
-
         // Build transformer (without vocab projection)
         log("Building transformer model (without vocab projection)...");
         Model transformer = buildTransformerWithoutVocabProjection(config, stateDict);
@@ -67,15 +63,14 @@ public class SimpleTransformerValidationTest implements AttentionFeatures, Conso
         var compiledModel = transformer.compile();
         log("Model compiled in " + (System.currentTimeMillis() - compileStart) + "ms");
 
-        // Encode "Hello"
-        String prompt = "Hello";
-        int[] tokens = tokenizer.encode(prompt, false, false);
-        log("\nPrompt: '" + prompt + "'");
-        log("Tokens: " + Arrays.toString(tokens));
+        // Use token 9707 ("Hello" as single BPE token) to match PyTorch reference
+        // Note: The Java tokenizer currently returns character-level tokens [39,68,75,75,78]
+        // for "Hello" instead of BPE tokens like [9707]. This is a separate tokenizer issue.
+        int tokenId = 9707;
+        log("\nUsing token ID: " + tokenId + " (PyTorch 'Hello' token)");
 
-        // Get embedding for first token
+        // Get embedding for the token
         PackedCollection tokenEmbeddings = stateDict.get("model.embed_tokens.weight");
-        int tokenId = tokens[0];
 
         // Create input from embedding
         PackedCollection input = new PackedCollection(shape(1, config.dim));
@@ -117,9 +112,7 @@ public class SimpleTransformerValidationTest implements AttentionFeatures, Conso
         int[] topK = findTopK(logits, 10);
         for (int i = 0; i < 10; i++) {
             int idx = topK[i];
-            String tokenStr = tokenizer.decode(new int[]{idx});
-            log(String.format("  %d. Token %d (%.2f): '%s'",
-                i + 1, idx, logits[idx], tokenStr.replace("\n", "\\n")));
+            log(String.format("  %d. Token %d (logit: %.2f)", i + 1, idx, logits[idx]));
         }
 
         // Check against PyTorch expected output
@@ -129,11 +122,10 @@ public class SimpleTransformerValidationTest implements AttentionFeatures, Conso
         int predictedToken = topK[0];
         log("\n--- Validation Result ---");
         if (predictedToken == 271) {
-            log("[SUCCESS] Model predicts correct token!");
-            log("The Qwen3 transformer implementation is working correctly.");
+            log("[SUCCESS] Model predicts correct token 271!");
+            log("The Qwen3 transformer implementation matches PyTorch.");
         } else {
             log("[MISMATCH] Predicted token " + predictedToken + " vs expected 271");
-            log("Top predicted: " + tokenizer.decode(new int[]{predictedToken}));
         }
 
         stateDict.destroy();

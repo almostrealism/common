@@ -37,7 +37,7 @@ public class ColorMathTest implements TestFeatures, RGBFeatures {
 	 * <p>This test verifies that the add operation correctly sums corresponding
 	 * RGB components across color values.</p>
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void fixedSum() {
 		verboseLog(() -> {
 			Producer<PackedCollection> p1 = black();
@@ -61,7 +61,7 @@ public class ColorMathTest implements TestFeatures, RGBFeatures {
 	 * <p>This test validates the greaterThan operation with custom return values for
 	 * true and false conditions.</p>
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void greaterThan() {
 		verboseLog(() -> {
 			Producer<PackedCollection> arg0 = v(shape(1), 0);
@@ -127,7 +127,7 @@ public class ColorMathTest implements TestFeatures, RGBFeatures {
 	 *
 	 * @see #greaterThan() for a working single-value comparison example
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void greaterThanKernel() {
 		if (skipKnownIssues) return;
 

@@ -22,7 +22,7 @@ import org.junit.Assert;
 import org.junit.Test;
 
 public class MatrixCollectionTests implements TestFeatures {
-	@Test
+	@Test(timeout = 30000)
 	public void matrixMultiplyMap() {
 		int size = 48;
 		int n = size;
@@ -49,7 +49,7 @@ public class MatrixCollectionTests implements TestFeatures {
 				}, false, false, true);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void matrixMultiplyRepeat() {
 		int size = 768;
 		int n = size;

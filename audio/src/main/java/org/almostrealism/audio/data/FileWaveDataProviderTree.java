@@ -23,6 +23,18 @@ import java.io.File;
 import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
 
+/**
+ * A tree structure for organizing and navigating audio file providers.
+ *
+ * <p>FileWaveDataProviderTree extends the {@link Tree} interface to provide
+ * hierarchical organization of audio files, typically mirroring a file system
+ * directory structure. Each node can supply a {@link FileWaveDataProvider}
+ * for leaf nodes (files) or child trees for directories.</p>
+ *
+ * @param <T> the type of tree nodes
+ * @see FileWaveDataProviderNode
+ * @see org.almostrealism.audio.AudioLibrary
+ */
 public interface FileWaveDataProviderTree<T extends Tree<? extends Supplier<FileWaveDataProvider>>> extends Tree<T>, PathResource, Signature {
 	default BooleanSupplier active() {
 		return () -> true;

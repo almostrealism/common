@@ -27,7 +27,7 @@ import org.junit.Test;
  */
 public class DeterminantDebugTest implements TransformMatrixFeatures, TestFeatures {
 
-	@Test
+	@Test(timeout = 10000)
 	public void testSimpleDeterminant() {
 		log("========================================");
 		log("TEST: Simple Determinant Calculation");
@@ -58,7 +58,7 @@ public class DeterminantDebugTest implements TransformMatrixFeatures, TestFeatur
 		assertTrue("Scale(3,3,3) determinant should be 27.0", Math.abs(scale3Det - 27.0) < 0.001);
 	}
 
-	@Test
+	@Test(timeout = 10000)
 	public void testNonDiagonalMatrix() {
 		log("========================================");
 		log("TEST: Non-Diagonal Matrix Determinant");
@@ -82,7 +82,7 @@ public class DeterminantDebugTest implements TransformMatrixFeatures, TestFeatur
 		assertTrue("Determinant should be 3.0", Math.abs(det - 3.0) < 0.001);
 	}
 
-	@Test
+	@Test(timeout = 10000)
 	public void testUpperTriangularConversion() {
 		log("========================================");
 		log("TEST: Debug Upper Triangular Conversion");

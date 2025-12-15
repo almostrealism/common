@@ -27,13 +27,13 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 public class CollectionPolymorphismTests implements TestFeatures {
-	// @Test
+	// @Test(timeout = 10000)
 	public void traversalStream() {
 		TraversalPolicy shape = new TraversalPolicy(2, 3, 3);
 		shape.stream().map(Arrays::toString).forEach(System.out::println);
 	}
 
-	@Test
+	@Test(timeout = 10000)
 	public void tensorToScalarBank() {
 		Tensor<PackedCollection> t = new Tensor<>();
 		t.insert(pack(1.0), 0, 0);

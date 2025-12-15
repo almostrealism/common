@@ -16,6 +16,16 @@
 
 package org.almostrealism.audio.data;
 
+/**
+ * A resource that can be uniquely identified.
+ *
+ * <p>DataResource provides a common interface for any resource that needs
+ * a unique identifier, typically used for caching, deduplication, or
+ * tracking purposes in audio libraries.</p>
+ *
+ * @see AudioDataProvider
+ * @see WaveDataProvider
+ */
 public interface DataResource {
 	String getIdentifier();
 }

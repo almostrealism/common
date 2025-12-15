@@ -20,6 +20,15 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.temporal.BaseAudioData;
 
+/**
+ * Data interface for sine wave generation state.
+ * Extends BaseAudioData to add sine-wave-specific parameters including
+ * note position, note length, phase, and depth. Provides typed accessors
+ * for both direct memory access and Producer-based computation graphs.
+ *
+ * @see BaseAudioData
+ * @see SineWaveCell
+ */
 public interface SineWaveCellData extends BaseAudioData {
 	default PackedCollection notePosition() { return get(3); }
 	default PackedCollection noteLength() { return get(4); }

@@ -19,6 +19,15 @@ package org.almostrealism.audio.sources;
 import org.almostrealism.audio.data.WaveData;
 import org.almostrealism.collect.PackedCollection;
 
+/**
+ * Describes audio buffer metadata including sample rate and frame count.
+ * Provides utility methods for converting between frames and duration,
+ * and for creating WaveData instances with the appropriate dimensions.
+ * This class serves as a configuration object for audio processing operations.
+ *
+ * @see AudioBuffer
+ * @see WaveData
+ */
 public class BufferDetails {
 	private final int sampleRate;
 	private final int frames;

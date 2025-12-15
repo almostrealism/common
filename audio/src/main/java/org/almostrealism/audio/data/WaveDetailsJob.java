@@ -21,6 +21,17 @@ import org.almostrealism.io.ConsoleFeatures;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Function;
 
+/**
+ * A prioritized job for computing WaveDetails asynchronously.
+ *
+ * <p>WaveDetailsJob wraps the computation of {@link WaveDetails} for a
+ * {@link WaveDataProvider} with priority-based scheduling. Jobs are used
+ * by {@link org.almostrealism.audio.AudioLibrary} to manage background
+ * analysis with configurable priority levels.</p>
+ *
+ * @see WaveDetails
+ * @see org.almostrealism.audio.AudioLibrary
+ */
 public class WaveDetailsJob implements Runnable, ConsoleFeatures {
 	private final Function<WaveDetailsJob, WaveDetails> runner;
 	private final WaveDataProvider target;

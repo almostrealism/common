@@ -36,13 +36,13 @@ public class ImageTests implements RGBFeatures, TestFeatures {
 		return c(data).add(1.0).divide(2);
 	}
 
-	@Test
+	@Test(timeout = 10000)
 	public void noise() throws IOException {
 		CollectionProducer data = imageTransformReverse(randn(shape(3, 128, 128)));
 		saveChannels("results/noise.png", data).get().run();
 	}
 
-	@Test
+	@Test(timeout = 10000)
 	public void addNoise() throws IOException {
 		File img = new File("library/test_image.jpeg");
 		if (!img.exists() && skipKnownIssues) return;

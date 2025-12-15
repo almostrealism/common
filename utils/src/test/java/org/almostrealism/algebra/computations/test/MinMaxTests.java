@@ -7,21 +7,22 @@ import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
 
 public class MinMaxTests implements TestFeatures {
-	@Test
+
+	@Test(timeout = 10000)
 	public void min() {
 		assertEquals(1.0, min(c(1.0), c(6.0)).get().evaluate());
 		assertEquals(1.0, min(c(6.0), c(1.0)).get().evaluate());
 		assertEquals(0.5, min(c(0.5), c(0.7)).get().evaluate());
 	}
 
-	@Test
+	@Test(timeout = 10000)
 	public void max() {
 		assertEquals(6.0, max(c(1.0), c(6.0)).get().evaluate().toDouble(0));
 		assertEquals(6.0, max(c(6.0), c(1.0)).get().evaluate().toDouble(0));
 		assertEquals(0.7, max(c(0.5), c(0.7)).get().evaluate().toDouble(0));
 	}
 
-	@Test
+	@Test(timeout = 10000)
 	public void floorKernel() {
 		PackedCollection timeline = tensor(shape(60000, 1)).pack().traverse(1);
 		PackedCollection speedUp = new PackedCollection(shape(1, 1), 1);

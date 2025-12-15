@@ -23,6 +23,12 @@ import org.almostrealism.audio.sources.BufferDetails;
 import org.almostrealism.audio.sources.StatelessSource;
 import org.almostrealism.collect.PackedCollection;
 
+/**
+ * A stateless audio source that generates normally-distributed white noise.
+ * Useful for percussion sounds, ambient textures, and noise-based synthesis.
+ *
+ * @see StatelessSource
+ */
 public class NoiseGenerator implements StatelessSource, SamplingFeatures {
 
 	public NoiseGenerator() {

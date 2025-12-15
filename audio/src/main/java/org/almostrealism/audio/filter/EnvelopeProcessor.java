@@ -18,6 +18,11 @@ package org.almostrealism.audio.filter;
 
 import org.almostrealism.collect.PackedCollection;
 
+/**
+ * Interface for ADSR envelope-controlled audio processing.
+ *
+ * @deprecated Use {@link AudioProcessor} with envelope integration instead.
+ */
 // TODO  Should use AudioProcessor instead
 @Deprecated
 public interface EnvelopeProcessor {

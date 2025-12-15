@@ -26,7 +26,7 @@ import org.junit.Test;
 import java.util.Arrays;
 
 public class InterpolateTest implements TestFeatures {
-	@Test
+	@Test(timeout = 10000)
 	public void interpolateTwoSeries() {
 		PackedCollection series = new PackedCollection(2, 10);
 		series.setMem(0, 7.0, 5.0, 12.0, 13.0, 16.0, 14.0, 9.0, 12.0, 3.0, 12.0);
@@ -53,7 +53,7 @@ public class InterpolateTest implements TestFeatures {
 		assertEquals(11, dest.toArray(1, 1)[0]);
 	}
 
-	@Test
+	@Test(timeout = 10000)
 	public void interpolateKernelPassThrough() {
 		PackedCollection series = new PackedCollection(10);
 		series.setMem(0, 7.0, 5.0, 12.0, 13.0, 16.0, 14.0, 9.0, 12.0, 3.0, 12.0);
@@ -79,7 +79,7 @@ public class InterpolateTest implements TestFeatures {
 		assertEquals(10.5, dest.toArray(1, 1)[0]);
 	}
 
-	@Test
+	@Test(timeout = 10000)
 	public void interpolateKernel() {
 		PackedCollection series = new PackedCollection(10);
 		series.setMem(0, 7.0, 5.0, 12.0, 13.0, 16.0, 14.0, 9.0, 12.0, 3.0, 12.0);
@@ -100,7 +100,7 @@ public class InterpolateTest implements TestFeatures {
 		assertEquals(10.5, dest.toDouble(1));
 	}
 
-	@Test
+	@Test(timeout = 10000)
 	public void interpolatePassThroughWithShape() {
 		PackedCollection series = new PackedCollection(10);
 		series.setMem(0, 7.0, 5.0, 12.0, 13.0, 16.0, 14.0, 9.0, 12.0, 3.0, 12.0);
@@ -123,7 +123,7 @@ public class InterpolateTest implements TestFeatures {
 		assertEquals(15, dest.toArray(0, 1)[0]);
 	}
 
-	@Test
+	@Test(timeout = 10000)
 	public void interpolatePassThroughWithoutShape() {
 		PackedCollection series = new PackedCollection(10);
 		series.setMem(0, 7.0, 5.0, 12.0, 13.0, 16.0, 14.0, 9.0, 12.0, 3.0, 12.0);

@@ -21,6 +21,29 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.audio.SamplingFeatures;
 import org.almostrealism.collect.PackedCollection;
 
+/**
+ * Factory methods for creating amplitude envelope generators.
+ *
+ * <p>EnvelopeFeatures provides methods for creating common envelope shapes
+ * including ADSR (Attack-Decay-Sustain-Release), linear ramps, and custom
+ * multi-segment envelopes. Envelopes are created as {@link Factor} instances
+ * that can be applied to audio signals.</p>
+ *
+ * <h2>Usage</h2>
+ * <pre>{@code
+ * EnvelopeFeatures e = EnvelopeFeatures.getInstance();
+ *
+ * // Create an ADSR envelope
+ * EnvelopeSection env = e.envelope(duration, attack, decay, sustain, release);
+ * Factor<PackedCollection> factor = env.get();
+ *
+ * // Apply to audio
+ * Producer<PackedCollection> output = factor.getResultant(audioInput);
+ * }</pre>
+ *
+ * @see EnvelopeSection
+ * @see SamplingFeatures
+ */
 public interface EnvelopeFeatures extends SamplingFeatures {
 	default Factor<PackedCollection> volume(Producer<PackedCollection> volume) {
 		return in -> multiply(in, volume);

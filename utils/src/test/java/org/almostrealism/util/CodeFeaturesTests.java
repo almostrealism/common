@@ -24,7 +24,7 @@ import org.junit.Test;
 import java.util.function.Supplier;
 
 public class CodeFeaturesTests implements TestFeatures {
-	@Test
+	@Test(timeout = 10000)
 	public void partialComputation1() {
 		Producer<PackedCollection> p = multiply(c(1.0), c(2.0));
 		Producer<PackedCollection> q = add(c(5.0), p);
@@ -36,7 +36,7 @@ public class CodeFeaturesTests implements TestFeatures {
 		assertEquals(7.0, qev.evaluate());
 	}
 
-	@Test
+	@Test(timeout = 10000)
 	public void partialComputation2() {
 		Producer<PackedCollection> p = multiply(c(1.0), c(2.0));
 		Producer<PackedCollection> q = add(c(5.0), p);
@@ -48,7 +48,7 @@ public class CodeFeaturesTests implements TestFeatures {
 		assertEquals(7.0, qev.evaluate());
 	}
 
-	@Test
+	@Test(timeout = 10000)
 	public void partialComputation3() {
 		PackedCollection multiplier = pack(1.0);
 		Producer<PackedCollection> p = multiply(p(multiplier), c(2.0));
@@ -65,7 +65,7 @@ public class CodeFeaturesTests implements TestFeatures {
 		assertEquals(9.0, qev.evaluate());
 	}
 
-	@Test
+	@Test(timeout = 10000)
 	public void partialComputation4() {
 		PackedCollection multiplier = pack(1.0);
 		Producer<PackedCollection> p = multiply(p(multiplier), c(2.0));
@@ -87,7 +87,7 @@ public class CodeFeaturesTests implements TestFeatures {
 		assertEquals(9.0, qev.evaluate());
 	}
 
-	@Test
+	@Test(timeout = 10000)
 	public void partialComputation5() {
 		Producer<PackedCollection> p = multiply(c(1.0), c(2.0));
 		Producer<PackedCollection> q = add(c(5.0), p);
@@ -102,7 +102,7 @@ public class CodeFeaturesTests implements TestFeatures {
 		assertEquals(10.0, rev.evaluate());
 	}
 
-	@Test
+	@Test(timeout = 10000)
 	public void partialComputation6() {
 		PackedCollection multiplier = pack(1.0);
 		Producer<PackedCollection> p = multiply(p(multiplier), c(2.0));
@@ -114,7 +114,7 @@ public class CodeFeaturesTests implements TestFeatures {
 		assertEquals(7.0, q.get().evaluate());
 	}
 
-	@Test
+	@Test(timeout = 10000)
 	public void partialComputation7() {
 		PackedCollection multiplier = pack(1.0);
 		Producer<PackedCollection> p = multiply(func(shape(1), args -> multiplier), c(2.0));
@@ -131,7 +131,7 @@ public class CodeFeaturesTests implements TestFeatures {
 		assertEquals(4.0, p.get().evaluate());
 	}
 
-	@Test
+	@Test(timeout = 10000)
 	public void addToProvider() {
 		PackedCollection value = pack(1.0);
 		Producer<PackedCollection> s = add(c(1), p(value));
@@ -146,7 +146,7 @@ public class CodeFeaturesTests implements TestFeatures {
 		assertEquals(4.0, out.toDouble(0));
 	}
 
-	@Test
+	@Test(timeout = 10000)
 	public void addToProviderAndAssign() {
 		PackedCollection value = pack(1.0);
 		PackedCollection dest = pack(0.0);
@@ -163,7 +163,7 @@ public class CodeFeaturesTests implements TestFeatures {
 		assertEquals(2.0, dest.toDouble(0));
 	}
 
-	@Test
+	@Test(timeout = 10000)
 	public void loop1() {
 		PackedCollection value = pack(1.0);
 		PackedCollection dest = pack(0.0);
@@ -180,7 +180,7 @@ public class CodeFeaturesTests implements TestFeatures {
 		assertEquals(2.0, dest.toDouble(0));
 	}
 
-	@Test
+	@Test(timeout = 10000)
 	public void loop2() {
 		PackedCollection dest = pack(0.0);
 		Supplier<Runnable> s = lp(a(1, p(dest), add(c(1.0), p(dest))), 3);

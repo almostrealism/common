@@ -19,6 +19,20 @@ package org.almostrealism.audio.line;
 import io.almostrealism.relation.Delegated;
 import org.almostrealism.collect.PackedCollection;
 
+/**
+ * A delegating implementation of {@link AudioLine} that forwards input and output operations
+ * to separate underlying lines. This enables flexible composition where input and output
+ * can be routed to different destinations, or switched dynamically at runtime.
+ * <p>
+ * The delegate pattern allows for layering additional behavior (logging, monitoring, etc.)
+ * or routing audio through different hardware or virtual devices without modifying the
+ * core processing logic.
+ * </p>
+ *
+ * @see AudioLine
+ * @see InputLine
+ * @see OutputLine
+ */
 public class DelegatedAudioLine implements AudioLine, Delegated<AudioLine> {
 	private InputLine inputDelegate;
 	private OutputLine outputDelegate;

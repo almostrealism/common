@@ -461,7 +461,7 @@ public class BufferedOutputScheduler implements CellFeatures {
 	 * </p>
 	 * <ol>
 	 *   <li>Checks for auto-resume conditions if paused</li>
-	 *   <li>Executes the operations pipeline (input → process → output)</li>
+	 *   <li>Executes the operations pipeline (input -> process -> output)</li>
 	 *   <li>Pauses after completing each buffer group</li>
 	 *   <li>Sleeps for an adaptive duration to maintain timing</li>
 	 * </ol>

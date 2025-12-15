@@ -33,7 +33,7 @@ public class PointMethodTest implements TestFeatures {
 	/**
 	 * Test extracting vertex 0 from a single triangle with shape (1, 3, 3).
 	 */
-	@Test
+	@Test(timeout = 10000)
 	public void singleTriangleVertex0() {
 		// Create a single triangle's vertex data: shape (1, 3, 3) = 9 floats
 		PackedCollection input = new PackedCollection(shape(1, 3, 3));
@@ -60,7 +60,7 @@ public class PointMethodTest implements TestFeatures {
 	/**
 	 * Test extracting vertex 1 from a single triangle with shape (1, 3, 3).
 	 */
-	@Test
+	@Test(timeout = 10000)
 	public void singleTriangleVertex1() {
 		PackedCollection input = new PackedCollection(shape(1, 3, 3));
 
@@ -85,7 +85,7 @@ public class PointMethodTest implements TestFeatures {
 	/**
 	 * Test extracting vertex 2 from a single triangle with shape (1, 3, 3).
 	 */
-	@Test
+	@Test(timeout = 10000)
 	public void singleTriangleVertex2() {
 		PackedCollection input = new PackedCollection(shape(1, 3, 3));
 
@@ -111,7 +111,7 @@ public class PointMethodTest implements TestFeatures {
 	 * Test extracting vertices from multiple triangles with shape (3, 3, 3).
 	 * This is the key test for batch processing.
 	 */
-	@Test
+	@Test(timeout = 10000)
 	public void multipleTrianglesVertex0() {
 		// Create 3 triangles' vertex data: shape (3, 3, 3) = 27 floats
 		PackedCollection input = new PackedCollection(shape(3, 3, 3));
@@ -160,7 +160,7 @@ public class PointMethodTest implements TestFeatures {
 	/**
 	 * Test extracting vertex 1 from multiple triangles.
 	 */
-	@Test
+	@Test(timeout = 10000)
 	public void multipleTrianglesVertex1() {
 		PackedCollection input = new PackedCollection(shape(3, 3, 3));
 
@@ -207,7 +207,7 @@ public class PointMethodTest implements TestFeatures {
 	/**
 	 * Test extracting vertex 2 from multiple triangles.
 	 */
-	@Test
+	@Test(timeout = 10000)
 	public void multipleTrianglesVertex2() {
 		PackedCollection input = new PackedCollection(shape(3, 3, 3));
 
@@ -255,7 +255,7 @@ public class PointMethodTest implements TestFeatures {
 	 * Test with flat (3, 3) input - a single triangle represented as 3 vectors.
 	 * This tests the legacy non-batch case.
 	 */
-	@Test
+	@Test(timeout = 10000)
 	public void flatSingleTriangle() {
 		// Create vertex data in flat (3, 3) format - single triangle
 		PackedCollection input = new PackedCollection(shape(3, 3));
@@ -289,7 +289,7 @@ public class PointMethodTest implements TestFeatures {
 	 * NOTE: DefaultVertexData.getMeshPointData() returns shape (N, 9, 3) but the point() method
 	 * expects shape (N, 3, 3). This test documents the issue.
 	 */
-	@Test
+	@Test(timeout = 10000)
 	public void meshPointDataDocumentation() {
 		log("=== MeshPointData Documentation ===");
 		log("DefaultVertexData.getMeshPointData() returns shape (N, 9, 3)");

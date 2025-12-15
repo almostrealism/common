@@ -45,6 +45,18 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
+/**
+ * Primary implementation of {@link NoteAudio} that provides pitch-shifted audio
+ * from a {@link WaveDataProvider}. Manages caching of resampled audio data for
+ * different pitches and channels, automatically adjusting playback rate based on
+ * the frequency ratio between the root note and target note. Supports BPM-based
+ * splitting for rhythm-aligned audio segments and provides factory methods for
+ * creating instances from files or suppliers.
+ *
+ * @see NoteAudio
+ * @see WaveDataProvider
+ * @see KeyboardTuning
+ */
 public class NoteAudioProvider implements NoteAudio, Validity, Comparable<NoteAudioProvider>, SamplingFeatures {
 	public static boolean enableVerbose = false;
 

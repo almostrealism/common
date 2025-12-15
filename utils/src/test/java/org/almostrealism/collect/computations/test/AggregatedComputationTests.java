@@ -27,9 +27,10 @@ import java.util.Arrays;
 import java.util.stream.IntStream;
 
 public class AggregatedComputationTests implements TestFeatures {
+
 	boolean enableOptimization = false;
 
-	@Test
+	@Test(timeout = 120000)
 	public void mediumSum() {
 		int r = 1024;
 		int c = 1024;
@@ -45,7 +46,7 @@ public class AggregatedComputationTests implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 120000)
 	public void largeSum() {
 		if (testDepth < 1) return;
 

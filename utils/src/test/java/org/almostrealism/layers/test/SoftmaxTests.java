@@ -46,7 +46,7 @@ import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
 public class SoftmaxTests implements LayerFeatures, DistributionFeatures, TestFeatures {
-	@Test
+	@Test(timeout = 60000)
 	public void softmaxComputation() {
 		int heads = 12;
 		int len = 8; // 1024;
@@ -96,12 +96,12 @@ public class SoftmaxTests implements LayerFeatures, DistributionFeatures, TestFe
 		}
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void logSoftmaxDelta() {
 		logSoftmaxDelta(false);
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void logSoftmaxDeltaOptimized() {
 		logSoftmaxDelta(true);
 	}
@@ -123,7 +123,7 @@ public class SoftmaxTests implements LayerFeatures, DistributionFeatures, TestFe
 		}
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void softmaxBackwards() {
 		if (testProfileIs(TestUtils.PIPELINE)) return;
 
@@ -164,7 +164,7 @@ public class SoftmaxTests implements LayerFeatures, DistributionFeatures, TestFe
 		}
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void softmaxBackwardsLarge() throws IOException {
 		if (testDepth < 1) return;
 
@@ -202,7 +202,7 @@ public class SoftmaxTests implements LayerFeatures, DistributionFeatures, TestFe
 //		}
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void logSoftmaxBackwards1() {
 		int size = 2;
 
@@ -240,7 +240,7 @@ public class SoftmaxTests implements LayerFeatures, DistributionFeatures, TestFe
 		}
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void logSoftmaxBackwards2() {
 		if (testProfileIs(TestUtils.PIPELINE)) return;
 
@@ -288,7 +288,7 @@ public class SoftmaxTests implements LayerFeatures, DistributionFeatures, TestFe
 		}
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void logSoftmaxModel() throws IOException {
 		int size = 2;
 
@@ -335,7 +335,7 @@ public class SoftmaxTests implements LayerFeatures, DistributionFeatures, TestFe
 		}
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void softmaxTest() {
 		int seqLen = 20;
 
@@ -357,7 +357,7 @@ public class SoftmaxTests implements LayerFeatures, DistributionFeatures, TestFe
 		compare(null, result.evaluate(), values);
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void softmaxLayer() {
 		int seqLength = 20;
 
@@ -374,7 +374,7 @@ public class SoftmaxTests implements LayerFeatures, DistributionFeatures, TestFe
 		compare(null, destination, values);
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void softmaxSubset() {
 		int heads = 1;
 		int seqLength = 20;

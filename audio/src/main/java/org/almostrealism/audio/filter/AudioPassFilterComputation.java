@@ -32,6 +32,16 @@ import org.almostrealism.hardware.OperationComputationAdapter;
 
 import java.util.List;
 
+/**
+ * Hardware-accelerated computation for high-pass and low-pass audio filters.
+ *
+ * <p>AudioPassFilterComputation implements a biquad filter computation that runs
+ * on the GPU/accelerator hardware. It computes filter coefficients and applies
+ * the IIR filter equation per sample, maintaining input and output history.</p>
+ *
+ * @see AudioPassFilter
+ * @see AudioFilterData
+ */
 public class AudioPassFilterComputation extends OperationComputationAdapter<PackedCollection> implements CodeFeatures {
 	public static double MAX_INPUT = 0.99;
 

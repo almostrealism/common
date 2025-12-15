@@ -30,7 +30,7 @@ public class CollectionPadTests implements TestFeatures {
 	 * The test combines two subsets - one multiplied by 2 and added to the other,
 	 * then pads the result with zeros to match the original shape.
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void padSubset() {
 		Producer<PackedCollection> multiplier = func(shape(1), args -> pack(2.0));
 
@@ -53,7 +53,7 @@ public class CollectionPadTests implements TestFeatures {
 	 * Input: 2x3 collection -> Output: 2x5 collection
 	 * Padding pattern: [original data][1 column of zeros]
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void pad2d1() {
 		// Create a 2x3 input collection with random data
 		PackedCollection data = new PackedCollection(2, 3).randFill();
@@ -86,7 +86,7 @@ public class CollectionPadTests implements TestFeatures {
 	 * This test demonstrates how padding operations propagate gradients during backpropagation.
 	 * Input: 2x3 collection -> Padded: 2x5 -> Delta: 2x5x2x3 gradient tensor
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void pad2d1Delta() {
 		// Create input data and compute its padded version with delta
 		PackedCollection data = new PackedCollection(2, 3).randFill();
@@ -121,10 +121,10 @@ public class CollectionPadTests implements TestFeatures {
 
 	/**
 	 * Tests symmetric 2D padding where equal amounts are added to all sides.
-	 * Input: 2x3 collection -> Output: 4x5 collection  
+	 * Input: 2x3 collection -> Output: 4x5 collection
 	 * Padding pattern: 1 unit on all sides creates a "border" of zeros around the data
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void pad2d2() {
 		// Create a 2x3 input collection
 		PackedCollection data = new PackedCollection(2, 3).randFill();
@@ -157,7 +157,7 @@ public class CollectionPadTests implements TestFeatures {
 	 * Input: 2x2x3 collection -> Output: 2x4x5 collection
 	 * Demonstrates padding only certain dimensions while leaving others unchanged.
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void pad3d() {
 		int n = 2;
 
@@ -195,7 +195,7 @@ public class CollectionPadTests implements TestFeatures {
 	 * This demonstrates how gradients flow through multi-dimensional padding.
 	 * Input: 2x2x3 -> Padded: 2x4x5 -> Delta: 2x4x5x2x2x3 gradient tensor
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void pad3dDelta() {
 		int n = 2;
 
@@ -243,7 +243,7 @@ public class CollectionPadTests implements TestFeatures {
 	 * This pattern is typical in convolutional neural networks where spatial padding is applied
 	 * but batch and channel dimensions remain unchanged.
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void pad4d() {
 		int n = 2; // Batch size
 		int c = 4; // Number of channels
@@ -281,7 +281,7 @@ public class CollectionPadTests implements TestFeatures {
 	}
 
 
-	@Test
+	@Test(timeout = 30000)
 	public void padSmallBatch() {
 		// Test padding operation with a batch of scalars
 		// We want to pad each scalar in the batch to position 0 of shape(2)
@@ -311,7 +311,7 @@ public class CollectionPadTests implements TestFeatures {
 		Assert.assertEquals(0.0, result.valueAt(2, 1), 0.01);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void concatSmallBatch() {
 		// Test concat operation with batch of scalars
 		// We'll create two separate values from a scalar input and concat them
@@ -342,7 +342,7 @@ public class CollectionPadTests implements TestFeatures {
 		Assert.assertEquals(30.0, result.valueAt(2, 1), 0.01);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void concatLargeBatch() {
 		// Test concat with exactly 256 elements to check for batch size limit
 		Producer<PackedCollection> input = v(shape(-1, 1), 0);
@@ -379,7 +379,7 @@ public class CollectionPadTests implements TestFeatures {
 		Assert.assertEquals(510.0, result.valueAt(255, 1), 0.01);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void concat2DTraversal() {
 		// Test concat with 2D traversal
 		Producer<PackedCollection> input = v(shape(-1, 1), 0);

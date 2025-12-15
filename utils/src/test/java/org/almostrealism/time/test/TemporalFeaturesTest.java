@@ -53,7 +53,7 @@ public class TemporalFeaturesTest implements TestFeatures {
 		return highPassCoefficients;
 	}
 
-	@Test
+	@Test(timeout = 10000)
 	public void lowPassCoefficients() {
 		int filterOrder = 30;
 		int sampleRate = 44100;
@@ -67,7 +67,7 @@ public class TemporalFeaturesTest implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 10000)
 	public void lowPassCoefficientsMultiple() {
 		int filterOrder = 30;
 		int sampleRate = 44100;
@@ -87,7 +87,7 @@ public class TemporalFeaturesTest implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 10000)
 	public void highPassCoefficientsMultiple() {
 		int filterOrder = 30;
 		int sampleRate = 44100;
@@ -107,7 +107,7 @@ public class TemporalFeaturesTest implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 10000)
 	public void lowPassCoefficientsArguments() {
 		int filterOrder = 30;
 		int sampleRate = 44100;
@@ -136,7 +136,7 @@ public class TemporalFeaturesTest implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 10000)
 	public void chooseCoefficients() {
 		chooseCoefficients(0.1);
 		chooseCoefficients(0.9);

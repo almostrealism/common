@@ -21,6 +21,16 @@ import org.almostrealism.hardware.OperationList;
 
 import java.util.function.Supplier;
 
+/**
+ * Base interface for providers of audio data with setup capabilities.
+ *
+ * <p>AudioDataProvider combines the {@link DataResource} identification capabilities
+ * with the {@link Setup} lifecycle pattern, allowing audio data sources to perform
+ * initialization operations before data is accessed.</p>
+ *
+ * @see WaveDataProvider
+ * @see DataResource
+ */
 public interface AudioDataProvider extends DataResource, Setup {
 	@Override
 	String getIdentifier();

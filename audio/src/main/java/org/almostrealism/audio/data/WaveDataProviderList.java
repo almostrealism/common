@@ -22,6 +22,11 @@ import org.almostrealism.hardware.OperationList;
 import java.util.List;
 import java.util.function.Supplier;
 
+/**
+ * A list of wave data providers with combined setup operations.
+ *
+ * @deprecated Use direct collections of WaveDataProvider instances instead.
+ */
 @Deprecated
 public class WaveDataProviderList implements Setup {
 	private final Supplier<Runnable> setup;

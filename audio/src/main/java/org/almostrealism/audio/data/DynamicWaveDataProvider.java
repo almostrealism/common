@@ -21,6 +21,17 @@ import org.almostrealism.hardware.OperationList;
 
 import java.util.function.Supplier;
 
+/**
+ * A wave data provider backed by dynamically generated or processed audio data.
+ *
+ * <p>DynamicWaveDataProvider wraps a {@link WaveData} instance that may be
+ * populated or modified at runtime, with an optional setup operation that
+ * runs before the data is accessed. This is useful for synthesized audio
+ * or audio that requires preprocessing.</p>
+ *
+ * @see WaveDataProvider
+ * @see WaveData
+ */
 public class DynamicWaveDataProvider extends WaveDataProviderAdapter implements Setup {
 	private final String key;
 	private final WaveData destination;

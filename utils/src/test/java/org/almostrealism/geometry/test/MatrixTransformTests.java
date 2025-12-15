@@ -24,13 +24,13 @@ import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
 
 public class MatrixTransformTests implements TestFeatures {
-	@Test
+	@Test(timeout = 10000)
 	public void scaleTranslateThenTransform() {
 		scaleAndTranslate();
 		transformAsLocation1();
 	}
 
-	@Test
+	@Test(timeout = 10000)
 	public void transformAsLocation1() {
 		TransformMatrix matrix = new TransformMatrix(translationMatrix(vector(0.0, 10.0, 0.0)).evaluate(), 0);
 		Vector v = new Vector(transformAsLocation(matrix, vector(1.0, 2.0, 3.0)).evaluate(), 0);
@@ -40,7 +40,7 @@ public class MatrixTransformTests implements TestFeatures {
 		assertEquals(3.0, v.toDouble(2));
 	}
 
-	@Test
+	@Test(timeout = 10000)
 	public void transformAsLocation2() {
 		TransformMatrix matrix = new TransformMatrix(scaleMatrix(vector(2.0, 1.0, 3.0)).evaluate(), 0);
 		Vector v = new Vector(transformAsLocation(matrix, vector(1.0, 2.0, 3.0)).evaluate(), 0);
@@ -50,7 +50,7 @@ public class MatrixTransformTests implements TestFeatures {
 		assertEquals(9.0, v.toDouble(2));
 	}
 
-	@Test
+	@Test(timeout = 10000)
 	public void transformAsOffset() {
 		TransformMatrix matrix = new TransformMatrix(translationMatrix(vector(0.0, 10.0, 0.0)).evaluate(), 0);
 		Vector v = new Vector(transformAsOffset(matrix, vector(1.0, 2.0, 3.0)).evaluate(), 0);
@@ -65,7 +65,7 @@ public class MatrixTransformTests implements TestFeatures {
 		assertEquals(9.0, v.toDouble(2));
 	}
 
-	@Test
+	@Test(timeout = 10000)
 	public void applyInverse() {
 		TransformMatrix m = new TransformMatrix(translationMatrix(vector(0.0, -10.0, 0.0)).evaluate(), 0);
 
@@ -81,7 +81,7 @@ public class MatrixTransformTests implements TestFeatures {
 		assertEquals(6.0, r.getDirection().toDouble(2));
 	}
 
-	@Test
+	@Test(timeout = 10000)
 	public void scaleAndTranslate() {
 		TransformMatrix matrix = new TransformMatrix(new double[][] {
 				{ 0.25, 0.0,  0.0,   0.0 },

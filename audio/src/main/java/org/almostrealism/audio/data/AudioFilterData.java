@@ -20,6 +20,27 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.temporal.BaseAudioData;
 
+/**
+ * Data structure for audio filter coefficients and state.
+ *
+ * <p>AudioFilterData provides storage for biquad filter parameters including
+ * frequency, resonance, filter coefficients (a1, a2, a3, b1, b2), and
+ * input/output history buffers needed for IIR filter implementations.</p>
+ *
+ * <h2>Storage Layout</h2>
+ * <ul>
+ *   <li>Slot 0: Cutoff frequency</li>
+ *   <li>Slot 1: Resonance (Q factor)</li>
+ *   <li>Slot 2: Sample rate</li>
+ *   <li>Slots 3-8: Filter coefficients (c, a1, a2, a3, b1, b2)</li>
+ *   <li>Slot 9: Output value</li>
+ *   <li>Slots 10-11: Input history (x[n-1], x[n-2])</li>
+ *   <li>Slots 12-14: Output history (y[n-1], y[n-2], y[n-3])</li>
+ * </ul>
+ *
+ * @see org.almostrealism.audio.filter.AudioPassFilter
+ * @see PolymorphicAudioData
+ */
 public interface AudioFilterData extends BaseAudioData {
 
 	default PackedCollection frequency() { return get(0); }

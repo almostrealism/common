@@ -31,6 +31,24 @@ import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 
+/**
+ * Utility methods for creating and managing Java Sound API audio lines and converting
+ * between {@link PackedCollection} audio data and byte-level audio formats.
+ * This class bridges the Rings audio framework with the Java Sound API, handling
+ * format conversion, endianness, and sample encoding (PCM signed/unsigned, 8/16/24/32-bit).
+ * <p>
+ * Key capabilities include:
+ * </p>
+ * <ul>
+ *   <li>Creating {@link SourceDataOutputLine} instances for hardware playback</li>
+ *   <li>Converting PackedCollection audio to interleaved byte arrays</li>
+ *   <li>Handling mono-to-stereo duplication and multi-channel layouts</li>
+ *   <li>Managing audio format initialization and caching</li>
+ * </ul>
+ *
+ * @see SourceDataOutputLine
+ * @see PackedCollection
+ */
 public class LineUtilities {
 	protected static AudioFormat lastFormat;
 	

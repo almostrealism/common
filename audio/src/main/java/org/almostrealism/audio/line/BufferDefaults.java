@@ -20,6 +20,18 @@ import io.almostrealism.util.NumberFormats;
 
 import java.util.function.Consumer;
 
+/**
+ * Provides default buffer configuration and utilities for real-time audio processing.
+ * This class defines buffer sizes, group-based safety checking, and timing calculations
+ * used by {@link BufferedOutputScheduler} to prevent buffer underruns and overruns.
+ * <p>
+ * The buffer is divided into groups, with write operations pausing after completing
+ * each group to ensure the read position has advanced sufficiently before continuing.
+ * This prevents overwriting audio data that hasn't been consumed yet.
+ * </p>
+ *
+ * @see BufferedOutputScheduler
+ */
 public class BufferDefaults {
 	public static final int groups = 4;
 	public static final int batchesPerGroup = 2;

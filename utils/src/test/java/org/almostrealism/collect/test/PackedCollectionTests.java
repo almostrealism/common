@@ -22,7 +22,7 @@ import org.junit.Test;
 
 public class PackedCollectionTests implements TestFeatures {
 
-	@Test
+	@Test(timeout = 10000)
 	public void transpose() {
 		PackedCollection data = new PackedCollection(shape(10, 4))
 				.randFill();
@@ -40,7 +40,7 @@ public class PackedCollectionTests implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 10000)
 	public void clear() {
 		PackedCollection data = new PackedCollection(4);
 		data.setMem(0, 1.0, 2.0, 3.0, 4.0);

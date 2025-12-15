@@ -27,7 +27,8 @@ import org.junit.Test;
 import java.util.stream.IntStream;
 
 public class RepeatedTraversableComputationTests implements TestFeatures {
-	@Test
+
+	@Test(timeout = 60000)
 	public void add() {
 		OperationProfile profile = new OperationProfile("HardwareOperator");
 		HardwareOperator.timingListener = profile.getTimingListener();

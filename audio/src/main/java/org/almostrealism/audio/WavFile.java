@@ -6,6 +6,63 @@
  * http://www.blitter.com/~russtopia/MIDI/~jglatt/tech/wave.htm
  */
 
+/**
+ * Low-level WAV audio file reader and writer.
+ *
+ * <p>WavFile provides direct access to read and write uncompressed PCM WAV files,
+ * supporting multiple bit depths (2-64 bits), sample rates, and channel counts.
+ * It handles the RIFF/WAVE file format including header parsing, data chunk
+ * management, and proper byte alignment.</p>
+ *
+ * <h2>Reading WAV Files</h2>
+ * <pre>{@code
+ * try (WavFile wav = WavFile.openWavFile(new File("input.wav"))) {
+ *     int channels = wav.getNumChannels();
+ *     long frames = wav.getNumFrames();
+ *     long sampleRate = wav.getSampleRate();
+ *
+ *     // Read all frames as normalized doubles (-1.0 to 1.0)
+ *     double[][] buffer = new double[channels][(int) frames];
+ *     wav.readFrames(buffer, (int) frames);
+ * }
+ * }</pre>
+ *
+ * <h2>Writing WAV Files</h2>
+ * <pre>{@code
+ * int channels = 2;
+ * int frames = 44100;  // 1 second at 44.1kHz
+ * int bits = 24;
+ * long sampleRate = 44100;
+ *
+ * try (WavFile wav = WavFile.newWavFile(new File("output.wav"),
+ *         channels, frames, bits, sampleRate)) {
+ *     double[][] buffer = new double[channels][frames];
+ *     // Fill buffer with audio data...
+ *     wav.writeFrames(buffer, frames);
+ * }
+ * }</pre>
+ *
+ * <h2>Extracting Channels</h2>
+ * <pre>{@code
+ * // Read file and extract left channel as PackedCollection
+ * try (WavFile wav = WavFile.openWavFile(file)) {
+ *     double[][] buffer = new double[wav.getNumChannels()][(int) wav.getNumFrames()];
+ *     wav.readFrames(buffer, (int) wav.getNumFrames());
+ *     PackedCollection leftChannel = WavFile.channel(buffer, 0);
+ * }
+ * }</pre>
+ *
+ * <h2>Supported Formats</h2>
+ * <ul>
+ *   <li>Bit depths: 2 to 64 bits per sample</li>
+ *   <li>Channels: 1 to 65535</li>
+ *   <li>Sample rates: Any positive value up to 4,294,967,295 Hz</li>
+ *   <li>Compression: Uncompressed PCM only (compression code 1)</li>
+ * </ul>
+ *
+ * @see WaveData
+ * @see WaveOutput
+ */
 package org.almostrealism.audio;
 
 import org.almostrealism.collect.PackedCollection;

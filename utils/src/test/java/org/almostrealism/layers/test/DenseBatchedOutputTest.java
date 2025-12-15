@@ -52,7 +52,7 @@ public class DenseBatchedOutputTest implements LayerFeatures, TestFeatures {
 	 * Test 1: Single sample - verify basic dense layer math.
 	 * With batch=1, reshape vs permute doesn't matter (both are identity).
 	 */
-	@Test
+	@Test(timeout = 10000)
 	public void testDenseSingleSample() {
 		log("=== Test 1: Dense Single Sample ===");
 
@@ -114,7 +114,7 @@ public class DenseBatchedOutputTest implements LayerFeatures, TestFeatures {
 	 * If matmul produces (output, batch) and we just reshape to (batch, output),
 	 * the values will be scrambled.
 	 */
-	@Test
+	@Test(timeout = 10000)
 	public void testDenseBatchedSamples() {
 		log("=== Test 2: Dense Batched Samples (batch=3) ===");
 
@@ -230,7 +230,7 @@ public class DenseBatchedOutputTest implements LayerFeatures, TestFeatures {
 	 * For dense layers, matmul(W, X) where W:(out, in), X:(batch, in)
 	 * produces output in (batch, out) format with correct values.
 	 */
-	@Test
+	@Test(timeout = 10000)
 	public void testMatmulSemantics() {
 		log("=== Test 3: Matmul Semantics Verification ===");
 
@@ -279,7 +279,7 @@ public class DenseBatchedOutputTest implements LayerFeatures, TestFeatures {
 	 * Test 4: What happens if we reshape (4,3) to (3,4) vs permute?
 	 * This demonstrates the difference between reshape and transpose.
 	 */
-	@Test
+	@Test(timeout = 10000)
 	public void testReshapeVsPermute() {
 		log("=== Test 4: Reshape vs Permute Comparison ===");
 
@@ -342,7 +342,7 @@ public class DenseBatchedOutputTest implements LayerFeatures, TestFeatures {
 	 * Since Test 2 passed, we know the layer works - let's just confirm
 	 * the comment about reshape is misleading (the values ARE correct).
 	 */
-	@Test
+	@Test(timeout = 10000)
 	public void testDenseOperatorCorrectness() {
 		log("=== Test 5: Dense Operator Correctness Verification ===");
 

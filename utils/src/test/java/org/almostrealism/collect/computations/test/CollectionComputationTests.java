@@ -35,8 +35,7 @@ import java.util.Arrays;
 import java.util.stream.IntStream;
 
 public class CollectionComputationTests implements TestFeatures {
-
-	@Test
+	@Test(timeout = 30000)
 	public void evaluateIntegers() {
 		verboseLog(() -> {
 			PackedCollection result = integers(10, 100).get().evaluate();
@@ -44,7 +43,7 @@ public class CollectionComputationTests implements TestFeatures {
 		});
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void divideIntegers() {
 		PackedCollection result = divide(c(6, 18, 48), integers().add(c(2))).get().evaluate();
 
@@ -53,7 +52,7 @@ public class CollectionComputationTests implements TestFeatures {
 		assertEquals(12.0, result.toDouble(2));
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void index() {
 		PackedCollection x = pack(1, 1, 1, 2, 2, 2);
 		PackedCollection y = pack(0, 1, 2, 0, 1, 2);
@@ -73,7 +72,7 @@ public class CollectionComputationTests implements TestFeatures {
 		assertEquals(12.0, result.toDouble(5));
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void integersIndex() {
 		int len = 10000;
 		PackedCollection in = tensor(shape(len, 1)).pack();
@@ -88,7 +87,7 @@ public class CollectionComputationTests implements TestFeatures {
 		assertEquals(2 * 5000, result.valueAt(5000, 0));
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void integersIndex2d() {
 		int len = 10;
 		PackedCollection in = tensor(shape(2, len, 1)).pack();
@@ -109,12 +108,12 @@ public class CollectionComputationTests implements TestFeatures {
 		assertEquals(18.0, result.toDouble(1));
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void integersIndexAssignment() {
 		integersIndexAssignment(false);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void integersIndexAssignmentOptimized() {
 		integersIndexAssignment(true);
 	}
@@ -149,12 +148,12 @@ public class CollectionComputationTests implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void integersIndexAssignmentOperation() {
 		integersIndexAssignmentOperation(false);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void integersIndexAssignmentOperationIsolated() {
 		integersIndexAssignmentOperation(true);
 	}
@@ -207,7 +206,7 @@ public class CollectionComputationTests implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void addModAssignment() {
 		int size = 3;
 		PackedCollection indices = pack(2, 4, 6);
@@ -221,7 +220,7 @@ public class CollectionComputationTests implements TestFeatures {
 		assertEquals(3.0, indices.toDouble(2));
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void multiply() {
 		verboseLog(() -> {
 			PackedCollection testInput = new PackedCollection(1);
@@ -231,7 +230,7 @@ public class CollectionComputationTests implements TestFeatures {
 		});
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void sum() {
 		PackedCollection input = tensor(shape(3, 5)).pack();
 
@@ -251,7 +250,7 @@ public class CollectionComputationTests implements TestFeatures {
 		});
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void concat() {
 		int n = 2;
 		int dim = 6;
@@ -276,7 +275,7 @@ public class CollectionComputationTests implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void concatProduct() {
 		int n = 2;
 		int dim = 6;
@@ -308,7 +307,7 @@ public class CollectionComputationTests implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void concatSinCos() {
 		int n = 2;
 		int dim = 6;
@@ -346,7 +345,7 @@ public class CollectionComputationTests implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void size() {
 		PackedCollection a = new PackedCollection(shape(10));
 		PackedCollection b = new PackedCollection(shape(15));
@@ -361,7 +360,7 @@ public class CollectionComputationTests implements TestFeatures {
 		assertEquals(15.0, result.toDouble(0));
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void scale() {
 		PackedCollection timeline = new PackedCollection(shape(10), 1);
 		IntStream.range(0, 10).forEach(i -> timeline.set(i, i + 1));
@@ -382,7 +381,7 @@ public class CollectionComputationTests implements TestFeatures {
 		assertEquals(8.0, destination.toDouble(3));
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void scaleEvaluable() {
 		PackedCollection timeline = new PackedCollection(shape(10), 1);
 		IntStream.range(0, 10).forEach(i -> timeline.set(i, i + 1));
@@ -401,7 +400,7 @@ public class CollectionComputationTests implements TestFeatures {
 		assertEquals(8.0, destination.toDouble(3));
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void max2d() {
 		PackedCollection value = pack(2.0, 3.0, 7.0, 1.0).reshape(2, 2).traverse(1);
 
@@ -411,7 +410,7 @@ public class CollectionComputationTests implements TestFeatures {
 		assertEquals(7.0, m.toDouble(1));
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void indexOfMax2d() {
 		PackedCollection value = pack(5.0, 3.0, 7.0, 10.0).reshape(2, 2).traverse(1);
 
@@ -422,7 +421,7 @@ public class CollectionComputationTests implements TestFeatures {
 		assertEquals(1.0, m.toDouble(1));
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void max3d() {
 		PackedCollection value = new PackedCollection(shape(2, 3, 2))
 				.fill(pos -> (1.0 + pos[0]) * (-0.5 + pos[1] % 2) * (0.7 + pos[2]))
@@ -447,7 +446,7 @@ public class CollectionComputationTests implements TestFeatures {
 		assertEquals(-0.7, m.toDouble(5));
 	}
 
-	// @Test
+	// @Test(timeout = 30000)
 	public void dynamicMax() {
 		PackedCollection value = new PackedCollection(shape(2, 3, 2))
 				.fill(pos -> (1.0 + pos[0]) * (-0.5 + pos[1] % 2) * (0.7 + pos[2]))
@@ -475,7 +474,7 @@ public class CollectionComputationTests implements TestFeatures {
 		assertEquals(-0.7, m.toDouble(5));
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void collectionMaxTwoSeries() {
 		PackedCollection series = new PackedCollection(2, 10);
 		series.setMem(0, 7.0, 5.0, 12.0, 13.0, 11.0, 14.0, 9.0, 12.0, 3.0, 12.0);
@@ -490,7 +489,7 @@ public class CollectionComputationTests implements TestFeatures {
 		assertEquals(16, dest.toArray(1, 1)[0]);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void collectionMax() {
 		PackedCollection series = new PackedCollection(10);
 		series.setMem(0, 7.0, 5.0, 12.0, 13.0, 11.0, 14.0, 9.0, 12.0, 3.0, 12.0);
@@ -514,7 +513,7 @@ public class CollectionComputationTests implements TestFeatures {
 		assertEquals(14, dest.toArray(1, 1)[0]);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void greaterThanMax() {
 		PackedCollection series = new PackedCollection(10);
 		series.setMem(0, 7.0, 5.0, 12.0, 13.0, 11.0, 14.0, 9.0, 12.0, 3.0, 12.0);
@@ -534,7 +533,7 @@ public class CollectionComputationTests implements TestFeatures {
 		assertEquals(0.8 / 14, dest.toDouble(0));
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void dynamicProjection() {
 		PackedCollection in = pack(2.0, 6.0, 3.0, 1.0).reshape(2, 2).traverse(1);
 
@@ -565,7 +564,7 @@ public class CollectionComputationTests implements TestFeatures {
 		assertEquals(3.0, out.toDouble(1));
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void binaryGreaterThan() {
 		PackedCollection result = new PackedCollection(1);
 
@@ -582,7 +581,7 @@ public class CollectionComputationTests implements TestFeatures {
 		assertEquals(0.0, result.toDouble(0));
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void binaryGreaterThanOrEqual() {
 		PackedCollection result = new PackedCollection(1);
 
@@ -599,7 +598,7 @@ public class CollectionComputationTests implements TestFeatures {
 		assertEquals(0.0, result.toDouble(0));
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void binaryLessThan() {
 		PackedCollection result = new PackedCollection(1);
 
@@ -616,7 +615,7 @@ public class CollectionComputationTests implements TestFeatures {
 		assertEquals(0.0, result.toDouble(0));
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void binaryLessThanOrEqual() {
 		PackedCollection result = new PackedCollection(1);
 
@@ -633,7 +632,7 @@ public class CollectionComputationTests implements TestFeatures {
 		assertEquals(0.0, result.toDouble(0));
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void binaryAnd() {
 		PackedCollection result = new PackedCollection(1);
 
@@ -662,7 +661,7 @@ public class CollectionComputationTests implements TestFeatures {
 		assertEquals(0.0, result.toDouble(0));
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void andWithCustomValues() {
 		PackedCollection result = new PackedCollection(1);
 
@@ -678,7 +677,7 @@ public class CollectionComputationTests implements TestFeatures {
 		assertEquals(-1.0, result.toDouble(0));
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void chainedAndConditions() {
 		PackedCollection result = new PackedCollection(1);
 

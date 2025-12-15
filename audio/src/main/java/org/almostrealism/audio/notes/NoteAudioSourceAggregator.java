@@ -29,6 +29,16 @@ import java.util.List;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
+/**
+ * Weighted collection of {@link SourceAggregator} instances that enables dynamic
+ * selection among different aggregation strategies at runtime. Uses a choice
+ * parameter to select between multiple {@link ModularSourceAggregator} configurations
+ * with different input types (source, frequency, volume envelope), allowing for
+ * varied synthesis behaviors based on runtime values.
+ *
+ * @see SourceAggregator
+ * @see ModularSourceAggregator
+ */
 public class NoteAudioSourceAggregator implements CodeFeatures {
 	public static boolean enableAdvancedAggregation = true;
 

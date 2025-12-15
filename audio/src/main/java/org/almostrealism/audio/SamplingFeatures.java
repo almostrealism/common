@@ -24,6 +24,43 @@ import org.almostrealism.collect.PackedCollection;
 
 import java.util.function.Supplier;
 
+/**
+ * Interface for managing sample rate context in audio processing operations.
+ *
+ * <p>SamplingFeatures provides thread-local storage for sample rate and frame
+ * position, enabling audio operations to access timing information without
+ * explicit parameter passing. This is particularly useful in deeply nested
+ * audio processing chains.</p>
+ *
+ * <h2>Sample Rate Management</h2>
+ * <p>The default sample rate is {@link OutputLine#sampleRate} (44100 Hz).
+ * Custom sample rates can be set using {@link #sampleRate(int, Supplier)}:</p>
+ * <pre>{@code
+ * // Process at 48000 Hz sample rate
+ * sampleRate(48000, () -> {
+ *     // All audio operations here use 48000 Hz
+ *     return processAudio();
+ * });
+ * }</pre>
+ *
+ * <h2>Frame Position</h2>
+ * <p>The frame producer tracks the current sample position during processing.
+ * This enables time-dependent operations like oscillators and envelopes:</p>
+ * <pre>{@code
+ * // Get current time in seconds
+ * CollectionProducer currentTime = time();  // frame / sampleRate
+ * }</pre>
+ *
+ * <h2>Time Conversion Utilities</h2>
+ * <ul>
+ *   <li>{@link #toFrames(double)} - Convert seconds to sample frames</li>
+ *   <li>{@link #toFramesMilli(int)} - Convert milliseconds to sample frames</li>
+ *   <li>{@link #time()} - Get current time as a Producer</li>
+ * </ul>
+ *
+ * @see OutputLine#sampleRate
+ * @see CellFeatures
+ */
 public interface SamplingFeatures extends CodeFeatures {
 	ThreadLocal<Integer> sampleRate = new ThreadLocal<>();
 	ThreadLocal<Producer<PackedCollection>> frames = new ThreadLocal<>();

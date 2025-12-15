@@ -50,7 +50,7 @@ public class DenseLayerShapeInvestigationTest implements TestFeatures {
 	 * Test matmul shape by using dense layer internally.
 	 * The dense layer uses matmul(weights, input) and we observe the shape mismatch warning.
 	 */
-	@Test
+	@Test(timeout = 10000)
 	public void testMatmulShapeViaDense() {
 		log("=== Test: Matmul Shape via Dense Layer ===");
 
@@ -75,7 +75,7 @@ public class DenseLayerShapeInvestigationTest implements TestFeatures {
 	/**
 	 * Test dense layer shape declarations vs actual output.
 	 */
-	@Test
+	@Test(timeout = 10000)
 	public void testDenseLayerShapeDeclaration() {
 		log("=== Test: Dense Layer Shape Declaration ===");
 
@@ -110,7 +110,7 @@ public class DenseLayerShapeInvestigationTest implements TestFeatures {
 	/**
 	 * Test a simple dense model to verify numerical correctness end-to-end.
 	 */
-	@Test
+	@Test(timeout = 10000)
 	public void testDenseModelInference() {
 		log("=== Test: Dense Model Inference ===");
 
@@ -172,7 +172,7 @@ public class DenseLayerShapeInvestigationTest implements TestFeatures {
 	 * Test to understand exactly where the shape mismatch warning comes from.
 	 * This test examines the into() method behavior.
 	 */
-	@Test
+	@Test(timeout = 10000)
 	public void testIntoShapeMismatchSource() {
 		log("=== Test: Where Does Shape Mismatch Come From? ===");
 
@@ -208,7 +208,7 @@ public class DenseLayerShapeInvestigationTest implements TestFeatures {
 	/**
 	 * Test batched inference to verify shapes scale correctly.
 	 */
-	@Test
+	@Test(timeout = 10000)
 	public void testBatchedDenseInference() {
 		log("=== Test: Batched Dense Inference ===");
 
@@ -255,7 +255,7 @@ public class DenseLayerShapeInvestigationTest implements TestFeatures {
 	 * Test that compares declared output shape vs actual computation shape.
 	 * This demonstrates that the model correctly reshapes the output.
 	 */
-	@Test
+	@Test(timeout = 10000)
 	public void testShapeComparisonViaModel() {
 		log("=== Test: Shape Comparison via Model ===");
 
