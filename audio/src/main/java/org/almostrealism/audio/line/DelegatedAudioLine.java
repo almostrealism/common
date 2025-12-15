@@ -51,8 +51,16 @@ public class DelegatedAudioLine implements AudioLine, Delegated<AudioLine> {
 		updateDelegateSettings();
 	}
 
+	public InputLine getInputDelegate() {
+		return inputDelegate;
+	}
+
 	public void setInputDelegate(InputLine delegate) {
 		this.inputDelegate = delegate;
+	}
+
+	public OutputLine getOutputDelegate() {
+		return outputDelegate;
 	}
 
 	public void setOutputDelegate(OutputLine delegate) {
