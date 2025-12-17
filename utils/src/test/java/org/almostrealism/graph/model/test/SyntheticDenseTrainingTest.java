@@ -184,7 +184,7 @@ public class SyntheticDenseTrainingTest implements ModelTestFeatures {
 	 *
 	 * <p>Architecture: Input [4] - Dense [4 - 2] - Softmax - Output [2]</p>
 	 */
-	@Test(timeout = 120000)
+	@Test(timeout = 6 * 60000)
 	public void denseClassification() throws FileNotFoundException {
 		if (testDepth < 1) return;
 

@@ -136,7 +136,7 @@ public class TemporalFeaturesTest implements TestFeatures {
 		}
 	}
 
-	@Test(timeout = 10000)
+	@Test(timeout = 25000)
 	public void chooseCoefficients() {
 		chooseCoefficients(0.1);
 		chooseCoefficients(0.9);

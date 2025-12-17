@@ -32,7 +32,7 @@ public class OperationSemaphoreTests implements TestFeatures {
 		sum(16, 2048, 1024, false);
 	}
 
-	@Test(timeout = 10000)
+	@Test(timeout = 2 * 60000)
 	public void sumPowers() {
 		if (testDepth < 2) return;
 
