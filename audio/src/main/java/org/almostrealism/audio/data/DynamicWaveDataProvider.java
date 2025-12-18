@@ -33,32 +33,28 @@ import java.util.function.Supplier;
  * @see WaveData
  */
 public class DynamicWaveDataProvider extends WaveDataProviderAdapter implements Setup {
-	private final String key;
+	private final String identifier;
 	private final WaveData destination;
 	private final Supplier<Runnable> setup;
 
-	public DynamicWaveDataProvider(String key, WaveData destination) {
-		this(key, destination, new OperationList());
+	public DynamicWaveDataProvider(String identifier, WaveData destination) {
+		this(identifier, destination, new OperationList());
 	}
 
-	public DynamicWaveDataProvider(String key, WaveData destination, Supplier<Runnable> setup) {
-		this.key = key;
+	public DynamicWaveDataProvider(String identifier, WaveData destination, Supplier<Runnable> setup) {
+		this.identifier = identifier;
 		this.destination = destination;
 		this.setup = setup;
 	}
 
 	@Override
-	public String getKey() { return key; }
+	public String getKey() { return identifier; }
 
 	@Override
-	public String getIdentifier() {
-		throw new UnsupportedOperationException();
-	}
+	public String getIdentifier() { return identifier; }
 
 	@Override
-	public long getCountLong() {
-		return destination.getFrameCount();
-	}
+	public long getCountLong() { return destination.getFrameCount(); }
 
 	@Override
 	public double getDuration() {
@@ -66,7 +62,7 @@ public class DynamicWaveDataProvider extends WaveDataProviderAdapter implements 
 	}
 
 	@Override
-	public int getChannelCount() { return 1; }
+	public int getChannelCount() { return destination.getChannelCount(); }
 
 	@Override
 	public int getSampleRate() {
