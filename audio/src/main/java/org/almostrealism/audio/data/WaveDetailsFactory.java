@@ -119,12 +119,12 @@ public class WaveDetailsFactory implements CodeFeatures {
 		}
 
 		WaveData data = provider.get(getSampleRate());
-		if (data == null) return existing;
-
-		existing.setSampleRate(data.getSampleRate());
-		existing.setChannelCount(data.getChannelCount());
-		existing.setFrameCount(data.getFrameCount());
-		existing.setData(data.getData());
+		if (data != null) {
+			existing.setSampleRate(data.getSampleRate());
+			existing.setChannelCount(data.getChannelCount());
+			existing.setFrameCount(data.getFrameCount());
+			existing.setData(data.getData());
+		}
 
 		return forExisting(existing);
 	}
