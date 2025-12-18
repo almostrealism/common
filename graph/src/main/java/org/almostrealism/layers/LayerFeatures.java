@@ -824,24 +824,22 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 
 		int nodes = weightShape.length(0);
 		int size = weightShape.length(1);
-		inputShape = padDimensions(inputShape, 2)
-						.flatten(true, size);
 
-		// Note that this may not be the same as the batch size,
-		// since the input may be a sequence that has been flattened
-		// to combine the batch dimension with sequence dimensions
-		int batched = inputShape.length(0);
-
-		if (inputShape.length(1) != size) {
+		// Use a flat shape for matmul
+		TraversalPolicy flat = padDimensions(inputShape, 2)
+						.flatten(true, size)
+						.traverse(1);
+		if (flat.length(1) != size) {
 			throw new IllegalArgumentException();
 		}
 
-		TraversalPolicy outputShape = shape(batched, nodes);
+		TraversalPolicy outputShape = inputShape
+				.replaceDimension(inputShape.getDimensions() - 1, nodes);
 		Factor<PackedCollection> operator = input -> {
+			input = reshape(flat, input);
 			CollectionProducer result = biases != null ?
 					matmul(p(weights), input).add(traverse(1, p(biases))) :
 					matmul(p(weights), input);
-			// Ensure output shape matches declared (batched, nodes) format
 			return result.reshape(outputShape);
 		};
 
