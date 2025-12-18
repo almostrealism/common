@@ -770,7 +770,7 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 						.enumerate(3, size)
 						.enumerate(3, size)
 						.max(4)
-						.reshape(outputShape);
+						.reshape(outputShape.traverseEach());
 		return layer("pool2d", inputShape, outputShape, operator, requirements);
 	}
 
@@ -1290,7 +1290,7 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 
 			if (w != null) out = out.multiply(cp(w));
 			if (b != null) out = out.add(cp(b));
-			return out.reshape(outputShape);
+			return out.reshape(outputShape.traverseEach());
 		}, prop, setup, requirements);
 	}
 
