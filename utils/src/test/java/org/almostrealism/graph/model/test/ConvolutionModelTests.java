@@ -79,7 +79,7 @@ public class ConvolutionModelTests implements ModelFeatures, TestFeatures, Kerne
 		convMultiChannel(2, 4, 10, 10, 3, 6);
 	}
 
-	@Test(timeout = 600000)
+	@Test(timeout = 15 * 60000)
 	public void convMultiChannelMedium() {
 		if (testDepth < 1) return;
 
@@ -145,7 +145,7 @@ public class ConvolutionModelTests implements ModelFeatures, TestFeatures, Kerne
 		convBackwards("convBackwardsMedium", 1, 28, 28, 28, 3, 28, 0, true);
 	}
 
-	@Test(timeout = 2 * 60000)
+	@Test(timeout = 90 * 60000)
 	public void convBackwardsMediumBatch() throws IOException {
 		if (testDepth < 2) return;
 

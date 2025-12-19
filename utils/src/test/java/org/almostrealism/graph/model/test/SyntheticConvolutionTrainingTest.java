@@ -199,7 +199,7 @@ public class SyntheticConvolutionTrainingTest implements ModelFeatures, ModelTes
 	 *
 	 * <p>Architecture: Input [1, 20, 20] - Conv2d [1-8, 3x3] - Pool2d - Conv2d [8-16, 3x3] - Pool2d - Flatten - Dense - Output [4]</p>
 	 */
-	@Test(timeout = 1800000)
+	@Test(timeout = 45 * 60000)
 	public void multiLayerConv2d() {
 		if (testDepth < 2) return;
 

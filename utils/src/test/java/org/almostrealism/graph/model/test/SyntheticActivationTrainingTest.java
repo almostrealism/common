@@ -123,7 +123,7 @@ public class SyntheticActivationTrainingTest implements ModelTestFeatures {
 	 *
 	 * <p>Architecture: Input [4] - Dense [4 - 8] - ReLU - Dense [8 - 4] - Output [4]</p>
 	 */
-	@Test(timeout = 120000)
+	@Test(timeout = 2 * 60000)
 	public void denseWithReLU() throws FileNotFoundException {
 		if (testDepth < 1) return;
 
