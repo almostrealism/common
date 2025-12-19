@@ -232,6 +232,10 @@ public class WaveDetails implements CodeFeatures {
 		return Math.min(getFeatureFrameCount(), limit);
 	}
 
+	public WaveData getWaveData() {
+		return new WaveData(data, getSampleRate());
+	}
+
 	public Map<String, Double> getSimilarities() {
 		return similarities;
 	}
