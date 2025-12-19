@@ -1187,9 +1187,8 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 	}
 
 	default CellularLayer norm(TraversalPolicy shape, int groups, boolean trainable, ComputeRequirement... requirements) {
-		// Don't pad here - the main norm method will handle padding internally
-		// Just calculate size for weights based on total size
-		int size = shape.getTotalSize() / Math.max(1, shape.length(0));
+		// Calculate size for weights based on total size
+		int size = shape.getTotalSize() / groups;
 		return norm(shape, groups,
 				trainable ? new PackedCollection(size) : null,
 				trainable ? new PackedCollection(size) : null,
@@ -1246,14 +1245,19 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 							   PackedCollection biases,
 							   double eps, boolean init,
 							   ComputeRequirement... requirements) {
-		// Keep original shape for layer declaration, pad internally for computation
-		TraversalPolicy paddedShape = padDimensions(shape, 1, 3);
-		long size;
+		int size;
 
-		if (weights == null) {
-			size = paddedShape.item().getTotalSizeLong();
+		if (weights != null) {
+			size = weights.getShape().getTotalSize();
+		} else if (biases != null) {
+			size = biases.getShape().getTotalSize();
 		} else {
-			size = paddedShape.alignSize(weights.getShape().getTotalSizeLong()).item().getTotalSizeLong();
+			size = Math.toIntExact(shape.getTotalSizeLong() / groups);
+		}
+
+		if ((weights != null && shape(weights).getTotalSize() != size) ||
+				(biases != null && shape(biases).getTotalSize() != size)) {
+			throw new IllegalArgumentException();
 		}
 
 		if (size % groups != 0) {
@@ -1262,11 +1266,6 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 			} else {
 				throw new IllegalArgumentException();
 			}
-		}
-
-		if ((weights != null && shape(weights).getTotalSize() != size) ||
-				(biases != null && shape(biases).getTotalSize() != size)) {
-			throw new IllegalArgumentException();
 		}
 
 		List<PackedCollection> prop = new ArrayList<>();
