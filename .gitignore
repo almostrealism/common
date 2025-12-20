@@ -16,6 +16,9 @@
 /utils/data/**
 /utils/generated_images/**
 
+# Python
+**/__pycache__/
+
 # Javac argument files
 javac.*.args
 

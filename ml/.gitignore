@@ -1,4 +1,6 @@
 results/**
+test_data/**
+stable_audio_weights/**
 qwen3_weights/**
 qwen3_reference/**
 classpath.txt
