@@ -20,6 +20,40 @@ import io.almostrealism.uml.Plural;
 
 import java.util.function.Consumer;
 
+/**
+ * A musical scale represented as a collection of key positions.
+ *
+ * <p>Scale extends {@link Plural} to provide ordered access to notes in a musical scale.
+ * Scales can be created using the static factory method {@link #of(KeyPosition[])} or
+ * via {@link WesternScales} for common Western scales.</p>
+ *
+ * <h2>Creating Scales</h2>
+ * <pre>{@code
+ * // Create a custom scale
+ * Scale<WesternChromatic> cMajorTriad = Scale.of(
+ *     WesternChromatic.C4, WesternChromatic.E4, WesternChromatic.G4);
+ *
+ * // Use factory methods for standard scales
+ * Scale<WesternChromatic> cMajor = WesternScales.major(WesternChromatic.C4, 1);
+ * Scale<WesternChromatic> aMinor = WesternScales.minor(WesternChromatic.A3, 1);
+ * }</pre>
+ *
+ * <h2>Iterating Notes</h2>
+ * <pre>{@code
+ * KeyboardTuning tuning = new DefaultKeyboardTuning();
+ * Scale<WesternChromatic> scale = WesternScales.major(WesternChromatic.C4, 1);
+ *
+ * scale.forEach(note -> {
+ *     double freq = tuning.getTone(note).asHertz();
+ *     System.out.println(note + " = " + freq + " Hz");
+ * });
+ * }</pre>
+ *
+ * @param <T> the type of key position (typically {@link WesternChromatic})
+ * @see WesternScales
+ * @see StaticScale
+ * @see SetIntervalScale
+ */
 public interface Scale<T extends KeyPosition> extends Plural<T> {
 	int length();
 

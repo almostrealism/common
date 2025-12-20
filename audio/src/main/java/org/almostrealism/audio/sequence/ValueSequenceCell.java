@@ -30,6 +30,16 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
+/**
+ * A temporal cell that produces a sequence of values over time, selecting from
+ * a predefined set of value producers based on the current position in the sequence.
+ * Each step in the sequence has a specified duration, and the cell cycles through
+ * the values either once or repeatedly.
+ *
+ * @see ValueSequencePush
+ * @see ValueSequenceTick
+ * @see CollectionTemporalCellAdapter
+ */
 public class ValueSequenceCell extends CollectionTemporalCellAdapter implements SamplingFeatures {
 	private final BaseAudioData data;
 	private final List<Producer<PackedCollection>> values;

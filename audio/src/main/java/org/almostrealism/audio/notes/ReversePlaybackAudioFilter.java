@@ -22,6 +22,15 @@ import org.almostrealism.audio.filter.AudioProcessingUtils;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.DynamicCollectionProducer;
 
+/**
+ * Audio filter that reverses the playback direction of note audio.
+ * Implements {@link NoteAudioFilter} to apply time-reversal transformation
+ * to input audio data, creating backward playback effects. Useful for
+ * creating reverse cymbal effects, backward vocals, and other reversed sounds.
+ *
+ * @see NoteAudioFilter
+ * @see AudioProcessingUtils
+ */
 public class ReversePlaybackAudioFilter implements NoteAudioFilter, CodeFeatures {
 	@Override
 	public Producer<PackedCollection> apply(Producer<PackedCollection> input,

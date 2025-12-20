@@ -23,6 +23,16 @@ import org.almostrealism.Ops;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.OperationComputationAdapter;
 
+/**
+ * Base class for hardware-accelerated sine wave computations.
+ * Provides structured access to all sine wave parameters (wave position,
+ * wave length, note position, note length, phase, amplitude, depth, envelope)
+ * as ArrayVariables and InstanceReferences for code generation.
+ *
+ * @see SineWavePush
+ * @see SineWaveTick
+ * @see SineWaveCellData
+ */
 public abstract class SineWaveComputation extends OperationComputationAdapter<PackedCollection> {
 	protected static final double TWO_PI = 2 * Math.PI;
 

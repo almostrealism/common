@@ -18,6 +18,15 @@ package org.almostrealism.audio.sources;
 
 import org.almostrealism.collect.PackedCollection;
 
+/**
+ * Encapsulates paired input and output audio buffers along with their metadata.
+ * Provides a complete audio buffer context including sample rate, frame count,
+ * and the actual audio data storage. This class ensures consistency between
+ * buffer details and the actual PackedCollection dimensions.
+ *
+ * @see BufferDetails
+ * @see PackedCollection
+ */
 public class AudioBuffer {
 	private final BufferDetails details;
 	private final PackedCollection input;

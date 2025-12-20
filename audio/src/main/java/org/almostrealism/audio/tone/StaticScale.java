@@ -19,6 +19,37 @@ package org.almostrealism.audio.tone;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * A static implementation of {@link Scale} backed by an explicit list of notes.
+ *
+ * <p>StaticScale stores a fixed collection of key positions representing a musical scale.
+ * Unlike {@link SetIntervalScale}, which generates notes algorithmically from intervals,
+ * StaticScale maintains an explicit list of notes that can be set at construction or
+ * modified later.</p>
+ *
+ * <h2>Usage</h2>
+ * <pre>{@code
+ * // Create a C major triad
+ * StaticScale<WesternChromatic> triad = new StaticScale<>(
+ *     WesternChromatic.C4, WesternChromatic.E4, WesternChromatic.G4);
+ *
+ * // Or use the factory method
+ * Scale<WesternChromatic> pentatonic = Scale.of(
+ *     WesternChromatic.C4, WesternChromatic.D4,
+ *     WesternChromatic.E4, WesternChromatic.G4, WesternChromatic.A4);
+ *
+ * // Access notes by position
+ * WesternChromatic root = triad.valueAt(0);  // C4
+ * }</pre>
+ *
+ * <p>This class also supports deserialization from lists containing String note names,
+ * which are automatically converted to {@link WesternChromatic} values.</p>
+ *
+ * @param <T> the type of key position (typically {@link WesternChromatic})
+ * @see Scale
+ * @see SetIntervalScale
+ * @see WesternChromatic
+ */
 public class StaticScale<T extends KeyPosition> implements Scale<T> {
 	private List<T> notes;
 

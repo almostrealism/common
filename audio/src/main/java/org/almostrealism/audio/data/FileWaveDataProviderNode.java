@@ -26,6 +26,30 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+/**
+ * A file system node in an audio file tree structure.
+ *
+ * <p>FileWaveDataProviderNode represents either a directory or a WAV file in the
+ * file system. For directories, it provides child nodes; for WAV files, it supplies
+ * a {@link FileWaveDataProvider} for accessing the audio data.</p>
+ *
+ * <h2>Usage</h2>
+ * <pre>{@code
+ * // Create tree from directory
+ * FileWaveDataProviderNode root = new FileWaveDataProviderNode(new File("/samples"));
+ *
+ * // Iterate through WAV files
+ * root.children().forEach(child -> {
+ *     FileWaveDataProvider provider = child.get();
+ *     if (provider != null) {
+ *         System.out.println("Found: " + provider.getResourcePath());
+ *     }
+ * });
+ * }</pre>
+ *
+ * @see FileWaveDataProviderTree
+ * @see FileWaveDataProvider
+ */
 public class FileWaveDataProviderNode implements FileWaveDataProviderTree<FileWaveDataProviderNode>, Supplier<FileWaveDataProvider>, Named {
 	private final File file;
 

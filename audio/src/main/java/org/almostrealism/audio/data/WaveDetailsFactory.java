@@ -25,6 +25,28 @@ import org.almostrealism.collect.PackedCollection;
 
 import java.util.stream.DoubleStream;
 
+/**
+ * Factory for creating WaveDetails with FFT analysis and feature extraction.
+ *
+ * <p>WaveDetailsFactory computes detailed audio analysis including FFT-based
+ * frequency data and optional feature extraction for similarity comparison.
+ * It uses configurable parameters for FFT bin count and time window size.</p>
+ *
+ * <h2>Analysis Pipeline</h2>
+ * <ol>
+ *   <li>Load audio data at the factory's sample rate</li>
+ *   <li>Compute FFT across time windows</li>
+ *   <li>Pool and summarize frequency bins</li>
+ *   <li>Optionally extract features via WaveDataFeatureProvider</li>
+ * </ol>
+ *
+ * <h2>Similarity Computation</h2>
+ * <p>The factory can compute similarity scores between samples using either
+ * FFT-based difference metrics or feature vector products.</p>
+ *
+ * @see WaveDetails
+ * @see WaveDataFeatureProvider
+ */
 public class WaveDetailsFactory implements CodeFeatures {
 
 	public static boolean enableFreqSimilarity = false;
@@ -90,19 +112,28 @@ public class WaveDetailsFactory implements CodeFeatures {
 	}
 
 	public WaveDetails forProvider(WaveDataProvider provider, WaveDetails existing) {
-		if (provider == null) return existing;
-
 		if (existing == null) {
+			if (provider == null) return null;
+
 			existing = new WaveDetails(provider.getIdentifier(), provider.getSampleRate());
 		}
 
 		WaveData data = provider.get(getSampleRate());
-		if (data == null) return existing;
+		if (data != null) {
+			existing.setSampleRate(data.getSampleRate());
+			existing.setChannelCount(data.getChannelCount());
+			existing.setFrameCount(data.getFrameCount());
+			existing.setData(data.getData());
+		}
 
-		existing.setSampleRate(data.getSampleRate());
-		existing.setChannelCount(data.getChannelCount());
-		existing.setFrameCount(data.getFrameCount());
-		existing.setData(data.getData());
+		return forExisting(existing);
+	}
+
+	public WaveDetails forExisting(WaveDetails existing) {
+		if (existing == null) return null;
+
+		WaveData data = existing.getWaveData();
+		if (data == null) return existing;
 
 		if (existing.getFreqFrameCount() <= 1) {
 			PackedCollection fft = null;
@@ -130,7 +161,7 @@ public class WaveDetailsFactory implements CodeFeatures {
 		}
 
 		if (featureProvider != null) {
-			PackedCollection features = prepareFeatures(provider);
+			PackedCollection features = prepareFeatures(new DynamicWaveDataProvider(existing.getIdentifier(), data));
 			existing.setFeatureSampleRate(featureProvider.getFeatureSampleRate());
 			existing.setFeatureChannelCount(1);
 			existing.setFeatureBinCount(features.getShape().length(1));

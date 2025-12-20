@@ -966,8 +966,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	 * Creates a {@link CollectionProducerComputation} that generates a collection filled with zeros.
 	 * This is one of the most basic building blocks for creating empty collections
 	 * or initializing collections to a known state.
-	 * 
-	 * @param <V> the type of {@link PackedCollection} produced
+	 *
 	 * @param shape the desired shape for the zero-filled collection
 	 * @return a {@link CollectionProducerComputation} that generates zeros
 	 * 
@@ -1010,6 +1009,28 @@ public interface CollectionFeatures extends ExpressionFeatures {
 			}
 
 			return a(traverse(axis, result), value);
+		} else if (resultShape.getSizeLong() > ScopeSettings.preferredStatements) {
+			TraversalPolicy adjustedValueShape = valueShape;
+
+			// Attempt to increase the count, thereby reducing the size
+			// and hence the number of required statements
+			while (adjustedValueShape.getSizeLong() > ScopeSettings.preferredStatements) {
+				int axis = adjustedValueShape.getTraversalAxis();
+
+				// TODO  It may be preferable to have a special case for the final
+				// TODO  dimension if it is large, attempting to split it in half
+				// TODO  rather than simply skip to a size of 1 and a potentially
+				// TODO  very large count. eg (3, 1024) -> (3, 2, 512) instead
+				if (axis <= adjustedValueShape.getDimensions()) {
+					adjustedValueShape = adjustedValueShape.traverse(axis + 1);
+				} else {
+					// This should never happen, as traversing past the
+					// final dimension should always produce a size of 1
+					throw new UnsupportedOperationException();
+				}
+			}
+
+			return a(result, traverse(adjustedValueShape.getTraversalAxis(), value));
 		}
 
 		// TODO  Value should be repeated to ensure it is compatible with result
@@ -1306,8 +1327,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	 * Changes the traversal axis of a collection producer.
 	 * This operation modifies how the collection is traversed during computation
 	 * without changing the underlying data layout.
-	 * 
-	 * @param <PackedCollection> the type of PackedCollection
+	 *
 	 * @param axis the new traversal axis (0-based index)
 	 * @param producer the collection producer to modify
 	 * @return a CollectionProducer with the specified traversal axis
@@ -1340,8 +1360,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	/**
 	 * Alias for {@link #traverseEach} - sets up the producer to traverse each element.
 	 * This is a convenience method that makes collection operations more readable.
-	 * 
-	 * @param <PackedCollection> the type of PackedCollection
+	 *
 	 * @param producer the collection producer to modify
 	 * @return a Producer configured to traverse each element
 	 * 
@@ -1361,8 +1380,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	 * Configures a producer to traverse each individual element.
 	 * This sets up the traversal policy to process every element independently,
 	 * which is useful for element-wise operations and transformations.
-	 * 
-	 * @param <PackedCollection> the type of PackedCollection
+	 *
 	 * @param producer the collection producer to configure
 	 * @return a Producer configured for element-wise traversal
 	 * 
@@ -1380,15 +1398,14 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	 * }</pre>
 	 */
 	default Producer traverseEach(Producer<PackedCollection> producer) {
-		return new ReshapeProducer(((Shape) producer).getShape().traverseEach(), producer);
+		return reshape(((Shape) producer).getShape().traverseEach(), producer);
 	}
 
 	/**
 	 * Reshapes a collection producer to have a new shape.
 	 * This operation changes the dimensional structure of the collection
 	 * while preserving the total number of elements.
-	 * 
-	 * @param <PackedCollection> the type of Shape
+	 *
 	 * @param shape the new shape for the collection
 	 * @param producer the collection producer to reshape
 	 * @return a Producer with the new shape
@@ -1459,7 +1476,6 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	 * PackedCollection result = subVolume.get().evaluate();
 	 * }</pre>
 	 *
-	 * @param <PackedCollection> The type of PackedCollection being subset
 	 * @param shape The desired shape/dimensions of the resulting subset
 	 * @param collection The source collection to extract from
 	 * @param position The starting position coordinates (one integer per dimension)
@@ -1500,7 +1516,6 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	 *     subset(shape(10, 10), p(data), startX, startY);
 	 * }</pre>
 	 *
-	 * @param <PackedCollection> The type of PackedCollection being subset
 	 * @param shape The desired shape/dimensions of the resulting subset
 	 * @param collection The source collection to extract from
 	 * @param position The starting position coordinates as expressions (one per dimension)
@@ -1562,7 +1577,6 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	 * PackedCollection objectPatch = objectRegion.get().evaluate();
 	 * }</pre>
 	 *
-	 * @param <PackedCollection> The type of PackedCollection being subset
 	 * @param shape The desired shape/dimensions of the resulting subset
 	 * @param collection The source collection to extract from
 	 * @param position A Producer that generates position coordinates at runtime
@@ -1601,8 +1615,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	 * <li>Regular collections use the full {@link PackedCollectionRepeat} implementation</li>
 	 * <li>The output shape is automatically computed based on the input</li>
 	 * </ul>
-	 * 
-	 * @param <PackedCollection> the type of PackedCollection being repeated
+	 *
 	 * @param repeat the number of times to repeat the collection (must be positive)
 	 * @param collection the source collection to repeat
 	 * @return a computation that produces the repeated collection
@@ -1640,8 +1653,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	 * <pre>{@code
 	 * repeat(repeat, traverse(axis, collection))
 	 * }</pre>
-	 * 
-	 * @param <PackedCollection> the type of PackedCollection being repeated
+	 *
 	 * @param axis the axis along which to perform repetition
 	 * @param repeat the number of times to repeat
 	 * @param collection the source collection to repeat
@@ -1927,8 +1939,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	 * <p><strong>Optimization:</strong> If the input collection is zero (as determined by
 	 * {@link Algebraic#isZero(Object)}), this method returns an optimized zero collection
 	 * with the permuted shape instead of creating a full computation.</p>
-	 * 
-	 * @param <PackedCollection> The type of collection being permuted
+	 *
 	 * @param collection The input collection to permute. Must implement {@link io.almostrealism.collect.Shape}
 	 *                  to provide dimensional information.
 	 * @param order The dimension permutation order. Each element specifies which input
@@ -1958,7 +1969,6 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	 * @param axes Array of axis indices to pad (0-based)
 	 * @param depth Amount of padding to add on each side of the specified axes
 	 * @param collection The input collection to pad
-	 * @param <PackedCollection> The type of PackedCollection
 	 * @return A CollectionProducerComputation that produces the padded collection
 	 * @throws UnsupportedOperationException if the input collection has a non-null traversal order
 	 * 
@@ -1993,7 +2003,6 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	 * @param collection The input collection to pad
 	 * @param depths Padding depth for each dimension. depths[i] specifies how much padding
 	 *               to add before and after the data in dimension i
-	 * @param <PackedCollection> The type of PackedCollection
 	 * @return A CollectionProducerComputation that produces the padded collection
 	 * 
 	 * @see PackedCollectionPad
@@ -2031,7 +2040,6 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	 * @param collection The input collection to pad  
 	 * @param pos Position offsets for placing the input within the output shape.
 	 *            pos[i] specifies how many zeros to add before the input data in dimension i
-	 * @param <PackedCollection> The type of PackedCollection
 	 * @return A CollectionProducer that produces the padded collection
 	 * 
 	 * @see PackedCollectionPad
@@ -2069,7 +2077,6 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	 * @param shape The complete output shape specification
 	 * @param position The positioning policy specifying where input data is placed
 	 * @param collection The input collection producer
-	 * @param <PackedCollection> The type of PackedCollection  
 	 * @return A CollectionProducerComputation that implements the padding operation,
 	 *         or a zeros collection if the input is zero
 	 * 
@@ -2296,8 +2303,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	 * when all operands are {@link SingleConstantComputation} instances,
 	 * the method computes the sum directly and returns a new constant
 	 * computation, avoiding the overhead of the full computation pipeline.</p>
-	 * 
-	 * @param <PackedCollection> the type of PackedCollection
+	 *
 	 * @param operands the list of collections to add together
 	 * @return a CollectionProducer that generates the element-wise sum
 	 * @throws IllegalArgumentException if any operand is null

@@ -24,6 +24,18 @@ import org.almostrealism.io.Console;
 
 import java.util.stream.IntStream;
 
+/**
+ * Routes multiple sources through a processing chain based on input types.
+ * Separates inputs into categories (SOURCE, FREQUENCY, VOLUME_ENVELOPE) and
+ * applies appropriate aggregation strategies (summing, frequency rescaling,
+ * volume rescaling) based on the declared input types. This enables flexible
+ * audio mixing with dynamic signal routing.
+ *
+ * @see SourceAggregator
+ * @see SummingSourceAggregator
+ * @see FrequencyRescalingSourceAggregator
+ * @see VolumeRescalingSourceAggregator
+ */
 public class ModularSourceAggregator implements SourceAggregator, CodeFeatures {
 	private static long count = 0;
 

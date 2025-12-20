@@ -27,6 +27,16 @@ import org.almostrealism.collect.computations.DynamicCollectionProducer;
 import java.util.List;
 import java.util.stream.Stream;
 
+/**
+ * Aggregates multiple audio sources by summing their outputs.
+ * Dynamically evaluates each source and accumulates the results into
+ * a single output buffer using hardware-accelerated addition.
+ * Handles sources with varying frame counts, truncating to the
+ * minimum of source frames and buffer capacity.
+ *
+ * @see SourceAggregator
+ * @see AudioProcessingUtils
+ */
 public class SummingSourceAggregator implements SourceAggregator, CellFeatures {
 	@Override
 	public Producer<PackedCollection> aggregate(BufferDetails buffer,

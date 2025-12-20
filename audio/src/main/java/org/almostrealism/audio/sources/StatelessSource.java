@@ -20,6 +20,14 @@ import io.almostrealism.relation.Factor;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
 
+/**
+ * Interface for audio generators that produce output based solely on input parameters.
+ * Unlike stateful cells, stateless sources do not maintain internal state between
+ * invocations. The generate method produces audio frames given buffer specifications,
+ * parameter data, and a frequency factor for pitch control.
+ *
+ * @see BufferDetails
+ */
 public interface StatelessSource {
 	Producer<PackedCollection> generate(BufferDetails buffer,
 										   Producer<PackedCollection> params,

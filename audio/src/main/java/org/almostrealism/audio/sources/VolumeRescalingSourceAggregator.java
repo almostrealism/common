@@ -22,6 +22,15 @@ import org.almostrealism.audio.filter.VolumeEnvelopeExtraction;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 
+/**
+ * Applies volume envelope matching between two audio sources.
+ * Extracts volume envelopes from both input and filter sources,
+ * then rescales the input to match the filter's envelope shape.
+ * Useful for dynamic gain control and volume ducking effects.
+ *
+ * @see SourceAggregator
+ * @see VolumeEnvelopeExtraction
+ */
 public class VolumeRescalingSourceAggregator implements SourceAggregator, CellFeatures {
 	private final VolumeEnvelopeExtraction envExtract;
 

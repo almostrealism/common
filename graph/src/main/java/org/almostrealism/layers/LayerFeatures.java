@@ -770,7 +770,7 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 						.enumerate(3, size)
 						.enumerate(3, size)
 						.max(4)
-						.reshape(outputShape);
+						.reshape(outputShape.traverseEach());
 		return layer("pool2d", inputShape, outputShape, operator, requirements);
 	}
 
@@ -824,24 +824,22 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 
 		int nodes = weightShape.length(0);
 		int size = weightShape.length(1);
-		inputShape = padDimensions(inputShape, 2)
-						.flatten(true, size);
 
-		// Note that this may not be the same as the batch size,
-		// since the input may be a sequence that has been flattened
-		// to combine the batch dimension with sequence dimensions
-		int batched = inputShape.length(0);
-
-		if (inputShape.length(1) != size) {
+		// Use a flat shape for matmul
+		TraversalPolicy flat = padDimensions(inputShape, 2)
+						.flatten(true, size)
+						.traverse(1);
+		if (flat.length(1) != size) {
 			throw new IllegalArgumentException();
 		}
 
-		TraversalPolicy outputShape = shape(batched, nodes);
+		TraversalPolicy outputShape = inputShape
+				.replaceDimension(inputShape.getDimensions() - 1, nodes);
 		Factor<PackedCollection> operator = input -> {
+			input = reshape(flat, input);
 			CollectionProducer result = biases != null ?
 					matmul(p(weights), input).add(traverse(1, p(biases))) :
 					matmul(p(weights), input);
-			// Ensure output shape matches declared (batched, nodes) format
 			return result.reshape(outputShape);
 		};
 
@@ -1189,9 +1187,8 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 	}
 
 	default CellularLayer norm(TraversalPolicy shape, int groups, boolean trainable, ComputeRequirement... requirements) {
-		// Don't pad here - the main norm method will handle padding internally
-		// Just calculate size for weights based on total size
-		int size = shape.getTotalSize() / Math.max(1, shape.length(0));
+		// Calculate size for weights based on total size
+		int size = shape.getTotalSize() / groups;
 		return norm(shape, groups,
 				trainable ? new PackedCollection(size) : null,
 				trainable ? new PackedCollection(size) : null,
@@ -1248,14 +1245,19 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 							   PackedCollection biases,
 							   double eps, boolean init,
 							   ComputeRequirement... requirements) {
-		// Keep original shape for layer declaration, pad internally for computation
-		TraversalPolicy paddedShape = padDimensions(shape, 1, 3);
-		long size;
+		int size;
 
-		if (weights == null) {
-			size = paddedShape.item().getTotalSizeLong();
+		if (weights != null) {
+			size = weights.getShape().getTotalSize();
+		} else if (biases != null) {
+			size = biases.getShape().getTotalSize();
 		} else {
-			size = paddedShape.alignSize(weights.getShape().getTotalSizeLong()).item().getTotalSizeLong();
+			size = Math.toIntExact(shape.getTotalSizeLong() / groups);
+		}
+
+		if ((weights != null && shape(weights).getTotalSize() != size) ||
+				(biases != null && shape(biases).getTotalSize() != size)) {
+			throw new IllegalArgumentException();
 		}
 
 		if (size % groups != 0) {
@@ -1264,11 +1266,6 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 			} else {
 				throw new IllegalArgumentException();
 			}
-		}
-
-		if ((weights != null && shape(weights).getTotalSize() != size) ||
-				(biases != null && shape(biases).getTotalSize() != size)) {
-			throw new IllegalArgumentException();
 		}
 
 		List<PackedCollection> prop = new ArrayList<>();
@@ -1292,7 +1289,7 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 
 			if (w != null) out = out.multiply(cp(w));
 			if (b != null) out = out.add(cp(b));
-			return out.reshape(outputShape);
+			return out.reshape(outputShape.traverseEach());
 		}, prop, setup, requirements);
 	}
 

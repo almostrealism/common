@@ -23,6 +23,18 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.time.TemporalRunner;
 
+/**
+ * An {@link AudioLineOperation} that mixes "dry" (clean/unprocessed) and "wet" (processed)
+ * signals using a configurable balance. This is commonly used for effects processing where
+ * the original signal is blended with the effect output.
+ * <p>
+ * The clean level controls the dry signal amount (0.0-1.0), with the wet signal receiving
+ * the complement (1.0 - cleanLevel). The processed signal is computed into a temporary buffer,
+ * then both signals are scaled and summed into the output.
+ * </p>
+ *
+ * @see AudioLineOperation
+ */
 public class AudioLineMix implements AudioLineOperation, CellFeatures {
 	private final AudioLineOperation operation;
 	private final double cleanLevel;

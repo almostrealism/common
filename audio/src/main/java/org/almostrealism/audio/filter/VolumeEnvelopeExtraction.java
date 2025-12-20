@@ -21,6 +21,15 @@ import org.almostrealism.CodeFeatures;
 import org.almostrealism.audio.sources.BufferDetails;
 import org.almostrealism.collect.PackedCollection;
 
+/**
+ * Extracts a volume envelope from audio by computing a moving average of absolute values.
+ *
+ * <p>VolumeEnvelopeExtraction implements a simple envelope follower that takes the
+ * absolute value of the input signal and applies a moving average filter to smooth
+ * the result. This is useful for dynamics processing and audio analysis.</p>
+ *
+ * @see StatelessFilter
+ */
 public class VolumeEnvelopeExtraction implements StatelessFilter, CodeFeatures {
 	private final PackedCollection coefficients;
 

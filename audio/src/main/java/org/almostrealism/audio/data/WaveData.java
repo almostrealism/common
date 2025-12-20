@@ -37,6 +37,57 @@ import java.io.IOException;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
+/**
+ * Primary container for audio sample data with FFT analysis capabilities.
+ *
+ * <p>WaveData wraps a {@link PackedCollection} containing audio samples along with
+ * metadata like sample rate. It provides methods for loading/saving WAV files,
+ * frequency domain analysis via FFT, and conversion to audio cells for processing.</p>
+ *
+ * <h2>Loading Audio</h2>
+ * <pre>{@code
+ * // Load from WAV file
+ * WaveData data = WaveData.load(new File("audio.wav"));
+ *
+ * // Access properties
+ * int sampleRate = data.getSampleRate();
+ * double duration = data.getDuration();
+ * PackedCollection samples = data.getCollection();
+ * }</pre>
+ *
+ * <h2>Saving Audio</h2>
+ * <pre>{@code
+ * // Create from samples
+ * PackedCollection samples = new PackedCollection(44100);
+ * // ... fill samples ...
+ * WaveData data = new WaveData(samples, 44100);
+ * data.save(new File("output.wav"));
+ * }</pre>
+ *
+ * <h2>FFT Analysis</h2>
+ * <p>WaveData provides frequency domain analysis using {@value #FFT_BINS}-bin FFT:</p>
+ * <pre>{@code
+ * // Get frequency spectrum at sample position 1000
+ * PackedCollection spectrum = data.getFrequencyDomain(1000);
+ * }</pre>
+ *
+ * <h2>Creating Audio Cells</h2>
+ * <pre>{@code
+ * // Convert to WaveCell for processing
+ * WaveCell cell = data.toCell(0, duration, null, c(1.0))
+ *     .apply(new DefaultWaveCellData());
+ * }</pre>
+ *
+ * <h2>Constants</h2>
+ * <ul>
+ *   <li>{@link #FFT_BINS} - Number of FFT bins (1024 for CPU, 256 for GPU)</li>
+ *   <li>{@link #enableGpu} - Whether to use GPU acceleration for FFT</li>
+ * </ul>
+ *
+ * @see WaveDataProvider
+ * @see org.almostrealism.audio.WavFile
+ * @see org.almostrealism.graph.temporal.WaveCell
+ */
 public class WaveData implements Destroyable, SamplingFeatures {
 	public static final boolean enableGpu = false;
 

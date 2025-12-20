@@ -47,6 +47,48 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
+/**
+ * Captures audio output from processing cells and writes to WAV files.
+ *
+ * <p>WaveOutput acts as a receptor that accumulates audio samples from the processing
+ * pipeline and provides methods to export the captured data to WAV files. It supports
+ * mono and stereo output with configurable bit depth and sample rate.</p>
+ *
+ * <h2>Usage with CellList</h2>
+ * <pre>{@code
+ * WaveOutput output = new WaveOutput(new File("output.wav"), 24);
+ *
+ * // Connect to audio processing chain
+ * cells.w(output.getWriter(0));  // Left channel
+ * cells.w(output.getWriter(1));  // Right channel (if stereo)
+ *
+ * // Process audio
+ * cells.sec(30).get().run();
+ *
+ * // Write to file
+ * output.write().get().run();
+ * }</pre>
+ *
+ * <h2>In-Memory Capture</h2>
+ * <pre>{@code
+ * // Capture without file output
+ * WaveOutput output = new WaveOutput(maxFrames);
+ *
+ * // Process audio...
+ *
+ * // Export to PackedCollection
+ * PackedCollection captured = new PackedCollection(output.getFrameCount());
+ * output.export(0, captured).get().run();
+ * }</pre>
+ *
+ * <h2>Timeline Support</h2>
+ * <p>WaveOutput maintains a shared timeline collection that provides time values
+ * for each frame, useful for time-based effects and modulation.</p>
+ *
+ * @see WavFile
+ * @see WaveData
+ * @see Receptor
+ */
 public class WaveOutput implements Lifecycle, Destroyable, CodeFeatures {
 	public static boolean enableVerbose = false;
 

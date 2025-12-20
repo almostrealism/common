@@ -16,6 +16,36 @@
 
 package org.almostrealism.audio.tone;
 
+/**
+ * Represents a position on a musical keyboard or within a chromatic scale.
+ *
+ * <p>KeyPosition provides a self-referential interface for navigating musical notes,
+ * allowing implementations to define their position within a scale and traverse to
+ * adjacent notes. This is primarily implemented by {@link WesternChromatic} for the
+ * 88-key piano keyboard.</p>
+ *
+ * <h2>Key Methods</h2>
+ * <ul>
+ *   <li>{@link #position()}: Returns the numeric position within the scale</li>
+ *   <li>{@link #next()}: Returns the next position in the chromatic scale</li>
+ * </ul>
+ *
+ * <h2>Usage</h2>
+ * <pre>{@code
+ * KeyPosition<?> pos = KeyPosition.of("C4");
+ * int position = pos.position();  // Get numeric position
+ * KeyPosition<?> nextNote = pos.next();  // Move to C#4
+ *
+ * // None position for missing/invalid notes
+ * KeyPosition<?> none = KeyPosition.none();
+ * none.position();  // Returns -1
+ * }</pre>
+ *
+ * @param <T> the concrete KeyPosition type, enabling type-safe navigation
+ * @see WesternChromatic
+ * @see Scale
+ * @see KeyboardTuning
+ */
 public interface KeyPosition<T extends KeyPosition<T>> {
 	int position();
 

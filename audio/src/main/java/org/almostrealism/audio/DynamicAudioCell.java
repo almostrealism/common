@@ -24,6 +24,41 @@ import org.almostrealism.graph.temporal.CollectionTemporalCellAdapter;
 import java.util.List;
 import java.util.function.Function;
 
+/**
+ * An audio cell that dynamically selects between multiple processing choices in parallel mode.
+ *
+ * <p>DynamicAudioCell executes all choice cells simultaneously, each with its own independent
+ * {@link PolymorphicAudioData} storage, and selects the output based on a decision value.
+ * This is ideal for scenarios where all processors need to maintain their own state
+ * independently, such as multiple synthesizer voices or parallel effect chains.</p>
+ *
+ * <h2>How It Works</h2>
+ * <ol>
+ *   <li>Each choice cell receives its own PolymorphicAudioData bank</li>
+ *   <li>All cells execute their setup/push/tick operations in parallel</li>
+ *   <li>The decision producer determines which output to route to the receptor</li>
+ * </ol>
+ *
+ * <h2>Usage</h2>
+ * <pre>{@code
+ * // Create decision producer (e.g., based on MIDI note or parameter)
+ * CollectionProducer decision = c(0);  // Select first choice
+ *
+ * // Create choices
+ * List<Function<PolymorphicAudioData, CollectionTemporalCellAdapter>> choices = List.of(
+ *     data -> createSineWave(data),
+ *     data -> createSquareWave(data),
+ *     data -> createSawtoothWave(data)
+ * );
+ *
+ * // Create dynamic cell
+ * DynamicAudioCell cell = new DynamicAudioCell(decision, choices);
+ * }</pre>
+ *
+ * @see AudioCellChoiceAdapter
+ * @see PolymorphicAudioCell
+ * @see PolymorphicAudioData
+ */
 public class DynamicAudioCell extends AudioCellChoiceAdapter {
 	public DynamicAudioCell(CollectionProducer decision,
 							List<Function<PolymorphicAudioData, ? extends CollectionTemporalCellAdapter>> choices) {

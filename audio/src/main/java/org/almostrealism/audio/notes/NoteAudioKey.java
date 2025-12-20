@@ -20,6 +20,15 @@ import org.almostrealism.audio.tone.KeyPosition;
 
 import java.util.Objects;
 
+/**
+ * Composite key that uniquely identifies a note audio instance by combining
+ * a musical key position with an audio channel number. Used by {@link NoteAudioProvider}
+ * for caching and retrieving pitch-shifted audio data for specific channels.
+ * Implements proper equals and hashCode for use in hash-based collections.
+ *
+ * @see NoteAudioProvider
+ * @see KeyPosition
+ */
 public class NoteAudioKey {
 	private final KeyPosition<?> position;
 	private final int audioChannel;

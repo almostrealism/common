@@ -22,6 +22,31 @@ import org.almostrealism.heredity.TemporalCellular;
 
 import java.util.function.Supplier;
 
+/**
+ * A collection of audio processing cells that can be executed for a specified duration.
+ *
+ * <p>Cells combines the temporal execution capabilities of {@link TemporalCellular} with
+ * the audio processing utilities of {@link CellFeatures}, providing convenient methods
+ * for running audio processing for specified time periods.</p>
+ *
+ * <h2>Usage</h2>
+ * <pre>{@code
+ * Cells cells = ... // obtain Cells instance
+ *
+ * // Run processing for 30 seconds
+ * cells.sec(30).get().run();
+ *
+ * // Run processing for 2 minutes
+ * cells.min(2).get().run();
+ *
+ * // Run for 10 seconds with reset after completion
+ * cells.sec(10, true).get().run();
+ * }</pre>
+ *
+ * @see TemporalCellular
+ * @see CellFeatures
+ * @see CellList
+ */
 public interface Cells extends TemporalCellular, CellFeatures, Iterable<Cell<PackedCollection>> {
 	default Supplier<Runnable> min(double minutes) { return min(this, minutes); }
 

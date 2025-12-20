@@ -16,6 +16,16 @@
 
 package org.almostrealism.audio.tone;
 
+/**
+ * Interface for components that can be configured with a keyboard tuning system.
+ *
+ * <p>KeyboardTuned allows audio components to receive tuning information
+ * from a {@link KeyboardTuning} instance, enabling support for different
+ * tuning systems (equal temperament, just intonation, etc.).</p>
+ *
+ * @see KeyboardTuning
+ * @see DefaultKeyboardTuning
+ */
 public interface KeyboardTuned {
 	void setTuning(KeyboardTuning tuning);
 }

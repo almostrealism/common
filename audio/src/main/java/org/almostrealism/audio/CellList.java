@@ -52,6 +52,49 @@ import java.util.function.Supplier;
 import java.util.stream.Collector;
 import java.util.stream.Collectors;
 
+/**
+ * A hierarchical container for audio processing cells with fluent API support.
+ *
+ * <p>CellList extends ArrayList to hold {@link Cell} instances and provides
+ * methods for building complex audio processing chains. It manages cell lifecycle
+ * including setup, execution, and teardown phases.</p>
+ *
+ * <h2>Fluent API</h2>
+ * <p>CellList supports method chaining for building processing pipelines:</p>
+ * <pre>{@code
+ * CellList cells = w(0, "input.wav")   // Create wave cell
+ *     .d(i -> _250ms())                 // Add 250ms delay
+ *     .f(i -> hp(c(500), scalar(0.1))) // Add high-pass filter
+ *     .m(i -> new ScaleFactor(0.8))    // Apply 80% volume
+ *     .o(i -> new File("output.wav")); // Set output
+ *
+ * cells.sec(10).get().run();           // Process 10 seconds
+ * }</pre>
+ *
+ * <h2>Key Methods</h2>
+ * <ul>
+ *   <li>{@link #d(IntFunction)} - Add delay to each cell</li>
+ *   <li>{@link #f(IntFunction)} - Add filter to each cell</li>
+ *   <li>{@link #m(IntFunction)} - Apply mixing/scaling factor</li>
+ *   <li>{@link #o(IntFunction)} - Set output file destination</li>
+ *   <li>{@link #gr(double, int, IntUnaryOperator)} - Create processing grid</li>
+ *   <li>{@link #sec(double)} - Get operation for processing N seconds</li>
+ *   <li>{@link #and(CellList)} - Combine with another CellList</li>
+ *   <li>{@link #sum()} - Sum all cell outputs</li>
+ * </ul>
+ *
+ * <h2>Lifecycle Management</h2>
+ * <p>CellList tracks parent lists and manages hierarchical setup/teardown:</p>
+ * <ul>
+ *   <li>Setup phase: {@link #setup()} initializes all cells and parents</li>
+ *   <li>Execution: {@link #sec(double)} or {@link #iter(int)} for processing</li>
+ *   <li>Teardown: {@link #destroy()} releases resources</li>
+ * </ul>
+ *
+ * @see CellFeatures
+ * @see Cell
+ * @see org.almostrealism.time.Temporal
+ */
 public class CellList extends ArrayList<Cell<PackedCollection>> implements Cells, Destroyable {
 	private final List<CellList> parents;
 	private final List<Receptor<PackedCollection>> roots;

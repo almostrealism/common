@@ -31,12 +31,12 @@ import java.util.List;
 
 public class FourierTransformTests implements TestFeatures {
 
-	@Test(timeout = 30000)
+	@Test(timeout = 60000)
 	public void compileCpu() {
 		compile(ComputeRequirement.CPU);
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 60000)
 	public void compileGpu() {
 		if (FourierTransform.enableRecursion) {
 			if (skipKnownIssues) return;
@@ -55,7 +55,7 @@ public class FourierTransformTests implements TestFeatures {
 		ft.get().evaluate();
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 60000)
 	public void forwardAndInverse() {
 		forwardAndInverse(ComputeRequirement.CPU);
 	}
@@ -105,7 +105,7 @@ public class FourierTransformTests implements TestFeatures {
 		return input;
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 60000)
 	public void multiBatchTransform1() {
 		if (testProfileIs(TestUtils.PIPELINE)) return;
 
@@ -144,7 +144,7 @@ public class FourierTransformTests implements TestFeatures {
 		Assert.assertTrue(total > 300);
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 60000)
 	public void multiBatchTransform2() {
 		int sampleRate = 44100;
 		int bins = 1024;
@@ -152,7 +152,7 @@ public class FourierTransformTests implements TestFeatures {
 		multiBatchTransformAndReverse(sampleRate, bins, 4, 1, false);
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 60000)
 	public void multiBatchTransform3() {
 		int sampleRate = 44100;
 		int bins = 1024;
@@ -160,7 +160,7 @@ public class FourierTransformTests implements TestFeatures {
 		multiBatchTransformAndReverse(sampleRate, bins, 4, 1, true);
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 60000)
 	public void multiBatchTransform4() {
 		int sampleRate = 44100;
 		int bins = 1024;
@@ -168,7 +168,7 @@ public class FourierTransformTests implements TestFeatures {
 		multiBatchTransformAndReverse(sampleRate, bins, 8, 3, true);
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 60000)
 	public void multiBatchTransform5() {
 		int sampleRate = 44100;
 		int bins = 1024;

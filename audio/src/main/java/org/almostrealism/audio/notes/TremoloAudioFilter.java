@@ -19,6 +19,14 @@ package org.almostrealism.audio.notes;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
 
+/**
+ * Audio filter that applies tremolo (volume modulation) effects to note audio.
+ * Implements {@link NoteAudioFilter} to create rhythmic amplitude variations,
+ * supporting both gate-style (on/off) and sine wave modulation patterns.
+ * The duration parameter controls the speed of the tremolo effect.
+ *
+ * @see NoteAudioFilter
+ */
 public class TremoloAudioFilter implements NoteAudioFilter {
 	private final Type type;
 	private final double duration;

@@ -26,6 +26,28 @@ import org.almostrealism.io.Console;
 import java.util.HashMap;
 import java.util.Map;
 
+/**
+ * Comprehensive metadata and analysis results for an audio sample.
+ *
+ * <p>WaveDetails stores both basic audio metadata (sample rate, channels, frame count)
+ * and computed analysis data including FFT frequency bins and extracted features.
+ * It also maintains similarity scores to other audio samples in a library.</p>
+ *
+ * <h2>Stored Information</h2>
+ * <ul>
+ *   <li><b>Basic metadata</b>: Sample rate, channel count, frame count, duration</li>
+ *   <li><b>Frequency data</b>: FFT results with configurable bin count and time resolution</li>
+ *   <li><b>Feature data</b>: Extracted features for similarity comparison</li>
+ *   <li><b>Similarities</b>: Computed similarity scores to other samples</li>
+ * </ul>
+ *
+ * <h2>Persistence</h2>
+ * <p>WaveDetails can be marked as persistent to prevent cleanup when the associated
+ * audio file is no longer present in the library's file tree.</p>
+ *
+ * @see WaveDetailsFactory
+ * @see org.almostrealism.audio.AudioLibrary
+ */
 public class WaveDetails implements CodeFeatures {
 	public static boolean enableNormalizeSimilarity = false;
 
@@ -208,6 +230,10 @@ public class WaveDetails implements CodeFeatures {
 		double duration = (double) getFrameCount() / (double) getSampleRate();
 		int limit = (int) Math.ceil(duration * getFeatureSampleRate());
 		return Math.min(getFeatureFrameCount(), limit);
+	}
+
+	public WaveData getWaveData() {
+		return new WaveData(data, getSampleRate());
 	}
 
 	public Map<String, Double> getSimilarities() {

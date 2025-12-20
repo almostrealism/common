@@ -35,6 +35,31 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
+/**
+ * Abstract adapter for dynamically selecting between multiple audio processing cells at runtime.
+ *
+ * <p>AudioCellChoiceAdapter enables switching between different audio processors based on a
+ * decision value, supporting both parallel and sequential execution modes. This is useful for
+ * scenarios where the processing path should be selected dynamically, such as instrument
+ * switching or effect routing.</p>
+ *
+ * <h2>Execution Modes</h2>
+ * <ul>
+ *   <li><b>Parallel mode</b>: All cells execute simultaneously, output is selected based on decision</li>
+ *   <li><b>Sequential mode</b>: Only the selected cell executes via Switch computation</li>
+ * </ul>
+ *
+ * <h2>Usage</h2>
+ * <p>This class is typically used through its concrete subclasses:</p>
+ * <ul>
+ *   <li>{@link DynamicAudioCell} - Parallel execution with independent data per choice</li>
+ *   <li>{@link PolymorphicAudioCell} - Sequential execution with shared data</li>
+ * </ul>
+ *
+ * @see DynamicAudioCell
+ * @see PolymorphicAudioCell
+ * @see org.almostrealism.algebra.computations.Switch
+ */
 public abstract class AudioCellChoiceAdapter extends CollectionTemporalCellAdapter implements CellFeatures {
 
 	private CollectionProducer decision;

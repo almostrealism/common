@@ -18,6 +18,23 @@ package org.almostrealism.audio.data;
 
 import org.almostrealism.collect.PackedCollection;
 
+/**
+ * A wave data provider that extracts a portion of another provider's data.
+ *
+ * <p>DelegateWaveDataProvider wraps an existing {@link WaveDataProvider} and
+ * provides access to a specific range of frames, useful for slicing audio
+ * samples or extracting segments from longer recordings.</p>
+ *
+ * <h2>Usage</h2>
+ * <pre>{@code
+ * // Extract 44100 frames starting at frame 88200 (seconds 2-3 at 44.1kHz)
+ * WaveDataProvider original = new FileWaveDataProvider("long_sample.wav");
+ * WaveDataProvider slice = new DelegateWaveDataProvider(original, 88200, 44100);
+ * }</pre>
+ *
+ * @see WaveDataProvider
+ * @see WaveDataProviderAdapter
+ */
 public class DelegateWaveDataProvider extends WaveDataProviderAdapter {
 	private final WaveDataProvider delegate;
 	private final int delegateOffset;

@@ -16,6 +16,13 @@
 
 package org.almostrealism.audio.line;
 
+/**
+ * Represents a stereo audio output with separate left and right {@link OutputLine} channels
+ * and a configurable mix balance. This interface is used for stereo processing where
+ * independent control of each channel is required, such as panning or stereo field manipulation.
+ *
+ * @see OutputLine
+ */
 public interface DualOutputLine {
 	void setMix(double m);
 	double getMix();

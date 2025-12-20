@@ -59,21 +59,21 @@ public class CollectionAddTests implements TestFeatures {
 		log("total time = " + (System.currentTimeMillis() - start) + "ms");
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 10000)
 	public void cpuAdd() {
 		if (skipLongTests) return;
 
 		add(ComputeRequirement.CPU);
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 10000)
 	public void gpuAdd() {
 		if (skipLongTests) return;
 
 		add(ComputeRequirement.GPU);
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 10000)
 	public void javaAdd() throws InterruptedException {
 		if (skipLongTests) return;
 

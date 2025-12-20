@@ -78,7 +78,7 @@ public class StrictShapeEnforcementTest implements ModelTestFeatures {
 	 * Test dense layer shape compatibility.
 	 * Documents that dense layers currently produce transposed output shapes.
 	 */
-	@Test(timeout = 30000)
+	@Test(timeout = 10000)
 	public void testDenseLayerShapes() {
 		log("=== Dense Layer Shape Test ===");
 
@@ -102,7 +102,7 @@ public class StrictShapeEnforcementTest implements ModelTestFeatures {
 	/**
 	 * Test normalization layer shape compatibility.
 	 */
-	@Test(timeout = 30000)
+	@Test(timeout = 10000)
 	public void testNormLayerShapes() {
 		log("=== Normalization Layer Shape Test ===");
 
@@ -122,7 +122,7 @@ public class StrictShapeEnforcementTest implements ModelTestFeatures {
 	 * Test that the synthetic dense training test works in current mode.
 	 * This test will fail in strict mode until dense layer is fixed.
 	 */
-	@Test(timeout = 60000)
+	@Test(timeout = 30000)
 	public void testSyntheticDenseInCurrentMode() throws FileNotFoundException {
 		if (testDepth < 1) return;
 
@@ -155,7 +155,7 @@ public class StrictShapeEnforcementTest implements ModelTestFeatures {
 	/**
 	 * Test pool2d layer shape compatibility.
 	 */
-	@Test(timeout = 30000)
+	@Test(timeout = 10000)
 	public void testPool2dLayerShapes() {
 		log("=== Pool2d Layer Shape Test ===");
 
@@ -182,7 +182,7 @@ public class StrictShapeEnforcementTest implements ModelTestFeatures {
 	/**
 	 * Test SiLU activation layer shape compatibility.
 	 */
-	@Test(timeout = 30000)
+	@Test(timeout = 10000)
 	public void testSiLULayerShapes() {
 		log("=== SiLU Activation Layer Shape Test ===");
 
@@ -204,7 +204,7 @@ public class StrictShapeEnforcementTest implements ModelTestFeatures {
 	/**
 	 * Test residual block shape compatibility.
 	 */
-	@Test(timeout = 30000)
+	@Test(timeout = 10000)
 	public void testResidualBlockShapes() {
 		log("=== Residual Block Shape Test ===");
 

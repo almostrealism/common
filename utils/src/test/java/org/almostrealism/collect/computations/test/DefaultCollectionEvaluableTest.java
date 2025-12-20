@@ -45,7 +45,7 @@ public class DefaultCollectionEvaluableTest {
 	 * Tests basic creation and configuration of a DefaultCollectionEvaluable.
 	 * Demonstrates the essential constructor parameters and verifies proper initialization.
 	 */
-	@Test(timeout = 30000)
+	@Test(timeout = 10000)
 	public void basicCreation() {
 		// Create a simple shape for testing
 		TraversalPolicy shape = new TraversalPolicy(3, 2); // 3x2 matrix
@@ -79,7 +79,7 @@ public class DefaultCollectionEvaluableTest {
 	 * Demonstrates how the destination factory function is used when 
 	 * {@link DefaultCollectionEvaluable#enableDestinationFactory} is true.
 	 */
-	@Test(timeout = 30000)
+	@Test(timeout = 10000)
 	public void destinationCreationWithFactory() {
 		// Ensure destination factory is enabled
 		boolean originalFlag = DefaultCollectionEvaluable.enableDestinationFactory;
@@ -120,7 +120,7 @@ public class DefaultCollectionEvaluableTest {
 	 * Demonstrates the fallback behavior when destination factory is disabled
 	 * or when the factory function is null.
 	 */
-	@Test(timeout = 30000)
+	@Test(timeout = 10000)
 	public void destinationCreationManual() {
 		// Disable destination factory for this test
 		boolean originalFlag = DefaultCollectionEvaluable.enableDestinationFactory;
@@ -154,7 +154,7 @@ public class DefaultCollectionEvaluableTest {
 	 * Demonstrates how the post-processor transforms raw memory data into
 	 * properly structured collection instances.
 	 */
-	@Test(timeout = 30000)
+	@Test(timeout = 10000)
 	public void postProcessingWithCustomProcessor() {
 		TraversalPolicy shape = new TraversalPolicy(3);
 		SingleConstantComputation computation =
@@ -192,7 +192,7 @@ public class DefaultCollectionEvaluableTest {
 	 * Demonstrates the fallback to standard PackedCollection creation when
 	 * no custom post-processor is provided.
 	 */
-	@Test(timeout = 30000)
+	@Test(timeout = 10000)
 	public void postProcessingDefault() {
 		TraversalPolicy shape = new TraversalPolicy(2, 2);
 		SingleConstantComputation computation =
@@ -214,7 +214,7 @@ public class DefaultCollectionEvaluableTest {
 	 * Demonstrates a complete evaluation cycle using DefaultCollectionEvaluable
 	 * with a simple constant computation.
 	 */
-	@Test(timeout = 30000)
+	@Test(timeout = 10000)
 	public void integrationWithComputationPipeline() {
 		TraversalPolicy shape = new TraversalPolicy(5);
 		double constantValue = 42.0;
@@ -262,7 +262,7 @@ public class DefaultCollectionEvaluableTest {
 	 * Demonstrates how DefaultCollectionEvaluable works with various
 	 * TraversalPolicy configurations including vectors, matrices, and tensors.
 	 */
-	@Test(timeout = 30000)
+	@Test(timeout = 10000)
 	public void shapeHandling() {
 		// Test with different dimensional shapes
 		TraversalPolicy[] shapes = {
@@ -298,7 +298,7 @@ public class DefaultCollectionEvaluableTest {
 	 * Demonstrates how DefaultCollectionEvaluable handles various error conditions
 	 * and boundary cases gracefully.
 	 */
-	@Test(timeout = 30000)
+	@Test(timeout = 10000)
 	public void errorHandling() {
 		TraversalPolicy shape = new TraversalPolicy(3);
 		SingleConstantComputation computation =

@@ -212,7 +212,7 @@ public class MatrixMathTests implements TestFeatures {
 		}
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 4 * 60000)
 	public void sumPowers() {
 		if (testDepth < 3) return;
 

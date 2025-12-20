@@ -25,6 +25,15 @@ import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.time.computations.FourierTransform;
 
+/**
+ * Applies frequency-domain filtering to audio sources using FFT.
+ * Transforms audio to frequency domain, applies a spectral filter extracted
+ * from a second source, and transforms back to time domain. Supports optional
+ * normalization and filtering to achieve EQ-like effects in the frequency domain.
+ *
+ * @see SourceAggregator
+ * @see FourierTransform
+ */
 public class FrequencyRescalingSourceAggregator implements SourceAggregator, CellFeatures {
 	public static boolean enableFilter = true;
 	public static boolean enableNormalization = false;

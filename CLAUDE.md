@@ -1,5 +1,23 @@
 # Almost Realism Common - Development Guidelines for Claude Code
 
+---
+
+## ⚠️ CRITICAL: NEVER REFERENCE VERSION NUMBERS ⚠️
+
+**THIS IS AN ABSOLUTE RULE WITH NO EXCEPTIONS.**
+
+- **NEVER** include specific version numbers anywhere in CLAUDE.md files
+- **NEVER** mention library versions (e.g., "JavaFX 21", "gRPC 1.53.0")
+- **NEVER** mention project versions (e.g., "version 0.72")
+- **NEVER** reference artifact versions in documentation
+- Version numbers change constantly and become stale immediately
+- Always refer to pom.xml files as the single source of truth for versions
+- If you need to mention a dependency, use just its name without any version
+
+**Why this matters:** Hardcoded version numbers in documentation become outdated instantly, cause confusion, and lead to errors when developers trust stale documentation over actual build files.
+
+---
+
 ## Quick Links
 
 - **[Quick Reference](docs/QUICK_REFERENCE.md)** - Condensed API cheatsheet

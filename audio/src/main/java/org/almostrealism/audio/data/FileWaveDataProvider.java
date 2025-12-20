@@ -32,6 +32,33 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * A wave data provider that loads audio from WAV files on the filesystem.
+ *
+ * <p>FileWaveDataProvider is the primary implementation for file-based audio loading.
+ * It lazily loads file metadata (sample rate, frame count, channels) on first access
+ * and caches the loaded {@link WaveData} for subsequent requests. File identity is
+ * determined by MD5 hash of the file contents.</p>
+ *
+ * <h2>Features</h2>
+ * <ul>
+ *   <li>Lazy loading of file metadata and audio data</li>
+ *   <li>Automatic caching of loaded data per hardware context</li>
+ *   <li>MD5-based content identification for deduplication</li>
+ *   <li>Corrupt file tracking to avoid repeated load failures</li>
+ * </ul>
+ *
+ * <h2>Usage</h2>
+ * <pre>{@code
+ * FileWaveDataProvider provider = new FileWaveDataProvider("/path/to/audio.wav");
+ * WaveData data = provider.get();
+ * double duration = provider.getDuration();
+ * int sampleRate = provider.getSampleRate();
+ * }</pre>
+ *
+ * @see WaveDataProvider
+ * @see WaveData
+ */
 public class FileWaveDataProvider extends WaveDataProviderAdapter implements PathResource {
 	private static final List<String> corruptFiles = new ArrayList<>();
 	private static final Map<String, String> identifiers = new HashMap<>(); // TODO  Use FrequencyCache
