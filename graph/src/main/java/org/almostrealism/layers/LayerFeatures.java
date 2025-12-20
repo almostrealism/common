@@ -19,6 +19,7 @@ package org.almostrealism.layers;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.cycle.Setup;
+import io.almostrealism.scope.ScopeSettings;
 import io.almostrealism.relation.Composition;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Evaluable;
@@ -746,7 +747,31 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 								  int seqLength, int kernelSize, int stride, int padding,
 								  PackedCollection weights, PackedCollection bias,
 								  ComputeRequirement... requirements) {
-		int outLength = (seqLength - 1) * stride - 2 * padding + kernelSize;
+		return convTranspose1d(batchSize, inputChannels, outputChannels, seqLength,
+				kernelSize, stride, padding, 0, weights, bias, requirements);
+	}
+
+	/**
+	 * Creates a 1D transposed convolution (deconvolution) layer with output padding.
+	 *
+	 * @param batchSize Batch size
+	 * @param inputChannels Number of input channels
+	 * @param outputChannels Number of output channels
+	 * @param seqLength Input sequence length
+	 * @param kernelSize Size of the convolution kernel
+	 * @param stride Stride (upsampling factor)
+	 * @param padding Padding to remove from output
+	 * @param outputPadding Additional size added to output
+	 * @param weights Weight tensor with shape [inputChannels, outputChannels, kernelSize]
+	 * @param bias Optional bias tensor with shape [outputChannels], may be null
+	 * @param requirements Optional compute requirements
+	 * @return Block performing the transposed 1D convolution
+	 */
+	default Block convTranspose1d(int batchSize, int inputChannels, int outputChannels,
+								  int seqLength, int kernelSize, int stride, int padding,
+								  int outputPadding, PackedCollection weights, PackedCollection bias,
+								  ComputeRequirement... requirements) {
+		int outLength = (seqLength - 1) * stride - 2 * padding + kernelSize + outputPadding;
 
 		TraversalPolicy inputShape = shape(batchSize, inputChannels, seqLength);
 		TraversalPolicy outputShape = shape(batchSize, outputChannels, outLength);
@@ -1405,6 +1430,230 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 			CollectionProducer sinSquared = pow(sinPart, c(2.0));
 			return x.add(sinSquared.multiply(c(1.0 / alpha)));
 		}, requirements);
+	}
+
+	/**
+	 * Creates a learnable Snake activation layer factory with per-channel alpha and beta parameters.
+	 * Snake activation is defined as: f(x) = x + (1/beta) * sin^2(alpha * x)
+	 *
+	 * <p>This variant is used by Stable Audio Open / DAC autoencoders where alpha and beta
+	 * are learned parameters stored per-channel.</p>
+	 *
+	 * @param alpha Per-channel frequency parameter, shape (channels,)
+	 * @param beta Per-channel scaling parameter, shape (channels,)
+	 * @param requirements Optional compute requirements
+	 * @return Function that creates a learnable Snake activation layer for any input shape
+	 */
+	default Function<TraversalPolicy, CellularLayer> snake(PackedCollection alpha,
+														   PackedCollection beta,
+														   ComputeRequirement... requirements) {
+		return shape -> snake(shape, alpha, beta, requirements);
+	}
+
+	/**
+	 * Creates a learnable Snake activation layer with per-channel alpha and beta parameters.
+	 * Snake activation is defined as: f(x) = x + (1/beta) * sin^2(alpha * x)
+	 *
+	 * <p>For input shape (batch, channels, length), alpha and beta should have shape (channels,).
+	 * The activation is applied element-wise with channel-specific parameters.</p>
+	 *
+	 * @param shape Input shape, typically (batch, channels, length)
+	 * @param alpha Per-channel frequency parameter, shape (channels,)
+	 * @param beta Per-channel scaling parameter, shape (channels,)
+	 * @param requirements Optional compute requirements
+	 * @return CellularLayer implementing learnable Snake activation
+	 */
+	default CellularLayer snake(TraversalPolicy shape, PackedCollection alpha,
+								PackedCollection beta, ComputeRequirement... requirements) {
+		int channels = shape.length(1);
+		int seqLen = shape.length(2);
+		int batch = shape.length(0);
+
+		return layer("snakeLearnable", shape, shape, input -> {
+			CollectionProducer x = c(input);
+
+			// Broadcast alpha and beta to match input shape (batch, channels, length)
+			// alpha/beta are (channels,) -> expand to (1, channels, 1) then broadcast
+			CollectionProducer alphaBC = cp(alpha).reshape(1, channels, 1)
+					.repeat(batch).traverse(2).repeat(seqLen);
+			CollectionProducer betaBC = cp(beta).reshape(1, channels, 1)
+					.repeat(batch).traverse(2).repeat(seqLen);
+
+			// f(x) = x + (1/beta) * sin^2(alpha * x)
+			CollectionProducer sinPart = sin(x.multiply(alphaBC));
+			CollectionProducer sinSquared = pow(sinPart, c(2.0));
+			// Reshape back to original shape before traverseEach (broadcasting creates extra dims)
+			return x.add(sinSquared.divide(betaBC)).reshape(shape).traverseEach();
+		}, requirements);
+	}
+
+	/**
+	 * Creates a Conv1d layer with weight normalization.
+	 *
+	 * <p>Weight normalization decomposes the weight matrix W into a direction component v
+	 * and a magnitude component g: W = g * v / ||v||</p>
+	 *
+	 * <p>This is used by Stable Audio Open / DAC autoencoders.</p>
+	 *
+	 * @param batchSize Batch size
+	 * @param inChannels Input channels
+	 * @param outChannels Output channels
+	 * @param seqLength Input sequence length
+	 * @param kernelSize Convolution kernel size
+	 * @param stride Convolution stride
+	 * @param padding Padding amount
+	 * @param weightG Magnitude parameter, shape (outChannels, 1, 1)
+	 * @param weightV Direction parameter, shape (outChannels, inChannels, kernelSize)
+	 * @param bias Bias, shape (outChannels,) or null
+	 * @param requirements Optional compute requirements
+	 * @return Block implementing weight-normalized Conv1d
+	 */
+	default Block wnConv1d(int batchSize, int inChannels, int outChannels, int seqLength,
+						   int kernelSize, int stride, int padding,
+						   PackedCollection weightG, PackedCollection weightV,
+						   PackedCollection bias, ComputeRequirement... requirements) {
+		// Compute normalized weights: W = g * v / ||v||
+		// ||v|| is computed per output channel (norm over inChannels * kernelSize)
+		PackedCollection normalizedWeights = computeWeightNormWeights(weightG, weightV,
+				outChannels, inChannels, kernelSize);
+
+		// Use standard conv1d with the normalized weights
+		return convolution1d(batchSize, inChannels, outChannels, seqLength,
+				kernelSize, stride, padding, normalizedWeights, bias, requirements);
+	}
+
+	/**
+	 * Computes normalized weights from weight normalization parameters.
+	 * W = g * v / ||v|| where ||v|| is computed per output channel.
+	 */
+	default PackedCollection computeWeightNormWeights(PackedCollection weightG,
+													  PackedCollection weightV,
+													  int outChannels, int inChannels, int kernelSize) {
+		// weightG shape: (outChannels, 1, 1)
+		// weightV shape: (outChannels, inChannels, kernelSize)
+		// Output shape: (outChannels, inChannels, kernelSize)
+
+		int vSize = inChannels * kernelSize;
+		PackedCollection result = new PackedCollection(outChannels, inChannels, kernelSize);
+
+		for (int oc = 0; oc < outChannels; oc++) {
+			// Compute L2 norm of v for this output channel
+			double normSq = 0.0;
+			for (int ic = 0; ic < inChannels; ic++) {
+				for (int k = 0; k < kernelSize; k++) {
+					double v = weightV.toDouble(oc * vSize + ic * kernelSize + k);
+					normSq += v * v;
+				}
+			}
+			double norm = Math.sqrt(normSq);
+
+			// Get magnitude g for this output channel
+			double g = weightG.toDouble(oc);
+
+			// Compute W = g * v / ||v||
+			double scale = g / (norm + 1e-12);
+			for (int ic = 0; ic < inChannels; ic++) {
+				for (int k = 0; k < kernelSize; k++) {
+					int idx = oc * vSize + ic * kernelSize + k;
+					double v = weightV.toDouble(idx);
+					result.setMem(idx, v * scale);
+				}
+			}
+		}
+
+		return result;
+	}
+
+	/**
+	 * Creates a ConvTranspose1d layer with weight normalization.
+	 *
+	 * @param batchSize Batch size
+	 * @param inChannels Input channels
+	 * @param outChannels Output channels
+	 * @param seqLength Input sequence length
+	 * @param kernelSize Convolution kernel size
+	 * @param stride Convolution stride
+	 * @param padding Padding amount
+	 * @param weightG Magnitude parameter, shape (inChannels, 1, 1) for transposed
+	 * @param weightV Direction parameter, shape (inChannels, outChannels, kernelSize)
+	 * @param bias Bias, shape (outChannels,) or null
+	 * @param requirements Optional compute requirements
+	 * @return Block implementing weight-normalized ConvTranspose1d
+	 */
+	default Block wnConvTranspose1d(int batchSize, int inChannels, int outChannels, int seqLength,
+									int kernelSize, int stride, int padding,
+									PackedCollection weightG, PackedCollection weightV,
+									PackedCollection bias, ComputeRequirement... requirements) {
+		return wnConvTranspose1d(batchSize, inChannels, outChannels, seqLength,
+				kernelSize, stride, padding, 0, weightG, weightV, bias, requirements);
+	}
+
+	/**
+	 * Creates a ConvTranspose1d layer with weight normalization and output padding.
+	 *
+	 * @param batchSize Batch size
+	 * @param inChannels Input channels
+	 * @param outChannels Output channels
+	 * @param seqLength Input sequence length
+	 * @param kernelSize Convolution kernel size
+	 * @param stride Convolution stride
+	 * @param padding Padding amount
+	 * @param outputPadding Additional size added to output
+	 * @param weightG Magnitude parameter, shape (inChannels, 1, 1) for transposed
+	 * @param weightV Direction parameter, shape (inChannels, outChannels, kernelSize)
+	 * @param bias Bias, shape (outChannels,) or null
+	 * @param requirements Optional compute requirements
+	 * @return Block implementing weight-normalized ConvTranspose1d
+	 */
+	default Block wnConvTranspose1d(int batchSize, int inChannels, int outChannels, int seqLength,
+									int kernelSize, int stride, int padding, int outputPadding,
+									PackedCollection weightG, PackedCollection weightV,
+									PackedCollection bias, ComputeRequirement... requirements) {
+		// For transposed conv, weight shape is (inChannels, outChannels, kernelSize)
+		// Normalize over outChannels * kernelSize per input channel
+		PackedCollection normalizedWeights = computeWeightNormWeightsTransposed(weightG, weightV,
+				inChannels, outChannels, kernelSize);
+
+		return convTranspose1d(batchSize, inChannels, outChannels, seqLength,
+				kernelSize, stride, padding, outputPadding, normalizedWeights, bias, requirements);
+	}
+
+	/**
+	 * Computes normalized weights for transposed convolution.
+	 * W = g * v / ||v|| where ||v|| is computed per input channel (first dimension).
+	 */
+	default PackedCollection computeWeightNormWeightsTransposed(PackedCollection weightG,
+																PackedCollection weightV,
+																int inChannels, int outChannels, int kernelSize) {
+		int vSize = outChannels * kernelSize;
+		PackedCollection result = new PackedCollection(inChannels, outChannels, kernelSize);
+
+		for (int ic = 0; ic < inChannels; ic++) {
+			// Compute L2 norm of v for this input channel
+			double normSq = 0.0;
+			for (int oc = 0; oc < outChannels; oc++) {
+				for (int k = 0; k < kernelSize; k++) {
+					double v = weightV.toDouble(ic * vSize + oc * kernelSize + k);
+					normSq += v * v;
+				}
+			}
+			double norm = Math.sqrt(normSq);
+
+			// Get magnitude g for this input channel
+			double g = weightG.toDouble(ic);
+
+			// Compute W = g * v / ||v||
+			double scale = g / (norm + 1e-12);
+			for (int oc = 0; oc < outChannels; oc++) {
+				for (int k = 0; k < kernelSize; k++) {
+					int idx = ic * vSize + oc * kernelSize + k;
+					double v = weightV.toDouble(idx);
+					result.setMem(idx, v * scale);
+				}
+			}
+		}
+
+		return result;
 	}
 
 	default Function<TraversalPolicy, CellularLayer> norm(ComputeRequirement... requirements) {
