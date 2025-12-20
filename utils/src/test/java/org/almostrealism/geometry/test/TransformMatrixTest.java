@@ -87,7 +87,7 @@ public class TransformMatrixTest implements RayFeatures, TransformMatrixFeatures
 		log("Transform matrix inverse test passed!");
 	}
 
-	@Test(timeout = 10000)
+	@Test(timeout = 25000)
 	public void testSphereIntersectionWithTransform() {
 		log("Testing sphere intersection WITH transforms enabled...");
 

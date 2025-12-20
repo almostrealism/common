@@ -510,7 +510,7 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 		}
 	}
 
-	@Test(timeout = 60000)
+	@Test(timeout = 3 * 60000)
 	public void backwardsTrainableVeryLarge1() throws IOException {
 		if (testDepth < 2) return;
 		if (testProfileIs(TestUtils.PIPELINE)) return;

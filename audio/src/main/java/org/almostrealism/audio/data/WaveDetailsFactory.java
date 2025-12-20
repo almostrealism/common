@@ -112,19 +112,28 @@ public class WaveDetailsFactory implements CodeFeatures {
 	}
 
 	public WaveDetails forProvider(WaveDataProvider provider, WaveDetails existing) {
-		if (provider == null) return existing;
-
 		if (existing == null) {
+			if (provider == null) return null;
+
 			existing = new WaveDetails(provider.getIdentifier(), provider.getSampleRate());
 		}
 
 		WaveData data = provider.get(getSampleRate());
-		if (data == null) return existing;
+		if (data != null) {
+			existing.setSampleRate(data.getSampleRate());
+			existing.setChannelCount(data.getChannelCount());
+			existing.setFrameCount(data.getFrameCount());
+			existing.setData(data.getData());
+		}
 
-		existing.setSampleRate(data.getSampleRate());
-		existing.setChannelCount(data.getChannelCount());
-		existing.setFrameCount(data.getFrameCount());
-		existing.setData(data.getData());
+		return forExisting(existing);
+	}
+
+	public WaveDetails forExisting(WaveDetails existing) {
+		if (existing == null) return null;
+
+		WaveData data = existing.getWaveData();
+		if (data == null) return existing;
 
 		if (existing.getFreqFrameCount() <= 1) {
 			PackedCollection fft = null;
@@ -152,7 +161,7 @@ public class WaveDetailsFactory implements CodeFeatures {
 		}
 
 		if (featureProvider != null) {
-			PackedCollection features = prepareFeatures(provider);
+			PackedCollection features = prepareFeatures(new DynamicWaveDataProvider(existing.getIdentifier(), data));
 			existing.setFeatureSampleRate(featureProvider.getFeatureSampleRate());
 			existing.setFeatureChannelCount(1);
 			existing.setFeatureBinCount(features.getShape().length(1));

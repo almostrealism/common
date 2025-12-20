@@ -141,7 +141,7 @@ public class DefaultCellularLayer implements CellularLayer, CodeFeatures, Learni
 
 	private Supplier<Runnable> output(Producer<PackedCollection> in, Producer<PackedCollection> out) {
 		Supplier<Runnable> o = into(getName() + " layer " +
-				getInputShape() + "->" + getOutputShape(), in, out, false,
+				getInputShape() + "->" + getOutputShape(), in, out, enableMemoryDataCopy,
 				getComputeRequirements());
 		if (getMonitor() == null) {
 			return o;
