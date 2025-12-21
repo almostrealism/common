@@ -217,11 +217,18 @@ public interface MatrixFeatures extends AlgebraFeatures {
 				vector = reshape(vShape, vector);
 			}
 
-			int batchAxis = vShape.getDimensions();
+			// For large output dimensions (>1000), the repeat+multiply+sum
+			// path creates enormous expression trees that scale O(n^2) in compile time.
+			// In that case, fall through to the weightedSum path below.
+			// Empirically: 1000 outputs ~3s, 5000 outputs ~106s, 10000 outputs ~10+ minutes.
 			int outputSize = mShape.length(0);
-			CollectionProducer a = c(matrix);
-			CollectionProducer b = repeat(outputSize, vector);
-			return multiply(traverseEach(a), traverseEach(b)).traverse(batchAxis).sum();
+			if (outputSize <= 1000) {
+				int batchAxis = vShape.getDimensions();
+				CollectionProducer a = c(matrix);
+				CollectionProducer b = repeat(outputSize, vector);
+				return multiply(traverseEach(a), traverseEach(b)).traverse(batchAxis).sum();
+			}
+			// For large outputs, continue to weightedSum path with preprocessed vector
 		}
 
 		TraversalPolicy vectorShape = padDimensions(vShape, 1, 2, true);

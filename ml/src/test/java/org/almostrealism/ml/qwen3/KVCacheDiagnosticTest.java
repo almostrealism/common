@@ -508,4 +508,312 @@ public class KVCacheDiagnosticTest implements AttentionFeatures, LayerFeatures, 
 
 		return freqCis;
 	}
+
+	/**
+	 * Direct test of CollectionReceptor without any model compilation.
+	 * This is the most narrow test to verify CollectionReceptor works in isolation.
+	 *
+	 * Tests:
+	 * 1. CollectionReceptor.push() returns a valid Supplier
+	 * 2. Calling .get() on the Supplier returns a Runnable
+	 * 3. Running the Runnable writes data to the destination
+	 * 4. Position-based writes work correctly
+	 */
+	@Test
+	public void testCollectionReceptor_DirectInvocation() throws Exception {
+		String logFile = "/workspace/project/common/ml/test_output/receptor_direct_test.txt";
+		Console.root().addListener(OutputFeatures.fileOutput(logFile));
+
+		log("\n===================================================");
+		log("  CollectionReceptor Direct Invocation Test");
+		log("===================================================\n");
+
+		int seqLen = 10;
+		int dim = 4;
+
+		// Create destination cache
+		PackedCollection cache = new PackedCollection(shape(seqLen, dim));
+		cache.clear();
+
+		// Create position producer
+		PackedCollection position = new PackedCollection(1);
+		position.setMem(0, 0.0);
+
+		// Create CollectionReceptor directly
+		org.almostrealism.graph.CollectionReceptor receptor =
+				new org.almostrealism.graph.CollectionReceptor(cache, p(position));
+
+		log("Cache before any writes:");
+		logCacheContents(cache, seqLen, dim, 3);
+
+		log("\n--- Test 1: Direct push() invocation ---");
+
+		for (int step = 0; step < 5; step++) {
+			// Update position
+			position.setMem(0, (double) step);
+
+			// Create input data
+			PackedCollection input = new PackedCollection(shape(dim));
+			for (int i = 0; i < dim; i++) {
+				input.setMem(i, (step + 1) * 10 + i);  // e.g., [10,11,12,13]
+			}
+
+			log(String.format("\nStep %d: position=%.0f, input=[%.0f,%.0f,%.0f,%.0f]",
+					step, position.toDouble(0),
+					input.toDouble(0), input.toDouble(1), input.toDouble(2), input.toDouble(3)));
+
+			// Create a producer that returns the input
+			io.almostrealism.relation.Producer<PackedCollection> inputProducer = p(input);
+
+			// Call push() - this returns Supplier<Runnable>
+			java.util.function.Supplier<Runnable> supplier = receptor.push(inputProducer);
+			log("  push() returned: " + supplier.getClass().getSimpleName());
+
+			// Get the Runnable
+			Runnable runnable = supplier.get();
+			log("  get() returned: " + runnable.getClass().getSimpleName());
+
+			// Execute the Runnable
+			runnable.run();
+			log("  run() executed");
+
+			// Check cache contents
+			log("  Cache contents after step " + step + ":");
+			for (int row = 0; row <= step; row++) {
+				StringBuilder sb = new StringBuilder(String.format("    Row %d: [", row));
+				for (int col = 0; col < dim; col++) {
+					double v = cache.toDouble(row * dim + col);
+					sb.append(String.format("%.0f", v));
+					if (col < dim - 1) sb.append(", ");
+				}
+				sb.append("]");
+				double expected = (row + 1) * 10;
+				double actual = cache.toDouble(row * dim);
+				if (Math.abs(expected - actual) < 0.01) {
+					sb.append(" [OK]");
+				} else {
+					sb.append(" [EXPECTED ").append(String.format("%.0f", expected)).append("]");
+				}
+				log(sb.toString());
+			}
+		}
+
+		// Final verification
+		log("\n--- Verification ---");
+		boolean success = true;
+		for (int row = 0; row < 5; row++) {
+			double expected = (row + 1) * 10;
+			double actual = cache.toDouble(row * dim);
+			if (Math.abs(expected - actual) > 0.01) {
+				log(String.format("[FAIL] Row %d: expected %.0f, got %.2f", row, expected, actual));
+				success = false;
+			}
+		}
+
+		if (success) {
+			log("[SUCCESS] CollectionReceptor works correctly when invoked directly!");
+			log("This confirms the receptor's push/get/run chain is functional.");
+		} else {
+			log("[FAILURE] CollectionReceptor failed even with direct invocation.");
+		}
+
+		log("\n=== Test Complete ===");
+	}
+
+	/**
+	 * Test CollectionReceptor via Block.andThen() but WITHOUT model compilation.
+	 * This tests whether setReceptor() properly wires up the receptor.
+	 */
+	@Test
+	public void testCollectionReceptor_ViaBlockAndThen() throws Exception {
+		String logFile = "/workspace/project/common/ml/test_output/receptor_block_test.txt";
+		Console.root().addListener(OutputFeatures.fileOutput(logFile));
+
+		log("\n===================================================");
+		log("  CollectionReceptor via Block.andThen() Test");
+		log("===================================================\n");
+
+		int seqLen = 10;
+		int dim = 4;
+
+		// Create destination cache
+		PackedCollection cache = new PackedCollection(shape(seqLen, dim));
+		cache.clear();
+
+		// Create position producer
+		PackedCollection position = new PackedCollection(1);
+		position.setMem(0, 0.0);
+
+		// Create a simple Block using SequentialBlock
+		org.almostrealism.model.SequentialBlock block =
+				new org.almostrealism.model.SequentialBlock(shape(dim));
+
+		// Add a pass-through layer
+		block.add(layer("passthrough", shape(dim), shape(dim), input -> input));
+
+		// Add receptor via andThen
+		block.andThen(into(cache, p(position)));
+
+		log("Block created with andThen(CollectionReceptor)");
+		log("Cache before any operations:");
+		logCacheContents(cache, seqLen, dim, 3);
+
+		log("\n--- Running forward passes (uncompiled) ---");
+
+		for (int step = 0; step < 5; step++) {
+			// Update position
+			position.setMem(0, (double) step);
+
+			// Create input data
+			PackedCollection input = new PackedCollection(shape(dim));
+			for (int i = 0; i < dim; i++) {
+				input.setMem(i, (step + 1) * 10 + i);
+			}
+
+			log(String.format("\nStep %d: position=%.0f, input=[%.0f,%.0f,%.0f,%.0f]",
+					step, position.toDouble(0),
+					input.toDouble(0), input.toDouble(1), input.toDouble(2), input.toDouble(3)));
+
+			// Call forward() directly (not compiled!)
+			Runnable op = block.forward(input);
+			log("  forward() returned: " + op.getClass().getSimpleName());
+
+			// Execute
+			op.run();
+			log("  run() executed");
+
+			// Check cache
+			log("  Cache after step " + step + ":");
+			for (int row = 0; row <= step; row++) {
+				StringBuilder sb = new StringBuilder(String.format("    Row %d: [", row));
+				for (int col = 0; col < dim; col++) {
+					sb.append(String.format("%.0f", cache.toDouble(row * dim + col)));
+					if (col < dim - 1) sb.append(", ");
+				}
+				sb.append("]");
+				log(sb.toString());
+			}
+		}
+
+		// Verify
+		log("\n--- Verification ---");
+		boolean success = true;
+		for (int row = 0; row < 5; row++) {
+			double expected = (row + 1) * 10;
+			double actual = cache.toDouble(row * dim);
+			if (Math.abs(expected - actual) > 0.01) {
+				log(String.format("[FAIL] Row %d: expected %.0f, got %.2f", row, expected, actual));
+				success = false;
+			}
+		}
+
+		if (success) {
+			log("[SUCCESS] CollectionReceptor works via Block.andThen() without compilation!");
+		} else {
+			log("[FAILURE] CollectionReceptor fails even without compilation.");
+			log("This suggests the issue is in how Block.andThen() wires up the receptor.");
+		}
+
+		log("\n=== Test Complete ===");
+	}
+
+	/**
+	 * Test Cell.of() with an explicit receptor (like attention uses internally).
+	 * This tests whether Cell-based operations work differently.
+	 */
+	@Test
+	public void testCollectionReceptor_ViaCellOf() throws Exception {
+		String logFile = "/workspace/project/common/ml/test_output/receptor_cell_test.txt";
+		Console.root().addListener(OutputFeatures.fileOutput(logFile));
+
+		log("\n===================================================");
+		log("  CollectionReceptor via Cell.of() Test");
+		log("===================================================\n");
+
+		int seqLen = 10;
+		int dim = 4;
+
+		// Create destination cache
+		PackedCollection cache = new PackedCollection(shape(seqLen, dim));
+		cache.clear();
+
+		// Create position producer
+		PackedCollection position = new PackedCollection(1);
+		position.setMem(0, 0.0);
+
+		// Create a Cell that passes through and has a receptor
+		org.almostrealism.graph.CollectionReceptor receptor =
+				new org.almostrealism.graph.CollectionReceptor(cache, p(position));
+
+		Cell<PackedCollection> cell = Cell.of((input, next) -> {
+			org.almostrealism.hardware.OperationList ops = new org.almostrealism.hardware.OperationList();
+			// Add the receptor write
+			ops.add(receptor.push(input));
+			// Continue to next (if any)
+			if (next != null) {
+				ops.add(next.push(input));
+			}
+			return ops;
+		});
+
+		log("Cell created with CollectionReceptor in OperationList");
+		log("Cache before any operations:");
+		logCacheContents(cache, seqLen, dim, 3);
+
+		log("\n--- Running cell.push() operations ---");
+
+		for (int step = 0; step < 5; step++) {
+			// Update position
+			position.setMem(0, (double) step);
+
+			// Create input data
+			PackedCollection input = new PackedCollection(shape(dim));
+			for (int i = 0; i < dim; i++) {
+				input.setMem(i, (step + 1) * 10 + i);
+			}
+
+			log(String.format("\nStep %d: position=%.0f, input=[%.0f,%.0f,%.0f,%.0f]",
+					step, position.toDouble(0),
+					input.toDouble(0), input.toDouble(1), input.toDouble(2), input.toDouble(3)));
+
+			// Push to cell
+			java.util.function.Supplier<Runnable> supplier = cell.push(p(input));
+			Runnable op = supplier.get();
+			op.run();
+			log("  cell.push() -> get() -> run() completed");
+
+			// Check cache
+			log("  Cache after step " + step + ":");
+			for (int row = 0; row <= step; row++) {
+				StringBuilder sb = new StringBuilder(String.format("    Row %d: [", row));
+				for (int col = 0; col < dim; col++) {
+					sb.append(String.format("%.0f", cache.toDouble(row * dim + col)));
+					if (col < dim - 1) sb.append(", ");
+				}
+				sb.append("]");
+				log(sb.toString());
+			}
+		}
+
+		// Verify
+		log("\n--- Verification ---");
+		boolean success = true;
+		for (int row = 0; row < 5; row++) {
+			double expected = (row + 1) * 10;
+			double actual = cache.toDouble(row * dim);
+			if (Math.abs(expected - actual) > 0.01) {
+				log(String.format("[FAIL] Row %d: expected %.0f, got %.2f", row, expected, actual));
+				success = false;
+			}
+		}
+
+		if (success) {
+			log("[SUCCESS] CollectionReceptor works via Cell.of() with OperationList!");
+			log("This is the pattern used in AttentionFeatures.attention()");
+		} else {
+			log("[FAILURE] CollectionReceptor fails via Cell.of().");
+		}
+
+		log("\n=== Test Complete ===");
+	}
 }

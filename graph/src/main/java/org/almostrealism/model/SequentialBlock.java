@@ -341,7 +341,12 @@ public class SequentialBlock implements Block, Learning, LayerFeatures {
 						warn("Replacing receptor");
 					}
 
-					SequentialBlock.this.downstream = r;
+					Block last = lastBlock();
+					if (last != null) {
+						last.getForward().setReceptor(r);
+					} else {
+						SequentialBlock.this.downstream = r;
+					}
 				}
 			};
 		}
@@ -370,7 +375,12 @@ public class SequentialBlock implements Block, Learning, LayerFeatures {
 						warn("Replacing receptor");
 					}
 
-					SequentialBlock.this.upstream = r;
+					Block first = firstBlock();
+					if (first != null) {
+						first.getBackward().setReceptor(r);
+					} else {
+						SequentialBlock.this.upstream = r;
+					}
 				}
 			};
 		}

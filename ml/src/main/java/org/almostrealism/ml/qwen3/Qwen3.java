@@ -426,6 +426,7 @@ public class Qwen3 implements AttentionFeatures {
 		int next;
 		int token = Qwen3Tokenizer.BOS_TOKEN;
 
+		model.setCurrentStep(0);  // Reset step counter for new generation
 		model.setCurrentToken(Qwen3Tokenizer.BOS_TOKEN);
 		model.setPrompt(promptTokens, promptTokenCount);
 

@@ -270,7 +270,7 @@ public class DiffusionTransformerTests implements DiffusionTransformerFeatures, 
 
     /**
     * Tests fourierFeatures with simple known values to verify basic mathematical operations.
-    * This is a sanity check to ensure the 2π factor, matrix multiplication, and
+    * This is a sanity check to ensure the 2*pi factor, matrix multiplication, and
     * concatenation order are working correctly.
     */
     @Test
@@ -297,15 +297,15 @@ public class DiffusionTransformerTests implements DiffusionTransformerFeatures, 
         PackedCollection output = compiled.forward(input);
 
         // Manual calculation for verification
-        // f = 2 * π * input @ weight.T
-        // f[0] = 2 * π * 0.5 * 1.0 = π
-        // f[1] = 2 * π * 0.5 * 2.0 = 2π
-        // output = [cos(π), cos(2π), sin(π), sin(2π)] = [-1, 1, 0, 0] (approximately)
+        // f = 2 * pi * input @ weight.T
+        // f[0] = 2 * pi * 0.5 * 1.0 = pi
+        // f[1] = 2 * pi * 0.5 * 2.0 = 2*pi
+        // output = [cos(pi), cos(2*pi), sin(pi), sin(2*pi)] = [-1, 1, 0, 0] (approximately)
 
-        double expectedCos1 = Math.cos(Math.PI);        // ≈ -1
-        double expectedCos2 = Math.cos(2 * Math.PI);    // ≈ 1
-        double expectedSin1 = Math.sin(Math.PI);        // ≈ 0
-        double expectedSin2 = Math.sin(2 * Math.PI);    // ≈ 0
+        double expectedCos1 = Math.cos(Math.PI);        // ~= -1
+        double expectedCos2 = Math.cos(2 * Math.PI);    // ~= 1
+        double expectedSin1 = Math.sin(Math.PI);        // ~= 0
+        double expectedSin2 = Math.sin(2 * Math.PI);    // ~= 0
 
         log("FourierFeatures basic test:");
         log("Input: " + input.valueAt(0, 0));
