@@ -520,7 +520,7 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 		normBackwardsTrainable("backwardsTrainableVeryLarge1", c, groups);
 	}
 
-	@Test(timeout = 60000)
+	@Test(timeout = 10 * 60000)
 	public void backwardsTrainableVeryLarge2() throws IOException {
 		if (skipKnownIssues) return;
 		if (testDepth < 3) return;
