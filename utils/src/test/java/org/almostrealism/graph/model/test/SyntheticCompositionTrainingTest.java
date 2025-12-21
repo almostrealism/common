@@ -89,7 +89,7 @@ public class SyntheticCompositionTrainingTest implements ModelTestFeatures {
 	 *
 	 * <p>Architecture: Input [4] - [Dense - Dense] + residual - Dense - Output [4]</p>
 	 */
-	@Test(timeout = 120000)
+	@Test(timeout = 2 * 60000)
 	public void residualBlock() throws FileNotFoundException {
 		if (testDepth < 1) return;
 
@@ -133,7 +133,7 @@ public class SyntheticCompositionTrainingTest implements ModelTestFeatures {
 	 *
 	 * <p>Architecture: Input [4] - Dense - Dense - Dense - Output [4]</p>
 	 */
-	@Test(timeout = 120000)
+	@Test(timeout = 2 * 60000)
 	public void sequentialComposition() throws FileNotFoundException {
 		if (testDepth < 1) return;
 
