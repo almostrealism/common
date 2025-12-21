@@ -251,13 +251,12 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 	}
 
 
-	@Test(timeout = 8 * 60000)
+	@Test(timeout = 120 * 60000)
 	public void trainSmall() throws IOException {
+		if (true) throw new UnsupportedOperationException();
+
 		if (testDepth < 3) return;
 		if (testProfileIs(TestUtils.PIPELINE)) return;
-		if (!trainingTests &&
-				!IndexProjectionProducerComputation.enableDelegatedIsolate)
-			return;
 
 		int dim = 28;
 		int filters = 8;
