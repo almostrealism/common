@@ -1181,7 +1181,7 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 		} else if (biases != null) {
 			return biases.getShape().getTotalSize();
 		} else {
-			return Math.toIntExact(shape.getTotalSizeLong() / groups);
+			return shape.getTotalSize();
 		}
 	}
 
@@ -1287,7 +1287,8 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 				groups, weights, biases, eps, init, requirements);
 	}
 
-	default CellularLayer norm(TraversalPolicy shape, int size, int groups,
+	default CellularLayer norm(TraversalPolicy shape,
+							   int size, int groups,
 							   PackedCollection weights,
 							   PackedCollection biases,
 							   double eps, boolean init,
