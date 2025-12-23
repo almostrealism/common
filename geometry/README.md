@@ -468,7 +468,7 @@ Producer<Vector> gradient = field.getGradient(position);
 <dependency>
     <groupId>org.almostrealism</groupId>
     <artifactId>ar-algebra</artifactId>
-    <version>0.72</version>
+    <!-- Check pom.xml for current version -->
 </dependency>
 ```
 
@@ -478,7 +478,7 @@ Producer<Vector> gradient = field.getGradient(position);
 <dependency>
     <groupId>org.almostrealism</groupId>
     <artifactId>ar-geometry</artifactId>
-    <version>0.72</version>
+    <!-- Check pom.xml for current version -->
 </dependency>
 ```
 

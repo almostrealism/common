@@ -402,7 +402,7 @@ CollectionProducer traversed = cp(data).traverse(axis);
 <dependency>
     <groupId>org.almostrealism</groupId>
     <artifactId>ar-collect</artifactId>
-    <version>0.72</version>
+    <!-- Check pom.xml for current version -->
 </dependency>
 ```
 

@@ -320,7 +320,7 @@ The io module is used extensively throughout the Almost Realism framework:
 <dependency>
     <groupId>org.almostrealism</groupId>
     <artifactId>ar-io</artifactId>
-    <version>0.72</version>
+    <!-- Check pom.xml for current version -->
 </dependency>
 ```
 

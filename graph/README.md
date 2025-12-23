@@ -303,7 +303,7 @@ public class CustomLayer implements CellularPropagation<PackedCollection<?>> {
 <dependency>
     <groupId>org.almostrealism</groupId>
     <artifactId>ar-graph</artifactId>
-    <version>0.72</version>
+    <!-- Check pom.xml for current version -->
 </dependency>
 ```
 
