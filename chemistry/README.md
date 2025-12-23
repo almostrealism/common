@@ -243,13 +243,13 @@ for (int i = 0; i < 1000; i++) {
 <dependency>
     <groupId>org.almostrealism</groupId>
     <artifactId>ar-physics</artifactId>
-    <version>0.72</version>
+    <!-- Check pom.xml for current version -->
 </dependency>
 
 <dependency>
     <groupId>org.almostrealism</groupId>
     <artifactId>ar-heredity</artifactId>
-    <version>0.72</version>
+    <!-- Check pom.xml for current version -->
 </dependency>
 ```
 
@@ -259,7 +259,7 @@ for (int i = 0; i < 1000; i++) {
 <dependency>
     <groupId>org.almostrealism</groupId>
     <artifactId>ar-chemistry</artifactId>
-    <version>0.72</version>
+    <!-- Check pom.xml for current version -->
 </dependency>
 ```
 

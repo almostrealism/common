@@ -528,7 +528,7 @@ if (a.getShape().getTotalSize() != b.getShape().getTotalSize()) {
 <dependency>
     <groupId>org.almostrealism</groupId>
     <artifactId>ar-algebra</artifactId>
-    <version>0.72</version>
+    <!-- Check pom.xml for current version -->
 </dependency>
 ```
 

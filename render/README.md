@@ -515,13 +515,13 @@ mvn test -pl render -Dtest=SimpleRenderTest
 <dependency>
     <groupId>org.almostrealism</groupId>
     <artifactId>ar-space</artifactId>
-    <version>0.72</version>
+    <!-- Check pom.xml for current version -->
 </dependency>
 
 <dependency>
     <groupId>org.almostrealism</groupId>
     <artifactId>ar-utils</artifactId>
-    <version>0.72</version>
+    <!-- Check pom.xml for current version -->
 </dependency>
 ```
 
@@ -531,7 +531,7 @@ mvn test -pl render -Dtest=SimpleRenderTest
 <dependency>
     <groupId>org.almostrealism</groupId>
     <artifactId>ar-render</artifactId>
-    <version>0.72</version>
+    <!-- Check pom.xml for current version -->
 </dependency>
 ```
 

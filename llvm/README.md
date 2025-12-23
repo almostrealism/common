@@ -314,7 +314,7 @@ export PATH=$JAVA_HOME/bin:$PATH
 <dependency>
     <groupId>org.almostrealism</groupId>
     <artifactId>ar-hardware</artifactId>
-    <version>0.72</version>
+    <!-- Check pom.xml for current version -->
 </dependency>
 ```
 
@@ -324,7 +324,7 @@ export PATH=$JAVA_HOME/bin:$PATH
 <dependency>
     <groupId>org.almostrealism</groupId>
     <artifactId>ar-llvm</artifactId>
-    <version>0.72</version>
+    <!-- Check pom.xml for current version -->
 </dependency>
 ```
 

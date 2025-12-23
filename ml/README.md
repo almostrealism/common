@@ -433,13 +433,13 @@ Console.root().addListener(OutputFeatures.fileOutput("test_output.txt"));
 <dependency>
     <groupId>org.almostrealism</groupId>
     <artifactId>ar-graph</artifactId>
-    <version>0.72</version>
+    <!-- Check pom.xml for current version -->
 </dependency>
 
 <dependency>
     <groupId>org.almostrealism</groupId>
     <artifactId>ar-collect</artifactId>
-    <version>0.72</version>
+    <!-- Check pom.xml for current version -->
 </dependency>
 
 <dependency>
@@ -455,7 +455,7 @@ Console.root().addListener(OutputFeatures.fileOutput("test_output.txt"));
 <dependency>
     <groupId>org.almostrealism</groupId>
     <artifactId>ar-ml</artifactId>
-    <version>0.72</version>
+    <!-- Check pom.xml for current version -->
 </dependency>
 ```
 
