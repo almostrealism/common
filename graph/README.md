@@ -289,6 +289,71 @@ public class CustomLayer implements CellularPropagation<PackedCollection<?>> {
 }
 ```
 
+## Normalization Layers
+
+The `LayerFeatures` interface provides several normalization layer factory methods. Understanding the parameters is crucial for correct usage.
+
+### Group Normalization
+
+Group normalization divides channels into groups and normalizes within each group:
+
+```java
+// Basic group norm - size derived from shape
+CellularLayer layer = norm(shape(channels, features), groups, trainable);
+
+// With explicit weights and biases
+PackedCollection weights = new PackedCollection(channels * features);
+PackedCollection biases = new PackedCollection(channels * features);
+CellularLayer layer = norm(groups, weights, biases);
+```
+
+### Key Parameter: `size`
+
+The `size` parameter determines the **normalization window** - how many elements are normalized together as a group.
+
+```java
+// CORRECT: Let the framework compute size from shape
+CellularLayer layer = norm(shape(c, v), groups, trainable);
+// size = shape.getTotalSize() = c * v
+// Each group normalizes over (c * v) / groups elements
+
+// INCORRECT: Passing wrong size manually
+CellularLayer layer = norm(shape(c, v), c, groups, trainable);  // ❌
+// size = c, but shape has c * v elements
+// This causes incorrect normalization windows!
+```
+
+**Rule of thumb**: Unless you have a specific reason to override, let the framework compute `size` from the shape by using the signature without an explicit `size` parameter.
+
+### Method Signatures
+
+| Signature | Use Case |
+|-----------|----------|
+| `norm(shape, groups, trainable)` | Standard - size derived from shape |
+| `norm(shape, groups, weights, biases)` | With pre-allocated weight tensors |
+| `norm(groups, weights, biases)` | Shape derived from weights |
+| `norm(shape, size, groups, trainable)` | Explicit size (advanced) |
+
+### RMS Normalization
+
+RMS normalization (used in LLaMA, Qwen, etc.) normalizes by root-mean-square without centering:
+
+```java
+// RMSNorm with weights
+CellularLayer layer = rmsnorm(weights, ComputeRequirement.GPU);
+
+// RMSNorm with explicit size
+CellularLayer layer = rmsnorm(shape, size, weights, eps);
+```
+
+### Common Pitfalls
+
+1. **Wrong size parameter**: If you see normalized values that don't match expected validation, check that `size` equals the total elements being normalized together.
+
+2. **Shape vs size mismatch**: When using `norm(shape, size, groups, ...)`, ensure `size` typically equals `shape.getTotalSize()` unless you intentionally want different grouping.
+
+3. **Test validation**: The test `validate()` method expects groups of `(shape.length(0) / groups) * shape.length(1)` elements. Ensure your layer creation matches this expectation.
+
 ## Dependencies
 
 - **ar-relation** - Producer/Evaluable abstraction

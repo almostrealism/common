@@ -34,6 +34,7 @@
                 <a href="#concepts">Core Concepts</a>
                 <a href="#examples">Examples</a>
                 <a href="#shape-validation">Shape Validation</a>
+                <a href="#normalization">Normalization</a>
                 <a href="#resources">Resources</a>
             </nav>
         </header>
@@ -484,6 +485,83 @@ export AR_GRAPH_SHAPE_WARNINGS=true         # Log shape information (validation 
                     <strong>Important:</strong> Remember to set hardware acceleration environment variables before running graph operations:
                     <pre>export AR_HARDWARE_LIBS=/tmp/ar_libs/
 export AR_HARDWARE_DRIVER=native</pre>
+                </div>
+            </section>
+
+            <section id="normalization">
+                <h2>Normalization Layers</h2>
+                <p>The <code>LayerFeatures</code> interface provides several normalization layer factory methods. Understanding the parameters is crucial for correct usage.</p>
+
+                <h3>Group Normalization</h3>
+                <p>Group normalization divides channels into groups and normalizes within each group:</p>
+                <div class="code-example">
+<pre><code class="language-java">// Basic group norm - size derived from shape (RECOMMENDED)
+CellularLayer layer = norm(shape(channels, features), groups, trainable);
+
+// With explicit weights and biases
+PackedCollection weights = new PackedCollection(channels * features);
+PackedCollection biases = new PackedCollection(channels * features);
+CellularLayer layer = norm(groups, weights, biases);</code></pre>
+                </div>
+
+                <h3>Key Parameter: size</h3>
+                <p>The <code>size</code> parameter determines the <strong>normalization window</strong> - how many elements are normalized together as a group.</p>
+                <div class="code-example">
+<pre><code class="language-java">// CORRECT: Let the framework compute size from shape
+CellularLayer layer = norm(shape(c, v), groups, trainable);
+// size = shape.getTotalSize() = c * v
+// Each group normalizes over (c * v) / groups elements
+
+// INCORRECT: Passing wrong size manually
+CellularLayer layer = norm(shape(c, v), c, groups, trainable);  // ❌
+// size = c, but shape has c * v elements
+// This causes incorrect normalization windows!</code></pre>
+                </div>
+
+                <div class="tip">
+                    <strong>Rule of thumb:</strong> Unless you have a specific reason to override, let the framework compute <code>size</code> from the shape by using the signature without an explicit <code>size</code> parameter.
+                </div>
+
+                <h3>Method Signatures</h3>
+                <table class="comparison-table">
+                    <tr>
+                        <th>Signature</th>
+                        <th>Use Case</th>
+                    </tr>
+                    <tr>
+                        <td><code>norm(shape, groups, trainable)</code></td>
+                        <td>Standard - size derived from shape</td>
+                    </tr>
+                    <tr>
+                        <td><code>norm(shape, groups, weights, biases)</code></td>
+                        <td>With pre-allocated weight tensors</td>
+                    </tr>
+                    <tr>
+                        <td><code>norm(groups, weights, biases)</code></td>
+                        <td>Shape derived from weights</td>
+                    </tr>
+                    <tr>
+                        <td><code>norm(shape, size, groups, trainable)</code></td>
+                        <td>Explicit size (advanced use only)</td>
+                    </tr>
+                </table>
+
+                <h3>RMS Normalization</h3>
+                <p>RMS normalization (used in LLaMA, Qwen, etc.) normalizes by root-mean-square without centering:</p>
+                <div class="code-example">
+<pre><code class="language-java">// RMSNorm with weights
+CellularLayer layer = rmsnorm(weights, ComputeRequirement.GPU);
+
+// RMSNorm with explicit size
+CellularLayer layer = rmsnorm(shape, size, weights, eps);</code></pre>
+                </div>
+
+                <h3>Common Pitfalls</h3>
+                <div class="warning">
+                    <strong>Wrong size parameter:</strong> If normalized values don't match expected validation, check that <code>size</code> equals the total elements being normalized together.
+                </div>
+                <div class="warning">
+                    <strong>Shape vs size mismatch:</strong> When using <code>norm(shape, size, groups, ...)</code>, ensure <code>size</code> typically equals <code>shape.getTotalSize()</code> unless you intentionally want different grouping.
                 </div>
             </section>
 
