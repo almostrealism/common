@@ -158,6 +158,7 @@ public class GreaterThanCollection extends CollectionComparisonComputation {
 			boolean includeEqual) {
 		super("greaterThan", shape,  left, right, trueValue, falseValue);
 		this.includeEqual = includeEqual;
+		init();
 	}
 
 	/**
@@ -215,5 +216,13 @@ public class GreaterThanCollection extends CollectionComparisonComputation {
 		return (CollectionProducerParallelProcess)
 				greaterThan((Producer<PackedCollection>) children.get(1), (Producer<PackedCollection>) children.get(2),
 						(Producer<PackedCollection>) children.get(3), (Producer<PackedCollection>) children.get(4), includeEqual);
+	}
+
+	@Override
+	public String signature() {
+		String signature = super.signature();
+		if (signature == null) return null;
+
+		return signature + "{includeEqual:" +  includeEqual + "}";
 	}
 }

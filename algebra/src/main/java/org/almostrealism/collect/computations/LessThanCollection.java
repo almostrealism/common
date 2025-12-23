@@ -158,6 +158,7 @@ public class LessThanCollection extends CollectionComparisonComputation {
 			boolean includeEqual) {
 		super("lessThan", shape,  left, right, trueValue, falseValue);
 		this.includeEqual = includeEqual;
+		init();
 	}
 
 	/**
@@ -215,5 +216,14 @@ public class LessThanCollection extends CollectionComparisonComputation {
 		return (CollectionProducerParallelProcess)
 				lessThan((Producer<PackedCollection>) children.get(1), (Producer<PackedCollection>) children.get(2),
 						(Producer<PackedCollection>) children.get(3), (Producer<PackedCollection>) children.get(4), includeEqual);
+	}
+
+
+	@Override
+	public String signature() {
+		String signature = super.signature();
+		if (signature == null) return null;
+
+		return signature + "{includeEqual:" +  includeEqual + "}";
 	}
 }
