@@ -196,7 +196,7 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 		PackedCollection in = new PackedCollection(shape(c, v)).randnFill();
 		PackedCollection out = new PackedCollection(shape(c, v));
 
-		CellularLayer layer = norm(shape(c, v), c, groups, false);
+		CellularLayer layer = norm(shape(c, v), groups, false);
 		layer.andThen(out);
 
 		Process.optimized(layer.forward(cp(in))).get().run();
