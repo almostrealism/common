@@ -297,15 +297,15 @@ public class DiffusionTransformerTests implements DiffusionTransformerFeatures, 
         PackedCollection output = compiled.forward(input);
 
         // Manual calculation for verification
-        // f = 2 * π * input @ weight.T
-        // f[0] = 2 * π * 0.5 * 1.0 = π
-        // f[1] = 2 * π * 0.5 * 2.0 = 2π
-        // output = [cos(π), cos(2π), sin(π), sin(2π)] = [-1, 1, 0, 0] (approximately)
+        // f = 2 * PI * input @ weight.T
+        // f[0] = 2 * PI * 0.5 * 1.0 = PI
+        // f[1] = 2 * PI * 0.5 * 2.0 = 2*PI
+        // output = [cos(PI), cos(2*PI), sin(PI), sin(2*PI)] = [-1, 1, 0, 0] (approximately)
 
-        double expectedCos1 = Math.cos(Math.PI);        // ≈ -1
-        double expectedCos2 = Math.cos(2 * Math.PI);    // ≈ 1
-        double expectedSin1 = Math.sin(Math.PI);        // ≈ 0
-        double expectedSin2 = Math.sin(2 * Math.PI);    // ≈ 0
+        double expectedCos1 = Math.cos(Math.PI);        // ~= -1
+        double expectedCos2 = Math.cos(2 * Math.PI);    // ~= 1
+        double expectedSin1 = Math.sin(Math.PI);        // ~= 0
+        double expectedSin2 = Math.sin(2 * Math.PI);    // ~= 0
 
         log("FourierFeatures basic test:");
         log("Input: " + input.valueAt(0, 0));
