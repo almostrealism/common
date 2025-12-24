@@ -614,20 +614,6 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 	}
 
 	/**
-	 * Adds an assignment operation to this list.
-	 *
-	 * <p>Creates an {@link Assignment} that copies data from producer to destination.</p>
-	 *
-	 * @param memLength Memory length for the assignment
-	 * @param producer Source producer
-	 * @param destination Destination producer
-	 * @param <T> The memory data type
-	 */
-	public <T extends MemoryData> void add(int memLength, Producer<T> producer, Producer<T> destination) {
-		add(new Assignment<>(memLength, destination, producer));
-	}
-
-	/**
 	 * Returns the count for this operation list.
 	 *
 	 * <p>If the list is uniform (all operations have the same count), returns

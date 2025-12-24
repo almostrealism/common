@@ -193,7 +193,8 @@ public class CollectionProductComputation extends TraversableExpressionComputati
 	 * @param target The {@link Producer} with respect to which the derivative should be computed
 	 * @return A {@link CollectionProducer} that computes the derivative using the product rule,
 	 *         or delegates to the parent implementation if constraints are not met
-	 * @see #expandAndMultiply(io.almostrealism.relation.Producer, io.almostrealism.relation.Producer)
+	 *
+	 * @see #expandAndMultiply(CollectionProducer, CollectionProducer) 
 	 * @see org.almostrealism.collect.CollectionProducer#reshape(int...)
 	 */
 	@Override
