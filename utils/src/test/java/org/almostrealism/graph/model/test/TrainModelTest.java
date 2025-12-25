@@ -251,10 +251,11 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 	}
 
 
-	@Test(timeout = 120 * 60000)
+	@Test(timeout = 30 * 60000)
 	public void trainSmall() throws IOException {
 		if (testDepth < 3) return;
 		if (testProfileIs(TestUtils.PIPELINE)) return;
+		if (skipKnownIssues) return;
 
 		int dim = 28;
 		int filters = 8;

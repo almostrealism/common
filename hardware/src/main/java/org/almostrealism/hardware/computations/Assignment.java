@@ -345,40 +345,48 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 
 		Evaluable<?> ev = in.get();
 
-		MemoryBank destination = (MemoryBank) out.get().evaluate();
+		// If the destination is a provider, there are many optimization
+		// options beyond compiling the Assignment Scope into a kernel
+		if (Computable.provider(out)) {
+			MemoryBank destination = (MemoryBank) out.get().evaluate();
 
-		if (ev instanceof HardwareEvaluable<?>) {
-			ev = ((HardwareEvaluable<?>) ev).getKernel().getValue();
-		}
-
-		OptionalDouble s = Algebraic.getConstant(in);
-
-		if (Computable.provider(out) && s.isPresent()) {
-			MemoryData d = ((Provider<MemoryData>) out.get()).get();
-
-			if (d.getMem() instanceof JVMMemory) {
-				double v = s.getAsDouble();
-				int len = getCount() * memLength;
-				return () -> IntStream.range(0, len).parallel().forEach(i -> d.setMem(i, v));
+			if (ev instanceof HardwareEvaluable<?>) {
+				ev = ((HardwareEvaluable<?>) ev).getKernel().getValue();
 			}
-		}
 
-		boolean shortCircuit = ev instanceof AcceleratedOperation<?> || ev instanceof Provider<?>;
+			OptionalDouble s = Algebraic.getConstant(in);
 
-		if (!enableAggregatedShortCircuit &&
-				MemoryDataArgumentMap.isAggregationTarget(destination)) {
-			// Assignment operations that compute a value which itself
-			// depends on the destination, have issues when the destination
-			// is aggregated (when using DestinationEvaluable it will
-			// be aggregated twice, leading to inconsistent evaluation)
-			// TODO  It would be better to actually determine whether
-			// TODO  the destination is referenced by the the assignment
-			// TODO  value, but for now this is sufficient
-			shortCircuit = false;
-		}
+			// If the source is a constant, and the destination is
+			// regular JVMMemory, the result can be written directly
+			if (s.isPresent()) {
+				MemoryData d = ((Provider<MemoryData>) out.get()).get();
 
-		if (shortCircuit) {
-			return new DestinationEvaluable(ev, destination);
+				if (d.getMem() instanceof JVMMemory) {
+					double v = s.getAsDouble();
+					int len = getCount() * memLength;
+					return () -> IntStream.range(0, len).parallel().forEach(i -> d.setMem(i, v));
+				}
+			}
+
+
+			// DestinationEvaluable can be used for AccelerationOperations and Providers
+			boolean shortCircuit = ev instanceof AcceleratedOperation<?> || ev instanceof Provider<?>;
+
+			if (!enableAggregatedShortCircuit &&
+					MemoryDataArgumentMap.isAggregationTarget(destination)) {
+				// Assignment operations that compute a value which itself
+				// depends on the destination, have issues when the destination
+				// is aggregated (when using DestinationEvaluable it will
+				// be aggregated twice, leading to inconsistent evaluation)
+				// TODO  It would be better to actually determine whether
+				// TODO  the destination is referenced by the the assignment
+				// TODO  value, but for now this is sufficient
+				shortCircuit = false;
+			}
+
+			if (shortCircuit) {
+				return new DestinationEvaluable(ev, destination);
+			}
 		}
 
 		// TODO  It would be preferable to always use DestinationEvaluable, but it
