@@ -19,7 +19,6 @@ package org.almostrealism.layers;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.cycle.Setup;
-import io.almostrealism.scope.ScopeSettings;
 import io.almostrealism.relation.Composition;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Evaluable;
@@ -27,6 +26,7 @@ import io.almostrealism.relation.Factor;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.Ops;
 import org.almostrealism.algebra.MatrixFeatures;
+import org.almostrealism.algebra.computations.LoopedWeightedSumComputation;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
@@ -809,23 +809,41 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 						upsampledFlat, 0, fullPadding);
 			}
 
-			// Reshape for weighted sum convolution
-			CollectionProducer conv = upsampledFlat.reshape(batchSize, 1, inputChannels, paddedExpandedLength);
+			// Reshape for convolution
+			// Input is (batch, inputChannels, paddedExpandedLength)
+			// Filters are (inputChannels, outputChannels, kernelSize)
+			CollectionProducer conv = upsampledFlat.reshape(batchSize, inputChannels, 1, paddedExpandedLength);
 			CollectionProducer filter = cp(filters).reshape(1, inputChannels, outputChannels, kernelSize);
 
-			TraversalPolicy resultShape = shape(batchSize, outputChannels, 1, outLength);
-			TraversalPolicy inputPositions = resultShape
-					.withRate(1, 1, outputChannels)
-					.withRate(2, inputChannels, 1);
-			TraversalPolicy filterPositions = resultShape
-					.withRate(0, 1, batchSize)
-					.withRate(1, inputChannels, 1)
-					.withRate(3, kernelSize, outLength);
-			TraversalPolicy groupShape = shape(1, 1, inputChannels, kernelSize);
+			CollectionProducer result;
 
-			CollectionProducer result = weightedSum("convTranspose1dFilter",
-					inputPositions, filterPositions,
-					groupShape, conv, filter);
+			// LIMITATION: Large inputChannels (>200) cause slow compilation due to expression
+			// tree size. Each output element requires (inputChannels * kernelSize) multiply-adds
+			// to be unrolled as expressions. With inputChannels=2048 and kernelSize=16, that's
+			// 32K operations per output element, creating huge expression trees.
+			//
+			// Future solutions:
+			// 1. Add "inline isolation" to the framework so getScope() is called instead
+			//    of getValueAt() when computations are embedded in wrappers
+			// 2. Use alternative algorithms (im2col, FFT) for large convolutions
+			// 3. Support staged execution with intermediate buffers
+			{
+				// Standard weightedSum approach for small inputChannels
+				TraversalPolicy resultShape = shape(batchSize, 1, outputChannels, outLength);
+				TraversalPolicy inputPositions = resultShape
+						.withRate(1, inputChannels, 1)
+						.withRate(2, 1, outputChannels);
+				TraversalPolicy filterPositions = resultShape
+						.withRate(0, 1, batchSize)
+						.withRate(1, inputChannels, 1)
+						.withRate(3, kernelSize, outLength);
+				TraversalPolicy groupShape = shape(1, inputChannels, 1, kernelSize);
+
+				result = weightedSum("convTranspose1dFilter",
+						inputPositions, filterPositions,
+						groupShape, conv, filter)
+						.reshape(batchSize, outputChannels, outLength);
+			}
 
 			if (bias != null) {
 				result = result.reshape(batchSize, outputChannels, outLength)
@@ -833,7 +851,7 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 								.repeat(batchSize).traverse(2).repeat(outLength));
 			}
 
-			return result.reshape(outputShape).traverseEach();
+			return result.traverseEach();
 		};
 
 		return layer("convTranspose1d", inputShape.traverseEach(), outputShape.traverseEach(),
@@ -1455,6 +1473,10 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 	 * <p>For input shape (batch, channels, length), alpha and beta should have shape (channels,).
 	 * The activation is applied element-wise with channel-specific parameters.</p>
 	 *
+	 * <p>This implementation precomputes the broadcasted alpha/beta tensors to avoid
+	 * creating large expression trees during compilation, which significantly improves
+	 * compilation performance for long sequences.</p>
+	 *
 	 * @param shape Input shape, typically (batch, channels, length)
 	 * @param alpha Per-channel frequency parameter, shape (channels,)
 	 * @param beta Per-channel scaling parameter, shape (channels,)
@@ -1467,21 +1489,41 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 		int seqLen = shape.length(2);
 		int batch = shape.length(0);
 
+		// Precompute broadcasted alpha and beta tensors to avoid creating large
+		// expression trees during compilation. This is much faster than using
+		// repeat() chains in the expression graph for long sequences.
+		PackedCollection alphaExpanded = new PackedCollection(shape(batch, channels, seqLen));
+		PackedCollection betaExpanded = new PackedCollection(shape(batch, channels, seqLen));
+
+		// Use direct memory access for efficient broadcasting
+		double[] alphaData = alphaExpanded.toArray(0, (int) alphaExpanded.getMemLength());
+		double[] betaData = betaExpanded.toArray(0, (int) betaExpanded.getMemLength());
+
+		for (int b = 0; b < batch; b++) {
+			for (int c = 0; c < channels; c++) {
+				double alphaVal = alpha.valueAt(c);
+				double betaVal = beta.valueAt(c);
+				int baseIdx = (b * channels + c) * seqLen;
+				java.util.Arrays.fill(alphaData, baseIdx, baseIdx + seqLen, alphaVal);
+				java.util.Arrays.fill(betaData, baseIdx, baseIdx + seqLen, betaVal);
+			}
+		}
+
+		// Copy back to PackedCollections
+		alphaExpanded.setMem(0, alphaData, 0, alphaData.length);
+		betaExpanded.setMem(0, betaData, 0, betaData.length);
+
 		return layer("snakeLearnable", shape, shape, input -> {
 			CollectionProducer x = c(input);
 
-			// Broadcast alpha and beta to match input shape (batch, channels, length)
-			// alpha/beta are (channels,) -> expand to (1, channels, 1) then broadcast
-			CollectionProducer alphaBC = cp(alpha).reshape(1, channels, 1)
-					.repeat(batch).traverse(2).repeat(seqLen);
-			CollectionProducer betaBC = cp(beta).reshape(1, channels, 1)
-					.repeat(batch).traverse(2).repeat(seqLen);
+			// Use precomputed broadcasted tensors - no repeat() needed in expression graph
+			CollectionProducer alphaBC = cp(alphaExpanded);
+			CollectionProducer betaBC = cp(betaExpanded);
 
 			// f(x) = x + (1/beta) * sin^2(alpha * x)
 			CollectionProducer sinPart = sin(x.multiply(alphaBC));
 			CollectionProducer sinSquared = pow(sinPart, c(2.0));
-			// Reshape back to original shape before traverseEach (broadcasting creates extra dims)
-			return x.add(sinSquared.divide(betaBC)).reshape(shape).traverseEach();
+			return x.add(sinSquared.divide(betaBC)).traverseEach();
 		}, requirements);
 	}
 
