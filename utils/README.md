@@ -127,7 +127,7 @@ public void profilePerformance() implements TestFeatures {
 <dependency>
     <groupId>org.almostrealism</groupId>
     <artifactId>ar-utils</artifactId>
-    <version>0.72</version>
+    <!-- Check pom.xml for current version -->
 </dependency>
 ```
 

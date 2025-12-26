@@ -1403,6 +1403,7 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 	}
 
 	/**
+<<<<<<< HEAD
 	 * Creates a Snake activation layer factory with default alpha=1.0.
 	 * Snake activation is defined as: f(x) = x + (1/alpha) * sin^2(alpha * x)
 	 *
@@ -1696,6 +1697,31 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 		return result;
 	}
 
+	/**
+	 * Calculate the effective width for a normalization layer. This will always be
+	 * the total size of weights or biases (if they are present), otherwise it will
+	 * simply be the total size of the {@link TraversalPolicy} divided by the desired
+	 * number of groups. This size is critical to the distinction between so called
+	 * "batch" normalization versus "layer" normalization.
+	 *
+	 * @param shape
+	 * @param groups
+	 * @param weights
+	 * @param biases
+	 * @return
+	 */
+	default int normSize(TraversalPolicy shape, int groups, PackedCollection weights, PackedCollection biases) {
+		int size;
+
+		if (weights != null) {
+			return weights.getShape().getTotalSize();
+		} else if (biases != null) {
+			return biases.getShape().getTotalSize();
+		} else {
+			return shape.getTotalSize();
+		}
+	}
+
 	default Function<TraversalPolicy, CellularLayer> norm(ComputeRequirement... requirements) {
 		return norm(1, requirements);
 	}
@@ -1722,10 +1748,14 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 		return norm(shape, groups, true, requirements);
 	}
 
-	default CellularLayer norm(TraversalPolicy shape, int groups, boolean trainable, ComputeRequirement... requirements) {
-		// Calculate size for weights based on total size
-		int size = shape.getTotalSize() / groups;
-		return norm(shape, groups,
+	default CellularLayer norm(TraversalPolicy shape, int groups,
+							   boolean trainable, ComputeRequirement... requirements) {
+		return norm(shape, normSize(shape, groups, null, null), groups, trainable, requirements);
+	}
+
+	default CellularLayer norm(TraversalPolicy shape, int size, int groups,
+							   boolean trainable, ComputeRequirement... requirements) {
+		return norm(shape, size, groups,
 				trainable ? new PackedCollection(size) : null,
 				trainable ? new PackedCollection(size) : null,
 				true, requirements);
@@ -1757,7 +1787,7 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 							   PackedCollection weights,
 							   PackedCollection biases,
 							   ComputeRequirement... requirements) {
-		return norm(shape, 1, weights, biases, true, requirements);
+		return norm(shape, 1, weights, biases, requirements);
 	}
 
 	default CellularLayer norm(TraversalPolicy shape, int groups,
@@ -1772,7 +1802,16 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 							   PackedCollection biases,
 							   boolean init,
 							   ComputeRequirement... requirements) {
-		return norm(shape, groups, weights, biases,
+		return norm(shape, normSize(shape, groups, weights, biases),
+				groups, weights, biases, init, requirements);
+	}
+
+	default CellularLayer norm(TraversalPolicy shape, int size, int groups,
+							   PackedCollection weights,
+							   PackedCollection biases,
+							   boolean init,
+							   ComputeRequirement... requirements) {
+		return norm(shape, size, groups, weights, biases,
 				Hardware.getLocalHardware().epsilon(), init, requirements);
 	}
 
@@ -1781,16 +1820,16 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 							   PackedCollection biases,
 							   double eps, boolean init,
 							   ComputeRequirement... requirements) {
-		int size;
+		return norm(shape, normSize(shape, groups, weights, biases),
+				groups, weights, biases, eps, init, requirements);
+	}
 
-		if (weights != null) {
-			size = weights.getShape().getTotalSize();
-		} else if (biases != null) {
-			size = biases.getShape().getTotalSize();
-		} else {
-			size = Math.toIntExact(shape.getTotalSizeLong() / groups);
-		}
-
+	default CellularLayer norm(TraversalPolicy shape,
+							   int size, int groups,
+							   PackedCollection weights,
+							   PackedCollection biases,
+							   double eps, boolean init,
+							   ComputeRequirement... requirements) {
 		if ((weights != null && shape(weights).getTotalSize() != size) ||
 				(biases != null && shape(biases).getTotalSize() != size)) {
 			throw new IllegalArgumentException();

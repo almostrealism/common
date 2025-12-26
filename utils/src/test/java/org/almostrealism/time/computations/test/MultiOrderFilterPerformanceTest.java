@@ -126,12 +126,12 @@ public class MultiOrderFilterPerformanceTest implements TestFeatures, ConsoleFea
 
 		// Run performance test with CPU execution
 		runHighPassPerformanceTest(
-				50000,            // collectionSize
-				40,              // filterOrder (default)
-				1000.0,          // cutoffHz
-				44100,           // sampleRate
-				1000,            // warmIterations
-				ComputeRequirement.CPU  // CPU execution
+				50000,  // collectionSize
+				40,                 // filterOrder (default)
+				1000.0,             // cutoffHz
+				44100,              // sampleRate
+				1000,               // warmIterations
+				ComputeRequirement.CPU
 		);
 
 		log("\nTest output saved to: " + logFile);

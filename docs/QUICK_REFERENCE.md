@@ -163,6 +163,32 @@ Receptor<?> downstream = cell.getTransmitter();
 | Pool | `Pool2d` | Spatial pooling |
 | Norm | `RMSNorm` | RMS normalization |
 
+### Normalization Layers
+
+```java
+import static org.almostrealism.layers.LayerFeatures.*;
+
+// Group normalization - size derived from shape (RECOMMENDED)
+CellularLayer groupNorm = norm(shape(channels, features), groups, trainable);
+
+// With weights and biases
+PackedCollection weights = new PackedCollection(channels * features);
+PackedCollection biases = new PackedCollection(channels * features);
+CellularLayer normLayer = norm(groups, weights, biases);
+
+// RMS normalization (LLaMA, Qwen style)
+CellularLayer rmsNorm = rmsnorm(weights, ComputeRequirement.GPU);
+```
+
+**⚠️ Common Pitfall**: The `size` parameter determines normalization window size.
+```java
+// ✅ CORRECT: Let framework compute size from shape
+norm(shape(c, v), groups, trainable);  // size = c * v
+
+// ❌ WRONG: Passing wrong size explicitly
+norm(shape(c, v), c, groups, trainable);  // size = c, but should be c * v
+```
+
 ### Model Building
 ```java
 Model model = new Model(shape(inputDim));
@@ -343,6 +369,7 @@ mvn test -pl <module> -Dtest=<TestName>
 | `Shape mismatch` | Incompatible dimensions | Check tensor shapes before operations |
 | `OutOfMemoryError` | GPU memory exhausted | Reduce batch size, use CPU |
 | `NullPointerException` in evaluate | Producer not compiled | Call `.get()` before `.evaluate()` |
+| Norm layer output doesn't match validation | Wrong `size` parameter in `norm()` | Use `norm(shape, groups, trainable)` - let framework compute size from shape |
 
 ---
 

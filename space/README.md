@@ -484,25 +484,25 @@ public interface Volume<T> {
 <dependency>
     <groupId>org.almostrealism</groupId>
     <artifactId>ar-geometry</artifactId>
-    <version>0.72</version>
+    <!-- Check pom.xml for current version -->
 </dependency>
 
 <dependency>
     <groupId>org.almostrealism</groupId>
     <artifactId>ar-color</artifactId>
-    <version>0.72</version>
+    <!-- Check pom.xml for current version -->
 </dependency>
 
 <dependency>
     <groupId>org.almostrealism</groupId>
     <artifactId>ar-physics</artifactId>
-    <version>0.72</version>
+    <!-- Check pom.xml for current version -->
 </dependency>
 
 <dependency>
     <groupId>org.almostrealism</groupId>
     <artifactId>ar-graph</artifactId>
-    <version>0.72</version>
+    <!-- Check pom.xml for current version -->
 </dependency>
 ```
 
@@ -512,7 +512,7 @@ public interface Volume<T> {
 <dependency>
     <groupId>org.almostrealism</groupId>
     <artifactId>ar-space</artifactId>
-    <version>0.72</version>
+    <!-- Check pom.xml for current version -->
 </dependency>
 ```
 

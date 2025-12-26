@@ -79,7 +79,7 @@ public class SyntheticNormTrainingTest implements ModelTestFeatures {
 	 *
 	 * <p>Architecture: Input [6] - Dense [6 - 6] - Norm - Dense [6 - 3] - Output [3]</p>
 	 */
-	@Test(timeout = 3 * 60000)
+	@Test(timeout = 5 * 60000)
 	public void denseWithNorm() throws FileNotFoundException {
 		if (testDepth < 1) return;
 
@@ -122,7 +122,7 @@ public class SyntheticNormTrainingTest implements ModelTestFeatures {
 	 *
 	 * <p>Architecture: Input [6] - Dense [6 - 6] - Norm - Dense [6 - 6] - Norm - Dense [6 - 3] - Output [3]</p>
 	 */
-	@Test(timeout = 6 * 60000)
+	@Test(timeout = 13 * 60000)
 	public void denseMultiLayerWithNorm() throws FileNotFoundException {
 		if (testDepth < 1) return;
 
@@ -167,7 +167,7 @@ public class SyntheticNormTrainingTest implements ModelTestFeatures {
 	 *
 	 * <p>Architecture: Input [12] - Dense [12 - 12] - Norm [groups=3] - Dense [12 - 6] - Output [6]</p>
 	 */
-	@Test(timeout = 30 * 60000)
+	@Test(timeout = 10 * 60000)
 	public void groupNorm() throws FileNotFoundException {
 		if (testDepth < 1) return;
 

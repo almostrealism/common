@@ -33,7 +33,8 @@ import java.util.stream.IntStream;
 public class ScopeSettings {
 	public static final boolean enableReplacements = true;
 
-	public static boolean enableInstructionSetReuse = true;
+	public static boolean enableInstructionSetReuse =
+			SystemUtils.isEnabled("AR_INSTRUCTION_SET_REUSE").orElse(true);
 
 	public static boolean enableInstanceReferenceMasking = false;
 

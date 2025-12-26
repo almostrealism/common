@@ -504,7 +504,7 @@ AdamOptimizer adam = new AdamOptimizer(
 <dependency>
     <groupId>org.almostrealism</groupId>
     <artifactId>ar-graph</artifactId>
-    <version>0.72</version>
+    <!-- Check pom.xml for current version -->
 </dependency>
 ```
 
@@ -514,7 +514,7 @@ AdamOptimizer adam = new AdamOptimizer(
 <dependency>
     <groupId>org.almostrealism</groupId>
     <artifactId>ar-optimize</artifactId>
-    <version>0.72</version>
+    <!-- Check pom.xml for current version -->
 </dependency>
 ```
 

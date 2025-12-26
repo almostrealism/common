@@ -560,7 +560,7 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 
 			log("Running kernel operation...");
 			OperationList op = new OperationList();
-			op.add(output.getAtomicMemLength(), supply.get(), p(output));
+			op.add(a(p(output), supply.get()));
 			profile(profile, op);
 			log("Validating kernel output...");
 			validate.accept(output);
@@ -574,7 +574,7 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 
 			log("Running optimized kernel operation...");
 			OperationList op = new OperationList();
-			op.add(output.getAtomicMemLength(), supply.get(), p(output));
+			op.add(a(p(output), supply.get()));
 			op.add(copy(p(output), p(dest), output.getMemLength()));
 
 			ParallelProcess<?, Runnable> p = op.optimize();
