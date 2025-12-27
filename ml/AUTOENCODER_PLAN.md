@@ -149,6 +149,144 @@ ml/src/test/java/org/almostrealism/ml/audio/
 | 3.5 Single residual block | **PASSED** | std=31.169, NO NaN, output varies correctly |
 | 3.6 Two residual blocks | **PASSED** | std=162.696, NO NaN, output varies correctly |
 | 3.7 Complete block WITH 3 residuals | **PASSED** | std=297.408, NO NaN, output varies correctly |
+| 3.8 Conv1d correctness suite (9 tests) | **PASSED** | All produce correct numerical output |
+| 3.9 Output projection isolation | **PASSED** | WNConv1d 128→2 produces varying output from varying input |
+
+---
+
+## Comprehensive Test Inventory
+
+### OobleckLayerValidationTest.java (ml module)
+
+Tests for validating decoder layers against expected behavior.
+
+| Test Name | Line | Purpose | Status |
+|-----------|------|---------|--------|
+| `testFirstWNConv1dOnly` | 66 | First conv layer: WNConv1d 64→2048, k=7 | **PASSED** |
+| `testFirstWNConvTranspose1dOnly` | 167 | First transpose conv: WNConvTranspose1d 2048→1024, stride=16 | **PASSED** |
+| `testFirstConvPlusSnake` | 277 | WNConv1d + Snake combination | **PASSED** |
+| `testThroughFirstDecoderBlock` | 357 | Input proj + Snake + WNConvTranspose (no residuals) | **PASSED** |
+| `testSingleResidualBlock` | 483 | Single residual block in isolation | **PASSED** |
+| `testTwoResidualBlocks` | 626 | Two sequential residual blocks | **PASSED** |
+| `testCompleteFirstDecoderBlock` | 771 | Full decoder block 1 with 3 residual blocks | **PASSED** |
+| `testDecoderBlocks1And2` | 911 | First two decoder blocks combined | **PASSED** (std=300.48) |
+| `testDecoderBlocks1To3` | 1050 | Blocks 1-3 combined | TIMEOUT (forward pass) |
+| `testAllBlocksWithoutOutputProj` | 1190 | All 5 blocks + final Snake (no output proj) | TIMEOUT |
+| `testOutputProjectionIsolation` | 1341 | Output projection WNConv1d 128→2 alone | **PASSED** |
+| `testBlock3Isolation` | 1446 | Block 3 in isolation | TIMEOUT (compilation hangs 15+ min) |
+
+### Conv1dCorrectnessTest.java (ml module)
+
+Unit tests for Conv1d implementation correctness.
+
+| Test Name | Purpose | Status |
+|-----------|---------|--------|
+| `testWeightedSumDirect` | Direct weightedSum call | **PASSED** |
+| `testManualConv` | Manual computation verification | **PASSED** |
+| `testSimpleConv1d` | Basic Conv1d layer (expected [4.0, 6.0, 8.0]) | **PASSED** |
+| `testWeightedSumWithReshape` | With reshape operations | **PASSED** |
+| `testWeightedSumWithReshapeNoStrideRate` | Without stride rate | **PASSED** |
+| `testPositionVariesAcrossSequence` | Position indexing verification | **PASSED** |
+| `testMultipleOutputChannels` | Multi-channel output | **PASSED** |
+| `testStride2` | Stride > 1 (expected [1.0, 3.0, 5.0]) | **PASSED** |
+| `testMultipleInputChannels` | Multi-channel input | **PASSED** |
+
+### OobleckValidationTest.java (ml module)
+
+End-to-end validation against PyTorch reference outputs.
+
+| Test Name | Purpose | Status |
+|-----------|---------|--------|
+| `testDecoderAgainstPyTorchReference` | Full decoder output vs PyTorch | **FAILING** (constant ~0.278) |
+| `testEncoderAgainstPyTorchReference` | Full encoder output vs PyTorch | TBD |
+| `testEncoderIntermediatesAgainstPyTorch` | Encoder layer outputs | TBD |
+
+### Conv1dLayerTests.java (utils module)
+
+Convolution layer tests in utils module.
+
+| Test Name | Purpose | Status |
+|-----------|---------|--------|
+| `testConvTranspose1dCorrectnessSmall` | Small transposed conv (4ch × 4k) | **PASSED** |
+| `testConvTranspose1dLargeChannels` | Large transposed conv (2048ch) | **PASSED** (with LoopedWeightedSum) |
+
+### LoopedWeightedSumCorrectnessTest.java (utils module)
+
+Tests for LoopedWeightedSumComputation.
+
+| Test Name | Purpose | Status |
+|-----------|---------|--------|
+| `testSmall` | Basic 3×2 input, 2×2 weights | **PASSED** |
+| `testVsManual` | Compare against manual computation | **PASSED** (max diff 8.88e-16) |
+| `testLargerScale` | 64 outer × 16 inner | **PASSED** (max diff 2.27e-13) |
+
+---
+
+### Update: Conv1d Unit Tests (2025-12-26, Late)
+
+**Finding**: The previous session's compilation error (`ArithmeticIndexSequence.toArray()`) was caused by **debug logging**, not an actual bug in convolution1d.
+
+The test file `Conv1dCorrectnessTest.java` had `enableLogging = true` for `SubsetTraversalExpression` and `SubsetTraversalIndexMapping`. This debug logging calls `toArray()` on expressions containing layer parameter references, which throws `UnsupportedOperationException`.
+
+**Fix Applied**: Changed logging to `enableLogging = false` in the test.
+
+**Test Results**: All 9 Conv1d correctness tests now pass:
+- `testManualConv` - Manual computation verification
+- `testWeightedSumDirect` - Direct weightedSum call
+- `testSimpleConv1d` - Basic Conv1d layer (expected [4.0, 6.0, 8.0], got [4.0, 6.0, 8.0])
+- `testMultipleOutputChannels` - Multi-channel output
+- `testWeightedSumWithReshape` - With reshape operations
+- `testPositionVariesAcrossSequence` - Position indexing verification
+- `testStride2` - Stride > 1 (expected [1.0, 3.0, 5.0], got [1.0, 3.0, 5.0])
+- `testWeightedSumWithReshapeNoStrideRate` - Without stride rate
+- `testMultipleInputChannels` - Multi-channel input
+
+**Implication**: The Conv1d implementation is correct for unit tests. The full decoder's constant output issue is NOT caused by Conv1d - it must be elsewhere in the decoder integration (blocks 3-5 or output projection).
+
+### Update: Output Projection Isolation Test (2025-12-26)
+
+**Test 3.9: testOutputProjectionIsolation - PASSED**
+
+The output projection layer (WNConv1d 128→2, kernel=7) works correctly in isolation:
+- Input: synthetic varying data [1, 128, 270000] with std ~300
+- Output: varying values with min=-347.27, max=339.12, std=66.39
+- NO NaN values
+- Output VARIES correctly (not constant)
+- Compile time: 11.4 seconds
+- Forward time: 0.4 seconds
+
+**Implication**: The output projection is NOT the cause of the constant output bug. When given varying input, it produces varying output correctly.
+
+### Summary: Constant Output Bug Analysis (2025-12-26)
+
+**What Works (produces varying output):**
+- ✅ Conv1d unit tests (all 9 pass with correct values)
+- ✅ First decoder block with all 3 residual blocks (std=297.4)
+- ✅ Blocks 1+2 combined (std=300.48)
+- ✅ Output projection in isolation (std=66.39)
+
+**What Fails:**
+- ❌ Full decoder (constant output ~0.278)
+- ⏰ Blocks 1-3 test: TIMEOUT during forward pass
+- ⏰ All blocks without output proj: TIMEOUT during forward pass
+- ⏰ Block 3 isolation test: TIMEOUT during compilation (15+ min)
+
+**Key Observations:**
+1. Individual layers work correctly up through blocks 1+2
+2. The bug appears somewhere in blocks 3-5 or their integration
+3. Tests timeout before revealing where output becomes constant
+4. The output projection itself is NOT the cause (passes isolation test)
+
+**Current Theory:**
+The constant output bug manifests when blocks 3+ are added, but the tests timeout before completion due to large output tensor sizes. The issue could be:
+1. Block 3's different stride (stride=8 vs stride=16 in blocks 1-2)
+2. Integration issue between block 2 output and block 3 input
+3. Numerical collapse in later blocks due to activation scaling
+
+**Next Investigation Steps:**
+1. Create `testBlock3Isolation` - test block 3 alone with synthetic input
+2. Profile forward pass to find where time is spent
+3. Check if the 17M element output (blocks 1-5) causes memory/computation issues
 
 ### Phase 1 Results (2025-12-26)
 

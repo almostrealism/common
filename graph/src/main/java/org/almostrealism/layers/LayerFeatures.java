@@ -677,19 +677,20 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 				in = pad(shape(batchSize, inputChannels, paddedLength), in, 0, 0, padding);
 			}
 
-			// Reshape for convolution: (batch, 1, channels, paddedLength)
-			CollectionProducer conv = in.reshape(batchSize, 1, inputChannels, paddedLength);
+			// Reshape for convolution: (batch, 1, channels, paddedLength) - 4D
+			CollectionProducer conv = in.reshape(-1, 1, inputChannels, paddedLength);
 			CollectionProducer filter = cp(filters.reshape(1, outputChannels, inputChannels, kernelSize));
 
 			// Define positions for weighted sum
-			// Result shape considers stride: we compute at positions 0, stride, 2*stride, ...
-			TraversalPolicy resultShape = shape(batchSize, outputChannels, 1, outLength);
+			// Use batch from reshaped producer to match conv2d's pattern
+			int bs = conv.getShape().length(0);
+			TraversalPolicy resultShape = shape(bs, outputChannels, 1, outLength);
 			TraversalPolicy inputPositions = resultShape
 					.withRate(1, 1, outputChannels)
 					.withRate(2, inputChannels, 1)
-					.withRate(3, stride, outLength);
+					.withRate(3, stride, 1);  // Add stride rate for position variation
 			TraversalPolicy filterPositions = resultShape
-					.withRate(0, 1, batchSize)
+					.withRate(0, 1, bs)
 					.withRate(2, inputChannels, 1)
 					.withRate(3, kernelSize, outLength);
 			TraversalPolicy groupShape = shape(1, 1, inputChannels, kernelSize);
@@ -700,15 +701,15 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 
 			// Add bias if provided
 			if (bias != null) {
-				result = result.reshape(batchSize, outputChannels, outLength)
-						.add(cp(bias).reshape(1, outputChannels, 1)
-								.repeat(batchSize).traverse(2).repeat(outLength));
+				int t = outLength;
+				result = result.reshape(bs, outputChannels, t)
+						.add(cp(bias).repeat(bs).traverse(2).repeat(t));
 			}
 
-			return result.reshape(outputShape).traverseEach();
+			return result.reshape(-1, outputChannels, outLength).traverseEach();
 		};
 
-		return layer("conv1d", inputShape.traverseEach(), outputShape.traverseEach(),
+		return layer("conv1d", inputShape.traverse(1), outputShape.traverse(1),
 					operator, bias != null ? List.of(filters, bias) : List.of(filters),
 					new OperationList(), requirements);
 	}

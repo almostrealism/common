@@ -1331,6 +1331,243 @@ public class OobleckLayerValidationTest implements TestFeatures, LayerFeatures, 
 	}
 
 	/**
+	 * Tests the output projection layer (WNConv1d 128->2, kernel_size=7) in isolation
+	 * with synthetic varying input to verify it doesn't cause constant output.
+	 *
+	 * <p>This isolates the output projection to determine if it is responsible
+	 * for the decoder's constant output issue.</p>
+	 */
+	@Test
+	public void testOutputProjectionIsolation() throws IOException {
+		if (!WEIGHTS_DIR.toFile().exists()) {
+			System.out.println("Skipping - weights not found at " + WEIGHTS_DIR);
+			return;
+		}
+
+		Console.root().addListener(OutputFeatures.fileOutput(
+				"test_data/stable_audio/layer_output_proj_isolation.log"));
+
+		int batchSize = 1;
+		int inputChannels = 128;
+		int outputChannels = 2;
+		int sequenceLength = 270000;  // Match the full decoder output length
+		int kernelSize = 7;
+		int padding = 3;  // (kernel_size - 1) / 2 for same padding
+
+		log("=== Output Projection Isolation Test ===");
+		log("Testing WNConv1d(" + inputChannels + "->" + outputChannels + ", kernel=" + kernelSize + ")");
+		log("Input shape: [" + batchSize + ", " + inputChannels + ", " + sequenceLength + "]");
+
+		TraversalPolicy inputShape = shape(batchSize, inputChannels, sequenceLength);
+
+		StateDictionary stateDict = new StateDictionary(WEIGHTS_DIR.toString());
+
+		String outProjPrefix = "decoder.layers.7";
+		PackedCollection outWeightG = stateDict.get(outProjPrefix + ".weight_g");
+		PackedCollection outWeightV = stateDict.get(outProjPrefix + ".weight_v");
+		PackedCollection outBias = stateDict.get(outProjPrefix + ".bias");
+
+		log("Output proj weight_g shape: " + outWeightG.getShape());
+		log("Output proj weight_v shape: " + outWeightV.getShape());
+		log("Output proj bias shape: " + (outBias != null ? outBias.getShape().toString() : "null"));
+
+		Model model = new Model(inputShape);
+		model.add(wnConv1d(batchSize, inputChannels, outputChannels, sequenceLength,
+				kernelSize, 1, padding, outWeightG, outWeightV, outBias));
+
+		log("\nCompiling output projection model...");
+		long startCompile = System.currentTimeMillis();
+		CompiledModel compiled = model.compile(false);
+		log("Compile time: " + (System.currentTimeMillis() - startCompile) + "ms");
+
+		// Create synthetic VARYING input - simulate what blocks 1-5 + Snake would produce
+		log("\nGenerating synthetic varying input with std ~300...");
+		PackedCollection input = new PackedCollection(batchSize, inputChannels, sequenceLength);
+		java.util.Random rand = new java.util.Random(42);
+		double inputMean = -22.94;  // Match blocks 1+2 output stats
+		double inputStd = 300.48;   // Match blocks 1+2 output stats
+		for (int c = 0; c < inputChannels; c++) {
+			for (int s = 0; s < sequenceLength; s++) {
+				double value = inputMean + inputStd * rand.nextGaussian();
+				input.setMem(c * sequenceLength + s, value);
+			}
+		}
+
+		// Verify input is varying
+		float[] inputValues = new float[Math.min(10000, inputChannels * sequenceLength)];
+		for (int i = 0; i < inputValues.length; i++) {
+			inputValues[i] = (float) input.toDouble(i);
+		}
+		double[] inputStats = computeStats(inputValues);
+		log(String.format("Input stats (first 10k): min=%.2f, max=%.2f, mean=%.2f, std=%.2f",
+				inputStats[0], inputStats[1], inputStats[2], inputStats[3]));
+
+		log("\nRunning output projection...");
+		long startForward = System.currentTimeMillis();
+		PackedCollection output = compiled.forward(input);
+		log("Forward time: " + (System.currentTimeMillis() - startForward) + "ms");
+		log("Output shape: " + output.getShape());
+
+		int outputSize = (int) output.getMemLength();
+		float[] outputValues = new float[outputSize];
+		for (int i = 0; i < outputSize; i++) {
+			outputValues[i] = (float) output.toDouble(i);
+		}
+
+		double[] outputStats = computeStats(outputValues);
+		log(String.format("\nOutput stats: min=%.6f, max=%.6f, mean=%.6f, std=%.6f",
+				outputStats[0], outputStats[1], outputStats[2], outputStats[3]));
+
+		boolean hasNaN = Double.isNaN(outputStats[2]);
+		log("NaN check: " + (hasNaN ? "HAS NaN (BUG!)" : "NO NaN (OK)"));
+
+		boolean isConstant = !hasNaN && outputStats[3] < 0.001;
+		log("Constant output check: " + (isConstant ? "CONSTANT (BUG!)" : "VARYING (OK)"));
+
+		log("\nSample output values (first 20):");
+		for (int i = 0; i < Math.min(20, outputSize); i++) {
+			log(String.format("  [%d] = %.6f", i, outputValues[i]));
+		}
+
+		assertFalse("Output projection produces NaN", hasNaN);
+		assertTrue("Output projection produces constant output with varying input - this is the bug!",
+				outputStats[3] > 0.001);
+
+		log("\n=== Output Projection Isolation Test PASSED ===");
+	}
+
+	/**
+	 * Tests decoder block 3 alone with real weights to isolate where timing issue occurs.
+	 *
+	 * <p>Block 3: 512 channels in, 256 channels out, stride 8</p>
+	 * <p>Uses synthetic input to simulate block 2 output with much shorter sequence length.</p>
+	 */
+	@Test
+	public void testBlock3Isolation() throws IOException {
+		if (!WEIGHTS_DIR.toFile().exists()) {
+			System.out.println("Skipping - weights not found at " + WEIGHTS_DIR);
+			return;
+		}
+
+		Console.root().addListener(OutputFeatures.fileOutput(
+				"test_data/stable_audio/layer_block3_isolation.log"));
+
+		log("=== Block 3 Isolation Test ===");
+		log("Testing decoder block 3 with real weights, synthetic input");
+
+		StateDictionary stateDict = new StateDictionary(WEIGHTS_DIR.toString());
+
+		int batchSize = 1;
+		int inChannels = 512;
+		int outChannels = 256;
+		int inputLength = 33;  // Reduced from 529 to speed up
+		int stride = 8;
+		int kernel = stride;
+		int padding = (kernel - 1) / 2;
+		int outputPadding = stride - 1;
+		int outLength = (inputLength - 1) * stride - 2 * padding + kernel + outputPadding;
+
+		log("Block 3: " + inChannels + " -> " + outChannels + ", stride=" + stride);
+		log("Input length: " + inputLength + ", Output length: " + outLength);
+		log("Total output elements: " + (outChannels * outLength));
+
+		TraversalPolicy inputShape = shape(batchSize, inChannels, inputLength);
+		SequentialBlock block = new SequentialBlock(inputShape);
+
+		String prefix = "decoder.layers.3";
+
+		// Snake before upsample
+		block.add(snake(shape(batchSize, inChannels, inputLength),
+				stateDict.get(prefix + ".layers.0.alpha"),
+				stateDict.get(prefix + ".layers.0.beta")));
+
+		// WNConvTranspose1d upsample
+		block.add(wnConvTranspose1d(batchSize, inChannels, outChannels, inputLength,
+				kernel, stride, padding, outputPadding,
+				stateDict.get(prefix + ".layers.1.weight_g"),
+				stateDict.get(prefix + ".layers.1.weight_v"),
+				stateDict.get(prefix + ".layers.1.bias")));
+
+		// 3 Residual blocks
+		for (int resIdx = 0; resIdx < 3; resIdx++) {
+			String resPrefix = prefix + ".layers." + (resIdx + 2);
+			TraversalPolicy resShape = shape(batchSize, outChannels, outLength);
+
+			SequentialBlock mainPath = new SequentialBlock(resShape);
+			mainPath.add(snake(resShape,
+					stateDict.get(resPrefix + ".layers.0.alpha"),
+					stateDict.get(resPrefix + ".layers.0.beta")));
+			mainPath.add(wnConv1d(batchSize, outChannels, outChannels, outLength, 7, 1, 3,
+					stateDict.get(resPrefix + ".layers.1.weight_g"),
+					stateDict.get(resPrefix + ".layers.1.weight_v"),
+					stateDict.get(resPrefix + ".layers.1.bias")));
+			mainPath.add(snake(resShape,
+					stateDict.get(resPrefix + ".layers.2.alpha"),
+					stateDict.get(resPrefix + ".layers.2.beta")));
+			mainPath.add(wnConv1d(batchSize, outChannels, outChannels, outLength, 1, 1, 0,
+					stateDict.get(resPrefix + ".layers.3.weight_g"),
+					stateDict.get(resPrefix + ".layers.3.weight_v"),
+					stateDict.get(resPrefix + ".layers.3.bias")));
+
+			block.add(residual(mainPath));
+		}
+
+		Model model = new Model(inputShape);
+		model.add(block);
+
+		log("\nCompiling model...");
+		long startCompile = System.currentTimeMillis();
+		CompiledModel compiled = model.compile(false);
+		log("Compile time: " + (System.currentTimeMillis() - startCompile) + "ms");
+
+		// Create synthetic varying input matching blocks 1+2 output stats
+		log("\nGenerating synthetic varying input...");
+		PackedCollection input = new PackedCollection(batchSize, inChannels, inputLength);
+		java.util.Random rand = new java.util.Random(42);
+		double inputMean = -22.94;
+		double inputStd = 300.48;
+		for (int c = 0; c < inChannels; c++) {
+			for (int s = 0; s < inputLength; s++) {
+				double value = inputMean + inputStd * rand.nextGaussian();
+				input.setMem(c * inputLength + s, value);
+			}
+		}
+
+		log("\nRunning forward pass...");
+		long startForward = System.currentTimeMillis();
+		PackedCollection output = compiled.forward(input);
+		log("Forward time: " + (System.currentTimeMillis() - startForward) + "ms");
+		log("Output shape: " + output.getShape());
+
+		int outputSize = (int) output.getMemLength();
+		float[] outputValues = new float[Math.min(outputSize, 10000)];
+		for (int i = 0; i < outputValues.length; i++) {
+			outputValues[i] = (float) output.toDouble(i);
+		}
+
+		double[] outputStats = computeStats(outputValues);
+		log(String.format("\nOutput stats: min=%.6f, max=%.6f, mean=%.6f, std=%.6f",
+				outputStats[0], outputStats[1], outputStats[2], outputStats[3]));
+
+		boolean hasNaN = Double.isNaN(outputStats[2]);
+		log("NaN check: " + (hasNaN ? "HAS NaN (BUG!)" : "NO NaN (OK)"));
+
+		boolean isConstant = !hasNaN && outputStats[3] < 0.001;
+		log("Constant output check: " + (isConstant ? "CONSTANT (BUG!)" : "VARYING (OK)"));
+
+		log("\nSample output values (first 20):");
+		for (int i = 0; i < Math.min(20, outputSize); i++) {
+			log(String.format("  [%d] = %.6f", i, outputValues[i]));
+		}
+
+		assertFalse("Block 3 produces NaN", hasNaN);
+		assertTrue("Block 3 produces constant output from varying input",
+				outputStats[3] > 0.001);
+
+		log("\n=== Block 3 Isolation Test PASSED ===");
+	}
+
+	/**
 	 * Computes statistics for an array of values.
 	 *
 	 * @return [min, max, mean, stddev]
