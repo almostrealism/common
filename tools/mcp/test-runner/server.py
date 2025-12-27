@@ -259,13 +259,28 @@ class TestRunner:
         return False
 
     def _copy_surefire_reports(self, run_id: str, module: str):
-        """Copy surefire reports to run directory."""
+        """Copy surefire reports to run directory, only those modified after run started."""
         reports_src = PROJECT_ROOT / module / "target" / "surefire-reports"
         reports_dst = RUNS_DIR / run_id / "reports"
 
-        if reports_src.exists():
+        if not reports_src.exists():
+            return
+
+        # Get run start time
+        metadata = self._load_metadata(run_id)
+        if not metadata:
+            return
+        run_start = datetime.fromisoformat(metadata["started_at"])
+
+        # Create destination directory
+        reports_dst.mkdir(parents=True, exist_ok=True)
+
+        # Copy only reports modified after run started
+        for xml_file in reports_src.glob("TEST-*.xml"):
             try:
-                shutil.copytree(reports_src, reports_dst)
+                file_mtime = datetime.fromtimestamp(xml_file.stat().st_mtime)
+                if file_mtime >= run_start:
+                    shutil.copy2(xml_file, reports_dst / xml_file.name)
             except Exception:
                 pass
 
