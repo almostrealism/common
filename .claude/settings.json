@@ -1,5 +1,5 @@
 {
-  "enabledMcpjsonServers": ["ar-docs",  "ar-test-runner"],
+  "enabledMcpjsonServers": ["ar-docs", "ar-test-runner", "ar-profile-analyzer"],
   "permissions": {
     "allow": [
       "Bash(mvn:*)",

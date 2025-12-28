@@ -9,6 +9,11 @@
       "command": "python3",
       "args": ["tools/mcp/test-runner/server.py"],
       "description": "Test execution and result tracking server"
+    },
+    "ar-profile-analyzer": {
+      "command": "python3",
+      "args": ["tools/mcp/profile-analyzer/server.py"],
+      "description": "Performance profile analysis server"
     }
   }
 }
