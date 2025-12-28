@@ -121,7 +121,7 @@ public class SyntheticCompositionTrainingTest implements ModelTestFeatures {
 				.collect(Collectors.toList()));
 
 		// Train
-		train("residualBlock", model, data, epochs, steps, 1.0, 0.5);
+		train("residualBlock", model, data, epochs, steps, 1.0, 0.1);
 
 		log("Test 5.1 completed successfully");
 	}
