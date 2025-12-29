@@ -422,7 +422,7 @@ public class SphereTest implements TestFeatures {
 
 		// Ray from (0, 0, 3) pointing towards sphere at origin
 		PackedCollection singleRay = new PackedCollection(shape(1, 6).traverse(1));
-		singleRay.setMem(0, 0, 3, 0, 0, -1); // origin (0,0,3), direction (0,0,-1)
+		singleRay.setMem(0, 0, 0, 3, 0, 0, -1); // origin (0,0,3), direction (0,0,-1)
 
 		PackedCollection destination = new PackedCollection(shape(1, 1).traverse(1));
 		Evaluable<PackedCollection> ev = f.getDistance().get();
