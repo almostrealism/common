@@ -19,6 +19,9 @@ package org.almostrealism.audio.line;
 import org.almostrealism.collect.PackedCollection;
 
 import javax.sound.sampled.AudioFormat;
+import javax.sound.sampled.AudioSystem;
+import javax.sound.sampled.DataLine;
+import javax.sound.sampled.LineUnavailableException;
 import javax.sound.sampled.SourceDataLine;
 
 /**
@@ -41,6 +44,7 @@ import javax.sound.sampled.SourceDataLine;
 public class SourceDataOutputLine implements OutputLine {
 	private SourceDataLine line;
 	private final int bufferSize;
+	private final AudioFormat format;
 
 	/**
 	 * Creates a new SourceDataOutputLine wrapping the specified Java Sound API line.
@@ -62,6 +66,7 @@ public class SourceDataOutputLine implements OutputLine {
 	public SourceDataOutputLine(SourceDataLine line, int bufferSize) {
 		this.line = line;
 		this.bufferSize = bufferSize;
+		this.format = line.getFormat();
 	}
 
 	/**
@@ -171,5 +176,41 @@ public class SourceDataOutputLine implements OutputLine {
 	 */
 	public boolean isOpen() {
 		return line != null && line.isOpen();
+	}
+
+	/**
+	 * Resets the audio line by closing the current {@link SourceDataLine} and
+	 * creating a new one with the same format and buffer configuration.
+	 * <p>
+	 * This method can be used to recover from audio issues caused by device
+	 * switching (e.g., when Bluetooth audio devices are connected/disconnected).
+	 * <p>
+	 * Note: After reset, the frame position returned by {@link #getReadPosition()}
+	 * will restart from 0, which may cause temporary synchronization issues with
+	 * any scheduler tracking playback position.
+	 *
+	 * @throws RuntimeException if the new line cannot be opened
+	 */
+	@Override
+	public void reset() {
+		// Close existing line
+		if (line != null) {
+			if (line.isActive()) {
+				line.stop();
+			}
+			if (line.isOpen()) {
+				line.close();
+			}
+		}
+
+		// Create new line with same format
+		DataLine.Info info = new DataLine.Info(SourceDataLine.class, format);
+		try {
+			line = (SourceDataLine) AudioSystem.getLine(info);
+			line.open(format, Math.max(1024, bufferSize * 4));
+			line.start();
+		} catch (LineUnavailableException e) {
+			throw new RuntimeException("Failed to reset audio line", e);
+		}
 	}
 }

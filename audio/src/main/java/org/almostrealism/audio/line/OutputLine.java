@@ -63,4 +63,20 @@ public interface OutputLine extends BufferedAudio, Destroyable {
 			return () -> write(sample.evaluate());
 		};
 	}
+
+	/**
+	 * Resets the output line, typically by closing and recreating the underlying
+	 * audio hardware connection. This can be used to recover from audio issues
+	 * caused by device switching (e.g., Bluetooth audio device changes).
+	 * <p>
+	 * Note: After a reset, the read position will restart from 0, which may
+	 * cause temporary synchronization issues with any scheduler tracking
+	 * playback position.
+	 * <p>
+	 * The default implementation does nothing; subclasses that support reset
+	 * should override this method.
+	 */
+	default void reset() {
+		// Default implementation does nothing
+	}
 }
