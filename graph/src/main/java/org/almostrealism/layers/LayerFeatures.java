@@ -1435,31 +1435,6 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 	}
 
 	/**
-	 * Calculate the effective width for a normalization layer. This will always be
-	 * the total size of weights or biases (if they are present), otherwise it will
-	 * simply be the total size of the {@link TraversalPolicy} divided by the desired
-	 * number of groups. This size is critical to the distinction between so called
-	 * "batch" normalization versus "layer" normalization.
-	 *
-	 * @param shape
-	 * @param groups
-	 * @param weights
-	 * @param biases
-	 * @return
-	 */
-	default int normSize(TraversalPolicy shape, int groups, PackedCollection weights, PackedCollection biases) {
-		int size;
-
-		if (weights != null) {
-			return weights.getShape().getTotalSize();
-		} else if (biases != null) {
-			return biases.getShape().getTotalSize();
-		} else {
-			return shape.getTotalSize();
-		}
-	}
-
-	/**
 	 * Creates a Snake activation layer factory with default alpha=1.0.
 	 * Snake activation is defined as: f(x) = x + (1/alpha) * sin^2(alpha * x)
 	 *
