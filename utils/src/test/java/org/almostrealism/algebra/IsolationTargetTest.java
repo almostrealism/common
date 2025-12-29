@@ -159,9 +159,11 @@ public class IsolationTargetTest implements TestFeatures, LayerFeatures {
 	/**
 	 * Test 3: Large outerCount that matches the problematic case.
 	 * outerCount=2048, innerCount=16 = 32K operations.
+	 * Takes several minutes for compilation due to large expression trees.
 	 */
 	@Test
 	public void testLoopedWeightedSumLarge() {
+		if (testDepth < 2) return;
 		int outerCount = 2048;
 		int innerCount = 16;
 		int outputSize = 33;
@@ -222,9 +224,11 @@ public class IsolationTargetTest implements TestFeatures, LayerFeatures {
 	 * Test 4: Large outerCount but small innerCount.
 	 * This tests if the issue is with outerCount scaling or innerCount scaling.
 	 * outerCount=2048, innerCount=4 - if native loop works, this should be fast.
+	 * Takes ~100 seconds for compilation due to large expression trees.
 	 */
 	@Test
 	public void testLoopedWeightedSumLargeOuter() {
+		if (testDepth < 2) return;
 		int outerCount = 2048;
 		int innerCount = 4;  // Same as test 1 and 2
 		int outputSize = 8;

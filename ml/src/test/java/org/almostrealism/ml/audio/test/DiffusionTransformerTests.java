@@ -270,7 +270,7 @@ public class DiffusionTransformerTests implements DiffusionTransformerFeatures, 
 
     /**
     * Tests fourierFeatures with simple known values to verify basic mathematical operations.
-    * This is a sanity check to ensure the 2π factor, matrix multiplication, and
+    * This is a sanity check to ensure the 2*pi factor, matrix multiplication, and
     * concatenation order are working correctly.
     */
     @Test

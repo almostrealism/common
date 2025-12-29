@@ -234,6 +234,55 @@ REPEAT THIS PRINCIPLE IN THE SUMMARY
 
 ---
 
+## SYSTEMATIC Debugging Approach
+
+**THIS IS MANDATORY. NO SPECULATION. ONLY EVIDENCE.**
+
+When debugging a failing test or numerical discrepancy, you MUST follow this systematic process:
+
+### 1. Component Inventory
+First, identify ALL components involved in the failing code path. For example, if a decoder test fails:
+- List every layer type used (conv1d, convTranspose1d, activation, normalization, etc.)
+- List every test that exists for each component
+- Document this inventory BEFORE making any claims about the bug
+
+### 2. Bottom-Up Test Execution
+Run tests from smallest to largest scope. For each test, record:
+- **Test name**: The exact test method
+- **Result**: PASS or FAIL
+- **Relevant output**: Key numbers or error messages
+
+**Example test hierarchy:**
+```
+Level 1 (Unit): testConv1dSmall, testConvTranspose1dSmall
+Level 2 (Scale): testConv1dLargeChannels, testConvTranspose1dLargeChannels
+Level 3 (Component): testWNConv1d, testSnakeActivation
+Level 4 (Block): testDecoderBlock1, testDecoderBlock3
+Level 5 (Integration): testFullDecoder
+```
+
+### 3. Evidence-Based Conclusions
+**NEVER say "the problem might be X" without test evidence.**
+
+Instead, structure conclusions as:
+- "Tests A, B, C passed, proving components X, Y, Z work correctly"
+- "Test D failed, which isolates the bug to component W"
+- "No test exists for component V, so I need to create one to verify"
+
+### 4. Gap Identification
+If all existing tests pass but the integration test fails:
+- Identify which component combinations are NOT tested
+- Create targeted tests for those gaps
+- Run the new tests and record results
+
+### What NOT to do:
+- DO NOT speculate about possible causes without running tests
+- DO NOT claim a component is correct without a test proving it
+- DO NOT skip levels in the test hierarchy
+- DO NOT make changes without understanding exactly which test will verify the fix
+
+---
+
 ## Module-Specific Guidelines
 
 For module-specific development notes, see:

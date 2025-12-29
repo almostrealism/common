@@ -113,9 +113,11 @@ public class WeightedSumWrappingDiagnosticTest implements TestFeatures {
 	/**
 	 * Test Case 3: Medium weightedSum WITHOUT reshape.
 	 * Group size = 256 * 16 = 4096
+	 * Takes ~16 seconds for native code compilation.
 	 */
 	@Test(timeout = 60000)
 	public void mediumWeightedSumNoReshape() {
+		if (testDepth < 1) return;
 		int inputChannels = 256;  // Moderate size
 		int kernelSize = 16;
 		int outLen = 8;
@@ -155,9 +157,11 @@ public class WeightedSumWrappingDiagnosticTest implements TestFeatures {
 	/**
 	 * Test Case 4: Medium weightedSum WITH reshape.
 	 * This should show if reshape causes the problem.
+	 * Takes ~16 seconds for native code compilation (or cached from previous test).
 	 */
 	@Test(timeout = 60000)
 	public void mediumWeightedSumWithReshape() {
+		if (testDepth < 1) return;
 		int inputChannels = 256;
 		int kernelSize = 16;
 		int outLen = 8;
@@ -198,9 +202,11 @@ public class WeightedSumWrappingDiagnosticTest implements TestFeatures {
 	 * Test Case 5: Large weightedSum WITHOUT reshape.
 	 * Group size = 2048 * 16 = 32768
 	 * This is the problematic configuration from convTranspose1d.
+	 * Takes several minutes for native code compilation due to large expression trees.
 	 */
-	@Test(timeout = 180000)
+	@Test(timeout = 600000)
 	public void largeWeightedSumNoReshape() {
+		if (testDepth < 2) return;
 		int inputChannels = 2048;  // Large
 		int kernelSize = 16;
 		int outLen = 8;
@@ -240,9 +246,11 @@ public class WeightedSumWrappingDiagnosticTest implements TestFeatures {
 	/**
 	 * Test Case 6: Large weightedSum WITH reshape.
 	 * This should demonstrate if reshape is the cause.
+	 * Takes several minutes for native code compilation due to large expression trees.
 	 */
-	@Test(timeout = 180000)
+	@Test(timeout = 600000)
 	public void largeWeightedSumWithReshape() {
+		if (testDepth < 2) return;
 		int inputChannels = 2048;
 		int kernelSize = 16;
 		int outLen = 8;

@@ -16,13 +16,17 @@
 
 package org.almostrealism.ml.audio;
 
+import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.OutputFeatures;
+import org.almostrealism.layers.LayerFeatures;
 import org.almostrealism.ml.StateDictionary;
+import org.almostrealism.model.Block;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
+import org.almostrealism.model.SequentialBlock;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
 
@@ -46,7 +50,7 @@ import static org.junit.Assert.*;
  * <p>The reference outputs were generated using {@code extract_stable_audio_autoencoder.py}
  * which runs the encoder and decoder through PyTorch with deterministic input.</p>
  */
-public class OobleckValidationTest implements TestFeatures, ConsoleFeatures {
+public class OobleckValidationTest implements TestFeatures, LayerFeatures, ConsoleFeatures {
 
 	private static final Path TEST_DATA_DIR = Paths.get("test_data/stable_audio");
 	private static final Path WEIGHTS_DIR = TEST_DATA_DIR.resolve("weights");
@@ -325,5 +329,309 @@ public class OobleckValidationTest implements TestFeatures, ConsoleFeatures {
 		// Assert within tolerance
 		assertTrue(String.format("%s mean absolute difference %.6f exceeds tolerance %.6f",
 				name, meanAbsDiff, tolerance), meanAbsDiff <= tolerance);
+	}
+
+	/**
+	 * Tests each decoder layer's output against PyTorch reference to identify
+	 * where numerical discrepancy begins.
+	 *
+	 * <p>This test compares:
+	 * <ul>
+	 *   <li>Input conv output vs decoder_after_input_conv.bin</li>
+	 *   <li>Block 1 output vs decoder_after_block_1.bin</li>
+	 *   <li>... and so on through all blocks</li>
+	 * </ul>
+	 */
+	@Test
+	public void testDecoderBlockByBlockComparison() throws IOException {
+		if (!WEIGHTS_DIR.toFile().exists()) {
+			System.out.println("Skipping - weights not found at " + WEIGHTS_DIR);
+			return;
+		}
+
+		Console.root().addListener(OutputFeatures.fileOutput(
+				TEST_DATA_DIR.resolve("block_comparison.log").toString()));
+
+		log("\n=== Decoder Block-by-Block Comparison ===\n");
+
+		StateDictionary weights = new StateDictionary(WEIGHTS_DIR.toString());
+
+		// Load latent input
+		float[] latentInput = loadReferenceOutput("latent_input.bin");
+		int latentLength = latentInput.length / 64;
+		log("Latent length: " + latentLength);
+
+		int batchSize = 1;
+
+		// Test 1: Input Conv (64 -> 2048)
+		log("\n--- Test 1: Input Conv (64 -> 2048) ---");
+		float[] refAfterInputConv = loadReferenceOutput("decoder_after_input_conv.bin");
+		log("Reference after_input_conv.bin size: " + refAfterInputConv.length);
+
+		Model inputConvModel = new Model(shape(batchSize, 64, latentLength));
+		String l0 = "decoder.layers.0";
+		inputConvModel.add(wnConv1d(batchSize, 64, 2048, latentLength, 7, 1, 3,
+				weights.get(l0 + ".weight_g"),
+				weights.get(l0 + ".weight_v"),
+				weights.get(l0 + ".bias")));
+
+		CompiledModel inputConvCompiled = inputConvModel.compile(false);
+		PackedCollection input = new PackedCollection(batchSize, 64, latentLength);
+		for (int i = 0; i < latentInput.length; i++) {
+			input.setMem(i, latentInput[i]);
+		}
+
+		PackedCollection inputConvOutput = inputConvCompiled.forward(input);
+		log("Input conv output shape: " + inputConvOutput.getShape());
+
+		compareBlockOutput("InputConv", inputConvOutput, refAfterInputConv, TOLERANCE);
+
+		// Test 2: Block 1 (2048 -> 1024, stride=16)
+		// Input from input conv: (1, 2048, 2) -> Output: (1, 1024, 33)
+		log("\n--- Test 2: Block 1 (2048 -> 1024, stride=16) ---");
+		float[] refAfterBlock1 = loadReferenceOutput("decoder_after_block_1.bin");
+		log("Reference decoder_after_block_1.bin size: " + refAfterBlock1.length);
+
+		int inChannels = 2048;
+		int outChannels = 1024;
+		int stride = 16;
+		int kernel = stride;
+		int padding = (kernel - 1) / 2;
+		int outputPadding = stride - 1;
+		int outLength = (latentLength - 1) * stride - 2 * padding + kernel + outputPadding;
+		log("Expected output length: " + outLength);
+
+		// Build Block 1: Snake + WNConvTranspose1d + 3 residual blocks
+		Model block1Model = new Model(shape(batchSize, inChannels, latentLength));
+		block1Model.add(buildDecoderBlock(weights, batchSize, inChannels, outChannels,
+				latentLength, outLength, stride, 1));
+
+		CompiledModel block1Compiled = block1Model.compile(false);
+
+		// Use input conv output as input to block 1
+		PackedCollection block1Output = block1Compiled.forward(inputConvOutput);
+		log("Block 1 output shape: " + block1Output.getShape());
+
+		compareBlockOutput("Block1", block1Output, refAfterBlock1, TOLERANCE);
+
+		log("\n=== Block-by-Block Comparison Complete ===");
+	}
+
+	/**
+	 * Builds a decoder block with real weights from StateDictionary.
+	 * Structure: Snake -> WNConvTranspose -> 3x ResidualBlock
+	 */
+	private Block buildDecoderBlock(StateDictionary weights, int batchSize,
+									int inChannels, int outChannels,
+									int seqLength, int outLength, int stride, int layerIdx) {
+		String prefix = String.format("decoder.layers.%d", layerIdx);
+		SequentialBlock block = new SequentialBlock(shape(batchSize, inChannels, seqLength));
+
+		// layers.0: Snake activation before upsample
+		String snakePrefix = prefix + ".layers.0";
+		PackedCollection snakeAlpha = weights.get(snakePrefix + ".alpha");
+		PackedCollection snakeBeta = weights.get(snakePrefix + ".beta");
+		block.add(snake(shape(batchSize, inChannels, seqLength), snakeAlpha, snakeBeta));
+
+		// layers.1: Upsample conv (ConvTranspose1d)
+		String convPrefix = prefix + ".layers.1";
+		PackedCollection conv_g = weights.get(convPrefix + ".weight_g");
+		PackedCollection conv_v = weights.get(convPrefix + ".weight_v");
+		PackedCollection conv_b = weights.get(convPrefix + ".bias");
+
+		int kernel = stride;
+		int padding = (kernel - 1) / 2;
+		int outputPadding = stride - 1;
+		block.add(wnConvTranspose1d(batchSize, inChannels, outChannels, seqLength,
+				kernel, stride, padding, outputPadding, conv_g, conv_v, conv_b));
+
+		// 3 residual blocks at output channels: layers.2, layers.3, layers.4
+		for (int resIdx = 0; resIdx < 3; resIdx++) {
+			block.add(buildResidualBlock(weights, batchSize, outChannels, outLength,
+					prefix + ".layers." + (resIdx + 2)));
+		}
+
+		return block;
+	}
+
+	/**
+	 * Builds a residual block with real weights: Snake + WNConv(k=7) + Snake + WNConv(k=1) + skip.
+	 */
+	private Block buildResidualBlock(StateDictionary weights, int batchSize,
+									 int channels, int seqLength, String prefix) {
+		TraversalPolicy inputShape = shape(batchSize, channels, seqLength);
+
+		// Main path: Snake -> Conv(k=7) -> Snake -> Conv(k=1)
+		SequentialBlock mainPath = new SequentialBlock(inputShape);
+
+		// layers.0: Snake
+		PackedCollection snake0_alpha = weights.get(prefix + ".layers.0.alpha");
+		PackedCollection snake0_beta = weights.get(prefix + ".layers.0.beta");
+		mainPath.add(snake(inputShape, snake0_alpha, snake0_beta));
+
+		// layers.1: WNConv1d(k=7, p=3)
+		PackedCollection conv1_g = weights.get(prefix + ".layers.1.weight_g");
+		PackedCollection conv1_v = weights.get(prefix + ".layers.1.weight_v");
+		PackedCollection conv1_b = weights.get(prefix + ".layers.1.bias");
+		mainPath.add(wnConv1d(batchSize, channels, channels, seqLength, 7, 1, 3,
+				conv1_g, conv1_v, conv1_b));
+
+		// layers.2: Snake
+		PackedCollection snake2_alpha = weights.get(prefix + ".layers.2.alpha");
+		PackedCollection snake2_beta = weights.get(prefix + ".layers.2.beta");
+		mainPath.add(snake(inputShape, snake2_alpha, snake2_beta));
+
+		// layers.3: WNConv1d(k=1, p=0)
+		PackedCollection conv3_g = weights.get(prefix + ".layers.3.weight_g");
+		PackedCollection conv3_v = weights.get(prefix + ".layers.3.weight_v");
+		PackedCollection conv3_b = weights.get(prefix + ".layers.3.bias");
+		mainPath.add(wnConv1d(batchSize, channels, channels, seqLength, 1, 1, 0,
+				conv3_g, conv3_v, conv3_b));
+
+		// Residual connection: output = main(x) + x
+		return residual(mainPath);
+	}
+
+	/**
+	 * Tests Block 1 sub-components individually to isolate where numerical discrepancy begins.
+	 * Tests: Snake, WNConvTranspose1d, each residual block in sequence.
+	 */
+	@Test
+	public void testBlock1SubComponents() throws IOException {
+		if (!WEIGHTS_DIR.toFile().exists()) {
+			System.out.println("Skipping - weights not found at " + WEIGHTS_DIR);
+			return;
+		}
+
+		Console.root().addListener(OutputFeatures.fileOutput(
+				TEST_DATA_DIR.resolve("block1_subcomponents.log").toString()));
+
+		log("\n=== Block 1 Sub-Component Comparison ===\n");
+
+		StateDictionary weights = new StateDictionary(WEIGHTS_DIR.toString());
+
+		// Load input_conv output (input to Block 1)
+		float[] inputConvOutput = loadReferenceOutput("decoder_after_input_conv.bin");
+		int inChannels = 2048;
+		int seqLength = inputConvOutput.length / inChannels;
+		log("Input Conv Output: " + inputConvOutput.length + " elements, shape (1, " + inChannels + ", " + seqLength + ")");
+
+		int batchSize = 1;
+		String prefix = "decoder.layers.1";
+
+		// Prepare input collection
+		PackedCollection input = new PackedCollection(batchSize, inChannels, seqLength);
+		for (int i = 0; i < inputConvOutput.length; i++) {
+			input.setMem(i, inputConvOutput[i]);
+		}
+
+		// Test 1: Snake activation only
+		log("\n--- Test 1: Snake Activation ---");
+		float[] refAfterSnake = loadReferenceOutput("decoder_block1_after_snake.bin");
+		log("Reference decoder_block1_after_snake.bin size: " + refAfterSnake.length);
+
+		PackedCollection snakeAlpha = weights.get(prefix + ".layers.0.alpha");
+		PackedCollection snakeBeta = weights.get(prefix + ".layers.0.beta");
+
+		Model snakeModel = new Model(shape(batchSize, inChannels, seqLength));
+		snakeModel.add(snake(shape(batchSize, inChannels, seqLength), snakeAlpha, snakeBeta));
+		CompiledModel snakeCompiled = snakeModel.compile(false);
+
+		PackedCollection snakeOutput = snakeCompiled.forward(input);
+		log("Snake output shape: " + snakeOutput.getShape());
+		compareBlockOutput("Snake", snakeOutput, refAfterSnake, TOLERANCE);
+
+		// Test 2: WNConvTranspose1d (upsample) only
+		log("\n--- Test 2: WNConvTranspose1d (stride=16) ---");
+		float[] refAfterUpsample = loadReferenceOutput("decoder_block1_after_upsample.bin");
+		log("Reference decoder_block1_after_upsample.bin size: " + refAfterUpsample.length);
+
+		int outChannels = 1024;
+		int stride = 16;
+		int kernel = stride;
+		int padding = (kernel - 1) / 2;
+		int outputPadding = stride - 1;
+
+		PackedCollection conv_g = weights.get(prefix + ".layers.1.weight_g");
+		PackedCollection conv_v = weights.get(prefix + ".layers.1.weight_v");
+		PackedCollection conv_b = weights.get(prefix + ".layers.1.bias");
+
+		// Model: Snake -> ConvTranspose (to test upsample after snake)
+		Model upsampleModel = new Model(shape(batchSize, inChannels, seqLength));
+		upsampleModel.add(snake(shape(batchSize, inChannels, seqLength), snakeAlpha, snakeBeta));
+		upsampleModel.add(wnConvTranspose1d(batchSize, inChannels, outChannels, seqLength,
+				kernel, stride, padding, outputPadding, conv_g, conv_v, conv_b));
+		CompiledModel upsampleCompiled = upsampleModel.compile(false);
+
+		PackedCollection upsampleOutput = upsampleCompiled.forward(input);
+		log("Upsample output shape: " + upsampleOutput.getShape());
+		int outLength = (int) (upsampleOutput.getMemLength() / outChannels);
+		log("Output length: " + outLength);
+		compareBlockOutput("WNConvTranspose", upsampleOutput, refAfterUpsample, TOLERANCE);
+
+		// Test 3: First residual block
+		log("\n--- Test 3: After Residual Block 0 ---");
+		float[] refAfterRes0 = loadReferenceOutput("decoder_block1_after_residual_0.bin");
+		log("Reference decoder_block1_after_residual_0.bin size: " + refAfterRes0.length);
+
+		Model res0Model = new Model(shape(batchSize, inChannels, seqLength));
+		res0Model.add(snake(shape(batchSize, inChannels, seqLength), snakeAlpha, snakeBeta));
+		res0Model.add(wnConvTranspose1d(batchSize, inChannels, outChannels, seqLength,
+				kernel, stride, padding, outputPadding, conv_g, conv_v, conv_b));
+		res0Model.add(buildResidualBlock(weights, batchSize, outChannels, outLength,
+				prefix + ".layers.2"));
+		CompiledModel res0Compiled = res0Model.compile(false);
+
+		PackedCollection res0Output = res0Compiled.forward(input);
+		log("After residual 0 shape: " + res0Output.getShape());
+		compareBlockOutput("Residual0", res0Output, refAfterRes0, TOLERANCE);
+
+		log("\n=== Block 1 Sub-Component Comparison Complete ===");
+	}
+
+	/**
+	 * Compares a block's output against reference without assertion (just reports).
+	 */
+	private void compareBlockOutput(String name, PackedCollection actual, float[] expected,
+									double tolerance) {
+		int actualSize = (int) actual.getMemLength();
+		int expectedSize = expected.length;
+
+		log(String.format("  %s: actual size=%d, expected size=%d", name, actualSize, expectedSize));
+
+		int compareSize = Math.min(actualSize, expectedSize);
+		double sumAbsDiff = 0;
+		double maxAbsDiff = 0;
+		int mismatchCount = 0;
+
+		for (int i = 0; i < compareSize; i++) {
+			double actualVal = actual.toDouble(i);
+			double expectedVal = expected[i];
+			double diff = Math.abs(actualVal - expectedVal);
+
+			sumAbsDiff += diff;
+			maxAbsDiff = Math.max(maxAbsDiff, diff);
+			if (diff > tolerance) {
+				mismatchCount++;
+			}
+		}
+
+		double meanAbsDiff = sumAbsDiff / compareSize;
+
+		log(String.format("  Mean Absolute Difference: %.6f", meanAbsDiff));
+		log(String.format("  Max Absolute Difference: %.6f", maxAbsDiff));
+		log(String.format("  Above tolerance: %d / %d (%.2f%%)",
+				mismatchCount, compareSize, 100.0 * mismatchCount / compareSize));
+
+		// Sample comparisons
+		log("  Sample values:");
+		for (int i = 0; i < Math.min(5, compareSize); i++) {
+			log(String.format("    [%d] actual=%.6f, expected=%.6f, diff=%.6f",
+					i, actual.toDouble(i), expected[i], Math.abs(actual.toDouble(i) - expected[i])));
+		}
+
+		boolean passed = meanAbsDiff <= tolerance;
+		log(String.format("  Result: %s (MAE=%.6f, tolerance=%.6f)",
+				passed ? "PASS" : "FAIL", meanAbsDiff, tolerance));
 	}
 }

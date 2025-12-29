@@ -373,6 +373,46 @@ But we cannot easily isolate it due to forward pass performance issues.
 2. Create smaller-scale block 3 test (reduce channels to speed up)
 3. Profile where forward pass time is being spent
 
+### Block 3 Component Testing (2025-12-27)
+
+**Goal**: Identify which component of block 3 causes the slow compilation (15+ min timeout).
+
+Block 3 configuration:
+- inChannels: 512, outChannels: 256
+- inputLength: 33, outputLength: 265
+- **stride: 8** (vs stride=2 for blocks 1-2)
+- kernel: 8, padding: 3, outputPadding: 7
+
+**Component Tests Created** (in OobleckLayerValidationTest.java):
+- `testBlock3SnakeOnly` - Snake activation alone
+- `testBlock3TransposeOnly` - WNConvTranspose1d alone
+- `testBlock3SnakeAndTranspose` - Snake + WNConvTranspose1d
+- `testBlock3OneResidual` - Snake + WNConvTranspose1d + 1 residual
+
+**Results**:
+
+| Component | Compile Time | Result |
+|-----------|--------------|--------|
+| Snake only (512ch, len=33) | **10 seconds** | FAST |
+| WNConvTranspose1d only (512→256, stride=8) | **>5 minutes** | **TIMEOUT** |
+
+**CRITICAL FINDING**: The WNConvTranspose1d with stride=8 is the compilation bottleneck!
+
+**Analysis**:
+1. Snake activation compiles quickly (10s) - NOT the issue
+2. WNConvTranspose1d with stride=8 causes >5 minute compilation - THIS IS THE BOTTLENECK
+3. Block 3 uses stride=8 (vs stride=2 for other blocks), creating 8x more output elements
+4. This explains why blocks 1-2 (stride=2) compile and run fine, but block 3 times out
+
+**Hypothesis**: The large stride (8) combined with high channel count (512→256) creates a massive expression tree that overwhelms the compiler. The WNConvTranspose1d computation complexity scales as:
+- O(inChannels × outChannels × kernelSize × outputLength)
+- For block 3: 512 × 256 × 8 × 265 = 277 million operations
+
+**Next Steps**:
+1. Investigate WNConvTranspose1d compilation for large strides
+2. Consider optimizing the computation graph for transposed convolutions
+3. Check if LoopedWeightedSumComputation can help (currently unused by convTranspose1d)
+
 ### Decoder Validation Result (2025-12-26)
 
 **Key Finding**: Decoder output is nearly CONSTANT across all positions!

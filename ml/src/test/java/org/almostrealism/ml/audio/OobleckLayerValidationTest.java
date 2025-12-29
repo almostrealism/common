@@ -159,7 +159,7 @@ public class OobleckLayerValidationTest implements TestFeatures, LayerFeatures, 
 	/**
 	 * Tests the first WNConvTranspose1d alone (inside decoder block 1).
 	 *
-	 * <p>This is the large-scale operation: 2048 channels × 16 kernel.
+	 * <p>This is the large-scale operation: 2048 channels x 16 kernel.
 	 * If this layer produces constant output from varying input, the issue is in
 	 * the transposed convolution's index expressions at large scale.</p>
 	 */
@@ -1565,6 +1565,206 @@ public class OobleckLayerValidationTest implements TestFeatures, LayerFeatures, 
 				outputStats[3] > 0.001);
 
 		log("\n=== Block 3 Isolation Test PASSED ===");
+	}
+
+	/**
+	 * Tests just the Snake activation for block 3 settings.
+	 */
+	@Test
+	public void testBlock3SnakeOnly() throws IOException {
+		if (!WEIGHTS_DIR.toFile().exists()) {
+			System.out.println("Skipping - weights not found at " + WEIGHTS_DIR);
+			return;
+		}
+
+		log("=== Block 3 Snake Only Test ===");
+
+		StateDictionary stateDict = new StateDictionary(WEIGHTS_DIR.toString());
+
+		int batchSize = 1;
+		int channels = 512;
+		int length = 33;
+
+		log("Testing Snake: " + channels + " channels, length=" + length);
+
+		TraversalPolicy inputShape = shape(batchSize, channels, length);
+		Model model = new Model(inputShape);
+
+		model.add(snake(inputShape,
+				stateDict.get("decoder.layers.3.layers.0.alpha"),
+				stateDict.get("decoder.layers.3.layers.0.beta")));
+
+		log("\nCompiling model...");
+		long start = System.currentTimeMillis();
+		CompiledModel compiled = model.compile(false);
+		log("Compile time: " + (System.currentTimeMillis() - start) + "ms");
+
+		log("\n=== Block 3 Snake Only PASSED ===");
+	}
+
+	/**
+	 * Tests just the WNConvTranspose1d for block 3 settings (512->256, stride=8).
+	 */
+	@Test
+	public void testBlock3TransposeOnly() throws IOException {
+		if (!WEIGHTS_DIR.toFile().exists()) {
+			System.out.println("Skipping - weights not found at " + WEIGHTS_DIR);
+			return;
+		}
+
+		log("=== Block 3 WNConvTranspose1d Only Test ===");
+
+		StateDictionary stateDict = new StateDictionary(WEIGHTS_DIR.toString());
+
+		int batchSize = 1;
+		int inChannels = 512;
+		int outChannels = 256;
+		int inputLength = 33;
+		int stride = 8;
+		int kernel = stride;
+		int padding = (kernel - 1) / 2;
+		int outputPadding = stride - 1;
+
+		log("Testing WNConvTranspose1d: " + inChannels + "->" + outChannels + ", stride=" + stride);
+
+		TraversalPolicy inputShape = shape(batchSize, inChannels, inputLength);
+		Model model = new Model(inputShape);
+
+		model.add(wnConvTranspose1d(batchSize, inChannels, outChannels, inputLength,
+				kernel, stride, padding, outputPadding,
+				stateDict.get("decoder.layers.3.layers.1.weight_g"),
+				stateDict.get("decoder.layers.3.layers.1.weight_v"),
+				stateDict.get("decoder.layers.3.layers.1.bias")));
+
+		log("\nCompiling model...");
+		long start = System.currentTimeMillis();
+		CompiledModel compiled = model.compile(false);
+		log("Compile time: " + (System.currentTimeMillis() - start) + "ms");
+
+		log("\n=== Block 3 WNConvTranspose1d Only PASSED ===");
+	}
+
+	/**
+	 * Tests Snake + WNConvTranspose1d for block 3 (no residuals).
+	 */
+	@Test
+	public void testBlock3SnakeAndTranspose() throws IOException {
+		if (!WEIGHTS_DIR.toFile().exists()) {
+			System.out.println("Skipping - weights not found at " + WEIGHTS_DIR);
+			return;
+		}
+
+		log("=== Block 3 Snake + Transpose Test ===");
+
+		StateDictionary stateDict = new StateDictionary(WEIGHTS_DIR.toString());
+
+		int batchSize = 1;
+		int inChannels = 512;
+		int outChannels = 256;
+		int inputLength = 33;
+		int stride = 8;
+		int kernel = stride;
+		int padding = (kernel - 1) / 2;
+		int outputPadding = stride - 1;
+
+		log("Testing Snake + WNConvTranspose1d: " + inChannels + "->" + outChannels);
+
+		TraversalPolicy inputShape = shape(batchSize, inChannels, inputLength);
+		SequentialBlock block = new SequentialBlock(inputShape);
+
+		block.add(snake(inputShape,
+				stateDict.get("decoder.layers.3.layers.0.alpha"),
+				stateDict.get("decoder.layers.3.layers.0.beta")));
+
+		block.add(wnConvTranspose1d(batchSize, inChannels, outChannels, inputLength,
+				kernel, stride, padding, outputPadding,
+				stateDict.get("decoder.layers.3.layers.1.weight_g"),
+				stateDict.get("decoder.layers.3.layers.1.weight_v"),
+				stateDict.get("decoder.layers.3.layers.1.bias")));
+
+		Model model = new Model(inputShape);
+		model.add(block);
+
+		log("\nCompiling model...");
+		long start = System.currentTimeMillis();
+		CompiledModel compiled = model.compile(false);
+		log("Compile time: " + (System.currentTimeMillis() - start) + "ms");
+
+		log("\n=== Block 3 Snake + Transpose PASSED ===");
+	}
+
+	/**
+	 * Tests Snake + WNConvTranspose1d + 1 residual block for block 3.
+	 */
+	@Test
+	public void testBlock3OneResidual() throws IOException {
+		if (!WEIGHTS_DIR.toFile().exists()) {
+			System.out.println("Skipping - weights not found at " + WEIGHTS_DIR);
+			return;
+		}
+
+		log("=== Block 3 + One Residual Test ===");
+
+		StateDictionary stateDict = new StateDictionary(WEIGHTS_DIR.toString());
+
+		int batchSize = 1;
+		int inChannels = 512;
+		int outChannels = 256;
+		int inputLength = 33;
+		int stride = 8;
+		int kernel = stride;
+		int padding = (kernel - 1) / 2;
+		int outputPadding = stride - 1;
+		int outLength = (inputLength - 1) * stride - 2 * padding + kernel + outputPadding;
+
+		log("Testing Snake + Transpose + 1 Residual: " + inChannels + "->" + outChannels + ", outLength=" + outLength);
+
+		TraversalPolicy inputShape = shape(batchSize, inChannels, inputLength);
+		SequentialBlock block = new SequentialBlock(inputShape);
+
+		String prefix = "decoder.layers.3";
+
+		block.add(snake(inputShape,
+				stateDict.get(prefix + ".layers.0.alpha"),
+				stateDict.get(prefix + ".layers.0.beta")));
+
+		block.add(wnConvTranspose1d(batchSize, inChannels, outChannels, inputLength,
+				kernel, stride, padding, outputPadding,
+				stateDict.get(prefix + ".layers.1.weight_g"),
+				stateDict.get(prefix + ".layers.1.weight_v"),
+				stateDict.get(prefix + ".layers.1.bias")));
+
+		// Add just 1 residual block
+		String resPrefix = prefix + ".layers.2";
+		TraversalPolicy resShape = shape(batchSize, outChannels, outLength);
+
+		SequentialBlock mainPath = new SequentialBlock(resShape);
+		mainPath.add(snake(resShape,
+				stateDict.get(resPrefix + ".layers.0.alpha"),
+				stateDict.get(resPrefix + ".layers.0.beta")));
+		mainPath.add(wnConv1d(batchSize, outChannels, outChannels, outLength, 7, 1, 3,
+				stateDict.get(resPrefix + ".layers.1.weight_g"),
+				stateDict.get(resPrefix + ".layers.1.weight_v"),
+				stateDict.get(resPrefix + ".layers.1.bias")));
+		mainPath.add(snake(resShape,
+				stateDict.get(resPrefix + ".layers.2.alpha"),
+				stateDict.get(resPrefix + ".layers.2.beta")));
+		mainPath.add(wnConv1d(batchSize, outChannels, outChannels, outLength, 1, 1, 0,
+				stateDict.get(resPrefix + ".layers.3.weight_g"),
+				stateDict.get(resPrefix + ".layers.3.weight_v"),
+				stateDict.get(resPrefix + ".layers.3.bias")));
+
+		block.add(residual(mainPath));
+
+		Model model = new Model(inputShape);
+		model.add(block);
+
+		log("\nCompiling model...");
+		long start = System.currentTimeMillis();
+		CompiledModel compiled = model.compile(false);
+		log("Compile time: " + (System.currentTimeMillis() - start) + "ms");
+
+		log("\n=== Block 3 + One Residual PASSED ===");
 	}
 
 	/**

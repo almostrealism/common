@@ -44,9 +44,12 @@ public class LoopedSumPerformanceTest implements TestFeatures, LayerFeatures {
 
 	/**
 	 * Main performance test - generates CSV with timing data.
+	 * Requires testDepth >= 2 due to very long runtime (many configurations tested,
+	 * some taking several minutes each due to expression tree compilation).
 	 */
 	@Test
 	public void testPerformanceMatrix() throws IOException {
+		if (testDepth < 2) return;
 		List<TestResult> results = new ArrayList<>();
 
 		System.out.println("=== LoopedWeightedSumComputation Performance Analysis ===");

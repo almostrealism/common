@@ -16,8 +16,8 @@
 
 package org.almostrealism.algebra.computations;
 
-import io.almostrealism.collect.CollectionVariable;
 import io.almostrealism.collect.TraversableExpression;
+import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.Process;
 import io.almostrealism.compute.ProcessContext;
@@ -214,13 +214,17 @@ public class LoopedWeightedSumComputation extends AggregatedProducerComputation 
 	 */
 	@Override
 	protected Expression<?> getExpression(TraversableExpression[] args, Expression globalIndex, Expression localIndex) {
-		CollectionVariable var = (CollectionVariable) args[0];
+		ArrayVariable<?> out = (ArrayVariable<?>) getOutputVariable();
 
 		// Get current accumulator value
+		// Note: k is only used for accumulator reference; globalIndex must be used
+		// for computing input/weight indices (consistent with AggregatedProducerComputation)
 		Expression k = globalIndex instanceof KernelIndex ? globalIndex : new KernelIndex();
-		Expression currentValue = var.reference(k.multiply(var.length()));
+		Expression currentValue = out.reference(k.multiply(out.length()));
 
 		// Compute the inner weighted sum (unrolled)
+		// IMPORTANT: Use globalIndex (not k) for computing indices, as globalIndex
+		// contains the correct expression for the output position in native loops
 		Expression<?> innerSum = computeInnerSum(args, globalIndex, localIndex);
 
 		// Add inner sum to accumulator
