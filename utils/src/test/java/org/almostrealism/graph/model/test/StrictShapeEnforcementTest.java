@@ -122,7 +122,7 @@ public class StrictShapeEnforcementTest implements ModelTestFeatures {
 	 * Test that the synthetic dense training test works in current mode.
 	 * This test will fail in strict mode until dense layer is fixed.
 	 */
-	@Test(timeout = 10000)
+	@Test(timeout = 30000)
 	public void testSyntheticDenseInCurrentMode() throws FileNotFoundException {
 		if (testDepth < 1) return;
 

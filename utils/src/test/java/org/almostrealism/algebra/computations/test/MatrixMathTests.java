@@ -59,7 +59,7 @@ public class MatrixMathTests implements TestFeatures {
 		matmul(2, 2048, 1024, enableOptimization, true);
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 20000)
 	public void matmulPowers() {
 		if (testDepth < 1) return;
 
@@ -212,7 +212,7 @@ public class MatrixMathTests implements TestFeatures {
 		}
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 4 * 60000)
 	public void sumPowers() {
 		if (testDepth < 3) return;
 

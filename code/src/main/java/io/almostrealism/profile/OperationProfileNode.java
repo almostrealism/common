@@ -47,7 +47,7 @@ public class OperationProfileNode extends OperationProfile
 					Tree<OperationProfileNode>, Nameable {
 
 	public static boolean metadataWarnings = SystemUtils.isEnabled("AR_PROFILE_METADATA_WARNINGS").orElse(false);
-	public static boolean allowMultipleSources = SystemUtils.isEnabled("AR_PROFILE_MULTIPLE_SOURCES").orElse(false);
+	public static boolean allowMultipleSources = SystemUtils.isEnabled("AR_PROFILE_MULTIPLE_SOURCES").orElse(true);
 
 	private static Function<OperationMetadata, String> metadataDetail =
 			OperationProfile.appendContext(

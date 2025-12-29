@@ -172,7 +172,8 @@ public class CJNIPrintWriter extends CPrintWriter {
 
 		if (access == Accessibility.EXTERNAL) {
 			if (parallel > 1) {
-				println("for (int global_id = global_index ; global_id < global_total; global_id += " + parallel + ") {");
+				// Use long long to prevent integer overflow when global_id * size exceeds int32_max
+				println("for (long long global_id = global_index ; global_id < global_total; global_id += " + parallel + ") {");
 			}
 		}
 	}

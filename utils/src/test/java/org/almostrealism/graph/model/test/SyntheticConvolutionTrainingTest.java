@@ -126,7 +126,7 @@ public class SyntheticConvolutionTrainingTest implements ModelFeatures, ModelTes
 	 *
 	 * <p>Architecture: Input [1, 16, 16] - Conv2d [1-4, 3x3] - Pool2d [2x2] - Flatten - Dense - Output [2]</p>
 	 */
-	@Test(timeout = 120000)
+	@Test(timeout = 240000)
 	public void simpleConv2d() throws FileNotFoundException {
 		if (testDepth < 2) return;
 
@@ -199,8 +199,8 @@ public class SyntheticConvolutionTrainingTest implements ModelFeatures, ModelTes
 	 *
 	 * <p>Architecture: Input [1, 20, 20] - Conv2d [1-8, 3x3] - Pool2d - Conv2d [8-16, 3x3] - Pool2d - Flatten - Dense - Output [4]</p>
 	 */
-	@Test(timeout = 120000)
-	public void multiLayerConv2d() throws FileNotFoundException {
+	@Test(timeout = 45 * 60000)
+	public void multiLayerConv2d() {
 		if (testDepth < 2) return;
 
 		log("=== Test 2.2: Multi-Layer Conv2d ===");

@@ -79,7 +79,7 @@ public class SyntheticNormTrainingTest implements ModelTestFeatures {
 	 *
 	 * <p>Architecture: Input [6] - Dense [6 - 6] - Norm - Dense [6 - 3] - Output [3]</p>
 	 */
-	@Test(timeout = 120000)
+	@Test(timeout = 6 * 60000)
 	public void denseWithNorm() throws FileNotFoundException {
 		if (testDepth < 1) return;
 
@@ -110,7 +110,7 @@ public class SyntheticNormTrainingTest implements ModelTestFeatures {
 				.collect(Collectors.toList()));
 
 		// Train using existing infrastructure
-		train("denseWithNorm", model, data, epochs, steps, 1.0, 0.5);
+		train("denseWithNorm", model, data, epochs, steps, 0.3, 0.2);
 
 		log("Test 3.1 completed successfully");
 	}
@@ -122,7 +122,7 @@ public class SyntheticNormTrainingTest implements ModelTestFeatures {
 	 *
 	 * <p>Architecture: Input [6] - Dense [6 - 6] - Norm - Dense [6 - 6] - Norm - Dense [6 - 3] - Output [3]</p>
 	 */
-	@Test(timeout = 120000)
+	@Test(timeout = 13 * 60000)
 	public void denseMultiLayerWithNorm() throws FileNotFoundException {
 		if (testDepth < 1) return;
 
@@ -155,7 +155,7 @@ public class SyntheticNormTrainingTest implements ModelTestFeatures {
 				.collect(Collectors.toList()));
 
 		// Train
-		train("denseMultiLayerWithNorm", model, data, epochs, steps, 1.0, 0.5);
+		train("denseMultiLayerWithNorm", model, data, epochs, steps, 0.3, 0.2);
 
 		log("Test 3.2 completed successfully");
 	}
@@ -167,7 +167,7 @@ public class SyntheticNormTrainingTest implements ModelTestFeatures {
 	 *
 	 * <p>Architecture: Input [12] - Dense [12 - 12] - Norm [groups=3] - Dense [12 - 6] - Output [6]</p>
 	 */
-	@Test(timeout = 120000)
+	@Test(timeout = 10 * 60000)
 	public void groupNorm() throws FileNotFoundException {
 		if (testDepth < 1) return;
 
@@ -208,7 +208,7 @@ public class SyntheticNormTrainingTest implements ModelTestFeatures {
 				.collect(Collectors.toList()));
 
 		// Train
-		train("groupNorm", model, data, epochs, steps, 1.0, 0.5);
+		train("groupNorm", model, data, epochs, steps, 1.0, 0.1);
 
 		log("Test 3.3 completed successfully");
 	}

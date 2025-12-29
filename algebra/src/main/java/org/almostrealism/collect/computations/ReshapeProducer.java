@@ -536,11 +536,12 @@ public class ReshapeProducer
 	@Override
 	public CollectionProducer delta(Producer<?> target) {
 		if (producer instanceof CollectionProducer) {
+			CollectionProducer deltaResult = ((CollectionProducer) producer).delta(target);
 			if (shape == null) {
-				return new ReshapeProducer(traversalAxis, ((CollectionProducer) producer).delta(target));
+				return traverse(traversalAxis, deltaResult);
 			} else {
 				TraversalPolicy newShape = shape.append(shape(target));
-				return new ReshapeProducer(newShape, ((CollectionProducer) producer).delta(target));
+				return (CollectionProducer) reshape(newShape, deltaResult);
 			}
 		}
 
@@ -566,6 +567,9 @@ public class ReshapeProducer
 	 */
 	public CollectionProducer traverse(int axis) {
 		if (shape == null || shape(producer).traverse(0).equals(getShape().traverse(0))) {
+			if (producer instanceof CollectionProducerComputation) {
+				return ((CollectionProducerComputation) producer).traverse(axis);
+			}
 			return new ReshapeProducer(axis, producer);
 		} else {
 			return new ReshapeProducer(axis, this);
@@ -593,6 +597,9 @@ public class ReshapeProducer
 	 */
 	@Override
 	public CollectionProducer reshape(TraversalPolicy shape) {
+		if (producer instanceof CollectionProducerComputation) {
+			return ((CollectionProducerComputation) producer).reshape(shape);
+		}
 		return new ReshapeProducer(shape, producer);
 	}
 

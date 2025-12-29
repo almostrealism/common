@@ -17,8 +17,8 @@ public class MatmulPathTest implements MatrixFeatures, ConsoleFeatures {
 	/**
 	 * Test matmul with small output (should use vector path).
 	 */
-	@Test
-	public void testSmallOutputMatmul() {
+	@Test(timeout = 30000)
+	public void smallOutputMatmul() {
 		int inputSize = 128;
 		int outputSize = 100;  // Below 10000 threshold
 
@@ -55,8 +55,8 @@ public class MatmulPathTest implements MatrixFeatures, ConsoleFeatures {
 	/**
 	 * Test matmul with large output (should use weightedSum path after fix).
 	 */
-	@Test
-	public void testLargeOutputMatmul() {
+	@Test(timeout = 30000)
+	public void largeOutputMatmul() {
 		int inputSize = 128;
 		int outputSize = 15000;  // Above 10000 threshold
 
@@ -93,8 +93,8 @@ public class MatmulPathTest implements MatrixFeatures, ConsoleFeatures {
 	/**
 	 * Compare vector path vs forced weightedSum path for same computation.
 	 */
-	@Test
-	public void testPathEquivalence() {
+	@Test(timeout = 30000)
+	public void pathEquivalence() {
 		int inputSize = 64;
 		int outputSize = 500;  // Small enough for both paths to work quickly
 

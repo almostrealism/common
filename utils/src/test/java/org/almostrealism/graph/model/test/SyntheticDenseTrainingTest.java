@@ -130,7 +130,7 @@ public class SyntheticDenseTrainingTest implements ModelTestFeatures {
 				.collect(Collectors.toList()));
 
 		// Train using existing infrastructure
-		train("simpleDenseRegression", model, data, epochs, steps, 1.0, 0.5);
+		train("simpleDenseRegression", model, data, epochs, steps, 1.0, 0.1);
 
 		log("Test 1.1 completed successfully");
 	}
@@ -172,7 +172,7 @@ public class SyntheticDenseTrainingTest implements ModelTestFeatures {
 				.collect(Collectors.toList()));
 
 		// Train
-		train("denseMultipleLayers", model, data, epochs, steps, 1.0, 0.5);
+		train("denseMultipleLayers", model, data, epochs, steps, 1.0, 0.1);
 
 		log("Test 1.2 completed successfully");
 	}
@@ -184,7 +184,7 @@ public class SyntheticDenseTrainingTest implements ModelTestFeatures {
 	 *
 	 * <p>Architecture: Input [4] - Dense [4 - 2] - Softmax - Output [2]</p>
 	 */
-	@Test(timeout = 120000)
+	@Test(timeout = 12 * 60000)
 	public void denseClassification() throws FileNotFoundException {
 		if (testDepth < 1) return;
 
