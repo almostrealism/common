@@ -396,6 +396,15 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 		}
 
 		/*
+		 * Reset asyncEvaluables for each construct() call.
+		 * This ensures fresh StreamingEvaluable instances are created with
+		 * new downstream consumers that point to the new AcceleratedProcessDetails.
+		 * Without this reset, reused asyncEvaluables would throw UnsupportedOperationException
+		 * when trying to set a different downstream consumer.
+		 */
+		asyncEvaluables = new StreamingEvaluable[arguments.size()];
+
+		/*
 		 * First pass: determine which arguments need async evaluation and create
 		 * their StreamingEvaluable instances. We don't set downstream yet because
 		 * we need to create the AcceleratedProcessDetails first.
