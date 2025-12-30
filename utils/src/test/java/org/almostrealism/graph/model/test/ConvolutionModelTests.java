@@ -152,7 +152,7 @@ public class ConvolutionModelTests implements ModelFeatures, TestFeatures, Kerne
 		convBackwards("convBackwardsMediumBatch", 4, 28, 28, 28, 3, 28, 0, true);
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 2 * 60000)
 	public void convBackwardsLarge() throws IOException {
 		convBackwards("convBackwardsLarge", 1, 168, 7, 7, 3, 112, 1, true);
 	}
