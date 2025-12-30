@@ -344,7 +344,6 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 	@Test(timeout = 30000)
 	public void subsetHalfPad2dSumAll() {
 		if (testDepth < 3) return;
-		if (testProfileIs(TestUtils.PIPELINE)) return;
 
 		subsetHalfPad2dSum1();
 		subsetHalfPad2dSum2();

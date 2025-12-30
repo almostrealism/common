@@ -346,7 +346,6 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 	@Test(timeout = 60000)
 	public void backwardsBiasMedium3() throws IOException {
 		if (testDepth < 1) return;
-		if (testProfileIs(TestUtils.PIPELINE)) return;
 
 		normBackwardsBias("backwardsBiasMedium3", 64, 1);
 	}
@@ -354,7 +353,6 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 	@Test(timeout = 60000)
 	public void backwardsBiasProgressive1() throws IOException {
 		if (testDepth < 2) return;
-		if (testProfileIs(TestUtils.PIPELINE)) return;
 
 		backwardsBiasProgressive(2, 1, 5);
 	}
@@ -362,7 +360,6 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 	@Test(timeout = 60000)
 	public void backwardsBiasProgressive2() throws IOException {
 		if (testDepth < 1) return;
-		if (testProfileIs(TestUtils.PIPELINE)) return;
 
 		backwardsBiasProgressive(32, 4, 3);
 	}
@@ -498,7 +495,6 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 	public void backwardsTrainableProgressive() throws IOException {
 		if (skipKnownIssues) return;
 		if (testDepth < 3) return;
-		if (testProfileIs(TestUtils.PIPELINE)) return;
 
 		int c = 200;
 		int groups = 4;
@@ -513,7 +509,6 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 	@Test(timeout = 120 * 60000)
 	public void backwardsTrainableVeryLarge1() throws IOException {
 		if (testDepth < 2) return;
-		if (testProfileIs(TestUtils.PIPELINE)) return;
 
 		int c = 1600;
 		int groups = 4;
@@ -524,7 +519,6 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 	public void backwardsTrainableVeryLarge2() throws IOException {
 		if (skipKnownIssues) return;
 		if (testDepth < 3) return;
-		if (testProfileIs(TestUtils.PIPELINE)) return;
 
 		int c = 3456;
 		int groups = 4;
@@ -535,7 +529,6 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 	public void backwardsTrainableVeryLarge3() throws IOException {
 		if (skipKnownIssues) return;
 		if (skipLongTests || testDepth < 3) return;
-		if (testProfileIs(TestUtils.PIPELINE)) return;
 
 		int c = 21952;
 		int groups = 4;

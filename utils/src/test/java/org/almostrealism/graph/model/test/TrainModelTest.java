@@ -61,7 +61,6 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 
 	@Test(timeout = 120000)
 	public void dense() {
-		if (testProfileIs(TestUtils.PIPELINE)) return;
 		if (skipKnownIssues) return;
 
 		int size = 30;
@@ -254,7 +253,6 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 	@Test(timeout = 30 * 60000)
 	public void trainSmall() throws IOException {
 		if (testDepth < 3) return;
-		if (testProfileIs(TestUtils.PIPELINE)) return;
 		if (skipKnownIssues) return;
 
 		int dim = 28;

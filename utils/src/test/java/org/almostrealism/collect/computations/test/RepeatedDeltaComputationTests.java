@@ -241,7 +241,6 @@ public class RepeatedDeltaComputationTests implements TestFeatures {
 	@Test(timeout = 60000)
 	public void convDeltaSmall() throws IOException {
 		if (testDepth < 2) return;
-		if (testProfileIs(TestUtils.PIPELINE)) return;
 
 		int l = 2; int d = 6;
 
@@ -251,7 +250,6 @@ public class RepeatedDeltaComputationTests implements TestFeatures {
 	@Test(timeout = 60000)
 	public void convDeltaMedium() throws IOException {
 		if (testDepth < 3) return;
-		if (testProfileIs(TestUtils.PIPELINE)) return;
 
 		int l = 8; int d = 24;
 
@@ -261,7 +259,6 @@ public class RepeatedDeltaComputationTests implements TestFeatures {
 	@Test(timeout = 60000)
 	public void convDeltaGradSmall() throws IOException {
 		if (skipLongTests || testDepth < 1) return;
-		if (testProfileIs(TestUtils.PIPELINE)) return;
 
 		try {
 			ParallelProcess.explicitIsolationTargets

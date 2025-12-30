@@ -107,8 +107,6 @@ public class FourierTransformTests implements TestFeatures {
 
 	@Test(timeout = 60000)
 	public void multiBatchTransform1() {
-		if (testProfileIs(TestUtils.PIPELINE)) return;
-
 		int sampleRate = 44100;
 		int bins = 1024;
 		int totalSlices = 2;
