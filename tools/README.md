@@ -214,7 +214,7 @@ The tools module requires:
 <dependency>
     <groupId>org.almostrealism</groupId>
     <artifactId>ar-tools</artifactId>
-    <version>0.72</version>
+    <!-- Check pom.xml for current version -->
 </dependency>
 ```
 

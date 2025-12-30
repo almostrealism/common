@@ -381,7 +381,7 @@ TemporalRunner.enableIsolation = false;
 <dependency>
     <groupId>org.almostrealism</groupId>
     <artifactId>ar-time</artifactId>
-    <version>0.72</version>
+    <!-- Check pom.xml for current version -->
 </dependency>
 ```
 

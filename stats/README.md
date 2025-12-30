@@ -256,7 +256,7 @@ int sampledIndex = features.sample(topKProbs);
 <dependency>
     <groupId>org.almostrealism</groupId>
     <artifactId>ar-stats</artifactId>
-    <version>0.72</version>
+    <!-- Check pom.xml for current version -->
 </dependency>
 ```
 

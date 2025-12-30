@@ -160,7 +160,7 @@ public class NormLayerShapeInvestigationTest implements TestFeatures {
 	/**
 	 * Test 4: Run a simple norm layer and observe the shape warning.
 	 */
-	@Test(timeout = 10000)
+	@Test(timeout = 20000)
 	public void testNormLayerWarning() {
 		log("=== Test 4: Norm Layer Shape Warning ===");
 

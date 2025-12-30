@@ -364,13 +364,13 @@ export AR_HARDWARE_DRIVER=native  # or opencl, metal
 <dependency>
     <groupId>org.almostrealism</groupId>
     <artifactId>ar-geometry</artifactId>
-    <version>0.72</version>
+    <!-- Check pom.xml for current version -->
 </dependency>
 
 <dependency>
     <groupId>org.almostrealism</groupId>
     <artifactId>ar-stats</artifactId>
-    <version>0.72</version>
+    <!-- Check pom.xml for current version -->
 </dependency>
 ```
 
@@ -380,7 +380,7 @@ export AR_HARDWARE_DRIVER=native  # or opencl, metal
 <dependency>
     <groupId>org.almostrealism</groupId>
     <artifactId>ar-color</artifactId>
-    <version>0.72</version>
+    <!-- Check pom.xml for current version -->
 </dependency>
 ```
 

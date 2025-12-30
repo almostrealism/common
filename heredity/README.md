@@ -341,13 +341,13 @@ The heredity module is intentionally minimal, focusing on clean abstractions:
 <dependency>
     <groupId>org.almostrealism</groupId>
     <artifactId>ar-time</artifactId>
-    <version>0.72</version>
+    <!-- Check pom.xml for current version -->
 </dependency>
 
 <dependency>
     <groupId>org.almostrealism</groupId>
     <artifactId>ar-relation</artifactId>
-    <version>0.72</version>
+    <!-- Check pom.xml for current version -->
 </dependency>
 ```
 
@@ -357,7 +357,7 @@ The heredity module is intentionally minimal, focusing on clean abstractions:
 <dependency>
     <groupId>org.almostrealism</groupId>
     <artifactId>ar-heredity</artifactId>
-    <version>0.72</version>
+    <!-- Check pom.xml for current version -->
 </dependency>
 ```
 

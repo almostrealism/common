@@ -311,8 +311,17 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 		} else if (isFixedCount()) {
 			kernelSize = getCount();
 
-			if (output != null && !List.of(1L, getCountLong()).contains(output.getCountLong())) {
-				throw new IllegalArgumentException();
+			if (output != null) {
+				long dc = output.getCountLong();
+				boolean matchCount = List.of(1L, getCountLong()).contains(dc);
+				boolean matchTotal = getCountLong() == output.getMemLength();
+
+				if (!matchCount && !matchTotal) {
+					throw new IllegalArgumentException("The destination count (" + dc +
+							") must match the count for the process (" + kernelSize + "), unless the count " +
+							"for the process is identical to the total size of the output (" +
+							output.getMemLength() + ")");
+				}
 			}
 		} else if (output != null) {
 			kernelSize = enableOutputCount ? output.getCountLong() : Math.max(output.getCountLong(), getCountLong());

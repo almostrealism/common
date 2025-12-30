@@ -140,7 +140,7 @@ Vector newPosition = body.getPosition();
 <dependency>
     <groupId>org.almostrealism</groupId>
     <artifactId>ar-physics</artifactId>
-    <version>0.72</version>
+    <!-- Check pom.xml for current version -->
 </dependency>
 ```
 

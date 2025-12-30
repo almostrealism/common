@@ -556,11 +556,23 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 	 * @return The compiled scope
 	 */
 	public synchronized Scope<T> compile() {
-		new ExpressionCache().use(getMetadata(), () -> {
-			prepareScope();
-			getCompiler().compile();
-			postCompile();
-		});
+		if (getCompiler().getScope() == null) {
+			if (argumentMap != null) {
+				// The Scope creation was either previously unsuccessful,
+				// or later destroyed and the argumentMap should have
+				// been destroyed as well
+				// TODO  a temporary solution is to destroy the argumentMap now instead
+				warn("Operation was not destroyed proactively");
+				argumentMap.destroy();
+				argumentMap = null;
+			}
+
+			new ExpressionCache().use(getMetadata(), () -> {
+				prepareScope();
+				getCompiler().compile();
+				postCompile();
+			});
+		}
 
 		return getCompiler().getScope();
 	}

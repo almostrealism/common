@@ -297,10 +297,17 @@ public class DiffusionTransformerTests implements DiffusionTransformerFeatures, 
         PackedCollection output = compiled.forward(input);
 
         // Manual calculation for verification
+<<<<<<< HEAD
         // f = 2 * pi * input @ weight.T
         // f[0] = 2 * pi * 0.5 * 1.0 = pi
         // f[1] = 2 * pi * 0.5 * 2.0 = 2*pi
         // output = [cos(pi), cos(2*pi), sin(pi), sin(2*pi)] = [-1, 1, 0, 0] (approximately)
+=======
+        // f = 2 * PI * input @ weight.T
+        // f[0] = 2 * PI * 0.5 * 1.0 = PI
+        // f[1] = 2 * PI * 0.5 * 2.0 = 2*PI
+        // output = [cos(PI), cos(2*PI), sin(PI), sin(2*PI)] = [-1, 1, 0, 0] (approximately)
+>>>>>>> origin/develop
 
         double expectedCos1 = Math.cos(Math.PI);        // ~= -1
         double expectedCos2 = Math.cos(2 * Math.PI);    // ~= 1

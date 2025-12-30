@@ -368,7 +368,7 @@ println "Test accuracy: ${accuracy * 100}%"
 <dependency>
     <groupId>org.almostrealism</groupId>
     <artifactId>ar-ml</artifactId>
-    <version>0.72</version>
+    <!-- Check pom.xml for current version -->
 </dependency>
 
 <dependency>
@@ -384,7 +384,7 @@ println "Test accuracy: ${accuracy * 100}%"
 <dependency>
     <groupId>org.almostrealism</groupId>
     <artifactId>ar-ml-script</artifactId>
-    <version>0.72</version>
+    <!-- Check pom.xml for current version -->
 </dependency>
 ```
 

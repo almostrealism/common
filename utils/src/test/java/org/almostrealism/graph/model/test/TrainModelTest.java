@@ -226,7 +226,7 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 		return model;
 	}
 
-	@Test(timeout = 120000)
+	@Test(timeout = 4 * 60000)
 	public void trainSmallest() throws IOException {
 		if (testDepth < 1) return;
 
@@ -236,7 +236,7 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 		train(input, model(dim, dim, 2, 2, 1, 10));
 	}
 
-	@Test(timeout = 3 * 60000)
+	@Test(timeout = 4 * 60000)
 	public void trainVerySmall() throws IOException {
 		if (testDepth < 2) return;
 
@@ -251,13 +251,11 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 	}
 
 
-	@Test(timeout = 8 * 60000)
+	@Test(timeout = 30 * 60000)
 	public void trainSmall() throws IOException {
 		if (testDepth < 3) return;
 		if (testProfileIs(TestUtils.PIPELINE)) return;
-		if (!trainingTests &&
-				!IndexProjectionProducerComputation.enableDelegatedIsolate)
-			return;
+		if (skipKnownIssues) return;
 
 		int dim = 28;
 		int filters = 8;

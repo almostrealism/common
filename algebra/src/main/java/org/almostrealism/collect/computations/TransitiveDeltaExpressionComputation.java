@@ -146,7 +146,7 @@ public abstract class TransitiveDeltaExpressionComputation
 	 *
 	 * @param width The width of the target diagonal matrix
 	 * @return {@code true} if this computation represents a diagonal matrix, {@code false} otherwise
-	 * @see io.almostrealism.collect.Algebraic#isDiagonal(int, io.almostrealism.relation.Producer)
+	 * @see io.almostrealism.collect.Algebraic#isDiagonal(int, Object)
 	 */
 	@Override
 	public boolean isDiagonal(int width) {
@@ -166,7 +166,7 @@ public abstract class TransitiveDeltaExpressionComputation
 	 * @param width The width of the target diagonal matrix
 	 * @return An {@link Optional} containing the scalar computation if extraction is successful,
 	 *         or empty if the computation is not diagonal or scalar extraction fails
-	 * @see io.almostrealism.collect.Algebraic#getDiagonalScalar(int, io.almostrealism.relation.Producer)
+	 * @see io.almostrealism.collect.Algebraic#getDiagonalScalar(int, Object)
 	 */
 	@Override
 	public Optional<Computable> getDiagonalScalar(int width) {

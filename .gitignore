@@ -23,4 +23,7 @@ javac.*.args
 Extensions/**
 **/Extensions/**
 
+# Python
+**/__pycache__
+
 **/docs/apidocs

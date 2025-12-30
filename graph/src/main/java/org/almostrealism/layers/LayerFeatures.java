@@ -597,24 +597,223 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 						next.push(subset(inputShape, in, pos))));
 	}
 
+	/**
+	 * Creates a 1D convolution block with kernel size 1 (pointwise convolution).
+	 * This is a convenience method that delegates to the full convolution1d with stride=1.
+	 *
+	 * @param batchSize Batch size
+	 * @param inputChannels Number of input channels
+	 * @param outputChannels Number of output channels (filters)
+	 * @param seqLength Sequence length
+	 * @param kernelSize Must be 1 for this overload
+	 * @param padding Must be 0 for this overload
+	 * @param weights Weight tensor with shape [outputChannels, inputChannels, kernelSize]
+	 * @param bias Optional bias tensor with shape [outputChannels], may be null
+	 * @return Block performing the 1D convolution
+	 */
 	default Block convolution1d(int batchSize, int inputChannels, int outputChannels,
 								int seqLength, int kernelSize, int padding,
 								PackedCollection weights, PackedCollection bias) {
-		if (kernelSize != 1 || padding != 0) {
-			throw new UnsupportedOperationException("Currently only kernel size 1 with no padding is supported");
+		return convolution1d(batchSize, inputChannels, outputChannels, seqLength,
+							kernelSize, 1, padding, weights, bias);
+	}
+
+	/**
+	 * Creates a 1D convolution block with arbitrary kernel size, stride, and padding.
+	 *
+	 * <p>Implements the standard 1D convolution operation commonly used in audio processing
+	 * and sequence modeling. The output length is computed as:
+	 * out_length = (seq_length + 2*padding - kernel_size) / stride + 1</p>
+	 *
+	 * @param batchSize Batch size
+	 * @param inputChannels Number of input channels
+	 * @param outputChannels Number of output channels (filters)
+	 * @param seqLength Input sequence length
+	 * @param kernelSize Size of the convolution kernel
+	 * @param stride Stride of the convolution (for downsampling, use stride &gt; 1)
+	 * @param padding Zero-padding added to both sides of the input
+	 * @param weights Weight tensor with shape [outputChannels, inputChannels, kernelSize]
+	 * @param bias Optional bias tensor with shape [outputChannels], may be null
+	 * @param requirements Optional compute requirements
+	 * @return Block performing the 1D convolution
+	 */
+	default Block convolution1d(int batchSize, int inputChannels, int outputChannels,
+								int seqLength, int kernelSize, int stride, int padding,
+								PackedCollection weights, PackedCollection bias,
+								ComputeRequirement... requirements) {
+		// For kernel size 1 and stride 1, use optimized pointwise implementation
+		if (kernelSize == 1 && stride == 1 && padding == 0) {
+			weights = weights.reshape(weights.getShape().trim());
+			return new SequentialBlock(shape(batchSize, inputChannels, seqLength))
+					.enumerate(1, 2, 1)
+					.reshape(batchSize * seqLength, inputChannels)
+					.andThenDense(weights, bias)
+					.reshape(batchSize, seqLength, outputChannels)
+					.enumerate(1, 2, 1)
+					.reshape(batchSize, outputChannels, seqLength);
 		}
 
-		weights = weights.reshape(weights.getShape().trim());
+		// Calculate output length
+		int paddedLength = seqLength + 2 * padding;
+		int outLength = (paddedLength - kernelSize) / stride + 1;
 
-		// For kernel size 1, this is just a pointwise linear transformation
-		// Reshape to (batchSize * seqLength, inputChannels) for matrix multiplication
-		return new SequentialBlock(shape(batchSize, inputChannels, seqLength))
-				.enumerate(1, 2, 1)
-				.reshape(batchSize * seqLength, inputChannels)
-				.andThenDense(weights, bias)
-				.reshape(batchSize, seqLength, outputChannels)
-				.enumerate(1, 2, 1)
-				.reshape(batchSize, outputChannels, seqLength);
+		TraversalPolicy inputShape = shape(batchSize, inputChannels, seqLength);
+		TraversalPolicy outputShape = shape(batchSize, outputChannels, outLength);
+		TraversalPolicy filterShape = shape(outputChannels, inputChannels, kernelSize);
+
+		// Ensure weights have correct shape
+		if (weights.getShape().getTotalSize() != filterShape.getTotalSize()) {
+			throw new IllegalArgumentException("Weight shape mismatch: expected " +
+					filterShape + " but got " + weights.getShape());
+		}
+		PackedCollection filters = weights.reshape(filterShape);
+
+		Factor<PackedCollection> operator = input -> {
+			CollectionProducer in = c(input);
+
+			// Apply padding if needed
+			if (padding > 0) {
+				in = pad(shape(batchSize, inputChannels, paddedLength), in, 0, 0, padding);
+			}
+
+			// Reshape for convolution: (batch, 1, channels, paddedLength)
+			CollectionProducer conv = in.reshape(batchSize, 1, inputChannels, paddedLength);
+			CollectionProducer filter = cp(filters.reshape(1, outputChannels, inputChannels, kernelSize));
+
+			// Define positions for weighted sum
+			// Result shape considers stride: we compute at positions 0, stride, 2*stride, ...
+			TraversalPolicy resultShape = shape(batchSize, outputChannels, 1, outLength);
+			TraversalPolicy inputPositions = resultShape
+					.withRate(1, 1, outputChannels)
+					.withRate(2, inputChannels, 1)
+					.withRate(3, stride, outLength);
+			TraversalPolicy filterPositions = resultShape
+					.withRate(0, 1, batchSize)
+					.withRate(2, inputChannels, 1)
+					.withRate(3, kernelSize, outLength);
+			TraversalPolicy groupShape = shape(1, 1, inputChannels, kernelSize);
+
+			CollectionProducer result = weightedSum("conv1dFilter",
+					inputPositions, filterPositions,
+					groupShape, conv, filter);
+
+			// Add bias if provided
+			if (bias != null) {
+				result = result.reshape(batchSize, outputChannels, outLength)
+						.add(cp(bias).reshape(1, outputChannels, 1)
+								.repeat(batchSize).traverse(2).repeat(outLength));
+			}
+
+			return result.reshape(outputShape).traverseEach();
+		};
+
+		return layer("conv1d", inputShape.traverseEach(), outputShape.traverseEach(),
+					operator, bias != null ? List.of(filters, bias) : List.of(filters),
+					new OperationList(), requirements);
+	}
+
+	/**
+	 * Creates a 1D transposed convolution (deconvolution) block for upsampling.
+	 *
+	 * <p>Transposed convolution is the gradient operation of a normal convolution,
+	 * commonly used in decoder networks for upsampling. The output length is computed as:
+	 * {@code out_length = (seq_length - 1) * stride - 2 * padding + kernel_size}</p>
+	 *
+	 * <p>The implementation works by upsampling the input (inserting zeros between elements),
+	 * padding for convolution boundaries, then performing standard convolution with the
+	 * transposed weight layout. Specifically:</p>
+	 * <ol>
+	 *   <li>Upsample input by placing each element in a cell of size {@code stride},
+	 *       with zeros filling the remaining positions</li>
+	 *   <li>Trim to the correct expanded length: {@code (seqLength - 1) * stride + 1}</li>
+	 *   <li>Pad with {@code kernelSize - 1 - padding} zeros on each side</li>
+	 *   <li>Perform standard convolution using {@code weightedSum}</li>
+	 * </ol>
+	 *
+	 * @param batchSize Batch size
+	 * @param inputChannels Number of input channels
+	 * @param outputChannels Number of output channels
+	 * @param seqLength Input sequence length
+	 * @param kernelSize Size of the convolution kernel
+	 * @param stride Stride (upsampling factor)
+	 * @param padding Padding to remove from output
+	 * @param weights Weight tensor with shape [inputChannels, outputChannels, kernelSize]
+	 * @param bias Optional bias tensor with shape [outputChannels], may be null
+	 * @param requirements Optional compute requirements
+	 * @return Block performing the transposed 1D convolution
+	 */
+	default Block convTranspose1d(int batchSize, int inputChannels, int outputChannels,
+								  int seqLength, int kernelSize, int stride, int padding,
+								  PackedCollection weights, PackedCollection bias,
+								  ComputeRequirement... requirements) {
+		int outLength = (seqLength - 1) * stride - 2 * padding + kernelSize;
+
+		TraversalPolicy inputShape = shape(batchSize, inputChannels, seqLength);
+		TraversalPolicy outputShape = shape(batchSize, outputChannels, outLength);
+		TraversalPolicy filterShape = shape(inputChannels, outputChannels, kernelSize);
+
+		if (weights.getShape().getTotalSize() != filterShape.getTotalSize()) {
+			throw new IllegalArgumentException("Weight shape mismatch: expected " +
+					filterShape + " but got " + weights.getShape());
+		}
+		PackedCollection filters = weights.reshape(filterShape);
+
+		Factor<PackedCollection> operator = input -> {
+			CollectionProducer in = c(input);
+
+			int expandedLength = (seqLength - 1) * stride + 1;
+			int fullPadding = kernelSize - 1 - padding;
+			int paddedExpandedLength = expandedLength + 2 * fullPadding;
+
+			// Upsample: place each input element at start of a stride-sized cell, zeros fill the rest
+			TraversalPolicy upsampleCellShape = shape(batchSize * inputChannels, seqLength, stride);
+			CollectionProducer upsampled = pad(upsampleCellShape,
+					in.reshape(batchSize * inputChannels, seqLength, 1),
+					0, 0, 0);
+
+			CollectionProducer upsampledFlat = upsampled.reshape(batchSize * inputChannels, seqLength * stride);
+
+			// Trim trailing zeros from upsampling
+			if (seqLength * stride > expandedLength) {
+				upsampledFlat = upsampledFlat.subset(shape(batchSize * inputChannels, expandedLength), 0, 0);
+			}
+
+			// Pad for convolution boundaries
+			if (fullPadding > 0) {
+				upsampledFlat = pad(shape(batchSize * inputChannels, paddedExpandedLength),
+						upsampledFlat, 0, fullPadding);
+			}
+
+			// Reshape for weighted sum convolution
+			CollectionProducer conv = upsampledFlat.reshape(batchSize, 1, inputChannels, paddedExpandedLength);
+			CollectionProducer filter = cp(filters).reshape(1, inputChannels, outputChannels, kernelSize);
+
+			TraversalPolicy resultShape = shape(batchSize, outputChannels, 1, outLength);
+			TraversalPolicy inputPositions = resultShape
+					.withRate(1, 1, outputChannels)
+					.withRate(2, inputChannels, 1);
+			TraversalPolicy filterPositions = resultShape
+					.withRate(0, 1, batchSize)
+					.withRate(1, inputChannels, 1)
+					.withRate(3, kernelSize, outLength);
+			TraversalPolicy groupShape = shape(1, 1, inputChannels, kernelSize);
+
+			CollectionProducer result = weightedSum("convTranspose1dFilter",
+					inputPositions, filterPositions,
+					groupShape, conv, filter);
+
+			if (bias != null) {
+				result = result.reshape(batchSize, outputChannels, outLength)
+						.add(cp(bias).reshape(1, outputChannels, 1)
+								.repeat(batchSize).traverse(2).repeat(outLength));
+			}
+
+			return result.reshape(outputShape).traverseEach();
+		};
+
+		return layer("convTranspose1d", inputShape.traverseEach(), outputShape.traverseEach(),
+					operator, bias != null ? List.of(filters, bias) : List.of(filters),
+					new OperationList(), requirements);
 	}
 
 	default Function<TraversalPolicy, Block> convolution2d(int inputChannels, int filterCount, int size, int padding,
@@ -1160,6 +1359,77 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 		}, requirements);
 	}
 
+	/**
+	 * Calculate the effective width for a normalization layer. This will always be
+	 * the total size of weights or biases (if they are present), otherwise it will
+	 * simply be the total size of the {@link TraversalPolicy} divided by the desired
+	 * number of groups. This size is critical to the distinction between so called
+	 * "batch" normalization versus "layer" normalization.
+	 *
+	 * @param shape
+	 * @param groups
+	 * @param weights
+	 * @param biases
+	 * @return
+	 */
+	default int normSize(TraversalPolicy shape, int groups, PackedCollection weights, PackedCollection biases) {
+		int size;
+
+		if (weights != null) {
+			return weights.getShape().getTotalSize();
+		} else if (biases != null) {
+			return biases.getShape().getTotalSize();
+		} else {
+			return shape.getTotalSize();
+		}
+	}
+
+	/**
+	 * Creates a Snake activation layer factory with default alpha=1.0.
+	 * Snake activation is defined as: f(x) = x + (1/alpha) * sin^2(alpha * x)
+	 *
+	 * <p>Snake is a learnable periodic activation function that provides smoother
+	 * gradients than ReLU and is particularly effective for audio synthesis tasks.</p>
+	 *
+	 * @param requirements Optional compute requirements
+	 * @return Function that creates a Snake activation layer for any input shape
+	 * @see #snake(double, ComputeRequirement...)
+	 */
+	default Function<TraversalPolicy, CellularLayer> snake(ComputeRequirement... requirements) {
+		return snake(1.0, requirements);
+	}
+
+	/**
+	 * Creates a Snake activation layer factory with specified alpha parameter.
+	 * Snake activation is defined as: f(x) = x + (1/alpha) * sin^2(alpha * x)
+	 *
+	 * @param alpha The frequency parameter for the sinusoidal component (default 1.0)
+	 * @param requirements Optional compute requirements
+	 * @return Function that creates a Snake activation layer for any input shape
+	 */
+	default Function<TraversalPolicy, CellularLayer> snake(double alpha, ComputeRequirement... requirements) {
+		return shape -> snake(shape, alpha, requirements);
+	}
+
+	/**
+	 * Creates a Snake activation layer with specified shape and alpha parameter.
+	 * Snake activation is defined as: f(x) = x + (1/alpha) * sin^2(alpha * x)
+	 *
+	 * @param shape Input and output shape for the layer
+	 * @param alpha The frequency parameter for the sinusoidal component
+	 * @param requirements Optional compute requirements
+	 * @return CellularLayer implementing Snake activation
+	 */
+	default CellularLayer snake(TraversalPolicy shape, double alpha, ComputeRequirement... requirements) {
+		return layer("snake", shape, shape, input -> {
+			CollectionProducer x = c(input).traverseEach();
+			// f(x) = x + (1/alpha) * sin^2(alpha * x)
+			CollectionProducer sinPart = sin(x.multiply(c(alpha)));
+			CollectionProducer sinSquared = pow(sinPart, c(2.0));
+			return x.add(sinSquared.multiply(c(1.0 / alpha)));
+		}, requirements);
+	}
+
 	default Function<TraversalPolicy, CellularLayer> norm(ComputeRequirement... requirements) {
 		return norm(1, requirements);
 	}
@@ -1186,10 +1456,14 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 		return norm(shape, groups, true, requirements);
 	}
 
-	default CellularLayer norm(TraversalPolicy shape, int groups, boolean trainable, ComputeRequirement... requirements) {
-		// Calculate size for weights based on total size
-		int size = shape.getTotalSize() / groups;
-		return norm(shape, groups,
+	default CellularLayer norm(TraversalPolicy shape, int groups,
+							   boolean trainable, ComputeRequirement... requirements) {
+		return norm(shape, normSize(shape, groups, null, null), groups, trainable, requirements);
+	}
+
+	default CellularLayer norm(TraversalPolicy shape, int size, int groups,
+							   boolean trainable, ComputeRequirement... requirements) {
+		return norm(shape, size, groups,
 				trainable ? new PackedCollection(size) : null,
 				trainable ? new PackedCollection(size) : null,
 				true, requirements);
@@ -1221,7 +1495,7 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 							   PackedCollection weights,
 							   PackedCollection biases,
 							   ComputeRequirement... requirements) {
-		return norm(shape, 1, weights, biases, true, requirements);
+		return norm(shape, 1, weights, biases, requirements);
 	}
 
 	default CellularLayer norm(TraversalPolicy shape, int groups,
@@ -1236,7 +1510,16 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 							   PackedCollection biases,
 							   boolean init,
 							   ComputeRequirement... requirements) {
-		return norm(shape, groups, weights, biases,
+		return norm(shape, normSize(shape, groups, weights, biases),
+				groups, weights, biases, init, requirements);
+	}
+
+	default CellularLayer norm(TraversalPolicy shape, int size, int groups,
+							   PackedCollection weights,
+							   PackedCollection biases,
+							   boolean init,
+							   ComputeRequirement... requirements) {
+		return norm(shape, size, groups, weights, biases,
 				Hardware.getLocalHardware().epsilon(), init, requirements);
 	}
 
@@ -1245,16 +1528,16 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 							   PackedCollection biases,
 							   double eps, boolean init,
 							   ComputeRequirement... requirements) {
-		int size;
+		return norm(shape, normSize(shape, groups, weights, biases),
+				groups, weights, biases, eps, init, requirements);
+	}
 
-		if (weights != null) {
-			size = weights.getShape().getTotalSize();
-		} else if (biases != null) {
-			size = biases.getShape().getTotalSize();
-		} else {
-			size = Math.toIntExact(shape.getTotalSizeLong() / groups);
-		}
-
+	default CellularLayer norm(TraversalPolicy shape,
+							   int size, int groups,
+							   PackedCollection weights,
+							   PackedCollection biases,
+							   double eps, boolean init,
+							   ComputeRequirement... requirements) {
 		if ((weights != null && shape(weights).getTotalSize() != size) ||
 				(biases != null && shape(biases).getTotalSize() != size)) {
 			throw new IllegalArgumentException();

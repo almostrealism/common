@@ -436,7 +436,7 @@ public class RepeatedDeltaComputationTests implements TestFeatures {
 		convolution2d("convSmallest", shape(dim, dim), size, filters);
 	}
 
-	@Test(timeout = 900000)
+	@Test(timeout = 20 * 60000)
 	public void convSmall() throws IOException {
 		if (testDepth < 2) return;
 

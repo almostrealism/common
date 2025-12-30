@@ -4,6 +4,16 @@
       "command": "python3",
       "args": ["docs/mcp/server.py"],
       "description": "Almost Realism documentation search server"
+    },
+    "ar-test-runner": {
+      "command": "python3",
+      "args": ["tools/mcp/test-runner/server.py"],
+      "description": "Test execution and result tracking server"
+    },
+    "ar-profile-analyzer": {
+      "command": "python3",
+      "args": ["tools/mcp/profile-analyzer/server.py"],
+      "description": "Performance profile analysis server"
     }
   }
 }
