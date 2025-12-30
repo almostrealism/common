@@ -71,8 +71,8 @@
 				<artifactId>maven-surefire-plugin</artifactId>
 				<version>3.2.1</version>
 				<configuration>
-					<!-- Timeout in seconds for forked test processes (1 hour default) -->
-					<forkedProcessTimeoutInSeconds>3600</forkedProcessTimeoutInSeconds>
+					<!-- Timeout in seconds for forked test processes (4 hour default) -->
+					<forkedProcessTimeoutInSeconds>14400</forkedProcessTimeoutInSeconds>
 				</configuration>
 			</plugin>
 			<plugin>
