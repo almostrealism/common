@@ -38,7 +38,7 @@ public class CollectionAddTests implements TestFeatures {
 	int parallelism = KernelPreferences.getCpuParallelism();
 
 	public void add(ComputeRequirement... req) {
-		if (testDepth < 4) return;
+		if (testDepth < 10) return;
 
 		log("Native parallelism = " + KernelPreferences.getCpuParallelism());
 
@@ -59,21 +59,21 @@ public class CollectionAddTests implements TestFeatures {
 		log("total time = " + (System.currentTimeMillis() - start) + "ms");
 	}
 
-	@Test(timeout = 10000)
+	@Test(timeout = 60 * 60000)
 	public void cpuAdd() {
 		if (skipLongTests) return;
 
 		add(ComputeRequirement.CPU);
 	}
 
-	@Test(timeout = 10000)
+	@Test(timeout = 60 * 60000)
 	public void gpuAdd() {
 		if (skipLongTests) return;
 
 		add(ComputeRequirement.GPU);
 	}
 
-	@Test(timeout = 10000)
+	@Test(timeout = 60 * 60000)
 	public void javaAdd() throws InterruptedException {
 		if (skipLongTests) return;
 

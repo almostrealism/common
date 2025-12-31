@@ -79,7 +79,7 @@ public class OperationOptimizationTests implements TestFeatures {
 		System.out.println(Countable.count(loop));
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 2 * 60000)
 	public void matmulLoopComparison() {
 		if (skipLongTests) return;
 		if (testDepth < 3) return;

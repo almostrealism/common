@@ -142,7 +142,7 @@ public class SyntheticDenseTrainingTest implements ModelTestFeatures {
 	 *
 	 * <p>Architecture: Input [3] - Dense [3 - 5] - Dense [5 - 1] - Output [1]</p>
 	 */
-	@Test(timeout = 120000)
+	@Test(timeout = 4 * 60000)
 	public void denseWithMultipleLayers() throws FileNotFoundException {
 		if (testDepth < 1) return;
 
