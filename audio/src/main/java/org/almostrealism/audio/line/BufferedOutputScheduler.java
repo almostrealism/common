@@ -300,6 +300,50 @@ public class BufferedOutputScheduler implements CellFeatures {
 	}
 
 	/**
+	 * Returns the number of frames between the current write position and the
+	 * hardware read position in the circular buffer.
+	 * <p>
+	 * A positive value indicates the write position is ahead of the read position
+	 * (normal operation - we're writing data before it's played).
+	 * A value near zero indicates the read position has nearly caught up to
+	 * the write position (buffer underrun risk).
+	 * <p>
+	 * The value accounts for circular buffer wrap-around.
+	 *
+	 * @return the buffer gap in frames, or 0 if no output is configured
+	 */
+	public int getBufferGap() {
+		if (output == null) return 0;
+
+		int writePos = getWritePosition();
+		int readPos = output.getReadPosition();
+		int bufferSize = output.getBufferSize();
+
+		int gap = writePos - readPos;
+		if (gap < 0) {
+			gap += bufferSize;  // Handle circular buffer wrap-around
+		}
+		return gap;
+	}
+
+	/**
+	 * Returns the buffer gap as a percentage of the total buffer size.
+	 * <p>
+	 * Useful for UI display. Values typically range from 0-100%, where:
+	 * <ul>
+	 *   <li>~25-75%: Normal operation</li>
+	 *   <li>&lt;25%: Risk of underrun (read catching up to write)</li>
+	 *   <li>&gt;75%: Risk of overrun (write catching up to read)</li>
+	 * </ul>
+	 *
+	 * @return the buffer gap as a percentage (0.0-100.0)
+	 */
+	public double getBufferGapPercent() {
+		if (output == null) return 0.0;
+		return (getBufferGap() * 100.0) / output.getBufferSize();
+	}
+
+	/**
 	 * Attempts to automatically resume processing if currently paused and safe to do so.
 	 * <p>
 	 * Safety is determined by {@link BufferDefaults#isSafeGroup}, which checks that
