@@ -38,8 +38,7 @@ jobs:
           LD_LIBRARY_PATH=Extensions mvn test \
            -DAR_HARDWARE_DRIVER=native \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
-           -DAR_HARDWARE_LIBS=Extensions \
-           -DAR_TEST_PROFILE=pipeline
+           -DAR_HARDWARE_LIBS=Extensions
 
       - name: Archive coverage data
         uses: actions/upload-artifact@v4
