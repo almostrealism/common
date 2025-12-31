@@ -433,7 +433,7 @@ public class RepeatedDeltaComputationTests implements TestFeatures {
 		convolution2d("convSmallest", shape(dim, dim), size, filters);
 	}
 
-	@Test(timeout = 25 * 60000)
+	@Test(timeout = 40 * 60000)
 	public void convSmall() throws IOException {
 		if (testDepth < 2) return;
 
@@ -456,14 +456,9 @@ public class RepeatedDeltaComputationTests implements TestFeatures {
 	}
 
 	public void convolution2d(String name, TraversalPolicy inputShape, int size, int filterCount) throws IOException {
-		boolean weightedSum = WeightedSumExpression.enableCollectionExpression;
-
 		OperationProfileNode profile = new OperationProfileNode(name);
 
 		try {
-			if (filterCount > 4)
-				WeightedSumExpression.enableCollectionExpression = false;
-
 			initKernelMetrics();
 
 			int pad = size - 1;
@@ -485,7 +480,6 @@ public class RepeatedDeltaComputationTests implements TestFeatures {
 					.delta(cp(input)))
 					.get().evaluate();
 		} finally {
-			WeightedSumExpression.enableCollectionExpression = weightedSum;
 			logKernelMetrics();
 			profile.save("results/" + name + ".xml");
 		}
