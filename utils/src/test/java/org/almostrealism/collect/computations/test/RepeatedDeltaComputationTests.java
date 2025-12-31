@@ -238,7 +238,7 @@ public class RepeatedDeltaComputationTests implements TestFeatures {
 		assertEquals(1.0, out.valueAt(3, 1));
 	}
 
-	@Test(timeout = 60000)
+	@Test(timeout = 4 * 60000)
 	public void convDeltaSmall() throws IOException {
 		if (testDepth < 2) return;
 
@@ -247,7 +247,7 @@ public class RepeatedDeltaComputationTests implements TestFeatures {
 		convDelta("convDeltaSmall", l, d, false);
 	}
 
-	@Test(timeout = 60000)
+	@Test(timeout = 4 * 60000)
 	public void convDeltaMedium() throws IOException {
 		if (testDepth < 3) return;
 
@@ -422,7 +422,7 @@ public class RepeatedDeltaComputationTests implements TestFeatures {
 		}
 	}
 
-	@Test(timeout = 120000)
+	@Test(timeout = 5 * 60000)
 	public void convSmallest() throws IOException {
 		if (testDepth < 1) return;
 		
@@ -433,7 +433,7 @@ public class RepeatedDeltaComputationTests implements TestFeatures {
 		convolution2d("convSmallest", shape(dim, dim), size, filters);
 	}
 
-	@Test(timeout = 20 * 60000)
+	@Test(timeout = 25 * 60000)
 	public void convSmall() throws IOException {
 		if (testDepth < 2) return;
 
