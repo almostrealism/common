@@ -51,9 +51,9 @@ jobs:
       - name: Build (skip tests)
         run: mvn install -DskipTests
 
-      - name: Run Tests (Group ${{ matrix.group }})
+      - name: Run Tests (Group ${{ matrix.group }}, excluding ml)
         run: |
-          LD_LIBRARY_PATH=Extensions mvn test \
+          LD_LIBRARY_PATH=Extensions mvn test -pl '!ml' \
            -DAR_HARDWARE_DRIVER=native \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS=Extensions \
@@ -74,8 +74,55 @@ jobs:
           path: coverage-data/
           retention-days: 1
 
+  test-ml:
+    needs: build
+    runs-on: ubuntu-latest-16-cores
+    strategy:
+      fail-fast: false
+      matrix:
+        group: [0, 1, 2, 3]
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'adopt'
+          cache: 'maven'
+
+      - name: Build (skip tests)
+        run: mvn install -DskipTests
+
+      - name: Run ML Tests (Group ${{ matrix.group }})
+        run: |
+          LD_LIBRARY_PATH=Extensions mvn test -pl ml \
+           -DAR_HARDWARE_DRIVER=native \
+           -DAR_HARDWARE_MEMORY_SCALE=7 \
+           -DAR_HARDWARE_LIBS=Extensions \
+           -DAR_TEST_GROUP=${{ matrix.group }} \
+           -DAR_TEST_GROUPS=4
+
+      - name: Collect Coverage Data
+        if: always()
+        run: |
+          mkdir -p coverage-data
+          find . -path "*/target/jacoco.exec" -exec cp --parents {} coverage-data/ \;
+
+      - name: Upload Coverage Data
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-ml-group-${{ matrix.group }}
+          path: coverage-data/
+          retention-days: 1
+
   analysis:
-    needs: test
+    needs: [test, test-ml]
     if: always()
     runs-on: ubuntu-latest
     permissions:
@@ -104,7 +151,7 @@ jobs:
       - name: Download All Coverage Data
         uses: actions/download-artifact@v4
         with:
-          pattern: coverage-group-*
+          pattern: coverage-*
           path: all-coverage
 
       - name: Merge Coverage Data
