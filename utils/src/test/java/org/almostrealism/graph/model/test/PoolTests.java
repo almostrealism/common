@@ -21,12 +21,12 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.test.KernelAssertions;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 import java.util.function.Supplier;
 
-public class PoolTests implements TestFeatures, KernelAssertions {
+public class PoolTests extends TestSuiteBase implements KernelAssertions {
 
 	@Test(timeout = 60000)
 	public void pool2dSquareAndOptimize() {

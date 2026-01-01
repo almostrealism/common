@@ -19,13 +19,14 @@ package org.almostrealism.audio.filter.test;
 import org.almostrealism.audio.CellFeatures;
 import org.almostrealism.audio.WaveOutput;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
 import java.io.File;
 import java.util.function.Supplier;
 
-public class AudioCellTest implements CellFeatures {
+public class AudioCellTest extends TestSuiteBase implements CellFeatures {
 	@Test
 	public void filterFrame() {
 		WaveOutput out = new WaveOutput();

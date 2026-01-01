@@ -24,7 +24,7 @@ import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 import org.almostrealism.model.SequentialBlock;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.almostrealism.util.TestUtils;
 import org.junit.Assert;
 import org.junit.Test;
@@ -32,13 +32,13 @@ import org.junit.Test;
 /**
  * Investigation tests to verify the actual shape behavior of pool2d layers.
  * The warning observed is:
- *   (1, 4, 5, 5, 1) does not match (1, 4, 5, 5) for pool2d layer
- *
+ * (1, 4, 5, 5, 1) does not match (1, 4, 5, 5) for pool2d layer
+ * <p>
  * This test investigates why there's an extra trailing dimension.
  *
  * @author Michael Murray
  */
-public class Pool2dShapeInvestigationTest implements TestFeatures {
+public class Pool2dShapeInvestigationTest extends TestSuiteBase {
 
 	static {
 		if (TestUtils.getTrainTests()) {
@@ -187,10 +187,10 @@ public class Pool2dShapeInvestigationTest implements TestFeatures {
 		log("=== Test: Pool2d Various Sizes ===");
 
 		int[][] testCases = {
-			{1, 2, 4, 4, 2},   // batch, channels, height, width, poolSize
-			{1, 4, 8, 8, 2},
-			{2, 3, 6, 6, 2},
-			{1, 1, 10, 10, 5}
+				{1, 2, 4, 4, 2},   // batch, channels, height, width, poolSize
+				{1, 4, 8, 8, 2},
+				{2, 3, 6, 6, 2},
+				{1, 1, 10, 10, 5}
 		};
 
 		for (int[] tc : testCases) {

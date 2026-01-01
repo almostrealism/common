@@ -32,6 +32,7 @@ import org.almostrealism.optimize.NegativeLogLikelihood;
 import org.almostrealism.optimize.ValueTarget;
 import org.almostrealism.texture.GraphicsConverter;
 import org.almostrealism.util.ModelTestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.almostrealism.util.TestUtils;
 import org.junit.Test;
 
@@ -43,7 +44,7 @@ import java.util.List;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
-public class ConvolutionModelTrainingTest implements ModelFeatures, ModelTestFeatures {
+public class ConvolutionModelTrainingTest extends TestSuiteBase implements ModelFeatures, ModelTestFeatures {
 	static boolean large = true;
 	static int batchSize;
 	static int rows, cols;
@@ -130,7 +131,7 @@ public class ConvolutionModelTrainingTest implements ModelFeatures, ModelTestFea
 				}
 			}
 		}
-		
+
 		return data;
 	}
 
@@ -142,7 +143,7 @@ public class ConvolutionModelTrainingTest implements ModelFeatures, ModelTestFea
 		int epochs = 10;
 
 		Model model = convolution2dModel(
-						batchSize, 1, rows, cols,
+				batchSize, 1, rows, cols,
 				3, 6, large ? 3 : 2,
 				4, 4, true);
 		model.setParameterUpdate(ParameterUpdate.scaled(c(0.001)));
@@ -189,9 +190,9 @@ public class ConvolutionModelTrainingTest implements ModelFeatures, ModelTestFea
 	}
 
 	public double[] optimize(String name, CompiledModel model,
-						 Supplier<Dataset<?>> trainData,
-						 Supplier<Dataset<?>> testData,
-						 int epochs, int steps, double lossTarget) throws IOException {
+							 Supplier<Dataset<?>> trainData,
+							 Supplier<Dataset<?>> testData,
+							 int epochs, int steps, double lossTarget) throws IOException {
 		double[] accuracy = new double[epochs];
 
 		ModelOptimizer optimizer = new ModelOptimizer(model, trainData);

@@ -16,6 +16,8 @@
 
 package io.flowtree.test;
 
+import org.almostrealism.util.TestSuiteBase;
+
 import io.flowtree.Server;
 import io.flowtree.jobs.ExternalProcessJob;
 import org.junit.Test;
@@ -25,25 +27,25 @@ import java.util.ArrayList;
 import java.util.Properties;
 import java.util.stream.IntStream;
 
-public class SubmitJobTest {
-    @Test
-    public void submitProcess() throws IOException {
-        Properties p = new Properties();
-        p.setProperty("server.port", "7701");
-        p.setProperty("nodes.initial", "0");
-        p.setProperty("servers.total", "1");
-        p.setProperty("servers.0.host", "localhost");
-        p.setProperty("servers.0.port", "7766");
+public class SubmitJobTest extends TestSuiteBase {
+	@Test
+	public void submitProcess() throws IOException {
+		Properties p = new Properties();
+		p.setProperty("server.port", "7701");
+		p.setProperty("nodes.initial", "0");
+		p.setProperty("servers.total", "1");
+		p.setProperty("servers.0.host", "localhost");
+		p.setProperty("servers.0.port", "7766");
 
-        ArrayList<String> commands = new ArrayList<>();
-        IntStream.range(0, 6).forEach(i -> {
-            commands.add("sleep 2m");
-            if (i % 3 == 0) commands.add("echo \"Hello World\"");
-            commands.add("sleep " + (int) (Math.random() * 3) + "m");
-        });
+		ArrayList<String> commands = new ArrayList<>();
+		IntStream.range(0, 6).forEach(i -> {
+			commands.add("sleep 2m");
+			if (i % 3 == 0) commands.add("echo \"Hello World\"");
+			commands.add("sleep " + (int) (Math.random() * 3) + "m");
+		});
 
-        Server server = new Server(p);
-        IntStream.range(0, 10).forEach(i ->
-                server.sendTask(new ExternalProcessJob.Factory(commands, commands, commands, commands, commands, commands, commands, commands), 0));
-    }
+		Server server = new Server(p);
+		IntStream.range(0, 10).forEach(i ->
+				server.sendTask(new ExternalProcessJob.Factory(commands, commands, commands, commands, commands, commands, commands, commands), 0));
+	}
 }

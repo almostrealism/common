@@ -16,6 +16,8 @@
 
 package io.flowtree.test;
 
+import org.almostrealism.util.TestSuiteBase;
+
 import io.flowtree.Server;
 import io.flowtree.jobs.ExternalProcessJob;
 import org.junit.Test;
@@ -23,22 +25,22 @@ import org.junit.Test;
 import java.io.IOException;
 import java.util.Properties;
 
-public class ServerTest {
-    @Test
-    public void server() throws IOException, InterruptedException {
-        Properties p = new Properties();
-        p.setProperty("server.port", "7700");
+public class ServerTest extends TestSuiteBase {
+	@Test
+	public void server() throws IOException, InterruptedException {
+		Properties p = new Properties();
+		p.setProperty("server.port", "7700");
 
-        Server server = new Server(p);
-        server.start();
+		Server server = new Server(p);
+		server.start();
 
-        Thread.sleep(2 * 60 * 60 * 1000L);
-    }
+		Thread.sleep(2 * 60 * 60 * 1000L);
+	}
 
-    @Test
-    public void decodeJobTest() {
-        String data = "io.flowtree.jobs.ExternalProcessJob::cmd:=c2xlZXA7MzA=";
-        ExternalProcessJob j = (ExternalProcessJob) Server.instantiateJobClass(data);
-        System.out.println(j.getCommandString());
-    }
+	@Test
+	public void decodeJobTest() {
+		String data = "io.flowtree.jobs.ExternalProcessJob::cmd:=c2xlZXA7MzA=";
+		ExternalProcessJob j = (ExternalProcessJob) Server.instantiateJobClass(data);
+		System.out.println(j.getCommandString());
+	}
 }

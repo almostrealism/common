@@ -21,11 +21,12 @@ import org.almostrealism.audio.line.OutputLine;
 import org.almostrealism.audio.tone.DefaultKeyboardTuning;
 import org.almostrealism.audio.tone.WesternChromatic;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 import java.io.File;
 
-public class NoteAudioProviderTests {
+public class NoteAudioProviderTests extends TestSuiteBase {
 	protected NoteAudioProvider organ() {
 		NoteAudioProvider note = NoteAudioProvider.create(
 				"Library/organ.wav", WesternChromatic.C1);

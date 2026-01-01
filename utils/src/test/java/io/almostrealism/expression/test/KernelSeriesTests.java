@@ -25,10 +25,11 @@ import io.almostrealism.kernel.KernelSeries;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.lang.LanguageOperationsStub;
 import org.almostrealism.io.ConsoleFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
-public class KernelSeriesTests implements ExpressionFeatures, ConsoleFeatures {
+public class KernelSeriesTests extends TestSuiteBase implements ExpressionFeatures, ConsoleFeatures {
 
 	private static LanguageOperations lang = new LanguageOperationsStub();
 
@@ -63,11 +64,11 @@ public class KernelSeriesTests implements ExpressionFeatures, ConsoleFeatures {
 	@Test(timeout = 30000)
 	public void repeatedQuotientProduct() {
 		Expression p = kernel().multiply(4)
-							.divide(4)
-							.multiply(4)
-							.divide(12)
-							.multiply(4)
-							.divide(4);
+				.divide(4)
+				.multiply(4)
+				.divide(12)
+				.multiply(4)
+				.divide(4);
 		Assert.assertEquals(3, p.kernelSeries().getScale().getAsInt());
 
 		Expression a = kernel().multiply(4).divide(4).multiply(4)
@@ -206,12 +207,12 @@ public class KernelSeriesTests implements ExpressionFeatures, ConsoleFeatures {
 	// @Test(timeout = 30000)
 	public void largeSum3() {
 		Expression p = kernel().multiply(8).add(1).divide(144)
-								.multiply(144).add(18).divide(18)
-								.multiply(9).add(4).divide(9)
-								.multiply(9).add(4).divide(18)
-								.multiply(9).add(4).divide(36)
-								.multiply(36)
-								.imod(24);
+				.multiply(144).add(18).divide(18)
+				.multiply(9).add(4).divide(9)
+				.multiply(9).add(4).divide(18)
+				.multiply(9).add(4).divide(36)
+				.multiply(36)
+				.imod(24);
 		validateSeries(p);
 	}
 
@@ -292,7 +293,7 @@ public class KernelSeriesTests implements ExpressionFeatures, ConsoleFeatures {
 		log("Reported period = " + period);
 
 		Number[] values = exp.sequence(new KernelIndex(), period * 4L)
-							.stream().toArray(Number[]::new);
+				.stream().toArray(Number[]::new);
 
 		if (period < 500) {
 			for (int i = 0; i < 4; i++) {

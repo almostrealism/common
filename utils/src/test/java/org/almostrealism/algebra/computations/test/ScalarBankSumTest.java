@@ -18,10 +18,10 @@ package org.almostrealism.algebra.computations.test;
 
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
-public class ScalarBankSumTest implements TestFeatures {
+public class ScalarBankSumTest extends TestSuiteBase {
 	@Test(timeout = 10000)
 	public void sum() {
 		PackedCollection bank = new PackedCollection(shape(4, 2));

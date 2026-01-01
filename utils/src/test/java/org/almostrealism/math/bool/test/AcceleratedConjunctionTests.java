@@ -21,13 +21,13 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.geometry.Ray;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
 import java.util.stream.IntStream;
 
-public class AcceleratedConjunctionTests implements TestFeatures {
+public class AcceleratedConjunctionTests extends TestSuiteBase {
 	protected CollectionProducer conjunction(
 			Producer<PackedCollection> a, Producer<PackedCollection> b,
 			Producer<PackedCollection> c, Producer<PackedCollection> d) {
@@ -55,13 +55,13 @@ public class AcceleratedConjunctionTests implements TestFeatures {
 	@Test(timeout = 10000)
 	public void conjunctions() {
 		IntStream.range(0, 10).mapToObj(i ->
-			conjunctionTest(i * Math.random(), i * Math.random(), i * Math.random(), i * Math.random()))
+						conjunctionTest(i * Math.random(), i * Math.random(), i * Math.random(), i * Math.random()))
 				.forEach(Runnable::run);
 	}
 
 	protected CollectionProducer dotProductConjunction(Producer<Ray> r) {
 		return conjunction(oDotd(
-				ray(i -> Math.random())), c(1),
+						ray(i -> Math.random())), c(1),
 				oDotd(v(Ray.shape(), 0)), c(1));
 	}
 
@@ -111,8 +111,8 @@ public class AcceleratedConjunctionTests implements TestFeatures {
 				c(Math.random()), v(shape(1), 2));
 
 		double v = c.evaluate(ray(i -> Math.random()).get().evaluate(),
-							c(Math.random()).get().evaluate(),
-							c(Math.random()).get().evaluate()).toDouble();
+				c(Math.random()).get().evaluate(),
+				c(Math.random()).get().evaluate()).toDouble();
 		log(v);
 		Assert.assertNotEquals(0, v);
 	}

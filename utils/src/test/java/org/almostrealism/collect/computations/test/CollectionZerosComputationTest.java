@@ -22,17 +22,17 @@ import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.computations.CollectionZerosComputation;
 import org.almostrealism.collect.computations.SingleConstantComputation;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 /**
  * Test cases demonstrating usage patterns and behavior of {@link CollectionZerosComputation}.
  * These tests show how CollectionZerosComputation creates collections filled with zero values
  * and how it behaves in various scenarios including reshaping, traversal, and optimization operations.
- * 
+ *
  * @author Michael Murray
  */
-public class CollectionZerosComputationTest implements TestFeatures {
+public class CollectionZerosComputationTest extends TestSuiteBase {
 
 	/**
 	 * Tests basic creation and evaluation of zero computations.

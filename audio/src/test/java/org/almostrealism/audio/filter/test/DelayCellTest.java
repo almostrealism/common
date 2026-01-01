@@ -29,13 +29,13 @@ import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.heredity.CellularTemporalFactor;
 import org.almostrealism.time.TemporalRunner;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 import java.io.File;
 import java.util.function.Supplier;
 
-public class DelayCellTest implements CellFeatures, TestFeatures {
+public class DelayCellTest extends TestSuiteBase implements CellFeatures {
 	@Test
 	public void delay() {
 		CellList c = w(0, "Library/Snare Perc DD.wav")
@@ -80,9 +80,9 @@ public class DelayCellTest implements CellFeatures, TestFeatures {
 	public void filterLoopComparison() {
 		Supplier<Runnable> r =
 				iter(w(0, "Library/Snare Perc DD.wav")
-						.f(i -> hp(2000, 0.1))
-						.d(i -> c(2.0))
-						.o(i -> new File("results/filter-loop-comparison-a.wav")),
+								.f(i -> hp(2000, 0.1))
+								.d(i -> c(2.0))
+								.o(i -> new File("results/filter-loop-comparison-a.wav")),
 						t -> loop(t.tick(), 6 * OutputLine.sampleRate), true);
 
 		OperationProfile profiles = new OperationProfile("Native Loop");
@@ -119,10 +119,10 @@ public class DelayCellTest implements CellFeatures, TestFeatures {
 	public void reverb() {
 		Supplier<Runnable> r =
 				iter(w(0, "Library/Snare Perc DD.wav")
-						.f(i -> hp(2000, 0.1))
-						.d(i -> c(2.0))
-						.map(fc(i -> new DelayNetwork(32, OutputLine.sampleRate, false)))
-						.o(i -> new File("results/reverb-delay-cell-test.wav")),
+								.f(i -> hp(2000, 0.1))
+								.d(i -> c(2.0))
+								.map(fc(i -> new DelayNetwork(32, OutputLine.sampleRate, false)))
+								.o(i -> new File("results/reverb-delay-cell-test.wav")),
 						t -> new TemporalRunner(t, 6 * OutputLine.sampleRate), true);
 
 		r.get().run();
@@ -174,7 +174,8 @@ public class DelayCellTest implements CellFeatures, TestFeatures {
 				e.printStackTrace();
 			}
 
-			abort.run(); }).start();
+			abort.run();
+		}).start();
 
 		op.run();
 	}

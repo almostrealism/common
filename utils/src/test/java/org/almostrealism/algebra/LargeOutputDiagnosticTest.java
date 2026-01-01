@@ -1,17 +1,13 @@
 package org.almostrealism.algebra;
 
-import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.scope.ScopeSettings;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
-import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.layers.LayerFeatures;
 import org.almostrealism.model.Model;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
-
-import static org.junit.Assert.*;
 
 /**
  * Diagnostic test to understand why large vocab projection generates
@@ -20,7 +16,7 @@ import static org.junit.Assert.*;
  * <p>This test does NOT override ScopeSettings.maxStatements to see
  * what protections trigger or fail.</p>
  */
-public class LargeOutputDiagnosticTest implements MatrixFeatures, LayerFeatures, ConsoleFeatures {
+public class LargeOutputDiagnosticTest extends TestSuiteBase implements MatrixFeatures, LayerFeatures, ConsoleFeatures {
 
 	/**
 	 * Test 1: Raw matmul with output size just below default maxStatements.

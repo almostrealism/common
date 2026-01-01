@@ -23,7 +23,7 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.DefaultTraversableExpressionComputation;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 /**
@@ -35,18 +35,18 @@ import org.junit.Test;
  *
  * @author Michael Murray
  */
-public class TraversableExpressionComputationTest implements TestFeatures {
+public class TraversableExpressionComputationTest extends TestSuiteBase {
 
 	/**
 	 * Creates a computation that sums pairs of adjacent elements in a collection.
 	 * This is a practical example of how to implement reduction operations using
 	 * {@link DefaultTraversableExpressionComputation}.
-	 * 
+	 *
 	 * <p>The computation takes a 2D input collection and produces a 1D output where
 	 * each element is the sum of two adjacent elements from the input row.
-	 * 
+	 *
 	 * @param <T> The type of {@link PackedCollection} to process
-	 * @param a The input producer providing the collection to process
+	 * @param a   The input producer providing the collection to process
 	 * @return A computation that sums pairs of elements
 	 */
 	protected DefaultTraversableExpressionComputation pairSum(Producer a) {
@@ -68,7 +68,7 @@ public class TraversableExpressionComputationTest implements TestFeatures {
 	 * Tests the basic pairSum operation on a 3x2 matrix.
 	 * Demonstrates how to create and execute a TraversableExpressionComputation
 	 * that performs element-wise reduction (summing pairs).
-	 * 
+	 *
 	 * <p>Expected behavior:
 	 * - Input: 3x2 matrix with random values
 	 * - Output: 3x1 matrix where each element is the sum of the corresponding row pair
@@ -96,12 +96,12 @@ public class TraversableExpressionComputationTest implements TestFeatures {
 	 * Tests the pairSum operation used within a map operation.
 	 * Demonstrates how TraversableExpressionComputation can be used as part of
 	 * higher-order operations like mapping across collection elements.
-	 * 
+	 *
 	 * <p>This test shows a more complex usage pattern where the pairSum computation
 	 * is applied through a map operation, demonstrating composition of computations.
-	 * 
+	 *
 	 * <p>Expected behavior:
-	 * - Input: 3x2 matrix with random values  
+	 * - Input: 3x2 matrix with random values
 	 * - Process: Map pairSum across the input using traversal
 	 * - Output: 3x1 matrix with summed pairs (same as pair() test but through mapping)
 	 */

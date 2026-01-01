@@ -25,11 +25,11 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 import org.almostrealism.model.SequentialBlock;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.almostrealism.util.TestUtils;
 import org.junit.Test;
 
-public class RotationTests implements RotationFeatures, TestFeatures {
+public class RotationTests extends TestSuiteBase implements RotationFeatures {
 
 	@Test
 	public void permutationCompilation() {

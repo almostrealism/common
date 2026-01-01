@@ -4,14 +4,14 @@ import org.almostrealism.audio.CellFeatures;
 import org.almostrealism.audio.CellList;
 import org.almostrealism.heredity.IdentityFactor;
 import org.almostrealism.heredity.ScaleFactor;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 import java.io.File;
 import java.io.IOException;
 import java.util.function.Supplier;
 
-public class MultiCellFilterTest implements CellFeatures, TestFeatures {
+public class MultiCellFilterTest extends TestSuiteBase implements CellFeatures {
 	@Test
 	public void identity() {
 		w(0, "src/test/resources/Snare Perc DD.wav")
@@ -72,10 +72,10 @@ public class MultiCellFilterTest implements CellFeatures, TestFeatures {
 	@Test
 	public void filter() {
 		w(0, "src/test/resources/Snare Perc DD.wav")
-						.m(f(2, i -> hp(2000, 0.1)),
-								o(2, i -> new File("results/multi-filter-cell-test-" + i + ".wav")),
-								i -> g(0.3, 0.5))
-						.sec(5).get().run();
+				.m(f(2, i -> hp(2000, 0.1)),
+						o(2, i -> new File("results/multi-filter-cell-test-" + i + ".wav")),
+						i -> g(0.3, 0.5))
+				.sec(5).get().run();
 	}
 
 	@Test

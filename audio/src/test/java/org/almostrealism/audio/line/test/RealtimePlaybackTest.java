@@ -21,6 +21,7 @@ import org.almostrealism.audio.CellList;
 import org.almostrealism.audio.line.BufferDefaults;
 import org.almostrealism.audio.line.BufferedOutputScheduler;
 import org.almostrealism.audio.line.SourceDataOutputLine;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -34,7 +35,7 @@ import java.io.File;
  * with {@link BufferedOutputScheduler}. These tests replicate the MixerTests pattern
  * of using Producer-based schedulable buffered writes for reliable real-time audio.
  */
-public class RealtimePlaybackTest implements CellFeatures {
+public class RealtimePlaybackTest extends TestSuiteBase implements CellFeatures {
 
 	private static final File TEST_FILE = new File("Library/RAW_IU_BORDER_B.wav");
 

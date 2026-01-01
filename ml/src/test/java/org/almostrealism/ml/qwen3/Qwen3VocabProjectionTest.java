@@ -5,6 +5,7 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.layers.LayerFeatures;
 import org.almostrealism.model.Model;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 /**
@@ -13,7 +14,7 @@ import org.junit.Test;
  * <p>This test creates a minimal model with just a dense layer outputting
  * 151,936 values (Qwen3 vocab size) to identify where compilation hangs.</p>
  */
-public class Qwen3VocabProjectionTest implements LayerFeatures, ConsoleFeatures {
+public class Qwen3VocabProjectionTest extends TestSuiteBase implements LayerFeatures, ConsoleFeatures {
 
 	/**
 	 * Test dense layer with Qwen3-sized output (151936) in isolation.
@@ -30,7 +31,7 @@ public class Qwen3VocabProjectionTest implements LayerFeatures, ConsoleFeatures 
 		log("Input dim: " + inputDim);
 		log("Vocab size: " + vocabSize);
 		log("Weight size: " + (inputDim * vocabSize) + " (" +
-			String.format("%.2f", (inputDim * vocabSize * 4.0) / (1024 * 1024)) + " MB float32)");
+				String.format("%.2f", (inputDim * vocabSize * 4.0) / (1024 * 1024)) + " MB float32)");
 
 		// Create weights
 		log("\n[1] Creating weights...");

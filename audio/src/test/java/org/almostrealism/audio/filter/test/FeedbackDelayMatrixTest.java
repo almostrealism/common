@@ -22,7 +22,7 @@ import org.almostrealism.audio.filter.DelayNetwork;
 import org.almostrealism.audio.line.OutputLine;
 import org.almostrealism.audio.test.support.TestAudioData;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -30,7 +30,7 @@ import org.junit.Test;
  * Tests for {@link DelayNetwork} feedback delay matrix functionality.
  * Uses synthetic test data instead of external audio files.
  */
-public class FeedbackDelayMatrixTest implements CellFeatures, TestFeatures {
+public class FeedbackDelayMatrixTest extends TestSuiteBase implements CellFeatures {
 
 	private static final int SAMPLE_RATE = OutputLine.sampleRate;
 

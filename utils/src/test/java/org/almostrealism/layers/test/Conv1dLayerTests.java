@@ -22,7 +22,7 @@ import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.layers.LayerFeatures;
 import org.almostrealism.model.Block;
 import org.almostrealism.model.SequentialBlock;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -30,7 +30,7 @@ import org.junit.Test;
  * Unit tests for Conv1d, ConvTranspose1d, and Snake activation layers.
  * These layers are used in the Oobleck Autoencoder implementation.
  */
-public class Conv1dLayerTests implements LayerFeatures, TestFeatures {
+public class Conv1dLayerTests extends TestSuiteBase implements LayerFeatures {
 
 	/**
 	 * Tests Snake activation with alpha=1.0.
@@ -136,7 +136,7 @@ public class Conv1dLayerTests implements LayerFeatures, TestFeatures {
 
 		// Create Conv1d block
 		Block conv = convolution1d(batchSize, inputChannels, outputChannels, seqLength,
-								   1, 1, 0, weights, bias);
+				1, 1, 0, weights, bias);
 
 		// Execute through a sequential block
 		SequentialBlock model = new SequentialBlock(shape(batchSize, inputChannels, seqLength));
@@ -187,7 +187,7 @@ public class Conv1dLayerTests implements LayerFeatures, TestFeatures {
 		bias.fill(pos -> 0.0);
 
 		Block conv = convolution1d(batchSize, inputChannels, outputChannels, seqLength,
-								   kernelSize, stride, padding, weights, bias);
+				kernelSize, stride, padding, weights, bias);
 
 		// Output length with padding = (16 + 2*1 - 3) / 1 + 1 = 16
 		int expectedOutLength = (seqLength + 2 * padding - kernelSize) / stride + 1;
@@ -231,7 +231,7 @@ public class Conv1dLayerTests implements LayerFeatures, TestFeatures {
 		bias.fill(pos -> 0.0);
 
 		Block conv = convolution1d(batchSize, inputChannels, outputChannels, seqLength,
-								   kernelSize, stride, padding, weights, bias);
+				kernelSize, stride, padding, weights, bias);
 
 		// Output length = (16 + 2*1 - 3) / 2 + 1 = 8
 		int expectedOutLength = (seqLength + 2 * padding - kernelSize) / stride + 1;
@@ -275,7 +275,7 @@ public class Conv1dLayerTests implements LayerFeatures, TestFeatures {
 		bias.fill(pos -> 0.0);
 
 		Block convT = convTranspose1d(batchSize, inputChannels, outputChannels, seqLength,
-									  kernelSize, stride, padding, weights, bias);
+				kernelSize, stride, padding, weights, bias);
 
 		// Output length = (8 - 1) * 2 - 2 * 1 + 4 = 7 * 2 - 2 + 4 = 16
 		int expectedOutLength = (seqLength - 1) * stride - 2 * padding + kernelSize;
@@ -327,9 +327,9 @@ public class Conv1dLayerTests implements LayerFeatures, TestFeatures {
 		// Build model
 		SequentialBlock model = new SequentialBlock(shape(batchSize, channels, seqLength));
 		model.add(convolution1d(batchSize, channels, channels, seqLength,
-							   kernelSize, stride, padding, convWeights, null));
+				kernelSize, stride, padding, convWeights, null));
 		model.add(convTranspose1d(batchSize, channels, channels, midLength,
-								 kernelSize, stride, padding, convTWeights, null));
+				kernelSize, stride, padding, convTWeights, null));
 
 		model.getForward().setReceptor(out -> () -> () -> {
 			PackedCollection result = out.get().evaluate();
@@ -359,7 +359,7 @@ public class Conv1dLayerTests implements LayerFeatures, TestFeatures {
 
 		// No bias
 		Block conv = convolution1d(batchSize, inputChannels, outputChannels, seqLength,
-								   1, 1, 0, weights, null);
+				1, 1, 0, weights, null);
 
 		SequentialBlock model = new SequentialBlock(shape(batchSize, inputChannels, seqLength));
 		model.add(conv);
@@ -404,7 +404,7 @@ public class Conv1dLayerTests implements LayerFeatures, TestFeatures {
 		weights.fill(pos -> 0.125);
 
 		Block convT = convTranspose1d(batchSize, inputChannels, outputChannels, seqLength,
-									  kernelSize, stride, padding, weights, null);
+				kernelSize, stride, padding, weights, null);
 
 		// Output length = (4 - 1) * 4 - 2 * 2 + 8 = 12 - 4 + 8 = 16
 		int expectedOutLength = (seqLength - 1) * stride - 2 * padding + kernelSize;
@@ -442,7 +442,7 @@ public class Conv1dLayerTests implements LayerFeatures, TestFeatures {
 		weights.fill(pos -> 0.0625);
 
 		Block convT = convTranspose1d(batchSize, inputChannels, outputChannels, seqLength,
-									  kernelSize, stride, padding, weights, null);
+				kernelSize, stride, padding, weights, null);
 
 		// Output length = (2 - 1) * 8 - 2 * 4 + 16 = 8 - 8 + 16 = 16
 		int expectedOutLength = (seqLength - 1) * stride - 2 * padding + kernelSize;

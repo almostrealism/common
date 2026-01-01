@@ -4,11 +4,12 @@ import org.almostrealism.audio.CellFeatures;
 import org.almostrealism.audio.CellList;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.heredity.ScaleFactor;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 import java.io.File;
 
-public class MixdownTest implements CellFeatures {
+public class MixdownTest extends TestSuiteBase implements CellFeatures {
 	@Test
 	public void samples() {
 		int count = 32;

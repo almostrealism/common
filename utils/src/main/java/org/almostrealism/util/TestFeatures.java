@@ -332,6 +332,21 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 	}
 
 	/**
+	 * Asserts that two double values are equal within a specified delta, with a custom error message.
+	 *
+	 * @param msg      the message to display if the assertion fails
+	 * @param expected the expected value
+	 * @param actual   the actual value
+	 * @param delta    the maximum difference allowed between values
+	 * @throws AssertionError if the values differ by more than delta
+	 */
+	default void assertEquals(String msg, double expected, double actual, double delta) {
+		if (Math.abs(expected - actual) > delta) {
+			throw new AssertionError(msg + " - expected: " + expected + " but was: " + actual + " (delta: " + delta + ")");
+		}
+	}
+
+	/**
 	 * Asserts that two int values are equal, with a custom error message.
 	 *
 	 * @param msg      the message to display if the assertion fails
@@ -532,8 +547,8 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 	 * @return the operation profile node containing timing information, or null if name was null
 	 */
 	default OperationProfileNode kernelTest(String name,
-							Supplier<? extends Producer<PackedCollection>> supply, Consumer<PackedCollection> validate,
-							boolean kernel, boolean operation, boolean optimized) {
+											Supplier<? extends Producer<PackedCollection>> supply, Consumer<PackedCollection> validate,
+											boolean kernel, boolean operation, boolean optimized) {
 		OperationProfileNode profile = name == null ? null : new OperationProfileNode(name);
 
 		AtomicReference<PackedCollection> outputRef = new AtomicReference<>();
@@ -714,7 +729,7 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 	}
 
 	@Override
-	default Console console() { return console; }
+	default Console console() {return console;}
 
 	/**
 	 * Creates a {@link TestDepthRule} for use with {@link TestDepth} annotations.

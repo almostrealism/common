@@ -20,14 +20,14 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.color.RGBFeatures;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
 import java.io.File;
 import java.io.IOException;
 
-public class ImageTests implements RGBFeatures, TestFeatures {
+public class ImageTests extends TestSuiteBase implements RGBFeatures {
 	protected CollectionProducer imageTransform(CollectionProducer image) {
 		return image.multiply(2).subtract(1.0);
 	}

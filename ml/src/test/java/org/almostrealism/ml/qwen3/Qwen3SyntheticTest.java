@@ -3,29 +3,30 @@ package org.almostrealism.ml.qwen3;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.ml.StateDictionary;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Random;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.fail;
 
 /**
  * Synthetic test for Qwen3 using random weights.
- *
+ * <p>
  * This test creates a tiny Qwen3 model with random weights to verify:
  * 1. Model construction doesn't crash
  * 2. Forward pass executes without errors
  * 3. Output shapes are correct
  * 4. No null pointer exceptions or indexing errors
- *
+ * <p>
  * This does NOT validate:
  * - Weight shapes match HuggingFace format
  * - Output is meaningful
  * - Attention mechanism is correct
  */
-public class Qwen3SyntheticTest {
+public class Qwen3SyntheticTest extends TestSuiteBase {
 
 	/**
 	 * Create random weights with correct shapes for a Qwen3 config.
@@ -112,15 +113,15 @@ public class Qwen3SyntheticTest {
 		// Create a very small config
 		// NOTE: Using heads==kvHeads because GQA is not yet fully implemented
 		Qwen3Config config = new Qwen3Config(
-			64,    // dim (tiny!)
-			192,   // hiddenDim (3x)
-			2,     // layers (just 2)
-			4,     // heads
-			4,     // kvHeads (same as heads - no GQA for now)
-			100,   // vocab (tiny)
-			32,    // seqLen (short)
-			true,  // sharedWeights
-			10000.0
+				64,    // dim (tiny!)
+				192,   // hiddenDim (3x)
+				2,     // layers (just 2)
+				4,     // heads
+				4,     // kvHeads (same as heads - no GQA for now)
+				100,   // vocab (tiny)
+				32,    // seqLen (short)
+				true,  // sharedWeights
+				10000.0
 		);
 
 		System.out.println("Config: " + config);
@@ -165,7 +166,7 @@ public class Qwen3SyntheticTest {
 
 		// NOTE: Using heads==kvHeads because GQA is not yet fully implemented
 		Qwen3Config config = new Qwen3Config(
-			64, 192, 2, 4, 4, 100, 32, true, 10000.0
+				64, 192, 2, 4, 4, 100, 32, true, 10000.0
 		);
 
 		StateDictionary stateDict = createRandomWeights(config, 12345L);
@@ -202,33 +203,33 @@ public class Qwen3SyntheticTest {
 		PackedCollection embeddings = stateDict.get("model.embed_tokens.weight");
 		assertNotNull("Token embeddings should exist", embeddings);
 		assertEquals("tokenEmbeddings shape",
-			config.vocabSize * config.dim,
-			embeddings.getShape().getTotalSize());
+				config.vocabSize * config.dim,
+				embeddings.getShape().getTotalSize());
 
 		// Check first layer attention weights
 		PackedCollection wq = stateDict.get("model.layers.0.self_attn.q_proj.weight");
 		assertNotNull("Query weights should exist", wq);
 		assertEquals("wq shape per layer",
-			config.dim * config.dim,
-			wq.getShape().getTotalSize());
+				config.dim * config.dim,
+				wq.getShape().getTotalSize());
 
 		PackedCollection wk = stateDict.get("model.layers.0.self_attn.k_proj.weight");
 		assertNotNull("Key weights should exist", wk);
 		assertEquals("wk shape per layer (GQA)",
-			kvDim * config.dim,
-			wk.getShape().getTotalSize());
+				kvDim * config.dim,
+				wk.getShape().getTotalSize());
 
 		PackedCollection qkNormQ = stateDict.get("model.layers.0.self_attn.q_norm.weight");
 		assertNotNull("QK-Norm Q should exist", qkNormQ);
 		assertEquals("qkNormQ shape per layer",
-			config.headCount * config.headSize,
-			qkNormQ.getShape().getTotalSize());
+				config.headCount * config.headSize,
+				qkNormQ.getShape().getTotalSize());
 
 		PackedCollection qkNormK = stateDict.get("model.layers.0.self_attn.k_norm.weight");
 		assertNotNull("QK-Norm K should exist", qkNormK);
 		assertEquals("qkNormK shape per layer (GQA)",
-			config.kvHeadCount * config.headSize,
-			qkNormK.getShape().getTotalSize());
+				config.kvHeadCount * config.headSize,
+				qkNormK.getShape().getTotalSize());
 
 		System.out.println("[OK] All weight shapes correct");
 		System.out.println("  Token embeddings: " + embeddings.getShape());

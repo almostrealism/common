@@ -21,13 +21,13 @@ import org.almostrealism.audio.CellList;
 import org.almostrealism.audio.filter.DelayNetwork;
 import org.almostrealism.audio.line.OutputLine;
 import org.almostrealism.graph.TimeCell;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 import java.io.File;
 import java.util.function.Supplier;
 
-public class ReverbCellTests implements CellFeatures, TestFeatures {
+public class ReverbCellTests extends TestSuiteBase implements CellFeatures {
 	private final int sampleRate = OutputLine.sampleRate;
 
 	@Test

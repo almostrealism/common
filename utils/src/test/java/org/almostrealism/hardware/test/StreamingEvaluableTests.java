@@ -20,10 +20,10 @@ import io.almostrealism.compute.Process;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.computations.Assignment;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
-public class StreamingEvaluableTests implements TestFeatures {
+public class StreamingEvaluableTests extends TestSuiteBase {
 	@Test(timeout = 10000)
 	public void product() {
 		int count = 1;

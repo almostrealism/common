@@ -21,7 +21,7 @@ import org.almostrealism.audio.line.OutputLine;
 import org.almostrealism.audio.sources.SineWaveCell;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.Receptor;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -34,7 +34,7 @@ import java.util.stream.IntStream;
  * Verifies mathematical correctness of sine wave generation including
  * frequency, phase, and amplitude behavior.
  */
-public class SineWaveComputationTest implements CellFeatures, TestFeatures {
+public class SineWaveComputationTest extends TestSuiteBase implements CellFeatures {
 
 	private static final int SAMPLE_RATE = OutputLine.sampleRate;
 	private static final double EPSILON = 0.0001;

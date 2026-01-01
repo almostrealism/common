@@ -21,7 +21,7 @@ import org.almostrealism.audio.tone.SetIntervalScale;
 import org.almostrealism.audio.tone.StaticScale;
 import org.almostrealism.audio.tone.WesternChromatic;
 import org.almostrealism.audio.tone.WesternScales;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -32,7 +32,7 @@ import java.util.List;
  * Tests for {@link Scale} and its implementations including
  * {@link StaticScale}, {@link SetIntervalScale}, and {@link WesternScales}.
  */
-public class ScaleTest implements TestFeatures {
+public class ScaleTest extends TestSuiteBase {
 
 	/**
 	 * Tests Scale.of() factory method with varargs.
