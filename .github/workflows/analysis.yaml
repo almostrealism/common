@@ -33,7 +33,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        group: [0, 1, 2, 3]
+        group: [0, 1, 2]
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -58,7 +58,7 @@ jobs:
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS=Extensions \
            -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=4
+           -DAR_TEST_GROUPS=3
 
       - name: Collect Coverage Data
         if: always()
@@ -80,7 +80,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        group: [0, 1, 2, 3]
+        group: [0, 1, 2]
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -105,7 +105,7 @@ jobs:
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS=Extensions \
            -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=4
+           -DAR_TEST_GROUPS=3
 
       - name: Collect Coverage Data
         if: always()
