@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,14 +22,14 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Tensor;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.util.TestFeatures;
-import org.almostrealism.util.TestUtils;
+import org.almostrealism.util.TestDepth;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
 import java.util.Arrays;
 
-public class PackedCollectionSubsetTests implements TestFeatures {
+public class PackedCollectionSubsetTests extends TestSuiteBase {
 	@Test(timeout = 30000)
 	public void subset3d() {
 		int w = 2;
@@ -342,9 +342,8 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 	 * @see #subsetHalfPad2dSum3()
 	 */
 	@Test(timeout = 30000)
+	@TestDepth(3)
 	public void subsetHalfPad2dSumAll() {
-		if (testDepth < 3) return;
-
 		subsetHalfPad2dSum1();
 		subsetHalfPad2dSum2();
 		subsetHalfPad2dSum3();

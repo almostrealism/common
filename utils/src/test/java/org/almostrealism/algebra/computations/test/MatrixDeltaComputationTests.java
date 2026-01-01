@@ -24,7 +24,8 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.AggregatedProducerComputation;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestDepth;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -33,7 +34,7 @@ import java.util.Arrays;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
-public class MatrixDeltaComputationTests implements TestFeatures {
+public class MatrixDeltaComputationTests extends TestSuiteBase {
 	@Test(timeout = 60000)
 	public void matmul1() {
 		int dim = 2;
@@ -248,9 +249,8 @@ public class MatrixDeltaComputationTests implements TestFeatures {
 	}
 
 	@Test(timeout = 60000)
+	@TestDepth(1)
 	public void matmulMedium2() throws IOException {
-		if (testDepth < 1) return;
-
 		matmal("matmulMedium2", 210, 10, true);
 	}
 
@@ -260,9 +260,8 @@ public class MatrixDeltaComputationTests implements TestFeatures {
 	}
 
 	@Test(timeout = 60000)
+	@TestDepth(3)
 	public void matmulLarge2() throws IOException {
-		if (testDepth < 3) return;
-
 		matmal("matmulLarge2", 392, 10, true);
 	}
 

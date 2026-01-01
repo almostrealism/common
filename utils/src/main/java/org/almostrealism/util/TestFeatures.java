@@ -715,4 +715,30 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 
 	@Override
 	default Console console() { return console; }
+
+	/**
+	 * Creates a {@link TestDepthRule} for use with {@link TestDepth} annotations.
+	 * Use this when implementing TestFeatures directly instead of extending
+	 * {@link TestSuiteBase}.
+	 *
+	 * <h2>Usage</h2>
+	 * <pre>{@code
+	 * public class MyTest implements TestFeatures {
+	 *     @Rule public TestDepthRule depthRule = testDepthRule();
+	 *
+	 *     @Test(timeout = 30000)
+	 *     @TestDepth(2)
+	 *     public void expensiveTest() {
+	 *         // Automatically skipped if depth < 2
+	 *     }
+	 * }
+	 * }</pre>
+	 *
+	 * @return a new TestDepthRule configured with the current test depth
+	 * @see TestDepth
+	 * @see TestSuiteBase
+	 */
+	default TestDepthRule testDepthRule() {
+		return new TestDepthRule(testDepth);
+	}
 }

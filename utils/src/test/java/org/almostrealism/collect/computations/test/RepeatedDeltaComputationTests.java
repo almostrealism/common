@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -17,7 +17,6 @@
 package org.almostrealism.collect.computations.test;
 
 import io.almostrealism.collect.TraversalPolicy;
-import io.almostrealism.collect.WeightedSumExpression;
 import io.almostrealism.compute.ParallelProcess;
 import io.almostrealism.compute.Process;
 import io.almostrealism.expression.Expression;
@@ -28,14 +27,15 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.IndexProjectionProducerComputation;
 import org.almostrealism.collect.computations.PackedCollectionEnumerate;
 import org.almostrealism.hardware.HardwareOperator;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestDepth;
+import org.almostrealism.util.TestSuiteBase;
 import org.almostrealism.util.TestUtils;
 import org.junit.Test;
 
 import java.io.IOException;
 import java.util.function.Supplier;
 
-public class RepeatedDeltaComputationTests implements TestFeatures {
+public class RepeatedDeltaComputationTests extends TestSuiteBase {
 	@Test(timeout = 60000)
 	public void repeatProduct() {
 		PackedCollection in = pack(2.0, 1.5);
@@ -239,26 +239,25 @@ public class RepeatedDeltaComputationTests implements TestFeatures {
 	}
 
 	@Test(timeout = 4 * 60000)
+	@TestDepth(2)
 	public void convDeltaSmall() throws IOException {
-		if (testDepth < 2) return;
-
 		int l = 2; int d = 6;
 
 		convDelta("convDeltaSmall", l, d, false);
 	}
 
 	@Test(timeout = 4 * 60000)
+	@TestDepth(3)
 	public void convDeltaMedium() throws IOException {
-		if (testDepth < 3) return;
-
 		int l = 8; int d = 24;
 
 		convDelta("convDelta", l, d, false);
 	}
 
 	@Test(timeout = 60000)
+	@TestDepth(1)
 	public void convDeltaGradSmall() throws IOException {
-		if (skipLongTests || testDepth < 1) return;
+		if (skipLongTests) return;
 
 		try {
 			ParallelProcess.explicitIsolationTargets
@@ -423,9 +422,8 @@ public class RepeatedDeltaComputationTests implements TestFeatures {
 	}
 
 	@Test(timeout = 5 * 60000)
+	@TestDepth(1)
 	public void convSmallest() throws IOException {
-		if (testDepth < 1) return;
-		
 		int dim = 10;
 		int size = 3;
 		int filters = 8;
@@ -434,9 +432,8 @@ public class RepeatedDeltaComputationTests implements TestFeatures {
 	}
 
 	@Test(timeout = 40 * 60000)
+	@TestDepth(2)
 	public void convSmall() throws IOException {
-		if (testDepth < 2) return;
-
 		int dim = 16;
 		int size = 3;
 		int filters = 8;
