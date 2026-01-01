@@ -20,13 +20,14 @@ import io.almostrealism.compute.Process;
 import io.almostrealism.uml.Signature;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestDepth;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 import java.util.Arrays;
 import java.util.stream.IntStream;
 
-public class AggregatedComputationTests implements TestFeatures {
+public class AggregatedComputationTests extends TestSuiteBase {
 
 	boolean enableOptimization = false;
 
@@ -47,9 +48,8 @@ public class AggregatedComputationTests implements TestFeatures {
 	}
 
 	@Test(timeout = 120000)
+	@TestDepth(1)
 	public void largeSum() {
-		if (testDepth < 1) return;
-
 		int w = 257;
 		int h = 8192;
 		int d = 1024;

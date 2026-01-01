@@ -20,11 +20,12 @@ import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestDepth;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
-public class CollectionMathTests implements TestFeatures {
+public class CollectionMathTests extends TestSuiteBase {
 	@Test(timeout = 30000)
 	public void broadcastProduct1() {
 		PackedCollection a = new PackedCollection(shape(10));
@@ -363,9 +364,8 @@ public class CollectionMathTests implements TestFeatures {
 	}
 
 	@Test(timeout = 30000)
+	@TestDepth(2)
 	public void variance1() {
-		if (testDepth < 2) return;
-
 		variance(1);
 	}
 

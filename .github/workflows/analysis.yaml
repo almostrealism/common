@@ -1,4 +1,4 @@
-name: Qodana
+name: "Build and Test"
 
 on:
   workflow_dispatch:
@@ -9,6 +9,59 @@ on:
 
 jobs:
   build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'adopt'
+          cache: 'maven'
+
+      - name: Build (skip tests)
+        run: mvn install -DskipTests
+
+  test:
+    needs: build
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        group: [0, 1, 2, 3]
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'adopt'
+          cache: 'maven'
+
+      - name: Build (skip tests)
+        run: mvn install -DskipTests
+
+      - name: Run Tests (Group ${{ matrix.group }})
+        run: |
+          LD_LIBRARY_PATH=Extensions mvn test \
+           -DAR_HARDWARE_DRIVER=native \
+           -DAR_HARDWARE_MEMORY_SCALE=7 \
+           -DAR_HARDWARE_LIBS=Extensions \
+           -DAR_TEST_GROUP=${{ matrix.group }} \
+           -DAR_TEST_GROUPS=4
+
+  analysis:
+    needs: test
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -30,22 +83,8 @@ jobs:
           distribution: 'adopt'
           cache: 'maven'
 
-      - name: Validate Maven Wrapper
-        run: mvn --version
-
-      - name: Run Tests
-        run: |
-          LD_LIBRARY_PATH=Extensions mvn test \
-           -DAR_HARDWARE_DRIVER=native \
-           -DAR_HARDWARE_MEMORY_SCALE=7 \
-           -DAR_HARDWARE_LIBS=Extensions \
-           -DAR_TEST_PROFILE=pipeline
-
-      - name: Archive coverage data
-        uses: actions/upload-artifact@v4
-        with:
-          name: maven-coverage-data
-          path: .qodana/code-coverage
+      - name: Build for Analysis
+        run: mvn install -DskipTests
 
       - name: Qodana Scan
         uses: JetBrains/qodana-action@main

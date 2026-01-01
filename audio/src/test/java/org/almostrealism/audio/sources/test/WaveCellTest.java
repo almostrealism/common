@@ -30,7 +30,8 @@ import org.almostrealism.graph.temporal.WaveCell;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.heredity.ScaleFactor;
 import org.almostrealism.time.TemporalList;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestDepth;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -40,7 +41,7 @@ import java.time.Instant;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.IntStream;
 
-public class WaveCellTest implements CellFeatures, TestFeatures {
+public class WaveCellTest extends TestSuiteBase implements CellFeatures {
 	protected WaveCell cell() throws IOException {
 		return WaveData.load(new File("Library/Snare Perc DD.wav"))
 						.toCell(0, 1000, null, c(10))
@@ -62,8 +63,9 @@ public class WaveCellTest implements CellFeatures, TestFeatures {
 	}
 
 	@Test
+	@TestDepth(1)
 	public void endless() {
-		if (skipLongTests || testDepth < 1) return;
+		if (skipLongTests) return;
 
 		AtomicInteger total = new AtomicInteger();
 

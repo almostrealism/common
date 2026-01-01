@@ -21,12 +21,13 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.OutputFeatures;
 import org.almostrealism.layers.CellularLayer;
-import org.almostrealism.layers.Layer;
 import org.almostrealism.model.Model;
 import org.almostrealism.model.SequentialBlock;
 import org.almostrealism.optimize.Dataset;
 import org.almostrealism.optimize.ValueTarget;
 import org.almostrealism.util.ModelTestFeatures;
+import org.almostrealism.util.TestDepth;
+import org.almostrealism.util.TestSuiteBase;
 import org.almostrealism.util.TestUtils;
 import org.junit.Assert;
 import org.junit.Test;
@@ -55,7 +56,7 @@ import java.util.stream.IntStream;
  *
  * @author Michael Murray
  */
-public class StrictShapeEnforcementTest implements ModelTestFeatures {
+public class StrictShapeEnforcementTest extends TestSuiteBase implements ModelTestFeatures {
 	static {
 		if (TestUtils.getTrainTests()) {
 			Console.root().addListener(OutputFeatures.fileOutput("results/logs/strict_shape_enforcement.out"));
@@ -123,9 +124,8 @@ public class StrictShapeEnforcementTest implements ModelTestFeatures {
 	 * This test will fail in strict mode until dense layer is fixed.
 	 */
 	@Test(timeout = 30000)
+	@TestDepth(1)
 	public void testSyntheticDenseInCurrentMode() throws FileNotFoundException {
-		if (testDepth < 1) return;
-
 		log("=== Synthetic Dense Test (Current Mode) ===");
 
 		int inputSize = 5;

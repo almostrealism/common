@@ -20,10 +20,11 @@ import io.almostrealism.profile.OperationProfile;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.OperationList;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
+import org.almostrealism.util.TestDepth;
 import org.junit.Test;
 
-public class MatrixMathTests implements TestFeatures {
+public class MatrixMathTests extends TestSuiteBase {
 	private static final boolean enableOptimization = false;
 	private static final boolean enableRepeat = true;
 
@@ -53,16 +54,14 @@ public class MatrixMathTests implements TestFeatures {
 	}
 
 	@Test(timeout = 30000)
+	@TestDepth(1)
 	public void matmulLarge() {
-		if (testDepth < 1) return;
-
 		matmul(2, 2048, 1024, enableOptimization, true);
 	}
 
 	@Test(timeout = 20000)
+	@TestDepth(1)
 	public void matmulPowers() {
-		if (testDepth < 1) return;
-
 		for (int i = 1; i < 8; i++) {
 			matmul(0, 1 << i, 1 << i, enableOptimization, false);
 		}
@@ -213,9 +212,8 @@ public class MatrixMathTests implements TestFeatures {
 	}
 
 	@Test(timeout = 4 * 60000)
+	@TestDepth(3)
 	public void sumPowers() {
-		if (testDepth < 3) return;
-
 		for (int i = 1; i < 7; i++) {
 			sum(600, 1 << i);
 		}

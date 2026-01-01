@@ -398,7 +398,7 @@ public class RotationTests implements RotationFeatures, TestFeatures {
 		assertTrue(diff < 1e-4);
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void ropeRotation() {
 		if (testProfileIs(TestUtils.PIPELINE)) return;
 

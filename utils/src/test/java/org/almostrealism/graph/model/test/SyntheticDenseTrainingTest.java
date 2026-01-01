@@ -29,6 +29,8 @@ import org.almostrealism.optimize.ModelOptimizer;
 import org.almostrealism.optimize.NegativeLogLikelihood;
 import org.almostrealism.optimize.ValueTarget;
 import org.almostrealism.util.ModelTestFeatures;
+import org.almostrealism.util.TestDepth;
+import org.almostrealism.util.TestSuiteBase;
 import org.almostrealism.util.TestUtils;
 import org.junit.Assert;
 import org.junit.Test;
@@ -57,8 +59,7 @@ import java.util.stream.IntStream;
  *
  * @author Michael Murray
  */
-public class SyntheticDenseTrainingTest implements ModelTestFeatures {
-
+public class SyntheticDenseTrainingTest extends TestSuiteBase implements ModelTestFeatures {
 	static {
 		if (TestUtils.getTrainTests()) {
 			Console.root().addListener(OutputFeatures.fileOutput("results/logs/synthetic_dense_train.out"));
@@ -104,9 +105,8 @@ public class SyntheticDenseTrainingTest implements ModelTestFeatures {
 	 * <p>Architecture: Input [5] - Dense [5 - 5] - Output [5]</p>
 	 */
 	@Test(timeout = 120000)
+	@TestDepth(1)
 	public void simpleDenseRegression() throws FileNotFoundException {
-		if (testDepth < 1) return;
-
 		log("=== Test 1.1: Simple Dense Regression ===");
 
 		int size = 5;
@@ -142,10 +142,9 @@ public class SyntheticDenseTrainingTest implements ModelTestFeatures {
 	 *
 	 * <p>Architecture: Input [3] - Dense [3 - 5] - Dense [5 - 1] - Output [1]</p>
 	 */
-	@Test(timeout = 120000)
+	@Test(timeout = 4 * 60000)
+	@TestDepth(1)
 	public void denseWithMultipleLayers() throws FileNotFoundException {
-		if (testDepth < 1) return;
-
 		log("=== Test 1.2: Dense with Multiple Layers ===");
 
 		int inputSize = 3;
@@ -185,9 +184,8 @@ public class SyntheticDenseTrainingTest implements ModelTestFeatures {
 	 * <p>Architecture: Input [4] - Dense [4 - 2] - Softmax - Output [2]</p>
 	 */
 	@Test(timeout = 12 * 60000)
+	@TestDepth(1)
 	public void denseClassification() throws FileNotFoundException {
-		if (testDepth < 1) return;
-
 		log("=== Test 1.3: Dense Classification ===");
 
 		int inputSize = 4;
@@ -266,9 +264,8 @@ public class SyntheticDenseTrainingTest implements ModelTestFeatures {
 	 * <p>Architecture: Input [bs=10, 3] - Dense [3 - 3] - Output [bs=10, 3]</p>
 	 */
 	@Test(timeout = 120000)
+	@TestDepth(1)
 	public void denseBatched() throws FileNotFoundException {
-		if (testDepth < 1) return;
-
 		log("=== Test 1.4: Dense Batched Training ===");
 
 		int batchSize = 10;

@@ -1,14 +1,22 @@
+# Mac OS
 .DS_Store
 **/.DS_Store
 
+# IDEs
 .fleet/**
 .idea/**
 
+# Static Analysis
 **/.qodana/**
 
-/**/target/
-**/*.versionsBackup
+# Build
+**/dependency-reduced-pom.xml
+target/**
+**/target/**
+commands/**
+**.versionsBackup
 
+# Testing and Monitoring
 **/*.hwcache/**
 **/*.hprof
 **/hs_err_pid**
@@ -30,3 +38,7 @@ Extensions/**
 **/__pycache__
 
 **/docs/apidocs
+
+# Data
+flowtreedb**
+graphpersistdb**
