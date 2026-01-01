@@ -130,7 +130,7 @@ public class SyntheticDenseTrainingTest extends TestSuiteBase implements ModelTe
 				.collect(Collectors.toList()));
 
 		// Train using existing infrastructure
-		train("simpleDenseRegression", model, data, epochs, steps, 1.0, 0.1);
+		train("simpleDenseRegression", model, data, epochs, steps, 0.6, 0.2);
 
 		log("Test 1.1 completed successfully");
 	}
