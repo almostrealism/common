@@ -53,7 +53,7 @@ jobs:
 
       - name: Run Tests (Group ${{ matrix.group }}, excluding ml)
         run: |
-          LD_LIBRARY_PATH=Extensions mvn test -pl '!ml' \
+          LD_LIBRARY_PATH=Extensions mvn test -pl 'utils' \
            -DAR_HARDWARE_DRIVER=native \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS=Extensions \
