@@ -90,7 +90,7 @@ public class BufferedOutputScheduler implements CellFeatures {
 	 * A negative value causes slightly shorter sleeps, helping to stay ahead of
 	 * real-time playback and reduce the risk of buffer underruns.
 	 */
-	public static final long timingPad = -3;
+	public static final long timingPad = -2;
 
 	/**
 	 * When {@code true}, enables detailed logging of scheduler state during
