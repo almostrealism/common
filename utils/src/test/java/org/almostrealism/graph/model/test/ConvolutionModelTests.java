@@ -31,15 +31,15 @@ import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 import org.almostrealism.model.ModelFeatures;
 import org.almostrealism.model.SequentialBlock;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestDepth;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
 import java.io.IOException;
 import java.util.function.Supplier;
 
-public class ConvolutionModelTests implements ModelFeatures, TestFeatures, KernelAssertions {
-
+public class ConvolutionModelTests extends TestSuiteBase implements ModelFeatures, KernelAssertions {
 	@Test(timeout = 30000)
 	public void convSingleChannelSmall() {
 		convSingleChannel(10, 10, 3, 8);
@@ -80,9 +80,8 @@ public class ConvolutionModelTests implements ModelFeatures, TestFeatures, Kerne
 	}
 
 	@Test(timeout = 15 * 60000)
+	@TestDepth(1)
 	public void convMultiChannelMedium() {
-		if (testDepth < 1) return;
-
 		convMultiChannel(2, 4, 54, 54, 3, 6);
 	}
 
@@ -146,9 +145,8 @@ public class ConvolutionModelTests implements ModelFeatures, TestFeatures, Kerne
 	}
 
 	@Test(timeout = 90 * 60000)
+	@TestDepth(2)
 	public void convBackwardsMediumBatch() throws IOException {
-		if (testDepth < 2) return;
-
 		convBackwards("convBackwardsMediumBatch", 4, 28, 28, 28, 3, 28, 0, true);
 	}
 

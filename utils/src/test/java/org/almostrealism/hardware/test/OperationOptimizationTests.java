@@ -23,12 +23,13 @@ import io.almostrealism.relation.Countable;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.OperationList;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestDepth;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 import java.util.function.Supplier;
 
-public class OperationOptimizationTests implements TestFeatures {
+public class OperationOptimizationTests extends TestSuiteBase {
 	@Test(timeout = 30000)
 	public void reshapeEnumerate() {
 		int seqLength = 1024;
@@ -80,9 +81,9 @@ public class OperationOptimizationTests implements TestFeatures {
 	}
 
 	@Test(timeout = 2 * 60000)
+	@TestDepth(3)
 	public void matmulLoopComparison() {
 		if (skipLongTests) return;
-		if (testDepth < 3) return;
 
 		int itr = 2000000;
 		int dim = 64;

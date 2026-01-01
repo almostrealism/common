@@ -30,6 +30,8 @@ import org.almostrealism.optimize.ModelOptimizer;
 import org.almostrealism.optimize.NegativeLogLikelihood;
 import org.almostrealism.optimize.ValueTarget;
 import org.almostrealism.util.ModelTestFeatures;
+import org.almostrealism.util.TestDepth;
+import org.almostrealism.util.TestSuiteBase;
 import org.almostrealism.util.TestUtils;
 import org.junit.Assert;
 import org.junit.Test;
@@ -54,8 +56,7 @@ import java.util.function.Supplier;
  *
  * @author Michael Murray
  */
-public class SyntheticConvolutionTrainingTest implements ModelFeatures, ModelTestFeatures {
-
+public class SyntheticConvolutionTrainingTest extends TestSuiteBase implements ModelFeatures, ModelTestFeatures {
 	static {
 		if (TestUtils.getTrainTests()) {
 			Console.root().addListener(OutputFeatures.fileOutput("results/logs/synthetic_conv_train.out"));
@@ -127,9 +128,8 @@ public class SyntheticConvolutionTrainingTest implements ModelFeatures, ModelTes
 	 * <p>Architecture: Input [1, 16, 16] - Conv2d [1-4, 3x3] - Pool2d [2x2] - Flatten - Dense - Output [2]</p>
 	 */
 	@Test(timeout = 8 * 60000)
+	@TestDepth(2)
 	public void simpleConv2d() throws FileNotFoundException {
-		if (testDepth < 2) return;
-
 		log("=== Test 2.1: Simple Conv2d ===");
 
 		int batchSize = 1;
@@ -200,9 +200,8 @@ public class SyntheticConvolutionTrainingTest implements ModelFeatures, ModelTes
 	 * <p>Architecture: Input [1, 20, 20] - Conv2d [1-8, 3x3] - Pool2d - Conv2d [8-16, 3x3] - Pool2d - Flatten - Dense - Output [4]</p>
 	 */
 	@Test(timeout = 75 * 60000)
+	@TestDepth(2)
 	public void multiLayerConv2d() {
-		if (testDepth < 2) return;
-
 		log("=== Test 2.2: Multi-Layer Conv2d ===");
 
 		int batchSize = 1;
@@ -261,9 +260,8 @@ public class SyntheticConvolutionTrainingTest implements ModelFeatures, ModelTes
 	 * <p>Architecture: Input [1, 12, 12] - Conv2d [padding=0] - Pool - Flatten - Dense - Output</p>
 	 */
 	@Test(timeout = 120000)
+	@TestDepth(1)
 	public void conv2dInference() {
-		if (testDepth < 1) return;
-
 		log("=== Test 2.3: Conv2d Inference ===");
 
 		int batchSize = 1;

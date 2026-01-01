@@ -24,6 +24,8 @@ import org.almostrealism.model.SequentialBlock;
 import org.almostrealism.optimize.Dataset;
 import org.almostrealism.optimize.ValueTarget;
 import org.almostrealism.util.ModelTestFeatures;
+import org.almostrealism.util.TestDepth;
+import org.almostrealism.util.TestSuiteBase;
 import org.almostrealism.util.TestUtils;
 import org.junit.Test;
 
@@ -47,7 +49,7 @@ import java.util.stream.IntStream;
  *
  * @author Michael Murray
  */
-public class SyntheticNormTrainingTest implements ModelTestFeatures {
+public class SyntheticNormTrainingTest extends TestSuiteBase implements ModelTestFeatures {
 	static {
 		if (TestUtils.getTrainTests()) {
 			Console.root().addListener(OutputFeatures.fileOutput("results/logs/synthetic_norm_train.out"));
@@ -80,9 +82,8 @@ public class SyntheticNormTrainingTest implements ModelTestFeatures {
 	 * <p>Architecture: Input [6] - Dense [6 - 6] - Norm - Dense [6 - 3] - Output [3]</p>
 	 */
 	@Test(timeout = 6 * 60000)
+	@TestDepth(1)
 	public void denseWithNorm() throws FileNotFoundException {
-		if (testDepth < 1) return;
-
 		log("=== Test 3.1: Dense with Layer Normalization ===");
 
 		int inputSize = 6;
@@ -123,9 +124,8 @@ public class SyntheticNormTrainingTest implements ModelTestFeatures {
 	 * <p>Architecture: Input [6] - Dense [6 - 6] - Norm - Dense [6 - 6] - Norm - Dense [6 - 3] - Output [3]</p>
 	 */
 	@Test(timeout = 13 * 60000)
+	@TestDepth(1)
 	public void denseMultiLayerWithNorm() throws FileNotFoundException {
-		if (testDepth < 1) return;
-
 		log("=== Test 3.2: Dense Multi-layer with Norm ===");
 
 		int inputSize = 6;
@@ -168,9 +168,8 @@ public class SyntheticNormTrainingTest implements ModelTestFeatures {
 	 * <p>Architecture: Input [12] - Dense [12 - 12] - Norm [groups=3] - Dense [12 - 6] - Output [6]</p>
 	 */
 	@Test(timeout = 10 * 60000)
+	@TestDepth(1)
 	public void groupNorm() throws FileNotFoundException {
-		if (testDepth < 1) return;
-
 		log("=== Test 3.3: Group Normalization ===");
 
 		int inputSize = 12;

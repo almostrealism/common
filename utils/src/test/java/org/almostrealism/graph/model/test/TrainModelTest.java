@@ -34,7 +34,8 @@ import org.almostrealism.model.Block;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 import org.almostrealism.model.ModelFeatures;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestDepth;
+import org.almostrealism.util.TestSuiteBase;
 import org.almostrealism.util.TestUtils;
 import org.junit.Assert;
 import org.junit.Test;
@@ -42,8 +43,7 @@ import org.junit.Test;
 import java.io.IOException;
 import java.util.stream.IntStream;
 
-public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssertions {
-
+public class TrainModelTest extends TestSuiteBase implements ModelFeatures, KernelAssertions {
 	private final int convSize = 3;
 	private final int poolSize = 2;
 	private final int w = 10;
@@ -226,9 +226,8 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 	}
 
 	@Test(timeout = 4 * 60000)
+	@TestDepth(1)
 	public void trainSmallest() throws IOException {
-		if (testDepth < 1) return;
-
 		int dim = 3;
 		Tensor<Double> t = tensor(shape(dim, dim));
 		PackedCollection input = t.pack();
@@ -236,9 +235,8 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 	}
 
 	@Test(timeout = 4 * 60000)
+	@TestDepth(2)
 	public void trainVerySmall() throws IOException {
-		if (testDepth < 2) return;
-
 		try {
 			int dim = 8;
 			Tensor<Double> t = tensor(shape(dim, dim));
@@ -251,8 +249,8 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 
 
 	@Test(timeout = 30 * 60000)
+	@TestDepth(3)
 	public void trainSmall() throws IOException {
-		if (testDepth < 3) return;
 		if (skipKnownIssues) return;
 
 		int dim = 28;
