@@ -84,7 +84,7 @@ public class LoopedWeightedSumCorrectnessTest implements TestFeatures, LayerFeat
 	 * Total: 2.0 + 10.7 = 12.7
 	 * </pre>
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testAgainstHandComputedReference() {
 		int outerCount = 2;  // input channels
 		int innerCount = 3;  // kernel size
@@ -157,7 +157,7 @@ public class LoopedWeightedSumCorrectnessTest implements TestFeatures, LayerFeat
 	 * <p>This verifies that the computation produces correct results when
 	 * Process::optimize() is called, which is what CompiledModel does.</p>
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testAgainstHandComputedReferenceWithOptimization() {
 		int outerCount = 2;
 		int innerCount = 3;
@@ -225,7 +225,7 @@ public class LoopedWeightedSumCorrectnessTest implements TestFeatures, LayerFeat
 	 * <p>Uses random inputs and verifies both implementations produce the same result.
 	 * Uses small sizes where WeightedSumComputation can run efficiently.</p>
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testAgainstWeightedSumComputation() {
 		int outerCount = 4;  // input channels
 		int innerCount = 3;  // kernel size
@@ -320,7 +320,7 @@ public class LoopedWeightedSumCorrectnessTest implements TestFeatures, LayerFeat
 	 *
 	 * <p>Uses larger outerCount and innerCount values similar to convTranspose1d usage.</p>
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testLargerScale() {
 		int outerCount = 64;  // More realistic channel count
 		int innerCount = 16;  // Larger kernel

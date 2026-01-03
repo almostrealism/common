@@ -34,7 +34,7 @@ public class LoopedSumDiagnosticTest implements TestFeatures, LayerFeatures {
 	/**
 	 * Small test with instruction set monitoring to see generated code.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testGeneratedCode() {
 		// Enable verbose logging
 		HardwareOperator.enableInstructionSetMonitoring = true;
@@ -98,7 +98,7 @@ public class LoopedSumDiagnosticTest implements TestFeatures, LayerFeatures {
 	/**
 	 * Test with optimization enabled to verify that isolation works.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testWithOptimization() {
 		// Enable verbose logging
 		HardwareOperator.enableInstructionSetMonitoring = true;
@@ -179,7 +179,7 @@ public class LoopedSumDiagnosticTest implements TestFeatures, LayerFeatures {
 	/**
 	 * Compare timing of scope generation vs expression building.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testTimingBreakdown() {
 		int outerCount = 64;
 		int innerCount = 16;

@@ -36,7 +36,7 @@ public class Conv1dLayerTests implements LayerFeatures, TestFeatures {
 	 * Tests Snake activation with alpha=1.0.
 	 * Snake formula: f(x) = x + (1/alpha) * sin^2(alpha * x)
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testSnakeActivation() {
 		int size = 100;
 		double alpha = 1.0;
@@ -80,7 +80,7 @@ public class Conv1dLayerTests implements LayerFeatures, TestFeatures {
 	/**
 	 * Tests Snake activation with alpha=0.5.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testSnakeActivationAlpha05() {
 		int size = 50;
 		double alpha = 0.5;
@@ -115,7 +115,7 @@ public class Conv1dLayerTests implements LayerFeatures, TestFeatures {
 	 * Tests Conv1d with kernel size 1 (pointwise convolution).
 	 * This should behave like a linear transformation across channels.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testConv1dKernel1() {
 		int batchSize = 1;
 		int inputChannels = 2;
@@ -167,7 +167,7 @@ public class Conv1dLayerTests implements LayerFeatures, TestFeatures {
 	 * Tests Conv1d with kernel size 3 and stride 1.
 	 * Verifies output shape calculation.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testConv1dKernel3Stride1() {
 		int batchSize = 1;
 		int inputChannels = 2;
@@ -211,7 +211,7 @@ public class Conv1dLayerTests implements LayerFeatures, TestFeatures {
 	 * Tests Conv1d with stride 2 for downsampling.
 	 * This is the pattern used in the encoder blocks.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testConv1dStride2Downsampling() {
 		int batchSize = 1;
 		int inputChannels = 2;
@@ -254,7 +254,7 @@ public class Conv1dLayerTests implements LayerFeatures, TestFeatures {
 	 * Tests ConvTranspose1d with stride 2 for upsampling.
 	 * This is the pattern used in the decoder blocks.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testConvTranspose1dStride2Upsampling() {
 		int batchSize = 1;
 		int inputChannels = 4;
@@ -297,7 +297,7 @@ public class Conv1dLayerTests implements LayerFeatures, TestFeatures {
 	 * Tests Conv1d followed by ConvTranspose1d to verify shape consistency.
 	 * The output shape should match the original input shape.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testConv1dConvTranspose1dRoundtrip() {
 		int batchSize = 1;
 		int channels = 4;
@@ -344,7 +344,7 @@ public class Conv1dLayerTests implements LayerFeatures, TestFeatures {
 	/**
 	 * Tests Conv1d without bias.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testConv1dNoBias() {
 		int batchSize = 1;
 		int inputChannels = 2;
@@ -387,7 +387,7 @@ public class Conv1dLayerTests implements LayerFeatures, TestFeatures {
 	/**
 	 * Tests ConvTranspose1d with stride 4 (used in autoencoder).
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testConvTranspose1dStride4() {
 		int batchSize = 1;
 		int inputChannels = 8;
@@ -425,7 +425,7 @@ public class Conv1dLayerTests implements LayerFeatures, TestFeatures {
 	/**
 	 * Tests ConvTranspose1d with stride 8 (used in autoencoder decoder).
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testConvTranspose1dStride8() {
 		int batchSize = 1;
 		int inputChannels = 16;
@@ -465,7 +465,7 @@ public class Conv1dLayerTests implements LayerFeatures, TestFeatures {
 	 * This test verifies the output values match expected results computed manually.
 	 * It also logs the weighted sum size to help diagnose performance issues.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testConvTranspose1dCorrectnessSmall() {
 		int batchSize = 1;
 		int inputChannels = 4;
@@ -530,7 +530,7 @@ public class Conv1dLayerTests implements LayerFeatures, TestFeatures {
 	 * Tests ConvTranspose1d with large channel count to measure scaling.
 	 * This is the problematic case from the Oobleck decoder (2048 input channels).
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testConvTranspose1dLargeChannels() {
 		int batchSize = 1;
 		int inputChannels = 2048;  // Same as Oobleck decoder block 1

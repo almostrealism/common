@@ -39,7 +39,7 @@ public class IsolationTargetTest implements TestFeatures, LayerFeatures {
 	 * Test 1: LoopedWeightedSumComputation alone (not wrapped).
 	 * This should definitely use getScope() and generate a native loop.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testLoopedWeightedSumAlone() {
 		int outerCount = 64;  // Large enough to trigger isolation
 		int innerCount = 4;
@@ -99,7 +99,7 @@ public class IsolationTargetTest implements TestFeatures, LayerFeatures {
 	 * Test 2: LoopedWeightedSumComputation wrapped with .traverseEach().
 	 * This is what happens in the layer framework.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testLoopedWeightedSumWrapped() {
 		int outerCount = 64;
 		int innerCount = 4;
@@ -161,7 +161,7 @@ public class IsolationTargetTest implements TestFeatures, LayerFeatures {
 	 * outerCount=2048, innerCount=16 = 32K operations.
 	 * Takes several minutes for compilation due to large expression trees.
 	 */
-	@Test
+	@Test(timeout = 4 * 60000)
 	public void testLoopedWeightedSumLarge() {
 		if (testDepth < 2) return;
 		int outerCount = 2048;
@@ -226,7 +226,7 @@ public class IsolationTargetTest implements TestFeatures, LayerFeatures {
 	 * outerCount=2048, innerCount=4 - if native loop works, this should be fast.
 	 * Takes ~100 seconds for compilation due to large expression trees.
 	 */
-	@Test
+	@Test(timeout = 2 * 60000)
 	public void testLoopedWeightedSumLargeOuter() {
 		if (testDepth < 2) return;
 		int outerCount = 2048;
