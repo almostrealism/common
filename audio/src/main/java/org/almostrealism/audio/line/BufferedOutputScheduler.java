@@ -189,7 +189,6 @@ public class BufferedOutputScheduler implements CellFeatures {
 		regularizer = new TimingRegularizer((long) (buffer.getDetails().getDuration() * 10e9));
 
 		executor.accept(this::run);
-		log("Started BufferedOutputScheduler");
 	}
 
 	/**
