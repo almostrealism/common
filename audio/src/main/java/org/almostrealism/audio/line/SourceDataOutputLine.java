@@ -45,6 +45,7 @@ public class SourceDataOutputLine implements OutputLine {
 	private SourceDataLine line;
 	private final int bufferSize;
 	private final AudioFormat format;
+	private volatile boolean resetting;
 
 	/**
 	 * Creates a new SourceDataOutputLine wrapping the specified Java Sound API line.
@@ -92,6 +93,10 @@ public class SourceDataOutputLine implements OutputLine {
 	 */
 	@Override
 	public void write(PackedCollection sample) {
+		if (resetting) {
+			return;
+		}
+
 		byte[] bytes = LineUtilities.toFrame(sample, line.getFormat());
 		line.write(bytes, 0, bytes.length);
 	}
@@ -144,6 +149,7 @@ public class SourceDataOutputLine implements OutputLine {
 	 * Starts the audio line if not already started.
 	 * Audio data written to the line will begin playing after this is called.
 	 */
+	@Override
 	public void start() {
 		if (line != null && !line.isActive()) {
 			line.start();
@@ -154,6 +160,7 @@ public class SourceDataOutputLine implements OutputLine {
 	 * Stops the audio line, pausing playback.
 	 * The line can be restarted with {@link #start()}.
 	 */
+	@Override
 	public void stop() {
 		if (line != null && line.isActive()) {
 			line.stop();
@@ -165,6 +172,7 @@ public class SourceDataOutputLine implements OutputLine {
 	 *
 	 * @return true if the line is active, false otherwise
 	 */
+	@Override
 	public boolean isActive() {
 		return line != null && line.isActive();
 	}
@@ -192,25 +200,33 @@ public class SourceDataOutputLine implements OutputLine {
 	 * @throws RuntimeException if the new line cannot be opened
 	 */
 	@Override
-	public void reset() {
-		// Close existing line
-		if (line != null) {
-			if (line.isActive()) {
-				line.stop();
-			}
-			if (line.isOpen()) {
-				line.close();
-			}
-		}
-
-		// Create new line with same format
-		DataLine.Info info = new DataLine.Info(SourceDataLine.class, format);
+	public synchronized void reset() {
 		try {
-			line = (SourceDataLine) AudioSystem.getLine(info);
-			line.open(format, Math.max(1024, bufferSize * 4));
-			line.start();
-		} catch (LineUnavailableException e) {
-			throw new RuntimeException("Failed to reset audio line", e);
+			resetting = true;
+
+			// Close existing line
+			if (line != null) {
+				if (line.isActive()) {
+					line.stop();
+				}
+				if (line.isOpen()) {
+					line.close();
+				}
+
+				line = null;
+			}
+
+			// Create new line with same format
+			DataLine.Info info = new DataLine.Info(SourceDataLine.class, format);
+			try {
+				line = (SourceDataLine) AudioSystem.getLine(info);
+				line.open(format, Math.max(1024, bufferSize * 4));
+				line.start();
+			} catch (LineUnavailableException e) {
+				throw new RuntimeException("Failed to reset audio line", e);
+			}
+		} finally {
+			resetting = false;
 		}
 	}
 }

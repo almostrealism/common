@@ -79,4 +79,44 @@ public interface OutputLine extends BufferedAudio, Destroyable {
 	default void reset() {
 		// Default implementation does nothing
 	}
+
+	/**
+	 * Starts or resumes the output line. Audio data written to the line will
+	 * begin playing after this is called.
+	 * <p>
+	 * For hardware-backed implementations, this typically activates the
+	 * underlying audio device. For other implementations (e.g., file-based
+	 * or test mocks), this may be a no-op.
+	 * <p>
+	 * The default implementation does nothing.
+	 */
+	default void start() {
+		// Default implementation does nothing
+	}
+
+	/**
+	 * Stops the output line, suspending playback. The line can be restarted
+	 * with {@link #start()}.
+	 * <p>
+	 * For hardware-backed implementations, this stops the underlying audio
+	 * device from consuming buffered data. This is useful for implementing
+	 * pause functionality without continuously writing silence to the hardware.
+	 * <p>
+	 * The default implementation does nothing.
+	 */
+	default void stop() {
+		// Default implementation does nothing
+	}
+
+	/**
+	 * Returns whether the output line is currently active (playing or ready to play).
+	 * <p>
+	 * For hardware-backed implementations, this reflects the state of the
+	 * underlying audio device.
+	 *
+	 * @return {@code true} if the line is active, {@code false} otherwise
+	 */
+	default boolean isActive() {
+		return true;
+	}
 }

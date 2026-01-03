@@ -141,6 +141,12 @@ public class BufferedOutputScheduler implements CellFeatures {
 	private boolean degradedMode;
 	private int recoveryCount;
 
+	// User-initiated suspend state (separate from buffer-safety pause)
+	private volatile boolean suspended;
+	private final Object suspendLock = new Object();
+	private long suspendTime;
+	private long totalSuspendedDuration;
+
 	/**
 	 * Creates a new scheduler with the specified components.
 	 *
@@ -373,6 +379,66 @@ public class BufferedOutputScheduler implements CellFeatures {
 	public void stop() { stopped = true; }
 
 	/**
+	 * Suspends the scheduler, stopping all audio generation and output.
+	 * <p>
+	 * Unlike {@link #pause()}, which is an internal mechanism for buffer safety,
+	 * this method is intended for user-initiated playback suspension. When suspended:
+	 * <ul>
+	 *   <li>The main processing loop blocks until {@link #unsuspend()} is called</li>
+	 *   <li>No audio data is generated or written to the output line</li>
+	 *   <li>The output line is stopped to prevent buffer accumulation issues</li>
+	 * </ul>
+	 * <p>
+	 * This method is thread-safe and can be called from any thread.
+	 */
+	public void suspend() {
+		synchronized (suspendLock) {
+			if (!suspended) {
+				suspended = true;
+				suspendTime = System.currentTimeMillis();
+				output.stop();
+				log("Scheduler suspended at cycle " + count);
+			}
+		}
+	}
+
+	/**
+	 * Resumes the scheduler from a suspended state.
+	 * <p>
+	 * When unsuspended:
+	 * <ul>
+	 *   <li>The output line is restarted</li>
+	 *   <li>Timing state is reset to prevent catch-up behavior</li>
+	 *   <li>The main processing loop resumes execution</li>
+	 * </ul>
+	 * <p>
+	 * This method is thread-safe and can be called from any thread.
+	 * If the scheduler is not currently suspended, this method has no effect.
+	 */
+	public void unsuspend() {
+		synchronized (suspendLock) {
+			if (suspended) {
+				totalSuspendedDuration += System.currentTimeMillis() - suspendTime;
+				output.start();
+				// Reinitialize the timing regularizer to avoid catch-up behavior
+				regularizer = new TimingRegularizer((long) (buffer.getDetails().getDuration() * 10e9));
+				suspended = false;
+				suspendLock.notifyAll();
+				log("Scheduler resumed after " + (System.currentTimeMillis() - suspendTime) + "ms");
+			}
+		}
+	}
+
+	/**
+	 * Returns whether the scheduler is currently suspended.
+	 *
+	 * @return {@code true} if suspended, {@code false} otherwise
+	 */
+	public boolean isSuspended() {
+		return suspended;
+	}
+
+	/**
 	 * Returns the audio buffer used for intermediate storage.
 	 *
 	 * @return the audio buffer
@@ -441,7 +507,7 @@ public class BufferedOutputScheduler implements CellFeatures {
 	 *
 	 * @return the adjusted elapsed time in milliseconds
 	 */
-	public long getRealTime() { return toRealTime(System.currentTimeMillis() - start - totalPaused); }
+	public long getRealTime() { return toRealTime(System.currentTimeMillis() - start - totalPaused - totalSuspendedDuration); }
 
 	/**
 	 * Returns the duration of audio that has been rendered, in milliseconds.
@@ -518,6 +584,20 @@ public class BufferedOutputScheduler implements CellFeatures {
 		long lastDuration = 0;
 
 		while (!stopped) {
+			// Wait if suspended (user-initiated pause)
+			synchronized (suspendLock) {
+				while (suspended && !stopped) {
+					try {
+						suspendLock.wait();
+					} catch (InterruptedException e) {
+						Thread.currentThread().interrupt();
+						return;
+					}
+				}
+			}
+
+			if (stopped) break;
+
 			long target;
 
 			attemptAutoResume();
