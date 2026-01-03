@@ -204,10 +204,13 @@ public class SourceDataOutputLine implements OutputLine {
 		try {
 			resetting = true;
 
+			boolean wasActive = false;
+
 			// Close existing line
 			if (line != null) {
 				if (line.isActive()) {
 					line.stop();
+					wasActive = true;
 				}
 				if (line.isOpen()) {
 					line.close();
@@ -221,7 +224,12 @@ public class SourceDataOutputLine implements OutputLine {
 			try {
 				line = (SourceDataLine) AudioSystem.getLine(info);
 				line.open(format, Math.max(1024, bufferSize * 4));
-				line.start();
+
+				if (wasActive) {
+					// Start the line automatically if the previous line
+					// had been active at the time of the reset
+					line.start();
+				}
 			} catch (LineUnavailableException e) {
 				throw new RuntimeException("Failed to reset audio line", e);
 			}

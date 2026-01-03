@@ -419,6 +419,14 @@ public class BufferedOutputScheduler implements CellFeatures {
 			if (suspended) {
 				totalSuspendedDuration += System.currentTimeMillis() - suspendTime;
 				output.start();
+
+				// Reset internal buffer-safety pause state - after a user-initiated suspend,
+				// we should be ready to generate audio immediately. The buffer positions
+				// may be out of sync after a long suspend, so we reset everything.
+				paused = false;
+				lastReadPosition = output.getReadPosition();
+				groupStart = System.currentTimeMillis();
+
 				// Reinitialize the timing regularizer to avoid catch-up behavior
 				regularizer = new TimingRegularizer((long) (buffer.getDetails().getDuration() * 10e9));
 				suspended = false;
