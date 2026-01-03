@@ -24,7 +24,7 @@ import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 import org.almostrealism.model.SequentialBlock;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.almostrealism.util.TestUtils;
 import org.junit.Assert;
 import org.junit.Test;
@@ -44,7 +44,7 @@ import org.junit.Test;
  *
  * @author Michael Murray
  */
-public class NormLayerShapeInvestigationTest implements TestFeatures {
+public class NormLayerShapeInvestigationTest extends TestSuiteBase {
 
 	static {
 		if (TestUtils.getTrainTests()) {

@@ -48,12 +48,6 @@ import java.util.stream.IntStream;
  * @author Michael Murray
  */
 public class SyntheticCompositionTrainingTest extends TestSuiteBase implements ModelTestFeatures {
-	static {
-		if (TestUtils.getTrainTests()) {
-			Console.root().addListener(OutputFeatures.fileOutput("results/logs/synthetic_composition_train.out"));
-		}
-	}
-
 	/**
 	 * Fixed coefficients for target functions.
 	 */
@@ -122,7 +116,7 @@ public class SyntheticCompositionTrainingTest extends TestSuiteBase implements M
 				.collect(Collectors.toList()));
 
 		// Train
-		train("residualBlock", model, data, epochs, steps, 1.0, 0.1);
+		train("residualBlock", model, data, epochs, steps, 0.9, 0.2);
 
 		log("Test 5.1 completed successfully");
 	}

@@ -21,10 +21,11 @@ import org.almostrealism.CodeFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.Input;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
-public class PassThroughProducerCompactionTest implements CodeFeatures {
+public class PassThroughProducerCompactionTest extends TestSuiteBase implements CodeFeatures {
 	protected CollectionProducer sum() {
 		return add(
 				Input.value(shape(1), 0),
@@ -45,9 +46,9 @@ public class PassThroughProducerCompactionTest implements CodeFeatures {
 	@Test(timeout = 10000)
 	public void applyProduct() {
 		PackedCollection s = product().evaluate(
-									c(1.0).get().evaluate(),
-									c(2.0).get().evaluate(),
-									c(3.0).get().evaluate());
+				c(1.0).get().evaluate(),
+				c(2.0).get().evaluate(),
+				c(3.0).get().evaluate());
 		System.out.println(s.toDouble(0));
 		System.out.println(s.toDouble(0));
 		Assert.assertEquals(9.0, s.toDouble(0), Math.pow(10, -10));

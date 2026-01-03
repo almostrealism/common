@@ -18,13 +18,13 @@ package org.almostrealism.collect.test;
 
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
 import java.util.Arrays;
 
-public class CollectionTraversalTests implements TestFeatures {
+public class CollectionTraversalTests extends TestSuiteBase {
 
 	@Test(timeout = 10000)
 	public void stride1() {
@@ -220,7 +220,7 @@ public class CollectionTraversalTests implements TestFeatures {
 		PackedCollection root = new PackedCollection(shape(bs, r, c1)).randFill();
 
 		TraversalPolicy policy = shape(bs, c1, c2)
-							.withRate(2, 1, c2);
+				.withRate(2, 1, c2);
 
 		StringBuilder result = new StringBuilder();
 		policy.indices()

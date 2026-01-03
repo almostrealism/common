@@ -24,11 +24,11 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.DynamicCollectionProducer;
 import org.almostrealism.collect.computations.Random;
 import org.almostrealism.hardware.computations.HardwareEvaluable;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
-public class VectorMathTest implements TestFeatures {
+public class VectorMathTest extends TestSuiteBase {
 	@Test(timeout = 30000)
 	public void scalarPow() {
 		assertEquals(27, c(3).pow(3).evaluate());

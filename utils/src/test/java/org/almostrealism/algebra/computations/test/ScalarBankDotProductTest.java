@@ -19,12 +19,12 @@ package org.almostrealism.algebra.computations.test;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 import java.util.stream.IntStream;
 
-public class ScalarBankDotProductTest implements TestFeatures {
+public class ScalarBankDotProductTest extends TestSuiteBase {
 	public static final int SIZE = 32;
 
 	public PackedCollection window() {

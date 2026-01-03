@@ -18,6 +18,7 @@ package org.almostrealism.audio.line.test;
 
 import org.almostrealism.audio.line.SourceDataOutputLine;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 import javax.sound.sampled.AudioFormat;
@@ -28,7 +29,7 @@ import javax.sound.sampled.SourceDataLine;
  * Manual tests to verify the basic SourceDataOutputLine.write(PackedCollection)
  * mechanism can produce sound before attempting BufferedOutputScheduler integration.
  */
-public class ManualPlaybackTest {
+public class ManualPlaybackTest extends TestSuiteBase {
 
 	/**
 	 * Tests manual playback by repeatedly calling write() with a sine wave.

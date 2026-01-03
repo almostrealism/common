@@ -17,11 +17,11 @@
 package org.almostrealism.collect.test;
 
 import io.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
-public class TraversalPolicyTests implements TestFeatures {
+public class TraversalPolicyTests extends TestSuiteBase {
 	@Test(timeout = 10000)
 	public void flattenRequired1() {
 		TraversalPolicy shape = shape(10, 2048, 1024)

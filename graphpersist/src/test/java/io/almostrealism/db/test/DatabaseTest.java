@@ -4,10 +4,10 @@ import io.almostrealism.GraphPersist;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.algebra.Tensor;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
-public class DatabaseTest implements TestFeatures {
+public class DatabaseTest extends TestSuiteBase {
 	private static PackedCollection scalarValue(double value) {
 		PackedCollection s = new PackedCollection(1);
 		s.setMem(0, value);

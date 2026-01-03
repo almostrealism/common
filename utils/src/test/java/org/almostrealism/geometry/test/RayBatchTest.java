@@ -20,17 +20,17 @@ import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.geometry.Ray;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
 /**
  * Tests to verify batch processing behavior of ray operations like origin() and direction().
- *
+ * <p>
  * This test investigates whether origin(rays) and direction(rays) preserve batch dimensions
  * when rays has shape (N, 6), or if they collapse to shape (3).
  */
-public class RayBatchTest implements TestFeatures {
+public class RayBatchTest extends TestSuiteBase {
 
 	@Test(timeout = 10000)
 	public void testOriginShapeWithBatch() {

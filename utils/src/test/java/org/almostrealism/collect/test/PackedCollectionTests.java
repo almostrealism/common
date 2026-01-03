@@ -17,10 +17,10 @@
 package org.almostrealism.collect.test;
 
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
-public class PackedCollectionTests implements TestFeatures {
+public class PackedCollectionTests extends TestSuiteBase {
 
 	@Test(timeout = 10000)
 	public void transpose() {

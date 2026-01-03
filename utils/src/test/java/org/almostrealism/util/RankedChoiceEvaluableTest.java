@@ -31,7 +31,7 @@ import org.junit.Test;
 
 import java.util.stream.IntStream;
 
-public class RankedChoiceEvaluableTest implements TestFeatures {
+public class RankedChoiceEvaluableTest extends TestSuiteBase {
 	private final double gap = 10 * Hardware.getLocalHardware().getPrecision().epsilon(true);
 
 	@Test(timeout = 10000)

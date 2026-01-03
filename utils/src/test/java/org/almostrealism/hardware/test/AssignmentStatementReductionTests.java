@@ -20,7 +20,7 @@ import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.scope.ScopeSettings;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.computations.Assignment;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 import java.util.regex.Matcher;
@@ -44,7 +44,7 @@ import java.util.regex.Pattern;
  * @see Assignment
  * @see ScopeSettings#preferredStatements
  */
-public class AssignmentStatementReductionTests implements TestFeatures {
+public class AssignmentStatementReductionTests extends TestSuiteBase {
 
 	/**
 	 * Extracts memLength from Assignment.describe() output.

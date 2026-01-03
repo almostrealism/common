@@ -22,14 +22,13 @@ import io.almostrealism.relation.Factor;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.time.Frequency;
 import org.almostrealism.time.computations.FourierTransform;
-import org.almostrealism.util.TestFeatures;
-import org.almostrealism.util.TestUtils;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
 import java.util.List;
 
-public class FourierTransformTests implements TestFeatures {
+public class FourierTransformTests extends TestSuiteBase {
 
 	@Test(timeout = 60000)
 	public void compileCpu() {
@@ -124,7 +123,7 @@ public class FourierTransformTests implements TestFeatures {
 
 		// Apply the transform to the batches
 		FourierTransform ft = fft(bins, cp(input).traverse(1),
-									ComputeRequirement.CPU);
+				ComputeRequirement.CPU);
 		PackedCollection out = ft.get().evaluate();
 		log(out.getShape());
 

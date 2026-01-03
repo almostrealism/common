@@ -23,12 +23,12 @@ import org.almostrealism.algebra.AlgebraFeatures;
 import org.almostrealism.calculus.DeltaFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 import java.util.stream.IntStream;
 
-public class DeltaFeaturesTests implements DeltaFeatures, TestFeatures {
+public class DeltaFeaturesTests extends TestSuiteBase implements DeltaFeatures {
 	@Test(timeout = 60000)
 	public void embeddedProduct() {
 		int dim = 3;
@@ -54,7 +54,7 @@ public class DeltaFeaturesTests implements DeltaFeatures, TestFeatures {
 		dout.print();
 
 		for (int i = 0; i < count; i++) {
-			for (int j = 0 ; j < dim; j++) {
+			for (int j = 0; j < dim; j++) {
 				for (int k = 0; k < dim; k++) {
 					if (j == k) {
 						assertEquals(w2.toDouble(j), dout.toDouble(i * dim * dim + j * dim + k));
@@ -90,7 +90,7 @@ public class DeltaFeaturesTests implements DeltaFeatures, TestFeatures {
 		dout.print();
 
 		for (int i = 0; i < count; i++) {
-			for (int j = 0 ; j < dim; j++) {
+			for (int j = 0; j < dim; j++) {
 				for (int k = 0; k < dim; k++) {
 					if (j == k) {
 						assertEquals(2 * v.valueAt(i, j), dout.valueAt(i, j, k));
@@ -112,11 +112,11 @@ public class DeltaFeaturesTests implements DeltaFeatures, TestFeatures {
 		PackedCollection w = pack(4, -3);
 		PackedCollection input =
 				pack(1, 2, 3, 4)
-				.reshape(dim, dim);
+						.reshape(dim, dim);
 		CollectionProducer c =
 				cp(input)
-				.sum(1)
-				.multiply(cp(w));
+						.sum(1)
+						.multiply(cp(w));
 
 		// dy = f'(g(x))
 		//    = w0, w1
@@ -125,7 +125,7 @@ public class DeltaFeaturesTests implements DeltaFeatures, TestFeatures {
 		PackedCollection dout = dy.evaluate();
 		dout.traverse().print();
 
-		for (int j = 0 ; j < dim; j++) {
+		for (int j = 0; j < dim; j++) {
 			for (int k = 0; k < dim; k++) {
 				if (j == k) {
 					assertEquals(w.toDouble(j), dout.valueAt(j, 0, k, 0));
@@ -157,7 +157,7 @@ public class DeltaFeaturesTests implements DeltaFeatures, TestFeatures {
 		PackedCollection dout = dy.evaluate();
 		dout.traverse().print();
 
-		for (int j = 0 ; j < dim; j++) {
+		for (int j = 0; j < dim; j++) {
 			for (int k = 0; k < dim; k++) {
 				if (j == k) {
 					assertEquals(w.toDouble(j), dout.valueAt(j, 0, k, 0));

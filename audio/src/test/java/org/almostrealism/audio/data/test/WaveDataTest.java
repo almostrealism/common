@@ -21,7 +21,7 @@ import org.almostrealism.audio.line.OutputLine;
 import org.almostrealism.audio.sources.BufferDetails;
 import org.almostrealism.audio.test.support.TestAudioData;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -33,7 +33,7 @@ import java.nio.file.Files;
  * Tests for {@link WaveData} covering construction, data access,
  * duration calculations, channel handling, and save/load operations.
  */
-public class WaveDataTest implements TestFeatures {
+public class WaveDataTest extends TestSuiteBase {
 
 	private static final int TEST_SAMPLE_RATE = OutputLine.sampleRate;
 	private static final double EPSILON = 0.0001;

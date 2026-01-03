@@ -1,12 +1,13 @@
 package org.almostrealism.audio.sources.test;
 
 import org.almostrealism.audio.CellFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 import java.io.File;
 import java.io.IOException;
 
-public class ResampleTest implements CellFeatures {
+public class ResampleTest extends TestSuiteBase implements CellFeatures {
 	@Test
 	public void resample() throws IOException {
 		w(0, "src/test/resources/161858-SFX-Whoosh-Deep_Phase.wav")

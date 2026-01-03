@@ -3,13 +3,13 @@ package org.almostrealism.geometry.test;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorFeatures;
 import org.almostrealism.collect.CollectionProducer;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 /**
  * Test to isolate the vector concat issue.
  */
-public class VectorConcatTest implements TestFeatures, VectorFeatures {
+public class VectorConcatTest extends TestSuiteBase implements VectorFeatures {
 
 	@Test(timeout = 10000)
 	public void simpleVectorFromScalars() {

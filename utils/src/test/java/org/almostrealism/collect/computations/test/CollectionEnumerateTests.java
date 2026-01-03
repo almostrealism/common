@@ -24,14 +24,14 @@ import org.almostrealism.algebra.Tensor;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.PassThroughProducer;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
 import java.util.Arrays;
 import java.util.function.Function;
 
-public class CollectionEnumerateTests implements TestFeatures {
+public class CollectionEnumerateTests extends TestSuiteBase {
 	@Test(timeout = 30000)
 	public void transpose() {
 		transpose(64, 256, input -> cp(input).transpose().get().evaluate());
@@ -198,8 +198,8 @@ public class CollectionEnumerateTests implements TestFeatures {
 				for (int i = 0; i < slices; i++) {
 					for (int j = 0; j < d; j++) {
 						for (int k = 0; k < len; k++) {
-							int[] inPos = new int[] { np, cp, j, i * stride + k };
-							int[] outPos = new int[] { np, cp, i, j, k };
+							int[] inPos = new int[]{np, cp, j, i * stride + k};
+							int[] outPos = new int[]{np, cp, i, j, k};
 							if (verboseLogs)
 								log(Arrays.toString(inPos) + " -> " + Arrays.toString(outPos));
 							assertEquals(input.valueAt(inPos), enumerated.valueAt(outPos));
@@ -614,8 +614,7 @@ public class CollectionEnumerateTests implements TestFeatures {
 		PackedCollection input =
 				new PackedCollection(shape(n, c, h, w))
 //							.fill(pos -> pos[2] + 0.1 * pos[3])
-						.fill(Math::random)
-				;
+						.fill(Math::random);
 		log(input.getShape());
 
 		CollectionProducer conv =
@@ -634,8 +633,8 @@ public class CollectionEnumerateTests implements TestFeatures {
 
 						for (int k = 0; k < x; k++) {
 							if (verboseLogs)
-								log("(" + np + "," +  cp + "," + i + "," + (j + k) + ") -> " +
-									"(" + np + "," + cp + "," + (j / s) + "," + i + "," + k + ")");
+								log("(" + np + "," + cp + "," + i + "," + (j + k) + ") -> " +
+										"(" + np + "," + cp + "," + (j / s) + "," + i + "," + k + ")");
 
 							if ((j / s) >= output.getShape().length(2)) {
 								throw new IllegalArgumentException();

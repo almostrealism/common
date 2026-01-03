@@ -20,11 +20,11 @@ import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
-public class StandardMathTests implements TestFeatures {
+public class StandardMathTests extends TestSuiteBase {
 	@Test(timeout = 30000)
 	public void add() {
 		CollectionProducer sum = add(c(1.0), c(2.0));

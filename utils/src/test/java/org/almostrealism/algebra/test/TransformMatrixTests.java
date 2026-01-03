@@ -17,10 +17,10 @@
 package org.almostrealism.algebra.test;
 
 import org.almostrealism.geometry.TransformMatrix;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
-public class TransformMatrixTests implements TestFeatures {
+public class TransformMatrixTests extends TestSuiteBase {
 	@Test(timeout = 10000)
 	public void adjoint() {
 		new TransformMatrix().adjoint();

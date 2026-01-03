@@ -21,10 +21,10 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
-public class AcceleratedComputationEvaluableTests implements TestFeatures {
+public class AcceleratedComputationEvaluableTests extends TestSuiteBase {
 	@Test(timeout = 30000)
 	public void staticProducer() {
 		Producer<PackedCollection> res = vector(0.0, 1.0, 2.0);
