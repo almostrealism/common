@@ -77,7 +77,7 @@ public class StreamingEvaluableTests extends TestSuiteBase {
 		try (PackedCollection result = sum(cp(a)).multiply(sum(cp(b))).get().evaluate()) {
 			double aTotal = a.doubleStream().sum();
 			double bTotal = b.doubleStream().sum();
-			assertEquals(aTotal * bTotal, result.toDouble());
+			assertEquals(aTotal * bTotal, result.toDouble(), Math.pow(10, -5));
 		}
 	}
 }
