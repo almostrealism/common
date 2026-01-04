@@ -396,7 +396,9 @@ public class BufferedOutputScheduler implements CellFeatures {
 				suspended = true;
 				suspendTime = System.currentTimeMillis();
 				output.stop();
-				log("Scheduler suspended at cycle " + count);
+
+				if (enableVerbose)
+					log("Scheduler suspended at cycle " + count);
 			}
 		}
 	}
@@ -431,7 +433,9 @@ public class BufferedOutputScheduler implements CellFeatures {
 				regularizer = new TimingRegularizer((long) (buffer.getDetails().getDuration() * 10e9));
 				suspended = false;
 				suspendLock.notifyAll();
-				log("Scheduler resumed after " + (System.currentTimeMillis() - suspendTime) + "ms");
+
+				if (enableVerbose)
+					log("Scheduler resumed after " + (System.currentTimeMillis() - suspendTime) + "ms");
 			}
 		}
 	}
@@ -441,9 +445,7 @@ public class BufferedOutputScheduler implements CellFeatures {
 	 *
 	 * @return {@code true} if suspended, {@code false} otherwise
 	 */
-	public boolean isSuspended() {
-		return suspended;
-	}
+	public boolean isSuspended() { return suspended; }
 
 	/**
 	 * Returns the audio buffer used for intermediate storage.
