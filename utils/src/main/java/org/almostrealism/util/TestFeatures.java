@@ -332,6 +332,18 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 	}
 
 	/**
+	 * Asserts that two double values are equal within a specified delta.
+	 *
+	 * @param expected the expected value
+	 * @param actual   the actual value
+	 * @param delta    the maximum difference allowed between values
+	 * @throws AssertionError if the values differ by more than delta
+	 */
+	default void assertEquals(double expected, double actual, double delta) {
+		assertEquals(null, expected, actual, delta);
+	}
+
+	/**
 	 * Asserts that two double values are equal within a specified delta, with a custom error message.
 	 *
 	 * @param msg      the message to display if the assertion fails
@@ -342,7 +354,11 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 	 */
 	default void assertEquals(String msg, double expected, double actual, double delta) {
 		if (Math.abs(expected - actual) > delta) {
-			throw new AssertionError(msg + " - expected: " + expected + " but was: " + actual + " (delta: " + delta + ")");
+			if (msg == null) {
+				throw new AssertionError(actual + " != " + expected);
+			} else  {
+				throw new AssertionError(msg + "(" + actual + " != " + expected + ")");
+			}
 		}
 	}
 
