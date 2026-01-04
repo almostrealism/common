@@ -181,19 +181,13 @@ public class ParallelismTargetOptimization implements ProcessOptimizationStrateg
 		} else if (enableContextualCount && max <= context.getCountLong()) {
 			isolate = false;
 		} else if (max > maxCount) {
-			// Check if any child explicitly requests isolation (e.g., LoopedWeightedSumComputation)
-			boolean explicitIsolationRequested = childProcessor.apply(children)
-					.anyMatch(child -> child.isIsolationTarget(ctx));
-
-			if (!explicitIsolationRequested) {
-				if (cn < minCount && context.getCountLong() < minCount) {
-					System.out.println("WARN: Count " + max + " is too high to isolate, " +
-							"but the resulting process will have a count of only " + cn +
-							" (ctx " + context.getCountLong() + ")");
-				}
-
-				isolate = false;
+			if (cn < minCount && context.getCountLong() < minCount) {
+				System.out.println("WARN: Count " + max + " is too high to isolate, " +
+						"but the resulting process will have a count of only " + cn +
+						" (ctx " + context.getCountLong() + ")");
 			}
+
+			isolate = false;
 		} else if (enableNarrowMax && max > targetCount && context.getCountLong() >= minCount) {
 			isolate = false;
 		} else if (altScore < currentScore) {

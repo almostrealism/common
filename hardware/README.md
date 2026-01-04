@@ -190,6 +190,29 @@ training.run();  // Executes entire sequence
 - **Compiled**: All operations merged into single kernel (fast)
 - **Sequential**: Operations executed one-by-one (flexible)
 
+#### ⚠️ CRITICAL: Call optimize() Before get()
+
+When using OperationList with computations that require isolation (like LoopedWeightedSumComputation), you **MUST** call `optimize()` before `get()`:
+
+```java
+// CORRECT: Call optimize() before get()
+OperationList op = model.getForward().push(input);
+op = (OperationList) op.optimize();  // Required for isolation!
+Runnable compiled = op.get();
+compiled.run();
+
+// INCORRECT: May cause timeouts and massive expression trees!
+OperationList op = model.getForward().push(input);
+Runnable compiled = op.get();  // Missing optimize() call!
+```
+
+`OperationList.enableAutomaticOptimization` is `false` by default. Either:
+1. Call `optimize()` explicitly
+2. Set `OperationList.enableAutomaticOptimization = true`
+3. Use `CompiledModel` which calls `optimize()` internally
+
+See [relation/README.md](../relation/README.md) for Process optimization details.
+
 ### PassThroughProducer: Dynamic Inputs
 
 `PassThroughProducer` creates placeholder inputs that allow kernel reuse:

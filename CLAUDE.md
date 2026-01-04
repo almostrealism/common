@@ -74,6 +74,64 @@ echo $AR_HARDWARE_DRIVER
 2. Always include javadoc documentation for newly introduced code
 3. Do not include excessive comments within method implementations
 
+---
+
+## ⚠️ CRITICAL: Process Optimization and Isolation Architecture ⚠️
+
+**THIS IS A SACRED ARCHITECTURAL PRINCIPLE. VIOLATING IT WILL BREAK THE SYSTEM.**
+
+### The Golden Rule
+
+**ONLY `IsolatedProcess` is empowered to break expression embedding. No other computation should return null from `getValueAt()` to force isolation.**
+
+### How Process Isolation Works
+
+1. **`Process.optimize()`** must be called before `Process.get()` for proper isolation
+2. **`ParallelProcess.optimize(ctx, process)`** checks `process.isIsolationTarget(ctx)` on each child
+3. If isolation is needed, it calls `process.isolate()` which wraps in `IsolatedProcess`
+4. **`IsolatedProcess` does NOT implement `TraversableExpression`**
+5. When a parent's `getValueAt()` checks `producer instanceof TraversableExpression`, it naturally returns `null`
+6. This is the ONLY proper way to break expression embedding
+
+### What NOT to Do
+
+```java
+// NEVER DO THIS - it violates the isolation architecture
+@Override
+public Expression<Double> getValueAt(Expression index) {
+    // BAD: Returning null to "force" isolation
+    if (producer instanceof SomeComputationType) {
+        return null;  // WRONG! This bypasses proper isolation
+    }
+    return producer.getValueAt(index);
+}
+```
+
+### Debugging Expression Tree Issues
+
+If expression trees are growing too large:
+
+1. **Check if `optimize()` is being called** before `get()`
+2. If `isIsolationTarget()` returns true but isolation isn't happening, trace the optimization path
+3. Ensure `OperationList.enableAutomaticOptimization` is set appropriately, OR ensure callers call `optimize()` explicitly
+4. **NEVER** hack `getValueAt()` to return null - fix the optimization chain instead
+
+### Proper Fix Pattern
+
+```java
+// CORRECT: Ensure optimize() is called
+OperationList op = model.getForward().push(input);
+op = (OperationList) op.optimize();  // This triggers proper isolation
+Runnable compiled = op.get();
+```
+
+### Key Classes
+
+- **`Process.optimize()`** - Entry point for optimization
+- **`ParallelProcess.optimize(ctx, process)`** - Checks `isIsolationTarget()` and calls `isolate()`
+- **`IsolatedProcess`** - The ONLY class that should break expression embedding
+- **`isIsolationTarget()`** - Return true if computation requires isolation (e.g., native loops)
+
 ### Use StateDictionary for Model Weights
 
 **Standard Pattern**: All model implementations should use `StateDictionary` for weight management.

@@ -46,6 +46,7 @@
                 <a href="#architecture">Architecture</a>
                 <a href="#concepts">Core Concepts</a>
                 <a href="#countable">Countable</a>
+                <a href="#optimization">⚠️ Optimization</a>
                 <a href="#examples">Examples</a>
                 <a href="#resources">Resources</a>
             </nav>
@@ -187,12 +188,12 @@
                 <p>The Process interface represents composable, optimizable computational work units.</p>
                 <div class="class-list">
                     <div class="class-item">
-                        <h4>Process&lt;P, T, A&gt;</h4>
-                        <p>Base interface for computational work. Supports generate(), optimize(), and isolate() operations.</p>
+                        <h4>Process&lt;P, T&gt;</h4>
+                        <p>Base interface for computational work. Supports get(), optimize(), isolate(), and isIsolationTarget() methods.</p>
                     </div>
                     <div class="class-item">
                         <h4>ParallelProcess</h4>
-                        <p>Extends Process for parallel computation with getParallelism() and isUniform() methods.</p>
+                        <p>Extends Process for parallel computation with getParallelism() and isUniform() methods. Handles child optimization and isolation.</p>
                     </div>
                     <div class="class-item">
                         <h4>ProcessOptimizationStrategy</h4>
@@ -200,7 +201,11 @@
                     </div>
                     <div class="class-item">
                         <h4>ProcessContext</h4>
-                        <p>Context for optimization passes. Carries optimization strategy and execution parameters.</p>
+                        <p>Context for optimization passes. Carries optimization strategy, count thresholds, and execution parameters.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>IsolatedProcess</h4>
+                        <p>Wrapper that breaks expression embedding. The ONLY proper way to force isolation during code generation.</p>
                     </div>
                 </div>
 
@@ -306,6 +311,140 @@ TraversalPolicy variable = new TraversalPolicy(false, false, 1);</code>
                         <td>Output depends on arguments</td>
                         <td>Variable Count</td>
                         <td>Size not known until execution</td>
+                    </tr>
+                </table>
+            </section>
+
+            <section id="optimization">
+                <h2>⚠️ Critical: Process Optimization and Isolation</h2>
+
+                <div class="warning" style="background-color: #fff3e0; border-left-color: #ff9800;">
+                    <strong>This is the most important architectural concept in the framework.</strong><br>
+                    Incorrect handling of Process optimization will cause severe performance issues, test timeouts, or incorrect results.
+                </div>
+
+                <h3>Why Optimization Matters</h3>
+                <p>Many computations (especially those with loops or large iteration counts) <strong>MUST</strong> be isolated into separate execution units. Without proper isolation:</p>
+                <ul>
+                    <li>Expression trees can grow exponentially large</li>
+                    <li>Compilation times become unacceptable (minutes to hours)</li>
+                    <li>Memory usage explodes</li>
+                    <li>Tests timeout or fail</li>
+                </ul>
+
+                <h3>The Optimization Chain</h3>
+                <div class="code-example">
+                    <pre><code>Process.optimize(ctx)
+    └── For each child process:
+        └── ParallelProcess.optimize(ctx, child)
+            ├── child.optimize(ctx)           // Recursively optimize child
+            ├── Check child.isIsolationTarget(ctx)
+            │   └── If true → child.isolate() // Wrap in IsolatedProcess
+            └── Return optimized (possibly isolated) child
+    └── ProcessOptimizationStrategy.optimize() // Apply strategy</code></pre>
+                </div>
+
+                <h3>isIsolationTarget() - Requesting Isolation</h3>
+                <p>A process signals it needs isolation by overriding <code>isIsolationTarget()</code>:</p>
+                <div class="code-example">
+                    <pre><code class="language-java">public class LoopedComputation extends CollectionProducerComputation {
+    @Override
+    public boolean isIsolationTarget(ProcessContext context) {
+        // Return true if this computation should be isolated
+        // Common reasons:
+        // - Native loop generation (vs expression unrolling)
+        // - Large iteration count that would explode expression tree
+        return iterationCount > threshold;
+    }
+}</code></pre>
+                </div>
+
+                <h3>IsolatedProcess - Breaking Expression Embedding</h3>
+                <p>When <code>isolate()</code> is called on a computation, it returns an <code>IsolatedProcess</code> wrapper:</p>
+                <div class="code-example">
+                    <pre><code class="language-java">// IsolatedProcess does NOT implement TraversableExpression
+class IsolatedProcess extends DelegatedCollectionProducer {
+    // Key property: this class lacks getValueAt()
+    // When parent checks: producer instanceof TraversableExpression
+    // It returns false, naturally breaking expression embedding
+}</code></pre>
+                </div>
+
+                <div class="warning">
+                    <strong>Critical Rule:</strong> <code>IsolatedProcess</code> is the ONLY proper way to break expression embedding.<br>
+                    <strong>NEVER</strong> return null from <code>getValueAt()</code> to force isolation - this violates the architecture.
+                </div>
+
+                <h3>When optimize() MUST Be Called</h3>
+                <p><code>optimize()</code> must be called before <code>get()</code> when the process tree may contain computations requiring isolation:</p>
+                <div class="code-example">
+                    <pre><code class="language-java">// CORRECT: Call optimize() before get()
+OperationList op = model.getForward().push(input);
+op = (OperationList) op.optimize();  // This triggers isolation
+Runnable compiled = op.get();
+compiled.run();
+
+// INCORRECT: Missing optimize() call - may cause timeouts!
+OperationList op = model.getForward().push(input);
+Runnable compiled = op.get();  // ⚠️ Dangerous!</code></pre>
+                </div>
+
+                <div class="info-box">
+                    <strong>Note:</strong> <code>OperationList.enableAutomaticOptimization</code> is <code>false</code> by default. Either:
+                    <ol>
+                        <li>Call <code>optimize()</code> explicitly, OR</li>
+                        <li>Set <code>OperationList.enableAutomaticOptimization = true</code>, OR</li>
+                        <li>Use <code>CompiledModel</code> which calls <code>optimize()</code> internally</li>
+                    </ol>
+                </div>
+
+                <h3>Debugging Isolation Issues</h3>
+                <p>If you see these symptoms:</p>
+                <ul>
+                    <li>Test timeouts (60+ seconds for simple operations)</li>
+                    <li>Massive expression trees in stack traces</li>
+                    <li>OutOfMemoryError during compilation</li>
+                </ul>
+                <p>Check:</p>
+                <ol>
+                    <li>Is <code>optimize()</code> being called before <code>get()</code>?</li>
+                    <li>Does the problematic computation override <code>isIsolationTarget()</code> correctly?</li>
+                    <li>Is the parent process calling <code>optimize(ctx, child)</code> on its children?</li>
+                </ol>
+
+                <h3>Key Classes for Process Optimization</h3>
+                <table class="comparison-table">
+                    <tr>
+                        <th>Class</th>
+                        <th>Purpose</th>
+                    </tr>
+                    <tr>
+                        <td><code>Process</code></td>
+                        <td>Base interface for optimizable work units</td>
+                    </tr>
+                    <tr>
+                        <td><code>ParallelProcess</code></td>
+                        <td>Parallel execution with child optimization</td>
+                    </tr>
+                    <tr>
+                        <td><code>ProcessContext</code></td>
+                        <td>Context for optimization decisions</td>
+                    </tr>
+                    <tr>
+                        <td><code>ProcessOptimizationStrategy</code></td>
+                        <td>Strategy interface for optimization</td>
+                    </tr>
+                    <tr>
+                        <td><code>ParallelismTargetOptimization</code></td>
+                        <td>Default threshold-based strategy</td>
+                    </tr>
+                    <tr>
+                        <td><code>IsolatedProcess</code></td>
+                        <td>Wrapper that breaks expression embedding</td>
+                    </tr>
+                    <tr>
+                        <td><code>isIsolationTarget()</code></td>
+                        <td>Method to request isolation</td>
                     </tr>
                 </table>
             </section>

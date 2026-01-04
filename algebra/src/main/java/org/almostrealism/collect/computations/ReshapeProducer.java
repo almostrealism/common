@@ -389,24 +389,6 @@ public class ReshapeProducer
 		return 0;
 	}
 
-	/**
-	 * Delegates isolation target determination to the underlying producer.
-	 *
-	 * <p>If the underlying producer requests isolation (e.g., for efficient
-	 * native loop generation), this reshape wrapper should also be isolated
-	 * to ensure the child's optimization strategy is respected.</p>
-	 *
-	 * @param context the process context
-	 * @return true if the underlying producer is an isolation target
-	 */
-	@Override
-	public boolean isIsolationTarget(ProcessContext context) {
-		if (producer instanceof Process) {
-			return ((Process<?, ?>) producer).isIsolationTarget(context);
-		}
-		return false;
-	}
-
 	@Override
 	public long getCountLong() { return getShape().getCountLong(); }
 
@@ -528,25 +510,8 @@ public class ReshapeProducer
 		return getValueAt(getShape().index(pos));
 	}
 
-	/**
-	 * Returns the value at the specified index for inline computation.
-	 *
-	 * <p>If the underlying producer is an isolation target (i.e., it requires isolation
-	 * to produce correct results), this method returns null to force the framework
-	 * to isolate the computation rather than inlining it. This prevents bugs where
-	 * computations that require native loops (like {@code LoopedWeightedSumComputation})
-	 * would otherwise have their loops unrolled incorrectly.</p>
-	 *
-	 * @param index the index to access
-	 * @return the value expression, or null if isolation is required
-	 */
 	@Override
 	public Expression<Double> getValueAt(Expression index) {
-		// Check if the producer explicitly requests isolation
-		// If so, return null to force the framework to isolate rather than inline
-		if (producer instanceof Process && ((Process<?, ?>) producer).isIsolationTarget(null)) {
-			return null;
-		}
 		return producer instanceof TraversableExpression ? ((TraversableExpression) producer).getValueAt(index) : null;
 	}
 
@@ -571,11 +536,12 @@ public class ReshapeProducer
 	@Override
 	public CollectionProducer delta(Producer<?> target) {
 		if (producer instanceof CollectionProducer) {
+			CollectionProducer deltaResult = ((CollectionProducer) producer).delta(target);
 			if (shape == null) {
-				return new ReshapeProducer(traversalAxis, ((CollectionProducer) producer).delta(target));
+				return traverse(traversalAxis, deltaResult);
 			} else {
 				TraversalPolicy newShape = shape.append(shape(target));
-				return new ReshapeProducer(newShape, ((CollectionProducer) producer).delta(target));
+				return (CollectionProducer) reshape(newShape, deltaResult);
 			}
 		}
 
@@ -601,6 +567,9 @@ public class ReshapeProducer
 	 */
 	public CollectionProducer traverse(int axis) {
 		if (shape == null || shape(producer).traverse(0).equals(getShape().traverse(0))) {
+			if (producer instanceof CollectionProducerComputation) {
+				return ((CollectionProducerComputation) producer).traverse(axis);
+			}
 			return new ReshapeProducer(axis, producer);
 		} else {
 			return new ReshapeProducer(axis, this);
@@ -628,6 +597,9 @@ public class ReshapeProducer
 	 */
 	@Override
 	public CollectionProducer reshape(TraversalPolicy shape) {
+		if (producer instanceof CollectionProducerComputation) {
+			return ((CollectionProducerComputation) producer).reshape(shape);
+		}
 		return new ReshapeProducer(shape, producer);
 	}
 

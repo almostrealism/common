@@ -31,7 +31,6 @@ import io.almostrealism.kernel.Index;
 import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Producer;
-import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Scope;
 import org.almostrealism.algebra.AlgebraFeatures;
 import org.almostrealism.collect.CollectionProducer;
@@ -399,10 +398,10 @@ public class AggregatedProducerComputation extends TraversableRepeatedProducerCo
 
 	@Override
 	protected Expression<?> getExpression(TraversableExpression[] args, Expression globalIndex, Expression localIndex) {
-		ArrayVariable<?> out = (ArrayVariable<?>) getOutputVariable();
+		CollectionVariable var = (CollectionVariable) args[0];
 
 		Expression k = globalIndex instanceof KernelIndex ? globalIndex : new KernelIndex();
-		Expression currentValue = out.reference(k.multiply(out.length()));
+		Expression currentValue = var.reference(k.multiply(var.length()));
 		return expression.apply(currentValue, args[1].getValueAt(globalIndex.multiply(count).add(localIndex)));
 	}
 

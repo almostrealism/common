@@ -580,6 +580,12 @@ public class Conv1dLayerTests extends TestSuiteBase implements LayerFeatures {
 		long compileStart = System.currentTimeMillis();
 		OperationList op = (OperationList) model.getForward().push(p(input));
 
+		// Optimize the operation list to enable proper isolation of LoopedWeightedSumComputation
+		System.err.println("Optimizing operation list...");
+		long optimizeStart = System.currentTimeMillis();
+		op = (OperationList) op.optimize();
+		System.err.println("  optimize() time: " + (System.currentTimeMillis() - optimizeStart) + "ms");
+
 		// This is where it gets slow - the .get() triggers kernel compilation
 		System.err.println("Getting compiled operation (this is where slowness occurs)...");
 		long getStart = System.currentTimeMillis();

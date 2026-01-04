@@ -278,17 +278,12 @@ public class RepeatedProducerComputation extends CollectionProducerComputationBa
 		getIndexLimit().ifPresent(ref::setLimit);
 		scope.setCondition(condition.apply(getTraversableArguments(ref), ref));
 
-		// The global index represents the output element being computed by each kernel thread.
-		// For memLength=1, each thread processes one element, so globalIndex = KernelIndex.
-		// The previous calculation floor(KernelIndex / outputSize) * outputSize was intended
-		// for batch-level indexing but resulted in 0 for all threads within a single batch,
-		// causing incorrect computations in subclasses like LoopedWeightedSumComputation.
-		Expression globalIndex = new KernelIndex(context);
+		Expression index = new KernelIndex(context).divide(e(getShape().getSize())).multiply(e(getShape().getSize()));
 
 		if (initial != null) {
 			for (int j = 0; j < getMemLength(); j++) {
 				Expression<?> out = getDestination(new KernelIndex(context), e(0), e(j));
-				Expression<?> val = initial.apply(getTraversableArguments(globalIndex), ref.add(j));
+				Expression<?> val = initial.apply(getTraversableArguments(index), ref.add(j));
 				scope.getStatements().add(out.assign(val));
 			}
 		}
@@ -300,7 +295,7 @@ public class RepeatedProducerComputation extends CollectionProducerComputationBa
 		Scope<PackedCollection> body = new Scope<>(getFunctionName() + "_body", bodyMetadata);
 		for (int j = 0; j < getMemLength(); j++) {
 			Expression<?> out = getDestination(new KernelIndex(context), ref, e(j));
-			Expression<?> val = getExpression(globalIndex, ref.add(j));
+			Expression<?> val = getExpression(index, ref.add(j));
 			body.getStatements().add(out.assign(val));
 		}
 

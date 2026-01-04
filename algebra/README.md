@@ -423,6 +423,53 @@ PackedCollection result = delegated.get().evaluate();
 
 ---
 
+### ⚠️ Process Isolation - Critical Concept
+
+Some computations (like `LoopedWeightedSumComputation`) MUST be isolated into separate execution units during optimization. Without proper isolation, expression trees can grow exponentially large, causing:
+
+- Compilation timeouts (60+ seconds for simple operations)
+- OutOfMemoryError during kernel generation
+- Massive stack traces with repeated expression classes
+
+#### How Isolation Works
+
+1. A computation signals it needs isolation by overriding `isIsolationTarget()`:
+```java
+@Override
+public boolean isIsolationTarget(ProcessContext context) {
+    return true;  // Request isolation
+}
+```
+
+2. During `Process.optimize()`, the parent calls `child.isolate()` if `isIsolationTarget()` returns true
+
+3. `isolate()` wraps the computation in `IsolatedProcess` (extends `DelegatedCollectionProducer`)
+
+4. `IsolatedProcess` does NOT implement `TraversableExpression`, which naturally breaks expression embedding
+
+#### Critical Rule
+
+**ONLY `IsolatedProcess` is empowered to break expression embedding.**
+
+```java
+// WRONG: Never return null to force isolation
+@Override
+public Expression<Double> getValueAt(Expression index) {
+    if (shouldIsolate) return null;  // ❌ NEVER DO THIS
+    return ...;
+}
+
+// CORRECT: Override isIsolationTarget() and let Process.optimize() handle it
+@Override
+public boolean isIsolationTarget(ProcessContext context) {
+    return iterationCount > 1000;  // ✓ Proper approach
+}
+```
+
+See [relation/README.md](../relation/README.md) for comprehensive Process optimization documentation.
+
+---
+
 ## Algebraic Types
 
 ### Vector (3D Vector)
