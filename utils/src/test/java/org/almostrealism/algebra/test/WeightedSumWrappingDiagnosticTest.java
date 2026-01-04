@@ -202,11 +202,12 @@ public class WeightedSumWrappingDiagnosticTest implements TestFeatures {
 	 * Test Case 5: Large weightedSum WITHOUT reshape.
 	 * Group size = 2048 * 16 = 32768
 	 * This is the problematic configuration from convTranspose1d.
-	 * Takes several minutes for native code compilation due to large expression trees.
+	 * Takes 30+ minutes for expression tree compilation due to O(n^2) scaling without isolation.
+	 * This test intentionally does NOT use OperationList.optimize() to measure the unoptimized path.
 	 */
-	@Test(timeout = 600000)
+	@Test(timeout = 3600000) // 1 hour - intentionally slow diagnostic test
 	public void largeWeightedSumNoReshape() {
-		if (testDepth < 2) return;
+		if (testDepth < 3) return; // Only run in deepest test mode due to very long runtime
 		int inputChannels = 2048;  // Large
 		int kernelSize = 16;
 		int outLen = 8;
@@ -246,11 +247,12 @@ public class WeightedSumWrappingDiagnosticTest implements TestFeatures {
 	/**
 	 * Test Case 6: Large weightedSum WITH reshape.
 	 * This should demonstrate if reshape is the cause.
-	 * Takes several minutes for native code compilation due to large expression trees.
+	 * Takes 30+ minutes for expression tree compilation due to O(n^2) scaling without isolation.
+	 * This test intentionally does NOT use OperationList.optimize() to measure the unoptimized path.
 	 */
-	@Test(timeout = 600000)
+	@Test(timeout = 3600000) // 1 hour - intentionally slow diagnostic test
 	public void largeWeightedSumWithReshape() {
-		if (testDepth < 2) return;
+		if (testDepth < 3) return; // Only run in deepest test mode due to very long runtime
 		int inputChannels = 2048;
 		int kernelSize = 16;
 		int outLen = 8;

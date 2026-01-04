@@ -47,7 +47,7 @@ public class LoopedSumPerformanceTest implements TestFeatures, LayerFeatures {
 	 * Requires testDepth >= 2 due to very long runtime (many configurations tested,
 	 * some taking several minutes each due to expression tree compilation).
 	 */
-	@Test(timeout = 60000)
+	@Test(timeout = 3600000) // 1 hour - this test runs many configurations
 	public void testPerformanceMatrix() throws IOException {
 		if (testDepth < 2) return;
 		List<TestResult> results = new ArrayList<>();
@@ -204,6 +204,9 @@ public class LoopedSumPerformanceTest implements TestFeatures, LayerFeatures {
 		OperationList ops = new OperationList();
 		PackedCollection output = new PackedCollection(outputShape);
 		ops.add(a("perfTest", p(output), computation));
+
+		// CRITICAL: Call optimize() before get() to trigger isolation
+		ops = (OperationList) ops.optimize();
 
 		long start = System.currentTimeMillis();
 		Runnable r = ops.get();

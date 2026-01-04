@@ -84,6 +84,9 @@ public class IsolationTargetTest implements TestFeatures, LayerFeatures {
 		PackedCollection output = new PackedCollection(outputShape);
 		ops.add(a("testResult", p(output), computation));
 
+		// CRITICAL: Call optimize() before get() to trigger isolation
+		ops = (OperationList) ops.optimize();
+
 		System.out.println("Compiling...");
 		long start = System.currentTimeMillis();
 		Runnable r = ops.get();
@@ -145,6 +148,9 @@ public class IsolationTargetTest implements TestFeatures, LayerFeatures {
 		PackedCollection output = new PackedCollection(shape(outputSize).traverseEach());
 		ops.add(a("testResult", p(output), wrapped));
 
+		// CRITICAL: Call optimize() before get() to trigger isolation
+		ops = (OperationList) ops.optimize();
+
 		System.out.println("Compiling...");
 		long start = System.currentTimeMillis();
 		Runnable r = ops.get();
@@ -204,6 +210,9 @@ public class IsolationTargetTest implements TestFeatures, LayerFeatures {
 		OperationList ops = new OperationList();
 		PackedCollection output = new PackedCollection(outputShape);
 		ops.add(a("testResult", p(output), computation));
+
+		// CRITICAL: Call optimize() before get() to trigger isolation
+		ops = (OperationList) ops.optimize();
 
 		System.out.println("Compiling (should be fast if using native loop)...");
 		long start = System.currentTimeMillis();
@@ -269,6 +278,9 @@ public class IsolationTargetTest implements TestFeatures, LayerFeatures {
 		OperationList ops = new OperationList();
 		PackedCollection output = new PackedCollection(outputShape);
 		ops.add(a("testResult", p(output), computation));
+
+		// CRITICAL: Call optimize() before get() to trigger isolation
+		ops = (OperationList) ops.optimize();
 
 		System.out.println("Compiling (should be fast if native loop works)...");
 		long start = System.currentTimeMillis();
