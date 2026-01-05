@@ -879,8 +879,7 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 
 			if (bias != null) {
 				result = result.reshape(batchSize, outputChannels, outLength)
-						.add(cp(bias).reshape(1, outputChannels, 1)
-								.repeat(batchSize).traverse(2).repeat(outLength));
+						.add(cp(bias).repeat(batchSize).traverse(2).repeat(outLength));
 			}
 
 			return result.traverseEach();
