@@ -28,14 +28,15 @@ public class CausalMaskIsolationTest extends TestSuiteBase implements AttentionF
 		// Create a simple model that just adds the causal mask to the input
 		Model model = new Model(shape(heads, seqLen));
 
-		// Generate causal mask using the same approach as in attention()
+		// Generate causal mask using same approach as attention method:
+		// maskRow is (seqLen), reshape to (1, 1, seqLen), repeat to get (heads, 1, seqLen)
 		CollectionProducer indices = integers(0, seqLen);
 		CollectionProducer maskRow =
 				greaterThan(indices, cp(position), c(-10000.0), c(0.0), false);
-		CollectionProducer causalMask = maskRow.reshape(1, seqLen).repeat(heads);
+		CollectionProducer causalMask = maskRow.reshape(1, 1, seqLen).repeat(heads);
 
-		// Add the mask using the layer approach
-		TraversalPolicy maskShape = shape(heads, seqLen);
+		// Add the mask using the layer approach - use traverseEach to match 3D mask shape
+		TraversalPolicy maskShape = shape(heads, seqLen).traverseEach();
 		model.add(layer("causal_mask", maskShape, maskShape, input -> add(input, causalMask)));
 
 		// Compile the model
@@ -108,12 +109,15 @@ public class CausalMaskIsolationTest extends TestSuiteBase implements AttentionF
 		// Create model with causal mask
 		Model model = new Model(shape(heads, seqLen));
 
+		// Generate causal mask using same approach as attention method:
+		// maskRow is (seqLen), reshape to (1, 1, seqLen), repeat to get (heads, 1, seqLen)
 		CollectionProducer indices = integers(0, seqLen);
 		CollectionProducer maskRow =
 				greaterThan(indices, cp(position), c(-10000.0), c(0.0), false);
-		CollectionProducer causalMask = maskRow.reshape(1, seqLen).repeat(heads);
+		CollectionProducer causalMask = maskRow.reshape(1, 1, seqLen).repeat(heads);
 
-		TraversalPolicy maskShape = shape(heads, seqLen);
+		// Add the mask using the layer approach - use traverseEach to match 3D mask shape
+		TraversalPolicy maskShape = shape(heads, seqLen).traverseEach();
 		model.add(layer("causal_mask", maskShape, maskShape, input -> add(input, causalMask)));
 
 		CompiledModel compiled = model.compile(false);
