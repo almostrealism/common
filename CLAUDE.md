@@ -18,6 +18,45 @@
 
 ---
 
+## ⚠️ CRITICAL: USE MCP TEST RUNNER FOR ALL TESTS ⚠️
+
+**THIS IS AN ABSOLUTE RULE WITH NO EXCEPTIONS.**
+
+- **NEVER** use `Bash` tool with `mvn test` commands to run tests
+- **ALWAYS** use the `mcp__ar-test-runner__start_test_run` MCP tool for running tests
+- The MCP test runner automatically handles environment variables, async execution, and structured failure reporting
+
+**Available MCP test runner tools:**
+| Tool | Purpose |
+|------|---------|
+| `mcp__ar-test-runner__start_test_run` | Start a test run (use this!) |
+| `mcp__ar-test-runner__get_run_status` | Check test run status |
+| `mcp__ar-test-runner__get_run_output` | Get console output |
+| `mcp__ar-test-runner__get_run_failures` | Get detailed failure info |
+| `mcp__ar-test-runner__list_runs` | List recent test runs |
+| `mcp__ar-test-runner__cancel_run` | Cancel a running test |
+
+**Parameters for `start_test_run`:**
+- `module`: Maven module to test (e.g., "ml", "utils")
+- `test_classes`: List of specific test classes
+- `test_methods`: List of specific test methods
+- `profile`: Test profile name (sets AR_TEST_PROFILE system property)
+- `depth`: AR_TEST_DEPTH value (0-10)
+- `jvm_args`: Additional JVM arguments
+- `timeout_minutes`: Max run time
+
+**Example usage:**
+```
+mcp__ar-test-runner__start_test_run
+  module: "ml"
+  profile: "pipeline"
+  timeout_minutes: 10
+```
+
+**Why this matters:** The MCP test runner is purpose-built for this codebase. Using Bash for tests bypasses proper environment setup, loses structured output, and ignores specialized tooling. This documentation showing bash commands is for REFERENCE ONLY - actual test execution must use MCP tools.
+
+---
+
 ## Quick Links
 
 - **[Quick Reference](docs/QUICK_REFERENCE.md)** - Condensed API cheatsheet
@@ -289,23 +328,36 @@ for (int i = 0; i < layerCount; i++) {
 
 ### Running Tests
 
-Always set environment variables when running tests:
+**⚠️ IMPORTANT: Use the MCP test runner tool, NOT bash commands!**
 
+See the critical section at the top of this document. The bash commands below are for **reference only** to understand what the MCP tool does internally.
+
+```
+# Use MCP tool - this is what you should actually do:
+mcp__ar-test-runner__start_test_run
+  module: "ml"
+  profile: "pipeline"  # Optional: sets AR_TEST_PROFILE
+
+# Check status:
+mcp__ar-test-runner__get_run_status
+  run_id: "<id from start_test_run>"
+
+# Get failures:
+mcp__ar-test-runner__get_run_failures
+  run_id: "<id>"
+```
+
+**Reference only** - the MCP tool runs these internally:
 ```bash
-# Single module
+# Single module (DO NOT RUN DIRECTLY - use MCP tool)
 export AR_HARDWARE_LIBS=/tmp/ar_libs/ && \
 export AR_HARDWARE_DRIVER=native && \
 mvn test -pl ml
 
-# Specific test
+# With profile (DO NOT RUN DIRECTLY - use MCP tool)
 export AR_HARDWARE_LIBS=/tmp/ar_libs/ && \
 export AR_HARDWARE_DRIVER=native && \
-mvn test -pl ml -Dtest=MyTest
-
-# All modules
-export AR_HARDWARE_LIBS=/tmp/ar_libs/ && \
-export AR_HARDWARE_DRIVER=native && \
-mvn test
+mvn test -pl ml -DAR_TEST_PROFILE=pipeline
 ```
 
 ### Test Organization

@@ -6,6 +6,8 @@ import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.OutputFeatures;
 import org.almostrealism.ml.StateDictionary;
 import org.almostrealism.util.TestSuiteBase;
+import org.almostrealism.util.TestUtils;
+import org.junit.Assume;
 import org.junit.Test;
 
 /**
@@ -26,6 +28,8 @@ public class SharedEmbeddingsTest extends TestSuiteBase implements ConsoleFeatur
 
 	@Test
 	public void testSharedEmbeddingsConfiguration() throws Exception {
+		Assume.assumeTrue("Skipping comparison test in pipeline profile", TestUtils.isComparisonTestEnabled());
+
 		// Setup file logging
 		String logFile = "/workspace/project/common/ml/test_output/shared_embeddings_test.txt";
 		Console.root().addListener(OutputFeatures.fileOutput(logFile));
@@ -126,6 +130,8 @@ public class SharedEmbeddingsTest extends TestSuiteBase implements ConsoleFeatur
 
 	@Test
 	public void testOutputProjectionShape() throws Exception {
+		Assume.assumeTrue("Skipping comparison test in pipeline profile", TestUtils.isComparisonTestEnabled());
+
 		// Setup file logging
 		String logFile = "/workspace/project/common/ml/test_output/output_projection_shape_test.txt";
 		Console.root().addListener(OutputFeatures.fileOutput(logFile));

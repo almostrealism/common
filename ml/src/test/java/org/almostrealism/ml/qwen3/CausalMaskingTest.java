@@ -6,6 +6,8 @@ import org.almostrealism.io.OutputFeatures;
 import org.almostrealism.ml.AttentionFeatures;
 import org.almostrealism.ml.StateDictionary;
 import org.almostrealism.util.TestSuiteBase;
+import org.almostrealism.util.TestUtils;
+import org.junit.Assume;
 import org.junit.Test;
 
 /**
@@ -35,6 +37,8 @@ public class CausalMaskingTest extends TestSuiteBase implements AttentionFeature
 
 	@Test
 	public void documentCausalMaskingBehavior() throws Exception {
+		Assume.assumeTrue("Skipping comparison test in pipeline profile", TestUtils.isComparisonTestEnabled());
+
 		// Setup file logging
 		String logFile = "/workspace/project/common/ml/test_output/causal_masking_behavior.txt";
 		Console.root().addListener(OutputFeatures.fileOutput(logFile));
@@ -106,6 +110,8 @@ public class CausalMaskingTest extends TestSuiteBase implements AttentionFeature
 
 	@Test
 	public void testSinglePositionGeneration() throws Exception {
+		Assume.assumeTrue("Skipping comparison test in pipeline profile", TestUtils.isComparisonTestEnabled());
+
 		// Setup file logging
 		String logFile = "/workspace/project/common/ml/test_output/single_position_generation.txt";
 		Console.root().addListener(OutputFeatures.fileOutput(logFile));
