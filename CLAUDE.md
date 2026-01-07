@@ -66,6 +66,34 @@ echo $AR_HARDWARE_LIBS
 echo $AR_HARDWARE_DRIVER
 ```
 
+### Memory Configuration
+
+For large models or tests that require more memory than the default 8GB limit:
+
+```bash
+# Maximum memory allocation (2^SCALE × 64MB)
+export AR_HARDWARE_MEMORY_SCALE=4   # 1GB (default)
+export AR_HARDWARE_MEMORY_SCALE=6   # 4GB
+export AR_HARDWARE_MEMORY_SCALE=7   # 8GB (current default)
+export AR_HARDWARE_MEMORY_SCALE=8   # 16GB
+export AR_HARDWARE_MEMORY_SCALE=9   # 32GB
+```
+
+**When to increase memory:**
+- Running large ML models (e.g., full Oobleck decoder with 5 blocks)
+- Tests that produce `HardwareException: Memory max reached`
+- Working with large audio/image data
+
+**Example with increased memory:**
+```bash
+export AR_HARDWARE_MEMORY_SCALE=8 && \
+export AR_HARDWARE_LIBS=/tmp/ar_libs/ && \
+export AR_HARDWARE_DRIVER=native && \
+mvn test -pl ml -Dtest=OobleckValidationTest
+```
+
+See [hardware/README.md](hardware/README.md) for complete memory and performance configuration options.
+
 ---
 
 ## Code Organization Principles

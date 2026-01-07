@@ -414,7 +414,43 @@ public class OobleckValidationTest implements TestFeatures, LayerFeatures, Conso
 
 		compareBlockOutput("Block1", block1Output, refAfterBlock1, TOLERANCE);
 
+		// Test 3: Block 2 ISOLATED (using reference Block 1 output as input)
+		log("\n--- Test 3: Block 2 ISOLATED (1024 -> 512, stride=16) ---");
+		float[] refAfterBlock2 = loadReferenceOutput("decoder_after_block_2.bin");
+		log("Reference decoder_after_block_2.bin size: " + refAfterBlock2.length);
+
+		// Block 2 input shape after Block 1
+		int block2InChannels = 1024;
+		int block2OutChannels = 512;
+		int block2Stride = 16;
+		int block2InLength = outLength;  // Output of Block 1 = 33
+		int block2Kernel = block2Stride;
+		int block2Padding = (block2Kernel - 1) / 2;
+		int block2OutputPadding = block2Stride - 1;
+		int block2OutLength = (block2InLength - 1) * block2Stride - 2 * block2Padding + block2Kernel + block2OutputPadding;
+		log("Expected Block 2 output length: " + block2OutLength);
+		log("Block 2 input length (from Block 1): " + block2InLength);
+
+		// Use reference Block 1 output as input to Block 2 (isolate Block 2)
+		PackedCollection block2Input = new PackedCollection(batchSize, block2InChannels, block2InLength);
+		for (int i = 0; i < refAfterBlock1.length; i++) {
+			block2Input.setMem(i, refAfterBlock1[i]);
+		}
+		log("Block 2 input prepared from reference (size " + refAfterBlock1.length + ")");
+
+		// Build just Block 2
+		Model block2Model = new Model(shape(batchSize, block2InChannels, block2InLength));
+		block2Model.add(buildDecoderBlock(weights, batchSize, block2InChannels, block2OutChannels,
+				block2InLength, block2OutLength, block2Stride, 2));
+		CompiledModel block2Compiled = block2Model.compile(false);
+
+		PackedCollection block2Output = block2Compiled.forward(block2Input);
+		log("Block 2 output shape: " + block2Output.getShape());
+
+		compareBlockOutput("Block2_ISOLATED", block2Output, refAfterBlock2, TOLERANCE);
+
 		log("\n=== Block-by-Block Comparison Complete ===");
+		log("NOTE: Remaining blocks (3-5) skipped for faster debugging. Re-enable after Block 2 is fixed.");
 	}
 
 	/**
@@ -585,6 +621,46 @@ public class OobleckValidationTest implements TestFeatures, LayerFeatures, Conso
 		PackedCollection res0Output = res0Compiled.forward(input);
 		log("After residual 0 shape: " + res0Output.getShape());
 		compareBlockOutput("Residual0", res0Output, refAfterRes0, TOLERANCE);
+
+		// Test 4: After Residual Block 1
+		log("\n--- Test 4: After Residual Block 1 ---");
+		float[] refAfterRes1 = loadReferenceOutput("decoder_block1_after_residual_1.bin");
+		log("Reference decoder_block1_after_residual_1.bin size: " + refAfterRes1.length);
+
+		Model res1Model = new Model(shape(batchSize, inChannels, seqLength));
+		res1Model.add(snake(shape(batchSize, inChannels, seqLength), snakeAlpha, snakeBeta));
+		res1Model.add(wnConvTranspose1d(batchSize, inChannels, outChannels, seqLength,
+				kernel, stride, padding, outputPadding, conv_g, conv_v, conv_b));
+		res1Model.add(buildResidualBlock(weights, batchSize, outChannels, outLength,
+				prefix + ".layers.2"));
+		res1Model.add(buildResidualBlock(weights, batchSize, outChannels, outLength,
+				prefix + ".layers.3"));
+		CompiledModel res1Compiled = res1Model.compile(false);
+
+		PackedCollection res1Output = res1Compiled.forward(input);
+		log("After residual 1 shape: " + res1Output.getShape());
+		compareBlockOutput("Residual1", res1Output, refAfterRes1, TOLERANCE);
+
+		// Test 5: After Residual Block 2 (complete Block 1)
+		log("\n--- Test 5: After Residual Block 2 (complete Block 1) ---");
+		float[] refAfterRes2 = loadReferenceOutput("decoder_block1_after_residual_2.bin");
+		log("Reference decoder_block1_after_residual_2.bin size: " + refAfterRes2.length);
+
+		Model res2Model = new Model(shape(batchSize, inChannels, seqLength));
+		res2Model.add(snake(shape(batchSize, inChannels, seqLength), snakeAlpha, snakeBeta));
+		res2Model.add(wnConvTranspose1d(batchSize, inChannels, outChannels, seqLength,
+				kernel, stride, padding, outputPadding, conv_g, conv_v, conv_b));
+		res2Model.add(buildResidualBlock(weights, batchSize, outChannels, outLength,
+				prefix + ".layers.2"));
+		res2Model.add(buildResidualBlock(weights, batchSize, outChannels, outLength,
+				prefix + ".layers.3"));
+		res2Model.add(buildResidualBlock(weights, batchSize, outChannels, outLength,
+				prefix + ".layers.4"));
+		CompiledModel res2Compiled = res2Model.compile(false);
+
+		PackedCollection res2Output = res2Compiled.forward(input);
+		log("After residual 2 shape: " + res2Output.getShape());
+		compareBlockOutput("Residual2", res2Output, refAfterRes2, TOLERANCE);
 
 		log("\n=== Block 1 Sub-Component Comparison Complete ===");
 	}

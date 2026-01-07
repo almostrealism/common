@@ -111,9 +111,22 @@ This creates a directory of `.pb` files that StateDictionary can load directly.
 
 See [../claude.md](../claude.md) for AR_HARDWARE setup instructions.
 
+### Memory Configuration for Large Models
+
+Large models (e.g., full Oobleck autoencoder, LLMs) require more memory than the default 8GB:
+
+```bash
+# Increase memory for large ML models
+export AR_HARDWARE_MEMORY_SCALE=8   # 16GB
+export AR_HARDWARE_MEMORY_SCALE=9   # 32GB
+```
+
+**If you see `HardwareException: Memory max reached`**, increase `AR_HARDWARE_MEMORY_SCALE`.
+
 ### Test Structure
 
 ```bash
+export AR_HARDWARE_MEMORY_SCALE=8 && \
 export AR_HARDWARE_LIBS=/home/developer/.libs/ && \
 export AR_HARDWARE_DRIVER=native && \
 mvn test -pl ml -Dtest=<TestName>
