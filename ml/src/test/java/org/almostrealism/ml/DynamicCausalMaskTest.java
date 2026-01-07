@@ -98,8 +98,9 @@ public class DynamicCausalMaskTest extends TestSuiteBase implements AttentionFea
 		CollectionProducer position = cp(positionValue);
 		CollectionProducer maskRow = greaterThan(indices, position, c(-10000.0), c(0.0), false);
 
-		// Repeat for all heads
-		CollectionProducer mask = repeat(heads, maskRow);
+		// Repeat for all heads using the same pattern as AttentionFeatures:
+		// reshape to (1, seqLen), repeat to get (heads, seqLen)
+		CollectionProducer mask = maskRow.reshape(1, seqLen).repeat(heads).reshape(heads, seqLen);
 
 		PackedCollection result = mask.get().evaluate();
 
