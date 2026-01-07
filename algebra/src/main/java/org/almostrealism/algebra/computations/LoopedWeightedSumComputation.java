@@ -182,13 +182,7 @@ public class LoopedWeightedSumComputation extends AggregatedProducerComputation 
 	 */
 	@Override
 	public Expression<Double> getValueAt(Expression index) {
-		// TODO: The framework needs "inline isolation" support. When a wrapper's child
-		// is an isolation target, the wrapper should reference the child's output buffer
-		// instead of calling getValueAt(). Without this, we have to fallback to unrolling.
-		// See: ReshapeProducer.getValueAt() which calls getValueAt() on its child.
 		TraversableExpression[] args = getTraversableArguments(index);
-
-		// Compute the full sum: iterate over outerCount, each computing innerCount products
 		Expression<?> result = new DoubleConstant(0.0);
 		for (int outer = 0; outer < count; outer++) {
 			Expression<Integer> outerIdx = new IntegerConstant(outer);
