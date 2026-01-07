@@ -4,3 +4,6 @@ stable_audio_weights/**
 qwen3_weights/**
 qwen3_reference/**
 classpath.txt
+
+# Generated protobuf Python code (regenerate from src/main/proto/collections.proto)
+scripts/collections_pb2.py
