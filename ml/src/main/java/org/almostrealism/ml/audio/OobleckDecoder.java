@@ -17,9 +17,7 @@
 package org.almostrealism.ml.audio;
 
 import io.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.layers.LayerFeatures;
 import org.almostrealism.ml.StateDictionary;
 import org.almostrealism.model.Block;
 import org.almostrealism.model.SequentialBlock;
@@ -53,69 +51,19 @@ import org.almostrealism.model.SequentialBlock;
  * Output: (B, 2, ~L) stereo audio
  * </pre>
  *
- * <h2>DecoderBlock Structure</h2>
- * <pre>
- * Input
- *   |
- *   v
- * Snake(alpha, beta)           # Activation before upsample
- *   |
- *   v
- * WNConvTranspose1d            # Upsample with stride, channel change
- *   |
- *   v
- * ResBlock0                    # 3 residual blocks at output channels
- * ResBlock1
- * ResBlock2
- * </pre>
- *
- * <h2>ResidualBlock Structure</h2>
- * <pre>
- * Input ------------------.
- *   |                     |
- *   v                     |
- * Snake(alpha, beta)      |
- *   |                     |
- *   v                     |
- * WNConv1d(k=7, p=3)      |
- *   |                     |
- *   v                     |
- * Snake(alpha, beta)      |
- *   |                     |
- *   v                     |
- * WNConv1d(k=1)           |
- *   |                     v
- *   '--------- + ---------'
- * </pre>
- *
- * <p>All convolutions use weight normalization with (weight_g, weight_v) parameters.
- * Snake activations are learnable with per-channel (alpha, beta) parameters.</p>
- *
  * @see OobleckEncoder
  * @see OobleckAutoEncoder
  */
-public class OobleckDecoder implements LayerFeatures {
+public class OobleckDecoder extends SequentialBlock {
 
-	/** Stride (upsampling factor) for each decoder stage. */
 	private static final int[] STRIDES = {16, 16, 8, 8, 4};
-
-	/** Input channels for each decoder block. */
 	private static final int[] IN_CHANNELS = {2048, 1024, 512, 256, 128};
-
-	/** Output channels for each decoder block. */
 	private static final int[] OUT_CHANNELS = {1024, 512, 256, 128, 128};
-
-	/** Base number of channels before output projection. */
 	private static final int BASE_CHANNELS = 128;
-
-	/** Input latent dimension (after VAE sampling, 64 = 128/2). */
 	private static final int LATENT_DIM = 64;
-
-	/** Number of residual blocks per decoder block. */
 	private static final int NUM_RES_BLOCKS = 3;
 
 	private final StateDictionary stateDict;
-	private final Block decoder;
 	private final int batchSize;
 	private final int outputLength;
 
@@ -128,22 +76,14 @@ public class OobleckDecoder implements LayerFeatures {
 	 * @param latentLength Input latent sequence length
 	 */
 	public OobleckDecoder(StateDictionary stateDict, int batchSize, int latentLength) {
+		super(new TraversalPolicy(batchSize, LATENT_DIM, latentLength));
 		this.stateDict = stateDict;
 		this.batchSize = batchSize;
 		this.outputLength = computeOutputLength(latentLength);
-		this.decoder = buildDecoder(batchSize, latentLength);
+		buildDecoder(batchSize, latentLength);
 	}
 
-	/**
-	 * Computes the output sequence length for a given latent length.
-	 *
-	 * <p>Each decoder block upsamples using ConvTranspose1d with kernel size = stride
-	 * and output_padding = stride - 1, giving approximately input*stride output length.</p>
-	 *
-	 * @param latentLength Input latent sequence length
-	 * @return Output audio sequence length
-	 */
-	private int computeOutputLength(int latentLength) {
+	private static int computeOutputLength(int latentLength) {
 		int length = latentLength;
 		for (int stride : STRIDES) {
 			int kernel = stride;
@@ -154,20 +94,15 @@ public class OobleckDecoder implements LayerFeatures {
 		return length;
 	}
 
-	private Block buildDecoder(int batchSize, int latentLength) {
-		TraversalPolicy inputShape = shape(batchSize, LATENT_DIM, latentLength);
-		SequentialBlock block = new SequentialBlock(inputShape);
-
-		// layers.0: Input projection WNConv1d(64 -> 2048, k=7, p=3)
+	private void buildDecoder(int batchSize, int latentLength) {
 		String l0 = "decoder.layers.0";
 		PackedCollection l0_g = stateDict.get(l0 + ".weight_g");
 		PackedCollection l0_v = stateDict.get(l0 + ".weight_v");
 		PackedCollection l0_b = stateDict.get(l0 + ".bias");
 		int initialChannels = 2048;
-		block.add(wnConv1d(batchSize, LATENT_DIM, initialChannels, latentLength, 7, 1, 3,
+		add(wnConv1d(batchSize, LATENT_DIM, initialChannels, latentLength, 7, 1, 3,
 				l0_g, l0_v, l0_b));
 
-		// Decoder blocks: layers.1 through layers.5
 		int currentLength = latentLength;
 
 		for (int blockIdx = 0; blockIdx < 5; blockIdx++) {
@@ -181,52 +116,34 @@ public class OobleckDecoder implements LayerFeatures {
 			int outputPadding = stride - 1;
 			int nextLength = (currentLength - 1) * stride - 2 * padding + kernel + outputPadding;
 
-			block.add(buildDecoderBlock(batchSize, inChannels, outChannels,
+			add(buildDecoderBlock(batchSize, inChannels, outChannels,
 					currentLength, nextLength, stride, layerIdx));
 
 			currentLength = nextLength;
 		}
 
-		// layers.6: Final Snake activation
 		String l6 = "decoder.layers.6";
 		PackedCollection l6_alpha = stateDict.get(l6 + ".alpha");
 		PackedCollection l6_beta = stateDict.get(l6 + ".beta");
-		block.add(snake(shape(batchSize, BASE_CHANNELS, currentLength), l6_alpha, l6_beta));
+		add(snake(shape(batchSize, BASE_CHANNELS, currentLength), l6_alpha, l6_beta));
 
-		// layers.7: Output projection WNConv1d(128 -> 2, k=7, p=3), no bias
 		String l7 = "decoder.layers.7";
 		PackedCollection l7_g = stateDict.get(l7 + ".weight_g");
 		PackedCollection l7_v = stateDict.get(l7 + ".weight_v");
-		block.add(wnConv1d(batchSize, BASE_CHANNELS, 2, currentLength, 7, 1, 3,
+		add(wnConv1d(batchSize, BASE_CHANNELS, 2, currentLength, 7, 1, 3,
 				l7_g, l7_v, null));
-
-		return block;
 	}
 
-	/**
-	 * Builds a decoder block with Snake, upsample conv, and 3 residual blocks.
-	 *
-	 * @param batchSize Batch size
-	 * @param inChannels Input channels
-	 * @param outChannels Output channels (after upsample)
-	 * @param seqLength Input sequence length
-	 * @param outLength Output sequence length
-	 * @param stride Upsampling stride
-	 * @param layerIdx Layer index (1-5)
-	 * @return Decoder block
-	 */
 	private Block buildDecoderBlock(int batchSize, int inChannels, int outChannels,
 									int seqLength, int outLength, int stride, int layerIdx) {
 		String prefix = String.format("decoder.layers.%d", layerIdx);
 		SequentialBlock block = new SequentialBlock(shape(batchSize, inChannels, seqLength));
 
-		// layers.0: Snake activation before upsample
 		String snakePrefix = prefix + ".layers.0";
 		PackedCollection snakeAlpha = stateDict.get(snakePrefix + ".alpha");
 		PackedCollection snakeBeta = stateDict.get(snakePrefix + ".beta");
 		block.add(snake(shape(batchSize, inChannels, seqLength), snakeAlpha, snakeBeta));
 
-		// layers.1: Upsample conv (ConvTranspose1d)
 		String convPrefix = prefix + ".layers.1";
 		PackedCollection conv_g = stateDict.get(convPrefix + ".weight_g");
 		PackedCollection conv_v = stateDict.get(convPrefix + ".weight_v");
@@ -234,11 +151,10 @@ public class OobleckDecoder implements LayerFeatures {
 
 		int kernel = stride;
 		int padding = (kernel - 1) / 2;
-		int outputPadding = stride - 1;  // Required to achieve proper upsampling
+		int outputPadding = stride - 1;
 		block.add(wnConvTranspose1d(batchSize, inChannels, outChannels, seqLength,
 				kernel, stride, padding, outputPadding, conv_g, conv_v, conv_b));
 
-		// 3 residual blocks at output channels: layers.2, layers.3, layers.4
 		for (int resIdx = 0; resIdx < NUM_RES_BLOCKS; resIdx++) {
 			block.add(buildResidualBlock(batchSize, outChannels, outLength,
 					prefix + ".layers." + (resIdx + 2)));
@@ -247,42 +163,24 @@ public class OobleckDecoder implements LayerFeatures {
 		return block;
 	}
 
-	/**
-	 * Builds a residual block: Snake + WNConv(k=7) + Snake + WNConv(k=1) + skip.
-	 *
-	 * <p>The residual blocks maintain the same channel count throughout.
-	 * The skip connection is a simple identity addition.</p>
-	 *
-	 * @param batchSize Batch size
-	 * @param channels Number of channels (same for input and output)
-	 * @param seqLength Sequence length
-	 * @param prefix Weight key prefix (e.g., "decoder.layers.1.layers.2")
-	 * @return Residual block
-	 */
 	private Block buildResidualBlock(int batchSize, int channels, int seqLength, String prefix) {
 		TraversalPolicy inputShape = shape(batchSize, channels, seqLength);
-
-		// Main path: Snake -> Conv(k=7) -> Snake -> Conv(k=1)
 		SequentialBlock mainPath = new SequentialBlock(inputShape);
 
-		// layers.0: Snake
 		PackedCollection snake0_alpha = stateDict.get(prefix + ".layers.0.alpha");
 		PackedCollection snake0_beta = stateDict.get(prefix + ".layers.0.beta");
 		mainPath.add(snake(inputShape, snake0_alpha, snake0_beta));
 
-		// layers.1: WNConv1d(k=7, p=3)
 		PackedCollection conv1_g = stateDict.get(prefix + ".layers.1.weight_g");
 		PackedCollection conv1_v = stateDict.get(prefix + ".layers.1.weight_v");
 		PackedCollection conv1_b = stateDict.get(prefix + ".layers.1.bias");
 		mainPath.add(wnConv1d(batchSize, channels, channels, seqLength, 7, 1, 3,
 				conv1_g, conv1_v, conv1_b));
 
-		// layers.2: Snake
 		PackedCollection snake2_alpha = stateDict.get(prefix + ".layers.2.alpha");
 		PackedCollection snake2_beta = stateDict.get(prefix + ".layers.2.beta");
 		mainPath.add(snake(inputShape, snake2_alpha, snake2_beta));
 
-		// layers.3: WNConv1d(k=1, p=0)
 		PackedCollection conv3_g = stateDict.get(prefix + ".layers.3.weight_g");
 		PackedCollection conv3_v = stateDict.get(prefix + ".layers.3.weight_v");
 		PackedCollection conv3_b = stateDict.get(prefix + ".layers.3.bias");
@@ -293,18 +191,9 @@ public class OobleckDecoder implements LayerFeatures {
 	}
 
 	/**
-	 * Gets the built decoder block.
-	 *
-	 * @return The decoder Block
-	 */
-	public Block getDecoder() {
-		return decoder;
-	}
-
-	/**
 	 * Gets the output audio sequence length after decoding.
 	 *
-	 * @return Output length (approximately latent length * 32768)
+	 * @return Output length
 	 */
 	public int getOutputLength() {
 		return outputLength;

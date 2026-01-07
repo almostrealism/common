@@ -111,8 +111,8 @@ public class OobleckValidationTest implements TestFeatures, LayerFeatures, Conso
 
 		// Compile model (inference only - no backpropagation needed for validation)
 		log("\nCompiling encoder...");
-		Model model = new Model(encoder.shape(batchSize, 2, seqLength));
-		model.add(encoder.getEncoder());
+		Model model = new Model(shape(batchSize, 2, seqLength));
+		model.add(encoder);
 		CompiledModel compiled = model.compile(false);
 
 		// Prepare input
@@ -216,8 +216,8 @@ public class OobleckValidationTest implements TestFeatures, LayerFeatures, Conso
 
 		// Compile model (inference only - no backpropagation needed for validation)
 		log("\nCompiling decoder...");
-		Model model = new Model(decoder.shape(batchSize, 64, latentLength));
-		model.add(decoder.getDecoder());
+		Model model = new Model(shape(batchSize, 64, latentLength));
+		model.add(decoder);
 		CompiledModel compiled = model.compile(false);
 
 		// Prepare input

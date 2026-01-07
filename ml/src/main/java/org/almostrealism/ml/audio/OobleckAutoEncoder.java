@@ -135,9 +135,9 @@ public class OobleckAutoEncoder implements LayerFeatures {
 		TraversalPolicy inputShape = shape(batchSize, 2, inputLength);
 		SequentialBlock block = new SequentialBlock(inputShape);
 
-		block.add(encoder.getEncoder());
+		block.add(encoder);
 		block.add(bottleneck.getBottleneck());
-		block.add(decoder.getDecoder());
+		block.add(decoder);
 
 		return block;
 	}
@@ -158,8 +158,8 @@ public class OobleckAutoEncoder implements LayerFeatures {
 	 *
 	 * @return The encoder Block
 	 */
-	public Block getEncoder() {
-		return encoder.getEncoder();
+	public OobleckEncoder getEncoder() {
+		return encoder;
 	}
 
 	/**
@@ -167,8 +167,8 @@ public class OobleckAutoEncoder implements LayerFeatures {
 	 *
 	 * @return The decoder Block
 	 */
-	public Block getDecoder() {
-		return decoder.getDecoder();
+	public OobleckDecoder getDecoder() {
+		return decoder;
 	}
 
 	/**
@@ -226,7 +226,7 @@ public class OobleckAutoEncoder implements LayerFeatures {
 	 */
 	public CompiledModel compileEncoder() {
 		Model model = new Model(shape(batchSize, 2, inputLength));
-		model.add(encoder.getEncoder());
+		model.add(encoder);
 		return model.compile();
 	}
 
@@ -238,7 +238,7 @@ public class OobleckAutoEncoder implements LayerFeatures {
 	public CompiledModel compileDecoder() {
 		int latentLength = encoder.getOutputLength();
 		Model model = new Model(shape(batchSize, 64, latentLength));
-		model.add(decoder.getDecoder());
+		model.add(decoder);
 		return model.compile();
 	}
 }
