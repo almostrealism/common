@@ -9,6 +9,8 @@ import org.almostrealism.ml.StateDictionary;
 import org.almostrealism.model.Model;
 import org.almostrealism.model.SequentialBlock;
 import org.almostrealism.util.TestSuiteBase;
+import org.almostrealism.util.TestUtils;
+import org.junit.Assume;
 import org.junit.Test;
 
 import java.io.IOException;
@@ -38,6 +40,8 @@ public class FinalNormCorrectionTest extends TestSuiteBase implements AttentionF
 	 */
 	@Test
 	public void testFinalNormCorrection() throws Exception {
+		Assume.assumeTrue("Skipping comparison test in pipeline profile", TestUtils.isComparisonTestEnabled());
+
 		String logFile = "/workspace/project/common/ml/test_output/final_norm_correction.txt";
 		Console.root().addListener(OutputFeatures.fileOutput(logFile));
 

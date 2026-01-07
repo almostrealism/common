@@ -302,8 +302,8 @@ public class KVCacheDiagnosticTest extends TestSuiteBase implements AttentionFea
 		model.add(layer("readSum", shape(dim), shape(dim), input -> {
 			// Sum all entries in cache
 			CollectionProducer cacheSum = c(cache).traverse(0).sum();
-			// Return as dim-sized output
-			return cacheSum.reshape(shape(1)).repeat(dim);
+			// Return as dim-sized output: repeat produces (dim, 1), reshape to (dim)
+			return cacheSum.reshape(shape(1)).repeat(dim).reshape(shape(dim));
 		}));
 
 		log("Building and compiling model (inference-only mode)...");

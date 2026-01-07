@@ -193,6 +193,5 @@ The server parses JavaBeans XML format produced by `OperationProfileNode.save()`
 
 ## See Also
 
-- [Design Document](../PROFILE_MCP.md) - Full design rationale
 - `OperationProfileNode.java` - Java profile data structure
 - `OperationProfileFX.java` - JavaFX UI for human users

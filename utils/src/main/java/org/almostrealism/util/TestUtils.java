@@ -182,6 +182,19 @@ public class TestUtils implements TestSettings {
 	public static String getTestProfile() { return SystemUtils.getProperty("AR_TEST_PROFILE", "default"); }
 
 	/**
+	 * Determines whether comparison tests requiring external model weights should run.
+	 *
+	 * <p>Returns false when profile is "pipeline", since CI/CD environments typically
+	 * don't have access to large model weight files. Tests can use this with
+	 * {@code Assume.assumeTrue(TestUtils.isComparisonTestEnabled())} to skip.</p>
+	 *
+	 * @return true if comparison tests should run, false if profile is "pipeline"
+	 */
+	public static boolean isComparisonTestEnabled() {
+		return !Objects.equals(getTestProfile(), PIPELINE);
+	}
+
+	/**
 	 * Returns the test group this runner should execute, or null if all groups should run.
 	 *
 	 * <p>When running tests in parallel across multiple VMs, each VM is assigned a group

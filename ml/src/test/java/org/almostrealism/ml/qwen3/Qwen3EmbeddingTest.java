@@ -4,6 +4,8 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.ml.AttentionFeatures;
 import org.almostrealism.ml.StateDictionary;
 import org.almostrealism.util.TestSuiteBase;
+import org.almostrealism.util.TestUtils;
+import org.junit.Assume;
 import org.junit.Test;
 
 import java.util.Arrays;
@@ -18,6 +20,8 @@ public class Qwen3EmbeddingTest extends TestSuiteBase implements AttentionFeatur
 
 	@Test
 	public void testEmbeddingLookup() throws Exception {
+		Assume.assumeTrue("Skipping comparison test in pipeline profile", TestUtils.isComparisonTestEnabled());
+
 		System.out.println("\n=== Embedding Lookup Test ===\n");
 
 		// Load embeddings

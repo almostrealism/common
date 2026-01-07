@@ -268,16 +268,16 @@ public class DiffusionTransformerTests extends TestSuiteBase implements Diffusio
 		log("Test completed successfully");
 	}
 
-    /**
-    * Tests fourierFeatures with simple known values to verify basic mathematical operations.
-    * This is a sanity check to ensure the 2*pi factor, matrix multiplication, and
-    * concatenation order are working correctly.
-    */
-    @Test
-    public void fourierFeaturesBasic() {
-        int batchSize = 1;
-        int inFeatures = 1;
-        int outFeatures = 4;  // Simple case
+	/**
+	 * Tests fourierFeatures with simple known values to verify basic mathematical operations.
+	 * This is a sanity check to ensure the 2*pi factor, matrix multiplication, and
+	 * concatenation order are working correctly.
+	 */
+	@Test
+	public void fourierFeaturesBasic() {
+		int batchSize = 1;
+		int inFeatures = 1;
+		int outFeatures = 4;  // Simple case
 
 		// Create simple test inputs
 		PackedCollection input = new PackedCollection(shape(batchSize, inFeatures));

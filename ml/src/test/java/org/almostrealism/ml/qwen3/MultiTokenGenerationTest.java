@@ -8,6 +8,8 @@ import org.almostrealism.ml.AttentionFeatures;
 import org.almostrealism.ml.StateDictionary;
 import org.almostrealism.model.Model;
 import org.almostrealism.util.TestSuiteBase;
+import org.almostrealism.util.TestUtils;
+import org.junit.Assume;
 import org.junit.Test;
 
 import java.io.IOException;
@@ -34,6 +36,8 @@ public class MultiTokenGenerationTest extends TestSuiteBase implements Attention
 	 */
 	@Test
 	public void testMultiTokenGeneration() throws Exception {
+		Assume.assumeTrue("Skipping comparison test in pipeline profile", TestUtils.isComparisonTestEnabled());
+
 		String logFile = "/workspace/project/common/ml/test_output/multitoken_generation.txt";
 		Console.root().addListener(OutputFeatures.fileOutput(logFile));
 

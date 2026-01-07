@@ -8,6 +8,8 @@ import org.almostrealism.ml.AttentionFeatures;
 import org.almostrealism.ml.StateDictionary;
 import org.almostrealism.model.Model;
 import org.almostrealism.util.TestSuiteBase;
+import org.almostrealism.util.TestUtils;
+import org.junit.Assume;
 import org.junit.Test;
 
 import java.io.IOException;
@@ -35,6 +37,8 @@ public class LayerOutputComparisonTest extends TestSuiteBase implements Attentio
 
 	@Test
 	public void compareAfterEmbeddings() throws Exception {
+		Assume.assumeTrue("Skipping comparison test in pipeline profile", TestUtils.isComparisonTestEnabled());
+
 		// Setup file logging
 		String logFile = "/workspace/project/common/ml/test_output/layer_comparison_embeddings.txt";
 		Console.root().addListener(OutputFeatures.fileOutput(logFile));
@@ -80,6 +84,8 @@ public class LayerOutputComparisonTest extends TestSuiteBase implements Attentio
 
 	@Test
 	public void compareAfter1Layer() throws Exception {
+		Assume.assumeTrue("Skipping comparison test in pipeline profile", TestUtils.isComparisonTestEnabled());
+
 		// Setup file logging
 		String logFile = "/workspace/project/common/ml/test_output/layer_comparison_1layer.txt";
 		Console.root().addListener(OutputFeatures.fileOutput(logFile));
@@ -133,6 +139,8 @@ public class LayerOutputComparisonTest extends TestSuiteBase implements Attentio
 
 	@Test
 	public void compareAfter2Layers() throws Exception {
+		Assume.assumeTrue("Skipping comparison test in pipeline profile", TestUtils.isComparisonTestEnabled());
+
 		// Setup file logging
 		String logFile = "/workspace/project/common/ml/test_output/layer_comparison_2layers.txt";
 		Console.root().addListener(OutputFeatures.fileOutput(logFile));
