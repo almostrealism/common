@@ -789,16 +789,9 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 			CollectionProducer in = c(input);
 
 			int expandedLength = (seqLength - 1) * stride + 1;
-			// For transposed convolution, PyTorch uses: output[o] = sum_k input[t] * weight[k]
-			// where (o + padding - k) = t * stride. Combined with kernel flip below, this means
-			// leftPadding = kernelSize - 1 - padding places input[0] so that after flipping,
-			// output[0] correctly uses weight[padding].
 			int leftPadding = kernelSize - 1 - padding;
-			// Total length must be at least outLength + kernelSize - 1 to avoid out-of-bounds access
-			// when computing output[outLength-1] with kernel position kernelSize-1
 			int paddedExpandedLength = outLength + kernelSize - 1;
 
-			// Upsample: place each input element at start of a stride-sized cell, zeros fill the rest
 			TraversalPolicy upsampleCellShape = shape(batchSize * inputChannels, seqLength, stride);
 			CollectionProducer upsampled = pad(upsampleCellShape,
 					in.reshape(batchSize * inputChannels, seqLength, 1),
@@ -806,28 +799,20 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 
 			CollectionProducer upsampledFlat = upsampled.reshape(batchSize * inputChannels, seqLength * stride);
 
-			// Trim trailing zeros from upsampling
 			if (seqLength * stride > expandedLength) {
 				upsampledFlat = upsampledFlat.subset(shape(batchSize * inputChannels, expandedLength), 0, 0);
 			}
 
-			// Pad for convolution boundaries - asymmetric: left padding aligns output, right padding prevents overflow
 			if (paddedExpandedLength > expandedLength) {
 				upsampledFlat = pad(shape(batchSize * inputChannels, paddedExpandedLength),
 						upsampledFlat, 0, leftPadding);
 			}
 
-			// Reshape for convolution
-			// Input is (batch, inputChannels, paddedExpandedLength)
-			// Filters are (inputChannels, outputChannels, kernelSize)
 			CollectionProducer conv = upsampledFlat.reshape(batchSize, inputChannels, 1, paddedExpandedLength);
 			CollectionProducer filter = cp(filters).reshape(1, inputChannels, outputChannels, kernelSize);
 
 			CollectionProducer result;
 
-			// Use LoopedWeightedSumComputation to avoid massive expression trees
-			// for large inputChannels. The outer loop (inputChannels) becomes a native
-			// for-loop, while the inner sum (kernelSize) is unrolled.
 			{
 				TraversalPolicy loopedOutputShape = shape(batchSize, outputChannels, outLength).traverseEach();
 				TraversalPolicy loopedInputShape = shape(batchSize * inputChannels, paddedExpandedLength);
@@ -839,25 +824,13 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 				final int paddedLen = paddedExpandedLength;
 
 				LoopedWeightedSumComputation.InputIndexer inputIndexer = (outputIdx, outerIdx, innerIdx) -> {
-					// outputIdx is flat index into (batch, outputChannels, outLength)
-					// outerIdx is inputChannel (ic)
-					// innerIdx is kernel position (k)
-					// Input shape: (batch * inputChannels, paddedExpandedLength)
-					// We want input[b, ic, o+k] = (b * inputChannels + ic) * paddedLen + (o + k)
 					Expression<?> b = outputIdx.divide(ocChannels * ocLen);
 					Expression<?> o = outputIdx.imod(ocLen);
 					return b.multiply(icChannels).add(outerIdx).multiply(paddedLen).add(o).add(innerIdx);
 				};
 
 				LoopedWeightedSumComputation.WeightIndexer weightIndexer = (outputIdx, outerIdx, innerIdx) -> {
-					// outerIdx is inputChannel (ic)
-					// innerIdx is kernel position (k)
-					// Filter shape: (inputChannels, outputChannels, kernelSize)
-					// We want filter[ic, oc, flipped_k] where flipped_k = kernelSize - 1 - k
-					// This kernel flip is required because PyTorch's transposed convolution
-					// uses the kernel in reverse order compared to standard convolution.
 					Expression<?> oc = outputIdx.divide(ocLen).imod(ocChannels);
-					// Compute (kSize - 1 - innerIdx) by negating innerIdx and adding (kSize - 1)
 					Expression<?> flippedK = innerIdx.multiply(-1).add(kSize - 1);
 					return outerIdx.multiply(ocChannels * kSize).add(oc.multiply(kSize)).add(flippedK);
 				};

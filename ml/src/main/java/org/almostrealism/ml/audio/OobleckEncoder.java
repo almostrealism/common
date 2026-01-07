@@ -156,7 +156,6 @@ public class OobleckEncoder implements LayerFeatures {
 	 * In Stable Audio Open, downsample kernel = 2 * stride for strides > 4, else stride.
 	 */
 	private int computeDownsampleKernel(int stride) {
-		// From checkpoint: stride 4 uses k=4, stride 8 uses k=8, stride 16 uses k=16
 		return stride;
 	}
 
@@ -178,12 +177,11 @@ public class OobleckEncoder implements LayerFeatures {
 		for (int blockIdx = 0; blockIdx < 5; blockIdx++) {
 			int outChannels = OUT_CHANNELS[blockIdx];
 			int stride = STRIDES[blockIdx];
-			int layerIdx = blockIdx + 1;  // layers.1 through layers.5
+			int layerIdx = blockIdx + 1;
 
 			block.add(buildEncoderBlock(batchSize, inChannels, outChannels,
 					currentLength, stride, layerIdx));
 
-			// Update for next block
 			int kernel = computeDownsampleKernel(stride);
 			int padding = (kernel - 1) / 2;
 			currentLength = (currentLength + 2 * padding - kernel) / stride + 1;
@@ -290,8 +288,6 @@ public class OobleckEncoder implements LayerFeatures {
 		mainPath.add(wnConv1d(batchSize, channels, channels, seqLength, 1, 1, 0,
 				conv3_g, conv3_v, conv3_b));
 
-		// Residual connection: output = main(x) + x
-		// Since input and output shapes match, we can use the built-in residual method
 		return residual(mainPath);
 	}
 

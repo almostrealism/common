@@ -146,10 +146,9 @@ public class OobleckDecoder implements LayerFeatures {
 	private int computeOutputLength(int latentLength) {
 		int length = latentLength;
 		for (int stride : STRIDES) {
-			int kernel = stride;  // kernel = stride for decoder upsampling
+			int kernel = stride;
 			int padding = (kernel - 1) / 2;
 			int outputPadding = stride - 1;
-			// ConvTranspose1d: out = (in - 1) * stride - 2*padding + kernel + output_padding
 			length = (length - 1) * stride - 2 * padding + kernel + outputPadding;
 		}
 		return length;
@@ -175,9 +174,8 @@ public class OobleckDecoder implements LayerFeatures {
 			int inChannels = IN_CHANNELS[blockIdx];
 			int outChannels = OUT_CHANNELS[blockIdx];
 			int stride = STRIDES[blockIdx];
-			int layerIdx = blockIdx + 1;  // layers.1 through layers.5
+			int layerIdx = blockIdx + 1;
 
-			// Compute output length after this block
 			int kernel = stride;
 			int padding = (kernel - 1) / 2;
 			int outputPadding = stride - 1;
@@ -195,11 +193,10 @@ public class OobleckDecoder implements LayerFeatures {
 		PackedCollection l6_beta = stateDict.get(l6 + ".beta");
 		block.add(snake(shape(batchSize, BASE_CHANNELS, currentLength), l6_alpha, l6_beta));
 
-		// layers.7: Output projection WNConv1d(128 -> 2, k=7, p=3) - NOTE: no bias
+		// layers.7: Output projection WNConv1d(128 -> 2, k=7, p=3), no bias
 		String l7 = "decoder.layers.7";
 		PackedCollection l7_g = stateDict.get(l7 + ".weight_g");
 		PackedCollection l7_v = stateDict.get(l7 + ".weight_v");
-		// No bias in output conv
 		block.add(wnConv1d(batchSize, BASE_CHANNELS, 2, currentLength, 7, 1, 3,
 				l7_g, l7_v, null));
 
@@ -292,8 +289,6 @@ public class OobleckDecoder implements LayerFeatures {
 		mainPath.add(wnConv1d(batchSize, channels, channels, seqLength, 1, 1, 0,
 				conv3_g, conv3_v, conv3_b));
 
-		// Residual connection: output = main(x) + x
-		// Since input and output shapes match, we can use the built-in residual method
 		return residual(mainPath);
 	}
 
