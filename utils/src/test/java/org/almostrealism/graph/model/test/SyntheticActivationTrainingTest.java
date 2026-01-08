@@ -50,11 +50,6 @@ import java.util.stream.IntStream;
  * @author Michael Murray
  */
 public class SyntheticActivationTrainingTest extends TestSuiteBase implements ModelTestFeatures {
-	static {
-		if (TestUtils.getTrainTests()) {
-			Console.root().addListener(OutputFeatures.fileOutput("results/logs/synthetic_activation_train.out"));
-		}
-	}
 
 	/**
 	 * Fixed coefficients for target functions.

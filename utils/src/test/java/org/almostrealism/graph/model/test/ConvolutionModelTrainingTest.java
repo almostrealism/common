@@ -59,10 +59,6 @@ public class ConvolutionModelTrainingTest extends TestSuiteBase implements Model
 			rows = 30;
 			cols = 30;
 		}
-
-		if (TestUtils.getTrainTests()) {
-			Console.root().addListener(OutputFeatures.fileOutput("results/logs/train.out"));
-		}
 	}
 
 	public List<ValueTarget<PackedCollection>> generateDataset(TraversalPolicy outShape) {
@@ -137,8 +133,6 @@ public class ConvolutionModelTrainingTest extends TestSuiteBase implements Model
 
 	@Test(timeout = 120000)
 	public void train() throws IOException {
-		if (!trainingTests) return;
-
 		int runs = 1; // 10;
 		int epochs = 10;
 

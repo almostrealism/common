@@ -209,7 +209,8 @@ public class WeightedSumWrappingDiagnosticTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 3600000) // 1 hour - intentionally slow diagnostic test
 	public void largeWeightedSumNoReshape() {
-		if (skipLongTests) return; // Only run when long tests are explicitly enabled
+		if (skipLongTests) return;
+
 		int inputChannels = 2048;  // Large
 		int kernelSize = 16;
 		int outLen = 8;

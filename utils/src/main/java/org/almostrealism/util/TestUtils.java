@@ -115,23 +115,6 @@ public class TestUtils implements TestSettings {
 	}
 
 	/**
-	 * Determines whether ML training tests are enabled.
-	 *
-	 * <p>Returns true only when:</p>
-	 * <ul>
-	 *   <li>Profile is NOT "pipeline"</li>
-	 *   <li>{@code AR_TRAIN_TESTS=true} environment variable is set</li>
-	 * </ul>
-	 *
-	 * @return true if training tests are enabled, false otherwise
-	 */
-	public static boolean getTrainTests() {
-		if (Objects.equals(getTestProfile(), PIPELINE)) return false;
-
-		return SystemUtils.isEnabled("AR_TRAIN_TESTS").orElse(false);
-	}
-
-	/**
 	 * Determines whether verbose logging is enabled during tests.
 	 *
 	 * <p>Returns true when:</p>

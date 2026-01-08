@@ -50,15 +50,6 @@ public class TrainModelTest extends TestSuiteBase implements ModelFeatures, Kern
 	private final int h = 10;
 	private TraversalPolicy inputShape = shape(h, w);
 
-	static {
-		if (TestUtils.getTrainTests()) {
-			HardwareOperator.enableLargeInstructionSetMonitoring = true;
-			MetalMemoryProvider.enableLargeAllocationLogging = true;
-
-			Console.root().addListener(OutputFeatures.fileOutput("results/logs/train.out"));
-		}
-	}
-
 	@Test(timeout = 120000)
 	public void dense() {
 		if (skipKnownIssues) return;
@@ -261,8 +252,9 @@ public class TrainModelTest extends TestSuiteBase implements ModelFeatures, Kern
 	}
 
 	@Test(timeout = 120000)
+	@TestDepth(10)
 	public void trainMedium() throws IOException {
-		if (skipLongTests || !trainingTests) return;
+		if (skipLongTests) return;
 
 		int dim = 54;
 		int filters = 8;
@@ -272,8 +264,9 @@ public class TrainModelTest extends TestSuiteBase implements ModelFeatures, Kern
 	}
 
 	@Test(timeout = 120000)
+	@TestDepth(10)
 	public void trainLarge() throws IOException {
-		if (skipLongTests || !trainingTests) return;
+		if (skipLongTests) return;
 
 		try {
 			int dim = 72;
@@ -287,8 +280,9 @@ public class TrainModelTest extends TestSuiteBase implements ModelFeatures, Kern
 	}
 
 	@Test(timeout = 120000)
+	@TestDepth(10)
 	public void trainProgressive() throws IOException {
-		if (skipLongTests || !trainingTests) return;
+		if (skipLongTests) return;
 
 		double size = 10;
 
@@ -304,7 +298,7 @@ public class TrainModelTest extends TestSuiteBase implements ModelFeatures, Kern
 	}
 
 	protected void train(PackedCollection input, Model model) throws IOException {
-		train(input, model, trainingTests ? 80 : 2);
+		train(input, model, trainingEpochs);
 	}
 
 	protected void train(PackedCollection input, Model model, int epochCount) throws IOException {

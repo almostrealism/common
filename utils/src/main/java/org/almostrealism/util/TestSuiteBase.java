@@ -16,6 +16,7 @@
 
 package org.almostrealism.util;
 
+import org.almostrealism.io.SystemUtils;
 import org.junit.Rule;
 
 /**
@@ -68,6 +69,11 @@ import org.junit.Rule;
  * @see TestFeatures
  */
 public abstract class TestSuiteBase implements TestFeatures {
+	static {
+		if (SystemUtils.isEnabled("AR_SIGNALWIRE_ALERTS").orElse(false)) {
+			SignalWireDeliveryProvider.attachDefault();
+		}
+	}
 
 	/**
 	 * Rule that automatically skips tests based on {@link TestDepth} annotations.

@@ -37,6 +37,7 @@ import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.hardware.kernel.KernelSeriesCache;
 import org.almostrealism.io.Console;
+import org.almostrealism.io.SystemUtils;
 
 import java.util.Arrays;
 import java.util.Objects;

@@ -40,12 +40,6 @@ import org.junit.Test;
  */
 public class NormShapeInvestigationTest extends TestSuiteBase {
 
-	static {
-		if (TestUtils.getTrainTests()) {
-			Console.root().addListener(OutputFeatures.fileOutput("results/logs/norm_shape_investigation.out"));
-		}
-	}
-
 	/**
 	 * Test norm layer shape declarations vs actual output with 2D input.
 	 */

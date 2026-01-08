@@ -50,11 +50,6 @@ import java.util.stream.IntStream;
  * @author Michael Murray
  */
 public class SyntheticNormTrainingTest extends TestSuiteBase implements ModelTestFeatures {
-	static {
-		if (TestUtils.getTrainTests()) {
-			Console.root().addListener(OutputFeatures.fileOutput("results/logs/synthetic_norm_train.out"));
-		}
-	}
 
 	/**
 	 * Fixed coefficients for target functions.
