@@ -19,7 +19,8 @@ package org.almostrealism.algebra.test;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestDepth;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 /**
@@ -29,7 +30,7 @@ import org.junit.Test;
  * This test investigates whether the wrapping causes getValueAt() to be
  * called (unrolling expressions) vs getScope() (native loops).
  */
-public class WeightedSumWrappingDiagnosticTest implements TestFeatures {
+public class WeightedSumWrappingDiagnosticTest extends TestSuiteBase {
 
 	/**
 	 * Test Case 1: Small weightedSum WITHOUT reshape wrapper.
@@ -116,8 +117,8 @@ public class WeightedSumWrappingDiagnosticTest implements TestFeatures {
 	 * Takes ~16 seconds for native code compilation.
 	 */
 	@Test(timeout = 60000)
+	@TestDepth(1)
 	public void mediumWeightedSumNoReshape() {
-		if (testDepth < 1) return;
 		int inputChannels = 256;  // Moderate size
 		int kernelSize = 16;
 		int outLen = 8;
@@ -160,8 +161,8 @@ public class WeightedSumWrappingDiagnosticTest implements TestFeatures {
 	 * Takes ~16 seconds for native code compilation (or cached from previous test).
 	 */
 	@Test(timeout = 60000)
+	@TestDepth(1)
 	public void mediumWeightedSumWithReshape() {
-		if (testDepth < 1) return;
 		int inputChannels = 256;
 		int kernelSize = 16;
 		int outLen = 8;

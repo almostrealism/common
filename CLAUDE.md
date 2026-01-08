@@ -57,6 +57,94 @@ mcp__ar-test-runner__start_test_run
 
 ---
 
+## ⚠️ CRITICAL: ALWAYS CONSULT AR-DOCS MCP BEFORE INFRASTRUCTURE CHANGES ⚠️
+
+**THIS IS AN ABSOLUTE RULE WITH NO EXCEPTIONS.**
+
+Before making ANY changes to:
+- Test infrastructure (test classes, test utilities, test configuration)
+- Build configuration
+- Framework base classes
+- Module structure
+
+You **MUST** first consult the ar-docs MCP tools:
+- `mcp__ar-docs__search_ar_docs` - Search documentation
+- `mcp__ar-docs__read_ar_module` - Read module documentation
+- `mcp__ar-docs__read_quick_reference` - Get API quick reference
+
+**Why this matters:** The AR framework has established patterns and base classes. Making assumptions based on source code comments alone leads to violations of framework conventions. The ar-docs MCP contains authoritative documentation that explains the CORRECT patterns.
+
+**Example of what NOT to do:**
+- See `TestDepthRule` in source code
+- Assume you understand how it works from comments
+- Manually add `@Rule TestDepthRule` to a test class
+- **WRONG!** The documentation clearly states TestDepthRule is used INTERNALLY by TestSuiteBase
+
+**Correct approach:**
+1. Search ar-docs: `mcp__ar-docs__search_ar_docs query:"test grouping"`
+2. Read module docs: `mcp__ar-docs__read_ar_module module:"utils"`
+3. Understand the pattern: Tests extend `TestSuiteBase`
+4. Make changes following the documented pattern
+
+---
+
+## ⚠️ CRITICAL: TEST CLASS REQUIREMENTS ⚠️
+
+**THIS IS AN ABSOLUTE RULE WITH NO EXCEPTIONS.**
+
+All test classes **MUST** extend `TestSuiteBase`:
+
+```java
+// CORRECT: Extend TestSuiteBase
+public class MyTest extends TestSuiteBase {
+    @Test
+    public void testSomething() {
+        // Test automatically participates in grouping and depth filtering
+    }
+
+    @Test
+    @TestDepth(2)
+    public void expensiveTest() {
+        // Automatically skipped if AR_TEST_DEPTH < 2
+    }
+}
+```
+
+```java
+// WRONG: Implementing TestFeatures directly
+public class MyTest implements TestFeatures {
+    // This test will NOT participate in test grouping!
+    // It will run in ALL CI groups, wasting resources
+}
+```
+
+```java
+// WRONG: Manually adding TestDepthRule
+public class MyTest implements TestFeatures {
+    @Rule public TestDepthRule depthRule = testDepthRule();  // NEVER DO THIS!
+}
+```
+
+**What TestSuiteBase provides automatically:**
+- Test grouping (hash-based distribution across CI runners)
+- `@TestDepth` annotation support
+- All TestFeatures utilities (assertions, kernel testing, etc.)
+
+**For long-running tests (30+ minutes):**
+Use `skipLongTests` guard in addition to extending TestSuiteBase:
+```java
+public class MyTest extends TestSuiteBase {
+    @Test
+    @TestDepth(3)
+    public void veryExpensiveTest() {
+        if (skipLongTests) return;  // Respects AR_LONG_TESTS env var
+        // ...
+    }
+}
+```
+
+---
+
 ## Quick Links
 
 - **[Quick Reference](docs/QUICK_REFERENCE.md)** - Condensed API cheatsheet

@@ -41,6 +41,15 @@ See [../CLAUDE.md](../CLAUDE.md) for full MCP test runner documentation.
 
 ---
 
+## ⚠️ CRITICAL: TEST CLASS REQUIREMENTS ⚠️
+
+All test classes **MUST** extend `TestSuiteBase`. See [../CLAUDE.md](../CLAUDE.md) for:
+- Why `TestSuiteBase` is required (test grouping, depth filtering)
+- Why you must NEVER manually add `@Rule TestDepthRule`
+- Why you must ALWAYS consult ar-docs MCP before infrastructure changes
+
+---
+
 > **Note**: For general AR framework guidelines (environment setup, code organization principles), see [../claude.md](../claude.md)
 
 ## ML-Specific Patterns
