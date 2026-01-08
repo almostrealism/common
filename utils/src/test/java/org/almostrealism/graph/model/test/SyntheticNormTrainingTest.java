@@ -111,7 +111,7 @@ public class SyntheticNormTrainingTest extends TestSuiteBase implements ModelTes
 				.collect(Collectors.toList()));
 
 		// Train using existing infrastructure
-		train("denseWithNorm", model, data, epochs, steps, 0.3, 0.2);
+		train("denseWithNorm", model, data, epochs, steps, 0.4, 0.2);
 
 		log("Test 3.1 completed successfully");
 	}

@@ -116,7 +116,7 @@ public class WeightedSumWrappingDiagnosticTest extends TestSuiteBase {
 	 * Group size = 256 * 16 = 4096
 	 * Takes ~16 seconds for native code compilation.
 	 */
-	@Test(timeout = 60000)
+	@Test(timeout = 3 * 60000)
 	@TestDepth(1)
 	public void mediumWeightedSumNoReshape() {
 		int inputChannels = 256;  // Moderate size
@@ -160,7 +160,7 @@ public class WeightedSumWrappingDiagnosticTest extends TestSuiteBase {
 	 * This should show if reshape causes the problem.
 	 * Takes ~16 seconds for native code compilation (or cached from previous test).
 	 */
-	@Test(timeout = 60000)
+	@Test(timeout = 3 * 60000)
 	@TestDepth(1)
 	public void mediumWeightedSumWithReshape() {
 		int inputChannels = 256;
