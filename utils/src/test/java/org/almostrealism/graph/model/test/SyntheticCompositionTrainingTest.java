@@ -24,6 +24,8 @@ import org.almostrealism.model.SequentialBlock;
 import org.almostrealism.optimize.Dataset;
 import org.almostrealism.optimize.ValueTarget;
 import org.almostrealism.util.ModelTestFeatures;
+import org.almostrealism.util.TestDepth;
+import org.almostrealism.util.TestSuiteBase;
 import org.almostrealism.util.TestUtils;
 import org.junit.Test;
 
@@ -45,13 +47,7 @@ import java.util.stream.IntStream;
  *
  * @author Michael Murray
  */
-public class SyntheticCompositionTrainingTest implements ModelTestFeatures {
-	static {
-		if (TestUtils.getTrainTests()) {
-			Console.root().addListener(OutputFeatures.fileOutput("results/logs/synthetic_composition_train.out"));
-		}
-	}
-
+public class SyntheticCompositionTrainingTest extends TestSuiteBase implements ModelTestFeatures {
 	/**
 	 * Fixed coefficients for target functions.
 	 */
@@ -90,9 +86,8 @@ public class SyntheticCompositionTrainingTest implements ModelTestFeatures {
 	 * <p>Architecture: Input [4] - [Dense - Dense] + residual - Dense - Output [4]</p>
 	 */
 	@Test(timeout = 3 * 60000)
+	@TestDepth(1)
 	public void residualBlock() throws FileNotFoundException {
-		if (testDepth < 1) return;
-
 		log("=== Test 5.1: Residual Block ===");
 
 		int size = 4;
@@ -121,7 +116,7 @@ public class SyntheticCompositionTrainingTest implements ModelTestFeatures {
 				.collect(Collectors.toList()));
 
 		// Train
-		train("residualBlock", model, data, epochs, steps, 1.0, 0.1);
+		train("residualBlock", model, data, epochs, steps, 0.9, 0.2);
 
 		log("Test 5.1 completed successfully");
 	}
@@ -134,9 +129,8 @@ public class SyntheticCompositionTrainingTest implements ModelTestFeatures {
 	 * <p>Architecture: Input [4] - Dense - Dense - Dense - Output [4]</p>
 	 */
 	@Test(timeout = 3 * 60000)
+	@TestDepth(1)
 	public void sequentialComposition() throws FileNotFoundException {
-		if (testDepth < 1) return;
-
 		log("=== Test 5.2: Sequential Composition ===");
 
 		int size = 4;

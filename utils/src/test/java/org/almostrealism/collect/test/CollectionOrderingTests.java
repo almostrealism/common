@@ -20,17 +20,17 @@ import io.almostrealism.collect.RepeatTraversalOrdering;
 import org.almostrealism.collect.ExplicitIndexTraversalOrdering;
 import org.almostrealism.collect.IndexMaskTraversalOrdering;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
-public class CollectionOrderingTests implements TestFeatures {
+public class CollectionOrderingTests extends TestSuiteBase {
 	@Test(timeout = 10000)
 	public void repeatOrdering() {
 		if (skipKnownIssues) return;
 
 		PackedCollection root = pack(2.0, 3.0, 1.0);
 		PackedCollection repeated = new PackedCollection(shape(4, 3), 1,
-										root, 0, new RepeatTraversalOrdering(3));
+				root, 0, new RepeatTraversalOrdering(3));
 		repeated.print();
 
 		assertEquals(2.0, repeated.valueAt(0, 0));

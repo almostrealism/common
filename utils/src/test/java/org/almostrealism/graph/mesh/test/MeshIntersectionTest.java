@@ -29,11 +29,12 @@ import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.space.DefaultVertexData;
 import org.almostrealism.space.Mesh;
 import org.almostrealism.space.MeshData;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestDepth;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Before;
 import org.junit.Test;
 
-public class MeshIntersectionTest implements TestFeatures {
+public class MeshIntersectionTest extends TestSuiteBase {
 	private final Producer<PackedCollection> origin1 = vector(0.0, 1.0, 1.0);
 	private final Producer<PackedCollection> direction1 = vector(0.0, 0.0, -1.0);
 	private final Producer<PackedCollection> origin2 = vector( -0.1, -1.0, 1.0);
@@ -102,9 +103,8 @@ public class MeshIntersectionTest implements TestFeatures {
 	}
 
 	@Test(timeout = 10000)
+	@TestDepth(1)
 	public void data2() {
-		if (testDepth < 1) return;
-
 		Producer<PackedCollection> abc = abc(data2);
 		Producer<PackedCollection> def = def(data2);
 		Producer<PackedCollection> jkl = jkl(data2);

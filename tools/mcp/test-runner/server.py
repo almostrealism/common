@@ -34,6 +34,9 @@ RUNS_DIR = Path(__file__).parent / "runs"
 MAX_RUNS = 50
 DEFAULT_MODULE = "utils"
 DEFAULT_TIMEOUT = 30
+DEFAULT_OUTPUT_LINES = 200  # Default max lines for get_run_output
+DEFAULT_STACKTRACE_LINES = 30  # Max lines per stacktrace
+MAX_OUTPUT_BYTES = 50000  # ~50KB max response size
 
 # Ensure runs directory exists
 RUNS_DIR.mkdir(parents=True, exist_ok=True)
@@ -48,6 +51,7 @@ class RunConfig:
     test_methods: list = field(default_factory=list)
     timeout_minutes: int = DEFAULT_TIMEOUT
     jvm_args: list = field(default_factory=list)
+    profile: Optional[str] = None
 
 
 @dataclass
@@ -114,6 +118,10 @@ class TestRunner:
         # Add test depth
         if config.depth is not None:
             cmd.append(f"-DAR_TEST_DEPTH={config.depth}")
+
+        # Add test profile (e.g., "pipeline" to skip comparison tests)
+        if config.profile:
+            cmd.append(f"-DAR_TEST_PROFILE={config.profile}")
 
         # Add test class/method filters
         if config.test_classes:
@@ -350,14 +358,25 @@ class TestRunner:
         return counts
 
     def get_run_output(self, run_id: str, tail: Optional[int] = None,
-                       filter_pattern: Optional[str] = None) -> Optional[dict]:
-        """Get output from a run."""
+                       filter_pattern: Optional[str] = None,
+                       max_lines: Optional[int] = None) -> Optional[dict]:
+        """Get output from a run.
+
+        Args:
+            run_id: The run identifier
+            tail: Only return last N lines (overrides max_lines)
+            filter_pattern: Regex pattern to filter lines
+            max_lines: Max lines to return (default: DEFAULT_OUTPUT_LINES)
+                       Set to 0 for unlimited (not recommended)
+        """
         output_file = RUNS_DIR / run_id / "output.txt"
         if not output_file.exists():
             return None
 
         with open(output_file) as f:
             lines = f.readlines()
+
+        total_lines = len(lines)
 
         # Apply filter if specified
         if filter_pattern:
@@ -367,27 +386,76 @@ class TestRunner:
             except re.error:
                 pass
 
-        # Apply tail if specified
+        filtered_lines = len(lines)
         truncated = False
+
+        # Apply tail if specified (takes precedence)
         if tail and len(lines) > tail:
             lines = lines[-tail:]
+            truncated = True
+        elif max_lines is None:
+            # Apply default limit - show head and tail
+            max_lines = DEFAULT_OUTPUT_LINES
+            if len(lines) > max_lines:
+                head_lines = max_lines // 2
+                tail_lines = max_lines - head_lines
+                lines = (
+                    lines[:head_lines] +
+                    [f"\n... ({len(lines) - max_lines} lines truncated) ...\n\n"] +
+                    lines[-tail_lines:]
+                )
+                truncated = True
+        elif max_lines > 0 and len(lines) > max_lines:
+            # Explicit limit requested
+            head_lines = max_lines // 2
+            tail_lines = max_lines - head_lines
+            lines = (
+                lines[:head_lines] +
+                [f"\n... ({len(lines) - max_lines} lines truncated) ...\n\n"] +
+                lines[-tail_lines:]
+            )
             truncated = True
 
         return {
             "run_id": run_id,
             "output": "".join(lines),
             "truncated": truncated,
-            "total_lines": len(lines)
+            "total_lines": total_lines,
+            "filtered_lines": filtered_lines if filter_pattern else None
         }
 
-    def get_run_failures(self, run_id: str) -> Optional[dict]:
-        """Get detailed failure information from a run."""
+    def _truncate_stacktrace(self, stacktrace: str, max_lines: int = DEFAULT_STACKTRACE_LINES) -> str:
+        """Truncate a stacktrace to max_lines, keeping head and tail."""
+        if not stacktrace:
+            return ""
+        lines = stacktrace.split('\n')
+        if len(lines) <= max_lines:
+            return stacktrace
+        head = max_lines // 2
+        tail = max_lines - head
+        truncated_lines = (
+            lines[:head] +
+            [f"    ... ({len(lines) - max_lines} lines truncated) ..."] +
+            lines[-tail:]
+        )
+        return '\n'.join(truncated_lines)
+
+    def get_run_failures(self, run_id: str, include_all_tests: bool = False,
+                         truncate_stacktraces: bool = True) -> Optional[dict]:
+        """Get detailed failure information from a run.
+
+        Args:
+            run_id: The run identifier
+            include_all_tests: Include all test results, not just failures (default: False)
+            truncate_stacktraces: Truncate long stacktraces (default: True)
+        """
         reports_dir = RUNS_DIR / run_id / "reports"
         if not reports_dir.exists():
-            return {"run_id": run_id, "failures": [], "all_tests": []}
+            return {"run_id": run_id, "failures": [], "summary": {"total": 0, "passed": 0, "failed": 0, "error": 0, "skipped": 0}}
 
         failures = []
-        all_tests = []
+        all_tests = [] if include_all_tests else None
+        summary = {"total": 0, "passed": 0, "failed": 0, "error": 0, "skipped": 0}
 
         for xml_file in reports_dir.glob("TEST-*.xml"):
             try:
@@ -398,6 +466,7 @@ class TestRunner:
                     classname = testcase.get("classname", "")
                     name = testcase.get("name", "")
                     time_sec = float(testcase.get("time", 0))
+                    summary["total"] += 1
 
                     test_info = {
                         "class": classname,
@@ -413,36 +482,51 @@ class TestRunner:
 
                     if failure is not None:
                         test_info["status"] = "failed"
+                        summary["failed"] += 1
+                        stacktrace = failure.text or ""
+                        if truncate_stacktraces:
+                            stacktrace = self._truncate_stacktrace(stacktrace)
                         failures.append({
                             "class": classname,
                             "method": name,
                             "time_seconds": time_sec,
                             "type": failure.get("type", ""),
                             "message": failure.get("message", ""),
-                            "stacktrace": failure.text or ""
+                            "stacktrace": stacktrace
                         })
                     elif error is not None:
                         test_info["status"] = "error"
+                        summary["error"] += 1
+                        stacktrace = error.text or ""
+                        if truncate_stacktraces:
+                            stacktrace = self._truncate_stacktrace(stacktrace)
                         failures.append({
                             "class": classname,
                             "method": name,
                             "time_seconds": time_sec,
                             "type": error.get("type", ""),
                             "message": error.get("message", ""),
-                            "stacktrace": error.text or ""
+                            "stacktrace": stacktrace
                         })
                     elif skipped is not None:
                         test_info["status"] = "skipped"
+                        summary["skipped"] += 1
+                    else:
+                        summary["passed"] += 1
 
-                    all_tests.append(test_info)
+                    if include_all_tests:
+                        all_tests.append(test_info)
             except Exception:
                 pass
 
-        return {
+        result = {
             "run_id": run_id,
             "failures": failures,
-            "all_tests": all_tests
+            "summary": summary
         }
+        if include_all_tests:
+            result["all_tests"] = all_tests
+        return result
 
     def list_runs(self, limit: int = 10, status_filter: Optional[str] = None) -> list[dict]:
         """List recent runs."""
@@ -527,6 +611,10 @@ async def list_tools():
                         "type": "array",
                         "items": {"type": "string"},
                         "description": "Additional JVM arguments (e.g., [\"-Xmx4g\"])"
+                    },
+                    "profile": {
+                        "type": "string",
+                        "description": "Test profile name (sets AR_TEST_PROFILE). Use 'pipeline' to skip comparison tests."
                     }
                 }
             }
@@ -547,7 +635,7 @@ async def list_tools():
         ),
         Tool(
             name="get_run_output",
-            description="Get the console output from a test run.",
+            description=f"Get the console output from a test run. By default, returns at most {DEFAULT_OUTPUT_LINES} lines (head + tail) to avoid large payloads.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -557,11 +645,15 @@ async def list_tools():
                     },
                     "tail": {
                         "type": "integer",
-                        "description": "Only return last N lines"
+                        "description": "Only return last N lines (overrides max_lines)"
                     },
                     "filter": {
                         "type": "string",
                         "description": "Regex pattern to filter lines"
+                    },
+                    "max_lines": {
+                        "type": "integer",
+                        "description": f"Max lines to return (default: {DEFAULT_OUTPUT_LINES}). Set to 0 for unlimited."
                     }
                 },
                 "required": ["run_id"]
@@ -569,13 +661,21 @@ async def list_tools():
         ),
         Tool(
             name="get_run_failures",
-            description="Get detailed failure information and all test results with timing.",
+            description="Get failure information with truncated stacktraces. Returns summary counts and failure details only (not all tests by default).",
             inputSchema={
                 "type": "object",
                 "properties": {
                     "run_id": {
                         "type": "string",
                         "description": "The run identifier"
+                    },
+                    "include_all_tests": {
+                        "type": "boolean",
+                        "description": "Include all test results, not just failures (default: false)"
+                    },
+                    "full_stacktraces": {
+                        "type": "boolean",
+                        "description": "Return full stacktraces without truncation (default: false)"
                     }
                 },
                 "required": ["run_id"]
@@ -627,7 +727,8 @@ async def call_tool(name: str, arguments: dict):
                 test_classes=arguments.get("test_classes", []),
                 test_methods=arguments.get("test_methods", []),
                 timeout_minutes=arguments.get("timeout_minutes", DEFAULT_TIMEOUT),
-                jvm_args=arguments.get("jvm_args", [])
+                jvm_args=arguments.get("jvm_args", []),
+                profile=arguments.get("profile")
             )
             run_id, command = runner.start_run(config)
             return [TextContent(
@@ -657,7 +758,8 @@ async def call_tool(name: str, arguments: dict):
             output = runner.get_run_output(
                 run_id,
                 tail=arguments.get("tail"),
-                filter_pattern=arguments.get("filter")
+                filter_pattern=arguments.get("filter"),
+                max_lines=arguments.get("max_lines")
             )
             if output is None:
                 return [TextContent(
@@ -671,7 +773,11 @@ async def call_tool(name: str, arguments: dict):
 
         elif name == "get_run_failures":
             run_id = arguments["run_id"]
-            failures = runner.get_run_failures(run_id)
+            failures = runner.get_run_failures(
+                run_id,
+                include_all_tests=arguments.get("include_all_tests", False),
+                truncate_stacktraces=not arguments.get("full_stacktraces", False)
+            )
             if failures is None:
                 return [TextContent(
                     type="text",

@@ -23,11 +23,11 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.space.DefaultVertexData;
 import org.almostrealism.space.Mesh;
 import org.almostrealism.space.MeshData;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
-public class TriangleDataTest implements TestFeatures {
+public class TriangleDataTest extends TestSuiteBase {
 	protected Mesh.VertexData data() {
 		DefaultVertexData data = new DefaultVertexData(5, 3);
 		data.getVertices().set(0, new Vector(0.0, 1.0, 0.0));
@@ -43,7 +43,7 @@ public class TriangleDataTest implements TestFeatures {
 		return data;
 	}
 
-	protected PackedCollection points() { return data().getMeshPointData(); }
+	protected PackedCollection points() {return data().getMeshPointData();}
 
 	@Test(timeout = 10000)
 	public void edges() {
@@ -74,9 +74,9 @@ public class TriangleDataTest implements TestFeatures {
 	public void triangleData() {
 		PackedCollection points = points();
 		CollectionProducer td = triangle(
-											v(points.get(0).get(0)),
-											v(points.get(0).get(1)),
-											v(points.get(0).get(2)));
+				v(points.get(0).get(0)),
+				v(points.get(0).get(1)),
+				v(points.get(0).get(2)));
 		triangleDataAssertions(td.get().evaluate().reshape(shape(4, 3).traverse(1)));
 	}
 
@@ -111,7 +111,7 @@ public class TriangleDataTest implements TestFeatures {
 		Assert.assertEquals(1, value.get(3).toDouble(2), Math.pow(10, -10));
 	}
 
-	protected Mesh mesh() { return new Mesh(data()); }
+	protected Mesh mesh() {return new Mesh(data());}
 
 	@Test(timeout = 10000)
 	public void fromMesh() {

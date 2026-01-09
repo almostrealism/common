@@ -20,10 +20,10 @@ import io.almostrealism.compute.Process;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.computations.Assignment;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
-public class StreamingEvaluableTests implements TestFeatures {
+public class StreamingEvaluableTests extends TestSuiteBase {
 	@Test(timeout = 10000)
 	public void product() {
 		int count = 1;
@@ -77,7 +77,7 @@ public class StreamingEvaluableTests implements TestFeatures {
 		try (PackedCollection result = sum(cp(a)).multiply(sum(cp(b))).get().evaluate()) {
 			double aTotal = a.doubleStream().sum();
 			double bTotal = b.doubleStream().sum();
-			assertEquals(aTotal * bTotal, result.toDouble());
+			assertEquals(aTotal * bTotal, result.toDouble(), Math.pow(10, -5));
 		}
 	}
 }

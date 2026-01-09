@@ -25,8 +25,7 @@ import org.almostrealism.model.Block;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 import org.almostrealism.model.SequentialBlock;
-import org.almostrealism.util.TestFeatures;
-import org.almostrealism.util.TestUtils;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -34,11 +33,10 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.stream.IntStream;
 
-public class BackPropagationTests implements TestFeatures {
+public class BackPropagationTests extends TestSuiteBase {
 
 	@Test(timeout = 120000)
 	public void denseBackwards() {
-		if (testProfileIs(TestUtils.PIPELINE)) return;
 		if (skipKnownIssues) return;
 
 		int size = 12;
@@ -104,9 +102,9 @@ public class BackPropagationTests implements TestFeatures {
 //		double expected[] = new double[] { -0.00012475, -0.0001249,  -0.00012506, -0.00012521, -0.00012536, -0.00012551,
 //				-0.00012566, -0.00012581, -0.00012596, -0.00012611, -0.00012626, -0.00012642 };
 
-		double[] expected = new double[] { -0.0023582035209983587, -0.003028743900358677, -0.0036992833483964205,
+		double[] expected = new double[]{-0.0023582035209983587, -0.003028743900358677, -0.0036992833483964205,
 				-0.004369824193418026, -0.005040363874286413, -0.005710904952138662, -0.006381443701684475,
-				-0.007051984313875437, -0.007722523529082537, -0.008393064141273499, -0.009063605219125748, -0.009734145365655422 };
+				-0.007051984313875437, -0.007722523529082537, -0.008393064141273499, -0.009063605219125748, -0.009734145365655422};
 		for (int i = 0; i < result.length; i++) {
 			Assert.assertEquals(expected[i], result[i], 1e-6);
 		}
@@ -220,8 +218,6 @@ public class BackPropagationTests implements TestFeatures {
 
 	@Test(timeout = 120000)
 	public void compositionBackwards() {
-		if (testProfileIs(TestUtils.PIPELINE)) return;
-
 		SequentialBlock block = new SequentialBlock(shape(3));
 
 		SequentialBlock alt = block.branch();
@@ -234,8 +230,8 @@ public class BackPropagationTests implements TestFeatures {
 		PackedCollection gradient = pack(5, 4, 1);
 
 		CompiledModel model = new Model(shape(3), 1e-1)
-								.add(block)
-								.compile(true, true);
+				.add(block)
+				.compile(true, true);
 		model.forward(input);
 		gradient = model.backward(gradient);
 		gradient.print();
@@ -246,11 +242,9 @@ public class BackPropagationTests implements TestFeatures {
 
 	@Test(timeout = 120000)
 	public void splitBackwardsRepeat() {
-		if (testProfileIs(TestUtils.PIPELINE)) return;
-
 		SequentialBlock block = new SequentialBlock(shape(3, 2));
 
-		List<Block> branches =  block.split(shape(1, 2));
+		List<Block> branches = block.split(shape(1, 2));
 		Block a = branches.get(0).andThen(layer("scale x2", in -> multiply(in, c(2))));
 		Block b = branches.get(1).andThen(layer("scale x3", in -> multiply(in, c(3))));
 		Block c = branches.get(2).andThen(layer("scale x4", in -> multiply(in, c(4))));
@@ -259,9 +253,9 @@ public class BackPropagationTests implements TestFeatures {
 				repeat(3, y).reshape(3, 2)));
 
 		PackedCollection input = pack(2, 3, 4, 5, 6, 7)
-										.reshape(3, 2);
+				.reshape(3, 2);
 		PackedCollection gradient = pack(5, 4, 1.5, 3, 2, -4)
-										.reshape(3, 2);
+				.reshape(3, 2);
 
 		CompiledModel model = new Model(shape(3, 2))
 				.add(block)
@@ -290,11 +284,9 @@ public class BackPropagationTests implements TestFeatures {
 
 	@Test(timeout = 120000)
 	public void splitBackwardsAdd() {
-		if (testProfileIs(TestUtils.PIPELINE)) return;
-
 		SequentialBlock block = new SequentialBlock(shape(3, 2));
 
-		List<Block> branches =  block.split(shape(1, 2));
+		List<Block> branches = block.split(shape(1, 2));
 		Block a = branches.get(0).andThen(layer("scale x2", in -> multiply(in, c(2))));
 		Block b = branches.get(1).andThen(layer("scale x3", in -> multiply(in, c(3))));
 		Block c = branches.get(2).andThen(layer("scale x4", in -> multiply(in, c(4))));
@@ -339,11 +331,9 @@ public class BackPropagationTests implements TestFeatures {
 
 	@Test(timeout = 120000)
 	public void splitBackwardsChildIndex() {
-		if (testProfileIs(TestUtils.PIPELINE)) return;
-
 		SequentialBlock block = new SequentialBlock(shape(3, 2));
 
-		List<Block> branches =  block.split(shape(1, 2), 0);
+		List<Block> branches = block.split(shape(1, 2), 0);
 		Block a = branches.get(0).andThen(layer("scale x2", in -> multiply(in, c(2))));
 		Block b = branches.get(1).andThen(layer("scale x3", in -> multiply(in, c(3))));
 		Block c = branches.get(2).andThen(layer("scale x4", in -> multiply(in, c(4))));

@@ -23,11 +23,11 @@ import org.almostrealism.algebra.Vector;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.geometry.Ray;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
-public class RayTest implements TestFeatures {
+public class RayTest extends TestSuiteBase {
 	@Test(timeout = 10000)
 	public void pointAtTest1() {
 		CollectionProducer p = pointAt(ray(0.0, 0.0, 0.0, 0.0, 1.0, 0.5), c(10));
@@ -85,7 +85,7 @@ public class RayTest implements TestFeatures {
 	@Test(timeout = 10000)
 	public void staticComputation() {
 		Producer<Ray> comp = (Producer) value(new Ray(new Vector(1.0, 2.0, 3.0),
-															new Vector(4.0, 5.0, 6.0)));
+				new Vector(4.0, 5.0, 6.0)));
 		Evaluable<Ray> ev = comp.get();
 
 		Ray r = ev.evaluate();

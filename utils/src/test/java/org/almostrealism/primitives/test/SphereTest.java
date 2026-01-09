@@ -25,11 +25,11 @@ import org.almostrealism.geometry.Ray;
 import org.almostrealism.geometry.ShadableIntersection;
 import org.almostrealism.primitives.Sphere;
 import org.almostrealism.projection.OrthographicCamera;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
-public class SphereTest implements TestFeatures {
+public class SphereTest extends TestSuiteBase {
 
 	@Test(timeout = 10000)
 	public void intersectionTests() {
@@ -253,7 +253,7 @@ public class SphereTest implements TestFeatures {
 		// Create rays - all should hit the sphere at origin
 		for (int i = 0; i < batchSize; i++) {
 			// Ray from z=3, pointing toward origin at z=-1
-			double offset = (i - batchSize/2) * 0.01;  // Small offset to vary the rays
+			double offset = (i - batchSize / 2) * 0.01;  // Small offset to vary the rays
 			rays.setMem(i * 6, offset, offset, 3.0, 0.0, 0.0, -1.0);
 		}
 
@@ -266,7 +266,7 @@ public class SphereTest implements TestFeatures {
 		}
 		if (batchSize > 10) {
 			System.out.println("  ...");
-			System.out.println("  Ray " + (batchSize-1) + ": distance=" + distances.valueAt(batchSize-1, 0));
+			System.out.println("  Ray " + (batchSize - 1) + ": distance=" + distances.valueAt(batchSize - 1, 0));
 		}
 
 		// All rays should hit (distance > 0)
@@ -277,7 +277,7 @@ public class SphereTest implements TestFeatures {
 		System.out.println("  Hits: " + hits + "/" + batchSize);
 
 		// At least the center rays should hit
-		Assert.assertTrue("Center rays should hit", distances.valueAt(batchSize/2, 0) > 0.0);
+		Assert.assertTrue("Center rays should hit", distances.valueAt(batchSize / 2, 0) > 0.0);
 	}
 
 	@Test(timeout = 10000)
@@ -478,8 +478,8 @@ public class SphereTest implements TestFeatures {
 		System.out.println(misses + " misses");
 		System.out.println("First hit distance: " + firstHit);
 		System.out.println("First miss distance: " + firstMiss);
-		System.out.println("Sample distances: " + destination.valueAt(h/2, w/2, 0) + ", " +
-			destination.valueAt(0, 0, 0) + ", " + destination.valueAt(h-1, w-1, 0));
+		System.out.println("Sample distances: " + destination.valueAt(h / 2, w / 2, 0) + ", " +
+				destination.valueAt(0, 0, 0) + ", " + destination.valueAt(h - 1, w - 1, 0));
 
 		// Expected hits for a 100x100 grid with radius 1.0 sphere is 305
 		// For smaller grids, calculate expected proportionally

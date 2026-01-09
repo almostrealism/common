@@ -75,25 +75,82 @@ export AR_HARDWARE_DRIVER=native</pre>
             <section id="testing">
                 <h2>Testing Framework</h2>
 
-                <h3>Core Testing Interface</h3>
+                <h3>Core Testing Classes</h3>
                 <div class="class-list">
                     <div class="class-item">
+                        <h4>TestSuiteBase</h4>
+                        <p>Base class for all Almost Realism tests. Provides automatic test depth filtering via @TestDepth annotations and parallel test execution support via hash-based grouping.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>TestDepth</h4>
+                        <p>Annotation specifying minimum test depth required. Tests with @TestDepth(n) skip if AR_TEST_DEPTH &lt; n.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>TestDepthRule</h4>
+                        <p>JUnit MethodRule that implements test filtering by depth and group. Used internally by TestSuiteBase.</p>
+                    </div>
+                    <div class="class-item">
                         <h4>TestFeatures</h4>
-                        <p>Primary testing interface with assertions, kernel testing, collection comparison, and hardware metrics. Extends CodeFeatures, TensorTestFeatures, and TestSettings.</p>
+                        <p>Primary testing interface with assertions, kernel testing, collection comparison, and hardware metrics. Implemented by TestSuiteBase.</p>
                     </div>
                     <div class="class-item">
                         <h4>TestSettings</h4>
-                        <p>Global test configuration via environment variables: AR_LONG_TESTS, AR_TRAIN_TESTS, AR_TEST_DEPTH, AR_TEST_PROFILE.</p>
-                    </div>
-                    <div class="class-item">
-                        <h4>TensorTestFeatures</h4>
-                        <p>Tensor creation utilities for generating test data with specific shapes and value distributions.</p>
+                        <p>Global test configuration via environment variables: AR_LONG_TESTS, AR_TRAIN_TESTS, AR_TEST_DEPTH, AR_TEST_PROFILE, AR_TEST_GROUP.</p>
                     </div>
                     <div class="class-item">
                         <h4>TestUtils</h4>
-                        <p>Static utility methods for common test operations and data setup.</p>
+                        <p>Static utility methods for test configuration, group assignment, and common test operations.</p>
                     </div>
                 </div>
+
+                <h3>TestSuiteBase Usage</h3>
+                <p>Extend TestSuiteBase instead of implementing TestFeatures directly to get automatic test filtering:</p>
+                <pre><code class="language-java">public class MyTest extends TestSuiteBase {
+    @Test
+    public void basicTest() {
+        // Runs at any depth
+    }
+
+    @Test
+    @TestDepth(2)
+    public void comprehensiveTest() {
+        // Only runs if AR_TEST_DEPTH >= 2
+    }
+
+    @Test
+    @TestDepth(3)
+    public void expensiveTest() {
+        // Only runs if AR_TEST_DEPTH >= 3
+    }
+}</code></pre>
+
+                <h4>Test Depth Tiers</h4>
+                <table class="comparison-table">
+                    <tr>
+                        <th>Depth</th>
+                        <th>Usage</th>
+                    </tr>
+                    <tr>
+                        <td>No annotation</td>
+                        <td>Basic smoke tests (always run)</td>
+                    </tr>
+                    <tr>
+                        <td>@TestDepth(1)</td>
+                        <td>Medium complexity tests</td>
+                    </tr>
+                    <tr>
+                        <td>@TestDepth(2)</td>
+                        <td>Comprehensive tests</td>
+                    </tr>
+                    <tr>
+                        <td>@TestDepth(3)</td>
+                        <td>Heavy/expensive tests</td>
+                    </tr>
+                    <tr>
+                        <td>@TestDepth(10)</td>
+                        <td>Very expensive tests</td>
+                    </tr>
+                </table>
 
                 <h3>TestFeatures Deep Dive</h3>
                 <p>The TestFeatures interface provides comprehensive utilities for unit testing, kernel testing, and hardware performance validation.</p>
@@ -239,7 +296,46 @@ public void profilePerformance() {
                         <td>Test profile name</td>
                         <td>export AR_TEST_PROFILE=pipeline</td>
                     </tr>
+                    <tr>
+                        <td>AR_TEST_GROUP</td>
+                        <td>Which group to run (0-based)</td>
+                        <td>export AR_TEST_GROUP=0</td>
+                    </tr>
+                    <tr>
+                        <td>AR_TEST_GROUPS</td>
+                        <td>Total number of groups</td>
+                        <td>export AR_TEST_GROUPS=4</td>
+                    </tr>
                 </table>
+
+                <h3>Parallel Test Execution</h3>
+                <p>Tests can be split across multiple VMs for faster CI execution using hash-based grouping. Each test class is deterministically assigned to a group based on its class name hash.</p>
+
+                <pre><code class="language-bash"># Run tests in parallel across 4 VMs
+# VM 1:
+mvn test -DAR_TEST_GROUP=0 -DAR_TEST_GROUPS=4
+
+# VM 2:
+mvn test -DAR_TEST_GROUP=1 -DAR_TEST_GROUPS=4
+
+# VM 3:
+mvn test -DAR_TEST_GROUP=2 -DAR_TEST_GROUPS=4
+
+# VM 4:
+mvn test -DAR_TEST_GROUP=3 -DAR_TEST_GROUPS=4</code></pre>
+
+                <div class="info">
+                    <strong>Note:</strong> Tests must extend <code>TestSuiteBase</code> to participate in group filtering. Tests that don't extend TestSuiteBase will run in all groups.
+                </div>
+
+                <h4>How Grouping Works</h4>
+                <p>The <code>TestDepthRule</code> checks if a test class should run in the current group:</p>
+                <ol>
+                    <li>Compute group: <code>Math.abs(className.hashCode()) % AR_TEST_GROUPS</code></li>
+                    <li>If group matches <code>AR_TEST_GROUP</code>, run the test</li>
+                    <li>Otherwise, skip with <code>Assume.assumeTrue(false)</code></li>
+                </ol>
+                <p>This ensures deterministic distribution - the same class always runs in the same group.</p>
             </section>
 
             <section id="utilities">

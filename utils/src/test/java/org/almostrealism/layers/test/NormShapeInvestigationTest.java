@@ -24,7 +24,7 @@ import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 import org.almostrealism.model.SequentialBlock;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.almostrealism.util.TestUtils;
 import org.junit.Assert;
 import org.junit.Test;
@@ -32,19 +32,13 @@ import org.junit.Test;
 /**
  * Investigation tests to verify the actual shape behavior of norm layers.
  * The warning observed is:
- *   (1, 6) does not match (1, 1, 6) for norm layer
- *
+ * (1, 6) does not match (1, 1, 6) for norm layer
+ * <p>
  * This test investigates the missing batch dimension.
  *
  * @author Michael Murray
  */
-public class NormShapeInvestigationTest implements TestFeatures {
-
-	static {
-		if (TestUtils.getTrainTests()) {
-			Console.root().addListener(OutputFeatures.fileOutput("results/logs/norm_shape_investigation.out"));
-		}
-	}
+public class NormShapeInvestigationTest extends TestSuiteBase {
 
 	/**
 	 * Test norm layer shape declarations vs actual output with 2D input.
@@ -187,10 +181,10 @@ public class NormShapeInvestigationTest implements TestFeatures {
 		log("=== Test: Norm Various Sizes ===");
 
 		int[][] testCases = {
-			{1, 4},       // 2D: (batch, features)
-			{1, 1, 6},    // 3D: (batch, groups, features)
-			{2, 8},       // 2D with larger batch
-			{1, 2, 4}     // 3D with multiple groups concept
+				{1, 4},       // 2D: (batch, features)
+				{1, 1, 6},    // 3D: (batch, groups, features)
+				{2, 8},       // 2D with larger batch
+				{1, 2, 4}     // 3D with multiple groups concept
 		};
 
 		for (int[] tc : testCases) {

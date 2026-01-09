@@ -10,6 +10,7 @@ import org.almostrealism.graph.AdjustableDelayCell;
 import org.almostrealism.graph.temporal.WaveCell;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.hardware.mem.MemoryDataCopy;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -17,7 +18,7 @@ import java.io.File;
 import java.io.IOException;
 import java.util.stream.IntStream;
 
-public class CellListTests implements CellFeatures {
+public class CellListTests extends TestSuiteBase implements CellFeatures {
 	@Test
 	public void export() throws IOException {
 		WaveData data = WaveData.load(new File("Library/Snare Perc DD.wav"));

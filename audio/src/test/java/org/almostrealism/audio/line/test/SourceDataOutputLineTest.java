@@ -21,6 +21,7 @@ import org.almostrealism.audio.CellList;
 import org.almostrealism.audio.line.BufferedOutputScheduler;
 import org.almostrealism.audio.line.LineUtilities;
 import org.almostrealism.audio.line.SourceDataOutputLine;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 import java.io.File;
@@ -29,7 +30,7 @@ import java.io.File;
  * Tests for {@link SourceDataOutputLine} using proper buffered, scheduled
  * Producer-based writes with {@link BufferedOutputScheduler}.
  */
-public class SourceDataOutputLineTest implements CellFeatures {
+public class SourceDataOutputLineTest extends TestSuiteBase implements CellFeatures {
 
 	/**
 	 * Tests buffered playback of WAV file data using BufferedOutputScheduler.

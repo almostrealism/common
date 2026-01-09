@@ -18,7 +18,7 @@ package org.almostrealism.audio.test;
 
 import org.almostrealism.audio.CellFeatures;
 import org.almostrealism.audio.DynamicAudioCell;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -27,7 +27,7 @@ import org.junit.Test;
  * Note: Full functional tests for DynamicAudioCell require specific
  * initialization patterns that need further investigation.
  */
-public class DynamicAudioCellTest implements CellFeatures, TestFeatures {
+public class DynamicAudioCellTest extends TestSuiteBase implements CellFeatures {
 
 	/**
 	 * Verifies the DynamicAudioCell class exists and can be referenced.

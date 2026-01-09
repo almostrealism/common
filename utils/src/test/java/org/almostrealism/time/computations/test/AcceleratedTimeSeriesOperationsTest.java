@@ -25,13 +25,14 @@ import org.almostrealism.time.AcceleratedTimeSeries;
 import org.almostrealism.time.CursorPair;
 import org.almostrealism.time.TemporalScalar;
 import org.almostrealism.time.computations.AcceleratedTimeSeriesValueAt;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
-public class AcceleratedTimeSeriesOperationsTest implements CodeFeatures {
+public class AcceleratedTimeSeriesOperationsTest extends TestSuiteBase implements CodeFeatures {
 	private CursorPair cursors;
 	private AcceleratedTimeSeries series;
 	private PackedCollection value;
@@ -56,21 +57,21 @@ public class AcceleratedTimeSeriesOperationsTest implements CodeFeatures {
 	@Test(timeout = 10000)
 	public void purgeTest() {
 //		dc(() -> {
-			for (int i = 0; i < 2; i++) {
+		for (int i = 0; i < 2; i++) {
 //				cc(() -> {
-					CursorPair cursors = cursors(3.2);
-					AcceleratedTimeSeries series = series();
-					Assert.assertEquals(5, series.getLength());
+			CursorPair cursors = cursors(3.2);
+			AcceleratedTimeSeries series = series();
+			Assert.assertEquals(5, series.getLength());
 
-					Supplier<Runnable> r = series.purge(p(cursors));
-					AcceleratedComputationOperation op = (AcceleratedComputationOperation) r.get();
+			Supplier<Runnable> r = series.purge(p(cursors));
+			AcceleratedComputationOperation op = (AcceleratedComputationOperation) r.get();
 
-					op.run();
+			op.run();
 
-					Assert.assertEquals(3, series.getLength());
-					valueAtAssertions(series);
+			Assert.assertEquals(3, series.getLength());
+			valueAtAssertions(series);
 //				}, ComputeRequirement.CL);
-			}
+		}
 //		});
 	}
 

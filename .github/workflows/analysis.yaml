@@ -1,4 +1,4 @@
-name: Qodana
+name: "Build and Test"
 
 on:
   workflow_dispatch:
@@ -9,6 +9,122 @@ on:
 
 jobs:
   build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'adopt'
+          cache: 'maven'
+
+      - name: Build (skip tests)
+        run: mvn install -DskipTests
+
+  test:
+    needs: build
+    runs-on: ubuntu-latest-16-cores
+    strategy:
+      fail-fast: false
+      matrix:
+        group: [0, 1, 2, 3, 4, 5]
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'adopt'
+          cache: 'maven'
+
+      - name: Build (skip tests)
+        run: mvn install -DskipTests
+
+      - name: Run Tests (Group ${{ matrix.group }}, excluding ml)
+        run: |
+          LD_LIBRARY_PATH=Extensions mvn test -pl 'utils' \
+           -DAR_HARDWARE_DRIVER=native \
+           -DAR_HARDWARE_MEMORY_SCALE=7 \
+           -DAR_HARDWARE_LIBS=Extensions \
+           -DAR_TEST_GROUP=${{ matrix.group }} \
+           -DAR_TEST_GROUPS=6
+
+      - name: Collect Coverage Data
+        if: always()
+        run: |
+          mkdir -p coverage-data
+          find . -path "*/target/jacoco.exec" -exec cp --parents {} coverage-data/ \;
+
+      - name: Upload Coverage Data
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-group-${{ matrix.group }}
+          path: coverage-data/
+          retention-days: 1
+
+  test-ml:
+    needs: build
+    runs-on: ubuntu-latest-16-cores
+    strategy:
+      fail-fast: false
+      matrix:
+        group: [0, 1]
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'adopt'
+          cache: 'maven'
+
+      - name: Build (skip tests)
+        run: mvn install -DskipTests
+
+      - name: Run ML Tests (Group ${{ matrix.group }})
+        run: |
+          LD_LIBRARY_PATH=Extensions mvn test -pl ml \
+           -DAR_HARDWARE_DRIVER=native \
+           -DAR_HARDWARE_MEMORY_SCALE=7 \
+           -DAR_HARDWARE_LIBS=Extensions \
+           -DAR_TEST_PROFILE=pipeline \
+           -DAR_TEST_GROUP=${{ matrix.group }} \
+           -DAR_TEST_GROUPS=2
+
+      - name: Collect Coverage Data
+        if: always()
+        run: |
+          mkdir -p coverage-data
+          find . -path "*/target/jacoco.exec" -exec cp --parents {} coverage-data/ \;
+
+      - name: Upload Coverage Data
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-ml-group-${{ matrix.group }}
+          path: coverage-data/
+          retention-days: 1
+
+  analysis:
+    needs: [test, test-ml]
+    if: always()
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -30,22 +146,60 @@ jobs:
           distribution: 'adopt'
           cache: 'maven'
 
-      - name: Validate Maven Wrapper
-        run: mvn --version
+      - name: Build for Analysis
+        run: mvn install -DskipTests
 
-      - name: Run Tests
+      - name: Download All Coverage Data
+        uses: actions/download-artifact@v4
+        with:
+          pattern: coverage-*
+          path: all-coverage
+
+      - name: Merge Coverage Data
         run: |
-          LD_LIBRARY_PATH=Extensions mvn test \
-           -DAR_HARDWARE_DRIVER=native \
-           -DAR_HARDWARE_MEMORY_SCALE=7 \
-           -DAR_HARDWARE_LIBS=Extensions \
-           -DAR_TEST_PROFILE=pipeline
+          # Find all jacoco.exec files and create a file list
+          find all-coverage -name "jacoco.exec" > exec-files.txt
+          echo "Found coverage files:"
+          cat exec-files.txt
 
-      - name: Archive coverage data
+          # Create merged coverage directory
+          mkdir -p .qodana/code-coverage
+
+          # Use JaCoCo CLI to merge all exec files
+          if [ -s exec-files.txt ]; then
+            # Download JaCoCo CLI
+            JACOCO_VERSION=0.8.11
+            curl -sL -o jacoco-cli.zip \
+              "https://repo1.maven.org/maven2/org/jacoco/jacoco/$JACOCO_VERSION/jacoco-$JACOCO_VERSION.zip"
+            unzip -q jacoco-cli.zip -d jacoco-cli
+
+            # Merge all exec files
+            java -jar jacoco-cli/lib/jacococli.jar merge \
+              $(cat exec-files.txt | tr '\n' ' ') \
+              --destfile merged-jacoco.exec
+
+            # Generate XML report for Qodana
+            # Need to specify all class directories
+            CLASS_DIRS=$(find . -path "*/target/classes" -type d | tr '\n' ':')
+            SOURCE_DIRS=$(find . -path "*/src/main/java" -type d | tr '\n' ':')
+
+            java -jar jacoco-cli/lib/jacococli.jar report merged-jacoco.exec \
+              --classfiles "$CLASS_DIRS" \
+              --sourcefiles "$SOURCE_DIRS" \
+              --xml .qodana/code-coverage/coverage.xml \
+              --html .qodana/code-coverage/html
+
+            echo "Coverage report generated at .qodana/code-coverage/"
+          else
+            echo "No coverage files found"
+          fi
+
+      - name: Upload Coverage Report
         uses: actions/upload-artifact@v4
         with:
-          name: maven-coverage-data
-          path: .qodana/code-coverage
+          name: coverage-report
+          path: .qodana/code-coverage/
+          retention-days: 30
 
       - name: Qodana Scan
         uses: JetBrains/qodana-action@main

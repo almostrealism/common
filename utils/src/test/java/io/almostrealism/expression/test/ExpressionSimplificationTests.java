@@ -33,7 +33,8 @@ import io.almostrealism.kernel.NoOpKernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.lang.LanguageOperationsStub;
 import io.almostrealism.scope.ArrayVariable;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestDepth;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -43,7 +44,7 @@ import java.util.OptionalLong;
 import java.util.Set;
 import java.util.stream.IntStream;
 
-public class ExpressionSimplificationTests implements ExpressionFeatures, TestFeatures {
+public class ExpressionSimplificationTests extends TestSuiteBase implements ExpressionFeatures {
 
 	private LanguageOperations lang = new LanguageOperationsStub();
 
@@ -563,9 +564,8 @@ public class ExpressionSimplificationTests implements ExpressionFeatures, TestFe
 	}
 
 	@Test(timeout = 30000)
+	@TestDepth(1)
 	public void kernelSumMod2() {
-		if (testDepth < 1) return;
-
 //		int n = 4;
 		int n = 1400;
 
@@ -589,9 +589,8 @@ public class ExpressionSimplificationTests implements ExpressionFeatures, TestFe
 	}
 
 	@Test(timeout = 30000)
+	@TestDepth(1)
 	public void kernelSumMod4() {
-		if (testDepth < 1) return;
-
 		int n = 1300;
 
 		Expression idx = kernel().withLimit(n*n);

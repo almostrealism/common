@@ -18,10 +18,10 @@ package org.almostrealism.time.computations.test;
 
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.time.computations.MultiOrderFilter;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
-public class MultiOrderFilterTest implements TestFeatures {
+public class MultiOrderFilterTest extends TestSuiteBase {
 	@Test(timeout = 10000)
 	public void compile() {
 		int order = 30;

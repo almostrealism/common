@@ -1,0 +1,278 @@
+\documentclass[12pt]{article}
+\usepackage{graphicx,latexsym} 
+\usepackage{amssymb,amsthm,amsmath}
+\usepackage{longtable,booktabs}
+\usepackage{natbib}
+\usepackage{url}
+
+\title{Rings Parallel Processing System Command List}
+\author{Michael Murray}
+\begin{document}
+\maketitle
+\frontmatter
+\begin{center}
+\small
+Copyright \copyright  2006 Michael Murray. \\
+This document is copyrighted material. \\
+This document may not be reproduced in any form, \\
+digital or otherwise, without express written permission \\
+from Michael Murray.
+\end{center}
+
+\begin{figure}
+\begin{verbatim}
+murraym@oberon.reed.edu$ telnet ball 6767
+Trying 134.10.15.90...
+Connected to ball.reed.edu (134.10.15.90).
+Escape character is '^]'.
+Welcome to Rings 0.4 Network Client
+[----]> 
+\end{verbatim}
+\caption{The Rings Network Client Terminal: Logging into a Node}
+\end{figure}
+
+\subsection{behave}
+\subsubsection{Form}
+\begin{verbatim}
+behave <server behavior class>
+\end{verbatim}
+\subsubsection{Description}
+Executes the code contained in the specified server behavior class. For more information on server behaviors, see the generated documentation for the ServerBehavior interface.
+
+\subsection{close}
+\subsubsection{Form}
+\begin{verbatim}
+close <id>
+\end{verbatim}
+\subsubsection{Description}
+Closes the connection (NodeProxy) to the peer with index $\left<\text{id}\right>$ in the peer list.
+\subsubsection{Example}
+\begin{verbatim}
+[----]> close 0
+Dropped 1 node connections to /171.64.142.95
+\end{verbatim}
+
+\subsection{date}
+\subsubsection{Form}
+\begin{verbatim}
+date
+\end{verbatim}
+\subsubsection{Description}
+Gives the date according to the system clock on the machine running the Server (wrapper for NodeGroup).
+\subsubsection{Example}
+\begin{verbatim}
+[----]> date
+Sun Aug 13 14:32:21 PDT 2006
+\end{verbatim}
+
+\subsection{dbs start}
+\subsubsection{Form}
+\begin{verbatim}
+dbs start
+\end{verbatim}
+\subsubsection{Description}
+Starts a DBS thread which can handle the JobOutput objects. More information about JobOutput can be found in the section ``Producing Output'', chapter 5.
+\subsubsection{Example}
+\begin{verbatim}
+[----]> dbs start
+Started DBS.
+\end{verbatim}
+
+\subsection{dbs create}
+\subsubsection{Form}
+\begin{verbatim}
+dbs create
+\end{verbatim}
+\subsubsection{Description}
+Creates a table in the relational database that can be used to store output. For more information on the table structure, see Appendix \ref{app:DefaultOutputHandler}.
+
+\subsection{dbs add}
+\subsubsection{Form}
+\begin{verbatim}
+dbs add <output handler class>
+\end{verbatim}
+\subsubsection{Description}
+Adds the specified output handler class as a handler for JobOutput objects. More information about JobOutput can be found in the section ``Producing Output'', chapter 5.
+\subsubsection{Example}
+\begin{verbatim}
+[----]> dbs add net.sf.j3d.network.tests.UrlProfilingJob$Handler
+Added net.sf.j3d.network.tests.UrlProfilingJob$Handler@17e6a96
+as a handler for output.
+\end{verbatim}
+
+\subsection{giterate}
+\subsubsection{Form}
+\begin{verbatim}
+giterate
+\end{verbatim}
+\subsubsection{Description}
+Manually executes the parent iteration. This is mostly for tinkering/debugging purposes. If manually invoking the parent iteration is necessary, usually the server configuration needs to be modified.
+\subsubsection{Example}
+\begin{verbatim}
+[----]> giterate
+Network Node Group: 1 children and 1 server connections.  iteration performed.
+\end{verbatim}
+
+
+\subsection{inputrate}
+\subsubsection{Form}
+\begin{verbatim}
+inputrate <id>
+\end{verbatim}
+\subsubsection{Description}
+Gives the average number of messages received per minute from a peer with index $\left<\text{id}\right>$ in the peer list. Theses ``messages'' may be jobs or just network messages (ping, open connection, send output, etc). This measurement is an average since the last time the inputrate command was executed (for the purpose of creating external monitoring tools).
+\subsubsection{Example}
+\begin{verbatim}
+[----]> inputrate 0
+0.06732672251870885
+\end{verbatim}
+
+\subsection{jobtime}
+\subsubsection{Form}
+\begin{verbatim}
+jobtime
+\end{verbatim}
+\subsubsection{Description}
+Gives the average time to complete a job by the node(s) on this server. This is analogous to the value of $J_{t}$ in the mathematical model. The value returned is measured in milliseconds.
+\subsubsection{Example}
+\begin{verbatim}
+[----]> jobtime
+40689.42069123369
+\end{verbatim}
+
+\subsection{open}
+\subsubsection{Form}
+\begin{verbatim}
+open <host> [port]
+\end{verbatim}
+\subsubsection{Description}
+Opens a connection (NodeProxy) to the specified host. The port is optional, and if left unspecified defaults to 7766.
+\subsubsection{Example}
+\begin{verbatim}
+[----]> open 171.64.142.95
+Opened host 171.64.142.95
+\end{verbatim}
+
+\subsection{peers}
+\subsubsection{Form}
+\begin{verbatim}
+peers
+\end{verbatim}
+\subsubsection{Description}
+Lists the peers connected to the node(s) on this server.
+\subsubsection{Example}
+\begin{verbatim}
+[----]> peers
+/134.10.15.90
+/134.10.15.93
+\end{verbatim}
+
+\subsection{run test}
+\subsubsection{Form}
+\begin{verbatim}
+run test <time>
+\end{verbatim}
+\subsubsection{Description}
+Sends a test task to the first peer in the peer list for this Sever (wrapper for NodeGroup). A test task produces test jobs that simply instruct the node executing the job to sleep for a predefined number of milliseconds, $\left<\text{time}\right>$.
+
+\subsection{sendtask}
+\subsubsection{Form}
+\begin{verbatim}
+sendtask <id> <task class> [<key1>=<value1> <key2>=<value2> ...]
+\end{verbatim}
+\subsubsection{Description}
+The sendtask command instructs a peer of this node (with index $\left<\text{id}\right>$ in the peer list) to instantiate a JobFactory object of the $\left<\text{task class}\right>$ type and add it to the list of JobFactory objects maintained by the NodeGroup of the remote node specified. The set method of the JobFactory that instantiated will be called with the key value pairs that are optionally specified at the end of the command.
+\subsubsection{Example}
+\begin{verbatim}
+sendtask 0 net.sf.j3d.network.tests.UrlProfilingTask
+dir=http://www.reed.edu/~murraym/images.txt
+uri=http://171.64.142.10/
+size=200
+\end{verbatim}
+This would instruct the remote node with index 0 in the peer list to construct a UrlProfilingTask. The dir, uri, and size variables will be set using the set method of UrlProfilingTask. Note that when actually entering this into the terminal, it must appear all on one line (line breaks inserted here for typesetting would be replaced with single spaces).
+
+\subsection{set}
+\subsubsection{form}
+\begin{verbatim}
+set <key> <value>
+\end{verbatim}
+\subsubsection{Description}
+Sets a variable maintained by the Server,  Node or NodeGroup. A list of ``keys'' for variables are listed below.
+\begin{table}[h]
+\begin{center}
+\begin{tabular}{c p{4 cm} p{4 cm}}
+\hline\hline
+Variable From Model & Property (``key'') & Name\\ [1ex]
+\hline
+$J_{p}$ & nodes.mjp & MinimumJobP \\ [1ex]
+$R_{p}$ & nodes.relay & RelayP \\ [1 ex]
+$\textbf{g}R_{p}$ & nodes.parp & ParentalRelayP \\ [1 ex]
+$A_{s}$ & nodes.acs & ActivitySleepC \\ [1ex]
+$A_{o}$ & group.aco & ActivityOffset \\ [1ex]
+\hline
+\end{tabular}
+\end{center}
+\caption{Variables accessible by the set command}
+\end{table}
+\subsubsection{Example}
+\begin{verbatim}
+[----]> set group.aco -0.2
+Set group.aco to -0.2
+\end{verbatim}
+
+\subsection{status}
+\subsubsection{Form}
+\begin{verbatim}
+status [file]
+\end{verbatim}
+\subsubsection{Description}
+Prints node status HTML page to the terminal or, optionally, to a file.
+
+\subsection{tasks}
+\subsubsection{Form}
+\begin{verbatim}
+tasks
+\end{verbatim}
+\subsubsection{Description}
+Lists the tasks that the nodes maintained by this Server (wrapper for NodeGroup) have worked on. The list also includes tasks that the NodeGroup is producing jobs for (in this case there may be two entries for the same task).
+\subsubsection{Example}
+\begin{verbatim}
+[----]> tasks
+net.sf.j3d.network.tests.UrlProfilingTask@1a125f0
+ImageProfilingTask (1155324825047)
+\end{verbatim}
+
+\subsection{threads}
+\subsubsection{Form}
+\begin{verbatim}
+threads
+\end{verbatim}
+\subsubsection{Description}
+Lists currently running JVM threads that are in the thread group maintained by the Server (wrapper for NodeGroup).
+\subsubsection{Example}
+\begin{verbatim}
+[----]> threads
+Status Output Thread
+Network Server
+Resource Server
+Server Terminal
+HttpCommandServer
+NodeProxy for /134.10.15.90
+DB Server Thread
+7 active threads.
+\end{verbatim}
+
+\subsection{uptime}
+\subsubsection{Form}
+\begin{verbatim}
+uptime
+\end{verbatim}
+\subsubsection{Description}
+Gives the time in minutes since the Server (wrapper for NodeGroup) was initialized.
+\subsubsection{Example}
+\begin{verbatim}
+[----]> uptime
+Client up for 3005.24695 minutes.
+\end{verbatim}
+\end{document}
+\end{document}

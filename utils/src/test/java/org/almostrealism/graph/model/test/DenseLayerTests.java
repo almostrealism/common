@@ -23,6 +23,7 @@ import org.almostrealism.model.SequentialBlock;
 import org.almostrealism.optimize.Dataset;
 import org.almostrealism.optimize.ValueTarget;
 import org.almostrealism.util.ModelTestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 import java.io.FileNotFoundException;
@@ -30,8 +31,8 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
-public class DenseLayerTests implements ModelTestFeatures {
-	private final double[] coeff = { 0.24, -0.1, 0.36 };
+public class DenseLayerTests extends TestSuiteBase implements ModelTestFeatures {
+	private final double[] coeff = {0.24, -0.1, 0.36};
 
 	public PackedCollection func3x3(PackedCollection input) {
 		TraversalPolicy shape = padDimensions(input.getShape(), 2);

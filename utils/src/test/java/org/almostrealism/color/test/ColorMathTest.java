@@ -21,14 +21,14 @@ import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.color.RGB;
 import org.almostrealism.color.RGBFeatures;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 /**
  * Tests for RGB color mathematics operations including addition and conditional logic.
  * These tests validate color arithmetic and comparison operations used in rendering pipelines.
  */
-public class ColorMathTest implements TestFeatures, RGBFeatures {
+public class ColorMathTest extends TestSuiteBase implements RGBFeatures {
 
 	/**
 	 * Tests basic color addition of black and white RGB values.

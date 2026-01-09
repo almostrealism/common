@@ -21,10 +21,10 @@ import io.almostrealism.profile.OperationProfile;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.OperationList;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
-public class AltComputeContextsTest implements TestFeatures {
+public class AltComputeContextsTest extends TestSuiteBase {
 	// TODO  @Test(timeout = 10000)
 	public void clAndNative() {
 		dc(() -> {

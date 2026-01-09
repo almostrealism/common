@@ -1,18 +1,16 @@
 package org.almostrealism.algebra;
 
-import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.io.ConsoleFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
-
-import static org.junit.Assert.*;
 
 /**
  * Tests for matmul to verify both vector and weightedSum paths
  * produce correct results and to benchmark compile/run times.
  */
-public class MatmulPathTest implements MatrixFeatures, ConsoleFeatures {
+public class MatmulPathTest extends TestSuiteBase implements MatrixFeatures, ConsoleFeatures {
 
 	/**
 	 * Test matmul with small output (should use vector path).

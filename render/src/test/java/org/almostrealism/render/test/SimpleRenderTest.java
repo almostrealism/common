@@ -22,7 +22,7 @@ import org.almostrealism.render.RayTracedScene;
 import org.almostrealism.space.AbstractSurface;
 import org.almostrealism.space.Scene;
 import org.almostrealism.texture.ImageCanvas;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 import java.io.File;
@@ -31,7 +31,7 @@ import java.io.IOException;
 /**
  * Simple rendering tests to verify the ray tracing pipeline can produce output.
  */
-public class SimpleRenderTest implements TestFeatures {
+public class SimpleRenderTest extends TestSuiteBase {
 	int width = 640;
 	int height = 640;
 
@@ -44,8 +44,8 @@ public class SimpleRenderTest implements TestFeatures {
 		sphere.setLocation(new Vector(0.0, 0.0, 0.0));
 		sphere.setSize(1.0);
 		sphere.setColor(new RGB(0.8, 0.2, 0.2)); // Red
-		((AbstractSurface) sphere).setShaders(new org.almostrealism.color.Shader[] {
-			DiffuseShader.defaultDiffuseShader
+		((AbstractSurface) sphere).setShaders(new org.almostrealism.color.Shader[]{
+				DiffuseShader.defaultDiffuseShader
 		});
 		sphere.calculateTransform();
 		log("Sphere created at origin, size 1.0, transforms enabled");
@@ -56,7 +56,7 @@ public class SimpleRenderTest implements TestFeatures {
 			double[] tmData = transform.toArray(0, 16);
 			log("Sphere transform matrix:");
 			for (int i = 0; i < 4; i++) {
-				log("  [" + tmData[i*4] + ", " + tmData[i*4+1] + ", " + tmData[i*4+2] + ", " + tmData[i*4+3] + "]");
+				log("  [" + tmData[i * 4] + ", " + tmData[i * 4 + 1] + ", " + tmData[i * 4 + 2] + ", " + tmData[i * 4 + 3] + "]");
 			}
 		} else {
 			log("Sphere transform is NULL");
@@ -94,9 +94,9 @@ public class SimpleRenderTest implements TestFeatures {
 
 		// Create ray traced scene
 		RayTracedScene rayTracedScene = new RayTracedScene(
-			new RayIntersectionEngine(scene, new FogParameters()),
-			camera,
-			params
+				new RayIntersectionEngine(scene, new FogParameters()),
+				camera,
+				params
 		);
 
 		log("Starting single pixel render...");
@@ -127,8 +127,8 @@ public class SimpleRenderTest implements TestFeatures {
 		sphere.setLocation(new Vector(0.0, 0.0, 0.0));
 		sphere.setSize(1.0);
 		sphere.setColor(new RGB(1.0, 1.0, 1.0));
-		((AbstractSurface) sphere).setShaders(new org.almostrealism.color.Shader[] {
-			DiffuseShader.defaultDiffuseShader
+		((AbstractSurface) sphere).setShaders(new org.almostrealism.color.Shader[]{
+				DiffuseShader.defaultDiffuseShader
 		});
 		sphere.calculateTransform();
 		log("Created sphere at origin, radius 1.0");
@@ -140,9 +140,9 @@ public class SimpleRenderTest implements TestFeatures {
 
 		// Create camera
 		PinholeCamera camera = new PinholeCamera(
-			new Vector(0.0, 0.0, 10.0),  // location
-			new Vector(0.0, 0.0, -1.0),  // viewing direction
-			new Vector(0.0, 1.0, 0.0)    // up direction
+				new Vector(0.0, 0.0, 10.0),  // location
+				new Vector(0.0, 0.0, -1.0),  // viewing direction
+				new Vector(0.0, 1.0, 0.0)    // up direction
 		);
 		camera.setFocalLength(0.1);
 		camera.setProjectionDimensions(0.36, 0.24);
@@ -187,12 +187,12 @@ public class SimpleRenderTest implements TestFeatures {
 
 		// Create input like initRankCache does
 		org.almostrealism.collect.PackedCollection input =
-			org.almostrealism.algebra.Pair.bank(1);
-		input.get(0).setMem(new double[] { 0.0, 0.0 });  // Single pixel at (0, 0)
+				org.almostrealism.algebra.Pair.bank(1);
+		input.get(0).setMem(new double[]{0.0, 0.0});  // Single pixel at (0, 0)
 
 		// Evaluate with batch input like rank cache does
 		org.almostrealism.collect.PackedCollection rankCollection =
-			new org.almostrealism.collect.PackedCollection(shape(1, 1).traverse(1));
+				new org.almostrealism.collect.PackedCollection(shape(1, 1).traverse(1));
 		variableIntersection.getDistance().get().into(rankCollection.each()).evaluate(input);
 
 		double variableDistValue = rankCollection.valueAt(0, 0);
@@ -203,16 +203,16 @@ public class SimpleRenderTest implements TestFeatures {
 		// Verify results
 		assertTrue("Static ray should hit sphere", staticDistValue > 0);
 		assertTrue("Static ray distance should be ~9.0 (was " + staticDistValue + ")",
-			Math.abs(staticDistValue - 9.0) < 0.1);
+				Math.abs(staticDistValue - 9.0) < 0.1);
 
 		assertTrue("Dynamic ray should hit sphere", dynamicDistValue > 0);
 		assertTrue("Dynamic ray distance should be ~9.0 (was " + dynamicDistValue + ")",
-			Math.abs(dynamicDistValue - 9.0) < 0.1);
+				Math.abs(dynamicDistValue - 9.0) < 0.1);
 
 		assertTrue("Variable ray (rank cache approach) should hit sphere (distance was " + variableDistValue + ")",
-			variableDistValue > 0);
+				variableDistValue > 0);
 		assertTrue("Variable ray distance should be ~9.0 (was " + variableDistValue + ")",
-			Math.abs(variableDistValue - 9.0) < 0.1);
+				Math.abs(variableDistValue - 9.0) < 0.1);
 
 		// Restore hardware acceleration setting
 		PinholeCamera.enableHardwareAcceleration = originalHwAccel;
@@ -224,9 +224,9 @@ public class SimpleRenderTest implements TestFeatures {
 
 		// Create camera at (0, 0, 10) looking down -Z
 		PinholeCamera camera = new PinholeCamera(
-			new Vector(0.0, 0.0, 10.0),
-			new Vector(0.0, 0.0, -1.0),
-			new Vector(0.0, 1.0, 0.0)
+				new Vector(0.0, 0.0, 10.0),
+				new Vector(0.0, 0.0, -1.0),
+				new Vector(0.0, 1.0, 0.0)
 		);
 		camera.setFocalLength(0.1);
 		camera.setProjectionDimensions(0.36, 0.24);
@@ -270,7 +270,7 @@ public class SimpleRenderTest implements TestFeatures {
 		assertTrue("Ray direction Z should be negative (was " + dz + ")", dz < 0.0);
 
 		// Verify direction is normalized (length ~= 1.0)
-		double len = Math.sqrt(dx*dx + dy*dy + dz*dz);
+		double len = Math.sqrt(dx * dx + dy * dy + dz * dz);
 		log("Ray direction length: " + len);
 		assertTrue("Ray direction should be normalized (length was " + len + ")", Math.abs(len - 1.0) < 0.01);
 
@@ -286,8 +286,8 @@ public class SimpleRenderTest implements TestFeatures {
 		sphere.setLocation(new Vector(0.0, 0.0, 0.0));
 		sphere.setSize(1.0);
 		sphere.setColor(new RGB(1.0, 1.0, 1.0)); // White surface
-		((AbstractSurface) sphere).setShaders(new org.almostrealism.color.Shader[] {
-			DiffuseShader.defaultDiffuseShader
+		((AbstractSurface) sphere).setShaders(new org.almostrealism.color.Shader[]{
+				DiffuseShader.defaultDiffuseShader
 		});
 		log("Created white sphere at origin, radius 1.0");
 
@@ -308,8 +308,8 @@ public class SimpleRenderTest implements TestFeatures {
 
 		// Create lighting engine directly
 		IntersectionalLightingEngine engine =
-			new IntersectionalLightingEngine(
-				testRay, sphere, java.util.Collections.emptyList(), light, java.util.Collections.emptyList(), context);
+				new IntersectionalLightingEngine(
+						testRay, sphere, java.util.Collections.emptyList(), light, java.util.Collections.emptyList(), context);
 		log("Created IntersectionalLightingEngine");
 
 		// Get the color producer
@@ -427,7 +427,7 @@ public class SimpleRenderTest implements TestFeatures {
 		sphere.setLocation(new Vector(0.0, 0.0, 0.0));
 		sphere.setSize(1.0);
 		sphere.setColor(new RGB(0.8, 0.2, 0.2)); // Red sphere
-		sphere.setShaders(new Shader[] { DiffuseShader.defaultDiffuseShader });
+		sphere.setShaders(new Shader[]{DiffuseShader.defaultDiffuseShader});
 
 		// Ensure transform is calculated before adding to scene
 		sphere.calculateTransform();
@@ -465,9 +465,9 @@ public class SimpleRenderTest implements TestFeatures {
 
 			// Create ray traced scene
 			RayTracedScene rayTracedScene = new RayTracedScene(
-				new RayIntersectionEngine(scene, new FogParameters()),
-				camera,
-				params
+					new RayIntersectionEngine(scene, new FogParameters()),
+					camera,
+					params
 			);
 
 			log("Starting render...");
@@ -533,8 +533,8 @@ public class SimpleRenderTest implements TestFeatures {
 		sphere1.setLocation(new Vector(-1.5, 0.0, 0.0));
 		sphere1.setSize(1.0);
 		sphere1.setColor(new RGB(0.8, 0.2, 0.2)); // Red
-		((AbstractSurface) sphere1).setShaders(new org.almostrealism.color.Shader[] {
-			DiffuseShader.defaultDiffuseShader
+		((AbstractSurface) sphere1).setShaders(new org.almostrealism.color.Shader[]{
+				DiffuseShader.defaultDiffuseShader
 		});
 		sphere1.calculateTransform();
 
@@ -543,8 +543,8 @@ public class SimpleRenderTest implements TestFeatures {
 		sphere2.setLocation(new Vector(1.5, 0.0, 0.0));
 		sphere2.setSize(1.0);
 		sphere2.setColor(new RGB(0.2, 0.8, 0.2)); // Green
-		((AbstractSurface) sphere2).setShaders(new org.almostrealism.color.Shader[] {
-			DiffuseShader.defaultDiffuseShader
+		((AbstractSurface) sphere2).setShaders(new org.almostrealism.color.Shader[]{
+				DiffuseShader.defaultDiffuseShader
 		});
 		sphere2.calculateTransform();
 
@@ -579,9 +579,9 @@ public class SimpleRenderTest implements TestFeatures {
 
 		// Create and render
 		RayTracedScene rayTracedScene = new RayTracedScene(
-			new RayIntersectionEngine(scene, new FogParameters()),
-			camera,
-			params
+				new RayIntersectionEngine(scene, new FogParameters()),
+				camera,
+				params
 		);
 
 		log("Starting render...");

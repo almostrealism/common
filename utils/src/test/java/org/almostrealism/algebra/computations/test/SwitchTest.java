@@ -22,12 +22,12 @@ import org.almostrealism.algebra.computations.Switch;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.AcceleratedOperation;
 import org.almostrealism.hardware.OperationList;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 import java.util.Arrays;
 
-public class SwitchTest implements TestFeatures {
+public class SwitchTest extends TestSuiteBase {
 
 	public Switch choice(PackedCollection output, PackedCollection decision, PackedCollection multiplier) {
 		return choice(output, p(decision), p(multiplier));

@@ -495,6 +495,9 @@ public interface AttentionFeatures extends RotationFeatures {
 		attention.add(softmax(attentionShape, true));
 		attention.add(attentionValues(attentionShape, p(valueCache)));
 		attention.add(dense(wo));
+
+		// Restore the (1, dim) shape for the transformer layer output
+		attention.reshape(inputShape);
 		/* ---- **/
 
 		return attention;
@@ -1162,14 +1165,16 @@ public interface AttentionFeatures extends RotationFeatures {
 			throw new IllegalArgumentException();
 		}
 
-		return compose("context", v, shape(batchSize, heads, dimHead, dimHead), (a, b) -> {
+		TraversalPolicy outputShape = shape(batchSize, heads, dimHead, dimHead);
+		return compose("context", v, outputShape, (a, b) -> {
 			CollectionProducer pa = c(a)
 					.traverse(3)
 					.repeat(dimHead);
 			CollectionProducer pb = c(b)
 					.traverse(2)
 					.repeat(dimHead);
-			return multiply(pa, pb).sum(4);
+			// sum(4) reduces axis 4 but keeps dimension of size 1, so reshape to remove it
+			return multiply(pa, pb).sum(4).reshape(outputShape);
 		});
 	}
 

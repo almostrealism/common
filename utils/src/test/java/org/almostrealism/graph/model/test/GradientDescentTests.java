@@ -23,6 +23,8 @@ import org.almostrealism.model.SequentialBlock;
 import org.almostrealism.optimize.Dataset;
 import org.almostrealism.optimize.ValueTarget;
 import org.almostrealism.util.ModelTestFeatures;
+import org.almostrealism.util.TestDepth;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 import java.io.FileNotFoundException;
@@ -31,7 +33,7 @@ import java.util.function.UnaryOperator;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
-public class GradientDescentTests implements ModelTestFeatures {
+public class GradientDescentTests extends TestSuiteBase implements ModelTestFeatures {
 	private final double[] coeff = { 0.24, -0.1, 0.36 };
 
 	private final UnaryOperator<PackedCollection> func1 =
@@ -44,9 +46,8 @@ public class GradientDescentTests implements ModelTestFeatures {
 			in -> PackedCollection.of(coeff[0] * in.valueAt(0), coeff[1] * in.valueAt(1), coeff[2] * in.valueAt(2));
 
 	@Test(timeout = 120000)
+	@TestDepth(1)
 	public void linear1() throws FileNotFoundException {
-		if (testDepth < 1) return;
-
 		CellularLayer dense = dense(1, 1).apply(shape(1));
 
 		SequentialBlock block = new SequentialBlock(shape(1));
@@ -68,9 +69,8 @@ public class GradientDescentTests implements ModelTestFeatures {
 	}
 
 	@Test(timeout = 120000)
+	@TestDepth(1)
 	public void linear2() throws FileNotFoundException {
-		if (testDepth < 1) return;
-
 		CellularLayer dense = dense(2, 1).apply(shape(2));
 
 		SequentialBlock block = new SequentialBlock(shape(2));
@@ -112,9 +112,8 @@ public class GradientDescentTests implements ModelTestFeatures {
 	}
 
 	@Test(timeout = 120000)
+	@TestDepth(2)
 	public void linear4() throws FileNotFoundException {
-		if (testDepth < 2) return;
-
 		SequentialBlock block = new SequentialBlock(shape(3));
 		block.add(dense(3, 1));
 		block.add(dense(1, 1));
@@ -135,9 +134,8 @@ public class GradientDescentTests implements ModelTestFeatures {
 	}
 
 	@Test(timeout = 120000)
+	@TestDepth(2)
 	public void linear5() throws FileNotFoundException {
-		if (testDepth < 2) return;
-
 		try {
 			initKernelMetrics();
 

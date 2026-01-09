@@ -1,9 +1,7 @@
 package org.almostrealism.ml.qwen3;
 
-import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.graph.Cell;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.OutputFeatures;
@@ -12,6 +10,7 @@ import org.almostrealism.layers.LayerFeatures;
 import org.almostrealism.ml.AttentionFeatures;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 /**
@@ -36,15 +35,15 @@ import org.junit.Test;
  *       - GQA expansion may interact incorrectly with caching</li>
  * </ol>
  */
-public class KVCacheDiagnosticTest implements AttentionFeatures, LayerFeatures, ConsoleFeatures {
+public class KVCacheDiagnosticTest extends TestSuiteBase implements AttentionFeatures, LayerFeatures, ConsoleFeatures {
 
 	/**
 	 * HYPOTHESIS 1: Position producer is evaluated once at compile time.
-	 *
+	 * <p>
 	 * Test: Create a minimal model that reads from a position PackedCollection
 	 * and adds it to the input. Run multiple forward passes with different
 	 * position values and verify outputs differ.
-	 *
+	 * <p>
 	 * Expected if H1 is TRUE: All outputs identical (position stuck at initial value)
 	 * Expected if H1 is FALSE: Outputs differ for each position
 	 */
@@ -149,10 +148,10 @@ public class KVCacheDiagnosticTest implements AttentionFeatures, LayerFeatures, 
 
 	/**
 	 * HYPOTHESIS 2: KV cache writes not persisting between forward passes.
-	 *
+	 * <p>
 	 * Test: Create a model with a cache that is written to via into().
 	 * After each forward pass, inspect the cache contents.
-	 *
+	 * <p>
 	 * Expected if H2 is TRUE: Cache is empty/reset after each pass
 	 * Expected if H2 is FALSE: Cache accumulates entries
 	 */
@@ -256,10 +255,10 @@ public class KVCacheDiagnosticTest implements AttentionFeatures, LayerFeatures, 
 
 	/**
 	 * HYPOTHESIS 3: Cache write happens after cache read (ordering issue).
-	 *
+	 * <p>
 	 * Test: Create a model that both reads from and writes to a cache.
 	 * Verify the order of operations.
-	 *
+	 * <p>
 	 * Expected if H3 is TRUE: Read sees stale data (previous step's write)
 	 * Expected if H3 is FALSE: Read sees current step's write
 	 */
@@ -302,12 +301,8 @@ public class KVCacheDiagnosticTest implements AttentionFeatures, LayerFeatures, 
 		// For simplicity, sum entire cache (zeros for unused positions)
 		model.add(layer("readSum", shape(dim), shape(dim), input -> {
 			// Sum all entries in cache
-			// IMPORTANT: Use cp(cache) not c(cache)!
-			// - c(cache) captures cache VALUE at compile time (static/fixed)
-			// - cp(cache) = c(p(cache)) creates a REFERENCE that reads at runtime (dynamic)
 			CollectionProducer cacheSum = cp(cache).traverse(0).sum();
-			// Return as dim-sized output: reshape to (1) then repeat to (dim)
-			// The repeat operation creates shape(repetitions), not shape(repetitions, 1)
+			// Return as dim-sized output: repeat produces (dim, 1), reshape to (dim)
 			return cacheSum.reshape(shape(1)).repeat(dim).reshape(shape(dim));
 		}));
 
@@ -631,10 +626,10 @@ public class KVCacheDiagnosticTest implements AttentionFeatures, LayerFeatures, 
 
 	/**
 	 * HYPOTHESIS 4: GQA-specific interaction with caching.
-	 *
+	 * <p>
 	 * Test: Compare behavior of attention with heads==kvHeads (no GQA)
 	 * vs heads!=kvHeads (GQA) using the same cache mechanism.
-	 *
+	 * <p>
 	 * Expected if H4 is TRUE: GQA produces identical outputs, non-GQA differs
 	 * Expected if H4 is FALSE: Both behave similarly (both work or both fail)
 	 */

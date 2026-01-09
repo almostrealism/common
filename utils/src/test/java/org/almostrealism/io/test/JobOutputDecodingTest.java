@@ -17,12 +17,13 @@
 package org.almostrealism.io.test;
 
 import org.almostrealism.io.JobOutput;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 import java.util.Optional;
 import java.util.stream.Stream;
 
-public class JobOutputDecodingTest {
+public class JobOutputDecodingTest extends TestSuiteBase {
 	@Test(timeout = 10000)
 	public void decode() {
 		JobOutput output = new JobOutput();
@@ -33,9 +34,9 @@ public class JobOutputDecodingTest {
 		output.setTime(1234567);
 
 		Optional<JobOutput> result = Stream.of(output)
-								.map(JobOutput::encode)
-								.map(JobOutput::decode)
-								.findAny();
+				.map(JobOutput::encode)
+				.map(JobOutput::decode)
+				.findAny();
 		assert result.isPresent();
 
 		assert result.get().getTaskId().equals("test-task");
