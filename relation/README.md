@@ -111,34 +111,160 @@ if (isFixedCount()) {
 
 ### Process Framework
 
-The `Process` interface represents composable, optimizable computational work:
+The `Process` interface represents composable, optimizable computational work units that form a tree structure. Understanding Process optimization and isolation is **critical** for correct and efficient execution.
 
 ```java
 // Process defines computational work units
-public interface Process<P, T, A> {
-    T generate(A args);           // Execute the process
-    P optimize(ProcessContext ctx); // Apply optimizations
-    P isolate();                  // Create isolated copy
+public interface Process<P extends Process<?, ?>, T> extends Supplier<T>, Tree<P> {
+    T get();                          // Execute the process
+    Process<P, T> optimize();         // Apply optimizations (uses base context)
+    Process<P, T> optimize(ProcessContext ctx); // Apply optimizations with context
+    Process<P, T> isolate();          // Create isolated copy
+    boolean isIsolationTarget(ProcessContext ctx); // Should this process be isolated?
+    long getOutputSize();             // Memory footprint for optimization decisions
 }
 ```
 
 **ParallelProcess** extends this for parallel computation:
 ```java
 // ParallelProcess manages collections of child processes
-public interface ParallelProcess<P, T, A> extends Process<P, T, A> {
-    int getParallelism();         // Number of parallel children
-    boolean isUniform();          // All children identical?
+public interface ParallelProcess<P, T> extends Process<P, T>, Countable {
+    long getParallelism();            // Number of parallel children
+    boolean isUniform();              // All children have same parallelism?
+    ParallelProcess<P, T> optimize(ProcessContext ctx); // Optimizes children
 }
 ```
 
-**Optimization Strategies**:
+---
+
+## ⚠️ CRITICAL: Process Optimization and Isolation ⚠️
+
+**This is the most important architectural concept in the framework. Incorrect handling will cause severe performance issues or incorrect results.**
+
+### Why Optimization Matters
+
+Many computations (especially those with loops or large iteration counts) MUST be isolated into separate execution units. Without proper isolation:
+- Expression trees can grow exponentially large
+- Compilation times become unacceptable (minutes to hours)
+- Memory usage explodes
+- Tests timeout or fail
+
+### The Optimization Chain
+
+When `optimize()` is called on a Process tree:
+
+```
+Process.optimize(ctx)
+    └── For each child process:
+        └── ParallelProcess.optimize(ctx, child)
+            ├── child.optimize(ctx)           // Recursively optimize child
+            ├── Check child.isIsolationTarget(ctx)
+            │   └── If true → child.isolate()  // Wrap in IsolatedProcess
+            └── Return optimized (possibly isolated) child
+    └── ProcessOptimizationStrategy.optimize()  // Apply strategy
+```
+
+### isIsolationTarget() - Requesting Isolation
+
+A process signals it needs isolation by overriding `isIsolationTarget()`:
+
 ```java
+public class LoopedComputation extends CollectionProducerComputation {
+    @Override
+    public boolean isIsolationTarget(ProcessContext context) {
+        // Return true if this computation should be isolated
+        // Common reasons:
+        // - Native loop generation (vs expression unrolling)
+        // - Large iteration count that would explode expression tree
+        // - Memory-intensive operations
+        return iterationCount > threshold;
+    }
+}
+```
+
+### IsolatedProcess - Breaking Expression Embedding
+
+When `isolate()` is called on a computation, it returns an `IsolatedProcess` wrapper:
+
+```java
+// IsolatedProcess does NOT implement TraversableExpression
+class IsolatedProcess extends DelegatedCollectionProducer {
+    // The key property: this class lacks getValueAt()
+    // When a parent checks: producer instanceof TraversableExpression
+    // It returns false, naturally breaking expression embedding
+}
+```
+
+**This is the ONLY proper way to break expression embedding.** Never return null from `getValueAt()` to force isolation.
+
+### When optimize() MUST Be Called
+
+`optimize()` must be called before `get()` when the process tree may contain computations requiring isolation:
+
+```java
+// CORRECT: Call optimize() before get()
+OperationList op = model.getForward().push(input);
+op = (OperationList) op.optimize();  // This triggers isolation
+Runnable compiled = op.get();
+compiled.run();
+
+// INCORRECT: Missing optimize() call
+OperationList op = model.getForward().push(input);
+Runnable compiled = op.get();  // May cause timeouts/failures!
+```
+
+**Note**: `OperationList.enableAutomaticOptimization` is `false` by default. Either:
+1. Call `optimize()` explicitly, OR
+2. Set `OperationList.enableAutomaticOptimization = true`, OR
+3. Use `CompiledModel` which calls `optimize()` internally
+
+### Optimization Strategies
+
+```java
+// ParallelismTargetOptimization - Default strategy
+// Uses parallelism thresholds and scoring to decide isolation
+ProcessOptimizationStrategy strategy = new ParallelismTargetOptimization();
+
+// Key thresholds:
+ParallelismTargetOptimization.minCount = 256;      // Min parallelism
+ParallelismTargetOptimization.targetCount = 131072; // Target parallelism (2^17)
+ParallelismTargetOptimization.maxCount = 1048576;  // Max parallelism (2^20)
+
 // Cascading strategy tries multiple strategies in order
-ProcessOptimizationStrategy strategy = new CascadingOptimizationStrategy(
+ProcessOptimizationStrategy cascading = new CascadingOptimizationStrategy(
     new ParallelismTargetOptimization(),
     customStrategy
 );
 ```
+
+### Debugging Isolation Issues
+
+If you see these symptoms:
+- Test timeouts (60+ seconds for simple operations)
+- Massive expression trees in stack traces
+- OutOfMemoryError during compilation
+
+Check:
+1. Is `optimize()` being called before `get()`?
+2. Does the problematic computation override `isIsolationTarget()` correctly?
+3. Is the parent process calling `optimize(ctx, child)` on its children?
+
+```java
+// Debug: Log when isolation happens
+CollectionProducerComputation.isolationLogging = true;
+```
+
+### Key Classes for Process Optimization
+
+| Class | Purpose |
+|-------|---------|
+| `Process` | Base interface for optimizable work units |
+| `ParallelProcess` | Parallel execution with child optimization |
+| `ProcessContext` | Context for optimization decisions |
+| `ProcessOptimizationStrategy` | Strategy interface for optimization |
+| `ParallelismTargetOptimization` | Default threshold-based strategy |
+| `IsolatedProcess` | Wrapper that breaks expression embedding |
+| `isIsolationTarget()` | Method to request isolation |
 
 ### Composition Patterns
 

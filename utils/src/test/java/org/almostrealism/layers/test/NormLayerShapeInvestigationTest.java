@@ -46,12 +46,6 @@ import org.junit.Test;
  */
 public class NormLayerShapeInvestigationTest extends TestSuiteBase {
 
-	static {
-		if (TestUtils.getTrainTests()) {
-			Console.root().addListener(OutputFeatures.fileOutput("results/logs/norm_shape_investigation.out"));
-		}
-	}
-
 	/**
 	 * Test 1: Understand padDimensions behavior.
 	 * When norm receives shape (6) from previous layer, what does padDimensions do?

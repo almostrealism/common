@@ -57,6 +57,94 @@ mcp__ar-test-runner__start_test_run
 
 ---
 
+## ⚠️ CRITICAL: ALWAYS CONSULT AR-DOCS MCP BEFORE INFRASTRUCTURE CHANGES ⚠️
+
+**THIS IS AN ABSOLUTE RULE WITH NO EXCEPTIONS.**
+
+Before making ANY changes to:
+- Test infrastructure (test classes, test utilities, test configuration)
+- Build configuration
+- Framework base classes
+- Module structure
+
+You **MUST** first consult the ar-docs MCP tools:
+- `mcp__ar-docs__search_ar_docs` - Search documentation
+- `mcp__ar-docs__read_ar_module` - Read module documentation
+- `mcp__ar-docs__read_quick_reference` - Get API quick reference
+
+**Why this matters:** The AR framework has established patterns and base classes. Making assumptions based on source code comments alone leads to violations of framework conventions. The ar-docs MCP contains authoritative documentation that explains the CORRECT patterns.
+
+**Example of what NOT to do:**
+- See `TestDepthRule` in source code
+- Assume you understand how it works from comments
+- Manually add `@Rule TestDepthRule` to a test class
+- **WRONG!** The documentation clearly states TestDepthRule is used INTERNALLY by TestSuiteBase
+
+**Correct approach:**
+1. Search ar-docs: `mcp__ar-docs__search_ar_docs query:"test grouping"`
+2. Read module docs: `mcp__ar-docs__read_ar_module module:"utils"`
+3. Understand the pattern: Tests extend `TestSuiteBase`
+4. Make changes following the documented pattern
+
+---
+
+## ⚠️ CRITICAL: TEST CLASS REQUIREMENTS ⚠️
+
+**THIS IS AN ABSOLUTE RULE WITH NO EXCEPTIONS.**
+
+All test classes **MUST** extend `TestSuiteBase`:
+
+```java
+// CORRECT: Extend TestSuiteBase
+public class MyTest extends TestSuiteBase {
+    @Test
+    public void testSomething() {
+        // Test automatically participates in grouping and depth filtering
+    }
+
+    @Test
+    @TestDepth(2)
+    public void expensiveTest() {
+        // Automatically skipped if AR_TEST_DEPTH < 2
+    }
+}
+```
+
+```java
+// WRONG: Implementing TestFeatures directly
+public class MyTest implements TestFeatures {
+    // This test will NOT participate in test grouping!
+    // It will run in ALL CI groups, wasting resources
+}
+```
+
+```java
+// WRONG: Manually adding TestDepthRule
+public class MyTest implements TestFeatures {
+    @Rule public TestDepthRule depthRule = testDepthRule();  // NEVER DO THIS!
+}
+```
+
+**What TestSuiteBase provides automatically:**
+- Test grouping (hash-based distribution across CI runners)
+- `@TestDepth` annotation support
+- All TestFeatures utilities (assertions, kernel testing, etc.)
+
+**For long-running tests (30+ minutes):**
+Use `skipLongTests` guard in addition to extending TestSuiteBase:
+```java
+public class MyTest extends TestSuiteBase {
+    @Test
+    @TestDepth(3)
+    public void veryExpensiveTest() {
+        if (skipLongTests) return;  // Respects AR_LONG_TESTS env var
+        // ...
+    }
+}
+```
+
+---
+
 ## Quick Links
 
 - **[Quick Reference](docs/QUICK_REFERENCE.md)** - Condensed API cheatsheet
@@ -105,6 +193,34 @@ echo $AR_HARDWARE_LIBS
 echo $AR_HARDWARE_DRIVER
 ```
 
+### Memory Configuration
+
+For large models or tests that require more memory than the default 8GB limit:
+
+```bash
+# Maximum memory allocation (2^SCALE × 64MB)
+export AR_HARDWARE_MEMORY_SCALE=4   # 1GB (default)
+export AR_HARDWARE_MEMORY_SCALE=6   # 4GB
+export AR_HARDWARE_MEMORY_SCALE=7   # 8GB (current default)
+export AR_HARDWARE_MEMORY_SCALE=8   # 16GB
+export AR_HARDWARE_MEMORY_SCALE=9   # 32GB
+```
+
+**When to increase memory:**
+- Running large ML models (e.g., full Oobleck decoder with 5 blocks)
+- Tests that produce `HardwareException: Memory max reached`
+- Working with large audio/image data
+
+**Example with increased memory:**
+```bash
+export AR_HARDWARE_MEMORY_SCALE=8 && \
+export AR_HARDWARE_LIBS=/tmp/ar_libs/ && \
+export AR_HARDWARE_DRIVER=native && \
+mvn test -pl ml -Dtest=OobleckValidationTest
+```
+
+See [hardware/README.md](hardware/README.md) for complete memory and performance configuration options.
+
 ---
 
 ## Code Organization Principles
@@ -112,6 +228,64 @@ echo $AR_HARDWARE_DRIVER
 1. Never use @SuppressWarnings
 2. Always include javadoc documentation for newly introduced code
 3. Do not include excessive comments within method implementations
+
+---
+
+## ⚠️ CRITICAL: Process Optimization and Isolation Architecture ⚠️
+
+**THIS IS A SACRED ARCHITECTURAL PRINCIPLE. VIOLATING IT WILL BREAK THE SYSTEM.**
+
+### The Golden Rule
+
+**ONLY `IsolatedProcess` is empowered to break expression embedding. No other computation should return null from `getValueAt()` to force isolation.**
+
+### How Process Isolation Works
+
+1. **`Process.optimize()`** must be called before `Process.get()` for proper isolation
+2. **`ParallelProcess.optimize(ctx, process)`** checks `process.isIsolationTarget(ctx)` on each child
+3. If isolation is needed, it calls `process.isolate()` which wraps in `IsolatedProcess`
+4. **`IsolatedProcess` does NOT implement `TraversableExpression`**
+5. When a parent's `getValueAt()` checks `producer instanceof TraversableExpression`, it naturally returns `null`
+6. This is the ONLY proper way to break expression embedding
+
+### What NOT to Do
+
+```java
+// NEVER DO THIS - it violates the isolation architecture
+@Override
+public Expression<Double> getValueAt(Expression index) {
+    // BAD: Returning null to "force" isolation
+    if (producer instanceof SomeComputationType) {
+        return null;  // WRONG! This bypasses proper isolation
+    }
+    return producer.getValueAt(index);
+}
+```
+
+### Debugging Expression Tree Issues
+
+If expression trees are growing too large:
+
+1. **Check if `optimize()` is being called** before `get()`
+2. If `isIsolationTarget()` returns true but isolation isn't happening, trace the optimization path
+3. Ensure `OperationList.enableAutomaticOptimization` is set appropriately, OR ensure callers call `optimize()` explicitly
+4. **NEVER** hack `getValueAt()` to return null - fix the optimization chain instead
+
+### Proper Fix Pattern
+
+```java
+// CORRECT: Ensure optimize() is called
+OperationList op = model.getForward().push(input);
+op = (OperationList) op.optimize();  // This triggers proper isolation
+Runnable compiled = op.get();
+```
+
+### Key Classes
+
+- **`Process.optimize()`** - Entry point for optimization
+- **`ParallelProcess.optimize(ctx, process)`** - Checks `isIsolationTarget()` and calls `isolate()`
+- **`IsolatedProcess`** - The ONLY class that should break expression embedding
+- **`isIsolationTarget()`** - Return true if computation requires isolation (e.g., native loops)
 
 ### Use StateDictionary for Model Weights
 
@@ -270,6 +444,55 @@ commentary back to yourself is NOT a condition for suspending your work.
 
 Before you start working, REPEAT this principle to yourself. If summarization of earlier tasks is ever required,
 REPEAT THIS PRINCIPLE IN THE SUMMARY
+
+---
+
+## SYSTEMATIC Debugging Approach
+
+**THIS IS MANDATORY. NO SPECULATION. ONLY EVIDENCE.**
+
+When debugging a failing test or numerical discrepancy, you MUST follow this systematic process:
+
+### 1. Component Inventory
+First, identify ALL components involved in the failing code path. For example, if a decoder test fails:
+- List every layer type used (conv1d, convTranspose1d, activation, normalization, etc.)
+- List every test that exists for each component
+- Document this inventory BEFORE making any claims about the bug
+
+### 2. Bottom-Up Test Execution
+Run tests from smallest to largest scope. For each test, record:
+- **Test name**: The exact test method
+- **Result**: PASS or FAIL
+- **Relevant output**: Key numbers or error messages
+
+**Example test hierarchy:**
+```
+Level 1 (Unit): testConv1dSmall, testConvTranspose1dSmall
+Level 2 (Scale): testConv1dLargeChannels, testConvTranspose1dLargeChannels
+Level 3 (Component): testWNConv1d, testSnakeActivation
+Level 4 (Block): testDecoderBlock1, testDecoderBlock3
+Level 5 (Integration): testFullDecoder
+```
+
+### 3. Evidence-Based Conclusions
+**NEVER say "the problem might be X" without test evidence.**
+
+Instead, structure conclusions as:
+- "Tests A, B, C passed, proving components X, Y, Z work correctly"
+- "Test D failed, which isolates the bug to component W"
+- "No test exists for component V, so I need to create one to verify"
+
+### 4. Gap Identification
+If all existing tests pass but the integration test fails:
+- Identify which component combinations are NOT tested
+- Create targeted tests for those gaps
+- Run the new tests and record results
+
+### What NOT to do:
+- DO NOT speculate about possible causes without running tests
+- DO NOT claim a component is correct without a test proving it
+- DO NOT skip levels in the test hierarchy
+- DO NOT make changes without understanding exactly which test will verify the fix
 
 ---
 

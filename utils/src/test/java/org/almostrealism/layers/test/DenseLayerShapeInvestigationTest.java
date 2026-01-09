@@ -40,12 +40,6 @@ import org.junit.Test;
  */
 public class DenseLayerShapeInvestigationTest extends TestSuiteBase {
 
-	static {
-		if (TestUtils.getTrainTests()) {
-			Console.root().addListener(OutputFeatures.fileOutput("results/logs/dense_shape_investigation.out"));
-		}
-	}
-
 	/**
 	 * Test matmul shape by using dense layer internally.
 	 * The dense layer uses matmul(weights, input) and we observe the shape mismatch warning.

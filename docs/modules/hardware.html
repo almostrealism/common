@@ -319,6 +319,16 @@
                     <li><strong>Isolation:</strong> Optional operation isolation for debugging</li>
                 </ul>
 
+                <div class="warning">
+                    <strong>⚠️ Critical: Call optimize() before get()</strong><br>
+                    <code>OperationList.enableAutomaticOptimization = false</code> by default. If your operation tree contains computations that require isolation (like LoopedWeightedSumComputation), you MUST call <code>optimize()</code> before <code>get()</code>:
+                    <pre style="margin-top: 10px;">OperationList op = ...;
+op = (OperationList) op.optimize();  // Required for isolation!
+Runnable compiled = op.get();</pre>
+                    Without this, computations requiring isolation will cause massive expression tree expansion and timeouts.
+                    See <a href="relation.html#optimization">Process Optimization</a> for details.
+                </div>
+
                 <h3><a href="../apidocs/org/almostrealism/hardware/mem/Heap.html">Heap</a></h3>
                 <p>Thread-local arena allocator for efficient temporary memory.</p>
                 <ul>

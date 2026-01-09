@@ -57,11 +57,6 @@ import java.util.function.Supplier;
  * @author Michael Murray
  */
 public class SyntheticConvolutionTrainingTest extends TestSuiteBase implements ModelFeatures, ModelTestFeatures {
-	static {
-		if (TestUtils.getTrainTests()) {
-			Console.root().addListener(OutputFeatures.fileOutput("results/logs/synthetic_conv_train.out"));
-		}
-	}
 
 	/**
 	 * Generates a synthetic dataset of circles and squares for binary classification.

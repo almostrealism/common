@@ -60,11 +60,6 @@ import java.util.stream.IntStream;
  * @author Michael Murray
  */
 public class SyntheticDenseTrainingTest extends TestSuiteBase implements ModelTestFeatures {
-	static {
-		if (TestUtils.getTrainTests()) {
-			Console.root().addListener(OutputFeatures.fileOutput("results/logs/synthetic_dense_train.out"));
-		}
-	}
 
 	/**
 	 * Fixed coefficients for target functions.

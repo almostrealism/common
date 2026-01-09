@@ -41,6 +41,15 @@ See [../CLAUDE.md](../CLAUDE.md) for full MCP test runner documentation.
 
 ---
 
+## ⚠️ CRITICAL: TEST CLASS REQUIREMENTS ⚠️
+
+All test classes **MUST** extend `TestSuiteBase`. See [../CLAUDE.md](../CLAUDE.md) for:
+- Why `TestSuiteBase` is required (test grouping, depth filtering)
+- Why you must NEVER manually add `@Rule TestDepthRule`
+- Why you must ALWAYS consult ar-docs MCP before infrastructure changes
+
+---
+
 > **Note**: For general AR framework guidelines (environment setup, code organization principles), see [../claude.md](../claude.md)
 
 ## ML-Specific Patterns
@@ -134,6 +143,18 @@ This creates a directory of `.pb` files that StateDictionary can load directly.
 
 See [../claude.md](../claude.md) for AR_HARDWARE setup instructions. Note that the MCP test runner handles these automatically.
 
+### Memory Configuration for Large Models
+
+Large models (e.g., full Oobleck autoencoder, LLMs) require more memory than the default 8GB:
+
+```bash
+# Increase memory for large ML models
+export AR_HARDWARE_MEMORY_SCALE=8   # 16GB
+export AR_HARDWARE_MEMORY_SCALE=9   # 32GB
+```
+
+**If you see `HardwareException: Memory max reached`**, increase `AR_HARDWARE_MEMORY_SCALE`.
+
 ### Test Structure
 
 **⚠️ Use MCP test runner - NOT bash commands!**
@@ -158,7 +179,8 @@ mcp__ar-test-runner__start_test_run
 **Reference only** (what the MCP tool runs internally):
 ```bash
 # DO NOT RUN DIRECTLY - use MCP tool instead
-export AR_HARDWARE_LIBS=/tmp/ar_libs/ && \
+export AR_HARDWARE_MEMORY_SCALE=8 && \
+export AR_HARDWARE_LIBS=/home/developer/.libs/ && \
 export AR_HARDWARE_DRIVER=native && \
 mvn test -pl ml -Dtest=<TestName> -DAR_TEST_PROFILE=pipeline
 ```

@@ -57,11 +57,6 @@ import java.util.stream.IntStream;
  * @author Michael Murray
  */
 public class StrictShapeEnforcementTest extends TestSuiteBase implements ModelTestFeatures {
-	static {
-		if (TestUtils.getTrainTests()) {
-			Console.root().addListener(OutputFeatures.fileOutput("results/logs/strict_shape_enforcement.out"));
-		}
-	}
 
 	private final double[] coeff = { 0.24, -0.1, 0.36 };
 

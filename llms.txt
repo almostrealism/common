@@ -67,6 +67,30 @@ export AR_HARDWARE_DRIVER=native
 
 ## Key Patterns
 
+### ⚠️ Process Optimization (CRITICAL)
+
+**MUST call optimize() before get()** when using OperationList with computations that require isolation:
+
+```java
+// CORRECT: Call optimize() before get()
+OperationList op = model.getForward().push(input);
+op = (OperationList) op.optimize();  // Required for isolation!
+Runnable compiled = op.get();
+compiled.run();
+
+// INCORRECT: May cause timeouts!
+OperationList op = model.getForward().push(input);
+Runnable compiled = op.get();  // Missing optimize() call!
+```
+
+Key classes:
+- `Process.optimize()` - Entry point for optimization
+- `isIsolationTarget()` - Return true if computation requires isolation
+- `IsolatedProcess` - The ONLY proper way to break expression embedding
+- **NEVER** return null from `getValueAt()` to force isolation
+
+See [relation/README.md](relation/README.md) for details.
+
 ### Producer/Evaluable (Deferred Execution)
 ```java
 Producer<PackedCollection<?>> computation = a.add(b).multiply(c);

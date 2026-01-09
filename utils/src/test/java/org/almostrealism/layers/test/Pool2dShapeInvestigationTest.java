@@ -40,12 +40,6 @@ import org.junit.Test;
  */
 public class Pool2dShapeInvestigationTest extends TestSuiteBase {
 
-	static {
-		if (TestUtils.getTrainTests()) {
-			Console.root().addListener(OutputFeatures.fileOutput("results/logs/pool2d_shape_investigation.out"));
-		}
-	}
-
 	/**
 	 * Test pool2d layer shape declarations vs actual output.
 	 */

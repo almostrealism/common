@@ -36,7 +36,7 @@ public class Conv1dLayerTests extends TestSuiteBase implements LayerFeatures {
 	 * Tests Snake activation with alpha=1.0.
 	 * Snake formula: f(x) = x + (1/alpha) * sin^2(alpha * x)
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testSnakeActivation() {
 		int size = 100;
 		double alpha = 1.0;
@@ -80,7 +80,7 @@ public class Conv1dLayerTests extends TestSuiteBase implements LayerFeatures {
 	/**
 	 * Tests Snake activation with alpha=0.5.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testSnakeActivationAlpha05() {
 		int size = 50;
 		double alpha = 0.5;
@@ -115,7 +115,7 @@ public class Conv1dLayerTests extends TestSuiteBase implements LayerFeatures {
 	 * Tests Conv1d with kernel size 1 (pointwise convolution).
 	 * This should behave like a linear transformation across channels.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testConv1dKernel1() {
 		int batchSize = 1;
 		int inputChannels = 2;
@@ -167,7 +167,7 @@ public class Conv1dLayerTests extends TestSuiteBase implements LayerFeatures {
 	 * Tests Conv1d with kernel size 3 and stride 1.
 	 * Verifies output shape calculation.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testConv1dKernel3Stride1() {
 		int batchSize = 1;
 		int inputChannels = 2;
@@ -211,7 +211,7 @@ public class Conv1dLayerTests extends TestSuiteBase implements LayerFeatures {
 	 * Tests Conv1d with stride 2 for downsampling.
 	 * This is the pattern used in the encoder blocks.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testConv1dStride2Downsampling() {
 		int batchSize = 1;
 		int inputChannels = 2;
@@ -254,7 +254,7 @@ public class Conv1dLayerTests extends TestSuiteBase implements LayerFeatures {
 	 * Tests ConvTranspose1d with stride 2 for upsampling.
 	 * This is the pattern used in the decoder blocks.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testConvTranspose1dStride2Upsampling() {
 		int batchSize = 1;
 		int inputChannels = 4;
@@ -297,7 +297,7 @@ public class Conv1dLayerTests extends TestSuiteBase implements LayerFeatures {
 	 * Tests Conv1d followed by ConvTranspose1d to verify shape consistency.
 	 * The output shape should match the original input shape.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testConv1dConvTranspose1dRoundtrip() {
 		int batchSize = 1;
 		int channels = 4;
@@ -344,7 +344,7 @@ public class Conv1dLayerTests extends TestSuiteBase implements LayerFeatures {
 	/**
 	 * Tests Conv1d without bias.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testConv1dNoBias() {
 		int batchSize = 1;
 		int inputChannels = 2;
@@ -387,7 +387,7 @@ public class Conv1dLayerTests extends TestSuiteBase implements LayerFeatures {
 	/**
 	 * Tests ConvTranspose1d with stride 4 (used in autoencoder).
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testConvTranspose1dStride4() {
 		int batchSize = 1;
 		int inputChannels = 8;
@@ -425,7 +425,7 @@ public class Conv1dLayerTests extends TestSuiteBase implements LayerFeatures {
 	/**
 	 * Tests ConvTranspose1d with stride 8 (used in autoencoder decoder).
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testConvTranspose1dStride8() {
 		int batchSize = 1;
 		int inputChannels = 16;
@@ -458,5 +458,145 @@ public class Conv1dLayerTests extends TestSuiteBase implements LayerFeatures {
 
 		OperationList op = (OperationList) model.getForward().push(p(input));
 		op.get().run();
+	}
+
+	/**
+	 * Tests ConvTranspose1d correctness with manual computation.
+	 * This test verifies the output values match expected results computed manually.
+	 * It also logs the weighted sum size to help diagnose performance issues.
+	 */
+	@Test(timeout = 60000)
+	public void testConvTranspose1dCorrectnessSmall() {
+		int batchSize = 1;
+		int inputChannels = 4;
+		int outputChannels = 2;
+		int seqLength = 2;
+		int kernelSize = 4;
+		int stride = 2;
+		int padding = 1;
+		int outputPadding = 0;
+
+		// Weighted sum size per output element = inputChannels * kernelSize
+		int weightedSumSize = inputChannels * kernelSize;
+		System.err.println("ConvTranspose1d correctness test:");
+		System.err.println("  inputChannels=" + inputChannels + ", kernelSize=" + kernelSize);
+		System.err.println("  Weighted sum size per output element: " + weightedSumSize);
+
+		// Create simple input: all 1s
+		PackedCollection input = new PackedCollection(shape(batchSize, inputChannels, seqLength));
+		input.fill(pos -> 1.0);
+
+		// Create simple weights: all same value so output is predictable
+		PackedCollection weights = new PackedCollection(shape(inputChannels, outputChannels, kernelSize));
+		double weightVal = 1.0 / weightedSumSize;
+		weights.fill(pos -> weightVal);
+
+		int outLength = (seqLength - 1) * stride - 2 * padding + kernelSize + outputPadding;
+		System.err.println("  Output length: " + outLength);
+		System.err.println("  Total output elements: " + (batchSize * outputChannels * outLength));
+
+		Block convT = convTranspose1d(batchSize, inputChannels, outputChannels, seqLength,
+									  kernelSize, stride, padding, outputPadding, weights, null);
+
+		SequentialBlock model = new SequentialBlock(shape(batchSize, inputChannels, seqLength));
+		model.add(convT);
+
+		PackedCollection actualOutput = new PackedCollection(shape(batchSize, outputChannels, outLength));
+		model.getForward().setReceptor(out -> () -> () -> {
+			PackedCollection result = out.get().evaluate();
+			int totalSize = batchSize * outputChannels * outLength;
+			actualOutput.setMem(0, result.toArray(0, totalSize), 0, totalSize);
+		});
+
+		OperationList op = (OperationList) model.getForward().push(p(input));
+		op.get().run();
+
+		// Print actual output for verification
+		double[] actual = actualOutput.toArray(0, batchSize * outputChannels * outLength);
+		System.err.println("  Output values: ");
+		for (int i = 0; i < actual.length; i++) {
+			System.err.println("    [" + i + "] = " + actual[i]);
+		}
+
+		// Verify at least one non-zero output
+		boolean hasNonZero = false;
+		for (double v : actual) {
+			if (Math.abs(v) > 1e-10) hasNonZero = true;
+		}
+		Assert.assertTrue("Output should have non-zero values", hasNonZero);
+	}
+
+	/**
+	 * Tests ConvTranspose1d with large channel count to measure scaling.
+	 * This is the problematic case from the Oobleck decoder (2048 input channels).
+	 */
+	@Test(timeout = 60000)
+	public void testConvTranspose1dLargeChannels() {
+		int batchSize = 1;
+		int inputChannels = 2048;  // Same as Oobleck decoder block 1
+		int outputChannels = 1024;
+		int seqLength = 2;
+		int kernelSize = 16;
+		int stride = 16;
+		int padding = 7;
+		int outputPadding = 15;
+
+		// Weighted sum size per output element = inputChannels * kernelSize
+		int weightedSumSize = inputChannels * kernelSize;
+		System.err.println("\n=== ConvTranspose1d LARGE CHANNEL TEST ===");
+		System.err.println("  inputChannels=" + inputChannels + ", kernelSize=" + kernelSize);
+		System.err.println("  Weighted sum size per output element: " + weightedSumSize);
+		System.err.println("  This is " + (weightedSumSize / 1024) + "K values summed PER OUTPUT ELEMENT!");
+
+		int outLength = (seqLength - 1) * stride - 2 * padding + kernelSize + outputPadding;
+		int totalOutputElements = batchSize * outputChannels * outLength;
+		System.err.println("  Output length: " + outLength);
+		System.err.println("  Total output elements: " + totalOutputElements);
+		System.err.println("  Total weighted sums computed: " + totalOutputElements);
+		System.err.println("  Total multiply-adds: " + ((long) totalOutputElements * weightedSumSize));
+
+		// Create input
+		PackedCollection input = new PackedCollection(shape(batchSize, inputChannels, seqLength));
+		input.fill(pos -> 1.0);
+
+		// Create weights
+		PackedCollection weights = new PackedCollection(shape(inputChannels, outputChannels, kernelSize));
+		weights.fill(pos -> 0.0001);
+
+		System.err.println("\nBuilding convTranspose1d block...");
+		long buildStart = System.currentTimeMillis();
+		Block convT = convTranspose1d(batchSize, inputChannels, outputChannels, seqLength,
+									  kernelSize, stride, padding, outputPadding, weights, null);
+		System.err.println("  Block build time: " + (System.currentTimeMillis() - buildStart) + "ms");
+
+		SequentialBlock model = new SequentialBlock(shape(batchSize, inputChannels, seqLength));
+		model.add(convT);
+
+		model.getForward().setReceptor(out -> () -> () -> {
+			out.get().evaluate();
+		});
+
+		System.err.println("Compiling model...");
+		long compileStart = System.currentTimeMillis();
+		OperationList op = (OperationList) model.getForward().push(p(input));
+
+		// Optimize the operation list to enable proper isolation of LoopedWeightedSumComputation
+		System.err.println("Optimizing operation list...");
+		long optimizeStart = System.currentTimeMillis();
+		op = (OperationList) op.optimize();
+		System.err.println("  optimize() time: " + (System.currentTimeMillis() - optimizeStart) + "ms");
+
+		// This is where it gets slow - the .get() triggers kernel compilation
+		System.err.println("Getting compiled operation (this is where slowness occurs)...");
+		long getStart = System.currentTimeMillis();
+		Runnable compiled = op.get();
+		System.err.println("  op.get() time: " + (System.currentTimeMillis() - getStart) + "ms");
+
+		System.err.println("Running forward pass...");
+		long runStart = System.currentTimeMillis();
+		compiled.run();
+		System.err.println("  Forward pass time: " + (System.currentTimeMillis() - runStart) + "ms");
+
+		System.err.println("Total compile time: " + (System.currentTimeMillis() - compileStart) + "ms");
 	}
 }

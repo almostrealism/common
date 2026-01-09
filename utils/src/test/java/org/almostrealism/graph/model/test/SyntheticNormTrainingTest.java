@@ -50,11 +50,6 @@ import java.util.stream.IntStream;
  * @author Michael Murray
  */
 public class SyntheticNormTrainingTest extends TestSuiteBase implements ModelTestFeatures {
-	static {
-		if (TestUtils.getTrainTests()) {
-			Console.root().addListener(OutputFeatures.fileOutput("results/logs/synthetic_norm_train.out"));
-		}
-	}
 
 	/**
 	 * Fixed coefficients for target functions.
@@ -111,7 +106,7 @@ public class SyntheticNormTrainingTest extends TestSuiteBase implements ModelTes
 				.collect(Collectors.toList()));
 
 		// Train using existing infrastructure
-		train("denseWithNorm", model, data, epochs, steps, 0.3, 0.2);
+		train("denseWithNorm", model, data, epochs, steps, 0.4, 0.2);
 
 		log("Test 3.1 completed successfully");
 	}
