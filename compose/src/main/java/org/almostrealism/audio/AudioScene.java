@@ -84,6 +84,95 @@ import java.util.function.UnaryOperator;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
+/**
+ * Central orchestrator for audio scene composition, arrangement, and generation.
+ *
+ * <p>{@code AudioScene} is the primary entry point for constructing and rendering
+ * complex audio compositions in the Almost Realism framework. It coordinates multiple
+ * subsystems including pattern management, effects processing, automation, and
+ * time synchronization.</p>
+ *
+ * <h2>Architecture Overview</h2>
+ *
+ * <p>An AudioScene manages several interconnected managers:</p>
+ * <ul>
+ *   <li>{@link PatternSystemManager} - Musical pattern organization and rendering</li>
+ *   <li>{@link MixdownManager} - Effects routing, delays, and reverb</li>
+ *   <li>{@link AutomationManager} - Parameter automation over time</li>
+ *   <li>{@link GlobalTimeManager} - Playback position and reset points</li>
+ *   <li>{@link SceneSectionManager} - Musical section structure</li>
+ *   <li>{@link EfxManager} - Per-channel effects</li>
+ *   <li>{@link RiseManager} - Rise/swell effect processing</li>
+ * </ul>
+ *
+ * <h2>Execution Model</h2>
+ *
+ * <p>AudioScene follows a two-phase execution model:</p>
+ *
+ * <h3>Setup Phase</h3>
+ * <p>Runs once before audio processing begins. Currently includes:</p>
+ * <ul>
+ *   <li>Pattern rendering via {@link PatternSystemManager#sum}</li>
+ *   <li>Buffer allocation for pattern destinations</li>
+ *   <li>Automation initialization</li>
+ *   <li>Effects chain compilation</li>
+ * </ul>
+ *
+ * <h3>Tick Phase</h3>
+ * <p>Runs repeatedly for each audio buffer:</p>
+ * <ul>
+ *   <li>Effects processing via {@link CellList}</li>
+ *   <li>Output writing</li>
+ *   <li>Time advancement</li>
+ * </ul>
+ *
+ * <h2>Usage Example</h2>
+ * <pre>{@code
+ * // Create scene at 120 BPM, 44100 Hz sample rate
+ * AudioScene<?> scene = new AudioScene<>(120.0, 6, 3, 44100);
+ *
+ * // Configure the scene
+ * scene.loadSettings(new File("scene.json"));
+ * scene.loadPatterns("patterns.json");
+ * scene.setLibraryRoot(new FileWaveDataProviderNode(new File("samples/")));
+ *
+ * // Get cells for output
+ * Cells cells = scene.getCells(output);
+ *
+ * // Execute via TemporalRunner
+ * TemporalCellular runner = scene.runner(output);
+ * runner.setup().get().run();  // Setup phase
+ * runner.tick().get().run();   // Tick phase (repeat for each buffer)
+ * }</pre>
+ *
+ * <h2>Real-Time Considerations</h2>
+ *
+ * <p><strong>Current Limitation:</strong> The entire pattern arrangement is rendered
+ * during the setup phase, which blocks real-time streaming. See
+ * {@code REALTIME_AUDIO_SCENE.md} for the proposed solution to enable true
+ * real-time audio generation.</p>
+ *
+ * <h2>Pattern Rendering Flow</h2>
+ *
+ * <p>The key method for pattern rendering is {@link #getPatternSetup}, which calls
+ * {@link PatternSystemManager#sum} to render all patterns for a channel. This
+ * operation populates pre-allocated destination buffers with the full arrangement.</p>
+ *
+ * <h2>Genetic Algorithm Integration</h2>
+ *
+ * <p>AudioScene integrates with the heredity module for evolutionary optimization.
+ * The {@link #genome} field contains chromosomes for various parameters including
+ * patterns, automation, effects, and section structure.</p>
+ *
+ * @param <T> The type of visual scene element, typically extending {@link ShadableSurface}
+ *
+ * @see PatternSystemManager
+ * @see MixdownManager
+ * @see CellList
+ * @see TemporalRunner
+ *
+ * @author Michael Murray
+ */
 @ModelEntity
 public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable, CellFeatures {
 	public static final Console console = CellFeatures.console.child();
@@ -537,6 +626,26 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 		return mixdown.cells(main, wet, riser.getRise(totalSamples), output, audioChannel, i -> channelIndex[i]);
 	}
 
+	/**
+	 * Creates a CellList for a single pattern channel with all patterns rendered.
+	 *
+	 * <p>This method is the core of the pattern rendering pipeline. It:</p>
+	 * <ol>
+	 *   <li>Creates a pattern setup operation via {@link #getPatternSetup}</li>
+	 *   <li>Renders all pattern elements to the destination buffer</li>
+	 *   <li>Processes channel sections for activity control</li>
+	 *   <li>Applies effects via {@link EfxManager}</li>
+	 * </ol>
+	 *
+	 * <p><strong>Current Limitation:</strong> The pattern rendering happens entirely
+	 * during setup, not incrementally during tick. This blocks real-time audio
+	 * streaming. See {@code REALTIME_AUDIO_SCENE.md} for the proposed solution.</p>
+	 *
+	 * @param channel The channel information (index, voicing, stereo channel)
+	 * @param frames Total number of frames to render
+	 * @param setup The setup OperationList to add pattern setup to
+	 * @return CellList with effects applied, ready for mixdown
+	 */
 	public CellList getPatternChannel(ChannelInfo channel, int frames, OperationList setup) {
 		OperationList patternSetup = new OperationList("PatternChannel Setup");
 		patternSetup.add(() -> () -> patterns.setTuning(tuning));
@@ -573,6 +682,30 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 		return efx.apply(channel, result, getTotalDuration(), setup);
 	}
 
+	/**
+	 * Creates the pattern setup operation for a channel.
+	 *
+	 * <p>This method creates an operation that renders all patterns for the specified
+	 * channel to the pattern destination buffer. The operation:</p>
+	 * <ol>
+	 *   <li>Refreshes the pattern destination buffer (allocating if needed, clearing if exists)</li>
+	 *   <li>Creates an AudioSceneContext with channel-specific configuration</li>
+	 *   <li>Calls {@link PatternSystemManager#sum} to render all patterns</li>
+	 * </ol>
+	 *
+	 * <p>The destination buffer is sized to hold the full arrangement duration,
+	 * limited by {@code HealthComputationAdapter.standardDurationFrames}.</p>
+	 *
+	 * <p><strong>Real-Time Limitation:</strong> This method renders the entire
+	 * arrangement at once. For real-time rendering, the sum operation would need
+	 * to accept frame range parameters and be executed during tick phase instead
+	 * of setup phase.</p>
+	 *
+	 * @param channel The channel to render patterns for
+	 * @return Operation that renders all patterns for the channel
+	 *
+	 * @see PatternSystemManager#sum(java.util.function.Supplier, ChannelInfo)
+	 */
 	public Supplier<Runnable> getPatternSetup(ChannelInfo channel) {
 		Supplier<AudioSceneContext> ctx = () -> {
 			refreshPatternDestination(channel, false);

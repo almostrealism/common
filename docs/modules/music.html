@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AR-Music Module - Almost Realism Framework</title>
+    <link rel="stylesheet" href="../css/style.css">
+    <style>
+        .key-concepts { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin: 20px 0; }
+        .concept-card { background: #f8f9fa; border-left: 4px solid #1565c0; padding: 15px; border-radius: 4px; }
+        .concept-card h4 { margin-top: 0; color: #1565c0; }
+        .package-table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+        .package-table th, .package-table td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
+        .package-table th { background-color: #e3f2fd; color: #1565c0; font-weight: bold; }
+        .package-table tr:hover { background-color: #f5f5f5; }
+        .class-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 15px; margin: 20px 0; }
+        .class-item { background: #fff; border: 1px solid #ddd; padding: 12px; border-radius: 4px; }
+        .class-item h4 { margin: 0 0 8px 0; color: #1565c0; font-size: 1.1em; }
+        .class-item p { margin: 0; font-size: 0.9em; color: #666; }
+        .class-item code { background: #e3f2fd; padding: 1px 4px; border-radius: 2px; font-size: 0.85em; }
+        .code-example { background: #f5f5f5; border-left: 4px solid #1565c0; padding: 15px; margin: 15px 0; border-radius: 4px; overflow-x: auto; }
+        .code-example pre { margin: 0; white-space: pre-wrap; }
+        .highlight { background-color: #e3f2fd; padding: 2px 4px; }
+        .warning { background-color: #fff3e0; border-left: 4px solid #ef6c00; padding: 12px; margin: 15px 0; }
+        .tip { background-color: #e8f5e9; border-left: 4px solid #2e7d32; padding: 12px; margin: 15px 0; }
+        .architecture-diagram { background: #fafafa; padding: 20px; border-radius: 8px; margin: 20px 0; font-family: monospace; white-space: pre; overflow-x: auto; }
+        .dep-arrow { color: #1565c0; font-weight: bold; }
+        .limitation { background-color: #ffebee; border-left: 4px solid #c62828; padding: 12px; margin: 15px 0; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>AR-Music Module</h1>
+            <p class="tagline">Pattern-Based Music Composition & Arrangement</p>
+            <nav>
+                <a href="../index.html">Home</a>
+                <a href="#overview">Overview</a>
+                <a href="#architecture">Architecture</a>
+                <a href="#patterns">Pattern System</a>
+                <a href="#rendering">Rendering</a>
+                <a href="#packages">Packages</a>
+            </nav>
+        </header>
+
+        <main>
+            <section id="overview">
+                <h2>Overview</h2>
+                <p>The <strong>ar-music</strong> module provides pattern-based music composition capabilities. It handles the creation, organization, and rendering of musical patterns from audio samples and synthesized notes.</p>
+
+                <div class="key-concepts">
+                    <div class="concept-card">
+                        <h4>PatternSystemManager</h4>
+                        <p>Top-level manager coordinating multiple patterns across channels. Handles note audio choices and volume normalization.</p>
+                    </div>
+                    <div class="concept-card">
+                        <h4>PatternLayerManager</h4>
+                        <p>Manages individual patterns with hierarchical layer structures. Supports up to 32 layers with decreasing granularity.</p>
+                    </div>
+                    <div class="concept-card">
+                        <h4>PatternElement</h4>
+                        <p>Single musical event with position, duration, notes, and automation parameters.</p>
+                    </div>
+                    <div class="concept-card">
+                        <h4>NoteAudioChoice</h4>
+                        <p>Configuration for audio samples that can be used in patterns with scale/granularity constraints.</p>
+                    </div>
+                </div>
+            </section>
+
+            <section id="architecture">
+                <h2>Module Architecture</h2>
+
+                <h3>Pattern Hierarchy</h3>
+                <div class="architecture-diagram">
+PatternSystemManager
+    |
+    +-- NoteAudioChoice[] (available audio samples)
+    |       |
+    |       +-- NoteAudioSource[] (individual sample files)
+    |
+    +-- PatternLayerManager[] (one per pattern slot)
+        |
+        +-- PatternLayer (root layer, scale = 1.0)
+            |
+            +-- PatternElement[] (musical events)
+            |       |
+            |       +-- PatternNote (audio reference)
+            |       +-- position, duration, repeat
+            |       +-- automationParameters
+            |
+            +-- PatternLayer (child, scale = 0.5)
+                |
+                +-- PatternElement[]
+                    |
+                    +-- PatternLayer (scale = 0.25)
+                        ...
+                </div>
+
+                <h3>Dependency Graph</h3>
+                <div class="architecture-diagram">
+                            +---------+
+                            |ar-music |
+                            +---------+
+                                 |
+         +-----------+-----------+-----------+
+         |           |           |           |
+         v           v           v           v
+    +--------+  +--------+  +--------+  +----------+
+    |ar-audio|  |ar-time |  |ar-heredity |collect |
+    +--------+  +--------+  +----------+ +--------+
+         |           |           |           |
+         v           v           v           v
+    +--------+  +--------+  +----------+ +--------+
+    | Cell   |  |Temporal|  |Chromosome| |Packed  |
+    |Features|  |Frequency|  |Gene     | |Collection|
+    +--------+  +--------+  +----------+ +--------+
+                </div>
+            </section>
+
+            <section id="patterns">
+                <h2>Pattern System</h2>
+
+                <h3>Layer Hierarchy</h3>
+                <p>Patterns are built as a tree of layers, each operating at half the granularity of the previous:</p>
+
+                <table class="package-table">
+                    <tr>
+                        <th>Layer</th>
+                        <th>Scale</th>
+                        <th>Granularity</th>
+                        <th>Example (4/4 time)</th>
+                    </tr>
+                    <tr>
+                        <td>0 (Root)</td>
+                        <td>1.0</td>
+                        <td>Whole measures</td>
+                        <td>One event per bar</td>
+                    </tr>
+                    <tr>
+                        <td>1</td>
+                        <td>0.5</td>
+                        <td>Half measures</td>
+                        <td>Two events per bar</td>
+                    </tr>
+                    <tr>
+                        <td>2</td>
+                        <td>0.25</td>
+                        <td>Quarter measures</td>
+                        <td>Four events per bar</td>
+                    </tr>
+                    <tr>
+                        <td>3</td>
+                        <td>0.125</td>
+                        <td>Eighth measures</td>
+                        <td>Eight events per bar</td>
+                    </tr>
+                    <tr>
+                        <td>4</td>
+                        <td>0.0625</td>
+                        <td>Sixteenth measures</td>
+                        <td>Sixteen events per bar</td>
+                    </tr>
+                </table>
+
+                <h3>Melodic vs. Percussive Modes</h3>
+                <div class="class-list">
+                    <div class="class-item">
+                        <h4>Percussive Mode</h4>
+                        <p>Uses percussive note choices (drums, hits). No scale traversal. Positions determined by rhythm only.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>Melodic Mode</h4>
+                        <p>Uses melodic note choices with scale traversal. Notes are pitched according to chord progression.</p>
+                    </div>
+                </div>
+
+                <h3>Scale Traversal Strategies</h3>
+                <div class="class-list">
+                    <div class="class-item">
+                        <h4>CHORD</h4>
+                        <p>Stays on chord tones. Notes are selected from the current chord in the progression.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>SEQUENCE</h4>
+                        <p>Follows sequential scale patterns. Notes move stepwise through the scale.</p>
+                    </div>
+                </div>
+            </section>
+
+            <section id="rendering">
+                <h2>Pattern Rendering</h2>
+
+                <h3>Rendering Flow</h3>
+                <div class="architecture-diagram">
+PatternSystemManager.sum(context, channel)
+    |
+    +-- updateDestinations()
+    |       +-- Set output buffer from context
+    |
+    +-- For each PatternLayerManager for channel:
+    |       |
+    |       +-- PatternLayerManager.sum(context, voicing, audioChannel)
+    |           |
+    |           +-- getAllElementsByChoice(0.0, duration)
+    |           |       +-- Get all pattern elements organized by NoteAudioChoice
+    |           |
+    |           +-- For each pattern repetition (0 to totalMeasures/duration):
+    |               |
+    |               +-- Check section activity
+    |               +-- If active:
+    |                   +-- render(ctx, audioContext, elements, melodic, offset)
+    |                       |
+    |                       +-- For each element:
+    |                           +-- getNoteDestinations()
+    |                           +-- Sum audio to destination buffer
+    |
+    +-- Auto-volume normalization (if enabled)
+        +-- Compute max amplitude
+        +-- Adjust volume to target level (0.8)
+                </div>
+
+                <h3>PatternFeatures.render()</h3>
+                <p>The core rendering method that sums audio to the destination:</p>
+
+                <div class="code-example">
+<pre>default void render(AudioSceneContext sceneContext, NoteAudioContext audioContext,
+                    List&lt;PatternElement&gt; elements, boolean melodic, double offset) {
+    PackedCollection destination = sceneContext.getDestination();
+
+    elements.stream()
+        .map(e -> e.getNoteDestinations(melodic, offset, sceneContext, audioContext))
+        .flatMap(List::stream)
+        .forEach(note -> {
+            int frames = Math.min(audio.getShape().getCount(),
+                    destination.getShape().length(0) - note.getOffset());
+
+            // Sum audio to destination
+            AudioProcessingUtils.getSum().sum(
+                destination.range(shape(frames), note.getOffset()),
+                audio.range(shape(frames)));
+        });
+}</pre>
+                </div>
+
+                <div class="limitation">
+                    <strong>Real-Time Limitation:</strong> The <code>sum()</code> methods process the entire arrangement at once. For real-time streaming, frame range parameters would need to be added. See <code>REALTIME_PATTERNS.md</code> for the proposed solution.
+                </div>
+            </section>
+
+            <section id="packages">
+                <h2>Package Reference</h2>
+
+                <h3>org.almostrealism.audio.pattern</h3>
+                <p>Core pattern system classes.</p>
+                <div class="class-list">
+                    <div class="class-item">
+                        <h4>PatternSystemManager</h4>
+                        <p>Top-level manager coordinating all patterns. Implements <code>NoteSourceProvider</code>. Manages <code>NoteAudioChoice</code> list and <code>PatternLayerManager</code> instances.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>PatternLayerManager</h4>
+                        <p>Manages single pattern with up to 32 layers. Implements <code>PatternFeatures</code>. Handles melodic/percussive mode and scale traversal.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>PatternLayer</h4>
+                        <p>Single layer in the hierarchy. Contains list of <code>PatternElement</code>s and optional child layer.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>PatternElement</h4>
+                        <p>Individual musical event. Maps voicings (MAIN, WET) to <code>PatternNote</code>. Stores position, duration, repeat settings.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>PatternElementFactory</h4>
+                        <p>Factory for creating pattern elements with configurable envelopes, chord selection, and duration strategies.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>PatternFeatures</h4>
+                        <p>Interface providing the <code>render()</code> method for audio summation. Extended by <code>PatternLayerManager</code>.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>ChordProgressionManager</h4>
+                        <p>Manages chord changes throughout the arrangement. Genetic algorithm integration for progression evolution.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>ScaleTraversalStrategy</h4>
+                        <p>Enum defining how melodic patterns navigate scales: <code>CHORD</code> or <code>SEQUENCE</code>.</p>
+                    </div>
+                </div>
+
+                <h3>org.almostrealism.audio.notes</h3>
+                <p>Note audio management.</p>
+                <div class="class-list">
+                    <div class="class-item">
+                        <h4>PatternNote</h4>
+                        <p>Adapter for multi-layer note audio. Supports layer aggregation and keyboard tuning.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>PatternNoteAudio</h4>
+                        <p>Core interface for note audio. Defines sample rate, duration, and audio generation methods.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>NoteAudioChoice</h4>
+                        <p>Configuration for audio samples. Contains sources, scale constraints, seed patterns, and channel restrictions.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>NoteAudioContext</h4>
+                        <p>Context for note rendering with voicing, channel, and position information.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>TreeNoteSource</h4>
+                        <p>Hierarchical note source from file tree. Implements lazy loading with path resolution.</p>
+                    </div>
+                </div>
+
+                <h3>org.almostrealism.audio.arrange</h3>
+                <p>Arrangement context and sections.</p>
+                <div class="class-list">
+                    <div class="class-item">
+                        <h4>AudioSceneContext</h4>
+                        <p>Context for pattern rendering. Contains measures, frames, destination buffer, sections, and automation levels.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>ChannelSection</h4>
+                        <p>Section of arrangement with position and length. Implements <code>AudioProcessor</code> for section-specific processing.</p>
+                    </div>
+                </div>
+
+                <h3>org.almostrealism.audio.filter</h3>
+                <p>Envelope and filter processing.</p>
+                <div class="class-list">
+                    <div class="class-item">
+                        <h4>ParameterizedVolumeEnvelope</h4>
+                        <p>Volume envelope with parameterized attack, decay, sustain, release.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>ParameterizedFilterEnvelope</h4>
+                        <p>Filter envelope for frequency sweeps with parameterized cutoff modulation.</p>
+                    </div>
+                </div>
+
+                <h3>org.almostrealism.audio.data</h3>
+                <p>Channel and parameter data.</p>
+                <div class="class-list">
+                    <div class="class-item">
+                        <h4>ChannelInfo</h4>
+                        <p>Channel identification with index, voicing (MAIN/WET), and stereo channel (LEFT/RIGHT).</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>ParameterSet</h4>
+                        <p>Collection of parameters for pattern generation. Extracted from genetic algorithm genes.</p>
+                    </div>
+                </div>
+            </section>
+
+            <section id="usage">
+                <h2>Usage Examples</h2>
+
+                <h3>Creating Patterns</h3>
+                <div class="code-example">
+<pre>// Create system manager with chromosomes
+PatternSystemManager patterns = new PatternSystemManager(choices, chromosomes);
+patterns.init();
+
+// Add patterns for each channel
+PatternLayerManager kickPattern = patterns.addPattern(0, 1.0, false);  // 1 measure, percussive
+PatternLayerManager bassPattern = patterns.addPattern(2, 4.0, true);   // 4 measures, melodic
+
+// Configure patterns
+kickPattern.setLayerCount(4);
+bassPattern.setLayerCount(6);
+bassPattern.setScaleTraversalStrategy(ScaleTraversalStrategy.SEQUENCE);
+bassPattern.setScaleTraversalDepth(5);</pre>
+                </div>
+
+                <h3>Rendering Patterns</h3>
+                <div class="code-example">
+<pre>// Create context supplier
+Supplier&lt;AudioSceneContext&gt; contextSupplier = () -> {
+    AudioSceneContext ctx = new AudioSceneContext();
+    ctx.setMeasures(totalMeasures);
+    ctx.setFrames(totalSamples);
+    ctx.setDestination(destinationBuffer);
+    return ctx;
+};
+
+// Render patterns for channel
+Supplier&lt;Runnable&gt; render = patterns.sum(contextSupplier, channel);
+render.get().run();</pre>
+                </div>
+
+                <h3>Accessing Pattern Elements</h3>
+                <div class="code-example">
+<pre>// Get elements in a measure range
+Map&lt;NoteAudioChoice, List&lt;PatternElement&gt;&gt; elements =
+    patterns.getPatternElements(0.0, 4.0);
+
+// Get all elements from a specific pattern
+List&lt;PatternElement&gt; bassElements =
+    bassPattern.getAllElements(0.0, 4.0);
+
+// Iterate through elements
+for (PatternElement elem : bassElements) {
+    System.out.println("Position: " + elem.getPosition());
+    System.out.println("Duration: " + elem.getDuration());
+    System.out.println("Repeat: " + elem.getRepeat());
+}</pre>
+                </div>
+            </section>
+
+            <section id="configuration">
+                <h2>Configuration</h2>
+
+                <h3>PatternLayerManager Settings</h3>
+                <div class="code-example">
+<pre>PatternLayerManager.Settings settings = new PatternLayerManager.Settings();
+settings.setChannel(2);                    // Bass channel
+settings.setDuration(4.0);                 // 4 measures
+settings.setMelodic(true);                 // Melodic mode
+settings.setScaleTraversalStrategy(ScaleTraversalStrategy.SEQUENCE);
+settings.setScaleTraversalDepth(5);        // Scale depth
+settings.setMinLayerScale(0.0625);         // Minimum granularity (1/16)
+settings.setLayerCount(6);                 // Number of layers</pre>
+                </div>
+
+                <h3>Static Flags</h3>
+                <div class="code-example">
+<pre>PatternSystemManager.enableAutoVolume = true;  // Auto-normalize
+PatternSystemManager.enableVerbose = false;    // Debug logging
+PatternLayerManager.enableWarnings = true;     // Warning messages
+PatternLayerManager.MAX_LAYERS = 32;           // Maximum layer count</pre>
+                </div>
+            </section>
+
+            <section id="testing">
+                <h2>Testing</h2>
+
+                <h3>Running Tests</h3>
+                <div class="code-example">
+<pre># Using MCP test runner
+mcp__ar-test-runner__start_test_run
+  module: "music"
+  profile: "pipeline"</pre>
+                </div>
+            </section>
+
+        </main>
+
+        <footer>
+            <p>&copy; Almost Realism Framework. <a href="../index.html">Back to Documentation Home</a></p>
+        </footer>
+    </div>
+</body>
+</html>
