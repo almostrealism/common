@@ -302,9 +302,13 @@ public class KVCacheDiagnosticTest implements AttentionFeatures, LayerFeatures, 
 		// For simplicity, sum entire cache (zeros for unused positions)
 		model.add(layer("readSum", shape(dim), shape(dim), input -> {
 			// Sum all entries in cache
-			CollectionProducer cacheSum = c(cache).traverse(0).sum();
-			// Return as dim-sized output
-			return cacheSum.reshape(shape(1)).repeat(dim);
+			// IMPORTANT: Use cp(cache) not c(cache)!
+			// - c(cache) captures cache VALUE at compile time (static/fixed)
+			// - cp(cache) = c(p(cache)) creates a REFERENCE that reads at runtime (dynamic)
+			CollectionProducer cacheSum = cp(cache).traverse(0).sum();
+			// Return as dim-sized output: reshape to (1) then repeat to (dim)
+			// The repeat operation creates shape(repetitions), not shape(repetitions, 1)
+			return cacheSum.reshape(shape(1)).repeat(dim).reshape(shape(dim));
 		}));
 
 		log("Building and compiling model (inference-only mode)...");
@@ -345,6 +349,282 @@ public class KVCacheDiagnosticTest implements AttentionFeatures, LayerFeatures, 
 		log("\n--- Analysis ---");
 		log("If cache read sees ONLY current step: sums would be small (not cumulative)");
 		log("If cache read sees ALL steps: sums would be cumulative (correct behavior)");
+
+		log("\n=== Test Complete ===");
+	}
+
+	/**
+	 * Test: Compile a model that reads from a PRE-FILLED cache.
+	 * This isolates whether the issue is at compile time or runtime.
+	 */
+	@Test
+	public void testPreFilledCacheRead() throws Exception {
+		String logFile = "/workspace/project/common/ml/test_output/prefilled_cache_read.txt";
+		Console.root().addListener(OutputFeatures.fileOutput(logFile));
+
+		log("\n===================================================");
+		log("  Pre-Filled Cache Read Test");
+		log("===================================================\n");
+
+		int dim = 4;
+		PackedCollection cache = new PackedCollection(shape(dim));
+
+		// Fill cache BEFORE creating model
+		cache.setMem(0, 1.0);
+		cache.setMem(1, 2.0);
+		cache.setMem(2, 3.0);
+		cache.setMem(3, 4.0);
+		log("Cache filled with [1,2,3,4] before model creation");
+		log(String.format("Cache contents: [%.0f, %.0f, %.0f, %.0f]",
+				cache.toDouble(0), cache.toDouble(1), cache.toDouble(2), cache.toDouble(3)));
+
+		// Create model that reads cache and passes through input
+		Model model = new Model(shape(dim));
+		model.add(layer("readCache", shape(dim), shape(dim), input -> {
+			// Return cache sum repeated dim times + input (to force input dependency)
+			CollectionProducer cacheSum = cp(cache).sum();
+			CollectionProducer repeated = cacheSum.repeat(dim).reshape(shape(dim));
+			return add(repeated, input);  // input + [sum, sum, sum, sum]
+		}));
+
+		log("\nCompiling model...");
+		CompiledModel compiled = model.compile(false);
+
+		// Create test input
+		PackedCollection input = new PackedCollection(shape(dim));
+		input.setMem(0, 100.0);
+		input.setMem(1, 100.0);
+		input.setMem(2, 100.0);
+		input.setMem(3, 100.0);
+
+		log("Input: [100, 100, 100, 100]");
+		log("Expected output: [110, 110, 110, 110] (100 + sum(1,2,3,4)=10)");
+
+		PackedCollection output = compiled.forward(input);
+		log(String.format("Actual output: [%.0f, %.0f, %.0f, %.0f]",
+				output.toDouble(0), output.toDouble(1), output.toDouble(2), output.toDouble(3)));
+
+		boolean success = Math.abs(output.toDouble(0) - 110.0) < 0.01;
+		log(success ? "[PASS] Cache read correctly in compiled model" : "[FAIL] Cache not read correctly");
+
+		// Test 2: Modify cache and run again
+		log("\n--- Test 2: Modify cache after compilation ---");
+		cache.setMem(0, 10.0);  // Change sum from 10 to 19
+		log("Modified cache[0] to 10.0, new sum should be 19");
+		log("Expected output: [119, 119, 119, 119]");
+
+		output = compiled.forward(input);
+		log(String.format("Actual output: [%.0f, %.0f, %.0f, %.0f]",
+				output.toDouble(0), output.toDouble(1), output.toDouble(2), output.toDouble(3)));
+
+		success = Math.abs(output.toDouble(0) - 119.0) < 0.01;
+		log(success ? "[PASS] Dynamic cache update detected" : "[FAIL] Cache update not detected");
+
+		// Test 3: Layer that IGNORES input (like H3)
+		log("\n--- Test 3: Layer that ignores input ---");
+		cache.setMem(0, 1.0);
+		cache.setMem(1, 2.0);
+		cache.setMem(2, 3.0);
+		cache.setMem(3, 4.0);
+		log("Reset cache to [1,2,3,4]");
+
+		Model model2 = new Model(shape(dim));
+		model2.add(layer("readCacheOnly", shape(dim), shape(dim), ignoredInput -> {
+			// IGNORES input, returns only cache sum repeated
+			CollectionProducer cacheSum = cp(cache).sum();
+			return cacheSum.repeat(dim).reshape(shape(dim));
+		}));
+
+		log("Compiling model2 (ignores input)...");
+		CompiledModel compiled2 = model2.compile(false);
+
+		log("Expected output: [10, 10, 10, 10] (sum=10 repeated)");
+		output = compiled2.forward(input);
+		log(String.format("Actual output: [%.0f, %.0f, %.0f, %.0f]",
+				output.toDouble(0), output.toDouble(1), output.toDouble(2), output.toDouble(3)));
+
+		success = Math.abs(output.toDouble(0) - 10.0) < 0.01;
+		log(success ? "[PASS] Cache read works even when input ignored" : "[FAIL] Cache not read when input ignored");
+
+		// Test 4: Modify cache after compilation (input-ignoring model)
+		log("\n--- Test 4: Modify cache (input-ignoring model) ---");
+		cache.setMem(0, 100.0);
+		log("Modified cache[0] to 100.0, new sum should be 109");
+		log("Expected output: [109, 109, 109, 109]");
+
+		output = compiled2.forward(input);
+		log(String.format("Actual output: [%.0f, %.0f, %.0f, %.0f]",
+				output.toDouble(0), output.toDouble(1), output.toDouble(2), output.toDouble(3)));
+
+		success = Math.abs(output.toDouble(0) - 109.0) < 0.01;
+		log(success ? "[PASS] Dynamic update works in input-ignoring model" : "[FAIL] Dynamic update fails in input-ignoring model");
+
+		// Test 5: Two-layer model like H3 (write + read)
+		log("\n--- Test 5: Two-layer model (write then read) ---");
+		PackedCollection cache2 = new PackedCollection(shape(dim));
+		cache2.clear();
+		PackedCollection position = new PackedCollection(1);
+		position.setMem(0, 0.0);
+		log("Created fresh cache (all zeros)");
+
+		Model model3 = new Model(shape(dim));
+
+		// Layer 1: pass through and write to cache
+		CellularLayer writeLayer = layer("write", shape(dim), shape(dim), x -> x);
+		model3.add(writeLayer);
+
+		// Log receptor state after add
+		log("After add(writeLayer): writeLayer.getForward().getReceptor() = " +
+			(writeLayer.getForward().getReceptor() == null ? "null" : writeLayer.getForward().getReceptor().getClass().getSimpleName()));
+
+		// Call andThen AFTER add to ensure receptor chaining works
+		writeLayer.andThen(into(cache2));  // No position, just write to start
+
+		// Log receptor state after andThen
+		log("After andThen(into): writeLayer.getForward().getReceptor() = " +
+			(writeLayer.getForward().getReceptor() == null ? "null" : writeLayer.getForward().getReceptor().getClass().getSimpleName()));
+
+		// Layer 2: read from cache and return sum
+		CellularLayer readLayer = layer("read", shape(dim), shape(dim), ignoredInput -> {
+			CollectionProducer cacheSum = cp(cache2).sum();
+			return cacheSum.repeat(dim).reshape(shape(dim));
+		});
+		model3.add(readLayer);
+
+		// Log receptor state after second add
+		log("After add(readLayer): writeLayer.getForward().getReceptor() = " +
+			(writeLayer.getForward().getReceptor() == null ? "null" : writeLayer.getForward().getReceptor().getClass().getSimpleName()));
+		log("After add(readLayer): readLayer.getForward().getReceptor() = " +
+			(readLayer.getForward().getReceptor() == null ? "null" : readLayer.getForward().getReceptor().getClass().getSimpleName()));
+
+		log("Compiling two-layer model...");
+		CompiledModel compiled3 = model3.compile(false);
+
+		input.setMem(0, 1.0);
+		input.setMem(1, 2.0);
+		input.setMem(2, 3.0);
+		input.setMem(3, 4.0);
+		log("Input: [1, 2, 3, 4]");
+		log("Expected: write layer writes [1,2,3,4] to cache, read layer sums to 10");
+		log("Expected output: [10, 10, 10, 10]");
+
+		output = compiled3.forward(input);
+		log(String.format("Actual output: [%.0f, %.0f, %.0f, %.0f]",
+				output.toDouble(0), output.toDouble(1), output.toDouble(2), output.toDouble(3)));
+		log(String.format("Cache after forward: [%.0f, %.0f, %.0f, %.0f]",
+				cache2.toDouble(0), cache2.toDouble(1), cache2.toDouble(2), cache2.toDouble(3)));
+
+		success = Math.abs(output.toDouble(0) - 10.0) < 0.01;
+		log(success ? "[PASS] Two-layer model works" : "[FAIL] Two-layer model fails (cache read returns wrong value)");
+
+		// Test 6: Single layer with andThen (no second layer)
+		log("\n--- Test 6: Single layer with andThen (no second layer) ---");
+		PackedCollection cache3 = new PackedCollection(shape(dim));
+		cache3.clear();
+		log("Created fresh cache3 (all zeros)");
+
+		Model model4 = new Model(shape(dim));
+		CellularLayer passLayer = layer("pass", shape(dim), shape(dim), x -> x);
+		model4.add(passLayer);
+		passLayer.andThen(into(cache3));
+
+		log("Compiling single-layer model...");
+		CompiledModel compiled4 = model4.compile(false);
+
+		input.setMem(0, 1.0);
+		input.setMem(1, 2.0);
+		input.setMem(2, 3.0);
+		input.setMem(3, 4.0);
+		log("Input: [1, 2, 3, 4]");
+		log("Expected: cache3 should have [1, 2, 3, 4] after forward");
+
+		output = compiled4.forward(input);
+		log(String.format("Cache3 after forward: [%.0f, %.0f, %.0f, %.0f]",
+				cache3.toDouble(0), cache3.toDouble(1), cache3.toDouble(2), cache3.toDouble(3)));
+
+		success = Math.abs(cache3.toDouble(0) - 1.0) < 0.01;
+		log(success ? "[PASS] Single layer andThen works" : "[FAIL] Single layer andThen fails");
+
+		log("\n=== Test Complete ===");
+	}
+
+	/**
+	 * Direct test of cp(cache).sum() without going through a model.
+	 * This isolates whether the issue is in cp() or in how models/layers use it.
+	 */
+	@Test
+	public void testDirectCacheRead() throws Exception {
+		String logFile = "/workspace/project/common/ml/test_output/direct_cache_read.txt";
+		Console.root().addListener(OutputFeatures.fileOutput(logFile));
+
+		log("\n===================================================");
+		log("  Direct Cache Read Test (cp vs c)");
+		log("===================================================\n");
+
+		int dim = 4;
+		PackedCollection cache = new PackedCollection(shape(dim));
+		cache.clear();
+
+		// Test 1: Read empty cache
+		log("Test 1: Reading empty cache");
+		CollectionProducer sumProducer = cp(cache).sum();
+		PackedCollection result = sumProducer.get().evaluate();
+		log(String.format("  Empty cache sum: %.2f (expected: 0.0)", result.toDouble(0)));
+
+		// Test 2: Fill cache and read again (same producer)
+		log("\nTest 2: Fill cache with [1,2,3,4] and read with SAME producer");
+		cache.setMem(0, 1.0);
+		cache.setMem(1, 2.0);
+		cache.setMem(2, 3.0);
+		cache.setMem(3, 4.0);
+		result = sumProducer.get().evaluate();
+		log(String.format("  Filled cache sum: %.2f (expected: 10.0)", result.toDouble(0)));
+
+		// Test 3: Create NEW producer after filling
+		log("\nTest 3: Create NEW producer after cache is filled");
+		CollectionProducer newSumProducer = cp(cache).sum();
+		result = newSumProducer.get().evaluate();
+		log(String.format("  New producer sum: %.2f (expected: 10.0)", result.toDouble(0)));
+
+		// Test 4: Try with c() instead of cp() for comparison
+		log("\nTest 4: Using c() instead of cp() (should capture value at creation time)");
+		cache.setMem(0, 100.0);  // Change first value
+		CollectionProducer cProducer = c(cache).sum();
+		result = cProducer.get().evaluate();
+		log(String.format("  c(cache).sum(): %.2f", result.toDouble(0)));
+		log("  If this is 10.0, c() captured old value. If 109.0, it read current value.");
+
+		// Test 5: Read actual cache contents directly
+		log("\nTest 5: Direct cache values (verification)");
+		log(String.format("  cache[0..3]: %.2f, %.2f, %.2f, %.2f",
+				cache.toDouble(0), cache.toDouble(1), cache.toDouble(2), cache.toDouble(3)));
+		double manualSum = cache.toDouble(0) + cache.toDouble(1) + cache.toDouble(2) + cache.toDouble(3);
+		log(String.format("  Manual sum: %.2f", manualSum));
+
+		// Test 6: Test compiled kernel evaluation
+		log("\nTest 6: Compiled kernel evaluation");
+		cache.setMem(0, 1.0);
+		cache.setMem(1, 2.0);
+		cache.setMem(2, 3.0);
+		cache.setMem(3, 4.0);
+		log(String.format("  Reset cache to [1,2,3,4]"));
+
+		// Create and compile a producer
+		CollectionProducer compiledProducer = cp(cache).sum();
+		io.almostrealism.relation.Evaluable<PackedCollection> evaluable = compiledProducer.get();
+		log(String.format("  Evaluable type: %s", evaluable.getClass().getSimpleName()));
+
+		// First evaluation
+		result = evaluable.evaluate();
+		log(String.format("  First evaluation: %.2f (expected: 10.0)", result.toDouble(0)));
+
+		// Modify cache
+		cache.setMem(0, 100.0);
+		log(String.format("  Modified cache[0] to 100.0"));
+
+		// Second evaluation with same evaluable
+		result = evaluable.evaluate();
+		log(String.format("  Second evaluation: %.2f (expected: 109.0 if dynamic, 10.0 if static)", result.toDouble(0)));
 
 		log("\n=== Test Complete ===");
 	}
@@ -813,6 +1093,250 @@ public class KVCacheDiagnosticTest implements AttentionFeatures, LayerFeatures, 
 		} else {
 			log("[FAILURE] CollectionReceptor fails via Cell.of().");
 		}
+
+		log("\n=== Test Complete ===");
+	}
+
+	/**
+	 * HYPOTHESIS 5: Split operation with branches does not route data correctly.
+	 *
+	 * Test: Create a simple split like qkvSplitOperation but with extensive logging
+	 * to understand exactly where data flows.
+	 */
+	@Test
+	public void testH5_SplitBranching() throws Exception {
+		String logFile = "/workspace/project/common/ml/test_output/h5_split_test.txt";
+		Console.root().addListener(OutputFeatures.fileOutput(logFile));
+
+		log("\n===================================================");
+		log("  H5: Split/Branch Data Flow Test");
+		log("===================================================\n");
+
+		int batchSize = 1;
+		int seqLen = 4;
+		int embedDim = 16;
+
+		// Create input with sequential values for easy verification
+		PackedCollection input = new PackedCollection(shape(batchSize, seqLen, embedDim * 3));
+		for (int b = 0; b < batchSize; b++) {
+			for (int s = 0; s < seqLen; s++) {
+				for (int d = 0; d < embedDim * 3; d++) {
+					int idx = b * seqLen * embedDim * 3 + s * embedDim * 3 + d;
+					input.setMem(idx, (double) idx);
+				}
+			}
+		}
+		log("Input shape: " + input.getShape());
+		log("Input[0,0,0..2]: " + input.toDouble(0) + ", " + input.toDouble(1) + ", " + input.toDouble(2));
+		log("Input[0,0,16..18]: " + input.toDouble(16) + ", " + input.toDouble(17) + ", " + input.toDouble(18));
+
+		// Create model
+		org.almostrealism.model.Model model = new org.almostrealism.model.Model(shape(batchSize, seqLen, 3 * embedDim));
+		org.almostrealism.model.SequentialBlock main = model.sequential();
+
+		log("\nModel created with shape: " + model.getInputShape());
+
+		// Reshape to (1, 4, 3, 16)
+		main.reshape(batchSize, seqLen, 3, embedDim);
+		log("After reshape: " + main.getOutputShape());
+
+		// Split into 3 parts
+		java.util.List<org.almostrealism.model.Block> qkv = main.split(shape(batchSize, seqLen, 1, embedDim), 0);
+		log("Split into " + qkv.size() + " parts");
+
+		// Get Q, K, V blocks
+		org.almostrealism.model.Block qBlock = qkv.get(0);
+		org.almostrealism.model.Block kBlock = qkv.get(1);
+		org.almostrealism.model.Block vBlock = qkv.get(2);
+
+		log("Q block input shape: " + qBlock.getInputShape());
+		log("Q block output shape: " + qBlock.getOutputShape());
+		log("K block output shape: " + kBlock.getOutputShape());
+		log("V block output shape: " + vBlock.getOutputShape());
+
+		// Reshape each
+		org.almostrealism.model.Block qReshaped = qBlock.reshape(batchSize, seqLen, embedDim);
+		org.almostrealism.model.Block kReshaped = kBlock.reshape(batchSize, seqLen, embedDim);
+		org.almostrealism.model.Block vReshaped = vBlock.reshape(batchSize, seqLen, embedDim);
+
+		log("After reshape - Q output: " + qReshaped.getOutputShape());
+
+		// Create output collections
+		PackedCollection qOut = new PackedCollection(shape(batchSize, seqLen, embedDim));
+		PackedCollection kOut = new PackedCollection(shape(batchSize, seqLen, embedDim));
+		PackedCollection vOut = new PackedCollection(shape(batchSize, seqLen, embedDim));
+
+		// Set receptors - but NOW we cast back to SequentialBlock for andThen
+		// Note: reshape returns 'this' for SequentialBlock due to override
+		log("\nSetting up receptors...");
+		((org.almostrealism.model.SequentialBlock) qReshaped).andThen(into(qOut));
+		((org.almostrealism.model.SequentialBlock) kReshaped).andThen(into(kOut));
+		((org.almostrealism.model.SequentialBlock) vReshaped).andThen(into(vOut));
+
+		// Compile model
+		log("Compiling model (inference only)...");
+		CompiledModel compiled = model.compile(false);
+
+		// Run forward pass
+		log("\nRunning forward pass...");
+		compiled.forward(input);
+
+		// Check outputs
+		log("\n--- Output Verification ---");
+		boolean qMatch = true, kMatch = true, vMatch = true;
+
+		for (int b = 0; b < batchSize; b++) {
+			for (int s = 0; s < seqLen; s++) {
+				for (int d = 0; d < embedDim; d++) {
+					int baseIdx = b * seqLen * embedDim * 3 + s * embedDim * 3;
+
+					double expectedQ = baseIdx + d;
+					double expectedK = baseIdx + embedDim + d;
+					double expectedV = baseIdx + 2 * embedDim + d;
+
+					double actualQ = qOut.valueAt(b, s, d);
+					double actualK = kOut.valueAt(b, s, d);
+					double actualV = vOut.valueAt(b, s, d);
+
+					if (Math.abs(expectedQ - actualQ) > 0.01) {
+						if (qMatch) {
+							log(String.format("Q MISMATCH at [%d,%d,%d]: expected %.0f, got %.2f",
+									b, s, d, expectedQ, actualQ));
+						}
+						qMatch = false;
+					}
+					if (Math.abs(expectedK - actualK) > 0.01) {
+						if (kMatch) {
+							log(String.format("K MISMATCH at [%d,%d,%d]: expected %.0f, got %.2f",
+									b, s, d, expectedK, actualK));
+						}
+						kMatch = false;
+					}
+					if (Math.abs(expectedV - actualV) > 0.01) {
+						if (vMatch) {
+							log(String.format("V MISMATCH at [%d,%d,%d]: expected %.0f, got %.2f",
+									b, s, d, expectedV, actualV));
+						}
+						vMatch = false;
+					}
+				}
+			}
+		}
+
+		log("\n--- Summary ---");
+		log("Q values: " + (qMatch ? "[PASS]" : "[FAIL]"));
+		log("K values: " + (kMatch ? "[PASS]" : "[FAIL]"));
+		log("V values: " + (vMatch ? "[PASS]" : "[FAIL]"));
+
+		// Additional diagnostics - print first few values
+		log("\n--- Sample Values ---");
+		log(String.format("qOut[0,0,0..2]: %.2f, %.2f, %.2f",
+				qOut.valueAt(0,0,0), qOut.valueAt(0,0,1), qOut.valueAt(0,0,2)));
+		log(String.format("kOut[0,0,0..2]: %.2f, %.2f, %.2f",
+				kOut.valueAt(0,0,0), kOut.valueAt(0,0,1), kOut.valueAt(0,0,2)));
+		log(String.format("vOut[0,0,0..2]: %.2f, %.2f, %.2f",
+				vOut.valueAt(0,0,0), vOut.valueAt(0,0,1), vOut.valueAt(0,0,2)));
+
+		log("\n=== Test Complete ===");
+	}
+
+	/**
+	 * HYPOTHESIS 6: Simple subset test without split complexity.
+	 *
+	 * Test: Create a model with just reshape + subset + output receptor
+	 * to verify subset works correctly in isolation.
+	 */
+	@Test
+	public void testH6_SimpleSubset() throws Exception {
+		String logFile = "/workspace/project/common/ml/test_output/h6_subset_test.txt";
+		Console.root().addListener(OutputFeatures.fileOutput(logFile));
+
+		log("\n===================================================");
+		log("  H6: Simple Subset Test");
+		log("===================================================\n");
+
+		// Simple test: input (1,4,12) -> reshape (1,4,3,4) -> subset (1,4,1,4) at [0,0,0,0]
+
+		int batchSize = 1;
+		int seqLen = 4;
+		int dim = 4;
+		int parts = 3;
+
+		// Create input with sequential values
+		PackedCollection input = new PackedCollection(shape(batchSize, seqLen, dim * parts));
+		for (int i = 0; i < batchSize * seqLen * dim * parts; i++) {
+			input.setMem(i, i);
+		}
+		log("Input shape: " + input.getShape());
+		log("Input[0..11]: " + input.toDouble(0) + ", " + input.toDouble(1) + ", ..., " + input.toDouble(11));
+
+		// Create model with reshape + subset
+		org.almostrealism.model.Model model = new org.almostrealism.model.Model(shape(batchSize, seqLen, dim * parts));
+		org.almostrealism.model.SequentialBlock main = model.sequential();
+
+		// Reshape to (1,4,3,4)
+		main.reshape(batchSize, seqLen, parts, dim);
+		log("After reshape: " + main.getOutputShape());
+
+		// Add subset layer to extract first part at [0,0,0,0]
+		main.add(subset(shape(batchSize, seqLen, parts, dim), shape(batchSize, seqLen, 1, dim), 0, 0, 0, 0));
+		log("After subset: " + main.getOutputShape());
+
+		// Reshape to (1,4,4) to flatten the third dimension
+		main.reshape(batchSize, seqLen, dim);
+		log("After final reshape: " + main.getOutputShape());
+
+		// Create output collection
+		PackedCollection outData = new PackedCollection(shape(batchSize, seqLen, dim));
+
+		// Set receptor
+		log("\nSetting up receptor...");
+		main.andThen(into(outData));
+
+		// Compile model
+		log("Compiling model (inference only)...");
+		CompiledModel compiled = model.compile(false);
+
+		// Run forward pass
+		log("\nRunning forward pass...");
+		compiled.forward(input);
+
+		// Check outputs
+		log("\n--- Output Verification ---");
+		boolean match = true;
+		for (int b = 0; b < batchSize; b++) {
+			for (int s = 0; s < seqLen; s++) {
+				for (int d = 0; d < dim; d++) {
+					// Expected: the first 4 values of each seq position (before reshape)
+					// Input layout after reshape (1,4,3,4):
+					// [0,s,0,d] = s*12 + d (first part)
+					// [0,s,1,d] = s*12 + 4 + d (second part)
+					// [0,s,2,d] = s*12 + 8 + d (third part)
+					double expected = s * 12 + d;  // First part values
+					double actual = outData.valueAt(b, s, d);
+
+					if (Math.abs(expected - actual) > 0.01) {
+						if (match) {
+							log(String.format("MISMATCH at [%d,%d,%d]: expected %.0f, got %.2f",
+									b, s, d, expected, actual));
+						}
+						match = false;
+					}
+				}
+			}
+		}
+
+		log("\n--- Summary ---");
+		log("Subset extraction: " + (match ? "[PASS]" : "[FAIL]"));
+		log("\n--- Sample Values ---");
+		log(String.format("outData[0,0,0..3]: %.2f, %.2f, %.2f, %.2f",
+				outData.valueAt(0,0,0), outData.valueAt(0,0,1),
+				outData.valueAt(0,0,2), outData.valueAt(0,0,3)));
+		log(String.format("Expected: 0, 1, 2, 3"));
+		log(String.format("outData[0,1,0..3]: %.2f, %.2f, %.2f, %.2f",
+				outData.valueAt(0,1,0), outData.valueAt(0,1,1),
+				outData.valueAt(0,1,2), outData.valueAt(0,1,3)));
+		log(String.format("Expected: 12, 13, 14, 15"));
 
 		log("\n=== Test Complete ===");
 	}

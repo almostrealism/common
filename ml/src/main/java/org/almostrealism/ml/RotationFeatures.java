@@ -116,7 +116,8 @@ public interface RotationFeatures extends PairFeatures, LayerFeatures {
 		return layer("ropeRotation", shape, shape, input -> {
 			Producer<PackedCollection> pos = pad(shape(3), position, 0);
 			CollectionProducer r = subset(shape(1, headSize, 2), c(p(weights)), pos);
-			return multiplyComplex(traverse(1, input), r.traverse(1));
+			// Repeat frequencies for each head - multiplyComplex doesn't properly broadcast
+			return multiplyComplex(traverse(1, input), r.traverse(1).repeat(heads));
 		}, List.of(weights), requirements);
 	}
 

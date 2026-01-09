@@ -271,7 +271,7 @@ public interface AttentionFeatures extends RotationFeatures {
 	 * @param inputShape Shape of the attention scores input (heads, seqLength)
 	 * @param values Value tensor producer (seqLength, kvHeads, headSize)
 	 * @param requirements Compute requirements
-	 * @return Attention values layer producing (dim) output
+	 * @return Attention values layer producing (1, dim) output to preserve batch dimension
 	 */
 	default CellularLayer attentionValues(TraversalPolicy inputShape,
 										  Producer<PackedCollection> values,
@@ -287,7 +287,9 @@ public interface AttentionFeatures extends RotationFeatures {
 
 		int seqLength = inputShape.length(1);
 		int kvHeads = valueShape.length(1);
-		TraversalPolicy outputShape = shape(dim);
+
+		// Preserve batch dimension in output shape for consistency with other layers
+		TraversalPolicy outputShape = shape(1, dim);
 
 		if (valueShape.length(0) != seqLength)
 			throw new IllegalArgumentException("Value sequence length mismatch");
@@ -309,7 +311,7 @@ public interface AttentionFeatures extends RotationFeatures {
 
 			CollectionProducer a = traverse(1, input).repeat(headSize);
 			CollectionProducer o = multiply(traverseEach(a), traverseEach(v)).traverse(2).sum();
-			return o.reshape(shape(dim).traverseEach());
+			return o.reshape(shape(1, dim).traverseEach());
 		}, requirements);
 	}
 
@@ -381,6 +383,42 @@ public interface AttentionFeatures extends RotationFeatures {
 							PackedCollection freqCis,
 							Producer<PackedCollection> position,
 							ComputeRequirement... requirements) {
+		return attention(heads, kvHeads, rmsAttWeight, wk, wv, wq, wo, bk, bv, bq,
+				qkNormQ, qkNormK, freqCis, position, 1e-5, requirements);
+	}
+
+	/**
+	 * Multi-head attention with optional QK-Norm, GQA, and configurable RMSNorm epsilon.
+	 *
+	 * @param heads Number of query attention heads
+	 * @param kvHeads Number of key/value heads (for GQA, use heads for standard MHA)
+	 * @param rmsAttWeight Pre-attention RMSNorm weights
+	 * @param wk Key projection weights
+	 * @param wv Value projection weights
+	 * @param wq Query projection weights
+	 * @param wo Output projection weights
+	 * @param bk Key projection bias (null if not used)
+	 * @param bv Value projection bias (null if not used)
+	 * @param bq Query projection bias (null if not used)
+	 * @param qkNormQ Query normalization weights (null to skip QK-Norm)
+	 * @param qkNormK Key normalization weights (null to skip QK-Norm)
+	 * @param freqCis RoPE frequency embeddings
+	 * @param position Current position in sequence
+	 * @param epsilon RMSNorm epsilon (e.g., 1e-5 for Llama, 1e-6 for Qwen3)
+	 * @param requirements Compute requirements
+	 * @return Attention block
+	 */
+	default Block attention(int heads, int kvHeads,
+							PackedCollection rmsAttWeight,
+							PackedCollection wk, PackedCollection wv,
+							PackedCollection wq, PackedCollection wo,
+							PackedCollection bk, PackedCollection bv,
+							PackedCollection bq,
+							PackedCollection qkNormQ, PackedCollection qkNormK,
+							PackedCollection freqCis,
+							Producer<PackedCollection> position,
+							double epsilon,
+							ComputeRequirement... requirements) {
 		int dim = rmsAttWeight.getShape().length(0);
 		int headSize = freqCis.getShape().length(1) * 2; // freqCis is (seqLen, headSize/2, 2)
 		int seqLen = freqCis.getShape().length(0);
@@ -396,7 +434,7 @@ public interface AttentionFeatures extends RotationFeatures {
 		keyCache.clear();
 		valueCache.clear();
 
-		attention.add(rmsnorm(inputShape, rmsAttWeight, requirements));
+		attention.add(rmsnorm(inputShape, rmsAttWeight, epsilon, requirements));
 
 		SequentialBlock keys = attention.branch();
 		SequentialBlock values = attention.branch();
@@ -407,9 +445,9 @@ public interface AttentionFeatures extends RotationFeatures {
 		/* KEYS **/
 		keys.add(bk != null ? dense(wk, bk) : dense(wk));
 		if (qkNormK != null) {
-			// QK-Norm: normalize keys before RoPE
+			// QK-Norm: RMSNorm applied per-head before RoPE (NOT LayerNorm!)
 			keys.add(reshape(shape(kvDim), kvHeadShape));
-			keys.add(norm(qkNormK, null, 1e-6, requirements));
+			keys.add((Function<TraversalPolicy, CellularLayer>) (s -> rmsnorm(s, qkNormK, 1e-6, requirements)));
 			keys.add(reshape(kvHeadShape, kvHeadShapeComplex));
 		} else {
 			keys.add(reshape(shape(kvDim), kvHeadShapeComplex));
@@ -430,9 +468,9 @@ public interface AttentionFeatures extends RotationFeatures {
 
 		attention.add(bq != null ? dense(wq, bq) : dense(wq));
 		if (qkNormQ != null) {
-			// QK-Norm: normalize queries before RoPE
+			// QK-Norm: RMSNorm applied per-head before RoPE (NOT LayerNorm!)
 			attention.add(reshape(shape(dim), headShape));
-			attention.add(norm(qkNormQ, null, 1e-6, requirements));
+			attention.add((Function<TraversalPolicy, CellularLayer>) (s -> rmsnorm(s, qkNormQ, 1e-6, requirements)));
 			attention.add(reshape(headShape, headShapeComplex));
 		} else {
 			attention.add(reshape(shape(dim), headShapeComplex));
@@ -649,6 +687,28 @@ public interface AttentionFeatures extends RotationFeatures {
 	}
 
 	/**
+	 * Creates a SwiGLU feed-forward block with configurable RMSNorm epsilon.
+	 *
+	 * @param rms RMSNorm weights
+	 * @param w1 Gate projection weights
+	 * @param w2 Down projection weights
+	 * @param w3 Up projection weights
+	 * @param epsilon RMSNorm epsilon (e.g., 1e-5 for Llama, 1e-6 for Qwen3)
+	 * @param requirements Compute requirements
+	 * @return Feed-forward block
+	 */
+	default Block feedForward(
+			PackedCollection rms,
+			PackedCollection w1, PackedCollection w2, PackedCollection w3,
+			double epsilon,
+			ComputeRequirement... requirements) {
+		int dim = w2.getShape().length(0);
+		return feedForward(shape(1, dim), rms, null,
+				w1, w2, w3, null, null, null, epsilon,
+				requirements);
+	}
+
+	/**
 	 * Creates a SwiGLU feed-forward block with optional biases.
 	 *
 	 * <p>Implements the SwiGLU activation: FFN(x) = (SiLU(x @ W1 + b1) * (x @ W3 + b3)) @ W2 + b2
@@ -672,8 +732,35 @@ public interface AttentionFeatures extends RotationFeatures {
 			PackedCollection w1, PackedCollection w2, PackedCollection w3,
 			PackedCollection w1Bias, PackedCollection w2Bias, PackedCollection w3Bias,
 			ComputeRequirement... requirements) {
+		return feedForward(shape, normWeights, normBiases, w1, w2, w3,
+				w1Bias, w2Bias, w3Bias, 1e-5, requirements);
+	}
+
+	/**
+	 * Creates a SwiGLU feed-forward block with configurable RMSNorm epsilon.
+	 *
+	 * @param shape Input/output shape
+	 * @param normWeights Normalization weights (RMSNorm or LayerNorm)
+	 * @param normBiases Normalization biases (null for RMSNorm)
+	 * @param w1 Gate projection weights
+	 * @param w2 Down projection weights
+	 * @param w3 Up projection weights
+	 * @param w1Bias Gate projection bias (null if not used)
+	 * @param w2Bias Down projection bias (null if not used)
+	 * @param w3Bias Up projection bias (null if not used)
+	 * @param epsilon RMSNorm epsilon (e.g., 1e-5 for Llama, 1e-6 for Qwen3)
+	 * @param requirements Compute requirements
+	 * @return Feed-forward block
+	 */
+	default Block feedForward(
+			TraversalPolicy shape,
+			PackedCollection normWeights, PackedCollection normBiases,
+			PackedCollection w1, PackedCollection w2, PackedCollection w3,
+			PackedCollection w1Bias, PackedCollection w2Bias, PackedCollection w3Bias,
+			double epsilon,
+			ComputeRequirement... requirements) {
 		SequentialBlock feedForward = new SequentialBlock(shape);
-		feedForward.add(rmsnorm(shape, normWeights, normBiases, requirements));
+		feedForward.add(rmsnorm(shape, normWeights, normBiases, epsilon, requirements));
 
 		SequentialBlock hidden = new SequentialBlock(shape);
 		hidden.add(dense(w1, w1Bias));
@@ -963,7 +1050,7 @@ public interface AttentionFeatures extends RotationFeatures {
 							  Producer<PackedCollection> position,
 							  ComputeRequirement... requirements) {
 		return transformer(heads, heads, rmsAttWeight, wk, wv, wq, wo,
-				null, null, null, null, null, freqCis, rmsFfnWeight, w1, w2, w3, position, requirements);
+				null, null, null, null, null, freqCis, rmsFfnWeight, w1, w2, w3, position, 1e-5, requirements);
 	}
 
 	/**
@@ -1005,12 +1092,54 @@ public interface AttentionFeatures extends RotationFeatures {
 							  PackedCollection w1, PackedCollection w2, PackedCollection w3,
 							  Producer<PackedCollection> position,
 							  ComputeRequirement... requirements) {
+		return transformer(heads, kvHeads, rmsAttWeight, wk, wv, wq, wo, bk, bv, bq,
+				qkNormQ, qkNormK, freqCis, rmsFfnWeight, w1, w2, w3, position, 1e-5, requirements);
+	}
+
+	/**
+	 * Transformer layer with configurable RMSNorm epsilon.
+	 *
+	 * @param heads Number of query attention heads
+	 * @param kvHeads Number of key/value heads (for GQA, use heads for standard MHA)
+	 * @param rmsAttWeight Pre-attention RMSNorm weights
+	 * @param wk Key projection weights
+	 * @param wv Value projection weights
+	 * @param wq Query projection weights
+	 * @param wo Output projection weights
+	 * @param bk Key projection bias (null if not used)
+	 * @param bv Value projection bias (null if not used)
+	 * @param bq Query projection bias (null if not used)
+	 * @param qkNormQ Query normalization weights (null to skip QK-Norm)
+	 * @param qkNormK Key normalization weights (null to skip QK-Norm)
+	 * @param freqCis RoPE frequency embeddings
+	 * @param rmsFfnWeight Pre-FFN RMSNorm weights
+	 * @param w1 FFN gate projection
+	 * @param w2 FFN down projection
+	 * @param w3 FFN up projection
+	 * @param position Current position in sequence
+	 * @param epsilon RMSNorm epsilon (e.g., 1e-5 for Llama, 1e-6 for Qwen3)
+	 * @param requirements Compute requirements
+	 * @return Complete transformer layer block
+	 */
+	default Block transformer(int heads, int kvHeads,
+							  PackedCollection rmsAttWeight,
+							  PackedCollection wk, PackedCollection wv,
+							  PackedCollection wq, PackedCollection wo,
+							  PackedCollection bk, PackedCollection bv,
+							  PackedCollection bq,
+							  PackedCollection qkNormQ, PackedCollection qkNormK,
+							  PackedCollection freqCis,
+							  PackedCollection rmsFfnWeight,
+							  PackedCollection w1, PackedCollection w2, PackedCollection w3,
+							  Producer<PackedCollection> position,
+							  double epsilon,
+							  ComputeRequirement... requirements) {
 		int dim = rmsAttWeight.getShape().length(0);
 
 		SequentialBlock transformer = new SequentialBlock(shape(1, dim));
 		transformer.accum(attention(heads, kvHeads, rmsAttWeight, wk, wv, wq, wo,
-				bk, bv, bq, qkNormQ, qkNormK, freqCis, position, requirements), requirements);
-		transformer.accum(feedForward(rmsFfnWeight, w1, w2, w3, requirements), requirements);
+				bk, bv, bq, qkNormQ, qkNormK, freqCis, position, epsilon, requirements), requirements);
+		transformer.accum(feedForward(rmsFfnWeight, w1, w2, w3, epsilon, requirements), requirements);
 		return transformer;
 	}
 

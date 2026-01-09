@@ -337,6 +337,7 @@ public class Qwen3 implements AttentionFeatures {
 			PackedCollection layerW3 = stateDict.get(prefix + ".mlp.up_proj.weight");
 
 			// Add complete transformer layer
+			// Qwen3 uses epsilon=1e-6 for RMSNorm (not default 1e-5)
 			transformer.add(transformer(
 					config.headCount,     // 32 query heads
 					config.kvHeadCount,   // 8 KV heads (GQA)
@@ -348,11 +349,12 @@ public class Qwen3 implements AttentionFeatures {
 					layerRmsFfn,          // Pre-FFN norm
 					layerW1, layerW2, layerW3,  // FFN projections (SwiGLU)
 					p(position),          // Current position
+					1e-6,                 // Qwen3 RMSNorm epsilon
 					requirements));
 		}
 
-		// Final RMS Norm
-		transformer.add(rmsnorm(shape(1, dim), rmsFinalWeight));
+		// Final RMS Norm (also uses epsilon=1e-6)
+		transformer.add(rmsnorm(shape(1, dim), rmsFinalWeight, 1e-6));
 
 		// Output logits projection (shared with token embeddings)
 		transformer.add(dense(wcls));

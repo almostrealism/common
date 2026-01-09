@@ -26,6 +26,7 @@ import org.almostrealism.Ops;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.DynamicCollectionProducer;
 import org.almostrealism.graph.Cell;
+import org.almostrealism.graph.Receptor;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
@@ -224,8 +225,17 @@ public class CompiledModel implements Destroyable, CodeFeatures {
 		InputManager grad = new InputManager(model.lastBlock().getOutputShape());
 
 		PackedCollection output = new PackedCollection(model.lastBlock().getOutputShape());
-		model.lastBlock().getForward().setReceptor(out ->
-				Ops.o().copy("Model Forward Output", out, Ops.o().p(output), output.getMemLength()));
+		Receptor<PackedCollection> outputReceptor = out ->
+				Ops.o().copy("Model Forward Output", out, Ops.o().p(output), output.getMemLength());
+
+		// Chain with existing receptor if one was set (e.g., via andThen() for cache writes)
+		Cell<PackedCollection> lastForward = model.lastBlock().getForward();
+		Receptor<PackedCollection> existingReceptor = lastForward.getReceptor();
+		if (existingReceptor != null) {
+			lastForward.setReceptor(Receptor.to(existingReceptor, outputReceptor));
+		} else {
+			lastForward.setReceptor(outputReceptor);
+		}
 
 		PackedCollection gradOut;
 

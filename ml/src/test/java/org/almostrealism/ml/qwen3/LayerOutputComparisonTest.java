@@ -224,6 +224,7 @@ public class LayerOutputComparisonTest implements AttentionFeatures, ConsoleFeat
             PackedCollection layerW3 = stateDict.get(prefix + ".mlp.up_proj.weight");
 
             // Add complete transformer layer using the same method as Qwen3
+            // Qwen3 uses epsilon=1e-6 for RMSNorm
             model.add(transformer(
                 config.headCount,     // 14 query heads
                 config.kvHeadCount,   // 2 KV heads (GQA)
@@ -234,7 +235,8 @@ public class LayerOutputComparisonTest implements AttentionFeatures, ConsoleFeat
                 freqCis,                             // RoPE frequencies
                 layerRmsFfn,                         // Pre-FFN norm
                 layerW1, layerW2, layerW3,           // FFN projections (SwiGLU)
-                p(position)));                       // Current position
+                p(position),                         // Current position
+                1e-6));                              // Qwen3 RMSNorm epsilon
         }
 
         return model;
