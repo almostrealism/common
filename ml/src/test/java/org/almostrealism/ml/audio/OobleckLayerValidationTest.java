@@ -19,15 +19,12 @@ package org.almostrealism.ml.audio;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.io.Console;
-import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.OutputFeatures;
-import org.almostrealism.layers.LayerFeatures;
 import org.almostrealism.ml.StateDictionary;
-import org.almostrealism.model.Block;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 import org.almostrealism.model.SequentialBlock;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 import java.io.DataInputStream;
@@ -37,8 +34,6 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-
-import static org.junit.Assert.*;
 
 /**
  * Layer-by-layer validation tests to identify where constant output pattern first appears.
@@ -50,7 +45,7 @@ import static org.junit.Assert.*;
  * <p>Key insight: if input varies but output is constant, the layer has a bug
  * (likely in index expression computation for large tensor operations).</p>
  */
-public class OobleckLayerValidationTest implements TestFeatures, LayerFeatures, ConsoleFeatures {
+public class OobleckLayerValidationTest extends TestSuiteBase {
 
 	private static final Path TEST_DATA_DIR = Paths.get("test_data/stable_audio");
 	private static final Path WEIGHTS_DIR = TEST_DATA_DIR.resolve("weights");

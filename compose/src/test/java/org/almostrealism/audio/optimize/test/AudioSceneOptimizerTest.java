@@ -29,7 +29,7 @@ import org.almostrealism.heredity.Genome;
 import org.almostrealism.heredity.ProjectedGenome;
 import org.almostrealism.heredity.TemporalCellular;
 import org.almostrealism.optimize.PopulationOptimizer;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 import java.io.FileInputStream;
@@ -40,7 +40,7 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.IntStream;
 
-public class AudioSceneOptimizerTest implements CellFeatures, TestFeatures {
+public class AudioSceneOptimizerTest extends TestSuiteBase implements CellFeatures {
 	protected AudioScene<?> scene() {
 		// DesirablesProvider desirables = new DefaultDesirablesProvider<>(120, WesternScales.major(WesternChromatic.G3, 1));
 		// return () -> new GeneticTemporalFactoryFromDesirables().from(desirables);

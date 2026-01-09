@@ -18,14 +18,12 @@ package org.almostrealism.ml.audio;
 
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.ml.StateDictionary;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Random;
-
-import static org.junit.Assert.*;
 
 /**
  * Tests for OobleckAutoEncoder architecture validation.
@@ -36,7 +34,7 @@ import static org.junit.Assert.*;
  *
  * <p>For numerical validation against PyTorch, see {@link OobleckValidationTest}.</p>
  */
-public class OobleckAutoEncoderTest implements TestFeatures {
+public class OobleckAutoEncoderTest extends TestSuiteBase {
 
 	/** Stride (downsampling factor) for each encoder stage. */
 	private static final int[] STRIDES = {4, 8, 8, 16, 16};

@@ -18,13 +18,10 @@ package org.almostrealism.layers.test;
 
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.io.Console;
-import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.OutputFeatures;
-import org.almostrealism.layers.LayerFeatures;
-import org.almostrealism.model.Block;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 import java.io.DataInputStream;
@@ -35,8 +32,6 @@ import java.nio.ByteOrder;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 
-import static org.junit.Assert.*;
-
 /**
  * Tests ConvTranspose1d against PyTorch reference outputs.
  *
@@ -46,7 +41,7 @@ import static org.junit.Assert.*;
  * <p>This test isolates ConvTranspose1d indexing issues by using simple inputs
  * that make manual verification straightforward.</p>
  */
-public class ConvTranspose1dReferenceTest implements TestFeatures, LayerFeatures, ConsoleFeatures {
+public class ConvTranspose1dReferenceTest extends TestSuiteBase {
 
 	private static final Path BASE_DIR = Paths.get("../ml/test_data/conv_transpose");
 	private static final double TOLERANCE = 0.001;

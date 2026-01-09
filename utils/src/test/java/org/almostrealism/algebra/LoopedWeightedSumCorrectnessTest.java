@@ -18,11 +18,10 @@ package org.almostrealism.algebra;
 
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.algebra.computations.LoopedWeightedSumComputation;
-import org.almostrealism.algebra.computations.WeightedSumComputation;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.layers.LayerFeatures;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -38,7 +37,7 @@ import org.junit.Test;
  *   <li>Test 1.2: Compare against original WeightedSumComputation</li>
  * </ul>
  */
-public class LoopedWeightedSumCorrectnessTest implements TestFeatures, LayerFeatures {
+public class LoopedWeightedSumCorrectnessTest extends TestSuiteBase implements LayerFeatures {
 
 	private static final double TOLERANCE = 1e-6;
 

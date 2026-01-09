@@ -19,15 +19,13 @@ package org.almostrealism.ml.audio;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.io.Console;
-import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.OutputFeatures;
 import org.almostrealism.layers.CellularLayer;
-import org.almostrealism.layers.LayerFeatures;
 import org.almostrealism.model.Block;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 import org.almostrealism.model.SequentialBlock;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 /**
@@ -39,7 +37,7 @@ import org.junit.Test;
  *
  * <p>See AUTOENCODER_PLAN.md for the full test plan and probability estimates.</p>
  */
-public class OobleckComponentTests implements TestFeatures, LayerFeatures, ConsoleFeatures {
+public class OobleckComponentTests extends TestSuiteBase {
 
 	private static final int BATCH_SIZE = 1;
 	private static final int CHANNELS_SMALL = 128;

@@ -28,12 +28,12 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.TimeCell;
 import org.almostrealism.graph.temporal.WaveCell;
 import org.almostrealism.heredity.TemporalFactor;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 import java.io.File;
 
-public class DurationAdjustmentTest implements CellFeatures, OptimizeFactorFeatures, TestFeatures {
+public class DurationAdjustmentTest extends TestSuiteBase implements CellFeatures, OptimizeFactorFeatures {
 	@Test
 	public void dynamicRepeat() {
 		int sr = OutputLine.sampleRate;

@@ -36,7 +36,7 @@ import org.almostrealism.audio.tone.KeyboardTuning;
 import org.almostrealism.audio.tone.WesternChromatic;
 import org.almostrealism.audio.tone.WesternScales;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -45,7 +45,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
-public class RescalingAggregationTests implements PatternFeatures, TestFeatures {
+public class RescalingAggregationTests extends TestSuiteBase implements PatternFeatures {
 	private final int sampleRate = OutputLine.sampleRate;
 
 	@Test

@@ -17,23 +17,18 @@
 package org.almostrealism.algebra;
 
 import io.almostrealism.collect.TraversalPolicy;
-import io.almostrealism.expression.DoubleConstant;
-import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.computations.LoopedWeightedSumComputation;
-import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.OperationList;
-import org.almostrealism.layers.LayerFeatures;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 /**
  * Test to verify that LoopedWeightedSumComputation is properly isolated
  * and uses getScope() for native loop generation rather than getValueAt().
  */
-public class IsolationTargetTest implements TestFeatures, LayerFeatures {
+public class IsolationTargetTest extends TestSuiteBase {
 
 	/**
 	 * Test 1: LoopedWeightedSumComputation alone (not wrapped).

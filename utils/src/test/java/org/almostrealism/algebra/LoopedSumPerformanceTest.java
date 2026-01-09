@@ -20,8 +20,7 @@ import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.algebra.computations.LoopedWeightedSumComputation;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.OperationList;
-import org.almostrealism.layers.LayerFeatures;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 import java.io.FileWriter;
@@ -29,14 +28,18 @@ import java.io.IOException;
 import java.io.PrintWriter;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.*;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 /**
  * Performance test for LoopedWeightedSumComputation.
  * Tests various outerCount/innerCount combinations and records compilation times.
  * Generates a CSV file for analysis.
  */
-public class LoopedSumPerformanceTest implements TestFeatures, LayerFeatures {
+public class LoopedSumPerformanceTest extends TestSuiteBase {
 
 	private static final int TIMEOUT_SECONDS = 600; // 10 minutes max per test
 	private static final int OUTPUT_SIZE = 8;

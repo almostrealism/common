@@ -1,5 +1,5 @@
 /*
- * Copyright 2025 Michael Murray
+ * Copyright 2026 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -58,7 +58,7 @@ public @interface TestDepth {
 	/**
 	 * The minimum test depth required to run this test.
 	 *
-	 * @return the required depth level (default 1)
+	 * @return the required depth level (default 0)
 	 */
-	int value() default 1;
+	int value() default 0;
 }

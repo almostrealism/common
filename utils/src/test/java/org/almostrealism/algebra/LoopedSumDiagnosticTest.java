@@ -21,15 +21,14 @@ import org.almostrealism.algebra.computations.LoopedWeightedSumComputation;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.OperationList;
-import org.almostrealism.layers.LayerFeatures;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 /**
  * Diagnostic test to examine what code is actually generated
  * for LoopedWeightedSumComputation.
  */
-public class LoopedSumDiagnosticTest implements TestFeatures, LayerFeatures {
+public class LoopedSumDiagnosticTest extends TestSuiteBase {
 
 	/**
 	 * Small test with instruction set monitoring to see generated code.

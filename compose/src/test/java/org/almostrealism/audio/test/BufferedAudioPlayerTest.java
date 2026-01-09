@@ -20,11 +20,11 @@ import org.almostrealism.audio.BufferedAudioPlayer;
 import org.almostrealism.audio.line.BufferedOutputScheduler;
 import org.almostrealism.audio.line.OutputLine;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
-public class BufferedAudioPlayerTest implements TestFeatures {
+public class BufferedAudioPlayerTest extends TestSuiteBase {
 	private PackedCollection data;
 	private double total = 0.0;
 	private int count = 0;

@@ -32,7 +32,7 @@ import org.almostrealism.audio.line.OutputLine;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.time.Frequency;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 import java.io.File;
@@ -40,7 +40,7 @@ import java.io.IOException;
 import java.util.List;
 import java.util.stream.IntStream;
 
-public class GrainTest implements CellFeatures, EnvelopeFeatures, TestFeatures {
+public class GrainTest extends TestSuiteBase implements CellFeatures, EnvelopeFeatures {
 
 	@Test
 	public void grainsTimeSeries() {

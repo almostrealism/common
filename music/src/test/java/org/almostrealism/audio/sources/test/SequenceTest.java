@@ -37,7 +37,7 @@ import org.almostrealism.hardware.AcceleratedOperation;
 import org.almostrealism.heredity.ScaleFactor;
 import org.almostrealism.time.Frequency;
 import org.almostrealism.time.TemporalRunner;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 import java.io.File;
@@ -46,7 +46,7 @@ import java.util.Arrays;
 import java.util.stream.IntStream;
 
 
-public class SequenceTest implements CellFeatures, TestFeatures {
+public class SequenceTest extends TestSuiteBase implements CellFeatures {
 	@Test
 	public void valueSequencePush() {
 		PolymorphicAudioData data = new PolymorphicAudioData();
