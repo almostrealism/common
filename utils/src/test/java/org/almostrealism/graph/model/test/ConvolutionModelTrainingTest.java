@@ -1,5 +1,5 @@
 /*
- * Copyright 2025 Michael Murray
+ * Copyright 2026 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -20,8 +20,6 @@ import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.profile.OperationProfileNode;
 import io.almostrealism.scope.ScopeSettings;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.io.Console;
-import org.almostrealism.io.OutputFeatures;
 import org.almostrealism.layers.ParameterUpdate;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
@@ -32,8 +30,8 @@ import org.almostrealism.optimize.NegativeLogLikelihood;
 import org.almostrealism.optimize.ValueTarget;
 import org.almostrealism.texture.GraphicsConverter;
 import org.almostrealism.util.ModelTestFeatures;
+import org.almostrealism.util.TestDepth;
 import org.almostrealism.util.TestSuiteBase;
-import org.almostrealism.util.TestUtils;
 import org.junit.Test;
 
 import java.io.File;
@@ -132,6 +130,7 @@ public class ConvolutionModelTrainingTest extends TestSuiteBase implements Model
 	}
 
 	@Test(timeout = 120000)
+	@TestDepth(10)
 	public void train() throws IOException {
 		int runs = 1; // 10;
 		int epochs = 10;
