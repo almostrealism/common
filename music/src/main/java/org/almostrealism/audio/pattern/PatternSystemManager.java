@@ -19,6 +19,7 @@ package org.almostrealism.audio.pattern;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.audio.arrange.AudioSceneContext;
+import org.almostrealism.audio.arrange.PatternRenderContext;
 import org.almostrealism.audio.data.ChannelInfo;
 import org.almostrealism.audio.data.FileWaveDataProviderTree;
 import org.almostrealism.audio.data.ParameterFunction;
@@ -324,6 +325,80 @@ public class PatternSystemManager implements NoteSourceProvider, CodeFeatures {
 		op.add(() -> () -> {
 			AudioProcessingUtils.getSum().adjustVolume(context.get().getDestination(), volume);
 		});
+
+		return op;
+	}
+
+	/**
+	 * Renders patterns for a specific frame range into the destination buffer.
+	 *
+	 * <p>This method is designed for real-time audio generation where patterns
+	 * are rendered incrementally as playback progresses. Only pattern elements
+	 * that overlap with the specified frame range are processed.</p>
+	 *
+	 * <p>The destination buffer in the context should be sized to match
+	 * {@code frameCount}, not the full arrangement duration.</p>
+	 *
+	 * <h3>Real-Time Mode</h3>
+	 * <p>Unlike the full-buffer {@link #sum(Supplier, ChannelInfo)} method, this
+	 * version:</p>
+	 * <ul>
+	 *   <li>Does not perform auto-volume normalization (disabled in real-time mode)</li>
+	 *   <li>Only processes elements overlapping the frame range</li>
+	 *   <li>Expects the destination buffer to be pre-cleared</li>
+	 * </ul>
+	 *
+	 * @param context Supplier for the AudioSceneContext containing destination buffer
+	 * @param channel Target channel (index, voicing, audio channel)
+	 * @param startFrame Starting frame (0-based, relative to arrangement start)
+	 * @param frameCount Number of frames to render
+	 * @return Operation that renders the specified frame range
+	 *
+	 * @see PatternLayerManager#sum(Supplier, ChannelInfo.Voicing, ChannelInfo.StereoChannel, int, int)
+	 */
+	public Supplier<Runnable> sum(Supplier<AudioSceneContext> context,
+								  ChannelInfo channel,
+								  int startFrame,
+								  int frameCount) {
+		OperationList op = new OperationList(
+				String.format("PatternSystemManager Sum [%d:%d]", startFrame, startFrame + frameCount));
+
+		// Create frame-aware context supplier
+		Supplier<PatternRenderContext> renderContext = () -> {
+			AudioSceneContext ctx = context.get();
+			return new PatternRenderContext(ctx, startFrame, frameCount);
+		};
+
+		// Update destinations for frame range
+		if (enableLazyDestination) {
+			op.add(() -> () -> {
+				AudioSceneContext ctx = context.get();
+				this.destination = ctx.getDestination();
+				IntStream.range(0, patterns.size()).forEach(i ->
+						patterns.get(i).updateDestination(ctx));
+			});
+		} else {
+			AudioSceneContext ctx = context.get();
+			this.destination = ctx.getDestination();
+			IntStream.range(0, patterns.size()).forEach(i ->
+					patterns.get(i).updateDestination(ctx));
+		}
+
+		List<Integer> patternsForChannel = IntStream.range(0, patterns.size())
+				.filter(i -> channel.getPatternChannel() == patterns.get(i).getChannel())
+				.boxed().toList();
+
+		if (patternsForChannel.isEmpty()) {
+			if (enableWarnings) warn("No patterns for channel " + channel);
+			return op;
+		}
+
+		patternsForChannel.forEach(i -> {
+			op.add(patterns.get(i).sum(renderContext, channel.getVoicing(),
+					channel.getAudioChannel(), startFrame, frameCount));
+		});
+
+		// Note: Auto-volume is disabled in real-time mode (see REALTIME_AUDIO_SCENE.md Out of Scope section)
 
 		return op;
 	}

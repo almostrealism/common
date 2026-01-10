@@ -19,6 +19,7 @@ package org.almostrealism.audio.pattern;
 import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.profile.OperationWithInfo;
 import org.almostrealism.audio.arrange.AudioSceneContext;
+import org.almostrealism.audio.arrange.PatternRenderContext;
 import org.almostrealism.audio.arrange.ChannelSection;
 import org.almostrealism.audio.data.ChannelInfo;
 import org.almostrealism.audio.data.ParameterFunction;
@@ -527,6 +528,112 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures {
 				});
 			});
 		});
+	}
+
+	/**
+	 * Renders pattern elements for a specific frame range.
+	 *
+	 * <p>This method filters pattern elements to only those that overlap with
+	 * the specified frame range, then renders only the overlapping portions
+	 * of each element's audio.</p>
+	 *
+	 * <h3>Rendering Process</h3>
+	 * <ol>
+	 *   <li>Convert frame range to measure range</li>
+	 *   <li>Calculate which pattern repetitions overlap with frame range</li>
+	 *   <li>For each overlapping repetition:
+	 *       <ul>
+	 *         <li>Check section activity (skip if inactive)</li>
+	 *         <li>Render elements using {@link PatternFeatures#renderRange}</li>
+	 *       </ul>
+	 *   </li>
+	 * </ol>
+	 *
+	 * <h3>Real-Time Mode</h3>
+	 * <p>This method is optimized for real-time rendering by:</p>
+	 * <ul>
+	 *   <li>Only processing relevant pattern repetitions</li>
+	 *   <li>Using buffer-relative offsets</li>
+	 *   <li>Handling notes that span buffer boundaries</li>
+	 * </ul>
+	 *
+	 * @param context Render context supplier with frame range information
+	 * @param voicing Target voicing (MAIN or WET)
+	 * @param audioChannel Target stereo channel (LEFT or RIGHT)
+	 * @param startFrame Starting frame (absolute position)
+	 * @param frameCount Number of frames to render
+	 * @return Operation that renders elements within the frame range
+	 *
+	 * @see PatternFeatures#renderRange
+	 * @see PatternRenderContext
+	 */
+	public Supplier<Runnable> sum(Supplier<PatternRenderContext> context,
+								  ChannelInfo.Voicing voicing,
+								  ChannelInfo.StereoChannel audioChannel,
+								  int startFrame,
+								  int frameCount) {
+		return OperationWithInfo.of(
+				new OperationMetadata("PatternLayerManager.sum",
+						String.format("PatternLayerManager.sum [%d:%d]", startFrame, startFrame + frameCount)),
+				() -> () -> {
+					PatternRenderContext ctx = context.get();
+
+					// Get all elements for this pattern
+					Map<NoteAudioChoice, List<PatternElement>> elements = getAllElementsByChoice(0.0, duration);
+					if (elements.isEmpty()) {
+						if (!roots.isEmpty() && enableWarnings)
+							warn("No pattern elements (channel " + channel + ")");
+						return;
+					}
+
+					// Calculate measure range for the frame range
+					double startMeasure = ctx.frameToMeasure(startFrame);
+					double endMeasure = ctx.frameToMeasure(startFrame + frameCount);
+
+					// Determine which pattern repetitions overlap with frame range
+					int totalRepetitions = (int) (ctx.getMeasures() / duration);
+					if (totalRepetitions == 0) {
+						if (enableWarnings) warn("Pattern duration longer than arrangement");
+						return;
+					}
+
+					int firstRepetition = Math.max(0, (int) Math.floor(startMeasure / duration));
+					int lastRepetition = Math.min(totalRepetitions, (int) Math.ceil(endMeasure / duration));
+
+					IntStream.range(firstRepetition, lastRepetition).forEach(rep -> {
+						double repStart = rep * duration;
+						double repEnd = repStart + duration;
+
+						// Check if this repetition overlaps with frame range
+						if (!ctx.overlapsFrameRange(repStart, repEnd)) return;
+
+						// Check section activity
+						ChannelSection section = ctx.getSection(repStart);
+						if (section == null) {
+							if (enableWarnings) warn("No ChannelSection at measure " + repStart);
+						} else {
+							double active = activeSelection.apply(
+									layerParams.get(layerParams.size() - 1),
+									section.getPosition()) + ctx.getActivityBias();
+							if (active < 0) return;
+						}
+
+						// Render each choice's elements for this repetition
+						elements.keySet().forEach(choice -> {
+							NoteAudioContext audioContext = new NoteAudioContext(
+									voicing, audioChannel,
+									choice.getValidPatternNotes(),
+									this::nextNotePosition);
+
+							if (destination.get(new ChannelInfo(voicing, audioChannel)) != ctx.getDestination()) {
+								throw new IllegalArgumentException("Destination buffer mismatch");
+							}
+
+							renderRange(ctx, audioContext, elements.get(choice), melodic,
+									repStart, startFrame, frameCount);
+						});
+					});
+				});
 	}
 
 	public double nextNotePosition(double position) {

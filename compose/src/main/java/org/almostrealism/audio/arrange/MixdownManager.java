@@ -58,11 +58,11 @@ import java.util.stream.IntStream;
  *
  * <h2>Signal Flow</h2>
  * <pre>
- * Pattern Sources (main) ──┬──&gt; Volume Adjustment ──&gt; Main Filter Up ──┬──&gt; Master Output
- *                          │                                           │
- * Pattern Sources (wet) ───┴──&gt; Wet Processing ──&gt; Delay Network ──────┘
- *                                      │
- *                                      └──&gt; Reverb ──&gt; Reverb Output
+ * Pattern Sources (main) --+--> Volume Adjustment --> Main Filter Up --+--> Master Output
+ *                          |                                           |
+ * Pattern Sources (wet) ---+--> Wet Processing --> Delay Network ------+
+ *                                      |
+ *                                      +--> Reverb --> Reverb Output
  * </pre>
  *
  * <h2>Key Components</h2>
