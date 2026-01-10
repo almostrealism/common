@@ -19,6 +19,7 @@ package org.almostrealism.audio.pattern;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.audio.arrange.AudioSceneContext;
 import org.almostrealism.audio.data.ChannelInfo;
+import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.Cell;
 import org.almostrealism.graph.Receptor;
@@ -77,7 +78,7 @@ import java.util.function.Supplier;
  *
  * @author Michael Murray
  */
-public class PatternRenderCell implements Cell<PackedCollection>, Temporal {
+public class PatternRenderCell implements Cell<PackedCollection>, Temporal, CollectionFeatures {
 	private final PatternSystemManager patterns;
 	private final Supplier<AudioSceneContext> contextSupplier;
 	private final ChannelInfo channel;
@@ -89,6 +90,11 @@ public class PatternRenderCell implements Cell<PackedCollection>, Temporal {
 
 	/**
 	 * Creates a new pattern render cell.
+	 *
+	 * <p>The destination buffer is allocated immediately in the constructor
+	 * to ensure that {@link #getOutput()} can provide a valid producer before
+	 * setup() is called. This is required because the cell pipeline is built
+	 * (including effects processing) before setup runs.</p>
 	 *
 	 * @param patterns The pattern system manager containing patterns to render
 	 * @param contextSupplier Supplier for the audio scene context
@@ -106,6 +112,10 @@ public class PatternRenderCell implements Cell<PackedCollection>, Temporal {
 		this.channel = channel;
 		this.bufferSize = bufferSize;
 		this.currentFrame = currentFrame;
+
+		// Allocate destination buffer immediately so getOutput() works
+		// before setup() is called (effects pipeline is built during construction)
+		this.destination = new PackedCollection(bufferSize);
 	}
 
 	/**
@@ -125,18 +135,18 @@ public class PatternRenderCell implements Cell<PackedCollection>, Temporal {
 	/**
 	 * Performs setup for pattern rendering.
 	 *
-	 * <p>In real-time mode, setup is lightweight - it only initializes
-	 * the destination buffer. Pattern rendering happens during tick phase.</p>
+	 * <p>In real-time mode, setup is lightweight. The destination buffer
+	 * is already allocated in the constructor, so setup just clears it
+	 * to ensure a clean starting state.</p>
 	 *
 	 * @return Operation that initializes the cell
 	 */
 	@Override
 	public Supplier<Runnable> setup() {
 		return () -> () -> {
-			// Allocate destination buffer for this cell
-			if (destination == null) {
-				destination = new PackedCollection(bufferSize);
-			}
+			// Clear destination buffer for a clean starting state
+			// (buffer is allocated in constructor)
+			destination.clear();
 		};
 	}
 
@@ -186,12 +196,15 @@ public class PatternRenderCell implements Cell<PackedCollection>, Temporal {
 	 * Returns the rendered audio destination.
 	 *
 	 * <p>This producer can be used to access the rendered audio after
-	 * tick() has been called.</p>
+	 * tick() has been called. The returned producer includes shape information
+	 * (buffer size) to enable proper integration with EfxManager.</p>
 	 *
-	 * @return Producer for the destination buffer
+	 * @return Producer for the destination buffer with shape info
 	 */
 	public Producer<PackedCollection> getOutput() {
-		return () -> args -> destination;
+		// Use func() to create a producer with proper shape information
+		// This is required for EfxManager.createCells() to determine the audio size
+		return func(shape(bufferSize).traverseEach(), args -> destination, false);
 	}
 
 	@Override
