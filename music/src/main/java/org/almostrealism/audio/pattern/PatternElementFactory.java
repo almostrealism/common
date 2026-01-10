@@ -31,6 +31,52 @@ import java.util.Optional;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
+/**
+ * Factory for creating {@link PatternElement}s with parameterized selection functions.
+ *
+ * <p>{@code PatternElementFactory} is responsible for generating musical events within
+ * pattern layers. It uses a collection of parameterized functions to determine:</p>
+ * <ul>
+ *   <li>Note selection (which sample to use)</li>
+ *   <li>Note duration</li>
+ *   <li>Chord voicing positions</li>
+ *   <li>Repeat patterns</li>
+ *   <li>Volume and filter envelopes</li>
+ * </ul>
+ *
+ * <h2>Genetic Algorithm Integration</h2>
+ *
+ * <p>All selection functions are parameterized, meaning their behavior is controlled
+ * by {@link ParameterSet} values. This enables genetic algorithm optimization where
+ * the parameters evolve to produce musically interesting patterns.</p>
+ *
+ * <h2>Key Configuration</h2>
+ *
+ * <ul>
+ *   <li>{@code MAX_LAYERS}: Maximum layer depth for note selection (default: 10)</li>
+ *   <li>{@code noteLengthFactor}: Maximum note duration relative to scale (default: 0.75)</li>
+ *   <li>{@code enableVolumeEnvelope}: Apply volume shaping to notes (default: true)</li>
+ *   <li>{@code enableFilterEnvelope}: Apply filter modulation to notes (default: true)</li>
+ * </ul>
+ *
+ * <h2>Element Creation</h2>
+ *
+ * <p>The {@link #apply} method creates a pattern element by:</p>
+ * <ol>
+ *   <li>Computing position based on parity (LEFT/NONE/RIGHT)</li>
+ *   <li>Selecting note audio via the note factory</li>
+ *   <li>Applying volume and filter envelopes if enabled</li>
+ *   <li>Determining chord positions and scale traversal</li>
+ *   <li>Computing repeat count and duration</li>
+ * </ol>
+ *
+ * @see PatternElement
+ * @see PatternNoteFactory
+ * @see ParameterizedPositionFunction
+ * @see PatternLayerManager
+ *
+ * @author Michael Murray
+ */
 public class PatternElementFactory implements ConsoleFeatures {
 	public static boolean enableVolumeEnvelope = true;
 	public static boolean enableFilterEnvelope = true;

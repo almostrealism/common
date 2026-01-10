@@ -28,6 +28,55 @@ import java.util.function.DoubleToIntFunction;
 import java.util.function.DoubleUnaryOperator;
 import java.util.function.Function;
 
+/**
+ * Provides rendering context for pattern audio generation.
+ *
+ * <p>{@code AudioSceneContext} is the central context object passed through the pattern
+ * rendering pipeline. It contains all the information needed to convert pattern elements
+ * into actual audio samples:</p>
+ *
+ * <h2>Time and Position Conversion</h2>
+ * <ul>
+ *   <li>{@code measures}: Total measures in the arrangement</li>
+ *   <li>{@code frames}: Total audio frames in the destination</li>
+ *   <li>{@code frameForPosition}: Converts measure position to frame offset</li>
+ *   <li>{@code timeForDuration}: Converts duration (in measures) to seconds</li>
+ * </ul>
+ *
+ * <h2>Musical Context</h2>
+ * <ul>
+ *   <li>{@code scaleForPosition}: Returns the active scale at a given measure position</li>
+ *   <li>{@code activityBias}: Global bias for pattern activity selection</li>
+ *   <li>{@code automationLevel}: Function providing automation modulation</li>
+ *   <li>{@code sections}: Channel sections defining activity regions</li>
+ * </ul>
+ *
+ * <h2>Rendering Target</h2>
+ * <ul>
+ *   <li>{@code destination}: The buffer where rendered audio is summed</li>
+ *   <li>{@code channels}: Which channels are being rendered</li>
+ * </ul>
+ *
+ * <h2>Real-Time Considerations</h2>
+ *
+ * <p><strong>Critical:</strong> The {@code frameForPosition} function currently returns
+ * absolute frame positions relative to the start of the arrangement. For real-time
+ * rendering, this needs to be modified (or wrapped) to return buffer-relative offsets.
+ * See the proposed {@code PatternRenderContext} in REALTIME_PATTERNS.md.</p>
+ *
+ * <p>Key methods for real-time adaptation:</p>
+ * <ul>
+ *   <li>{@link #frameForPosition(double)}: Must return buffer-relative offsets</li>
+ *   <li>{@link #getDestination()}: Must be the current buffer, not full arrangement</li>
+ *   <li>{@link #getSection(double)}: Must work with current playback position</li>
+ * </ul>
+ *
+ * @see PatternSystemManager#sum
+ * @see PatternLayerManager#sum
+ * @see ScaleTraversalStrategy
+ *
+ * @author Michael Murray
+ */
 public class AudioSceneContext {
 	private int measures;
 	private int frames;

@@ -30,6 +30,54 @@ import org.almostrealism.io.ConsoleFeatures;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Defines how melodic pattern elements traverse the current musical scale.
+ *
+ * <p>{@code ScaleTraversalStrategy} determines how notes within a {@link PatternElement}
+ * are mapped to pitches in the current scale. This is critical for melodic (pitched)
+ * patterns as opposed to percussive (unpitched) patterns.</p>
+ *
+ * <h2>Strategies</h2>
+ *
+ * <ul>
+ *   <li><strong>CHORD</strong>: All scale positions play simultaneously as a chord.
+ *       Each scale position from {@link PatternElement#getScalePositions()} selects
+ *       a different key from the current scale, and all notes trigger at the same time.</li>
+ *   <li><strong>SEQUENCE</strong>: Scale positions are traversed sequentially across
+ *       repetitions. For repeating elements, each repetition plays the next scale position
+ *       in sequence, creating arpeggios or melodic runs.</li>
+ * </ul>
+ *
+ * <h2>Note Destination Generation</h2>
+ *
+ * <p>The primary method {@link #getNoteDestinations} converts a pattern element into
+ * renderable note audio by:</p>
+ * <ol>
+ *   <li>Iterating through each repetition of the element</li>
+ *   <li>Looking up the scale at the current position via {@code context.getScaleForPosition()}</li>
+ *   <li>Applying automation levels from the element's parameters</li>
+ *   <li>Selecting keys based on scale positions and the traversal strategy</li>
+ *   <li>Computing frame offsets via {@code context.frameForPosition()}</li>
+ * </ol>
+ *
+ * <h2>Frame Position Computation</h2>
+ *
+ * <p><strong>Critical for real-time:</strong> This enum uses {@code context.frameForPosition()}
+ * and {@code context.getFrameForPosition()} to compute absolute frame offsets. For real-time
+ * rendering with buffer-relative positions, the context must translate measure positions
+ * to offsets within the current buffer, not the full arrangement.</p>
+ *
+ * <h2>Non-Melodic Handling</h2>
+ *
+ * <p>For non-melodic (percussive) elements, only the first key from the scale is used,
+ * and a warning is logged if multiple scale positions are specified.</p>
+ *
+ * @see PatternElement
+ * @see RenderedNoteAudio
+ * @see AudioSceneContext#frameForPosition(double)
+ *
+ * @author Michael Murray
+ */
 public enum ScaleTraversalStrategy implements CodeFeatures, ConsoleFeatures {
 	CHORD, SEQUENCE;
 

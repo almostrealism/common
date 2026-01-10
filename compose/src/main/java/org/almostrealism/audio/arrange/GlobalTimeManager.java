@@ -30,6 +30,38 @@ import java.util.function.IntUnaryOperator;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
+/**
+ * Manages global time tracking with support for reset points (breaks) in the timeline.
+ *
+ * <p>{@code GlobalTimeManager} wraps a {@link TimeCell} to provide time tracking
+ * for audio scenes. It supports reset points, which are specific frames where
+ * the time counter resets to zero, useful for song sections or arrangement breaks.</p>
+ *
+ * <h2>Reset Points</h2>
+ *
+ * <p>Reset points are added via {@link #addReset(int)} specifying the measure number.
+ * During setup, these are converted to frame positions using the {@code frameForMeasure}
+ * function. The {@link TimeCell} handles the actual reset logic during playback.</p>
+ *
+ * <h2>Setup/Tick Pattern</h2>
+ *
+ * <p>As a {@link Temporal} and {@link Setup} implementor:</p>
+ * <ul>
+ *   <li>{@link #setup()}: Configures reset points in the TimeCell</li>
+ *   <li>{@link #tick()}: Advances the clock by one frame</li>
+ * </ul>
+ *
+ * <h2>Integration</h2>
+ *
+ * <p>The clock from {@link #getClock()} is used by other components to access
+ * the current playback time, which is needed for time-based effects and automation.</p>
+ *
+ * @see TimeCell
+ * @see AudioScene
+ * @see AutomationManager
+ *
+ * @author Michael Murray
+ */
 public class GlobalTimeManager implements Setup, Temporal, ConsoleFeatures {
 	public static final int MAX_RESETS = 32;
 
