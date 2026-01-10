@@ -214,7 +214,19 @@ Transform the pattern rendering from a batch "setup" operation to an incremental
 1. **Buffer-Aware Pattern Sum**: Add `startFrame` and `frameCount` parameters to `sum()` methods
 2. **Move Pattern Sum to Tick**: Execute pattern rendering during tick phase instead of setup
 3. **N-Frame Batch Processing**: New Cell tooling for operations that run once per N frames
-4. **Incremental Auto-Volume**: Replace full-buffer max computation with incremental normalization
+
+### Out of Scope (This Phase)
+
+The following are explicitly deferred to future work:
+
+1. **Volume Normalization**: The existing auto-volume feature relies on computing the max level
+   across the entire audio track. In a real-time context, the max level is unknown in advance.
+   For now, auto-volume will be **disabled in real-time mode**. A proper solution would be a
+   compressor-style limiter, which is a separate feature.
+
+2. **Heap Memory Management**: The current `PatternFeatures.render()` uses `Heap.stage()` for
+   memory management during note audio evaluation. This will be bypassed for initial implementation.
+   If heap memory management proves beneficial for performance, it can be introduced later.
 
 ### Architecture After Changes
 
@@ -279,10 +291,7 @@ public Supplier<Runnable> sum(Supplier<AudioSceneContext> context,
             channel.getAudioChannel(), startFrame, frameCount));
     });
 
-    // Incremental volume normalization (see below)
-    if (enableAutoVolume) {
-        op.add(incrementalVolumeNormalization(startFrame, frameCount));
-    }
+    // Note: Auto-volume is disabled in real-time mode (see Out of Scope section)
 
     return op;
 }
@@ -512,28 +521,9 @@ public class BatchCell<T> implements Cell<T>, Temporal, Setup {
 
 ### Component 4: Incremental Volume Normalization
 
-Replace full-buffer max computation with running max tracking.
-
-```java
-/**
- * Tracks running max for incremental volume normalization.
- */
-public class IncrementalVolumeNormalizer {
-    private double runningMax = 0.0;
-    private final double targetLevel = 0.8;
-    private final double smoothingFactor = 0.95;
-
-    public void updateMax(PackedCollection buffer) {
-        double bufferMax = computeMax(buffer);
-        // Exponential smoothing for stable normalization
-        runningMax = Math.max(runningMax * smoothingFactor, bufferMax);
-    }
-
-    public double getNormalizationFactor() {
-        return runningMax > 0 ? targetLevel / runningMax : 1.0;
-    }
-}
-```
+> **OUT OF SCOPE**: Volume normalization is deferred to future work. Auto-volume will be
+> disabled in real-time mode. A compressor-style limiter would be more appropriate for
+> real-time audio, but is a separate feature.
 
 ### Component 5: Modified AudioScene Integration
 
@@ -605,19 +595,7 @@ public CellList getPatternCellsRealTime(MultiChannelAudioOutput output,
 - End-to-end real-time playback test
 - Compare output with non-real-time rendering
 
-### Phase 4: Incremental Volume Normalization
-**Focus**: Replace full-buffer auto-volume with incremental approach
-
-**Changes**:
-- Implement `IncrementalVolumeNormalizer`
-- Integrate with real-time pipeline
-- Add configuration options
-
-**Validation**:
-- Volume stability tests
-- Compare with full-buffer normalization
-
-### Phase 5: Optimization and Polish
+### Phase 4: Optimization and Polish
 **Focus**: Performance tuning and edge cases
 
 **Changes**:
@@ -642,12 +620,9 @@ public CellList getPatternCellsRealTime(MultiChannelAudioOutput output,
 - Test extensively with various buffer sizes
 
 ### Risk 2: Volume Instability
-**Concern**: Incremental normalization may cause volume fluctuations
 
-**Mitigation**:
-- Use exponential smoothing for stable normalization
-- Add lookahead buffer for sudden level changes
-- Provide fallback to post-processing normalization
+> **OUT OF SCOPE**: Volume normalization is deferred. Auto-volume will be disabled in
+> real-time mode. This risk is not applicable to the current implementation scope.
 
 ### Risk 3: Performance Regression
 **Concern**: Per-buffer pattern rendering may be slower than batch
@@ -675,34 +650,52 @@ public CellList getPatternCellsRealTime(MultiChannelAudioOutput output,
 
 ---
 
-## Open Questions
+## Design Decisions
 
-### Q1: Buffer Size Selection
-What buffer size should be used for real-time rendering?
-- Smaller buffers = lower latency, more overhead
-- Larger buffers = higher latency, less overhead
-- Typical audio: 256-2048 frames (5.8ms - 46ms at 44.1kHz)
+This section documents key design decisions made during planning.
 
-### Q2: Pattern Element Caching
-Should we cache pattern elements between frames?
-- Pro: Avoid repeated lookups
-- Con: Memory usage, cache invalidation complexity
+### D1: Buffer Size Selection
 
-### Q3: Auto-Volume Mode
-Should auto-volume be:
-- (a) Per-buffer incremental (responsive, may fluctuate)
-- (b) Lookahead-based (stable, adds latency)
-- (c) Disabled in real-time mode
+**Decision**: Use 1024 frames as the default, but adopt whatever the AudioLine reports.
 
-### Q4: Section Processing
-How should section processing work with incremental rendering?
-- Current: Full-buffer processing in setup
-- Options: Per-buffer processing, effects chain integration
+The implementation should query `BufferedAudioPlayer::deliver` to determine the actual
+buffer size used by the audio hardware. The default of 1024 frames (~23ms at 44.1kHz)
+provides a reasonable balance between latency and overhead.
 
-### Q5: TemporalRunner Compatibility
-How should `TemporalRunner` handle real-time vs non-real-time modes?
-- Configuration flag?
-- Separate runner implementation?
+### D2: Pattern Element Caching
+
+**Decision**: Caching is optional and at developer discretion.
+
+Pattern element caching provides limited benefit because the envelope depends on
+automation state, which changes on every render. The `PatternElement` class itself
+could be cached, but the audio associated with notes cannot be safely cached. If
+caching proves useful during implementation, it can be added; otherwise, skip it.
+
+### D3: Auto-Volume Mode
+
+**Decision**: Disabled in real-time mode.
+
+Auto-volume is explicitly out of scope for this implementation. The feature requires
+knowledge of the full audio track's max level, which is unavailable in real-time.
+A proper solution would be a compressor-style limiter, which is a separate feature.
+
+### D4: Section Processing
+
+**Decision**: `DefaultChannelSectionFactory.Section` should accept input/output buffers.
+
+The `AudioProcessor` implementation needs to work with per-buffer processing. This is
+expected to be a minor change to the existing design. The section processing should
+integrate with the effects chain and operate on each buffer incrementally.
+
+### D5: TemporalRunner Compatibility
+
+**Decision**: No changes to TemporalRunner required.
+
+The runner's execution model remains unchanged. The difference is that:
+- **Setup phase** (`TemporalRunner::get`): Will have much less work (no pattern rendering)
+- **Tick phase** (`TemporalRunner::getContinue`): Will have more work (pattern rendering per buffer)
+
+This aligns with the existing two-phase execution model.
 
 ---
 
@@ -769,9 +762,9 @@ Heap.stage(() ->
 
 For real-time rendering:
 - Audio evaluation must complete within the buffer time window
-- Memory allocation in `Heap.stage()` may cause latency spikes
 
-**Mitigation**: Consider pre-evaluating note audio during pattern initialization, storing results in a cache keyed by note identity.
+> **OUT OF SCOPE**: `Heap.stage()` usage is deferred. The initial implementation will
+> bypass Heap memory management. If performance issues arise, this can be revisited.
 
 #### Risk 8: Section Activity Bias
 
@@ -787,14 +780,15 @@ For incremental rendering, activity bias must be available at render time, not j
 
 ### Implementation Priority Adjustment
 
-Based on the review, the implementation phases should be reordered:
+Based on the review and design decisions, the implementation phases are:
 
-1. **Phase 1** (unchanged): Buffer-aware pattern rendering
-2. **Phase 1.5** (new): Note audio pre-evaluation cache
-3. **Phase 2** (unchanged): Pattern render cell
-4. **Phase 3** (unchanged): AudioScene integration
-5. **Phase 4** (unchanged): Incremental volume normalization
-6. **Phase 5** (unchanged): Optimization and polish
+1. **Phase 1**: Buffer-aware pattern rendering
+2. **Phase 2**: Pattern render cell
+3. **Phase 3**: AudioScene integration
+4. **Phase 4**: Optimization and polish
+
+Note: Volume normalization and Heap memory management are explicitly **out of scope**
+for this implementation. Pattern element caching is optional and at developer discretion.
 
 ### Testing Requirements Update
 
@@ -803,4 +797,3 @@ Add the following test cases:
 1. **Frame Boundary Precision**: Verify `PatternRenderContext.measureToBufferOffset()` returns correct values at exact buffer boundaries
 2. **Scale Traversal Correctness**: Test melodic patterns spanning buffer boundaries
 3. **Activity Bias Propagation**: Test section activity changes mid-playback
-4. **Memory Allocation**: Profile heap allocations during real-time rendering

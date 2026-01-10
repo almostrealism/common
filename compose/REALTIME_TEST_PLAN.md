@@ -107,10 +107,7 @@ The real-time implementation will modify or depend on these components:
    - Only PatternLayerManager is tested
    - Top-level orchestration untested
 
-4. **No incremental volume normalization tests**
-   - Auto-volume relies on full-buffer max computation
-
-5. **No tests for section processing with buffer boundaries**
+4. **No tests for section processing with buffer boundaries**
    - ChannelSection.process() only tested with full buffers
 
 ---
@@ -362,43 +359,9 @@ public void realtimeMatchesNonRealtime() {
 
 **Pass Criteria**: Real-time output matches non-real-time within tolerance.
 
-### Phase 4 Tests: Incremental Volume Normalization
+### Phase 4 Tests: Performance and Edge Cases
 
-#### Test 4.1: IncrementalVolumeNormalizer Stability
-
-**File**: `compose/src/test/java/org/almostrealism/audio/filter/test/IncrementalVolumeNormalizerTest.java`
-
-```java
-/**
- * Tests volume stability with incremental normalization.
- */
-@Test
-public void volumeStability() {
-    IncrementalVolumeNormalizer normalizer = new IncrementalVolumeNormalizer();
-
-    // Simulate buffers with varying levels
-    double[] peakLevels = {0.3, 0.8, 0.2, 0.9, 0.4};
-    double[] factors = new double[peakLevels.length];
-
-    for (int i = 0; i < peakLevels.length; i++) {
-        PackedCollection buffer = createBufferWithPeak(peakLevels[i]);
-        normalizer.updateMax(buffer);
-        factors[i] = normalizer.getNormalizationFactor();
-    }
-
-    // Verify no sudden jumps (factor change < 20% between buffers)
-    for (int i = 1; i < factors.length; i++) {
-        double change = Math.abs(factors[i] - factors[i-1]) / factors[i-1];
-        assertTrue("Volume change too sudden: " + change, change < 0.2);
-    }
-}
-```
-
-**Pass Criteria**: Normalization factor changes smoothly between buffers.
-
-### Phase 5 Tests: Performance and Edge Cases
-
-#### Test 5.1: Performance Benchmark
+#### Test 4.1: Performance Benchmark
 
 **File**: `compose/src/test/java/org/almostrealism/audio/test/RealtimePerformanceTest.java`
 
@@ -439,7 +402,7 @@ public void realtimePerformanceBenchmark() {
 
 **Pass Criteria**: Render time consistently below real-time threshold.
 
-#### Test 5.2: Pattern Element Caching
+#### Test 4.2: Pattern Element Caching
 
 **File**: `compose/src/test/java/org/almostrealism/audio/pattern/test/PatternCachingTest.java`
 
@@ -491,29 +454,17 @@ public void overlapAddTransitions() {
 
 ### Risk 2: Volume Instability
 
-| Aspect | Test Coverage |
-|--------|---------------|
-| Stability | Test 4.1: volumeStability |
-| Smoothing | Test 4.1: volumeStability |
-| Sudden changes | *New test needed*: suddenLevelChange |
-
-**Additional Test Needed:**
-```java
-@Test
-public void suddenLevelChange() {
-    // Simulate sudden loud note
-    // Verify normalization responds appropriately
-    // Ensure no clipping or drastic volume drops
-}
-```
+**OUT OF SCOPE**: Volume normalization is disabled in real-time mode. A compressor-style
+limiter would be the appropriate solution for real-time volume management, but this is
+deferred to future work.
 
 ### Risk 3: Performance Regression
 
 | Aspect | Test Coverage |
 |--------|---------------|
-| Render speed | Test 5.1: realtimePerformanceBenchmark |
-| Caching efficiency | Test 5.2: cachingCorrectness |
-| Worst case | Test 5.1: max render time check |
+| Render speed | Test 4.1: realtimePerformanceBenchmark |
+| Caching efficiency | Test 4.2: cachingCorrectness |
+| Worst case | Test 4.1: max render time check |
 
 ### Risk 4: Section Processing Complexity
 
@@ -559,9 +510,12 @@ public void scaleTraversalFrameConversion() {
 
 ### Risk 7: Note Audio Evaluation Timing
 
+**Heap.stage() OUT OF SCOPE**: The current `PatternFeatures.render()` uses `Heap.stage()` for
+memory management during note audio evaluation. This will be bypassed for initial implementation.
+If heap memory management proves beneficial for performance, it can be introduced later.
+
 | Aspect | Test Coverage |
 |--------|---------------|
-| Heap allocation | Test 5.1: performance benchmark |
 | Pre-evaluation | *New test needed*: noteAudioPreEvaluation |
 
 ### Risk 8: Section Activity Bias
@@ -588,8 +542,7 @@ public void scaleTraversalFrameConversion() {
 | Phase 1 | Test 1.1, 1.2, 1.3 + all baseline | After each commit |
 | Phase 2 | Test 2.1, 2.2 + Phase 1 tests | After each commit |
 | Phase 3 | Test 3.1, 3.2 + Phase 2 tests | After each commit |
-| Phase 4 | Test 4.1 + Phase 3 tests | After each commit |
-| Phase 5 | Test 5.1, 5.2 + all tests | Final validation |
+| Phase 4 | Test 4.1, 4.2 + all tests | Final validation |
 
 ### Post-Implementation Phase
 
@@ -630,7 +583,6 @@ test_realtime:
 | All baseline tests pass | Test count | 100% |
 | Real-time output matches non-real-time | Audio diff | < 1% difference |
 | No audio artifacts at boundaries | Manual review | Zero artifacts |
-| Volume stable | Factor variance | < 20% between buffers |
 
 ### Performance Criteria
 
@@ -671,7 +623,6 @@ test_realtime:
 | BatchCellTest | ar-compose | `compose/src/test/java/.../pattern/test/` |
 | AudioSceneRealtimeTest | ar-compose | `compose/src/test/java/.../test/` |
 | AudioSceneComparisonTest | ar-compose | `compose/src/test/java/.../test/` |
-| IncrementalVolumeNormalizerTest | ar-compose | `compose/src/test/java/.../filter/test/` |
 | RealtimePerformanceTest | ar-compose | `compose/src/test/java/.../test/` |
 | PatternCachingTest | ar-compose | `compose/src/test/java/.../pattern/test/` |
 

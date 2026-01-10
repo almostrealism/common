@@ -146,10 +146,7 @@ public Supplier<Runnable> sum(Supplier<AudioSceneContext> context,
             frameCount));
     });
 
-    // Incremental volume normalization
-    if (enableAutoVolume) {
-        op.add(incrementalVolumeNormalization(startFrame, frameCount));
-    }
+    // Note: Auto-volume is disabled in real-time mode (see REALTIME_AUDIO_SCENE.md Out of Scope section)
 
     return op;
 }
@@ -422,11 +419,15 @@ default void renderRange(PatternRenderContext context, NoteAudioContext audioCon
 
 /**
  * Safely retrieves audio from a rendered note.
+ *
+ * NOTE: Heap.stage() usage is OUT OF SCOPE for initial implementation.
+ * The initial implementation will bypass Heap memory management.
+ * See REALTIME_AUDIO_SCENE.md Out of Scope section.
  */
 private PackedCollection getAudio(RenderedNoteAudio note) {
     try {
-        return Heap.stage(() ->
-            traverse(1, note.getProducer()).get().evaluate());
+        // Initial implementation bypasses Heap.stage()
+        return traverse(1, note.getProducer()).get().evaluate();
     } catch (Exception e) {
         warn("Error evaluating note audio: " + e.getMessage());
         return null;
