@@ -19,6 +19,9 @@ package org.almostrealism.audio.line;
 import org.almostrealism.collect.PackedCollection;
 
 import javax.sound.sampled.AudioFormat;
+import javax.sound.sampled.AudioSystem;
+import javax.sound.sampled.DataLine;
+import javax.sound.sampled.LineUnavailableException;
 import javax.sound.sampled.SourceDataLine;
 
 /**
@@ -41,6 +44,8 @@ import javax.sound.sampled.SourceDataLine;
 public class SourceDataOutputLine implements OutputLine {
 	private SourceDataLine line;
 	private final int bufferSize;
+	private final AudioFormat format;
+	private volatile boolean resetting;
 
 	/**
 	 * Creates a new SourceDataOutputLine wrapping the specified Java Sound API line.
@@ -62,6 +67,7 @@ public class SourceDataOutputLine implements OutputLine {
 	public SourceDataOutputLine(SourceDataLine line, int bufferSize) {
 		this.line = line;
 		this.bufferSize = bufferSize;
+		this.format = line.getFormat();
 	}
 
 	/**
@@ -87,6 +93,10 @@ public class SourceDataOutputLine implements OutputLine {
 	 */
 	@Override
 	public void write(PackedCollection sample) {
+		if (resetting) {
+			return;
+		}
+
 		byte[] bytes = LineUtilities.toFrame(sample, line.getFormat());
 		line.write(bytes, 0, bytes.length);
 	}
@@ -139,6 +149,7 @@ public class SourceDataOutputLine implements OutputLine {
 	 * Starts the audio line if not already started.
 	 * Audio data written to the line will begin playing after this is called.
 	 */
+	@Override
 	public void start() {
 		if (line != null && !line.isActive()) {
 			line.start();
@@ -149,6 +160,7 @@ public class SourceDataOutputLine implements OutputLine {
 	 * Stops the audio line, pausing playback.
 	 * The line can be restarted with {@link #start()}.
 	 */
+	@Override
 	public void stop() {
 		if (line != null && line.isActive()) {
 			line.stop();
@@ -160,6 +172,7 @@ public class SourceDataOutputLine implements OutputLine {
 	 *
 	 * @return true if the line is active, false otherwise
 	 */
+	@Override
 	public boolean isActive() {
 		return line != null && line.isActive();
 	}
@@ -171,5 +184,57 @@ public class SourceDataOutputLine implements OutputLine {
 	 */
 	public boolean isOpen() {
 		return line != null && line.isOpen();
+	}
+
+	/**
+	 * Resets the audio line by closing the current {@link SourceDataLine} and
+	 * creating a new one with the same format and buffer configuration.
+	 * <p>
+	 * This method can be used to recover from audio issues caused by device
+	 * switching (e.g., when Bluetooth audio devices are connected/disconnected).
+	 * <p>
+	 * Note: After reset, the frame position returned by {@link #getReadPosition()}
+	 * will restart from 0, which may cause temporary synchronization issues with
+	 * any scheduler tracking playback position.
+	 *
+	 * @throws RuntimeException if the new line cannot be opened
+	 */
+	@Override
+	public synchronized void reset() {
+		try {
+			resetting = true;
+
+			boolean wasActive = false;
+
+			// Close existing line
+			if (line != null) {
+				if (line.isActive()) {
+					line.stop();
+					wasActive = true;
+				}
+				if (line.isOpen()) {
+					line.close();
+				}
+
+				line = null;
+			}
+
+			// Create new line with same format
+			DataLine.Info info = new DataLine.Info(SourceDataLine.class, format);
+			try {
+				line = (SourceDataLine) AudioSystem.getLine(info);
+				line.open(format, Math.max(1024, bufferSize * 4));
+
+				if (wasActive) {
+					// Start the line automatically if the previous line
+					// had been active at the time of the reset
+					line.start();
+				}
+			} catch (LineUnavailableException e) {
+				throw new RuntimeException("Failed to reset audio line", e);
+			}
+		} finally {
+			resetting = false;
+		}
 	}
 }

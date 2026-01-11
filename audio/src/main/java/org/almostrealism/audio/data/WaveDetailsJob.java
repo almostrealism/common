@@ -18,6 +18,7 @@ package org.almostrealism.audio.data;
 
 import org.almostrealism.io.ConsoleFeatures;
 
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Function;
 
@@ -82,6 +83,8 @@ public class WaveDetailsJob implements Runnable, ConsoleFeatures {
 
 	@Override
 	public String toString() {
-		return "WaveDetailsJob[" + getTarget().getKey() + "]";
+		String target = Optional.ofNullable(getTarget())
+				.map(WaveDataProvider::getKey).orElse("<empty>");
+		return "WaveDetailsJob[" + target + "]";
 	}
 }

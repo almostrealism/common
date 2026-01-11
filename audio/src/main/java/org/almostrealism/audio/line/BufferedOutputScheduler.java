@@ -90,7 +90,7 @@ public class BufferedOutputScheduler implements CellFeatures {
 	 * A negative value causes slightly shorter sleeps, helping to stay ahead of
 	 * real-time playback and reduce the risk of buffer underruns.
 	 */
-	public static final long timingPad = -3;
+	public static final long timingPad = -2;
 
 	/**
 	 * When {@code true}, enables detailed logging of scheduler state during
@@ -141,6 +141,12 @@ public class BufferedOutputScheduler implements CellFeatures {
 	private boolean degradedMode;
 	private int recoveryCount;
 
+	// User-initiated suspend state (separate from buffer-safety pause)
+	private volatile boolean suspended;
+	private final Object suspendLock = new Object();
+	private long suspendTime;
+	private long totalSuspendedDuration;
+
 	/**
 	 * Creates a new scheduler with the specified components.
 	 *
@@ -183,7 +189,6 @@ public class BufferedOutputScheduler implements CellFeatures {
 		regularizer = new TimingRegularizer((long) (buffer.getDetails().getDuration() * 10e9));
 
 		executor.accept(this::run);
-		log("Started BufferedOutputScheduler");
 	}
 
 	/**
@@ -300,6 +305,50 @@ public class BufferedOutputScheduler implements CellFeatures {
 	}
 
 	/**
+	 * Returns the number of frames between the current write position and the
+	 * hardware read position in the circular buffer.
+	 * <p>
+	 * A positive value indicates the write position is ahead of the read position
+	 * (normal operation - we're writing data before it's played).
+	 * A value near zero indicates the read position has nearly caught up to
+	 * the write position (buffer underrun risk).
+	 * <p>
+	 * The value accounts for circular buffer wrap-around.
+	 *
+	 * @return the buffer gap in frames, or 0 if no output is configured
+	 */
+	public int getBufferGap() {
+		if (output == null) return 0;
+
+		int writePos = getWritePosition();
+		int readPos = output.getReadPosition();
+		int bufferSize = output.getBufferSize();
+
+		int gap = writePos - readPos;
+		if (gap < 0) {
+			gap += bufferSize;  // Handle circular buffer wrap-around
+		}
+		return gap;
+	}
+
+	/**
+	 * Returns the buffer gap as a percentage of the total buffer size.
+	 * <p>
+	 * Useful for UI display. Values typically range from 0-100%, where:
+	 * <ul>
+	 *   <li>~25-75%: Normal operation</li>
+	 *   <li>&lt;25%: Risk of underrun (read catching up to write)</li>
+	 *   <li>&gt;75%: Risk of overrun (write catching up to read)</li>
+	 * </ul>
+	 *
+	 * @return the buffer gap as a percentage (0.0-100.0)
+	 */
+	public double getBufferGapPercent() {
+		if (output == null) return 0.0;
+		return (getBufferGap() * 100.0) / output.getBufferSize();
+	}
+
+	/**
 	 * Attempts to automatically resume processing if currently paused and safe to do so.
 	 * <p>
 	 * Safety is determined by {@link BufferDefaults#isSafeGroup}, which checks that
@@ -327,6 +376,76 @@ public class BufferedOutputScheduler implements CellFeatures {
 	 * Signals the scheduler to stop processing after the current cycle completes.
 	 */
 	public void stop() { stopped = true; }
+
+	/**
+	 * Suspends the scheduler, stopping all audio generation and output.
+	 * <p>
+	 * Unlike {@link #pause()}, which is an internal mechanism for buffer safety,
+	 * this method is intended for user-initiated playback suspension. When suspended:
+	 * <ul>
+	 *   <li>The main processing loop blocks until {@link #unsuspend()} is called</li>
+	 *   <li>No audio data is generated or written to the output line</li>
+	 *   <li>The output line is stopped to prevent buffer accumulation issues</li>
+	 * </ul>
+	 * <p>
+	 * This method is thread-safe and can be called from any thread.
+	 */
+	public void suspend() {
+		synchronized (suspendLock) {
+			if (!suspended) {
+				suspended = true;
+				suspendTime = System.currentTimeMillis();
+				output.stop();
+
+				if (enableVerbose)
+					log("Scheduler suspended at cycle " + count);
+			}
+		}
+	}
+
+	/**
+	 * Resumes the scheduler from a suspended state.
+	 * <p>
+	 * When unsuspended:
+	 * <ul>
+	 *   <li>The output line is restarted</li>
+	 *   <li>Timing state is reset to prevent catch-up behavior</li>
+	 *   <li>The main processing loop resumes execution</li>
+	 * </ul>
+	 * <p>
+	 * This method is thread-safe and can be called from any thread.
+	 * If the scheduler is not currently suspended, this method has no effect.
+	 */
+	public void unsuspend() {
+		synchronized (suspendLock) {
+			if (suspended) {
+				totalSuspendedDuration += System.currentTimeMillis() - suspendTime;
+				output.start();
+
+				// Reset internal buffer-safety pause state - after a user-initiated suspend,
+				// we should be ready to generate audio immediately. The buffer positions
+				// may be out of sync after a long suspend, so we reset everything.
+				paused = false;
+				lastReadPosition = output.getReadPosition();
+				groupStart = System.currentTimeMillis();
+
+				// Reinitialize the timing regularizer to avoid catch-up behavior
+				regularizer = new TimingRegularizer((long) (buffer.getDetails().getDuration() * 10e9));
+				suspended = false;
+				suspendLock.notifyAll();
+
+				if (enableVerbose)
+					log("Scheduler resumed after " + (System.currentTimeMillis() - suspendTime) + "ms");
+			}
+		}
+	}
+
+	/**
+	 * Returns whether the scheduler is currently suspended.
+	 *
+	 * @return {@code true} if suspended, {@code false} otherwise
+	 */
+	public boolean isSuspended() { return suspended; }
 
 	/**
 	 * Returns the audio buffer used for intermediate storage.
@@ -397,7 +516,7 @@ public class BufferedOutputScheduler implements CellFeatures {
 	 *
 	 * @return the adjusted elapsed time in milliseconds
 	 */
-	public long getRealTime() { return toRealTime(System.currentTimeMillis() - start - totalPaused); }
+	public long getRealTime() { return toRealTime(System.currentTimeMillis() - start - totalPaused - totalSuspendedDuration); }
 
 	/**
 	 * Returns the duration of audio that has been rendered, in milliseconds.
@@ -474,6 +593,20 @@ public class BufferedOutputScheduler implements CellFeatures {
 		long lastDuration = 0;
 
 		while (!stopped) {
+			// Wait if suspended (user-initiated pause)
+			synchronized (suspendLock) {
+				while (suspended && !stopped) {
+					try {
+						suspendLock.wait();
+					} catch (InterruptedException e) {
+						Thread.currentThread().interrupt();
+						return;
+					}
+				}
+			}
+
+			if (stopped) break;
+
 			long target;
 
 			attemptAutoResume();
