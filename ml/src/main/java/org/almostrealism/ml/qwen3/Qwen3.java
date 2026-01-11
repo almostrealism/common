@@ -3,7 +3,9 @@ package org.almostrealism.ml.qwen3;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.profile.OperationProfile;
+import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.computations.DynamicCollectionProducer;
 import org.almostrealism.ml.AttentionFeatures;
 import org.almostrealism.ml.AutoregressiveModel;
 import org.almostrealism.ml.StateDictionary;
@@ -88,6 +90,7 @@ public class Qwen3 implements AttentionFeatures {
 	private AutoregressiveModel model;
 	private OperationProfile profile;
 	private org.almostrealism.model.CompiledModel compiledModel;
+	private PackedCollection position;
 
 	/**
 	 * Main entry point for running Qwen3 from command line.
@@ -274,6 +277,13 @@ public class Qwen3 implements AttentionFeatures {
 	}
 
 	/**
+	 * For testing: Get the position collection to manually control position.
+	 */
+	public PackedCollection getPosition() {
+		return position;
+	}
+
+	/**
 	 * Build the Qwen3 transformer model.
 	 *
 	 * This creates the full transformer stack with:
@@ -290,7 +300,7 @@ public class Qwen3 implements AttentionFeatures {
 		Model transformer = new Model(shape(1, config.dim));
 
 		// Placeholder for the index of the current step (position in sequence)
-		PackedCollection position = new PackedCollection(1);
+		this.position = new PackedCollection(1);
 
 		int dim = config.dim;
 		int kvDim = config.dim * config.kvHeadCount / config.headCount;
@@ -348,7 +358,7 @@ public class Qwen3 implements AttentionFeatures {
 					freqCis,              // RoPE frequencies
 					layerRmsFfn,          // Pre-FFN norm
 					layerW1, layerW2, layerW3,  // FFN projections (SwiGLU)
-					p(position),          // Current position
+					dynamicPosition(position),  // Current position (dynamically read at runtime)
 					1e-6,                 // Qwen3 RMSNorm epsilon
 					requirements));
 		}
@@ -396,6 +406,21 @@ public class Qwen3 implements AttentionFeatures {
 		}
 
 		return freqCis;
+	}
+
+	/**
+	 * Creates a dynamic position producer that reads the position value at runtime.
+	 *
+	 * <p>Unlike {@code p(position)} which captures the value at build time,
+	 * this producer reads the current value of the position collection each time
+	 * the model runs forward. This is essential for multi-token generation where
+	 * the position changes between forward passes.</p>
+	 *
+	 * @param position The position collection that holds the current sequence position
+	 * @return A Producer that dynamically reads from the position collection
+	 */
+	private static Producer<PackedCollection> dynamicPosition(PackedCollection position) {
+		return new DynamicCollectionProducer(position.getShape(), args -> position);
 	}
 
 	/**

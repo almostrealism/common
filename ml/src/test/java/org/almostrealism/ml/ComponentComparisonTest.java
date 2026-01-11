@@ -23,13 +23,14 @@ import org.almostrealism.io.OutputFeatures;
 import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.layers.LayerFeatures;
 import org.almostrealism.model.Model;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 /**
  * Component-level comparison tests to identify divergence sources.
  * Each test verifies a single component against mathematically computed expected values.
  */
-public class ComponentComparisonTest implements LayerFeatures, ConsoleFeatures {
+public class ComponentComparisonTest extends TestSuiteBase implements LayerFeatures, ConsoleFeatures {
 
     private static final double TOLERANCE = 1e-5;
 

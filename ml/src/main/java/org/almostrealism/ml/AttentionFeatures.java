@@ -26,6 +26,7 @@ import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.model.Block;
 import org.almostrealism.model.SequentialBlock;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Function;
 
@@ -164,6 +165,104 @@ import java.util.function.Function;
 public interface AttentionFeatures extends RotationFeatures {
 
 	/**
+	 * Creates a layer that reshapes input for split-half RoPE format.
+	 *
+	 * <p>Transforms from flat dimension layout to (heads, freqDim, 2) where:
+	 * <ul>
+	 *   <li>Dimension 2 index 0 contains first half of each head (elements 0 to headSize/2-1)</li>
+	 *   <li>Dimension 2 index 1 contains second half of each head (elements headSize/2 to headSize-1)</li>
+	 * </ul>
+	 *
+	 * <p>This is the format expected by PyTorch's Qwen/Llama RoPE implementation.</p>
+	 *
+	 * @param flatDim Input dimension (heads * headSize)
+	 * @param heads Number of attention heads
+	 * @param headSize Size of each head (must be even)
+	 * @return CellularLayer that transforms to split-half format
+	 */
+	default CellularLayer reshapeToSplitHalfRope(int flatDim, int heads, int headSize) {
+		int freqDim = headSize / 2;
+		// Input shape is (1, flatDim) - with batch dimension from dense projection
+		TraversalPolicy inputShape = shape(1, flatDim);
+		// Output shape is (heads, freqDim, 2) - stripped batch for ropeRotation
+		TraversalPolicy outputShape = shape(heads, freqDim, 2);
+
+		// Build index mapping from output to input using pure arithmetic
+		// output[h, f, 0] = input[h * headSize + f]  (first half)
+		// output[h, f, 1] = input[h * headSize + freqDim + f]  (second half)
+		int outputSize = heads * freqDim * 2;
+		int[] indexMap = new int[outputSize];
+		for (int h = 0; h < heads; h++) {
+			for (int f = 0; f < freqDim; f++) {
+				// First half: index [h, f, 0]
+				int outIdx0 = h * freqDim * 2 + f * 2 + 0;
+				indexMap[outIdx0] = h * headSize + f;
+				// Second half: index [h, f, 1]
+				int outIdx1 = h * freqDim * 2 + f * 2 + 1;
+				indexMap[outIdx1] = h * headSize + freqDim + f;
+			}
+		}
+
+		PackedCollection indexCollection = new PackedCollection(shape(outputSize));
+		for (int i = 0; i < outputSize; i++) {
+			indexCollection.setMem(i, indexMap[i]);
+		}
+
+		return layer("reshapeToSplitHalfRope", inputShape, outputShape, input -> {
+			// Use index-based gathering: output[i] = input[indexMap[i]]
+			return c(shape(outputSize), c(input).reshape(shape(flatDim)), p(indexCollection))
+					.reshape(outputShape);
+		});
+	}
+
+	/**
+	 * Creates a layer that reshapes from split-half RoPE format back to flat dimension.
+	 *
+	 * <p>Transforms from (heads, freqDim, 2) back to (flatDim) where elements are
+	 * interleaved per head as [firstHalf, secondHalf].</p>
+	 *
+	 * @param heads Number of attention heads
+	 * @param headSize Size of each head (must be even)
+	 * @return CellularLayer that transforms from split-half format to flat
+	 */
+	default CellularLayer reshapeFromSplitHalfRope(int heads, int headSize) {
+		int freqDim = headSize / 2;
+		TraversalPolicy inputShape = shape(heads, freqDim, 2);
+		// Output (heads, headSize) for use with attentionKeys
+		TraversalPolicy outputShape = shape(heads, headSize);
+
+		// Build index mapping from output to input using pure arithmetic
+		// output[h, 0..freqDim-1] = input[h, 0..freqDim-1, 0] (first half)
+		// output[h, freqDim..headSize-1] = input[h, 0..freqDim-1, 1] (second half)
+		int inputSize = heads * freqDim * 2;
+		int outputSize = heads * headSize;
+		int[] indexMap = new int[outputSize];
+		for (int h = 0; h < heads; h++) {
+			for (int f = 0; f < freqDim; f++) {
+				// First half: output[h, f] = input[h, f, 0]
+				int outIdx0 = h * headSize + f;
+				int inIdx0 = h * freqDim * 2 + f * 2 + 0;
+				indexMap[outIdx0] = inIdx0;
+				// Second half: output[h, freqDim + f] = input[h, f, 1]
+				int outIdx1 = h * headSize + freqDim + f;
+				int inIdx1 = h * freqDim * 2 + f * 2 + 1;
+				indexMap[outIdx1] = inIdx1;
+			}
+		}
+
+		PackedCollection indexCollection = new PackedCollection(shape(outputSize));
+		for (int i = 0; i < outputSize; i++) {
+			indexCollection.setMem(i, indexMap[i]);
+		}
+
+		return layer("reshapeFromSplitHalfRope", inputShape, outputShape, input -> {
+			// Use index-based gathering: output[i] = input[indexMap[i]]
+			return c(shape(outputSize), c(input).reshape(shape(inputSize)), p(indexCollection))
+					.reshape(outputShape);
+		});
+	}
+
+	/**
 	 * Creates an attention keys layer function that can be applied to different input shapes.
 	 *
 	 * @param keys The key tensor producer (seqLength, kvHeads, headSize)
@@ -206,47 +305,135 @@ public interface AttentionFeatures extends RotationFeatures {
 		if (keyShape.length(2) != headSize)
 			throw new IllegalArgumentException("Key head size mismatch");
 
-		// Handle Grouped Query Attention (GQA): expand KV heads to match query heads
+		// Handle Grouped Query Attention (GQA)
 		if (kvHeads != heads && heads % kvHeads != 0) {
 			throw new IllegalArgumentException("heads must be divisible by kvHeads for GQA");
 		}
 
-		// Expand KV heads if needed (GQA), otherwise use keys directly
 		int headsPerKvGroup = heads / kvHeads;
-		final Producer<PackedCollection> expandedKeys = (kvHeads != heads)
-				? expandKeysForGQA(keys, seqLength, kvHeads, heads, headSize, headsPerKvGroup)
-				: keys;
+		int kvDim = kvHeads * headSize;
 
-		// TODO  divide(c(Math.sqrt(headSize))) is better to include
-		// TODO  outside this method rather than within the layer
-		return layer("attentionKeys", inputShape, outputShape, input ->
-				traverse(1, expandedKeys).map(v -> v.multiply(input))
-						.traverse(2).sum()
-						.divide(c(Math.sqrt(headSize)))
-						.reshape(shape(seqLength, heads))
-						.enumerate(1, 1)
-						.reshape(outputShape), requirements);
+		if (kvHeads == heads) {
+			// No GQA - use simple attention
+			return layer("attentionKeys", inputShape, outputShape, input ->
+					traverse(1, keys).map(v -> v.multiply(input))
+							.traverse(2).sum()
+							.divide(c(Math.sqrt(headSize)))
+							.reshape(shape(seqLength, heads))
+							.enumerate(1, 1)
+							.reshape(outputShape), requirements);
+		} else {
+			// GQA: Compact keys (seqLen, kvHeads, headSize), Query (heads, headSize)
+			// Compute attention scores per kvHead group using subset operations
+			// This avoids traverse().repeat() which causes compilation issues
+
+			return layer("attentionKeysGQA", inputShape, outputShape, input -> {
+				// For each kvHead, compute attention scores for its query head group
+				List<CollectionProducer> groupScores = new ArrayList<>();
+
+				for (int kv = 0; kv < kvHeads; kv++) {
+					// Extract query slice: (headsPerKvGroup, headSize)
+					CollectionProducer queryGroup = c(input)
+							.subset(shape(headsPerKvGroup, headSize), kv * headsPerKvGroup, 0);
+
+					// Extract keys for this kvHead: (seqLen, headSize)
+					int keyOffset = kv * headSize;
+					CollectionProducer keysForKv = c(keys)
+							.reshape(shape(seqLength, kvDim))
+							.subset(shape(seqLength, headSize), 0, keyOffset);
+
+					// Compute scores per query head in this group
+					List<CollectionProducer> headScores = new ArrayList<>();
+					for (int g = 0; g < headsPerKvGroup; g++) {
+						// Extract single query: (headSize)
+						CollectionProducer query = queryGroup.subset(shape(1, headSize), g, 0)
+								.reshape(shape(headSize));
+
+						// Compute dot product with all keys: query @ keysForKv^T
+						// query: (headSize), keysForKv: (seqLen, headSize)
+						// output: (seqLen)
+						CollectionProducer dotProducts = traverse(1, keysForKv)
+								.map(v -> v.multiply(query))
+								.sum()
+								.divide(c(Math.sqrt(headSize)));
+
+						// dotProducts: (seqLen)
+						headScores.add(dotProducts.reshape(shape(1, seqLength)));
+					}
+
+					// Concatenate head scores: (headsPerKvGroup, seqLen)
+					CollectionProducer kvScores = concat(0, headScores.toArray(new CollectionProducer[0]));
+					groupScores.add(kvScores);
+				}
+
+				// Concatenate all group scores: (heads, seqLen)
+				CollectionProducer allScores = concat(0, groupScores.toArray(new CollectionProducer[0]));
+
+				return allScores.reshape(outputShape);
+			}, requirements);
+		}
 	}
 
 	/**
-	 * Expand KV cache for Grouped Query Attention by repeating each KV head.
+	 * Creates a GQA expansion layer for per-position KV data with batch dimension.
 	 *
-	 * Transforms (seqLength, kvHeads, headSize) to (seqLength, heads, headSize)
-	 * where each KV head is repeated (heads/kvHeads) times.
+	 * <p>Expands from (1, kvDim) to (1, dim) by duplicating each KV head's data
+	 * headsPerKvGroup times. This operates on per-position 2D data (with batch dim)
+	 * using explicit subset and concat to avoid traverse().repeat() which causes
+	 * compilation issues.</p>
 	 *
-	 * Example for 14 heads, 2 KV heads (7:1 ratio):
-	 * - kvHead[0] -> queryHeads[0..6]
-	 * - kvHead[1] -> queryHeads[7..13]
+	 * <p>For Qwen3 with heads=14, kvHeads=2 (7:1 ratio):
+	 * - Input: (1, 128) = (1, 2 * 64)
+	 * - Output: (1, 896) = (1, 14 * 64)
+	 * - kvHead[0] data -> queryHeads[0..6]
+	 * - kvHead[1] data -> queryHeads[7..13]</p>
+	 *
+	 * @param kvDim Input dimension (kvHeads * headSize)
+	 * @param dim Output dimension (heads * headSize)
+	 * @param kvHeads Number of KV heads
+	 * @param heads Number of query heads
+	 * @param headSize Size per head
+	 * @param requirements Compute requirements
+	 * @return CellularLayer that expands KV data for GQA
 	 */
-	default Producer<PackedCollection> expandKeysForGQA(
-			Producer<PackedCollection> keys,
-			int seqLength, int kvHeads, int heads, int headSize, int headsPerKvGroup) {
-		// (seqLength, kvHeads, headSize) -> (seqLength, kvHeads, headsPerKvGroup, headSize)
-		// traverse(2) traverses first 2 dims, repeat inserts new dimension
-		Producer<PackedCollection> repeated = traverse(2, keys).repeat(headsPerKvGroup);
+	default CellularLayer gqaExpand(int kvDim, int dim, int kvHeads, int heads, int headSize,
+									ComputeRequirement... requirements) {
+		if (kvHeads == heads) {
+			// No expansion needed - identity layer
+			return layer("gqa_identity", shape(1, kvDim), shape(1, dim),
+					input -> c(input), requirements);
+		}
 
-		// (seqLength, kvHeads, headsPerKvGroup, headSize) -> (seqLength, heads, headSize)
-		return reshape(shape(seqLength, heads, headSize), repeated);
+		int headsPerKvGroup = heads / kvHeads;
+		TraversalPolicy inputShape = shape(1, kvDim);
+		TraversalPolicy outputShape = shape(1, dim);
+
+		// Build index mapping from output to input using pure arithmetic
+		// For output index i in [0, dim):
+		//   outputHead = i / headSize
+		//   inHeadOffset = i % headSize
+		//   kvHead = outputHead / headsPerKvGroup
+		//   inputIdx = kvHead * headSize + inHeadOffset
+		int[] indexMap = new int[dim];
+		for (int i = 0; i < dim; i++) {
+			int outputHead = i / headSize;
+			int inHeadOffset = i % headSize;
+			int kvHead = outputHead / headsPerKvGroup;
+			indexMap[i] = kvHead * headSize + inHeadOffset;
+		}
+
+		// Create index producer from the precomputed map
+		PackedCollection indexCollection = new PackedCollection(shape(dim));
+		for (int i = 0; i < dim; i++) {
+			indexCollection.setMem(i, indexMap[i]);
+		}
+
+		return layer("gqa_expand", inputShape, outputShape, input -> {
+			// Use index-based gathering: output[i] = input[indexMap[i]]
+			// The c(collection, index) method does exactly this
+			return c(shape(dim), c(input).reshape(shape(kvDim)), p(indexCollection))
+					.reshape(outputShape);
+		}, requirements);
 	}
 
 	/**
@@ -294,23 +481,182 @@ public interface AttentionFeatures extends RotationFeatures {
 		if (valueShape.length(0) != seqLength)
 			throw new IllegalArgumentException("Value sequence length mismatch");
 
-		// Handle Grouped Query Attention (GQA): expand KV heads to match query heads
+		// Handle Grouped Query Attention (GQA)
 		if (kvHeads != heads && heads % kvHeads != 0) {
 			throw new IllegalArgumentException("heads must be divisible by kvHeads for GQA");
 		}
 
-		// Expand KV heads if needed (GQA), otherwise use values directly
 		int headsPerKvGroup = heads / kvHeads;
-		final Producer<PackedCollection> expandedValues = (kvHeads != heads)
-				? expandValuesForGQA(values, seqLength, kvHeads, heads, headSize, headsPerKvGroup)
-				: values;
 
-		return layer("attentionValues", inputShape, outputShape, input -> {
-			Producer<PackedCollection> v = reshape(shape(seqLength, dim), expandedValues);
+		if (kvHeads == heads) {
+			// No GQA - use simple attention
+			return layer("attentionValues", inputShape, outputShape, input -> {
+				Producer<PackedCollection> v = reshape(shape(seqLength, dim), values);
+				v = enumerate(1, 1, v).reshape(shape(heads, headSize, seqLength));
+
+				CollectionProducer a = traverse(1, input).repeat(headSize);
+				CollectionProducer o = multiply(traverseEach(a), traverseEach(v)).traverse(2).sum();
+				return o.reshape(shape(1, dim).traverseEach());
+			}, requirements);
+		} else {
+			// GQA: Compact values (seqLen, kvHeads, headSize), Attention (heads, seqLen)
+			// Compute weighted values per kvHead group using subset operations
+			// This avoids traverse().repeat() which causes compilation issues
+
+			int kvDim = kvHeads * headSize;
+
+			return layer("attentionValuesGQA", inputShape, outputShape, input -> {
+				// For each kvHead, compute weighted values for its query head group
+				List<CollectionProducer> groupOutputs = new ArrayList<>();
+
+				for (int kv = 0; kv < kvHeads; kv++) {
+					// Extract attention slice: (headsPerKvGroup, seqLen)
+					CollectionProducer attnGroup = c(input)
+							.reshape(shape(heads, seqLength))
+							.subset(shape(headsPerKvGroup, seqLength), kv * headsPerKvGroup, 0);
+
+					// Extract values for this kvHead: (seqLen, headSize)
+					int valOffset = kv * headSize;
+					CollectionProducer valuesForKv = c(values)
+							.reshape(shape(seqLength, kvDim))
+							.subset(shape(seqLength, headSize), 0, valOffset);
+
+					// Compute weighted sum: attnGroup @ valuesForKv
+					// attnGroup: (headsPerKvGroup, seqLen)
+					// valuesForKv: (seqLen, headSize)
+					// output: (headsPerKvGroup, headSize)
+
+					// For each query head in this group, compute weighted sum independently
+					List<CollectionProducer> headOutputs = new ArrayList<>();
+					for (int g = 0; g < headsPerKvGroup; g++) {
+						// Extract attention for this head: (seqLen)
+						CollectionProducer attnHead = attnGroup.subset(shape(1, seqLength), g, 0)
+								.reshape(shape(seqLength));
+
+						// Compute weighted sum: sum_s(attn[s] * values[s, :])
+						// attnHead: (seqLen), valuesForKv: (seqLen, headSize)
+						// Reshape attnHead to (seqLen, 1) for broadcasting
+						CollectionProducer attnCol = attnHead.reshape(shape(seqLength, 1));
+
+						// Multiply: (seqLen, 1) * (seqLen, headSize) = (seqLen, headSize) with broadcast
+						CollectionProducer weighted = multiply(attnCol, valuesForKv);
+
+						// Transpose to (headSize, seqLen) and sum over seqLen
+						CollectionProducer weightedT = weighted.enumerate(1, 1)
+								.reshape(shape(headSize, seqLength));
+						CollectionProducer headOut = weightedT.traverse(1).sum();
+						// headOut: (headSize)
+
+						headOutputs.add(headOut.reshape(shape(1, headSize)));
+					}
+
+					// Concatenate head outputs: (headsPerKvGroup, headSize)
+					CollectionProducer groupOut = concat(0, headOutputs.toArray(new CollectionProducer[0]));
+					groupOutputs.add(groupOut);
+				}
+
+				// Concatenate all group outputs: (heads, headSize)
+				CollectionProducer allOutputs = concat(0, groupOutputs.toArray(new CollectionProducer[0]));
+
+				return allOutputs.reshape(shape(1, dim).traverseEach());
+			}, requirements);
+		}
+	}
+
+	/**
+	 * Standard attention keys computation for expanded caches (no GQA).
+	 *
+	 * <p>This version expects keys in shape (seqLength, heads, headSize), which is the
+	 * expanded format where GQA expansion has already been done at cache write time.</p>
+	 *
+	 * @param inputShape Shape of the query input (heads, headSize)
+	 * @param keys Key tensor producer (seqLength, heads, headSize)
+	 * @param requirements Compute requirements
+	 * @return Attention keys layer producing scaled dot-product attention scores
+	 */
+	default CellularLayer attentionKeysStandard(TraversalPolicy inputShape,
+												Producer<PackedCollection> keys,
+												ComputeRequirement... requirements) {
+		TraversalPolicy keyShape = shape(keys); // (seqLength, heads, headSize)
+
+		if (inputShape.getDimensions() != 2 || keyShape.getDimensions() != 3)
+			throw new IllegalArgumentException("Expected query (heads, headSize) and keys (seqLen, heads, headSize)");
+
+		int heads = inputShape.length(0);
+		int headSize = inputShape.length(1);
+
+		int seqLength = keyShape.length(0);
+		TraversalPolicy outputShape = shape(heads, seqLength).traverseEach();
+
+		if (keyShape.length(1) != heads || keyShape.length(2) != headSize)
+			throw new IllegalArgumentException("Key shape must match query heads and headSize");
+
+		// Standard attention: Q @ K^T / sqrt(headSize)
+		// Use permute(1, 0) to transpose (seqLength, heads) -> (heads, seqLength)
+		// instead of enumerate(1, 1) which uses subset internally
+		return layer("attentionKeysStd", inputShape, outputShape, input ->
+				permute(
+					traverse(1, keys).map(v -> v.multiply(input))
+						.traverse(2).sum()
+						.divide(c(Math.sqrt(headSize)))
+						.reshape(shape(seqLength, heads)),
+					1, 0
+				).reshape(outputShape), requirements);
+	}
+
+	/**
+	 * Standard attention values computation for expanded caches (no GQA).
+	 *
+	 * <p>This version expects values in shape (seqLength, heads, headSize), which is the
+	 * expanded format where GQA expansion has already been done at cache write time.</p>
+	 *
+	 * @param inputShape Shape of the attention scores input (heads, seqLength)
+	 * @param values Value tensor producer (seqLength, heads, headSize)
+	 * @param requirements Compute requirements
+	 * @return Attention values layer producing (1, dim) output
+	 */
+	default CellularLayer attentionValuesStandard(TraversalPolicy inputShape,
+												  Producer<PackedCollection> values,
+												  ComputeRequirement... requirements) {
+		TraversalPolicy valueShape = shape(values); // (seqLength, heads, headSize)
+
+		if (inputShape.getDimensions() != 2 || valueShape.getDimensions() != 3)
+			throw new IllegalArgumentException("Expected attention (heads, seqLen) and values (seqLen, heads, headSize)");
+
+		int heads = inputShape.length(0);
+		int headSize = valueShape.length(2);
+		int dim = heads * headSize;
+
+		int seqLength = inputShape.length(1);
+
+		// Preserve batch dimension in output shape for consistency with other layers
+		TraversalPolicy outputShape = shape(1, dim);
+
+		if (valueShape.length(0) != seqLength || valueShape.length(1) != heads)
+			throw new IllegalArgumentException("Value shape must match attention heads and seqLength");
+
+		// Standard attention: softmax(scores) @ V
+		// output[h, i] = sum_s(attn[h, s] * values[s, h, i])
+		//
+		// Use the same pattern as the working attentionValues method (non-GQA case):
+		// - Reshape values to (seqLen, dim), transpose to (dim, seqLen), reshape to (heads, headSize, seqLen)
+		// - Expand attention (heads, seqLen) to (heads, headSize, seqLen) via traverse+repeat
+		// - Element-wise multiply and sum over seqLen
+		return layer("attentionValuesStd", inputShape, outputShape, input -> {
+			// Reshape values from (seqLen, heads, headSize) to (seqLen, dim)
+			Producer<PackedCollection> v = reshape(shape(seqLength, dim), values);
+			// Transpose to (dim, seqLen), then reshape to (heads, headSize, seqLen)
 			v = enumerate(1, 1, v).reshape(shape(heads, headSize, seqLength));
 
+			// input is (heads, seqLen)
+			// traverse(1, input) iterates over heads, giving (seqLen) slices
+			// repeat(headSize) expands each (seqLen) to (headSize, seqLen)
 			CollectionProducer a = traverse(1, input).repeat(headSize);
+
+			// Element-wise multiply (heads, headSize, seqLen) * (heads, headSize, seqLen)
+			// Then sum over seqLen to get (heads, headSize)
 			CollectionProducer o = multiply(traverseEach(a), traverseEach(v)).traverse(2).sum();
+
 			return o.reshape(shape(1, dim).traverseEach());
 		}, requirements);
 	}
@@ -324,11 +670,15 @@ public interface AttentionFeatures extends RotationFeatures {
 	default Producer<PackedCollection> expandValuesForGQA(
 			Producer<PackedCollection> values,
 			int seqLength, int kvHeads, int heads, int headSize, int headsPerKvGroup) {
-		// (seqLength, kvHeads, headSize) -> (seqLength, kvHeads, headsPerKvGroup, headSize)
-		Producer<PackedCollection> repeated = traverse(2, values).repeat(headsPerKvGroup);
+		// Skip expansion if kvHeads == heads (no GQA)
+		if (kvHeads == heads) {
+			return values;
+		}
 
-		// (seqLength, kvHeads, headsPerKvGroup, headSize) -> (seqLength, heads, headSize)
-		return reshape(shape(seqLength, heads, headSize), repeated);
+		// Use traverse(2) to iterate over (seqLength, kvHeads), then repeat each (headSize) vector
+		TraversalPolicy outputShape = shape(seqLength, heads, headSize);
+		Producer<PackedCollection> repeated = traverse(2, values).repeat(headsPerKvGroup);
+		return reshape(outputShape, repeated);
 	}
 
 	/**
@@ -423,12 +773,16 @@ public interface AttentionFeatures extends RotationFeatures {
 		int headSize = freqCis.getShape().length(1) * 2; // freqCis is (seqLen, headSize/2, 2)
 		int seqLen = freqCis.getShape().length(0);
 		int kvDim = dim * kvHeads / heads;
+		int headsPerKvGroup = heads / kvHeads;
+		boolean useGQA = kvHeads != heads;
 
 		TraversalPolicy inputShape = shape(1, dim);
 		SequentialBlock attention = new SequentialBlock(inputShape);
 
-		PackedCollection keyCache = new PackedCollection(seqLen, kvHeads, headSize);
-		PackedCollection valueCache = new PackedCollection(seqLen, kvHeads, headSize);
+		// Use EXPANDED caches (seqLen, heads, headSize) to avoid GQA subset/reshape issues during attention
+		// GQA expansion is done at cache write time instead of read time
+		PackedCollection keyCache = new PackedCollection(seqLen, heads, headSize);
+		PackedCollection valueCache = new PackedCollection(seqLen, heads, headSize);
 
 		// Zero-initialize caches to prevent garbage values from causing numerical explosions
 		keyCache.clear();
@@ -446,19 +800,38 @@ public interface AttentionFeatures extends RotationFeatures {
 		keys.add(bk != null ? dense(wk, bk) : dense(wk));
 		if (qkNormK != null) {
 			// QK-Norm: RMSNorm applied per-head before RoPE (NOT LayerNorm!)
-			keys.add(reshape(shape(kvDim), kvHeadShape));
-			keys.add((Function<TraversalPolicy, CellularLayer>) (s -> rmsnorm(s, qkNormK, 1e-6, requirements)));
-			keys.add(reshape(kvHeadShape, kvHeadShapeComplex));
-		} else {
-			keys.add(reshape(shape(kvDim), kvHeadShapeComplex));
+			// Flatten the norm weights from (kvHeads, headSize) to (kvDim) since rmsnorm requires 1D weights
+			PackedCollection flatQkNormK = qkNormK.reshape(shape(kvDim));
+			keys.add((Function<TraversalPolicy, CellularLayer>) (s -> rmsnorm(s, flatQkNormK, 1e-6, requirements)));
 		}
+		// Use split-half reshape for RoPE (matches PyTorch's Qwen/Llama)
+		keys.add(reshapeToSplitHalfRope(kvDim, kvHeads, headSize));
 		keys.add(ropeRotation(kvHeadShapeComplex, freqCis, position));
-		keys.andThen(into(keyCache.reshape(shape(seqLen, kvDim)), position));
+		// Reshape back to (kvHeads, headSize) then flatten to (kvDim)
+		keys.add(reshapeFromSplitHalfRope(kvHeads, headSize));
+		keys.add(reshape(kvHeadShape, shape(kvDim)));
+		// GQA expand: duplicate each KV head's data for all query heads it serves
+		// This expands from (1, kvDim) -> (1, dim) at write time
+		if (useGQA) {
+			keys.add(reshape(shape(kvDim), shape(1, kvDim)));  // Add batch dim for gqaExpand
+			keys.add(gqaExpand(kvDim, dim, kvHeads, heads, headSize, requirements));
+		} else {
+			keys.add(reshape(shape(kvDim), shape(1, dim)));  // Add batch dim
+		}
+		keys.andThen(into(keyCache.reshape(shape(seqLen, dim)), position));
 		/* ---- **/
 
 		/* VALUES **/
 		values.add(bv != null ? dense(wv, bv) : dense(wv));
-		values.andThen(into(valueCache.reshape(shape(seqLen, kvDim)), position));
+		// GQA expand: duplicate each KV head's data for all query heads it serves
+		// Values go from (kvDim) -> (dim) by duplicating each KV head's values
+		if (useGQA) {
+			values.add(reshape(shape(kvDim), shape(1, kvDim)));  // Add batch dim for gqaExpand
+			values.add(gqaExpand(kvDim, dim, kvHeads, heads, headSize, requirements));
+		} else {
+			values.add(reshape(shape(kvDim), shape(1, dim)));  // Add batch dim
+		}
+		values.andThen(into(valueCache.reshape(shape(seqLen, dim)), position));
 		/* ---- **/
 
 		/* QUERY **/
@@ -469,31 +842,36 @@ public interface AttentionFeatures extends RotationFeatures {
 		attention.add(bq != null ? dense(wq, bq) : dense(wq));
 		if (qkNormQ != null) {
 			// QK-Norm: RMSNorm applied per-head before RoPE (NOT LayerNorm!)
-			attention.add(reshape(shape(dim), headShape));
-			attention.add((Function<TraversalPolicy, CellularLayer>) (s -> rmsnorm(s, qkNormQ, 1e-6, requirements)));
-			attention.add(reshape(headShape, headShapeComplex));
-		} else {
-			attention.add(reshape(shape(dim), headShapeComplex));
+			// Flatten the norm weights from (heads, headSize) to (dim) since rmsnorm requires 1D weights
+			PackedCollection flatQkNormQ = qkNormQ.reshape(shape(dim));
+			attention.add((Function<TraversalPolicy, CellularLayer>) (s -> rmsnorm(s, flatQkNormQ, 1e-6, requirements)));
 		}
+		// Use split-half reshape for RoPE (matches PyTorch's Qwen/Llama)
+		attention.add(reshapeToSplitHalfRope(dim, heads, headSize));
 		attention.add(ropeRotation(headShapeComplex, freqCis, position));
-		attention.add(reshape(headShapeComplex, headShape));
-		attention.add(attentionKeys(headShape, p(keyCache)));
+		// Reshape back to (heads, headSize) for attention computation
+		attention.add(reshapeFromSplitHalfRope(heads, headSize));
+		// Expanded keys cache (seqLen, heads, headSize) - use standard non-GQA attention
+		attention.add(attentionKeysStandard(headShape, p(keyCache)));
 
 		// Add dynamic causal mask: mask[i] = -10000 if i > position, else 0
 		// This prevents attention from seeing future positions in the KV cache
 		CollectionProducer indices = integers(0, seqLen);
 		CollectionProducer maskRow =
 			greaterThan(indices, position, c(-10000.0), c(0.0), false);
-		// Reshape to (1, 1, seqLen) and repeat for all heads -> (heads, 1, seqLen)
+		// Reshape to (1, 1, seqLen) then repeat to get (heads, 1, seqLen)
+		// This pattern is verified in CausalMaskIsolationTest to correctly broadcast
 		CollectionProducer causalMask = maskRow.reshape(1, 1, seqLen).repeat(heads);
 
 		// Create a block to add the causal mask to the attention scores
+		// The mask broadcasts from (heads, 1, seqLen) to match the attention shape
 		attention.add(layer("causal_mask", attentionShape, attentionShape,
 		                   input -> add(input, causalMask),
 		                   requirements));
 
 		attention.add(softmax(attentionShape, true));
-		attention.add(attentionValues(attentionShape, p(valueCache)));
+		// Expanded values cache (seqLen, heads, headSize) - use standard non-GQA attention
+		attention.add(attentionValuesStandard(attentionShape, p(valueCache)));
 		attention.add(dense(wo));
 
 		// Restore the (1, dim) shape for the transformer layer output

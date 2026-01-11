@@ -23,6 +23,7 @@ import org.almostrealism.io.OutputFeatures;
 import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.layers.LayerFeatures;
 import org.almostrealism.model.Model;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 import java.nio.ByteBuffer;
@@ -37,7 +38,7 @@ import java.nio.file.StandardOpenOption;
  * This test traces through each operation in the attention mechanism
  * using simple known values to verify correctness.
  */
-public class AttentionStepByStepTest implements LayerFeatures, ConsoleFeatures {
+public class AttentionStepByStepTest extends TestSuiteBase implements LayerFeatures, ConsoleFeatures {
 
     private static final String WEIGHTS_DIR = "/workspace/project/common/ml/qwen3_weights";
     private static final String REFERENCE_DIR = "/workspace/project/common/ml/qwen3_reference/layer_outputs";

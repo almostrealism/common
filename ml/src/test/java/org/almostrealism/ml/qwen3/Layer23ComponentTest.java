@@ -336,7 +336,7 @@ public class Layer23ComponentTest implements AttentionFeatures, ConsoleFeatures 
     }
 
     /**
-     * Test full layer step-by-step: attention+residual → FFN+residual.
+     * Test full layer step-by-step: attention+residual then FFN+residual.
      */
     @Test
     public void testFullLayerStepByStep() throws Exception {

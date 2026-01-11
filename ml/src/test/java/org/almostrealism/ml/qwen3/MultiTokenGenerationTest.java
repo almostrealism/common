@@ -30,6 +30,9 @@ public class MultiTokenGenerationTest extends TestSuiteBase implements Attention
 	private static final String WEIGHTS_DIR = "/workspace/project/common/ml/qwen3_weights";
 	private static final String REFERENCE_DIR = "/workspace/project/common/ml/qwen3_reference";
 
+	// Position collection - shared between model building and test loop
+	private PackedCollection position;
+
 	/**
 	 * Test multi-token generation starting from "Hello" (token 9707).
 	 * Compares each step against PyTorch reference logits.
@@ -54,6 +57,10 @@ public class MultiTokenGenerationTest extends TestSuiteBase implements Attention
 
 		// Load embeddings for logits projection
 		PackedCollection tokenEmbeddings = stateDict.get("model.embed_tokens.weight");
+
+		// Initialize position - will be updated before each forward pass
+		position = new PackedCollection(1);
+		position.setMem(0, 0.0);
 
 		log("Building transformer model...");
 		Model transformer = buildTransformerWithoutVocabProjection(config, stateDict);
@@ -84,6 +91,10 @@ public class MultiTokenGenerationTest extends TestSuiteBase implements Attention
 
 		for (int step = 0; step < 5; step++) {
 			log("--- Step " + step + ": Input token " + currentToken + " ---");
+
+			// CRITICAL: Update position before forward pass
+			// This enables proper RoPE rotation, causal masking, and KV cache indexing
+			position.setMem(0, (double) step);
 
 			// Get embedding for current token
 			PackedCollection input = new PackedCollection(shape(1, config.dim));
@@ -185,8 +196,8 @@ public class MultiTokenGenerationTest extends TestSuiteBase implements Attention
 														 StateDictionary stateDict) {
 		Model transformer = new Model(shape(1, config.dim));
 
-		PackedCollection position = new PackedCollection(1);
-		position.setMem(0, 0.0);
+		// Use the instance field (initialized in test method)
+		// Position is updated in the test loop before each forward pass
 
 		PackedCollection rmsFinalWeight = stateDict.get("model.norm.weight");
 		PackedCollection freqCis = computeRopeFreqs(config);
