@@ -58,6 +58,7 @@
 		<module>flowtree</module>
 		<module>ml-onnx</module>
 		<module>ml-djl</module>
+		<module>spatial</module>
 	</modules>
 
 	<packaging>pom</packaging>
