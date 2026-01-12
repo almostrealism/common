@@ -1,5 +1,5 @@
 /*
- * Copyright 2025 Michael Murray
+ * Copyright 2026 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -59,8 +59,30 @@ import java.util.stream.IntStream;
  *   <li>Time tracking via {@link TimeCell} for seek and position reporting</li>
  *   <li>Support for passthrough monitoring when used with bidirectional audio lines</li>
  * </ul>
+ *
+ * <h2>Multiple Output Destinations</h2>
  * <p>
- * Usage example for direct playback:
+ * <b>IMPORTANT:</b> The {@link #deliver(OutputLine)} method may be called multiple times
+ * with different output lines. Each call creates and returns a new {@link BufferedOutputScheduler}
+ * that independently consumes audio from this player's shared processing pipeline.
+ * </p>
+ * <p>
+ * This player does NOT track or manage the schedulers it creates. The caller is responsible for:
+ * <ul>
+ *   <li>Storing references to each scheduler returned by {@code deliver()}</li>
+ *   <li>Starting each scheduler with {@link BufferedOutputScheduler#start()}</li>
+ *   <li>Suspending/resuming each scheduler individually with
+ *       {@link BufferedOutputScheduler#suspend()} and {@link BufferedOutputScheduler#unsuspend()}</li>
+ *   <li>Stopping each scheduler with {@link BufferedOutputScheduler#stop()}</li>
+ * </ul>
+ * <p>
+ * The player's {@link #play()} and {@link #stop()} methods control the logical playback state
+ * (affecting audio generation via level controls), but do NOT control individual schedulers.
+ * To pause audio output without continuously writing silence to hardware, use the scheduler's
+ * suspend mechanism directly.
+ * </p>
+ *
+ * <h2>Usage Example</h2>
  * <pre>{@code
  * // Create player for single channel
  * BufferedAudioPlayer player = new BufferedAudioPlayer(1, 44100, 65536);
@@ -75,13 +97,21 @@ import java.util.stream.IntStream;
  * // Load and play audio
  * player.load(0, "audio.wav");
  * player.play();
+ *
+ * // To pause without writing silence to hardware:
+ * player.stop();           // Stop audio generation
+ * scheduler.suspend();     // Suspend the scheduler and stop the hardware line
+ *
+ * // To resume:
+ * scheduler.unsuspend();   // Resume the scheduler and restart the hardware line
+ * player.play();           // Resume audio generation
  * }</pre>
  *
  * @see BufferedOutputScheduler for the scheduling mechanism
  * @see SourceDataOutputLine for direct hardware playback
  * @see DelegatedAudioLine for streaming/DAW integration
  */
-public class BufferedAudioPlayer extends AudioPlayerBase implements CellFeatures {
+public class BufferedAudioPlayer implements AudioPlayer, CellFeatures {
 	public static boolean enableUnifiedClock = false;
 
 	private final int sampleRate;
@@ -241,7 +271,7 @@ public class BufferedAudioPlayer extends AudioPlayerBase implements CellFeatures
 				getData(player).getChannelData(c).setMem(result[c], 0, frames);
 			}
 		} catch (IOException e) {
-			warn("Could not load " + getFileString() + " to player", e);
+			warn("Could not load " + file + " to player", e);
 		}
 	}
 
