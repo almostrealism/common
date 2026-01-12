@@ -30,7 +30,7 @@ public class FullAttentionMethodTest extends TestSuiteBase implements AttentionF
 	public void testLayer0AttentionMethod() throws Exception {
 		Assume.assumeTrue("Skipping comparison test in pipeline profile", TestUtils.isComparisonTestEnabled());
 
-		String logFile = "/workspace/project/common/ml/test_output/layer0_attention_method.txt";
+		String logFile = "/workspace/project/common/ml/results/layer0_attention_method.txt";
 		Console.root().addListener(OutputFeatures.fileOutput(logFile));
 
 		log("\n" + "=".repeat(70));
@@ -44,7 +44,7 @@ public class FullAttentionMethodTest extends TestSuiteBase implements AttentionF
 	public void testLayer1AttentionMethod() throws Exception {
 		Assume.assumeTrue("Skipping comparison test in pipeline profile", TestUtils.isComparisonTestEnabled());
 
-		String logFile = "/workspace/project/common/ml/test_output/layer1_attention_method.txt";
+		String logFile = "/workspace/project/common/ml/results/layer1_attention_method.txt";
 		Console.root().addListener(OutputFeatures.fileOutput(logFile));
 
 		log("\n" + "=".repeat(70));

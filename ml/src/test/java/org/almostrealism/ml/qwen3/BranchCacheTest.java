@@ -17,7 +17,7 @@ public class BranchCacheTest extends TestSuiteBase implements AttentionFeatures,
 
 	@Test
 	public void testSimpleBranchWithCache() throws Exception {
-		String logFile = "/workspace/project/common/ml/test_output/branch_cache_test.txt";
+		String logFile = "/workspace/project/common/ml/results/branch_cache_test.txt";
 		Console.root().addListener(OutputFeatures.fileOutput(logFile));
 
 		log("\n" + "=".repeat(70));
@@ -89,7 +89,7 @@ public class BranchCacheTest extends TestSuiteBase implements AttentionFeatures,
 
 	@Test
 	public void testBranchWithTransformAndCache() throws Exception {
-		String logFile = "/workspace/project/common/ml/test_output/branch_transform_cache_test.txt";
+		String logFile = "/workspace/project/common/ml/results/branch_transform_cache_test.txt";
 		Console.root().addListener(OutputFeatures.fileOutput(logFile));
 
 		log("\n" + "=".repeat(70));
@@ -164,7 +164,7 @@ public class BranchCacheTest extends TestSuiteBase implements AttentionFeatures,
 
 	@Test
 	public void testTwoBranchesWithCaches() throws Exception {
-		String logFile = "/workspace/project/common/ml/test_output/two_branches_cache_test.txt";
+		String logFile = "/workspace/project/common/ml/results/two_branches_cache_test.txt";
 		Console.root().addListener(OutputFeatures.fileOutput(logFile));
 
 		log("\n" + "=".repeat(70));

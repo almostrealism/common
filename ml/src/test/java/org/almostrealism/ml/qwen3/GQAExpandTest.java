@@ -20,7 +20,7 @@ public class GQAExpandTest extends TestSuiteBase implements AttentionFeatures, C
 	public void testGQAExpand() throws Exception {
 		Assume.assumeTrue("Skipping comparison test in pipeline profile", TestUtils.isComparisonTestEnabled());
 
-		String logFile = "/workspace/project/common/ml/test_output/gqa_expand.txt";
+		String logFile = "/workspace/project/common/ml/results/gqa_expand.txt";
 		Console.root().addListener(OutputFeatures.fileOutput(logFile));
 
 		log("\n=== GQA Expansion Test ===\n");

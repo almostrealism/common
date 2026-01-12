@@ -41,7 +41,7 @@ public class MultiTokenGenerationTest extends TestSuiteBase implements Attention
 	public void testMultiTokenGeneration() throws Exception {
 		Assume.assumeTrue("Skipping comparison test in pipeline profile", TestUtils.isComparisonTestEnabled());
 
-		String logFile = "/workspace/project/common/ml/test_output/multitoken_generation.txt";
+		String logFile = "/workspace/project/common/ml/results/multitoken_generation.txt";
 		Console.root().addListener(OutputFeatures.fileOutput(logFile));
 
 		log("\n===================================================");

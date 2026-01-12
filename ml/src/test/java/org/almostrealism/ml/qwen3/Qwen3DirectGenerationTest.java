@@ -43,7 +43,7 @@ public class Qwen3DirectGenerationTest extends TestSuiteBase implements ConsoleF
 	public void testDirectGeneration() throws Exception {
 		Assume.assumeTrue("Skipping comparison test in pipeline profile", TestUtils.isComparisonTestEnabled());
 
-		String logFile = "/workspace/project/common/ml/test_output/qwen3_direct_generation.txt";
+		String logFile = "/workspace/project/common/ml/results/qwen3_direct_generation.txt";
 		Console.root().addListener(OutputFeatures.fileOutput(logFile));
 
 		log("\n===================================================");

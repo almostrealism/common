@@ -35,7 +35,7 @@ public class SingleLayerComparisonTest extends TestSuiteBase implements Attentio
 	public void testSingleLayerAtPosition1() throws Exception {
 		Assume.assumeTrue("Skipping comparison test in pipeline profile", TestUtils.isComparisonTestEnabled());
 
-		String logFile = "/workspace/project/common/ml/test_output/single_layer_comparison.txt";
+		String logFile = "/workspace/project/common/ml/results/single_layer_comparison.txt";
 		Console.root().addListener(OutputFeatures.fileOutput(logFile));
 
 		log("\n===================================================");

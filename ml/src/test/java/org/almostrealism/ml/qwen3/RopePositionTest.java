@@ -21,7 +21,7 @@ public class RopePositionTest extends TestSuiteBase implements AttentionFeatures
 
 	@Test
 	public void testRopeWithDynamicPosition() throws Exception {
-		String logFile = "/workspace/project/common/ml/test_output/rope_position_test.txt";
+		String logFile = "/workspace/project/common/ml/results/rope_position_test.txt";
 		Console.root().addListener(OutputFeatures.fileOutput(logFile));
 
 		log("\n" + "=".repeat(70));
