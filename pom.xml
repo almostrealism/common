@@ -57,6 +57,7 @@
 		<module>ml-onnx</module>
 		<module>ml-djl</module>
 		<module>spatial</module>
+		<module>utils-http</module>
 	</modules>
 
 	<packaging>pom</packaging>
