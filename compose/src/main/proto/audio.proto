@@ -1,0 +1,58 @@
+syntax = "proto3";
+
+package almostrealism.audio;
+
+option java_package = "org.almostrealism.audio.api";
+
+import "collections.proto";
+
+message AudioLibraryData {
+  map<string, WaveDetailData> info = 1;
+  repeated WaveRecording recordings = 2;
+  repeated SynthesizerModelData models = 3;
+}
+
+message WaveRecording {
+  string key = 1;
+  int32 order_index = 2;
+
+  optional string group_key = 4;
+  optional int32 group_order_index = 5;
+  optional bool silent = 6;
+
+  repeated WaveDetailData data = 3;
+}
+
+message WaveDetailData {
+  optional string identifier = 18;
+
+  int32 sample_rate = 2;
+  int32 channel_count = 3;
+  int32 frame_count = 4;
+  CollectionData data = 5;
+  bool silent = 17;
+  bool persistent = 19;
+
+  double freq_sample_rate = 6;
+  int32 freq_channel_count = 7;
+  int32 freq_bin_count = 8;
+  int32 freq_frame_count = 9;
+  CollectionData freq_data = 10;
+
+  double feature_sample_rate = 12;
+  int32 feature_channel_count = 13;
+  int32 feature_bin_count = 14;
+  int32 feature_frame_count = 15;
+  CollectionData feature_data = 16;
+
+  map<string, double> similarities = 11;
+
+  reserved 1;
+}
+
+message SynthesizerModelData {
+  string key = 1;
+  repeated double frequency_ratios = 2;
+  double level_sample_rate = 3;
+  CollectionData level_data = 4;
+}
