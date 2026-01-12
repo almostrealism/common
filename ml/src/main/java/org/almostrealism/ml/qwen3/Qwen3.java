@@ -3,6 +3,7 @@ package org.almostrealism.ml.qwen3;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.profile.OperationProfile;
+import io.almostrealism.profile.OperationProfileNode;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.DynamicCollectionProducer;
@@ -88,7 +89,7 @@ public class Qwen3 implements AttentionFeatures {
 	private Qwen3Tokenizer tokenizer;
 
 	private AutoregressiveModel model;
-	private OperationProfile profile;
+	private OperationProfileNode profile;
 	private org.almostrealism.model.CompiledModel compiledModel;
 	private PackedCollection position;
 
@@ -171,7 +172,7 @@ public class Qwen3 implements AttentionFeatures {
 		}
 
 		// Create the model with profiling
-		profile = new OperationProfile();
+		profile = new OperationProfileNode("qwen3");
 		model = model(profile);
 		System.out.println("Model initialized");
 	}
@@ -235,7 +236,7 @@ public class Qwen3 implements AttentionFeatures {
 		this.config = config;
 		this.stateDict = stateDict;
 		this.tokenizer = tokenizer;
-		this.profile = new OperationProfile();
+		this.profile = new OperationProfileNode("qwen3");
 		this.model = model(profile);
 	}
 
@@ -243,7 +244,7 @@ public class Qwen3 implements AttentionFeatures {
 		return tokenizer;
 	}
 
-	public OperationProfile getProfile() {
+	public OperationProfileNode getProfile() {
 		return profile;
 	}
 
