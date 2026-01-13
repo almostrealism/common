@@ -32,7 +32,6 @@ import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.Random;
-import org.almostrealism.geometry.GeometryFeatures;
 import org.almostrealism.graph.Cell;
 import org.almostrealism.graph.CellularPropagation;
 import org.almostrealism.graph.CollectionReceptor;
@@ -56,13 +55,15 @@ import java.util.function.Supplier;
 /**
  * A comprehensive factory interface for creating neural network layers.
  * LayerFeatures provides methods for constructing all common layer types used in
- * deep learning, including dense layers, convolutions, normalizations, activations,
- * and more.
+ * deep learning, including dense layers, convolutions, normalizations, and more.
  *
  * <p>This interface follows the mix-in pattern and is typically implemented by classes
  * that need access to layer creation functionality. Most layer factory methods return
  * a {@code Function<TraversalPolicy, Block>} or {@code Function<TraversalPolicy, CellularLayer>},
  * allowing layers to be created with flexible input shapes.</p>
+ *
+ * <p>Activation functions (ReLU, SiLU, GELU, Softmax, Snake, etc.) are provided by the
+ * {@link ActivationFeatures} interface, which this interface extends.</p>
  *
  * <h2>Layer Categories</h2>
  *
@@ -84,15 +85,6 @@ import java.util.function.Supplier;
  *   <li>{@link #norm(int)} - Group normalization</li>
  *   <li>{@link #norm(PackedCollection, PackedCollection)} - Layer normalization with weights</li>
  *   <li>{@link #rmsnorm(PackedCollection)} - RMS normalization</li>
- * </ul>
- *
- * <h3>Activation Functions</h3>
- * <ul>
- *   <li>{@link #relu(TraversalPolicy)} - ReLU activation</li>
- *   <li>{@link #silu()} - SiLU (Swish) activation</li>
- *   <li>{@link #gelu()} - GELU activation</li>
- *   <li>{@link #softmax()} - Softmax activation</li>
- *   <li>{@link #logSoftmax()} - Log-softmax activation</li>
  * </ul>
  *
  * <h3>Shape Manipulation</h3>
@@ -139,18 +131,16 @@ import java.util.function.Supplier;
  * CellularLayer layer = dense(weights, biases).apply(inputShape);
  * }</pre>
  *
+ * @see ActivationFeatures
  * @see CellularLayer
  * @see Block
  * @see org.almostrealism.model.Model
  * @author Michael Murray
  */
-public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, ConsoleFeatures {
+public interface LayerFeatures extends MatrixFeatures, ActivationFeatures, ConsoleFeatures {
 
 	boolean allowNonComposites = false;
 	boolean enableWeightedSum = true;
-
-	boolean enableIgnoreZero = true;
-	boolean enableLogStability = true;
 
 	Console console = CollectionFeatures.console.child();
 
@@ -1105,98 +1095,6 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 				requirements);
 	}
 
-	/**
-	 * Creates a softmax layer factory that accepts any input shape.
-	 * The output shape will match the input shape.
-	 */
-	default Function<TraversalPolicy, CellularLayer> softmax() {
-		return shape -> softmax(shape);
-	}
-
-	default CellularLayer softmax(int size) {
-		return softmax(shape(size));
-	}
-
-	default CellularLayer softmax(TraversalPolicy shape) {
-		return layer("softmax", shape, shape,
-				input -> c(input).traverse(1).exp().divide(c(input).traverse(1).exp().traverse(0).sum()));
-	}
-
-	default Function<TraversalPolicy, CellularLayer> softmax(boolean subtractMax, ComputeRequirement... requirements) {
-		return shape -> softmax(shape, subtractMax, requirements);
-	}
-
-	default CellularLayer softmax(TraversalPolicy shape, boolean subtractMax, ComputeRequirement... requirements) {
-		if (shape.getDimensions() < 2) {
-			throw new IllegalArgumentException();
-		}
-
-		int axis = shape.getDimensions() - 1;
-		int seqLen = shape.length(axis);
-		double eps = 1e-5;
-
-		if (enableLogStability) {
-			return layer("softmax2d", shape, shape, input -> {
-				CollectionProducer max = traverse(axis, input).max();
-				CollectionProducer stable =
-						traverse(axis + 1, input).subtract(max.expand(seqLen));
-				CollectionProducer logSum =
-						stable.exp().traverse(axis).sum().log().expand(seqLen);
-				return stable.subtract(logSum).exp();
-			}, requirements);
-		} else {
-			return layer("softmax2d", shape, shape, input -> {
-				CollectionProducer o = traverse(axis, input);
-
-				if (subtractMax) {
-					if (enableIgnoreZero) {
-						o = o.max();
-						o = o.expand(seqLen);
-						o = traverse(axis + 1, input).subtractIgnoreZero(o);
-					} else {
-						o = o.max().add(eps);
-						o = o.expand(seqLen);
-						o = traverse(axis + 1, input).subtract(o);
-					}
-				}
-
-				o = o.expIgnoreZero().traverse(axis);
-
-				if (subtractMax && enableIgnoreZero) {
-					o = o.divide(o.sum().expand(seqLen));
-				} else {
-					o = o.divide(o.sum().add(eps).expand(seqLen));
-				}
-
-				return o;
-			}, requirements);
-		}
-	}
-
-	default Function<TraversalPolicy, CellularLayer> logSoftmax(ComputeRequirement... requirements) {
-		return shape -> logSoftmax(shape, requirements);
-	}
-
-	default Function<TraversalPolicy, CellularLayer> logSoftmax(int size, ComputeRequirement... requirements) {
-		return shape -> {
-			shape = padDimensions(shape, 2);
-			if (shape.length(1) != size) {
-				throw new IllegalArgumentException();
-			}
-
-			return logSoftmax(shape, requirements);
-		};
-	}
-
-	default CellularLayer logSoftmax(TraversalPolicy shape, ComputeRequirement... requirements) {
-		shape = padDimensions(shape, 2).traverse(1);
-
-		return layer("logSoftmax", shape, shape, input ->
-				c(input).traverse(2).subtract(
-							c(input).traverse(2).exp().traverse(1).sum().log()),
-				requirements);
-	}
-
 	@Deprecated
 	default CellularLayer accum(TraversalPolicy shape, Cell<PackedCollection> value, ComputeRequirement... requirements) {
 		if (!allowNonComposites) {
@@ -1372,163 +1270,6 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 
 	default CellularLayer scale(TraversalPolicy shape, double scale, ComputeRequirement... requirements) {
 		return layer("scale", shape, shape, input -> multiply(c(input).each(), c(scale)), requirements);
-	}
-
-	default Function<TraversalPolicy, CellularLayer> relu(ComputeRequirement... requirements) {
-		return shape -> relu(shape, requirements);
-	}
-
-	default CellularLayer relu(TraversalPolicy shape, ComputeRequirement... requirements) {
-		return layer("relu", shape, shape, input -> rectify(input), requirements);
-	}
-
-	default Function<TraversalPolicy, CellularLayer> silu(ComputeRequirement... requirements) {
-		return shape -> silu(shape, requirements);
-	}
-
-	default CellularLayer silu(TraversalPolicy shape, ComputeRequirement... requirements) {
-		return layer("silu", shape, shape, input -> multiply(traverseEach(input), sigmoid(traverseEach(input))), requirements);
-	}
-
-	default Function<TraversalPolicy, CellularLayer> gelu(ComputeRequirement... requirements) {
-		return shape -> gelu(shape, requirements);
-	}
-
-	default CellularLayer gelu(TraversalPolicy shape, ComputeRequirement... requirements) {
-		// 0.5 * x * (1 + math.tanh(sqrt(2 / pi) * (x + 0.044715 * x^3)))
-		return layer("gelu", shape, shape, input -> {
-			CollectionProducer x = c(input).traverseEach();
-			CollectionProducer x3 = pow(x, c(3));
-			CollectionProducer tanh =
-					tanh(x.add(x3.multiply(c(0.044715)))
-						.multiply(c(ROOT_2_BY_PI)));
-			return c(0.5).multiply(x).multiply(tanh.add(c(1)));
-		}, requirements);
-	}
-
-	/**
-	 * Creates a Snake activation layer factory with default alpha=1.0.
-	 * Snake activation is defined as: f(x) = x + (1/alpha) * sin^2(alpha * x)
-	 *
-	 * <p>Snake is a learnable periodic activation function that provides smoother
-	 * gradients than ReLU and is particularly effective for audio synthesis tasks.</p>
-	 *
-	 * @param requirements Optional compute requirements
-	 * @return Function that creates a Snake activation layer for any input shape
-	 * @see #snake(double, ComputeRequirement...)
-	 */
-	default Function<TraversalPolicy, CellularLayer> snake(ComputeRequirement... requirements) {
-		return snake(1.0, requirements);
-	}
-
-	/**
-	 * Creates a Snake activation layer factory with specified alpha parameter.
-	 * Snake activation is defined as: f(x) = x + (1/alpha) * sin^2(alpha * x)
-	 *
-	 * @param alpha The frequency parameter for the sinusoidal component (default 1.0)
-	 * @param requirements Optional compute requirements
-	 * @return Function that creates a Snake activation layer for any input shape
-	 */
-	default Function<TraversalPolicy, CellularLayer> snake(double alpha, ComputeRequirement... requirements) {
-		return shape -> snake(shape, alpha, requirements);
-	}
-
-	/**
-	 * Creates a Snake activation layer with specified shape and alpha parameter.
-	 * Snake activation is defined as: f(x) = x + (1/alpha) * sin^2(alpha * x)
-	 *
-	 * @param shape Input and output shape for the layer
-	 * @param alpha The frequency parameter for the sinusoidal component
-	 * @param requirements Optional compute requirements
-	 * @return CellularLayer implementing Snake activation
-	 */
-	default CellularLayer snake(TraversalPolicy shape, double alpha, ComputeRequirement... requirements) {
-		return layer("snake", shape, shape, input -> {
-			CollectionProducer x = c(input).traverseEach();
-			// f(x) = x + (1/alpha) * sin^2(alpha * x)
-			CollectionProducer sinPart = sin(x.multiply(c(alpha)));
-			CollectionProducer sinSquared = pow(sinPart, c(2.0));
-			return x.add(sinSquared.multiply(c(1.0 / alpha)));
-		}, requirements);
-	}
-
-	/**
-	 * Creates a learnable Snake activation layer factory with per-channel alpha and beta parameters.
-	 * Snake activation is defined as: f(x) = x + (1/beta) * sin^2(alpha * x)
-	 *
-	 * <p>This variant is used by Stable Audio Open / DAC autoencoders where alpha and beta
-	 * are learned parameters stored per-channel.</p>
-	 *
-	 * @param alpha Per-channel frequency parameter, shape (channels,)
-	 * @param beta Per-channel scaling parameter, shape (channels,)
-	 * @param requirements Optional compute requirements
-	 * @return Function that creates a learnable Snake activation layer for any input shape
-	 */
-	default Function<TraversalPolicy, CellularLayer> snake(PackedCollection alpha,
-														   PackedCollection beta,
-														   ComputeRequirement... requirements) {
-		return shape -> snake(shape, alpha, beta, requirements);
-	}
-
-	/**
-	 * Creates a learnable Snake activation layer with per-channel alpha and beta parameters.
-	 * Snake activation is defined as: f(x) = x + (1/beta) * sin^2(alpha * x)
-	 *
-	 * <p>For input shape (batch, channels, length), alpha and beta should have shape (channels,).
-	 * The activation is applied element-wise with channel-specific parameters.</p>
-	 *
-	 * <p>This implementation precomputes the broadcasted alpha/beta tensors to avoid
-	 * creating large expression trees during compilation, which significantly improves
-	 * compilation performance for long sequences.</p>
-	 *
-	 * @param shape Input shape, typically (batch, channels, length)
-	 * @param alpha Per-channel frequency parameter, shape (channels,)
-	 * @param beta Per-channel scaling parameter, shape (channels,)
-	 * @param requirements Optional compute requirements
-	 * @return CellularLayer implementing learnable Snake activation
-	 */
-	default CellularLayer snake(TraversalPolicy shape, PackedCollection alpha,
-								PackedCollection beta, ComputeRequirement... requirements) {
-		int channels = shape.length(1);
-		int seqLen = shape.length(2);
-		int batch = shape.length(0);
-
-		// Precompute broadcasted alpha and beta tensors to avoid creating large
-		// expression trees during compilation. This is much faster than using
-		// repeat() chains in the expression graph for long sequences.
-		PackedCollection alphaExpanded = new PackedCollection(shape(batch, channels, seqLen));
-		PackedCollection betaExpanded = new PackedCollection(shape(batch, channels, seqLen));
-
-		// Use direct memory access for efficient broadcasting
-		double[] alphaData = alphaExpanded.toArray(0, (int) alphaExpanded.getMemLength());
-		double[] betaData = betaExpanded.toArray(0, (int) betaExpanded.getMemLength());
-
-		for (int b = 0; b < batch; b++) {
-			for (int c = 0; c < channels; c++) {
-				double alphaVal = alpha.valueAt(c);
-				double betaVal = beta.valueAt(c);
-				int baseIdx = (b * channels + c) * seqLen;
-				java.util.Arrays.fill(alphaData, baseIdx, baseIdx + seqLen, alphaVal);
-				java.util.Arrays.fill(betaData, baseIdx, baseIdx + seqLen, betaVal);
-			}
-		}
-
-		// Copy back to PackedCollections
-		alphaExpanded.setMem(0, alphaData, 0, alphaData.length);
-		betaExpanded.setMem(0, betaData, 0, betaData.length);
-
-		return layer("snakeLearnable", shape, shape, input -> {
-			CollectionProducer x = c(input);
-
-			// Use precomputed broadcasted tensors - no repeat() needed in expression graph
-			CollectionProducer alphaBC = cp(alphaExpanded);
-			CollectionProducer betaBC = cp(betaExpanded);
-
-			// f(x) = x + (1/beta) * sin^2(alpha * x)
-			CollectionProducer sinPart = sin(x.multiply(alphaBC));
-			CollectionProducer sinSquared = pow(sinPart, c(2.0));
-			return x.add(sinSquared.divide(betaBC)).traverseEach();
-		}, requirements);
 	}
 
 	/**
