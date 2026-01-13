@@ -236,8 +236,12 @@ public interface MatrixFeatures extends AlgebraFeatures {
 		// Check if this is a batch of vectors falling through from the vector path (each/onlyColumns/singleRow).
 		// In that case, the batch dimension should be preserved at the front.
 		// Handle both 2D (batch, n) and 3D (batch, n, 1) batched vectors.
+		// Also handle single 2D vectors (1, n) which should be treated as column vectors with p=1.
+		// The singleVector2D check doesn't require isVectorPath because (1, n) inputs may not
+		// satisfy any of the vector path conditions (traversal axis, onlyColumns, singleRow).
 		boolean batchedVectors2D = isVectorPath && vShape.getDimensions() == 2 && vShape.length(0) > 1;
 		boolean batchedVectors3D = isVectorPath && onlyColumns && vShape.getDimensions() == 3 && vShape.length(0) > 1;
+		boolean singleVector2D = vShape.getDimensions() == 2 && vShape.length(0) == 1 && vShape.length(1) == mShape.length(1);
 		boolean batchedVectors = batchedVectors2D || batchedVectors3D;
 
 		TraversalPolicy vectorShape;
@@ -248,6 +252,10 @@ public interface MatrixFeatures extends AlgebraFeatures {
 		} else if (batchedVectors3D) {
 			// Batch of column vectors with trailing 1: (batch, n, 1) -> keep as (batch, n, 1)
 			vectorShape = shape(vShape.length(0), vShape.length(1), 1);
+		} else if (singleVector2D) {
+			// Single column vector: (1, n) -> (1, n, 1)
+			// This ensures b=1, p=1 for proper matrix-vector multiplication
+			vectorShape = shape(1, vShape.length(1), 1);
 		} else {
 			vectorShape = padDimensions(vShape, 1, 2, true);
 			vectorShape = padDimensions(vectorShape, 3);
@@ -307,6 +315,9 @@ public interface MatrixFeatures extends AlgebraFeatures {
 			// For batched 2D vectors, include the batch dimension
 			if (batchedVectors2D) {
 				finalShape = p == 1 ? shape(b, m) : shape(b, m, p);
+			} else if (singleVector2D) {
+				// Single vector: (1, n) -> output (1, m) to maintain batch structure
+				finalShape = shape(1, m);
 			} else {
 				finalShape = shape(m, p);
 			}
