@@ -420,7 +420,8 @@ public class RotationTests extends TestSuiteBase implements RotationFeatures {
 		// r = c(p(r.get().evaluate()));
 
 		// CollectionProducer<PackedCollection> o = multiplyComplex(traverse(1, p(in)), r.reshape(headSize, 2));
-		CollectionProducer o = multiplyComplex(traverse(1, p(in)), r.traverse(1));
+		// Repeat frequencies for each head - multiplyComplex doesn't properly broadcast
+		CollectionProducer o = multiplyComplex(traverse(1, p(in)), r.traverse(1).repeat(heads));
 
 		// TODO  Optimization should not be necessary
 		// PackedCollection out = o.get().evaluate();

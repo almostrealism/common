@@ -757,6 +757,43 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		return new PackedCollection(shape);
 	}
 
+	/**
+	 * Creates a {@link Producer} that provides a REFERENCE to the given value.
+	 * This is a fundamental distinction from {@link #c(PackedCollection)} which
+	 * captures the VALUE at compile time.
+	 *
+	 * <p><b>CRITICAL DISTINCTION:</b></p>
+	 * <ul>
+	 *   <li>{@code p(collection)} - Creates a dynamic reference. When the compiled
+	 *       computation runs, it reads the CURRENT contents of the collection.
+	 *       Use this for mutable data like KV caches.</li>
+	 *   <li>{@code c(collection)} - Creates a fixed/static value. The collection's
+	 *       contents are captured at compile time and embedded in the computation.
+	 *       Use this for constant weights or immutable data.</li>
+	 * </ul>
+	 *
+	 * <p><b>Example:</b></p>
+	 * <pre>{@code
+	 * PackedCollection cache = new PackedCollection(shape(10, 64));
+	 *
+	 * // WRONG: c(cache) captures the (empty) cache at compile time
+	 * CollectionProducer badRead = c(cache).traverse(0).sum();
+	 *
+	 * // CORRECT: p(cache) creates a reference that reads at runtime
+	 * CollectionProducer goodRead = c(p(cache)).traverse(0).sum();
+	 * // or equivalently: cp(cache).traverse(0).sum();
+	 *
+	 * cache.setMem(0, new double[]{1, 2, 3, ...});  // Modify cache
+	 * // badRead still returns 0 (captured empty cache)
+	 * // goodRead returns sum of current cache contents
+	 * }</pre>
+	 *
+	 * @param value the value to wrap in a Producer reference
+	 * @param <T> the type of value
+	 * @return a {@link Producer} that provides the value by reference
+	 * @see #c(PackedCollection)
+	 * @see #cp(PackedCollection)
+	 */
 	default <T> Producer<T> p(T value) {
 		if (value instanceof Producer) {
 			throw new IllegalArgumentException();
@@ -941,6 +978,33 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		});
 	}
 
+	/**
+	 * Creates a {@link CollectionProducer} that represents the VALUE of a collection,
+	 * captured at compile time. This is fundamentally different from {@link #p(Object)}
+	 * which creates a reference.
+	 *
+	 * <p><b>CRITICAL DISTINCTION:</b></p>
+	 * <ul>
+	 *   <li>{@code c(collection)} - Captures the collection's contents at compile time.
+	 *       The values are embedded into the generated computation as constants.
+	 *       Use this for model weights, embeddings, and other immutable data.</li>
+	 *   <li>{@code p(collection)} - Creates a dynamic reference that reads at runtime.
+	 *       Use this for mutable data like KV caches.</li>
+	 * </ul>
+	 *
+	 * <p><b>Implementation notes:</b></p>
+	 * <ul>
+	 *   <li>For single-element collections, returns an {@link AtomicConstantComputation}</li>
+	 *   <li>For small collections, uses {@code DefaultTraversableExpressionComputation.fixed()}</li>
+	 *   <li>For large collections, falls back to {@link #cp(PackedCollection)} to avoid
+	 *       excessive conditional expressions</li>
+	 * </ul>
+	 *
+	 * @param value the collection whose VALUE to capture
+	 * @return a {@link CollectionProducer} that generates the fixed values
+	 * @see #p(Object)
+	 * @see #cp(PackedCollection)
+	 */
 	default CollectionProducer c(PackedCollection value) {
 		if (value.getShape().getTotalSizeLong() == 1) {
 			return new AtomicConstantComputation(value.toDouble());
@@ -958,6 +1022,37 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		}
 	}
 
+	/**
+	 * Creates a {@link CollectionProducer} from a {@link PackedCollection} reference.
+	 * This is shorthand for {@code c(p(value))} - it wraps the collection in a
+	 * {@link Producer} reference first, then creates a {@link CollectionProducer}.
+	 *
+	 * <p><b>When to use:</b></p>
+	 * <ul>
+	 *   <li>Use {@code cp(collection)} for mutable data that changes between
+	 *       invocations, such as KV caches in attention mechanisms</li>
+	 *   <li>The resulting computation will read the CURRENT contents of the
+	 *       collection each time it runs</li>
+	 * </ul>
+	 *
+	 * <p><b>Example:</b></p>
+	 * <pre>{@code
+	 * PackedCollection cache = new PackedCollection(shape(10, 64));
+	 *
+	 * // Create a producer that reads cache dynamically
+	 * CollectionProducer cacheReader = cp(cache).traverse(0).sum();
+	 *
+	 * // Modify cache
+	 * cache.setMem(0, new double[]{1, 2, 3, ...});
+	 *
+	 * // cacheReader will see the new values
+	 * }</pre>
+	 *
+	 * @param value the collection to reference
+	 * @return a {@link CollectionProducer} that reads the collection by reference
+	 * @see #c(PackedCollection)
+	 * @see #p(Object)
+	 */
 	default CollectionProducer cp(PackedCollection value) {
 		return c(p(value));
 	}
