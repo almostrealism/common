@@ -333,7 +333,7 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures {
 	}
 
 	public int getLayerCount() {
-		return layerChoiceChromosome.length();
+		return layerCount;
 	}
 
 	public void setLayerCount(int count) {
@@ -427,7 +427,7 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures {
 			throw new IllegalStateException("Layer count mismatch (" + layerParams.size() +
 											" != " + layerChoiceChromosome.length() + ")");
 
-		IntStream.range(0, getLayerCount()).forEach(i -> layer(layerChoiceChromosome.valueAt(i)));
+		IntStream.range(0, layerCount).forEach(i -> layer(layerChoiceChromosome.valueAt(i)));
 	}
 
 	public NoteAudioChoice choose(double scale, ParameterSet params) {
