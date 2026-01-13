@@ -44,21 +44,50 @@ public class Qwen3BenchmarkTest extends TestSuiteBase implements ConsoleFeatures
 		int numTokens = 20;
 		int warmupTokens = 5;
 		int numRuns = 3;
+		int seqLen = 32768;  // Full 32K context
+
+		runBenchmarkWithSeqLen(numTokens, warmupTokens, numRuns, seqLen, "full_context");
+	}
+
+	/**
+	 * Benchmark with reduced context length to measure scope optimization impact.
+	 * Uses 128 positions instead of 32K - should be much faster if our hypothesis is correct.
+	 */
+	@Test
+	public void benchmarkGenerationReducedContext() throws Exception {
+		Assume.assumeTrue("Skipping comparison test in pipeline profile", TestUtils.isComparisonTestEnabled());
+
+		// Same benchmark parameters but with reduced context
+		int numTokens = 20;
+		int warmupTokens = 5;
+		int numRuns = 3;
+		int seqLen = 128;  // Reduced to 128 positions
+
+		runBenchmarkWithSeqLen(numTokens, warmupTokens, numRuns, seqLen, "reduced_context");
+	}
+
+	/**
+	 * Core benchmark implementation with configurable seqLen.
+	 */
+	private void runBenchmarkWithSeqLen(int numTokens, int warmupTokens, int numRuns,
+	                                     int seqLen, String label) throws Exception {
 
 		// Setup logging
-		Console.root().addListener(OutputFeatures.fileOutput(RESULTS_FILE));
+		String resultsFile = RESULTS_FILE.replace(".txt", "_" + label + ".txt");
+		Console.root().addListener(OutputFeatures.fileOutput(resultsFile));
 
 		log("======================================================================");
-		log("  JAVA QWEN3 GENERATION BENCHMARK");
+		log("  JAVA QWEN3 GENERATION BENCHMARK (" + label + ")");
 		log("======================================================================");
 		log("");
 
 		// Load model
 		log("Loading model from: " + WEIGHTS_DIR);
+		log("Sequence length: " + seqLen);
 		long loadStart = System.currentTimeMillis();
 
 		Qwen3Config config = new Qwen3Config(
-				896, 4864, 24, 14, 2, 151936, 32768, true, 1000000.0
+				896, 4864, 24, 14, 2, 151936, seqLen, true, 1000000.0
 		);
 		StateDictionary stateDict = new StateDictionary(WEIGHTS_DIR);
 		Qwen3Tokenizer tokenizer = new Qwen3Tokenizer(TOKENIZER_PATH);
@@ -162,13 +191,13 @@ public class Qwen3BenchmarkTest extends TestSuiteBase implements ConsoleFeatures
 			model.getProfile().print();
 
 			// Save profile as XML for detailed analysis
-			String profilePath = "/workspace/project/common/ml/results/qwen3_benchmark_profile.xml";
+			String profilePath = "/workspace/project/common/ml/results/qwen3_benchmark_profile_" + label + ".xml";
 			model.getProfile().save(profilePath);
 			log("Profile XML saved to: " + profilePath);
 		}
 
 		log("");
-		log("Results written to: " + RESULTS_FILE);
+		log("Results written to: " + resultsFile);
 
 		stateDict.destroy();
 	}
