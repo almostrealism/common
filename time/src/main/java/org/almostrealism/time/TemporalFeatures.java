@@ -850,6 +850,66 @@ public interface TemporalFeatures extends GeometryFeatures {
 		return sqrt(powerSpectrum(complex));
 	}
 
+	/**
+	 * Unwraps phase angles to produce a continuous phase sequence.
+	 *
+	 * <p>Phase values from atan2 are wrapped to the range [-PI, PI]. This method
+	 * detects discontinuities (jumps greater than PI) and adjusts the phase values
+	 * by adding or subtracting 2*PI to make the phase continuous.</p>
+	 *
+	 * <p>This is essential for:</p>
+	 * <ul>
+	 *   <li>Phase vocoder applications</li>
+	 *   <li>Instantaneous frequency estimation</li>
+	 *   <li>Phase-based audio effects</li>
+	 * </ul>
+	 *
+	 * <h3>Example Usage</h3>
+	 * <pre>{@code
+	 * // Compute unwrapped phase from complex FFT output
+	 * Producer<PackedCollection> signal = ...;
+	 * FourierTransform fft = fft(1024, signal);
+	 *
+	 * // Get phase and unwrap
+	 * CollectionProducer complex = fft.reshape(512, 2);
+	 * CollectionProducer wrappedPhase = phase(complex);
+	 * PackedCollection unwrapped = unwrapPhase(wrappedPhase.get().evaluate());
+	 * }</pre>
+	 *
+	 * @param wrappedPhase The wrapped phase values (from phase() method)
+	 * @return A PackedCollection with unwrapped (continuous) phase values
+	 */
+	default PackedCollection unwrapPhase(PackedCollection wrappedPhase) {
+		int size = wrappedPhase.getShape().getTotalSize();
+		PackedCollection unwrapped = new PackedCollection(shape(size));
+
+		if (size == 0) return unwrapped;
+
+		// First value stays the same
+		double cumulative = wrappedPhase.toDouble(0);
+		unwrapped.setMem(0, cumulative);
+
+		// Process remaining values
+		for (int i = 1; i < size; i++) {
+			double current = wrappedPhase.toDouble(i);
+			double previous = wrappedPhase.toDouble(i - 1);
+			double diff = current - previous;
+
+			// Detect and correct phase jumps
+			while (diff > Math.PI) {
+				diff -= 2 * Math.PI;
+			}
+			while (diff < -Math.PI) {
+				diff += 2 * Math.PI;
+			}
+
+			cumulative += diff;
+			unwrapped.setMem(i, cumulative);
+		}
+
+		return unwrapped;
+	}
+
 	// ==================== Short-Time Fourier Transform (STFT) ====================
 
 	/**
@@ -1014,6 +1074,84 @@ public interface TemporalFeatures extends GeometryFeatures {
 	 */
 	default double melToHz(double mel) {
 		return MelFilterBank.melToHz(mel);
+	}
+
+	/**
+	 * Computes Mel-Frequency Cepstral Coefficients (MFCCs) from mel filterbank energies.
+	 *
+	 * <p>MFCCs are widely used features for speech and audio recognition. They are computed
+	 * by applying the Discrete Cosine Transform (DCT-II) to the log of mel filterbank energies.
+	 * This produces a compact representation that captures the spectral envelope of a signal.</p>
+	 *
+	 * <h3>MFCC Computation Pipeline</h3>
+	 * <ol>
+	 *   <li>Compute power spectrum from FFT</li>
+	 *   <li>Apply mel filterbank to get mel energies</li>
+	 *   <li>Take log of mel energies</li>
+	 *   <li>Apply DCT-II to get MFCCs</li>
+	 *   <li>Keep first numCoeffs coefficients</li>
+	 * </ol>
+	 *
+	 * <h3>Example Usage</h3>
+	 * <pre>{@code
+	 * // Extract MFCCs from audio frame
+	 * Producer<PackedCollection> frame = ...;  // Audio frame
+	 * FourierTransform fft = fft(512, frame);
+	 *
+	 * // Get power spectrum
+	 * CollectionProducer complex = fft.reshape(256, 2);
+	 * CollectionProducer power = powerSpectrum(complex);
+	 *
+	 * // Apply mel filterbank
+	 * MelFilterBank melBank = melFilterBank(512, 16000, 26, power);
+	 * PackedCollection melEnergies = melBank.get().evaluate();
+	 *
+	 * // Compute 13 MFCCs
+	 * PackedCollection mfccs = mfcc(13, melEnergies);
+	 * }</pre>
+	 *
+	 * <h3>Typical MFCC Settings</h3>
+	 * <table border="1">
+	 * <caption>Common MFCC Configurations</caption>
+	 * <tr><th>Application</th><th>Mel Bands</th><th>MFCC Coefficients</th></tr>
+	 * <tr><td>Speech recognition</td><td>26</td><td>13</td></tr>
+	 * <tr><td>Speaker identification</td><td>40</td><td>20</td></tr>
+	 * <tr><td>Music analysis</td><td>40</td><td>13-20</td></tr>
+	 * </table>
+	 *
+	 * @param numCoeffs   The number of MFCC coefficients to return (typically 13)
+	 * @param melEnergies The mel filterbank energies from MelFilterBank
+	 * @return A PackedCollection containing the MFCC coefficients
+	 */
+	default PackedCollection mfcc(int numCoeffs, PackedCollection melEnergies) {
+		int numMelBands = melEnergies.getShape().getTotalSize();
+
+		if (numCoeffs > numMelBands) {
+			throw new IllegalArgumentException(
+					"Number of MFCC coefficients (" + numCoeffs + ") cannot exceed number of mel bands (" + numMelBands + ")");
+		}
+
+		// Take log of mel energies (add small epsilon to avoid log(0))
+		double[] logMelEnergies = new double[numMelBands];
+		for (int i = 0; i < numMelBands; i++) {
+			logMelEnergies[i] = Math.log(melEnergies.toDouble(i) + 1e-10);
+		}
+
+		// Apply DCT-II to get MFCCs
+		// DCT-II formula: X[k] = sum_{n=0}^{N-1} x[n] * cos(PI * k * (2n + 1) / (2N))
+		PackedCollection mfccs = new PackedCollection(shape(numCoeffs));
+
+		for (int k = 0; k < numCoeffs; k++) {
+			double sum = 0.0;
+			for (int n = 0; n < numMelBands; n++) {
+				sum += logMelEnergies[n] * Math.cos(Math.PI * k * (2 * n + 1) / (2.0 * numMelBands));
+			}
+			// Apply orthogonal normalization
+			double scale = (k == 0) ? Math.sqrt(1.0 / numMelBands) : Math.sqrt(2.0 / numMelBands);
+			mfccs.setMem(k, sum * scale);
+		}
+
+		return mfccs;
 	}
 
 	// ==================== FFT Convolution ====================
