@@ -69,7 +69,9 @@ public class Absolute extends Expression<Double> {
 	 */
 	@Override
 	public String getExpression(LanguageOperations lang) {
-		return "abs(" + getChildren().get(0).getExpression(lang) + ")";
+		// Use fabs() for floating-point absolute value in C/C++/CUDA/OpenCL
+		// abs() is for integers only in C and can produce wrong results for doubles
+		return "fabs(" + getChildren().get(0).getExpression(lang) + ")";
 	}
 
 	/**
