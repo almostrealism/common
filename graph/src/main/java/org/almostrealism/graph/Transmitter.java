@@ -62,4 +62,14 @@ public interface Transmitter<T> {
 	 * @param r the receptor to receive this transmitter's output, may be null to disconnect
 	 */
 	void setReceptor(Receptor<T> r);
+
+	/**
+	 * Returns the current downstream receptor, if any.
+	 *
+	 * <p>This method allows inspection of the current receptor configuration,
+	 * which is useful for chaining receptors or debugging the computation graph.</p>
+	 *
+	 * @return the current receptor, or null if none is set
+	 */
+	default Receptor<T> getReceptor() { return null; }
 }

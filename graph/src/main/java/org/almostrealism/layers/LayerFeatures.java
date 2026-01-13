@@ -1889,9 +1889,22 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 	}
 
 	default CellularLayer rmsnorm(PackedCollection weights,
+								  double epsilon,
+								  ComputeRequirement... requirements) {
+		return rmsnorm(weights.getShape(), weights, null, epsilon, requirements);
+	}
+
+	default CellularLayer rmsnorm(PackedCollection weights,
 								  PackedCollection biases,
 								  ComputeRequirement... requirements) {
 		return rmsnorm(weights.getShape(), weights, biases, requirements);
+	}
+
+	default CellularLayer rmsnorm(PackedCollection weights,
+								  PackedCollection biases,
+								  double epsilon,
+								  ComputeRequirement... requirements) {
+		return rmsnorm(weights.getShape(), weights, biases, epsilon, requirements);
 	}
 
 	default CellularLayer rmsnorm(TraversalPolicy shape,
@@ -1902,7 +1915,32 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 
 	default CellularLayer rmsnorm(TraversalPolicy shape,
 								  PackedCollection weights,
+								  double epsilon,
+								  ComputeRequirement... requirements) {
+		return rmsnorm(shape, weights, null, epsilon, requirements);
+	}
+
+	default CellularLayer rmsnorm(TraversalPolicy shape,
+								  PackedCollection weights,
 								  PackedCollection biases,
+								  ComputeRequirement... requirements) {
+		return rmsnorm(shape, weights, biases, 1e-5, requirements);
+	}
+
+	/**
+	 * RMS (Root Mean Square) normalization layer with configurable epsilon.
+	 *
+	 * @param shape Input/output shape
+	 * @param weights Normalization weights
+	 * @param biases Optional biases (can be null)
+	 * @param epsilon Small constant for numerical stability (e.g., 1e-5 or 1e-6)
+	 * @param requirements Compute requirements
+	 * @return RMSNorm layer
+	 */
+	default CellularLayer rmsnorm(TraversalPolicy shape,
+								  PackedCollection weights,
+								  PackedCollection biases,
+								  double epsilon,
 								  ComputeRequirement... requirements) {
 		if (weights.getShape().getDimensions() != 1 ||
 				(biases != null && biases.getShape().getDimensions() != 1)) {
@@ -1914,7 +1952,7 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 
 		return layer("rmsnorm", shape, shape, input -> {
 			CollectionProducer ss = pow(traverseEach(input), c(2.0)).traverse(axis).sum();
-			ss = ss.divide(c(size)).add(c(1e-5));
+			ss = ss.divide(c(size)).add(c(epsilon));
 			ss = c(1.0).divide(ss.pow(c(0.5)));
 
 			if (weights == null) {

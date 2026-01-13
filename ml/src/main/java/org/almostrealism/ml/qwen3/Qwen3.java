@@ -3,6 +3,8 @@ package org.almostrealism.ml.qwen3;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.profile.OperationProfile;
+import io.almostrealism.profile.OperationProfileNode;
+import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.ml.AttentionFeatures;
 import org.almostrealism.ml.AutoregressiveModel;
@@ -86,8 +88,9 @@ public class Qwen3 implements AttentionFeatures {
 	private Qwen3Tokenizer tokenizer;
 
 	private AutoregressiveModel model;
-	private OperationProfile profile;
+	private OperationProfileNode profile;
 	private org.almostrealism.model.CompiledModel compiledModel;
+	private PackedCollection position;
 
 	/**
 	 * Main entry point for running Qwen3 from command line.
@@ -168,7 +171,7 @@ public class Qwen3 implements AttentionFeatures {
 		}
 
 		// Create the model with profiling
-		profile = new OperationProfile();
+		profile = new OperationProfileNode("qwen3");
 		model = model(profile);
 		System.out.println("Model initialized");
 	}
@@ -232,7 +235,7 @@ public class Qwen3 implements AttentionFeatures {
 		this.config = config;
 		this.stateDict = stateDict;
 		this.tokenizer = tokenizer;
-		this.profile = new OperationProfile();
+		this.profile = new OperationProfileNode("qwen3");
 		this.model = model(profile);
 	}
 
@@ -240,7 +243,7 @@ public class Qwen3 implements AttentionFeatures {
 		return tokenizer;
 	}
 
-	public OperationProfile getProfile() {
+	public OperationProfileNode getProfile() {
 		return profile;
 	}
 
@@ -274,6 +277,13 @@ public class Qwen3 implements AttentionFeatures {
 	}
 
 	/**
+	 * For testing: Get the position collection to manually control position.
+	 */
+	public PackedCollection getPosition() {
+		return position;
+	}
+
+	/**
 	 * Build the Qwen3 transformer model.
 	 *
 	 * This creates the full transformer stack with:
@@ -290,7 +300,7 @@ public class Qwen3 implements AttentionFeatures {
 		Model transformer = new Model(shape(1, config.dim));
 
 		// Placeholder for the index of the current step (position in sequence)
-		PackedCollection position = new PackedCollection(1);
+		this.position = new PackedCollection(1);
 
 		int dim = config.dim;
 		int kvDim = config.dim * config.kvHeadCount / config.headCount;
@@ -337,6 +347,7 @@ public class Qwen3 implements AttentionFeatures {
 			PackedCollection layerW3 = stateDict.get(prefix + ".mlp.up_proj.weight");
 
 			// Add complete transformer layer
+			// Qwen3 uses epsilon=1e-6 for RMSNorm (not default 1e-5)
 			transformer.add(transformer(
 					config.headCount,     // 32 query heads
 					config.kvHeadCount,   // 8 KV heads (GQA)
@@ -347,12 +358,13 @@ public class Qwen3 implements AttentionFeatures {
 					freqCis,              // RoPE frequencies
 					layerRmsFfn,          // Pre-FFN norm
 					layerW1, layerW2, layerW3,  // FFN projections (SwiGLU)
-					p(position),          // Current position
+					p(position),  // Current position
+					1e-6,                 // Qwen3 RMSNorm epsilon
 					requirements));
 		}
 
-		// Final RMS Norm
-		transformer.add(rmsnorm(shape(1, dim), rmsFinalWeight));
+		// Final RMS Norm (also uses epsilon=1e-6)
+		transformer.add(rmsnorm(shape(1, dim), rmsFinalWeight, 1e-6));
 
 		// Output logits projection (shared with token embeddings)
 		transformer.add(dense(wcls));
@@ -426,6 +438,7 @@ public class Qwen3 implements AttentionFeatures {
 		int next;
 		int token = Qwen3Tokenizer.BOS_TOKEN;
 
+		model.setCurrentStep(0);  // Reset step counter for new generation
 		model.setCurrentToken(Qwen3Tokenizer.BOS_TOKEN);
 		model.setPrompt(promptTokens, promptTokenCount);
 

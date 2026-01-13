@@ -1,12 +1,13 @@
 package org.almostrealism.ml.qwen3;
 
 import org.almostrealism.ml.StateDictionary;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 /**
  * Demo to see actual generation output from Qwen3 with the fixed tokenizer.
  */
-public class Qwen3GenerationDemo {
+public class Qwen3GenerationDemo extends TestSuiteBase {
 
     private static final String WEIGHTS_DIR = "/workspace/project/common/ml/qwen3_weights";
     private static final String TOKENIZER_PATH = WEIGHTS_DIR + "/tokenizer.bin";
