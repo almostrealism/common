@@ -107,7 +107,13 @@ public class SequentialBlock implements Block, Learning, LayerFeatures {
 		Block last = lastBlock();
 		Receptor<PackedCollection> prev;
 		if (last != null) {
-			last.getForward().setReceptor(block.getForward());
+			// Preserve existing receptor (e.g., cache writes from andThen()) by chaining
+			Receptor<PackedCollection> existing = last.getForward().getReceptor();
+			if (existing != null) {
+				last.getForward().setReceptor(Receptor.to(existing, block.getForward()));
+			} else {
+				last.getForward().setReceptor(block.getForward());
+			}
 			prev = last.getBackward();
 		} else {
 			prev = back;
@@ -122,7 +128,15 @@ public class SequentialBlock implements Block, Learning, LayerFeatures {
 
 		blocks.add(block);
 		applyParameterUpdate(block);
-		lastBlock().getForward().setReceptor(push);
+
+		// Chain with existing receptor if one was set (e.g., via andThen() for cache writes)
+		Cell<PackedCollection> forward = lastBlock().getForward();
+		Receptor<PackedCollection> existing = forward.getReceptor();
+		if (existing != null) {
+			forward.setReceptor(Receptor.to(existing, push));
+		} else {
+			forward.setReceptor(push);
+		}
 		return block;
 	}
 
@@ -341,7 +355,22 @@ public class SequentialBlock implements Block, Learning, LayerFeatures {
 						warn("Replacing receptor");
 					}
 
-					SequentialBlock.this.downstream = r;
+					Block last = lastBlock();
+					if (last != null) {
+						last.getForward().setReceptor(r);
+					} else {
+						SequentialBlock.this.downstream = r;
+					}
+				}
+
+				@Override
+				public Receptor<PackedCollection> getReceptor() {
+					Block last = lastBlock();
+					if (last != null) {
+						return last.getForward().getReceptor();
+					} else {
+						return SequentialBlock.this.downstream;
+					}
 				}
 			};
 		}
@@ -370,7 +399,12 @@ public class SequentialBlock implements Block, Learning, LayerFeatures {
 						warn("Replacing receptor");
 					}
 
-					SequentialBlock.this.upstream = r;
+					Block first = firstBlock();
+					if (first != null) {
+						first.getBackward().setReceptor(r);
+					} else {
+						SequentialBlock.this.upstream = r;
+					}
 				}
 			};
 		}

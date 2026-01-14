@@ -31,7 +31,7 @@ public class SharedEmbeddingsTest extends TestSuiteBase implements ConsoleFeatur
 		Assume.assumeTrue("Skipping comparison test in pipeline profile", TestUtils.isComparisonTestEnabled());
 
 		// Setup file logging
-		String logFile = "/workspace/project/common/ml/test_output/shared_embeddings_test.txt";
+		String logFile = "/workspace/project/common/ml/results/shared_embeddings_test.txt";
 		Console.root().addListener(OutputFeatures.fileOutput(logFile));
 
 		log("\n=== Shared Embeddings Test ===\n");
@@ -133,7 +133,7 @@ public class SharedEmbeddingsTest extends TestSuiteBase implements ConsoleFeatur
 		Assume.assumeTrue("Skipping comparison test in pipeline profile", TestUtils.isComparisonTestEnabled());
 
 		// Setup file logging
-		String logFile = "/workspace/project/common/ml/test_output/output_projection_shape_test.txt";
+		String logFile = "/workspace/project/common/ml/results/output_projection_shape_test.txt";
 		Console.root().addListener(OutputFeatures.fileOutput(logFile));
 
 		log("\n=== Output Projection Shape Test ===\n");

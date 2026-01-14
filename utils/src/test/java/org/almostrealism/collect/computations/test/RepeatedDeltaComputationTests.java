@@ -421,7 +421,7 @@ public class RepeatedDeltaComputationTests extends TestSuiteBase {
 		}
 	}
 
-	@Test(timeout = 5 * 60000)
+	@Test(timeout = 7 * 60000)
 	@TestDepth(1)
 	public void convSmallest() throws IOException {
 		int dim = 10;

@@ -233,6 +233,9 @@ public interface Cell<T> extends Transmitter<T>, Receptor<T>, Cellular {
 			public void setReceptor(Receptor<T> r) {
 				this.r = r;
 			}
+
+			@Override
+			public Receptor<T> getReceptor() { return r; }
 		};
 	}
 
@@ -314,6 +317,9 @@ public interface Cell<T> extends Transmitter<T>, Receptor<T>, Cellular {
 
 				this.r = r;
 			}
+
+			@Override
+			public Receptor<T> getReceptor() { return r; }
 		};
 	}
 
@@ -348,6 +354,9 @@ public interface Cell<T> extends Transmitter<T>, Receptor<T>, Cellular {
 
 				this.r = r;
 			}
+
+			@Override
+			public Receptor<T> getReceptor() { return r; }
 		};
 	}
 
@@ -387,6 +396,9 @@ public interface Cell<T> extends Transmitter<T>, Receptor<T>, Cellular {
 
 				this.r = r;
 			}
+
+			@Override
+			public Receptor<T> getReceptor() { return r; }
 		};
 	}
 
@@ -434,6 +446,9 @@ public interface Cell<T> extends Transmitter<T>, Receptor<T>, Cellular {
 
 				this.r = r;
 			}
+
+			@Override
+			public Receptor<T> getReceptor() { return r; }
 		};
 	}
 

@@ -98,6 +98,7 @@ public class AutoregressiveModel implements DistributionFeatures, CodeFeatures {
 	private PackedCollection temperature;
 	private int[] prompt;
 	private int promptTokens;
+	private PackedCollection cachedLogits;
 
 	/**
 	 * Creates a new autoregressive model with the specified components.
@@ -131,7 +132,10 @@ public class AutoregressiveModel implements DistributionFeatures, CodeFeatures {
 	 *
 	 * @param currentStep The step index to set
 	 */
-	public void setCurrentStep(int currentStep) { this.currentStep = currentStep; }
+	public void setCurrentStep(int currentStep) {
+		this.currentStep = currentStep;
+		this.cachedLogits = null;  // Clear cached logits when resetting
+	}
 
 	/**
 	 * Returns the most recently generated (or input) token ID.
@@ -203,23 +207,43 @@ public class AutoregressiveModel implements DistributionFeatures, CodeFeatures {
 	 * @return The selected token ID for this step
 	 */
 	public int next() {
-		step.accept(currentStep);
-		token.accept(currentToken);
-
-		PackedCollection logit = logits.get();
+		PackedCollection logit;
 
 		if (currentStep < promptTokens) {
+			// Prompt phase: feed each prompt token at its correct position
+			// to build the KV cache for the entire prompt
+			step.accept(currentStep);
+			token.accept(prompt[currentStep]);
+			logit = logits.get();
+			cachedLogits = logit;  // Cache logits for next step's sampling
 			currentToken = prompt[currentStep];
-		} else if (temperature.toDouble(0) == 0.0) {
-			currentToken = (int) indexOfMax.evaluate(logit).toDouble(0);
 		} else {
-			rescale.into(logit).evaluate(logit);
-			softmax.into(logit).evaluate(logit);
-			currentToken = sample(logit, vocabSize);
+			// Generation phase:
+			// 1. Sample from PREVIOUS step's logits (what comes next?)
+			// 2. Feed the sampled token at current position
+			// 3. Cache current logits for next step
+			currentToken = sampleFromLogits(cachedLogits);
+			step.accept(currentStep);
+			token.accept(currentToken);
+			logit = logits.get();
+			cachedLogits = logit;
 		}
 
 		currentStep++;
 		return currentToken;
+	}
+
+	/**
+	 * Sample a token from logits using the configured temperature.
+	 */
+	private int sampleFromLogits(PackedCollection logit) {
+		if (temperature.toDouble(0) == 0.0) {
+			return (int) indexOfMax.evaluate(logit).toDouble(0);
+		} else {
+			rescale.into(logit).evaluate(logit);
+			softmax.into(logit).evaluate(logit);
+			return sample(logit, vocabSize);
+		}
 	}
 
 	/**
