@@ -116,7 +116,7 @@ public class SyntheticCompositionTrainingTest extends TestSuiteBase implements M
 				.collect(Collectors.toList()));
 
 		// Train
-		train("residualBlock", model, data, epochs, steps, 0.9, 0.2);
+		train("residualBlock", model, data, epochs, steps, 1.2, 0.3);
 
 		log("Test 5.1 completed successfully");
 	}
