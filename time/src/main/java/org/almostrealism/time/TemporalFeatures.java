@@ -18,15 +18,19 @@ package org.almostrealism.time;
 
 import io.almostrealism.code.Computation;
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.collect.UniformCollectionExpression;
 import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.cycle.Setup;
+import io.almostrealism.expression.Atan2;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.Product;
 import io.almostrealism.lifecycle.Lifecycle;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.calculus.DeltaFeatures;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.computations.DefaultTraversableExpressionComputation;
 import org.almostrealism.geometry.GeometryFeatures;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.hardware.computations.Loop;
@@ -790,7 +794,20 @@ public interface TemporalFeatures extends GeometryFeatures {
 	 */
 	default CollectionProducer atan2(Producer<PackedCollection> y, Producer<PackedCollection> x) {
 		TraversalPolicy shape = shape(y);
-		return new org.almostrealism.time.computations.Atan2Computation(shape, y, x);
+		return new DefaultTraversableExpressionComputation("atan2",
+				shape,
+				DeltaFeatures.MultiTermDeltaStrategy.NONE,
+				true,
+				args -> new UniformCollectionExpression(
+						"atan2",
+						shape,
+						in -> Atan2.of(
+								(Expression<Double>) in[0],
+								(Expression<Double>) in[1]
+						),
+						args[1], args[2]
+				),
+				y, x);
 	}
 
 	/**
