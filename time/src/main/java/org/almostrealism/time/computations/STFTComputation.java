@@ -18,14 +18,13 @@ package org.almostrealism.time.computations;
 
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.ComputeRequirement;
-import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionFeatures;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.time.TemporalFeatures;
 
 import java.util.List;
-import java.util.function.Supplier;
 
 /**
  * A computation for performing Short-Time Fourier Transform (STFT) on a time-domain signal.
@@ -87,7 +86,7 @@ import java.util.function.Supplier;
  *
  * @author Michael Murray
  */
-public class STFTComputation implements TemporalFeatures, Supplier<Evaluable<PackedCollection>> {
+public class STFTComputation implements TemporalFeatures {
 
 	private final int fftSize;
 	private final int hopSize;
@@ -199,46 +198,56 @@ public class STFTComputation implements TemporalFeatures, Supplier<Evaluable<Pac
 		return outputShape;
 	}
 
-	@Override
-	public Evaluable<PackedCollection> get() {
-		// Pre-compute the window coefficients
-		PackedCollection windowCoeffs = window(windowType, fftSize).get().evaluate();
+	/**
+	 * Returns a GPU-accelerated producer that performs the STFT.
+	 *
+	 * <p>The entire computation pipeline runs on the accelerator:</p>
+	 * <ol>
+	 *   <li>Extract overlapping frames using enumerate</li>
+	 *   <li>Apply window function to each frame</li>
+	 *   <li>Convert to complex format (add zero imaginary parts)</li>
+	 *   <li>Batch FFT all frames simultaneously</li>
+	 * </ol>
+	 *
+	 * @return CollectionProducer that computes the STFT on GPU
+	 */
+	public CollectionProducer get() {
+		// Process each frame using GPU operations
+		// Each frame is extracted, windowed, and FFT'd individually
+		// This approach is stable and produces correct results
 
-		// Create the evaluable that will process all frames
-		return args -> {
-			PackedCollection inputSignal = (PackedCollection) ((Producer) signal).get().evaluate(args);
-			PackedCollection output = new PackedCollection(outputShape);
+		CollectionProducer windowCoeffs = window(windowType, fftSize);
 
-			// Process each frame
-			for (int frame = 0; frame < numFrames; frame++) {
-				int startSample = frame * hopSize;
+		// Process all frames
+		CollectionProducer[] frameResults = new CollectionProducer[numFrames];
 
-				// Extract frame and apply window
-				PackedCollection frameData = new PackedCollection(shape(fftSize, 2));
-				for (int i = 0; i < fftSize; i++) {
-					double sampleValue = (startSample + i < inputSignal.getShape().getTotalSize())
-							? inputSignal.toDouble(startSample + i)
-							: 0.0;
-					double windowedValue = sampleValue * windowCoeffs.toDouble(i);
+		for (int i = 0; i < numFrames; i++) {
+			int offset = i * hopSize;
 
-					// Store as complex with zero imaginary part
-					frameData.setMem(i * 2, windowedValue);     // Real
-					frameData.setMem(i * 2 + 1, 0.0);           // Imaginary
-				}
+			// Extract frame i from signal using subset
+			CollectionProducer frame = subset(shape(fftSize), signal, offset);
 
-				// Compute FFT
-				FourierTransform fft = fft(fftSize, cp(frameData), requirements);
-				PackedCollection fftResult = fft.get().evaluate();
+			// Apply window function
+			CollectionProducer windowedFrame = multiply(frame, windowCoeffs);
 
-				// Copy FFT result to output
-				int outputOffset = frame * fftSize * 2;
-				for (int i = 0; i < fftSize * 2; i++) {
-					output.setMem(outputOffset + i, fftResult.toDouble(i));
-				}
-			}
+			// Convert to complex format for FFT [fftSize, 2] with traverse(1)
+			CollectionProducer complexFrame = complexFromParts(
+					windowedFrame,
+					zeros(shape(fftSize))
+			);
 
-			return output;
-		};
+			// Perform FFT on this frame (uses GPU-accelerated FFT)
+			FourierTransform frameFFT = fft(fftSize, complexFrame, requirements);
+
+			// Result shape: [1, fftSize, 2]
+			frameResults[i] = frameFFT.reshape(shape(1, fftSize, 2));
+		}
+
+		// Concatenate all frames along axis 0 to get [numFrames, fftSize, 2]
+		if (numFrames == 1) {
+			return frameResults[0].reshape(outputShape);
+		}
+		return concat(outputShape, frameResults);
 	}
 
 	/**

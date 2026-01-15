@@ -16,18 +16,17 @@
 
 package org.almostrealism.time.computations;
 
+import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.ComputeRequirement;
-import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
-import org.almostrealism.collect.CollectionFeatures;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.computations.DefaultTraversableExpressionComputation;
 import org.almostrealism.time.TemporalFeatures;
 
-import java.util.function.Supplier;
-
 /**
- * A computation for performing convolution using the Fast Fourier Transform (FFT).
+ * A GPU-accelerated computation for performing convolution using the Fast Fourier Transform (FFT).
  *
  * <p>FFT-based convolution is more efficient than direct time-domain convolution
  * for large signals or kernels. The time complexity is O(N log N) instead of O(N*M)
@@ -41,13 +40,14 @@ import java.util.function.Supplier;
  * </pre>
  *
  * <h2>Implementation Details</h2>
+ * <p>All operations are performed on GPU/accelerator hardware:</p>
  * <ol>
  *   <li>Zero-pad signal and kernel to length N+M-1 (next power of 2)</li>
- *   <li>Convert to complex format (real + 0i)</li>
- *   <li>Compute FFT of both</li>
- *   <li>Multiply element-wise (complex multiplication)</li>
- *   <li>Compute inverse FFT</li>
- *   <li>Extract real part as result</li>
+ *   <li>Convert to complex format using GPU operations</li>
+ *   <li>Compute FFT of both (GPU-accelerated)</li>
+ *   <li>Multiply element-wise using complex multiplication (GPU)</li>
+ *   <li>Compute inverse FFT (GPU-accelerated)</li>
+ *   <li>Extract real part as result (GPU)</li>
  * </ol>
  *
  * <h2>Use Cases</h2>
@@ -73,7 +73,7 @@ import java.util.function.Supplier;
  *
  * @author Michael Murray
  */
-public class FFTConvolution implements Supplier<Evaluable<PackedCollection>>, TemporalFeatures {
+public class FFTConvolution implements TemporalFeatures {
 
 	private final Producer<PackedCollection> signal;
 	private final Producer<PackedCollection> kernel;
@@ -94,8 +94,8 @@ public class FFTConvolution implements Supplier<Evaluable<PackedCollection>>, Te
 		this.signal = signal;
 		this.kernel = kernel;
 
-		TraversalPolicy signalShape = CollectionFeatures.getInstance().shape(signal);
-		TraversalPolicy kernelShape = CollectionFeatures.getInstance().shape(kernel);
+		TraversalPolicy signalShape = shape(signal);
+		TraversalPolicy kernelShape = shape(kernel);
 
 		this.signalLength = signalShape.getSize();
 		this.kernelLength = kernelShape.getSize();
@@ -143,64 +143,79 @@ public class FFTConvolution implements Supplier<Evaluable<PackedCollection>>, Te
 		return outputShape;
 	}
 
-	@Override
-	public Evaluable<PackedCollection> get() {
-		return args -> {
-			// Get input data
-			PackedCollection signalData = (PackedCollection) ((Producer) signal).get().evaluate(args);
-			PackedCollection kernelData = (PackedCollection) ((Producer) kernel).get().evaluate(args);
+	/**
+	 * Returns a GPU-accelerated producer that performs the FFT convolution.
+	 *
+	 * <p>The entire computation pipeline runs on the accelerator:</p>
+	 * <ol>
+	 *   <li>Zero-pad inputs to FFT size</li>
+	 *   <li>Convert real signals to complex format</li>
+	 *   <li>Forward FFT both signals</li>
+	 *   <li>Complex multiplication in frequency domain</li>
+	 *   <li>Inverse FFT the product</li>
+	 *   <li>Extract real part and trim to output length</li>
+	 * </ol>
+	 *
+	 * @return CollectionProducer that computes the convolution on GPU
+	 */
+	public CollectionProducer get() {
+		// Step 1: Zero-pad signal to fftSize
+		// Pad from [signalLength] to [fftSize]
+		CollectionProducer paddedSignal = pad(
+				shape(fftSize),
+				signal,
+				0  // Position at start
+		);
 
-			// Zero-pad and convert to complex format
-			PackedCollection signalComplex = new PackedCollection(shape(fftSize, 2));
-			PackedCollection kernelComplex = new PackedCollection(shape(fftSize, 2));
+		// Step 2: Convert signal to complex format [fftSize, 2]
+		// Real parts from signal, imaginary parts are zeros
+		CollectionProducer signalComplex = complexFromParts(
+				paddedSignal,
+				zeros(shape(fftSize))
+		);
 
-			// Copy signal (real parts only)
-			for (int i = 0; i < signalLength && i < signalData.getShape().getTotalSize(); i++) {
-				signalComplex.setMem(i * 2, signalData.toDouble(i));     // Real
-				signalComplex.setMem(i * 2 + 1, 0.0);                    // Imaginary
-			}
-			// Remaining positions are already zero-padded
+		// Step 3: Zero-pad kernel to fftSize
+		CollectionProducer paddedKernel = pad(
+				shape(fftSize),
+				kernel,
+				0  // Position at start
+		);
 
-			// Copy kernel (real parts only)
-			for (int i = 0; i < kernelLength && i < kernelData.getShape().getTotalSize(); i++) {
-				kernelComplex.setMem(i * 2, kernelData.toDouble(i));     // Real
-				kernelComplex.setMem(i * 2 + 1, 0.0);                    // Imaginary
-			}
+		// Step 4: Convert kernel to complex format [fftSize, 2]
+		CollectionProducer kernelComplex = complexFromParts(
+				paddedKernel,
+				zeros(shape(fftSize))
+		);
 
-			// Compute FFT of both
-			FourierTransform fftSignal = fft(fftSize, cp(signalComplex), requirements);
-			FourierTransform fftKernel = fft(fftSize, cp(kernelComplex), requirements);
+		// Step 5: FFT both (GPU-accelerated)
+		FourierTransform signalFFT = fft(fftSize, signalComplex, requirements);
+		FourierTransform kernelFFT = fft(fftSize, kernelComplex, requirements);
 
-			PackedCollection signalFreq = fftSignal.get().evaluate();
-			PackedCollection kernelFreq = fftKernel.get().evaluate();
+		// Step 6: Complex multiplication in frequency domain (GPU-accelerated)
+		// multiplyComplex handles (a+bi)(c+di) = (ac-bd) + (ad+bc)i
+		CollectionProducer product = multiplyComplex(
+				signalFFT,
+				kernelFFT
+		);
 
-			// Complex multiplication: (a+bi)(c+di) = (ac-bd) + (ad+bc)i
-			PackedCollection productFreq = new PackedCollection(shape(fftSize, 2));
-			for (int i = 0; i < fftSize; i++) {
-				double a = signalFreq.toDouble(i * 2);       // Real part of signal
-				double b = signalFreq.toDouble(i * 2 + 1);   // Imag part of signal
-				double c = kernelFreq.toDouble(i * 2);       // Real part of kernel
-				double d = kernelFreq.toDouble(i * 2 + 1);   // Imag part of kernel
+		// Step 7: Inverse FFT (GPU-accelerated)
+		FourierTransform ifftResult = ifft(fftSize, product, requirements);
 
-				double realPart = a * c - b * d;
-				double imagPart = a * d + b * c;
+		// Step 8: Extract real parts and trim to output length
+		// The IFFT output has shape [1, 2, fftSize] with traverse(1)
+		// Data layout is interleaved: [re0, im0, re1, im1, ...]
+		// We need to extract real parts at even indices (0, 2, 4, ...) and take only outputLength values
+		CollectionProducer flatIfft = ifftResult.traverseEach();
 
-				productFreq.setMem(i * 2, realPart);
-				productFreq.setMem(i * 2 + 1, imagPart);
-			}
-
-			// Inverse FFT
-			FourierTransform ifftResult = ifft(fftSize, cp(productFreq), requirements);
-			PackedCollection convResult = ifftResult.get().evaluate();
-
-			// Extract real part for output (truncate to actual convolution length)
-			PackedCollection output = new PackedCollection(outputShape);
-			for (int i = 0; i < outputLength; i++) {
-				output.setMem(i, convResult.toDouble(i * 2));  // Real part only
-			}
-
-			return output;
-		};
+		// Create a computation that extracts real parts with stride 2
+		// For output index idx, read from input at idx * 2
+		return new DefaultTraversableExpressionComputation(
+				"extractRealParts",
+				outputShape,
+				args -> CollectionExpression.create(outputShape,
+						idx -> args[1].getValueAt(idx.multiply(2))),
+				flatIfft
+		);
 	}
 
 	/**

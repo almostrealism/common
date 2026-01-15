@@ -17,12 +17,10 @@
 package org.almostrealism.time.computations;
 
 import io.almostrealism.collect.TraversalPolicy;
-import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
-import org.almostrealism.collect.CollectionFeatures;
+import org.almostrealism.algebra.MatrixFeatures;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-
-import java.util.function.Supplier;
 
 /**
  * A computation for applying a mel-scale filterbank to a power spectrum.
@@ -78,7 +76,7 @@ import java.util.function.Supplier;
  *
  * @author Michael Murray
  */
-public class MelFilterBank implements Supplier<Evaluable<PackedCollection>>, CollectionFeatures {
+public class MelFilterBank implements MatrixFeatures {
 
 	private final int fftSize;
 	private final int sampleRate;
@@ -88,8 +86,8 @@ public class MelFilterBank implements Supplier<Evaluable<PackedCollection>>, Col
 	private final Producer<PackedCollection> powerSpectrum;
 	private final TraversalPolicy outputShape;
 
-	// Pre-computed filterbank matrix
-	private final double[][] filterbank;
+	// Pre-computed filterbank matrix as a PackedCollection [numMelBands, numFreqBins]
+	private final PackedCollection filterbankMatrix;
 
 	/**
 	 * Constructs a mel filterbank computation.
@@ -112,8 +110,8 @@ public class MelFilterBank implements Supplier<Evaluable<PackedCollection>>, Col
 		this.powerSpectrum = powerSpectrum;
 		this.outputShape = shape(numMelBands);
 
-		// Pre-compute the filterbank matrix
-		this.filterbank = computeFilterbank();
+		// Pre-compute the filterbank matrix as a PackedCollection
+		this.filterbankMatrix = computeFilterbankMatrix();
 	}
 
 	/**
@@ -135,44 +133,58 @@ public class MelFilterBank implements Supplier<Evaluable<PackedCollection>>, Col
 	}
 
 	/**
-	 * Returns the pre-computed filterbank matrix.
+	 * Returns the pre-computed filterbank matrix as a PackedCollection.
 	 *
 	 * <p>The matrix has shape [numMelBands, numFreqBins] where
 	 * numFreqBins = fftSize/2 + 1.</p>
 	 *
-	 * @return the filterbank matrix
+	 * @return the filterbank matrix as a PackedCollection
 	 */
-	public double[][] getFilterbank() {
-		return filterbank;
-	}
-
-	@Override
-	public Evaluable<PackedCollection> get() {
-		int numFreqBins = fftSize / 2 + 1;
-
-		return args -> {
-			PackedCollection spectrum = (PackedCollection) ((Producer) powerSpectrum).get().evaluate(args);
-			PackedCollection output = new PackedCollection(outputShape);
-
-			// Apply filterbank: output[m] = sum(filterbank[m][k] * spectrum[k])
-			for (int m = 0; m < numMelBands; m++) {
-				double sum = 0.0;
-				for (int k = 0; k < numFreqBins && k < spectrum.getShape().getTotalSize(); k++) {
-					sum += filterbank[m][k] * spectrum.toDouble(k);
-				}
-				output.setMem(m, sum);
-			}
-
-			return output;
-		};
+	public PackedCollection getFilterbankMatrix() {
+		return filterbankMatrix;
 	}
 
 	/**
-	 * Computes the mel filterbank matrix.
+	 * Returns the pre-computed filterbank matrix as a 2D array.
 	 *
-	 * @return the filterbank matrix [numMelBands, numFreqBins]
+	 * <p>The matrix has shape [numMelBands, numFreqBins] where
+	 * numFreqBins = fftSize/2 + 1.</p>
+	 *
+	 * @return the filterbank matrix as double[][]
 	 */
-	private double[][] computeFilterbank() {
+	public double[][] getFilterbank() {
+		int numFreqBins = fftSize / 2 + 1;
+		double[][] fb = new double[numMelBands][numFreqBins];
+		for (int m = 0; m < numMelBands; m++) {
+			for (int k = 0; k < numFreqBins; k++) {
+				fb[m][k] = filterbankMatrix.toDouble(m * numFreqBins + k);
+			}
+		}
+		return fb;
+	}
+
+	/**
+	 * Returns a GPU-accelerated producer that applies the mel filterbank.
+	 *
+	 * <p>The computation uses matrix multiplication: output = filterbank @ spectrum,
+	 * where filterbank is [numMelBands, numFreqBins] and spectrum is [numFreqBins].</p>
+	 *
+	 * @return CollectionProducer that computes mel filterbank energies on GPU
+	 */
+	public CollectionProducer get() {
+		// Use GPU-accelerated matrix multiplication: output = filterbank @ spectrum
+		// filterbank: [numMelBands, numFreqBins]
+		// spectrum: [numFreqBins]
+		// output: [numMelBands]
+		return matmul(cp(filterbankMatrix), powerSpectrum).reshape(outputShape);
+	}
+
+	/**
+	 * Computes the mel filterbank matrix as a PackedCollection.
+	 *
+	 * @return the filterbank matrix as PackedCollection with shape [numMelBands, numFreqBins]
+	 */
+	private PackedCollection computeFilterbankMatrix() {
 		int numFreqBins = fftSize / 2 + 1;
 
 		// Convert frequency bounds to mel
@@ -197,8 +209,8 @@ public class MelFilterBank implements Supplier<Evaluable<PackedCollection>>, Col
 			binPoints[i] = (int) Math.floor((fftSize + 1) * hzPoints[i] / sampleRate);
 		}
 
-		// Create the filterbank matrix
-		double[][] fb = new double[numMelBands][numFreqBins];
+		// Create the filterbank matrix as a PackedCollection
+		PackedCollection fb = new PackedCollection(shape(numMelBands, numFreqBins));
 
 		for (int m = 0; m < numMelBands; m++) {
 			int fStart = binPoints[m];
@@ -208,14 +220,14 @@ public class MelFilterBank implements Supplier<Evaluable<PackedCollection>>, Col
 			// Rising slope
 			for (int k = fStart; k < fCenter && k < numFreqBins; k++) {
 				if (fCenter != fStart) {
-					fb[m][k] = (double) (k - fStart) / (fCenter - fStart);
+					fb.setMem(m * numFreqBins + k, (double) (k - fStart) / (fCenter - fStart));
 				}
 			}
 
 			// Falling slope
 			for (int k = fCenter; k < fEnd && k < numFreqBins; k++) {
 				if (fEnd != fCenter) {
-					fb[m][k] = (double) (fEnd - k) / (fEnd - fCenter);
+					fb.setMem(m * numFreqBins + k, (double) (fEnd - k) / (fEnd - fCenter));
 				}
 			}
 		}
