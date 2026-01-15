@@ -66,6 +66,11 @@ public abstract class DefaultLanguageOperations implements LanguageOperations {
 	}
 
 	@Override
+	public String abs(String value) {
+		return "fabs(" + value + ")";
+	}
+
+	@Override
 	public String declaration(Class type, String destination, String expression, String arrayLength) {
 		if (type == null) {
 			return assignment(destination, expression);

@@ -1,3 +1,19 @@
+/*
+ * Copyright 2026 Michael Murray
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ */
+
 package org.almostrealism.ml.audio.test;
 
 import org.almostrealism.collect.PackedCollection;
@@ -7,18 +23,22 @@ import org.almostrealism.ml.audio.DiffusionTransformerFeatures;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 import org.almostrealism.model.SequentialBlock;
+import org.almostrealism.util.TestDepth;
 import org.almostrealism.util.TestSuiteBase;
+import org.almostrealism.util.TestUtils;
 import org.junit.Test;
 
 public class DiffusionTransformerComparisonTests extends TestSuiteBase implements DiffusionTransformerFeatures {
 	/**
 	 * Tests fourierFeatures against reference data generated from the actual
 	 * stable-audio-tools FourierFeatures class. This ensures our Java implementation
-	 * matches the real Python behavior including the 2π factor, matrix multiplication,
+	 * matches the real Python behavior including the 2pi factor, matrix multiplication,
 	 * and correct concatenation order.
 	 */
 	@Test
 	public void fourierFeaturesCompare() throws Exception {
+		if (testProfileIs(TestUtils.PIPELINE)) return;
+
 		String referenceDir = "/Users/michael/Documents/AlmostRealism/models/fourier_features";
 
 		// Load reference data using StateDictionary
@@ -106,6 +126,8 @@ public class DiffusionTransformerComparisonTests extends TestSuiteBase implement
 	 */
 	@Test
 	public void inputProjectionCompare() throws Exception {
+		if (testProfileIs(TestUtils.PIPELINE)) return;
+
 		String referenceDir = "/Users/michael/Documents/AlmostRealism/models/input_projection";
 
 		// Load reference data using StateDictionary
@@ -189,6 +211,8 @@ public class DiffusionTransformerComparisonTests extends TestSuiteBase implement
 	 */
 	@Test
 	public void conditioningEmbeddingCompare() throws Exception {
+		if (testProfileIs(TestUtils.PIPELINE)) return;
+
 		String referenceDir = "/Users/michael/Documents/AlmostRealism/models/conditioning_embedding";
 
 		// Load reference data using StateDictionary
@@ -276,6 +300,8 @@ public class DiffusionTransformerComparisonTests extends TestSuiteBase implement
 	 */
 	@Test
 	public void globalEmbeddingCompare() throws Exception {
+		if (testProfileIs(TestUtils.PIPELINE)) return;
+
 		String referenceDir = "/Users/michael/Documents/AlmostRealism/models/global_embedding";
 
 		// Load reference data using StateDictionary
@@ -360,8 +386,9 @@ public class DiffusionTransformerComparisonTests extends TestSuiteBase implement
 	 * are applied, which is critical for identifying where discrepancies occur in the pipeline.
 	 */
 	@Test
+	@TestDepth(3)
 	public void ditIntermediateStateCompare() throws Exception {
-		if (testDepth < 3) return;
+		if (testProfileIs(TestUtils.PIPELINE)) return;
 
 		String referenceDir = "/Users/michael/Documents/AlmostRealism/models/dit_intermediate_state";
 
@@ -464,8 +491,9 @@ public class DiffusionTransformerComparisonTests extends TestSuiteBase implement
 	 * transformer processing or in the post-processing steps.
 	 */
 	@Test
+	@TestDepth(3)
 	public void ditPostTransformerStateCompare() throws Exception {
-		if (testDepth < 3) return;
+		if (testProfileIs(TestUtils.PIPELINE)) return;
 
 		String referenceDir = "/Users/michael/Documents/AlmostRealism/models/dit_post_transformer_state";
 
