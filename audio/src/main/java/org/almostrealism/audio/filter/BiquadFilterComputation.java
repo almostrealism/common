@@ -16,19 +16,13 @@
 
 package org.almostrealism.audio.filter;
 
-import io.almostrealism.code.ExpressionFeatures;
-import io.almostrealism.code.ScopeInputManager;
-import io.almostrealism.compute.ParallelProcess;
-import io.almostrealism.compute.Process;
-import io.almostrealism.expression.Expression;
-import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Producer;
-import io.almostrealism.scope.ArrayVariable;
-import org.almostrealism.Ops;
+import org.almostrealism.CodeFeatures;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.hardware.OperationComputationAdapter;
+import org.almostrealism.hardware.OperationList;
 
-import java.util.List;
+import java.util.function.Supplier;
 
 /**
  * Hardware-accelerated computation for biquad IIR filter processing.
@@ -39,78 +33,65 @@ import java.util.List;
  * This computation reads filter coefficients and delay line state from
  * {@link BiquadFilterData}, applies the filter to the input sample,
  * writes the output, and updates the delay line state.
+ * <p>
+ * The implementation uses standard {@link CollectionProducer} operations
+ * (multiply, add, subtract) for better optimization and composition
+ * with the rest of the framework.
  *
  * @see BiquadFilterCell
  * @see BiquadFilterData
  */
-public class BiquadFilterComputation extends OperationComputationAdapter<PackedCollection> implements ExpressionFeatures {
+public class BiquadFilterComputation implements Supplier<Runnable>, CodeFeatures {
+
+	private final BiquadFilterData data;
+	private final Producer<PackedCollection> input;
+	private final PackedCollection output;
 
 	public BiquadFilterComputation(BiquadFilterData data, Producer<PackedCollection> input,
 								   PackedCollection output) {
-		super(Ops.o().p(output),
-				input,
-				data.getB0(),
-				data.getB1(),
-				data.getB2(),
-				data.getA1(),
-				data.getA2(),
-				data.getX1(),
-				data.getX2(),
-				data.getY1(),
-				data.getY2());
-	}
-
-	private BiquadFilterComputation(Producer... arguments) {
-		super(arguments);
+		this.data = data;
+		this.input = input;
+		this.output = output;
 	}
 
 	@Override
-	public ParallelProcess<Process<?, ?>, Runnable> generate(List<Process<?, ?>> children) {
-		return new BiquadFilterComputation(children.toArray(Producer[]::new));
-	}
+	public Runnable get() {
+		OperationList ops = new OperationList("BiquadFilter");
 
-	private ArrayVariable<Double> getOutput() { return getArgument(0); }
-	private ArrayVariable<Double> getInput() { return getArgument(1); }
-	private ArrayVariable<Double> getB0() { return getArgument(2); }
-	private ArrayVariable<Double> getB1() { return getArgument(3); }
-	private ArrayVariable<Double> getB2() { return getArgument(4); }
-	private ArrayVariable<Double> getA1() { return getArgument(5); }
-	private ArrayVariable<Double> getA2() { return getArgument(6); }
-	private ArrayVariable<Double> getX1() { return getArgument(7); }
-	private ArrayVariable<Double> getX2() { return getArgument(8); }
-	private ArrayVariable<Double> getY1() { return getArgument(9); }
-	private ArrayVariable<Double> getY2() { return getArgument(10); }
+		// Get producers for all coefficients and state
+		Producer<PackedCollection> b0 = data.getB0();
+		Producer<PackedCollection> b1 = data.getB1();
+		Producer<PackedCollection> b2 = data.getB2();
+		Producer<PackedCollection> a1 = data.getA1();
+		Producer<PackedCollection> a2 = data.getA2();
+		Producer<PackedCollection> x1 = data.getX1();
+		Producer<PackedCollection> x2 = data.getX2();
+		Producer<PackedCollection> y1 = data.getY1();
+		Producer<PackedCollection> y2 = data.getY2();
 
-	@Override
-	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
-		super.prepareScope(manager, context);
-		purgeVariables();
+		// Compute Direct Form I: y[n] = b0*x[n] + b1*x[n-1] + b2*x[n-2] - a1*y[n-1] - a2*y[n-2]
+		CollectionProducer feedforward = add(
+				multiply(b0, input),
+				add(multiply(b1, x1), multiply(b2, x2))
+		);
 
-		Expression<? extends Number> x0 = getInput().valueAt(0);
-		Expression<? extends Number> b0 = getB0().valueAt(0);
-		Expression<? extends Number> b1 = getB1().valueAt(0);
-		Expression<? extends Number> b2 = getB2().valueAt(0);
-		Expression<? extends Number> a1 = getA1().valueAt(0);
-		Expression<? extends Number> a2 = getA2().valueAt(0);
-		Expression<? extends Number> x1 = getX1().valueAt(0);
-		Expression<? extends Number> x2 = getX2().valueAt(0);
-		Expression<? extends Number> y1 = getY1().valueAt(0);
-		Expression<? extends Number> y2 = getY2().valueAt(0);
+		CollectionProducer feedback = add(
+				multiply(a1, y1),
+				multiply(a2, y2)
+		);
 
-		// Direct Form I: y[n] = b0*x[n] + b1*x[n-1] + b2*x[n-2] - a1*y[n-1] - a2*y[n-2]
-		Expression<? extends Number> y0 = b0.multiply(x0)
-				.add(b1.multiply(x1))
-				.add(b2.multiply(x2))
-				.subtract(a1.multiply(y1))
-				.subtract(a2.multiply(y2));
+		CollectionProducer y0 = subtract(feedforward, feedback);
 
 		// Write output
-		addVariable(getOutput().reference(e(0)).assign(y0));
+		ops.add(a(p(output), y0));
 
 		// Update delay lines: shift history
-		addVariable(getX2().reference(e(0)).assign(x1));
-		addVariable(getX1().reference(e(0)).assign(x0));
-		addVariable(getY2().reference(e(0)).assign(y1));
-		addVariable(getY1().reference(e(0)).assign(y0));
+		// Order matters: must read old values before overwriting
+		ops.add(a(p(data.x2()), x1));
+		ops.add(a(p(data.x1()), input));
+		ops.add(a(p(data.y2()), y1));
+		ops.add(a(p(data.y1()), y0));
+
+		return ops.get();
 	}
 }

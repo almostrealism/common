@@ -88,6 +88,41 @@ You **MUST** first consult the ar-docs MCP tools:
 
 ---
 
+## ⚠️ CRITICAL: USE AR-DOCS FOR API DISCOVERY ⚠️
+
+**THIS IS AN ABSOLUTE RULE WITH NO EXCEPTIONS.**
+
+When looking for **how to do something** in the AR framework (mathematical operations, layer types, utilities, etc.), you **MUST** consult ar-docs BEFORE searching source code.
+
+**Situations requiring ar-docs consultation:**
+- Looking for mathematical operations (sin, cos, tan, sqrt, etc.)
+- Finding the right Features interface to implement
+- Understanding what operations are available on CollectionProducer
+- Finding layer types or model building utilities
+- Any "where is X implemented?" or "how do I do Y?" question
+
+**Tools to use:**
+- `mcp__ar-docs__read_quick_reference` - Start here for operations index
+- `mcp__ar-docs__search_ar_docs` - Search for specific terms
+- `mcp__ar-docs__read_ar_module` - Deep dive into a module
+
+**Example: Finding trigonometric functions**
+```
+WRONG approach:
+1. Grep source code for "sin" or "cos"
+2. Only find it in CollectionFeatures (it's not there)
+3. Conclude "trig functions don't exist at CollectionProducer level"
+
+CORRECT approach:
+1. mcp__ar-docs__read_quick_reference (see "Trigonometry" section)
+2. Learn that sin/cos/tan are in GeometryFeatures
+3. Use GeometryFeatures in your implementation
+```
+
+**Why this matters:** API capabilities are spread across multiple Features interfaces. Source code grep often misses the right location. The ar-docs quick reference provides a categorized operations index that shows WHERE each capability lives.
+
+---
+
 ## ⚠️ CRITICAL: TEST CLASS REQUIREMENTS ⚠️
 
 **THIS IS AN ABSOLUTE RULE WITH NO EXCEPTIONS.**
