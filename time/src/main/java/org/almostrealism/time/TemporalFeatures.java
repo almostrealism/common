@@ -17,6 +17,7 @@
 package org.almostrealism.time;
 
 import io.almostrealism.code.Computation;
+import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.collect.UniformCollectionExpression;
 import io.almostrealism.compute.ComputeRequirement;
@@ -37,9 +38,6 @@ import org.almostrealism.hardware.computations.Loop;
 import org.almostrealism.time.computations.FourierTransform;
 import org.almostrealism.time.computations.Interpolate;
 import org.almostrealism.time.computations.MultiOrderFilter;
-import org.almostrealism.time.computations.FFTConvolution;
-import org.almostrealism.time.computations.MelFilterBank;
-import org.almostrealism.time.computations.STFTComputation;
 import org.almostrealism.time.computations.WindowComputation;
 
 import java.util.List;
@@ -930,7 +928,7 @@ public interface TemporalFeatures extends GeometryFeatures {
 	// ==================== Short-Time Fourier Transform (STFT) ====================
 
 	/**
-	 * Creates a Short-Time Fourier Transform (STFT) computation with Hann window.
+	 * Computes the Short-Time Fourier Transform (STFT) with Hann window.
 	 *
 	 * <p>This is a convenience method that uses a Hann window, which is the most
 	 * common choice for general-purpose spectral analysis.</p>
@@ -938,19 +936,22 @@ public interface TemporalFeatures extends GeometryFeatures {
 	 * @param fftSize The FFT frame size (must be power of 2)
 	 * @param hopSize The hop size (number of samples between frames)
 	 * @param signal  The input time-domain signal
-	 * @return A STFTComputation that produces the spectrogram
-	 * @see STFTComputation
+	 * @return CollectionProducer with shape [numFrames, fftSize, 2]
 	 */
-	default STFTComputation stft(int fftSize, int hopSize, Producer<PackedCollection> signal) {
+	default CollectionProducer stft(int fftSize, int hopSize, Producer<PackedCollection> signal) {
 		return stft(fftSize, hopSize, WindowComputation.Type.HANN, signal);
 	}
 
 	/**
-	 * Creates a Short-Time Fourier Transform (STFT) computation.
+	 * Computes the Short-Time Fourier Transform (STFT).
 	 *
 	 * <p>The STFT divides a signal into overlapping frames, applies a window function
 	 * to each frame, and computes the FFT. The result is a time-frequency representation
 	 * (spectrogram) showing how frequency content changes over time.</p>
+	 *
+	 * <h3>Output Format</h3>
+	 * <p>Returns a 3D array with shape [numFrames, fftSize, 2] where the last dimension
+	 * contains [real, imaginary] pairs for complex FFT output.</p>
 	 *
 	 * <h3>Common Configurations</h3>
 	 * <table border="1">
@@ -964,30 +965,30 @@ public interface TemporalFeatures extends GeometryFeatures {
 	 * <h3>Example</h3>
 	 * <pre>{@code
 	 * // Create STFT for music analysis
-	 * Producer<PackedCollection> audio = ...; // Audio signal
-	 * STFTComputation stft = stft(2048, 512, WindowComputation.Type.HANN, audio);
-	 * PackedCollection spectrogram = stft.get().evaluate();
+	 * Producer<PackedCollection> audio = ...;
+	 * CollectionProducer spectrogram = stft(2048, 512, WindowComputation.Type.HANN, audio);
+	 * PackedCollection result = spectrogram.evaluate();
 	 *
 	 * // Get power spectrum of each frame
-	 * CollectionProducer power = powerSpectrum(cp(spectrogram).reshape(-1, 2));
+	 * CollectionProducer power = powerSpectrum(spectrogram.reshape(-1, 2));
 	 * }</pre>
 	 *
 	 * @param fftSize    The FFT frame size (must be power of 2)
 	 * @param hopSize    The hop size (number of samples between frames)
 	 * @param windowType The window function type to apply
 	 * @param signal     The input time-domain signal
-	 * @return A STFTComputation that produces the spectrogram
-	 * @see STFTComputation
-	 * @see WindowComputation.Type
+	 * @return CollectionProducer with shape [numFrames, fftSize, 2]
 	 */
-	default STFTComputation stft(int fftSize, int hopSize,
-								 WindowComputation.Type windowType,
-								 Producer<PackedCollection> signal) {
-		return new STFTComputation(fftSize, hopSize, windowType, signal);
+	default CollectionProducer stft(int fftSize, int hopSize,
+									WindowComputation.Type windowType,
+									Producer<PackedCollection> signal) {
+		int signalLength = shape(signal).getSize();
+		int numFrames = computeNumFrames(signalLength, fftSize, hopSize);
+		return stft(fftSize, hopSize, windowType, signal, numFrames);
 	}
 
 	/**
-	 * Creates an STFT computation with explicit number of frames.
+	 * Computes the STFT with explicit number of frames.
 	 *
 	 * <p>Use this when you want to control the exact number of output frames,
 	 * such as when the signal length is not known at construction time.</p>
@@ -997,20 +998,99 @@ public interface TemporalFeatures extends GeometryFeatures {
 	 * @param windowType The window function type to apply
 	 * @param signal     The input time-domain signal
 	 * @param numFrames  The number of frames to compute
-	 * @return A STFTComputation that produces the spectrogram
-	 * @see STFTComputation
+	 * @return CollectionProducer with shape [numFrames, fftSize, 2]
 	 */
-	default STFTComputation stft(int fftSize, int hopSize,
-								 WindowComputation.Type windowType,
-								 Producer<PackedCollection> signal,
-								 int numFrames) {
-		return new STFTComputation(fftSize, hopSize, windowType, signal, numFrames);
+	default CollectionProducer stft(int fftSize, int hopSize,
+									WindowComputation.Type windowType,
+									Producer<PackedCollection> signal,
+									int numFrames) {
+		return stft(fftSize, hopSize, windowType, signal, numFrames, new ComputeRequirement[0]);
+	}
+
+	/**
+	 * Computes the STFT with specified compute requirements.
+	 *
+	 * @param fftSize      The FFT frame size (must be power of 2)
+	 * @param hopSize      The hop size (number of samples between frames)
+	 * @param windowType   The window function type to apply
+	 * @param signal       The input time-domain signal
+	 * @param numFrames    The number of frames to compute
+	 * @param requirements Compute requirements for hardware acceleration
+	 * @return CollectionProducer with shape [numFrames, fftSize, 2]
+	 */
+	default CollectionProducer stft(int fftSize, int hopSize,
+									WindowComputation.Type windowType,
+									Producer<PackedCollection> signal,
+									int numFrames,
+									ComputeRequirement... requirements) {
+		if (!isPowerOfTwo(fftSize)) {
+			throw new IllegalArgumentException("FFT size must be power of 2: " + fftSize);
+		}
+		if (hopSize <= 0) {
+			throw new IllegalArgumentException("Hop size must be positive: " + hopSize);
+		}
+
+		TraversalPolicy outputShape = shape(numFrames, fftSize, 2);
+		CollectionProducer windowCoeffs = window(windowType, fftSize);
+
+		// Process each frame using GPU operations
+		CollectionProducer[] frameResults = new CollectionProducer[numFrames];
+
+		for (int i = 0; i < numFrames; i++) {
+			int offset = i * hopSize;
+
+			// Extract frame i from signal using subset
+			CollectionProducer frame = subset(shape(fftSize), signal, offset);
+
+			// Apply window function
+			CollectionProducer windowedFrame = multiply(frame, windowCoeffs);
+
+			// Convert to complex format for FFT [fftSize, 2]
+			CollectionProducer complexFrame = complexFromParts(
+					windowedFrame,
+					zeros(shape(fftSize))
+			);
+
+			// Perform FFT on this frame (GPU-accelerated)
+			FourierTransform frameFFT = fft(fftSize, complexFrame, requirements);
+
+			// Result shape: [1, fftSize, 2]
+			frameResults[i] = frameFFT.reshape(shape(1, fftSize, 2));
+		}
+
+		// Concatenate all frames along axis 0 to get [numFrames, fftSize, 2]
+		if (numFrames == 1) {
+			return frameResults[0].reshape(outputShape);
+		}
+		return concat(outputShape, frameResults);
+	}
+
+	/**
+	 * Computes the number of STFT frames for a given signal length.
+	 *
+	 * @param signalLength The length of the input signal
+	 * @param fftSize      The FFT frame size
+	 * @param hopSize      The hop size
+	 * @return The number of complete frames that can be extracted
+	 */
+	static int computeNumFrames(int signalLength, int fftSize, int hopSize) {
+		if (signalLength < fftSize) {
+			return 0;
+		}
+		return (signalLength - fftSize) / hopSize + 1;
+	}
+
+	/**
+	 * Checks if n is a power of two.
+	 */
+	private static boolean isPowerOfTwo(int n) {
+		return n > 0 && (n & (n - 1)) == 0;
 	}
 
 	// ==================== Mel Filterbank ====================
 
 	/**
-	 * Creates a mel filterbank computation with default frequency range.
+	 * Applies a mel filterbank to a power spectrum with default frequency range.
 	 *
 	 * <p>Uses 0 Hz as minimum and sampleRate/2 as maximum frequency.</p>
 	 *
@@ -1018,16 +1098,15 @@ public interface TemporalFeatures extends GeometryFeatures {
 	 * @param sampleRate    The sample rate of the original signal
 	 * @param numMelBands   The number of mel bands (filters)
 	 * @param powerSpectrum The input power spectrum producer
-	 * @return A MelFilterBank computation
-	 * @see MelFilterBank
+	 * @return CollectionProducer with shape [numMelBands]
 	 */
-	default MelFilterBank melFilterBank(int fftSize, int sampleRate, int numMelBands,
-										Producer<PackedCollection> powerSpectrum) {
+	default CollectionProducer melFilterBank(int fftSize, int sampleRate, int numMelBands,
+											 Producer<PackedCollection> powerSpectrum) {
 		return melFilterBank(fftSize, sampleRate, numMelBands, 0, sampleRate / 2.0, powerSpectrum);
 	}
 
 	/**
-	 * Creates a mel filterbank computation.
+	 * Applies a mel filterbank to a power spectrum.
 	 *
 	 * <p>The mel filterbank applies a set of overlapping triangular filters
 	 * that are equally spaced on the mel (perceptual) frequency scale.
@@ -1042,16 +1121,15 @@ public interface TemporalFeatures extends GeometryFeatures {
 	 * <pre>{@code
 	 * // Compute mel spectrogram from audio
 	 * Producer<PackedCollection> audio = ...;
-	 * STFTComputation stft = stft(1024, 256, audio);
-	 * PackedCollection spectrogram = stft.get().evaluate();
+	 * CollectionProducer spectrogram = stft(1024, 256, audio);
+	 * PackedCollection result = spectrogram.evaluate();
 	 *
 	 * // For each frame, get power spectrum and apply mel filterbank
-	 * // (This shows the concept - real usage would process all frames)
-	 * CollectionProducer frame = cp(spectrogram).subset(shape(1024, 2), 0);
+	 * CollectionProducer frame = cp(result).subset(shape(1024, 2), 0);
 	 * CollectionProducer power = powerSpectrum(frame);
 	 *
-	 * MelFilterBank melBank = melFilterBank(1024, 22050, 40, 0, 8000, power);
-	 * PackedCollection melEnergies = melBank.get().evaluate();
+	 * CollectionProducer melEnergies = melFilterBank(1024, 22050, 40, 0, 8000, power);
+	 * PackedCollection energies = melEnergies.evaluate();
 	 * }</pre>
 	 *
 	 * @param fftSize       The FFT size used to compute the power spectrum
@@ -1060,13 +1138,83 @@ public interface TemporalFeatures extends GeometryFeatures {
 	 * @param fMin          The minimum frequency in Hz
 	 * @param fMax          The maximum frequency in Hz
 	 * @param powerSpectrum The input power spectrum producer
-	 * @return A MelFilterBank computation
-	 * @see MelFilterBank
+	 * @return CollectionProducer with shape [numMelBands]
 	 */
-	default MelFilterBank melFilterBank(int fftSize, int sampleRate, int numMelBands,
-										double fMin, double fMax,
-										Producer<PackedCollection> powerSpectrum) {
-		return new MelFilterBank(fftSize, sampleRate, numMelBands, fMin, fMax, powerSpectrum);
+	default CollectionProducer melFilterBank(int fftSize, int sampleRate, int numMelBands,
+											 double fMin, double fMax,
+											 Producer<PackedCollection> powerSpectrum) {
+		PackedCollection filterbankMatrix = createMelFilterbankMatrix(fftSize, sampleRate, numMelBands, fMin, fMax);
+		TraversalPolicy outputShape = shape(numMelBands);
+		return org.almostrealism.algebra.MatrixFeatures.getInstance()
+				.matmul(cp(filterbankMatrix), powerSpectrum).reshape(outputShape);
+	}
+
+	/**
+	 * Creates a mel filterbank matrix.
+	 *
+	 * <p>The matrix has shape [numMelBands, numFreqBins] where numFreqBins = fftSize/2 + 1.
+	 * Each row contains the filter weights for one mel band.</p>
+	 *
+	 * <p>This method is useful when you want to reuse the same filterbank matrix across
+	 * multiple frames without recomputing it each time.</p>
+	 *
+	 * @param fftSize     The FFT size
+	 * @param sampleRate  The sample rate
+	 * @param numMelBands The number of mel bands
+	 * @param fMin        The minimum frequency in Hz
+	 * @param fMax        The maximum frequency in Hz
+	 * @return PackedCollection with shape [numMelBands, numFreqBins]
+	 */
+	default PackedCollection createMelFilterbankMatrix(int fftSize, int sampleRate,
+													   int numMelBands, double fMin, double fMax) {
+		int numFreqBins = fftSize / 2 + 1;
+
+		// Convert frequency bounds to mel
+		double melMin = hzToMel(fMin);
+		double melMax = hzToMel(fMax);
+
+		// Create numMelBands + 2 points (for filter edges)
+		double[] melPoints = new double[numMelBands + 2];
+		for (int i = 0; i < numMelBands + 2; i++) {
+			melPoints[i] = melMin + (melMax - melMin) * i / (numMelBands + 1);
+		}
+
+		// Convert mel points back to Hz
+		double[] hzPoints = new double[numMelBands + 2];
+		for (int i = 0; i < numMelBands + 2; i++) {
+			hzPoints[i] = melToHz(melPoints[i]);
+		}
+
+		// Convert Hz points to FFT bin indices
+		int[] binPoints = new int[numMelBands + 2];
+		for (int i = 0; i < numMelBands + 2; i++) {
+			binPoints[i] = (int) Math.floor((fftSize + 1) * hzPoints[i] / sampleRate);
+		}
+
+		// Create the filterbank matrix as a PackedCollection
+		PackedCollection fb = new PackedCollection(shape(numMelBands, numFreqBins));
+
+		for (int m = 0; m < numMelBands; m++) {
+			int fStart = binPoints[m];
+			int fCenter = binPoints[m + 1];
+			int fEnd = binPoints[m + 2];
+
+			// Rising slope
+			for (int k = fStart; k < fCenter && k < numFreqBins; k++) {
+				if (fCenter != fStart) {
+					fb.setMem(m * numFreqBins + k, (double) (k - fStart) / (fCenter - fStart));
+				}
+			}
+
+			// Falling slope
+			for (int k = fCenter; k < fEnd && k < numFreqBins; k++) {
+				if (fEnd != fCenter) {
+					fb.setMem(m * numFreqBins + k, (double) (fEnd - k) / (fEnd - fCenter));
+				}
+			}
+		}
+
+		return fb;
 	}
 
 	/**
@@ -1078,7 +1226,7 @@ public interface TemporalFeatures extends GeometryFeatures {
 	 * @return frequency in mel
 	 */
 	default double hzToMel(double hz) {
-		return MelFilterBank.hzToMel(hz);
+		return 2595.0 * Math.log10(1.0 + hz / 700.0);
 	}
 
 	/**
@@ -1090,7 +1238,7 @@ public interface TemporalFeatures extends GeometryFeatures {
 	 * @return frequency in Hz
 	 */
 	default double melToHz(double mel) {
-		return MelFilterBank.melToHz(mel);
+		return 700.0 * (Math.pow(10.0, mel / 2595.0) - 1.0);
 	}
 
 	/**
@@ -1174,11 +1322,16 @@ public interface TemporalFeatures extends GeometryFeatures {
 	// ==================== FFT Convolution ====================
 
 	/**
-	 * Creates an FFT-based convolution computation.
+	 * Performs FFT-based convolution of a signal with a kernel.
 	 *
 	 * <p>FFT convolution is more efficient than direct convolution for large
 	 * signals or kernels. It uses the convolution theorem: convolution in the
 	 * time domain equals multiplication in the frequency domain.</p>
+	 *
+	 * <h3>Algorithm</h3>
+	 * <pre>
+	 * signal * kernel = IFFT(FFT(signal) * FFT(kernel))
+	 * </pre>
 	 *
 	 * <h3>When to Use FFT Convolution</h3>
 	 * <ul>
@@ -1193,17 +1346,88 @@ public interface TemporalFeatures extends GeometryFeatures {
 	 * Producer<PackedCollection> audio = ...;         // Dry audio
 	 * Producer<PackedCollection> impulseResponse = ...; // Room IR
 	 *
-	 * FFTConvolution reverb = fftConvolve(audio, impulseResponse);
-	 * PackedCollection wetAudio = reverb.get().evaluate();
+	 * CollectionProducer wetAudio = fftConvolve(audio, impulseResponse);
+	 * PackedCollection result = wetAudio.evaluate();
 	 * }</pre>
 	 *
 	 * @param signal The input signal producer
 	 * @param kernel The convolution kernel (filter/impulse response) producer
-	 * @return An FFTConvolution computation
-	 * @see FFTConvolution
+	 * @return CollectionProducer that computes the convolution on GPU
 	 */
-	default FFTConvolution fftConvolve(Producer<PackedCollection> signal,
-									   Producer<PackedCollection> kernel) {
-		return new FFTConvolution(signal, kernel);
+	default CollectionProducer fftConvolve(Producer<PackedCollection> signal,
+										   Producer<PackedCollection> kernel) {
+		return fftConvolve(signal, kernel, new ComputeRequirement[0]);
+	}
+
+	/**
+	 * Performs FFT-based convolution with specified compute requirements.
+	 *
+	 * @param signal       The input signal producer
+	 * @param kernel       The convolution kernel producer
+	 * @param requirements Compute requirements for hardware acceleration
+	 * @return CollectionProducer that computes the convolution on GPU
+	 * @see #fftConvolve(Producer, Producer)
+	 */
+	default CollectionProducer fftConvolve(Producer<PackedCollection> signal,
+										   Producer<PackedCollection> kernel,
+										   ComputeRequirement... requirements) {
+		TraversalPolicy signalShape = shape(signal);
+		TraversalPolicy kernelShape = shape(kernel);
+
+		int signalLength = signalShape.getSize();
+		int kernelLength = kernelShape.getSize();
+		int outputLength = signalLength + kernelLength - 1;
+		int fftSize = nextPowerOfTwo(outputLength);
+		TraversalPolicy outputShape = shape(outputLength);
+
+		// Step 1: Zero-pad signal to fftSize
+		CollectionProducer paddedSignal = pad(shape(fftSize), signal, 0);
+
+		// Step 2: Convert signal to complex format [fftSize, 2]
+		CollectionProducer signalComplex = complexFromParts(
+				paddedSignal,
+				zeros(shape(fftSize))
+		);
+
+		// Step 3: Zero-pad kernel to fftSize
+		CollectionProducer paddedKernel = pad(shape(fftSize), kernel, 0);
+
+		// Step 4: Convert kernel to complex format [fftSize, 2]
+		CollectionProducer kernelComplex = complexFromParts(
+				paddedKernel,
+				zeros(shape(fftSize))
+		);
+
+		// Step 5: FFT both (GPU-accelerated)
+		FourierTransform signalFFT = fft(fftSize, signalComplex, requirements);
+		FourierTransform kernelFFT = fft(fftSize, kernelComplex, requirements);
+
+		// Step 6: Complex multiplication in frequency domain
+		CollectionProducer product = multiplyComplex(signalFFT, kernelFFT);
+
+		// Step 7: Inverse FFT (GPU-accelerated)
+		FourierTransform ifftResult = ifft(fftSize, product, requirements);
+
+		// Step 8: Extract real parts and trim to output length
+		CollectionProducer flatIfft = ifftResult.traverseEach();
+
+		return new DefaultTraversableExpressionComputation(
+				"extractRealParts",
+				outputShape,
+				args -> CollectionExpression.create(outputShape,
+						idx -> args[1].getValueAt(idx.multiply(2))),
+				flatIfft
+		);
+	}
+
+	/**
+	 * Finds the next power of 2 greater than or equal to n.
+	 */
+	private static int nextPowerOfTwo(int n) {
+		int power = 1;
+		while (power < n) {
+			power *= 2;
+		}
+		return power;
 	}
 }

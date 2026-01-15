@@ -16,15 +16,15 @@
 
 package org.almostrealism.time.test;
 
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.time.TemporalFeatures;
-import org.almostrealism.time.computations.MelFilterBank;
 import org.almostrealism.util.TestFeatures;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 /**
- * Tests for {@link MelFilterBank} mel-scale filterbank computation.
+ * Tests for {@link TemporalFeatures#melFilterBank} mel-scale filterbank computation.
  */
 public class MelFilterBankTest extends TestSuiteBase implements TemporalFeatures, TestFeatures {
 
@@ -78,8 +78,8 @@ public class MelFilterBankTest extends TestSuiteBase implements TemporalFeatures
 			powerSpectrum.setMem(i, 1.0);
 		}
 
-		MelFilterBank melBank = melFilterBank(fftSize, sampleRate, numMelBands, cp(powerSpectrum));
-		PackedCollection melEnergies = melBank.get().evaluate();
+		CollectionProducer melBank = melFilterBank(fftSize, sampleRate, numMelBands, cp(powerSpectrum));
+		PackedCollection melEnergies = melBank.evaluate();
 
 		// Verify output size
 		assertEquals("Output should have numMelBands values", numMelBands, melEnergies.getShape().getTotalSize());
@@ -99,28 +99,24 @@ public class MelFilterBankTest extends TestSuiteBase implements TemporalFeatures
 		int fftSize = 512;
 		int sampleRate = 16000;
 		int numMelBands = 26;
+		int numFreqBins = fftSize / 2 + 1;
 
-		PackedCollection dummySpectrum = new PackedCollection(shape(fftSize / 2 + 1));
-		MelFilterBank melBank = new MelFilterBank(fftSize, sampleRate, numMelBands, 0, 8000, cp(dummySpectrum));
-
-		double[][] filterbank = melBank.getFilterbank();
+		PackedCollection filterbankMatrix = createMelFilterbankMatrix(fftSize, sampleRate, numMelBands, 0, 8000);
 
 		// Verify dimensions
-		assertEquals("Filterbank should have numMelBands rows", numMelBands, filterbank.length);
-		assertEquals("Filterbank should have numFreqBins columns", fftSize / 2 + 1, filterbank[0].length);
+		assertEquals("Filterbank should have numMelBands * numFreqBins elements",
+				numMelBands * numFreqBins, filterbankMatrix.getShape().getTotalSize());
 
 		// Verify that filters are non-negative
-		for (int m = 0; m < numMelBands; m++) {
-			for (int k = 0; k < filterbank[m].length; k++) {
-				assertTrue("Filter values should be non-negative", filterbank[m][k] >= 0);
-			}
+		for (int i = 0; i < filterbankMatrix.getShape().getTotalSize(); i++) {
+			assertTrue("Filter values should be non-negative", filterbankMatrix.toDouble(i) >= 0);
 		}
 
 		// Verify that each filter has at least one non-zero value
 		for (int m = 0; m < numMelBands; m++) {
 			boolean hasNonZero = false;
-			for (int k = 0; k < filterbank[m].length; k++) {
-				if (filterbank[m][k] > 0) {
+			for (int k = 0; k < numFreqBins; k++) {
+				if (filterbankMatrix.toDouble(m * numFreqBins + k) > 0) {
 					hasNonZero = true;
 					break;
 				}
@@ -145,8 +141,8 @@ public class MelFilterBankTest extends TestSuiteBase implements TemporalFeatures
 			powerSpectrum.setMem(i, 1.0);
 		}
 
-		MelFilterBank melBank = melFilterBank(fftSize, sampleRate, numMelBands, fMin, fMax, cp(powerSpectrum));
-		PackedCollection melEnergies = melBank.get().evaluate();
+		CollectionProducer melBank = melFilterBank(fftSize, sampleRate, numMelBands, fMin, fMax, cp(powerSpectrum));
+		PackedCollection melEnergies = melBank.evaluate();
 
 		assertEquals("Output should have numMelBands values", numMelBands, melEnergies.getShape().getTotalSize());
 	}
@@ -168,8 +164,8 @@ public class MelFilterBankTest extends TestSuiteBase implements TemporalFeatures
 			powerSpectrum.setMem(i, (i == peakBin) ? 100.0 : 0.0);
 		}
 
-		MelFilterBank melBank = melFilterBank(fftSize, sampleRate, numMelBands, cp(powerSpectrum));
-		PackedCollection melEnergies = melBank.get().evaluate();
+		CollectionProducer melBank = melFilterBank(fftSize, sampleRate, numMelBands, cp(powerSpectrum));
+		PackedCollection melEnergies = melBank.evaluate();
 
 		// Find the mel band with maximum energy
 		int maxBand = 0;
@@ -276,8 +272,8 @@ public class MelFilterBankTest extends TestSuiteBase implements TemporalFeatures
 		}
 
 		// Default should use 0 to sampleRate/2
-		MelFilterBank melBank = melFilterBank(fftSize, sampleRate, numMelBands, cp(powerSpectrum));
-		PackedCollection melEnergies = melBank.get().evaluate();
+		CollectionProducer melBank = melFilterBank(fftSize, sampleRate, numMelBands, cp(powerSpectrum));
+		PackedCollection melEnergies = melBank.evaluate();
 
 		assertEquals("Output should have numMelBands values", numMelBands, melEnergies.getShape().getTotalSize());
 	}

@@ -16,15 +16,15 @@
 
 package org.almostrealism.time.test;
 
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.time.TemporalFeatures;
-import org.almostrealism.time.computations.FFTConvolution;
 import org.almostrealism.util.TestFeatures;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 /**
- * Tests for {@link FFTConvolution} FFT-based convolution computation.
+ * Tests for {@link TemporalFeatures#fftConvolve} FFT-based convolution.
  */
 public class FFTConvolutionTest extends TestSuiteBase implements TemporalFeatures, TestFeatures {
 
@@ -70,8 +70,8 @@ public class FFTConvolutionTest extends TestSuiteBase implements TemporalFeature
 			kernel.setMem(i, kernelArray[i]);
 		}
 
-		FFTConvolution fftConv = fftConvolve(cp(signal), cp(kernel));
-		PackedCollection result = fftConv.get().evaluate();
+		CollectionProducer fftConv = fftConvolve(cp(signal), cp(kernel));
+		PackedCollection result = fftConv.evaluate();
 
 		// Verify output length
 		assertEquals("Output length should be signal + kernel - 1",
@@ -99,8 +99,8 @@ public class FFTConvolutionTest extends TestSuiteBase implements TemporalFeature
 		PackedCollection kernel = new PackedCollection(shape(kernelArray.length));
 		kernel.setMem(0, 1.0);
 
-		FFTConvolution fftConv = fftConvolve(cp(signal), cp(kernel));
-		PackedCollection result = fftConv.get().evaluate();
+		CollectionProducer fftConv = fftConvolve(cp(signal), cp(kernel));
+		PackedCollection result = fftConv.evaluate();
 
 		// Convolving with delta should return the original signal
 		assertEquals("Output length", signalArray.length, result.getShape().getTotalSize());
@@ -128,10 +128,10 @@ public class FFTConvolutionTest extends TestSuiteBase implements TemporalFeature
 		}
 
 		// a * b
-		PackedCollection result1 = fftConvolve(cp(a), cp(b)).get().evaluate();
+		PackedCollection result1 = fftConvolve(cp(a), cp(b)).evaluate();
 
 		// b * a
-		PackedCollection result2 = fftConvolve(cp(b), cp(a)).get().evaluate();
+		PackedCollection result2 = fftConvolve(cp(b), cp(a)).evaluate();
 
 		assertEquals("Output lengths should match", result1.getShape().getTotalSize(), result2.getShape().getTotalSize());
 
@@ -157,8 +157,8 @@ public class FFTConvolutionTest extends TestSuiteBase implements TemporalFeature
 		PackedCollection kernel = new PackedCollection(shape(kernelLength));
 		// All zeros by default
 
-		FFTConvolution fftConv = fftConvolve(cp(signal), cp(kernel));
-		PackedCollection result = fftConv.get().evaluate();
+		CollectionProducer fftConv = fftConvolve(cp(signal), cp(kernel));
+		PackedCollection result = fftConv.evaluate();
 
 		// Convolving with zeros should give all zeros
 		for (int i = 0; i < result.getShape().getTotalSize(); i++) {
@@ -186,7 +186,7 @@ public class FFTConvolutionTest extends TestSuiteBase implements TemporalFeature
 			kernel.setMem(i, kernelArray[i]);
 		}
 
-		PackedCollection result = fftConvolve(cp(signal), cp(kernel)).get().evaluate();
+		PackedCollection result = fftConvolve(cp(signal), cp(kernel)).evaluate();
 
 		for (int i = 0; i < expected.length; i++) {
 			assertEquals("Moving average result at " + i, expected[i], result.toDouble(i), TOLERANCE);
@@ -204,28 +204,38 @@ public class FFTConvolutionTest extends TestSuiteBase implements TemporalFeature
 		PackedCollection signal = new PackedCollection(shape(signalLength));
 		PackedCollection kernel = new PackedCollection(shape(kernelLength));
 
-		FFTConvolution fftConv = fftConvolve(cp(signal), cp(kernel));
+		CollectionProducer fftConv = fftConvolve(cp(signal), cp(kernel));
+		PackedCollection result = fftConv.evaluate();
 
 		assertEquals("Output length should be signal + kernel - 1",
-				signalLength + kernelLength - 1, fftConv.getOutputLength());
+				signalLength + kernelLength - 1, result.getShape().getTotalSize());
 	}
 
 	/**
-	 * Test FFT size is power of 2.
+	 * Test convolution output shape for various input sizes.
 	 */
 	@Test
-	public void testFFTSizeIsPowerOfTwo() {
-		int signalLength = 100;
-		int kernelLength = 50;
+	public void testOutputShapeVariousSizes() {
+		// Test multiple input size combinations
+		int[][] testCases = {
+			{100, 50},
+			{64, 16},
+			{256, 32},
+			{1, 1}
+		};
 
-		PackedCollection signal = new PackedCollection(shape(signalLength));
-		PackedCollection kernel = new PackedCollection(shape(kernelLength));
+		for (int[] testCase : testCases) {
+			int signalLength = testCase[0];
+			int kernelLength = testCase[1];
 
-		FFTConvolution fftConv = fftConvolve(cp(signal), cp(kernel));
+			PackedCollection signal = new PackedCollection(shape(signalLength));
+			PackedCollection kernel = new PackedCollection(shape(kernelLength));
 
-		int fftSize = fftConv.getFftSize();
-		assertTrue("FFT size should be power of 2", (fftSize & (fftSize - 1)) == 0);
-		assertTrue("FFT size should be >= output length", fftSize >= fftConv.getOutputLength());
+			PackedCollection result = fftConvolve(cp(signal), cp(kernel)).evaluate();
+
+			assertEquals("Output length for " + signalLength + " * " + kernelLength,
+					signalLength + kernelLength - 1, result.getShape().getTotalSize());
+		}
 	}
 
 	/**
@@ -245,7 +255,7 @@ public class FFTConvolutionTest extends TestSuiteBase implements TemporalFeature
 		PackedCollection kernel = new PackedCollection(shape(delay + 1));
 		kernel.setMem(delay, 1.0);
 
-		PackedCollection result = fftConvolve(cp(signal), cp(kernel)).get().evaluate();
+		PackedCollection result = fftConvolve(cp(signal), cp(kernel)).evaluate();
 
 		// Result should be signal delayed by 'delay' samples
 		for (int i = 0; i < delay; i++) {
@@ -276,8 +286,8 @@ public class FFTConvolutionTest extends TestSuiteBase implements TemporalFeature
 			kernel.setMem(i, Math.exp(-i / 10.0) * Math.cos(Math.PI * i / 8.0));
 		}
 
-		FFTConvolution fftConv = fftConvolve(cp(signal), cp(kernel));
-		PackedCollection result = fftConv.get().evaluate();
+		CollectionProducer fftConv = fftConvolve(cp(signal), cp(kernel));
+		PackedCollection result = fftConv.evaluate();
 
 		assertEquals("Output length", signalLength + kernelLength - 1, result.getShape().getTotalSize());
 
