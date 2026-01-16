@@ -21,6 +21,7 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.audio.SamplingFeatures;
 import org.almostrealism.audio.data.PolymorphicAudioData;
 import org.almostrealism.audio.line.OutputLine;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.temporal.CollectionTemporalCellAdapter;
 import org.almostrealism.hardware.OperationList;
@@ -38,8 +39,6 @@ import java.util.function.Supplier;
  *
  * @see CollectionTemporalCellAdapter
  * @see SineWaveCellData
- * @see TriangleWavePush
- * @see TriangleWaveTick
  */
 public class TriangleWaveCell extends CollectionTemporalCellAdapter implements SamplingFeatures {
 	private Factor<PackedCollection> env;
@@ -108,21 +107,44 @@ public class TriangleWaveCell extends CollectionTemporalCellAdapter implements S
 
 	@Override
 	public Supplier<Runnable> push(Producer<PackedCollection> protein) {
-		PackedCollection value = new PackedCollection(1);
+		PackedCollection output = new PackedCollection(1);
 		OperationList push = new OperationList("TriangleWaveCell Push");
+
 		Producer<PackedCollection> envelope = env == null ? scalar(1.0) :
 				env.getResultant(cp(data.notePosition()));
-		push.add(new TriangleWavePush(data, envelope, value));
-		push.add(super.push(p(value)));
+
+		// Compute t = wavePosition + phase
+		CollectionProducer t = add(data.getWavePosition(), data.getPhase());
+		// Compute frac = t - floor(t)
+		CollectionProducer frac = subtract(t, floor(t));
+
+		// Triangle wave: linear ramp from -1 to +1 and back to -1
+		// if (frac < 0.5) triangle = frac*4 - 1 else triangle = 3 - frac*4
+		CollectionProducer triangle = lessThan(frac, c(0.5),
+				subtract(multiply(frac, c(4.0)), c(1.0)),
+				subtract(c(3.0), multiply(frac, c(4.0))));
+
+		// Compute: envelope * amplitude * triangle * depth
+		CollectionProducer result = multiply(multiply(envelope, data.getAmplitude()),
+				multiply(triangle, data.getDepth()));
+		push.add(a(p(output), result));
+
+		push.add(super.push(p(output)));
 		return push;
 	}
 
 	@Override
 	public Supplier<Runnable> tick() {
 		OperationList tick = new OperationList("TriangleWaveCell Tick");
-		Producer<PackedCollection> envelope = env == null ? scalar(1.0) :
-				env.getResultant(cp(data.notePosition()));
-		tick.add(new TriangleWaveTick(data, envelope));
+
+		// Update state: wavePosition += waveLength
+		CollectionProducer newWavePos = add(data.getWavePosition(), data.getWaveLength());
+		tick.add(a(p(data.wavePosition()), newWavePos));
+
+		// Update state: notePosition += 1/noteLength
+		CollectionProducer newNotePos = add(data.getNotePosition(), divide(c(1), data.getNoteLength()));
+		tick.add(a(p(data.notePosition()), newNotePos));
+
 		tick.add(super.tick());
 		return tick;
 	}

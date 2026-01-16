@@ -21,6 +21,7 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.audio.SamplingFeatures;
 import org.almostrealism.audio.data.PolymorphicAudioData;
 import org.almostrealism.audio.line.OutputLine;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.temporal.CollectionTemporalCellAdapter;
 import org.almostrealism.hardware.OperationList;
@@ -42,8 +43,6 @@ import java.util.function.Supplier;
  *
  * @see CollectionTemporalCellAdapter
  * @see SquareWaveCellData
- * @see SquareWavePush
- * @see SquareWaveTick
  */
 public class SquareWaveCell extends CollectionTemporalCellAdapter implements SamplingFeatures {
 	private Factor<PackedCollection> env;
@@ -134,21 +133,80 @@ public class SquareWaveCell extends CollectionTemporalCellAdapter implements Sam
 
 	@Override
 	public Supplier<Runnable> push(Producer<PackedCollection> protein) {
-		PackedCollection value = new PackedCollection(1);
+		PackedCollection output = new PackedCollection(1);
 		OperationList push = new OperationList("SquareWaveCell Push");
+
 		Producer<PackedCollection> envelope = env == null ? scalar(1.0) :
 				env.getResultant(cp(data.notePosition()));
-		push.add(new SquareWavePush(data, envelope, value));
-		push.add(super.push(p(value)));
+
+		// Compute t = wavePosition + phase
+		CollectionProducer t = add(data.getWavePosition(), data.getPhase());
+		// Compute frac = t - floor(t)
+		CollectionProducer frac = subtract(t, floor(t));
+
+		Producer<PackedCollection> dutyCycleProd = data.getDutyCycle();
+
+		// Raw square wave: +1 if frac < dutyCycle, else -1
+		CollectionProducer rawSquare = lessThan(frac, dutyCycleProd, c(1.0), c(-1.0));
+
+		// PolyBLEP anti-aliasing for rising edge (at frac=0)
+		Producer<PackedCollection> dt = data.getWaveLength();
+		CollectionProducer blepRising = polyBlep(frac, dt);
+
+		// PolyBLEP anti-aliasing for falling edge (at frac=dutyCycle)
+		// Need to adjust frac to be relative to the falling edge position
+		CollectionProducer fracMinusDuty = subtract(frac, dutyCycleProd);
+		// If frac < dutyCycle, add 1 to wrap around; otherwise add 0
+		CollectionProducer blepFallingArg = add(fracMinusDuty, lessThan(frac, dutyCycleProd, c(1.0), c(0.0)));
+		CollectionProducer blepFalling = polyBlep(blepFallingArg, dt);
+
+		// Combine: rawSquare + blepRising - blepFalling
+		CollectionProducer antiAliased = subtract(add(rawSquare, blepRising), blepFalling);
+
+		// Compute: envelope * amplitude * antiAliased * depth
+		CollectionProducer result = multiply(multiply(envelope, data.getAmplitude()),
+				multiply(antiAliased, data.getDepth()));
+		push.add(a(p(output), result));
+
+		push.add(super.push(p(output)));
 		return push;
+	}
+
+	/**
+	 * PolyBLEP (Polynomial Band-Limited Step) anti-aliasing function.
+	 * Smooths discontinuities in geometric waveforms to reduce aliasing.
+	 *
+	 * @param t   Phase position (0-1)
+	 * @param dt  Phase increment per sample (frequency/sampleRate)
+	 * @return Correction value to apply to the raw waveform
+	 */
+	private CollectionProducer polyBlep(CollectionProducer t, Producer<PackedCollection> dt) {
+		// When t < dt: -(t/dt - 1)^2
+		CollectionProducer belowDt = lessThan(t, dt,
+				multiply(pow(subtract(divide(t, dt), c(1.0)), c(2.0)), c(-1.0)),
+				c(0.0));
+
+		// When t > 1-dt: ((t-1)/dt + 1)^2
+		CollectionProducer oneMinusDt = subtract(c(1.0), dt);
+		CollectionProducer aboveOneMinusDt = greaterThan(t, oneMinusDt,
+				pow(add(divide(subtract(t, c(1.0)), dt), c(1.0)), c(2.0)),
+				c(0.0));
+
+		return add(belowDt, aboveOneMinusDt);
 	}
 
 	@Override
 	public Supplier<Runnable> tick() {
 		OperationList tick = new OperationList("SquareWaveCell Tick");
-		Producer<PackedCollection> envelope = env == null ? scalar(1.0) :
-				env.getResultant(cp(data.notePosition()));
-		tick.add(new SquareWaveTick(data, envelope));
+
+		// Update state: wavePosition += waveLength
+		CollectionProducer newWavePos = add(data.getWavePosition(), data.getWaveLength());
+		tick.add(a(p(data.wavePosition()), newWavePos));
+
+		// Update state: notePosition += 1/noteLength
+		CollectionProducer newNotePos = add(data.getNotePosition(), divide(c(1), data.getNoteLength()));
+		tick.add(a(p(data.notePosition()), newNotePos));
+
 		tick.add(super.tick());
 		return tick;
 	}

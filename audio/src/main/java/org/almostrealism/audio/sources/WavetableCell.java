@@ -21,6 +21,7 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.audio.SamplingFeatures;
 import org.almostrealism.audio.data.PolymorphicAudioData;
 import org.almostrealism.audio.line.OutputLine;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.temporal.CollectionTemporalCellAdapter;
 import org.almostrealism.hardware.OperationList;
@@ -226,9 +227,15 @@ public class WavetableCell extends CollectionTemporalCellAdapter implements Samp
 	@Override
 	public Supplier<Runnable> tick() {
 		OperationList tick = new OperationList("WavetableCell Tick");
-		Producer<PackedCollection> envelope = env == null ? scalar(1.0) :
-				env.getResultant(cp(data.notePosition()));
-		tick.add(new WavetableTick(data, envelope));
+
+		// Update state: wavePosition += waveLength
+		CollectionProducer newWavePos = add(data.getWavePosition(), data.getWaveLength());
+		tick.add(a(p(data.wavePosition()), newWavePos));
+
+		// Update state: notePosition += 1/noteLength
+		CollectionProducer newNotePos = add(data.getNotePosition(), divide(c(1), data.getNoteLength()));
+		tick.add(a(p(data.notePosition()), newNotePos));
+
 		tick.add(super.tick());
 		return tick;
 	}
