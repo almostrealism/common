@@ -21,7 +21,9 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.audio.SamplingFeatures;
 import org.almostrealism.audio.data.PolymorphicAudioData;
 import org.almostrealism.audio.line.OutputLine;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.geometry.GeometryFeatures;
 import org.almostrealism.graph.temporal.CollectionTemporalCellAdapter;
 import org.almostrealism.hardware.OperationList;
 
@@ -35,11 +37,10 @@ import java.util.function.Supplier;
  *
  * @see CollectionTemporalCellAdapter
  * @see SineWaveCellData
- * @see SineWavePush
- * @see SineWaveTick
  */
 // TODO  Reimplement as a function of org.almostrealism.graph.TimeCell
-public class SineWaveCell extends CollectionTemporalCellAdapter implements SamplingFeatures {
+public class SineWaveCell extends CollectionTemporalCellAdapter implements SamplingFeatures, GeometryFeatures {
+	private static final double TWO_PI = 2 * Math.PI;
 	private Factor<PackedCollection> env;
 	private final SineWaveCellData data;
 
@@ -103,21 +104,34 @@ public class SineWaveCell extends CollectionTemporalCellAdapter implements Sampl
 
 	@Override
 	public Supplier<Runnable> push(Producer<PackedCollection> protein) {
-		PackedCollection value = new PackedCollection(1);
+		PackedCollection output = new PackedCollection(1);
 		OperationList push = new OperationList("SineWaveCell Push");
+
 		Producer<PackedCollection> envelope = env == null ? scalar(1.0) :
 					env.getResultant(cp(data.notePosition()));
-		push.add(new SineWavePush(data, envelope, value));
-		push.add(super.push(p(value)));
+
+		// Compute: sin(2*PI * (wavePosition + phase)) * envelope * amplitude * depth
+		CollectionProducer angle = multiply(c(TWO_PI), add(data.getWavePosition(), data.getPhase()));
+		CollectionProducer sinVal = sin(angle);
+		CollectionProducer result = multiply(multiply(multiply(envelope, data.getAmplitude()), sinVal), data.getDepth());
+		push.add(a(p(output), result));
+
+		push.add(super.push(p(output)));
 		return push;
 	}
 
 	@Override
 	public Supplier<Runnable> tick() {
 		OperationList tick = new OperationList("SineWaveCell Tick");
-		Producer<PackedCollection> envelope = env == null ? scalar(1.0) :
-				env.getResultant(cp(data.notePosition()));
-		tick.add(new SineWaveTick(data, envelope));
+
+		// Update state: wavePosition += waveLength
+		CollectionProducer newWavePos = add(data.getWavePosition(), data.getWaveLength());
+		tick.add(a(p(data.wavePosition()), newWavePos));
+
+		// Update state: notePosition += 1/noteLength
+		CollectionProducer newNotePos = add(data.getNotePosition(), divide(c(1), data.getNoteLength()));
+		tick.add(a(p(data.notePosition()), newNotePos));
+
 		tick.add(super.tick());
 		return tick;
 	}

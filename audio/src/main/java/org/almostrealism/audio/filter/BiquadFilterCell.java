@@ -19,6 +19,7 @@ package org.almostrealism.audio.filter;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.audio.line.OutputLine;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.temporal.CollectionTemporalCellAdapter;
 import org.almostrealism.hardware.OperationList;
@@ -48,7 +49,6 @@ import java.util.function.Supplier;
  * </ul>
  *
  * @see BiquadFilterData
- * @see BiquadFilterComputation
  * @see CollectionTemporalCellAdapter
  */
 public class BiquadFilterCell extends CollectionTemporalCellAdapter implements CodeFeatures {
@@ -211,7 +211,41 @@ public class BiquadFilterCell extends CollectionTemporalCellAdapter implements C
 	@Override
 	public Supplier<Runnable> push(Producer<PackedCollection> protein) {
 		OperationList push = new OperationList("BiquadFilterCell Push");
-		push.add(new BiquadFilterComputation(data, protein, outputValue));
+
+		// Get producers for all coefficients and state
+		Producer<PackedCollection> b0 = data.getB0();
+		Producer<PackedCollection> b1 = data.getB1();
+		Producer<PackedCollection> b2 = data.getB2();
+		Producer<PackedCollection> a1 = data.getA1();
+		Producer<PackedCollection> a2 = data.getA2();
+		Producer<PackedCollection> x1 = data.getX1();
+		Producer<PackedCollection> x2 = data.getX2();
+		Producer<PackedCollection> y1 = data.getY1();
+		Producer<PackedCollection> y2 = data.getY2();
+
+		// Compute Direct Form I: y[n] = b0*x[n] + b1*x[n-1] + b2*x[n-2] - a1*y[n-1] - a2*y[n-2]
+		CollectionProducer feedforward = add(
+				multiply(b0, protein),
+				add(multiply(b1, x1), multiply(b2, x2))
+		);
+
+		CollectionProducer feedback = add(
+				multiply(a1, y1),
+				multiply(a2, y2)
+		);
+
+		CollectionProducer y0 = subtract(feedforward, feedback);
+
+		// Write output
+		push.add(a(p(outputValue), y0));
+
+		// Update delay lines: shift history
+		// Order matters: must read old values before overwriting
+		push.add(a(p(data.x2()), x1));
+		push.add(a(p(data.x1()), protein));
+		push.add(a(p(data.y2()), y1));
+		push.add(a(p(data.y1()), y0));
+
 		push.add(super.push(p(outputValue)));
 		return push;
 	}
