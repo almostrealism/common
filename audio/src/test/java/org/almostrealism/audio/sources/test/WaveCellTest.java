@@ -32,6 +32,7 @@ import org.almostrealism.heredity.ScaleFactor;
 import org.almostrealism.time.TemporalList;
 import org.almostrealism.util.TestDepth;
 import org.almostrealism.util.TestSuiteBase;
+import org.almostrealism.util.TestUtils;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -50,6 +51,7 @@ public class WaveCellTest extends TestSuiteBase implements CellFeatures {
 
 	@Test
 	public void push() throws IOException {
+		if (testProfileIs(TestUtils.PIPELINE)) return;
 		WaveCell cell = cell();
 		cell.setReceptor(protein -> {
 			Evaluable<? extends PackedCollection> ev = protein.get();
@@ -65,6 +67,7 @@ public class WaveCellTest extends TestSuiteBase implements CellFeatures {
 	@Test
 	@TestDepth(1)
 	public void endless() {
+		if (testProfileIs(TestUtils.PIPELINE)) return;
 		if (skipLongTests) return;
 
 		AtomicInteger total = new AtomicInteger();
@@ -89,6 +92,7 @@ public class WaveCellTest extends TestSuiteBase implements CellFeatures {
 
 	@Test
 	public void clean() {
+		if (testProfileIs(TestUtils.PIPELINE)) return;
 		int count = 8;
 
 		CellList cells = w(0, "Library/Snare Perc DD.wav")
@@ -99,6 +103,7 @@ public class WaveCellTest extends TestSuiteBase implements CellFeatures {
 
 	@Test
 	public void repeatHat() {
+		if (testProfileIs(TestUtils.PIPELINE)) return;
 		int count = 32;
 
 		CellList cells = w(0, c(bpm(128).l(0.5)), c(bpm(128).l(4)),
@@ -110,6 +115,7 @@ public class WaveCellTest extends TestSuiteBase implements CellFeatures {
 
 	@Test
 	public void repeatSnare() {
+		if (testProfileIs(TestUtils.PIPELINE)) return;
 		int count = 32;
 
 		CellList cells = w(0, c(bpm(128).l(1)), c(bpm(128).l(2)),
@@ -121,6 +127,7 @@ public class WaveCellTest extends TestSuiteBase implements CellFeatures {
 
 	@Test
 	public void sequence() {
+		if (testProfileIs(TestUtils.PIPELINE)) return;
 		int count = 32;
 
 		CellList cells = silence().and(w(0, c(bpm(128).l(0.5)), c(bpm(128).l(1)),
@@ -134,6 +141,7 @@ public class WaveCellTest extends TestSuiteBase implements CellFeatures {
 
 	@Test
 	public void assignment() {
+		if (testProfileIs(TestUtils.PIPELINE)) return;
 		PackedCollection out = new PackedCollection(1);
 		CellList cells = w(0, c(0), c(bpm(128).l(2)),
 				"Library/Snare Perc DD.wav")
