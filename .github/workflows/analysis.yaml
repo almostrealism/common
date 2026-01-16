@@ -53,12 +53,13 @@ jobs:
       - name: Build (skip tests)
         run: mvn install -DskipTests
 
-      - name: Run Tests (Group ${{ matrix.group }}, excluding ml)
+      - name: Run Tests (Group ${{ matrix.group }})
         run: |
-          LD_LIBRARY_PATH=Extensions mvn test -pl 'utils' \
+          LD_LIBRARY_PATH=Extensions mvn test -pl 'utils,ml' \
            -DAR_HARDWARE_DRIVER=native \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS=Extensions \
+           -DAR_TEST_PROFILE=pipeline \
            -DAR_TEST_GROUP=${{ matrix.group }} \
            -DAR_TEST_GROUPS=6
 
@@ -76,13 +77,9 @@ jobs:
           path: coverage-data/
           retention-days: 1
 
-  test-ml:
+  test-audio:
     needs: build
     runs-on: ubuntu-latest-16-cores
-    strategy:
-      fail-fast: false
-      matrix:
-        group: [0, 1]
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -100,15 +97,12 @@ jobs:
       - name: Build (skip tests)
         run: mvn install -DskipTests
 
-      - name: Run ML Tests (Group ${{ matrix.group }})
+      - name: Run Audio Tests
         run: |
-          LD_LIBRARY_PATH=Extensions mvn test -pl ml \
+          LD_LIBRARY_PATH=Extensions mvn test -pl audio \
            -DAR_HARDWARE_DRIVER=native \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
-           -DAR_HARDWARE_LIBS=Extensions \
-           -DAR_TEST_PROFILE=pipeline \
-           -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=2
+           -DAR_HARDWARE_LIBS=Extensions
 
       - name: Collect Coverage Data
         if: always()
@@ -120,12 +114,12 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: coverage-ml-group-${{ matrix.group }}
+          name: coverage-audio
           path: coverage-data/
           retention-days: 1
 
   analysis:
-    needs: [test, test-ml]
+    needs: [test, test-audio]
     if: always()
     runs-on: ubuntu-latest
     permissions:
