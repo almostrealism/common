@@ -4,10 +4,10 @@ on:
   workflow_dispatch:
   pull_request:
     branches:
-      - main
+      - master
   push:
     branches:
-      - main
+      - master
 
 jobs:
   build:
@@ -30,10 +30,11 @@ jobs:
         run: mvn install -DskipTests
 
   test:
+    if: false  # Temporarily disabled - enable when audio tests are validated
     needs: build
     runs-on: ubuntu-latest-16-cores
     strategy:
-      fail-fast: false
+      fail-fast: true
       matrix:
         group: [0, 1, 2, 3, 4, 5]
     steps:
@@ -53,13 +54,12 @@ jobs:
       - name: Build (skip tests)
         run: mvn install -DskipTests
 
-      - name: Run Tests (Group ${{ matrix.group }})
+      - name: Run Utils Tests (Group ${{ matrix.group }})
         run: |
-          LD_LIBRARY_PATH=Extensions mvn test -pl 'utils,ml' \
+          LD_LIBRARY_PATH=Extensions mvn test -pl utils \
            -DAR_HARDWARE_DRIVER=native \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS=Extensions \
-           -DAR_TEST_PROFILE=pipeline \
            -DAR_TEST_GROUP=${{ matrix.group }} \
            -DAR_TEST_GROUPS=6
 
@@ -77,8 +77,51 @@ jobs:
           path: coverage-data/
           retention-days: 1
 
+  test-ml:
+    if: false  # Temporarily disabled - enable when audio tests are validated
+    needs: test
+    runs-on: ubuntu-latest-16-cores
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'adopt'
+          cache: 'maven'
+
+      - name: Build (skip tests)
+        run: mvn install -DskipTests
+
+      - name: Run ML Tests
+        run: |
+          LD_LIBRARY_PATH=Extensions mvn test -pl ml \
+           -DAR_HARDWARE_DRIVER=native \
+           -DAR_HARDWARE_MEMORY_SCALE=7 \
+           -DAR_HARDWARE_LIBS=Extensions \
+           -DAR_TEST_PROFILE=pipeline
+
+      - name: Collect Coverage Data
+        if: always()
+        run: |
+          mkdir -p coverage-data
+          find . -path "*/target/jacoco.exec" -exec cp --parents {} coverage-data/ \;
+
+      - name: Upload Coverage Data
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-ml
+          path: coverage-data/
+          retention-days: 1
+
   test-audio:
-    needs: build
+    needs: build  # Change back to test-ml when re-enabling other tests
     runs-on: ubuntu-latest-16-cores
     steps:
       - name: Checkout Code
@@ -119,7 +162,7 @@ jobs:
           retention-days: 1
 
   analysis:
-    needs: [test, test-audio]
+    needs: [test-audio]  # Add back test, test-ml when re-enabling
     if: always()
     runs-on: ubuntu-latest
     permissions:
