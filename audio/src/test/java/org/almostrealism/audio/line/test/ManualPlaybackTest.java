@@ -19,6 +19,7 @@ package org.almostrealism.audio.line.test;
 import org.almostrealism.audio.line.SourceDataOutputLine;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.util.TestSuiteBase;
+import org.almostrealism.util.TestUtils;
 import org.junit.Test;
 
 import javax.sound.sampled.AudioFormat;
@@ -37,6 +38,8 @@ public class ManualPlaybackTest extends TestSuiteBase {
 	 */
 	@Test
 	public void manualSineWavePlayback() throws Exception {
+		if (testProfileIs(TestUtils.PIPELINE)) return;
+
 		// Create audio format: 44100 Hz, 16-bit, stereo, signed PCM, little-endian
 		AudioFormat format = new AudioFormat(
 				AudioFormat.Encoding.PCM_SIGNED,
@@ -113,6 +116,8 @@ public class ManualPlaybackTest extends TestSuiteBase {
 	 */
 	@Test
 	public void manualToneBurst() throws Exception {
+		if (testProfileIs(TestUtils.PIPELINE)) return;
+
 		AudioFormat format = new AudioFormat(44100, 16, 2, true, false);
 		SourceDataLine line = AudioSystem.getSourceDataLine(format);
 		line.open(format);

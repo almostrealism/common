@@ -145,7 +145,8 @@ jobs:
           LD_LIBRARY_PATH=Extensions mvn test -pl audio \
            -DAR_HARDWARE_DRIVER=native \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
-           -DAR_HARDWARE_LIBS=Extensions
+           -DAR_HARDWARE_LIBS=Extensions \
+           -DAR_TEST_PROFILE=pipeline
 
       - name: Collect Coverage Data
         if: always()
