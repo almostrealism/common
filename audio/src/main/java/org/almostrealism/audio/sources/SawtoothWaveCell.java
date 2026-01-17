@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,24 +23,23 @@ import org.almostrealism.audio.data.PolymorphicAudioData;
 import org.almostrealism.audio.line.OutputLine;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.geometry.GeometryFeatures;
 import org.almostrealism.graph.temporal.CollectionTemporalCellAdapter;
 import org.almostrealism.hardware.OperationList;
 
 import java.util.function.Supplier;
 
 /**
- * A temporal cell that generates sine wave audio with configurable frequency,
- * amplitude, phase, and envelope. Implements both push and tick operations
- * for real-time audio generation within the graph framework. Supports dynamic
- * parameter control through Producer-based setters.
+ * A temporal cell that generates sawtooth wave audio with configurable frequency,
+ * amplitude, phase, direction, and envelope. Supports both ascending (ramp up)
+ * and descending (ramp down) waveforms. Includes PolyBLEP anti-aliasing.
+ * <p>
+ * The sawtooth wave produces a linear ramp that creates a bright, buzzy tone
+ * rich in harmonics, commonly used in synthesizers for brass and string sounds.
  *
  * @see CollectionTemporalCellAdapter
  * @see SineWaveCellData
  */
-// TODO  Reimplement as a function of org.almostrealism.graph.TimeCell
-public class SineWaveCell extends CollectionTemporalCellAdapter implements SamplingFeatures, GeometryFeatures {
-	private static final double TWO_PI = 2 * Math.PI;
+public class SawtoothWaveCell extends CollectionTemporalCellAdapter implements SamplingFeatures {
 	private Factor<PackedCollection> env;
 	private final SineWaveCellData data;
 
@@ -48,44 +47,65 @@ public class SineWaveCell extends CollectionTemporalCellAdapter implements Sampl
 	private double waveLength;
 	private double phase;
 	private double amplitude;
+	private boolean ascending;
 
-	public SineWaveCell() {
+	public SawtoothWaveCell() {
 		this(new PolymorphicAudioData());
 	}
 
-	public SineWaveCell(SineWaveCellData data) {
+	public SawtoothWaveCell(SineWaveCellData data) {
 		this.data = data;
+		this.ascending = true;
+		this.amplitude = 1.0;
 	}
 
 	public void setEnvelope(Factor<PackedCollection> e) { this.env = e; }
 
 	public void strike() { data.setNotePosition(0); }
-	
-	public void setFreq(double hertz) { this.waveLength = hertz / (double) OutputLine.sampleRate; }
+
+	public void setFreq(double hertz) {
+		this.waveLength = hertz / (double) OutputLine.sampleRate;
+	}
 
 	public Supplier<Runnable> setFreq(Producer<PackedCollection> hertz) {
 		return a(data.getWaveLength(), divide(hertz, c(OutputLine.sampleRate)));
 	}
 
-	// TODO  Rename to milli, default should be seconds
-	public void setNoteLength(int msec) { this.noteLength = toFramesMilli(msec); }
+	public void setNoteLength(int msec) {
+		this.noteLength = toFramesMilli(msec);
+	}
 
-	// TODO  Rename to milli, default should be seconds
 	public Supplier<Runnable> setNoteLength(Producer<PackedCollection> noteLength) {
 		return a(data.getNoteLength(), toFramesMilli(noteLength));
 	}
-	
+
 	public void setPhase(double phase) { this.phase = phase; }
-	
+
 	public void setAmplitude(double amp) { amplitude = amp; }
 
 	public Supplier<Runnable> setAmplitude(Producer<PackedCollection> amp) {
 		return a(data.getAmplitude(), amp);
 	}
 
+	/**
+	 * Sets the wave direction.
+	 *
+	 * @param ascending true for ascending ramp (default), false for descending
+	 */
+	public void setAscending(boolean ascending) {
+		this.ascending = ascending;
+	}
+
+	/**
+	 * Returns whether this is an ascending (ramp up) sawtooth.
+	 */
+	public boolean isAscending() {
+		return ascending;
+	}
+
 	@Override
 	public Supplier<Runnable> setup() {
-		OperationList defaults = new OperationList("SineWaveCell Default Value Assignment");
+		OperationList defaults = new OperationList("SawtoothWaveCell Default Value Assignment");
 		defaults.add(a(data.getDepth(), c(CollectionTemporalCellAdapter.depth)));
 		defaults.add(a(data.getNotePosition(), c(0)));
 		defaults.add(a(data.getWavePosition(), c(0)));
@@ -96,7 +116,7 @@ public class SineWaveCell extends CollectionTemporalCellAdapter implements Sampl
 
 		Supplier<Runnable> customization = super.setup();
 
-		OperationList setup = new OperationList("SineWaveCell Setup");
+		OperationList setup = new OperationList("SawtoothWaveCell Setup");
 		setup.add(defaults);
 		setup.add(customization);
 		return setup;
@@ -105,24 +125,70 @@ public class SineWaveCell extends CollectionTemporalCellAdapter implements Sampl
 	@Override
 	public Supplier<Runnable> push(Producer<PackedCollection> protein) {
 		PackedCollection output = new PackedCollection(1);
-		OperationList push = new OperationList("SineWaveCell Push");
+		OperationList push = new OperationList("SawtoothWaveCell Push");
 
 		Producer<PackedCollection> envelope = env == null ? scalar(1.0) :
-					env.getResultant(cp(data.notePosition()));
+				env.getResultant(cp(data.notePosition()));
 
-		// Compute: sin(2*PI * (wavePosition + phase)) * envelope * amplitude * depth
-		CollectionProducer angle = multiply(c(TWO_PI), add(data.getWavePosition(), data.getPhase()));
-		CollectionProducer sinVal = sin(angle);
-		CollectionProducer result = multiply(multiply(multiply(envelope, data.getAmplitude()), sinVal), data.getDepth());
+		// Compute t = wavePosition + phase
+		CollectionProducer t = add(data.getWavePosition(), data.getPhase());
+		// Compute frac = t - floor(t)
+		CollectionProducer frac = subtract(t, floor(t));
+
+		// Raw sawtooth: linear ramp from -1 to +1 (ascending) or +1 to -1 (descending)
+		CollectionProducer rawSaw;
+		if (ascending) {
+			rawSaw = subtract(multiply(frac, c(2.0)), c(1.0));  // frac*2 - 1
+		} else {
+			rawSaw = subtract(c(1.0), multiply(frac, c(2.0)));  // 1 - frac*2
+		}
+
+		// PolyBLEP anti-aliasing
+		Producer<PackedCollection> dt = data.getWaveLength();
+		CollectionProducer blep = polyBlep(frac, dt);
+
+		CollectionProducer antiAliased;
+		if (ascending) {
+			antiAliased = subtract(rawSaw, blep);
+		} else {
+			antiAliased = add(rawSaw, blep);
+		}
+
+		// Compute: envelope * amplitude * antiAliased * depth
+		CollectionProducer result = multiply(multiply(envelope, data.getAmplitude()),
+				multiply(antiAliased, data.getDepth()));
 		push.add(a(p(output), result));
 
 		push.add(super.push(p(output)));
 		return push;
 	}
 
+	/**
+	 * PolyBLEP (Polynomial Band-Limited Step) anti-aliasing function.
+	 * Smooths discontinuities in geometric waveforms to reduce aliasing.
+	 *
+	 * @param t   Phase position (0-1)
+	 * @param dt  Phase increment per sample (frequency/sampleRate)
+	 * @return Correction value to apply to the raw waveform
+	 */
+	private CollectionProducer polyBlep(CollectionProducer t, Producer<PackedCollection> dt) {
+		// When t < dt: -(t/dt - 1)^2
+		CollectionProducer belowDt = lessThan(t, dt,
+				multiply(pow(subtract(divide(t, dt), c(1.0)), c(2.0)), c(-1.0)),
+				c(0.0));
+
+		// When t > 1-dt: ((t-1)/dt + 1)^2
+		CollectionProducer oneMinusDt = subtract(c(1.0), dt);
+		CollectionProducer aboveOneMinusDt = greaterThan(t, oneMinusDt,
+				pow(add(divide(subtract(t, c(1.0)), dt), c(1.0)), c(2.0)),
+				c(0.0));
+
+		return add(belowDt, aboveOneMinusDt);
+	}
+
 	@Override
 	public Supplier<Runnable> tick() {
-		OperationList tick = new OperationList("SineWaveCell Tick");
+		OperationList tick = new OperationList("SawtoothWaveCell Tick");
 
 		// Update state: wavePosition += waveLength
 		CollectionProducer newWavePos = add(data.getWavePosition(), data.getWaveLength());

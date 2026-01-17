@@ -1,6 +1,7 @@
 package org.almostrealism.audio.test;
 
 import io.almostrealism.relation.Producer;
+import org.almostrealism.audio.AudioTestFeatures;
 import org.almostrealism.audio.CellFeatures;
 import org.almostrealism.audio.CellList;
 import org.almostrealism.audio.data.WaveData;
@@ -18,10 +19,10 @@ import java.io.File;
 import java.io.IOException;
 import java.util.stream.IntStream;
 
-public class CellListTests extends TestSuiteBase implements CellFeatures {
+public class CellListTests extends TestSuiteBase implements CellFeatures, AudioTestFeatures {
 	@Test
 	public void export() throws IOException {
-		WaveData data = WaveData.load(new File("Library/Snare Perc DD.wav"));
+		WaveData data = WaveData.load(getTestWavFile());
 		int samples = data.getFrameCount();
 
 		PackedCollection result = new PackedCollection(samples);
@@ -45,7 +46,7 @@ public class CellListTests extends TestSuiteBase implements CellFeatures {
 
 	@Test
 	public void mselfDelay() {
-		CellList cells = w(0, "Library/Snare Perc DD.wav");
+		CellList cells = w(0, getTestWavPath());
 
 		CellList delays = IntStream.range(0, 1)
 				.mapToObj(i -> new AdjustableDelayCell(OutputLine.sampleRate, c(2.0)))

@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,24 +23,24 @@ import org.almostrealism.audio.data.PolymorphicAudioData;
 import org.almostrealism.audio.line.OutputLine;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.geometry.GeometryFeatures;
 import org.almostrealism.graph.temporal.CollectionTemporalCellAdapter;
 import org.almostrealism.hardware.OperationList;
 
 import java.util.function.Supplier;
 
 /**
- * A temporal cell that generates sine wave audio with configurable frequency,
- * amplitude, phase, and envelope. Implements both push and tick operations
- * for real-time audio generation within the graph framework. Supports dynamic
- * parameter control through Producer-based setters.
+ * A temporal cell that generates triangle wave audio with configurable frequency,
+ * amplitude, phase, and envelope. The triangle wave produces a mellow, flute-like
+ * tone with odd harmonics that roll off quickly, making it softer than square
+ * or sawtooth waves.
+ * <p>
+ * The triangle wave has no discontinuities, so it naturally produces less aliasing
+ * than other geometric waveforms and does not require PolyBLEP anti-aliasing.
  *
  * @see CollectionTemporalCellAdapter
  * @see SineWaveCellData
  */
-// TODO  Reimplement as a function of org.almostrealism.graph.TimeCell
-public class SineWaveCell extends CollectionTemporalCellAdapter implements SamplingFeatures, GeometryFeatures {
-	private static final double TWO_PI = 2 * Math.PI;
+public class TriangleWaveCell extends CollectionTemporalCellAdapter implements SamplingFeatures {
 	private Factor<PackedCollection> env;
 	private final SineWaveCellData data;
 
@@ -49,34 +49,37 @@ public class SineWaveCell extends CollectionTemporalCellAdapter implements Sampl
 	private double phase;
 	private double amplitude;
 
-	public SineWaveCell() {
+	public TriangleWaveCell() {
 		this(new PolymorphicAudioData());
 	}
 
-	public SineWaveCell(SineWaveCellData data) {
+	public TriangleWaveCell(SineWaveCellData data) {
 		this.data = data;
+		this.amplitude = 1.0;
 	}
 
 	public void setEnvelope(Factor<PackedCollection> e) { this.env = e; }
 
 	public void strike() { data.setNotePosition(0); }
-	
-	public void setFreq(double hertz) { this.waveLength = hertz / (double) OutputLine.sampleRate; }
+
+	public void setFreq(double hertz) {
+		this.waveLength = hertz / (double) OutputLine.sampleRate;
+	}
 
 	public Supplier<Runnable> setFreq(Producer<PackedCollection> hertz) {
 		return a(data.getWaveLength(), divide(hertz, c(OutputLine.sampleRate)));
 	}
 
-	// TODO  Rename to milli, default should be seconds
-	public void setNoteLength(int msec) { this.noteLength = toFramesMilli(msec); }
+	public void setNoteLength(int msec) {
+		this.noteLength = toFramesMilli(msec);
+	}
 
-	// TODO  Rename to milli, default should be seconds
 	public Supplier<Runnable> setNoteLength(Producer<PackedCollection> noteLength) {
 		return a(data.getNoteLength(), toFramesMilli(noteLength));
 	}
-	
+
 	public void setPhase(double phase) { this.phase = phase; }
-	
+
 	public void setAmplitude(double amp) { amplitude = amp; }
 
 	public Supplier<Runnable> setAmplitude(Producer<PackedCollection> amp) {
@@ -85,7 +88,7 @@ public class SineWaveCell extends CollectionTemporalCellAdapter implements Sampl
 
 	@Override
 	public Supplier<Runnable> setup() {
-		OperationList defaults = new OperationList("SineWaveCell Default Value Assignment");
+		OperationList defaults = new OperationList("TriangleWaveCell Default Value Assignment");
 		defaults.add(a(data.getDepth(), c(CollectionTemporalCellAdapter.depth)));
 		defaults.add(a(data.getNotePosition(), c(0)));
 		defaults.add(a(data.getWavePosition(), c(0)));
@@ -96,7 +99,7 @@ public class SineWaveCell extends CollectionTemporalCellAdapter implements Sampl
 
 		Supplier<Runnable> customization = super.setup();
 
-		OperationList setup = new OperationList("SineWaveCell Setup");
+		OperationList setup = new OperationList("TriangleWaveCell Setup");
 		setup.add(defaults);
 		setup.add(customization);
 		return setup;
@@ -105,15 +108,25 @@ public class SineWaveCell extends CollectionTemporalCellAdapter implements Sampl
 	@Override
 	public Supplier<Runnable> push(Producer<PackedCollection> protein) {
 		PackedCollection output = new PackedCollection(1);
-		OperationList push = new OperationList("SineWaveCell Push");
+		OperationList push = new OperationList("TriangleWaveCell Push");
 
 		Producer<PackedCollection> envelope = env == null ? scalar(1.0) :
-					env.getResultant(cp(data.notePosition()));
+				env.getResultant(cp(data.notePosition()));
 
-		// Compute: sin(2*PI * (wavePosition + phase)) * envelope * amplitude * depth
-		CollectionProducer angle = multiply(c(TWO_PI), add(data.getWavePosition(), data.getPhase()));
-		CollectionProducer sinVal = sin(angle);
-		CollectionProducer result = multiply(multiply(multiply(envelope, data.getAmplitude()), sinVal), data.getDepth());
+		// Compute t = wavePosition + phase
+		CollectionProducer t = add(data.getWavePosition(), data.getPhase());
+		// Compute frac = t - floor(t)
+		CollectionProducer frac = subtract(t, floor(t));
+
+		// Triangle wave: linear ramp from -1 to +1 and back to -1
+		// if (frac < 0.5) triangle = frac*4 - 1 else triangle = 3 - frac*4
+		CollectionProducer triangle = lessThan(frac, c(0.5),
+				subtract(multiply(frac, c(4.0)), c(1.0)),
+				subtract(c(3.0), multiply(frac, c(4.0))));
+
+		// Compute: envelope * amplitude * triangle * depth
+		CollectionProducer result = multiply(multiply(envelope, data.getAmplitude()),
+				multiply(triangle, data.getDepth()));
 		push.add(a(p(output), result));
 
 		push.add(super.push(p(output)));
@@ -122,7 +135,7 @@ public class SineWaveCell extends CollectionTemporalCellAdapter implements Sampl
 
 	@Override
 	public Supplier<Runnable> tick() {
-		OperationList tick = new OperationList("SineWaveCell Tick");
+		OperationList tick = new OperationList("TriangleWaveCell Tick");
 
 		// Update state: wavePosition += waveLength
 		CollectionProducer newWavePos = add(data.getWavePosition(), data.getWaveLength());

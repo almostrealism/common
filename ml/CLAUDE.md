@@ -2,6 +2,19 @@
 
 ---
 
+## ⚠️ CRITICAL: DO NOT COMMIT CODE ⚠️
+
+**THIS IS AN ABSOLUTE RULE WITH NO EXCEPTIONS.**
+
+- **NEVER** use `git commit` commands
+- Claude does not have the ability to create valid commits
+- You can only **stage changes** using `git add`
+- The human developer must review and commit all changes themselves
+
+See [../CLAUDE.md](../CLAUDE.md) for full details on this policy.
+
+---
+
 ## ⚠️ CRITICAL: NEVER REFERENCE VERSION NUMBERS ⚠️
 
 **THIS IS AN ABSOLUTE RULE WITH NO EXCEPTIONS.**

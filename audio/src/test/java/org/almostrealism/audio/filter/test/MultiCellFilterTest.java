@@ -1,5 +1,6 @@
 package org.almostrealism.audio.filter.test;
 
+import org.almostrealism.audio.AudioTestFeatures;
 import org.almostrealism.audio.CellFeatures;
 import org.almostrealism.audio.CellList;
 import org.almostrealism.heredity.IdentityFactor;
@@ -11,10 +12,10 @@ import java.io.File;
 import java.io.IOException;
 import java.util.function.Supplier;
 
-public class MultiCellFilterTest extends TestSuiteBase implements CellFeatures {
+public class MultiCellFilterTest extends TestSuiteBase implements CellFeatures, AudioTestFeatures {
 	@Test
 	public void identity() {
-		w(0, "src/test/resources/Snare Perc DD.wav")
+		w(0, getTestWavPath())
 				.m(f(2, i -> new IdentityFactor<>()),
 						o(2, i -> new File("results/multi-identity-cell-test-" + i + ".wav")),
 						i -> g(0.3, 0.5))
@@ -23,7 +24,7 @@ public class MultiCellFilterTest extends TestSuiteBase implements CellFeatures {
 
 	@Test
 	public void identityDelay() {
-		w(0, "src/test/resources/Snare Perc DD.wav")
+		w(0, getTestWavPath())
 				.m(f(2, i -> new IdentityFactor<>()),
 						d(2, i -> c(2 * i + 1)),
 						i -> g(0.3, 0.5))
@@ -33,7 +34,7 @@ public class MultiCellFilterTest extends TestSuiteBase implements CellFeatures {
 
 	@Test
 	public void identityDelayFeedback() {
-		CellList c = w(0, "Library/Snare Perc DD.wav", "Library/Snare Perc DD.wav")
+		CellList c = w(0, getTestWavPath(), getTestWavPath())
 				.d(i -> c(2))
 				.m(fi(), c(g(0.0, 0.4), g(0.4, 0.0)))
 				.om(i -> new File("results/identity-delay-feedback-test-" + i + ".wav"));
@@ -43,7 +44,7 @@ public class MultiCellFilterTest extends TestSuiteBase implements CellFeatures {
 
 	@Test
 	public void scale() {
-		w(0, "src/test/resources/Snare Perc DD.wav")
+		w(0, getTestWavPath())
 				.m(f(2, i -> new ScaleFactor(0.3 * (i + 1))),
 						o(2, i -> new File("results/multi-scale-cell-test-" + i + ".wav")),
 						i -> g(0.3, 0.5))
@@ -52,7 +53,7 @@ public class MultiCellFilterTest extends TestSuiteBase implements CellFeatures {
 
 	@Test
 	public void scaleDelay() throws IOException {
-		w(0, "src/test/resources/Snare Perc DD.wav")
+		w(0, getTestWavPath())
 				.m(f(2, i -> new ScaleFactor(0.3 * (i + 1))),
 						d(2, i -> c(2 * i + 1)),
 						i -> g(0.3, 0.5))
@@ -62,7 +63,7 @@ public class MultiCellFilterTest extends TestSuiteBase implements CellFeatures {
 
 	@Test
 	public void scaleDelayFeedback() {
-		w(0, "src/test/resources/Snare Perc DD.wav", "src/test/resources/Snare Perc DD.wav")
+		w(0, getTestWavPath(), getTestWavPath())
 				.d(i -> c(2))
 				.m(f(2, i -> new ScaleFactor(0.45 * (i + 1)))::get, c(g(0.0, 0.5), g(0.5, 0.0)))
 				.om(i -> new File("results/scale-delay-feedback-test-" + i + ".wav"))
@@ -71,7 +72,7 @@ public class MultiCellFilterTest extends TestSuiteBase implements CellFeatures {
 
 	@Test
 	public void filter() {
-		w(0, "src/test/resources/Snare Perc DD.wav")
+		w(0, getTestWavPath())
 				.m(f(2, i -> hp(2000, 0.1)),
 						o(2, i -> new File("results/multi-filter-cell-test-" + i + ".wav")),
 						i -> g(0.3, 0.5))
@@ -80,7 +81,7 @@ public class MultiCellFilterTest extends TestSuiteBase implements CellFeatures {
 
 	@Test
 	public void filterDelay() {
-		w(0, "src/test/resources/Snare Perc DD.wav")
+		w(0, getTestWavPath())
 				.m(f(2, i -> hp(2000, 0.1)),
 						d(2, i -> c(2 * i + 1)),
 						i -> g(0.3, 0.5))
@@ -90,7 +91,7 @@ public class MultiCellFilterTest extends TestSuiteBase implements CellFeatures {
 
 	@Test
 	public void filterDelayFeedback() {
-		w(0, "src/test/resources/Snare Perc DD.wav", "src/test/resources/Snare Perc DD.wav")
+		w(0, getTestWavPath(), getTestWavPath())
 				.d(i -> c(2))
 				.m(fc(i -> hp(2000, 0.1)),
 						c(g(0.0, 0.3), g(0.3, 0.0)))
