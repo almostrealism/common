@@ -2,6 +2,30 @@
 
 ---
 
+## ⚠️ CRITICAL: DO NOT COMMIT CODE ⚠️
+
+**THIS IS AN ABSOLUTE RULE WITH NO EXCEPTIONS.**
+
+- **NEVER** use `git commit` commands
+- Claude does not have the ability to create valid commits
+- You can only **stage changes** using `git add`
+- The human developer must review and commit all changes themselves
+
+**Why this matters:** Claude cannot properly sign commits or verify the full context of changes. The human developer needs to review staged changes, write appropriate commit messages, and take responsibility for what goes into the repository history.
+
+**What you CAN do:**
+- Stage files with `git add <file>`
+- Check status with `git status`
+- Show diffs with `git diff`
+- Unstage files with `git reset <file>`
+
+**What you MUST NOT do:**
+- `git commit` (any form)
+- `git commit -m "..."`
+- `git commit --amend`
+
+---
+
 ## ⚠️ CRITICAL: NEVER REFERENCE VERSION NUMBERS ⚠️
 
 **THIS IS AN ABSOLUTE RULE WITH NO EXCEPTIONS.**
@@ -85,6 +109,41 @@ You **MUST** first consult the ar-docs MCP tools:
 2. Read module docs: `mcp__ar-docs__read_ar_module module:"utils"`
 3. Understand the pattern: Tests extend `TestSuiteBase`
 4. Make changes following the documented pattern
+
+---
+
+## ⚠️ CRITICAL: USE AR-DOCS FOR API DISCOVERY ⚠️
+
+**THIS IS AN ABSOLUTE RULE WITH NO EXCEPTIONS.**
+
+When looking for **how to do something** in the AR framework (mathematical operations, layer types, utilities, etc.), you **MUST** consult ar-docs BEFORE searching source code.
+
+**Situations requiring ar-docs consultation:**
+- Looking for mathematical operations (sin, cos, tan, sqrt, etc.)
+- Finding the right Features interface to implement
+- Understanding what operations are available on CollectionProducer
+- Finding layer types or model building utilities
+- Any "where is X implemented?" or "how do I do Y?" question
+
+**Tools to use:**
+- `mcp__ar-docs__read_quick_reference` - Start here for operations index
+- `mcp__ar-docs__search_ar_docs` - Search for specific terms
+- `mcp__ar-docs__read_ar_module` - Deep dive into a module
+
+**Example: Finding trigonometric functions**
+```
+WRONG approach:
+1. Grep source code for "sin" or "cos"
+2. Only find it in CollectionFeatures (it's not there)
+3. Conclude "trig functions don't exist at CollectionProducer level"
+
+CORRECT approach:
+1. mcp__ar-docs__read_quick_reference (see "Trigonometry" section)
+2. Learn that sin/cos/tan are in GeometryFeatures
+3. Use GeometryFeatures in your implementation
+```
+
+**Why this matters:** API capabilities are spread across multiple Features interfaces. Source code grep often misses the right location. The ar-docs quick reference provides a categorized operations index that shows WHERE each capability lives.
 
 ---
 

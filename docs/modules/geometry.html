@@ -36,6 +36,7 @@
                 <a href="#overview">Overview</a>
                 <a href="#concepts">Key Concepts</a>
                 <a href="#classes">Core Classes</a>
+                <a href="#math">Math Functions</a>
                 <a href="#transformations">Transformations</a>
                 <a href="#raytracing">Ray Tracing</a>
                 <a href="#examples">Examples</a>
@@ -176,8 +177,38 @@
                     </div>
                     <div class="class-item">
                         <h4>GeometryFeatures</h4>
-                        <p>Combined geometry operations including reflect() for computing reflection vectors.</p>
+                        <p>Combined geometry operations including reflect(), plus <strong>trigonometric functions</strong>: sin(), cos(), tan(), tanh(), sinw().</p>
                     </div>
+                </div>
+
+                <h3 id="math">Mathematical Functions (GeometryFeatures)</h3>
+                <div class="info-box">
+                    <strong>Important:</strong> Trigonometric functions are provided by <code>GeometryFeatures</code>, not <code>CollectionFeatures</code>.
+                    If you need sin, cos, tan, or tanh at the <code>CollectionProducer</code> level, implement <code>GeometryFeatures</code>.
+                </div>
+                <table class="comparison-table">
+                    <tr><th>Function</th><th>Method</th><th>Description</th></tr>
+                    <tr><td>sin</td><td><code>sin(Producer&lt;PackedCollection&gt; input)</code></td><td>Sine function</td></tr>
+                    <tr><td>cos</td><td><code>cos(Producer&lt;PackedCollection&gt; input)</code></td><td>Cosine function</td></tr>
+                    <tr><td>tan</td><td><code>tan(Producer&lt;PackedCollection&gt; input)</code></td><td>Tangent function</td></tr>
+                    <tr><td>tanh</td><td><code>tanh(Producer&lt;PackedCollection&gt; input)</code></td><td>Hyperbolic tangent</td></tr>
+                    <tr><td>sinw</td><td><code>sinw(freq, phase, amplitude)</code></td><td>Sinusoidal wave function</td></tr>
+                </table>
+                <div class="code-example">
+                    <strong>Example: Using trigonometric functions</strong><br>
+<pre>
+import org.almostrealism.geometry.GeometryFeatures;
+
+public class MyComputation implements GeometryFeatures {
+    public CollectionProducer compute(Producer&lt;PackedCollection&gt; angle) {
+        // These methods are available via GeometryFeatures
+        CollectionProducer sinVal = sin(angle);
+        CollectionProducer cosVal = cos(angle);
+        CollectionProducer tanVal = tan(angle);
+        return sinVal.multiply(cosVal);
+    }
+}
+</pre>
                 </div>
             </section>
 
