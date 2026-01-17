@@ -2,6 +2,30 @@
 
 ---
 
+## ⚠️ CRITICAL: DO NOT COMMIT CODE ⚠️
+
+**THIS IS AN ABSOLUTE RULE WITH NO EXCEPTIONS.**
+
+- **NEVER** use `git commit` commands
+- Claude does not have the ability to create valid commits
+- You can only **stage changes** using `git add`
+- The human developer must review and commit all changes themselves
+
+**Why this matters:** Claude cannot properly sign commits or verify the full context of changes. The human developer needs to review staged changes, write appropriate commit messages, and take responsibility for what goes into the repository history.
+
+**What you CAN do:**
+- Stage files with `git add <file>`
+- Check status with `git status`
+- Show diffs with `git diff`
+- Unstage files with `git reset <file>`
+
+**What you MUST NOT do:**
+- `git commit` (any form)
+- `git commit -m "..."`
+- `git commit --amend`
+
+---
+
 ## ⚠️ CRITICAL: NEVER REFERENCE VERSION NUMBERS ⚠️
 
 **THIS IS AN ABSOLUTE RULE WITH NO EXCEPTIONS.**
