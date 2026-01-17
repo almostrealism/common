@@ -161,7 +161,7 @@ jobs:
           retention-days: 1
 
   analysis:
-    needs: [test, test-ml, test-audio]  # Add back test, test-ml when re-enabling
+    needs: [test, test-ml, test-audio]
     if: always()
     runs-on: ubuntu-latest
     permissions:
