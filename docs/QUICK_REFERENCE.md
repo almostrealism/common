@@ -131,6 +131,18 @@ producer.get(CPU);      // Force CPU
 | ≤ | `a.lessThanOrEqual(b)` | |
 | = | `a.eq(b)` | Equality |
 
+### Trigonometry (via GeometryFeatures)
+| Op | Method | Notes |
+|----|--------|-------|
+| sin | `sin(a)` | Sine (requires `GeometryFeatures`) |
+| cos | `cos(a)` | Cosine (requires `GeometryFeatures`) |
+| tan | `tan(a)` | Tangent (requires `GeometryFeatures`) |
+| tanh | `tanh(a)` | Hyperbolic tangent |
+| sinw | `sinw(freq, phase, amp)` | Sinusoidal wave function |
+
+> **Note**: Trigonometric functions are in `GeometryFeatures`, not `CollectionFeatures`.
+> Import: `import org.almostrealism.geometry.GeometryFeatures;`
+
 ### Special
 | Op | Method | Notes |
 |----|--------|-------|
@@ -389,6 +401,9 @@ import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.PairFeatures;
+
+// Trigonometry (sin, cos, tan, tanh)
+import org.almostrealism.geometry.GeometryFeatures;
 
 // Hardware
 import org.almostrealism.hardware.Hardware;

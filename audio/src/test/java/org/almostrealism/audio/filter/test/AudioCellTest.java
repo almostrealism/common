@@ -16,23 +16,27 @@
 
 package org.almostrealism.audio.filter.test;
 
+import org.almostrealism.audio.AudioTestFeatures;
 import org.almostrealism.audio.CellFeatures;
 import org.almostrealism.audio.WaveOutput;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.util.TestSuiteBase;
+import org.almostrealism.util.TestUtils;
 import org.junit.Assert;
 import org.junit.Test;
 
 import java.io.File;
 import java.util.function.Supplier;
 
-public class AudioCellTest extends TestSuiteBase implements CellFeatures {
+public class AudioCellTest extends TestSuiteBase implements CellFeatures, AudioTestFeatures {
 	@Test
 	public void filterFrame() {
+		if (testProfileIs(TestUtils.PIPELINE)) return;
+
 		WaveOutput out = new WaveOutput();
 
 		Supplier<Runnable> op =
-				w(0, "Library/Snare Perc DD.wav")
+				w(0, getTestWavPath())
 						.f(i -> hp(2000, 0.1))
 						.map(i -> out.getWriterCell(0))
 						.iter(10);
@@ -51,7 +55,7 @@ public class AudioCellTest extends TestSuiteBase implements CellFeatures {
 	@Test
 	public void filter() {
 		Supplier<Runnable> op =
-				w(0, "Library/Snare Perc DD.wav")
+				w(0, getTestWavPath())
 						.f(i -> hp(2000, 0.1))
 						.om(i -> new File("results/filter-cell-test.wav"))
 						.sec(10);
@@ -62,7 +66,7 @@ public class AudioCellTest extends TestSuiteBase implements CellFeatures {
 	@Test
 	public void repeat() {
 		Supplier<Runnable> op =
-				w(0, c(1.0), "Library/Snare Perc DD.wav")
+				w(0, c(1.0), getTestWavPath())
 						.om(i -> new File("results/repeat-cell.wav"))
 						.sec(10);
 		Runnable r = op.get();

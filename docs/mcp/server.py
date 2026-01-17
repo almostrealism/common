@@ -38,6 +38,13 @@ SYNONYMS = {
     "scope": {"context", "block", "statement"},
     "evaluate": {"eval", "compute", "execute", "run"},
     "compile": {"compilation", "generate", "codegen"},
+    # Math/trigonometry - these are in GeometryFeatures
+    "sin": {"sine", "trigonometry", "trig", "sinusoidal"},
+    "cos": {"cosine", "trigonometry", "trig"},
+    "tan": {"tangent", "trigonometry", "trig"},
+    "tanh": {"hyperbolic", "trigonometry", "trig"},
+    "trigonometry": {"trig", "sin", "cos", "tan", "sine", "cosine", "tangent", "geometry"},
+    "math": {"mathematical", "arithmetic", "calculation", "trigonometry"},
 }
 
 

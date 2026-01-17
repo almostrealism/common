@@ -19,6 +19,7 @@ package org.almostrealism.audio.filter.test;
 import io.almostrealism.compute.Process;
 import io.almostrealism.profile.OperationProfile;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.audio.AudioTestFeatures;
 import org.almostrealism.audio.CellFeatures;
 import org.almostrealism.audio.CellList;
 import org.almostrealism.audio.data.WaveData;
@@ -51,7 +52,7 @@ import java.util.function.Supplier;
  *   <li>Short duration (making delays and echoes clearly visible)</li>
  * </ul>
  */
-public class DelayCellTest extends TestSuiteBase implements CellFeatures, RGBFeatures {
+public class DelayCellTest extends TestSuiteBase implements CellFeatures, AudioTestFeatures, RGBFeatures {
 
 	/**
 	 * Tests a simple 2-second delay applied to a snare drum sample.
@@ -69,7 +70,7 @@ public class DelayCellTest extends TestSuiteBase implements CellFeatures, RGBFea
 	 */
 	@Test
 	public void delay() {
-		CellList c = w(0, "Library/Snare Perc DD.wav")
+		CellList c = w(0, getTestWavPath())
 				.d(i -> c(2.0))
 				.o(i -> new File("results/delay-cell-test.wav"));
 		Supplier<Runnable> r = c.sec(6);
@@ -94,7 +95,7 @@ public class DelayCellTest extends TestSuiteBase implements CellFeatures, RGBFea
 	 */
 	@Test
 	public void delaySum() {
-		CellList c = w(0, "Library/Snare Perc DD.wav", "Library/Snare Perc DD.wav")
+		CellList c = w(0, getTestWavPath(), getTestWavPath())
 				.d(i -> i > 0 ? c(2.0) : c(1.0))
 				.sum()
 				.o(i -> new File("results/delay-cell-sum-test.wav"));
@@ -121,7 +122,7 @@ public class DelayCellTest extends TestSuiteBase implements CellFeatures, RGBFea
 	 */
 	@Test
 	public void delayScaleFactor() {
-		CellList c = w(0, "Library/Snare Perc DD.wav")
+		CellList c = w(0, getTestWavPath())
 				.d(i -> c(2.0))
 				.map(fc(i -> sf(0.5)))
 				.o(i -> new File("results/delay-cell-scale-factor-test.wav"));
@@ -150,7 +151,7 @@ public class DelayCellTest extends TestSuiteBase implements CellFeatures, RGBFea
 	@Test
 	public void filter() {
 		Supplier<Runnable> r =
-				w(0, "Library/Snare Perc DD.wav")
+				w(0, getTestWavPath())
 						.f(i -> hp(2000, 0.1))
 						.d(i -> c(2.0))
 						.o(i -> new File("results/filter-delay-cell.wav"))
@@ -180,7 +181,7 @@ public class DelayCellTest extends TestSuiteBase implements CellFeatures, RGBFea
 	@Test
 	public void filterLoopComparison() {
 		Supplier<Runnable> r =
-				iter(w(0, "Library/Snare Perc DD.wav")
+				iter(w(0, getTestWavPath())
 								.f(i -> hp(2000, 0.1))
 								.d(i -> c(2.0))
 								.o(i -> new File("results/filter-loop-comparison-a.wav")),
@@ -198,7 +199,7 @@ public class DelayCellTest extends TestSuiteBase implements CellFeatures, RGBFea
 		System.out.println("\n-----\n");
 
 		r =
-				iter(w(0, "Library/Snare Perc DD.wav")
+				iter(w(0, getTestWavPath())
 								.f(i -> hp(2000, 0.1))
 								.d(i -> c(2.0))
 								.o(i -> new File("results/filter-loop-comparison-b.wav")),
@@ -239,7 +240,7 @@ public class DelayCellTest extends TestSuiteBase implements CellFeatures, RGBFea
 	@Test
 	public void reverb() {
 		Supplier<Runnable> r =
-				iter(w(0, "Library/Snare Perc DD.wav")
+				iter(w(0, getTestWavPath())
 								.f(i -> hp(2000, 0.1))
 								.d(i -> c(2.0))
 								.map(fc(i -> new DelayNetwork(32, OutputLine.sampleRate, false)))
@@ -279,7 +280,7 @@ public class DelayCellTest extends TestSuiteBase implements CellFeatures, RGBFea
 
 		CellularTemporalFactor<PackedCollection> adjustment = generator.toFactor(() -> v, this::a);
 
-		CellList cells = w(0, "Library/Snare Perc DD.wav");
+		CellList cells = w(0, getTestWavPath());
 		cells.addRequirement(adjustment);
 
 		cells = cells
@@ -316,7 +317,7 @@ public class DelayCellTest extends TestSuiteBase implements CellFeatures, RGBFea
 		OperationList.setAbortFlag(abortFlag);
 
 		Supplier<Runnable> r =
-				w(0, "Library/Snare Perc DD.wav")
+				w(0, getTestWavPath())
 						.d(i -> c(2.0))
 						.o(i -> new File("results/delay-cell-abort-test.wav"))
 						.sec(120);

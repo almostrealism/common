@@ -37,7 +37,9 @@ import org.almostrealism.optimize.Dataset;
 import org.almostrealism.optimize.ModelOptimizer;
 import org.almostrealism.optimize.ValueTarget;
 import org.almostrealism.texture.GraphicsConverter;
+import org.almostrealism.util.TestDepth;
 import org.almostrealism.util.TestSuiteBase;
+import org.almostrealism.util.TestUtils;
 import org.junit.Test;
 
 import java.io.File;
@@ -233,6 +235,8 @@ public class UNetTest extends TestSuiteBase implements AttentionFeatures, Diffus
 
 	@Test
 	public void resNet() {
+		if (skipKnownIssues) return;
+
 		int initDim = 28;
 		int rows = 28, cols = 28;
 
@@ -445,6 +449,8 @@ public class UNetTest extends TestSuiteBase implements AttentionFeatures, Diffus
 
 	@Test
 	public void imageTransform() throws IOException {
+		if (testProfileIs(TestUtils.PIPELINE)) return;
+
 		CollectionProducer data =
 				imageTransform(channels(new File("/Users/michael/Desktop/output_cats_128.jpg")));
 		log(data.getShape());

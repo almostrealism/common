@@ -3,9 +3,11 @@ name: "Build and Test"
 on:
   workflow_dispatch:
   pull_request:
+    branches:
+      - master
   push:
     branches:
-      - main
+      - master
 
 jobs:
   build:
@@ -31,7 +33,7 @@ jobs:
     needs: build
     runs-on: ubuntu-latest-16-cores
     strategy:
-      fail-fast: false
+      fail-fast: true
       matrix:
         group: [0, 1, 2, 3, 4, 5]
     steps:
@@ -51,9 +53,9 @@ jobs:
       - name: Build (skip tests)
         run: mvn install -DskipTests
 
-      - name: Run Tests (Group ${{ matrix.group }}, excluding ml)
+      - name: Run Utils Tests (Group ${{ matrix.group }})
         run: |
-          LD_LIBRARY_PATH=Extensions mvn test -pl 'utils' \
+          LD_LIBRARY_PATH=Extensions mvn test -pl utils \
            -DAR_HARDWARE_DRIVER=native \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS=Extensions \
@@ -75,12 +77,8 @@ jobs:
           retention-days: 1
 
   test-ml:
-    needs: build
+    needs: test
     runs-on: ubuntu-latest-16-cores
-    strategy:
-      fail-fast: false
-      matrix:
-        group: [0, 1]
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -98,15 +96,13 @@ jobs:
       - name: Build (skip tests)
         run: mvn install -DskipTests
 
-      - name: Run ML Tests (Group ${{ matrix.group }})
+      - name: Run ML Tests
         run: |
           LD_LIBRARY_PATH=Extensions mvn test -pl ml \
            -DAR_HARDWARE_DRIVER=native \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS=Extensions \
-           -DAR_TEST_PROFILE=pipeline \
-           -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=2
+           -DAR_TEST_PROFILE=pipeline
 
       - name: Collect Coverage Data
         if: always()
@@ -118,12 +114,54 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: coverage-ml-group-${{ matrix.group }}
+          name: coverage-ml
+          path: coverage-data/
+          retention-days: 1
+
+  test-audio:
+    needs: test-ml
+    runs-on: ubuntu-latest-16-cores
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'adopt'
+          cache: 'maven'
+
+      - name: Build (skip tests)
+        run: mvn install -DskipTests
+
+      - name: Run Audio Tests
+        run: |
+          LD_LIBRARY_PATH=Extensions mvn test -pl audio \
+           -DAR_HARDWARE_DRIVER=native \
+           -DAR_HARDWARE_MEMORY_SCALE=7 \
+           -DAR_HARDWARE_LIBS=Extensions \
+           -DAR_TEST_PROFILE=pipeline
+
+      - name: Collect Coverage Data
+        if: always()
+        run: |
+          mkdir -p coverage-data
+          find . -path "*/target/jacoco.exec" -exec cp --parents {} coverage-data/ \;
+
+      - name: Upload Coverage Data
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-audio
           path: coverage-data/
           retention-days: 1
 
   analysis:
-    needs: [test, test-ml]
+    needs: [test, test-ml, test-audio]
     if: always()
     runs-on: ubuntu-latest
     permissions:
@@ -179,13 +217,10 @@ jobs:
               --destfile merged-jacoco.exec
 
             # Generate XML report for Qodana
-            # Need to specify all class directories
-            CLASS_DIRS=$(find . -path "*/target/classes" -type d | tr '\n' ':')
-            SOURCE_DIRS=$(find . -path "*/src/main/java" -type d | tr '\n' ':')
-
+            # Need to specify all class directories (each as separate --classfiles arg)
             java -jar jacoco-cli/lib/jacococli.jar report merged-jacoco.exec \
-              --classfiles "$CLASS_DIRS" \
-              --sourcefiles "$SOURCE_DIRS" \
+              $(find . -path "*/target/classes" -type d -exec echo --classfiles {} \;) \
+              $(find . -path "*/src/main/java" -type d -exec echo --sourcefiles {} \;) \
               --xml .qodana/code-coverage/coverage.xml \
               --html .qodana/code-coverage/html
 
