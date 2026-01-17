@@ -16,6 +16,7 @@
 
 package org.almostrealism.audio.line.test;
 
+import org.almostrealism.audio.AudioTestFeatures;
 import org.almostrealism.audio.CellFeatures;
 import org.almostrealism.audio.CellList;
 import org.almostrealism.audio.line.BufferDefaults;
@@ -35,9 +36,7 @@ import java.io.File;
  * with {@link BufferedOutputScheduler}. These tests replicate the MixerTests pattern
  * of using Producer-based schedulable buffered writes for reliable real-time audio.
  */
-public class RealtimePlaybackTest extends TestSuiteBase implements CellFeatures {
-
-	private static final File TEST_FILE = new File("Library/RAW_IU_BORDER_B.wav");
+public class RealtimePlaybackTest extends TestSuiteBase implements CellFeatures, AudioTestFeatures {
 
 	/**
 	 * Tests basic buffered real-time playback using BufferedOutputScheduler with a
@@ -47,10 +46,7 @@ public class RealtimePlaybackTest extends TestSuiteBase implements CellFeatures 
 	 */
 	@Test
 	public void bufferedRealtimePlayback() throws Exception {
-		if (!TEST_FILE.exists()) {
-			log("Test file not found, skipping bufferedRealtimePlayback test");
-			return;
-		}
+		File testFile = getTestWavFile();
 
 		// Create audio format: 44100 Hz, 16-bit, stereo, signed PCM, little-endian
 		AudioFormat format = new AudioFormat(
@@ -72,7 +68,7 @@ public class RealtimePlaybackTest extends TestSuiteBase implements CellFeatures 
 		SourceDataOutputLine outputLine = new SourceDataOutputLine(line, bufferSize);
 
 		// Load WAV file as a WaveCell (Producer-based)
-		CellList cells = w(0, TEST_FILE.getPath());
+		CellList cells = w(0, testFile.getPath());
 
 		// Create BufferedOutputScheduler with the cell list as the Producer source
 		BufferedOutputScheduler scheduler = cells.buffer(outputLine);
@@ -112,10 +108,7 @@ public class RealtimePlaybackTest extends TestSuiteBase implements CellFeatures 
 	 */
 	@Test
 	public void bufferedPositionTracking() throws Exception {
-		if (!TEST_FILE.exists()) {
-			log("Test file not found, skipping bufferedPositionTracking test");
-			return;
-		}
+		File testFile = getTestWavFile();
 
 		AudioFormat format = new AudioFormat(44100, 16, 2, true, false);
 		SourceDataLine line = AudioSystem.getSourceDataLine(format);
@@ -126,7 +119,7 @@ public class RealtimePlaybackTest extends TestSuiteBase implements CellFeatures 
 		SourceDataOutputLine outputLine = new SourceDataOutputLine(line, bufferSize);
 
 		// Create audio source
-		CellList cells = w(0, TEST_FILE.getPath());
+		CellList cells = w(0, testFile.getPath());
 
 		// Create scheduler
 		BufferedOutputScheduler scheduler = cells.buffer(outputLine);
@@ -163,10 +156,7 @@ public class RealtimePlaybackTest extends TestSuiteBase implements CellFeatures 
 	 */
 	@Test
 	public void bufferedLifecycleManagement() throws Exception {
-		if (!TEST_FILE.exists()) {
-			log("Test file not found, skipping bufferedLifecycleManagement test");
-			return;
-		}
+		File testFile = getTestWavFile();
 
 		AudioFormat format = new AudioFormat(44100, 16, 2, true, false);
 		SourceDataLine line = AudioSystem.getSourceDataLine(format);
@@ -182,7 +172,7 @@ public class RealtimePlaybackTest extends TestSuiteBase implements CellFeatures 
 		Assert.assertTrue("Line should be active after start", outputLine.isActive());
 
 		// Create audio source
-		CellList cells = w(0, TEST_FILE.getPath());
+		CellList cells = w(0, testFile.getPath());
 
 		// Create and start scheduler
 		BufferedOutputScheduler scheduler = cells.buffer(outputLine);
@@ -213,10 +203,7 @@ public class RealtimePlaybackTest extends TestSuiteBase implements CellFeatures 
 	 */
 	@Test
 	public void bufferedWithCustomBufferSize() throws Exception {
-		if (!TEST_FILE.exists()) {
-			log("Test file not found, skipping bufferedWithCustomBufferSize test");
-			return;
-		}
+		File testFile = getTestWavFile();
 
 		AudioFormat format = new AudioFormat(44100, 16, 2, true, false);
 		SourceDataLine line = AudioSystem.getSourceDataLine(format);
@@ -229,7 +216,7 @@ public class RealtimePlaybackTest extends TestSuiteBase implements CellFeatures 
 		Assert.assertEquals("Buffer size should match", customBufferSize, outputLine.getBufferSize());
 
 		// Create audio source
-		CellList cells = w(0, TEST_FILE.getPath());
+		CellList cells = w(0, testFile.getPath());
 
 		// Create scheduler - it will use the buffer size from the output line
 		BufferedOutputScheduler scheduler = cells.buffer(outputLine);
@@ -259,10 +246,7 @@ public class RealtimePlaybackTest extends TestSuiteBase implements CellFeatures 
 	 */
 	@Test
 	public void bufferedLoopedPlaybackWithVerboseLogging() throws Exception {
-		if (!TEST_FILE.exists()) {
-			log("Test file not found, skipping bufferedLoopedPlaybackWithVerboseLogging test");
-			return;
-		}
+		File testFile = getTestWavFile();
 
 		// Enable verbose logging to monitor scheduler behavior
 		boolean previousVerbose = BufferedOutputScheduler.enableVerbose;
@@ -297,8 +281,8 @@ public class RealtimePlaybackTest extends TestSuiteBase implements CellFeatures 
 			SourceDataOutputLine outputLine = new SourceDataOutputLine(line, bufferSize);
 
 			// Load WAV file with 8 beat loop enabled
-			log("Loading " + TEST_FILE.getPath() + " with looping enabled");
-			CellList cells = w(0, c(bpm(125).l(8)), TEST_FILE.getPath());
+			log("Loading " + testFile.getPath() + " with looping enabled");
+			CellList cells = w(0, c(bpm(125).l(8)), testFile.getPath());
 
 			// Create BufferedOutputScheduler
 			BufferedOutputScheduler scheduler = cells.buffer(outputLine);

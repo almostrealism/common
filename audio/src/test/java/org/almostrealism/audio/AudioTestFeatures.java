@@ -23,6 +23,11 @@ import org.almostrealism.audio.line.LineUtilities;
 import org.almostrealism.audio.line.BufferDefaults;
 import org.almostrealism.collect.PackedCollection;
 
+import java.io.File;
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.file.Files;
+
 import static org.junit.Assert.*;
 
 /**
@@ -347,5 +352,97 @@ public interface AudioTestFeatures {
 		double correlation = computeCorrelation(expected, actual);
 		assertTrue("Audio correlation " + correlation + " below threshold " + minCorrelation,
 				correlation >= minCorrelation);
+	}
+
+	/**
+	 * Returns a temporary WAV file containing synthetic audio data.
+	 * The file is created on first call and cached for subsequent calls.
+	 * The file is marked for deletion when the JVM exits.
+	 *
+	 * <p>The generated file contains a 2-second sine wave at 440Hz (A4),
+	 * which is suitable for testing audio processing pipelines without
+	 * requiring external audio files.</p>
+	 *
+	 * @return File pointing to the temporary WAV file
+	 */
+	default File getTestWavFile() {
+		return TestWavFileHolder.getTestWavFile();
+	}
+
+	/**
+	 * Returns a temporary WAV file with custom parameters.
+	 * A new file is generated each time this method is called.
+	 * The file is marked for deletion when the JVM exits.
+	 *
+	 * @param frequency Frequency in Hz
+	 * @param durationSeconds Duration in seconds (max 5 seconds)
+	 * @return File pointing to the temporary WAV file
+	 */
+	default File getTestWavFile(double frequency, double durationSeconds) {
+		return TestWavFileHolder.createTestWavFile(frequency, durationSeconds);
+	}
+
+	/**
+	 * Returns the path to a temporary WAV file as a String.
+	 * Convenience method for APIs that expect a path string.
+	 *
+	 * @return Path to the temporary WAV file
+	 */
+	default String getTestWavPath() {
+		return getTestWavFile().getAbsolutePath();
+	}
+
+	/**
+	 * Internal holder class for lazy initialization of the default test WAV file.
+	 * Uses a static holder to ensure the file is created only once across all tests.
+	 */
+	final class TestWavFileHolder {
+		private static volatile File cachedFile;
+
+		private TestWavFileHolder() {}
+
+		static File getTestWavFile() {
+			if (cachedFile == null) {
+				synchronized (TestWavFileHolder.class) {
+					if (cachedFile == null) {
+						cachedFile = createTestWavFile(440.0, 2.0);
+					}
+				}
+			}
+			return cachedFile;
+		}
+
+		static File createTestWavFile(double frequency, double durationSeconds) {
+			if (durationSeconds > 5.0) {
+				throw new IllegalArgumentException("Test WAV duration must be <= 5 seconds");
+			}
+
+			try {
+				File tempFile = Files.createTempFile("test_audio_", ".wav").toFile();
+				tempFile.deleteOnExit();
+
+				int sampleRate = OutputLine.sampleRate;
+				int numFrames = (int) (durationSeconds * sampleRate);
+				int numChannels = 1;
+				int validBits = 16;
+
+				double[][] buffer = new double[numChannels][numFrames];
+				double phaseIncrement = 2.0 * Math.PI * frequency / sampleRate;
+				double phase = 0.0;
+
+				for (int i = 0; i < numFrames; i++) {
+					buffer[0][i] = 0.8 * Math.sin(phase);
+					phase += phaseIncrement;
+				}
+
+				try (WavFile wav = WavFile.newWavFile(tempFile, numChannels, numFrames, validBits, sampleRate)) {
+					wav.writeFrames(buffer, numFrames);
+				}
+
+				return tempFile;
+			} catch (IOException e) {
+				throw new UncheckedIOException("Failed to create test WAV file", e);
+			}
+		}
 	}
 }

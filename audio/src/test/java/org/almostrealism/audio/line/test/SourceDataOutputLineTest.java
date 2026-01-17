@@ -16,6 +16,7 @@
 
 package org.almostrealism.audio.line.test;
 
+import org.almostrealism.audio.AudioTestFeatures;
 import org.almostrealism.audio.CellFeatures;
 import org.almostrealism.audio.CellList;
 import org.almostrealism.audio.line.BufferedOutputScheduler;
@@ -30,7 +31,7 @@ import java.io.File;
  * Tests for {@link SourceDataOutputLine} using proper buffered, scheduled
  * Producer-based writes with {@link BufferedOutputScheduler}.
  */
-public class SourceDataOutputLineTest extends TestSuiteBase implements CellFeatures {
+public class SourceDataOutputLineTest extends TestSuiteBase implements CellFeatures, AudioTestFeatures {
 
 	/**
 	 * Tests buffered playback of WAV file data using BufferedOutputScheduler.
@@ -38,12 +39,7 @@ public class SourceDataOutputLineTest extends TestSuiteBase implements CellFeatu
 	 */
 	@Test
 	public void playWaveData() throws Exception {
-		File f = new File("Library/SN_Forever_Future.wav");
-
-		if (!f.exists()) {
-			System.out.println("Test file not found, skipping playWaveData test");
-			return;
-		}
+		File f = getTestWavFile();
 
 		// Create output line with default format
 		SourceDataOutputLine outputLine = (SourceDataOutputLine) LineUtilities.getLine();
