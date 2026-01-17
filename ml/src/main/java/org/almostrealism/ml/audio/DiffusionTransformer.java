@@ -372,6 +372,22 @@ public class DiffusionTransformer implements DitModel, DiffusionTransformerFeatu
 	public PackedCollection getPreTransformerState() { return preTransformerState; }
 	public PackedCollection getPostTransformerState() { return postTransformerState; }
 
+	protected void setPreTransformerState(PackedCollection state) { this.preTransformerState = state; }
+	protected void setPostTransformerState(PackedCollection state) { this.postTransformerState = state; }
+
+	// Protected getters for subclass access
+	protected int getIoChannels() { return ioChannels; }
+	protected int getEmbedDim() { return embedDim; }
+	protected int getDepth() { return depth; }
+	protected int getNumHeads() { return numHeads; }
+	protected int getPatchSize() { return patchSize; }
+	protected int getCondTokenDim() { return condTokenDim; }
+	protected int getGlobalCondDim() { return globalCondDim; }
+	protected int getAudioSeqLen() { return audioSeqLen; }
+	protected int getCondSeqLen() { return condSeqLen; }
+	protected int getBatchSize() { return batchSize; }
+	protected Map<Integer, PackedCollection> getAttentionScores() { return attentionScores; }
+
 	@Override
 	public void destroy() {
 		if (stateDictionary != null) {
