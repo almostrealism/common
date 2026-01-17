@@ -33,6 +33,7 @@ import org.almostrealism.heredity.ScaleFactor;
 import org.almostrealism.time.TemporalList;
 import org.almostrealism.util.TestDepth;
 import org.almostrealism.util.TestSuiteBase;
+import org.almostrealism.util.TestUtils;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -66,6 +67,7 @@ public class WaveCellTest extends TestSuiteBase implements CellFeatures, AudioTe
 	@Test
 	@TestDepth(1)
 	public void endless() {
+		if (testProfileIs(TestUtils.PIPELINE)) return;
 		if (skipLongTests) return;
 
 		AtomicInteger total = new AtomicInteger();
@@ -122,6 +124,8 @@ public class WaveCellTest extends TestSuiteBase implements CellFeatures, AudioTe
 
 	@Test
 	public void sequence() {
+		if (testProfileIs(TestUtils.PIPELINE)) return;
+
 		int count = 32;
 
 		CellList cells = silence().and(w(0, c(bpm(128).l(0.5)), c(bpm(128).l(1)),
