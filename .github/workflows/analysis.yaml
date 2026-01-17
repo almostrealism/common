@@ -30,7 +30,6 @@ jobs:
         run: mvn install -DskipTests
 
   test:
-    if: false  # Temporarily disabled - enable when audio tests are validated
     needs: build
     runs-on: ubuntu-latest-16-cores
     strategy:
@@ -78,7 +77,6 @@ jobs:
           retention-days: 1
 
   test-ml:
-    if: false  # Temporarily disabled - enable when audio tests are validated
     needs: test
     runs-on: ubuntu-latest-16-cores
     steps:
@@ -121,7 +119,7 @@ jobs:
           retention-days: 1
 
   test-audio:
-    needs: build  # Change back to test-ml when re-enabling other tests
+    needs: test-ml
     runs-on: ubuntu-latest-16-cores
     steps:
       - name: Checkout Code
@@ -163,7 +161,7 @@ jobs:
           retention-days: 1
 
   analysis:
-    needs: [test-audio]  # Add back test, test-ml when re-enabling
+    needs: [test, test-ml, test-audio]  # Add back test, test-ml when re-enabling
     if: always()
     runs-on: ubuntu-latest
     permissions:
@@ -219,13 +217,10 @@ jobs:
               --destfile merged-jacoco.exec
 
             # Generate XML report for Qodana
-            # Need to specify all class directories
-            CLASS_DIRS=$(find . -path "*/target/classes" -type d | tr '\n' ':')
-            SOURCE_DIRS=$(find . -path "*/src/main/java" -type d | tr '\n' ':')
-
+            # Need to specify all class directories (each as separate --classfiles arg)
             java -jar jacoco-cli/lib/jacococli.jar report merged-jacoco.exec \
-              --classfiles "$CLASS_DIRS" \
-              --sourcefiles "$SOURCE_DIRS" \
+              $(find . -path "*/target/classes" -type d -exec echo --classfiles {} \;) \
+              $(find . -path "*/src/main/java" -type d -exec echo --sourcefiles {} \;) \
               --xml .qodana/code-coverage/coverage.xml \
               --html .qodana/code-coverage/html
 
