@@ -88,6 +88,7 @@ public class AudioSimilarityGraph implements IndexedGraph<WaveDetails> {
 	private final AudioLibrary library;
 	private final List<WaveDetails> nodes;
 	private final Map<String, Integer> nodeIndex;
+	private final Map<String, WaveDetails> detailsLookup;
 	private final double threshold;
 
 	/**
@@ -113,11 +114,37 @@ public class AudioSimilarityGraph implements IndexedGraph<WaveDetails> {
 		this.threshold = threshold;
 		this.nodes = new ArrayList<>(library.getAllDetails());
 		this.nodeIndex = new HashMap<>();
+		this.detailsLookup = null;
 
 		for (int i = 0; i < nodes.size(); i++) {
 			WaveDetails node = nodes.get(i);
 			if (node.getIdentifier() != null) {
 				nodeIndex.put(node.getIdentifier(), i);
+			}
+		}
+	}
+
+	/**
+	 * Creates a new AudioSimilarityGraph from a collection of WaveDetails with a similarity threshold.
+	 *
+	 * <p>This constructor is used when loading pre-computed data from protobuf without
+	 * an AudioLibrary instance.</p>
+	 *
+	 * @param details collection of WaveDetails with pre-computed similarities
+	 * @param threshold minimum similarity to include as an edge (0.0 = include all)
+	 */
+	public AudioSimilarityGraph(Collection<WaveDetails> details, double threshold) {
+		this.library = null;
+		this.threshold = threshold;
+		this.nodes = new ArrayList<>(details);
+		this.nodeIndex = new HashMap<>();
+		this.detailsLookup = new HashMap<>();
+
+		for (int i = 0; i < nodes.size(); i++) {
+			WaveDetails node = nodes.get(i);
+			if (node.getIdentifier() != null) {
+				nodeIndex.put(node.getIdentifier(), i);
+				detailsLookup.put(node.getIdentifier(), node);
 			}
 		}
 	}
@@ -130,6 +157,19 @@ public class AudioSimilarityGraph implements IndexedGraph<WaveDetails> {
 	 */
 	public static AudioSimilarityGraph fromLibrary(AudioLibrary library) {
 		return new AudioSimilarityGraph(library);
+	}
+
+	/**
+	 * Creates a new graph from a collection of WaveDetails with pre-computed similarities.
+	 *
+	 * <p>This factory method is used when loading pre-computed data from protobuf
+	 * without an AudioLibrary instance.</p>
+	 *
+	 * @param details collection of WaveDetails with pre-computed similarities
+	 * @return a new AudioSimilarityGraph
+	 */
+	public static AudioSimilarityGraph fromDetails(Collection<WaveDetails> details) {
+		return new AudioSimilarityGraph(details, 0.0);
 	}
 
 	/**
@@ -192,9 +232,18 @@ public class AudioSimilarityGraph implements IndexedGraph<WaveDetails> {
 
 		return similarities.entrySet().stream()
 				.filter(e -> e.getValue() > threshold)
-				.map(e -> library.get(e.getKey()))
+				.map(e -> getDetails(e.getKey()))
 				.filter(d -> d != null)
 				.collect(Collectors.toList());
+	}
+
+	private WaveDetails getDetails(String identifier) {
+		if (library != null) {
+			return library.get(identifier);
+		} else if (detailsLookup != null) {
+			return detailsLookup.get(identifier);
+		}
+		return null;
 	}
 
 	@Override

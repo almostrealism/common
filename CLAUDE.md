@@ -26,6 +26,31 @@
 
 ---
 
+## ⚠️ CRITICAL: DO NOT MODIFY POM.XML FILES ⚠️
+
+**THIS IS AN ABSOLUTE RULE WITH NO EXCEPTIONS.**
+
+- **NEVER** add dependencies to pom.xml files unless you are 100% certain the dependency is not already available transitively
+- **NEVER** assume you understand the module dependency graph - it is complex and you WILL get it wrong
+- **IF IN DOUBT, DO NOT TOUCH THE POM FILE** - just use the classes and let compilation fail if the dependency is truly missing
+- The human developer will fix any missing dependencies - this is NOT your job
+
+**Why this matters:** The AR project has a complex transitive dependency structure. Adding a dependency that already exists transitively:
+- Creates redundant declarations that cause maintenance burden
+- Can cause version conflicts
+- Demonstrates a fundamental misunderstanding of the codebase
+- Wastes the human developer's time fixing your mistakes
+
+**What to do instead:**
+1. Write your code assuming the dependency exists
+2. Run `mvn compile` to verify
+3. If compilation succeeds, the dependency was already available transitively
+4. If compilation fails with "package does not exist", inform the user - DO NOT modify the pom.xml yourself
+
+**The ONLY exception:** If the user explicitly instructs you to add a specific dependency to a specific pom.xml file.
+
+---
+
 ## ⚠️ CRITICAL: NEVER REFERENCE VERSION NUMBERS ⚠️
 
 **THIS IS AN ABSOLUTE RULE WITH NO EXCEPTIONS.**

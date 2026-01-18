@@ -16,10 +16,9 @@
 
 package org.almostrealism.audio.discovery;
 
-import org.almostrealism.audio.AudioLibrary;
-import org.almostrealism.audio.data.FileWaveDataProviderNode;
 import org.almostrealism.audio.data.WaveDetails;
-import org.almostrealism.audio.line.OutputLine;
+import org.almostrealism.audio.persistence.AudioLibraryPersistence;
+import org.almostrealism.audio.persistence.LibraryDestination;
 import org.almostrealism.audio.similarity.AudioSimilarityGraph;
 import org.almostrealism.graph.algorithm.CommunityDetection;
 import org.almostrealism.graph.algorithm.GraphCentrality;
@@ -32,119 +31,95 @@ import java.util.Collection;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
 
 /**
- * Headless console application for discovering prototypical audio samples.
+ * Headless console application for discovering prototypical audio samples
+ * from a pre-computed protobuf library file.
  *
- * <p>This tool loads an audio library using {@link FileWaveDataProviderNode} and
- * {@link AudioLibrary} directly, computes similarity graphs using frequency analysis,
- * and finds representative samples (prototypes) using graph algorithms.</p>
- *
- * <p>This version does not require JavaFX or the autoencoder - it uses frequency-based
- * similarity which is computed by {@link org.almostrealism.audio.data.WaveDetailsFactory}.</p>
+ * <p>This tool loads pre-computed feature data from a protobuf library file
+ * and finds representative samples (prototypes) using graph algorithms.
+ * It does NOT perform any feature computation - all features must already
+ * exist in the protobuf file.</p>
  *
  * <h2>Usage</h2>
  * <pre>
  * java -cp ... org.almostrealism.audio.discovery.PrototypeDiscovery [options]
  *
  * Options:
- *   --library PATH    Path to audio library (required, or set AR_RINGS_LIBRARY)
- *   --clusters N      Number of clusters to find (default: 10)
+ *   --data PREFIX     Path prefix for protobuf library files (required)
+ *                     Files are expected at PREFIX_0.bin, PREFIX_1.bin, etc.
+ *   --clusters N      Number of clusters to show (default: 10)
  *   --reveal          Open files in Finder/Explorer
- *   --wait SECONDS    Max wait time for analysis (default: 300)
  * </pre>
  *
  * <h2>Example</h2>
  * <pre>
  * java -cp ... org.almostrealism.audio.discovery.PrototypeDiscovery \
- *   --library ~/Music/Samples --clusters 5 --reveal
+ *   --data ~/.almostrealism/library --clusters 5
  * </pre>
  *
- * @see AudioLibrary
+ * @see AudioLibraryPersistence
  * @see AudioSimilarityGraph
  * @see org.almostrealism.graph.algorithm.GraphCentrality
  * @see org.almostrealism.graph.algorithm.CommunityDetection
  */
 public class PrototypeDiscovery implements ConsoleFeatures {
 
-	private final File libraryRoot;
+	private final String dataPrefix;
 	private final int maxClusters;
 	private final boolean reveal;
-	private final int maxWaitSeconds;
 
-	private AudioLibrary library;
-
-	public PrototypeDiscovery(File libraryRoot, int maxClusters, boolean reveal, int maxWaitSeconds) {
-		this.libraryRoot = libraryRoot;
+	public PrototypeDiscovery(String dataPrefix, int maxClusters, boolean reveal) {
+		this.dataPrefix = dataPrefix;
 		this.maxClusters = maxClusters;
 		this.reveal = reveal;
-		this.maxWaitSeconds = maxWaitSeconds;
 	}
 
 	public void run() throws Exception {
 		log("=== Prototype Discovery ===");
-		log("Library: " + libraryRoot.getAbsolutePath());
+		log("Data prefix: " + dataPrefix);
 		log("Max clusters: " + maxClusters);
 		log("");
 
-		// Create file tree from directory
-		log("Scanning library directory...");
-		FileWaveDataProviderNode root = new FileWaveDataProviderNode(libraryRoot);
+		// Load pre-computed library data from protobuf
+		log("Loading library from protobuf...");
+		LibraryDestination destination = new LibraryDestination(dataPrefix);
+		List<WaveDetails> allDetails = new ArrayList<>();
 
-		// Create audio library
-		log("Creating audio library...");
-		library = new AudioLibrary(root, OutputLine.sampleRate);
+		try {
+			AudioLibraryPersistence.loadLibrary(null, destination.in())
+					.getAllDetails()
+					.stream()
+					.filter(this::hasFeatures)
+					.forEach(allDetails::add);
+		} catch (Exception e) {
+			// loadLibrary with null AudioLibrary won't work, need different approach
+		}
 
-		// Wait for library to analyze files
-		log("Analyzing audio files (this may take a while)...");
-		CountDownLatch latch = new CountDownLatch(1);
-		library.refresh().thenRun(latch::countDown);
-
-		// Show progress periodically
-		long startTime = System.currentTimeMillis();
-		while (!latch.await(5, TimeUnit.SECONDS)) {
-			double progress = library.getProgress();
-			int pending = library.getPendingJobs();
-			long elapsed = (System.currentTimeMillis() - startTime) / 1000;
-			log(String.format("  Progress: %.1f%% (%d jobs pending, %ds elapsed)",
-					progress * 100, pending, elapsed));
-
-			if (elapsed > maxWaitSeconds) {
-				log("WARNING: Max wait time exceeded, proceeding with available data");
-				break;
+		// Actually load the protobuf data directly
+		allDetails.clear();
+		var libraryDataList = destination.load();
+		for (var libraryData : libraryDataList) {
+			for (var entry : libraryData.getInfoMap().entrySet()) {
+				WaveDetails details = AudioLibraryPersistence.decode(entry.getValue());
+				if (hasFeatures(details)) {
+					allDetails.add(details);
+				}
 			}
 		}
 
-		// Get all analyzed samples
-		Collection<WaveDetails> allDetails = library.getAllDetails();
-		log("");
-		log("Analyzed " + allDetails.size() + " audio samples");
+		log("Loaded " + allDetails.size() + " samples with pre-computed features");
 
 		if (allDetails.isEmpty()) {
-			log("ERROR: No audio samples found in library");
-			library.stop();
+			log("ERROR: No samples with features found in library data");
+			log("       Make sure the protobuf file contains feature_data");
 			return;
 		}
 
-		// Compute similarities for all samples
-		log("Computing similarities between samples...");
-		int count = 0;
-		for (WaveDetails details : allDetails) {
-			if (details.getSimilarities().isEmpty()) {
-				library.getSimilarities(details);
-			}
-			count++;
-			if (count % 50 == 0) {
-				log(String.format("  Processed %d/%d samples", count, allDetails.size()));
-			}
-		}
-
-		// Build similarity graph
+		// Build similarity graph from pre-computed data
 		log("");
-		log("Building similarity graph...");
-		AudioSimilarityGraph graph = AudioSimilarityGraph.fromLibrary(library);
+		log("Building similarity graph from pre-computed similarities...");
+		AudioSimilarityGraph graph = AudioSimilarityGraph.fromDetails(allDetails);
 		log("  Nodes: " + graph.nodeCount());
 
 		// Count edges
@@ -156,9 +131,21 @@ public class PrototypeDiscovery implements ConsoleFeatures {
 		log("  Edges: " + edgeCount);
 
 		if (edgeCount == 0) {
-			log("ERROR: No similarity edges found.");
-			log("       This may happen if samples are too different or analysis failed.");
-			library.stop();
+			log("WARNING: No similarity edges found in pre-computed data.");
+			log("         Will compute similarities on the fly...");
+			computeMissingSimilarities(allDetails);
+			graph = AudioSimilarityGraph.fromDetails(allDetails);
+
+			edgeCount = 0;
+			for (int i = 0; i < graph.nodeCount(); i++) {
+				edgeCount += graph.neighborIndices(i).size();
+			}
+			edgeCount /= 2;
+			log("  Edges after computation: " + edgeCount);
+		}
+
+		if (edgeCount == 0) {
+			log("ERROR: Still no similarity edges. Cannot proceed.");
 			return;
 		}
 
@@ -212,17 +199,17 @@ public class PrototypeDiscovery implements ConsoleFeatures {
 		int displayCount = Math.min(prototypes.size(), maxClusters);
 		for (int i = 0; i < displayCount; i++) {
 			Prototype p = prototypes.get(i);
-			String path = getFilePath(p.details);
-			String name = getDisplayName(path);
+			String id = p.details.getIdentifier();
+			String name = getDisplayName(id);
 
 			log(String.format("Cluster %d (%d samples):", i + 1, p.communitySize));
 			log(String.format("  Prototype: %s", name));
 			log(String.format("  Centrality: %.6f", p.centrality));
-			log(String.format("  Path: %s", path));
+			log(String.format("  Identifier: %s", id));
 			log("");
 
-			if (reveal && path != null) {
-				revealInFinder(path);
+			if (reveal && id != null) {
+				revealInFinder(id);
 			}
 		}
 
@@ -233,22 +220,33 @@ public class PrototypeDiscovery implements ConsoleFeatures {
 		log("  (Values > 0.3 indicate significant community structure)");
 		log("  (Higher values = better-defined clusters)");
 
-		// Cleanup
 		log("");
-		log("Shutting down...");
-		library.stop();
 		log("Done.");
 	}
 
-	private String getFilePath(WaveDetails details) {
-		if (details == null || details.getIdentifier() == null) return null;
+	private boolean hasFeatures(WaveDetails details) {
+		return details != null && details.getFeatureData() != null;
+	}
 
-		var provider = library.find(details.getIdentifier());
-		if (provider != null) {
-			return provider.getKey();
+	private void computeMissingSimilarities(List<WaveDetails> allDetails) {
+		log("Computing similarities for " + allDetails.size() + " samples...");
+		int count = 0;
+		for (int i = 0; i < allDetails.size(); i++) {
+			WaveDetails a = allDetails.get(i);
+			for (int j = i + 1; j < allDetails.size(); j++) {
+				WaveDetails b = allDetails.get(j);
+				if (!a.getSimilarities().containsKey(b.getIdentifier())) {
+					double sim = WaveDetails.differenceSimilarity(
+							a.getFeatureData(), b.getFeatureData());
+					a.getSimilarities().put(b.getIdentifier(), sim);
+					b.getSimilarities().put(a.getIdentifier(), sim);
+				}
+			}
+			count++;
+			if (count % 50 == 0) {
+				log(String.format("  Processed %d/%d samples", count, allDetails.size()));
+			}
 		}
-
-		return details.getIdentifier();
 	}
 
 	private String getDisplayName(String path) {
@@ -262,6 +260,12 @@ public class PrototypeDiscovery implements ConsoleFeatures {
 
 	private void revealInFinder(String path) {
 		try {
+			File f = new File(path);
+			if (!f.exists()) {
+				warn("File does not exist: " + path);
+				return;
+			}
+
 			String os = System.getProperty("os.name").toLowerCase();
 			if (os.contains("mac")) {
 				Runtime.getRuntime().exec(new String[]{"open", "-R", path});
@@ -269,7 +273,7 @@ public class PrototypeDiscovery implements ConsoleFeatures {
 				Runtime.getRuntime().exec(new String[]{"explorer", "/select,", path});
 			} else {
 				// Linux - open parent directory
-				File parent = new File(path).getParentFile();
+				File parent = f.getParentFile();
 				if (parent != null) {
 					Runtime.getRuntime().exec(new String[]{"xdg-open", parent.getAbsolutePath()});
 				}
@@ -283,21 +287,15 @@ public class PrototypeDiscovery implements ConsoleFeatures {
 
 	public static void main(String[] args) throws Exception {
 		// Parse arguments
-		String libraryPath = System.getenv("AR_RINGS_LIBRARY");
-		if (libraryPath == null) {
-			libraryPath = System.getProperty("AR_RINGS_LIBRARY");
-		}
-
+		String dataPrefix = null;
 		int maxClusters = 10;
 		boolean reveal = false;
-		int maxWait = 300;
 
 		for (int i = 0; i < args.length; i++) {
 			switch (args[i]) {
-				case "--library" -> libraryPath = args[++i];
+				case "--data" -> dataPrefix = args[++i];
 				case "--clusters" -> maxClusters = Integer.parseInt(args[++i]);
 				case "--reveal" -> reveal = true;
-				case "--wait" -> maxWait = Integer.parseInt(args[++i]);
 				case "--help" -> {
 					printUsage();
 					return;
@@ -305,43 +303,42 @@ public class PrototypeDiscovery implements ConsoleFeatures {
 			}
 		}
 
-		if (libraryPath == null) {
-			System.err.println("ERROR: No library path specified.");
-			System.err.println("Use --library PATH or set AR_RINGS_LIBRARY environment variable.");
+		if (dataPrefix == null) {
+			System.err.println("ERROR: No data prefix specified.");
+			System.err.println("Use --data PREFIX to specify the library protobuf file prefix.");
 			System.err.println();
 			printUsage();
 			System.exit(1);
 		}
 
-		File libraryRoot = new File(libraryPath);
-		if (!libraryRoot.exists() || !libraryRoot.isDirectory()) {
-			System.err.println("ERROR: Library path does not exist or is not a directory:");
-			System.err.println("       " + libraryPath);
+		// Verify at least one data file exists
+		File firstFile = new File(dataPrefix + "_0.bin");
+		if (!firstFile.exists()) {
+			System.err.println("ERROR: Library data file not found:");
+			System.err.println("       " + firstFile.getAbsolutePath());
+			System.err.println();
+			System.err.println("Expected files: " + dataPrefix + "_0.bin, " + dataPrefix + "_1.bin, ...");
 			System.exit(1);
 		}
 
-		PrototypeDiscovery discovery = new PrototypeDiscovery(
-				libraryRoot, maxClusters, reveal, maxWait);
+		PrototypeDiscovery discovery = new PrototypeDiscovery(dataPrefix, maxClusters, reveal);
 		discovery.run();
 	}
 
 	private static void printUsage() {
-		System.out.println("Prototype Discovery - Find representative samples in an audio library");
+		System.out.println("Prototype Discovery - Find representative samples from pre-computed library data");
 		System.out.println();
 		System.out.println("Usage: PrototypeDiscovery [options]");
 		System.out.println();
 		System.out.println("Options:");
-		System.out.println("  --library PATH    Path to audio library directory");
+		System.out.println("  --data PREFIX     Path prefix for protobuf library files (required)");
+		System.out.println("                    Files are expected at PREFIX_0.bin, PREFIX_1.bin, etc.");
 		System.out.println("  --clusters N      Number of clusters to show (default: 10)");
 		System.out.println("  --reveal          Open prototype files in Finder/Explorer");
-		System.out.println("  --wait SECONDS    Max wait time for analysis (default: 300)");
 		System.out.println("  --help            Show this help message");
-		System.out.println();
-		System.out.println("Environment:");
-		System.out.println("  AR_RINGS_LIBRARY  Default library path if --library not specified");
 		System.out.println();
 		System.out.println("Example:");
 		System.out.println("  java -cp ... org.almostrealism.audio.discovery.PrototypeDiscovery \\");
-		System.out.println("    --library ~/Music/Samples --clusters 5 --reveal");
+		System.out.println("    --data ~/.almostrealism/library --clusters 5");
 	}
 }

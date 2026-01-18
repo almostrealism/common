@@ -15,6 +15,19 @@ See [../CLAUDE.md](../CLAUDE.md) for full details on this policy.
 
 ---
 
+## ⚠️ CRITICAL: DO NOT MODIFY POM.XML FILES ⚠️
+
+**THIS IS AN ABSOLUTE RULE WITH NO EXCEPTIONS.**
+
+- **NEVER** add dependencies to pom.xml files
+- **NEVER** assume you understand the module dependency graph
+- **IF IN DOUBT, DO NOT TOUCH THE POM FILE**
+- Write your code, run `mvn compile`, and if it fails inform the user
+
+See [../CLAUDE.md](../CLAUDE.md) for full details on this policy.
+
+---
+
 ## ⚠️ CRITICAL: NEVER REFERENCE VERSION NUMBERS ⚠️
 
 **THIS IS AN ABSOLUTE RULE WITH NO EXCEPTIONS.**
