@@ -652,72 +652,77 @@ public class MyNativeEnabledApplication implements CodeFeatures {
 
 ### Machine Learning
 
-The system is gradually becoming fully-featured enough to support machine learning tasks.
-An example of CNN training is shown below. In the example below the input and loss
-computation are both random, so there isn't really anything useful being learned, but it
-is a good example of how to use the framework for these kinds of workloads.
+The framework supports full transformer-based large language model (LLM) architectures with
+hardware acceleration. The [ml module](ml/README.md) provides comprehensive documentation on
+building and running LLMs.
+
+#### Key Features
+
+- **StateDictionary** - Load model weights directly from HuggingFace-format protobuf exports
+- **Transformer Architectures** - Multi-head attention, grouped-query attention (GQA), rotary position embeddings (RoPE)
+- **Model Replication** - Full Qwen3 implementation with QK-normalization and SwiGLU activation
+- **Autoregressive Generation** - Token-by-token text generation with temperature-based sampling
+- **Tokenization** - Byte-level BPE tokenizers for text encoding/decoding
+
+#### Loading and Running a Model
 
 ```Java
-public class MyNativeEnabledApplication implements CodeFeatures {
-	public static void main(String[] args) {
-		new MyNativeEnabledApplication().trainCnn();
-	}
-	
-	public void trainCnn() {
-		int s = 10;
+import org.almostrealism.model.StateDictionary;
+import org.almostrealism.models.qwen3.Qwen3;
 
-		Tensor<Double> t = new Tensor<>();
-		shape(s, s).stream().forEach(pos -> t.insert(0.5 + 0.5 * Math.random(), pos));
+public class LLMExample {
+    public static void main(String[] args) throws Exception {
+        // Load model with StateDictionary (HuggingFace-format weights)
+        Qwen3 model = new Qwen3(
+            "/path/to/weights",
+            "/path/to/tokenizer.bin"
+        );
 
-		PackedCollection<?> input = t.pack();
-		train(input, model(s, s, 3, 8, 10));
-	}
+        // Configure generation
+        model.setTemperature(0.7);
 
-	protected void train(PackedCollection<?> input, Model model) {
-		CompiledModel compiled = model.compile();
-		log("Model compiled");
-
-		int epochSize = 1000;
-		int count = 100 * epochSize;
-
-		for (int i = 0; i < count; i++) {
-			input.fill(pos -> 0.5 + 0.5 * Math.random());
-
-			compiled.forward(input);
-
-			if (i % 1000 == 0) {
-				log("Input Size = " + input.getShape() +
-						"\t | epoch = " + i / epochSize);
-			}
-
-			compiled.backward(rand(model.lastBlock().getOutputShape()).get().evaluate());
-
-			if (i % 1000 == 0) {
-				log("\t\tbackprop\t\t\t | epoch = " + i / epochSize);
-			}
-		}
-	}
-
-	protected Model model(int r, int c, int convSize, int convFilters, int denseSize) {
-		Model model = new Model(shape(r, c));
-		model.addLayer(convolution2d(convSize, convFilters));
-		model.addLayer(pool2d(2));
-		model.addBlock(flatten());
-		model.addLayer(dense(denseSize));
-		model.addLayer(softmax());
-		log("Created model (" + model.getBlocks().size() + " blocks)");
-		return model;
-	}
+        // Generate text
+        model.run(
+            256,                    // Max tokens
+            "Once upon a time",     // Prompt
+            token -> System.out.print(token)  // Token callback
+        );
+    }
 }
 ```
 
-This functionality will be substantially improved during the remainder of 2024 prior to the release of
-version 1.0.0.
+#### Building Custom Models with StateDictionary
+
+```Java
+import org.almostrealism.model.StateDictionary;
+import org.almostrealism.layers.AttentionFeatures;
+
+public class CustomModel implements AttentionFeatures {
+    public void buildModel() {
+        // Load weights from exported HuggingFace model
+        StateDictionary stateDict = new StateDictionary("/path/to/weights");
+
+        // Access weights by HuggingFace-style keys
+        PackedCollection<?> embeddings = stateDict.get("model.embed_tokens.weight");
+        PackedCollection<?> wq = stateDict.get("model.layers.0.self_attn.q_proj.weight");
+        PackedCollection<?> wk = stateDict.get("model.layers.0.self_attn.k_proj.weight");
+
+        // Build transformer layers using generalized attention methods
+        Model transformer = new Model(shape(dim));
+        transformer.add(attention(heads, kvHeads, headSize, wq, wk, wv, wo, ...));
+        // ...
+    }
+}
+```
+
+For complete documentation including attention mechanisms, tokenization, and model
+architecture details, see the [ML Module README](ml/README.md).
+
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 ### What are the terms of the LICENSE?
 
-Copyright 2024  Michael Murray
+Copyright 2026  Michael Murray
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
