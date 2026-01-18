@@ -23,13 +23,56 @@ import java.util.WeakHashMap;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
+/**
+ * A thread-local variant of {@link SuppliedValue} that maintains separate values for each thread.
+ *
+ * <p>ThreadLocalSuppliedValue creates and manages a separate value for each thread that
+ * accesses it. Values are stored in a {@link WeakHashMap} keyed by thread, allowing
+ * automatic cleanup when threads are garbage collected.</p>
+ *
+ * <h2>Usage</h2>
+ * <pre>{@code
+ * // Each thread gets its own DecimalFormat instance
+ * ThreadLocalSuppliedValue<DecimalFormat> formatter =
+ *     new ThreadLocalSuppliedValue<>(() -> new DecimalFormat("##0.00"));
+ *
+ * // In thread 1:
+ * DecimalFormat fmt1 = formatter.getValue();  // Creates new instance for thread 1
+ *
+ * // In thread 2:
+ * DecimalFormat fmt2 = formatter.getValue();  // Creates separate instance for thread 2
+ *
+ * // Clean up all thread values
+ * formatter.destroy();
+ * }</pre>
+ *
+ * <h2>Thread Safety</h2>
+ * <p>This class provides thread isolation - each thread sees its own value. The
+ * underlying WeakHashMap uses thread references as keys, so values are automatically
+ * cleaned up when their associated threads are garbage collected.</p>
+ *
+ * @param <T> the type of value managed per thread
+ * @see SuppliedValue
+ * @see ThreadLocal
+ */
 public class ThreadLocalSuppliedValue<T> extends SuppliedValue<T> {
 	private WeakHashMap<Thread, T> values;
 
+	/**
+	 * Creates a thread-local supplied value with the given supplier.
+	 * Each thread will receive its own value created by this supplier.
+	 *
+	 * @param supplier the supplier to create thread-specific values
+	 */
 	public ThreadLocalSuppliedValue(Supplier<T> supplier) {
 		super(supplier);
 	}
 
+	/**
+	 * Gets the value for the current thread, creating it if necessary.
+	 *
+	 * @return the thread-local value
+	 */
 	@Override
 	public T getValue() {
 		T v = values == null ? null : values.get(Thread.currentThread());
@@ -43,12 +86,23 @@ public class ThreadLocalSuppliedValue<T> extends SuppliedValue<T> {
 		return v;
 	}
 
+	/**
+	 * Checks if a value is available for the current thread.
+	 *
+	 * @return true if the current thread has a valid value
+	 */
 	@Override
 	public boolean isAvailable() {
 		return values != null && values.get(Thread.currentThread()) != null
 				&& (valid == null || valid.test(values.get(Thread.currentThread())));
 	}
 
+	/**
+	 * Applies a consumer to all thread-local values.
+	 * This operates on values from all threads, not just the current one.
+	 *
+	 * @param consumer the consumer to apply to each value
+	 */
 	@Override
 	public void applyAll(Consumer<T> consumer) {
 		if (consumer == null || !isAvailable()) return;
@@ -60,6 +114,11 @@ public class ThreadLocalSuppliedValue<T> extends SuppliedValue<T> {
 		}
 	}
 
+	/**
+	 * Destroys all thread-local values.
+	 * <p>If values implement {@link Destroyable}, their destroy methods are called.
+	 * After this method returns, all thread values are cleared.</p>
+	 */
 	@Override
 	public void destroy() {
 		if (values != null) {

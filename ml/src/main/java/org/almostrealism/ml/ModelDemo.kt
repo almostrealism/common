@@ -1,8 +1,8 @@
 package org.almostrealism.ml
 
+import io.almostrealism.collect.TraversalPolicy
 import org.almostrealism.CodeFeatures
 import org.almostrealism.algebra.Tensor
-import io.almostrealism.collect.TraversalPolicy
 import org.almostrealism.model.Model
 
 fun main() {

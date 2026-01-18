@@ -20,7 +20,10 @@
 
 package org.almostrealism.graph;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.LinkedList;
+import java.util.List;
 
 /**
  * An efficient well-optimized kd-tree
@@ -285,7 +288,7 @@ public abstract class KdTree<T> {
     /**
      * Enumeration representing the status of a node during the running
      */
-    private static enum Status {
+    private enum Status {
         NONE, LEFTVISITED, RIGHTVISITED, ALLVISITED
     }
 
@@ -305,7 +308,6 @@ public abstract class KdTree<T> {
     /**
      * Calculates the nearest 'count' points to 'location'
      */
-    @SuppressWarnings("unchecked")
     public List<Entry<T>> nearestNeighbor(double[] location, int count, boolean sequentialSorting) {
         KdTree<T> cursor = this;
         cursor.status = Status.NONE;

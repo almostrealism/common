@@ -21,9 +21,11 @@ import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Factory;
+import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Variable;
 import io.almostrealism.streams.StreamingEvaluable;
+import io.almostrealism.uml.Multiple;
 import org.almostrealism.hardware.arguments.ProcessArgumentEvaluator;
 import org.almostrealism.hardware.computations.HardwareEvaluable;
 import org.almostrealism.hardware.mem.AcceleratedProcessDetails;
@@ -41,12 +43,198 @@ import java.util.function.Consumer;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
 
+/**
+ * Factory for creating {@link AcceleratedProcessDetails} instances with intelligent kernel size inference and argument evaluation.
+ *
+ * <p>{@link ProcessDetailsFactory} is the critical coordination point for preparing hardware accelerated operations.
+ * It analyzes operation arguments, infers the required parallel execution size (kernel size), evaluates intermediate
+ * {@link Producer} arguments asynchronously, and constructs {@link AcceleratedProcessDetails} that coordinate the
+ * entire execution pipeline.</p>
+ *
+ * <h2>Core Responsibilities</h2>
+ *
+ * <ul>
+ *   <li><b>Kernel Size Inference:</b> Determines parallel work size from output, arguments, or operation count</li>
+ *   <li><b>Argument Evaluation:</b> Evaluates {@link Producer} arguments to {@link MemoryData} before kernel execution</li>
+ *   <li><b>Async Coordination:</b> Manages asynchronous evaluation of dependent computations</li>
+ *   <li><b>Constant Caching:</b> Caches results of constant {@link Evaluable} arguments</li>
+ *   <li><b>Memory Management:</b> Integrates with {@link Heap} for temporary allocations</li>
+ * </ul>
+ *
+ * <h2>Kernel Size Inference Strategy</h2>
+ *
+ * <p>Kernel size (parallel work items) is inferred using this priority order:</p>
+ * <pre>
+ * 1. Fixed Count: If operation has fixed count, use that
+ * 2. Output Count: If output provided, use output.getCountLong()
+ * 3. Argument Reference: If arg references an evaluable arg, use its count
+ * 4. First Argument: If first arg is MemoryBank with count > operation count, use that
+ * 5. Operation Count: Fall back to operation's declared count
+ * </pre>
+ *
+ * <p>Example of kernel size inference:</p>
+ * <pre>{@code
+ * // Operation declares count = 1, but output requires 1000
+ * Producer<PackedCollection> op = ...; // count = 1
+ * PackedCollection output = PackedCollection.create(1000);
+ *
+ * // ProcessDetailsFactory infers kernel size = 1000 from output
+ * ProcessDetailsFactory factory = ...;
+ * factory.init(output, args);
+ * AcceleratedProcessDetails details = factory.construct();
+ * assert details.getKernelSize() == 1000;
+ * }</pre>
+ *
+ * <h2>Argument Evaluation Pipeline</h2>
+ *
+ * <p>Arguments pass through a three-phase evaluation:</p>
+ * <pre>
+ * Phase 1: Identify Direct References
+ *   - Arguments that reference evaluable args (via ProducerArgumentReference)
+ *   - These use the referenced memory directly
+ *
+ * Phase 2: Evaluate Constants
+ *   - If enableConstantCache=true, evaluate constant Evaluables immediately
+ *   - Cache results for reuse
+ *
+ * Phase 3: Async Evaluation
+ *   - Create StreamingEvaluable for each non-constant argument
+ *   - Set up async pipeline to deliver results to AcceleratedProcessDetails
+ *   - Initiate evaluation via request()
+ * </pre>
+ *
+ * <p>Example showing argument evaluation:</p>
+ * <pre>{@code
+ * // Argument 0: Direct reference to input
+ * // Argument 1: Constant producer (cached)
+ * // Argument 2: Non-constant producer (async evaluated)
+ *
+ * ProcessDetailsFactory factory = new ProcessDetailsFactory(...);
+ * factory.init(output, new Object[] { input });
+ *
+ * // construct() evaluates arguments asynchronously
+ * AcceleratedProcessDetails details = factory.construct();
+ *
+ * // When ready, all arguments are MemoryData
+ * details.whenReady(() -> {
+ *     MemoryData[] args = details.getArguments(MemoryData[]::new);
+ *     // Execute kernel with prepared arguments
+ * });
+ * }</pre>
+ *
+ * <h2>Constant Caching</h2>
+ *
+ * <p>When {@link #enableConstantCache} is true (default), constant {@link Evaluable} arguments
+ * are evaluated once and cached:</p>
+ * <pre>{@code
+ * // Enable constant caching (default)
+ * ProcessDetailsFactory.enableConstantCache = true;
+ *
+ * // Constant argument
+ * Producer<PackedCollection> constant = c(42.0);
+ * Evaluable<PackedCollection> eval = constant.get();
+ *
+ * // First execution: evaluates and caches
+ * factory1.init(output, args).construct();  // Evaluates 42.0, caches result
+ *
+ * // Second execution: reuses cached result
+ * factory2.init(output, args).construct();  // Uses cached 42.0
+ * }</pre>
+ *
+ * <h2>Asynchronous Execution</h2>
+ *
+ * <p>When {@link Hardware#isAsync()} returns true, argument evaluation happens asynchronously:</p>
+ * <pre>{@code
+ * // Enable async mode
+ * Hardware.enableAsync = true;
+ *
+ * // Complex argument requiring computation
+ * Producer<PackedCollection> complexArg = input.multiply(weights).add(bias);
+ *
+ * ProcessDetailsFactory factory = ...;
+ * AcceleratedProcessDetails details = factory.construct();
+ *
+ * // complexArg is being evaluated on executor thread
+ * // details.whenReady() called when all args ready
+ * details.whenReady(() -> {
+ *     // All arguments evaluated, kernel can execute
+ *     kernel.accept(details.getArguments(...), null);
+ * });
+ * }</pre>
+ *
+ * <h2>Configuration Options</h2>
+ *
+ * <p>Controlled via static flags and environment variables:</p>
+ * <ul>
+ *   <li><b>{@link #enableConstantCache}:</b> Cache constant argument evaluations (default: true, AR_HARDWARE_CONSTANT_CACHE)</li>
+ *   <li><b>{@link #enableArgumentKernelSize}:</b> Infer kernel size from first argument (default: true)</li>
+ *   <li><b>{@link #enableArgumentReferenceKernelSize}:</b> Infer from referenced arguments (default: true)</li>
+ *   <li><b>{@link #enableOutputCount}:</b> Use output count for kernel size (default: true)</li>
+ *   <li><b>{@link #enableKernelSizeWarnings}:</b> Warn about kernel size changes (default: false, AR_HARDWARE_KERNEL_SIZE_WARNINGS)</li>
+ * </ul>
+ *
+ * <h2>Integration with AcceleratedOperation</h2>
+ *
+ * <p>{@link AcceleratedOperation} uses {@link ProcessDetailsFactory} via getDetailsFactory():</p>
+ * <pre>{@code
+ * public class MyAcceleratedOperation extends AcceleratedOperation {
+ *     @Override
+ *     protected AcceleratedProcessDetails apply(MemoryBank output, Object[] args) {
+ *         // Get factory (created in createDetailsFactory())
+ *         ProcessDetailsFactory factory = getDetailsFactory();
+ *
+ *         // Initialize with output and args
+ *         factory.init(output, args);
+ *
+ *         // Construct process details (evaluates arguments async)
+ *         return factory.construct();
+ *     }
+ * }
+ * }</pre>
+ *
+ * <h2>Custom Argument Evaluation</h2>
+ *
+ * <p>Custom {@link ProcessArgumentEvaluator} can be provided via {@link #setEvaluator}:</p>
+ * <pre>{@code
+ * ProcessDetailsFactory factory = ...;
+ *
+ * // Custom evaluator for specialized argument handling
+ * factory.setEvaluator(new ProcessArgumentEvaluator() {
+ *     @Override
+ *     public <T> Evaluable<? extends Multiple<T>> getEvaluable(ArrayVariable<T> argument) {
+ *         // Custom logic to obtain evaluable
+ *         return customEvaluableFor(argument);
+ *     }
+ * });
+ * }</pre>
+ *
+ * <h2>Memory Management</h2>
+ *
+ * <p>Temporary allocations for argument evaluation are tracked via {@link Heap}:</p>
+ * <pre>{@code
+ * // During construct():
+ * MemoryData result = kernelArgEvaluables[i].createDestination(size);
+ * Heap.addCreatedMemory(result);  // Track for automatic cleanup
+ *
+ * // Heap automatically destroys temporary allocations when scope exits
+ * }</pre>
+ *
+ * @param <T> The type of array elements
+ * @see AcceleratedProcessDetails
+ * @see AcceleratedOperation
+ * @see ProcessArgumentEvaluator
+ * @see MemoryReplacementManager
+ */
 public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetails>, Countable, ConsoleFeatures {
-	public static boolean enableAsync = false;
+	// TODO  Should be switched and removed
 	public static boolean enableArgumentKernelSize = true;
 	public static boolean enableArgumentReferenceKernelSize = true;
+
+	// TODO  Should be removed?
 	public static boolean enableOutputCount = true;
-	public static boolean enableConstantCache = true;
+
+	public static boolean enableConstantCache =
+			SystemUtils.isEnabled("AR_HARDWARE_CONSTANT_CACHE").orElse(true);
 	public static boolean enableKernelSizeWarnings =
 			SystemUtils.isEnabled("AR_HARDWARE_KERNEL_SIZE_WARNINGS").orElse(false);
 
@@ -85,7 +273,12 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 		this.fixedCount = fixedCount;
 		this.count = count;
 
-		this.evaluator = ProducerCache::getEvaluableForArrayVariable;
+		this.evaluator = new ProcessArgumentEvaluator() {
+			@Override
+			public <T> Evaluable<? extends Multiple<T>> getEvaluable(ArrayVariable<T> argument) {
+				return argument.getProducer().get();
+			}
+		};
 
 		this.arguments = arguments;
 		this.outputArgIndex = outputArgIndex;
@@ -118,8 +311,17 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 		} else if (isFixedCount()) {
 			kernelSize = getCount();
 
-			if (output != null && !List.of(1L, getCountLong()).contains(output.getCountLong())) {
-				throw new IllegalArgumentException();
+			if (output != null) {
+				long dc = output.getCountLong();
+				boolean matchCount = List.of(1L, getCountLong()).contains(dc);
+				boolean matchTotal = getCountLong() == output.getMemLength();
+
+				if (!matchCount && !matchTotal) {
+					throw new IllegalArgumentException("The destination count (" + dc +
+							") must match the count for the process (" + kernelSize + "), unless the count " +
+							"for the process is identical to the total size of the output (" +
+							output.getMemLength() + ")");
+				}
 			}
 		} else if (output != null) {
 			kernelSize = enableOutputCount ? output.getCountLong() : Math.max(output.getCountLong(), getCountLong());
@@ -227,7 +429,7 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 			}
 
 			if (evaluateAhead) {
-				if (!enableAsync ||
+				if (!Hardware.getLocalHardware().isAsync() ||
 						kernelArgEvaluables[i] instanceof DestinationEvaluable<?> ||
 						kernelArgEvaluables[i] instanceof HardwareEvaluable) {
 					asyncEvaluables[i] = kernelArgEvaluables[i].async(this::execute);
@@ -286,7 +488,7 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 	}
 
 	protected void execute(Runnable r) {
-		if (enableAsync) {
+		if (Hardware.getLocalHardware().isAsync()) {
 			executor.execute(r);
 		} else {
 			r.run();

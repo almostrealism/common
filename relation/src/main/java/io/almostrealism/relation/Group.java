@@ -18,6 +18,29 @@ package io.almostrealism.relation;
 
 import java.util.stream.Stream;
 
+/**
+ * An interface for types that contain a collection of elements as a group.
+ *
+ * <p>{@link Group} provides stream-based access to a collection of elements.
+ * It is a base interface for grouping abstractions like {@link NodeGroup}.</p>
+ *
+ * <h2>Stream-Based Access</h2>
+ * <p>Unlike {@link Parent#getChildren()} which returns a Collection,
+ * {@link Group#children()} returns a Stream for lazy, functional-style
+ * processing of group members.</p>
+ *
+ * @param <T> the type of elements in the group
+ *
+ * @see NodeGroup
+ * @see Parent
+ *
+ * @author Michael Murray
+ */
 public interface Group<T> {
+	/**
+	 * Returns a stream of all elements in this group.
+	 *
+	 * @return a stream of group elements
+	 */
 	Stream<T> children();
 }

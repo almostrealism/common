@@ -16,13 +16,12 @@
 
 package org.almostrealism.graph.model.test;
 
-import io.almostrealism.collect.WeightedSumExpression;
+import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.compute.ParallelProcess;
 import io.almostrealism.kernel.KernelTraversalProvider;
 import io.almostrealism.profile.OperationProfileNode;
-import io.almostrealism.compute.ParallelProcess;
 import org.almostrealism.algebra.Tensor;
 import org.almostrealism.collect.PackedCollection;
-import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.computations.IndexProjectionProducerComputation;
 import org.almostrealism.collect.computations.test.KernelAssertions;
 import org.almostrealism.hardware.HardwareOperator;
@@ -44,10 +43,11 @@ import java.io.IOException;
 import java.util.stream.IntStream;
 
 public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssertions {
-	private int convSize = 3;
-	private int poolSize = 2;
-	private int w = 10;
-	private int h = 10;
+
+	private final int convSize = 3;
+	private final int poolSize = 2;
+	private final int w = 10;
+	private final int h = 10;
 	private TraversalPolicy inputShape = shape(h, w);
 
 	static {
@@ -59,7 +59,7 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 		}
 	}
 
-	@Test
+	@Test(timeout = 120000)
 	public void dense() {
 		if (testProfileIs(TestUtils.PIPELINE)) return;
 		if (skipKnownIssues) return;
@@ -74,15 +74,15 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 		model.add(softmax);
 
 		Tensor<Double> t = tensor(shape(size));
-		PackedCollection<?> input = t.pack();
+		PackedCollection input = t.pack();
 
-		PackedCollection<?> biases = dense.getWeights().get(1);
+		PackedCollection biases = dense.getWeights().get(1);
 		IntStream.range(0, nodes).forEach(i -> biases.setMem(i, Math.random()));
 
 		model.compile().forward(input);
 
-		PackedCollection<?> weights = dense.getWeights().get(0);
-		PackedCollection<?> output =  ((DefaultCellularLayer) dense).getOutput();
+		PackedCollection weights = dense.getWeights().get(0);
+		PackedCollection output =  ((DefaultCellularLayer) dense).getOutput();
 
 		for (int i = 0; i < nodes; i++) {
 			double expected = 0;
@@ -104,7 +104,7 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 		input = output;
 		output = ((DefaultCellularLayer) softmax).getOutput();
 
-		double expValues[] = new double[nodes];
+		double[] expValues = new double[nodes];
 
 		for (int i = 0; i < nodes; i++) {
 			expValues[i] = Math.exp(input.toDouble(i));
@@ -126,7 +126,7 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 		}
 	}
 
-	@Test
+	@Test(timeout = 120000)
 	public void pool() {
 		Block conv = convolution2d(inputShape, 8, convSize, false);
 		TraversalPolicy inputShape = conv.getOutputShape();
@@ -137,16 +137,16 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 		model.add(pool);
 
 		Tensor<Double> t = tensor(inputShape);
-		PackedCollection<?> input = t.pack();
+		PackedCollection input = t.pack();
 
 		model.compile().forward(input);
 
-		PackedCollection<?> output = ((DefaultCellularLayer) pool).getOutput();
+		PackedCollection output = ((DefaultCellularLayer) pool).getOutput();
 
 		pool2d(inputShape.length(0), inputShape.length(1), 8, 2, input, output);
 	}
 
-	@Test
+	@Test(timeout = 120000)
 	public void convPool() {
 		Model model = new Model(inputShape);
 		CellularLayer conv = (CellularLayer) convolution2d(inputShape, 8, convSize, false);
@@ -156,14 +156,14 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 		model.add(pool);
 
 		Tensor<Double> t = tensor(inputShape);
-		PackedCollection<?> input = t.pack();
+		PackedCollection input = t.pack();
 
-		PackedCollection<?> in = input;
+		PackedCollection in = input;
 		verboseLog(() -> model.compile().forward(in));
 
-		PackedCollection<?> filter = conv.getWeights().get(0);
+		PackedCollection filter = conv.getWeights().get(0);
 
-		PackedCollection<?> output = ((DefaultCellularLayer) conv).getOutput();
+		PackedCollection output = ((DefaultCellularLayer) conv).getOutput();
 		TraversalPolicy outputShape = output.getShape();
 
 		for (int n = 0; n < outputShape.length(0); n++) {
@@ -226,24 +226,24 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 		return model;
 	}
 
-	@Test
+	@Test(timeout = 4 * 60000)
 	public void trainSmallest() throws IOException {
 		if (testDepth < 1) return;
 
 		int dim = 3;
 		Tensor<Double> t = tensor(shape(dim, dim));
-		PackedCollection<?> input = t.pack();
+		PackedCollection input = t.pack();
 		train(input, model(dim, dim, 2, 2, 1, 10));
 	}
 
-	@Test
+	@Test(timeout = 4 * 60000)
 	public void trainVerySmall() throws IOException {
 		if (testDepth < 2) return;
 
 		try {
 			int dim = 8;
 			Tensor<Double> t = tensor(shape(dim, dim));
-			PackedCollection<?> input = t.pack();
+			PackedCollection input = t.pack();
 			train(input, model(dim, dim, 3, 4, 1, 10), 2);
 		} finally {
 			ParallelProcess.explicitIsolationTargets.clear();
@@ -251,33 +251,31 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 	}
 
 
-	@Test
+	@Test(timeout = 30 * 60000)
 	public void trainSmall() throws IOException {
 		if (testDepth < 3) return;
 		if (testProfileIs(TestUtils.PIPELINE)) return;
-		if (!trainingTests &&
-				!IndexProjectionProducerComputation.enableDelegatedIsolate)
-			return;
+		if (skipKnownIssues) return;
 
 		int dim = 28;
 		int filters = 8;
 		Tensor<Double> t = tensor(shape(dim, dim));
-		PackedCollection<?> input = t.pack();
+		PackedCollection input = t.pack();
 		train(input, model(dim, dim, 3, filters, 2, 10));
 	}
 
-	@Test
+	@Test(timeout = 120000)
 	public void trainMedium() throws IOException {
 		if (skipLongTests || !trainingTests) return;
 
 		int dim = 54;
 		int filters = 8;
 		Tensor<Double> t = tensor(shape(dim, dim));
-		PackedCollection<?> input = t.pack();
+		PackedCollection input = t.pack();
 		train(input, model(dim, dim, 3, filters, 3, 10));
 	}
 
-	@Test
+	@Test(timeout = 120000)
 	public void trainLarge() throws IOException {
 		if (skipLongTests || !trainingTests) return;
 
@@ -285,14 +283,14 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 			int dim = 72;
 			int filters = 8;
 			Tensor<Double> t = tensor(shape(dim, dim));
-			PackedCollection<?> input = t.pack();
+			PackedCollection input = t.pack();
 			train(input, model(dim, dim, 3, filters, 4, 10));
 		} finally {
 			ParallelProcess.isolationFlags.clear();
 		}
 	}
 
-	@Test
+	@Test(timeout = 120000)
 	public void trainProgressive() throws IOException {
 		if (skipLongTests || !trainingTests) return;
 
@@ -302,18 +300,18 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 			int s = (int) size;
 
 			Tensor<Double> t = tensor(shape(s, s));
-			PackedCollection<?> input = t.pack();
+			PackedCollection input = t.pack();
 			train(input, model(s, s, 3, 8, 2, 10));
 
 			size = size * 1.2;
 		}
 	}
 
-	protected void train(PackedCollection<?> input, Model model) throws IOException {
+	protected void train(PackedCollection input, Model model) throws IOException {
 		train(input, model, trainingTests ? 80 : 2);
 	}
 
-	protected void train(PackedCollection<?> input, Model model, int epochCount) throws IOException {
+	protected void train(PackedCollection input, Model model, int epochCount) throws IOException {
 		OperationProfileNode profile = new OperationProfileNode("Model");
 		CompiledModel compiled = model.compile(profile);
 		log("Model compiled");

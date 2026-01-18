@@ -20,17 +20,16 @@ import io.almostrealism.collect.RepeatTraversalOrdering;
 import org.almostrealism.collect.ExplicitIndexTraversalOrdering;
 import org.almostrealism.collect.IndexMaskTraversalOrdering;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
 
 public class CollectionOrderingTests implements TestFeatures {
-	@Test
+	@Test(timeout = 10000)
 	public void repeatOrdering() {
 		if (skipKnownIssues) return;
 
-		PackedCollection<?> root = pack(2.0, 3.0, 1.0);
-		PackedCollection<?> repeated = new PackedCollection<>(shape(4, 3), 1,
+		PackedCollection root = pack(2.0, 3.0, 1.0);
+		PackedCollection repeated = new PackedCollection(shape(4, 3), 1,
 										root, 0, new RepeatTraversalOrdering(3));
 		repeated.print();
 
@@ -42,14 +41,14 @@ public class CollectionOrderingTests implements TestFeatures {
 		assertEquals(1.0, repeated.valueAt(1, 2));
 	}
 
-	@Test
+	@Test(timeout = 10000)
 	public void repeatOrderingProduct() {
-		PackedCollection<?> root = pack(2.0, 3.0, 1.0);
-		PackedCollection<?> repeated = new PackedCollection<>(shape(4, 3), 1,
+		PackedCollection root = pack(2.0, 3.0, 1.0);
+		PackedCollection repeated = new PackedCollection(shape(4, 3), 1,
 				root, 0, new RepeatTraversalOrdering(3));
 
 		verboseLog(() -> {
-			PackedCollection<?> product = c(2).multiply(cp(repeated)).evaluate();
+			PackedCollection product = c(2).multiply(cp(repeated)).evaluate();
 			product.print();
 
 			assertEquals(4.0, product.valueAt(0, 0));
@@ -61,14 +60,14 @@ public class CollectionOrderingTests implements TestFeatures {
 		});
 	}
 
-	@Test
+	@Test(timeout = 10000)
 	public void compactOrdering() {
 		if (skipKnownIssues) return;
 
-		PackedCollection<?> values = pack(2.0, 3.0);
+		PackedCollection values = pack(2.0, 3.0);
 
 		ExplicitIndexTraversalOrdering order = new ExplicitIndexTraversalOrdering(pack(0, -1, -1, 1));
-		PackedCollection<?> compact = new PackedCollection<>(shape(2, 2), 1, values, 0, order);
+		PackedCollection compact = new PackedCollection(shape(2, 2), 1, values, 0, order);
 
 		compact.print();
 
@@ -78,15 +77,15 @@ public class CollectionOrderingTests implements TestFeatures {
 		assertEquals(3.0, compact.valueAt(1, 1));
 	}
 
-	@Test
+	@Test(timeout = 10000)
 	public void maskOrdering() {
 		if (skipKnownIssues) return;
 
-		PackedCollection<?> values = pack(2.0, 3.0);
-		PackedCollection<?> indices = pack(0, 3);
+		PackedCollection values = pack(2.0, 3.0);
+		PackedCollection indices = pack(0, 3);
 
 		IndexMaskTraversalOrdering order = new IndexMaskTraversalOrdering(indices);
-		PackedCollection<?> compact = new PackedCollection<>(shape(2, 2), 1, values, 0, order);
+		PackedCollection compact = new PackedCollection(shape(2, 2), 1, values, 0, order);
 
 		compact.print();
 

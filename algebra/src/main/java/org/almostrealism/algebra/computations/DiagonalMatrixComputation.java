@@ -27,27 +27,87 @@ import org.almostrealism.collect.PackedCollection;
 
 import java.util.List;
 
-public class DiagonalMatrixComputation<T extends PackedCollection<?>> extends MatrixExpressionComputation<T> {
-	public DiagonalMatrixComputation(TraversalPolicy shape, Producer<T> values) {
+/**
+ * A computation that creates a diagonal matrix from a vector of diagonal values.
+ *
+ * <p>
+ * {@link DiagonalMatrixComputation} generates a square matrix where:
+ * <ul>
+ *   <li>Diagonal elements (i, i) contain the values from the input vector</li>
+ *   <li>Off-diagonal elements are zero</li>
+ * </ul>
+ *
+ * <h2>Example</h2>
+ * <pre>{@code
+ * // Create diagonal matrix from vector [1, 2, 3]
+ * CollectionProducer diagonal = c(1.0, 2.0, 3.0);
+ * DiagonalMatrixComputation<PackedCollection> comp =
+ *     new DiagonalMatrixComputation<>(shape(3, 3).traverse(1), diagonal);
+ *
+ * // Result:
+ * // [1  0  0]
+ * // [0  2  0]
+ * // [0  0  3]
+ * }</pre>
+ *
+ * @author  Michael Murray
+ * @see org.almostrealism.algebra.MatrixFeatures#diagonal(Producer)
+ * @see IdentityMatrixComputation
+ */
+public class DiagonalMatrixComputation extends MatrixExpressionComputation {
+	/**
+	 * Creates a diagonal matrix computation with default name "diagonal".
+	 *
+	 * @param shape  the shape of the output matrix (should be square)
+	 * @param values  producer for the diagonal values
+	 */
+	public DiagonalMatrixComputation(TraversalPolicy shape, Producer<PackedCollection> values) {
 		this("diagonal", shape, values);
 	}
 
-	public DiagonalMatrixComputation(String name, TraversalPolicy shape, Producer<T> values) {
+	/**
+	 * Creates a diagonal matrix computation with a custom name.
+	 *
+	 * @param name  descriptive name for this computation
+	 * @param shape  the shape of the output matrix (should be square)
+	 * @param values  producer for the diagonal values
+	 */
+	public DiagonalMatrixComputation(String name, TraversalPolicy shape, Producer<PackedCollection> values) {
 		super(name, shape, values);
 	}
 
+	/**
+	 * Generates the expression that creates the diagonal matrix.
+	 * Uses {@link DiagonalCollectionExpression} for efficient diagonal matrix representation.
+	 *
+	 * @param args  traversable expressions [this, diagonal_values]
+	 * @return the collection expression for the diagonal matrix
+	 */
 	@Override
 	protected CollectionExpression getExpression(TraversableExpression... args) {
 		return new DiagonalCollectionExpression(getShape(), args[1]);
 	}
 
+	/**
+	 * Checks if this computation represents a diagonal matrix.
+	 * Returns true if the width matches the matrix dimension.
+	 *
+	 * @param width  the expected width of the diagonal matrix
+	 * @return true if this is a diagonal matrix with the specified width
+	 */
 	@Override
 	public boolean isDiagonal(int width) {
 		return super.isDiagonal(width) || width == getShape().length(0);
 	}
 
+	/**
+	 * Generates the parallel process for this diagonal matrix computation.
+	 *
+	 * @param children  child processes
+	 * @return the parallel process implementation
+	 */
 	@Override
-	public CollectionProducerParallelProcess<T> generate(List<Process<?, ?>> children) {
-		return (CollectionProducerParallelProcess) diagonal((Producer) children.get(1));
+	public CollectionProducerParallelProcess generate(List<Process<?, ?>> children) {
+		return (CollectionProducerParallelProcess) diagonal((Producer<PackedCollection>) children.get(1));
 	}
 }

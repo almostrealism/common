@@ -17,7 +17,11 @@
 package org.almostrealism.collect.computations.test;
 
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.relation.Producer;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.computations.CollectionZerosComputation;
+import org.almostrealism.collect.computations.ReshapeProducer;
 import org.almostrealism.collect.computations.SingleConstantComputation;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
@@ -35,16 +39,16 @@ public class SingleConstantComputationTest implements TestFeatures {
 	 * Tests basic creation and evaluation of a SingleConstantComputation.
 	 * Demonstrates how to create a computation that fills a collection with a constant value.
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void basicConstantCreation() {
 		// Create a 2x3 matrix filled with the value 5.0
 		TraversalPolicy shape = new TraversalPolicy(2, 3);
-		SingleConstantComputation<PackedCollection<?>> constant = 
-			new SingleConstantComputation<>(shape, 5.0);
-		
+		SingleConstantComputation constant =
+			new SingleConstantComputation(shape, 5.0);
+
 		// Verify the constant value is stored correctly
 		assertEquals(5.0, constant.getConstantValue());
-		
+
 		// Verify the shape is preserved
 		assertEquals(shape.getTotalSize(), constant.getShape().getTotalSize());
 		assertEquals(2, constant.getShape().getDimensions());
@@ -55,16 +59,16 @@ public class SingleConstantComputationTest implements TestFeatures {
 	 * Demonstrates how SingleConstantComputation can bypass the normal computation
 	 * pipeline for efficiency by directly creating the result collection.
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void shortCircuitEvaluation() {
 		TraversalPolicy shape = new TraversalPolicy(3);
 		double constantValue = 7.5;
-		SingleConstantComputation<PackedCollection<?>> constant = 
-			new SingleConstantComputation<>(shape, constantValue);
-		
+		SingleConstantComputation constant =
+			new SingleConstantComputation(shape, constantValue);
+
 		// Use short-circuit evaluation
-		PackedCollection<?> result = constant.getShortCircuit().evaluate();
-		
+		PackedCollection result = constant.getShortCircuit().evaluate();
+
 		// Verify all elements have the constant value
 		assertEquals(3, result.getMemLength());
 		for (int i = 0; i < 3; i++) {
@@ -77,30 +81,30 @@ public class SingleConstantComputationTest implements TestFeatures {
 	 * Demonstrates how SingleConstantComputation detects special values
 	 * like zero and identity elements for optimization purposes.
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void optimizationMethods() {
 		// Test zero detection
-		SingleConstantComputation<PackedCollection<?>> zero = 
-			new SingleConstantComputation<>(new TraversalPolicy(5), 0.0);
+		SingleConstantComputation zero =
+			new SingleConstantComputation(new TraversalPolicy(5), 0.0);
 		assertTrue("Zero constant should be detected", zero.isZero());
-		
+
 		// Test non-zero
-		SingleConstantComputation<PackedCollection<?>> nonZero = 
-			new SingleConstantComputation<>(new TraversalPolicy(5), 3.14);
+		SingleConstantComputation nonZero =
+			new SingleConstantComputation(new TraversalPolicy(5), 3.14);
 		assertFalse("Non-zero constant should not be detected as zero", nonZero.isZero());
-		
+
 		// Test identity detection (scalar 1.0)
-		SingleConstantComputation<PackedCollection<?>> identity = 
-			new SingleConstantComputation<>(new TraversalPolicy(1), 1.0);
+		SingleConstantComputation identity =
+			new SingleConstantComputation(new TraversalPolicy(1), 1.0);
 		assertTrue("Scalar 1.0 should be detected as identity", identity.isIdentity(1));
-		
+
 		// Test non-identity cases
-		SingleConstantComputation<PackedCollection<?>> notIdentity1 = 
-			new SingleConstantComputation<>(new TraversalPolicy(1), 2.0);
+		SingleConstantComputation notIdentity1 =
+			new SingleConstantComputation(new TraversalPolicy(1), 2.0);
 		assertFalse("Scalar 2.0 should not be identity", notIdentity1.isIdentity(1));
-		
-		SingleConstantComputation<PackedCollection<?>> notIdentity2 = 
-			new SingleConstantComputation<>(new TraversalPolicy(3), 1.0);
+
+		SingleConstantComputation notIdentity2 =
+			new SingleConstantComputation(new TraversalPolicy(3), 1.0);
 		assertFalse("Vector of 1.0s should not be scalar identity", notIdentity2.isIdentity(1));
 	}
 
@@ -109,21 +113,21 @@ public class SingleConstantComputationTest implements TestFeatures {
 	 * Demonstrates how SingleConstantComputation can change its output shape
 	 * without affecting the constant value that fills the collection.
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void reshapeOperation() {
 		double constantValue = 2.5;
 		TraversalPolicy originalShape = new TraversalPolicy(2, 3); // 2x3 matrix
-		SingleConstantComputation<PackedCollection<?>> original = 
-			new SingleConstantComputation<>(originalShape, constantValue);
-		
+		SingleConstantComputation original =
+			new SingleConstantComputation(originalShape, constantValue);
+
 		// Reshape to a vector
 		TraversalPolicy newShape = new TraversalPolicy(6); // 6-element vector
-		SingleConstantComputation<PackedCollection<?>> reshaped = 
-			(SingleConstantComputation<PackedCollection<?>>) original.reshape(newShape);
-		
+		SingleConstantComputation reshaped =
+			(SingleConstantComputation) original.reshape(newShape);
+
 		// Verify the constant value is preserved
 		assertEquals(constantValue, reshaped.getConstantValue());
-		
+
 		// Verify the new shape
 		assertEquals(6, reshaped.getShape().getTotalSize());
 		assertEquals(1, reshaped.getShape().getDimensions());
@@ -134,20 +138,20 @@ public class SingleConstantComputationTest implements TestFeatures {
 	 * Demonstrates how SingleConstantComputation handles axis-based transformations
 	 * while maintaining the constant value semantics.
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void traverseOperation() {
 		double constantValue = -1.5;
 		TraversalPolicy originalShape = new TraversalPolicy(3, 4); // 3x4 matrix
-		SingleConstantComputation<PackedCollection<?>> original = 
-			new SingleConstantComputation<>(originalShape, constantValue);
-		
+		SingleConstantComputation original =
+			new SingleConstantComputation(originalShape, constantValue);
+
 		// Traverse along axis 1
-		SingleConstantComputation<PackedCollection<?>> traversed = 
-			(SingleConstantComputation<PackedCollection<?>>) original.traverse(1);
-		
+		SingleConstantComputation traversed =
+			(SingleConstantComputation) original.traverse(1);
+
 		// Verify the constant value is preserved
 		assertEquals(constantValue, traversed.getConstantValue());
-		
+
 		// The shape should be transformed according to traversal policy
 		assertNotEquals(originalShape.getSize(), traversed.getShape().getSize());
 	}
@@ -157,15 +161,15 @@ public class SingleConstantComputationTest implements TestFeatures {
 	 * Demonstrates how SingleConstantComputation provides a readable
 	 * representation of the constant value.
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void description() {
-		SingleConstantComputation<PackedCollection<?>> constant = 
-			new SingleConstantComputation<>(new TraversalPolicy(2), 3.14159);
-		
+		SingleConstantComputation constant =
+			new SingleConstantComputation(new TraversalPolicy(2), 3.14159);
+
 		String description = constant.description();
 		assertNotNull("Description should not be null", description);
-		assertTrue("Description should contain the constant value", 
-			description.contains("3.14") || description.contains("π"));
+		assertTrue("Description should contain the constant value",
+			description.contains("3.14") || description.contains("pi"));
 	}
 
 	/**
@@ -173,17 +177,94 @@ public class SingleConstantComputationTest implements TestFeatures {
 	 * Demonstrates the protected constructor that allows custom naming
 	 * of SingleConstantComputation instances.
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void customNameConstructor() {
 		String customName = "myConstant";
 		TraversalPolicy shape = new TraversalPolicy(2, 2);
 		double value = 42.0;
-		
+
 		// Create a test subclass to access the protected constructor
-		SingleConstantComputation<PackedCollection<?>> constant = 
-			new SingleConstantComputation<PackedCollection<?>>(customName, shape, value) {};
-		
+		SingleConstantComputation constant =
+			new SingleConstantComputation(customName, shape, value) {};
+
 		assertEquals(value, constant.getConstantValue());
 		assertEquals(shape.getTotalSize(), constant.getShape().getTotalSize());
+	}
+
+	/**
+	 * Tests that traverseEach on a SingleConstantComputation returns another
+	 * SingleConstantComputation rather than wrapping it in a ReshapeProducer.
+	 * This verifies that the delegation pattern in CollectionFeatures.traverseEach
+	 * properly delegates to the constant's own reshape method.
+	 */
+	@Test(timeout = 30000)
+	public void traverseEachReturnsConstant() {
+		TraversalPolicy shape = new TraversalPolicy(3, 4);
+		double constantValue = 2.5;
+		SingleConstantComputation constant =
+			new SingleConstantComputation(shape, constantValue);
+
+		// Call traverseEach through CollectionFeatures
+		Producer result = traverseEach(constant);
+
+		// Should return a SingleConstantComputation, not a ReshapeProducer
+		assertTrue("traverseEach on SingleConstantComputation should return SingleConstantComputation, not " + result.getClass().getSimpleName(),
+			result instanceof SingleConstantComputation);
+		assertFalse("traverseEach on SingleConstantComputation should not wrap in ReshapeProducer",
+			result instanceof ReshapeProducer);
+
+		// Verify the constant value is preserved
+		SingleConstantComputation resultConstant = (SingleConstantComputation) result;
+		assertEquals(constantValue, resultConstant.getConstantValue());
+	}
+
+	/**
+	 * Tests that traverseEach on a CollectionZerosComputation returns another
+	 * CollectionZerosComputation rather than wrapping it in a ReshapeProducer.
+	 */
+	@Test(timeout = 30000)
+	public void traverseEachZerosReturnsZeros() {
+		TraversalPolicy shape = new TraversalPolicy(3, 4);
+		CollectionZerosComputation zeros = new CollectionZerosComputation(shape);
+
+		// Call traverseEach through CollectionFeatures
+		Producer result = traverseEach(zeros);
+
+		// Should return a CollectionZerosComputation, not a ReshapeProducer
+		assertTrue("traverseEach on CollectionZerosComputation should return CollectionZerosComputation, not " + result.getClass().getSimpleName(),
+			result instanceof CollectionZerosComputation);
+		assertFalse("traverseEach on CollectionZerosComputation should not wrap in ReshapeProducer",
+			result instanceof ReshapeProducer);
+
+		// Verify it's still zero
+		CollectionZerosComputation resultZeros = (CollectionZerosComputation) result;
+		assertTrue("Result should still be zero", resultZeros.isZero());
+	}
+
+	/**
+	 * Tests that reshape on a SingleConstantComputation returns another
+	 * SingleConstantComputation when called through CollectionFeatures.
+	 */
+	@Test(timeout = 30000)
+	public void reshapeConstantReturnsConstant() {
+		TraversalPolicy originalShape = new TraversalPolicy(2, 3);
+		TraversalPolicy newShape = new TraversalPolicy(6);
+		double constantValue = 3.14;
+		SingleConstantComputation constant =
+			new SingleConstantComputation(originalShape, constantValue);
+
+		// Call reshape through CollectionFeatures
+		Producer result = reshape(newShape, constant);
+
+		// Should return a SingleConstantComputation, not a ReshapeProducer
+		assertTrue("reshape on SingleConstantComputation should return SingleConstantComputation, not " + result.getClass().getSimpleName(),
+			result instanceof SingleConstantComputation);
+		assertFalse("reshape on SingleConstantComputation should not wrap in ReshapeProducer",
+			result instanceof ReshapeProducer);
+
+		// Verify the constant value is preserved
+		SingleConstantComputation resultConstant = (SingleConstantComputation) result;
+		assertEquals(constantValue, resultConstant.getConstantValue());
+		assertEquals(newShape.getTotalSize(), resultConstant.getShape().getTotalSize());
 	}
 }

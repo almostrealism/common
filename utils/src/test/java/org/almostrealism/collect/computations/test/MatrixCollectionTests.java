@@ -16,23 +16,22 @@
 
 package org.almostrealism.collect.computations.test;
 
-import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Assert;
 import org.junit.Test;
 
 public class MatrixCollectionTests implements TestFeatures {
-	@Test
+	@Test(timeout = 30000)
 	public void matrixMultiplyMap() {
 		int size = 48;
 		int n = size;
 		int d = size;
 
-		PackedCollection<?> x = new PackedCollection<>(shape(n));
+		PackedCollection x = new PackedCollection(shape(n));
 		x.fill(pos -> Math.random());
 
-		PackedCollection<?> weight = new PackedCollection<>(shape(d, n));
+		PackedCollection weight = new PackedCollection(shape(d, n));
 		weight.fill(pos -> Math.random());
 
 		kernelTest(() -> reduce(traverse(1, p(weight)),
@@ -50,16 +49,16 @@ public class MatrixCollectionTests implements TestFeatures {
 				}, false, false, true);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void matrixMultiplyRepeat() {
 		int size = 768;
 		int n = size;
 		int d = size;
 
-		PackedCollection<?> x = new PackedCollection<>(shape(n));
+		PackedCollection x = new PackedCollection(shape(n));
 		x.fill(pos -> Math.random());
 
-		PackedCollection<?> weight = new PackedCollection<>(shape(d, n));
+		PackedCollection weight = new PackedCollection(shape(d, n));
 		weight.fill(pos -> Math.random());
 
 		kernelTest(() -> multiply(traverseEach(p(weight)), traverseEach(repeat(d, p(x)))).traverse(1).sum(),

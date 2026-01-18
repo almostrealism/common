@@ -16,9 +16,9 @@
 
 package org.almostrealism.space;
 
+import io.almostrealism.uml.Function;
 import org.almostrealism.geometry.Intersectable;
 import org.almostrealism.geometry.Ray;
-import io.almostrealism.uml.Function;
 
 /**
  * Similar to {@link Intersectable}, implementors of {@link DistanceEstimator} provide

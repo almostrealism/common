@@ -35,16 +35,16 @@ import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.Greater;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.expression.LongConstant;
+import io.almostrealism.expression.MinimumValue;
 import io.almostrealism.expression.Minus;
 import io.almostrealism.expression.Mod;
 import io.almostrealism.expression.Quotient;
 import io.almostrealism.expression.Rectify;
 import io.almostrealism.expression.Sine;
+import io.almostrealism.expression.StaticReference;
 import io.almostrealism.expression.Sum;
 import io.almostrealism.expression.Tangent;
 import io.almostrealism.kernel.KernelIndex;
-import io.almostrealism.expression.MinimumValue;
-import io.almostrealism.expression.StaticReference;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
 

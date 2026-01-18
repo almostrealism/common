@@ -18,9 +18,8 @@ package org.almostrealism.hardware.metal;
 
 import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;
-import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.concurrent.Semaphore;
-import org.almostrealism.hardware.Hardware;
+import io.almostrealism.profile.OperationMetadata;
 import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.MemoryData;
 
@@ -31,9 +30,30 @@ import java.util.concurrent.Future;
 import java.util.stream.IntStream;
 
 /**
- * {@link MetalOperator}s are intended to be used with {@link ThreadLocal}.
+ * {@link HardwareOperator} that executes compiled Metal compute kernels.
+ *
+ * <p>Wraps {@link MTLComputePipelineState} and manages threadgroup sizing,
+ * argument encoding, and kernel dispatch on Metal GPU. Thread-local to avoid synchronization.</p>
+ *
+ * <h2>Threadgroup Sizing</h2>
+ *
+ * <pre>{@code
+ * // Automatic sizing based on kernel limits
+ * int workgroup = operator.getWorkgroupSize();
+ * // Uses kernel.maxTotalThreadsPerThreadgroup() and threadExecutionWidth()
+ *
+ * int[] dimensions = operator.getWorkgroupDimensions();
+ * // Returns [simdWidth, workgroupSize/simdWidth, 1]
+ * }</pre>
+ *
+ * @see MetalOperatorMap
+ * @see MTLComputePipelineState
+ * @see HardwareOperator
  */
 public class MetalOperator extends HardwareOperator {
+	/**
+	 * Enables {@code dispatchThreadgroups} mode instead of {@code dispatchThreads} for kernel execution.
+	 */
 	public static boolean enableDispatchThreadgroups = false;
 
 	private static long totalInvocations;
@@ -46,6 +66,14 @@ public class MetalOperator extends HardwareOperator {
 
 	private MTLComputePipelineState kernel;
 
+	/**
+	 * Creates a Metal operator for executing a compiled kernel.
+	 *
+	 * @param context The {@link MetalComputeContext} providing execution environment
+	 * @param program The compiled {@link MetalProgram} containing the kernel function
+	 * @param name Display name for this operator
+	 * @param argCount Number of buffer arguments expected by the kernel
+	 */
 	public MetalOperator(MetalComputeContext context, MetalProgram program, String name, int argCount) {
 		this.context = context;
 		this.prog = program;
@@ -53,23 +81,57 @@ public class MetalOperator extends HardwareOperator {
 		this.argCount = argCount;
 	}
 
+	/**
+	 * Returns a display name combining the operator name and execution ID.
+	 *
+	 * @return Name in format "name(execution N)"
+	 */
 	@Override
-	public String getName() { return name; }
+	public String getName() { return name +  "(execution " + getId() + ")"; }
 
+	/**
+	 * Returns the hardware backend identifier.
+	 *
+	 * @return "MTL" for Metal backend
+	 */
 	@Override
 	protected String getHardwareName() { return "MTL"; }
 
+	/**
+	 * Returns metadata about this operation.
+	 *
+	 * @return {@link OperationMetadata} from the underlying program
+	 */
 	@Override
 	public OperationMetadata getMetadata() { return prog.getMetadata(); }
 
+	/**
+	 * Checks if this operator executes on GPU hardware.
+	 *
+	 * @return True unless context is explicitly CPU-only
+	 */
 	@Override
 	public boolean isGPU() {
 		return !context.isCPU();
 	}
 
+	/**
+	 * Returns the number of buffer arguments required by the kernel.
+	 *
+	 * @return Kernel argument count
+	 */
 	@Override
 	protected int getArgCount() { return argCount; }
 
+	/**
+	 * Computes optimal workgroup (threadgroup) size for the kernel.
+	 *
+	 * <p>Finds the largest power-of-2 divisor of global work size that doesn't
+	 * exceed the kernel's {@code maxTotalThreadsPerThreadgroup}. Falls back to
+	 * SIMD width if {@link #enableDispatchThreadgroups} is enabled.</p>
+	 *
+	 * @return Workgroup size in threads
+	 */
 	@Override
 	public int getWorkgroupSize() {
 		if (kernel == null) return super.getWorkgroupSize();
@@ -92,6 +154,15 @@ public class MetalOperator extends HardwareOperator {
 		return 1;
 	}
 
+	/**
+	 * Returns workgroup dimensions for kernel dispatch.
+	 *
+	 * <p>If {@link #enableDispatchThreadgroups} is enabled, returns {@code [workgroupSize, 1, 1]}.
+	 * Otherwise, splits workgroup size across X and Y dimensions based on SIMD width:
+	 * {@code [simdWidth, workgroupSize/simdWidth, 1]}.</p>
+	 *
+	 * @return 3-element array of [width, height, depth] dimensions
+	 */
 	public int[] getWorkgroupDimensions() {
 		if (enableDispatchThreadgroups) {
 			return new int[] { getWorkgroupSize(), 1, 1 };
@@ -101,11 +172,32 @@ public class MetalOperator extends HardwareOperator {
 		}
 	}
 
+	/**
+	 * Returns the memory providers supported by this operator.
+	 *
+	 * @return List of {@link MemoryProvider}s from the data context
+	 */
 	@Override
 	public List<MemoryProvider<? extends Memory>> getSupportedMemory() {
 		return context.getDataContext().getMemoryProviders();
 	}
 
+	/**
+	 * Executes the Metal kernel with the specified arguments.
+	 *
+	 * <p>Encodes kernel arguments as Metal buffers, computes threadgroup configuration,
+	 * dispatches the compute command, and blocks until completion.</p>
+	 *
+	 * <p><strong>Thread-safety:</strong> Synchronized to ensure only one kernel
+	 * executes at a time per operator instance.</p>
+	 *
+	 * @param args Kernel arguments (must be {@link MemoryData})
+	 * @param dependsOn Optional {@link Semaphore} to wait on before execution
+	 * @return Currently always returns null (TODO: return proper Semaphore)
+	 * @throws UnsupportedOperationException if argument count exceeds {@link MetalCommandRunner#MAX_ARGS}
+	 * @throws UnsupportedOperationException if global work size exceeds {@link Integer#MAX_VALUE}
+	 * @throws RuntimeException if kernel execution fails
+	 */
 	@Override
 	public synchronized Semaphore accept(Object[] args, Semaphore dependsOn) {
 		if (kernel == null) {
@@ -176,27 +268,35 @@ public class MetalOperator extends HardwareOperator {
 			});
 		});
 
-		if (Hardware.isAsync()) {
-			// TODO  Return a Semaphore using the Future
-			throw new UnsupportedOperationException();
-		} else {
-			try {
-				run.get();
-			} catch (InterruptedException e) {
-				Thread.currentThread().interrupt();
-			} catch (ExecutionException  e) {
-				throw new RuntimeException(e);
-			}
+		try {
+			// TODO  This should actually return a Semaphore rather than
+			// TODO  blocking until the process is over
+			run.get();
+		} catch (InterruptedException e) {
+			Thread.currentThread().interrupt();
+		} catch (ExecutionException  e) {
+			throw new RuntimeException(e);
 		}
 
 		return null;
 	}
 
+	/**
+	 * Checks if this operator has been destroyed.
+	 *
+	 * @return True if the underlying program is null or destroyed
+	 */
 	@Override
 	public boolean isDestroyed() {
 		return prog == null || prog.isDestroyed();
 	}
 
+	/**
+	 * Destroys this operator and releases the compute pipeline state.
+	 *
+	 * <p>Frees Metal resources associated with the kernel. After calling destroy,
+	 * this operator cannot be used for execution.</p>
+	 */
 	public void destroy() {
 		if (kernel != null) kernel.release();
 		kernel = null;

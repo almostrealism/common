@@ -16,24 +16,25 @@
 
 package org.almostrealism.space;
 
-import io.almostrealism.kernel.KernelStructureContext;
-import io.almostrealism.compute.Process;
-import io.almostrealism.scope.Scope;
-import org.almostrealism.algebra.*;
-import org.almostrealism.color.RGB;
-import org.almostrealism.geometry.Ray;
-import org.almostrealism.geometry.RayFeatures;
-import org.almostrealism.geometry.TransformMatrix;
-import org.almostrealism.geometry.ContinuousField;
-import org.almostrealism.geometry.ShadableIntersection;
 import io.almostrealism.code.Constant;
 import io.almostrealism.code.Operator;
+import io.almostrealism.compute.Process;
+import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
+import io.almostrealism.scope.Scope;
+import org.almostrealism.algebra.ParticleGroup;
+import org.almostrealism.algebra.Vector;
+import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.color.RGB;
+import org.almostrealism.geometry.ContinuousField;
+import org.almostrealism.geometry.Ray;
+import org.almostrealism.geometry.RayFeatures;
+import org.almostrealism.geometry.ShadableIntersection;
+import org.almostrealism.geometry.TransformMatrix;
 
 import java.util.Collection;
 import java.util.Collections;
-import java.util.function.Supplier;
 
 /** A {@link Plane} represents an plane in 3d space. */
 public class Plane extends AbstractSurface implements ParticleGroup, RayFeatures {
@@ -50,7 +51,7 @@ public class Plane extends AbstractSurface implements ParticleGroup, RayFeatures
   
 	private int type;
 
-	private Producer<Vector> normal;
+	private Producer<PackedCollection> normal;
 
 	/**
 	 * Constructs a {@link Plane} that represents an XY plane that is black.
@@ -134,7 +135,7 @@ public class Plane extends AbstractSurface implements ParticleGroup, RayFeatures
 	}
 
 	@Override
-	public Producer<Vector> getNormalAt(Producer<Vector> p) {
+	public Producer<PackedCollection> getNormalAt(Producer<PackedCollection> p) {
 		calculateTransform();
 		return normal;
 	}
@@ -144,14 +145,14 @@ public class Plane extends AbstractSurface implements ParticleGroup, RayFeatures
 	 * {@link Ray} that intersection between the ray and this {@link Plane} occurs.
 	 */
 	@Override
-	public ContinuousField intersectAt(Producer<Ray> r) {
+	public ContinuousField intersectAt(Producer<?> r) {
 		TransformMatrix m = getTransform(true);
-		Producer<Ray> tr = r;
+		Producer<?> tr = r;
 		if (m != null) tr = m.getInverse().transform(tr);
 
 		// tr = new RayFromVectors(new RayOrigin(tr), new RayDirection(tr).normalize());
 
-		Producer<Scalar> s;
+		Producer<PackedCollection> s;
 
 		if (type == Plane.XY) {
 			s = minus(z(origin(tr))).divide(z(direction(tr)));
@@ -167,30 +168,32 @@ public class Plane extends AbstractSurface implements ParticleGroup, RayFeatures
 	}
 
 	@Override
-	public Operator<Scalar> expect() {
-		return new Constant<>(new Scalar(0));
+	public Operator<PackedCollection> expect() {
+		PackedCollection zero = new PackedCollection(1);
+		zero.setMem(0, 0.0);
+		return new Constant<>(zero);
 	}
 
 	@Override
-	public Operator<Scalar> get() {
+	public Operator<PackedCollection> get() {
 		return new Operator<>() {
 			@Override
-			public Evaluable<Scalar> get() {
+			public Evaluable<PackedCollection> get() {
 				return args -> {
+					PackedCollection result = new PackedCollection(1);
 					if (type == Plane.XY)
-						return new Scalar(getInput().get().evaluate(args).getZ());
+						result.setMem(0, getInput().get().evaluate(args).getZ());
 					else if (type == Plane.XZ)
-						return new Scalar(getInput().get().evaluate(args).getY());
+						result.setMem(0, getInput().get().evaluate(args).getY());
 					else if (type == Plane.YZ)
-						return new Scalar(getInput().get().evaluate(args).getX());
-					else
-						return null;
+						result.setMem(0, getInput().get().evaluate(args).getX());
+					return result;
 				};
 			}
 
 			@Override
-			public Scope<Scalar> getScope(KernelStructureContext context) {
-				Scope<Scalar> s = new Scope<>();
+			public Scope<PackedCollection> getScope(KernelStructureContext context) {
+				Scope<PackedCollection> s = new Scope<>();
 				// TODO  This is not correct
 				// s.getVariables().add(new Variable("scalar", get().evaluate()));
 				return s;

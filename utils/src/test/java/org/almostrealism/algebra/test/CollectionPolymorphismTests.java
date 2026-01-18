@@ -16,10 +16,9 @@
 
 package org.almostrealism.algebra.test;
 
-import org.almostrealism.algebra.Scalar;
+import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.algebra.Tensor;
 import org.almostrealism.collect.PackedCollection;
-import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
 
@@ -28,25 +27,25 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 public class CollectionPolymorphismTests implements TestFeatures {
-	// @Test
+	// @Test(timeout = 10000)
 	public void traversalStream() {
 		TraversalPolicy shape = new TraversalPolicy(2, 3, 3);
 		shape.stream().map(Arrays::toString).forEach(System.out::println);
 	}
 
-	@Test
+	@Test(timeout = 10000)
 	public void tensorToScalarBank() {
-		Tensor<Scalar> t = new Tensor<>();
-		t.insert(new Scalar(1), 0, 0);
-		t.insert(new Scalar(2), 0, 1);
-		t.insert(new Scalar(3), 0, 2);
-		t.insert(new Scalar(4), 1, 0);
-		t.insert(new Scalar(5), 1, 1);
-		t.insert(new Scalar(6), 1, 2);
-		List<PackedCollection<Scalar>> banks = t.pack().traverse(1)
-				.extract(Scalar::scalarBank)
+		Tensor<PackedCollection> t = new Tensor<>();
+		t.insert(pack(1.0), 0, 0);
+		t.insert(pack(2.0), 0, 1);
+		t.insert(pack(3.0), 0, 2);
+		t.insert(pack(4.0), 1, 0);
+		t.insert(pack(5.0), 1, 1);
+		t.insert(pack(6.0), 1, 2);
+		List<PackedCollection> banks = t.pack().traverse(1)
+				.extract(count -> new PackedCollection(shape(count, 1)))
 				.collect(Collectors.toList());
-		assertEquals(3, banks.get(0).get(2));
-		assertEquals(5, banks.get(1).get(1));
+		assertEquals(3, banks.get(0).valueAt(2, 0));
+		assertEquals(5, banks.get(1).valueAt(1, 0));
 	}
 }

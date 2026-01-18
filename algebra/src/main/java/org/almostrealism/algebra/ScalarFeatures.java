@@ -17,86 +17,68 @@
 package org.almostrealism.algebra;
 
 import io.almostrealism.collect.TraversalPolicy;
-import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.computations.Choice;
-import org.almostrealism.bool.AcceleratedConditionalStatement;
-import org.almostrealism.bool.AcceleratedConditionalStatementVector;
-import org.almostrealism.bool.GreaterThanScalar;
-import org.almostrealism.bool.LessThanScalar;
-import org.almostrealism.bool.LessThanVector;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.computations.DefaultTraversableExpressionComputation;
 
-import java.util.function.Supplier;
-
+/**
+ * Provides convenient factory methods for creating scalar computations.
+ *
+ * <p>
+ * {@link ScalarFeatures} extends {@link CollectionFeatures} to provide specialized methods
+ * for working with scalar values in the computation graph framework. This interface is
+ * designed to be mixed into classes that need to create scalar computations.
+ * </p>
+ *
+ * <h2>Usage Examples</h2>
+ * <pre>{@code
+ * public class MyComputation implements ScalarFeatures {
+ *     public Producer<PackedCollection> compute() {
+ *         // Create constant scalar (size 1)
+ *         CollectionProducer<?> s1 = scalar(5.0);
+ *
+ *         // Scalar operations
+ *         return s1.add(scalar(10.0));
+ *     }
+ * }
+ * }</pre>
+ *
+ * @author  Michael Murray
+ * @see CollectionFeatures
+ * @see CollectionProducer
+ */
 public interface ScalarFeatures extends CollectionFeatures {
 
 	/**
-	 * Creates an {@link CollectionProducer} that produces a constant {@link Scalar} value.
-	 * This method creates a computation that returns the values from the provided {@link Scalar},
-	 * effectively creating a constant computation that always returns the same values.
-	 * 
-	 * @param value The {@link Scalar} containing the constant values
-	 * @return An {@link CollectionProducer} that evaluates to the specified {@link Scalar}
+	 * Creates a {@link CollectionProducer} for a constant scalar value.
+	 * Alias for {@link #c(double)}.
+	 *
+	 * @param value  the scalar value
+	 * @return a producer for the constant scalar
 	 */
-	static CollectionProducer<Scalar> of(Scalar value) {
-		return (CollectionProducer) DefaultTraversableExpressionComputation.fixed(value, Scalar.postprocessor());
-	}
+	default CollectionProducer scalar(double value) { return c(value); }
 
-	default CollectionProducer<Scalar> v(Scalar value) { return value(value); }
-
-	default CollectionProducer<Scalar> scalar(double value) { return value(new Scalar(value)); }
-
-	default CollectionProducer<Scalar> value(Scalar value) {
-		return (CollectionProducer) DefaultTraversableExpressionComputation.fixed(value, Scalar.postprocessor());
-	}
-
-	default Producer<Scalar> scalar() {
-		return Scalar.blank();
-	}
-
+	/**
+	 * Creates a {@link Choice} computation that selects from multiple options based on a decision value.
+	 *
+	 * @param choiceCount   the number of choices available
+	 * @param resultShape   the shape of the result
+	 * @param decision      a producer providing the decision index
+	 * @param choices       a producer providing the available choice values
+	 * @return a choice computation
+	 */
 	default Choice choice(int choiceCount, TraversalPolicy resultShape,
-						  Producer<PackedCollection<?>> decision,
-						  Producer<PackedCollection<?>> choices) {
+						  Producer<PackedCollection> decision,
+						  Producer<PackedCollection> choices) {
 		return new Choice(resultShape, choiceCount, decision, choices);
 	}
 
-	default AcceleratedConditionalStatement<Scalar> scalarGreaterThan(Producer<Scalar> left,
-																	  Producer<Scalar> right,
-																	  boolean includeEqual) {
-		return scalarGreaterThan(left, right, null, null, includeEqual);
-	}
-
-	default AcceleratedConditionalStatement<Scalar> scalarGreaterThan(Supplier<Evaluable<? extends Scalar>> left,
-																	  Supplier<Evaluable<? extends Scalar>> right,
-																	  Supplier<Evaluable<? extends Scalar>> trueValue,
-																	  Supplier<Evaluable<? extends Scalar>> falseValue,
-																	  boolean includeEqual) {
-		return new GreaterThanScalar(left, right, trueValue, falseValue, includeEqual);
-	}
-
-	default AcceleratedConditionalStatement<Scalar> scalarLessThan(Supplier<Evaluable<? extends Scalar>> left,
-																   Supplier<Evaluable<? extends Scalar>> right,
-																   boolean includeEqual) {
-		return scalarLessThan(left, right, null, null, includeEqual);
-	}
-
-	default AcceleratedConditionalStatement<Scalar> scalarLessThan(Supplier<Evaluable<? extends Scalar>> left,
-																   Supplier<Evaluable<? extends Scalar>> right,
-																   Supplier<Evaluable<? extends Scalar>> trueValue,
-																   Supplier<Evaluable<? extends Scalar>> falseValue,
-																   boolean includeEqual) {
-		return new LessThanScalar(left, right, trueValue, falseValue, includeEqual);
-	}
-
-	default AcceleratedConditionalStatementVector scalarLessThan(Producer<Scalar> left,
-																 Producer<Scalar> right) {
-		// TODO  This should not be Vector-specific
-		return new LessThanVector(left, right, null, null);
-	}
-
+	/**
+	 * Returns a singleton instance of {@link ScalarFeatures}.
+	 *
+	 * @return a ScalarFeatures instance
+	 */
 	static ScalarFeatures getInstance() { return new ScalarFeatures() { }; }
 }

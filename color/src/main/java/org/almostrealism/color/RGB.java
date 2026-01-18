@@ -16,28 +16,65 @@
 
 package org.almostrealism.color;
 
+import io.almostrealism.code.Memory;
+import io.almostrealism.collect.TraversalOrdering;
+import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.relation.Producer;
+import io.almostrealism.util.NumberFormats;
+import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.computations.DynamicCollectionProducer;
+import org.almostrealism.hardware.MemoryData;
+import org.almostrealism.hardware.NoOpMemoryData;
+
 import java.io.Externalizable;
 import java.io.IOException;
 import java.io.ObjectInput;
 import java.io.ObjectOutput;
 import java.util.function.BiFunction;
 
-import io.almostrealism.code.Memory;
-import io.almostrealism.collect.TraversalOrdering;
-import io.almostrealism.relation.Producer;
-import io.almostrealism.util.NumberFormats;
-import org.almostrealism.collect.PackedCollection;
-import io.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.collect.computations.DynamicCollectionProducer;
-import org.almostrealism.hardware.MemoryData;
-import org.almostrealism.hardware.NoOpMemoryData;
-
 /**
- * An RGB object represents a color defined by three channels: red, green, and blue.
- * An RGB object stores these channels as double values between 0.0 (no color) and
- * 1.0 (strongest color).
+ * Represents a color in the RGB (Red, Green, Blue) color space.
+ *
+ * <p>An {@code RGB} object stores three color channels (red, green, blue) as double values
+ * in the range 0.0 (no color) to 1.0 (full intensity). Values outside this range are
+ * clamped when set via the setter methods.</p>
+ *
+ * <h2>Color Storage</h2>
+ * <p>This class extends {@link PackedCollection} to enable hardware-accelerated color
+ * operations. The internal storage uses configurable color depth (default 192-bit for
+ * high precision). The shape is always {@code [3]} representing the three color channels.</p>
+ *
+ * <h2>Construction</h2>
+ * <p>Colors can be created in several ways:</p>
+ * <ul>
+ *   <li>Direct RGB values: {@code new RGB(1.0, 0.0, 0.0)} for red</li>
+ *   <li>From wavelength (350-780nm): {@code new RGB(650.0)} for spectral red</li>
+ *   <li>From existing memory: {@code new RGB(delegate, offset)} for zero-copy access</li>
+ * </ul>
+ *
+ * <h2>Arithmetic Operations</h2>
+ * <p>RGB supports both creating new instances and in-place modifications:</p>
+ * <ul>
+ *   <li>{@link #add(RGB)} - returns new RGB (consider {@link #addTo(RGB)} for efficiency)</li>
+ *   <li>{@link #multiply(double)} - returns new RGB (consider {@link #multiplyBy(double)})</li>
+ *   <li>{@link #subtract(RGB)} - returns new RGB</li>
+ *   <li>{@link #divide(double)} - returns new RGB (consider {@link #divideBy(double)})</li>
+ * </ul>
+ *
+ * <h2>Serialization</h2>
+ * <p>RGB implements {@link Externalizable} for efficient serialization and provides
+ * {@link #encode()}/{@link #decode(char[])} methods for custom text-based encoding.</p>
+ *
+ * <h2>Thread Safety</h2>
+ * <p>This class is not thread-safe. External synchronization is required for concurrent
+ * access to the same RGB instance.</p>
+ *
+ * @see RGBA
+ * @see RGBFeatures
+ * @see PackedCollection
+ * @author Michael Murray
  */
-public class RGB extends PackedCollection<RGB> implements Externalizable, Cloneable {
+public class RGB extends PackedCollection implements Externalizable, Cloneable {
 	protected interface Data extends MemoryData {
 		void add(int i, double r);
 		void scale(int i, double r);
@@ -116,10 +153,39 @@ public class RGB extends PackedCollection<RGB> implements Externalizable, Clonea
 		if (init) this.data.setMem(new double[] { r, g, b });
 	}
 	
+	/**
+	 * Constructs an RGB object from a visible light wavelength.
+	 *
+	 * <p>Converts a wavelength in the visible spectrum (350-780nm) to its
+	 * approximate RGB representation. Wavelengths outside the visible range
+	 * will result in black (0, 0, 0).</p>
+	 *
+	 * @param nanom the wavelength in nanometers (valid range: 350-780)
+	 */
 	public RGB(double nanom) {
 		this(RGB.defaultDepth, nanom);
 	}
-	
+
+	/**
+	 * Constructs an RGB object from a visible light wavelength with specified color depth.
+	 *
+	 * <p>Converts a wavelength in the visible spectrum (350-780nm) to its
+	 * approximate RGB representation using the CIE color matching functions.
+	 * The conversion applies intensity correction at the spectrum edges.</p>
+	 *
+	 * <p>Wavelength to color mapping:</p>
+	 * <ul>
+	 *   <li>350-439nm: Violet to blue (increasing red, full blue)</li>
+	 *   <li>440-489nm: Blue to cyan (increasing green, full blue)</li>
+	 *   <li>490-509nm: Cyan to green (full green, decreasing blue)</li>
+	 *   <li>510-579nm: Green to yellow (increasing red, full green)</li>
+	 *   <li>580-644nm: Yellow to red (full red, decreasing green)</li>
+	 *   <li>645-780nm: Red (full red only)</li>
+	 * </ul>
+	 *
+	 * @param model the color depth model (e.g., 192 for 192-bit)
+	 * @param nanom the wavelength in nanometers (valid range: 350-780)
+	 */
 	public RGB(int model, double nanom) {
 		this.initColorModule(model);
 		
@@ -159,6 +225,16 @@ public class RGB extends PackedCollection<RGB> implements Externalizable, Clonea
 		this.setBlue(this.adjust(b, f));
 	}
 
+	/**
+	 * Constructs an RGB object that references existing memory data.
+	 *
+	 * <p>This constructor creates a view into existing memory, enabling zero-copy
+	 * access to color data stored in a larger buffer. Changes to this RGB will
+	 * modify the underlying delegate memory.</p>
+	 *
+	 * @param delegate the memory data containing the RGB values
+	 * @param delegateOffset the offset within the delegate where RGB data starts
+	 */
 	public RGB(MemoryData delegate, int delegateOffset) {
 		super(RGB.shape());
 		initColorModule(192, delegate, delegateOffset);
@@ -451,6 +527,11 @@ public class RGB extends PackedCollection<RGB> implements Externalizable, Clonea
 		return value;
 	}
 
+	/**
+	 * Returns the shape of an RGB color as a traversal policy.
+	 *
+	 * @return a {@link TraversalPolicy} with shape {@code [3]} for the three color channels
+	 */
 	public static TraversalPolicy shape() {
 		return new TraversalPolicy(3);
 	}
@@ -569,21 +650,60 @@ public class RGB extends PackedCollection<RGB> implements Externalizable, Clonea
 	@Override
 	public void destroy() { data.destroy(); }
 
-	public static Producer<RGB> blank() {
-		return new DynamicCollectionProducer<>(RGB.shape(), args -> new RGB(defaultDepth, 0, 0, 0, false));
+	/**
+	 * Creates a producer that generates blank (black) RGB colors.
+	 *
+	 * <p>This is useful for creating placeholder colors in computation graphs
+	 * where the actual color will be computed later.</p>
+	 *
+	 * @return a {@link Producer} that yields black RGB colors (0, 0, 0)
+	 */
+	public static Producer<PackedCollection> blank() {
+		return new DynamicCollectionProducer(RGB.shape(), args -> new RGB(defaultDepth, 0, 0, 0, false));
 	}
 
-	public static PackedCollection<RGB> bank(int count) {
-		return new PackedCollection<>(new TraversalPolicy(count, 3), 1, delegateSpec ->
-				new RGB(delegateSpec.getDelegate(), delegateSpec.getOffset()));
+	/**
+	 * Creates a packed collection of RGB colors (a "bank" of colors).
+	 *
+	 * <p>This is useful for storing multiple RGB values in contiguous memory,
+	 * such as pixel data for an image row or batch of colors for processing.</p>
+	 *
+	 * @param count the number of RGB colors to allocate space for
+	 * @return a {@link PackedCollection} with shape {@code [count, 3]}
+	 */
+	public static PackedCollection bank(int count) {
+		return new PackedCollection(new TraversalPolicy(count, 3), 1, delegateSpec -> {
+				PackedCollection.DelegateSpec spec = (PackedCollection.DelegateSpec) delegateSpec;
+				return new RGB(spec.getDelegate(), spec.getOffset());
+		});
 	}
 
-	public static PackedCollection<RGB> bank(int count, MemoryData delegate, int delegateOffset) {
-		return new PackedCollection<>(new TraversalPolicy(count, 3), 1, delegateSpec ->
-				new RGB(delegateSpec.getDelegate(), delegateSpec.getOffset()),
-				delegate, delegateOffset);
+	/**
+	 * Creates a packed collection of RGB colors backed by existing memory.
+	 *
+	 * <p>This enables zero-copy access to color data in an existing buffer,
+	 * useful for working with image data loaded from files or GPU memory.</p>
+	 *
+	 * @param count the number of RGB colors in the bank
+	 * @param delegate the existing memory containing the RGB data
+	 * @param delegateOffset the offset within the delegate where data starts
+	 * @return a {@link PackedCollection} view into the delegate memory
+	 */
+	public static PackedCollection bank(int count, MemoryData delegate, int delegateOffset) {
+		return new PackedCollection(new TraversalPolicy(count, 3), 1, delegateSpec -> {
+				PackedCollection.DelegateSpec spec = (PackedCollection.DelegateSpec) delegateSpec;
+				return new RGB(spec.getDelegate(), spec.getOffset());
+		}, delegate, delegateOffset);
 	}
 
+	/**
+	 * Returns a post-processor function for creating RGB objects from memory.
+	 *
+	 * <p>This is used internally by the computation framework to wrap
+	 * raw memory results as RGB objects after evaluation.</p>
+	 *
+	 * @return a {@link BiFunction} that creates RGB from memory data and offset
+	 */
 	public static BiFunction<MemoryData, Integer, RGB> postprocessor() {
 		return (output, offset) -> new RGB(output, offset);
 	}

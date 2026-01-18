@@ -19,13 +19,13 @@ package org.almostrealism.collect;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.MemoryProvider;
-import io.almostrealism.profile.OperationInfo;
 import io.almostrealism.code.ProducerComputation;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.compute.Process;
+import io.almostrealism.profile.OperationInfo;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Parent;
-import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.computations.DefaultCollectionEvaluable;
 import org.almostrealism.collect.computations.ReshapeProducer;
@@ -43,8 +43,58 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-public interface CollectionProducerComputation<T extends PackedCollection<?>> extends
-		 ProducerComputation<T>, CollectionProducerParallelProcess<T> {
+/**
+ * Interface for computations that produce {@link PackedCollection} results with hardware acceleration.
+ *
+ * <p>
+ * {@link CollectionProducerComputation} combines {@link ProducerComputation} and
+ * {@link CollectionProducerParallelProcess} to provide the complete infrastructure for
+ * hardware-accelerated collection operations. This interface is the foundation for all
+ * computations that:
+ * <ul>
+ *   <li>Produce {@link PackedCollection} results</li>
+ *   <li>Can be compiled to native code or GPU kernels</li>
+ *   <li>Support automatic differentiation</li>
+ *   <li>Enable parallel execution</li>
+ * </ul>
+ *
+ * <h2>Key Capabilities</h2>
+ * <ul>
+ *   <li><b>Hardware Acceleration:</b> Automatic compilation to optimized kernels via {@link #get()}</li>
+ *   <li><b>Shape Management:</b> Flexible shape handling with {@link #postProcessOutput} and {@link #shapeForLength}</li>
+ *   <li><b>Process Isolation:</b> {@link IsolatedProcess} for independent execution contexts</li>
+ *   <li><b>Delta Computation:</b> Automatic differentiation support via {@link #applyDeltaStrategy}</li>
+ *   <li><b>Result Postprocessing:</b> Shape adjustment and wrapping via {@link #postProcessOutput}</li>
+ * </ul>
+ *
+ * <h2>Lifecycle</h2>
+ * <pre>{@code
+ * // 1. Create computation
+ * CollectionProducerComputation<PackedCollection> comp = ...;
+ *
+ * // 2. Get evaluable (compiles to hardware)
+ * Evaluable<PackedCollection> ev = comp.get();
+ *
+ * // 3. Execute
+ * PackedCollection result = ev.evaluate();
+ * }</pre>
+ *
+ * <h2>Configuration Flags</h2>
+ * <ul>
+ *   <li><b>isolationLogging:</b> Enables logging when processes are isolated (default: false,
+ *       controlled by AR_ISOLATION_LOGGING env var)</li>
+ *   <li><b>enableShapeTrim:</b> Avoids prepending dimensions in {@link #postProcessOutput}
+ *       when enabled (default: false)</li>
+ * </ul>
+ *
+ * @author  Michael Murray
+ * @see CollectionProducerParallelProcess
+ * @see ProducerComputation
+ * @see PackedCollection
+ * @see DefaultCollectionEvaluable
+ */
+public interface CollectionProducerComputation extends
+		 ProducerComputation<PackedCollection>, CollectionProducerParallelProcess {
 	boolean isolationLogging = SystemUtils.isEnabled("AR_ISOLATION_LOGGING").orElse(false);
 
 	/**
@@ -55,24 +105,24 @@ public interface CollectionProducerComputation<T extends PackedCollection<?>> ex
 	boolean enableShapeTrim = false;
 
 	@Override
-	default <V extends Shape<?>> CollectionProducer<V> applyDeltaStrategy(CollectionProducer<V> producer,
-																		  Producer<?> target) {
+	default <V extends PackedCollection> CollectionProducer applyDeltaStrategy(CollectionProducer producer,
+																			   Producer<?> target) {
 		Collection<Producer<?>> terms;
 
 		if (producer instanceof Parent) {
-			terms = (Collection) ((Parent<?>) producer).getChildren().stream()
-					.map(t -> (Producer) t)
+			terms = ((Parent<?>) producer).getChildren().stream()
+					.map(t -> (Producer<?>) t)
 					.collect(Collectors.toList());
 		} else {
 			return CollectionProducerParallelProcess.super.applyDeltaStrategy(producer, target);
 		}
 
-		return (CollectionProducer) deltaStrategyProcessor(producer.getDeltaStrategy(),
+		return deltaStrategyProcessor(producer.getDeltaStrategy(),
 				producerFactory(this), shape(producer), target).apply(terms);
 	}
 
 	@Override
-	default CollectionProducerParallelProcess<T> generate(List<Process<?, ?>> children) {
+	default CollectionProducerParallelProcess generate(List<Process<?, ?>> children) {
 		throw new UnsupportedOperationException(getClass().getName());
 	}
 
@@ -82,11 +132,11 @@ public interface CollectionProducerComputation<T extends PackedCollection<?>> ex
 				.filter(f -> !(f instanceof MemoryDataDestinationProducer));
 	}
 
-	default T createDestination(int len) {
+	default PackedCollection createDestination(int len) {
 		throw new UnsupportedOperationException();
 	}
 
-	default T postProcessOutput(MemoryData output, int offset) {
+	default PackedCollection postProcessOutput(MemoryData output, int offset) {
 		TraversalPolicy shape = getShape();
 
 		s: if (output instanceof Shape) {
@@ -107,11 +157,11 @@ public interface CollectionProducerComputation<T extends PackedCollection<?>> ex
 			}
 
 			if (offset == 0 && shape.equals(((Shape) output).getShape())) {
-				return (T) output;
+				return (PackedCollection) output;
 			}
 		}
 
-		return (T) new PackedCollection(shape, shape.getTraversalAxis(), output, offset);
+		return new PackedCollection(shape, shape.getTraversalAxis(), output, offset);
 	}
 
 	/**
@@ -148,9 +198,9 @@ public interface CollectionProducerComputation<T extends PackedCollection<?>> ex
 	 * @see AcceleratedComputationEvaluable#compile()
 	 */
 	@Override
-	default Evaluable<T> get() {
+	default Evaluable<PackedCollection> get() {
 		ComputeContext<MemoryData> ctx = Hardware.getLocalHardware().getComputer().getContext(this);
-		AcceleratedComputationEvaluable<T> ev = new DefaultCollectionEvaluable<>(
+		AcceleratedComputationEvaluable<PackedCollection> ev = new DefaultCollectionEvaluable<>(
 				ctx, getShape(), this,
 				this::createDestination, this::postProcessOutput);
 		ev.load();
@@ -158,12 +208,12 @@ public interface CollectionProducerComputation<T extends PackedCollection<?>> ex
 	}
 
 	@Override
-	default CollectionProducer<T> traverse(int axis) {
+	default CollectionProducer traverse(int axis) {
 		return new ReshapeProducer(axis, this);
 	}
 
 	@Override
-	default CollectionProducer<T> reshape(TraversalPolicy shape) {
+	default CollectionProducer reshape(TraversalPolicy shape) {
 		return new ReshapeProducer(shape, this);
 	}
 
@@ -174,8 +224,8 @@ public interface CollectionProducerComputation<T extends PackedCollection<?>> ex
 		return data;
 	}
 
-	static <T extends PackedCollection<?>> Function<List<Producer<?>>, CollectionProducer<T>>
-				producerFactory(CollectionProducerComputation<T> original) {
+	static <T extends PackedCollection> Function<List<Producer<?>>, CollectionProducer>
+				producerFactory(CollectionProducerComputation original) {
 		return args -> {
 			List<Producer<?>> terms = new ArrayList<>();
 			args.stream().skip(1).forEach(terms::add);
@@ -183,7 +233,7 @@ public interface CollectionProducerComputation<T extends PackedCollection<?>> ex
 			if (terms.isEmpty()) {
 				throw new IllegalArgumentException();
 			} else if (terms.size() == 1) {
-				return (CollectionProducer<T>) terms.get(0);
+				return (CollectionProducer) terms.get(0);
 			} else {
 				return original.generate((List) args.stream()
 						.map(t -> (Process) t).collect(Collectors.toList()));
@@ -191,14 +241,58 @@ public interface CollectionProducerComputation<T extends PackedCollection<?>> ex
 		};
 	}
 
-	static <T extends Shape<?>> boolean isIsolationPermitted(CollectionProducer<T> op) {
+	static <T extends PackedCollection> boolean isIsolationPermitted(CollectionProducer op) {
 		return Process.isolationPermitted(op) &&
 				op.getShape().getTotalSizeLong() <= MemoryProvider.MAX_RESERVATION;
 	}
 
-	class IsolatedProcess<T extends PackedCollection<?>> extends DelegatedCollectionProducer<T> {
+	/**
+	 * Determines the appropriate {@link TraversalPolicy} for a given kernel length.
+	 * This will be the shape of the computation result.
+	 * This method handles the complex logic of adjusting shapes based on whether
+	 * the computation has a fixed count and the relationship between the kernel
+	 * length and the expected output count.
+	 *
+	 * <p>The shape calculation follows these rules:</p>
+	 * <ul>
+	 *   <li>For fixed-count computations, returns the original shape</li>
+	 *   <li>When kernel length equals target count, returns the original shape</li>
+	 *   <li>Otherwise, prepends a dimension to accommodate the length difference</li>
+	 * </ul>
+	 *
+	 * @param len The length of the kernel execution context
+	 * @return The appropriate traversal policy for the given length
+	 * @see #isFixedCount()
+	 * @see TraversalPolicy#prependDimension(int)
+	 */
+	static TraversalPolicy shapeForLength(TraversalPolicy computationShape,
+										  int computationCount,
+										  boolean fixedCount, int len) {
+		TraversalPolicy shape;
 
-		public IsolatedProcess(CollectionProducer<T> op) {
+		if (fixedCount) {
+			shape = computationShape;
+		} else {
+			int count = len / computationCount;
+
+			// When kernel length is less than, or identical to the output count, an
+			// assumption is made that the intended shape is the original shape.
+			// This is a bit of a hack, but it's by far the simplest solution
+			// available
+			if (count == 0 || len == computationCount) {
+				// It is not necessary to prepend a (usually) unnecessary dimension
+				shape = computationShape;
+			} else {
+				shape = computationShape.prependDimension(count);
+			}
+		}
+
+		return shape;
+	}
+
+	class IsolatedProcess extends DelegatedCollectionProducer {
+
+		public IsolatedProcess(CollectionProducer op) {
 			super(op);
 
 			if (isolationLogging)

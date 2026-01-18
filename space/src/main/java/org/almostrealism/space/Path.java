@@ -16,9 +16,9 @@
 
 package org.almostrealism.space;
 
-import java.util.ArrayList;
-
 import org.almostrealism.geometry.Intersection;
+
+import java.util.ArrayList;
 
 /**
  * @author  Michael Murray

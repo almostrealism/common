@@ -17,10 +17,9 @@
 package org.almostrealism.collect.computations.test;
 
 import io.almostrealism.collect.TraversalPolicy;
-import io.almostrealism.relation.Evaluable;
 import io.almostrealism.compute.ParallelProcess;
+import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
-import io.almostrealism.scope.ScopeSettings;
 import org.almostrealism.algebra.Tensor;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
@@ -33,29 +32,28 @@ import java.util.Arrays;
 import java.util.function.Function;
 
 public class CollectionEnumerateTests implements TestFeatures {
-
-	@Test
+	@Test(timeout = 30000)
 	public void transpose() {
 		transpose(64, 256, input -> cp(input).transpose().get().evaluate());
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void transposePassThrough() {
 		int n = 64;
 		int m = 256;
 
 		transpose(n, m, input -> {
 			PassThroughProducer p = new PassThroughProducer(shape(n, m), 0);
-			Evaluable<PackedCollection<?>> transpose = c(p).transpose().get();
+			Evaluable<PackedCollection> transpose = c(p).transpose().get();
 			return transpose
-					.into(new PackedCollection<>(shape(m, n)).each())
+					.into(new PackedCollection(shape(m, n)).each())
 					.evaluate(input.reshape(n, m));
 		});
 	}
 
-	public void transpose(int n, int m, Function<PackedCollection<?>, PackedCollection<?>> operate) {
-		PackedCollection<?> input = new PackedCollection<>(shape(n, m)).randFill();
-		PackedCollection<?> output = operate.apply(input);
+	public void transpose(int n, int m, Function<PackedCollection, PackedCollection> operate) {
+		PackedCollection input = new PackedCollection(shape(n, m)).randFill();
+		PackedCollection output = operate.apply(input);
 
 		assertEquals(m, output.getShape().length(0));
 		assertEquals(n, output.getShape().length(1));
@@ -67,16 +65,16 @@ public class CollectionEnumerateTests implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void enumerateSmall() {
-		PackedCollection<?> input = integers(1, 17).evaluate().reshape(4, 4);
+		PackedCollection input = integers(1, 17).evaluate().reshape(4, 4);
 		input.traverse().print();
 		System.out.println("--");
 
-		CollectionProducer<PackedCollection<?>> producer = cp(input)
+		CollectionProducer producer = cp(input)
 				.enumerate(1, 1)
 				.enumerate(1, 2);
-		PackedCollection<?> out = producer.get().evaluate();
+		PackedCollection out = producer.get().evaluate();
 		out = out.reshape(8, 2).traverse();
 		out.print();
 
@@ -98,14 +96,14 @@ public class CollectionEnumerateTests implements TestFeatures {
 		assertEquals(16.0, out.valueAt(7, 1));
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void enumerate2d() {
 		Tensor<Double> t = tensor(shape(10, 10), (int[] c) -> c[1] < 2);
-		PackedCollection<?> input = t.pack();
+		PackedCollection input = t.pack();
 
-		CollectionProducer<PackedCollection<?>> producer = enumerate(shape(10, 2), p(input));
-		Evaluable<PackedCollection<?>> ev = producer.get();
-		PackedCollection<?> enumerated = ev.evaluate().reshape(shape(5, 10, 2));
+		CollectionProducer producer = enumerate(shape(10, 2), p(input));
+		Evaluable<PackedCollection> ev = producer.get();
+		PackedCollection enumerated = ev.evaluate().reshape(shape(5, 10, 2));
 
 		Assert.assertEquals(5, enumerated.getShape().length(0));
 		Assert.assertEquals(10, enumerated.getShape().length(1));
@@ -126,16 +124,16 @@ public class CollectionEnumerateTests implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void enumerate4dExplicitShape() {
 		int n = 2;
 		int c = 5;
 
-		PackedCollection<?> input = new PackedCollection<>(n, c, 10, 10).randFill();
+		PackedCollection input = new PackedCollection(n, c, 10, 10).randFill();
 
-		CollectionProducer<PackedCollection<?>> producer = enumerate(shape(10, 2), p(input.traverse(2)));
-		Evaluable<PackedCollection<?>> ev = producer.get();
-		PackedCollection<?> enumerated = ev.evaluate();
+		CollectionProducer producer = enumerate(shape(10, 2), p(input.traverse(2)));
+		Evaluable<PackedCollection> ev = producer.get();
+		PackedCollection enumerated = ev.evaluate();
 
 		log(enumerated.getShape());
 		Assert.assertEquals(n, enumerated.getShape().length(0));
@@ -157,32 +155,32 @@ public class CollectionEnumerateTests implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void enumerate4d1() {
 		enumerate4d(2, 5, 4, 2, 2);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void enumerate4d2() {
 		enumerate4d(1, 2, 3, 2, 1);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void enumerate4d3() {
 		enumerate4d(2, 5, 10, 2, 2);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void enumerate4d4() {
 		enumerate4d(2, 5, 10, 2, 1);
 	}
 
 	public void enumerate4d(int n, int c, int d, int len, int stride) {
-		PackedCollection<?> input = new PackedCollection<>(n, c, d, d).randFill();
+		PackedCollection input = new PackedCollection(n, c, d, d).randFill();
 
-		CollectionProducer<PackedCollection<?>> producer = cp(input.traverse(2)).enumerate(3, len, stride);
-		Evaluable<PackedCollection<?>> ev = producer.get();
-		PackedCollection<?> enumerated = ev.evaluate();
+		CollectionProducer producer = cp(input.traverse(2)).enumerate(3, len, stride);
+		Evaluable<PackedCollection> ev = producer.get();
+		PackedCollection enumerated = ev.evaluate();
 
 		log(enumerated.getShape().toStringDetail());
 		Assert.assertEquals(n, enumerated.getShape().length(0));
@@ -200,8 +198,8 @@ public class CollectionEnumerateTests implements TestFeatures {
 				for (int i = 0; i < slices; i++) {
 					for (int j = 0; j < d; j++) {
 						for (int k = 0; k < len; k++) {
-							int inPos[] = new int[] { np, cp, j, i * stride + k };
-							int outPos[] = new int[] { np, cp, i, j, k };
+							int[] inPos = new int[] { np, cp, j, i * stride + k };
+							int[] outPos = new int[] { np, cp, i, j, k };
 							if (verboseLogs)
 								log(Arrays.toString(inPos) + " -> " + Arrays.toString(outPos));
 							assertEquals(input.valueAt(inPos), enumerated.valueAt(outPos));
@@ -212,15 +210,15 @@ public class CollectionEnumerateTests implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void slices() {
 		int size = 4;
 		int count = 3;
 
-		PackedCollection<?> input = tensor(shape(size, size, count)).pack();
+		PackedCollection input = tensor(shape(size, size, count)).pack();
 
-		CollectionProducer<PackedCollection<?>> enumerated = enumerate(shape(size, size, 1), p(input));
-		PackedCollection<?> output = enumerated.get().evaluate();
+		CollectionProducer enumerated = enumerate(shape(size, size, 1), p(input));
+		PackedCollection output = enumerated.get().evaluate();
 		System.out.println(output.getShape());
 
 		Assert.assertEquals(count, output.getShape().length(0));
@@ -240,7 +238,7 @@ public class CollectionEnumerateTests implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void dynamicSum() {
 		if (skipKnownIssues) return;
 
@@ -248,11 +246,11 @@ public class CollectionEnumerateTests implements TestFeatures {
 		int c = 2;
 		int count = 3;
 
-		PackedCollection<?> input = new PackedCollection<>(shape(count, r, c, 1)).randFill();
-		PackedCollection<?> output = new PackedCollection<>(shape(count, r, 1));
+		PackedCollection input = new PackedCollection(shape(count, r, c, 1)).randFill();
+		PackedCollection output = new PackedCollection(shape(count, r, 1));
 
-		Evaluable<PackedCollection<?>> sum = cv(shape(r, c, 1), 0).traverse(1).sum().get();
-//		PackedCollection<?> output = sum.evaluate(input.traverse(1));
+		Evaluable<PackedCollection> sum = cv(shape(r, c, 1), 0).traverse(1).sum().get();
+//		PackedCollection output = sum.evaluate(input.traverse(1));
 		sum.into(output.traverse(2)).evaluate(input.traverse(1));
 
 		Assert.assertEquals(count, output.getShape().length(0));
@@ -271,16 +269,16 @@ public class CollectionEnumerateTests implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void enumerateProduct() {
-		PackedCollection<?> input = tensor(shape(6, 4)).pack();
-		PackedCollection<?> operand = tensor(shape(4, 6, 1)).pack();
+		PackedCollection input = tensor(shape(6, 4)).pack();
+		PackedCollection operand = tensor(shape(4, 6, 1)).pack();
 
-		CollectionProducer<PackedCollection<?>> product = enumerate(shape(6, 1), p(input)).traverse(0).multiply(p(operand));
+		CollectionProducer product = enumerate(shape(6, 1), p(input)).traverse(0).multiply(p(operand));
 		System.out.println(product.getShape());
 
-		Evaluable<PackedCollection<?>> ev = product.get();
-		PackedCollection<?> enumerated = ev.evaluate().reshape(shape(4, 6));
+		Evaluable<PackedCollection> ev = product.get();
+		PackedCollection enumerated = ev.evaluate().reshape(shape(4, 6));
 
 		Assert.assertEquals(4, enumerated.getShape().length(0));
 		Assert.assertEquals(6, enumerated.getShape().length(1));
@@ -293,7 +291,7 @@ public class CollectionEnumerateTests implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void enumerateDivide() {
 		int w = 4; // 1024;
 		int h = 9;
@@ -302,11 +300,11 @@ public class CollectionEnumerateTests implements TestFeatures {
 		TraversalPolicy inShape = shape(w, h, d);
 		TraversalPolicy outputShape = shape(h, w);
 
-		PackedCollection<?> in = new PackedCollection<>(inShape);
+		PackedCollection in = new PackedCollection(inShape);
 
 		in.fill(pos -> Math.random());
 
-		CollectionProducer<PackedCollection<?>> o =
+		CollectionProducer o =
 				c(p(in))
 						.traverse(2).sum()
 						.divide(c(Math.sqrt(d)))
@@ -315,9 +313,9 @@ public class CollectionEnumerateTests implements TestFeatures {
 						.reshape(outputShape);
 
 		verboseLog(() -> {
-//			PackedCollection<?> out = o.get().evaluate();
+//			PackedCollection out = o.get().evaluate();
 			// TODO This should not require optimization to pass, but currently it does
-			PackedCollection<?> out = ((Evaluable<PackedCollection<?>>) ((ParallelProcess) o).optimize().get()).evaluate();
+			PackedCollection out = ((Evaluable<PackedCollection>) ((ParallelProcess) o).optimize().get()).evaluate();
 
 			for (int n = 0; n < h; n++) {
 				for (int t = 0; t < w; t++) {
@@ -338,17 +336,17 @@ public class CollectionEnumerateTests implements TestFeatures {
 		});
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void enumerate2dProduct1() {
 		Tensor<Double> t = tensor(shape(4, 6));
-		PackedCollection<?> input = t.pack();
-		PackedCollection<?> operand = new PackedCollection<>(shape(6, 4)).randFill();
+		PackedCollection input = t.pack();
+		PackedCollection operand = new PackedCollection(shape(6, 4)).randFill();
 
-		Producer<PackedCollection<?>> product = enumerate(shape(4, 1), p(input)).traverse(0)
+		Producer<PackedCollection> product = enumerate(shape(4, 1), p(input)).traverse(0)
 				.multiply(enumerate(shape(1, 4), p(operand)).traverse(0));
 
-		Evaluable<PackedCollection<?>> ev = product.get();
-		PackedCollection<?> enumerated = ev.evaluate().reshape(shape(6, 4));
+		Evaluable<PackedCollection> ev = product.get();
+		PackedCollection enumerated = ev.evaluate().reshape(shape(6, 4));
 
 		Assert.assertEquals(6, enumerated.getShape().length(0));
 		Assert.assertEquals(4, enumerated.getShape().length(1));
@@ -360,30 +358,30 @@ public class CollectionEnumerateTests implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void enumerate2dProduct2() {
 		int c = 2;
 		int h = 6;
 		int d = 4;
 		int s = 3;
 
-		PackedCollection<?> a = new PackedCollection<>(c, h, d, s).randFill();
-		PackedCollection<?> b = new PackedCollection<>(c, h, d, s).randFill();
+		PackedCollection a = new PackedCollection(c, h, d, s).randFill();
+		PackedCollection b = new PackedCollection(c, h, d, s).randFill();
 
-		CollectionProducer<PackedCollection<?>> pa = cp(a)
+		CollectionProducer pa = cp(a)
 				.traverse(2)
 				.enumerate(3, 1)
 				.traverse(3)
 				.repeat(s);
-		CollectionProducer<PackedCollection<?>> pb = cp(b)
+		CollectionProducer pb = cp(b)
 				.traverse(2)
 				.enumerate(3, 1)
 				.repeat(s);
 
-		Producer<PackedCollection<?>> product = multiply(pa, pb).sum(4);
+		Producer<PackedCollection> product = multiply(pa, pb).sum(4);
 
-		Evaluable<PackedCollection<?>> ev = product.get();
-		PackedCollection<?> enumerated = ev.evaluate().reshape(shape(c, h, s, s));
+		Evaluable<PackedCollection> ev = product.get();
+		PackedCollection enumerated = ev.evaluate().reshape(shape(c, h, s, s));
 
 		for (int p = 0; p < c; p++) {
 			for (int n = 0; n < h; n++) {
@@ -402,7 +400,7 @@ public class CollectionEnumerateTests implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void enumerate2dProduct3() {
 		int c = 2;
 		int h = 6;
@@ -410,23 +408,23 @@ public class CollectionEnumerateTests implements TestFeatures {
 		int s1 = 5;
 		int s2 = 3;
 
-		PackedCollection<?> a = new PackedCollection<>(c, h, d, s1).randFill();
-		PackedCollection<?> b = new PackedCollection<>(c, h, d, s2).randFill();
+		PackedCollection a = new PackedCollection(c, h, d, s1).randFill();
+		PackedCollection b = new PackedCollection(c, h, d, s2).randFill();
 
-		CollectionProducer<PackedCollection<?>> pa = cp(a)
+		CollectionProducer pa = cp(a)
 				.traverse(2)
 				.enumerate(3, 1)
 				.traverse(3)
 				.repeat(s2);
-		CollectionProducer<PackedCollection<?>> pb = cp(b)
+		CollectionProducer pb = cp(b)
 				.traverse(2)
 				.enumerate(3, 1)
 				.repeat(s1);
 
-		Producer<PackedCollection<?>> product = multiply(pa, pb).sum(4);
+		Producer<PackedCollection> product = multiply(pa, pb).sum(4);
 
-		Evaluable<PackedCollection<?>> ev = product.get();
-		PackedCollection<?> enumerated = ev.evaluate().reshape(shape(c, h, s1, s2));
+		Evaluable<PackedCollection> ev = product.get();
+		PackedCollection enumerated = ev.evaluate().reshape(shape(c, h, s1, s2));
 
 		for (int p = 0; p < c; p++) {
 			for (int n = 0; n < h; n++) {
@@ -445,7 +443,7 @@ public class CollectionEnumerateTests implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void enumerate2dProduct4() {
 		int c = 2;
 		int h = 6;
@@ -453,26 +451,26 @@ public class CollectionEnumerateTests implements TestFeatures {
 		int s1 = 3;
 		int s2 = 3;
 
-		PackedCollection<?> a = new PackedCollection<>(c, h, s1, s2).randFill();
-		PackedCollection<?> b = new PackedCollection<>(c, h, d, s2).randFill();
+		PackedCollection a = new PackedCollection(c, h, s1, s2).randFill();
+		PackedCollection b = new PackedCollection(c, h, d, s2).randFill();
 
-		CollectionProducer<PackedCollection<?>> pa = cp(a)
+		CollectionProducer pa = cp(a)
 				.traverse(4)
 				.repeat(d);
-		CollectionProducer<PackedCollection<?>> pb = cp(b)
+		CollectionProducer pb = cp(b)
 				.traverse(2)
 				.enumerate(3, 1)
 				.traverse(2)
 				.repeat(s1);
 
-		Producer<PackedCollection<?>> product = multiply(pa, pb)
+		Producer<PackedCollection> product = multiply(pa, pb)
 				.reshape(shape(c, h, s1, s2, d))
 				.traverse(3)
 				.enumerate(4, 1)
 				.sum(4);
 
-		Evaluable<PackedCollection<?>> ev = product.get();
-		PackedCollection<?> enumerated = ev.evaluate().reshape(shape(c, h, s1, d));
+		Evaluable<PackedCollection> ev = product.get();
+		PackedCollection enumerated = ev.evaluate().reshape(shape(c, h, s1, d));
 
 		for (int p = 0; p < c; p++) {
 			for (int n = 0; n < h; n++) {
@@ -491,13 +489,13 @@ public class CollectionEnumerateTests implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void enumerateDiagonal() {
-		PackedCollection<?> input = new PackedCollection<>(shape(12)).fill(1);
-		CollectionProducer<?> diagonal = diagonal(cp(input)).traverse(0);
-		CollectionProducer<PackedCollection<?>> sum = diagonal.enumerate(1, 3).traverse(2).sum();
+		PackedCollection input = new PackedCollection(shape(12)).fill(1);
+		CollectionProducer diagonal = diagonal(cp(input)).traverse(0);
+		CollectionProducer sum = diagonal.enumerate(1, 3).traverse(2).sum();
 
-		PackedCollection<?> out = sum.get().evaluate().traverse(1);
+		PackedCollection out = sum.get().evaluate().traverse(1);
 		log(out.getShape());
 		out.print();
 
@@ -512,22 +510,22 @@ public class CollectionEnumerateTests implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void stride2dProduct() {
 		Tensor<Double> t = tensor(shape(8, 10));
-		PackedCollection<?> input = t.pack();
+		PackedCollection input = t.pack();
 
-		PackedCollection<?> filter = tensor(shape(9, 8, 2), (int[] c) -> {
+		PackedCollection filter = tensor(shape(9, 8, 2), (int[] c) -> {
 			int i = c[0], j = c[1], k = c[2];
 			return i == 0 || i == 8 || j == 0 || j == 7 || k == 0 || k == 1;
 		}).pack();
 
-		Producer<PackedCollection<?>> stride =
+		Producer<PackedCollection> stride =
 				enumerate(1, 2, 1, p(input))
 						.traverse(0)
 						.multiply(p(filter));
-		Evaluable<PackedCollection<?>> ev = stride.get();
-		PackedCollection<?> enumerated = ev.evaluate().reshape(shape(9, 8, 2));
+		Evaluable<PackedCollection> ev = stride.get();
+		PackedCollection enumerated = ev.evaluate().reshape(shape(9, 8, 2));
 
 		System.out.println(enumerated.getShape());
 
@@ -542,16 +540,16 @@ public class CollectionEnumerateTests implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void enumerateTwiceSmall() {
-		PackedCollection<?> input = tensor(shape(4, 4)).pack();
+		PackedCollection input = tensor(shape(4, 4)).pack();
 
-		CollectionProducer<PackedCollection<?>> convY = c(p(input))
+		CollectionProducer convY = c(p(input))
 				.enumerate(1, 2, 2);
-		PackedCollection<?> output = convY.get().evaluate();
+		PackedCollection output = convY.get().evaluate();
 		System.out.println(output.getShape());
 
-		CollectionProducer<PackedCollection<?>> convX = c(traverse(0, p(output)))
+		CollectionProducer convX = c(traverse(0, p(output)))
 				.enumerate(1, 2, 2);
 		output = convX.get().evaluate();
 		System.out.println(output.getShape());
@@ -571,19 +569,19 @@ public class CollectionEnumerateTests implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void doubleEnumerateSmall() {
 		int r = 4;
 		int c = 4;
 		int w = 2;
 		int s = 2;
 
-		PackedCollection<?> input = tensor(shape(r, c)).pack();
+		PackedCollection input = tensor(shape(r, c)).pack();
 
-		CollectionProducer<PackedCollection<?>> conv = c(p(input))
+		CollectionProducer conv = c(p(input))
 				.enumerate(1, w, s)
 				.enumerate(1, w, s);
-		PackedCollection<?> output = conv.get().evaluate();
+		PackedCollection output = conv.get().evaluate();
 		System.out.println(output.getShape());
 
 		for (int i = 0; i < r; i += s) {
@@ -602,7 +600,7 @@ public class CollectionEnumerateTests implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void singleEnumerate4d() {
 		int n = 2;
 		int c = 5;
@@ -613,18 +611,18 @@ public class CollectionEnumerateTests implements TestFeatures {
 
 		int pad = x - 1;
 
-		PackedCollection<?> input =
-				new PackedCollection<>(shape(n, c, h, w))
+		PackedCollection input =
+				new PackedCollection(shape(n, c, h, w))
 //							.fill(pos -> pos[2] + 0.1 * pos[3])
 						.fill(Math::random)
 				;
 		log(input.getShape());
 
-		CollectionProducer<PackedCollection<?>> conv =
+		CollectionProducer conv =
 				c(p(input))
 						.traverse(2)
 						.enumerate(3, x, s);
-		PackedCollection<?> output = conv.get().evaluate();
+		PackedCollection output = conv.get().evaluate();
 		log(output.getShape());
 
 		for (int np = 0; np < n; np++) {
@@ -657,7 +655,7 @@ public class CollectionEnumerateTests implements TestFeatures {
 	}
 
 
-	@Test
+	@Test(timeout = 30000)
 	public void doubleEnumerate4d() {
 		int n = 2;
 		int c = 5;
@@ -668,16 +666,16 @@ public class CollectionEnumerateTests implements TestFeatures {
 
 		int pad = x - 1;
 
-		PackedCollection<?> input =
-				new PackedCollection<>(shape(n, c, h, w))
+		PackedCollection input =
+				new PackedCollection(shape(n, c, h, w))
 						.fill(Math::random);
 
-		CollectionProducer<PackedCollection<?>> conv =
+		CollectionProducer conv =
 				c(p(input))
 						.traverse(2)
 						.enumerate(3, x, s)
 						.enumerate(3, x, s);
-		PackedCollection<?> output = conv.get().evaluate();
+		PackedCollection output = conv.get().evaluate();
 		System.out.println(output.getShape());
 
 		for (int np = 0; np < n; np++) {
@@ -701,17 +699,17 @@ public class CollectionEnumerateTests implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void enumerateTwice() {
-		PackedCollection<?> input = tensor(shape(10, 10)).pack();
+		PackedCollection input = tensor(shape(10, 10)).pack();
 
 		verboseLog(() -> {
-			CollectionProducer<PackedCollection<?>> convY = c(p(input))
+			CollectionProducer convY = c(p(input))
 					.enumerate(1, 3, 1);
-			PackedCollection<?> output = convY.get().evaluate();
+			PackedCollection output = convY.get().evaluate();
 			System.out.println(output.getShape());
 
-			CollectionProducer<PackedCollection<?>> convX = c(traverse(0, p(output)))
+			CollectionProducer convX = c(traverse(0, p(output)))
 					.enumerate(1, 3, 1);
 			output = convX.get().evaluate();
 			System.out.println(output.getShape());
@@ -732,17 +730,17 @@ public class CollectionEnumerateTests implements TestFeatures {
 		});
 	}
 
-	// @Test
+	// @Test(timeout = 30000)
 	public void doubleStride2dProduct() {
 		Tensor<Double> t = tensor(shape(8, 10));
-		PackedCollection<?> input = t.pack();
+		PackedCollection input = t.pack();
 
-		PackedCollection<?> filter = tensor(shape(9, 8, 2), (int[] c) -> {
+		PackedCollection filter = tensor(shape(9, 8, 2), (int[] c) -> {
 			int i = c[0], j = c[1], k = c[2];
 			return i == 0 || i == 8 || j == 0 || j == 7 || k == 0 || k == 1;
 		}).pack();
 
-		Producer<PackedCollection<?>> stride = c(p(input))
+		Producer<PackedCollection> stride = c(p(input))
 				.enumerate(0, 3, 1)
 				.enumerate(1, 3, 1)
 				.multiply(c(p(filter)));

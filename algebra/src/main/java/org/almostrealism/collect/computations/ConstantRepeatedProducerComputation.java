@@ -16,12 +16,11 @@
 
 package org.almostrealism.collect.computations;
 
-import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
-import io.almostrealism.expression.Expression;
-import io.almostrealism.relation.Evaluable;
 import io.almostrealism.compute.Process;
+import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
@@ -125,14 +124,12 @@ import java.util.function.Supplier;
  *   <li><strong>Delta computation:</strong> Specialized delta computation for automatic differentiation</li>
  * </ul>
  * 
- * @param <T> The type of {@link PackedCollection} this computation operates on
- * 
  * @see RepeatedProducerComputation
  * @see TraversableRepeatedProducerComputation
  * @see ConstantRepeatedDeltaComputation
  */
-public class ConstantRepeatedProducerComputation<T extends PackedCollection<?>>
-		extends RepeatedProducerComputation<T> {
+public class ConstantRepeatedProducerComputation
+		extends RepeatedProducerComputation {
 	
 	/** 
 	 * The fixed number of iterations this computation will perform.
@@ -185,7 +182,7 @@ public class ConstantRepeatedProducerComputation<T extends PackedCollection<?>>
 	public ConstantRepeatedProducerComputation(String name, TraversalPolicy shape, int count,
 											   BiFunction<TraversableExpression[], Expression, Expression> initial,
 											   BiFunction<TraversableExpression[], Expression, Expression> expression,
-											   Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
+											   Producer<PackedCollection>... args) {
 		this(name, shape, 1, count, initial, expression, args);
 	}
 
@@ -239,8 +236,10 @@ public class ConstantRepeatedProducerComputation<T extends PackedCollection<?>>
 	public ConstantRepeatedProducerComputation(String name, TraversalPolicy shape, int size, int count,
 											   BiFunction<TraversableExpression[], Expression, Expression> initial,
 											   BiFunction<TraversableExpression[], Expression, Expression> expression,
-											   Supplier<Evaluable<? extends PackedCollection<?>>>... inputs) {
-		super(name, shape, size, initial, (args, index) -> index.lessThan(new IntegerConstant(count)), expression, inputs);
+											   Producer<PackedCollection>... inputs) {
+		super(name, shape, size, initial,
+				(args, index) ->
+						index.lessThan(new IntegerConstant(count)), expression, inputs);
 		this.count = count;
 	}
 
@@ -276,12 +275,13 @@ public class ConstantRepeatedProducerComputation<T extends PackedCollection<?>>
 	 * <p>The differentiation process:</p>
 	 * <ol>
 	 *   <li>Attempts standard delta computation via {@link #attemptDelta(Producer)}</li>
-	 *   <li>If unsuccessful, creates a {@link ConstantRepeatedDeltaComputation} with:</li>
-	 *   <ul>
-	 *     <li>The same iteration count as this computation</li>
-	 *     <li>Specialized expression that computes derivatives at each iteration</li>
-	 *     <li>Optimized handling of constant iteration bounds</li>
-	 *   </ul>
+	 *   <li>If unsuccessful, creates a {@link ConstantRepeatedDeltaComputation} with:
+	 *     <ul>
+	 *       <li>The same iteration count as this computation</li>
+	 *       <li>Specialized expression that computes derivatives at each iteration</li>
+	 *       <li>Optimized handling of constant iteration bounds</li>
+	 *     </ul>
+	 *   </li>
 	 * </ol>
 	 * 
 	 * <p><strong>Usage in gradient computation:</strong></p>
@@ -290,7 +290,7 @@ public class ConstantRepeatedProducerComputation<T extends PackedCollection<?>>
 	 * ConstantRepeatedProducerComputation<PackedCollection> computation = ...;
 	 * 
 	 * // Compute derivative with respect to input
-	 * CollectionProducer<PackedCollection> derivative = computation.delta(inputProducer);
+	 * CollectionProducer derivative = computation.delta(inputProducer);
 	 * 
 	 * // Use derivative in gradient-based optimization
 	 * PackedCollection grad = derivative.get().evaluate(inputData);
@@ -304,14 +304,14 @@ public class ConstantRepeatedProducerComputation<T extends PackedCollection<?>>
 	 * @see RepeatedProducerComputation#attemptDelta(Producer)
 	 */
 	@Override
-	public CollectionProducer<T> delta(Producer<?> target) {
-		CollectionProducer<T> delta = attemptDelta(target);
+	public CollectionProducer delta(Producer<?> target) {
+		CollectionProducer delta = attemptDelta(target);
 		if (delta != null) return delta;
 
 		return ConstantRepeatedDeltaComputation.create(
 				getShape(), shape(target),
 				count, (args, localIndex) -> getExpression(args, null, localIndex), target,
-				getInputs().stream().skip(1).toArray(Supplier[]::new));
+				getInputs().stream().skip(1).toArray(Producer[]::new));
 	}
 
 	/**
@@ -360,10 +360,10 @@ public class ConstantRepeatedProducerComputation<T extends PackedCollection<?>>
 	 * @see Process
 	 */
 	@Override
-	public ConstantRepeatedProducerComputation<T> generate(List<Process<?, ?>> children) {
-		return new ConstantRepeatedProducerComputation<>(
+	public ConstantRepeatedProducerComputation generate(List<Process<?, ?>> children) {
+		return new ConstantRepeatedProducerComputation(
 				getName(), getShape(), getMemLength(), count,
 				initial, expression,
-				children.stream().skip(1).toArray(Supplier[]::new));
+				children.stream().skip(1).toArray(Producer[]::new));
 	}
 }

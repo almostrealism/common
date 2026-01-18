@@ -16,15 +16,14 @@
 
 package org.almostrealism.collect.computations;
 
-import io.almostrealism.collect.ConditionalIndexExpression;
 import io.almostrealism.collect.CollectionExpression;
+import io.almostrealism.collect.ConditionalIndexExpression;
+import io.almostrealism.collect.TraversableExpression;
+import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducerParallelProcess;
 import org.almostrealism.collect.PackedCollection;
-import io.almostrealism.collect.TraversableExpression;
-import io.almostrealism.collect.TraversalPolicy;
-import io.almostrealism.relation.Evaluable;
 import org.almostrealism.hardware.MemoryData;
 
 import java.util.List;
@@ -50,7 +49,7 @@ import java.util.function.Supplier;
  * <p><strong>Element-wise operations:</strong>
  * <pre>{@code
  * // Create a computation that squares each element
- * DefaultTraversableExpressionComputation<PackedCollection<?>> square = 
+ * DefaultTraversableExpressionComputation<PackedCollection> square =
  *     new DefaultTraversableExpressionComputation<>(
  *         "square", inputShape,
  *         args -> DefaultCollectionExpression.create(inputShape,
@@ -63,7 +62,7 @@ import java.util.function.Supplier;
  * <p><strong>Reduction operations:</strong>
  * <pre>{@code
  * // Sum pairs of adjacent elements
- * DefaultTraversableExpressionComputation<PackedCollection<?>> pairSum = 
+ * DefaultTraversableExpressionComputation<PackedCollection> pairSum =
  *     new DefaultTraversableExpressionComputation<>(
  *         "pairSum", outputShape,
  *         args -> DefaultCollectionExpression.create(outputShape,
@@ -72,24 +71,29 @@ import java.util.function.Supplier;
  *                 args[1].getValueRelative(new IntegerConstant(1)))),
  *         inputProducer);
  * }</pre>
- * 
- * @param <T> The type of {@link PackedCollection} this computation produces
- * 
+ *
  * @see TraversableExpressionComputation
  * @see TraversableExpression
  * @see CollectionExpression
- * 
+ *
  * @author Michael Murray
  */
-public class DefaultTraversableExpressionComputation<T extends PackedCollection<?>>
-		extends TraversableExpressionComputation<T> {
+public class DefaultTraversableExpressionComputation
+		extends TraversableExpressionComputation {
 
 	/**
 	 * The function that defines how to transform input traversable expressions
 	 * into a collection expression representing the desired computation.
 	 */
-	private Function<TraversableExpression[], CollectionExpression> expression;
+	private final Function<TraversableExpression[], CollectionExpression> expression;
 
+	/**
+	 * Flag indicating whether this computation should generate a signature for
+	 * program identification and reuse. When false, signature() returns null,
+	 * preventing caching of the generated program. This is useful when the
+	 * {@link CollectionExpression} contains details that wouldn't be captured
+	 * in a standard signature.
+	 */
 	private boolean generateSignature;
 
 	/**
@@ -105,24 +109,7 @@ public class DefaultTraversableExpressionComputation<T extends PackedCollection<
 	@SafeVarargs
 	public DefaultTraversableExpressionComputation(String name, TraversalPolicy shape,
 												   Function<TraversableExpression[], CollectionExpression> expression,
-												   Producer<? extends PackedCollection<?>>... args) {
-		this(name, shape, MultiTermDeltaStrategy.NONE, false, expression, args);
-	}
-
-	/**
-	 * Constructs a DefaultTraversableExpressionComputation with default delta strategy.
-	 * This constructor uses {@link MultiTermDeltaStrategy#NONE} for automatic differentiation.
-	 * 
-	 * @param name The name of this computation for debugging and identification
-	 * @param shape The {@link TraversalPolicy} defining the output shape and traversal pattern
-	 * @param expression A function that transforms input {@link TraversableExpression} arrays
-	 *                   into a {@link CollectionExpression} representing the computation logic
-	 * @param args Variable number of {@link Supplier}s of {@link Evaluable} input collections
-	 */
-	@SafeVarargs
-	public DefaultTraversableExpressionComputation(String name, TraversalPolicy shape,
-												   Function<TraversableExpression[], CollectionExpression> expression,
-												   Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
+												   Producer<PackedCollection>... args) {
 		this(name, shape, MultiTermDeltaStrategy.NONE, false, expression, args);
 	}
 
@@ -144,7 +131,7 @@ public class DefaultTraversableExpressionComputation<T extends PackedCollection<
 												   MultiTermDeltaStrategy deltaStrategy,
 												   boolean generateSignature,
 												   Function<TraversableExpression[], CollectionExpression> expression,
-												   Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
+												   Producer<PackedCollection>... args) {
 		super(name, shape, deltaStrategy, validateArgs(args));
 		this.expression = expression;
 		this.generateSignature = generateSignature;
@@ -203,10 +190,10 @@ public class DefaultTraversableExpressionComputation<T extends PackedCollection<
 	 * @return A new {@link DefaultTraversableExpressionComputation} with the specified children
 	 */
 	@Override
-	public CollectionProducerParallelProcess<T> generate(List<Process<?, ?>> children) {
-		return (DefaultTraversableExpressionComputation<T>) new DefaultTraversableExpressionComputation(getName(), getShape(),
+	public CollectionProducerParallelProcess generate(List<Process<?, ?>> children) {
+		return new DefaultTraversableExpressionComputation(getName(), getShape(),
 						getDeltaStrategy(), generateSignature, expression,
-					children.stream().skip(1).toArray(Supplier[]::new))
+					children.stream().skip(1).toArray(Producer[]::new))
 				.setPostprocessor(getPostprocessor())
 				.setDescription(getDescription())
 				.setShortCircuit(getShortCircuit())
@@ -231,12 +218,11 @@ public class DefaultTraversableExpressionComputation<T extends PackedCollection<
 	/**
 	 * Creates a computation that always returns a fixed collection value.
 	 * This is useful for creating constant computations that don't depend on any inputs.
-	 * 
-	 * @param <T> The type of {@link PackedCollection} to return
+	 *
 	 * @param value The fixed collection value to return
 	 * @return A {@link DefaultTraversableExpressionComputation} that always produces the fixed value
 	 */
-	public static <T extends PackedCollection<?>> DefaultTraversableExpressionComputation<T> fixed(T value) {
+	public static DefaultTraversableExpressionComputation fixed(PackedCollection value) {
 		return fixed(value, null);
 	}
 
@@ -244,22 +230,20 @@ public class DefaultTraversableExpressionComputation<T extends PackedCollection<
 	 * Creates a computation that always returns a fixed collection value with custom post-processing.
 	 * This is useful for creating constant computations that don't depend on any inputs but require
 	 * specific post-processing of the output.
-	 * 
-	 * @param <T> The type of {@link PackedCollection} to return
+	 *
 	 * @param value The fixed collection value to return
 	 * @param postprocessor Optional function for post-processing the output, or null for no post-processing
 	 * @return A {@link DefaultTraversableExpressionComputation} that always produces the fixed value
 	 */
-	public static <T extends PackedCollection<?>> DefaultTraversableExpressionComputation<T> fixed(
-			T value, BiFunction<MemoryData, Integer, T> postprocessor) {
-		return (DefaultTraversableExpressionComputation<T>)
-				new DefaultTraversableExpressionComputation<T>("constant", value.getShape(),
+	public static DefaultTraversableExpressionComputation fixed(
+			PackedCollection value, BiFunction<MemoryData, Integer, PackedCollection> postprocessor) {
+		return (DefaultTraversableExpressionComputation) new DefaultTraversableExpressionComputation("constant", value.getShape(),
 						args -> new ConditionalIndexExpression(value.getShape(), value))
 						.setDescription(children -> value.describe())
 						.setPostprocessor(postprocessor).setShortCircuit(args -> {
 							PackedCollection v = new PackedCollection(value.getShape());
 							v.setMem(value.toArray(0, value.getMemLength()));
-							return postprocessor == null ? (T) v : postprocessor.apply(v, 0);
+							return postprocessor == null ? v : postprocessor.apply(v, 0);
 						});
 	}
 }

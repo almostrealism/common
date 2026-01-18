@@ -17,15 +17,12 @@
 package org.almostrealism.collect.computations.test;
 
 import io.almostrealism.code.ComputationBase;
-import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.kernel.KernelPreferences;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.Producer;
 import io.almostrealism.uml.Signature;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.hardware.PassThroughProducer;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
 
@@ -45,14 +42,14 @@ public class CollectionAddTests implements TestFeatures {
 
 		log("Native parallelism = " + KernelPreferences.getCpuParallelism());
 
-		CollectionProducer<PackedCollection<?>> add = add(v(shape(1), 0), v(shape(1), 1));
+		CollectionProducer add = add(v(shape(1), 0), v(shape(1), 1));
 		((ComputationBase) add).setComputeRequirements(List.of(req));
 		log("signature = " + Signature.of(add) + ", req = " + ((ComputationBase) add).getComputeRequirements());
 
-		Evaluable<PackedCollection<?>> ev = add.get();
+		Evaluable<PackedCollection> ev = add.get();
 
-		PackedCollection<?> a = new PackedCollection<>(shape(size));
-		PackedCollection<?> b = new PackedCollection<>(shape(size));
+		PackedCollection a = new PackedCollection(shape(size));
+		PackedCollection b = new PackedCollection(shape(size));
 
 		long start = System.currentTimeMillis();
 		for (int i = 0; i < iter; i++) {
@@ -62,27 +59,31 @@ public class CollectionAddTests implements TestFeatures {
 		log("total time = " + (System.currentTimeMillis() - start) + "ms");
 	}
 
-	@Test
+	@Test(timeout = 10000)
 	public void cpuAdd() {
+		if (skipLongTests) return;
+
 		add(ComputeRequirement.CPU);
 	}
 
-	@Test
+	@Test(timeout = 10000)
 	public void gpuAdd() {
+		if (skipLongTests) return;
+
 		add(ComputeRequirement.GPU);
 	}
 
-	@Test
+	@Test(timeout = 10000)
 	public void javaAdd() throws InterruptedException {
 		if (skipLongTests) return;
 
-		double a[] = new double[size];
-		double b[] = new double[size];
+		double[] a = new double[size];
+		double[] b = new double[size];
 
 		CountDownLatch latch = new CountDownLatch(parallelism);
 
 		Function<Integer, Runnable> r = id -> () -> {
-			double out[] = new double[size];
+			double[] out = new double[size];
 
 			for (int it = 0; it < iter; it++) {
 				for (int i = id; i < size; i += parallelism) {

@@ -20,12 +20,12 @@ import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.collect.UniformCollectionExpression;
+import io.almostrealism.compute.Process;
 import io.almostrealism.expression.Exponent;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.Index;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.AlgebraFeatures;
 import org.almostrealism.collect.CollectionProducer;
@@ -68,43 +68,43 @@ import java.util.stream.Collectors;
  * <p><strong>Basic Element-wise Power:</strong>
  * <pre>{@code
  * // Square each element: [2, 3, 4] -> [4, 9, 16]
- * PackedCollection<?> base = pack(2.0, 3.0, 4.0);
- * PackedCollection<?> exponent = pack(2.0, 2.0, 2.0);
+ * PackedCollection base = pack(2.0, 3.0, 4.0);
+ * PackedCollection exponent = pack(2.0, 2.0, 2.0);
  * 
- * CollectionExponentComputation<PackedCollection<?>> power = 
+ * CollectionExponentComputation<PackedCollection> power =
  *     new CollectionExponentComputation<>(shape(3), p(base), p(exponent));
- * PackedCollection<?> result = power.get().evaluate();
+ * PackedCollection result = power.get().evaluate();
  * }</pre>
  * 
  * <p><strong>Broadcasting Scalar Exponent:</strong>
  * <pre>{@code
  * // Cube all elements: [2, 3, 4] -> [8, 27, 64]
- * PackedCollection<?> base = pack(2.0, 3.0, 4.0);
- * CollectionProducer<PackedCollection<?>> cubed = 
+ * PackedCollection base = pack(2.0, 3.0, 4.0);
+ * CollectionProducer cubed =
  *     cp(base).pow(c(3.0));  // Uses CollectionExponentComputation internally
- * PackedCollection<?> result = cubed.get().evaluate();
+ * PackedCollection result = cubed.get().evaluate();
  * }</pre>
  * 
  * <p><strong>Multi-dimensional Power Operations:</strong>
  * <pre>{@code
  * // Matrix element-wise power
- * PackedCollection<?> matrix = new PackedCollection<>(shape(2, 3));
+ * PackedCollection matrix = new PackedCollection(shape(2, 3));
  * matrix.fill(pos -> pos[0] + pos[1] + 1.0);  // [[1,2,3], [2,3,4]]
  * 
- * CollectionExponentComputation<PackedCollection<?>> matrixPower = 
+ * CollectionExponentComputation<PackedCollection> matrixPower =
  *     new CollectionExponentComputation<>(shape(2, 3), p(matrix), c(2.0));
- * PackedCollection<?> squared = matrixPower.get().evaluate();
+ * PackedCollection squared = matrixPower.get().evaluate();
  * // Result: [[1,4,9], [4,9,16]]
  * }</pre>
  * 
  * <p><strong>Derivative Computation for Optimization:</strong>
  * <pre>{@code
  * // Computing gradient of x^3 for backpropagation
- * CollectionProducer<PackedCollection<?>> x = x(3);
- * CollectionProducer<PackedCollection<?>> f = x.pow(c(3.0));
+ * CollectionProducer x = x(3);
+ * CollectionProducer f = x.pow(c(3.0));
  * 
  * // df/dx = 3*x^2
- * CollectionProducer<PackedCollection<?>> gradient = f.delta(x);
+ * CollectionProducer gradient = f.delta(x);
  * }</pre>
  * 
  * <h3>Configuration Options</h3>
@@ -125,15 +125,13 @@ import java.util.stream.Collectors;
  *   <li>Hardware acceleration via the underlying expression framework</li>
  * </ul>
  * 
- * @param <T> The type of {@link PackedCollection} this computation operates on
- * 
  * @see TraversableExpressionComputation
  * @see PackedCollection
  * @see TraversalPolicy
  * @see io.almostrealism.expression.Exponent
  * @author Michael Murray
  */
-public class CollectionExponentComputation<T extends PackedCollection<?>> extends TraversableExpressionComputation<T> {
+public class CollectionExponentComputation extends TraversableExpressionComputation {
 	/**
 	 * Enables optimized analytical derivative computation using the power rule for automatic differentiation.
 	 * When {@code true}, the {@link #delta(Producer)} method applies the mathematical power rule:
@@ -172,33 +170,11 @@ public class CollectionExponentComputation<T extends PackedCollection<?>> extend
 	 *             Must produce {@link PackedCollection} instances compatible with the shape.
 	 * @param exponent The {@link Producer} providing the exponent values.
 	 *                 Can be a scalar (broadcasted) or collection matching base dimensions.
-	 * 
-	 * @see #CollectionExponentComputation(TraversalPolicy, Supplier, Supplier)
 	 */
 	public CollectionExponentComputation(TraversalPolicy shape,
-										 Producer<? extends PackedCollection<?>> base,
-										 Producer<? extends PackedCollection<?>> exponent) {
-		this("pow", shape, (Supplier) base, (Supplier) exponent);
-	}
-
-	/**
-	 * Creates a new {@link CollectionExponentComputation} for element-wise exponentiation using {@link Supplier} inputs.
-	 * This constructor provides more explicit control over the evaluation lifecycle and is typically used
-	 * when integrating with the computation framework's evaluation strategies.
-	 * 
-	 * <p>The suppliers are evaluated lazily, allowing for deferred computation and optimization
-	 * opportunities within the broader computation graph.
-	 * 
-	 * @param shape The {@link TraversalPolicy} defining the output shape and traversal pattern
-	 * @param base The {@link Supplier} providing {@link Evaluable} instances that produce base values
-	 * @param exponent The {@link Supplier} providing {@link Evaluable} instances that produce exponent values
-	 * 
-	 * @see #CollectionExponentComputation(TraversalPolicy, Producer, Producer)
-	 */
-	public CollectionExponentComputation(TraversalPolicy shape,
-										 Supplier<Evaluable<? extends PackedCollection<?>>> base,
-										 Supplier<Evaluable<? extends PackedCollection<?>>> exponent) {
-		this("pow", shape, base, exponent);
+										 Producer<? extends PackedCollection> base,
+										 Producer<? extends PackedCollection> exponent) {
+		this("pow", shape, (Producer<PackedCollection>) base, (Producer<PackedCollection>) exponent);
 	}
 
 	/**
@@ -215,8 +191,8 @@ public class CollectionExponentComputation<T extends PackedCollection<?>> extend
 	 * @param exponent The {@link Supplier} providing {@link Evaluable} instances that produce exponent values
 	 */
 	protected CollectionExponentComputation(String name, TraversalPolicy shape,
-											Supplier<Evaluable<? extends PackedCollection<?>>> base,
-											Supplier<Evaluable<? extends PackedCollection<?>>> exponent) {
+											Producer<PackedCollection> base,
+											Producer<PackedCollection> exponent) {
 		super(name, shape, MultiTermDeltaStrategy.NONE, base, exponent);
 	}
 
@@ -260,21 +236,21 @@ public class CollectionExponentComputation<T extends PackedCollection<?>> extend
 	 * Generates a new {@link CollectionProducerParallelProcess} for parallel execution of this computation.
 	 * This method creates a copy of the current computation with the provided child processes,
 	 * preserving all configuration including postprocessors, descriptions, and lifecycle dependencies.
-	 * 
+	 *
 	 * <p>The parallel process enables efficient execution across multiple hardware threads or
 	 * processing units, making it suitable for large-scale power operations in machine learning
 	 * and scientific computing contexts.
-	 * 
+	 *
 	 * @param children The list of child {@link Process} instances, where children.get(1) is the base
 	 *                 and children.get(2) is the exponent
 	 * @return A new {@link CollectionProducerParallelProcess} configured for parallel execution
-	 * 
+	 *
 	 * @see CollectionProducerParallelProcess
 	 */
 	@Override
-	public CollectionProducerParallelProcess<T> generate(List<Process<?, ?>> children) {
-		return new CollectionExponentComputation<>(getName(), getShape(),
-				(Supplier) children.get(1), (Supplier) children.get(2))
+	public CollectionProducerParallelProcess generate(List<Process<?, ?>> children) {
+		return new CollectionExponentComputation(getName(), getShape(),
+				(Producer<PackedCollection>) children.get(1), (Producer<PackedCollection>) children.get(2))
 				.setPostprocessor(getPostprocessor())
 				.setDescription(getDescription())
 				.setShortCircuit(getShortCircuit())
@@ -285,24 +261,24 @@ public class CollectionExponentComputation<T extends PackedCollection<?>> extend
 	 * Computes the derivative (delta) of this exponentiation computation with respect to a target variable.
 	 * This method implements an optimized analytical approach using the power rule when {@link #enableCustomDelta}
 	 * is true, providing efficient automatic differentiation for machine learning and optimization applications.
-	 * 
+	 *
 	 * <h4>Mathematical Foundation</h4>
-	 * 
+	 *
 	 * <p>For a function f(x) = u(x)^v where u(x) is the base (depends on x) and v is a constant exponent,
 	 * the derivative is computed using the power rule:
 	 * <pre>
 	 * df/dx = v * u(x)^(v-1) * du/dx
 	 * </pre>
-	 * 
+	 *
 	 * <p>This implementation specifically handles the case where:
 	 * <ul>
 	 *   <li>The base operand depends on the target variable (match found in base)</li>
 	 *   <li>The exponent is independent of the target variable</li>
 	 *   <li>All operands have fixed (non-variable) counts for efficient computation</li>
 	 * </ul>
-	 * 
+	 *
 	 * <h4>Implementation Details</h4>
-	 * 
+	 *
 	 * <p>The method performs the following steps:
 	 * <ol>
 	 *   <li>Checks if custom delta computation is enabled via {@link #enableCustomDelta}</li>
@@ -312,28 +288,28 @@ public class CollectionExponentComputation<T extends PackedCollection<?>> extend
 	 *   <li>Applies the power rule: v * u^(v-1) * du/dx</li>
 	 *   <li>Handles shape broadcasting and tensor operations appropriately</li>
 	 * </ol>
-	 * 
+	 *
 	 * <h4>Usage Examples</h4>
-	 * 
+	 *
 	 * <p><strong>Basic Power Rule:</strong>
 	 * <pre>{@code
 	 * // f(x) = x^3, df/dx = 3*x^2
-	 * CollectionProducer<PackedCollection<?>> x = x(5);
-	 * CollectionProducer<PackedCollection<?>> f = x.pow(c(3.0));
-	 * CollectionProducer<PackedCollection<?>> df_dx = f.delta(x);
+	 * CollectionProducer x = x(5);
+	 * CollectionProducer f = x.pow(c(3.0));
+	 * CollectionProducer df_dx = f.delta(x);
 	 * }</pre>
-	 * 
+	 *
 	 * <p><strong>Composite Function:</strong>
 	 * <pre>{@code
 	 * // f(g(x)) = (2*x + 1)^4, df/dx = 4*(2*x + 1)^3 * 2
-	 * CollectionProducer<PackedCollection<?>> x = x(3);
-	 * CollectionProducer<PackedCollection<?>> g = x.multiply(c(2.0)).add(c(1.0));
-	 * CollectionProducer<PackedCollection<?>> f = g.pow(c(4.0));
-	 * CollectionProducer<PackedCollection<?>> df_dx = f.delta(x);
+	 * CollectionProducer x = x(3);
+	 * CollectionProducer g = x.multiply(c(2.0)).add(c(1.0));
+	 * CollectionProducer f = g.pow(c(4.0));
+	 * CollectionProducer df_dx = f.delta(x);
 	 * }</pre>
-	 * 
+	 *
 	 * <h4>Performance Considerations</h4>
-	 * 
+	 *
 	 * <p>This optimized implementation provides significant performance benefits over numerical differentiation:
 	 * <ul>
 	 *   <li>O(1) complexity relative to input size (no finite difference approximation)</li>
@@ -341,22 +317,22 @@ public class CollectionExponentComputation<T extends PackedCollection<?>> extend
 	 *   <li>Memory-efficient through shape broadcasting and tensor operations</li>
 	 *   <li>Parallel execution support through the collection framework</li>
 	 * </ul>
-	 * 
+	 *
 	 * @param target The {@link Producer} representing the variable with respect to which the derivative is computed
 	 * @return A {@link CollectionProducer} that computes the derivative, or delegates to the parent class
 	 *         if custom delta is disabled or the computation doesn't match the supported pattern
-	 * 
+	 *
 	 * @see org.almostrealism.algebra.AlgebraFeatures#matchInput
 	 * @see #enableCustomDelta
 	 * @throws UnsupportedOperationException if variable count operands are encountered when custom delta is enabled
 	 */
 	@Override
-	public CollectionProducer<T> delta(Producer<?> target) {
+	public CollectionProducer delta(Producer<?> target) {
 		if (!enableCustomDelta) {
 			return super.delta(target);
 		}
 
-		Optional<Producer<T>> match = AlgebraFeatures.matchInput(this, target);
+		Optional<Producer<PackedCollection>> match = AlgebraFeatures.matchInput(this, target);
 
 		if (match == null || match.orElse(null) != getInputs().get(1)) {
 			// If there are multiple matches, or the match is
@@ -368,19 +344,19 @@ public class CollectionExponentComputation<T extends PackedCollection<?>> extend
 			return super.delta(target);
 		}
 
-		List<Supplier<Evaluable<? extends T>>> operands =
+		List<Supplier<Evaluable<? extends PackedCollection>>> operands =
 				getInputs().stream().skip(1).collect(Collectors.toList());
 
 		TraversalPolicy targetShape = shape(target);
 		TraversalPolicy shape = getShape().append(targetShape);
 
-		CollectionProducer<PackedCollection<?>> u = (CollectionProducer) operands.get(0);
-		CollectionProducer<PackedCollection<?>> v = (CollectionProducer) operands.get(1);
-		CollectionProducer<PackedCollection<?>> uDelta = u.delta(target);
-		CollectionProducer<PackedCollection<?>> scale = v.multiply(u.pow(v.add(c(-1.0))));
+		CollectionProducer u = (CollectionProducer) operands.get(0);
+		CollectionProducer v = (CollectionProducer) operands.get(1);
+		CollectionProducer uDelta = u.delta(target);
+		CollectionProducer scale = v.multiply(u.pow(v.add(c(-1.0))));
 
 		scale = scale.flatten();
 		uDelta = uDelta.reshape(v.getShape().getTotalSize(), -1).traverse(0);
-		return (CollectionProducer) expandAndMultiply(scale, uDelta).reshape(shape);
+		return expandAndMultiply(scale, uDelta).reshape(shape);
 	}
 }

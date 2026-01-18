@@ -22,7 +22,6 @@ import io.almostrealism.relation.DynamicProducer;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Operation;
 import io.almostrealism.relation.Producer;
-import org.almostrealism.algebra.Scalar;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.DynamicIndexProjectionProducerComputation;
@@ -36,32 +35,31 @@ import java.util.Arrays;
 import java.util.stream.IntStream;
 
 public class CollectionComputationTests implements TestFeatures {
-
-	@Test
+	@Test(timeout = 30000)
 	public void evaluateIntegers() {
 		verboseLog(() -> {
-			PackedCollection<?> result = integers(10, 100).get().evaluate();
+			PackedCollection result = integers(10, 100).get().evaluate();
 			assertEquals(14, result.toDouble(4));
 		});
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void divideIntegers() {
-		PackedCollection<?> result = divide(c(6, 18, 48), integers().add(c(2))).get().evaluate();
+		PackedCollection result = divide(c(6, 18, 48), integers().add(c(2))).get().evaluate();
 
 		assertEquals(3.0, result.toDouble(0));
 		assertEquals(6.0, result.toDouble(1));
 		assertEquals(12.0, result.toDouble(2));
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void index() {
-		PackedCollection<?> x = pack(1, 1, 1, 2, 2, 2);
-		PackedCollection<?> y = pack(0, 1, 2, 0, 1, 2);
-		PackedCollection<?> result = new PackedCollection<>(shape(6));
+		PackedCollection x = pack(1, 1, 1, 2, 2, 2);
+		PackedCollection y = pack(0, 1, 2, 0, 1, 2);
+		PackedCollection result = new PackedCollection(shape(6));
 
 		verboseLog(() -> {
-			CollectionProducer<PackedCollection<?>> value = index(shape(3, 5), p(x), p(y));
+			CollectionProducer value = index(shape(3, 5), p(x), p(y));
 			value.into(result).evaluate();
 		});
 
@@ -74,14 +72,14 @@ public class CollectionComputationTests implements TestFeatures {
 		assertEquals(12.0, result.toDouble(5));
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void integersIndex() {
 		int len = 10000;
-		PackedCollection<?> in = tensor(shape(len, 1)).pack();
-		PackedCollection<?> result = new PackedCollection<>(shape(len, 1).traverse(1));
+		PackedCollection in = tensor(shape(len, 1)).pack();
+		PackedCollection result = new PackedCollection(shape(len, 1).traverse(1));
 
 		verboseLog(() -> {
-			CollectionProducer<PackedCollection<?>> product = c(p(in), integers(0, len)).traverseEach().multiply(c(2.0));
+			CollectionProducer product = c(p(in), integers(0, len)).traverseEach().multiply(c(2.0));
 			product.get().into(result).evaluate();
 		});
 
@@ -89,19 +87,19 @@ public class CollectionComputationTests implements TestFeatures {
 		assertEquals(2 * 5000, result.valueAt(5000, 0));
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void integersIndex2d() {
 		int len = 10;
-		PackedCollection<?> in = tensor(shape(2, len, 1)).pack();
-		PackedCollection<?> result = new PackedCollection<>(shape(2));
+		PackedCollection in = tensor(shape(2, len, 1)).pack();
+		PackedCollection result = new PackedCollection(shape(2));
 
 		verboseLog(() -> {
-			CollectionProducer<PackedCollection<?>> value = c(p(in),
+			CollectionProducer value = c(p(in),
 																shape(2, len, 1),
 																c(0, 1),
 																c(4, 8),
 																c(0, 0));
-			CollectionProducer<PackedCollection<?>> product = value.multiply(c(2.0));
+			CollectionProducer product = value.multiply(c(2.0));
 			product.get().into(result).evaluate();
 		});
 
@@ -110,12 +108,12 @@ public class CollectionComputationTests implements TestFeatures {
 		assertEquals(18.0, result.toDouble(1));
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void integersIndexAssignment() {
 		integersIndexAssignment(false);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void integersIndexAssignmentOptimized() {
 		integersIndexAssignment(true);
 	}
@@ -124,9 +122,9 @@ public class CollectionComputationTests implements TestFeatures {
 		int count = 6;
 		int size = 10;
 
-		PackedCollection<?> buffer = new PackedCollection<>(shape(count, size)).fill(0.0);
-		PackedCollection<?> bufferIndices = new PackedCollection<>(shape(count)).fill(1, 2, 3);
-		PackedCollection<?> value = new PackedCollection<>(shape(count)).fill(pos -> 1 + Math.random());
+		PackedCollection buffer = new PackedCollection(shape(count, size)).fill(0.0);
+		PackedCollection bufferIndices = new PackedCollection(shape(count)).fill(1, 2, 3);
+		PackedCollection value = new PackedCollection(shape(count)).fill(pos -> 1 + Math.random());
 		Assignment<?> c = a(
 					traverse(0, c(p(buffer), shape(buffer), integers(0, count), traverseEach(p(bufferIndices)))),
 					p(value));
@@ -150,12 +148,12 @@ public class CollectionComputationTests implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void integersIndexAssignmentOperation() {
 		integersIndexAssignmentOperation(false);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void integersIndexAssignmentOperationIsolated() {
 		integersIndexAssignmentOperation(true);
 	}
@@ -164,22 +162,22 @@ public class CollectionComputationTests implements TestFeatures {
 		int count = 3;
 		int size = 10;
 
-		PackedCollection<?> gain = pack(0.5);
-		PackedCollection<?> input = new Scalar(3.0);
-		PackedCollection<?> in = pack(2.0, 7.0, 5.0);
-		PackedCollection<?> out = pack(0.0, 0.0, 0.0);
-		PackedCollection<?> feedback = empty(shape(count, count))
+		PackedCollection gain = pack(0.5);
+		PackedCollection input = pack(3.0);
+		PackedCollection in = pack(2.0, 7.0, 5.0);
+		PackedCollection out = pack(0.0, 0.0, 0.0);
+		PackedCollection feedback = empty(shape(count, count))
 								.fill(pos -> pos[0] == pos[1] ? 1.0 : 0.0);
 
-		PackedCollection<?> buffer = new PackedCollection<>(shape(count, size)).fill(0.0);
-		PackedCollection<?> bufferIndices = pack(1, 2, 5);
+		PackedCollection buffer = new PackedCollection(shape(count, size)).fill(0.0);
+		PackedCollection bufferIndices = pack(1, 2, 5);
 
 		OperationList op = new OperationList("Integers Index Assignment");
 		op.add(a(
 				p(out),
 				matmul(p(feedback), p(in)).add(c(p(input), 0).mul(p(gain)).repeat(count))));
 
-		Assignment<PackedCollection<?>> populate =
+		Assignment<PackedCollection> populate =
 				a(traverse(0, c(p(buffer), shape(buffer), integers(0, count), traverseEach(p(bufferIndices)))),
 				p(out));
 
@@ -208,11 +206,11 @@ public class CollectionComputationTests implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void addModAssignment() {
 		int size = 3;
-		PackedCollection<?> indices = pack(2, 4, 6);
-		PackedCollection<?> lengths = pack(2, 3, 4);
+		PackedCollection indices = pack(2, 4, 6);
+		PackedCollection lengths = pack(2, 3, 4);
 
 		a(cp(indices), mod(add(p(indices), c(1).repeat(size)), cp(lengths))).get().run();
 		indices.print();
@@ -222,22 +220,22 @@ public class CollectionComputationTests implements TestFeatures {
 		assertEquals(3.0, indices.toDouble(2));
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void multiply() {
 		verboseLog(() -> {
-			PackedCollection<?> testInput = new PackedCollection<>(1);
+			PackedCollection testInput = new PackedCollection(1);
 			testInput.setMem(0, 9.0);
-			PackedCollection<?> result = c(3).multiply(p(testInput)).get().evaluate();
+			PackedCollection result = c(3).multiply(p(testInput)).get().evaluate();
 			assertEquals(27, result.toDouble(0));
 		});
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void sum() {
-		PackedCollection<?> input = tensor(shape(3, 5)).pack();
+		PackedCollection input = tensor(shape(3, 5)).pack();
 
 		verboseLog(() -> {
-			PackedCollection<?> output = c(p(input)).sum().get().evaluate();
+			PackedCollection output = c(p(input)).sum().get().evaluate();
 
 			double expected = 0;
 			for (int i = 0; i < 3; i++) {
@@ -252,19 +250,19 @@ public class CollectionComputationTests implements TestFeatures {
 		});
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void concat() {
 		int n = 2;
 		int dim = 6;
 		int hd = dim / 2;
 
-		PackedCollection<?> va = new PackedCollection<>(n, hd).fill(pos -> 1.0 + pos[1] + 10 * pos[0]);
-		PackedCollection<?> vb = new PackedCollection<>(n, hd).fill(pos -> -(1.0 + pos[1] + 10 * pos[0]));
+		PackedCollection va = new PackedCollection(n, hd).fill(pos -> 1.0 + pos[1] + 10 * pos[0]);
+		PackedCollection vb = new PackedCollection(n, hd).fill(pos -> -(1.0 + pos[1] + 10 * pos[0]));
 
-		CollectionProducer<PackedCollection<?>> a = pad(shape(n, dim), cp(va), 0, 0);
-		CollectionProducer<PackedCollection<?>> b = pad(shape(n, dim), cp(vb), 0, hd);
-		CollectionProducer<PackedCollection<?>> concat = add(a, b);
-		PackedCollection<?> output = concat.get().evaluate();
+		CollectionProducer a = pad(shape(n, dim), cp(va), 0, 0);
+		CollectionProducer b = pad(shape(n, dim), cp(vb), 0, hd);
+		CollectionProducer concat = add(a, b);
+		PackedCollection output = concat.get().evaluate();
 		output.traverse(1).print();
 
 		for (int i = 0; i < n; i++) {
@@ -277,27 +275,27 @@ public class CollectionComputationTests implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void concatProduct() {
 		int n = 2;
 		int dim = 6;
 		int hd = dim / 2;
 
-		PackedCollection<?> va = new PackedCollection<>(hd).fill(pos -> 1.0 + pos[0]);
-		PackedCollection<?> alt = pack(-1.0, 1.0).reshape(n, 1);
+		PackedCollection va = new PackedCollection(hd).fill(pos -> 1.0 + pos[0]);
+		PackedCollection alt = pack(-1.0, 1.0).reshape(n, 1);
 
-		CollectionProducer<PackedCollection<?>> product =
+		CollectionProducer product =
 				multiply(
 						cp(alt).repeat(1, hd).reshape(n, hd),
 						cp(va).repeat(n).reshape(n, hd));
 
-		CollectionProducer<PackedCollection<?>> a = pad(shape(n, dim),
+		CollectionProducer a = pad(shape(n, dim),
 				product.multiply(c(10)), 0, 0);
-		CollectionProducer<PackedCollection<?>> b = pad(shape(n, dim),
+		CollectionProducer b = pad(shape(n, dim),
 				product.multiply(c(100)), 0, hd);
 
-		CollectionProducer<PackedCollection<?>> concat = add(a, b);
-		PackedCollection<?> output = concat.get().evaluate();
+		CollectionProducer concat = add(a, b);
+		PackedCollection output = concat.get().evaluate();
 		output.traverse(1).print();
 
 		for (int i = 0; i < n; i++) {
@@ -309,22 +307,22 @@ public class CollectionComputationTests implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void concatSinCos() {
 		int n = 2;
 		int dim = 6;
 		int hd = dim / 2;
 
-		PackedCollection<?> va = new PackedCollection<>(hd).fill(pos -> 1.0 + pos[0]);
-		PackedCollection<?> alt = pack(-1.0, 1.0).reshape(n, 1);
+		PackedCollection va = new PackedCollection(hd).fill(pos -> 1.0 + pos[0]);
+		PackedCollection alt = pack(-1.0, 1.0).reshape(n, 1);
 
-		CollectionProducer<PackedCollection<?>> product =
+		CollectionProducer product =
 				multiply(
 						cp(alt).repeat(1, hd).reshape(n, hd),
 						cp(va).repeat(n).reshape(n, hd));
 
-		CollectionProducer<PackedCollection<?>> concat = concat(shape(n, dim), sin(product), cos(product));
-		PackedCollection<?> output = concat.get().evaluate();
+		CollectionProducer concat = concat(shape(n, dim), sin(product), cos(product));
+		PackedCollection output = concat.get().evaluate();
 		output.traverse(1).print();
 
 		for (int i = 0; i < n; i++) {
@@ -347,13 +345,13 @@ public class CollectionComputationTests implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void size() {
-		PackedCollection<?> a = new PackedCollection<>(shape(10));
-		PackedCollection<?> b = new PackedCollection<>(shape(15));
+		PackedCollection a = new PackedCollection(shape(10));
+		PackedCollection b = new PackedCollection(shape(15));
 
-		Evaluable<PackedCollection<?>> size = sizeOf(cv(shape(-1), 0)).get();
-		PackedCollection<?> result = size.evaluate(a);
+		Evaluable<PackedCollection> size = sizeOf(cv(shape(-1), 0)).get();
+		PackedCollection result = size.evaluate(a);
 		result.print();
 		assertEquals(10.0, result.toDouble(0));
 
@@ -362,16 +360,16 @@ public class CollectionComputationTests implements TestFeatures {
 		assertEquals(15.0, result.toDouble(0));
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void scale() {
-		PackedCollection<?> timeline = new PackedCollection<>(shape(10), 1);
+		PackedCollection timeline = new PackedCollection(shape(10), 1);
 		IntStream.range(0, 10).forEach(i -> timeline.set(i, i + 1));
 
 		Assert.assertEquals(10, multiply(c(2), c(p(timeline))).getCountLong());
 
-		PackedCollection<?> destination = new PackedCollection<>(shape(10), 1);
+		PackedCollection destination = new PackedCollection(shape(10), 1);
 
-		Evaluable<PackedCollection<?>> ev = multiply(c(2), c(p(timeline))).get();
+		Evaluable<PackedCollection> ev = multiply(c(2), c(p(timeline))).get();
 		ev.into(destination.traverseEach()).evaluate();
 		System.out.println(Arrays.toString(destination.toArray(0, 10)));
 		assertEquals(6.0, destination.toDouble(2));
@@ -383,14 +381,14 @@ public class CollectionComputationTests implements TestFeatures {
 		assertEquals(8.0, destination.toDouble(3));
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void scaleEvaluable() {
-		PackedCollection<?> timeline = new PackedCollection<>(shape(10), 1);
+		PackedCollection timeline = new PackedCollection(shape(10), 1);
 		IntStream.range(0, 10).forEach(i -> timeline.set(i, i + 1));
 
-		PackedCollection<?> destination = new PackedCollection<>(shape(10), 1);
+		PackedCollection destination = new PackedCollection(shape(10), 1);
 
-		Evaluable<PackedCollection<?>> ev = multiply(c(2), c(timeline.getShape(), args -> timeline)).get();
+		Evaluable<PackedCollection> ev = multiply(c(2), c(timeline.getShape(), args -> timeline)).get();
 		ev.into(destination.traverseEach()).evaluate();
 		System.out.println(Arrays.toString(destination.toArray(0, 10)));
 		assertEquals(6.0, destination.toDouble(2));
@@ -402,36 +400,36 @@ public class CollectionComputationTests implements TestFeatures {
 		assertEquals(8.0, destination.toDouble(3));
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void max2d() {
-		PackedCollection<?> value = pack(2.0, 3.0, 7.0, 1.0).reshape(2, 2).traverse(1);
+		PackedCollection value = pack(2.0, 3.0, 7.0, 1.0).reshape(2, 2).traverse(1);
 
-		PackedCollection<?> m = max(cp(value)).get().evaluate();
+		PackedCollection m = max(cp(value)).get().evaluate();
 		m.print();
 		assertEquals(3.0, m.toDouble(0));
 		assertEquals(7.0, m.toDouble(1));
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void indexOfMax2d() {
-		PackedCollection<?> value = pack(5.0, 3.0, 7.0, 10.0).reshape(2, 2).traverse(1);
+		PackedCollection value = pack(5.0, 3.0, 7.0, 10.0).reshape(2, 2).traverse(1);
 
-		PackedCollection<?> m = cp(value).indexOfMax().get().evaluate();
+		PackedCollection m = cp(value).indexOfMax().get().evaluate();
 		m.print();
 
 		assertEquals(0.0, m.toDouble(0));
 		assertEquals(1.0, m.toDouble(1));
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void max3d() {
-		PackedCollection<?> value = new PackedCollection<>(shape(2, 3, 2))
+		PackedCollection value = new PackedCollection(shape(2, 3, 2))
 				.fill(pos -> (1.0 + pos[0]) * (-0.5 + pos[1] % 2) * (0.7 + pos[2]))
 				.traverse(2);
 		value.print();
 		System.out.println("--");
 
-		PackedCollection<?> m = max(cp(value)).get().evaluate();
+		PackedCollection m = max(cp(value)).get().evaluate();
 		System.out.println(m.getShape());
 		m.print();
 
@@ -448,18 +446,18 @@ public class CollectionComputationTests implements TestFeatures {
 		assertEquals(-0.7, m.toDouble(5));
 	}
 
-	// @Test
+	// @Test(timeout = 30000)
 	public void dynamicMax() {
-		PackedCollection<?> value = new PackedCollection<>(shape(2, 3, 2))
+		PackedCollection value = new PackedCollection(shape(2, 3, 2))
 				.fill(pos -> (1.0 + pos[0]) * (-0.5 + pos[1] % 2) * (0.7 + pos[2]))
 				.traverse(2);
 		value.print();
 		System.out.println("--");
 
-		PackedCollection<?> output = new PackedCollection<>(shape(2, 3, 1)).traverse(2);
+		PackedCollection output = new PackedCollection(shape(2, 3, 1)).traverse(2);
 
-//		PackedCollection<?> m = max(new DynamicCollectionProducer<PackedCollection<?>>(shape(2, 3, 2), args -> value, false)).get().evaluate();
-		PackedCollection<?> m = max(new DynamicProducer<PackedCollection<?>>(args -> value)).get().into(output).evaluate();
+//		PackedCollection m = max(new DynamicCollectionProducer(shape(2, 3, 2), args -> value, false)).get().evaluate();
+		PackedCollection m = max(new DynamicProducer<PackedCollection>(args -> value)).get().into(output).evaluate();
 		System.out.println(m.getShape());
 		m.print();
 
@@ -476,14 +474,14 @@ public class CollectionComputationTests implements TestFeatures {
 		assertEquals(-0.7, m.toDouble(5));
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void collectionMaxTwoSeries() {
-		PackedCollection<?> series = new PackedCollection(2, 10);
+		PackedCollection series = new PackedCollection(2, 10);
 		series.setMem(0, 7.0, 5.0, 12.0, 13.0, 11.0, 14.0, 9.0, 12.0, 3.0, 12.0);
 		series.setMem(10, 12.0, 3.0, 12.0, 10.0, 14.0, 16.0, 13.0, 12.0, 5.0, 7.0);
 		System.out.println(series.traverse(1).getCountLong() + " series");
 
-		Producer<PackedCollection<?>> max = max(v(shape(-1, 10), 0));
+		Producer<PackedCollection> max = max(v(shape(-1, 10), 0));
 		PackedCollection dest = max.get().evaluate(series.traverse(1));
 
 		System.out.println(Arrays.toString(dest.toArray(0, 2)));
@@ -491,14 +489,14 @@ public class CollectionComputationTests implements TestFeatures {
 		assertEquals(16, dest.toArray(1, 1)[0]);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void collectionMax() {
-		PackedCollection<?> series = new PackedCollection(10);
+		PackedCollection series = new PackedCollection(10);
 		series.setMem(0, 7.0, 5.0, 12.0, 13.0, 11.0, 14.0, 9.0, 12.0, 3.0, 12.0);
 		System.out.println(series.traverse(0).getCountLong() + " series");
 
-		Producer<PackedCollection<?>> max = max(v(shape(10), 0));
-		PackedCollection<?> dest = new PackedCollection(2, 1);
+		Producer<PackedCollection> max = max(v(shape(10), 0));
+		PackedCollection dest = new PackedCollection(2, 1);
 
 		try {
 			verboseLog(() ->
@@ -515,15 +513,15 @@ public class CollectionComputationTests implements TestFeatures {
 		assertEquals(14, dest.toArray(1, 1)[0]);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void greaterThanMax() {
-		PackedCollection<?> series = new PackedCollection(10);
+		PackedCollection series = new PackedCollection(10);
 		series.setMem(0, 7.0, 5.0, 12.0, 13.0, 11.0, 14.0, 9.0, 12.0, 3.0, 12.0);
 		System.out.println(series.traverse(0).getCountLong() + " series");
 
-		PackedCollection<?> dest = new PackedCollection(1);
-		CollectionProducer<PackedCollection<?>> max = cp(series.traverse(0)).max();
-		CollectionProducer<PackedCollection<?>> auto = max.greaterThan(c(0.0), c(0.8).divide(max), c(1.0));
+		PackedCollection dest = new PackedCollection(1);
+		CollectionProducer max = cp(series.traverse(0)).max();
+		CollectionProducer auto = max.greaterThan(c(0.0), c(0.8).divide(max), c(1.0));
 
 		verboseLog(() -> {
 			OperationList op = new OperationList("greaterThanMax");
@@ -535,13 +533,13 @@ public class CollectionComputationTests implements TestFeatures {
 		assertEquals(0.8 / 14, dest.toDouble(0));
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void dynamicProjection() {
-		PackedCollection<?> in = pack(2.0, 6.0, 3.0, 1.0).reshape(2, 2).traverse(1);
+		PackedCollection in = pack(2.0, 6.0, 3.0, 1.0).reshape(2, 2).traverse(1);
 
 		TraversalPolicy shape = shape(in).flatten(true);
 
-		DynamicIndexProjectionProducerComputation<?> c = new DynamicIndexProjectionProducerComputation<>(null, shape(2), (args, idx) -> {
+		DynamicIndexProjectionProducerComputation c = new DynamicIndexProjectionProducerComputation(null, shape(2), (args, idx) -> {
 			Expression<?> result = null;
 
 			for (int i = 0; i < shape.getSize(); i++) {
@@ -560,9 +558,145 @@ public class CollectionComputationTests implements TestFeatures {
 		}, p(in)
 		);
 
-		PackedCollection<?> out = c.get().evaluate();
+		PackedCollection out = c.get().evaluate();
 		print(2, 1, out);
 		assertEquals(6.0, out.toDouble(0));
 		assertEquals(3.0, out.toDouble(1));
+	}
+
+	@Test(timeout = 30000)
+	public void binaryGreaterThan() {
+		PackedCollection result = new PackedCollection(1);
+
+		// Test: 5.0 > 3.0 should return 1.0
+		a(1, p(result), c(5.0).greaterThan(c(3.0))).get().run();
+		assertEquals(1.0, result.toDouble(0));
+
+		// Test: 3.0 > 5.0 should return 0.0
+		a(1, p(result), c(3.0).greaterThan(c(5.0))).get().run();
+		assertEquals(0.0, result.toDouble(0));
+
+		// Test: 5.0 > 5.0 should return 0.0
+		a(1, p(result), c(5.0).greaterThan(c(5.0))).get().run();
+		assertEquals(0.0, result.toDouble(0));
+	}
+
+	@Test(timeout = 30000)
+	public void binaryGreaterThanOrEqual() {
+		PackedCollection result = new PackedCollection(1);
+
+		// Test: 5.0 >= 3.0 should return 1.0
+		a(1, p(result), c(5.0).greaterThanOrEqual(c(3.0))).get().run();
+		assertEquals(1.0, result.toDouble(0));
+
+		// Test: 5.0 >= 5.0 should return 1.0
+		a(1, p(result), c(5.0).greaterThanOrEqual(c(5.0))).get().run();
+		assertEquals(1.0, result.toDouble(0));
+
+		// Test: 3.0 >= 5.0 should return 0.0
+		a(1, p(result), c(3.0).greaterThanOrEqual(c(5.0))).get().run();
+		assertEquals(0.0, result.toDouble(0));
+	}
+
+	@Test(timeout = 30000)
+	public void binaryLessThan() {
+		PackedCollection result = new PackedCollection(1);
+
+		// Test: 3.0 < 5.0 should return 1.0
+		a(1, p(result), c(3.0).lessThan(c(5.0))).get().run();
+		assertEquals(1.0, result.toDouble(0));
+
+		// Test: 5.0 < 3.0 should return 0.0
+		a(1, p(result), c(5.0).lessThan(c(3.0))).get().run();
+		assertEquals(0.0, result.toDouble(0));
+
+		// Test: 5.0 < 5.0 should return 0.0
+		a(1, p(result), c(5.0).lessThan(c(5.0))).get().run();
+		assertEquals(0.0, result.toDouble(0));
+	}
+
+	@Test(timeout = 30000)
+	public void binaryLessThanOrEqual() {
+		PackedCollection result = new PackedCollection(1);
+
+		// Test: 3.0 <= 5.0 should return 1.0
+		a(1, p(result), c(3.0).lessThanOrEqual(c(5.0))).get().run();
+		assertEquals(1.0, result.toDouble(0));
+
+		// Test: 5.0 <= 5.0 should return 1.0
+		a(1, p(result), c(5.0).lessThanOrEqual(c(5.0))).get().run();
+		assertEquals(1.0, result.toDouble(0));
+
+		// Test: 5.0 <= 3.0 should return 0.0
+		a(1, p(result), c(5.0).lessThanOrEqual(c(3.0))).get().run();
+		assertEquals(0.0, result.toDouble(0));
+	}
+
+	@Test(timeout = 30000)
+	public void binaryAnd() {
+		PackedCollection result = new PackedCollection(1);
+
+		// Test: 1.0 AND 1.0 = 1.0
+		a(1, p(result), and(c(1.0), c(1.0))).get().run();
+		assertEquals(1.0, result.toDouble(0));
+
+		// Test: 1.0 AND 0.0 = 0.0
+		a(1, p(result), and(c(1.0), c(0.0))).get().run();
+		assertEquals(0.0, result.toDouble(0));
+
+		// Test: 0.0 AND 1.0 = 0.0
+		a(1, p(result), and(c(0.0), c(1.0))).get().run();
+		assertEquals(0.0, result.toDouble(0));
+
+		// Test: 0.0 AND 0.0 = 0.0
+		a(1, p(result), and(c(0.0), c(0.0))).get().run();
+		assertEquals(0.0, result.toDouble(0));
+
+		// Test: non-zero values treated as true: 5.0 AND 3.0 = 1.0
+		a(1, p(result), and(c(5.0), c(3.0))).get().run();
+		assertEquals(1.0, result.toDouble(0));
+
+		// Test: 5.0 AND 0.0 = 0.0
+		a(1, p(result), and(c(5.0), c(0.0))).get().run();
+		assertEquals(0.0, result.toDouble(0));
+	}
+
+	@Test(timeout = 30000)
+	public void andWithCustomValues() {
+		PackedCollection result = new PackedCollection(1);
+
+		// Test: AND with custom true/false values
+		// 1.0 AND 1.0 should return 100.0 (trueValue)
+		CollectionProducer andOp = and(c(1.0), c(1.0), c(100.0), c(-1.0));
+		a(1, p(result), andOp).get().run();
+		assertEquals(100.0, result.toDouble(0));
+
+		// 1.0 AND 0.0 should return -1.0 (falseValue)
+		andOp = and(c(1.0), c(0.0), c(100.0), c(-1.0));
+		a(1, p(result), andOp).get().run();
+		assertEquals(-1.0, result.toDouble(0));
+	}
+
+	@Test(timeout = 30000)
+	public void chainedAndConditions() {
+		PackedCollection result = new PackedCollection(1);
+
+		// Complex: (5 > 3) AND (7 > 2) AND (10 < 20) should be true
+		CollectionProducer cond1 = greaterThan(c(5.0), c(3.0));
+		CollectionProducer cond2 = greaterThan(c(7.0), c(2.0));
+		CollectionProducer cond3 = lessThan(c(10.0), c(20.0));
+
+		// Chain the conditions: (cond1 AND cond2) AND cond3
+		CollectionProducer chained = and(and(cond1, cond2), cond3, c(100.0), c(-1.0));
+
+		a(1, p(result), chained).get().run();
+		assertEquals(100.0, result.toDouble(0));
+
+		// Test with one false condition: (5 > 3) AND (7 > 2) AND (10 > 20)
+		cond3 = greaterThan(c(10.0), c(20.0));  // This is false
+		chained = and(and(cond1, cond2), cond3, c(100.0), c(-1.0));
+
+		a(1, p(result), chained).get().run();
+		assertEquals(-1.0, result.toDouble(0));
 	}
 }

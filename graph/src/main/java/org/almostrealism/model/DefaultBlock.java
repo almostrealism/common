@@ -16,9 +16,9 @@
 
 package org.almostrealism.model;
 
+import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
-import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.graph.Cell;
 import org.almostrealism.graph.Receptor;
 import org.almostrealism.hardware.OperationList;
@@ -26,24 +26,24 @@ import org.almostrealism.hardware.OperationList;
 import java.util.function.Supplier;
 
 public class DefaultBlock implements Block {
-	private TraversalPolicy inputShape;
-	private TraversalPolicy outputShape;
+	private final TraversalPolicy inputShape;
+	private final TraversalPolicy outputShape;
 
-	private Supplier<Runnable> setup;
-	private Cell<PackedCollection<?>> forward;
-	private Cell<PackedCollection<?>> backward;
+	private final Supplier<Runnable> setup;
+	private final Cell<PackedCollection> forward;
+	private final Cell<PackedCollection> backward;
 
-	private Cell<PackedCollection<?>> entry;
-	private Receptor<PackedCollection<?>> push;
-	private Receptor<PackedCollection<?>> downstream;
+	private Cell<PackedCollection> entry;
+	private final Receptor<PackedCollection> push;
+	private Receptor<PackedCollection> downstream;
 
 	public DefaultBlock(TraversalPolicy inputShape, TraversalPolicy outputShape,
-						Cell<PackedCollection<?>> forward, Cell<PackedCollection<?>> backward) {
+						Cell<PackedCollection> forward, Cell<PackedCollection> backward) {
 		this(inputShape, outputShape, forward, backward, new OperationList());
 	}
 
 	public DefaultBlock(TraversalPolicy inputShape, TraversalPolicy outputShape,
-						Cell<PackedCollection<?>> forward, Cell<PackedCollection<?>> backward,
+						Cell<PackedCollection> forward, Cell<PackedCollection> backward,
 						Supplier<Runnable> setup) {
 		this.inputShape = inputShape;
 		this.outputShape = outputShape;
@@ -78,7 +78,7 @@ public class DefaultBlock implements Block {
 	}
 
 	@Override
-	public Cell<PackedCollection<?>> getForward() {
+	public Cell<PackedCollection> getForward() {
 		if (entry == null) {
 			entry = new Cell<>() {
 				@Override
@@ -87,12 +87,12 @@ public class DefaultBlock implements Block {
 				}
 
 				@Override
-				public Supplier<Runnable> push(Producer<PackedCollection<?>> in) {
+				public Supplier<Runnable> push(Producer<PackedCollection> in) {
 					return forward == null ? push.push(in) : forward.push(in);
 				}
 
 				@Override
-				public void setReceptor(Receptor<PackedCollection<?>> r) {
+				public void setReceptor(Receptor<PackedCollection> r) {
 					if (cellWarnings && DefaultBlock.this.downstream != null) {
 						warn("Replacing receptor");
 					}
@@ -106,7 +106,7 @@ public class DefaultBlock implements Block {
 	}
 
 	@Override
-	public Cell<PackedCollection<?>> getBackward() {
+	public Cell<PackedCollection> getBackward() {
 		return backward;
 	}
 }

@@ -25,6 +25,15 @@ import org.almostrealism.hardware.MemoryData;
 
 import java.util.function.Supplier;
 
+/**
+ * Supplier that provides a {@link Provider} for the root delegate of a {@link MemoryData}.
+ *
+ * <p>Used by {@link MemoryDataArgumentMap} to create providers that reference the root delegate
+ * of delegated memory, enabling efficient argument handling for memory views.</p>
+ *
+ * @see MemoryDataArgumentMap
+ * @see MemoryData#getRootDelegate()
+ */
 public class RootDelegateProviderSupplier implements Supplier<Evaluable<? extends MemoryData>>,
 		Delegated<Provider>, OperationInfo {
 	private Provider provider;

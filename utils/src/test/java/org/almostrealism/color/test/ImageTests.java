@@ -28,30 +28,30 @@ import java.io.File;
 import java.io.IOException;
 
 public class ImageTests implements RGBFeatures, TestFeatures {
-	protected CollectionProducer<PackedCollection<?>> imageTransform(CollectionProducer<PackedCollection<?>> image) {
+	protected CollectionProducer imageTransform(CollectionProducer image) {
 		return image.multiply(2).subtract(1.0);
 	}
 
-	protected CollectionProducer<PackedCollection<?>> imageTransformReverse(Producer<PackedCollection<?>> data) {
+	protected CollectionProducer imageTransformReverse(Producer<PackedCollection> data) {
 		return c(data).add(1.0).divide(2);
 	}
 
-	@Test
+	@Test(timeout = 10000)
 	public void noise() throws IOException {
-		CollectionProducer<PackedCollection<?>> data = imageTransformReverse(randn(shape(3, 128, 128)));
+		CollectionProducer data = imageTransformReverse(randn(shape(3, 128, 128)));
 		saveChannels("results/noise.png", data).get().run();
 	}
 
-	@Test
+	@Test(timeout = 10000)
 	public void addNoise() throws IOException {
 		File img = new File("library/test_image.jpeg");
 		if (!img.exists() && skipKnownIssues) return;
 
-		CollectionProducer<PackedCollection<?>> data =
+		CollectionProducer data =
 				imageTransform(channels(img));
 
 		log(data.getShape());
-		Producer<PackedCollection<?>> random = randn(data.getShape());
+		Producer<PackedCollection> random = randn(data.getShape());
 		Assert.assertEquals(data.getShape(), shape(random));
 
 		double level = 0.3;

@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AR-Render Module - Almost Realism Framework</title>
+    <link rel="stylesheet" href="../css/style.css">
+    <style>
+        .key-concepts { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin: 20px 0; }
+        .concept-card { background: #f8f9fa; border-left: 4px solid #c62828; padding: 15px; border-radius: 4px; }
+        .concept-card h4 { margin-top: 0; color: #c62828; }
+        .performance-table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+        .performance-table th, .performance-table td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
+        .performance-table th { background-color: #ffebee; color: #c62828; font-weight: bold; }
+        .performance-table tr:hover { background-color: #f5f5f5; }
+        .comparison-table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+        .comparison-table th, .comparison-table td { padding: 10px; border: 1px solid #ddd; text-align: left; }
+        .comparison-table th { background-color: #ffebee; color: #c62828; }
+        .class-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 15px; margin: 20px 0; }
+        .class-item { background: #fff; border: 1px solid #ddd; padding: 12px; border-radius: 4px; }
+        .class-item h4 { margin: 0 0 8px 0; color: #c62828; font-size: 1.1em; }
+        .class-item p { margin: 0; font-size: 0.9em; color: #666; }
+        .code-example { background: #f5f5f5; border-left: 4px solid #c62828; padding: 15px; margin: 15px 0; border-radius: 4px; }
+        .highlight { background-color: #fff9c4; padding: 2px 4px; }
+        .warning { background-color: #ffebee; border-left: 4px solid #c62828; padding: 12px; margin: 15px 0; }
+        .pipeline-diagram { background: #fff; border: 2px solid #c62828; border-radius: 8px; padding: 20px; margin: 20px 0; font-family: monospace; }
+        .pipeline-step { background: #ffebee; padding: 8px 12px; margin: 5px 0; border-radius: 4px; }
+        .pipeline-arrow { text-align: center; color: #c62828; font-size: 1.2em; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>AR-Render Module</h1>
+            <p class="tagline">Hardware-Accelerated Ray Tracing & Photorealistic Rendering</p>
+            <nav>
+                <a href="../index.html">Home</a>
+                <a href="#overview">Overview</a>
+                <a href="#architecture">Architecture</a>
+                <a href="#classes">Key Classes</a>
+                <a href="#examples">Examples</a>
+                <a href="#resources">Resources</a>
+            </nav>
+        </header>
+
+        <main>
+            <section id="overview">
+                <h2>Overview</h2>
+                <p>The <strong>ar-render</strong> module provides a complete ray tracing rendering engine with support for complex lighting, shadows, reflection, refraction, and anti-aliasing. It integrates with the space and color modules to produce high-quality 2D images from 3D scenes, with optional GPU acceleration for high-performance rendering.</p>
+
+                <div class="key-concepts">
+                    <div class="concept-card">
+                        <h4>Ray Tracing Engine</h4>
+                        <p>Hardware-accelerated ray-surface intersection with BSP tree acceleration, supporting complex scenes with multiple surfaces and recursive ray bounces.</p>
+                    </div>
+                    <div class="concept-card">
+                        <h4>Lighting System</h4>
+                        <p>Multi-light scenes with point lights, attenuation, and shadow computation. Support for key/fill/back lighting setups with color temperature control.</p>
+                    </div>
+                    <div class="concept-card">
+                        <h4>Material Shaders</h4>
+                        <p>Fresnel-based reflection, Snell's law refraction, diffuse/specular shading, and composite materials for realistic surface appearance.</p>
+                    </div>
+                    <div class="concept-card">
+                        <h4>Anti-Aliasing</h4>
+                        <p>Supersampling with configurable grid (2x2, 4x4, etc.) for smooth edges and reduced aliasing artifacts in final rendered images.</p>
+                    </div>
+                </div>
+            </section>
+
+            <section id="architecture">
+                <h2>Module Architecture</h2>
+
+                <h3>Rendering Pipeline</h3>
+                <div class="pipeline-diagram">
+                    <div class="pipeline-step">1. Camera Ray Generation - Cast rays through image plane pixels</div>
+                    <div class="pipeline-arrow">|</div>
+                    <div class="pipeline-step">2. Ray-Scene Intersection - Test rays against all surfaces (BSP accelerated)</div>
+                    <div class="pipeline-arrow">|</div>
+                    <div class="pipeline-step">3. Closest Surface Selection - Find nearest intersection point</div>
+                    <div class="pipeline-arrow">|</div>
+                    <div class="pipeline-step">4. Shader Evaluation - Diffuse, Specular, Shadows, Reflections, Refractions</div>
+                    <div class="pipeline-arrow">|</div>
+                    <div class="pipeline-step">5. Supersampling Average - Combine multiple samples per pixel</div>
+                    <div class="pipeline-arrow">|</div>
+                    <div class="pipeline-step">6. Final Pixel Color - Output RGB value to image</div>
+                </div>
+
+                <h3>Core Components</h3>
+                <div class="class-list">
+                    <div class="class-item">
+                        <h4>Engine</h4>
+                        <p>Base interface for rendering engines. Defines the trace() method that returns a color Producer for a given ray.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>RayIntersectionEngine</h4>
+                        <p>Primary ray tracing implementation. Performs ray-surface intersection with optional fog and GPU acceleration.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>LightingEngine</h4>
+                        <p>Computes lighting contributions from light sources. Supports shadow rays and attenuation calculations.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>RayTracedScene</h4>
+                        <p>Scene setup orchestrator. Combines engine, camera, and parameters to produce final images.</p>
+                    </div>
+                </div>
+
+                <h3>Rendering Configuration</h3>
+                <div class="class-list">
+                    <div class="class-item">
+                        <h4>RenderParameters</h4>
+                        <p>Image dimensions (width, height), supersampling grid (ssWidth, ssHeight), and render region (x, y, dx, dy).</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>Pixel</h4>
+                        <p>Manages supersampling grid for a single pixel. Coordinates sub-pixel sample positions.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>SuperSampler</h4>
+                        <p>Anti-aliasing implementation. Averages multiple ray samples per pixel for smooth edges.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>FogParameters</h4>
+                        <p>Atmospheric fog configuration: fog color, density, and blending ratio for depth-based effects.</p>
+                    </div>
+                </div>
+
+                <h3>Material Shaders</h3>
+                <div class="class-list">
+                    <div class="class-item">
+                        <h4>DiffuseShader</h4>
+                        <p>Lambertian diffuse lighting. Configurable front/back face shading for surfaces.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>HighlightShader</h4>
+                        <p>Specular highlights with configurable exponent for sharp or soft highlights.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>ReflectionShader</h4>
+                        <p>Fresnel-based reflection with configurable reflectivity, blur, and max recursion depth.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>RefractionShader</h4>
+                        <p>Snell's law refraction with index of refraction and color attenuation for glass/water effects.</p>
+                    </div>
+                </div>
+            </section>
+
+            <section id="classes">
+                <h2>Key Classes Deep Dive</h2>
+
+                <h3>RayTracedScene</h3>
+                <p>The main orchestrator for ray traced rendering. Combines an Engine, Camera, and RenderParameters to produce images.</p>
+                <pre><code class="language-java">public class RayTracedScene extends Realization&lt;RealizableImage, RenderParameters&gt; {
+    public RayTracedScene(Engine engine, Camera camera);
+    public RayTracedScene(Engine engine, Camera camera, RenderParameters params);
+
+    public RealizableImage realize(RenderParameters params);
+}</code></pre>
+
+                <h3>RayIntersectionEngine</h3>
+                <p>Primary ray tracing engine with optional GPU acceleration and fog effects.</p>
+                <pre><code class="language-java">public class RayIntersectionEngine implements Engine {
+    public RayIntersectionEngine(Scene scene, FogParameters fog);
+
+    @Override
+    public Producer&lt;RGB&gt; trace(Producer&lt;Ray&gt; ray);
+
+    // GPU acceleration flag
+    public static boolean enableAcceleratedAggregator = false;
+}</code></pre>
+
+                <h3>RenderParameters</h3>
+                <p>Configuration for image dimensions and supersampling.</p>
+                <table class="comparison-table">
+                    <tr>
+                        <th>Field</th>
+                        <th>Type</th>
+                        <th>Description</th>
+                    </tr>
+                    <tr>
+                        <td>width, height</td>
+                        <td>int</td>
+                        <td>Full image dimensions in pixels</td>
+                    </tr>
+                    <tr>
+                        <td>ssWidth, ssHeight</td>
+                        <td>int</td>
+                        <td>Supersampling grid (e.g., 2x2 = 4 samples/pixel)</td>
+                    </tr>
+                    <tr>
+                        <td>x, y</td>
+                        <td>int</td>
+                        <td>Upper-left corner of render region</td>
+                    </tr>
+                    <tr>
+                        <td>dx, dy</td>
+                        <td>int</td>
+                        <td>Visible dimensions (for partial rendering)</td>
+                    </tr>
+                </table>
+
+                <h3>LightingEngine</h3>
+                <p>Computes lighting contributions with optional shadow rays.</p>
+                <pre><code class="language-java">public class LightingEngine&lt;T extends ContinuousField&gt; {
+    public LightingEngine(Surface surface, Light light);
+
+    public Producer&lt;RGB&gt; shade(Producer&lt;Ray&gt; ray);
+
+    // Enable shadow computation
+    public static boolean enableShadows = false;
+}</code></pre>
+
+                <h3>Shader Comparison</h3>
+                <table class="comparison-table">
+                    <tr>
+                        <th>Shader</th>
+                        <th>Physics Model</th>
+                        <th>Key Parameters</th>
+                        <th>Use Case</th>
+                    </tr>
+                    <tr>
+                        <td>DiffuseShader</td>
+                        <td>Lambertian</td>
+                        <td>frontShade, backShade</td>
+                        <td>Matte surfaces</td>
+                    </tr>
+                    <tr>
+                        <td>HighlightShader</td>
+                        <td>Phong/Blinn</td>
+                        <td>exponent, highlightColor</td>
+                        <td>Glossy highlights</td>
+                    </tr>
+                    <tr>
+                        <td>ReflectionShader</td>
+                        <td>Fresnel</td>
+                        <td>reflectivity, maxReflections</td>
+                        <td>Mirrors, metals</td>
+                    </tr>
+                    <tr>
+                        <td>RefractionShader</td>
+                        <td>Snell's Law</td>
+                        <td>IOR, attenuationFactors</td>
+                        <td>Glass, water</td>
+                    </tr>
+                </table>
+            </section>
+
+            <section id="examples">
+                <h2>Usage Examples</h2>
+
+                <h3>Basic Scene Rendering</h3>
+                <pre><code class="language-java">import org.almostrealism.raytrace.*;
+import org.almostrealism.space.*;
+import org.almostrealism.color.*;
+import org.almostrealism.projection.PinholeCamera;
+import org.almostrealism.texture.ImageCanvas;
+
+// 1. Create geometry
+Sphere sphere = new Sphere(new Vector(0, 0, 0), 1.0, new RGB(0.8, 0.2, 0.2));
+sphere.addShader(new DiffuseShader());
+
+Plane ground = new Plane(
+    new Vector(0, -2, 0),
+    new Vector(0, 1, 0),
+    10, 10, 0.1
+);
+ground.setColor(new RGB(0.3, 0.3, 0.3));
+
+// 2. Create lighting
+PointLight light = new PointLight(new Vector(5, 5, 5), 1.0, new RGB(1, 1, 1));
+light.setAttenuationCoefficients(0, 0, 0.01);
+
+// 3. Assemble scene
+Scene&lt;ShadableSurface&gt; scene = new Scene&lt;&gt;();
+scene.add(sphere);
+scene.add(ground);
+scene.addLight(light);
+
+// 4. Configure camera
+PinholeCamera camera = new PinholeCamera(
+    new Vector(0, 0, -5),
+    new Vector(0, 0, 1),
+    new Vector(0, 1, 0)
+);
+camera.setFocalLength(35.0);
+scene.setCamera(camera);
+
+// 5. Configure rendering
+RenderParameters params = new RenderParameters();
+params.width = 640;
+params.height = 480;
+params.dx = 640;
+params.dy = 480;
+params.ssWidth = 2;   // 2x2 supersampling
+params.ssHeight = 2;
+
+// 6. Create engine and render
+RayIntersectionEngine engine = new RayIntersectionEngine(scene, new FogParameters());
+RayTracedScene rayTracedScene = new RayTracedScene(engine, camera, params);
+RealizableImage image = rayTracedScene.realize(params);
+
+// 7. Save output
+ImageCanvas.encodeImageFile(image.get(), new File("output.jpg"),
+                           ImageCanvas.JPEGEncoding);</code></pre>
+
+                <h3>Multi-Light Scene Setup</h3>
+                <pre><code class="language-java">// Key light (main illumination)
+PointLight keyLight = new PointLight(
+    new Vector(10, 10, -10),
+    1.0,
+    new RGB(1.0, 1.0, 0.9)  // Warm white
+);
+
+// Fill light (soften shadows)
+PointLight fillLight = new PointLight(
+    new Vector(-5, 5, -5),
+    0.5,
+    new RGB(0.7, 0.7, 1.0)  // Cool tint
+);
+
+// Back light (rim lighting)
+PointLight backLight = new PointLight(
+    new Vector(0, 5, 5),
+    0.3,
+    new RGB(1.0, 1.0, 1.0)
+);
+
+scene.addLight(keyLight);
+scene.addLight(fillLight);
+scene.addLight(backLight);
+
+// Enable shadows for realistic lighting
+LightingEngine.enableShadows = true;</code></pre>
+
+                <h3>Reflective Mirror Surface</h3>
+                <pre><code class="language-java">// Create reflective sphere
+Sphere mirrorSphere = new Sphere(new Vector(0, 0, 0), 1.0, new RGB(0.9, 0.9, 0.9));
+
+// Configure Fresnel-based reflection
+ReflectionShader reflection = new ReflectionShader();
+reflection.setReflectivity(0.95);           // 95% reflective
+reflection.setReflectiveColor(white());
+reflection.setBlur(0.0);                    // Perfect mirror
+reflection.setMaxReflections(4);            // Recursion depth
+
+mirrorSphere.setShaders(new Shader[] { reflection });
+
+// Engine will trace reflected rays recursively</code></pre>
+
+                <h3>Glass Refraction with Snell's Law</h3>
+                <pre><code class="language-java">// Glass sphere
+Sphere glassSphere = new Sphere(new Vector(0, 0, 0), 1.0, new RGB(1, 1, 1));
+
+// Configure Snell's law refraction
+RefractionShader glass = new RefractionShader();
+glass.setIndexOfRefraction(1.5);            // Glass IOR
+glass.setAttenuationFactors(0.95, 0.95, 0.98);  // Slight blue-green tint
+glass.setTransmitAbsorb(true);
+
+glassSphere.setShaders(new Shader[] { glass });
+glassSphere.setRefractedPercentage(0.9);    // 90% transparent
+glassSphere.setReflectedPercentage(0.1);    // 10% reflective</code></pre>
+
+                <h3>Fog and Atmospheric Effects</h3>
+                <pre><code class="language-java">// Configure atmospheric fog
+FogParameters fog = new FogParameters();
+fog.setFogColor(new RGB(0.8, 0.8, 0.9));  // Light blue-gray
+fog.setFogDensity(0.05);                   // Fog thickness
+fog.setFogRatio(0.5);                      // Blending ratio
+
+// Create engine with fog
+RayIntersectionEngine engine = new RayIntersectionEngine(scene, fog);
+
+// Objects further from camera will blend toward fog color</code></pre>
+
+                <h3>Composite Material (Multiple Shaders)</h3>
+                <pre><code class="language-java">// Combine multiple shaders for realistic materials
+DiffuseShader diffuse = new DiffuseShader();
+
+HighlightShader specular = new HighlightShader();
+specular.setExponent(32.0);  // Medium-sharp highlights
+
+ReflectionShader reflection = new ReflectionShader();
+reflection.setReflectivity(0.3);  // Subtle reflections
+
+// Apply all shaders to surface
+sphere.setShaders(new Shader[] { diffuse, specular, reflection });
+
+// Result: Diffuse base + specular highlights + subtle reflections</code></pre>
+
+                <h3>GPU-Accelerated Rendering</h3>
+                <pre><code class="language-java">// Enable GPU acceleration for faster rendering
+RayIntersectionEngine.enableAcceleratedAggregator = true;
+
+// Enable parallel ray tracing with thread pool
+RayTracer.enableThreadPool = true;  // Uses 10-thread pool
+
+// Create engine and render (now hardware-accelerated)
+RayIntersectionEngine engine = new RayIntersectionEngine(scene, new FogParameters());
+RayTracedScene rayTracedScene = new RayTracedScene(engine, camera, params);
+RealizableImage image = rayTracedScene.realize(params);</code></pre>
+
+                <h3>Partial Region Rendering</h3>
+                <pre><code class="language-java">// Render only a portion of the image (useful for distributed rendering)
+RenderParameters params = new RenderParameters();
+
+// Full image size
+params.width = 1920;
+params.height = 1080;
+
+// Only render top-left quadrant
+params.x = 0;
+params.y = 0;
+params.dx = 960;   // Half width
+params.dy = 540;   // Half height
+
+// Useful for:
+// - Distributed rendering across multiple machines
+// - Progressive rendering (show partial results)
+// - Testing with smaller regions</code></pre>
+            </section>
+
+            <section id="performance">
+                <h2>Performance Characteristics</h2>
+
+                <h3>Typical Rendering Times</h3>
+                <table class="performance-table">
+                    <thead>
+                        <tr>
+                            <th>Resolution</th>
+                            <th>Supersampling</th>
+                            <th>CPU Time</th>
+                            <th>GPU Accelerated</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>640x480</td>
+                            <td>1x1</td>
+                            <td>1-5 seconds</td>
+                            <td>0.5-2 seconds</td>
+                        </tr>
+                        <tr>
+                            <td>640x480</td>
+                            <td>2x2</td>
+                            <td>4-20 seconds</td>
+                            <td>1-5 seconds</td>
+                        </tr>
+                        <tr>
+                            <td>1920x1080</td>
+                            <td>2x2</td>
+                            <td>30-120 seconds</td>
+                            <td>5-20 seconds</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <h3>Optimization Strategies</h3>
+                <ul>
+                    <li><strong>Bounding Volumes:</strong> Scene uses BSP trees for fast ray-surface culling</li>
+                    <li><strong>GPU Acceleration:</strong> Enable enableAcceleratedAggregator for hardware-accelerated aggregation</li>
+                    <li><strong>Thread Pool:</strong> Enable RayTracer.enableThreadPool for ~8x speedup on 8-core CPUs</li>
+                    <li><strong>Supersampling Control:</strong> Use 1x1 for previews, 2x2 or higher for final renders</li>
+                    <li><strong>Reflection Depth:</strong> Limit maxReflections to 3-4 for most scenes</li>
+                </ul>
+            </section>
+
+            <section id="troubleshooting">
+                <h2>Troubleshooting</h2>
+
+                <div class="warning">
+                    <strong>Issue:</strong> Black image or no visible objects<br>
+                    <strong>Solution:</strong> Check camera position and direction. Ensure objects are in front of camera and lights are positioned correctly.
+                </div>
+
+                <div class="warning">
+                    <strong>Issue:</strong> Noisy/aliased edges on objects<br>
+                    <strong>Solution:</strong> Increase supersampling (ssWidth, ssHeight to 2 or higher). More samples = smoother edges.
+                </div>
+
+                <div class="warning">
+                    <strong>Issue:</strong> Reflections not appearing<br>
+                    <strong>Solution:</strong> Ensure ReflectionShader is added to surface and maxReflections > 0.
+                </div>
+
+                <div class="warning">
+                    <strong>Issue:</strong> Glass looks opaque<br>
+                    <strong>Solution:</strong> Set refractedPercentage on surface and configure RefractionShader with appropriate IOR.
+                </div>
+
+                <div class="warning">
+                    <strong>Issue:</strong> Shadows not rendering<br>
+                    <strong>Solution:</strong> Enable shadows with LightingEngine.enableShadows = true.
+                </div>
+
+                <div class="warning">
+                    <strong>Issue:</strong> Hardware acceleration not working<br>
+                    <strong>Solution:</strong> Set environment variables: AR_HARDWARE_LIBS=/tmp/ar_libs/ and AR_HARDWARE_DRIVER=native
+                </div>
+            </section>
+
+            <section id="resources">
+                <h2>Additional Resources</h2>
+                <ul>
+                    <li><a href="../../render/README.md">Render Module README</a> - Comprehensive module documentation</li>
+                    <li><a href="../apidocs/org/almostrealism/raytrace/package-summary.html">JavaDoc API</a> - Complete API reference</li>
+                    <li><a href="space.html">Space Module</a> - Scene, Surface, and geometry documentation</li>
+                    <li><a href="color.html">Color Module</a> - Shader, Light, and materials documentation</li>
+                </ul>
+
+                <h3>Environment Setup</h3>
+                <div class="code-example">
+                    <strong>Required for hardware acceleration:</strong><br><br>
+                    <code>export AR_HARDWARE_LIBS=/tmp/ar_libs/</code><br>
+                    <code>export AR_HARDWARE_DRIVER=native</code>
+                </div>
+
+                <h3>Maven Dependency</h3>
+                <pre><code class="language-xml">&lt;dependency&gt;
+    &lt;groupId&gt;org.almostrealism&lt;/groupId&gt;
+    &lt;artifactId&gt;ar-render&lt;/artifactId&gt;
+    &lt;!-- Check pom.xml for current version --&gt;
+&lt;/dependency&gt;</code></pre>
+            </section>
+        </main>
+
+        <footer>
+            <p><a href="../index.html">&larr; Back to Framework Documentation</a></p>
+            <p>&copy; 2024 Michael Murray. Licensed under the Apache License, Version 2.0.</p>
+        </footer>
+    </div>
+
+    <script src="../js/docs.js"></script>
+</body>
+</html>

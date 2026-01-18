@@ -17,10 +17,50 @@
 package io.almostrealism.relation;
 
 /**
- * An interface for use with the factory design pattern.
- * 
- * @author  Michael Murray
+ * A generic factory interface for creating instances of type {@code V}.
+ *
+ * <p>This interface implements the Factory design pattern, providing a standardized
+ * way to create objects without specifying their concrete classes. Unlike
+ * {@link java.util.function.Supplier}, which uses {@code get()}, this interface
+ * uses {@link #construct()} to emphasize the creation semantics.</p>
+ *
+ * <h2>When to Use</h2>
+ * <ul>
+ *   <li>When object creation logic should be encapsulated</li>
+ *   <li>When the exact type of object may vary at runtime</li>
+ *   <li>When construction requires complex initialization</li>
+ *   <li>When you want to decouple client code from concrete implementations</li>
+ * </ul>
+ *
+ * <h2>Comparison with Related Types</h2>
+ * <ul>
+ *   <li>{@link java.util.function.Supplier} - Uses {@code get()}, general-purpose</li>
+ *   <li>{@link Producer} - Creates {@link Evaluable}s for computation</li>
+ *   <li>{@link Factory} - Uses {@code construct()}, emphasizes object creation</li>
+ * </ul>
+ *
+ * <h2>Usage Example</h2>
+ * <pre>{@code
+ * Factory<Connection> connectionFactory = () -> new DatabaseConnection(config);
+ * Connection conn = connectionFactory.construct();
+ * }</pre>
+ *
+ * @param <V> the type of object this factory creates
+ *
+ * @see Producer
+ * @see java.util.function.Supplier
+ *
+ * @author Michael Murray
  */
 public interface Factory<V> {
+	/**
+	 * Constructs and returns a new instance of type {@code V}.
+	 *
+	 * <p>Each call to this method may return a new instance or a shared
+	 * instance, depending on the implementation. Consult the specific
+	 * factory implementation for its instance creation policy.</p>
+	 *
+	 * @return a newly constructed or retrieved instance
+	 */
 	V construct();
 }

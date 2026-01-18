@@ -16,7 +16,36 @@
 
 package org.almostrealism.util;
 
+/**
+ * Interface providing utilities for executing external system processes.
+ *
+ * <p>This interface provides a simple API for running external commands
+ * and capturing their exit codes. Output from the process is inherited
+ * (displayed on the current console).</p>
+ *
+ * <h2>Usage Example</h2>
+ * <pre>{@code
+ * public class BuildRunner implements ProcessFeatures {
+ *     public void build() {
+ *         int exitCode = run("mvn", "clean", "install");
+ *         if (exitCode != 0) {
+ *             System.err.println("Build failed with exit code: " + exitCode);
+ *         }
+ *     }
+ * }
+ * }</pre>
+ *
+ * @author Michael Murray
+ */
 public interface ProcessFeatures {
+
+	/**
+	 * Executes an external command and waits for it to complete.
+	 * Standard output and error streams are inherited from the current process.
+	 *
+	 * @param command the command and arguments to execute
+	 * @return the exit code of the process, or -1 if an exception occurred
+	 */
 	default int run(String... command) {
 		try {
 			ProcessBuilder builder = new ProcessBuilder(command);

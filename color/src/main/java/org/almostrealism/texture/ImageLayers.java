@@ -26,7 +26,7 @@ import java.util.Map;
  * @author  Michael Murray
  */
 public class ImageLayers implements ImageSource, Layered<ImageSource> {
-	private HashMap<String, ImageSource> layers;
+	private final HashMap<String, ImageSource> layers;
 	
 	public ImageLayers() {
 		this.layers = new HashMap<String, ImageSource>();

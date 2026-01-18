@@ -43,7 +43,7 @@ public class CellPair<T> implements Receptor<T>, Temporal, Lifecycle {
 	private Function<Cell<T>, Receptor<T>> adapterA, adapterB;
 	private Receptor<T> adA, adB;
 
-	private TemporalList temporals;
+	private final TemporalList temporals;
 	
 	public CellPair(Cell<T> cellA, Cell<T> cellB, Factor<T> factorA, Factor<T> factorB) {
 		this.cellA = cellA;

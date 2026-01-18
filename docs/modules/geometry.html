@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AR-Geometry Module - Almost Realism Framework</title>
+    <link rel="stylesheet" href="../css/style.css">
+    <style>
+        .key-concepts { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin: 20px 0; }
+        .concept-card { background: #f8f9fa; border-left: 4px solid #795548; padding: 15px; border-radius: 4px; }
+        .concept-card h4 { margin-top: 0; color: #795548; }
+        .performance-table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+        .performance-table th, .performance-table td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
+        .performance-table th { background-color: #efebe9; color: #795548; font-weight: bold; }
+        .performance-table tr:hover { background-color: #f5f5f5; }
+        .comparison-table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+        .comparison-table th, .comparison-table td { padding: 10px; border: 1px solid #ddd; text-align: left; }
+        .comparison-table th { background-color: #efebe9; color: #795548; }
+        .class-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 15px; margin: 20px 0; }
+        .class-item { background: #fff; border: 1px solid #ddd; padding: 12px; border-radius: 4px; }
+        .class-item h4 { margin: 0 0 8px 0; color: #795548; font-size: 1.1em; }
+        .class-item p { margin: 0; font-size: 0.9em; color: #666; }
+        .code-example { background: #f5f5f5; border-left: 4px solid #795548; padding: 15px; margin: 15px 0; border-radius: 4px; }
+        .highlight { background-color: #fff9c4; padding: 2px 4px; }
+        .warning { background-color: #ffebee; border-left: 4px solid #c62828; padding: 12px; margin: 15px 0; }
+        .info-box { background-color: #efebe9; border-left: 4px solid #795548; padding: 12px; margin: 15px 0; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>AR-Geometry Module</h1>
+            <p class="tagline">3D Geometric Primitives, Transformations & Ray Tracing Infrastructure</p>
+            <nav>
+                <a href="../index.html">Home</a>
+                <a href="#overview">Overview</a>
+                <a href="#concepts">Key Concepts</a>
+                <a href="#classes">Core Classes</a>
+                <a href="#transformations">Transformations</a>
+                <a href="#raytracing">Ray Tracing</a>
+                <a href="#examples">Examples</a>
+            </nav>
+        </header>
+
+        <main>
+            <section id="overview">
+                <h2>Overview</h2>
+                <p>The <strong>ar-geometry</strong> module provides foundational 3D geometric primitives, transformation systems, ray tracing infrastructure, and camera implementations. It serves as the bridge between abstract mathematical operations and concrete rendering/physics systems.</p>
+
+                <div class="key-concepts">
+                    <div class="concept-card">
+                        <h4>Ray Primitives</h4>
+                        <p>3D rays with origin and direction vectors. Foundation for ray tracing, collision detection, and spatial queries. GPU-accelerated operations.</p>
+                    </div>
+                    <div class="concept-card">
+                        <h4>Transform Matrices</h4>
+                        <p>4x4 homogeneous transformation matrices for rotation, scaling, and translation. Supports matrix composition, inversion, and hardware acceleration.</p>
+                    </div>
+                    <div class="concept-card">
+                        <h4>Intersection System</h4>
+                        <p>Ray-surface intersection interfaces with shading metadata. Provides surface normals, incident directions, and distance information.</p>
+                    </div>
+                    <div class="concept-card">
+                        <h4>Camera Models</h4>
+                        <p>Multiple projection models including perspective (pinhole) and orthographic cameras. Generate viewing rays for each pixel in rendered images.</p>
+                    </div>
+                </div>
+            </section>
+
+            <section id="concepts">
+                <h2>Key Concepts</h2>
+
+                <h3>Rays in 3D Space</h3>
+                <p>A ray is defined by an origin point and a direction vector. Points along the ray are computed using the parametric equation:</p>
+                <div class="code-example">
+                    <strong>Ray Equation:</strong> P(t) = Origin + t * Direction<br><br>
+                    Where:<br>
+                    - Origin: Starting point of the ray (x, y, z)<br>
+                    - Direction: Unit vector indicating ray direction (dx, dy, dz)<br>
+                    - t: Distance parameter along the ray
+                </div>
+
+                <h3>Homogeneous Coordinates</h3>
+                <p>The module uses 4x4 transformation matrices with homogeneous coordinates. This allows translation, rotation, and scaling to be combined into a single matrix multiplication:</p>
+                <div class="code-example">
+                    <strong>Transform Types:</strong><br>
+                    - TRANSFORM_AS_LOCATION: Apply full transformation including translation<br>
+                    - TRANSFORM_AS_OFFSET: Apply rotation and scale only (no translation)<br>
+                    - TRANSFORM_AS_NORMAL: Apply inverse transpose for correct normal transformation
+                </div>
+
+                <h3>Intersection Testing</h3>
+                <p>The module provides interfaces for testing ray-surface intersections. Results include the intersection point, distance along the ray, and surface normal for shading calculations.</p>
+            </section>
+
+            <section id="classes">
+                <h2>Core Classes</h2>
+
+                <h3>Geometric Primitives</h3>
+                <div class="class-list">
+                    <div class="class-item">
+                        <h4>Ray</h4>
+                        <p>3D ray with origin and direction. Stores 6 doubles [ox, oy, oz, dx, dy, dz] in GPU-accessible memory. Provides dot product utilities and point-at-distance calculations.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>TransformMatrix</h4>
+                        <p>4x4 homogeneous transformation matrix (16 values). Supports multiplication, inversion, transposition, and adjoint computation.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>BasicGeometry</h4>
+                        <p>Base class for positioned/oriented/scaled geometry. Combines location, size, scale coefficients, and rotation angles into a complete transform.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>BoundingSolid</h4>
+                        <p>Axis-aligned bounding box (AABB) for spatial acceleration. Stores min/max extents, dimensions, volume, and center point.</p>
+                    </div>
+                </div>
+
+                <h3>Intersection Classes</h3>
+                <div class="class-list">
+                    <div class="class-item">
+                        <h4>Intersection</h4>
+                        <p>Base intersection data: 3D point and distance along ray. Uses epsilon (1e-8) for floating-point comparisons.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>ShadableIntersection</h4>
+                        <p>Extends Intersection with shading metadata: surface normal and incident ray direction. Implements ContinuousField for gradient calculations.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>ClosestIntersection</h4>
+                        <p>Finds the nearest intersection from a list of surfaces. Used for visibility determination in ray tracing.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>ReflectedRay</h4>
+                        <p>Computes reflected ray direction using R = I - 2(N.I)N. Supports blur parameter for glossy reflections.</p>
+                    </div>
+                </div>
+
+                <h3>Interfaces</h3>
+                <div class="class-list">
+                    <div class="class-item">
+                        <h4>Camera</h4>
+                        <p>Interface for ray generation from screen coordinates. Returns Producer&lt;Ray&gt; for each pixel position.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>Intersectable</h4>
+                        <p>Interface for objects that can be intersected by rays. Returns ContinuousField with intersection data.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>Positioned</h4>
+                        <p>Interface for objects with a 3D position. Provides getPosition()/setPosition() methods.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>Oriented</h4>
+                        <p>Interface for objects with orientation. Provides getOrientation()/setOrientation() methods.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>Scaled</h4>
+                        <p>Interface for objects with scale. Provides getScale()/setScale() methods.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>ContinuousField</h4>
+                        <p>Extends DiscreteField with gradient information. Used for shading calculations requiring surface derivatives.</p>
+                    </div>
+                </div>
+
+                <h3>Feature Interfaces</h3>
+                <div class="class-list">
+                    <div class="class-item">
+                        <h4>RayFeatures</h4>
+                        <p>Mixin providing ray operations: origin(), direction(), pointAt(), ray construction, and dot products.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>TransformMatrixFeatures</h4>
+                        <p>Mixin for transformation creation: translationMatrix(), scaleMatrix(), and transform operations.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>GeometryFeatures</h4>
+                        <p>Combined geometry operations including reflect() for computing reflection vectors.</p>
+                    </div>
+                </div>
+            </section>
+
+            <section id="transformations">
+                <h2>Transformations</h2>
+
+                <h3>Transformation Pipeline</h3>
+                <p>BasicGeometry applies transformations in a specific order to ensure consistent results:</p>
+                <div class="code-example">
+                    <strong>Transformation Order:</strong><br>
+                    1. Translation (location)<br>
+                    2. Scale (size * scaleCoefficients)<br>
+                    3. Rotation X (rotateX radians)<br>
+                    4. Rotation Y (rotateY radians)<br>
+                    5. Rotation Z (rotateZ radians)<br>
+                    6. Additional transforms (in order added)
+                </div>
+
+                <h3>Creating Transformations</h3>
+                <table class="comparison-table">
+                    <tr>
+                        <th>Operation</th>
+                        <th>Method</th>
+                        <th>Description</th>
+                    </tr>
+                    <tr>
+                        <td>Translation</td>
+                        <td>translationMatrix(vector)</td>
+                        <td>Move objects in 3D space</td>
+                    </tr>
+                    <tr>
+                        <td>Scaling</td>
+                        <td>scaleMatrix(vector)</td>
+                        <td>Resize objects (per-axis)</td>
+                    </tr>
+                    <tr>
+                        <td>Rotation X</td>
+                        <td>createRotateXMatrix(angle)</td>
+                        <td>Rotate around X axis (radians)</td>
+                    </tr>
+                    <tr>
+                        <td>Rotation Y</td>
+                        <td>createRotateYMatrix(angle)</td>
+                        <td>Rotate around Y axis (radians)</td>
+                    </tr>
+                    <tr>
+                        <td>Rotation Z</td>
+                        <td>createRotateZMatrix(angle)</td>
+                        <td>Rotate around Z axis (radians)</td>
+                    </tr>
+                    <tr>
+                        <td>Arbitrary Axis</td>
+                        <td>createRotateMatrix(angle, axis)</td>
+                        <td>Rotate around any axis vector</td>
+                    </tr>
+                </table>
+
+                <h3>Transform Types</h3>
+                <table class="comparison-table">
+                    <tr>
+                        <th>Type</th>
+                        <th>Constant</th>
+                        <th>Use Case</th>
+                    </tr>
+                    <tr>
+                        <td>Location</td>
+                        <td>TRANSFORM_AS_LOCATION (1)</td>
+                        <td>Transform 3D points (includes translation)</td>
+                    </tr>
+                    <tr>
+                        <td>Offset</td>
+                        <td>TRANSFORM_AS_OFFSET (2)</td>
+                        <td>Transform direction vectors (no translation)</td>
+                    </tr>
+                    <tr>
+                        <td>Normal</td>
+                        <td>TRANSFORM_AS_NORMAL (4)</td>
+                        <td>Transform surface normals (uses inverse transpose)</td>
+                    </tr>
+                </table>
+
+                <h3>Matrix Operations</h3>
+                <ul>
+                    <li><strong>multiply(TransformMatrix):</strong> Compose two transformations</li>
+                    <li><strong>multiply(double):</strong> Scale all matrix values</li>
+                    <li><strong>transpose():</strong> Swap rows and columns</li>
+                    <li><strong>getInverse():</strong> Compute inverse matrix (cached)</li>
+                    <li><strong>adjoint():</strong> Compute adjoint matrix</li>
+                    <li><strong>determinant():</strong> Compute 4x4 determinant</li>
+                </ul>
+            </section>
+
+            <section id="raytracing">
+                <h2>Ray Tracing Support</h2>
+
+                <h3>Ray Generation</h3>
+                <p>Cameras generate rays for each pixel in the rendered image:</p>
+                <pre><code class="language-java">// Perspective camera (objects appear smaller with distance)
+Camera camera = new PinholeCamera(
+    new Vector(0, 0, -10),    // Camera position
+    new Vector(0, 0, 1),      // Look direction
+    new Vector(0, 1, 0)       // Up vector
+);
+
+// Generate ray for pixel at (x, y)
+Producer&lt;Ray&gt; ray = camera.rayAt(
+    pair(pixelX, pixelY),
+    pair(imageWidth, imageHeight)
+);</code></pre>
+
+                <h3>Intersection Testing</h3>
+                <p>Surfaces implement Intersectable to test ray collisions:</p>
+                <pre><code class="language-java">// Test ray against surface
+ContinuousField intersections = surface.intersectAt(ray);
+
+// Get first intersection (ray with normal at hit point)
+Producer&lt;Ray&gt; hitNormal = intersections.get(0);
+Producer&lt;Vector&gt; hitPoint = origin(hitNormal);
+Producer&lt;Vector&gt; normal = direction(hitNormal);</code></pre>
+
+                <h3>Reflection Calculation</h3>
+                <p>ReflectedRay computes specular reflections for recursive ray tracing:</p>
+                <pre><code class="language-java">// Perfect mirror reflection (blur = 0.0)
+ReflectedRay reflection = new ReflectedRay(
+    hitPoint,
+    incidentDirection,
+    surfaceNormal,
+    0.0  // blur: 0.0 = mirror, >0 = glossy
+);
+
+Ray reflectedRay = reflection.get().evaluate();</code></pre>
+
+                <h3>Bounding Volumes</h3>
+                <p>BoundingSolid provides axis-aligned bounding boxes for spatial acceleration:</p>
+                <pre><code class="language-java">// Calculate bounds from positioned objects
+BoundingSolid bounds = BoundingSolid.getBounds(positionedObjects);
+
+// Access bounds properties
+double width = bounds.dx;
+double height = bounds.dy;
+double depth = bounds.dz;
+double volume = bounds.volume;
+
+// Combine two bounding volumes
+BoundingSolid combined = bounds1.combine(bounds2);</code></pre>
+
+                <h3>Camera Projection Models</h3>
+                <table class="comparison-table">
+                    <tr>
+                        <th>Camera Type</th>
+                        <th>Projection</th>
+                        <th>Use Case</th>
+                    </tr>
+                    <tr>
+                        <td>PinholeCamera</td>
+                        <td>Perspective</td>
+                        <td>Natural viewing, photo-realistic rendering</td>
+                    </tr>
+                    <tr>
+                        <td>OrthographicCamera</td>
+                        <td>Parallel</td>
+                        <td>Technical drawings, architectural visualization</td>
+                    </tr>
+                </table>
+            </section>
+
+            <section id="examples">
+                <h2>Usage Examples</h2>
+
+                <h3>Creating and Using Rays</h3>
+                <pre><code class="language-java">import org.almostrealism.geometry.*;
+import org.almostrealism.algebra.Vector;
+
+// Create a ray from origin pointing in +Z direction
+Ray ray = new Ray(
+    new Vector(0, 0, 0),      // Origin
+    new Vector(0, 0, 1)       // Direction (normalized)
+);
+
+// Access ray components
+Vector origin = ray.getOrigin();
+Vector direction = ray.getDirection();
+
+// Calculate point at distance t along ray
+Producer&lt;Vector&gt; pointAtT = ray.pointAt(c(5.0));
+Vector point = pointAtT.get().evaluate();  // (0, 0, 5)</code></pre>
+
+                <h3>Building Transformation Matrices</h3>
+                <pre><code class="language-java">import org.almostrealism.geometry.*;
+import static org.almostrealism.geometry.TransformMatrixFeatures.*;
+
+// Create translation matrix
+Producer&lt;PackedCollection&gt; translation = translationMatrix(
+    vector(5.0, 0.0, 0.0)  // Move 5 units in X
+);
+
+// Create scale matrix
+Producer&lt;PackedCollection&gt; scale = scaleMatrix(
+    vector(2.0, 2.0, 2.0)  // Double size
+);
+
+// Create rotation matrix (45 degrees around Y axis)
+TransformMatrix rotateY = TransformMatrix.createRotateYMatrix(Math.PI / 4);
+
+// Combine transformations
+TransformMatrix combined = new TransformMatrix(translation.get().evaluate(), 0)
+    .multiply(new TransformMatrix(scale.get().evaluate(), 0))
+    .multiply(rotateY);</code></pre>
+
+                <h3>Positioned Geometry</h3>
+                <pre><code class="language-java">import org.almostrealism.geometry.BasicGeometry;
+import org.almostrealism.algebra.Vector;
+
+// Create positioned geometry
+BasicGeometry obj = new BasicGeometry(new Vector(5, 2, 0));
+
+// Set scale per axis
+obj.setScaleCoefficients(2.0, 1.0, 1.5);
+
+// Set rotation (radians)
+obj.setRotationCoefficients(
+    0.0,              // X rotation
+    Math.PI / 4.0,    // Y rotation (45 degrees)
+    0.0               // Z rotation
+);
+
+// Calculate complete transformation
+obj.calculateTransform();
+
+// Get world transformation matrix
+TransformMatrix worldTransform = obj.getTransform(true);
+
+// Transform a point from local to world space
+Vector localPoint = new Vector(1, 0, 0);
+Vector worldPoint = worldTransform.transformAsLocation(localPoint);</code></pre>
+
+                <h3>Complete Ray Tracing Pipeline</h3>
+                <pre><code class="language-java">import org.almostrealism.geometry.*;
+import org.almostrealism.projection.PinholeCamera;
+
+// 1. Set up camera
+PinholeCamera camera = new PinholeCamera(
+    new Vector(0, 0, -10),    // Position
+    new Vector(0, 0, 1),      // Look direction
+    new Vector(0, 1, 0)       // Up vector
+);
+camera.setFocalLength(35.0);  // 35mm focal length
+
+// 2. Generate ray for pixel
+Producer&lt;Ray&gt; ray = camera.rayAt(
+    pair(pixelX, pixelY),
+    pair(width, height)
+);
+
+// 3. Find closest intersection
+List&lt;Intersectable&gt; surfaces = scene.getSurfaces();
+ClosestIntersection closest = new ClosestIntersection(ray, surfaces);
+
+// 4. Get intersection data
+Producer&lt;Ray&gt; hitNormal = closest.get(0);
+Producer&lt;Vector&gt; hitPoint = origin(hitNormal);
+Producer&lt;Vector&gt; normal = direction(hitNormal);
+
+// 5. Compute reflection for recursive tracing
+ReflectedRay reflection = new ReflectedRay(
+    hitPoint,
+    direction(ray),
+    normal,
+    0.0  // Perfect mirror reflection
+);
+
+// 6. Continue ray tracing with reflected ray
+Ray reflectedRay = reflection.get().evaluate();</code></pre>
+
+                <h3>Transformation Hierarchy</h3>
+                <pre><code class="language-java">// Parent object
+BasicGeometry parent = new BasicGeometry(new Vector(0, 0, 0));
+parent.setRotationCoefficients(0, Math.PI / 2, 0);  // 90 degree Y rotation
+parent.calculateTransform();
+
+// Child object (inherits parent transform)
+BasicGeometry child = new BasicGeometry(new Vector(5, 0, 0));
+child.setScaleCoefficients(0.5, 0.5, 0.5);
+
+// Combine transforms: child inherits parent's transformation
+TransformMatrix parentTransform = parent.getTransform(true);
+child.addTransform(parentTransform);
+child.calculateTransform();
+
+// Child local (5, 0, 0) is now at world (0, 0, 5) due to parent rotation</code></pre>
+            </section>
+
+            <section id="integration">
+                <h2>Integration with Other Modules</h2>
+
+                <div class="info-box">
+                    <strong>Module Dependencies:</strong>
+                    <ul style="margin: 10px 0 0 0; padding-left: 20px;">
+                        <li><strong>ar-algebra:</strong> Vector, Pair for mathematical primitives</li>
+                        <li><strong>ar-collect:</strong> PackedCollection for GPU memory storage</li>
+                    </ul>
+                </div>
+
+                <h3>Dependent Modules</h3>
+                <table class="comparison-table">
+                    <tr>
+                        <th>Module</th>
+                        <th>Usage</th>
+                    </tr>
+                    <tr>
+                        <td>ar-space</td>
+                        <td>AbstractSurface extends BasicGeometry; surfaces implement Intersectable</td>
+                    </tr>
+                    <tr>
+                        <td>ar-color</td>
+                        <td>ShadableIntersection provides data for shader calculations</td>
+                    </tr>
+                    <tr>
+                        <td>ar-render</td>
+                        <td>RayIntersectionEngine uses Ray and Intersectable; cameras generate viewing rays</td>
+                    </tr>
+                    <tr>
+                        <td>ar-physics</td>
+                        <td>BasicGeometry provides transforms for rigid bodies; ray intersection for collision detection</td>
+                    </tr>
+                </table>
+            </section>
+
+            <section id="troubleshooting">
+                <h2>Troubleshooting</h2>
+
+                <div class="warning">
+                    <strong>Issue:</strong> Transform not updating after changing position/rotation<br>
+                    <strong>Solution:</strong> Call calculateTransform() after modifying geometry properties, or use getTransform(true) which triggers recalculation automatically.
+                </div>
+
+                <div class="warning">
+                    <strong>Issue:</strong> Normals appear incorrect after transformation<br>
+                    <strong>Solution:</strong> Use TRANSFORM_AS_NORMAL which applies the inverse transpose matrix to correctly transform surface normals.
+                </div>
+
+                <div class="warning">
+                    <strong>Issue:</strong> Inverse matrix returns identity for non-invertible matrix<br>
+                    <strong>Solution:</strong> Check that the determinant is non-zero. Singular matrices (det=0) cannot be inverted.
+                </div>
+
+                <div class="warning">
+                    <strong>Issue:</strong> Ray intersection returns unexpected results<br>
+                    <strong>Solution:</strong> Ensure ray direction is normalized. Check epsilon value (1e-8) for near-parallel ray cases.
+                </div>
+            </section>
+
+            <section id="resources">
+                <h2>Additional Resources</h2>
+                <ul>
+                    <li><a href="../../geometry/README.md">Geometry Module README</a> - Comprehensive module documentation</li>
+                    <li><a href="../apidocs/org/almostrealism/geometry/package-summary.html">JavaDoc API</a> - Complete API reference</li>
+                    <li><a href="algebra.html">Algebra Module</a> - Vector and matrix fundamentals</li>
+                    <li><a href="render.html">Render Module</a> - Ray tracing pipeline</a></li>
+                </ul>
+            </section>
+        </main>
+
+        <footer>
+            <p><a href="../index.html">Back to Framework Documentation</a></p>
+            <p>Copyright 2024 Michael Murray. Licensed under the Apache License, Version 2.0.</p>
+        </footer>
+    </div>
+
+    <script src="../js/docs.js"></script>
+</body>
+</html>

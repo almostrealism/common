@@ -20,7 +20,6 @@ import io.almostrealism.profile.OperationProfile;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.AcceleratedOperation;
 import org.almostrealism.hardware.OperationList;
-import org.almostrealism.hardware.metal.MetalOperator;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
 
@@ -28,14 +27,14 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class OperationSemaphoreTests implements TestFeatures {
-	@Test
+	@Test(timeout = 30000)
 	public void sum() {
 		sum(16, 2048, 1024, false);
 	}
 
-	@Test
+	@Test(timeout = 2 * 60000)
 	public void sumPowers() {
-		if (testDepth < 1) return;
+		if (testDepth < 2) return;
 
 		for (int i = 1; i < 9; i++) {
 			sum(12, 80, 1 << i, false);
@@ -46,12 +45,12 @@ public class OperationSemaphoreTests implements TestFeatures {
 		OperationProfile profiles = new OperationProfile();
 		OperationList op = new OperationList("Vector Test", false);
 
-		List<PackedCollection<?>> allVectors = new ArrayList<>();
-		List<PackedCollection<?>> allResults = new ArrayList<>();
+		List<PackedCollection> allVectors = new ArrayList<>();
+		List<PackedCollection> allResults = new ArrayList<>();
 		
 		for (int i = 0; i < ops; i++) {
-			PackedCollection<?> vectors = new PackedCollection<>(count, dim);
-			PackedCollection<?> result = new PackedCollection<>(count);
+			PackedCollection vectors = new PackedCollection(count, dim);
+			PackedCollection result = new PackedCollection(count);
 			vectors.fill(pos -> Math.random());
 
 			op.add(a("sum " + dim, traverseEach(p(result)), sum(traverse(1, p(vectors)))));

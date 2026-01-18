@@ -6,7 +6,7 @@
 
     <groupId>org.almostrealism</groupId>
     <artifactId>common</artifactId>
-    <version>0.71</version>
+    <version>0.72</version>
 
 	<properties>
 		<jacoco.version>0.8.11</jacoco.version>
@@ -34,7 +34,6 @@
 		<module>uml</module>
 		<module>chemistry</module>
 		<module>color</module>
-		<module>economics</module>
 		<module>heredity</module>
 		<module>physics</module>
 		<module>space</module>
@@ -46,6 +45,8 @@
 		<module>ml-script</module>
 		<module>llvm</module>
 		<module>tools</module>
+		<module>render</module>
+		<module>audio</module>
 	</modules>
 
 	<packaging>pom</packaging>
@@ -69,6 +70,10 @@
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-surefire-plugin</artifactId>
 				<version>3.2.1</version>
+				<configuration>
+					<!-- Timeout in seconds for forked test processes (1 hour default) -->
+					<forkedProcessTimeoutInSeconds>3600</forkedProcessTimeoutInSeconds>
+				</configuration>
 			</plugin>
 			<plugin>
 				<groupId>org.jacoco</groupId>
@@ -96,6 +101,36 @@
 					</execution>
 				</executions>
 			</plugin>
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-javadoc-plugin</artifactId>
+				<version>3.6.3</version>
+				<configuration>
+					<!-- Output to docs/apidocs for integration with HTML documentation -->
+					<reportOutputDirectory>${project.basedir}/docs</reportOutputDirectory>
+					<destDir>apidocs</destDir>
+
+					<!-- Encoding settings -->
+					<encoding>UTF-8</encoding>
+					<docencoding>UTF-8</docencoding>
+					<charset>UTF-8</charset>
+
+					<!-- Aggregate all modules -->
+					<aggregate>true</aggregate>
+
+					<!-- Continue despite minor errors (heading sequence, etc.) -->
+					<failOnError>false</failOnError>
+					<failOnWarnings>false</failOnWarnings>
+
+					<!-- Show private members for comprehensive documentation -->
+					<show>private</show>
+
+					<!-- Add useful links -->
+					<links>
+						<link>https://docs.oracle.com/en/java/javase/17/docs/api/</link>
+					</links>
+				</configuration>
+			</plugin>
 		</plugins>
 	</build>
 
@@ -111,6 +146,12 @@
 				<groupId>com.google.protobuf</groupId>
 				<artifactId>protobuf-java-util</artifactId>
 				<version>${protobuf.version}</version>
+			</dependency>
+
+			<dependency>
+				<groupId>commons-codec</groupId>
+				<artifactId>commons-codec</artifactId>
+				<version>1.16.1</version>
 			</dependency>
 
 			<dependency>

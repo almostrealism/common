@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AR-Physics Module - Almost Realism Framework</title>
+    <link rel="stylesheet" href="../css/style.css">
+    <style>
+        .key-concepts { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin: 20px 0; }
+        .concept-card { background: #f8f9fa; border-left: 4px solid #00838f; padding: 15px; border-radius: 4px; }
+        .concept-card h4 { margin-top: 0; color: #00838f; }
+        .performance-table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+        .performance-table th, .performance-table td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
+        .performance-table th { background-color: #e0f7fa; color: #00838f; font-weight: bold; }
+        .performance-table tr:hover { background-color: #f5f5f5; }
+        .comparison-table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+        .comparison-table th, .comparison-table td { padding: 10px; border: 1px solid #ddd; text-align: left; }
+        .comparison-table th { background-color: #e0f7fa; color: #00838f; }
+        .class-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 15px; margin: 20px 0; }
+        .class-item { background: #fff; border: 1px solid #ddd; padding: 12px; border-radius: 4px; }
+        .class-item h4 { margin: 0 0 8px 0; color: #00838f; font-size: 1.1em; }
+        .class-item p { margin: 0; font-size: 0.9em; color: #666; }
+        .code-example { background: #f5f5f5; border-left: 4px solid #00838f; padding: 15px; margin: 15px 0; border-radius: 4px; }
+        .highlight { background-color: #e0f7fa; padding: 2px 4px; }
+        .warning { background-color: #ffebee; border-left: 4px solid #c62828; padding: 12px; margin: 15px 0; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>AR-Physics Module</h1>
+            <p class="tagline">Quantum and Classical Physics Simulation Framework</p>
+            <nav>
+                <a href="../index.html">Home</a>
+                <a href="#overview">Overview</a>
+                <a href="#architecture">Architecture</a>
+                <a href="#classes">Core Concepts</a>
+                <a href="#examples">Examples</a>
+                <a href="#resources">Resources</a>
+            </nav>
+        </header>
+
+        <main>
+            <section id="overview">
+                <h2>Overview</h2>
+                <p>The <strong>ar-physics</strong> module provides comprehensive abstractions for quantum and classical physics simulation. It includes atomic structure modeling with electrons, orbitals, and shells, photon field simulation for light propagation, and rigid body dynamics for classical mechanics.</p>
+
+                <div class="key-concepts">
+                    <div class="concept-card">
+                        <h4>Atomic Structure</h4>
+                        <p>Model atoms with electron shells, orbitals, and quantum mechanics. Supports electron configuration, spin states, and energy level transitions.</p>
+                    </div>
+                    <div class="concept-card">
+                        <h4>Quantum Mechanics</h4>
+                        <p>Electron spin states (Up/Down), orbital energy levels, excitation energies, and quantum number-based orbital definitions (s, p, d, f).</p>
+                    </div>
+                    <div class="concept-card">
+                        <h4>Photon Fields</h4>
+                        <p>Simulate light propagation in 3D space with photon absorption and emission. Time-stepped simulation with Clock interface.</p>
+                    </div>
+                    <div class="concept-card">
+                        <h4>Rigid Body Dynamics</h4>
+                        <p>Classical mechanics state management with position, velocity, force application, and time-based integration.</p>
+                    </div>
+                </div>
+            </section>
+
+            <section id="architecture">
+                <h2>Module Architecture</h2>
+
+                <h3>Atomic Structure Components</h3>
+                <div class="class-list">
+                    <div class="class-item">
+                        <h4>Atom</h4>
+                        <p>Complete atomic model with atomic number and electron shells. Foundation for molecular and chemical simulations.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>Shell</h4>
+                        <p>Electron shell container (K, L, M, N). Manages orbital occupancy and electron capacity per shell.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>Orbital</h4>
+                        <p>Quantum orbital with energy levels. Supports s, p, d, f orbital types with proper quantum numbers.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>Electron</h4>
+                        <p>Individual electron with spin state and excitation energy. Tracks quantum state transitions.</p>
+                    </div>
+                </div>
+
+                <h3>Quantum Mechanics</h3>
+                <div class="class-list">
+                    <div class="class-item">
+                        <h4>Spin</h4>
+                        <p>Electron spin enumeration (Up/Down). Fundamental quantum property for Pauli exclusion principle.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>PhysicalConstants</h4>
+                        <p>Standard physics constants: Planck's constant (H), speed of light (C), Rydberg constant (R), and unit conversions.</p>
+                    </div>
+                </div>
+
+                <h3>Photon Simulation</h3>
+                <div class="class-list">
+                    <div class="class-item">
+                        <h4>PhotonField</h4>
+                        <p>Manages photons in 3D space. Supports adding photons with position, direction, and energy in eV.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>Absorber</h4>
+                        <p>Interface for objects that absorb and emit photons. Used for cameras, surfaces, and detectors.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>Clock</h4>
+                        <p>Time-stepped simulation controller. Manages photon fields and advances simulation time.</p>
+                    </div>
+                </div>
+
+                <h3>Rigid Body Dynamics</h3>
+                <div class="class-list">
+                    <div class="class-item">
+                        <h4>RigidBody.State</h4>
+                        <p>Physics state container with position, velocity, mass, and force accumulation. Supports time integration.</p>
+                    </div>
+                </div>
+
+                <h3>Physical Constants Reference</h3>
+                <table class="comparison-table">
+                    <tr>
+                        <th>Constant</th>
+                        <th>Symbol</th>
+                        <th>Description</th>
+                    </tr>
+                    <tr>
+                        <td>Planck's Constant</td>
+                        <td>PhysicalConstants.H</td>
+                        <td>Fundamental quantum of action</td>
+                    </tr>
+                    <tr>
+                        <td>Speed of Light</td>
+                        <td>PhysicalConstants.C</td>
+                        <td>Speed of light in vacuum</td>
+                    </tr>
+                    <tr>
+                        <td>Rydberg Constant</td>
+                        <td>PhysicalConstants.R</td>
+                        <td>Hydrogen spectral series constant</td>
+                    </tr>
+                    <tr>
+                        <td>eV to Watts</td>
+                        <td>PhysicalConstants.eVtoWatts()</td>
+                        <td>Energy unit conversion</td>
+                    </tr>
+                </table>
+            </section>
+
+            <section id="classes">
+                <h2>Core Concepts Deep Dive</h2>
+
+                <h3>Atom and Electron Configuration</h3>
+                <p>The Atom class represents an atomic model with electron shells following quantum mechanical principles.</p>
+                <div class="code-example">
+                    <pre><code class="language-java">// Create nitrogen atom (atomic number 7)
+Atom nitrogen = new Atom(7, Arrays.asList(
+    Shell.first(2),        // K shell: 1s^2
+    Shell.second(2, 3)     // L shell: 2s^2 2p^3
+));
+
+// Access valence electrons
+Shell valenceShell = nitrogen.getValenceShell();
+Electrons electrons = valenceShell.getElectrons();</code></pre>
+                </div>
+
+                <h3>Orbital Energy Levels</h3>
+                <p>Orbitals define quantum states with specific energy levels based on principal and angular momentum quantum numbers.</p>
+                <div class="code-example">
+                    <pre><code class="language-java">// Access predefined orbitals
+Orbital orbital_1s = Orbital.s1;    // 1s orbital
+Orbital orbital_2s = Orbital.s2;    // 2s orbital
+Orbital orbital_2px = Orbital.p2x;  // 2p orbital (x direction)
+
+// Get orbital energy
+double energy = orbital_1s.getEnergy();</code></pre>
+                </div>
+
+                <h3>Electron Spin and Excitation</h3>
+                <p>Electrons have spin states and can absorb energy to reach excited states.</p>
+                <div class="code-example">
+                    <pre><code class="language-java">// Create electron with spin up
+Electron e = new Electron(Spin.Up);
+
+// Add excitation energy (in eV)
+double excitationEv = 10.2;  // Hydrogen Lyman-alpha energy
+e.addExcitationEnergy(excitationEv);
+
+// Check spin state
+Spin currentSpin = e.getSpin();</code></pre>
+                </div>
+
+                <h3>PhotonField Interface</h3>
+                <p>Manages photon propagation and interaction in 3D space.</p>
+                <div class="code-example">
+                    <pre><code class="language-java">public interface PhotonField {
+    // Add a photon to the field
+    void addPhoton(Vector position, Vector direction, double energyEv);
+
+    // Advance simulation by one time step
+    void tick();
+
+    // Get all photons in the field
+    Collection&lt;Photon&gt; getPhotons();
+}</code></pre>
+                </div>
+
+                <h3>Absorber Interface</h3>
+                <p>Objects that can absorb and emit photons implement this interface.</p>
+                <div class="code-example">
+                    <pre><code class="language-java">public interface Absorber {
+    // Absorb an incoming photon
+    void absorb(Photon photon);
+
+    // Emit stored energy as photons
+    void emit();
+
+    // Get accumulated emission energy
+    double getEmitEnergy();
+}</code></pre>
+                </div>
+
+                <h3>Rigid Body State</h3>
+                <p>Classical mechanics state management for physics simulations.</p>
+                <div class="code-example">
+                    <pre><code class="language-java">// Create rigid body state
+RigidBody.State body = new RigidBody.State();
+
+// Set physical properties
+body.setMass(1.0);                    // 1 kg
+body.setPosition(new Vector(0, 0, 0));
+body.setVelocity(new Vector(0, 0, 0));
+
+// Apply forces
+body.applyForce(new Vector(0, -9.8, 0));  // Gravity
+body.applyTorque(torqueVector);
+
+// Integrate over time
+body.update(deltaTime);
+
+// Get updated state
+Vector newPosition = body.getPosition();
+Vector newVelocity = body.getVelocity();</code></pre>
+                </div>
+            </section>
+
+            <section id="examples">
+                <h2>Usage Examples</h2>
+
+                <h3>Atomic Spectroscopy Simulation</h3>
+                <pre><code class="language-java">public class SpectroscopySimulator {
+    public void simulateHydrogenAbsorption() {
+        // Create hydrogen atom (1 electron in 1s orbital)
+        Atom hydrogen = new Atom(1, List.of(Shell.first(1)));
+
+        // Get valence electrons
+        Electrons electrons = hydrogen.getValenceShell().getElectrons();
+
+        // Attempt photon absorption
+        double photonEnergyEv = 10.2;  // Lyman-alpha
+        boolean absorbed = electrons.absorb(photonEnergyEv);
+
+        if (absorbed) {
+            System.out.println("Photon absorbed - electron excited");
+        }
+    }
+}</code></pre>
+
+                <h3>Photon Field Simulation</h3>
+                <pre><code class="language-java">public class LightSimulation {
+    public void simulatePhotonPropagation() {
+        // Create photon field
+        PhotonField field = new PhotonFieldImpl();
+
+        // Create absorber (e.g., camera sensor)
+        Absorber camera = new PinholeCameraAbsorber();
+
+        // Add photons to the field
+        Vector position = new Vector(0, 0, 0);
+        Vector direction = new Vector(1, 0, 0);
+        double energyEv = 2.0;  // Visible light (~620 nm)
+        field.addPhoton(position, direction, energyEv);
+
+        // Create simulation clock
+        Clock clock = new Clock();
+        clock.addPhotonField(field);
+
+        // Run simulation
+        int steps = 1000;
+        for (int i = 0; i < steps; i++) {
+            clock.tick();
+            camera.absorb(field);
+        }
+
+        // Process absorbed photons
+        double capturedEnergy = camera.getEmitEnergy();
+    }
+}</code></pre>
+
+                <h3>Rigid Body Physics</h3>
+                <pre><code class="language-java">public class PhysicsSimulator {
+    private static final double GRAVITY = 9.8;
+
+    public void simulateProjectile() {
+        // Create projectile
+        RigidBody.State projectile = new RigidBody.State();
+        projectile.setMass(0.5);  // 500g
+        projectile.setPosition(new Vector(0, 10, 0));  // Start at 10m height
+        projectile.setVelocity(new Vector(5, 0, 0));   // 5 m/s horizontal
+
+        // Simulation parameters
+        double deltaTime = 0.01;  // 10ms timestep
+        double time = 0;
+
+        // Run until projectile hits ground
+        while (projectile.getPosition().getY() >= 0) {
+            // Apply gravity
+            Vector gravityForce = new Vector(0, -GRAVITY * projectile.getMass(), 0);
+            projectile.applyForce(gravityForce);
+
+            // Update physics
+            projectile.update(deltaTime);
+            time += deltaTime;
+
+            System.out.printf("t=%.2f: pos=(%.2f, %.2f, %.2f)%n",
+                time,
+                projectile.getPosition().getX(),
+                projectile.getPosition().getY(),
+                projectile.getPosition().getZ());
+        }
+    }
+}</code></pre>
+
+                <h3>Building Complex Atoms</h3>
+                <pre><code class="language-java">public class AtomBuilder {
+    public Atom createCarbon() {
+        // Carbon: 1s^2 2s^2 2p^2
+        return new Atom(6, Arrays.asList(
+            Shell.first(2),        // K shell: 2 electrons
+            Shell.second(2, 2)     // L shell: 2 in s, 2 in p
+        ));
+    }
+
+    public Atom createOxygen() {
+        // Oxygen: 1s^2 2s^2 2p^4
+        return new Atom(8, Arrays.asList(
+            Shell.first(2),        // K shell: 2 electrons
+            Shell.second(2, 4)     // L shell: 2 in s, 4 in p
+        ));
+    }
+
+    public Atom createIron() {
+        // Iron: 1s^2 2s^2 2p^6 3s^2 3p^6 3d^6 4s^2
+        return new Atom(26, Arrays.asList(
+            Shell.first(2),           // K: 2
+            Shell.second(2, 6),       // L: 8
+            Shell.third(2, 6, 6),     // M: 14
+            Shell.fourth(2, 0, 0, 0)  // N: 2 (4s^2)
+        ));
+    }
+}</code></pre>
+
+                <h3>Using Physical Constants</h3>
+                <pre><code class="language-java">public class PhysicsCalculations {
+    public double wavelengthToEnergy(double wavelengthNm) {
+        // E = hc / wavelength
+        double wavelengthM = wavelengthNm * 1e-9;
+        double energyJoules = (PhysicalConstants.H * PhysicalConstants.C) / wavelengthM;
+        return energyJoules;
+    }
+
+    public double energyToWavelength(double energyEv) {
+        // wavelength = hc / E
+        double energyJoules = PhysicalConstants.eVtoWatts(energyEv);
+        double wavelengthM = (PhysicalConstants.H * PhysicalConstants.C) / energyJoules;
+        return wavelengthM * 1e9;  // Convert to nm
+    }
+
+    public double hydrogenTransitionEnergy(int nLower, int nUpper) {
+        // Rydberg formula: E = R * (1/n1^2 - 1/n2^2)
+        return PhysicalConstants.R * (1.0/(nLower*nLower) - 1.0/(nUpper*nUpper));
+    }
+}</code></pre>
+            </section>
+
+            <section id="integration">
+                <h2>Module Integration</h2>
+
+                <h3>Related Modules</h3>
+                <table class="comparison-table">
+                    <tr>
+                        <th>Module</th>
+                        <th>Integration</th>
+                    </tr>
+                    <tr>
+                        <td>Chemistry Module</td>
+                        <td>Uses atomic structure for element definitions and molecular modeling</td>
+                    </tr>
+                    <tr>
+                        <td>Space Module</td>
+                        <td>Absorbers for cameras, surfaces, and light-matter interaction</td>
+                    </tr>
+                    <tr>
+                        <td>Time Module</td>
+                        <td>Temporal interface for time-stepped physics simulation</td>
+                    </tr>
+                    <tr>
+                        <td>Geometry Module</td>
+                        <td>Vector and Ray classes for position and direction</td>
+                    </tr>
+                </table>
+            </section>
+
+            <section id="resources">
+                <h2>Additional Resources</h2>
+                <ul>
+                    <li><a href="../../physics/README.md">Physics Module README</a> - Comprehensive module documentation</li>
+                    <li><a href="../apidocs/org/almostrealism/physics/package-summary.html">JavaDoc API</a> - Complete API reference</li>
+                    <li><a href="time.html">Time Module</a> - Temporal operations for simulation</li>
+                    <li><a href="color.html">Color Module</a> - Light and shading for rendering</li>
+                </ul>
+
+                <h3>Maven Dependency</h3>
+                <div class="code-example">
+                    <pre><code class="language-xml">&lt;dependency&gt;
+    &lt;groupId&gt;org.almostrealism&lt;/groupId&gt;
+    &lt;artifactId&gt;ar-physics&lt;/artifactId&gt;
+    &lt;!-- Check pom.xml for current version --&gt;
+&lt;/dependency&gt;</code></pre>
+                </div>
+            </section>
+        </main>
+
+        <footer>
+            <p><a href="../index.html">&larr; Back to Framework Documentation</a></p>
+            <p>&copy; 2024 Michael Murray. Licensed under the Apache License, Version 2.0.</p>
+        </footer>
+    </div>
+
+    <script src="../js/docs.js"></script>
+</body>
+</html>

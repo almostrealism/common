@@ -17,11 +17,47 @@
 package io.almostrealism.relation;
 
 /**
- * @author  Michael Murray
+ * An interface for types that can report their validity status.
+ *
+ * <p>{@link Validity} provides a standard way for objects to indicate whether
+ * they are in a valid state. This is useful for validation, error checking,
+ * and conditional processing based on object state.</p>
+ *
+ * <h2>Use Cases</h2>
+ * <ul>
+ *   <li>Checking if computation results are meaningful</li>
+ *   <li>Validating configuration objects</li>
+ *   <li>Filtering invalid entries from collections</li>
+ *   <li>Defensive programming with state validation</li>
+ * </ul>
+ *
+ * <h2>Static Utility</h2>
+ * <p>The {@link #valid(Object)} method provides a null-safe way to check
+ * validity for any object. If the object implements {@link Validity}, its
+ * {@link #isValid()} method is called; otherwise, non-null objects are
+ * considered valid.</p>
+ *
+ * @author Michael Murray
  */
 public interface Validity {
+	/**
+	 * Returns whether this object is in a valid state.
+	 *
+	 * @return {@code true} if valid, {@code false} otherwise
+	 */
 	boolean isValid();
 
+	/**
+	 * Checks the validity of any object.
+	 *
+	 * <p>If the object implements {@link Validity}, delegates to its
+	 * {@link #isValid()} method. Otherwise, returns {@code true} for
+	 * non-null objects and {@code false} for null.</p>
+	 *
+	 * @param <T> the type of the value
+	 * @param value the value to check
+	 * @return {@code true} if the value is valid
+	 */
 	static <T> boolean valid(T value) {
 		if (value instanceof Validity) {
 			return ((Validity) value).isValid();

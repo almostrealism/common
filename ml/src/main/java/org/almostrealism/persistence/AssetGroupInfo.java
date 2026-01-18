@@ -25,6 +25,43 @@ import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+/**
+ * Metadata container for a group of assets, typically representing a single model.
+ *
+ * <p>This class holds metadata about a collection of assets including their names,
+ * download URLs, sizes, and checksums. It is typically loaded from a JSON manifest
+ * or created programmatically to describe available model downloads.</p>
+ *
+ * <h2>Key Features</h2>
+ * <ul>
+ *   <li><strong>Versioning:</strong> Track model versions</li>
+ *   <li><strong>Asset manifest:</strong> Map of asset names to their metadata</li>
+ *   <li><strong>Filtering:</strong> Create subsets of assets matching criteria</li>
+ *   <li><strong>Size calculation:</strong> Total download size for bandwidth estimation</li>
+ * </ul>
+ *
+ * <h2>Usage</h2>
+ * <pre>{@code
+ * // Create from a list of assets
+ * List<AssetInfo> assets = Arrays.asList(
+ *     new AssetInfo("weights.pb"),
+ *     new AssetInfo("tokenizer.bin")
+ * );
+ * AssetGroupInfo info = new AssetGroupInfo("llama-3-8b", "1.0", assets);
+ *
+ * // Create from a local directory
+ * AssetGroupInfo local = AssetGroupInfo.forDirectory(new File("/path/to/model"));
+ *
+ * // Filter to only weight files
+ * AssetGroupInfo weightsOnly = info.subset(asset -> asset.getName().endsWith(".pb"));
+ *
+ * // Check total download size
+ * long totalBytes = info.getTotalSize();
+ * }</pre>
+ *
+ * @see AssetInfo
+ * @see AssetGroup
+ */
 public class AssetGroupInfo {
 	private String name;
 	private String version;

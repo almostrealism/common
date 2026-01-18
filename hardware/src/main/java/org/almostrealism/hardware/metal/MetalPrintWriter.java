@@ -20,12 +20,42 @@ import io.almostrealism.code.Precision;
 import org.almostrealism.c.CPrintWriter;
 import org.almostrealism.io.PrintWriter;
 
+/**
+ * {@link CPrintWriter} for Metal Shading Language (MSL) code generation.
+ *
+ * <p>Configures the print writer with Metal-specific language operations and kernel prefixes.</p>
+ *
+ * <h2>Kernel Prefixes</h2>
+ *
+ * <pre>{@code
+ * // External scope (kernel entry point):
+ * [[kernel]] void myKernel(...)
+ *
+ * // Internal scope (helper functions):
+ * void myHelper(...)
+ * }</pre>
+ *
+ * @see MetalLanguageOperations
+ * @see MetalComputeContext
+ */
 public class MetalPrintWriter extends CPrintWriter {
 
+	/**
+	 * Creates a Metal print writer with default FP32 precision.
+	 *
+	 * @param p Underlying {@link PrintWriter} for output
+	 */
 	public MetalPrintWriter(PrintWriter p) {
 		this(p, null, Precision.FP32);
 	}
 
+	/**
+	 * Creates a Metal print writer with specified precision and kernel name.
+	 *
+	 * @param p Underlying {@link PrintWriter} for output
+	 * @param topLevelMethodName Name of the top-level kernel function
+	 * @param precision Numeric precision for code generation
+	 */
 	public MetalPrintWriter(PrintWriter p, String topLevelMethodName, Precision precision) {
 		super(p, topLevelMethodName, precision, false);
 		language = new MetalLanguageOperations(precision);

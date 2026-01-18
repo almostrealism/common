@@ -20,6 +20,31 @@ import org.almostrealism.hardware.mem.RAM;
 import org.almostrealism.nio.NativeBuffer;
 import org.jocl.Pointer;
 
+/**
+ * Pair of JOCL {@link Pointer} and its associated Java object.
+ *
+ * <p>Used by {@link CLMemoryProvider} to track host pointers (arrays, {@link NativeBuffer})
+ * associated with OpenCL {@link org.jocl.cl_mem} objects for heap-based allocation.</p>
+ *
+ * <h2>Basic Usage</h2>
+ *
+ * <pre>{@code
+ * // For arrays
+ * float[] data = new float[1024];
+ * PointerAndObject<float[]> pair = PointerAndObject.of(data);
+ *
+ * // For NativeBuffer
+ * NativeBuffer buffer = ...;
+ * PointerAndObject<RAM> pair = PointerAndObject.of(buffer);
+ *
+ * // Use in cl_mem creation
+ * cl_mem mem = CL.clCreateBuffer(ctx, CL_MEM_USE_HOST_PTR, size,
+ *     pair.getPointer(), null);
+ * }</pre>
+ *
+ * @param <T> The type of object (float[], double[], or RAM)
+ * @see CLMemoryProvider
+ */
 public class PointerAndObject<T> {
 	private final T obj;
 	private final Pointer ptr;

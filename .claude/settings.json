@@ -1,0 +1,15 @@
+{
+  "enabledMcpjsonServers": ["ar-docs"],
+  "permissions": {
+    "allow": [
+      "Bash(mvn:*)",
+      "Bash(mvn clean compile:*)",
+      "Bash(mvn install:*)",
+      "Bash(mvn test:*)",
+      "Bash(export AR_HARDWARE_LIBS=/home/developer/.libs/)",
+      "Bash(export AR_HARDWARE_DRIVER=native)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

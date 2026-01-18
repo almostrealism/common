@@ -2,8 +2,7 @@
 **/.DS_Store
 
 .fleet/**
-.idea/*.xml
-.idea/codeStyles/**
+.idea/**
 
 **/.qodana/**
 
@@ -13,8 +12,8 @@
 **/*.hwcache/**
 **/*.hprof
 **/hs_err_pid**
+**/results/**
 /utils/data/**
-/utils/results/**
 /utils/generated_images/**
 
 # Javac argument files
@@ -23,3 +22,8 @@ javac.*.args
 # Generated code and libs
 Extensions/**
 **/Extensions/**
+
+# Python
+**/__pycache__
+
+**/docs/apidocs

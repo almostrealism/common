@@ -18,9 +18,9 @@ package org.almostrealism.graph;
 
 import io.almostrealism.cycle.Setup;
 import io.almostrealism.lifecycle.Lifecycle;
-import org.almostrealism.hardware.OperationList;
 import io.almostrealism.relation.Factor;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.hardware.OperationList;
 import org.almostrealism.time.Temporal;
 
 import java.util.function.Supplier;

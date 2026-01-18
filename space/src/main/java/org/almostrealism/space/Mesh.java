@@ -16,26 +16,30 @@
 
 package org.almostrealism.space;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.Iterator;
-import java.util.List;
-
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Graph;
+import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.color.RGB;
+import org.almostrealism.color.ShadableSurface;
+import org.almostrealism.geometry.BoundingSolid;
+import org.almostrealism.geometry.ContinuousField;
+import org.almostrealism.geometry.DimensionAwareKernel;
 import org.almostrealism.geometry.Positioned;
 import org.almostrealism.geometry.Ray;
-import org.almostrealism.geometry.ContinuousField;
-import org.almostrealism.graph.KdTree;
-import io.almostrealism.relation.Producer;
-import org.almostrealism.geometry.DimensionAwareKernel;
-import org.almostrealism.geometry.TransformMatrix;
 import org.almostrealism.geometry.ShadableIntersection;
+import org.almostrealism.geometry.TransformMatrix;
+import org.almostrealism.graph.KdTree;
+import org.almostrealism.graph.mesh.TriangleFeatures;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Iterator;
+import java.util.List;
 
 // TODO  Add bounding solid to make intersection calc faster.
 
@@ -47,34 +51,138 @@ import org.almostrealism.geometry.ShadableIntersection;
  * @author  Dan Chivers
  */
 public class Mesh extends SpacePartition<Triangle> implements Graph<Vector> {
-	private static RGB white = new RGB(1.0, 1.0, 1.0);
+	private static final RGB white = new RGB(1.0, 1.0, 1.0);
 	
+	/**
+	 * Interface for providing vertex and triangle data to a {@link Mesh}.
+	 *
+	 * <p>Implementations of this interface provide access to per-vertex attributes
+	 * (position, color, texture coordinates) and triangle connectivity information.
+	 * This abstraction allows meshes to work with various backing data stores,
+	 * including packed collections optimized for hardware acceleration.
+	 *
+	 * @see DefaultVertexData
+	 */
 	public interface VertexData {
-		double getRed(int index); double getGreen(int index); double getBlue(int index);
+		/**
+		 * Returns the red color component for the vertex at the specified index.
+		 * @param index the vertex index
+		 * @return the red component (0.0-1.0)
+		 */
+		double getRed(int index);
+
+		/**
+		 * Returns the green color component for the vertex at the specified index.
+		 * @param index the vertex index
+		 * @return the green component (0.0-1.0)
+		 */
+		double getGreen(int index);
+
+		/**
+		 * Returns the blue color component for the vertex at the specified index.
+		 * @param index the vertex index
+		 * @return the blue component (0.0-1.0)
+		 */
+		double getBlue(int index);
+
+		/**
+		 * Returns the color for the vertex at the specified index.
+		 * @param index the vertex index
+		 * @return the vertex color as an RGB object
+		 */
 		RGB getColor(int index);
-		double getX(int index); double getY(int index); double getZ(int index);
+
+		/**
+		 * Returns the X coordinate for the vertex at the specified index.
+		 * @param index the vertex index
+		 * @return the X coordinate
+		 */
+		double getX(int index);
+
+		/**
+		 * Returns the Y coordinate for the vertex at the specified index.
+		 * @param index the vertex index
+		 * @return the Y coordinate
+		 */
+		double getY(int index);
+
+		/**
+		 * Returns the Z coordinate for the vertex at the specified index.
+		 * @param index the vertex index
+		 * @return the Z coordinate
+		 */
+		double getZ(int index);
+
+		/**
+		 * Returns the position vector for the vertex at the specified index.
+		 * @param index the vertex index
+		 * @return the vertex position as a Vector
+		 */
 		Vector getPosition(int index);
-		double getTextureU(int index); double getTextureV(int index);
+
+		/**
+		 * Returns the U texture coordinate for the vertex at the specified index.
+		 * @param index the vertex index
+		 * @return the U texture coordinate
+		 */
+		double getTextureU(int index);
+
+		/**
+		 * Returns the V texture coordinate for the vertex at the specified index.
+		 * @param index the vertex index
+		 * @return the V texture coordinate
+		 */
+		double getTextureV(int index);
+
+		/**
+		 * Returns the texture coordinates for the vertex at the specified index.
+		 * @param index the vertex index
+		 * @return the texture coordinates as a Pair (u, v)
+		 */
 		Pair getTexturePosition(int index);
-		
-		int[] getTriangle(int index); int getTriangleCount();
+
+		/**
+		 * Returns the vertex indices that define the triangle at the specified index.
+		 * @param index the triangle index
+		 * @return an array of three vertex indices
+		 */
+		int[] getTriangle(int index);
+
+		/**
+		 * Returns the total number of triangles in the mesh.
+		 * @return the triangle count
+		 */
+		int getTriangleCount();
+
+		/**
+		 * Returns the total number of vertices in the mesh.
+		 * @return the vertex count
+		 */
 		int getVertexCount();
 
-		PackedCollection<PackedCollection<Vector>> getMeshPointData();
+		/**
+		 * Returns the mesh vertex data as a packed collection suitable for hardware-accelerated processing.
+		 * @return packed collection of vertex position data organized by triangle
+		 */
+		PackedCollection getMeshPointData();
 	}
 	
   private List points, triangles;
-  private Triangle tcache[];
-  private boolean ignore[];
+  private Triangle[] tcache;
+  private boolean[] ignore;
   private boolean smooth, removeBackFaces, intcolor;
   
+  /** Source for loading mesh data from external files. */
   private MeshSource source;
+
+  /** External vertex data provider, used as an alternative to internal storage. */
   private VertexData vertexData;
 
+  /** KdTree for efficient spatial queries on vertices. */
   private KdTree<Positioned> spatialVertexTree;
 
   	/**
-  	 * Constructs a new Mesh object.
+  	 * Constructs an empty {@link Mesh} with no vertices or triangles.
   	 */
   	public Mesh() {
   		this.points = new ArrayList();
@@ -90,7 +198,7 @@ public class Mesh extends SpacePartition<Triangle> implements Graph<Vector> {
   	 * @param triangles  {{x0, y0, z0}, {x1, y1, z1},...} Where the int values
   	 * 					are indices in the points array.
   	 */
-  	public Mesh(Vector points[], int triangles[][]) {
+  	public Mesh(Vector[] points, int[][] triangles) {
   		this.points = new ArrayList();
   		this.triangles = new ArrayList();
   		this.clearIgnoreCache();
@@ -102,13 +210,27 @@ public class Mesh extends SpacePartition<Triangle> implements Graph<Vector> {
   			this.addTriangle(triangles[i][0], triangles[i][1], triangles[i][2]);
   	}
   	
+	/**
+	 * Constructs a {@link Mesh} using the specified {@link VertexData} provider.
+	 *
+	 * <p>This constructor allows mesh data to be provided by an external implementation
+	 * of {@link VertexData}, which is useful for integrating with different data sources
+	 * or optimized storage formats.
+	 *
+	 * @param data the vertex data provider
+	 */
   	public Mesh(VertexData data) {
   		this.vertexData = data;
 
 	  	this.clearIgnoreCache();
 	  	this.clearTriangleCache();
   	}
-  	
+
+	/**
+	 * Sets the mesh source used for loading mesh data from external files.
+	 *
+	 * @param f the mesh source to use
+	 */
   	public void setMeshSource(MeshSource f) { this.source = f; }
   	
   	/**
@@ -162,8 +284,8 @@ public class Mesh extends SpacePartition<Triangle> implements Graph<Vector> {
 
 		Triangle t = new Triangle(v1, v2, v3);
 
-		Producer<Vector> tnp = t.getNormalAt(Vector.blank());
-		Vector tn = tnp.get().evaluate();
+		Producer<PackedCollection> tnp = t.getNormalAt(Vector.blank());
+		Vector tn = new Vector(tnp.get().evaluate(), 0);
 
 		if (this.triangles.add(new int[] {p1, p2, p3})) {
 			v1.addNormal(tn);
@@ -181,6 +303,10 @@ public class Mesh extends SpacePartition<Triangle> implements Graph<Vector> {
 		}
 	}
 	
+	/**
+	 * Clears the ignore cache, resetting the array that tracks which triangles
+	 * should be skipped during intersection tests (e.g., for downsampling or back-face culling).
+	 */
 	public void clearIgnoreCache() {
 		if (this.vertexData == null)
 			this.ignore = new boolean[this.triangles.size()];
@@ -217,19 +343,33 @@ public class Mesh extends SpacePartition<Triangle> implements Graph<Vector> {
 		return spatialVertexTree;
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>This override first loads all triangles into the cache, then builds
+	 * the BSP tree for accelerated ray intersection.
+	 */
 	@Override
 	public void loadTree() {
 		this.loadTriangles();
 		super.loadTree(this.tcache.length);
 	}
-	
+
+	/**
+	 * Loads all triangles into the triangle cache for faster repeated access.
+	 * This is called automatically by {@link #loadTree()}.
+	 */
 	public void loadTriangles() {
 		this.clearTriangleCache();
-		
+
 		for (int i = 0; i < tcache.length; i++)
 			this.tcache[i] = this.getTriangle(i);
 	}
-	
+
+	/**
+	 * Clears the triangle cache, resetting it to hold the current number of triangles.
+	 * The cache will be repopulated on demand as triangles are accessed.
+	 */
 	public void clearTriangleCache() {
 		if (this.vertexData == null)
 			this.tcache = new Triangle[this.triangles.size()];
@@ -242,9 +382,9 @@ public class Mesh extends SpacePartition<Triangle> implements Graph<Vector> {
   	 * 
   	 * @param p  Array of Vertex objects to add.
   	 */
-  	public void setVectors(Vertex p[]) {
+  	public void setVectors(Vertex[] p) {
   		this.points.clear();
-  		for (int i = 0; i < p.length; i++) this.points.add(p[i]);
+		Collections.addAll(this.points, p);
   	}
   	
   	/**
@@ -273,7 +413,7 @@ public class Mesh extends SpacePartition<Triangle> implements Graph<Vector> {
 
 	public Iterator iterateVectors() { return this.points.iterator(); }
   	
-  	public void setTriangleData(int data[][]) {
+  	public void setTriangleData(int[][] data) {
   		this.triangles.clear();
   		for (int i = 0; i < data.length; i++) this.triangles.add(data[i]);
   		
@@ -281,14 +421,30 @@ public class Mesh extends SpacePartition<Triangle> implements Graph<Vector> {
   		this.clearTriangleCache();
   	}
 
+	/**
+	 * Returns the mesh data in a format optimized for hardware-accelerated ray intersection.
+	 *
+	 * <p>This method converts the mesh triangles into a {@link MeshData} structure that
+	 * stores precomputed triangle data suitable for GPU/hardware processing.
+	 *
+	 * @return a {@link MeshData} containing all triangle data
+	 * @throws RuntimeException if vertex data is not available
+	 */
   	public MeshData getMeshData() {
 		MeshData tdata = new MeshData(tcache.length);
-		PackedCollection<PackedCollection<Vector>> points = getMeshPointData();
-		Triangle.dataProducer.into(tdata).evaluate(points);
+		PackedCollection points = getMeshPointData();
+		TriangleFeatures tf = TriangleFeatures.getInstance();
+		tf.triangle(tf.c(tf.p(points))).get().into(tdata.traverse(1)).evaluate();
   		return tdata;
 	}
 
-	public PackedCollection<PackedCollection<Vector>> getMeshPointData() {
+	/**
+	 * Returns the mesh point data as a packed collection for hardware-accelerated processing.
+	 *
+	 * @return packed collection of vertex positions organized by triangle
+	 * @throws RuntimeException if no vertex data provider is configured
+	 */
+	public PackedCollection getMeshPointData() {
   		if (vertexData == null) {
   			throw new RuntimeException("Not implemented");
 		}
@@ -322,10 +478,10 @@ public class Mesh extends SpacePartition<Triangle> implements Graph<Vector> {
 					
 					@Override
 					public Triangle next() {
-						int t[] = vertexData.getTriangle(i);
+						int[] t = vertexData.getTriangle(i);
 						i++;
 						return new Triangle(t[0], t[1], t[2],
-								(RGB) Mesh.white.clone(), vertexData);
+								Mesh.white.clone(), vertexData);
 					}
 				};
 			}
@@ -341,7 +497,7 @@ public class Mesh extends SpacePartition<Triangle> implements Graph<Vector> {
 	
 	/** @return  An array of Triangle objects stored by this {@link Mesh} object. */
 	public Triangle[] getTriangles() {
-		Triangle t[] = new Triangle[this.triangles.size()];
+		Triangle[] t = new Triangle[this.triangles.size()];
 		for (int i = 0; i < t.length; i++) t[i] = getTriangle(i);
 
 		return t;
@@ -373,20 +529,20 @@ public class Mesh extends SpacePartition<Triangle> implements Graph<Vector> {
 		if (this.tcache[face] != null) return this.tcache[face];
 		
 		if (this.vertexData == null) {
-			int v[] = (int[]) this.triangles.get(face);
+			int[] v = (int[]) this.triangles.get(face);
 			
 			Vertex v1 = (Vertex) this.points.get(v[0]);
 			Vertex v2 = (Vertex) this.points.get(v[1]);
 			Vertex v3 = (Vertex) this.points.get(v[2]);
 			
-			t = new Triangle(v1, v2, v3, (RGB) Mesh.white.clone());
+			t = new Triangle(v1, v2, v3, Mesh.white.clone());
 		} else {
-			int d[] = this.vertexData.getTriangle(face);
-			t = new Triangle(d[0], d[1], d[2], (RGB) Mesh.white.clone(), this.vertexData);
+			int[] d = this.vertexData.getTriangle(face);
+			t = new Triangle(d[0], d[1], d[2], Mesh.white.clone(), this.vertexData);
 		}
 		
 		t.setParent(this);
-		t.setColor((RGB) Mesh.white.clone());
+		t.setColor(Mesh.white.clone());
 		t.setSmooth(this.smooth);
 		t.setUseTransform(false);
 		t.setInterpolateVertexColor(this.intcolor);
@@ -461,8 +617,8 @@ public class Mesh extends SpacePartition<Triangle> implements Graph<Vector> {
 	 * @return  The number of ignored triangles.
 	 */
 	public int downsample(double l, double p) {
-		int t[][] = this.getTriangleData(true);
-		Vector v[] = this.getVectors(true);
+		int[][] t = this.getTriangleData(true);
+		Vector[] v = this.getVectors(true);
 		
 		int total = 0;
 		
@@ -493,7 +649,7 @@ public class Mesh extends SpacePartition<Triangle> implements Graph<Vector> {
 	 */
 	public int extrudeFace(int face, double l) {
 		return this.extrudeFace(face,
-				((Triangle) this.triangles.get(face)).getNormalAt(Vector.blank()).get().evaluate().multiply(l));
+				new Vector(((Triangle) this.triangles.get(face)).getNormalAt(Vector.blank()).get().evaluate(), 0).multiply(l));
 	}
 	
 	/**
@@ -579,12 +735,12 @@ public class Mesh extends SpacePartition<Triangle> implements Graph<Vector> {
 
 		TransformMatrix t = getTransform(true);
 		Producer<Ray> tray = (Producer<Ray>) ray;
-		if (t != null) tray = t.getInverse().transform(tray);
+		if (t != null) tray = (Producer) t.getInverse().transform(tray);
 
 		CachedMeshIntersectionKernel kernel = new CachedMeshIntersectionKernel(getMeshData(), tray);
 		return new ShadableIntersection(ray,
 				(Producer) () -> kernel.getClosestNormal(),
-				(Producer) new DimensionAwareKernel<>(kernel));
+				new DimensionAwareKernel<>(kernel));
 	}
 
 	private void removeBackFaces(Ray r) {
@@ -597,8 +753,8 @@ public class Mesh extends SpacePartition<Triangle> implements Graph<Vector> {
 			}
 
 			Vector trv = tcache[i].getVertices()[0].subtract(r.getOrigin());
-			double dt = tcache[i].getNormalAt(Vector.blank()).get()
-					.evaluate().dotProduct(trv);
+			double dt = new Vector(tcache[i].getNormalAt(Vector.blank()).get()
+					.evaluate(), 0).dotProduct(trv);
 
 			if ((!getShadeFront() && !getShadeBack()) ||
 					(!getShadeFront() && dt < 0.0) ||
@@ -618,7 +774,7 @@ public class Mesh extends SpacePartition<Triangle> implements Graph<Vector> {
 	 * Does nothing.
 	 */
 	@Override
-	public void setSurfaces(Triangle surfaces[]) { }
+	public void setSurfaces(Triangle[] surfaces) { }
 	
 //	/**
 //	 * Adds the specified Surface object to the list of triangles stored by this Mesh object.

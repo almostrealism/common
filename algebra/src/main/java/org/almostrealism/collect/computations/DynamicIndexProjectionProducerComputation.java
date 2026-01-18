@@ -19,16 +19,14 @@ package org.almostrealism.collect.computations;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
-import io.almostrealism.expression.Expression;
 import io.almostrealism.compute.Process;
+import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.Index;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
-import org.almostrealism.collect.PackedCollection;
 
 import java.util.List;
 import java.util.function.BiFunction;
-import java.util.function.Supplier;
 
 /**
  * A specialized {@link IndexProjectionProducerComputation} that supports dynamic, runtime-computed
@@ -81,17 +79,15 @@ import java.util.function.Supplier;
  *                                                     maxProjection, matrixProducer);
  * }</pre>
  * 
- * @param <T> The type of {@link PackedCollection} produced by this computation
- * 
  * @see IndexProjectionProducerComputation
  * @see TraversableExpression
  * @see BiFunction
- * 
+ *
  * @author Michael Murray
  * @since 0.68
  */
-public class DynamicIndexProjectionProducerComputation<T extends PackedCollection<?>>
-		extends IndexProjectionProducerComputation<T> {
+public class DynamicIndexProjectionProducerComputation
+		extends IndexProjectionProducerComputation {
 	/**
 	 * Enables specialized delta computation for traverse-each operations.
 	 * When true, allows optimized gradient computation for operations that 
@@ -111,14 +107,14 @@ public class DynamicIndexProjectionProducerComputation<T extends PackedCollectio
 	 * This function receives both the traversable arguments and the output index,
 	 * allowing it to compute projections based on actual data values.
 	 */
-	private BiFunction<TraversableExpression[], Expression, Expression> indexExpression;
+	private final BiFunction<TraversableExpression[], Expression, Expression> indexExpression;
 	
 	/**
 	 * Indicates whether this computation uses relative indexing.
 	 * When true, the computation uses {@link TraversableExpression#getValueRelative}
 	 * for more memory-efficient access patterns.
 	 */
-	private boolean relative;
+	private final boolean relative;
 
 	/**
 	 * Creates a dynamic index projection computation with absolute indexing.
@@ -167,7 +163,8 @@ public class DynamicIndexProjectionProducerComputation<T extends PackedCollectio
 			TraversableExpression<Double> var = getTraversableArguments(index)[1];
 			if (var == null) return null;
 
-			return var.getValueRelative(projectIndex(var, index));
+			Expression offset = index.divide(getMemLength()).multiply(shape(var).getSizeLong());
+			return var.getValueAt(offset.add(projectIndex(var, index)));
 		}
 
 		return super.getValueAt(index);
@@ -195,22 +192,22 @@ public class DynamicIndexProjectionProducerComputation<T extends PackedCollectio
 	}
 
 	@Override
-	public DynamicIndexProjectionProducerComputation<T> generate(List<Process<?, ?>> children) {
+	public DynamicIndexProjectionProducerComputation generate(List<Process<?, ?>> children) {
 		return (DynamicIndexProjectionProducerComputation)
-				new DynamicIndexProjectionProducerComputation<>(getName(), getShape(), indexExpression, relative,
+				new DynamicIndexProjectionProducerComputation(getName(), getShape(), indexExpression, relative,
 							(Producer<?>) children.get(1),
 							children.stream().skip(2).toArray(Producer[]::new))
 						.addAllDependentLifecycles(getDependentLifecycles());
 	}
 
 	@Override
-	public CollectionProducer<T> delta(Producer<?> target) {
+	public CollectionProducer delta(Producer<?> target) {
 		if (enableChainDelta) {
-			TraversableDeltaComputation<T> delta =
+			TraversableDeltaComputation delta =
 					TraversableDeltaComputation.create("delta", getShape(), shape(target),
 								args -> CollectionExpression.create(getShape(),
 										(idx) -> args[1].getValueAt(projectIndex(args, idx))),
-							target, getInputs().stream().skip(1).toArray(Supplier[]::new));
+							target, getInputs().stream().skip(1).toArray(Producer[]::new));
 			return delta;
 		} else {
 			TraversalPolicy outShape = getShape();
@@ -224,13 +221,13 @@ public class DynamicIndexProjectionProducerComputation<T extends PackedCollectio
 			TraversalPolicy deltaShape = shape(inSize, targetSize);
 			TraversalPolicy overallShape = shape(outSize, targetSize);
 
-			CollectionProducer<PackedCollection<?>> delta = ((CollectionProducer) getInputs().get(1)).delta(target);
+			CollectionProducer delta = ((CollectionProducer) getInputs().get(1)).delta(target);
 
 			TraversalPolicy shape = outShape.append(targetShape);
 			int traversalAxis = shape.getTraversalAxis();
 
 			BiFunction<TraversableExpression[], Expression, Expression> project = (args, idx) -> {
-				Expression pos[] = overallShape.position(idx);
+				Expression[] pos = overallShape.position(idx);
 				return deltaShape.index(projectIndex(args, pos[0]), pos[1]);
 			};
 

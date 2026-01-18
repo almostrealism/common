@@ -16,9 +16,20 @@
 
 package org.almostrealism.hardware.metal;
 
+/**
+ * Device information wrapper for {@link MTLDevice}.
+ *
+ * @see MTLDevice
+ * @see MetalDataContext
+ */
 public class MetalDeviceInfo {
 	private MTLDevice device;
 
+	/**
+	 * Creates device information wrapper for a Metal device.
+	 *
+	 * @param device The {@link MTLDevice} to wrap
+	 */
 	public MetalDeviceInfo(MTLDevice device) {
 		this.device = device;
 	}

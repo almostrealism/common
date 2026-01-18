@@ -17,33 +17,33 @@
 package org.almostrealism.collect.computations;
 
 import io.almostrealism.code.ArgumentMap;
-import io.almostrealism.lifecycle.Destroyable;
-import io.almostrealism.profile.OperationInfo;
-import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.collect.Algebraic;
-import io.almostrealism.expression.Expression;
-import io.almostrealism.kernel.Index;
-import io.almostrealism.kernel.KernelStructureContext;
-import io.almostrealism.relation.Computable;
-import io.almostrealism.relation.Countable;
-import io.almostrealism.relation.Evaluable;
+import io.almostrealism.collect.Shape;
+import io.almostrealism.collect.TraversableExpression;
+import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.ParallelProcess;
 import io.almostrealism.compute.Process;
 import io.almostrealism.compute.ProcessContext;
+import io.almostrealism.expression.Expression;
+import io.almostrealism.kernel.Index;
+import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.lifecycle.Destroyable;
+import io.almostrealism.profile.OperationInfo;
+import io.almostrealism.profile.OperationMetadata;
+import io.almostrealism.relation.Computable;
+import io.almostrealism.relation.Countable;
+import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
 import io.almostrealism.uml.Signature;
 import io.almostrealism.util.DescribableParent;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
-import io.almostrealism.collect.Shape;
-import io.almostrealism.collect.TraversableExpression;
-import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.CollectionProducerParallelProcess;
-import org.almostrealism.hardware.AcceleratedOperation;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.computations.HardwareEvaluable;
 import org.almostrealism.io.Describable;
 
@@ -72,25 +72,25 @@ import java.util.Optional;
  * <h4>Basic Shape Transformation</h4>
  * <pre>{@code
  * // Reshape a 1D vector into a 2D matrix
- * CollectionProducer<PackedCollection<?>> vector = c(1, 2, 3, 4, 5, 6);
+ * CollectionProducer vector = c(1, 2, 3, 4, 5, 6);
  * TraversalPolicy matrixShape = shape(2, 3);
- * ReshapeProducer<PackedCollection<?>> matrix = new ReshapeProducer<>(matrixShape, vector);
+ * ReshapeProducer matrix = new ReshapeProducer(matrixShape, vector);
  * // Result: 2x3 matrix with same data arranged as [[1,2,3], [4,5,6]]
  * }</pre>
- * 
+ *
  * <h4>Traversal Axis Modification</h4>
  * <pre>{@code
  * // Change traversal axis for different iteration patterns
- * CollectionProducer<PackedCollection<?>> matrix = c(shape(3, 4)); // 12 elements
- * ReshapeProducer<PackedCollection<?>> rowTraversal = new ReshapeProducer<>(0, matrix);
- * ReshapeProducer<PackedCollection<?>> colTraversal = new ReshapeProducer<>(1, matrix);
+ * CollectionProducer matrix = c(shape(3, 4)); // 12 elements
+ * ReshapeProducer rowTraversal = new ReshapeProducer(0, matrix);
+ * ReshapeProducer colTraversal = new ReshapeProducer(1, matrix);
  * // Same data, different traversal patterns
  * }</pre>
  * 
  * <h4>Integration with Collection Operations</h4>
  * <pre>{@code
  * // Using via CollectionFeatures helper methods
- * CollectionProducer<PackedCollection<?>> data = c(shape(2, 2, 3)); // 12 elements
+ * CollectionProducer data = c(shape(2, 2, 3)); // 12 elements
  * 
  * // Reshape to flatten the data
  * Producer<?> flattened = reshape(shape(12), data);
@@ -110,18 +110,16 @@ import java.util.Optional;
  *   <li><strong>Type Safety:</strong> Maintains type information through generic parameters</li>
  * </ul>
  * 
- * @param <T> the type of Shape being reshaped, must extend Shape
- * 
  * @see org.almostrealism.collect.CollectionFeatures#reshape(io.almostrealism.collect.TraversalPolicy, io.almostrealism.relation.Producer)
  * @see org.almostrealism.collect.CollectionFeatures#traverse(int, io.almostrealism.relation.Producer)
  * @see org.almostrealism.collect.CollectionFeatures#traverseEach(io.almostrealism.relation.Producer)
  * @see io.almostrealism.collect.TraversalPolicy
  * @see io.almostrealism.collect.Shape
- * 
+ *
  * @author Michael Murray
  */
-public class ReshapeProducer<T extends Shape<T>>
-		implements CollectionProducerParallelProcess<T>,
+public class ReshapeProducer
+		implements CollectionProducerParallelProcess,
 					TraversableExpression<Double>, ScopeLifecycle,
 					Signature, DescribableParent<Process<?, ?>>,
 					CollectionFeatures {
@@ -151,7 +149,7 @@ public class ReshapeProducer<T extends Shape<T>>
 	private int traversalAxis;
 	
 	/** The underlying producer whose output will be reshaped. */
-	private Producer<T> producer;
+	private final Producer<PackedCollection> producer;
 
 	/**
 	 * Creates a ReshapeProducer that modifies the traversal axis of the input producer.
@@ -167,20 +165,19 @@ public class ReshapeProducer<T extends Shape<T>>
 	 * 
 	 * @throws UnsupportedOperationException if the producer doesn't implement Shape
 	 * @throws IndexOutOfBoundsException if traversalAxis is invalid for the producer's shape
-	 * 
+	 *
 	 * <h4>Example Usage:</h4>
 	 * <pre>{@code
 	 * // Create a 3x4 matrix with default traversal axis 0
-	 * CollectionProducer<PackedCollection<?>> matrix = c(shape(3, 4)); // 12 elements
-	 * 
+	 * CollectionProducer matrix = c(shape(3, 4)); // 12 elements
+	 *
 	 * // Change to traverse along columns (axis 1) instead of rows
-	 * ReshapeProducer<PackedCollection<?>> columnTraversal = 
-	 *     new ReshapeProducer<>(1, matrix);
-	 * 
+	 * ReshapeProducer columnTraversal = new ReshapeProducer(1, matrix);
+	 *
 	 * // This affects how operations like enumeration work on the data
 	 * }</pre>
 	 */
-	public ReshapeProducer(int traversalAxis, Producer<T> producer) {
+	public ReshapeProducer(int traversalAxis, Producer<PackedCollection> producer) {
 		this.traversalAxis = traversalAxis;
 		this.producer = producer;
 		init();
@@ -202,21 +199,19 @@ public class ReshapeProducer<T extends Shape<T>>
 	 * <h4>Example Usage:</h4>
 	 * <pre>{@code
 	 * // Reshape a 1D vector into a 2D matrix
-	 * CollectionProducer<PackedCollection<?>> vector = c(1, 2, 3, 4, 5, 6); // size: 6
+	 * CollectionProducer vector = c(1, 2, 3, 4, 5, 6); // size: 6
 	 * TraversalPolicy matrixShape = shape(2, 3); // 2x3 = 6 elements
-	 * ReshapeProducer<PackedCollection<?>> matrix = 
-	 *     new ReshapeProducer<>(matrixShape, vector);
-	 * 
+	 * ReshapeProducer matrix = new ReshapeProducer(matrixShape, vector);
+	 *
 	 * // Flatten a multi-dimensional array
-	 * CollectionProducer<PackedCollection<?>> tensor = c(shape(2, 2, 2)); // 8 elements
+	 * CollectionProducer tensor = c(shape(2, 2, 2)); // 8 elements
 	 * TraversalPolicy flatShape = shape(8);
-	 * ReshapeProducer<PackedCollection<?>> flattened = 
-	 *     new ReshapeProducer<>(flatShape, tensor);
+	 * ReshapeProducer flattened = new ReshapeProducer(flatShape, tensor);
 	 * }</pre>
 	 */
-	public ReshapeProducer(TraversalPolicy shape, Producer<T> producer) {
+	public ReshapeProducer(TraversalPolicy shape, Producer<? extends PackedCollection> producer) {
 		this.shape = shape;
-		this.producer = producer;
+		this.producer = (Producer<PackedCollection>) producer;
 
 		if (shape(producer).getTotalSizeLong() != shape.getTotalSizeLong()) {
 			throw new IllegalArgumentException();
@@ -297,12 +292,12 @@ public class ReshapeProducer<T extends Shape<T>>
 	 * <h4>Example:</h4>
 	 * <pre>{@code
 	 * // Explicit shape mode
-	 * ReshapeProducer<PackedCollection<?>> matrix = 
+	 * ReshapeProducer<PackedCollection> matrix =
 	 *     new ReshapeProducer<>(shape(2, 3), vectorProducer);
 	 * TraversalPolicy matrixShape = matrix.getShape(); // Returns shape(2, 3)
 	 * 
 	 * // Traversal axis mode
-	 * ReshapeProducer<PackedCollection<?>> reordered = 
+	 * ReshapeProducer<PackedCollection> reordered =
 	 *     new ReshapeProducer<>(1, matrixProducer);
 	 * TraversalPolicy reorderedShape = reordered.getShape(); // Input shape with axis 1 traversal
 	 * }</pre>
@@ -331,6 +326,8 @@ public class ReshapeProducer<T extends Shape<T>>
 	public boolean isConstant() {
 		return producer.isConstant();
 	}
+
+	public boolean isProvider() { return producer.isProvider(); }
 
 	/**
 	 * Returns whether this reshape operation represents a zero value.
@@ -410,14 +407,14 @@ public class ReshapeProducer<T extends Shape<T>>
 	 * <h4>Example:</h4>
 	 * <pre>{@code
 	 * // Chain of reshape operations
-	 * ReshapeProducer<PackedCollection<?>> first = new ReshapeProducer<>(shape(2, 3), baseProducer);
-	 * ReshapeProducer<PackedCollection<?>> second = new ReshapeProducer<>(1, first);
-	 * 
-	 * Producer<PackedCollection<?>> root = second.getComputation();
+	 * ReshapeProducer first = new ReshapeProducer(shape(2, 3), baseProducer);
+	 * ReshapeProducer second = new ReshapeProducer(1, first);
+	 *
+	 * Producer<PackedCollection> root = second.getComputation();
 	 * // Returns baseProducer, skipping the intermediate reshape
 	 * }</pre>
 	 */
-	public Producer<T> getComputation() {
+	public Producer<PackedCollection> getComputation() {
 		if (producer instanceof ReshapeProducer) {
 			return ((ReshapeProducer) producer).getComputation();
 		} else {
@@ -431,16 +428,16 @@ public class ReshapeProducer<T extends Shape<T>>
 	}
 
 	@Override
-	public ReshapeProducer<T> generate(List<Process<?, ?>> children) {
+	public ReshapeProducer generate(List<Process<?, ?>> children) {
 		if (children.size() != 1) return this;
 
 		return shape == null ?
-				new ReshapeProducer<>(traversalAxis, (Producer<T>) children.get(0)) :
-				new ReshapeProducer<>(shape, (Producer<T>) children.get(0));
+				new ReshapeProducer(traversalAxis, (Producer<PackedCollection>) children.get(0)) :
+				new ReshapeProducer(shape, (Producer<PackedCollection>) children.get(0));
 	}
 
 	@Override
-	public ParallelProcess<Process<?, ?>, Evaluable<? extends T>> optimize(ProcessContext ctx) {
+	public ParallelProcess<Process<?, ?>, Evaluable<? extends PackedCollection>> optimize(ProcessContext ctx) {
 		if (producer instanceof Process) {
 			return generateReplacement(List.of(optimize(ctx, ((Process) producer))));
 		}
@@ -449,7 +446,7 @@ public class ReshapeProducer<T extends Shape<T>>
 	}
 
 	@Override
-	public Process<Process<?, ?>, Evaluable<? extends T>> isolate() {
+	public Process<Process<?, ?>, Evaluable<? extends PackedCollection>> isolate() {
 		if (shape == null) {
 			if (enableTraversalDelegateIsolation && producer instanceof Process) {
 				Process<?, ?> isolated = ((Process<?, ?>) this.producer).isolate();
@@ -537,13 +534,14 @@ public class ReshapeProducer<T extends Shape<T>>
 	}
 
 	@Override
-	public CollectionProducer<T> delta(Producer<?> target) {
+	public CollectionProducer delta(Producer<?> target) {
 		if (producer instanceof CollectionProducer) {
+			CollectionProducer deltaResult = ((CollectionProducer) producer).delta(target);
 			if (shape == null) {
-				return traverse(traversalAxis, ((CollectionProducer) producer).delta(target));
+				return traverse(traversalAxis, deltaResult);
 			} else {
 				TraversalPolicy newShape = shape.append(shape(target));
-				return (CollectionProducer) reshape(newShape, ((CollectionProducer) producer).delta(target));
+				return (CollectionProducer) reshape(newShape, deltaResult);
 			}
 		}
 
@@ -561,18 +559,20 @@ public class ReshapeProducer<T extends Shape<T>>
 	 * 
 	 * <h4>Usage:</h4>
 	 * <pre>{@code
-	 * ReshapeProducer<PackedCollection<?>> matrix = 
-	 *     new ReshapeProducer<>(shape(3, 4), baseProducer);
-	 * 
+	 * ReshapeProducer matrix = new ReshapeProducer(shape(3, 4), baseProducer);
+	 *
 	 * // Change to traverse along axis 1 (columns)
-	 * CollectionProducer<PackedCollection<?>> columnTraversal = matrix.traverse(1);
+	 * CollectionProducer columnTraversal = matrix.traverse(1);
 	 * }</pre>
 	 */
-	public CollectionProducer<T> traverse(int axis) {
+	public CollectionProducer traverse(int axis) {
 		if (shape == null || shape(producer).traverse(0).equals(getShape().traverse(0))) {
-			return new ReshapeProducer<>(axis, producer);
+			if (producer instanceof CollectionProducerComputation) {
+				return ((CollectionProducerComputation) producer).traverse(axis);
+			}
+			return new ReshapeProducer(axis, producer);
 		} else {
-			return new ReshapeProducer<>(axis, this);
+			return new ReshapeProducer(axis, this);
 		}
 	}
 
@@ -588,32 +588,32 @@ public class ReshapeProducer<T extends Shape<T>>
 	 * 
 	 * <h4>Usage:</h4>
 	 * <pre>{@code
-	 * ReshapeProducer<PackedCollection<?>> intermediate = 
-	 *     new ReshapeProducer<>(1, baseProducer);
-	 * 
+	 * ReshapeProducer intermediate = new ReshapeProducer(1, baseProducer);
+	 *
 	 * // Further reshape to a specific 2D layout
-	 * CollectionProducer<PackedCollection<?>> finalShape = 
+	 * CollectionProducer finalShape =
 	 *     intermediate.reshape(shape(2, 6));
 	 * }</pre>
 	 */
 	@Override
-	public CollectionProducer<T> reshape(TraversalPolicy shape) {
-		return new ReshapeProducer<>(shape, producer);
+	public CollectionProducer reshape(TraversalPolicy shape) {
+		if (producer instanceof CollectionProducerComputation) {
+			return ((CollectionProducerComputation) producer).reshape(shape);
+		}
+		return new ReshapeProducer(shape, producer);
 	}
 
 	@Override
-	public Evaluable<T> get() {
-		Evaluable<T> ev = producer.get();
+	public Evaluable<PackedCollection> get() {
+		Evaluable<PackedCollection> ev = producer.get();
 
 		if (ev instanceof Provider) {
-			return p((Provider) ev, v -> (Shape<T>) apply((T) v));
+			return p((Provider) ev, v -> apply((PackedCollection) v));
 		}
 
-		HardwareEvaluable<T> hev = new HardwareEvaluable<>(producer::get, null, null, false);
+		HardwareEvaluable<PackedCollection> hev = new HardwareEvaluable<>(producer::get, null, null, false);
 		hev.setShortCircuit(args -> {
-			long start = System.nanoTime();
-			Shape<T> out = hev.getKernel().getValue().evaluate(args);
-			AcceleratedOperation.wrappedEvalMetric.addEntry(producer, System.nanoTime() - start);
+			PackedCollection out = hev.getKernel().getValue().evaluate(args);
 			return apply(out);
 		});
 		return hev;
@@ -666,10 +666,10 @@ public class ReshapeProducer<T extends Shape<T>>
 	 * traversal axis modification and explicit shape transformation based
 	 * on the operation mode.
 	 * 
-	 * @param in the input shape to transform
+	 * @param in the input collection to transform
 	 * @return the reshaped result
 	 */
-	private T apply(Shape<T> in) {
+	private PackedCollection apply(PackedCollection in) {
 		if (shape == null) {
 			if (enableTraversalShapeValidation && producer instanceof Shape &&
 					getShape().isFixedCount() &&

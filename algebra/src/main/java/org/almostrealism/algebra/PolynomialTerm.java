@@ -17,7 +17,37 @@
 package org.almostrealism.algebra;
 
 /**
- * A {@link PolynomialTerm} object represents a single term of a polynomial function.
+ * Represents a single term in a multivariate polynomial function of three variables.
+ *
+ * <p>
+ * A {@link PolynomialTerm} represents a term in the form: c . x^i . y^j . z^k,
+ * where c is the coefficient and i, j, k are non-negative integer exponents.
+ * This class supports:
+ * </p>
+ * <ul>
+ *   <li>Evaluation at specific (x, y, z) points</li>
+ *   <li>Partial differentiation with respect to x, y, or z</li>
+ *   <li>Term multiplication</li>
+ *   <li>Like-term detection for polynomial simplification</li>
+ * </ul>
+ *
+ * <h2>Usage Examples</h2>
+ * <pre>{@code
+ * // Create term: 5x^2y^3z
+ * PolynomialTerm term = new PolynomialTerm(5.0, 2, 3, 1);
+ *
+ * // Evaluate at (x=2, y=1, z=3)
+ * double value = term.evaluate(2, 1, 3);  // 5 * 4 * 1 * 3 = 60
+ *
+ * // Partial derivatives
+ * PolynomialTerm dx = term.getDx();  // 10x^1y^3z
+ * PolynomialTerm dy = term.getDy();  // 15x^2y^2z
+ * PolynomialTerm dz = term.getDz();  // 5x^2y^3
+ *
+ * // Multiply terms
+ * PolynomialTerm other = new PolynomialTerm(2.0, 1, 0, 2);  // 2xz^2
+ * PolynomialTerm product = term.multiply(other);  // 10x^3y^3z^3
+ * }</pre>
  *
  * @author  Michael Murray
  */
@@ -161,13 +191,9 @@ public class PolynomialTerm {
 	 * are the same as the specified PolynomialTerm object.
 	 */
 	public boolean isLikeTerm(PolynomialTerm term) {
-		if (this.getExpOfX() == term.getExpOfX() &&
-			this.getExpOfY() == term.getExpOfY() &&
-			this.getExpOfZ() == term.getExpOfZ()) {
-			return true;
-		} else {
-			return false;
-		}
+		return this.getExpOfX() == term.getExpOfX() &&
+				this.getExpOfY() == term.getExpOfY() &&
+				this.getExpOfZ() == term.getExpOfZ();
 	}
 	
 	/**

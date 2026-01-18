@@ -16,6 +16,19 @@
 
 package io.almostrealism.code;
 
+/**
+ * Defines the visibility level of variables and operations in generated code.
+ *
+ * <p>Used during code generation to determine whether a variable or operation
+ * should be accessible from outside the generated scope (EXTERNAL) or only
+ * within the current scope (INTERNAL).</p>
+ *
+ * @see io.almostrealism.scope.Variable
+ * @see io.almostrealism.scope.Scope
+ */
 public enum Accessibility {
-	EXTERNAL, INTERNAL
+	/** Accessible from outside the scope, typically used for input/output variables. */
+	EXTERNAL,
+	/** Only accessible within the current scope, used for intermediate computations. */
+	INTERNAL
 }

@@ -54,16 +54,147 @@ import java.util.stream.DoubleStream;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
-public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter
-		implements MemoryBank<T>, Collection<T, PackedCollection<T>>, CollectionFeatures, Cloneable {
-	private static Evaluable<PackedCollection<?>> clear;
+/**
+ * A hardware-accelerated multi-dimensional array backed by contiguous memory.
+ *
+ * <p>
+ * {@link PackedCollection} is the fundamental data container in the Almost Realism framework,
+ * providing efficient storage and access for multi-dimensional numerical data. It combines:
+ * <ul>
+ *   <li><b>Memory efficiency:</b> Contiguous packed memory layout for cache-friendly access</li>
+ *   <li><b>Hardware acceleration:</b> Direct GPU/CPU memory backing via {@link MemoryData}</li>
+ *   <li><b>Multi-dimensional support:</b> Arbitrary rank tensors with {@link TraversalPolicy}</li>
+ *   <li><b>Flexible traversal:</b> Custom access patterns via {@link TraversalOrdering}</li>
+ *   <li><b>Type safety:</b> Generic type parameter for specialized memory data types</li>
+ * </ul>
+ *
+ * <h2>Memory Layout</h2>
+ * <p>
+ * Data is stored in row-major order (C-style) in a contiguous memory block. For a 3x4 matrix:
+ * </p>
+ * <pre>
+ * Logical:      Memory:
+ * [0  1  2  3]  [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+ * [4  5  6  7]
+ * [8  9 10 11]
+ * </pre>
+ *
+ * <h2>Construction Patterns</h2>
+ * <pre>{@code
+ * // 1. Simple shape construction
+ * PackedCollection tensor = new PackedCollection(3, 4, 5);  // 3x4x5 tensor
+ *
+ * // 2. With traversal policy
+ * TraversalPolicy shape = new TraversalPolicy(10, 20);
+ * PackedCollection matrix = new PackedCollection(shape);
+ *
+ * // 3. Copy constructor
+ * PackedCollection copy = new PackedCollection(original);
+ *
+ * // 4. With existing memory delegate
+ * MemoryData memory = ...;
+ * PackedCollection view = new PackedCollection(shape, 0, memory, 0);
+ * }</pre>
+ *
+ * <h2>Access Patterns</h2>
+ * <pre>{@code
+ * PackedCollection data = new PackedCollection(10, 5);
+ *
+ * // Indexed access
+ * data.setMem(0, 1.5);
+ * double value = data.toDouble(0);
+ *
+ * // Array access
+ * data.set(0, new double[]{1.0, 2.0, 3.0, 4.0, 5.0});
+ * double[] row = data.get(0).toArray();
+ *
+ * // Streaming
+ * double sum = data.doubleStream().sum();
+ * data.forEach(row -> System.out.println(row));
+ * }</pre>
+ *
+ * <h2>Initialization Methods</h2>
+ * <pre>{@code
+ * PackedCollection data = new PackedCollection(100);
+ *
+ * data.fill(0.0);                      // Fill with constant
+ * data.randFill();                     // Fill with uniform random [0,1)
+ * data.randnFill();                    // Fill with normal distribution
+ * data.identityFill();                 // Fill as identity matrix (2D only)
+ * data.fill(pos -> pos[0] * pos[1]);   // Fill with function
+ * data.replace(x -> x * 2.0);          // Transform in-place
+ * }</pre>
+ *
+ * <h2>Shape and Traversal</h2>
+ * <p>
+ * The {@link TraversalPolicy} defines the logical shape and how elements are accessed:
+ * </p>
+ * <pre>{@code
+ * PackedCollection data = new PackedCollection(3, 4);
+ * TraversalPolicy shape = data.getShape();
+ *
+ * shape.getDimensions();     // 2
+ * shape.length(0);           // 3
+ * shape.length(1);           // 4
+ * shape.getTotalSize();      // 12
+ * shape.getTraversalAxis();  // 0 (traverse rows)
+ * }</pre>
+ *
+ * <h2>Memory Delegation</h2>
+ * <p>
+ * {@link PackedCollection} can wrap existing {@link MemoryData} without copying:
+ * </p>
+ * <pre>{@code
+ * // Create a view into existing memory
+ * MemoryData largeBuffer = ...;
+ * PackedCollection subset = new PackedCollection(
+ *     shape(10, 10),
+ *     0,              // traversal axis
+ *     largeBuffer,
+ *     100             // offset into buffer
+ * );
+ *
+ * // Changes to subset modify largeBuffer
+ * subset.setMem(0, 5.0);
+ * }</pre>
+ *
+ * <h2>I/O Operations</h2>
+ * <pre>{@code
+ * PackedCollection data = ...;
+ *
+ * // Save to file
+ * data.save(new File("tensor.dat"));
+ *
+ * // Load from file
+ * PackedCollection loaded = PackedCollection.load(new File("tensor.dat"));
+ *
+ * // Print for debugging
+ * data.print();  // Pretty-printed to console
+ * }</pre>
+ *
+ * <h2>Thread Safety</h2>
+ * <p>
+ * {@link PackedCollection} is <b>not thread-safe</b>. External synchronization is required
+ * for concurrent access. For parallel operations, use the computation framework which handles
+ * synchronization internally.
+ * </p>
+ *
+ * @author  Michael Murray
+ * @see TraversalPolicy
+ * @see MemoryData
+ * @see CollectionProducer
+ * @see CollectionFeatures
+ */
+public class PackedCollection extends MemoryDataAdapter
+		implements MemoryBank<PackedCollection>, Collection<PackedCollection, PackedCollection>, CollectionFeatures, Cloneable {
+	private static final Evaluable<PackedCollection> clear;
 
 	static {
 		clear = CollectionFeatures.getInstance().zeros(new TraversalPolicy(false, false, 1)).get();
 	}
 
 	private final TraversalPolicy shape;
-	private Function<DelegateSpec, T> supply;
+	private Function<DelegateSpec, PackedCollection> supply;
 
 	public PackedCollection(int... shape) {
 		this(new TraversalPolicy(shape));
@@ -73,7 +204,7 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter
 		this(shape, shape.getTraversalAxis(), null, 0);
 	}
 
-	public PackedCollection(PackedCollection<T> src) {
+	public PackedCollection(PackedCollection src) {
 		this(src.getShape(), src.getShape().getTraversalAxis(), src.supply);
 		new MemoryDataCopy("PackedCollection constructor", src, this).get().run();
 	}
@@ -82,11 +213,11 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter
 		this(shape, traversalAxis, null);
 	}
 
-	public PackedCollection(TraversalPolicy shape, int traversalAxis, Function<DelegateSpec, T> supply) {
+	public PackedCollection(TraversalPolicy shape, int traversalAxis, Function<DelegateSpec, PackedCollection> supply) {
 		this(shape, traversalAxis, supply, null, 0);
 	}
 
-	public PackedCollection(TraversalPolicy shape, int traversalAxis, Function<DelegateSpec, T> supply, MemoryData delegate, int delegateOffset) {
+	public PackedCollection(TraversalPolicy shape, int traversalAxis, Function<DelegateSpec, PackedCollection> supply, MemoryData delegate, int delegateOffset) {
 		this(shape, traversalAxis, delegate, delegateOffset);
 		this.supply = supply;
 	}
@@ -115,22 +246,22 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter
 	}
 
 	@Override
-	public T get(int index) {
+	public PackedCollection get(int index) {
 		if (shape.getTraversalAxis() == 1 && supply != null) {
 			return supply.apply(new DelegateSpec(this, shape.size(1) * index));
 		} else {
-			return (T) new PackedCollection(
+			return new PackedCollection(
 					shape.subset(shape.getTraversalAxis()), shape.getTraversalAxis(),
 					null, this, shape.getSize() * index);
 		}
 	}
 
-	public PackedCollection<?> get(int index, TraversalPolicy memberShape) {
+	public PackedCollection get(int index, TraversalPolicy memberShape) {
 		return range(memberShape, index * memberShape.getTotalSize());
 	}
 
 	@Override
-	public void set(int index, T value) {
+	public void set(int index, PackedCollection value) {
 		set(index, value.toArray(0, value.getMemLength()));
 	}
 
@@ -170,7 +301,7 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter
 
 	@Override
 	public void setDelegate(MemoryData m, int offset, TraversalOrdering order) {
-		if (m instanceof PackedCollection && ((PackedCollection<?>) m).getShape().equals(getShape())) {
+		if (m instanceof PackedCollection && ((PackedCollection) m).getShape().equals(getShape())) {
 			if (getClass() == PackedCollection.class) {
 				warn("Creating a collection identical to the delegate");
 			} else {
@@ -207,7 +338,7 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter
 		return super.toDouble(getShape().inputIndex(index));
 	}
 
-	public Stream<T> stream() {
+	public Stream<PackedCollection> stream() {
 		return IntStream.range(0, getCount()).mapToObj(this::get);
 	}
 
@@ -224,33 +355,33 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter
 		print(System.out::println);
 	}
 
-	public PackedCollection<T> fill(double... value) {
-		double data[] = IntStream.range(0, getMemLength()).mapToDouble(i -> value[i % value.length]).toArray();
+	public PackedCollection fill(double... value) {
+		double[] data = IntStream.range(0, getMemLength()).mapToDouble(i -> value[i % value.length]).toArray();
 		setMem(0, data);
 		return this;
 	}
 
-	public PackedCollection<T> fill(DoubleSupplier values) {
-		double data[] = IntStream.range(0, getMemLength()).mapToDouble(i -> values.getAsDouble()).toArray();
+	public PackedCollection fill(DoubleSupplier values) {
+		double[] data = IntStream.range(0, getMemLength()).mapToDouble(i -> values.getAsDouble()).toArray();
 		setMem(0, data);
 		return this;
 	}
 
-	public PackedCollection<T> fill(Function<int[], Double> f) {
-		double data[] = new double[getMemLength()];
+	public PackedCollection fill(Function<int[], Double> f) {
+		double[] data = new double[getMemLength()];
 		getShape().stream().forEach(pos -> data[getShape().index(pos)] = f.apply(pos));
 		setMem(0, data);
 		return this;
 	}
 
-	public PackedCollection<?> replace(DoubleUnaryOperator f) {
-		double in[] = toArray(0, getMemLength());
-		double data[] = IntStream.range(0, getMemLength()).mapToDouble(i -> f.applyAsDouble(in[i])).toArray();
+	public PackedCollection replace(DoubleUnaryOperator f) {
+		double[] in = toArray(0, getMemLength());
+		double[] data = IntStream.range(0, getMemLength()).mapToDouble(i -> f.applyAsDouble(in[i])).toArray();
 		setMem(0, data);
 		return this;
 	}
 
-	public PackedCollection<?> identityFill() {
+	public PackedCollection identityFill() {
 		return fill(pos -> {
 			for (int i = 0; i < pos.length; i++) {
 				if (pos[i] != pos[0]) {
@@ -262,39 +393,39 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter
 		});
 	}
 
-	public PackedCollection<T> randFill() {
+	public PackedCollection randFill() {
 		rand(getShape()).get().into(this).evaluate();
 		return this;
 	}
 
-	public PackedCollection<T> randFill(Random source) {
+	public PackedCollection randFill(Random source) {
 		rand(getShape(), source).get().into(this).evaluate();
 		return this;
 	}
 
-	public PackedCollection<T> randnFill() {
+	public PackedCollection randnFill() {
 		randn(getShape()).get().into(this).evaluate();
 		return this;
 	}
 
-	public PackedCollection<T> randnFill(Random source) {
+	public PackedCollection randnFill(Random source) {
 		randn(getShape(), source).get().into(this).evaluate();
 		return this;
 	}
 
-	public void forEach(Consumer<T> consumer) {
+	public void forEach(Consumer<PackedCollection> consumer) {
 		stream().forEach(consumer);
 	}
 
-	public PackedCollection<T> transpose() {
+	public PackedCollection transpose() {
 		if (getShape().getDimensions() != 2) {
 			throw new IllegalArgumentException();
 		}
 
-		PackedCollection result = new PackedCollection<>(
+		PackedCollection result = new PackedCollection(
 				getShape().length(1),
 				getShape().length(0)).traverse(1);
-		double data[] = toArray();
+		double[] data = toArray();
 		result.setMem(IntStream.range(0, result.getShape().getTotalSize())
 				.mapToObj(result.getShape()::position)
 				.mapToInt(pos -> getShape().index(pos[1], pos[0]))
@@ -307,11 +438,11 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter
 		clear.into(this.traverseEach()).evaluate();
 	}
 
-	public PackedCollection<T> range(TraversalPolicy shape) {
+	public PackedCollection range(TraversalPolicy shape) {
 		return range(shape, 0);
 	}
 
-	public PackedCollection<T> range(TraversalPolicy shape, int start) {
+	public PackedCollection range(TraversalPolicy shape, int start) {
 		int required = shape.getOrder() == null ? shape.getTotalInputSize() :
 				shape.getOrder().getLength().orElse(shape.getTotalInputSize());
 
@@ -324,9 +455,9 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter
 		if (getDelegate() == null || getDelegateOffset() != 0 || getDelegateOrdering() != null) {
 			return new PackedCollection(shape, shape.getTraversalAxis(), this, start);
 		} else if (getDelegate() instanceof PackedCollection) {
-			return ((PackedCollection<T>) getDelegate()).range(shape, start + getDelegateOffset());
+			return ((PackedCollection) getDelegate()).range(shape, start + getDelegateOffset());
 		} else {
-			return new PackedCollection<>(shape, shape.getTraversalAxis(), getDelegate(), start);
+			return new PackedCollection(shape, shape.getTraversalAxis(), getDelegate(), start);
 		}
 	}
 
@@ -342,17 +473,17 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter
 	 * <ul>
 	 * <li>Input shape: (d1, d2, ..., dn)</li>
 	 * <li>Output shape: (count, d1, d2, ..., dn)</li>
-	 * <li>Total size: count × original_size</li>
+	 * <li>Total size: count * original_size</li>
 	 * </ul>
 	 * 
 	 * <h4>Usage Examples:</h4>
 	 * <pre>{@code
 	 * // Create a 2x3 collection
-	 * PackedCollection<?> original = new PackedCollection<>(shape(2, 3));
+	 * PackedCollection original = new PackedCollection(shape(2, 3));
 	 * original.fill(pos -> pos);  // [0, 1, 2, 3, 4, 5]
 	 * 
 	 * // Repeat it 4 times
-	 * PackedCollection<?> repeated = original.repeat(4);
+	 * PackedCollection repeated = original.repeat(4);
 	 * // Shape: (4, 2, 3)
 	 * // Data appears as: [[0,1,2,3,4,5], [0,1,2,3,4,5], [0,1,2,3,4,5], [0,1,2,3,4,5]]
 	 * 
@@ -374,14 +505,14 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter
 	 * @see TraversalPolicy#prependDimension(int)
 	 * @see #range(TraversalPolicy)
 	 */
-	public PackedCollection<T> repeat(int count) {
+	public PackedCollection repeat(int count) {
 		int len = getShape().getTotalSize();
 		TraversalPolicy shape = getShape().prependDimension(count)
 				.withOrder(new RepeatTraversalOrdering(len));
 		return range(shape);
 	}
 
-	public PackedCollection<T> value(int pos) {
+	public PackedCollection value(int pos) {
 		return range(new TraversalPolicy(1), pos);
 	}
 
@@ -396,7 +527,7 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter
 	// TODO  Accelerated version
 	@Deprecated
 	public double lengthSq() {
-		double data[] = toArray(0, getMemLength());
+		double[] data = toArray(0, getMemLength());
 		return IntStream.range(0, getMemLength())
 				.mapToDouble(i -> data[i])
 				.map(v -> v * v)
@@ -416,12 +547,12 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter
 	}
 
 	@Override
-	public PackedCollection<T> traverse(int axis) {
+	public PackedCollection traverse(int axis) {
 		return reshape(getShape().traverse(axis));
 	}
 
 	@Override
-	public PackedCollection<T> reshape(TraversalPolicy shape) {
+	public PackedCollection reshape(TraversalPolicy shape) {
 		if (shape.getTotalSize() != getMemLength()) {
 			throw new IllegalArgumentException("Shape size (" + shape.getSize() +
 					") does not match collection size (" + getMemLength() + ")");
@@ -434,9 +565,9 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter
 		if (axis <= 0) {
 			return new PackedCollection(shape, axis, this, 0);
 		} else if (axis == 1) {
-			return new PackedCollection<>(shape, axis,
+			return new PackedCollection(shape, axis,
 					delegateSpec ->
-							(T) new PackedCollection<>(shape.subset(1), 0,
+							new PackedCollection(shape.subset(1), 0,
 									delegateSpec.getDelegate(), delegateSpec.getOffset()),
 					this, 0);
 		} else {
@@ -464,7 +595,7 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter
 		}).limit(getMemLength() / getAtomicMemLength());
 	}
 
-	public PackedCollection<?> delegate(int offset, int length) {
+	public PackedCollection delegate(int offset, int length) {
 		return new PackedCollection(new TraversalPolicy(length), 0, this, offset);
 	}
 
@@ -518,35 +649,35 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter
 		}
 	}
 
-	public PackedCollection<T> clone() {
-		PackedCollection<T> clone = new PackedCollection<>(getShape(), getShape().getTraversalAxis());
+	public PackedCollection clone() {
+		PackedCollection clone = new PackedCollection(getShape(), getShape().getTraversalAxis());
 		clone.setMem(0, toArray(0, getMemLength()), 0, getMemLength());
 		return clone;
 	}
 
-	public static PackedCollection<?> of(List<Double> values) {
+	public static PackedCollection of(List<Double> values) {
 		return of(values.stream().mapToDouble(d -> d).toArray());
 	}
 
-	public static PackedCollection<?> of(double... values) {
-		PackedCollection<?> collection = factory().apply(values.length);
+	public static PackedCollection of(double... values) {
+		PackedCollection collection = factory().apply(values.length);
 		collection.setMem(0, values, 0, values.length);
 		return collection;
 	}
 
-	public static IntFunction<PackedCollection<?>> factory() {
+	public static IntFunction<PackedCollection> factory() {
 		Heap heap = Heap.getDefault();
 		return heap == null ? PackedCollection::new : factory(heap::allocate);
 	}
 
-	public static IntFunction<PackedCollection<?>> factory(IntFunction<Bytes> allocator) {
+	public static IntFunction<PackedCollection> factory(IntFunction<Bytes> allocator) {
 		return len -> {
 			Bytes data = allocator.apply(len);
-			return new PackedCollection<>(new TraversalPolicy(len), 0, data.getDelegate(), data.getDelegateOffset());
+			return new PackedCollection(new TraversalPolicy(len), 0, data.getDelegate(), data.getDelegateOffset());
 		};
 	}
 
-	public static PackedCollection<?> range(MemoryData data, TraversalPolicy shape, int start) {
+	public static PackedCollection range(MemoryData data, TraversalPolicy shape, int start) {
 		if (start + shape.getTotalSize() > data.getMemLength()) {
 			throw new IllegalArgumentException("Range exceeds collection size");
 		}
@@ -554,7 +685,7 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter
 		return new PackedCollection(shape, shape.getTraversalAxis(), data, start);
 	}
 
-	public static Iterable<PackedCollection<?>> loadCollections(File src) {
+	public static Iterable<PackedCollection> loadCollections(File src) {
 		try {
 			return loadCollections(new FileInputStream(src));
 		} catch (FileNotFoundException e) {
@@ -562,7 +693,7 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter
 		}
 	}
 
-	public static Iterable<PackedCollection<?>> loadCollections(InputStream in) {
+	public static Iterable<PackedCollection> loadCollections(InputStream in) {
 		DataInputStream dis = new DataInputStream(in);
 
 		return () -> new Iterator<>() {
@@ -584,8 +715,8 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter
 			public PackedCollection next() {
 				try {
 					TraversalPolicy shape = TraversalPolicy.load(dis);
-					PackedCollection<?> collection = new PackedCollection<>(shape);
-					double input[] = new double[shape.getTotalSize()];
+					PackedCollection collection = new PackedCollection(shape);
+					double[] input = new double[shape.getTotalSize()];
 
 					for (int i = 0; i < shape.getTotalSize(); i++) {
 						input[i] = dis.readDouble();
@@ -631,20 +762,20 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter
 		return new DynamicCollectionProducer(shape, args -> new PackedCollection(shape));
 	}
 
-	public static <T extends MemoryData> IntFunction<MemoryBank<PackedCollection<?>>> bank(TraversalPolicy atomicShape) {
+	public static IntFunction<MemoryBank<PackedCollection>> bank(TraversalPolicy atomicShape) {
 		return len -> new PackedCollection(atomicShape.prependDimension(len));
 	}
 
-	public static <T extends MemoryData> BiFunction<Integer, Integer, MemoryBank<T>> table(TraversalPolicy atomicShape) {
-		return (width, count) -> new PackedCollection<>(atomicShape.prependDimension(width).prependDimension(count));
+	public static BiFunction<Integer, Integer, MemoryBank<PackedCollection>> table(TraversalPolicy atomicShape) {
+		return (width, count) -> new PackedCollection(atomicShape.prependDimension(width).prependDimension(count));
 	}
 
-	public static <T extends MemoryData> BiFunction<Integer, Integer, MemoryBank<T>> table(TraversalPolicy atomicShape, BiFunction<DelegateSpec, Integer, T> supply) {
-		return (width, count) -> new PackedCollection<>(atomicShape.prependDimension(width).prependDimension(count), 1, delegateSpec -> supply.apply(delegateSpec, width));
+	public static BiFunction<Integer, Integer, MemoryBank<PackedCollection>> table(TraversalPolicy atomicShape, BiFunction<DelegateSpec, Integer, PackedCollection> supply) {
+		return (width, count) -> new PackedCollection(atomicShape.prependDimension(width).prependDimension(count), 1, delegateSpec -> supply.apply(delegateSpec, width));
 	}
 
 	public static class DelegateSpec {
-		private MemoryData data;
+		private final MemoryData data;
 		private int offset;
 
 		public DelegateSpec(MemoryData data, int offset) {

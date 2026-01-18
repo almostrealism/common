@@ -28,6 +28,7 @@ import org.almostrealism.collect.CollectionProducerParallelProcess;
 import org.almostrealism.collect.PackedCollection;
 
 import java.util.List;
+import java.util.OptionalDouble;
 
 /**
  * A {@link SingleConstantComputation} represents a computation that produces a 
@@ -63,19 +64,17 @@ import java.util.List;
  *   <li>Zero detection - {@link #isZero()} returns true when value is 0.0</li>
  *   <li>Identity detection - {@link #isIdentity(int)} returns true for scalar 1.0</li>
  *   <li>Short-circuit evaluation - {@link #getShortCircuit()} provides direct computation</li>
- *   <li>Arithmetic optimization - Used in {@link org.almostrealism.collect.CollectionFeatures} 
+ *   <li>Arithmetic optimization - Used in {@link org.almostrealism.collect.CollectionFeatures}
  *       for optimizing operations with constant operands</li>
  * </ul>
- * 
- * @param <T> The type of PackedCollection this computation produces
- * 
+ *
  * @author Michael Murray
  * @see CollectionConstantComputation
  * @see PackedCollection
  * @see TraversalPolicy
  * @see org.almostrealism.collect.CollectionFeatures#constant(TraversalPolicy, double)
  */
-public class SingleConstantComputation<T extends PackedCollection<?>> extends CollectionConstantComputation<T> {
+public class SingleConstantComputation extends CollectionConstantComputation {
 	/**
 	 * The constant value that will fill every element of the produced collection.
 	 * This value is immutable once set during construction.
@@ -85,7 +84,7 @@ public class SingleConstantComputation<T extends PackedCollection<?>> extends Co
 	/**
 	 * Creates a new SingleConstantComputation with the specified shape and constant value.
 	 * The computation will be named using the format "constant(value)" where value is
-	 * formatted using {@link NumberFormats#formatNumber(double)}.
+	 * formatted using {@link NumberFormats#formatNumber(Number)}.
 	 * 
 	 * @param shape The traversal policy defining the dimensions and structure of the output collection
 	 * @param value The constant value to fill every element of the collection
@@ -122,6 +121,9 @@ public class SingleConstantComputation<T extends PackedCollection<?>> extends Co
 		return new ConstantCollectionExpression(getShape(), e(value));
 	}
 
+	@Override
+	public OptionalDouble getConstant() { return OptionalDouble.of(value); }
+
 	/**
 	 * Returns the constant value that this computation produces for every element.
 	 * 
@@ -137,11 +139,11 @@ public class SingleConstantComputation<T extends PackedCollection<?>> extends Co
 	 * @return An Evaluable that directly produces the constant-filled collection
 	 */
 	@Override
-	public Evaluable<T> getShortCircuit() {
+	public Evaluable<PackedCollection> getShortCircuit() {
 		return args -> {
 			PackedCollection v = new PackedCollection(getShape());
 			v.fill(value);
-			return getPostprocessor() == null ? (T) v : getPostprocessor().apply(v, 0);
+			return getPostprocessor() == null ? v : getPostprocessor().apply(v, 0);
 		};
 	}
 
@@ -176,7 +178,7 @@ public class SingleConstantComputation<T extends PackedCollection<?>> extends Co
 	 * @return This computation instance as it serves as its own process
 	 */
 	@Override
-	public CollectionProducerParallelProcess<T> generate(List<Process<?, ?>> children) {
+	public CollectionProducerParallelProcess generate(List<Process<?, ?>> children) {
 		return this;
 	}
 
@@ -192,7 +194,7 @@ public class SingleConstantComputation<T extends PackedCollection<?>> extends Co
 	 * @see Process#isolate()
 	 */
 	@Override
-	public Process<Process<?, ?>, Evaluable<? extends T>> isolate() {
+	public Process<Process<?, ?>, Evaluable<? extends PackedCollection>> isolate() {
 		return this;
 	}
 
@@ -207,8 +209,8 @@ public class SingleConstantComputation<T extends PackedCollection<?>> extends Co
 	 * @see TraversalPolicy#traverse(int)
 	 */
 	@Override
-	public CollectionProducer<T> traverse(int axis) {
-		return new SingleConstantComputation<>(getShape().traverse(axis), value);
+	public CollectionProducer traverse(int axis) {
+		return new SingleConstantComputation(getShape().traverse(axis), value);
 	}
 
 	/**
@@ -222,8 +224,8 @@ public class SingleConstantComputation<T extends PackedCollection<?>> extends Co
 	 * @throws IllegalArgumentException if the new shape is not compatible with the total size
 	 */
 	@Override
-	public CollectionProducerComputation<T> reshape(TraversalPolicy shape) {
-		return new SingleConstantComputation<>(shape, value);
+	public CollectionProducerComputation reshape(TraversalPolicy shape) {
+		return new SingleConstantComputation(shape, value);
 	}
 
 	/**

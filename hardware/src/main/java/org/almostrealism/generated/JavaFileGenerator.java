@@ -7,7 +7,6 @@ import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.util.stream.IntStream;
@@ -16,7 +15,7 @@ public class JavaFileGenerator {
 	public static final int start = 3999;
 	public static final int count = 1000;
 
-	public static void main(String args[]) {
+	public static void main(String[] args) {
 		StringBuffer template = new StringBuffer();
 
 		try (BufferedReader in = new BufferedReader(new InputStreamReader(new FileInputStream("src/main/resources/generated.javatemplate")))) {

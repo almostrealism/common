@@ -16,10 +16,10 @@
 
 package io.almostrealism.code;
 
+import io.almostrealism.compute.Process;
 import io.almostrealism.profile.OperationInfo;
 import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.relation.Operation;
-import io.almostrealism.compute.Process;
 
 import java.util.Collection;
 

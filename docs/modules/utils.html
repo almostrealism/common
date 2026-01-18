@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AR-Utils Module - Almost Realism Framework</title>
+    <link rel="stylesheet" href="../css/style.css">
+    <style>
+        .key-concepts { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin: 20px 0; }
+        .concept-card { background: #f8f9fa; border-left: 4px solid #546e7a; padding: 15px; border-radius: 4px; }
+        .concept-card h4 { margin-top: 0; color: #546e7a; }
+        .performance-table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+        .performance-table th, .performance-table td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
+        .performance-table th { background-color: #eceff1; color: #546e7a; font-weight: bold; }
+        .performance-table tr:hover { background-color: #f5f5f5; }
+        .comparison-table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+        .comparison-table th, .comparison-table td { padding: 10px; border: 1px solid #ddd; text-align: left; }
+        .comparison-table th { background-color: #eceff1; color: #546e7a; }
+        .class-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 15px; margin: 20px 0; }
+        .class-item { background: #fff; border: 1px solid #ddd; padding: 12px; border-radius: 4px; }
+        .class-item h4 { margin: 0 0 8px 0; color: #546e7a; font-size: 1.1em; }
+        .class-item p { margin: 0; font-size: 0.9em; color: #666; }
+        .code-example { background: #f5f5f5; border-left: 4px solid #546e7a; padding: 15px; margin: 15px 0; border-radius: 4px; }
+        .highlight { background-color: #fff9c4; padding: 2px 4px; }
+        .warning { background-color: #ffebee; border-left: 4px solid #c62828; padding: 12px; margin: 15px 0; }
+        .info { background-color: #e3f2fd; border-left: 4px solid #1565c0; padding: 12px; margin: 15px 0; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>AR-Utils Module</h1>
+            <p class="tagline">Testing Framework, Model Training Utilities &amp; Helper Classes</p>
+            <nav>
+                <a href="../index.html">Home</a>
+                <a href="#overview">Overview</a>
+                <a href="#testing">Testing Framework</a>
+                <a href="#model-testing">Model Testing</a>
+                <a href="#utilities">Utilities</a>
+                <a href="#examples">Examples</a>
+            </nav>
+        </header>
+
+        <main>
+            <section id="overview">
+                <h2>Overview</h2>
+                <p>The <strong>ar-utils</strong> module provides cross-cutting infrastructure for testing, model training, and utility operations across the Almost Realism framework. It serves as the foundation for unit testing, kernel validation, performance profiling, and hardware-accelerated operation verification.</p>
+
+                <div class="key-concepts">
+                    <div class="concept-card">
+                        <h4>Testing Framework</h4>
+                        <p>Comprehensive test infrastructure with assertions, kernel testing, and collection comparison utilities. Supports tolerance-based floating-point comparisons accounting for hardware precision.</p>
+                    </div>
+                    <div class="concept-card">
+                        <h4>Hardware Profiling</h4>
+                        <p>Performance measurement tools for kernel execution, including timing metrics, throughput analysis, and CPU/GPU execution profiling.</p>
+                    </div>
+                    <div class="concept-card">
+                        <h4>Model Training</h4>
+                        <p>ML-specific testing utilities for training validation, optimization metrics logging, and dataset generation.</p>
+                    </div>
+                    <div class="concept-card">
+                        <h4>Utility Classes</h4>
+                        <p>Helper classes for charting, cryptographic operations, external process execution, and key-value storage.</p>
+                    </div>
+                </div>
+
+                <div class="info">
+                    <strong>Environment Setup Required:</strong> Tests using this module require hardware acceleration environment variables:
+                    <pre>export AR_HARDWARE_LIBS=/tmp/ar_libs/
+export AR_HARDWARE_DRIVER=native</pre>
+                </div>
+            </section>
+
+            <section id="testing">
+                <h2>Testing Framework</h2>
+
+                <h3>Core Testing Interface</h3>
+                <div class="class-list">
+                    <div class="class-item">
+                        <h4>TestFeatures</h4>
+                        <p>Primary testing interface with assertions, kernel testing, collection comparison, and hardware metrics. Extends CodeFeatures, TensorTestFeatures, and TestSettings.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>TestSettings</h4>
+                        <p>Global test configuration via environment variables: AR_LONG_TESTS, AR_TRAIN_TESTS, AR_TEST_DEPTH, AR_TEST_PROFILE.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>TensorTestFeatures</h4>
+                        <p>Tensor creation utilities for generating test data with specific shapes and value distributions.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>TestUtils</h4>
+                        <p>Static utility methods for common test operations and data setup.</p>
+                    </div>
+                </div>
+
+                <h3>TestFeatures Deep Dive</h3>
+                <p>The TestFeatures interface provides comprehensive utilities for unit testing, kernel testing, and hardware performance validation.</p>
+
+                <h4>Assertion Methods</h4>
+                <ul>
+                    <li><strong>assertTrue(condition)</strong> - Assert condition is true</li>
+                    <li><strong>assertEquals(expected, actual)</strong> - Compare objects, PackedCollections, or Scalars</li>
+                    <li><strong>assertSimilar(a, b)</strong> - Compare doubles within 0.1% tolerance</li>
+                    <li><strong>assertSimilar(a, b, r)</strong> - Compare doubles within custom relative tolerance</li>
+                    <li><strong>assertNotNull(obj)</strong> - Verify object is not null</li>
+                </ul>
+
+                <h4>Collection Comparison</h4>
+                <p>PackedCollection comparisons account for hardware precision:</p>
+                <pre><code class="language-java">// Compare two collections element-by-element
+assertEquals(expected, actual);
+
+// Get average absolute difference
+double diff = compare(expected, actual);
+
+// Compare with relative tolerance (e.g., 0.01 = 1%)
+assertSimilar(expectedValue, actualValue, 0.01);</code></pre>
+
+                <h4>Kernel Testing</h4>
+                <p>The kernelTest method validates operations across multiple execution modes:</p>
+                <ul>
+                    <li><strong>Kernel mode:</strong> Direct evaluation using producer.get().evaluate()</li>
+                    <li><strong>Operation mode:</strong> Execution via OperationList with explicit output destination</li>
+                    <li><strong>Optimized mode:</strong> Execution via optimized ParallelProcess with copy verification</li>
+                </ul>
+
+                <pre><code class="language-java">public class MyTest implements TestFeatures {
+    @Test
+    public void testOperation() {
+        kernelTest(() -> createOperation(), result -> {
+            assertEquals(expectedValue, result.toDouble());
+        });
+    }
+}</code></pre>
+
+                <h3>Hardware Metrics</h3>
+                <p>Profile kernel execution and performance:</p>
+                <pre><code class="language-java">@Test
+public void profilePerformance() {
+    // Initialize profiling
+    initKernelMetrics();
+
+    // Run operation
+    Producer&lt;PackedCollection&gt; op = createOperation();
+    PackedCollection result = op.get().evaluate();
+
+    // Log timing, memory usage, cache statistics
+    logKernelMetrics();
+}</code></pre>
+
+                <table class="performance-table">
+                    <thead>
+                        <tr>
+                            <th>Metric</th>
+                            <th>Description</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Kernel Traversal Times</td>
+                            <td>Time spent in kernel traversal operations</td>
+                        </tr>
+                        <tr>
+                            <td>Scope Statistics</td>
+                            <td>Scope compilation and execution metrics</td>
+                        </tr>
+                        <tr>
+                            <td>Cache Configuration</td>
+                            <td>KernelSeriesCache size, min nodes, enable status</td>
+                        </tr>
+                        <tr>
+                            <td>Expression Cache</td>
+                            <td>kernelSeq cache enable status</td>
+                        </tr>
+                        <tr>
+                            <td>Isolation Threshold</td>
+                            <td>TraversableRepeatedProducerComputation isolation count</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </section>
+
+            <section id="model-testing">
+                <h2>Model Testing</h2>
+
+                <h3>ModelTestFeatures</h3>
+                <p>ML-specific testing utilities for training validation and optimization metrics.</p>
+
+                <div class="class-list">
+                    <div class="class-item">
+                        <h4>ModelTestFeatures</h4>
+                        <p>Extends TestFeatures with model training, dataset generation, and optimization logging utilities.</p>
+                    </div>
+                </div>
+
+                <h4>Training Tests</h4>
+                <pre><code class="language-java">public class ModelTest implements ModelTestFeatures {
+    @Test
+    public void trainModel() {
+        // Generate dataset
+        PackedCollection data = generateDataset(1000, 64);
+
+        // Create and train model
+        Model model = createModel();
+        trainModel(model, data, epochs, learningRate);
+
+        // Profile performance
+        logOptimizationMetrics(model);
+    }
+}</code></pre>
+
+                <h4>Test Configuration</h4>
+                <p>Control test behavior via environment variables:</p>
+                <table class="comparison-table">
+                    <tr>
+                        <th>Environment Variable</th>
+                        <th>Purpose</th>
+                        <th>Example</th>
+                    </tr>
+                    <tr>
+                        <td>AR_LONG_TESTS</td>
+                        <td>Enable long-running tests</td>
+                        <td>export AR_LONG_TESTS=true</td>
+                    </tr>
+                    <tr>
+                        <td>AR_TRAIN_TESTS</td>
+                        <td>Enable training tests</td>
+                        <td>export AR_TRAIN_TESTS=true</td>
+                    </tr>
+                    <tr>
+                        <td>AR_TEST_DEPTH</td>
+                        <td>Test thoroughness level</td>
+                        <td>export AR_TEST_DEPTH=2</td>
+                    </tr>
+                    <tr>
+                        <td>AR_TEST_PROFILE</td>
+                        <td>Test profile name</td>
+                        <td>export AR_TEST_PROFILE=pipeline</td>
+                    </tr>
+                </table>
+            </section>
+
+            <section id="utilities">
+                <h2>Utility Classes</h2>
+
+                <div class="class-list">
+                    <div class="class-item">
+                        <h4>Chart</h4>
+                        <p>ASCII visualization for metrics and data. Create simple charts for console output and test verification.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>KeyUtils</h4>
+                        <p>Cryptographic utilities: UUID generation, SHA-256 hashing, and secure random operations.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>ProcessFeatures</h4>
+                        <p>Execute external processes and capture output. Interface for system command execution.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>KeyValueStore</h4>
+                        <p>Simple key-value storage abstraction for configuration and state persistence.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>ParameterizedFactory</h4>
+                        <p>Factory pattern implementation for parameterized object creation.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>Help</h4>
+                        <p>Help text utilities and documentation support.</p>
+                    </div>
+                </div>
+
+                <h3>Chart Usage</h3>
+                <pre><code class="language-java">Chart chart = new Chart();
+chart.addValue(metric);
+chart.display();  // ASCII chart output</code></pre>
+
+                <h3>KeyUtils Usage</h3>
+                <pre><code class="language-java">// Generate unique identifier
+String uuid = KeyUtils.generateUUID();
+
+// Hash data
+String hash = KeyUtils.sha256(data);</code></pre>
+
+                <h3>ProcessFeatures Usage</h3>
+                <pre><code class="language-java">public class MyTool implements ProcessFeatures {
+    public void runCommand() {
+        String output = executeProcess("command", args);
+        // Process output...
+    }
+}</code></pre>
+            </section>
+
+            <section id="examples">
+                <h2>Usage Examples</h2>
+
+                <h3>Complete Test Class</h3>
+                <pre><code class="language-java">public class MyTest implements TestFeatures {
+
+    @Test
+    public void testKernelOperation() {
+        // Initialize hardware profiling
+        initKernelMetrics();
+
+        // Create operation
+        Producer&lt;PackedCollection&gt; op = createOperation();
+
+        // Run comprehensive kernel test (all modes)
+        kernelTest(() -> op, result -> {
+            // Validate output shape
+            assertEquals(expectedShape, result.getShape());
+
+            // Validate output values with tolerance
+            assertSimilar(expectedValue, result.toDouble(0), 0.001);
+
+            // Compare to reference implementation
+            PackedCollection reference = computeReference();
+            assertEquals(reference, result);
+        });
+
+        // Log performance metrics
+        logKernelMetrics();
+    }
+
+    @Test
+    public void testCollectionComparison() {
+        PackedCollection expected = new PackedCollection(100);
+        PackedCollection actual = new PackedCollection(100);
+
+        // Fill with test data...
+
+        // Compare with hardware precision tolerance
+        assertEquals(expected, actual);
+
+        // Get average difference
+        double diff = compare(expected, actual);
+        assertTrue("Difference too large: " + diff, diff &lt; 0.001);
+    }
+}</code></pre>
+
+                <h3>Model Training Test</h3>
+                <pre><code class="language-java">public class TrainingTest implements ModelTestFeatures {
+
+    @Test
+    public void testModelTraining() {
+        // Skip if training tests disabled
+        if (!TestSettings.trainTests) return;
+
+        // Initialize metrics
+        initKernelMetrics();
+
+        // Generate dataset
+        PackedCollection inputs = generateDataset(1000, 64);
+        PackedCollection targets = generateTargets(1000, 10);
+
+        // Create model
+        Model model = new Model(shape(64));
+        model.add(dense(64, 128));
+        model.add(relu());
+        model.add(dense(128, 10));
+
+        // Train
+        for (int epoch = 0; epoch &lt; 100; epoch++) {
+            double loss = trainEpoch(model, inputs, targets, 0.01);
+            if (epoch % 10 == 0) {
+                log("Epoch " + epoch + ": loss = " + loss);
+            }
+        }
+
+        // Validate final loss
+        double finalLoss = computeLoss(model, inputs, targets);
+        assertTrue("Training did not converge", finalLoss &lt; 0.1);
+
+        logKernelMetrics();
+    }
+}</code></pre>
+
+                <h3>Performance Profiling Test</h3>
+                <pre><code class="language-java">public class PerformanceTest implements TestFeatures, ConsoleFeatures {
+
+    @Test
+    public void profileOperation() throws Exception {
+        // Set up file logging
+        String logFile = "results/performance_test.out";
+        Console.root().addListener(OutputFeatures.fileOutput(logFile));
+
+        log("=== Performance Test ===");
+
+        // Configuration
+        int collectionSize = 50000;
+        int warmIterations = 1000;
+
+        // Create input data
+        PackedCollection input = new PackedCollection(collectionSize);
+        for (int i = 0; i &lt; collectionSize; i++) {
+            input.setMem(i, Math.random());
+        }
+
+        // Build operation
+        Producer&lt;PackedCollection&gt; op = createOperation(input);
+
+        // Cold start timing
+        long coldStart = System.nanoTime();
+        PackedCollection result = op.get().evaluate();
+        double coldMs = (System.nanoTime() - coldStart) / 1_000_000.0;
+        log("Cold start: " + String.format("%.2f", coldMs) + " ms");
+
+        // Warm timing
+        long warmStart = System.nanoTime();
+        for (int i = 0; i &lt; warmIterations; i++) {
+            op.get().evaluate();
+        }
+        double warmMs = (System.nanoTime() - warmStart) / 1_000_000.0;
+        double avgMs = warmMs / warmIterations;
+
+        log("Warm average: " + String.format("%.4f", avgMs) + " ms");
+        log("Throughput: " + String.format("%.2f", collectionSize / avgMs * 1000) + " elements/sec");
+
+        log("Test output saved to: " + logFile);
+    }
+}</code></pre>
+
+                <h3>CPU vs GPU Performance Comparison</h3>
+                <pre><code class="language-java">public class HardwareComparisonTest implements TestFeatures {
+
+    @Test
+    public void compareCpuGpu() {
+        int size = 100000;
+        PackedCollection input = new PackedCollection(size);
+
+        // Test with CPU requirement
+        Producer&lt;PackedCollection&gt; cpuOp = createOperation(input);
+        cpuOp.setComputeRequirements(List.of(ComputeRequirement.CPU));
+        double cpuTime = timeExecution(cpuOp);
+
+        // Test with GPU requirement
+        Producer&lt;PackedCollection&gt; gpuOp = createOperation(input);
+        gpuOp.setComputeRequirements(List.of(ComputeRequirement.GPU));
+        double gpuTime = timeExecution(gpuOp);
+
+        log("CPU time: " + cpuTime + " ms");
+        log("GPU time: " + gpuTime + " ms");
+        log("Speedup: " + (cpuTime / gpuTime) + "x");
+    }
+
+    private double timeExecution(Producer&lt;PackedCollection&gt; op) {
+        // Warm up
+        op.get().evaluate();
+
+        // Time 100 iterations
+        long start = System.nanoTime();
+        for (int i = 0; i &lt; 100; i++) {
+            op.get().evaluate();
+        }
+        return (System.nanoTime() - start) / 1_000_000.0 / 100;
+    }
+}</code></pre>
+            </section>
+
+            <section id="integration">
+                <h2>Module Integration</h2>
+
+                <h3>Filter Testing Example</h3>
+                <p>The utils module includes tests for signal processing operations from the time module:</p>
+
+                <pre><code class="language-java">// From MultiOrderFilterTest in utils module
+public class MultiOrderFilterTest implements TestFeatures {
+
+    @Test
+    public void compile() {
+        int order = 30;
+
+        PackedCollection series = new PackedCollection(10000);
+        PackedCollection coefficients = new PackedCollection(order + 1);
+
+        MultiOrderFilter filter = MultiOrderFilter.create(
+            traverseEach(cp(series)),
+            p(coefficients)
+        );
+        filter.get().evaluate();
+    }
+}</code></pre>
+
+                <h3>Performance Testing Pattern</h3>
+                <p>The recommended pattern for performance tests:</p>
+
+                <pre><code class="language-java">public class PerformanceTest implements TestFeatures, ConsoleFeatures {
+
+    @Test
+    public void operationPerformance() throws Exception {
+        // 1. Set up file logging for results
+        String logFile = "results/operation_performance.out";
+        Console.root().addListener(OutputFeatures.fileOutput(logFile));
+
+        // 2. Log configuration
+        log("=== Operation Performance Test ===");
+        log("Collection Size: " + collectionSize);
+        log("Iterations: " + iterations);
+
+        // 3. Build operation with compute requirements
+        Operation op = createOperation();
+        op.setComputeRequirements(List.of(ComputeRequirement.GPU));
+
+        // 4. Measure cold start (includes compilation)
+        long coldStart = System.nanoTime();
+        op.get().evaluate();
+        double coldMs = (System.nanoTime() - coldStart) / 1_000_000.0;
+        log("Cold start: " + coldMs + " ms");
+
+        // 5. Measure warm execution
+        long warmStart = System.nanoTime();
+        for (int i = 0; i &lt; iterations; i++) {
+            op.get().evaluate();
+        }
+        double warmMs = (System.nanoTime() - warmStart) / 1_000_000.0;
+        log("Warm average: " + (warmMs / iterations) + " ms");
+
+        // 6. Calculate throughput
+        double throughput = (collectionSize * iterations) / warmMs * 1000;
+        log("Throughput: " + throughput + " elements/sec");
+    }
+}</code></pre>
+            </section>
+
+            <section id="troubleshooting">
+                <h2>Troubleshooting</h2>
+
+                <h3>Common Issues</h3>
+
+                <div class="warning">
+                    <strong>Issue:</strong> <code>NoClassDefFoundError: Could not initialize class org.almostrealism.collect.PackedCollection</code><br>
+                    <strong>Solution:</strong> Set required environment variables before running tests:<br>
+                    <code>export AR_HARDWARE_LIBS=/tmp/ar_libs/ && export AR_HARDWARE_DRIVER=native</code>
+                </div>
+
+                <div class="warning">
+                    <strong>Issue:</strong> assertEquals fails for floating-point values<br>
+                    <strong>Solution:</strong> Use assertSimilar() with appropriate tolerance for floating-point comparisons that account for hardware precision differences.
+                </div>
+
+                <div class="warning">
+                    <strong>Issue:</strong> Kernel test passes in kernel mode but fails in optimized mode<br>
+                    <strong>Solution:</strong> Check for uninitialized output collection or memory aliasing issues. Ensure output collection is properly sized and cleared before each test mode.
+                </div>
+
+                <div class="warning">
+                    <strong>Issue:</strong> Performance metrics not showing<br>
+                    <strong>Solution:</strong> Call initKernelMetrics() at the start and logKernelMetrics() at the end of your test method.
+                </div>
+
+                <div class="warning">
+                    <strong>Issue:</strong> Test output not being saved to file<br>
+                    <strong>Solution:</strong> Add file listener before any logging: <code>Console.root().addListener(OutputFeatures.fileOutput(logFile))</code>
+                </div>
+            </section>
+
+            <section id="resources">
+                <h2>Additional Resources</h2>
+                <ul>
+                    <li><a href="../../utils/README.md">Utils Module README</a> - Comprehensive module documentation</li>
+                    <li><a href="../apidocs/org/almostrealism/util/package-summary.html">JavaDoc API</a> - Complete API reference</li>
+                    <li><a href="time.html">Time Module</a> - Signal processing operations tested with utils</li>
+                    <li><a href="ml.html">ML Module</a> - Machine learning model testing</li>
+                </ul>
+            </section>
+        </main>
+
+        <footer>
+            <p><a href="../index.html">&larr; Back to Framework Documentation</a></p>
+            <p>&copy; 2024 Michael Murray. Licensed under the Apache License, Version 2.0.</p>
+        </footer>
+    </div>
+
+    <script src="../js/docs.js"></script>
+</body>
+</html>

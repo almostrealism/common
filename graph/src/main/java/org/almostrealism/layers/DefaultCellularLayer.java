@@ -16,13 +16,13 @@
 
 package org.almostrealism.layers;
 
+import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.lifecycle.Destroyable;
-import io.almostrealism.uml.Nameable;
 import io.almostrealism.relation.Producer;
+import io.almostrealism.uml.Nameable;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.collect.PackedCollection;
-import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.graph.Cell;
 import org.almostrealism.graph.Receptor;
 import org.almostrealism.hardware.HardwareFeatures;
@@ -36,56 +36,56 @@ public class DefaultCellularLayer implements CellularLayer, CodeFeatures, Learni
 	public static boolean enableMemoryDataCopy = true;
 
 	private TraversalPolicy inputShape;
-	private TraversalPolicy outputShape;
-	private Supplier<Runnable> setup;
-	private Cell<PackedCollection<?>> forward;
-	private Cell<PackedCollection<?>> backward;
-	private List<PackedCollection<?>> weights;
+	private final TraversalPolicy outputShape;
+	private final Supplier<Runnable> setup;
+	private Cell<PackedCollection> forward;
+	private Cell<PackedCollection> backward;
+	private List<PackedCollection> weights;
 
-	private Cell<PackedCollection<?>> entry;
-	private Cell<PackedCollection<?>> exit;
-	private Cell<PackedCollection<?>> fw;
-	private Receptor<PackedCollection<?>> monitor;
+	private Cell<PackedCollection> entry;
+	private Cell<PackedCollection> exit;
+	private Cell<PackedCollection> fw;
+	private Receptor<PackedCollection> monitor;
 
 	private String name;
 	private List<ComputeRequirement> requirements;
 
-	private PackedCollection<?> input;
-	private PackedCollection<?> output;
+	private PackedCollection input;
+	private PackedCollection output;
 
 	public DefaultCellularLayer(String name,
-								Cell<PackedCollection<?>> forward,
-								Cell<PackedCollection<?>> backward) {
+								Cell<PackedCollection> forward,
+								Cell<PackedCollection> backward) {
 		this(name, forward, backward, new OperationList());
 	}
 
 	public DefaultCellularLayer(String name,
-								Cell<PackedCollection<?>> forward,
-								Cell<PackedCollection<?>> backward,
+								Cell<PackedCollection> forward,
+								Cell<PackedCollection> backward,
 								Supplier<Runnable> setup) {
 		this(name, forward, backward, Collections.emptyList(), setup);
 	}
 
 	public DefaultCellularLayer(String name,
-								Cell<PackedCollection<?>> forward,
-								Cell<PackedCollection<?>> backward,
-								List<PackedCollection<?>> weights,
+								Cell<PackedCollection> forward,
+								Cell<PackedCollection> backward,
+								List<PackedCollection> weights,
 								Supplier<Runnable> setup) {
 		this(name, Component.shape(forward).orElseThrow(IllegalArgumentException::new), forward, backward, weights, setup);
 	}
 
 	public DefaultCellularLayer(String name,
 								TraversalPolicy outputShape,
-								Cell<PackedCollection<?>> forward,
-								Cell<PackedCollection<?>> backward) {
+								Cell<PackedCollection> forward,
+								Cell<PackedCollection> backward) {
 		this(name, outputShape, forward, backward, Collections.emptyList(), new OperationList());
 	}
 
 	public DefaultCellularLayer(String name,
 								TraversalPolicy outputShape,
-								Cell<PackedCollection<?>> forward,
-								Cell<PackedCollection<?>> backward,
-								List<PackedCollection<?>> weights,
+								Cell<PackedCollection> forward,
+								Cell<PackedCollection> backward,
+								List<PackedCollection> weights,
 								Supplier<Runnable> setup) {
 		setName(name);
 		this.outputShape = outputShape;
@@ -113,8 +113,8 @@ public class DefaultCellularLayer implements CellularLayer, CodeFeatures, Learni
 			return;
 		}
 
-		this.input = inputTracking ? new PackedCollection<>(inputShape) : null;
-		this.output = outputTracking ? new PackedCollection<>(outputShape) : null;
+		this.input = inputTracking ? new PackedCollection(inputShape) : null;
+		this.output = outputTracking ? new PackedCollection(outputShape) : null;
 
 		this.entry = Cell.of((in, next) -> {
 			if (this.input == null) {
@@ -139,9 +139,9 @@ public class DefaultCellularLayer implements CellularLayer, CodeFeatures, Learni
 		this.forward.setReceptor(exit);
 	}
 
-	private Supplier<Runnable> output(Producer<PackedCollection<?>> in, Producer<PackedCollection<?>> out) {
+	private Supplier<Runnable> output(Producer<PackedCollection> in, Producer<PackedCollection> out) {
 		Supplier<Runnable> o = into(getName() + " layer " +
-				getInputShape() + "->" + getOutputShape(), in, out, false,
+				getInputShape() + "->" + getOutputShape(), in, out, enableMemoryDataCopy,
 				getComputeRequirements());
 		if (getMonitor() == null) {
 			return o;
@@ -153,22 +153,22 @@ public class DefaultCellularLayer implements CellularLayer, CodeFeatures, Learni
 		return op;
 	}
 
-	public PackedCollection<?> getInput() { return input; }
-	public PackedCollection<?> getOutput() { return output; }
+	public PackedCollection getInput() { return input; }
+	public PackedCollection getOutput() { return output; }
 
 	@Override
 	public Supplier<Runnable> setup() { return setup; }
 
-	public Receptor<PackedCollection<?>> getMonitor() {
+	public Receptor<PackedCollection> getMonitor() {
 		return monitor;
 	}
 
-	public void setMonitor(Receptor<PackedCollection<?>> monitor) {
+	public void setMonitor(Receptor<PackedCollection> monitor) {
 		this.monitor = monitor;
 	}
 
 	@Override
-	public Cell<PackedCollection<?>> getForward() {
+	public Cell<PackedCollection> getForward() {
 		if (this.output == null) {
 			return this.forward;
 		} else if (fw == null) {
@@ -183,12 +183,12 @@ public class DefaultCellularLayer implements CellularLayer, CodeFeatures, Learni
 		return fw;
 	}
 
-	public void setBackward(Cell<PackedCollection<?>> backward) {
+	public void setBackward(Cell<PackedCollection> backward) {
 		this.backward = backward;
 	}
 
 	@Override
-	public Cell<PackedCollection<?>> getBackward() {
+	public Cell<PackedCollection> getBackward() {
 		return backward;
 	}
 
@@ -199,10 +199,10 @@ public class DefaultCellularLayer implements CellularLayer, CodeFeatures, Learni
 	public TraversalPolicy getOutputShape() { return outputShape; }
 
 	@Override
-	public List<PackedCollection<?>> getWeights() { return weights; }
+	public List<PackedCollection> getWeights() { return weights; }
 
 	@Override
-	public void setParameterUpdate(ParameterUpdate<PackedCollection<?>> update) {
+	public void setParameterUpdate(ParameterUpdate<PackedCollection> update) {
 		if (forward instanceof Learning) ((Learning) forward).setParameterUpdate(update);
 		if (backward instanceof Learning) ((Learning) backward).setParameterUpdate(update);
 	}

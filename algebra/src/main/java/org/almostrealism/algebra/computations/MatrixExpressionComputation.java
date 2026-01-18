@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -21,10 +21,32 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.TraversableExpressionComputation;
 
-public abstract class MatrixExpressionComputation<T extends PackedCollection<?>> extends TraversableExpressionComputation<T> {
+/**
+ * Base class for matrix-related computations using traversable expressions.
+ *
+ * <p>
+ * {@link MatrixExpressionComputation} provides a common foundation for implementing
+ * matrix operations like identity matrices, diagonal matrices, and scalar matrices.
+ * Subclasses implement specific matrix operations by overriding
+ * {@link #getExpression(io.almostrealism.collect.TraversableExpression...)}.
+ * </p>
+ *
+ * @author  Michael Murray
+ * @see IdentityMatrixComputation
+ * @see DiagonalMatrixComputation
+ * @see ScalarMatrixComputation
+ */
+public abstract class MatrixExpressionComputation extends TraversableExpressionComputation {
+	/**
+	 * Creates a new matrix expression computation.
+	 *
+	 * @param name  descriptive name for this computation
+	 * @param shape  the shape of the output matrix
+	 * @param args  input producers for the matrix computation
+	 */
 	@SafeVarargs
 	public MatrixExpressionComputation(String name, TraversalPolicy shape,
-									   Producer<? extends PackedCollection<?>>... args) {
+									   Producer<PackedCollection>... args) {
 		super(name, shape, args);
 	}
 }

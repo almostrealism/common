@@ -17,9 +17,33 @@
 package org.almostrealism.io;
 
 /**
- * The {@link OutputHandler} interface is implemented by classes that wish to be notified
- * when job output is sent to be stored.
+ * Interface for handling and storing job execution output.
+ *
+ * <p>OutputHandler is implemented by classes that need to receive and process
+ * the results of job executions. This enables pluggable output handling
+ * strategies such as file storage, database persistence, or network transmission.</p>
+ *
+ * <h2>Usage</h2>
+ * <pre>{@code
+ * public class FileOutputHandler implements OutputHandler {
+ *     @Override
+ *     public void storeOutput(long time, int uid, JobOutput output) {
+ *         // Store output to a file
+ *         String filename = String.format("job_%d_%d.out", uid, time);
+ *         Files.write(Path.of(filename), output.getData());
+ *     }
+ * }
+ * }</pre>
+ *
+ * @see JobOutput
  */
 public interface OutputHandler {
+	/**
+	 * Stores the output from a job execution.
+	 *
+	 * @param time the timestamp when the output was produced (typically epoch millis)
+	 * @param uid a unique identifier for the job
+	 * @param output the job output to store
+	 */
 	void storeOutput(long time, int uid, JobOutput output);
 }

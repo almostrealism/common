@@ -16,13 +16,12 @@
 
 package org.almostrealism.collect.computations;
 
-import io.almostrealism.expression.Expression;
-import io.almostrealism.kernel.KernelStructureContext;
-import io.almostrealism.compute.Process;
-import io.almostrealism.relation.Producer;
-import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.compute.Process;
+import io.almostrealism.expression.Expression;
+import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.relation.Producer;
 
 import java.util.List;
 
@@ -33,26 +32,26 @@ import java.util.List;
  * all element values.
  * 
  * <p><strong>Dimension Permutation Concept:</strong></p>
- * <p>Given a collection with shape (d₀, d₁, d₂, ..., dₙ) and a permutation order [p₀, p₁, p₂, ..., pₙ],
- * the result will have shape (d_{p₀}, d_{p₁}, d_{p₂}, ..., d_{pₙ}). The element that was at position
- * [i₀, i₁, i₂, ..., iₙ] in the original collection will be accessible at position 
- * [i_{p₀}, i_{p₁}, i_{p₂}, ..., i_{pₙ}] in the permuted collection.</p>
+ * <p>Given a collection with shape (d0, d1, d2, ..., dn) and a permutation order [p0, p1, p2, ..., pn],
+ * the result will have shape (d_p0, d_p1, d_p2, ..., d_pn). The element that was at position
+ * [i0, i1, i2, ..., in] in the original collection will be accessible at position
+ * [i_p0, i_p1, i_p2, ..., i_pn] in the permuted collection.</p>
  * 
  * <p><strong>Usage Examples:</strong></p>
  * <pre>{@code
  * // Example 1: Simple 2D transpose (swap dimensions)
- * PackedCollection<?> input = new PackedCollection<>(shape(2, 4));  // Shape: (2, 4)
- * PackedCollection<?> result = cp(input).permute(1, 0).evaluate(); // Shape: (4, 2)
+ * PackedCollection input = new PackedCollection(shape(2, 4));  // Shape: (2, 4)
+ * PackedCollection result = cp(input).permute(1, 0).evaluate(); // Shape: (4, 2)
  * // Element at input[i][j] is now at result[j][i]
  * 
  * // Example 2: 4D dimension reordering  
- * PackedCollection<?> input = new PackedCollection<>(shape(2, 4, 3, 8));     // Shape: (2, 4, 3, 8)
- * PackedCollection<?> result = cp(input).permute(0, 2, 1, 3).evaluate();    // Shape: (2, 3, 4, 8)
+ * PackedCollection input = new PackedCollection(shape(2, 4, 3, 8));     // Shape: (2, 4, 3, 8)
+ * PackedCollection result = cp(input).permute(0, 2, 1, 3).evaluate();    // Shape: (2, 3, 4, 8)
  * // Element at input[i][j][k][l] is now at result[i][k][j][l]
  * 
  * // Example 3: More complex reordering
- * PackedCollection<?> input = new PackedCollection<>(shape(5, 6, 7));        // Shape: (5, 6, 7)
- * PackedCollection<?> result = cp(input).permute(2, 0, 1).evaluate();       // Shape: (7, 5, 6)
+ * PackedCollection input = new PackedCollection(shape(5, 6, 7));        // Shape: (5, 6, 7)
+ * PackedCollection result = cp(input).permute(2, 0, 1).evaluate();       // Shape: (7, 5, 6)
  * // Element at input[i][j][k] is now at result[k][i][j]
  * }</pre>
  * 
@@ -72,23 +71,21 @@ import java.util.List;
  *   <li>The transformation is applied through index mapping during evaluation</li>
  *   <li>Memory access patterns may change significantly depending on the permutation order</li>
  * </ul>
- * 
- * @param <T> The type of collection being permuted, must extend {@link PackedCollection}
- * 
+ *
  * @see IndexProjectionProducerComputation
  * @see TraversalPolicy#permute(int...)
  * @see org.almostrealism.collect.CollectionFeatures#permute(io.almostrealism.relation.Producer, int...)
- * 
+ *
  * @author Michael Murray
  */
-public class CollectionPermute<T extends PackedCollection<?>>
-		extends IndexProjectionProducerComputation<T> {
+public class CollectionPermute
+		extends IndexProjectionProducerComputation {
 	/** 
 	 * The dimension permutation order array. Each element specifies which dimension 
 	 * from the input should appear at that position in the output. For example,
 	 * order = [1, 0] means dimension 1 becomes dimension 0, and dimension 0 becomes dimension 1.
 	 */
-	private int order[];
+	private final int[] order;
 
 	/**
 	 * Creates a new CollectionPermute computation that reorders the dimensions of a collection.
@@ -202,7 +199,7 @@ public class CollectionPermute<T extends PackedCollection<?>>
 		TraversalPolicy outputShape = inputShape.permute(order);
 
 		// Convert the output linear index to multi-dimensional coordinates
-		Expression actualPosition[] = getShape().position(index);
+		Expression[] actualPosition = getShape().position(index);
 		
 		// Map these coordinates back to input space using the permuted traversal policy
 		return outputShape.index(actualPosition);
@@ -226,12 +223,12 @@ public class CollectionPermute<T extends PackedCollection<?>>
 	 * @see IndexProjectionProducerComputation#generate(List)
 	 */
 	@Override
-	public CollectionPermute<T> generate(List<Process<?, ?>> children) {
+	public CollectionPermute generate(List<Process<?, ?>> children) {
 		if (getChildren().size() != 2) {
 			throw new UnsupportedOperationException();
 		}
 
-		return new CollectionPermute<>((Producer<?>) children.get(1), order);
+		return new CollectionPermute((Producer<?>) children.get(1), order);
 	}
 
 	/**

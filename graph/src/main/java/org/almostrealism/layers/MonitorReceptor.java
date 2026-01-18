@@ -25,29 +25,29 @@ import org.almostrealism.io.ConsoleFeatures;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
-public class MonitorReceptor implements Receptor<PackedCollection<?>>, ConsoleFeatures {
+public class MonitorReceptor implements Receptor<PackedCollection>, ConsoleFeatures {
 	public static boolean enableLargeWarning = false;
 
-	private String name;
-	private TraversalPolicy inputShape;
-	private TraversalPolicy outputShape;
-	private Consumer<PackedCollection<?>> op;
-	private PackedCollection<?> data[];
+	private final String name;
+	private final TraversalPolicy inputShape;
+	private final TraversalPolicy outputShape;
+	private final Consumer<PackedCollection> op;
+	private final PackedCollection[] data;
 
-	public MonitorReceptor(Consumer<PackedCollection<?>> op) {
+	public MonitorReceptor(Consumer<PackedCollection> op) {
 		this("monitor", null, null, op);
 	}
 
-	public MonitorReceptor(String name, Consumer<PackedCollection<?>> op) {
+	public MonitorReceptor(String name, Consumer<PackedCollection> op) {
 		this(name, null, null, op);
 	}
 
-	public MonitorReceptor(String name, TraversalPolicy inputShape, TraversalPolicy outputShape, PackedCollection<?>... data) {
+	public MonitorReceptor(String name, TraversalPolicy inputShape, TraversalPolicy outputShape, PackedCollection... data) {
 		this(name, inputShape, outputShape, null, data);
 	}
 
 	public MonitorReceptor(String name, TraversalPolicy inputShape, TraversalPolicy outputShape,
-							Consumer<PackedCollection<?>> op, PackedCollection<?>... data) {
+							Consumer<PackedCollection> op, PackedCollection... data) {
 		this.name = name;
 		this.inputShape = inputShape;
 		this.outputShape = outputShape;
@@ -56,9 +56,9 @@ public class MonitorReceptor implements Receptor<PackedCollection<?>>, ConsoleFe
 	}
 
 	@Override
-	public Supplier<Runnable> push(Producer<PackedCollection<?>> in) {
+	public Supplier<Runnable> push(Producer<PackedCollection> in) {
 		return () -> () -> {
-			PackedCollection<?> out = in.get().evaluate();
+			PackedCollection out = in.get().evaluate();
 
 			if (op != null) {
 				op.accept(out);

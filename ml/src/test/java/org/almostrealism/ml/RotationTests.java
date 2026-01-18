@@ -17,8 +17,8 @@
 package org.almostrealism.ml;
 
 import io.almostrealism.collect.TraversalPolicy;
-import io.almostrealism.relation.Evaluable;
 import io.almostrealism.compute.ParallelProcess;
+import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
@@ -29,8 +29,6 @@ import org.almostrealism.util.TestFeatures;
 import org.almostrealism.util.TestUtils;
 import org.junit.Test;
 
-import java.util.stream.IntStream;
-
 public class RotationTests implements RotationFeatures, TestFeatures {
 
 	@Test
@@ -38,13 +36,13 @@ public class RotationTests implements RotationFeatures, TestFeatures {
 		int batchSize = 1, seqLen = 4, heads = 2, dimHead = 8;
 		TraversalPolicy inputShape = shape(batchSize, seqLen, heads, dimHead);
 
-		PackedCollection<?> input = new PackedCollection<>(inputShape).randnFill();
+		PackedCollection input = new PackedCollection(inputShape).randnFill();
 
 		// Test 1: Direct permutation evaluation
-		CollectionProducer<PackedCollection<?>> directPermute = c(p(input))
+		CollectionProducer directPermute = c(p(input))
 				.permute(0, 2, 1, 3)
 				.permute(0, 2, 1, 3); // Should be identity
-		PackedCollection<?> directResult = directPermute.evaluate();
+		PackedCollection directResult = directPermute.evaluate();
 
 		// Test 2: Sequential model permutation compilation
 		Model model = new Model(inputShape);
@@ -53,7 +51,7 @@ public class RotationTests implements RotationFeatures, TestFeatures {
 		main.permute(0, 2, 1, 3); // Should be identity
 
 		CompiledModel compiled = model.compile(false);
-		PackedCollection<?> compiledResult = compiled.forward(input);
+		PackedCollection compiledResult = compiled.forward(input);
 
 		log("Input total: " + input.doubleStream().sum());
 		log("Direct result total: " + directResult.doubleStream().sum());
@@ -82,22 +80,22 @@ public class RotationTests implements RotationFeatures, TestFeatures {
 		int seqLen = 8;
 		int rotaryDim = 16;
 
-		PackedCollection<?> input = new PackedCollection<>(shape(batchSize, heads, seqLen, rotaryDim))
+		PackedCollection input = new PackedCollection(shape(batchSize, heads, seqLen, rotaryDim))
 				.fill(pos -> Math.random());
-		PackedCollection<?> freqs = new PackedCollection<>(shape(seqLen, rotaryDim))
+		PackedCollection freqs = new PackedCollection(shape(seqLen, rotaryDim))
 				.fill(pos -> Math.random());
 
 		// Expand freqs from (seqLen, rotaryDim) to (batchSize, heads, seqLen, rotaryDim)
-		CollectionProducer<PackedCollection<?>> expandedFreqs = cp(freqs)
+		CollectionProducer expandedFreqs = cp(freqs)
 				.repeat(0, batchSize)    // (batchSize, seqLen, rotaryDim)
 				.repeat(1, heads);       // (batchSize, heads, seqLen, rotaryDim)
 
-		CollectionProducer<PackedCollection<?>> cosFreqs = cos(expandedFreqs);
-		CollectionProducer<PackedCollection<?>> product = cp(input).multiply(cosFreqs);
+		CollectionProducer cosFreqs = cos(expandedFreqs);
+		CollectionProducer product = cp(input).multiply(cosFreqs);
 
-		PackedCollection<?> cosValues = product.evaluate();
+		PackedCollection cosValues = product.evaluate();
 
-		PackedCollection<?> expected = new PackedCollection<>(shape(batchSize, heads, seqLen, rotaryDim));
+		PackedCollection expected = new PackedCollection(shape(batchSize, heads, seqLen, rotaryDim));
 
 		expected.fill(pos -> {
 			int b = pos[0];
@@ -120,25 +118,25 @@ public class RotationTests implements RotationFeatures, TestFeatures {
 		int seqLen = 8;
 		int rotaryDim = 16;
 
-		PackedCollection<?> leftIn = new PackedCollection<>(shape(batchSize, heads, seqLen, rotaryDim))
+		PackedCollection leftIn = new PackedCollection(shape(batchSize, heads, seqLen, rotaryDim))
 				.fill(pos -> Math.random());
-		PackedCollection<?> rightIn = new PackedCollection<>(shape(batchSize, heads, seqLen, rotaryDim))
+		PackedCollection rightIn = new PackedCollection(shape(batchSize, heads, seqLen, rotaryDim))
 				.fill(pos -> Math.random());
-		PackedCollection<?> freqs = new PackedCollection<>(shape(seqLen, rotaryDim))
+		PackedCollection freqs = new PackedCollection(shape(seqLen, rotaryDim))
 				.fill(pos -> Math.random());
 
-		CollectionProducer<PackedCollection<?>> expandedFreqs = cp(freqs)
+		CollectionProducer expandedFreqs = cp(freqs)
 				.repeat(0, batchSize)    // (batchSize, seqLen, rotaryDim)
 				.repeat(1, heads);       // (batchSize, heads, seqLen, rotaryDim)
 
-		CollectionProducer<PackedCollection<?>> cosFreqs = cos(expandedFreqs);
-		CollectionProducer<PackedCollection<?>> sinFreqs = sin(expandedFreqs);
+		CollectionProducer cosFreqs = cos(expandedFreqs);
+		CollectionProducer sinFreqs = sin(expandedFreqs);
 
 		// left * cos(freqs) + right * sin(freqs)
-		CollectionProducer<PackedCollection<?>> sum = cp(leftIn).multiply(cosFreqs).add(cp(rightIn).multiply(sinFreqs));
-		PackedCollection<?> result = sum.evaluate();
+		CollectionProducer sum = cp(leftIn).multiply(cosFreqs).add(cp(rightIn).multiply(sinFreqs));
+		PackedCollection result = sum.evaluate();
 
-		PackedCollection<?> expected = new PackedCollection<>(shape(batchSize, heads, seqLen, rotaryDim))
+		PackedCollection expected = new PackedCollection(shape(batchSize, heads, seqLen, rotaryDim))
 				.fill(pos -> {
 					int b = pos[0];
 					int h = pos[1];
@@ -164,9 +162,9 @@ public class RotationTests implements RotationFeatures, TestFeatures {
 		int seqLen = 8;
 		int rotaryDim = 16;
 
-		PackedCollection<?> input = new PackedCollection<>(shape(batchSize, heads, seqLen, rotaryDim)).randFill();
+		PackedCollection input = new PackedCollection(shape(batchSize, heads, seqLen, rotaryDim)).randFill();
 
-		PackedCollection<?> out = rotateHalf(cp(input), batchSize, heads, seqLen, rotaryDim).evaluate();
+		PackedCollection out = rotateHalf(cp(input), batchSize, heads, seqLen, rotaryDim).evaluate();
 
 		int halfDim = rotaryDim / 2;
 
@@ -196,16 +194,16 @@ public class RotationTests implements RotationFeatures, TestFeatures {
 		int seqLen = 8;
 		int rotaryDim = 16;
 
-		PackedCollection<?> input = new PackedCollection<>(
+		PackedCollection input = new PackedCollection(
 				shape(batchSize, heads, seqLen, rotaryDim)).randFill();
 
-		CollectionProducer<PackedCollection<?>> sum =
+		CollectionProducer sum =
 				cp(input).add(rotateHalf(cp(input), batchSize, heads, seqLen, rotaryDim));
-		PackedCollection<?> result = sum.evaluate();
+		PackedCollection result = sum.evaluate();
 
 		int halfDim = rotaryDim / 2;
 
-		PackedCollection<?> expected = new PackedCollection<>(shape(batchSize, heads, seqLen, rotaryDim))
+		PackedCollection expected = new PackedCollection(shape(batchSize, heads, seqLen, rotaryDim))
 				.fill(pos -> {
 					int b = pos[0];
 					int h = pos[1];
@@ -234,30 +232,30 @@ public class RotationTests implements RotationFeatures, TestFeatures {
 		int seqLen = 8;
 		int rotaryDim = 16;
 
-		PackedCollection<?> freqs = new PackedCollection<>(shape(seqLen, rotaryDim))
+		PackedCollection freqs = new PackedCollection(shape(seqLen, rotaryDim))
 				.fill(pos -> Math.random());
-		PackedCollection<?> input = new PackedCollection<>(
+		PackedCollection input = new PackedCollection(
 				shape(batchSize, heads, seqLen, rotaryDim)).randFill();
 
-		CollectionProducer<PackedCollection<?>> in = cp(input);
+		CollectionProducer in = cp(input);
 
 		// Expand freqs from (seqLen, rotaryDim) to (batchSize, heads, seqLen, rotaryDim)
-		CollectionProducer<PackedCollection<?>> expandedFreqs = cp(freqs)
+		CollectionProducer expandedFreqs = cp(freqs)
 				.repeat(0, batchSize)    // (batchSize, seqLen, rotaryDim)
 				.repeat(1, heads);       // (batchSize, heads, seqLen, rotaryDim)
 
-		CollectionProducer<PackedCollection<?>> cosFreqs = cos(expandedFreqs);
-		CollectionProducer<PackedCollection<?>> sinFreqs = sin(expandedFreqs);
+		CollectionProducer cosFreqs = cos(expandedFreqs);
+		CollectionProducer sinFreqs = sin(expandedFreqs);
 
-		CollectionProducer<PackedCollection<?>> rotateHalfInput =
+		CollectionProducer rotateHalfInput =
 				rotateHalf(in, batchSize, heads, seqLen, rotaryDim);
-		CollectionProducer<PackedCollection<?>> sum =
+		CollectionProducer sum =
 				in.multiply(cosFreqs).add(rotateHalfInput.multiply(sinFreqs));
-		PackedCollection<?> result = sum.evaluate();
+		PackedCollection result = sum.evaluate();
 
 		int halfDim = rotaryDim / 2;
 
-		PackedCollection<?> expected = new PackedCollection<>(shape(batchSize, heads, seqLen, rotaryDim))
+		PackedCollection expected = new PackedCollection(shape(batchSize, heads, seqLen, rotaryDim))
 				.fill(pos -> {
 					int b = pos[0];
 					int h = pos[1];
@@ -299,19 +297,19 @@ public class RotationTests implements RotationFeatures, TestFeatures {
 		int rotaryDim = 16;
 
 		// Create random input and frequency tensors
-		PackedCollection<?> input = new PackedCollection<>(shape(batchSize, heads, seqLen, rotaryDim))
+		PackedCollection input = new PackedCollection(shape(batchSize, heads, seqLen, rotaryDim))
 				.fill(pos -> Math.random());
-		PackedCollection<?> freqs = new PackedCollection<>(shape(seqLen, rotaryDim))
+		PackedCollection freqs = new PackedCollection(shape(seqLen, rotaryDim))
 				.fill(pos -> Math.random());
 
 		// Apply the rotary transform using the method under test
-		CollectionProducer<PackedCollection<?>> transform = applyRotaryTransform(
+		CollectionProducer transform = applyRotaryTransform(
 				cp(input), cp(freqs), batchSize, heads, seqLen, rotaryDim);
-		PackedCollection<?> result = transform.evaluate();
+		PackedCollection result = transform.evaluate();
 
 		int halfDim = rotaryDim / 2;
 
-		PackedCollection<?> expected = new PackedCollection<>(shape(batchSize, heads, seqLen, rotaryDim))
+		PackedCollection expected = new PackedCollection(shape(batchSize, heads, seqLen, rotaryDim))
 				.fill(pos -> {
 					int b = pos[0];
 					int h = pos[1];
@@ -357,7 +355,7 @@ public class RotationTests implements RotationFeatures, TestFeatures {
 				.forEach(key -> System.out.println("\t" + key + " " + referenceData.get(key).getShape()));
 
 		// Extract test configuration
-		PackedCollection<?> testConfig = referenceData.get("test_config");
+		PackedCollection testConfig = referenceData.get("test_config");
 		int batchSize = (int) testConfig.valueAt(0);
 		int seqLen = (int) testConfig.valueAt(1);
 		int heads = (int) testConfig.valueAt(2);
@@ -369,13 +367,13 @@ public class RotationTests implements RotationFeatures, TestFeatures {
 				", heads=" + heads + ", dimHead=" + dimHead + ", rotaryDim=" + rotaryDim);
 
 		// Load test data
-		PackedCollection<?> input = referenceData.get("input");
-		PackedCollection<?> freqs = referenceData.get("freqs");
-		PackedCollection<?> invFreq = referenceData.get("inv_freq");
-		PackedCollection<?> expectedOutput = referenceData.get("expected_output");
+		PackedCollection input = referenceData.get("input");
+		PackedCollection freqs = referenceData.get("freqs");
+		PackedCollection invFreq = referenceData.get("inv_freq");
+		PackedCollection expectedOutput = referenceData.get("expected_output");
 
 		log("\n=== Testing computeRotaryFreqs ===");
-		PackedCollection<?> computedFreqs = computeRotaryFreqs(seqLen, invFreq);
+		PackedCollection computedFreqs = computeRotaryFreqs(seqLen, invFreq);
 		log("Computed freqs shape - " + computedFreqs.getShape());
 		log("Expected freqs shape - " + freqs.getShape());
 
@@ -390,7 +388,7 @@ public class RotationTests implements RotationFeatures, TestFeatures {
 		main.add(applyRotaryPositionEmbedding(invFreq));
 
 		CompiledModel compiled = model.compile(false);
-		PackedCollection<?> actualOutput = compiled.forward(input);
+		PackedCollection actualOutput = compiled.forward(input);
 
 		double diff = compare(expectedOutput, actualOutput);
 		log("Expected output shape - " + expectedOutput.getShape());
@@ -409,24 +407,24 @@ public class RotationTests implements RotationFeatures, TestFeatures {
 
 		TraversalPolicy shape = shape(heads, headSize, 2);
 
-		PackedCollection<?> in = new PackedCollection<>(shape).randFill();
-		PackedCollection<?> weights = new PackedCollection<>(shape(1024, headSize, 2)).randFill();
+		PackedCollection in = new PackedCollection(shape).randFill();
+		PackedCollection weights = new PackedCollection(shape(1024, headSize, 2)).randFill();
 
 		int p = 28;
 
-		Producer<PackedCollection<?>> pos = c(p, 0, 0);
+		Producer<PackedCollection> pos = c(p, 0, 0);
 
-		CollectionProducer<PackedCollection<?>> q = c(p(in)).traverse(2);
-		CollectionProducer<PackedCollection<?>> r = subset(shape(1, headSize, 2),
+		CollectionProducer q = c(p(in)).traverse(2);
+		CollectionProducer r = subset(shape(1, headSize, 2),
 				c(p(weights)), pos);
 		// r = c(p(r.get().evaluate()));
 
-		// CollectionProducer<PackedCollection<?>> o = multiplyComplex(traverse(1, p(in)), r.reshape(headSize, 2));
-		CollectionProducer<PackedCollection<?>> o = multiplyComplex(traverse(1, p(in)), r.traverse(1));
+		// CollectionProducer<PackedCollection> o = multiplyComplex(traverse(1, p(in)), r.reshape(headSize, 2));
+		CollectionProducer o = multiplyComplex(traverse(1, p(in)), r.traverse(1));
 
 		// TODO  Optimization should not be necessary
-		// PackedCollection<?> out = o.get().evaluate();
-		PackedCollection<?> out = ((Evaluable<PackedCollection<?>>) ((ParallelProcess) o).optimize().get()).evaluate();
+		// PackedCollection out = o.get().evaluate();
+		PackedCollection out = ((Evaluable<PackedCollection>) ((ParallelProcess) o).optimize().get()).evaluate();
 
 		for (int h = 0; h < heads; h++) {
 			for (int i = 0; i < headSize; i++) {

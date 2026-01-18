@@ -17,10 +17,36 @@
 package io.almostrealism.relation;
 
 /**
- * Classes that implement the Editable interface can have editable
- * properties modified with a general set of methods.
- * 
- * @author  Michael Murray
+ * An interface for objects with runtime-modifiable properties.
+ *
+ * <p>{@link Editable} provides a reflection-like API for accessing and modifying
+ * object properties at runtime. This enables generic property editors, UI bindings,
+ * and dynamic configuration without compile-time knowledge of the specific type.</p>
+ *
+ * <h2>Property Access</h2>
+ * <p>Properties are accessed by index, with metadata available through:</p>
+ * <ul>
+ *   <li>{@link #getPropertyNames()} - Human-readable names</li>
+ *   <li>{@link #getPropertyDescriptions()} - Detailed descriptions</li>
+ *   <li>{@link #getPropertyTypes()} - Value types for each property</li>
+ *   <li>{@link #getPropertyValues()} - Current values</li>
+ * </ul>
+ *
+ * <h2>Input Properties</h2>
+ * <p>Some properties are computed repeatedly through {@link Producer}s. These
+ * "input properties" can be accessed and modified separately through:</p>
+ * <ul>
+ *   <li>{@link #getInputPropertyValues()} - Get current producer inputs</li>
+ *   <li>{@link #setInputPropertyValue(int, Producer)} - Set a producer input</li>
+ * </ul>
+ *
+ * <h2>Selection Type</h2>
+ * <p>The nested {@link Selection} class represents a property with a fixed
+ * set of valid options, useful for enum-like properties.</p>
+ *
+ * @see Producer
+ *
+ * @author Michael Murray
  */
 public interface Editable {
     /**

@@ -22,7 +22,7 @@ import org.junit.Assert;
 import org.junit.Test;
 
 public class TraversalPolicyTests implements TestFeatures {
-	@Test
+	@Test(timeout = 10000)
 	public void flattenRequired1() {
 		TraversalPolicy shape = shape(10, 2048, 1024)
 				.traverse(0)
@@ -31,7 +31,7 @@ public class TraversalPolicyTests implements TestFeatures {
 		Assert.assertEquals(expected, shape);
 	}
 
-	@Test
+	@Test(timeout = 10000)
 	public void flattenRequired2() {
 		TraversalPolicy shape = shape(10, 2048, 1024, 4)
 				.traverse(3)
@@ -40,7 +40,7 @@ public class TraversalPolicyTests implements TestFeatures {
 		Assert.assertEquals(expected, shape);
 	}
 
-	@Test
+	@Test(timeout = 10000)
 	public void permute3() {
 		TraversalPolicy shape = new TraversalPolicy(2, 4, 3);
 		TraversalPolicy permuted = shape.permute(1, 0, 2);
@@ -59,8 +59,8 @@ public class TraversalPolicyTests implements TestFeatures {
 					assertEquals(shape.index(i, j, k), permuted.index(j, i, k));
 
 					int originalIndex = shape.index(i, j, k);
-					int originalPosition[] = shape.position(originalIndex);
-					int permutedPosition[] = permuted.position(originalIndex);
+					int[] originalPosition = shape.position(originalIndex);
+					int[] permutedPosition = permuted.position(originalIndex);
 
 					assertEquals(i, originalPosition[0]);
 					assertEquals(j, originalPosition[1]);
@@ -74,7 +74,7 @@ public class TraversalPolicyTests implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 10000)
 	public void permute4() {
 		TraversalPolicy shape = new TraversalPolicy(2, 4, 3, 8);
 		TraversalPolicy permuted = shape.permute(0, 2, 1, 3);
@@ -96,8 +96,8 @@ public class TraversalPolicyTests implements TestFeatures {
 						assertEquals(shape.index(i, j, k, l), permuted.index(i, k, j, l));
 
 						int originalIndex = shape.index(i, j, k, l);
-						int originalPosition[] = shape.position(originalIndex);
-						int permutedPosition[] = permuted.position(originalIndex);
+						int[] originalPosition = shape.position(originalIndex);
+						int[] permutedPosition = permuted.position(originalIndex);
 
 						assertEquals(i, originalPosition[0]);
 						assertEquals(j, originalPosition[1]);

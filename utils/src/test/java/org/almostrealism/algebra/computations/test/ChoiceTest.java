@@ -17,25 +17,25 @@
 package org.almostrealism.algebra.computations.test;
 
 import io.almostrealism.relation.Evaluable;
-import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.computations.Choice;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
 
 public class ChoiceTest implements TestFeatures {
-	@Test
+
+	@Test(timeout = 10000)
 	public void oneOrTwo() {
-		PackedCollection<Scalar> bank = Scalar.scalarBank(2);
-		bank.set(0, 1.0, 1.0);
-		bank.set(1, 2.0, 1.0);
+		PackedCollection bank = new PackedCollection(shape(2, 2).traverse(1));
+		bank.setMem(0, 1.0, 1.0);
+		bank.setMem(2, 2.0, 1.0);
 
 		bank.print();
 
 		verboseLog(() -> {
 			Choice choice = new Choice(shape(2), 2, c(0.7), cp(bank));
-			Evaluable<PackedCollection<?>> ev = choice.get();
-			PackedCollection<?> result = ev.evaluate();
+			Evaluable<PackedCollection> ev = choice.get();
+			PackedCollection result = ev.evaluate();
 			result.print();
 
 			assertEquals(2.0, result.toDouble(0));

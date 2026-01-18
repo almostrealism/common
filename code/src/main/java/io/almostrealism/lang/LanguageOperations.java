@@ -17,8 +17,8 @@
 package io.almostrealism.lang;
 
 import io.almostrealism.code.Accessibility;
-import io.almostrealism.compute.PhysicalScope;
 import io.almostrealism.code.Precision;
+import io.almostrealism.compute.PhysicalScope;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Method;
 

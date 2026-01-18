@@ -16,14 +16,44 @@
 
 package io.almostrealism.relation;
 
+/**
+ * A mixin interface providing utility methods for working with {@link Producer}s.
+ *
+ * <p>{@link ProducerFeatures} is designed to be implemented by classes that need
+ * convenient methods for producer manipulation, particularly delegation and
+ * substitution. This follows the "features" pattern common in the framework,
+ * where interfaces provide default implementations of utility methods.</p>
+ *
+ * <h2>Key Operations</h2>
+ * <ul>
+ *   <li><b>Delegation:</b> Create a producer that delegates to another</li>
+ *   <li><b>Substitution:</b> Record a mapping from one producer to its replacement</li>
+ * </ul>
+ *
+ * <h2>Usage Pattern</h2>
+ * <pre>{@code
+ * public class MyComputationBuilder implements ProducerFeatures {
+ *     public Producer<Tensor> build() {
+ *         Producer<Tensor> original = createOriginal();
+ *         Producer<Tensor> optimized = optimize(original);
+ *
+ *         // Create delegation relationship
+ *         return delegate(original, optimized);
+ *     }
+ *
+ *     @Override
+ *     public <T> Producer<?> delegate(Producer<T> original, Producer<T> actual) {
+ *         // Custom delegation implementation
+ *         return new DelegatingProducer<>(original, actual);
+ *     }
+ * }
+ * }</pre>
+ *
+ * @see Producer
+ * @see Delegated
+ *
+ * @author Michael Murray
+ */
 public interface ProducerFeatures {
-	default <T> Producer<?> delegate(Producer<T> producer) {
-		return delegate(null, producer);
-	}
 
-	<T> Producer<?> delegate(Producer<T> original, Producer<T> actual);
-
-	default <T> ProducerSubstitution<T> substitute(Producer<T> original, Producer<T> replacement) {
-		return new ProducerSubstitution<>(original, replacement);
-	}
 }

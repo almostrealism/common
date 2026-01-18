@@ -16,27 +16,28 @@
 
 package org.almostrealism.color.computations;
 
-import org.almostrealism.color.RGB;
 import io.almostrealism.code.AdaptProducer;
-import org.almostrealism.hardware.MemoryBank;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.color.RGB;
+import org.almostrealism.hardware.MemoryBank;
 
-public class AdaptProducerRGB extends AdaptProducer<RGB> {
-	public AdaptProducerRGB(Producer<RGB> p, Producer... args) {
+public class AdaptProducerRGB extends AdaptProducer<PackedCollection> {
+	public AdaptProducerRGB(Producer<PackedCollection> p, Producer... args) {
 		super(p, args);
 	}
 
 	@Override
-	public Evaluable<RGB> get() {
-		Evaluable<RGB> e = super.get();
+	public Evaluable<PackedCollection> get() {
+		Evaluable<PackedCollection> e = super.get();
 
 		return new Evaluable<>() {
 			@Override
-			public MemoryBank<RGB> createDestination(int size) { return RGB.bank(size); }
+			public MemoryBank<PackedCollection> createDestination(int size) { return (MemoryBank) RGB.bank(size); }
 
 			@Override
-			public RGB evaluate(Object... arguments) {
+			public PackedCollection evaluate(Object... arguments) {
 				return e.evaluate(arguments);
 			}
 		};

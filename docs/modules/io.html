@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AR-IO Module - Almost Realism Framework</title>
+    <link rel="stylesheet" href="../css/style.css">
+    <style>
+        .key-concepts { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin: 20px 0; }
+        .concept-card { background: #f8f9fa; border-left: 4px solid #3949ab; padding: 15px; border-radius: 4px; }
+        .concept-card h4 { margin-top: 0; color: #3949ab; }
+        .performance-table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+        .performance-table th, .performance-table td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
+        .performance-table th { background-color: #e8eaf6; color: #3949ab; font-weight: bold; }
+        .performance-table tr:hover { background-color: #f5f5f5; }
+        .comparison-table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+        .comparison-table th, .comparison-table td { padding: 10px; border: 1px solid #ddd; text-align: left; }
+        .comparison-table th { background-color: #e8eaf6; color: #3949ab; }
+        .class-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 15px; margin: 20px 0; }
+        .class-item { background: #fff; border: 1px solid #ddd; padding: 12px; border-radius: 4px; }
+        .class-item h4 { margin: 0 0 8px 0; color: #3949ab; font-size: 1.1em; }
+        .class-item p { margin: 0; font-size: 0.9em; color: #666; }
+        .code-example { background: #f5f5f5; border-left: 4px solid #3949ab; padding: 15px; margin: 15px 0; border-radius: 4px; }
+        .highlight { background-color: #fff9c4; padding: 2px 4px; }
+        .warning { background-color: #ffebee; border-left: 4px solid #c62828; padding: 12px; margin: 15px 0; }
+        .tip { background-color: #e8eaf6; border-left: 4px solid #3949ab; padding: 12px; margin: 15px 0; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>AR-IO Module</h1>
+            <p class="tagline">Core I/O, Logging, and Monitoring Infrastructure</p>
+            <nav>
+                <a href="../index.html">Home</a>
+                <a href="#overview">Overview</a>
+                <a href="#console">Console System</a>
+                <a href="#file-operations">File Operations</a>
+                <a href="#job-output">Job Output</a>
+                <a href="#examples">Examples</a>
+            </nav>
+        </header>
+
+        <main>
+            <section id="overview">
+                <h2>Overview</h2>
+                <p>The <strong>ar-io</strong> module provides essential I/O infrastructure used throughout all Almost Realism modules. It offers a sophisticated logging system, performance metrics, file output utilities, and job result management.</p>
+
+                <div class="key-concepts">
+                    <div class="concept-card">
+                        <h4>Hierarchical Logging</h4>
+                        <p>Console-based logging with automatic timestamps, parent/child relationships, extensible listeners, and output filtering.</p>
+                    </div>
+                    <div class="concept-card">
+                        <h4>Performance Metrics</h4>
+                        <p>Built-in timing and distribution metrics for measuring execution times and tracking numeric distributions.</p>
+                    </div>
+                    <div class="concept-card">
+                        <h4>Alert System</h4>
+                        <p>Pluggable alert delivery with severity levels (INFO, WARNING, ERROR) for notifying external systems.</p>
+                    </div>
+                    <div class="concept-card">
+                        <h4>File Output</h4>
+                        <p>Utilities for directing console output to files, with support for indentation and automatic flushing.</p>
+                    </div>
+                </div>
+            </section>
+
+            <section id="console">
+                <h2>Console System</h2>
+
+                <h3>Core Classes</h3>
+                <div class="class-list">
+                    <div class="class-item">
+                        <h4>Console</h4>
+                        <p>Hierarchical logging system with timestamps, listeners, filters, metrics, and alert delivery.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>ConsoleFeatures</h4>
+                        <p>Mixin interface providing log() and warn() methods with automatic class name prefixes.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>TimingMetric</h4>
+                        <p>Measure execution times in nanoseconds, report in seconds with percentages.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>DistributionMetric</h4>
+                        <p>Track distributions of numeric values with totals, counts, and averages.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>Alert</h4>
+                        <p>Structured notification with severity levels (INFO, WARNING, ERROR).</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>AlertDeliveryProvider</h4>
+                        <p>Interface for custom alert handling (email, Slack, etc.).</p>
+                    </div>
+                </div>
+
+                <h3>Console Architecture</h3>
+                <p>The Console class provides a hierarchical logging infrastructure:</p>
+                <div class="code-example">
+                    <strong>Key Features:</strong><br>
+                    - Automatic timestamping (format: [HH:mm.ss])<br>
+                    - Parent/child console relationships<br>
+                    - Extensible listeners for capturing output<br>
+                    - Output filtering and transformation<br>
+                    - Built-in performance metrics<br>
+                    - Pluggable alert delivery system
+                </div>
+
+                <h3>Console Methods</h3>
+                <table class="comparison-table">
+                    <tr>
+                        <th>Method</th>
+                        <th>Description</th>
+                    </tr>
+                    <tr>
+                        <td><code>root()</code></td>
+                        <td>Returns the singleton root console instance</td>
+                    </tr>
+                    <tr>
+                        <td><code>child()</code></td>
+                        <td>Creates a child console that propagates to parent</td>
+                    </tr>
+                    <tr>
+                        <td><code>println(String)</code></td>
+                        <td>Prints timestamped message with newline</td>
+                    </tr>
+                    <tr>
+                        <td><code>warn(String)</code></td>
+                        <td>Prints warning message with WARN prefix</td>
+                    </tr>
+                    <tr>
+                        <td><code>addListener(Consumer)</code></td>
+                        <td>Adds output listener (e.g., file writer)</td>
+                    </tr>
+                    <tr>
+                        <td><code>addFilter(UnaryOperator)</code></td>
+                        <td>Adds output filter (can suppress or transform)</td>
+                    </tr>
+                    <tr>
+                        <td><code>timing(String)</code></td>
+                        <td>Gets or creates a TimingMetric</td>
+                    </tr>
+                    <tr>
+                        <td><code>distribution(String)</code></td>
+                        <td>Gets or creates a DistributionMetric</td>
+                    </tr>
+                    <tr>
+                        <td><code>alert(String)</code></td>
+                        <td>Sends an informational alert</td>
+                    </tr>
+                </table>
+
+                <h3>ConsoleFeatures Interface</h3>
+                <p>Implement this interface to get convenient logging methods with automatic class name prefixes:</p>
+                <pre><code class="language-java">public class MyProcessor implements ConsoleFeatures {
+    public void process() {
+        log("Starting processing");
+        // Output: "[HH:mm.ss] MyProcessor: Starting processing"
+
+        warn("Low memory");
+        // Output: "[HH:mm.ss] WARN: MyProcessor: Low memory"
+    }
+}</code></pre>
+
+                <h3>TimingMetric</h3>
+                <p>Measure and track execution times of operations:</p>
+                <pre><code class="language-java">TimingMetric timing = Console.root().timing("myOperation");
+
+// Time operations
+timing.measure("database", () -> queryDatabase());
+timing.measure("processing", () -> processData());
+timing.measure("io", () -> writeResults());
+
+// Print summary
+Console.root().println(timing.summary());
+// Output:
+// myOperation - 5.2 seconds:
+//   database: 12 [3.1s tot | 258ms avg] 60%
+//   processing: 5 [1.5s tot | 300ms avg] 29%
+//   io: 3 [0.6s tot | 200ms avg] 11%</code></pre>
+
+                <h3>Alert System</h3>
+                <p>Send structured notifications with severity levels:</p>
+                <pre><code class="language-java">Console console = Console.root();
+
+// Simple alerts
+console.alert("Operation completed");  // INFO severity
+console.alert(Alert.Severity.WARNING, "Low memory");
+
+// Alert from exception
+try {
+    riskyOperation();
+} catch (Exception ex) {
+    console.alert("Operation failed", ex);  // ERROR severity
+}
+
+// Custom alert delivery
+console.addAlertDeliveryProvider(alert -> {
+    if (alert.getSeverity() == Alert.Severity.ERROR) {
+        sendEmailAlert(alert.getMessage());
+        notifySlack(alert.getMessage());
+    }
+});</code></pre>
+            </section>
+
+            <section id="file-operations">
+                <h2>File Operations</h2>
+
+                <h3>Output Classes</h3>
+                <div class="class-list">
+                    <div class="class-item">
+                        <h4>OutputFeatures</h4>
+                        <p>Factory methods for creating file output listeners. Use with Console.addListener().</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>PrintWriter</h4>
+                        <p>Interface for formatted output with indentation support.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>FilePrintWriter</h4>
+                        <p>PrintWriter implementation that writes to files with 4-space indentation.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>PrintStreamPrintWriter</h4>
+                        <p>PrintWriter implementation that wraps a PrintStream.</p>
+                    </div>
+                </div>
+
+                <h3>OutputFeatures</h3>
+                <p>Create file output listeners for directing console output to files:</p>
+                <pre><code class="language-java">// Direct all console output to a file
+Console.root().addListener(OutputFeatures.fileOutput("/path/to/log.txt"));
+
+// Now all console output goes to both System.out and the file
+Console.root().println("This is logged to file and console");</code></pre>
+
+                <h3>FilePrintWriter</h3>
+                <p>Write formatted output to files with indentation support:</p>
+                <pre><code class="language-java">try (FilePrintWriter writer = new FilePrintWriter(new File("output.txt"))) {
+    writer.println("Line 1");
+    writer.moreIndent();  // Add 4 spaces of indentation
+    writer.println("Indented line");
+    writer.lessIndent();  // Remove 4 spaces
+    writer.println("Back to no indent");
+}</code></pre>
+
+                <h3>Other I/O Utilities</h3>
+                <div class="class-list">
+                    <div class="class-item">
+                        <h4>Describable</h4>
+                        <p>Interface for self-describing objects. Safe description even for null objects.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>SystemUtils</h4>
+                        <p>System property and environment variable utilities.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>Bits</h4>
+                        <p>Bit manipulation utilities for binary data.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>Storable</h4>
+                        <p>Interface for objects that can be persisted.</p>
+                    </div>
+                </div>
+            </section>
+
+            <section id="job-output">
+                <h2>Job Output</h2>
+
+                <h3>Job Output Classes</h3>
+                <div class="class-list">
+                    <div class="class-item">
+                        <h4>JobOutput</h4>
+                        <p>Stores job results with task ID, credentials, and timing. Supports serialization and string encoding.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>OutputHandler</h4>
+                        <p>Interface for handling job output processing.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>DecodePostProcessing</h4>
+                        <p>Post-processing interface for decoded output.</p>
+                    </div>
+                </div>
+
+                <h3>JobOutput Usage</h3>
+                <p>Store and transmit job execution results:</p>
+                <pre><code class="language-java">// Create job output
+JobOutput output = new JobOutput("task-123", "user", "pass", "result data");
+output.setTime(System.currentTimeMillis());
+
+// Encode for transmission
+String encoded = output.encode();
+
+// Decode on receiving end
+JobOutput received = JobOutput.decode(encoded);
+String result = received.getOutput();
+long timestamp = received.getTime();</code></pre>
+
+                <h3>JobOutput Fields</h3>
+                <table class="comparison-table">
+                    <tr>
+                        <th>Field</th>
+                        <th>Description</th>
+                    </tr>
+                    <tr>
+                        <td><code>taskId</code></td>
+                        <td>Unique identifier for the job/task</td>
+                    </tr>
+                    <tr>
+                        <td><code>user</code></td>
+                        <td>Username for authentication</td>
+                    </tr>
+                    <tr>
+                        <td><code>passwd</code></td>
+                        <td>Password for authentication</td>
+                    </tr>
+                    <tr>
+                        <td><code>output</code></td>
+                        <td>The job result data</td>
+                    </tr>
+                    <tr>
+                        <td><code>time</code></td>
+                        <td>Timestamp of job completion</td>
+                    </tr>
+                </table>
+
+                <p>JobOutput implements <code>Externalizable</code> for Java serialization and provides <code>encode()</code>/<code>decode()</code> for string-based transmission.</p>
+            </section>
+
+            <section id="examples">
+                <h2>Usage Examples</h2>
+
+                <h3>Test Output Logging</h3>
+                <p>Recommended pattern for capturing test output to files:</p>
+                <pre><code class="language-java">import org.almostrealism.io.Console;
+import org.almostrealism.io.ConsoleFeatures;
+import org.almostrealism.io.OutputFeatures;
+
+public class MyTest implements ConsoleFeatures {
+    @Test
+    public void myTest() throws Exception {
+        // Set up file logging BEFORE any output
+        String logFile = "/workspace/project/common/io/test_output/my_test_results.txt";
+        Console.root().addListener(OutputFeatures.fileOutput(logFile));
+
+        log("=== My Test ===");
+        log("Result: " + someValue);
+
+        // Output goes to BOTH console AND file
+    }
+}</code></pre>
+
+                <div class="tip">
+                    <strong>Benefits of Test Output Logging:</strong><br>
+                    - Test output saved to files for later review<br>
+                    - No need to capture stdout/stderr with bash redirects<br>
+                    - Output available even if test crashes<br>
+                    - Easy to compare outputs across multiple test runs
+                </div>
+
+                <h3>Performance Monitoring</h3>
+                <p>Track execution times across different operations:</p>
+                <pre><code class="language-java">public class DataProcessor implements ConsoleFeatures {
+    private final TimingMetric timing = Console.root().timing("DataProcessor");
+
+    public void process(List&lt;Data&gt; data) {
+        timing.measure("loading", () -> loadData(data));
+        timing.measure("validation", () -> validateData(data));
+        timing.measure("transformation", () -> transformData(data));
+        timing.measure("saving", () -> saveData(data));
+
+        log(timing.summary());
+    }
+}</code></pre>
+
+                <h3>Duplicate Filtering</h3>
+                <p>Prevent log spam from repeated messages:</p>
+                <pre><code class="language-java">Console console = Console.root();
+console.addFilter(ConsoleFeatures.duplicateFilter(1000));  // 1 second interval
+
+// Only logged once within 1 second window
+for (int i = 0; i < 100; i++) {
+    console.println("Status: Processing");
+    Thread.sleep(10);
+}</code></pre>
+
+                <h3>Child Console Pattern</h3>
+                <p>Create scoped logging with parent/child relationships:</p>
+                <pre><code class="language-java">Console parent = Console.root();
+Console child = parent.child();
+
+// Add file listener only to parent
+parent.addListener(OutputFeatures.fileOutput("parent.log"));
+
+// Child output propagates to parent (and its file)
+child.println("From child");  // Goes to parent.log
+parent.println("From parent"); // Also goes to parent.log</code></pre>
+
+                <h3>Custom ConsoleFeatures</h3>
+                <p>Override console() to use a custom console instance:</p>
+                <pre><code class="language-java">public class MyClass implements ConsoleFeatures {
+    private Console myConsole = Console.root().child();
+
+    @Override
+    public Console console() {
+        return myConsole;  // Use custom console instead of root
+    }
+
+    public void doWork() {
+        log("Using custom console");  // Goes to myConsole
+    }
+}</code></pre>
+
+                <h3>Distribution Metrics</h3>
+                <p>Track distributions of numeric values:</p>
+                <pre><code class="language-java">DistributionMetric metric = Console.root().distribution("batchSizes");
+
+for (Batch batch : batches) {
+    metric.addEntry("items", batch.getItemCount());
+    metric.addEntry("bytes", batch.getByteSize());
+}
+
+Console.root().println(metric.summary());</code></pre>
+            </section>
+
+            <section id="environment">
+                <h2>Environment Variables</h2>
+
+                <table class="performance-table">
+                    <thead>
+                        <tr>
+                            <th>Variable</th>
+                            <th>Default</th>
+                            <th>Description</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code>AR_IO_SYSOUT</code></td>
+                            <td>true</td>
+                            <td>Enable/disable System.out output. Set to "false" to only send output to listeners.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </section>
+
+            <section id="integration">
+                <h2>Integration with Other Modules</h2>
+
+                <p>The io module is used extensively throughout the Almost Realism framework:</p>
+
+                <table class="comparison-table">
+                    <tr>
+                        <th>Module</th>
+                        <th>Usage</th>
+                    </tr>
+                    <tr>
+                        <td>ML Module</td>
+                        <td>Test output logging, timing metrics for model inference</td>
+                    </tr>
+                    <tr>
+                        <td>Hardware Module</td>
+                        <td>Performance metrics, operation compilation logging</td>
+                    </tr>
+                    <tr>
+                        <td>Graph Module</td>
+                        <td>Computation graph debugging, execution timing</td>
+                    </tr>
+                    <tr>
+                        <td>Time Module</td>
+                        <td>Signal processing timing, temporal operation logging</td>
+                    </tr>
+                    <tr>
+                        <td>All Modules</td>
+                        <td>General logging via ConsoleFeatures</td>
+                    </tr>
+                </table>
+            </section>
+
+            <section id="troubleshooting">
+                <h2>Troubleshooting</h2>
+
+                <h3>Common Issues</h3>
+
+                <div class="warning">
+                    <strong>Issue:</strong> Output destination does not exist<br>
+                    <strong>Solution:</strong> Ensure the directory for the log file exists before calling <code>OutputFeatures.fileOutput()</code>.
+                </div>
+
+                <div class="warning">
+                    <strong>Issue:</strong> Log messages not appearing in file<br>
+                    <strong>Solution:</strong> Add the listener before any logging calls. Listeners only capture output after they are added.
+                </div>
+
+                <div class="warning">
+                    <strong>Issue:</strong> Duplicate messages flooding logs<br>
+                    <strong>Solution:</strong> Use <code>ConsoleFeatures.duplicateFilter(interval)</code> to suppress repeated messages.
+                </div>
+
+                <div class="warning">
+                    <strong>Issue:</strong> Missing class name prefix in logs<br>
+                    <strong>Solution:</strong> Ensure your class implements <code>ConsoleFeatures</code> and use <code>log()</code> instead of <code>console().println()</code>.
+                </div>
+
+                <div class="warning">
+                    <strong>Issue:</strong> Console output disabled<br>
+                    <strong>Solution:</strong> Check if <code>AR_IO_SYSOUT=false</code> is set in environment. Output may only be going to listeners.
+                </div>
+            </section>
+
+            <section id="resources">
+                <h2>Additional Resources</h2>
+                <ul>
+                    <li><a href="../../io/README.md">IO Module README</a> - Comprehensive module documentation</li>
+                    <li><a href="../apidocs/org/almostrealism/io/package-summary.html">JavaDoc API</a> - Complete API reference</li>
+                </ul>
+            </section>
+        </main>
+
+        <footer>
+            <p><a href="../index.html">Back to Framework Documentation</a></p>
+            <p>2024 Michael Murray. Licensed under the Apache License, Version 2.0.</p>
+        </footer>
+    </div>
+
+    <script src="../js/docs.js"></script>
+</body>
+</html>

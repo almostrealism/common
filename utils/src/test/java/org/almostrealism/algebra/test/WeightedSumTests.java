@@ -22,13 +22,11 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
 
-import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
 
 public class WeightedSumTests implements TestFeatures {
-
-	@Test
+	@Test(timeout = 30000)
 	public void broadcast() {
 		int c1 = 3;
 		int c2 = 2;
@@ -36,8 +34,8 @@ public class WeightedSumTests implements TestFeatures {
 		TraversalPolicy leftShape = shape(c1, 1);
 		TraversalPolicy rightShape = shape(1, c2);
 
-		PackedCollection<?> a = new PackedCollection<>(leftShape).randFill();
-		PackedCollection<?> b = new PackedCollection<>(rightShape).randFill();
+		PackedCollection a = new PackedCollection(leftShape).randFill();
+		PackedCollection b = new PackedCollection(rightShape).randFill();
 
 		TraversalPolicy resultShape = shape(c1, c2);
 		TraversalPolicy leftPosition = leftShape
@@ -51,19 +49,19 @@ public class WeightedSumTests implements TestFeatures {
 		List<int[]> rightPositions = rightPosition.inputPositions().collect(Collectors.toList());
 
 		for (int i = 0; i < resultPositions.size(); i++) {
-			int pos[] = resultPositions.get(i);
-			int left[] = leftPositions.get(i);
-			int right[] = rightPositions.get(i);
+			int[] pos = resultPositions.get(i);
+			int[] left = leftPositions.get(i);
+			int[] right = rightPositions.get(i);
 			log("result" + s(pos) + " = a" + s(left) + " * b" + s(right));
 		}
 
-		CollectionProducer<PackedCollection<?>> result =
+		CollectionProducer result =
 				weightedSum("broadcast",
 						resultShape,
 						leftPosition, rightPosition,
 						groupShape, groupShape,
 						cp(a), cp(b));
-		PackedCollection<?> out = result.evaluate();
+		PackedCollection out = result.evaluate();
 
 		for (int i = 0; i < c1; i++) {
 			for (int j = 0; j < c2; j++) {
@@ -85,7 +83,7 @@ public class WeightedSumTests implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void sumColumn() {
 		int r = 3;
 		int c1 = 2;
@@ -94,8 +92,8 @@ public class WeightedSumTests implements TestFeatures {
 		TraversalPolicy leftShape = shape(r, c1, 1);
 		TraversalPolicy rightShape = shape(r, 1, c2);
 
-		PackedCollection<?> a = new PackedCollection<>(leftShape).randFill();
-		PackedCollection<?> b = new PackedCollection<>(rightShape).randFill();
+		PackedCollection a = new PackedCollection(leftShape).randFill();
+		PackedCollection b = new PackedCollection(rightShape).randFill();
 
 		TraversalPolicy resultShape = shape(1, c1, c2);
 		TraversalPolicy leftPosition = leftShape.repeat(2, c2);
@@ -107,19 +105,19 @@ public class WeightedSumTests implements TestFeatures {
 		List<int[]> rightPositions = rightPosition.inputPositions().collect(Collectors.toList());
 
 		for (int i = 0; i < resultPositions.size(); i++) {
-			int pos[] = resultPositions.get(i);
-			int left[] = leftPositions.get(i);
-			int right[] = rightPositions.get(i);
+			int[] pos = resultPositions.get(i);
+			int[] left = leftPositions.get(i);
+			int[] right = rightPositions.get(i);
 			log("result" + s(pos) + " = a" + s(left) + " * b" + s(right));
 		}
 
-		CollectionProducer<PackedCollection<?>> result =
+		CollectionProducer result =
 				weightedSum("sumColumn",
 						resultShape,
 						leftPosition, rightPosition,
 						groupShape, groupShape,
 						cp(a), cp(b));
-		PackedCollection<?> out = result.evaluate();
+		PackedCollection out = result.evaluate();
 
 		sumColumnAssertions(
 				a.reshape(1, r, c1),
@@ -127,7 +125,7 @@ public class WeightedSumTests implements TestFeatures {
 				out.reshape(1, c1, c2));
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void sumColumnBatch() {
 		int bs = 1;
 		int r = 3;
@@ -137,21 +135,21 @@ public class WeightedSumTests implements TestFeatures {
 		TraversalPolicy leftShape = shape(bs, r, c1, 1);
 		TraversalPolicy rightShape = shape(bs, r, 1, c2);
 
-		PackedCollection<?> a = new PackedCollection<>(leftShape).randFill();
-		PackedCollection<?> b = new PackedCollection<>(rightShape).randFill();
+		PackedCollection a = new PackedCollection(leftShape).randFill();
+		PackedCollection b = new PackedCollection(rightShape).randFill();
 
 		TraversalPolicy resultShape = shape(bs, 1, c1, c2);
 		TraversalPolicy leftPosition = leftShape.repeat(3, c2);
 		TraversalPolicy rightPosition = rightShape.repeat(2, c1);
 		TraversalPolicy groupShape = shape(1, r, 1, 1);
 
-		CollectionProducer<PackedCollection<?>> result =
+		CollectionProducer result =
 				weightedSum("sumColumn",
 						resultShape,
 						leftPosition, rightPosition,
 						groupShape, groupShape,
 						cp(a), cp(b));
-		PackedCollection<?> out = result.evaluate();
+		PackedCollection out = result.evaluate();
 
 		sumColumnAssertions(
 				a.reshape(bs, r, c1),
@@ -159,7 +157,7 @@ public class WeightedSumTests implements TestFeatures {
 				out.reshape(bs, c1, c2));
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void sumColumnRepeatBatch() {
 		int bs = 1;
 		int r = 3;
@@ -167,21 +165,21 @@ public class WeightedSumTests implements TestFeatures {
 		int c2 = 3;
 
 		int d = 1;
-		PackedCollection<?> a = new PackedCollection(shape(bs, r, c1)).randFill();
-		PackedCollection<?> b = new PackedCollection(shape(bs, r, c2)).randFill();
+		PackedCollection a = new PackedCollection(shape(bs, r, c1)).randFill();
+		PackedCollection b = new PackedCollection(shape(bs, r, c2)).randFill();
 
-		CollectionProducer<PackedCollection<?>> pa = c(a)
+		CollectionProducer pa = c(a)
 				.traverse(d)
 				.enumerate(d + 1, 1)
 				// -> (bs, c1, r)
 				.traverse(d + 1)
 				.repeat(c2); // -> (bs, c1, c2, r)
-		CollectionProducer<PackedCollection<?>> pb = c(b)
+		CollectionProducer pb = c(b)
 				.traverse(d)
 				.enumerate(d + 1, 1)
 				// -> (bs, c2, r)
 				.repeat(c1); // -> (bs, c1, c2, r)
-		CollectionProducer<PackedCollection<?>> out = multiply(pa, pb).sum(d + 2)
+		CollectionProducer out = multiply(pa, pb).sum(d + 2)
 				.reshape(bs, c1, c2).traverseEach();
 		sumColumnAssertions(
 				a.reshape(bs, r, c1),
@@ -189,7 +187,7 @@ public class WeightedSumTests implements TestFeatures {
 				out.evaluate().reshape(bs, c1, c2));
 	}
 
-	protected void sumColumnAssertions(PackedCollection<?> a, PackedCollection<?> b, PackedCollection<?> out) {
+	protected void sumColumnAssertions(PackedCollection a, PackedCollection b, PackedCollection out) {
 		int bs = a.getShape().length(0);
 		int r = a.getShape().length(1);
 		int c1 = a.getShape().length(2);
@@ -212,7 +210,7 @@ public class WeightedSumTests implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void similarity() {
 		int bs = 3;
 		int c = 4;
@@ -221,21 +219,21 @@ public class WeightedSumTests implements TestFeatures {
 		int s1 = 2; // 4;
 		int s2 = 5;
 
-		PackedCollection<?> a = new PackedCollection(shape(bs, c, dim, s1)).randFill();
-		PackedCollection<?> b = new PackedCollection(shape(bs, c, dim, s2)).randFill();
+		PackedCollection a = new PackedCollection(shape(bs, c, dim, s1)).randFill();
+		PackedCollection b = new PackedCollection(shape(bs, c, dim, s2)).randFill();
 
-		CollectionProducer<PackedCollection<?>> pa = c(a)
+		CollectionProducer pa = c(a)
 				.traverse(2)
 				.enumerate(3, 1)
 				// -> (bs, c, s1, dim)
 				.traverse(3)
 				.repeat(s2); // -> (bs, c, s1, s2, dim)
-		CollectionProducer<PackedCollection<?>> pb = c(b)
+		CollectionProducer pb = c(b)
 				.traverse(2)
 				.enumerate(3, 1)
 				// -> (bs, c, s2, dim)
 				.repeat(s1); // -> (bs, c, s1, s2, dim)
-		CollectionProducer<PackedCollection<?>> out = multiply(pa, pb).sum(4)
+		CollectionProducer out = multiply(pa, pb).sum(4)
 				.reshape(bs, c, s1, s2);
 
 		TraversalPolicy leftShape = shape(bs, c, dim, s1, 1);
@@ -246,7 +244,7 @@ public class WeightedSumTests implements TestFeatures {
 		TraversalPolicy rightPosition = rightShape.repeat(3, s1);
 		TraversalPolicy groupShape = shape(1, 1, dim, 1, 1);
 
-		CollectionProducer<PackedCollection<?>> result =
+		CollectionProducer result =
 				weightedSum("similarity",
 						resultShape,
 						leftPosition, rightPosition,
@@ -258,7 +256,7 @@ public class WeightedSumTests implements TestFeatures {
 	}
 
 
-	@Test
+	@Test(timeout = 30000)
 	public void scaledDotProduct() {
 		int batchSize = 2;
 		int heads = 3;
@@ -269,14 +267,14 @@ public class WeightedSumTests implements TestFeatures {
 		// Create input tensors
 		// a: (batch, heads, seqLenA, dim)
 		// b: (batch, heads, dim, seqLenB)
-		PackedCollection<?> a = new PackedCollection<>(shape(batchSize, heads, seqLenA, dim))
+		PackedCollection a = new PackedCollection(shape(batchSize, heads, seqLenA, dim))
 				.fill(pos -> Math.random());
-		PackedCollection<?> b = new PackedCollection<>(shape(batchSize, heads, dim, seqLenB))
+		PackedCollection b = new PackedCollection(shape(batchSize, heads, dim, seqLenB))
 				.fill(pos -> Math.random());
 
 		// Compute expected result manually
 		// Result should have shape (batch, heads, seqLenA, seqLenB)
-		PackedCollection<?> expected = new PackedCollection<>(shape(batchSize, heads, seqLenA, seqLenB));
+		PackedCollection expected = new PackedCollection(shape(batchSize, heads, seqLenA, seqLenB));
 
 		for (int batch = 0; batch < batchSize; batch++) {
 			for (int head = 0; head < heads; head++) {
@@ -292,8 +290,8 @@ public class WeightedSumTests implements TestFeatures {
 			}
 		}
 
-		CollectionProducer<PackedCollection<?>> result = scaledDotProduct(cp(a), cp(b));
-		PackedCollection<?> actual = result.evaluate();
+		CollectionProducer result = scaledDotProduct(cp(a), cp(b));
+		PackedCollection actual = result.evaluate();
 
 		// Verify shapes match
 		assertEquals(expected.getShape().traverse(0), actual.getShape().traverse(0));
@@ -309,7 +307,7 @@ public class WeightedSumTests implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void scaledDotProductPermute() {
 		int batchSize = 2;
 		int heads = 3;
@@ -320,13 +318,13 @@ public class WeightedSumTests implements TestFeatures {
 		// q: (batch, heads, seqLen, dim)
 		// k: (batch, heads, seqLen, dim)
 		// Result after k transpose: (batch, heads, seqLen, seqLen)
-		PackedCollection<?> q = new PackedCollection<>(shape(batchSize, heads, seqLen, dim))
+		PackedCollection q = new PackedCollection(shape(batchSize, heads, seqLen, dim))
 				.fill(pos -> Math.random());
-		PackedCollection<?> k = new PackedCollection<>(shape(batchSize, heads, seqLen, dim))
+		PackedCollection k = new PackedCollection(shape(batchSize, heads, seqLen, dim))
 				.fill(pos -> Math.random());
 
 		// Compute expected result for Q @ K^T
-		PackedCollection<?> expected = new PackedCollection<>(shape(batchSize, heads, seqLen, seqLen));
+		PackedCollection expected = new PackedCollection(shape(batchSize, heads, seqLen, seqLen));
 
 		for (int batch = 0; batch < batchSize; batch++) {
 			for (int head = 0; head < heads; head++) {
@@ -346,12 +344,12 @@ public class WeightedSumTests implements TestFeatures {
 
 		// Test with transposed K
 		// We need to transpose last two dimensions of k: (batch, heads, seqLen, dim) -> (batch, heads, dim, seqLen)
-		CollectionProducer<PackedCollection<?>> kTransposed = cp(k)
+		CollectionProducer kTransposed = cp(k)
 				.reshape(batchSize, heads, seqLen, dim)
 				.permute(0, 1, 3, 2);
 
-		CollectionProducer<PackedCollection<?>> result = scaledDotProduct(cp(q), kTransposed);
-		PackedCollection<?> actual = result.evaluate();
+		CollectionProducer result = scaledDotProduct(cp(q), kTransposed);
+		PackedCollection actual = result.evaluate();
 
 		// Verify shapes match
 		assertEquals(expected.getShape().traverse(0), actual.getShape().traverse(0));
@@ -362,7 +360,7 @@ public class WeightedSumTests implements TestFeatures {
 		assertTrue("Batch matrix multiplication with transpose differs from expected", diff < 1e-6);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void scaledDotProductTranspose() {
 		int batchSize = 2;
 		int heads = 3;
@@ -373,13 +371,13 @@ public class WeightedSumTests implements TestFeatures {
 		// q: (batch, heads, seqLen, dim)
 		// k: (batch, heads, seqLen, dim)
 		// Result after k transpose: (batch, heads, seqLen, seqLen)
-		PackedCollection<?> q = new PackedCollection<>(shape(batchSize, heads, seqLen, dim))
+		PackedCollection q = new PackedCollection(shape(batchSize, heads, seqLen, dim))
 				.fill(pos -> Math.random());
-		PackedCollection<?> k = new PackedCollection<>(shape(batchSize, heads, seqLen, dim))
+		PackedCollection k = new PackedCollection(shape(batchSize, heads, seqLen, dim))
 				.fill(pos -> Math.random());
 
 		// Compute expected result for Q @ K^T
-		PackedCollection<?> expected = new PackedCollection<>(shape(batchSize, heads, seqLen, seqLen));
+		PackedCollection expected = new PackedCollection(shape(batchSize, heads, seqLen, seqLen));
 
 		for (int batch = 0; batch < batchSize; batch++) {
 			for (int head = 0; head < heads; head++) {
@@ -397,8 +395,8 @@ public class WeightedSumTests implements TestFeatures {
 			}
 		}
 		
-		CollectionProducer<PackedCollection<?>> result = scaledDotProduct(cp(q), cp(k), true);
-		PackedCollection<?> actual = result.evaluate();
+		CollectionProducer result = scaledDotProduct(cp(q), cp(k), true);
+		PackedCollection actual = result.evaluate();
 
 		// Verify shapes match
 		assertEquals(expected.getShape().traverse(0), actual.getShape().traverse(0));

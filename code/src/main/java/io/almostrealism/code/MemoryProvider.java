@@ -18,7 +18,6 @@ package io.almostrealism.code;
 
 import io.almostrealism.uml.Named;
 
-import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 public interface MemoryProvider<T extends Memory> extends Named {

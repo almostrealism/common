@@ -17,50 +17,92 @@
 package org.almostrealism.space;
 
 import io.almostrealism.code.AdaptEvaluable;
+import io.almostrealism.code.Constant;
+import io.almostrealism.code.Operator;
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Producer;
+import io.almostrealism.relation.Provider;
 import org.almostrealism.algebra.ParticleGroup;
-import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.color.RGB;
+import org.almostrealism.geometry.BoundingSolid;
+import org.almostrealism.geometry.ContinuousField;
 import org.almostrealism.geometry.Intersection;
-import org.almostrealism.geometry.TransformMatrix;
 import org.almostrealism.geometry.Ray;
-import org.almostrealism.hardware.Input;
-import io.almostrealism.code.Operator;
-import io.almostrealism.code.Constant;
-import io.almostrealism.relation.Producer;
+import org.almostrealism.geometry.ShadableIntersection;
+import org.almostrealism.geometry.TransformMatrix;
 import org.almostrealism.graph.mesh.TriangleFeatures;
 import org.almostrealism.graph.mesh.TriangleIntersectAt;
-import org.almostrealism.geometry.ShadableIntersection;
-import org.almostrealism.geometry.ContinuousField;
-import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.Provider;
+import org.almostrealism.hardware.Input;
 
 /**
- * A {@link Triangle} represents a triangle in 3d space.
- * 
- * @author  Michael Murray
+ * A {@link Triangle} represents a triangle in 3D space, serving as the fundamental
+ * polygon primitive for mesh-based geometry in ray tracing and rendering.
+ *
+ * <p>Triangles can be constructed in two ways:
+ * <ul>
+ *   <li>Directly from three {@link Vector} vertices (standalone triangle)</li>
+ *   <li>From vertex indices referencing a {@link Mesh.VertexData} provider (mesh triangle)</li>
+ * </ul>
+ *
+ * <p>The class supports several rendering features:
+ * <ul>
+ *   <li><b>Smooth shading</b>: Interpolates vertex normals for Phong-style smooth surfaces</li>
+ *   <li><b>Vertex color interpolation</b>: Blends colors across the triangle face</li>
+ *   <li><b>Texture coordinates</b>: UV mapping for texture sampling</li>
+ *   <li><b>Hardware acceleration</b>: Precomputed data structures for efficient ray intersection</li>
+ * </ul>
+ *
+ * <p>The triangle stores precomputed data in a packed format for efficient ray-triangle
+ * intersection using the Moller-Trumbore algorithm variant.
+ *
+ * @author Michael Murray
+ * @see Mesh
+ * @see Vertex
+ * @see AbstractSurface
  */
 public class Triangle extends AbstractSurface implements ParticleGroup, TriangleFeatures {
 
-	private static TriangleFeatures triangleFeat = TriangleFeatures.getInstance();
+	private static final TriangleFeatures triangleFeat = TriangleFeatures.getInstance();
 
 	private Mesh.VertexData vertexData;
 	private int ind1, ind2, ind3;
 	
+	/** First vertex of the triangle. */
 	private Vector p1, p2, p3;
-	private boolean smooth, intcolor, useT = true;
-	private PackedCollection<Vector> data;
 
-	protected static final Evaluable<PackedCollection<Vector>> dataProducer;
+	/** Smooth shading flag - when true, normals are interpolated across the triangle. */
+	private boolean smooth;
 
-	public static final Evaluable<PackedCollection<?>> intersectAt;
-	
+	/** Vertex color interpolation flag - when true, colors are interpolated across the triangle. */
+	private boolean intcolor;
+
+	/** Transform usage flag - when true, transformations are applied during intersection. */
+	private boolean useT = true;
+
+	/** Precomputed triangle data for hardware-accelerated intersection. */
+	private PackedCollection data;
+
+	/**
+	 * Evaluable that computes precomputed triangle data from vertex positions.
+	 * The output format is a 4x3 matrix containing edge vectors and face normal.
+	 */
+	public static final Evaluable<PackedCollection> dataProducer;
+
+	/**
+	 * Evaluable for computing ray-triangle intersections.
+	 * Takes ray data and triangle data as inputs, returns intersection distance.
+	 */
+	public static final Evaluable<PackedCollection> intersectAt;
+
 	static {
-		CollectionProducer<PackedCollection<Vector>> triangle =
-				triangleFeat.triangle(Input.value(new TraversalPolicy(3, 3), 0));
+		// Note: Input shape is (3, 3) for a single triangle - 3 vertices with 3 components each
+		// For batch processing with shape (N, 3, 3), use TriangleFeatures.triangle(Producer) directly
+		CollectionProducer triangle =
+				triangleFeat.triangle(Input.value(new TraversalPolicy(false, false, 3, 3), 0));
 		dataProducer = triangle.get();
 
 		intersectAt = TriangleIntersectAt.construct(Input.value(new TraversalPolicy(4, 3), 1),
@@ -76,53 +118,101 @@ public class Triangle extends AbstractSurface implements ParticleGroup, Triangle
 	}
 	
 	/**
-	 * Constructs a new Triangle object with the specified vertices that is black.
+	 * Constructs a new {@link Triangle} with the specified vertices and black color.
+	 *
+	 * @param p1 the first vertex position
+	 * @param p2 the second vertex position
+	 * @param p3 the third vertex position
 	 */
 	public Triangle(Vector p1, Vector p2, Vector p3) {
 		this.setVertices(p1, p2, p3);
 	}
 	
 	/**
-	 * Constructs a new {@link Triangle} with the specified vertices
-	 * using the color represented by the specified {@link RGB}.
+	 * Constructs a new {@link Triangle} with the specified vertices and color.
+	 *
+	 * @param p1    the first vertex position
+	 * @param p2    the second vertex position
+	 * @param p3    the third vertex position
+	 * @param color the surface color of the triangle
 	 */
 	public Triangle(Vector p1, Vector p2, Vector p3, RGB color) {
 		super(null, 1.0, color, false);
 		this.setVertices(p1, p2, p3);
 	}
-	
+
+	/**
+	 * Constructs a new {@link Triangle} using vertex indices from a {@link Mesh.VertexData} provider.
+	 *
+	 * <p>This constructor is used when the triangle is part of a mesh and shares vertex data
+	 * with other triangles. The actual vertex positions are looked up from the data provider.
+	 *
+	 * @param p1    the index of the first vertex in the data provider
+	 * @param p2    the index of the second vertex in the data provider
+	 * @param p3    the index of the third vertex in the data provider
+	 * @param color the surface color of the triangle
+	 * @param data  the vertex data provider containing position, color, and normal information
+	 */
 	public Triangle(int p1, int p2, int p3, RGB color, Mesh.VertexData data) {
 		super(color, false);
-		
+
 		this.ind1 = p1;
 		this.ind2 = p2;
 		this.ind3 = p3;
 		this.vertexData = data;
-		
+
 		this.loadVertexData();
 	}
 	
+	/**
+	 * Loads vertex positions from the vertex data provider.
+	 */
 	private void loadVertexData() {
 		setVertices(vertexData.getPosition(ind1), vertexData.getPosition(ind2), vertexData.getPosition(ind3));
 	}
 
-	public PackedCollection<Vector> getPointData() {
-		PackedCollection<Vector> points = Vector.bank(3);
+	/**
+	 * Returns the raw vertex positions as a packed collection.
+	 *
+	 * @return a bank of three vectors containing the vertex positions
+	 */
+	public PackedCollection getPointData() {
+		PackedCollection points = Vector.bank(3);
 		points.set(0, p1);
 		points.set(1, p2);
 		points.set(2, p3);
 		return points;
 	}
 
-	public PackedCollection<Vector> getData() { return data; }
+	/**
+	 * Returns the precomputed triangle data used for hardware-accelerated intersection.
+	 *
+	 * <p>The data is a 4x3 matrix containing:
+	 * <ul>
+	 *   <li>Row 0: Edge vector (p2 - p1)</li>
+	 *   <li>Row 1: Edge vector (p3 - p1)</li>
+	 *   <li>Row 2: Origin offset data</li>
+	 *   <li>Row 3: Face normal vector</li>
+	 * </ul>
+	 *
+	 * @return the precomputed triangle data
+	 */
+	public PackedCollection getData() { return data; }
 	
 	/**
-	 * Sets the vertices of this Triangle object to those specified.
-	 * The Vector objects passed to this method WILL be stored by the Triangle object,
-	 * but changes made to the Vector objects WILL NOT be reflected in the calculation
-	 * of smooth surface normals and of intersections. To change the Vector coordinates
-	 * you must call the setVertices method again.
-	 */	
+	 * Sets the vertices of this triangle to the specified positions.
+	 *
+	 * <p>The Vector objects passed to this method are stored by the triangle,
+	 * but subsequent changes to those Vector objects will NOT be reflected in
+	 * intersection calculations. To update vertex positions, call this method again.
+	 *
+	 * <p>This method also recomputes the precomputed triangle data used for
+	 * hardware-accelerated intersection.
+	 *
+	 * @param p1 the first vertex position
+	 * @param p2 the second vertex position
+	 * @param p3 the third vertex position
+	 */
 	public void setVertices(Vector p1, Vector p2, Vector p3) {
 		this.p1 = p1;
 		this.p2 = p2;
@@ -132,13 +222,23 @@ public class Triangle extends AbstractSurface implements ParticleGroup, Triangle
 				.reshape(shape(4, 3)).traverse(1);
 	}
 
-	public void setVertices(Vector v[]) {
+	/**
+	 * Sets the vertices of this triangle from an array.
+	 *
+	 * @param v an array of exactly three vectors
+	 */
+	public void setVertices(Vector[] v) {
 		setVertices(v[0], v[1], v[2]);
 	}
-	
+
 	/**
-	 * @return  An array of Vector objects representing the vertices of this Triangle object.
-	 */	
+	 * Returns the vertices of this triangle as an array of three vectors.
+	 *
+	 * <p>If this triangle uses a {@link Mesh.VertexData} provider, the positions
+	 * are retrieved from the provider. Otherwise, the stored vertex positions are returned.
+	 *
+	 * @return an array containing the three vertex positions
+	 */
 	public Vector[] getVertices() {
 		if (this.vertexData == null) {
 			return new Vector[] {this.p1, this.p2, this.p3};
@@ -155,6 +255,13 @@ public class Triangle extends AbstractSurface implements ParticleGroup, Triangle
 		}
 	}
 	
+	/**
+	 * Returns the texture coordinates for all three vertices.
+	 *
+	 * <p>If no vertex data provider is configured, returns zero coordinates for all vertices.
+	 *
+	 * @return a 3x2 array of texture coordinates (u, v) for each vertex
+	 */
 	public float[][] getTextureCoordinates() {
 		if (vertexData == null) {
 			return new float[][] {
@@ -163,7 +270,7 @@ public class Triangle extends AbstractSurface implements ParticleGroup, Triangle
 					{0f, 0f}
 			};
 		}
-		
+
 		return new float[][] {
 				{(float) vertexData.getTextureU(ind1), (float) vertexData.getTextureV(ind1)},
 				{(float) vertexData.getTextureU(ind2), (float) vertexData.getTextureV(ind2)},
@@ -236,18 +343,19 @@ public class Triangle extends AbstractSurface implements ParticleGroup, Triangle
 	}
 
 	@Override
-	public Producer<RGB> getValueAt(Producer<Vector> point) {
-		Producer<RGB> dcp = getColorAt(point, useT);
+	public Producer<PackedCollection> getValueAt(Producer<PackedCollection> point) {
+		Producer<PackedCollection> dcp = getColorAt(point, useT);
 
 		return func(shape(3), args -> {
-			RGB dc = dcp.get().evaluate(args);
+			PackedCollection dcResult = dcp.get().evaluate(args);
+			RGB dc = dcResult instanceof RGB ? (RGB) dcResult : new RGB(dcResult.toDouble(0), dcResult.toDouble(1), dcResult.toDouble(2));
 
-			Vector triple = point.get().evaluate(args);
+			Vector triple = new Vector(point.get().evaluate(args), 0);
 			if (dc.length() < Intersection.e * 100) return new RGB(0.0, 0.0, 0.0);
 
-			Vector abc = data.get(0);
-			Vector def = data.get(1);
-			Vector jkl = data.get(2);
+			Vector abc = new Vector(data.get(0), 0);
+			Vector def = new Vector(data.get(1), 0);
+			Vector jkl = new Vector(data.get(2), 0);
 
 			if (intcolor) {
 				double g = triple.getX();
@@ -305,18 +413,18 @@ public class Triangle extends AbstractSurface implements ParticleGroup, Triangle
 	 * at the point represented by the specified {@link Vector} {@link Evaluable}.
 	 */
 	@Override
-	public Producer<Vector> getNormalAt(Producer<Vector> p) {
+	public Producer<PackedCollection> getNormalAt(Producer<PackedCollection> p) {
 		if (smooth && vertexData == null) {
 			return func(shape(3), args -> {
-				Vector point = p.get().evaluate(args);
+				Vector point = new Vector(p.get().evaluate(args), 0);
 
 				double g = point.getX();
 				double h = point.getY();
 				double i = point.getZ();
 
-				Vector abc = data.get(0);
-				Vector def = data.get(1);
-				Vector jkl = data.get(2);
+				Vector abc = new Vector(data.get(0), 0);
+				Vector def = new Vector(data.get(1), 0);
+				Vector jkl = new Vector(data.get(2), 0);
 
 				double m = abc.getX() * (def.getY() * i - h * def.getZ()) +
 						abc.getY() * (g * def.getZ() - def.getX() * i) +
@@ -350,10 +458,10 @@ public class Triangle extends AbstractSurface implements ParticleGroup, Triangle
 		} else {
 			if (useT && getTransform(true) != null) {
 				return getTransform(true).getInverse().transform(
-						v(data.get(3)),
+						v(new Vector(data.get(3), 0)),
 						TransformMatrix.TRANSFORM_AS_NORMAL);
 			} else {
-				return vector(c(((PackedCollection<?>) data.get(3)).clone()));
+				return vector(c(data.get(3).clone()));
 			}
 		}
 	}
@@ -368,7 +476,7 @@ public class Triangle extends AbstractSurface implements ParticleGroup, Triangle
 		TransformMatrix t = getTransform(true);
 		boolean ut = useT && t != null;
 		Producer<Ray> r = ray;
-		if (ut) r = t.getInverse().transform(ray);
+		if (ut) r = (Producer) t.getInverse().transform(ray);
 
 		Evaluable<Ray> er = r.get();
 		// TODO  Perhaps r should be ray...
@@ -378,13 +486,15 @@ public class Triangle extends AbstractSurface implements ParticleGroup, Triangle
 	}
 
 	@Override
-	public Operator<Scalar> get() {
+	public Operator<PackedCollection> get() {
 		return null;
 	}
 
 	@Override
-	public Operator<Scalar> expect() {
-		return new Constant<>(new Scalar(0));
+	public Operator<PackedCollection> expect() {
+		PackedCollection zero = new PackedCollection(1);
+		zero.setMem(0, 0.0);
+		return new Constant<>(zero);
 	}
 
 	public String toString() {

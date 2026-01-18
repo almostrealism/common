@@ -17,34 +17,34 @@
 package org.almostrealism.color.computations;
 
 import io.almostrealism.code.ArgumentMap;
-import io.almostrealism.profile.OperationInfo;
-import io.almostrealism.profile.OperationMetadata;
-import io.almostrealism.kernel.KernelStructureContext;
-import io.almostrealism.relation.Evaluable;
-import io.almostrealism.compute.Process;
-import io.almostrealism.scope.Scope;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.ScopeInputManager;
-import io.almostrealism.relation.Producer;
-import io.almostrealism.relation.Generated;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.compute.Process;
+import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.profile.OperationInfo;
+import io.almostrealism.profile.OperationMetadata;
+import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Generated;
+import io.almostrealism.relation.Producer;
+import io.almostrealism.scope.Scope;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerComputation;
-import org.almostrealism.color.RGB;
+import org.almostrealism.collect.PackedCollection;
 
 import java.util.Collection;
 import java.util.Collections;
 
-public class GeneratedColorProducer<T> implements Generated<T, Producer<RGB>>, CollectionProducerComputation<RGB> {
-	private Producer<RGB> p;
+public class GeneratedColorProducer<T> implements Generated<T, Producer<PackedCollection>>, CollectionProducerComputation {
+	private Producer<PackedCollection> p;
 	private T generator;
 
 	protected GeneratedColorProducer(T generator) {
 		this.generator = generator;
 	}
 
-	protected GeneratedColorProducer(T generator, Producer<RGB> p) {
+	protected GeneratedColorProducer(T generator, Producer<PackedCollection> p) {
 		this.generator = generator;
 		this.p = p;
 	}
@@ -60,11 +60,11 @@ public class GeneratedColorProducer<T> implements Generated<T, Producer<RGB>>, C
 
 	public T getGenerator() { return generator; }
 
-	public Producer<RGB> getProducer() {
+	public Producer<PackedCollection> getProducer() {
 		return p;
 	}
 
-	public Producer<RGB> getGenerated() { return p; }
+	public Producer<PackedCollection> getGenerated() { return p; }
 
 	@Override
 	public TraversalPolicy getShape() {
@@ -80,7 +80,7 @@ public class GeneratedColorProducer<T> implements Generated<T, Producer<RGB>>, C
 	public long getCountLong() { return getShape().getCountLong(); }
 
 	@Override
-	public CollectionProducer<RGB> reshape(TraversalPolicy shape) {
+	public CollectionProducer reshape(TraversalPolicy shape) {
 		return (CollectionProducer) ((Shape) getGenerated()).reshape(shape);
 	}
 
@@ -99,12 +99,12 @@ public class GeneratedColorProducer<T> implements Generated<T, Producer<RGB>>, C
 	}
 
 	@Override
-	public Scope<RGB> getScope(KernelStructureContext context) { return ((Computation) p).getScope(context); }
+	public Scope<PackedCollection> getScope(KernelStructureContext context) { return ((Computation) p).getScope(context); }
 
 	@Override
-	public Evaluable<RGB> get() { return p.get(); }
+	public Evaluable<PackedCollection> get() { return p.get(); }
 
-	public static <T> GeneratedColorProducer<T> fromProducer(T generator, Producer<? extends RGB> p) {
+	public static <T> GeneratedColorProducer<T> fromProducer(T generator, Producer<? extends PackedCollection> p) {
 		return new GeneratedColorProducer(generator, p);
 	}
 }

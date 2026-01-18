@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tutorial: Building Computation Graphs - Almost Realism</title>
+    <link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1><a href="../index.html" style="color: white; text-decoration: none;">Almost Realism Framework</a></h1>
+            <p class="tagline">Tutorial: Building Computation Graphs</p>
+            <nav>
+                <a href="../index.html">Home</a>
+                <a href="../index.html#modules">Modules</a>
+                <a href="../index.html#tutorials">Tutorials</a>
+                <a href="../index.html#api">API Docs</a>
+            </nav>
+        </header>
+
+        <main>
+            <section>
+                <h2>Introduction</h2>
+                <p>This tutorial explains the Producer/Evaluable pattern, the foundation of Almost Realism's computation graph system. You'll learn:</p>
+                <ul>
+                    <li>The Producer/Evaluable abstraction and why it matters</li>
+                    <li>How to build computation graphs declaratively</li>
+                    <li>Lazy evaluation and deferred execution</li>
+                    <li>Automatic differentiation (delta/gradient computation)</li>
+                    <li>Graph optimization and kernel fusion</li>
+                    <li>Building complex multi-stage pipelines</li>
+                </ul>
+
+                <p><strong>Prerequisites:</strong></p>
+                <ul>
+                    <li>Completion of previous tutorials</li>
+                    <li>Understanding of functional programming concepts</li>
+                    <li>Familiarity with PackedCollection</li>
+                </ul>
+            </section>
+
+            <section>
+                <h2>Step 1: Understanding Producer and Evaluable</h2>
+                <p>The Producer/Evaluable pattern separates <em>describing</em> computations from <em>executing</em> them:</p>
+
+                <ul>
+                    <li><strong>Producer:</strong> A factory that <em>describes</em> a computation (lazy, composable)</li>
+                    <li><strong>Evaluable:</strong> An executable object that <em>performs</em> the computation (eager, compiled)</li>
+                </ul>
+
+                <pre><code class="language-java">// Producer: describes computation, does NOT execute
+CollectionProducer computation = cp(data)
+    .add(cp(otherData))
+    .multiply(2.0);  // Just building a graph
+
+// Evaluable: compiles and executes the graph
+Evaluable&lt;?&gt; evaluable = computation.get();  // Compile
+PackedCollection result = evaluable.evaluate();  // Execute</code></pre>
+
+                <p><strong>Benefits:</strong></p>
+                <ul>
+                    <li>Deferred execution allows optimization before running</li>
+                    <li>Reusable computations (compile once, run many times)</li>
+                    <li>Automatic GPU kernel generation</li>
+                    <li>Symbolic differentiation for gradients</li>
+                </ul>
+            </section>
+
+            <section>
+                <h2>Step 2: Building Simple Computation Graphs</h2>
+
+                <h3>Linear Chain</h3>
+                <pre><code class="language-java">import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.CollectionProducer;
+import static org.almostrealism.collect.CollectionFeatures.*;
+
+// Input data
+PackedCollection input = new PackedCollection(shape(1000));
+input.fill(pos -&gt; Math.random());
+
+// Build graph: input -> normalize -> scale -> clamp
+CollectionProducer graph = cp(input)
+    .subtract(c(0.5))           // Center: x - 0.5
+    .multiply(2.0)              // Scale: 2 * (x - 0.5)
+    .max(c(-1.0))               // Clamp min: max(x, -1)
+    .min(c(1.0));               // Clamp max: min(x, 1)
+
+// Execute graph
+PackedCollection result = graph.get().evaluate();
+
+// Graph is compiled into single optimized kernel!</code></pre>
+
+                <h3>Branching Graph</h3>
+                <pre><code class="language-java">// Input
+CollectionProducer x = cp(input);
+
+// Two branches
+CollectionProducer branch1 = x.multiply(2.0).add(c(1.0));  // 2x + 1
+CollectionProducer branch2 = x.pow(c(2.0));               // x^2
+
+// Combine branches
+CollectionProducer combined = branch1.add(branch2);  // (2x + 1) + x^2
+
+// Execute
+PackedCollection result = combined.get().evaluate();</code></pre>
+            </section>
+
+            <section>
+                <h2>Step 3: Lazy Evaluation in Action</h2>
+                <p>Producers are lazy - they don't compute anything until <code>get().evaluate()</code>:</p>
+
+                <pre><code class="language-java">PackedCollection data = new PackedCollection(shape(1000000));
+data.fill(pos -&gt; Math.random());
+
+// Building this is INSTANT - no computation happens
+CollectionProducer complex = cp(data)
+    .multiply(2.0)
+    .add(c(1.0))
+    .sqrt()
+    .divide(c(3.0))
+    .pow(c(2.0));
+
+System.out.println("Graph built!");  // Prints immediately
+
+// NOW the computation happens
+long start = System.currentTimeMillis();
+PackedCollection result = complex.get().evaluate();
+long elapsed = System.currentTimeMillis() - start;
+
+System.out.println("Executed in " + elapsed + "ms");</code></pre>
+
+                <p><strong>Why this matters:</strong> Framework can optimize the entire graph before execution (kernel fusion, dead code elimination, etc.)</p>
+            </section>
+
+            <section>
+                <h2>Step 4: Reusing Compiled Graphs</h2>
+                <p>Compile once, execute many times with different inputs:</p>
+
+                <pre><code class="language-java">// Build graph with placeholder input
+Supplier&lt;Evaluable&lt;? extends PackedCollection&gt;&gt; inputSupplier =
+    () -&gt; args -&gt; (PackedCollection) args[0];
+
+Producer&lt;PackedCollection&gt; input = new Producer&lt;&gt;() {
+    @Override
+    public Evaluable&lt;PackedCollection&gt; get() {
+        return inputSupplier.get();
+    }
+};
+
+// Define transformation
+CollectionProducer transform = input
+    .multiply(2.0)
+    .add(c(1.0));
+
+// Compile ONCE
+Evaluable&lt;PackedCollection&gt; compiled = transform.get();
+
+// Execute multiple times with different data
+for (int i = 0; i < 100; i++) {
+    PackedCollection data = createData(i);
+    PackedCollection result = compiled.evaluate(data);
+    processResult(result);
+}
+
+// No recompilation! Very fast iteration.</code></pre>
+            </section>
+
+            <section>
+                <h2>Step 5: Automatic Differentiation</h2>
+                <p>Producers support automatic differentiation via the <code>delta(target)</code> method:</p>
+
+                <pre><code class="language-java">// Forward pass: f(x) = x^2
+CollectionProducer x = cp(new PackedCollection(shape(100)));
+CollectionProducer y = x.pow(c(2.0));  // y = x^2
+
+// Backward pass: df/dx = 2x
+CollectionProducer gradient = y.delta(x);
+
+// Create input data
+PackedCollection inputData = new PackedCollection(shape(100));
+inputData.fill(pos -&gt; pos[0]);  // [0, 1, 2, 3, ...]
+
+// Compute gradient
+PackedCollection grad = gradient.get().evaluate(inputData);
+
+// grad[i] = 2 * inputData[i]
+// grad[0] = 0, grad[1] = 2, grad[2] = 4, grad[3] = 6, ...</code></pre>
+
+                <h3>Complex Function Differentiation</h3>
+                <pre><code class="language-java">// f(x) = (2x + 1) * sqrt(x)
+CollectionProducer x = cp(input);
+CollectionProducer f = x.multiply(2.0)
+                         .add(c(1.0))
+                         .multiply(x.sqrt());
+
+// df/dx computed symbolically via chain rule
+CollectionProducer df_dx = f.delta(x);
+
+// Execute to get numerical gradient
+PackedCollection gradient = df_dx.get().evaluate(inputData);</code></pre>
+            </section>
+
+            <section>
+                <h2>Step 6: Graph Optimization Example</h2>
+                <p>Framework automatically optimizes computation graphs:</p>
+
+                <pre><code class="language-java">// Inefficient manual approach
+PackedCollection step1 = cp(data).multiply(2.0).get().evaluate();
+PackedCollection step2 = cp(step1).add(c(1.0)).get().evaluate();
+PackedCollection step3 = cp(step2).sqrt().get().evaluate();
+// Result: 3 separate kernels, 2 intermediate allocations
+
+// Optimized graph approach
+PackedCollection result = cp(data)
+    .multiply(2.0)
+    .add(c(1.0))
+    .sqrt()
+    .get()
+    .evaluate();
+// Result: 1 fused kernel, 0 intermediate allocations
+// Much faster!</code></pre>
+
+                <p><strong>Kernel Fusion:</strong> Framework combines operations like multiply, add, sqrt into a single GPU kernel, eliminating memory transfers.</p>
+            </section>
+
+            <section>
+                <h2>Step 7: Multi-Stage Pipelines</h2>
+                <p>Build complex multi-stage data processing pipelines:</p>
+
+                <pre><code class="language-java">import org.almostrealism.collect.CollectionProducer;
+import static org.almostrealism.collect.CollectionFeatures.*;
+
+public class ImageProcessingPipeline {
+    public static CollectionProducer buildPipeline(
+            CollectionProducer rawImages) {
+
+        // Stage 1: Normalization
+        CollectionProducer normalized = rawImages
+            .divide(c(255.0))              // [0, 255] -> [0, 1]
+            .subtract(c(0.5))              // Center
+            .multiply(2.0);                // [-1, 1]
+
+        // Stage 2: Augmentation
+        CollectionProducer noise = randomCollection(
+            rawImages.getShape(), 0.0, 0.01);
+        CollectionProducer augmented = normalized.add(noise);
+
+        // Stage 3: Feature extraction (simplified)
+        CollectionProducer features = augmented
+            .pow(c(2.0))                   // Square
+            .sum(1);                       // Sum over channels
+
+        return features;
+    }
+
+    public static void main(String[] args) {
+        // Load images
+        PackedCollection images = loadImages("dataset/");
+
+        // Build pipeline (lazy)
+        CollectionProducer pipeline = buildPipeline(cp(images));
+
+        // Compile pipeline
+        Evaluable&lt;?&gt; compiled = pipeline.get();
+
+        // Execute on multiple batches
+        for (PackedCollection batch : batches) {
+            PackedCollection features = compiled.evaluate(batch);
+            processFeatures(features);
+        }
+    }
+}</code></pre>
+            </section>
+
+            <section>
+                <h2>Step 8: Conditional Computation</h2>
+                <p>Use conditional expressions in computation graphs:</p>
+
+                <pre><code class="language-java">// ReLU activation: max(0, x)
+CollectionProducer x = cp(input);
+CollectionProducer relu = x.max(c(0.0));
+
+// Leaky ReLU: x if x > 0 else 0.01*x
+CollectionProducer leakyRelu = x.conditional(
+    x.greaterThan(c(0.0)),    // condition
+    x,                         // if true
+    x.multiply(0.01)          // if false
+);
+
+// Clipping: clamp(x, min, max)
+CollectionProducer clipped = x
+    .max(c(-1.0))   // Lower bound
+    .min(c(1.0));   // Upper bound</code></pre>
+            </section>
+
+            <section>
+                <h2>Step 9: Working with Multiple Inputs</h2>
+                <p>Computation graphs can have multiple input sources:</p>
+
+                <pre><code class="language-java">// Define computation with multiple inputs
+public class MultiInputGraph {
+    public static CollectionProducer build(
+            CollectionProducer input1,
+            CollectionProducer input2,
+            CollectionProducer weights) {
+
+        // Weighted combination
+        CollectionProducer weighted1 = input1.multiply(weights);
+        CollectionProducer weighted2 = input2.multiply(
+            weights.multiply(-1.0).add(c(1.0))  // 1 - weights
+        );
+
+        return weighted1.add(weighted2);
+    }
+
+    public static void main(String[] args) {
+        PackedCollection data1 = loadData("source1");
+        PackedCollection data2 = loadData("source2");
+        PackedCollection w = new PackedCollection(shape(100));
+        w.fill(pos -&gt; 0.5);  // 50/50 blend
+
+        CollectionProducer blended = build(
+            cp(data1), cp(data2), cp(w)
+        );
+
+        PackedCollection result = blended.get().evaluate();
+    }
+}</code></pre>
+            </section>
+
+            <section>
+                <h2>Step 10: Debugging Computation Graphs</h2>
+
+                <h3>Inspecting Graph Structure</h3>
+                <pre><code class="language-java">// Build graph
+CollectionProducer graph = cp(data)
+    .multiply(2.0)
+    .add(c(1.0))
+    .sqrt();
+
+// Get evaluable (compiled form)
+Evaluable&lt;?&gt; evaluable = graph.get();
+
+// Inspect (implementation-dependent)
+System.out.println("Graph info: " + evaluable.getClass().getName());</code></pre>
+
+                <h3>Testing Intermediate Results</h3>
+                <pre><code class="language-java">// Test each stage separately
+CollectionProducer stage1 = cp(data).multiply(2.0);
+CollectionProducer stage2 = stage1.add(c(1.0));
+CollectionProducer stage3 = stage2.sqrt();
+
+// Verify intermediate outputs
+PackedCollection result1 = stage1.get().evaluate();
+PackedCollection result2 = stage2.get().evaluate();
+PackedCollection result3 = stage3.get().evaluate();
+
+System.out.println("After multiply: " + result1.toDouble(0));
+System.out.println("After add: " + result2.toDouble(0));
+System.out.println("After sqrt: " + result3.toDouble(0));</code></pre>
+            </section>
+
+            <section>
+                <h2>Step 11: Practical Example - Neural Network Layer</h2>
+                <p>Build a dense neural network layer using computation graphs:</p>
+
+                <pre><code class="language-java">public class DenseLayer {
+    private final PackedCollection weights;
+    private final PackedCollection bias;
+
+    public DenseLayer(int inputSize, int outputSize) {
+        // Initialize weights and bias
+        this.weights = new PackedCollection(shape(outputSize, inputSize));
+        this.bias = new PackedCollection(shape(outputSize));
+
+        // Xavier initialization
+        double scale = Math.sqrt(2.0 / inputSize);
+        weights.fill(pos -&gt; (Math.random() - 0.5) * scale);
+        bias.fill(pos -&gt; 0.0);
+    }
+
+    public CollectionProducer forward(CollectionProducer input) {
+        // y = ReLU(W * x + b)
+        CollectionProducer linear = cp(weights)
+            .multiply(input)     // Matrix-vector multiply
+            .add(cp(bias));      // Add bias
+
+        CollectionProducer activated = linear.max(c(0.0));  // ReLU
+
+        return activated;
+    }
+
+    public static void main(String[] args) {
+        // Create layer
+        DenseLayer layer = new DenseLayer(784, 128);  // MNIST input -> hidden
+
+        // Build forward pass graph
+        PackedCollection input = new PackedCollection(shape(784));
+        input.fill(pos -&gt; Math.random());
+
+        CollectionProducer output = layer.forward(cp(input));
+
+        // Execute
+        PackedCollection result = output.get().evaluate();
+        System.out.println("Output shape: " + result.getShape());
+    }
+}</code></pre>
+            </section>
+
+            <section>
+                <h2>Next Steps</h2>
+                <ul>
+                    <li><a href="05-ml-inference.html">Tutorial 5: Running ML Models</a></li>
+                    <li><a href="06-signal-processing.html">Tutorial 6: Signal Processing</a></li>
+                    <li><a href="../apidocs/io/almostrealism/relation/package-summary.html">Producer/Evaluable API Docs</a></li>
+                </ul>
+            </section>
+
+            <section>
+                <h2>Summary</h2>
+                <p>You've learned:</p>
+                <ul>
+                    <li>✓ Producer/Evaluable pattern and its benefits</li>
+                    <li>✓ Building computation graphs declaratively</li>
+                    <li>✓ Lazy evaluation and deferred execution</li>
+                    <li>✓ Reusing compiled graphs for performance</li>
+                    <li>✓ Automatic differentiation with delta()</li>
+                    <li>✓ Graph optimization and kernel fusion</li>
+                    <li>✓ Multi-stage pipelines and conditional logic</li>
+                    <li>✓ Working with multiple inputs</li>
+                    <li>✓ Debugging techniques</li>
+                    <li>✓ Practical application: neural network layer</li>
+                </ul>
+            </section>
+        </main>
+
+        <footer>
+            <p>&copy; 2024 Michael Murray. Licensed under the Apache License, Version 2.0.</p>
+        </footer>
+    </div>
+
+    <script src="../js/docs.js"></script>
+</body>
+</html>

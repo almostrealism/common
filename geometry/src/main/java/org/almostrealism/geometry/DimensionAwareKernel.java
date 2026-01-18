@@ -20,11 +20,29 @@ import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.hardware.MemoryData;
 
+/**
+ * A wrapper class that adds {@link DimensionAware} functionality to an existing kernel.
+ * This class wraps an {@link Evaluable} and delegates dimension settings to it,
+ * ensuring that the wrapped kernel receives rendering dimension information.
+ *
+ * <p>This is useful when you need to pass dimension information through the
+ * producer chain to kernels that need to know the image size for their computations.</p>
+ *
+ * @param <T> the type of data produced by the kernel
+ * @author Michael Murray
+ * @see DimensionAware
+ */
 public class DimensionAwareKernel<T extends MemoryData> implements Producer<T>, DimensionAware {
-	private Evaluable<T> k;
+	private final Evaluable<T> k;
 
+	/**
+	 * Constructs a new DimensionAwareKernel wrapping the specified evaluable.
+	 *
+	 * @param k the evaluable to wrap, must implement {@link DimensionAware}
+	 * @throws IllegalArgumentException if the provided evaluable does not implement DimensionAware
+	 */
 	public DimensionAwareKernel(Evaluable<T> k) {
-		if (k instanceof DimensionAware == false) {
+		if (!(k instanceof DimensionAware)) {
 			throw new IllegalArgumentException(k == null ? null : k.getClass() +
 												" is not DimensionAware");
 		}
@@ -32,11 +50,20 @@ public class DimensionAwareKernel<T extends MemoryData> implements Producer<T>, 
 		this.k = k;
 	}
 
+	/**
+	 * Returns the wrapped evaluable.
+	 *
+	 * @return the underlying evaluable kernel
+	 */
 	@Override
 	public Evaluable<T> get() {
 		return k;
 	}
 
+	/**
+	 * {@inheritDoc}
+	 * <p>Delegates the dimension settings to the wrapped kernel.</p>
+	 */
 	@Override
 	public void setDimensions(int width, int height, int ssw, int ssh) {
 		((DimensionAware) k).setDimensions(width, height, ssw, ssh);

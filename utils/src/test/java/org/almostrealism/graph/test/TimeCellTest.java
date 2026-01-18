@@ -17,21 +17,16 @@
 package org.almostrealism.graph.test;
 
 import io.almostrealism.relation.Producer;
-import io.almostrealism.relation.Provider;
 import org.almostrealism.algebra.Pair;
-import org.almostrealism.algebra.Scalar;
-import org.almostrealism.algebra.ScalarFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.TimeCell;
-import org.almostrealism.hardware.HardwareOperator;
-import org.almostrealism.hardware.cl.CLOperator;
 import org.almostrealism.hardware.computations.Assignment;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
 
 public class TimeCellTest implements TestFeatures {
-	@Test
+	@Test(timeout = 10000)
 	public void timeCell() {
 		TimeCell cell = new TimeCell(null, c(44100));
 		cell.setup().get().run();
@@ -44,10 +39,10 @@ public class TimeCellTest implements TestFeatures {
 		assertEquals(100.0, cell.frame().evaluate());
 	}
 
-	@Test
+	@Test(timeout = 10000)
 	public void fmod() {
-		Pair<?> time = new Pair<>();
-		Producer<PackedCollection<?>> loopDuration = c(2.0);
+		Pair time = new Pair();
+		Producer<PackedCollection> loopDuration = c(2.0);
 
 		CollectionProducer left = l(cp(time));
 		left = greaterThan(loopDuration, c(0.0),

@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -17,10 +17,34 @@
 package org.almostrealism.collect;
 
 import io.almostrealism.code.ComputableParallelProcess;
-import io.almostrealism.collect.Shape;
-import io.almostrealism.relation.Evaluable;
 import io.almostrealism.compute.Process;
+import io.almostrealism.relation.Evaluable;
 
-public interface CollectionProducerParallelProcess<T extends Shape<?>> extends
-			CollectionProducer<T>, ComputableParallelProcess<Process<?, ?>, Evaluable<? extends T>> {
+/**
+ * A {@link CollectionProducer} that can be executed as a parallel process.
+ *
+ * <p>
+ * {@link CollectionProducerParallelProcess} combines the capabilities of a {@link CollectionProducer}
+ * with {@link ComputableParallelProcess}, enabling hardware-accelerated parallel execution of
+ * collection computations. This is the foundation for compiling collection operations to GPU/CPU kernels.
+ * </p>
+ *
+ * <p>
+ * This interface is typically implemented by computation classes that produce collection results
+ * and can be compiled to native code or hardware kernels for efficient execution. The parallel
+ * process capabilities enable:
+ * <ul>
+ *   <li>Multi-threaded CPU execution</li>
+ *   <li>GPU kernel compilation and execution</li>
+ *   <li>Optimization and fusion of operations</li>
+ *   <li>Memory-efficient batch processing</li>
+ * </ul>
+ *
+ * @author  Michael Murray
+ * @see CollectionProducer
+ * @see ComputableParallelProcess
+ * @see org.almostrealism.collect.computations.CollectionProducerComputationBase
+ */
+public interface CollectionProducerParallelProcess extends
+			CollectionProducer, ComputableParallelProcess<Process<?, ?>, Evaluable<? extends PackedCollection>> {
 }

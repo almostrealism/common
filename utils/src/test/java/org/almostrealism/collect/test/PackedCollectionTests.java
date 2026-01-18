@@ -22,11 +22,11 @@ import org.junit.Test;
 
 public class PackedCollectionTests implements TestFeatures {
 
-	@Test
+	@Test(timeout = 10000)
 	public void transpose() {
-		PackedCollection<?> data = new PackedCollection<>(shape(10, 4))
+		PackedCollection data = new PackedCollection(shape(10, 4))
 				.randFill();
-		PackedCollection<?> transposed = data.transpose();
+		PackedCollection transposed = data.transpose();
 
 		// Assert transposed dimensions
 		assertEquals(4, transposed.getShape().length(0));
@@ -40,9 +40,9 @@ public class PackedCollectionTests implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 10000)
 	public void clear() {
-		PackedCollection<?> data = new PackedCollection<>(4);
+		PackedCollection data = new PackedCollection(4);
 		data.setMem(0, 1.0, 2.0, 3.0, 4.0);
 		data.clear();
 		assertEquals(0, data.toArray(0, 4)[1]);

@@ -1,0 +1,569 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AR-Heredity Module - Almost Realism Framework</title>
+    <link rel="stylesheet" href="../css/style.css">
+    <style>
+        .key-concepts { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin: 20px 0; }
+        .concept-card { background: #f8f9fa; border-left: 4px solid #ff8f00; padding: 15px; border-radius: 4px; }
+        .concept-card h4 { margin-top: 0; color: #ff8f00; }
+        .hierarchy-table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+        .hierarchy-table th, .hierarchy-table td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
+        .hierarchy-table th { background-color: #fff3e0; color: #ff8f00; font-weight: bold; }
+        .hierarchy-table tr:hover { background-color: #f5f5f5; }
+        .comparison-table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+        .comparison-table th, .comparison-table td { padding: 10px; border: 1px solid #ddd; text-align: left; }
+        .comparison-table th { background-color: #fff3e0; color: #ff8f00; }
+        .class-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 15px; margin: 20px 0; }
+        .class-item { background: #fff; border: 1px solid #ddd; padding: 12px; border-radius: 4px; }
+        .class-item h4 { margin: 0 0 8px 0; color: #ff8f00; font-size: 1.1em; }
+        .class-item p { margin: 0; font-size: 0.9em; color: #666; }
+        .code-example { background: #f5f5f5; border-left: 4px solid #ff8f00; padding: 15px; margin: 15px 0; border-radius: 4px; }
+        .highlight { background-color: #fff9c4; padding: 2px 4px; }
+        .warning { background-color: #ffebee; border-left: 4px solid #c62828; padding: 12px; margin: 15px 0; }
+        .info { background-color: #e3f2fd; border-left: 4px solid #1976d2; padding: 12px; margin: 15px 0; }
+        .hierarchy-diagram { background: #fff8e1; padding: 20px; border-radius: 8px; font-family: monospace; margin: 20px 0; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>AR-Heredity Module</h1>
+            <p class="tagline">Genetic Algorithms & Evolutionary Computation Framework</p>
+            <nav>
+                <a href="../index.html">Home</a>
+                <a href="#overview">Overview</a>
+                <a href="#representation">Genetic Representation</a>
+                <a href="#operations">Operations</a>
+                <a href="#factor-system">Factor System</a>
+                <a href="#examples">Examples</a>
+            </nav>
+        </header>
+
+        <main>
+            <section id="overview">
+                <h2>Overview</h2>
+                <p>The <strong>ar-heredity</strong> module provides a comprehensive framework for genetic algorithms and evolutionary computation. It defines a hierarchical genetic data structure (Gene, Chromosome, Genome) that integrates with the Producer/Factor pattern for hardware-accelerated computations.</p>
+
+                <div class="key-concepts">
+                    <div class="concept-card">
+                        <h4>Genetic Hierarchy</h4>
+                        <p>Three-level structure: Genomes contain Chromosomes, which contain Genes, which contain Factors. Enables organized representation of complex genetic information.</p>
+                    </div>
+                    <div class="concept-card">
+                        <h4>Breeding & Crossover</h4>
+                        <p>ChromosomeBreeder and GenomeBreeder interfaces for implementing crossover operations. Support for custom breeding strategies and bounded perturbation.</p>
+                    </div>
+                    <div class="concept-card">
+                        <h4>Factor System</h4>
+                        <p>Factors transform inputs to outputs via the Producer pattern. ScaleFactor for simple scaling, IdentityFactor for pass-through, CombinedFactor for composition.</p>
+                    </div>
+                    <div class="concept-card">
+                        <h4>Probabilistic Selection</h4>
+                        <p>ProbabilisticFactory enables gene-driven random selection from multiple options. Useful for strategy selection and component composition.</p>
+                    </div>
+                </div>
+            </section>
+
+            <section id="representation">
+                <h2>Genetic Representation</h2>
+
+                <h3>Hierarchy Structure</h3>
+                <div class="hierarchy-diagram">
+<pre>
+Genome&lt;T&gt;
+   |-- Contains multiple: Chromosome&lt;T&gt;
+   |        |-- Contains multiple: Gene&lt;T&gt;
+   |        |        |-- Contains multiple: Factor&lt;T&gt;
+   |        |        |        |-- Transforms Producer&lt;T&gt; -> Producer&lt;T&gt;
+   |        |        |
+   |        |        +-- Accessed via: gene.valueAt(factorIndex)
+   |        |
+   |        +-- Accessed via: chromosome.valueAt(geneIndex)
+   |
+   +-- Accessed via: genome.valueAt(chromosomeIndex)
+
+Direct Access: genome.valueAt(chromosome, gene, factor)
+</pre>
+                </div>
+
+                <h3>Core Interfaces</h3>
+                <div class="class-list">
+                    <div class="class-item">
+                        <h4>Gene&lt;T&gt;</h4>
+                        <p>Fundamental genetic unit containing Factors. Provides length(), valueAt(pos), getResultant(), and signature() methods.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>Chromosome&lt;T&gt;</h4>
+                        <p>Collection of Genes forming a logical grouping. Unit of crossover in breeding operations. Supports two-dimensional factor access.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>Genome&lt;T&gt;</h4>
+                        <p>Top-level container for Chromosomes. Represents a complete individual. Supports three-dimensional addressing of factors.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>Factor&lt;T&gt;</h4>
+                        <p>Transforms input Producer to output Producer. Foundation for expressing genetic effects on computations.</p>
+                    </div>
+                </div>
+
+                <h3>Gene Types</h3>
+                <table class="comparison-table">
+                    <tr>
+                        <th>Gene Type</th>
+                        <th>Description</th>
+                        <th>Use Case</th>
+                    </tr>
+                    <tr>
+                        <td>Simple Gene</td>
+                        <td>Created via HeredityFeatures.g(double...)</td>
+                        <td>Basic scalar factor values</td>
+                    </tr>
+                    <tr>
+                        <td>TransformableGene</td>
+                        <td>Supports per-position and global transformations</td>
+                        <td>Activation functions, normalization</td>
+                    </tr>
+                    <tr>
+                        <td>ProjectedGene</td>
+                        <td>Weighted projection from parameter collection</td>
+                        <td>Neural-style evolution, continuous optimization</td>
+                    </tr>
+                    <tr>
+                        <td>ChoiceGene</td>
+                        <td>Discrete selection from multiple options</td>
+                        <td>Strategy selection, categorical choices</td>
+                    </tr>
+                </table>
+
+                <h3>ProjectedGenome Architecture</h3>
+                <p>ProjectedGenome provides a parameter-driven approach to genetic representation, enabling continuous optimization over a shared parameter space:</p>
+                <div class="code-example">
+                    <strong>Parameter Flow:</strong><br>
+                    1. Parameters (PackedCollection) - shared by all chromosomes<br>
+                    2. ProjectedChromosome - references parameters<br>
+                    3. ProjectedGene - projection weights determine factor values<br>
+                    4. Factor values - computed via weighted projection
+                </div>
+            </section>
+
+            <section id="operations">
+                <h2>Operations</h2>
+
+                <h3>Breeding Interfaces</h3>
+                <div class="class-list">
+                    <div class="class-item">
+                        <h4>ChromosomeBreeder&lt;T&gt;</h4>
+                        <p>Combines two chromosomes to produce offspring. Implement combine(c1, c2) for custom crossover logic.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>GenomeBreeder&lt;T&gt;</h4>
+                        <p>Combines two genomes to produce offspring. Operates at the whole-genome level.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>Breeders</h4>
+                        <p>Utility class with perturbation() method for bounded value mutations during breeding.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>ChromosomeFactory</h4>
+                        <p>Factory interface for creating new chromosomes. Used in population initialization.</p>
+                    </div>
+                </div>
+
+                <h3>Mutation via Perturbation</h3>
+                <p>The Breeders.perturbation() method provides bounded value mutation:</p>
+                <pre><code class="language-java">// Perturb a value within bounds
+double original = 0.5;
+double lowerBound = 0.0;
+double upperBound = 1.0;
+double magnitude = 0.3;
+
+// Moving from 0.5 toward 1.0 by 0.3
+double result = Breeders.perturbation(0.5, 1.0, 0.3);  // Returns 0.8
+
+// Automatically clamped if exceeds bounds
+double clamped = Breeders.perturbation(0.0, 1.0, 2.0);  // Returns 1.0</code></pre>
+
+                <h3>ProjectedGenome Variation</h3>
+                <p>ProjectedGenome provides a variation() method for creating mutated offspring:</p>
+                <pre><code class="language-java">// Create offspring with mutations
+ProjectedGenome offspring = genome.variation(
+    -1.0,                           // min parameter value
+    1.0,                            // max parameter value
+    0.1,                            // 10% mutation rate
+    () -> Math.random() * 0.2 - 0.1 // delta in [-0.1, 0.1]
+);
+
+// Create completely random genome (for population initialization)
+ProjectedGenome randomGenome = genome.random();</code></pre>
+
+                <h3>Signature Generation</h3>
+                <p>All genetic structures provide signature() methods for identification and comparison:</p>
+                <ul>
+                    <li><strong>Gene.signature():</strong> Concatenates factor signatures (hex representations)</li>
+                    <li><strong>Chromosome.signature():</strong> Concatenates gene signatures</li>
+                    <li><strong>Genome.signature():</strong> Concatenates chromosome signatures</li>
+                </ul>
+            </section>
+
+            <section id="factor-system">
+                <h2>Factor System</h2>
+
+                <h3>Factor Implementations</h3>
+                <div class="class-list">
+                    <div class="class-item">
+                        <h4>ScaleFactor</h4>
+                        <p>Multiplies input by a scalar value. Most common factor type. Created via HeredityFeatures.g(double...).</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>IdentityFactor</h4>
+                        <p>Returns input unchanged. Useful as a no-op placeholder in genetic structures.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>CombinedFactor</h4>
+                        <p>Composes multiple factors. Applies each factor in sequence.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>TemporalFactor</h4>
+                        <p>Factor that changes over time. Integrates with ar-time module for time-stepped evolution.</p>
+                    </div>
+                </div>
+
+                <h3>ScaleFactor Details</h3>
+                <pre><code class="language-java">// Create scale factors
+ScaleFactor half = new ScaleFactor(0.5);
+ScaleFactor negative = new ScaleFactor(-1.0);
+
+// Apply to a producer
+Producer&lt;PackedCollection&gt; input = ...;
+Producer&lt;PackedCollection&gt; scaled = half.getResultant(input);
+
+// Modify scale value dynamically
+half.setScaleValue(0.75);
+double currentScale = half.getScaleValue();
+
+// Get signature (hex representation)
+String sig = half.signature();  // e.g., "0x1.0p-1"</code></pre>
+
+                <h3>Probabilistic Selection</h3>
+                <p>ProbabilisticFactory enables gene-driven random selection:</p>
+                <pre><code class="language-java">// Create factories for different strategies
+Factory&lt;Strategy&gt; aggressive = () -> new AggressiveStrategy();
+Factory&lt;Strategy&gt; defensive = () -> new DefensiveStrategy();
+Factory&lt;Strategy&gt; balanced = () -> new BalancedStrategy();
+
+// Create gene with probabilities (70%, 20%, 10%)
+HeredityFeatures features = HeredityFeatures.getInstance();
+Gene&lt;PackedCollection&gt; probabilities = features.g(0.7, 0.2, 0.1);
+
+// Create probabilistic factory
+List&lt;Factory&lt;Strategy&gt;&gt; strategies = Arrays.asList(aggressive, defensive, balanced);
+ProbabilisticFactory&lt;Strategy&gt; factory = new ProbabilisticFactory&lt;&gt;(strategies, probabilities);
+
+// Construct randomly selects based on probabilities
+Strategy selected = factory.construct();  // 70% aggressive, 20% defensive, 10% balanced</code></pre>
+
+                <h3>HeredityFeatures Utility Methods</h3>
+                <table class="hierarchy-table">
+                    <thead>
+                        <tr>
+                            <th>Method</th>
+                            <th>Description</th>
+                            <th>Example</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>g(double...)</td>
+                            <td>Create gene from scalar values</td>
+                            <td>g(0.1, 0.5, 0.9)</td>
+                        </tr>
+                        <tr>
+                            <td>g(Factor...)</td>
+                            <td>Create gene from factors</td>
+                            <td>g(factor1, factor2)</td>
+                        </tr>
+                        <tr>
+                            <td>c(Gene...)</td>
+                            <td>Create chromosome from genes</td>
+                            <td>c(gene1, gene2)</td>
+                        </tr>
+                        <tr>
+                            <td>chromosome(List)</td>
+                            <td>Create chromosome from gene list</td>
+                            <td>chromosome(geneList)</td>
+                        </tr>
+                        <tr>
+                            <td>oneToInfinity(f, exp)</td>
+                            <td>Map [0,1) to [0, infinity)</td>
+                            <td>oneToInfinity(0.9, 2.0)</td>
+                        </tr>
+                        <tr>
+                            <td>invertOneToInfinity(...)</td>
+                            <td>Inverse of oneToInfinity</td>
+                            <td>invertOneToInfinity(target, mult, exp)</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </section>
+
+            <section id="examples">
+                <h2>Usage Examples</h2>
+
+                <h3>Creating Simple Genes and Chromosomes</h3>
+                <pre><code class="language-java">import org.almostrealism.heredity.*;
+import org.almostrealism.collect.PackedCollection;
+
+public class SimpleGeneExample {
+    public void createGeneticStructure() {
+        HeredityFeatures features = HeredityFeatures.getInstance();
+
+        // Create genes from scalar values
+        Gene&lt;PackedCollection&gt; gene1 = features.g(0.1, 0.5, 0.9);
+        Gene&lt;PackedCollection&gt; gene2 = features.g(-1.0, 0.0, 1.0);
+        Gene&lt;PackedCollection&gt; gene3 = features.g(0.3, 0.7);
+
+        // Create chromosome from genes
+        Chromosome&lt;PackedCollection&gt; chromosome = features.c(gene1, gene2, gene3);
+
+        // Access gene
+        Gene&lt;PackedCollection&gt; firstGene = chromosome.valueAt(0);
+        int factorCount = firstGene.length();  // 3
+
+        // Access factor directly
+        Factor&lt;PackedCollection&gt; factor = chromosome.valueAt(1, 0);  // Gene 1, Factor 0
+
+        // Get chromosome signature
+        String signature = chromosome.signature();
+    }
+}</code></pre>
+
+                <h3>ProjectedGenome for Neural-Style Evolution</h3>
+                <pre><code class="language-java">import org.almostrealism.heredity.*;
+
+public class NeuralEvolution {
+    public void evolveNetwork() {
+        // Create genome with 100 parameters
+        ProjectedGenome genome = new ProjectedGenome(100);
+
+        // Add chromosomes for different layers
+        ProjectedChromosome layer1 = genome.addChromosome();
+        layer1.addGene(10);  // 10 factors
+        layer1.addGene(10);  // 10 factors
+
+        ProjectedChromosome layer2 = genome.addChromosome();
+        layer2.addGene(5);   // 5 factors
+
+        // Initialize weights deterministically
+        genome.initWeights();
+        genome.refreshValues();
+
+        // Access genetic information
+        Factor&lt;PackedCollection&gt; factor = genome.valueAt(0, 0, 0);
+
+        // Create offspring with 10% mutation rate
+        ProjectedGenome offspring = genome.variation(
+            -1.0,                           // min parameter value
+            1.0,                            // max parameter value
+            0.1,                            // 10% mutation rate
+            () -> Math.random() * 0.2 - 0.1 // delta in [-0.1, 0.1]
+        );
+
+        // Create random genome for population initialization
+        ProjectedGenome randomGenome = genome.random();
+    }
+}</code></pre>
+
+                <h3>Custom Breeding Operation</h3>
+                <pre><code class="language-java">import org.almostrealism.heredity.*;
+import org.almostrealism.collect.PackedCollection;
+
+public class CustomBreeder implements ChromosomeBreeder&lt;PackedCollection&gt; {
+
+    @Override
+    public Chromosome&lt;PackedCollection&gt; combine(
+            Chromosome&lt;PackedCollection&gt; parent1,
+            Chromosome&lt;PackedCollection&gt; parent2) {
+
+        HeredityFeatures features = HeredityFeatures.getInstance();
+
+        // Single-point crossover
+        int crossoverPoint = parent1.length() / 2;
+        Gene&lt;PackedCollection&gt;[] childGenes = new Gene[parent1.length()];
+
+        for (int i = 0; i &lt; parent1.length(); i++) {
+            if (i &lt; crossoverPoint) {
+                childGenes[i] = parent1.valueAt(i);
+            } else {
+                childGenes[i] = parent2.valueAt(i);
+            }
+        }
+
+        return features.c(childGenes);
+    }
+}</code></pre>
+
+                <h3>TransformableGene with Custom Functions</h3>
+                <pre><code class="language-java">import org.almostrealism.heredity.*;
+
+public class TransformExample {
+    public void useTransformableGene() {
+        // Create transformable gene with 10 positions
+        TransformableGene gene = new TransformableGene(10);
+
+        // Per-position transformation (sigmoid for position 0)
+        gene.setTransform(0, producer -> sigmoid(producer));
+
+        // Global transformation applied to all positions
+        gene.setTransform(producer -> normalize(producer));
+
+        // Resulting value: global(position-specific(raw-value))
+    }
+
+    // Placeholder for actual implementations
+    private Producer sigmoid(Producer input) { /* ... */ return input; }
+    private Producer normalize(Producer input) { /* ... */ return input; }
+}</code></pre>
+
+                <h3>Integration with Optimize Module</h3>
+                <pre><code class="language-java">import org.almostrealism.heredity.*;
+import org.almostrealism.optimize.PopulationOptimizer;
+
+public class EvolutionaryOptimization {
+    public void runEvolution() {
+        // Create initial population
+        List&lt;ProjectedGenome&gt; population = new ArrayList&lt;&gt;();
+        ProjectedGenome template = new ProjectedGenome(100);
+        // ... set up template structure ...
+
+        for (int i = 0; i &lt; 50; i++) {
+            population.add(template.random());
+        }
+
+        // Define fitness evaluation (application-specific)
+        HealthComputation&lt;Genome, Score&gt; fitness = genome -> {
+            // Evaluate genome fitness
+            return computeFitness(genome);
+        };
+
+        // Define breeding strategy
+        GenomeBreeder&lt;PackedCollection&gt; breeder = (g1, g2) -> {
+            // Custom crossover logic
+            return combineGenomes(g1, g2);
+        };
+
+        // Run evolutionary optimization
+        // (See ar-optimize module for PopulationOptimizer)
+    }
+}</code></pre>
+            </section>
+
+            <section id="integration">
+                <h2>Module Integration</h2>
+
+                <h3>Related Modules</h3>
+                <table class="comparison-table">
+                    <tr>
+                        <th>Module</th>
+                        <th>Integration Point</th>
+                        <th>Description</th>
+                    </tr>
+                    <tr>
+                        <td>ar-optimize</td>
+                        <td>PopulationOptimizer</td>
+                        <td>Uses genomes and breeders for evolutionary algorithms. Provides selection and population management.</td>
+                    </tr>
+                    <tr>
+                        <td>ar-time</td>
+                        <td>TemporalFactor, Temporal</td>
+                        <td>Time-stepped evolution. TemporalCellular combines temporal and genetic concepts.</td>
+                    </tr>
+                    <tr>
+                        <td>ar-relation</td>
+                        <td>Factor, Producer</td>
+                        <td>Core abstractions that genes build upon. Factor transforms Producer to Producer.</td>
+                    </tr>
+                    <tr>
+                        <td>ar-collect</td>
+                        <td>PackedCollection</td>
+                        <td>Primary data type for genetic values. GPU-accelerated storage and operations.</td>
+                    </tr>
+                </table>
+
+                <h3>Temporal Integration</h3>
+                <p>The heredity module provides temporal-aware classes for time-evolving genetic systems:</p>
+                <div class="class-list">
+                    <div class="class-item">
+                        <h4>Cellular</h4>
+                        <p>Base interface for cell-based genetic computation. Connects to graph module.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>TemporalFactor</h4>
+                        <p>Factor that changes over time. Implements tick-based updates.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>TemporalCellular</h4>
+                        <p>Combines Cellular with Temporal interface for time-evolving cells.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>CellularTemporalFactor</h4>
+                        <p>A factor that is both cellular and temporal. Full integration with both systems.</p>
+                    </div>
+                </div>
+            </section>
+
+            <section id="best-practices">
+                <h2>Best Practices</h2>
+
+                <div class="info">
+                    <strong>Design Principle:</strong> The heredity module focuses on clean abstractions for genetic data structures. Evolution algorithms, selection strategies, and fitness functions are intentionally delegated to the ar-optimize module or user applications.
+                </div>
+
+                <h3>Recommended Patterns</h3>
+                <ol>
+                    <li><strong>Use HeredityFeatures for gene/chromosome creation:</strong> The factory methods provide clean, readable code</li>
+                    <li><strong>Prefer ProjectedGenome for continuous optimization:</strong> Parameter-based evolution enables gradient-free optimization</li>
+                    <li><strong>Implement ChromosomeBreeder for custom crossover:</strong> Keeps breeding logic separate from genetic structures</li>
+                    <li><strong>Use signatures for genome comparison:</strong> Unique identifiers enable duplicate detection and diversity measurement</li>
+                    <li><strong>Initialize weights deterministically:</strong> ProjectedGenome.initWeights() uses a fixed seed for reproducibility</li>
+                </ol>
+
+                <h3>Common Pitfalls</h3>
+                <div class="warning">
+                    <strong>Issue:</strong> Forgetting to call refreshValues() after modifying ProjectedGenome parameters<br>
+                    <strong>Solution:</strong> Always call refreshValues() after assignTo() or any parameter modification.
+                </div>
+
+                <div class="warning">
+                    <strong>Issue:</strong> ProbabilisticFactory probabilities don't sum to 1.0<br>
+                    <strong>Solution:</strong> Normalize gene values so they sum to 1.0, or handle null returns from construct().
+                </div>
+
+                <div class="warning">
+                    <strong>Issue:</strong> ProjectedGenome variation() returns genome without chromosome structure<br>
+                    <strong>Solution:</strong> Set up chromosomes on the offspring genome separately, or implement a copy mechanism.
+                </div>
+            </section>
+
+            <section id="resources">
+                <h2>Additional Resources</h2>
+                <ul>
+                    <li><a href="../../heredity/README.md">Heredity Module README</a> - Comprehensive module documentation</li>
+                    <li><a href="../apidocs/org/almostrealism/heredity/package-summary.html">JavaDoc API</a> - Complete API reference</li>
+                    <li><a href="../../optimize/README.md">Optimize Module</a> - Population-based evolution algorithms</li>
+                    <li><a href="time.html">Time Module</a> - Temporal operations for time-stepped evolution</li>
+                </ul>
+            </section>
+        </main>
+
+        <footer>
+            <p><a href="../index.html">&larr; Back to Framework Documentation</a></p>
+            <p>&copy; 2024 Michael Murray. Licensed under the Apache License, Version 2.0.</p>
+        </footer>
+    </div>
+
+    <script src="../js/docs.js"></script>
+</body>
+</html>

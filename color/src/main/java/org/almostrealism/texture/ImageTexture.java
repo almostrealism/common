@@ -16,55 +16,102 @@
 
 package org.almostrealism.texture;
 
-import java.awt.Color;
-import java.awt.Image;
-import java.awt.MediaTracker;
-import java.awt.Panel;
-import java.awt.Toolkit;
-import java.awt.image.PixelGrabber;
-import java.net.MalformedURLException;
-import java.net.URL;
-
 import io.almostrealism.relation.Editable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Vector;
-import org.almostrealism.color.computations.GeneratedColorProducer;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.color.RGB;
+import org.almostrealism.color.computations.GeneratedColorProducer;
 
+import java.awt.*;
+import java.awt.image.PixelGrabber;
+import java.net.MalformedURLException;
+import java.net.URL;
 
-// TODO  Improve documentation.
 
 /**
- * An {@link ImageTexture} object can be used to provide an image as the color data for a surface.
- * 
- * TODO  This should accept an {@link ImageSource} rather than a {@link URL}.
- * 
+ * Provides image-based texture mapping for surfaces.
+ *
+ * <p>An {@code ImageTexture} loads a 2D image and maps it onto 3D surfaces using
+ * various projection methods. This enables surfaces to display photographic textures,
+ * patterns, or any image-based detail.</p>
+ *
+ * <h2>Projection Modes</h2>
+ * <ul>
+ *   <li>{@link #SPHERICAL_PROJECTION}: Wraps the image around a sphere using
+ *       latitude/longitude mapping. Best for globe-like objects.</li>
+ *   <li>{@link #XY_PLANAR_PROJECTION}: Projects the image onto the XY plane.
+ *       Uses X for U and Y for V coordinates.</li>
+ *   <li>{@link #XZ_PLANAR_PROJECTION}: Projects the image onto the XZ plane.
+ *       Uses X for U and Z for V coordinates.</li>
+ *   <li>{@link #YZ_PLANAR_PROJECTION}: Projects the image onto the YZ plane.
+ *       Uses Y for U and Z for V coordinates.</li>
+ * </ul>
+ *
+ * <h2>UV Coordinate System</h2>
+ * <p>Textures use UV coordinates in the range [0.0, 1.0]:</p>
+ * <ul>
+ *   <li>U (horizontal): 0.0 = left edge, 1.0 = right edge</li>
+ *   <li>V (vertical): 0.0 = top edge, 1.0 = bottom edge</li>
+ * </ul>
+ *
+ * <h2>Scaling and Offset</h2>
+ * <p>The texture can be tiled and offset using scale/offset parameters:</p>
+ * <ul>
+ *   <li>{@code xScale/yScale}: Number of texture repetitions (2.0 = tile twice)</li>
+ *   <li>{@code xOff/yOff}: Texture offset (0.5 = shift by half the texture)</li>
+ * </ul>
+ *
+ * <h2>Example Usage</h2>
+ * <pre>{@code
+ * // Spherical texture for a planet
+ * ImageTexture earth = new ImageTexture(
+ *     ImageTexture.SPHERICAL_PROJECTION,
+ *     new URL("http://example.com/earth.jpg"),
+ *     1.0, 1.0,  // No tiling
+ *     0.0, 0.0   // No offset
+ * );
+ *
+ * // Tiled floor texture
+ * ImageTexture floor = new ImageTexture(
+ *     ImageTexture.XZ_PLANAR_PROJECTION,
+ *     new URL("http://example.com/tiles.jpg"),
+ *     10.0, 10.0,  // Tile 10x10
+ *     0.0, 0.0
+ * );
+ *
+ * // Get color at a surface point
+ * RGB color = texture.operate(surfacePoint);
+ * }</pre>
+ *
+ * @see Texture
+ * @see GraphicsConverter
  * @author Mike Murray
  */
 public class ImageTexture implements Texture, Editable {
-  private static final String propNames[] = {"Image Source", "X Scale", "Y Scale",
+  private static final String[] propNames = {"Image Source", "X Scale", "Y Scale",
   											"X Offset", "Y Offset"};
-  private static final String propDesc[] = {"URL to load image data from", "X scale factor", "Y scale factor",
+  private static final String[] propDesc = {"URL to load image data from", "X scale factor", "Y scale factor",
   											"X offset factor", "Y offset factor"};
-  private static final Class propTypes[] = {URL.class, Double.class, Double.class};
+  private static final Class[] propTypes = {URL.class, Double.class, Double.class};
   
   public static final int SPHERICAL_PROJECTION = 1;
   public static final int XY_PLANAR_PROJECTION = 2;
   public static final int XZ_PLANAR_PROJECTION = 3;
   public static final int YZ_PLANAR_PROJECTION = 4;
   
-  private Vector northP = new Vector(0.0, 1.0, 0.0);
-  private Vector equatorP = new Vector(1.0, 0.0, 0.0);
-  private Vector crossP = this.northP.crossProduct(this.equatorP);
+  private final Vector northP = new Vector(0.0, 1.0, 0.0);
+  private final Vector equatorP = new Vector(1.0, 0.0, 0.0);
+  private final Vector crossP = this.northP.crossProduct(this.equatorP);
   
-  private int type;
+  private final int type;
   
   private URL url;
   private int width, height;
   private double xScale, yScale;
   private double xOff, yOff;
-  private int pixels[];
+  private int[] pixels;
 
   	/**
   	 * Constructs a new ImageTexture object.
@@ -230,15 +277,15 @@ public class ImageTexture implements Texture, Editable {
 	 * 
 	 * @see org.almostrealism.texture.Texture#getColorAt(java.lang.Object[])
 	 */
-	public Evaluable<RGB> getColorAt(Object params[]) {
+	public Evaluable<PackedCollection> getColorAt(Object[] params) {
 		return GeneratedColorProducer.fromProducer(this, () -> args -> {
 			Vector l = args.length > 0 ? (Vector) args[0] : new Vector(1.0, 1.0, 1.0);
 			Vector point = new Vector(l.getX(), l.getY(), l.getZ());
 
-			if (args[0] instanceof Double == false) throw new IllegalArgumentException("Illegal argument: " + args[0]);
-			if (args[1] instanceof Double == false) throw new IllegalArgumentException("Illegal argument: " + args[1]);
-			if (args[2] instanceof Double == false) throw new IllegalArgumentException("Illegal argument: " + args[2]);
-			if (args[3] instanceof Double == false) throw new IllegalArgumentException("Illegal argument: " + args[3]);
+			if (!(args[0] instanceof Double)) throw new IllegalArgumentException("Illegal argument: " + args[0]);
+			if (!(args[1] instanceof Double)) throw new IllegalArgumentException("Illegal argument: " + args[1]);
+			if (!(args[2] instanceof Double)) throw new IllegalArgumentException("Illegal argument: " + args[2]);
+			if (!(args[3] instanceof Double)) throw new IllegalArgumentException("Illegal argument: " + args[3]);
 
 
 			if (ImageTexture.this.type == ImageTexture.SPHERICAL_PROJECTION) {
@@ -291,7 +338,7 @@ public class ImageTexture implements Texture, Editable {
     public void setPropertyValue(Object value, int index) {
     		if (index >= ImageTexture.propTypes.length) {
     			throw new IndexOutOfBoundsException("Index out of bounds: " + index);
-    		} else if (ImageTexture.propTypes[index].isInstance(value) == false) {
+    		} else if (!ImageTexture.propTypes[index].isInstance(value)) {
     			throw new IllegalArgumentException("Illegal argument: " + value.toString());
     		} else {
   	 		if (index == 0) this.url = (URL)value;

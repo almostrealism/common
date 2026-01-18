@@ -20,12 +20,31 @@ import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorFeatures;
 
+/**
+ * Generates uniformly distributed random unit vectors on the surface of a sphere.
+ * This is useful for Monte Carlo methods in rendering, such as ambient occlusion,
+ * global illumination, and random sampling for anti-aliasing.
+ *
+ * <p>The implementation uses spherical coordinates with random azimuth and polar
+ * angles to achieve uniform distribution over the sphere's surface.</p>
+ *
+ * <p>This class is implemented as a singleton accessible via {@link #getInstance()}.</p>
+ *
+ * @author Michael Murray
+ * @see Vector
+ */
 public class UniformSphericalRandom implements Evaluable<Vector>, VectorFeatures {
-	private static UniformSphericalRandom local = new UniformSphericalRandom();
+	private static final UniformSphericalRandom local = new UniformSphericalRandom();
 
+	/**
+	 * Generates a random unit vector uniformly distributed on the unit sphere.
+	 *
+	 * @param args not used, may be null
+	 * @return a new random unit vector
+	 */
 	@Override
 	public Vector evaluate(Object[] args) {
-		double r[] = new double[3];
+		double[] r = new double[3];
 
 		double y = 2 * Math.PI * Math.random();
 		double z = 2 * Math.PI * Math.random();
@@ -37,5 +56,10 @@ public class UniformSphericalRandom implements Evaluable<Vector>, VectorFeatures
 		return new Vector(r);
 	}
 
+	/**
+	 * Returns the singleton instance of this class.
+	 *
+	 * @return the shared UniformSphericalRandom instance
+	 */
 	public static UniformSphericalRandom getInstance() { return local; }
 }

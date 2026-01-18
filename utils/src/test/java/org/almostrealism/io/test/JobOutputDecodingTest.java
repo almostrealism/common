@@ -23,7 +23,7 @@ import java.util.Optional;
 import java.util.stream.Stream;
 
 public class JobOutputDecodingTest {
-	@Test
+	@Test(timeout = 10000)
 	public void decode() {
 		JobOutput output = new JobOutput();
 		output.setTaskId("test-task");
@@ -42,6 +42,6 @@ public class JobOutputDecodingTest {
 		assert result.get().getOutput().equals("asdfasdf");
 		assert result.get().getUser().equals("user");
 		assert result.get().getPassword().equals("password");
-		assert result.get().getTime() == 1234567l;
+		assert result.get().getTime() == 1234567L;
 	}
 }

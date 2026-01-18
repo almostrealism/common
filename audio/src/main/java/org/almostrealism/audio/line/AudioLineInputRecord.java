@@ -1,0 +1,58 @@
+/*
+ * Copyright 2025 Michael Murray
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ */
+
+package org.almostrealism.audio.line;
+
+import io.almostrealism.relation.Producer;
+import org.almostrealism.audio.CellFeatures;
+import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.hardware.OperationList;
+import org.almostrealism.time.TemporalRunner;
+
+/**
+ * An {@link AudioLineOperation} wrapper that records input audio to an {@link OutputLine}
+ * while simultaneously processing it through another operation. This enables "tapping" the
+ * input stream for monitoring, recording, or debugging without interrupting the main processing flow.
+ * <p>
+ * The operation executes in sequence: first writing the input to the record line, then
+ * running the wrapped operation's processing.
+ * </p>
+ *
+ * @see AudioLineOperation
+ * @see OutputLine
+ */
+public class AudioLineInputRecord implements AudioLineOperation, CellFeatures {
+	private final AudioLineOperation operation;
+	private final OutputLine record;
+
+	public AudioLineInputRecord(AudioLineOperation operation, OutputLine record) {
+		this.operation = operation;
+		this.record = record;
+	}
+
+	@Override
+	public TemporalRunner process(Producer<PackedCollection> input,
+								  Producer<PackedCollection> output,
+								  int frames) {
+		TemporalRunner runner = operation.process(input, output, frames);
+
+		OperationList op = new OperationList("AudioLineInputRecord");
+		op.add(record.write(c(input)));
+		op.add(runner.tick());
+
+		return new TemporalRunner(runner.setup(), op, true);
+	}
+}

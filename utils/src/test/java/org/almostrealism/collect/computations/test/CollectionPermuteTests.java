@@ -24,23 +24,22 @@ import org.junit.Test;
  * Test suite for {@link CollectionPermute} demonstrating various dimension reordering scenarios.
  * These tests validate that permutation operations correctly transform collection shapes and
  * preserve element values while reordering dimensional access patterns.
- * 
+ *
  * @see CollectionPermute
  * @see org.almostrealism.collect.CollectionFeatures#permute(io.almostrealism.relation.Producer, int...)
  */
 public class CollectionPermuteTests implements TestFeatures {
-	
 	/**
 	 * Tests basic 2D transpose operation (matrix transpose).
 	 * Demonstrates swapping the two dimensions of a 2D collection using permute(1, 0).
-	 * 
-	 * <p>Original shape: (2, 4) → Permuted shape: (4, 2)</p>
-	 * <p>Element at [i,j] in original → Element at [j,i] in result</p>
+	 *
+	 * <p>Original shape: (2, 4) -> Permuted shape: (4, 2)</p>
+	 * <p>Element at [i,j] in original -> Element at [j,i] in result</p>
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void permute2() {
-		PackedCollection<?> input = new PackedCollection<>(shape(2, 4)).randFill();
-		PackedCollection<?> out = cp(input).permute(1, 0).evaluate();
+		PackedCollection input = new PackedCollection(shape(2, 4)).randFill();
+		PackedCollection out = cp(input).permute(1, 0).evaluate();
 
 		assertEquals(4, out.getShape().length(0));
 		assertEquals(2, out.getShape().length(1));
@@ -58,15 +57,15 @@ public class CollectionPermuteTests implements TestFeatures {
 	/**
 	 * Tests 4D dimension reordering with partial permutation.
 	 * Demonstrates swapping middle dimensions while keeping first and last in place using permute(0, 2, 1, 3).
-	 * 
-	 * <p>Original shape: (2, 4, 3, 8) → Permuted shape: (2, 3, 4, 8)</p>
-	 * <p>Element at [i,j,k,l] in original → Element at [i,k,j,l] in result</p>
+	 *
+	 * <p>Original shape: (2, 4, 3, 8) -> Permuted shape: (2, 3, 4, 8)</p>
+	 * <p>Element at [i,j,k,l] in original -> Element at [i,k,j,l] in result</p>
 	 * <p>This pattern is common in tensor operations where you need to reorder height/width or channel dimensions.</p>
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void permute4() {
-		PackedCollection<?> input = new PackedCollection<>(shape(2, 4, 3, 8)).randFill();
-		PackedCollection<?> out = cp(input).permute(0, 2, 1, 3).evaluate();
+		PackedCollection input = new PackedCollection(shape(2, 4, 3, 8)).randFill();
+		PackedCollection out = cp(input).permute(0, 2, 1, 3).evaluate();
 
 		assertEquals(2, out.getShape().length(0));
 		assertEquals(3, out.getShape().length(1));

@@ -1,0 +1,606 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AR-ML Module - Almost Realism Framework</title>
+    <link rel="stylesheet" href="../css/style.css">
+    <style>
+        .key-concepts { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin: 20px 0; }
+        .concept-card { background: #f8f9fa; border-left: 4px solid #7b1fa2; padding: 15px; border-radius: 4px; }
+        .concept-card h4 { margin-top: 0; color: #7b1fa2; }
+        .performance-table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+        .performance-table th, .performance-table td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
+        .performance-table th { background-color: #f3e5f5; color: #7b1fa2; font-weight: bold; }
+        .performance-table tr:hover { background-color: #f5f5f5; }
+        .comparison-table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+        .comparison-table th, .comparison-table td { padding: 10px; border: 1px solid #ddd; text-align: left; }
+        .comparison-table th { background-color: #f3e5f5; color: #7b1fa2; }
+        .class-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 15px; margin: 20px 0; }
+        .class-item { background: #fff; border: 1px solid #ddd; padding: 12px; border-radius: 4px; }
+        .class-item h4 { margin: 0 0 8px 0; color: #7b1fa2; font-size: 1.1em; }
+        .class-item p { margin: 0; font-size: 0.9em; color: #666; }
+        .code-example { background: #f5f5f5; border-left: 4px solid #7b1fa2; padding: 15px; margin: 15px 0; border-radius: 4px; }
+        .highlight { background-color: #f3e5f5; padding: 2px 4px; }
+        .warning { background-color: #ffebee; border-left: 4px solid #c62828; padding: 12px; margin: 15px 0; }
+        .architecture-diagram { background: #fafafa; border: 1px solid #ddd; padding: 20px; margin: 20px 0; font-family: monospace; white-space: pre; line-height: 1.4; overflow-x: auto; }
+        .pipeline-flow { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 20px 0; }
+        .pipeline-step { background: #f3e5f5; border: 2px solid #7b1fa2; padding: 10px 15px; border-radius: 8px; text-align: center; }
+        .pipeline-arrow { color: #7b1fa2; font-size: 1.5em; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>AR-ML Module</h1>
+            <p class="tagline">Large Language Models & Hardware-Accelerated Transformer Inference</p>
+            <nav>
+                <a href="../index.html">Home</a>
+                <a href="#overview">Overview</a>
+                <a href="#architecture">Architecture</a>
+                <a href="#core-concepts">Core Concepts</a>
+                <a href="#qwen3">Qwen3</a>
+                <a href="#examples">Examples</a>
+                <a href="#resources">Resources</a>
+            </nav>
+        </header>
+
+        <main>
+            <section id="overview">
+                <h2>Overview</h2>
+                <p>The <strong>ar-ml</strong> module provides a complete framework for loading, configuring, and running large language models (LLMs) with hardware acceleration. It implements transformer-based architectures including Qwen3, with support for multi-head attention, rotary position embeddings, and efficient autoregressive generation.</p>
+
+                <div class="key-concepts">
+                    <div class="concept-card">
+                        <h4>StateDictionary</h4>
+                        <p>Load model weights from HuggingFace format. Access weights by standard key names with automatic shape inference and memory management.</p>
+                    </div>
+                    <div class="concept-card">
+                        <h4>Attention Mechanisms</h4>
+                        <p>Multi-head attention, Grouped-Query Attention (GQA), and QK-Normalization. Hardware-accelerated with RoPE position embeddings.</p>
+                    </div>
+                    <div class="concept-card">
+                        <h4>Autoregressive Generation</h4>
+                        <p>Token-by-token text generation with temperature-based sampling. Supports greedy decoding and probabilistic sampling strategies.</p>
+                    </div>
+                    <div class="concept-card">
+                        <h4>Tokenization</h4>
+                        <p>Byte-level BPE tokenizers for text encoding/decoding. Model-specific tokenizers with special token handling.</p>
+                    </div>
+                </div>
+            </section>
+
+            <section id="architecture">
+                <h2>LLM Pipeline Architecture</h2>
+
+                <h3>Inference Pipeline</h3>
+                <div class="pipeline-flow">
+                    <div class="pipeline-step">Text Input</div>
+                    <span class="pipeline-arrow">-></span>
+                    <div class="pipeline-step">Tokenizer</div>
+                    <span class="pipeline-arrow">-></span>
+                    <div class="pipeline-step">Token IDs</div>
+                    <span class="pipeline-arrow">-></span>
+                    <div class="pipeline-step">Embeddings</div>
+                    <span class="pipeline-arrow">-></span>
+                    <div class="pipeline-step">Transformer Layers</div>
+                    <span class="pipeline-arrow">-></span>
+                    <div class="pipeline-step">Logits</div>
+                    <span class="pipeline-arrow">-></span>
+                    <div class="pipeline-step">Sampling</div>
+                    <span class="pipeline-arrow">-></span>
+                    <div class="pipeline-step">Output Text</div>
+                </div>
+
+                <h3>Core Components</h3>
+                <div class="class-list">
+                    <div class="class-item">
+                        <h4>StateDictionary</h4>
+                        <p>Standard weight storage. Loads from HuggingFace format, provides key-based access to model parameters.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>AttentionFeatures</h4>
+                        <p>Generalized attention mechanisms. Multi-head, GQA, and QK-Norm with optional parameter support.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>RotationFeatures</h4>
+                        <p>Rotary Position Embeddings (RoPE). Configurable base frequency for different model architectures.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>AutoregressiveModel</h4>
+                        <p>Token generation wrapper. Temperature sampling, step callbacks, and embedding lookup.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>ByteLevelBPETokenizer</h4>
+                        <p>Base class for BPE tokenization. Encode/decode text with special token handling.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>LayerFeatures</h4>
+                        <p>Layer utilities inherited from graph module. RMSNorm, feed-forward, and composition helpers.</p>
+                    </div>
+                </div>
+
+                <h3>Transformer Layer Structure</h3>
+                <div class="code-example">
+                    <strong>Transformer Layer (repeated N times)</strong><br>
+                    1. Input Normalization (RMSNorm)<br>
+                    2. Self-Attention<br>
+                    &nbsp;&nbsp;&nbsp;- Q/K/V Projections<br>
+                    &nbsp;&nbsp;&nbsp;- Optional QK-Normalization<br>
+                    &nbsp;&nbsp;&nbsp;- RoPE Position Embeddings<br>
+                    &nbsp;&nbsp;&nbsp;- Scaled Dot-Product Attention<br>
+                    &nbsp;&nbsp;&nbsp;- Output Projection<br>
+                    3. Residual Connection<br>
+                    4. FFN Normalization (RMSNorm)<br>
+                    5. Feed-Forward Network (SwiGLU)<br>
+                    &nbsp;&nbsp;&nbsp;- Gate Projection (W1)<br>
+                    &nbsp;&nbsp;&nbsp;- Up Projection (W3)<br>
+                    &nbsp;&nbsp;&nbsp;- SiLU Activation + Gate<br>
+                    &nbsp;&nbsp;&nbsp;- Down Projection (W2)<br>
+                    6. Residual Connection
+                </div>
+            </section>
+
+            <section id="core-concepts">
+                <h2>Core Concepts</h2>
+
+                <h3>StateDictionary</h3>
+                <p>The standard way to load and access model weights in the AR framework.</p>
+                <pre><code class="language-java">import org.almostrealism.model.StateDictionary;
+
+// Load model weights from directory
+StateDictionary stateDict = new StateDictionary("/path/to/weights");
+
+// Access weights by HuggingFace-style keys
+PackedCollection embeddings = stateDict.get("model.embed_tokens.weight");
+PackedCollection wq = stateDict.get("model.layers.0.self_attn.q_proj.weight");
+PackedCollection wk = stateDict.get("model.layers.0.self_attn.k_proj.weight");
+PackedCollection wv = stateDict.get("model.layers.0.self_attn.v_proj.weight");
+
+// Helper method for repeated patterns
+private PackedCollection getLayerWeight(StateDictionary dict, int layer, String name) {
+    return dict.get(String.format("model.layers.%d.%s", layer, name));
+}
+
+// Cleanup when done
+stateDict.destroy();</code></pre>
+
+                <table class="comparison-table">
+                    <tr>
+                        <th>Feature</th>
+                        <th>StateDictionary</th>
+                        <th>Custom Weight Class</th>
+                    </tr>
+                    <tr>
+                        <td>Memory Management</td>
+                        <td>Automatic with Destroyable</td>
+                        <td>Manual</td>
+                    </tr>
+                    <tr>
+                        <td>Key Access</td>
+                        <td>HuggingFace-compatible</td>
+                        <td>Custom field names</td>
+                    </tr>
+                    <tr>
+                        <td>Reusability</td>
+                        <td>Works with any model</td>
+                        <td>Model-specific</td>
+                    </tr>
+                    <tr>
+                        <td>Recommended</td>
+                        <td>Yes (standard pattern)</td>
+                        <td>Only if transformations needed</td>
+                    </tr>
+                </table>
+
+                <h3>Attention Mechanisms</h3>
+                <p>The module provides generalized attention implementations that support various configurations.</p>
+                <pre><code class="language-java">import org.almostrealism.layers.AttentionFeatures;
+import static org.almostrealism.layers.LayerFeatures.*;
+
+// Multi-Head Attention with GQA and QK-Norm
+Block attnBlock = attention(
+    nHeads,           // Number of query heads (e.g., 32)
+    kvHeads,          // Number of KV heads (e.g., 8 for GQA)
+    headSize,         // Dimension per head
+    wq, wk, wv, wo,   // Weight matrices
+    qkNormQ, qkNormK, // Optional QK normalization weights (null if not used)
+    freqCis,          // RoPE frequencies
+    requirements      // Computation requirements
+);
+
+// Feed-Forward Network with SwiGLU activation
+Block ffnBlock = feedForward(
+    wGate,  // Gate projection (W1)
+    wUp,    // Up projection (W3)
+    wDown   // Down projection (W2)
+);
+
+// Complete transformer block
+Block transformerLayer = transformer(
+    attnBlock,
+    ffnBlock,
+    attnNormWeights,
+    ffnNormWeights
+);</code></pre>
+
+                <h4>Attention Types Supported</h4>
+                <ul>
+                    <li><strong>Multi-Head Attention (MHA):</strong> Standard attention with equal query/key/value heads</li>
+                    <li><strong>Grouped-Query Attention (GQA):</strong> Fewer KV heads than query heads (e.g., 32:8 ratio)</li>
+                    <li><strong>QK-Normalization:</strong> Optional normalization of query and key before attention</li>
+                </ul>
+
+                <h3>Tokenization</h3>
+                <p>Byte-level BPE tokenizers convert text to token IDs and back.</p>
+                <pre><code class="language-java">import org.almostrealism.models.qwen3.Qwen3Tokenizer;
+
+// Load tokenizer
+Qwen3Tokenizer tokenizer = new Qwen3Tokenizer("/path/to/tokenizer.bin");
+
+// Encode text to token IDs
+String text = "Hello, world!";
+int[] tokens = tokenizer.encodeAsInt(text);
+
+// Decode tokens to text
+String decoded = tokenizer.decodeAsInt(tokens);
+
+// Special tokens
+int bos = tokenizer.getBOSToken();  // Beginning of sequence
+int eos = tokenizer.getEOSToken();  // End of sequence
+int pad = tokenizer.getPADToken();  // Padding token
+int unk = tokenizer.getUNKToken();  // Unknown token</code></pre>
+
+                <h3>Rotary Position Embeddings (RoPE)</h3>
+                <p>RoPE encodes position information directly into the attention computation.</p>
+                <pre><code class="language-java">import org.almostrealism.layers.RotationFeatures;
+
+// Compute RoPE frequency matrix
+PackedCollection freqCis = computeRotaryFreqs(
+    dim,          // Model dimension
+    seqLen,       // Sequence length
+    theta         // Base frequency (10000 for LLaMA, 1000000 for Qwen3)
+);
+
+// Apply RoPE to query/key tensors
+Producer&lt;PackedCollection&gt; rotatedQ = ropeRotation(
+    query,
+    freqCis,
+    seqLen,
+    headDim
+);</code></pre>
+
+                <h3>AutoregressiveModel</h3>
+                <p>Wraps a compiled model for token-by-token generation.</p>
+                <pre><code class="language-java">import org.almostrealism.model.AutoregressiveModel;
+
+// Wrap compiled model for token generation
+AutoregressiveModel generator = AutoregressiveModel.of(
+    compiledModel,
+    step -> log("Step: " + step),
+    tokenId -> tokenEmbeddings.get(tokenId)
+);
+
+// Set sampling temperature
+generator.setTemperature(0.0);  // Greedy decoding (deterministic)
+generator.setTemperature(0.7);  // Sampling (more creative)
+generator.setTemperature(1.5);  // High temperature (more random)
+
+// Generate next token
+int nextToken = generator.next();</code></pre>
+            </section>
+
+            <section id="qwen3">
+                <h2>Qwen3 Implementation</h2>
+
+                <h3>Architecture Overview</h3>
+                <div class="architecture-diagram">Qwen3 Model
++-- Token Embeddings (151669 x 3584)
++-- 36 Transformer Layers
+|   +-- Self-Attention
+|   |   +-- QK-Norm (query/key normalization)
+|   |   +-- Multi-Head Attention (32 heads)
+|   |   +-- Grouped-Query (8 KV heads)
+|   |   +-- RoPE (rotary position embeddings)
+|   +-- Feed-Forward
+|   |   +-- Gate Projection (W1)
+|   |   +-- Up Projection (W3)
+|   |   +-- SwiGLU Activation
+|   |   +-- Down Projection (W2)
+|   +-- RMSNorm (pre-attention, pre-FFN)
++-- Output Projection (shared with embeddings)</div>
+
+                <h3>Qwen3Config</h3>
+                <table class="performance-table">
+                    <thead>
+                        <tr>
+                            <th>Parameter</th>
+                            <th>Value</th>
+                            <th>Description</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>vocabSize</td>
+                            <td>151669</td>
+                            <td>Vocabulary size</td>
+                        </tr>
+                        <tr>
+                            <td>dim</td>
+                            <td>3584</td>
+                            <td>Model dimension</td>
+                        </tr>
+                        <tr>
+                            <td>hiddenDim</td>
+                            <td>11008</td>
+                            <td>FFN hidden dimension</td>
+                        </tr>
+                        <tr>
+                            <td>nLayers</td>
+                            <td>36</td>
+                            <td>Number of transformer layers</td>
+                        </tr>
+                        <tr>
+                            <td>nHeads</td>
+                            <td>32</td>
+                            <td>Query attention heads</td>
+                        </tr>
+                        <tr>
+                            <td>nKVHeads</td>
+                            <td>8</td>
+                            <td>KV heads (GQA 4:1 ratio)</td>
+                        </tr>
+                        <tr>
+                            <td>headDim</td>
+                            <td>112</td>
+                            <td>Dimension per head</td>
+                        </tr>
+                        <tr>
+                            <td>maxSeqLen</td>
+                            <td>128000</td>
+                            <td>Maximum context length</td>
+                        </tr>
+                        <tr>
+                            <td>ropeTheta</td>
+                            <td>1000000.0</td>
+                            <td>RoPE base frequency</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <h3>Special Features</h3>
+                <ul>
+                    <li><strong>QK-Normalization:</strong> Stabilizes attention training and inference</li>
+                    <li><strong>Grouped-Query Attention:</strong> 4:1 query-to-KV head ratio for efficiency</li>
+                    <li><strong>Extended Context:</strong> Support for up to 128K tokens</li>
+                    <li><strong>SwiGLU Activation:</strong> Gated linear unit in feed-forward network</li>
+                    <li><strong>Shared Embeddings:</strong> Input and output embeddings share weights</li>
+                </ul>
+
+                <h3>Qwen3Tokenizer</h3>
+                <pre><code class="language-java">// Load Qwen3 tokenizer
+Qwen3Tokenizer tokenizer = new Qwen3Tokenizer("/path/to/tokenizer.bin");
+
+// Special token IDs
+int bos = 151643;  // Beginning of sequence
+int eos = 151645;  // End of sequence
+
+// Encode/decode
+int[] tokens = tokenizer.encodeAsInt("Hello, world!");
+String text = tokenizer.decodeAsInt(tokens);</code></pre>
+            </section>
+
+            <section id="examples">
+                <h2>Usage Examples</h2>
+
+                <h3>Loading and Running Qwen3</h3>
+                <pre><code class="language-java">import org.almostrealism.models.qwen3.Qwen3;
+
+// Initialize model
+Qwen3 model = new Qwen3(
+    "/models/qwen3-4b",
+    "/models/tokenizer.bin"
+);
+
+// Configure generation
+model.setTemperature(0.7);
+
+// Generate text with callback
+model.run(
+    100,                          // Max 100 tokens
+    "Explain quantum computing:", // Prompt
+    token -> {
+        System.out.print(token);
+        System.out.flush();
+    }
+);</code></pre>
+
+                <h3>Building a Custom Model with Attention</h3>
+                <pre><code class="language-java">import static org.almostrealism.layers.AttentionFeatures.*;
+
+// Load weights
+StateDictionary stateDict = new StateDictionary("/path/to/weights");
+
+// Build model
+Model customModel = new Model(shape(dim));
+
+for (int layer = 0; layer < nLayers; layer++) {
+    // Load weights for this layer
+    PackedCollection wq = stateDict.get("layer." + layer + ".attn.wq");
+    PackedCollection wk = stateDict.get("layer." + layer + ".attn.wk");
+    PackedCollection wv = stateDict.get("layer." + layer + ".attn.wv");
+    PackedCollection wo = stateDict.get("layer." + layer + ".attn.wo");
+
+    // Add attention block (generalized method)
+    customModel.add(attention(
+        nHeads, kvHeads, headDim,
+        wq, wk, wv, wo,
+        null, null,  // No QK-Norm
+        freqCis,
+        ComputeRequirement.ACROSS_CELLS
+    ));
+
+    // Add FFN
+    customModel.add(feedForward(wGate, wUp, wDown));
+}
+
+// Compile model
+CompiledModel compiled = customModel.compile();</code></pre>
+
+                <h3>Temperature-Based Sampling</h3>
+                <pre><code class="language-java">// Greedy decoding (deterministic, always picks highest probability)
+generator.setTemperature(0.0);
+int token = generator.next();
+
+// Low temperature (focused, less random)
+generator.setTemperature(0.7);
+int token = generator.next();
+
+// High temperature (creative, more random)
+generator.setTemperature(1.5);
+int token = generator.next();</code></pre>
+
+                <h3>Manual Token Generation Loop</h3>
+                <pre><code class="language-java">// Encode prompt
+int[] promptTokens = tokenizer.encodeAsInt("Hello, world!");
+
+// Initialize model state
+PackedCollection input = tokenEmbeddings.get(promptTokens[0]);
+
+// Generation loop
+for (int step = 0; step < maxTokens; step++) {
+    // Forward pass
+    PackedCollection logits = model.forward(input);
+
+    // Sample next token
+    int nextToken = sampleFromLogits(logits, temperature);
+
+    // Decode and print
+    String tokenText = tokenizer.decodeAsInt(new int[]{nextToken});
+    System.out.print(tokenText);
+
+    // Check for EOS
+    if (nextToken == tokenizer.getEOSToken()) break;
+
+    // Update input for next iteration
+    input = tokenEmbeddings.get(nextToken);
+}</code></pre>
+
+                <h3>Custom Tokenizer Implementation</h3>
+                <pre><code class="language-java">public class MyTokenizer extends ByteLevelBPETokenizer {
+    @Override
+    public int getBOSToken() { return 1; }
+
+    @Override
+    public int getEOSToken() { return 2; }
+
+    @Override
+    public int getPADToken() { return 0; }
+
+    @Override
+    public int getUNKToken() { return 3; }
+
+    @Override
+    protected void loadVocabulary(String path) {
+        // Load vocabulary from file
+    }
+}</code></pre>
+            </section>
+
+            <section id="performance">
+                <h2>Performance Features</h2>
+
+                <h3>Optimization Techniques</h3>
+                <ul>
+                    <li><strong>KV Caching:</strong> Attention keys/values cached to avoid recomputation during generation</li>
+                    <li><strong>Grouped-Query Attention:</strong> Reduces KV cache size by 4x compared to standard MHA</li>
+                    <li><strong>Hardware Compilation:</strong> JIT compilation to native/GPU code via ar-hardware</li>
+                    <li><strong>Memory Efficiency:</strong> Zero-initialized caches prevent numerical issues</li>
+                    <li><strong>Batch Processing:</strong> Support for processing multiple sequences in parallel</li>
+                </ul>
+
+                <h3>Environment Configuration</h3>
+                <div class="warning">
+                    <strong>Required:</strong> Hardware acceleration requires environment variables to be set before running.
+                </div>
+                <pre><code class="language-bash">export AR_HARDWARE_LIBS=/tmp/ar_libs/
+export AR_HARDWARE_DRIVER=native  # or opencl, metal</code></pre>
+            </section>
+
+            <section id="troubleshooting">
+                <h2>Troubleshooting</h2>
+
+                <div class="warning">
+                    <strong>Issue:</strong> <code>NoClassDefFoundError: Could not initialize class PackedCollection</code><br>
+                    <strong>Solution:</strong> Set AR_HARDWARE_LIBS and AR_HARDWARE_DRIVER environment variables before running.
+                </div>
+
+                <div class="warning">
+                    <strong>Issue:</strong> Model outputs are garbled or incorrect<br>
+                    <strong>Solution:</strong> Verify weight loading keys match the model format. Use StateDictionary with HuggingFace-compatible keys.
+                </div>
+
+                <div class="warning">
+                    <strong>Issue:</strong> Out of memory during inference<br>
+                    <strong>Solution:</strong> Reduce sequence length, use GQA models, or enable memory-efficient attention.
+                </div>
+
+                <div class="warning">
+                    <strong>Issue:</strong> Generation produces repeated tokens<br>
+                    <strong>Solution:</strong> Increase temperature (e.g., 0.7-1.0) or implement repetition penalty.
+                </div>
+
+                <div class="warning">
+                    <strong>Issue:</strong> Tokenizer decoding produces incorrect text<br>
+                    <strong>Solution:</strong> Ensure tokenizer matches the model. Use model-specific tokenizer class (e.g., Qwen3Tokenizer).
+                </div>
+            </section>
+
+            <section id="resources">
+                <h2>Additional Resources</h2>
+                <ul>
+                    <li><a href="../../ml/README.md">ML Module README</a> - Comprehensive module documentation</li>
+                    <li><a href="../apidocs/org/almostrealism/ml/package-summary.html">JavaDoc API</a> - Complete API reference</li>
+                    <li><a href="graph.html">Graph Module</a> - Model and Block composition</li>
+                    <li><a href="collect.html">Collect Module</a> - PackedCollection fundamentals</li>
+                    <li><a href="hardware.html">Hardware Module</a> - Acceleration setup</li>
+                </ul>
+
+                <h3>Integration with Other Modules</h3>
+                <table class="comparison-table">
+                    <tr>
+                        <th>Module</th>
+                        <th>Integration</th>
+                    </tr>
+                    <tr>
+                        <td>ar-graph</td>
+                        <td>Model and Block for layer composition, CompiledModel for execution</td>
+                    </tr>
+                    <tr>
+                        <td>ar-collect</td>
+                        <td>PackedCollection for weight storage, TraversalPolicy for tensor shapes</td>
+                    </tr>
+                    <tr>
+                        <td>ar-hardware</td>
+                        <td>GPU/CPU acceleration, ComputeContext for kernel compilation</td>
+                    </tr>
+                </table>
+
+                <h3>Maven Dependency</h3>
+                <pre><code class="language-xml">&lt;dependency&gt;
+    &lt;groupId&gt;org.almostrealism&lt;/groupId&gt;
+    &lt;artifactId&gt;ar-ml&lt;/artifactId&gt;
+    &lt;!-- Check pom.xml for current version --&gt;
+&lt;/dependency&gt;</code></pre>
+            </section>
+        </main>
+
+        <footer>
+            <p><a href="../index.html">&lt;- Back to Framework Documentation</a></p>
+            <p>&copy; 2024 Michael Murray. Licensed under the Apache License, Version 2.0.</p>
+        </footer>
+    </div>
+
+    <script src="../js/docs.js"></script>
+</body>
+</html>

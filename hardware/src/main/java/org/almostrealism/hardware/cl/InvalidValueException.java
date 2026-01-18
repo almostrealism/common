@@ -21,6 +21,22 @@ import org.jocl.CLException;
 
 import java.util.Optional;
 
+/**
+ * Exception thrown when OpenCL operations receive invalid parameter values.
+ *
+ * <p>Indicates CL_INVALID_VALUE error from OpenCL runtime, typically caused by
+ * out-of-bounds memory access, invalid buffer sizes, or incorrect offsets.</p>
+ *
+ * <h2>Example Error Message</h2>
+ *
+ * <pre>{@code
+ * InvalidValueException: Source Index 0, Destination Index 1024, Length 2048
+ * (Destination Total Memory Length 1024)
+ * }</pre>
+ *
+ * @see CLExceptionProcessor
+ * @see HardwareException
+ */
 public class InvalidValueException extends HardwareException {
 	public InvalidValueException(CLException cause) {
 		super("Invalid Value", cause);

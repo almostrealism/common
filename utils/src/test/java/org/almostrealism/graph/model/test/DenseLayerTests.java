@@ -31,13 +31,13 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 public class DenseLayerTests implements ModelTestFeatures {
-	private double coeff[] = { 0.24, -0.1, 0.36 };
+	private final double[] coeff = { 0.24, -0.1, 0.36 };
 
-	public PackedCollection<?> func3x3(PackedCollection<?> input) {
+	public PackedCollection func3x3(PackedCollection input) {
 		TraversalPolicy shape = padDimensions(input.getShape(), 2);
 		input = input.reshape(shape);
 
-		PackedCollection<?> result = new PackedCollection<>(shape);
+		PackedCollection result = new PackedCollection(shape);
 
 		for (int n = 0; n < shape.length(0); n++) {
 			result.range(shape(3), n * 3).setMem(
@@ -49,7 +49,7 @@ public class DenseLayerTests implements ModelTestFeatures {
 		return result;
 	}
 
-	@Test
+	@Test(timeout = 120000)
 	public void denseBatch() throws FileNotFoundException {
 		int bs = 10;
 
@@ -63,7 +63,7 @@ public class DenseLayerTests implements ModelTestFeatures {
 		int steps = 260;
 
 		Supplier<Dataset<?>> data = () -> Dataset.of(IntStream.range(0, steps)
-				.mapToObj(i -> new PackedCollection<>(shape(bs, 3)))
+				.mapToObj(i -> new PackedCollection(shape(bs, 3)))
 				.map(input -> input.fill(pos -> 4 + 3 * Math.random()))
 				.map(input -> ValueTarget.of(input, func3x3(input)))
 				.collect(Collectors.toList()));

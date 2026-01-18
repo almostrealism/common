@@ -19,7 +19,6 @@ package org.almostrealism.layers.test;
 import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.profile.OperationProfile;
 import io.almostrealism.profile.OperationProfileNode;
-import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.layers.LayerFeatures;
@@ -42,21 +41,21 @@ import java.util.stream.IntStream;
 public class LayersTests implements LayerFeatures, DistributionFeatures, TestFeatures {
 	private static final int SIZE = 768;
 
-	private float cpuOut[];
-	private float gpuOut[];
-	private double cpuSum = -1.0;
-	private double gpuSum = -1.0;
+	private float[] cpuOut;
+	private float[] gpuOut;
+	private final double cpuSum = -1.0;
+	private final double gpuSum = -1.0;
 
-	@Test
+	@Test(timeout = 30000)
 	public void exponent() {
-		PackedCollection<?> in = new PackedCollection<>(SIZE).traverseEach();
+		PackedCollection in = new PackedCollection(SIZE).traverseEach();
 		in.fill(pos -> Math.random());
 
-		PackedCollection<?> weights = new PackedCollection<>(SIZE).traverseEach();
+		PackedCollection weights = new PackedCollection(SIZE).traverseEach();
 		weights.fill(pos -> Math.random());
 
-		PackedCollection<?> cpuOut = new PackedCollection<>(SIZE);
-		PackedCollection<?> gpuOut = new PackedCollection<>(SIZE);
+		PackedCollection cpuOut = new PackedCollection(SIZE);
+		PackedCollection gpuOut = new PackedCollection(SIZE);
 
 		verboseLog(() -> {
 			OperationList cop = new OperationList();
@@ -70,10 +69,10 @@ public class LayersTests implements LayerFeatures, DistributionFeatures, TestFea
 			cop.get().run();
 			gop.get().run();
 
-			float cpu[] = new float[SIZE];
+			float[] cpu = new float[SIZE];
 			cpuOut.getMem(0, cpu, 0, SIZE);
 
-			float gpu[] = new float[SIZE];
+			float[] gpu = new float[SIZE];
 			gpuOut.getMem(0, gpu, 0, SIZE);
 
 			for (int i = 0; i < SIZE; i++) {
@@ -84,18 +83,18 @@ public class LayersTests implements LayerFeatures, DistributionFeatures, TestFea
 		});
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void rmsnorm() {
-		PackedCollection<?> in = new PackedCollection<>(shape(SIZE));
+		PackedCollection in = new PackedCollection(shape(SIZE));
 		in.fill(pos -> Math.random());
 
-		PackedCollection<?> weights = new PackedCollection<>(shape(SIZE));
+		PackedCollection weights = new PackedCollection(shape(SIZE));
 		weights.fill(pos -> Math.random());
 
 		SequentialBlock cpuModel = new SequentialBlock(shape(SIZE));
 		cpuModel.add(rmsnorm(weights));
 		cpuModel.getForward().setReceptor(out -> () -> () -> {
-			PackedCollection<?> o = out.get().evaluate();
+			PackedCollection o = out.get().evaluate();
 			cpuOut = new float[SIZE];
 			o.getMem(0, cpuOut, 0, SIZE);
 		});
@@ -103,7 +102,7 @@ public class LayersTests implements LayerFeatures, DistributionFeatures, TestFea
 		SequentialBlock gpuModel = new SequentialBlock(shape(SIZE));
 		gpuModel.add(rmsnorm(weights, ComputeRequirement.GPU));
 		gpuModel.getForward().setReceptor(out -> () -> () -> {
-			PackedCollection<?> o = out.get().evaluate();
+			PackedCollection o = out.get().evaluate();
 			gpuOut = new float[SIZE];
 			o.getMem(0, gpuOut, 0, SIZE);
 		});
@@ -131,7 +130,7 @@ public class LayersTests implements LayerFeatures, DistributionFeatures, TestFea
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void dense() {
 		if (skipKnownIssues) return;
 
@@ -146,7 +145,7 @@ public class LayersTests implements LayerFeatures, DistributionFeatures, TestFea
 		OperationProfile profile = new OperationProfile("Model");
 
 		Supplier<Dataset<?>> data = () -> Dataset.of(IntStream.range(0, steps)
-				.mapToObj(i -> new PackedCollection<>(shape(size)))
+				.mapToObj(i -> new PackedCollection(shape(size)))
 				.map(input -> input.fill(pos -> 1 + 2 * Math.random()))
 				.map(input -> ValueTarget.of(input, input))
 				.collect(Collectors.toList()));
@@ -160,7 +159,7 @@ public class LayersTests implements LayerFeatures, DistributionFeatures, TestFea
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void siluTrain() throws IOException {
 		if (testDepth < 3) return;
 
@@ -174,7 +173,7 @@ public class LayersTests implements LayerFeatures, DistributionFeatures, TestFea
 		OperationProfileNode profile = new OperationProfileNode("Silu Model");
 
 		Supplier<Dataset<?>> data = () -> Dataset.of(IntStream.range(0, steps)
-				.mapToObj(i -> new PackedCollection<>(shape(size)))
+				.mapToObj(i -> new PackedCollection(shape(size)))
 				.map(input -> input.fill(pos -> 1 + 2 * Math.random()))
 				.map(input -> ValueTarget.of(input, input))
 				.collect(Collectors.toList()));
@@ -191,12 +190,12 @@ public class LayersTests implements LayerFeatures, DistributionFeatures, TestFea
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void siluTransformation() {
 		int size = 100;
 		
 		// Create random input values in range [-2, 2] for numerical stability
-		PackedCollection<?> input = new PackedCollection<>(shape(size));
+		PackedCollection input = new PackedCollection(shape(size));
 		input.fill(pos -> (Math.random() - 0.5) * 4.0);
 		
 		// Create SILU layer
@@ -204,9 +203,9 @@ public class LayersTests implements LayerFeatures, DistributionFeatures, TestFea
 		model.add(silu());
 		
 		// Capture output
-		PackedCollection<?> actualOutput = new PackedCollection<>(shape(size));
+		PackedCollection actualOutput = new PackedCollection(shape(size));
 		model.getForward().setReceptor(out -> () -> () -> {
-			PackedCollection<?> result = out.get().evaluate();
+			PackedCollection result = out.get().evaluate();
 			actualOutput.setMem(0, result.toArray(0, size), 0, size);
 		});
 		

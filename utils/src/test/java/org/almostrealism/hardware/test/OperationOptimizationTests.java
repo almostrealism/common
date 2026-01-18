@@ -16,10 +16,10 @@
 
 package org.almostrealism.hardware.test;
 
-import io.almostrealism.profile.OperationProfile;
 import io.almostrealism.collect.TraversalPolicy;
-import io.almostrealism.relation.Countable;
 import io.almostrealism.compute.Process;
+import io.almostrealism.profile.OperationProfile;
+import io.almostrealism.relation.Countable;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.OperationList;
@@ -29,7 +29,7 @@ import org.junit.Test;
 import java.util.function.Supplier;
 
 public class OperationOptimizationTests implements TestFeatures {
-	@Test
+	@Test(timeout = 30000)
 	public void reshapeEnumerate() {
 		int seqLength = 1024;
 		int heads = 12;
@@ -38,12 +38,12 @@ public class OperationOptimizationTests implements TestFeatures {
 
 		TraversalPolicy valueShape = shape(seqLength, heads, headSize);
 
-		PackedCollection<?> values = new PackedCollection<>(valueShape);
-		PackedCollection<?> out = new PackedCollection<>(shape(heads, headSize, seqLength));
+		PackedCollection values = new PackedCollection(valueShape);
+		PackedCollection out = new PackedCollection(shape(heads, headSize, seqLength));
 
 		values.fill(pos -> Math.random());
 
-		CollectionProducer<PackedCollection<?>> v =
+		CollectionProducer v =
 				c(p(values)).reshape(shape(seqLength, dim))
 				.enumerate(1, 1)
 				.reshape(shape(heads, headSize, seqLength).traverseEach());
@@ -65,12 +65,12 @@ public class OperationOptimizationTests implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void matmulLoop() {
 		int dim = 256;
-		PackedCollection<?> in = new PackedCollection<>(shape(dim));
-		PackedCollection<?> matrix = new PackedCollection<>(shape(dim, dim));
-		PackedCollection<?> out = new PackedCollection<>(shape(dim));
+		PackedCollection in = new PackedCollection(shape(dim));
+		PackedCollection matrix = new PackedCollection(shape(dim, dim));
+		PackedCollection out = new PackedCollection(shape(dim));
 
 		in.fill(pos -> Math.random());
 		matrix.fill(pos -> Math.random());
@@ -79,16 +79,16 @@ public class OperationOptimizationTests implements TestFeatures {
 		System.out.println(Countable.count(loop));
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void matmulLoopComparison() {
 		if (skipLongTests) return;
 		if (testDepth < 3) return;
 
 		int itr = 2000000;
 		int dim = 64;
-		PackedCollection<?> in = new PackedCollection<>(shape(dim));
-		PackedCollection<?> matrix = new PackedCollection<>(shape(dim, dim));
-		PackedCollection<?> out = new PackedCollection<>(shape(dim));
+		PackedCollection in = new PackedCollection(shape(dim));
+		PackedCollection matrix = new PackedCollection(shape(dim, dim));
+		PackedCollection out = new PackedCollection(shape(dim));
 
 		in.fill(pos -> Math.random());
 		matrix.fill(pos -> Math.random());

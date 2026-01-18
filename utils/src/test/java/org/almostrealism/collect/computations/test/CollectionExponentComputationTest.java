@@ -16,7 +16,6 @@
 
 package org.almostrealism.collect.computations.test;
 
-import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.CollectionExponentComputation;
@@ -35,15 +34,15 @@ public class CollectionExponentComputationTest implements TestFeatures {
 	 * Tests basic element-wise exponentiation with matching dimensions.
 	 * Demonstrates: [2, 3, 4] ^ [2, 2, 2] = [4, 9, 16]
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void elementWisePower() {
-		PackedCollection<?> base = pack(2.0, 3.0, 4.0);
-		PackedCollection<?> exponent = pack(2.0, 2.0, 2.0);
+		PackedCollection base = pack(2.0, 3.0, 4.0);
+		PackedCollection exponent = pack(2.0, 2.0, 2.0);
+
+		CollectionExponentComputation power =
+			new CollectionExponentComputation(shape(3), p(base), p(exponent));
 		
-		CollectionExponentComputation<PackedCollection<?>> power = 
-			new CollectionExponentComputation<>(shape(3), p(base), p(exponent));
-		
-		PackedCollection<?> result = power.get().evaluate();
+		PackedCollection result = power.get().evaluate();
 		
 		Assert.assertEquals(4.0, result.valueAt(0), 1e-10);
 		Assert.assertEquals(9.0, result.valueAt(1), 1e-10);
@@ -54,13 +53,13 @@ public class CollectionExponentComputationTest implements TestFeatures {
 	 * Tests broadcasting a scalar exponent to all elements.
 	 * Demonstrates: [2, 3, 4] ^ 3 = [8, 27, 64]
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void scalarExponentBroadcast() {
-		PackedCollection<?> base = pack(2.0, 3.0, 4.0);
+		PackedCollection base = pack(2.0, 3.0, 4.0);
 		
 		// Using the CollectionFeatures pow method which internally uses CollectionExponentComputation
-		CollectionProducer<PackedCollection<?>> cubed = cp(base).pow(c(3.0));
-		PackedCollection<?> result = cubed.get().evaluate();
+		CollectionProducer cubed = cp(base).pow(c(3.0));
+		PackedCollection result = cubed.get().evaluate();
 		
 		Assert.assertEquals(8.0, result.valueAt(0), 1e-10);
 		Assert.assertEquals(27.0, result.valueAt(1), 1e-10);
@@ -71,9 +70,9 @@ public class CollectionExponentComputationTest implements TestFeatures {
 	 * Tests multi-dimensional power operations on matrices.
 	 * Demonstrates element-wise power on 2x3 matrix.
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void matrixPower() {
-		PackedCollection<?> matrix = new PackedCollection<>(shape(2, 3));
+		PackedCollection matrix = new PackedCollection(shape(2, 3));
 		// Fill with [[1,2,3], [2,3,4]]
 		matrix.setValueAt(1.0, 0, 0);
 		matrix.setValueAt(2.0, 0, 1);
@@ -81,10 +80,10 @@ public class CollectionExponentComputationTest implements TestFeatures {
 		matrix.setValueAt(2.0, 1, 0);
 		matrix.setValueAt(3.0, 1, 1);
 		matrix.setValueAt(4.0, 1, 2);
-		
-		CollectionExponentComputation<PackedCollection<?>> matrixPower = 
-			new CollectionExponentComputation<>(shape(2, 3), p(matrix), c(2.0));
-		PackedCollection<?> squared = matrixPower.get().evaluate();
+
+		CollectionExponentComputation matrixPower =
+			new CollectionExponentComputation(shape(2, 3), p(matrix), c(2.0));
+		PackedCollection squared = matrixPower.get().evaluate();
 		
 		// Expected result: [[1,4,9], [4,9,16]]
 		Assert.assertEquals(1.0, squared.valueAt(0, 0), 1e-10);
@@ -99,29 +98,29 @@ public class CollectionExponentComputationTest implements TestFeatures {
 	 * Tests various power operations including fractional exponents.
 	 * Demonstrates square roots, cubes, and reciprocals.
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void variousPowerOperations() {
-		PackedCollection<?> values = pack(4.0, 8.0, 16.0, 25.0);
+		PackedCollection values = pack(4.0, 8.0, 16.0, 25.0);
 		
 		// Square roots (x^0.5)
-		CollectionProducer<PackedCollection<?>> sqrt = cp(values).pow(c(0.5));
-		PackedCollection<?> sqrtResult = sqrt.get().evaluate();
+		CollectionProducer sqrt = cp(values).pow(c(0.5));
+		PackedCollection sqrtResult = sqrt.get().evaluate();
 		assertEquals(2.0, sqrtResult.valueAt(0));
 		assertEquals(2.828427124746, sqrtResult.valueAt(1)); // sqrt(8)
 		assertEquals(4.0, sqrtResult.valueAt(2));
 		assertEquals(5.0, sqrtResult.valueAt(3));
 		
 		// Cubes (x^3)
-		CollectionProducer<PackedCollection<?>> cubes = cp(values).pow(c(3.0));
-		PackedCollection<?> cubeResult = cubes.get().evaluate();
+		CollectionProducer cubes = cp(values).pow(c(3.0));
+		PackedCollection cubeResult = cubes.get().evaluate();
 		assertEquals(64.0, cubeResult.valueAt(0));    // 4^3
 		assertEquals(512.0, cubeResult.valueAt(1));   // 8^3
 		assertEquals(4096.0, cubeResult.valueAt(2));  // 16^3
 		assertEquals(15625.0, cubeResult.valueAt(3)); // 25^3
 		
 		// Reciprocals (x^-1)
-		CollectionProducer<PackedCollection<?>> reciprocals = cp(values).pow(c(-1.0));
-		PackedCollection<?> recipResult = reciprocals.get().evaluate();
+		CollectionProducer reciprocals = cp(values).pow(c(-1.0));
+		PackedCollection recipResult = reciprocals.get().evaluate();
 		assertEquals(0.25, recipResult.valueAt(0));    // 1/4
 		assertEquals(0.125, recipResult.valueAt(1));   // 1/8
 		assertEquals(0.0625, recipResult.valueAt(2));  // 1/16
@@ -132,16 +131,16 @@ public class CollectionExponentComputationTest implements TestFeatures {
 	 * Tests the delta (derivative) computation functionality.
 	 * Demonstrates automatic differentiation using the power rule: d/dx[x^n] = n*x^(n-1)
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void deltaComputation() {
 		// Test f(x) = x^3, df/dx = 3*x^2
-		PackedCollection<?> testValues = pack(1.0, 2.0, 3.0);
-		CollectionProducer<PackedCollection<?>> x = cp(testValues);
-		CollectionProducer<PackedCollection<?>> f = x.pow(c(3.0));
+		PackedCollection testValues = pack(1.0, 2.0, 3.0);
+		CollectionProducer x = cp(testValues);
+		CollectionProducer f = x.pow(c(3.0));
 		
 		// Compute derivative
-		CollectionProducer<PackedCollection<?>> df_dx = f.delta(x);
-		PackedCollection<?> derivative = df_dx.get().evaluate();
+		CollectionProducer df_dx = f.delta(x);
+		PackedCollection derivative = df_dx.get().evaluate();
 
 		derivative.print();
 
@@ -154,27 +153,27 @@ public class CollectionExponentComputationTest implements TestFeatures {
 	/**
 	 * Tests edge cases including powers of zero and one.
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void edgeCases() {
 		// Test x^0 = 1 (for non-zero x)
-		PackedCollection<?> nonZeroValues = pack(2.0, 5.0, 10.0);
-		CollectionProducer<PackedCollection<?>> powerZero = cp(nonZeroValues).pow(c(0.0));
-		PackedCollection<?> result = powerZero.get().evaluate();
+		PackedCollection nonZeroValues = pack(2.0, 5.0, 10.0);
+		CollectionProducer powerZero = cp(nonZeroValues).pow(c(0.0));
+		PackedCollection result = powerZero.get().evaluate();
 		Assert.assertEquals(1.0, result.valueAt(0), 1e-10);
 		Assert.assertEquals(1.0, result.valueAt(1), 1e-10);
 		Assert.assertEquals(1.0, result.valueAt(2), 1e-10);
 		
 		// Test x^1 = x
-		CollectionProducer<PackedCollection<?>> powerOne = cp(nonZeroValues).pow(c(1.0));
-		PackedCollection<?> identityResult = powerOne.get().evaluate();
+		CollectionProducer powerOne = cp(nonZeroValues).pow(c(1.0));
+		PackedCollection identityResult = powerOne.get().evaluate();
 		Assert.assertEquals(2.0, identityResult.valueAt(0), 1e-10);
 		Assert.assertEquals(5.0, identityResult.valueAt(1), 1e-10);
 		Assert.assertEquals(10.0, identityResult.valueAt(2), 1e-10);
 		
 		// Test 1^x = 1
-		PackedCollection<?> exponents = pack(2.0, 10.0, 100.0);
-		CollectionProducer<PackedCollection<?>> oneToX = c(1.0).pow(cp(exponents));
-		PackedCollection<?> onesResult = oneToX.get().evaluate();
+		PackedCollection exponents = pack(2.0, 10.0, 100.0);
+		CollectionProducer oneToX = c(1.0).pow(cp(exponents));
+		PackedCollection onesResult = oneToX.get().evaluate();
 		Assert.assertEquals(1.0, onesResult.valueAt(0), 1e-10);
 		Assert.assertEquals(1.0, onesResult.valueAt(1), 1e-10);
 		Assert.assertEquals(1.0, onesResult.valueAt(2), 1e-10);
@@ -184,7 +183,7 @@ public class CollectionExponentComputationTest implements TestFeatures {
 	 * Tests configuration flag behavior for custom delta computation.
 	 * Temporarily disables custom delta to verify fallback behavior.
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void customDeltaConfiguration() {
 		// Save original state
 		boolean originalCustomDelta = CollectionExponentComputation.enableCustomDelta;
@@ -192,12 +191,12 @@ public class CollectionExponentComputationTest implements TestFeatures {
 		try {
 			// Test with custom delta enabled (default)
 			CollectionExponentComputation.enableCustomDelta = true;
-			PackedCollection<?> testValues = pack(2.0, 3.0);
-			CollectionProducer<PackedCollection<?>> x = cp(testValues);
-			CollectionProducer<PackedCollection<?>> f = x.pow(c(2.0));
+			PackedCollection testValues = pack(2.0, 3.0);
+			CollectionProducer x = cp(testValues);
+			CollectionProducer f = x.pow(c(2.0));
 			
-			CollectionProducer<PackedCollection<?>> df_dx_custom = f.delta(x);
-			PackedCollection<?> customResult = df_dx_custom.get().evaluate();
+			CollectionProducer df_dx_custom = f.delta(x);
+			PackedCollection customResult = df_dx_custom.get().evaluate();
 
 			customResult.print();
 
@@ -207,8 +206,8 @@ public class CollectionExponentComputationTest implements TestFeatures {
 			
 			// Test with custom delta disabled
 			CollectionExponentComputation.enableCustomDelta = false;
-			CollectionProducer<PackedCollection<?>> df_dx_default = f.delta(x);
-			PackedCollection<?> defaultResult = df_dx_default.get().evaluate();
+			CollectionProducer df_dx_default = f.delta(x);
+			PackedCollection defaultResult = df_dx_default.get().evaluate();
 			
 			// Should still compute correctly but potentially less efficiently
 			assertEquals(4.0, defaultResult.valueAt(0, 0));

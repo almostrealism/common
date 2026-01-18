@@ -19,6 +19,7 @@ package org.almostrealism.collect.computations.test;
 import io.almostrealism.code.ComputeContext;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.uml.Multiple;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.DefaultCollectionEvaluable;
 import org.almostrealism.collect.computations.SingleConstantComputation;
@@ -44,29 +45,29 @@ public class DefaultCollectionEvaluableTest {
 	 * Tests basic creation and configuration of a DefaultCollectionEvaluable.
 	 * Demonstrates the essential constructor parameters and verifies proper initialization.
 	 */
-	@Test
+	@Test(timeout = 10000)
 	public void basicCreation() {
 		// Create a simple shape for testing
 		TraversalPolicy shape = new TraversalPolicy(3, 2); // 3x2 matrix
-		
+
 		// Create a simple constant computation for testing
-		SingleConstantComputation<PackedCollection<?>> computation = 
-			new SingleConstantComputation<>(shape, 5.0);
+		SingleConstantComputation computation =
+			new SingleConstantComputation(shape, 5.0);
 		
 		// Get compute context
 		ComputeContext<MemoryData> context = Hardware.getLocalHardware()
 			.getComputer().getContext(computation);
 		
 		// Create destination factory
-		IntFunction<PackedCollection<?>> destinationFactory = 
-			len -> new PackedCollection<>(shape);
+		IntFunction<PackedCollection> destinationFactory =
+			len -> new PackedCollection(shape);
 		
 		// Create post-processor
-		BiFunction<MemoryData, Integer, PackedCollection<?>> postprocessor = 
+		BiFunction<MemoryData, Integer, PackedCollection> postprocessor =
 			(data, offset) -> new PackedCollection(shape, 0, data, offset);
 		
 		// Create the evaluable
-		DefaultCollectionEvaluable<PackedCollection<?>> evaluable = 
+		DefaultCollectionEvaluable<PackedCollection> evaluable =
 			new DefaultCollectionEvaluable<>(context, shape, computation, 
 				destinationFactory, postprocessor);
 		
@@ -78,7 +79,7 @@ public class DefaultCollectionEvaluableTest {
 	 * Demonstrates how the destination factory function is used when 
 	 * {@link DefaultCollectionEvaluable#enableDestinationFactory} is true.
 	 */
-	@Test
+	@Test(timeout = 10000)
 	public void destinationCreationWithFactory() {
 		// Ensure destination factory is enabled
 		boolean originalFlag = DefaultCollectionEvaluable.enableDestinationFactory;
@@ -86,28 +87,28 @@ public class DefaultCollectionEvaluableTest {
 		
 		try {
 			TraversalPolicy shape = new TraversalPolicy(4, 3);
-			SingleConstantComputation<PackedCollection<?>> computation = 
-				new SingleConstantComputation<>(shape, 2.5);
+			SingleConstantComputation computation =
+				new SingleConstantComputation(shape, 2.5);
 			
 			ComputeContext<MemoryData> context = Hardware.getLocalHardware()
 				.getComputer().getContext(computation);
 			
 			// Create a destination factory that creates collections with specific characteristics
-			IntFunction<PackedCollection<?>> destinationFactory = len -> {
-				PackedCollection<?> result = new PackedCollection<>(shape);
+			IntFunction<PackedCollection> destinationFactory = len -> {
+				PackedCollection result = new PackedCollection(shape);
 				// Mark this as coming from the factory (for testing purposes)
 				return result;
 			};
 			
-			DefaultCollectionEvaluable<PackedCollection<?>> evaluable = 
+			DefaultCollectionEvaluable<PackedCollection> evaluable =
 				new DefaultCollectionEvaluable<>(context, shape, computation, 
 					destinationFactory, null);
 			
 			// Test destination creation
-			PackedCollection<?> destination = evaluable.createDestination(12);
+			Multiple<PackedCollection> destination = evaluable.createDestination(12);
 			assertNotNull("Destination should be created", destination);
-			assertEquals("Destination should have correct total size", 
-				shape.getTotalSize(), destination.getMemLength());
+			assertEquals("Destination should have correct total size",
+				shape.getTotalSize(), destination.get(0).getMemLength());
 		} finally {
 			// Restore original flag
 			DefaultCollectionEvaluable.enableDestinationFactory = originalFlag;
@@ -119,7 +120,7 @@ public class DefaultCollectionEvaluableTest {
 	 * Demonstrates the fallback behavior when destination factory is disabled
 	 * or when the factory function is null.
 	 */
-	@Test
+	@Test(timeout = 10000)
 	public void destinationCreationManual() {
 		// Disable destination factory for this test
 		boolean originalFlag = DefaultCollectionEvaluable.enableDestinationFactory;
@@ -127,21 +128,21 @@ public class DefaultCollectionEvaluableTest {
 		
 		try {
 			TraversalPolicy shape = new TraversalPolicy(2, 5); // 2x5 matrix
-			SingleConstantComputation<PackedCollection<?>> computation = 
-				new SingleConstantComputation<>(shape, 1.0);
+			SingleConstantComputation computation =
+				new SingleConstantComputation(shape, 1.0);
 			
 			ComputeContext<MemoryData> context = Hardware.getLocalHardware()
 				.getComputer().getContext(computation);
 			
-			DefaultCollectionEvaluable<PackedCollection<?>> evaluable = 
+			DefaultCollectionEvaluable<PackedCollection> evaluable =
 				new DefaultCollectionEvaluable<>(context, shape, computation, 
 					null, null);
 			
 			// Test destination creation - should use manual calculation
-			PackedCollection<?> destination = evaluable.createDestination(10);
+			Multiple<PackedCollection> destination = evaluable.createDestination(10);
 			assertNotNull("Destination should be created", destination);
-			assertEquals("Destination should have correct size", 
-				10, destination.getMemLength());
+			assertEquals("Destination should have correct size",
+				10, destination.get(0).getMemLength());
 		} finally {
 			// Restore original flag
 			DefaultCollectionEvaluable.enableDestinationFactory = originalFlag;
@@ -153,24 +154,24 @@ public class DefaultCollectionEvaluableTest {
 	 * Demonstrates how the post-processor transforms raw memory data into
 	 * properly structured collection instances.
 	 */
-	@Test
+	@Test(timeout = 10000)
 	public void postProcessingWithCustomProcessor() {
 		TraversalPolicy shape = new TraversalPolicy(3);
-		SingleConstantComputation<PackedCollection<?>> computation = 
-			new SingleConstantComputation<>(shape, 3.0);
+		SingleConstantComputation computation =
+			new SingleConstantComputation(shape, 3.0);
 		
 		ComputeContext<MemoryData> context = Hardware.getLocalHardware()
 			.getComputer().getContext(computation);
 		
 		// Create a custom post-processor that adds metadata or special handling
-		BiFunction<MemoryData, Integer, PackedCollection<?>> postprocessor = 
+		BiFunction<MemoryData, Integer, PackedCollection> postprocessor =
 			(data, offset) -> {
 				// Create collection with custom configuration
-				PackedCollection<?> result = new PackedCollection(shape, 0, data, offset);
+				PackedCollection result = new PackedCollection(shape, 0, data, offset);
 				return result;
 			};
 		
-		DefaultCollectionEvaluable<PackedCollection<?>> evaluable = 
+		DefaultCollectionEvaluable<PackedCollection> evaluable =
 			new DefaultCollectionEvaluable<>(context, shape, computation, 
 				null, postprocessor);
 		
@@ -191,17 +192,17 @@ public class DefaultCollectionEvaluableTest {
 	 * Demonstrates the fallback to standard PackedCollection creation when
 	 * no custom post-processor is provided.
 	 */
-	@Test
+	@Test(timeout = 10000)
 	public void postProcessingDefault() {
 		TraversalPolicy shape = new TraversalPolicy(2, 2);
-		SingleConstantComputation<PackedCollection<?>> computation = 
-			new SingleConstantComputation<>(shape, 7.5);
+		SingleConstantComputation computation =
+			new SingleConstantComputation(shape, 7.5);
 		
 		ComputeContext<MemoryData> context = Hardware.getLocalHardware()
 			.getComputer().getContext(computation);
 		
 		// No post-processor - should use default behavior
-		DefaultCollectionEvaluable<PackedCollection<?>> evaluable = 
+		DefaultCollectionEvaluable<PackedCollection> evaluable =
 			new DefaultCollectionEvaluable<>(context, shape, computation, 
 				null, null);
 		
@@ -213,25 +214,25 @@ public class DefaultCollectionEvaluableTest {
 	 * Demonstrates a complete evaluation cycle using DefaultCollectionEvaluable
 	 * with a simple constant computation.
 	 */
-	@Test
+	@Test(timeout = 10000)
 	public void integrationWithComputationPipeline() {
 		TraversalPolicy shape = new TraversalPolicy(5);
 		double constantValue = 42.0;
-		
+
 		// Create a computation that can be short-circuited for testing
-		SingleConstantComputation<PackedCollection<?>> computation = 
-			new SingleConstantComputation<>(shape, constantValue);
+		SingleConstantComputation computation =
+			new SingleConstantComputation(shape, constantValue);
 		
 		ComputeContext<MemoryData> context = Hardware.getLocalHardware()
 			.getComputer().getContext(computation);
 		
-		IntFunction<PackedCollection<?>> destinationFactory = 
-			len -> new PackedCollection<>(shape);
+		IntFunction<PackedCollection> destinationFactory =
+			len -> new PackedCollection(shape);
 		
-		BiFunction<MemoryData, Integer, PackedCollection<?>> postprocessor = 
+		BiFunction<MemoryData, Integer, PackedCollection> postprocessor =
 			(data, offset) -> new PackedCollection(shape, 0, data, offset);
 		
-		DefaultCollectionEvaluable<PackedCollection<?>> evaluable = 
+		DefaultCollectionEvaluable<PackedCollection> evaluable =
 			new DefaultCollectionEvaluable<>(context, shape, computation, 
 				destinationFactory, postprocessor);
 		
@@ -241,8 +242,8 @@ public class DefaultCollectionEvaluableTest {
 		
 		// For constant computations, test short-circuit evaluation
 		if (computation.getShortCircuit() != null) {
-			Evaluable<PackedCollection<?>> shortCircuit = computation.getShortCircuit();
-			PackedCollection<?> result = shortCircuit.evaluate();
+			Evaluable<PackedCollection> shortCircuit = computation.getShortCircuit();
+			PackedCollection result = shortCircuit.evaluate();
 			
 			assertNotNull("Short-circuit result should not be null", result);
 			assertEquals("Result should have correct length", 
@@ -261,7 +262,7 @@ public class DefaultCollectionEvaluableTest {
 	 * Demonstrates how DefaultCollectionEvaluable works with various
 	 * TraversalPolicy configurations including vectors, matrices, and tensors.
 	 */
-	@Test
+	@Test(timeout = 10000)
 	public void shapeHandling() {
 		// Test with different dimensional shapes
 		TraversalPolicy[] shapes = {
@@ -273,13 +274,13 @@ public class DefaultCollectionEvaluableTest {
 		
 		for (int i = 0; i < shapes.length; i++) {
 			TraversalPolicy shape = shapes[i];
-			SingleConstantComputation<PackedCollection<?>> computation = 
-				new SingleConstantComputation<>(shape, i + 1.0);
+			SingleConstantComputation computation =
+				new SingleConstantComputation(shape, i + 1.0);
 			
 			ComputeContext<MemoryData> context = Hardware.getLocalHardware()
 				.getComputer().getContext(computation);
 			
-			DefaultCollectionEvaluable<PackedCollection<?>> evaluable = 
+			DefaultCollectionEvaluable<PackedCollection> evaluable =
 				new DefaultCollectionEvaluable<>(context, shape, computation, 
 					PackedCollection::new, null);
 			
@@ -287,7 +288,7 @@ public class DefaultCollectionEvaluableTest {
 			
 			// Test destination creation
 			int totalSize = shape.getTotalSize();
-			PackedCollection<?> destination = evaluable.createDestination(totalSize);
+			Multiple<PackedCollection> destination = evaluable.createDestination(totalSize);
 			assertNotNull("Destination should be created for " + (i + 1) + "D shape", destination);
 		}
 	}
@@ -297,22 +298,22 @@ public class DefaultCollectionEvaluableTest {
 	 * Demonstrates how DefaultCollectionEvaluable handles various error conditions
 	 * and boundary cases gracefully.
 	 */
-	@Test
+	@Test(timeout = 10000)
 	public void errorHandling() {
 		TraversalPolicy shape = new TraversalPolicy(3);
-		SingleConstantComputation<PackedCollection<?>> computation = 
-			new SingleConstantComputation<>(shape, 1.0);
+		SingleConstantComputation computation =
+			new SingleConstantComputation(shape, 1.0);
 		
 		ComputeContext<MemoryData> context = Hardware.getLocalHardware()
 			.getComputer().getContext(computation);
 		
-		DefaultCollectionEvaluable<PackedCollection<?>> evaluable = 
+		DefaultCollectionEvaluable<PackedCollection> evaluable =
 			new DefaultCollectionEvaluable<>(context, shape, computation, 
 				null, null);
 		
 		// Test destination creation with edge cases
 		try {
-			PackedCollection<?> dest1 = evaluable.createDestination(0);
+			Multiple<PackedCollection> dest1 = evaluable.createDestination(0);
 			// Zero-length destinations should be handled gracefully
 			assertNotNull("Zero-length destination should be handled", dest1);
 		} catch (Exception e) {
@@ -323,7 +324,7 @@ public class DefaultCollectionEvaluableTest {
 		}
 		
 		try {
-			PackedCollection<?> dest2 = evaluable.createDestination(1);
+			Multiple<PackedCollection> dest2 = evaluable.createDestination(1);
 			assertNotNull("Single-element destination should be created", dest2);
 		} catch (Exception e) {
 			// Hardware context issues might cause failures in test environment

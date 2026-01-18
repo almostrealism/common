@@ -17,8 +17,20 @@
 package org.almostrealism.util;
 
 /**
- * @author  Michael Murray
+ * Interface for objects that can provide help documentation.
+ *
+ * <p>Classes implementing this interface provide a standardized way to
+ * retrieve help information, suitable for display in user interfaces
+ * or command-line help systems.</p>
+ *
+ * @author Michael Murray
  */
 public interface Help {
+
+	/**
+	 * Returns help information describing this object's purpose and usage.
+	 *
+	 * @return a human-readable help string
+	 */
 	String getHelpInfo();
 }

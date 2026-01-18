@@ -16,73 +16,72 @@
 
 package org.almostrealism.geometry.test;
 
-import org.almostrealism.collect.CollectionProducer;
-import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.geometry.TransformMatrix;
 import org.almostrealism.algebra.Vector;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.geometry.Ray;
+import org.almostrealism.geometry.TransformMatrix;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
 
 public class MatrixTransformTests implements TestFeatures {
-	@Test
+	@Test(timeout = 10000)
 	public void scaleTranslateThenTransform() {
 		scaleAndTranslate();
 		transformAsLocation1();
 	}
 
-	@Test
+	@Test(timeout = 10000)
 	public void transformAsLocation1() {
-		TransformMatrix matrix = translationMatrix(vector(0.0, 10.0, 0.0)).evaluate();
-		Vector v = transformAsLocation(matrix, vector(1.0, 2.0, 3.0)).evaluate();
+		TransformMatrix matrix = new TransformMatrix(translationMatrix(vector(0.0, 10.0, 0.0)).evaluate(), 0);
+		Vector v = new Vector(transformAsLocation(matrix, vector(1.0, 2.0, 3.0)).evaluate(), 0);
 
-		assertEquals(1.0, v.getX());
-		assertEquals(12.0, v.getY());
-		assertEquals(3.0, v.getZ());
+		assertEquals(1.0, v.toDouble(0));
+		assertEquals(12.0, v.toDouble(1));
+		assertEquals(3.0, v.toDouble(2));
 	}
 
-	@Test
+	@Test(timeout = 10000)
 	public void transformAsLocation2() {
-		TransformMatrix matrix = scaleMatrix(vector(2.0, 1.0, 3.0)).evaluate();
-		Vector v = transformAsLocation(matrix, vector(1.0, 2.0, 3.0)).evaluate();
+		TransformMatrix matrix = new TransformMatrix(scaleMatrix(vector(2.0, 1.0, 3.0)).evaluate(), 0);
+		Vector v = new Vector(transformAsLocation(matrix, vector(1.0, 2.0, 3.0)).evaluate(), 0);
 
-		assertEquals(2.0, v.getX());
-		assertEquals(2.0, v.getY());
-		assertEquals(9.0, v.getZ());
+		assertEquals(2.0, v.toDouble(0));
+		assertEquals(2.0, v.toDouble(1));
+		assertEquals(9.0, v.toDouble(2));
 	}
 
-	@Test
+	@Test(timeout = 10000)
 	public void transformAsOffset() {
-		TransformMatrix matrix = translationMatrix(vector(0.0, 10.0, 0.0)).evaluate();
-		Vector v = transformAsOffset(matrix, vector(1.0, 2.0, 3.0)).evaluate();
-		assertEquals(1.0, v.getX());
-		assertEquals(2.0, v.getY());
-		assertEquals(3.0, v.getZ());
+		TransformMatrix matrix = new TransformMatrix(translationMatrix(vector(0.0, 10.0, 0.0)).evaluate(), 0);
+		Vector v = new Vector(transformAsOffset(matrix, vector(1.0, 2.0, 3.0)).evaluate(), 0);
+		assertEquals(1.0, v.toDouble(0));
+		assertEquals(2.0, v.toDouble(1));
+		assertEquals(3.0, v.toDouble(2));
 
-		matrix = scaleMatrix(vector(2.0, 1.0, 3.0)).evaluate();
-		v = transformAsOffset(matrix, vector(1.0, 2.0, 3.0)).evaluate();
-		assertEquals(2.0, v.getX());
-		assertEquals(2.0, v.getY());
-		assertEquals(9.0, v.getZ());
+		matrix = new TransformMatrix(scaleMatrix(vector(2.0, 1.0, 3.0)).evaluate(), 0);
+		v = new Vector(transformAsOffset(matrix, vector(1.0, 2.0, 3.0)).evaluate(), 0);
+		assertEquals(2.0, v.toDouble(0));
+		assertEquals(2.0, v.toDouble(1));
+		assertEquals(9.0, v.toDouble(2));
 	}
 
-	@Test
+	@Test(timeout = 10000)
 	public void applyInverse() {
-		TransformMatrix m = translationMatrix(vector(0.0, -10.0, 0.0)).evaluate();
+		TransformMatrix m = new TransformMatrix(translationMatrix(vector(0.0, -10.0, 0.0)).evaluate(), 0);
 
 		Ray r = new Ray(new Vector(1.0, 2.0, 3.0), new Vector(4.0, 5.0, 6.0));
 		r = new Ray(transform(m.getInverse(), v(r)).evaluate(), 0);
 		r.print();
 
-		assertEquals(1.0, r.getOrigin().getX());
-		assertEquals(12.0, r.getOrigin().getY());
-		assertEquals(3.0, r.getOrigin().getZ());
-		assertEquals(4.0, r.getDirection().getX());
-		assertEquals(5.0, r.getDirection().getY());
-		assertEquals(6.0, r.getDirection().getZ());
+		assertEquals(1.0, r.getOrigin().toDouble(0));
+		assertEquals(12.0, r.getOrigin().toDouble(1));
+		assertEquals(3.0, r.getOrigin().toDouble(2));
+		assertEquals(4.0, r.getDirection().toDouble(0));
+		assertEquals(5.0, r.getDirection().toDouble(1));
+		assertEquals(6.0, r.getDirection().toDouble(2));
 	}
 
-	@Test
+	@Test(timeout = 10000)
 	public void scaleAndTranslate() {
 		TransformMatrix matrix = new TransformMatrix(new double[][] {
 				{ 0.25, 0.0,  0.0,   0.0 },
@@ -93,14 +92,14 @@ public class MatrixTransformTests implements TestFeatures {
 
 		CollectionProducer transform = transform(matrix,
 				ray(1.0, 2.0, 3.0,4.0, 5.0, 6.0));
-		Ray r = new Ray((PackedCollection) transform.evaluate(), 0);
+		Ray r = new Ray(transform.evaluate(), 0);
 		log(r);
 
-		assertEquals(0.25, r.getOrigin().getX());
-		assertEquals(3.9, r.getOrigin().getY());
-		assertEquals(-2.25, r.getOrigin().getZ());
-		assertEquals(1.0, r.getDirection().getX());
-		assertEquals(1.25, r.getDirection().getY());
-		assertEquals(1.5, r.getDirection().getZ());
+		assertEquals(0.25, r.getOrigin().toDouble(0));
+		assertEquals(3.9, r.getOrigin().toDouble(1));
+		assertEquals(-2.25, r.getOrigin().toDouble(2));
+		assertEquals(1.0, r.getDirection().toDouble(0));
+		assertEquals(1.25, r.getDirection().toDouble(1));
+		assertEquals(1.5, r.getDirection().toDouble(2));
 	}
 }

@@ -16,7 +16,6 @@
 
 package org.almostrealism.graph;
 
-import org.almostrealism.algebra.Scalar;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
 
@@ -27,14 +26,16 @@ public class RunningAverageCell extends CollectionCachedStateCell {
 	private int pushes;
 
 	@Override
-	public Supplier<Runnable> push(Producer<PackedCollection<?>> protein) {
+	public Supplier<Runnable> push(Producer<PackedCollection> protein) {
 		return () -> () -> {
 			this.total = total + protein.get().evaluate().toArray(0, 1)[0];
 			this.pushes++;
 
 			// Update the cached value to the current
 			// running average of values received
-			setCachedValue(new Scalar(this.total / pushes));
+			PackedCollection result = new PackedCollection(1);
+			result.setMem(0, this.total / pushes);
+			setCachedValue(result);
 		};
 	}
 

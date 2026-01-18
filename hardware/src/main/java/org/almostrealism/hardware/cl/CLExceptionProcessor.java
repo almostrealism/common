@@ -16,13 +16,50 @@
 
 package org.almostrealism.hardware.cl;
 
-import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.code.DataContext;
+import io.almostrealism.compute.ComputeRequirement;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareException;
 import org.jocl.CLException;
 
+/**
+ * Processes {@link CLException} instances into typed {@link HardwareException} subclasses.
+ *
+ * <p>Converts OpenCL error codes (CL_INVALID_CONTEXT, CL_INVALID_VALUE) into specific
+ * exception types with enhanced error messages and debugging context.</p>
+ *
+ * <h2>Exception Mapping</h2>
+ *
+ * <pre>{@code
+ * CL_INVALID_CONTEXT -> InvalidContextException or MismatchedContextException
+ * CL_INVALID_VALUE   -> InvalidValueException (with index/length details)
+ * Other errors       -> HardwareException (with source code if available)
+ * }</pre>
+ *
+ * <h2>Usage</h2>
+ *
+ * <pre>{@code
+ * try {
+ *     CL.clEnqueueWriteBuffer(...);
+ * } catch (CLException e) {
+ *     throw CLExceptionProcessor.process(e, provider, srcIdx, destIdx, length);
+ * }
+ * }</pre>
+ *
+ * @see InvalidContextException
+ * @see InvalidValueException
+ * @see MismatchedContextException
+ */
 public class CLExceptionProcessor {
+	/**
+	 * Processes a CLException from kernel compilation or execution into a typed HardwareException.
+	 *
+	 * @param e    the OpenCL exception to process
+	 * @param ctx  the compute context where the exception occurred
+	 * @param msg  additional error message context, or null
+	 * @param src  the source code that caused the error, or null
+	 * @return a typed HardwareException with enhanced error information
+	 */
 	public static HardwareException process(CLException e, CLComputeContext ctx, String msg, String src) {
 		HardwareException ex;
 
@@ -40,6 +77,17 @@ public class CLExceptionProcessor {
 		return ex;
 	}
 
+	/**
+	 * Processes a CLException from memory operations into a typed HardwareException.
+	 * Detects context mismatches between the memory provider and current hardware context.
+	 *
+	 * @param e          the OpenCL exception to process
+	 * @param provider   the memory provider where the exception occurred
+	 * @param srcIndex   the source index in the memory operation
+	 * @param destIndex  the destination index in the memory operation
+	 * @param length     the length of the memory operation
+	 * @return a typed HardwareException with enhanced error information including operation details
+	 */
 	public static HardwareException process(CLException e, CLMemoryProvider provider, int srcIndex, int destIndex, int length) {
 		if ("CL_INVALID_CONTEXT".equals(e.getMessage())) {
 			DataContext ctx = Hardware.getLocalHardware().getDataContext(ComputeRequirement.CL);

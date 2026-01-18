@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tutorial: PackedCollection Fundamentals - Almost Realism</title>
+    <link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1><a href="../index.html" style="color: white; text-decoration: none;">Almost Realism Framework</a></h1>
+            <p class="tagline">Tutorial: PackedCollection Fundamentals</p>
+            <nav>
+                <a href="../index.html">Home</a>
+                <a href="../index.html#modules">Modules</a>
+                <a href="../index.html#tutorials">Tutorials</a>
+                <a href="../index.html#api">API Docs</a>
+            </nav>
+        </header>
+
+        <main>
+            <section>
+                <h2>Introduction</h2>
+                <p>This tutorial introduces <code>PackedCollection</code>, the core data structure for hardware-accelerated multi-dimensional arrays in Almost Realism. You'll learn how to:</p>
+                <ul>
+                    <li>Create and manipulate multi-dimensional collections</li>
+                    <li>Use TraversalPolicy to define shapes and memory layouts</li>
+                    <li>Access and modify elements efficiently</li>
+                    <li>Work with CollectionProducer for GPU operations</li>
+                    <li>Understand memory efficiency and performance characteristics</li>
+                </ul>
+
+                <p><strong>Prerequisites:</strong></p>
+                <ul>
+                    <li>Completion of <a href="01-vectors-and-operations.html">Tutorial 1: Vectors and Operations</a></li>
+                    <li>Understanding of multi-dimensional arrays (tensors)</li>
+                    <li>Java 11+ installed</li>
+                    <li>Maven project with ar-algebra dependency</li>
+                </ul>
+            </section>
+
+            <section>
+                <h2>Step 1: Understanding PackedCollection</h2>
+                <p><code>PackedCollection</code> is a memory-efficient container for multi-dimensional numeric data. Unlike traditional Java arrays, PackedCollection:</p>
+                <ul>
+                    <li>Stores data in contiguous memory (flat array) for GPU compatibility</li>
+                    <li>Uses <code>TraversalPolicy</code> to map logical indices to physical memory</li>
+                    <li>Supports arbitrary dimensions (1D vectors, 2D matrices, 3D tensors, etc.)</li>
+                    <li>Enables zero-copy GPU operations via <code>MemoryBank</code></li>
+                </ul>
+
+                <pre><code class="language-java">import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.TraversalPolicy;
+
+// A PackedCollection is defined by its shape (TraversalPolicy)
+// Internally: flat double[] array with intelligent indexing</code></pre>
+
+                <p><strong>API Reference:</strong> <a href="../apidocs/org/almostrealism/collect/PackedCollection.html">PackedCollection JavaDoc</a></p>
+            </section>
+
+            <section>
+                <h2>Step 2: Creating PackedCollections</h2>
+
+                <h3>Using TraversalPolicy (Shape)</h3>
+                <pre><code class="language-java">import static org.almostrealism.collect.CollectionFeatures.*;
+
+// 1D collection (vector of 5 elements)
+TraversalPolicy shape1d = shape(5);
+PackedCollection vector = new PackedCollection(shape1d);
+
+// 2D collection (3x4 matrix)
+TraversalPolicy shape2d = shape(3, 4);
+PackedCollection matrix = new PackedCollection(shape2d);
+
+// 3D collection (2x3x4 tensor)
+TraversalPolicy shape3d = shape(2, 3, 4);
+PackedCollection tensor = new PackedCollection(shape3d);
+
+// 4D collection (typical for ML: batch x channels x height x width)
+TraversalPolicy shape4d = shape(8, 3, 224, 224);  // 8 RGB images, 224x224
+PackedCollection imageBatch = new PackedCollection(shape4d);</code></pre>
+
+                <h3>Using Size (1D only)</h3>
+                <pre><code class="language-java">// Shorthand for 1D collections
+PackedCollection simple = new PackedCollection(10);  // 10 elements</code></pre>
+            </section>
+
+            <section>
+                <h2>Step 3: Setting and Getting Values</h2>
+
+                <h3>Direct Memory Access (1D)</h3>
+                <pre><code class="language-java">PackedCollection vector = new PackedCollection(5);
+
+// Set individual elements
+vector.setMem(0, 1.5);
+vector.setMem(1, 2.5);
+vector.setMem(2, 3.5);
+
+// Get individual elements
+double val = vector.toDouble(0);  // 1.5</code></pre>
+
+                <h3>Multi-dimensional Indexing</h3>
+                <pre><code class="language-java">PackedCollection matrix = new PackedCollection(shape(3, 4));
+
+// Set element at row 1, column 2
+matrix.setMem(1, 2, 7.0);
+
+// Get element at row 1, column 2
+double value = matrix.toDouble(1, 2);  // 7.0
+
+// 3D tensor access
+PackedCollection tensor = new PackedCollection(shape(2, 3, 4));
+tensor.setMem(1, 2, 3, 9.5);  // [depth=1][row=2][col=3] = 9.5
+double val = tensor.toDouble(1, 2, 3);  // 9.5</code></pre>
+
+                <h3>Filling with Values</h3>
+                <pre><code class="language-java">PackedCollection data = new PackedCollection(shape(3, 3));
+
+// Fill all elements with same value
+data.fill(pos -&gt; 0.0);  // Fill with zeros
+data.fill(pos -&gt; 1.0);  // Fill with ones
+data.fill(pos -&gt; Math.random());  // Fill with random values
+
+// Fill with position-dependent values
+data.fill(pos -&gt; pos[0] + pos[1]);  // Element [i][j] = i + j</code></pre>
+            </section>
+
+            <section>
+                <h2>Step 4: Working with Typed Collections</h2>
+                <p>Almost Realism provides typed wrappers for common algebra types:</p>
+
+                <pre><code class="language-java">import org.almostrealism.algebra.Vector;
+import org.almostrealism.algebra.Pair;
+
+// Bank of Vectors (collection of 3D vectors)
+PackedCollection vectors = Vector.bank(100);  // 100 vectors
+vectors.set(0, new Vector(1.0, 2.0, 3.0));
+Vector v = vectors.get(0);
+
+// Bank of Pairs (collection of 2D coordinates)
+PackedCollection pairs = Pair.bank(50);  // 50 pairs
+pairs.set(0, new Pair(42.0, 0.0));
+Pair p = pairs.get(0);</code></pre>
+
+                <p><strong>Key Insight:</strong> <code>Vector.bank(100)</code> creates a PackedCollection with shape (100, 3) - 100 rows, 3 columns.</p>
+            </section>
+
+            <section>
+                <h2>Step 5: TraversalPolicy Deep Dive</h2>
+                <p><code>TraversalPolicy</code> defines how logical indices map to physical memory:</p>
+
+                <pre><code class="language-java">TraversalPolicy policy = shape(2, 3, 4);
+
+// Query shape properties
+int dimensions = policy.getDimensions();  // 3
+int[] dims = policy.getDimensionValues();  // [2, 3, 4]
+long totalSize = policy.getTotalSize();   // 2 * 3 * 4 = 24
+
+// Convert logical index to memory offset
+int memIndex = policy.index(1, 2, 3);  // Calculate flat array index
+
+// Row-major order (default):
+// [0][0][0]=0, [0][0][1]=1, [0][0][2]=2, [0][0][3]=3,
+// [0][1][0]=4, [0][1][1]=5, ..., [1][2][3]=23</code></pre>
+
+                <h3>Traversing All Elements</h3>
+                <pre><code class="language-java">PackedCollection collection = new PackedCollection(shape(3, 4));
+collection.fill(pos -&gt; pos[0] * 10 + pos[1]);  // Fill: row*10 + col
+
+// Traverse using policy
+TraversalPolicy policy = collection.getShape();
+policy.traverse(0, pos -&gt; {
+    double value = collection.valueAt(pos.getArrayPosition());
+    System.out.println("Position " + Arrays.toString(pos.getPosition()) +
+                       " = " + value);
+    return value;
+});</code></pre>
+            </section>
+
+            <section>
+                <h2>Step 6: CollectionProducer Operations</h2>
+                <p>For GPU-accelerated operations, wrap PackedCollections in <code>CollectionProducer</code>:</p>
+
+                <pre><code class="language-java">import static org.almostrealism.collect.CollectionFeatures.*;
+
+// Create data
+PackedCollection data1 = new PackedCollection(shape(1000));
+PackedCollection data2 = new PackedCollection(shape(1000));
+data1.fill(pos -&gt; Math.random());
+data2.fill(pos -&gt; Math.random());
+
+// Build computation graph
+CollectionProducer p1 = cp(data1);  // Wrap in producer
+CollectionProducer p2 = cp(data2);
+CollectionProducer sum = p1.add(p2);
+CollectionProducer scaled = sum.multiply(2.0);
+
+// Execute on GPU
+PackedCollection result = scaled.get().evaluate();
+
+// Result is a new PackedCollection with computed values</code></pre>
+            </section>
+
+            <section>
+                <h2>Step 7: Memory Efficiency Example</h2>
+                <p>PackedCollection uses contiguous memory, making it extremely efficient:</p>
+
+                <pre><code class="language-java">// Traditional Java approach (inefficient)
+double[][][] traditional = new double[100][50][30];
+// Memory: Multiple arrays, scattered in heap, hard to GPU transfer
+
+// PackedCollection approach (efficient)
+PackedCollection efficient = new PackedCollection(shape(100, 50, 30));
+// Memory: Single flat double[150000] array, contiguous, GPU-ready
+
+// Access comparison
+double val1 = traditional[10][20][15];           // Multiple pointer jumps
+double val2 = efficient.toDouble(10, 20, 15);    // Single array lookup</code></pre>
+            </section>
+
+            <section>
+                <h2>Step 8: Practical Example - Image Processing</h2>
+                <p>Process a batch of grayscale images using PackedCollection:</p>
+
+                <pre><code class="language-java">// Batch of 10 grayscale 28x28 images (like MNIST)
+PackedCollection images = new PackedCollection(shape(10, 28, 28));
+
+// Load image data (simplified)
+for (int i = 0; i < 10; i++) {
+    for (int row = 0; row < 28; row++) {
+        for (int col = 0; col < 28; col++) {
+            double pixelValue = loadPixel(i, row, col) / 255.0;  // Normalize
+            images.setMem(i, row, col, pixelValue);
+        }
+    }
+}
+
+// Apply transformations using GPU
+CollectionProducer normalized = cp(images)
+    .subtract(c(0.5))     // Center around 0
+    .multiply(2.0);       // Scale to [-1, 1]
+
+// Add Gaussian noise
+CollectionProducer noise = randomCollection(shape(10, 28, 28), 0.0, 0.1);
+CollectionProducer augmented = normalized.add(noise);
+
+// Execute
+PackedCollection processedImages = augmented.get().evaluate();
+
+// All 10 images processed in parallel on GPU!</code></pre>
+            </section>
+
+            <section>
+                <h2>Step 9: Common Patterns and Best Practices</h2>
+
+                <h3>Pattern 1: Creating Working Buffers</h3>
+                <pre><code class="language-java">// Allocate scratch space for intermediate results
+TraversalPolicy shape = shape(1024, 768);
+PackedCollection buffer = new PackedCollection(shape);
+
+// Reuse buffer across operations to minimize allocations
+performOperation1(input, buffer);
+performOperation2(buffer, output);</code></pre>
+
+                <h3>Pattern 2: Dimension Traversal</h3>
+                <pre><code class="language-java">// Process each 2D slice of a 3D tensor
+PackedCollection tensor = new PackedCollection(shape(10, 28, 28));
+
+for (int i = 0; i < 10; i++) {
+    // Get a view of slice i (without copying)
+    PackedCollection slice = tensor.range(shape(28, 28), i * 28 * 28);
+    processSlice(slice);
+}</code></pre>
+
+                <h3>Pattern 3: Type Safety with Generics</h3>
+                <pre><code class="language-java">// Use typed banks for compile-time safety
+PackedCollection vectors = Vector.bank(100);
+PackedCollection pairs = Pair.bank(100);
+
+// Type-safe access
+Vector v = vectors.get(0);  // Returns Vector, not Object
+Pair p = pairs.get(0);   // Returns Pair, not Object</code></pre>
+            </section>
+
+            <section>
+                <h2>Next Steps</h2>
+                <ul>
+                    <li><a href="03-hardware-acceleration.html">Tutorial 3: Hardware Acceleration Setup</a></li>
+                    <li><a href="04-computation-graphs.html">Tutorial 4: Building Computation Graphs</a></li>
+                    <li><a href="../index.html#modules">Explore the collect module documentation</a></li>
+                    <li><a href="../apidocs/org/almostrealism/collect/package-summary.html">Read the PackedCollection API docs</a></li>
+                </ul>
+            </section>
+
+            <section>
+                <h2>Summary</h2>
+                <p>You've learned:</p>
+                <ul>
+                    <li>✓ What PackedCollection is and why it's memory-efficient</li>
+                    <li>✓ Creating multi-dimensional collections with TraversalPolicy</li>
+                    <li>✓ Setting and getting values with multi-dimensional indexing</li>
+                    <li>✓ Using typed collections (Vector.bank, Pair.bank)</li>
+                    <li>✓ Understanding TraversalPolicy and memory layout</li>
+                    <li>✓ Wrapping collections for GPU operations with CollectionProducer</li>
+                    <li>✓ Practical patterns for efficient data manipulation</li>
+                </ul>
+            </section>
+        </main>
+
+        <footer>
+            <p>&copy; 2024 Michael Murray. Licensed under the Apache License, Version 2.0.</p>
+        </footer>
+    </div>
+
+    <script src="../js/docs.js"></script>
+</body>
+</html>

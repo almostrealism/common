@@ -28,12 +28,54 @@ import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
+/**
+ * Adapter that wraps a {@link Cell} as a {@link CellularTemporalFactor}.
+ *
+ * <p>{@code TemporalFactorFromCell} bridges the cell-based computation model
+ * with the factor-based processing model. It allows a cell to participate
+ * in factor chains by wrapping the cell's output and combining it with
+ * other factor values.</p>
+ *
+ * <p>The adapter works by:</p>
+ * <ul>
+ *   <li>Connecting the cell to a destination via a receptor assignment function</li>
+ *   <li>Combining the cell's output with input values using a combine function</li>
+ *   <li>Delegating lifecycle operations (setup, tick, reset) to the underlying cell</li>
+ * </ul>
+ *
+ * <p>Example usage:</p>
+ * <pre>{@code
+ * Cell<PackedCollection> cell = new WaveCell(audioData, sampleRate);
+ * Producer<PackedCollection> destination = ...;
+ *
+ * TemporalFactorFromCell<PackedCollection> factor = new TemporalFactorFromCell<>(
+ *     cell,
+ *     destination,
+ *     dest -> new AssignmentReceptor(dest),
+ *     (dest, input) -> add(dest, input)
+ * );
+ * }</pre>
+ *
+ * @param <T> the type of data processed by the cell
+ * @author Michael Murray
+ * @see CellularTemporalFactor
+ * @see Cell
+ */
 public class TemporalFactorFromCell<T> implements CellularTemporalFactor<T> {
-	private Cell<T> cell;
-	private Producer<T> destination;
-	private Function<Producer<T>, Receptor<T>> assignment;
-	private BiFunction<Producer<T>, Producer<T>, Producer<T>> combine;
+	private final Cell<T> cell;
+	private final Producer<T> destination;
+	private final Function<Producer<T>, Receptor<T>> assignment;
+	private final BiFunction<Producer<T>, Producer<T>, Producer<T>> combine;
 
+	/**
+	 * Creates a new temporal factor wrapping the specified cell.
+	 *
+	 * @param cell        the cell to wrap (must not be null)
+	 * @param destination the producer for the destination where cell output is stored
+	 * @param assignment  function that creates a receptor for the destination (must not be null)
+	 * @param combine     function that combines the destination value with input (must not be null)
+	 * @throws NullPointerException if cell, assignment, or combine is null
+	 */
 	public TemporalFactorFromCell(Cell<T> cell, Producer<T> destination,
 								  Function<Producer<T>, Receptor<T>> assignment,
 								  BiFunction<Producer<T>, Producer<T>, Producer<T>> combine) {
@@ -43,19 +85,48 @@ public class TemporalFactorFromCell<T> implements CellularTemporalFactor<T> {
 		this.combine = Objects.requireNonNull(combine);
 	}
 
+	/**
+	 * Returns the underlying cell.
+	 *
+	 * @return the wrapped cell
+	 */
 	public Cell<T> getCell() { return cell; }
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Connects the cell's receptor to the destination and returns a producer
+	 * that combines the destination value with the input value.</p>
+	 *
+	 * @param value the input value to combine with the cell's output
+	 * @return a producer that yields the combined result
+	 */
 	@Override
 	public Producer<T> getResultant(Producer<T> value) {
 		cell.setReceptor(assignment.apply(destination));
 		return combine.apply(destination, value);
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Delegates to the underlying cell's setup operation.</p>
+	 *
+	 * @return the cell's setup operation
+	 */
 	@Override
 	public Supplier<Runnable> setup() {
 		return cell.setup();
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Creates a tick operation that pushes data through the cell and,
+	 * if the cell implements {@link Temporal}, also ticks the cell.</p>
+	 *
+	 * @return a combined tick operation
+	 */
 	@Override
 	public Supplier<Runnable> tick() {
 		String name = cell.getClass().getSimpleName();
@@ -66,6 +137,11 @@ public class TemporalFactorFromCell<T> implements CellularTemporalFactor<T> {
 		return tick;
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Resets both the parent factor and the underlying cell.</p>
+	 */
 	@Override
 	public void reset() {
 		CellularTemporalFactor.super.reset();

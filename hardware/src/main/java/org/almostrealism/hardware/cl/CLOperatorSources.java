@@ -16,9 +16,9 @@
 
 package org.almostrealism.hardware.cl;
 
+import io.almostrealism.code.Precision;
 import io.almostrealism.profile.OperationMetadata;
 import org.almostrealism.hardware.Hardware;
-import io.almostrealism.code.Precision;
 import org.almostrealism.io.Console;
 
 import java.io.BufferedReader;
@@ -29,14 +29,31 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * A wrapper for manually authored OpenCL kernel programs.
+ * Loader for manually-authored OpenCL kernel source files.
+ *
+ * <p>Loads .cl files from resources and compiles them to {@link CLOperatorMap}.
+ * This approach is deprecated in favor of generating OpenCL code from {@link io.almostrealism.scope.Scope}.</p>
+ *
+ * @deprecated Use {@link CLComputeContext#deliver(io.almostrealism.scope.Scope)} for code generation
+ * @see CLComputeContext
  */
 @Deprecated
 public class CLOperatorSources {
+	/** The compute context for OpenCL operations. */
 	private CLComputeContext context;
+
+	/** The base operator map loaded from built-in .cl files. */
 	private CLOperatorMap base;
+
+	/** Cache of operator maps for class-specific .cl resource files. */
 	private Map<Class, CLOperatorMap> extensions;
 
+	/**
+	 * Initializes the operator sources with the given compute context.
+	 * Loads the base kernel source and prepares the extensions cache.
+	 *
+	 * @param ctx  the compute context for OpenCL operations
+	 */
 	protected synchronized void init(CLComputeContext ctx) {
 		context = ctx;
 
@@ -46,6 +63,13 @@ public class CLOperatorSources {
 		extensions = new HashMap<>();
 	}
 
+	/**
+	 * Returns the operator map for the given class.
+	 * Loads class-specific .cl resources if available, otherwise returns the base operator map.
+	 *
+	 * @param c  the class to get operators for (looks for {@code ClassName.cl} resource)
+	 * @return the operator map containing kernels for the class, or the base map if no class-specific resource exists
+	 */
 	public synchronized CLOperatorMap getOperators(Class c) {
 		if (!extensions.containsKey(c)) {
 			InputStream in = c.getResourceAsStream(c.getSimpleName() + ".cl");
@@ -62,11 +86,25 @@ public class CLOperatorSources {
 		return extensions.get(c);
 	}
 
+	/**
+	 * Loads the built-in kernel source for the current precision setting.
+	 *
+	 * @return the kernel source code (local32.cl for FP32, local64.cl for FP64)
+	 */
 	private String loadSource() {
 		String name = context.getDataContext().getPrecision() == Precision.FP64 ? "local64" : "local32";
 		return loadSource(Hardware.class.getClassLoader().getResourceAsStream(name + ".cl"), false, false);
 	}
 
+	/**
+	 * Loads kernel source code from an input stream.
+	 *
+	 * @param is             the input stream containing kernel source
+	 * @param includeLocal   if true, prepends the built-in local source
+	 * @param replaceDouble  if true, replaces "double" with "float" for FP32 precision
+	 * @return the loaded and optionally transformed kernel source code
+	 * @throws IllegalArgumentException if the input stream is null
+	 */
 	protected String loadSource(InputStream is, boolean includeLocal, boolean replaceDouble) {
 		if (is == null) {
 			throw new IllegalArgumentException("InputStream is null");

@@ -21,6 +21,7 @@ import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.Scope;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.DynamicCollectionProducer;
 import org.almostrealism.color.RGB;
 import org.almostrealism.color.RGBFeatures;
@@ -29,29 +30,32 @@ import org.almostrealism.color.RGBFeatures;
  * 
  * @author Michael Murray
  */
-public class RandomColorGenerator implements ProducerComputation<RGB> {
- 	private Producer<RGB> baseRGB, offsetRGB;
+public class RandomColorGenerator implements ProducerComputation<PackedCollection> {
+ 	private Producer<PackedCollection> baseRGB, offsetRGB;
  
 	public RandomColorGenerator() {
 		this(RGBFeatures.getInstance().black(), RGBFeatures.getInstance().white());
 	}
 	
-	public RandomColorGenerator(Producer<RGB> baseRGB, Producer<RGB> offsetRGB) {
+	public RandomColorGenerator(Producer<PackedCollection> baseRGB, Producer<PackedCollection> offsetRGB) {
 		this.baseRGB = baseRGB;
 		this.offsetRGB = offsetRGB;
 	}
 	
-	public void setBaseRGB(Producer<RGB> base) { this.baseRGB = base; }
-	public void setOffsetRGB(Producer<RGB> offset) { this.offsetRGB = offset; }
+	public void setBaseRGB(Producer<PackedCollection> base) { this.baseRGB = base; }
+	public void setOffsetRGB(Producer<PackedCollection> offset) { this.offsetRGB = offset; }
 	
-	public Producer<RGB> getBaseRGB() { return this.baseRGB; }
-	public Producer<RGB> getOffsetRGB() { return this.offsetRGB; }
+	public Producer<PackedCollection> getBaseRGB() { return this.baseRGB; }
+	public Producer<PackedCollection> getOffsetRGB() { return this.offsetRGB; }
 
 	@Override
-	public Evaluable<RGB> get() {
-		return new DynamicCollectionProducer<>(RGB.shape(), args -> {
-			RGB base = this.baseRGB.get().evaluate(args);
-			RGB off = this.offsetRGB.get().evaluate(args);
+	public Evaluable<PackedCollection> get() {
+		return new DynamicCollectionProducer(RGB.shape(), args -> {
+			PackedCollection baseResult = this.baseRGB.get().evaluate(args);
+			PackedCollection offResult = this.offsetRGB.get().evaluate(args);
+
+			RGB base = baseResult instanceof RGB ? (RGB) baseResult : new RGB(baseResult.toDouble(0), baseResult.toDouble(1), baseResult.toDouble(2));
+			RGB off = offResult instanceof RGB ? (RGB) offResult : new RGB(offResult.toDouble(0), offResult.toDouble(1), offResult.toDouble(2));
 
 			base.setRed(base.getRed() + Math.random() * off.getRed());
 			base.setGreen(base.getGreen() + Math.random() * off.getGreen());
@@ -62,7 +66,7 @@ public class RandomColorGenerator implements ProducerComputation<RGB> {
 	}
 
 	@Override
-	public Scope<RGB> getScope(KernelStructureContext context) {
+	public Scope<PackedCollection> getScope(KernelStructureContext context) {
 		throw new RuntimeException("Not implemented");
 	}
 }

@@ -33,7 +33,8 @@ import java.util.stream.IntStream;
 public class ScopeSettings {
 	public static final boolean enableReplacements = true;
 
-	public static boolean enableInstructionSetReuse = true;
+	public static boolean enableInstructionSetReuse =
+			SystemUtils.isEnabled("AR_INSTRUCTION_SET_REUSE").orElse(true);
 
 	public static boolean enableInstanceReferenceMasking = false;
 
@@ -66,10 +67,21 @@ public class ScopeSettings {
 
 	/**
 	 * Maximum number of statements allow in a {@link Scope}.
+	 * {@link io.almostrealism.code.Computation} which exceed
+	 * this limit may produce an error rather than be compiled.
 	 *
 	 * @see Scope#getStatements()
 	 */
 	public static int maxStatements = 1 << 16;
+
+	/**
+	 * The preferred limit for statements in a {@link Scope}.
+	 * {@link io.almostrealism.code.Computation}s can exceed
+	 * this limit, but should make a best effort to avoid it.
+	 *
+	 * @see Scope#getStatements()
+	 */
+	public static int preferredStatements = 1 << 8;
 
 	/**
 	 * Maximum number of nested conditions for any {@link Expression}

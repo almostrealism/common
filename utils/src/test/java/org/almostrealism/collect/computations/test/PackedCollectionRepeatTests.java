@@ -20,12 +20,7 @@ import io.almostrealism.collect.RepeatTraversalOrdering;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Tensor;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.computations.PackedCollectionRepeat;
-import org.almostrealism.hardware.jni.NativeCompiler;
-import org.almostrealism.hardware.metal.MetalOperator;
-import org.almostrealism.hardware.metal.MetalProgram;
 import org.almostrealism.util.TestFeatures;
-import org.almostrealism.util.TestSettings;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -33,7 +28,7 @@ import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 public class PackedCollectionRepeatTests implements TestFeatures {
-	@Test
+	@Test(timeout = 30000)
 	public void isolatedRepeat() {
 		if (skipKnownIssues) return;
 
@@ -41,10 +36,10 @@ public class PackedCollectionRepeatTests implements TestFeatures {
 		int w = 2;
 		int h = 3;
 
-		PackedCollection<?> v = new PackedCollection<>(shape(w, h));
+		PackedCollection v = new PackedCollection(shape(w, h));
 		v.fill(pos -> Math.random());
 
-		PackedCollection<?> out = cp(v).repeat(d).get().evaluate();
+		PackedCollection out = cp(v).repeat(d).get().evaluate();
 
 		out.print();
 
@@ -61,16 +56,16 @@ public class PackedCollectionRepeatTests implements TestFeatures {
 		Assert.assertTrue(out.getShape().getOrder() instanceof RepeatTraversalOrdering);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void repeatItem() {
 		int w = 2;
 		int h = 3;
 		int d = 4;
 
-		PackedCollection<?> v = new PackedCollection<>(shape(w, h));
+		PackedCollection v = new PackedCollection(shape(w, h));
 		v.fill(pos -> Math.random());
 
-		PackedCollection<?> out = cp(v).traverse().repeat(d).get().evaluate();
+		PackedCollection out = cp(v).traverse().repeat(d).get().evaluate();
 
 		print(2, 12, out);
 
@@ -85,17 +80,17 @@ public class PackedCollectionRepeatTests implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void repeat3d() {
 		int w = 1;
 		int h = 2;
 		int d = 4;
 
-		PackedCollection<?> v = new PackedCollection<>(shape(w, h));
+		PackedCollection v = new PackedCollection(shape(w, h));
 		v.fill(pos -> Math.random());
 
 		verboseLog(() -> {
-			PackedCollection<?> out = c(p(v)).traverseEach().expand(d, x -> x.repeat(d)).get().evaluate();
+			PackedCollection out = c(p(v)).traverseEach().repeat(d).get().evaluate();
 
 			for (int x = 0; x < w; x++) {
 				for (int y = 0; y < h; y++) {
@@ -109,21 +104,21 @@ public class PackedCollectionRepeatTests implements TestFeatures {
 		});
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void repeatSum() {
 		int size = 30;
 		int nodes = 10;
 
 		Tensor<Double> t = tensor(shape(size));
-		PackedCollection<?> input = t.pack();
+		PackedCollection input = t.pack();
 
-		PackedCollection<?> weights = new PackedCollection<>(shape(size, nodes));
+		PackedCollection weights = new PackedCollection(shape(size, nodes));
 		weights.fill(pos -> Math.random());
 
-		Supplier<Producer<PackedCollection<?>>> dense =
+		Supplier<Producer<PackedCollection>> dense =
 				() -> cp(input).repeat(nodes).each().traverse(1).sum();
 
-		Consumer<PackedCollection<?>> valid = output -> {
+		Consumer<PackedCollection> valid = output -> {
 			for (int i = 0; i < nodes; i++) {
 				double expected = 0;
 
@@ -139,24 +134,24 @@ public class PackedCollectionRepeatTests implements TestFeatures {
 		kernelTest(dense, valid);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void repeatEnumerateMultiply() {
 		int size = 30;
 		int nodes = 10;
 
 		Tensor<Double> t = tensor(shape(size));
-		PackedCollection<?> input = t.pack();
+		PackedCollection input = t.pack();
 
-		PackedCollection<?> weights = new PackedCollection<>(shape(size, nodes));
+		PackedCollection weights = new PackedCollection(shape(size, nodes));
 		weights.fill(pos -> Math.random());
 
-		Supplier<Producer<PackedCollection<?>>> dense =
+		Supplier<Producer<PackedCollection>> dense =
 				() -> c(p(input)).repeat(nodes).traverseEach()
 						.multiply(c(p(weights))
 								.enumerate(1, 1))
 						.traverse(1).sum();
 
-		Consumer<PackedCollection<?>> valid = output -> {
+		Consumer<PackedCollection> valid = output -> {
 			for (int i = 0; i < nodes; i++) {
 				double expected = 0;
 
@@ -173,28 +168,28 @@ public class PackedCollectionRepeatTests implements TestFeatures {
 		kernelTest(dense, valid);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void repeatEnumerateMultiplyAdd() {
 		int size = 30;
 		int nodes = 10;
 
 		Tensor<Double> t = tensor(shape(size));
-		PackedCollection<?> input = t.pack();
+		PackedCollection input = t.pack();
 
-		PackedCollection<?> weights = new PackedCollection<>(shape(size, nodes));
+		PackedCollection weights = new PackedCollection(shape(size, nodes));
 		weights.fill(pos -> Math.random());
 
-		PackedCollection<?> biases = new PackedCollection<>(shape(nodes));
+		PackedCollection biases = new PackedCollection(shape(nodes));
 		biases.fill(pos -> Math.random());
 
-		Supplier<Producer<PackedCollection<?>>> dense =
+		Supplier<Producer<PackedCollection>> dense =
 				() -> c(p(input)).repeat(nodes).traverseEach()
 						.multiply(c(p(weights))
 								.enumerate(1, 1))
 						.traverse(1).sum()
 						.add(p(biases));
 
-		Consumer<PackedCollection<?>> valid = output -> {
+		Consumer<PackedCollection> valid = output -> {
 			for (int i = 0; i < nodes; i++) {
 				double expected = 0;
 
@@ -213,13 +208,13 @@ public class PackedCollectionRepeatTests implements TestFeatures {
 		kernelTest(dense, valid);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void maxRepeat() {
-		PackedCollection<?> in = new PackedCollection<>(8, 4).randFill();
+		PackedCollection in = new PackedCollection(8, 4).randFill();
 		in.traverse(1).print();
 		System.out.println("--");
 
-		PackedCollection<?> o = cp(in).traverse(1).max().repeat(3).get().evaluate();
+		PackedCollection o = cp(in).traverse(1).max().repeat(3).get().evaluate();
 		o.traverse(1).print();
 
 		for (int h = 0; h < 8; h++) {
@@ -237,11 +232,11 @@ public class PackedCollectionRepeatTests implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void upsample() {
-		PackedCollection<?> input = pack(1.0, 2.0, 3.0, 4.0).reshape(1, 1, 2, 2);
+		PackedCollection input = pack(1.0, 2.0, 3.0, 4.0).reshape(1, 1, 2, 2);
 
-		PackedCollection<?> out = cp(input)
+		PackedCollection out = cp(input)
 				.repeat(4, 2)
 				.repeat(3, 2)
 				.evaluate()

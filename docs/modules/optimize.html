@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AR-Optimize Module - Almost Realism Framework</title>
+    <link rel="stylesheet" href="../css/style.css">
+    <style>
+        .key-concepts { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin: 20px 0; }
+        .concept-card { background: #f8f9fa; border-left: 4px solid #2e7d32; padding: 15px; border-radius: 4px; }
+        .concept-card h4 { margin-top: 0; color: #2e7d32; }
+        .performance-table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+        .performance-table th, .performance-table td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
+        .performance-table th { background-color: #e8f5e9; color: #2e7d32; font-weight: bold; }
+        .performance-table tr:hover { background-color: #f5f5f5; }
+        .comparison-table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+        .comparison-table th, .comparison-table td { padding: 10px; border: 1px solid #ddd; text-align: left; }
+        .comparison-table th { background-color: #e8f5e9; color: #2e7d32; }
+        .class-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 15px; margin: 20px 0; }
+        .class-item { background: #fff; border: 1px solid #ddd; padding: 12px; border-radius: 4px; }
+        .class-item h4 { margin: 0 0 8px 0; color: #2e7d32; font-size: 1.1em; }
+        .class-item p { margin: 0; font-size: 0.9em; color: #666; }
+        .code-example { background: #f5f5f5; border-left: 4px solid #2e7d32; padding: 15px; margin: 15px 0; border-radius: 4px; }
+        .highlight { background-color: #fff9c4; padding: 2px 4px; }
+        .warning { background-color: #ffebee; border-left: 4px solid #c62828; padding: 12px; margin: 15px 0; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>AR-Optimize Module</h1>
+            <p class="tagline">Optimization Algorithms for Machine Learning & Evolutionary Computation</p>
+            <nav>
+                <a href="../index.html">Home</a>
+                <a href="#overview">Overview</a>
+                <a href="#architecture">Architecture</a>
+                <a href="#concepts">Core Concepts</a>
+                <a href="#examples">Examples</a>
+                <a href="#resources">Resources</a>
+            </nav>
+        </header>
+
+        <main>
+            <section id="overview">
+                <h2>Overview</h2>
+                <p>The <strong>ar-optimize</strong> module provides comprehensive optimization algorithms for machine learning and evolutionary computation. It includes population-based evolutionary algorithms, gradient-based optimizers (Adam), loss functions, dataset management, and complete training loops for neural networks.</p>
+
+                <div class="key-concepts">
+                    <div class="concept-card">
+                        <h4>Gradient-Based Optimization</h4>
+                        <p>Adam optimizer with momentum and adaptive learning rates. Implements first and second moment estimation for efficient neural network training.</p>
+                    </div>
+                    <div class="concept-card">
+                        <h4>Evolutionary Algorithms</h4>
+                        <p>Population-based optimization with genetic operators. Concurrent fitness evaluation, crossover, mutation, and selection for search problems.</p>
+                    </div>
+                    <div class="concept-card">
+                        <h4>Dataset Management</h4>
+                        <p>Iterable datasets with batching, train/validation splitting, and functional on-the-fly generation. ValueTarget pairs for supervised learning.</p>
+                    </div>
+                    <div class="concept-card">
+                        <h4>Model Training</h4>
+                        <p>Complete training loops with configurable loss functions, logging, early stopping, and accuracy evaluation for end-to-end model development.</p>
+                    </div>
+                </div>
+            </section>
+
+            <section id="architecture">
+                <h2>Module Architecture</h2>
+
+                <h3>Loss Functions</h3>
+                <div class="class-list">
+                    <div class="class-item">
+                        <h4>LossProvider</h4>
+                        <p>Core interface for loss functions. Computes loss values and gradients for backpropagation.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>MeanSquaredError</h4>
+                        <p>MSE loss for regression tasks. Computes average squared difference between predictions and targets.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>MeanAbsoluteError</h4>
+                        <p>MAE loss for robust regression. Less sensitive to outliers than MSE.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>NegativeLogLikelihood</h4>
+                        <p>NLL loss for classification. Used with softmax outputs for multi-class problems.</p>
+                    </div>
+                </div>
+
+                <h3>Gradient-Based Optimization</h3>
+                <div class="class-list">
+                    <div class="class-item">
+                        <h4>AdamOptimizer</h4>
+                        <p>Adam optimization algorithm with configurable learning rate, beta1 (momentum), and beta2 (velocity decay).</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>ModelOptimizer</h4>
+                        <p>Complete training loop orchestrator. Handles epochs, loss computation, logging, and early stopping.</p>
+                    </div>
+                </div>
+
+                <h3>Dataset Management</h3>
+                <div class="class-list">
+                    <div class="class-item">
+                        <h4>Dataset</h4>
+                        <p>Iterable dataset interface. Supports batching, splitting, and functional data generation.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>ValueTarget</h4>
+                        <p>Input-output pair for supervised learning. Encapsulates training examples with their expected outputs.</p>
+                    </div>
+                </div>
+
+                <h3>Evolutionary Algorithms</h3>
+                <div class="class-list">
+                    <div class="class-item">
+                        <h4>Population</h4>
+                        <p>Genome population interface. Manages collection of candidate solutions for evolutionary optimization.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>PopulationOptimizer</h4>
+                        <p>Genetic algorithm optimizer. Handles selection, breeding, mutation, and parallel fitness evaluation.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>HealthComputation</h4>
+                        <p>Fitness evaluation interface. Computes health scores for genome candidates with lifecycle management.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>HealthScore</h4>
+                        <p>Fitness value container. Typically normalized to 0.0-1.0 range for comparison.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>AverageHealthComputationSet</h4>
+                        <p>Composite health computation. Combines multiple fitness metrics into averaged score.</p>
+                    </div>
+                </div>
+
+                <h3>Loss Function Comparison</h3>
+                <table class="comparison-table">
+                    <tr>
+                        <th>Loss Function</th>
+                        <th>Use Case</th>
+                        <th>Formula</th>
+                        <th>Gradient</th>
+                    </tr>
+                    <tr>
+                        <td>MeanSquaredError</td>
+                        <td>Regression</td>
+                        <td>(1/n) * sum((y - y')^2)</td>
+                        <td>2 * (y' - y) / n</td>
+                    </tr>
+                    <tr>
+                        <td>MeanAbsoluteError</td>
+                        <td>Robust Regression</td>
+                        <td>(1/n) * sum(|y - y'|)</td>
+                        <td>sign(y' - y) / n</td>
+                    </tr>
+                    <tr>
+                        <td>NegativeLogLikelihood</td>
+                        <td>Classification</td>
+                        <td>-sum(y * log(y'))</td>
+                        <td>-y / y'</td>
+                    </tr>
+                </table>
+            </section>
+
+            <section id="concepts">
+                <h2>Core Concepts</h2>
+
+                <h3>LossProvider Interface</h3>
+                <p>The foundation for all loss functions, providing both loss computation and gradient calculation.</p>
+                <pre><code class="language-java">public interface LossProvider {
+    // Compute scalar loss value
+    double loss(PackedCollection output, PackedCollection target);
+
+    // Compute gradient for backpropagation
+    Producer&lt;PackedCollection&gt; gradient(
+        Producer&lt;PackedCollection&gt; output,
+        Producer&lt;PackedCollection&gt; target
+    );
+}</code></pre>
+
+                <h3>Adam Optimizer</h3>
+                <p>Adaptive moment estimation optimizer with momentum and RMSprop-style velocity tracking.</p>
+                <pre><code class="language-java">// Create Adam optimizer with standard parameters
+AdamOptimizer adam = new AdamOptimizer(
+    0.001,   // Learning rate (alpha)
+    0.9,     // Beta1 (momentum decay)
+    0.999    // Beta2 (velocity decay)
+);
+
+// Apply parameter updates
+Supplier&lt;Runnable&gt; updateOp = adam.apply(
+    "layer.weights",
+    weightsProducer,
+    gradientsProducer
+);
+
+// Execute update
+updateOp.get().run();</code></pre>
+
+                <h3>Dataset Management</h3>
+                <p>Flexible dataset handling with batching and splitting support.</p>
+                <pre><code class="language-java">// Create dataset from input-output pairs
+List&lt;ValueTarget&lt;PackedCollection&gt;&gt; data = new ArrayList&lt;&gt;();
+for (int i = 0; i &lt; 1000; i++) {
+    PackedCollection input = generateInput();
+    PackedCollection target = computeTarget(input);
+    data.add(ValueTarget.of(input, target));
+}
+
+Dataset&lt;PackedCollection&gt; dataset = Dataset.of(data);
+
+// Split train/validation (80/20)
+List&lt;Dataset&lt;PackedCollection&gt;&gt; splits = dataset.split(0.8);
+Dataset&lt;PackedCollection&gt; train = splits.get(0);
+Dataset&lt;PackedCollection&gt; validation = splits.get(1);
+
+// Batch processing
+Dataset&lt;PackedCollection&gt; batched = dataset.batch(32);</code></pre>
+
+                <h3>Health Computation</h3>
+                <p>Fitness evaluation for evolutionary algorithms with lifecycle management.</p>
+                <pre><code class="language-java">public interface HealthComputation&lt;T extends Temporal, S extends HealthScore&gt;
+    extends Lifecycle {
+
+    void setTarget(T target);
+    S computeHealth();
+
+    // Lifecycle methods
+    void init();
+    void reset();
+    void destroy();
+}</code></pre>
+
+                <h3>PopulationOptimizer Configuration</h3>
+                <div class="code-example">
+                    <strong>Population Settings:</strong><br>
+                    <code>PopulationOptimizer.popSize = 100</code> - Population size<br>
+                    <code>PopulationOptimizer.maxChildren = 110</code> - Maximum children (110% of population)<br>
+                    <code>PopulationOptimizer.THREADS = 8</code> - Parallel evaluation threads<br><br>
+                    <strong>Offspring Probabilities:</strong><br>
+                    <code>secondaryOffspringPotential = 0.25</code><br>
+                    <code>tertiaryOffspringPotential = 0.25</code><br>
+                    <code>quaternaryOffspringPotential = 0.25</code><br><br>
+                    <strong>Feature Toggles:</strong><br>
+                    <code>enableBreeding = true</code> - Enable crossover<br>
+                    <code>enableVerbose = false</code> - Verbose logging<br>
+                    <code>lowestHealth = 0.0</code> - Fitness threshold
+                </div>
+            </section>
+
+            <section id="examples">
+                <h2>Usage Examples</h2>
+
+                <h3>Training a Classification Model</h3>
+                <pre><code class="language-java">import org.almostrealism.optimize.ModelOptimizer;
+import org.almostrealism.optimize.NegativeLogLikelihood;
+
+// Prepare training data
+List&lt;ValueTarget&lt;PackedCollection&gt;&gt; trainingData = loadMNIST();
+Dataset&lt;PackedCollection&gt; dataset = Dataset.of(trainingData);
+
+// Build model
+Model model = new Model(shape(784));
+model.add(dense(weights1, bias1));
+model.add(relu());
+model.add(dense(weights2, bias2));
+model.add(softmax());
+
+// Create optimizer
+ModelOptimizer optimizer = new ModelOptimizer(
+    model.compile(),
+    () -> dataset
+);
+
+// Configure for classification
+optimizer.setLossFunction(new NegativeLogLikelihood(shape(10).traverseEach()));
+optimizer.setLogFrequency(1);     // Log every epoch
+optimizer.setLossTarget(0.01);    // Early stopping threshold
+
+// Train
+optimizer.optimize(50);  // Up to 50 epochs
+
+// Evaluate
+double accuracy = optimizer.accuracy((expected, output) -> {
+    int expectedClass = argmax(expected);
+    int predictedClass = argmax(output);
+    return expectedClass == predictedClass;
+});
+
+System.out.println("Final loss: " + optimizer.getLoss());
+System.out.println("Accuracy: " + (accuracy * 100) + "%");</code></pre>
+
+                <h3>Regression with MSE Loss</h3>
+                <pre><code class="language-java">import org.almostrealism.optimize.ModelOptimizer;
+import org.almostrealism.optimize.MeanSquaredError;
+
+// Prepare dataset
+List&lt;ValueTarget&lt;PackedCollection&gt;&gt; data = new ArrayList&lt;&gt;();
+for (int i = 0; i &lt; 1000; i++) {
+    PackedCollection input = generateInput();
+    PackedCollection target = computeTarget(input);
+    data.add(ValueTarget.of(input, target));
+}
+
+// Create optimizer
+ModelOptimizer optimizer = new ModelOptimizer(
+    model.compile(),
+    () -> Dataset.of(data)
+);
+
+// Configure for regression
+optimizer.setLossFunction(new MeanSquaredError(outputShape.traverseEach()));
+optimizer.setLogFrequency(10);    // Log every 10 epochs
+optimizer.setLossTarget(0.001);   // Early stopping threshold
+
+// Train
+optimizer.optimize(100);  // Up to 100 epochs
+
+System.out.println("Final loss: " + optimizer.getLoss());</code></pre>
+
+                <h3>Evolutionary Algorithm</h3>
+                <pre><code class="language-java">import org.almostrealism.optimize.PopulationOptimizer;
+
+// Define genome generator
+Supplier&lt;Genome&lt;PackedCollection&gt;&gt; generator = () -> {
+    ProjectedGenome genome = new ProjectedGenome(paramCount);
+    genome.initWeights();
+    return genome;
+};
+
+// Define breeder (crossover + mutation)
+Supplier&lt;GenomeBreeder&lt;PackedCollection&gt;&gt; breeder = () -> (g1, g2) -> {
+    ProjectedGenome offspring = g1.crossover(g2);
+    offspring.mutate(0.1, () -> Math.random() * 0.2 - 0.1);
+    return offspring;
+};
+
+// Define health computation
+Supplier&lt;HealthComputation&lt;MyOrganism, MyScore&gt;&gt; healthSupplier = () ->
+    new MyHealthComputation();
+
+// Create population function
+Function&lt;List&lt;Genome&gt;, Population&gt; population = genomes ->
+    new MyPopulation(genomes);
+
+// Create optimizer
+PopulationOptimizer optimizer = new PopulationOptimizer(
+    healthSupplier,
+    population,
+    breeder,
+    generator
+);
+
+// Configure
+PopulationOptimizer.popSize = 200;
+PopulationOptimizer.THREADS = 16;
+
+// Set listeners
+optimizer.setHealthListener((signature, score) ->
+    log("Genome " + signature + ": " + score.getScore())
+);
+
+// Run evolution
+for (int gen = 0; gen &lt; 100; gen++) {
+    optimizer.iterate();
+    log("Generation " + gen +
+        ": avg=" + optimizer.getAverageScore() +
+        ", max=" + optimizer.getMaxScore());
+}</code></pre>
+
+                <h3>Multi-Metric Fitness Evaluation</h3>
+                <pre><code class="language-java">import org.almostrealism.optimize.AverageHealthComputationSet;
+
+// Define multiple health computations
+AverageHealthComputationSet&lt;MyOrganism&gt; healthSet =
+    new AverageHealthComputationSet&lt;&gt;();
+
+// Add different metrics
+healthSet.add(new AccuracyHealth());
+healthSet.add(new SpeedHealth());
+healthSet.add(new EnergyEfficiencyHealth());
+
+// Use composite in population optimizer
+Supplier&lt;HealthComputation&lt;MyOrganism, HealthScore&gt;&gt; health =
+    () -> healthSet;
+
+PopulationOptimizer optimizer = new PopulationOptimizer(
+    health,
+    population,
+    breeder,
+    generator
+);
+
+// Evolution optimizes average of all metrics</code></pre>
+
+                <h3>Custom Loss Function</h3>
+                <pre><code class="language-java">public class HuberLoss implements LossProvider {
+    private double delta;
+    private CollectionProducer&lt;?&gt; shape;
+
+    public HuberLoss(CollectionProducer&lt;?&gt; shape, double delta) {
+        this.shape = shape;
+        this.delta = delta;
+    }
+
+    @Override
+    public double loss(PackedCollection output, PackedCollection target) {
+        double totalLoss = 0.0;
+        for (int i = 0; i &lt; output.getMemLength(); i++) {
+            double diff = Math.abs(output.toDouble(i) - target.toDouble(i));
+            if (diff &lt;= delta) {
+                totalLoss += 0.5 * diff * diff;
+            } else {
+                totalLoss += delta * (diff - 0.5 * delta);
+            }
+        }
+        return totalLoss / output.getMemLength();
+    }
+
+    @Override
+    public Producer&lt;PackedCollection&gt; gradient(
+            Producer&lt;PackedCollection&gt; output,
+            Producer&lt;PackedCollection&gt; target) {
+        // Huber gradient: linear for |error| > delta, quadratic otherwise
+        // Implementation details...
+    }
+}</code></pre>
+
+                <h3>Train/Validation Split</h3>
+                <pre><code class="language-java">// Load full dataset
+Dataset&lt;PackedCollection&gt; fullDataset = loadData();
+
+// Split 80% train, 20% validation
+List&lt;Dataset&lt;PackedCollection&gt;&gt; splits = fullDataset.split(0.8);
+Dataset&lt;PackedCollection&gt; trainSet = splits.get(0);
+Dataset&lt;PackedCollection&gt; validationSet = splits.get(1);
+
+// Train on train set
+ModelOptimizer trainer = new ModelOptimizer(
+    model.compile(),
+    () -> trainSet
+);
+trainer.optimize(50);
+
+// Evaluate on validation set
+ModelOptimizer validator = new ModelOptimizer(
+    model.compile(),
+    () -> validationSet
+);
+double validationAccuracy = validator.accuracy(accuracyPredicate);</code></pre>
+            </section>
+
+            <section id="troubleshooting">
+                <h2>Troubleshooting</h2>
+
+                <h3>Common Issues</h3>
+
+                <div class="warning">
+                    <strong>Issue:</strong> Loss not decreasing during training<br>
+                    <strong>Solution:</strong> Check learning rate (try 0.001, 0.0001), verify data normalization, ensure targets are correctly formatted.
+                </div>
+
+                <div class="warning">
+                    <strong>Issue:</strong> NaN loss values<br>
+                    <strong>Solution:</strong> Reduce learning rate, add gradient clipping, check for division by zero in custom loss functions.
+                </div>
+
+                <div class="warning">
+                    <strong>Issue:</strong> PopulationOptimizer running slowly<br>
+                    <strong>Solution:</strong> Increase <code>THREADS</code> for parallel evaluation, reduce population size, simplify health computation.
+                </div>
+
+                <div class="warning">
+                    <strong>Issue:</strong> Evolutionary algorithm converging prematurely<br>
+                    <strong>Solution:</strong> Increase mutation rate, add more diversity to initial population, use larger population size.
+                </div>
+
+                <div class="warning">
+                    <strong>Issue:</strong> Out of memory during training<br>
+                    <strong>Solution:</strong> Reduce batch size, use smaller model, enable hardware acceleration for GPU memory.
+                </div>
+            </section>
+
+            <section id="resources">
+                <h2>Additional Resources</h2>
+                <ul>
+                    <li><a href="../../optimize/README.md">Optimize Module README</a> - Comprehensive module documentation</li>
+                    <li><a href="../apidocs/org/almostrealism/optimize/package-summary.html">JavaDoc API</a> - Complete API reference</li>
+                    <li><a href="graph.html">Graph Module</a> - Model and CompiledModel for neural networks</li>
+                    <li><a href="../../heredity/README.md">Heredity Module</a> - Genome and genetic operators</li>
+                    <li><a href="ml.html">ML Module</a> - Transformer model training</li>
+                </ul>
+
+                <h3>Maven Dependency</h3>
+                <pre><code class="language-xml">&lt;dependency&gt;
+    &lt;groupId&gt;org.almostrealism&lt;/groupId&gt;
+    &lt;artifactId&gt;ar-optimize&lt;/artifactId&gt;
+    &lt;!-- Check pom.xml for current version --&gt;
+&lt;/dependency&gt;</code></pre>
+
+                <h3>Module Dependencies</h3>
+                <table class="comparison-table">
+                    <tr>
+                        <th>Module</th>
+                        <th>Purpose</th>
+                    </tr>
+                    <tr>
+                        <td>ar-graph</td>
+                        <td>Model, CompiledModel, Block for neural networks</td>
+                    </tr>
+                    <tr>
+                        <td>ar-heredity</td>
+                        <td>Genome, Chromosome, Gene for genetic algorithms</td>
+                    </tr>
+                    <tr>
+                        <td>ar-collect</td>
+                        <td>PackedCollection, TraversalPolicy for tensor data</td>
+                    </tr>
+                    <tr>
+                        <td>ar-hardware</td>
+                        <td>ComputeContext for GPU acceleration</td>
+                    </tr>
+                </table>
+            </section>
+        </main>
+
+        <footer>
+            <p><a href="../index.html">Back to Framework Documentation</a></p>
+            <p>2024 Michael Murray. Licensed under the Apache License, Version 2.0.</p>
+        </footer>
+    </div>
+
+    <script src="../js/docs.js"></script>
+</body>
+</html>

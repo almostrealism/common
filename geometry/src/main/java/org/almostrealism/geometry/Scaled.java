@@ -16,8 +16,33 @@
 
 package org.almostrealism.geometry;
 
+/**
+ * An interface for objects that can be scaled in 3D space.
+ * Provides methods to get and set scale factors for each axis independently.
+ *
+ * <p>Scale values of 1.0 represent the original size. Values greater than 1.0
+ * increase the size, while values less than 1.0 decrease the size. Negative
+ * values can be used for mirroring along an axis.</p>
+ *
+ * @author Michael Murray
+ * @see Positioned
+ * @see Oriented
+ * @see BasicGeometry
+ */
 public interface Scaled {
-	public void setScale(float x, float y, float z);
-	
-	public float[] getScale();
+	/**
+	 * Sets the scale factors for this object along each axis.
+	 *
+	 * @param x the scale factor along the x-axis
+	 * @param y the scale factor along the y-axis
+	 * @param z the scale factor along the z-axis
+	 */
+	void setScale(float x, float y, float z);
+
+	/**
+	 * Returns the current scale factors of this object.
+	 *
+	 * @return a float array containing {scaleX, scaleY, scaleZ}
+	 */
+	float[] getScale();
 }

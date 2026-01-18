@@ -20,7 +20,25 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorFeatures;
 
+/**
+ * An abstract base class that provides a convenient adapter implementation of {@link Curve}.
+ * This class simplifies implementing curves by providing utility methods from {@link VectorFeatures}
+ * and a convenience method for evaluating the curve at a specific point.
+ *
+ * <p>Subclasses need only implement the {@link #getValueAt(Producer)} and
+ * {@link #getNormalAt(Producer)} methods from the parent interfaces.</p>
+ *
+ * @param <T> the type of value returned by this curve
+ * @author Michael Murray
+ * @see Curve
+ */
 public abstract class CurveAdapter<T> implements Curve<T>, VectorFeatures {
-	/** Delegates to {@link #getNormalAt(Producer)}. */
-	public T operate(Vector v) { return getValueAt(v(v)).get().evaluate(); }
+	/**
+	 * Evaluates this curve at the specified vector position.
+	 * This is a convenience method that wraps the vector and evaluates the curve.
+	 *
+	 * @param v the position at which to evaluate the curve
+	 * @return the value of this curve at the specified position
+	 */
+	public T operate(Vector v) { return (T) getValueAt(v(v)).get().evaluate(); }
 }

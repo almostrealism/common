@@ -74,15 +74,13 @@ import java.util.List;
  *   <li>Integration with the computation pipeline</li>
  * </ul>
  * 
- * @param <T> The type of PackedCollection this computation produces
- * 
  * @author Michael Murray
  * @see SingleConstantComputation
  * @see io.almostrealism.expression.Epsilon
  * @see PackedCollection
  * @see TraversalPolicy
  */
-public class EpsilonConstantComputation<T extends PackedCollection<?>> extends SingleConstantComputation<T> {
+public class EpsilonConstantComputation extends SingleConstantComputation {
 	/**
 	 * Creates a new EpsilonConstantComputation with the specified shape.
 	 * The computation will produce a collection where every element contains
@@ -133,7 +131,7 @@ public class EpsilonConstantComputation<T extends PackedCollection<?>> extends S
 	 * @see CollectionProducerParallelProcess
 	 */
 	@Override
-	public CollectionProducerParallelProcess<T> generate(List<Process<?, ?>> children) {
+	public CollectionProducerParallelProcess generate(List<Process<?, ?>> children) {
 		return this;
 	}
 
@@ -152,8 +150,8 @@ public class EpsilonConstantComputation<T extends PackedCollection<?>> extends S
 	 * @see TraversalPolicy#traverse(int)
 	 */
 	@Override
-	public CollectionProducer<T> traverse(int axis) {
-		return new EpsilonConstantComputation<>(getShape().traverse(axis));
+	public CollectionProducer traverse(int axis) {
+		return new EpsilonConstantComputation(getShape().traverse(axis));
 	}
 
 	/**
@@ -174,7 +172,7 @@ public class EpsilonConstantComputation<T extends PackedCollection<?>> extends S
 	 * @see TraversalPolicy
 	 */
 	@Override
-	public CollectionProducerComputation<T> reshape(TraversalPolicy shape) {
-		return new EpsilonConstantComputation<>(shape);
+	public CollectionProducerComputation reshape(TraversalPolicy shape) {
+		return new EpsilonConstantComputation(shape);
 	}
 }

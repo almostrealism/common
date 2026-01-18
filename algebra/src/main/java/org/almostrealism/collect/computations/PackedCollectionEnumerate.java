@@ -18,19 +18,19 @@ package org.almostrealism.collect.computations;
 
 import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.collect.Algebraic;
+import io.almostrealism.collect.Shape;
+import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.ParallelismTargetOptimization;
+import io.almostrealism.compute.Process;
+import io.almostrealism.compute.ProcessContext;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.DefaultIndex;
 import io.almostrealism.kernel.Index;
 import io.almostrealism.kernel.IndexValues;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.kernel.NoOpKernelStructureContext;
-import io.almostrealism.compute.Process;
-import io.almostrealism.compute.ProcessContext;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
-import io.almostrealism.collect.Shape;
-import io.almostrealism.collect.TraversalPolicy;
 
 import java.util.List;
 import java.util.stream.IntStream;
@@ -77,34 +77,30 @@ import java.util.stream.IntStream;
  * should be set before creating instances in multi-threaded environments as they
  * are not synchronized.</p>
  * 
- * @param <T> the type of {@link PackedCollection} being enumerated
- * 
- * @example
- * <p><strong>Basic 1D Sliding Window:</strong></p>
+ * <h2>Examples</h2>
+ *
+ * <h3>Basic 1D Sliding Window</h3>
  * <pre>{@code
  * // Input: [1, 2, 3, 4, 5, 6] (shape: [6])
  * // enumerate(shape(3), stride(1), input)
  * // Output: [[1,2,3], [2,3,4], [3,4,5], [4,5,6]] (shape: [4, 3])
  * }</pre>
- * 
- * @example
- * <p><strong>2D Patch Extraction:</strong></p>
+ *
+ * <h3>2D Patch Extraction</h3>
  * <pre>{@code
  * // Input: 4x4 matrix (shape: [4, 4])
  * // enumerate(shape(2, 2), stride(1, 1), input)
  * // Output: 3x3x2x2 tensor (9 patches of size 2x2)
  * }</pre>
- * 
- * @example
- * <p><strong>Strided Enumeration:</strong></p>
+ *
+ * <h3>Strided Enumeration</h3>
  * <pre>{@code
  * // Input: [1, 2, 3, 4, 5, 6, 7, 8] (shape: [8])
- * // enumerate(shape(2), stride(2), input) 
+ * // enumerate(shape(2), stride(2), input)
  * // Output: [[1,2], [3,4], [5,6], [7,8]] (shape: [4, 2])
  * }</pre>
- * 
- * @example
- * <p><strong>4D Tensor Convolution Window:</strong></p>
+ *
+ * <h3>4D Tensor Convolution Window</h3>
  * <pre>{@code
  * // Input: batch=2, channels=5, height=10, width=6 (shape: [2, 5, 10, 6])
  * // enumerate(axis=3, len=3, stride=1, input.traverse(2))
@@ -116,8 +112,8 @@ import java.util.stream.IntStream;
  * @see io.almostrealism.collect.TraversalPolicy
  * @see IndexProjectionProducerComputation
  */
-public class PackedCollectionEnumerate<T extends PackedCollection<?>>
-		extends IndexProjectionProducerComputation<T> {
+public class PackedCollectionEnumerate
+		extends IndexProjectionProducerComputation {
 	/**
 	 * Enable optimization for preferring isolation in parallel processing.
 	 * When enabled, enumeration operations will prefer to run in isolation
@@ -161,14 +157,14 @@ public class PackedCollectionEnumerate<T extends PackedCollection<?>>
 	public static boolean enableUniqueIndexOptimization = true;
 
 	/** The shape of the input collection after applying traversal transformations */
-	private TraversalPolicy inputShape;
+	private final TraversalPolicy inputShape;
 	/** The depth at which traversal operations are performed */
-	private int traversalDepth;
+	private final int traversalDepth;
 
 	/** The shape of each enumerated subset/window */
-	private TraversalPolicy subsetShape;
+	private final TraversalPolicy subsetShape;
 	/** The stride pattern determining spacing between consecutive enumerations */
-	private TraversalPolicy strideShape;
+	private final TraversalPolicy strideShape;
 
 	/**
 	 * Creates a new enumeration with automatically computed stride.
@@ -242,13 +238,9 @@ public class PackedCollectionEnumerate<T extends PackedCollection<?>>
 	public boolean isIsolationTarget(ProcessContext context) {
 		if (super.isIsolationTarget(context)) return true;
 
-		if (enablePreferIsolation &&
+		return enablePreferIsolation &&
 				getParallelism() > ParallelismTargetOptimization.minCount &&
-				getOutputSize() <= MemoryProvider.MAX_RESERVATION) {
-			return true;
-		}
-
-		return false;
+				getOutputSize() <= MemoryProvider.MAX_RESERVATION;
 	}
 
 	/**
@@ -340,7 +332,7 @@ public class PackedCollectionEnumerate<T extends PackedCollection<?>>
 		Expression<?> offset = index.toInt().imod(subsetShape.getTotalSizeLong());
 
 		// Determine the location of the slice
-		Expression<?> p[] = new Expression[subsetShape.getDimensions()];
+		Expression<?>[] p = new Expression[subsetShape.getDimensions()];
 
 		if (enablePositionSimplification) {
 			KernelStructureContext ctx = index.getStructureContext();
@@ -436,10 +428,10 @@ public class PackedCollectionEnumerate<T extends PackedCollection<?>>
 	 *         but using the provided child processes
 	 */
 	@Override
-	public PackedCollectionEnumerate<T> generate(List<Process<?, ?>> children) {
+	public PackedCollectionEnumerate generate(List<Process<?, ?>> children) {
 		return (PackedCollectionEnumerate)
-				new PackedCollectionEnumerate<>(subsetShape, strideShape,
-								(Producer) children.get(1), traversalDepth)
+				new PackedCollectionEnumerate(subsetShape, strideShape,
+								(Producer<PackedCollection>) children.get(1), traversalDepth)
 						.addAllDependentLifecycles(getDependentLifecycles());
 	}
 
@@ -511,7 +503,7 @@ public class PackedCollectionEnumerate<T extends PackedCollection<?>>
 					.filter(i -> i > 0).min()
 					.orElseThrow(() -> new IllegalArgumentException("Invalid stride"));
 
-		int dims[] = new int[superShape.getDimensions() + 1];
+		int[] dims = new int[superShape.getDimensions() + 1];
 
 		for (int i = 0; i < dims.length; i++) {
 			int axis = i - traversalDepth;
@@ -556,7 +548,7 @@ public class PackedCollectionEnumerate<T extends PackedCollection<?>>
 	private static TraversalPolicy computeStride(TraversalPolicy shape, Producer<?> collection, int traversalDepth) {
 		TraversalPolicy superShape = shape(collection);
 
-		int dims[] = new int[shape.getDimensions()];
+		int[] dims = new int[shape.getDimensions()];
 		for (int i = 0; i < dims.length; i++) {
 			if (i >= traversalDepth) {
 				int axis = i - traversalDepth;

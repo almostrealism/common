@@ -19,7 +19,36 @@ package org.almostrealism.heredity;
 import io.almostrealism.relation.Factor;
 import io.almostrealism.relation.Producer;
 
+/**
+ * A {@link Factor} implementation that returns the input unchanged.
+ *
+ * <p>This factor acts as a pass-through, useful as a placeholder or default
+ * when a factor is required but no transformation should be applied.
+ * It is also useful in genetic algorithms when you want to represent the
+ * absence of an effect or a neutral mutation.
+ *
+ * <h2>Example Usage</h2>
+ * <pre>{@code
+ * // Create an identity factor
+ * Factor<PackedCollection> passThrough = new IdentityFactor<>();
+ *
+ * // Apply to input - returns the same producer
+ * Producer<PackedCollection> input = ...;
+ * Producer<PackedCollection> result = passThrough.getResultant(input);
+ * // result == input
+ * }</pre>
+ *
+ * @param <T> the type of data this factor operates on
+ * @see Factor
+ * @see ScaleFactor
+ */
 public class IdentityFactor<T> implements Factor<T> {
+	/**
+	 * Returns the input producer unchanged.
+	 *
+	 * @param value the input producer
+	 * @return the same input producer, unchanged
+	 */
 	@Override
 	public Producer<T> getResultant(Producer<T> value) { return value; }
 }

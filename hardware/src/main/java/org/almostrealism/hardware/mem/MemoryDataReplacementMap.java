@@ -26,6 +26,16 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.function.Supplier;
 
+/**
+ * Tracks memory replacements and generates copy operations for data synchronization.
+ *
+ * <p>Used by {@link MemoryDataArgumentMap} to track which {@link MemoryData} instances have
+ * been replaced with aggregated alternatives, generating the necessary copy operations to
+ * transfer data before and after kernel execution.</p>
+ *
+ * @see MemoryDataArgumentMap
+ * @see MemoryDataCopy
+ */
 public class MemoryDataReplacementMap implements Destroyable {
 	public static OperationProfile profile;
 

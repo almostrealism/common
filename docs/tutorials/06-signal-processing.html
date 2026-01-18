@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tutorial: Signal Processing with Time Module - Almost Realism</title>
+    <link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1><a href="../index.html" style="color: white; text-decoration: none;">Almost Realism Framework</a></h1>
+            <p class="tagline">Tutorial: Signal Processing with Time Module</p>
+            <nav>
+                <a href="../index.html">Home</a>
+                <a href="../index.html#modules">Modules</a>
+                <a href="../index.html#tutorials">Tutorials</a>
+                <a href="../index.html#api">API Docs</a>
+            </nav>
+        </header>
+
+        <main>
+            <section>
+                <h2>Introduction</h2>
+                <p>This tutorial introduces the time module for signal processing, time-series analysis, and audio processing. You'll learn:</p>
+                <ul>
+                    <li>Working with time-series data using Temporal interface</li>
+                    <li>Frequency analysis with FFT (Fast Fourier Transform)</li>
+                    <li>Signal filtering (low-pass, high-pass, band-pass)</li>
+                    <li>Interpolation and resampling</li>
+                    <li>Wavelet transforms for time-frequency analysis</li>
+                    <li>Practical audio processing examples</li>
+                </ul>
+
+                <p><strong>Prerequisites:</strong></p>
+                <ul>
+                    <li>Completion of previous tutorials</li>
+                    <li>Basic understanding of signal processing concepts</li>
+                    <li>Familiarity with PackedCollection</li>
+                </ul>
+            </section>
+
+            <section>
+                <h2>Step 1: Understanding the Temporal Interface</h2>
+                <p>The <code>Temporal</code> interface enables time-based iteration and processing:</p>
+
+                <pre><code class="language-java">import org.almostrealism.time.Temporal;
+import org.almostrealism.time.TemporalFeatures;
+
+// Any class implementing Temporal can be processed over time
+public class SignalProcessor implements Temporal {
+    @Override
+    public void tick() {
+        // Called each time step
+        processNextSample();
+    }
+
+    @Override
+    public Temporal iter(int steps) {
+        // Process multiple steps
+        for (int i = 0; i < steps; i++) {
+            tick();
+        }
+        return this;
+    }
+}</code></pre>
+
+                <p><strong>Key Concepts:</strong></p>
+                <ul>
+                    <li><code>tick()</code> - Process one time step</li>
+                    <li><code>iter(n)</code> - Process n time steps</li>
+                    <li><code>sec(duration)</code> - Convert seconds to iteration count</li>
+                    <li>Temporal operations are hardware-accelerated when possible</li>
+                </ul>
+            </section>
+
+            <section>
+                <h2>Step 2: Creating Time-Series Data</h2>
+
+                <h3>Generate Sine Wave</h3>
+                <pre><code class="language-java">import org.almostrealism.collect.PackedCollection;
+import static org.almostrealism.collect.CollectionFeatures.*;
+
+// Parameters
+int sampleRate = 44100;  // 44.1 kHz (CD quality)
+double duration = 2.0;   // 2 seconds
+int numSamples = (int) (sampleRate * duration);
+
+// Generate 440 Hz sine wave (A4 note)
+PackedCollection signal = new PackedCollection(shape(numSamples));
+double frequency = 440.0;
+
+signal.fill(pos -&gt; {
+    double t = pos[0] / (double) sampleRate;  // Time in seconds
+    return Math.sin(2 * Math.PI * frequency * t);
+});</code></pre>
+
+                <h3>Generate Complex Waveform</h3>
+                <pre><code class="language-java">// Combination of frequencies (chord: A4 + C5 + E5)
+double[] frequencies = {440.0, 523.25, 659.25};
+double[] amplitudes = {1.0, 0.7, 0.5};
+
+signal.fill(pos -&gt; {
+    double t = pos[0] / (double) sampleRate;
+    double sum = 0.0;
+    for (int i = 0; i < frequencies.length; i++) {
+        sum += amplitudes[i] * Math.sin(2 * Math.PI * frequencies[i] * t);
+    }
+    return sum / frequencies.length;  // Normalize
+});</code></pre>
+            </section>
+
+            <section>
+                <h2>Step 3: Fast Fourier Transform (FFT)</h2>
+                <p>Analyze frequency content of signals using FFT:</p>
+
+                <pre><code class="language-java">import org.almostrealism.time.computations.FourierTransform;
+
+// Ensure signal length is power of 2 for FFT
+int fftSize = 2048;
+PackedCollection signal = new PackedCollection(shape(fftSize));
+
+// Fill with signal data
+signal.fill(pos -&gt; generateSignal(pos[0]));
+
+// Perform FFT
+FourierTransform fft = new FourierTransform(fftSize);
+PackedCollection spectrum = fft.forward(signal);
+
+// spectrum contains complex values: [real0, imag0, real1, imag1, ...]
+// Compute magnitude spectrum
+PackedCollection magnitudes = new PackedCollection(shape(fftSize / 2));
+
+for (int i = 0; i < fftSize / 2; i++) {
+    double real = spectrum.toDouble(2 * i);
+    double imag = spectrum.toDouble(2 * i + 1);
+    double magnitude = Math.sqrt(real * real + imag * imag);
+    magnitudes.setMem(i, magnitude);
+}
+
+// Find dominant frequency
+double maxMag = 0.0;
+int maxBin = 0;
+for (int i = 0; i < fftSize / 2; i++) {
+    double mag = magnitudes.toDouble(i);
+    if (mag > maxMag) {
+        maxMag = mag;
+        maxBin = i;
+    }
+}
+
+double dominantFreq = maxBin * sampleRate / (double) fftSize;
+System.out.println("Dominant frequency: " + dominantFreq + " Hz");</code></pre>
+            </section>
+
+            <section>
+                <h2>Step 4: Signal Filtering</h2>
+
+                <h3>Low-Pass Filter (Remove High Frequencies)</h3>
+                <pre><code class="language-java">import static org.almostrealism.time.TemporalFeatures.*;
+
+// Simple moving average low-pass filter
+int windowSize = 10;
+PackedCollection filtered = new PackedCollection(signal.getShape());
+
+for (int i = 0; i < signal.getCount(); i++) {
+    double sum = 0.0;
+    int count = 0;
+
+    for (int j = Math.max(0, i - windowSize/2);
+         j < Math.min(signal.getCount(), i + windowSize/2);
+         j++) {
+        sum += signal.toDouble(j);
+        count++;
+    }
+
+    filtered.setMem(i, sum / count);
+}</code></pre>
+
+                <h3>High-Pass Filter (Remove Low Frequencies)</h3>
+                <pre><code class="language-java">// High-pass = Original - Low-pass
+PackedCollection lowPass = applyLowPassFilter(signal);
+PackedCollection highPass = new PackedCollection(signal.getShape());
+
+for (int i = 0; i < signal.getCount(); i++) {
+    double original = signal.toDouble(i);
+    double low = lowPass.toDouble(i);
+    highPass.setMem(i, original - low);
+}</code></pre>
+
+                <h3>Band-Pass Filter (Specific Frequency Range)</h3>
+                <pre><code class="language-java">// Isolate frequencies between lowFreq and highFreq
+double lowFreq = 200.0;
+double highFreq = 2000.0;
+
+// Apply FFT
+PackedCollection spectrum = fft.forward(signal);
+
+// Zero out frequencies outside band
+int lowBin = (int) (lowFreq * fftSize / sampleRate);
+int highBin = (int) (highFreq * fftSize / sampleRate);
+
+for (int i = 0; i < fftSize / 2; i++) {
+    if (i < lowBin || i > highBin) {
+        spectrum.setMem(2 * i, 0.0);      // Real part
+        spectrum.setMem(2 * i + 1, 0.0);  // Imaginary part
+    }
+}
+
+// Inverse FFT to get filtered signal
+PackedCollection filtered = fft.inverse(spectrum);</code></pre>
+            </section>
+
+            <section>
+                <h2>Step 5: Interpolation and Resampling</h2>
+
+                <h3>Linear Interpolation</h3>
+                <pre><code class="language-java">// Upsample signal by factor of 2
+int newSize = signal.getCount() * 2;
+PackedCollection upsampled = new PackedCollection(shape(newSize));
+
+for (int i = 0; i < newSize; i++) {
+    double pos = i / 2.0;
+    int idx1 = (int) pos;
+    int idx2 = Math.min(idx1 + 1, signal.getCount() - 1);
+    double frac = pos - idx1;
+
+    double val1 = signal.toDouble(idx1);
+    double val2 = signal.toDouble(idx2);
+    double interpolated = val1 + frac * (val2 - val1);
+
+    upsampled.setMem(i, interpolated);
+}</code></pre>
+
+                <h3>Downsampling</h3>
+                <pre><code class="language-java">// Downsample signal by factor of 2
+int newSize = signal.getCount() / 2;
+PackedCollection downsampled = new PackedCollection(shape(newSize));
+
+for (int i = 0; i < newSize; i++) {
+    downsampled.setMem(i, signal.toDouble(i * 2));
+}</code></pre>
+            </section>
+
+            <section>
+                <h2>Step 6: Wavelet Transform</h2>
+                <p>Analyze time-frequency characteristics using wavelets:</p>
+
+                <pre><code class="language-java">// Haar wavelet (simplest wavelet)
+public class HaarWavelet {
+    public static PackedCollection forward(PackedCollection signal) {
+        int n = signal.getCount();
+        if (n % 2 != 0) throw new IllegalArgumentException("Size must be even");
+
+        PackedCollection result = new PackedCollection(shape(n));
+
+        // Approximation coefficients (low frequency)
+        for (int i = 0; i < n/2; i++) {
+            double avg = (signal.toDouble(2*i) + signal.toDouble(2*i+1)) / 2.0;
+            result.setMem(i, avg);
+        }
+
+        // Detail coefficients (high frequency)
+        for (int i = 0; i < n/2; i++) {
+            double diff = (signal.toDouble(2*i) - signal.toDouble(2*i+1)) / 2.0;
+            result.setMem(n/2 + i, diff);
+        }
+
+        return result;
+    }
+
+    public static PackedCollection inverse(PackedCollection coeffs) {
+        int n = coeffs.getCount();
+        PackedCollection signal = new PackedCollection(shape(n));
+
+        for (int i = 0; i < n/2; i++) {
+            double avg = coeffs.toDouble(i);
+            double diff = coeffs.toDouble(n/2 + i);
+
+            signal.setMem(2*i, avg + diff);
+            signal.setMem(2*i + 1, avg - diff);
+        }
+
+        return signal;
+    }
+}</code></pre>
+            </section>
+
+            <section>
+                <h2>Step 7: Practical Example - Audio Effects</h2>
+
+                <h3>Echo Effect</h3>
+                <pre><code class="language-java">public class EchoEffect {
+    public static PackedCollection apply(
+            PackedCollection input,
+            double delaySeconds,
+            double decay,
+            int sampleRate) {
+
+        int delaySamples = (int) (delaySeconds * sampleRate);
+        int outputSize = input.getCount() + delaySamples;
+
+        PackedCollection output = new PackedCollection(shape(outputSize));
+        output.fill(pos -&gt; 0.0);
+
+        // Copy original signal
+        for (int i = 0; i < input.getCount(); i++) {
+            double val = input.toDouble(i);
+            output.setMem(i, output.toDouble(i) + val);
+        }
+
+        // Add echo
+        for (int i = 0; i < input.getCount(); i++) {
+            int echoPos = i + delaySamples;
+            if (echoPos < outputSize) {
+                double val = input.toDouble(i) * decay;
+                output.setMem(echoPos, output.toDouble(echoPos) + val);
+            }
+        }
+
+        return output;
+    }
+}</code></pre>
+
+                <h3>Reverb Effect (Simple)</h3>
+                <pre><code class="language-java">public class ReverbEffect {
+    public static PackedCollection apply(
+            PackedCollection input,
+            int sampleRate) {
+
+        // Multiple echoes with decreasing amplitude
+        double[] delays = {0.029, 0.037, 0.041, 0.053};  // seconds
+        double[] decays = {0.7, 0.5, 0.3, 0.2};
+
+        PackedCollection output = new PackedCollection(input.getShape());
+        output.fill(pos -&gt; 0.0);
+
+        // Copy original
+        for (int i = 0; i < input.getCount(); i++) {
+            output.setMem(i, input.toDouble(i));
+        }
+
+        // Add multiple echoes
+        for (int e = 0; e < delays.length; e++) {
+            int delaySamples = (int) (delays[e] * sampleRate);
+            for (int i = 0; i < input.getCount(); i++) {
+                int pos = i + delaySamples;
+                if (pos < output.getCount()) {
+                    double val = input.toDouble(i) * decays[e];
+                    output.setMem(pos, output.toDouble(pos) + val);
+                }
+            }
+        }
+
+        return output;
+    }
+}</code></pre>
+            </section>
+
+            <section>
+                <h2>Step 8: Spectral Analysis</h2>
+                <p>Analyze time-varying frequency content using Short-Time Fourier Transform (STFT):</p>
+
+                <pre><code class="language-java">public class STFT {
+    public static PackedCollection compute(
+            PackedCollection signal,
+            int windowSize,
+            int hopSize) {
+
+        int numWindows = (signal.getCount() - windowSize) / hopSize + 1;
+        int numFreqs = windowSize / 2;
+
+        // Result: [numWindows x numFreqs] spectrogram
+        PackedCollection spectrogram =
+            new PackedCollection(shape(numWindows, numFreqs));
+
+        FourierTransform fft = new FourierTransform(windowSize);
+
+        for (int w = 0; w < numWindows; w++) {
+            int startIdx = w * hopSize;
+
+            // Extract window
+            PackedCollection window =
+                new PackedCollection(shape(windowSize));
+            for (int i = 0; i < windowSize; i++) {
+                // Apply Hann window
+                double hannWeight = 0.5 * (1 - Math.cos(2 * Math.PI * i / windowSize));
+                window.setMem(i, signal.toDouble(startIdx + i) * hannWeight);
+            }
+
+            // FFT
+            PackedCollection spectrum = fft.forward(window);
+
+            // Compute magnitude and store
+            for (int f = 0; f < numFreqs; f++) {
+                double real = spectrum.toDouble(2 * f);
+                double imag = spectrum.toDouble(2 * f + 1);
+                double magnitude = Math.sqrt(real * real + imag * imag);
+                spectrogram.setMem(w, f, magnitude);
+            }
+        }
+
+        return spectrogram;
+    }
+}</code></pre>
+            </section>
+
+            <section>
+                <h2>Step 9: Real-Time Processing Pattern</h2>
+                <p>Process audio in real-time using Temporal interface:</p>
+
+                <pre><code class="language-java">import org.almostrealism.time.Temporal;
+
+public class RealTimeProcessor implements Temporal {
+    private PackedCollection inputBuffer;
+    private PackedCollection outputBuffer;
+    private int bufferSize;
+    private int readPos = 0;
+    private int writePos = 0;
+
+    public RealTimeProcessor(int bufferSize) {
+        this.bufferSize = bufferSize;
+        this.inputBuffer = new PackedCollection(shape(bufferSize));
+        this.outputBuffer = new PackedCollection(shape(bufferSize));
+    }
+
+    @Override
+    public void tick() {
+        // Read one sample
+        double sample = inputBuffer.toDouble(readPos);
+
+        // Process (example: simple gain)
+        double processed = sample * 0.5;
+
+        // Write output
+        outputBuffer.setMem(writePos, processed);
+
+        // Advance pointers (circular buffer)
+        readPos = (readPos + 1) % bufferSize;
+        writePos = (writePos + 1) % bufferSize;
+    }
+
+    public void processBlock(PackedCollection input,
+                            PackedCollection output) {
+        int blockSize = input.getCount();
+
+        // Fill input buffer
+        for (int i = 0; i < blockSize; i++) {
+            inputBuffer.setMem(i, input.toDouble(i));
+        }
+
+        // Process
+        iter(blockSize);
+
+        // Read output buffer
+        for (int i = 0; i < blockSize; i++) {
+            output.setMem(i, outputBuffer.toDouble(i));
+        }
+    }
+}</code></pre>
+            </section>
+
+            <section>
+                <h2>Next Steps</h2>
+                <ul>
+                    <li><a href="07-testing-best-practices.html">Tutorial 7: Testing Best Practices</a></li>
+                    <li><a href="../index.html#modules">Explore the time module documentation</a></li>
+                    <li><a href="../apidocs/org/almostrealism/time/package-summary.html">Time Module API Docs</a></li>
+                </ul>
+            </section>
+
+            <section>
+                <h2>Summary</h2>
+                <p>You've learned:</p>
+                <ul>
+                    <li>✓ Temporal interface for time-based processing</li>
+                    <li>✓ Generating and manipulating time-series data</li>
+                    <li>✓ FFT for frequency analysis</li>
+                    <li>✓ Signal filtering (low-pass, high-pass, band-pass)</li>
+                    <li>✓ Interpolation and resampling techniques</li>
+                    <li>✓ Wavelet transforms</li>
+                    <li>✓ Practical audio effects (echo, reverb)</li>
+                    <li>✓ Spectral analysis with STFT</li>
+                    <li>✓ Real-time processing patterns</li>
+                </ul>
+            </section>
+        </main>
+
+        <footer>
+            <p>&copy; 2024 Michael Murray. Licensed under the Apache License, Version 2.0.</p>
+        </footer>
+    </div>
+
+    <script src="../js/docs.js"></script>
+</body>
+</html>

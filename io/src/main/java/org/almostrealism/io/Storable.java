@@ -28,18 +28,46 @@ package org.almostrealism.io;
 import java.io.OutputStream;
 
 /**
- * An implementation of the Storable interface provides a way to persist the state of
- * an instance. The implementing class must provide a store method that accepts an
- * OutputStream. The implementing class should provide some obvious way to load the
- * state of a stored instance (usually by a static method or constructor).
- * 
- * @author  Michael Murray
+ * Interface for objects that can persist their state to an output stream.
+ *
+ * <p>Storable provides a simple contract for serialization. Implementing classes
+ * should provide a corresponding method to restore state, typically via a constructor
+ * or static factory method that accepts an {@link java.io.InputStream}.</p>
+ *
+ * <h2>Usage</h2>
+ * <pre>{@code
+ * public class MyData implements Storable {
+ *     private int value;
+ *
+ *     public MyData(int value) {
+ *         this.value = value;
+ *     }
+ *
+ *     // Constructor to restore from stream
+ *     public MyData(InputStream in) throws IOException {
+ *         DataInputStream dis = new DataInputStream(in);
+ *         this.value = dis.readInt();
+ *     }
+ *
+ *     @Override
+ *     public void store(OutputStream out) {
+ *         try {
+ *             DataOutputStream dos = new DataOutputStream(out);
+ *             dos.writeInt(value);
+ *         } catch (IOException e) {
+ *             throw new RuntimeException(e);
+ *         }
+ *     }
+ * }
+ * }</pre>
+ *
+ * @author Michael Murray
  */
 public interface Storable {
 	/**
-	 * Persist the contents of this Storable instance.
-	 * 
-	 * @param out  Stream to write contents to.
+	 * Persists the state of this object to the specified output stream.
+	 *
+	 * @param out the output stream to write to
 	 */
 	void store(OutputStream out);
 }

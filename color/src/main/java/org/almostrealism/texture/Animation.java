@@ -1,10 +1,10 @@
 package org.almostrealism.texture;
 
+import org.almostrealism.color.RealizableImage;
+
 import java.io.File;
 import java.io.IOException;
 import java.util.Iterator;
-
-import org.almostrealism.color.RealizableImage;
 
 public abstract class Animation implements Layered<RealizableImage> {
 	private RealizableImage image;

@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -19,14 +19,12 @@ package org.almostrealism.collect.computations;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
-import io.almostrealism.relation.Evaluable;
 import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducerParallelProcess;
 import org.almostrealism.collect.PackedCollection;
 
 import java.util.List;
-import java.util.function.Supplier;
 
 /**
  * A computation that performs element-wise negation (unary minus) of a collection.
@@ -39,8 +37,8 @@ import java.util.function.Supplier;
  * backpropagation in machine learning and optimization scenarios.</p>
  * 
  * <h2>Mathematical Operation</h2>
- * <p>For a collection C with elements [c₁, c₂, ..., cₙ], the minus operation produces
- * a new collection with elements [-c₁, -c₂, ..., -cₙ].</p>
+ * <p>For a collection C with elements [c1, c2, ..., cn], the minus operation produces
+ * a new collection with elements [-c1, -c2, ..., -cn].</p>
  * 
  * <h2>Usage Patterns</h2>
  * <p>This computation is typically used indirectly through higher-level methods such as:</p>
@@ -65,27 +63,27 @@ import java.util.function.Supplier;
  * <p><strong>Basic negation through CollectionFeatures:</strong></p>
  * <pre>{@code
  * // Negate a vector
- * CollectionProducer<PackedCollection<?>> vector = c(1.0, -2.0, 3.0);
- * CollectionProducer<PackedCollection<?>> negated = minus(vector);
+ * CollectionProducer vector = c(1.0, -2.0, 3.0);
+ * CollectionProducer negated = minus(vector);
  * // Result: [-1.0, 2.0, -3.0]
  * 
  * // Negate a matrix
- * CollectionProducer<PackedCollection<?>> matrix = c(shape(2, 2), 1.0, 2.0, 3.0, 4.0);
- * CollectionProducer<PackedCollection<?>> negatedMatrix = minus(matrix);
+ * CollectionProducer matrix = c(shape(2, 2), 1.0, 2.0, 3.0, 4.0);
+ * CollectionProducer negatedMatrix = minus(matrix);
  * // Result: 2x2 matrix [[-1.0, -2.0], [-3.0, -4.0]]
  * }</pre>
  * 
  * <p><strong>Usage in mathematical expressions:</strong></p>
  * <pre>{@code
  * // Subtraction using negation: a - b = a + (-b)
- * CollectionProducer<PackedCollection<?>> a = c(5.0, 8.0, 12.0);
- * CollectionProducer<PackedCollection<?>> b = c(2.0, 3.0, 4.0);
- * CollectionProducer<PackedCollection<?>> difference = add(a, minus(b));
+ * CollectionProducer a = c(5.0, 8.0, 12.0);
+ * CollectionProducer b = c(2.0, 3.0, 4.0);
+ * CollectionProducer difference = add(a, minus(b));
  * // Result: [3.0, 5.0, 8.0]
  * 
  * // Mean centering: data - mean(data)
- * CollectionProducer<PackedCollection<?>> data = c(1.0, 2.0, 3.0, 4.0, 5.0);
- * CollectionProducer<PackedCollection<?>> centered = add(data, minus(mean(data).repeat(5)));
+ * CollectionProducer data = c(1.0, 2.0, 3.0, 4.0, 5.0);
+ * CollectionProducer centered = add(data, minus(mean(data).repeat(5)));
  * // Result: data with zero mean
  * }</pre>
  * 
@@ -93,12 +91,12 @@ import java.util.function.Supplier;
  * <pre>{@code
  * // Create minus computation directly
  * TraversalPolicy shape = new TraversalPolicy(3);
- * Producer<PackedCollection<?>> input = c(2.0, -4.0, 6.0);
- * CollectionMinusComputation<PackedCollection<?>> computation = 
+ * Producer<PackedCollection> input = c(2.0, -4.0, 6.0);
+ * CollectionMinusComputation<PackedCollection> computation =
  *     new CollectionMinusComputation<>(shape, input);
  * 
  * // Evaluate the computation
- * PackedCollection<?> result = computation.get().evaluate();
+ * PackedCollection result = computation.get().evaluate();
  * // Result: [-2.0, 4.0, -6.0]
  * }</pre>
  * 
@@ -106,15 +104,13 @@ import java.util.function.Supplier;
  * <p>The computation supports automatic differentiation through the delta method:</p>
  * <pre>{@code
  * // Create a computation with gradient tracking
- * CollectionProducer<PackedCollection<?>> x = c(1.0, 2.0, 3.0);
- * CollectionProducer<PackedCollection<?>> y = minus(x);
+ * CollectionProducer x = c(1.0, 2.0, 3.0);
+ * CollectionProducer y = minus(x);
  * 
  * // Compute gradient: d(-x)/dx = -1
- * CollectionProducer<PackedCollection<?>> gradient = y.delta(x);
+ * CollectionProducer gradient = y.delta(x);
  * // Result: constant -1 for each element
  * }</pre>
- * 
- * @param <T> The type of {@link PackedCollection} this computation operates on
  * 
  * @see TransitiveDeltaExpressionComputation
  * @see org.almostrealism.collect.CollectionFeatures#minus(io.almostrealism.relation.Producer)
@@ -122,11 +118,11 @@ import java.util.function.Supplier;
  * @see io.almostrealism.expression.Minus
  * @see org.almostrealism.collect.computations.AtomicConstantComputation
  * @see org.almostrealism.algebra.computations.ScalarMatrixComputation
- * 
+ *
  * @author Michael Murray
  * @since 0.69
  */
-public class CollectionMinusComputation<T extends PackedCollection<?>> extends TransitiveDeltaExpressionComputation<T> {
+public class CollectionMinusComputation extends TransitiveDeltaExpressionComputation {
 
 	/**
 	 * Creates a new CollectionMinusComputation with the specified shape and producer arguments.
@@ -149,66 +145,23 @@ public class CollectionMinusComputation<T extends PackedCollection<?>> extends T
 	 * <p><strong>Usage Example:</strong></p>
 	 * <pre>{@code
 	 * // Create a producer for input data
-	 * Producer<PackedCollection<?>> inputProducer = () -> pack(1.0, -2.0, 3.0);
+	 * Producer<PackedCollection> inputProducer = () -> pack(1.0, -2.0, 3.0);
 	 * 
 	 * // Create minus computation
 	 * TraversalPolicy shape = new TraversalPolicy(3);
-	 * CollectionMinusComputation<PackedCollection<?>> computation = 
+	 * CollectionMinusComputation<PackedCollection> computation =
 	 *     new CollectionMinusComputation<>(shape, inputProducer);
 	 * 
 	 * // Evaluate to get negated result
-	 * PackedCollection<?> result = computation.get().evaluate();
+	 * PackedCollection result = computation.get().evaluate();
 	 * // Result: [-1.0, 2.0, -3.0]
 	 * }</pre>
 	 * 
-	 * @see #CollectionMinusComputation(TraversalPolicy, Supplier[])
+	 * @see #CollectionMinusComputation(TraversalPolicy, Producer[])
 	 * @see TraversalPolicy
 	 * @see Producer
 	 */
-	public CollectionMinusComputation(TraversalPolicy shape, Producer<? extends PackedCollection<?>>... arguments) {
-		this("minus", shape, arguments);
-	}
-
-	/**
-	 * Creates a new CollectionMinusComputation with the specified shape and evaluable suppliers.
-	 * This constructor is used when working with {@link Supplier} instances that provide
-	 * {@link Evaluable} computations.
-	 * 
-	 * <p>This constructor is particularly useful in computational graph construction where
-	 * you need to defer the actual evaluation of input collections until computation time.
-	 * It automatically assigns the operation name as "minus".</p>
-	 * 
-	 * @param shape The {@link TraversalPolicy} defining the dimensional structure of the computation.
-	 *              This specifies how the collection elements will be accessed and processed.
-	 *              Must be compatible with the shape of collections provided by the suppliers.
-	 * @param arguments Variable number of suppliers that provide {@link Evaluable} instances.
-	 *                  Each supplier should produce an evaluable that returns a {@link PackedCollection}
-	 *                  to be negated. In typical usage, exactly one supplier is provided.
-	 * 
-	 * @throws IllegalArgumentException if the shape is null or incompatible with the supplier arguments
-	 * 
-	 * <p><strong>Usage Example:</strong></p>
-	 * <pre>{@code
-	 * // Create a supplier for deferred evaluation
-	 * Supplier<Evaluable<PackedCollection<?>>> supplier = () -> 
-	 *     () -> new PackedCollection<>(shape(2)).fill(pos -> Math.random());
-	 * 
-	 * // Create minus computation with deferred evaluation
-	 * TraversalPolicy shape = new TraversalPolicy(2);
-	 * CollectionMinusComputation<PackedCollection<?>> computation = 
-	 *     new CollectionMinusComputation<>(shape, supplier);
-	 * 
-	 * // Evaluation occurs when get() is called
-	 * PackedCollection<?> result = computation.get().evaluate();
-	 * // Result: negated version of the randomly generated collection
-	 * }</pre>
-	 * 
-	 * @see #CollectionMinusComputation(TraversalPolicy, Producer[])
-	 * @see Supplier
-	 * @see Evaluable
-	 */
-	public CollectionMinusComputation(TraversalPolicy shape,
-									Supplier<Evaluable<? extends PackedCollection<?>>>... arguments) {
+	public CollectionMinusComputation(TraversalPolicy shape, Producer<PackedCollection>... arguments) {
 		this("minus", shape, arguments);
 	}
 
@@ -228,30 +181,28 @@ public class CollectionMinusComputation<T extends PackedCollection<?>> extends T
 	 * @param shape The {@link TraversalPolicy} defining how the computation will traverse
 	 *              and process the collection elements. Must be compatible with the
 	 *              input collections provided by the suppliers.
-	 * @param arguments Variable number of suppliers providing {@link Evaluable} instances
-	 *                  that produce {@link PackedCollection} objects to be negated.
-	 *                  Standard usage expects exactly one supplier.
+	 * @param arguments Variable number of {@link PackedCollection} {@link Producer}s
 	 * 
 	 * @throws IllegalArgumentException if name is null, shape is null, or arguments are incompatible
 	 * 
 	 * <p><strong>Usage Example (Advanced):</strong></p>
 	 * <pre>{@code
 	 * // Create a custom-named minus computation for debugging
-	 * Supplier<Evaluable<PackedCollection<?>>> inputSupplier = () -> 
+	 * Supplier<Evaluable<PackedCollection>> inputSupplier = () ->
 	 *     () -> pack(1.0, 2.0, 3.0);
 	 * 
 	 * TraversalPolicy shape = new TraversalPolicy(3);
-	 * CollectionMinusComputation<PackedCollection<?>> computation = 
+	 * CollectionMinusComputation<PackedCollection> computation =
 	 *     new CollectionMinusComputation<>("debug_negate", shape, inputSupplier);
 	 * 
 	 * // The custom name appears in operation metadata
 	 * System.out.println(computation.getMetadata().getName()); // "debug_negate"
 	 * }</pre>
 	 * 
-	 * @see TransitiveDeltaExpressionComputation#TransitiveDeltaExpressionComputation(String, TraversalPolicy, Supplier[])
+	 * @see TransitiveDeltaExpressionComputation#TransitiveDeltaExpressionComputation(String, TraversalPolicy, Producer[])
 	 */
 	protected CollectionMinusComputation(String name, TraversalPolicy shape,
-									   Supplier<Evaluable<? extends PackedCollection<?>>>... arguments) {
+										 Producer<PackedCollection>... arguments) {
 		super(name, shape, arguments);
 	}
 
@@ -279,8 +230,8 @@ public class CollectionMinusComputation<T extends PackedCollection<?>> extends T
 	 * <p>The returned expression creates a computation tree like:</p>
 	 * <pre>
 	 * UniformCollectionExpression("minus")
-	 *   └── Minus operation
-	 *       └── Input expression (args[1])
+	 *   +-- Minus operation
+	 *       +-- Input expression (args[1])
 	 * </pre>
 	 * 
 	 * @see io.almostrealism.code.ExpressionFeatures#minus(TraversalPolicy, TraversableExpression)
@@ -327,16 +278,16 @@ public class CollectionMinusComputation<T extends PackedCollection<?>> extends T
 	 * <p><strong>Usage in Computation Pipeline:</strong></p>
 	 * <pre>{@code
 	 * // This method is typically called internally during compilation:
-	 * CollectionMinusComputation<PackedCollection<?>> computation = 
+	 * CollectionMinusComputation<PackedCollection> computation =
 	 *     new CollectionMinusComputation<>(shape, inputProducer);
 	 * 
 	 * // During compilation, generate() is called to create the executable process
 	 * List<Process<?, ?>> childProcesses = Arrays.asList(outputProcess, inputProcess);
-	 * CollectionProducerParallelProcess<PackedCollection<?>> executableProcess = 
+	 * CollectionProducerParallelProcess executableProcess =
 	 *     computation.generate(childProcesses);
 	 * 
 	 * // The process can then be executed to perform the computation
-	 * PackedCollection<?> result = executableProcess.get().evaluate();
+	 * PackedCollection result = executableProcess.get().evaluate();
 	 * }</pre>
 	 * 
 	 * @see CollectionProducerParallelProcess
@@ -345,11 +296,11 @@ public class CollectionMinusComputation<T extends PackedCollection<?>> extends T
 	 * @see io.almostrealism.compute.Process
 	 */
 	@Override
-	public CollectionProducerParallelProcess<T> generate(List<Process<?, ?>> children) {
+	public CollectionProducerParallelProcess generate(List<Process<?, ?>> children) {
 		if (children.size() != 2) {
 			throw new IllegalArgumentException();
 		}
 
-		return (CollectionProducerParallelProcess) minus((Producer) children.stream().skip(1).findFirst().orElseThrow());
+		return (CollectionProducerParallelProcess) minus((Producer<PackedCollection>) children.stream().skip(1).findFirst().orElseThrow());
 	}
 }

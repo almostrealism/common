@@ -21,6 +21,7 @@ import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.collect.PackedCollection;
 
@@ -49,20 +50,20 @@ import java.util.function.Supplier;
  * </ul>
  * 
  * <p><strong>Usage Examples:</strong>
- * 
+ *
  * <p>Integration with existing computations via {@code toRepeated()}:
  * <pre>{@code
  * // Start with a collection computation
- * CollectionProducerComputationAdapter<PackedCollection<?>> computation = 
+ * CollectionProducerComputationAdapter computation =
  *     add(v(shape(100), 0), v(shape(100), 1));  // Element-wise addition
- * 
+ *
  * // Convert to repeated form for different execution strategy
- * RepeatedProducerComputationAdapter<PackedCollection<?>> repeated = 
+ * RepeatedProducerComputationAdapter repeated =
  *     computation.toRepeated();
- * 
+ *
  * // Both forms produce identical results but use different execution patterns
- * PackedCollection<?> directResult = computation.get().evaluate(a, b);
- * PackedCollection<?> repeatedResult = repeated.get().evaluate(a, b);
+ * PackedCollection directResult = computation.get().evaluate(a, b);
+ * PackedCollection repeatedResult = repeated.get().evaluate(a, b);
  * }</pre>
  * 
  * <p><strong>Performance Characteristics:</strong>
@@ -84,17 +85,14 @@ import java.util.function.Supplier;
  * expressions since the expression evaluation replaces these initial values. The condition
  * ensures iteration continues until all elements in the output array are processed.
  * 
- * @param <T> The type of {@link PackedCollection} this adapter operates on
- * 
  * @see RepeatedProducerComputation
- * @see TraversableExpression  
+ * @see TraversableExpression
  * @see CollectionProducerComputationAdapter#toRepeated()
- * @see RelativeTraversableProducerComputation#toRepeated()
  * @see TraversalPolicy
- * 
+ *
  * @author Michael Murray
  */
-public class RepeatedProducerComputationAdapter<T extends PackedCollection<?>> extends RepeatedProducerComputation<T> {
+public class RepeatedProducerComputationAdapter extends RepeatedProducerComputation {
 
 	/**
 	 * Creates a new adapter that converts the specified {@link TraversableExpression}
@@ -121,12 +119,12 @@ public class RepeatedProducerComputationAdapter<T extends PackedCollection<?>> e
 	 * 
 	 * @see TraversalPolicy
 	 * @see TraversableExpression#getValueAt(Expression)
-	 * @see RepeatedProducerComputation#RepeatedProducerComputation(String, TraversalPolicy, BiFunction, BiFunction, BiFunction, Supplier[])
+	 * @see RepeatedProducerComputation#RepeatedProducerComputation(String, TraversalPolicy, BiFunction, BiFunction, BiFunction, Producer[])
 	 */
 	@SafeVarargs
 	public RepeatedProducerComputationAdapter(TraversalPolicy shape,
 											  TraversableExpression expression,
-											  Supplier<Evaluable<? extends PackedCollection<?>>>... arguments) {
+											  Producer<PackedCollection>... arguments) {
 		super(null, shape,
 				(args, index) ->
 						new DoubleConstant(0.0),
@@ -170,6 +168,7 @@ public class RepeatedProducerComputationAdapter<T extends PackedCollection<?>> e
 	 */
 	@Override
 	protected Expression<?> getDestination(Expression<?> globalIndex, Expression<?> localIndex, Expression<?> offset) {
-		return ((ArrayVariable) getOutputVariable()).valueAt(localIndex);
+		ArrayVariable out = (ArrayVariable) getOutputVariable();
+		return out.reference(globalIndex.multiply(out.length()).add(localIndex));
 	}
 }

@@ -16,8 +16,8 @@
 
 package org.almostrealism;
 
-import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.ComplexNumber;
@@ -33,17 +33,17 @@ import org.junit.Test;
 import java.util.stream.IntStream;
 
 public class MyNativeEnabledApplication implements CodeFeatures {
-	public static void main(String args[]) {
+	public static void main(String[] args) {
 		new MyNativeEnabledApplication().performMath();
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void performMath() {
 		// Compose the expression
-		Producer<PackedCollection<?>> constantOperation = c(3.0).multiply(c(2.0));
+		Producer<PackedCollection> constantOperation = c(3.0).multiply(c(2.0));
 
 		// Compile the expression
-		Evaluable<PackedCollection<?>> compiledOperation = constantOperation.get();
+		Evaluable<PackedCollection> compiledOperation = constantOperation.get();
 
 		// Evaluate the expression
 		StringBuffer displayResult = new StringBuffer();
@@ -54,7 +54,7 @@ public class MyNativeEnabledApplication implements CodeFeatures {
 		System.out.println(displayResult);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void createTensor() {
 		// Create the tensor
 		Tensor<Double> t = new Tensor<>();
@@ -68,7 +68,7 @@ public class MyNativeEnabledApplication implements CodeFeatures {
 		p.insert(5.0, 2);
 
 		// Prepare the computation
-		CollectionProducer<PackedCollection<?>> product = multiply(c(t.pack()), c(p.pack()));
+		CollectionProducer product = multiply(c(t.pack()), c(p.pack()));
 
 		// Compile the computation and evaluate it
 		product.get().evaluate().print();
@@ -79,16 +79,16 @@ public class MyNativeEnabledApplication implements CodeFeatures {
 		product.evaluate().print();
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void variableMath() {
 		// Define argument 0
-		Producer<PackedCollection<?>> arg = v(shape(2), 0);
+		Producer<PackedCollection> arg = v(shape(2), 0);
 
 		// Compose the expression
-		Producer<PackedCollection<?>> constantOperation = c(7.0).multiply(arg);
+		Producer<PackedCollection> constantOperation = c(7.0).multiply(arg);
 
 		// Compile the expression
-		Evaluable<PackedCollection<?>> compiledOperation = constantOperation.get();
+		Evaluable<PackedCollection> compiledOperation = constantOperation.get();
 
 		// Evaluate the expression repeatedly
 		System.out.println("7 * 3 | 7 * 2 = ");
@@ -99,18 +99,18 @@ public class MyNativeEnabledApplication implements CodeFeatures {
 		compiledOperation.evaluate(pack(5, 4)).print();
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void performThreeExperiments() {
 		for (int i = 0; i < 3; i++) {
 			dc(() -> {
 				// Define argument 0
-				Producer<PackedCollection<?>> arg = v(shape(2), 0);
+				Producer<PackedCollection> arg = v(shape(2), 0);
 
 				// Compose the expression
-				Producer<PackedCollection<?>> constantOperation = c(7.0).multiply(arg);
+				Producer<PackedCollection> constantOperation = c(7.0).multiply(arg);
 
 				// Compile the expression
-				Evaluable<PackedCollection<?>> compiledOperation = constantOperation.get();
+				Evaluable<PackedCollection> compiledOperation = constantOperation.get();
 
 				// Evaluate the expression repeatedly
 				System.out.println("7 * 3 | 7 * 2 = ");
@@ -123,37 +123,37 @@ public class MyNativeEnabledApplication implements CodeFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void useCpuAndGpu() {
-		PackedCollection<?> result = new PackedCollection(shape(1));
+		PackedCollection result = new PackedCollection(shape(1));
 
-		Producer<PackedCollection<?>> sum = add(c(1.0), c(2.0));
-		Producer<PackedCollection<?>> product = multiply(c(3.0), c(2.0));
+		Producer<PackedCollection> sum = add(c(1.0), c(2.0));
+		Producer<PackedCollection> product = multiply(c(3.0), c(2.0));
 
-		cc(() -> a(2, p(result), sum).get().run(), ComputeRequirement.CPU);
-		System.out.println("Result = " + result.toArrayString());
+		cc(() -> a(1, p(result), sum).get().run(), ComputeRequirement.CPU);
+		log("Result = " + result.toArrayString());
 
-		cc(() -> a(2, p(result), product).get().run(), ComputeRequirement.GPU);
-		System.out.println("Result = " + result.toArrayString());
+		cc(() -> a(1, p(result), product).get().run(), ComputeRequirement.GPU);
+		log("Result = " + result.toArrayString());
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void kernelEvaluation() {
 		// Define argument 0
-		Producer<PackedCollection<?>> arg = v(shape(-1), 0);
+		Producer<PackedCollection> arg = v(shape(-1), 0);
 
 		// Compose the expression
-		Producer<PackedCollection<?>> constantOperation = c(7.0).multiply(arg);
+		Producer<PackedCollection> constantOperation = c(7.0).multiply(arg);
 
 		// Compile the expression
-		Evaluable<PackedCollection<?>> compiledOperation = constantOperation.get();
+		Evaluable<PackedCollection> compiledOperation = constantOperation.get();
 
-		PackedCollection<?> bank = new PackedCollection<>(shape(3)).traverse();
+		PackedCollection bank = new PackedCollection(shape(3)).traverse();
 		bank.set(0, 3.0);
 		bank.set(1, 4.0);
 		bank.set(2, 5.0);
 
-		PackedCollection<?> results = new PackedCollection<>(shape(3)).traverse();
+		PackedCollection results = new PackedCollection(shape(3)).traverse();
 
 		// Evaluate the expression with the accelerator deciding how to parallelize it
 		compiledOperation.into(results).evaluate(bank);
@@ -162,7 +162,7 @@ public class MyNativeEnabledApplication implements CodeFeatures {
 		results.print();
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void shapes() {
 		// The shape is a 3D array with 10x4x2 elements, and 80 elements in total.
 		// However, it will be treated for the purpose of GPU parallelism as one
@@ -190,19 +190,19 @@ public class MyNativeEnabledApplication implements CodeFeatures {
 		// --> And that's just one item from the original shape (which contained 40 of them).
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void repeat() {
-		PackedCollection<?> a = pack(2, 3).reshape(2, 1);
-		PackedCollection<?> b = pack(4, 5).reshape(2);
+		PackedCollection a = pack(2, 3).reshape(2, 1);
+		PackedCollection b = pack(4, 5).reshape(2);
 		c(a).traverse(1).repeat(2).multiply(c(b)).evaluate().print();
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void enumerate() {
-		PackedCollection<?> a =
+		PackedCollection a =
 					pack(2, 3, 4, 5, 6, 7, 8, 9)
 						.reshape(2, 4);
-		PackedCollection<?> r = c(a).enumerate(1, 2, 2).evaluate();
+		PackedCollection r = c(a).enumerate(1, 2, 2).evaluate();
 		System.out.println(r.getShape().toStringDetail());
 		// Shape = (2, 2, 2)[axis=0|1x8]
 
@@ -213,7 +213,7 @@ public class MyNativeEnabledApplication implements CodeFeatures {
 		// [8.0, 9.0]
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void subset3d() {
 		int w = 2;
 		int h = 4;
@@ -223,12 +223,12 @@ public class MyNativeEnabledApplication implements CodeFeatures {
 		int y0 = 3;
 		int z0 = 2;
 
-		PackedCollection<?> a = new PackedCollection<>(shape(10, 10, 10));
+		PackedCollection a = new PackedCollection(shape(10, 10, 10));
 		a.fill(Math::random);
 
-		CollectionProducer<PackedCollection<?>> producer = subset(shape(w, h, d), c(a), x0, y0, z0);
-		Evaluable<PackedCollection<?>> ev = producer.get();
-		PackedCollection<?> subset = ev.evaluate();
+		CollectionProducer producer = subset(shape(w, h, d), c(a), x0, y0, z0);
+		Evaluable<PackedCollection> ev = producer.get();
+		PackedCollection subset = ev.evaluate();
 
 		for (int i = 0; i < w; i++) {
 			for (int j = 0; j < h; j++) {
@@ -241,59 +241,59 @@ public class MyNativeEnabledApplication implements CodeFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void polynomialDelta() {
 		// x^2 + 3x + 1
-		CollectionProducer<PackedCollection<?>> c = x().sq().add(x().mul(3)).add(1);
+		CollectionProducer c = x().sq().add(x().mul(3)).add(1);
 
 		// y = f(x)
-		Evaluable<PackedCollection<?>> y = c.get();
-		PackedCollection<?> out = y.evaluate(pack(1, 2, 3, 4, 5).traverseEach());
+		Evaluable<PackedCollection> y = c.get();
+		PackedCollection out = y.evaluate(pack(1, 2, 3, 4, 5).traverseEach());
 		out.consolidate().print();
 
 		// dy = f'(x) = 2x + 3
-		Evaluable<PackedCollection<?>> dy = c.delta(x()).get();
+		Evaluable<PackedCollection> dy = c.delta(x()).get();
 		out = dy.evaluate(pack(1, 2, 3, 4, 5).traverseEach());
 		out.consolidate().print();
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void vectorDelta() {
 		int dim = 3;
 		int count = 2;
 
-		PackedCollection<?> v = pack(IntStream.range(0, count * dim).boxed()
+		PackedCollection v = pack(IntStream.range(0, count * dim).boxed()
 				.mapToDouble(Double::valueOf).toArray())
 				.reshape(count, dim).traverse();
-		PackedCollection<?> w = pack(4, -3, 2);
-		CollectionProducer<PackedCollection<?>> x = x(dim);
+		PackedCollection w = pack(4, -3, 2);
+		CollectionProducer x = x(dim);
 
 		// w * x
-		CollectionProducer<PackedCollection<?>> c = x.mul(p(w));
+		CollectionProducer c = x.mul(p(w));
 
 		// y = f(x)
-		Evaluable<PackedCollection<?>> y = c.get();
-		PackedCollection<?> out = y.evaluate(v);
+		Evaluable<PackedCollection> y = c.get();
+		PackedCollection out = y.evaluate(v);
 		out.print();
 
 		// dy = f'(x)
 		//    = w
-		Evaluable<PackedCollection<?>> dy = c.delta(x).get();
-		PackedCollection<?> dout = dy.evaluate(v);
+		Evaluable<PackedCollection> dy = c.delta(x).get();
+		PackedCollection dout = dy.evaluate(v);
 		dout.print();
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void complexMath() {
 		ComplexNumber a = new ComplexNumber(1, 2);
 		ComplexNumber b = new ComplexNumber(3, 4);
 
-		Producer<ComplexNumber> c = multiplyComplex(c(a), c(b));
+		Producer<ComplexNumber> c = (Producer) multiplyComplex(c(a), c(b));
 		System.out.println("(1 + 2i) * (3 + 4i) = ");
 		c.evaluate().print();
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void trainCnn() {
 		if (!TestSettings.trainingTests) return;
 
@@ -302,11 +302,11 @@ public class MyNativeEnabledApplication implements CodeFeatures {
 		Tensor<Double> t = new Tensor<>();
 		shape(s, s).stream().forEach(pos -> t.insert(0.5 + 0.5 * Math.random(), pos));
 
-		PackedCollection<?> input = t.pack();
+		PackedCollection input = t.pack();
 		train(input, model(s, s, 3, 8, 10));
 	}
 
-	protected void train(PackedCollection<?> input, Model model) {
+	protected void train(PackedCollection input, Model model) {
 		CompiledModel compiled = model.compile();
 		log("Model compiled");
 

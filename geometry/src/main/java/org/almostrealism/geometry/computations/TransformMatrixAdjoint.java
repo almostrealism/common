@@ -17,35 +17,49 @@
 package org.almostrealism.geometry.computations;
 
 import io.almostrealism.collect.TraversalPolicy;
-import io.almostrealism.kernel.KernelStructureContext;
-import io.almostrealism.relation.Producer;
-import io.almostrealism.scope.Scope;
-import io.almostrealism.profile.OperationMetadata;
+import io.almostrealism.compute.Process;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.InstanceReference;
+import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.profile.OperationMetadata;
+import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.HybridScope;
-import io.almostrealism.scope.Repeated;
-import io.almostrealism.scope.Variable;
-import io.almostrealism.compute.Process;
+import io.almostrealism.scope.Scope;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 import org.almostrealism.geometry.TransformMatrix;
 
-import java.util.function.Supplier;
 import java.util.List;
+import java.util.function.BiFunction;
 
-public class TransformMatrixAdjoint extends CollectionProducerComputationBase<PackedCollection<?>, TransformMatrix> {
+/**
+ * Computes the adjoint (adjugate) matrix of a 4x4 transformation matrix.
+ * The adjoint matrix is the transpose of the cofactor matrix and is used in
+ * computing the inverse of a matrix: {@code A^(-1) = adj(A) / det(A)}.
+ *
+ * <p>The computation generates hardware-accelerated code that calculates
+ * all 16 elements of the adjoint matrix using cofactor expansion with
+ * 3x3 minor determinants.</p>
+ *
+ * @author Michael Murray
+ * @see TransformMatrix
+ */
+public class TransformMatrixAdjoint extends CollectionProducerComputationBase {
 	private int varIdx = 0;
 
+	/**
+	 * Constructs a new TransformMatrixAdjoint computation.
+	 *
+	 * @param input the producer of the input transformation matrix
+	 */
 	public TransformMatrixAdjoint(Producer<TransformMatrix> input) {
-		super("transformMatrixAdjoint", new TraversalPolicy(4, 4), (Supplier) input);
-		setPostprocessor(TransformMatrix.postprocessor());
+		super("transformMatrixAdjoint", new TraversalPolicy(4, 4), (Producer) input);
+		setPostprocessor((BiFunction) TransformMatrix.postprocessor());
 	}
 
 	@Override
-	public Scope<TransformMatrix> getScope(KernelStructureContext context) {
-		HybridScope<TransformMatrix> scope = new HybridScope<>(this);
+	public Scope<PackedCollection> getScope(KernelStructureContext context) {
+		HybridScope<PackedCollection> scope = new HybridScope<>(this);
 		scope.setMetadata(new OperationMetadata(getFunctionName(), "TransformMatrixAdjoint"));
 
 		Scope<?> body = new Scope<>();

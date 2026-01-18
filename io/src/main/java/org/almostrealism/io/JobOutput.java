@@ -22,25 +22,55 @@ import java.io.ObjectInput;
 import java.io.ObjectOutput;
 
 /**
- * A {@link JobOutput} stores three string values: username, password, and output data
- * to be sent to the DB Server.
- * 
- * @author  Michael Murray
+ * Represents the output of a job execution with associated metadata.
+ *
+ * <p>JobOutput stores job results along with authentication credentials
+ * and timing information. It supports both Java serialization (via {@link Externalizable})
+ * and string-based encoding/decoding for transmission.</p>
+ *
+ * <h2>Usage</h2>
+ * <pre>{@code
+ * // Create job output
+ * JobOutput output = new JobOutput("task-123", "user", "pass", "result data");
+ * output.setTime(System.currentTimeMillis());
+ *
+ * // Encode for transmission
+ * String encoded = output.encode();
+ *
+ * // Decode on receiving end
+ * JobOutput received = JobOutput.decode(encoded);
+ * String result = received.getOutput();
+ * }</pre>
+ *
+ * @author Michael Murray
+ * @see OutputHandler
  */
 public class JobOutput implements Externalizable {
+	/** Separator used in string encoding between fields. */
 	public static final String ENTRY_SEPARATOR = "::";
 
 	private String taskId;
-  	private String user, passwd, output;
-  	private long time;
-  
+	private String user, passwd, output;
+	private long time;
+
+	/**
+	 * Default constructor for externalization support.
+	 */
 	public JobOutput() {
 		this.taskId = "";
 		this.user = "";
 		this.passwd = "";
 		this.output = "";
 	}
-	
+
+	/**
+	 * Creates a new JobOutput with the specified fields.
+	 *
+	 * @param taskId the task identifier
+	 * @param user the username
+	 * @param passwd the password
+	 * @param output the job output data
+	 */
     public JobOutput(String taskId, String user, String passwd, String output) {
 		this.taskId = taskId;
         this.user = user;
@@ -48,19 +78,36 @@ public class JobOutput implements Externalizable {
         setOutput(output);
     }
 
+    /** Sets the task identifier. */
     public void setTaskId(String taskId) { this.taskId = taskId; }
+    /** Returns the task identifier. */
     public String getTaskId() { return this.taskId; }
 
+    /** Sets the username. */
     public void setUser(String user) { this.user = user; }
+    /** Sets the password. */
     public void setPassword(String passwd) { this.passwd = passwd; }
+    /** Sets the output data. */
     public void setOutput(String output) { this.output = output; }
+    /** Sets the timestamp. */
     public void setTime(long time) { this.time = time; }
-    
+
+    /** Returns the username. */
     public String getUser() { return this.user; }
+    /** Returns the password. */
     public String getPassword() { return this.passwd; }
+    /** Returns the output data. */
     public String getOutput() { return this.output; }
+    /** Returns the timestamp. */
     public long getTime() { return this.time; }
-    
+
+    /**
+     * Encodes this JobOutput as a string for transmission.
+     * Uses {@link #ENTRY_SEPARATOR} to delimit fields.
+     *
+     * @return the encoded string representation
+     * @see #decode(String)
+     */
     public String encode() {
 		return this.getClass().getName() + ENTRY_SEPARATOR +
 				this.taskId + ENTRY_SEPARATOR +
@@ -69,7 +116,14 @@ public class JobOutput implements Externalizable {
 				this.time + ENTRY_SEPARATOR +
 				this.getOutput();
     }
-    
+
+    /**
+     * Decodes a string representation back into a JobOutput instance.
+     *
+     * @param data the encoded string from {@link #encode()}
+     * @return the decoded JobOutput, or null if decoding fails
+     * @see #encode()
+     */
     public static JobOutput decode(String data) {
 		int index = data.indexOf(ENTRY_SEPARATOR);
 		String className = data.substring(0, index);

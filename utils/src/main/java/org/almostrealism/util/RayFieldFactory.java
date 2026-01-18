@@ -17,25 +17,62 @@
 package org.almostrealism.util;
 
 import org.almostrealism.CodeFeatures;
-import org.almostrealism.geometry.Ray;
 import org.almostrealism.algebra.Vector;
+import org.almostrealism.geometry.BoundingSolid;
+import org.almostrealism.geometry.Ray;
 import org.almostrealism.graph.RayField;
-import org.almostrealism.space.BoundingSolid;
 
-import java.util.*;
+import java.util.HashSet;
+import java.util.Random;
+import java.util.Set;
 
 /**
- * Used to construct a RayField from the given bounding solid.
+ * Factory for generating ray fields within a bounding solid for ray tracing operations.
+ *
+ * <p>This singleton factory creates {@link RayField} instances populated with rays
+ * distributed within a specified 3D bounding volume. Two distribution strategies
+ * are supported:</p>
+ * <ul>
+ *   <li>{@link RayDistribution#UNIFORM} - Evenly spaced grid of rays</li>
+ *   <li>{@link RayDistribution#RANDOM} - Randomly positioned rays</li>
+ * </ul>
+ *
+ * <h2>Usage Example</h2>
+ * <pre>{@code
+ * BoundingSolid bounds = new BoundingSolid(0, 0, 0, 10, 10, 10);
+ * RayFieldFactory factory = RayFieldFactory.getFactory();
+ *
+ * // Create a uniform grid of 1000 rays
+ * RayField uniformField = factory.buildRayField(bounds, 1000, RayDistribution.UNIFORM);
+ *
+ * // Create 1000 randomly positioned rays
+ * RayField randomField = factory.buildRayField(bounds, 1000, RayDistribution.RANDOM);
+ * }</pre>
+ *
+ * <h2>Uniform Distribution Notes</h2>
+ * <p>The uniform distribution creates a 3D grid by repeatedly subdividing the
+ * axis with the largest face. This may produce more rays than requested since
+ * each subdivision adds multiple vertices. The algorithm converges toward
+ * cubic cells when many vertices are requested.</p>
  *
  * @author Dan Chivers
  */
 public class RayFieldFactory implements CodeFeatures {
+
+    /**
+     * Distribution strategies for ray placement within a bounding volume.
+     */
     public enum RayDistribution { UNIFORM, RANDOM }
 
     private static RayFieldFactory INSTANCE;
 
     private RayFieldFactory() {}
 
+    /**
+     * Returns the singleton instance of this factory.
+     *
+     * @return the shared RayFieldFactory instance
+     */
     public static RayFieldFactory getFactory()
     {
         if (INSTANCE == null) {
@@ -44,6 +81,14 @@ public class RayFieldFactory implements CodeFeatures {
         return INSTANCE;
     }
 
+    /**
+     * Builds a ray field with rays distributed within the specified bounding volume.
+     *
+     * @param bounds       the 3D bounding volume to fill with rays
+     * @param rayCount     the target number of rays (actual count may vary for UNIFORM)
+     * @param distribution the ray distribution strategy
+     * @return a new RayField containing the distributed rays, or null if distribution is invalid
+     */
     public RayField buildRayField(BoundingSolid bounds, int rayCount, RayDistribution distribution) {
         rayCount = rayCount < 0 ? 0 : rayCount;
 

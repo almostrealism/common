@@ -16,16 +16,15 @@
 
 package org.almostrealism.geometry;
 
-import org.almostrealism.algebra.Scalar;
+import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.DynamicProducerForMemoryData;
-import org.almostrealism.hardware.MemoryData;
-import io.almostrealism.relation.Producer;
-import io.almostrealism.relation.Evaluable;
 import org.almostrealism.hardware.MemoryBank;
+import org.almostrealism.hardware.MemoryData;
 
 import java.util.function.BiFunction;
 import java.util.function.IntFunction;
@@ -38,8 +37,8 @@ import java.util.stream.IntStream;
  * 
  * @author  Michael Murray
  */
-public class Ray extends PackedCollection<Ray> implements GeometryFeatures, Cloneable {
-	private Ray(double coords[]) {
+public class Ray extends PackedCollection implements GeometryFeatures, Cloneable {
+	private Ray(double[] coords) {
 		this();
 		this.setMem(coords);
 	}
@@ -93,10 +92,10 @@ public class Ray extends PackedCollection<Ray> implements GeometryFeatures, Clon
 	public Ray transform(TransformMatrix tm) {
 		// TODO  Hardware accelerate
 
-		double m[][] = tm.getMatrix();
+		double[][] m = tm.getMatrix();
 
-		double inCoords[] = toArray();
-		double outCoords[] = new double[6];
+		double[] inCoords = toArray();
+		double[] outCoords = new double[6];
 
 		outCoords[0] = m[0][0] * inCoords[0] + m[0][1] * inCoords[1] + m[0][2] * inCoords[2] + m[0][3];
 		outCoords[1] = m[1][0] * inCoords[0] + m[1][1] * inCoords[1] + m[1][2] * inCoords[2] + m[1][3];
@@ -112,7 +111,7 @@ public class Ray extends PackedCollection<Ray> implements GeometryFeatures, Clon
 	/**
 	 * @return  The dot product of the origin of this ray with itself.
 	 */
-	public Evaluable<PackedCollection<?>> oDoto() {
+	public Evaluable<PackedCollection> oDoto() {
 		// TODO  Cache
 		return origin(cp(this)).multiply(origin(cp(this))).sum().get();
 	}
@@ -120,7 +119,7 @@ public class Ray extends PackedCollection<Ray> implements GeometryFeatures, Clon
 	/**
 	 * @return  The dot product of the direction of this ray with itself.
 	 */
-	public Evaluable<PackedCollection<?>> dDotd() {
+	public Evaluable<PackedCollection> dDotd() {
 		// TODO  Cache
 		return direction(cp(this)).multiply(direction(cp(this))).sum().get();
 	}
@@ -128,7 +127,7 @@ public class Ray extends PackedCollection<Ray> implements GeometryFeatures, Clon
 	/**
 	 * @return  The dot product of the origin of this ray with the direction of this ray.
 	 */
-	public Evaluable<PackedCollection<?>> oDotd() {
+	public Evaluable<PackedCollection> oDotd() {
 		// TODO  Cache
 		return origin(cp(this)).multiply(direction(cp(this))).sum().get();
 	}
@@ -137,7 +136,7 @@ public class Ray extends PackedCollection<Ray> implements GeometryFeatures, Clon
 	 * @return  The origin of this Ray object as a Vector object.
 	 */
 	public Vector getOrigin() {
-		double coords[] = toArray();
+		double[] coords = toArray();
 		return new Vector(coords[0], coords[1], coords[2], Vector.CARTESIAN_COORDINATES);
 	}
 	
@@ -145,15 +144,15 @@ public class Ray extends PackedCollection<Ray> implements GeometryFeatures, Clon
 	 * @return  The direction of this Ray object as a Vector object.
 	 */
 	public Vector getDirection() {
-		double coords[] = toArray();
+		double[] coords = toArray();
 		return new Vector(coords[3], coords[4], coords[5], Vector.CARTESIAN_COORDINATES);
 	}
 	
 	/**
 	 * @return  The point on the ray represented by this {@link Ray} at distance t from the origin
-	 *          as a {@link Vector}.
+	 *          as a {@link PackedCollection}.
 	 */
-	public CollectionProducer<Vector> pointAt(Producer<PackedCollection<?>> t) {
+	public CollectionProducer pointAt(Producer<PackedCollection> t) {
 		return pointAt(v(this), t);
 	}
 
@@ -163,8 +162,8 @@ public class Ray extends PackedCollection<Ray> implements GeometryFeatures, Clon
 	@Override
 	public boolean equals(Object o) {
 		if (!(o instanceof Ray)) return false;
-		double r1[] = this.toArray();
-		double r2[] = ((Ray) o).toArray();
+		double[] r1 = this.toArray();
+		double[] r2 = ((Ray) o).toArray();
 		return IntStream.range(0, 6).noneMatch(i -> r1[i] != r2[i]);
 	}
 
@@ -174,7 +173,7 @@ public class Ray extends PackedCollection<Ray> implements GeometryFeatures, Clon
 	@Override
 	public Ray clone() {
 		// TODO  copy mem directly
-		double coords[] = toArray();
+		double[] coords = toArray();
 		return new Ray(coords);
 	}
 
@@ -185,7 +184,7 @@ public class Ray extends PackedCollection<Ray> implements GeometryFeatures, Clon
 	 */
 	@Override
 	public String toString() {
-		double coords[] = toArray();
+		double[] coords = toArray();
 		return "Ray: [" + coords[0] + ", " + coords[1] + ", " + coords[2] +
 					"] [" + coords[3] + ", " + coords[4] + ", " + coords[5] + "]";
 	}
@@ -196,18 +195,18 @@ public class Ray extends PackedCollection<Ray> implements GeometryFeatures, Clon
 
 	public static Producer<Ray> blank() {
 		Supplier<Ray> r = Ray::new;
-		IntFunction<MemoryBank<Ray>> b = Ray::bank;
+		IntFunction<MemoryBank<Ray>> b = (IntFunction) Ray::bank;
 		return new DynamicProducerForMemoryData<>(r, b);
 	}
 
-	public static PackedCollection<Ray> bank(int count) {
-		return new PackedCollection<>(new TraversalPolicy(count, 6), 1, delegateSpec ->
+	public static PackedCollection bank(int count) {
+		return new PackedCollection(new TraversalPolicy(count, 6), 1, delegateSpec ->
 				new Ray(delegateSpec.getDelegate(), delegateSpec.getOffset()));
 	}
 
 	@Deprecated
-	public static PackedCollection<Ray> bank(int count, Supplier<Evaluable<? extends Ray>> source) {
-		PackedCollection<Ray> bank = Ray.bank(count);
+	public static PackedCollection bank(int count, Supplier<Evaluable<? extends Ray>> source) {
+		PackedCollection bank = Ray.bank(count);
 		for (int i = 0; i < bank.getCountLong(); i++) {
 			bank.set(i, source.get().evaluate());
 		}
@@ -215,8 +214,8 @@ public class Ray extends PackedCollection<Ray> implements GeometryFeatures, Clon
 		return bank;
 	}
 
-	public static PackedCollection<Ray> bank(int count, MemoryData delegate, int delegateOffset) {
-		return new PackedCollection<>(new TraversalPolicy(count, 6), 1, delegateSpec ->
+	public static PackedCollection bank(int count, MemoryData delegate, int delegateOffset) {
+		return new PackedCollection(new TraversalPolicy(count, 6), 1, delegateSpec ->
 				new Ray(delegateSpec.getDelegate(), delegateSpec.getOffset()),
 				delegate, delegateOffset);
 	}

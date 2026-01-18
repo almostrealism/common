@@ -16,7 +16,7 @@
 
 package org.almostrealism.texture;
 
-import javax.swing.ImageIcon;
+import javax.swing.*;
 
 /**
  * @author  Michael Murray

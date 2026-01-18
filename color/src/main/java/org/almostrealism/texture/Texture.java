@@ -16,22 +16,70 @@
 
 package org.almostrealism.texture;
 
-import org.almostrealism.algebra.Vector;
-import org.almostrealism.color.RGB;
 import io.almostrealism.relation.Evaluable;
+import org.almostrealism.algebra.Vector;
+import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.color.RGB;
 
 /**
- * The {@link Texture} interface is implemented by classes that can be used to texture a surface.
- * 
- * @author  Michael Murray
+ * Defines a texture mapping that provides color values at 3D points.
+ *
+ * <p>A {@code Texture} maps 3D coordinates to color values, enabling surfaces
+ * to have spatially-varying color properties. Textures are a fundamental component
+ * of realistic rendering, providing surface details that would be impractical to
+ * model geometrically.</p>
+ *
+ * <h2>Available Implementations</h2>
+ * <ul>
+ *   <li>{@link ImageTexture}: Maps 2D image data onto surfaces with various projections</li>
+ *   <li>{@link StripeTexture}: Procedural striped pattern generation</li>
+ * </ul>
+ *
+ * <h2>Projection Types (for ImageTexture)</h2>
+ * <ul>
+ *   <li>Spherical: Wraps image around a sphere using latitude/longitude</li>
+ *   <li>Planar XY: Projects image onto the XY plane</li>
+ *   <li>Planar XZ: Projects image onto the XZ plane</li>
+ *   <li>Planar YZ: Projects image onto the YZ plane</li>
+ * </ul>
+ *
+ * <h2>Example Usage</h2>
+ * <pre>{@code
+ * // Create an image texture with spherical projection
+ * Texture earth = new ImageTexture(
+ *     ImageTexture.SPHERICAL_PROJECTION,
+ *     new URL("http://example.com/earth.jpg")
+ * );
+ *
+ * // Get color at a point on a sphere surface
+ * Vector surfacePoint = new Vector(0.5, 0.7, 0.2);
+ * RGB color = earth.operate(surfacePoint);
+ * }</pre>
+ *
+ * @see ImageTexture
+ * @see RGB
+ * @author Michael Murray
  */
 public interface Texture {
 	/**
-	 * Returns the color of the texture represented by this Texture object at the specified point as an RGB object
-	 * using the specified arguments.
+	 * Returns an evaluable that provides color at a point using additional parameters.
+	 *
+	 * @param args additional arguments for texture evaluation (implementation-specific)
+	 * @return an {@link Evaluable} that yields the {@link RGB} color
+	 * @deprecated Use {@link #operate(Vector)} instead for simpler texture lookup
 	 */
 	@Deprecated
-	Evaluable<RGB> getColorAt(Object args[]);
+	Evaluable<PackedCollection> getColorAt(Object[] args);
 
+	/**
+	 * Returns the color at the specified 3D point.
+	 *
+	 * <p>The interpretation of the point depends on the projection type used.
+	 * For spherical projection, the point is normalized to a unit sphere.
+	 * For planar projections, only the relevant coordinate pair is used.</p>
+	 *
+	 * @param t the 3D point at which to sample the texture
+	 * @return the {@link RGB} color at that point
+	 */
 	RGB operate(Vector t);
 }

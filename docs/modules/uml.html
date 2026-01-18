@@ -1,0 +1,792 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AR-UML Module - Almost Realism Framework</title>
+    <link rel="stylesheet" href="../css/style.css">
+    <style>
+        .key-concepts { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin: 20px 0; }
+        .concept-card { background: #f8f9fa; border-left: 4px solid #1a237e; padding: 15px; border-radius: 4px; }
+        .concept-card h4 { margin-top: 0; color: #1a237e; }
+        .performance-table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+        .performance-table th, .performance-table td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
+        .performance-table th { background-color: #e8eaf6; color: #1a237e; font-weight: bold; }
+        .performance-table tr:hover { background-color: #f5f5f5; }
+        .comparison-table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+        .comparison-table th, .comparison-table td { padding: 10px; border: 1px solid #ddd; text-align: left; }
+        .comparison-table th { background-color: #e8eaf6; color: #1a237e; }
+        .class-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 15px; margin: 20px 0; }
+        .class-item { background: #fff; border: 1px solid #ddd; padding: 12px; border-radius: 4px; }
+        .class-item h4 { margin: 0 0 8px 0; color: #1a237e; font-size: 1.1em; }
+        .class-item p { margin: 0; font-size: 0.9em; color: #666; }
+        .code-example { background: #f5f5f5; border-left: 4px solid #1a237e; padding: 15px; margin: 15px 0; border-radius: 4px; }
+        .highlight { background-color: #fff9c4; padding: 2px 4px; }
+        .warning { background-color: #ffebee; border-left: 4px solid #c62828; padding: 12px; margin: 15px 0; }
+        .info { background-color: #e8eaf6; border-left: 4px solid #1a237e; padding: 12px; margin: 15px 0; }
+        .annotation-badge { display: inline-block; background: #1a237e; color: white; padding: 2px 8px; border-radius: 4px; font-family: monospace; font-size: 0.9em; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>AR-UML Module</h1>
+            <p class="tagline">Foundation Layer: Annotations, Lifecycle Management & Metadata Interfaces</p>
+            <nav>
+                <a href="../index.html">Home</a>
+                <a href="#overview">Overview</a>
+                <a href="#annotations">Core Annotations</a>
+                <a href="#lifecycle">Lifecycle</a>
+                <a href="#metadata">Metadata</a>
+                <a href="#modeling">Domain Modeling</a>
+                <a href="#examples">Examples</a>
+            </nav>
+        </header>
+
+        <main>
+            <section id="overview">
+                <h2>Overview</h2>
+                <p>The <strong>ar-uml</strong> module is the foundational layer of the Almost Realism framework, providing semantic annotations and core interfaces that enable introspection, lifecycle management, and metadata handling throughout the system. Despite its name, it does not generate or parse UML diagrams - instead, it serves as a lightweight annotation library that helps the framework understand class semantics, lifecycle, and identification.</p>
+
+                <div class="info">
+                    <strong>Note:</strong> This module has <strong>zero external dependencies</strong>, making it safe to import anywhere in the framework hierarchy. All other Almost Realism modules depend on ar-uml.
+                </div>
+
+                <div class="key-concepts">
+                    <div class="concept-card">
+                        <h4>Semantic Annotations</h4>
+                        <p>Mark classes with metadata about their role: @Function for computations, @ModelEntity for stateful types, @Stateless for pure functions.</p>
+                    </div>
+                    <div class="concept-card">
+                        <h4>Lifecycle Management</h4>
+                        <p>Destroyable for resource cleanup with try-with-resources support. Lifecycle for reset/reinitialization without full destruction.</p>
+                    </div>
+                    <div class="concept-card">
+                        <h4>Naming Contracts</h4>
+                        <p>Named and Nameable interfaces for entity identification. Utility methods for safe name extraction and duplicate removal.</p>
+                    </div>
+                    <div class="concept-card">
+                        <h4>Signature-Based Caching</h4>
+                        <p>Signature interface for hash-based identification, enabling deduplication and caching of computations and compiled kernels.</p>
+                    </div>
+                </div>
+
+                <h3>Module Dependency Structure</h3>
+                <div class="code-example">
+                    <strong>ar-uml (no dependencies)</strong><br>
+                    &nbsp;&nbsp;|-- ar-relation (uses @Function, Multiple)<br>
+                    &nbsp;&nbsp;|-- ar-code (uses Named, Nameable)<br>
+                    &nbsp;&nbsp;|-- ar-io (uses Named, Destroyable, Lifecycle)<br>
+                    &nbsp;&nbsp;+-- ar-hardware (uses Signature, Destroyable)<br>
+                    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;+-- All higher-level modules
+                </div>
+            </section>
+
+            <section id="annotations">
+                <h2>Core Annotations</h2>
+                <p>The UML module provides marker annotations that convey semantic information about types without enforcing behavior. These annotations enable framework-level introspection and optimization.</p>
+
+                <h3>@Function</h3>
+                <p>Marks types representing evaluable functions with varying parameters - objects that can be invoked with different input parameters to produce corresponding outputs.</p>
+
+                <div class="class-list">
+                    <div class="class-item">
+                        <h4>Characteristics</h4>
+                        <p>Parameterized, evaluable, reusable, deterministic (ideally). Used for computational graph nodes and hardware-accelerable operations.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>Common Uses</h4>
+                        <p>Evaluable&lt;T&gt; interface, mathematical operations, GPU kernels, parameterized transformations.</p>
+                    </div>
+                </div>
+
+                <pre><code class="language-java">@Function
+@FunctionalInterface
+public interface Evaluable&lt;T&gt; extends Computable {
+    T evaluate(Object... args);
+}
+
+@Function
+public class MatrixMultiply implements Producer&lt;PackedCollection&gt; {
+    public PackedCollection evaluate(Object... args) {
+        PackedCollection a = (PackedCollection) args[0];
+        PackedCollection b = (PackedCollection) args[1];
+        return computeMatMul(a, b);
+    }
+}</code></pre>
+
+                <h3>@ModelEntity</h3>
+                <p>Marks types that hold significant state which may be expensive to compute or require persistence. These are typically domain model objects, trained ML models, or costly data structures.</p>
+
+                <div class="class-list">
+                    <div class="class-item">
+                        <h4>Characteristics</h4>
+                        <p>Statefulness, expensive construction, persistent identity, serialization needs, lifecycle management.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>Common Uses</h4>
+                        <p>Neural networks, cached computations (RoPE frequencies), simulation state, weight tensors.</p>
+                    </div>
+                </div>
+
+                <pre><code class="language-java">@ModelEntity
+public class NeuralNetwork implements Destroyable {
+    private final List&lt;Layer&gt; layers;
+    private final PackedCollection[] weights;
+
+    // Expensive: trained over hours/days
+    public void train(Dataset data, int epochs) { ... }
+
+    // Persistence: save/load trained weights
+    public void saveWeights(Path path) { ... }
+    public void loadWeights(Path path) { ... }
+
+    @Override
+    public void destroy() {
+        // Release GPU memory for weights
+    }
+}</code></pre>
+
+                <h3>@Stateless</h3>
+                <p>Marks types that contain no meaningful mutable state - ideal for pure functions, utility classes, and mathematical operations where behavior depends only on input parameters.</p>
+
+                <div class="class-list">
+                    <div class="class-item">
+                        <h4>Characteristics</h4>
+                        <p>No mutable state, deterministic, side-effect free, thread-safe by nature, no memory between calls.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>Benefits</h4>
+                        <p>Inherently thread-safe, eligible for aggressive optimization, results can be cached, safe to share instances.</p>
+                    </div>
+                </div>
+
+                <pre><code class="language-java">@Stateless
+public class MathUtils {
+    public static double sigmoid(double x) {
+        return 1.0 / (1.0 + Math.exp(-x));
+    }
+
+    public static double[] softmax(double[] values) {
+        double max = Arrays.stream(values).max().orElse(0);
+        double sum = Arrays.stream(values).map(v -&gt; Math.exp(v - max)).sum();
+        return Arrays.stream(values).map(v -&gt; Math.exp(v - max) / sum).toArray();
+    }
+}
+
+// Combining @Stateless with @Function for pure computational functions
+@Stateless
+@Function
+public class DotProduct implements Evaluable&lt;Double&gt; {
+    private final int dimensions;  // Immutable configuration only
+
+    public DotProduct(int dimensions) {
+        this.dimensions = dimensions;
+    }
+
+    @Override
+    public Double evaluate(PackedCollection a, PackedCollection b) {
+        double sum = 0;
+        for (int i = 0; i &lt; dimensions; i++) {
+            sum += a.valueAt(i) * b.valueAt(i);
+        }
+        return sum;
+    }
+}</code></pre>
+
+                <h3>Annotation Comparison</h3>
+                <table class="comparison-table">
+                    <tr>
+                        <th>Annotation</th>
+                        <th>State</th>
+                        <th>Typical Use</th>
+                        <th>Lifecycle</th>
+                    </tr>
+                    <tr>
+                        <td><span class="annotation-badge">@Function</span></td>
+                        <td>Configuration only</td>
+                        <td>Evaluable computations, kernels</td>
+                        <td>Reusable computation</td>
+                    </tr>
+                    <tr>
+                        <td><span class="annotation-badge">@ModelEntity</span></td>
+                        <td>Significant, expensive</td>
+                        <td>Domain models, trained networks</td>
+                        <td>Long-lived, persistent</td>
+                    </tr>
+                    <tr>
+                        <td><span class="annotation-badge">@Stateless</span></td>
+                        <td>None or immutable</td>
+                        <td>Pure functions, utilities</td>
+                        <td>Stateless, shareable</td>
+                    </tr>
+                </table>
+            </section>
+
+            <section id="lifecycle">
+                <h2>Lifecycle Management</h2>
+                <p>The UML module provides two complementary interfaces for managing object lifecycle: Destroyable for final cleanup and Lifecycle for reset/reinitialization.</p>
+
+                <h3>Destroyable</h3>
+                <p>A lifecycle interface for objects that require explicit cleanup of resources. Extends AutoCloseable for try-with-resources compatibility.</p>
+
+                <div class="class-list">
+                    <div class="class-item">
+                        <h4>Primary Methods</h4>
+                        <p><code>destroy()</code> - Release resources (default no-op)<br>
+                        <code>close()</code> - Delegates to destroy() for try-with-resources</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>Common Resources</h4>
+                        <p>GPU memory, OpenCL buffers, compiled kernels, native handles, off-heap memory.</p>
+                    </div>
+                </div>
+
+                <pre><code class="language-java">public class GPUBuffer implements Destroyable {
+    private CLBuffer buffer;
+
+    @Override
+    public void destroy() {
+        if (buffer != null) {
+            buffer.release();
+            buffer = null;  // Idempotent cleanup
+        }
+    }
+}
+
+// Try-with-resources usage
+try (GPUBuffer buffer = new GPUBuffer(size)) {
+    buffer.write(data);
+    kernel.execute(buffer);
+}  // buffer.destroy() called automatically
+
+// Conditional destruction of mixed-type collections
+List&lt;Object&gt; resources = Arrays.asList(buffer1, plainObject, buffer2);
+resources.forEach(Destroyable::destroy);  // Only destroys Destroyable objects</code></pre>
+
+                <h3>Lifecycle</h3>
+                <p>A lifecycle interface for objects that can be reset to their initial state without full destruction. Used for objects that accumulate state and need periodic reinitialization.</p>
+
+                <div class="class-list">
+                    <div class="class-item">
+                        <h4>Primary Method</h4>
+                        <p><code>reset()</code> - Reinitialize for reuse (default no-op)</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>Key Difference from Destroyable</h4>
+                        <p>Object remains usable after reset(); destroy() is for final disposal.</p>
+                    </div>
+                </div>
+
+                <pre><code class="language-java">public class ComputationGraph implements Lifecycle {
+    private Map&lt;String, Object&gt; cache = new HashMap&lt;&gt;();
+    private List&lt;Result&gt; intermediateResults = new ArrayList&lt;&gt;();
+
+    @Override
+    public void reset() {
+        cache.clear();
+        intermediateResults.clear();
+        // Graph structure remains intact - ready for reuse
+    }
+
+    public void compute() {
+        reset();  // Clear previous results
+        // Perform new computation
+    }
+}</code></pre>
+
+                <h3>Lifecycle vs Destroyable Comparison</h3>
+                <table class="comparison-table">
+                    <tr>
+                        <th>Aspect</th>
+                        <th>Lifecycle.reset()</th>
+                        <th>Destroyable.destroy()</th>
+                    </tr>
+                    <tr>
+                        <td>Purpose</td>
+                        <td>Reinitialize for reuse</td>
+                        <td>Final cleanup before disposal</td>
+                    </tr>
+                    <tr>
+                        <td>Object State After</td>
+                        <td>Usable</td>
+                        <td>Should not be used</td>
+                    </tr>
+                    <tr>
+                        <td>Call Frequency</td>
+                        <td>Multiple times</td>
+                        <td>Typically once at end of life</td>
+                    </tr>
+                    <tr>
+                        <td>Resources</td>
+                        <td>Clears transient state</td>
+                        <td>Releases external resources</td>
+                    </tr>
+                </table>
+
+                <pre><code class="language-java">// Combining both interfaces
+public class ManagedResource implements Lifecycle, Destroyable {
+    private NativeBuffer nativeBuffer;
+    private List&lt;Task&gt; pendingTasks = new ArrayList&lt;&gt;();
+
+    @Override
+    public void reset() {
+        pendingTasks.clear();  // Clear transient state
+        // Native buffer remains allocated
+    }
+
+    @Override
+    public void destroy() {
+        reset();  // Clear state first
+        if (nativeBuffer != null) {
+            nativeBuffer.free();  // Release native memory
+            nativeBuffer = null;
+        }
+    }
+}</code></pre>
+            </section>
+
+            <section id="metadata">
+                <h2>Metadata Interfaces</h2>
+                <p>The UML module provides interfaces for naming, identification, and signature-based caching throughout the framework.</p>
+
+                <h3>Named Interface</h3>
+                <p>Provides read-only access to an object's name identifier. Used for logging, debugging, organization, and user reference.</p>
+
+                <pre><code class="language-java">public interface Named {
+    String getName();
+
+    // Safe name extraction from any object
+    static &lt;T&gt; String nameOf(T named);
+
+    // Remove duplicates by name, keeping first occurrence
+    static &lt;T extends Named&gt; List&lt;T&gt; removeDuplicates(List&lt;T&gt; list);
+
+    // Remove duplicates with custom chooser function
+    static &lt;T extends Named&gt; List&lt;T&gt; removeDuplicates(List&lt;T&gt; list, BiFunction&lt;T, T, T&gt; chooser);
+}</code></pre>
+
+                <pre><code class="language-java">public class Operation implements Named {
+    private final String name;
+
+    public Operation(String name) {
+        this.name = name;
+    }
+
+    @Override
+    public String getName() { return name; }
+}
+
+// Safe name extraction
+Object obj = getObject();
+String name = Named.nameOf(obj);
+// Returns: object's name if Named, class simple name otherwise, or "null"
+
+// Removing duplicates
+List&lt;Operation&gt; ops = Arrays.asList(
+    new Operation("add"),
+    new Operation("multiply"),
+    new Operation("add"),  // Duplicate - will be removed
+    new Operation("subtract")
+);
+List&lt;Operation&gt; unique = Named.removeDuplicates(ops);  // [add, multiply, subtract]
+
+// Custom duplicate resolution - keep highest version
+List&lt;VersionedOp&gt; latest = Named.removeDuplicates(ops,
+    (existing, duplicate) -&gt;
+        existing.getVersion() &gt; duplicate.getVersion() ? existing : duplicate
+);</code></pre>
+
+                <h3>Nameable Interface</h3>
+                <p>Extends Named to add mutable naming capability via setName(String).</p>
+
+                <pre><code class="language-java">public interface Nameable extends Named {
+    void setName(String name);
+}
+
+// Mutable naming for configurable components
+public class ConfigurableOperation implements Nameable {
+    private String name;
+
+    @Override
+    public String getName() { return name; }
+
+    @Override
+    public void setName(String name) { this.name = name; }
+}
+
+// Builder pattern usage
+ConfigurableOperation op = new ConfigurableOperation();
+op.setName("my-operation");
+op.setParameter("timeout", 5000);
+registry.register(op);</code></pre>
+
+                <h3>Signature Interface</h3>
+                <p>Provides unique string signatures for identity checking, caching, and deduplication in computational graphs.</p>
+
+                <pre><code class="language-java">public interface Signature {
+    // Override to provide unique signature
+    default String signature() { throw new UnsupportedOperationException(); }
+
+    // Safe signature extraction
+    static &lt;T&gt; String of(T sig);
+
+    // MD5 hash for compact signatures
+    static String md5(String sig);
+
+    // Hex encoding utility
+    static String hex(byte[] bytes);
+}</code></pre>
+
+                <pre><code class="language-java">public class CompiledProgram implements Signature {
+    private String sourceCode;
+    private Map&lt;String, Object&gt; options;
+
+    @Override
+    public String signature() {
+        String combined = sourceCode + options.toString();
+        return Signature.md5(combined);  // Compact 32-char hash
+    }
+}
+
+// Signature-based caching
+Map&lt;String, CompiledProgram&gt; cache = new HashMap&lt;&gt;();
+
+CompiledProgram getOrCompile(CompiledProgram program) {
+    String sig = program.signature();
+    return cache.computeIfAbsent(sig, k -&gt; {
+        program.compile();
+        return program;
+    });
+}
+
+// Deduplication using signatures
+public List&lt;Computation&gt; removeDuplicates(List&lt;Computation&gt; computations) {
+    Map&lt;String, Computation&gt; unique = new HashMap&lt;&gt;();
+    for (Computation comp : computations) {
+        String sig = comp.signature();
+        unique.putIfAbsent(sig, comp);
+    }
+    return new ArrayList&lt;&gt;(unique.values());
+}</code></pre>
+            </section>
+
+            <section id="modeling">
+                <h2>Domain Modeling</h2>
+                <p>The UML module provides collection abstraction interfaces for indexed and positional access patterns.</p>
+
+                <h3>Multiple Interface</h3>
+                <p>Provides simple indexed access to elements via get(int index). A lightweight alternative to List when only read access is needed.</p>
+
+                <pre><code class="language-java">public interface Multiple&lt;T&gt; {
+    T get(int index);
+}
+
+// Batch operation results
+public class ResultSet&lt;T&gt; implements Multiple&lt;T&gt; {
+    private final List&lt;T&gt; results;
+
+    public ResultSet(List&lt;T&gt; results) {
+        this.results = new ArrayList&lt;&gt;(results);
+    }
+
+    @Override
+    public T get(int index) {
+        return results.get(index);
+    }
+}
+
+// Lazy computation
+public class LazyMultiple&lt;T&gt; implements Multiple&lt;T&gt; {
+    private final Function&lt;Integer, T&gt; generator;
+
+    public LazyMultiple(Function&lt;Integer, T&gt; generator) {
+        this.generator = generator;
+    }
+
+    @Override
+    public T get(int index) {
+        return generator.apply(index);  // Computed on demand
+    }
+}</code></pre>
+
+                <h3>Plural Interface</h3>
+                <p>Provides positional value access via valueAt(int pos). More appropriate for mathematical objects, coordinates, or value-based structures.</p>
+
+                <pre><code class="language-java">public interface Plural&lt;T&gt; {
+    T valueAt(int pos);
+}
+
+// Vector implementation
+public class Vector3D implements Plural&lt;Double&gt; {
+    private final double x, y, z;
+
+    public Vector3D(double x, double y, double z) {
+        this.x = x;
+        this.y = y;
+        this.z = z;
+    }
+
+    @Override
+    public Double valueAt(int pos) {
+        switch (pos) {
+            case 0: return x;
+            case 1: return y;
+            case 2: return z;
+            default: throw new IndexOutOfBoundsException(pos);
+        }
+    }
+}
+
+// Time series data
+public class TimeSeries implements Plural&lt;Double&gt; {
+    private final double[] samples;
+
+    @Override
+    public Double valueAt(int pos) {
+        return samples[pos];
+    }
+}</code></pre>
+
+                <h3>Multiple vs Plural</h3>
+                <table class="comparison-table">
+                    <tr>
+                        <th>Aspect</th>
+                        <th>Multiple&lt;T&gt;</th>
+                        <th>Plural&lt;T&gt;</th>
+                    </tr>
+                    <tr>
+                        <td>Method</td>
+                        <td>get(int index)</td>
+                        <td>valueAt(int pos)</td>
+                    </tr>
+                    <tr>
+                        <td>Semantic Use</td>
+                        <td>Collection-like access</td>
+                        <td>Mathematical/positional values</td>
+                    </tr>
+                    <tr>
+                        <td>Typical Use</td>
+                        <td>Lists, arrays, result sets</td>
+                        <td>Vectors, coordinates, tuples</td>
+                    </tr>
+                    <tr>
+                        <td>Terminology</td>
+                        <td>"index", "element"</td>
+                        <td>"position", "component"</td>
+                    </tr>
+                </table>
+            </section>
+
+            <section id="examples">
+                <h2>Usage Examples</h2>
+
+                <h3>Resource Management Pattern</h3>
+                <pre><code class="language-java">public class GpuModel implements Destroyable {
+    private NativeBuffer weights;
+    private CompiledKernel kernel;
+
+    @Override
+    public void destroy() {
+        if (weights != null) weights.destroy();
+        if (kernel != null) kernel.destroy();
+        weights = null;
+        kernel = null;
+    }
+}
+
+// Automatic cleanup with try-with-resources
+try (GpuModel model = new GpuModel()) {
+    model.train(data);
+    model.inference(input);
+}  // destroy() called automatically on exit</code></pre>
+
+                <h3>Named Entity Deduplication</h3>
+                <pre><code class="language-java">// Given operations with potential duplicates
+List&lt;Operation&gt; operations = loadOperations();
+
+// Remove duplicates by name, keeping first occurrence
+List&lt;Operation&gt; unique = Named.removeDuplicates(operations);
+
+// Or keep the better-performing operation when names match
+List&lt;Operation&gt; best = Named.removeDuplicates(
+    operations,
+    (a, b) -&gt; a.getExecutionTime() &lt; b.getExecutionTime() ? a : b
+);</code></pre>
+
+                <h3>Signature-Based Kernel Caching</h3>
+                <pre><code class="language-java">public class MetalProgram implements Signature {
+    private String kernelSource;
+    private Map&lt;String, Object&gt; compileOptions;
+
+    @Override
+    public String signature() {
+        return Signature.md5(kernelSource + compileOptions.toString());
+    }
+}
+
+// Cache compiled programs by signature
+public class KernelCache {
+    private Map&lt;String, MetalProgram&gt; cache = new ConcurrentHashMap&lt;&gt;();
+
+    public MetalProgram getOrCompile(MetalProgram program) {
+        return cache.computeIfAbsent(
+            program.signature(),
+            sig -&gt; { program.compile(); return program; }
+        );
+    }
+}</code></pre>
+
+                <h3>Semantic Annotation for State Management</h3>
+                <pre><code class="language-java">// Framework scans for @ModelEntity to find stateful components
+@ModelEntity
+public class Scene {
+    private List&lt;Surface&gt; surfaces;
+    private List&lt;Light&gt; lights;
+    private Camera camera;
+}
+
+// Serialization system uses annotations to determine what to save
+public void saveState() {
+    for (Class&lt;?&gt; cls : getAllClasses()) {
+        if (cls.isAnnotationPresent(ModelEntity.class)) {
+            // Serialize this class's state
+        }
+    }
+}</code></pre>
+
+                <h3>Lifecycle Reset for Temporal Systems</h3>
+                <pre><code class="language-java">public class TemporalCell implements Lifecycle {
+    private double time = 0.0;
+    private PackedCollection state;
+
+    @Override
+    public void reset() {
+        time = 0.0;
+        if (state != null) {
+            state.fill(0.0);  // Clear state
+        }
+    }
+}
+
+// Reset all cells in simulation
+for (Lifecycle cell : cells) {
+    cell.reset();  // Prepare for next iteration
+}</code></pre>
+
+                <h3>Complete Integration Example</h3>
+                <pre><code class="language-java">@ModelEntity
+public class TransformerModel implements Named, Signature, Destroyable, Lifecycle {
+    private final String name;
+    private final StateDictionary weights;
+    private Map&lt;String, PackedCollection&gt; cache = new HashMap&lt;&gt;();
+
+    public TransformerModel(String name, Path weightsDir) {
+        this.name = name;
+        this.weights = new StateDictionary(weightsDir);
+    }
+
+    @Override
+    public String getName() { return name; }
+
+    @Override
+    public String signature() {
+        return Signature.md5(name + weights.getVersion());
+    }
+
+    @Override
+    public void reset() {
+        cache.clear();  // Clear inference cache
+    }
+
+    @Override
+    public void destroy() {
+        reset();
+        weights.destroy();  // Release GPU memory
+    }
+
+    public PackedCollection forward(PackedCollection input) {
+        // Use cached computations when possible
+        String key = Signature.md5(input.toString());
+        return cache.computeIfAbsent(key, k -&gt; compute(input));
+    }
+}</code></pre>
+            </section>
+
+            <section id="integration">
+                <h2>Framework Integration</h2>
+                <p>The UML module interfaces are used throughout the Almost Realism framework:</p>
+
+                <table class="performance-table">
+                    <thead>
+                        <tr>
+                            <th>Module</th>
+                            <th>UML Interfaces Used</th>
+                            <th>Purpose</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>ar-relation</td>
+                            <td>@Function, Multiple</td>
+                            <td>Mark Evaluable&lt;T&gt; as functional, multi-output operations</td>
+                        </tr>
+                        <tr>
+                            <td>ar-code</td>
+                            <td>Named, Nameable</td>
+                            <td>Variable and Argument naming for code generation</td>
+                        </tr>
+                        <tr>
+                            <td>ar-hardware</td>
+                            <td>Signature, Destroyable</td>
+                            <td>Kernel caching, GPU memory cleanup</td>
+                        </tr>
+                        <tr>
+                            <td>ar-graph</td>
+                            <td>Destroyable, Lifecycle</td>
+                            <td>Model resource cleanup, temporal cell reset</td>
+                        </tr>
+                        <tr>
+                            <td>ar-geometry</td>
+                            <td>@ModelEntity</td>
+                            <td>Mark BasicGeometry, Camera classes as stateful</td>
+                        </tr>
+                        <tr>
+                            <td>ar-io</td>
+                            <td>Named, Destroyable, Lifecycle</td>
+                            <td>Metric naming, profiler cleanup</td>
+                        </tr>
+                        <tr>
+                            <td>ar-heredity</td>
+                            <td>Signature, Lifecycle</td>
+                            <td>Genome identification, chromosome reset</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </section>
+
+            <section id="resources">
+                <h2>Additional Resources</h2>
+                <ul>
+                    <li><a href="../../uml/README.md">UML Module README</a> - Comprehensive module documentation</li>
+                    <li><a href="../apidocs/io/almostrealism/uml/package-summary.html">JavaDoc API</a> - Complete API reference</li>
+                </ul>
+
+                <h3>Maven Dependency</h3>
+                <pre><code class="language-xml">&lt;dependency&gt;
+    &lt;groupId&gt;org.almostrealism&lt;/groupId&gt;
+    &lt;artifactId&gt;ar-uml&lt;/artifactId&gt;
+    &lt;!-- Check pom.xml for current version --&gt;
+&lt;/dependency&gt;</code></pre>
+            </section>
+        </main>
+
+        <footer>
+            <p><a href="../index.html">&larr; Back to Framework Documentation</a></p>
+            <p>&copy; 2024 Michael Murray. Licensed under the Apache License, Version 2.0.</p>
+        </footer>
+    </div>
+
+    <script src="../js/docs.js"></script>
+</body>
+</html>

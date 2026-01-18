@@ -17,17 +17,17 @@
 package org.almostrealism.hardware.mem;
 
 import io.almostrealism.code.ComputeContext;
-import io.almostrealism.profile.OperationMetadata;
-import io.almostrealism.relation.Producer;
-import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.Memory;
 import io.almostrealism.code.NameProvider;
-import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.Provider;
 import io.almostrealism.collect.CollectionScopeInputManager;
+import io.almostrealism.profile.OperationMetadata;
+import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Producer;
+import io.almostrealism.relation.Provider;
+import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.hardware.Hardware;
-import org.almostrealism.hardware.OperationList;
 import org.almostrealism.hardware.MemoryData;
+import org.almostrealism.hardware.OperationList;
 import org.almostrealism.hardware.ProviderAwareArgumentMap;
 import org.almostrealism.hardware.jvm.JVMMemoryProvider;
 import org.almostrealism.io.SystemUtils;
@@ -39,6 +39,45 @@ import java.util.Map;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
+/**
+ * Argument mapping for kernel compilation with automatic memory aggregation and provider adaptation.
+ *
+ * <p>{@link MemoryDataArgumentMap} manages the conversion of {@link MemoryData} instances into
+ * kernel arguments, automatically aggregating multiple small memory objects into a single argument
+ * to reduce kernel invocation overhead and cross-provider transfer costs.</p>
+ *
+ * <h2>Memory Aggregation</h2>
+ *
+ * <p>When multiple small {@link MemoryData} arguments would require individual transfers from
+ * incompatible providers, they are automatically aggregated into a single contiguous buffer:</p>
+ * <pre>{@code
+ * // Without aggregation: 3 separate kernel arguments
+ * kernel(cpuMem1, cpuMem2, cpuMem3)  // 3 CPU->GPU transfers
+ *
+ * // With aggregation: Single aggregated argument
+ * aggregated = aggregate(cpuMem1, cpuMem2, cpuMem3)
+ * kernel(aggregated)  // 1 CPU->GPU transfer
+ * }</pre>
+ *
+ * <h2>Configuration</h2>
+ *
+ * <p>Aggregation behavior is controlled via environment variables:</p>
+ * <ul>
+ *   <li><b>AR_HARDWARE_ARGUMENT_AGGREGATION</b>: Enable/disable aggregation (default: true)</li>
+ *   <li><b>AR_HARDWARE_OFF_HEAP_AGGREGATION</b>: Aggregate off-heap memory (default: false)</li>
+ *   <li><b>AR_HARDWARE_AGGREGATE_MAX</b>: Max size for aggregation (default: 1MB)</li>
+ * </ul>
+ *
+ * <h2>Root Delegate Handling</h2>
+ *
+ * <p>Arguments that share a root delegate are automatically de-duplicated to avoid redundant
+ * kernel arguments for views into the same underlying memory.</p>
+ *
+ * @param <S> Scope type
+ * @param <A> Argument type
+ * @see MemoryDataReplacementMap
+ * @see MemoryReplacementManager
+ */
 public class MemoryDataArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> {
 	public static final boolean enableDestinationDetection = true;
 	public static boolean enableWarnings = false;
@@ -86,10 +125,12 @@ public class MemoryDataArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> 
 		}
 	}
 
-	public OperationList getPrepareData() { return replacementMap == null ? null : replacementMap.getPreprocess(); }
-	public OperationList getPostprocessData() { return replacementMap == null ? null : replacementMap.getPostprocess(); }
+	public OperationList getPrepareData() { return replacementMap == null ? new OperationList() : replacementMap.getPreprocess(); }
+	public OperationList getPostprocessData() { return replacementMap == null ? new OperationList() : replacementMap.getPostprocess(); }
 
 	public MemoryDataReplacementMap getReplacementMap() { return replacementMap; }
+
+	public boolean hasReplacements() { return replacementMap != null && !replacementMap.isEmpty(); }
 
 	@Override
 	public ArrayVariable<A> get(Supplier key, NameProvider p) {

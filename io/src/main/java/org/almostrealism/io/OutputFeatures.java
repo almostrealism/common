@@ -22,7 +22,47 @@ import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
 import java.util.function.Consumer;
 
+/**
+ * Provides utility methods for directing console output to files and other destinations.
+ *
+ * <p>This interface provides factory methods for creating output listeners that can be
+ * attached to {@link Console} instances to capture logging output.</p>
+ *
+ * <h2>Usage Example</h2>
+ * <pre>{@code
+ * // Direct all console output to a file
+ * Console.root().addListener(OutputFeatures.fileOutput("/path/to/log.txt"));
+ *
+ * // Now all console output goes to both System.out and the file
+ * Console.root().println("This is logged to file and console");
+ * }</pre>
+ *
+ * <h2>Test Output Pattern</h2>
+ * <p>Commonly used in tests to capture output for later review:</p>
+ * <pre>{@code
+ * @Test
+ * public void myTest() {
+ *     Console.root().addListener(
+ *         OutputFeatures.fileOutput("/workspace/project/test_output/results.txt"));
+ *
+ *     // Test code with logging...
+ * }
+ * }</pre>
+ *
+ * @see Console#addListener(java.util.function.Consumer)
+ * @see ConsoleFeatures
+ */
 public interface OutputFeatures {
+	/**
+	 * Creates a file output listener that writes console output to the specified file.
+	 * The file is opened for writing immediately and flushed after each write.
+	 *
+	 * <p>If the file cannot be opened, an error message is printed and a no-op
+	 * listener is returned.</p>
+	 *
+	 * @param destination the path to the output file
+	 * @return a consumer that writes strings to the file
+	 */
 	static Consumer<String> fileOutput(String destination) {
 		try {
 			FileOutputStream f = new FileOutputStream(destination);

@@ -16,8 +16,8 @@
 
 package org.almostrealism.graph.model.test;
 
-import io.almostrealism.profile.OperationProfileNode;
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.profile.OperationProfileNode;
 import io.almostrealism.scope.ScopeSettings;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.io.Console;
@@ -64,13 +64,13 @@ public class ConvolutionModelTrainingTest implements ModelFeatures, ModelTestFea
 		}
 	}
 
-	public List<ValueTarget<PackedCollection<?>>> generateDataset(TraversalPolicy outShape) {
-		List<ValueTarget<PackedCollection<?>>> data = new ArrayList<>();
+	public List<ValueTarget<PackedCollection>> generateDataset(TraversalPolicy outShape) {
+		List<ValueTarget<PackedCollection>> data = new ArrayList<>();
 
 
 		log("Adding circles...");
 		for (int i = 0; i < 500; i++) {
-			PackedCollection<?> input = new PackedCollection<>(shape(batchSize, rows, cols));
+			PackedCollection input = new PackedCollection(shape(batchSize, rows, cols));
 			double x = Math.random() * cols;
 			double y = Math.random() * rows;
 			double r = Math.random() * (rows / 4.0);
@@ -83,13 +83,13 @@ public class ConvolutionModelTrainingTest implements ModelFeatures, ModelTestFea
 			if (outShape.getTotalSize() == 2) {
 				data.add(ValueTarget.of(input, PackedCollection.of(1.0, 0.0)));
 			} else {
-				data.add(ValueTarget.of(input, new PackedCollection<>(outShape).fill(pos -> pos[0] % 2 == 0 ? 1.0 : 0.0)));
+				data.add(ValueTarget.of(input, new PackedCollection(outShape).fill(pos -> pos[0] % 2 == 0 ? 1.0 : 0.0)));
 			}
 		}
 
 		log("Adding squares...");
 		for (int i = 0; i < 500; i++) {
-			PackedCollection<?> input = new PackedCollection<>(shape(batchSize, rows, cols));
+			PackedCollection input = new PackedCollection(shape(batchSize, rows, cols));
 			double x = Math.random() * cols;
 			double y = Math.random() * rows;
 			double r = Math.random() * (rows / 4.0);
@@ -102,19 +102,19 @@ public class ConvolutionModelTrainingTest implements ModelFeatures, ModelTestFea
 			if (outShape.getTotalSize() == 2) {
 				data.add(ValueTarget.of(input, PackedCollection.of(0.0, 1.0)));
 			} else {
-				data.add(ValueTarget.of(input, new PackedCollection<>(outShape).fill(pos -> pos[0] % 2 == 0 ? 0.0 : 1.0)));
+				data.add(ValueTarget.of(input, new PackedCollection(outShape).fill(pos -> pos[0] % 2 == 0 ? 0.0 : 1.0)));
 			}
 		}
 
 		return data;
 	}
 
-	public List<ValueTarget<PackedCollection<?>>> loadDataset(File imagesDir, TraversalPolicy outShape) throws IOException {
-		List<ValueTarget<PackedCollection<?>>> data = new ArrayList<>();
+	public List<ValueTarget<PackedCollection>> loadDataset(File imagesDir, TraversalPolicy outShape) throws IOException {
+		List<ValueTarget<PackedCollection>> data = new ArrayList<>();
 
 		for (File file : imagesDir.listFiles()) {
 			if (file.getName().endsWith(".png")) {
-				PackedCollection<?> input = GraphicsConverter.loadGrayscale(file);
+				PackedCollection input = GraphicsConverter.loadGrayscale(file);
 
 				boolean circle = file.getName().contains("circle");
 
@@ -126,7 +126,7 @@ public class ConvolutionModelTrainingTest implements ModelFeatures, ModelTestFea
 					int v = circle ? 0 : 1;
 
 					data.add(ValueTarget.of(input,
-							new PackedCollection<>(outShape).fill(pos -> pos[0] % 2 == v ? 1.0 : 0.0)));
+							new PackedCollection(outShape).fill(pos -> pos[0] % 2 == v ? 1.0 : 0.0)));
 				}
 			}
 		}
@@ -134,7 +134,7 @@ public class ConvolutionModelTrainingTest implements ModelFeatures, ModelTestFea
 		return data;
 	}
 
-	@Test
+	@Test(timeout = 120000)
 	public void train() throws IOException {
 		if (!trainingTests) return;
 
@@ -147,7 +147,7 @@ public class ConvolutionModelTrainingTest implements ModelFeatures, ModelTestFea
 				4, 4, true);
 		model.setParameterUpdate(ParameterUpdate.scaled(c(0.001)));
 
-		List<ValueTarget<PackedCollection<?>>> data;
+		List<ValueTarget<PackedCollection>> data;
 
 		File imagesDir = new File("generated_images");
 		if (!imagesDir.exists()) {
@@ -169,10 +169,10 @@ public class ConvolutionModelTrainingTest implements ModelFeatures, ModelTestFea
 				if (i > 0) compiled.reset();
 
 				Collections.shuffle(data);
-				Dataset<PackedCollection<?>> all = Dataset.of(data).batch(batchSize);
-				List<Dataset<PackedCollection<?>>> split = all.split(0.8);
+				Dataset<PackedCollection> all = Dataset.of(data).batch(batchSize);
+				List<Dataset<PackedCollection>> split = all.split(0.8);
 
-				double accuracy[] =
+				double[] accuracy =
 						optimize("convolution2d_" + rows * cols, compiled,
 								() -> split.get(0), () -> split.get(1),
 								10, data.size(), 0.05);
@@ -192,7 +192,7 @@ public class ConvolutionModelTrainingTest implements ModelFeatures, ModelTestFea
 						 Supplier<Dataset<?>> trainData,
 						 Supplier<Dataset<?>> testData,
 						 int epochs, int steps, double lossTarget) throws IOException {
-		double accuracy[] = new double[epochs];
+		double[] accuracy = new double[epochs];
 
 		ModelOptimizer optimizer = new ModelOptimizer(model, trainData);
 		optimizer.setLossFunction(new NegativeLogLikelihood());
@@ -212,7 +212,7 @@ public class ConvolutionModelTrainingTest implements ModelFeatures, ModelTestFea
 		return accuracy;
 	}
 
-	protected static void append(StringBuilder buf, int values[]) {
+	protected static void append(StringBuilder buf, int[] values) {
 		for (int i = 0; i < values.length; i++) {
 			buf.append(values[i]);
 			buf.append(",");
@@ -220,7 +220,7 @@ public class ConvolutionModelTrainingTest implements ModelFeatures, ModelTestFea
 		buf.append("\n");
 	}
 
-	protected static void append(StringBuilder buf, double values[]) {
+	protected static void append(StringBuilder buf, double[] values) {
 		for (int i = 0; i < values.length; i++) {
 			buf.append(values[i]);
 			buf.append(",");

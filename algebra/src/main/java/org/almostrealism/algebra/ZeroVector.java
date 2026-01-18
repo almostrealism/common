@@ -18,12 +18,49 @@ package org.almostrealism.algebra;
 
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.collect.PackedCollection;
 
+/**
+ * A utility class providing access to the zero vector (0, 0, 0).
+ *
+ * <p>
+ * {@link ZeroVector} is a singleton-like utility that provides {@link Producer} and
+ * {@link Evaluable} instances for the zero vector. This is commonly used as a default
+ * or initial value in vector computations.
+ * </p>
+ *
+ * <h2>Usage Examples</h2>
+ * <pre>{@code
+ * // Get a producer for the zero vector
+ * Producer<PackedCollection> zeroProducer = ZeroVector.getInstance();
+ *
+ * // Get an evaluable for direct evaluation
+ * Evaluable<Vector> zeroEval = ZeroVector.getEvaluable();
+ * Vector zero = zeroEval.evaluate();  // Vector(0, 0, 0)
+ * }</pre>
+ *
+ * @author  Michael Murray
+ * @see Vector
+ * @see UnityVector
+ */
 public class ZeroVector {
 
+	/**
+	 * Private constructor to prevent instantiation.
+	 */
 	private ZeroVector() { }
 
-	public static Producer<Vector> getInstance() { return VectorFeatures.getInstance().vector(0, 0, 0); }
+	/**
+	 * Returns a {@link Producer} that generates the zero vector (0, 0, 0).
+	 *
+	 * @return a producer for the zero vector
+	 */
+	public static Producer<PackedCollection> getInstance() { return VectorFeatures.getInstance().vector(0, 0, 0); }
 
-	public static Evaluable<Vector> getEvaluable() { return getInstance().get(); }
+	/**
+	 * Returns an {@link Evaluable} that produces the zero vector (0, 0, 0).
+	 *
+	 * @return an evaluable for the zero vector
+	 */
+	public static Evaluable<PackedCollection> getEvaluable() { return getInstance().get(); }
 }

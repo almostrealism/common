@@ -16,12 +16,12 @@
 
 package org.almostrealism.time.computations;
 
-import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.compute.Process;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.InstanceReference;
 import io.almostrealism.kernel.KernelStructureContext;
-import io.almostrealism.compute.Process;
+import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Cases;
@@ -35,22 +35,212 @@ import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 
 import java.util.List;
 
-public class FourierTransform extends CollectionProducerComputationBase<PackedCollection<?>, PackedCollection<?>> {
+/**
+ * A hardware-accelerated computation for performing Fast Fourier Transform (FFT) and Inverse FFT (IFFT)
+ * on time-domain signals, converting them to/from the frequency domain.
+ *
+ * <p>{@link FourierTransform} implements an optimized radix-2/radix-4 FFT algorithm that can execute
+ * on GPU/accelerator hardware for high-performance signal processing. The transform operates on complex
+ * numbers stored as interleaved real/imaginary pairs in {@link PackedCollection}.</p>
+ *
+ * <h2>What is FFT?</h2>
+ * <p>The Fast Fourier Transform is an efficient algorithm to compute the Discrete Fourier Transform (DFT),
+ * which decomposes a signal into its constituent frequencies. It's fundamental to:</p>
+ * <ul>
+ *   <li><strong>Audio Processing:</strong> Analyze frequency content, apply equalization</li>
+ *   <li><strong>Signal Analysis:</strong> Identify dominant frequencies, detect patterns</li>
+ *   <li><strong>Filtering:</strong> Remove unwanted frequencies (low-pass, high-pass, etc.)</li>
+ *   <li><strong>Compression:</strong> MP3, JPEG, and other frequency-domain codecs</li>
+ *   <li><strong>Convolution:</strong> Efficient convolution via multiplication in frequency domain</li>
+ * </ul>
+ *
+ * <h2>Data Format</h2>
+ * <p>The input and output are complex numbers stored as interleaved real/imaginary pairs:</p>
+ * <pre>
+ * Index:  0     1     2     3     4     5     6     7
+ * Data:  [re0, im0, re1, im1, re2, im2, re3, im3]
+ *
+ * Complex Number 0: re0 + i*im0
+ * Complex Number 1: re1 + i*im1
+ * Complex Number 2: re2 + i*im2
+ * Complex Number 3: re3 + i*im3
+ * </pre>
+ *
+ * <h2>Algorithm Details</h2>
+ * <ul>
+ *   <li><strong>Radix-4:</strong> Primary decomposition (when size >= 4)</li>
+ *   <li><strong>Radix-2:</strong> Fallback for smaller sizes or recursion</li>
+ *   <li><strong>Cooley-Tukey:</strong> Divide-and-conquer recursive approach</li>
+ *   <li><strong>In-place:</strong> Minimal memory overhead</li>
+ * </ul>
+ *
+ * <h2>Usage Examples</h2>
+ *
+ * <h3>Basic FFT</h3>
+ * <pre>{@code
+ * // Create 512-bin FFT
+ * int bins = 512;  // Must be power of 2
+ * Producer<PackedCollection> signal = ...; // Complex time-domain signal
+ *
+ * FourierTransform fft = new FourierTransform(bins, signal);
+ * PackedCollection frequencyDomain = fft.get().evaluate();
+ * }</pre>
+ *
+ * <h3>Inverse FFT</h3>
+ * <pre>{@code
+ * // Convert frequency domain back to time domain
+ * Producer<PackedCollection> frequencyData = ...;
+ *
+ * FourierTransform ifft = new FourierTransform(1, 512, true, frequencyData);
+ * PackedCollection timeDomain = ifft.get().evaluate();
+ * }</pre>
+ *
+ * <h3>Batch Processing</h3>
+ * <pre>{@code
+ * // Process 10 signals simultaneously
+ * int count = 10;
+ * int bins = 1024;
+ * Producer<PackedCollection> batch = ...;  // Shape: [10, 2, 1024]
+ *
+ * FourierTransform batchFFT = new FourierTransform(count, bins, batch);
+ * PackedCollection results = batchFFT.get().evaluate();
+ * }</pre>
+ *
+ * <h3>Frequency Analysis</h3>
+ * <pre>{@code
+ * // Analyze audio signal
+ * AcceleratedTimeSeries audio = new AcceleratedTimeSeries(1024);
+ * // Fill with audio samples...
+ *
+ * // Convert to complex format (real + 0*i)
+ * PackedCollection complexSignal = new PackedCollection(2, 512);
+ * for (int i = 0; i < 512; i++) {
+ *     complexSignal.set(2*i, audio.get(i).getValue());     // Real
+ *     complexSignal.set(2*i + 1, 0.0);                     // Imaginary
+ * }
+ *
+ * // Compute FFT
+ * FourierTransform fft = new FourierTransform(512, c(complexSignal));
+ * PackedCollection spectrum = fft.get().evaluate();
+ *
+ * // Extract magnitude at each frequency
+ * for (int i = 0; i < 512; i++) {
+ *     double re = spectrum.toDouble(2*i);
+ *     double im = spectrum.toDouble(2*i + 1);
+ *     double magnitude = Math.sqrt(re*re + im*im);
+ *     double frequencyHz = (i * sampleRate) / 512.0;
+ *     System.out.println(frequencyHz + " Hz: " + magnitude);
+ * }
+ * }</pre>
+ *
+ * <h3>Frequency-Domain Filtering</h3>
+ * <pre>{@code
+ * // Low-pass filter: zero out high frequencies
+ * int cutoffBin = 100;  // Keep frequencies 0-99
+ *
+ * // Forward FFT
+ * FourierTransform fft = new FourierTransform(512, signal);
+ * PackedCollection freq = fft.get().evaluate();
+ *
+ * // Zero high frequencies
+ * for (int i = cutoffBin; i < 512; i++) {
+ *     freq.set(2*i, 0.0);     // Real
+ *     freq.set(2*i + 1, 0.0); // Imaginary
+ * }
+ *
+ * // Inverse FFT to get filtered signal
+ * FourierTransform ifft = new FourierTransform(1, 512, true, c(freq));
+ * PackedCollection filtered = ifft.get().evaluate();
+ * }</pre>
+ *
+ * <h2>Performance Characteristics</h2>
+ * <ul>
+ *   <li><strong>Time Complexity:</strong> O(N log N) where N is bin count</li>
+ *   <li><strong>Space Complexity:</strong> O(N) for temporary arrays</li>
+ *   <li><strong>Hardware Acceleration:</strong> GPU/OpenCL/Metal execution available</li>
+ *   <li><strong>Optimal Sizes:</strong> Powers of 2 (512, 1024, 2048, etc.)</li>
+ * </ul>
+ *
+ * <h2>Configuration Flags</h2>
+ * <ul>
+ *   <li><strong>{@link #enableRecursion}:</strong> Use recursive method calls (default: true)</li>
+ *   <li><strong>{@link #enableRelative}:</strong> Use relative indexing for traversal (default: true)</li>
+ * </ul>
+ *
+ * <h2>Mathematical Background</h2>
+ * <p>Forward FFT formula:</p>
+ * <pre>
+ * X[k] = Sigma(n=0 to N-1) x[n] * e^(-i*2pi*k*n/N)
+ * </pre>
+ *
+ * <p>Inverse FFT formula:</p>
+ * <pre>
+ * x[n] = (1/N) * Sigma(k=0 to N-1) X[k] * e^(i*2pi*k*n/N)
+ * </pre>
+ *
+ * <h2>Normalization</h2>
+ * <p>The inverse transform applies a 1/N normalization to restore original amplitudes.
+ * The forward transform does not normalize.</p>
+ *
+ * <h2>Limitations</h2>
+ * <ul>
+ *   <li>Bin count should be a power of 2 for optimal performance</li>
+ *   <li>Very large transforms (>16K bins) may exceed GPU memory</li>
+ *   <li>Input must be in complex (real, imaginary) interleaved format</li>
+ * </ul>
+ *
+ * @see TemporalFeatures#fft(int, Producer)
+ * @see TemporalFeatures#ifft(int, Producer)
+ *
+ * @author Michael Murray
+ */
+public class FourierTransform extends CollectionProducerComputationBase {
+	/**
+	 * Enables recursive method calls in generated kernels.
+	 * When true, uses function recursion for FFT subdivisions.
+	 * When false, inlines recursive calls (may increase code size).
+	 */
 	public static boolean enableRecursion = true;
+
+	/**
+	 * Enables relative indexing for traversal policies.
+	 * When true, uses traverse(1) for more efficient memory access patterns.
+	 */
 	public static boolean enableRelative = true;
 
 	private int varIdx = 0;
-	private boolean inverse;
+	private final boolean inverse;
 
-	public FourierTransform(int bins, Producer<PackedCollection<?>> input) {
+	/**
+	 * Constructs a Fourier transform for a single signal.
+	 *
+	 * @param bins Number of frequency bins (should be power of 2)
+	 * @param input Producer providing the complex time-domain signal
+	 */
+	public FourierTransform(int bins, Producer<PackedCollection> input) {
 		this(1, bins, input);
 	}
 
-	public FourierTransform(int count, int bins, Producer<PackedCollection<?>> input) {
+	/**
+	 * Constructs a Fourier transform for batch processing multiple signals.
+	 *
+	 * @param count Number of signals to process in parallel
+	 * @param bins Number of frequency bins per signal (should be power of 2)
+	 * @param input Producer providing the batch of complex signals
+	 */
+	public FourierTransform(int count, int bins, Producer<PackedCollection> input) {
 		this(count, bins, false, input);
 	}
 
-	public FourierTransform(int count, int bins, boolean inverse, Producer<PackedCollection<?>> input) {
+	/**
+	 * Constructs a Fourier transform with explicit forward/inverse specification.
+	 *
+	 * @param count Number of signals to process in parallel
+	 * @param bins Number of frequency bins (should be power of 2)
+	 * @param inverse If true, performs inverse FFT; if false, performs forward FFT
+	 * @param input Producer providing the input signals (time-domain if !inverse, frequency-domain if inverse)
+	 */
+	public FourierTransform(int count, int bins, boolean inverse, Producer<PackedCollection> input) {
 		super(inverse ? "fourierTransformInverse"  : "fourierTransform",
 				enableRelative ?
 						new TraversalPolicy(count, 2, bins).traverse(1) :
@@ -60,8 +250,8 @@ public class FourierTransform extends CollectionProducerComputationBase<PackedCo
 	}
 
 	@Override
-	public Scope<PackedCollection<?>> getScope(KernelStructureContext context) {
-		HybridScope<PackedCollection<?>> scope = new HybridScope<>(this);
+	public Scope<PackedCollection> getScope(KernelStructureContext context) {
+		HybridScope<PackedCollection> scope = new HybridScope<>(this);
 		scope.setMetadata(new OperationMetadata(getFunctionName(), "FourierTransform"));
 
 		int size = getShape().getSize();
@@ -101,7 +291,7 @@ public class FourierTransform extends CollectionProducerComputationBase<PackedCo
 	protected Scope<?> calculateTransform(Expression<Integer> outputPosition, int size, int totalSize) {
 		OperationMetadata calculateTransformMetadata = new OperationMetadata
 				(getFunctionName() + "_calculateTransform", "Calculate Transform");
-		Scope<PackedCollection<?>> calculateTransform = new Scope<>(getFunctionName() + "_calculateTransform", calculateTransformMetadata);
+		Scope<PackedCollection> calculateTransform = new Scope<>(getFunctionName() + "_calculateTransform", calculateTransformMetadata);
 
 		ArrayVariable<Double> output = addParameter(calculateTransform, "output", size);
 		ArrayVariable<Double> input = addParameter(calculateTransform, "input", size);
@@ -173,24 +363,24 @@ public class FourierTransform extends CollectionProducerComputationBase<PackedCo
 							Expression kPlusHalfN2 = kPlusHalfN.multiply(2);
 							Expression kPlusTripleQuarterN2 = kPlusTripleQuarterN.multiply(2);
 
-							Expression ar = input.valueAt(k2);
-							Expression ai = input.valueAt(k2.add(1));
-							Expression br = input.valueAt(kPlusQuarterN2);
-							Expression bi = input.valueAt(kPlusQuarterN2.add(1));
-							Expression cr = input.valueAt(kPlusHalfN2);
-							Expression ci = input.valueAt(kPlusHalfN2.add(1));
-							Expression dr = input.valueAt(kPlusTripleQuarterN2);
-							Expression di = input.valueAt(kPlusTripleQuarterN2.add(1));
+							Expression ar = input.reference(k2);
+							Expression ai = input.reference(k2.add(1));
+							Expression br = input.reference(kPlusQuarterN2);
+							Expression bi = input.reference(kPlusQuarterN2.add(1));
+							Expression cr = input.reference(kPlusHalfN2);
+							Expression ci = input.reference(kPlusHalfN2.add(1));
+							Expression dr = input.reference(kPlusTripleQuarterN2);
+							Expression di = input.reference(kPlusTripleQuarterN2.add(1));
 
 							Expression arPlusCr = ar.add(cr);
 							Expression aiPlusCi = ai.add(ci);
 							Expression brPlusDr = br.add(dr);
 							Expression biPlusDi = bi.add(di);
 
-							body.assign(radix2.valueAt(k2), arPlusCr);
-							body.assign(radix2.valueAt(k2.add(1)), aiPlusCi);
-							body.assign(radix2.valueAt(kPlusQuarterN2), brPlusDr);
-							body.assign(radix2.valueAt(kPlusQuarterN2.add(1)), biPlusDi);
+							body.assign(radix2.reference(k2), arPlusCr);
+							body.assign(radix2.reference(k2.add(1)), aiPlusCi);
+							body.assign(radix2.reference(kPlusQuarterN2), brPlusDr);
+							body.assign(radix2.reference(kPlusQuarterN2.add(1)), biPlusDi);
 
 							Expression bMinusD_r = br.subtract(dr);
 							Expression bMinusD_i = bi.subtract(di);
@@ -213,13 +403,13 @@ public class FourierTransform extends CollectionProducerComputationBase<PackedCo
 							Expression aMinusCPlusItsR = aMinusC_r.add(imaginaryTimesSubR);
 							Expression aMinusCPlusItsI = aMinusC_i.add(imaginaryTimesSubI);
 
-							Expression radix4Part1Exp[] = complexProduct(aMinusCMinusItsR, aMinusCMinusItsI, omegaR, omegaI);
-							body.assign(radix4Part1.valueAt(k2), radix4Part1Exp[0]);
-							body.assign(radix4Part1.valueAt(k2.add(1)), radix4Part1Exp[1]);
+							Expression[] radix4Part1Exp = complexProduct(aMinusCMinusItsR, aMinusCMinusItsI, omegaR, omegaI);
+							body.assign(radix4Part1.reference(k2), radix4Part1Exp[0]);
+							body.assign(radix4Part1.reference(k2.add(1)), radix4Part1Exp[1]);
 
-							Expression radix4Part2Exp[] = complexProduct(aMinusCPlusItsR, aMinusCPlusItsI, omegaToPowerOf3R, omegaToPowerOf3I);
-							body.assign(radix4Part2.valueAt(k2), radix4Part2Exp[0]);
-							body.assign(radix4Part2.valueAt(k2.add(1)), radix4Part2Exp[1]);
+							Expression[] radix4Part2Exp = complexProduct(aMinusCPlusItsR, aMinusCPlusItsI, omegaToPowerOf3R, omegaToPowerOf3I);
+							body.assign(radix4Part2.reference(k2), radix4Part2Exp[0]);
+							body.assign(radix4Part2.reference(k2.add(1)), radix4Part2Exp[1]);
 
 							loop.add(body);
 						}
@@ -247,26 +437,26 @@ public class FourierTransform extends CollectionProducerComputationBase<PackedCo
 
 							Scope first = new Scope<>();
 							{
-								first.assign(output.valueAt(doubleK.multiply(2)), radix2FFT.valueAt(doubleK).divide(len));
-								first.assign(output.valueAt(doubleK.multiply(2).add(1)), radix2FFT.valueAt(doubleK.add(1)).divide(len));
-								first.assign(output.valueAt(quadrupleK.add(1).multiply(2)), radix4Part1FFT.valueAt(doubleK).divide(len));
-								first.assign(output.valueAt(quadrupleK.add(1).multiply(2).add(1)), radix4Part1FFT.valueAt(doubleK.add(1)).divide(len));
-								first.assign(output.valueAt(doubleK.add(halfN).multiply(2)), radix2FFT.valueAt(k.add(quarterN)).divide(len));
-								first.assign(output.valueAt(doubleK.add(halfN).multiply(2).add(1)), radix2FFT.valueAt(k.add(quarterN).add(1)).divide(len));
-								first.assign(output.valueAt(quadrupleK.add(3).multiply(2)), radix4Part2FFT.valueAt(doubleK).divide(len));
-								first.assign(output.valueAt(quadrupleK.add(3).multiply(2).add(1)), radix4Part2FFT.valueAt(doubleK.add(1)).divide(len));
+								first.assign(output.reference(doubleK.multiply(2)), radix2FFT.reference(doubleK).divide(len));
+								first.assign(output.reference(doubleK.multiply(2).add(1)), radix2FFT.reference(doubleK.add(1)).divide(len));
+								first.assign(output.reference(quadrupleK.add(1).multiply(2)), radix4Part1FFT.reference(doubleK).divide(len));
+								first.assign(output.reference(quadrupleK.add(1).multiply(2).add(1)), radix4Part1FFT.reference(doubleK.add(1)).divide(len));
+								first.assign(output.reference(doubleK.add(halfN).multiply(2)), radix2FFT.reference(k.add(quarterN)).divide(len));
+								first.assign(output.reference(doubleK.add(halfN).multiply(2).add(1)), radix2FFT.reference(k.add(quarterN).add(1)).divide(len));
+								first.assign(output.reference(quadrupleK.add(3).multiply(2)), radix4Part2FFT.reference(doubleK).divide(len));
+								first.assign(output.reference(quadrupleK.add(3).multiply(2).add(1)), radix4Part2FFT.reference(doubleK.add(1)).divide(len));
 							}
 
 							Scope alt = new Scope<>();
 							{
-								alt.assign(output.valueAt(doubleK.multiply(2)), radix2FFT.valueAt(doubleK));
-								alt.assign(output.valueAt(doubleK.multiply(2).add(1)), radix2FFT.valueAt(doubleK.add(1)));
-								alt.assign(output.valueAt(quadrupleK.add(1).multiply(2)), radix4Part1FFT.valueAt(doubleK));
-								alt.assign(output.valueAt(quadrupleK.add(1).multiply(2).add(1)), radix4Part1FFT.valueAt(doubleK.add(1)));
-								alt.assign(output.valueAt(doubleK.add(halfN).multiply(2)), radix2FFT.valueAt(k.add(quarterN).multiply(2)));
-								alt.assign(output.valueAt(doubleK.add(halfN).multiply(2).add(1)), radix2FFT.valueAt(k.add(quarterN).multiply(2).add(1)));
-								alt.assign(output.valueAt(quadrupleK.add(3).multiply(2)), radix4Part2FFT.valueAt(doubleK));
-								alt.assign(output.valueAt(quadrupleK.add(3).multiply(2).add(1)), radix4Part2FFT.valueAt(doubleK.add(1)));
+								alt.assign(output.reference(doubleK.multiply(2)), radix2FFT.reference(doubleK));
+								alt.assign(output.reference(doubleK.multiply(2).add(1)), radix2FFT.reference(doubleK.add(1)));
+								alt.assign(output.reference(quadrupleK.add(1).multiply(2)), radix4Part1FFT.reference(doubleK));
+								alt.assign(output.reference(quadrupleK.add(1).multiply(2).add(1)), radix4Part1FFT.reference(doubleK.add(1)));
+								alt.assign(output.reference(doubleK.add(halfN).multiply(2)), radix2FFT.reference(k.add(quarterN).multiply(2)));
+								alt.assign(output.reference(doubleK.add(halfN).multiply(2).add(1)), radix2FFT.reference(k.add(quarterN).multiply(2).add(1)));
+								alt.assign(output.reference(quadrupleK.add(3).multiply(2)), radix4Part2FFT.reference(doubleK));
+								alt.assign(output.reference(quadrupleK.add(3).multiply(2).add(1)), radix4Part2FFT.reference(doubleK.add(1)));
 							}
 
 							body.addCase(inverseTransform.ref().greaterThan(e(0)).and(isFirstSplit.greaterThan(e(0))), first, alt);
@@ -301,7 +491,7 @@ public class FourierTransform extends CollectionProducerComputationBase<PackedCo
 				InstanceReference i = Variable.integer("i").ref();
 				Repeated inOutLoop = new Repeated<>(i.getReferent(), (i.lessThan(len.multiply(2))));
 				Scope<?> inOut = new Scope<>(); {
-					inOut.assign(output.valueAt(i), input.valueAt(i));
+					inOut.assign(output.reference(i), input.reference(i));
 					inOutLoop.add(inOut);
 				}
 
@@ -366,7 +556,7 @@ public class FourierTransform extends CollectionProducerComputationBase<PackedCo
 	protected Scope<?> radix2(Expression<Integer> outputPosition, int size, int totalSize) {
 		OperationMetadata radix2Metadata = new OperationMetadata
 				(getFunctionName() + "_radix2", "Radix 2");
-		Scope<PackedCollection<?>> radix2 = new Scope<>(getFunctionName() + "_radix2", radix2Metadata);
+		Scope<PackedCollection> radix2 = new Scope<>(getFunctionName() + "_radix2", radix2Metadata);
 
 		ArrayVariable<Double> output = addParameter(radix2, "output", size);
 		ArrayVariable<Double> input = addParameter(radix2, "input", size);
@@ -413,15 +603,15 @@ public class FourierTransform extends CollectionProducerComputationBase<PackedCo
 					Expression k2 = k.multiply(2);
 					Expression kPlusHalfN2 = kPlusHalfN.multiply(2);
 
-					body.assign(even.valueAt(k2), input.valueAt(k2).add(input.valueAt(kPlusHalfN2)));
-					body.assign(even.valueAt(k2.add(1)), input.valueAt(k2.add(1)).add(input.valueAt(kPlusHalfN2.add(1))));
+					body.assign(even.reference(k2), input.reference(k2).add(input.reference(kPlusHalfN2)));
+					body.assign(even.reference(k2.add(1)), input.reference(k2.add(1)).add(input.reference(kPlusHalfN2.add(1))));
 
-					Expression inKMinusInKPlusHalfNr = body.declareDouble("inKMinusInKPlusHalfNr_" + varIdx++, input.valueAt(k2).subtract(input.valueAt(kPlusHalfN2)));
-					Expression inKMinusInKPlusHalfNi = body.declareDouble("inKMinusInKPlusHalfNi_" + varIdx++, input.valueAt(k2.add(1)).subtract(input.valueAt(kPlusHalfN2.add(1))));
+					Expression inKMinusInKPlusHalfNr = body.declareDouble("inKMinusInKPlusHalfNr_" + varIdx++, input.reference(k2).subtract(input.reference(kPlusHalfN2)));
+					Expression inKMinusInKPlusHalfNi = body.declareDouble("inKMinusInKPlusHalfNi_" + varIdx++, input.reference(k2.add(1)).subtract(input.reference(kPlusHalfN2.add(1))));
 
-					Expression oddExp[] = complexProduct(inKMinusInKPlusHalfNr, inKMinusInKPlusHalfNi, omegaR, omegaI);
-					body.assign(odd.valueAt(k2), oddExp[0]);
-					body.assign(odd.valueAt(k2.add(1)), oddExp[1]);
+					Expression[] oddExp = complexProduct(inKMinusInKPlusHalfNr, inKMinusInKPlusHalfNi, omegaR, omegaI);
+					body.assign(odd.reference(k2), oddExp[0]);
+					body.assign(odd.reference(k2.add(1)), oddExp[1]);
 
 					evenOdd.add(body);
 				}
@@ -442,25 +632,25 @@ public class FourierTransform extends CollectionProducerComputationBase<PackedCo
 					Expression doubleK = body.declareInteger("doubleK_" + varIdx++, k.multiply(2));
 
 					Scope first = new Scope<>(); {
-						first.assign(output.valueAt(doubleK.multiply(2)),
-										evenFft.valueAt(k2).divide(len));
-						first.assign(output.valueAt(doubleK.multiply(2).add(1)),
-										evenFft.valueAt(k2.add(1)).divide(len));
-						first.assign(output.valueAt(doubleK.add(1).multiply(2)),
-										oddFft.valueAt(k2).divide(len));
-						first.assign(output.valueAt(doubleK.add(1).multiply(2).add(1)),
-										oddFft.valueAt(k2.add(1)).divide(len));
+						first.assign(output.reference(doubleK.multiply(2)),
+										evenFft.reference(k2).divide(len));
+						first.assign(output.reference(doubleK.multiply(2).add(1)),
+										evenFft.reference(k2.add(1)).divide(len));
+						first.assign(output.reference(doubleK.add(1).multiply(2)),
+										oddFft.reference(k2).divide(len));
+						first.assign(output.reference(doubleK.add(1).multiply(2).add(1)),
+										oddFft.reference(k2.add(1)).divide(len));
 					}
 
 					Scope alt = new Scope<>(); {
-						alt.assign(output.valueAt(doubleK.multiply(2)),
-								evenFft.valueAt(k2));
-						alt.assign(output.valueAt(doubleK.multiply(2).add(1)),
-								evenFft.valueAt(k2.add(1)));
-						alt.assign(output.valueAt(doubleK.add(1).multiply(2)),
-								oddFft.valueAt(k2));
-						alt.assign(output.valueAt(doubleK.add(1).multiply(2).add(1)),
-								oddFft.valueAt(k2.add(1)));
+						alt.assign(output.reference(doubleK.multiply(2)),
+								evenFft.reference(k2));
+						alt.assign(output.reference(doubleK.multiply(2).add(1)),
+								evenFft.reference(k2.add(1)));
+						alt.assign(output.reference(doubleK.add(1).multiply(2)),
+								oddFft.reference(k2));
+						alt.assign(output.reference(doubleK.add(1).multiply(2).add(1)),
+								oddFft.reference(k2.add(1)));
 					}
 
 					body.addCase(inverseTransform.ref().greaterThan(e(0))
@@ -477,7 +667,7 @@ public class FourierTransform extends CollectionProducerComputationBase<PackedCo
 				InstanceReference i = Variable.integer("i" + varIdx++).ref();
 				Repeated inOutLoop = new Repeated<>(i.getReferent(), (i.lessThan(len.multiply(2))));
 				Scope<?> inOut = new Scope<>(); {
-					inOut.assign(output.valueAt(i), input.valueAt(i));
+					inOut.assign(output.reference(i), input.reference(i));
 					inOutLoop.add(inOut);
 				}
 

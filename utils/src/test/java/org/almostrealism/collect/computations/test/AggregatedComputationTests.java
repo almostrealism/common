@@ -27,16 +27,17 @@ import java.util.Arrays;
 import java.util.stream.IntStream;
 
 public class AggregatedComputationTests implements TestFeatures {
+
 	boolean enableOptimization = false;
 
-	@Test
+	@Test(timeout = 120000)
 	public void mediumSum() {
 		int r = 1024;
 		int c = 1024;
 
-		PackedCollection<?> a = new PackedCollection<>(r, c);
+		PackedCollection a = new PackedCollection(r, c);
 
-		PackedCollection<?> out = cp(a).sum(1).evaluate();
+		PackedCollection out = cp(a).sum(1).evaluate();
 
 		for (int i = 0; i < r; i++) {
 			assertEquals(
@@ -45,7 +46,7 @@ public class AggregatedComputationTests implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 120000)
 	public void largeSum() {
 		if (testDepth < 1) return;
 
@@ -53,25 +54,25 @@ public class AggregatedComputationTests implements TestFeatures {
 		int h = 8192;
 		int d = 1024;
 
-		PackedCollection<?> a = new PackedCollection<>(shape(h, d))
+		PackedCollection a = new PackedCollection(shape(h, d))
 				.randFill();
-		PackedCollection<?> b = new PackedCollection<>(shape(w, d))
+		PackedCollection b = new PackedCollection(shape(w, d))
 				.randFill();
 
-		CollectionProducer<PackedCollection<?>> sum =
+		CollectionProducer sum =
 				multiply(cp(a).repeat(w).each(),
 							cp(b).traverse(1).repeat(h).each())
 						.traverse(2)
 						.sum();
 		log(Signature.of(sum));
 
-		PackedCollection<?> out = enableOptimization ?
+		PackedCollection out = enableOptimization ?
 				Process.optimized(sum).get().evaluate() : sum.evaluate();
 		log("NaN Count = " + out.count(Double::isNaN));
 
-		double data[] = out.toArray();
+		double[] data = out.toArray();
 
-		int nanIndices[] = IntStream.range(0, data.length)
+		int[] nanIndices = IntStream.range(0, data.length)
 						.filter(i -> Double.isNaN(data[i]))
 								.toArray();
 		log(Arrays.toString(nanIndices));

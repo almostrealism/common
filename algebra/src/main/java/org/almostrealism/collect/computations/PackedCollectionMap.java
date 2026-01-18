@@ -19,51 +19,49 @@ package org.almostrealism.collect.computations;
 import io.almostrealism.code.ComputableBase;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.ScopeLifecycle;
+import io.almostrealism.collect.CollectionExpression;
+import io.almostrealism.collect.CollectionVariable;
 import io.almostrealism.collect.DefaultCollectionExpression;
+import io.almostrealism.collect.Shape;
+import io.almostrealism.collect.TraversableExpression;
+import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.compute.Process;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.kernel.KernelStructureContext;
-import io.almostrealism.relation.Evaluable;
-import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
-import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.scope.Scope;
 import org.almostrealism.algebra.AlgebraFeatures;
 import org.almostrealism.algebra.MatrixFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerComputation;
-import io.almostrealism.collect.CollectionVariable;
 import org.almostrealism.collect.PackedCollection;
-import io.almostrealism.collect.Shape;
-import io.almostrealism.collect.TraversableExpression;
-import io.almostrealism.collect.TraversalPolicy;
 
 import java.util.List;
-import java.util.Objects;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
 
 @Deprecated
-public class PackedCollectionMap<T extends PackedCollection<?>>
-		extends CollectionProducerComputationBase<PackedCollection<?>, T>
+public class PackedCollectionMap
+		extends CollectionProducerComputationBase
 		implements TraversableExpression<Double> {
 	public static boolean enableAtomicKernel = false;
 	public static boolean enableChainDelta = false;
 
-	private Function<CollectionProducerComputation<?>, CollectionProducer<?>> mapper;
+	private final Function<CollectionProducerComputation, CollectionProducer> mapper;
 	private TraversableExpression<Double> mapped;
-	private TraversalPolicy inputShape;
+	private final TraversalPolicy inputShape;
 
 	private boolean ignoreTraversalAxis;
 
-	public PackedCollectionMap(Producer<?> collection, Function<CollectionProducerComputation<?>, CollectionProducer<?>> mapper) {
+	public PackedCollectionMap(Producer<?> collection, Function<CollectionProducerComputation, CollectionProducer> mapper) {
 		this(shape(collection), collection, mapper);
 	}
 
-	public PackedCollectionMap(TraversalPolicy shape, Producer<?> collection, Function<CollectionProducerComputation<?>, CollectionProducer<?>> mapper) {
-		super(null, shape, (Supplier) collection);
+	public PackedCollectionMap(TraversalPolicy shape, Producer<?> collection, Function<CollectionProducerComputation, CollectionProducer> mapper) {
+		super("map", shape, (Producer<PackedCollection>) collection);
 		this.inputShape = shape(collection);
 		this.mapper = mapper;
 
@@ -86,8 +84,8 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 	}
 
 	@Override
-	public Scope<T> getScope(KernelStructureContext context) {
-		Scope<T> scope = super.getScope(context);
+	public Scope<PackedCollection> getScope(KernelStructureContext context) {
+		Scope<PackedCollection> scope = super.getScope(context);
 
 		ArrayVariable<Double> output = (ArrayVariable<Double>) getOutputVariable();
 
@@ -119,7 +117,7 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 		super.prepareScope(manager, context);
 
 		ArrayVariable arg = getArgumentForInput(getInputs().get(1));
-		if (arg instanceof CollectionVariable == false) {
+		if (!(arg instanceof CollectionVariable)) {
 			throw new IllegalArgumentException("Map input must be a collection");
 		}
 
@@ -136,7 +134,7 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 		CollectionExpression expression = createCollectionExpression(input, sliceShape, traversalShape);
 		CollectionProducerComputationBase computation = new ItemComputation(sliceShape, args -> expression);
 
-		CollectionProducer<?> mapped = mapper.apply(computation);
+		CollectionProducer mapped = mapper.apply(computation);
 
 		if (mapped.getShape().getTotalSize() != getShape().getSize()) {
 			throw new IllegalArgumentException("Mapping returned " + mapped.getShape() +
@@ -145,7 +143,7 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 
 		if (mapped instanceof PackedCollectionMap) {
 			warn("Embedded PackedCollectionMap");
-			((PackedCollectionMap<?>) mapped).setIgnoreTraversalAxis(true);
+			((PackedCollectionMap) mapped).setIgnoreTraversalAxis(true);
 		}
 
 		if (mapped instanceof TraversableExpression) {
@@ -172,11 +170,11 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 	}
 
 	@Override
-	public CollectionProducer<T> delta(Producer<?> target) {
+	public CollectionProducer delta(Producer<?> target) {
 		if (!enableChainDelta || !(AlgebraFeatures.deepMatch(getInputs().get(1), target))) {
 			return TraversableDeltaComputation.create("delta", getShape(), shape(target),
 					args -> CollectionExpression.create(getShape(), idx -> args[1].getValueAt(idx)), target,
-					(Supplier) this).addDependentLifecycle(this);
+					this).addDependentLifecycle(this);
 		}
 
 		TraversalPolicy outShape = getShape();
@@ -192,18 +190,18 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 
 		Producer<?> stub = func(inShape, args -> null);
 
-		TraversableDeltaComputation<T> deltaOut = TraversableDeltaComputation.create("delta", shape(outSize), shape(inSize),
+		TraversableDeltaComputation deltaOut = TraversableDeltaComputation.create("delta", shape(outSize), shape(inSize),
 				args -> CollectionExpression.create(getShape(), idx -> args[1].getValueAt(idx)),
-				stub, (Supplier) new PackedCollectionMap<>(getShape(), stub, mapper));
-		Producer deltaIn = ((CollectionProducer<PackedCollection<?>>) getInputs().get(1))
+				stub, new PackedCollectionMap(getShape(), stub, mapper));
+		Producer deltaIn = ((CollectionProducer) getInputs().get(1))
 							.delta(target).reshape(shape(inSize, targetSize));
 		if (deltaIn instanceof ScopeLifecycle) deltaOut.addDependentLifecycle((ScopeLifecycle) deltaIn);
 		return MatrixFeatures.getInstance().mproduct(deltaOut, deltaIn);
 	}
 
 	@Override
-	public PackedCollectionMap<T> generate(List<Process<?, ?>> children) {
-		return new PackedCollectionMap<>(getShape(), (Producer) children.get(1), mapper);
+	public PackedCollectionMap generate(List<Process<?, ?>> children) {
+		return new PackedCollectionMap(getShape(), (Producer<PackedCollection>) children.get(1), mapper);
 	}
 
 	@Override
@@ -237,10 +235,10 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 		return ((Shape) collection).getShape();
 	}
 
-	private static class ItemComputation<T extends PackedCollection<?>> extends DefaultTraversableExpressionComputation<T> {
+	private static class ItemComputation extends DefaultTraversableExpressionComputation {
 		public ItemComputation(TraversalPolicy shape,
 							   Function<TraversableExpression[], CollectionExpression> expression,
-							   Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
+							   Producer<PackedCollection>... args) {
 			super("mapItem", shape, expression, args);
 		}
 

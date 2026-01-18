@@ -19,30 +19,29 @@ package org.almostrealism.hardware.test;
 import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.profile.OperationProfile;
 import io.almostrealism.relation.Producer;
-import org.almostrealism.algebra.Scalar;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
 
 public class AltComputeContextsTest implements TestFeatures {
-	// TODO  @Test
+	// TODO  @Test(timeout = 10000)
 	public void clAndNative() {
 		dc(() -> {
-			Scalar result = new Scalar();
+			PackedCollection result = new PackedCollection(1);
 
-			Producer<Scalar> sum = add(c(1.0), c(2.0));
-			Producer<Scalar> product = multiply(c(3.0), c(2.0));
+			Producer<PackedCollection> sum = add(c(1.0), c(2.0));
+			Producer<PackedCollection> product = multiply(c(3.0), c(2.0));
 
-			cc(() -> a(2, p(result), sum).get().run(), ComputeRequirement.CL);
-			System.out.println("Result = " + result.getValue());
+			cc(() -> a(1, p(result), sum).get().run(), ComputeRequirement.CL);
+			log("Result = " + result.getValue());
 
-			cc(() -> a(2, p(result), product).get().run(), ComputeRequirement.C);
-			System.out.println("Result = " + result.getValue());
+			cc(() -> a(1, p(result), product).get().run(), ComputeRequirement.C);
+			log("Result = " + result.getValue());
 		});
 	}
 
-	@Test
+	@Test(timeout = 10000)
 	public void matmul() {
 		boolean enableOptimization = true;
 		boolean validate = true;
@@ -50,9 +49,9 @@ public class AltComputeContextsTest implements TestFeatures {
 		int width = 64;
 //		int width = 2048;
 
-		PackedCollection<?> matrix = new PackedCollection<>(dim, width);
-		PackedCollection<?> vector = new PackedCollection<>(width);
-		PackedCollection<?> result = new PackedCollection<>(dim);
+		PackedCollection matrix = new PackedCollection(dim, width);
+		PackedCollection vector = new PackedCollection(width);
+		PackedCollection result = new PackedCollection(dim);
 
 		matrix.fill(pos -> Math.random());
 		vector.fill(pos -> Math.random());

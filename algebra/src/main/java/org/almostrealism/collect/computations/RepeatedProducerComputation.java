@@ -16,16 +16,16 @@
 
 package org.almostrealism.collect.computations;
 
+import io.almostrealism.collect.TraversableExpression;
+import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.compute.Process;
+import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.DefaultIndex;
 import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.kernel.KernelStructureContext;
-import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.profile.OperationMetadata;
-import io.almostrealism.collect.TraversableExpression;
-import io.almostrealism.collect.TraversalPolicy;
-import io.almostrealism.expression.Expression;
-import io.almostrealism.relation.Evaluable;
-import io.almostrealism.compute.Process;
+import io.almostrealism.relation.Producer;
+import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Repeated;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.Variable;
@@ -94,17 +94,15 @@ import java.util.function.Supplier;
  * This class is designed to be thread-safe for concurrent execution on GPU kernels, but individual
  * instances should not be modified after construction.
  * 
- * @param <T> The type of {@link PackedCollection} this computation operates on
- * 
  * @see CollectionProducerComputationBase
  * @see ConstantRepeatedProducerComputation
- * @see TraversableRepeatedProducerComputation  
+ * @see TraversableRepeatedProducerComputation
  * @see BiFunction
  * @see TraversableExpression
- * 
+ *
  * @author Michael Murray
  */
-public class RepeatedProducerComputation<T extends PackedCollection<?>> extends CollectionProducerComputationBase<T, T> {
+public class RepeatedProducerComputation extends CollectionProducerComputationBase {
 
 	/** Function that defines how to initialize values at the start of computation. */
 	protected BiFunction<TraversableExpression[], Expression, Expression> initial;
@@ -116,7 +114,7 @@ public class RepeatedProducerComputation<T extends PackedCollection<?>> extends 
 	protected BiFunction<TraversableExpression[], Expression, Expression> expression;
 	
 	/** The number of elements processed by each kernel thread for memory optimization. */
-	private int memLength;
+	private final int memLength;
 
 	/**
 	 * Creates a repeated computation with default memory length of 1.
@@ -136,14 +134,14 @@ public class RepeatedProducerComputation<T extends PackedCollection<?>> extends 
 	 *                   arguments and current index, returns computed expression
 	 * @param args Variable number of input {@link Supplier}s providing evaluable collections
 	 * 
-	 * @see #RepeatedProducerComputation(String, TraversalPolicy, int, BiFunction, BiFunction, BiFunction, Supplier[])
+	 * @see #RepeatedProducerComputation(String, TraversalPolicy, int, BiFunction, BiFunction, BiFunction, Producer[])
 	 */
 	@SafeVarargs
 	public RepeatedProducerComputation(String name, TraversalPolicy shape,
 									   BiFunction<TraversableExpression[], Expression, Expression> initial,
 									   BiFunction<TraversableExpression[], Expression, Expression> condition,
 									   BiFunction<TraversableExpression[], Expression, Expression> expression,
-									   Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
+									   Producer<PackedCollection>... args) {
 		this(name, shape, 1, initial, condition, expression, args);
 	}
 
@@ -172,8 +170,8 @@ public class RepeatedProducerComputation<T extends PackedCollection<?>> extends 
 									   BiFunction<TraversableExpression[], Expression, Expression> initial,
 									   BiFunction<TraversableExpression[], Expression, Expression> condition,
 									   BiFunction<TraversableExpression[], Expression, Expression> expression,
-									   Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
-		super(name, shape, (Supplier[]) args);
+									   Producer<PackedCollection>... args) {
+		super(name, shape, args);
 		this.initial = initial;
 		this.condition = condition;
 		this.expression = expression;
@@ -269,8 +267,8 @@ public class RepeatedProducerComputation<T extends PackedCollection<?>> extends 
 	 * @return A {@link Scope} containing the complete repeated computation logic
 	 */
 	@Override
-	public Scope<T> getScope(KernelStructureContext context) {
-		Repeated<T> scope = new Repeated<>(getFunctionName(), getMetadata());
+	public Scope<PackedCollection> getScope(KernelStructureContext context) {
+		Repeated<PackedCollection> scope = new Repeated<>(getFunctionName(), getMetadata());
 		scope.setInterval(e(getMemLength()));
 
 		String i = getNameProvider().getVariablePrefix() + "_i";
@@ -294,7 +292,7 @@ public class RepeatedProducerComputation<T extends PackedCollection<?>> extends 
 				(getFunctionName() + "_body",
 				"Repeated (Body)");
 
-		Scope<T> body = new Scope<>(getFunctionName() + "_body", bodyMetadata);
+		Scope<PackedCollection> body = new Scope<>(getFunctionName() + "_body", bodyMetadata);
 		for (int j = 0; j < getMemLength(); j++) {
 			Expression<?> out = getDestination(new KernelIndex(context), ref, e(j));
 			Expression<?> val = getExpression(index, ref.add(j));
@@ -369,10 +367,10 @@ public class RepeatedProducerComputation<T extends PackedCollection<?>> extends 
 	 *         but updated inputs
 	 */
 	@Override
-	public RepeatedProducerComputation<T> generate(List<Process<?, ?>> children) {
-		return new RepeatedProducerComputation<>(
+	public RepeatedProducerComputation generate(List<Process<?, ?>> children) {
+		return new RepeatedProducerComputation(
 				null, getShape(), getMemLength(),
 				initial, condition, expression,
-				children.stream().skip(1).toArray(Supplier[]::new));
+				children.stream().skip(1).toArray(Producer[]::new));
 	}
 }

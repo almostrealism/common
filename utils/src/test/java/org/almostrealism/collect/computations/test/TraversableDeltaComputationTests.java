@@ -17,18 +17,17 @@
 package org.almostrealism.collect.computations.test;
 
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.compute.ParallelProcess;
+import io.almostrealism.compute.Process;
 import io.almostrealism.profile.OperationProfileNode;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Factor;
-import io.almostrealism.compute.ParallelProcess;
-import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.util.GradientTestFeatures;
 import org.almostrealism.util.TestFeatures;
-import org.junit.Assert;
 import org.junit.Test;
 
 import java.io.IOException;
@@ -39,14 +38,15 @@ import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
 public class TraversableDeltaComputationTests implements GradientTestFeatures, TestFeatures {
-	@Test
+
+	@Test(timeout = 60000)
 	public void polynomial0() {
 		// x + 1
-		CollectionProducer<PackedCollection<?>> c = x().add(1);
+		CollectionProducer c = x().add(1);
 
 		// dy = f'(x)
-		Evaluable<PackedCollection<?>> dy = c.delta(x()).get();
-		PackedCollection<?> out = dy.evaluate(pack(1, 2, 3, 4, 5).traverseEach());
+		Evaluable<PackedCollection> dy = c.delta(x()).get();
+		PackedCollection out = dy.evaluate(pack(1, 2, 3, 4, 5).traverseEach());
 		out.print();
 
 		for (int i = 0; i < 5; i++) {
@@ -54,14 +54,14 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 		}
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void polynomial1() {
 		// x^2 + 3x + 1
-		CollectionProducer<PackedCollection<?>> c = x().sq().add(x().mul(3)).add(1);
+		CollectionProducer c = x().sq().add(x().mul(3)).add(1);
 
 		// y = f(x)
-		Evaluable<PackedCollection<?>> y = c.get();
-		PackedCollection<?> out = y.evaluate(pack(1, 2, 3, 4, 5).traverseEach());
+		Evaluable<PackedCollection> y = c.get();
+		PackedCollection out = y.evaluate(pack(1, 2, 3, 4, 5).traverseEach());
 		out.print();
 
 		for (int i = 0; i < 5; i++) {
@@ -70,7 +70,7 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 
 		// dy = f'(x)
 		//    = 2x + 3
-		Evaluable<PackedCollection<?>> dy = c.delta(x()).get();
+		Evaluable<PackedCollection> dy = c.delta(x()).get();
 		out = dy.evaluate(pack(1, 2, 3, 4, 5).traverseEach());
 		out.print();
 
@@ -79,30 +79,30 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 		}
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void polynomial2() {
 		int dim = 3;
 		int count = 2;
 
-		PackedCollection<?> v = pack(IntStream.range(0, count * dim).boxed()
+		PackedCollection v = pack(IntStream.range(0, count * dim).boxed()
 				.mapToDouble(Double::valueOf).toArray())
 				.reshape(count, dim).traverse();
-		PackedCollection<?> w = pack(4, -3, 2);
-		CollectionProducer<PackedCollection<?>> x = x(-1, dim);
+		PackedCollection w = pack(4, -3, 2);
+		CollectionProducer x = x(-1, dim);
 
 		// w * x
-		CollectionProducer<PackedCollection<?>> c = x.mul(p(w));
+		CollectionProducer c = x.mul(p(w));
 
 		// y = f(x)
-		Evaluable<PackedCollection<?>> y = c.get();
-		PackedCollection<?> out = y.evaluate(v);
+		Evaluable<PackedCollection> y = c.get();
+		PackedCollection out = y.evaluate(v);
 		System.out.println(Arrays.toString(out.toArray(0, count * dim)));
 
 		// dy = f'(x)
 		//    = w
-		Evaluable<PackedCollection<?>> dy = c.delta(x).get();
-		PackedCollection<?> dout = dy.evaluate(v);
-		double d[] = dout.toArray(0, count * dim * dim);
+		Evaluable<PackedCollection> dy = c.delta(x).get();
+		PackedCollection dout = dy.evaluate(v);
+		double[] d = dout.toArray(0, count * dim * dim);
 		System.out.println(Arrays.toString(d));
 
 		for (int i = 0; i < count; i++) {
@@ -118,33 +118,33 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 		}
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void polynomial3() {
 		int dim = 3;
 		int count = 2;
 
-		PackedCollection<?> v = pack(IntStream.range(0, count * dim).boxed()
+		PackedCollection v = pack(IntStream.range(0, count * dim).boxed()
 				.mapToDouble(Double::valueOf).toArray())
 				.reshape(count, dim).traverse();
-		PackedCollection<?> w = pack(4, -3, 2);
-		CollectionProducer<PackedCollection<?>> x = x(-1, dim);
+		PackedCollection w = pack(4, -3, 2);
+		CollectionProducer x = x(-1, dim);
 
 		// w * x + 1
-		CollectionProducer<PackedCollection<?>> c = x.mul(p(w)).add(c(1).repeat(3).consolidate());
+		CollectionProducer c = x.mul(p(w)).add(c(1).repeat(3).consolidate());
 
 		// y = f(x)
-		Evaluable<PackedCollection<?>> y = c.get();
-		PackedCollection<?> out = y.evaluate(v);
-		double l[] = out.toArray(0, count * dim);
+		Evaluable<PackedCollection> y = c.get();
+		PackedCollection out = y.evaluate(v);
+		double[] l = out.toArray(0, count * dim);
 		System.out.println(Arrays.toString(l));
 		assertEquals(1.0, l[0]);
 		assertEquals(-2.0, l[1]);
 
 		// dy = f'(x)
 		//    = w
-		Evaluable<PackedCollection<?>> dy = c.delta(x).get();
-		PackedCollection<?> dout = dy.evaluate(v);
-		double d[] = dout.toArray(0, count * dim * dim);
+		Evaluable<PackedCollection> dy = c.delta(x).get();
+		PackedCollection dout = dy.evaluate(v);
+		double[] d = dout.toArray(0, count * dim * dim);
 		System.out.println(Arrays.toString(d));
 
 		for (int i = 0; i < count; i++) {
@@ -160,29 +160,29 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 		}
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void polynomial4() {
 		int dim = 3;
 
-		PackedCollection<?> v = pack(IntStream.range(0, 4 * dim).boxed()
+		PackedCollection v = pack(IntStream.range(0, 4 * dim).boxed()
 										.mapToDouble(Double::valueOf).toArray())
 										.reshape(4, dim).traverse();
-		PackedCollection<?> w = pack(4, -3, 2);
-		CollectionProducer<PackedCollection<?>> x = x(-1, dim);
+		PackedCollection w = pack(4, -3, 2);
+		CollectionProducer x = x(-1, dim);
 
 		// x^2 + w * x + 1
-		CollectionProducer<PackedCollection<?>> c = x.sq().add(x.mul(p(w))).add(c(1).repeat(3).consolidate());
+		CollectionProducer c = x.sq().add(x.mul(p(w))).add(c(1).repeat(3).consolidate());
 
 		// y = f(x)
-		Evaluable<PackedCollection<?>> y = c.get();
-		PackedCollection<?> out = y.evaluate(v);
+		Evaluable<PackedCollection> y = c.get();
+		PackedCollection out = y.evaluate(v);
 		out.print();
 
 
 		// dy = f'(x)
 		//    = 2x + w
-		Evaluable<PackedCollection<?>> dy = c.delta(x).get();
-		PackedCollection<?> dout = dy.evaluate(v);
+		Evaluable<PackedCollection> dy = c.delta(x).get();
+		PackedCollection dout = dy.evaluate(v);
 		dout.print();
 
 		for (int i = 0; i < 4; i++) {
@@ -198,28 +198,28 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 		}
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void polynomial5() {
 		int dim = 3;
 
-		PackedCollection<?> v = pack(IntStream.range(0, 4 * dim).boxed()
+		PackedCollection v = pack(IntStream.range(0, 4 * dim).boxed()
 				.mapToDouble(Double::valueOf).toArray())
 				.reshape(4, dim).traverse();
-		PackedCollection<?> w = pack(4, -3, 2);
-		CollectionProducer<PackedCollection<?>> x = x(-1, dim);
+		PackedCollection w = pack(4, -3, 2);
+		CollectionProducer x = x(-1, dim);
 
 		// x^2 + w * -x + 1
-		CollectionProducer<PackedCollection<?>> c = x.sq().add(x.minus().mul(p(w))).add(c(1).repeat(3).consolidate());
+		CollectionProducer c = x.sq().add(x.minus().mul(p(w))).add(c(1).repeat(3).consolidate());
 
 		// y = f(x)
-		Evaluable<PackedCollection<?>> y = c.get();
-		PackedCollection<?> out = y.evaluate(v);
+		Evaluable<PackedCollection> y = c.get();
+		PackedCollection out = y.evaluate(v);
 		System.out.println(Arrays.toString(out.toArray(0, 4 * dim)));
 
 		// dy = f'(x)
 		//    = 2x - w
-		Evaluable<PackedCollection<?>> dy = c.delta(x).get();
-		PackedCollection<?> dout = dy.evaluate(v);
+		Evaluable<PackedCollection> dy = c.delta(x).get();
+		PackedCollection dout = dy.evaluate(v);
 		dout.print();
 
 		for (int i = 0; i < 4; i++) {
@@ -235,29 +235,29 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 		}
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void polynomial6() {
 		int dim = 3;
 
-		PackedCollection<?> v = pack(IntStream.range(0, dim).boxed()
+		PackedCollection v = pack(IntStream.range(0, dim).boxed()
 				.mapToDouble(Double::valueOf).toArray())
 				.reshape(dim).traverse();
-		PackedCollection<?> w = pack(4, -3, 2);
-		CollectionProducer<PackedCollection<?>> x = cp(v);
+		PackedCollection w = pack(4, -3, 2);
+		CollectionProducer x = cp(v);
 
 		// x^2 + w * -x + 1
-		CollectionProducer<PackedCollection<?>> c = x.sq().add(x.minus().mul(p(w))).add(c(1).repeat(3).consolidate());
+		CollectionProducer c = x.sq().add(x.minus().mul(p(w))).add(c(1).repeat(3).consolidate());
 		System.out.println(c.describe());
 
 		// y = f(x)
-		Evaluable<PackedCollection<?>> y = c.get();
-		PackedCollection<?> out = y.evaluate();
+		Evaluable<PackedCollection> y = c.get();
+		PackedCollection out = y.evaluate();
 		out.print();
 
 		// dy = f'(x)
 		//    = 2x - w
-		Evaluable<PackedCollection<?>> dy = c.delta(x).get();
-		PackedCollection<?> dout = dy.evaluate();
+		Evaluable<PackedCollection> dy = c.delta(x).get();
+		PackedCollection dout = dy.evaluate();
 		dout.print();
 
 		for (int j = 0; j < dim; j++) {
@@ -271,23 +271,23 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 		}
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void powerFixed() {
 		int dim = 3;
 
-		PackedCollection<?> v = pack(IntStream.range(0, dim).boxed()
+		PackedCollection v = pack(IntStream.range(0, dim).boxed()
 				.mapToDouble(d -> 1 + d / 2.0).toArray())
 				.reshape(dim);
-		PackedCollection<?> w = pack(4, 1, 2);
-		CollectionProducer<PackedCollection<?>> x = cp(v);
+		PackedCollection w = pack(4, 1, 2);
+		CollectionProducer x = cp(v);
 
 		// x^3 + w^x + 1
-		CollectionProducer<PackedCollection<?>> c = x.pow(3).add(cp(w).pow(x)).add(c(1).repeat(3).consolidate());
+		CollectionProducer c = x.pow(3).add(cp(w).pow(x)).add(c(1).repeat(3).consolidate());
 
 		// dy = f'(x)
 		//    = 3x^2 + w^x * log(w)
-		Evaluable<PackedCollection<?>> dy = c.delta(x).get();
-		PackedCollection<?> dout = dy.evaluate();
+		Evaluable<PackedCollection> dy = c.delta(x).get();
+		PackedCollection dout = dy.evaluate();
 		dout.print();
 
 		for (int i = 0; i < dim; i++) {
@@ -303,18 +303,18 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 		}
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void power1() {
 		int dim = 3;
 
-		IntFunction<PackedCollection<?>> inputGenerator = count ->
+		IntFunction<PackedCollection> inputGenerator = count ->
 				pack(IntStream.range(0, count * dim).boxed()
 						.mapToDouble(d -> 1 + d / 2.0).toArray())
 						.reshape(count, dim).traverse();
 
-		Factor<PackedCollection<?>> f = x -> {
+		Factor<PackedCollection> f = x -> {
 			// x^3 + w^x + 1
-			CollectionProducer<PackedCollection<?>> c = c(x).pow(3);
+			CollectionProducer c = c(x).pow(3);
 
 			// dy = f'(x)
 			//    = 3x^2
@@ -338,20 +338,20 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 		}, true, false);
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void power2() {
 		int dim = 3;
 
-		IntFunction<PackedCollection<?>> inputGenerator = count ->
+		IntFunction<PackedCollection> inputGenerator = count ->
 				pack(IntStream.range(0, count * dim).boxed()
 						.mapToDouble(d -> 1 + d / 2.0).toArray())
 						.reshape(count, dim).traverse();
 
-		PackedCollection<?> w = pack(4, 1, 2);
+		PackedCollection w = pack(4, 1, 2);
 
-		Factor<PackedCollection<?>> f = x -> {
+		Factor<PackedCollection> f = x -> {
 			// x^3 + w^x + 1
-			CollectionProducer<PackedCollection<?>> c =
+			CollectionProducer c =
 					c(x).pow(3).add(cp(w).pow(x)).add(c(1).repeat(3).consolidate());
 			return c;
 		};
@@ -370,7 +370,7 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 
 		f = x -> {
 			// x^3 + w^x + 1
-			CollectionProducer<PackedCollection<?>> c =
+			CollectionProducer c =
 					c(x).pow(3).add(cp(w).pow(x)).add(c(1).repeat(3).consolidate());
 
 			// dy = f'(x)
@@ -397,12 +397,12 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 		});
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void sumPow1() {
-		PackedCollection<?> o = new PackedCollection<>(2).fill(1.5, 2.5);
+		PackedCollection o = new PackedCollection(2).fill(1.5, 2.5);
 
 		kernelTest(() -> {
-					CollectionProducer<?> input = cp(o).reshape(-1, 1, 2);
+					CollectionProducer input = cp(o).reshape(-1, 1, 2);
 					CollectionProducer out = input.sum().pow(2.0).repeat(2)
 							.reshape(-1, 2);
 					return out.delta(input);
@@ -421,12 +421,12 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 				});
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void productSum1() {
-		PackedCollection<?> o = new PackedCollection<>(2).fill(1.5, 2.5);
+		PackedCollection o = new PackedCollection(2).fill(1.5, 2.5);
 
 		kernelTest(() -> {
-					CollectionProducer<?> input = cp(o).reshape(-1, 1, 2);
+					CollectionProducer input = cp(o).reshape(-1, 1, 2);
 					CollectionProducer out = input
 							.multiply(input.sum().repeat(2))
 							.reshape(-1, 2);
@@ -446,12 +446,12 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 				});
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void productSumPow1() {
-		PackedCollection<?> o = new PackedCollection<>(2).fill(1.5, 2.5);
+		PackedCollection o = new PackedCollection(2).fill(1.5, 2.5);
 
 		kernelTest(() -> {
-					CollectionProducer<?> input = cp(o).reshape(-1, 1, 2);
+					CollectionProducer input = cp(o).reshape(-1, 1, 2);
 					CollectionProducer out = input
 							.multiply(input.sum().pow(2.0).repeat(2))
 							.reshape(-1, 2);
@@ -475,10 +475,10 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 		int c = 2;
 		int groups = 1;
 
-		PackedCollection<?> o = new PackedCollection<>(c).fill(x, y);
+		PackedCollection o = new PackedCollection(c).fill(x, y);
 
 		return kernelTest(name, () -> {
-					CollectionProducer<?> input = cp(o).reshape(-1, groups, c / groups);
+					CollectionProducer input = cp(o).reshape(-1, groups, c / groups);
 					CollectionProducer out = input.variance().repeat(c)
 							.reshape(-1, c);
 					return out.delta(input);
@@ -508,22 +508,22 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 				}, false, false, true);
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void variance1() throws IOException {
 		variance("variance1", 1.0, 1.1).save("results/variance1.xml");
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void variance2() throws IOException {
 		variance("variance2", 1.5, 2.5).save("results/variance2.xml");
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void divide1() {
-		PackedCollection<?> o = new PackedCollection<>(2).fill(1.5, 2.5);
+		PackedCollection o = new PackedCollection(2).fill(1.5, 2.5);
 
 		kernelTest(() -> {
-					CollectionProducer<?> input = cp(o).reshape(-1, 1, 2);
+					CollectionProducer input = cp(o).reshape(-1, 1, 2);
 					CollectionProducer out = input
 							.divide(input.mean().repeat(2))
 							.reshape(-1, 2);
@@ -546,12 +546,12 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 				});
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void divide2() {
-		PackedCollection<?> o = new PackedCollection<>(2).fill(1.5, 2.5);
+		PackedCollection o = new PackedCollection(2).fill(1.5, 2.5);
 
 		kernelTest(() -> {
-					CollectionProducer<?> input = cp(o).reshape(-1, 1, 2);
+					CollectionProducer input = cp(o).reshape(-1, 1, 2);
 					CollectionProducer out = input
 							.divide(input.sq().mean().repeat(2))
 							.reshape(-1, 2);
@@ -574,12 +574,12 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 				});
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void divide3() {
-		PackedCollection<?> o = new PackedCollection<>(2).fill(1.5, 2.5);
+		PackedCollection o = new PackedCollection(2).fill(1.5, 2.5);
 
 		kernelTest(() -> {
-					CollectionProducer<?> input = cp(o).reshape(-1, 1, 2);
+					CollectionProducer input = cp(o).reshape(-1, 1, 2);
 					CollectionProducer out = input.subtractMean()
 							.divide(input.sq().mean().repeat(2))
 							.reshape(-1, 2);
@@ -602,9 +602,9 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 				});
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void divide4() {
-		PackedCollection<?> o = new PackedCollection<>(2).fill(1.0, 1.01);
+		PackedCollection o = new PackedCollection(2).fill(1.0, 1.01);
 		double eps = 1e-5;
 
 		kernelTest(() -> {
@@ -634,9 +634,9 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 				});
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void divide5() {
-		PackedCollection<?> o = new PackedCollection<>(2).fill(1.0, 1.01);
+		PackedCollection o = new PackedCollection(2).fill(1.0, 1.01);
 		double eps = 1e-5;
 
 		kernelTest(() -> {
@@ -667,12 +667,12 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 				}, false, false, true);
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void divide6() {
-		PackedCollection<?> o = new PackedCollection<>(2).fill(1.5, 2.5);
+		PackedCollection o = new PackedCollection(2).fill(1.5, 2.5);
 
 		kernelTest(() -> {
-					CollectionProducer<?> input = cp(o).reshape(-1, 1, 2);
+					CollectionProducer input = cp(o).reshape(-1, 1, 2);
 					CollectionProducer out = input.subtractMean()
 							.divide(input.variance())
 							.reshape(-1, 2);
@@ -694,18 +694,18 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 				}, false, false, true);
 	}
 
-	protected void recursiveDivisionTest(Factor<PackedCollection<?>> supply,
-										 BiConsumer<PackedCollection<?>, PackedCollection<?>> validate) {
+	protected void recursiveDivisionTest(Factor<PackedCollection> supply,
+										 BiConsumer<PackedCollection, PackedCollection> validate) {
 		recursiveDivisionTest(supply, validate, false);
 	}
 
-	protected void recursiveDivisionTest(Factor<PackedCollection<?>> supply,
-										 BiConsumer<PackedCollection<?>, PackedCollection<?>> validate,
+	protected void recursiveDivisionTest(Factor<PackedCollection> supply,
+										 BiConsumer<PackedCollection, PackedCollection> validate,
 										 boolean optimizeOnly) {
 		double x = 1.0;
 		double y = 1.02 * Math.pow(2, 5);
 
-		PackedCollection<?> o = new PackedCollection<>(2);
+		PackedCollection o = new PackedCollection(2);
 
 		for (int i = 0; i < 6; i++) {
 			y = y / 2.0;
@@ -719,7 +719,7 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 		}
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void divide7() {
 		if (testDepth < 1) return;
 
@@ -741,11 +741,11 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 				});
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void divide8() {
 		if (testDepth < 1) return;
 
-		PackedCollection<?> b = new PackedCollection<>(2);
+		PackedCollection b = new PackedCollection(2);
 
 		recursiveDivisionTest(in -> {
 					CollectionProducer input = c(in).reshape(-1, 1, 2);
@@ -766,10 +766,10 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 				});
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void divide9() {
-//		PackedCollection<?> o = new PackedCollection<>(2).fill(1.0, 1.01);
-		PackedCollection<?> o = new PackedCollection<>(2).fill(1.0, 10);
+//		PackedCollection o = new PackedCollection(2).fill(1.0, 1.01);
+		PackedCollection o = new PackedCollection(2).fill(1.0, 10);
 		double eps = 1e-5;
 
 		kernelTest(() -> {
@@ -785,7 +785,7 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 				});
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void divide10() {
 		if (testDepth < 2) return;
 
@@ -812,13 +812,13 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 				});
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void divide11() {
 		if (testDepth < 1) return;
 
 		double eps = 1e-5;
 
-		PackedCollection<?> b = new PackedCollection<>(2);
+		PackedCollection b = new PackedCollection(2);
 
 		recursiveDivisionTest(in -> {
 					CollectionProducer input = c(in).reshape(-1, 1, 2);
@@ -842,14 +842,14 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 				}, true);
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void divideProduct1() {
 		if (testDepth < 1) return;
 
 		int c = 2;
 
-		PackedCollection<?> o = new PackedCollection<>(c).fill(() -> Math.random() / 10.0);
-		PackedCollection<?> g = new PackedCollection<>(c).fill(() -> Math.random() / 4.0);
+		PackedCollection o = new PackedCollection(c).fill(() -> Math.random() / 10.0);
+		PackedCollection g = new PackedCollection(c).fill(() -> Math.random() / 4.0);
 		double eps = 1e-5;
 
 		kernelTest(() -> {
@@ -868,16 +868,16 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 					double varG = variance(cp(o)).evaluate().toDouble();
 					double stdG = Math.sqrt(varG + eps);
 
-					PackedCollection<?> normalized =
+					PackedCollection normalized =
 							cp(o).subtract(c(muG))
 									.divide(c(stdG))
 										.evaluate();
 
 					double gradientMean = g.doubleStream().sum() / c;
-					PackedCollection<?> gradientByInput = cp(g).multiply(cp(normalized)).evaluate();
+					PackedCollection gradientByInput = cp(g).multiply(cp(normalized)).evaluate();
 
 					double gradientByInputMean = gradientByInput.doubleStream().sum() / c;
-					PackedCollection<?> dLdXGroup = dlDxGroup(
+					PackedCollection dLdXGroup = dlDxGroup(
 							g, gradientMean, normalized, gradientByInputMean);
 
 					for (int i = 0; i < c; i++) {
@@ -890,13 +890,13 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 				});
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void divideProduct2() throws IOException {
 		int c = 2;
 
-		PackedCollection<?> o = new PackedCollection<>(c).fill(() -> Math.random() / 10.0);
-		PackedCollection<?> g = new PackedCollection<>(c).fill(() -> Math.random() / 4.0);
-		PackedCollection<?> b = new PackedCollection<>(c).fill(0.0);
+		PackedCollection o = new PackedCollection(c).fill(() -> Math.random() / 10.0);
+		PackedCollection g = new PackedCollection(c).fill(() -> Math.random() / 4.0);
+		PackedCollection b = new PackedCollection(c).fill(0.0);
 		double eps = 1e-5;
 
 		kernelTest("divideProduct2", () -> {
@@ -916,16 +916,16 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 					double varG = variance(cp(o)).evaluate().toDouble();
 					double stdG = Math.sqrt(varG + eps);
 
-					PackedCollection<?> normalized =
+					PackedCollection normalized =
 							cp(o).subtract(c(muG))
 									.divide(c(stdG))
 									.evaluate();
 
 					double gradientMean = g.doubleStream().sum() / c;
-					PackedCollection<?> gradientByInput = cp(g).multiply(cp(normalized)).evaluate();
+					PackedCollection gradientByInput = cp(g).multiply(cp(normalized)).evaluate();
 
 					double gradientByInputMean = gradientByInput.doubleStream().sum() / c;
-					PackedCollection<?> dLdXGroup = dlDxGroup(
+					PackedCollection dLdXGroup = dlDxGroup(
 							g, gradientMean, normalized, gradientByInputMean);
 
 					for (int i = 0; i < c; i++) {
@@ -936,23 +936,23 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 				}, false, true, true).save("results/divideProduct2.xml");
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void divideProduct3() throws IOException {
 		int c = 2;
-		divideProduct("divideProduct3", c, () -> new PackedCollection<>(c).fill(() -> Math.random() / 10.0));
+		divideProduct("divideProduct3", c, () -> new PackedCollection(c).fill(() -> Math.random() / 10.0));
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void divideProduct4() throws IOException {
 		int c = 2;
-		divideProduct("divideProduct4", c, () -> new PackedCollection<>(c).fill(1.0, 1.01));
+		divideProduct("divideProduct4", c, () -> new PackedCollection(c).fill(1.0, 1.01));
 	}
 
-	public void divideProduct(String name, int c, Supplier<PackedCollection<?>> source) throws IOException {
-		PackedCollection<?> o = source.get();
-		PackedCollection<?> g = new PackedCollection<>(c).fill(() -> 1 + (Math.random() * 4.0));
-		PackedCollection<?> w = new PackedCollection<>(c).fill(1.0);
-		PackedCollection<?> b = new PackedCollection<>(c).fill(0.0);
+	public void divideProduct(String name, int c, Supplier<PackedCollection> source) throws IOException {
+		PackedCollection o = source.get();
+		PackedCollection g = new PackedCollection(c).fill(() -> 1 + (Math.random() * 4.0));
+		PackedCollection w = new PackedCollection(c).fill(1.0);
+		PackedCollection b = new PackedCollection(c).fill(0.0);
 		double eps = 1e-5;
 
 		kernelTest(name, () -> {
@@ -969,7 +969,7 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 					output = output.reshape(c);
 					output.print();
 
-					PackedCollection<?> result = normBackwards(o, g, null, null);
+					PackedCollection result = normBackwards(o, g, null, null);
 
 					for (int i = 0; i < c; i++) {
 						double expected = result.valueAt(i);
@@ -981,20 +981,20 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 				}, false, false, true).save("results/" + name + ".xml");
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void enumerate() {
 		int count = 1;
 		int dim = 2;
 
-		PackedCollection<?> v = pack(2.0, 3.0, 2.0, 3.0)
+		PackedCollection v = pack(2.0, 3.0, 2.0, 3.0)
 				.reshape(count, 1, dim, dim).traverse();
 
 		CollectionProducer cdy = cp(v)
 				.reshape(count, dim * dim)
 				.enumerate(1, 1)
 				.delta(p(v));
-		Evaluable<PackedCollection<?>> dy = cdy.get();
-		PackedCollection<?> dout = dy.evaluate();
+		Evaluable<PackedCollection> dy = cdy.get();
+		PackedCollection dout = dy.evaluate();
 		print(4, 4, dout);
 
 		for (int i = 0; i < 4; i++) {
@@ -1008,25 +1008,25 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 		}
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void embedded1() {
 		int dim = 3;
 		int count = 2;
 
-		PackedCollection<?> v = pack(IntStream.range(0, count * dim).boxed()
+		PackedCollection v = pack(IntStream.range(0, count * dim).boxed()
 				.mapToDouble(Double::valueOf).toArray())
 				.reshape(count, dim).traverse();
-		PackedCollection<?> w1 = pack(4, -3, 2);
-		PackedCollection<?> w2 = pack(2, 1, 5);
-		CollectionProducer<PackedCollection<?>> x = x(-1, dim);
+		PackedCollection w1 = pack(4, -3, 2);
+		PackedCollection w2 = pack(2, 1, 5);
+		CollectionProducer x = x(-1, dim);
 
 		// w2 * w1 * x
-		CollectionProducer<PackedCollection<?>> c = x.mul(p(w1)).mul(p(w2));
+		CollectionProducer c = x.mul(p(w1)).mul(p(w2));
 
 		// dy = f'(x)
 		//    = w2 * w1
-		Evaluable<PackedCollection<?>> dy = c.delta(x).get();
-		PackedCollection<?> dout = dy.evaluate(v);
+		Evaluable<PackedCollection> dy = c.delta(x).get();
+		PackedCollection dout = dy.evaluate(v);
 		log(dout.getShape());
 		dout.print();
 
@@ -1043,22 +1043,22 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 		}
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void embedded2() {
 		int dim = 3;
 
-		PackedCollection<?> w1 = pack(4, -3, 2);
-		CollectionProducer<PackedCollection<?>> x = cp(pack(0.0, 0.0, 0.0));
+		PackedCollection w1 = pack(4, -3, 2);
+		CollectionProducer x = cp(pack(0.0, 0.0, 0.0));
 
 		// w0 * x0 + w1 * x1 + w2 * x2
-		CollectionProducer<PackedCollection<?>> c = x.mul(p(w1)).sum();
+		CollectionProducer c = x.mul(p(w1)).sum();
 
 		// x.mul(p(w1)).delta(x).traverse(1).sum().evaluate().print();
 
 		// dy = f'(x)
 		//    = w0, w1, w2
-		Evaluable<PackedCollection<?>> dy = c.delta(x).get();
-		PackedCollection<?> dout = dy.evaluate();
+		Evaluable<PackedCollection> dy = c.delta(x).get();
+		PackedCollection dout = dy.evaluate();
 		dout.print();
 
 		for (int i = 0; i < dim; i++) {
@@ -1066,16 +1066,16 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 		}
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void repeatMultiply1() {
 		int dim = 2;
 
-		PackedCollection<?> matrix = pack(2.0, 3.0, 4.0, 5.0).reshape(dim, dim);
-		PackedCollection<?> vector = pack(4.0, -3.0).reshape(shape(dim));
+		PackedCollection matrix = pack(2.0, 3.0, 4.0, 5.0).reshape(dim, dim);
+		PackedCollection vector = pack(4.0, -3.0).reshape(shape(dim));
 
 		verboseLog(() -> {
-			CollectionProducer<PackedCollection<?>> c = multiply(traverseEach(cp(matrix)), traverseEach(repeat(dim, cp(vector))));
-			PackedCollection<?> out = c.delta(cp(vector)).evaluate();
+			CollectionProducer c = multiply(traverseEach(cp(matrix)), traverseEach(repeat(dim, cp(vector))));
+			PackedCollection out = c.delta(cp(vector)).evaluate();
 			System.out.println(out.getShape().toStringDetail());
 			out.print();
 
@@ -1090,15 +1090,15 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 		});
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void repeatMultiply2() {
 		int dim = 2;
 
-		PackedCollection<?> matrix = pack(2.0, 3.0, 4.0, 5.0).reshape(dim, dim);
-		PackedCollection<?> vector = pack(4.0, -3.0).reshape(shape(dim));
+		PackedCollection matrix = pack(2.0, 3.0, 4.0, 5.0).reshape(dim, dim);
+		PackedCollection vector = pack(4.0, -3.0).reshape(shape(dim));
 
-		CollectionProducer<PackedCollection<?>> c = multiply(traverseEach(cp(matrix)), traverseEach(repeat(dim, x(dim))));
-		PackedCollection<?> out = c.delta(x(dim)).evaluate(vector);
+		CollectionProducer c = multiply(traverseEach(cp(matrix)), traverseEach(repeat(dim, x(dim))));
+		PackedCollection out = c.delta(x(dim)).evaluate(vector);
 		System.out.println(out.getShape().toStringDetail());
 		out.print();
 
@@ -1112,15 +1112,15 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 		assertEquals(5.0, out.toDouble(7));
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void repeatMultiply3() {
 		int dim = 2;
 
-		PackedCollection<?> matrix = pack(2.0, 3.0, 4.0, 5.0).reshape(dim, dim);
-		PackedCollection<?> vector = pack(4.0, -3.0).reshape(shape(1, dim));
+		PackedCollection matrix = pack(2.0, 3.0, 4.0, 5.0).reshape(dim, dim);
+		PackedCollection vector = pack(4.0, -3.0).reshape(shape(1, dim));
 
-		CollectionProducer<PackedCollection<?>> c = multiply(traverseEach(cp(matrix)), traverseEach(repeat(dim, x(dim))));
-		PackedCollection<?> out = c.delta(cp(matrix)).evaluate(vector.traverse());
+		CollectionProducer c = multiply(traverseEach(cp(matrix)), traverseEach(repeat(dim, x(dim))));
+		PackedCollection out = c.delta(cp(matrix)).evaluate(vector.traverse());
 		System.out.println(out.getShape().toStringDetail());
 		out.print();
 
@@ -1135,17 +1135,17 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 		}
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void multiply() {
 		int dim = 4;
 
-		PackedCollection<?> v = new PackedCollection<>(shape(dim)).randFill();
-		PackedCollection<?> f = new PackedCollection<>(shape(dim)).randFill();
+		PackedCollection v = new PackedCollection(shape(dim)).randFill();
+		PackedCollection f = new PackedCollection(shape(dim)).randFill();
 
 		CollectionProducer cdy = cp(v).multiply(p(f))
 				.delta(p(v));
-		Evaluable<PackedCollection<?>> dy = cdy.get();
-		PackedCollection<?> dout = dy.evaluate().reshape(dim, dim);
+		Evaluable<PackedCollection> dy = cdy.get();
+		PackedCollection dout = dy.evaluate().reshape(dim, dim);
 		dout.traverse().print();
 
 		for (int i = 0; i < dim; i++) {
@@ -1159,18 +1159,18 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 		}
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void multiplyAdd1() {
 		int dim = 4;
 
-		PackedCollection<?> v = new PackedCollection<>(shape(dim)).randFill();
-		PackedCollection<?> f = new PackedCollection<>(shape(dim)).randFill();
-		PackedCollection<?> g = new PackedCollection<>(shape(dim)).randFill();
+		PackedCollection v = new PackedCollection(shape(dim)).randFill();
+		PackedCollection f = new PackedCollection(shape(dim)).randFill();
+		PackedCollection g = new PackedCollection(shape(dim)).randFill();
 
 		CollectionProducer cdy = cp(v).multiply(cp(f).add(cp(g)))
 				.delta(p(f));
-		Evaluable<PackedCollection<?>> dy = cdy.get();
-		PackedCollection<?> dout = dy.evaluate().reshape(dim, dim);
+		Evaluable<PackedCollection> dy = cdy.get();
+		PackedCollection dout = dy.evaluate().reshape(dim, dim);
 		dout.traverse().print();
 
 		for (int i = 0; i < dim; i++) {
@@ -1184,19 +1184,19 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 		}
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void multiplyAdd2() {
 		int dim = 4;
 
-		PackedCollection<?> v = new PackedCollection<>(shape(dim)).randFill();
-		PackedCollection<?> f = new PackedCollection<>(shape(dim)).randFill();
-		PackedCollection<?> g = new PackedCollection<>(shape(dim)).randFill();
+		PackedCollection v = new PackedCollection(shape(dim)).randFill();
+		PackedCollection f = new PackedCollection(shape(dim)).randFill();
+		PackedCollection g = new PackedCollection(shape(dim)).randFill();
 
 		// y = f * (f + g) = f^2 + f * g
 		CollectionProducer cdy = cp(f).multiply(cp(f).add(cp(g)))
 				.delta(p(f));
-		Evaluable<PackedCollection<?>> dy = cdy.get();
-		PackedCollection<?> dout = dy.evaluate().reshape(dim, dim);
+		Evaluable<PackedCollection> dy = cdy.get();
+		PackedCollection dout = dy.evaluate().reshape(dim, dim);
 		dout.traverse().print();
 
 		for (int i = 0; i < dim; i++) {
@@ -1210,18 +1210,18 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 		}
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void multiplySum() {
 		int dim = 4;
 
-		PackedCollection<?> v = new PackedCollection<>(shape(dim)).randFill();
-		PackedCollection<?> f = new PackedCollection<>(shape(dim)).randFill();
+		PackedCollection v = new PackedCollection(shape(dim)).randFill();
+		PackedCollection f = new PackedCollection(shape(dim)).randFill();
 
 		CollectionProducer cdy = cp(v).multiply(p(f))
 				.delta(p(v))
 				.sum(1);
-		Evaluable<PackedCollection<?>> dy = cdy.get();
-		PackedCollection<?> dout = dy.evaluate();
+		Evaluable<PackedCollection> dy = cdy.get();
+		PackedCollection dout = dy.evaluate();
 		System.out.println(dout.getShape().toStringDetail());
 		dout.print();
 
@@ -1230,20 +1230,20 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 		}
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void multiplyEnumerate() {
 		int dim = 2;
 
-		PackedCollection<?> v = pack(2.0, 3.0, 2.0, 3.0)
+		PackedCollection v = pack(2.0, 3.0, 2.0, 3.0)
 				.reshape(dim, dim);
-		PackedCollection<?> f = pack(4.0, -3.0, 2.0, 1.5)
+		PackedCollection f = pack(4.0, -3.0, 2.0, 1.5)
 				.reshape(shape(dim, dim));
 
 		CollectionProducer cdy = cp(v).multiply(p(f))
 				.enumerate(1, 1)
 				.delta(p(v));
-		Evaluable<PackedCollection<?>> dy = cdy.get();
-		PackedCollection<?> dout = dy.evaluate();
+		Evaluable<PackedCollection> dy = cdy.get();
+		PackedCollection dout = dy.evaluate();
 		print(4, 4, dout);
 
 		for (int n = 0; n < 4; n++) {
@@ -1259,21 +1259,21 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 		}
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void enumerateIndex() {
 		int dim = 2;
 
-		PackedCollection<?> v = pack(2.0, 3.0, 2.0, 3.0)
+		PackedCollection v = pack(2.0, 3.0, 2.0, 3.0)
 				.reshape(dim, dim);
-		PackedCollection<?> f = pack(4.0, -3.0, 2.0, 1.5)
+		PackedCollection f = pack(4.0, -3.0, 2.0, 1.5)
 				.reshape(shape(dim, dim));
 
 		CollectionProducer cdy = cp(v).multiply(p(f)).enumerate(1, 1);
 		// cdy = ((IndexProjectionProducerComputation) cdy).getIndex();
 		cdy = cdy.delta(p(v));
 
-		Evaluable<PackedCollection<?>> dy = cdy.get();
-		PackedCollection<?> dout = dy.evaluate();
+		Evaluable<PackedCollection> dy = cdy.get();
+		PackedCollection dout = dy.evaluate();
 		print(4, 4, dout);
 
 		for (int n = 0; n < 4; n++) {
@@ -1289,15 +1289,15 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 		}
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void enumerateMultiplySum() {
 		boolean enableSum = true;
 		int count = 1;
 		int dim = 2;
 
-		PackedCollection<?> v = pack(2.0, 3.0, 2.0, 3.0)
+		PackedCollection v = pack(2.0, 3.0, 2.0, 3.0)
 				.reshape(count, 1, dim, dim).traverse();
-		PackedCollection<?> f = pack(4.0, -3.0, 2.0, 1.5)
+		PackedCollection f = pack(4.0, -3.0, 2.0, 1.5)
 				.reshape(shape(dim, dim));
 
 		CollectionProducer cdy = cp(v)
@@ -1308,8 +1308,8 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 				.traverse(1)
 				.multiply(cp(f).reshape(dim * dim).traverse(1).expand(dim * dim));
 		if (enableSum) cdy = cdy.sum(1);
-		Evaluable<PackedCollection<?>> dy = cdy.get();
-		PackedCollection<?> dout = dy.evaluate();
+		Evaluable<PackedCollection> dy = cdy.get();
+		PackedCollection dout = dy.evaluate();
 		print(1, 4, dout);
 
 		if (enableSum) {
@@ -1329,7 +1329,7 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 		}
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void enumerateMap() {
 		boolean enableOptimize = true;
 		boolean enableSum = true;
@@ -1339,9 +1339,9 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 		ParallelProcess.explicitIsolationTargets.add(operationFilter("Enumerate"));
 
 		try {
-			PackedCollection<?> v = pack(2.0, 3.0, 2.0, 3.0)
+			PackedCollection v = pack(2.0, 3.0, 2.0, 3.0)
 					.reshape(count, 1, dim, dim).traverse();
-			PackedCollection<?> f = pack(4.0, -3.0, 2.0, 1.5)
+			PackedCollection f = pack(4.0, -3.0, 2.0, 1.5)
 					.reshape(shape(dim, dim));
 
 			CollectionProducer cdy = cp(v)
@@ -1355,8 +1355,8 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 					.multiply(cp(f).reshape(dim * dim).traverse(1).expand(dim * dim));
 			if (enableSum) cdy = cdy.sum(1);
 			if (enableOptimize) cdy = (CollectionProducer) Process.optimized(cdy);
-			Evaluable<PackedCollection<?>> dy = cdy.get();
-			PackedCollection<?> dout = dy.evaluate();
+			Evaluable<PackedCollection> dy = cdy.get();
+			PackedCollection dout = dy.evaluate();
 			print(1, 4, dout);
 
 			if (enableSum) {
@@ -1379,25 +1379,25 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 		}
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void multiplyTwiceSmall() {
 		multiplyTwice(2, false);
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void multiplyTwiceLarge() {
 		multiplyTwice(5, false);
 	}
 
 	public void multiplyTwice(int dim, boolean optimize) {
-		PackedCollection<?> input = new PackedCollection<>(shape(dim));
-		CollectionProducer<PackedCollection<?>> c = cp(input)
+		PackedCollection input = new PackedCollection(shape(dim));
+		CollectionProducer c = cp(input)
 				.multiply(3)
 				.multiply(2);
 
 		HardwareOperator.verboseLog(() -> {
-			CollectionProducer<PackedCollection<?>> dy = c.delta(cp(input));
-			PackedCollection<?> dout;
+			CollectionProducer dy = c.delta(cp(input));
+			PackedCollection dout;
 
 			if (optimize) {
 				dout = Process.optimized(dy).get().evaluate();
@@ -1419,19 +1419,19 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 		});
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void sumMultiply() {
 		int dim = 2;
 
-		PackedCollection<?> input = new PackedCollection<>(shape(dim, dim));
-		CollectionProducer<PackedCollection<?>> c = cp(input)
+		PackedCollection input = new PackedCollection(shape(dim, dim));
+		CollectionProducer c = cp(input)
 				.sum(1)
 				.multiply(2);
 
 		verboseLog(() -> {
-			CollectionProducer<PackedCollection<?>> dy = c.delta(cp(input));
-			// PackedCollection<?> dout = Process.optimized(dy).get().evaluate();
-			PackedCollection<?> dout = dy.get().evaluate();
+			CollectionProducer dy = c.delta(cp(input));
+			// PackedCollection dout = Process.optimized(dy).get().evaluate();
+			PackedCollection dout = dy.get().evaluate();
 			dout.print();
 
 			dout = dout.reshape(shape(2, 4));
@@ -1447,27 +1447,27 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 		});
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void enumerateMultiply() {
 		int dim = 5;
 		int size = 2;
 
-		PackedCollection<?> input = new PackedCollection<>(shape(dim, dim));
-		CollectionProducer<PackedCollection<?>> c = cp(input)
+		PackedCollection input = new PackedCollection(shape(dim, dim));
+		CollectionProducer c = cp(input)
 				.enumerate(1, size, 1)
 				.multiply(2);
 
-		CollectionProducer<PackedCollection<?>> dy = c.delta(cp(input));
-		PackedCollection<?> dout = Process.optimized(dy).get().evaluate();
+		CollectionProducer dy = c.delta(cp(input));
+		PackedCollection dout = Process.optimized(dy).get().evaluate();
 		assertEquals(80, dout.doubleStream().sum());
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void enumerateSum1() {
 		int count = 2;
 		int dim = 3;
 
-		PackedCollection<?> v = pack(2.0, 3.0, 4.0,
+		PackedCollection v = pack(2.0, 3.0, 4.0,
 											2.0, 3.0, 4.0,
 											2.0, 3.0, 4.0,
 											5.0, 6.0, 7.0,
@@ -1480,8 +1480,8 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 											.enumerate(1, 1)
 											.sum(1)
 											.reshape(3, 3);
-		Evaluable<PackedCollection<?>> dy = cdy.get();
-		PackedCollection<?> dout = dy.evaluate();
+		Evaluable<PackedCollection> dy = cdy.get();
+		PackedCollection dout = dy.evaluate();
 		dout.print();
 
 		assertEquals(7.0, dout.toDouble(0));
@@ -1492,29 +1492,29 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 		assertEquals(11.0, dout.toDouble(5));
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void enumerateSum2() {
 		int dim = 5;
 		int size = 2;
 
-		PackedCollection<?> input = new PackedCollection<>(shape(dim, dim));
-		CollectionProducer<PackedCollection<?>> c = cp(input)
+		PackedCollection input = new PackedCollection(shape(dim, dim));
+		CollectionProducer c = cp(input)
 				.enumerate(1, size, 1)
 				.sum(2);
 
-		CollectionProducer<PackedCollection<?>> dy = c.delta(cp(input));
-		PackedCollection<?> dout = Process.optimized(dy).get().evaluate();
+		CollectionProducer dy = c.delta(cp(input));
+		PackedCollection dout = Process.optimized(dy).get().evaluate();
 		dout.print();
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void max() {
-		PackedCollection<?> in = pack(10, 100, 1000);
-		CollectionProducer<PackedCollection<?>> c = cp(in).max();
+		PackedCollection in = pack(10, 100, 1000);
+		CollectionProducer c = cp(in).max();
 
 		c.get().evaluate().print();
 
-		PackedCollection<?> result = c.delta(cp(in)).evaluate();
+		PackedCollection result = c.delta(cp(in)).evaluate();
 		result.print();
 
 		for (int i = 0; i < 3; i++) {
@@ -1522,16 +1522,16 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 		}
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void map() {
-		PackedCollection<?> g = pack(3, 5);
-		PackedCollection<?> w = pack(10, 100, 1000);
-		CollectionProducer<PackedCollection<?>> c = cp(g).each()
+		PackedCollection g = pack(3, 5);
+		PackedCollection w = pack(10, 100, 1000);
+		CollectionProducer c = cp(g).each()
 				.map(shape(3), v -> v.repeat(3).mul(cp(w)));
 
 		print(2, 3, c.get().evaluate());
 
-		PackedCollection<?> result = new PackedCollection<>(shape(2, 3, 3));
+		PackedCollection result = new PackedCollection(shape(2, 3, 3));
 		c.delta(p(w)).into(result.traverse(1)).evaluate();
 		print(2 * 3, 3, result);
 
@@ -1543,22 +1543,22 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 		}
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void map1d() {
 		int count = 1;
 		int dim = 2;
 
-		PackedCollection<?> v = pack(2.0)
+		PackedCollection v = pack(2.0)
 				.reshape(count, 1).traverse();
-		PackedCollection<?> f = pack(4.0, -3.0)
+		PackedCollection f = pack(4.0, -3.0)
 				.reshape(shape(dim));
 
 		Producer cdy = cp(v)
 				.multiply(c(3))
 				.map(shape(2), x -> x.repeat(2).multiply(cp(f)))
 				.delta(p(v));
-		Evaluable<PackedCollection<?>> dy = cdy.get();
-		PackedCollection<?> dout = dy.evaluate();
+		Evaluable<PackedCollection> dy = cdy.get();
+		PackedCollection dout = dy.evaluate();
 		System.out.println(dout.getShape());
 		System.out.println(dout.toArrayString());
 
@@ -1566,23 +1566,23 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 		assertEquals(-9, dout.toDouble(1));
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void map2d() {
 		int count = 2;
 		int dim = 2;
 
-		PackedCollection<?> v = pack(2.0, 3.0, 4.0, 5.0
+		PackedCollection v = pack(2.0, 3.0, 4.0, 5.0
 									, 7.0, 9.0, 8.0, 6.0
 									)
 				.reshape(count, dim, dim).traverse();
-		PackedCollection<?> f = pack(4.0, -3.0, 2.0, 1.5)
+		PackedCollection f = pack(4.0, -3.0, 2.0, 1.5)
 				.reshape(shape(dim, dim));
 
 		CollectionProducer cdy = cp(v)
 				.map(x -> x.multiply(cp(f)))
 				.delta(p(v));
-		Evaluable<PackedCollection<?>> dy = cdy.get();
-		PackedCollection<?> dout = dy.evaluate();
+		Evaluable<PackedCollection> dy = cdy.get();
+		PackedCollection dout = dy.evaluate();
 		print(4, 4, dout);
 
 //		for (int i = 0; i < 4; i++) {
@@ -1596,7 +1596,7 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 //		}
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void enumerate2d() {
 		int dim = 6;
 		int size = 3;
@@ -1604,10 +1604,10 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 		int pad = size - 1;
 		TraversalPolicy outputShape = shape(dim - pad, dim - pad, filterCount);
 
-		PackedCollection<?> input = integers(1, 1 + dim * dim).evaluate().reshape(dim, dim);
-		PackedCollection<?> filters = new PackedCollection<>(shape(size, size, filterCount)).fill(Math::random);
+		PackedCollection input = integers(1, 1 + dim * dim).evaluate().reshape(dim, dim);
+		PackedCollection filters = new PackedCollection(shape(size, size, filterCount)).fill(Math::random);
 
-		CollectionProducer<PackedCollection<?>> c = cp(input)
+		CollectionProducer c = cp(input)
 				.enumerate(1, size, 1)
 				.enumerate(1, size, 1)
 				.traverse(2)
@@ -1618,54 +1618,56 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 						.repeat(outputShape.length(0)).traverse(2))
 				.traverse();
 
-		PackedCollection<?> result = Process.optimized(c.delta(p(input))).get().evaluate();
+		PackedCollection result = Process.optimized(c.delta(p(input))).get().evaluate();
 		result.print();
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void conv2d() {
 		int size = 3;
 		int filterCount = 8;
 
-		PackedCollection<?> input = integers(1, 101).evaluate().reshape(10, 10);
-		PackedCollection<?> filters = pack(1, 2, 3, 4, 5, 6, 7, 8);
+		PackedCollection input = integers(1, 101).evaluate().reshape(10, 10);
+		PackedCollection filters = pack(1, 2, 3, 4, 5, 6, 7, 8);
 
-		CollectionProducer<PackedCollection<?>> c = cp(input)
+		CollectionProducer c = cp(input)
 						.enumerate(1, size, 1)
 						.enumerate(1, size, 1)
 						.traverse(2)
-						.expand(filterCount, v -> v.repeat(filterCount).each().multiply(p(filters)))
+						.repeat(filterCount)
+						.multiply(p(filters))
 						.traverse()
 						.reduce(v -> v.sum());
 
-		PackedCollection<?> result = c.delta(p(filters)).evaluate();
+		PackedCollection result = c.delta(p(filters)).evaluate();
 		// print(50, 8, result);
 		// TODO  assertions
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void conv2dEnumerateProduct() {
 		int h = 3; // 10;
 		int w = 4; // 10;
 		int size = 3;
 		int filterCount = 2; // 8;
 
-		PackedCollection<?> input = integers(1, (h * w) + 1).evaluate().reshape(h, w);
-		PackedCollection<?> filters = integers(1, filterCount + 1).evaluate();
+		PackedCollection input = integers(1, (h * w) + 1).evaluate().reshape(h, w);
+		PackedCollection filters = integers(1, filterCount + 1).evaluate();
 
-		CollectionProducer<PackedCollection<?>> c = cp(input)
+		CollectionProducer c = cp(input)
 				.enumerate(1, size, 1)
 				.enumerate(1, size, 1)
 				.traverse(2)
-				.expand(filterCount, v -> v.repeat(filterCount).each().multiply(p(filters)))
+				.repeat(filterCount)
+				.multiply(cp(filters))
 				.traverse()
 				.reduce(v -> v.sum());
 
 		int outSize = shape(c).getTotalSize();
-		PackedCollection<?> g = integers(1, outSize + 1).evaluate().reshape(shape(c));
-		Producer<PackedCollection<?>> weightFlat = reshape(shape(filterCount), p(filters));
+		PackedCollection g = integers(1, outSize + 1).evaluate().reshape(shape(c));
+		Producer<PackedCollection> weightFlat = reshape(shape(filterCount), p(filters));
 
-		Producer<PackedCollection<?>> cdy = c.delta(p(filters))
+		Producer<PackedCollection> cdy = c.delta(p(filters))
 				.reshape(outSize, filterCount)
 				.traverse(1)
 				.multiply(c(g).reshape(outSize).traverse(1).expand(filterCount))
@@ -1675,7 +1677,7 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 				.reshape(shape(filterCount))
 				.each();
 
-		PackedCollection<?> sparse = new PackedCollection<>(shape(outSize, filterCount));
+		PackedCollection sparse = new PackedCollection(shape(outSize, filterCount));
 
 		c.delta(p(filters)).into(sparse.traverse()).evaluate();
 		// print(h, filterCount, sparse);

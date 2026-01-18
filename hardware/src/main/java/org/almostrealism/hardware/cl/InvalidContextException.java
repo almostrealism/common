@@ -19,6 +19,15 @@ package org.almostrealism.hardware.cl;
 import org.almostrealism.hardware.HardwareException;
 import org.jocl.CLException;
 
+/**
+ * Exception thrown when OpenCL operations are invoked with an invalid or released context.
+ *
+ * <p>Indicates CL_INVALID_CONTEXT error from OpenCL runtime, typically caused by
+ * using destroyed contexts or mixing contexts incorrectly.</p>
+ *
+ * @see CLExceptionProcessor
+ * @see HardwareException
+ */
 public class InvalidContextException extends HardwareException {
 	public InvalidContextException(String message, CLException cause) {
 		super(message, cause);

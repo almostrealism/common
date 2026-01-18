@@ -16,10 +16,10 @@
 
 package org.almostrealism.graph.model.test;
 
+import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.Tensor;
 import org.almostrealism.collect.PackedCollection;
-import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.model.Block;
 import org.almostrealism.model.CompiledModel;
@@ -36,7 +36,7 @@ import java.util.stream.IntStream;
 
 public class BackPropagationTests implements TestFeatures {
 
-	@Test
+	@Test(timeout = 120000)
 	public void denseBackwards() {
 		if (testProfileIs(TestUtils.PIPELINE)) return;
 		if (skipKnownIssues) return;
@@ -50,7 +50,7 @@ public class BackPropagationTests implements TestFeatures {
 		model.add(dense);
 		model.add(softmax);
 
-		PackedCollection<?> weights = dense.getWeights().get(0);
+		PackedCollection weights = dense.getWeights().get(0);
 
 		for (int i = 0; i < size; i++) {
 			for (int j = 0; j < nodes; j++) {
@@ -59,41 +59,41 @@ public class BackPropagationTests implements TestFeatures {
 			}
 		}
 
-		PackedCollection<?> biases = dense.getWeights().get(1);
+		PackedCollection biases = dense.getWeights().get(1);
 		for (int i = 0; i < nodes; i++) {
 			biases.setMem(i, 0.1 + i * 0.01);
 		}
 
-		PackedCollection<?> input = new PackedCollection<>(size);
+		PackedCollection input = new PackedCollection(size);
 		IntStream.range(0, size).forEach(i -> input.setMem(i, (double) i));
 
 		CompiledModel runner = model.compile();
 
 		verboseLog(() -> {
-			PackedCollection<?> output = runner.forward(input);
+			PackedCollection output = runner.forward(input);
 			System.out.println("Output: " + Arrays.toString(output.toArray(0, output.getMemLength())));
 
 			// double expected[] = new double[]{2.29283592e-12, 1.86271326e-09, 1.51327910e-06, 1.22939676e-03, 9.98769088e-01};
-			double expected[] = new double[]{0.034696079790592194, 0.06780441105365753, 0.13250578939914703, 0.2589479088783264, 0.5060457587242126};
+			double[] expected = new double[]{0.034696079790592194, 0.06780441105365753, 0.13250578939914703, 0.2589479088783264, 0.5060457587242126};
 			for (int i = 0; i < output.getMemLength(); i++) {
 				assertEquals(expected[i], output.valueAt(i));
 			}
 		});
 
-		double result[] = new double[size];
+		double[] result = new double[size];
 
 		dense.getBackward().setReceptor(grad -> () -> {
-			Evaluable<PackedCollection<?>> gr = grad.get();
+			Evaluable<PackedCollection> gr = grad.get();
 
 			return () -> {
-				PackedCollection<?> out = gr.evaluate();
+				PackedCollection out = gr.evaluate();
 				System.out.println(Arrays.toString(out.toArray(0, out.getMemLength())));
 
 				out.getMem(0, result, 0, result.length);
 			};
 		});
 
-		PackedCollection<?> gradient = new PackedCollection<>(shape(nodes));
+		PackedCollection gradient = new PackedCollection(shape(nodes));
 		gradient.setMem(3, 1.0);
 		runner.backward(gradient);
 
@@ -104,7 +104,7 @@ public class BackPropagationTests implements TestFeatures {
 //		double expected[] = new double[] { -0.00012475, -0.0001249,  -0.00012506, -0.00012521, -0.00012536, -0.00012551,
 //				-0.00012566, -0.00012581, -0.00012596, -0.00012611, -0.00012626, -0.00012642 };
 
-		double expected[] = new double[] { -0.0023582035209983587, -0.003028743900358677, -0.0036992833483964205,
+		double[] expected = new double[] { -0.0023582035209983587, -0.003028743900358677, -0.0036992833483964205,
 				-0.004369824193418026, -0.005040363874286413, -0.005710904952138662, -0.006381443701684475,
 				-0.007051984313875437, -0.007722523529082537, -0.008393064141273499, -0.009063605219125748, -0.009734145365655422 };
 		for (int i = 0; i < result.length; i++) {
@@ -112,7 +112,7 @@ public class BackPropagationTests implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 120000)
 	public void pool2dBackwards() {
 		if (skipLongTests || skipKnownIssues) return;
 
@@ -129,18 +129,18 @@ public class BackPropagationTests implements TestFeatures {
 		CellularLayer pool = pool2d(inputShape, size);
 		model.add(pool);
 
-		PackedCollection<?> input = new PackedCollection<>(inputShape);
+		PackedCollection input = new PackedCollection(inputShape);
 		input.fill(pos -> (double) (int) (100 * Math.random()));
 
-		PackedCollection<?> output = model.compile().forward(input);
+		PackedCollection output = model.compile().forward(input);
 
-		PackedCollection<?> result = new PackedCollection(inputShape);
+		PackedCollection result = new PackedCollection(inputShape);
 
 		model.backward().setReceptor(grad -> () -> {
-			Evaluable<PackedCollection<?>> gr = grad.get();
+			Evaluable<PackedCollection> gr = grad.get();
 
 			return () -> {
-				PackedCollection<?> out = gr.evaluate();
+				PackedCollection out = gr.evaluate();
 				System.out.println("Gradient shape vs input shape: " + out.getShape() + " / " + inputShape);
 
 				System.out.println(Arrays.toString(out.toArray(0, out.getMemLength())));
@@ -149,7 +149,7 @@ public class BackPropagationTests implements TestFeatures {
 			};
 		});
 
-		PackedCollection<?> gradient = new PackedCollection<>(outputShape);
+		PackedCollection gradient = new PackedCollection(outputShape);
 		gradient.fill(pos -> Math.random());
 		model.compile().backward(gradient);
 
@@ -166,7 +166,7 @@ public class BackPropagationTests implements TestFeatures {
 		}
 	}
 
-	// @Test
+	// @Test(timeout = 120000)
 	public void convBackwards() {
 		int convSize = 3;
 		int w = 10;
@@ -179,21 +179,21 @@ public class BackPropagationTests implements TestFeatures {
 		model.add(conv);
 
 		Tensor<Double> t = tensor(inputShape);
-		PackedCollection<?> input = t.pack();
+		PackedCollection input = t.pack();
 
 		CompiledModel runner = model.compile();
 		runner.forward(input);
 
 		TraversalPolicy filterShape = conv.getWeights().get(0).getShape();
-		PackedCollection<?> originalFilter = new PackedCollection<>(filterShape);
+		PackedCollection originalFilter = new PackedCollection(filterShape);
 		originalFilter.setMem(0, conv.getWeights().get(0), 0, conv.getWeights().get(0).getMemLength());
 
 		TraversalPolicy gradientShape = model.getOutputShape();
-		PackedCollection<?> gradient = new PackedCollection<>(gradientShape);
+		PackedCollection gradient = new PackedCollection(gradientShape);
 		gradient.fill(pos -> Math.random());
 		runner.backward(gradient);
 
-		PackedCollection<?> adjustedFilter = conv.getWeights().get(0);
+		PackedCollection adjustedFilter = conv.getWeights().get(0);
 
 		for (int f = 0; f < filterShape.length(0); f++) {
 			for (int xf = 0; xf < filterShape.length(1); xf++) {
@@ -218,7 +218,7 @@ public class BackPropagationTests implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 120000)
 	public void compositionBackwards() {
 		if (testProfileIs(TestUtils.PIPELINE)) return;
 
@@ -230,8 +230,8 @@ public class BackPropagationTests implements TestFeatures {
 		block.add(layer("scale x3", in -> multiply(in, c(3))));
 		block.add(compose("multiply", shape(3), alt, this::multiply));
 
-		PackedCollection<?> input = pack(2, 3, 4);
-		PackedCollection<?> gradient = pack(5, 4, 1);
+		PackedCollection input = pack(2, 3, 4);
+		PackedCollection gradient = pack(5, 4, 1);
 
 		CompiledModel model = new Model(shape(3), 1e-1)
 								.add(block)
@@ -244,7 +244,7 @@ public class BackPropagationTests implements TestFeatures {
 		assertEquals(48.0, gradient.toDouble(2));
 	}
 
-	@Test
+	@Test(timeout = 120000)
 	public void splitBackwardsRepeat() {
 		if (testProfileIs(TestUtils.PIPELINE)) return;
 
@@ -258,9 +258,9 @@ public class BackPropagationTests implements TestFeatures {
 		block.add(compose("replace", b, (x, y) ->
 				repeat(3, y).reshape(3, 2)));
 
-		PackedCollection<?> input = pack(2, 3, 4, 5, 6, 7)
+		PackedCollection input = pack(2, 3, 4, 5, 6, 7)
 										.reshape(3, 2);
-		PackedCollection<?> gradient = pack(5, 4, 1.5, 3, 2, -4)
+		PackedCollection gradient = pack(5, 4, 1.5, 3, 2, -4)
 										.reshape(3, 2);
 
 		CompiledModel model = new Model(shape(3, 2))
@@ -268,7 +268,7 @@ public class BackPropagationTests implements TestFeatures {
 				.compile(true, true);
 		model.forward(input).print();
 
-		PackedCollection<?> result = model.backward(gradient);
+		PackedCollection result = model.backward(gradient);
 		result.print();
 
 		for (int i = 0; i < result.getMemLength(); i++) {
@@ -288,7 +288,7 @@ public class BackPropagationTests implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 120000)
 	public void splitBackwardsAdd() {
 		if (testProfileIs(TestUtils.PIPELINE)) return;
 
@@ -301,9 +301,9 @@ public class BackPropagationTests implements TestFeatures {
 
 		block.add(compose("add", b, (x, y) -> add(x, y)));
 
-		PackedCollection<?> input = pack(2, 3, 4, 5, 6, 7)
+		PackedCollection input = pack(2, 3, 4, 5, 6, 7)
 				.reshape(3, 2);
-		PackedCollection<?> gradient = pack(5, 4, 1.5, 3, 2, -4)
+		PackedCollection gradient = pack(5, 4, 1.5, 3, 2, -4)
 				.reshape(3, 2);
 
 		CompiledModel model = new Model(shape(3, 2))
@@ -314,7 +314,7 @@ public class BackPropagationTests implements TestFeatures {
 		log("Running backward pass on gradient: ");
 		gradient.print();
 
-		PackedCollection<?> result = model.backward(gradient);
+		PackedCollection result = model.backward(gradient);
 		log("Result of backward pass: ");
 		result.print();
 
@@ -337,7 +337,7 @@ public class BackPropagationTests implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 120000)
 	public void splitBackwardsChildIndex() {
 		if (testProfileIs(TestUtils.PIPELINE)) return;
 
@@ -350,15 +350,15 @@ public class BackPropagationTests implements TestFeatures {
 
 		block.add(compose("add", b, (x, y) -> add(x, y)));
 
-		PackedCollection<?> input = pack(2, 3, 4, 5, 6, 7)
+		PackedCollection input = pack(2, 3, 4, 5, 6, 7)
 				.reshape(3, 2);
-		PackedCollection<?> gradient = pack(5, -4)
+		PackedCollection gradient = pack(5, -4)
 				.reshape(1, 2);
 
 		CompiledModel model = new Model(shape(3, 2))
 				.add(block)
 				.compile(true, true);
-		PackedCollection<?> out = model.forward(input);
+		PackedCollection out = model.forward(input);
 		out.print();
 
 		for (int i = 0; i < 2; i++) {
@@ -381,7 +381,7 @@ public class BackPropagationTests implements TestFeatures {
 			assertEquals(total, out.toDouble(i));
 		}
 
-		PackedCollection<?> result = model.backward(gradient);
+		PackedCollection result = model.backward(gradient);
 		result.print();
 
 		for (int i = 0; i < result.getMemLength(); i++) {

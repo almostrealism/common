@@ -21,13 +21,67 @@ import java.util.Arrays;
 import java.util.List;
 
 /**
- * @author  Michael Murray
+ * Represents an electron shell in an atom's electronic structure.
+ * <p>
+ * A shell is a collection of {@link SubShell}s that share the same principal quantum number (n).
+ * In atomic physics, shells are typically named K, L, M, N, O, P, Q corresponding to
+ * principal quantum numbers 1, 2, 3, 4, 5, 6, 7 respectively. Each shell can contain
+ * multiple subshells (s, p, d, f) based on the angular momentum quantum number.
+ * </p>
+ *
+ * <h2>Shell Configuration</h2>
+ * <p>
+ * Shells are organized hierarchically:
+ * </p>
+ * <ul>
+ *   <li><b>Shell (n=1, K)</b>: Contains only s subshell (1s), max 2 electrons</li>
+ *   <li><b>Shell (n=2, L)</b>: Contains s and p subshells (2s, 2p), max 8 electrons</li>
+ *   <li><b>Shell (n=3, M)</b>: Contains s, p, d subshells (3s, 3p, 3d), max 18 electrons</li>
+ *   <li><b>Shell (n=4, N)</b>: Contains s, p, d, f subshells (4s, 4p, 4d, 4f), max 32 electrons</li>
+ * </ul>
+ *
+ * <h2>Factory Methods</h2>
+ * <p>
+ * The class provides convenient factory methods for creating shells:
+ * </p>
+ * <pre>{@code
+ * // First shell (K) with 2 electrons in 1s
+ * Shell k = Shell.first(2);
+ *
+ * // Second shell (L) with 2 electrons in 2s and 3 in 2p
+ * Shell l = Shell.second(2, 3);
+ *
+ * // Third shell (M) with 2 in 3s, 6 in 3p, 5 in 3d
+ * Shell m = Shell.third(2, 6, 5);
+ * }</pre>
+ *
+ * <h2>Shell Merging</h2>
+ * <p>
+ * Shells with the same energy level can be merged using the {@link #merge(Shell)} method.
+ * This is useful when building atoms from partial shell configurations.
+ * </p>
+ *
+ * @author Michael Murray
+ * @see SubShell
+ * @see Orbital
+ * @see Atom
+ * @see Electron
  */
 public class Shell {
 	private SubShell s[];
-	
+
 	private int energyLevel;
-	
+
+	/**
+	 * Constructs a shell containing the specified subshells.
+	 * <p>
+	 * All subshells must share the same principal quantum number. The energy level
+	 * of the shell is determined from the first subshell's orbital.
+	 * </p>
+	 *
+	 * @param s the subshells to include in this shell
+	 * @throws IllegalArgumentException if subshells have different principal quantum numbers
+	 */
 	public Shell(SubShell... s) {
 		this.s = s;
 		this.energyLevel = s.length > 0 ? s[0].getOrbital().getPrincipal() : 0;
@@ -36,8 +90,24 @@ public class Shell {
 		}
 	}
 	
+	/**
+	 * Returns the energy level (principal quantum number) of this shell.
+	 *
+	 * @return the principal quantum number (1 for K shell, 2 for L shell, etc.)
+	 */
 	public int getEnergyLevel() { return energyLevel; }
-	
+
+	/**
+	 * Merges this shell with another shell of the same energy level.
+	 * <p>
+	 * This method combines the subshells from both shells into a new shell.
+	 * Both shells must have the same energy level (principal quantum number).
+	 * </p>
+	 *
+	 * @param sh the shell to merge with this shell
+	 * @return a new shell containing all subshells from both shells
+	 * @throws IllegalArgumentException if the shells have different energy levels
+	 */
 	public Shell merge(Shell sh) {
 		if (sh.getEnergyLevel() != this.getEnergyLevel()) {
 			throw new IllegalArgumentException(sh + " is not the same energy level as " + this);
@@ -49,10 +119,23 @@ public class Shell {
 		return new Shell(l.toArray(new SubShell[0]));
 	}
 
+	/**
+	 * Returns an iterable over all subshells in this shell.
+	 *
+	 * @return an iterable of {@link SubShell} objects
+	 */
 	public Iterable<SubShell> subShells() { return Arrays.asList(s); }
 
 	/**
-	 * A new {@link Electrons} instance is returned every time.
+	 * Creates a new {@link Electrons} instance containing all electrons in this shell.
+	 * <p>
+	 * A new instance is created on each invocation. The electrons are configured
+	 * with excitation energy levels based on the specified proton count of the
+	 * parent atom, which affects the binding energies.
+	 * </p>
+	 *
+	 * @param protons the number of protons in the parent atom (affects energy calculations)
+	 * @return a new {@link Electrons} instance containing all electrons in this shell
 	 */
 	public Electrons getElectrons(int protons) {
 		List<Electron> e = new ArrayList<>();
@@ -67,21 +150,56 @@ public class Shell {
 		return new Electrons(e.toArray(new Electron[0]));
 	}
 
+	/**
+	 * Returns a string representation of this shell.
+	 *
+	 * @return a string in the format "Shell[n]" where n is the energy level
+	 */
 	public String toString() { return "Shell[" + getEnergyLevel() + "]"; }
 
+	/**
+	 * Creates the first electron shell (K shell, n=1) with the specified number of s electrons.
+	 *
+	 * @param s the number of electrons in the 1s subshell (0-2)
+	 * @return a new Shell representing the K shell
+	 */
 	public static Shell first(int s) {
 		return s1(s);
 	}
 	
+	/**
+	 * Creates the second electron shell (L shell, n=2) with specified s and p electrons.
+	 *
+	 * @param s the number of electrons in the 2s subshell (0-2)
+	 * @param p the total number of electrons in 2p subshells (0-6)
+	 * @return a new Shell representing the L shell
+	 */
 	public static Shell second(int s, int p) {
 		int pp[] = p(p);
 		return second(s, pp[0], pp[1], pp[2]);
 	}
-	
+
+	/**
+	 * Creates the second electron shell (L shell, n=2) with detailed p orbital specification.
+	 *
+	 * @param s  the number of electrons in the 2s subshell (0-2)
+	 * @param px the number of electrons in the 2px orbital (0-2)
+	 * @param py the number of electrons in the 2py orbital (0-2)
+	 * @param pz the number of electrons in the 2pz orbital (0-2)
+	 * @return a new Shell representing the L shell
+	 */
 	public static Shell second(int s, int px, int py, int pz) {
 		return s2(s).merge(p2(px, py, pz));
 	}
-	
+
+	/**
+	 * Creates the third electron shell (M shell, n=3) with specified s, p, and d electrons.
+	 *
+	 * @param s the number of electrons in the 3s subshell (0-2)
+	 * @param p the total number of electrons in 3p subshells (0-6)
+	 * @param d the total number of electrons in 3d subshells (0-10)
+	 * @return a new Shell representing the M shell
+	 */
 	public static Shell third(int s, int p, int d) {
 		int pp[] = p(p);
 		int dd[] = d(d);

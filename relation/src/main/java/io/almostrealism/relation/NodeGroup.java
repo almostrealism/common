@@ -16,5 +16,21 @@
 
 package io.almostrealism.relation;
 
+/**
+ * A {@link Group} specifically for {@link Node} elements.
+ *
+ * <p>{@link NodeGroup} is a type-safe specialization of {@link Group} that
+ * ensures all elements are {@link Node}s. This is used in tree and graph
+ * structures to maintain type safety for node collections.</p>
+ *
+ * @param <T> the type of nodes in this group (must extend Node)
+ *
+ * @see Group
+ * @see Node
+ * @see Tree
+ * @see NodeList
+ *
+ * @author Michael Murray
+ */
 public interface NodeGroup<T extends Node> extends Group<T> {
 }

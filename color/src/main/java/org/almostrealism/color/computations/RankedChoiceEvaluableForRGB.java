@@ -17,13 +17,16 @@
 package org.almostrealism.color.computations;
 
 import io.almostrealism.relation.Evaluable;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.color.RGB;
 import org.almostrealism.color.RGBFeatures;
 import org.almostrealism.geometry.computations.RankedChoiceEvaluableForMemoryData;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.NullProcessor;
 
-public class RankedChoiceEvaluableForRGB extends RankedChoiceEvaluableForMemoryData<RGB> implements NullProcessor<RGB>, RGBFeatures {
+import java.util.function.IntFunction;
+
+public class RankedChoiceEvaluableForRGB extends RankedChoiceEvaluableForMemoryData<PackedCollection> implements NullProcessor<PackedCollection>, RGBFeatures {
 	public RankedChoiceEvaluableForRGB(double e) {
 		super(e);
 	}
@@ -32,12 +35,12 @@ public class RankedChoiceEvaluableForRGB extends RankedChoiceEvaluableForMemoryD
 		super(e, tolerateNull);
 	}
 
-	public Evaluable<RGB> getAccelerated() {
-		return getAccelerated(3, RGB::new, RGB::bank);
+	public Evaluable<PackedCollection> getAccelerated() {
+		return getAccelerated(3, RGB::new, (IntFunction) RGB::bank);
 	}
 
 	@Override
-	public RGB replaceNull(Object[] args) {
+	public PackedCollection replaceNull(Object[] args) {
 		if (tolerateNull) {
 			return black().get().evaluate();
 		} else {
@@ -46,5 +49,5 @@ public class RankedChoiceEvaluableForRGB extends RankedChoiceEvaluableForMemoryD
 	}
 
 	@Override
-	public MemoryBank<RGB> createDestination(int size) { return RGB.bank(size); }
+	public MemoryBank<PackedCollection> createDestination(int size) { return (MemoryBank) RGB.bank(size); }
 }

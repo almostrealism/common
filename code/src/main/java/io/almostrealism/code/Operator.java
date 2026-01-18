@@ -16,8 +16,8 @@
 
 package io.almostrealism.code;
 
-import io.almostrealism.relation.Evaluable;
 import io.almostrealism.compute.Process;
+import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 
 import java.util.Collection;

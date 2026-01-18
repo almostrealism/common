@@ -18,16 +18,50 @@ package org.almostrealism.color;
 
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Vector;
+import org.almostrealism.collect.PackedCollection;
 
 import java.util.ArrayList;
 import java.util.List;
 
 /**
- * @author  Michael Murray
+ * Maintains the state needed for lighting calculations during rendering.
+ *
+ * <p>A {@code LightingContext} holds references to the current light source being
+ * processed, its direction, and other lights in the scene. It is typically passed
+ * to shaders to provide the information needed for illumination calculations.</p>
+ *
+ * <h2>Usage Pattern</h2>
+ * <p>The context is usually created once per render pass and updated as different
+ * lights are processed:</p>
+ * <pre>{@code
+ * LightingContext ctx = new LightingContext();
+ *
+ * for (Light light : sceneLights) {
+ *     ctx.setLight(light);
+ *     ctx.setLightDirection(computeDirection(light, surfacePoint));
+ *     ctx.setOtherLights(getOtherLights(light, sceneLights));
+ *
+ *     Producer<PackedCollection> contribution = shader.shade(shaderContext);
+ *     // Accumulate contribution...
+ * }
+ * }</pre>
+ *
+ * <h2>Light Direction Convention</h2>
+ * <p>The light direction should be a unit vector pointing <em>toward</em> the light
+ * source from the surface point being shaded. This is the convention expected by
+ * standard shading models like Lambertian diffuse and Phong specular.</p>
+ *
+ * @see Light
+ * @see ShaderContext
+ * @see Shader
+ * @author Michael Murray
  */
 public class LightingContext {
-	private Producer<Vector> lightDirection;
+	/** Direction vector pointing toward the light source. */
+	private Producer<PackedCollection> lightDirection;
+	/** The primary light being processed. */
 	private Light light;
+	/** Other lights in the scene (for multi-light rendering). */
 	private Iterable<Light> otherLights;
 	
 	/**
@@ -35,12 +69,12 @@ public class LightingContext {
 	 * 
 	 * @param l  Vector object to use.
 	 */
-	public void setLightDirection(Producer<Vector> l) { this.lightDirection = l; }
+	public void setLightDirection(Producer<PackedCollection> l) { this.lightDirection = l; }
 	
 	/**
 	 * @return  A {@link Vector} {@link Producer} representing the direction toward the light (this can be expected to be unit length).
 	 */
-	public Producer<Vector> getLightDirection() { return this.lightDirection; }
+	public Producer<PackedCollection> getLightDirection() { return this.lightDirection; }
 	
 	/**
 	 * Sets the Light to the specified Light object.

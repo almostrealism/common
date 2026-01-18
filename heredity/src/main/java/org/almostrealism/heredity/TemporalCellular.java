@@ -18,5 +18,30 @@ package org.almostrealism.heredity;
 
 import org.almostrealism.time.Temporal;
 
+/**
+ * An interface combining {@link Temporal} and {@link Cellular} behaviors.
+ *
+ * <p>A {@code TemporalCellular} entity has all the capabilities of both interfaces:
+ * <ul>
+ *   <li>Time-stepped evolution through {@link Temporal#tick()}</li>
+ *   <li>Graph connectivity through {@link Cellular}'s Node interface</li>
+ *   <li>Setup and lifecycle management through {@link Cellular}'s Setup and Lifecycle interfaces</li>
+ * </ul>
+ *
+ * <p>This is useful for cells in a computation graph that need to evolve over time
+ * while maintaining proper lifecycle management and connectivity to other cells.
+ *
+ * <h2>Usage in Evolution</h2>
+ * <p>In evolutionary computation, temporal cells can represent:
+ * <ul>
+ *   <li>Neural network layers that adapt over time</li>
+ *   <li>Signal processing components with memory</li>
+ *   <li>Stateful computational units in a graph</li>
+ * </ul>
+ *
+ * @see Temporal
+ * @see Cellular
+ * @see CellularTemporalFactor
+ */
 public interface TemporalCellular extends Temporal, Cellular {
 }

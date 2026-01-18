@@ -18,5 +18,14 @@ package org.almostrealism.hardware.metal;
 
 import org.almostrealism.hardware.jni.JNIMemoryAccessor;
 
+/**
+ * {@link JNIMemoryAccessor} implementation for Metal memory operations.
+ *
+ * <p>Currently a marker implementation; Metal memory access uses direct
+ * {@link MTLBuffer} operations rather than JNI methods.</p>
+ *
+ * @see MetalMemory
+ * @see MTLBuffer
+ */
 public class MetalJNIMemoryAccessor implements JNIMemoryAccessor {
 }

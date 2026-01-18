@@ -23,7 +23,6 @@ import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.CollectionProducerBase;
 import io.almostrealism.collect.ComparisonExpression;
 import io.almostrealism.collect.IndexOfPositionExpression;
-import io.almostrealism.collect.RelativeTraversableExpression;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
@@ -33,13 +32,10 @@ import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.Floor;
 import io.almostrealism.expression.Max;
 import io.almostrealism.expression.Min;
-import io.almostrealism.expression.Mod;
 import io.almostrealism.kernel.KernelPreferences;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
-import io.almostrealism.relation.ProducerFeatures;
-import io.almostrealism.relation.ProducerSubstitution;
 import io.almostrealism.relation.Provider;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.ScopeSettings;
@@ -48,12 +44,12 @@ import org.almostrealism.algebra.MatrixFeatures;
 import org.almostrealism.algebra.computations.ScalarMatrixComputation;
 import org.almostrealism.algebra.computations.WeightedSumComputation;
 import org.almostrealism.calculus.DeltaFeatures;
-import org.almostrealism.bool.GreaterThanCollection;
-import org.almostrealism.bool.LessThanCollection;
 import org.almostrealism.collect.computations.AggregatedProducerComputation;
 import org.almostrealism.collect.computations.ArithmeticSequenceComputation;
 import org.almostrealism.collect.computations.AtomicConstantComputation;
+import org.almostrealism.collect.computations.CollectionAddComputation;
 import org.almostrealism.collect.computations.CollectionComparisonComputation;
+import org.almostrealism.collect.computations.CollectionConjunctionComputation;
 import org.almostrealism.collect.computations.CollectionExponentComputation;
 import org.almostrealism.collect.computations.CollectionExponentialComputation;
 import org.almostrealism.collect.computations.CollectionLogarithmComputation;
@@ -64,12 +60,14 @@ import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 import org.almostrealism.collect.computations.CollectionProductComputation;
 import org.almostrealism.collect.computations.CollectionProvider;
 import org.almostrealism.collect.computations.CollectionProviderProducer;
-import org.almostrealism.collect.computations.CollectionAddComputation;
 import org.almostrealism.collect.computations.CollectionSumComputation;
 import org.almostrealism.collect.computations.CollectionZerosComputation;
+import org.almostrealism.collect.computations.DefaultTraversableExpressionComputation;
 import org.almostrealism.collect.computations.DynamicCollectionProducer;
 import org.almostrealism.collect.computations.DynamicIndexProjectionProducerComputation;
 import org.almostrealism.collect.computations.EpsilonConstantComputation;
+import org.almostrealism.collect.computations.GreaterThanCollection;
+import org.almostrealism.collect.computations.LessThanCollection;
 import org.almostrealism.collect.computations.PackedCollectionEnumerate;
 import org.almostrealism.collect.computations.PackedCollectionMap;
 import org.almostrealism.collect.computations.PackedCollectionPad;
@@ -77,10 +75,8 @@ import org.almostrealism.collect.computations.PackedCollectionRepeat;
 import org.almostrealism.collect.computations.PackedCollectionSubset;
 import org.almostrealism.collect.computations.Random;
 import org.almostrealism.collect.computations.ReshapeProducer;
-import org.almostrealism.collect.computations.DefaultTraversableExpressionComputation;
 import org.almostrealism.collect.computations.SingleConstantComputation;
 import org.almostrealism.collect.computations.TraversableRepeatedProducerComputation;
-import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.MemoryDataComputation;
 import org.almostrealism.hardware.computations.Assignment;
 import org.almostrealism.io.Console;
@@ -98,7 +94,192 @@ import java.util.stream.IntStream;
 import java.util.stream.LongStream;
 import java.util.stream.Stream;
 
-public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures {
+/**
+ * Comprehensive factory interface for creating {@link CollectionProducer} computations.
+ *
+ * <p>
+ * {@link CollectionFeatures} is the primary API for building computational graphs in the Almost Realism
+ * framework. It provides over 200 factory methods organized into functional categories, enabling users
+ * to construct complex hardware-accelerated operations through simple method calls.
+ * </p>
+ *
+ * <h2>Design Pattern</h2>
+ * <p>
+ * This interface is designed as a mixin that classes can implement to gain access to all factory methods:
+ * </p>
+ * <pre>{@code
+ * public class MyComputation implements CollectionFeatures {
+ *     public void example() {
+ *         // All factory methods available directly
+ *         CollectionProducer<?> data = c(10.0);
+ *         CollectionProducer<?> result = add(data, c(5.0));
+ *     }
+ * }
+ * }</pre>
+ *
+ * <h2>Method Categories</h2>
+ *
+ * <h3>1. Shape Factory Methods</h3>
+ * <ul>
+ *   <li>{@code shape(int...)} - Create traversal policies</li>
+ *   <li>{@code shape(Producer<?>)} - Extract shape from producers</li>
+ *   <li>{@code traverse(int, Producer)} - Traverse along axis</li>
+ *   <li>{@code reshape(TraversalPolicy, Producer)} - Reshape producers</li>
+ * </ul>
+ *
+ * <h3>2. Producer Creation</h3>
+ * <ul>
+ *   <li>{@code v(Class)} - Create variable producers</li>
+ *   <li>{@code c(double)} - Create constant scalar producers</li>
+ *   <li>{@code c(double...)} - Create constant collection producers</li>
+ *   <li>{@code p(PackedCollection)} - Wrap collections as producers</li>
+ * </ul>
+ *
+ * <h3>3. Arithmetic Operations</h3>
+ * <ul>
+ *   <li>{@code add(Producer, Producer)} - Element-wise addition</li>
+ *   <li>{@code subtract(Producer, Producer)} - Element-wise subtraction</li>
+ *   <li>{@code multiply(Producer, Producer)} - Element-wise multiplication</li>
+ *   <li>{@code divide(Producer, Producer)} - Element-wise division</li>
+ *   <li>{@code pow(Producer, Producer)} - Element-wise exponentiation</li>
+ *   <li>{@code sqrt(Producer)} - Square root</li>
+ *   <li>{@code minus(Producer)} - Negation</li>
+ * </ul>
+ *
+ * <h3>4. Mathematical Functions</h3>
+ * <ul>
+ *   <li>{@code exp(Producer)} - Exponential (e^x)</li>
+ *   <li>{@code log(Producer)} - Natural logarithm</li>
+ *   <li>{@code abs(Producer)} - Absolute value</li>
+ *   <li>{@code sq(Producer)} - Square (x^2)</li>
+ *   <li>{@code sigmoid(Producer)} - Sigmoid activation</li>
+ *   <li>{@code mod(Producer, Producer)} - Modulo operation</li>
+ * </ul>
+ *
+ * <h3>5. Statistical Operations</h3>
+ * <ul>
+ *   <li>{@code sum(Producer)} - Sum all elements</li>
+ *   <li>{@code mean(Producer)} - Mean of all elements</li>
+ *   <li>{@code variance(Producer)} - Variance</li>
+ *   <li>{@code max(Producer)} - Maximum value</li>
+ *   <li>{@code indexOfMax(Producer)} - Index of maximum</li>
+ *   <li>{@code magnitude(Producer)} - L2 norm</li>
+ *   <li>{@code subtractMean(Producer)} - Center data by subtracting mean</li>
+ * </ul>
+ *
+ * <h3>6. Comparison and Logical Operations</h3>
+ * <ul>
+ *   <li>{@code greaterThan(Producer, Producer)} - Element-wise &gt; comparison</li>
+ *   <li>{@code lessThan(Producer, Producer)} - Element-wise &lt; comparison</li>
+ *   <li>{@code greaterThanOrEqual(Producer, Producer)} - Element-wise &gt;= comparison</li>
+ *   <li>{@code lessThanOrEqual(Producer, Producer)} - Element-wise &lt;= comparison</li>
+ *   <li>{@code and(Producer, Producer)} - Logical AND</li>
+ *   <li>{@code conditional selection via greaterThan/lessThan overloads}</li>
+ * </ul>
+ *
+ * <h3>7. Transformation Operations</h3>
+ * <ul>
+ *   <li>{@code repeat(int, Producer)} - Repeat along axis</li>
+ *   <li>{@code enumerate(TraversalPolicy, Producer)} - Extract indexed elements</li>
+ *   <li>{@code subset(TraversalPolicy, Producer, int...)} - Extract subset</li>
+ *   <li>{@code permute(Producer, int...)} - Permute dimensions</li>
+ *   <li>{@code pad(Producer, int...)} - Add zero padding</li>
+ *   <li>{@code map(Producer, Function)} - Map function over elements</li>
+ *   <li>{@code reduce(Producer, Function)} - Reduce operation</li>
+ * </ul>
+ *
+ * <h3>8. Constant Generators</h3>
+ * <ul>
+ *   <li>{@code zeros(TraversalPolicy)} - Create zero-filled collection</li>
+ *   <li>{@code epsilon()} - Machine epsilon constant</li>
+ *   <li>{@code random(TraversalPolicy)} - Uniform random values</li>
+ *   <li>{@code integers(int, int)} - Integer sequence</li>
+ * </ul>
+ *
+ * <h3>9. Advanced Operations</h3>
+ * <ul>
+ *   <li>{@code enumerate()} - Index enumeration for advanced indexing</li>
+ *   <li>{@code traverseEach(Producer)} - Traverse all dimensions</li>
+ *   <li>{@code combineGradient()} - Gradient combination for backpropagation</li>
+ *   <li>{@code aggregated(Supplier)} - Aggregated producer for batching</li>
+ * </ul>
+ *
+ * <h2>Usage Examples</h2>
+ *
+ * <h3>Building a Computation Graph</h3>
+ * <pre>{@code
+ * CollectionProducer<?> x = v(PackedCollection.class);
+ * CollectionProducer<?> weights = c(1.0, 2.0, 3.0);
+ *
+ * // Build graph: y = sigmoid(x * weights + 0.5)
+ * CollectionProducer<?> y = sigmoid(
+ *     add(
+ *         multiply(x, weights),
+ *         c(0.5)
+ *     )
+ * );
+ * }</pre>
+ *
+ * <h3>Statistical Analysis</h3>
+ * <pre>{@code
+ * CollectionProducer<?> data = p(myData);
+ *
+ * // Normalize: (x - mean) / sqrt(variance)
+ * CollectionProducer<?> normalized = divide(
+ *     subtractMean(data),
+ *     sqrt(variance(data))
+ * );
+ * }</pre>
+ *
+ * <h3>Conditional Logic</h3>
+ * <pre>{@code
+ * CollectionProducer<?> x = ...;
+ * CollectionProducer<?> y = ...;
+ *
+ * // ReLU: max(0, x)
+ * CollectionProducer<?> relu = greaterThan(x, c(0.0), x, c(0.0));
+ *
+ * // Clamp: clip values to [min, max]
+ * CollectionProducer<?> clamped = lessThan(x, c(min),
+ *     c(min),
+ *     greaterThan(x, c(max), c(max), x)
+ * );
+ * }</pre>
+ *
+ * <h3>Tensor Transformations</h3>
+ * <pre>{@code
+ * CollectionProducer<?> tensor = p(myTensor); // shape (10, 20, 30)
+ *
+ * tensor.reshape(shape(200, 30))      // Reshape to (200, 30)
+ * tensor.traverse(1)                  // Traverse along axis 1
+ * tensor.subset(shape(5, 10), 0, 5)   // Extract (5, 10) subset
+ * tensor.permute(2, 0, 1)             // Permute to (30, 10, 20)
+ * tensor.pad(1, 2, 3)                 // Add padding
+ * }</pre>
+ *
+ * <h2>Implementation Notes</h2>
+ * <ul>
+ *   <li><b>Lazy Evaluation:</b> All methods return producers that build a computation graph;
+ *       actual computation happens only when {@code get().evaluate()} is called</li>
+ *   <li><b>Hardware Acceleration:</b> Computations are compiled to optimized kernels automatically</li>
+ *   <li><b>Shape Inference:</b> Output shapes are inferred from input shapes where possible</li>
+ *   <li><b>Broadcasting:</b> Binary operations support NumPy-style broadcasting</li>
+ *   <li><b>Type Safety:</b> Generic types help catch shape/type errors at compile time</li>
+ * </ul>
+ *
+ * <h2>Configuration</h2>
+ * <ul>
+ *   <li><b>enableShapelessWarning:</b> Warns when creating shapeless producers (default: false)</li>
+ * </ul>
+ *
+ * @author  Michael Murray
+ * @see CollectionProducer
+ * @see PackedCollection
+ * @see TraversalPolicy
+ * @see MatrixFeatures
+ * @see DeltaFeatures
+ */
+public interface CollectionFeatures extends ExpressionFeatures {
 	boolean enableShapelessWarning = false;
 	boolean enableVariableRepeat = false;
 
@@ -214,19 +395,19 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 *
 	 * <pre>{@code
 	 * // Extract shape from a {@link CollectionProducer} created with c()
-	 * CollectionProducer<PackedCollection<?>> vector = c(1.0, 2.0, 3.0);
+	 * CollectionProducer vector = c(1.0, 2.0, 3.0);
 	 * TraversalPolicy vectorShape = shape(vector);
 	 * // Result: shape with dimensions [3]
 	 * 
 	 * // Extract shape from arithmetic operation results
-	 * CollectionProducer<PackedCollection<?>> a = c(shape(2, 3), 1, 2, 3, 4, 5, 6);
-	 * CollectionProducer<PackedCollection<?>> b = c(shape(2, 3), 2, 3, 4, 5, 6, 7);
-	 * CollectionProducer<PackedCollection<?>> sum = add(a, b);
+	 * CollectionProducer a = c(shape(2, 3), 1, 2, 3, 4, 5, 6);
+	 * CollectionProducer b = c(shape(2, 3), 2, 3, 4, 5, 6, 7);
+	 * CollectionProducer sum = add(a, b);
 	 * TraversalPolicy resultShape = shape(sum);
 	 * // Result: shape with dimensions [2, 3]
 	 * 
 	 * // Extract shape from reshaped {@link CollectionProducer}
-	 * CollectionProducer<PackedCollection<?>> reshaped = vector.reshape(shape(1, 3));
+	 * CollectionProducer reshaped = vector.reshape(shape(1, 3));
 	 * TraversalPolicy reshapedShape = shape(reshaped);
 	 * // Result: shape with dimensions [1, 3]
 	 * }</pre>
@@ -283,19 +464,19 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 *
 	 * <pre>{@code
 	 * // Get size of a {@link CollectionProducer} created with c()
-	 * CollectionProducer<PackedCollection<?>> vector = c(1.0, 2.0, 3.0);
+	 * CollectionProducer vector = c(1.0, 2.0, 3.0);
 	 * int vectorSize = size(vector);
 	 * // Result: 3 (3 elements in the vector)
 	 * 
 	 * // Get size of arithmetic operation results
-	 * CollectionProducer<PackedCollection<?>> a = c(shape(2, 3), 1, 2, 3, 4, 5, 6);
-	 * CollectionProducer<PackedCollection<?>> b = c(shape(2, 3), 2, 3, 4, 5, 6, 7);
-	 * CollectionProducer<PackedCollection<?>> sum = add(a, b);
+	 * CollectionProducer a = c(shape(2, 3), 1, 2, 3, 4, 5, 6);
+	 * CollectionProducer b = c(shape(2, 3), 2, 3, 4, 5, 6, 7);
+	 * CollectionProducer sum = add(a, b);
 	 * int matrixSize = size(sum);
 	 * // Result: 6 (2 * 3 matrix elements)
 	 * 
 	 * // Get size of reshaped producers
-	 * CollectionProducer<PackedCollection<?>> reshaped = vector.reshape(shape(1, 3));
+	 * CollectionProducer reshaped = vector.reshape(shape(1, 3));
 	 * int reshapedSize = size(reshaped);
 	 * // Result: 3 (same total elements, different shape)
 	 * }</pre>
@@ -322,7 +503,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 *
 	 * <pre>{@code
 	 * // Get size of a shape object
-	 * Shape<?> collection = new PackedCollection<>(shape(2, 3, 4));
+	 * Shape<?> collection = new PackedCollection(shape(2, 3, 4));
 	 * int totalElements = size(collection);
 	 * // Result: 24 (2 * 3 * 4 elements)
 	 * }</pre>
@@ -439,15 +620,15 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 *
 	 * <pre>{@code
 	 * // Create a collection from double array
-	 * PackedCollection<?> collection = pack(1.0, 2.0, 3.0, 4.0);
+	 * PackedCollection collection = pack(1.0, 2.0, 3.0, 4.0);
 	 * // Result: PackedCollection with shape [4] containing [1.0, 2.0, 3.0, 4.0]
 	 * 
 	 * // Create a single-element collection
-	 * PackedCollection<?> single = pack(42.0);
+	 * PackedCollection single = pack(42.0);
 	 * // Result: PackedCollection with shape [1] containing [42.0]
 	 * }</pre>
 	 */
-	default PackedCollection<?> pack(double... values) {
+	default PackedCollection pack(double... values) {
 		return PackedCollection.of(values);
 	}
 
@@ -464,15 +645,15 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 *
 	 * <pre>{@code
 	 * // Create a collection from List
-	 * PackedCollection<?> collection = pack(List.of(1.0, 2.0, 3.0, 4.0));
+	 * PackedCollection collection = pack(List.of(1.0, 2.0, 3.0, 4.0));
 	 * // Result: PackedCollection with shape [4] containing [1.0, 2.0, 3.0, 4.0]
 	 *
 	 * // Create a single-element collection
-	 * PackedCollection<?> single = pack(Collections.singletonList(42.0));
+	 * PackedCollection single = pack(Collections.singletonList(42.0));
 	 * // Result: PackedCollection with shape [1] containing [42.0]
 	 * }</pre>
 	 */
-	default PackedCollection<?> pack(List<Double> values) {
+	default PackedCollection pack(List<Double> values) {
 		return pack(values.stream().mapToDouble(d -> d).toArray());
 	}
 
@@ -487,15 +668,15 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 *
 	 * <pre>{@code
 	 * // Create a collection from float array
-	 * PackedCollection<?> collection = pack(1.5f, 2.5f, 3.5f);
+	 * PackedCollection collection = pack(1.5f, 2.5f, 3.5f);
 	 * // Result: PackedCollection with shape [3] containing [1.5, 2.5, 3.5] as doubles
 	 * 
 	 * // Single float value
-	 * PackedCollection<?> single = pack(3.14f);
+	 * PackedCollection single = pack(3.14f);
 	 * // Result: PackedCollection with shape [1] containing [3.14] as double
 	 * }</pre>
 	 */
-	default PackedCollection<?> pack(float... values) {
+	default PackedCollection pack(float... values) {
 		return PackedCollection.of(IntStream.range(0, values.length).mapToDouble(i -> values[i]).toArray());
 	}
 
@@ -506,11 +687,11 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 *
 	 * <pre>{@code
 	 * // Create a 2x3 matrix from values
-	 * PackedCollection<?> matrix = pack(shape(2, 3), 1.0, 2.0, 3.0, 4.0, 5.0, 6.0);
+	 * PackedCollection matrix = pack(shape(2, 3), 1.0, 2.0, 3.0, 4.0, 5.0, 6.0);
 	 * // Result: 2x3 matrix [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]
 	 *
 	 * // Create a 2x2 matrix (shape must match value count)
-	 * PackedCollection<?> square = pack(shape(2, 2), 1.0, 2.0, 3.0, 4.0);
+	 * PackedCollection square = pack(shape(2, 2), 1.0, 2.0, 3.0, 4.0);
 	 * // Result: 2x2 matrix [[1.0, 2.0], [3.0, 4.0]]
 	 * }</pre>
 	 *
@@ -519,7 +700,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * @return a new {@link PackedCollection} with the specified shape and values
 	 * @throws IllegalArgumentException if values.length doesn't match shape's total size
 	 */
-	default PackedCollection<?> pack(TraversalPolicy shape, double... values) {
+	default PackedCollection pack(TraversalPolicy shape, double... values) {
 		if (values.length != shape.getTotalSize()) {
 			throw new IllegalArgumentException("Wrong number of values for shape");
 		}
@@ -534,7 +715,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 *
 	 * <pre>{@code
 	 * // Create a 2x2 matrix from float values
-	 * PackedCollection<?> matrix = pack(shape(2, 2), 1.5f, 2.5f, 3.5f, 4.5f);
+	 * PackedCollection matrix = pack(shape(2, 2), 1.5f, 2.5f, 3.5f, 4.5f);
 	 * // Result: 2x2 matrix of doubles [[1.5, 2.5], [3.5, 4.5]]
 	 * }</pre>
 	 *
@@ -543,7 +724,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * @return a new {@link PackedCollection} with the specified shape and converted values
 	 * @throws IllegalArgumentException if values.length doesn't match shape's total size
 	 */
-	default PackedCollection<?> pack(TraversalPolicy shape, float... values) {
+	default PackedCollection pack(TraversalPolicy shape, float... values) {
 		if (values.length != shape.getTotalSize()) {
 			throw new IllegalArgumentException("Wrong number of values for shape");
 		}
@@ -556,7 +737,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * The collection will have the correct dimensions but all values
 	 * will be initialized to zero.
 	 * 
-	 * <p>Note: This method is equivalent to {@code new PackedCollection<>(shape)}.
+	 * <p>Note: This method is equivalent to {@code new PackedCollection(shape)}.
 	 * 
 	 * @param shape the {@link TraversalPolicy} defining the collection's shape
 	 * @return a new empty {@link PackedCollection} with the specified shape
@@ -564,16 +745,16 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 *
 	 * <pre>{@code
 	 * // Create empty 2D collection
-	 * PackedCollection<?> matrix = empty(shape(3, 4));
+	 * PackedCollection matrix = empty(shape(3, 4));
 	 * // Result: 3x4 PackedCollection filled with zeros
 	 * 
 	 * // Create empty 1D collection
-	 * PackedCollection<?> vector = empty(shape(5));
+	 * PackedCollection vector = empty(shape(5));
 	 * // Result: 1D PackedCollection with 5 zero elements
 	 * }</pre>
 	 */
-	default PackedCollection<?> empty(TraversalPolicy shape) {
-		return new PackedCollection<>(shape);
+	default PackedCollection empty(TraversalPolicy shape) {
+		return new PackedCollection(shape);
 	}
 
 	default <T> Producer<T> p(T value) {
@@ -588,7 +769,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 		}
 	}
 
-	default <T, V> Provider<T> p(Supplier<V> ev, Function<V, T> func) {
+	default <T, V> Provider<PackedCollection> p(Supplier<V> ev, Function<V, T> func) {
 		if (ev instanceof CollectionProvider) {
 			return new CollectionProvider(null) {
 				@Override
@@ -597,7 +778,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 				}
 			};
 		} else {
-			return new Provider<>(null) {
+			return new Provider(null) {
 				@Override
 				public T get() {
 					return func.apply((V) ((Provider) ev).get());
@@ -606,63 +787,38 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 		}
 	}
 
-	@Override
-	default <T> Producer<?> delegate(Producer<T> original, Producer<T> actual) {
-		if (actual == null) return null;
-
-		TraversalPolicy shape = null;
-		boolean fixedCount = Countable.isFixedCount(actual);
-
-		if (actual instanceof Shape && ((Shape) actual).getShape().getSize() == 1) {
-			shape = new TraversalPolicy(1);
-			fixedCount = false;
-		} else if (!(actual instanceof CollectionProducer) && original instanceof Shape) {
-			shape = ((Shape) original).getShape();
-			fixedCount = Countable.isFixedCount(original);
-		}
-
-		if (shape != null) {
-			Evaluable ev = actual.get();
-			actual = new DynamicCollectionProducer(new TraversalPolicy(1),
-					args -> ev.evaluate((Object[]) args), false, fixedCount);
-		}
-
-		return new DelegatedCollectionProducer<>(c(actual), false, false);
-	}
-
 	/**
 	 * Creates a {@link CollectionProducer} from a sequence of double values.
 	 * This is a fundamental method for creating computational producers
 	 * from raw numeric data.
 	 * 
-	 * @param <T> the type of {@link PackedCollection} produced
 	 * @param values the double values to include in the producer
 	 * @return a {@link CollectionProducer} that generates the specified values
 	 * 
 	 *
 	 * <pre>{@code
 	 * // Create a producer for multiple values
-	 * CollectionProducer<PackedCollection<?>> producer = c(1.0, 2.0, 3.0);
+	 * CollectionProducer producer = c(1.0, 2.0, 3.0);
 	 * // Result: Producer that generates a collection [1.0, 2.0, 3.0]
 	 * 
 	 * // Create a single-value producer (becomes a constant)
-	 * CollectionProducer<PackedCollection<?>> constant = c(42.0);
+	 * CollectionProducer constant = c(42.0);
 	 * // Result: Constant producer that generates [42.0]
 	 * 
 	 * // Create from computed values
 	 * double[] computed = {Math.PI, Math.E, Math.sqrt(2)};
-	 * CollectionProducer<PackedCollection<?>> mathConstants = c(computed);
+	 * CollectionProducer mathConstants = c(computed);
 	 * // Result: Producer with [3.14159..., 2.71828..., 1.41421...]
 	 * }</pre>
 	 */
-	default <T extends PackedCollection<?>> CollectionProducer<T> c(double... values) {
+	default CollectionProducer c(double... values) {
 		if (values.length == 1) {
 			return constant(values[0]);
 		}
 
-		PackedCollection<?> c = PackedCollection.factory().apply(values.length);
+		PackedCollection c = PackedCollection.factory().apply(values.length);
 		c.setMem(0, values);
-		return (CollectionProducer<T>) c(c);
+		return c(c);
 	}
 
 	/**
@@ -670,7 +826,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * This method allows you to specify both the data and the desired shape,
 	 * enabling creation of multi-dimensional collections.
 	 * 
-	 * @param <T> the type of {@link PackedCollection} produced
+	 * produced
 	 * @param shape the desired shape for the collection
 	 * @param values the double values to include (must match shape's total size)
 	 * @return a {@link CollectionProducer} with the specified shape and values
@@ -679,24 +835,24 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 *
 	 * <pre>{@code
 	 * // Create a 2x3 matrix producer
-	 * CollectionProducer<PackedCollection<?>> matrix = c(shape(2, 3), 1, 2, 3, 4, 5, 6);
+	 * CollectionProducer matrix = c(shape(2, 3), 1, 2, 3, 4, 5, 6);
 	 * // Result: 2x3 matrix producer with values [[1,2,3], [4,5,6]]
 	 * 
 	 * // Create a single constant with specific shape
-	 * CollectionProducer<PackedCollection<?>> constant = c(shape(1), 42.0);
+	 * CollectionProducer constant = c(shape(1), 42.0);
 	 * // Result: Constant producer with shape [1] containing [42.0]
 	 * }</pre>
 	 */
-	default <T extends PackedCollection<?>> CollectionProducer<T> c(TraversalPolicy shape, double... values) {
+	default CollectionProducer c(TraversalPolicy shape, double... values) {
 		if (values.length != shape.getTotalSize()) {
 			throw new IllegalArgumentException("Wrong number of values for shape");
 		} else if (values.length == 1) {
 			return constant(shape, values[0]);
 		}
 
-		PackedCollection<T> c = new PackedCollection<>(shape);
+		PackedCollection c = new PackedCollection(shape);
 		c.setMem(0, values);
-		return (CollectionProducer<T>) c(c);
+		return c(c);
 	}
 
 	/**
@@ -704,23 +860,23 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * This is useful for creating constant terms in mathematical expressions
 	 * and operations.
 	 * 
-	 * @param <T> the type of {@link PackedCollection} produced
+	 * produced
 	 * @param value the constant value to produce
 	 * @return a {@link CollectionProducer} that always generates the specified constant
 	 * 
 	 *
 	 * <pre>{@code
 	 * // Create a constant producer
-	 * CollectionProducer<PackedCollection<?>> pi = constant(Math.PI);
+	 * CollectionProducer pi = constant(Math.PI);
 	 * // Result: Producer that always generates [3.14159...]
 	 * 
 	 * // Use in mathematical operations
-	 * CollectionProducer<PackedCollection<?>> zero = constant(0.0);
-	 * CollectionProducer<PackedCollection<?>> one = constant(1.0);
+	 * CollectionProducer zero = constant(0.0);
+	 * CollectionProducer one = constant(1.0);
 	 * // These can be used in {@link #add}, {@link #multiply}, etc.
 	 * }</pre>
 	 */
-	default <T extends PackedCollection<?>> CollectionProducer<T> constant(double value) {
+	default CollectionProducer constant(double value) {
 		return constant(shape(1), value);
 	}
 
@@ -733,7 +889,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * and {@link AtomicConstantComputation} for single-element collections to provide
 	 * optimal performance for constant value operations.</p>
 	 * 
-	 * @param <T> the type of {@link PackedCollection} produced
+	 * produced
 	 * @param shape the desired shape for the constant collection
 	 * @param value the constant value for all elements
 	 * @return a {@link CollectionProducer} that generates a constant-filled collection
@@ -743,30 +899,30 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 *
 	 * <pre>{@code
 	 * // Create a 2x3 matrix filled with ones
-	 * CollectionProducer<PackedCollection<?>> ones = constant(shape(2, 3), 1.0);
+	 * CollectionProducer ones = constant(shape(2, 3), 1.0);
 	 * // Result: Producer that generates a 2x3 matrix [[1,1,1], [1,1,1]]
 	 * 
 	 * // Create a 1D vector filled with zeros
-	 * CollectionProducer<PackedCollection<?>> zeros = constant(shape(5), 0.0);
+	 * CollectionProducer zeros = constant(shape(5), 0.0);
 	 * // Result: Producer that generates [0, 0, 0, 0, 0]
 	 * 
 	 * // Create a 3D tensor filled with pi
-	 * CollectionProducer<PackedCollection<?>> piTensor = constant(shape(2, 2, 2), Math.PI);
-	 * // Result: 2x2x2 tensor where all 8 elements equal π
+	 * CollectionProducer piTensor = constant(shape(2, 2, 2), Math.PI);
+	 * // Result: 2x2x2 tensor where all 8 elements equal pi
 	 * }</pre>
 	 */
-	default <T extends PackedCollection<?>> CollectionProducer<T> constant(TraversalPolicy shape, double value) {
+	default CollectionProducer constant(TraversalPolicy shape, double value) {
 		if (shape.getTotalSizeLong() == 1) {
-			return new AtomicConstantComputation<T>(value).reshape(shape);
+			return new AtomicConstantComputation(value).reshape(shape);
 		} else {
-			return new SingleConstantComputation<>(shape, value);
+			return new SingleConstantComputation(shape, value);
 		}
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerBase<T, CollectionProducer<T>> c(TraversalPolicy shape, Evaluable<PackedCollection<?>> ev) {
-		return c(new CollectionProducerBase<>() {
+	default CollectionProducer c(TraversalPolicy shape, Evaluable<PackedCollection> ev) {
+		return c(new CollectionProducerBase<PackedCollection, CollectionProducer>() {
 			@Override
-			public Evaluable get() { return ev; }
+			public Evaluable<PackedCollection> get() { return ev; }
 
 			@Override
 			public TraversalPolicy getShape() {
@@ -774,20 +930,20 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 			}
 
 			@Override
-			public Producer<Object> traverse(int axis) {
-				return (CollectionProducer) CollectionFeatures.this.traverse(axis, (Producer) this);
+			public CollectionProducer traverse(int axis) {
+				return CollectionFeatures.this.traverse(axis, this);
 			}
 
 			@Override
-			public Producer reshape(TraversalPolicy shape) {
-				return CollectionFeatures.this.reshape(shape, this);
+			public CollectionProducer reshape(TraversalPolicy shape) {
+				return (CollectionProducer) CollectionFeatures.this.reshape(shape, this);
 			}
 		});
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducer<T> c(T value) {
+	default CollectionProducer c(PackedCollection value) {
 		if (value.getShape().getTotalSizeLong() == 1) {
-			return new AtomicConstantComputation<>(value.toDouble());
+			return new AtomicConstantComputation(value.toDouble());
 		} else if (value.getShape().getTotalSizeLong() < ScopeSettings.maxConditionSize) {
 			// DefaultTraversableExpressionComputation will inevitably leverage conditional
 			// expressions, which should be avoided if there would be too many branches
@@ -796,13 +952,13 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 			// For fixed values which are too large, it is better to simply use a copy
 			// of the relevant data rather than try and represent all the values it
 			// might take on as an Expression via DefaultTraversableExpressionComputation
-			PackedCollection<?> copy = new PackedCollection<>(value.getShape());
+			PackedCollection copy = new PackedCollection(value.getShape());
 			copy.setMem(0, value);
-			return (CollectionProducer<T>) cp(copy);
+			return cp(copy);
 		}
 	}
 
-	default <V extends PackedCollection<?>> CollectionProducer<V> cp(V value) {
+	default CollectionProducer cp(PackedCollection value) {
 		return c(p(value));
 	}
 
@@ -810,37 +966,36 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * Creates a {@link CollectionProducerComputation} that generates a collection filled with zeros.
 	 * This is one of the most basic building blocks for creating empty collections
 	 * or initializing collections to a known state.
-	 * 
-	 * @param <V> the type of {@link PackedCollection} produced
+	 *
 	 * @param shape the desired shape for the zero-filled collection
 	 * @return a {@link CollectionProducerComputation} that generates zeros
 	 * 
 	 *
 	 * <pre>{@code
 	 * // Create a zero vector
-	 * CollectionProducerComputation<PackedCollection<?>> zeroVector = zeros(shape(5));
+	 * CollectionProducerComputation<PackedCollection> zeroVector = zeros(shape(5));
 	 * // Result: Producer that generates [0.0, 0.0, 0.0, 0.0, 0.0]
 	 * 
 	 * // Create a zero matrix
-	 * CollectionProducerComputation<PackedCollection<?>> zeroMatrix = zeros(shape(2, 3));
+	 * CollectionProducerComputation<PackedCollection> zeroMatrix = zeros(shape(2, 3));
 	 * // Result: Producer that generates 2x3 matrix of all zeros
 	 * 
 	 * // Create a 3D tensor of zeros
-	 * CollectionProducerComputation<PackedCollection<?>> zeroTensor = zeros(shape(2, 2, 2));
+	 * CollectionProducerComputation<PackedCollection> zeroTensor = zeros(shape(2, 2, 2));
 	 * // Result: Producer that generates 2x2x2 tensor of all zeros
 	 * }</pre>
 	 */
-	default <V extends PackedCollection<?>> CollectionProducerComputation<V> zeros(TraversalPolicy shape) {
-		return new CollectionZerosComputation<>(shape);
+	default CollectionProducerComputation zeros(TraversalPolicy shape) {
+		return new CollectionZerosComputation(shape);
 	}
 
-	default <T extends MemoryData> Assignment<T> a(String shortDescription, Producer<T> result, Producer<T> value) {
-		Assignment<T> a = a(result, value);
+	default Assignment<PackedCollection> a(String shortDescription, Producer<PackedCollection> result, Producer<PackedCollection> value) {
+		Assignment<PackedCollection> a = a(result, value);
 		a.getMetadata().setShortDescription(shortDescription);
 		return a;
 	}
 
-	default <T extends MemoryData> Assignment<T> a(Producer<T> result, Producer<T> value) {
+	default Assignment<PackedCollection> a(Producer<PackedCollection> result, Producer<PackedCollection> value) {
 		TraversalPolicy resultShape = shape(result);
 		TraversalPolicy valueShape = shape(value);
 
@@ -853,18 +1008,40 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 						") adjusted to match source (" + valueShape.getCountLong() + ")");
 			}
 
-			return a(traverse(axis, (Producer) result), value);
+			return a(traverse(axis, result), value);
+		} else if (resultShape.getSizeLong() > ScopeSettings.preferredStatements) {
+			TraversalPolicy adjustedValueShape = valueShape;
+
+			// Attempt to increase the count, thereby reducing the size
+			// and hence the number of required statements
+			while (adjustedValueShape.getSizeLong() > ScopeSettings.preferredStatements) {
+				int axis = adjustedValueShape.getTraversalAxis();
+
+				// TODO  It may be preferable to have a special case for the final
+				// TODO  dimension if it is large, attempting to split it in half
+				// TODO  rather than simply skip to a size of 1 and a potentially
+				// TODO  very large count. eg (3, 1024) -> (3, 2, 512) instead
+				if (axis <= adjustedValueShape.getDimensions()) {
+					adjustedValueShape = adjustedValueShape.traverse(axis + 1);
+				} else {
+					// This should never happen, as traversing past the
+					// final dimension should always produce a size of 1
+					throw new UnsupportedOperationException();
+				}
+			}
+
+			return a(result, traverse(adjustedValueShape.getTraversalAxis(), value));
 		}
 
 		// TODO  Value should be repeated to ensure it is compatible with result
 		return new Assignment<>(shape(result).getSize(), result, value);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducer<T> concat(Producer<PackedCollection<?>>... producers) {
+	default CollectionProducer concat(Producer<PackedCollection>... producers) {
 		return concat(0, producers);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducer<T> concat(int axis, Producer<PackedCollection<?>>... producers) {
+	default CollectionProducer concat(int axis, Producer<PackedCollection>... producers) {
 		List<TraversalPolicy> shapes = Stream.of(producers)
 				.map(this::shape)
 				.filter(s -> s.getDimensions() == shape(producers[0]).getDimensions())
@@ -873,7 +1050,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 			throw new IllegalArgumentException("All inputs must have the same number of dimensions");
 		}
 
-		long dims[] = new long[shapes.get(0).getDimensions()];
+		long[] dims = new long[shapes.get(0).getDimensions()];
 		for (int i = 0; i < dims.length; i++) {
 			if (i == axis) {
 				dims[i] = shapes.stream().mapToLong(s -> s.length(axis)).sum();
@@ -885,7 +1062,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 		return concat(new TraversalPolicy(dims), producers);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducer<T> concat(TraversalPolicy shape, Producer<PackedCollection<?>>... producers) {
+	default CollectionProducer concat(TraversalPolicy shape, Producer<PackedCollection>... producers) {
 		List<TraversalPolicy> shapes = Stream.of(producers)
 				.map(this::shape)
 				.filter(s -> s.getDimensions() == shape.getDimensions())
@@ -921,7 +1098,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 				throw new IllegalArgumentException("The result is not large enough to concatenate all inputs");
 			}
 
-			int pos[] = new int[s.getDimensions()];
+			int[] pos = new int[s.getDimensions()];
 			pos[axis] = total;
 			total += s.length(axis);
 			positions.add(new TraversalPolicy(true, pos));
@@ -932,9 +1109,9 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 				.collect(Collectors.toList()));
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducer<T> c(Producer producer) {
+	default CollectionProducer c(Producer producer) {
 		if (producer instanceof CollectionProducer) {
-			return (CollectionProducer<T>) producer;
+			return (CollectionProducer) producer;
 		} else if (producer instanceof Shape) {
 			return new ReshapeProducer(((Shape) producer).getShape().getTraversalAxis(), producer);
 		} else if (producer != null) {
@@ -944,21 +1121,23 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 		}
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputation<T> c(Producer supplier, int index) {
+	default CollectionProducerComputation c(Producer supplier, int index) {
 		TraversalPolicy shape = shape(1);
-		return new DefaultTraversableExpressionComputation<>("valueAtIndexRelative", shape,
+		long size = shape(supplier).getSizeLong();
+		return new DefaultTraversableExpressionComputation("valueAtIndexRelative", shape,
 				args -> {
 					if (args[1] == null) {
 						throw new UnsupportedOperationException();
 					}
 
-					return CollectionExpression.create(shape, idx -> args[1].getValueRelative(e(index)));
+					return CollectionExpression.create(shape, idx ->
+							args[1].getValueAt(idx.multiply(size).add(index)));
 				},
 				supplier);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputation<T> c(Producer<T> collection,
-																			   Producer<PackedCollection<?>> index) {
+	default CollectionProducerComputation c(Producer<PackedCollection> collection,
+											Producer<PackedCollection> index) {
 		if (enableCollectionIndexSize) {
 			return c(shape(index), collection, index);
 		} else {
@@ -966,19 +1145,19 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 		}
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputation<T> c(TraversalPolicy shape,
-																			   Producer<T> collection,
-																			   Producer<PackedCollection<?>> index) {
-		DefaultTraversableExpressionComputation exp = new DefaultTraversableExpressionComputation<>("valueAtIndex", shape,
+	default CollectionProducerComputation c(TraversalPolicy shape,
+											Producer<PackedCollection> collection,
+											Producer<PackedCollection> index) {
+		DefaultTraversableExpressionComputation exp = new DefaultTraversableExpressionComputation("valueAtIndex", shape,
 				args -> CollectionExpression.create(shape, idx -> args[1].getValueAt(args[2].getValueAt(idx))),
-				(Supplier) collection, index);
+				collection, index);
 		if (shape.getTotalSize() == 1 && Countable.isFixedCount(index)) {
 			exp.setShortCircuit(args -> {
 				Evaluable<? extends PackedCollection> out = ag -> new PackedCollection(1);
 				Evaluable<? extends PackedCollection> c = collection.get();
 				Evaluable<? extends PackedCollection> i = index.get();
 
-				PackedCollection<?> col = c.evaluate(args);
+				PackedCollection col = c.evaluate(args);
 				PackedCollection idx = i.evaluate(args);
 				PackedCollection dest = out.evaluate(args);
 				dest.setMem(col.toDouble((int) idx.toDouble(0)));
@@ -989,45 +1168,42 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 		return exp;
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputation<T> c(Producer<T> collection,
-																			   Producer<PackedCollection<?>>... pos) {
+	default CollectionProducerComputation c(Producer<PackedCollection> collection,
+											Producer<PackedCollection>... pos) {
 		return c(collection, shape(collection), pos);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputation<T> c(Producer<T> collection,
-																			   TraversalPolicy collectionShape,
-																			   Producer<PackedCollection<?>>... pos) {
+	default CollectionProducerComputation c(Producer<PackedCollection> collection,
+											TraversalPolicy collectionShape,
+											Producer<PackedCollection>... pos) {
 		return c(shape(pos[0]), collection, collectionShape, pos);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputation<T> c(TraversalPolicy outputShape,
-																			   Producer<T> collection,
-																			   TraversalPolicy collectionShape,
-																			   Producer<PackedCollection<?>>... pos) {
+	default CollectionProducerComputation c(TraversalPolicy outputShape,
+											Producer<PackedCollection> collection,
+											TraversalPolicy collectionShape,
+											Producer<PackedCollection>... pos) {
 		return c(outputShape, collection, index(collectionShape, pos));
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputation<T> index(TraversalPolicy shapeOf,
-																				   Producer<PackedCollection<?>>... pos) {
+	default CollectionProducerComputation index(TraversalPolicy shapeOf,
+												Producer<PackedCollection>... pos) {
 		return index(shape(pos[0]), shapeOf, pos);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputation<T> index(TraversalPolicy shape,
-																				   TraversalPolicy shapeOf,
-																				   Producer<PackedCollection<?>>... pos) {
-		return new DefaultTraversableExpressionComputation<>("index", shape,
+	default CollectionProducerComputation index(TraversalPolicy shape,
+												TraversalPolicy shapeOf,
+												Producer<PackedCollection>... pos) {
+		return new DefaultTraversableExpressionComputation("index", shape,
 						(args) ->
 								new IndexOfPositionExpression(shape, shapeOf,
 										Stream.of(args).skip(1).toArray(TraversableExpression[]::new)), pos);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputation<T> sizeOf(Producer<PackedCollection<?>> collection) {
-		return new DefaultTraversableExpressionComputation<>("sizeOf", shape(1),
+	default CollectionProducerComputation sizeOf(Producer<PackedCollection> collection) {
+		return new DefaultTraversableExpressionComputation("sizeOf", shape(1),
 				(args) -> CollectionExpression.create(shape(1),
-						index -> {
-							TraversableExpression value = ((RelativeTraversableExpression) args[1]).getExpression();
-							return ((ArrayVariable) value).length();
-						}), collection);
+						index -> ((ArrayVariable) args[1]).length()), collection);
 	}
 
 	/**
@@ -1041,8 +1217,8 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * 
 	 * @see DynamicCollectionProducer#DynamicCollectionProducer(TraversalPolicy, Function)
 	 */
-	default DynamicCollectionProducer func(TraversalPolicy shape, Function<Object[], PackedCollection<?>> function) {
-		return new DynamicCollectionProducer<>(shape, function);
+	default DynamicCollectionProducer func(TraversalPolicy shape, Function<Object[], PackedCollection> function) {
+		return new DynamicCollectionProducer(shape, function);
 	}
 
 	/**
@@ -1059,8 +1235,8 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * @see DynamicCollectionProducer#DynamicCollectionProducer(TraversalPolicy, Function, boolean)
 	 * @see org.almostrealism.hardware.DestinationEvaluable#evaluate(Object...) for execution mechanism details
 	 */
-	default DynamicCollectionProducer func(TraversalPolicy shape, Function<Object[], PackedCollection<?>> function, boolean kernel) {
-		return new DynamicCollectionProducer<>(shape, function, kernel);
+	default DynamicCollectionProducer func(TraversalPolicy shape, Function<Object[], PackedCollection> function, boolean kernel) {
+		return new DynamicCollectionProducer(shape, function, kernel);
 	}
 
 	/**
@@ -1076,9 +1252,9 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * @see DynamicCollectionProducer#DynamicCollectionProducer(TraversalPolicy, Function, boolean, boolean)
 	 * @see org.almostrealism.hardware.DestinationEvaluable#evaluate(Object...) for execution mechanism details
 	 */
-	default DynamicCollectionProducer func(TraversalPolicy shape, Function<Object[], PackedCollection<?>> function,
+	default DynamicCollectionProducer func(TraversalPolicy shape, Function<Object[], PackedCollection> function,
 										   boolean kernel, boolean fixedCount) {
-		return new DynamicCollectionProducer<>(shape, function, kernel, fixedCount);
+		return new DynamicCollectionProducer(shape, function, kernel, fixedCount);
 	}
 
 	/**
@@ -1094,7 +1270,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * @see DynamicCollectionProducer#DynamicCollectionProducer(TraversalPolicy, Function, boolean, boolean, Producer[])
 	 */
 	default DynamicCollectionProducer func(TraversalPolicy shape,
-										   Function<PackedCollection<?>[], Function<Object[], PackedCollection<?>>> function,
+										   Function<PackedCollection[], Function<Object[], PackedCollection>> function,
 										   Producer[] args) {
 		return new DynamicCollectionProducer(shape, function, false, true, args);
 	}
@@ -1113,21 +1289,21 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * @see DynamicCollectionProducer#DynamicCollectionProducer(TraversalPolicy, Function, boolean, boolean, Producer, Producer...)
 	 */
 	default DynamicCollectionProducer func(TraversalPolicy shape,
-										   Function<PackedCollection<?>[], Function<Object[], PackedCollection<?>>> function,
+										   Function<PackedCollection[], Function<Object[], PackedCollection>> function,
 										   Producer<?> argument, Producer<?>... args) {
 		return new DynamicCollectionProducer(shape, function, false, true, argument, args);
 	}
 
-	default <T, P extends Producer<T>> Producer<T> alignTraversalAxes(
-			List<Producer<T>> producers, BiFunction<TraversalPolicy, List<Producer<T>>, P> processor) {
+	default <T, P extends Producer<PackedCollection>> Producer<PackedCollection> alignTraversalAxes(
+			List<Producer<PackedCollection>> producers, BiFunction<TraversalPolicy, List<Producer<PackedCollection>>, P> processor) {
 		return TraversalPolicy
 				.alignTraversalAxes(
 						producers.stream().map(this::shape).collect(Collectors.toList()),
 						producers,
-						(i, p) -> traverse(i, (Producer) p),
+						(i, p) -> traverse(i, p),
 						(i, p) -> {
 							if (enableVariableRepeat || Countable.isFixedCount(p)) {
-								return (Producer) repeat(i, (Producer) p);
+								return repeat(i, p);
 							} else {
 								return p;
 							}
@@ -1135,15 +1311,15 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 						processor);
 	}
 
-	default <T> TraversalPolicy largestTotalSize(List<Producer<T>> producers) {
+	default <PackedCollection> TraversalPolicy largestTotalSize(List<Producer<PackedCollection>> producers) {
 		return producers.stream().map(this::shape).max(Comparator.comparing(TraversalPolicy::getTotalSizeLong)).get();
 	}
 
-	default <T> long lowestCount(List<Producer<T>> producers) {
+	default <PackedCollection> long lowestCount(List<Producer<PackedCollection>> producers) {
 		return producers.stream().map(this::shape).mapToLong(TraversalPolicy::getCountLong).min().getAsLong();
 	}
 
-	default <T> long highestCount(List<Producer<T>> producers) {
+	default <PackedCollection> long highestCount(List<Producer<PackedCollection>> producers) {
 		return producers.stream().map(this::shape).mapToLong(TraversalPolicy::getCountLong).max().getAsLong();
 	}
 
@@ -1151,8 +1327,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * Changes the traversal axis of a collection producer.
 	 * This operation modifies how the collection is traversed during computation
 	 * without changing the underlying data layout.
-	 * 
-	 * @param <T> the type of PackedCollection
+	 *
 	 * @param axis the new traversal axis (0-based index)
 	 * @param producer the collection producer to modify
 	 * @return a CollectionProducer with the specified traversal axis
@@ -1160,23 +1335,23 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 *
 	 * <pre>{@code
 	 * // Create a 2D collection and change traversal axis
-	 * CollectionProducer<PackedCollection<?>> matrix = c(shape(3, 4), 
+	 * CollectionProducer matrix = c(shape(3, 4),
 	 *     1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12);
 	 * 
 	 * // Traverse along axis 0 (rows)
-	 * CollectionProducer<PackedCollection<?>> rowTraversal = traverse(0, matrix);
+	 * CollectionProducer rowTraversal = traverse(0, matrix);
 	 * // Changes how iteration occurs over the matrix
 	 * 
 	 * // Traverse along axis 1 (columns)
-	 * CollectionProducer<PackedCollection<?>> colTraversal = traverse(1, matrix);
+	 * CollectionProducer colTraversal = traverse(1, matrix);
 	 * // Different traversal pattern for the same data
 	 * }</pre>
 	 */
-	default <T extends PackedCollection<?>> CollectionProducer<T> traverse(int axis, Producer<T> producer) {
+	default CollectionProducer traverse(int axis, Producer<PackedCollection> producer) {
 		if (producer instanceof ReshapeProducer) {
 			return ((ReshapeProducer) producer).traverse(axis);
 		} else if (producer instanceof CollectionProducerComputation) {
-			return ((CollectionProducerComputation<T>) producer).traverse(axis);
+			return ((CollectionProducerComputation) producer).traverse(axis);
 		}
 
 		return new ReshapeProducer(axis, producer);
@@ -1185,20 +1360,19 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	/**
 	 * Alias for {@link #traverseEach} - sets up the producer to traverse each element.
 	 * This is a convenience method that makes collection operations more readable.
-	 * 
-	 * @param <T> the type of PackedCollection
+	 *
 	 * @param producer the collection producer to modify
 	 * @return a Producer configured to traverse each element
 	 * 
 	 *
 	 * <pre>{@code
 	 * // Set up element-wise traversal
-	 * CollectionProducer<PackedCollection<?>> vector = c(1.0, 2.0, 3.0);
+	 * CollectionProducer vector = c(1.0, 2.0, 3.0);
 	 * Producer eachElement = each(vector);
 	 * // Result: Producer configured for element-wise operations
 	 * }</pre>
 	 */
-	default <T extends PackedCollection<?>> Producer each(Producer<T> producer) {
+	default Producer<PackedCollection> each(Producer<PackedCollection> producer) {
 		return traverseEach(producer);
 	}
 
@@ -1206,34 +1380,32 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * Configures a producer to traverse each individual element.
 	 * This sets up the traversal policy to process every element independently,
 	 * which is useful for element-wise operations and transformations.
-	 * 
-	 * @param <T> the type of PackedCollection
+	 *
 	 * @param producer the collection producer to configure
 	 * @return a Producer configured for element-wise traversal
 	 * 
 	 *
 	 * <pre>{@code
 	 * // Configure for element-wise processing
-	 * CollectionProducer<PackedCollection<?>> matrix = c(shape(2, 3), 1, 2, 3, 4, 5, 6);
+	 * CollectionProducer matrix = c(shape(2, 3), 1, 2, 3, 4, 5, 6);
 	 * Producer elementWise = traverseEach(matrix);
 	 * // Result: Producer that can process each of the 6 elements individually
 	 * 
 	 * // Useful for applying functions to each element
-	 * CollectionProducer<PackedCollection<?>> vector = c(1.0, 4.0, 9.0);
+	 * CollectionProducer vector = c(1.0, 4.0, 9.0);
 	 * Producer sqrt = traverseEach(vector).sqrt(); // hypothetical sqrt operation
 	 * // Would apply sqrt to each element: [1.0, 2.0, 3.0]
 	 * }</pre>
 	 */
-	default <T extends PackedCollection<?>> Producer traverseEach(Producer<T> producer) {
-		return new ReshapeProducer(((Shape) producer).getShape().traverseEach(), producer);
+	default Producer traverseEach(Producer<PackedCollection> producer) {
+		return reshape(((Shape) producer).getShape().traverseEach(), producer);
 	}
 
 	/**
 	 * Reshapes a collection producer to have a new shape.
 	 * This operation changes the dimensional structure of the collection
 	 * while preserving the total number of elements.
-	 * 
-	 * @param <T> the type of Shape
+	 *
 	 * @param shape the new shape for the collection
 	 * @param producer the collection producer to reshape
 	 * @return a Producer with the new shape
@@ -1242,29 +1414,29 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 *
 	 * <pre>{@code
 	 * // Reshape a 1D vector to a 2D matrix
-	 * CollectionProducer<PackedCollection<?>> vector = c(1, 2, 3, 4, 5, 6);
-	 * Producer<PackedCollection<?>> matrix = reshape(shape(2, 3), vector);
+	 * CollectionProducer vector = c(1, 2, 3, 4, 5, 6);
+	 * Producer<PackedCollection> matrix = reshape(shape(2, 3), vector);
 	 * // Result: 2x3 matrix [[1,2,3], [4,5,6]]
 	 * 
 	 * // Reshape a matrix to a different matrix
-	 * CollectionProducer<PackedCollection<?>> matrix2x3 = c(shape(2, 3), 1, 2, 3, 4, 5, 6);
-	 * Producer<PackedCollection<?>> matrix3x2 = reshape(shape(3, 2), matrix2x3);
+	 * CollectionProducer matrix2x3 = c(shape(2, 3), 1, 2, 3, 4, 5, 6);
+	 * Producer<PackedCollection> matrix3x2 = reshape(shape(3, 2), matrix2x3);
 	 * // Result: 3x2 matrix [[1,2], [3,4], [5,6]]
 	 * 
 	 * // Flatten a multi-dimensional array
-	 * CollectionProducer<PackedCollection<?>> tensor = c(shape(2, 2, 2), 1, 2, 3, 4, 5, 6, 7, 8);
-	 * Producer<PackedCollection<?>> flattened = reshape(shape(8), tensor);
+	 * CollectionProducer tensor = c(shape(2, 2, 2), 1, 2, 3, 4, 5, 6, 7, 8);
+	 * Producer<PackedCollection> flattened = reshape(shape(8), tensor);
 	 * // Result: 1D vector [1, 2, 3, 4, 5, 6, 7, 8]
 	 * }</pre>
 	 */
-	default <T extends Shape<T>> Producer reshape(TraversalPolicy shape, Producer producer) {
+	default Producer reshape(TraversalPolicy shape, Producer producer) {
 		if (producer instanceof ReshapeProducer) {
 			return ((ReshapeProducer) producer).reshape(shape);
 		} else if (producer instanceof CollectionProducerComputation) {
 			return ((CollectionProducerComputation) producer).reshape(shape);
 		}
 
-		return new ReshapeProducer<>(shape, producer);
+		return new ReshapeProducer(shape, producer);
 	}
 
 	/**
@@ -1283,12 +1455,12 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * <p><strong>Example - 2D image patch extraction:</strong></p>
 	 * <pre>{@code
 	 * // Extract a 5x5 patch from a 256x256 image starting at (100, 150)
-	 * PackedCollection<?> image = new PackedCollection<>(shape(256, 256));
+	 * PackedCollection image = new PackedCollection(shape(256, 256));
 	 * image.fill(Math::random);
 	 * 
-	 * CollectionProducer<PackedCollection<?>> patch = 
+	 * CollectionProducer patch =
 	 *     subset(shape(5, 5), p(image), 100, 150);
-	 * PackedCollection<?> result = patch.get().evaluate();
+	 * PackedCollection result = patch.get().evaluate();
 	 * 
 	 * // result now contains image[100:105, 150:155]
 	 * }</pre>
@@ -1296,15 +1468,14 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * <p><strong>Example - 3D volume extraction:</strong></p>
 	 * <pre>{@code
 	 * // Extract a 10x10x5 sub-volume from a 100x100x50 volume
-	 * PackedCollection<?> volume = new PackedCollection<>(shape(100, 100, 50));
+	 * PackedCollection volume = new PackedCollection(shape(100, 100, 50));
 	 * volume.fill(pos -> pos[0] + pos[1] + pos[2]); // example fill
 	 * 
-	 * CollectionProducer<PackedCollection<?>> subVolume = 
+	 * CollectionProducer subVolume =
 	 *     subset(shape(10, 10, 5), p(volume), 20, 30, 15);
-	 * PackedCollection<?> result = subVolume.get().evaluate();
+	 * PackedCollection result = subVolume.get().evaluate();
 	 * }</pre>
 	 *
-	 * @param <T> The type of PackedCollection being subset
 	 * @param shape The desired shape/dimensions of the resulting subset
 	 * @param collection The source collection to extract from
 	 * @param position The starting position coordinates (one integer per dimension)
@@ -1315,8 +1486,8 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * @see PackedCollectionSubset
 	 * @see TraversalPolicy
 	 */
-	default <T extends PackedCollection<?>> CollectionProducerComputation<T> subset(TraversalPolicy shape, Producer<?> collection, int... position) {
-		return new PackedCollectionSubset<>(shape, collection, position);
+	default CollectionProducerComputation subset(TraversalPolicy shape, Producer<?> collection, int... position) {
+		return new PackedCollectionSubset(shape, collection, position);
 	}
 
 	/**
@@ -1329,7 +1500,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 *
 	 * <p><strong>Example - Computed position subset:</strong></p>
 	 * <pre>{@code
-	 * PackedCollection<?> data = new PackedCollection<>(shape(50, 50));
+	 * PackedCollection data = new PackedCollection(shape(50, 50));
 	 * data.fill(Math::random);
 	 * 
 	 * // Calculate positions using expressions
@@ -1341,11 +1512,10 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * Expression startY = centerY.subtract(offset);
 	 * 
 	 * // Extract 10x10 subset around center
-	 * CollectionProducer<PackedCollection<?>> centeredSubset = 
+	 * CollectionProducer centeredSubset =
 	 *     subset(shape(10, 10), p(data), startX, startY);
 	 * }</pre>
 	 *
-	 * @param <T> The type of PackedCollection being subset
 	 * @param shape The desired shape/dimensions of the resulting subset
 	 * @param collection The source collection to extract from
 	 * @param position The starting position coordinates as expressions (one per dimension)
@@ -1354,8 +1524,8 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * @see PackedCollectionSubset
 	 * @see Expression
 	 */
-	default <T extends PackedCollection<?>> CollectionProducerComputation<T> subset(TraversalPolicy shape, Producer<?> collection, Expression... position) {
-		return new PackedCollectionSubset<>(shape, collection, position);
+	default CollectionProducerComputation subset(TraversalPolicy shape, Producer<?> collection, Expression... position) {
+		return new PackedCollectionSubset(shape, collection, position);
 	}
 
 	/**
@@ -1373,19 +1543,19 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 *
 	 * <p><strong>Example - Dynamic sliding window:</strong></p>
 	 * <pre>{@code
-	 * PackedCollection<?> timeSeries = new PackedCollection<>(shape(1000));
+	 * PackedCollection timeSeries = new PackedCollection(shape(1000));
 	 * timeSeries.fill(pos -> Math.sin(pos[0] * 0.1)); // example signal
 	 * 
 	 * // Position determined at runtime
-	 * PackedCollection<?> windowStart = new PackedCollection<>(1);
+	 * PackedCollection windowStart = new PackedCollection(1);
 	 * 
 	 * // Extract different windows by changing the position
 	 * for (int i = 0; i < 950; i += 10) {
 	 *     windowStart.set(0, (double) i);
 	 *     
-	 *     CollectionProducer<PackedCollection<?>> window = 
+	 *     CollectionProducer window =
 	 *         subset(shape(50), p(timeSeries), p(windowStart));
-	 *     PackedCollection<?> result = window.get().evaluate();
+	 *     PackedCollection result = window.get().evaluate();
 	 *     
 	 *     // Process this window...
 	 * }
@@ -1393,21 +1563,20 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 *
 	 * <p><strong>Example - 2D dynamic region extraction:</strong></p>
 	 * <pre>{@code
-	 * PackedCollection<?> image = new PackedCollection<>(shape(640, 480));
+	 * PackedCollection image = new PackedCollection(shape(640, 480));
 	 * image.fill(Math::random);
 	 * 
 	 * // Dynamic position based on some computed region of interest
-	 * PackedCollection<?> roiPosition = new PackedCollection<>(2);
+	 * PackedCollection roiPosition = new PackedCollection(2);
 	 * roiPosition.set(0, detectedObjectX);
 	 * roiPosition.set(1, detectedObjectY);
 	 * 
 	 * // Extract region around detected object
-	 * CollectionProducer<PackedCollection<?>> objectRegion = 
+	 * CollectionProducer objectRegion =
 	 *     subset(shape(64, 64), p(image), p(roiPosition));
-	 * PackedCollection<?> objectPatch = objectRegion.get().evaluate();
+	 * PackedCollection objectPatch = objectRegion.get().evaluate();
 	 * }</pre>
 	 *
-	 * @param <T> The type of PackedCollection being subset
 	 * @param shape The desired shape/dimensions of the resulting subset
 	 * @param collection The source collection to extract from
 	 * @param position A Producer that generates position coordinates at runtime
@@ -1417,8 +1586,8 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * @see PackedCollectionSubset
 	 * @see Producer
 	 */
-	default <T extends PackedCollection<?>> CollectionProducerComputation<T> subset(TraversalPolicy shape, Producer<?> collection, Producer<?> position) {
-		return new PackedCollectionSubset<>(shape, collection, position);
+	default CollectionProducerComputation subset(TraversalPolicy shape, Producer<?> collection, Producer<?> position) {
+		return new PackedCollectionSubset(shape, collection, position);
 	}
 
 	/**
@@ -1446,8 +1615,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * <li>Regular collections use the full {@link PackedCollectionRepeat} implementation</li>
 	 * <li>The output shape is automatically computed based on the input</li>
 	 * </ul>
-	 * 
-	 * @param <T> the type of PackedCollection being repeated
+	 *
 	 * @param repeat the number of times to repeat the collection (must be positive)
 	 * @param collection the source collection to repeat
 	 * @return a computation that produces the repeated collection
@@ -1456,13 +1624,13 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * @see PackedCollectionRepeat#shape(int, TraversalPolicy)
 	 * @see SingleConstantComputation#reshape(TraversalPolicy)
 	 */
-	default <T extends PackedCollection<?>> CollectionProducerComputation<T> repeat(int repeat, Producer<?> collection) {
+	default CollectionProducerComputation repeat(int repeat, Producer<?> collection) {
 		if (collection instanceof SingleConstantComputation) {
 			return ((SingleConstantComputation) collection)
 					.reshape(PackedCollectionRepeat.shape(repeat, shape(collection)));
 		}
 
-		return new PackedCollectionRepeat<>(repeat, collection);
+		return new PackedCollectionRepeat(repeat, collection);
 	}
 
 	/**
@@ -1485,8 +1653,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * <pre>{@code
 	 * repeat(repeat, traverse(axis, collection))
 	 * }</pre>
-	 * 
-	 * @param <T> the type of PackedCollection being repeated
+	 *
 	 * @param axis the axis along which to perform repetition
 	 * @param repeat the number of times to repeat
 	 * @param collection the source collection to repeat
@@ -1495,8 +1662,8 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * @see #repeat(int, Producer)
 	 * @see #traverse(int, Producer)
 	 */
-	default <T extends PackedCollection<?>> CollectionProducerComputation<T> repeat(int axis, int repeat, Producer<?> collection) {
-		return repeat(repeat, traverse(axis, (Producer) collection));
+	default CollectionProducerComputation repeat(int axis, int repeat, Producer<PackedCollection> collection) {
+		return repeat(repeat, traverse(axis, collection));
 	}
 
 	/**
@@ -1509,7 +1676,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * enumeration computation, which transforms the input shape by adding a new dimension
 	 * for the enumerated sequences.</p>
 	 * 
-	 * @param <T> the type of {@link PackedCollection}
+	 *
 	 * @param axis the axis along which to enumerate (0-based)
 	 * @param len the length of each enumerated sequence
 	 * @param collection the collection to enumerate
@@ -1519,8 +1686,8 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * <p><strong>1D Vector Enumeration:</strong></p>
 	 * <pre>{@code
 	 * // Input: [1, 2, 3, 4, 5, 6] (shape: [6])
-	 * CollectionProducer<PackedCollection<?>> vector = c(1, 2, 3, 4, 5, 6);
-	 * CollectionProducerComputation<PackedCollection<?>> enumerated = enumerate(0, 3, vector);
+	 * CollectionProducer vector = c(1, 2, 3, 4, 5, 6);
+	 * CollectionProducerComputation<PackedCollection> enumerated = enumerate(0, 3, vector);
 	 * // Output: [[1,2,3], [4,5,6]] (shape: [2, 3])
 	 * // Creates 2 non-overlapping sequences of length 3
 	 * }</pre>
@@ -1529,8 +1696,8 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * <p><strong>2D Matrix Column Enumeration:</strong></p>
 	 * <pre>{@code
 	 * // Input: 3x6 matrix (shape: [3, 6])
-	 * CollectionProducer<PackedCollection<?>> matrix = c(shape(3, 6), 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18);
-	 * CollectionProducerComputation<PackedCollection<?>> colEnum = enumerate(1, 2, matrix);
+	 * CollectionProducer matrix = c(shape(3, 6), 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18);
+	 * CollectionProducerComputation<PackedCollection> colEnum = enumerate(1, 2, matrix);
 	 * // Output: shape [3, 3, 2] - extracts 3 pairs from each row
 	 * // Each row [1,2,3,4,5,6] becomes [[1,2], [3,4], [5,6]]
 	 * }</pre>
@@ -1538,7 +1705,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * @see PackedCollectionEnumerate
 	 * @see #enumerate(int, int, int, io.almostrealism.relation.Producer)
 	 */
-	default <T extends PackedCollection<?>> CollectionProducerComputation<T> enumerate(int axis, int len, Producer<?> collection) {
+	default CollectionProducerComputation enumerate(int axis, int len, Producer<?> collection) {
 		return enumerate(axis, len, len, collection);
 	}
 
@@ -1551,7 +1718,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * <p>This method delegates to {@link PackedCollectionEnumerate} to perform the
 	 * strided enumeration computation.</p>
 	 * 
-	 * @param <T> the type of {@link PackedCollection}
+	 *
 	 * @param axis the axis along which to enumerate
 	 * @param len the length of each enumerated sequence
 	 * @param stride the step size between consecutive sequence starts
@@ -1562,8 +1729,8 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * <p><strong>Overlapping Sliding Windows:</strong></p>
 	 * <pre>{@code
 	 * // Input: [1, 2, 3, 4, 5, 6, 7, 8] (shape: [8])
-	 * CollectionProducer<PackedCollection<?>> vector = c(1, 2, 3, 4, 5, 6, 7, 8);
-	 * CollectionProducerComputation<PackedCollection<?>> sliding = enumerate(0, 3, 1, vector);
+	 * CollectionProducer vector = c(1, 2, 3, 4, 5, 6, 7, 8);
+	 * CollectionProducerComputation<PackedCollection> sliding = enumerate(0, 3, 1, vector);
 	 * // Output: [[1,2,3], [2,3,4], [3,4,5], [4,5,6], [5,6,7], [6,7,8]] (shape: [6, 3])
 	 * // Stride of 1 creates overlapping windows
 	 * }</pre>
@@ -1572,8 +1739,8 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * <p><strong>Strided Convolution Pattern:</strong></p>
 	 * <pre>{@code
 	 * // Input: 8x10 matrix for 2D stride enumeration
-	 * CollectionProducer<PackedCollection<?>> input = c(shape(8, 10), 1, 2, 3, ...);
-	 * CollectionProducerComputation<PackedCollection<?>> strided = enumerate(1, 2, 1, input);
+	 * CollectionProducer input = c(shape(8, 10), 1, 2, 3, ...);
+	 * CollectionProducerComputation<PackedCollection> strided = enumerate(1, 2, 1, input);
 	 * // Output: shape [8, 9, 2] - sliding window of size 2 with stride 1 along axis 1
 	 * // Each row [a,b,c,d,e,f,g,h,i,j] becomes [[a,b], [b,c], [c,d], ..., [i,j]]
 	 * }</pre>
@@ -1582,7 +1749,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * <p><strong>Non-overlapping Blocks:</strong></p>
 	 * <pre>{@code
 	 * // Input: [1, 2, 3, 4, 5, 6, 7, 8] (shape: [8])
-	 * CollectionProducerComputation<PackedCollection<?>> blocks = enumerate(0, 2, 2, vector);
+	 * CollectionProducerComputation<PackedCollection> blocks = enumerate(0, 2, 2, vector);
 	 * // Output: [[1,2], [3,4], [5,6], [7,8]] (shape: [4, 2])
 	 * // Stride equals length, creating non-overlapping blocks
 	 * }</pre>
@@ -1590,7 +1757,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * @see PackedCollectionEnumerate
 	 * @see #enumerate(int, int, io.almostrealism.relation.Producer)
 	 */
-	default <T extends PackedCollection<?>> CollectionProducerComputation<T> enumerate(int axis, int len, int stride, Producer<?> collection) {
+	default CollectionProducerComputation enumerate(int axis, int len, int stride, Producer<?> collection) {
 		return enumerate(axis, len, stride, 1, collection);
 	}
 
@@ -1603,7 +1770,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * <p>Each repetition applies enumeration to the result of the previous enumeration,
 	 * progressively building more complex structural patterns in the data.</p>
 	 * 
-	 * @param <T> the type of {@link PackedCollection}
+	 *
 	 * @param axis the axis along which to enumerate
 	 * @param len the length of each enumerated sequence
 	 * @param stride the step size between consecutive sequence starts
@@ -1615,11 +1782,11 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * <p><strong>Double Enumeration for 2D Patches:</strong></p>
 	 * <pre>{@code
 	 * // Input: 4x4 matrix 
-	 * CollectionProducer<PackedCollection<?>> matrix = c(shape(4, 4), 
+	 * CollectionProducer matrix = c(shape(4, 4),
 	 *     1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16);
 	 * 
 	 * // First enumerate along axis 1, then along axis 0
-	 * CollectionProducerComputation<PackedCollection<?>> patches = 
+	 * CollectionProducerComputation<PackedCollection> patches =
 	 *     enumerate(1, 2, 2, 2, matrix); // 2 repetitions of (len=2, stride=2)
 	 * // Output: shape [2, 2, 2, 2] - creates 2x2 grid of 2x2 patches
 	 * // Result: 4 non-overlapping 2x2 patches from the input matrix
@@ -1629,8 +1796,8 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * <p><strong>Multi-dimensional Convolution Pattern:</strong></p>
 	 * <pre>{@code
 	 * // Input: 4D tensor (batch, channels, height, width)
-	 * CollectionProducer<PackedCollection<?>> input = c(shape(2, 5, 10, 6), 1, 2, 3, ...);
-	 * CollectionProducerComputation<PackedCollection<?>> conv = 
+	 * CollectionProducer input = c(shape(2, 5, 10, 6), 1, 2, 3, ...);
+	 * CollectionProducerComputation<PackedCollection> conv =
 	 *     cp(input).traverse(2).enumerate(3, 3, 1, 2); // Extract 3x3 patches
 	 * // Applies enumerate twice along spatial dimensions
 	 * // Useful for 2D convolution operations
@@ -1640,8 +1807,8 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * <p><strong>Attention Window Creation:</strong></p>
 	 * <pre>{@code
 	 * // Input: sequence of length 8
-	 * CollectionProducer<PackedCollection<?>> sequence = c(1, 2, 3, 4, 5, 6, 7, 8);
-	 * CollectionProducerComputation<PackedCollection<?>> windows = 
+	 * CollectionProducer sequence = c(1, 2, 3, 4, 5, 6, 7, 8);
+	 * CollectionProducerComputation<PackedCollection> windows =
 	 *     enumerate(0, 3, 1, 3, sequence); // 3 levels of enumeration
 	 * // Creates progressively nested window structures
 	 * // Useful for hierarchical attention mechanisms
@@ -1650,8 +1817,8 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * @see PackedCollectionEnumerate
 	 * @see #enumerate(int, int, int, io.almostrealism.relation.Producer)
 	 */
-	default <T extends PackedCollection<?>> CollectionProducerComputation<T> enumerate(int axis, int len, int stride, int repeat, Producer<?> collection) {
-		CollectionProducerComputation<T> result = null;
+	default CollectionProducerComputation enumerate(int axis, int len, int stride, int repeat, Producer<?> collection) {
+		CollectionProducerComputation result = null;
 
 		TraversalPolicy inputShape = shape(collection);
 		int traversalDepth = PackedCollectionEnumerate.enableDetectTraversalDepth ? inputShape.getTraversalAxis() : 0;
@@ -1676,7 +1843,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * 
 	 * <p>Note: This method delegates to {@link PackedCollectionEnumerate#of}.</p>
 	 * 
-	 * @param <T> the type of {@link PackedCollection}
+	 *
 	 * @param shape the {@link TraversalPolicy} defining the subset shape
 	 * @param collection the collection to enumerate
 	 * @return a {@link CollectionProducerComputation} containing the enumerated sequences
@@ -1684,17 +1851,17 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 *
 	 * <pre>{@code
 	 * // Enumerate 2D patches from a matrix
-	 * CollectionProducer<PackedCollection<?>> matrix = c(shape(10, 10), 1, 2, 3, ...);
-	 * CollectionProducerComputation<PackedCollection<?>> patches = 
+	 * CollectionProducer matrix = c(shape(10, 10), 1, 2, 3, ...);
+	 * CollectionProducerComputation<PackedCollection> patches =
 	 *     enumerate(shape(10, 2), matrix);
 	 * // Output: shape [5, 10, 2] - 5 slices of 10x2 from the input
 	 * }</pre>
 	 * 
 	 * @see PackedCollectionEnumerate
 	 */
-	default <T extends PackedCollection<?>> CollectionProducerComputation<T> enumerate(TraversalPolicy shape,
-																					   Producer<?> collection) {
-		PackedCollectionEnumerate enumerate = new PackedCollectionEnumerate<>(shape, collection);
+	default CollectionProducerComputation enumerate(TraversalPolicy shape,
+													Producer<?> collection) {
+		PackedCollectionEnumerate enumerate = new PackedCollectionEnumerate(shape, collection);
 
 		if (Algebraic.isZero(enumerate)) {
 			return zeros(enumerate.getShape());
@@ -1710,7 +1877,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * 
 	 * <p>Note: This method delegates to {@link PackedCollectionEnumerate#of}.</p>
 	 * 
-	 * @param <T> the type of {@link PackedCollection}
+	 *
 	 * @param shape the {@link TraversalPolicy} defining the subset shape
 	 * @param stride the {@link TraversalPolicy} defining the stride pattern
 	 * @param collection the collection to enumerate
@@ -1719,8 +1886,8 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 *
 	 * <pre>{@code
 	 * // Custom stride enumeration for complex patterns
-	 * CollectionProducer<PackedCollection<?>> data = c(shape(8, 6), 1, 2, 3, ...);
-	 * CollectionProducerComputation<PackedCollection<?>> custom = 
+	 * CollectionProducer data = c(shape(8, 6), 1, 2, 3, ...);
+	 * CollectionProducerComputation<PackedCollection> custom =
 	 *     enumerate(shape(2, 3), shape(1, 1), data);
 	 * // Creates overlapping 2x3 patches with stride 1 in both dimensions
 	 * }</pre>
@@ -1728,10 +1895,10 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * @see PackedCollectionEnumerate
 	 */
 
-	default <T extends PackedCollection<?>> CollectionProducerComputation<T> enumerate(TraversalPolicy shape,
-																					   TraversalPolicy stride,
-																					   Producer<?> collection) {
-		PackedCollectionEnumerate enumerate = new PackedCollectionEnumerate<>(shape, stride, collection);
+	default CollectionProducerComputation enumerate(TraversalPolicy shape,
+													TraversalPolicy stride,
+													Producer<?> collection) {
+		PackedCollectionEnumerate enumerate = new PackedCollectionEnumerate(shape, stride, collection);
 
 		if (Algebraic.isZero(enumerate)) {
 			return zeros(enumerate.getShape());
@@ -1751,7 +1918,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 *   <li>Matrix/tensor transposition</li>
 	 *   <li>Changing data layout for optimal access patterns</li>
 	 *   <li>Preparing data for operations that expect specific dimension orders</li>
-	 *   <li>Converting between different tensor format conventions (e.g., NCHW ↔ NHWC)</li>
+	 *   <li>Converting between different tensor format conventions (e.g., NCHW &lt;-&gt; NHWC)</li>
 	 * </ul>
 	 * 
 	 * <p><strong>Usage Examples:</strong></p>
@@ -1772,8 +1939,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * <p><strong>Optimization:</strong> If the input collection is zero (as determined by
 	 * {@link Algebraic#isZero(Object)}), this method returns an optimized zero collection
 	 * with the permuted shape instead of creating a full computation.</p>
-	 * 
-	 * @param <T> The type of collection being permuted
+	 *
 	 * @param collection The input collection to permute. Must implement {@link io.almostrealism.collect.Shape}
 	 *                  to provide dimensional information.
 	 * @param order The dimension permutation order. Each element specifies which input
@@ -1788,12 +1954,12 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * @see io.almostrealism.collect.TraversalPolicy#permute(int...)
 	 * @see #zeros(io.almostrealism.collect.TraversalPolicy)
 	 */
-	default <T extends PackedCollection<?>> CollectionProducerComputation<T> permute(Producer<?> collection, int... order) {
+	default CollectionProducerComputation permute(Producer<?> collection, int... order) {
 		if (Algebraic.isZero(collection)) {
 			return zeros(shape(collection).permute(order).extentShape());
 		}
 
-		return new CollectionPermute<>(collection, order);
+		return new CollectionPermute(collection, order);
 	}
 
 	/**
@@ -1803,19 +1969,18 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * @param axes Array of axis indices to pad (0-based)
 	 * @param depth Amount of padding to add on each side of the specified axes
 	 * @param collection The input collection to pad
-	 * @param <T> The type of PackedCollection
 	 * @return A CollectionProducerComputation that produces the padded collection
 	 * @throws UnsupportedOperationException if the input collection has a non-null traversal order
 	 * 
 	 * @see #pad(Producer, int...)
 	 */
-	default <T extends PackedCollection<?>> CollectionProducerComputation<T> pad(int axes[], int depth, Producer<?> collection) {
+	default CollectionProducerComputation pad(int[] axes, int depth, Producer<?> collection) {
 		TraversalPolicy shape = shape(collection);
 		if (shape.getOrder() != null) {
 			throw new UnsupportedOperationException();
 		}
 
-		int depths[] = new int[shape.getDimensions()];
+		int[] depths = new int[shape.getDimensions()];
 		for (int i = 0; i < axes.length; i++) {
 			depths[axes[i]] = depth;
 		}
@@ -1831,23 +1996,22 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * <p><strong>Example:</strong></p>
 	 * <pre>{@code
 	 * // Pad a 2x3 collection with 1 unit on all sides of both dimensions
-	 * PackedCollection<?> input = new PackedCollection<>(2, 3);
+	 * PackedCollection input = new PackedCollection(2, 3);
 	 * CollectionProducer<?> padded = pad(input, 1, 1); // Results in 4x5 collection
 	 * }</pre>
 	 * 
 	 * @param collection The input collection to pad
 	 * @param depths Padding depth for each dimension. depths[i] specifies how much padding
 	 *               to add before and after the data in dimension i
-	 * @param <T> The type of PackedCollection
 	 * @return A CollectionProducerComputation that produces the padded collection
 	 * 
 	 * @see PackedCollectionPad
 	 * @see #pad(TraversalPolicy, TraversalPolicy, Producer)
 	 */
-	default <T extends PackedCollection<?>> CollectionProducerComputation<T> pad(Producer<?> collection, int... depths) {
+	default CollectionProducerComputation pad(Producer<?> collection, int... depths) {
 		TraversalPolicy shape = shape(collection);
 
-		int dims[] = new int[shape.getDimensions()];
+		int[] dims = new int[shape.getDimensions()];
 		for (int i = 0; i < dims.length; i++) {
 			dims[i] = shape.length(i) + 2 * depths[i];
 		}
@@ -1876,20 +2040,19 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * @param collection The input collection to pad  
 	 * @param pos Position offsets for placing the input within the output shape.
 	 *            pos[i] specifies how many zeros to add before the input data in dimension i
-	 * @param <T> The type of PackedCollection
 	 * @return A CollectionProducer that produces the padded collection
 	 * 
 	 * @see PackedCollectionPad
 	 */
-	default <T extends PackedCollection<?>> CollectionProducer<T> pad(TraversalPolicy shape,
-																				 Producer<?> collection,
-																				 int... pos) {
+	default CollectionProducer pad(TraversalPolicy shape,
+																Producer<?> collection,
+																int... pos) {
 		int traversalAxis = shape.getTraversalAxis();
 
 		if (traversalAxis == shape.getDimensions()) {
 			return pad(shape, new TraversalPolicy(true, pos), collection);
 		} else {
-			return (CollectionProducer<T>) pad(shape.traverseEach(), new TraversalPolicy(true, pos), collection)
+			return pad(shape.traverseEach(), new TraversalPolicy(true, pos), collection)
 					.traverse(traversalAxis);
 		}
 	}
@@ -1914,7 +2077,6 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * @param shape The complete output shape specification
 	 * @param position The positioning policy specifying where input data is placed
 	 * @param collection The input collection producer
-	 * @param <T> The type of PackedCollection  
 	 * @return A CollectionProducerComputation that implements the padding operation,
 	 *         or a zeros collection if the input is zero
 	 * 
@@ -1922,44 +2084,38 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * @see TraversalPolicy
 	 * @see Algebraic#isZero(Object) 
 	 */
-	default <T extends PackedCollection<?>> CollectionProducerComputation<T> pad(TraversalPolicy shape,
-																				 TraversalPolicy position,
-																				 Producer<?> collection) {
+	default CollectionProducerComputation pad(TraversalPolicy shape,
+											  TraversalPolicy position,
+											  Producer<?> collection) {
 		if (Algebraic.isZero(collection)) {
 			return zeros(shape);
 		}
 
-		return new PackedCollectionPad<>(shape, position, collection);
+		return new PackedCollectionPad(shape, position, collection);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputation<T> map(
+	default CollectionProducerComputation map(
 			Producer<?> collection,
-			Function<CollectionProducerComputation<PackedCollection<?>>, CollectionProducer<?>> mapper) {
-		return new PackedCollectionMap<>(collection, (Function) mapper);
+			Function<CollectionProducerComputation, CollectionProducer> mapper) {
+		return new PackedCollectionMap(collection, mapper);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputation<T> map(
+	default CollectionProducerComputation map(
 			TraversalPolicy itemShape, Producer<?> collection,
-			Function<CollectionProducerComputation<PackedCollection<?>>, CollectionProducer<?>> mapper) {
-		return new PackedCollectionMap<>(shape(collection).replace(itemShape), collection, (Function) mapper);
+			Function<CollectionProducerComputation, CollectionProducer> mapper) {
+		return new PackedCollectionMap(shape(collection).replace(itemShape), collection, mapper);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputation<T> reduce(
+	default CollectionProducerComputation reduce(
 			Producer<?> collection,
-			Function<CollectionProducerComputation<?>, CollectionProducer<?>> mapper) {
-		return map(shape(1), collection, (Function) mapper);
+			Function<CollectionProducerComputation, CollectionProducer> mapper) {
+		return map(shape(1), collection, mapper);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputation<T> expand(
-			int repeat, Producer<?> collection,
-			Function<CollectionProducerComputation<PackedCollection<?>>, CollectionProducer<?>> mapper) {
-		return map(shape(collection).item().prependDimension(repeat), collection, mapper);
-	}
-
-	default <T extends PackedCollection<?>> CollectionProducer<T> cumulativeProduct(Producer<T> input, boolean pad) {
+	default CollectionProducer cumulativeProduct(Producer<PackedCollection> input, boolean pad) {
 		return func(shape(input), inputs -> args -> {
-			PackedCollection<?> in = inputs[0];
-			PackedCollection<?> result = new PackedCollection<>(in.getShape());
+			PackedCollection in = inputs[0];
+			PackedCollection result = new PackedCollection(in.getShape());
 
 			double r = 1.0;
 			int offset = 0;
@@ -1994,14 +2150,14 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 		return new Random(shape, true);
 	}
 
-	default CollectionProducer<PackedCollection<?>> randn(TraversalPolicy shape,
-														  double mean, double std) {
+	default CollectionProducer randn(TraversalPolicy shape,
+									 double mean, double std) {
 		return randn(shape, mean, std, null);
 	}
 
-	default CollectionProducer<PackedCollection<?>> randn(TraversalPolicy shape,
-														  double mean, double std,
-														  java.util.Random source) {
+	default CollectionProducer randn(TraversalPolicy shape,
+									 double mean, double std,
+									 java.util.Random source) {
 		if (mean == 0.0 && std == 1.0) {
 			return randn(shape, source);
 		} else if (mean == 0.0) {
@@ -2013,47 +2169,47 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 		}
 	}
 
-	default DefaultTraversableExpressionComputation<PackedCollection<?>> compute(String name, CollectionExpression expression) {
-		return new DefaultTraversableExpressionComputation<>(name, expression.getShape(), expression);
+	default DefaultTraversableExpressionComputation compute(String name, CollectionExpression expression) {
+		return new DefaultTraversableExpressionComputation(name, expression.getShape(), expression);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducer<T> compute(
+	default CollectionProducer compute(
 			String name, Function<TraversalPolicy, Function<TraversableExpression[], CollectionExpression>> expression,
-			Producer<T>... arguments) {
+			Producer<PackedCollection>... arguments) {
 		return compute(name, DeltaFeatures.MultiTermDeltaStrategy.NONE, expression, arguments);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducer<T> compute(
+	default CollectionProducer compute(
 			String name, Function<TraversalPolicy, Function<TraversableExpression[], CollectionExpression>> expression,
 			Function<List<String>, String> description,
-			Producer<T>... arguments) {
+			Producer<PackedCollection>... arguments) {
 		return compute(name, DeltaFeatures.MultiTermDeltaStrategy.NONE, expression, description, arguments);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducer<T> compute(
+	default CollectionProducer compute(
 			String name, DeltaFeatures.MultiTermDeltaStrategy deltaStrategy,
 			Function<TraversalPolicy, Function<TraversableExpression[], CollectionExpression>> expression,
-			Producer<T>... arguments) {
+			Producer<PackedCollection>... arguments) {
 		return compute(name, deltaStrategy, expression, null, arguments);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducer<T> compute(
+	default CollectionProducer compute(
 			String name, DeltaFeatures.MultiTermDeltaStrategy deltaStrategy,
 			Function<TraversalPolicy, Function<TraversableExpression[], CollectionExpression>> expression,
-			Function<List<String>, String> description, Producer<T>... arguments) {
-		return compute((shape, args) -> new DefaultTraversableExpressionComputation(
+			Function<List<String>, String> description, Producer<PackedCollection>... arguments) {
+		return compute((shape, args) -> (Producer<PackedCollection>) new DefaultTraversableExpressionComputation(
 				name, largestTotalSize(args), deltaStrategy, true, expression.apply(shape),
-				args.toArray(Supplier[]::new)), description, arguments);
+				args.toArray(Producer[]::new)), description, arguments);
 	}
 
-	default <T extends PackedCollection<?>, P extends Producer<T>> CollectionProducer<T> compute(
-				BiFunction<TraversalPolicy, List<Producer<T>>, P> processor,
+	default <P extends Producer<PackedCollection>> CollectionProducer compute(
+				BiFunction<TraversalPolicy, List<Producer<PackedCollection>>, P> processor,
 				Function<List<String>, String> description,
-				Producer<T>... arguments) {
-		Producer<T> c = alignTraversalAxes(List.of(arguments), processor);
+				Producer<PackedCollection>... arguments) {
+		Producer<PackedCollection> c = alignTraversalAxes(List.of(arguments), processor);
 
 		if (c instanceof CollectionProducerComputationBase) {
-			((CollectionProducerComputationBase<T, T>) c).setDescription(description);
+			((CollectionProducerComputationBase) c).setDescription(description);
 		}
 
 		// TODO  This should use outputShape, so that the calculation isn't
@@ -2066,7 +2222,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 			if (s.getShape().getCountLong() != count) {
 				for (int i = 0; i <= s.getShape().getDimensions(); i++) {
 					if (s.getShape().traverse(i).getCountLong() == count) {
-						return c((Producer) s.traverse(i));
+						return c((Producer<PackedCollection>) s.traverse(i));
 					}
 				}
 			}
@@ -2075,7 +2231,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 		return c(c);
 	}
 
-	default <T> TraversalPolicy outputShape(Producer<T>... producers) {
+	default <PackedCollection> TraversalPolicy outputShape(Producer<PackedCollection>... producers) {
 		TraversalPolicy result = largestTotalSize(List.of(producers));
 
 		long count = highestCount(List.of(producers));
@@ -2091,17 +2247,17 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 		return result;
 	}
 
-	default CollectionProducerComputation<PackedCollection<?>> integers() {
-		return new ArithmeticSequenceComputation<>(0);
+	default CollectionProducerComputation integers() {
+		return new ArithmeticSequenceComputation(0);
 	}
 
-	default CollectionProducerComputation<PackedCollection<?>> integers(int from, int to) {
+	default CollectionProducerComputation integers(int from, int to) {
 		int len = to - from;
 		TraversalPolicy shape = shape(len).traverseEach();
-		return new ArithmeticSequenceComputation<>(shape, from);
+		return new ArithmeticSequenceComputation(shape, from);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducer<T> linear(double start, double end, int steps) {
+	default CollectionProducer linear(double start, double end, int steps) {
 		if (steps < 2) {
 			throw new IllegalArgumentException();
 		}
@@ -2114,8 +2270,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * Performs element-wise addition of two collections.
 	 * This is one of the fundamental arithmetic operations for collections,
 	 * adding corresponding elements from each input collection.
-	 * 
-	 * @param <T> the type of PackedCollection
+	 *
 	 * @param a the first collection to add
 	 * @param b the second collection to add
 	 * @return a CollectionProducer that generates the element-wise sum
@@ -2123,19 +2278,19 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 *
 	 * <pre>{@code
 	 * // Add two vectors element-wise
-	 * CollectionProducer<PackedCollection<?>> vec1 = c(1.0, 2.0, 3.0);
-	 * CollectionProducer<PackedCollection<?>> vec2 = c(4.0, 5.0, 6.0);
-	 * CollectionProducer<PackedCollection<?>> sum = add(vec1, vec2);
+	 * CollectionProducer vec1 = c(1.0, 2.0, 3.0);
+	 * CollectionProducer vec2 = c(4.0, 5.0, 6.0);
+	 * CollectionProducer sum = add(vec1, vec2);
 	 * // Result: Producer that generates [5.0, 7.0, 9.0]
 	 * 
 	 * // Add a constant to a vector
-	 * CollectionProducer<PackedCollection<?>> vector = c(1.0, 2.0, 3.0);
-	 * CollectionProducer<PackedCollection<?>> constant = constant(1.0);
-	 * CollectionProducer<PackedCollection<?>> result = add(vector, constant);
+	 * CollectionProducer vector = c(1.0, 2.0, 3.0);
+	 * CollectionProducer constant = constant(1.0);
+	 * CollectionProducer result = add(vector, constant);
 	 * // Result: Producer that generates [2.0, 3.0, 4.0]
 	 * }</pre>
 	 */
-	default <T extends PackedCollection<?>> CollectionProducer<T> add(Producer<T> a, Producer<T> b) {
+	default <A extends PackedCollection, B extends PackedCollection> CollectionProducer add(Producer<A> a, Producer<B> b) {
 		return add(List.of(a, b));
 	}
 
@@ -2148,8 +2303,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * when all operands are {@link SingleConstantComputation} instances,
 	 * the method computes the sum directly and returns a new constant
 	 * computation, avoiding the overhead of the full computation pipeline.</p>
-	 * 
-	 * @param <T> the type of PackedCollection
+	 *
 	 * @param operands the list of collections to add together
 	 * @return a CollectionProducer that generates the element-wise sum
 	 * @throws IllegalArgumentException if any operand is null
@@ -2158,21 +2312,21 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 *
 	 * <pre>{@code
 	 * // Add three vectors together
-	 * CollectionProducer<PackedCollection<?>> vec1 = c(1.0, 2.0);
-	 * CollectionProducer<PackedCollection<?>> vec2 = c(3.0, 4.0);
-	 * CollectionProducer<PackedCollection<?>> vec3 = c(5.0, 6.0);
-	 * CollectionProducer<PackedCollection<?>> sum = add(List.of(vec1, vec2, vec3));
+	 * CollectionProducer vec1 = c(1.0, 2.0);
+	 * CollectionProducer vec2 = c(3.0, 4.0);
+	 * CollectionProducer vec3 = c(5.0, 6.0);
+	 * CollectionProducer sum = add(List.of(vec1, vec2, vec3));
 	 * // Result: Producer that generates [9.0, 12.0] (1+3+5, 2+4+6)
 	 * 
 	 * // Add multiple constants (optimized)
 	 * List<Producer<?>> constants = List.of(
 	 *     constant(1.0), constant(2.0), constant(3.0)
 	 * );
-	 * CollectionProducer<PackedCollection<?>> total = add(constants);
+	 * CollectionProducer total = add(constants);
 	 * // Result: Producer that generates [6.0] (computed at construction time)
 	 * }</pre>
 	 */
-	default <T extends PackedCollection<?>> CollectionProducer<T> add(List<Producer<?>> operands) {
+	default CollectionProducer add(List<Producer<?>> operands) {
 		if (operands.stream().anyMatch(Objects::isNull)) {
 			throw new IllegalArgumentException();
 		}
@@ -2180,13 +2334,13 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 		if (operands.stream().allMatch(o -> o instanceof SingleConstantComputation)) {
 			double value = operands.stream().mapToDouble(o -> ((SingleConstantComputation) o).getConstantValue()).sum();
 
-			return compute((shape, args) -> new SingleConstantComputation<>(shape, value),
+			return compute((shape, args) -> new SingleConstantComputation(shape, value),
 					args -> String.join(" + ", applyParentheses(args)),
 					operands.toArray(new Producer[0]));
 		}
 
 		return compute((shape, args) -> {
-					Producer p[] = args.stream().filter(Predicate.not(Algebraic::isZero)).toArray(Producer[]::new);
+					Producer[] p = args.stream().filter(Predicate.not(Algebraic::isZero)).toArray(Producer[]::new);
 
 					if (p.length == 0) {
 						return zeros(shape);
@@ -2194,7 +2348,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 						return c(reshape(shape, p[0]));
 					}
 
-					return new CollectionAddComputation<>(shape, p);
+					return new CollectionAddComputation(shape, p);
 				},
 				args -> String.join(" + ", applyParentheses(args)),
 				operands.toArray(new Producer[0]));
@@ -2204,8 +2358,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * Performs element-wise subtraction of two collections.
 	 * This operation subtracts corresponding elements of the second collection
 	 * from the first collection, equivalent to {@link #add add(a, minus(b))}.
-	 * 
-	 * @param <T> the type of {@link PackedCollection}
+	 *
 	 * @param a the collection to subtract from (minuend)
 	 * @param b the collection to subtract (subtrahend)
 	 * @return a {@link CollectionProducer} that generates the element-wise difference
@@ -2213,19 +2366,19 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 *
 	 * <pre>{@code
 	 * // Subtract two vectors element-wise
-	 * CollectionProducer<PackedCollection<?>> vec1 = c(5.0, 8.0, 12.0);
-	 * CollectionProducer<PackedCollection<?>> vec2 = c(2.0, 3.0, 4.0);
-	 * CollectionProducer<PackedCollection<?>> difference = subtract(vec1, vec2);
+	 * CollectionProducer vec1 = c(5.0, 8.0, 12.0);
+	 * CollectionProducer vec2 = c(2.0, 3.0, 4.0);
+	 * CollectionProducer difference = subtract(vec1, vec2);
 	 * // Result: Producer that generates [3.0, 5.0, 8.0] (5-2, 8-3, 12-4)
 	 * 
 	 * // Subtract a constant from a vector
-	 * CollectionProducer<PackedCollection<?>> vector = c(10.0, 20.0, 30.0);
-	 * CollectionProducer<PackedCollection<?>> constant = constant(5.0);
-	 * CollectionProducer<PackedCollection<?>> result = subtract(vector, constant);
+	 * CollectionProducer vector = c(10.0, 20.0, 30.0);
+	 * CollectionProducer constant = constant(5.0);
+	 * CollectionProducer result = subtract(vector, constant);
 	 * // Result: Producer that generates [5.0, 15.0, 25.0]
 	 * }</pre>
 	 */
-	default <T extends PackedCollection<?>> CollectionProducer<T> subtract(Producer<T> a, Producer<T> b) {
+	default CollectionProducer subtract(Producer<PackedCollection> a, Producer<PackedCollection> b) {
 		return add(a, minus(b));
 	}
 
@@ -2246,7 +2399,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 *   <li>Maintaining numerical stability in iterative algorithms</li>
 	 * </ul>
 	 * 
-	 * @param <T> the type of {@link PackedCollection}
+	 *
 	 * @param a the minuend (value to subtract from)
 	 * @param b the subtrahend (value to subtract)
 	 * @return a {@link CollectionProducerComputation} that performs epsilon-aware subtraction
@@ -2254,15 +2407,15 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * @see EpsilonConstantComputation
 	 * @see #equals(Producer, Producer, Producer, Producer)
 	 */
-	default <T extends PackedCollection<?>> CollectionProducerComputation<T> subtractIgnoreZero(Producer<T> a, Producer<T> b) {
+	default CollectionProducerComputation subtractIgnoreZero(Producer<PackedCollection> a, Producer<PackedCollection> b) {
 		TraversalPolicy shape = shape(a);
 		int size = shape(b).getSize();
 
 		if (shape.getSize() != size) {
 			if (shape.getSize() == 1) {
-				return subtractIgnoreZero(a, traverseEach((Producer) b));
+				return subtractIgnoreZero(a, traverseEach(b));
 			} else if (size == 1) {
-				return subtractIgnoreZero(traverseEach((Producer) a), b);
+				return subtractIgnoreZero(traverseEach(a), b);
 			}
 
 			throw new IllegalArgumentException("Cannot subtract a collection of size " + size +
@@ -2278,7 +2431,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * This is a fundamental arithmetic operation that multiplies corresponding
 	 * elements from each input collection.
 	 * 
-	 * @param <T> the type of {@link PackedCollection}
+	 *
 	 * @param a the first collection to multiply
 	 * @param b the second collection to multiply
 	 * @return a {@link CollectionProducer} that generates the element-wise product
@@ -2286,20 +2439,20 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 *
 	 * <pre>{@code
 	 * // Multiply two vectors element-wise
-	 * CollectionProducer<PackedCollection<?>> vec1 = c(2.0, 3.0, 4.0);
-	 * CollectionProducer<PackedCollection<?>> vec2 = c(5.0, 6.0, 7.0);
-	 * CollectionProducer<PackedCollection<?>> product = multiply(vec1, vec2);
+	 * CollectionProducer vec1 = c(2.0, 3.0, 4.0);
+	 * CollectionProducer vec2 = c(5.0, 6.0, 7.0);
+	 * CollectionProducer product = multiply(vec1, vec2);
 	 * // Result: Producer that generates [10.0, 18.0, 28.0]
 	 * 
 	 * // Scale a vector by a constant
-	 * CollectionProducer<PackedCollection<?>> vector = c(1.0, 2.0, 3.0);
-	 * CollectionProducer<PackedCollection<?>> scale = constant(2.0);
-	 * CollectionProducer<PackedCollection<?>> scaled = multiply(vector, scale);
+	 * CollectionProducer vector = c(1.0, 2.0, 3.0);
+	 * CollectionProducer scale = constant(2.0);
+	 * CollectionProducer scaled = multiply(vector, scale);
 	 * // Result: Producer that generates [2.0, 4.0, 6.0]
 	 * }</pre>
 	 */
-	default <T extends PackedCollection<?>> CollectionProducer<T> multiply(
-			Producer<T> a, Producer<T> b) {
+	default CollectionProducer multiply(
+			Producer<PackedCollection> a, Producer<PackedCollection> b) {
 		return multiply(a, b, null);
 	}
 
@@ -2316,7 +2469,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 *   <li>Scalar constant multiplication optimization</li>
 	 * </ul>
 	 * 
-	 * @param <T> the type of {@link PackedCollection}
+	 *
 	 * @param a the first collection to multiply
 	 * @param b the second collection to multiply
 	 * @param shortCircuit optional pre-computed result for optimization
@@ -2326,24 +2479,24 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 *
 	 * <pre>{@code
 	 * // Multiply with potential optimization
-	 * CollectionProducer<PackedCollection<?>> vec1 = c(2.0, 3.0);
-	 * CollectionProducer<PackedCollection<?>> vec2 = c(1.0, 1.0);
+	 * CollectionProducer vec1 = c(2.0, 3.0);
+	 * CollectionProducer vec2 = c(1.0, 1.0);
 	 * 
 	 * // Pre-compute result for optimization
-	 * Evaluable<PackedCollection<?>> precomputed = () -> pack(2.0, 3.0);
-	 * CollectionProducer<PackedCollection<?>> result = multiply(vec1, vec2, precomputed);
+	 * Evaluable<PackedCollection> precomputed = () -> pack(2.0, 3.0);
+	 * CollectionProducer result = multiply(vec1, vec2, precomputed);
 	 * // May use precomputed result if beneficial
 	 * 
 	 * // Constant multiplication (optimized)
-	 * CollectionProducer<PackedCollection<?>> constant1 = constant(2.0);
-	 * CollectionProducer<PackedCollection<?>> constant2 = constant(3.0);
-	 * CollectionProducer<PackedCollection<?>> product = multiply(constant1, constant2);
+	 * CollectionProducer constant1 = constant(2.0);
+	 * CollectionProducer constant2 = constant(3.0);
+	 * CollectionProducer product = multiply(constant1, constant2);
 	 * // Result: constant(6.0) computed directly without full pipeline
 	 * }</pre>
 	 */
-	default <T extends PackedCollection<?>> CollectionProducer<T> multiply(
-			Producer<T> a, Producer<T> b,
-			Evaluable<T> shortCircuit) {
+	default CollectionProducer multiply(
+			Producer<PackedCollection> a, Producer<PackedCollection> b,
+			Evaluable<PackedCollection> shortCircuit) {
 		if (checkComputable(a) && checkComputable(b)) {
 			if (shape(a).getTotalSizeLong() == 1 && Algebraic.isIdentity(1, a)) {
 				return withShortCircuit(c(b), shortCircuit);
@@ -2355,12 +2508,12 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 			}
 
 			if (a instanceof SingleConstantComputation) {
-				CollectionProducer<T> result = multiply(((SingleConstantComputation) a).getConstantValue(), b);
+				CollectionProducer result = multiply(((SingleConstantComputation) a).getConstantValue(), b);
 				if (result != null) return withShortCircuit(result, shortCircuit);
 			}
 
 			if (b instanceof SingleConstantComputation) {
-				CollectionProducer<T> result = multiply(((SingleConstantComputation) b).getConstantValue(), a);
+				CollectionProducer result = multiply(((SingleConstantComputation) b).getConstantValue(), a);
 				if (result != null) return withShortCircuit(result, shortCircuit);
 			}
 		}
@@ -2372,7 +2525,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 						return zeros(shape);
 					}
 
-					return new CollectionProductComputation<>(shape, args.toArray(new Producer[0]));
+					return (Producer<PackedCollection>) new CollectionProductComputation(shape, args.toArray(new Producer[0]));
 				},
 				args -> String.join(" * ", applyParentheses(args)), a, b), shortCircuit);
 	}
@@ -2381,8 +2534,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * Multiplies a collection by a scalar value.
 	 * This is an optimized operation for scaling all elements of a collection
 	 * by the same constant factor.
-	 * 
-	 * @param <T> the type of {@link PackedCollection}
+	 *
 	 * @param scale the scalar value to multiply by
 	 * @param a the collection to scale
 	 * @return a {@link CollectionProducer} that generates the scaled collection, or null if no optimization available
@@ -2390,20 +2542,20 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 *
 	 * <pre>{@code
 	 * // Scale a vector by 2
-	 * CollectionProducer<PackedCollection<?>> vector = c(1.0, 2.0, 3.0);
-	 * CollectionProducer<PackedCollection<?>> doubled = multiply(2.0, vector);
+	 * CollectionProducer vector = c(1.0, 2.0, 3.0);
+	 * CollectionProducer doubled = multiply(2.0, vector);
 	 * // Result: Producer that generates [2.0, 4.0, 6.0]
 	 * 
 	 * // Scale by zero to create zero vector
-	 * CollectionProducer<PackedCollection<?>> zeros = multiply(0.0, vector);
+	 * CollectionProducer zeros = multiply(0.0, vector);
 	 * // Result: Producer that generates [0.0, 0.0, 0.0]
 	 * 
 	 * // Scale by -1 to negate
-	 * CollectionProducer<PackedCollection<?>> negated = multiply(-1.0, vector);
+	 * CollectionProducer negated = multiply(-1.0, vector);
 	 * // Result: Producer that generates [-1.0, -2.0, -3.0]
 	 * }</pre>
 	 */
-	default <T extends PackedCollection<?>> CollectionProducer<T> multiply(double scale, Producer<T> a) {
+	default CollectionProducer multiply(double scale, Producer<PackedCollection> a) {
 		if (scale == 0) {
 			// Mathematical optimization: 0 * anything = 0
 			// Returns CollectionZerosComputation with same shape as input
@@ -2421,7 +2573,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 		}
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducer<T> multiply(TraversalPolicy shape, double scale, Evaluable<T> a) {
+	default CollectionProducer multiply(TraversalPolicy shape, double scale, Evaluable<PackedCollection> a) {
 		return c(shape, a.evaluate().doubleStream().parallel().map(d -> d * scale).toArray());
 	}
 
@@ -2429,8 +2581,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * Performs element-wise division of two collections.
 	 * This operation divides corresponding elements of the first collection
 	 * by the corresponding elements of the second collection.
-	 * 
-	 * @param <T> the type of {@link PackedCollection}
+	 *
 	 * @param a the dividend collection (numerator)
 	 * @param b the divisor collection (denominator)
 	 * @return a {@link CollectionProducer} that generates the element-wise quotient
@@ -2439,19 +2590,19 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 *
 	 * <pre>{@code
 	 * // Divide two vectors element-wise
-	 * CollectionProducer<PackedCollection<?>> numerator = c(12.0, 15.0, 20.0);
-	 * CollectionProducer<PackedCollection<?>> denominator = c(3.0, 5.0, 4.0);
-	 * CollectionProducer<PackedCollection<?>> quotient = divide(numerator, denominator);
+	 * CollectionProducer numerator = c(12.0, 15.0, 20.0);
+	 * CollectionProducer denominator = c(3.0, 5.0, 4.0);
+	 * CollectionProducer quotient = divide(numerator, denominator);
 	 * // Result: Producer that generates [4.0, 3.0, 5.0] (12/3, 15/5, 20/4)
 	 * 
 	 * // Divide by a constant (scalar division)
-	 * CollectionProducer<PackedCollection<?>> vector = c(10.0, 20.0, 30.0);
-	 * CollectionProducer<PackedCollection<?>> divisor = constant(2.0);
-	 * CollectionProducer<PackedCollection<?>> halved = divide(vector, divisor);
+	 * CollectionProducer vector = c(10.0, 20.0, 30.0);
+	 * CollectionProducer divisor = constant(2.0);
+	 * CollectionProducer halved = divide(vector, divisor);
 	 * // Result: Producer that generates [5.0, 10.0, 15.0]
 	 * }</pre>
 	 */
-	default <T extends PackedCollection<?>> CollectionProducer<T> divide(Producer<T> a, Producer<T> b) {
+	default CollectionProducer divide(Producer<PackedCollection> a, Producer<PackedCollection> b) {
 		if (Algebraic.isZero(b)) {
 			throw new UnsupportedOperationException();
 		} else if (Algebraic.isZero(a)) {
@@ -2460,7 +2611,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 			return zeros(outputShape(a, b));
 		}
 
-		CollectionProducer<T> p = compute("divide",
+		CollectionProducer p = compute("divide",
 				shape -> (args) ->
 						quotient(shape, Stream.of(args).skip(1).toArray(TraversableExpression[]::new)),
 				(List<String> args) -> String.join(" / ", applyParentheses(args)), a, b);
@@ -2473,75 +2624,72 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * Negates all elements in a collection (unary minus operation).
 	 * This operation multiplies every element by -1, effectively flipping
 	 * the sign of all values in the collection.
-	 * 
-	 * @param <T> the type of {@link PackedCollection}
-	 * @param a the collection to negate
+	 *
+	 *
+	 * @param a   the collection to negate
 	 * @return a {@link CollectionProducerComputationBase} that generates the negated collection
-	 * 
+	 *
 	 *
 	 * <pre>{@code
 	 * // Negate a vector
-	 * CollectionProducer<PackedCollection<?>> vector = c(1.0, -2.0, 3.0, -4.0);
-	 * CollectionProducerComputationBase<PackedCollection<?>, PackedCollection<?>> negated = minus(vector);
+	 * CollectionProducer vector = c(1.0, -2.0, 3.0, -4.0);
+	 * CollectionProducerComputationBase<PackedCollection, PackedCollection> negated = minus(vector);
 	 * // Result: Producer that generates [-1.0, 2.0, -3.0, 4.0]
-	 * 
+	 *
 	 * // Negate a constant (optimized case)
-	 * CollectionProducer<PackedCollection<?>> constant = constant(5.0);
-	 * CollectionProducerComputationBase<PackedCollection<?>, PackedCollection<?>> negatedConstant = minus(constant);
+	 * CollectionProducer constant = constant(5.0);
+	 * CollectionProducerComputationBase<PackedCollection, PackedCollection> negatedConstant = minus(constant);
 	 * // Result: Producer that generates [-5.0]
-	 * 
+	 *
 	 * // Negate a matrix
-	 * CollectionProducer<PackedCollection<?>> matrix = c(shape(2, 2), 1.0, 2.0, 3.0, 4.0);
-	 * CollectionProducerComputationBase<PackedCollection<?>, PackedCollection<?>> negatedMatrix = minus(matrix);
+	 * CollectionProducer matrix = c(shape(2, 2), 1.0, 2.0, 3.0, 4.0);
+	 * CollectionProducerComputationBase<PackedCollection, PackedCollection> negatedMatrix = minus(matrix);
 	 * // Result: Producer that generates 2x2 matrix [[-1,-2], [-3,-4]]
 	 * }</pre>
 	 */
-	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> minus(Producer<T> a) {
+	default CollectionProducer minus(Producer<PackedCollection> a) {
 		TraversalPolicy shape = shape(a);
 		int w = shape.length(0);
 
 		if (shape.getTotalSizeLong() == 1 && a.isConstant() && Countable.isFixedCount(a)) {
-			return new AtomicConstantComputation<>(-a.get().evaluate().toDouble());
+			return new AtomicConstantComputation(-a.get().evaluate().toDouble());
 		} else if (Algebraic.isIdentity(w, a)) {
-			return (CollectionProducerComputationBase)
-					new ScalarMatrixComputation<>(shape, c(-1))
-						.setDescription(args -> "-" + DescribableParent.description(a));
+			return new ScalarMatrixComputation(shape, c(-1))
+				.setDescription(args -> "-" + DescribableParent.description(a));
 		}
 
-		return (CollectionProducerComputationBase)
-				new CollectionMinusComputation<>(shape, a)
-						.setDescription(args -> "-" + args.get(0));
+		return new CollectionMinusComputation(shape, a)
+				.setDescription(args -> "-" + args.get(0));
 	}
 
 	/**
 	 * Computes the square root of each element in a collection.
 	 * This is a convenience method that raises each element to the power of 0.5,
 	 * providing a more readable way to compute square roots.
-	 * 
-	 * @param <T> the type of {@link PackedCollection}
+	 *
 	 * @param value the collection containing values to compute square roots for
 	 * @return a {@link CollectionProducer} that generates the element-wise square roots
 	 * 
 	 *
 	 * <pre>{@code
 	 * // Compute square roots of elements
-	 * CollectionProducer<PackedCollection<?>> values = c(4.0, 9.0, 16.0, 25.0);
-	 * CollectionProducer<PackedCollection<?>> roots = sqrt(values);
+	 * CollectionProducer values = c(4.0, 9.0, 16.0, 25.0);
+	 * CollectionProducer roots = sqrt(values);
 	 * // Result: Producer that generates [2.0, 3.0, 4.0, 5.0]
 	 * 
 	 * // Square root of a single value
-	 * CollectionProducer<PackedCollection<?>> number = c(64.0);
-	 * CollectionProducer<PackedCollection<?>> root = sqrt(number);
+	 * CollectionProducer number = c(64.0);
+	 * CollectionProducer root = sqrt(number);
 	 * // Result: Producer that generates [8.0]
 	 * 
 	 * // Square root in mathematical expressions
-	 * CollectionProducer<PackedCollection<?>> squares = c(1.0, 4.0, 9.0);
-	 * CollectionProducer<PackedCollection<?>> magnitude = sqrt(sum(squares));
-	 * // Result: sqrt(1+4+9) = sqrt(14) ≈ 3.74
+	 * CollectionProducer squares = c(1.0, 4.0, 9.0);
+	 * CollectionProducer magnitude = sqrt(sum(squares));
+	 * // Result: sqrt(1+4+9) = sqrt(14) ~= 3.74
 	 * }</pre>
 	 */
-	default <T extends PackedCollection<?>> CollectionProducer<T> sqrt(Producer<T> value) {
-		T half = (T) new PackedCollection<>(1);
+	default CollectionProducer sqrt(Producer<PackedCollection> value) {
+		PackedCollection half = new PackedCollection(1);
 		half.setMem(0.5);
 		return pow(value, c(half));
 	}
@@ -2549,8 +2697,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	/**
 	 * Raises elements of the base collection to the power of corresponding elements in the exponent collection.
 	 * This operation performs element-wise exponentiation, computing base[i]^exp[i] for each element.
-	 * 
-	 * @param <T> the type of {@link PackedCollection}
+	 *
 	 * @param base the base collection (values to be raised to powers)
 	 * @param exp the exponent collection (power values)
 	 * @return a {@link CollectionProducer} that generates the element-wise power results
@@ -2558,32 +2705,32 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 *
 	 * <pre>{@code
 	 * // Raise elements to specified powers
-	 * CollectionProducer<PackedCollection<?>> base = c(2.0, 3.0, 4.0);
-	 * CollectionProducer<PackedCollection<?>> exponent = c(2.0, 3.0, 0.5);
-	 * CollectionProducer<PackedCollection<?>> powers = pow(base, exponent);
+	 * CollectionProducer base = c(2.0, 3.0, 4.0);
+	 * CollectionProducer exponent = c(2.0, 3.0, 0.5);
+	 * CollectionProducer powers = pow(base, exponent);
 	 * // Result: Producer that generates [4.0, 27.0, 2.0] (2^2, 3^3, 4^0.5)
 	 * 
 	 * // Square all elements (power of 2)
-	 * CollectionProducer<PackedCollection<?>> values = c(1.0, 2.0, 3.0, 4.0);
-	 * CollectionProducer<PackedCollection<?>> two = constant(2.0);
-	 * CollectionProducer<PackedCollection<?>> squares = pow(values, two);
+	 * CollectionProducer values = c(1.0, 2.0, 3.0, 4.0);
+	 * CollectionProducer two = constant(2.0);
+	 * CollectionProducer squares = pow(values, two);
 	 * // Result: Producer that generates [1.0, 4.0, 9.0, 16.0]
 	 * 
 	 * // Square root (power of 0.5)
-	 * CollectionProducer<PackedCollection<?>> numbers = c(4.0, 9.0, 16.0, 25.0);
-	 * CollectionProducer<PackedCollection<?>> half = constant(0.5);
-	 * CollectionProducer<PackedCollection<?>> roots = pow(numbers, half);
+	 * CollectionProducer numbers = c(4.0, 9.0, 16.0, 25.0);
+	 * CollectionProducer half = constant(0.5);
+	 * CollectionProducer roots = pow(numbers, half);
 	 * // Result: Producer that generates [2.0, 3.0, 4.0, 5.0]
 	 * }</pre>
 	 */
-	default <T extends PackedCollection<?>> CollectionProducer<T> pow(Producer<T> base, Producer<T> exp) {
+	default CollectionProducer pow(Producer<PackedCollection> base, Producer<PackedCollection> exp) {
 		if (Algebraic.isIdentity(1, base)) {
 			TraversalPolicy shape = shape(exp);
 
 			if (shape.getTotalSizeLong() == 1) {
-				return (CollectionProducer<T>) base;
+				return (CollectionProducer) base;
 			} else {
-				return (CollectionProducer<T>) repeat(shape.getTotalSize(), base).reshape(shape);
+				return repeat(shape.getTotalSize(), base).reshape(shape);
 			}
 		} else if (base.isConstant() && exp.isConstant()) {
 			if (shape(base).getTotalSizeLong() == 1 && shape(exp).getTotalSizeLong() == 1) {
@@ -2596,40 +2743,36 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 		// When neither operand is constant or identity, delegate to CollectionExponentComputation
 		// for efficient element-wise power operations with support for automatic differentiation
 		return compute((shape, args) ->
-						new CollectionExponentComputation<>(largestTotalSize(args), args.get(0), args.get(1)),
+						new CollectionExponentComputation(largestTotalSize(args), args.get(0), args.get(1)),
 				args -> applyParentheses(args.get(0)) + " ^ " + applyParentheses(args.get(1)),
 				base, exp);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> exp(
-			Supplier<Evaluable<? extends PackedCollection<?>>> value) {
-		return new CollectionExponentialComputation<>(shape(value), false, value);
+	default CollectionProducer exp(Producer<PackedCollection> value) {
+		return new CollectionExponentialComputation(shape(value), false, value);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> expIgnoreZero(
-			Supplier<Evaluable<? extends PackedCollection<?>>> value) {
-		return new CollectionExponentialComputation<>(shape(value), true, value);
+	default CollectionProducer expIgnoreZero(Producer<PackedCollection> value) {
+		return new CollectionExponentialComputation(shape(value), true, value);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> log(
-			Supplier<Evaluable<? extends PackedCollection<?>>> value) {
-		return new CollectionLogarithmComputation<>(shape(value), value);
+	default CollectionProducer log(Producer<PackedCollection> value) {
+		return new CollectionLogarithmComputation(shape(value), value);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducer<T> sq(Producer<T> value) {
+	default CollectionProducer sq(Producer<PackedCollection> value) {
 		return multiply(value, value);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> floor(
-			Supplier<Evaluable<? extends PackedCollection<?>>> value) {
+	default CollectionProducerComputationBase floor(Producer<PackedCollection> value) {
 		TraversalPolicy shape = shape(value);
-		return new DefaultTraversableExpressionComputation<>(
+		return new DefaultTraversableExpressionComputation(
 				"floor", shape,
 				args -> new UniformCollectionExpression("floor", shape, in -> Floor.of(in[0]), args[1]),
-				(Supplier) value);
+				value);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> min(Supplier<Evaluable<? extends PackedCollection<?>>> a, Supplier<Evaluable<? extends PackedCollection<?>>> b) {
+	default CollectionProducerComputationBase min(Producer<PackedCollection> a, Producer<PackedCollection> b) {
 		TraversalPolicy shape;
 
 		if (shape(a).getSize() == shape(b).getSize()) {
@@ -2638,13 +2781,14 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 			shape = shape(1);
 		}
 
-		return new DefaultTraversableExpressionComputation<>("min", shape,
+		return new DefaultTraversableExpressionComputation("min", shape,
 				args -> new UniformCollectionExpression("min", shape,
 								in -> Min.of(in[0], in[1]), args[1], args[2]),
 				a, b);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> max(Supplier<Evaluable<? extends PackedCollection<?>>> a, Supplier<Evaluable<? extends PackedCollection<?>>> b) {
+	default CollectionProducerComputationBase max(
+			Producer<PackedCollection> a, Producer<PackedCollection> b) {
 		TraversalPolicy shape;
 
 		if (shape(a).getSize() == shape(b).getSize()) {
@@ -2653,25 +2797,25 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 			shape = shape(1);
 		}
 
-		return new DefaultTraversableExpressionComputation<>("max", shape,
+		return new DefaultTraversableExpressionComputation("max", shape,
 				args -> new UniformCollectionExpression("max", shape,
 								in -> Max.of(in[0], in[1]), args[1], args[2]),
 				a, b);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducer<T> rectify(Producer<T> a) {
+	default CollectionProducer rectify(Producer<PackedCollection> a) {
 		// TODO  Add short-circuit
 		return compute("rectify", shape -> args ->
 						rectify(shape, args[1]), a);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducer<T> mod(Producer<T> a, Producer<T> b) {
+	default CollectionProducer mod(Producer<PackedCollection> a, Producer<PackedCollection> b) {
 		// TODO  Add short-circuit
 		return compute("mod", shape -> args ->
 						mod(shape, args[1], args[2]), a, b);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> bound(Supplier<Evaluable<? extends PackedCollection<?>>> a, double min, double max) {
+	default CollectionProducerComputationBase bound(Producer<PackedCollection> a, double min, double max) {
 		return min(max(a, c(min)), c(max));
 	}
 
@@ -2679,34 +2823,33 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * Computes the absolute value of each element in a collection.
 	 * This operation converts all negative values to positive while
 	 * leaving positive values unchanged.
-	 * 
-	 * @param <T> the type of {@link PackedCollection}
+	 *
 	 * @param value the collection containing values to compute absolute values for
 	 * @return a {@link CollectionProducer} that generates the element-wise absolute values
 	 * 
 	 *
 	 * <pre>{@code
 	 * // Compute absolute values
-	 * CollectionProducer<PackedCollection<?>> values = c(-3.0, -1.0, 0.0, 2.0, -5.0);
-	 * CollectionProducer<PackedCollection<?>> absolutes = abs(values);
+	 * CollectionProducer values = c(-3.0, -1.0, 0.0, 2.0, -5.0);
+	 * CollectionProducer absolutes = abs(values);
 	 * // Result: Producer that generates [3.0, 1.0, 0.0, 2.0, 5.0]
 	 * 
 	 * // Absolute value of differences
-	 * CollectionProducer<PackedCollection<?>> a = c(10.0, 5.0, 8.0);
-	 * CollectionProducer<PackedCollection<?>> b = c(7.0, 9.0, 3.0);
-	 * CollectionProducer<PackedCollection<?>> distance = abs(subtract(a, b));
+	 * CollectionProducer a = c(10.0, 5.0, 8.0);
+	 * CollectionProducer b = c(7.0, 9.0, 3.0);
+	 * CollectionProducer distance = abs(subtract(a, b));
 	 * // Result: Producer that generates [3.0, 4.0, 5.0] (absolute differences)
 	 * }</pre>
 	 */
-	default <T extends PackedCollection<?>> CollectionProducer<T> abs(Producer<T> value) {
+	default CollectionProducer abs(Producer<PackedCollection> value) {
 		TraversalPolicy shape = shape(value);
-		return new DefaultTraversableExpressionComputation<>(
+		return new DefaultTraversableExpressionComputation(
 				"abs", shape, DeltaFeatures.MultiTermDeltaStrategy.NONE, true,
 				args -> new UniformCollectionExpression("abs", shape, in -> new Absolute(in[0]), args[1]),
-				(Supplier) value);
+				value);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducer<T> magnitude(Producer<T> vector) {
+	default CollectionProducer magnitude(Producer<PackedCollection> vector) {
 		if (shape(vector).getSize() == 1) {
 			return abs(vector);
 		} else {
@@ -2718,36 +2861,35 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * Finds the maximum element in a collection.
 	 * This reduction operation scans through all elements and returns
 	 * the largest value as a single-element collection.
-	 * 
-	 * @param <T> the type of {@link PackedCollection}
+	 *
 	 * @param input the collection to find the maximum element in
 	 * @return a {@link CollectionProducerComputationBase} that generates the maximum value
 	 * 
 	 *
 	 * <pre>{@code
 	 * // Find maximum in a vector
-	 * CollectionProducer<PackedCollection<?>> values = c(3.0, 7.0, 2.0, 9.0, 5.0);
-	 * CollectionProducerComputationBase<PackedCollection<?>, PackedCollection<?>> maximum = max(values);
+	 * CollectionProducer values = c(3.0, 7.0, 2.0, 9.0, 5.0);
+	 * CollectionProducerComputationBase<PackedCollection, PackedCollection> maximum = max(values);
 	 * // Result: Producer that generates [9.0]
 	 * 
 	 * // Find maximum in a matrix (flattened)
-	 * CollectionProducer<PackedCollection<?>> matrix = c(shape(2, 3), 1.0, 8.0, 3.0, 4.0, 2.0, 6.0);
-	 * CollectionProducerComputationBase<PackedCollection<?>, PackedCollection<?>> matrixMax = max(matrix);
+	 * CollectionProducer matrix = c(shape(2, 3), 1.0, 8.0, 3.0, 4.0, 2.0, 6.0);
+	 * CollectionProducerComputationBase<PackedCollection, PackedCollection> matrixMax = max(matrix);
 	 * // Result: Producer that generates [8.0] (maximum across all elements)
 	 * 
 	 * // Maximum of negative numbers
-	 * CollectionProducer<PackedCollection<?>> negatives = c(-5.0, -2.0, -8.0, -1.0);
-	 * CollectionProducerComputationBase<PackedCollection<?>, PackedCollection<?>> negMax = max(negatives);
+	 * CollectionProducer negatives = c(-5.0, -2.0, -8.0, -1.0);
+	 * CollectionProducerComputationBase<PackedCollection, PackedCollection> negMax = max(negatives);
 	 * // Result: Producer that generates [-1.0] (least negative = maximum)
 	 * }</pre>
 	 */
-	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> max(Producer<T> input) {
-		DynamicIndexProjectionProducerComputation<T> projection =
-				new DynamicIndexProjectionProducerComputation<>("projectMax", shape(input).replace(shape(1)),
+	default CollectionProducerComputationBase max(Producer<PackedCollection> input) {
+		DynamicIndexProjectionProducerComputation projection =
+				new DynamicIndexProjectionProducerComputation("projectMax", shape(input).replace(shape(1)),
 						(args, idx) -> args[2].getValueAt(idx).toInt(),
 						true, input, indexOfMax(input));
 
-		CollectionMaxComputation<T> c = new CollectionMaxComputation(input);
+		CollectionMaxComputation c = new CollectionMaxComputation(input);
 		if (enableIndexProjectionDeltaAlt) c.setDeltaAlternate(projection);
 		return c;
 	}
@@ -2765,21 +2907,20 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * </ul>
 	 * 
 	 * @param input The collection to find the maximum index in
-	 * @param <T> The type of collection being processed
 	 *
 	 * @return A computation that produces the index of the maximum element
 	 */
-	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> indexOfMax(Producer<T> input) {
+	default CollectionProducerComputationBase indexOfMax(Producer<PackedCollection> input) {
 		TraversalPolicy shape = shape(input);
 		int size = shape.getSize();
 
-		return new TraversableRepeatedProducerComputation<>("indexOfMax", shape.replace(shape(1)), size,
+		return new TraversableRepeatedProducerComputation("indexOfMax", shape.replace(shape(1)), size,
 				(args, index) -> e(0),
 				(args, currentIndex) -> index ->
-						conditional(args[1].getValueRelative(index)
-										.greaterThan(args[1].getValueRelative(currentIndex)),
+						conditional(args[1].getValueAt(kernel().multiply(size).add(index))
+										.greaterThan(args[1].getValueAt(kernel().multiply(size).add(currentIndex))),
 								index, currentIndex),
-				(Supplier) input);
+				input);
 	}
 
 	/**
@@ -2787,29 +2928,28 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * This reduction operation adds up all elements to produce a single scalar result.
 	 * It's one of the most common aggregation operations in numerical computing.
 	 * 
-	 * @param <T> the type of {@link PackedCollection}
 	 * @param input the collection to sum
 	 * @return a {@link CollectionProducerComputation} that generates a single-element collection containing the sum
 	 * 
 	 *
 	 * <pre>{@code
 	 * // Sum all elements in a vector
-	 * CollectionProducer<PackedCollection<?>> vector = c(1.0, 2.0, 3.0, 4.0);
-	 * CollectionProducer<PackedCollection<?>> total = sum(vector);
+	 * CollectionProducer vector = c(1.0, 2.0, 3.0, 4.0);
+	 * CollectionProducer total = sum(vector);
 	 * // Result: Producer that generates [10.0] (1+2+3+4)
 	 * 
 	 * // Sum elements in a matrix (flattened)
-	 * CollectionProducer<PackedCollection<?>> matrix = c(shape(2, 2), 1.0, 2.0, 3.0, 4.0);
-	 * CollectionProducer<PackedCollection<?>> matrixSum = sum(matrix);
+	 * CollectionProducer matrix = c(shape(2, 2), 1.0, 2.0, 3.0, 4.0);
+	 * CollectionProducer matrixSum = sum(matrix);
 	 * // Result: Producer that generates [10.0] (1+2+3+4)
 	 * 
 	 * // Sum of zeros returns zero
-	 * CollectionProducer<PackedCollection<?>> zeros = zeros(shape(5));
-	 * CollectionProducer<PackedCollection<?>> zeroSum = sum(zeros);
+	 * CollectionProducer zeros = zeros(shape(5));
+	 * CollectionProducer zeroSum = sum(zeros);
 	 * // Result: Producer that generates [0.0]
 	 * }</pre>
 	 */
-	default <T extends PackedCollection<?>> CollectionProducer<T> sum(Producer<T> input) {
+	default CollectionProducer sum(Producer<PackedCollection> input) {
 		TraversalPolicy targetShape = shape(input).replace(shape(1));
 
 		if (Algebraic.isZero(input)) {
@@ -2827,7 +2967,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 						((ReshapeProducer) input).getComputation() instanceof AggregatedProducerComputation);
 
 		if (enableSubdivide && shape(input).getSize() > KernelPreferences.getWorkSubdivisionMinimum()) {
-			CollectionProducer<T> sum = subdivide(input, this::sum);
+			CollectionProducer sum = subdivide(input, this::sum);
 
 			if (sum != null) {
 				if (!shape(sum).equals(targetShape)) {
@@ -2847,10 +2987,10 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 			TraversalPolicy resultShape = shape.replace(new TraversalPolicy(1));
 			TraversalPolicy positions = padDimensions(resultShape, 1, shape.getDimensions(), true);
 			TraversalPolicy groupShape = padDimensions(shape.item(), shape.getDimensions());
-			result = new WeightedSumComputation<>(
+			result = new WeightedSumComputation(
 					positions, positions, positions,
 					groupShape, groupShape,
-					(Producer) input, c(1.0).reshape(shape)).reshape(resultShape);
+					input, c(1.0).reshape(shape)).reshape(resultShape);
 		}
 
 		if (result == null) {
@@ -2865,42 +3005,42 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * Computes the arithmetic mean (average) of all elements in a collection.
 	 * This is calculated as the sum of all elements divided by the number of elements.
 	 * 
-	 * @param <T> the type of {@link PackedCollection}
+	 *
 	 * @param input the collection to compute the mean for
 	 * @return a {@link CollectionProducer} that generates a single-element collection containing the mean
 	 * 
 	 *
 	 * <pre>{@code
 	 * // Calculate mean of a vector
-	 * CollectionProducer<PackedCollection<?>> vector = c(2.0, 4.0, 6.0, 8.0);
-	 * CollectionProducer<PackedCollection<?>> average = mean(vector);
+	 * CollectionProducer vector = c(2.0, 4.0, 6.0, 8.0);
+	 * CollectionProducer average = mean(vector);
 	 * // Result: Producer that generates [5.0] ((2+4+6+8)/4)
 	 * 
 	 * // Mean of a single element
-	 * CollectionProducer<PackedCollection<?>> single = c(42.0);
-	 * CollectionProducer<PackedCollection<?>> singleMean = mean(single);
+	 * CollectionProducer single = c(42.0);
+	 * CollectionProducer singleMean = mean(single);
 	 * // Result: Producer that generates [42.0] (42/1)
 	 * 
 	 * // Mean of mixed positive/negative values
-	 * CollectionProducer<PackedCollection<?>> mixed = c(-2.0, 0.0, 2.0);
-	 * CollectionProducer<PackedCollection<?>> mixedMean = mean(mixed);
+	 * CollectionProducer mixed = c(-2.0, 0.0, 2.0);
+	 * CollectionProducer mixedMean = mean(mixed);
 	 * // Result: Producer that generates [0.0] ((-2+0+2)/3)
 	 * }</pre>
 	 */
-	default <T extends PackedCollection<?>> CollectionProducer<T> mean(Producer<T> input) {
+	default CollectionProducer mean(Producer<PackedCollection> input) {
 		return sum(input).divide(c(shape(input).getSize()));
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducer<T> subtractMean(Producer<T> input) {
-		Producer<T> mean = mean(input);
+	default CollectionProducer subtractMean(Producer<PackedCollection> input) {
+		CollectionProducer mean = mean(input);
 		return subtract(input, mean);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducer<T> variance(Producer<T> input) {
+	default CollectionProducer variance(Producer<PackedCollection> input) {
 		return mean(sq(subtractMean(input)));
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducer<T> sigmoid(Producer<T> input) {
+	default CollectionProducer sigmoid(Producer<PackedCollection> input) {
 		return divide(c(1.0), minus(input).exp().add(c(1.0)));
 	}
 
@@ -2908,7 +3048,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * Performs element-wise equality comparison between two collections with custom return values.
 	 * This method compares corresponding elements and returns specified values based on the comparison result.
 	 * 
-	 * @param <T> the type of {@link PackedCollection} to produce
+	 * to produce
 	 * @param a the first collection to compare
 	 * @param b the second collection to compare  
 	 * @param trueValue the value to return when elements are equal
@@ -2917,21 +3057,20 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * 
 	 * @see org.almostrealism.collect.computations.CollectionComparisonComputation
 	 */
-	default <T extends PackedCollection<?>> CollectionProducer<T> equals(Producer<?> a, Producer<?> b,
-																		Producer<T> trueValue, Producer<T> falseValue) {
+	default CollectionProducer equals(Producer<PackedCollection> a, Producer<PackedCollection> b,
+																   Producer<PackedCollection> trueValue, Producer<PackedCollection> falseValue) {
 		return compute((shape, args) ->
 						new CollectionComparisonComputation("equals", shape,
 								args.get(0), args.get(1), args.get(2), args.get(3)),
 				null,
-				(Producer) a, (Producer) b,
-				(Producer) trueValue, (Producer) falseValue);
+				a, b, trueValue, falseValue);
 	}
 
 	/**
 	 * Performs element-wise greater-than comparison between two collections with custom return values.
 	 * This method compares corresponding elements and returns specified values based on the comparison result.
 	 *
-	 * @param <T> the type of {@link PackedCollection} to produce
+	 * to produce
 	 * @param a the first collection to compare
 	 * @param b the second collection to compare
 	 * @param trueValue the value to return when the first element is greater than the second
@@ -2940,8 +3079,8 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 *
 	 * @see org.almostrealism.collect.computations.CollectionComparisonComputation
 	 */
-	default <T extends PackedCollection<?>> CollectionProducer<T> greaterThan(Producer<T> a, Producer<T> b,
-																			  Producer<T> trueValue, Producer<T> falseValue) {
+	default CollectionProducer greaterThan(Producer<PackedCollection> a, Producer<PackedCollection> b,
+																		Producer<PackedCollection> trueValue, Producer<PackedCollection> falseValue) {
 		return greaterThan(a, b, trueValue, falseValue, false);
 	}
 
@@ -2949,7 +3088,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * Performs element-wise greater-than comparison between two collections with custom return values.
 	 * This method compares corresponding elements and returns specified values based on the comparison result.
 	 *
-	 * @param <T> the type of {@link PackedCollection} to produce
+	 * to produce
 	 * @param a the first collection to compare
 	 * @param b the second collection to compare
 	 * @param trueValue the value to return when the first element is greater than the second
@@ -2959,25 +3098,24 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 *
 	 * @see org.almostrealism.collect.computations.CollectionComparisonComputation
 	 */
-	default <T extends PackedCollection<?>> CollectionProducer<T> greaterThan(Producer<?> a, Producer<?> b,
-																		 Producer<T> trueValue, Producer<T> falseValue,
-																		 boolean includeEqual) {
+	default CollectionProducer greaterThan(Producer<PackedCollection> a, Producer<PackedCollection> b,
+																		Producer<PackedCollection> trueValue, Producer<PackedCollection> falseValue,
+																		boolean includeEqual) {
 		return compute((shape, args) ->
-						new GreaterThanCollection<>(shape,
+						new GreaterThanCollection(shape,
 								args.get(0), args.get(1), args.get(2), args.get(3), includeEqual),
 				null,
-				(Producer) a, (Producer) b,
-				(Producer) trueValue, (Producer) falseValue);
+				a, b, trueValue, falseValue);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducer<T> greaterThanConditional(Producer<?> a, Producer<?> b,
-																						 Producer<T> trueValue, Producer<T> falseValue) {
+	default CollectionProducer greaterThanConditional(Producer<PackedCollection> a, Producer<PackedCollection> b,
+																				   Producer<PackedCollection> trueValue, Producer<PackedCollection> falseValue) {
 		return greaterThanConditional(a, b, trueValue, falseValue, false);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducer<T> greaterThanConditional(Producer<?> a, Producer<?> b,
-																			   Producer<T> trueValue, Producer<T> falseValue,
-																			   boolean includeEqual) {
+	default CollectionProducer greaterThanConditional(Producer<PackedCollection> a, Producer<PackedCollection> b,
+																				   Producer<PackedCollection> trueValue, Producer<PackedCollection> falseValue,
+																				   boolean includeEqual) {
 		TraversalPolicy shape;
 
 		if (shape(a).getSize() == shape(b).getSize()) {
@@ -2986,35 +3124,125 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 			shape = shape(1);
 		}
 
-		return new DefaultTraversableExpressionComputation<>("greaterThan", shape,
+		return new DefaultTraversableExpressionComputation("greaterThan", shape,
 				args -> new ComparisonExpression("greaterThan", shape,
 						(l, r) -> greater(l, r, includeEqual),
 						args[1], args[2], args[3], args[4]),
-				(Supplier) a, (Supplier) b,
-				(Supplier) trueValue, (Supplier) falseValue);
+				a, b, trueValue, falseValue);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducer<T> lessThan(Producer<T> a, Producer<T> b,
-																		   Producer<T> trueValue, Producer<T> falseValue) {
+	default CollectionProducer lessThan(Producer<PackedCollection> a, Producer<PackedCollection> b,
+																	 Producer<PackedCollection> trueValue, Producer<PackedCollection> falseValue) {
 		return lessThan(a, b, trueValue, falseValue, false);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducer<T> lessThan(Producer<?> a, Producer<?> b,
-																		   Producer<T> trueValue, Producer<T> falseValue,
-																		   boolean includeEqual) {
-		return (CollectionProducer<T>) new LessThanCollection(a, b, trueValue, falseValue, includeEqual);
+	default CollectionProducer lessThan(Producer<PackedCollection> a, Producer<PackedCollection> b,
+																	 Producer<PackedCollection> trueValue, Producer<PackedCollection> falseValue,
+																	 boolean includeEqual) {
+		return compute((shape, args) ->
+						new LessThanCollection(shape,
+								args.get(0), args.get(1), args.get(2), args.get(3), includeEqual),
+				null,
+				a, b, trueValue, falseValue);
 	}
 
-	default <T extends Shape<?>> CollectionProducer<T> delta(Producer<T> producer, Producer<?> target) {
-		CollectionProducer<T> result = MatrixFeatures.getInstance().attemptDelta(producer, target);
+	/**
+	 * Performs element-wise greater-than comparison between two collections, returning 1.0 for true
+	 * and 0.0 for false. This is a convenience method for generating binary comparison values
+	 * suitable for logical operations.
+	 *
+	 * @param a the first collection to compare
+	 * @param b the second collection to compare
+	 * @return a {@link CollectionProducer} that generates 1.0 where a > b, 0.0 otherwise
+	 */
+	default CollectionProducer greaterThan(Producer<PackedCollection> a, Producer<PackedCollection> b) {
+		return greaterThan(a, b, c(1.0), c(0.0));
+	}
+
+	/**
+	 * Performs element-wise greater-than-or-equal comparison between two collections, returning 1.0 for true
+	 * and 0.0 for false. This is a convenience method for generating binary comparison values
+	 * suitable for logical operations.
+	 *
+	 * @param a the first collection to compare
+	 * @param b the second collection to compare
+	 * @return a {@link CollectionProducer} that generates 1.0 where a >= b, 0.0 otherwise
+	 */
+	default CollectionProducer greaterThanOrEqual(Producer<PackedCollection> a, Producer<PackedCollection> b) {
+		return greaterThan(a, b, c(1.0), c(0.0), true);
+	}
+
+	/**
+	 * Performs element-wise less-than comparison between two collections, returning 1.0 for true
+	 * and 0.0 for false. This is a convenience method for generating binary comparison values
+	 * suitable for logical operations.
+	 *
+	 * @param a the first collection to compare
+	 * @param b the second collection to compare
+	 * @return a {@link CollectionProducer} that generates 1.0 where a &lt; b, 0.0 otherwise
+	 */
+	default CollectionProducer lessThan(Producer<PackedCollection> a, Producer<PackedCollection> b) {
+		return lessThan(a, b, c(1.0), c(0.0), false);
+	}
+
+	/**
+	 * Performs element-wise less-than-or-equal comparison between two collections, returning 1.0 for true
+	 * and 0.0 for false. This is a convenience method for generating binary comparison values
+	 * suitable for logical operations.
+	 *
+	 * @param a the first collection to compare
+	 * @param b the second collection to compare
+	 * @return a {@link CollectionProducer} that generates 1.0 where a &lt;= b, 0.0 otherwise
+	 */
+	default CollectionProducer lessThanOrEqual(Producer<PackedCollection> a, Producer<PackedCollection> b) {
+		return lessThan(a, b, c(1.0), c(0.0), true);
+	}
+
+	/**
+	 * Performs element-wise logical AND operation on two collections with custom return values.
+	 * Returns trueValue if both operands are non-zero (considered true), otherwise returns falseValue.
+	 * This is useful for combining multiple conditions with custom result values.
+	 *
+	 * to produce
+	 * @param a the first operand (non-zero = true)
+	 * @param b the second operand (non-zero = true)
+	 * @param trueValue the value to return when both a AND b are non-zero
+	 * @param falseValue the value to return otherwise
+	 * @return a {@link CollectionProducer} that generates the logical AND result
+	 */
+	default CollectionProducer and(
+			Producer<PackedCollection> a, Producer<PackedCollection> b,
+			Producer<PackedCollection> trueValue, Producer<PackedCollection> falseValue) {
+		return compute((shape, args) ->
+						new CollectionConjunctionComputation(shape,
+								args.get(0), args.get(1), args.get(2), args.get(3)),
+				null,
+				a, b, trueValue, falseValue);
+	}
+
+	/**
+	 * Performs element-wise logical AND operation on two collections, returning 1.0 for true
+	 * and 0.0 for false. Returns 1.0 if both operands are non-zero, otherwise returns 0.0.
+	 * This is useful for chaining multiple conditions.
+	 *
+	 * @param a the first operand (non-zero = true)
+	 * @param b the second operand (non-zero = true)
+	 * @return a {@link CollectionProducer} that generates 1.0 where both operands are non-zero, 0.0 otherwise
+	 */
+	default CollectionProducer and(Producer<PackedCollection> a, Producer<PackedCollection> b) {
+		return and(a, b, c(1.0), c(0.0));
+	}
+
+	default CollectionProducer delta(Producer<PackedCollection> producer, Producer<?> target) {
+		CollectionProducer result = MatrixFeatures.getInstance().attemptDelta(producer, target);
 		if (result != null) return result;
 
-		return (CollectionProducer) c(producer).delta(target);
+		return c(producer).delta(target);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducer<PackedCollection<?>> combineGradient(
-			CollectionProducer<T> func,
-			Producer<T> input, Producer<T> gradient) {
+	default CollectionProducer combineGradient(
+			CollectionProducer func,
+			Producer<PackedCollection> input, Producer<PackedCollection> gradient) {
 		int inSize = shape(input).getTotalSize();
 		int outSize = shape(gradient).getTotalSize();
 		return multiplyGradient(func.delta(input).reshape(outSize, inSize)
@@ -3026,14 +3254,14 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 				.each();
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducer<PackedCollection<?>> multiplyGradient(
-											CollectionProducer<T> p, Producer<T> gradient, int inSize) {
+	default CollectionProducer multiplyGradient(
+			CollectionProducer p, Producer<PackedCollection> gradient, int inSize) {
 		int outSize = shape(gradient).getTotalSize();
 		return p.multiply(c(gradient).reshape(outSize).traverse(1).repeat(inSize));
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducer<T> subdivide(
-			Producer<T> input, Function<Producer<T>, CollectionProducer<T>> operation) {
+	default CollectionProducer subdivide(
+			Producer<PackedCollection> input, Function<Producer<PackedCollection>, CollectionProducer> operation) {
 		TraversalPolicy shape = shape(input);
 		int size = shape.getSize();
 
@@ -3041,7 +3269,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 
 		if (size > split) {
 			while (split > 1) {
-				CollectionProducer<T> slice = subdivide(input, operation, split);
+				CollectionProducer slice = subdivide(input, operation, split);
 				if (slice != null) return slice;
 				split /= 2;
 			}
@@ -3050,21 +3278,29 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 		return null;
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducer<T> subdivide(
-				Producer<T> input, Function<Producer<T>, CollectionProducer<T>> operation, int sliceSize) {
+	default CollectionProducer subdivide(
+			Producer<PackedCollection> input, Function<Producer<PackedCollection>, CollectionProducer> operation, int sliceSize) {
 		TraversalPolicy shape = shape(input);
 		int size = shape.getSize();
 
 		if (size % sliceSize == 0) {
 			TraversalPolicy split = shape.replace(shape(sliceSize, size / sliceSize)).traverse();
-			CollectionProducer<T> inner = operation.apply((Producer<T>) reshape(split, input)).consolidate();
+			CollectionProducer inner = operation.apply((Producer<PackedCollection>) reshape(split, input)).consolidate();
 			return operation.apply(inner);
 		}
 
 		return null;
 	}
 
-	default <T, P extends Producer<T>> P withShortCircuit(P producer, Evaluable<T> shortCircuit) {
+	default <P extends Producer<PackedCollection>> P withShortCircuit(P producer, Evaluable<PackedCollection> shortCircuit) {
+		if (producer instanceof CollectionProducerComputationBase) {
+			((CollectionProducerComputationBase) producer).setShortCircuit(shortCircuit);
+		}
+
+		return producer;
+	}
+
+	default CollectionProducer withShortCircuit(CollectionProducer producer, Evaluable<PackedCollection> shortCircuit) {
 		if (producer instanceof CollectionProducerComputationBase) {
 			((CollectionProducerComputationBase) producer).setShortCircuit(shortCircuit);
 		}
@@ -3085,7 +3321,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	}
 
 	static boolean checkComputable(Producer<?> p) {
-		if (p instanceof CollectionProducerComputation) {
+		if (p instanceof CollectionProducerComputation || p instanceof CollectionProviderProducer) {
 			return true;
 		} else if (p instanceof ReshapeProducer) {
 			return checkComputable(((ReshapeProducer) p).getComputation());

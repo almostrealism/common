@@ -16,8 +16,8 @@
 
 package org.almostrealism.graph;
 
-import io.almostrealism.relation.Producer;
 import io.almostrealism.lifecycle.Lifecycle;
+import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.hardware.OperationList;
 

@@ -13,7 +13,30 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 /**
- * @author  Michael Murray
+ * Input/Output utilities for the computation graph.
+ *
+ * <p>This package provides components for reading and writing data to/from
+ * the computation graph, including file-based receptors for logging and
+ * data export.</p>
+ *
+ * <h2>Key Classes</h2>
+ * <ul>
+ *   <li>{@link org.almostrealism.graph.io.CSVReceptor} - Writes received values
+ *       to a CSV output stream for logging training metrics or exporting data</li>
+ * </ul>
+ *
+ * <h2>Example Usage</h2>
+ * <pre>{@code
+ * // Log training loss to a CSV file
+ * try (CSVReceptor<Double> receptor =
+ *         new CSVReceptor<>(new FileOutputStream("loss.csv"), 100)) {
+ *     optimizer.setReceptor(receptor);
+ *     optimizer.optimize(epochs);
+ * }
+ * }</pre>
+ *
+ * @author Michael Murray
  */
 package org.almostrealism.graph.io;

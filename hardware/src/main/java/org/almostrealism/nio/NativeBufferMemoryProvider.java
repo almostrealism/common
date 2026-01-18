@@ -29,8 +29,8 @@ import java.util.HashMap;
 import java.util.Map;
 
 public class NativeBufferMemoryProvider extends HardwareMemoryProvider<NativeBuffer> {
-	private static Map<Class, NativeBufferAllocator> allocationAdapters = new HashMap<>();
-	private static Map<Class, NativeBufferWriter> writeAdapters = new HashMap<>();
+	private static final Map<Class, NativeBufferAllocator> allocationAdapters = new HashMap<>();
+	private static final Map<Class, NativeBufferWriter> writeAdapters = new HashMap<>();
 
 	private final Precision precision;
 	private final long memoryMax;
@@ -91,16 +91,12 @@ public class NativeBufferMemoryProvider extends HardwareMemoryProvider<NativeBuf
 
 	@Override
 	public synchronized void setMem(NativeBuffer mem, int offset, Memory source, int srcOffset, int length) {
-		if (source instanceof NativeBuffer) {
-			NativeBuffer sourceBuffer = (NativeBuffer) source;
-			if (mem.getBuffer() instanceof DoubleBuffer && sourceBuffer.getBuffer() instanceof DoubleBuffer) {
-				DoubleBuffer buffer = (DoubleBuffer) mem.getBuffer();
+		if (source instanceof NativeBuffer sourceBuffer) {
+			if (mem.getBuffer() instanceof DoubleBuffer buffer && sourceBuffer.getBuffer() instanceof DoubleBuffer) {
 				buffer.put(offset, (DoubleBuffer) sourceBuffer.getBuffer(), srcOffset, length);
-			} else if (mem.getBuffer() instanceof FloatBuffer && sourceBuffer.getBuffer() instanceof FloatBuffer) {
-				FloatBuffer buffer = (FloatBuffer) mem.getBuffer();
+			} else if (mem.getBuffer() instanceof FloatBuffer buffer && sourceBuffer.getBuffer() instanceof FloatBuffer) {
 				buffer.put(offset, (FloatBuffer) sourceBuffer.getBuffer(), srcOffset, length);
-			} else if (mem.getBuffer() instanceof ShortBuffer && sourceBuffer.getBuffer() instanceof ShortBuffer) {
-				ShortBuffer buffer = (ShortBuffer) mem.getBuffer();
+			} else if (mem.getBuffer() instanceof ShortBuffer buffer && sourceBuffer.getBuffer() instanceof ShortBuffer) {
 				buffer.put(offset, (ShortBuffer) sourceBuffer.getBuffer(), srcOffset, length);
 			} else {
 				throw new HardwareException("Unsupported precision");
@@ -110,7 +106,7 @@ public class NativeBufferMemoryProvider extends HardwareMemoryProvider<NativeBuf
 		} else if (writeAdapters.containsKey(source.getClass())) {
 			writeAdapters.get(source.getClass()).setMem(mem, offset, source, srcOffset, length);
 		} else {
-			double value[] = new double[length];
+			double[] value = new double[length];
 			source.getProvider().getMem(source, srcOffset, value, 0, length);
 			setMem(mem, offset, value, 0, length);
 		}
@@ -118,12 +114,10 @@ public class NativeBufferMemoryProvider extends HardwareMemoryProvider<NativeBuf
 
 	@Override
 	public synchronized void setMem(NativeBuffer mem, int offset, double[] source, int srcOffset, int length) {
-		if (mem.getBuffer() instanceof DoubleBuffer) {
-			DoubleBuffer buffer = (DoubleBuffer) mem.getBuffer();
+		if (mem.getBuffer() instanceof DoubleBuffer buffer) {
 			buffer.position(offset);
 			buffer.put(source, srcOffset, length);
-		} else if (mem.getBuffer() instanceof FloatBuffer) {
-			FloatBuffer buffer = (FloatBuffer) mem.getBuffer();
+		} else if (mem.getBuffer() instanceof FloatBuffer buffer) {
 			buffer.position(offset);
 			for (int i = 0; i < length; i++) {
 				buffer.put((float) source[srcOffset + i]);
@@ -140,14 +134,12 @@ public class NativeBufferMemoryProvider extends HardwareMemoryProvider<NativeBuf
 
 	@Override
 	public void setMem(NativeBuffer mem, int offset, float[] source, int srcOffset, int length) {
-		if (mem.getBuffer() instanceof DoubleBuffer) {
-			DoubleBuffer buffer = (DoubleBuffer) mem.getBuffer();
+		if (mem.getBuffer() instanceof DoubleBuffer buffer) {
 			buffer.position(offset);
 			for (int i = 0; i < length; i++) {
 				buffer.put(source[srcOffset + i]);
 			}
-		} else if (mem.getBuffer() instanceof FloatBuffer) {
-			FloatBuffer buffer = (FloatBuffer) mem.getBuffer();
+		} else if (mem.getBuffer() instanceof FloatBuffer buffer) {
 			buffer.position(offset);
 			buffer.put(source, srcOffset, length);
 		} else if (mem.getBuffer() instanceof ShortBuffer) {
@@ -161,12 +153,10 @@ public class NativeBufferMemoryProvider extends HardwareMemoryProvider<NativeBuf
 
 	@Override
 	public synchronized void getMem(NativeBuffer mem, int sOffset, double[] out, int oOffset, int length) {
-		if (mem.getBuffer() instanceof DoubleBuffer) {
-			DoubleBuffer buffer = (DoubleBuffer) mem.getBuffer();
+		if (mem.getBuffer() instanceof DoubleBuffer buffer) {
 			buffer.position(sOffset);
 			buffer.get(out, oOffset, length);
-		} else if (mem.getBuffer() instanceof FloatBuffer) {
-			FloatBuffer buffer = (FloatBuffer) mem.getBuffer();
+		} else if (mem.getBuffer() instanceof FloatBuffer buffer) {
 			buffer.position(sOffset);
 			for (int i = 0; i < length; i++) {
 				out[oOffset + i] = buffer.get();
@@ -180,14 +170,12 @@ public class NativeBufferMemoryProvider extends HardwareMemoryProvider<NativeBuf
 
 	@Override
 	public void getMem(NativeBuffer mem, int sOffset, float[] out, int oOffset, int length) {
-		if (mem.getBuffer() instanceof DoubleBuffer) {
-			DoubleBuffer buffer = (DoubleBuffer) mem.getBuffer();
+		if (mem.getBuffer() instanceof DoubleBuffer buffer) {
 			buffer.position(sOffset);
 			for (int i = 0; i < length; i++) {
 				out[oOffset + i] = (float) buffer.get();
 			}
-		} else if (mem.getBuffer() instanceof FloatBuffer) {
-			FloatBuffer buffer = (FloatBuffer) mem.getBuffer();
+		} else if (mem.getBuffer() instanceof FloatBuffer buffer) {
 			buffer.position(sOffset);
 			buffer.get(out, oOffset, length);
 		} else if (mem.getBuffer() instanceof ShortBuffer) {

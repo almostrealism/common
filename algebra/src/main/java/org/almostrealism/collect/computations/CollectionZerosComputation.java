@@ -64,7 +64,7 @@ import java.util.List;
  * // result: 2x3x4 tensor with all 24 elements as 0.0
  * 
  * // Using with CollectionFeatures
- * CollectionProducer<PackedCollection<?>> zeros = zeros(shape(10));
+ * CollectionProducer zeros = zeros(shape(10));
  * PackedCollection result = zeros.get().evaluate();
  * // result: 10-element vector of zeros
  * }</pre>
@@ -90,7 +90,7 @@ import java.util.List;
  * <p>Zero collections have special mathematical properties that enable optimizations:</p>
  * <ul>
  *   <li><strong>Additive Identity</strong>: A + 0 = A for any collection A</li>
- *   <li><strong>Multiplicative Zero</strong>: A × 0 = 0 for any collection A</li>
+ *   <li><strong>Multiplicative Zero</strong>: A * 0 = 0 for any collection A</li>
  *   <li><strong>Derivative Property</strong>: d/dx(0) = 0</li>
  *   <li><strong>Sum Property</strong>: sum(zeros) = 0</li>
  * </ul>
@@ -104,17 +104,15 @@ import java.util.List;
  *   <li>Implementing sparse data structures</li>
  *   <li>Creating baseline values for gradient computations</li>
  * </ul>
- * 
- * @param <T> The type of PackedCollection this computation produces
- * 
+ *
  * @author Michael Murray
  * @see CollectionConstantComputation
- * @see PackedCollection  
+ * @see PackedCollection
  * @see TraversalPolicy
  * @see org.almostrealism.collect.CollectionFeatures#zeros(TraversalPolicy)
  * @see org.almostrealism.collect.CollectionFeatures#constant(TraversalPolicy, double)
  */
-public class CollectionZerosComputation<T extends PackedCollection<?>> extends CollectionConstantComputation<T> {
+public class CollectionZerosComputation extends CollectionConstantComputation {
 	/**
 	 * Creates a new CollectionZerosComputation that will produce a zero-filled collection
 	 * with the specified shape. The computation is automatically named "zeros" to clearly
@@ -137,9 +135,9 @@ public class CollectionZerosComputation<T extends PackedCollection<?>> extends C
 	 * This method enables critical algebraic optimizations throughout the computation
 	 * pipeline, such as:
 	 * <ul>
-	 *   <li>Multiplication by zero → zero result</li>
-	 *   <li>Addition with zero → identity operation</li>
-	 *   <li>Sum of zeros → zero result</li>
+	 *   <li>Multiplication by zero -&gt; zero result</li>
+	 *   <li>Addition with zero -&gt; identity operation</li>
+	 *   <li>Sum of zeros -&gt; zero result</li>
 	 * </ul>
 	 * 
 	 * <p>This optimization is extensively used in {@link org.almostrealism.collect.CollectionFeatures}
@@ -190,7 +188,7 @@ public class CollectionZerosComputation<T extends PackedCollection<?>> extends C
 	 * @see CollectionProducerParallelProcess
 	 */
 	@Override
-	public CollectionProducerParallelProcess<T> generate(List<Process<?, ?>> children) {
+	public CollectionProducerParallelProcess generate(List<Process<?, ?>> children) {
 		return this;
 	}
 
@@ -208,7 +206,7 @@ public class CollectionZerosComputation<T extends PackedCollection<?>> extends C
 	 * @see Process#isolate()
 	 */
 	@Override
-	public Process<Process<?, ?>, Evaluable<? extends T>> isolate() {
+	public Process<Process<?, ?>, Evaluable<? extends PackedCollection>> isolate() {
 		throw new UnsupportedOperationException();
 	}
 
@@ -229,8 +227,8 @@ public class CollectionZerosComputation<T extends PackedCollection<?>> extends C
 	 * @see CollectionProducer
 	 */
 	@Override
-	public CollectionProducer<T> traverse(int axis) {
-		return new CollectionZerosComputation<>(getShape().traverse(axis));
+	public CollectionProducer traverse(int axis) {
+		return new CollectionZerosComputation(getShape().traverse(axis));
 	}
 
 	/**
@@ -262,8 +260,8 @@ public class CollectionZerosComputation<T extends PackedCollection<?>> extends C
 	 * @see CollectionProducerComputation
 	 */
 	@Override
-	public CollectionProducerComputation<T> reshape(TraversalPolicy shape) {
-		return new CollectionZerosComputation<>(shape);
+	public CollectionProducerComputation reshape(TraversalPolicy shape) {
+		return new CollectionZerosComputation(shape);
 	}
 
 	/**
@@ -284,10 +282,10 @@ public class CollectionZerosComputation<T extends PackedCollection<?>> extends C
 	 * 
 	 * // Target variable: shape [2]
 	 * Producer<?> target = someVariable; // shape [2]
-	 * 
+	 *
 	 * // Delta result: shape [3, 2] - zero gradient
-	 * CollectionProducer<T> gradient = zeros.delta(target);
-	 * // Result: 3x2 matrix of zeros representing ∂zeros/∂target = 0
+	 * CollectionProducer gradient = zeros.delta(target);
+	 * // Result: 3x2 matrix of zeros representing d(zeros)/d(target) = 0
 	 * }</pre>
 	 * 
 	 * @param target The target variable with respect to which the derivative is computed
@@ -299,8 +297,8 @@ public class CollectionZerosComputation<T extends PackedCollection<?>> extends C
 	 * @see org.almostrealism.calculus.DeltaFeatures
 	 */
 	@Override
-	public CollectionProducer<T> delta(Producer<?> target) {
-		return new CollectionZerosComputation<>(getShape().append(shape(target)));
+	public CollectionProducer delta(Producer<?> target) {
+		return new CollectionZerosComputation(getShape().append(shape(target)));
 	}
 }
 

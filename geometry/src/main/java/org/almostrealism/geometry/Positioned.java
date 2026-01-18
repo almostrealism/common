@@ -16,8 +16,33 @@
 
 package org.almostrealism.geometry;
 
+/**
+ * An interface for objects that have a position in 3D space.
+ * Provides methods to get and set the position using float coordinates.
+ *
+ * <p>This interface is typically implemented by geometry objects,
+ * cameras, lights, and other scene elements that need to be
+ * positioned in space.</p>
+ *
+ * @author Michael Murray
+ * @see Oriented
+ * @see Scaled
+ * @see BasicGeometry
+ */
 public interface Positioned {
+	/**
+	 * Sets the position of this object in 3D space.
+	 *
+	 * @param x the x-coordinate of the position
+	 * @param y the y-coordinate of the position
+	 * @param z the z-coordinate of the position
+	 */
 	void setPosition(float x, float y, float z);
-	
+
+	/**
+	 * Returns the current position of this object.
+	 *
+	 * @return a float array containing {x, y, z} coordinates
+	 */
 	float[] getPosition();
 }

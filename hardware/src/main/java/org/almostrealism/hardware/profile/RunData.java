@@ -16,17 +16,68 @@
 
 package org.almostrealism.hardware.profile;
 
+/**
+ * Single execution timing measurement for profiling hardware operations.
+ *
+ * <p>Captures the duration of a single operation execution in nanoseconds.
+ * Multiple {@link RunData} instances are aggregated in {@link ProfileData}
+ * to calculate statistical metrics like average runtime.</p>
+ *
+ * <h2>Precision</h2>
+ *
+ * <ul>
+ *   <li><strong>Timing source:</strong> {@code System.nanoTime()}</li>
+ *   <li><strong>Resolution:</strong> Platform-dependent (typically 1-100 nanoseconds)</li>
+ *   <li><strong>Accuracy:</strong> Affected by JIT compilation, GC, system load</li>
+ * </ul>
+ *
+ * <h2>Usage</h2>
+ *
+ * <pre>{@code
+ * long start = System.nanoTime();
+ * operation.run();
+ * long duration = System.nanoTime() - start;
+ * RunData run = new RunData(duration);
+ * }</pre>
+ *
+ * <h2>Typical Values</h2>
+ *
+ * <ul>
+ *   <li><strong>Simple GPU kernel:</strong> 10-100 microseconds (10,000-100,000 nanoseconds)</li>
+ *   <li><strong>Complex GPU operation:</strong> 0.1-10 milliseconds (100,000-10,000,000 nanoseconds)</li>
+ *   <li><strong>CPU operation:</strong> 1-100 microseconds (1,000-100,000 nanoseconds)</li>
+ *   <li><strong>First call (compilation):</strong> 100-1000 milliseconds (100,000,000-1,000,000,000 nanoseconds)</li>
+ * </ul>
+ *
+ * @see ProfileData
+ * @see io.almostrealism.profile.OperationProfile
+ */
 public class RunData {
 	private long durationNanos;
 
+	/**
+	 * Creates run data with the specified execution duration.
+	 *
+	 * @param durationNanos Execution duration in nanoseconds
+	 */
 	public RunData(long durationNanos) {
 		setDurationNanos(durationNanos);
 	}
 
+	/**
+	 * Returns the execution duration in nanoseconds.
+	 *
+	 * @return Duration in nanoseconds
+	 */
 	public long getDurationNanos() {
 		return durationNanos;
 	}
 
+	/**
+	 * Sets the execution duration in nanoseconds.
+	 *
+	 * @param durationNanos Duration in nanoseconds
+	 */
 	public void setDurationNanos(long durationNanos) {
 		this.durationNanos = durationNanos;
 	}

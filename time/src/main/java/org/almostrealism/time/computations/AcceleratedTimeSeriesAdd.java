@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,34 +16,82 @@
 
 package org.almostrealism.time.computations;
 
-import io.almostrealism.kernel.KernelStructureContext;
-import io.almostrealism.relation.Evaluable;
 import io.almostrealism.compute.ParallelProcess;
 import io.almostrealism.compute.Process;
-import io.almostrealism.scope.HybridScope;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.relation.Producer;
+import io.almostrealism.scope.HybridScope;
 import io.almostrealism.scope.Scope;
 import org.almostrealism.hardware.OperationComputationAdapter;
-import io.almostrealism.relation.Producer;
 import org.almostrealism.time.AcceleratedTimeSeries;
 import org.almostrealism.time.TemporalScalar;
 
 import java.util.List;
 import java.util.function.Consumer;
-import java.util.function.Supplier;
 
+/**
+ * Hardware-accelerated operation for adding {@link TemporalScalar} values to
+ * an {@link AcceleratedTimeSeries}.
+ *
+ * <p>This computation writes a time-value pair to the next available position
+ * in the series and increments the end cursor, all on GPU/accelerator hardware.
+ * It's used internally by {@link AcceleratedTimeSeries#add(Producer)} to enable
+ * hardware-accelerated time-series population.</p>
+ *
+ * <h2>Operation</h2>
+ * <pre>
+ * 1. Read end cursor from series (index 0, position B)
+ * 2. Write temporal scalar to position indicated by end cursor
+ * 3. Increment end cursor
+ * </pre>
+ *
+ * <h2>Usage</h2>
+ * <p>This class is typically not used directly. Instead, use {@link AcceleratedTimeSeries#add(Producer)}:</p>
+ * <pre>{@code
+ * AcceleratedTimeSeries series = new AcceleratedTimeSeries(1024);
+ * Producer<TemporalScalar> newData = c(new TemporalScalar(1.0, 2.0));
+ *
+ * // Creates AcceleratedTimeSeriesAdd internally
+ * Supplier<Runnable> addOp = series.add(newData);
+ * addOp.get().run();  // Executes on hardware
+ * }</pre>
+ *
+ * <h2>Performance</h2>
+ * <ul>
+ *   <li><strong>Complexity:</strong> O(1) constant time</li>
+ *   <li><strong>Hardware:</strong> Fully GPU-compatible</li>
+ *   <li><strong>Synchronization:</strong> No locking needed</li>
+ * </ul>
+ *
+ * @see AcceleratedTimeSeries#add(Producer)
+ * @see TemporalScalar
+ *
+ * @author Michael Murray
+ */
 public class AcceleratedTimeSeriesAdd extends OperationComputationAdapter<AcceleratedTimeSeries> {
+	/**
+	 * Constructs an add operation for the specified series and temporal scalar.
+	 *
+	 * @param series Producer providing the target time-series
+	 * @param addition Producer providing the temporal scalar to add
+	 */
 	public AcceleratedTimeSeriesAdd(Producer<AcceleratedTimeSeries> series, Producer<TemporalScalar> addition) {
-		super(new Supplier[] { series, addition } );
+		super(new Producer[] { series, addition } );
 	}
 
-	private AcceleratedTimeSeriesAdd(Supplier<Evaluable<? extends AcceleratedTimeSeries>>... arguments) {
+	/**
+	 * Private constructor for internal regeneration.
+	 *
+	 * @param arguments Producer arguments (series, addition)
+	 */
+	private AcceleratedTimeSeriesAdd(Producer... arguments) {
 		super(arguments);
 	}
 
 	@Override
 	public ParallelProcess<Process<?, ?>, Runnable> generate(List<Process<?, ?>> children) {
-		return new AcceleratedTimeSeriesAdd(children.toArray(Supplier[]::new));
+		return new AcceleratedTimeSeriesAdd(children.toArray(Producer[]::new));
 	}
 
 	@Override

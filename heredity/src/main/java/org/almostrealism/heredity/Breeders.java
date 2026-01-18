@@ -16,23 +16,66 @@
 
 package org.almostrealism.heredity;
 
-import io.almostrealism.relation.Factor;
-import org.almostrealism.collect.CollectionFeatures;
-import org.almostrealism.collect.PackedCollection;
-
+/**
+ * Utility class providing static methods for breeding operations in genetic algorithms.
+ *
+ * <p>This class contains helper methods commonly used during crossover and mutation
+ * operations. The methods are designed to support bounded value perturbation and
+ * other common genetic algorithm operations.
+ *
+ * <h2>Example Usage</h2>
+ * <pre>{@code
+ * // Perturb a value within bounds
+ * double original = 0.5;
+ * double lowerBound = 0.0;
+ * double upperBound = 1.0;
+ * double perturbAmount = 0.3;
+ *
+ * double result = Breeders.perturbation(lowerBound, upperBound, perturbAmount);
+ * // Result will be bounded to stay within [0.0, 1.0]
+ * }</pre>
+ *
+ * @see ChromosomeBreeder
+ * @see GenomeBreeder
+ */
 public class Breeders {
+	/**
+	 * Private constructor to prevent instantiation of this utility class.
+	 */
 	private Breeders() { }
 
-	private static PackedCollection<?> value(Factor<PackedCollection<?>> factor) {
-		if (factor instanceof ScaleFactor) {
-			return ((ScaleFactor) factor).getScale();
-		} else if (factor instanceof AssignableGenome.AssignableFactor) {
-			return ((AssignableGenome.AssignableFactor) factor).getValue();
-		} else {
-			return factor.getResultant(CollectionFeatures.getInstance().c(1.0)).get().evaluate();
-		}
-	}
-
+	/**
+	 * Calculates a bounded perturbation value that moves from {@code s1} toward {@code s2}
+	 * by the specified magnitude, ensuring the result stays within bounds.
+	 *
+	 * <p>This method is useful for mutation operations where you want to perturb a value
+	 * in a specific direction but ensure it doesn't exceed certain limits. The perturbation
+	 * is automatically clamped if the magnitude would cause the value to overshoot {@code s2}.
+	 *
+	 * <h3>Behavior</h3>
+	 * <ul>
+	 *   <li>If {@code s2 > s1}: adds magnitude (clamped to not exceed s2)</li>
+	 *   <li>If {@code s1 > s2}: subtracts magnitude (clamped to not go below s2)</li>
+	 *   <li>If {@code s1 == s2}: returns s1 (no perturbation possible)</li>
+	 * </ul>
+	 *
+	 * <h3>Example</h3>
+	 * <pre>{@code
+	 * // Moving from 0.0 toward 1.0 by 0.3
+	 * double result1 = Breeders.perturbation(0.0, 1.0, 0.3);  // Returns 0.3
+	 *
+	 * // Moving from 0.0 toward 1.0 by 2.0 (clamped)
+	 * double result2 = Breeders.perturbation(0.0, 1.0, 2.0);  // Returns 1.0
+	 *
+	 * // Moving from 1.0 toward 0.0 by 0.3
+	 * double result3 = Breeders.perturbation(1.0, 0.0, 0.3);  // Returns 0.7
+	 * }</pre>
+	 *
+	 * @param s1 the starting value and first bound
+	 * @param s2 the target direction and second bound
+	 * @param magnitude the amount to perturb (absolute value is used)
+	 * @return the perturbed value, bounded between s1 and s2
+	 */
 	public static double perturbation(double s1, double s2, double magnitude) {
 		double m = magnitude;
 		if (s2 > s1) {

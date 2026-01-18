@@ -18,6 +18,40 @@ package org.almostrealism.io;
 
 import java.util.function.Consumer;
 
+/**
+ * A simple interface for text output with support for indentation.
+ *
+ * <p>PrintWriter provides a basic abstraction for writing text output with
+ * configurable indentation levels. Unlike {@link java.io.PrintWriter}, this
+ * interface focuses on simple string output with hierarchical indentation
+ * support, making it suitable for generating formatted text like code,
+ * configuration files, or structured logs.</p>
+ *
+ * <h2>Usage</h2>
+ * <pre>{@code
+ * try (PrintWriter out = new FilePrintWriter(new File("output.txt"))) {
+ *     out.println("public class Example {");
+ *     out.moreIndent();
+ *     out.println("public void method() {");
+ *     out.moreIndent();
+ *     out.println("// code here");
+ *     out.lessIndent();
+ *     out.println("}");
+ *     out.lessIndent();
+ *     out.println("}");
+ * }
+ * }</pre>
+ *
+ * <h2>Factory Method</h2>
+ * <pre>{@code
+ * // Create a PrintWriter from a Consumer
+ * PrintWriter pw = PrintWriter.of(System.out::print);
+ * pw.println("Hello, world!");
+ * }</pre>
+ *
+ * @see FilePrintWriter
+ * @see PrintStreamPrintWriter
+ */
 public interface PrintWriter extends AutoCloseable {
 	/** Increases the indent. */
 	void moreIndent();
@@ -34,9 +68,20 @@ public interface PrintWriter extends AutoCloseable {
 	/** Appends a new line character. */
 	void println();
 
+	/**
+	 * Closes this writer and releases any associated resources.
+	 * The default implementation does nothing.
+	 */
 	@Override
 	default void close() { }
 
+	/**
+	 * Creates a PrintWriter that delegates to the specified consumer.
+	 * Note: The returned writer does not support indentation.
+	 *
+	 * @param c the consumer to receive output strings
+	 * @return a new PrintWriter instance
+	 */
 	static PrintWriter of(Consumer<String> c) {
 		return new PrintWriter() {
 			// TODO  Support indent

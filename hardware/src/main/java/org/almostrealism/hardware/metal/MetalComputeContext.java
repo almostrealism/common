@@ -19,11 +19,11 @@ package org.almostrealism.hardware.metal;
 import io.almostrealism.code.Accessibility;
 import io.almostrealism.code.InstructionSet;
 import io.almostrealism.lang.LanguageOperations;
-import io.almostrealism.scope.Scope;
 import io.almostrealism.lang.ScopeEncoder;
+import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.ScopeSettings;
-import org.almostrealism.hardware.ctx.AbstractComputeContext;
 import org.almostrealism.hardware.Hardware;
+import org.almostrealism.hardware.ctx.AbstractComputeContext;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 
@@ -32,7 +32,40 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * {@link io.almostrealism.code.ComputeContext} for Apple Metal shader compilation and execution.
+ *
+ * <p>Compiles {@link Scope} to Metal Shading Language (MSL), creates {@link MTLComputePipelineState},
+ * and executes kernels on Metal GPU.</p>
+ *
+ * <h2>Metal Shading Language Generation</h2>
+ *
+ * <pre>{@code
+ * MetalComputeContext context = ...;
+ * Scope<Matrix> scope = operation.getScope(context);
+ *
+ * // Generates MSL code:
+ * // #include <metal_stdlib>
+ * // kernel void matmul(...) { ... }
+ *
+ * MetalOperatorMap instructions = (MetalOperatorMap) context.deliver(scope);
+ * }</pre>
+ *
+ * <h2>Command Queue Management</h2>
+ *
+ * <pre>{@code
+ * MTLCommandQueue queue = context.getQueue();         // Main queue
+ * MTLCommandQueue fast = context.getFastQueue();      // Fast queue (if enabled)
+ * }</pre>
+ *
+ * @see MetalDataContext
+ * @see MetalOperator
+ * @see MTLDevice
+ */
 public class MetalComputeContext extends AbstractComputeContext implements ConsoleFeatures {
+	/**
+	 * Enables creation of a second "fast" command queue for parallel execution.
+	 */
 	public static boolean enableFastQueue = false;
 
 	private static String includes = "#include <metal_stdlib>\n" +
@@ -58,11 +91,24 @@ public class MetalComputeContext extends AbstractComputeContext implements Conso
 
 	private Map<String, MetalOperatorMap> instructionSets;
 
+	/**
+	 * Creates a Metal compute context for the specified data context.
+	 *
+	 * @param dc The {@link MetalDataContext} providing device and memory access
+	 */
 	public MetalComputeContext(MetalDataContext dc) {
 		super(dc);
 		this.instructionSets = new HashMap<>();
 	}
 
+	/**
+	 * Initializes the compute context with the Metal device and command queues.
+	 *
+	 * <p>Creates the main command queue and optionally a fast queue if
+	 * {@link #enableFastQueue} is enabled. Initializes the {@link MetalCommandRunner}.</p>
+	 *
+	 * @param mainDevice The {@link MTLDevice} to use for computation
+	 */
 	protected void init(MTLDevice mainDevice) {
 		if (queue != null) return;
 
@@ -87,11 +133,26 @@ public class MetalComputeContext extends AbstractComputeContext implements Conso
 		this.runner = new MetalCommandRunner(queue);
 	}
 
+	/**
+	 * Returns the language operations for generating Metal Shading Language code.
+	 *
+	 * @return {@link MetalLanguageOperations} configured for the context's precision
+	 */
 	@Override
 	public LanguageOperations getLanguage() {
 		return new MetalLanguageOperations(getDataContext().getPrecision());
 	}
 
+	/**
+	 * Compiles a {@link Scope} into Metal Shading Language and creates executable instruction set.
+	 *
+	 * <p>Generates MSL code with standard Metal includes, encodes the scope using
+	 * {@link MetalPrintWriter}, and creates a {@link MetalOperatorMap} for execution.
+	 * Caches compiled instruction sets by name or signature.</p>
+	 *
+	 * @param scope The computation scope to compile
+	 * @return {@link MetalOperatorMap} containing compiled Metal operators
+	 */
 	@Override
 	public InstructionSet deliver(Scope scope) {
 		if (instructionSets.containsKey(key(scope.getName(), scope.signature()))) {
@@ -123,13 +184,42 @@ public class MetalComputeContext extends AbstractComputeContext implements Conso
 		}
 	}
 
+	/**
+	 * Checks if this context runs on CPU.
+	 *
+	 * @return Always false (Metal is GPU-only)
+	 */
 	@Override
 	public boolean isCPU() { return false; }
 
+	/**
+	 * Returns the Metal device for this context.
+	 *
+	 * @return The {@link MTLDevice} instance
+	 */
 	public MTLDevice getMtlDevice() { return mainDevice; }
+
+	/**
+	 * Returns the main Metal command queue.
+	 *
+	 * @return The primary {@link MTLCommandQueue}
+	 */
 	public MTLCommandQueue getMtlQueue() { return queue; }
+
+	/**
+	 * Returns the command runner for submitting Metal operations.
+	 *
+	 * @return The {@link MetalCommandRunner} instance
+	 */
 	public MetalCommandRunner getCommandRunner() { return runner; }
 
+	/**
+	 * Removes a destroyed instruction set from the cache.
+	 *
+	 * @param name Scope name
+	 * @param signature Scope signature
+	 * @throws IllegalArgumentException if no instruction set found with that key
+	 */
 	protected void destroyed(String name, String signature) {
 		if (instructionSets != null) {
 			String key = key(name, signature);
@@ -140,6 +230,12 @@ public class MetalComputeContext extends AbstractComputeContext implements Conso
 		}
 	}
 
+	/**
+	 * Destroys this compute context and releases all Metal resources.
+	 *
+	 * <p>Destroys all cached instruction sets, releases command queues, and
+	 * clears internal state. After calling destroy, this context cannot be used.</p>
+	 */
 	@Override
 	public void destroy() {
 		List<MetalOperatorMap> toDestroy = new ArrayList<>(instructionSets.values());
@@ -154,6 +250,11 @@ public class MetalComputeContext extends AbstractComputeContext implements Conso
 		fastQueue = null;
 	}
 
+	/**
+	 * Returns the console for logging output.
+	 *
+	 * @return The {@link Console} instance for hardware logging
+	 */
 	@Override
 	public Console console() { return Hardware.console; }
 

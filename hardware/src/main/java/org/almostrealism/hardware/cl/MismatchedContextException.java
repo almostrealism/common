@@ -19,6 +19,25 @@ package org.almostrealism.hardware.cl;
 import org.almostrealism.hardware.HardwareException;
 import org.jocl.CLException;
 
+/**
+ * Exception thrown when attempting to use OpenCL resources across incompatible contexts.
+ *
+ * <p>Indicates that an operation tried to use a {@link CLDataContext} that doesn't match
+ * the currently active context, or that no OpenCL context is available.</p>
+ *
+ * <h2>Example Error Messages</h2>
+ *
+ * <pre>{@code
+ * // Different contexts:
+ * "Attempting to use CLDataContext@GPU when CLDataContext@CPU is in effect"
+ *
+ * // No context available:
+ * "Attempting to use CLDataContext@GPU when no context supporting OpenCL is in effect"
+ * }</pre>
+ *
+ * @see CLExceptionProcessor
+ * @see HardwareException
+ */
 public class MismatchedContextException extends HardwareException {
 	public MismatchedContextException(CLDataContext targetContext, CLDataContext actualContext, CLException cause) {
 		super(text(targetContext, actualContext), cause);

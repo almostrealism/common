@@ -22,15 +22,47 @@ import java.security.NoSuchAlgorithmException;
 import java.util.UUID;
 
 /**
- * Utilities for generating unique identifiers.
+ * Utilities for generating unique identifiers and cryptographic hashes.
  *
- * @author  Michael Murray
+ * <p>This class provides static methods for:</p>
+ * <ul>
+ *   <li>Generating unique identifiers (UUIDs)</li>
+ *   <li>Computing SHA-256 hashes of strings</li>
+ *   <li>Converting byte arrays to hexadecimal strings</li>
+ * </ul>
+ *
+ * <h2>Usage Example</h2>
+ * <pre>{@code
+ * // Generate a unique key
+ * String key = KeyUtils.generateKey();
+ * // Example: "550e8400-e29b-41d4-a716-446655440000"
+ *
+ * // Hash a password or data
+ * String hash = KeyUtils.hash("myPassword");
+ * // Returns 64-character hex string (SHA-256)
+ * }</pre>
+ *
+ * @author Michael Murray
  */
 public class KeyUtils {
+
+	/**
+	 * Generates a new random UUID as a string.
+	 *
+	 * @return a unique identifier string in standard UUID format
+	 *         (e.g., "550e8400-e29b-41d4-a716-446655440000")
+	 */
 	public static String generateKey() {
 		return UUID.randomUUID().toString();
 	}
 
+	/**
+	 * Computes the SHA-256 hash of a string value.
+	 *
+	 * @param value the string to hash (encoded as UTF-8)
+	 * @return the hash as a lowercase hexadecimal string (64 characters)
+	 * @throws RuntimeException if SHA-256 algorithm is not available (should not occur)
+	 */
 	public static String hash(String value) {
 		try {
 			MessageDigest md = MessageDigest.getInstance("SHA-256");
@@ -41,6 +73,12 @@ public class KeyUtils {
 		}
 	}
 
+	/**
+	 * Converts a byte array to a lowercase hexadecimal string.
+	 *
+	 * @param bytes the byte array to convert
+	 * @return the hexadecimal representation (2 hex digits per byte)
+	 */
 	public static String bytesToHex(byte[] bytes) {
 		StringBuilder sb = new StringBuilder();
 		for (byte b : bytes) {

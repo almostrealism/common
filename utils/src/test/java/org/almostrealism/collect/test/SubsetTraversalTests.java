@@ -17,8 +17,8 @@
 package org.almostrealism.collect.test;
 
 import io.almostrealism.collect.SubsetTraversalExpression;
-import io.almostrealism.collect.WeightedSumDeltaExpression;
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.collect.WeightedSumDeltaExpression;
 import io.almostrealism.expression.Expression;
 import org.almostrealism.algebra.computations.WeightedSumComputation;
 import org.almostrealism.collect.PackedCollection;
@@ -27,7 +27,8 @@ import org.junit.Assert;
 import org.junit.Test;
 
 public class SubsetTraversalTests implements TestFeatures {
-	@Test
+
+	@Test(timeout = 10000)
 	public void traversal() {
 		TraversalPolicy resultShape = shape(4, 1);
 
@@ -54,7 +55,7 @@ public class SubsetTraversalTests implements TestFeatures {
 		mapping.getValueAt(e(index));
 	}
 
-	@Test
+	@Test(timeout = 10000)
 	public void convolution() {
 		int batch = 1;
 		int channels = 1;
@@ -79,8 +80,8 @@ public class SubsetTraversalTests implements TestFeatures {
 		TraversalPolicy groupShape =
 				shape(1, 1, channels, size, size);
 
-		PackedCollection<?> conv = new PackedCollection<>(shape(batch, 1, channels, height, width));
-		PackedCollection<?> filter = new PackedCollection<>(1, filterCount, channels, size, size);
+		PackedCollection conv = new PackedCollection(shape(batch, 1, channels, height, width));
+		PackedCollection filter = new PackedCollection(1, filterCount, channels, size, size);
 
 		WeightedSumComputation sum = (WeightedSumComputation)
 				weightedSum("convolutionFilter",

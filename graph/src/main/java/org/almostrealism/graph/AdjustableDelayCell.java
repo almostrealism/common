@@ -17,11 +17,11 @@
 package org.almostrealism.graph;
 
 import io.almostrealism.relation.Producer;
-import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.time.CursorPair;
-import org.almostrealism.time.AcceleratedTimeSeries;
-import org.almostrealism.hardware.OperationList;
 import org.almostrealism.Ops;
+import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.hardware.OperationList;
+import org.almostrealism.time.AcceleratedTimeSeries;
+import org.almostrealism.time.CursorPair;
 import org.almostrealism.time.TemporalFeatures;
 
 import java.util.function.Supplier;
@@ -33,20 +33,20 @@ public class AdjustableDelayCell extends SummationCell implements TemporalFeatur
 	private final AcceleratedTimeSeries buffer;
 	private CursorPair cursors;
 
-	private final Producer<PackedCollection<?>> delay;
-	private final Producer<PackedCollection<?>> scale;
+	private final Producer<PackedCollection> delay;
+	private final Producer<PackedCollection> scale;
 
 	public AdjustableDelayCell(int sampleRate, double delay) {
 		this(sampleRate, Ops.o().c(delay));
 	}
 
-	public AdjustableDelayCell(int sampleRate, Producer<PackedCollection<?>> delay) {
+	public AdjustableDelayCell(int sampleRate, Producer<PackedCollection> delay) {
 		this(sampleRate, delay, Ops.o().c(1.0));
 	}
 
 	public AdjustableDelayCell(int sampleRate,
-							   Producer<PackedCollection<?>> delay,
-							   Producer<PackedCollection<?>> scale) {
+							   Producer<PackedCollection> delay,
+							   Producer<PackedCollection> scale) {
 		this.sampleRate = sampleRate;
 		initCursors();
 		buffer = AcceleratedTimeSeries.defaultSeries();
@@ -62,15 +62,15 @@ public class AdjustableDelayCell extends SummationCell implements TemporalFeatur
 
 	public AcceleratedTimeSeries getBuffer() { return buffer; }
 
-	public Producer<PackedCollection<?>> getDelay() { return delay; }
+	public Producer<PackedCollection> getDelay() { return delay; }
 
-	public Producer<PackedCollection<?>> getScale() { return scale; }
+	public Producer<PackedCollection> getScale() { return scale; }
 
-	protected Producer<PackedCollection<?>> getLeftCursor()	{
+	protected Producer<PackedCollection> getLeftCursor()	{
 		return p(cursors.range(shape(1)));
 	}
 
-	protected Producer<PackedCollection<?>> getRightCursor() {
+	protected Producer<PackedCollection> getRightCursor() {
 		return p(cursors.range(shape(1), 1));
 	}
 
@@ -86,7 +86,7 @@ public class AdjustableDelayCell extends SummationCell implements TemporalFeatur
 	@Override
 	public Supplier<Runnable> tick() {
 		OperationList tick = new OperationList("AdjustableDelayCell Tick");
-		tick.add(buffer.add(temporal(r(p(cursors)), p(getCachedValue()))));
+		tick.add(buffer.add((Producer) temporal(r(p(cursors)), p(getCachedValue()))));
 		tick.add(a(cp(getOutputValue()), buffer.valueAt(p(cursors))));
 		tick.add(buffer.purge(p(cursors), defaultPurgeFrequency));
 		tick.add(cursors.increment(getScale()));

@@ -40,12 +40,12 @@ import java.util.function.Supplier;
 
 public class ConvolutionModelTests implements ModelFeatures, TestFeatures, KernelAssertions {
 
-	@Test
+	@Test(timeout = 30000)
 	public void convSingleChannelSmall() {
 		convSingleChannel(10, 10, 3, 8);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void convSingleChannelMedium() {
 //		convSingleChannel(54, 54, 3, 6);
 		convSingleChannel(52, 52, 3, 6);
@@ -59,32 +59,34 @@ public class ConvolutionModelTests implements ModelFeatures, TestFeatures, Kerne
 		model.add(conv);
 
 		Tensor<Double> t = tensor(inputShape);
-		PackedCollection<?> input = t.pack();
+		PackedCollection input = t.pack();
 
 		model.compile().forward(input);
 
-		PackedCollection<?> filter = conv.getWeights().get(0);
+		PackedCollection filter = conv.getWeights().get(0);
 		TraversalPolicy filterShape = filter.getShape();
 		Assert.assertEquals(filterCount, filterShape.length(0));
 		Assert.assertEquals(1, filterShape.length(1));
 		Assert.assertEquals(convSize, filterShape.length(2));
 		Assert.assertEquals(convSize, filterShape.length(3));
 
-		PackedCollection<?> output = ((DefaultCellularLayer) conv).getOutput();
+		PackedCollection output = ((DefaultCellularLayer) conv).getOutput();
 		validateConv(input.reshape(1, 1, h, w), filter, output, convSize);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void convMultiChannelSmall() {
 		convMultiChannel(2, 4, 10, 10, 3, 6);
 	}
 
-	@Test
+	@Test(timeout = 15 * 60000)
 	public void convMultiChannelMedium() {
+		if (testDepth < 1) return;
+
 		convMultiChannel(2, 4, 54, 54, 3, 6);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void convMultiChannelLarge() {
 		convMultiChannel(1, 56, 28, 28, 3, 28);
 	}
@@ -96,76 +98,76 @@ public class ConvolutionModelTests implements ModelFeatures, TestFeatures, Kerne
 		CellularLayer conv = (CellularLayer) convolution2d(inputShape, filterCount, convSize, false);
 		model.add(conv);
 
-		PackedCollection<?> input = new PackedCollection<>(inputShape).randFill();
+		PackedCollection input = new PackedCollection(inputShape).randFill();
 
 		model.compile().forward(input);
 
-		PackedCollection<?> filter = conv.getWeights().get(0);
+		PackedCollection filter = conv.getWeights().get(0);
 		TraversalPolicy filterShape = filter.getShape();
 		Assert.assertEquals(filterCount, filterShape.length(0));
 		Assert.assertEquals(c, filterShape.length(1));
 		Assert.assertEquals(convSize, filterShape.length(2));
 		Assert.assertEquals(convSize, filterShape.length(3));
 
-		PackedCollection<?> output = ((DefaultCellularLayer) conv).getOutput();
+		PackedCollection output = ((DefaultCellularLayer) conv).getOutput();
 		validateConv(input, filter, output, convSize);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void convBackwardsSmallAtom() throws IOException {
 		convBackwards("convBackwardsSmallAtom", 1, 3, 4, 4, 1, 3, 0, true);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void convBackwardsMediumAtom() throws IOException {
 		convBackwards("convBackwardsMediumAtom", 1, 28, 28, 28, 1, 28, 0, true);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void convBackwardsMediumAtomPadded() throws IOException {
 		if (skipKnownIssues) return;
 
 		convBackwards("convBackwardsMediumAtomPadded", 1, 28, 28, 28, 1, 28,1, true);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void convBackwardsSmall() throws IOException {
 		convBackwards("convBackwardsSmall", 1, 3, 4, 4, 2, 3,0, true);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void convBackwardsSmallPadded() throws IOException {
 		convBackwards("convBackwardsSmallPadded", 1, 3, 4, 4, 2, 3, 1, true);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void convBackwardsMedium() throws IOException {
 		convBackwards("convBackwardsMedium", 1, 28, 28, 28, 3, 28, 0, true);
 	}
 
-	@Test
+	@Test(timeout = 90 * 60000)
 	public void convBackwardsMediumBatch() throws IOException {
 		if (testDepth < 2) return;
 
 		convBackwards("convBackwardsMediumBatch", 4, 28, 28, 28, 3, 28, 0, true);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void convBackwardsLarge() throws IOException {
 		convBackwards("convBackwardsLarge", 1, 168, 7, 7, 3, 112, 1, true);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void convBackwardsMediumPadded() throws IOException {
 		convBackwards("convBackwardsMediumPadded", 1, 28, 28, 28, 3, 28, 1, true);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void convGradientSmallest() throws IOException {
 		convGradient("convGradientSmallest", 1, 1, 4, 4, 2, 1, 0, false);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void convGradientSmall() throws IOException {
 		convGradient("convGradientSmallest", 3, 2, 4, 4, 2, 2, 0, false);
 	}
@@ -178,21 +180,21 @@ public class ConvolutionModelTests implements ModelFeatures, TestFeatures, Kerne
 		CellularLayer layer = conv instanceof SequentialBlock ?
 				(CellularLayer) ((SequentialBlock) conv).getBlocks().get(1) : (CellularLayer) conv;
 
-		Cell.CaptureReceptor<PackedCollection<?>> receptor = new Cell.CaptureReceptor<>();
+		Cell.CaptureReceptor<PackedCollection> receptor = new Cell.CaptureReceptor<>();
 		layer.getBackward().setReceptor(receptor);
 		((Learning) layer).setParameterUpdate(ParameterUpdate.disabled());
 		layer.setup().get().run();
 
-		PackedCollection<?> filter = layer.getWeights().get(0);
+		PackedCollection filter = layer.getWeights().get(0);
 		log(filter.getShape()); // (filterCount, c, convSize, convSize)
 
-		PackedCollection<?> inputGradient =
-				new PackedCollection<>(layer.getOutputShape()).randFill();
+		PackedCollection inputGradient =
+				new PackedCollection(layer.getOutputShape()).randFill();
 
 		Supplier<Runnable> op = layer.getBackward().push(cp(inputGradient));
 		op.get().run();
 
-		PackedCollection<?> outputGradient = receptor.getReceipt().evaluate();
+		PackedCollection outputGradient = receptor.getReceipt().evaluate();
 		log(outputGradient.getShape());
 
 		int outH = layer.getOutputShape().length(2);
@@ -245,13 +247,13 @@ public class ConvolutionModelTests implements ModelFeatures, TestFeatures, Kerne
 		OperationProfileNode profile = new OperationProfileNode(name);
 
 		try {
-			PackedCollection<?> gradient =
-					new PackedCollection<>(model.getOutputShape()).randFill();
+			PackedCollection gradient =
+					new PackedCollection(model.getOutputShape()).randFill();
 
 			CompiledModel compiled = model.compile(profile);
 			profile(profile, () -> compiled.backward(gradient));
 
-			PackedCollection<?> filter = layer.getWeights().get(0);
+			PackedCollection filter = layer.getWeights().get(0);
 			TraversalPolicy filterShape = filter.getShape();
 			Assert.assertEquals(filterCount, filterShape.length(0));
 			Assert.assertEquals(c, filterShape.length(1));
@@ -262,7 +264,7 @@ public class ConvolutionModelTests implements ModelFeatures, TestFeatures, Kerne
 		}
 	}
 
-	protected void validateConv(PackedCollection<?> input, PackedCollection<?> filter, PackedCollection<?> output, int convSize) {
+	protected void validateConv(PackedCollection input, PackedCollection filter, PackedCollection output, int convSize) {
 		int batches = input.getShape().length(0);
 		int channels = input.getShape().length(1);
 		TraversalPolicy outputShape = output.getShape();

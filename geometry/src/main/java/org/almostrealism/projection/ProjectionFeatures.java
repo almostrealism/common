@@ -1,0 +1,145 @@
+/*
+ * Copyright 2025 Michael Murray
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ */
+
+package org.almostrealism.projection;
+
+import io.almostrealism.relation.Producer;
+import org.almostrealism.algebra.Pair;
+import org.almostrealism.algebra.PairFeatures;
+import org.almostrealism.algebra.Vector;
+import org.almostrealism.collect.CollectionProducer;
+import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.geometry.RayFeatures;
+
+/**
+ * A feature interface providing hardware-accelerated camera projection utilities.
+ * This interface is used internally by camera implementations to generate rays
+ * in a way that can be efficiently executed on GPU hardware.
+ *
+ * <p>The methods handle the transformation from screen-space coordinates to
+ * 3D ray directions using the camera's orthonormal basis vectors (u, v, w).</p>
+ *
+ * @author Michael Murray
+ * @see PinholeCamera
+ * @see RayFeatures
+ */
+public interface ProjectionFeatures extends PairFeatures, RayFeatures {
+	/**
+	 * Generates a camera ray for the given screen position using hardware acceleration.
+	 *
+	 * @param pos the screen position (pixel coordinates)
+	 * @param sd the screen dimensions (width, height)
+	 * @param location the camera location in world space
+	 * @param projectionDimensions the projection plane dimensions
+	 * @param blur the blur amount for depth of field effects
+	 * @param focalLength the camera focal length
+	 * @param u the camera's right direction vector
+	 * @param v the camera's up direction vector
+	 * @param w the camera's negative view direction vector
+	 * @return a producer for the camera ray
+	 */
+	default CollectionProducer rayAt(Producer<?> pos, Producer<?> sd,
+									 Vector location, Pair projectionDimensions,
+									 double blur, double focalLength,
+									 Vector u, Vector v, Vector w) {
+		return ray(v(location),
+				direction(pos, sd, projectionDimensions, focalLength, u, v, w, new Pair(blur, blur)));
+	}
+
+	/**
+	 * Computes the ray direction for the given screen position.
+	 * The direction is computed in camera space using the orthonormal basis (u, v, w)
+	 * and optionally perturbed for depth of field blur effects.
+	 *
+	 * @param pos the screen position (pixel coordinates)
+	 * @param sd the screen dimensions (width, height)
+	 * @param projectionDimensions the projection plane dimensions
+	 * @param focalLength the camera focal length
+	 * @param u the camera's right direction vector
+	 * @param v the camera's up direction vector
+	 * @param w the camera's negative view direction vector
+	 * @param blur the blur amount (x, y) for depth of field
+	 * @return a producer for the normalized ray direction
+	 */
+	default CollectionProducer direction(Producer<?> pos, Producer<?> sd,
+										 Pair projectionDimensions, double focalLength,
+										 Vector u, Vector v, Vector w, Pair blur) {
+		CollectionProducer pd = v(projectionDimensions);
+
+		CollectionProducer sdx = l(sd);
+		CollectionProducer sdy = r(sd);
+
+		CollectionProducer pdx = l(pd);
+		CollectionProducer pdy = r(pd);
+
+		var p = pdx.multiply(l(pos))
+								.multiply(sdx.add(c(-1.0)).pow(c(-1.0))).add(pdx.multiply(c(-0.5)));
+		var q = pdy.multiply(r(pos))
+								.multiply(sdy.add(c(-1.0)).pow(-1.0)).add(pdy.multiply(c(-0.5)));
+		var r = c(-focalLength);
+
+		var x = p.multiply(c(u.getX())).add(q.multiply(c(v.getX()))).add(r.multiply(c(w.getX())));
+		var y = p.multiply(c(u.getY())).add(q.multiply(c(v.getY()))).add(r.multiply(c(w.getY())));
+		var z = p.multiply(c(u.getZ())).add(q.multiply(c(v.getZ()))).add(r.multiply(c(w.getZ())));
+
+		CollectionProducer pqr = vector(x, y, z);
+		Producer<PackedCollection> len = length(pqr);
+
+		if (blur.getX() != 0.0 || blur.getY() != 0.0) {
+			CollectionProducer wv = normalize(pqr);
+			CollectionProducer uv = u(wv, t(pqr));
+			CollectionProducer vv = v(wv, uv);
+
+			Producer<PackedCollection> random = rand(2);
+			Producer<PackedCollection> rx = add(c(-0.5), c(random, 0));
+			Producer<PackedCollection> ry = add(c(-0.5), c(random, 1));
+
+			pqr = pqr.add(multiply(uv, c(blur.getX())).multiply(rx));
+			pqr = pqr.add(multiply(vv, c(blur.getY())).multiply(ry));
+
+			pqr = multiply(pqr, len);
+			pqr = multiply(pqr, length(pqr).pow(-1.0));
+		} else {
+			// Normalize direction vector even when blur is 0 (required for correct intersection distances)
+			pqr = normalize(pqr);
+		}
+
+		return pqr;
+	}
+
+	private Producer<PackedCollection> t(CollectionProducer pqr) {
+		Producer<PackedCollection> t = lessThan(y(pqr), x(pqr)).and(lessThan(y(pqr), z(pqr)),
+								vector(x(pqr), c(1.0), z(pqr)),
+								vector(x(pqr), y(pqr), c(1.0)));
+		return lessThan(x(pqr), y(pqr)).and(lessThan(y(pqr), z(pqr)),
+					vector(c(1.0), y(pqr), z(pqr)), t);
+	}
+
+	private CollectionProducer u(Producer<PackedCollection> w,
+								 Producer<PackedCollection> t) {
+		CollectionProducer x = y(t).multiply(z(w)).add(z(t).multiply(y(w)).multiply(c(-1.0)));
+		CollectionProducer y = z(t).multiply(x(w)).add(x(t).multiply(z(w)).multiply(c(-1.0)));
+		CollectionProducer z = x(t).multiply(y(w)).add(y(t).multiply(x(w)).multiply(c(-1.0)));
+		return normalize(vector(x, y, z));
+	}
+
+	private CollectionProducer v(CollectionProducer w, CollectionProducer u) {
+		CollectionProducer x = y(w).multiply(z(u)).add(z(w).multiply(y(u)).multiply(c(-1.0)));
+		CollectionProducer y = z(w).multiply(x(u)).add(x(w).multiply(z(u)).multiply(c(-1.0)));
+		CollectionProducer z = x(w).multiply(y(u)).add(y(w).multiply(x(u)).multiply(c(-1.0)));
+		return vector(x, y, z);
+	}
+}

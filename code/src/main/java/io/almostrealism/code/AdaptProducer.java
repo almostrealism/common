@@ -34,9 +34,18 @@ import java.util.stream.Stream;
  * @author  Michael Murray
  */
 public class AdaptProducer<T> implements Producer<T>, ScopeLifecycle {
+	/** The primary producer whose result type is produced. */
 	private Producer<T> p;
+
+	/** The producers that compute argument values for the primary producer. */
 	private Producer args[];
 
+	/**
+	 * Creates an adapted producer that computes its arguments from other producers.
+	 *
+	 * @param p    the primary producer to adapt
+	 * @param args the producers that compute argument values for {@code p}
+	 */
 	public AdaptProducer(Producer<T> p, Producer... args) {
 		this.p = p;
 		this.args = args;

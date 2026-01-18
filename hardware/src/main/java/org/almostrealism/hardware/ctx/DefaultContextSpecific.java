@@ -22,21 +22,89 @@ import java.util.function.Consumer;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 
+/**
+ * Default implementation of {@link ContextSpecific} that creates standard {@link SuppliedValue} instances.
+ *
+ * <p>{@link DefaultContextSpecific} extends the base {@link ContextSpecific} pattern with optional
+ * validation support. Each context gets its own {@link SuppliedValue}, with optional validation to
+ * determine if cached values are still valid.</p>
+ *
+ * <h2>Usage</h2>
+ *
+ * <pre>{@code
+ * // Simple context-specific value
+ * ContextSpecific<Cache> cacheProvider = new DefaultContextSpecific<>(
+ *     () -> new Cache(1000)
+ * );
+ * cacheProvider.init();
+ *
+ * // With disposal logic
+ * ContextSpecific<ThreadPool> poolProvider = new DefaultContextSpecific<>(
+ *     () -> new ThreadPool(4),
+ *     pool -> pool.shutdown()
+ * );
+ * poolProvider.init();
+ *
+ * // With validation predicate
+ * DefaultContextSpecific<Config> configProvider = new DefaultContextSpecific<>(
+ *     () -> loadConfig()
+ * );
+ * configProvider.setValid(config -> config.timestamp > lastUpdate);
+ * configProvider.init();
+ * }</pre>
+ *
+ * <h2>Validation Support</h2>
+ *
+ * <p>If a validation {@link Predicate} is set via {@link #setValid}, each {@link SuppliedValue}
+ * will check if its cached value is still valid before returning it. If invalid, a new value
+ * is created from the supplier.</p>
+ *
+ * @param <T> Type of context-specific value
+ * @see ContextSpecific
+ * @see ThreadLocalContextSpecific
+ * @see SuppliedValue
+ */
 public class DefaultContextSpecific<T> extends ContextSpecific<T> {
+	/** Predicate to validate cached values, or null if all cached values are valid. */
 	private Predicate<T> valid;
 
+	/**
+	 * Constructs a context-specific value with the given supplier.
+	 *
+	 * @param supply Supplier to create new instances for each context
+	 */
 	public DefaultContextSpecific(Supplier<T> supply) {
 		super(supply);
 	}
 
+	/**
+	 * Constructs a context-specific value with the given supplier and disposal logic.
+	 *
+	 * @param supply Supplier to create new instances for each context
+	 * @param disposal Consumer to clean up values when contexts are destroyed
+	 */
 	public DefaultContextSpecific(Supplier<T> supply, Consumer<T> disposal) {
 		super(supply, disposal);
 	}
 
+	/**
+	 * Sets a validation predicate to determine if cached values are still valid.
+	 *
+	 * <p>If set, the {@link SuppliedValue} will re-evaluate the supplier whenever the
+	 * predicate returns false for the cached value.</p>
+	 *
+	 * @param valid Predicate to check if a value is still valid
+	 */
 	public void setValid(Predicate<T> valid) {
 		this.valid = valid;
 	}
 
+	/**
+	 * Creates a new {@link SuppliedValue} with optional validation support.
+	 *
+	 * @param supply Supplier to create the value
+	 * @return A new SuppliedValue configured with the validation predicate (if set)
+	 */
 	@Override
 	public SuppliedValue createValue(Supplier supply) {
 		SuppliedValue v = new SuppliedValue(supply);

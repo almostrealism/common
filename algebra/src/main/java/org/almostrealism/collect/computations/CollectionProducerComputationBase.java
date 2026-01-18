@@ -17,35 +17,32 @@
 package org.almostrealism.collect.computations;
 
 import io.almostrealism.code.ArgumentMap;
-import io.almostrealism.code.CollectionUtils;
 import io.almostrealism.code.MemoryProvider;
-import io.almostrealism.lifecycle.Destroyable;
-import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.code.ProducerComputationBase;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.ScopeLifecycle;
-import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.CollectionVariable;
 import io.almostrealism.collect.IndexSet;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversableExpression;
+import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.compute.Process;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.lifecycle.Destroyable;
+import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.calculus.DeltaAlternate;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
-import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.MemoryDataComputation;
-import org.almostrealism.hardware.ProducerCache;
 import org.almostrealism.hardware.computations.HardwareEvaluable;
 import org.almostrealism.hardware.mem.MemoryDataDestinationProducer;
 
@@ -82,15 +79,15 @@ import java.util.stream.Stream;
  * <h2>Usage Example:</h2>
  * <pre>{@code
  * // Example of a concrete implementation for element-wise addition
- * public class AdditionComputation extends CollectionProducerComputationBase<PackedCollection<?>, PackedCollection<?>> {
- *     public AdditionComputation(TraversalPolicy shape, 
- *                               Supplier<Evaluable<? extends PackedCollection<?>>> a,
- *                               Supplier<Evaluable<? extends PackedCollection<?>>> b) {
+ * public class AdditionComputation extends CollectionProducerComputationBase {
+ *     public AdditionComputation(TraversalPolicy shape,
+ *                               Producer<PackedCollection> a,
+ *                               Producer<PackedCollection> b) {
  *         super("addition", shape, a, b);
  *     }
- *     
+ *
  *     @Override
- *     public Scope<Void> getScope(KernelStructureContext context) {
+ *     public Scope<PackedCollection> getScope(KernelStructureContext context) {
  *         // Implementation of the computation kernel
  *         // ...
  *     }
@@ -98,10 +95,10 @@ import java.util.stream.Stream;
  * 
  * // Usage
  * TraversalPolicy shape = new TraversalPolicy(100, 50); // 100x50 matrix
- * Producer<PackedCollection<?>> sourceA = ...; // First input producer
- * Producer<PackedCollection<?>> sourceB = ...; // Second input producer
+ * Producer<PackedCollection> sourceA = ...; // First input producer
+ * Producer<PackedCollection> sourceB = ...; // Second input producer
  * AdditionComputation computation = new AdditionComputation(shape, sourceA, sourceB);
- * PackedCollection<?> result = computation.get().evaluate();
+ * PackedCollection result = computation.get().evaluate();
  * }</pre>
  * 
  * <h2>Thread Safety:</h2>
@@ -113,9 +110,7 @@ import java.util.stream.Stream;
  * <p>This class manages memory allocation automatically through the {@link #adjustDestination(MemoryBank, Integer)}
  * method. Large computations may hit memory limits defined by {@link MemoryProvider#MAX_RESERVATION}.
  * Applications should call {@link #destroy()} when computations are no longer needed to free resources.</p>
- * 
- * @param <I> Input collection type, must extend {@link PackedCollection}
- * @param <O> Output collection type, must extend {@link PackedCollection}
+ *
  * 
  * @author Michael Murray
  * @since 0.69
@@ -124,10 +119,10 @@ import java.util.stream.Stream;
  * @see TraversalPolicy  
  * @see PackedCollection
  */
-public abstract class CollectionProducerComputationBase<I extends PackedCollection<?>, O extends PackedCollection<?>>
-												extends ProducerComputationBase<I, O>
-												implements CollectionProducerComputation<O>, IndexSet,
-															DeltaAlternate<O>, MemoryDataComputation<O>,
+public abstract class CollectionProducerComputationBase
+		extends ProducerComputationBase<PackedCollection, PackedCollection>
+												implements CollectionProducerComputation, IndexSet,
+															DeltaAlternate<PackedCollection>, MemoryDataComputation<PackedCollection>,
 															HardwareFeatures {
 	/**
 	 * Global flag to enable logging of destination buffer operations.
@@ -135,7 +130,7 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 	 * during computation execution. Primarily used for debugging memory management issues.
 	 * 
 	 * @see #destinationLog(Runnable)
-	 * @see #shapeForLength(int)
+	 * @see CollectionProducerComputation#shapeForLength(TraversalPolicy, int, boolean, int)
 	 */
 	public static boolean enableDestinationLogging = false;
 
@@ -146,19 +141,19 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 	private TraversalPolicy shape;
 	
 	/** Optional post-processor function to transform raw memory data into the final output type. */
-	private BiFunction<MemoryData, Integer, O> postprocessor;
+	private BiFunction<MemoryData, Integer, PackedCollection> postprocessor;
 	
 	/** Optional short-circuit evaluable that bypasses normal computation for optimization. */
-	private Evaluable<O> shortCircuit;
+	private Evaluable<PackedCollection> shortCircuit;
 	
 	/** List of dependent lifecycle objects that need to be managed alongside this computation. */
 	private List<ScopeLifecycle> dependentLifecycles;
 
 	/** Cached hardware-accelerated evaluable instance for this computation. */
-	private HardwareEvaluable<O> evaluable;
+	private HardwareEvaluable<PackedCollection> evaluable;
 
 	/** Alternative producer for delta computations (derivatives/gradients). */
-	private CollectionProducer<O> deltaAlternate;
+	private CollectionProducer deltaAlternate;
 	
 	/** Custom description function for generating human-readable computation descriptions. */
 	private Function<List<String>, String> description;
@@ -188,12 +183,12 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 	 * @throws IllegalArgumentException if the output shape has a total size of zero or less
 	 * @throws NullPointerException if any argument supplier is null
 	 * 
-	 * @see #validateArgs(Supplier[])
+	 * @see #validateArgs(Producer[])
 	 * @see TraversalPolicy#getTotalSizeLong()
 	 */
 	@SafeVarargs
 	public CollectionProducerComputationBase(String name, TraversalPolicy outputShape,
-											 Supplier<Evaluable<? extends I>>... arguments) {
+											 Producer<PackedCollection>... arguments) {
 		this();
 
 		if (outputShape.getTotalSizeLong() <= 0) {
@@ -202,7 +197,12 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 
 		this.name = name;
 		this.shape = outputShape.withOrder(null);
-		this.setInputs((Supplier[]) CollectionUtils.include(new Supplier[0], new MemoryDataDestinationProducer<>(this, this::adjustDestination), arguments));
+
+		List<Producer<PackedCollection>> inputs = new ArrayList<>();
+		inputs.add(new MemoryDataDestinationProducer<>(this, this::adjustDestination));
+		inputs.addAll(List.of(arguments));
+		setInputs(inputs);
+
 		init();
 	}
 
@@ -248,7 +248,7 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 	 * @see #setDeltaAlternate(CollectionProducer)
 	 */
 	@Override
-	public CollectionProducer<O> getDeltaAlternate() {
+	public CollectionProducer getDeltaAlternate() {
 		return deltaAlternate;
 	}
 
@@ -260,7 +260,7 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 	 * @param deltaAlternate The delta alternate producer to set
 	 * @see #getDeltaAlternate()
 	 */
-	public void setDeltaAlternate(CollectionProducer<O> deltaAlternate) {
+	public void setDeltaAlternate(CollectionProducer deltaAlternate) {
 		this.deltaAlternate = deltaAlternate;
 	}
 
@@ -274,7 +274,7 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 	 * @see #addAllDependentLifecycles(Iterable)
 	 * @see #getDependentLifecycles()
 	 */
-	public CollectionProducerComputationBase<I, O> addDependentLifecycle(ScopeLifecycle lifecycle) {
+	public CollectionProducerComputationBase addDependentLifecycle(ScopeLifecycle lifecycle) {
 		if (dependentLifecycles == null) {
 			dependentLifecycles = new ArrayList<>();
 		}
@@ -291,7 +291,7 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 	 * @return This computation instance for method chaining
 	 * @see #addDependentLifecycle(ScopeLifecycle)
 	 */
-	public CollectionProducerComputationBase<I, O> addAllDependentLifecycles(Iterable<ScopeLifecycle> lifecycles) {
+	public CollectionProducerComputationBase addAllDependentLifecycles(Iterable<ScopeLifecycle> lifecycles) {
 		lifecycles.forEach(this::addDependentLifecycle);
 		return this;
 	}
@@ -355,55 +355,6 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 	}
 
 	/**
-	 * Determines the appropriate {@link TraversalPolicy} for a given kernel length.
-	 * This will be the shape of the computation result.
-	 * This method handles the complex logic of adjusting shapes based on whether
-	 * the computation has a fixed count and the relationship between the kernel
-	 * length and the expected output count.
-	 * 
-	 * <p>The shape calculation follows these rules:</p>
-	 * <ul>
-	 *   <li>For fixed-count computations, returns the original shape</li>
-	 *   <li>When kernel length equals target count, returns the original shape</li>
-	 *   <li>Otherwise, prepends a dimension to accommodate the length difference</li>
-	 * </ul>
-	 * 
-	 * @param len The length of the kernel execution context
-	 * @return The appropriate traversal policy for the given length
-	 * @see #isFixedCount()
-	 * @see TraversalPolicy#prependDimension(int)
-	 */
-	protected TraversalPolicy shapeForLength(int len) {
-		TraversalPolicy shape;
-
-		if (isFixedCount()) {
-			shape = getShape();
-		} else {
-			int targetCount = getCount();
-
-			int count = len / targetCount;
-
-			// When kernel length is less than, or identical to the output count, an
-			// assumption is made that the intended shape is the original shape.
-			// This is a bit of a hack, but it's by far the simplest solution
-			// available
-			if (count == 0 || len == targetCount) {
-				// It is not necessary to prepend a (usually) unnecessary dimension
-				shape = getShape();
-			} else {
-				shape = getShape().prependDimension(count);
-			}
-
-			if (enableDestinationLogging) {
-				log("shapeForLength(" + len +
-						"): " + shape + "[" + shape.getTraversalAxis() + "]");
-			}
-		}
-
-		return shape;
-	}
-
-	/**
 	 * Adjusts the destination buffer to match the required length and shape.
 	 * This method handles intelligent memory management by reusing existing buffers
 	 * when possible and allocating new ones only when necessary.
@@ -420,26 +371,30 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 	 * @param len The required length for the destination buffer
 	 * @return Adjusted memory bank, or null if length is invalid
 	 * @throws IllegalArgumentException if len is null
-	 * @see #shapeForLength(int)
+	 * @see CollectionProducerComputation#shapeForLength(TraversalPolicy, int, boolean, int)
 	 */
-	protected MemoryBank<?> adjustDestination(MemoryBank<?> existing, Integer len) {
+	protected MemoryBank<PackedCollection> adjustDestination(MemoryBank<?> existing, Integer len) {
 		if (len == null) {
 			throw new IllegalArgumentException();
 		} else if (len <= 0) {
-			existing.getRootDelegate().destroy();
+			if (existing != null) {
+				existing.getRootDelegate().destroy();
+			}
+
 			return null;
 		}
 
-		TraversalPolicy shape = shapeForLength(len);
+		TraversalPolicy shape = CollectionProducerComputation.shapeForLength(
+				getShape(), getCount(), isFixedCount(), len);
 
 		if (!(existing instanceof PackedCollection) || existing.getMem() == null ||
 				((PackedCollection) existing).getShape().getTotalSize() < shape.getTotalSize()) {
 			if (existing != null) existing.getRootDelegate().destroy();
-			return new PackedCollection<>(shape);
+			return new PackedCollection(shape);
 		}
 
-		if (((PackedCollection<?>) existing).getShape().equals(shape))
-			return existing;
+		if (((PackedCollection) existing).getShape().equals(shape))
+			return (MemoryBank<PackedCollection>) existing;
 
 		return ((PackedCollection) existing).range(shape);
 	}
@@ -453,8 +408,8 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 	 * @return A new destination buffer of the specified length
 	 */
 	@Override
-	public O createDestination(int len) {
-		return (O) getDestination().createDestination(len);
+	public PackedCollection createDestination(int len) {
+		return (PackedCollection) getDestination().createDestination(len);
 	}
 
 	/**
@@ -493,6 +448,13 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 				.orElse(0L);
 	}
 
+	/**
+	 * Determines whether this computation has a fixed execution count.
+	 * A computation has a fixed count only if both the shape's count is fixed
+	 * and all parent constraints indicate a fixed count.
+	 *
+	 * @return true if the count is fixed, false otherwise
+	 */
 	@Override
 	public boolean isFixedCount() {
 		return getShape().isFixedCount() && super.isFixedCount();
@@ -549,13 +511,13 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 	 * @see MemoryProvider#MAX_RESERVATION
 	 */
 	@Override
-	public Process<Process<?, ?>, Evaluable<? extends O>> isolate() {
+	public Process<Process<?, ?>, Evaluable<? extends PackedCollection>> isolate() {
 		if (getShape().getTotalSizeLong() > MemoryProvider.MAX_RESERVATION) {
 			warn("Cannot isolate a process with a total size greater than " + MemoryProvider.MAX_RESERVATION);
 			return this;
 		}
 
-		return new CollectionProducerComputation.IsolatedProcess<>(this);
+		return new CollectionProducerComputation.IsolatedProcess(this);
 	}
 
 	/**
@@ -566,7 +528,7 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 	 * @return The post-processor function, or null if none is set
 	 * @see #setPostprocessor(BiFunction)
 	 */
-	public BiFunction<MemoryData, Integer, O> getPostprocessor() {
+	public BiFunction<MemoryData, Integer, PackedCollection> getPostprocessor() {
 		return postprocessor;
 	}
 
@@ -578,7 +540,7 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 	 * @return This computation instance for method chaining
 	 * @see #getPostprocessor()
 	 */
-	public CollectionProducerComputationBase<I, O> setPostprocessor(BiFunction<MemoryData, Integer, O> postprocessor) {
+	public CollectionProducerComputationBase setPostprocessor(BiFunction<MemoryData, Integer, PackedCollection> postprocessor) {
 		this.postprocessor = postprocessor;
 		return this;
 	}
@@ -591,7 +553,7 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 	 * @return The short-circuit evaluable, or null if none is set
 	 * @see #setShortCircuit(Evaluable)
 	 */
-	public Evaluable<O> getShortCircuit() { return shortCircuit; }
+	public Evaluable<PackedCollection> getShortCircuit() { return shortCircuit; }
 
 	/**
 	 * Sets the short-circuit evaluable for this computation.
@@ -602,7 +564,7 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 	 * @return This computation instance for method chaining
 	 * @see #getShortCircuit()
 	 */
-	public CollectionProducerComputationBase<I, O> setShortCircuit(Evaluable<O> shortCircuit) {
+	public CollectionProducerComputationBase setShortCircuit(Evaluable<PackedCollection> shortCircuit) {
 		this.shortCircuit = shortCircuit;
 		return this;
 	}
@@ -628,7 +590,7 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 	 * @return This computation instance for method chaining
 	 * @see #getDescription()
 	 */
-	public CollectionProducerComputationBase<I, O> setDescription(Function<List<String>, String> description) {
+	public CollectionProducerComputationBase setDescription(Function<List<String>, String> description) {
 		this.description = description;
 		return this;
 	}
@@ -642,10 +604,9 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 	 * @return Array of traversable expressions for each input argument
 	 */
 	protected TraversableExpression[] getTraversableArguments(Expression<?> index) {
-		TraversableExpression vars[] = new TraversableExpression[getInputs().size()];
+		TraversableExpression[] vars = new TraversableExpression[getInputs().size()];
 		for (int i = 0; i < vars.length; i++) {
-			vars[i] = CollectionExpression.traverse(getArgumentForInput(getInputs().get(i)),
-					size -> index.toInt().divide(e(getMemLength())).multiply(size));
+			vars[i] = TraversableExpression.traverse(getArgumentForInput(getInputs().get(i)));
 		}
 		return vars;
 	}
@@ -675,7 +636,7 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 	 * 
 	 * @return The evaluable for this computation
 	 */
-	protected Evaluable<O> getEvaluable() {
+	protected Evaluable<PackedCollection> getEvaluable() {
 		try {
 			if (getComputeRequirements() != null) {
 				Hardware.getLocalHardware().getComputer().pushRequirements(getComputeRequirements());
@@ -707,10 +668,10 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 	 * @see #getEvaluable()
 	 */
 	@Override
-	public Evaluable<O> get() {
+	public Evaluable<PackedCollection> get() {
 		if (optimized != null & optimized != this) {
 			warn("This Computation should not be used, as an optimized version already exists");
-			return (Evaluable<O>) optimized.get();
+			return (Evaluable<PackedCollection>) optimized.get();
 		}
 
 		if (evaluable == null) {
@@ -719,15 +680,15 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 					getDestination(),
 					getShortCircuit(), true);
 			this.evaluable.setDestinationProcessor(destination -> {
-				if (destination instanceof Shape) {
-					Shape out = (Shape) destination;
+				if (destination instanceof PackedCollection) {
+					PackedCollection out = (PackedCollection) destination;
 
 					int targetSize = getMemLength();
 
 					if (getCountLong() > 1 || isFixedCount() || (out.getShape().getCountLong() > 1 && getCountLong() == 1)) {
 						for (int axis = out.getShape().getDimensions(); axis >= 0; axis--) {
 							if (out.getShape().traverse(axis).getSize() == targetSize) {
-								return (O) (axis == out.getShape().getTraversalAxis() ? out : out.traverse(axis));
+								return axis == out.getShape().getTraversalAxis() ? out : out.traverse(axis);
 							}
 						}
 					}
@@ -754,7 +715,7 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 	 * @see #setPostprocessor(BiFunction)
 	 */
 	@Override
-	public O postProcessOutput(MemoryData output, int offset) {
+	public PackedCollection postProcessOutput(MemoryData output, int offset) {
 		return getPostprocessor() == null ? CollectionProducerComputation.super.postProcessOutput(output, offset) : getPostprocessor().apply(output, offset);
 	}
 
@@ -773,7 +734,7 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 	 * @see RepeatedProducerComputationAdapter
 	 * @see CollectionProducerComputationAdapter#toRepeated()
 	 */
-	public RepeatedProducerComputationAdapter<O> toRepeated() {
+	public RepeatedProducerComputationAdapter toRepeated() {
 		throw new UnsupportedOperationException();
 	}
 
@@ -783,33 +744,23 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 	 * cached {@link Evaluable}s, and calls the parent class cleanup.
 	 * 
 	 * <p>After calling this method, the computation should not be used again.</p>
-	 * 
-	 * @see ProducerCache#purgeEvaluableCache(Supplier)
 	 */
 	@Override
 	public void destroy() {
 		super.destroy();
-		((MemoryDataDestinationProducer) getInputs().get(0)).destroy();
-		ProducerCache.purgeEvaluableCache(this);
+		getInputs().get(0).destroy();
 		Destroyable.destroy(evaluable);
 		this.evaluable = null;
 	}
 
 	/**
-	 * Delegates producer substitution to the parent interface implementation.
-	 * This method is used in optimization scenarios where producers need to be
-	 * replaced with more efficient alternatives.
-	 * 
-	 * @param original The original producer to replace
-	 * @param actual The actual producer to use instead
-	 * @param <T> The type of the producer
-	 * @return The result of the delegation
+	 * Generates a signature string for this computation including shape information.
+	 * The signature is used for computation caching and deduplication.
+	 * It combines the base signature with the detailed shape representation.
+	 *
+	 * @return A signature string including shape details, or null if no base signature exists
+	 * @see TraversalPolicy#toStringDetail()
 	 */
-	@Override
-	public <T> Producer<?> delegate(Producer<T> original, Producer<T> actual) {
-		return CollectionProducerComputation.super.delegate(original, actual);
-	}
-
 	@Override
 	public String signature() {
 		String signature = super.signature();
@@ -852,7 +803,7 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 	 * @return The same array of suppliers after validation
 	 * @throws NullPointerException if any supplier is null
 	 */
-	public static Supplier[] validateArgs(Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
+	public static Producer[] validateArgs(Producer<PackedCollection>... args) {
 		Stream.of(args).forEach(Objects::requireNonNull);
 		return args;
 	}
@@ -879,8 +830,27 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 		}
 	}
 
-	public static <T extends PackedCollection<?>> CollectionProducer<T> assignDeltaAlternate(
-			CollectionProducer<T> producer, CollectionProducer<T> alternate) {
+	/**
+	 * Assigns a delta alternate producer to the given producer for automatic differentiation.
+	 * This utility method handles unwrapping reshaped producers to set the delta alternate
+	 * on the underlying computation.
+	 *
+	 * <p>The method performs the following steps:</p>
+	 * <ul>
+	 *   <li>Unwraps {@link ReshapeProducer} to access the underlying computation</li>
+	 *   <li>Verifies the computation is a {@link CollectionProducerComputationBase}</li>
+	 *   <li>Assigns the alternate producer via {@link #setDeltaAlternate(CollectionProducer)}</li>
+	 * </ul>
+	 *
+	 * @param producer The producer to assign the delta alternate to
+	 * @param alternate The alternative producer to use for delta computations
+	 * @return The original producer (for method chaining)
+	 * @throws IllegalArgumentException if the producer is not a {@link CollectionProducerComputationBase}
+	 * @see #setDeltaAlternate(CollectionProducer)
+	 * @see ReshapeProducer
+	 */
+	public static CollectionProducer assignDeltaAlternate(
+			CollectionProducer producer, CollectionProducer alternate) {
 		Producer computation;
 
 		if (producer instanceof ReshapeProducer) {
@@ -890,7 +860,7 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 		}
 
 		if (computation instanceof CollectionProducerComputationBase) {
-			((CollectionProducerComputationBase<?, T>) computation).setDeltaAlternate(alternate);
+			((CollectionProducerComputationBase) computation).setDeltaAlternate(alternate);
 		} else {
 			throw new IllegalArgumentException();
 		}

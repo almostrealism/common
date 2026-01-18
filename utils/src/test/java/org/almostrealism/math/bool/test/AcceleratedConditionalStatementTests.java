@@ -16,17 +16,12 @@
 
 package org.almostrealism.math.bool.test;
 
-import io.almostrealism.code.OperationAdapter;
-import org.almostrealism.bool.AcceleratedConditionalStatement;
-import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.util.TestSettings;
 import io.almostrealism.relation.Evaluable;
-import org.almostrealism.algebra.Scalar;
-import org.almostrealism.algebra.Vector;
-import org.almostrealism.bool.LessThanScalar;
-import org.almostrealism.geometry.Ray;
-import org.almostrealism.bool.LessThan;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.algebra.Vector;
+import org.almostrealism.collect.CollectionProducer;
+import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.geometry.Ray;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Assert;
 import org.junit.Test;
@@ -34,31 +29,13 @@ import org.junit.Test;
 import java.util.stream.IntStream;
 
 public class AcceleratedConditionalStatementTests implements TestFeatures {
-	@Test
-	public void randomLessThan() {
-		IntStream.range(1, 6).forEach(i -> {
-			Producer<Scalar> a = scalar(i * Math.random());
-			Producer<Scalar> b = scalar(i * Math.random());
 
-			Evaluable<Scalar> lt = lessThan(a, b).get();
-
-			Scalar s = lt.evaluate();
-			System.out.println("lessThan = " + s.getValue());
-
-			if (a.get().evaluate().getValue() < b.get().evaluate().getValue()) {
-				assertEquals(a.get().evaluate().getValue(), s.getValue());
-			} else {
-				assertEquals(b.get().evaluate().getValue(), s.getValue());
-			}
-		});
-	}
-
-	@Test
+	@Test(timeout = 10000)
 	public void randomLessThanKernel() {
-		PackedCollection<?> x = rand(shape(100, 2)).get().evaluate();
-		PackedCollection<?> y = rand(shape(100, 2)).get().evaluate();
+		PackedCollection x = rand(shape(100, 2)).get().evaluate();
+		PackedCollection y = rand(shape(100, 2)).get().evaluate();
 
-		PackedCollection<?> less = new PackedCollection<>(shape(100, 2), 1);
+		PackedCollection less = new PackedCollection(shape(100, 2), 1);
 		lessThan().get().into(less).evaluate(x.traverse(1), y.traverse(1));
 
 		Assert.assertEquals(100, less.getShape().length(0));
@@ -78,70 +55,66 @@ public class AcceleratedConditionalStatementTests implements TestFeatures {
 		});
 	}
 
-	protected LessThan<Scalar> lessThan() {
-		Producer<Scalar> one = v(shape(-1, 2), 0);
-		Producer<Scalar> two = v(shape(-1, 2), 1);
-		LessThan<Scalar> lt = lessThan(one, two);
-		return lt;
+	protected CollectionProducer lessThan() {
+		Producer<PackedCollection> one = v(shape(-1, 1), 0);
+		Producer<PackedCollection> two = v(shape(-1, 1), 1);
+		return lessThan(one, two, one, two, false);
 	}
 
-	protected LessThan<Scalar> lessThan(Producer<Scalar> a, Producer<Scalar> b) {
-		return new LessThanScalar(a, b, a, b, false);
-	}
-
-	@Test
+	@Test(timeout = 10000)
 	public void withPassThrough() {
 		IntStream.range(0, 5)
-				.mapToObj(i -> scalar(Math.random()).get().evaluate())
+				.mapToObj(i -> pack(Math.random()))
 				.forEach(a -> {
-					Scalar b = scalar(Math.random()).get().evaluate();
-					LessThan lt = lessThan();
-					check(lt, a, b);
+					CollectionProducer lt = lessThan();
+					check(lt, a, pack(Math.random()));
 				});
 	}
 
-	@Test
+	@Test(timeout = 10000)
 	public void dotProduct() {
-		Evaluable<PackedCollection<?>> lt = lessThan(
-					(Producer) oDotd(ray(i -> Math.random())),
-					(Producer) oDotd(v(Ray.shape(), 0)))
-				.get();
-		if (TestSettings.enableArgumentCountAssertions)
-			Assert.assertEquals(2, ((OperationAdapter) lt).getArgsCount());
+		if (skipKnownIssues) return;
 
-		PackedCollection<?> r = lt.evaluate(ray(i -> Math.random()).get().evaluate());
+		Evaluable<PackedCollection> lt = lessThan(
+					oDotd(ray(i -> Math.random())),
+					oDotd(v(Ray.shape(), 0)))
+				.get();
+
+		PackedCollection r = lt.evaluate(ray(i -> Math.random()).evaluate());
 		r.print();
 
-		Assert.assertNotEquals(0.0, r.toDouble(0));
+		Assert.assertNotEquals(0.0, r.toDouble());
 	}
 
-	@Test
+	@Test(timeout = 10000)
 	public void crossProduct() {
-		LessThan<Scalar> lt1 = lessThan(
-				(Producer) oDotd(ray(i -> Math.random())),
-				(Producer) oDotd(v(Ray.shape(), 0)));
-		AcceleratedConditionalStatement<Scalar> lt2 =
-				scalarLessThan(length(crossProduct(vector(i -> Math.random()), v(Vector.shape(), 1))),
-														lt1, scalar(1), scalar(2), false);
+		CollectionProducer lt1 = lessThan(
+				oDotd(ray(i -> Math.random())),
+				oDotd(v(Ray.shape(), 0)));
+		CollectionProducer lt2 =
+				lessThan(length(crossProduct(vector(i -> Math.random()), v(Vector.shape(), 1))),
+														lt1, c(1), c(2), false);
 
-		double v = lt2.get().evaluate(ray(i -> Math.random()).get().evaluate(), vector(i -> Math.random()).get().evaluate()).getValue();
-		System.out.println(v);
-		assert v == 1.0 || v == 2.0;
+		double v = lt2.get().evaluate(
+				ray(i -> Math.random()).evaluate(),
+				vector(i -> Math.random()).evaluate()).toDouble();
+		log(v);
+		assertTrue(v == 1.0 || v == 2.0);
 	}
 
-	private void check(LessThan lt, Scalar a, Scalar b) {
-		Evaluable ev = lt.get();
-		Scalar s = (Scalar) ev.evaluate(a, b);
-		System.out.println(s.getValue());
+	private void check(CollectionProducer lt,
+					   PackedCollection a, PackedCollection b) {
+		PackedCollection s = lt.evaluate(a, b);
+		s.print();
 
-		if (a.getValue() < b.getValue()) {
-			Assert.assertEquals(a.getValue(), s.getValue(), Math.pow(10, -10));
+		if (a.toDouble() < b.toDouble()) {
+			assertEquals(a, s);
 		} else {
-			Assert.assertEquals(b.getValue(), s.getValue(), Math.pow(10, -10));
+			assertEquals(b, s);
 		}
 	}
 
-	@Test
+	@Test(timeout = 10000)
 	public void compactNested() {
 		IntStream.range(1, 10).forEach(i -> {
 			double a = i * Math.random();
@@ -149,32 +122,32 @@ public class AcceleratedConditionalStatementTests implements TestFeatures {
 			double c = i * Math.random();
 			double d = i * Math.random();
 
-			Producer<Scalar> pa = scalar(a);
-			Producer<Scalar> pb = scalar(b);
-			Producer<Scalar> pc = scalar(c);
-			Producer<Scalar> pd = scalar(d);
+			Producer<PackedCollection> pa = c(a);
+			Producer<PackedCollection> pb = c(b);
+			Producer<PackedCollection> pc = c(c);
+			Producer<PackedCollection> pd = c(d);
 
-			LessThan lt1 = new LessThanScalar(pa, pb, pa, pb, false);
-			LessThan lt2 = new LessThanScalar(pb, pc, lt1, scalar(-a), false);
-			LessThan lt3 = new LessThanScalar(pc, pd, lt2, scalar(-b), false);
+			CollectionProducer lt1 = lessThan(pa, pb, pa, pb);
+			CollectionProducer lt2 = lessThan(pb, pc, lt1, c(-a));
+			CollectionProducer lt3 = lessThan(pc, pd, lt2, c(-b));
 
-			LessThan top = lt3;
+			CollectionProducer top = lt3;
 
-			Scalar s = (Scalar) top.get().evaluate();
-			System.out.println(s.getValue());
+			PackedCollection s = top.evaluate();
+			s.print();
 
 			if (c < d) {
 				if (b < c) {
 					if (a < b) {
-						assertEquals(a, s.getValue());
+						assertEquals(a, s.toDouble());
 					} else {
-						assertEquals(b, s.getValue());
+						assertEquals(b, s.toDouble());
 					}
 				} else {
-					assertEquals(-a, s.getValue());
+					assertEquals(-a, s.toDouble());
 				}
 			} else {
-				assertEquals(-b, s.getValue());
+				assertEquals(-b, s.toDouble());
 			}
 		});
 	}

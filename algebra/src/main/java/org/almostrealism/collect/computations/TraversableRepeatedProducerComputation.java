@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,19 +18,17 @@ package org.almostrealism.collect.computations;
 
 import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.collect.CollectionVariable;
-import io.almostrealism.collect.RelativeTraversableExpression;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
-import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.IntegerConstant;
-import io.almostrealism.relation.Evaluable;
 import io.almostrealism.compute.Process;
 import io.almostrealism.compute.ProcessContext;
+import io.almostrealism.expression.Expression;
+import io.almostrealism.kernel.KernelIndex;
+import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
 
 import java.util.List;
 import java.util.function.BiFunction;
-import java.util.function.Supplier;
 
 /**
  * A specialized {@link RepeatedProducerComputation} that implements {@link TraversableExpression}
@@ -99,18 +97,16 @@ import java.util.function.Supplier;
  *   <li>Integrates with {@link org.almostrealism.collect.CollectionFeatures} for high-level operations</li>
  * </ul>
  * 
- * @param <T> The type of {@link PackedCollection} this computation operates on
- * 
  * @see RepeatedProducerComputation
- * @see ConstantRepeatedProducerComputation  
+ * @see ConstantRepeatedProducerComputation
  * @see TraversableExpression
  * @see AggregatedProducerComputation
  * @see org.almostrealism.collect.CollectionFeatures#indexOfMax(io.almostrealism.relation.Producer)
- * 
+ *
  * @author Michael Murray
  */
-public class TraversableRepeatedProducerComputation<T extends PackedCollection<?>>
-		extends ConstantRepeatedProducerComputation<T> implements TraversableExpression<Double> {
+public class TraversableRepeatedProducerComputation
+		extends ConstantRepeatedProducerComputation implements TraversableExpression<Double> {
 	
 	/**
 	 * The threshold for the number of iterations above which this computation
@@ -127,7 +123,19 @@ public class TraversableRepeatedProducerComputation<T extends PackedCollection<?
 	 */
 	public static int isolationCountThreshold = 16; // Integer.MAX_VALUE;
 
-	private BiFunction<TraversableExpression[], Expression, TraversableExpression<Double>> expression;
+	/**
+	 * The function that defines the computation logic applied at each iteration.
+	 *
+	 * <p>This function receives the traversable arguments and the current accumulated
+	 * value, then returns a {@link TraversableExpression} representing the next state.
+	 * The returned traversable expression allows for index-based access to intermediate
+	 * results during computation, enabling complex accumulation and reduction patterns.</p>
+	 *
+	 * <p>Unlike the parent class which uses simple {@link Expression}s, this field
+	 * uses {@link TraversableExpression}s to provide more flexible access patterns
+	 * and better integration with traversable computation graphs.</p>
+	 */
+	private final BiFunction<TraversableExpression[], Expression, TraversableExpression<Double>> expression;
 
 	/**
 	 * Constructs a new TraversableRepeatedProducerComputation with the specified
@@ -179,7 +187,7 @@ public class TraversableRepeatedProducerComputation<T extends PackedCollection<?
 	public TraversableRepeatedProducerComputation(String name, TraversalPolicy shape, int count,
 												  BiFunction<TraversableExpression[], Expression, Expression> initial,
 												  BiFunction<TraversableExpression[], Expression, TraversableExpression<Double>> expression,
-												  Supplier<Evaluable<? extends PackedCollection<?>>>... arguments) {
+												  Producer<PackedCollection>... arguments) {
 		super(name, shape, count, initial, null, arguments);
 		this.expression = expression;
 		this.count = count;
@@ -253,7 +261,7 @@ public class TraversableRepeatedProducerComputation<T extends PackedCollection<?
 	 */
 	@Override
 	public Expression<Double> getValueAt(Expression index) {
-		TraversableExpression args[] = getTraversableArguments(index);
+		TraversableExpression[] args = getTraversableArguments(index);
 
 		Expression value = initial.apply(args, e(0));
 
@@ -286,12 +294,13 @@ public class TraversableRepeatedProducerComputation<T extends PackedCollection<?
 	 * @return An {@link Expression} representing the computation result for
 	 *         the specified local index position
 	 * 
-	 * @see io.almostrealism.collect.CollectionVariable#referenceRelative(io.almostrealism.expression.IntegerConstant)
-	 * @see io.almostrealism.collect.RelativeTraversableExpression
+	 * @see io.almostrealism.collect.CollectionVariable#reference(io.almostrealism.expression.Expression)
 	 */
 	@Override
 	protected Expression<?> getExpression(TraversableExpression[] args, Expression globalIndex, Expression localIndex) {
-		Expression currentValue = ((CollectionVariable) ((RelativeTraversableExpression) args[0]).getExpression()).referenceRelative(new IntegerConstant(0));
+		CollectionVariable variable = (CollectionVariable) args[0];
+		Expression currentValue = variable.reference(
+				new KernelIndex().multiply(variable.length())); // TODO Should this be globalIndex instead of KernelIndex?
 		return expression.apply(args, currentValue).getValueAt(localIndex);
 	}
 
@@ -366,9 +375,9 @@ public class TraversableRepeatedProducerComputation<T extends PackedCollection<?
 	 * @see java.util.function.Supplier
 	 */
 	@Override
-	public TraversableRepeatedProducerComputation<T> generate(List<Process<?, ?>> children) {
-		return new TraversableRepeatedProducerComputation<>(getName(), getShape(),
+	public TraversableRepeatedProducerComputation generate(List<Process<?, ?>> children) {
+		return new TraversableRepeatedProducerComputation(getName(), getShape(),
 				count, initial, expression,
-				children.stream().skip(1).toArray(Supplier[]::new));
+				children.stream().skip(1).toArray(Producer[]::new));
 	}
 }

@@ -17,8 +17,6 @@
 package org.almostrealism.algebra.test;
 
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.Producer;
-import org.almostrealism.algebra.Scalar;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.AcceleratedComputationOperation;
 import org.almostrealism.hardware.OperationList;
@@ -27,39 +25,39 @@ import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
 
 public class ExpressionDelegationTest implements TestFeatures {
-	@Test
+	@Test(timeout = 10000)
 	public void scalarFromTemporalScalar() {
 		TemporalScalar t = new TemporalScalar(4, 8);
-		Evaluable<PackedCollection<?>> ev = r(p(t)).get();
+		Evaluable<PackedCollection> ev = r(p(t)).get();
 		assertEquals(8.0, ev.evaluate());
 	}
 
-	@Test
+	@Test(timeout = 10000)
 	public void scalarFromTemporalScalarFromScalars() {
 		verboseLog(() -> {
-			PackedCollection<?> a = pack(1.0);
-			PackedCollection<?> b = pack(2.0);
-			Evaluable<PackedCollection<?>> ev = r((Producer) temporal(p(a), p(b))).get();
+			PackedCollection a = pack(1.0);
+			PackedCollection b = pack(2.0);
+			Evaluable<PackedCollection> ev = r(temporal(p(a), p(b))).get();
 
-			PackedCollection<?> s = ev.evaluate();
+			PackedCollection s = ev.evaluate();
 			System.out.println(s);
 			assertEquals(2.0, s);
 		});
 	}
 
-	@Test
+	@Test(timeout = 10000)
 	public void assignmentFromProduct() {
-		Scalar a = new Scalar(1.0);
-		Scalar b = new Scalar(2.0);
-		Scalar r = new Scalar(0.0);
+		PackedCollection a = pack(1.0);
+		PackedCollection b = pack(2.0);
+		PackedCollection r = pack(0.0);
 
 		OperationList l = new OperationList("Assignment from product");
-		l.add(a(1, p(r), v(a).multiply(p(b))));
+		l.add(a(1, p(r), cp(a).multiply(p(b))));
 
 		AcceleratedComputationOperation op = (AcceleratedComputationOperation) l.get();
 
 		op.run();
-		System.out.println(r);
+		System.out.println(r.toDouble(0));
 		assertEquals(2.0, r);
 	}
 }

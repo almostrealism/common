@@ -16,20 +16,17 @@
 
 package org.almostrealism.collect.computations;
 
-import io.almostrealism.expression.Expression;
 import io.almostrealism.collect.CollectionExpression;
+import io.almostrealism.collect.TraversableExpression;
+import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.kernel.Index;
 import io.almostrealism.relation.Computable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import io.almostrealism.collect.TraversableExpression;
-import io.almostrealism.collect.TraversalPolicy;
-import io.almostrealism.relation.Evaluable;
 import org.almostrealism.hardware.HardwareFeatures;
-
-import java.util.function.Supplier;
 
 /**
  * A {@link TraversableExpressionComputation} provides a framework for computations that operate on
@@ -53,7 +50,7 @@ import java.util.function.Supplier;
  * TraversalPolicy inputShape = shape(3, 2);  // 3 rows, 2 columns
  * TraversalPolicy outputShape = shape(3, 1); // 3 rows, 1 column (sums)
  * 
- * DefaultTraversableExpressionComputation<PackedCollection<?>> pairSum = 
+ * DefaultTraversableExpressionComputation<PackedCollection> pairSum =
  *     new DefaultTraversableExpressionComputation<>(
  *         "pairSum", 
  *         outputShape,
@@ -63,13 +60,13 @@ import java.util.function.Supplier;
  *                 args[1].getValueRelative(new IntegerConstant(1)))),
  *         inputProducer);
  * 
- * PackedCollection<?> result = pairSum.get().evaluate();
+ * PackedCollection result = pairSum.get().evaluate();
  * }</pre>
  * 
  * <p><strong>Element-wise Mathematical Operations:</strong>
  * <pre>{@code
  * // Square each element in a collection
- * DefaultTraversableExpressionComputation<PackedCollection<?>> square = 
+ * DefaultTraversableExpressionComputation<PackedCollection> square =
  *     new DefaultTraversableExpressionComputation<>(
  *         "square", 
  *         inputShape,
@@ -93,18 +90,16 @@ import java.util.function.Supplier;
  * which defines how to transform input traversable expressions into a collection expression
  * that represents the desired computation.
  * 
- * @param <T> The type of {@link PackedCollection} this computation produces
- * 
  * @see DefaultTraversableExpressionComputation
  * @see TraversalPolicy
  * @see TraversableExpression
  * @see CollectionExpression
  * @see MultiTermDeltaStrategy
- * 
+ *
  * @author Michael Murray
  */
-public abstract class TraversableExpressionComputation<T extends PackedCollection<?>>
-		extends CollectionProducerComputationAdapter<T, T> implements HardwareFeatures {
+public abstract class TraversableExpressionComputation
+		extends CollectionProducerComputationAdapter implements HardwareFeatures {
 
 	/**
 	 * The strategy used for handling multi-term delta (derivative) computations.
@@ -126,7 +121,7 @@ public abstract class TraversableExpressionComputation<T extends PackedCollectio
 	 */
 	@SafeVarargs
 	public TraversableExpressionComputation(String name, TraversalPolicy shape,
-											Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
+											Producer<PackedCollection>... args) {
 		this(name, shape, MultiTermDeltaStrategy.NONE, args);
 	}
 
@@ -148,7 +143,7 @@ public abstract class TraversableExpressionComputation<T extends PackedCollectio
 	@SafeVarargs
 	public TraversableExpressionComputation(String name, TraversalPolicy shape,
 											MultiTermDeltaStrategy deltaStrategy,
-											Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
+											Producer<PackedCollection>... args) {
 		super(name, shape, validateArgs(args));
 		this.deltaStrategy = deltaStrategy;
 
@@ -204,7 +199,7 @@ public abstract class TraversableExpressionComputation<T extends PackedCollectio
 	@Override
 	public boolean isConstant() {
 		return getInputs().stream().skip(1)
-				.map(c -> c instanceof Computable && ((Computable) c).isConstant())
+				.map(c -> c instanceof Computable && c.isConstant())
 				.reduce(true, (a, b) -> a && b);
 	}
 
@@ -243,14 +238,14 @@ public abstract class TraversableExpressionComputation<T extends PackedCollectio
 	 * @see TraversableDeltaComputation
 	 */
 	@Override
-	public CollectionProducer<T> delta(Producer<?> target) {
-		CollectionProducer<T> delta = attemptDelta(target);
+	public CollectionProducer delta(Producer<?> target) {
+		CollectionProducer delta = attemptDelta(target);
 		if (delta != null) return delta;
 
 		delta = TraversableDeltaComputation.create(
 				"\u03B4" + getName(), getShape(), shape(target),
 				this::getExpression, target,
-				getInputs().stream().skip(1).toArray(Supplier[]::new));
+				getInputs().stream().skip(1).toArray(Producer[]::new));
 		return delta;
 	}
 

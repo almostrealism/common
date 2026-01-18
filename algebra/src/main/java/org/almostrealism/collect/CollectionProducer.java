@@ -18,7 +18,6 @@ package org.almostrealism.collect;
 
 import io.almostrealism.collect.Algebraic;
 import io.almostrealism.collect.CollectionProducerBase;
-import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
@@ -28,39 +27,171 @@ import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
-public interface CollectionProducer<T extends Shape<?>> extends
-		CollectionProducerBase<T, CollectionProducer<T>>,
+/**
+ * Core interface for producers that generate {@link PackedCollection} instances through computational graphs.
+ *
+ * <p>
+ * {@link CollectionProducer} is the fundamental building block for all collection-based computations
+ * in the Almost Realism framework. It provides a rich API for building complex computational graphs
+ * through method chaining, supporting:
+ * <ul>
+ *   <li><b>Shape transformations:</b> reshape, traverse, transpose, subset</li>
+ *   <li><b>Arithmetic operations:</b> add, subtract, multiply, divide, pow, sqrt, exp, log</li>
+ *   <li><b>Statistical operations:</b> sum, mean, variance, max, min, magnitude</li>
+ *   <li><b>Comparison operations:</b> greaterThan, lessThan, and (logical)</li>
+ *   <li><b>Advanced transformations:</b> repeat, enumerate, permute, pad, map, reduce</li>
+ *   <li><b>Automatic differentiation:</b> delta, grad for gradient computation</li>
+ * </ul>
+ *
+ * <h2>Core Design Principles</h2>
+ * <ul>
+ *   <li><b>Immutable Operations:</b> All operations return new producers, never modifying the original</li>
+ *   <li><b>Deferred Execution:</b> Operations build a computational graph; actual computation happens on evaluation</li>
+ *   <li><b>Hardware Acceleration:</b> Computations compile to optimized kernels for CPU/GPU execution</li>
+ *   <li><b>Type Safety:</b> Shape information is tracked through the type system where possible</li>
+ * </ul>
+ *
+ * <h2>Method Chaining Example</h2>
+ * <pre>{@code
+ * // Build a computation graph through method chaining
+ * CollectionProducer input = v(Vector.class);
+ * CollectionProducer result = input
+ *     .reshape(shape(10, 3))      // Reshape to 10x3
+ *     .subtract(input.mean(0))    // Subtract mean along axis 0
+ *     .divide(input.variance(0))  // Divide by variance
+ *     .pow(2.0)                   // Square all elements
+ *     .sum();                     // Sum all elements
+ *
+ * // Execute the graph
+ * PackedCollection output = result.get().evaluate();
+ * }</pre>
+ *
+ * <h2>Shape Operations</h2>
+ * <p>
+ * Shape operations manipulate the traversal policy without changing data:
+ * </p>
+ * <pre>{@code
+ * CollectionProducer x = ...; // shape (2, 3, 4)
+ *
+ * x.reshape(shape(6, 4))           // Reshape to 6x4
+ * x.traverse(1)                    // Traverse along axis 1
+ * x.transpose()                    // Transpose matrix (2D only)
+ * x.subset(shape(2, 2), 0, 1)      // Extract 2x2 subset starting at (0,1)
+ * }</pre>
+ *
+ * <h2>Arithmetic Operations</h2>
+ * <p>
+ * Element-wise arithmetic with automatic broadcasting:
+ * </p>
+ * <pre>{@code
+ * CollectionProducer a = ...;
+ * CollectionProducer b = ...;
+ *
+ * a.add(b)           // Element-wise addition
+ * a.add(5.0)         // Add scalar to all elements
+ * a.multiply(b)      // Element-wise multiplication
+ * a.divide(2.0)      // Divide all elements by 2
+ * a.pow(2.0)         // Square all elements
+ * a.sqrt()           // Square root
+ * a.exp()            // e^x
+ * a.log()            // ln(x)
+ * }</pre>
+ *
+ * <h2>Statistical Operations</h2>
+ * <p>
+ * Reduction operations with optional axis specification:
+ * </p>
+ * <pre>{@code
+ * CollectionProducer data = ...; // shape (10, 5)
+ *
+ * data.sum()         // Sum all elements -> shape (1)
+ * data.sum(0)        // Sum along axis 0 -> shape (5)
+ * data.mean()        // Mean of all elements
+ * data.mean(1)       // Mean along axis 1 -> shape (10)
+ * data.variance()    // Variance
+ * data.max()         // Maximum value
+ * data.magnitude()   // L2 norm
+ * }</pre>
+ *
+ * <h2>Comparison and Logical Operations</h2>
+ * <p>
+ * Boolean operations that produce 1.0 (true) or 0.0 (false):
+ * </p>
+ * <pre>{@code
+ * CollectionProducer x = ...;
+ * CollectionProducer y = ...;
+ *
+ * x.greaterThan(y)           // 1.0 where x > y, 0.0 elsewhere
+ * x.lessThan(y)              // 1.0 where x < y, 0.0 elsewhere
+ * x.and(y)                   // 1.0 where both non-zero
+ *
+ * // Conditional selection
+ * x.greaterThan(y, trueVal, falseVal)  // Select based on comparison
+ * }</pre>
+ *
+ * <h2>Advanced Transformations</h2>
+ * <pre>{@code
+ * CollectionProducer x = ...; // shape (3, 4)
+ *
+ * x.repeat(5)                // Repeat along axis 0 -> shape (15, 4)
+ * x.enumerate(10)            // Enumerate indices -> shape (10)
+ * x.permute(1, 0)            // Permute dimensions -> shape (4, 3)
+ * x.pad(1, 2)                // Add padding -> shape (5, 8)
+ * x.map(elem -> elem.pow(2)) // Map function over elements
+ * }</pre>
+ *
+ * <h2>Automatic Differentiation</h2>
+ * <p>
+ * Compute gradients for backpropagation:
+ * </p>
+ * <pre>{@code
+ * CollectionProducer x = v(PackedCollection.class);
+ * CollectionProducer y = x.pow(2).sum();
+ *
+ * // Compute dy/dx
+ * CollectionProducer gradient = y.delta(x);
+ * // Result: 2x (derivative of x^2)
+ * }</pre>
+ *
+ * @author  Michael Murray
+ * @see CollectionProducerBase
+ * @see DeltaFeatures
+ * @see PackedCollection
+ * @see CollectionProducerComputation
+ */
+public interface CollectionProducer extends
+		CollectionProducerBase<PackedCollection, CollectionProducer>,
 		DeltaFeatures {
 
 	@Override
-	default CollectionProducer<T> reshape(int... dims) {
+	default CollectionProducer reshape(int... dims) {
 		return CollectionProducerBase.super.reshape(dims);
 	}
 
 	@Override
-	CollectionProducer<T> reshape(TraversalPolicy shape);
+	CollectionProducer reshape(TraversalPolicy shape);
 
 	@Override
-	CollectionProducer<T> traverse(int axis);
+	CollectionProducer traverse(int axis);
 
 	@Override
-	default CollectionProducer<T> consolidate() {
+	default CollectionProducer consolidate() {
 		return CollectionProducerBase.super.consolidate();
 	}
 
-	default <V extends PackedCollection<?>> CollectionProducerComputation<V> repeat(int repeat) {
+	default CollectionProducerComputation repeat(int repeat) {
 		return repeat(repeat, this);
 	}
 
-	default <V extends PackedCollection<?>> CollectionProducerComputation<V> repeat(int axis, int repeat) {
+	default CollectionProducerComputation repeat(int axis, int repeat) {
 		return repeat(axis, repeat, this);
 	}
 
-	default <V extends PackedCollection<?>> CollectionProducer<V> subset(TraversalPolicy shape, int... position) {
+	default CollectionProducer subset(TraversalPolicy shape, int... position) {
 		return subset(shape, this, position);
 	}
 
-	default <V extends PackedCollection<?>> CollectionProducer<V> transpose() {
+	default CollectionProducer transpose() {
 		TraversalPolicy shape = shape(this);
 
 		if (shape.getTraversalAxis() == 0 && shape.getDimensions() == 2 &&
@@ -68,43 +199,43 @@ public interface CollectionProducer<T extends Shape<?>> extends
 				Algebraic.isDiagonal(shape.length(0), this)) {
 			// Square, diagonal, 2D matrices are symmetric
 			// and do not require any transformation
-			return (CollectionProducer<V>) this;
+			return this;
 		}
 
-		CollectionProducerComputation<V> result = enumerate(shape.getTraversalAxis() + 1, 1);
-		return (CollectionProducer<V>) reshape(shape(result).trim(), result);
+		CollectionProducerComputation result = enumerate(shape.getTraversalAxis() + 1, 1);
+		return (CollectionProducer) reshape(shape(result).trim(), result);
 	}
 
-	default <V extends PackedCollection<?>> CollectionProducer<V> transpose(int axis) {
-		CollectionProducerComputation<V> result = traverse(axis - 1).enumerate(axis, 1);
-		return (CollectionProducer<V>) reshape(shape(result).trim(), result);
+	default CollectionProducer transpose(int axis) {
+		CollectionProducerComputation result = traverse(axis - 1).enumerate(axis, 1);
+		return (CollectionProducer) reshape(shape(result).trim(), result);
 	}
 
-	default <V extends PackedCollection<?>> CollectionProducerComputation<V> enumerate(int len) {
+	default CollectionProducerComputation enumerate(int len) {
 		return enumerate(0, len, len, 1);
 	}
 
-	default <V extends PackedCollection<?>> CollectionProducerComputation<V> enumerate(int axis, int len) {
+	default CollectionProducerComputation enumerate(int axis, int len) {
 		return enumerate(axis, len, len, 1);
 	}
 
-	default <V extends PackedCollection<?>> CollectionProducerComputation<V> enumerate(int axis, int len, int stride) {
+	default CollectionProducerComputation enumerate(int axis, int len, int stride) {
 		return enumerate(axis, len, stride, 1);
 	}
 
-	default <V extends PackedCollection<?>> CollectionProducerComputation<V> enumerate(int axis, int len, int stride, int repeat) {
+	default CollectionProducerComputation enumerate(int axis, int len, int stride, int repeat) {
 		return enumerate(axis, len, stride, repeat, this);
 	}
 
-	default <V extends PackedCollection<?>> CollectionProducerComputation<V> enumerate(TraversalPolicy shape) {
+	default CollectionProducerComputation enumerate(TraversalPolicy shape) {
 		return enumerate(shape, this);
 	}
 
-	default <V extends PackedCollection<?>> CollectionProducerComputation<V> enumerate(TraversalPolicy shape, TraversalPolicy stride) {
+	default CollectionProducerComputation enumerate(TraversalPolicy shape, TraversalPolicy stride) {
 		return enumerate(shape, stride, this);
 	}
 
-	default <V extends PackedCollection<?>> CollectionProducerComputation<V> permute(int... order) {
+	default CollectionProducerComputation permute(int... order) {
 		return permute(this, order);
 	}
 
@@ -123,29 +254,29 @@ public interface CollectionProducer<T extends Shape<?>> extends
 	 * 
 	 * @param depths Padding depth for each dimension. depths[i] specifies the amount of
 	 *               zero-padding to add before and after the data in dimension i
-	 * @param <V> The type of PackedCollection
+	 * @param <PackedCollection> The type of PackedCollection
 	 * @return A CollectionProducerComputation that produces the padded collection
 	 * 
 	 * @see org.almostrealism.collect.computations.PackedCollectionPad
 	 * @see org.almostrealism.collect.CollectionFeatures#pad(Producer, int...)
 	 */
-	default <V extends PackedCollection<?>> CollectionProducerComputation<V> pad(int... depths) {
+	default CollectionProducerComputation pad(int... depths) {
 		return pad(this, depths);
 	}
 
-	default CollectionProducer<T> valueAt(Producer<PackedCollection<?>>... pos) {
-		return c((Producer) this, pos);
+	default CollectionProducer valueAt(Producer<PackedCollection>... pos) {
+		return c(this, pos);
 	}
 
-	default <V extends PackedCollection<?>> CollectionProducerComputation<V> map(Function<CollectionProducerComputation<PackedCollection<?>>, CollectionProducer<?>> mapper) {
+	default CollectionProducerComputation map(Function<CollectionProducerComputation, CollectionProducer> mapper) {
 		return map(this, mapper);
 	}
 
-	default <V extends PackedCollection<?>> CollectionProducerComputation<V> map(TraversalPolicy itemShape, Function<CollectionProducerComputation<PackedCollection<?>>, CollectionProducer<?>> mapper) {
+	default CollectionProducerComputation map(TraversalPolicy itemShape, Function<CollectionProducerComputation, CollectionProducer> mapper) {
 		return map(itemShape, this, mapper);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputation<T> reduce(Function<CollectionProducerComputation<?>, CollectionProducer<?>> mapper) {
+	default <T extends PackedCollection> CollectionProducerComputation reduce(Function<CollectionProducerComputation, CollectionProducer> mapper) {
 		return reduce(this, mapper);
 	}
 
@@ -153,216 +284,256 @@ public interface CollectionProducer<T extends Shape<?>> extends
 	 * @deprecated Use {@link #repeat(int)}
 	 */
 	@Deprecated
-	default <V extends PackedCollection<?>> CollectionProducer<V> expand(int repeat) {
-		return (CollectionProducer) repeat(repeat, this).consolidate();
+	default CollectionProducer expand(int repeat) {
+		return repeat(repeat, this).consolidate();
 	}
 
-	default <V extends PackedCollection<?>> CollectionProducerComputation<V> expand(int repeat, Function<CollectionProducerComputation<PackedCollection<?>>, CollectionProducer<?>> mapper) {
-		return expand(repeat, this, mapper);
+	default CollectionProducer add(Producer<PackedCollection> value) {
+		return add(this, value);
 	}
 
-	default <V extends PackedCollection<?>> CollectionProducer<V> add(Producer<V> value) {
-		return add((Producer) this, value);
+	default CollectionProducer add(double value) {
+		return add(this, c(value));
 	}
 
-	default <V extends PackedCollection<?>> CollectionProducer<V> add(double value) {
-		return add((Producer) this, c(value));
+	default CollectionProducer subtract(double value) {
+		return subtract(this, c(value));
 	}
 
-	default <V extends PackedCollection<?>> CollectionProducer<V> subtract(double value) {
-		return subtract((Producer) this, c(value));
+	default CollectionProducer subtract(Producer<PackedCollection> value) {
+		return subtract(this, value);
 	}
 
-	default <V extends PackedCollection<?>> CollectionProducer<V> subtract(Producer<V> value) {
-		return subtract((Producer) this, value);
+	default CollectionProducerComputation subtractIgnoreZero(Producer<PackedCollection> value) {
+		return subtractIgnoreZero(this, value);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputation<T> subtractIgnoreZero(Producer<T> value) {
-		return subtractIgnoreZero((Producer) this, value);
-	}
-
-	default <T extends PackedCollection<?>> CollectionProducer<T> mul(double value) {
+	default <T extends PackedCollection> CollectionProducer mul(double value) {
 		return multiply(value);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducer<T> multiply(double value) {
-		return multiply((Producer) this, c(value));
+	default <T extends PackedCollection> CollectionProducer multiply(double value) {
+		return multiply(this, c(value));
 	}
 
-	default <V extends PackedCollection<?>> CollectionProducer<V> mul(Producer<V> value) {
+	default CollectionProducer mul(Producer<PackedCollection> value) {
 		return multiply(value);
 	}
 
-	default <V extends PackedCollection<?>> CollectionProducer<V> multiply(Producer<V> value) {
-		return multiply((Producer) this, value);
+	default CollectionProducer multiply(Producer<PackedCollection> value) {
+		return multiply(this, value);
 	}
 
-	default <V extends PackedCollection<?>> CollectionProducer<V> div(double value) {
+	default CollectionProducer div(double value) {
 		return divide(value);
 	}
 
-	default <V extends PackedCollection<?>> CollectionProducer<V> divide(double value) {
-		return divide((Producer) this, c(value));
+	default CollectionProducer divide(double value) {
+		return divide(this, c(value));
 	}
 
-	default <V extends PackedCollection<?>> CollectionProducer<V> divide(Producer<V> value) {
-		return divide((Producer) this, value);
+	default CollectionProducer divide(Producer<PackedCollection> value) {
+		return divide(this, value);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducer<T> sqrt() {
-		return sqrt((Producer) this);
+	default <T extends PackedCollection> CollectionProducer sqrt() {
+		return sqrt(this);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducer<T> pow(double value) {
-		return pow((Producer) this, c(value));
+	default <T extends PackedCollection> CollectionProducer pow(double value) {
+		return pow(this, c(value));
 	}
 
-	default <V extends PackedCollection<?>> CollectionProducer<V> pow(Producer<V> value) {
-		return pow((Producer) this, value);
+	default CollectionProducer pow(Producer<PackedCollection> value) {
+		return pow(this, value);
 	}
 
-	default <V extends PackedCollection<?>> CollectionProducer<V> reciprocal() {
+	default CollectionProducer reciprocal() {
 		return pow(c(-1.0));
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> minus() {
-		return minus((Producer) this);
+	default CollectionProducer minus() {
+		return minus(this);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> exp() {
-		return exp((Producer) this);
+	default CollectionProducer exp() {
+		return exp(this);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> expIgnoreZero() {
-		return expIgnoreZero((Producer) this);
+	default CollectionProducer expIgnoreZero() {
+		return expIgnoreZero(this);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> log() {
-		return log((Producer) this);
+	default CollectionProducer log() {
+		return log(this);
 	}
 
-	default <V extends PackedCollection<?>> CollectionProducer<V> sq() {
-		return sq((Producer) this);
+	default CollectionProducer sq() {
+		return sq(this);
 	}
 
-	default <V extends PackedCollection<?>> CollectionProducer<V> abs() {
-		return abs((Producer) this);
+	default CollectionProducer abs() {
+		return abs(this);
 	}
 
-	default <V extends PackedCollection<?>> CollectionProducer<V> magnitude() {
-		return magnitude((Producer) this);
+	default CollectionProducer magnitude() {
+		return magnitude(this);
 	}
 
-	default <V extends PackedCollection<?>> CollectionProducer<V> magnitude(int axis) {
-		return magnitude(traverse(axis, (Producer) this));
+	default CollectionProducer magnitude(int axis) {
+		return magnitude(traverse(axis, this));
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> max(int axis) {
-		return max(traverse(axis, (Producer) this));
+	default <T extends PackedCollection> CollectionProducerComputationBase max(int axis) {
+		return max(traverse(axis, this));
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> max() {
-		return max((Producer) this);
+	default <T extends PackedCollection> CollectionProducerComputationBase max() {
+		return max(this);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> indexOfMax() {
-		return indexOfMax((Producer) this);
+	default <T extends PackedCollection> CollectionProducerComputationBase indexOfMax() {
+		return indexOfMax(this);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> min() {
+	default <T extends PackedCollection> CollectionProducerComputationBase min() {
 		// TODO  return min((Producer) this);
 		throw new UnsupportedOperationException();
 	}
 
-	default <V extends PackedCollection<?>> CollectionProducer<V> mod(double mod) {
-		return mod((Producer) this, c(mod));
+	default CollectionProducer mod(double mod) {
+		return mod(this, c(mod));
 	}
 
-	default <V extends PackedCollection<?>> CollectionProducer<V> mod(Producer<V> mod) {
-		return mod((Producer) this, (Producer) mod);
+	default CollectionProducer mod(Producer<PackedCollection> mod) {
+		return mod(this, mod);
 	}
 
-	default <V extends PackedCollection<?>> CollectionProducer<V> sum(int axis) {
-		return sum(traverse(axis, (Producer) this));
+	default CollectionProducer sum(int axis) {
+		return sum(traverse(axis, this));
 	}
 
-	default <V extends PackedCollection<?>> CollectionProducer<V> sum() {
-		return sum((Producer) this);
+	default CollectionProducer sum() {
+		return sum(this);
 	}
 
-	default <V extends PackedCollection<?>> CollectionProducer<V> mean(int axis) {
-		return mean(traverse(axis, (Producer) this));
+	default CollectionProducer mean(int axis) {
+		return mean(traverse(axis, this));
 	}
 
-	default <V extends PackedCollection<?>> CollectionProducer<V> mean() {
-		return mean((Producer) this);
+	default CollectionProducer mean() {
+		return mean(this);
 	}
 
-	default <V extends PackedCollection<?>> CollectionProducer<V> subtractMean(int axis) {
-		return subtractMean(traverse(axis, (Producer) this));
+	default CollectionProducer subtractMean(int axis) {
+		return subtractMean(traverse(axis, this));
 	}
 
-	default <V extends PackedCollection<?>> CollectionProducer<V> subtractMean() {
-		return subtractMean((Producer) this);
+	default CollectionProducer subtractMean() {
+		return subtractMean(this);
 	}
 
-	default <V extends PackedCollection<?>> CollectionProducer<V> variance(int axis) {
-		return variance(traverse(axis, (Producer) this));
+	default CollectionProducer variance(int axis) {
+		return variance(traverse(axis, this));
 	}
 
-	default <V extends PackedCollection<?>> CollectionProducer<V> variance() {
-		return variance((Producer) this);
+	default CollectionProducer variance() {
+		return variance(this);
 	}
 
-	default <V extends PackedCollection<?>> CollectionProducer<V> sigmoid() {
-		return sigmoid((Producer) this);
+	default CollectionProducer sigmoid() {
+		return sigmoid(this);
 	}
 
-	default <V extends PackedCollection<?>> CollectionProducer<V>  greaterThan(Producer<?> operand,
-																			   Producer<V> trueValue, Producer<V> falseValue) {
+	default CollectionProducer greaterThan(Producer<PackedCollection> operand,
+																		Producer<PackedCollection> trueValue, Producer<PackedCollection> falseValue) {
 		return greaterThan(operand, trueValue, falseValue, false);
 	}
 
-	default <V extends PackedCollection<?>> CollectionProducer<V> greaterThan(Producer<?> operand,
-																  Producer<V> trueValue, Producer<V> falseValue,
-																  boolean includeEqual) {
+	default CollectionProducer greaterThan(Producer<PackedCollection> operand,
+																		Producer<PackedCollection> trueValue, Producer<PackedCollection> falseValue,
+																		boolean includeEqual) {
 		return greaterThan(this, operand, trueValue, falseValue, includeEqual);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducer<T> lessThan(Supplier operand) {
+	default <T extends PackedCollection> CollectionProducer lessThan(Supplier operand) {
 		return lessThan(operand, false);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducer<T> lessThan(Supplier operand, boolean includeEqual) {
+	default <T extends PackedCollection> CollectionProducer lessThan(Supplier operand, boolean includeEqual) {
 		return lessThan(operand, null, null, includeEqual);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducer<T> lessThan(Supplier<Evaluable<? extends PackedCollection<?>>> operand,
-																		   Supplier<Evaluable<? extends PackedCollection<?>>> trueValue,
-																		   Supplier<Evaluable<? extends PackedCollection<?>>> falseValue) {
+	default <T extends PackedCollection> CollectionProducer lessThan(Supplier<Evaluable<? extends PackedCollection>> operand,
+																	 Supplier<Evaluable<? extends PackedCollection>> trueValue,
+																	 Supplier<Evaluable<? extends PackedCollection>> falseValue) {
 		return lessThan(operand, trueValue, falseValue, false);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducer<T> lessThan(Supplier<Evaluable<? extends PackedCollection<?>>> operand,
-																		   Supplier<Evaluable<? extends PackedCollection<?>>> trueValue,
-																		   Supplier<Evaluable<? extends PackedCollection<?>>> falseValue,
-																		   boolean includeEqual) {
+	default <T extends PackedCollection> CollectionProducer lessThan(Supplier<Evaluable<? extends PackedCollection>> operand,
+																	 Supplier<Evaluable<? extends PackedCollection>> trueValue,
+																	 Supplier<Evaluable<? extends PackedCollection>> falseValue,
+																	 boolean includeEqual) {
 		return lessThan(this, (Producer) operand, (Producer) trueValue, (Producer) falseValue, includeEqual);
 	}
 
-	default CollectionProducer<T> attemptDelta(Producer<?> target) {
+	/**
+	 * Produces 1.0 if this > operand, 0.0 otherwise.
+	 */
+	default CollectionProducer greaterThan(Producer<PackedCollection> operand) {
+		return greaterThan(this, operand);
+	}
+
+	/**
+	 * Produces 1.0 if this >= operand, 0.0 otherwise.
+	 */
+	default CollectionProducer greaterThanOrEqual(Producer<PackedCollection> operand) {
+		return greaterThanOrEqual(this, operand);
+	}
+
+	/**
+	 * Produces 1.0 if this &lt; operand, 0.0 otherwise.
+	 */
+	default CollectionProducer lessThan(Producer<PackedCollection> operand) {
+		return lessThan(this, operand);
+	}
+
+	/**
+	 * Produces 1.0 if this &lt;= operand, 0.0 otherwise.
+	 */
+	default CollectionProducer lessThanOrEqual(Producer<PackedCollection> operand) {
+		return lessThanOrEqual(this, operand);
+	}
+
+	/**
+	 * Produces 1.0 if this AND operand are both non-zero, 0.0 otherwise.
+	 */
+	default CollectionProducer and(Producer<PackedCollection> operand) {
+		return and(this, operand);
+	}
+
+	/**
+	 * Produces trueValue if this AND operand are both non-zero, otherwise returns falseValue.
+	 */
+	default CollectionProducer and(Producer<PackedCollection> operand,
+																Producer<PackedCollection> trueValue,
+																Producer<PackedCollection> falseValue) {
+		return and(this, operand, trueValue, falseValue);
+	}
+
+	default CollectionProducer attemptDelta(Producer<?> target) {
 		return attemptDelta(this, target);
 	}
 
-	default CollectionProducer<T> delta(Producer<?> target) {
-		CollectionProducer<T> delta = attemptDelta(target);
+	default CollectionProducer delta(Producer<?> target) {
+		CollectionProducer delta = attemptDelta(target);
 		if (delta != null) return delta;
 
 		throw new UnsupportedOperationException();
 	}
 
-	default <V extends PackedCollection<?>> CollectionProducer<V> grad(Producer<?> target, Producer<T> gradient) {
-		return combineGradient((CollectionProducer) this, (Producer) target, (Producer) gradient);
+	default CollectionProducer grad(Producer<?> target, Producer<PackedCollection> gradient) {
+		return combineGradient(this, (Producer<PackedCollection>) target, gradient);
 	}
 
 	default MultiTermDeltaStrategy getDeltaStrategy() {

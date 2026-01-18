@@ -17,17 +17,48 @@
 package org.almostrealism.color;
 
 import io.almostrealism.relation.Producer;
-import io.almostrealism.relation.Evaluable;
+import org.almostrealism.collect.PackedCollection;
 
 /**
- * @author  Michael Murray
+ * Represents an object that can be shaded to produce a color based on lighting conditions.
+ *
+ * <p>A {@code Shadable} is typically a surface or geometry that can compute its
+ * visible color given a {@link ShaderContext} containing lighting information.
+ * This interface bridges the gap between geometric objects and the shading system,
+ * allowing surfaces to delegate to their associated shaders.</p>
+ *
+ * <h2>Relationship to Shader</h2>
+ * <p>While {@link Shader} defines a standalone shading algorithm, {@code Shadable}
+ * represents an object that <em>has</em> shading behavior. A typical implementation
+ * stores one or more {@link Shader} instances and delegates to them:</p>
+ * <pre>{@code
+ * public class MySurface implements Shadable {
+ *     private Shader<ShaderContext> shader = new DiffuseShader();
+ *
+ *     public Producer<PackedCollection> shade(ShaderContext ctx) {
+ *         return shader.shade(ctx, getNormalField());
+ *     }
+ * }
+ * }</pre>
+ *
+ * <h2>Common Implementations</h2>
+ * <ul>
+ *   <li>{@link ShadableSurface}: Extends Shadable with front/back shading control</li>
+ *   <li>{@link ShadableCurve}: Parametric curves with shading support</li>
+ * </ul>
+ *
+ * @see Shader
+ * @see ShaderContext
+ * @see ShadableSurface
+ * @author Michael Murray
  */
 public interface Shadable {
 	/**
-	 * Returns an {@link RGB} {@link Evaluable} representing the color of this {@link Shadable}
-	 * based on the specified parameters.
+	 * Computes the color of this object given lighting parameters.
 	 *
+	 * @param parameters the shader context containing light, surface, and intersection info
+	 * @return a {@link Producer} that yields the computed {@link RGB} color
 	 * @see Shader
 	 */
-	Producer<RGB> shade(ShaderContext parameters);
+	Producer<PackedCollection> shade(ShaderContext parameters);
 }

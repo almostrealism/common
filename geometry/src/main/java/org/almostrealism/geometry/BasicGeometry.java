@@ -1,5 +1,5 @@
 /*
- * Copyright 2016 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,12 +16,13 @@
 
 package org.almostrealism.geometry;
 
-import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Producer;
 import io.almostrealism.uml.ModelEntity;
 import org.almostrealism.algebra.UnityVector;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorFeatures;
 import org.almostrealism.algebra.ZeroVector;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.io.DecodePostProcessing;
 
 /**
@@ -37,15 +38,15 @@ public class BasicGeometry implements Positioned, Oriented, Scaled, DecodePostPr
 	public Vector location;
 	public double size;
 
-	public Vector scale = (Vector) UnityVector.getEvaluable().evaluate().clone();
+	public Vector scale = new Vector(UnityVector.getEvaluable().evaluate().clone(), 0);
 	public double rotateX, rotateY, rotateZ;
 
-	private TransformMatrix transforms[];
+	private TransformMatrix[] transforms;
 	private TransformMatrix transform, completeTransform;
 	protected boolean transformCurrent;
 	
 	public BasicGeometry() {
-		this(ZeroVector.getEvaluable().evaluate());
+		this(new Vector(ZeroVector.getEvaluable().evaluate(), 0));
 		transformCurrent = true;
 	}
 	
@@ -120,7 +121,7 @@ public class BasicGeometry implements Positioned, Oriented, Scaled, DecodePostPr
 	 * y, and z axes when it is rendered as an array of double values.
 	 */
 	public double[] getRotationCoefficients() {
-		double rotation[] = {this.rotateX, this.rotateY, this.rotateZ};
+		double[] rotation = {this.rotateX, this.rotateY, this.rotateZ};
 		
 		return rotation;
 	}
@@ -199,7 +200,7 @@ public class BasicGeometry implements Positioned, Oriented, Scaled, DecodePostPr
 	 * an IllegalArgumentException will be thrown. This method calls calculateTransform() after it
 	 * is completed.
 	 */
-	public void setTransforms(TransformMatrix transforms[]) throws IllegalArgumentException {
+	public void setTransforms(TransformMatrix[] transforms) throws IllegalArgumentException {
 		if (transforms == null)
 			throw new IllegalArgumentException();
 		
@@ -213,7 +214,7 @@ public class BasicGeometry implements Positioned, Oriented, Scaled, DecodePostPr
 	 * This method calls calculateTransform() after it is completed.
 	 */
 	public void addTransform(TransformMatrix transform) {
-		TransformMatrix newTransforms[] = new TransformMatrix[this.transforms.length + 1];
+		TransformMatrix[] newTransforms = new TransformMatrix[this.transforms.length + 1];
 		
 		System.arraycopy(this.transforms, 0, newTransforms, 0, this.transforms.length);
 		newTransforms[newTransforms.length - 1] = transform;
@@ -228,7 +229,7 @@ public class BasicGeometry implements Positioned, Oriented, Scaled, DecodePostPr
 	 * This method calls calculateTransform() after it is completed.
 	 */
 	public void removeTransform(int index) {
-		TransformMatrix newTransforms[] = new TransformMatrix[this.transforms.length - 1];
+		TransformMatrix[] newTransforms = new TransformMatrix[this.transforms.length - 1];
 		
 		System.arraycopy(this.transforms, 0, newTransforms, 0, index);
 		
@@ -259,20 +260,20 @@ public class BasicGeometry implements Positioned, Oriented, Scaled, DecodePostPr
 			completeTransform = new TransformMatrix();
 
 			if (getLocation() != null) {
-				completeTransform =
-						completeTransform.multiply(
-								translationMatrix(v(getLocation())).evaluate());
+				completeTransform = completeTransform.multiply(
+						new TransformMatrix(translationMatrix(v(getLocation())).get().evaluate(), 0));
 			}
 
-			Evaluable<TransformMatrix> sm;
+			CollectionProducer sm;
 
 			if (size == 1.0) {
-				sm = scaleMatrix(v(scale)).get();
+				sm = scaleMatrix(v(scale));
 			} else {
-				sm = scaleMatrix(v(scale.multiply(size))).get();
+				sm = scaleMatrix(v(scale.multiply(size)));
 			}
 
-			this.completeTransform = this.completeTransform.multiply(sm.evaluate());
+			this.completeTransform = this.completeTransform.multiply(
+					new TransformMatrix(sm.get().evaluate(), 0));
 
 			if (this.rotateX != 0.0) {
 				this.completeTransform = this.completeTransform.multiply(TransformMatrix.createRotateXMatrix(this.rotateX));

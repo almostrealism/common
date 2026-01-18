@@ -1,0 +1,498 @@
+/* Almost Realism Documentation Styles */
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+:root {
+    --primary-color: #2c3e50;
+    --secondary-color: #3498db;
+    --accent-color: #e74c3c;
+    --success-color: #27ae60;
+    --bg-color: #f8f9fa;
+    --card-bg: #ffffff;
+    --text-color: #333;
+    --border-color: #ddd;
+    --code-bg: #2d2d2d;
+    --code-color: #f8f8f2;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    line-height: 1.6;
+    color: var(--text-color);
+    background-color: var(--bg-color);
+}
+
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 20px;
+}
+
+/* Header */
+header {
+    background: linear-gradient(135deg, var(--primary-color) 0%, #34495e 100%);
+    color: white;
+    padding: 3rem 0;
+    margin-bottom: 3rem;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+}
+
+header h1 {
+    font-size: 2.5rem;
+    margin-bottom: 0.5rem;
+    font-weight: 700;
+}
+
+.tagline {
+    font-size: 1.1rem;
+    opacity: 0.9;
+    margin-bottom: 2rem;
+}
+
+nav {
+    display: flex;
+    gap: 1.5rem;
+    flex-wrap: wrap;
+    margin-top: 1.5rem;
+}
+
+nav a {
+    color: white;
+    text-decoration: none;
+    padding: 0.5rem 1rem;
+    border-radius: 4px;
+    transition: background 0.3s;
+    font-weight: 500;
+}
+
+nav a:hover {
+    background: rgba(255,255,255,0.2);
+}
+
+/* Sections */
+section {
+    background: var(--card-bg);
+    padding: 2rem;
+    margin-bottom: 2rem;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+
+section h2 {
+    color: var(--primary-color);
+    margin-bottom: 1.5rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 3px solid var(--secondary-color);
+    font-size: 2rem;
+}
+
+section h3 {
+    color: var(--primary-color);
+    margin: 1.5rem 0 1rem;
+    font-size: 1.4rem;
+}
+
+/* Features Grid */
+.features {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 1.5rem;
+    margin: 2rem 0;
+}
+
+.feature {
+    padding: 1.5rem;
+    border: 2px solid var(--border-color);
+    border-radius: 8px;
+    transition: transform 0.3s, box-shadow 0.3s;
+}
+
+.feature:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+    border-color: var(--secondary-color);
+}
+
+.feature h3 {
+    color: var(--secondary-color);
+    margin-top: 0;
+    font-size: 1.2rem;
+}
+
+/* Module Grid */
+.module-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 1.5rem;
+    margin: 2rem 0;
+}
+
+.module-card {
+    padding: 1.5rem;
+    border: 2px solid var(--border-color);
+    border-radius: 8px;
+    transition: all 0.3s;
+    position: relative;
+}
+
+.module-card.foundation {
+    border-color: #0277bd !important;
+    background: linear-gradient(to bottom, #fff 0%, #e1f5ff 100%) !important;
+}
+
+.module-card.core {
+    border-color: #7b1fa2 !important;
+    background: linear-gradient(to bottom, #fff 0%, #f3e5f5 100%) !important;
+}
+
+.module-card.data {
+    border-color: #e65100 !important;
+    background: linear-gradient(to bottom, #fff 0%, #fff3e0 100%) !important;
+}
+
+.module-card.math {
+    border-color: #2e7d32 !important;
+    background: linear-gradient(to bottom, #fff 0%, #e8f5e9 100%) !important;
+}
+
+.module-card.domain {
+    border-color: #c2185b !important;
+    background: linear-gradient(to bottom, #fff 0%, #fce4ec 100%) !important;
+}
+
+.module-card.app {
+    border-color: #f57f17 !important;
+    background: linear-gradient(to bottom, #fff 0%, #fff9c4 100%) !important;
+}
+
+.module-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 8px 20px rgba(0,0,0,0.12);
+}
+
+.module-card h3 {
+    margin-top: 0;
+    margin-bottom: 0.5rem;
+    font-size: 1.3rem;
+}
+
+.module-card h3 a {
+    color: var(--primary-color);
+    text-decoration: none;
+}
+
+.module-card h3 a:hover {
+    color: var(--secondary-color);
+}
+
+.badge {
+    display: inline-block;
+    background: var(--secondary-color);
+    color: white;
+    padding: 0.2rem 0.6rem;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+}
+
+.foundation-badge {
+    background: #0277bd;
+}
+
+.core-badge {
+    background: #7b1fa2;
+}
+
+.data-badge {
+    background: #e65100;
+}
+
+.math-badge {
+    background: #2e7d32;
+}
+
+.domain-badge {
+    background: #c2185b;
+}
+
+.app-badge {
+    background: #f57f17;
+}
+
+.doc-link {
+    color: var(--secondary-color);
+    text-decoration: none;
+    font-size: 0.9rem;
+    margin-right: 0.5rem;
+}
+
+.doc-link:hover {
+    text-decoration: underline;
+}
+
+/* Code Blocks */
+pre {
+    background: var(--code-bg);
+    color: var(--code-color);
+    padding: 1.5rem;
+    border-radius: 6px;
+    overflow-x: auto;
+    margin: 1rem 0;
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 0.9rem;
+    line-height: 1.5;
+}
+
+.architecture-diagram {
+    background: var(--code-bg);
+    color: #4CAF50;
+    font-family: monospace;
+    white-space: pre;
+    font-size: 0.85rem;
+}
+
+code {
+    background: #f4f4f4;
+    padding: 0.2rem 0.4rem;
+    border-radius: 3px;
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 0.9em;
+    color: var(--accent-color);
+}
+
+pre code {
+    background: transparent;
+    padding: 0;
+    color: var(--code-color);
+}
+
+/* Lists */
+ul {
+    margin: 1rem 0 1rem 2rem;
+}
+
+li {
+    margin: 0.5rem 0;
+}
+
+.tutorial-list {
+    list-style: none;
+    margin-left: 0;
+}
+
+.tutorial-list li {
+    padding: 0.8rem;
+    border-left: 4px solid var(--secondary-color);
+    background: var(--bg-color);
+    margin: 0.8rem 0;
+    transition: all 0.3s;
+}
+
+.tutorial-list li:hover {
+    background: white;
+    transform: translateX(5px);
+}
+
+.tutorial-list a {
+    text-decoration: none;
+    color: var(--primary-color);
+    font-weight: 500;
+}
+
+/* Footer */
+footer {
+    background: var(--primary-color);
+    color: white;
+    text-align: center;
+    padding: 2rem;
+    margin-top: 3rem;
+}
+
+footer p {
+    margin: 0.5rem 0;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    header h1 {
+        font-size: 2rem;
+    }
+
+    .tagline {
+        font-size: 1rem;
+    }
+
+    nav {
+        gap: 0.5rem;
+    }
+
+    nav a {
+        padding: 0.4rem 0.8rem;
+        font-size: 0.9rem;
+    }
+
+    .module-grid, .features {
+        grid-template-columns: 1fr;
+    }
+
+    section {
+        padding: 1.5rem;
+    }
+
+    pre {
+        font-size: 0.8rem;
+        padding: 1rem;
+    }
+}
+
+/* Utility Classes */
+.text-center {
+    text-align: center;
+}
+
+.mt-1 { margin-top: 1rem; }
+.mt-2 { margin-top: 2rem; }
+.mb-1 { margin-bottom: 1rem; }
+.mb-2 { margin-bottom: 2rem; }
+
+/* Architecture Section */
+.arch-tier {
+    margin: 2rem 0;
+    padding: 1.5rem;
+    background: linear-gradient(to right, #f8f9fa 0%, #ffffff 100%);
+    border-left: 4px solid var(--secondary-color);
+    border-radius: 8px;
+}
+
+.arch-tier h3 {
+    color: var(--primary-color);
+    margin-bottom: 1rem;
+    font-size: 1.3rem;
+    font-weight: 600;
+}
+
+.arch-modules {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.8rem;
+}
+
+.arch-module {
+    background: white;
+    border: 2px solid var(--border-color);
+    border-radius: 6px;
+    padding: 0.8rem 1.2rem;
+    min-width: 150px;
+    transition: all 0.3s ease;
+    cursor: pointer;
+}
+
+.arch-module:hover {
+    border-color: var(--secondary-color);
+    box-shadow: 0 4px 12px rgba(52, 152, 219, 0.2);
+    transform: translateY(-2px);
+}
+
+.arch-module strong {
+    display: block;
+    color: var(--primary-color);
+    font-size: 1.1rem;
+    margin-bottom: 0.3rem;
+}
+
+.arch-module span {
+    display: block;
+    font-size: 0.85rem;
+    color: #666;
+    font-style: italic;
+}
+
+.arch-note {
+    margin-top: 2rem;
+    padding: 1rem;
+    background: #fff3cd;
+    border-left: 4px solid #ffc107;
+    border-radius: 4px;
+    font-size: 0.95rem;
+}
+
+/* Highlight dependencies on hover */
+.arch-module.highlight {
+    border-color: var(--accent-color);
+    background: #fff5f5;
+}
+
+.arch-module.dependency {
+    border-color: var(--success-color);
+    background: #f0fff4;
+}
+
+/* Architecture Legend */
+.arch-legend {
+    margin-top: 2rem;
+    padding: 1.5rem;
+    background: white;
+    border: 2px solid var(--border-color);
+    border-radius: 8px;
+}
+
+.arch-legend h3 {
+    margin-top: 0;
+    margin-bottom: 1rem;
+    color: var(--primary-color);
+}
+
+.legend-items {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+}
+
+.legend-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.legend-box {
+    width: 24px;
+    height: 24px;
+    border-radius: 4px;
+    border: 2px solid #333;
+}
+
+/* Match Mermaid classDef colors */
+.legend-box.foundation {
+    background: #e1f5ff;
+    border-color: #0277bd;
+}
+
+.legend-box.core {
+    background: #f3e5f5;
+    border-color: #7b1fa2;
+}
+
+.legend-box.data {
+    background: #fff3e0;
+    border-color: #e65100;
+}
+
+.legend-box.math {
+    background: #e8f5e9;
+    border-color: #2e7d32;
+}
+
+.legend-box.domain {
+    background: #fce4ec;
+    border-color: #c2185b;
+}
+
+.legend-box.app {
+    background: #fff9c4;
+    border-color: #f57f17;
+}

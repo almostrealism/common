@@ -24,11 +24,11 @@ import org.almostrealism.protobuf.Collections;
 import java.util.stream.IntStream;
 
 public class CollectionEncoder {
-	public static Collections.CollectionData encode(PackedCollection<?> c) {
+	public static Collections.CollectionData encode(PackedCollection c) {
 		return encode(c, Precision.FP64);
 	}
 
-	public static Collections.CollectionData encode(PackedCollection<?> c, Precision precision) {
+	public static Collections.CollectionData encode(PackedCollection c, Precision precision) {
 		if (c == null) return Collections.CollectionData.getDefaultInstance();
 
 		Collections.CollectionData.Builder data = Collections.CollectionData.newBuilder();
@@ -52,20 +52,20 @@ public class CollectionEncoder {
 		return data.build();
 	}
 
-	public static PackedCollection<?> decode(Collections.CollectionData data) {
+	public static PackedCollection decode(Collections.CollectionData data) {
 		TraversalPolicy shape = decode(data.getTraversalPolicy());
 		if (shape.getDimensions() == 0) return null;
 
-		return decode(data, new PackedCollection<>(shape.getTotalSize()));
+		return decode(data, new PackedCollection(shape.getTotalSize()));
 	}
 
-	public static PackedCollection<?> decode(Collections.CollectionData data,
-											 PackedCollection<?> destination) {
+	public static PackedCollection decode(Collections.CollectionData data,
+											 PackedCollection destination) {
 		return decode(data, destination, 0);
 	}
 
-	public static PackedCollection<?> decode(Collections.CollectionData data,
-											 PackedCollection<?> destination,
+	public static PackedCollection decode(Collections.CollectionData data,
+											 PackedCollection destination,
 											 int destinationOffset) {
 		TraversalPolicy shape = decode(data.getTraversalPolicy());
 		if (shape.getDimensions() == 0) return null;

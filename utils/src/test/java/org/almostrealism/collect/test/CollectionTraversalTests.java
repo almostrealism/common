@@ -25,9 +25,10 @@ import org.junit.Test;
 import java.util.Arrays;
 
 public class CollectionTraversalTests implements TestFeatures {
-	@Test
+
+	@Test(timeout = 10000)
 	public void stride1() {
-		PackedCollection<?> root = new PackedCollection<>(shape(4, 4)).randFill();
+		PackedCollection root = new PackedCollection(shape(4, 4)).randFill();
 
 		TraversalPolicy policy = shape(4, 2)
 				.withRate(1, 2, 1);
@@ -35,7 +36,7 @@ public class CollectionTraversalTests implements TestFeatures {
 		assertEquals(4, policy.inputLength(1));
 		assertEquals(16, policy.getTotalInputSize());
 
-		PackedCollection<?> strided = root.range(policy);
+		PackedCollection strided = root.range(policy);
 
 		for (int i = 0; i < 4; i++) {
 			for (int j = 0; j < 2; j++) {
@@ -46,16 +47,16 @@ public class CollectionTraversalTests implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 10000)
 	public void stride2() {
-		PackedCollection<?> root = new PackedCollection<>(shape(4, 4)).randFill();
+		PackedCollection root = new PackedCollection(shape(4, 4)).randFill();
 
 		TraversalPolicy policy = shape(2, 4)
 				.withRate(0, 2, 1);
 		assertEquals(4, policy.inputLength(0));
 		assertEquals(4, policy.inputLength(1));
 
-		PackedCollection<?> strided = root.range(policy);
+		PackedCollection strided = root.range(policy);
 
 		for (int i = 0; i < 2; i++) {
 			for (int j = 0; j < 4; j++) {
@@ -66,9 +67,9 @@ public class CollectionTraversalTests implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 10000)
 	public void stride3() {
-		PackedCollection<?> root = new PackedCollection<>(shape(4, 4)).randFill();
+		PackedCollection root = new PackedCollection(shape(4, 4)).randFill();
 
 		TraversalPolicy policy = shape(4, 8)
 				.withRate(1, 1, 2);
@@ -76,7 +77,7 @@ public class CollectionTraversalTests implements TestFeatures {
 		assertEquals(4, policy.inputLength(0));
 		assertEquals(4, policy.inputLength(1));
 
-		PackedCollection<?> strided = root.range(policy);
+		PackedCollection strided = root.range(policy);
 
 		for (int i = 0; i < 4; i++) {
 			for (int j = 0; j < 8; j++) {
@@ -87,9 +88,9 @@ public class CollectionTraversalTests implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 10000)
 	public void stride4() {
-		PackedCollection<?> root = new PackedCollection<>(shape(4, 4)).randFill();
+		PackedCollection root = new PackedCollection(shape(4, 4)).randFill();
 
 		TraversalPolicy policy = shape(8, 4)
 				.withRate(0, 1, 2);
@@ -97,7 +98,7 @@ public class CollectionTraversalTests implements TestFeatures {
 		assertEquals(4, policy.inputLength(0));
 		assertEquals(4, policy.inputLength(1));
 
-		PackedCollection<?> strided = root.range(policy);
+		PackedCollection strided = root.range(policy);
 
 		for (int i = 0; i < 8; i++) {
 			for (int j = 0; j < 4; j++) {
@@ -108,13 +109,13 @@ public class CollectionTraversalTests implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 10000)
 	public void stride5() {
 		int m = 2;
 		int n = 2;
 		int p = 4;
 
-		PackedCollection<?> root = new PackedCollection<>(shape(m, n)).randFill();
+		PackedCollection root = new PackedCollection(shape(m, n)).randFill();
 
 		TraversalPolicy policy = shape(m, p)
 				.withRate(1, n, p);
@@ -122,7 +123,7 @@ public class CollectionTraversalTests implements TestFeatures {
 		assertEquals(m, policy.inputLength(0));
 		assertEquals(n, policy.inputLength(1));
 
-		PackedCollection<?> strided = root.range(policy);
+		PackedCollection strided = root.range(policy);
 
 		for (int i = 0; i < m; i++) {
 			for (int j = 0; j < p; j++) {
@@ -135,13 +136,13 @@ public class CollectionTraversalTests implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 10000)
 	public void stride6() {
 		int m = 4;
 		int n = 2;
 		int p = 3;
 
-		PackedCollection<?> root = new PackedCollection<>(shape(m, n)).randFill();
+		PackedCollection root = new PackedCollection(shape(m, n)).randFill();
 
 		TraversalPolicy policy = shape(m, p)
 				.withRate(1, n, p);
@@ -149,9 +150,9 @@ public class CollectionTraversalTests implements TestFeatures {
 		assertEquals(m, policy.inputLength(0));
 		assertEquals(n, policy.inputLength(1));
 
-		PackedCollection<?> strided = root.range(policy);
+		PackedCollection strided = root.range(policy);
 
-		double values[] = strided.doubleStream().toArray();
+		double[] values = strided.doubleStream().toArray();
 		int idx = 0;
 
 		for (int i = 0; i < m; i++) {
@@ -164,7 +165,7 @@ public class CollectionTraversalTests implements TestFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 10000)
 	public void stride7() {
 		TraversalPolicy left = shape(2, 1)
 				.repeat(1, 2);
@@ -191,7 +192,7 @@ public class CollectionTraversalTests implements TestFeatures {
 		Assert.assertEquals("[0, 0][0, 1][0, 0][0, 1]", result.toString());
 	}
 
-	@Test
+	@Test(timeout = 10000)
 	public void stride8() {
 		TraversalPolicy policy = shape(2, 4)
 				.withRate(0, 3, 2)
@@ -209,14 +210,14 @@ public class CollectionTraversalTests implements TestFeatures {
 				.forEach(System.out::println);
 	}
 
-	@Test
+	@Test(timeout = 10000)
 	public void stride9() {
 		int bs = 1;
 		int r = 3;
 		int c1 = 2;
 		int c2 = 3;
 
-		PackedCollection<?> root = new PackedCollection<>(shape(bs, r, c1)).randFill();
+		PackedCollection root = new PackedCollection(shape(bs, r, c1)).randFill();
 
 		TraversalPolicy policy = shape(bs, c1, c2)
 							.withRate(2, 1, c2);

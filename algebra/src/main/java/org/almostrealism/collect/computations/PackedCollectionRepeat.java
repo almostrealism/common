@@ -17,21 +17,22 @@
 package org.almostrealism.collect.computations;
 
 import io.almostrealism.code.Computation;
+import io.almostrealism.collect.Shape;
+import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.compute.Process;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.DefaultIndex;
 import io.almostrealism.kernel.Index;
 import io.almostrealism.kernel.IndexValues;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
 import org.almostrealism.collect.PackedCollection;
-import io.almostrealism.collect.Shape;
-import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.computations.HardwareEvaluable;
 
 import java.util.List;
 import java.util.OptionalDouble;
+import java.util.function.Supplier;
 
 /**
  * A computation that repeats elements of a {@link PackedCollection} to create larger collections
@@ -53,26 +54,26 @@ import java.util.OptionalDouble;
  * <h4>Basic Collection Repetition</h4>
  * <pre>{@code
  * // Create a 2x3 collection
- * PackedCollection<?> input = new PackedCollection<>(shape(2, 3));
+ * PackedCollection input = new PackedCollection(shape(2, 3));
  * input.fill(pos -> Math.random());
  * 
  * // Repeat the collection 4 times along a new first dimension
- * PackedCollection<?> repeated = cp(input).repeat(4).get().evaluate();
+ * PackedCollection repeated = cp(input).repeat(4).get().evaluate();
  * // Result shape: (4, 2, 3) - same data repeated 4 times
  * }</pre>
  * 
  * <h4>Item-level Repetition with Traversal</h4>
  * <pre>{@code
  * // Repeat each item within the collection structure
- * PackedCollection<?> itemRepeated = cp(input).traverse().repeat(3).get().evaluate();
+ * PackedCollection itemRepeated = cp(input).traverse().repeat(3).get().evaluate();
  * // Result: each individual element is repeated 3 times
  * }</pre>
  * 
  * <h4>Broadcasting for Neural Networks</h4>
  * <pre>{@code
  * // Typical use in dense layer computation
- * PackedCollection<?> weights = new PackedCollection<>(shape(inputSize, outputSize));
- * PackedCollection<?> input = new PackedCollection<>(shape(inputSize));
+ * PackedCollection weights = new PackedCollection(shape(inputSize, outputSize));
+ * PackedCollection input = new PackedCollection(shape(inputSize));
  * 
  * // Repeat input for each output node
  * CollectionProducer<?> result = cp(input).repeat(outputSize).traverseEach()
@@ -83,8 +84,8 @@ import java.util.OptionalDouble;
  * <h4>Upsampling Operations</h4>
  * <pre>{@code
  * // 2x2 upsampling of image data
- * PackedCollection<?> image = pack(1.0, 2.0, 3.0, 4.0).reshape(1, 1, 2, 2);
- * PackedCollection<?> upsampled = cp(image)
+ * PackedCollection image = pack(1.0, 2.0, 3.0, 4.0).reshape(1, 1, 2, 2);
+ * PackedCollection upsampled = cp(image)
  *     .repeat(4, 2)  // Repeat along axis 4 with factor 2
  *     .repeat(3, 2)  // Repeat along axis 3 with factor 2
  *     .evaluate()
@@ -115,19 +116,17 @@ import java.util.OptionalDouble;
  * <li>{@link #enableLargeSlice} - Permits large slice operations</li>
  * <li>{@link #enableShortCircuit} - Short-circuits simple repetitions</li>
  * </ul>
- * 
- * @param <T> the type of PackedCollection being repeated
- * 
+ *
  * @see IndexProjectionProducerComputation
  * @see TraversalPolicy
  * @see PackedCollection#repeat(int)
- * @see CollectionFeatures#repeat(int, Producer)
- * 
+ * @see org.almostrealism.collect.CollectionFeatures#repeat(int, io.almostrealism.relation.Producer)
+ *
  * @author Michael Murray
  * @since 0.68
  */
-public class PackedCollectionRepeat<T extends PackedCollection<?>>
-		extends IndexProjectionProducerComputation<T> {
+public class PackedCollectionRepeat
+		extends IndexProjectionProducerComputation {
 	
 	public static boolean enableUniqueIndexOptimization = true;
 	public static boolean enableInputIsolation = true;
@@ -135,8 +134,8 @@ public class PackedCollectionRepeat<T extends PackedCollection<?>>
 	public static boolean enableLargeSlice = true;
 	public static boolean enableShortCircuit = false;
 
-	private TraversalPolicy subsetShape;
-	private TraversalPolicy sliceShape;
+	private final TraversalPolicy subsetShape;
+	private final TraversalPolicy sliceShape;
 
 	/**
 	 * Creates a new PackedCollectionRepeat that repeats the entire collection
@@ -149,7 +148,7 @@ public class PackedCollectionRepeat<T extends PackedCollection<?>>
 	 * <h4>Example Usage:</h4>
 	 * <pre>{@code
 	 * // Repeat a 3x4 collection 5 times
-	 * PackedCollection<?> input = new PackedCollection<>(shape(3, 4));
+	 * PackedCollection input = new PackedCollection(shape(3, 4));
 	 * PackedCollectionRepeat<?> repeat = new PackedCollectionRepeat<>(5, cp(input));
 	 * // Result shape: (5, 3, 4)
 	 * }</pre>
@@ -178,7 +177,7 @@ public class PackedCollectionRepeat<T extends PackedCollection<?>>
 	 * <h4>Example Usage:</h4>
 	 * <pre>{@code
 	 * // Repeat specific 2x2 blocks from a 4x4 collection, 3 times
-	 * PackedCollection<?> input = new PackedCollection<>(shape(4, 4));
+	 * PackedCollection input = new PackedCollection(shape(4, 4));
 	 * TraversalPolicy blockShape = shape(2, 2);
 	 * PackedCollectionRepeat<?> repeat = new PackedCollectionRepeat<>(blockShape, 3, cp(input));
 	 * }</pre>
@@ -390,24 +389,24 @@ public class PackedCollectionRepeat<T extends PackedCollection<?>>
 	 * @see HardwareEvaluable
 	 */
 	@Override
-	public Evaluable<T> get() {
+	public Evaluable<PackedCollection> get() {
 		if (!enableShortCircuit || sliceShape.getTotalSizeLong() != getShape().getTotalSizeLong()) {
 			return super.get();
 		}
 
-		Evaluable<T> ev = (Evaluable) getInputs().get(1).get();
+		Evaluable<PackedCollection> ev = getInputs().get(1).get();
 
 		int r = Math.toIntExact(getShape().getTotalSizeLong() / subsetShape.getTotalSizeLong());
 
 		if (ev instanceof Provider) {
 			return p((Provider) ev, v ->
-					(T) ((PackedCollection) v).repeat(r));
+					((PackedCollection) v).repeat(r));
 		}
 
-		HardwareEvaluable<T> hev = new HardwareEvaluable(getInputs().get(1)::get, null, null, false);
+		HardwareEvaluable<PackedCollection> hev = new HardwareEvaluable(getInputs().get(1)::get, null, null, false);
 		hev.setShortCircuit(args -> {
-			T out = hev.getKernel().getValue().evaluate(args);
-			return (T) out.repeat(r);
+			PackedCollection out = hev.getKernel().getValue().evaluate(args);
+			return out.repeat(r);
 		});
 		return hev;
 	}
@@ -428,8 +427,8 @@ public class PackedCollectionRepeat<T extends PackedCollection<?>>
 	 * @see Process#generate(List)
 	 */
 	@Override
-	public PackedCollectionRepeat<T> generate(List<Process<?, ?>> children) {
-		return new PackedCollectionRepeat<>(getShape(), subsetShape, sliceShape, (Producer<?>) children.get(1));
+	public PackedCollectionRepeat generate(List<Process<?, ?>> children) {
+		return new PackedCollectionRepeat(getShape(), subsetShape, sliceShape, (Producer<?>) children.get(1));
 	}
 
 	/**
@@ -454,17 +453,17 @@ public class PackedCollectionRepeat<T extends PackedCollection<?>>
 	 *         in additional isolation infrastructure
 	 * 
 	 * @see Process#isolate()
-	 * @see Process#isolated(Process)
+	 * @see Process#isolated(Supplier)
 	 */
 	@Override
-	public Process<Process<?, ?>, Evaluable<? extends T>> isolate() {
-		Producer in = (Producer) getInputs().get(1);
-		if (in instanceof ReshapeProducer) in = ((ReshapeProducer<?>) in).getComputation();
+	public Process<Process<?, ?>, Evaluable<? extends PackedCollection>> isolate() {
+		Producer in = getInputs().get(1);
+		if (in instanceof ReshapeProducer) in = ((ReshapeProducer) in).getComputation();
 
 		boolean computable = in instanceof Computation;
 
 		if (!enableIsolation && !computable) {
-			PackedCollectionRepeat<T> isolated = (PackedCollectionRepeat<T>)
+			PackedCollectionRepeat isolated = (PackedCollectionRepeat)
 					generateReplacement(List.of((Process) getInputs().get(0), (Process) getInputs().get(1)));
 			return isolated;
 		}
@@ -472,7 +471,7 @@ public class PackedCollectionRepeat<T extends PackedCollection<?>>
 		if (!enableInputIsolation || !computable)
 			return super.isolate();
 
-		PackedCollectionRepeat<T> isolated = (PackedCollectionRepeat<T>)
+		PackedCollectionRepeat isolated = (PackedCollectionRepeat)
 				generateReplacement(List.of((Process) getInputs().get(0), isolate((Process) getInputs().get(1))));
 
 		return enableIsolation ? (Process) Process.isolated(isolated) : isolated;

@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tutorial: Working with Vectors and Operations - Almost Realism</title>
+    <link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1><a href="../index.html" style="color: white; text-decoration: none;">Almost Realism Framework</a></h1>
+            <p class="tagline">Tutorial: Working with Vectors and Operations</p>
+            <nav>
+                <a href="../index.html">Home</a>
+                <a href="../index.html#modules">Modules</a>
+                <a href="../index.html#tutorials">Tutorials</a>
+                <a href="../index.html#api">API Docs</a>
+            </nav>
+        </header>
+
+        <main>
+            <section>
+                <h2>Introduction</h2>
+                <p>This tutorial introduces you to the <code>Vector</code> type and hardware-accelerated operations in the Almost Realism framework. You'll learn how to:</p>
+                <ul>
+                    <li>Create and manipulate 3D vectors</li>
+                    <li>Perform vector operations (dot product, cross product, normalization)</li>
+                    <li>Use <code>CollectionProducer</code> for lazy evaluation</li>
+                    <li>Execute operations on GPU for performance</li>
+                </ul>
+
+                <p><strong>Prerequisites:</strong></p>
+                <ul>
+                    <li>Java 11+ installed</li>
+                    <li>Maven project with ar-algebra dependency</li>
+                    <li>Environment variables set for hardware acceleration (optional)</li>
+                </ul>
+            </section>
+
+            <section>
+                <h2>Step 1: Setup</h2>
+                <p>Add the algebra module to your <code>pom.xml</code>:</p>
+                <pre><code>&lt;dependency&gt;
+    &lt;groupId&gt;org.almostrealism&lt;/groupId&gt;
+    &lt;artifactId&gt;ar-algebra&lt;/artifactId&gt;
+    &lt;!-- Check pom.xml for current version --&gt;
+&lt;/dependency&gt;</code></pre>
+
+                <p>For hardware acceleration, set environment variables:</p>
+                <pre><code>export AR_HARDWARE_LIBS=/tmp/ar_libs/
+export AR_HARDWARE_DRIVER=native</code></pre>
+            </section>
+
+            <section>
+                <h2>Step 2: Creating Vectors</h2>
+                <p>The <code>Vector</code> class represents 3D vectors with x, y, z components.</p>
+
+                <pre><code class="language-java">import org.almostrealism.algebra.Vector;
+
+// Create vectors
+Vector v1 = new Vector(1.0, 2.0, 3.0);
+Vector v2 = new Vector(4.0, 5.0, 6.0);
+Vector origin = new Vector();  // (0, 0, 0)
+
+// Access components
+double x = v1.getX();  // 1.0
+double y = v1.getY();  // 2.0
+double z = v1.getZ();  // 3.0
+
+System.out.println(v1);  // Vector{x=1.0, y=2.0, z=3.0}</code></pre>
+
+                <p><strong>API Reference:</strong> <a href="../apidocs/org/almostrealism/algebra/Vector.html">Vector JavaDoc</a></p>
+            </section>
+
+            <section>
+                <h2>Step 3: Basic Vector Operations</h2>
+                <p>Vectors support standard mathematical operations:</p>
+
+                <pre><code class="language-java">// Addition
+Vector sum = v1.add(v2);  // (5.0, 7.0, 9.0)
+
+// Subtraction
+Vector diff = v2.subtract(v1);  // (3.0, 3.0, 3.0)
+
+// Scalar multiplication
+Vector scaled = v1.multiply(2.0);  // (2.0, 4.0, 6.0)
+
+// Division
+Vector half = v1.divide(2.0);  // (0.5, 1.0, 1.5)
+
+// Normalization (unit vector)
+Vector unit = v1.normalize();
+double length = Math.sqrt(unit.dotProduct(unit));  // 1.0
+
+// Magnitude
+double mag = Math.sqrt(v1.dotProduct(v1));  // ~3.74</code></pre>
+            </section>
+
+            <section>
+                <h2>Step 4: Dot and Cross Products</h2>
+
+                <h3>Dot Product</h3>
+                <p>The dot product measures the similarity of two vectors:</p>
+                <pre><code class="language-java">Vector a = new Vector(1.0, 0.0, 0.0);
+Vector b = new Vector(0.0, 1.0, 0.0);
+
+double dot = a.dotProduct(b);  // 0.0 (perpendicular)
+
+Vector parallel = new Vector(2.0, 0.0, 0.0);
+double dot2 = a.dotProduct(parallel);  // 2.0 (parallel)</code></pre>
+
+                <h3>Cross Product</h3>
+                <p>The cross product produces a vector perpendicular to both inputs:</p>
+                <pre><code class="language-java">Vector xAxis = new Vector(1.0, 0.0, 0.0);
+Vector yAxis = new Vector(0.0, 1.0, 0.0);
+
+Vector zAxis = xAxis.crossProduct(yAxis);  // (0.0, 0.0, 1.0)
+
+// Right-hand rule: x × y = z
+// Useful for surface normals in graphics</code></pre>
+            </section>
+
+            <section>
+                <h2>Step 5: Hardware-Accelerated Operations</h2>
+                <p>For batch operations on many vectors, use <code>CollectionProducer</code> to leverage GPU acceleration:</p>
+
+                <pre><code class="language-java">import org.almostrealism.collect.*;
+import static org.almostrealism.algebra.VectorFeatures.*;
+
+// Create batch of 1000 vectors
+PackedCollection vectors = Vector.bank(1000);
+
+// Fill with data
+for (int i = 0; i < 1000; i++) {
+    vectors.set(i, new Vector(i, i * 2, i * 3));
+}
+
+// Build computation graph (lazy, no execution yet)
+CollectionProducer&lt;?&gt; normalized = normalize(cp(vectors));
+CollectionProducer&lt;?&gt; scaled = normalized.multiply(10.0);
+
+// Execute on GPU (single kernel for all 1000 vectors!)
+PackedCollection result = scaled.get().evaluate();
+
+// Access results
+Vector firstResult = result.get(0);</code></pre>
+
+                <p><strong>Why this is fast:</strong></p>
+                <ul>
+                    <li>All 1000 normalizations happen in parallel on GPU</li>
+                    <li>Operations are fused into a single kernel</li>
+                    <li>No intermediate memory allocations</li>
+                </ul>
+            </section>
+
+            <section>
+                <h2>Step 6: Practical Example - Surface Normal Calculation</h2>
+                <p>Calculate the normal vector of a triangle for 3D graphics:</p>
+
+                <pre><code class="language-java">// Triangle vertices
+Vector v0 = new Vector(0.0, 0.0, 0.0);
+Vector v1 = new Vector(1.0, 0.0, 0.0);
+Vector v2 = new Vector(0.0, 1.0, 0.0);
+
+// Calculate edges
+Vector edge1 = v1.subtract(v0);  // (1.0, 0.0, 0.0)
+Vector edge2 = v2.subtract(v0);  // (0.0, 1.0, 0.0)
+
+// Surface normal = edge1 × edge2
+Vector normal = edge1.crossProduct(edge2);  // (0.0, 0.0, 1.0)
+
+// Normalize for unit length
+Vector unitNormal = normal.normalize();
+
+System.out.println("Surface normal: " + unitNormal);
+// Used for lighting calculations in rendering</code></pre>
+            </section>
+
+            <section>
+                <h2>Next Steps</h2>
+                <ul>
+                    <li><a href="02-packedcollection-basics.html">Tutorial 2: PackedCollection Fundamentals</a></li>
+                    <li><a href="03-hardware-acceleration.html">Tutorial 3: Hardware Acceleration Setup</a></li>
+                    <li><a href="../index.html#modules">Explore the algebra module documentation</a></li>
+                    <li><a href="../../algebra/README.md">Read the ar-algebra README</a></li>
+                </ul>
+            </section>
+
+            <section>
+                <h2>Summary</h2>
+                <p>You've learned:</p>
+                <ul>
+                    <li>✓ Creating and manipulating Vector objects</li>
+                    <li>✓ Using dot and cross products</li>
+                    <li>✓ Batch operations with CollectionProducer</li>
+                    <li>✓ GPU acceleration for vector computations</li>
+                    <li>✓ Practical application: surface normal calculation</li>
+                </ul>
+            </section>
+        </main>
+
+        <footer>
+            <p>&copy; 2024 Michael Murray. Licensed under the Apache License, Version 2.0.</p>
+        </footer>
+    </div>
+
+    <script src="../js/docs.js"></script>
+</body>
+</html>

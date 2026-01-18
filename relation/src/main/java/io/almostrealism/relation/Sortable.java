@@ -16,7 +16,26 @@
 
 package io.almostrealism.relation;
 
+/**
+ * An interface for types that provide a sorting hint.
+ *
+ * <p>{@link Sortable} provides a simple mechanism for objects to indicate
+ * their preferred sorting order. This is useful when objects need to be
+ * sorted without implementing {@link Comparable}.</p>
+ *
+ * @deprecated This interface is deprecated. Consider using {@link Comparable}
+ *             or a custom {@link java.util.Comparator} instead.
+ *
+ * @author Michael Murray
+ */
 @Deprecated
 public interface Sortable {
+	/**
+	 * Returns a hint value for sorting.
+	 *
+	 * <p>Lower values should be sorted before higher values.</p>
+	 *
+	 * @return the sort hint value
+	 */
 	int getSortHint();
 }

@@ -16,18 +16,13 @@
 
 package org.almostrealism.space.test;
 
-import org.almostrealism.algebra.Scalar;
+import io.almostrealism.relation.Producer;
+import io.almostrealism.relation.Provider;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.geometry.Ray;
-import org.almostrealism.hardware.HardwareFeatures;
-import io.almostrealism.relation.Producer;
-import org.almostrealism.hardware.HardwareOperator;
-import org.almostrealism.space.Plane;
 import org.almostrealism.geometry.ShadableIntersection;
-import org.almostrealism.CodeFeatures;
-import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.Provider;
+import org.almostrealism.space.Plane;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Assert;
 import org.junit.Test;
@@ -40,22 +35,21 @@ public class PlaneTest implements TestFeatures {
 		return (ShadableIntersection) p.intersectAt(ray(0.0, 0.0, 1.0, 0.0, 0.5, -1.0));
 	}
 
-	// TODO @Test
+	// TODO @Test(timeout = 10000)
 	public void intersectionTest1() {
 		ShadableIntersection intersection = test1();
 		double distance = intersection.getDistance().evaluate().toDouble();
 		System.out.println("distance = " + distance);
 		Assert.assertEquals(-20.0, distance, Math.pow(10, -10));
 
-		Assert.assertTrue(intersection.get(0).get().evaluate().equals(
-								ray(0.0, -10.0, 21.0, 0.0, 1.0, 0.0).get().evaluate()));
+		Assert.assertEquals(intersection.get(0).get().evaluate(), ray(0.0, -10.0, 21.0, 0.0, 1.0, 0.0).get().evaluate());
 	}
 
-	// TODO  @Test
+	// TODO  @Test(timeout = 10000)
 	public void intersectionTest1Compact() {
 		ShadableIntersection intersection = test1();
 
-		Producer<PackedCollection<?>> p = intersection.getDistance();
+		Producer<PackedCollection> p = intersection.getDistance();
 
 		double distance = p.get().evaluate().toDouble();
 		System.out.println("distance = " + distance);
@@ -65,9 +59,9 @@ public class PlaneTest implements TestFeatures {
 				new Vector(0.0, 1.0, 0.0)));
 	}
 
-	@Test
+	@Test(timeout = 10000)
 	public void intersectionTest2() {
-		Producer<Ray> r = ray(0.0, 1.0, 1.0, 0.0, 0.1, 1.0);
+		Producer<Ray> r = (Producer) ray(0.0, 1.0, 1.0, 0.0, 0.1, 1.0);
 
 		Plane p = new Plane(Plane.XZ);
 		p.setLocation(new Vector(0.0, 0, 0.0));
@@ -76,7 +70,7 @@ public class PlaneTest implements TestFeatures {
 		Assert.assertTrue(intersection.getDistance().get().evaluate().toDouble() < 0);
 	}
 
-	// TODO @Test
+	// TODO @Test(timeout = 10000)
 	public void transformTest() {
 		Provider<Ray> r = new Provider<>(new Ray(new Vector(0.0, 0.0, 1.0),
 												new Vector(0.0, 0.5, -1.0)));
@@ -85,17 +79,17 @@ public class PlaneTest implements TestFeatures {
 		Plane p = new Plane(Plane.XZ);
 		p.setLocation(new Vector(0.0, -10, 0.0));
 
-		Producer<Ray> t = transform(p.getTransform(true),
+		Producer<Ray> t = (Producer) transform(p.getTransform(true),
 					ray(0.0, 0.0, 1.0, 0.0, 0.5, -1.0));
 		Assert.assertEquals(new Ray(new Vector(0.0, -10.0, 1.0),
 				new Vector(0.0, 0.5, -1.0)), t.get().evaluate());
 
-		t = transform(p.getTransform(true).getInverse(),
+		t = (Producer) transform(p.getTransform(true).getInverse(),
 					ray(0.0, 0.0, 1.0, 0.0, 0.5, -1.0));
 		Assert.assertEquals(new Ray(new Vector(0.0, 10.0, 1.0),
 				new Vector(0.0, 0.5, -1.0)), t.get().evaluate());
 
-		Vector v = t.get().evaluate().pointAt(c(-20)).get().evaluate();
+		Vector v = new Vector(t.get().evaluate().pointAt(c(-20)).get().evaluate(), 0);
 		Assert.assertEquals(new Vector(0.0, 0.0, 21.0), v);
 	}
 }

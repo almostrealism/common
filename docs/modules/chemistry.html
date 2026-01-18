@@ -1,0 +1,653 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AR-Chemistry Module - Almost Realism Framework</title>
+    <link rel="stylesheet" href="../css/style.css">
+    <style>
+        .key-concepts { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin: 20px 0; }
+        .concept-card { background: #f8f9fa; border-left: 4px solid #689f38; padding: 15px; border-radius: 4px; }
+        .concept-card h4 { margin-top: 0; color: #689f38; }
+        .performance-table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+        .performance-table th, .performance-table td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
+        .performance-table th { background-color: #e8f5e9; color: #689f38; font-weight: bold; }
+        .performance-table tr:hover { background-color: #f5f5f5; }
+        .comparison-table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+        .comparison-table th, .comparison-table td { padding: 10px; border: 1px solid #ddd; text-align: left; }
+        .comparison-table th { background-color: #f1f8e9; color: #689f38; }
+        .class-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 15px; margin: 20px 0; }
+        .class-item { background: #fff; border: 1px solid #ddd; padding: 12px; border-radius: 4px; }
+        .class-item h4 { margin: 0 0 8px 0; color: #689f38; font-size: 1.1em; }
+        .class-item p { margin: 0; font-size: 0.9em; color: #666; }
+        .code-example { background: #f5f5f5; border-left: 4px solid #689f38; padding: 15px; margin: 15px 0; border-radius: 4px; }
+        .highlight { background-color: #f1f8e9; padding: 2px 4px; }
+        .warning { background-color: #fff8e1; border-left: 4px solid #ffc107; padding: 12px; margin: 15px 0; }
+        .periodic-table { margin: 20px 0; overflow-x: auto; }
+        .element-groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; margin: 20px 0; }
+        .element-group { background: #f1f8e9; padding: 12px; border-radius: 4px; border: 1px solid #c5e1a5; }
+        .element-group h5 { margin: 0 0 8px 0; color: #689f38; }
+        .element-group p { margin: 0; font-size: 0.85em; color: #555; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>AR-Chemistry Module</h1>
+            <p class="tagline">Periodic Table, Elements, and Molecular Modeling</p>
+            <nav>
+                <a href="../index.html">Home</a>
+                <a href="#overview">Overview</a>
+                <a href="#elements">Elements</a>
+                <a href="#structures">Structures</a>
+                <a href="#reactions">Reactions</a>
+                <a href="#examples">Examples</a>
+            </nav>
+        </header>
+
+        <main>
+            <section id="overview">
+                <h2>Overview</h2>
+                <p>The <strong>ar-chemistry</strong> module provides a complete model of the periodic table and chemical elements. It enables programmatic access to all 118 chemical elements with their atomic structures, electron configurations, and integration with the physics module for atom construction.</p>
+
+                <div class="key-concepts">
+                    <div class="concept-card">
+                        <h4>Complete Periodic Table</h4>
+                        <p>All 118 chemical elements from Hydrogen (1) to Oganesson (118), with accurate electron shell configurations and atomic properties.</p>
+                    </div>
+                    <div class="concept-card">
+                        <h4>Element Groups</h4>
+                        <p>Access elements by family (alkali metals, noble gases, halogens), period (row), group (column), or orbital block (s, p, d, f).</p>
+                    </div>
+                    <div class="concept-card">
+                        <h4>Alloy Creation</h4>
+                        <p>Probabilistic mixing of elements for material science applications. Define composition ratios and generate atoms based on those proportions.</p>
+                    </div>
+                    <div class="concept-card">
+                        <h4>Physics Integration</h4>
+                        <p>Seamless integration with the ar-physics module to construct Atom objects with proper electron shell configurations.</p>
+                    </div>
+                </div>
+            </section>
+
+            <section id="elements">
+                <h2>Elements and Periodic Table</h2>
+
+                <h3>Core Interfaces</h3>
+                <div class="class-list">
+                    <div class="class-item">
+                        <h4>Element</h4>
+                        <p>Represents a chemical element with atomic number and atom construction capability. Base interface for all 118 elements.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>Atomic</h4>
+                        <p>Interface for substances that can construct Atom objects. Bridge between chemistry (elements) and physics (atoms).</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>Substance</h4>
+                        <p>Marker interface for all chemical substances. Enables participation in graph-based relationships and reaction networks.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>PeriodicTable</h4>
+                        <p>Central access point for all elements. Provides static constants and methods for accessing elements by category.</p>
+                    </div>
+                </div>
+
+                <h3>Accessing Individual Elements</h3>
+                <pre><code class="language-java">import org.almostrealism.chem.*;
+import org.almostrealism.physics.Atom;
+
+// Access individual elements via PeriodicTable
+Element hydrogen = PeriodicTable.Hydrogen;
+Element carbon = PeriodicTable.Carbon;
+Element gold = PeriodicTable.Gold;
+Element oxygen = PeriodicTable.Oxygen;
+
+// Get atomic number
+int atomicNumber = carbon.getAtomicNumber();  // Returns 6
+
+// Construct atoms with proper electron configuration
+Atom carbonAtom = carbon.construct();
+Atom goldAtom = gold.construct();</code></pre>
+
+                <h3>Element Families</h3>
+                <div class="element-groups">
+                    <div class="element-group">
+                        <h5>Alkali Metals</h5>
+                        <p>Li, Na, K, Rb, Cs, Fr - Group 1 (excluding H). Highly reactive, single valence electron.</p>
+                    </div>
+                    <div class="element-group">
+                        <h5>Alkaline Earth Metals</h5>
+                        <p>Be, Mg, Ca, Sr, Ba, Ra - Group 2. Two valence electrons, important in biology.</p>
+                    </div>
+                    <div class="element-group">
+                        <h5>Transition Metals</h5>
+                        <p>Groups 3-12 (d-block). Variable oxidation states, catalytic properties. Includes Fe, Cu, Au.</p>
+                    </div>
+                    <div class="element-group">
+                        <h5>Halogens</h5>
+                        <p>F, Cl, Br, I, At, Ts - Group 17. Highly reactive nonmetals, seven valence electrons.</p>
+                    </div>
+                    <div class="element-group">
+                        <h5>Noble Gases</h5>
+                        <p>He, Ne, Ar, Kr, Xe, Rn - Group 18. Chemically inert, complete valence shells.</p>
+                    </div>
+                    <div class="element-group">
+                        <h5>Lanthanoids</h5>
+                        <p>La through Lu (57-71). Rare earth elements, f-block. Similar chemical properties.</p>
+                    </div>
+                    <div class="element-group">
+                        <h5>Actinoids</h5>
+                        <p>Ac through Lr (89-103). f-block series. Many are radioactive (U, Pu).</p>
+                    </div>
+                    <div class="element-group">
+                        <h5>Metalloids</h5>
+                        <p>B, Si, Ge, As, Sb, Te, At. Semiconductors, properties between metals and nonmetals.</p>
+                    </div>
+                </div>
+
+                <h3>Accessing Element Groups</h3>
+                <pre><code class="language-java">// By chemical family
+List&lt;Element&gt; alkaliMetals = PeriodicTable.alkaliMetals();       // Li, Na, K, Rb, Cs, Fr
+List&lt;Element&gt; nobleGases = PeriodicTable.nobleGasses();          // He, Ne, Ar, Kr, Xe, Rn
+List&lt;Element&gt; halogens = PeriodicTable.halogens();               // F, Cl, Br, I, At, Ts
+List&lt;Element&gt; transitionMetals = PeriodicTable.transitionMetals();
+List&lt;Element&gt; lanthanoids = PeriodicTable.lanthanoids();
+List&lt;Element&gt; actinoids = PeriodicTable.actinoids();
+
+// By orbital block
+List&lt;Element&gt; sBlock = PeriodicTable.sBlock();  // Groups 1-2
+List&lt;Element&gt; pBlock = PeriodicTable.pBlock();  // Groups 13-18
+
+// By category
+List&lt;Element&gt; metals = PeriodicTable.metals();
+List&lt;Element&gt; nonMetals = PeriodicTable.nonMetals();
+List&lt;Element&gt; metalloids = PeriodicTable.metalloids();
+List&lt;Element&gt; mainGroup = PeriodicTable.mainGroup();
+
+// Special groups
+List&lt;Element&gt; chalcogens = PeriodicTable.chalcogens();   // O, S, Se, Te, Po, Lv (Group 16)
+List&lt;Element&gt; pnictogens = PeriodicTable.pnictogens();   // N, P, As, Sb, Bi, Mc (Group 15)
+List&lt;Element&gt; organics = PeriodicTable.organics();       // Common organic elements</code></pre>
+
+                <h3>Periods and Groups</h3>
+                <pre><code class="language-java">// By period (horizontal row)
+List&lt;Element&gt; period1 = PeriodicTable.Periods.first();    // H, He
+List&lt;Element&gt; period2 = PeriodicTable.Periods.second();   // Li through Ne
+List&lt;Element&gt; period3 = PeriodicTable.Periods.third();    // Na through Ar
+List&lt;Element&gt; period4 = PeriodicTable.Periods.fourth();   // K through Kr (18 elements)
+List&lt;Element&gt; period5 = PeriodicTable.Periods.fifth();    // Rb through Xe
+List&lt;Element&gt; period6 = PeriodicTable.Periods.sixth();    // Cs through Rn (32 elements)
+List&lt;Element&gt; period7 = PeriodicTable.Periods.seventh();  // Fr through Og
+
+// By group (vertical column)
+List&lt;Element&gt; group1 = PeriodicTable.Groups.first();      // H, Li, Na, K, Rb, Cs, Fr
+List&lt;Element&gt; group2 = PeriodicTable.Groups.second();     // Be, Mg, Ca, Sr, Ba, Ra
+List&lt;Element&gt; group11 = PeriodicTable.Groups.eleventh();  // Cu, Ag, Au, Rg (coinage metals)
+List&lt;Element&gt; group18 = PeriodicTable.Groups.eigthteenth(); // Noble gases
+
+// Get all elements
+List&lt;Element&gt; all = PeriodicTable.elements();  // All 118 elements</code></pre>
+
+                <h3>Periodic Table Summary</h3>
+                <table class="comparison-table">
+                    <tr>
+                        <th>Period</th>
+                        <th>Elements</th>
+                        <th>Count</th>
+                    </tr>
+                    <tr>
+                        <td>1</td>
+                        <td>H, He</td>
+                        <td>2</td>
+                    </tr>
+                    <tr>
+                        <td>2</td>
+                        <td>Li, Be, B, C, N, O, F, Ne</td>
+                        <td>8</td>
+                    </tr>
+                    <tr>
+                        <td>3</td>
+                        <td>Na, Mg, Al, Si, P, S, Cl, Ar</td>
+                        <td>8</td>
+                    </tr>
+                    <tr>
+                        <td>4</td>
+                        <td>K through Kr</td>
+                        <td>18</td>
+                    </tr>
+                    <tr>
+                        <td>5</td>
+                        <td>Rb through Xe</td>
+                        <td>18</td>
+                    </tr>
+                    <tr>
+                        <td>6</td>
+                        <td>Cs through Rn (including Lanthanides)</td>
+                        <td>32</td>
+                    </tr>
+                    <tr>
+                        <td>7</td>
+                        <td>Fr through Og (including Actinides)</td>
+                        <td>32</td>
+                    </tr>
+                </table>
+            </section>
+
+            <section id="structures">
+                <h2>Molecular Structures</h2>
+
+                <h3>Atomic Structure</h3>
+                <p>Each element encapsulates its electron shell configuration, enabling accurate atom construction:</p>
+
+                <div class="class-list">
+                    <div class="class-item">
+                        <h4>Element Classes</h4>
+                        <p>118 individual classes (Hydrogen, Carbon, etc.) implementing the Element interface with proper electron configurations.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>Shell Configuration</h4>
+                        <p>Each element builds upon noble gas cores and adds electrons according to the aufbau principle.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>Atom Construction</h4>
+                        <p>The construct() method creates Atom objects with the correct number of protons and electron shells.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>Physics Module Integration</h4>
+                        <p>Atoms are created using the ar-physics module's Atom and Shell classes.</p>
+                    </div>
+                </div>
+
+                <h3>Electron Configuration Example</h3>
+                <pre><code class="language-java">// Carbon: Atomic number 6
+// Electron configuration: 1s2 2s2 2p2 or [He] 2s2 2p2
+public class Carbon implements Element {
+
+    public int getAtomicNumber() { return 6; }
+
+    public Atom construct() {
+        return new Atom(getAtomicNumber(), getShells());
+    }
+
+    private List&lt;Shell&gt; getShells() {
+        ArrayList&lt;Shell&gt; shells = new ArrayList&lt;&gt;();
+        // Reuse Helium's shell (1s2)
+        shells.addAll(PeriodicTable.Helium.getShells());
+        // Add second shell (2s2 2p2 = 4 electrons)
+        shells.add(Shell.second(2, 2));
+        return Collections.unmodifiableList(shells);
+    }
+}</code></pre>
+
+                <h3>Molecule Interface</h3>
+                <p>The Molecule interface models chemical compounds as graphs where elements are nodes and bonds are edges:</p>
+
+                <pre><code class="language-java">// Molecule interface for future implementation
+public interface Molecule extends Substance, Graph&lt;Element&gt; {
+
+    // Get elements bonded to the specified element
+    Collection&lt;Element&gt; neighbors(Element node);
+
+    // Get total atom count in the molecule
+    int countNodes();
+}
+
+// Example: Water molecule (conceptual)
+// H-O-H with oxygen at center, 2 hydrogens connected
+Molecule water = new WaterMolecule();
+int atomCount = water.countNodes();  // 3 (2 H + 1 O)</code></pre>
+
+                <div class="warning">
+                    <strong>Note:</strong> The Molecule interface is currently minimally implemented. Chemical bonding and molecular geometry are handled by the physics module. Future versions will provide complete molecular structure support.
+                </div>
+
+                <h3>Alloy (Material Mixtures)</h3>
+                <p>The Alloy class enables probabilistic mixing of elements for material science applications:</p>
+
+                <div class="class-list">
+                    <div class="class-item">
+                        <h4>Alloy</h4>
+                        <p>Probabilistic mixture of Atomic substances. When construct() is called, it randomly selects an element based on composition ratios.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>ProbabilisticFactory</h4>
+                        <p>Parent class enabling genetic algorithm integration through the heredity module.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>Gene-based Composition</h4>
+                        <p>Alloy compositions can be controlled by Genes, enabling evolution of material properties.</p>
+                    </div>
+                </div>
+
+                <pre><code class="language-java">import org.almostrealism.chem.Alloy;
+import java.util.Arrays;
+
+// Bronze: 88% Copper, 12% Tin
+Alloy bronze = new Alloy(
+    Arrays.asList(PeriodicTable.Copper, PeriodicTable.Tin),
+    0.88, 0.12
+);
+
+// Steel: 98% Iron, 1.5% Carbon, 0.5% Manganese
+Alloy steel = new Alloy(
+    Arrays.asList(PeriodicTable.Iron, PeriodicTable.Carbon, PeriodicTable.Manganese),
+    0.98, 0.015, 0.005
+);
+
+// Brass: 70% Copper, 30% Zinc
+Alloy brass = new Alloy(
+    Arrays.asList(PeriodicTable.Copper, PeriodicTable.Zinc),
+    0.70, 0.30
+);
+
+// Generate atoms from alloy (probabilistically selects element)
+for (int i = 0; i < 1000; i++) {
+    Atom atom = bronze.construct();
+    // Approximately 880 atoms will be Cu, 120 will be Sn
+}</code></pre>
+            </section>
+
+            <section id="reactions">
+                <h2>Reactions and Applications</h2>
+
+                <h3>Integration Architecture</h3>
+                <div class="code-example">
+                    <strong>ar-chemistry</strong> (Element definitions)<br>
+                    &nbsp;&nbsp;&nbsp;&nbsp;|<br>
+                    &nbsp;&nbsp;&nbsp;&nbsp;v<br>
+                    <strong>ar-physics</strong> (Atom and Shell structures)<br>
+                    &nbsp;&nbsp;&nbsp;&nbsp;|<br>
+                    &nbsp;&nbsp;&nbsp;&nbsp;v<br>
+                    <strong>ar-heredity</strong> (Genetic algorithms for material evolution)
+                </div>
+
+                <h3>Module Dependencies</h3>
+                <table class="comparison-table">
+                    <tr>
+                        <th>Module</th>
+                        <th>Purpose</th>
+                        <th>Key Classes</th>
+                    </tr>
+                    <tr>
+                        <td>ar-physics</td>
+                        <td>Provides Atom and Shell for atomic structure</td>
+                        <td>Atom, Shell</td>
+                    </tr>
+                    <tr>
+                        <td>ar-heredity</td>
+                        <td>Enables genetic algorithms for material evolution</td>
+                        <td>ProbabilisticFactory, Gene</td>
+                    </tr>
+                    <tr>
+                        <td>io.almostrealism.relation</td>
+                        <td>Graph structure for molecular modeling</td>
+                        <td>Graph, Node, Factory</td>
+                    </tr>
+                </table>
+
+                <h3>Element Filtering</h3>
+                <pre><code class="language-java">import java.util.stream.Collectors;
+
+// Find all metals with atomic number > 50 (heavy metals)
+List&lt;Element&gt; heavyMetals = PeriodicTable.metals().stream()
+    .filter(e -> e.getAtomicNumber() > 50)
+    .collect(Collectors.toList());
+
+// Get organic elements (C, H, N, O, P, S)
+List&lt;Element&gt; organicElements = PeriodicTable.organics();
+
+// Find elements in specific atomic number range
+List&lt;Element&gt; middleElements = PeriodicTable.elements().stream()
+    .filter(e -> e.getAtomicNumber() >= 20 && e.getAtomicNumber() <= 40)
+    .collect(Collectors.toList());
+
+// Get all radioactive elements (simplified - actinoids are mostly radioactive)
+List&lt;Element&gt; radioactive = PeriodicTable.actinoids();</code></pre>
+
+                <h3>Material Science Applications</h3>
+                <pre><code class="language-java">// Common alloy definitions
+public class CommonAlloys {
+
+    public static Alloy stainlessSteel() {
+        return new Alloy(
+            Arrays.asList(
+                PeriodicTable.Iron,
+                PeriodicTable.Chromium,
+                PeriodicTable.Nickel
+            ),
+            0.74, 0.18, 0.08  // 74% Fe, 18% Cr, 8% Ni
+        );
+    }
+
+    public static Alloy bronze() {
+        return new Alloy(
+            Arrays.asList(PeriodicTable.Copper, PeriodicTable.Tin),
+            0.88, 0.12
+        );
+    }
+
+    public static Alloy solder() {
+        return new Alloy(
+            Arrays.asList(PeriodicTable.Tin, PeriodicTable.Lead),
+            0.60, 0.40
+        );
+    }
+
+    public static Alloy sterling_silver() {
+        return new Alloy(
+            Arrays.asList(PeriodicTable.Silver, PeriodicTable.Copper),
+            0.925, 0.075
+        );
+    }
+}</code></pre>
+            </section>
+
+            <section id="examples">
+                <h2>Usage Examples</h2>
+
+                <h3>Basic Element Access</h3>
+                <pre><code class="language-java">import org.almostrealism.chem.*;
+import org.almostrealism.physics.Atom;
+
+public class ElementDemo {
+    public static void main(String[] args) {
+        // Access elements
+        Element carbon = PeriodicTable.Carbon;
+        Element oxygen = PeriodicTable.Oxygen;
+        Element hydrogen = PeriodicTable.Hydrogen;
+
+        // Print atomic numbers
+        System.out.println("Carbon: Z=" + carbon.getAtomicNumber());   // 6
+        System.out.println("Oxygen: Z=" + oxygen.getAtomicNumber());   // 8
+        System.out.println("Hydrogen: Z=" + hydrogen.getAtomicNumber()); // 1
+
+        // Construct atoms
+        Atom c = carbon.construct();
+        Atom o = oxygen.construct();
+        Atom h = hydrogen.construct();
+
+        // Work with element groups
+        List&lt;Element&gt; organics = PeriodicTable.organics();
+        System.out.println("Organic elements: " + organics.size());
+    }
+}</code></pre>
+
+                <h3>Material Simulation</h3>
+                <pre><code class="language-java">import org.almostrealism.chem.*;
+import org.almostrealism.physics.Atom;
+import java.util.*;
+
+public class MaterialSimulation {
+
+    public static void main(String[] args) {
+        // Create a steel alloy
+        Alloy steel = new Alloy(
+            Arrays.asList(
+                PeriodicTable.Iron,
+                PeriodicTable.Carbon,
+                PeriodicTable.Manganese
+            ),
+            0.98, 0.015, 0.005
+        );
+
+        // Count element distribution over 10000 samples
+        Map&lt;Integer, Integer&gt; counts = new HashMap&lt;&gt;();
+
+        for (int i = 0; i < 10000; i++) {
+            Atom atom = steel.construct();
+            int z = atom.getAtomicNumber();
+            counts.merge(z, 1, Integer::sum);
+        }
+
+        // Print distribution
+        System.out.println("Element distribution in steel sample:");
+        System.out.println("Iron (26): " + counts.getOrDefault(26, 0));
+        System.out.println("Carbon (6): " + counts.getOrDefault(6, 0));
+        System.out.println("Manganese (25): " + counts.getOrDefault(25, 0));
+    }
+}</code></pre>
+
+                <h3>Periodic Table Exploration</h3>
+                <pre><code class="language-java">import org.almostrealism.chem.*;
+import java.util.*;
+
+public class PeriodicTableExplorer {
+
+    public static void main(String[] args) {
+        // Print all element families
+        System.out.println("=== Alkali Metals ===");
+        PeriodicTable.alkaliMetals().forEach(e ->
+            System.out.println("  " + e.getClass().getSimpleName() +
+                             " (Z=" + e.getAtomicNumber() + ")"));
+
+        System.out.println("\n=== Noble Gases ===");
+        PeriodicTable.nobleGasses().forEach(e ->
+            System.out.println("  " + e.getClass().getSimpleName() +
+                             " (Z=" + e.getAtomicNumber() + ")"));
+
+        System.out.println("\n=== Transition Metals ===");
+        PeriodicTable.transitionMetals().forEach(e ->
+            System.out.println("  " + e.getClass().getSimpleName() +
+                             " (Z=" + e.getAtomicNumber() + ")"));
+
+        // Count elements by category
+        System.out.println("\n=== Element Counts ===");
+        System.out.println("Total elements: " + PeriodicTable.elements().size());
+        System.out.println("Metals: " + PeriodicTable.metals().size());
+        System.out.println("Nonmetals: " + PeriodicTable.nonMetals().size());
+        System.out.println("Metalloids: " + PeriodicTable.metalloids().size());
+        System.out.println("Lanthanoids: " + PeriodicTable.lanthanoids().size());
+        System.out.println("Actinoids: " + PeriodicTable.actinoids().size());
+    }
+}</code></pre>
+
+                <h3>Genetic Algorithm Integration</h3>
+                <pre><code class="language-java">import org.almostrealism.chem.*;
+import org.almostrealism.heredity.*;
+import org.almostrealism.collect.PackedCollection;
+
+public class MaterialEvolution implements HeredityFeatures {
+
+    public Alloy createEvolvableAlloy(List&lt;Atomic&gt; components) {
+        // Create a gene-controlled composition
+        Gene&lt;PackedCollection&gt; composition = g(components.size());
+
+        // Create alloy with evolvable composition
+        return new Alloy(components, composition);
+    }
+
+    public void evolve() {
+        // Create base components
+        List&lt;Atomic&gt; components = Arrays.asList(
+            PeriodicTable.Copper,
+            PeriodicTable.Zinc,
+            PeriodicTable.Tin
+        );
+
+        // Create evolvable alloy
+        Alloy alloy = createEvolvableAlloy(components);
+
+        // Use heredity module to evolve composition
+        // toward desired material properties
+    }
+}</code></pre>
+            </section>
+
+            <section id="troubleshooting">
+                <h2>Troubleshooting</h2>
+
+                <h3>Common Issues</h3>
+
+                <div class="warning">
+                    <strong>Issue:</strong> Cannot construct Atom from Element<br>
+                    <strong>Solution:</strong> Ensure ar-physics module is included as a dependency. The Atom and Shell classes come from the physics module.
+                </div>
+
+                <div class="warning">
+                    <strong>Issue:</strong> Alloy composition doesn't sum to 1.0<br>
+                    <strong>Solution:</strong> Composition values are normalized internally. They don't need to sum to 1.0, just maintain the correct ratios.
+                </div>
+
+                <div class="warning">
+                    <strong>Issue:</strong> Molecule methods throw UnsupportedOperationException<br>
+                    <strong>Solution:</strong> The Molecule interface is minimally implemented. Use concrete implementations or wait for future versions.
+                </div>
+
+                <div class="warning">
+                    <strong>Issue:</strong> Missing element class<br>
+                    <strong>Solution:</strong> All 118 elements are included. Access via PeriodicTable.ElementName (e.g., PeriodicTable.Gold).
+                </div>
+            </section>
+
+            <section id="resources">
+                <h2>Additional Resources</h2>
+
+                <h3>Maven Dependency</h3>
+                <pre><code class="language-xml">&lt;dependency&gt;
+    &lt;groupId&gt;org.almostrealism&lt;/groupId&gt;
+    &lt;artifactId&gt;ar-chemistry&lt;/artifactId&gt;
+    &lt;!-- Check pom.xml for current version --&gt;
+&lt;/dependency&gt;</code></pre>
+
+                <h3>Required Dependencies</h3>
+                <pre><code class="language-xml">&lt;!-- Required for Atom and Shell classes --&gt;
+&lt;dependency&gt;
+    &lt;groupId&gt;org.almostrealism&lt;/groupId&gt;
+    &lt;artifactId&gt;ar-physics&lt;/artifactId&gt;
+    &lt;!-- Check pom.xml for current version --&gt;
+&lt;/dependency&gt;
+
+&lt;!-- Required for genetic algorithm features --&gt;
+&lt;dependency&gt;
+    &lt;groupId&gt;org.almostrealism&lt;/groupId&gt;
+    &lt;artifactId&gt;ar-heredity&lt;/artifactId&gt;
+    &lt;!-- Check pom.xml for current version --&gt;
+&lt;/dependency&gt;</code></pre>
+
+                <h3>Related Documentation</h3>
+                <ul>
+                    <li><a href="../../chemistry/README.md">Chemistry Module README</a> - Comprehensive module documentation</li>
+                    <li><a href="physics.html">Physics Module</a> - Atom and Shell implementation details</li>
+                    <li><a href="../apidocs/org/almostrealism/chem/package-summary.html">JavaDoc API</a> - Complete API reference</li>
+                </ul>
+
+                <h3>Current Limitations</h3>
+                <ul>
+                    <li><strong>Molecule</strong> interface is defined but minimally implemented</li>
+                    <li><strong>Hydrocarbon</strong> class is a stub for future organic chemistry support</li>
+                    <li><strong>Material</strong> class is a basic wrapper with minimal functionality</li>
+                    <li>No built-in molecular geometry or chemical bonding (handled by physics module)</li>
+                </ul>
+            </section>
+        </main>
+
+        <footer>
+            <p><a href="../index.html">&larr; Back to Framework Documentation</a></p>
+            <p>&copy; 2024 Michael Murray. Licensed under the Apache License, Version 2.0.</p>
+        </footer>
+    </div>
+
+    <script src="../js/docs.js"></script>
+</body>
+</html>

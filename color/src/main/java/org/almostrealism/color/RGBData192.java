@@ -16,8 +16,8 @@
 
 package org.almostrealism.color;
 
-import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.mem.Heap;
 
@@ -25,7 +25,7 @@ import java.io.IOException;
 import java.io.ObjectInput;
 import java.io.ObjectOutput;
 
-public class RGBData192 extends PackedCollection<RGBData192> implements RGB.Data {
+public class RGBData192 extends PackedCollection implements RGB.Data {
 	public static final int depth = 192;
 
 	public RGBData192() {
@@ -72,7 +72,6 @@ public class RGBData192 extends PackedCollection<RGBData192> implements RGB.Data
 		out.writeDouble(rgb[2]);
 	}
 
-	@Override
 	public Heap getDefaultDelegate() { return Heap.getDefault(); }
 
 	public double[] toArray() {

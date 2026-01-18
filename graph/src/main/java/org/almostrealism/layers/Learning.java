@@ -20,5 +20,5 @@ import org.almostrealism.collect.PackedCollection;
 
 public interface Learning {
 
-	void setParameterUpdate(ParameterUpdate<PackedCollection<?>> update);
+	void setParameterUpdate(ParameterUpdate<PackedCollection> update);
 }

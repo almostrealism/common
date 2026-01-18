@@ -18,7 +18,6 @@ package org.almostrealism.algebra.test;
 
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
-import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
@@ -26,32 +25,32 @@ import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
 
 public class AcceleratedComputationEvaluableTests implements TestFeatures {
-	@Test
+	@Test(timeout = 30000)
 	public void staticProducer() {
-		Producer<Vector> res = vector(0.0, 1.0, 2.0);
-		Vector v = res.get().evaluate();
+		Producer<PackedCollection> res = vector(0.0, 1.0, 2.0);
+		Vector v = new Vector(res.get().evaluate(), 0);
 		System.out.println(v);
 		assert v.getX() == 0.0;
 		assert v.getY() == 1.0;
 		assert v.getZ() == 2.0;
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void scalarFromVector() {
-		CollectionProducer<PackedCollection<?>> res = y(vector(0.0, 1.0, 2.0));
-		Evaluable<PackedCollection<?>> ev = res.get();
-		try (PackedCollection<?> s = ev.evaluate()) {
+		CollectionProducer res = y(vector(0.0, 1.0, 2.0));
+		Evaluable<PackedCollection> ev = res.get();
+		try (PackedCollection s = ev.evaluate()) {
 			s.print();
 			assertEquals(1.0, s);
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void scalarProduct() {
-		CollectionProducer<PackedCollection<?>> x = c(3.0);
-		Evaluable<PackedCollection<?>> res = multiply(x, c(0.5)).get();
+		CollectionProducer x = c(3.0);
+		Evaluable<PackedCollection> res = multiply(x, c(0.5)).get();
 
-		PackedCollection<?> s = res.evaluate();
+		PackedCollection s = res.evaluate();
 		s.print();
 		assertEquals(1.5, s.toDouble());
 	}

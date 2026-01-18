@@ -17,7 +17,7 @@
 package org.almostrealism.time.computations.test;
 
 import io.almostrealism.relation.Evaluable;
-import org.almostrealism.algebra.Scalar;
+import org.almostrealism.CodeFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.AcceleratedComputationOperation;
 import org.almostrealism.hardware.OperationList;
@@ -25,7 +25,6 @@ import org.almostrealism.time.AcceleratedTimeSeries;
 import org.almostrealism.time.CursorPair;
 import org.almostrealism.time.TemporalScalar;
 import org.almostrealism.time.computations.AcceleratedTimeSeriesValueAt;
-import org.almostrealism.CodeFeatures;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -35,7 +34,7 @@ import java.util.stream.IntStream;
 public class AcceleratedTimeSeriesOperationsTest implements CodeFeatures {
 	private CursorPair cursors;
 	private AcceleratedTimeSeries series;
-	private Scalar value;
+	private PackedCollection value;
 
 	protected AcceleratedTimeSeries series() {
 		AcceleratedTimeSeries series = new AcceleratedTimeSeries(100);
@@ -54,7 +53,7 @@ public class AcceleratedTimeSeriesOperationsTest implements CodeFeatures {
 		return cursors;
 	}
 
-	@Test
+	@Test(timeout = 10000)
 	public void purgeTest() {
 //		dc(() -> {
 			for (int i = 0; i < 2; i++) {
@@ -75,11 +74,11 @@ public class AcceleratedTimeSeriesOperationsTest implements CodeFeatures {
 //		});
 	}
 
-	@Test
+	@Test(timeout = 10000)
 	public void valueAt() {
 		AcceleratedTimeSeries series = series();
 		AcceleratedTimeSeriesValueAt valueAt = new AcceleratedTimeSeriesValueAt(p(series), p(cursors(3.25)));
-		Evaluable<PackedCollection<?>> compiled = valueAt.get();
+		Evaluable<PackedCollection> compiled = valueAt.get();
 		Assert.assertEquals(series.valueAt(3.25).toDouble(1), compiled.evaluate().toDouble(), Math.pow(10, -10));
 	}
 
@@ -93,11 +92,11 @@ public class AcceleratedTimeSeriesOperationsTest implements CodeFeatures {
 	protected void init() {
 		cursors = cursors(5);
 		series = series();
-		value = new Scalar();
+		value = new PackedCollection(1);
 	}
 
 	protected Supplier<Runnable> add() {
-		return series.add(temporal(r(p(cursors)), c(30)));
+		return series.add((io.almostrealism.relation.Producer) temporal(r(p(cursors)), c(30)));
 	}
 
 	protected Supplier<Runnable> assign() {
@@ -112,7 +111,7 @@ public class AcceleratedTimeSeriesOperationsTest implements CodeFeatures {
 		return cursors.increment(c(1));
 	}
 
-	@Test
+	@Test(timeout = 10000)
 	public void addTest() {
 		init();
 
@@ -152,7 +151,7 @@ public class AcceleratedTimeSeriesOperationsTest implements CodeFeatures {
 		Assert.assertEquals(30.0, series.valueAt(p(cursors)).get().evaluate().toDouble(), Math.pow(10, -10));
 	}
 
-	// TODO  @Test
+	// TODO  @Test(timeout = 10000)
 	public void allOperationsTest() {
 		init();
 		IntStream.range(0, 25).forEach(this::runAllOperations);
@@ -177,13 +176,13 @@ public class AcceleratedTimeSeriesOperationsTest implements CodeFeatures {
 		});
 	}
 
-	// TODO  @Test
+	// TODO  @Test(timeout = 10000)
 	public void operationListTest() {
 		init();
 		operationListAssertions(operationList(false));
 	}
 
-	// TODO  @Test
+	// TODO  @Test(timeout = 10000)
 	public void operationListCompiledTest() {
 		init();
 		operationListAssertions(operationList(true));

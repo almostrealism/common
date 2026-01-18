@@ -16,11 +16,11 @@
 
 package org.almostrealism.collect.computations;
 
+import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.DynamicProducerForMemoryData;
 
 import java.util.function.Function;
@@ -42,30 +42,30 @@ import java.util.stream.Stream;
  * <pre>{@code
  * // Create a producer that generates a constant collection
  * TraversalPolicy shape = new TraversalPolicy(3, 4);
- * DynamicCollectionProducer<PackedCollection<?>> producer = 
- *     new DynamicCollectionProducer<>(shape, args -> new PackedCollection<>(shape, 1.0, 2.0, 3.0));
- * PackedCollection<?> result = producer.get().evaluate();
+ * DynamicCollectionProducer producer =
+ *     new DynamicCollectionProducer<>(shape, args -> new PackedCollection(shape, 1.0, 2.0, 3.0));
+ * PackedCollection result = producer.get().evaluate();
  * }</pre>
  * 
  * <h4>Kernel-based Computation:</h4>
  * <pre>{@code
  * // Create a producer for kernel execution (single function call)
- * DynamicCollectionProducer<PackedCollection<?>> kernelProducer = 
+ * DynamicCollectionProducer kernelProducer =
  *     new DynamicCollectionProducer<>(shape, computationFunction, true);
  * }</pre>
  * 
  * <h4>Dynamic Input-based Function:</h4>
  * <pre>{@code
  * // Create a producer that depends on input collections
- * Function<PackedCollection<?>[], Function<Object[], PackedCollection<?>>> inputFunction = 
+ * Function<PackedCollection[], Function<Object[], PackedCollection>> inputFunction =
  *     inputs -> args -> processInputs(inputs[0], inputs[1]);
  * Producer<?> input1 = someProducer();
  * Producer<?> input2 = anotherProducer();
- * DynamicCollectionProducer<PackedCollection<?>> dynamicProducer = 
+ * DynamicCollectionProducer dynamicProducer =
  *     new DynamicCollectionProducer<>(shape, inputFunction, false, true, input1, input2);
  * }</pre>
  * 
- * @param <T> The type of {@link PackedCollection} this producer generates, must extend {@code PackedCollection<?>}
+ * @param <T> The type of {@link PackedCollection} this producer generates, must extend {@code PackedCollection}
  * 
  * @see CollectionProducer
  * @see DynamicProducerForMemoryData  
@@ -74,21 +74,21 @@ import java.util.stream.Stream;
  * 
  * @author Michael Murray
  */
-public class DynamicCollectionProducer<T extends PackedCollection<?>> extends DynamicProducerForMemoryData<T> implements CollectionProducer<T> {
+public class DynamicCollectionProducer extends DynamicProducerForMemoryData<PackedCollection> implements CollectionProducer {
 	/** The shape/traversal policy that defines the dimensions of the output collection */
-	private TraversalPolicy shape;
+	private final TraversalPolicy shape;
 	
 	/** Whether this producer should use kernel execution (single function call) vs element-wise execution (multiple calls) */
-	private boolean kernel;
+	private final boolean kernel;
 	
 	/** Whether this producer has a fixed count (deterministic output size) */
-	private boolean fixedCount;
+	private final boolean fixedCount;
 
 	/** Function that takes input collections and returns a function for generating output */
-	private Function<PackedCollection<?>[], Function<Object[], T>> inputFunction;
+	private final Function<PackedCollection[], Function<Object[], PackedCollection>> inputFunction;
 	
 	/** Array of producer arguments that will be evaluated to provide inputs to the computation */
-	private Producer<?> args[];
+	private final Producer<?>[] args;
 
 	/**
 	 * Creates a DynamicCollectionProducer with the simplest configuration.
@@ -97,7 +97,7 @@ public class DynamicCollectionProducer<T extends PackedCollection<?>> extends Dy
 	 * @param shape The {@link TraversalPolicy} defining the output collection's dimensions
 	 * @param function The function that generates the output collection from input arguments
 	 */
-	public DynamicCollectionProducer(TraversalPolicy shape, Function<Object[], T> function) {
+	public DynamicCollectionProducer(TraversalPolicy shape, Function<Object[], PackedCollection> function) {
 		this(shape, function, true);
 	}
 
@@ -108,7 +108,7 @@ public class DynamicCollectionProducer<T extends PackedCollection<?>> extends Dy
 	 * @param function The function that generates the output collection from input arguments
 	 * @param kernel Whether to use kernel execution (single function call) vs element-wise execution (multiple calls)
 	 */
-	public DynamicCollectionProducer(TraversalPolicy shape, Function<Object[], T> function, boolean kernel) {
+	public DynamicCollectionProducer(TraversalPolicy shape, Function<Object[], PackedCollection> function, boolean kernel) {
 		this(shape, function, kernel, true);
 	}
 
@@ -120,7 +120,7 @@ public class DynamicCollectionProducer<T extends PackedCollection<?>> extends Dy
 	 * @param kernel Whether to use kernel execution (single function call) vs element-wise execution (multiple calls)
 	 * @param fixedCount Whether this producer has a deterministic output size
 	 */
-	public DynamicCollectionProducer(TraversalPolicy shape, Function<Object[], T> function,
+	public DynamicCollectionProducer(TraversalPolicy shape, Function<Object[], PackedCollection> function,
 									 boolean kernel, boolean fixedCount) {
 		this(shape, inputs -> function, kernel, fixedCount, new Producer[0]);
 	}
@@ -137,7 +137,7 @@ public class DynamicCollectionProducer<T extends PackedCollection<?>> extends Dy
 	 * @param argument The first producer argument to be evaluated as input
 	 * @param args Additional producer arguments to be evaluated as inputs
 	 */
-	public DynamicCollectionProducer(TraversalPolicy shape, Function<PackedCollection<?>[], Function<Object[], T>> function,
+	public DynamicCollectionProducer(TraversalPolicy shape, Function<PackedCollection[], Function<Object[], PackedCollection>> function,
 										boolean kernel, boolean fixedCount, Producer argument, Producer<?>... args) {
 		this(shape, function, kernel, fixedCount, Stream.concat(Stream.of(argument), Stream.of(args)).toArray(Producer[]::new));
 	}
@@ -160,8 +160,8 @@ public class DynamicCollectionProducer<T extends PackedCollection<?>> extends Dy
 	 * @param fixedCount Whether this producer has a deterministic output size
 	 * @param args Array of producers whose outputs will be used as inputs to the function
 	 */
-	public DynamicCollectionProducer(TraversalPolicy shape, Function<PackedCollection<?>[], Function<Object[], T>> function,
-									 boolean kernel, boolean fixedCount, Producer args[]) {
+	public DynamicCollectionProducer(TraversalPolicy shape, Function<PackedCollection[], Function<Object[], PackedCollection>> function,
+									 boolean kernel, boolean fixedCount, Producer[] args) {
 		super(args.length > 0 ? null : function.apply(null),
 				len -> new PackedCollection(shape.prependDimension(len)));
 		this.shape = shape;
@@ -215,14 +215,14 @@ public class DynamicCollectionProducer<T extends PackedCollection<?>> extends Dy
 	 * @return A function that takes Object[] arguments and returns the output collection
 	 */
 	@Override
-	protected Function<Object[], T> getFunction() {
+	protected Function<Object[], PackedCollection> getFunction() {
 		if (args != null && args.length > 0) {
-			Evaluable eval[] = Stream.of(args).map(Producer::get).toArray(Evaluable[]::new);
+			Evaluable[] eval = Stream.of(args).map(Producer::get).toArray(Evaluable[]::new);
 			return args -> {
 				PackedCollection[] inputs = Stream.of(eval)
 						.map(ev -> ev.evaluate(args))
 						.toArray(PackedCollection[]::new);
-				Function<Object[], T> func = inputFunction.apply(inputs);
+				Function<Object[], PackedCollection> func = inputFunction.apply(inputs);
 				return func.apply(args);
 			};
 		}
@@ -239,7 +239,7 @@ public class DynamicCollectionProducer<T extends PackedCollection<?>> extends Dy
 	 * @return A new ReshapeProducer configured for axis traversal
 	 */
 	@Override
-	public CollectionProducer<T> traverse(int axis) {
+	public CollectionProducer traverse(int axis) {
 		return new ReshapeProducer(axis, this);
 	}
 
@@ -252,7 +252,7 @@ public class DynamicCollectionProducer<T extends PackedCollection<?>> extends Dy
 	 * @return A new ReshapeProducer configured with the specified shape
 	 */
 	@Override
-	public CollectionProducer<T> reshape(TraversalPolicy shape) {
+	public CollectionProducer reshape(TraversalPolicy shape) {
 		return new ReshapeProducer(shape, this);
 	}
 
@@ -270,7 +270,7 @@ public class DynamicCollectionProducer<T extends PackedCollection<?>> extends Dy
 	 * @return An evaluable that produces collections of type T when executed
 	 */
 	@Override
-	public Evaluable<T> get() {
+	public Evaluable<PackedCollection> get() {
 		if (kernel) {
 			return super.get();
 		} else {

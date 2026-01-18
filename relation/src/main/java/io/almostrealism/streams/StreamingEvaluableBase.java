@@ -18,11 +18,58 @@ package io.almostrealism.streams;
 
 import java.util.function.Consumer;
 
+/**
+ * Abstract base class for {@link StreamingEvaluable} implementations that provides
+ * standard downstream consumer management.
+ *
+ * <p>This class manages the downstream consumer reference and provides protected access
+ * to it for subclasses. It enforces single-assignment semantics for the downstream
+ * consumer - once set, attempting to change it to a different consumer will throw
+ * an {@link UnsupportedOperationException}.</p>
+ *
+ * <p>Subclasses should call {@link #getDownstream()} to retrieve the consumer
+ * and deliver computation results:</p>
+ * <pre>{@code
+ * public class MyStreamingEvaluable extends StreamingEvaluableBase<Result> {
+ *     @Override
+ *     public void request(Object[] args) {
+ *         Result result = performComputation(args);
+ *         getDownstream().accept(result);
+ *     }
+ * }
+ * }</pre>
+ *
+ * @param <T> the type of result produced by the computation
+ *
+ * @see StreamingEvaluable
+ * @see EvaluableStreamingAdapter
+ *
+ * @author  Michael Murray
+ */
 public abstract class StreamingEvaluableBase<T> implements StreamingEvaluable<T> {
 	private Consumer<T> downstream;
 
+	/**
+	 * Returns the downstream consumer to which computation results should be delivered.
+	 *
+	 * <p>Subclasses should call this method when computation completes to push the
+	 * result to the consumer. May return {@code null} if no downstream has been set.</p>
+	 *
+	 * @return the downstream consumer, or {@code null} if none has been set
+	 */
 	protected Consumer<T> getDownstream() { return downstream; }
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>This implementation enforces single-assignment semantics: once a downstream
+	 * consumer is set, it cannot be changed to a different consumer. Attempting to
+	 * do so will throw an {@link UnsupportedOperationException}. However, setting
+	 * the same consumer again (idempotent call) is permitted.</p>
+	 *
+	 * @param consumer the consumer to receive computation results; must not be null
+	 * @throws UnsupportedOperationException if a different consumer has already been set
+	 */
 	@Override
 	public void setDownstream(Consumer<T> consumer) {
 		if (downstream != null && downstream != consumer) {

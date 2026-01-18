@@ -16,6 +16,7 @@
 
 package org.almostrealism.collect.computations;
 
+import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.profile.OperationInfo;
 import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.relation.Evaluable;
@@ -23,7 +24,6 @@ import io.almostrealism.relation.Producer;
 import io.almostrealism.uml.Multiple;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.MemoryBank;
 
 import java.util.stream.IntStream;
@@ -42,15 +42,15 @@ import java.util.stream.IntStream;
  * // Create uniform random values with shape [3, 4]
  * TraversalPolicy shape = new TraversalPolicy(3, 4);
  * Random uniformRandom = new Random(shape);
- * PackedCollection<?> uniformValues = uniformRandom.get().evaluate();
+ * PackedCollection uniformValues = uniformRandom.get().evaluate();
  * 
  * // Create normal distribution random values
  * Random normalRandom = new Random(shape, true);
- * PackedCollection<?> normalValues = normalRandom.get().evaluate();
+ * PackedCollection normalValues = normalRandom.get().evaluate();
  * 
  * // Using convenience methods from CollectionFeatures
- * Producer<PackedCollection<?>> rand = rand(3, 4);  // uniform
- * Producer<PackedCollection<?>> randn = randn(3, 4); // normal
+ * Producer<PackedCollection> rand = rand(3, 4);  // uniform
+ * Producer<PackedCollection> randn = randn(3, 4); // normal
  * }</pre>
  * 
  * <p>The class maintains an internal cache of generated values that can be refreshed
@@ -60,7 +60,7 @@ import java.util.stream.IntStream;
  * <p><strong>Distribution Types:</strong></p>
  * <ul>
  *   <li><strong>Uniform:</strong> Values distributed uniformly in the range [0.0, 1.0)</li>
- *   <li><strong>Normal:</strong> Values distributed according to standard normal distribution (μ=0, σ=1)</li>
+ *   <li><strong>Normal:</strong> Values distributed according to standard normal distribution (mean=0, stddev=1)</li>
  * </ul>
  * 
  * <p>The class also provides static utility methods {@link #nextInt()} and {@link #nextFloat()}
@@ -71,21 +71,21 @@ import java.util.stream.IntStream;
  * @see PackedCollection
  * @since 0.52
  */
-public class Random implements CollectionProducer<PackedCollection<?>>, OperationInfo {
+public class Random implements CollectionProducer, OperationInfo {
 	/** Static seed used by the xorshift random number generator in {@link #nextInt()} and {@link #nextFloat()} */
 	private static long seed;
 
 	/** Metadata describing this random generation operation */
-	private OperationMetadata metadata;
+	private final OperationMetadata metadata;
 	
 	/** Java standard library Random instance used for generating uniform and normal distributions */
-	private java.util.Random random;
+	private final java.util.Random random;
 	
 	/** The shape (dimensions) of the random values to be generated */
-	private TraversalPolicy shape;
+	private final TraversalPolicy shape;
 	
 	/** Flag indicating whether to generate normal distribution (true) or uniform distribution (false) */
-	private boolean normal;
+	private final boolean normal;
 
 	/** Cached array of generated random values, null until first initialization */
 	private double[] values;
@@ -110,7 +110,7 @@ public class Random implements CollectionProducer<PackedCollection<?>>, Operatio
 	 * </p>
 	 *
 	 * @param shape the {@link TraversalPolicy} defining the dimensions and shape of random values to generate
-	 * @param normal if true, generates values from a standard normal distribution (μ=0, σ=1);
+	 * @param normal if true, generates values from a standard normal distribution (mean=0, stddev=1);
 	 *               if false, generates values from a uniform distribution in range [0.0, 1.0)
 	 * @throws IllegalArgumentException if the shape has zero total size
 	 */
@@ -126,7 +126,7 @@ public class Random implements CollectionProducer<PackedCollection<?>>, Operatio
 	 * </p>
 	 *
 	 * @param shape the {@link TraversalPolicy} defining the dimensions and shape of random values to generate
-	 * @param normal if true, generates values from a standard normal distribution (μ=0, σ=1);
+	 * @param normal if true, generates values from a standard normal distribution (mean=0, stddev=1);
 	 *               if false, generates values from a uniform distribution in range [0.0, 1.0)
 	 * @param seed the seed for the random number generator, or null to use a default seed
 	 * @throws IllegalArgumentException if the shape has zero total size
@@ -143,7 +143,7 @@ public class Random implements CollectionProducer<PackedCollection<?>>, Operatio
 	 * </p>
 	 * 
 	 * @param shape the {@link TraversalPolicy} defining the dimensions and shape of random values to generate
-	 * @param normal if true, generates values from a standard normal distribution (μ=0, σ=1);
+	 * @param normal if true, generates values from a standard normal distribution (mean=0, stddev=1);
 	 *               if false, generates values from a uniform distribution in range [0.0, 1.0)
 	 * @param random the source for new random number numbers
 	 * @throws IllegalArgumentException if the shape has zero total size
@@ -206,26 +206,26 @@ public class Random implements CollectionProducer<PackedCollection<?>>, Operatio
 	 * @return an Evaluable that generates PackedCollection instances filled with random values
 	 */
 	@Override
-	public Evaluable<PackedCollection<?>> get() {
+	public Evaluable<PackedCollection> get() {
 		return new Evaluable<>() {
 			@Override
-			public Multiple<PackedCollection<?>> createDestination(int size) {
-				return new PackedCollection<>(getShape().prependDimension(size));
+			public Multiple<PackedCollection> createDestination(int size) {
+				return new PackedCollection(getShape().prependDimension(size));
 			}
 
 			@Override
-			public PackedCollection<?> evaluate(Object... args) {
-				PackedCollection<?> destination = new PackedCollection<>(getShape());
+			public PackedCollection evaluate(Object... args) {
+				PackedCollection destination = new PackedCollection(getShape());
 				into(destination).evaluate(args);
 				return destination;
 			}
 
 			@Override
-			public Evaluable<PackedCollection<?>> into(Object destination) {
+			public Evaluable<PackedCollection> into(Object destination) {
 				return args -> {
 					initValues();
 					((MemoryBank) destination).setMem(values);
-					return (PackedCollection<?>) destination;
+					return (PackedCollection) destination;
 				};
 			}
 		};
@@ -248,7 +248,7 @@ public class Random implements CollectionProducer<PackedCollection<?>>, Operatio
 	 * @return a new Producer that provides traversal functionality
 	 */
 	@Override
-	public CollectionProducer<PackedCollection<?>> traverse(int axis) {
+	public CollectionProducer traverse(int axis) {
 		return new ReshapeProducer(axis, this);
 	}
 
@@ -259,7 +259,7 @@ public class Random implements CollectionProducer<PackedCollection<?>>, Operatio
 	 * @return a new Producer with the specified shape
 	 */
 	@Override
-	public CollectionProducer<PackedCollection<?>> reshape(TraversalPolicy shape) {
+	public CollectionProducer reshape(TraversalPolicy shape) {
 		return new ReshapeProducer(shape, this);
 	}
 

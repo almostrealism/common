@@ -17,20 +17,20 @@
 package org.almostrealism.graph.test;
 
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.graph.CellPair;
 import org.almostrealism.graph.CollectionCachedStateCell;
 import org.almostrealism.hardware.AcceleratedOperation;
 import org.almostrealism.hardware.OperationList;
-import org.almostrealism.graph.CellPair;
 import org.almostrealism.util.TestFeatures;
 
 public class CellPairTest implements TestFeatures {
 
-	// TODO @Test
+	// TODO @Test(timeout = 10000)
 	public void scalarCachedStatePair() {
 		CollectionCachedStateCell cellA = new CollectionCachedStateCell();
 		CollectionCachedStateCell cellB = new CollectionCachedStateCell();
 
-		CellPair<PackedCollection<?>> pair = new CellPair<>(cellA, cellB, v -> c(3.0), v -> multiply(v, c(2.0)));
+		CellPair<PackedCollection> pair = new CellPair(cellA, cellB, v -> c(3.0), v -> multiply(v, c(2.0)));
 		pair.init();
 
 		// A = 6
@@ -59,12 +59,12 @@ public class CellPairTest implements TestFeatures {
 		assertEquals(0.0, cellB.getCachedValue().toDouble(0));
 	}
 
-	// TODO @Test
+	// TODO @Test(timeout = 10000)
 	public void scalarCachedStatePairOperationList() {
 		CollectionCachedStateCell cellA = new CollectionCachedStateCell();
 		CollectionCachedStateCell cellB = new CollectionCachedStateCell();
 
-		CellPair<PackedCollection<?>> pair = new CellPair<>(cellA, cellB, v -> c(3.0), v -> multiply(v, c(2.0)));
+		CellPair<PackedCollection> pair = new CellPair(cellA, cellB, v -> c(3.0), v -> multiply(v, c(2.0)));
 		pair.init();
 
 		OperationList ops = new OperationList("Cell Pushes and Ticks");

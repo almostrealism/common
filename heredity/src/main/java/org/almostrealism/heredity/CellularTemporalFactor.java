@@ -20,7 +20,58 @@ import org.almostrealism.hardware.OperationList;
 
 import java.util.function.Supplier;
 
+/**
+ * A {@link TemporalFactor} that also has {@link Cellular} lifecycle management.
+ *
+ * <p>This interface combines:
+ * <ul>
+ *   <li>{@link TemporalFactor} - Time-evolving factor transformation</li>
+ *   <li>{@link Cellular} - Graph connectivity and lifecycle management</li>
+ * </ul>
+ *
+ * <p>Use this interface for factors that need to:
+ * <ul>
+ *   <li>Transform input values (Factor)</li>
+ *   <li>Evolve over time (Temporal)</li>
+ *   <li>Participate in computation graphs (Node)</li>
+ *   <li>Support initialization and reset (Setup, Lifecycle)</li>
+ * </ul>
+ *
+ * <h2>Example Implementation</h2>
+ * <pre>{@code
+ * public class AdaptiveFactor implements CellularTemporalFactor<PackedCollection> {
+ *     private double scale = 1.0;
+ *
+ *     @Override
+ *     public Producer<PackedCollection> getResultant(Producer<PackedCollection> value) {
+ *         return multiply(value, c(scale));
+ *     }
+ *
+ *     @Override
+ *     public Supplier<Runnable> tick() {
+ *         return () -> () -> scale *= 0.99;  // Decay over time
+ *     }
+ *
+ *     @Override
+ *     public void reset() {
+ *         scale = 1.0;  // Reset to initial state
+ *     }
+ * }
+ * }</pre>
+ *
+ * @param <T> the type of data this factor operates on
+ * @see TemporalFactor
+ * @see Cellular
+ * @see CombinedFactor
+ */
 public interface CellularTemporalFactor<T> extends TemporalFactor<T>, Cellular {
+	/**
+	 * Returns an operation that performs setup for this factor.
+	 * <p>The default implementation returns an empty operation list.
+	 * Subclasses should override this if initialization is needed.
+	 *
+	 * @return a supplier providing the setup operation
+	 */
 	@Override
 	default Supplier<Runnable> setup() {
 		return new OperationList();

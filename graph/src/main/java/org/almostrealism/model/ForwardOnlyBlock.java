@@ -24,7 +24,7 @@ import org.almostrealism.hardware.OperationList;
 import java.util.function.Supplier;
 
 public class ForwardOnlyBlock implements Block {
-	private Block block;
+	private final Block block;
 
 	public ForwardOnlyBlock(Block block) {
 		this.block = block;
@@ -46,12 +46,12 @@ public class ForwardOnlyBlock implements Block {
 	}
 
 	@Override
-	public Cell<PackedCollection<?>> getForward() {
+	public Cell<PackedCollection> getForward() {
 		return block.getForward();
 	}
 
 	@Override
-	public Cell<PackedCollection<?>> getBackward() {
+	public Cell<PackedCollection> getBackward() {
 		return Cell.of((input, next) -> new OperationList());
 	}
 }

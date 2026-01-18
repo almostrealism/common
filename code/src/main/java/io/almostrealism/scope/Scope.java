@@ -16,32 +16,31 @@
 
 package io.almostrealism.scope;
 
-import io.almostrealism.lang.CodePrintWriter;
 import io.almostrealism.code.Computation;
-import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.code.ExpressionAssignment;
 import io.almostrealism.code.NameProvider;
-import io.almostrealism.profile.OperationInfo;
-import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.code.ProducerArgumentReference;
 import io.almostrealism.code.Statement;
+import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.expression.ArrayDeclaration;
-import io.almostrealism.kernel.KernelIndexChild;
-import io.almostrealism.expression.StaticReference;
-import io.almostrealism.kernel.KernelStructureContext;
-import io.almostrealism.kernel.KernelTree;
-import io.almostrealism.profile.ScopeTimingListener;
-import io.almostrealism.relation.Parent;
-import io.almostrealism.scope.Argument.Expectation;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.InstanceReference;
-
+import io.almostrealism.expression.StaticReference;
+import io.almostrealism.kernel.KernelIndexChild;
+import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.kernel.KernelTree;
+import io.almostrealism.lang.CodePrintWriter;
+import io.almostrealism.profile.OperationInfo;
+import io.almostrealism.profile.OperationMetadata;
+import io.almostrealism.profile.ScopeTimingListener;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.DynamicProducer;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.uml.Named;
-import io.almostrealism.uml.Nameable;
+import io.almostrealism.relation.Parent;
 import io.almostrealism.relation.Sortable;
+import io.almostrealism.scope.Argument.Expectation;
+import io.almostrealism.uml.Nameable;
+import io.almostrealism.uml.Named;
 import io.almostrealism.uml.Signature;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
@@ -66,41 +65,163 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 /**
- * A {@link Scope} is the container for {@link Statement}s,
- * {@link Method}s, and other {@link Scope}s.
+ * A {@link Scope} is the primary container for executable code elements in the Almost Realism
+ * computation framework. It serves as a hierarchical structure that holds {@link Statement}s,
+ * {@link Method}s, {@link Variable}s, and nested child {@link Scope}s.
  *
- * @param <T>  The type of the value returned by this {@link Scope}.
+ * <p>{@link Scope} is central to the code generation pipeline, representing a unit of computation
+ * that can be compiled into native code for hardware acceleration. Scopes can be nested to create
+ * complex control flow structures, and they support conditional execution through the
+ * {@link #addCase(Expression, Scope)} mechanism.</p>
+ *
+ * <h2>Key Features</h2>
+ * <ul>
+ *   <li><b>Hierarchical Structure</b>: Scopes can contain child scopes, creating a tree structure
+ *       that represents nested code blocks</li>
+ *   <li><b>Argument Management</b>: Automatically tracks dependencies and arguments required
+ *       for scope execution through {@link #getArguments()} and {@link #getDependencies()}</li>
+ *   <li><b>Inlining Support</b>: Can absorb simpler scopes via {@link #tryAbsorb(Scope)} to
+ *       reduce method call overhead</li>
+ *   <li><b>Code Generation</b>: Writes generated code through {@link #write(CodePrintWriter)}</li>
+ *   <li><b>Simplification</b>: Supports expression simplification via {@link #simplify(KernelStructureContext, int)}</li>
+ *   <li><b>Compute Requirements</b>: Can specify hardware requirements (CPU, GPU, etc.) for execution</li>
+ * </ul>
+ *
+ * <h2>Usage Example</h2>
+ * <pre>{@code
+ * // Create a scope for a computation
+ * Scope<Double> scope = new Scope<>("myComputation", metadata);
+ *
+ * // Add statements
+ * Expression<Double> result = scope.declareDouble("result", someExpression);
+ * scope.assign(outputVar, result);
+ *
+ * // Add conditional logic
+ * scope.addCase(condition, trueBranchScope, falseBranchScope);
+ *
+ * // Write generated code
+ * scope.write(codePrintWriter);
+ * }</pre>
+ *
+ * <h2>Scope Lifecycle</h2>
+ * <ol>
+ *   <li>Creation: Scope is instantiated with a name and optional metadata</li>
+ *   <li>Population: Statements, variables, and child scopes are added</li>
+ *   <li>Argument Resolution: Dependencies are resolved via {@link #convertArgumentsToRequiredScopes(KernelStructureContext)}</li>
+ *   <li>Simplification: Expressions are simplified for optimal code generation</li>
+ *   <li>Code Generation: The scope is written to a {@link CodePrintWriter}</li>
+ * </ol>
+ *
+ * @param <T> the type of value returned by this {@link Scope}, typically representing
+ *            the output type of the computation
+ *
+ * @see Statement
+ * @see Variable
+ * @see Argument
+ * @see Cases
+ * @see Method
+ * @see CodePrintWriter
  */
 public class Scope<T> extends ArrayList<Scope<T>>
 		implements Fragment, KernelTree<Scope<T>>,
 					OperationInfo, Signature, Nameable,
 					ConsoleFeatures {
+	/**
+	 * Global flag controlling whether scope inlining is enabled.
+	 * When true, simple scopes can be absorbed into their parent scope
+	 * to reduce method call overhead during code generation.
+	 */
 	public static final boolean enableInlining = true;
+
+	/**
+	 * Console instance for logging scope-related messages.
+	 * Child of the root console for hierarchical logging.
+	 */
 	public static final Console console = Console.root().child();
 
+	/**
+	 * Global flag for verbose logging. Controlled by the AR_SCOPE_VERBOSE
+	 * environment variable. When enabled, additional debug information
+	 * is logged during scope processing.
+	 */
 	public static boolean verbose = SystemUtils.isEnabled("AR_SCOPE_VERBOSE").orElse(false);
+
+	/**
+	 * Optional timing listener for performance profiling of scope operations.
+	 * When set, records duration metrics for simplification and replacement processing.
+	 */
 	public static ScopeTimingListener timing;
 
+	/** The unique name identifier for this scope. */
 	private String name;
+
+	/**
+	 * Reference index counter used for generating unique variable names
+	 * during expression replacement processing.
+	 */
 	private int refIdx;
+
+	/** Metadata describing this scope's operation for profiling and debugging. */
 	private OperationMetadata metadata;
+
+	/**
+	 * List of compute requirements specifying hardware constraints
+	 * (e.g., GPU, specific memory requirements) for this scope's execution.
+	 */
 	private List<ComputeRequirement> requirements;
 
+	/** The list of executable statements contained in this scope. */
 	private final List<Statement<?>> statements;
+
+	/**
+	 * Parameters declared within this scope, representing local variables
+	 * that are not passed as arguments from parent scopes.
+	 */
 	private final List<Variable<?, ?>> parameters;
 
+	/**
+	 * Expression assignments (variable declarations and assignments) in this scope.
+	 * @deprecated This field is scheduled for removal; use statements instead.
+	 */
 	private final List<ExpressionAssignment<?>> variables; // TODO  Remove
+
+	/**
+	 * Method references called within this scope.
+	 * @deprecated This field is scheduled for removal.
+	 */
 	private final List<Method> methods; // TODO  Remove
 
+	/** Performance metrics to be recorded during scope execution. */
 	private final List<Metric> metrics;
+
+	/**
+	 * List of scopes that must be executed before this scope.
+	 * These represent dependencies that have been converted from arguments.
+	 */
 	private final List<Scope> required;
+
+	/**
+	 * Set of kernel index children for parallel execution contexts.
+	 * @deprecated Use of kernel children is being phased out.
+	 */
 	private Set<KernelIndexChild> kernelChildren;
 
+	/**
+	 * Cached list of arguments for this scope. Populated during
+	 * argument resolution via {@link #convertArgumentsToRequiredScopes(KernelStructureContext)}.
+	 */
 	private List<Argument<?>> arguments;
+
+	/**
+	 * Flag indicating whether this scope is embedded within another scope
+	 * as a required dependency rather than as a direct child.
+	 */
 	private boolean embedded;
 
 	/**
-	 * Creates an empty {@link Scope}.
+	 * Creates an empty {@link Scope} with no name or metadata.
+	 * <p>All internal collections (statements, parameters, variables, methods,
+	 * metrics, and required scopes) are initialized as empty lists.</p>
 	 */
 	public Scope() {
 		this.statements = new ArrayList<>();
@@ -113,8 +234,12 @@ public class Scope<T> extends ArrayList<Scope<T>>
 
 	/**
 	 * Creates an empty {@link Scope} with the specified name.
-	 * This method, without providing {@link OperationMetadata},
-	 * should be avoided in favor of including metadata.
+	 * <p><b>Note:</b> This constructor does not include {@link OperationMetadata},
+	 * which is recommended for proper profiling and debugging. Consider using
+	 * {@link #Scope(String, OperationMetadata)} instead.</p>
+	 *
+	 * @param name the unique identifier for this scope, used in code generation
+	 *             and for referencing this scope from other scopes
 	 */
 	public Scope(String name) {
 		this();
@@ -122,8 +247,14 @@ public class Scope<T> extends ArrayList<Scope<T>>
 	}
 
 	/**
-	 * Creates an empty {@link Scope} with the specified name.
-	 * and {@link OperationMetadata}.
+	 * Creates an empty {@link Scope} with the specified name and metadata.
+	 * <p>This is the preferred constructor as it ensures proper metadata
+	 * tracking for profiling and debugging purposes.</p>
+	 *
+	 * @param name     the unique identifier for this scope
+	 * @param metadata operation metadata describing this scope's purpose and origin;
+	 *                 a copy is made to prevent external modification
+	 * @throws IllegalArgumentException if metadata is null
 	 */
 	public Scope(String name, OperationMetadata metadata) {
 		this();
@@ -134,12 +265,29 @@ public class Scope<T> extends ArrayList<Scope<T>>
 			throw new IllegalArgumentException();
 	}
 
+	/**
+	 * Returns the unique name identifier for this scope.
+	 *
+	 * @return the scope name, or null if not set
+	 */
 	@Override
 	public String getName() { return name; }
 
+	/**
+	 * Sets the unique name identifier for this scope.
+	 *
+	 * @param name the scope name to set
+	 */
 	@Override
 	public void setName(String name) { this.name = name; }
 
+	/**
+	 * Returns the operation metadata for this scope.
+	 * <p>If no metadata has been set, creates a default metadata instance
+	 * with name "Unknown".</p>
+	 *
+	 * @return the operation metadata, never null
+	 */
 	@Override
 	public OperationMetadata getMetadata() {
 		if (metadata == null) {
@@ -152,17 +300,53 @@ public class Scope<T> extends ArrayList<Scope<T>>
 		return metadata;
 	}
 
+	/**
+	 * Sets the operation metadata for this scope.
+	 *
+	 * @param metadata the operation metadata to associate with this scope
+	 */
 	public void setMetadata(OperationMetadata metadata) { this.metadata = metadata; }
 
+	/**
+	 * Returns the list of compute requirements for this scope.
+	 *
+	 * @return the compute requirements, or null if none specified
+	 */
 	public List<ComputeRequirement> getComputeRequirements() { return requirements; }
+
+	/**
+	 * Sets the compute requirements for this scope.
+	 *
+	 * @param requirements the list of hardware/compute constraints
+	 */
 	public void setComputeRequirements(List<ComputeRequirement> requirements) { this.requirements = requirements; }
 
+	/**
+	 * Returns the list of statements contained in this scope.
+	 * <p>The returned list is mutable and can be modified to add or remove statements.</p>
+	 *
+	 * @return the mutable list of statements
+	 */
 	public List<Statement<?>> getStatements() { return statements; }
 
+	/**
+	 * Returns the list of parameters (local variables) declared in this scope.
+	 * <p>Parameters are variables that are declared within the scope rather than
+	 * being passed in as arguments.</p>
+	 *
+	 * @return the mutable list of parameters
+	 */
 	public List<Variable<?, ?>> getParameters() {
 		return parameters;
 	}
 
+	/**
+	 * Adds a child scope to this scope.
+	 *
+	 * @param child the child scope to add; must not be null
+	 * @return true (as specified by {@link ArrayList#add(Object)})
+	 * @throws IllegalArgumentException if child is null
+	 */
 	@Override
 	public boolean add(Scope<T> child) {
 		if (child == null) {
@@ -172,16 +356,42 @@ public class Scope<T> extends ArrayList<Scope<T>>
 		return super.add(child);
 	}
 
+	/**
+	 * Adds a conditional case with a single statement.
+	 * <p>Creates a new scope containing the statement and adds it as a conditional case.</p>
+	 *
+	 * @param condition the boolean condition that must be true for the statement to execute
+	 * @param statement the statement to execute when the condition is true
+	 * @return the created scope containing the statement
+	 */
 	public Scope<T> addCase(Expression<Boolean> condition, Statement<?> statement) {
 		Scope<T> scope = new Scope<>();
 		scope.getStatements().add(statement);
 		return addCase(condition, scope, null);
 	}
 
+	/**
+	 * Adds a conditional case with a scope to execute when the condition is true.
+	 *
+	 * @param condition the boolean condition that must be true for the scope to execute
+	 * @param scope     the scope to execute when the condition is true
+	 * @return the provided scope
+	 */
 	public Scope<T> addCase(Expression<Boolean> condition, Scope<T> scope) {
 		return addCase(condition, scope, null);
 	}
 
+	/**
+	 * Adds a conditional case with optional alternative scope (if-else pattern).
+	 * <p>If the condition can be statically evaluated to a constant boolean value,
+	 * only the appropriate branch is added (optimization). Otherwise, a {@link Cases}
+	 * structure is created to represent the conditional at runtime.</p>
+	 *
+	 * @param condition the boolean condition to evaluate
+	 * @param scope     the scope to execute when the condition is true
+	 * @param altScope  the scope to execute when the condition is false (may be null)
+	 * @return the provided scope (the "true" branch)
+	 */
 	public Scope<T> addCase(Expression<Boolean> condition, Scope<T> scope, Scope<T> altScope) {
 		Optional<Boolean> v = condition.getSimplified().booleanValue();
 		if (v.isPresent()) {
@@ -201,49 +411,110 @@ public class Scope<T> extends ArrayList<Scope<T>>
 		return scope;
 	}
 
-	/** @return  The {@link ExpressionAssignment}s in this {@link Scope}. */
+	/**
+	 * Returns the expression assignments in this scope.
+	 *
+	 * @return the list of expression assignments
+	 * @deprecated Use {@link #getStatements()} instead; this field is scheduled for removal.
+	 */
 	@Deprecated
 	public List<ExpressionAssignment<?>> getVariables() { return variables; }
 
-	/** @return  The {@link Method}s in this {@link Scope}. */
+	/**
+	 * Returns the method references in this scope.
+	 *
+	 * @return the list of methods
+	 * @deprecated This field is scheduled for removal.
+	 */
 	@Deprecated
 	public List<Method> getMethods() { return methods; }
 
-	/** @return  The inner {@link Scope}s contained by this {@link Scope}. */
+	/**
+	 * Returns the child scopes contained within this scope.
+	 * <p>This scope extends {@link ArrayList}, so this method returns {@code this}.</p>
+	 *
+	 * @return this scope as a list of child scopes
+	 */
 	@Override
 	public List<Scope<T>> getChildren() { return this; }
 
+	/**
+	 * Returns the kernel index children for parallel execution contexts.
+	 *
+	 * @return the set of kernel index children, or null if not set
+	 * @deprecated Use of kernel children is being phased out.
+	 */
 	@Deprecated
 	public Set<KernelIndexChild> getKernelChildren() { return kernelChildren; }
 
+	/**
+	 * Sets the kernel index children for parallel execution contexts.
+	 *
+	 * @param kernelChildren the set of kernel index children
+	 * @deprecated Use of kernel children is being phased out.
+	 */
 	@Deprecated
 	public void setKernelChildren(Set<KernelIndexChild> kernelChildren) { this.kernelChildren = kernelChildren; }
 
+	/**
+	 * Returns the performance metrics associated with this scope.
+	 *
+	 * @return the mutable list of metrics
+	 */
 	public List<Metric> getMetrics() { return metrics; }
 
+	/**
+	 * Checks whether this scope is embedded within another scope as a required dependency.
+	 *
+	 * @return true if this scope is embedded, false otherwise
+	 */
 	public boolean isEmbedded() { return embedded; }
+
+	/**
+	 * Sets whether this scope is embedded within another scope as a required dependency.
+	 *
+	 * @param embedded true to mark this scope as embedded
+	 */
 	public void setEmbedded(boolean embedded) { this.embedded = embedded; }
 
+	/**
+	 * Checks whether this scope includes the specified compute requirement.
+	 *
+	 * @param requirement the compute requirement to check for
+	 * @return true if the requirement is included, false if not included or if no requirements are set
+	 */
 	public boolean includesComputeRequirement(ComputeRequirement requirement) {
 		if (requirements == null) return false;
 		return requirements.contains(requirement);
 	}
 
+	/**
+	 * Returns the neighboring scopes of the given node in the kernel tree.
+	 * <p>This method is not supported for {@link Scope}.</p>
+	 *
+	 * @param node the node to find neighbors for
+	 * @return never returns normally
+	 * @throws UnsupportedOperationException always
+	 */
 	@Override
 	public Collection<Scope<T>> neighbors(Scope<T> node) {
 		throw new UnsupportedOperationException();
 	}
 
 	/**
-	 * Returns the {@link Scope}s that are required by this {@link Scope},
-	 * a {@link List} that can be modified to add requirements.
+	 * Returns the scopes that are required by this scope as direct dependencies.
+	 * <p>Required scopes must be executed before this scope. The returned list
+	 * is mutable and can be modified to add or remove requirements.</p>
+	 *
+	 * @return the mutable list of required scopes
 	 */
 	public List<Scope> getRequiredScopes() { return required; }
 
 	/**
-	 * @return  The {@link Scope}s that are required by this {@link Scope},
-	 * and {@link Scope}s it contains, a {@link List} that cannot be modified
-	 * to add requirements.
+	 * Returns all scopes required by this scope and its descendants.
+	 * <p>This method recursively collects required scopes from all child scopes.</p>
+	 *
+	 * @return an immutable view of all required scopes in the hierarchy
 	 */
 	public List<Scope> getAllRequiredScopes() {
 		List<Scope> all = new ArrayList<>(required);
@@ -251,18 +522,43 @@ public class Scope<T> extends ArrayList<Scope<T>>
 		return all;
 	}
 
+	/**
+	 * Returns the input producers for this scope's arguments.
+	 * <p>Extracts the producer suppliers from all argument variables.</p>
+	 *
+	 * @param <A> the type of value produced by the inputs
+	 * @return list of supplier-wrapped evaluables for each argument
+	 */
 	public <A> List<Supplier<Evaluable<? extends A>>> getInputs() {
 		return getArgumentVariables().stream()
 				.map(var -> (Supplier) var.getProducer())
 				.map(sup -> (Supplier<Evaluable<? extends A>>) sup).collect(Collectors.toList());
 	}
 
+	/**
+	 * Returns all dependencies of this scope as arguments.
+	 * <p>Dependencies include all variables that this scope depends on,
+	 * sorted by their sort hints.</p>
+	 *
+	 * @param <A> the type of value held by the dependencies
+	 * @return sorted list of dependency arguments
+	 */
 	public <A> List<Argument<? extends A>> getDependencies() {
 		List<Argument<? extends A>> result = arguments(arg -> (Argument<? extends A>) arg);
 		sortArguments(result);
 		return result;
 	}
 
+	/**
+	 * Returns the arguments required for this scope's execution.
+	 * <p>Arguments are the external inputs that must be provided when executing
+	 * this scope. This method filters dependencies to include only those that
+	 * are {@link ArrayVariable}s and resolves delegate variables to their roots.</p>
+	 *
+	 * @param <A> the type of value held by the arguments
+	 * @return sorted list of arguments with duplicates removed
+	 * @throws IllegalArgumentException if a delegate variable is not an ArrayVariable
+	 */
 	public <A> List<Argument<? extends A>> getArguments() {
 		List<Argument<? extends A>> args = arguments(arg -> {
 			if (arg.getVariable().getDelegate() == null) {
@@ -282,6 +578,13 @@ public class Scope<T> extends ArrayList<Scope<T>>
 		return args;
 	}
 
+	/**
+	 * Returns the array variables representing this scope's arguments.
+	 * <p>Extracts the underlying {@link ArrayVariable}s from the arguments.</p>
+	 *
+	 * @param <A> the type of value held by the variables
+	 * @return list of array variables for this scope's arguments
+	 */
 	public <A> List<ArrayVariable<? extends A>> getArgumentVariables() {
 		return getArguments().stream()
 				.map(Argument::getVariable)
@@ -290,18 +593,44 @@ public class Scope<T> extends ArrayList<Scope<T>>
 				.collect(Collectors.toList());
 	}
 
+	/**
+	 * Declares an integer variable within this scope and initializes it with the given value.
+	 * <p>Adds an {@link ExpressionAssignment} statement to this scope's statements.</p>
+	 *
+	 * @param name  the name of the variable to declare
+	 * @param value the initial value expression
+	 * @return a reference expression to the declared variable
+	 */
 	public Expression<Integer> declareInteger(String name, Expression<? extends Number> value) {
 		Expression<Integer> i = new StaticReference(Integer.class, name);
 		getStatements().add(new ExpressionAssignment<>(true, i, (Expression<Integer>) value));
 		return i;
 	}
 
+	/**
+	 * Declares a double-precision variable within this scope and initializes it with the given value.
+	 * <p>Adds an {@link ExpressionAssignment} statement to this scope's statements.</p>
+	 *
+	 * @param name  the name of the variable to declare
+	 * @param value the initial value expression
+	 * @return a reference expression to the declared variable
+	 */
 	public Expression<Double> declareDouble(String name, Expression<? extends Number> value) {
 		Expression<Double> i = new StaticReference(Double.class, name);
 		getStatements().add(new ExpressionAssignment<>(true, i, (Expression) value));
 		return i;
 	}
 
+	/**
+	 * Declares an array variable within this scope.
+	 * <p>Adds an {@link ArrayDeclaration} statement and returns a reference to the array.
+	 * The array is configured with offset disabled.</p>
+	 *
+	 * @param name the name of the array variable
+	 * @param size the size expression for the array; must evaluate to a value greater than 0
+	 * @return an {@link ArrayVariable} reference to the declared array
+	 * @throws IllegalArgumentException if the size is less than 1
+	 */
 	public ArrayVariable<?> declareArray(String name, Expression<Integer> size) {
 		if (size.intValue().orElse(1) <= 0) {
 			throw new IllegalArgumentException("Array size cannot be less than 1");
@@ -314,14 +643,40 @@ public class Scope<T> extends ArrayList<Scope<T>>
 		return v;
 	}
 
+	/**
+	 * Creates an assignment statement within this scope.
+	 * <p>Adds an {@link ExpressionAssignment} statement that assigns the source expression
+	 * to the destination expression.</p>
+	 *
+	 * @param <V>  the type of value being assigned
+	 * @param dest the destination expression (left-hand side)
+	 * @param src  the source expression (right-hand side)
+	 * @return the created assignment statement
+	 */
 	public <V> ExpressionAssignment<V> assign(Expression<V> dest, Expression<?> src) {
 		ExpressionAssignment<V> assignment = new ExpressionAssignment<>(dest, (Expression) src);
 		getStatements().add(assignment);
 		return assignment;
 	}
 
+	/**
+	 * Returns the arguments for this scope using the identity mapper.
+	 *
+	 * @return list of arguments
+	 */
 	protected List<Argument<?>> arguments() { return arguments(Function.identity()); }
 
+	/**
+	 * Collects and maps all arguments for this scope.
+	 * <p>Arguments are collected from statements, variables, child scopes, methods, metrics,
+	 * and required scopes. If arguments have already been computed and cached, the cached
+	 * version is returned.</p>
+	 *
+	 * @param <A>    the type to map arguments to
+	 * @param mapper function to transform each argument
+	 * @return list of mapped arguments with duplicates removed
+	 * @throws UnsupportedOperationException if any argument is null
+	 */
 	protected <A> List<A> arguments(Function<Argument<?>, A> mapper) {
 		List<Argument<?>> args = new ArrayList<>();
 
@@ -380,6 +735,23 @@ public class Scope<T> extends ArrayList<Scope<T>>
 		return removeDuplicateArguments(args).stream().map(mapper).collect(Collectors.toList());
 	}
 
+	/**
+	 * Converts argument dependencies that are backed by {@link Computation}s into required scopes.
+	 * <p>This method performs a depth-first traversal to ensure that dependencies are converted
+	 * in the correct order. Arguments backed by computations are either inlined (if simple enough)
+	 * or added as required scopes with method calls.</p>
+	 *
+	 * <p>The conversion process:</p>
+	 * <ol>
+	 *   <li>Recursively process child scopes first (depth-first)</li>
+	 *   <li>For each dependency, check if it's backed by a {@link Computation}</li>
+	 *   <li>If the computation can be inlined, absorb it; otherwise, add as a required scope</li>
+	 *   <li>Cache the resulting arguments list for future calls</li>
+	 * </ol>
+	 *
+	 * @param context the kernel structure context for scope generation
+	 * @return list of scope names that were converted (for deduplication in parent scopes)
+	 */
 	public List<String> convertArgumentsToRequiredScopes(KernelStructureContext context) {
 		if (this.arguments != null) {
 			return Collections.emptyList();
@@ -506,6 +878,14 @@ public class Scope<T> extends ArrayList<Scope<T>>
 		return convertedScopes;
 	}
 
+	/**
+	 * Creates a method call expression for invoking this scope.
+	 * <p>Constructs a {@link Method} reference that can be used to call this scope
+	 * as a function, passing all argument variables and any additional parameters.</p>
+	 *
+	 * @param parameters additional parameters to pass to the method call
+	 * @return a method reference for calling this scope
+	 */
 	public Method<?> call(Expression<?>... parameters) {
 		List<Expression> args = new ArrayList<>();
 		getArgumentVariables().stream()
@@ -516,19 +896,27 @@ public class Scope<T> extends ArrayList<Scope<T>>
 	}
 
 	/**
-	 * Subclasses can override this method to indicate that they cannot be inlined.
+	 * Determines whether this scope can be inlined into a parent scope.
+	 * <p>Subclasses can override this method to indicate that they cannot be inlined
+	 * due to structural constraints or other requirements.</p>
+	 *
+	 * @return true if this scope can be inlined, false otherwise
 	 */
 	public boolean isInlineable() {
 		return true;
 	}
 
 	/**
-	 * Attempt to inline the specified {@link Scope}. This will only be
-	 * successful if the specified {@link Scope} contains nothing but
-	 * variable assignments; any {@link Scope} with child {@link Scope}s
-	 * or method references will not be inlined.
+	 * Attempts to inline the specified scope into this scope.
+	 * <p>Inlining is only successful if the specified scope contains only simple
+	 * assignments without declarations. Scopes with child scopes, method references,
+	 * or variable declarations cannot be inlined.</p>
 	 *
-	 * @return  True if the {@link Scope} was inlined, false otherwise.
+	 * <p>When successful, the variables and statements from the specified scope
+	 * are prepended to this scope's collections.</p>
+	 *
+	 * @param s the scope to attempt to inline
+	 * @return true if the scope was successfully inlined, false otherwise
 	 */
 	public boolean tryAbsorb(Scope<?> s) {
 		if (!enableInlining) return false;
@@ -573,6 +961,17 @@ public class Scope<T> extends ArrayList<Scope<T>>
 		w.flush();
 	}
 
+	/**
+	 * Creates a simplified version of this scope by applying expression simplification
+	 * to all contained elements.
+	 * <p>This method recursively simplifies child scopes, required scopes, methods,
+	 * statements, and variables. It also processes expression replacements to extract
+	 * common subexpressions.</p>
+	 *
+	 * @param context the kernel structure context providing simplification rules
+	 * @param depth   the current recursion depth (used for nested simplification)
+	 * @return a new simplified scope with the same structure but optimized expressions
+	 */
 	@Override
 	public Scope<T> simplify(KernelStructureContext context, int depth) {
 		Scope<T> scope = (Scope<T>) generate(getChildren()
@@ -604,6 +1003,13 @@ public class Scope<T> extends ArrayList<Scope<T>>
 		return scope;
 	}
 
+	/**
+	 * Generates a new scope with the given children while preserving this scope's configuration.
+	 * <p>Copies the name, metadata, reference index, and compute requirements to the new scope.</p>
+	 *
+	 * @param children the child scopes to include in the generated scope
+	 * @return a new scope with the specified children
+	 */
 	@Override
 	public Parent<Scope<T>> generate(List<Scope<T>> children) {
 		Scope<T> scope = new Scope<>(getName(), getMetadata());
@@ -614,6 +1020,12 @@ public class Scope<T> extends ArrayList<Scope<T>>
 		return scope;
 	}
 
+	/**
+	 * Returns the signature string for this scope.
+	 * <p>Uses the metadata signature if available, otherwise falls back to the scope name.</p>
+	 *
+	 * @return the signature string identifying this scope
+	 */
 	@Override
 	public String signature() {
 		String signature = getMetadata().getSignature();
@@ -622,22 +1034,52 @@ public class Scope<T> extends ArrayList<Scope<T>>
 		return signature;
 	}
 
+	/**
+	 * Compares this scope to another object for equality.
+	 * <p>Two scopes are considered equal if they have the same name.</p>
+	 *
+	 * @param o the object to compare with
+	 * @return true if the objects are equal, false otherwise
+	 */
 	@Override
 	public boolean equals(Object o) {
 		return Objects.equals(getName(), ((Scope) o).getName());
 	}
 
+	/**
+	 * Returns a hash code for this scope based on its name.
+	 *
+	 * @return the hash code value
+	 */
 	@Override
 	public int hashCode() {
 		return getName() == null ? 0 : getName().hashCode();
 	}
 
+	/**
+	 * Returns a description of this scope (its name).
+	 *
+	 * @return the scope name
+	 */
 	@Override
 	public String describe() { return getName(); }
 
+	/**
+	 * Returns the console instance for logging.
+	 *
+	 * @return the scope's console
+	 */
 	@Override
 	public Console console() { return console; }
 
+	/**
+	 * Generates kernel index children from the given statements.
+	 *
+	 * @param <T>    the type of statements
+	 * @param values the statements to scan for kernel index children
+	 * @return list of kernel index children found in the statements
+	 * @deprecated Use of kernel children is being phased out.
+	 */
 	@Deprecated
 	protected <T extends Statement> List<KernelIndexChild> generateKernelChildren(List<T> values) {
 		List<KernelIndexChild> kernelChildren = new ArrayList<>();
@@ -653,6 +1095,24 @@ public class Scope<T> extends ArrayList<Scope<T>>
 		return kernelChildren;
 	}
 
+	/**
+	 * Processes expression replacements to extract common subexpressions.
+	 * <p>This method identifies frequently-used expressions and replaces them with
+	 * variable references to avoid redundant computation. The process iterates
+	 * until no more replacements can be made or the maximum replacement limit is reached.</p>
+	 *
+	 * <p>The algorithm:</p>
+	 * <ol>
+	 *   <li>Identify expressions that are used but not yet declared</li>
+	 *   <li>Create variable declarations for these expressions</li>
+	 *   <li>Replace occurrences of the expressions with variable references</li>
+	 *   <li>Repeat until no new replacement opportunities exist</li>
+	 * </ol>
+	 *
+	 * @param statements         the list of statements to process
+	 * @param replacementTargets supplier of expressions that are candidates for replacement
+	 * @return the processed statements with common subexpressions extracted
+	 */
 	protected List<Statement<?>> processReplacements(List<Statement<?>> statements,
 													 Supplier<List<Expression<?>>> replacementTargets) {
 		if (!ScopeSettings.enableReplacements) return statements;
@@ -756,6 +1216,15 @@ public class Scope<T> extends ArrayList<Scope<T>>
 		}
 	}
 
+	/**
+	 * Creates a simplification operator for statements within the given context.
+	 * <p>The returned operator applies simplification to each statement and records
+	 * timing information if a timing listener is configured.</p>
+	 *
+	 * @param <S>     the type of statement
+	 * @param context the kernel structure context for simplification
+	 * @return a unary operator that simplifies statements
+	 */
 	private <S extends Statement<S>> UnaryOperator<S> simplification(KernelStructureContext context) {
 		return t -> {
 			long start = System.nanoTime();
@@ -774,6 +1243,15 @@ public class Scope<T> extends ArrayList<Scope<T>>
 		};
 	}
 
+	/**
+	 * Sorts a list of arguments by their sort hints, then by name.
+	 * <p>Arguments without sort hints are placed at the end. Arguments with
+	 * null or empty names are sorted before named arguments when hints are equal.</p>
+	 *
+	 * @param <T>       the type of argument
+	 * @param arguments the list of arguments to sort (modified in place)
+	 * @return true if the list was sorted, false if the list was null
+	 */
 	public static <T extends Argument<?>> boolean sortArguments(List<T> arguments) {
 		if (arguments != null) {
 			Comparator<T> c = Comparator.comparing(v -> Optional.ofNullable(v)
@@ -786,6 +1264,15 @@ public class Scope<T> extends ArrayList<Scope<T>>
 		return false;
 	}
 
+	/**
+	 * Removes duplicate arguments from a list, preferring arguments with {@code WILL_EVALUATE} expectation.
+	 * <p>When duplicates are found (by name), the argument with {@code WILL_EVALUATE} expectation
+	 * is preferred if present; otherwise, the first argument is kept.</p>
+	 *
+	 * @param <T>  the type of value held by the arguments
+	 * @param args the list of arguments potentially containing duplicates
+	 * @return a new list with duplicates removed
+	 */
 	public static <T> List<Argument<? extends T>> removeDuplicateArguments(List<Argument<? extends T>> args) {
 		return Named.removeDuplicates(args, (a, b) -> {
 			if (a.getExpectation() == Expectation.WILL_EVALUATE) {
@@ -798,10 +1285,28 @@ public class Scope<T> extends ArrayList<Scope<T>>
 		});
 	}
 
+	/**
+	 * Extracts argument dependencies from a collection of variables.
+	 * <p>This is a convenience method that calls {@link #extractArgumentDependencies(Collection, boolean)}
+	 * with {@code top = true}.</p>
+	 *
+	 * @param vars the variables to extract dependencies from
+	 * @return list of arguments representing the dependencies
+	 */
 	protected static List<Argument<?>> extractArgumentDependencies(Collection<Variable<?, ?>> vars) {
 		return extractArgumentDependencies(vars, true);
 	}
 
+	/**
+	 * Extracts argument dependencies from a collection of variables.
+	 * <p>Creates {@link Argument} instances for each variable with appropriate expectations.
+	 * Top-level variables get {@code WILL_EVALUATE}, nested dependencies get {@code EVALUATE_AHEAD}.
+	 * Recursively processes variable dependencies.</p>
+	 *
+	 * @param vars the variables to extract dependencies from
+	 * @param top  true if these are top-level variables, false for nested dependencies
+	 * @return list of arguments representing the dependencies
+	 */
 	private static List<Argument<?>> extractArgumentDependencies(Collection<Variable<?, ?>> vars, boolean top) {
 		List<Argument<?>> args = new ArrayList<>();
 

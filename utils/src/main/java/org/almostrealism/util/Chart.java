@@ -39,6 +39,53 @@ import java.util.Iterator;
 import java.util.List;
 
 /**
+ * ASCII chart visualization utility for displaying time-series data in text format.
+ *
+ * <p>This class maintains a rolling window of values and displays them as horizontal
+ * bar charts with timestamps. It automatically tracks min/max values and marks local
+ * extrema in the output.</p>
+ *
+ * <h2>Features</h2>
+ * <ul>
+ *   <li>Horizontal ASCII bar chart rendering</li>
+ *   <li>Timestamp labels for each entry</li>
+ *   <li>Automatic min/max range tracking</li>
+ *   <li>Local minima/maxima annotation</li>
+ *   <li>Configurable scale and divisions</li>
+ *   <li>Rolling window (configurable maximum entries)</li>
+ *   <li>Export values to file</li>
+ * </ul>
+ *
+ * <h2>Usage Example</h2>
+ * <pre>{@code
+ * Chart chart = new Chart(50);  // Keep last 50 entries
+ * chart.setScale(0.1);          // Each '#' represents 0.1 units
+ * chart.setDivisions(60);       // 60 divisions wide
+ *
+ * // Add values over time
+ * chart.addEntry(2.5);
+ * chart.addEntry(3.1);
+ * chart.addMessage("Processing started");
+ * chart.addEntry(4.2);
+ *
+ * // Display chart
+ * System.out.println(chart);
+ *
+ * // Save raw values
+ * chart.storeValues(new File("output.txt"));
+ * }</pre>
+ *
+ * <h2>Output Format</h2>
+ * <pre>
+ * Range: (2.500, 4.200)
+ * [--------]:.*.*.*.*.*.*.*.*...
+ *
+ * [10:30 AM]:######################### 2.500
+ * [10:31 AM]:############################### 3.100
+ * [10:31 AM]: Processing started
+ * [10:32 AM]:##########################################  4.200]
+ * </pre>
+ *
  * @author Mike Murray
  */
 public class Chart extends ArrayList<String> {
@@ -55,10 +102,26 @@ public class Chart extends ArrayList<String> {
 	private double lastValue, currentValue;
 	private List<Double> values;
 	
+	/**
+	 * Creates a new chart with default maximum of 100 entries.
+	 */
 	public Chart() { this.values = new ArrayList<Double>(); }
-	
+
+	/**
+	 * Creates a new chart with a specified maximum number of entries.
+	 * Older entries are removed when the limit is exceeded.
+	 *
+	 * @param max the maximum number of entries to retain
+	 */
 	public Chart(int max) { this.values = new ArrayList<Double>(); this.max = max; }
-	
+
+	/**
+	 * Adds a numeric value entry to the chart with a timestamp.
+	 * The value is displayed as a horizontal bar of '#' characters.
+	 * Local minima and maxima are automatically detected and annotated.
+	 *
+	 * @param a the value to add
+	 */
 	public void addEntry(double a) {
 		this.values.add(new Double(a));
 		
@@ -103,6 +166,12 @@ public class Chart extends ArrayList<String> {
 		if (super.size() > this.max) super.remove(0);
 	}
 	
+	/**
+	 * Adds a text message entry to the chart with a timestamp.
+	 * Messages appear as labeled entries without bar visualization.
+	 *
+	 * @param msg the message to add
+	 */
 	public void addMessage(String msg) {
 		Date now = new Date();
 		
@@ -116,10 +185,27 @@ public class Chart extends ArrayList<String> {
 		super.add(b.toString());
 	}
 	
+	/**
+	 * Sets the scale factor for bar rendering.
+	 * Each '#' character represents this many units of value.
+	 *
+	 * @param d the scale factor (default is 0.05)
+	 */
 	public void setScale(double d) { this.scale = d; }
-	
+
+	/**
+	 * Sets the maximum number of divisions (width) for bar rendering.
+	 *
+	 * @param i the number of divisions (default is 80)
+	 */
 	public void setDivisions(int i) { this.div = i; }
-	
+
+	/**
+	 * Prints the chart to a StringBuffer, including header, range information,
+	 * and all entries.
+	 *
+	 * @param buf the buffer to append the chart output to
+	 */
 	public void print(StringBuffer buf) {
 		buf.append("Range: (");
 		
@@ -148,12 +234,24 @@ public class Chart extends ArrayList<String> {
 		while (itr.hasNext()) buf.append(itr.next() + "\n");
 	}
 	
+	/**
+	 * Returns the ASCII chart as a string.
+	 *
+	 * @return the complete chart output including header, range, and all entries
+	 */
 	public String toString() {
 		StringBuffer b = new StringBuffer();
 		this.print(b);
 		return b.toString();
 	}
-	
+
+	/**
+	 * Writes all numeric values (one per line) to a file.
+	 * Messages are represented as {@link Float#MAX_VALUE} in the output.
+	 *
+	 * @param f the file to write values to
+	 * @throws IOException if the file cannot be written
+	 */
 	public void storeValues(File f) throws IOException {
 		try (PrintStream p = new PrintStream(new FileOutputStream(f))) {
 			Iterator<Double> itr = this.values.iterator();

@@ -30,6 +30,52 @@ import java.nio.ByteBuffer;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
 
+/**
+ * {@link MemoryProvider} for file-based memory storage used by external process execution.
+ *
+ * <p>Provides {@link LocalExternalMemory} instances backed by disk files instead of RAM.
+ * Data is lazily loaded from files when needed and written back on demand. Used by
+ * {@link ExternalInstructionSet} to transfer data to/from external processes.</p>
+ *
+ * <h2>Memory Model</h2>
+ *
+ * <ul>
+ *   <li><strong>Lazy Loading:</strong> Data read from file only when accessed (if {@code enableLazyReading})</li>
+ *   <li><strong>Write-Through:</strong> Modifications written to file immediately</li>
+ *   <li><strong>Delegation:</strong> Can replace in-memory data with file-backed storage via {@code reassign()}</li>
+ *   <li><strong>Cleanup:</strong> Files deleted after read (unless lazy reading enabled)</li>
+ * </ul>
+ *
+ * <h2>Binary File Format</h2>
+ *
+ * <p>All data stored as double precision (FP64) in native byte order:</p>
+ * <pre>
+ * [double_0][double_1]...[double_N]
+ * </pre>
+ *
+ * <h2>Usage Pattern</h2>
+ *
+ * <pre>{@code
+ * // Allocate file-backed memory
+ * LocalExternalMemoryProvider provider = new LocalExternalMemoryProvider(() -> tempDir);
+ * Memory mem = provider.allocate(1000);
+ *
+ * // Write data to file
+ * provider.setMem(mem, 0, data, 0, 1000);
+ *
+ * // Read back from file
+ * provider.getMem(mem, 0, result, 0, 1000);
+ * }</pre>
+ *
+ * <h2>Configuration</h2>
+ *
+ * <ul>
+ *   <li><strong>enableLazyReading:</strong> If true, delay file reads until data accessed (default: true)</li>
+ * </ul>
+ *
+ * @see LocalExternalMemory
+ * @see ExternalInstructionSet
+ */
 public class LocalExternalMemoryProvider implements MemoryProvider<Memory> {
 	public static boolean enableLazyReading = true;
 
@@ -37,25 +83,59 @@ public class LocalExternalMemoryProvider implements MemoryProvider<Memory> {
 
 	private Supplier<File> location;
 
+	/**
+	 * Creates a file-based memory provider.
+	 *
+	 * @param location Supplier of file locations for memory allocation
+	 */
 	public LocalExternalMemoryProvider(Supplier<File> location) {
 		this.location = location;
 	}
 
+	/**
+	 * Returns the provider name for identification.
+	 *
+	 * @return "DISK" to indicate file-backed storage
+	 */
 	@Override
 	public String getName() { return "DISK"; }
 
+	/**
+	 * Returns the size of each number in bytes.
+	 *
+	 * @return 8 (FP64 double precision)
+	 */
 	@Override
 	public int getNumberSize() { return 8; }
 
+	/**
+	 * Allocates file-backed memory at the configured location.
+	 *
+	 * @param size Number of doubles to allocate
+	 * @return {@link LocalExternalMemory} backed by a file
+	 */
 	@Override
 	public Memory allocate(int size) {
 		return allocate(location.get(), size);
 	}
 
+	/**
+	 * Allocates file-backed memory at a specific file location.
+	 *
+	 * @param location File path for the memory storage
+	 * @param size Number of doubles to allocate
+	 * @return {@link LocalExternalMemory} backed by the specified file
+	 */
 	public Memory allocate(File location, int size) {
 		return new LocalExternalMemory(this, location, size);
 	}
 
+	/**
+	 * Deallocates file-backed memory by destroying the backing file.
+	 *
+	 * @param size Size of the memory (ignored)
+	 * @param mem Memory to deallocate
+	 */
 	@Override
 	public void deallocate(int size, Memory mem) {
 		((LocalExternalMemory) mem).destroy();

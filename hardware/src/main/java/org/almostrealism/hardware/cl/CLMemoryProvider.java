@@ -18,9 +18,9 @@ package org.almostrealism.hardware.cl;
 
 import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;
+import io.almostrealism.code.Precision;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareException;
-import io.almostrealism.code.Precision;
 import org.almostrealism.hardware.mem.RAM;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
@@ -42,13 +42,183 @@ import java.util.List;
 import java.util.Optional;
 import java.util.stream.IntStream;
 
+/**
+ * {@link MemoryProvider} implementation for OpenCL memory management.
+ *
+ * <p>{@link CLMemoryProvider} allocates and manages {@link CLMemory} backed by OpenCL {@link cl_mem}
+ * objects, supporting multiple allocation strategies and efficient memory transfers.</p>
+ *
+ * <h2>Allocation Strategies</h2>
+ *
+ * <p>Supports four memory location strategies via {@link Location}:</p>
+ *
+ * <pre>{@code
+ * // DEVICE: Allocate on GPU device memory
+ * CLMemoryProvider device = new CLMemoryProvider(
+ *     context, queue, 4, maxMem, Location.DEVICE);
+ *
+ * // HOST: Use host-pinned memory (CL_MEM_ALLOC_HOST_PTR)
+ * CLMemoryProvider host = new CLMemoryProvider(
+ *     context, queue, 4, maxMem, Location.HOST);
+ *
+ * // HEAP: Use Java heap arrays (CL_MEM_USE_HOST_PTR)
+ * CLMemoryProvider heap = new CLMemoryProvider(
+ *     context, queue, 4, maxMem, Location.HEAP);
+ *
+ * // DELEGATE: Delegate to another memory provider
+ * CLMemoryProvider delegate = new CLMemoryProvider(
+ *     context, queue, 4, maxMem, Location.DELEGATE);
+ * }</pre>
+ *
+ * <h2>Memory Allocation</h2>
+ *
+ * <pre>{@code
+ * CLMemoryProvider provider = ...;
+ *
+ * // Allocate 1024 floats
+ * CLMemory mem = provider.allocate(1024);
+ *
+ * // Allocate with host pointer (zero-copy)
+ * NativeBuffer buffer = ...;
+ * CLMemory mem = provider.allocate(1024, buffer);
+ * // Uses CL_MEM_USE_HOST_PTR for zero-copy access
+ * }</pre>
+ *
+ * <h2>Memory Transfers</h2>
+ *
+ * <p>Efficient memory copy operations:</p>
+ *
+ * <pre>{@code
+ * // Host to device
+ * float[] data = {1.0f, 2.0f, 3.0f};
+ * provider.setMem(clMem, 0, data, 0, 3);
+ *
+ * // Device to host
+ * float[] result = new float[3];
+ * provider.getMem(clMem, 0, result, 0, 3);
+ *
+ * // Device to device (zero-copy on same device)
+ * provider.setMem(destMem, 0, srcMem, 0, length);
+ * // Uses clEnqueueCopyBuffer
+ * }</pre>
+ *
+ * <h2>Precision Handling</h2>
+ *
+ * <p>Automatically converts between FP32/FP64:</p>
+ *
+ * <pre>{@code
+ * // Provider with FP64 precision
+ * CLMemoryProvider fp64 = new CLMemoryProvider(..., 8, ...);
+ *
+ * // Writing float[] converts to double[]
+ * float[] f = {1.0f, 2.0f};
+ * fp64.setMem(mem, 0, f, 0, 2);  // Converts to double[]
+ *
+ * // Reading to float[] converts from double[]
+ * float[] result = new float[2];
+ * fp64.getMem(mem, 0, result, 0, 2);  // Converts from double[]
+ * }</pre>
+ *
+ * <h2>Heap-Based Memory</h2>
+ *
+ * <p>Maintains heap for host pointer tracking:</p>
+ *
+ * <pre>{@code
+ * // When Location.HEAP is used:
+ * PointerAndObject<?> ptr = PointerAndObject.forLength(numberSize, len);
+ * cl_mem mem = CL.clCreateBuffer(ctx, CL_MEM_USE_HOST_PTR, size,
+ *     ptr.getPointer(), null);
+ * heap.put(mem, ptr);  // Track for later retrieval
+ *
+ * // Can retrieve heap data directly without transfer
+ * Object heapData = heap.get(mem).getObject();
+ * }</pre>
+ *
+ * <h2>Direct Reallocation</h2>
+ *
+ * <p>Optimized reallocation with {@link NativeBuffer}:</p>
+ *
+ * <pre>{@code
+ * // Enable direct reallocation (default: true)
+ * CLMemoryProvider.enableDirectReallocation = true;
+ *
+ * // Reallocation reuses host buffer
+ * NativeBuffer src = ...;
+ * RAM newMem = provider.reallocate(src, offset, length);
+ * // Uses CL_MEM_USE_HOST_PTR to avoid copy
+ * }</pre>
+ *
+ * <h2>NativeBuffer Adapters</h2>
+ *
+ * <p>Registered adapters enable {@link NativeBuffer} interop:</p>
+ *
+ * <pre>{@code
+ * // Adapter for reading CLMemory to NativeBuffer
+ * NativeBufferMemoryProvider.registerAdapter(CLMemory.class,
+ *     (mem, offset, source, srcOffset, length) -> {
+ *         Pointer dst = Pointer.to(mem.getBuffer());
+ *         clEnqueueReadBuffer(queue, source.getMem(), ...);
+ *     });
+ *
+ * // Adapter for direct access to heap data
+ * NativeBufferMemoryProvider.registerAdapter(CLMemory.class,
+ *     (mem, offset, length) -> {
+ *         return heap.get(mem.getMem()).getObject();
+ *     });
+ * }</pre>
+ *
+ * <h2>Memory Tracking</h2>
+ *
+ * <pre>{@code
+ * // Current memory usage
+ * long used = provider.getAllocatedMemory();
+ *
+ * // Tracks all allocations
+ * CLMemory mem1 = provider.allocate(1024);  // memoryUsed += 4096
+ * CLMemory mem2 = provider.allocate(2048);  // memoryUsed += 8192
+ *
+ * // Deallocates and updates tracking
+ * provider.deallocate(1024, mem1);  // memoryUsed -= 4096
+ * }</pre>
+ *
+ * <h2>Metrics</h2>
+ *
+ * <p>Automatic metrics collection:</p>
+ *
+ * <pre>{@code
+ * // Distribution metrics
+ * CLMemoryProvider.allocationSizes.getStats();    // Allocation size distribution
+ * CLMemoryProvider.deallocationSizes.getStats();  // Deallocation size distribution
+ *
+ * // Timing metrics
+ * CLMemoryProvider.ioTime.getSummary();  // setMem/getMem timing
+ * }</pre>
+ *
+ * @see CLMemory
+ * @see CLDataContext
+ * @see MemoryProvider
+ */
 public class CLMemoryProvider implements MemoryProvider<RAM>, ConsoleFeatures {
+	/**
+	 * Enables direct reallocation using {@link NativeBuffer} host pointers with
+	 * {@code CL_MEM_USE_HOST_PTR} to avoid memory copies. Default is {@code true}.
+	 */
 	public static boolean enableDirectReallocation = true;
+
+	/**
+	 * Enables logging of large memory allocations (greater than 10MB).
+	 * Controlled by the {@code AR_HARDWARE_ALLOCATION_LOGGING} system property.
+	 */
 	public static boolean enableLargeAllocationLogging =
 			SystemUtils.isEnabled("AR_HARDWARE_ALLOCATION_LOGGING").orElse(false);
 
+	/** Distribution metric tracking OpenCL memory allocation sizes in bytes. */
 	public static DistributionMetric allocationSizes = Hardware.console.distribution("clAllocationSizes", 1024 * 1024);
+
+	/** Distribution metric tracking OpenCL memory deallocation sizes in bytes. */
 	public static DistributionMetric deallocationSizes = Hardware.console.distribution("clDeallocationSizes", 1024 * 1024);
+
+	/** Timing metric tracking OpenCL memory I/O operations (setMem/getMem). */
 	public static TimingMetric ioTime = Hardware.console.timing("clIO");
 
 	static {
@@ -91,23 +261,74 @@ public class CLMemoryProvider implements MemoryProvider<RAM>, ConsoleFeatures {
 		});
 	}
 
+	/**
+	 * Memory allocation location strategies for OpenCL buffers.
+	 */
 	public enum Location {
-		HOST, DEVICE, HEAP, DELEGATE
+		/**
+		 * Allocate using host-pinned memory ({@code CL_MEM_ALLOC_HOST_PTR}).
+		 * Memory is accessible from both host and device with optimized transfers.
+		 */
+		HOST,
+
+		/**
+		 * Allocate on device memory only.
+		 * Best performance for GPU-only operations but requires explicit transfers.
+		 */
+		DEVICE,
+
+		/**
+		 * Use Java heap arrays with {@code CL_MEM_USE_HOST_PTR}.
+		 * Enables zero-copy access when supported by the OpenCL implementation.
+		 */
+		HEAP,
+
+		/**
+		 * Delegate allocation to another {@link MemoryProvider}.
+		 * Uses the delegate provider's memory with {@code CL_MEM_USE_HOST_PTR}.
+		 */
+		DELEGATE
 	}
 
+	/** The memory allocation strategy for this provider. */
 	private final Location location;
 
+	/** The OpenCL data context for buffer creation. */
 	private final CLDataContext context;
+
+	/** The command queue for memory transfer operations. */
 	private final cl_command_queue queue;
+
+	/** The size in bytes of each numeric element (4 for FP32, 8 for FP64). */
 	private final int numberSize;
+
+	/** The maximum total memory that can be allocated in bytes. */
 	private final long memoryMax;
+
+	/** The total amount of memory currently allocated in bytes. */
 	private long memoryUsed;
 
+	/** Map from OpenCL memory objects to their backing host pointers. */
 	private HashMap<cl_mem, PointerAndObject<?>> heap;
+
+	/** Reverse map from host pointers to OpenCL memory objects. */
 	private HashMap<PointerAndObject<?>, cl_mem> reverseHeap;
+
+	/** List of all memory allocations for tracking. */
 	private List<CLMemory> allocated;
+
+	/** List of memory objects currently being deallocated (for thread safety). */
 	private List<RAM> deallocating;
 
+	/**
+	 * Creates a new OpenCL memory provider.
+	 *
+	 * @param context    the OpenCL data context for buffer creation
+	 * @param queue      the command queue for memory transfer operations
+	 * @param numberSize the size in bytes of each numeric element (4 for FP32, 8 for FP64)
+	 * @param memoryMax  the maximum total memory that can be allocated in bytes
+	 * @param location   the memory allocation strategy to use
+	 */
 	public CLMemoryProvider(CLDataContext context, cl_command_queue queue,
 							int numberSize, long memoryMax, Location location) {
 		this.context = context;
@@ -121,21 +342,45 @@ public class CLMemoryProvider implements MemoryProvider<RAM>, ConsoleFeatures {
 		this.deallocating = new ArrayList<>();
 	}
 
+	/** {@inheritDoc} */
 	@Override
 	public String getName() { return context.getName(); }
 
+	/** {@inheritDoc} */
 	@Override
 	public int getNumberSize() { return numberSize; }
 
+	/**
+	 * Returns the total amount of memory currently allocated in bytes.
+	 *
+	 * @return the allocated memory in bytes
+	 */
 	public long getAllocatedMemory() { return memoryUsed; }
 
+	/**
+	 * Returns the OpenCL data context associated with this provider.
+	 *
+	 * @return the CL data context
+	 */
 	public CLDataContext getContext() { return context; }
 
+	/** {@inheritDoc} */
 	@Override
 	public CLMemory allocate(int size) {
 		return allocate(size, null);
 	}
 
+	/**
+	 * Allocates OpenCL memory with an optional source {@link NativeBuffer} for zero-copy access.
+	 *
+	 * <p>When a source buffer is provided, the allocation uses {@code CL_MEM_USE_HOST_PTR}
+	 * to share the host memory directly with the OpenCL buffer, avoiding data copies.</p>
+	 *
+	 * @param size the number of elements to allocate
+	 * @param src  optional native buffer to use as host pointer, or {@code null} for standard allocation
+	 * @return the allocated OpenCL memory
+	 * @throws HardwareException if allocation fails
+	 */
 	public CLMemory allocate(int size, NativeBuffer src) {
 		if (enableLargeAllocationLogging && size > (10 * 1024 * 1024)) {
 			log("Allocating " + (numberSize * (long) size) / 1024 / 1024 + "mb");
@@ -152,6 +397,7 @@ public class CLMemoryProvider implements MemoryProvider<RAM>, ConsoleFeatures {
 		}
 	}
 
+	/** {@inheritDoc} */
 	@Override
 	public void deallocate(int size, RAM ram) {
 		synchronized (deallocating) {
@@ -178,6 +424,7 @@ public class CLMemoryProvider implements MemoryProvider<RAM>, ConsoleFeatures {
 		}
 	}
 
+	/** {@inheritDoc} */
 	@Override
 	public RAM reallocate(Memory mem, int offset, int length) {
 		if (enableDirectReallocation && mem instanceof NativeBuffer) {
@@ -190,6 +437,26 @@ public class CLMemoryProvider implements MemoryProvider<RAM>, ConsoleFeatures {
 		}
 	}
 
+	/**
+	 * Creates an OpenCL buffer with the specified length and optional host pointer.
+	 *
+	 * <p>The buffer creation strategy depends on the {@link Location} setting and
+	 * whether a source buffer is provided:</p>
+	 * <ul>
+	 *   <li>With source buffer: uses {@code CL_MEM_USE_HOST_PTR}</li>
+	 *   <li>{@link Location#HEAP}: creates heap array with {@code CL_MEM_USE_HOST_PTR}</li>
+	 *   <li>{@link Location#DELEGATE}: delegates to another provider with {@code CL_MEM_USE_HOST_PTR}</li>
+	 *   <li>{@link Location#HOST}: uses {@code CL_MEM_ALLOC_HOST_PTR}</li>
+	 *   <li>{@link Location#DEVICE}: standard device allocation</li>
+	 * </ul>
+	 *
+	 * @param len the number of elements to allocate
+	 * @param src optional native buffer for zero-copy access, or {@code null}
+	 * @return the created OpenCL buffer object
+	 * @throws IllegalArgumentException if length is not positive
+	 * @throws UnsupportedOperationException if the allocation size exceeds {@link Integer#MAX_VALUE} bytes
+	 * @throws HardwareException if memory maximum would be exceeded
+	 */
 	protected cl_mem buffer(int len, NativeBuffer src) {
 		if (len <= 0) throw new IllegalArgumentException();
 
@@ -236,6 +503,7 @@ public class CLMemoryProvider implements MemoryProvider<RAM>, ConsoleFeatures {
 		return mem;
 	}
 
+	/** {@inheritDoc} */
 	@Override
 	public void setMem(RAM ram, int offset, float[] source, int srcOffset, int length) {
 		if (!(ram instanceof CLMemory)) throw new IllegalArgumentException();
@@ -268,6 +536,7 @@ public class CLMemoryProvider implements MemoryProvider<RAM>, ConsoleFeatures {
 		}
 	}
 
+	/** {@inheritDoc} */
 	@Override
 	public void setMem(RAM ram, int offset, double[] source, int srcOffset, int length) {
 		if (!(ram instanceof CLMemory)) throw new IllegalArgumentException();
@@ -300,6 +569,7 @@ public class CLMemoryProvider implements MemoryProvider<RAM>, ConsoleFeatures {
 		}
 	}
 
+	/** {@inheritDoc} */
 	@Override
 	public void setMem(RAM ram, int offset, Memory srcRam, int srcOffset, int length) {
 		if (!(ram instanceof CLMemory)) throw new IllegalArgumentException();
@@ -349,12 +619,26 @@ public class CLMemoryProvider implements MemoryProvider<RAM>, ConsoleFeatures {
 		}
 	}
 
+	/** {@inheritDoc} */
 	@Override
 	public void getMem(RAM mem, int sOffset, float out[], int oOffset, int length) {
 		if (!(mem instanceof CLMemory)) throw new IllegalArgumentException();
 		getMem((CLMemory) mem, sOffset, out, oOffset, length, 1);
 	}
 
+	/**
+	 * Reads data from OpenCL memory into a float array with retry support.
+	 *
+	 * <p>If heap data is available, reads directly from the heap without a device transfer.
+	 * Automatically converts from FP64 to float if the provider uses double precision.</p>
+	 *
+	 * @param mem     the source OpenCL memory
+	 * @param sOffset the source offset in elements
+	 * @param out     the destination float array
+	 * @param oOffset the destination offset in the array
+	 * @param length  the number of elements to read
+	 * @param retries the number of retry attempts
+	 */
 	private void getMem(CLMemory mem, int sOffset, float out[], int oOffset, int length, int retries) {
 		long start = System.nanoTime();
 
@@ -396,12 +680,26 @@ public class CLMemoryProvider implements MemoryProvider<RAM>, ConsoleFeatures {
 		}
 	}
 
+	/** {@inheritDoc} */
 	@Override
 	public void getMem(RAM mem, int sOffset, double out[], int oOffset, int length) {
 		if (!(mem instanceof CLMemory)) throw new IllegalArgumentException();
 		getMem((CLMemory) mem, sOffset, out, oOffset, length, 1);
 	}
 
+	/**
+	 * Reads data from OpenCL memory into a double array with retry support.
+	 *
+	 * <p>If heap data is available, reads directly from the heap without a device transfer.
+	 * Automatically converts from FP32 to double if the provider uses single precision.</p>
+	 *
+	 * @param mem     the source OpenCL memory
+	 * @param sOffset the source offset in elements
+	 * @param out     the destination double array
+	 * @param oOffset the destination offset in the array
+	 * @param length  the number of elements to read
+	 * @param retries the number of retry attempts
+	 */
 	private void getMem(CLMemory mem, int sOffset, double out[], int oOffset, int length, int retries) {
 		long start = System.nanoTime();
 
@@ -443,11 +741,22 @@ public class CLMemoryProvider implements MemoryProvider<RAM>, ConsoleFeatures {
 		}
 	}
 
+	/**
+	 * Waits for an OpenCL event to complete and releases it.
+	 *
+	 * @param event the OpenCL event to process
+	 */
 	private static void processEvent(cl_event event) {
 		CL.clWaitForEvents(1, new cl_event[] { event });
 		CL.clReleaseEvent(event);
 	}
 
+	/**
+	 * Adds a memory-pointer mapping to the heap tracking structures.
+	 *
+	 * @param mem the OpenCL memory object
+	 * @param ptr the associated pointer and backing object
+	 */
 	private void heapAdd(cl_mem mem, PointerAndObject<?> ptr) {
 		if (heap == null) heap = new HashMap<>();
 		if (reverseHeap == null) reverseHeap = new HashMap<>();
@@ -455,6 +764,11 @@ public class CLMemoryProvider implements MemoryProvider<RAM>, ConsoleFeatures {
 		reverseHeap.put(ptr, mem);
 	}
 
+	/**
+	 * Removes a pointer from the heap tracking structures.
+	 *
+	 * @param ptr the pointer to remove
+	 */
 	private void heapRemove(PointerAndObject<?> ptr) {
 		if (heap == null) return;
 		if (reverseHeap == null) return;
@@ -464,6 +778,11 @@ public class CLMemoryProvider implements MemoryProvider<RAM>, ConsoleFeatures {
 		reverseHeap.remove(ptr);
 	}
 
+	/**
+	 * Removes an OpenCL memory object from the heap tracking structures.
+	 *
+	 * @param mem the OpenCL memory object to remove
+	 */
 	private void heapRemove(cl_mem mem) {
 		if (heap == null) return;
 		if (reverseHeap == null) return;
@@ -473,12 +792,19 @@ public class CLMemoryProvider implements MemoryProvider<RAM>, ConsoleFeatures {
 		reverseHeap.remove(ptr);
 	}
 
+	/**
+	 * Retrieves the backing heap data for an OpenCL memory object if available.
+	 *
+	 * @param mem the OpenCL memory to look up
+	 * @return the backing array (float[] or double[]) or {@code null} if not in heap
+	 */
 	private Object getHeapData(CLMemory mem) {
 		if (heap != null)
 			return Optional.ofNullable(heap.get(mem.getMem())).map(PointerAndObject::getObject).orElse(null);
 		return null;
 	}
 
+	/** {@inheritDoc} */
 	@Override
 	public void destroy() {
 		// TODO  Deallocating all of these at once appears to produce SIGSEGV
@@ -487,6 +813,7 @@ public class CLMemoryProvider implements MemoryProvider<RAM>, ConsoleFeatures {
 		allocated = null;
 	}
 
+	/** {@inheritDoc} */
 	@Override
 	public Console console() { return Hardware.console; }
 }
