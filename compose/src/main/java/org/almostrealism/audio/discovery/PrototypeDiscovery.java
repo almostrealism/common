@@ -16,6 +16,8 @@
 
 package org.almostrealism.audio.discovery;
 
+import org.almostrealism.audio.AudioLibrary;
+import org.almostrealism.audio.data.WaveDataProvider;
 import org.almostrealism.audio.data.WaveDetails;
 import org.almostrealism.audio.persistence.AudioLibraryPersistence;
 import org.almostrealism.audio.persistence.LibraryDestination;
@@ -48,14 +50,16 @@ import java.util.Map;
  * Options:
  *   --data PREFIX     Path prefix for protobuf library files (required)
  *                     Files are expected at PREFIX_0.bin, PREFIX_1.bin, etc.
+ *   --samples DIR     Path to audio samples directory (optional but recommended)
+ *                     Required to display file paths instead of just identifiers
  *   --clusters N      Number of clusters to show (default: 10)
- *   --reveal          Open files in Finder/Explorer
+ *   --reveal          Open files in Finder/Explorer (requires --samples)
  * </pre>
  *
  * <h2>Example</h2>
  * <pre>
  * java -cp ... org.almostrealism.audio.discovery.PrototypeDiscovery \
- *   --data ~/.almostrealism/library --clusters 5
+ *   --data ~/.almostrealism/library --samples ~/Music/Samples --clusters 5
  * </pre>
  *
  * @see AudioLibraryPersistence
@@ -65,12 +69,18 @@ import java.util.Map;
  */
 public class PrototypeDiscovery implements ConsoleFeatures {
 
+	private static final int DEFAULT_SAMPLE_RATE = 44100;
+
 	private final String dataPrefix;
+	private final String samplesDir;
 	private final int maxClusters;
 	private final boolean reveal;
 
-	public PrototypeDiscovery(String dataPrefix, int maxClusters, boolean reveal) {
+	private AudioLibrary library;
+
+	public PrototypeDiscovery(String dataPrefix, String samplesDir, int maxClusters, boolean reveal) {
 		this.dataPrefix = dataPrefix;
+		this.samplesDir = samplesDir;
 		this.maxClusters = maxClusters;
 		this.reveal = reveal;
 	}
@@ -78,32 +88,48 @@ public class PrototypeDiscovery implements ConsoleFeatures {
 	public void run() throws Exception {
 		log("=== Prototype Discovery ===");
 		log("Data prefix: " + dataPrefix);
+		log("Samples dir: " + (samplesDir != null ? samplesDir : "(not specified)"));
 		log("Max clusters: " + maxClusters);
 		log("");
 
-		// Load pre-computed library data from protobuf
-		log("Loading library from protobuf...");
-		LibraryDestination destination = new LibraryDestination(dataPrefix);
-		List<WaveDetails> allDetails = new ArrayList<>();
-
-		try {
-			AudioLibraryPersistence.loadLibrary(null, destination.in())
-					.getAllDetails()
-					.stream()
-					.filter(this::hasFeatures)
-					.forEach(allDetails::add);
-		} catch (Exception e) {
-			// loadLibrary with null AudioLibrary won't work, need different approach
+		// Initialize AudioLibrary if samples directory is provided
+		if (samplesDir != null) {
+			File samplesRoot = new File(samplesDir);
+			if (!samplesRoot.isDirectory()) {
+				warn("Samples directory does not exist: " + samplesDir);
+				warn("File paths will not be resolved.");
+			} else {
+				log("Initializing library from samples directory...");
+				library = new AudioLibrary(samplesRoot, DEFAULT_SAMPLE_RATE);
+				log("  Scanning file tree...");
+			}
+		} else {
+			log("Note: No --samples directory specified.");
+			log("      Prototypes will show identifiers instead of file paths.");
+			log("      Use --samples DIR to enable file path display.");
+			log("");
 		}
 
-		// Actually load the protobuf data directly
-		allDetails.clear();
-		var libraryDataList = destination.load();
-		for (var libraryData : libraryDataList) {
-			for (var entry : libraryData.getInfoMap().entrySet()) {
-				WaveDetails details = AudioLibraryPersistence.decode(entry.getValue());
-				if (hasFeatures(details)) {
-					allDetails.add(details);
+		// Load pre-computed library data from protobuf
+		log("Loading library from protobuf...");
+		List<WaveDetails> allDetails = new ArrayList<>();
+
+		if (library != null) {
+			// Load into the AudioLibrary so we can use find() to resolve paths
+			AudioLibraryPersistence.loadLibrary(library, dataPrefix);
+			library.getAllDetails().stream()
+					.filter(this::hasFeatures)
+					.forEach(allDetails::add);
+		} else {
+			// No samples directory - load directly from protobuf
+			LibraryDestination destination = new LibraryDestination(dataPrefix);
+			var libraryDataList = destination.load();
+			for (var libraryData : libraryDataList) {
+				for (var entry : libraryData.getInfoMap().entrySet()) {
+					WaveDetails details = AudioLibraryPersistence.decode(entry.getValue());
+					if (hasFeatures(details)) {
+						allDetails.add(details);
+					}
 				}
 			}
 		}
@@ -200,16 +226,23 @@ public class PrototypeDiscovery implements ConsoleFeatures {
 		for (int i = 0; i < displayCount; i++) {
 			Prototype p = prototypes.get(i);
 			String id = p.details.getIdentifier();
-			String name = getDisplayName(id);
+			String filePath = resolveFilePath(id);
+			String displayName = filePath != null ? getDisplayName(filePath) : id;
 
 			log(String.format("Cluster %d (%d samples):", i + 1, p.communitySize));
-			log(String.format("  Prototype: %s", name));
+			log(String.format("  Prototype: %s", displayName));
+			if (filePath != null) {
+				log(String.format("  Path: %s", filePath));
+			}
 			log(String.format("  Centrality: %.6f", p.centrality));
 			log(String.format("  Identifier: %s", id));
 			log("");
 
-			if (reveal && id != null) {
-				revealInFinder(id);
+			if (reveal && filePath != null) {
+				revealInFinder(filePath);
+			} else if (reveal && filePath == null) {
+				warn("Cannot reveal: no file path for identifier " + id);
+				warn("Use --samples DIR to enable file path resolution");
 			}
 		}
 
@@ -222,10 +255,30 @@ public class PrototypeDiscovery implements ConsoleFeatures {
 
 		log("");
 		log("Done.");
+
+		// Cleanup
+		if (library != null) {
+			library.stop();
+		}
 	}
 
 	private boolean hasFeatures(WaveDetails details) {
 		return details != null && details.getFeatureData() != null;
+	}
+
+	/**
+	 * Resolves a content identifier (MD5 hash) to a file path using the AudioLibrary.
+	 *
+	 * @param identifier the content identifier to resolve
+	 * @return the file path, or null if the library is not initialized or the identifier is not found
+	 */
+	private String resolveFilePath(String identifier) {
+		if (library == null || identifier == null) {
+			return null;
+		}
+
+		WaveDataProvider provider = library.find(identifier);
+		return provider != null ? provider.getKey() : null;
 	}
 
 	private void computeMissingSimilarities(List<WaveDetails> allDetails) {
@@ -288,12 +341,14 @@ public class PrototypeDiscovery implements ConsoleFeatures {
 	public static void main(String[] args) throws Exception {
 		// Parse arguments
 		String dataPrefix = null;
+		String samplesDir = null;
 		int maxClusters = 10;
 		boolean reveal = false;
 
 		for (int i = 0; i < args.length; i++) {
 			switch (args[i]) {
 				case "--data" -> dataPrefix = args[++i];
+				case "--samples" -> samplesDir = args[++i];
 				case "--clusters" -> maxClusters = Integer.parseInt(args[++i]);
 				case "--reveal" -> reveal = true;
 				case "--help" -> {
@@ -321,7 +376,7 @@ public class PrototypeDiscovery implements ConsoleFeatures {
 			System.exit(1);
 		}
 
-		PrototypeDiscovery discovery = new PrototypeDiscovery(dataPrefix, maxClusters, reveal);
+		PrototypeDiscovery discovery = new PrototypeDiscovery(dataPrefix, samplesDir, maxClusters, reveal);
 		discovery.run();
 	}
 
@@ -333,11 +388,18 @@ public class PrototypeDiscovery implements ConsoleFeatures {
 		System.out.println("Options:");
 		System.out.println("  --data PREFIX     Path prefix for protobuf library files (required)");
 		System.out.println("                    Files are expected at PREFIX_0.bin, PREFIX_1.bin, etc.");
+		System.out.println("  --samples DIR     Path to audio samples directory (optional)");
+		System.out.println("                    Required to display file paths instead of identifiers");
 		System.out.println("  --clusters N      Number of clusters to show (default: 10)");
-		System.out.println("  --reveal          Open prototype files in Finder/Explorer");
+		System.out.println("  --reveal          Open prototype files in Finder/Explorer (requires --samples)");
 		System.out.println("  --help            Show this help message");
 		System.out.println();
-		System.out.println("Example:");
+		System.out.println("Examples:");
+		System.out.println("  # Show prototypes with file paths:");
+		System.out.println("  java -cp ... org.almostrealism.audio.discovery.PrototypeDiscovery \\");
+		System.out.println("    --data ~/.almostrealism/library --samples ~/Music/Samples --clusters 5");
+		System.out.println();
+		System.out.println("  # Show prototypes without file paths (identifiers only):");
 		System.out.println("  java -cp ... org.almostrealism.audio.discovery.PrototypeDiscovery \\");
 		System.out.println("    --data ~/.almostrealism/library --clusters 5");
 	}

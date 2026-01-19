@@ -2,6 +2,22 @@
 
 ---
 
+# 🛑 STOP. READ THIS FIRST. 🛑
+
+## ⚠️ ABSOLUTE PREREQUISITE: USE AR-DOCS MCP BEFORE ANY ACTION ⚠️
+
+**BEFORE you write ANY code, make ANY assumptions, or take ANY action:**
+
+1. `mcp__ar-docs__search_ar_docs query:"<relevant terms>"`
+2. `mcp__ar-docs__read_ar_module module:"ml"` (or relevant module)
+3. `mcp__ar-docs__read_quick_reference`
+
+**DO NOT** assume you know how something works. **DO NOT** speculate. **LOOK IT UP FIRST.**
+
+See [../CLAUDE.md](../CLAUDE.md) for the full policy on why this is mandatory.
+
+---
+
 ## ⚠️ CRITICAL: DO NOT COMMIT CODE ⚠️
 
 **THIS IS AN ABSOLUTE RULE WITH NO EXCEPTIONS.**

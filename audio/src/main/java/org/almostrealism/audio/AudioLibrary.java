@@ -59,6 +59,50 @@ import java.util.stream.Stream;
  * It supports background processing with priority queuing, progress tracking, and
  * similarity comparison between audio samples.</p>
  *
+ * <h2>Key-Identifier Architecture</h2>
+ * <p>AudioLibrary uses a two-level identification system:</p>
+ * <ul>
+ *   <li><b>Key</b> (file path): The actual filesystem path to the audio file,
+ *       obtained via {@link WaveDataProvider#getKey()}</li>
+ *   <li><b>Identifier</b> (content hash): An MD5 hash of the file contents,
+ *       obtained via {@link WaveDataProvider#getIdentifier()}</li>
+ * </ul>
+ *
+ * <p>This separation allows:</p>
+ * <ul>
+ *   <li>Content-based deduplication (same audio = same identifier)</li>
+ *   <li>File movement detection (path changes but identifier stays same)</li>
+ *   <li>Efficient storage (protobuf stores identifier, file path resolved at runtime)</li>
+ * </ul>
+ *
+ * <h2>Internal Data Structures</h2>
+ * <ul>
+ *   <li><b>identifiers</b> map: key (file path) to identifier (MD5 hash)</li>
+ *   <li><b>info</b> map: identifier to {@link WaveDetails}</li>
+ * </ul>
+ *
+ * <h2>Resolving Identifier to File Path</h2>
+ * <p>To get the file path for a given identifier:</p>
+ * <pre>{@code
+ * WaveDataProvider provider = library.find(identifier);
+ * if (provider != null) {
+ *     String filePath = provider.getKey();
+ * }
+ * }</pre>
+ * <p>The {@link #find(String)} method searches the file tree for a provider whose
+ * identifier matches, then returns it so {@link WaveDataProvider#getKey()} can
+ * retrieve the file path.</p>
+ *
+ * <h2>Persistence with Protobuf</h2>
+ * <p>When saving/loading library data via
+ * {@link org.almostrealism.audio.persistence.AudioLibraryPersistence}:</p>
+ * <ul>
+ *   <li><b>Saving</b>: {@link WaveDetails} (keyed by identifier) is serialized to protobuf</li>
+ *   <li><b>Loading</b>: Details are loaded into the info map by identifier</li>
+ *   <li><b>File path resolution</b>: Requires both the protobuf data AND a file tree.
+ *       Call {@link #find(String)} with the identifier to resolve to file path.</li>
+ * </ul>
+ *
  * <h2>Key Features</h2>
  * <ul>
  *   <li>Asynchronous file scanning and analysis with configurable priority</li>
@@ -75,9 +119,12 @@ import java.util.stream.Stream;
  * // Start background analysis
  * library.refresh().thenRun(() -> {
  *     // Analysis complete
- *     library.getAllDetails().forEach(d ->
- *         System.out.println(d.getIdentifier() + ": " + d.getDuration() + "s")
- *     );
+ *     library.getAllDetails().forEach(d -> {
+ *         // Get the file path for this sample
+ *         WaveDataProvider provider = library.find(d.getIdentifier());
+ *         String filePath = provider != null ? provider.getKey() : "unknown";
+ *         System.out.println(filePath + ": " + d.getFrameCount() + " frames");
+ *     });
  * });
  *
  * // Get details for a specific file
@@ -94,16 +141,32 @@ import java.util.stream.Stream;
  * @see WaveDetails
  * @see WaveDetailsFactory
  * @see FileWaveDataProviderTree
+ * @see org.almostrealism.audio.persistence.AudioLibraryPersistence
  */
 public class AudioLibrary implements ConsoleFeatures {
 	public static double BACKGROUND_PRIORITY = 0.0;
 	public static double DEFAULT_PRIORITY = 0.5;
 	public static double HIGH_PRIORITY = 1.0;
 
+	/** The file tree providing access to audio files in the library directory. */
 	private final FileWaveDataProviderTree<? extends Supplier<FileWaveDataProvider>> root;
+
+	/** Target sample rate for audio analysis. */
 	private final int sampleRate;
 
+	/**
+	 * Maps file path (key) to content identifier (MD5 hash).
+	 * <p>This mapping is built as files are processed and allows resolving
+	 * from a known file path to its content identifier.</p>
+	 */
 	private final Map<String, String> identifiers;
+
+	/**
+	 * Maps content identifier (MD5 hash) to {@link WaveDetails}.
+	 * <p>This is the primary storage for analyzed audio metadata. The identifier
+	 * is used as the key because it represents the actual content, allowing
+	 * deduplication when the same file exists at multiple paths.</p>
+	 */
 	private final Map<String, WaveDetails> info;
 
 	private final WaveDetailsFactory factory;
@@ -181,8 +244,46 @@ public class AudioLibrary implements ConsoleFeatures {
 		return allDetails().toList();
 	}
 
+	/**
+	 * Retrieves the {@link WaveDetails} for the given content identifier.
+	 *
+	 * <p>The identifier is an MD5 hash of the file contents, not the file path.
+	 * To get the file path for a sample, use {@link #find(String)} to get the
+	 * {@link WaveDataProvider}, then call {@link WaveDataProvider#getKey()}.</p>
+	 *
+	 * @param identifier the content identifier (MD5 hash)
+	 * @return the WaveDetails for this identifier, or null if not found
+	 * @see #find(String)
+	 */
 	public WaveDetails get(String identifier) { return info.get(identifier); }
 
+	/**
+	 * Finds the {@link WaveDataProvider} for the given content identifier by
+	 * searching the file tree.
+	 *
+	 * <p>This method is essential for resolving an identifier back to a file path.
+	 * It searches all files in the library's file tree and returns the provider
+	 * whose content identifier matches.</p>
+	 *
+	 * <h3>Usage: Getting file path from identifier</h3>
+	 * <pre>{@code
+	 * WaveDetails details = library.get(identifier);
+	 * WaveDataProvider provider = library.find(identifier);
+	 * if (provider != null) {
+	 *     String filePath = provider.getKey();  // The actual file path
+	 * }
+	 * }</pre>
+	 *
+	 * <p><b>Note:</b> This method requires the file tree to be populated. If
+	 * loading from protobuf without a corresponding file tree, this method
+	 * will return null even for valid identifiers.</p>
+	 *
+	 * @param identifier the content identifier (MD5 hash) to search for
+	 * @return the WaveDataProvider for this identifier, or null if not found
+	 *         in the current file tree
+	 * @see WaveDataProvider#getKey()
+	 * @see WaveDataProvider#getIdentifier()
+	 */
 	public WaveDataProvider find(String identifier) {
 		return root.children()
 				.map(Supplier::get)
@@ -192,6 +293,20 @@ public class AudioLibrary implements ConsoleFeatures {
 				.orElse(null);
 	}
 
+	/**
+	 * Adds pre-computed {@link WaveDetails} to this library.
+	 *
+	 * <p>This method is used when loading library data from protobuf via
+	 * {@link org.almostrealism.audio.persistence.AudioLibraryPersistence#loadLibrary}.
+	 * The details are indexed by their content identifier.</p>
+	 *
+	 * <p>After including details loaded from protobuf, use {@link #find(String)}
+	 * to resolve identifiers back to file paths (requires the file tree to be
+	 * populated with the corresponding audio files).</p>
+	 *
+	 * @param details the WaveDetails to add (must have non-null identifier)
+	 * @throws IllegalArgumentException if details.getIdentifier() is null
+	 */
 	public void include(WaveDetails details) {
 		if (details.getIdentifier() == null) {
 			throw new IllegalArgumentException();

@@ -2,6 +2,78 @@
 
 ---
 
+# 🛑 STOP. READ THIS FIRST. 🛑
+
+## ⚠️ ABSOLUTE PREREQUISITE: USE AR-DOCS MCP BEFORE ANY ACTION ⚠️
+
+**THIS IS THE MOST IMPORTANT RULE. IT COMES BEFORE ALL OTHER RULES.**
+
+**BEFORE you write ANY code, make ANY assumptions, or take ANY action, you MUST:**
+
+1. **SEARCH ar-docs**: `mcp__ar-docs__search_ar_docs query:"<relevant terms>"`
+2. **READ module documentation**: `mcp__ar-docs__read_ar_module module:"<module>"`
+3. **CHECK quick reference**: `mcp__ar-docs__read_quick_reference`
+
+**YOU ARE NOT ALLOWED TO:**
+- Assume you know how something works
+- Speculate about architecture or data flow
+- Make claims about what is or isn't stored/available
+- Write code based on partial understanding
+- Say "the problem might be X" without first looking it up
+
+**THE AR CODEBASE IS A PRODUCTION APPLICATION** used by real people worldwide. If something seems like it "doesn't work" or "isn't stored," YOU ARE WRONG. The application works. You need to LOOK UP how it works.
+
+**EVERY TIME you are about to:**
+- Implement a feature → SEARCH ar-docs first
+- Fix a bug → SEARCH ar-docs first
+- Answer a question about architecture → SEARCH ar-docs first
+- Modify existing code → SEARCH ar-docs first
+- Make ANY claim about the codebase → SEARCH ar-docs first
+
+**Example of WRONG behavior:**
+```
+User: "The prototype discovery doesn't show file paths"
+Claude: "The protobuf schema only stores MD5 hash, not file path..."
+```
+This is WRONG because Claude did NOT search ar-docs to understand how the actual application handles this.
+
+**Example of CORRECT behavior:**
+```
+User: "The prototype discovery doesn't show file paths"
+Claude: [Calls mcp__ar-docs__search_ar_docs query:"AudioLibrary file path identifier"]
+Claude: [Calls mcp__ar-docs__read_ar_module module:"audio"]
+Claude: [Now understands how it actually works before responding]
+```
+
+**If ar-docs doesn't have the information you need:**
+1. READ the actual source code thoroughly
+2. TRACE the data flow from end to end
+3. NEVER guess or speculate
+
+### Specific Scenarios Requiring ar-docs
+
+**Infrastructure changes (tests, build, framework classes):**
+```
+WRONG: See TestDepthRule in source, assume how it works, add @Rule manually
+RIGHT: Search ar-docs first → Learn TestDepthRule is INTERNAL to TestSuiteBase
+```
+
+**API discovery (finding operations, interfaces, utilities):**
+```
+WRONG: Grep source for "sin" → Don't find it → Conclude "doesn't exist"
+RIGHT: mcp__ar-docs__read_quick_reference → Find sin/cos in GeometryFeatures
+```
+
+**Understanding data flow (how library handles file paths, identifiers, etc.):**
+```
+WRONG: Read one class → Make assumptions → Write incorrect code
+RIGHT: Search ar-docs → Read module docs → Trace actual data flow → Understand
+```
+
+**This rule exists because:** Claude repeatedly makes assumptions, writes incorrect code, and wastes the developer's time. The ar-docs MCP contains authoritative documentation. USE IT.
+
+---
+
 ## ⚠️ CRITICAL: DO NOT COMMIT CODE ⚠️
 
 **THIS IS AN ABSOLUTE RULE WITH NO EXCEPTIONS.**
@@ -103,72 +175,6 @@ mcp__ar-test-runner__start_test_run
 ```
 
 **Why this matters:** The MCP test runner is purpose-built for this codebase. Using Bash for tests bypasses proper environment setup, loses structured output, and ignores specialized tooling. This documentation showing bash commands is for REFERENCE ONLY - actual test execution must use MCP tools.
-
----
-
-## ⚠️ CRITICAL: ALWAYS CONSULT AR-DOCS MCP BEFORE INFRASTRUCTURE CHANGES ⚠️
-
-**THIS IS AN ABSOLUTE RULE WITH NO EXCEPTIONS.**
-
-Before making ANY changes to:
-- Test infrastructure (test classes, test utilities, test configuration)
-- Build configuration
-- Framework base classes
-- Module structure
-
-You **MUST** first consult the ar-docs MCP tools:
-- `mcp__ar-docs__search_ar_docs` - Search documentation
-- `mcp__ar-docs__read_ar_module` - Read module documentation
-- `mcp__ar-docs__read_quick_reference` - Get API quick reference
-
-**Why this matters:** The AR framework has established patterns and base classes. Making assumptions based on source code comments alone leads to violations of framework conventions. The ar-docs MCP contains authoritative documentation that explains the CORRECT patterns.
-
-**Example of what NOT to do:**
-- See `TestDepthRule` in source code
-- Assume you understand how it works from comments
-- Manually add `@Rule TestDepthRule` to a test class
-- **WRONG!** The documentation clearly states TestDepthRule is used INTERNALLY by TestSuiteBase
-
-**Correct approach:**
-1. Search ar-docs: `mcp__ar-docs__search_ar_docs query:"test grouping"`
-2. Read module docs: `mcp__ar-docs__read_ar_module module:"utils"`
-3. Understand the pattern: Tests extend `TestSuiteBase`
-4. Make changes following the documented pattern
-
----
-
-## ⚠️ CRITICAL: USE AR-DOCS FOR API DISCOVERY ⚠️
-
-**THIS IS AN ABSOLUTE RULE WITH NO EXCEPTIONS.**
-
-When looking for **how to do something** in the AR framework (mathematical operations, layer types, utilities, etc.), you **MUST** consult ar-docs BEFORE searching source code.
-
-**Situations requiring ar-docs consultation:**
-- Looking for mathematical operations (sin, cos, tan, sqrt, etc.)
-- Finding the right Features interface to implement
-- Understanding what operations are available on CollectionProducer
-- Finding layer types or model building utilities
-- Any "where is X implemented?" or "how do I do Y?" question
-
-**Tools to use:**
-- `mcp__ar-docs__read_quick_reference` - Start here for operations index
-- `mcp__ar-docs__search_ar_docs` - Search for specific terms
-- `mcp__ar-docs__read_ar_module` - Deep dive into a module
-
-**Example: Finding trigonometric functions**
-```
-WRONG approach:
-1. Grep source code for "sin" or "cos"
-2. Only find it in CollectionFeatures (it's not there)
-3. Conclude "trig functions don't exist at CollectionProducer level"
-
-CORRECT approach:
-1. mcp__ar-docs__read_quick_reference (see "Trigonometry" section)
-2. Learn that sin/cos/tan are in GeometryFeatures
-3. Use GeometryFeatures in your implementation
-```
-
-**Why this matters:** API capabilities are spread across multiple Features interfaces. Source code grep often misses the right location. The ar-docs quick reference provides a categorized operations index that shows WHERE each capability lives.
 
 ---
 
