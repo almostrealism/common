@@ -29,9 +29,9 @@ import java.util.Map;
  *
  * <h2>Why Both Graph and Group?</h2>
  * <p>{@link Graph} alone only provides neighbor relationships - you can traverse
- * from node to node, but cannot enumerate all nodes. Many graph algorithms require
- * iterating over all nodes, which is what {@link Group} provides via {@link #children()}
- * and {@link #all()}.</p>
+ * from node to node, but nodes may not be enumerable. Many graph algorithms require
+ * iterating over all nodes, which is what {@link Group} provides (members that can
+ * be mapped onto the integers) via {@link #children()} and {@link #all()}.</p>
  *
  * <h2>Core Operations</h2>
  * <ul>

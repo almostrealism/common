@@ -40,14 +40,14 @@ import java.util.Collection;
  * <p>{@link Graph} intentionally does NOT extend {@link Group}. These represent
  * fundamentally different properties:</p>
  * <ul>
- *   <li><b>Graph</b>: Defines neighbor relationships between nodes. A graph can be
- *       infinite, lazily-defined, or procedurally generated. You can traverse from
- *       any node to its neighbors without knowing all nodes.</li>
- *   <li><b>Group</b>: Represents a finite, enumerable collection. You can iterate
- *       over all elements.</li>
+ *   <li><b>Group</b>: Members can be mapped onto the integers - there exists a way
+ *       to progressively address all members (whether finite or not).</li>
+ *   <li><b>Graph</b>: Does not require this property. A graph's nodes may not be
+ *       enumerable even given infinite time. You can traverse from any node to its
+ *       neighbors without knowing whether all nodes could ever be addressed.</li>
  * </ul>
- * <p>A concrete graph implementation may also implement {@link Group} if it happens
- * to be finite and enumerable, but this is not inherent to being a graph.
+ * <p>A concrete graph implementation may also implement {@link Group} if its nodes
+ * can be mapped onto integers, but this is not inherent to being a graph.
  * See {@link WeightedGraph} which extends both for cases where enumeration is needed.</p>
  *
  * @param <T> the type of nodes in this graph (must extend Node)

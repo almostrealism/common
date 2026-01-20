@@ -28,18 +28,19 @@ import java.util.stream.Stream;
  * <p>{@link Group} and {@link Graph} represent fundamentally different properties
  * that should not be conflated:</p>
  * <ul>
- *   <li><b>Group</b>: A finite, enumerable collection. You can iterate over all
- *       elements via {@link #children()} or {@link #all()}. The collection is
- *       bounded and known.</li>
- *   <li><b>Graph</b>: Defines neighbor relationships between nodes. A graph may be
- *       infinite, lazily-defined, or procedurally generated. You can traverse from
- *       any node to its neighbors without needing to know all nodes that exist.</li>
+ *   <li><b>Group</b>: Members can be mapped onto the integers. You can progressively
+ *       address all members via {@link #children()} or {@link #all()}, whether this
+ *       process terminates in finite time or not.</li>
+ *   <li><b>Graph</b>: Defines neighbor relationships between nodes. A graph does not
+ *       require that its nodes be enumerable - it may not be known whether all nodes
+ *       could be addressed even given infinite time.</li>
  * </ul>
  * <p>These are independent properties: a structure may be a Group (enumerable), a
  * Graph (has neighbor relationships), both, or neither. For example:</p>
  * <ul>
- *   <li>A finite similarity graph implements both (see {@link WeightedGraph})</li>
- *   <li>An infinite procedural graph (e.g., integer lattice) is a Graph but not a Group</li>
+ *   <li>A similarity graph with known nodes implements both (see {@link WeightedGraph})</li>
+ *   <li>A procedurally-generated graph where node existence depends on traversal path
+ *       is a Graph but not a Group</li>
  *   <li>A simple list is a Group but not necessarily a Graph</li>
  * </ul>
  *
