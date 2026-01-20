@@ -91,6 +91,7 @@ public interface Tree<T extends Tree> extends Graph<T>, NodeGroup<T>, Parent<T>,
 	 *
 	 * @return a stream containing this node and all descendants
 	 */
+	@Override
 	default Stream<T> children() {
 		return children(true);
 	}
