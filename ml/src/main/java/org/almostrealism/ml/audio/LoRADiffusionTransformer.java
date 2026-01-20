@@ -21,15 +21,19 @@ import org.almostrealism.graph.Receptor;
 import org.almostrealism.layers.AdapterConfig;
 import org.almostrealism.layers.LoRALinear;
 import org.almostrealism.ml.LoRAAttentionFeatures;
+import org.almostrealism.ml.ModelBundleManager;
 import org.almostrealism.ml.StateDictionary;
 import org.almostrealism.model.Block;
+import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.SequentialBlock;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * A DiffusionTransformer with LoRA (Low-Rank Adaptation) support for fine-tuning.
@@ -254,6 +258,90 @@ public class LoRADiffusionTransformer extends DiffusionTransformer implements Lo
 	}
 
 	/**
+	 * Saves all LoRA adapter weights to a single protobuf bundle file.
+	 *
+	 * <p>This is the preferred method for saving adapters. It creates a single
+	 * binary file containing all weights and metadata, making it easy to
+	 * distribute, verify, and manage fine-tuned models.</p>
+	 *
+	 * @param outputPath Path to write the bundle file (e.g., "my_adapter.pb")
+	 * @param baseModelId Identifier of the base model (for provenance tracking)
+	 * @param metrics Optional training metrics (e.g., final loss, epochs)
+	 * @throws IOException If saving fails
+	 */
+	public void saveAdaptersBundle(Path outputPath, String baseModelId, Map<String, Double> metrics) throws IOException {
+		saveAdaptersBundle(outputPath, baseModelId, metrics, null);
+	}
+
+	/**
+	 * Saves all LoRA adapter weights to a single protobuf bundle file with description.
+	 *
+	 * @param outputPath Path to write the bundle file
+	 * @param baseModelId Identifier of the base model
+	 * @param metrics Optional training metrics
+	 * @param description Optional human-readable description
+	 * @throws IOException If saving fails
+	 */
+	public void saveAdaptersBundle(Path outputPath, String baseModelId,
+								   Map<String, Double> metrics, String description) throws IOException {
+		Map<String, PackedCollection> weights = new LinkedHashMap<>();
+
+		for (int i = 0; i < loraLayers.size(); i++) {
+			LoRALinear lora = loraLayers.get(i);
+			weights.put("lora." + i + ".A", lora.getLoraA());
+			weights.put("lora." + i + ".B", lora.getLoraB());
+		}
+
+		ModelBundleManager.saveAdapterBundle(outputPath, weights, adapterConfig, baseModelId, metrics, description);
+		log("Saved " + loraLayers.size() + " LoRA adapters to bundle: " + outputPath);
+	}
+
+	/**
+	 * Loads LoRA adapter weights from a protobuf bundle file.
+	 *
+	 * <p>This is the preferred method for loading adapters. The model must have
+	 * been created with the same architecture and adapter config.</p>
+	 *
+	 * @param bundlePath Path to the bundle file
+	 * @return The loaded bundle (for accessing metadata)
+	 * @throws IOException If loading fails or bundle is incompatible
+	 */
+	public ModelBundleManager.LoadedBundle loadAdaptersBundle(Path bundlePath) throws IOException {
+		ModelBundleManager.LoadedBundle bundle = ModelBundleManager.load(bundlePath);
+
+		if (!bundle.isAdapterBundle()) {
+			throw new IOException("Bundle is not an adapter bundle: " + bundle.getModelType());
+		}
+
+		Map<String, PackedCollection> weights = bundle.getWeights();
+
+		for (int i = 0; i < loraLayers.size(); i++) {
+			LoRALinear lora = loraLayers.get(i);
+
+			PackedCollection loraA = weights.get("lora." + i + ".A");
+			PackedCollection loraB = weights.get("lora." + i + ".B");
+
+			if (loraA == null || loraB == null) {
+				throw new IOException("Missing LoRA weights for layer " + i + " in bundle");
+			}
+
+			// Copy weights into existing collections
+			copyWeights(loraA, lora.getLoraA());
+			copyWeights(loraB, lora.getLoraB());
+		}
+
+		log("Loaded " + loraLayers.size() + " LoRA adapters from bundle: " + bundlePath);
+		return bundle;
+	}
+
+	private void copyWeights(PackedCollection source, PackedCollection target) {
+		int size = (int) source.getShape().getTotalSize();
+		for (int i = 0; i < size; i++) {
+			target.setMem(i, source.toDouble(i));
+		}
+	}
+
+	/**
 	 * Saves all LoRA adapter weights to a directory.
 	 *
 	 * <p>The directory structure will be:</p>
@@ -269,7 +357,9 @@ public class LoRADiffusionTransformer extends DiffusionTransformer implements Lo
 	 *
 	 * @param outputDir Directory to save adapters to
 	 * @throws IOException If saving fails
+	 * @deprecated Use {@link #saveAdaptersBundle(Path, String, Map)} instead for a single-file format
 	 */
+	@Deprecated
 	public void saveAdapters(Path outputDir) throws IOException {
 		Files.createDirectories(outputDir);
 
@@ -304,7 +394,9 @@ public class LoRADiffusionTransformer extends DiffusionTransformer implements Lo
 	 *
 	 * @param inputDir Directory containing saved adapters
 	 * @throws IOException If loading fails
+	 * @deprecated Use {@link #loadAdaptersBundle(Path)} instead for single-file format
 	 */
+	@Deprecated
 	public void loadAdapters(Path inputDir) throws IOException {
 		if (!Files.exists(inputDir.resolve("adapter_config.json"))) {
 			throw new IOException("adapter_config.json not found in " + inputDir);
@@ -465,5 +557,32 @@ public class LoRADiffusionTransformer extends DiffusionTransformer implements Lo
 			LORA_LAYERS_HOLDER.remove();
 			ADAPTER_CONFIG_HOLDER.remove();
 		}
+	}
+
+	/**
+	 * Compiles the model for training with backward pass enabled.
+	 *
+	 * @return CompiledModel ready for training
+	 */
+	public CompiledModel compileForTraining() {
+		return getModel().compile(true);
+	}
+
+	/**
+	 * Gets the input shape for this model.
+	 *
+	 * @return Input shape (batch, channels, sequenceLength)
+	 */
+	public io.almostrealism.collect.TraversalPolicy getInputShape() {
+		return getModel().getInputShape();
+	}
+
+	/**
+	 * Gets the audio sequence length this model was configured for.
+	 *
+	 * @return Audio sequence length
+	 */
+	public int getAudioSequenceLength() {
+		return getAudioSeqLen();
 	}
 }

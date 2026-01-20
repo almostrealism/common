@@ -116,7 +116,7 @@ public class DiffusionTransformer implements DitModel, DiffusionTransformerFeatu
 
 		// Add cross-attention condition input if needed
 		SequentialBlock condEmbed = null;
-		if (condTokenDim > 0) {
+		if (condTokenDim > 0 && condSeqLen > 0) {
 			PackedCollection condProjWeight1 = createWeight("model.model.to_cond_embed.0.weight", embedDim, condTokenDim);
 			PackedCollection condProjWeight2 = createWeight("model.model.to_cond_embed.2.weight", embedDim, embedDim);
 
@@ -298,7 +298,7 @@ public class DiffusionTransformer implements DitModel, DiffusionTransformerFeatu
 
 			Receptor<PackedCollection> attentionCapture = null;
 
-			if (attentionScores != null) {
+			if (attentionScores != null && hasCrossAttention) {
 				PackedCollection scores = new PackedCollection(shape(batchSize, numHeads, seqLen, condSeqLen));
 				attentionScores.put(i, scores);
 				attentionCapture = into(scores);
@@ -387,6 +387,7 @@ public class DiffusionTransformer implements DitModel, DiffusionTransformerFeatu
 	protected int getCondSeqLen() { return condSeqLen; }
 	protected int getBatchSize() { return batchSize; }
 	protected Map<Integer, PackedCollection> getAttentionScores() { return attentionScores; }
+	protected Model getModel() { return model; }
 
 	@Override
 	public void destroy() {

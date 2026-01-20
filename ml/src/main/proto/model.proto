@@ -1,0 +1,70 @@
+syntax = "proto3";
+
+package almostrealism;
+
+import "collections.proto";
+
+option java_package = "org.almostrealism.protobuf";
+
+/**
+ * Metadata for a model or adapter bundle.
+ *
+ * This allows storing training configuration, metrics, and provenance
+ * information alongside model weights in a single file.
+ */
+message ModelMetadata {
+  // Type of model bundle: "base", "lora_adapter", "merged"
+  string model_type = 1;
+
+  // Identifier/hash of the base model this was derived from
+  string base_model_id = 2;
+
+  // Unix timestamp when this bundle was created
+  int64 created_timestamp = 3;
+
+  // Flexible key-value configuration (e.g., "rank"="8", "alpha"="16.0")
+  map<string, string> config = 4;
+
+  // Training metrics (e.g., "final_train_loss"=0.0123, "epochs"=10)
+  map<string, double> metrics = 5;
+
+  // Human-readable description or notes
+  string description = 6;
+
+  // Version of the AR framework that created this bundle
+  string framework_version = 7;
+}
+
+/**
+ * Adapter configuration for LoRA fine-tuning.
+ *
+ * Stores the configuration used to create LoRA adapters so they can
+ * be reconstructed when loading.
+ */
+message AdapterConfigData {
+  // Low-rank dimension (e.g., 4, 8, 16)
+  int32 rank = 1;
+
+  // Scaling factor (typically 2 * rank)
+  double alpha = 2;
+
+  // Target layers that have adapters (e.g., "SELF_ATTENTION_QKV", "CROSS_ATTENTION_OUT")
+  repeated string targets = 3;
+}
+
+/**
+ * Complete model bundle containing weights and metadata.
+ *
+ * This is the top-level message for storing models as a single binary asset.
+ * It supports base models, LoRA adapters, and merged models.
+ */
+message ModelBundle {
+  // Metadata about this model
+  ModelMetadata metadata = 1;
+
+  // The weight tensors, keyed by layer path (e.g., "model.layers.0.self_attn.q_proj.weight")
+  CollectionLibraryData weights = 2;
+
+  // LoRA adapter configuration (only present for adapter bundles)
+  AdapterConfigData adapter_config = 3;
+}
