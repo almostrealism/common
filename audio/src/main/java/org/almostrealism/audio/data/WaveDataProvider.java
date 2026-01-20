@@ -30,6 +30,30 @@ import java.util.function.Supplier;
  * accessing audio metadata (sample rate, duration, channel count) and the actual
  * audio data with optional sample rate conversion and playback rate adjustment.</p>
  *
+ * <h2>Key vs Identifier</h2>
+ * <p>WaveDataProvider uses two different identifiers for different purposes:</p>
+ * <ul>
+ *   <li><b>{@link #getKey()}</b> - The <em>location</em> of the audio data.
+ *       For {@link FileWaveDataProvider}, this is the file path.
+ *       This is what you use to find or display the audio source.</li>
+ *   <li><b>{@link AudioDataProvider#getIdentifier()}</b> - The <em>content identifier</em>.
+ *       For {@link FileWaveDataProvider}, this is an MD5 hash of the file contents.
+ *       This is used for content-based deduplication and matching.</li>
+ * </ul>
+ *
+ * <h3>Example: Resolving a file path</h3>
+ * <pre>{@code
+ * // Given a WaveDetails with only an identifier (e.g., from protobuf)
+ * WaveDetails details = ...;
+ * String identifier = details.getIdentifier();  // MD5 hash
+ *
+ * // Find the provider in the library's file tree
+ * WaveDataProvider provider = library.find(identifier);
+ *
+ * // Get the actual file path
+ * String filePath = provider.getKey();  // e.g., "/path/to/samples/kick.wav"
+ * }</pre>
+ *
  * <h2>Key Methods</h2>
  * <ul>
  *   <li>{@link #get()} - Returns the raw WaveData at the provider's native sample rate</li>
@@ -47,9 +71,22 @@ import java.util.function.Supplier;
  *
  * @see WaveData
  * @see AudioDataProvider
+ * @see org.almostrealism.audio.AudioLibrary#find(String)
  */
 public interface WaveDataProvider extends AudioDataProvider, Supplier<WaveData>, Countable, Comparable<WaveDataProvider> {
 
+	/**
+	 * Returns the location key for this audio data.
+	 *
+	 * <p>For file-based providers, this is the file path. This is distinct from
+	 * {@link AudioDataProvider#getIdentifier()} which returns a content-based
+	 * identifier (MD5 hash for files).</p>
+	 *
+	 * <p>Use this method to get the displayable/resolvable path to the audio source.</p>
+	 *
+	 * @return the location key (file path for file-based providers)
+	 * @see AudioDataProvider#getIdentifier()
+	 */
 	String getKey();
 
 	default int getCount(double playbackRate, int sampleRate) {

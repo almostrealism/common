@@ -36,10 +36,26 @@ import java.util.Collection;
  * hierarchical parent-child relationships. In a tree, neighbors are
  * typically the children of a node.</p>
  *
+ * <h2>Graph vs Group - Important Distinction</h2>
+ * <p>{@link Graph} intentionally does NOT extend {@link Group}. These represent
+ * fundamentally different properties:</p>
+ * <ul>
+ *   <li><b>Group</b>: Members can be mapped onto the integers - there exists a way
+ *       to progressively address all members (whether finite or not).</li>
+ *   <li><b>Graph</b>: Does not require this property. A graph's nodes may not be
+ *       enumerable even given infinite time. You can traverse from any node to its
+ *       neighbors without knowing whether all nodes could ever be addressed.</li>
+ * </ul>
+ * <p>A concrete graph implementation may also implement {@link Group} if its nodes
+ * can be mapped onto integers, but this is not inherent to being a graph.
+ * See {@link WeightedGraph} which extends both for cases where enumeration is needed.</p>
+ *
  * @param <T> the type of nodes in this graph (must extend Node)
  *
  * @see Node
  * @see Tree
+ * @see Group
+ * @see WeightedGraph
  *
  * @author Michael Murray
  */

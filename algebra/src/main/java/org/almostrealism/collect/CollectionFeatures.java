@@ -3403,6 +3403,55 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		return producer;
 	}
 
+	/**
+	 * Returns the index of the maximum value in the array.
+	 *
+	 * @param values the array to search
+	 * @return the index of the maximum value, or -1 if the array is empty
+	 */
+	default int argmax(double[] values) {
+		if (values.length == 0) return -1;
+
+		int maxIdx = 0;
+		double maxVal = values[0];
+		for (int i = 1; i < values.length; i++) {
+			if (values[i] > maxVal) {
+				maxVal = values[i];
+				maxIdx = i;
+			}
+		}
+		return maxIdx;
+	}
+
+	/**
+	 * Returns the indices of the top-k values in descending order.
+	 *
+	 * @param values the array to search
+	 * @param k the number of top values to return
+	 * @return list of indices of the top-k values
+	 */
+	default List<Integer> topK(double[] values, int k) {
+		List<Integer> result = new ArrayList<>(k);
+		boolean[] used = new boolean[values.length];
+
+		for (int i = 0; i < Math.min(k, values.length); i++) {
+			int maxIdx = -1;
+			double maxVal = Double.NEGATIVE_INFINITY;
+			for (int j = 0; j < values.length; j++) {
+				if (!used[j] && values[j] > maxVal) {
+					maxVal = values[j];
+					maxIdx = j;
+				}
+			}
+			if (maxIdx >= 0) {
+				result.add(maxIdx);
+				used[maxIdx] = true;
+			}
+		}
+
+		return result;
+	}
+
 	default List<String> applyParentheses(List<String> args) {
 		return args.stream().map(this::applyParentheses).collect(Collectors.toList());
 	}
