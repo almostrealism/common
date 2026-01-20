@@ -21,7 +21,6 @@ import org.almostrealism.physics.Element;
 import org.almostrealism.physics.Substance;
 
 import java.util.Collection;
-import java.util.stream.Stream;
 
 /**
  * Represents a chemical molecule as a graph of connected elements.
@@ -86,19 +85,5 @@ public interface Molecule extends Substance, Graph<Element> {
 	@Override
 	default int countNodes() {
 		return 0;
-	}
-
-	/**
-	 * Returns a stream of all elements (atoms) in this molecule.
-	 *
-	 * <p><b>Note:</b> This default implementation returns an empty stream.
-	 * Concrete implementations should override this method to return the
-	 * actual elements in the molecular structure.</p>
-	 *
-	 * @return a stream of elements in this molecule (default returns empty stream)
-	 */
-	@Override
-	default Stream<Element> children() {
-		return Stream.empty();
 	}
 }

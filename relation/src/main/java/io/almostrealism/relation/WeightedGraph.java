@@ -20,16 +20,24 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * A graph structure with weighted edges between nodes.
+ * A graph structure with weighted edges between nodes that is also enumerable.
  *
- * <p>{@link WeightedGraph} extends {@link Graph} to add support for edge weights.
- * This enables graph algorithms like PageRank, community detection, and shortest
- * path computations.</p>
+ * <p>{@link WeightedGraph} extends both {@link Graph} (for neighbor relationships)
+ * and {@link Group} (for node enumeration). This combination enables graph algorithms
+ * like PageRank, community detection, and shortest path computations that need to
+ * iterate over all nodes.</p>
+ *
+ * <h2>Why Both Graph and Group?</h2>
+ * <p>{@link Graph} alone only provides neighbor relationships - you can traverse
+ * from node to node, but cannot enumerate all nodes. Many graph algorithms require
+ * iterating over all nodes, which is what {@link Group} provides via {@link #children()}
+ * and {@link #all()}.</p>
  *
  * <h2>Core Operations</h2>
  * <ul>
  *   <li>{@link #edgeWeight(Node, Node)} - Get the weight of an edge between two nodes</li>
- *   <li>{@link #children()} - Stream all nodes in the graph (inherited from {@link Group})</li>
+ *   <li>{@link #children()} - Stream all nodes in the graph (from {@link Group})</li>
+ *   <li>{@link #all()} - Stream all nodes in the graph (from {@link Group})</li>
  *   <li>{@link #weightedNeighbors(Node)} - Get neighbors with their edge weights</li>
  * </ul>
  *
@@ -55,7 +63,7 @@ import java.util.Map;
  *
  * @author Michael Murray
  */
-public interface WeightedGraph<T extends Node> extends Graph<T> {
+public interface WeightedGraph<T extends Node> extends Graph<T>, Group<T> {
 
 	/**
 	 * Returns the weight of the edge between two nodes.

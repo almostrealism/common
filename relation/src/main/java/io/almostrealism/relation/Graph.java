@@ -17,7 +17,6 @@
 package io.almostrealism.relation;
 
 import java.util.Collection;
-import java.util.stream.Stream;
 
 /**
  * A graph structure consisting of {@link Node}s with neighbor relationships.
@@ -30,8 +29,6 @@ import java.util.stream.Stream;
  * <ul>
  *   <li>{@link #neighbors(Node)} - Get the nodes connected to a given node</li>
  *   <li>{@link #countNodes()} - Count the total nodes in the graph</li>
- *   <li>{@link #children()} - Stream all nodes in the graph (from {@link Group})</li>
- *   <li>{@link #all()} - Stream all nodes in the graph (from {@link Group})</li>
  * </ul>
  *
  * <h2>Relationship to Tree</h2>
@@ -39,20 +36,30 @@ import java.util.stream.Stream;
  * hierarchical parent-child relationships. In a tree, neighbors are
  * typically the children of a node.</p>
  *
- * <h2>Relationship to Group</h2>
- * <p>{@link Graph} extends {@link Group} to provide stream-based access
- * to all nodes. The {@link #children()} method returns all nodes in the graph,
- * while {@link #all()} provides identical behavior by default.</p>
+ * <h2>Graph vs Group - Important Distinction</h2>
+ * <p>{@link Graph} intentionally does NOT extend {@link Group}. These represent
+ * fundamentally different properties:</p>
+ * <ul>
+ *   <li><b>Graph</b>: Defines neighbor relationships between nodes. A graph can be
+ *       infinite, lazily-defined, or procedurally generated. You can traverse from
+ *       any node to its neighbors without knowing all nodes.</li>
+ *   <li><b>Group</b>: Represents a finite, enumerable collection. You can iterate
+ *       over all elements.</li>
+ * </ul>
+ * <p>A concrete graph implementation may also implement {@link Group} if it happens
+ * to be finite and enumerable, but this is not inherent to being a graph.
+ * See {@link WeightedGraph} which extends both for cases where enumeration is needed.</p>
  *
  * @param <T> the type of nodes in this graph (must extend Node)
  *
  * @see Node
  * @see Tree
  * @see Group
+ * @see WeightedGraph
  *
  * @author Michael Murray
  */
-public interface Graph<T extends Node> extends Group<T> {
+public interface Graph<T extends Node> {
 	/**
 	 * Returns the neighbors of the specified node.
 	 *
