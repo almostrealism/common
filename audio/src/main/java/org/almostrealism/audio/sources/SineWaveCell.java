@@ -61,7 +61,10 @@ public class SineWaveCell extends CollectionTemporalCellAdapter implements Sampl
 
 	public void strike() { data.setNotePosition(0); }
 	
-	public void setFreq(double hertz) { this.waveLength = hertz / (double) OutputLine.sampleRate; }
+	public void setFreq(double hertz) {
+		this.waveLength = hertz / (double) OutputLine.sampleRate;
+		data.setWaveLength(this.waveLength);
+	}
 
 	public Supplier<Runnable> setFreq(Producer<PackedCollection> hertz) {
 		return a(data.getWaveLength(), divide(hertz, c(OutputLine.sampleRate)));
@@ -77,7 +80,10 @@ public class SineWaveCell extends CollectionTemporalCellAdapter implements Sampl
 	
 	public void setPhase(double phase) { this.phase = phase; }
 	
-	public void setAmplitude(double amp) { amplitude = amp; }
+	public void setAmplitude(double amp) {
+		amplitude = amp;
+		data.setAmplitude(amp);
+	}
 
 	public Supplier<Runnable> setAmplitude(Producer<PackedCollection> amp) {
 		return a(data.getAmplitude(), amp);
@@ -108,7 +114,7 @@ public class SineWaveCell extends CollectionTemporalCellAdapter implements Sampl
 		OperationList push = new OperationList("SineWaveCell Push");
 
 		Producer<PackedCollection> envelope = env == null ? scalar(1.0) :
-					env.getResultant(cp(data.notePosition()));
+					env.getResultant(scalar(1.0));
 
 		// Compute: sin(2*PI * (wavePosition + phase)) * envelope * amplitude * depth
 		CollectionProducer angle = multiply(c(TWO_PI), add(data.getWavePosition(), data.getPhase()));

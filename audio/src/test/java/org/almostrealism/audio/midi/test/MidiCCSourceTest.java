@@ -38,7 +38,7 @@ public class MidiCCSourceTest implements TestFeatures {
 		assertEquals(1.0, source.getValue(), 0.001);
 
 		source.setValue(64);
-		assertEquals(0.5, source.getValue(), 0.02);  // 64/127 ≈ 0.504
+		assertEquals(0.5, source.getValue(), 0.02);  // 64/127 ~= 0.504
 	}
 
 	@Test

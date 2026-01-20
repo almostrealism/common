@@ -92,7 +92,7 @@ public class MidiInputListenerTest implements TestFeatures {
 	@Test
 	public void testVelocityCurveLinear() {
 		assertEquals(0.0, VelocityCurve.LINEAR.apply(0), 0.001);
-		assertEquals(0.5, VelocityCurve.LINEAR.apply(64), 0.02);  // 64/127 ≈ 0.504
+		assertEquals(0.5, VelocityCurve.LINEAR.apply(64), 0.02);  // 64/127 ~= 0.504
 		assertEquals(1.0, VelocityCurve.LINEAR.apply(127), 0.001);
 	}
 

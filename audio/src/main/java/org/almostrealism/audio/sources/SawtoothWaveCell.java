@@ -65,6 +65,7 @@ public class SawtoothWaveCell extends CollectionTemporalCellAdapter implements S
 
 	public void setFreq(double hertz) {
 		this.waveLength = hertz / (double) OutputLine.sampleRate;
+		data.setWaveLength(this.waveLength);
 	}
 
 	public Supplier<Runnable> setFreq(Producer<PackedCollection> hertz) {
@@ -81,7 +82,10 @@ public class SawtoothWaveCell extends CollectionTemporalCellAdapter implements S
 
 	public void setPhase(double phase) { this.phase = phase; }
 
-	public void setAmplitude(double amp) { amplitude = amp; }
+	public void setAmplitude(double amp) {
+		amplitude = amp;
+		data.setAmplitude(amp);
+	}
 
 	public Supplier<Runnable> setAmplitude(Producer<PackedCollection> amp) {
 		return a(data.getAmplitude(), amp);
@@ -128,7 +132,7 @@ public class SawtoothWaveCell extends CollectionTemporalCellAdapter implements S
 		OperationList push = new OperationList("SawtoothWaveCell Push");
 
 		Producer<PackedCollection> envelope = env == null ? scalar(1.0) :
-				env.getResultant(cp(data.notePosition()));
+				env.getResultant(scalar(1.0));
 
 		// Compute t = wavePosition + phase
 		CollectionProducer t = add(data.getWavePosition(), data.getPhase());
