@@ -17,11 +17,12 @@
 /**
  * Graph algorithms that work with any {@link io.almostrealism.relation.IndexedGraph}.
  *
- * <p>This package provides general-purpose graph algorithms including:</p>
+ * <p>This package provides general-purpose graph algorithms via the Features pattern:</p>
  * <ul>
- *   <li>{@link org.almostrealism.graph.algorithm.GraphCentrality} - PageRank, betweenness, degree centrality</li>
- *   <li>{@link org.almostrealism.graph.algorithm.CommunityDetection} - Louvain clustering, modularity</li>
- *   <li>{@link org.almostrealism.graph.algorithm.GraphTraversal} - Shortest path, BFS, personalized PageRank</li>
+ *   <li>{@link org.almostrealism.graph.algorithm.CentralityFeatures} - PageRank, betweenness, degree centrality</li>
+ *   <li>{@link org.almostrealism.graph.algorithm.CommunityFeatures} - Louvain clustering, modularity</li>
+ *   <li>{@link org.almostrealism.graph.algorithm.TraversalFeatures} - Shortest path, BFS, personalized PageRank</li>
+ *   <li>{@link org.almostrealism.graph.algorithm.GraphFeatures} - All of the above combined</li>
  * </ul>
  *
  * <p>These algorithms are designed to be domain-agnostic and work with any graph
@@ -30,19 +31,18 @@
  *
  * <h2>Usage Example</h2>
  * <pre>{@code
- * // Any IndexedGraph implementation works
- * IndexedGraph<?> graph = AudioSimilarityGraph.fromLibrary(library);
- * // IndexedGraph<?> graph = MeshGraph.fromMesh(mesh);
- * // IndexedGraph<?> graph = MoleculeGraph.fromMolecule(molecule);
+ * public class MyAnalyzer implements GraphFeatures {
+ *     public void analyze(IndexedGraph<?> graph) {
+ *         // Compute centrality
+ *         double[] ranks = pageRank(graph, 0.85, 50);
  *
- * // Compute centrality
- * double[] ranks = GraphCentrality.pageRank(graph, 0.85, 50);
+ *         // Detect communities
+ *         int[] clusters = louvain(graph, 1.0);
  *
- * // Detect communities
- * int[] clusters = CommunityDetection.louvain(graph, 1.0);
- *
- * // Find paths
- * List<Integer> path = GraphTraversal.shortestPath(graph, source, target);
+ *         // Find paths
+ *         List<Integer> path = shortestPath(graph, source, target);
+ *     }
+ * }
  * }</pre>
  *
  * @see io.almostrealism.relation.IndexedGraph

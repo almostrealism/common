@@ -23,7 +23,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
-import java.util.HashSet;
 import java.util.List;
 import java.util.PriorityQueue;
 import java.util.Set;
@@ -31,7 +30,7 @@ import java.util.Set;
 /**
  * Graph traversal and path-finding algorithms that work with any {@link IndexedGraph}.
  *
- * <p>This class provides static methods for traversing graphs and finding paths.
+ * <p>This interface provides default methods for traversing graphs and finding paths.
  * These algorithms are general-purpose and work with any graph implementation.</p>
  *
  * <h2>Available Algorithms</h2>
@@ -43,21 +42,21 @@ import java.util.Set;
  *
  * <h2>Usage Example</h2>
  * <pre>{@code
- * IndexedGraph<?> graph = ...;
- * List<Integer> path = GraphTraversal.shortestPath(graph, source, target);
- * Set<Integer> seeds = Set.of(1, 2, 3);
- * double[] scores = GraphTraversal.personalizedPageRank(graph, seeds, 0.85, 50);
+ * public class MyGraphAnalyzer implements GraphFeatures {
+ *     public void analyze(IndexedGraph<?> graph, int source, int target) {
+ *         List<Integer> path = shortestPath(graph, source, target);
+ *         Set<Integer> seeds = Set.of(1, 2, 3);
+ *         double[] scores = personalizedPageRank(graph, seeds, 0.85, 50);
+ *     }
+ * }
  * }</pre>
  *
  * @see IndexedGraph
- * @see GraphCentrality
- * @see CommunityDetection
- *
- * @author Michael Murray
+ * @see CentralityFeatures
+ * @see CommunityFeatures
+ * @see GraphFeatures
  */
-public class GraphTraversal {
-
-	private GraphTraversal() {}
+public interface TraversalFeatures extends CentralityFeatures {
 
 	/**
 	 * Finds the shortest path between two nodes using Dijkstra's algorithm.
@@ -76,11 +75,11 @@ public class GraphTraversal {
 	 * @param <T> the node type
 	 * @return list of node indices from source to target, or empty if no path exists
 	 */
-	public static <T extends Node> List<Integer> shortestPath(
+	default <T extends Node> List<Integer> shortestPath(
 			IndexedGraph<T> graph,
 			int source,
 			int target) {
-		int n = graph.nodeCount();
+		int n = graph.countNodes();
 		if (source < 0 || source >= n || target < 0 || target >= n) {
 			return Collections.emptyList();
 		}
@@ -91,7 +90,6 @@ public class GraphTraversal {
 		Arrays.fill(prev, -1);
 		dist[source] = 0;
 
-		// Priority queue: (distance, node)
 		PriorityQueue<long[]> pq = new PriorityQueue<>(
 				Comparator.comparingDouble(a -> Double.longBitsToDouble(a[0])));
 		pq.offer(new long[]{Double.doubleToLongBits(0.0), source});
@@ -102,11 +100,11 @@ public class GraphTraversal {
 			int u = (int) entry[1];
 
 			if (u == target) break;
-			if (d > dist[u]) continue; // Stale entry
+			if (d > dist[u]) continue;
 
 			for (int v : graph.neighborIndices(u)) {
 				double weight = graph.edgeWeight(u, v);
-				if (weight <= 0) weight = 1; // Treat 0 or negative as unweighted
+				if (weight <= 0) weight = 1;
 
 				double alt = dist[u] + weight;
 				if (alt < dist[v]) {
@@ -117,9 +115,8 @@ public class GraphTraversal {
 			}
 		}
 
-		// Reconstruct path
 		if (prev[target] == -1 && target != source) {
-			return Collections.emptyList(); // No path found
+			return Collections.emptyList();
 		}
 
 		List<Integer> path = new ArrayList<>();
@@ -147,20 +144,17 @@ public class GraphTraversal {
 	 * @param <T> the node type
 	 * @return list of k node indices that best bridge between A and B
 	 */
-	public static <T extends Node> List<Integer> findBridges(
+	default <T extends Node> List<Integer> findBridges(
 			IndexedGraph<T> graph,
 			int nodeA,
 			int nodeB,
 			int k) {
-		// Compute PPR from each anchor node
 		double[] scoresFromA = personalizedPageRank(graph, Set.of(nodeA), 0.85, 30);
 		double[] scoresFromB = personalizedPageRank(graph, Set.of(nodeB), 0.85, 30);
 
-		// Score each node by minimum of both (must be reachable from both)
-		int n = graph.nodeCount();
+		int n = graph.countNodes();
 		double[] bridgeScores = new double[n];
 		for (int i = 0; i < n; i++) {
-			// Exclude the anchor nodes themselves
 			if (i == nodeA || i == nodeB) {
 				bridgeScores[i] = 0;
 			} else {
@@ -168,7 +162,7 @@ public class GraphTraversal {
 			}
 		}
 
-		return GraphCentrality.topK(bridgeScores, k);
+		return topK(bridgeScores, k);
 	}
 
 	/**
@@ -188,7 +182,7 @@ public class GraphTraversal {
 	 * @param <T> the node type
 	 * @return array of PPR scores indexed by node index
 	 */
-	public static <T extends Node> double[] personalizedPageRank(
+	default <T extends Node> double[] personalizedPageRank(
 			IndexedGraph<T> graph,
 			Set<Integer> seeds,
 			double dampingFactor,
@@ -208,17 +202,16 @@ public class GraphTraversal {
 	 * @param <T> the node type
 	 * @return array of PPR scores indexed by node index
 	 */
-	public static <T extends Node> double[] personalizedPageRank(
+	default <T extends Node> double[] personalizedPageRank(
 			IndexedGraph<T> graph,
 			Set<Integer> seeds,
 			double[] seedWeights,
 			double dampingFactor,
 			int maxIterations,
 			double tolerance) {
-		int n = graph.nodeCount();
+		int n = graph.countNodes();
 		if (n == 0 || seeds.isEmpty()) return new double[n];
 
-		// Compute teleport distribution
 		double[] teleport = new double[n];
 		if (seedWeights == null) {
 			double seedWeight = 1.0 / seeds.size();
@@ -244,16 +237,13 @@ public class GraphTraversal {
 		double[] ranks = new double[n];
 		double[] newRanks = new double[n];
 
-		// Initialize with teleport distribution
 		System.arraycopy(teleport, 0, ranks, 0, n);
 
 		for (int iter = 0; iter < maxIterations; iter++) {
-			// Reset to teleport probability
 			for (int i = 0; i < n; i++) {
 				newRanks[i] = (1 - dampingFactor) * teleport[i];
 			}
 
-			// Distribute rank from each node
 			for (int i = 0; i < n; i++) {
 				T node = graph.nodeAt(i);
 				double weightedDegree = graph.weightedDegree(node);
@@ -264,14 +254,12 @@ public class GraphTraversal {
 						newRanks[j] += dampingFactor * ranks[i] * weight / weightedDegree;
 					}
 				} else {
-					// Dangling node: teleport back to seeds
 					for (int seed : seeds) {
 						newRanks[seed] += dampingFactor * ranks[i] * teleport[seed];
 					}
 				}
 			}
 
-			// Check convergence
 			double maxDiff = 0;
 			for (int i = 0; i < n; i++) {
 				maxDiff = Math.max(maxDiff, Math.abs(newRanks[i] - ranks[i]));
@@ -295,11 +283,10 @@ public class GraphTraversal {
 	 * @param exclude nodes to exclude from results
 	 * @return list of top-k node indices
 	 */
-	public static List<Integer> topKExcluding(double[] scores, int k, Set<Integer> exclude) {
+	default List<Integer> topKExcluding(double[] scores, int k, Set<Integer> exclude) {
 		List<Integer> result = new ArrayList<>(k);
 		boolean[] used = new boolean[scores.length];
 
-		// Mark excluded nodes as used
 		for (int ex : exclude) {
 			if (ex >= 0 && ex < used.length) {
 				used[ex] = true;
@@ -333,11 +320,11 @@ public class GraphTraversal {
 	 * @param <T> the node type
 	 * @return list of node indices in BFS order
 	 */
-	public static <T extends Node> List<Integer> bfs(
+	default <T extends Node> List<Integer> bfs(
 			IndexedGraph<T> graph,
 			int source,
 			int maxDepth) {
-		int n = graph.nodeCount();
+		int n = graph.countNodes();
 		if (source < 0 || source >= n) return Collections.emptyList();
 
 		List<Integer> result = new ArrayList<>();

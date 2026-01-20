@@ -22,14 +22,14 @@ import java.util.Map;
 /**
  * A graph structure with weighted edges between nodes.
  *
- * <p>{@link WeightedGraph} extends {@link Graph} to add support for edge weights
- * and iteration over all nodes. This enables graph algorithms like PageRank,
- * community detection, and shortest path computations.</p>
+ * <p>{@link WeightedGraph} extends {@link Graph} to add support for edge weights.
+ * This enables graph algorithms like PageRank, community detection, and shortest
+ * path computations.</p>
  *
  * <h2>Core Operations</h2>
  * <ul>
  *   <li>{@link #edgeWeight(Node, Node)} - Get the weight of an edge between two nodes</li>
- *   <li>{@link #nodes()} - Iterate over all nodes in the graph</li>
+ *   <li>{@link #children()} - Stream all nodes in the graph (inherited from {@link Group})</li>
  *   <li>{@link #weightedNeighbors(Node)} - Get neighbors with their edge weights</li>
  * </ul>
  *
@@ -49,6 +49,7 @@ import java.util.Map;
  * @param <T> the type of nodes in this graph (must extend Node)
  *
  * @see Graph
+ * @see Group
  * @see IndexedGraph
  * @see Node
  *
@@ -67,17 +68,6 @@ public interface WeightedGraph<T extends Node> extends Graph<T> {
 	 * @return the edge weight, or 0 if no edge exists
 	 */
 	double edgeWeight(T from, T to);
-
-	/**
-	 * Returns an iterable over all nodes in this graph.
-	 *
-	 * <p>Unlike {@link #neighbors(Node)} which returns nodes connected to
-	 * a specific node, this method provides access to all nodes in the graph.
-	 * This is essential for algorithms that need to visit every node.</p>
-	 *
-	 * @return an iterable over all nodes
-	 */
-	Iterable<T> nodes();
 
 	/**
 	 * Returns a map of neighbors to their edge weights for a given node.

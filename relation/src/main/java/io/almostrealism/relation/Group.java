@@ -43,4 +43,17 @@ public interface Group<T> {
 	 * @return a stream of group elements
 	 */
 	Stream<T> children();
+
+	/**
+	 * Returns a stream of all elements in this group.
+	 *
+	 * <p>The default implementation delegates to {@link #children()}.
+	 * Subinterfaces may override this to include additional elements
+	 * (e.g., the current node in a tree structure).</p>
+	 *
+	 * @return a stream of all elements
+	 */
+	default Stream<T> all() {
+		return children();
+	}
 }

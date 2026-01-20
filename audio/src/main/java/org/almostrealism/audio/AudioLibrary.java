@@ -23,6 +23,7 @@ import org.almostrealism.audio.data.WaveDataProvider;
 import org.almostrealism.audio.data.WaveDetails;
 import org.almostrealism.audio.data.WaveDetailsFactory;
 import org.almostrealism.audio.data.WaveDetailsJob;
+import org.almostrealism.audio.similarity.AudioSimilarityGraph;
 import org.almostrealism.concurrent.SuspendableThreadPoolExecutor;
 import org.almostrealism.io.ConsoleFeatures;
 
@@ -93,16 +94,6 @@ import java.util.stream.Stream;
  * identifier matches, then returns it so {@link WaveDataProvider#getKey()} can
  * retrieve the file path.</p>
  *
- * <h2>Persistence with Protobuf</h2>
- * <p>When saving/loading library data via
- * {@link org.almostrealism.audio.persistence.AudioLibraryPersistence}:</p>
- * <ul>
- *   <li><b>Saving</b>: {@link WaveDetails} (keyed by identifier) is serialized to protobuf</li>
- *   <li><b>Loading</b>: Details are loaded into the info map by identifier</li>
- *   <li><b>File path resolution</b>: Requires both the protobuf data AND a file tree.
- *       Call {@link #find(String)} with the identifier to resolve to file path.</li>
- * </ul>
- *
  * <h2>Key Features</h2>
  * <ul>
  *   <li>Asynchronous file scanning and analysis with configurable priority</li>
@@ -141,7 +132,6 @@ import java.util.stream.Stream;
  * @see WaveDetails
  * @see WaveDetailsFactory
  * @see FileWaveDataProviderTree
- * @see org.almostrealism.audio.persistence.AudioLibraryPersistence
  */
 public class AudioLibrary implements ConsoleFeatures {
 	public static double BACKGROUND_PRIORITY = 0.0;
@@ -245,6 +235,29 @@ public class AudioLibrary implements ConsoleFeatures {
 	}
 
 	/**
+	 * Creates an {@link AudioSimilarityGraph} from this library's details.
+	 *
+	 * <p>The returned graph treats each sample as a node and similarity scores
+	 * as edge weights. Use it with graph algorithms like PageRank or community
+	 * detection to discover relationships between audio samples.</p>
+	 *
+	 * <h3>Example</h3>
+	 * <pre>{@code
+	 * AudioLibrary library = new AudioLibrary(samplesDir, 44100);
+	 * AudioSimilarityGraph graph = library.toSimilarityGraph();
+	 *
+	 * double[] ranks = GraphCentrality.pageRank(graph, 0.85, 50);
+	 * int[] communities = CommunityDetection.louvain(graph, 1.0);
+	 * }</pre>
+	 *
+	 * @return a new AudioSimilarityGraph containing all details from this library
+	 * @see AudioSimilarityGraph
+	 */
+	public AudioSimilarityGraph toSimilarityGraph() {
+		return new AudioSimilarityGraph(getAllDetails());
+	}
+
+	/**
 	 * Retrieves the {@link WaveDetails} for the given content identifier.
 	 *
 	 * <p>The identifier is an MD5 hash of the file contents, not the file path.
@@ -296,13 +309,12 @@ public class AudioLibrary implements ConsoleFeatures {
 	/**
 	 * Adds pre-computed {@link WaveDetails} to this library.
 	 *
-	 * <p>This method is used when loading library data from protobuf via
-	 * {@link org.almostrealism.audio.persistence.AudioLibraryPersistence#loadLibrary}.
-	 * The details are indexed by their content identifier.</p>
+	 * <p>The details are indexed by their content identifier. This method is
+	 * typically called when loading pre-computed data from external sources.</p>
 	 *
-	 * <p>After including details loaded from protobuf, use {@link #find(String)}
-	 * to resolve identifiers back to file paths (requires the file tree to be
-	 * populated with the corresponding audio files).</p>
+	 * <p>After including details, use {@link #find(String)} to resolve identifiers
+	 * back to file paths (requires the file tree to be populated with the
+	 * corresponding audio files).</p>
 	 *
 	 * @param details the WaveDetails to add (must have non-null identifier)
 	 * @throws IllegalArgumentException if details.getIdentifier() is null

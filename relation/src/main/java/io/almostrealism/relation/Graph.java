@@ -17,6 +17,7 @@
 package io.almostrealism.relation;
 
 import java.util.Collection;
+import java.util.stream.Stream;
 
 /**
  * A graph structure consisting of {@link Node}s with neighbor relationships.
@@ -29,6 +30,8 @@ import java.util.Collection;
  * <ul>
  *   <li>{@link #neighbors(Node)} - Get the nodes connected to a given node</li>
  *   <li>{@link #countNodes()} - Count the total nodes in the graph</li>
+ *   <li>{@link #children()} - Stream all nodes in the graph (from {@link Group})</li>
+ *   <li>{@link #all()} - Stream all nodes in the graph (from {@link Group})</li>
  * </ul>
  *
  * <h2>Relationship to Tree</h2>
@@ -36,14 +39,20 @@ import java.util.Collection;
  * hierarchical parent-child relationships. In a tree, neighbors are
  * typically the children of a node.</p>
  *
+ * <h2>Relationship to Group</h2>
+ * <p>{@link Graph} extends {@link Group} to provide stream-based access
+ * to all nodes. The {@link #children()} method returns all nodes in the graph,
+ * while {@link #all()} provides identical behavior by default.</p>
+ *
  * @param <T> the type of nodes in this graph (must extend Node)
  *
  * @see Node
  * @see Tree
+ * @see Group
  *
  * @author Michael Murray
  */
-public interface Graph<T extends Node> {
+public interface Graph<T extends Node> extends Group<T> {
 	/**
 	 * Returns the neighbors of the specified node.
 	 *

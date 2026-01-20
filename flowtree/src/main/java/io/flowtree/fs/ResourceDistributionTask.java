@@ -47,6 +47,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.stream.Stream;
 
 /**
  * A ResourceDistributionTask object maintains a collection of Job instances that are cycled
@@ -464,6 +465,11 @@ public class ResourceDistributionTask extends AbstractJobFactory implements Outp
 
 	@Override
 	public int countNodes() {
+		throw new UnsupportedOperationException();
+	}
+
+	@Override
+	public Stream<Resource> children() {
 		throw new UnsupportedOperationException();
 	}
 

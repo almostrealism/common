@@ -17,7 +17,6 @@
 package org.almostrealism.space;
 
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.Graph;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.Vector;
@@ -50,7 +49,7 @@ import java.util.List;
  * @author  Michael Murray
  * @author  Dan Chivers
  */
-public class Mesh extends SpacePartition<Triangle> implements Graph<Vector> {
+public class Mesh extends SpacePartition<Triangle> {
 	private static final RGB white = new RGB(1.0, 1.0, 1.0);
 	
 	/**
@@ -401,13 +400,12 @@ public class Mesh extends SpacePartition<Triangle> implements Graph<Vector> {
 			return null;
 	}
 
-	@Override
-	public Collection<Vector> neighbors(Vector node) {
-		throw new UnsupportedOperationException();
-	}
-
-	@Override
-	public int countNodes() {
+	/**
+	 * Returns the number of vertices in this mesh.
+	 *
+	 * @return the vertex count
+	 */
+	public int vertexCount() {
 		return points.size();
 	}
 

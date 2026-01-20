@@ -17,21 +17,21 @@
 /**
  * Audio similarity graph adapters and utilities.
  *
- * <p>This package provides adapters that expose audio library relationships
+ * <p>This package provides adapters that expose audio sample relationships
  * as graphs, enabling the use of general-purpose graph algorithms for
  * audio discovery and organization.</p>
  *
  * <h2>Key Classes</h2>
  * <ul>
  *   <li>{@link org.almostrealism.audio.similarity.AudioSimilarityGraph} -
- *       Adapts {@link org.almostrealism.audio.AudioLibrary} to
+ *       Adapts a collection of {@link org.almostrealism.audio.data.WaveDetails} to
  *       {@link io.almostrealism.relation.IndexedGraph}</li>
  * </ul>
  *
  * <h2>Usage with Graph Algorithms</h2>
  * <pre>{@code
  * AudioLibrary library = ...;
- * AudioSimilarityGraph graph = AudioSimilarityGraph.fromLibrary(library);
+ * AudioSimilarityGraph graph = library.toSimilarityGraph();
  *
  * // Find central samples (prototypes)
  * double[] ranks = GraphCentrality.pageRank(graph, 0.85, 50);

@@ -22,8 +22,7 @@ import org.almostrealism.audio.data.WaveDetails;
 import org.almostrealism.audio.persistence.AudioLibraryPersistence;
 import org.almostrealism.audio.persistence.LibraryDestination;
 import org.almostrealism.audio.similarity.AudioSimilarityGraph;
-import org.almostrealism.graph.algorithm.CommunityDetection;
-import org.almostrealism.graph.algorithm.GraphCentrality;
+import org.almostrealism.graph.algorithm.GraphFeatures;
 import org.almostrealism.io.ConsoleFeatures;
 
 import java.io.File;
@@ -64,10 +63,9 @@ import java.util.Map;
  *
  * @see AudioLibraryPersistence
  * @see AudioSimilarityGraph
- * @see org.almostrealism.graph.algorithm.GraphCentrality
- * @see org.almostrealism.graph.algorithm.CommunityDetection
+ * @see GraphFeatures
  */
-public class PrototypeDiscovery implements ConsoleFeatures {
+public class PrototypeDiscovery implements ConsoleFeatures, GraphFeatures {
 
 	private static final int DEFAULT_SAMPLE_RATE = 44100;
 
@@ -145,12 +143,12 @@ public class PrototypeDiscovery implements ConsoleFeatures {
 		// Build similarity graph from pre-computed data
 		log("");
 		log("Building similarity graph from pre-computed similarities...");
-		AudioSimilarityGraph graph = AudioSimilarityGraph.fromDetails(allDetails);
-		log("  Nodes: " + graph.nodeCount());
+		AudioSimilarityGraph graph = new AudioSimilarityGraph(allDetails);
+		log("  Nodes: " + graph.countNodes());
 
 		// Count edges
 		int edgeCount = 0;
-		for (int i = 0; i < graph.nodeCount(); i++) {
+		for (int i = 0; i < graph.countNodes(); i++) {
 			edgeCount += graph.neighborIndices(i).size();
 		}
 		edgeCount /= 2; // Undirected graph
@@ -160,10 +158,10 @@ public class PrototypeDiscovery implements ConsoleFeatures {
 			log("WARNING: No similarity edges found in pre-computed data.");
 			log("         Will compute similarities on the fly...");
 			computeMissingSimilarities(allDetails);
-			graph = AudioSimilarityGraph.fromDetails(allDetails);
+			graph = new AudioSimilarityGraph(allDetails);
 
 			edgeCount = 0;
-			for (int i = 0; i < graph.nodeCount(); i++) {
+			for (int i = 0; i < graph.countNodes(); i++) {
 				edgeCount += graph.neighborIndices(i).size();
 			}
 			edgeCount /= 2;
@@ -178,17 +176,16 @@ public class PrototypeDiscovery implements ConsoleFeatures {
 		// Run community detection (Louvain algorithm)
 		log("");
 		log("Detecting communities (Louvain algorithm)...");
-		int[] communities = CommunityDetection.louvain(graph, 1.0);
-		int numCommunities = CommunityDetection.countCommunities(communities);
+		int[] communities = louvain(graph, 1.0);
+		int numCommunities = countCommunities(communities);
 		log("  Found " + numCommunities + " communities");
 
 		// Compute PageRank centrality
 		log("Computing centrality (PageRank)...");
-		double[] ranks = GraphCentrality.pageRank(graph, 0.85, 50);
+		double[] ranks = pageRank(graph, 0.85, 50);
 
 		// Get community members
-		Map<Integer, List<Integer>> communityMembers =
-				CommunityDetection.getCommunityMembers(communities);
+		Map<Integer, List<Integer>> communityMembers = getCommunityMembers(communities);
 
 		// Find prototypes (highest-centrality node in each community)
 		log("");
@@ -247,9 +244,9 @@ public class PrototypeDiscovery implements ConsoleFeatures {
 		}
 
 		// Show modularity score
-		double modularity = CommunityDetection.modularity(graph, communities);
+		double mod = modularity(graph, communities);
 		log("----------------------------------------");
-		log(String.format("Modularity score: %.3f", modularity));
+		log(String.format("Modularity score: %.3f", mod));
 		log("  (Values > 0.3 indicate significant community structure)");
 		log("  (Higher values = better-defined clusters)");
 

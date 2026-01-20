@@ -29,12 +29,12 @@ import java.util.List;
  * path computations, which typically work with integer arrays.</p>
  *
  * <h2>Index Convention</h2>
- * <p>Nodes are indexed from 0 to {@link #nodeCount()} - 1. The mapping between
+ * <p>Nodes are indexed from 0 to {@link #countNodes()} - 1. The mapping between
  * nodes and indices must be stable for the lifetime of the graph.</p>
  *
  * <h2>Core Operations</h2>
  * <ul>
- *   <li>{@link #nodeCount()} - Total number of nodes</li>
+ *   <li>{@link #countNodes()} - Total number of nodes (inherited from Graph)</li>
  *   <li>{@link #nodeAt(int)} - Get node by index</li>
  *   <li>{@link #indexOf(Node)} - Get index of a node</li>
  *   <li>{@link #neighborIndices(int)} - Get neighbor indices for algorithm efficiency</li>
@@ -44,9 +44,12 @@ import java.util.List;
  * <p>Graph algorithms in the ar-graph module work with this interface. The
  * integer indexing allows algorithms to use primitive arrays for results:</p>
  * <pre>{@code
- * IndexedGraph<?> graph = ...;
- * double[] pageRank = GraphCentrality.pageRank(graph, 0.85, 50);
- * int[] clusters = CommunityDetection.louvain(graph, 1.0);
+ * public class MyAnalyzer implements GraphFeatures {
+ *     public void analyze(IndexedGraph<?> graph) {
+ *         double[] pageRank = pageRank(graph, 0.85, 50);
+ *         int[] clusters = louvain(graph, 1.0);
+ *     }
+ * }
  * }</pre>
  *
  * @param <T> the type of nodes in this graph (must extend Node)
@@ -60,19 +63,9 @@ import java.util.List;
 public interface IndexedGraph<T extends Node> extends WeightedGraph<T> {
 
 	/**
-	 * Returns the total number of nodes in this graph.
-	 *
-	 * <p>This is the same as {@link #countNodes()} but named for clarity
-	 * when working with indexed access.</p>
-	 *
-	 * @return the number of nodes
-	 */
-	int nodeCount();
-
-	/**
 	 * Returns the node at the specified index.
 	 *
-	 * @param index the node index (0 to nodeCount() - 1)
+	 * @param index the node index (0 to countNodes() - 1)
 	 * @return the node at that index
 	 * @throws IndexOutOfBoundsException if index is out of range
 	 */
@@ -119,13 +112,4 @@ public interface IndexedGraph<T extends Node> extends WeightedGraph<T> {
 		return edgeWeight(nodeAt(fromIndex), nodeAt(toIndex));
 	}
 
-	/**
-	 * {@inheritDoc}
-	 *
-	 * <p>Default implementation delegates to {@link #nodeCount()}.</p>
-	 */
-	@Override
-	default int countNodes() {
-		return nodeCount();
-	}
 }

@@ -29,7 +29,7 @@ import java.util.Stack;
 /**
  * Graph centrality algorithms that work with any {@link IndexedGraph}.
  *
- * <p>This class provides static methods for computing centrality measures
+ * <p>This interface provides default methods for computing centrality measures
  * on graphs. These algorithms are general-purpose and work with any graph
  * implementation, including audio similarity graphs, 3D meshes, molecular
  * structures, and neural network topologies.</p>
@@ -43,20 +43,20 @@ import java.util.Stack;
  *
  * <h2>Usage Example</h2>
  * <pre>{@code
- * IndexedGraph<?> graph = ...;
- * double[] ranks = GraphCentrality.pageRank(graph, 0.85, 50);
- * int mostCentral = GraphCentrality.argmax(ranks);
+ * public class MyGraphAnalyzer implements GraphFeatures {
+ *     public void analyze(IndexedGraph<?> graph) {
+ *         double[] ranks = pageRank(graph, 0.85, 50);
+ *         int mostCentral = argmax(ranks);
+ *     }
+ * }
  * }</pre>
  *
  * @see IndexedGraph
- * @see CommunityDetection
- * @see GraphTraversal
- *
- * @author Michael Murray
+ * @see CommunityFeatures
+ * @see TraversalFeatures
+ * @see GraphFeatures
  */
-public class GraphCentrality {
-
-	private GraphCentrality() {}
+public interface CentralityFeatures {
 
 	/**
 	 * Computes PageRank centrality for all nodes in the graph.
@@ -65,20 +65,13 @@ public class GraphCentrality {
 	 * incoming links. Nodes with many high-PageRank neighbors will themselves
 	 * have high PageRank.</p>
 	 *
-	 * <p>The algorithm uses power iteration:
-	 * <pre>
-	 * PR(u) = (1-d)/N + d * SUM PR(v) * w(v,u) / weightedDegree(v)
-	 * </pre>
-	 * where d is the damping factor, N is the number of nodes, and w(v,u)
-	 * is the edge weight from v to u.</p>
-	 *
 	 * @param graph the graph to compute PageRank on
 	 * @param dampingFactor damping factor (typically 0.85)
 	 * @param maxIterations maximum number of iterations
 	 * @param <T> the node type
 	 * @return array of PageRank scores indexed by node index
 	 */
-	public static <T extends Node> double[] pageRank(
+	default <T extends Node> double[] pageRank(
 			IndexedGraph<T> graph,
 			double dampingFactor,
 			int maxIterations) {
@@ -95,19 +88,18 @@ public class GraphCentrality {
 	 * @param <T> the node type
 	 * @return array of PageRank scores indexed by node index
 	 */
-	public static <T extends Node> double[] pageRank(
+	default <T extends Node> double[] pageRank(
 			IndexedGraph<T> graph,
 			double dampingFactor,
 			int maxIterations,
 			double tolerance) {
-		int n = graph.nodeCount();
+		int n = graph.countNodes();
 		if (n == 0) return new double[0];
 
 		double[] ranks = new double[n];
 		double[] newRanks = new double[n];
 		double initialRank = 1.0 / n;
 
-		// Initialize with uniform distribution
 		Arrays.fill(ranks, initialRank);
 
 		double teleport = (1.0 - dampingFactor) / n;
@@ -115,7 +107,6 @@ public class GraphCentrality {
 		for (int iter = 0; iter < maxIterations; iter++) {
 			Arrays.fill(newRanks, teleport);
 
-			// Distribute rank from each node to its neighbors
 			for (int i = 0; i < n; i++) {
 				T node = graph.nodeAt(i);
 				double weightedDegree = graph.weightedDegree(node);
@@ -127,7 +118,6 @@ public class GraphCentrality {
 						newRanks[j] += dampingFactor * ranks[i] * weight / weightedDegree;
 					}
 				} else {
-					// Dangling node: distribute rank evenly
 					double share = dampingFactor * ranks[i] / n;
 					for (int j = 0; j < n; j++) {
 						newRanks[j] += share;
@@ -135,13 +125,11 @@ public class GraphCentrality {
 				}
 			}
 
-			// Check convergence
 			double maxDiff = 0;
 			for (int i = 0; i < n; i++) {
 				maxDiff = Math.max(maxDiff, Math.abs(newRanks[i] - ranks[i]));
 			}
 
-			// Swap arrays
 			double[] temp = ranks;
 			ranks = newRanks;
 			newRanks = temp;
@@ -164,8 +152,8 @@ public class GraphCentrality {
 	 * @param <T> the node type
 	 * @return array of degree values indexed by node index
 	 */
-	public static <T extends Node> int[] degreeCentrality(IndexedGraph<T> graph) {
-		int n = graph.nodeCount();
+	default <T extends Node> int[] degreeCentrality(IndexedGraph<T> graph) {
+		int n = graph.countNodes();
 		int[] degrees = new int[n];
 
 		for (int i = 0; i < n; i++) {
@@ -185,8 +173,8 @@ public class GraphCentrality {
 	 * @param <T> the node type
 	 * @return array of weighted degree values indexed by node index
 	 */
-	public static <T extends Node> double[] weightedDegreeCentrality(IndexedGraph<T> graph) {
-		int n = graph.nodeCount();
+	default <T extends Node> double[] weightedDegreeCentrality(IndexedGraph<T> graph) {
+		int n = graph.countNodes();
 		double[] degrees = new double[n];
 
 		for (int i = 0; i < n; i++) {
@@ -209,20 +197,18 @@ public class GraphCentrality {
 	 * @param <T> the node type
 	 * @return array of betweenness centrality values indexed by node index
 	 */
-	public static <T extends Node> double[] betweennessCentrality(IndexedGraph<T> graph) {
-		int n = graph.nodeCount();
+	default <T extends Node> double[] betweennessCentrality(IndexedGraph<T> graph) {
+		int n = graph.countNodes();
 		double[] betweenness = new double[n];
 
-		// Brandes algorithm
 		for (int s = 0; s < n; s++) {
-			// Single-source shortest paths from s
 			Stack<Integer> stack = new Stack<>();
 			List<List<Integer>> predecessors = new ArrayList<>(n);
 			for (int i = 0; i < n; i++) {
 				predecessors.add(new ArrayList<>());
 			}
 
-			double[] sigma = new double[n]; // Number of shortest paths
+			double[] sigma = new double[n];
 			sigma[s] = 1;
 
 			double[] dist = new double[n];
@@ -232,18 +218,15 @@ public class GraphCentrality {
 			Queue<Integer> queue = new ArrayDeque<>();
 			queue.offer(s);
 
-			// BFS for unweighted shortest paths
 			while (!queue.isEmpty()) {
 				int v = queue.poll();
 				stack.push(v);
 
 				for (int w : graph.neighborIndices(v)) {
-					// First time seeing w?
 					if (dist[w] < 0) {
 						dist[w] = dist[v] + 1;
 						queue.offer(w);
 					}
-					// Shortest path to w via v?
 					if (dist[w] == dist[v] + 1) {
 						sigma[w] += sigma[v];
 						predecessors.get(w).add(v);
@@ -251,7 +234,6 @@ public class GraphCentrality {
 				}
 			}
 
-			// Accumulation
 			double[] delta = new double[n];
 			while (!stack.isEmpty()) {
 				int w = stack.pop();
@@ -264,7 +246,6 @@ public class GraphCentrality {
 			}
 		}
 
-		// Normalize for undirected graphs (each path counted twice)
 		for (int i = 0; i < n; i++) {
 			betweenness[i] /= 2.0;
 		}
@@ -278,7 +259,7 @@ public class GraphCentrality {
 	 * @param values the array to search
 	 * @return the index of the maximum value
 	 */
-	public static int argmax(double[] values) {
+	default int argmax(double[] values) {
 		if (values.length == 0) return -1;
 
 		int maxIdx = 0;
@@ -299,8 +280,7 @@ public class GraphCentrality {
 	 * @param k the number of top values to return
 	 * @return list of indices of the top-k values
 	 */
-	public static List<Integer> topK(double[] values, int k) {
-		// Simple O(nk) algorithm - sufficient for small k
+	default List<Integer> topK(double[] values, int k) {
 		List<Integer> result = new ArrayList<>(k);
 		boolean[] used = new boolean[values.length];
 

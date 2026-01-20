@@ -18,9 +18,7 @@ package org.almostrealism.graph.algorithm.test;
 
 import io.almostrealism.relation.IndexedGraph;
 import io.almostrealism.relation.Node;
-import org.almostrealism.graph.algorithm.CommunityDetection;
-import org.almostrealism.graph.algorithm.GraphCentrality;
-import org.almostrealism.graph.algorithm.GraphTraversal;
+import org.almostrealism.graph.algorithm.GraphFeatures;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
@@ -30,11 +28,12 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Stream;
 
 /**
  * Tests for graph algorithms: PageRank, Louvain, shortest path, and PPR.
  */
-public class GraphAlgorithmTest extends TestSuiteBase {
+public class GraphAlgorithmTest extends TestSuiteBase implements GraphFeatures {
 
 	/**
 	 * Simple test node implementation.
@@ -76,11 +75,6 @@ public class GraphAlgorithmTest extends TestSuiteBase {
 		}
 
 		@Override
-		public int nodeCount() {
-			return nodes.size();
-		}
-
-		@Override
 		public TestNode nodeAt(int index) {
 			return nodes.get(index);
 		}
@@ -115,8 +109,8 @@ public class GraphAlgorithmTest extends TestSuiteBase {
 		}
 
 		@Override
-		public Iterable<TestNode> nodes() {
-			return nodes;
+		public Stream<TestNode> children() {
+			return nodes.stream();
 		}
 
 		@Override
@@ -209,7 +203,7 @@ public class GraphAlgorithmTest extends TestSuiteBase {
 	public void testPageRankTriangle() {
 		TestGraph graph = createTriangleGraph();
 
-		double[] ranks = GraphCentrality.pageRank(graph, 0.85, 50);
+		double[] ranks = pageRank(graph, 0.85, 50);
 
 		assertEquals(3, ranks.length);
 		// In a symmetric triangle, all ranks should be equal
@@ -224,7 +218,7 @@ public class GraphAlgorithmTest extends TestSuiteBase {
 	public void testDegreeCentrality() {
 		TestGraph graph = createTriangleGraph();
 
-		int[] degrees = GraphCentrality.degreeCentrality(graph);
+		int[] degrees = degreeCentrality(graph);
 
 		assertEquals(3, degrees.length);
 		// Each node in triangle has 2 neighbors
@@ -237,7 +231,7 @@ public class GraphAlgorithmTest extends TestSuiteBase {
 	public void testBetweennessCentrality() {
 		TestGraph graph = createLinearGraph();
 
-		double[] betweenness = GraphCentrality.betweennessCentrality(graph);
+		double[] betweenness = betweennessCentrality(graph);
 
 		assertEquals(5, betweenness.length);
 		// Middle node (2) should have highest betweenness
@@ -252,7 +246,7 @@ public class GraphAlgorithmTest extends TestSuiteBase {
 	public void testTopK() {
 		double[] values = {0.1, 0.5, 0.3, 0.8, 0.2};
 
-		List<Integer> top2 = GraphCentrality.topK(values, 2);
+		List<Integer> top2 = topK(values, 2);
 
 		assertEquals(2, top2.size());
 		assertEquals(3, (int) top2.get(0)); // 0.8
@@ -263,7 +257,7 @@ public class GraphAlgorithmTest extends TestSuiteBase {
 	public void testLouvainTwoClusters() {
 		TestGraph graph = createTwoClusterGraph();
 
-		int[] communities = CommunityDetection.louvain(graph, 1.0);
+		int[] communities = louvain(graph, 1.0);
 
 		assertEquals(6, communities.length);
 		// Nodes in same cluster should have same community
@@ -281,11 +275,11 @@ public class GraphAlgorithmTest extends TestSuiteBase {
 
 		// Perfect clustering
 		int[] perfectClusters = {0, 0, 0, 1, 1, 1};
-		double goodModularity = CommunityDetection.modularity(graph, perfectClusters);
+		double goodModularity = modularity(graph, perfectClusters);
 
 		// Bad clustering (all in one)
 		int[] badClusters = {0, 0, 0, 0, 0, 0};
-		double badModularity = CommunityDetection.modularity(graph, badClusters);
+		double badModularity = modularity(graph, badClusters);
 
 		// Good clustering should have higher modularity
 		assertTrue(goodModularity > badModularity);
@@ -294,13 +288,13 @@ public class GraphAlgorithmTest extends TestSuiteBase {
 	@Test
 	public void testCountCommunities() {
 		int[] communities = {0, 0, 1, 1, 2, 0};
-		assertEquals(3, CommunityDetection.countCommunities(communities));
+		assertEquals(3, countCommunities(communities));
 	}
 
 	@Test
 	public void testGetCommunityMembers() {
 		int[] communities = {0, 0, 1, 1, 2, 0};
-		Map<Integer, List<Integer>> members = CommunityDetection.getCommunityMembers(communities);
+		Map<Integer, List<Integer>> members = getCommunityMembers(communities);
 
 		assertEquals(3, members.size());
 		assertEquals(List.of(0, 1, 5), members.get(0));
@@ -312,7 +306,7 @@ public class GraphAlgorithmTest extends TestSuiteBase {
 	public void testShortestPathLinear() {
 		TestGraph graph = createLinearGraph();
 
-		List<Integer> path = GraphTraversal.shortestPath(graph, 0, 4);
+		List<Integer> path = shortestPath(graph, 0, 4);
 
 		assertEquals(List.of(0, 1, 2, 3, 4), path);
 	}
@@ -324,7 +318,7 @@ public class GraphAlgorithmTest extends TestSuiteBase {
 		graph.addNode(new TestNode("B"));
 		// No edge between them
 
-		List<Integer> path = GraphTraversal.shortestPath(graph, 0, 1);
+		List<Integer> path = shortestPath(graph, 0, 1);
 
 		assertTrue(path.isEmpty());
 	}
@@ -334,7 +328,7 @@ public class GraphAlgorithmTest extends TestSuiteBase {
 		TestGraph graph = createTwoClusterGraph();
 
 		// PPR from node 0 (in cluster 1)
-		double[] ppr = GraphTraversal.personalizedPageRank(graph, Set.of(0), 0.85, 50);
+		double[] ppr = personalizedPageRank(graph, Set.of(0), 0.85, 50);
 
 		assertEquals(6, ppr.length);
 		// Nodes in same cluster should have higher scores
@@ -349,7 +343,7 @@ public class GraphAlgorithmTest extends TestSuiteBase {
 		TestGraph graph = createTwoClusterGraph();
 
 		// Find bridges between node 0 (cluster 1) and node 3 (cluster 2)
-		List<Integer> bridges = GraphTraversal.findBridges(graph, 0, 3, 2);
+		List<Integer> bridges = findBridges(graph, 0, 3, 2);
 
 		assertEquals(2, bridges.size());
 		// Nodes 2 and 5 are the bridge nodes
@@ -360,7 +354,7 @@ public class GraphAlgorithmTest extends TestSuiteBase {
 	public void testBFS() {
 		TestGraph graph = createLinearGraph();
 
-		List<Integer> bfs = GraphTraversal.bfs(graph, 0, 2);
+		List<Integer> bfs = bfs(graph, 0, 2);
 
 		// Should contain 0, 1, 2 (depth 0, 1, 2) but not 3, 4 (depth 3, 4)
 		assertTrue(bfs.contains(0));
@@ -374,7 +368,7 @@ public class GraphAlgorithmTest extends TestSuiteBase {
 	public void testBFSUnlimited() {
 		TestGraph graph = createLinearGraph();
 
-		List<Integer> bfs = GraphTraversal.bfs(graph, 0, -1);
+		List<Integer> bfs = bfs(graph, 0, -1);
 
 		assertEquals(5, bfs.size());
 		// First element should be source
@@ -385,9 +379,9 @@ public class GraphAlgorithmTest extends TestSuiteBase {
 	public void testEmptyGraph() {
 		TestGraph graph = new TestGraph();
 
-		double[] ranks = GraphCentrality.pageRank(graph, 0.85, 50);
-		int[] communities = CommunityDetection.louvain(graph, 1.0);
-		List<Integer> path = GraphTraversal.shortestPath(graph, 0, 1);
+		double[] ranks = pageRank(graph, 0.85, 50);
+		int[] communities = louvain(graph, 1.0);
+		List<Integer> path = shortestPath(graph, 0, 1);
 
 		assertEquals(0, ranks.length);
 		assertEquals(0, communities.length);
@@ -399,8 +393,8 @@ public class GraphAlgorithmTest extends TestSuiteBase {
 		TestGraph graph = new TestGraph();
 		graph.addNode(new TestNode("A"));
 
-		double[] ranks = GraphCentrality.pageRank(graph, 0.85, 50);
-		int[] communities = CommunityDetection.louvain(graph, 1.0);
+		double[] ranks = pageRank(graph, 0.85, 50);
+		int[] communities = louvain(graph, 1.0);
 
 		assertEquals(1, ranks.length);
 		assertEquals(1.0, ranks[0], 0.01);
