@@ -27,7 +27,7 @@ from typing import Optional, Set
 SYNONYMS = {
     "assignment": {"assign", "destination", "target", "write"},
     "destination": {"assignment", "target", "output", "dest"},
-    "provider": {"producer", "supplier", "source"},
+    "provider": {"producer", "supplier", "source", "wavedataprovider"},
     "producer": {"provider", "supplier", "computation"},
     "index": {"indices", "indexing", "offset", "position"},
     "traverse": {"traversal", "walk", "iterate", "iteration"},
@@ -45,6 +45,18 @@ SYNONYMS = {
     "tanh": {"hyperbolic", "trigonometry", "trig"},
     "trigonometry": {"trig", "sin", "cos", "tan", "sine", "cosine", "tangent", "geometry"},
     "math": {"mathematical", "arithmetic", "calculation", "trigonometry"},
+    # Audio/library concepts
+    "identifier": {"id", "hash", "md5", "content-hash", "getidentifier"},
+    "key": {"path", "filepath", "file-path", "location", "getkey"},
+    "path": {"filepath", "file-path", "location", "key", "directory"},
+    "file": {"filepath", "path", "location", "wav", "audio"},
+    "resolve": {"find", "lookup", "locate", "get"},
+    "library": {"audiolibrary", "collection", "samples"},
+    "persistence": {"save", "load", "protobuf", "serialize"},
+    "protobuf": {"persistence", "proto", "serialize", "binary"},
+    "similarity": {"similar", "matching", "compare", "distance"},
+    "wave": {"audio", "wavedata", "sample", "wav"},
+    "sample": {"audio", "wave", "sound", "clip"},
 }
 
 
@@ -122,6 +134,8 @@ MODULES = {
     "stats": {"badge": "Math", "desc": "Probability distributions"},
     "graph": {"badge": "Domain", "desc": "Neural network layers, Cell pattern"},
     "ml": {"badge": "Domain", "desc": "Transformer models, attention"},
+    "audio": {"badge": "Domain", "desc": "Audio synthesis, AudioLibrary, sample management"},
+    "compose": {"badge": "Domain", "desc": "Audio persistence, protobuf, PrototypeDiscovery"},
     "color": {"badge": "Domain", "desc": "RGB, lighting, shaders"},
     "space": {"badge": "Domain", "desc": "Scene management, meshes"},
     "physics": {"badge": "Domain", "desc": "Quantum mechanics, atoms"},
@@ -406,11 +420,16 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             for html_file in MODULES_DIR.glob("*.html"):
                 files_to_search.append(html_file)
 
-            # README files
+            # README files and module docs directories
             for module in MODULES:
                 readme = COMMON_DIR / module / "README.md"
                 if readme.exists():
                     files_to_search.append(readme)
+                # Also search docs subdirectory for each module (e.g., audio/docs/*.md)
+                module_docs_dir = COMMON_DIR / module / "docs"
+                if module_docs_dir.exists():
+                    for md_file in module_docs_dir.glob("*.md"):
+                        files_to_search.append(md_file)
 
             # Quick reference
             quick_ref = DOCS_DIR / "QUICK_REFERENCE.md"
@@ -460,9 +479,10 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             available = ", ".join(sorted(MODULES.keys()))
             return [TextContent(type="text", text=f"Unknown module '{module}'. Available: {available}")]
 
-        # Try HTML first, then README
+        # Try HTML first, then README, then docs directory
         module_html = MODULES_DIR / f"{module}.html"
         module_readme = COMMON_DIR / module / "README.md"
+        module_docs_dir = COMMON_DIR / module / "docs"
 
         content = ""
         if module_html.exists():
@@ -470,7 +490,17 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             content = extract_text_from_html(html_content)
         elif module_readme.exists():
             content = read_file_safely(module_readme)
-        else:
+
+        # Also include docs from module's docs/ directory
+        if module_docs_dir.exists():
+            for md_file in sorted(module_docs_dir.glob("*.md")):
+                doc_content = read_file_safely(md_file, max_chars=20000)
+                if content:
+                    content += f"\n\n---\n\n# {md_file.stem}\n\n{doc_content}"
+                else:
+                    content = f"# {md_file.stem}\n\n{doc_content}"
+
+        if not content:
             return [TextContent(type="text", text=f"No documentation found for module '{module}'")]
 
         # If section specified, try to extract it

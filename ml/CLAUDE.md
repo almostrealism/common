@@ -2,6 +2,22 @@
 
 ---
 
+# 🛑 STOP. READ THIS FIRST. 🛑
+
+## ⚠️ ABSOLUTE PREREQUISITE: USE AR-DOCS MCP BEFORE ANY ACTION ⚠️
+
+**BEFORE you write ANY code, make ANY assumptions, or take ANY action:**
+
+1. `mcp__ar-docs__search_ar_docs query:"<relevant terms>"`
+2. `mcp__ar-docs__read_ar_module module:"ml"` (or relevant module)
+3. `mcp__ar-docs__read_quick_reference`
+
+**DO NOT** assume you know how something works. **DO NOT** speculate. **LOOK IT UP FIRST.**
+
+See [../CLAUDE.md](../CLAUDE.md) for the full policy on why this is mandatory.
+
+---
+
 ## ⚠️ CRITICAL: DO NOT COMMIT CODE ⚠️
 
 **THIS IS AN ABSOLUTE RULE WITH NO EXCEPTIONS.**
@@ -10,6 +26,19 @@
 - Claude does not have the ability to create valid commits
 - You can only **stage changes** using `git add`
 - The human developer must review and commit all changes themselves
+
+See [../CLAUDE.md](../CLAUDE.md) for full details on this policy.
+
+---
+
+## ⚠️ CRITICAL: DO NOT MODIFY POM.XML FILES ⚠️
+
+**THIS IS AN ABSOLUTE RULE WITH NO EXCEPTIONS.**
+
+- **NEVER** add dependencies to pom.xml files
+- **NEVER** assume you understand the module dependency graph
+- **IF IN DOUBT, DO NOT TOUCH THE POM FILE**
+- Write your code, run `mvn compile`, and if it fails inform the user
 
 See [../CLAUDE.md](../CLAUDE.md) for full details on this policy.
 

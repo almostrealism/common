@@ -43,7 +43,72 @@ import java.util.TreeSet;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
+/**
+ * Provides serialization and deserialization of {@link AudioLibrary} data to/from
+ * Protocol Buffer format.
+ *
+ * <p>AudioLibraryPersistence handles saving and loading library metadata (including
+ * analyzed audio features and similarity scores) to protobuf files. The data is stored
+ * in batched files with a prefix pattern (e.g., {@code library_0.bin}, {@code library_1.bin}).</p>
+ *
+ * <h2>Key Concepts</h2>
+ * <ul>
+ *   <li><b>Identifier-based storage</b>: {@link WaveDetails} are keyed by their content
+ *       identifier (MD5 hash), not file path. File paths are resolved at runtime via
+ *       {@link AudioLibrary#find(String)}.</li>
+ *   <li><b>Batched files</b>: Large libraries are split across multiple files to avoid
+ *       memory issues during serialization.</li>
+ * </ul>
+ *
+ * <h2>Saving a Library</h2>
+ * <pre>{@code
+ * AudioLibrary library = ...;
+ * AudioLibraryPersistence.saveLibrary(library, "/path/to/library");
+ * // Creates: /path/to/library_0.bin, /path/to/library_1.bin, etc.
+ * }</pre>
+ *
+ * <h2>Loading a Library</h2>
+ * <pre>{@code
+ * // Option 1: Load into existing library with file tree
+ * AudioLibrary library = new AudioLibrary(new File("/path/to/samples"), 44100);
+ * AudioLibraryPersistence.loadLibrary(library, "/path/to/library");
+ *
+ * // Now library.find(identifier) can resolve file paths
+ * for (WaveDetails d : library.getAllDetails()) {
+ *     WaveDataProvider provider = library.find(d.getIdentifier());
+ *     String filePath = provider != null ? provider.getKey() : "unknown";
+ * }
+ *
+ * // Option 2: Load with file tree in one call
+ * AudioLibrary library = AudioLibraryPersistence.loadLibrary(
+ *     new File("/path/to/samples"), 44100, "/path/to/library");
+ * }</pre>
+ *
+ * <h2>Data Stored in Protobuf</h2>
+ * <p>Each {@link WaveDetails} record includes:</p>
+ * <ul>
+ *   <li>Identifier (content hash) - used as the key</li>
+ *   <li>Audio metadata (sample rate, channels, frame count)</li>
+ *   <li>Frequency analysis data (FFT results)</li>
+ *   <li>Feature data (for similarity computation)</li>
+ *   <li>Pre-computed similarity scores to other samples</li>
+ * </ul>
+ *
+ * <h2>File Path Resolution</h2>
+ * <p><b>Important:</b> The protobuf does NOT store file paths. The identifier stored
+ * is the MD5 hash of file contents. To resolve an identifier to a file path:</p>
+ * <ol>
+ *   <li>Load the library with a file tree (directory of audio files)</li>
+ *   <li>Call {@link AudioLibrary#find(String)} with the identifier</li>
+ *   <li>Call {@link org.almostrealism.audio.data.WaveDataProvider#getKey()} on the result</li>
+ * </ol>
+ *
+ * @see AudioLibrary
+ * @see LibraryDestination
+ * @see WaveDetails
+ */
 public class AudioLibraryPersistence {
+	/** Maximum bytes per batch file before starting a new file. */
 	public static int batchSize = Integer.MAX_VALUE / 2;
 
 	public static Consumer<WaveDetails> saveWaveDetails(String destination) {
