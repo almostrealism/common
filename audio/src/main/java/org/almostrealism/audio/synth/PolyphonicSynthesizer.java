@@ -384,6 +384,9 @@ public class PolyphonicSynthesizer implements Temporal, Setup, Cell<PackedCollec
 	 * @return true if a voice was allocated
 	 */
 	public boolean noteOn(int midiNote, double velocity) {
+		// Check for completed releases to free up voices before allocation.
+		// This was moved here from push() to allow push() to compile to a kernel.
+		checkReleases();
 		VoiceState state = allocator.allocate(midiNote, velocity);
 		if (state != null) {
 			AudioSynthesizer voice = voices.get(state.getVoiceIndex());
@@ -416,6 +419,22 @@ public class PolyphonicSynthesizer implements Temporal, Setup, Cell<PackedCollec
 		allocator.allNotesOff();
 		for (AudioSynthesizer voice : voices) {
 			voice.noteOff();
+		}
+	}
+
+	/**
+	 * Checks all voices for completed releases and deactivates them.
+	 * <p>
+	 * This method is called from {@link #noteOn(int, double)} to free up voices
+	 * whose release phase has completed. Moving this check out of {@link #push(Producer)}
+	 * allows push() to return a fully compilable OperationList without runtime lambdas.
+	 */
+	private void checkReleases() {
+		for (int i = 0; i < voices.size(); i++) {
+			VoiceState state = allocator.getVoice(i);
+			if (state.isActive() && state.isReleasing() && !voices.get(i).isActive()) {
+				allocator.deactivate(i);
+			}
 		}
 	}
 
@@ -567,13 +586,8 @@ public class PolyphonicSynthesizer implements Temporal, Setup, Cell<PackedCollec
 			// Always tick the voice - inactive voices produce silence via envelope
 			push.add(voice.tick());
 
-			// Check if release has completed (runtime check)
-			push.add(() -> () -> {
-				VoiceState state = allocator.getVoice(voiceIndex);
-				if (state.isActive() && state.isReleasing() && !voice.isActive()) {
-					allocator.deactivate(voiceIndex);
-				}
-			});
+			// NOTE: Release checking was moved to noteOn() to allow this OperationList
+			// to compile to a kernel. See checkReleases() method.
 		}
 
 		// Forward accumulated audio to receptor

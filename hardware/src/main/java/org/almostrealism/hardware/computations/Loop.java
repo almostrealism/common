@@ -20,6 +20,8 @@ import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.code.ScopeInputManager;
+import io.almostrealism.compute.Process;
+import io.almostrealism.compute.ProcessContext;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.scope.Repeated;
@@ -27,6 +29,8 @@ import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.Variable;
 import org.almostrealism.hardware.OperationComputationAdapter;
 
+import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -172,6 +176,38 @@ public class Loop extends OperationComputationAdapter<Void> implements Expressio
 	@Override
 	public long getCountLong() {
 		return atom instanceof Countable ? ((Countable) atom).getCountLong() : 1;
+	}
+
+	/**
+	 * Returns the atom computation as the sole child of this loop.
+	 *
+	 * <p>This allows the optimization framework to properly traverse and optimize
+	 * the contained computation before the loop scope is generated.</p>
+	 *
+	 * @return a collection containing the atom computation if it's a Process
+	 */
+	@Override
+	public Collection<Process<?, ?>> getChildren() {
+		if (atom instanceof Process) {
+			return Collections.singletonList((Process<?, ?>) atom);
+		}
+		return Collections.emptyList();
+	}
+
+	/**
+	 * Indicates that this loop computation should be isolated during optimization.
+	 *
+	 * <p>Loops must be isolated to ensure proper native loop generation via
+	 * {@link #getScope(KernelStructureContext)}. Without isolation, expression trees
+	 * inside the loop would be expanded for each iteration, causing exponential
+	 * growth and severe performance degradation.</p>
+	 *
+	 * @param context the process context (not used)
+	 * @return always {@code true} to ensure isolation
+	 */
+	@Override
+	public boolean isIsolationTarget(ProcessContext context) {
+		return true;
 	}
 
 	@Override

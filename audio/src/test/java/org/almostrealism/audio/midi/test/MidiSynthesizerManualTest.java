@@ -164,16 +164,21 @@ public class MidiSynthesizerManualTest extends TestSuiteBase implements CellFeat
 			CellList cells = new CellList();
 			cells.addRoot(synth);  // Synth implements Cell, push() generates and outputs audio
 
-			// 5. Create audio output
-			OutputLine outputLine = createAudioOutput();
+			// 5. Create audio output with SMALL buffer size
+			// CRITICAL: Large buffers (65536) cause compilation to hang with complex synths
+			OutputLine outputLine = createSmallBufferAudioOutput();
 			if (outputLine == null) {
 				log("Failed to create audio output. Skipping test.");
 				return;
 			}
 			log("Audio output: " + outputLine.getSampleRate() + " Hz, buffer " + outputLine.getBufferSize());
 
-			// 6. Create scheduler
-			BufferedOutputScheduler scheduler = cells.buffer(outputLine);
+			// 6. Create scheduler with explicit small frame count
+			// CRITICAL: Large frame counts (8192) hang during compilation for complex synths
+			int framesPerTick = 512;
+			log("Using framesPerTick: " + framesPerTick + " (critical for synth performance)");
+			BufferedOutputScheduler scheduler = BufferedOutputScheduler.create(
+					null, outputLine, framesPerTick, cells.toLineOperation());
 
 			// 7. Connect MIDI bridge
 			log("Connecting MIDI bridge...");
@@ -205,6 +210,10 @@ public class MidiSynthesizerManualTest extends TestSuiteBase implements CellFeat
 			log("\n=== Starting Audio Playback ===");
 			log("Play notes on your MIDI controller!");
 			log("Test will run for " + TEST_DURATION_SECONDS + " seconds...\n");
+
+			// Enable verbose logging to diagnose scheduler behavior
+			BufferedOutputScheduler.enableVerbose = true;
+			BufferedOutputScheduler.logRate = 1;  // Log every cycle
 
 			scheduler.start();
 
@@ -256,11 +265,11 @@ public class MidiSynthesizerManualTest extends TestSuiteBase implements CellFeat
 			log("Total sampled frames: " + totalSampledFrames);
 			log("Non-zero frames: " + nonZeroFrames);
 			if (overallPeak > 0.01) {
-				log("✓ Audio IS being generated - check speaker/volume settings");
+				log("[OK] Audio IS being generated - check speaker/volume settings");
 			} else if (overallPeak > 0.0001) {
-				log("⚠ Very low audio level detected - may be too quiet to hear");
+				log("[WARN] Very low audio level detected - may be too quiet to hear");
 			} else {
-				log("✗ NO audio detected - synthesizer output issue");
+				log("[FAIL] NO audio detected - synthesizer output issue");
 			}
 
 			// 10. Cleanup
@@ -342,6 +351,37 @@ public class MidiSynthesizerManualTest extends TestSuiteBase implements CellFeat
 			line.open(format, bufferSize * 4);
 			line.start();
 
+			return new SourceDataOutputLine(line, bufferSize);
+		} catch (Exception e) {
+			log("Error creating audio output: " + e.getMessage());
+			e.printStackTrace();
+			return null;
+		}
+	}
+
+	/**
+	 * Creates an audio output line with a SMALL buffer size suitable for complex synthesizers.
+	 * The default buffer size (65536) causes compilation to hang for PolyphonicSynthesizer
+	 * because it results in ~8192 frames per tick. This method uses 1024 buffer size
+	 * (like RealtimePlaybackTest) resulting in ~128 frames per tick.
+	 */
+	private OutputLine createSmallBufferAudioOutput() {
+		AudioFormat format = new AudioFormat(
+				AudioFormat.Encoding.PCM_SIGNED,
+				44100, 16, 2, 4, 44100, false);
+
+		DataLine.Info lineInfo = new DataLine.Info(SourceDataLine.class, format);
+
+		try {
+			SourceDataLine line = (SourceDataLine) AudioSystem.getLine(lineInfo);
+
+			// CRITICAL: Use small buffer size to avoid compilation hang with complex synths
+			// RealtimePlaybackTest uses 1024, which works well
+			int bufferSize = 1024;
+			line.open(format, bufferSize * 4);
+			line.start();
+
+			log("Created audio output with SMALL buffer: " + bufferSize);
 			return new SourceDataOutputLine(line, bufferSize);
 		} catch (Exception e) {
 			log("Error creating audio output: " + e.getMessage());
@@ -475,12 +515,17 @@ public class MidiSynthesizerManualTest extends TestSuiteBase implements CellFeat
 		CellList cells = new CellList();
 		cells.addRoot(synth);  // Synth implements Cell, push() generates and outputs audio
 
-		OutputLine outputLine = createAudioOutput();
+		// Use small buffer to avoid compilation hang with complex synths
+		OutputLine outputLine = createSmallBufferAudioOutput();
 		if (outputLine == null) {
 			log("Failed to create audio output. Skipping test.");
 			return;
 		}
-		BufferedOutputScheduler scheduler = cells.buffer(outputLine);
+
+		// Create scheduler with explicit small frame count
+		int framesPerTick = 512;
+		BufferedOutputScheduler scheduler = BufferedOutputScheduler.create(
+				null, outputLine, framesPerTick, cells.toLineOperation());
 
 		// Start audio
 		scheduler.start();
@@ -662,17 +707,17 @@ public class MidiSynthesizerManualTest extends TestSuiteBase implements CellFeat
 
 		// Verify we got audio
 		if (bufferLine.hasAudio()) {
-			log("\n✓ SUCCESS: Synthesizer is producing audio output!");
+			log("\n[OK] SUCCESS: Synthesizer is producing audio output!");
 			log("  If you're not hearing sound through speakers, the issue is in");
 			log("  the audio output device selection or system audio routing.");
 		} else {
-			log("\n✗ FAILURE: Synthesizer produced silent output!");
+			log("\n[FAIL] FAILURE: Synthesizer produced silent output!");
 			log("  The issue is in the synthesizer or audio processing pipeline.");
 		}
 
 		// Also verify we got a reasonable number of frames
 		if (bufferLine.getTotalFramesWritten() == 0) {
-			log("\n✗ WARNING: No frames were written to the buffer!");
+			log("\n[FAIL] WARNING: No frames were written to the buffer!");
 			log("  This suggests the scheduler did not run properly.");
 		}
 
@@ -752,9 +797,9 @@ public class MidiSynthesizerManualTest extends TestSuiteBase implements CellFeat
 			}
 
 			if (nonZeroCount > 0) {
-				log("\n✓ SUCCESS: Synthesizer produces non-zero output!");
+				log("\n[OK] SUCCESS: Synthesizer produces non-zero output!");
 			} else {
-				log("\n✗ FAILURE: All output values are zero!");
+				log("\n[FAIL] FAILURE: All output values are zero!");
 			}
 		}
 
@@ -824,11 +869,11 @@ public class MidiSynthesizerManualTest extends TestSuiteBase implements CellFeat
 		}
 
 		if (bufferLine.hasAudio()) {
-			log("\n✓ SUCCESS: SineWaveCell produces audio through CellList + BufferedOutputScheduler!");
+			log("\n[OK] SUCCESS: SineWaveCell produces audio through CellList + BufferedOutputScheduler!");
 			log("  This means the scheduler works fine with simple cells.");
 			log("  The issue is specific to PolyphonicSynthesizer integration.");
 		} else {
-			log("\n✗ FAILURE: SineWaveCell produces NO audio through scheduler!");
+			log("\n[FAIL] FAILURE: SineWaveCell produces NO audio through scheduler!");
 			log("  This indicates a fundamental issue with CellList + BufferedOutputScheduler.");
 		}
 
@@ -890,9 +935,9 @@ public class MidiSynthesizerManualTest extends TestSuiteBase implements CellFeat
 		}
 
 		if (nonZeroCount > 0) {
-			log("\n✓ SUCCESS: Direct SineWaveCell works!");
+			log("\n[OK] SUCCESS: Direct SineWaveCell works!");
 		} else {
-			log("\n✗ FAILURE: Direct SineWaveCell produces no output!");
+			log("\n[FAIL] FAILURE: Direct SineWaveCell produces no output!");
 		}
 	}
 
@@ -950,9 +995,9 @@ public class MidiSynthesizerManualTest extends TestSuiteBase implements CellFeat
 		}
 
 		if (bufferLine.hasAudio()) {
-			log("\n✓ SUCCESS: WaveCell works through scheduler (as expected)");
+			log("\n[OK] SUCCESS: WaveCell works through scheduler (as expected)");
 		} else {
-			log("\n✗ FAILURE: Even WaveCell fails through scheduler!");
+			log("\n[FAIL] FAILURE: Even WaveCell fails through scheduler!");
 			log("  This indicates a fundamental issue with the test setup.");
 		}
 
@@ -1014,10 +1059,10 @@ public class MidiSynthesizerManualTest extends TestSuiteBase implements CellFeat
 		}
 
 		if (nonZeroCount > 0) {
-			log("\n✓ SUCCESS: Synth's push() sends audio to receptor!");
+			log("\n[OK] SUCCESS: Synth's push() sends audio to receptor!");
 			log("  The issue is in CellList/BufferedOutputScheduler integration.");
 		} else {
-			log("\n✗ FAILURE: Synth's push() sends NO audio to receptor!");
+			log("\n[FAIL] FAILURE: Synth's push() sends NO audio to receptor!");
 			log("  The issue is in how push() forwards to receptor.");
 		}
 
@@ -1108,14 +1153,211 @@ public class MidiSynthesizerManualTest extends TestSuiteBase implements CellFeat
 		}
 
 		if (nonZeroCount > 0) {
-			log("\n✓ SUCCESS: CellList + WaveOutput pattern works!");
+			log("\n[OK] SUCCESS: CellList + WaveOutput pattern works!");
 			log("  The issue is specific to BufferedOutputScheduler timing or execution.");
 		} else {
-			log("\n✗ FAILURE: CellList + WaveOutput pattern produces no output!");
+			log("\n[FAIL] FAILURE: CellList + WaveOutput pattern produces no output!");
 			log("  The issue is in how CellList.tick() integrates with WaveOutput.");
 		}
 
 		synth.noteOff(69);
 		destination.destroy();
+	}
+
+	/**
+	 * Real audio output test with programmatic note triggering.
+	 * This test uses the same audio pipeline as playWithMidiController but
+	 * triggers notes programmatically instead of waiting for MIDI input.
+	 * This helps diagnose whether the issue is with MIDI integration or
+	 * the BufferedOutputScheduler + real audio output combination.
+	 */
+	@Test
+	public void realAudioOutputTest() throws Exception {
+		if (testProfileIs(TestUtils.PIPELINE)) return;
+
+		log("=== Real Audio Output Test ===");
+		log("Testing synthesizer with real audio output (no MIDI)\n");
+
+		// Create synthesizer with same settings as playWithMidiController
+		PolyphonicSynthesizer synth = new PolyphonicSynthesizer(VOICE_COUNT);
+		synth.setOscillatorType(AudioSynthesizer.OscillatorType.SAWTOOTH);
+		synth.setAmpEnvelopeParams(0.01, 0.1, 0.7, 0.3);
+		synth.setLowPassFilter(2000.0, 1.5);
+
+		log("Synth created with " + VOICE_COUNT + " voices");
+
+		// Create CellList with synth
+		CellList cells = new CellList();
+		cells.addRoot(synth);
+
+		// Create real audio output with SMALL buffer size (like RealtimePlaybackTest)
+		// Large buffers (65536) cause compilation to hang with complex synths
+		OutputLine outputLine = createSmallBufferAudioOutput();
+		if (outputLine == null) {
+			log("Failed to create audio output. Skipping test.");
+			return;
+		}
+		log("Audio output: " + outputLine.getSampleRate() + " Hz, buffer " + outputLine.getBufferSize());
+
+		// Create scheduler with explicit small frame count
+		// CRITICAL: Large frame counts (8192) hang during compilation for complex synths
+		int framesPerTick = 512;
+		log("Using framesPerTick: " + framesPerTick + " (critical for synth performance)");
+		BufferedOutputScheduler scheduler = BufferedOutputScheduler.create(
+				null, outputLine, framesPerTick, cells.toLineOperation());
+
+		// Enable verbose logging
+		BufferedOutputScheduler.enableVerbose = true;
+		BufferedOutputScheduler.logRate = 1;
+
+		// IMPORTANT: Trigger note BEFORE starting scheduler
+		// so the first tick has audio to process
+		log("\nTriggering note A4 (MIDI 69) BEFORE starting scheduler...");
+		synth.noteOn(69, 0.8);
+		log("Active voices: " + synth.getActiveVoiceCount());
+
+		// Start scheduler
+		log("\nStarting scheduler...");
+		long startTime = System.currentTimeMillis();
+		scheduler.start();
+		long afterStart = System.currentTimeMillis();
+		log("scheduler.start() completed in " + (afterStart - startTime) + "ms");
+
+		// Wait for first tick to complete
+		log("\nWaiting for first tick to complete...");
+		int waitedMs = 0;
+		while (scheduler.getRenderedCount() == 0 && waitedMs < 30000) {
+			Thread.sleep(100);
+			waitedMs += 100;
+		}
+		log("First tick completed after " + waitedMs + "ms");
+		log("Rendered count: " + scheduler.getRenderedCount());
+		log("Rendered frames: " + scheduler.getRenderedFrames());
+
+		// Let it run for a few seconds with note held
+		log("\nLetting note play for 5 seconds...");
+		log("You should hear audio from your speakers!");
+		Thread.sleep(5000);
+
+		// Check status
+		log("\nAfter 5 seconds:");
+		log("Rendered count: " + scheduler.getRenderedCount());
+		log("Rendered frames: " + scheduler.getRenderedFrames());
+		log("Active voices: " + synth.getActiveVoiceCount());
+
+		// Release note and wait for release
+		log("\nReleasing note...");
+		synth.noteOff(69);
+		Thread.sleep(1000);
+
+		// Stop
+		log("\nStopping scheduler...");
+		scheduler.stop();
+		outputLine.destroy();
+
+		log("\n=== Test Complete ===");
+		log("If you heard audio, the real audio pipeline works!");
+		log("If silent, check scheduler logs above for issues.");
+	}
+
+	/**
+	 * Programmatic MIDI simulation test - triggers notes WHILE scheduler is running.
+	 * This tests the realistic scenario where notes arrive after the scheduler has started,
+	 * which is what happens with a real MIDI controller.
+	 */
+	@Test
+	public void programmaticMidiTest() throws Exception {
+		if (testProfileIs(TestUtils.PIPELINE)) return;
+
+		log("=== Programmatic MIDI Simulation Test ===");
+		log("Testing note triggering WHILE scheduler is running\n");
+
+		// Create synthesizer
+		PolyphonicSynthesizer synth = new PolyphonicSynthesizer(VOICE_COUNT);
+		synth.setOscillatorType(AudioSynthesizer.OscillatorType.SAWTOOTH);
+		synth.setAmpEnvelopeParams(0.01, 0.1, 0.7, 0.3);
+		synth.setLowPassFilter(2000.0, 1.5);
+
+		log("Synth created with " + VOICE_COUNT + " voices");
+
+		// Create CellList with synth
+		CellList cells = new CellList();
+		cells.addRoot(synth);
+
+		// Create real audio output with SMALL buffer size (critical for complex synths)
+		OutputLine outputLine = createSmallBufferAudioOutput();
+		if (outputLine == null) {
+			log("Failed to create audio output. Skipping test.");
+			return;
+		}
+		log("Audio output: " + outputLine.getSampleRate() + " Hz, buffer " + outputLine.getBufferSize());
+
+		// Create scheduler with explicit small frame count
+		// CRITICAL: Large frame counts (8192) hang during compilation for complex synths
+		int framesPerTick = 512;
+		log("Using framesPerTick: " + framesPerTick + " (critical for synth performance)");
+		BufferedOutputScheduler scheduler = BufferedOutputScheduler.create(
+				null, outputLine, framesPerTick, cells.toLineOperation());
+
+		// Enable verbose logging
+		BufferedOutputScheduler.enableVerbose = true;
+		BufferedOutputScheduler.logRate = 1;
+
+		// Start scheduler FIRST (no note playing yet - like real MIDI scenario)
+		log("\nStarting scheduler (no note yet)...");
+		long startTime = System.currentTimeMillis();
+		scheduler.start();
+		long afterStart = System.currentTimeMillis();
+		log("scheduler.start() completed in " + (afterStart - startTime) + "ms");
+
+		// Wait for scheduler to be running (first tick complete)
+		log("\nWaiting for scheduler to start processing...");
+		int waitedMs = 0;
+		while (scheduler.getRenderedCount() == 0 && waitedMs < 30000) {
+			Thread.sleep(100);
+			waitedMs += 100;
+		}
+		log("Scheduler running after " + waitedMs + "ms");
+		log("Rendered count: " + scheduler.getRenderedCount());
+
+		// Now trigger note (simulating MIDI input arriving)
+		log("\n--- Simulating MIDI Note ON ---");
+		log("Triggering note A4 (MIDI 69) at velocity 100");
+		synth.noteOn(69, 0.8);
+		log("Active voices: " + synth.getActiveVoiceCount());
+
+		// Wait for several ticks with note active
+		log("\nWaiting for note to be processed (needs multiple ticks)...");
+		log("Each tick processes ~512 frames");
+
+		long noteStartTick = scheduler.getRenderedCount();
+		int secondsToWait = 10;
+		for (int i = 0; i < secondsToWait; i++) {
+			Thread.sleep(1000);
+			long currentTicks = scheduler.getRenderedCount();
+			log("  Second " + (i+1) + ": " + currentTicks + " ticks total (" +
+				(currentTicks - noteStartTick) + " since note on)");
+		}
+
+		// Release note
+		log("\n--- Simulating MIDI Note OFF ---");
+		synth.noteOff(69);
+		log("Note released, waiting for release tail...");
+		Thread.sleep(2000);
+
+		// Summary
+		log("\n=== Summary ===");
+		log("Total rendered: " + scheduler.getRenderedCount() + " ticks");
+		log("Total frames: " + scheduler.getRenderedFrames());
+		log("Ticks during note: " + (scheduler.getRenderedCount() - noteStartTick));
+
+		// Stop
+		scheduler.stop();
+		outputLine.destroy();
+
+		log("\n=== Test Complete ===");
+		log("This test simulates MIDI input arriving while scheduler is running.");
+		log("If you heard audio during the note, MIDI-style triggering works!");
+		log("If silent, the issue is with note triggering AFTER scheduler starts.");
 	}
 }
