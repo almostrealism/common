@@ -66,6 +66,7 @@ public class AudioDiffusionGenerator implements ConsoleFeatures {
 	private final CompiledModel decoder;
 	private final DiffusionNoiseScheduler scheduler;
 	private final int latentLength;
+	private final PackedCollection[] conditioningInputs;
 
 	private int numInferenceSteps = 50;
 	private double ddimEta = 0.0; // Deterministic by default
@@ -95,8 +96,9 @@ public class AudioDiffusionGenerator implements ConsoleFeatures {
 		OobleckDecoder decoderBlock = new OobleckDecoder(decoderWeights, 1, latentLength);
 		Model decoderModel = new Model(new TraversalPolicy(1, LATENT_CHANNELS, latentLength));
 		decoderModel.add(decoderBlock);
-		this.decoder = decoderModel.compile();
+		this.decoder = decoderModel.compile(false); // Inference only, no backprop needed
 		log("Decoder built. Output length: " + decoderBlock.getOutputLength());
+		this.conditioningInputs = createConditioningInputs();
 	}
 
 	/**
@@ -115,6 +117,27 @@ public class AudioDiffusionGenerator implements ConsoleFeatures {
 		this.decoder = decoder;
 		this.scheduler = scheduler;
 		this.latentLength = latentLength;
+		this.conditioningInputs = createConditioningInputs();
+	}
+
+	/**
+	 * Creates zero-valued conditioning tensors for unconditional generation.
+	 * The diffusion model may expect additional inputs beyond the main latent
+	 * and timestep (e.g., cross-attention conditioning, global conditioning).
+	 * For unconditional generation, we provide zero tensors.
+	 */
+	private PackedCollection[] createConditioningInputs() {
+		int inputCount = diffusionModel.getInputCount();
+		// Inputs: 0=main latent, 1=timestep, 2+=conditioning
+		if (inputCount <= 2) {
+			return new PackedCollection[0];
+		}
+		PackedCollection[] inputs = new PackedCollection[inputCount - 2];
+		for (int i = 2; i < inputCount; i++) {
+			TraversalPolicy shape = diffusionModel.getInputShape(i);
+			inputs[i - 2] = new PackedCollection(shape); // Initialized to zeros
+		}
+		return inputs;
 	}
 
 	/**
@@ -172,8 +195,8 @@ public class AudioDiffusionGenerator implements ConsoleFeatures {
 			// Create timestep tensor
 			PackedCollection timestepTensor = createTimestepTensor(t);
 
-			// Model predicts noise
-			PackedCollection predictedNoise = diffusionModel.forward(x, timestepTensor);
+			// Model predicts noise (include conditioning inputs for unconditional generation)
+			PackedCollection predictedNoise = diffusionModel.forward(x, buildForwardArgs(timestepTensor));
 
 			// DDIM step
 			x = scheduler.stepDDIM(x, predictedNoise, t, tPrev, ddimEta);
@@ -261,7 +284,7 @@ public class AudioDiffusionGenerator implements ConsoleFeatures {
 			int tPrev = i < allTimesteps.length - 1 ? allTimesteps[i + 1] : -1;
 
 			PackedCollection timestepTensor = createTimestepTensor(t);
-			PackedCollection predictedNoise = diffusionModel.forward(x, timestepTensor);
+			PackedCollection predictedNoise = diffusionModel.forward(x, buildForwardArgs(timestepTensor));
 			x = scheduler.stepDDIM(x, predictedNoise, t, tPrev, ddimEta);
 		}
 
@@ -283,6 +306,17 @@ public class AudioDiffusionGenerator implements ConsoleFeatures {
 		PackedCollection timestep = new PackedCollection(1);
 		timestep.setMem(0, normalizedT);
 		return timestep;
+	}
+
+	/**
+	 * Builds the full argument array for model forward call,
+	 * including timestep and any conditioning inputs.
+	 */
+	private PackedCollection[] buildForwardArgs(PackedCollection timestepTensor) {
+		PackedCollection[] args = new PackedCollection[1 + conditioningInputs.length];
+		args[0] = timestepTensor;
+		System.arraycopy(conditioningInputs, 0, args, 1, conditioningInputs.length);
+		return args;
 	}
 
 	private void normalizeAudio(WaveData audio) {

@@ -266,7 +266,7 @@ public class AggressiveFineTuningTest extends TestSuiteBase {
 		OobleckDecoder decoder = new OobleckDecoder(decoderWeights, 1, latentLength);
 		Model decoderModel = new Model(new TraversalPolicy(1, IO_CHANNELS, latentLength));
 		decoderModel.add(decoder);
-		CompiledModel compiledDecoder = decoderModel.compile();
+		CompiledModel compiledDecoder = decoderModel.compile(false); // Inference only, no backprop needed
 
 		// Create generator
 		AudioDiffusionGenerator generator = new AudioDiffusionGenerator(
