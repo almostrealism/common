@@ -17,23 +17,19 @@
 package org.almostrealism.ml.audio;
 
 import io.almostrealism.collect.TraversalPolicy;
-import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.Producer;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.optimize.FineTuneConfig;
 import org.almostrealism.optimize.FineTuningResult;
-import org.almostrealism.optimize.LossProvider;
 import org.almostrealism.optimize.MeanSquaredError;
+import org.almostrealism.optimize.ModelOptimizer;
 
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Random;
-import java.util.function.BiFunction;
 import java.util.function.Consumer;
 
 /**
@@ -46,6 +42,10 @@ import java.util.function.Consumer;
  *   <li>Model predicts the noise: noise_pred = model(x_t, t)</li>
  *   <li>Loss = MSE(noise_pred, noise)</li>
  * </ol>
+ *
+ * <p>This class delegates the actual training loop to {@link ModelOptimizer},
+ * using {@link DiffusionTrainingDataset} to handle the diffusion-specific
+ * data preparation (timestep sampling, noise addition).
  *
  * <h2>Usage</h2>
  * <pre>{@code
@@ -62,6 +62,8 @@ import java.util.function.Consumer;
  * }</pre>
  *
  * @see DiffusionNoiseScheduler
+ * @see DiffusionTrainingDataset
+ * @see ModelOptimizer
  * @see AudioLatentDataset
  * @author Michael Murray
  */
@@ -71,9 +73,6 @@ public class AudioDiffusionFineTuner implements ConsoleFeatures, CodeFeatures {
 	private final FineTuneConfig config;
 	private final DiffusionNoiseScheduler scheduler;
 	private final TraversalPolicy latentShape;
-	private final Evaluable<PackedCollection> lossGradient;
-	private final BiFunction<PackedCollection, PackedCollection, Double> lossFunction;
-	private final Random random;
 
 	private boolean aggressiveMode = false;
 	private int repeatFactor = 1;
@@ -82,10 +81,10 @@ public class AudioDiffusionFineTuner implements ConsoleFeatures, CodeFeatures {
 	/**
 	 * Creates a diffusion fine-tuner.
 	 *
-	 * @param model Compiled diffusion model with LoRA adapters
-	 * @param config Fine-tuning configuration
+	 * @param model       Compiled diffusion model with LoRA adapters
+	 * @param config      Fine-tuning configuration
 	 * @param latentShape Shape of latent tensors (batch, channels, length)
-	 * @param scheduler Diffusion noise scheduler
+	 * @param scheduler   Diffusion noise scheduler
 	 */
 	public AudioDiffusionFineTuner(CompiledModel model, FineTuneConfig config,
 								   TraversalPolicy latentShape, DiffusionNoiseScheduler scheduler) {
@@ -93,16 +92,6 @@ public class AudioDiffusionFineTuner implements ConsoleFeatures, CodeFeatures {
 		this.config = config;
 		this.latentShape = latentShape;
 		this.scheduler = scheduler;
-		this.random = new Random(42);
-
-		// Compile loss gradient for noise prediction
-		LossProvider lossProvider = new MeanSquaredError(latentShape.traverseEach());
-		Producer<PackedCollection> gradProducer = lossProvider.gradient(
-				cv(latentShape.traverseEach(), 0),
-				cv(latentShape.traverseEach(), 1)
-		);
-		this.lossGradient = gradProducer.get();
-		this.lossFunction = lossProvider::loss;
 	}
 
 	/**
@@ -151,6 +140,9 @@ public class AudioDiffusionFineTuner implements ConsoleFeatures, CodeFeatures {
 	/**
 	 * Runs diffusion fine-tuning on the latent dataset.
 	 *
+	 * <p>This method delegates to {@link ModelOptimizer} for the actual training loop,
+	 * using {@link DiffusionTrainingDataset} to handle diffusion-specific data preparation.
+	 *
 	 * @param dataset Dataset of clean latents
 	 * @return Fine-tuning result with loss history
 	 */
@@ -158,8 +150,8 @@ public class AudioDiffusionFineTuner implements ConsoleFeatures, CodeFeatures {
 		List<Double> trainLossHistory = new ArrayList<>();
 		Instant startTime = Instant.now();
 
-		int totalSteps = 0;
 		int numSamples = dataset.size();
+		int effectiveSamplesPerEpoch = numSamples * repeatFactor;
 
 		log("Starting diffusion fine-tuning");
 		log("  Samples: " + numSamples);
@@ -167,73 +159,42 @@ public class AudioDiffusionFineTuner implements ConsoleFeatures, CodeFeatures {
 		log("  Repeat factor: " + repeatFactor);
 		log("  Aggressive mode: " + aggressiveMode);
 		log("  Latent shape: " + latentShape);
+		log("  Effective samples per epoch: " + effectiveSamplesPerEpoch);
 
+		// Create diffusion training dataset (handles timestep sampling and noise addition)
+		DiffusionTrainingDataset diffusionDataset = new DiffusionTrainingDataset(
+				dataset, scheduler, repeatFactor);
+
+		// Create ModelOptimizer with MSE loss for noise prediction
+		ModelOptimizer optimizer = new ModelOptimizer(model, () -> {
+			diffusionDataset.shuffle();
+			return diffusionDataset;
+		});
+		optimizer.setLossFunction(new MeanSquaredError(latentShape.traverseEach()));
+		optimizer.setLogFrequency(config.getLogEveryNSteps());
+		optimizer.setLogConsumer(this::log);
+
+		// Run training epochs
 		for (int epoch = 0; epoch < config.getEpochs(); epoch++) {
-			double epochLoss = 0;
-			int epochSteps = 0;
+			// Run one epoch (all samples in diffusionDataset)
+			optimizer.optimize(1);
 
-			// Shuffle dataset at start of epoch
-			dataset.shuffle();
-
-			// Process each sample (repeated if in aggressive mode)
-			for (int sampleIdx = 0; sampleIdx < numSamples; sampleIdx++) {
-				PackedCollection cleanLatent = dataset.getLatent(sampleIdx);
-
-				for (int repeat = 0; repeat < repeatFactor; repeat++) {
-					// Sample random timestep
-					int t = scheduler.sampleTimestep();
-
-					// Sample noise
-					PackedCollection noise = scheduler.sampleNoiseLike(cleanLatent);
-
-					// Create noisy latent
-					PackedCollection noisyLatent = scheduler.addNoise(cleanLatent, noise, t);
-
-					// Create timestep tensor (normalized to [0, 1])
-					PackedCollection timestep = createTimestepTensor(t);
-
-					// Forward pass: model predicts noise
-					PackedCollection predictedNoise = model.forward(noisyLatent, timestep);
-
-					// Compute loss
-					double loss = lossFunction.apply(predictedNoise, noise);
-					if (Double.isNaN(loss)) {
-						warn("NaN loss at step " + totalSteps + ", skipping");
-						continue;
-					}
-
-					epochLoss += loss;
-					epochSteps++;
-					totalSteps++;
-
-					// Backward pass
-					PackedCollection grad = lossGradient.evaluate(
-							predictedNoise.each(), noise.each());
-					model.backward(grad);
-
-					// Logging
-					if (totalSteps % config.getLogEveryNSteps() == 0) {
-						log(String.format("Step %d - loss: %.6f, timestep: %d",
-								totalSteps, loss, t));
-					}
-
-					// Progress callback
-					if (progressCallback != null) {
-						progressCallback.accept(new TrainingProgress(
-								epoch, totalSteps, loss, t
-						));
-					}
-				}
-			}
-
-			double avgLoss = epochSteps > 0 ? epochLoss / epochSteps : Double.NaN;
+			double avgLoss = optimizer.getLoss();
 			trainLossHistory.add(avgLoss);
 
-			log(String.format("Epoch %d/%d - avg_loss: %.6f, steps: %d",
-					epoch + 1, config.getEpochs(), avgLoss, epochSteps));
+			log(String.format("Epoch %d/%d - avg_loss: %.6f",
+					epoch + 1, config.getEpochs(), avgLoss));
+
+			// Epoch-level progress callback
+			if (progressCallback != null) {
+				progressCallback.accept(new TrainingProgress(
+						epoch, optimizer.getTotalIterations(), avgLoss, -1
+				));
+			}
 		}
 
 		Duration trainingTime = Duration.between(startTime, Instant.now());
+		int totalSteps = optimizer.getTotalIterations();
 		log("Fine-tuning completed in " + formatDuration(trainingTime));
 		log("Total steps: " + totalSteps);
 
@@ -250,20 +211,6 @@ public class AudioDiffusionFineTuner implements ConsoleFeatures, CodeFeatures {
 				trainingTime,
 				false
 		);
-	}
-
-	/**
-	 * Creates a timestep tensor for the model.
-	 *
-	 * @param t Timestep value
-	 * @return Timestep tensor
-	 */
-	private PackedCollection createTimestepTensor(int t) {
-		// Normalize timestep to [0, 1] range
-		double normalizedT = (double) t / scheduler.getNumSteps();
-		PackedCollection timestep = new PackedCollection(1);
-		timestep.setMem(0, normalizedT);
-		return timestep;
 	}
 
 	private String formatDuration(Duration duration) {
