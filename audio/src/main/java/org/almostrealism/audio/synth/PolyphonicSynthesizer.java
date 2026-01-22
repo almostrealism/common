@@ -449,35 +449,32 @@ public class PolyphonicSynthesizer implements Temporal, Setup, Cell<PackedCollec
 			setup.add(voice.setup());
 		}
 
+		// Setup the output summation cell
+		setup.add(output.setup());
+
 		return setup;
 	}
 
 	/**
-	 * Performs per-sample state updates.
+	 * Forwards the accumulated audio to the receptor.
 	 * <p>
-	 * Behavior depends on context:
+	 * This method is part of the {@link Temporal} interface and is called once per
+	 * sample frame to forward the audio accumulated by {@link #push(Producer)} to
+	 * the downstream receptor.
+	 * <p>
+	 * The separation of concerns is:
 	 * <ul>
-	 *   <li><b>CellList mode</b> (receptor set via {@link #setReceptor}): Returns no-op because
-	 *       CellList calls both push() (from roots) and tick() (from temporals), and push()
-	 *       already handles everything.</li>
-	 *   <li><b>Standalone mode</b> (receptor set on output directly): Delegates to
-	 *       {@link #push(Producer)} for audio generation.</li>
+	 *   <li>{@link #push(Producer)} - computes audio by ticking all voices</li>
+	 *   <li>{@code tick()} - forwards the accumulated audio to receptor</li>
 	 * </ul>
 	 *
-	 * @return operation for audio generation (standalone) or no-op (CellList mode)
+	 * @return operation that forwards accumulated audio to receptor
 	 */
 	@Override
 	public Supplier<Runnable> tick() {
-		// Detect context: if receptor was set via setReceptor(), we're in CellList mode
-		// and push() already handles audio generation. If receptor is null, we're in
-		// standalone mode and tick() should generate audio.
-		if (receptor != null) {
-			// CellList mode: no-op to avoid double-processing
-			return new OperationList("PolyphonicSynthesizer Tick (CellList mode - no-op)");
-		} else {
-			// Standalone mode: delegate to push() for audio generation
-			return push(null);
-		}
+		OperationList tick = new OperationList("PolyphonicSynthesizer Tick");
+		tick.add(output.tick());
+		return tick;
 	}
 
 	/**
@@ -524,17 +521,17 @@ public class PolyphonicSynthesizer implements Temporal, Setup, Cell<PackedCollec
 	}
 
 	/**
-	 * Generates audio samples and pushes them to the receptor.
+	 * Computes audio samples from all active voices.
 	 * <p>
-	 * This method is called by {@link org.almostrealism.audio.CellList} to generate
-	 * audio for each sample frame. It triggers all active voices to generate audio
-	 * which is accumulated in the internal output cell and then forwarded to the receptor.
+	 * This method triggers all voices to generate audio which is accumulated in the
+	 * internal output cell. The accumulated audio is forwarded to the receptor by
+	 * {@link #tick()}.
 	 * <p>
 	 * Note: The input protein is ignored - the synthesizer generates audio from its
 	 * internal state (active notes, oscillators, envelopes).
 	 *
 	 * @param protein ignored input (synthesizer generates from internal state)
-	 * @return operation that generates and pushes audio
+	 * @return operation that computes audio from all voices
 	 */
 	@Override
 	public Supplier<Runnable> push(Producer<PackedCollection> protein) {
@@ -589,9 +586,6 @@ public class PolyphonicSynthesizer implements Temporal, Setup, Cell<PackedCollec
 			// NOTE: Release checking was moved to noteOn() to allow this OperationList
 			// to compile to a kernel. See checkReleases() method.
 		}
-
-		// Forward accumulated audio to receptor
-		push.add(output.tick());
 
 		return push;
 	}

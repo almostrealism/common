@@ -51,4 +51,10 @@ public class PolyphonicSynthesizerContractTest extends CellContractTest<Polyphon
 		// Synthesizers may need more samples to warm up envelopes
 		return 1000;
 	}
+
+	@Override
+	protected boolean requiresConfigurationAfterSetup() {
+		// PolyphonicSynthesizer needs setup() to initialize voices before noteOn can be called
+		return true;
+	}
 }

@@ -87,10 +87,25 @@ public abstract class CellContractTest<T extends Cell<PackedCollection>> extends
 	 * For synthesizers, this might trigger a note. For filters, this might
 	 * be a no-op since they process input. For oscillators, this might set
 	 * a non-zero amplitude.
+	 * <p>
+	 * This is called BEFORE setup() by default. Override {@link #requiresConfigurationAfterSetup()}
+	 * to return true if your cell needs configuration after setup().
 	 *
 	 * @param cell the cell to configure
 	 */
 	protected abstract void configureForAudioGeneration(T cell);
+
+	/**
+	 * Returns whether this cell requires configuration after setup().
+	 * <p>
+	 * Some cells (like synthesizers) need their voices to be set up before
+	 * noteOn can be called. Override this to return true for such cells.
+	 *
+	 * @return true if configureForAudioGeneration should be called after setup()
+	 */
+	protected boolean requiresConfigurationAfterSetup() {
+		return false;
+	}
 
 	/**
 	 * Returns the number of samples to generate for tests.
@@ -124,7 +139,9 @@ public abstract class CellContractTest<T extends Cell<PackedCollection>> extends
 	@Test
 	public void pushMustProduceOutputToReceptor() {
 		T cell = createCell();
-		configureForAudioGeneration(cell);
+		if (!requiresConfigurationAfterSetup()) {
+			configureForAudioGeneration(cell);
+		}
 
 		List<Double> outputValues = new ArrayList<>();
 		cell.setReceptor(accumulatingReceptor(outputValues));
@@ -134,6 +151,10 @@ public abstract class CellContractTest<T extends Cell<PackedCollection>> extends
 		Runnable tick = cell instanceof Temporal ? ((Temporal) cell).tick().get() : () -> {};
 
 		setup.run();
+
+		if (requiresConfigurationAfterSetup()) {
+			configureForAudioGeneration(cell);
+		}
 
 		for (int i = 0; i < getSampleCount(); i++) {
 			push.run();
@@ -161,7 +182,9 @@ public abstract class CellContractTest<T extends Cell<PackedCollection>> extends
 	public void pushBehaviorMustBeIndependentOfReceptorPresence() {
 		// Run WITH receptor
 		T cellWithReceptor = createCell();
-		configureForAudioGeneration(cellWithReceptor);
+		if (!requiresConfigurationAfterSetup()) {
+			configureForAudioGeneration(cellWithReceptor);
+		}
 		List<Double> withReceptorValues = new ArrayList<>();
 		cellWithReceptor.setReceptor(accumulatingReceptor(withReceptorValues));
 
@@ -171,6 +194,9 @@ public abstract class CellContractTest<T extends Cell<PackedCollection>> extends
 				((Temporal) cellWithReceptor).tick().get() : () -> {};
 
 		setup1.run();
+		if (requiresConfigurationAfterSetup()) {
+			configureForAudioGeneration(cellWithReceptor);
+		}
 		for (int i = 0; i < getSampleCount(); i++) {
 			push1.run();
 			tick1.run();
@@ -179,7 +205,9 @@ public abstract class CellContractTest<T extends Cell<PackedCollection>> extends
 		// Run WITHOUT receptor (but capture via a different mechanism)
 		// The cell should still compute values even if there's no receptor
 		T cellWithoutReceptor = createCell();
-		configureForAudioGeneration(cellWithoutReceptor);
+		if (!requiresConfigurationAfterSetup()) {
+			configureForAudioGeneration(cellWithoutReceptor);
+		}
 		// No receptor set - cell should still work
 
 		Runnable setup2 = cellWithoutReceptor.setup().get();
@@ -189,6 +217,9 @@ public abstract class CellContractTest<T extends Cell<PackedCollection>> extends
 
 		// This should NOT throw an exception
 		setup2.run();
+		if (requiresConfigurationAfterSetup()) {
+			configureForAudioGeneration(cellWithoutReceptor);
+		}
 		for (int i = 0; i < getSampleCount(); i++) {
 			push2.run();
 			tick2.run();
@@ -229,7 +260,9 @@ public abstract class CellContractTest<T extends Cell<PackedCollection>> extends
 
 		// Set up cell WITH receptor
 		T cell = createCell();
-		configureForAudioGeneration(cell);
+		if (!requiresConfigurationAfterSetup()) {
+			configureForAudioGeneration(cell);
+		}
 		AtomicInteger receptorCalls = new AtomicInteger(0);
 		cell.setReceptor(countingReceptor(receptorCalls));
 
@@ -237,6 +270,9 @@ public abstract class CellContractTest<T extends Cell<PackedCollection>> extends
 		Runnable tick = ((Temporal) cell).tick().get();
 
 		setup.run();
+		if (requiresConfigurationAfterSetup()) {
+			configureForAudioGeneration(cell);
+		}
 		for (int i = 0; i < getSampleCount(); i++) {
 			tick.run();
 		}
@@ -316,7 +352,9 @@ public abstract class CellContractTest<T extends Cell<PackedCollection>> extends
 	@Test
 	public void multipleSetupCallsShouldBeIdempotent() {
 		T cell = createCell();
-		configureForAudioGeneration(cell);
+		if (!requiresConfigurationAfterSetup()) {
+			configureForAudioGeneration(cell);
+		}
 
 		List<Double> outputValues = new ArrayList<>();
 		cell.setReceptor(accumulatingReceptor(outputValues));
@@ -329,6 +367,10 @@ public abstract class CellContractTest<T extends Cell<PackedCollection>> extends
 		setup.run();
 		setup.run();
 		setup.run();
+
+		if (requiresConfigurationAfterSetup()) {
+			configureForAudioGeneration(cell);
+		}
 
 		// Should still work correctly
 		for (int i = 0; i < getSampleCount(); i++) {
