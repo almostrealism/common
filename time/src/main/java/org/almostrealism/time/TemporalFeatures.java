@@ -289,14 +289,15 @@ public interface TemporalFeatures extends GeometryFeatures {
 	 * @return A supplier producing the looped operation
 	 */
 	default Supplier<Runnable> loop(Supplier<Runnable> c, int iterations) {
-		if (c instanceof Computation) {
-			return new Loop((Computation) c, iterations);
-		} else {
-			// For non-Computations, use Java loop to compile once and run N times
+		// Use Java loop for non-Computations or OperationLists containing non-computational
+		// elements (like runtime lambdas). Loop class can only handle pure Computations.
+		if (!(c instanceof Computation) || (c instanceof OperationList && !((OperationList) c).isComputation())) {
 			return () -> {
 				Runnable r = c.get();
 				return () -> IntStream.range(0, iterations).forEach(i -> r.run());
 			};
+		} else {
+			return new Loop((Computation) c, iterations);
 		}
 	}
 
