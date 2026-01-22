@@ -42,19 +42,20 @@ import java.util.function.Supplier;
  * </ul>
  *
  * <h2>Architecture: Initial Values vs Runtime Values</h2>
- * <p>This cell operates in a GPU-accelerated environment where computations are compiled
- * to hardware kernels. This creates two distinct ways to set parameters:</p>
+ * <p>This cell operates in a hardware-accelerated environment where computations are compiled
+ * to native kernels. This creates two distinct ways to set parameters:</p>
  *
  * <h3>Initial Values (Java fields)</h3>
  * <p>Fields like {@code initialAmplitude}, {@code initialPhase}, {@code initialDutyCycle}, etc.
- * are Java-side values that are only used during {@link #setup()}. They are copied to GPU memory
- * once at setup time. After setup completes, changing these fields has NO effect on the running audio.</p>
+ * are Java-side values that are only used during {@link #setup()}. They are copied to
+ * {@link PackedCollection} storage once at setup time. After setup completes, changing these
+ * fields has NO effect on the running audio.</p>
  *
- * <h3>Runtime Values (GPU memory via Producers)</h3>
+ * <h3>Runtime Values (PackedCollection storage via Producers)</h3>
  * <p>To change parameters dynamically during audio generation, you must create
- * compiled operations that write to GPU memory. The Producer-based setters return
- * {@code Supplier<Runnable>} that, when included in an OperationList and executed,
- * will update the GPU memory.</p>
+ * compiled operations that write to {@link PackedCollection} storage. The Producer-based
+ * setters return {@code Supplier<Runnable>} that, when included in an OperationList and
+ * executed, will update the hardware-side memory.</p>
  *
  * <h2>Envelope System</h2>
  * <p>The envelope is a {@link Factor} that transforms the note position (0.0 to 1.0+)
@@ -73,22 +74,22 @@ public class SquareWaveCell extends CollectionTemporalCellAdapter implements Sam
 	/** The envelope Factor that transforms note position into amplitude multiplier. */
 	private Factor<PackedCollection> env;
 
-	/** GPU-side data storage for all wave parameters including duty cycle. */
+	/** Hardware-side data storage (PackedCollection) for all wave parameters including duty cycle. */
 	private final SquareWaveCellData data;
 
-	/** Initial note length in frames, copied to GPU memory during setup(). */
+	/** Initial note length in frames, copied to hardware memory during setup(). */
 	private double initialNoteLength;
 
-	/** Initial wave length (frequency/sampleRate), copied to GPU memory during setup(). */
+	/** Initial wave length (frequency/sampleRate), copied to hardware memory during setup(). */
 	private double initialWaveLength;
 
-	/** Initial phase offset, copied to GPU memory during setup(). */
+	/** Initial phase offset, copied to hardware memory during setup(). */
 	private double initialPhase;
 
-	/** Initial amplitude, copied to GPU memory during setup(). */
+	/** Initial amplitude, copied to hardware memory during setup(). */
 	private double initialAmplitude;
 
-	/** Initial duty cycle (0.0 to 1.0), copied to GPU memory during setup(). */
+	/** Initial duty cycle (0.0 to 1.0), copied to hardware memory during setup(). */
 	private double initialDutyCycle;
 
 	/**
@@ -101,7 +102,7 @@ public class SquareWaveCell extends CollectionTemporalCellAdapter implements Sam
 	/**
 	 * Creates a new SquareWaveCell with the specified data storage.
 	 *
-	 * @param data the GPU-side data storage for wave parameters
+	 * @param data the hardware-side data storage for wave parameters
 	 */
 	public SquareWaveCell(SquareWaveCellData data) {
 		this.data = data;
@@ -123,7 +124,7 @@ public class SquareWaveCell extends CollectionTemporalCellAdapter implements Sam
 	/**
 	 * Resets the note position to 0, restarting the envelope from the beginning.
 	 * <p>
-	 * <strong>Warning:</strong> This directly modifies GPU memory.
+	 * <strong>Warning:</strong> This directly modifies hardware memory.
 	 * </p>
 	 */
 	public void strike() { data.setNotePosition(0); }
@@ -138,10 +139,10 @@ public class SquareWaveCell extends CollectionTemporalCellAdapter implements Sam
 	}
 
 	/**
-	 * Creates a compiled operation that updates the frequency in GPU memory.
+	 * Creates a compiled operation that updates the frequency in hardware memory.
 	 *
 	 * @param hertz a Producer providing the frequency in Hertz
-	 * @return a Supplier that, when executed, updates the GPU-side frequency
+	 * @return a Supplier that, when executed, updates the hardware-side frequency
 	 */
 	public Supplier<Runnable> setFreq(Producer<PackedCollection> hertz) {
 		return a(data.getWaveLength(), divide(hertz, c(OutputLine.sampleRate)));
@@ -157,10 +158,10 @@ public class SquareWaveCell extends CollectionTemporalCellAdapter implements Sam
 	}
 
 	/**
-	 * Creates a compiled operation that updates the note length in GPU memory.
+	 * Creates a compiled operation that updates the note length in hardware memory.
 	 *
 	 * @param noteLength a Producer providing the note length in milliseconds
-	 * @return a Supplier that, when executed, updates the GPU-side note length
+	 * @return a Supplier that, when executed, updates the hardware-side note length
 	 */
 	public Supplier<Runnable> setNoteLength(Producer<PackedCollection> noteLength) {
 		return a(data.getNoteLength(), toFramesMilli(noteLength));
@@ -183,10 +184,10 @@ public class SquareWaveCell extends CollectionTemporalCellAdapter implements Sam
 	}
 
 	/**
-	 * Creates a compiled operation that updates the amplitude in GPU memory.
+	 * Creates a compiled operation that updates the amplitude in hardware memory.
 	 *
 	 * @param amp a Producer providing the amplitude value
-	 * @return a Supplier that, when executed, updates the GPU-side amplitude
+	 * @return a Supplier that, when executed, updates the hardware-side amplitude
 	 */
 	public Supplier<Runnable> setAmplitude(Producer<PackedCollection> amp) {
 		return a(data.getAmplitude(), amp);
@@ -205,23 +206,23 @@ public class SquareWaveCell extends CollectionTemporalCellAdapter implements Sam
 	}
 
 	/**
-	 * Creates a compiled operation that updates the duty cycle in GPU memory.
+	 * Creates a compiled operation that updates the duty cycle in hardware memory.
 	 * <p>
 	 * Use this for pulse-width modulation (PWM) effects where the duty cycle
 	 * changes dynamically during audio generation.
 	 * </p>
 	 *
 	 * @param dutyCycle a Producer providing the duty cycle value (0.0 to 1.0)
-	 * @return a Supplier that, when executed, updates the GPU-side duty cycle
+	 * @return a Supplier that, when executed, updates the hardware-side duty cycle
 	 */
 	public Supplier<Runnable> setDutyCycle(Producer<PackedCollection> dutyCycle) {
 		return a(data.getDutyCycle(), dutyCycle);
 	}
 
 	/**
-	 * Creates a compiled operation that initializes all GPU memory with initial values.
+	 * Creates a compiled operation that initializes all hardware memory with initial values.
 	 *
-	 * @return a Supplier that, when executed, initializes GPU memory
+	 * @return a Supplier that, when executed, initializes hardware memory
 	 */
 	@Override
 	public Supplier<Runnable> setup() {
