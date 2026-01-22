@@ -16,6 +16,8 @@
 
 package org.almostrealism.ml.audio;
 
+import org.almostrealism.CodeFeatures;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 
 import java.util.Random;
@@ -31,7 +33,7 @@ import java.util.Random;
  * @see SamplingStrategy
  * @author Michael Murray
  */
-public class PingPongSamplingStrategy implements SamplingStrategy {
+public class PingPongSamplingStrategy implements SamplingStrategy, CodeFeatures {
 
 	private final float logSnrMax;
 	private final float logSnrMin;
@@ -86,47 +88,28 @@ public class PingPongSamplingStrategy implements SamplingStrategy {
 	@Override
 	public PackedCollection step(PackedCollection x, PackedCollection modelOutput,
 								 double t, double tPrev, Random random) {
-		int size = (int) x.getMemLength();
-		double[] xData = x.toArray();
-		double[] outputData = modelOutput.toArray();
-
-		// Compute denoised prediction: denoised = x - t * model_output
-		double[] denoised = new double[size];
-		for (int i = 0; i < size; i++) {
-			denoised[i] = xData[i] - (t * outputData[i]);
-		}
-
 		// Sample fresh noise
-		PackedCollection newNoise = new PackedCollection(x.getShape()).randnFill(random);
-		double[] noiseData = newNoise.toArray();
+		PackedCollection noise = new PackedCollection(x.getShape()).randnFill(random);
 
-		// Interpolate: x_prev = (1 - tPrev) * denoised + tPrev * noise
-		PackedCollection result = new PackedCollection(x.getShape());
-		float[] resultData = new float[size];
-		for (int i = 0; i < size; i++) {
-			resultData[i] = (float) ((1.0 - tPrev) * denoised[i] + tPrev * noiseData[i]);
-		}
-		result.setMem(resultData);
+		// Use Producer pattern for GPU-accelerated computation:
+		// denoised = x - t * modelOutput
+		// result = (1 - tPrev) * denoised + tPrev * noise
+		CollectionProducer denoised = cp(x).subtract(cp(modelOutput).multiply(t));
+		CollectionProducer result = denoised.multiply(1.0 - tPrev)
+				.add(cp(noise).multiply(tPrev));
 
-		return result;
+		return result.evaluate();
 	}
 
 	@Override
 	public PackedCollection addNoise(PackedCollection cleanSample, double t, Random random) {
 		PackedCollection noise = new PackedCollection(cleanSample.getShape()).randnFill(random);
-		int size = (int) cleanSample.getMemLength();
 
-		double[] cleanData = cleanSample.toArray();
-		double[] noiseData = noise.toArray();
+		// Use Producer pattern for GPU-accelerated computation:
+		// noisy = (1 - t) * clean + t * noise
+		CollectionProducer result = cp(cleanSample).multiply(1.0 - t)
+				.add(cp(noise).multiply(t));
 
-		// Interpolate: noisy = (1 - t) * clean + t * noise
-		PackedCollection result = new PackedCollection(cleanSample.getShape());
-		float[] resultData = new float[size];
-		for (int i = 0; i < size; i++) {
-			resultData[i] = (float) ((1.0 - t) * cleanData[i] + t * noiseData[i]);
-		}
-		result.setMem(resultData);
-
-		return result;
+		return result.evaluate();
 	}
 }

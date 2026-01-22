@@ -213,7 +213,9 @@ public class AudioDiffusionGenerator implements ConsoleFeatures {
 		} else {
 			PackedCollection[] args = new PackedCollection[conditioning.length + 1];
 			args[0] = t;
-			System.arraycopy(conditioning, 0, args, 1, conditioning.length);
+			for (int i = 0; i < conditioning.length; i++) {
+				args[i + 1] = conditioning[i];
+			}
 			return diffusionModel.forward(x, args);
 		}
 	}

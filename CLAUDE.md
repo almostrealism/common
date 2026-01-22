@@ -536,6 +536,66 @@ This rule exists because both `AudioGenerator` and `AudioDiffusionGenerator` wer
 
 ---
 
+## ⚠️ CRITICAL: PackedCollection is NOT a Java Array ⚠️
+
+**THIS IS A FUNDAMENTAL ARCHITECTURAL PRINCIPLE. MISUNDERSTANDING IT SHOWS YOU DON'T KNOW HOW A GPU WORKS.**
+
+### The Golden Rule
+
+**`PackedCollection` is a HANDLE to potentially GPU-resident memory.** It is NOT a Java array. You CANNOT use Java operations on `PackedCollection` data.
+
+### What PackedCollection Actually Is
+
+- A reference to memory that may live on a GPU, external accelerator, or native memory outside the JVM heap
+- A handle that requires framework-mediated access for any operations
+- NOT something you can manipulate with Java primitives
+
+### What You CANNOT Do
+
+```java
+// WRONG: System.arraycopy CANNOT move GPU data
+System.arraycopy(packedCollectionArray, 0, dest, 0, length);
+
+// WRONG: CPU loop defeats GPU parallelism and forces memory transfers
+for (int i = 0; i < size; i++) {
+    result.setMem(i, source.toDouble(i) * 2);  // Round-trip per element!
+}
+
+// WRONG: toArray() + manipulation + setMem() forces CPU round-trip
+double[] data = collection.toArray();  // GPU → CPU
+// ... manipulate data ...
+result.setMem(data);  // CPU → GPU
+```
+
+### What You MUST Do Instead
+
+Use the **Producer pattern** with `CollectionProducer`:
+
+```java
+// CORRECT: GPU-accelerated computation
+CollectionProducer result = cp(source).multiply(2.0);
+PackedCollection evaluated = result.evaluate();  // Runs on GPU
+
+// CORRECT: Chained operations stay on GPU
+CollectionProducer result = cp(x)
+        .subtract(cp(modelOutput).multiply(t))
+        .multiply(1.0 - tPrev)
+        .add(cp(noise).multiply(tPrev));
+return result.evaluate();
+```
+
+### Before ANY PackedCollection Manipulation
+
+**You MUST ask yourself:** "Where does this data physically live?"
+
+If your answer involves `toArray()`, `setMem()` in a loop, `System.arraycopy`, or any Java primitive operation → **STOP. Use the Producer pattern.**
+
+### Historical Context
+
+See `/workspace/project/common/I_DONT_KNOW_HOW_A_GPU_WORKS.md` for the full failure analysis.
+
+---
+
 ## ⚠️ CRITICAL: Process Optimization and Isolation Architecture ⚠️
 
 **THIS IS A SACRED ARCHITECTURAL PRINCIPLE. VIOLATING IT WILL BREAK THE SYSTEM.**
