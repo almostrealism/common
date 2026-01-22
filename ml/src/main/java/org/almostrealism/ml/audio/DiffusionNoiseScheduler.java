@@ -16,6 +16,8 @@
 
 package org.almostrealism.ml.audio;
 
+import org.almostrealism.CodeFeatures;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 
 import java.util.Random;
@@ -27,13 +29,16 @@ import java.util.Random;
  * The scheduler handles adding noise during training and denoising during
  * inference (sampling).</p>
  *
+ * <p>All operations use the Producer pattern for GPU-accelerated computation.
+ * See {@code I_DONT_KNOW_HOW_A_GPU_WORKS.md} for why this matters.</p>
+ *
  * <h2>Training Usage</h2>
  * <pre>{@code
  * DiffusionNoiseScheduler scheduler = new DiffusionNoiseScheduler(1000);
  *
  * // For each training step
  * int t = scheduler.sampleTimestep();
- * PackedCollection noise = scheduler.sampleNoise(latent.getShape());
+ * PackedCollection noise = scheduler.sampleNoiseLike(latent);
  * PackedCollection noisyLatent = scheduler.addNoise(latent, noise, t);
  *
  * // Model predicts the noise
@@ -47,16 +52,17 @@ import java.util.Random;
  * // Start from pure noise
  * PackedCollection x = scheduler.sampleNoise(shape);
  *
- * // Iteratively denoise
+ * // Iteratively denoise (but prefer DiffusionSampler over manual loops)
  * for (int t = scheduler.getNumSteps() - 1; t >= 0; t--) {
  *     PackedCollection predictedNoise = model.forward(x, t);
  *     x = scheduler.step(x, predictedNoise, t);
  * }
  * }</pre>
  *
+ * @see DiffusionSampler
  * @author Michael Murray
  */
-public class DiffusionNoiseScheduler {
+public class DiffusionNoiseScheduler implements CodeFeatures {
 
 	private final int numSteps;
 	private final double[] alphas;
@@ -132,16 +138,7 @@ public class DiffusionNoiseScheduler {
 	 * @return Noise tensor with standard normal values
 	 */
 	public PackedCollection sampleNoise(int... shape) {
-		int totalSize = 1;
-		for (int dim : shape) {
-			totalSize *= dim;
-		}
-
-		PackedCollection noise = new PackedCollection(shape);
-		for (int i = 0; i < totalSize; i++) {
-			noise.setMem(i, random.nextGaussian());
-		}
-		return noise;
+		return new PackedCollection(shape).randnFill(random);
 	}
 
 	/**
@@ -151,12 +148,7 @@ public class DiffusionNoiseScheduler {
 	 * @return Noise tensor with standard normal values
 	 */
 	public PackedCollection sampleNoiseLike(PackedCollection like) {
-		PackedCollection noise = new PackedCollection(like.getShape());
-		int totalSize = (int) like.getMemLength();
-		for (int i = 0; i < totalSize; i++) {
-			noise.setMem(i, random.nextGaussian());
-		}
-		return noise;
+		return new PackedCollection(like.getShape()).randnFill(random);
 	}
 
 	/**
@@ -164,6 +156,8 @@ public class DiffusionNoiseScheduler {
 	 *
 	 * <p>Implements the forward diffusion process:
 	 * x_t = sqrt(alpha_bar_t) * x_0 + sqrt(1 - alpha_bar_t) * noise</p>
+	 *
+	 * <p>Uses GPU-accelerated Producer pattern.</p>
 	 *
 	 * @param x0 Clean sample
 	 * @param noise Gaussian noise (same shape as x0)
@@ -174,21 +168,19 @@ public class DiffusionNoiseScheduler {
 		double sqrtAlpha = sqrtAlphasCumprod[t];
 		double sqrtOneMinusAlpha = sqrtOneMinusAlphasCumprod[t];
 
-		PackedCollection result = new PackedCollection(x0.getShape());
-		int size = (int) x0.getMemLength();
+		// GPU-accelerated: x_t = sqrt(alpha) * x_0 + sqrt(1-alpha) * noise
+		CollectionProducer result = cp(x0).multiply(sqrtAlpha)
+				.add(cp(noise).multiply(sqrtOneMinusAlpha));
 
-		for (int i = 0; i < size; i++) {
-			double val = sqrtAlpha * x0.toDouble(i) + sqrtOneMinusAlpha * noise.toDouble(i);
-			result.setMem(i, val);
-		}
-
-		return result;
+		return result.evaluate();
 	}
 
 	/**
 	 * Performs one reverse diffusion step (DDPM sampling).
 	 *
 	 * <p>Given x_t and predicted noise, computes x_{t-1}.</p>
+	 *
+	 * <p>Uses GPU-accelerated Producer pattern.</p>
 	 *
 	 * @param xt Current noisy sample
 	 * @param predictedNoise Model's noise prediction
@@ -200,12 +192,8 @@ public class DiffusionNoiseScheduler {
 		double alphaBar = alphasCumprod[t];
 		double alphaBarPrev = t > 0 ? alphasCumprod[t - 1] : 1.0;
 
-		// Predicted x0 from noise prediction
 		double sqrtAlphaBar = sqrtAlphasCumprod[t];
 		double sqrtOneMinusAlphaBar = sqrtOneMinusAlphasCumprod[t];
-
-		// Compute x0 prediction: x0 = (xt - sqrt(1-alpha_bar)*noise) / sqrt(alpha_bar)
-		// Then compute x_{t-1} using posterior mean
 
 		// Posterior variance
 		double betaT = 1.0 - alpha;
@@ -216,32 +204,34 @@ public class DiffusionNoiseScheduler {
 		// Posterior mean coefficient for xt
 		double coef2 = Math.sqrt(alpha) * (1.0 - alphaBarPrev) / (1.0 - alphaBar);
 
-		PackedCollection result = new PackedCollection(xt.getShape());
-		int size = (int) xt.getMemLength();
+		// GPU-accelerated computation:
+		// x0_pred = (xt - sqrt(1-alpha_bar) * noise) / sqrt(alpha_bar)
+		CollectionProducer x0Pred = cp(xt).subtract(cp(predictedNoise).multiply(sqrtOneMinusAlphaBar))
+				.divide(sqrtAlphaBar);
 
-		for (int i = 0; i < size; i++) {
-			// First predict x0
-			double x0_pred = (xt.toDouble(i) - sqrtOneMinusAlphaBar * predictedNoise.toDouble(i)) / sqrtAlphaBar;
-			// Clip x0 prediction to reasonable range
-			x0_pred = Math.max(-10.0, Math.min(10.0, x0_pred));
+		// Clip x0 prediction to [-10, 10]
+		CollectionProducer x0Clamped = min(max(x0Pred, c(-10.0)), c(10.0));
 
-			// Compute posterior mean
-			double mean = coef1 * x0_pred + coef2 * xt.toDouble(i);
+		// mean = coef1 * x0_pred + coef2 * xt
+		CollectionProducer mean = x0Clamped.multiply(coef1).add(cp(xt).multiply(coef2));
 
-			// Add noise (except at t=0)
-			double noiseScale = t > 0 ? Math.sqrt(posteriorVariance) : 0.0;
-			double val = mean + noiseScale * random.nextGaussian();
-
-			result.setMem(i, val);
+		// Add noise (except at t=0)
+		if (t > 0) {
+			double noiseScale = Math.sqrt(posteriorVariance);
+			PackedCollection noise = sampleNoiseLike(xt);
+			CollectionProducer result = mean.add(cp(noise).multiply(noiseScale));
+			return result.evaluate();
+		} else {
+			return mean.evaluate();
 		}
-
-		return result;
 	}
 
 	/**
 	 * Performs DDIM deterministic sampling step.
 	 *
 	 * <p>DDIM allows faster sampling with fewer steps while maintaining quality.</p>
+	 *
+	 * <p>Uses GPU-accelerated Producer pattern.</p>
 	 *
 	 * @param xt Current noisy sample
 	 * @param predictedNoise Model's noise prediction
@@ -258,10 +248,6 @@ public class DiffusionNoiseScheduler {
 		double sqrtAlphaBar = sqrtAlphasCumprod[t];
 		double sqrtOneMinusAlphaBar = sqrtOneMinusAlphasCumprod[t];
 
-		// Predict x0
-		PackedCollection result = new PackedCollection(xt.getShape());
-		int size = (int) xt.getMemLength();
-
 		// Compute sigma for optional stochasticity
 		double sigma = eta * Math.sqrt((1.0 - alphaBarPrev) / (1.0 - alphaBar))
 				* Math.sqrt(1.0 - alphaBar / alphaBarPrev);
@@ -269,23 +255,25 @@ public class DiffusionNoiseScheduler {
 		double sqrtAlphaBarPrev = Math.sqrt(alphaBarPrev);
 		double directionCoef = Math.sqrt(1.0 - alphaBarPrev - sigma * sigma);
 
-		for (int i = 0; i < size; i++) {
-			// Predict x0
-			double x0_pred = (xt.toDouble(i) - sqrtOneMinusAlphaBar * predictedNoise.toDouble(i)) / sqrtAlphaBar;
-			x0_pred = Math.max(-10.0, Math.min(10.0, x0_pred));
+		// GPU-accelerated computation:
+		// x0_pred = (xt - sqrt(1-alpha_bar) * noise) / sqrt(alpha_bar)
+		CollectionProducer x0Pred = cp(xt).subtract(cp(predictedNoise).multiply(sqrtOneMinusAlphaBar))
+				.divide(sqrtAlphaBar);
 
-			// Compute x_{t-1}
-			double val = sqrtAlphaBarPrev * x0_pred + directionCoef * predictedNoise.toDouble(i);
+		// Clip x0 prediction to [-10, 10]
+		CollectionProducer x0Clamped = min(max(x0Pred, c(-10.0)), c(10.0));
 
-			// Add noise if eta > 0
-			if (eta > 0 && tPrev >= 0) {
-				val += sigma * random.nextGaussian();
-			}
+		// result = sqrt(alpha_bar_prev) * x0_pred + directionCoef * predictedNoise
+		CollectionProducer result = x0Clamped.multiply(sqrtAlphaBarPrev)
+				.add(cp(predictedNoise).multiply(directionCoef));
 
-			result.setMem(i, val);
+		// Add noise if eta > 0
+		if (eta > 0 && tPrev >= 0) {
+			PackedCollection noise = sampleNoiseLike(xt);
+			result = result.add(cp(noise).multiply(sigma));
 		}
 
-		return result;
+		return result.evaluate();
 	}
 
 	/**

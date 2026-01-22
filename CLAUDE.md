@@ -544,37 +544,61 @@ This rule exists because both `AudioGenerator` and `AudioDiffusionGenerator` wer
 
 **`PackedCollection` is a HANDLE to potentially GPU-resident memory.** It is NOT a Java array. You CANNOT use Java operations on `PackedCollection` data.
 
-### What PackedCollection Actually Is
+### Mandatory Mental Model Check
 
-- A reference to memory that may live on a GPU, external accelerator, or native memory outside the JVM heap
-- A handle that requires framework-mediated access for any operations
-- NOT something you can manipulate with Java primitives
+**Before writing ANY code that manipulates `PackedCollection`, ask yourself:**
 
-### What You CANNOT Do
+> "Where does this data physically live?"
 
-```java
-// WRONG: System.arraycopy CANNOT move GPU data
-System.arraycopy(packedCollectionArray, 0, dest, 0, length);
+- If you're thinking "it's just a Java object" → **STOP. You are wrong.**
+- `PackedCollection` is a *handle* to memory that may be on a completely different device (GPU, external accelerator, native memory)
+- Operations on `PackedCollection` must go through the AR framework, not Java primitives
 
-// WRONG: CPU loop defeats GPU parallelism and forces memory transfers
-for (int i = 0; i < size; i++) {
-    result.setMem(i, source.toDouble(i) * 2);  // Round-trip per element!
-}
+### Mandatory ar-docs MCP Consultation
 
-// WRONG: toArray() + manipulation + setMem() forces CPU round-trip
-double[] data = collection.toArray();  // GPU → CPU
-// ... manipulate data ...
-result.setMem(data);  // CPU → GPU
-```
+**Before writing code that creates, copies, or transforms `PackedCollection` objects, you MUST:**
+
+1. Run `mcp__ar-docs__search_ar_docs query:"PackedCollection operations"`
+2. Run `mcp__ar-docs__read_ar_module module:"collect"`
+3. Look for existing methods like `copy()`, `reshape()`, `traverse()`, etc.
+
+**The framework exists for a reason.** If there isn't an obvious AR method for what you want to do, you probably shouldn't be doing it, or you need to ask.
+
+### RED FLAG PATTERNS - STOP IMMEDIATELY
+
+**STOP IMMEDIATELY if you find yourself writing:**
+
+- `System.arraycopy` anywhere near `PackedCollection` → **DELETE IT**
+- `Arrays.copyOf` with `PackedCollection` → **DELETE IT**
+- `for` loops that call `setMem(i, ...)` in a tight loop → **DELETE IT** (defeats GPU parallelism)
+- Direct `.toArray()` followed by manipulation followed by `.setMem()` → **DELETE IT** (round-trip through CPU)
+- Any assumption that `PackedCollection` data is "just there" in JVM memory → **STOP AND THINK**
+
+**These patterns indicate you are bypassing the hardware abstraction and will either:**
+- Cause silent data corruption
+- Cause runtime errors
+- Destroy performance by forcing CPU-GPU memory transfers
 
 ### What You MUST Do Instead
 
 Use the **Producer pattern** with `CollectionProducer`:
 
 ```java
+// WRONG: CPU loop defeats GPU parallelism
+for (int i = 0; i < size; i++) {
+    result.setMem(i, source.toDouble(i) * 2);  // Round-trip per element!
+}
+
 // CORRECT: GPU-accelerated computation
 CollectionProducer result = cp(source).multiply(2.0);
 PackedCollection evaluated = result.evaluate();  // Runs on GPU
+```
+
+```java
+// WRONG: toArray() + manipulation + setMem() forces CPU round-trip
+double[] data = collection.toArray();  // GPU → CPU
+for (int i = 0; i < data.length; i++) { data[i] *= 2; }
+result.setMem(data);  // CPU → GPU
 
 // CORRECT: Chained operations stay on GPU
 CollectionProducer result = cp(x)
@@ -584,11 +608,14 @@ CollectionProducer result = cp(x)
 return result.evaluate();
 ```
 
-### Before ANY PackedCollection Manipulation
+### Common Operations - The Right Way
 
-**You MUST ask yourself:** "Where does this data physically live?"
-
-If your answer involves `toArray()`, `setMem()` in a loop, `System.arraycopy`, or any Java primitive operation → **STOP. Use the Producer pattern.**
+| Task | WRONG | CORRECT |
+|------|-------|---------|
+| Multiply by scalar | `for (i) result.setMem(i, x.toDouble(i) * 2)` | `cp(x).multiply(2.0).evaluate()` |
+| Add two collections | `for (i) result.setMem(i, a.toDouble(i) + b.toDouble(i))` | `cp(a).add(cp(b)).evaluate()` |
+| Clamp values | `for (i) result.setMem(i, Math.max(min, x.toDouble(i)))` | `max(cp(x), c(min)).evaluate()` |
+| Fill with noise | `for (i) result.setMem(i, random.nextGaussian())` | `new PackedCollection(shape).randnFill(random)` |
 
 ### Historical Context
 
