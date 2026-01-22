@@ -19,7 +19,7 @@ package org.almostrealism.layers;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.relation.Factor;
-import io.almostrealism.uml.Nameable;
+import io.almostrealism.uml.Named;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.Cell;
@@ -76,7 +76,7 @@ import java.util.function.Supplier;
  * @see LayerFeatures#dense(PackedCollection, PackedCollection, ComputeRequirement...)
  * @author Michael Murray
  */
-public class LoRALinear implements CellularLayer, Learning, Nameable, LayerFeatures {
+public class LoRALinear implements CellularLayer, Learning, Named, LayerFeatures {
 
 	private static final Random random = new Random(42);
 
@@ -213,11 +213,6 @@ public class LoRALinear implements CellularLayer, Learning, Nameable, LayerFeatu
 	@Override
 	public String getName() {
 		return name;
-	}
-
-	@Override
-	public void setName(String name) {
-		// Name is computed from dimensions, not settable
 	}
 
 	@Override
