@@ -14,57 +14,56 @@
  * limitations under the License.
  */
 
-package org.almostrealism.ml.audio;
+package org.almostrealism.optimize;
 
-import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.optimize.Dataset;
+import org.almostrealism.hardware.MemoryData;
 
 /**
- * Container for audio training and validation datasets.
+ * Container for train/validation dataset split.
  *
- * <p>This class holds the train/validation split created by
- * {@link AudioTrainingDataCollector} and provides convenient
- * access methods for both datasets.</p>
+ * <p>This is a generic container that holds training and validation datasets
+ * along with their sizes. It is domain-agnostic and works for any type of data
+ * (images, audio, text, tensors, etc.).</p>
  *
  * <h2>Usage Example</h2>
  * <pre>{@code
- * AudioTrainingDataset dataset = collector.collect(audioFiles, config);
+ * DatasetSplit<PackedCollection> split = collector.collect(data, config);
  *
  * // Access training data
- * Dataset<PackedCollection> trainSet = dataset.getTrainSet();
- * System.out.println("Training samples: " + dataset.getTrainSize());
+ * Dataset<PackedCollection> trainSet = split.getTrainSet();
+ * System.out.println("Training samples: " + split.getTrainSize());
  *
  * // Access validation data
- * Dataset<PackedCollection> validSet = dataset.getValidationSet();
- * System.out.println("Validation samples: " + dataset.getValidationSize());
+ * Dataset<PackedCollection> validSet = split.getValidationSet();
+ * System.out.println("Validation samples: " + split.getValidationSize());
  *
- * // Use with FineTuner
- * fineTuner.fineTune(trainSet, validSet);
+ * // Use with optimizer
+ * optimizer.optimize(trainSet, validSet);
  * }</pre>
  *
- * @see AudioTrainingDataCollector
+ * @param <T> the type of elements in the datasets
  * @see Dataset
  * @author Michael Murray
  */
-public class AudioTrainingDataset {
+public class DatasetSplit<T extends MemoryData> {
 
-	private final Dataset<PackedCollection> trainSet;
-	private final Dataset<PackedCollection> validationSet;
+	private final Dataset<T> trainSet;
+	private final Dataset<T> validationSet;
 	private final int trainSize;
 	private final int validationSize;
 
 	/**
-	 * Creates a new audio training dataset container.
+	 * Creates a new dataset split container.
 	 *
 	 * @param trainSet the training dataset
 	 * @param validationSet the validation dataset
 	 * @param trainSize the number of training samples
 	 * @param validationSize the number of validation samples
 	 */
-	public AudioTrainingDataset(Dataset<PackedCollection> trainSet,
-								Dataset<PackedCollection> validationSet,
-								int trainSize,
-								int validationSize) {
+	public DatasetSplit(Dataset<T> trainSet,
+						Dataset<T> validationSet,
+						int trainSize,
+						int validationSize) {
 		this.trainSet = trainSet;
 		this.validationSet = validationSet;
 		this.trainSize = trainSize;
@@ -76,7 +75,7 @@ public class AudioTrainingDataset {
 	 *
 	 * @return the training dataset
 	 */
-	public Dataset<PackedCollection> getTrainSet() {
+	public Dataset<T> getTrainSet() {
 		return trainSet;
 	}
 
@@ -85,7 +84,7 @@ public class AudioTrainingDataset {
 	 *
 	 * @return the validation dataset
 	 */
-	public Dataset<PackedCollection> getValidationSet() {
+	public Dataset<T> getValidationSet() {
 		return validationSet;
 	}
 
@@ -128,7 +127,7 @@ public class AudioTrainingDataset {
 
 	@Override
 	public String toString() {
-		return String.format("AudioTrainingDataset[train=%d, validation=%d, ratio=%.2f]",
+		return String.format("DatasetSplit[train=%d, validation=%d, ratio=%.2f]",
 				trainSize, validationSize, getActualSplitRatio());
 	}
 }

@@ -18,8 +18,8 @@ package org.almostrealism.ml.audio.test;
 
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.ml.audio.AudioTrainingDataCollector;
-import org.almostrealism.ml.audio.AudioTrainingDataset;
 import org.almostrealism.ml.audio.DataCollectionConfig;
+import org.almostrealism.optimize.DatasetSplit;
 import org.almostrealism.optimize.ValueTarget;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
@@ -63,7 +63,7 @@ public class AudioTrainingDataCollectorTest extends TestSuiteBase {
 				.trainSplitRatio(0.8); // 80% train, 20% validation
 
 		AudioTrainingDataCollector collector = new AudioTrainingDataCollector();
-		AudioTrainingDataset dataset = collector.collect(audioFiles, config);
+		DatasetSplit<PackedCollection> dataset = collector.collect(audioFiles, config);
 
 		log("Collected dataset: " + dataset);
 		log("Train samples: " + dataset.getTrainSize());
@@ -104,7 +104,7 @@ public class AudioTrainingDataCollectorTest extends TestSuiteBase {
 				.maxSamplesTotal(10);
 
 		AudioTrainingDataCollector collector = new AudioTrainingDataCollector();
-		AudioTrainingDataset dataset = collector.collect(audioFiles, config);
+		DatasetSplit<PackedCollection> dataset = collector.collect(audioFiles, config);
 
 		// Check that samples are within [-1, 1] range
 		for (ValueTarget<PackedCollection> sample : dataset.getTrainSet()) {
@@ -138,7 +138,7 @@ public class AudioTrainingDataCollectorTest extends TestSuiteBase {
 				.maxSamplesTotal(50);
 
 		AudioTrainingDataCollector collector = new AudioTrainingDataCollector();
-		AudioTrainingDataset dataset = collector.collect(audioFiles, config);
+		DatasetSplit<PackedCollection> dataset = collector.collect(audioFiles, config);
 
 		double actualRatio = dataset.getActualSplitRatio();
 		log("Actual split ratio: " + actualRatio);
@@ -170,7 +170,7 @@ public class AudioTrainingDataCollectorTest extends TestSuiteBase {
 				.maxSamplesTotal(50);
 
 		AudioTrainingDataCollector collectorNoAug = new AudioTrainingDataCollector();
-		AudioTrainingDataset datasetNoAug = collectorNoAug.collect(audioFiles, configNoAug);
+		DatasetSplit<PackedCollection> datasetNoAug = collectorNoAug.collect(audioFiles, configNoAug);
 		int sizeNoAug = datasetNoAug.getTotalSize();
 
 		// With noise augmentation
@@ -182,7 +182,7 @@ public class AudioTrainingDataCollectorTest extends TestSuiteBase {
 				.maxSamplesTotal(100);
 
 		AudioTrainingDataCollector collectorWithAug = new AudioTrainingDataCollector();
-		AudioTrainingDataset datasetWithAug = collectorWithAug.collect(audioFiles, configWithAug);
+		DatasetSplit<PackedCollection> datasetWithAug = collectorWithAug.collect(audioFiles, configWithAug);
 		int sizeWithAug = datasetWithAug.getTotalSize();
 
 		log("Without augmentation: " + sizeNoAug + " samples");
@@ -209,7 +209,7 @@ public class AudioTrainingDataCollectorTest extends TestSuiteBase {
 				.maxSamplesTotal(20);
 
 		AudioTrainingDataCollector collector = new AudioTrainingDataCollector();
-		AudioTrainingDataset dataset = collector.collectFromDirectory(BASS_LOOPS_DIR, config);
+		DatasetSplit<PackedCollection> dataset = collector.collectFromDirectory(BASS_LOOPS_DIR, config);
 
 		log("Collected from directory: " + dataset);
 
@@ -242,7 +242,7 @@ public class AudioTrainingDataCollectorTest extends TestSuiteBase {
 				.maxSamplesTotal(10);
 
 		AudioTrainingDataCollector collector = new AudioTrainingDataCollector();
-		AudioTrainingDataset dataset = collector.collect(audioFiles, config);
+		DatasetSplit<PackedCollection> dataset = collector.collect(audioFiles, config);
 
 		// Check at least one segment has the expected length
 		boolean foundCorrectLength = false;
