@@ -43,10 +43,10 @@ public class SawtoothWaveCell extends CollectionTemporalCellAdapter implements S
 	private Factor<PackedCollection> env;
 	private final SineWaveCellData data;
 
-	private double noteLength;
-	private double waveLength;
-	private double phase;
-	private double amplitude;
+	private double initialNoteLength;
+	private double initialWaveLength;
+	private double initialPhase;
+	private double initialAmplitude;
 	private boolean ascending;
 
 	public SawtoothWaveCell() {
@@ -56,7 +56,7 @@ public class SawtoothWaveCell extends CollectionTemporalCellAdapter implements S
 	public SawtoothWaveCell(SineWaveCellData data) {
 		this.data = data;
 		this.ascending = true;
-		this.amplitude = 1.0;
+		this.initialAmplitude = 1.0;
 	}
 
 	public void setEnvelope(Factor<PackedCollection> e) { this.env = e; }
@@ -64,8 +64,7 @@ public class SawtoothWaveCell extends CollectionTemporalCellAdapter implements S
 	public void strike() { data.setNotePosition(0); }
 
 	public void setFreq(double hertz) {
-		this.waveLength = hertz / (double) OutputLine.sampleRate;
-		data.setWaveLength(this.waveLength);
+		this.initialWaveLength = hertz / (double) OutputLine.sampleRate;
 	}
 
 	public Supplier<Runnable> setFreq(Producer<PackedCollection> hertz) {
@@ -73,18 +72,17 @@ public class SawtoothWaveCell extends CollectionTemporalCellAdapter implements S
 	}
 
 	public void setNoteLength(int msec) {
-		this.noteLength = toFramesMilli(msec);
+		this.initialNoteLength = toFramesMilli(msec);
 	}
 
 	public Supplier<Runnable> setNoteLength(Producer<PackedCollection> noteLength) {
 		return a(data.getNoteLength(), toFramesMilli(noteLength));
 	}
 
-	public void setPhase(double phase) { this.phase = phase; }
+	public void setPhase(double phase) { this.initialPhase = phase; }
 
 	public void setAmplitude(double amp) {
-		amplitude = amp;
-		data.setAmplitude(amp);
+		this.initialAmplitude = amp;
 	}
 
 	public Supplier<Runnable> setAmplitude(Producer<PackedCollection> amp) {
@@ -113,10 +111,10 @@ public class SawtoothWaveCell extends CollectionTemporalCellAdapter implements S
 		defaults.add(a(data.getDepth(), c(CollectionTemporalCellAdapter.depth)));
 		defaults.add(a(data.getNotePosition(), c(0)));
 		defaults.add(a(data.getWavePosition(), c(0)));
-		defaults.add(a(data.getNoteLength(), c(noteLength)));
-		defaults.add(a(data.getWaveLength(), c(waveLength)));
-		defaults.add(a(data.getPhase(), c(phase)));
-		defaults.add(a(data.getAmplitude(), c(amplitude)));
+		defaults.add(a(data.getNoteLength(), c(initialNoteLength)));
+		defaults.add(a(data.getWaveLength(), c(initialWaveLength)));
+		defaults.add(a(data.getPhase(), c(initialPhase)));
+		defaults.add(a(data.getAmplitude(), c(initialAmplitude)));
 
 		Supplier<Runnable> customization = super.setup();
 

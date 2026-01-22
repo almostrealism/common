@@ -48,11 +48,11 @@ public class SquareWaveCell extends CollectionTemporalCellAdapter implements Sam
 	private Factor<PackedCollection> env;
 	private final SquareWaveCellData data;
 
-	private double noteLength;
-	private double waveLength;
-	private double phase;
-	private double amplitude;
-	private double dutyCycle;
+	private double initialNoteLength;
+	private double initialWaveLength;
+	private double initialPhase;
+	private double initialAmplitude;
+	private double initialDutyCycle;
 
 	public SquareWaveCell() {
 		this(new SquareWavePolymorphicData());
@@ -60,8 +60,8 @@ public class SquareWaveCell extends CollectionTemporalCellAdapter implements Sam
 
 	public SquareWaveCell(SquareWaveCellData data) {
 		this.data = data;
-		this.dutyCycle = 0.5;
-		this.amplitude = 1.0;
+		this.initialDutyCycle = 0.5;
+		this.initialAmplitude = 1.0;
 	}
 
 	public void setEnvelope(Factor<PackedCollection> e) { this.env = e; }
@@ -69,8 +69,7 @@ public class SquareWaveCell extends CollectionTemporalCellAdapter implements Sam
 	public void strike() { data.setNotePosition(0); }
 
 	public void setFreq(double hertz) {
-		this.waveLength = hertz / (double) OutputLine.sampleRate;
-		data.setWaveLength(this.waveLength);
+		this.initialWaveLength = hertz / (double) OutputLine.sampleRate;
 	}
 
 	public Supplier<Runnable> setFreq(Producer<PackedCollection> hertz) {
@@ -78,18 +77,17 @@ public class SquareWaveCell extends CollectionTemporalCellAdapter implements Sam
 	}
 
 	public void setNoteLength(int msec) {
-		this.noteLength = toFramesMilli(msec);
+		this.initialNoteLength = toFramesMilli(msec);
 	}
 
 	public Supplier<Runnable> setNoteLength(Producer<PackedCollection> noteLength) {
 		return a(data.getNoteLength(), toFramesMilli(noteLength));
 	}
 
-	public void setPhase(double phase) { this.phase = phase; }
+	public void setPhase(double phase) { this.initialPhase = phase; }
 
 	public void setAmplitude(double amp) {
-		amplitude = amp;
-		data.setAmplitude(amp);
+		this.initialAmplitude = amp;
 	}
 
 	public Supplier<Runnable> setAmplitude(Producer<PackedCollection> amp) {
@@ -102,7 +100,7 @@ public class SquareWaveCell extends CollectionTemporalCellAdapter implements Sam
 	 * @param dutyCycle Ratio of high to low (0.0 to 1.0, default 0.5)
 	 */
 	public void setDutyCycle(double dutyCycle) {
-		this.dutyCycle = dutyCycle;
+		this.initialDutyCycle = dutyCycle;
 	}
 
 	/**
@@ -121,11 +119,11 @@ public class SquareWaveCell extends CollectionTemporalCellAdapter implements Sam
 		defaults.add(a(data.getDepth(), c(CollectionTemporalCellAdapter.depth)));
 		defaults.add(a(data.getNotePosition(), c(0)));
 		defaults.add(a(data.getWavePosition(), c(0)));
-		defaults.add(a(data.getNoteLength(), c(noteLength)));
-		defaults.add(a(data.getWaveLength(), c(waveLength)));
-		defaults.add(a(data.getPhase(), c(phase)));
-		defaults.add(a(data.getAmplitude(), c(amplitude)));
-		defaults.add(a(data.getDutyCycle(), c(dutyCycle)));
+		defaults.add(a(data.getNoteLength(), c(initialNoteLength)));
+		defaults.add(a(data.getWaveLength(), c(initialWaveLength)));
+		defaults.add(a(data.getPhase(), c(initialPhase)));
+		defaults.add(a(data.getAmplitude(), c(initialAmplitude)));
+		defaults.add(a(data.getDutyCycle(), c(initialDutyCycle)));
 
 		Supplier<Runnable> customization = super.setup();
 
