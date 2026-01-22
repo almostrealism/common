@@ -14,96 +14,119 @@
  * limitations under the License.
  */
 
-package org.almostrealism.ml.audio;
+package org.almostrealism.ml;
 
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.ml.audio.DiffusionNoiseScheduler;
 import org.almostrealism.optimize.Dataset;
 import org.almostrealism.optimize.ValueTarget;
 
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Iterator;
+import java.util.List;
+import java.util.Random;
 
 /**
- * Dataset adapter that transforms clean latents into diffusion training samples.
+ * Dataset adapter that transforms clean tensors into diffusion training samples.
  *
- * <p>This class wraps an {@link AudioLatentDataset} and generates proper training
+ * <p>This class wraps a list of clean samples and generates proper training
  * samples for diffusion models by:
  * <ol>
  *   <li>Sampling a random timestep t</li>
  *   <li>Sampling noise from N(0, 1)</li>
- *   <li>Creating noisy latent: x_t = sqrt(alpha_t) * x_0 + sqrt(1-alpha_t) * noise</li>
- *   <li>Returning (noisy_latent, timestep) as input and noise as target</li>
+ *   <li>Creating noisy sample: x_t = sqrt(alpha_t) * x_0 + sqrt(1-alpha_t) * noise</li>
+ *   <li>Returning (noisy_sample, timestep) as input and noise as target</li>
  * </ol>
  *
- * <p>This design follows the architecture specified in the design document,
- * allowing diffusion training to use {@link org.almostrealism.optimize.ModelOptimizer}
- * without any modifications to the training loop.
+ * <p>This is a generic diffusion training dataset that works with any tensor data
+ * (images, audio latents, video frames, etc.). It is domain-agnostic.
  *
  * <h2>Usage</h2>
  * <pre>{@code
- * AudioLatentDataset cleanLatents = AudioLatentDataset.fromDirectory(...);
+ * List<PackedCollection> cleanSamples = loadSamples();
  * DiffusionNoiseScheduler scheduler = new DiffusionNoiseScheduler(1000);
  *
- * // Wrap for diffusion training
- * DiffusionTrainingDataset diffusionData = new DiffusionTrainingDataset(
- *     cleanLatents, scheduler, repeatFactor
+ * // Create diffusion training dataset
+ * DiffusionTrainingDataset dataset = new DiffusionTrainingDataset(
+ *     cleanSamples, scheduler, repeatFactor
  * );
  *
  * // Use with ModelOptimizer
- * ModelOptimizer optimizer = new ModelOptimizer(model, () -> diffusionData);
- * optimizer.optimize(epochs * diffusionData.size());
+ * ModelOptimizer optimizer = new ModelOptimizer(model, () -> dataset);
+ * optimizer.optimize(epochs * dataset.size());
  * }</pre>
  *
- * @see AudioLatentDataset
  * @see DiffusionNoiseScheduler
  * @see org.almostrealism.optimize.ModelOptimizer
  * @author Michael Murray
  */
 public class DiffusionTrainingDataset implements Dataset<PackedCollection> {
 
-	private final AudioLatentDataset source;
+	private final List<PackedCollection> samples;
 	private final DiffusionNoiseScheduler scheduler;
 	private final int repeatFactor;
+	private final Random shuffleRandom;
 
 	/**
 	 * Creates a diffusion training dataset.
 	 *
-	 * @param source       The source dataset of clean latents
+	 * @param samples      List of clean samples (tensors)
 	 * @param scheduler    Noise scheduler for timestep sampling and noise addition
-	 * @param repeatFactor Number of times to repeat each sample (for aggressive training)
+	 * @param repeatFactor Number of times to repeat each sample per epoch
 	 */
-	public DiffusionTrainingDataset(AudioLatentDataset source,
+	public DiffusionTrainingDataset(List<PackedCollection> samples,
 									DiffusionNoiseScheduler scheduler,
 									int repeatFactor) {
-		this.source = source;
+		this.samples = new ArrayList<>(samples);  // Copy to allow shuffling
 		this.scheduler = scheduler;
 		this.repeatFactor = Math.max(1, repeatFactor);
+		this.shuffleRandom = new Random();
 	}
 
 	/**
 	 * Creates a diffusion training dataset with no repetition.
 	 *
-	 * @param source    The source dataset of clean latents
+	 * @param samples   List of clean samples
 	 * @param scheduler Noise scheduler
 	 */
-	public DiffusionTrainingDataset(AudioLatentDataset source,
+	public DiffusionTrainingDataset(List<PackedCollection> samples,
 									DiffusionNoiseScheduler scheduler) {
-		this(source, scheduler, 1);
+		this(samples, scheduler, 1);
 	}
 
 	/**
-	 * Returns the effective size of this dataset (source size * repeat factor).
+	 * Returns the effective size of this dataset (sample count * repeat factor).
 	 *
 	 * @return Effective dataset size
 	 */
 	public int size() {
-		return source.size() * repeatFactor;
+		return samples.size() * repeatFactor;
 	}
 
 	/**
-	 * Shuffles the underlying source dataset.
+	 * Returns the number of unique samples (before repetition).
+	 *
+	 * @return Number of unique samples
+	 */
+	public int uniqueSize() {
+		return samples.size();
+	}
+
+	/**
+	 * Shuffles the samples.
 	 */
 	public void shuffle() {
-		source.shuffle();
+		Collections.shuffle(samples, shuffleRandom);
+	}
+
+	/**
+	 * Shuffles the samples with a specific random seed.
+	 *
+	 * @param seed Random seed for reproducible shuffling
+	 */
+	public void shuffle(long seed) {
+		Collections.shuffle(samples, new Random(seed));
 	}
 
 	@Override
@@ -120,21 +143,21 @@ public class DiffusionTrainingDataset implements Dataset<PackedCollection> {
 
 		@Override
 		public boolean hasNext() {
-			return sampleIndex < source.size();
+			return sampleIndex < samples.size();
 		}
 
 		@Override
 		public ValueTarget<PackedCollection> next() {
-			PackedCollection cleanLatent = source.getLatent(sampleIndex);
+			PackedCollection cleanSample = samples.get(sampleIndex);
 
 			// Sample random timestep
 			int t = scheduler.sampleTimestep();
 
 			// Sample noise
-			PackedCollection noise = scheduler.sampleNoiseLike(cleanLatent);
+			PackedCollection noise = scheduler.sampleNoiseLike(cleanSample);
 
-			// Create noisy latent: x_t = sqrt(alpha_t) * x_0 + sqrt(1-alpha_t) * noise
-			PackedCollection noisyLatent = scheduler.addNoise(cleanLatent, noise, t);
+			// Create noisy sample: x_t = sqrt(alpha_t) * x_0 + sqrt(1-alpha_t) * noise
+			PackedCollection noisySample = scheduler.addNoise(cleanSample, noise, t);
 
 			// Create timestep tensor (normalized to [0, 1])
 			PackedCollection timestep = createTimestepTensor(t);
@@ -147,8 +170,8 @@ public class DiffusionTrainingDataset implements Dataset<PackedCollection> {
 			}
 
 			// Return with timestep as argument (for multi-input model)
-			// Input: noisy latent, Arguments: [timestep], Target: noise
-			return ValueTarget.<PackedCollection>of(noisyLatent, noise)
+			// Input: noisy sample, Arguments: [timestep], Target: noise
+			return ValueTarget.<PackedCollection>of(noisySample, noise)
 					.withArguments(timestep);
 		}
 

@@ -19,6 +19,7 @@ package org.almostrealism.ml.audio;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.io.ConsoleFeatures;
+import org.almostrealism.ml.DiffusionTrainingDataset;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.optimize.FineTuneConfig;
 import org.almostrealism.optimize.FineTuningResult;
@@ -28,6 +29,7 @@ import org.almostrealism.optimize.ModelOptimizer;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Fine-tuner for diffusion models. This class is a thin wrapper that:
@@ -109,9 +111,15 @@ public class AudioDiffusionFineTuner implements ConsoleFeatures {
 		log("  Repeat factor: " + repeatFactor);
 		log("  Latent shape: " + latentShape);
 
-		// Create diffusion training dataset
+		// Convert audio dataset to list of latents for generic diffusion training
+		List<PackedCollection> latents = new ArrayList<>(dataset.size());
+		for (int i = 0; i < dataset.size(); i++) {
+			latents.add(dataset.getLatent(i));
+		}
+
+		// Create diffusion training dataset (generic, domain-agnostic)
 		DiffusionTrainingDataset diffusionDataset = new DiffusionTrainingDataset(
-				dataset, scheduler, repeatFactor);
+				latents, scheduler, repeatFactor);
 
 		// Create and configure ModelOptimizer - IT OWNS THE TRAINING LOOP
 		ModelOptimizer optimizer = new ModelOptimizer(model, () -> {
