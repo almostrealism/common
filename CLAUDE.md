@@ -327,13 +327,21 @@ See [hardware/README.md](hardware/README.md) for complete memory and performance
 
 ### The Golden Rule
 
-**`ModelOptimizer` is the ONLY class that should contain a training loop.** All training scenarios (supervised learning, diffusion, reinforcement learning, fine-tuning, etc.) must:
+**`ModelOptimizer` is the ONLY class that should contain a training loop.** Full stop.
+
+**YOU DO NOT OWN THE TRAINING LOOP.**
+
+All training scenarios (supervised learning, diffusion, reinforcement learning, fine-tuning, etc.) must:
 
 1. Create a `Dataset` implementation that yields appropriate `(input, target)` pairs
-2. Pass this `Dataset` to `ModelOptimizer`
-3. Let `ModelOptimizer` handle epochs, forward/backward passes, and logging
+2. Create a `ModelOptimizer`
+3. Configure it (loss function, log frequency, etc.)
+4. Call `optimizer.optimize(epochs)` ONCE
+5. Return
 
-**If you believe your scenario requires a custom training loop, you are almost certainly wrong.** Consult the design document and ar-docs MCP first.
+**There is NO scenario where your class should contain a `for` loop that iterates over epochs or samples.** If you have a loop, you are wrong. Delete it.
+
+**If you want progress reporting**, use `ModelOptimizer.setLogFrequency()` and `ModelOptimizer.setReceptor()`. Do NOT create custom progress classes.
 
 ### Before Implementing ANY Training-Related Code
 
@@ -347,20 +355,21 @@ See [hardware/README.md](hardware/README.md) for complete memory and performance
 
 **STOP IMMEDIATELY if you find yourself writing:**
 
-- `for (int epoch = 0; epoch < ...)` outside of `ModelOptimizer`
+- `for (int epoch = 0; epoch < ...)` outside of `ModelOptimizer` - **DELETE IT**
+- `for (...) { optimizer.optimize(1); }` - wrapping optimize in a loop - **DELETE IT**
 - `model.forward(...)` followed by `model.backward(...)` outside of `ModelOptimizer`
 - `lossFunction.apply(...)` or `lossGradient.evaluate(...)` outside of `ModelOptimizer`
 - Custom progress logging that duplicates `ModelOptimizer.setLogFrequency()`
+- Custom progress/callback classes (e.g., `TrainingProgress`) - **DELETE IT**
 - Custom `formatDuration()` or similar utility methods
 
-**If ANY of these patterns appear in your code, you must refactor to use `ModelOptimizer`.**
+**If ANY of these patterns appear in your code, DELETE THEM and use `ModelOptimizer` properly.**
 
 ### Correct Pattern for Domain-Specific Training
 
 ```java
-// CORRECT: Diffusion training using ModelOptimizer
+// CORRECT: Dataset handles domain-specific data preparation
 public class DiffusionTrainingDataset implements Dataset<PackedCollection> {
-    // Handles timestep sampling, noise addition - the diffusion-specific parts
     @Override
     public Iterator<ValueTarget<PackedCollection>> iterator() {
         return new Iterator<>() {
@@ -373,24 +382,48 @@ public class DiffusionTrainingDataset implements Dataset<PackedCollection> {
     }
 }
 
-// Training loop is ALWAYS delegated to ModelOptimizer
-ModelOptimizer optimizer = new ModelOptimizer(model, () -> diffusionDataset);
-optimizer.setLossFunction(new MeanSquaredError(outputShape));
-optimizer.optimize(epochs);
+// CORRECT: Thin wrapper that configures and delegates to ModelOptimizer
+public class DiffusionFineTuner {
+    public Result fineTune(Dataset sourceData) {
+        // 1. Create domain-specific dataset
+        DiffusionTrainingDataset dataset = new DiffusionTrainingDataset(sourceData, scheduler);
+
+        // 2. Create ModelOptimizer
+        ModelOptimizer optimizer = new ModelOptimizer(model, () -> dataset);
+
+        // 3. Configure it
+        optimizer.setLossFunction(new MeanSquaredError(outputShape));
+        optimizer.setLogFrequency(10);
+
+        // 4. Call optimize ONCE - NO LOOP
+        optimizer.optimize(epochs);
+
+        // 5. Return
+        return new Result(optimizer.getLoss(), optimizer.getTotalIterations());
+    }
+    // NO inner classes for progress. NO loops. NO forward/backward calls.
+}
 ```
 
 ```java
-// WRONG: Rebuilding the training loop
+// WRONG: Any loop at all
 public class DiffusionFineTuner {
     public void train(Dataset data) {
-        for (int epoch = 0; epoch < epochs; epoch++) {        // WRONG!
-            for (Sample s : data) {
-                PackedCollection out = model.forward(s);      // WRONG!
-                double loss = lossFunction.apply(out, target); // WRONG!
-                model.backward(gradient);                      // WRONG!
-            }
+        for (int epoch = 0; epoch < epochs; epoch++) {        // WRONG! DELETE THIS LOOP
+            optimizer.optimize(1);                             // WRONG! Don't wrap optimize in a loop
         }
     }
+}
+
+// WRONG: Custom progress class
+public class DiffusionFineTuner {
+    public static class TrainingProgress { ... }  // WRONG! Use ModelOptimizer's reporting
+}
+
+// WRONG: Calling forward/backward yourself
+public void train() {
+    model.forward(input);    // WRONG! ModelOptimizer does this
+    model.backward(grad);    // WRONG! ModelOptimizer does this
 }
 ```
 

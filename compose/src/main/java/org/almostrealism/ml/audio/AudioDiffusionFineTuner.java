@@ -17,7 +17,6 @@
 package org.almostrealism.ml.audio;
 
 import io.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.CodeFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.model.CompiledModel;
@@ -29,54 +28,29 @@ import org.almostrealism.optimize.ModelOptimizer;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
-import java.util.List;
-import java.util.function.Consumer;
 
 /**
- * Fine-tuner specifically designed for diffusion model training.
- *
- * <p>Unlike standard fine-tuning, diffusion training involves:
+ * Fine-tuner for diffusion models. This class is a thin wrapper that:
  * <ol>
- *   <li>Sampling a random timestep t</li>
- *   <li>Adding noise to the clean latent: x_t = sqrt(alpha_t) * x_0 + sqrt(1-alpha_t) * noise</li>
- *   <li>Model predicts the noise: noise_pred = model(x_t, t)</li>
- *   <li>Loss = MSE(noise_pred, noise)</li>
+ *   <li>Creates a {@link DiffusionTrainingDataset} from the source latents</li>
+ *   <li>Configures a {@link ModelOptimizer}</li>
+ *   <li>Delegates all training to {@link ModelOptimizer}</li>
  * </ol>
  *
- * <p>This class delegates the actual training loop to {@link ModelOptimizer},
- * using {@link DiffusionTrainingDataset} to handle the diffusion-specific
- * data preparation (timestep sampling, noise addition).
+ * <p>This class does NOT own the training loop. {@link ModelOptimizer} owns the training loop.
  *
- * <h2>Usage</h2>
- * <pre>{@code
- * // Create fine-tuner
- * AudioDiffusionFineTuner fineTuner = new AudioDiffusionFineTuner(
- *     compiledModel, config, latentShape, scheduler
- * );
- *
- * // Configure for aggressive overfitting
- * fineTuner.setAggressiveMode(true);
- *
- * // Run training
- * FineTuningResult result = fineTuner.fineTune(latentDataset);
- * }</pre>
- *
- * @see DiffusionNoiseScheduler
  * @see DiffusionTrainingDataset
  * @see ModelOptimizer
- * @see AudioLatentDataset
  * @author Michael Murray
  */
-public class AudioDiffusionFineTuner implements ConsoleFeatures, CodeFeatures {
+public class AudioDiffusionFineTuner implements ConsoleFeatures {
 
 	private final CompiledModel model;
 	private final FineTuneConfig config;
 	private final DiffusionNoiseScheduler scheduler;
 	private final TraversalPolicy latentShape;
 
-	private boolean aggressiveMode = false;
 	private int repeatFactor = 1;
-	private Consumer<TrainingProgress> progressCallback;
 
 	/**
 	 * Creates a diffusion fine-tuner.
@@ -96,21 +70,14 @@ public class AudioDiffusionFineTuner implements ConsoleFeatures, CodeFeatures {
 
 	/**
 	 * Enables aggressive mode for intentional overfitting.
-	 *
-	 * <p>In aggressive mode:
-	 * <ul>
-	 *   <li>Each sample is repeated multiple times per epoch</li>
-	 *   <li>Learning rate may be increased</li>
-	 *   <li>No early stopping</li>
-	 * </ul>
+	 * Sets repeat factor to 10.
 	 *
 	 * @param aggressive Whether to enable aggressive mode
 	 * @return This fine-tuner for chaining
 	 */
 	public AudioDiffusionFineTuner setAggressiveMode(boolean aggressive) {
-		this.aggressiveMode = aggressive;
 		if (aggressive) {
-			this.repeatFactor = 10; // Repeat each sample 10 times per epoch
+			this.repeatFactor = 10;
 		}
 		return this;
 	}
@@ -127,45 +94,26 @@ public class AudioDiffusionFineTuner implements ConsoleFeatures, CodeFeatures {
 	}
 
 	/**
-	 * Sets a callback for progress updates.
-	 *
-	 * @param callback Progress callback
-	 * @return This fine-tuner for chaining
-	 */
-	public AudioDiffusionFineTuner onProgress(Consumer<TrainingProgress> callback) {
-		this.progressCallback = callback;
-		return this;
-	}
-
-	/**
 	 * Runs diffusion fine-tuning on the latent dataset.
-	 *
-	 * <p>This method delegates to {@link ModelOptimizer} for the actual training loop,
-	 * using {@link DiffusionTrainingDataset} to handle diffusion-specific data preparation.
+	 * Delegates entirely to {@link ModelOptimizer}.
 	 *
 	 * @param dataset Dataset of clean latents
 	 * @return Fine-tuning result with loss history
 	 */
 	public FineTuningResult fineTune(AudioLatentDataset dataset) {
-		List<Double> trainLossHistory = new ArrayList<>();
 		Instant startTime = Instant.now();
 
-		int numSamples = dataset.size();
-		int effectiveSamplesPerEpoch = numSamples * repeatFactor;
-
 		log("Starting diffusion fine-tuning");
-		log("  Samples: " + numSamples);
+		log("  Samples: " + dataset.size());
 		log("  Epochs: " + config.getEpochs());
 		log("  Repeat factor: " + repeatFactor);
-		log("  Aggressive mode: " + aggressiveMode);
 		log("  Latent shape: " + latentShape);
-		log("  Effective samples per epoch: " + effectiveSamplesPerEpoch);
 
-		// Create diffusion training dataset (handles timestep sampling and noise addition)
+		// Create diffusion training dataset
 		DiffusionTrainingDataset diffusionDataset = new DiffusionTrainingDataset(
 				dataset, scheduler, repeatFactor);
 
-		// Create ModelOptimizer with MSE loss for noise prediction
+		// Create and configure ModelOptimizer - IT OWNS THE TRAINING LOOP
 		ModelOptimizer optimizer = new ModelOptimizer(model, () -> {
 			diffusionDataset.shuffle();
 			return diffusionDataset;
@@ -174,78 +122,27 @@ public class AudioDiffusionFineTuner implements ConsoleFeatures, CodeFeatures {
 		optimizer.setLogFrequency(config.getLogEveryNSteps());
 		optimizer.setLogConsumer(this::log);
 
-		// Run training epochs
-		for (int epoch = 0; epoch < config.getEpochs(); epoch++) {
-			// Run one epoch (all samples in diffusionDataset)
-			optimizer.optimize(1);
-
-			double avgLoss = optimizer.getLoss();
-			trainLossHistory.add(avgLoss);
-
-			log(String.format("Epoch %d/%d - avg_loss: %.6f",
-					epoch + 1, config.getEpochs(), avgLoss));
-
-			// Epoch-level progress callback
-			if (progressCallback != null) {
-				progressCallback.accept(new TrainingProgress(
-						epoch, optimizer.getTotalIterations(), avgLoss, -1
-				));
-			}
-		}
+		// Delegate to ModelOptimizer - NO LOOP HERE
+		int totalIterations = config.getEpochs() * diffusionDataset.size();
+		optimizer.optimize(config.getEpochs());
 
 		Duration trainingTime = Duration.between(startTime, Instant.now());
-		int totalSteps = optimizer.getTotalIterations();
-		log("Fine-tuning completed in " + formatDuration(trainingTime));
-		log("Total steps: " + totalSteps);
+		log("Fine-tuning completed");
+		log("Total iterations: " + optimizer.getTotalIterations());
+		log("Final loss: " + optimizer.getLoss());
 
-		if (!trainLossHistory.isEmpty()) {
-			log("Final loss: " + String.format("%.6f", trainLossHistory.get(trainLossHistory.size() - 1)));
-		}
+		// Convert to FineTuningResult for API compatibility
+		ArrayList<Double> lossHistory = new ArrayList<>();
+		lossHistory.add(optimizer.getLoss());
 
 		return new FineTuningResult(
-				trainLossHistory,
-				new ArrayList<>(), // No validation
-				totalSteps,
+				lossHistory,
+				new ArrayList<>(),
+				optimizer.getTotalIterations(),
 				config.getEpochs() - 1,
-				trainLossHistory.isEmpty() ? Double.NaN : trainLossHistory.get(trainLossHistory.size() - 1),
+				optimizer.getLoss(),
 				trainingTime,
 				false
 		);
-	}
-
-	private String formatDuration(Duration duration) {
-		long hours = duration.toHours();
-		long minutes = duration.toMinutesPart();
-		long seconds = duration.toSecondsPart();
-
-		if (hours > 0) {
-			return String.format("%dh %dm %ds", hours, minutes, seconds);
-		} else if (minutes > 0) {
-			return String.format("%dm %ds", minutes, seconds);
-		} else {
-			return String.format("%ds", seconds);
-		}
-	}
-
-	/**
-	 * Progress update during diffusion training.
-	 */
-	public static class TrainingProgress {
-		private final int epoch;
-		private final int step;
-		private final double loss;
-		private final int timestep;
-
-		public TrainingProgress(int epoch, int step, double loss, int timestep) {
-			this.epoch = epoch;
-			this.step = step;
-			this.loss = loss;
-			this.timestep = timestep;
-		}
-
-		public int getEpoch() { return epoch; }
-		public int getStep() { return step; }
-		public double getLoss() { return loss; }
-		public int getTimestep() { return timestep; }
 	}
 }
