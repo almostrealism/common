@@ -20,9 +20,7 @@ import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.audio.data.WaveData;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.io.ConsoleFeatures;
-import org.almostrealism.ml.StateDictionary;
 import org.almostrealism.model.CompiledModel;
-import org.almostrealism.model.Model;
 
 import java.io.IOException;
 import java.nio.file.Path;
@@ -30,135 +28,116 @@ import java.nio.file.Path;
 /**
  * Generates audio using a trained diffusion model.
  *
- * <p>This class handles the complete generation pipeline:
+ * <p>This class is a thin wrapper that:
  * <ol>
- *   <li>Sample noise in latent space</li>
- *   <li>Iteratively denoise using the diffusion model</li>
- *   <li>Decode latent to audio using OobleckDecoder</li>
- *   <li>Save as WAV file</li>
+ *   <li>Creates a {@link DiffusionSampler} with the appropriate strategy</li>
+ *   <li>Delegates sampling to {@link DiffusionSampler}</li>
+ *   <li>Decodes latents using the {@link AutoEncoder}</li>
  * </ol>
+ *
+ * <p><b>This class does NOT own the sampling loop.</b> {@link DiffusionSampler} owns
+ * the sampling loop.
  *
  * <h2>Usage</h2>
  * <pre>{@code
  * // Create generator
  * AudioDiffusionGenerator generator = new AudioDiffusionGenerator(
- *     diffusionModel, decoderWeights, scheduler
+ *     diffusionModel, autoEncoder, scheduler, latentShape
  * );
  *
  * // Generate audio
- * WaveData audio = generator.generate(5.0);  // 5 seconds
+ * WaveData audio = generator.generate(seed);
  *
  * // Save to file
- * generator.generateAndSave(5.0, Path.of("output.wav"));
+ * generator.generateAndSave(seed, Path.of("output.wav"));
  * }</pre>
  *
- * @see DiffusionNoiseScheduler
- * @see OobleckDecoder
+ * @see DiffusionSampler
+ * @see AutoEncoder
  * @author Michael Murray
  */
 public class AudioDiffusionGenerator implements ConsoleFeatures {
 
 	private static final int SAMPLE_RATE = 44100;
-	private static final int LATENT_CHANNELS = 64;
-	private static final int COMPRESSION_RATIO = 2048; // Approximate compression of autoencoder
 
 	private final CompiledModel diffusionModel;
-	private final CompiledModel decoder;
-	private final DiffusionNoiseScheduler scheduler;
-	private final int latentLength;
-	private final PackedCollection[] conditioningInputs;
+	private final AutoEncoder autoEncoder;
+	private final DiffusionSampler sampler;
+	private final TraversalPolicy latentShape;
 
-	private int numInferenceSteps = 50;
-	private double ddimEta = 0.0; // Deterministic by default
 	private boolean verbose = true;
 
 	/**
-	 * Creates an audio generator.
+	 * Creates an audio generator with DDIM sampling.
 	 *
 	 * @param diffusionModel Compiled diffusion model
-	 * @param decoderWeights Weights for the OobleckDecoder
-	 * @param scheduler Noise scheduler
-	 * @param audioSeconds Target audio length in seconds
+	 * @param autoEncoder AutoEncoder for decoding latents to audio
+	 * @param scheduler Noise scheduler for DDIM
+	 * @param latentShape Shape of the latent tensor
 	 */
 	public AudioDiffusionGenerator(CompiledModel diffusionModel,
-								   StateDictionary decoderWeights,
+								   AutoEncoder autoEncoder,
 								   DiffusionNoiseScheduler scheduler,
-								   double audioSeconds) {
-		this.diffusionModel = diffusionModel;
-		this.scheduler = scheduler;
-
-		// Calculate latent length for target audio duration
-		int audioSamples = (int) (audioSeconds * SAMPLE_RATE);
-		this.latentLength = audioSamples / COMPRESSION_RATIO;
-
-		// Build decoder
-		log("Building decoder for " + audioSeconds + "s audio (latent length: " + latentLength + ")");
-		OobleckDecoder decoderBlock = new OobleckDecoder(decoderWeights, 1, latentLength);
-		Model decoderModel = new Model(new TraversalPolicy(1, LATENT_CHANNELS, latentLength));
-		decoderModel.add(decoderBlock);
-		this.decoder = decoderModel.compile(false); // Inference only, no backprop needed
-		log("Decoder built. Output length: " + decoderBlock.getOutputLength());
-		this.conditioningInputs = createConditioningInputs();
+								   TraversalPolicy latentShape) {
+		this(diffusionModel, autoEncoder,
+				new DDIMSamplingStrategy(scheduler),
+				scheduler.getNumSteps(), latentShape);
 	}
 
 	/**
-	 * Creates an audio generator with pre-compiled decoder.
+	 * Creates an audio generator with DDIM sampling and configurable eta.
 	 *
 	 * @param diffusionModel Compiled diffusion model
-	 * @param decoder Compiled decoder model
-	 * @param scheduler Noise scheduler
-	 * @param latentLength Latent sequence length
+	 * @param autoEncoder AutoEncoder for decoding latents to audio
+	 * @param scheduler Noise scheduler for DDIM
+	 * @param eta DDIM stochasticity (0 = deterministic, 1 = DDPM)
+	 * @param latentShape Shape of the latent tensor
 	 */
 	public AudioDiffusionGenerator(CompiledModel diffusionModel,
-								   CompiledModel decoder,
+								   AutoEncoder autoEncoder,
 								   DiffusionNoiseScheduler scheduler,
-								   int latentLength) {
-		this.diffusionModel = diffusionModel;
-		this.decoder = decoder;
-		this.scheduler = scheduler;
-		this.latentLength = latentLength;
-		this.conditioningInputs = createConditioningInputs();
+								   double eta,
+								   TraversalPolicy latentShape) {
+		this(diffusionModel, autoEncoder,
+				new DDIMSamplingStrategy(scheduler, eta),
+				scheduler.getNumSteps(), latentShape);
 	}
 
 	/**
-	 * Creates zero-valued conditioning tensors for unconditional generation.
-	 * The diffusion model may expect additional inputs beyond the main latent
-	 * and timestep (e.g., cross-attention conditioning, global conditioning).
-	 * For unconditional generation, we provide zero tensors.
+	 * Creates an audio generator with a custom sampling strategy.
+	 *
+	 * @param diffusionModel Compiled diffusion model
+	 * @param autoEncoder AutoEncoder for decoding latents to audio
+	 * @param strategy Sampling strategy
+	 * @param numSteps Number of diffusion steps
+	 * @param latentShape Shape of the latent tensor
 	 */
-	private PackedCollection[] createConditioningInputs() {
-		int inputCount = diffusionModel.getInputCount();
-		// Inputs: 0=main latent, 1=timestep, 2+=conditioning
-		if (inputCount <= 2) {
-			return new PackedCollection[0];
-		}
-		PackedCollection[] inputs = new PackedCollection[inputCount - 2];
-		for (int i = 2; i < inputCount; i++) {
-			TraversalPolicy shape = diffusionModel.getInputShape(i);
-			inputs[i - 2] = new PackedCollection(shape); // Initialized to zeros
-		}
-		return inputs;
+	public AudioDiffusionGenerator(CompiledModel diffusionModel,
+								   AutoEncoder autoEncoder,
+								   SamplingStrategy strategy,
+								   int numSteps,
+								   TraversalPolicy latentShape) {
+		this.diffusionModel = diffusionModel;
+		this.autoEncoder = autoEncoder;
+		this.latentShape = latentShape;
+
+		// Create sampler - IT OWNS THE LOOP
+		this.sampler = new DiffusionSampler(
+				this::modelForward,
+				strategy,
+				numSteps,
+				latentShape
+		);
 	}
 
 	/**
-	 * Sets the number of inference steps for DDIM sampling.
+	 * Sets the number of inference steps.
 	 *
 	 * @param steps Number of steps (fewer = faster, more = higher quality)
 	 * @return This generator for chaining
 	 */
 	public AudioDiffusionGenerator setNumInferenceSteps(int steps) {
-		this.numInferenceSteps = steps;
-		return this;
-	}
-
-	/**
-	 * Sets the DDIM stochasticity parameter.
-	 *
-	 * @param eta 0 = deterministic, 1 = DDPM stochastic
-	 * @return This generator for chaining
-	 */
-	public AudioDiffusionGenerator setDDIMEta(double eta) {
-		this.ddimEta = eta;
+		sampler.setNumInferenceSteps(steps);
 		return this;
 	}
 
@@ -170,60 +149,84 @@ public class AudioDiffusionGenerator implements ConsoleFeatures {
 	 */
 	public AudioDiffusionGenerator setVerbose(boolean verbose) {
 		this.verbose = verbose;
+		sampler.setVerbose(verbose);
 		return this;
 	}
 
 	/**
-	 * Generates audio latent using DDIM sampling.
+	 * Generates audio from pure noise.
 	 *
-	 * @return Generated latent representation
+	 * @param seed Random seed
+	 * @return Generated audio as WaveData
 	 */
-	public PackedCollection generateLatent() {
-		if (verbose) log("Starting DDIM sampling with " + numInferenceSteps + " steps");
+	public WaveData generate(long seed) {
+		if (verbose) log("Generating audio with seed " + seed);
 
-		// Start from pure noise
-		PackedCollection x = scheduler.sampleNoise(1, LATENT_CHANNELS, latentLength);
+		// Delegate to DiffusionSampler - NO LOOP HERE
+		PackedCollection latent = sampler.sample(seed);
 
-		// Get DDIM timestep schedule
-		int[] timesteps = scheduler.getDDIMTimesteps(numInferenceSteps);
-
-		// Iterative denoising
-		for (int i = 0; i < timesteps.length; i++) {
-			int t = timesteps[i];
-			int tPrev = i < timesteps.length - 1 ? timesteps[i + 1] : -1;
-
-			// Create timestep tensor
-			PackedCollection timestepTensor = createTimestepTensor(t);
-
-			// Model predicts noise (include conditioning inputs for unconditional generation)
-			PackedCollection predictedNoise = diffusionModel.forward(x, buildForwardArgs(timestepTensor));
-
-			// DDIM step
-			x = scheduler.stepDDIM(x, predictedNoise, t, tPrev, ddimEta);
-
-			if (verbose && (i + 1) % 10 == 0) {
-				log(String.format("Step %d/%d (t=%d)", i + 1, timesteps.length, t));
-			}
-		}
-
-		if (verbose) log("Sampling complete");
-		return x;
+		// Decode to audio
+		return decodeLatent(latent);
 	}
 
 	/**
-	 * Generates audio waveform.
+	 * Generates audio from an existing latent (img2img style).
 	 *
+	 * @param startLatent Starting latent
+	 * @param strength How much to change (0 = keep original, 1 = full generation)
+	 * @param seed Random seed
 	 * @return Generated audio as WaveData
 	 */
-	public WaveData generate() {
-		// Generate latent
-		PackedCollection latent = generateLatent();
+	public WaveData generateFrom(PackedCollection startLatent, double strength, long seed) {
+		if (verbose) {
+			log("Generating audio from latent with seed " + seed + " (strength=" + strength + ")");
+		}
+
+		// Delegate to DiffusionSampler - NO LOOP HERE
+		PackedCollection latent = sampler.sampleFrom(startLatent, strength, seed);
 
 		// Decode to audio
-		if (verbose) log("Decoding latent to audio...");
-		PackedCollection audioData = decoder.forward(latent);
+		return decodeLatent(latent);
+	}
 
-		// Convert to WaveData
+	/**
+	 * Generates audio and saves to a WAV file.
+	 *
+	 * @param seed Random seed
+	 * @param outputPath Path for the output WAV file
+	 * @throws IOException If writing fails
+	 */
+	public void generateAndSave(long seed, Path outputPath) throws IOException {
+		WaveData audio = generate(seed);
+		normalizeAudio(audio);
+		audio.save(outputPath.toFile());
+		log("Saved audio to: " + outputPath);
+	}
+
+	/**
+	 * Model forward pass adapter for DiffusionSampler.
+	 */
+	private PackedCollection modelForward(PackedCollection x, PackedCollection t,
+										  PackedCollection... conditioning) {
+		if (conditioning.length == 0) {
+			return diffusionModel.forward(x, t);
+		} else {
+			PackedCollection[] args = new PackedCollection[conditioning.length + 1];
+			args[0] = t;
+			System.arraycopy(conditioning, 0, args, 1, conditioning.length);
+			return diffusionModel.forward(x, args);
+		}
+	}
+
+	/**
+	 * Decodes a latent to audio using the AutoEncoder.
+	 */
+	private WaveData decodeLatent(PackedCollection latent) {
+		if (verbose) log("Decoding latent to audio...");
+
+		long start = System.currentTimeMillis();
+		PackedCollection audioData = autoEncoder.decode(() -> args -> latent).get().evaluate();
+
 		int audioLength = (int) (audioData.getMemLength() / 2); // 2 channels
 		PackedCollection stereoData = new PackedCollection(new TraversalPolicy(2, audioLength));
 
@@ -233,90 +236,12 @@ public class AudioDiffusionGenerator implements ConsoleFeatures {
 			stereoData.setMem(audioLength + i, audioData.toDouble(audioLength + i));
 		}
 
-		if (verbose) log("Generated " + (audioLength / (double) SAMPLE_RATE) + " seconds of audio");
-
-		return new WaveData(stereoData, SAMPLE_RATE);
-	}
-
-	/**
-	 * Generates audio and saves to a WAV file.
-	 *
-	 * @param outputPath Path for the output WAV file
-	 * @throws IOException If writing fails
-	 */
-	public void generateAndSave(Path outputPath) throws IOException {
-		WaveData audio = generate();
-
-		// Normalize before saving
-		normalizeAudio(audio);
-
-		audio.save(outputPath.toFile());
-		log("Saved audio to: " + outputPath);
-	}
-
-	/**
-	 * Generates audio from a specific starting latent (useful for interpolation/variation).
-	 *
-	 * @param startLatent Starting latent to denoise from
-	 * @param startTimestep Timestep to start from (higher = more noise)
-	 * @return Generated audio
-	 */
-	public WaveData generateFromLatent(PackedCollection startLatent, int startTimestep) {
-		if (verbose) log("Generating from latent at timestep " + startTimestep);
-
-		// Add noise to the starting latent
-		PackedCollection noise = scheduler.sampleNoiseLike(startLatent);
-		PackedCollection x = scheduler.addNoise(startLatent, noise, startTimestep);
-
-		// Get timesteps from startTimestep down to 0
-		int[] allTimesteps = scheduler.getDDIMTimesteps(numInferenceSteps);
-		int startIdx = 0;
-		for (int i = 0; i < allTimesteps.length; i++) {
-			if (allTimesteps[i] <= startTimestep) {
-				startIdx = i;
-				break;
-			}
-		}
-
-		// Denoise
-		for (int i = startIdx; i < allTimesteps.length; i++) {
-			int t = allTimesteps[i];
-			int tPrev = i < allTimesteps.length - 1 ? allTimesteps[i + 1] : -1;
-
-			PackedCollection timestepTensor = createTimestepTensor(t);
-			PackedCollection predictedNoise = diffusionModel.forward(x, buildForwardArgs(timestepTensor));
-			x = scheduler.stepDDIM(x, predictedNoise, t, tPrev, ddimEta);
-		}
-
-		// Decode
-		PackedCollection audioData = decoder.forward(x);
-		int audioLength = (int) (audioData.getMemLength() / 2);
-		PackedCollection stereoData = new PackedCollection(new TraversalPolicy(2, audioLength));
-
-		for (int i = 0; i < audioLength; i++) {
-			stereoData.setMem(i, audioData.toDouble(i));
-			stereoData.setMem(audioLength + i, audioData.toDouble(audioLength + i));
+		if (verbose) {
+			log("Decoded in " + (System.currentTimeMillis() - start) + "ms (" +
+					(audioLength / (double) SAMPLE_RATE) + " seconds of audio)");
 		}
 
 		return new WaveData(stereoData, SAMPLE_RATE);
-	}
-
-	private PackedCollection createTimestepTensor(int t) {
-		double normalizedT = (double) t / scheduler.getNumSteps();
-		PackedCollection timestep = new PackedCollection(1);
-		timestep.setMem(0, normalizedT);
-		return timestep;
-	}
-
-	/**
-	 * Builds the full argument array for model forward call,
-	 * including timestep and any conditioning inputs.
-	 */
-	private PackedCollection[] buildForwardArgs(PackedCollection timestepTensor) {
-		PackedCollection[] args = new PackedCollection[1 + conditioningInputs.length];
-		args[0] = timestepTensor;
-		System.arraycopy(conditioningInputs, 0, args, 1, conditioningInputs.length);
-		return args;
 	}
 
 	private void normalizeAudio(WaveData audio) {
@@ -334,5 +259,23 @@ public class AudioDiffusionGenerator implements ConsoleFeatures {
 			}
 			if (verbose) log("Normalized audio (max was " + String.format("%.2f", maxAbs) + ")");
 		}
+	}
+
+	/**
+	 * Returns the underlying sampler for advanced configuration.
+	 *
+	 * @return The DiffusionSampler
+	 */
+	public DiffusionSampler getSampler() {
+		return sampler;
+	}
+
+	/**
+	 * Returns the AutoEncoder.
+	 *
+	 * @return The AutoEncoder
+	 */
+	public AutoEncoder getAutoEncoder() {
+		return autoEncoder;
 	}
 }

@@ -24,16 +24,18 @@ import org.almostrealism.ml.Tokenizer;
 
 import java.io.File;
 import java.io.IOException;
-import java.util.Random;
 import java.util.function.DoubleConsumer;
 
 /**
  * Audio generation system that combines text conditioning with diffusion-based synthesis.
- * <p>
- * This class extends {@link ConditionalAudioSystem} to provide complete audio generation
+ *
+ * <p>This class extends {@link ConditionalAudioSystem} to provide complete audio generation
  * from text prompts, optionally incorporating sample-based initialization for style transfer.
- * <p>
- * To create an instance, you must provide:
+ *
+ * <p><b>This class does NOT own the sampling loop.</b> {@link DiffusionSampler} owns
+ * the sampling loop.
+ *
+ * <p>To create an instance, you must provide:
  * <ul>
  *   <li>{@link Tokenizer} - for text tokenization (e.g., SentencePieceTokenizer)</li>
  *   <li>{@link AudioAttentionConditioner} - for conditioning (e.g., OnnxAudioConditioner)</li>
@@ -44,6 +46,7 @@ import java.util.function.DoubleConsumer;
  * @see Tokenizer
  * @see AudioAttentionConditioner
  * @see AutoEncoder
+ * @see DiffusionSampler
  */
 public class AudioGenerator extends ConditionalAudioSystem {
 
@@ -51,6 +54,7 @@ public class AudioGenerator extends ConditionalAudioSystem {
 	private DoubleConsumer progressMonitor;
 
 	private final AudioComposer composer;
+	private final DiffusionSampler sampler;
 	private double strength;
 
 	/**
@@ -88,6 +92,14 @@ public class AudioGenerator extends ConditionalAudioSystem {
 		composer = new AudioComposer(getAutoencoder(), composerDim, composerSeed);
 		audioDurationSeconds = 10.0;
 		strength = 0.5;
+
+		// Create sampler with ping-pong strategy - IT OWNS THE LOOP
+		this.sampler = new DiffusionSampler(
+				this::ditModelForward,
+				new PingPongSamplingStrategy(),
+				NUM_STEPS,
+				DIT_X_SHAPE
+		);
 	}
 
 	public double getAudioDuration() { return audioDurationSeconds; }
@@ -98,6 +110,7 @@ public class AudioGenerator extends ConditionalAudioSystem {
 	public DoubleConsumer getProgressMonitor() { return progressMonitor; }
 	public void setProgressMonitor(DoubleConsumer monitor) {
 		this.progressMonitor = monitor;
+		sampler.setProgressCallback(monitor);
 	}
 
 	/**
@@ -190,11 +203,9 @@ public class AudioGenerator extends ConditionalAudioSystem {
 	public double[][] generateAudio(PackedCollection position, long[] tokenIds, long seed) {
 		try {
 			if (position == null) {
-				// Pure generation from noise
 				log("Generating audio with seed " + seed +
 						" (duration = " + getAudioDuration() + ")");
 			} else {
-				// Sample-based generation
 				log("Generating audio from samples with seed " + seed +
 						" (duration = " + getAudioDuration() + ", strength = " + getStrength() + ")");
 			}
@@ -203,19 +214,23 @@ public class AudioGenerator extends ConditionalAudioSystem {
 			AudioAttentionConditioner.ConditionerOutput conditionerOutputs =
 					getConditioner().runConditioners(tokenIds, getAudioDuration());
 
+			// Store conditioning for use in model forward
+			this.currentCrossAttention = conditionerOutputs.getCrossAttentionInput();
+			this.currentGlobalCond = conditionerOutputs.getGlobalCond();
+
 			// 2. Generate interpolated latent from samples (if position provided)
 			PackedCollection interpolatedLatent = null;
 			if (position != null) {
 				interpolatedLatent = composer.getInterpolatedLatent(cp(position)).evaluate();
 			}
 
-			// 3. Run diffusion (with or without sample initialization)
-			PackedCollection finalLatent = runDiffusionSteps(
-					conditionerOutputs.getCrossAttentionInput(),
-					conditionerOutputs.getGlobalCond(),
-					interpolatedLatent,
-					seed
-			);
+			// 3. Run diffusion - DELEGATE TO DiffusionSampler - NO LOOP HERE
+			PackedCollection finalLatent;
+			if (interpolatedLatent == null) {
+				finalLatent = sampler.sample(seed);
+			} else {
+				finalLatent = sampler.sampleFrom(interpolatedLatent, strength, seed);
+			}
 
 			// 4. Decode audio
 			long start = System.currentTimeMillis();
@@ -223,181 +238,28 @@ public class AudioGenerator extends ConditionalAudioSystem {
 			log((System.currentTimeMillis() - start) + "ms for autoencoder");
 			return audio;
 		} finally {
+			// Clear conditioning state
+			this.currentCrossAttention = null;
+			this.currentGlobalCond = null;
+
 			if (progressMonitor != null) {
 				progressMonitor.accept(1.0);
 			}
 		}
 	}
 
-	/**
-	 * Run diffusion steps with optional sample-based initialization.
-	 * <p>
-	 * If interpolatedLatent is null, starts from pure noise at step 0.
-	 * If interpolatedLatent is provided, adds matched noise and starts from a calculated step based on strength.
-	 *
-	 * @param crossAttentionInput Conditioning from text tokens
-	 * @param globalCond Global conditioning vector
-	 * @param interpolatedLatent Optional interpolated latent from samples (null for pure generation)
-	 * @param seed Random seed
-	 * @return Final latent after diffusion
-	 */
-	private PackedCollection runDiffusionSteps(PackedCollection crossAttentionInput,
-												  PackedCollection globalCond,
-												  PackedCollection interpolatedLatent,
-												  long seed) {
-		Random random = new Random(seed);
-		PackedCollection x;
-		int startStep;
-
-		if (interpolatedLatent == null) {
-			// Pure generation: start from random noise at step 0
-			x = new PackedCollection(DIT_X_SHAPE).randnFill(random);
-			startStep = 0;
-		} else {
-			// Special case: strength = 0.0 means no diffusion at all
-			if (strength == 0.0) {
-				log("Strength is 0.0 - skipping diffusion, returning interpolated latent directly");
-				return interpolatedLatent;
-			}
-
-			// Sample-based generation: add matched noise and start from calculated step
-			float[] sigmas = new float[NUM_STEPS + 1];
-			fillSigmas(sigmas, LOGSNR_MAX, 2.0f);
-
-			// Calculate start step based on strength
-			// strength = 0.5 -> start at middle step (balanced)
-			// strength = 1.0 -> start at first step (full diffusion from noise)
-			startStep = (int) ((1.0 - strength) * NUM_STEPS);
-			if (startStep >= NUM_STEPS) startStep = NUM_STEPS - 1;
-
-			// Add matched noise to interpolated latent
-			x = addMatchedNoise(interpolatedLatent, sigmas[startStep], random);
-
-			log("Starting diffusion from step " + startStep + "/" + NUM_STEPS +
-					" (sigma=" + sigmas[startStep] + ", strength=" + strength + ")");
-		}
-
-		return runDiffusionSteps(crossAttentionInput, globalCond, x, startStep, seed);
-	}
+	// Transient state for conditioning during generation
+	private PackedCollection currentCrossAttention;
+	private PackedCollection currentGlobalCond;
 
 	/**
-	 * Core diffusion loop that can start from any step.
+	 * Model forward pass adapter for DiffusionSampler.
+	 * Converts the sampler's interface to the DitModel interface.
 	 */
-	private PackedCollection runDiffusionSteps(PackedCollection crossAttentionInput,
-												  PackedCollection globalCond,
-												  PackedCollection x,
-												  int startStep,
-												  long seed) {
-		// Generate sigma values
-		float[] sigmas = new float[NUM_STEPS + 1];
-		fillSigmas(sigmas, LOGSNR_MAX, 2.0f);
-
-		Random random = new Random(seed);
-		// Advance random to same state as if we started from beginning
-		for (int i = 0; i < startStep * DIT_X_SIZE; i++) {
-			random.nextGaussian();
-		}
-
-		long samplingTotal = 0;
-		long modelTotal = 0;
-
-		PackedCollection tPC = new PackedCollection(1);
-
-		double stepCount = NUM_STEPS - startStep;
-
-		// Run diffusion steps starting from startStep
-		for (int step = startStep; step < NUM_STEPS; step++) {
-			float currT = sigmas[step];
-			float nextT = sigmas[step + 1];
-			tPC.setMem(0, currT);
-
-			// Run DiffusionTransformer
-			long start = System.currentTimeMillis();
-			PackedCollection output = getDitModel().forward(x, tPC, crossAttentionInput, globalCond);
-
-			if (progressMonitor != null) {
-				progressMonitor.accept((1 + step - startStep) / stepCount);
-			}
-
-			checkNan(x, "input after model step " + step);
-			checkNan(output, "output after model step " + step);
-
-			modelTotal += System.currentTimeMillis() - start;
-			start = System.currentTimeMillis();
-
-			double[] xData = x.toArray();
-			double[] outputData = output.toArray();
-
-			// Apply ping-pong sampling
-			for (int i = 0; i < DIT_X_SIZE; i++) {
-				outputData[i] = xData[i] - (currT * outputData[i]);
-			}
-
-			// Generate new noise
-			PackedCollection newNoise = new PackedCollection(DIT_X_SHAPE).randnFill(random);
-			double[] newNoiseData = newNoise.toArray();
-
-			// Update x for next step
-			float[] newX = new float[DIT_X_SIZE];
-			for (int i = 0; i < DIT_X_SIZE; i++) {
-				newX[i] = (float) ((1.0f - nextT) * outputData[i] + nextT * newNoiseData[i]);
-			}
-
-			// Update x for next iteration
-			x.setMem(newX);
-			checkNan(x, "new input after model step " + step);
-
-			samplingTotal += System.currentTimeMillis() - start;
-		}
-
-		log("Diffusion completed - " + samplingTotal + "ms sampling, " + modelTotal + "ms model");
-
-		if (HardwareFeatures.outputMonitoring) {
-			double total = x.doubleStream().map(Math::abs).sum();
-			log("Average latent amplitude = " + (total / DIT_X_SIZE) + " (" + x.count(Double::isNaN) + " NaN values)");
-		}
-
-		return x;
-	}
-
-	/**
-	 * Add noise to an interpolated latent matching the target sigma level.
-	 * This implements the "matched noise addition" strategy for img2img-style generation.
-	 * <p>
-	 * Formula: noisy_latent = interpolated_latent + sigma * noise
-	 *
-	 * @param interpolatedLatent The clean interpolated latent from samples
-	 * @param targetSigma The noise level to add (should match the starting diffusion step)
-	 * @param random Random generator for noise
-	 * @return Noisy latent ready for diffusion
-	 */
-	private PackedCollection addMatchedNoise(PackedCollection interpolatedLatent,
-												float targetSigma,
-												Random random) {
-		// Generate noise and scale by target sigma
-		PackedCollection noise = new PackedCollection(DIT_X_SHAPE).randnFill(random);
-
-		// Add scaled noise to interpolated latent
-		double[] interpData = interpolatedLatent.toArray();
-		double[] noiseData = noise.toArray();
-		float[] noisyData = new float[DIT_X_SIZE];
-
-		for (int i = 0; i < DIT_X_SIZE; i++) {
-			noisyData[i] = (float) (interpData[i] + targetSigma * noiseData[i]);
-		}
-
-		PackedCollection result = new PackedCollection(DIT_X_SHAPE);
-		result.setMem(noisyData);
-
-		if (HardwareFeatures.outputMonitoring) {
-			double avgSignal = interpolatedLatent.doubleStream().map(Math::abs).average().orElse(0.0);
-			double avgNoise = Math.abs(targetSigma);
-			log("Added matched noise: signal amplitude=" + avgSignal +
-					", noise level=" + avgNoise +
-					", SNR=" + (avgSignal / Math.max(avgNoise, 0.001)));
-		}
-
-		return result;
+	private PackedCollection ditModelForward(PackedCollection x, PackedCollection t,
+											 PackedCollection... conditioning) {
+		// Use stored conditioning from generateAudio
+		return getDitModel().forward(x, t, currentCrossAttention, currentGlobalCond);
 	}
 
 	private double[][] decodeAudio(PackedCollection latent) {
@@ -417,35 +279,12 @@ public class AudioGenerator extends ConditionalAudioSystem {
 		return stereoAudio;
 	}
 
-	private void fillSigmas(float[] arr, float start, float end) {
-		int size = arr.length;
-		float step = (end - start) / (size - 1);
-
-		// Linspace
-		arr[0] = start;
-		arr[size - 1] = end;
-
-		for (int i = 1; i < size - 1; i++) {
-			arr[i] = arr[i - 1] + step;
-		}
-
-		// Apply sigmoid transformation
-		for (int i = 0; i < size; i++) {
-			arr[i] = 1.0f / (1.0f + (float) Math.exp(arr[i]));
-		}
-
-		// Set boundaries
-		arr[0] = SIGMA_MAX;
-		arr[size - 1] = SIGMA_MIN;
-	}
-
-	private void checkNan(PackedCollection x, String context) {
-		if (HardwareFeatures.outputMonitoring) {
-			long nanCount = x.count(Double::isNaN);
-
-			if (nanCount > 0) {
-				warn(nanCount + " NaN values detected at " + context);
-			}
-		}
+	/**
+	 * Returns the underlying sampler for advanced configuration.
+	 *
+	 * @return The DiffusionSampler
+	 */
+	public DiffusionSampler getSampler() {
+		return sampler;
 	}
 }

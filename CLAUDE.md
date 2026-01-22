@@ -433,6 +433,109 @@ This rule exists because `AudioDiffusionFineTuner` was originally implemented wi
 
 ---
 
+## ⚠️ CRITICAL: Sampling Loop Architecture ⚠️
+
+**THIS IS A SACRED ARCHITECTURAL PRINCIPLE. VIOLATING IT WILL RESULT IN WASTED EFFORT.**
+
+### The Golden Rule
+
+**`DiffusionSampler` is the ONLY class that should contain a diffusion sampling loop.** Full stop.
+
+**YOU DO NOT OWN THE SAMPLING LOOP.**
+
+All diffusion generation scenarios (text-conditional, unconditional, img2img, inpainting, etc.) must:
+
+1. Create a `SamplingStrategy` (DDIM, ping-pong, DDPM, etc.)
+2. Create a `DiffusionSampler`
+3. Configure it (inference steps, progress callback, etc.)
+4. Call `sampler.sample(seed, conditioning...)` or `sampler.sampleFrom(latent, strength, seed, conditioning...)` ONCE
+5. Decode the resulting latent with `AutoEncoder`
+6. Return
+
+**There is NO scenario where your generator class should contain a `for` loop that iterates over timesteps.** If you have a loop, you are wrong. Delete it.
+
+### Before Implementing ANY Diffusion Generation Code
+
+**You MUST:**
+1. Run `mcp__ar-docs__search_ar_docs query:"DiffusionSampler sampling"`
+2. Explicitly state: "According to the architecture, I should use `DiffusionSampler` for the sampling loop with a `[DDIM/PingPong/etc]SamplingStrategy`"
+
+### Duplication Red Flags
+
+**STOP IMMEDIATELY if you find yourself writing:**
+
+- `for (int step = 0; step < numSteps; step++)` outside of `DiffusionSampler` - **DELETE IT**
+- `for (...) { sampler.sample(...); }` - wrapping sample in a loop - **DELETE IT**
+- `model.forward(x, t, ...)` in a loop outside of `DiffusionSampler`
+- Custom timestep schedule computation (e.g., `fillSigmas()`) - use `SamplingStrategy`
+- Custom progress logging that duplicates `DiffusionSampler.setProgressCallback()`
+
+### Correct Pattern for Audio Generation
+
+```java
+// CORRECT: Thin wrapper that configures and delegates to DiffusionSampler
+public class AudioDiffusionGenerator {
+    private final DiffusionSampler sampler;
+    private final AutoEncoder autoEncoder;
+
+    public AudioDiffusionGenerator(CompiledModel model, AutoEncoder autoEncoder,
+                                   DiffusionNoiseScheduler scheduler, TraversalPolicy latentShape) {
+        // Create sampler - IT OWNS THE LOOP
+        this.sampler = new DiffusionSampler(
+            model::forward,
+            new DDIMSamplingStrategy(scheduler),
+            scheduler.getNumSteps(),
+            latentShape
+        );
+        this.autoEncoder = autoEncoder;
+    }
+
+    public WaveData generate(long seed) {
+        // Delegate to DiffusionSampler - NO LOOP HERE
+        PackedCollection latent = sampler.sample(seed);
+
+        // Decode to audio
+        return decodeLatent(latent);
+    }
+    // NO inner loops. NO custom timestep scheduling. NO inline sampling math.
+}
+```
+
+```java
+// WRONG: Any timestep loop at all
+public class AudioGenerator {
+    public PackedCollection generate(long seed) {
+        for (int step = 0; step < numSteps; step++) {        // WRONG! DELETE THIS LOOP
+            output = model.forward(x, t, conditioning);       // WRONG! Sampler does this
+            x = updateSample(x, output, t, tPrev);            // WRONG! Strategy does this
+        }
+        return x;
+    }
+}
+```
+
+### AutoEncoder Abstraction
+
+Use the `AutoEncoder` interface for encoding/decoding audio. Do NOT assume `CompiledModel`:
+
+```java
+// CORRECT: Works with any AutoEncoder implementation
+public AudioGenerator(AutoEncoder autoEncoder) {
+    this.autoEncoder = autoEncoder;  // Could be OnnxAutoEncoder, CompiledModelAutoEncoder, etc.
+}
+
+// If you have a CompiledModel decoder, wrap it:
+AutoEncoder autoEncoder = new CompiledModelAutoEncoder(
+    compiledDecoder, sampleRate, latentSampleRate, maxDuration
+);
+```
+
+### Historical Context
+
+This rule exists because both `AudioGenerator` and `AudioDiffusionGenerator` were originally implemented with duplicate sampling loops. `AudioGenerator` used ping-pong sampling inline, while `AudioDiffusionGenerator` used DDIM. Both have been corrected to use `DiffusionSampler` with appropriate `SamplingStrategy` implementations.
+
+---
+
 ## ⚠️ CRITICAL: Process Optimization and Isolation Architecture ⚠️
 
 **THIS IS A SACRED ARCHITECTURAL PRINCIPLE. VIOLATING IT WILL BREAK THE SYSTEM.**

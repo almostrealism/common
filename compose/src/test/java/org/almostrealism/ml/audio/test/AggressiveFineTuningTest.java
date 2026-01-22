@@ -268,16 +268,22 @@ public class AggressiveFineTuningTest extends TestSuiteBase {
 		decoderModel.add(decoder);
 		CompiledModel compiledDecoder = decoderModel.compile(false); // Inference only, no backprop needed
 
-		// Create generator
+		// Wrap decoder as AutoEncoder
+		double latentSampleRate = SAMPLE_RATE / 2048.0; // Approximate compression ratio
+		AutoEncoder autoEncoder = new CompiledModelAutoEncoder(
+				compiledDecoder, SAMPLE_RATE, latentSampleRate, SEGMENT_SECONDS
+		);
+
+		// Create generator with DDIM strategy (eta=0 for deterministic)
+		TraversalPolicy latentShape = new TraversalPolicy(1, IO_CHANNELS, latentLength);
 		AudioDiffusionGenerator generator = new AudioDiffusionGenerator(
-				diffusionModel, compiledDecoder, scheduler, latentLength
+				diffusionModel, autoEncoder, scheduler, 0.0, latentShape
 		);
 		generator.setNumInferenceSteps(NUM_INFERENCE_STEPS);
-		generator.setDDIMEta(0.0); // Deterministic sampling
 		generator.setVerbose(false);
 
-		// Generate and save
-		generator.generateAndSave(outputPath);
+		// Generate and save with a fixed seed for reproducibility
+		generator.generateAndSave(42L, outputPath);
 		log("  Generated: " + outputPath.getFileName());
 	}
 
