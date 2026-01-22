@@ -19,7 +19,7 @@ package org.almostrealism.ml.audio.test;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.ml.audio.AudioTrainingDataCollector;
 import org.almostrealism.ml.audio.DataCollectionConfig;
-import org.almostrealism.optimize.DatasetSplit;
+import org.almostrealism.optimize.Dataset;
 import org.almostrealism.optimize.ValueTarget;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
@@ -28,7 +28,6 @@ import org.junit.Test;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -63,18 +62,19 @@ public class AudioTrainingDataCollectorTest extends TestSuiteBase {
 				.trainSplitRatio(0.8); // 80% train, 20% validation
 
 		AudioTrainingDataCollector collector = new AudioTrainingDataCollector();
-		DatasetSplit<PackedCollection> dataset = collector.collect(audioFiles, config);
+		List<Dataset<PackedCollection>> splits = collector.collect(audioFiles, config);
+		Dataset<PackedCollection> trainSet = splits.get(0);
+		Dataset<PackedCollection> validSet = splits.get(1);
 
-		log("Collected dataset: " + dataset);
-		log("Train samples: " + dataset.getTrainSize());
-		log("Validation samples: " + dataset.getValidationSize());
+		log("Train samples: " + countDataset(trainSet));
+		log("Validation samples: " + countDataset(validSet));
 
-		Assert.assertTrue("Should have training samples", dataset.getTrainSize() > 0);
-		Assert.assertTrue("Should have total samples", dataset.getTotalSize() > 0);
+		Assert.assertTrue("Should have training samples", countDataset(trainSet) > 0);
+		Assert.assertTrue("Should have total samples", countDataset(trainSet) + countDataset(validSet) > 0);
 
 		// Verify samples are valid
 		int sampleCount = 0;
-		for (ValueTarget<PackedCollection> sample : dataset.getTrainSet()) {
+		for (ValueTarget<PackedCollection> sample : trainSet) {
 			Assert.assertNotNull("Sample input should not be null", sample.getInput());
 			Assert.assertNotNull("Sample target should not be null", sample.getExpectedOutput());
 			Assert.assertTrue("Sample should have data", sample.getInput().getMemLength() > 0);
@@ -104,10 +104,11 @@ public class AudioTrainingDataCollectorTest extends TestSuiteBase {
 				.maxSamplesTotal(10);
 
 		AudioTrainingDataCollector collector = new AudioTrainingDataCollector();
-		DatasetSplit<PackedCollection> dataset = collector.collect(audioFiles, config);
+		List<Dataset<PackedCollection>> splits = collector.collect(audioFiles, config);
+		Dataset<PackedCollection> trainSet = splits.get(0);
 
 		// Check that samples are within [-1, 1] range
-		for (ValueTarget<PackedCollection> sample : dataset.getTrainSet()) {
+		for (ValueTarget<PackedCollection> sample : trainSet) {
 			PackedCollection data = sample.getInput();
 			for (int i = 0; i < Math.min(1000, data.getMemLength()); i++) {
 				double val = data.toDouble(i);
@@ -138,9 +139,12 @@ public class AudioTrainingDataCollectorTest extends TestSuiteBase {
 				.maxSamplesTotal(50);
 
 		AudioTrainingDataCollector collector = new AudioTrainingDataCollector();
-		DatasetSplit<PackedCollection> dataset = collector.collect(audioFiles, config);
+		List<Dataset<PackedCollection>> splits = collector.collect(audioFiles, config);
+		Dataset<PackedCollection> trainSet = splits.get(0);
+		Dataset<PackedCollection> validSet = splits.get(1);
 
-		double actualRatio = dataset.getActualSplitRatio();
+		int total = countDataset(trainSet) + countDataset(validSet);
+		double actualRatio = total > 0 ? (double) countDataset(trainSet) / total : 0.0;
 		log("Actual split ratio: " + actualRatio);
 
 		// Allow some variance due to random splitting
@@ -170,8 +174,8 @@ public class AudioTrainingDataCollectorTest extends TestSuiteBase {
 				.maxSamplesTotal(50);
 
 		AudioTrainingDataCollector collectorNoAug = new AudioTrainingDataCollector();
-		DatasetSplit<PackedCollection> datasetNoAug = collectorNoAug.collect(audioFiles, configNoAug);
-		int sizeNoAug = datasetNoAug.getTotalSize();
+		List<Dataset<PackedCollection>> splitsNoAug = collectorNoAug.collect(audioFiles, configNoAug);
+		int sizeNoAug = countDataset(splitsNoAug.get(0)) + countDataset(splitsNoAug.get(1));
 
 		// With noise augmentation
 		DataCollectionConfig configWithAug = DataCollectionConfig.forTesting()
@@ -182,8 +186,8 @@ public class AudioTrainingDataCollectorTest extends TestSuiteBase {
 				.maxSamplesTotal(100);
 
 		AudioTrainingDataCollector collectorWithAug = new AudioTrainingDataCollector();
-		DatasetSplit<PackedCollection> datasetWithAug = collectorWithAug.collect(audioFiles, configWithAug);
-		int sizeWithAug = datasetWithAug.getTotalSize();
+		List<Dataset<PackedCollection>> splitsWithAug = collectorWithAug.collect(audioFiles, configWithAug);
+		int sizeWithAug = countDataset(splitsWithAug.get(0)) + countDataset(splitsWithAug.get(1));
 
 		log("Without augmentation: " + sizeNoAug + " samples");
 		log("With augmentation: " + sizeWithAug + " samples");
@@ -209,12 +213,14 @@ public class AudioTrainingDataCollectorTest extends TestSuiteBase {
 				.maxSamplesTotal(20);
 
 		AudioTrainingDataCollector collector = new AudioTrainingDataCollector();
-		DatasetSplit<PackedCollection> dataset = collector.collectFromDirectory(BASS_LOOPS_DIR, config);
+		List<Dataset<PackedCollection>> splits = collector.collectFromDirectory(BASS_LOOPS_DIR, config);
 
-		log("Collected from directory: " + dataset);
+		int trainCount = countDataset(splits.get(0));
+		int validCount = countDataset(splits.get(1));
+		int totalSize = trainCount + validCount;
+		log("Collected from directory: train=" + trainCount + ", valid=" + validCount);
 
-		Assert.assertTrue("Should have samples from directory",
-				dataset.getTotalSize() > 0);
+		Assert.assertTrue("Should have samples from directory", totalSize > 0);
 
 		log("Directory collection test passed");
 	}
@@ -242,11 +248,12 @@ public class AudioTrainingDataCollectorTest extends TestSuiteBase {
 				.maxSamplesTotal(10);
 
 		AudioTrainingDataCollector collector = new AudioTrainingDataCollector();
-		DatasetSplit<PackedCollection> dataset = collector.collect(audioFiles, config);
+		List<Dataset<PackedCollection>> splits = collector.collect(audioFiles, config);
+		Dataset<PackedCollection> trainSet = splits.get(0);
 
 		// Check at least one segment has the expected length
 		boolean foundCorrectLength = false;
-		for (ValueTarget<PackedCollection> sample : dataset.getTrainSet()) {
+		for (ValueTarget<PackedCollection> sample : trainSet) {
 			int length = sample.getInput().getMemLength();
 			log("Segment length: " + length + " samples");
 			if (Math.abs(length - expectedSamples) < 1000) { // Allow some tolerance
@@ -256,7 +263,7 @@ public class AudioTrainingDataCollectorTest extends TestSuiteBase {
 		}
 
 		Assert.assertTrue("Should have segments of approximately correct length",
-				foundCorrectLength || dataset.getTrainSize() == 0);
+				foundCorrectLength || countDataset(trainSet) == 0);
 
 		log("Segment length test passed");
 	}
@@ -269,5 +276,13 @@ public class AudioTrainingDataCollectorTest extends TestSuiteBase {
 					.limit(maxFiles)
 					.collect(Collectors.toList());
 		}
+	}
+
+	private int countDataset(Dataset<?> dataset) {
+		int count = 0;
+		for (Object ignored : dataset) {
+			count++;
+		}
+		return count;
 	}
 }

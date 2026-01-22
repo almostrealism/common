@@ -22,7 +22,6 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.layers.LayerFeatures;
 import org.almostrealism.optimize.Dataset;
-import org.almostrealism.optimize.DatasetSplit;
 import org.almostrealism.optimize.ValueTarget;
 
 import java.io.File;
@@ -57,20 +56,19 @@ import java.util.stream.Stream;
  *     .segmentLength(5.0)
  *     .trainSplitRatio(0.9);
  *
- * DatasetSplit<PackedCollection> dataset = collector.collect(audioFiles, config);
+ * List<Dataset<PackedCollection>> splits = collector.collect(audioFiles, config);
+ * Dataset<PackedCollection> trainSet = splits.get(0);
+ * Dataset<PackedCollection> validSet = splits.get(1);
  *
  * // Use with FineTuner
  * FineTuner fineTuner = new FineTuner(model, fineTuneConfig, outputShape);
- * FineTuningResult result = fineTuner.fineTune(
- *     dataset.getTrainSet(),
- *     dataset.getValidationSet()
- * );
+ * FineTuningResult result = fineTuner.fineTune(trainSet, validSet);
  * }</pre>
  *
  * <h2>Collecting from a Directory</h2>
  * <pre>{@code
  * // Collect all WAV files from a directory
- * DatasetSplit<PackedCollection> dataset = collector.collectFromDirectory(
+ * List<Dataset<PackedCollection>> splits = collector.collectFromDirectory(
  *     Path.of("/path/to/audio"),
  *     config
  * );
@@ -89,7 +87,7 @@ import java.util.stream.Stream;
  * </ol>
  *
  * @see DataCollectionConfig
- * @see DatasetSplit<PackedCollection>
+ * @see Dataset
  * @author Michael Murray
  */
 public class AudioTrainingDataCollector implements LayerFeatures, ConsoleFeatures {
@@ -117,9 +115,9 @@ public class AudioTrainingDataCollector implements LayerFeatures, ConsoleFeature
 	 *
 	 * @param audioFiles list of paths to audio files
 	 * @param config configuration for data collection
-	 * @return the collected training dataset
+	 * @return list of two datasets: [train, validation]
 	 */
-	public DatasetSplit<PackedCollection> collect(List<Path> audioFiles, DataCollectionConfig config) {
+	public List<Dataset<PackedCollection>> collect(List<Path> audioFiles, DataCollectionConfig config) {
 		List<ValueTarget<PackedCollection>> samples = new ArrayList<>();
 		int filesProcessed = 0;
 		int filesSkipped = 0;
@@ -155,17 +153,8 @@ public class AudioTrainingDataCollector implements LayerFeatures, ConsoleFeature
 			samples = samples.subList(0, config.getMaxSamplesTotal());
 		}
 
-		// Split into train/validation
-		int splitIdx = (int) (samples.size() * config.getTrainSplitRatio());
-		List<ValueTarget<PackedCollection>> trainSamples = samples.subList(0, splitIdx);
-		List<ValueTarget<PackedCollection>> validSamples = samples.subList(splitIdx, samples.size());
-
-		return new DatasetSplit<PackedCollection>(
-				Dataset.of(trainSamples),
-				Dataset.of(validSamples),
-				trainSamples.size(),
-				validSamples.size()
-		);
+		// Use Dataset.split() for train/validation split
+		return Dataset.of(samples).split(config.getTrainSplitRatio());
 	}
 
 	/**
@@ -173,10 +162,10 @@ public class AudioTrainingDataCollector implements LayerFeatures, ConsoleFeature
 	 *
 	 * @param directory path to directory containing audio files
 	 * @param config configuration for data collection
-	 * @return the collected training dataset
+	 * @return list of two datasets: [train, validation]
 	 * @throws IOException if directory cannot be read
 	 */
-	public DatasetSplit<PackedCollection> collectFromDirectory(Path directory, DataCollectionConfig config) throws IOException {
+	public List<Dataset<PackedCollection>> collectFromDirectory(Path directory, DataCollectionConfig config) throws IOException {
 		List<Path> audioFiles;
 
 		try (Stream<Path> paths = Files.walk(directory)) {
