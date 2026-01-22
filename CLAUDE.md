@@ -321,6 +321,85 @@ See [hardware/README.md](hardware/README.md) for complete memory and performance
 
 ---
 
+## ⚠️ CRITICAL: Training Loop Architecture ⚠️
+
+**THIS IS A SACRED ARCHITECTURAL PRINCIPLE. VIOLATING IT WILL RESULT IN WASTED EFFORT.**
+
+### The Golden Rule
+
+**`ModelOptimizer` is the ONLY class that should contain a training loop.** All training scenarios (supervised learning, diffusion, reinforcement learning, fine-tuning, etc.) must:
+
+1. Create a `Dataset` implementation that yields appropriate `(input, target)` pairs
+2. Pass this `Dataset` to `ModelOptimizer`
+3. Let `ModelOptimizer` handle epochs, forward/backward passes, and logging
+
+**If you believe your scenario requires a custom training loop, you are almost certainly wrong.** Consult the design document and ar-docs MCP first.
+
+### Before Implementing ANY Training-Related Code
+
+**You MUST:**
+1. Run `mcp__ar-docs__search_ar_docs query:"ModelOptimizer training"`
+2. Run `mcp__ar-docs__read_ar_module module:"optimize"`
+3. Read the relevant design document (e.g., `ringsdesktop/docs/planning/10-MODEL-FINE-TUNING.md`)
+4. Explicitly state: "According to the design document, I should use `ModelOptimizer` for the training loop and create a custom `Dataset` for [X]"
+
+### Duplication Red Flags
+
+**STOP IMMEDIATELY if you find yourself writing:**
+
+- `for (int epoch = 0; epoch < ...)` outside of `ModelOptimizer`
+- `model.forward(...)` followed by `model.backward(...)` outside of `ModelOptimizer`
+- `lossFunction.apply(...)` or `lossGradient.evaluate(...)` outside of `ModelOptimizer`
+- Custom progress logging that duplicates `ModelOptimizer.setLogFrequency()`
+- Custom `formatDuration()` or similar utility methods
+
+**If ANY of these patterns appear in your code, you must refactor to use `ModelOptimizer`.**
+
+### Correct Pattern for Domain-Specific Training
+
+```java
+// CORRECT: Diffusion training using ModelOptimizer
+public class DiffusionTrainingDataset implements Dataset<PackedCollection> {
+    // Handles timestep sampling, noise addition - the diffusion-specific parts
+    @Override
+    public Iterator<ValueTarget<PackedCollection>> iterator() {
+        return new Iterator<>() {
+            @Override
+            public ValueTarget<PackedCollection> next() {
+                // Sample timestep, add noise, return (noisy_input, noise)
+                return ValueTarget.of(noisyLatent, noise).withArguments(timestep);
+            }
+        };
+    }
+}
+
+// Training loop is ALWAYS delegated to ModelOptimizer
+ModelOptimizer optimizer = new ModelOptimizer(model, () -> diffusionDataset);
+optimizer.setLossFunction(new MeanSquaredError(outputShape));
+optimizer.optimize(epochs);
+```
+
+```java
+// WRONG: Rebuilding the training loop
+public class DiffusionFineTuner {
+    public void train(Dataset data) {
+        for (int epoch = 0; epoch < epochs; epoch++) {        // WRONG!
+            for (Sample s : data) {
+                PackedCollection out = model.forward(s);      // WRONG!
+                double loss = lossFunction.apply(out, target); // WRONG!
+                model.backward(gradient);                      // WRONG!
+            }
+        }
+    }
+}
+```
+
+### Historical Context
+
+This rule exists because `AudioDiffusionFineTuner` was originally implemented with a duplicate training loop, violating this principle. See `/workspace/project/common/DESIGN_PROCESS_FAILURE.md` for the full analysis. The class has been corrected to use `ModelOptimizer` with `DiffusionTrainingDataset`.
+
+---
+
 ## ⚠️ CRITICAL: Process Optimization and Isolation Architecture ⚠️
 
 **THIS IS A SACRED ARCHITECTURAL PRINCIPLE. VIOLATING IT WILL BREAK THE SYSTEM.**
@@ -485,6 +564,17 @@ public ModelWeights(FloatBuffer buffer) {
 2. **Identify generalization opportunities**: Can existing code be extended?
 3. **Review StateDictionary**: Can it handle your use case?
 4. **Set environment variables**: Especially for testing
+5. **Check design documents**: If implementing a planned feature, read the design doc in `ringsdesktop/docs/planning/`
+6. **State your reuse plan**: Before writing code, explicitly state: "I will reuse [X] rather than reimplementing it"
+
+### Design Document Verification Gate
+
+**For any feature with a design document:**
+
+1. Read the relevant design document section BEFORE writing code
+2. Explicitly state: "According to the design document, I should use [X] for [Y]"
+3. If deviating from design, document why and update the design document FIRST
+4. Search for existing implementations: `Grep pattern:"class.*implements|extends.*<RelevantInterface>"`
 
 ### During Development
 
@@ -534,6 +624,20 @@ commentary back to yourself is NOT a condition for suspending your work.
 
 Before you start working, REPEAT this principle to yourself. If summarization of earlier tasks is ever required,
 REPEAT THIS PRINCIPLE IN THE SUMMARY
+
+### Context Preservation Protocol
+
+**When continuing a session or after context summarization:**
+
+1. **Re-read the design document** for the feature being implemented
+2. **Search for existing implementations** before writing new code:
+   - `Grep pattern:"ModelOptimizer"` for training-related code
+   - `Grep pattern:"extends CellularLayer"` for layer implementations
+   - `mcp__ar-docs__search_ar_docs query:"<feature>"` for framework patterns
+3. **Explicitly state your reuse plan**: "I will reuse [X] rather than reimplementing it"
+4. **Check the summary for incomplete tasks** - if the summary mentions "remaining work" or "TODO", that work is YOUR responsibility
+
+**This protocol exists because:** Design decisions made early in a session are often lost during context summarization. The design document is the authoritative source - always consult it, especially after a session break.
 
 ---
 
