@@ -112,7 +112,7 @@ public class SineWaveCell extends CollectionTemporalCellAdapter implements Sampl
 		OperationList push = new OperationList("SineWaveCell Push");
 
 		Producer<PackedCollection> envelope = env == null ? scalar(1.0) :
-					env.getResultant(scalar(1.0));
+					env.getResultant(data.getNotePosition());
 
 		// Compute: sin(2*PI * (wavePosition + phase)) * envelope * amplitude * depth
 		CollectionProducer angle = multiply(c(TWO_PI), add(data.getWavePosition(), data.getPhase()));

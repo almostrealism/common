@@ -139,7 +139,7 @@ public class SquareWaveCell extends CollectionTemporalCellAdapter implements Sam
 		OperationList push = new OperationList("SquareWaveCell Push");
 
 		Producer<PackedCollection> envelope = env == null ? scalar(1.0) :
-				env.getResultant(scalar(1.0));
+				env.getResultant(data.getNotePosition());
 
 		// Compute t = wavePosition + phase
 		CollectionProducer t = add(data.getWavePosition(), data.getPhase());
