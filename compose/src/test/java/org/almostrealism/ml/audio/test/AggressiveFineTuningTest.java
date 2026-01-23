@@ -330,7 +330,7 @@ public class AggressiveFineTuningTest extends TestSuiteBase {
 		// Test noise addition
 		PackedCollection testLatent = new PackedCollection(1, IO_CHANNELS, latentLength);
 		PackedCollection noise = scheduler.sampleNoiseLike(testLatent);
-		PackedCollection noisyLatent = scheduler.addNoise(testLatent, noise, 500);
+		PackedCollection noisyLatent = scheduler.addNoise(testLatent, noise, 500).evaluate();
 		log("  Noise addition works");
 
 		// Test timestep creation

@@ -190,7 +190,8 @@ public class DiffusionSampler implements ConsoleFeatures {
 
 		// Add noise to start latent at the target timestep
 		double startT = timesteps[startStep];
-		PackedCollection x = strategy.addNoise(startLatent, startT, random);
+		PackedCollection noise = sampleNoise(startLatent.getShape().extent(), random);
+		PackedCollection x = strategy.addNoise(startLatent, startT, noise).evaluate();
 
 		if (verbose) {
 			log("Starting diffusion from step " + startStep + "/" + numInferenceSteps +
@@ -205,10 +206,14 @@ public class DiffusionSampler implements ConsoleFeatures {
 
 	/**
 	 * The core sampling loop. This is THE loop - no other class should have one.
+	 *
+	 * <p>Noise is sampled on CPU (inherently CPU-bound), but all math operations
+	 * use the Producer pattern and are evaluated on GPU.</p>
 	 */
 	private PackedCollection runSamplingLoop(PackedCollection x, int startStep,
 											 Random random, PackedCollection[] conditioning) {
 		double[] timesteps = strategy.getTimesteps(numSteps, numInferenceSteps);
+		int[] shapeArray = latentShape.extent();
 
 		if (verbose) {
 			log("Starting sampling with " + (numInferenceSteps - startStep) + " steps");
@@ -236,9 +241,12 @@ public class DiffusionSampler implements ConsoleFeatures {
 			checkNan(x, "input at step " + step);
 			checkNan(modelOutput, "output at step " + step);
 
-			// Sampling step
+			// Sample noise for stochastic steps (CPU-bound, done outside Producer)
+			PackedCollection noise = (tPrev > 0) ? sampleNoise(shapeArray, random) : null;
+
+			// Sampling step - returns Producer, we evaluate here
 			start = System.currentTimeMillis();
-			x = strategy.step(x, modelOutput, t, tPrev, random);
+			x = strategy.step(x, modelOutput, t, tPrev, noise).evaluate();
 			samplingTotal += System.currentTimeMillis() - start;
 
 			checkNan(x, "result at step " + step);
@@ -258,6 +266,13 @@ public class DiffusionSampler implements ConsoleFeatures {
 		}
 
 		return x;
+	}
+
+	/**
+	 * Samples Gaussian noise. This is inherently CPU-bound due to random number generation.
+	 */
+	private PackedCollection sampleNoise(int[] shape, Random random) {
+		return new PackedCollection(shape).randnFill(random);
 	}
 
 	/**

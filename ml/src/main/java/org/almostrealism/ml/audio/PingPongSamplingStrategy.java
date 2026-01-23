@@ -86,30 +86,25 @@ public class PingPongSamplingStrategy implements SamplingStrategy, CodeFeatures 
 	}
 
 	@Override
-	public PackedCollection step(PackedCollection x, PackedCollection modelOutput,
-								 double t, double tPrev, Random random) {
-		// Sample fresh noise
-		PackedCollection noise = new PackedCollection(x.getShape()).randnFill(random);
-
-		// Use Producer pattern for GPU-accelerated computation:
+	public CollectionProducer step(PackedCollection x, PackedCollection modelOutput,
+									  double t, double tPrev, PackedCollection noise) {
+		// GPU-accelerated computation (caller decides when to evaluate):
 		// denoised = x - t * modelOutput
 		// result = (1 - tPrev) * denoised + tPrev * noise
 		CollectionProducer denoised = cp(x).subtract(cp(modelOutput).multiply(t));
-		CollectionProducer result = denoised.multiply(1.0 - tPrev)
-				.add(cp(noise).multiply(tPrev));
 
-		return result.evaluate();
+		if (noise != null && tPrev > 0) {
+			return denoised.multiply(1.0 - tPrev).add(cp(noise).multiply(tPrev));
+		} else {
+			// No noise injection at final step
+			return denoised;
+		}
 	}
 
 	@Override
-	public PackedCollection addNoise(PackedCollection cleanSample, double t, Random random) {
-		PackedCollection noise = new PackedCollection(cleanSample.getShape()).randnFill(random);
-
-		// Use Producer pattern for GPU-accelerated computation:
+	public CollectionProducer addNoise(PackedCollection cleanSample, double t, PackedCollection noise) {
+		// GPU-accelerated computation (caller decides when to evaluate):
 		// noisy = (1 - t) * clean + t * noise
-		CollectionProducer result = cp(cleanSample).multiply(1.0 - t)
-				.add(cp(noise).multiply(t));
-
-		return result.evaluate();
+		return cp(cleanSample).multiply(1.0 - t).add(cp(noise).multiply(t));
 	}
 }

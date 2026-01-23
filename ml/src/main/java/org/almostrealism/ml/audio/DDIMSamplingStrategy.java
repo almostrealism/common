@@ -16,15 +16,17 @@
 
 package org.almostrealism.ml.audio;
 
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-
-import java.util.Random;
 
 /**
  * DDIM (Denoising Diffusion Implicit Models) sampling strategy.
  *
  * <p>DDIM provides deterministic or semi-stochastic sampling that can be
  * faster than DDPM while maintaining quality.
+ *
+ * <p><b>GPU-First Design:</b> Methods return {@link CollectionProducer} to allow
+ * composition into GPU computation graphs. See {@link SamplingStrategy} for details.</p>
  *
  * @see SamplingStrategy
  * @see DiffusionNoiseScheduler
@@ -68,19 +70,18 @@ public class DDIMSamplingStrategy implements SamplingStrategy {
 	}
 
 	@Override
-	public PackedCollection step(PackedCollection x, PackedCollection modelOutput,
-								 double t, double tPrev, Random random) {
+	public CollectionProducer step(PackedCollection x, PackedCollection modelOutput,
+									  double t, double tPrev, PackedCollection noise) {
 		// Convert normalized timesteps back to integer indices
 		int tInt = (int) Math.round(t * scheduler.getNumSteps());
 		int tPrevInt = tPrev >= 0 ? (int) Math.round(tPrev * scheduler.getNumSteps()) : -1;
 
-		return scheduler.stepDDIM(x, modelOutput, tInt, tPrevInt, eta);
+		return scheduler.stepDDIM(x, modelOutput, tInt, tPrevInt, eta, noise);
 	}
 
 	@Override
-	public PackedCollection addNoise(PackedCollection cleanSample, double t, Random random) {
+	public CollectionProducer addNoise(PackedCollection cleanSample, double t, PackedCollection noise) {
 		int tInt = (int) Math.round(t * scheduler.getNumSteps());
-		PackedCollection noise = scheduler.sampleNoiseLike(cleanSample);
 		return scheduler.addNoise(cleanSample, noise, tInt);
 	}
 

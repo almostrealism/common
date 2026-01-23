@@ -16,6 +16,7 @@
 
 package org.almostrealism.ml.audio;
 
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 
 import java.util.Random;
@@ -26,9 +27,17 @@ import java.util.Random;
  * <p>Different sampling strategies implement the reverse diffusion process
  * in different ways, trading off quality, speed, and stochasticity.
  *
+ * <p><b>GPU-First Design:</b> Methods return {@link CollectionProducer} instead of
+ * {@link PackedCollection} to allow composition into GPU computation graphs. The caller
+ * decides when to materialize results with {@code .evaluate()}. This enables:
+ * <ul>
+ *   <li>Multiple operations to be fused into a single GPU kernel</li>
+ *   <li>Better optimization opportunities</li>
+ *   <li>Reduced CPU-GPU synchronization overhead</li>
+ * </ul>
+ *
  * <h2>Available Strategies</h2>
  * <ul>
- *   <li>{@link DDPMSamplingStrategy} - Standard DDPM sampling</li>
  *   <li>{@link DDIMSamplingStrategy} - Deterministic/accelerated DDIM sampling</li>
  *   <li>{@link PingPongSamplingStrategy} - Ping-pong (rectified flow) sampling</li>
  * </ul>
@@ -50,18 +59,24 @@ public interface SamplingStrategy {
 	/**
 	 * Performs one sampling step.
 	 *
+	 * <p>Returns a {@link CollectionProducer} for GPU-accelerated computation.
+	 * The caller should call {@code .evaluate()} when materialization is needed.</p>
+	 *
 	 * @param x Current noisy sample
 	 * @param modelOutput Model's prediction (noise or velocity depending on parameterization)
 	 * @param t Current timestep value
 	 * @param tPrev Next timestep value (lower noise level)
-	 * @param random Random number generator for stochastic sampling
-	 * @return Updated sample at timestep tPrev
+	 * @param noise Pre-sampled noise for stochastic sampling (may be null for deterministic)
+	 * @return Producer for the updated sample at timestep tPrev
 	 */
-	PackedCollection step(PackedCollection x, PackedCollection modelOutput,
-						  double t, double tPrev, Random random);
+	CollectionProducer step(PackedCollection x, PackedCollection modelOutput,
+							   double t, double tPrev, PackedCollection noise);
 
 	/**
 	 * Samples initial noise for starting the diffusion process.
+	 *
+	 * <p>Note: Random number generation is inherently CPU-bound, so this
+	 * returns {@link PackedCollection} directly.</p>
 	 *
 	 * @param shape Shape of the latent tensor
 	 * @param random Random number generator
@@ -74,10 +89,12 @@ public interface SamplingStrategy {
 	/**
 	 * Adds noise to a clean sample for img2img-style generation.
 	 *
+	 * <p>Returns a {@link CollectionProducer} for GPU-accelerated computation.</p>
+	 *
 	 * @param cleanSample The clean sample to add noise to
 	 * @param t Target timestep (noise level)
-	 * @param random Random number generator
-	 * @return Noisy sample at timestep t
+	 * @param noise Pre-sampled noise tensor
+	 * @return Producer for the noisy sample at timestep t
 	 */
-	PackedCollection addNoise(PackedCollection cleanSample, double t, Random random);
+	CollectionProducer addNoise(PackedCollection cleanSample, double t, PackedCollection noise);
 }

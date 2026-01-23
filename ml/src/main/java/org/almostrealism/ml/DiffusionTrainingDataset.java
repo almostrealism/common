@@ -157,7 +157,7 @@ public class DiffusionTrainingDataset implements Dataset<PackedCollection> {
 			PackedCollection noise = scheduler.sampleNoiseLike(cleanSample);
 
 			// Create noisy sample: x_t = sqrt(alpha_t) * x_0 + sqrt(1-alpha_t) * noise
-			PackedCollection noisySample = scheduler.addNoise(cleanSample, noise, t);
+			PackedCollection noisySample = scheduler.addNoise(cleanSample, noise, t).evaluate();
 
 			// Create timestep tensor (normalized to [0, 1])
 			PackedCollection timestep = createTimestepTensor(t);

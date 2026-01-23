@@ -157,22 +157,20 @@ public class DiffusionNoiseScheduler implements CodeFeatures {
 	 * <p>Implements the forward diffusion process:
 	 * x_t = sqrt(alpha_bar_t) * x_0 + sqrt(1 - alpha_bar_t) * noise</p>
 	 *
-	 * <p>Uses GPU-accelerated Producer pattern.</p>
+	 * <p>Returns a {@link CollectionProducer} for GPU-accelerated computation.
+	 * Caller decides when to materialize with {@code .evaluate()}.</p>
 	 *
 	 * @param x0 Clean sample
 	 * @param noise Gaussian noise (same shape as x0)
 	 * @param t Timestep
-	 * @return Noisy sample at timestep t
+	 * @return Producer for the noisy sample at timestep t
 	 */
-	public PackedCollection addNoise(PackedCollection x0, PackedCollection noise, int t) {
+	public CollectionProducer addNoise(PackedCollection x0, PackedCollection noise, int t) {
 		double sqrtAlpha = sqrtAlphasCumprod[t];
 		double sqrtOneMinusAlpha = sqrtOneMinusAlphasCumprod[t];
 
 		// GPU-accelerated: x_t = sqrt(alpha) * x_0 + sqrt(1-alpha) * noise
-		CollectionProducer result = cp(x0).multiply(sqrtAlpha)
-				.add(cp(noise).multiply(sqrtOneMinusAlpha));
-
-		return result.evaluate();
+		return cp(x0).multiply(sqrtAlpha).add(cp(noise).multiply(sqrtOneMinusAlpha));
 	}
 
 	/**
@@ -180,14 +178,17 @@ public class DiffusionNoiseScheduler implements CodeFeatures {
 	 *
 	 * <p>Given x_t and predicted noise, computes x_{t-1}.</p>
 	 *
-	 * <p>Uses GPU-accelerated Producer pattern.</p>
+	 * <p>Returns a {@link CollectionProducer} for GPU-accelerated computation.
+	 * Caller decides when to materialize with {@code .evaluate()}.</p>
 	 *
 	 * @param xt Current noisy sample
 	 * @param predictedNoise Model's noise prediction
 	 * @param t Current timestep
-	 * @return Denoised sample at timestep t-1
+	 * @param noise Pre-sampled noise for stochastic step (may be null for t=0)
+	 * @return Producer for the denoised sample at timestep t-1
 	 */
-	public PackedCollection step(PackedCollection xt, PackedCollection predictedNoise, int t) {
+	public CollectionProducer step(PackedCollection xt, PackedCollection predictedNoise,
+									  int t, PackedCollection noise) {
 		double alpha = alphas[t];
 		double alphaBar = alphasCumprod[t];
 		double alphaBarPrev = t > 0 ? alphasCumprod[t - 1] : 1.0;
@@ -216,13 +217,11 @@ public class DiffusionNoiseScheduler implements CodeFeatures {
 		CollectionProducer mean = x0Clamped.multiply(coef1).add(cp(xt).multiply(coef2));
 
 		// Add noise (except at t=0)
-		if (t > 0) {
+		if (t > 0 && noise != null) {
 			double noiseScale = Math.sqrt(posteriorVariance);
-			PackedCollection noise = sampleNoiseLike(xt);
-			CollectionProducer result = mean.add(cp(noise).multiply(noiseScale));
-			return result.evaluate();
+			return mean.add(cp(noise).multiply(noiseScale));
 		} else {
-			return mean.evaluate();
+			return mean;
 		}
 	}
 
@@ -231,17 +230,19 @@ public class DiffusionNoiseScheduler implements CodeFeatures {
 	 *
 	 * <p>DDIM allows faster sampling with fewer steps while maintaining quality.</p>
 	 *
-	 * <p>Uses GPU-accelerated Producer pattern.</p>
+	 * <p>Returns a {@link CollectionProducer} for GPU-accelerated computation.
+	 * Caller decides when to materialize with {@code .evaluate()}.</p>
 	 *
 	 * @param xt Current noisy sample
 	 * @param predictedNoise Model's noise prediction
 	 * @param t Current timestep
 	 * @param tPrev Previous timestep (can skip steps)
 	 * @param eta DDIM stochasticity parameter (0 = deterministic, 1 = DDPM)
-	 * @return Denoised sample
+	 * @param noise Pre-sampled noise for stochastic step (may be null for deterministic)
+	 * @return Producer for the denoised sample
 	 */
-	public PackedCollection stepDDIM(PackedCollection xt, PackedCollection predictedNoise,
-									 int t, int tPrev, double eta) {
+	public CollectionProducer stepDDIM(PackedCollection xt, PackedCollection predictedNoise,
+										  int t, int tPrev, double eta, PackedCollection noise) {
 		double alphaBar = alphasCumprod[t];
 		double alphaBarPrev = tPrev >= 0 ? alphasCumprod[tPrev] : 1.0;
 
@@ -268,12 +269,11 @@ public class DiffusionNoiseScheduler implements CodeFeatures {
 				.add(cp(predictedNoise).multiply(directionCoef));
 
 		// Add noise if eta > 0
-		if (eta > 0 && tPrev >= 0) {
-			PackedCollection noise = sampleNoiseLike(xt);
+		if (eta > 0 && tPrev >= 0 && noise != null) {
 			result = result.add(cp(noise).multiply(sigma));
 		}
 
-		return result.evaluate();
+		return result;
 	}
 
 	/**
