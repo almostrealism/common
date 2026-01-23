@@ -39,6 +39,7 @@ import java.util.stream.Stream;
  *   <li>CPU loops with setMem() - defeats GPU parallelism</li>
  *   <li>CPU loops with toDouble()/toArray() followed by setMem() - forces GPU-CPU round trips</li>
  *   <li>System.arraycopy near PackedCollection - cannot move GPU data</li>
+ *   <li>Interfaces named *Features with abstract methods - violates Features pattern convention</li>
  * </ul>
  *
  * @see <a href="file:../../../I_DONT_KNOW_HOW_A_GPU_WORKS.md">I_DONT_KNOW_HOW_A_GPU_WORKS.md</a>
@@ -121,6 +122,23 @@ public class CodePolicyViolationDetector {
 			Pattern.DOTALL
 	);
 
+	/**
+	 * Pattern to detect interfaces named *Features.
+	 * Group 1 captures the interface name.
+	 */
+	private static final Pattern FEATURES_INTERFACE_PATTERN = Pattern.compile(
+			"public\\s+interface\\s+(\\w*Features)\\s"
+	);
+
+	/**
+	 * Pattern to detect non-default method declarations in interfaces.
+	 * This matches method signatures that don't start with "default".
+	 */
+	private static final Pattern ABSTRACT_METHOD_PATTERN = Pattern.compile(
+			"^\\s*(?!default\\s)(?!//)(\\w+(?:<[^>]+>)?\\s+\\w+\\s*\\([^)]*\\)\\s*;)",
+			Pattern.MULTILINE
+	);
+
 	private final List<Violation> violations = new ArrayList<>();
 	private final Path rootDir;
 
@@ -164,6 +182,9 @@ public class CodePolicyViolationDetector {
 			if (usesPackedCollection) {
 				checkPackedCollectionViolations(file, content, lines);
 			}
+
+			// Check for Features interface violations
+			checkFeaturesInterfaceViolations(file, content, lines);
 
 		} catch (IOException e) {
 			System.err.println("Warning: Could not read file " + file + ": " + e.getMessage());
@@ -225,6 +246,97 @@ public class CodePolicyViolationDetector {
 			violations.add(new Violation(file, lineNum, line,
 					"PACKED_COLLECTION_CPU_ROUNDTRIP",
 					"toArray() followed by setMem() forces CPU round-trip. Use Producer pattern."));
+		}
+	}
+
+	/**
+	 * Checks for "Features" interfaces that have abstract methods.
+	 *
+	 * <p>"Features" interfaces should only contain default methods - they exist to
+	 * provide capabilities via composition, not to require implementations.</p>
+	 */
+	private void checkFeaturesInterfaceViolations(Path file, String content, List<String> lines) {
+		// Check if this file defines an interface named *Features
+		Matcher interfaceMatcher = FEATURES_INTERFACE_PATTERN.matcher(content);
+		if (!interfaceMatcher.find()) {
+			return; // Not a Features interface
+		}
+
+		String interfaceName = interfaceMatcher.group(1);
+		int interfaceLineNum = countLines(content, interfaceMatcher.start());
+
+		// Find the interface body start
+		int interfaceStart = content.indexOf('{', interfaceMatcher.end());
+		if (interfaceStart == -1) {
+			return;
+		}
+
+		// Track brace depth to know when we're at the interface level (depth 1)
+		// vs inside a method body (depth > 1)
+		int braceDepth = 0;
+		boolean inInterface = false;
+
+		for (int i = 0; i < lines.size(); i++) {
+			String line = lines.get(i);
+			String trimmedLine = line.trim();
+			int lineNum = i + 1;
+
+			// Update brace depth BEFORE skip check - the interface line may contain the opening brace
+			for (char c : line.toCharArray()) {
+				if (c == '{') {
+					braceDepth++;
+					if (braceDepth == 1) inInterface = true;
+				} else if (c == '}') {
+					braceDepth--;
+					if (braceDepth == 0) inInterface = false;
+				}
+			}
+
+			// Skip if we're on/before the interface declaration line (can't have abstract methods there)
+			if (lineNum <= interfaceLineNum) continue;
+
+			// Only check for abstract methods when at interface level (depth 1)
+			if (braceDepth != 1 || !inInterface) continue;
+
+			// Skip comments, annotations, and empty lines
+			if (trimmedLine.isEmpty() || trimmedLine.startsWith("//") ||
+					trimmedLine.startsWith("/*") || trimmedLine.startsWith("*") ||
+					trimmedLine.startsWith("@")) {
+				continue;
+			}
+
+			// Skip default methods, static methods, and nested type declarations
+			if (trimmedLine.startsWith("default ") || trimmedLine.startsWith("static ") ||
+					trimmedLine.contains(" class ") || trimmedLine.contains(" interface ") ||
+					trimmedLine.contains(" enum ")) {
+				continue;
+			}
+
+			// Skip lines that contain return, if, for, etc. (statements, not declarations)
+			if (trimmedLine.startsWith("return ") || trimmedLine.startsWith("if ") ||
+					trimmedLine.startsWith("if(") || trimmedLine.startsWith("for ") ||
+					trimmedLine.startsWith("for(") || trimmedLine.startsWith("while ") ||
+					trimmedLine.startsWith("throw ") || trimmedLine.startsWith("try ")) {
+				continue;
+			}
+
+			// Skip lines that are just closing braces or opening braces
+			if (trimmedLine.equals("{") || trimmedLine.equals("}") ||
+					trimmedLine.equals("};") || trimmedLine.endsWith("{")) {
+				continue;
+			}
+
+			// Check if this looks like an abstract method declaration
+			// Pattern: return_type methodName(params); - but NOT a method call
+			// Key: must start with a type (capitalized or primitive), not an expression
+			if (trimmedLine.matches("^[A-Z]\\w*(?:<[^>]+>)?\\s+\\w+\\s*\\([^)]*\\)\\s*;$") ||
+					trimmedLine.matches("^(void|int|long|double|float|boolean|byte|char|short)\\s+\\w+\\s*\\([^)]*\\)\\s*;$") ||
+					trimmedLine.matches("^[A-Z]\\w*(?:<[^>]+>)?\\[\\]\\s+\\w+\\s*\\([^)]*\\)\\s*;$")) {
+				violations.add(new Violation(file, lineNum, trimmedLine,
+						"FEATURES_INTERFACE_ABSTRACT_METHOD",
+						"Interface '" + interfaceName + "' should only have default methods. " +
+								"Abstract methods force implementations - use a different interface name or make the method default."));
+			}
 		}
 	}
 

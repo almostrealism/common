@@ -21,7 +21,7 @@ import org.almostrealism.layers.AdapterConfig;
 import org.almostrealism.layers.AdapterConfig.TargetLayer;
 import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.layers.LayerFeatures;
-import org.almostrealism.layers.LoRAFeatures;
+import org.almostrealism.layers.LoRACapable;
 import org.almostrealism.layers.LoRALinear;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
@@ -35,14 +35,14 @@ import java.util.Random;
 import java.util.Set;
 
 /**
- * Tests for {@link AdapterConfig} and {@link LoRAFeatures} interface.
+ * Tests for {@link AdapterConfig} and {@link LoRACapable} interface.
  */
-public class AdapterConfigTests extends TestSuiteBase implements LayerFeatures, LoRAFeatures {
+public class AdapterConfigTests extends TestSuiteBase implements LayerFeatures, LoRACapable {
 
 	private static final double TOLERANCE = 1e-4;
 	private static final Random random = new Random(42);
 
-	// Test implementation of LoRAFeatures
+	// Test implementation of LoRACapable
 	private AdapterConfig testConfig;
 	private final List<LoRALinear> testLoraLayers = new ArrayList<>();
 

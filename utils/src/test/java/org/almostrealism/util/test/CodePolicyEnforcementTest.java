@@ -244,4 +244,91 @@ public class CodePolicyEnforcementTest extends TestSuiteBase {
 			Files.deleteIfExists(tempDir);
 		}
 	}
+
+	/**
+	 * Verifies that the detector catches Features interfaces with abstract methods.
+	 */
+	@Test
+	public void testDetectorCatchesFeaturesWithAbstractMethods() throws IOException {
+		Path tempDir = Files.createTempDirectory("policy-test-features");
+		Path testFile = tempDir.resolve("BadFeatures.java");
+
+		String violatingCode = """
+				package test;
+				public interface BadFeatures {
+				    // This abstract method violates the Features convention
+				    String getSomething();
+
+				    // This default method is fine
+				    default void doSomething() {
+				        System.out.println("OK");
+				    }
+				}
+				""";
+
+		Files.writeString(testFile, violatingCode);
+
+		try {
+			CodePolicyViolationDetector detector = new CodePolicyViolationDetector(tempDir);
+			detector.scan();
+
+			Assert.assertTrue("Detector should find Features interface with abstract methods",
+					detector.hasViolations());
+
+			boolean foundFeaturesViolation = detector.getViolations().stream()
+					.anyMatch(v -> v.getRule().equals("FEATURES_INTERFACE_ABSTRACT_METHOD"));
+			Assert.assertTrue("Should specifically detect FEATURES_INTERFACE_ABSTRACT_METHOD",
+					foundFeaturesViolation);
+
+			log("Detector correctly identified Features interface with abstract methods.");
+
+		} finally {
+			Files.deleteIfExists(testFile);
+			Files.deleteIfExists(tempDir);
+		}
+	}
+
+	/**
+	 * Verifies that Features interfaces with only default methods are allowed.
+	 */
+	@Test
+	public void testDetectorAllowsFeaturesWithOnlyDefaultMethods() throws IOException {
+		Path tempDir = Files.createTempDirectory("policy-test-features-clean");
+		Path testFile = tempDir.resolve("GoodFeatures.java");
+
+		String cleanCode = """
+				package test;
+				public interface GoodFeatures {
+				    // All methods are default - this is correct
+				    default void doSomething() {
+				        System.out.println("OK");
+				    }
+
+				    default String computeValue(int x) {
+				        return String.valueOf(x * 2);
+				    }
+
+				    // Static methods are also allowed
+				    static GoodFeatures create() {
+				        return new GoodFeatures() {};
+				    }
+				}
+				""";
+
+		Files.writeString(testFile, cleanCode);
+
+		try {
+			CodePolicyViolationDetector detector = new CodePolicyViolationDetector(tempDir);
+			detector.scan();
+
+			Assert.assertFalse("Detector should not flag Features with only default methods",
+					detector.hasViolations());
+
+			log("Detector correctly allowed Features interface with only default methods.");
+
+		} finally {
+			Files.deleteIfExists(testFile);
+			Files.deleteIfExists(tempDir);
+		}
+	}
 }

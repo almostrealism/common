@@ -34,13 +34,13 @@ import java.util.List;
  * <ol>
  *   <li>Store an {@link AdapterConfig} specifying which layers to adapt</li>
  *   <li>Track all created {@link LoRALinear} instances</li>
- *   <li>Use {@link #loraOrDense} to conditionally create layers</li>
+ *   <li>Use {@link #getProjectionFactory()} with AttentionFeatures methods</li>
  *   <li>Provide {@link #getLoraLayers()} for accessing trainable parameters</li>
  * </ol>
  *
  * <h2>Example Implementation</h2>
  * <pre>{@code
- * public class MyLoRAModel implements LoRAFeatures, LayerFeatures {
+ * public class MyLoRAModel implements LoRACapable, AttentionFeatures {
  *     private final AdapterConfig config;
  *     private final List<LoRALinear> loraLayers = new ArrayList<>();
  *
@@ -48,12 +48,14 @@ import java.util.List;
  *     public List<LoRALinear> getLoraLayers() { return loraLayers; }
  *
  *     private void buildModel() {
- *         // Creates LoRA if SELF_ATTENTION_QKV is targeted, else regular dense
- *         CellularLayer qkv = loraOrDense(
- *             inputShape, qkvWeights, null,
- *             AdapterConfig.TargetLayer.SELF_ATTENTION_QKV
+ *         // Use the projection factory to enable LoRA in attention layers
+ *         Block attention = sequenceAttention(
+ *             batchSize, seqLen, dim, heads,
+ *             qkvWeight, outWeight,
+ *             qNormWeight, qNormBias, kNormWeight, kNormBias,
+ *             invFreq, getProjectionFactory()
  *         );
- *         model.add(qkv);
+ *         model.add(attention);
  *     }
  * }
  * }</pre>
@@ -62,7 +64,7 @@ import java.util.List;
  * @see LoRALinear
  * @author Michael Murray
  */
-public interface LoRAFeatures extends LayerFeatures {
+public interface LoRACapable extends LayerFeatures {
 
 	/**
 	 * Returns the adapter configuration for this model.
@@ -78,6 +80,21 @@ public interface LoRAFeatures extends LayerFeatures {
 	 * @return List of LoRA layers (mutable - implementations should add to this list)
 	 */
 	List<LoRALinear> getLoraLayers();
+
+	/**
+	 * Returns a {@link ProjectionFactory} configured for this model's LoRA settings.
+	 *
+	 * <p>This factory can be passed to AttentionFeatures methods like
+	 * {@code sequenceAttention}, {@code sequenceCrossAttention}, and {@code transformerBlock}
+	 * to enable LoRA on the appropriate projection layers.</p>
+	 *
+	 * <p>Created LoRA layers are automatically tracked in {@link #getLoraLayers()}.</p>
+	 *
+	 * @return A ProjectionFactory that creates LoRA-wrapped layers for targeted projections
+	 */
+	default ProjectionFactory getProjectionFactory() {
+		return ProjectionFactory.lora(getAdapterConfig(), getLoraLayers());
+	}
 
 	/**
 	 * Creates either a LoRA-wrapped or standard dense layer based on the adapter config.

@@ -19,8 +19,10 @@ package org.almostrealism.ml.audio;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.Receptor;
 import org.almostrealism.layers.AdapterConfig;
+import org.almostrealism.layers.LoRACapable;
 import org.almostrealism.layers.LoRALinear;
-import org.almostrealism.ml.LoRAAttentionFeatures;
+import org.almostrealism.layers.ProjectionFactory;
+import org.almostrealism.ml.AttentionFeatures;
 import org.almostrealism.ml.ModelBundleManager;
 import org.almostrealism.ml.StateDictionary;
 import org.almostrealism.model.Block;
@@ -81,7 +83,7 @@ import java.util.Map;
  * @see LoRALinear
  * @author Michael Murray
  */
-public class LoRADiffusionTransformer extends DiffusionTransformer implements LoRAAttentionFeatures {
+public class LoRADiffusionTransformer extends DiffusionTransformer implements AttentionFeatures, LoRACapable {
 
 	/**
 	 * Thread-local holder for LoRA layers during construction.
@@ -227,8 +229,8 @@ public class LoRADiffusionTransformer extends DiffusionTransformer implements Lo
 				attentionCapture = into(scores);
 			}
 
-			// Add LoRA-enabled transformer block
-			main.add(loraTransformerBlock(
+			// Add LoRA-enabled transformer block using ProjectionFactory from LoRACapable
+			main.add(transformerBlock(
 					batchSize, dim, seqLen, getNumHeads(),
 					hasCrossAttention, getCondSeqLen(), condEmbed,
 					// Self-attention weights
@@ -245,7 +247,7 @@ public class LoRADiffusionTransformer extends DiffusionTransformer implements Lo
 					// Feed-forward weights
 					ffnPreNormWeight, ffnPreNormBias,
 					w1, w2, ffW1Bias, ffW2Bias,
-					attentionCapture
+					attentionCapture, getProjectionFactory()
 			));
 		}
 

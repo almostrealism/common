@@ -22,7 +22,7 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.io.ConsoleFeatures;
-import org.almostrealism.layers.LoRAFeatures;
+import org.almostrealism.layers.LoRACapable;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 
@@ -68,7 +68,7 @@ import java.util.function.Consumer;
  *
  * @see FineTuneConfig
  * @see FineTuningResult
- * @see LoRAFeatures
+ * @see LoRACapable
  * @author Michael Murray
  */
 public class FineTuner implements ConsoleFeatures, CodeFeatures {
