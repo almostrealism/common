@@ -20,6 +20,7 @@ import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.code.ScopeInputManager;
+import io.almostrealism.compute.ParallelProcess;
 import io.almostrealism.compute.Process;
 import io.almostrealism.compute.ProcessContext;
 import io.almostrealism.kernel.KernelStructureContext;
@@ -27,11 +28,14 @@ import io.almostrealism.relation.Countable;
 import io.almostrealism.scope.Repeated;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.Variable;
+import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.hardware.OperationComputationAdapter;
+import org.almostrealism.hardware.OperationList;
 
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
+import java.util.stream.IntStream;
 
 /**
  * {@link OperationComputationAdapter} that generates a fixed-iteration for-loop in compiled code.
@@ -157,18 +161,6 @@ public class Loop extends OperationComputationAdapter<Void> implements Expressio
 	}
 
 	@Override
-	public void prepareArguments(ArgumentMap map) {
-		super.prepareArguments(map);
-		atom.prepareArguments(map);
-	}
-
-	@Override
-	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
-		super.prepareScope(manager, context);
-		atom.prepareScope(manager, context);
-	}
-
-	@Override
 	protected List<Computation<?>> getDependentComputations() {
 		return List.of(atom);
 	}
@@ -184,30 +176,43 @@ public class Loop extends OperationComputationAdapter<Void> implements Expressio
 	 * <p>This allows the optimization framework to properly traverse and optimize
 	 * the contained computation before the loop scope is generated.</p>
 	 *
-	 * @return a collection containing the atom computation if it's a Process
+	 * @return a collection containing the atom computation, if it's a {@link Process}
 	 */
 	@Override
 	public Collection<Process<?, ?>> getChildren() {
 		if (atom instanceof Process) {
 			return Collections.singletonList((Process<?, ?>) atom);
 		}
+
 		return Collections.emptyList();
 	}
 
-	/**
-	 * Indicates that this loop computation should be isolated during optimization.
-	 *
-	 * <p>Loops must be isolated to ensure proper native loop generation via
-	 * {@link #getScope(KernelStructureContext)}. Without isolation, expression trees
-	 * inside the loop would be expanded for each iteration, causing exponential
-	 * growth and severe performance degradation.</p>
-	 *
-	 * @param context the process context (not used)
-	 * @return always {@code true} to ensure isolation
-	 */
 	@Override
-	public boolean isIsolationTarget(ProcessContext context) {
-		return true;
+	public ParallelProcess<Process<?, ?>, Runnable> generate(List<Process<?, ?>> children) {
+		if (children.size() != 1) throw new IllegalArgumentException();
+
+		if (children.get(0) instanceof Computation) {
+			return new Loop((Computation) children.get(0), iterations);
+		}
+
+		OperationList op = new OperationList("Loop x" + iterations);
+		op.add(() -> {
+			Runnable r = (Runnable) children.get(0).get();
+			return () -> IntStream.range(0, iterations).forEach(i -> r.run());
+		});
+		return op;
+	}
+
+	@Override
+	public void prepareArguments(ArgumentMap map) {
+		super.prepareArguments(map);
+		atom.prepareArguments(map);
+	}
+
+	@Override
+	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
+		super.prepareScope(manager, context);
+		atom.prepareScope(manager, context);
 	}
 
 	@Override
