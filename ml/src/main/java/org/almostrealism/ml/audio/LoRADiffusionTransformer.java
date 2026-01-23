@@ -23,7 +23,7 @@ import org.almostrealism.layers.LoRACapable;
 import org.almostrealism.layers.LoRALinear;
 import org.almostrealism.layers.ProjectionFactory;
 import org.almostrealism.ml.AttentionFeatures;
-import org.almostrealism.ml.ModelBundleManager;
+import org.almostrealism.ml.ModelBundle;
 import org.almostrealism.ml.StateDictionary;
 import org.almostrealism.model.Block;
 import org.almostrealism.model.CompiledModel;
@@ -294,7 +294,12 @@ public class LoRADiffusionTransformer extends DiffusionTransformer implements At
 			weights.put("lora." + i + ".B", lora.getLoraB());
 		}
 
-		ModelBundleManager.saveAdapterBundle(outputPath, weights, adapterConfig, baseModelId, metrics, description);
+		ModelBundle.Builder builder = ModelBundle.forAdapter(weights, adapterConfig, baseModelId)
+				.withMetrics(metrics);
+		if (description != null) {
+			builder.withDescription(description);
+		}
+		builder.save(outputPath);
 		log("Saved " + loraLayers.size() + " LoRA adapters to bundle: " + outputPath);
 	}
 
@@ -308,14 +313,14 @@ public class LoRADiffusionTransformer extends DiffusionTransformer implements At
 	 * @return The loaded bundle (for accessing metadata)
 	 * @throws IOException If loading fails or bundle is incompatible
 	 */
-	public ModelBundleManager.LoadedBundle loadAdaptersBundle(Path bundlePath) throws IOException {
-		ModelBundleManager.LoadedBundle bundle = ModelBundleManager.load(bundlePath);
+	public ModelBundle loadAdaptersBundle(Path bundlePath) throws IOException {
+		ModelBundle bundle = ModelBundle.load(bundlePath);
 
 		if (!bundle.isAdapterBundle()) {
 			throw new IOException("Bundle is not an adapter bundle: " + bundle.getModelType());
 		}
 
-		Map<String, PackedCollection> weights = bundle.getWeights();
+		StateDictionary weights = bundle.getWeights();
 
 		for (int i = 0; i < loraLayers.size(); i++) {
 			LoRALinear lora = loraLayers.get(i);

@@ -25,9 +25,14 @@ import org.almostrealism.persistence.AssetGroupInfo;
 import org.almostrealism.persistence.CollectionEncoder;
 import org.almostrealism.protobuf.Collections;
 
+import io.almostrealism.code.Precision;
+
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
+import java.io.OutputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -172,6 +177,74 @@ public class StateDictionary extends AssetGroup implements Destroyable, ConsoleF
 	 */
 	public Map<String, PackedCollection> getAllWeights() {
 		return new HashMap<>(weights);
+	}
+
+	/**
+	 * Add or replace a weight in this dictionary.
+	 *
+	 * @param key Weight key
+	 * @param weight PackedCollection containing the weight data
+	 */
+	public void put(String key, PackedCollection weight) {
+		if (weights == null) {
+			weights = new HashMap<>();
+		}
+		weights.put(key, weight);
+	}
+
+	/**
+	 * Save all weights to a single protobuf file.
+	 *
+	 * @param outputPath Path to write the weights file
+	 * @throws IOException if writing fails
+	 */
+	public void save(Path outputPath) throws IOException {
+		save(outputPath, Precision.FP32);
+	}
+
+	/**
+	 * Save all weights to a single protobuf file with specified precision.
+	 *
+	 * @param outputPath Path to write the weights file
+	 * @param precision Precision for encoding (FP32 or FP64)
+	 * @throws IOException if writing fails
+	 */
+	public void save(Path outputPath, Precision precision) throws IOException {
+		Collections.CollectionLibraryData libraryData = encode(weights, precision);
+		try (OutputStream out = Files.newOutputStream(outputPath)) {
+			libraryData.writeTo(out);
+		}
+	}
+
+	/**
+	 * Encode a map of weights to protobuf format.
+	 *
+	 * @param weights Map of weight names to PackedCollections
+	 * @return Encoded protobuf data
+	 */
+	public static Collections.CollectionLibraryData encode(Map<String, PackedCollection> weights) {
+		return encode(weights, Precision.FP32);
+	}
+
+	/**
+	 * Encode a map of weights to protobuf format with specified precision.
+	 *
+	 * @param weights Map of weight names to PackedCollections
+	 * @param precision Precision for encoding (FP32 or FP64)
+	 * @return Encoded protobuf data
+	 */
+	public static Collections.CollectionLibraryData encode(Map<String, PackedCollection> weights, Precision precision) {
+		Collections.CollectionLibraryData.Builder libraryBuilder = Collections.CollectionLibraryData.newBuilder();
+
+		for (Map.Entry<String, PackedCollection> entry : weights.entrySet()) {
+			Collections.CollectionLibraryEntry libraryEntry = Collections.CollectionLibraryEntry.newBuilder()
+					.setKey(entry.getKey())
+					.setCollection(CollectionEncoder.encode(entry.getValue(), precision))
+					.build();
+			libraryBuilder.addCollections(libraryEntry);
+		}
+
+		return libraryBuilder.build();
 	}
 
 	/**
