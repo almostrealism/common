@@ -18,9 +18,10 @@ package org.almostrealism.ml.audio;
 
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.audio.data.WaveData;
+import org.almostrealism.collect.CollectionFeatures;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.io.ConsoleFeatures;
-import org.almostrealism.model.CompiledModel;
 
 import java.io.IOException;
 import java.nio.file.Path;
@@ -56,7 +57,7 @@ import java.nio.file.Path;
  * @see AutoEncoder
  * @author Michael Murray
  */
-public class AudioDiffusionGenerator implements ConsoleFeatures {
+public class AudioDiffusionGenerator implements ConsoleFeatures, CollectionFeatures {
 
 	private static final int SAMPLE_RATE = 44100;
 
@@ -241,13 +242,11 @@ public class AudioDiffusionGenerator implements ConsoleFeatures {
 		PackedCollection audioData = autoEncoder.decode(() -> args -> latent).get().evaluate();
 
 		int audioLength = (int) (audioData.getMemLength() / 2); // 2 channels
-		PackedCollection stereoData = new PackedCollection(new TraversalPolicy(2, audioLength));
 
-		// Copy channels
-		for (int i = 0; i < audioLength; i++) {
-			stereoData.setMem(i, audioData.toDouble(i));
-			stereoData.setMem(audioLength + i, audioData.toDouble(audioLength + i));
-		}
+		// The decoded data is already in interleaved format (channel0, channel1)
+		// Just reshape to (2, audioLength) - no manual copy needed
+		TraversalPolicy stereoShape = new TraversalPolicy(2, audioLength);
+		PackedCollection stereoData = audioData.reshape(stereoShape);
 
 		if (verbose) {
 			log("Decoded in " + (System.currentTimeMillis() - start) + "ms (" +
@@ -259,17 +258,18 @@ public class AudioDiffusionGenerator implements ConsoleFeatures {
 
 	private void normalizeAudio(WaveData audio) {
 		PackedCollection data = audio.getData();
-		double maxAbs = 0;
 
-		for (int i = 0; i < data.getMemLength(); i++) {
-			maxAbs = Math.max(maxAbs, Math.abs(data.toDouble(i)));
-		}
+		// Find max absolute value using hardware acceleration
+		CollectionProducer absProducer = c(p(data)).abs();
+		PackedCollection maxResult = absProducer.max().get().evaluate();
+		double maxAbs = maxResult.toDouble(0);
 
 		if (maxAbs > 1.0) {
 			double scale = 0.95 / maxAbs; // Leave some headroom
-			for (int i = 0; i < data.getMemLength(); i++) {
-				data.setMem(i, data.toDouble(i) * scale);
-			}
+
+			// Scale using hardware acceleration
+			c(p(data)).multiply(c(scale)).into(data).evaluate();
+
 			if (verbose) log("Normalized audio (max was " + String.format("%.2f", maxAbs) + ")");
 		}
 	}
