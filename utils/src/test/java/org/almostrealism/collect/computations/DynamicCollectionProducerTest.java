@@ -18,6 +18,7 @@ package org.almostrealism.collect.computations;
 
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
@@ -130,11 +131,11 @@ public class DynamicCollectionProducerTest extends TestSuiteBase {
 
 		// Test reshape
 		TraversalPolicy newShape = new TraversalPolicy(3, 2);
-		var reshapedProducer = producer.reshape(newShape);
+		CollectionProducer reshapedProducer = producer.reshape(newShape);
 		assertNotNull(reshapedProducer);
 
 		// Test traverse
-		var traversedProducer = producer.traverse(0);
+		CollectionProducer traversedProducer = producer.traverse(0);
 		assertNotNull(traversedProducer);
 
 		// Original producer should be unchanged

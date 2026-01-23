@@ -18,9 +18,9 @@ public class VectorConcatTest extends TestSuiteBase implements VectorFeatures {
 		// Create three scalar value producers (size 1 each, NOT Scalar type which is size 2)
 		// Note: scalar(double) now returns c(double) which is size 1
 		// Note: CollectionProducer is no longer generic
-		var x = c(1.0);
-		var y = c(2.0);
-		var z = c(3.0);
+		CollectionProducer x = c(1.0);
+		CollectionProducer y = c(2.0);
+		CollectionProducer z = c(3.0);
 
 		log("Scalar values created");
 		log("X shape: " + shape(x));

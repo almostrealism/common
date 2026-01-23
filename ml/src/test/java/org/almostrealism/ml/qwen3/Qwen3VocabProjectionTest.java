@@ -4,6 +4,7 @@ import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.layers.LayerFeatures;
+import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
@@ -59,7 +60,7 @@ public class Qwen3VocabProjectionTest extends TestSuiteBase implements LayerFeat
 		// Compile (inference-only, no backprop)
 		log("\n[4] Compiling model (inference-only)...");
 		start = System.currentTimeMillis();
-		var compiled = model.compile(false);
+		CompiledModel compiled = model.compile(false);
 		log("    Compiled in " + (System.currentTimeMillis() - start) + "ms");
 
 		// Test forward pass
@@ -104,7 +105,7 @@ public class Qwen3VocabProjectionTest extends TestSuiteBase implements LayerFeat
 		// Compile (inference-only, no backprop)
 		log("\n[3] Compiling model (inference-only)...");
 		start = System.currentTimeMillis();
-		var compiled = model.compile(false);
+		CompiledModel compiled = model.compile(false);
 		log("    Compiled in " + (System.currentTimeMillis() - start) + "ms");
 
 		// Test forward pass
@@ -145,7 +146,7 @@ public class Qwen3VocabProjectionTest extends TestSuiteBase implements LayerFeat
 			log("  Layer: " + (System.currentTimeMillis() - start) + "ms");
 
 			start = System.currentTimeMillis();
-			var compiled = model.compile(false);  // inference-only
+			CompiledModel compiled = model.compile(false);  // inference-only
 			log("  Compile: " + (System.currentTimeMillis() - start) + "ms");
 
 			start = System.currentTimeMillis();

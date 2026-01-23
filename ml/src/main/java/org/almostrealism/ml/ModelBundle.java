@@ -19,6 +19,8 @@ package org.almostrealism.ml;
 import io.almostrealism.lifecycle.Destroyable;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.layers.AdapterConfig;
+import org.almostrealism.persistence.CollectionEncoder;
+import org.almostrealism.protobuf.Collections;
 import org.almostrealism.protobuf.Model;
 
 import java.io.IOException;
@@ -203,8 +205,8 @@ public class ModelBundle implements Destroyable {
 
 		// Decode weights
 		Map<String, PackedCollection> weightsMap = new HashMap<>();
-		for (var entry : bundle.getWeights().getCollectionsList()) {
-			PackedCollection collection = org.almostrealism.persistence.CollectionEncoder.decode(entry.getCollection());
+		for (Collections.CollectionLibraryEntry entry : bundle.getWeights().getCollectionsList()) {
+			PackedCollection collection = CollectionEncoder.decode(entry.getCollection());
 			if (collection != null) {
 				weightsMap.put(entry.getKey(), collection);
 			}

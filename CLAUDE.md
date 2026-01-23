@@ -318,6 +318,7 @@ See [hardware/README.md](hardware/README.md) for complete memory and performance
 1. Never use @SuppressWarnings
 2. Always include javadoc documentation for newly introduced code
 3. Do not include excessive comments within method implementations
+4. Never use `var` for variable declarations - always use explicit types
 
 ---
 

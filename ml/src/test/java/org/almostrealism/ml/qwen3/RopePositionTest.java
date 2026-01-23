@@ -1,5 +1,6 @@
 package org.almostrealism.ml.qwen3;
 
+import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.DynamicCollectionProducer;
@@ -63,7 +64,7 @@ public class RopePositionTest extends TestSuiteBase implements AttentionFeatures
 			new DynamicCollectionProducer(position.getShape(), args -> position);
 
 		// Create RoPE layer shape: (heads, headSize/2, 2)
-		var ropeShape = shape(heads, freqDim, 2);
+		TraversalPolicy ropeShape = shape(heads, freqDim, 2);
 
 		// Build model with just ropeRotation
 		CellularLayer ropeLayer = ropeRotation(ropeShape, freqCis, dynamicPosition);

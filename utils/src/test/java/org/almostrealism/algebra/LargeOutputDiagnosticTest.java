@@ -5,6 +5,7 @@ import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.layers.LayerFeatures;
+import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
@@ -101,7 +102,7 @@ public class LargeOutputDiagnosticTest extends TestSuiteBase implements MatrixFe
 			log("Model created successfully");
 
 			long start = System.currentTimeMillis();
-			var compiled = model.compile(false);  // inference only
+			CompiledModel compiled = model.compile(false);  // inference only
 			long compileTime = System.currentTimeMillis() - start;
 			log("Compile time: " + compileTime + "ms");
 			log("WARNING: Expected exception but model compiled!");

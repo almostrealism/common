@@ -18,6 +18,7 @@ package org.almostrealism.util;
 
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.ProducerWithRank;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.computations.ProducerWithRankAdapter;
@@ -68,27 +69,25 @@ public class RankedChoiceEvaluableTest extends TestSuiteBase {
 		Assert.assertEquals(1.0, out.get(0).toDouble(0), Math.pow(10, -10));
 	}
 
-	@SuppressWarnings({"unchecked", "rawtypes"})
 	protected RankedChoiceEvaluableForVector getRankedChoiceProducer1() {
-		ProducerWithRankAdapter v1 = new ProducerWithRankAdapter<>(vector(1, 2, 3), c(2.0));
-		ProducerWithRankAdapter v2 = new ProducerWithRankAdapter<>(vector(4, 5, 6), c(1.0));
-		ProducerWithRankAdapter v3 = new ProducerWithRankAdapter<>(vector(7, 8, 9), c(3.0));
+		ProducerWithRankAdapter<PackedCollection> v1 = new ProducerWithRankAdapter<>(vector(1, 2, 3), c(2.0));
+		ProducerWithRankAdapter<PackedCollection> v2 = new ProducerWithRankAdapter<>(vector(4, 5, 6), c(1.0));
+		ProducerWithRankAdapter<PackedCollection> v3 = new ProducerWithRankAdapter<>(vector(7, 8, 9), c(3.0));
 
 		RankedChoiceEvaluableForVector rcp = new RankedChoiceEvaluableForVector(Intersection.e);
-		rcp.add(v1);
-		rcp.add(v2);
-		rcp.add(v3);
+		rcp.add((ProducerWithRank) v1);
+		rcp.add((ProducerWithRank) v2);
+		rcp.add((ProducerWithRank) v3);
 		return rcp;
 	}
 
-	@SuppressWarnings({"unchecked", "rawtypes"})
 	protected RankedChoiceEvaluableForVector getRankedChoiceProducer2() {
-		ProducerWithRankAdapter v1 = new ProducerWithRankAdapter<>(vector(0.7034, 0.7034, 0.7034), c(0.9002));
-		ProducerWithRankAdapter v2 = new ProducerWithRankAdapter<>(vector(0.0, 0.0, 0.0), c(-17.274));
+		ProducerWithRankAdapter<PackedCollection> v1 = new ProducerWithRankAdapter<>(vector(0.7034, 0.7034, 0.7034), c(0.9002));
+		ProducerWithRankAdapter<PackedCollection> v2 = new ProducerWithRankAdapter<>(vector(0.0, 0.0, 0.0), c(-17.274));
 
 		RankedChoiceEvaluableForVector rcp = new RankedChoiceEvaluableForVector(Intersection.e);
-		rcp.add(v1);
-		rcp.add(v2);
+		rcp.add((ProducerWithRank) v1);
+		rcp.add((ProducerWithRank) v2);
 		return rcp;
 	}
 

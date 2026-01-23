@@ -169,12 +169,12 @@ public class CollectionZerosComputationTest extends TestSuiteBase {
 				new CollectionZerosComputation(new TraversalPolicy(5));
 
 		// Generate parallel process (should return self)
-		var parallelProcess = zeros.generate(java.util.Collections.emptyList());
+		CollectionZerosComputation parallelProcess = (CollectionZerosComputation) zeros.generate(java.util.Collections.emptyList());
 
 		assertSame("Zero computation should serve as its own parallel process",
 				zeros, parallelProcess);
 		assertTrue("Parallel process should still be zero",
-				((CollectionZerosComputation) parallelProcess).isZero());
+				parallelProcess.isZero());
 	}
 
 	/**

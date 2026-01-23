@@ -6,6 +6,7 @@ import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.OutputFeatures;
 import org.almostrealism.ml.AttentionFeatures;
 import org.almostrealism.ml.StateDictionary;
+import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 import org.almostrealism.util.TestSuiteBase;
 import org.almostrealism.util.TestUtils;
@@ -67,7 +68,7 @@ public class MultiTokenGenerationTest extends TestSuiteBase implements Attention
 
 		log("Compiling model...");
 		long compileStart = System.currentTimeMillis();
-		var compiledModel = transformer.compile();
+		CompiledModel compiledModel = transformer.compile();
 		log("Model compiled in " + (System.currentTimeMillis() - compileStart) + "ms");
 
 		// Load PyTorch reference logits for position 0
