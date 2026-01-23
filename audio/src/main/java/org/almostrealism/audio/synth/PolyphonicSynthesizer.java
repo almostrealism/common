@@ -22,12 +22,9 @@ import org.almostrealism.audio.tone.DefaultKeyboardTuning;
 import org.almostrealism.audio.tone.KeyboardTuning;
 import org.almostrealism.audio.tone.RelativeFrequencySet;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.graph.Cell;
-import org.almostrealism.graph.Receptor;
 import org.almostrealism.graph.SummationCell;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.time.Frequency;
-import org.almostrealism.time.Temporal;
 
 import io.almostrealism.cycle.Setup;
 
@@ -38,9 +35,9 @@ import java.util.function.Supplier;
 /**
  * A polyphonic synthesizer that manages multiple {@link AudioSynthesizer} voices.
  * <p>
- * PolyphonicSynthesizer combines {@link VoiceAllocator} for voice management with
- * multiple {@link AudioSynthesizer} instances to provide full polyphonic playback.
- * Each voice has its own oscillators, envelopes, and optionally filter.
+ * PolyphonicSynthesizer extends {@link SummationCell} to accumulate audio from all
+ * active voices. Each voice pushes its audio to this cell, which sums them together
+ * and forwards the result to the downstream receptor on each tick.
  * <p>
  * Features:
  * <ul>
@@ -58,6 +55,9 @@ import java.util.function.Supplier;
  * synth.setLowPassFilter(2000, 2.0);
  * synth.setAmpEnvelopeParams(0.01, 0.2, 0.5, 0.3);
  *
+ * // Connect to audio output
+ * synth.setReceptor(audioOutput);
+ *
  * // Play notes
  * synth.noteOn(60, 0.8);  // Middle C
  * synth.noteOn(64, 0.7);  // E
@@ -69,14 +69,12 @@ import java.util.function.Supplier;
  *
  * @see AudioSynthesizer
  * @see VoiceAllocator
- * @see RelativeFrequencySet
+ * @see SummationCell
  */
-public class PolyphonicSynthesizer implements Temporal, Setup, Cell<PackedCollection> {
+public class PolyphonicSynthesizer extends SummationCell implements Setup {
 
 	private final VoiceAllocator allocator;
 	private final List<AudioSynthesizer> voices;
-	private final SummationCell output;
-	private Receptor<PackedCollection> receptor;
 
 	// Shared configuration
 	private KeyboardTuning tuning;
@@ -112,7 +110,6 @@ public class PolyphonicSynthesizer implements Temporal, Setup, Cell<PackedCollec
 	public PolyphonicSynthesizer(int maxVoices, RelativeFrequencySet tones) {
 		this.allocator = new VoiceAllocator(maxVoices);
 		this.voices = new ArrayList<>(maxVoices);
-		this.output = new SummationCell();
 		this.tuning = new DefaultKeyboardTuning();
 		this.tones = tones;
 		this.oscillatorType = AudioSynthesizer.OscillatorType.SAWTOOTH;
@@ -159,17 +156,10 @@ public class PolyphonicSynthesizer implements Temporal, Setup, Cell<PackedCollec
 			voice.setFilterEnvelopeAmount(filterEnvAmount);
 		}
 
-		// Connect to output
-		voice.getOutput().setReceptor(output);
+		// Connect voice output to this synthesizer (which is a SummationCell)
+		voice.getOutput().setReceptor(this);
 
 		return voice;
-	}
-
-	/**
-	 * Returns the combined output cell.
-	 */
-	public Cell<PackedCollection> getOutput() {
-		return output;
 	}
 
 	/**
@@ -385,7 +375,6 @@ public class PolyphonicSynthesizer implements Temporal, Setup, Cell<PackedCollec
 	 */
 	public boolean noteOn(int midiNote, double velocity) {
 		// Check for completed releases to free up voices before allocation.
-		// This was moved here from push() to allow push() to compile to a kernel.
 		checkReleases();
 		VoiceState state = allocator.allocate(midiNote, velocity);
 		if (state != null) {
@@ -424,10 +413,6 @@ public class PolyphonicSynthesizer implements Temporal, Setup, Cell<PackedCollec
 
 	/**
 	 * Checks all voices for completed releases and deactivates them.
-	 * <p>
-	 * This method is called from {@link #noteOn(int, double)} to free up voices
-	 * whose release phase has completed. Moving this check out of {@link #push(Producer)}
-	 * allows push() to return a fully compilable OperationList without runtime lambdas.
 	 */
 	private void checkReleases() {
 		for (int i = 0; i < voices.size(); i++) {
@@ -440,6 +425,17 @@ public class PolyphonicSynthesizer implements Temporal, Setup, Cell<PackedCollec
 
 	// ========== Setup and Temporal Implementation ==========
 
+	/**
+	 * Initializes the synthesizer and all voices.
+	 * <p>
+	 * This must be called before generating audio. It initializes:
+	 * <ul>
+	 *   <li>All voice synthesizers</li>
+	 *   <li>The summation cell (via super.setup())</li>
+	 * </ul>
+	 *
+	 * @return operation that initializes all components
+	 */
 	@Override
 	public Supplier<Runnable> setup() {
 		OperationList setup = new OperationList("PolyphonicSynthesizer Setup");
@@ -449,31 +445,75 @@ public class PolyphonicSynthesizer implements Temporal, Setup, Cell<PackedCollec
 			setup.add(voice.setup());
 		}
 
-		// Setup the output summation cell
-		setup.add(output.setup());
+		// Setup the summation cell (inherited)
+		setup.add(super.setup());
 
 		return setup;
 	}
 
 	/**
-	 * Forwards the accumulated audio to the receptor.
+	 * Advances the synthesizer state and forwards accumulated audio.
 	 * <p>
-	 * This method is part of the {@link Temporal} interface and is called once per
-	 * sample frame to forward the audio accumulated by {@link #push(Producer)} to
-	 * the downstream receptor.
-	 * <p>
-	 * The separation of concerns is:
-	 * <ul>
-	 *   <li>{@link #push(Producer)} - computes audio by ticking all voices</li>
-	 *   <li>{@code tick()} - forwards the accumulated audio to receptor</li>
-	 * </ul>
+	 * This method:
+	 * <ol>
+	 *   <li>Ticks LFOs for modulation</li>
+	 *   <li>Applies modulation to active voices</li>
+	 *   <li>Ticks all voices (generating audio that accumulates in this cell)</li>
+	 *   <li>Forwards the accumulated audio to the receptor (via super.tick())</li>
+	 * </ol>
 	 *
-	 * @return operation that forwards accumulated audio to receptor
+	 * @return operation that processes one sample frame
 	 */
 	@Override
 	public Supplier<Runnable> tick() {
 		OperationList tick = new OperationList("PolyphonicSynthesizer Tick");
-		tick.add(output.tick());
+
+		// Tick LFOs
+		if (vibratoLFO != null) {
+			tick.add(vibratoLFO.tick());
+		}
+		if (tremoloLFO != null) {
+			tick.add(tremoloLFO.tick());
+		}
+
+		// Process all voices
+		for (int i = 0; i < voices.size(); i++) {
+			final int voiceIndex = i;
+			final AudioSynthesizer voice = voices.get(i);
+
+			// Apply modulation at runtime (only if voice is active)
+			if (vibratoLFO != null && vibratoDepth > 0) {
+				tick.add(() -> () -> {
+					VoiceState state = allocator.getVoice(voiceIndex);
+					if (state.isActive()) {
+						double lfoValue = vibratoLFO.getValue();
+						double semitoneOffset = lfoValue * vibratoDepth;
+						double pitchMultiplier = Math.pow(2.0, semitoneOffset / 12.0);
+						Frequency baseFreq = tuning.getTone(state.getMidiNote(),
+							org.almostrealism.audio.tone.KeyNumbering.MIDI);
+						voice.setFrequency(new Frequency(baseFreq.asHertz() * pitchMultiplier));
+					}
+				});
+			}
+
+			if (tremoloLFO != null && tremoloDepth > 0) {
+				tick.add(() -> () -> {
+					VoiceState state = allocator.getVoice(voiceIndex);
+					if (state.isActive()) {
+						double lfoValue = tremoloLFO.getValue();
+						double modulation = 1.0 - (tremoloDepth * (1.0 - (lfoValue + 1.0) / 2.0));
+						voice.setVelocity(state.getVelocity() * modulation);
+					}
+				});
+			}
+
+			// Tick the voice - this generates audio that gets pushed to this cell
+			tick.add(voice.tick());
+		}
+
+		// Forward accumulated audio to receptor (inherited from SummationCell)
+		tick.add(super.tick());
+
 		return tick;
 	}
 
@@ -490,103 +530,5 @@ public class PolyphonicSynthesizer implements Temporal, Setup, Cell<PackedCollec
 				voice.getFilterEnvelope().reset();
 			}
 		}
-	}
-
-	// ========== Cell Implementation ==========
-
-	/**
-	 * Sets the receptor that will receive the synthesizer's audio output.
-	 * <p>
-	 * This configures the internal output cell to forward audio to the specified receptor.
-	 * When using the synthesizer with {@link org.almostrealism.audio.CellList}, add this
-	 * synthesizer directly using {@code addRoot(synth)} rather than adding the output cell.
-	 *
-	 * @param r the receptor to receive audio output
-	 */
-	@Override
-	public void setReceptor(Receptor<PackedCollection> r) {
-		this.receptor = r;
-		// Also set on the internal output cell so audio flows through
-		output.setReceptor(r);
-	}
-
-	/**
-	 * Returns the receptor that receives this synthesizer's audio output.
-	 *
-	 * @return the receptor, or null if not set
-	 */
-	@Override
-	public Receptor<PackedCollection> getReceptor() {
-		return receptor;
-	}
-
-	/**
-	 * Computes audio samples from all active voices.
-	 * <p>
-	 * This method triggers all voices to generate audio which is accumulated in the
-	 * internal output cell. The accumulated audio is forwarded to the receptor by
-	 * {@link #tick()}.
-	 * <p>
-	 * Note: The input protein is ignored - the synthesizer generates audio from its
-	 * internal state (active notes, oscillators, envelopes).
-	 *
-	 * @param protein ignored input (synthesizer generates from internal state)
-	 * @return operation that computes audio from all voices
-	 */
-	@Override
-	public Supplier<Runnable> push(Producer<PackedCollection> protein) {
-		OperationList push = new OperationList("PolyphonicSynthesizer Push");
-
-		// Tick LFOs (these are compile-time optional, which is fine)
-		if (vibratoLFO != null) {
-			push.add(vibratoLFO.tick());
-		}
-		if (tremoloLFO != null) {
-			push.add(tremoloLFO.tick());
-		}
-
-		// CRITICAL: Always tick ALL voices unconditionally.
-		// The voice activity check must happen at RUNTIME, not compile time.
-		// Operations are compiled once when the scheduler starts, so compile-time
-		// checks like "if (state.isActive())" would freeze the active state.
-		// AudioSynthesizer handles inactive state internally (envelope at 0).
-		for (int i = 0; i < voices.size(); i++) {
-			final int voiceIndex = i;
-			final AudioSynthesizer voice = voices.get(i);
-
-			// Apply modulation at runtime (only if voice is active)
-			if (vibratoLFO != null && vibratoDepth > 0) {
-				push.add(() -> () -> {
-					VoiceState state = allocator.getVoice(voiceIndex);
-					if (state.isActive()) {
-						double lfoValue = vibratoLFO.getValue();
-						double semitoneOffset = lfoValue * vibratoDepth;
-						double pitchMultiplier = Math.pow(2.0, semitoneOffset / 12.0);
-						Frequency baseFreq = tuning.getTone(state.getMidiNote(),
-							org.almostrealism.audio.tone.KeyNumbering.MIDI);
-						voice.setFrequency(new Frequency(baseFreq.asHertz() * pitchMultiplier));
-					}
-				});
-			}
-
-			if (tremoloLFO != null && tremoloDepth > 0) {
-				push.add(() -> () -> {
-					VoiceState state = allocator.getVoice(voiceIndex);
-					if (state.isActive()) {
-						double lfoValue = tremoloLFO.getValue();
-						double modulation = 1.0 - (tremoloDepth * (1.0 - (lfoValue + 1.0) / 2.0));
-						voice.setVelocity(state.getVelocity() * modulation);
-					}
-				});
-			}
-
-			// Always tick the voice - inactive voices produce silence via envelope
-			push.add(voice.tick());
-
-			// NOTE: Release checking was moved to noteOn() to allow this OperationList
-			// to compile to a kernel. See checkReleases() method.
-		}
-
-		return push;
 	}
 }

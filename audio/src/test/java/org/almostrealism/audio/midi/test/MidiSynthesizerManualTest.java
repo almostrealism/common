@@ -743,7 +743,7 @@ public class MidiSynthesizerManualTest extends TestSuiteBase implements CellFeat
 
 		// Capture output values
 		java.util.List<Double> capturedValues = new java.util.ArrayList<>();
-		synth.getOutput().setReceptor(protein -> () -> () -> {
+		synth.setReceptor(protein -> () -> () -> {
 			double value = protein.get().evaluate().toDouble(0);
 			capturedValues.add(value);
 		});
