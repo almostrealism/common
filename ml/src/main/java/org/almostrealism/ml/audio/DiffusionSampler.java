@@ -36,44 +36,28 @@ import java.util.function.DoubleConsumer;
  *
  * <h2>Usage</h2>
  * <pre>{@code
- * // Create sampler with strategy
+ * // Create sampler with model
  * DiffusionSampler sampler = new DiffusionSampler(
- *     model::forward,
+ *     diffusionModel,
  *     new PingPongSamplingStrategy(),
  *     numSteps,
  *     latentShape
  * );
  *
- * // Sample from noise
- * PackedCollection latent = sampler.sample(seed);
+ * // Sample from noise with conditioning
+ * PackedCollection latent = sampler.sample(seed, crossAttnCond, globalCond);
  *
  * // Sample from existing latent (img2img style)
- * PackedCollection latent = sampler.sampleFrom(startLatent, strength, seed);
+ * PackedCollection latent = sampler.sampleFrom(startLatent, strength, seed, crossAttnCond, globalCond);
  * }</pre>
  *
  * @see SamplingStrategy
  * @see PingPongSamplingStrategy
  * @see DDIMSamplingStrategy
+ * @see DiffusionModel
  * @author Michael Murray
  */
 public class DiffusionSampler implements ConsoleFeatures {
-
-	/**
-	 * Functional interface for the diffusion model's forward pass.
-	 */
-	@FunctionalInterface
-	public interface DiffusionModel {
-		/**
-		 * Runs the model forward pass.
-		 *
-		 * @param x Current noisy sample
-		 * @param t Timestep tensor
-		 * @param conditioning Optional conditioning inputs
-		 * @return Model prediction (noise or velocity)
-		 */
-		PackedCollection forward(PackedCollection x, PackedCollection t,
-								 PackedCollection... conditioning);
-	}
 
 	private final DiffusionModel model;
 	private final SamplingStrategy strategy;
@@ -149,15 +133,17 @@ public class DiffusionSampler implements ConsoleFeatures {
 	 * Samples a latent from pure noise.
 	 *
 	 * @param seed Random seed
-	 * @param conditioning Optional conditioning inputs for the model
+	 * @param crossAttnCond Cross-attention conditioning (e.g., text embeddings)
+	 * @param globalCond Global conditioning (e.g., timing, style)
 	 * @return Generated latent
 	 */
-	public PackedCollection sample(long seed, PackedCollection... conditioning) {
+	public PackedCollection sample(long seed, PackedCollection crossAttnCond,
+								   PackedCollection globalCond) {
 		Random random = new Random(seed);
 		int[] shapeArray = latentShape.extent();
 		PackedCollection x = strategy.sampleInitialNoise(shapeArray, random);
 
-		return runSamplingLoop(x, 0, random, conditioning);
+		return runSamplingLoop(x, 0, random, crossAttnCond, globalCond);
 	}
 
 	/**
@@ -166,11 +152,13 @@ public class DiffusionSampler implements ConsoleFeatures {
 	 * @param startLatent The starting latent
 	 * @param strength Strength parameter (0 = keep original, 1 = full generation)
 	 * @param seed Random seed
-	 * @param conditioning Optional conditioning inputs
+	 * @param crossAttnCond Cross-attention conditioning (e.g., text embeddings)
+	 * @param globalCond Global conditioning (e.g., timing, style)
 	 * @return Generated latent
 	 */
 	public PackedCollection sampleFrom(PackedCollection startLatent, double strength,
-									   long seed, PackedCollection... conditioning) {
+									   long seed, PackedCollection crossAttnCond,
+									   PackedCollection globalCond) {
 		if (strength < 0.0 || strength > 1.0) {
 			throw new IllegalArgumentException("Strength must be between 0.0 and 1.0");
 		}
@@ -201,7 +189,7 @@ public class DiffusionSampler implements ConsoleFeatures {
 		// Advance random state to match what would have happened if we started from beginning
 		advanceRandomState(random, startStep);
 
-		return runSamplingLoop(x, startStep, random, conditioning);
+		return runSamplingLoop(x, startStep, random, crossAttnCond, globalCond);
 	}
 
 	/**
@@ -211,7 +199,8 @@ public class DiffusionSampler implements ConsoleFeatures {
 	 * use the Producer pattern and are evaluated on GPU.</p>
 	 */
 	private PackedCollection runSamplingLoop(PackedCollection x, int startStep,
-											 Random random, PackedCollection[] conditioning) {
+											 Random random, PackedCollection crossAttnCond,
+											 PackedCollection globalCond) {
 		double[] timesteps = strategy.getTimesteps(numSteps, numInferenceSteps);
 		int[] shapeArray = latentShape.extent();
 
@@ -234,7 +223,7 @@ public class DiffusionSampler implements ConsoleFeatures {
 
 			// Model forward pass
 			long start = System.currentTimeMillis();
-			PackedCollection modelOutput = model.forward(x, tTensor, conditioning);
+			PackedCollection modelOutput = model.forward(x, tTensor, crossAttnCond, globalCond);
 			modelTotal += System.currentTimeMillis() - start;
 
 			// Check for NaN

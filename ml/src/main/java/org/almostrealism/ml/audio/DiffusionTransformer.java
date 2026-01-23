@@ -33,7 +33,7 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 
-public class DiffusionTransformer implements DitModel, DiffusionTransformerFeatures {
+public class DiffusionTransformer implements DiffusionModel, DiffusionTransformerFeatures {
 	private static final int SAMPLE_SIZE = 524288;
 	private static final int DOWNSAMPLING_RATIO = 2048;
 

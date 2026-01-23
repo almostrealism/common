@@ -176,7 +176,7 @@ public class AggressiveFineTuningTest extends TestSuiteBase {
 		log("");
 		log("Step 5: Generating 'before' sample (untrained model)...");
 		DiffusionNoiseScheduler scheduler = new DiffusionNoiseScheduler(NUM_DIFFUSION_STEPS);
-		generateAndSaveSample(compiledModel, autoencoderWeights, scheduler,
+		generateAndSaveSample(loraModel, autoencoderWeights, scheduler,
 				dataset.getLatentLength(), OUTPUT_DIR.resolve("before_training.wav"));
 
 		// Step 6: Aggressive fine-tuning
@@ -219,7 +219,7 @@ public class AggressiveFineTuningTest extends TestSuiteBase {
 		log("");
 		log("Step 7: Generating 'after' samples (trained model)...");
 		for (int i = 0; i < 3; i++) {
-			generateAndSaveSample(compiledModel, autoencoderWeights, scheduler,
+			generateAndSaveSample(loraModel, autoencoderWeights, scheduler,
 					dataset.getLatentLength(),
 					OUTPUT_DIR.resolve("after_training_" + (i + 1) + ".wav"));
 		}
@@ -257,7 +257,7 @@ public class AggressiveFineTuningTest extends TestSuiteBase {
 	/**
 	 * Generates and saves an audio sample.
 	 */
-	private void generateAndSaveSample(CompiledModel diffusionModel,
+	private void generateAndSaveSample(DiffusionModel diffusionModel,
 									   StateDictionary decoderWeights,
 									   DiffusionNoiseScheduler scheduler,
 									   int latentLength,

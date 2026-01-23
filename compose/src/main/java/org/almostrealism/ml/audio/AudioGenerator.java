@@ -95,7 +95,7 @@ public class AudioGenerator extends ConditionalAudioSystem {
 
 		// Create sampler with ping-pong strategy - IT OWNS THE LOOP
 		this.sampler = new DiffusionSampler(
-				this::ditModelForward,
+				getDiffusionModel(),
 				new PingPongSamplingStrategy(),
 				NUM_STEPS,
 				DIT_X_SHAPE
@@ -214,9 +214,8 @@ public class AudioGenerator extends ConditionalAudioSystem {
 			AudioAttentionConditioner.ConditionerOutput conditionerOutputs =
 					getConditioner().runConditioners(tokenIds, getAudioDuration());
 
-			// Store conditioning for use in model forward
-			this.currentCrossAttention = conditionerOutputs.getCrossAttentionInput();
-			this.currentGlobalCond = conditionerOutputs.getGlobalCond();
+			PackedCollection crossAttnCond = conditionerOutputs.getCrossAttentionInput();
+			PackedCollection globalCond = conditionerOutputs.getGlobalCond();
 
 			// 2. Generate interpolated latent from samples (if position provided)
 			PackedCollection interpolatedLatent = null;
@@ -227,9 +226,10 @@ public class AudioGenerator extends ConditionalAudioSystem {
 			// 3. Run diffusion - DELEGATE TO DiffusionSampler - NO LOOP HERE
 			PackedCollection finalLatent;
 			if (interpolatedLatent == null) {
-				finalLatent = sampler.sample(seed);
+				finalLatent = sampler.sample(seed, crossAttnCond, globalCond);
 			} else {
-				finalLatent = sampler.sampleFrom(interpolatedLatent, strength, seed);
+				finalLatent = sampler.sampleFrom(interpolatedLatent, strength, seed,
+						crossAttnCond, globalCond);
 			}
 
 			// 4. Decode audio
@@ -238,28 +238,10 @@ public class AudioGenerator extends ConditionalAudioSystem {
 			log((System.currentTimeMillis() - start) + "ms for autoencoder");
 			return audio;
 		} finally {
-			// Clear conditioning state
-			this.currentCrossAttention = null;
-			this.currentGlobalCond = null;
-
 			if (progressMonitor != null) {
 				progressMonitor.accept(1.0);
 			}
 		}
-	}
-
-	// Transient state for conditioning during generation
-	private PackedCollection currentCrossAttention;
-	private PackedCollection currentGlobalCond;
-
-	/**
-	 * Model forward pass adapter for DiffusionSampler.
-	 * Converts the sampler's interface to the DitModel interface.
-	 */
-	private PackedCollection ditModelForward(PackedCollection x, PackedCollection t,
-											 PackedCollection... conditioning) {
-		// Use stored conditioning from generateAudio
-		return getDitModel().forward(x, t, currentCrossAttention, currentGlobalCond);
 	}
 
 	private double[][] decodeAudio(PackedCollection latent) {

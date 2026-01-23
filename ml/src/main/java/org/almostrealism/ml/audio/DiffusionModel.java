@@ -22,14 +22,45 @@ import org.almostrealism.collect.PackedCollection;
 
 import java.util.Map;
 
-public interface DitModel extends Destroyable {
-	PackedCollection forward(PackedCollection x, PackedCollection t,
-								PackedCollection crossAttnCond,
-								PackedCollection globalCond);
+/**
+ * Interface for diffusion models used in audio generation.
+ *
+ * <p>This interface defines the forward pass for diffusion models that
+ * take a noisy input, timestep, and conditioning inputs to predict
+ * noise or velocity.</p>
+ *
+ * @see DiffusionSampler
+ * @see DiffusionTransformer
+ * @author Michael Murray
+ */
+public interface DiffusionModel extends Destroyable {
 
+	/**
+	 * Runs the model forward pass.
+	 *
+	 * @param x Current noisy sample
+	 * @param t Timestep tensor
+	 * @param crossAttnCond Cross-attention conditioning (e.g., text embeddings)
+	 * @param globalCond Global conditioning (e.g., timing, style)
+	 * @return Model prediction (noise or velocity)
+	 */
+	PackedCollection forward(PackedCollection x, PackedCollection t,
+							 PackedCollection crossAttnCond,
+							 PackedCollection globalCond);
+
+	/**
+	 * Returns attention activations for visualization/analysis.
+	 *
+	 * @return Map of layer index to attention activations
+	 */
 	default Map<Integer, PackedCollection> getAttentionActivations() {
 		throw new UnsupportedOperationException();
 	}
 
+	/**
+	 * Returns the operation profile for performance analysis.
+	 *
+	 * @return Operation profile, or null if profiling is not enabled
+	 */
 	default OperationProfile getProfile() { return null; }
 }

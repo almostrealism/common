@@ -83,7 +83,7 @@ public class ConditionalAudioScoring extends ConditionalAudioSystem {
 			PackedCollection noisyLatent = cp(audioLatent).add(cp(noise).multiply(sigma)).evaluate();
 
 			// Predict the noise with conditioning
-			PackedCollection predictedNoise = getDitModel().forward(
+			PackedCollection predictedNoise = getDiffusionModel().forward(
 					noisyLatent,
 					pack(sigma),
 					conditionerOutputs.getCrossAttentionInput(),
@@ -119,7 +119,7 @@ public class ConditionalAudioScoring extends ConditionalAudioSystem {
 		// Run a few denoising steps
 		double[] sigmas = {1.0, 0.7, 0.5, 0.3};
 		for (double sigma : sigmas) {
-			current = getDitModel().forward(
+			current = getDiffusionModel().forward(
 					current,
 					pack(sigma),
 					conditionerOutputs.getCrossAttentionInput(),
@@ -151,12 +151,12 @@ public class ConditionalAudioScoring extends ConditionalAudioSystem {
 		List<Map<Integer, PackedCollection>> allAttentions = new ArrayList<>();
 
 		for (double t : timesteps) {
-			PackedCollection output = getDitModel().forward(
+			PackedCollection output = getDiffusionModel().forward(
 					audioLatent, pack(t),
 					conditionerOutputs.getCrossAttentionInput(),
 					conditionerOutputs.getGlobalCond());
 
-			allAttentions.add(getDitModel().getAttentionActivations().entrySet().stream()
+			allAttentions.add(getDiffusionModel().getAttentionActivations().entrySet().stream()
 					.collect(Collectors.toMap(
 							Map.Entry::getKey, ent -> new PackedCollection(ent.getValue()))));
 		}

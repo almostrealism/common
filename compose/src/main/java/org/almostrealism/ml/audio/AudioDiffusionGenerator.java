@@ -60,7 +60,7 @@ public class AudioDiffusionGenerator implements ConsoleFeatures {
 
 	private static final int SAMPLE_RATE = 44100;
 
-	private final CompiledModel diffusionModel;
+	private final DiffusionModel diffusionModel;
 	private final AutoEncoder autoEncoder;
 	private final DiffusionSampler sampler;
 	private final TraversalPolicy latentShape;
@@ -70,12 +70,12 @@ public class AudioDiffusionGenerator implements ConsoleFeatures {
 	/**
 	 * Creates an audio generator with DDIM sampling.
 	 *
-	 * @param diffusionModel Compiled diffusion model
+	 * @param diffusionModel Diffusion model for generation
 	 * @param autoEncoder AutoEncoder for decoding latents to audio
 	 * @param scheduler Noise scheduler for DDIM
 	 * @param latentShape Shape of the latent tensor
 	 */
-	public AudioDiffusionGenerator(CompiledModel diffusionModel,
+	public AudioDiffusionGenerator(DiffusionModel diffusionModel,
 								   AutoEncoder autoEncoder,
 								   DiffusionNoiseScheduler scheduler,
 								   TraversalPolicy latentShape) {
@@ -87,13 +87,13 @@ public class AudioDiffusionGenerator implements ConsoleFeatures {
 	/**
 	 * Creates an audio generator with DDIM sampling and configurable eta.
 	 *
-	 * @param diffusionModel Compiled diffusion model
+	 * @param diffusionModel Diffusion model for generation
 	 * @param autoEncoder AutoEncoder for decoding latents to audio
 	 * @param scheduler Noise scheduler for DDIM
 	 * @param eta DDIM stochasticity (0 = deterministic, 1 = DDPM)
 	 * @param latentShape Shape of the latent tensor
 	 */
-	public AudioDiffusionGenerator(CompiledModel diffusionModel,
+	public AudioDiffusionGenerator(DiffusionModel diffusionModel,
 								   AutoEncoder autoEncoder,
 								   DiffusionNoiseScheduler scheduler,
 								   double eta,
@@ -106,13 +106,13 @@ public class AudioDiffusionGenerator implements ConsoleFeatures {
 	/**
 	 * Creates an audio generator with a custom sampling strategy.
 	 *
-	 * @param diffusionModel Compiled diffusion model
+	 * @param diffusionModel Diffusion model for generation
 	 * @param autoEncoder AutoEncoder for decoding latents to audio
 	 * @param strategy Sampling strategy
 	 * @param numSteps Number of diffusion steps
 	 * @param latentShape Shape of the latent tensor
 	 */
-	public AudioDiffusionGenerator(CompiledModel diffusionModel,
+	public AudioDiffusionGenerator(DiffusionModel diffusionModel,
 								   AutoEncoder autoEncoder,
 								   SamplingStrategy strategy,
 								   int numSteps,
@@ -123,7 +123,7 @@ public class AudioDiffusionGenerator implements ConsoleFeatures {
 
 		// Create sampler - IT OWNS THE LOOP
 		this.sampler = new DiffusionSampler(
-				this::modelForward,
+				diffusionModel,
 				strategy,
 				numSteps,
 				latentShape
@@ -154,23 +154,35 @@ public class AudioDiffusionGenerator implements ConsoleFeatures {
 	}
 
 	/**
-	 * Generates audio from pure noise.
+	 * Generates audio from pure noise (unconditional generation).
 	 *
 	 * @param seed Random seed
 	 * @return Generated audio as WaveData
 	 */
 	public WaveData generate(long seed) {
+		return generate(seed, null, null);
+	}
+
+	/**
+	 * Generates audio from pure noise with conditioning.
+	 *
+	 * @param seed Random seed
+	 * @param crossAttnCond Cross-attention conditioning (may be null)
+	 * @param globalCond Global conditioning (may be null)
+	 * @return Generated audio as WaveData
+	 */
+	public WaveData generate(long seed, PackedCollection crossAttnCond, PackedCollection globalCond) {
 		if (verbose) log("Generating audio with seed " + seed);
 
 		// Delegate to DiffusionSampler - NO LOOP HERE
-		PackedCollection latent = sampler.sample(seed);
+		PackedCollection latent = sampler.sample(seed, crossAttnCond, globalCond);
 
 		// Decode to audio
 		return decodeLatent(latent);
 	}
 
 	/**
-	 * Generates audio from an existing latent (img2img style).
+	 * Generates audio from an existing latent (img2img style, unconditional).
 	 *
 	 * @param startLatent Starting latent
 	 * @param strength How much to change (0 = keep original, 1 = full generation)
@@ -178,12 +190,28 @@ public class AudioDiffusionGenerator implements ConsoleFeatures {
 	 * @return Generated audio as WaveData
 	 */
 	public WaveData generateFrom(PackedCollection startLatent, double strength, long seed) {
+		return generateFrom(startLatent, strength, seed, null, null);
+	}
+
+	/**
+	 * Generates audio from an existing latent (img2img style) with conditioning.
+	 *
+	 * @param startLatent Starting latent
+	 * @param strength How much to change (0 = keep original, 1 = full generation)
+	 * @param seed Random seed
+	 * @param crossAttnCond Cross-attention conditioning (may be null)
+	 * @param globalCond Global conditioning (may be null)
+	 * @return Generated audio as WaveData
+	 */
+	public WaveData generateFrom(PackedCollection startLatent, double strength, long seed,
+								 PackedCollection crossAttnCond, PackedCollection globalCond) {
 		if (verbose) {
 			log("Generating audio from latent with seed " + seed + " (strength=" + strength + ")");
 		}
 
 		// Delegate to DiffusionSampler - NO LOOP HERE
-		PackedCollection latent = sampler.sampleFrom(startLatent, strength, seed);
+		PackedCollection latent = sampler.sampleFrom(startLatent, strength, seed,
+				crossAttnCond, globalCond);
 
 		// Decode to audio
 		return decodeLatent(latent);
@@ -201,23 +229,6 @@ public class AudioDiffusionGenerator implements ConsoleFeatures {
 		normalizeAudio(audio);
 		audio.save(outputPath.toFile());
 		log("Saved audio to: " + outputPath);
-	}
-
-	/**
-	 * Model forward pass adapter for DiffusionSampler.
-	 */
-	private PackedCollection modelForward(PackedCollection x, PackedCollection t,
-										  PackedCollection... conditioning) {
-		if (conditioning.length == 0) {
-			return diffusionModel.forward(x, t);
-		} else {
-			PackedCollection[] args = new PackedCollection[conditioning.length + 1];
-			args[0] = t;
-			for (int i = 0; i < conditioning.length; i++) {
-				args[i + 1] = conditioning[i];
-			}
-			return diffusionModel.forward(x, args);
-		}
 	}
 
 	/**
