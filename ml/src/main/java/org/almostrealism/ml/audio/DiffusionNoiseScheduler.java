@@ -30,7 +30,9 @@ import java.util.Random;
  * The scheduler handles adding noise during training and denoising during
  * inference (sampling).</p>
  *
- * <p>All operations use the Producer pattern for GPU-accelerated computation.</p>
+ * <p>All operations use the Producer pattern for GPU-accelerated computation.
+ * Schedule values are stored as {@link PackedCollection} objects and computed
+ * using hardware acceleration.</p>
  *
  * <h2>Training Usage</h2>
  * <pre>{@code
@@ -66,11 +68,13 @@ import java.util.Random;
 public class DiffusionNoiseScheduler implements CodeFeatures {
 
 	private final int numSteps;
-	private final double[] alphas;
-	private final double[] alphasCumprod;
-	private final double[] sqrtAlphasCumprod;
-	private final double[] sqrtOneMinusAlphasCumprod;
 	private final Random random;
+
+	// Schedule values stored as PackedCollections for GPU access
+	private final PackedCollection alphas;
+	private final PackedCollection alphasCumprod;
+	private final PackedCollection sqrtAlphasCumprod;
+	private final PackedCollection sqrtOneMinusAlphasCumprod;
 
 	/**
 	 * Creates a noise scheduler with cosine schedule.
@@ -91,36 +95,41 @@ public class DiffusionNoiseScheduler implements CodeFeatures {
 		this.numSteps = numSteps;
 		this.random = random;
 
+		// Create schedule collections
+		this.alphasCumprod = new PackedCollection(numSteps);
+		this.alphas = new PackedCollection(numSteps);
+		this.sqrtAlphasCumprod = new PackedCollection(numSteps);
+		this.sqrtOneMinusAlphasCumprod = new PackedCollection(numSteps);
+
 		// Compute cosine schedule
-		double s = 0.008; // Small offset to avoid singularity at t=0
-		this.alphasCumprod = new double[numSteps];
-		this.alphas = new double[numSteps];
-		this.sqrtAlphasCumprod = new double[numSteps];
-		this.sqrtOneMinusAlphasCumprod = new double[numSteps];
+		// Small offset to avoid singularity at t=0
+		final double s = 0.008;
+		final int steps = numSteps;
 
-		for (int t = 0; t < numSteps; t++) {
-			double progress = (double) t / numSteps;
-			// Cosine schedule: alpha_bar(t) = cos^2((t/T + s) / (1 + s) * pi/2)
+		// Compute alphas_cumprod using cosine schedule:
+		// progress = (t+1) / numSteps for t in [0, numSteps)
+		// f_t = cos((progress + s) / (1 + s) * pi/2)
+		// alpha_bar = f_t^2, clipped to [0.0001, 0.9999]
+		alphasCumprod.fill(pos -> {
+			double progress = (pos[0] + 1.0) / steps;
 			double f_t = Math.cos((progress + s) / (1 + s) * Math.PI / 2);
-			alphasCumprod[t] = f_t * f_t;
-		}
+			double alphaBar = f_t * f_t;
+			return Math.max(0.0001, Math.min(0.9999, alphaBar));
+		});
 
-		// Clip to avoid numerical issues
-		for (int t = 0; t < numSteps; t++) {
-			alphasCumprod[t] = Math.max(0.0001, Math.min(0.9999, alphasCumprod[t]));
-		}
+		// Compute sqrt values
+		sqrtAlphasCumprod.fill(pos -> Math.sqrt(alphasCumprod.toDouble(pos[0])));
+		sqrtOneMinusAlphasCumprod.fill(pos -> Math.sqrt(1.0 - alphasCumprod.toDouble(pos[0])));
 
-		// Compute individual alphas from cumulative product
-		alphas[0] = alphasCumprod[0];
-		for (int t = 1; t < numSteps; t++) {
-			alphas[t] = alphasCumprod[t] / alphasCumprod[t - 1];
-		}
-
-		// Precompute useful quantities
-		for (int t = 0; t < numSteps; t++) {
-			sqrtAlphasCumprod[t] = Math.sqrt(alphasCumprod[t]);
-			sqrtOneMinusAlphasCumprod[t] = Math.sqrt(1.0 - alphasCumprod[t]);
-		}
+		// Compute individual alphas: alpha[0] = alphasCumprod[0], alpha[t] = alphasCumprod[t] / alphasCumprod[t-1]
+		alphas.fill(pos -> {
+			int i = pos[0];
+			if (i == 0) {
+				return alphasCumprod.toDouble(0);
+			} else {
+				return alphasCumprod.toDouble(i) / alphasCumprod.toDouble(i - 1);
+			}
+		});
 	}
 
 	/**
@@ -173,8 +182,8 @@ public class DiffusionNoiseScheduler implements CodeFeatures {
 	 * @return Producer for the noisy sample at timestep t
 	 */
 	public CollectionProducer addNoise(PackedCollection x0, PackedCollection noise, int t) {
-		double sqrtAlpha = sqrtAlphasCumprod[t];
-		double sqrtOneMinusAlpha = sqrtOneMinusAlphasCumprod[t];
+		double sqrtAlpha = sqrtAlphasCumprod.toDouble(t);
+		double sqrtOneMinusAlpha = sqrtOneMinusAlphasCumprod.toDouble(t);
 
 		// GPU-accelerated: x_t = sqrt(alpha) * x_0 + sqrt(1-alpha) * noise
 		return cp(x0).multiply(sqrtAlpha).add(cp(noise).multiply(sqrtOneMinusAlpha));
@@ -195,13 +204,13 @@ public class DiffusionNoiseScheduler implements CodeFeatures {
 	 * @return Producer for the denoised sample at timestep t-1
 	 */
 	public CollectionProducer step(PackedCollection xt, PackedCollection predictedNoise,
-									  int t, PackedCollection noise) {
-		double alpha = alphas[t];
-		double alphaBar = alphasCumprod[t];
-		double alphaBarPrev = t > 0 ? alphasCumprod[t - 1] : 1.0;
+								   int t, PackedCollection noise) {
+		double alpha = alphas.toDouble(t);
+		double alphaBar = alphasCumprod.toDouble(t);
+		double alphaBarPrev = t > 0 ? alphasCumprod.toDouble(t - 1) : 1.0;
 
-		double sqrtAlphaBar = sqrtAlphasCumprod[t];
-		double sqrtOneMinusAlphaBar = sqrtOneMinusAlphasCumprod[t];
+		double sqrtAlphaBar = sqrtAlphasCumprod.toDouble(t);
+		double sqrtOneMinusAlphaBar = sqrtOneMinusAlphasCumprod.toDouble(t);
 
 		// Posterior variance
 		double betaT = 1.0 - alpha;
@@ -249,12 +258,12 @@ public class DiffusionNoiseScheduler implements CodeFeatures {
 	 * @return Producer for the denoised sample
 	 */
 	public CollectionProducer stepDDIM(PackedCollection xt, PackedCollection predictedNoise,
-										  int t, int tPrev, double eta, PackedCollection noise) {
-		double alphaBar = alphasCumprod[t];
-		double alphaBarPrev = tPrev >= 0 ? alphasCumprod[tPrev] : 1.0;
+									   int t, int tPrev, double eta, PackedCollection noise) {
+		double alphaBar = alphasCumprod.toDouble(t);
+		double alphaBarPrev = tPrev >= 0 ? alphasCumprod.toDouble(tPrev) : 1.0;
 
-		double sqrtAlphaBar = sqrtAlphasCumprod[t];
-		double sqrtOneMinusAlphaBar = sqrtOneMinusAlphasCumprod[t];
+		double sqrtAlphaBar = sqrtAlphasCumprod.toDouble(t);
+		double sqrtOneMinusAlphaBar = sqrtOneMinusAlphasCumprod.toDouble(t);
 
 		// Compute sigma for optional stochasticity
 		double sigma = eta * Math.sqrt((1.0 - alphaBarPrev) / (1.0 - alphaBar))
@@ -299,7 +308,7 @@ public class DiffusionNoiseScheduler implements CodeFeatures {
 	 * @return Alpha cumulative product at t
 	 */
 	public double getAlphaCumprod(int t) {
-		return alphasCumprod[t];
+		return alphasCumprod.toDouble(t);
 	}
 
 	/**
