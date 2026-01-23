@@ -42,7 +42,6 @@ import java.util.stream.Stream;
  *   <li>Interfaces named *Features with abstract methods - violates Features pattern convention</li>
  * </ul>
  *
- * @see <a href="file:../../../I_DONT_KNOW_HOW_A_GPU_WORKS.md">I_DONT_KNOW_HOW_A_GPU_WORKS.md</a>
  */
 public class CodePolicyViolationDetector {
 
@@ -84,7 +83,6 @@ public class CodePolicyViolationDetector {
 	private static final List<String> EXCLUDED_PATHS = List.of(
 			"CodePolicyViolationDetector.java",  // This file
 			"CodePolicyEnforcementTest.java",    // The test that runs this
-			"I_DONT_KNOW_HOW_A_GPU_WORKS.md",    // Documentation
 			"/test/"                              // Test files may have intentional examples
 	);
 
@@ -431,7 +429,6 @@ public class CodePolicyViolationDetector {
 		}
 
 		sb.append("=== TOTAL: ").append(violations.size()).append(" violation(s) ===\n\n");
-		sb.append("See /workspace/project/common/I_DONT_KNOW_HOW_A_GPU_WORKS.md for how to fix these.\n");
 		sb.append("Use the Producer pattern: cp(x).multiply(...).add(...).evaluate()\n");
 
 		return sb.toString();

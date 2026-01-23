@@ -617,10 +617,6 @@ return result.evaluate();
 | Clamp values | `for (i) result.setMem(i, Math.max(min, x.toDouble(i)))` | `max(cp(x), c(min)).evaluate()` |
 | Fill with noise | `for (i) result.setMem(i, random.nextGaussian())` | `new PackedCollection(shape).randnFill(random)` |
 
-### Historical Context
-
-See `/workspace/project/common/I_DONT_KNOW_HOW_A_GPU_WORKS.md` for the full failure analysis.
-
 ---
 
 ## ⚠️ CRITICAL: Process Optimization and Isolation Architecture ⚠️

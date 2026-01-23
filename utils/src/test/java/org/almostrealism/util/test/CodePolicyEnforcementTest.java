@@ -43,7 +43,7 @@ import java.util.List;
  * </ul>
  *
  * <h2>How to Fix Violations</h2>
- * <p>See {@code I_DONT_KNOW_HOW_A_GPU_WORKS.md} for detailed fixes.
+ * <p>Use the Producer pattern: {@code cp(x).multiply(...).add(...).evaluate()}
  * The general pattern is to replace CPU loops with the Producer pattern:</p>
  *
  * <pre>{@code
@@ -155,7 +155,7 @@ public class CodePolicyEnforcementTest extends TestSuiteBase {
 			Assert.fail("BUILD FAILED: " + detector.getViolations().size() +
 					" code policy violation(s) detected.\n\n" +
 					"These violations MUST be fixed before the build can succeed.\n" +
-					"See I_DONT_KNOW_HOW_A_GPU_WORKS.md for how to fix them.\n\n" +
+					"Use the Producer pattern: cp(x).multiply(...).add(...).evaluate()\n\n" +
 					report);
 		}
 

@@ -16,6 +16,7 @@
 
 package org.almostrealism.ml.audio;
 
+import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
@@ -29,8 +30,7 @@ import java.util.Random;
  * The scheduler handles adding noise during training and denoising during
  * inference (sampling).</p>
  *
- * <p>All operations use the Producer pattern for GPU-accelerated computation.
- * See {@code I_DONT_KNOW_HOW_A_GPU_WORKS.md} for why this matters.</p>
+ * <p>All operations use the Producer pattern for GPU-accelerated computation.</p>
  *
  * <h2>Training Usage</h2>
  * <pre>{@code
@@ -38,8 +38,8 @@ import java.util.Random;
  *
  * // For each training step
  * int t = scheduler.sampleTimestep();
- * PackedCollection noise = scheduler.sampleNoiseLike(latent);
- * PackedCollection noisyLatent = scheduler.addNoise(latent, noise, t);
+ * PackedCollection noise = scheduler.sampleNoiseLike(latent).evaluate();
+ * PackedCollection noisyLatent = scheduler.addNoise(latent, noise, t).evaluate();
  *
  * // Model predicts the noise
  * PackedCollection predictedNoise = model.forward(noisyLatent, timestep);
@@ -50,12 +50,13 @@ import java.util.Random;
  * <h2>Sampling (Inference)</h2>
  * <pre>{@code
  * // Start from pure noise
- * PackedCollection x = scheduler.sampleNoise(shape);
+ * PackedCollection x = scheduler.sampleNoise(shape).evaluate();
  *
  * // Iteratively denoise (but prefer DiffusionSampler over manual loops)
  * for (int t = scheduler.getNumSteps() - 1; t >= 0; t--) {
  *     PackedCollection predictedNoise = model.forward(x, t);
- *     x = scheduler.step(x, predictedNoise, t);
+ *     PackedCollection noise = (t > 0) ? scheduler.sampleNoiseLike(x).evaluate() : null;
+ *     x = scheduler.step(x, predictedNoise, t, noise).evaluate();
  * }
  * }</pre>
  *
@@ -132,23 +133,29 @@ public class DiffusionNoiseScheduler implements CodeFeatures {
 	}
 
 	/**
-	 * Samples Gaussian noise matching the given shape.
+	 * Returns a Producer for Gaussian noise matching the given shape.
+	 *
+	 * <p>Returns a {@link CollectionProducer} for GPU-accelerated computation.
+	 * Call {@code .evaluate()} to materialize the noise values.</p>
 	 *
 	 * @param shape Shape of the noise tensor
-	 * @return Noise tensor with standard normal values
+	 * @return Producer for noise tensor with standard normal values
 	 */
-	public PackedCollection sampleNoise(int... shape) {
-		return new PackedCollection(shape).randnFill(random);
+	public CollectionProducer sampleNoise(TraversalPolicy shape) {
+		return randn(shape, random);
 	}
 
 	/**
-	 * Samples Gaussian noise matching another collection's shape.
+	 * Returns a Producer for Gaussian noise matching another collection's shape.
+	 *
+	 * <p>Returns a {@link CollectionProducer} for GPU-accelerated computation.
+	 * Call {@code .evaluate()} to materialize the noise values.</p>
 	 *
 	 * @param like Collection to match shape
-	 * @return Noise tensor with standard normal values
+	 * @return Producer for noise tensor with standard normal values
 	 */
-	public PackedCollection sampleNoiseLike(PackedCollection like) {
-		return new PackedCollection(like.getShape()).randnFill(random);
+	public CollectionProducer sampleNoiseLike(PackedCollection like) {
+		return randn(like.getShape(), random);
 	}
 
 	/**
