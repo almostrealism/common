@@ -183,16 +183,12 @@ public class BufferedOutputScheduler implements CellFeatures {
 			throw new UnsupportedOperationException();
 		}
 
-		log("start() - Running setup...");
 		process.setup().get().run();
 
-		log("start() - Compiling operations...");
 		next = getOperations().get();
 		regularizer = new TimingRegularizer((long) (buffer.getDetails().getDuration() * 10e9));
 
-		log("start() - Submitting run() to executor...");
 		executor.accept(this::run);
-		log("start() - Executor accepted run()");
 	}
 
 	/**
@@ -593,19 +589,14 @@ public class BufferedOutputScheduler implements CellFeatures {
 	 * </p>
 	 */
 	protected void run() {
-		log("run() - Entering run loop on thread: " + Thread.currentThread().getName());
 		start = System.currentTimeMillis();
 		long lastDuration = 0;
 
-		log("run() - stopped=" + stopped + ", suspended=" + suspended + ", paused=" + paused);
-
 		while (!stopped) {
-			if (enableVerbose) log("run() - Iteration " + count + " starting, checking suspended...");
 			// Wait if suspended (user-initiated pause)
 			synchronized (suspendLock) {
 				while (suspended && !stopped) {
 					try {
-						if (enableVerbose) log("run() - Waiting on suspendLock...");
 						suspendLock.wait();
 					} catch (InterruptedException e) {
 						Thread.currentThread().interrupt();
@@ -614,20 +605,16 @@ public class BufferedOutputScheduler implements CellFeatures {
 				}
 			}
 
-			if (enableVerbose) log("run() - Past suspend check, stopped=" + stopped);
 			if (stopped) break;
 
 			long target;
 
-			if (enableVerbose) log("run() - Calling attemptAutoResume, paused=" + paused);
 			attemptAutoResume();
 
 			if (!paused) {
-				if (enableVerbose) log("run() - Not paused, running next.run() for iteration " + count + "...");
 				long s = System.nanoTime();
 				regularizer.addMeasuredDuration(lastDuration);
 				next.run();
-				if (enableVerbose) log("run() - next.run() completed for iteration " + count);
 				count++;
 
 				if (getRenderedFrames() % groupSize == 0) {
@@ -662,9 +649,7 @@ public class BufferedOutputScheduler implements CellFeatures {
 			}
 
 			try {
-				if (enableVerbose) log("run() - Sleeping " + target + "ms for iteration " + count);
 				Thread.sleep(target);
-				if (enableVerbose) log("run() - Woke up after sleep for iteration " + count);
 			} catch (InterruptedException e) {
 				throw new RuntimeException(e);
 			}
