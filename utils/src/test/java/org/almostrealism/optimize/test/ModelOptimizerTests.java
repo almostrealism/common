@@ -22,9 +22,9 @@ import org.almostrealism.layers.LoRALinear;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 import org.almostrealism.optimize.Dataset;
-import org.almostrealism.optimize.FineTuneConfig;
-import org.almostrealism.optimize.FineTuner;
-import org.almostrealism.optimize.FineTuningResult;
+import org.almostrealism.optimize.MeanSquaredError;
+import org.almostrealism.optimize.ModelOptimizer;
+import org.almostrealism.optimize.TrainingResult;
 import org.almostrealism.optimize.ValueTarget;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
@@ -35,27 +35,27 @@ import java.util.List;
 import java.util.Random;
 
 /**
- * Tests for {@link FineTuner} and the fine-tuning infrastructure.
+ * Tests for {@link ModelOptimizer} training functionality.
  *
- * <p>These tests use synthetic data to verify that fine-tuning:
+ * <p>These tests use synthetic data to verify that training:
  * <ul>
  *   <li>Reduces loss over training epochs</li>
  *   <li>Updates LoRA weights (B matrix should become non-zero)</li>
  *   <li>Properly handles validation and early stopping</li>
  * </ul>
  */
-public class FineTunerTests extends TestSuiteBase implements LayerFeatures {
+public class ModelOptimizerTests extends TestSuiteBase implements LayerFeatures {
 
 	private static final Random random = new Random(42);
 
 	/**
-	 * Test that fine-tuning with LoRA reduces loss on a simple regression task.
+	 * Test that training with LoRA reduces loss on a simple regression task.
 	 *
 	 * <p>This test creates a simple linear model with LoRA adapters, generates
 	 * synthetic training data, and verifies that loss decreases after training.
 	 */
 	@Test
-	public void testFineTuningReducesLoss() {
+	public void testTrainingReducesLoss() {
 		int batchSize = 1;
 		int inputSize = 16;
 		int outputSize = 8;
@@ -101,18 +101,16 @@ public class FineTunerTests extends TestSuiteBase implements LayerFeatures {
 
 		Dataset<PackedCollection> trainData = Dataset.of(trainingSamples);
 
-		// Configure fine-tuning for quick test
-		FineTuneConfig config = FineTuneConfig.forTesting()
-				.epochs(5)
-				.logEveryNSteps(5);
-
 		// Get initial loss before training
 		double initialLoss = computeAverageLoss(compiled, trainData);
 		log("Initial loss: " + initialLoss);
 
-		// Create fine-tuner and run training
-		FineTuner fineTuner = new FineTuner(compiled, config, shape(batchSize, outputSize));
-		FineTuningResult result = fineTuner.fineTune(trainData, null);
+		// Create optimizer and run training
+		ModelOptimizer optimizer = new ModelOptimizer(compiled, () -> trainData);
+		optimizer.setLossFunction(new MeanSquaredError(shape(batchSize, outputSize).traverseEach()));
+		optimizer.setLogFrequency(5);
+
+		TrainingResult result = optimizer.optimize(5);
 
 		// Get final loss after training
 		double finalLoss = result.getFinalTrainLoss();
@@ -127,7 +125,7 @@ public class FineTunerTests extends TestSuiteBase implements LayerFeatures {
 		// Verify we completed the expected number of epochs
 		Assert.assertEquals("Should complete all epochs", 5, result.getEpochsCompleted());
 
-		log("Fine-tuning reduces loss test passed");
+		log("Training reduces loss test passed");
 	}
 
 	/**
@@ -180,13 +178,11 @@ public class FineTunerTests extends TestSuiteBase implements LayerFeatures {
 			trainingSamples.add(ValueTarget.of(input, target));
 		}
 
-		// Run fine-tuning
-		FineTuneConfig config = FineTuneConfig.forTesting()
-				.epochs(3)
-				.logEveryNSteps(100);
-
-		FineTuner fineTuner = new FineTuner(compiled, config, shape(batchSize, outputSize));
-		fineTuner.fineTune(Dataset.of(trainingSamples), null);
+		// Run training
+		ModelOptimizer optimizer = new ModelOptimizer(compiled, () -> Dataset.of(trainingSamples));
+		optimizer.setLossFunction(new MeanSquaredError(shape(batchSize, outputSize).traverseEach()));
+		optimizer.setLogFrequency(0);  // Disable logging for this test
+		optimizer.optimize(3);
 
 		// Check that B matrix has been updated
 		PackedCollection loraBAfter = loraLayer.getLoraB();
@@ -242,17 +238,14 @@ public class FineTunerTests extends TestSuiteBase implements LayerFeatures {
 			}
 		}
 
-		// Configure with validation but few epochs
-		FineTuneConfig config = new FineTuneConfig()
-				.epochs(5)
-				.earlyStoppingPatience(0)  // Disable early stopping
-				.logEveryNSteps(100);
+		// Configure optimizer with validation
+		ModelOptimizer optimizer = new ModelOptimizer(compiled, () -> Dataset.of(trainSamples));
+		optimizer.setValidationDataset(() -> Dataset.of(valSamples));
+		optimizer.setLossFunction(new MeanSquaredError(shape(batchSize, outputSize).traverseEach()));
+		optimizer.setEarlyStoppingPatience(0);  // Disable early stopping
+		optimizer.setLogFrequency(0);
 
-		FineTuner fineTuner = new FineTuner(compiled, config, shape(batchSize, outputSize));
-		FineTuningResult result = fineTuner.fineTune(
-				Dataset.of(trainSamples),
-				Dataset.of(valSamples)
-		);
+		TrainingResult result = optimizer.optimize(5);
 
 		log("Epochs completed: " + result.getEpochsCompleted());
 		log("Validation loss history size: " + result.getValidationLossHistory().size());
@@ -272,10 +265,10 @@ public class FineTunerTests extends TestSuiteBase implements LayerFeatures {
 	}
 
 	/**
-	 * Test FineTuningResult metrics calculation.
+	 * Test TrainingResult metrics calculation.
 	 */
 	@Test
-	public void testFineTuningResultMetrics() {
+	public void testTrainingResultMetrics() {
 		int batchSize = 1;
 		int inputSize = 8;
 		int outputSize = 4;
@@ -299,13 +292,12 @@ public class FineTunerTests extends TestSuiteBase implements LayerFeatures {
 			samples.add(ValueTarget.of(input, target));
 		}
 
-		FineTuneConfig config = FineTuneConfig.forTesting()
-				.epochs(3)
-				.earlyStoppingPatience(0)  // Disable early stopping
-				.logEveryNSteps(100);
+		ModelOptimizer optimizer = new ModelOptimizer(compiled, () -> Dataset.of(samples));
+		optimizer.setLossFunction(new MeanSquaredError(shape(batchSize, outputSize).traverseEach()));
+		optimizer.setEarlyStoppingPatience(0);  // Disable early stopping
+		optimizer.setLogFrequency(0);
 
-		FineTuner fineTuner = new FineTuner(compiled, config, shape(batchSize, outputSize));
-		FineTuningResult result = fineTuner.fineTune(Dataset.of(samples), null);
+		TrainingResult result = optimizer.optimize(3);
 
 		// Verify metrics
 		Assert.assertEquals("Should complete 3 epochs", 3, result.getEpochsCompleted());
@@ -320,7 +312,7 @@ public class FineTunerTests extends TestSuiteBase implements LayerFeatures {
 		log("Result: " + result);
 		log("Improvement ratio: " + result.getImprovementRatio());
 
-		log("FineTuningResult metrics test passed");
+		log("TrainingResult metrics test passed");
 	}
 
 	/**

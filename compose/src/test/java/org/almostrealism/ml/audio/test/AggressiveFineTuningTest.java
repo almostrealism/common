@@ -24,8 +24,8 @@ import org.almostrealism.ml.StateDictionary;
 import org.almostrealism.ml.audio.*;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
-import org.almostrealism.optimize.FineTuneConfig;
-import org.almostrealism.optimize.FineTuningResult;
+import org.almostrealism.optimize.TrainingConfig;
+import org.almostrealism.optimize.TrainingResult;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
@@ -186,7 +186,7 @@ public class AggressiveFineTuningTest extends TestSuiteBase {
 		log("  Repeat factor: " + REPEAT_FACTOR);
 		log("  Learning rate: " + LEARNING_RATE);
 
-		FineTuneConfig config = new FineTuneConfig()
+		TrainingConfig config = new TrainingConfig()
 				.epochs(EPOCHS)
 				.learningRate(LEARNING_RATE)
 				.logEveryNSteps(10)
@@ -200,7 +200,7 @@ public class AggressiveFineTuningTest extends TestSuiteBase {
 		fineTuner.setAggressiveMode(true);
 		fineTuner.setRepeatFactor(REPEAT_FACTOR);
 
-		FineTuningResult result = fineTuner.fineTune(dataset);
+		TrainingResult result = fineTuner.fineTune(dataset);
 
 		log("");
 		log("Training completed:");

@@ -18,13 +18,13 @@ package org.almostrealism.ml.audio;
 
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.audio.data.WaveData;
+import org.almostrealism.collect.CollectionFeatures;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.io.ConsoleFeatures;
-import org.almostrealism.layers.LayerFeatures;
 import org.almostrealism.optimize.Dataset;
 import org.almostrealism.optimize.ValueTarget;
 
-import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -60,9 +60,10 @@ import java.util.stream.Stream;
  * Dataset<PackedCollection> trainSet = splits.get(0);
  * Dataset<PackedCollection> validSet = splits.get(1);
  *
- * // Use with FineTuner
- * FineTuner fineTuner = new FineTuner(model, fineTuneConfig, outputShape);
- * FineTuningResult result = fineTuner.fineTune(trainSet, validSet);
+ * // Use with ModelOptimizer
+ * ModelOptimizer optimizer = new ModelOptimizer(compiledModel, () -> trainSet);
+ * optimizer.setValidationDataset(() -> validSet);
+ * TrainingResult result = optimizer.optimize(10);
  * }</pre>
  *
  * <h2>Collecting from a Directory</h2>
@@ -90,7 +91,7 @@ import java.util.stream.Stream;
  * @see Dataset
  * @author Michael Murray
  */
-public class AudioTrainingDataCollector implements LayerFeatures, ConsoleFeatures {
+public class AudioTrainingDataCollector implements CollectionFeatures, ConsoleFeatures {
 
 	private final Random random;
 
@@ -238,23 +239,18 @@ public class AudioTrainingDataCollector implements LayerFeatures, ConsoleFeature
 	 */
 	protected WaveData normalizeAmplitude(WaveData audio) {
 		PackedCollection data = audio.getData();
-		double maxAbs = 0;
 
-		// Find maximum absolute value
-		for (int i = 0; i < data.getMemLength(); i++) {
-			double val = Math.abs(data.toDouble(i));
-			if (val > maxAbs) {
-				maxAbs = val;
-			}
-		}
+		// Find maximum absolute value using hardware acceleration
+		CollectionProducer absProducer = c(p(data)).abs();
+		PackedCollection maxResult = absProducer.max().get().evaluate();
+		double maxAbs = maxResult.toDouble(0);
 
 		// Normalize if max is greater than 0
 		if (maxAbs > 0 && maxAbs != 1.0) {
 			double scale = 1.0 / maxAbs;
-			PackedCollection normalized = new PackedCollection(data.getShape());
-			for (int i = 0; i < data.getMemLength(); i++) {
-				normalized.setMem(i, data.toDouble(i) * scale);
-			}
+
+			// Scale using hardware acceleration
+			PackedCollection normalized = c(p(data)).multiply(c(scale)).get().evaluate();
 			return new WaveData(normalized, audio.getSampleRate());
 		}
 
@@ -273,17 +269,14 @@ public class AudioTrainingDataCollector implements LayerFeatures, ConsoleFeature
 		}
 
 		int frameCount = audio.getFrameCount();
-		PackedCollection mono = new PackedCollection(new TraversalPolicy(1, frameCount));
-
 		PackedCollection left = audio.getChannelData(0);
 		PackedCollection right = audio.getChannelData(1);
 
-		for (int i = 0; i < frameCount; i++) {
-			double avg = (left.toDouble(i) + right.toDouble(i)) / 2.0;
-			mono.setMem(i, avg);
-		}
+		// Average channels using hardware acceleration: (left + right) / 2
+		PackedCollection mono = c(p(left)).add(c(p(right))).multiply(c(0.5)).get().evaluate();
+		PackedCollection monoShaped = mono.reshape(new TraversalPolicy(1, frameCount));
 
-		return new WaveData(mono, audio.getSampleRate());
+		return new WaveData(monoShaped, audio.getSampleRate());
 	}
 
 	/**
@@ -305,11 +298,9 @@ public class AudioTrainingDataCollector implements LayerFeatures, ConsoleFeature
 
 		int offset = 0;
 		while (offset + segmentSamples <= totalSamples) {
-			// Extract segment
-			PackedCollection segment = new PackedCollection(new TraversalPolicy(segmentSamples));
-			for (int i = 0; i < segmentSamples; i++) {
-				segment.setMem(i, channelData.toDouble(offset + i));
-			}
+			// Extract segment using subset
+			TraversalPolicy segmentShape = new TraversalPolicy(segmentSamples);
+			PackedCollection segment = subset(segmentShape, p(channelData), offset).get().evaluate();
 			segments.add(segment);
 			offset += segmentSamples;
 		}
@@ -317,10 +308,8 @@ public class AudioTrainingDataCollector implements LayerFeatures, ConsoleFeature
 		// Handle remaining samples if they meet minimum duration
 		int remaining = totalSamples - offset;
 		if (remaining >= (int) (config.getMinDuration() * sampleRate)) {
-			PackedCollection lastSegment = new PackedCollection(new TraversalPolicy(remaining));
-			for (int i = 0; i < remaining; i++) {
-				lastSegment.setMem(i, channelData.toDouble(offset + i));
-			}
+			TraversalPolicy remainingShape = new TraversalPolicy(remaining);
+			PackedCollection lastSegment = subset(remainingShape, p(channelData), offset).get().evaluate();
 			segments.add(lastSegment);
 		}
 
@@ -359,13 +348,15 @@ public class AudioTrainingDataCollector implements LayerFeatures, ConsoleFeature
 	 * @return noisy segment
 	 */
 	protected PackedCollection addGaussianNoise(PackedCollection segment, double noiseLevel) {
-		PackedCollection noisy = new PackedCollection(segment.getShape());
-		for (int i = 0; i < segment.getMemLength(); i++) {
-			double val = segment.toDouble(i) + random.nextGaussian() * noiseLevel;
-			// Clip to [-1, 1]
-			val = Math.max(-1.0, Math.min(1.0, val));
-			noisy.setMem(i, val);
-		}
-		return noisy;
+		// Generate noise and add to segment using hardware acceleration
+		CollectionProducer noise = randn(segment.getShape(), random).multiply(c(noiseLevel));
+		CollectionProducer noisy = c(p(segment)).add(noise);
+
+		// Clip to [-1, 1] using conditional operations
+		// First clamp values > 1 to 1, then clamp values < -1 to -1
+		CollectionProducer clamped = noisy.greaterThan(c(1.0), c(1.0), noisy);
+		clamped = lessThan(clamped, c(-1.0), c(-1.0), clamped);
+
+		return clamped.get().evaluate();
 	}
 }

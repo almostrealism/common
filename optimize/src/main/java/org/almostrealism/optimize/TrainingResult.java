@@ -21,15 +21,15 @@ import java.util.Collections;
 import java.util.List;
 
 /**
- * Result of a fine-tuning run containing loss history and metrics.
+ * Result of a training run containing loss history and metrics.
  *
  * <p>This class provides access to training statistics, validation metrics,
- * and convergence information after a fine-tuning session completes.</p>
+ * and convergence information after a training session completes.</p>
  *
- * @see FineTuner
+ * @see ModelOptimizer
  * @author Michael Murray
  */
-public class FineTuningResult {
+public class TrainingResult {
 
 	private final List<Double> trainLossHistory;
 	private final List<Double> validationLossHistory;
@@ -40,7 +40,7 @@ public class FineTuningResult {
 	private final boolean earlyStopped;
 
 	/**
-	 * Creates a fine-tuning result.
+	 * Creates a training result.
 	 *
 	 * @param trainLossHistory Training loss per epoch
 	 * @param validationLossHistory Validation loss per epoch (may be empty)
@@ -50,13 +50,13 @@ public class FineTuningResult {
 	 * @param trainingTime Total training duration
 	 * @param earlyStopped Whether training stopped early
 	 */
-	public FineTuningResult(List<Double> trainLossHistory,
-							List<Double> validationLossHistory,
-							int totalSteps,
-							int bestEpoch,
-							double bestValidationLoss,
-							Duration trainingTime,
-							boolean earlyStopped) {
+	public TrainingResult(List<Double> trainLossHistory,
+						  List<Double> validationLossHistory,
+						  int totalSteps,
+						  int bestEpoch,
+						  double bestValidationLoss,
+						  Duration trainingTime,
+						  boolean earlyStopped) {
 		this.trainLossHistory = Collections.unmodifiableList(trainLossHistory);
 		this.validationLossHistory = Collections.unmodifiableList(validationLossHistory);
 		this.totalSteps = totalSteps;
@@ -177,7 +177,7 @@ public class FineTuningResult {
 	@Override
 	public String toString() {
 		return String.format(
-				"FineTuningResult{epochs=%d, steps=%d, finalTrainLoss=%.6f, bestValLoss=%.6f, time=%s, earlyStopped=%s}",
+				"TrainingResult{epochs=%d, steps=%d, finalTrainLoss=%.6f, bestValLoss=%.6f, time=%s, earlyStopped=%s}",
 				getEpochsCompleted(), totalSteps, getFinalTrainLoss(), bestValidationLoss,
 				formatDuration(trainingTime), earlyStopped
 		);

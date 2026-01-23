@@ -21,10 +21,10 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.ml.DiffusionTrainingDataset;
 import org.almostrealism.model.CompiledModel;
-import org.almostrealism.optimize.FineTuneConfig;
-import org.almostrealism.optimize.FineTuningResult;
 import org.almostrealism.optimize.MeanSquaredError;
 import org.almostrealism.optimize.ModelOptimizer;
+import org.almostrealism.optimize.TrainingConfig;
+import org.almostrealism.optimize.TrainingResult;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -48,7 +48,7 @@ import java.util.List;
 public class AudioDiffusionFineTuner implements ConsoleFeatures {
 
 	private final CompiledModel model;
-	private final FineTuneConfig config;
+	private final TrainingConfig config;
 	private final DiffusionNoiseScheduler scheduler;
 	private final TraversalPolicy latentShape;
 
@@ -58,11 +58,11 @@ public class AudioDiffusionFineTuner implements ConsoleFeatures {
 	 * Creates a diffusion fine-tuner.
 	 *
 	 * @param model       Compiled diffusion model with LoRA adapters
-	 * @param config      Fine-tuning configuration
+	 * @param config      Training configuration
 	 * @param latentShape Shape of latent tensors (batch, channels, length)
 	 * @param scheduler   Diffusion noise scheduler
 	 */
-	public AudioDiffusionFineTuner(CompiledModel model, FineTuneConfig config,
+	public AudioDiffusionFineTuner(CompiledModel model, TrainingConfig config,
 								   TraversalPolicy latentShape, DiffusionNoiseScheduler scheduler) {
 		this.model = model;
 		this.config = config;
@@ -100,9 +100,9 @@ public class AudioDiffusionFineTuner implements ConsoleFeatures {
 	 * Delegates entirely to {@link ModelOptimizer}.
 	 *
 	 * @param dataset Dataset of clean latents
-	 * @return Fine-tuning result with loss history
+	 * @return Training result with loss history
 	 */
-	public FineTuningResult fineTune(AudioLatentDataset dataset) {
+	public TrainingResult fineTune(AudioLatentDataset dataset) {
 		Instant startTime = Instant.now();
 
 		log("Starting diffusion fine-tuning");
@@ -139,11 +139,12 @@ public class AudioDiffusionFineTuner implements ConsoleFeatures {
 		log("Total iterations: " + optimizer.getTotalIterations());
 		log("Final loss: " + optimizer.getLoss());
 
-		// Convert to FineTuningResult for API compatibility
+		// Return TrainingResult from ModelOptimizer
+		// The optimizer now returns TrainingResult directly, but we need to capture the timing
 		ArrayList<Double> lossHistory = new ArrayList<>();
 		lossHistory.add(optimizer.getLoss());
 
-		return new FineTuningResult(
+		return new TrainingResult(
 				lossHistory,
 				new ArrayList<>(),
 				optimizer.getTotalIterations(),
