@@ -269,16 +269,14 @@ public class TemporalRunner implements OperationComputation<Void>, Setup, Tempor
 	/**
 	 * Constructs a runner with explicit setup, tick, and iteration count.
 	 *
-	 * <p>Optimization is automatically enabled if {@link #enableOptimization} is true,
-	 * or if the iteration count is greater than 1 (since multi-iteration loops require
-	 * proper expression isolation to avoid exponential slowdown).</p>
+	 * <p>Optimization is automatically enabled if {@link #enableOptimization} is true.</p>
 	 *
 	 * @param setup The setup operation supplier
 	 * @param tick The tick operation supplier
 	 * @param iter The number of tick iterations per execution
 	 */
 	public TemporalRunner(Supplier<Runnable> setup, Supplier<Runnable> tick, int iter) {
-		this(setup, tick, iter, enableOptimization || iter > 1);
+		this(setup, tick, iter, enableOptimization);
 	}
 
 	/**
