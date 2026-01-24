@@ -33,6 +33,7 @@ import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.DefaultTraversableExpressionComputation;
 import org.almostrealism.geometry.GeometryFeatures;
+import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.hardware.computations.Loop;
 import org.almostrealism.time.computations.FourierTransform;
@@ -289,14 +290,14 @@ public interface TemporalFeatures extends GeometryFeatures {
 	 * @return A supplier producing the looped operation
 	 */
 	default Supplier<Runnable> loop(Supplier<Runnable> c, int iterations) {
-		if (!(c instanceof Computation) || (c instanceof OperationList && !((OperationList) c).isComputation())) {
-			return () -> {
-				Runnable r = c.get();
-				return () -> IntStream.range(0, iterations).forEach(i -> r.run());
-			};
-		} else {
-			return new Loop((Computation) c, iterations);
+		if (c instanceof Computation) {
+			return HardwareFeatures.getInstance().loop((Computation) c, iterations);
 		}
+
+		return () -> {
+			Runnable r = c.get();
+			return () -> IntStream.range(0, iterations).forEach(i -> r.run());
+		};
 	}
 
 	/**
