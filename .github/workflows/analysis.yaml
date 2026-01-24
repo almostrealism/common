@@ -29,6 +29,13 @@ jobs:
       - name: Build (skip tests)
         run: mvn install -DskipTests
 
+      - name: Code Policy Enforcement
+        run: |
+          LD_LIBRARY_PATH=Extensions mvn test -pl utils \
+           -Dtest=CodePolicyEnforcementTest \
+           -DAR_HARDWARE_DRIVER=native \
+           -DAR_HARDWARE_LIBS=Extensions
+
   test:
     needs: build
     runs-on: ubuntu-latest-16-cores
