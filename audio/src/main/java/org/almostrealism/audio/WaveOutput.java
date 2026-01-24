@@ -96,6 +96,8 @@ public class WaveOutput implements Lifecycle, Destroyable, CodeFeatures {
 
 	public static ContextSpecific<PackedCollection> timeline;
 
+	private boolean circular = false;
+
 	static {
 		Supplier<PackedCollection> timelineSupply = () -> {
 			if (enableVerbose) {
@@ -195,6 +197,14 @@ public class WaveOutput implements Lifecycle, Destroyable, CodeFeatures {
 	}
 
 	public int getChannelCount() { return data.size(); }
+
+	/**
+	 * Enables circular buffer mode where the cursor wraps at buffer size.
+	 * Use this for continuous audio processing with BufferedOutputScheduler.
+	 */
+	public void setCircular(boolean circular) { this.circular = circular; }
+
+	public boolean isCircular() { return circular; }
 
 	public int getFrameCount() {
 		return channels.stream()
@@ -355,7 +365,14 @@ public class WaveOutput implements Lifecycle, Destroyable, CodeFeatures {
 			Producer slot = c(shape(1), getChannelData(channel), p(cursor));
 
 			push.add(a("WaveOutput Insert", slot, protein));
-			push.add(a("WaveOutput Cursor Increment", cp(cursor), cp(cursor).add(1)));
+
+			if (circular) {
+				int bufferSize = shape(getChannelData(channel)).getTotalSize();
+				push.add(a("WaveOutput Cursor Increment (circular)",
+						cp(cursor), mod(cp(cursor).add(1), c(bufferSize))));
+			} else {
+				push.add(a("WaveOutput Cursor Increment", cp(cursor), cp(cursor).add(1)));
+			}
 			return push;
 		}
 
