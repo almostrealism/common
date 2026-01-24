@@ -318,21 +318,4 @@ public class LoRADiffusionTransformer extends DiffusionTransformer implements At
 		return getModel().compile(true);
 	}
 
-	/**
-	 * Gets the input shape for this model.
-	 *
-	 * @return Input shape (batch, channels, sequenceLength)
-	 */
-	public io.almostrealism.collect.TraversalPolicy getInputShape() {
-		return getModel().getInputShape();
-	}
-
-	/**
-	 * Gets the audio sequence length this model was configured for.
-	 *
-	 * @return Audio sequence length
-	 */
-	public int getAudioSequenceLength() {
-		return getAudioSeqLen();
-	}
 }
