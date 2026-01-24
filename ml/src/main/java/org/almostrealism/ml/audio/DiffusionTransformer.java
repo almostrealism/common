@@ -22,6 +22,7 @@ import io.almostrealism.profile.OperationProfileNode;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.Receptor;
 import org.almostrealism.hardware.Hardware;
+import org.almostrealism.layers.ProjectionFactory;
 import org.almostrealism.ml.StateDictionary;
 import org.almostrealism.model.Block;
 import org.almostrealism.model.CompiledModel;
@@ -53,7 +54,7 @@ public class DiffusionTransformer implements DiffusionModel, DiffusionTransforme
 
 	private final StateDictionary stateDictionary;
 	private final Set<String> unusedWeights;
-	private final Model model;
+	private Model model;
 
 	private OperationProfile profile;
 	private CompiledModel compiled;
@@ -102,8 +103,7 @@ public class DiffusionTransformer implements DiffusionModel, DiffusionTransforme
 		if (captureAttentionScores) {
 			attentionScores = new HashMap<>();
 		}
-
-		this.model = buildModel();
+		// Model is built lazily in getModel() to allow subclass fields to initialize first
 	}
 
 	protected Model buildModel() {
@@ -322,7 +322,7 @@ public class DiffusionTransformer implements DiffusionModel, DiffusionTransforme
 					// Feed-forward weights
 					ffnPreNormWeight, ffnPreNormBias,
 					w1, w2, ffW1Bias, ffW2Bias,
-					attentionCapture
+					attentionCapture, getProjectionFactory()
 			));
 		}
 
@@ -347,7 +347,7 @@ public class DiffusionTransformer implements DiffusionModel, DiffusionTransforme
 			}
 
 			long start = System.currentTimeMillis();
-			compiled = model.compile(false, profile);
+			compiled = getModel().compile(false, profile);
 			log("Compiled DiffusionTransformer in " + (System.currentTimeMillis() - start) + "ms");
 		}
 
@@ -387,7 +387,35 @@ public class DiffusionTransformer implements DiffusionModel, DiffusionTransforme
 	protected int getCondSeqLen() { return condSeqLen; }
 	protected int getBatchSize() { return batchSize; }
 	protected Map<Integer, PackedCollection> getAttentionScores() { return attentionScores; }
-	protected Model getModel() { return model; }
+
+	/**
+	 * Returns the model, building it lazily if not yet built.
+	 *
+	 * <p>The model is built lazily to allow subclass fields to be initialized
+	 * before buildModel() is called. This enables subclasses to customize
+	 * model building without resorting to workarounds like ThreadLocals.</p>
+	 *
+	 * @return The built model
+	 */
+	protected Model getModel() {
+		if (model == null) {
+			model = buildModel();
+		}
+		return model;
+	}
+
+	/**
+	 * Returns the projection factory to use when building transformer blocks.
+	 *
+	 * <p>Override this method to customize how projection layers are created.
+	 * For example, subclasses can return a LoRA-enabled factory to add adapters
+	 * to attention projections.</p>
+	 *
+	 * @return The projection factory (default is standard dense layers)
+	 */
+	public ProjectionFactory getProjectionFactory() {
+		return ProjectionFactory.dense();
+	}
 
 	@Override
 	public void destroy() {

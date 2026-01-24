@@ -17,17 +17,13 @@
 package org.almostrealism.ml.audio;
 
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.graph.Receptor;
 import org.almostrealism.layers.AdapterConfig;
 import org.almostrealism.layers.LoRACapable;
 import org.almostrealism.layers.LoRALinear;
-import org.almostrealism.layers.ProjectionFactory;
 import org.almostrealism.ml.AttentionFeatures;
 import org.almostrealism.ml.ModelBundle;
 import org.almostrealism.ml.StateDictionary;
-import org.almostrealism.model.Block;
 import org.almostrealism.model.CompiledModel;
-import org.almostrealism.model.SequentialBlock;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -47,10 +43,10 @@ import java.util.Map;
  * <h2>Usage Example</h2>
  * <pre>{@code
  * // Create with default LoRA config for audio diffusion
- * LoRADiffusionTransformer model = LoRADiffusionTransformer.create(
+ * LoRADiffusionTransformer model = new LoRADiffusionTransformer(
  *     64, 768, 24, 12, 1, 768, 768,
  *     "v_prediction", stateDictionary,
- *     AdapterConfig.forAudioDiffusion()
+ *     AdapterConfig.forAudioDiffusion(), false
  * );
  *
  * // Get trainable parameters for optimizer
@@ -59,11 +55,11 @@ import java.util.Map;
  * // Fine-tune with your data...
  *
  * // Save adapters
- * model.saveAdapters(Path.of("adapters/my_finetuned"));
+ * model.saveAdaptersBundle(Path.of("adapters/my_finetuned.pb"), "base-model-id", metrics);
  *
  * // Later, load adapters into a fresh model
- * LoRADiffusionTransformer loaded = LoRADiffusionTransformer.create(...);
- * loaded.loadAdapters(Path.of("adapters/my_finetuned"));
+ * LoRADiffusionTransformer loaded = new LoRADiffusionTransformer(...);
+ * loaded.loadAdaptersBundle(Path.of("adapters/my_finetuned.pb"));
  * }</pre>
  *
  * <h2>Parameter Efficiency</h2>
@@ -74,10 +70,6 @@ import java.util.Map;
  *   <li>Parameter reduction: ~99.5%</li>
  * </ul>
  *
- * <h2>Important</h2>
- * <p>Use the static factory method {@link #create} instead of the constructor
- * to ensure proper initialization of LoRA layers.</p>
- *
  * @see DiffusionTransformer
  * @see AdapterConfig
  * @see LoRALinear
@@ -85,178 +77,72 @@ import java.util.Map;
  */
 public class LoRADiffusionTransformer extends DiffusionTransformer implements AttentionFeatures, LoRACapable {
 
-	/**
-	 * Thread-local holder for LoRA layers during construction.
-	 * This is needed because buildModel() is called from the parent constructor
-	 * before the subclass fields can be initialized.
-	 */
-	private static final ThreadLocal<List<LoRALinear>> LORA_LAYERS_HOLDER = new ThreadLocal<>();
-	private static final ThreadLocal<AdapterConfig> ADAPTER_CONFIG_HOLDER = new ThreadLocal<>();
-
-	private AdapterConfig adapterConfig;
-	private List<LoRALinear> loraLayers;
+	private final AdapterConfig adapterConfig;
+	private final List<LoRALinear> loraLayers;
 
 	/**
-	 * Private constructor - use {@link #create} factory method instead.
+	 * Creates a LoRA-enabled DiffusionTransformer.
+	 *
+	 * @param ioChannels Number of input/output channels
+	 * @param embedDim Embedding dimension
+	 * @param depth Number of transformer layers
+	 * @param numHeads Number of attention heads
+	 * @param patchSize Patch size for input processing
+	 * @param condTokenDim Conditioning token dimension (0 for no cross-attention)
+	 * @param globalCondDim Global conditioning dimension (0 for none)
+	 * @param diffusionObjective Diffusion objective ("epsilon", "v_prediction")
+	 * @param stateDictionary Pre-trained weights
+	 * @param adapterConfig LoRA adapter configuration
+	 * @param captureAttentionScores Whether to capture attention scores
 	 */
-	private LoRADiffusionTransformer(int ioChannels, int embedDim, int depth, int numHeads,
-									 int patchSize, int condTokenDim, int globalCondDim,
-									 String diffusionObjective, StateDictionary stateDictionary,
-									 boolean captureAttentionScores) {
+	public LoRADiffusionTransformer(int ioChannels, int embedDim, int depth, int numHeads,
+									int patchSize, int condTokenDim, int globalCondDim,
+									String diffusionObjective, StateDictionary stateDictionary,
+									AdapterConfig adapterConfig, boolean captureAttentionScores) {
 		super(ioChannels, embedDim, depth, numHeads, patchSize,
 				condTokenDim, globalCondDim, diffusionObjective,
 				stateDictionary, captureAttentionScores);
-		// Fields are set from thread-locals in getters during buildModel() call from super
-		// Now finalize the assignment
-		this.adapterConfig = ADAPTER_CONFIG_HOLDER.get();
-		this.loraLayers = LORA_LAYERS_HOLDER.get();
+		this.adapterConfig = adapterConfig;
+		this.loraLayers = new ArrayList<>();
 	}
 
 	/**
-	 * Private constructor with explicit sequence lengths.
+	 * Creates a LoRA-enabled DiffusionTransformer with explicit sequence lengths.
+	 *
+	 * @param ioChannels Number of input/output channels
+	 * @param embedDim Embedding dimension
+	 * @param depth Number of transformer layers
+	 * @param numHeads Number of attention heads
+	 * @param patchSize Patch size for input processing
+	 * @param condTokenDim Conditioning token dimension (0 for no cross-attention)
+	 * @param globalCondDim Global conditioning dimension (0 for none)
+	 * @param diffusionObjective Diffusion objective
+	 * @param audioSeqLen Audio sequence length
+	 * @param condSeqLen Conditioning sequence length
+	 * @param stateDictionary Pre-trained weights
+	 * @param adapterConfig LoRA adapter configuration
+	 * @param captureAttentionScores Whether to capture attention scores
 	 */
-	private LoRADiffusionTransformer(int ioChannels, int embedDim, int depth, int numHeads,
-									 int patchSize, int condTokenDim, int globalCondDim,
-									 String diffusionObjective, int audioSeqLen, int condSeqLen,
-									 StateDictionary stateDictionary, boolean captureAttentionScores) {
+	public LoRADiffusionTransformer(int ioChannels, int embedDim, int depth, int numHeads,
+									int patchSize, int condTokenDim, int globalCondDim,
+									String diffusionObjective, int audioSeqLen, int condSeqLen,
+									StateDictionary stateDictionary, AdapterConfig adapterConfig,
+									boolean captureAttentionScores) {
 		super(ioChannels, embedDim, depth, numHeads, patchSize,
 				condTokenDim, globalCondDim, diffusionObjective,
 				audioSeqLen, condSeqLen, stateDictionary, captureAttentionScores);
-		// Fields are set from thread-locals in getters during buildModel() call from super
-		// Now finalize the assignment
-		this.adapterConfig = ADAPTER_CONFIG_HOLDER.get();
-		this.loraLayers = LORA_LAYERS_HOLDER.get();
+		this.adapterConfig = adapterConfig;
+		this.loraLayers = new ArrayList<>();
 	}
 
 	@Override
 	public AdapterConfig getAdapterConfig() {
-		// During construction, get from thread-local
-		if (adapterConfig == null) {
-			adapterConfig = ADAPTER_CONFIG_HOLDER.get();
-		}
 		return adapterConfig;
 	}
 
 	@Override
 	public List<LoRALinear> getLoraLayers() {
-		// During construction, get from thread-local
-		if (loraLayers == null) {
-			loraLayers = LORA_LAYERS_HOLDER.get();
-		}
 		return loraLayers;
-	}
-
-	/**
-	 * Override to use LoRA-aware transformer blocks.
-	 */
-	@Override
-	protected void addTransformerBlocks(SequentialBlock main,
-										Block timestepEmbed,
-										Block condEmbed,
-										Block globalEmbed,
-										int dim, int seqLen) {
-		int dimHead = dim / getNumHeads();
-		int depth = getDepth();
-		int batchSize = getBatchSize();
-
-		PackedCollection transformerProjectInWeight =
-				createWeight("model.model.transformer.project_in.weight", dim, getIoChannels() * getPatchSize());
-		PackedCollection transformerProjectOutWeight =
-				createWeight("model.model.transformer.project_out.weight", getIoChannels() * getPatchSize(), dim);
-		PackedCollection invFreq =
-				createWeight("model.model.transformer.rotary_pos_emb.inv_freq", dimHead / 4);
-
-		// Input projection
-		main.add(dense(transformerProjectInWeight));
-
-		boolean hasCrossAttention = getCondTokenDim() > 0 && condEmbed != null;
-
-		if (getGlobalCondDim() > 0) {
-			main.add(prependConditioning(timestepEmbed, globalEmbed));
-		}
-
-		// Capture state before transformer blocks for test validation
-		setPreTransformerState(new PackedCollection(main.getOutputShape()));
-		main.branch().andThen(into(getPreTransformerState()));
-
-		for (int i = 0; i < depth; i++) {
-			// Create and track all weights for this transformer block
-			PackedCollection preNormWeight = createWeight("model.model.transformer.layers." + i + ".pre_norm.gamma", dim);
-			PackedCollection preNormBias = createWeight("model.model.transformer.layers." + i + ".pre_norm.beta", dim);
-			PackedCollection qkv = createWeight("model.model.transformer.layers." + i + ".self_attn.to_qkv.weight", dim * 3, dim);
-			PackedCollection wo = createWeight("model.model.transformer.layers." + i + ".self_attn.to_out.weight", dim, dim);
-			PackedCollection selfAttQNormWeight = createWeight("model.model.transformer.layers." + i + ".self_attn.q_norm.weight", dimHead);
-			PackedCollection selfAttQNormBias = createWeight("model.model.transformer.layers." + i + ".self_attn.q_norm.bias", dimHead);
-			PackedCollection selfAttKNormWeight = createWeight("model.model.transformer.layers." + i + ".self_attn.k_norm.weight", dimHead);
-			PackedCollection selfAttKNormBias = createWeight("model.model.transformer.layers." + i + ".self_attn.k_norm.bias", dimHead);
-
-			// Cross-attention weights (if needed)
-			PackedCollection crossAttPreNormWeight = null;
-			PackedCollection crossAttPreNormBias = null;
-			PackedCollection crossWq = null;
-			PackedCollection crossKv = null;
-			PackedCollection crossWo = null;
-			PackedCollection crossAttQNormWeight = null;
-			PackedCollection crossAttQNormBias = null;
-			PackedCollection crossAttKNormWeight = null;
-			PackedCollection crossAttKNormBias = null;
-
-			if (hasCrossAttention) {
-				crossAttPreNormWeight = createWeight("model.model.transformer.layers." + i + ".cross_attend_norm.gamma", dim);
-				crossAttPreNormBias = createWeight("model.model.transformer.layers." + i + ".cross_attend_norm.beta", dim);
-				crossWq = createWeight("model.model.transformer.layers." + i + ".cross_attn.to_q.weight", dim, dim);
-				crossKv = createWeight("model.model.transformer.layers." + i + ".cross_attn.to_kv.weight", 2 * dim, dim);
-				crossWo = createWeight("model.model.transformer.layers." + i + ".cross_attn.to_out.weight", dim, dim);
-				crossAttQNormWeight = createWeight("model.model.transformer.layers." + i + ".cross_attn.q_norm.weight", dimHead);
-				crossAttQNormBias = createWeight("model.model.transformer.layers." + i + ".cross_attn.q_norm.bias", dimHead);
-				crossAttKNormWeight = createWeight("model.model.transformer.layers." + i + ".cross_attn.k_norm.weight", dimHead);
-				crossAttKNormBias = createWeight("model.model.transformer.layers." + i + ".cross_attn.k_norm.bias", dimHead);
-			}
-
-			int hiddenDim = dim * 4;
-			PackedCollection ffnPreNormWeight = createWeight("model.model.transformer.layers." + i + ".ff_norm.gamma", dim);
-			PackedCollection ffnPreNormBias = createWeight("model.model.transformer.layers." + i + ".ff_norm.beta", dim);
-			PackedCollection w1 = createWeight("model.model.transformer.layers." + i + ".ff.ff.0.proj.weight", 2 * hiddenDim, dim);
-			PackedCollection ffW1Bias = createWeight("model.model.transformer.layers." + i + ".ff.ff.0.proj.bias", 2 * hiddenDim);
-			PackedCollection w2 = createWeight("model.model.transformer.layers." + i + ".ff.ff.2.weight", dim, hiddenDim);
-			PackedCollection ffW2Bias = createWeight("model.model.transformer.layers." + i + ".ff.ff.2.bias", dim);
-
-			Receptor<PackedCollection> attentionCapture = null;
-
-			if (getAttentionScores() != null) {
-				PackedCollection scores = new PackedCollection(shape(batchSize, getNumHeads(), seqLen, getCondSeqLen()));
-				getAttentionScores().put(i, scores);
-				attentionCapture = into(scores);
-			}
-
-			// Add LoRA-enabled transformer block using ProjectionFactory from LoRACapable
-			main.add(transformerBlock(
-					batchSize, dim, seqLen, getNumHeads(),
-					hasCrossAttention, getCondSeqLen(), condEmbed,
-					// Self-attention weights
-					preNormWeight, preNormBias,
-					qkv, wo,
-					selfAttQNormWeight, selfAttQNormBias,
-					selfAttKNormWeight, selfAttKNormBias,
-					invFreq,
-					// Cross-attention weights
-					crossAttPreNormWeight, crossAttPreNormBias,
-					crossWq, crossKv, crossWo,
-					crossAttQNormWeight, crossAttQNormBias,
-					crossAttKNormWeight, crossAttKNormBias,
-					// Feed-forward weights
-					ffnPreNormWeight, ffnPreNormBias,
-					w1, w2, ffW1Bias, ffW2Bias,
-					attentionCapture, getProjectionFactory()
-			));
-		}
-
-		// Output projection
-		main.add(dense(transformerProjectOutWeight));
-
-		// Capture state after transformer blocks for test validation
-		setPostTransformerState(new PackedCollection(main.getOutputShape()));
-		main.branch().andThen(into(getPostTransformerState()));
 	}
 
 	/**
@@ -465,8 +351,6 @@ public class LoRADiffusionTransformer extends DiffusionTransformer implements At
 	/**
 	 * Factory method to create a LoRA-enabled DiffusionTransformer.
 	 *
-	 * <p>Use this instead of constructors to ensure proper initialization.</p>
-	 *
 	 * @param ioChannels Number of input/output channels
 	 * @param embedDim Embedding dimension
 	 * @param depth Number of transformer layers
@@ -483,7 +367,7 @@ public class LoRADiffusionTransformer extends DiffusionTransformer implements At
 												  int patchSize, int condTokenDim, int globalCondDim,
 												  String diffusionObjective, StateDictionary stateDictionary,
 												  AdapterConfig adapterConfig) {
-		return create(ioChannels, embedDim, depth, numHeads, patchSize,
+		return new LoRADiffusionTransformer(ioChannels, embedDim, depth, numHeads, patchSize,
 				condTokenDim, globalCondDim, diffusionObjective,
 				stateDictionary, adapterConfig, false);
 	}
@@ -508,21 +392,9 @@ public class LoRADiffusionTransformer extends DiffusionTransformer implements At
 												  int patchSize, int condTokenDim, int globalCondDim,
 												  String diffusionObjective, StateDictionary stateDictionary,
 												  AdapterConfig adapterConfig, boolean captureAttentionScores) {
-		// Set up thread-locals for use during construction
-		LORA_LAYERS_HOLDER.set(new ArrayList<>());
-		ADAPTER_CONFIG_HOLDER.set(adapterConfig);
-
-		try {
-			return new LoRADiffusionTransformer(
-					ioChannels, embedDim, depth, numHeads, patchSize,
-					condTokenDim, globalCondDim, diffusionObjective,
-					stateDictionary, captureAttentionScores
-			);
-		} finally {
-			// Clean up thread-locals
-			LORA_LAYERS_HOLDER.remove();
-			ADAPTER_CONFIG_HOLDER.remove();
-		}
+		return new LoRADiffusionTransformer(ioChannels, embedDim, depth, numHeads, patchSize,
+				condTokenDim, globalCondDim, diffusionObjective,
+				stateDictionary, adapterConfig, captureAttentionScores);
 	}
 
 	/**
@@ -548,22 +420,10 @@ public class LoRADiffusionTransformer extends DiffusionTransformer implements At
 												  String diffusionObjective, int audioSeqLen, int condSeqLen,
 												  StateDictionary stateDictionary, AdapterConfig adapterConfig,
 												  boolean captureAttentionScores) {
-		// Set up thread-locals for use during construction
-		LORA_LAYERS_HOLDER.set(new ArrayList<>());
-		ADAPTER_CONFIG_HOLDER.set(adapterConfig);
-
-		try {
-			return new LoRADiffusionTransformer(
-					ioChannels, embedDim, depth, numHeads, patchSize,
-					condTokenDim, globalCondDim, diffusionObjective,
-					audioSeqLen, condSeqLen,
-					stateDictionary, captureAttentionScores
-			);
-		} finally {
-			// Clean up thread-locals
-			LORA_LAYERS_HOLDER.remove();
-			ADAPTER_CONFIG_HOLDER.remove();
-		}
+		return new LoRADiffusionTransformer(ioChannels, embedDim, depth, numHeads, patchSize,
+				condTokenDim, globalCondDim, diffusionObjective,
+				audioSeqLen, condSeqLen, stateDictionary, adapterConfig,
+				captureAttentionScores);
 	}
 
 	/**
