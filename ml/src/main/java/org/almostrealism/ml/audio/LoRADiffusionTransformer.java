@@ -26,7 +26,6 @@ import org.almostrealism.ml.StateDictionary;
 import org.almostrealism.model.CompiledModel;
 
 import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -236,120 +235,6 @@ public class LoRADiffusionTransformer extends DiffusionTransformer implements At
 		int size = (int) source.getShape().getTotalSize();
 		for (int i = 0; i < size; i++) {
 			target.setMem(i, source.toDouble(i));
-		}
-	}
-
-	/**
-	 * Saves all LoRA adapter weights to a directory.
-	 *
-	 * <p>The directory structure will be:</p>
-	 * <pre>
-	 * outputDir/
-	 *   adapter_config.json
-	 *   lora_0_A.bin
-	 *   lora_0_B.bin
-	 *   lora_1_A.bin
-	 *   lora_1_B.bin
-	 *   ...
-	 * </pre>
-	 *
-	 * @param outputDir Directory to save adapters to
-	 * @throws IOException If saving fails
-	 * @deprecated Use {@link #saveAdaptersBundle(Path, String, Map)} instead for a single-file format
-	 */
-	@Deprecated
-	public void saveAdapters(Path outputDir) throws IOException {
-		Files.createDirectories(outputDir);
-
-		// Save adapter config as JSON
-		String configJson = String.format(
-				"{\"rank\": %d, \"alpha\": %.1f, \"targets\": %s, \"loraCount\": %d}",
-				adapterConfig.getRank(),
-				adapterConfig.getAlpha(),
-				adapterConfig.getTargets().toString(),
-				loraLayers.size()
-		);
-		Files.writeString(outputDir.resolve("adapter_config.json"), configJson);
-
-		// Save each LoRA layer's weights
-		for (int i = 0; i < loraLayers.size(); i++) {
-			LoRALinear lora = loraLayers.get(i);
-			PackedCollection loraA = lora.getLoraA();
-			PackedCollection loraB = lora.getLoraB();
-
-			// Save as raw binary (float array)
-			savePackedCollection(loraA, outputDir.resolve("lora_" + i + "_A.bin"));
-			savePackedCollection(loraB, outputDir.resolve("lora_" + i + "_B.bin"));
-		}
-
-		log("Saved " + loraLayers.size() + " LoRA adapters to " + outputDir);
-	}
-
-	/**
-	 * Loads LoRA adapter weights from a directory.
-	 *
-	 * <p>The model must have been created with the same architecture and adapter config.</p>
-	 *
-	 * @param inputDir Directory containing saved adapters
-	 * @throws IOException If loading fails
-	 * @deprecated Use {@link #loadAdaptersBundle(Path)} instead for single-file format
-	 */
-	@Deprecated
-	public void loadAdapters(Path inputDir) throws IOException {
-		if (!Files.exists(inputDir.resolve("adapter_config.json"))) {
-			throw new IOException("adapter_config.json not found in " + inputDir);
-		}
-
-		// Load each LoRA layer's weights
-		for (int i = 0; i < loraLayers.size(); i++) {
-			LoRALinear lora = loraLayers.get(i);
-
-			Path loraAPath = inputDir.resolve("lora_" + i + "_A.bin");
-			Path loraBPath = inputDir.resolve("lora_" + i + "_B.bin");
-
-			if (!Files.exists(loraAPath) || !Files.exists(loraBPath)) {
-				throw new IOException("Missing LoRA weights for layer " + i);
-			}
-
-			loadPackedCollection(lora.getLoraA(), loraAPath);
-			loadPackedCollection(lora.getLoraB(), loraBPath);
-		}
-
-		log("Loaded " + loraLayers.size() + " LoRA adapters from " + inputDir);
-	}
-
-	private void savePackedCollection(PackedCollection collection, Path path) throws IOException {
-		int size = (int) collection.getShape().getTotalSize();
-		byte[] bytes = new byte[size * 4]; // 4 bytes per float
-
-		for (int i = 0; i < size; i++) {
-			float val = (float) collection.toDouble(i);
-			int bits = Float.floatToIntBits(val);
-			bytes[i * 4] = (byte) (bits >> 24);
-			bytes[i * 4 + 1] = (byte) (bits >> 16);
-			bytes[i * 4 + 2] = (byte) (bits >> 8);
-			bytes[i * 4 + 3] = (byte) bits;
-		}
-
-		Files.write(path, bytes);
-	}
-
-	private void loadPackedCollection(PackedCollection collection, Path path) throws IOException {
-		byte[] bytes = Files.readAllBytes(path);
-		int size = (int) collection.getShape().getTotalSize();
-
-		if (bytes.length != size * 4) {
-			throw new IOException("Weight file size mismatch: expected " + (size * 4) +
-					" bytes but got " + bytes.length);
-		}
-
-		for (int i = 0; i < size; i++) {
-			int bits = ((bytes[i * 4] & 0xFF) << 24) |
-					((bytes[i * 4 + 1] & 0xFF) << 16) |
-					((bytes[i * 4 + 2] & 0xFF) << 8) |
-					(bytes[i * 4 + 3] & 0xFF);
-			float val = Float.intBitsToFloat(bits);
-			collection.setMem(i, val);
 		}
 	}
 
