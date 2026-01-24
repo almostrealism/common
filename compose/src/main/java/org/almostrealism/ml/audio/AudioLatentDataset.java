@@ -19,6 +19,7 @@ package org.almostrealism.ml.audio;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.audio.data.WaveData;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
@@ -71,7 +72,7 @@ import org.almostrealism.ml.DiffusionTrainingDataset;
  * @see VAEBottleneck
  * @author Michael Murray
  */
-public class AudioLatentDataset implements Dataset<PackedCollection>, ConsoleFeatures {
+public class AudioLatentDataset implements Dataset<PackedCollection>, CollectionFeatures, ConsoleFeatures {
 
 	private final List<PackedCollection> latents;
 	private final int latentChannels;
@@ -198,61 +199,43 @@ public class AudioLatentDataset implements Dataset<PackedCollection>, ConsoleFea
 
 		// Load audio
 		WaveData audio = WaveData.load(audioFile.toFile());
+		int frameCount = audio.getFrameCount();
 
-		// Convert to stereo if mono
-		PackedCollection audioData;
+		// Convert to stereo if mono using bulk memory operations
+		PackedCollection audioData = new PackedCollection(new TraversalPolicy(1, 2, frameCount));
 		if (audio.getChannelCount() == 1) {
-			// Duplicate mono to stereo
+			// Duplicate mono to stereo using bulk copy
 			PackedCollection mono = audio.getChannelData(0);
-			audioData = new PackedCollection(new TraversalPolicy(1, 2, audio.getFrameCount()));
-			for (int i = 0; i < audio.getFrameCount(); i++) {
-				double val = mono.toDouble(i);
-				audioData.setMem(i, val);                          // Left channel
-				audioData.setMem(audio.getFrameCount() + i, val);  // Right channel
-			}
+			audioData.setMem(0, mono);                // Left channel (bulk copy)
+			audioData.setMem(frameCount, mono);       // Right channel (bulk copy of same data)
 		} else {
-			// Already stereo
-			audioData = new PackedCollection(new TraversalPolicy(1, 2, audio.getFrameCount()));
+			// Already stereo - bulk copy both channels
 			PackedCollection left = audio.getChannelData(0);
 			PackedCollection right = audio.getChannelData(1);
-			for (int i = 0; i < audio.getFrameCount(); i++) {
-				audioData.setMem(i, left.toDouble(i));
-				audioData.setMem(audio.getFrameCount() + i, right.toDouble(i));
-			}
+			audioData.setMem(0, left);                // Left channel (bulk copy)
+			audioData.setMem(frameCount, right);      // Right channel (bulk copy)
 		}
 
-		// Normalize amplitude
-		double maxAbs = 0;
-		for (int i = 0; i < audioData.getMemLength(); i++) {
-			maxAbs = Math.max(maxAbs, Math.abs(audioData.toDouble(i)));
-		}
-		if (maxAbs > 0 && maxAbs != 1.0) {
-			double scale = 1.0 / maxAbs;
-			for (int i = 0; i < audioData.getMemLength(); i++) {
-				audioData.setMem(i, audioData.toDouble(i) * scale);
-			}
-		}
+		// Normalize amplitude using hardware acceleration
+		audioData = normalizeAmplitude(audioData);
 
 		// Split into segments and encode
-		int totalSamples = audio.getFrameCount();
 		int offset = 0;
 
-		while (offset + segmentSamples <= totalSamples) {
-			// Extract segment
+		while (offset + segmentSamples <= frameCount) {
+			// Extract segment using bulk copy operations
 			PackedCollection segment = new PackedCollection(new TraversalPolicy(1, 2, segmentSamples));
-			for (int i = 0; i < segmentSamples; i++) {
-				segment.setMem(i, audioData.toDouble(offset + i));
-				segment.setMem(segmentSamples + i, audioData.toDouble(totalSamples + offset + i));
-			}
+			// Copy left channel segment
+			segment.setMem(0, audioData, offset, segmentSamples);
+			// Copy right channel segment
+			segment.setMem(segmentSamples, audioData, frameCount + offset, segmentSamples);
 
 			// Encode segment
 			PackedCollection latent = encoder.forward(segment);
 
-			// Clone the latent (encoder may reuse buffers)
+			// Clone the latent using bulk copy (encoder may reuse buffers)
 			PackedCollection latentCopy = new PackedCollection(latent.getShape());
-			for (int i = 0; i < latent.getMemLength(); i++) {
-				latentCopy.setMem(i, latent.toDouble(i));
-			}
+			latentCopy.setMem(0, latent);
 
 			latents.add(latentCopy);
 			offset += segmentSamples;
@@ -260,6 +243,24 @@ public class AudioLatentDataset implements Dataset<PackedCollection>, ConsoleFea
 
 		audio.destroy();
 		return latents;
+	}
+
+	/**
+	 * Normalizes audio amplitude to the range [-1, 1] using hardware acceleration.
+	 */
+	private static PackedCollection normalizeAmplitude(PackedCollection data) {
+		CollectionFeatures cf = CollectionFeatures.getInstance();
+
+		// Use hardware-accelerated abs().max() to find maximum absolute value
+		double maxAbs = cf.c(cf.p(data)).abs().max().evaluate().toDouble(0);
+
+		if (maxAbs > 0 && maxAbs != 1.0) {
+			double scale = 1.0 / maxAbs;
+			// Use hardware-accelerated multiply for scaling
+			return cf.c(cf.p(data)).multiply(cf.c(scale)).evaluate();
+		}
+
+		return data;
 	}
 
 	/**
