@@ -117,6 +117,49 @@ PackedCollection subset = largeBuffer
     .range(shape(100, 100), 0);    // View into view
 ```
 
+#### Bulk Memory Copy Operations
+
+PackedCollection extends `MemoryData`, providing efficient bulk copy operations between collections. These are significantly faster than element-by-element loops.
+
+```java
+// Copy entire collection to another (same size)
+PackedCollection source = new PackedCollection<>(1000);
+PackedCollection target = new PackedCollection<>(1000);
+target.setMem(0, source);  // Copy all of source to target at offset 0
+
+// Copy with offsets and length
+target.setMem(targetOffset, source, srcOffset, length);
+
+// Copy a range starting at target offset 0
+target.setMem(source, srcOffset, length);
+```
+
+**Using `CodeFeatures.copy()` (Producer Pattern):**
+
+```java
+import org.almostrealism.CodeFeatures;
+
+public class MyProcessor implements CodeFeatures {
+    public void copyData() {
+        // Hardware-accelerated copy between producers
+        Supplier<Runnable> copyOp = copy("my copy", sourceProducer, targetProducer, length);
+        copyOp.get().run();
+    }
+}
+```
+
+**Using `into()` Pattern for Evaluated Results:**
+
+```java
+// Evaluate producer directly into existing collection
+producer.get().into(destination).evaluate();
+
+// Example: normalize and store in-place
+normalize(cp(vector)).into(vector).evaluate();
+```
+
+> **Performance Note:** `setMem(MemoryData)` is significantly more efficient than element-by-element loops. Always use bulk operations when copying between collections.
+
 #### Shape and Traversal
 
 ```java
