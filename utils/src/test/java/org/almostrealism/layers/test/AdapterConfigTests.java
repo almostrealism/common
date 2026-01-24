@@ -21,8 +21,8 @@ import org.almostrealism.layers.AdapterConfig;
 import org.almostrealism.layers.AdapterConfig.TargetLayer;
 import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.layers.LayerFeatures;
-import org.almostrealism.layers.LoRACapable;
 import org.almostrealism.layers.LoRALinear;
+import org.almostrealism.layers.LowRankAdapterSupport;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 import org.almostrealism.util.TestSuiteBase;
@@ -35,14 +35,14 @@ import java.util.Random;
 import java.util.Set;
 
 /**
- * Tests for {@link AdapterConfig} and {@link LoRACapable} interface.
+ * Tests for {@link AdapterConfig} and {@link LowRankAdapterSupport} interface.
  */
-public class AdapterConfigTests extends TestSuiteBase implements LayerFeatures, LoRACapable {
+public class AdapterConfigTests extends TestSuiteBase implements LayerFeatures, LowRankAdapterSupport {
 
 	private static final double TOLERANCE = 1e-4;
 	private static final Random random = new Random(42);
 
-	// Test implementation of LoRACapable
+	// Test implementation of LowRankAdapterSupport
 	private AdapterConfig testConfig;
 	private final List<LoRALinear> testLoraLayers = new ArrayList<>();
 
@@ -54,6 +54,11 @@ public class AdapterConfigTests extends TestSuiteBase implements LayerFeatures, 
 	@Override
 	public List<LoRALinear> getLoraLayers() {
 		return testLoraLayers;
+	}
+
+	@Override
+	public void addLoraLayer(LoRALinear layer) {
+		testLoraLayers.add(layer);
 	}
 
 	/**

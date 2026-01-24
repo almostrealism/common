@@ -33,19 +33,19 @@ import java.util.List;
  * <p>Implementations should:</p>
  * <ol>
  *   <li>Store an {@link AdapterConfig} specifying which layers to adapt</li>
- *   <li>Track all created {@link LoRALinear} instances</li>
+ *   <li>Maintain a list of created {@link LoRALinear} instances</li>
  *   <li>Use {@link #getProjectionFactory()} with AttentionFeatures methods</li>
- *   <li>Provide {@link #getLoraLayers()} for accessing trainable parameters</li>
  * </ol>
  *
  * <h2>Example Implementation</h2>
  * <pre>{@code
- * public class MyLoRAModel implements LoRACapable, AttentionFeatures {
+ * public class MyLoRAModel implements LowRankAdapterSupport, AttentionFeatures {
  *     private final AdapterConfig config;
  *     private final List<LoRALinear> loraLayers = new ArrayList<>();
  *
  *     public AdapterConfig getAdapterConfig() { return config; }
  *     public List<LoRALinear> getLoraLayers() { return loraLayers; }
+ *     public void addLoraLayer(LoRALinear layer) { loraLayers.add(layer); }
  *
  *     private void buildModel() {
  *         // Use the projection factory to enable LoRA in attention layers
@@ -64,7 +64,7 @@ import java.util.List;
  * @see LoRALinear
  * @author Michael Murray
  */
-public interface LoRACapable extends LayerFeatures {
+public interface LowRankAdapterSupport extends LayerFeatures {
 
 	/**
 	 * Returns the adapter configuration for this model.
@@ -77,9 +77,20 @@ public interface LoRACapable extends LayerFeatures {
 	 * Returns all LoRA layers created by this model.
 	 * These layers contain the trainable parameters for fine-tuning.
 	 *
-	 * @return List of LoRA layers (mutable - implementations should add to this list)
+	 * @return List of LoRA layers
 	 */
 	List<LoRALinear> getLoraLayers();
+
+	/**
+	 * Registers a newly created LoRA layer with this model.
+	 *
+	 * <p>This method is called by {@link #getProjectionFactory()} when creating
+	 * LoRA-wrapped projection layers. Implementations typically add the layer
+	 * to an internal list.</p>
+	 *
+	 * @param layer The LoRA layer to register
+	 */
+	void addLoraLayer(LoRALinear layer);
 
 	/**
 	 * Returns a {@link ProjectionFactory} configured for this model's LoRA settings.
@@ -88,19 +99,28 @@ public interface LoRACapable extends LayerFeatures {
 	 * {@code sequenceAttention}, {@code sequenceCrossAttention}, and {@code transformerBlock}
 	 * to enable LoRA on the appropriate projection layers.</p>
 	 *
-	 * <p>Created LoRA layers are automatically tracked in {@link #getLoraLayers()}.</p>
+	 * <p>Created LoRA layers are automatically registered via {@link #addLoraLayer(LoRALinear)}.</p>
 	 *
 	 * @return A ProjectionFactory that creates LoRA-wrapped layers for targeted projections
 	 */
 	default ProjectionFactory getProjectionFactory() {
-		return ProjectionFactory.lora(getAdapterConfig(), getLoraLayers());
+		AdapterConfig config = getAdapterConfig();
+		return (shape, weights, bias, target) -> {
+			if (config != null && config.isTargeted(target)) {
+				LoRALinear loraLayer = new LoRALinear(shape, weights, bias, config.getRank(), config.getAlpha());
+				addLoraLayer(loraLayer);
+				return loraLayer;
+			}
+			return dense(shape, weights, bias, false);
+		};
 	}
 
 	/**
 	 * Creates either a LoRA-wrapped or standard dense layer based on the adapter config.
 	 *
 	 * <p>If the target layer type is enabled in the config, creates a {@link LoRALinear}
-	 * and registers it. Otherwise, creates a standard dense layer.</p>
+	 * and registers it via {@link #addLoraLayer(LoRALinear)}. Otherwise, creates a
+	 * standard dense layer.</p>
 	 *
 	 * @param inputShape Shape of the input to this layer
 	 * @param weights Weight matrix [outputSize, inputSize]
@@ -122,7 +142,7 @@ public interface LoRACapable extends LayerFeatures {
 					config.getRank(),
 					config.getAlpha()
 			);
-			getLoraLayers().add(loraLayer);
+			addLoraLayer(loraLayer);
 			return loraLayer;
 		} else {
 			return dense(inputShape, weights, bias, false);

@@ -18,8 +18,8 @@ package org.almostrealism.ml.audio;
 
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.layers.AdapterConfig;
-import org.almostrealism.layers.LoRACapable;
 import org.almostrealism.layers.LoRALinear;
+import org.almostrealism.layers.LowRankAdapterSupport;
 import org.almostrealism.ml.AttentionFeatures;
 import org.almostrealism.ml.ModelBundle;
 import org.almostrealism.ml.StateDictionary;
@@ -75,7 +75,7 @@ import java.util.Map;
  * @see LoRALinear
  * @author Michael Murray
  */
-public class LoRADiffusionTransformer extends DiffusionTransformer implements AttentionFeatures, LoRACapable {
+public class LoRADiffusionTransformer extends DiffusionTransformer implements AttentionFeatures, LowRankAdapterSupport {
 
 	private final AdapterConfig adapterConfig;
 	private final List<LoRALinear> loraLayers;
@@ -143,6 +143,11 @@ public class LoRADiffusionTransformer extends DiffusionTransformer implements At
 	@Override
 	public List<LoRALinear> getLoraLayers() {
 		return loraLayers;
+	}
+
+	@Override
+	public void addLoraLayer(LoRALinear layer) {
+		loraLayers.add(layer);
 	}
 
 	/**
