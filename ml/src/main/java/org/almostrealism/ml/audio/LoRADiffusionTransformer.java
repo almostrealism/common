@@ -222,20 +222,13 @@ public class LoRADiffusionTransformer extends DiffusionTransformer implements At
 				throw new IOException("Missing LoRA weights for layer " + i + " in bundle");
 			}
 
-			// Copy weights into existing collections
-			copyWeights(loraA, lora.getLoraA());
-			copyWeights(loraB, lora.getLoraB());
+			// Copy weights into existing collections using bulk copy
+			lora.getLoraA().setMem(0, loraA);
+			lora.getLoraB().setMem(0, loraB);
 		}
 
 		log("Loaded " + loraLayers.size() + " LoRA adapters from bundle: " + bundlePath);
 		return bundle;
-	}
-
-	private void copyWeights(PackedCollection source, PackedCollection target) {
-		int size = (int) source.getShape().getTotalSize();
-		for (int i = 0; i < size; i++) {
-			target.setMem(i, source.toDouble(i));
-		}
 	}
 
 	/**
