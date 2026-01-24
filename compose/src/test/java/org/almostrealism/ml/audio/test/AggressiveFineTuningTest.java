@@ -20,11 +20,13 @@ import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.audio.data.WaveData;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.layers.AdapterConfig;
+import org.almostrealism.ml.DiffusionTrainingDataset;
 import org.almostrealism.ml.StateDictionary;
 import org.almostrealism.ml.audio.*;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
-import org.almostrealism.optimize.TrainingConfig;
+import org.almostrealism.optimize.MeanSquaredError;
+import org.almostrealism.optimize.ModelOptimizer;
 import org.almostrealism.optimize.TrainingResult;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
@@ -186,21 +188,22 @@ public class AggressiveFineTuningTest extends TestSuiteBase {
 		log("  Repeat factor: " + REPEAT_FACTOR);
 		log("  Learning rate: " + LEARNING_RATE);
 
-		TrainingConfig config = new TrainingConfig()
-				.epochs(EPOCHS)
-				.learningRate(LEARNING_RATE)
-				.logEveryNSteps(10)
-				.earlyStoppingPatience(0); // Disable early stopping
-
 		TraversalPolicy latentShape = new TraversalPolicy(1, IO_CHANNELS, dataset.getLatentLength());
 
-		AudioDiffusionFineTuner fineTuner = new AudioDiffusionFineTuner(
-				compiledModel, config, latentShape, scheduler
-		);
-		fineTuner.setAggressiveMode(true);
-		fineTuner.setRepeatFactor(REPEAT_FACTOR);
+		// Convert to diffusion training dataset
+		DiffusionTrainingDataset diffusionDataset = dataset.toDiffusionDataset(scheduler, REPEAT_FACTOR);
 
-		TrainingResult result = fineTuner.fineTune(dataset);
+		// Create and configure ModelOptimizer directly
+		ModelOptimizer optimizer = new ModelOptimizer(compiledModel, () -> {
+			diffusionDataset.shuffle();
+			return diffusionDataset;
+		});
+		optimizer.setLossFunction(new MeanSquaredError(latentShape.traverseEach()));
+		optimizer.setLogFrequency(10);
+		optimizer.setLogConsumer(this::log);
+
+		// Run training - ModelOptimizer owns the training loop
+		TrainingResult result = optimizer.optimize(EPOCHS);
 
 		log("");
 		log("Training completed:");

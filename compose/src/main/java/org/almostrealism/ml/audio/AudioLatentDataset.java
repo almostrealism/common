@@ -38,6 +38,8 @@ import java.util.Random;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+import org.almostrealism.ml.DiffusionTrainingDataset;
+
 /**
  * Dataset that encodes audio files to latent representations for diffusion training.
  *
@@ -311,6 +313,28 @@ public class AudioLatentDataset implements Dataset<PackedCollection>, ConsoleFea
 	 */
 	public void shuffle() {
 		Collections.shuffle(latents, random);
+	}
+
+	/**
+	 * Converts this dataset to a {@link DiffusionTrainingDataset} for use with
+	 * {@link org.almostrealism.optimize.ModelOptimizer}.
+	 *
+	 * @param scheduler    Noise scheduler for timestep sampling and noise addition
+	 * @param repeatFactor Number of times to repeat each sample per epoch
+	 * @return A DiffusionTrainingDataset wrapping these latents
+	 */
+	public DiffusionTrainingDataset toDiffusionDataset(DiffusionNoiseScheduler scheduler, int repeatFactor) {
+		return new DiffusionTrainingDataset(latents, scheduler, repeatFactor);
+	}
+
+	/**
+	 * Converts this dataset to a {@link DiffusionTrainingDataset} with no repetition.
+	 *
+	 * @param scheduler Noise scheduler
+	 * @return A DiffusionTrainingDataset wrapping these latents
+	 */
+	public DiffusionTrainingDataset toDiffusionDataset(DiffusionNoiseScheduler scheduler) {
+		return new DiffusionTrainingDataset(latents, scheduler);
 	}
 
 	@Override
