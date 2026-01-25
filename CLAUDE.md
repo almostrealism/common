@@ -2,9 +2,9 @@
 
 ---
 
-# 🛑 STOP. READ THIS FIRST. 🛑
+# STOP. READ THIS FIRST.
 
-## ⚠️ ABSOLUTE PREREQUISITE: USE AR-DOCS MCP BEFORE ANY ACTION ⚠️
+## ABSOLUTE PREREQUISITE: USE AR-DOCS MCP BEFORE ANY ACTION
 
 **THIS IS THE MOST IMPORTANT RULE. IT COMES BEFORE ALL OTHER RULES.**
 
@@ -24,57 +24,24 @@
 **THE AR CODEBASE IS A PRODUCTION APPLICATION** used by real people worldwide. If something seems like it "doesn't work" or "isn't stored," YOU ARE WRONG. The application works. You need to LOOK UP how it works.
 
 **EVERY TIME you are about to:**
-- Implement a feature → SEARCH ar-docs first
-- Fix a bug → SEARCH ar-docs first
-- Answer a question about architecture → SEARCH ar-docs first
-- Modify existing code → SEARCH ar-docs first
-- Make ANY claim about the codebase → SEARCH ar-docs first
-
-**Example of WRONG behavior:**
-```
-User: "The prototype discovery doesn't show file paths"
-Claude: "The protobuf schema only stores MD5 hash, not file path..."
-```
-This is WRONG because Claude did NOT search ar-docs to understand how the actual application handles this.
-
-**Example of CORRECT behavior:**
-```
-User: "The prototype discovery doesn't show file paths"
-Claude: [Calls mcp__ar-docs__search_ar_docs query:"AudioLibrary file path identifier"]
-Claude: [Calls mcp__ar-docs__read_ar_module module:"audio"]
-Claude: [Now understands how it actually works before responding]
-```
+- Implement a feature -> SEARCH ar-docs first
+- Fix a bug -> SEARCH ar-docs first
+- Answer a question about architecture -> SEARCH ar-docs first
+- Modify existing code -> SEARCH ar-docs first
+- Make ANY claim about the codebase -> SEARCH ar-docs first
 
 **If ar-docs doesn't have the information you need:**
 1. READ the actual source code thoroughly
 2. TRACE the data flow from end to end
 3. NEVER guess or speculate
 
-### Specific Scenarios Requiring ar-docs
-
-**Infrastructure changes (tests, build, framework classes):**
-```
-WRONG: See TestDepthRule in source, assume how it works, add @Rule manually
-RIGHT: Search ar-docs first → Learn TestDepthRule is INTERNAL to TestSuiteBase
-```
-
-**API discovery (finding operations, interfaces, utilities):**
-```
-WRONG: Grep source for "sin" → Don't find it → Conclude "doesn't exist"
-RIGHT: mcp__ar-docs__read_quick_reference → Find sin/cos in GeometryFeatures
-```
-
-**Understanding data flow (how library handles file paths, identifiers, etc.):**
-```
-WRONG: Read one class → Make assumptions → Write incorrect code
-RIGHT: Search ar-docs → Read module docs → Trace actual data flow → Understand
-```
-
 **This rule exists because:** Claude repeatedly makes assumptions, writes incorrect code, and wastes the developer's time. The ar-docs MCP contains authoritative documentation. USE IT.
+
+See [docs/internals/ar-docs-examples.md](docs/internals/ar-docs-examples.md) for detailed wrong/right examples.
 
 ---
 
-## ⚠️ CRITICAL: DO NOT COMMIT CODE ⚠️
+## CRITICAL: DO NOT COMMIT CODE
 
 **THIS IS AN ABSOLUTE RULE WITH NO EXCEPTIONS.**
 
@@ -85,33 +52,22 @@ RIGHT: Search ar-docs → Read module docs → Trace actual data flow → Unders
 
 **Why this matters:** Claude cannot properly sign commits or verify the full context of changes. The human developer needs to review staged changes, write appropriate commit messages, and take responsibility for what goes into the repository history.
 
-**What you CAN do:**
-- Stage files with `git add <file>`
-- Check status with `git status`
-- Show diffs with `git diff`
-- Unstage files with `git reset <file>`
+**What you CAN do:** `git add <file>`, `git status`, `git diff`, `git reset <file>`
 
-**What you MUST NOT do:**
-- `git commit` (any form)
-- `git commit -m "..."`
-- `git commit --amend`
+**What you MUST NOT do:** `git commit` (any form), `git commit -m "..."`, `git commit --amend`
 
 ---
 
-## ⚠️ CRITICAL: DO NOT MODIFY POM.XML FILES ⚠️
+## CRITICAL: DO NOT MODIFY POM.XML FILES
 
 **THIS IS AN ABSOLUTE RULE WITH NO EXCEPTIONS.**
 
-- **NEVER** add dependencies to pom.xml files unless you are 100% certain the dependency is not already available transitively
+- **NEVER** add dependencies to pom.xml files unless 100% certain the dependency is not already available transitively
 - **NEVER** assume you understand the module dependency graph - it is complex and you WILL get it wrong
 - **IF IN DOUBT, DO NOT TOUCH THE POM FILE** - just use the classes and let compilation fail if the dependency is truly missing
 - The human developer will fix any missing dependencies - this is NOT your job
 
-**Why this matters:** The AR project has a complex transitive dependency structure. Adding a dependency that already exists transitively:
-- Creates redundant declarations that cause maintenance burden
-- Can cause version conflicts
-- Demonstrates a fundamental misunderstanding of the codebase
-- Wastes the human developer's time fixing your mistakes
+**Why this matters:** The AR project has a complex transitive dependency structure. Adding a dependency that already exists transitively creates redundant declarations, can cause version conflicts, and wastes time.
 
 **What to do instead:**
 1. Write your code assuming the dependency exists
@@ -119,52 +75,29 @@ RIGHT: Search ar-docs → Read module docs → Trace actual data flow → Unders
 3. If compilation succeeds, the dependency was already available transitively
 4. If compilation fails with "package does not exist", inform the user - DO NOT modify the pom.xml yourself
 
-**The ONLY exception:** If the user explicitly instructs you to add a specific dependency to a specific pom.xml file.
+**The ONLY exception:** User explicitly instructs you to add a specific dependency.
 
 ---
 
-## ⚠️ CRITICAL: NEVER REFERENCE VERSION NUMBERS ⚠️
+## CRITICAL: NEVER REFERENCE VERSION NUMBERS
 
 **THIS IS AN ABSOLUTE RULE WITH NO EXCEPTIONS.**
 
 - **NEVER** include specific version numbers anywhere in CLAUDE.md files
 - **NEVER** mention library versions (e.g., "JavaFX 21", "gRPC 1.53.0")
 - **NEVER** mention project versions (e.g., "version 0.72")
-- **NEVER** reference artifact versions in documentation
 - Version numbers change constantly and become stale immediately
 - Always refer to pom.xml files as the single source of truth for versions
-- If you need to mention a dependency, use just its name without any version
-
-**Why this matters:** Hardcoded version numbers in documentation become outdated instantly, cause confusion, and lead to errors when developers trust stale documentation over actual build files.
 
 ---
 
-## ⚠️ CRITICAL: USE MCP TEST RUNNER FOR ALL TESTS ⚠️
+## CRITICAL: USE MCP TEST RUNNER FOR ALL TESTS
 
 **THIS IS AN ABSOLUTE RULE WITH NO EXCEPTIONS.**
 
 - **NEVER** use `Bash` tool with `mvn test` commands to run tests
 - **ALWAYS** use the `mcp__ar-test-runner__start_test_run` MCP tool for running tests
 - The MCP test runner automatically handles environment variables, async execution, and structured failure reporting
-
-**Available MCP test runner tools:**
-| Tool | Purpose |
-|------|---------|
-| `mcp__ar-test-runner__start_test_run` | Start a test run (use this!) |
-| `mcp__ar-test-runner__get_run_status` | Check test run status |
-| `mcp__ar-test-runner__get_run_output` | Get console output |
-| `mcp__ar-test-runner__get_run_failures` | Get detailed failure info |
-| `mcp__ar-test-runner__list_runs` | List recent test runs |
-| `mcp__ar-test-runner__cancel_run` | Cancel a running test |
-
-**Parameters for `start_test_run`:**
-- `module`: Maven module to test (e.g., "ml", "utils")
-- `test_classes`: List of specific test classes
-- `test_methods`: List of specific test methods
-- `profile`: Test profile name (sets AR_TEST_PROFILE system property)
-- `depth`: AR_TEST_DEPTH value (0-10)
-- `jvm_args`: Additional JVM arguments
-- `timeout_minutes`: Max run time
 
 **Example usage:**
 ```
@@ -174,18 +107,19 @@ mcp__ar-test-runner__start_test_run
   timeout_minutes: 10
 ```
 
-**Why this matters:** The MCP test runner is purpose-built for this codebase. Using Bash for tests bypasses proper environment setup, loses structured output, and ignores specialized tooling. This documentation showing bash commands is for REFERENCE ONLY - actual test execution must use MCP tools.
+**Why this matters:** The MCP test runner is purpose-built for this codebase. Using Bash for tests bypasses proper environment setup, loses structured output, and ignores specialized tooling.
+
+See [docs/internals/test-examples.md](docs/internals/test-examples.md) for full tool reference and parameters.
 
 ---
 
-## ⚠️ CRITICAL: TEST CLASS REQUIREMENTS ⚠️
+## CRITICAL: TEST CLASS REQUIREMENTS
 
 **THIS IS AN ABSOLUTE RULE WITH NO EXCEPTIONS.**
 
 All test classes **MUST** extend `TestSuiteBase`:
 
 ```java
-// CORRECT: Extend TestSuiteBase
 public class MyTest extends TestSuiteBase {
     @Test
     public void testSomething() {
@@ -200,21 +134,6 @@ public class MyTest extends TestSuiteBase {
 }
 ```
 
-```java
-// WRONG: Implementing TestFeatures directly
-public class MyTest implements TestFeatures {
-    // This test will NOT participate in test grouping!
-    // It will run in ALL CI groups, wasting resources
-}
-```
-
-```java
-// WRONG: Manually adding TestDepthRule
-public class MyTest implements TestFeatures {
-    @Rule public TestDepthRule depthRule = testDepthRule();  // NEVER DO THIS!
-}
-```
-
 **What TestSuiteBase provides automatically:**
 - Test grouping (hash-based distribution across CI runners)
 - `@TestDepth` annotation support
@@ -223,15 +142,10 @@ public class MyTest implements TestFeatures {
 **For long-running tests (30+ minutes):**
 Use `skipLongTests` guard in addition to extending TestSuiteBase:
 ```java
-public class MyTest extends TestSuiteBase {
-    @Test
-    @TestDepth(3)
-    public void veryExpensiveTest() {
-        if (skipLongTests) return;  // Respects AR_LONG_TESTS env var
-        // ...
-    }
-}
+if (skipLongTests) return;  // Respects AR_LONG_TESTS env var
 ```
+
+See [docs/internals/test-examples.md](docs/internals/test-examples.md) for wrong patterns to avoid.
 
 ---
 
@@ -243,27 +157,27 @@ public class MyTest extends TestSuiteBase {
 
 ---
 
-### Setup Instructions
+## Setup Instructions
 
-1. **Set environment variables** before running Java code:
-   ```bash
-   export AR_HARDWARE_LIBS=/tmp/ar_libs/
-   export AR_HARDWARE_DRIVER=native
-   ```
+**Required environment variables** before running Java code:
+```bash
+export AR_HARDWARE_LIBS=/tmp/ar_libs/
+export AR_HARDWARE_DRIVER=native
+```
 
-   The directory will be created automatically if it doesn't exist.
+The directory will be created automatically if it doesn't exist.
 
-2. **For Maven tests**, always prefix test commands with the environment variables:
-   ```bash
-   export AR_HARDWARE_LIBS=/tmp/ar_libs/ && \
-   export AR_HARDWARE_DRIVER=native && \
-   mvn test -pl <module>
-   ```
+**For Maven tests**, always prefix test commands with the environment variables:
+```bash
+export AR_HARDWARE_LIBS=/tmp/ar_libs/ && \
+export AR_HARDWARE_DRIVER=native && \
+mvn test -pl <module>
+```
 
 ### What These Variables Do
 
-- **`AR_HARDWARE_LIBS`**: Specifies the directory where hardware acceleration libraries (JNI .so files, OpenCL kernels, etc.) will be generated and loaded from
-- **`AR_HARDWARE_DRIVER`**: Specifies which hardware backend to use:
+- **`AR_HARDWARE_LIBS`**: Directory where hardware acceleration libraries (JNI .so files, OpenCL kernels, etc.) will be generated and loaded from
+- **`AR_HARDWARE_DRIVER`**: Hardware backend to use:
   - `native`: Standard JNI operations with runtime-generated native code (default)
   - `opencl`: OpenCL acceleration (CPU/GPU)
   - `metal`: Metal GPU acceleration (Apple Silicon)
@@ -271,13 +185,13 @@ public class MyTest extends TestSuiteBase {
 
 ### Common Issues
 
-❌ **Forgetting to set these variables** will result in:
+Forgetting to set these variables will result in:
 - `NoClassDefFoundError: Could not initialize class org.almostrealism.collect.PackedCollection`
 - Runtime errors when trying to compile operations
 - Missing library errors
 - Failures during model inference
 
-✅ **Always verify** these are set before running:
+**Always verify** these are set before running:
 ```bash
 echo $AR_HARDWARE_LIBS
 echo $AR_HARDWARE_DRIVER
@@ -288,10 +202,7 @@ echo $AR_HARDWARE_DRIVER
 For large models or tests that require more memory than the default 8GB limit:
 
 ```bash
-# Maximum memory allocation (2^SCALE × 64MB)
-export AR_HARDWARE_MEMORY_SCALE=4   # 1GB (default)
-export AR_HARDWARE_MEMORY_SCALE=6   # 4GB
-export AR_HARDWARE_MEMORY_SCALE=7   # 8GB (current default)
+export AR_HARDWARE_MEMORY_SCALE=7   # 8GB (default)
 export AR_HARDWARE_MEMORY_SCALE=8   # 16GB
 export AR_HARDWARE_MEMORY_SCALE=9   # 32GB
 ```
@@ -322,7 +233,7 @@ See [hardware/README.md](hardware/README.md) for complete memory and performance
 
 ---
 
-## ⚠️ CRITICAL: Training Loop Architecture ⚠️
+## CRITICAL: Training Loop Architecture
 
 **THIS IS A SACRED ARCHITECTURAL PRINCIPLE. VIOLATING IT WILL RESULT IN WASTED EFFORT.**
 
@@ -362,79 +273,12 @@ All training scenarios (supervised learning, diffusion, reinforcement learning, 
 - `lossFunction.apply(...)` or `lossGradient.evaluate(...)` outside of `ModelOptimizer`
 - Custom progress logging that duplicates `ModelOptimizer.setLogFrequency()`
 - Custom progress/callback classes (e.g., `TrainingProgress`) - **DELETE IT**
-- Custom `formatDuration()` or similar utility methods
 
-**If ANY of these patterns appear in your code, DELETE THEM and use `ModelOptimizer` properly.**
-
-### Correct Pattern for Domain-Specific Training
-
-```java
-// CORRECT: Dataset handles domain-specific data preparation
-public class DiffusionTrainingDataset implements Dataset<PackedCollection> {
-    @Override
-    public Iterator<ValueTarget<PackedCollection>> iterator() {
-        return new Iterator<>() {
-            @Override
-            public ValueTarget<PackedCollection> next() {
-                // Sample timestep, add noise, return (noisy_input, noise)
-                return ValueTarget.of(noisyLatent, noise).withArguments(timestep);
-            }
-        };
-    }
-}
-
-// CORRECT: Thin wrapper that configures and delegates to ModelOptimizer
-public class DiffusionFineTuner {
-    public Result fineTune(Dataset sourceData) {
-        // 1. Create domain-specific dataset
-        DiffusionTrainingDataset dataset = new DiffusionTrainingDataset(sourceData, scheduler);
-
-        // 2. Create ModelOptimizer
-        ModelOptimizer optimizer = new ModelOptimizer(model, () -> dataset);
-
-        // 3. Configure it
-        optimizer.setLossFunction(new MeanSquaredError(outputShape));
-        optimizer.setLogFrequency(10);
-
-        // 4. Call optimize ONCE - NO LOOP
-        optimizer.optimize(epochs);
-
-        // 5. Return
-        return new Result(optimizer.getLoss(), optimizer.getTotalIterations());
-    }
-    // NO inner classes for progress. NO loops. NO forward/backward calls.
-}
-```
-
-```java
-// WRONG: Any loop at all
-public class DiffusionFineTuner {
-    public void train(Dataset data) {
-        for (int epoch = 0; epoch < epochs; epoch++) {        // WRONG! DELETE THIS LOOP
-            optimizer.optimize(1);                             // WRONG! Don't wrap optimize in a loop
-        }
-    }
-}
-
-// WRONG: Custom progress class
-public class DiffusionFineTuner {
-    public static class TrainingProgress { ... }  // WRONG! Use ModelOptimizer's reporting
-}
-
-// WRONG: Calling forward/backward yourself
-public void train() {
-    model.forward(input);    // WRONG! ModelOptimizer does this
-    model.backward(grad);    // WRONG! ModelOptimizer does this
-}
-```
-
-### Historical Context
-
-This rule exists because `AudioDiffusionFineTuner` was originally implemented with a duplicate training loop, violating this principle. See `/workspace/project/common/DESIGN_PROCESS_FAILURE.md` for the full analysis. The class has been corrected to use `ModelOptimizer` with `DiffusionTrainingDataset`.
+See [docs/internals/training-loop-examples.md](docs/internals/training-loop-examples.md) for correct and wrong code patterns.
 
 ---
 
-## ⚠️ CRITICAL: Sampling Loop Architecture ⚠️
+## CRITICAL: Sampling Loop Architecture
 
 **THIS IS A SACRED ARCHITECTURAL PRINCIPLE. VIOLATING IT WILL RESULT IN WASTED EFFORT.**
 
@@ -471,73 +315,11 @@ All diffusion generation scenarios (text-conditional, unconditional, img2img, in
 - Custom timestep schedule computation (e.g., `fillSigmas()`) - use `SamplingStrategy`
 - Custom progress logging that duplicates `DiffusionSampler.setProgressCallback()`
 
-### Correct Pattern for Audio Generation
-
-```java
-// CORRECT: Thin wrapper that configures and delegates to DiffusionSampler
-public class AudioDiffusionGenerator {
-    private final DiffusionSampler sampler;
-    private final AutoEncoder autoEncoder;
-
-    public AudioDiffusionGenerator(CompiledModel model, AutoEncoder autoEncoder,
-                                   DiffusionNoiseScheduler scheduler, TraversalPolicy latentShape) {
-        // Create sampler - IT OWNS THE LOOP
-        this.sampler = new DiffusionSampler(
-            model::forward,
-            new DDIMSamplingStrategy(scheduler),
-            scheduler.getNumSteps(),
-            latentShape
-        );
-        this.autoEncoder = autoEncoder;
-    }
-
-    public WaveData generate(long seed) {
-        // Delegate to DiffusionSampler - NO LOOP HERE
-        PackedCollection latent = sampler.sample(seed);
-
-        // Decode to audio
-        return decodeLatent(latent);
-    }
-    // NO inner loops. NO custom timestep scheduling. NO inline sampling math.
-}
-```
-
-```java
-// WRONG: Any timestep loop at all
-public class AudioGenerator {
-    public PackedCollection generate(long seed) {
-        for (int step = 0; step < numSteps; step++) {        // WRONG! DELETE THIS LOOP
-            output = model.forward(x, t, conditioning);       // WRONG! Sampler does this
-            x = updateSample(x, output, t, tPrev);            // WRONG! Strategy does this
-        }
-        return x;
-    }
-}
-```
-
-### AutoEncoder Abstraction
-
-Use the `AutoEncoder` interface for encoding/decoding audio. Do NOT assume `CompiledModel`:
-
-```java
-// CORRECT: Works with any AutoEncoder implementation
-public AudioGenerator(AutoEncoder autoEncoder) {
-    this.autoEncoder = autoEncoder;  // Could be OnnxAutoEncoder, CompiledModelAutoEncoder, etc.
-}
-
-// If you have a CompiledModel decoder, wrap it:
-AutoEncoder autoEncoder = new CompiledModelAutoEncoder(
-    compiledDecoder, sampleRate, latentSampleRate, maxDuration
-);
-```
-
-### Historical Context
-
-This rule exists because both `AudioGenerator` and `AudioDiffusionGenerator` were originally implemented with duplicate sampling loops. `AudioGenerator` used ping-pong sampling inline, while `AudioDiffusionGenerator` used DDIM. Both have been corrected to use `DiffusionSampler` with appropriate `SamplingStrategy` implementations.
+See [docs/internals/sampling-loop-examples.md](docs/internals/sampling-loop-examples.md) for correct and wrong code patterns.
 
 ---
 
-## ⚠️ CRITICAL: PackedCollection is NOT a Java Array ⚠️
+## CRITICAL: PackedCollection is NOT a Java Array
 
 **THIS IS A FUNDAMENTAL ARCHITECTURAL PRINCIPLE. MISUNDERSTANDING IT SHOWS YOU DON'T KNOW HOW A GPU WORKS.**
 
@@ -551,7 +333,7 @@ This rule exists because both `AudioGenerator` and `AudioDiffusionGenerator` wer
 
 > "Where does this data physically live?"
 
-- If you're thinking "it's just a Java object" → **STOP. You are wrong.**
+- If you're thinking "it's just a Java object" -> **STOP. You are wrong.**
 - `PackedCollection` is a *handle* to memory that may be on a completely different device (GPU, external accelerator, native memory)
 - Operations on `PackedCollection` must go through the AR framework, not Java primitives
 
@@ -563,22 +345,16 @@ This rule exists because both `AudioGenerator` and `AudioDiffusionGenerator` wer
 2. Run `mcp__ar-docs__read_ar_module module:"collect"`
 3. Look for existing methods like `copy()`, `reshape()`, `traverse()`, etc.
 
-**The framework exists for a reason.** If there isn't an obvious AR method for what you want to do, you probably shouldn't be doing it, or you need to ask.
-
 ### RED FLAG PATTERNS - STOP IMMEDIATELY
 
 **STOP IMMEDIATELY if you find yourself writing:**
 
-- `System.arraycopy` anywhere near `PackedCollection` → **DELETE IT**
-- `Arrays.copyOf` with `PackedCollection` → **DELETE IT**
-- `for` loops that call `setMem(i, ...)` in a tight loop → **DELETE IT** (defeats GPU parallelism)
-- Direct `.toArray()` followed by manipulation followed by `.setMem()` → **DELETE IT** (round-trip through CPU)
-- Any assumption that `PackedCollection` data is "just there" in JVM memory → **STOP AND THINK**
+- `System.arraycopy` anywhere near `PackedCollection` -> **DELETE IT**
+- `Arrays.copyOf` with `PackedCollection` -> **DELETE IT**
+- `for` loops that call `setMem(i, ...)` in a tight loop -> **DELETE IT** (defeats GPU parallelism)
+- Direct `.toArray()` followed by manipulation followed by `.setMem()` -> **DELETE IT** (round-trip through CPU)
 
-**These patterns indicate you are bypassing the hardware abstraction and will either:**
-- Cause silent data corruption
-- Cause runtime errors
-- Destroy performance by forcing CPU-GPU memory transfers
+**These patterns will either cause silent data corruption, runtime errors, or destroy performance.**
 
 ### What You MUST Do Instead
 
@@ -595,21 +371,7 @@ CollectionProducer result = cp(source).multiply(2.0);
 PackedCollection evaluated = result.evaluate();  // Runs on GPU
 ```
 
-```java
-// WRONG: toArray() + manipulation + setMem() forces CPU round-trip
-double[] data = collection.toArray();  // GPU → CPU
-for (int i = 0; i < data.length; i++) { data[i] *= 2; }
-result.setMem(data);  // CPU → GPU
-
-// CORRECT: Chained operations stay on GPU
-CollectionProducer result = cp(x)
-        .subtract(cp(modelOutput).multiply(t))
-        .multiply(1.0 - tPrev)
-        .add(cp(noise).multiply(tPrev));
-return result.evaluate();
-```
-
-### Common Operations - The Right Way
+### Common Operations - Quick Reference
 
 | Task | WRONG | CORRECT |
 |------|-------|---------|
@@ -618,9 +380,11 @@ return result.evaluate();
 | Clamp values | `for (i) result.setMem(i, Math.max(min, x.toDouble(i)))` | `max(cp(x), c(min)).evaluate()` |
 | Fill with noise | `for (i) result.setMem(i, random.nextGaussian())` | `new PackedCollection(shape).randnFill(random)` |
 
+See [docs/internals/packed-collection-examples.md](docs/internals/packed-collection-examples.md) for more detailed examples.
+
 ---
 
-## ⚠️ CRITICAL: Process Optimization and Isolation Architecture ⚠️
+## CRITICAL: Process Optimization and Isolation Architecture
 
 **THIS IS A SACRED ARCHITECTURAL PRINCIPLE. VIOLATING IT WILL BREAK THE SYSTEM.**
 
@@ -676,7 +440,9 @@ Runnable compiled = op.get();
 - **`IsolatedProcess`** - The ONLY class that should break expression embedding
 - **`isIsolationTarget()`** - Return true if computation requires isolation (e.g., native loops)
 
-### Use StateDictionary for Model Weights
+---
+
+## StateDictionary for Model Weights
 
 **Standard Pattern**: All model implementations should use `StateDictionary` for weight management.
 
@@ -709,7 +475,7 @@ public class ModelWeights extends StateDictionary {
 }
 ```
 
-### Generalize, Don't Duplicate
+---
 
 ## ABSOLUTELY NO CODE DUPLICATION - THIS IS NON-NEGOTIABLE
 
@@ -718,8 +484,6 @@ If you find yourself copying and pasting code, or writing nearly-identical logic
 **The rule**: If you have written more than 3-5 lines that are structurally similar to other code, you MUST refactor to eliminate the duplication BEFORE proceeding. Use helper methods, generics, factory functions, lambdas, or any appropriate abstraction.
 
 **No exceptions. No excuses. Refactor first, then proceed.**
-
----
 
 **Principle**: Extend and generalize existing code rather than creating model-specific copies.
 
@@ -825,16 +589,9 @@ mvn clean install -DskipTests
 - `mvn compile -q` (suppresses errors that may appear later)
 - Building individual modules (misses cross-module dependencies)
 
-The full `mvn clean install -DskipTests` command:
-- Compiles all main sources
-- Compiles all test sources
-- Packages all modules
-- Installs to local repository
-- Verifies all inter-module dependencies
-
 **Only after this command succeeds** should you report that the build is working.
 
-### Considering something completed
+### Considering Something Completed
 
 Sometimes you may encounter a summary of earlier work. That summary may indicate that there are other things to do.
 If this happens, that means YOU ARE EXPECTED TO DO THOSE THINGS.
@@ -940,15 +697,12 @@ private PackedCollection<?> getLayerWeight(StateDictionary dict, int layer, Stri
 ### Building Transformer Layers
 
 ```java
-// Generalize existing methods with optional parameters
 Model transformer = new Model(shape(dim));
 
 for (int i = 0; i < layerCount; i++) {
-    // Load weights
     PackedCollection<?> wq = getLayerWeight(stateDict, i, "self_attn.q_proj.weight");
     // ...
 
-    // Use generalized attention method
     transformer.add(attention(
         heads, kvHeads, headSize,
         wq, wk, wv, wo,
@@ -963,40 +717,6 @@ for (int i = 0; i < layerCount; i++) {
 
 ## Testing
 
-### Running Tests
-
-**⚠️ IMPORTANT: Use the MCP test runner tool, NOT bash commands!**
-
-See the critical section at the top of this document. The bash commands below are for **reference only** to understand what the MCP tool does internally.
-
-```
-# Use MCP tool - this is what you should actually do:
-mcp__ar-test-runner__start_test_run
-  module: "ml"
-  profile: "pipeline"  # Optional: sets AR_TEST_PROFILE
-
-# Check status:
-mcp__ar-test-runner__get_run_status
-  run_id: "<id from start_test_run>"
-
-# Get failures:
-mcp__ar-test-runner__get_run_failures
-  run_id: "<id>"
-```
-
-**Reference only** - the MCP tool runs these internally:
-```bash
-# Single module (DO NOT RUN DIRECTLY - use MCP tool)
-export AR_HARDWARE_LIBS=/tmp/ar_libs/ && \
-export AR_HARDWARE_DRIVER=native && \
-mvn test -pl ml
-
-# With profile (DO NOT RUN DIRECTLY - use MCP tool)
-export AR_HARDWARE_LIBS=/tmp/ar_libs/ && \
-export AR_HARDWARE_DRIVER=native && \
-mvn test -pl ml -DAR_TEST_PROFILE=pipeline
-```
-
 ### Test Organization
 
 - **Unit tests**: Test individual components in isolation
@@ -1008,7 +728,6 @@ mvn test -pl ml -DAR_TEST_PROFILE=pipeline
 
 **IMPORTANT**: Use `Console` and `OutputFeatures` (from `ar-io` module) to log test output to files for later review.
 
-**Pattern**:
 ```java
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
@@ -1017,37 +736,24 @@ import org.almostrealism.io.OutputFeatures;
 public class MyTest implements ConsoleFeatures {
     @Test
     public void myTest() throws Exception {
-        // Set up file logging BEFORE any output
         String logFile = "/workspace/project/common/<module>/test_output/my_test_results.txt";
         Console.root().addListener(OutputFeatures.fileOutput(logFile));
 
-        // Use Console methods instead of System.err/System.out
         log("=== My Test ===");
         log("Result: " + someValue);
-
-        // Output goes to BOTH console AND file
     }
 }
 ```
-
-**Benefits**:
-- Test output is saved to files for later review
-- No need to capture stdout/stderr with bash redirects
-- Output is available even if test crashes
-- Easy to compare outputs across multiple test runs
 
 **Best Practices**:
 - Create test_output directories in each module for test logs
 - Use descriptive file names: `<TestName>_results.txt`
 - Add file logging setup at the START of each test method
 - Use `log()` instead of `System.err.println()` for important results
-- Keep log files in gitignore (test outputs are transient)
 
 ---
 
 ## Module Overview
-
-Quick reference for what each module provides:
 
 ### Foundation & Core
 | Module | Purpose | Key Classes |
