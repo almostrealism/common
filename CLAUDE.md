@@ -26,9 +26,14 @@
 **EVERY TIME you are about to:**
 - Implement a feature -> SEARCH ar-docs first
 - Fix a bug -> SEARCH ar-docs first
+- **Investigate a CI/test failure** -> SEARCH ar-docs first
+- **Debug any issue** -> SEARCH ar-docs first
+- **Run git commands to understand changes** -> SEARCH ar-docs first
 - Answer a question about architecture -> SEARCH ar-docs first
 - Modify existing code -> SEARCH ar-docs first
 - Make ANY claim about the codebase -> SEARCH ar-docs first
+
+**"Investigation" and "debugging" ARE actions.** Running `git log`, `git diff`, reading test files, or exploring code changes are NOT exempt from this rule. You must understand the component architecture BEFORE looking at what changed.
 
 **If ar-docs doesn't have the information you need:**
 1. READ the actual source code thoroughly
@@ -38,6 +43,49 @@
 **This rule exists because:** Claude repeatedly makes assumptions, writes incorrect code, and wastes the developer's time. The ar-docs MCP contains authoritative documentation. USE IT.
 
 See [docs/internals/ar-docs-examples.md](docs/internals/ar-docs-examples.md) for detailed wrong/right examples.
+
+---
+
+## MECHANICAL GATE: AR-DOCS IN FIRST RESPONSE
+
+**Your first response to any task MUST include ar-docs search results before any other tool calls.**
+
+This is a mechanical requirement, not a judgment call. If your first tool call is `git log`, `git diff`, `Read`, `Grep`, or any tool other than an ar-docs MCP tool, you are violating this rule.
+
+**Correct first response pattern:**
+```
+1. mcp__ar-docs__search_ar_docs query:"<component/test/feature name>"
+2. mcp__ar-docs__read_ar_module module:"<relevant module>"
+3. THEN git commands, file reads, etc.
+```
+
+**Why this is mechanical:** Judgment-based rules ("search ar-docs when relevant") fail because Claude always thinks the current task is an exception. Making it mechanical removes ambiguity.
+
+---
+
+## DEBUGGING PROTOCOL: AR-DOCS FIRST, THEN INVESTIGATE
+
+**When a user reports a CI failure, test failure, or bug:**
+
+1. **FIRST**: Extract component/test names from the error message
+2. **SECOND**: Search ar-docs for those components: `mcp__ar-docs__search_ar_docs query:"<component name>"`
+3. **THIRD**: Read the relevant module documentation: `mcp__ar-docs__read_ar_module module:"<module>"`
+4. **FOURTH**: NOW you may run git commands, read files, investigate changes
+
+**Example - CI failure in OobleckComponentTests:**
+```
+WRONG ORDER:
+1. git log to see what changed  <- VIOLATION
+2. git diff to see the changes  <- VIOLATION
+3. Read the test file           <- VIOLATION
+
+CORRECT ORDER:
+1. mcp__ar-docs__search_ar_docs query:"Oobleck decoder block"
+2. mcp__ar-docs__read_ar_module module:"ml"
+3. NOW: git log, git diff, Read test file
+```
+
+**The reason for this order:** You cannot effectively investigate changes if you don't understand what the component is supposed to do. Understanding architecture first prevents wasted effort chasing red herrings.
 
 ---
 

@@ -23,7 +23,6 @@ import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.collect.WeightedSumDeltaExpression;
 import io.almostrealism.compute.Process;
-import io.almostrealism.compute.ProcessContext;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.AlgebraFeatures;
 import org.almostrealism.collect.CollectionProducer;
@@ -69,62 +68,12 @@ import java.util.List;
  *     );
  * }</pre>
  *
- * <h2>Process Isolation Threshold</h2>
- * <p>
- * This computation implements {@link #isIsolationTarget(ProcessContext)} to control when
- * it should be isolated into a separate kernel with native loops vs embedded into the
- * parent expression tree. The threshold is set to {@value #ISOLATION_GROUP_SIZE_THRESHOLD}
- * elements in the input group.
- * </p>
- *
- * <p><b>Important:</b> Isolation involves a tradeoff between compilation time and runtime performance:</p>
- * <ul>
- *   <li><b>Compilation time:</b> Isolation dramatically reduces compilation time (e.g., 10x faster
- *       at group size 64) by avoiding construction of large expression trees</li>
- *   <li><b>Runtime overhead:</b> Isolation adds 22-45% runtime overhead per iteration due to
- *       kernel dispatch overhead</li>
- * </ul>
- *
- * <p>
- * Empirical testing (see {@code WeightedSumIsolationRuntimeTest}) measured both compilation
- * and execution time across group sizes 8-2048 with 100-1000 warmup iterations and 1000
- * measurement iterations. Key findings:
- * </p>
- * <table border="1">
- *   <caption>Break-even analysis for isolation</caption>
- *   <tr><th>Group Size</th><th>Break-even Iterations</th><th>Winner at 10K</th><th>Winner at 100K</th></tr>
- *   <tr><td>64</td><td>~2,200</td><td>No Isolation</td><td>No Isolation</td></tr>
- *   <tr><td>256</td><td>~6,100</td><td>No Isolation</td><td>No Isolation</td></tr>
- *   <tr><td>1024</td><td>~13,000</td><td>Isolation</td><td>No Isolation</td></tr>
- *   <tr><td>2048</td><td>~32,800</td><td>Isolation</td><td>No Isolation</td></tr>
- * </table>
- *
- * <p>
- * For typical training workloads (10K-100K iterations over the lifetime of an application),
- * the data shows that <b>no isolation is better for all group sizes up to 2048</b>. The
- * threshold of 4096 ensures isolation only triggers for exceptionally large reductions where
- * compilation time would otherwise be prohibitive, while avoiding the runtime penalty for
- * common use cases.
- * </p>
- *
- * <p>
- * <b>Do not lower this threshold</b> without re-running the empirical analysis. The intuition
- * that "faster compilation = better" is incorrect for long-running applications where
- * compilation happens once but execution happens many times.
- * </p>
- *
  * @author  Michael Murray
  * @see org.almostrealism.algebra.AlgebraFeatures#weightedSum
  * @see org.almostrealism.algebra.MatrixFeatures#matmul
  */
 public class WeightedSumComputation
 		extends TraversableExpressionComputation {
-
-	/**
-	 * Minimum input group size (total elements) before isolation is triggered.
-	 * See class javadoc for empirical justification of this threshold.
-	 */
-	public static final int ISOLATION_GROUP_SIZE_THRESHOLD = 4096;
 
 	private final TraversalPolicy resultShape;
 	private final TraversalPolicy inputPositions;
@@ -258,19 +207,4 @@ public class WeightedSumComputation
 		return super.delta(target);
 	}
 
-	/**
-	 * Determines whether this computation should be isolated into a separate kernel.
-	 *
-	 * <p>
-	 * Isolation is triggered when the input group size exceeds {@link #ISOLATION_GROUP_SIZE_THRESHOLD}.
-	 * See the class javadoc for detailed empirical analysis of the compilation vs runtime tradeoff.
-	 * </p>
-	 *
-	 * @param context  the process context
-	 * @return {@code true} if the input group size exceeds the threshold
-	 */
-	@Override
-	public boolean isIsolationTarget(ProcessContext context) {
-		return inputGroupShape.getTotalSize() >= ISOLATION_GROUP_SIZE_THRESHOLD;
-	}
 }
