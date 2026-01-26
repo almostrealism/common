@@ -157,6 +157,16 @@
 			<version>0.66.19</version>
 		</dependency>
 
+		<!-- Slack SDK for bot integration -->
+		<dependency>
+			<groupId>com.slack.api</groupId>
+			<artifactId>slack-api-client</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>com.slack.api</groupId>
+			<artifactId>bolt-socket-mode</artifactId>
+		</dependency>
+
 		<dependency>
 			<groupId>junit</groupId>
 			<artifactId>junit</artifactId>

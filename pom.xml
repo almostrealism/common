@@ -199,6 +199,18 @@
 				<version>1.11.289</version>
 			</dependency>
 
+			<!-- Slack SDK -->
+			<dependency>
+				<groupId>com.slack.api</groupId>
+				<artifactId>slack-api-client</artifactId>
+				<version>1.46.0</version>
+			</dependency>
+			<dependency>
+				<groupId>com.slack.api</groupId>
+				<artifactId>bolt-socket-mode</artifactId>
+				<version>1.46.0</version>
+			</dependency>
+
 			<dependency>
 				<groupId>junit</groupId>
 				<artifactId>junit</artifactId>
