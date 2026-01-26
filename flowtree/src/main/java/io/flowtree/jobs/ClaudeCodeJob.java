@@ -253,6 +253,11 @@ public class ClaudeCodeJob extends GitManagedJob {
     }
 
     @Override
+    protected void populateEventDetails(JobCompletionEvent event) {
+        event.withClaudeCodeInfo(prompt, sessionId, exitCode);
+    }
+
+    @Override
     protected String getCommitMessage() {
         StringBuilder msg = new StringBuilder();
         msg.append("Claude Code: ");
@@ -361,6 +366,8 @@ public class ClaudeCodeJob extends GitManagedJob {
         private double maxBudgetUsd = 10.0;
         private String targetBranch;
         private boolean pushToOrigin = true;
+        private String workstreamId;
+        private JobCompletionListener completionListener;
 
         /**
          * Default constructor for deserialization.
@@ -465,6 +472,30 @@ public class ClaudeCodeJob extends GitManagedJob {
             set("push", String.valueOf(pushToOrigin));
         }
 
+        public String getWorkstreamId() {
+            return workstreamId;
+        }
+
+        /**
+         * Sets the workstream ID for jobs created by this factory.
+         * Used for routing completion events to the correct Slack channel.
+         *
+         * @param workstreamId the workstream identifier
+         */
+        public void setWorkstreamId(String workstreamId) {
+            this.workstreamId = workstreamId;
+            set("workstream", base64Encode(workstreamId));
+        }
+
+        /**
+         * Sets a completion listener for jobs created by this factory.
+         *
+         * @param listener the listener to notify on job completion
+         */
+        public void setCompletionListener(JobCompletionListener listener) {
+            this.completionListener = listener;
+        }
+
         @Override
         public Job nextJob() {
             List<String> p = getPrompts();
@@ -480,6 +511,14 @@ public class ClaudeCodeJob extends GitManagedJob {
             if (targetBranch != null) {
                 job.setTargetBranch(targetBranch);
                 job.setPushToOrigin(pushToOrigin);
+            }
+
+            // Workstream and listener settings
+            if (workstreamId != null) {
+                job.setWorkstreamId(workstreamId);
+            }
+            if (completionListener != null) {
+                job.setCompletionListener(completionListener);
             }
 
             return job;
@@ -519,6 +558,9 @@ public class ClaudeCodeJob extends GitManagedJob {
                     break;
                 case "push":
                     this.pushToOrigin = Boolean.parseBoolean(value);
+                    break;
+                case "workstream":
+                    this.workstreamId = base64Decode(value);
                     break;
             }
         }

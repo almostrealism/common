@@ -33,9 +33,9 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Consumer;
 import java.util.regex.Pattern;
-import java.util.stream.Collectors;
 
 /**
  * Abstract base class for jobs that manage their changes via git.
@@ -112,6 +112,28 @@ public abstract class GitManagedJob implements Job {
         "Extensions/**", "*.cl", "*.metal"
     ));
 
+    /** Global list of completion listeners. */
+    private static final List<JobCompletionListener> completionListeners = new CopyOnWriteArrayList<>();
+
+    /**
+     * Registers a global listener for job completion events.
+     * Listeners are notified when any GitManagedJob completes.
+     *
+     * @param listener the listener to register
+     */
+    public static void addCompletionListener(JobCompletionListener listener) {
+        completionListeners.add(listener);
+    }
+
+    /**
+     * Removes a previously registered completion listener.
+     *
+     * @param listener the listener to remove
+     */
+    public static void removeCompletionListener(JobCompletionListener listener) {
+        completionListeners.remove(listener);
+    }
+
     private String taskId;
     private String targetBranch;
     private String workingDirectory;
@@ -130,6 +152,9 @@ public abstract class GitManagedJob implements Job {
 
     private Consumer<JobOutput> outputConsumer;
     private final CompletableFuture<Void> future = new CompletableFuture<>();
+
+    private String workstreamId;
+    private JobCompletionListener instanceListener;
 
     /**
      * Default constructor for deserialization.
@@ -165,7 +190,12 @@ public abstract class GitManagedJob implements Job {
 
     @Override
     public final void run() {
+        Exception error = null;
+
         try {
+            // Fire started event
+            fireJobStarted();
+
             // Capture original branch before work begins
             if (targetBranch != null) {
                 originalBranch = getCurrentBranch();
@@ -182,9 +212,86 @@ public abstract class GitManagedJob implements Job {
         } catch (Exception e) {
             System.err.println("[GitManagedJob] Error: " + e.getMessage());
             e.printStackTrace();
+            error = e;
         } finally {
+            // Fire completion event
+            fireJobCompleted(error);
             future.complete(null);
         }
+    }
+
+    /**
+     * Fires the job started event to all registered listeners.
+     */
+    protected void fireJobStarted() {
+        JobCompletionEvent event = JobCompletionEvent.started(
+            taskId, workstreamId, getTaskString()
+        );
+        event.withGitInfo(targetBranch, null, null, null, false);
+        populateEventDetails(event);
+
+        for (JobCompletionListener listener : completionListeners) {
+            try {
+                listener.onJobStarted(event);
+            } catch (Exception e) {
+                System.err.println("[GitManagedJob] Listener error: " + e.getMessage());
+            }
+        }
+
+        if (instanceListener != null) {
+            try {
+                instanceListener.onJobStarted(event);
+            } catch (Exception e) {
+                System.err.println("[GitManagedJob] Instance listener error: " + e.getMessage());
+            }
+        }
+    }
+
+    /**
+     * Fires the job completed event to all registered listeners.
+     */
+    protected void fireJobCompleted(Exception error) {
+        JobCompletionEvent event;
+
+        if (error != null) {
+            event = JobCompletionEvent.failed(
+                taskId, workstreamId, getTaskString(),
+                error.getMessage(), error
+            );
+        } else {
+            event = JobCompletionEvent.success(
+                taskId, workstreamId, getTaskString()
+            );
+        }
+
+        event.withGitInfo(targetBranch, commitHash, stagedFiles, skippedFiles, gitOperationsSuccessful && pushToOrigin);
+        populateEventDetails(event);
+
+        for (JobCompletionListener listener : completionListeners) {
+            try {
+                listener.onJobCompleted(event);
+            } catch (Exception e) {
+                System.err.println("[GitManagedJob] Listener error: " + e.getMessage());
+            }
+        }
+
+        if (instanceListener != null) {
+            try {
+                instanceListener.onJobCompleted(event);
+            } catch (Exception e) {
+                System.err.println("[GitManagedJob] Instance listener error: " + e.getMessage());
+            }
+        }
+    }
+
+    /**
+     * Subclasses can override to add additional details to completion events.
+     *
+     * @param event the event to populate
+     */
+    protected void populateEventDetails(JobCompletionEvent event) {
+        // Default implementation does nothing
+        // Subclasses like ClaudeCodeJob override to add prompt, sessionId, etc.
     }
 
     /**
@@ -629,6 +736,30 @@ public abstract class GitManagedJob implements Job {
      */
     public void clearDefaultExcludedPatterns() {
         excludedPatterns.clear();
+    }
+
+    public String getWorkstreamId() {
+        return workstreamId;
+    }
+
+    /**
+     * Sets the workstream ID for this job.
+     * Used for routing completion events to the correct Slack channel.
+     *
+     * @param workstreamId the workstream identifier
+     */
+    public void setWorkstreamId(String workstreamId) {
+        this.workstreamId = workstreamId;
+    }
+
+    /**
+     * Sets an instance-level completion listener for this job.
+     * This listener is called in addition to any global listeners.
+     *
+     * @param listener the listener to notify on completion
+     */
+    public void setCompletionListener(JobCompletionListener listener) {
+        this.instanceListener = listener;
     }
 
     // ==================== Results ====================
