@@ -39,7 +39,7 @@ import java.util.function.Function;
  * @author Michael Murray
  * @see CollectionFeatures
  */
-public interface AggregationFeatures extends MathFeatures, ExpressionFeatures {
+public interface AggregationFeatures extends ArithmeticFeatures, ExpressionFeatures {
 	boolean enableIndexProjectionDeltaAlt = true;
 	boolean enableUnaryWeightedSum = false;
 	boolean enableSubdivide = enableUnaryWeightedSum;

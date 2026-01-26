@@ -39,7 +39,7 @@ import java.util.function.Function;
  * @see CollectionFeatures
  * @see TraversalPolicy
  */
-public interface SlicingFeatures extends CollectionTraversalFeatures {
+public interface SlicingFeatures extends CollectionCreationFeatures {
 
 	/**
 	 * Creates a subset computation that extracts a sub-collection using static integer positions.
@@ -324,8 +324,4 @@ public interface SlicingFeatures extends CollectionTraversalFeatures {
 			return result;
 		}, input);
 	}
-
-	// Required for internal use
-	CollectionProducerComputation zeros(TraversalPolicy shape);
-	CollectionProducer func(TraversalPolicy shape, Function<PackedCollection[], Function<Object[], PackedCollection>> function, Producer<?> argument, Producer<?>... args);
 }

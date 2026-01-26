@@ -19,22 +19,31 @@ package org.almostrealism.collect;
 import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.collect.Algebraic;
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.collect.UniformCollectionExpression;
+import io.almostrealism.expression.Absolute;
+import io.almostrealism.expression.Floor;
+import io.almostrealism.expression.Max;
+import io.almostrealism.expression.Min;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
+import io.almostrealism.util.DescribableParent;
 import org.almostrealism.algebra.computations.ScalarMatrixComputation;
+import org.almostrealism.calculus.DeltaFeatures;
 import org.almostrealism.collect.computations.ArithmeticSequenceComputation;
 import org.almostrealism.collect.computations.AtomicConstantComputation;
 import org.almostrealism.collect.computations.CollectionAddComputation;
 import org.almostrealism.collect.computations.CollectionExponentComputation;
+import org.almostrealism.collect.computations.CollectionExponentialComputation;
+import org.almostrealism.collect.computations.CollectionLogarithmComputation;
 import org.almostrealism.collect.computations.CollectionMinusComputation;
 import org.almostrealism.collect.computations.CollectionProductComputation;
 import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 import org.almostrealism.collect.computations.CollectionProviderProducer;
+import org.almostrealism.collect.computations.DefaultTraversableExpressionComputation;
 import org.almostrealism.collect.computations.EpsilonConstantComputation;
 import org.almostrealism.collect.computations.ReshapeProducer;
 import org.almostrealism.collect.computations.SingleConstantComputation;
-import io.almostrealism.util.DescribableParent;
 import org.almostrealism.io.Console;
 
 import java.util.List;
@@ -43,9 +52,10 @@ import java.util.function.Predicate;
 import java.util.stream.Stream;
 
 /**
- * Factory interface for basic arithmetic operations on collections.
+ * Factory interface for arithmetic and mathematical operations on collections.
  * This interface provides methods for addition, subtraction, multiplication,
- * division, negation, and exponentiation of collections.
+ * division, negation, exponentiation, as well as mathematical functions like
+ * exp, log, floor, min, max, abs, and sigmoid.
  *
  * @author Michael Murray
  * @see CollectionFeatures
@@ -80,23 +90,23 @@ public interface ArithmeticFeatures extends SlicingFeatures, ExpressionFeatures 
 		if (operands.stream().allMatch(o -> o instanceof SingleConstantComputation)) {
 			double value = operands.stream().mapToDouble(o -> ((SingleConstantComputation) o).getConstantValue()).sum();
 
-			return compute((shape, args) -> new SingleConstantComputation(shape, value),
-					args -> String.join(" + ", applyParentheses(args)),
+			return CollectionFeatures.getInstance().compute((shape, args) -> new SingleConstantComputation(shape, value),
+					args -> String.join(" + ", CollectionFeatures.getInstance().applyParentheses(args)),
 					operands.toArray(new Producer[0]));
 		}
 
-		return compute((shape, args) -> {
+		return CollectionFeatures.getInstance().compute((shape, args) -> {
 					Producer[] p = args.stream().filter(Predicate.not(Algebraic::isZero)).toArray(Producer[]::new);
 
 					if (p.length == 0) {
 						return zeros(shape);
 					} else if (p.length == 1) {
-						return c(reshape(shape, p[0]));
+						return CollectionFeatures.getInstance().c(reshape(shape, p[0]));
 					}
 
 					return new CollectionAddComputation(shape, p);
 				},
-				args -> String.join(" + ", applyParentheses(args)),
+				args -> String.join(" + ", CollectionFeatures.getInstance().applyParentheses(args)),
 				operands.toArray(new Producer[0]));
 	}
 
@@ -133,8 +143,8 @@ public interface ArithmeticFeatures extends SlicingFeatures, ExpressionFeatures 
 					" from a collection of size " + shape.getSize());
 		}
 
-		CollectionProducer difference = equals(a, b, new EpsilonConstantComputation(shape), add(a, minus(b)));
-		return (CollectionProducerComputation) equals(a, c(0.0), zeros(shape), difference);
+		CollectionProducer difference = CollectionFeatures.getInstance().equals(a, b, new EpsilonConstantComputation(shape), add(a, minus(b)));
+		return (CollectionProducerComputation) CollectionFeatures.getInstance().equals(a, c(0.0), zeros(shape), difference);
 	}
 
 	/**
@@ -161,9 +171,9 @@ public interface ArithmeticFeatures extends SlicingFeatures, ExpressionFeatures 
 			Evaluable<PackedCollection> shortCircuit) {
 		if (checkComputable(a) && checkComputable(b)) {
 			if (shape(a).getTotalSizeLong() == 1 && Algebraic.isIdentity(1, a)) {
-				return withShortCircuit(c(b), shortCircuit);
+				return withShortCircuit(CollectionFeatures.getInstance().c(b), shortCircuit);
 			} else if (shape(b).getTotalSizeLong() == 1 && Algebraic.isIdentity(1, b)) {
-				return withShortCircuit(c(a), shortCircuit);
+				return withShortCircuit(CollectionFeatures.getInstance().c(a), shortCircuit);
 			} else if (a instanceof SingleConstantComputation && b instanceof SingleConstantComputation) {
 				double value = ((SingleConstantComputation) a).getConstantValue() * ((SingleConstantComputation) b).getConstantValue();
 				return constant(outputShape(a, b), value);
@@ -180,14 +190,14 @@ public interface ArithmeticFeatures extends SlicingFeatures, ExpressionFeatures 
 			}
 		}
 
-		return withShortCircuit(compute((shape, args) -> {
+		return withShortCircuit(CollectionFeatures.getInstance().compute((shape, args) -> {
 					if (args.stream().anyMatch(Algebraic::isZero)) {
 						return zeros(shape);
 					}
 
 					return (Producer<PackedCollection>) new CollectionProductComputation(shape, args.toArray(new Producer[0]));
 				},
-				args -> String.join(" * ", applyParentheses(args)), a, b), shortCircuit);
+				args -> String.join(" * ", CollectionFeatures.getInstance().applyParentheses(args)), a, b), shortCircuit);
 	}
 
 	/**
@@ -201,7 +211,7 @@ public interface ArithmeticFeatures extends SlicingFeatures, ExpressionFeatures 
 		if (scale == 0) {
 			return zeros(shape(a));
 		} else if (scale == 1.0) {
-			return c(a);
+			return CollectionFeatures.getInstance().c(a);
 		} else if (scale == -1.0) {
 			return minus(a);
 		} else if (a instanceof ArithmeticSequenceComputation) {
@@ -232,10 +242,10 @@ public interface ArithmeticFeatures extends SlicingFeatures, ExpressionFeatures 
 			return zeros(outputShape(a, b));
 		}
 
-		CollectionProducer p = compute("divide",
+		CollectionProducer p = CollectionFeatures.getInstance().compute("divide",
 				shape -> (args) ->
 						quotient(shape, Stream.of(args).skip(1).toArray(io.almostrealism.collect.TraversableExpression[]::new)),
-				(List<String> args) -> String.join(" / ", applyParentheses(args)), a, b);
+				(List<String> args) -> String.join(" / ", CollectionFeatures.getInstance().applyParentheses(args)), a, b);
 
 		return CollectionProducerComputationBase.assignDeltaAlternate(
 				p, multiply(a, pow(b, c(-1.0))));
@@ -298,9 +308,9 @@ public interface ArithmeticFeatures extends SlicingFeatures, ExpressionFeatures 
 			console.warn("Computing power of constants");
 		}
 
-		return compute((shape, args) ->
+		return CollectionFeatures.getInstance().compute((shape, args) ->
 						new CollectionExponentComputation(largestTotalSize(args), args.get(0), args.get(1)),
-				args -> applyParentheses(args.get(0)) + " ^ " + applyParentheses(args.get(1)),
+				args -> CollectionFeatures.getInstance().applyParentheses(args.get(0)) + " ^ " + CollectionFeatures.getInstance().applyParentheses(args.get(1)),
 				base, exp);
 	}
 
@@ -312,6 +322,167 @@ public interface ArithmeticFeatures extends SlicingFeatures, ExpressionFeatures 
 	 */
 	default CollectionProducer sq(Producer<PackedCollection> value) {
 		return multiply(value, value);
+	}
+
+	/**
+	 * Computes the exponential (e^x) of each element in a collection.
+	 *
+	 * @param value the collection containing values
+	 * @return a {@link CollectionProducer} that generates the exponential values
+	 */
+	default CollectionProducer exp(Producer<PackedCollection> value) {
+		return new CollectionExponentialComputation(shape(value), false, value);
+	}
+
+	/**
+	 * Computes the exponential (e^x) of each element, ignoring zero values.
+	 *
+	 * @param value the collection containing values
+	 * @return a {@link CollectionProducer} that generates the exponential values
+	 */
+	default CollectionProducer expIgnoreZero(Producer<PackedCollection> value) {
+		return new CollectionExponentialComputation(shape(value), true, value);
+	}
+
+	/**
+	 * Computes the natural logarithm of each element in a collection.
+	 *
+	 * @param value the collection containing values
+	 * @return a {@link CollectionProducer} that generates the logarithm values
+	 */
+	default CollectionProducer log(Producer<PackedCollection> value) {
+		return new CollectionLogarithmComputation(shape(value), value);
+	}
+
+	/**
+	 * Computes the floor of each element in a collection.
+	 *
+	 * @param value the collection containing values
+	 * @return a {@link CollectionProducerComputationBase} that generates the floored values
+	 */
+	default CollectionProducerComputationBase floor(Producer<PackedCollection> value) {
+		TraversalPolicy shape = shape(value);
+		return new DefaultTraversableExpressionComputation(
+				"floor", shape,
+				args -> new UniformCollectionExpression("floor", shape, in -> Floor.of(in[0]), args[1]),
+				value);
+	}
+
+	/**
+	 * Computes the element-wise minimum of two collections.
+	 *
+	 * @param a the first collection
+	 * @param b the second collection
+	 * @return a {@link CollectionProducerComputationBase} that generates the minimum values
+	 */
+	default CollectionProducerComputationBase min(Producer<PackedCollection> a, Producer<PackedCollection> b) {
+		TraversalPolicy shape;
+
+		if (shape(a).getSize() == shape(b).getSize()) {
+			shape = shape(a);
+		} else {
+			shape = shape(1);
+		}
+
+		return new DefaultTraversableExpressionComputation("min", shape,
+				args -> new UniformCollectionExpression("min", shape,
+								in -> Min.of(in[0], in[1]), args[1], args[2]),
+				a, b);
+	}
+
+	/**
+	 * Computes the element-wise maximum of two collections.
+	 *
+	 * @param a the first collection
+	 * @param b the second collection
+	 * @return a {@link CollectionProducerComputationBase} that generates the maximum values
+	 */
+	default CollectionProducerComputationBase max(Producer<PackedCollection> a, Producer<PackedCollection> b) {
+		TraversalPolicy shape;
+
+		if (shape(a).getSize() == shape(b).getSize()) {
+			shape = shape(a);
+		} else {
+			shape = shape(1);
+		}
+
+		return new DefaultTraversableExpressionComputation("max", shape,
+				args -> new UniformCollectionExpression("max", shape,
+								in -> Max.of(in[0], in[1]), args[1], args[2]),
+				a, b);
+	}
+
+	/**
+	 * Applies the rectified linear unit (ReLU) function to each element.
+	 *
+	 * @param a the collection to rectify
+	 * @return a {@link CollectionProducer} that generates the rectified values
+	 */
+	default CollectionProducer rectify(Producer<PackedCollection> a) {
+		return CollectionFeatures.getInstance().compute("rectify", shape -> args ->
+						rectify(shape, args[1]), a);
+	}
+
+	/**
+	 * Computes the modulo operation element-wise.
+	 *
+	 * @param a the dividend collection
+	 * @param b the divisor collection
+	 * @return a {@link CollectionProducer} that generates the modulo values
+	 */
+	default CollectionProducer mod(Producer<PackedCollection> a, Producer<PackedCollection> b) {
+		return CollectionFeatures.getInstance().compute("mod", shape -> args ->
+						mod(shape, args[1], args[2]), a, b);
+	}
+
+	/**
+	 * Bounds each element between min and max values.
+	 *
+	 * @param a the collection to bound
+	 * @param min the minimum value
+	 * @param max the maximum value
+	 * @return a {@link CollectionProducerComputationBase} that generates the bounded values
+	 */
+	default CollectionProducerComputationBase bound(Producer<PackedCollection> a, double min, double max) {
+		return min(max(a, c(min)), c(max));
+	}
+
+	/**
+	 * Computes the absolute value of each element in a collection.
+	 *
+	 * @param value the collection containing values
+	 * @return a {@link CollectionProducer} that generates the absolute values
+	 */
+	default CollectionProducer abs(Producer<PackedCollection> value) {
+		TraversalPolicy shape = shape(value);
+		return new DefaultTraversableExpressionComputation(
+				"abs", shape, DeltaFeatures.MultiTermDeltaStrategy.NONE, true,
+				args -> new UniformCollectionExpression("abs", shape, in -> new Absolute(in[0]), args[1]),
+				value);
+	}
+
+	/**
+	 * Computes the magnitude (L2 norm) of a vector.
+	 *
+	 * @param vector the vector to compute magnitude for
+	 * @return a {@link CollectionProducer} that generates the magnitude
+	 */
+	default CollectionProducer magnitude(Producer<PackedCollection> vector) {
+		if (shape(vector).getSize() == 1) {
+			return abs(vector);
+		} else {
+			return sq(vector).sum().sqrt();
+		}
+	}
+
+	/**
+	 * Applies the sigmoid activation function to each element.
+	 *
+	 * @param input the collection to apply sigmoid to
+	 * @return a {@link CollectionProducer} that generates the sigmoid values
+	 */
+	default CollectionProducer sigmoid(Producer<PackedCollection> input) {
+		return divide(c(1.0), minus(input).exp().add(c(1.0)));
 	}
 
 	// Utility methods required for internal use
@@ -338,20 +509,4 @@ public interface ArithmeticFeatures extends SlicingFeatures, ExpressionFeatures 
 			return false;
 		}
 	}
-
-	// Required for internal use, to be overridden by CollectionFeatures
-	CollectionProducer equals(Producer<PackedCollection> a, Producer<PackedCollection> b,
-							  Producer<PackedCollection> trueValue, Producer<PackedCollection> falseValue);
-	CollectionProducer constant(TraversalPolicy shape, double value);
-	CollectionProducer c(double... values);
-	CollectionProducer c(TraversalPolicy shape, double... values);
-	CollectionProducer c(PackedCollection value);
-	CollectionProducer c(Producer producer);
-	CollectionProducerComputation zeros(TraversalPolicy shape);
-	CollectionProducer compute(String name, java.util.function.Function<TraversalPolicy, java.util.function.Function<io.almostrealism.collect.TraversableExpression[], io.almostrealism.collect.CollectionExpression>> expression,
-							   java.util.function.Function<List<String>, String> description, Producer<PackedCollection>... arguments);
-	<P extends Producer<PackedCollection>> CollectionProducer compute(java.util.function.BiFunction<TraversalPolicy, List<Producer<PackedCollection>>, P> processor,
-																	  java.util.function.Function<List<String>, String> description, Producer<PackedCollection>... arguments);
-	List<String> applyParentheses(List<String> args);
-	String applyParentheses(String value);
 }

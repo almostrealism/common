@@ -108,7 +108,7 @@ public interface CollectionTraversalFeatures extends ShapeFeatures {
 						(i, p) -> traverse(i, p),
 						(i, p) -> {
 							if (enableVariableRepeat || Countable.isFixedCount(p)) {
-								return repeat(i, p);
+								return CollectionFeatures.getInstance().repeat(i, p);
 							} else {
 								return p;
 							}
@@ -143,7 +143,4 @@ public interface CollectionTraversalFeatures extends ShapeFeatures {
 
 		return result;
 	}
-
-	// Required for internal use, to be overridden by CollectionFeatures
-	CollectionProducerComputation repeat(int repeat, Producer<?> collection);
 }

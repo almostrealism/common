@@ -40,7 +40,7 @@ public interface GradientFeatures extends ComparisonFeatures {
 		CollectionProducer result = MatrixFeatures.getInstance().attemptDelta(producer, target);
 		if (result != null) return result;
 
-		return c(producer).delta(target);
+		return CollectionFeatures.getInstance().c(producer).delta(target);
 	}
 
 	/**
@@ -77,6 +77,6 @@ public interface GradientFeatures extends ComparisonFeatures {
 	default CollectionProducer multiplyGradient(
 			CollectionProducer p, Producer<PackedCollection> gradient, int inSize) {
 		int outSize = shape(gradient).getTotalSize();
-		return p.multiply(c(gradient).reshape(outSize).traverse(1).repeat(inSize));
+		return p.multiply(CollectionFeatures.getInstance().c(gradient).reshape(outSize).traverse(1).repeat(inSize));
 	}
 }

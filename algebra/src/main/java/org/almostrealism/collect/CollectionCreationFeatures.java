@@ -57,7 +57,7 @@ import java.util.stream.IntStream;
  * @see PackedCollection
  * @see CollectionFeatures
  */
-public interface CollectionCreationFeatures extends ShapeFeatures {
+public interface CollectionCreationFeatures extends CollectionTraversalFeatures {
 
 	/**
 	 * Creates a {@link PackedCollection} from an array of double values.
@@ -236,7 +236,7 @@ public interface CollectionCreationFeatures extends ShapeFeatures {
 
 	default CollectionProducer c(TraversalPolicy shape, Evaluable<PackedCollection> ev) {
 		CollectionCreationFeatures self = this;
-		return c(new CollectionProducerBase<PackedCollection, CollectionProducer>() {
+		return CollectionFeatures.getInstance().c(new CollectionProducerBase<PackedCollection, CollectionProducer>() {
 			@Override
 			public Evaluable<PackedCollection> get() { return ev; }
 
@@ -288,7 +288,7 @@ public interface CollectionCreationFeatures extends ShapeFeatures {
 	 * @see #p(Object)
 	 */
 	default CollectionProducer cp(PackedCollection value) {
-		return c(p(value));
+		return CollectionFeatures.getInstance().c(p(value));
 	}
 
 	/**
@@ -417,9 +417,4 @@ public interface CollectionCreationFeatures extends ShapeFeatures {
 		double step = (end - start) / (steps - 1);
 		return integers(0, steps).multiply(c(step));
 	}
-
-	// Required for internal use, to be overridden by CollectionFeatures
-	CollectionProducer traverse(int axis, Producer<PackedCollection> producer);
-	Producer reshape(TraversalPolicy shape, Producer producer);
-	CollectionProducer c(Producer producer);
 }
