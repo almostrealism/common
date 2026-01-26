@@ -451,8 +451,59 @@ while (!stopped) {
 }
 ```
 
+## AudioLibrary System
+
+The `AudioLibrary` class provides centralized management for audio sample collections with asynchronous loading, analysis, and similarity computation.
+
+### Key-Identifier Architecture
+
+**CRITICAL**: The library uses a two-level identification scheme:
+
+| Concept | Method | Returns | Purpose |
+|---------|--------|---------|---------|
+| **Key** | `WaveDataProvider.getKey()` | File path | Display, file access |
+| **Identifier** | `WaveDataProvider.getIdentifier()` | MD5 hash | Content deduplication, storage |
+
+**Why two identifiers?**
+- Same audio content = same identifier, even at different file paths
+- Protobuf persistence stores only identifiers (content-based)
+- File paths are resolved at runtime via `library.find(identifier)`
+
+### Resolving Identifiers to File Paths
+
+When loading from protobuf, you need BOTH the data AND a file tree:
+
+```java
+// 1. Create library with file tree (directory of audio files)
+AudioLibrary library = new AudioLibrary(new File("/path/to/samples"), 44100);
+
+// 2. Load pre-computed data from protobuf
+AudioLibraryPersistence.loadLibrary(library, "/path/to/library");
+
+// 3. Resolve identifier to file path
+for (WaveDetails details : library.getAllDetails()) {
+    String identifier = details.getIdentifier();  // MD5 hash
+
+    WaveDataProvider provider = library.find(identifier);
+    if (provider != null) {
+        String filePath = provider.getKey();  // Actual file path!
+        System.out.println("File: " + filePath);
+    }
+}
+```
+
+### Internal Data Structures
+
+- `identifiers` map: key (file path) → identifier (MD5 hash)
+- `info` map: identifier → WaveDetails
+
+For detailed documentation, see [Audio Library Documentation](docs/AUDIO_LIBRARY.md).
+
+
 ## See Also
 
+- [Audio Library Documentation](docs/AUDIO_LIBRARY.md) - Detailed AudioLibrary system docs
+- [Compose Module](../compose/README.md) - Protobuf persistence, PrototypeDiscovery
 - [Graph Module](../graph/README.md) - Cell and temporal abstractions
 - [Time Module](../time/README.md) - Temporal processing
 - [Collect Module](../collect/README.md) - PackedCollection operations
