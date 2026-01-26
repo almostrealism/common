@@ -1,5 +1,5 @@
 /*
- * Copyright 2025 Michael Murray
+ * Copyright 2026 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -31,7 +31,7 @@ import org.almostrealism.ml.Tokenizer;
  *   <li>{@link Tokenizer} - text tokenization</li>
  *   <li>{@link AudioAttentionConditioner} - conditioning from token IDs</li>
  *   <li>{@link AutoEncoder} - audio encoding/decoding to/from latent space</li>
- *   <li>{@link DitModel} - diffusion transformer for latent generation</li>
+ *   <li>{@link DiffusionModel} - diffusion transformer for latent generation</li>
  * </ul>
  * <p>
  * Implementations can use different backends (ONNX, native, etc.) by providing
@@ -40,7 +40,7 @@ import org.almostrealism.ml.Tokenizer;
  * @see Tokenizer
  * @see AudioAttentionConditioner
  * @see AutoEncoder
- * @see DitModel
+ * @see DiffusionModel
  */
 public abstract class ConditionalAudioSystem implements Destroyable, CodeFeatures {
 
@@ -65,7 +65,7 @@ public abstract class ConditionalAudioSystem implements Destroyable, CodeFeature
 	private final Tokenizer tokenizer;
 	private final AudioAttentionConditioner conditioner;
 	private final AutoEncoder autoencoder;
-	private final DitModel ditModel;
+	private final DiffusionModel ditModel;
 
 	/**
 	 * Creates a ConditionalAudioSystem with the provided components.
@@ -130,7 +130,7 @@ public abstract class ConditionalAudioSystem implements Destroyable, CodeFeature
 	/**
 	 * Returns the diffusion transformer model.
 	 */
-	public DitModel getDitModel() { return ditModel; }
+	public DiffusionModel getDiffusionModel() { return ditModel; }
 
 	@Override
 	public void destroy() {

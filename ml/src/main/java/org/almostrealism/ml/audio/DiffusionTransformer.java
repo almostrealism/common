@@ -1,5 +1,5 @@
 /*
- * Copyright 2025 Michael Murray
+ * Copyright 2026 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -22,6 +22,7 @@ import io.almostrealism.profile.OperationProfileNode;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.Receptor;
 import org.almostrealism.hardware.Hardware;
+import org.almostrealism.layers.ProjectionFactory;
 import org.almostrealism.ml.StateDictionary;
 import org.almostrealism.model.Block;
 import org.almostrealism.model.CompiledModel;
@@ -33,7 +34,7 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 
-public class DiffusionTransformer implements DitModel, DiffusionTransformerFeatures {
+public class DiffusionTransformer implements DiffusionModel, DiffusionTransformerFeatures {
 	private static final int SAMPLE_SIZE = 524288;
 	private static final int DOWNSAMPLING_RATIO = 2048;
 
@@ -53,7 +54,7 @@ public class DiffusionTransformer implements DitModel, DiffusionTransformerFeatu
 
 	private final StateDictionary stateDictionary;
 	private final Set<String> unusedWeights;
-	private final Model model;
+	private Model model;
 
 	private OperationProfile profile;
 	private CompiledModel compiled;
@@ -102,8 +103,7 @@ public class DiffusionTransformer implements DitModel, DiffusionTransformerFeatu
 		if (captureAttentionScores) {
 			attentionScores = new HashMap<>();
 		}
-
-		this.model = buildModel();
+		// Model is built lazily in getModel() to allow subclass fields to initialize first
 	}
 
 	protected Model buildModel() {
@@ -116,7 +116,7 @@ public class DiffusionTransformer implements DitModel, DiffusionTransformerFeatu
 
 		// Add cross-attention condition input if needed
 		SequentialBlock condEmbed = null;
-		if (condTokenDim > 0) {
+		if (condTokenDim > 0 && condSeqLen > 0) {
 			PackedCollection condProjWeight1 = createWeight("model.model.to_cond_embed.0.weight", embedDim, condTokenDim);
 			PackedCollection condProjWeight2 = createWeight("model.model.to_cond_embed.2.weight", embedDim, embedDim);
 
@@ -298,7 +298,7 @@ public class DiffusionTransformer implements DitModel, DiffusionTransformerFeatu
 
 			Receptor<PackedCollection> attentionCapture = null;
 
-			if (attentionScores != null) {
+			if (attentionScores != null && hasCrossAttention) {
 				PackedCollection scores = new PackedCollection(shape(batchSize, numHeads, seqLen, condSeqLen));
 				attentionScores.put(i, scores);
 				attentionCapture = into(scores);
@@ -322,7 +322,7 @@ public class DiffusionTransformer implements DitModel, DiffusionTransformerFeatu
 					// Feed-forward weights
 					ffnPreNormWeight, ffnPreNormBias,
 					w1, w2, ffW1Bias, ffW2Bias,
-					attentionCapture
+					attentionCapture, getProjectionFactory()
 			));
 		}
 
@@ -347,7 +347,7 @@ public class DiffusionTransformer implements DitModel, DiffusionTransformerFeatu
 			}
 
 			long start = System.currentTimeMillis();
-			compiled = model.compile(false, profile);
+			compiled = getModel().compile(false, profile);
 			log("Compiled DiffusionTransformer in " + (System.currentTimeMillis() - start) + "ms");
 		}
 
@@ -371,6 +371,51 @@ public class DiffusionTransformer implements DitModel, DiffusionTransformerFeatu
 
 	public PackedCollection getPreTransformerState() { return preTransformerState; }
 	public PackedCollection getPostTransformerState() { return postTransformerState; }
+
+	protected void setPreTransformerState(PackedCollection state) { this.preTransformerState = state; }
+	protected void setPostTransformerState(PackedCollection state) { this.postTransformerState = state; }
+
+	// Protected getters for subclass access
+	protected int getIoChannels() { return ioChannels; }
+	protected int getEmbedDim() { return embedDim; }
+	protected int getDepth() { return depth; }
+	protected int getNumHeads() { return numHeads; }
+	protected int getPatchSize() { return patchSize; }
+	protected int getCondTokenDim() { return condTokenDim; }
+	protected int getGlobalCondDim() { return globalCondDim; }
+	protected int getAudioSeqLen() { return audioSeqLen; }
+	protected int getCondSeqLen() { return condSeqLen; }
+	protected int getBatchSize() { return batchSize; }
+	protected Map<Integer, PackedCollection> getAttentionScores() { return attentionScores; }
+
+	/**
+	 * Returns the model, building it lazily if not yet built.
+	 *
+	 * <p>The model is built lazily to allow subclass fields to be initialized
+	 * before buildModel() is called. This enables subclasses to customize
+	 * model building without resorting to workarounds like ThreadLocals.</p>
+	 *
+	 * @return The built model
+	 */
+	protected Model getModel() {
+		if (model == null) {
+			model = buildModel();
+		}
+		return model;
+	}
+
+	/**
+	 * Returns the projection factory to use when building transformer blocks.
+	 *
+	 * <p>Override this method to customize how projection layers are created.
+	 * For example, subclasses can return a LoRA-enabled factory to add adapters
+	 * to attention projections.</p>
+	 *
+	 * @return The projection factory (default is standard dense layers)
+	 */
+	public ProjectionFactory getProjectionFactory() {
+		return ProjectionFactory.dense();
+	}
 
 	@Override
 	public void destroy() {
