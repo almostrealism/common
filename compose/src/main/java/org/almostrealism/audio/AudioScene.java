@@ -917,12 +917,13 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 		PatternRenderCell renderCell = new PatternRenderCell(
 				patterns, ctx, channel, bufferSize, frameSupplier);
 
-		// Wrap the render cell in a CellList and apply effects
-		CellList cells = new CellList();
-		cells.add(renderCell);
+		// Apply effects to the render cell's output
+		CellList cells = efx.apply(channel, renderCell.getOutput(), getTotalDuration(), new OperationList());
 
-		// Apply effects - for real-time, we need to apply effects to the cell's output
-		return efx.apply(channel, renderCell.getOutput(), getTotalDuration(), new OperationList());
+		// Add the render cell as a requirement so it participates in the tick cycle
+		cells.addRequirement(renderCell);
+
+		return cells;
 	}
 
 	private void refreshPatternDestination(ChannelInfo channel, boolean clear) {
