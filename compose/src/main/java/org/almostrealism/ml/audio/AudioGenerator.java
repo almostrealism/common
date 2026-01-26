@@ -16,14 +16,12 @@
 
 package org.almostrealism.ml.audio;
 
-import org.almostrealism.audio.WavFile;
 import org.almostrealism.audio.data.WaveData;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.ml.StateDictionary;
 import org.almostrealism.ml.Tokenizer;
 
 import java.io.File;
-import java.io.IOException;
 import java.util.function.DoubleConsumer;
 
 /**
@@ -155,19 +153,29 @@ public class AudioGenerator extends ConditionalAudioSystem {
 		composer.addSource(cp(features));
 	}
 
-	public void generateAudio(String prompt, long seed, String outputPath) throws IOException {
+	/**
+	 * Generate audio and save to file.
+	 *
+	 * @param prompt Text prompt for conditioning
+	 * @param seed Random seed for noise generation
+	 * @param outputPath Path to save the WAV file
+	 */
+	public void generateAudio(String prompt, long seed, String outputPath) {
 		generateAudio(null, prompt, seed, outputPath);
 	}
 
 	/**
 	 * Generate audio from samples and save to file.
+	 *
+	 * @param position PackedCollection representing the position in latent space [composerDim], or null for pure generation
+	 * @param prompt Text prompt for conditioning
+	 * @param seed Random seed for noise generation
+	 * @param outputPath Path to save the WAV file
 	 */
 	public void generateAudio(PackedCollection position, String prompt,
-							  long seed, String outputPath) throws IOException {
-		double[][] audio = generateAudio(position, prompt, seed);
-		try (WavFile f = WavFile.newWavFile(new File(outputPath), 2, audio[0].length, 32, SAMPLE_RATE)) {
-			f.writeFrames(audio);
-		}
+							  long seed, String outputPath) {
+		WaveData waveData = generateAudio(position, prompt, seed);
+		waveData.save(new File(outputPath));
 	}
 
 	/**
@@ -178,9 +186,9 @@ public class AudioGenerator extends ConditionalAudioSystem {
 	 * @param position PackedCollection representing the position in latent space [composerDim]
 	 * @param prompt Text prompt for conditioning
 	 * @param seed Random seed for noise generation
-	 * @return Generated stereo audio
+	 * @return Generated audio as WaveData
 	 */
-	public double[][] generateAudio(PackedCollection position, String prompt, long seed) {
+	public WaveData generateAudio(PackedCollection position, String prompt, long seed) {
 		try {
 			return generateAudio(position, getTokenizer().encodeAsLong(prompt), seed);
 		} finally {
@@ -200,9 +208,9 @@ public class AudioGenerator extends ConditionalAudioSystem {
 	 * @param position PackedCollection representing the position in latent space [composerDim], or null for pure generation
 	 * @param tokenIds Tokenized prompt for conditioning
 	 * @param seed Random seed for noise generation
-	 * @return Generated stereo audio
+	 * @return Generated audio as WaveData
 	 */
-	public double[][] generateAudio(PackedCollection position, long[] tokenIds, long seed) {
+	public WaveData generateAudio(PackedCollection position, long[] tokenIds, long seed) {
 		try {
 			if (position == null) {
 				log("Generating audio with seed " + seed +
@@ -226,42 +234,17 @@ public class AudioGenerator extends ConditionalAudioSystem {
 			}
 
 			// 3. Run diffusion - DELEGATE TO AudioDiffusionGenerator - NO LOOP HERE
-			WaveData waveData;
 			if (interpolatedLatent == null) {
-				waveData = generator.generate(seed, crossAttnCond, globalCond);
+				return generator.generate(seed, crossAttnCond, globalCond);
 			} else {
-				waveData = generator.generateFrom(interpolatedLatent, strength, seed,
+				return generator.generateFrom(interpolatedLatent, strength, seed,
 						crossAttnCond, globalCond);
 			}
-
-			// 4. Convert WaveData to double[][] format
-			return convertToStereoArray(waveData);
 		} finally {
 			if (progressMonitor != null) {
 				progressMonitor.accept(1.0);
 			}
 		}
-	}
-
-	/**
-	 * Converts WaveData to the double[][] stereo format expected by callers.
-	 */
-	private double[][] convertToStereoArray(WaveData waveData) {
-		PackedCollection data = waveData.getData();
-		int totalSamples = (int) data.getMemLength();
-		int channelSamples = totalSamples / 2; // Stereo audio, 2 channels
-		int finalSamples = (int) (getAudioDuration() * SAMPLE_RATE);
-
-		// Ensure we don't exceed available samples
-		finalSamples = Math.min(finalSamples, channelSamples);
-
-		double[][] stereoAudio = new double[2][finalSamples];
-		for (int i = 0; i < finalSamples; i++) {
-			stereoAudio[0][i] = data.toDouble(i);
-			stereoAudio[1][i] = data.toDouble(i + channelSamples);
-		}
-
-		return stereoAudio;
 	}
 
 	/**
