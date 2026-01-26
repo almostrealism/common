@@ -17,8 +17,8 @@
 package org.almostrealism.ml.audio;
 
 import org.almostrealism.audio.WavFile;
+import org.almostrealism.audio.data.WaveData;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.ml.StateDictionary;
 import org.almostrealism.ml.Tokenizer;
 
@@ -32,8 +32,8 @@ import java.util.function.DoubleConsumer;
  * <p>This class extends {@link ConditionalAudioSystem} to provide complete audio generation
  * from text prompts, optionally incorporating sample-based initialization for style transfer.
  *
- * <p><b>This class does NOT own the sampling loop.</b> {@link DiffusionSampler} owns
- * the sampling loop.
+ * <p><b>This class does NOT own the sampling loop.</b> It delegates to
+ * {@link AudioDiffusionGenerator} which in turn delegates to {@link DiffusionSampler}.
  *
  * <p>To create an instance, you must provide:
  * <ul>
@@ -46,6 +46,7 @@ import java.util.function.DoubleConsumer;
  * @see Tokenizer
  * @see AudioAttentionConditioner
  * @see AutoEncoder
+ * @see AudioDiffusionGenerator
  * @see DiffusionSampler
  */
 public class AudioGenerator extends ConditionalAudioSystem {
@@ -54,7 +55,7 @@ public class AudioGenerator extends ConditionalAudioSystem {
 	private DoubleConsumer progressMonitor;
 
 	private final AudioComposer composer;
-	private final DiffusionSampler sampler;
+	private final AudioDiffusionGenerator generator;
 	private double strength;
 
 	/**
@@ -93,9 +94,10 @@ public class AudioGenerator extends ConditionalAudioSystem {
 		audioDurationSeconds = 10.0;
 		strength = 0.5;
 
-		// Create sampler with ping-pong strategy - IT OWNS THE LOOP
-		this.sampler = new DiffusionSampler(
+		// Delegate to AudioDiffusionGenerator with PingPong strategy
+		this.generator = new AudioDiffusionGenerator(
 				getDiffusionModel(),
+				getAutoencoder(),
 				new PingPongSamplingStrategy(),
 				NUM_STEPS,
 				DIT_X_SHAPE
@@ -110,7 +112,7 @@ public class AudioGenerator extends ConditionalAudioSystem {
 	public DoubleConsumer getProgressMonitor() { return progressMonitor; }
 	public void setProgressMonitor(DoubleConsumer monitor) {
 		this.progressMonitor = monitor;
-		sampler.setProgressCallback(monitor);
+		generator.getSampler().setProgressCallback(monitor);
 	}
 
 	/**
@@ -223,20 +225,17 @@ public class AudioGenerator extends ConditionalAudioSystem {
 				interpolatedLatent = composer.getInterpolatedLatent(cp(position)).evaluate();
 			}
 
-			// 3. Run diffusion - DELEGATE TO DiffusionSampler - NO LOOP HERE
-			PackedCollection finalLatent;
+			// 3. Run diffusion - DELEGATE TO AudioDiffusionGenerator - NO LOOP HERE
+			WaveData waveData;
 			if (interpolatedLatent == null) {
-				finalLatent = sampler.sample(seed, crossAttnCond, globalCond);
+				waveData = generator.generate(seed, crossAttnCond, globalCond);
 			} else {
-				finalLatent = sampler.sampleFrom(interpolatedLatent, strength, seed,
+				waveData = generator.generateFrom(interpolatedLatent, strength, seed,
 						crossAttnCond, globalCond);
 			}
 
-			// 4. Decode audio
-			long start = System.currentTimeMillis();
-			double[][] audio = decodeAudio(finalLatent.reshape(LATENT_DIMENSIONS, -1));
-			log((System.currentTimeMillis() - start) + "ms for autoencoder");
-			return audio;
+			// 4. Convert WaveData to double[][] format
+			return convertToStereoArray(waveData);
 		} finally {
 			if (progressMonitor != null) {
 				progressMonitor.accept(1.0);
@@ -244,18 +243,22 @@ public class AudioGenerator extends ConditionalAudioSystem {
 		}
 	}
 
-	private double[][] decodeAudio(PackedCollection latent) {
-		PackedCollection result = getAutoencoder().decode(cp(latent)).evaluate();
-
-		double[] data = result.toArray();
-		int totalSamples = data.length;
+	/**
+	 * Converts WaveData to the double[][] stereo format expected by callers.
+	 */
+	private double[][] convertToStereoArray(WaveData waveData) {
+		PackedCollection data = waveData.getData();
+		int totalSamples = (int) data.getMemLength();
 		int channelSamples = totalSamples / 2; // Stereo audio, 2 channels
 		int finalSamples = (int) (getAudioDuration() * SAMPLE_RATE);
 
+		// Ensure we don't exceed available samples
+		finalSamples = Math.min(finalSamples, channelSamples);
+
 		double[][] stereoAudio = new double[2][finalSamples];
 		for (int i = 0; i < finalSamples; i++) {
-			stereoAudio[0][i] = data[i];
-			stereoAudio[1][i] = data[i + channelSamples];
+			stereoAudio[0][i] = data.toDouble(i);
+			stereoAudio[1][i] = data.toDouble(i + channelSamples);
 		}
 
 		return stereoAudio;
@@ -267,6 +270,15 @@ public class AudioGenerator extends ConditionalAudioSystem {
 	 * @return The DiffusionSampler
 	 */
 	public DiffusionSampler getSampler() {
-		return sampler;
+		return generator.getSampler();
+	}
+
+	/**
+	 * Returns the underlying AudioDiffusionGenerator.
+	 *
+	 * @return The AudioDiffusionGenerator
+	 */
+	public AudioDiffusionGenerator getGenerator() {
+		return generator;
 	}
 }
