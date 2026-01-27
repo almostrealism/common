@@ -2,10 +2,37 @@
 
 ## Implementation Status
 
-> **STATUS: IMPLEMENTED** (January 2025)
+> **STATUS: BASELINE VALIDATED, REAL-TIME PATH UNVALIDATED** (January 2026)
 >
-> All four phases of this proposal have been implemented. See the Implementation Summary section
-> at the end of this document for details on created files and actual implementation.
+> Code was written for all four phases, but **no proof exists that real-time rendering works**.
+>
+> **What works:**
+> - The traditional (non-real-time) AudioScene rendering pipeline **does produce audio**.
+>   This is confirmed by both `AudioSceneOptimizer` / `StableDurationHealthComputation` AND
+>   the standalone `AudioSceneBaselineTest` (3/3 tests passing).
+> - **`AudioSceneBaselineTest`** proves AudioScene generates audio without `AudioSceneOptimizer`:
+>   - Seed 42: 487 pattern elements (140 melodic), health score=0.0195, 176,400 frames
+>   - Uses `StableDurationHealthComputation` with `scene.runner(health.getOutput())`
+>
+> **Critical architectural finding:**
+> - `scene.getCells()` stores ALL pattern rendering in `AudioScene.this.setup` (not in cells)
+> - `scene.runner()` wraps both `AudioScene.this.setup()` and `cells.setup()` together
+> - The `TemporalRunner` path (compile setup and tick separately) is required; `sec()` produces silence
+>
+> **What doesn't work:**
+> 1. **Real-time rendering is unvalidated** - No test has demonstrated that the real-time code
+>    path (`runnerRealTime()`, `PatternRenderCell`, `BatchCell`) produces correct audio output.
+> 2. **Performance is 4-10x too slow** - 100-213ms per buffer vs 23ms required (0.1-0.2x real-time)
+> 3. **No hardware acceleration** - Operations run in slow interpreted mode ("OperationList was not compiled")
+> 4. **No valid comparison test exists** - Cannot verify real-time matches offline output
+>
+> **What is needed next:**
+> - Compare traditional output (baseline now exists) to real-time output
+> - Fix real-time output pipeline (Gap 2 in Implementation Gaps)
+> - Enable hardware acceleration (Gap 3)
+>
+> See the [Implementation Gaps](#implementation-gaps) section for detailed analysis.
+> The original implementation summary is preserved below for reference.
 
 ## Executive Summary
 
@@ -807,9 +834,105 @@ Add the following test cases:
 
 ---
 
-## Implementation Summary
+## Implementation Gaps
 
-> **Completed**: January 2025
+> **Investigation Date**: January 2025
+>
+> The following issues were discovered through integration testing with `AudioSceneRealTimeTest`.
+> **Important context**: The traditional AudioScene pipeline (via `AudioSceneOptimizer` /
+> `StableDurationHealthComputation`) **does produce audio**. The failures below reflect
+> inadequate test construction and unvalidated real-time code paths, not a broken AudioScene.
+
+### Gap 1: Test Scene Construction Does Not Produce Audio
+
+**Evidence from `traditionalRenderBaseline` test:**
+```
+Total frames: 88199 (correct count)
+Duration: 2.00 seconds (correct)
+Max amplitude: 0.000000  <-- ALL ZEROS
+```
+
+**Root Cause**: The test's `createTestScene()` method constructs a minimal scene with only
+2 channels and 2 patterns, assigns a single random genome, and hopes that the stochastic
+pattern element generation produces notes. This is unreliable because:
+- `PatternElementFactory.apply()` returns `Optional.empty()` when `noteSelection + bias < 0`
+- Default `bias` is -0.2 for most choices; combined with `seedBiasAdjustment`, many genomes
+  produce zero elements
+- The test tries only ONE random genome instead of searching for a genome that produces audio
+- The `AudioSceneOptimizer` succeeds because it evaluates many genomes over many iterations
+
+**What is needed**: A baseline test that tries multiple genomes (10+) with a properly
+configured scene (more channels, more pattern layers, appropriate choices) to reliably
+find a configuration that produces audio. See [REALTIME_TEST_PLAN.md](./REALTIME_TEST_PLAN.md)
+for the proposed baseline test.
+
+### Gap 2: Real-Time Output Pipeline Not Connected
+
+**Evidence from `multipleBufferCycles` test:**
+```
+Expected frames: 88200 (2 seconds at 44.1kHz)
+Actual frames: 85
+```
+
+**Root Cause**: The `WaveOutput` is not properly receiving frames from the real-time
+rendering pipeline. The tick/push cycle doesn't propagate audio to the output. This is
+a real implementation gap in the real-time code path.
+
+### Gap 3: Performance is 4-10x Too Slow
+
+**Evidence:**
+```
+Required buffer time: 23.22 ms
+Avg render time: 100.78 - 213.40 ms
+Real-time ratio: 0.11x - 0.23x
+Buffer overruns: 100%
+```
+
+**Root Cause**: Operations are not being hardware-accelerated. Log shows:
+```
+WARN: OperationList: OperationList was not compiled (uniform = false)
+```
+
+**Architectural Issues**:
+1. **No use of `CollectionProducer` pattern** - The implementation uses Java loops and
+   `PackedCollection.setMem()` instead of hardware-accelerated `Producer` operations
+2. **Operations created per-tick instead of compiled once** - Each tick creates new
+   operations rather than compiling a reusable operation during setup
+3. **No integration with CellList compilation** - The pattern rendering bypasses the
+   normal Cell compilation path that enables hardware acceleration
+
+### Gap 4: Code Duplication
+
+The implementation duplicates functionality rather than extending existing patterns:
+
+1. **`PatternRenderCell`** duplicates `Cell` patterns instead of using `CellList.map()`
+2. **`BatchCell`** duplicates timing logic instead of using `TemporalRunner` batch support
+3. **`sum(startFrame, frameCount)` overloads** duplicate the entire rendering logic instead
+   of parameterizing the existing `sum()` method
+
+### Gap 5: No Valid Comparison Test
+
+A comparison test (`compareTraditionalAndRealTime`) exists but cannot produce meaningful
+results because:
+1. The test scene does not reliably produce audio (Gap 1)
+2. The real-time output pipeline is not connected (Gap 2)
+3. No baseline exists to compare against
+
+### Path Forward
+
+1. **Create a baseline test** that proves AudioScene produces audio without `AudioSceneOptimizer`
+   (see [REALTIME_TEST_PLAN.md](./REALTIME_TEST_PLAN.md) for the proposed test)
+2. **Fix the real-time output pipeline** (Gap 2) so frames reach `WaveOutput`
+3. **Enable hardware acceleration** (Gap 3) by using `CollectionProducer` operations
+4. **Eliminate code duplication** (Gap 4) by integrating with `CellList` infrastructure
+5. **Build comparison test** once baseline and real-time both produce audio
+
+---
+
+## Implementation Summary (Original - For Reference)
+
+> **Code Written**: January 2025
+> **Status**: Code exists but does not function correctly
 
 ### Files Created
 

@@ -2,12 +2,44 @@
 
 ## Implementation Status
 
-> **STATUS: PARTIALLY IMPLEMENTED** (January 2025)
+> **STATUS: BASELINE TEST PASSING** (January 2026)
 >
-> The core implementation is complete. The following tests have been created:
-> - `RealTimeRenderingTest.java` (6 tests, all passing)
+> **The baseline test is now implemented and passing.** `AudioSceneBaselineTest` demonstrates
+> that `AudioScene` produces non-silent audio through the traditional pipeline without
+> `AudioSceneOptimizer`. All 3 test methods pass.
 >
-> Additional integration tests from this plan can be added as needed.
+> ### Baseline Test Results (January 2026)
+>
+> | Test | Result | Details |
+> |------|--------|---------|
+> | `baselineAudioGeneration` | **PASS** | Seed 42: 487 elements, health score=0.0195, 176,400 frames |
+> | `baselineHealthComputation` | **PASS** | Best seed 56 (615 elements), health score=0.0195, 176,400 stable frames |
+> | `baselineMelodicContent` | **PASS** | Seed 42: 140 melodic elements |
+>
+> ### Key Findings During Implementation
+>
+> 1. **`scene.runner()` vs `scene.getCells()`**: `getCells()` stores pattern rendering in
+>    `AudioScene.this.setup`, NOT in the returned cells. Using `getCells()` directly and calling
+>    `cells.sec()` only runs `cells.setup()`, missing all pattern rendering. Must use
+>    `scene.runner()` which wraps both setup operations into a `TemporalCellular`.
+>
+> 2. **`sec()` vs `TemporalRunner`**: Even with `scene.runner()`, using `sec()` to compile
+>    setup+tick into a single `OperationList` still produced silence. The working path is
+>    `StableDurationHealthComputation.computeHealth()`, which uses `TemporalRunner` internally
+>    (compiling setup and tick separately via `runner.get()` and `runner.getContinue()`).
+>
+> 3. **`StableDurationHealthComputation` flow**: The correct pipeline is:
+>    - Create `StableDurationHealthComputation(channelCount)` which builds
+>      `MultiChannelAudioOutput` with master WaveOutput, per-channel stems, and AudioMeter measures
+>    - Call `scene.runner(health.getOutput())` to get a `TemporalCellular`
+>    - Call `health.setTarget(runner)` to wrap it in a `TemporalRunner`
+>    - Call `health.computeHealth()` to execute the full setup+tick cycle
+>
+> ### What Is Needed Next
+>
+> 1. **Compare traditional output to real-time output** - Baseline now exists for comparison
+> 2. **Real-time code path validation** - `runnerRealTime()` output pipeline not connected
+> 3. **Performance optimization** - Operations need hardware acceleration
 
 ## Executive Summary
 
@@ -18,10 +50,11 @@ This document outlines the testing strategy for the real-time AudioScene renderi
 1. [Existing Test Inventory](#existing-test-inventory)
 2. [Coverage Analysis](#coverage-analysis)
 3. [Baseline Tests](#baseline-tests)
-4. [Proposed New Tests](#proposed-new-tests)
-5. [Risk-to-Test Mapping](#risk-to-test-mapping)
-6. [Test Execution Strategy](#test-execution-strategy)
-7. [Success Criteria](#success-criteria)
+4. [**Proposed Baseline Test: AudioScene Audio Generation**](#proposed-baseline-test-audioscene-audio-generation) *(NEW)*
+5. [Proposed New Tests](#proposed-new-tests)
+6. [Risk-to-Test Mapping](#risk-to-test-mapping)
+7. [Test Execution Strategy](#test-execution-strategy)
+8. [Success Criteria](#success-criteria)
 
 ---
 
@@ -154,6 +187,355 @@ mcp__ar-test-runner__start_test_run
                  "StableDurationHealthComputationTest", "MixdownManagerTests"]
   profile: "baseline"
 ```
+
+---
+
+## Proposed Baseline Test: AudioScene Audio Generation
+
+> **Priority: CRITICAL** - This test must pass before any real-time work can proceed.
+>
+> This section proposes a standalone test that proves AudioScene can generate non-silent audio
+> through the traditional (non-real-time) pipeline, **without relying on `AudioSceneOptimizer`**.
+> This is the foundational baseline against which real-time output will be compared.
+
+### Test File
+
+`compose/src/test/java/org/almostrealism/audio/pattern/test/AudioSceneBaselineTest.java`
+
+### Design Goals
+
+1. **Programmatic construction** - No dependency on `pattern-factory.json` or `scene-settings.json`
+2. **Portable** - Uses `FileNoteSource` with sample files from `Samples/` directory in the project root
+3. **Reliable** - Tries multiple genomes to handle stochastic element generation
+4. **Deterministic (once found)** - Records the working random seed for repeatability
+5. **Both melodic and non-melodic** - Tests both code paths for note generation
+6. **Minimal dependencies** - Uses the standard `getCells()` → `runner()` → `sec()` path
+
+### Available Test Samples
+
+Located at `/workspace/project/Samples/`:
+
+| File | Type | Purpose |
+|------|------|---------|
+| `PMMC_Snares_Lush.wav` | Non-melodic | Snare percussion |
+| `PMMC_Snares_Pop_Vibe.wav` | Non-melodic | Snare percussion |
+| `PMMC_Snares_Tiger.wav` | Non-melodic | Snare percussion |
+| `PMMC_Snares_Tight.wav` | Non-melodic | Snare percussion |
+| `Perc TAT 1.wav` | Non-melodic | Percussion hit |
+| `Perc TAT 2.wav` | Non-melodic | Percussion hit |
+| `Perc TAT 3.wav` | Non-melodic | Percussion hit |
+| `Snare Eclipse 1.wav` | Non-melodic | Snare hit |
+| `Snare Eclipse 2.wav` | Non-melodic | Snare hit |
+| `Snare TripTrap 5.wav` | Non-melodic | Snare hit |
+| `DX Punch S612 C0.wav` - `C5.wav` | Melodic | Synth per-octave (C0-C5) |
+| `Synth Guitar S612 C0.wav` - `C3.wav` | Melodic | Guitar per-octave (C0-C3) |
+
+### Scene Configuration
+
+The test scene mirrors `AudioSceneOptimizer.createScene()` structure but uses `FileNoteSource`
+instead of `TreeNoteSource`:
+
+```java
+// Scene parameters matching AudioSceneOptimizer defaults
+double bpm = 120.0;
+int sourceCount = 6;   // 6 channels (matching AudioScene.DEFAULT_SOURCE_COUNT)
+int delayLayers = 3;   // 3 delay layers (matching AudioScene.DEFAULT_DELAY_LAYERS)
+int sampleRate = OutputLine.sampleRate;  // 44100
+
+AudioScene<?> scene = new AudioScene<>(bpm, sourceCount, delayLayers, sampleRate);
+scene.setTotalMeasures(16);
+scene.setTuning(new DefaultKeyboardTuning());
+```
+
+### NoteAudioChoice Configuration
+
+The test creates choices covering both non-melodic (percussive) and melodic channels:
+
+```java
+// --- Non-melodic choices (channels 0-3) ---
+
+// Channel 0: Snares (multiple sources for variety)
+NoteAudioChoice snares = NoteAudioChoice.fromSource(
+    "Snares",
+    new FileNoteSource(samplesDir + "/PMMC_Snares_Lush.wav", WesternChromatic.C1),
+    0, 9, false);
+snares.getSources().add(new FileNoteSource(samplesDir + "/PMMC_Snares_Pop_Vibe.wav", WesternChromatic.C1));
+snares.getSources().add(new FileNoteSource(samplesDir + "/PMMC_Snares_Tiger.wav", WesternChromatic.C1));
+snares.getSources().add(new FileNoteSource(samplesDir + "/PMMC_Snares_Tight.wav", WesternChromatic.C1));
+
+// Channel 1: Percussion hits
+NoteAudioChoice percs = NoteAudioChoice.fromSource(
+    "Percs",
+    new FileNoteSource(samplesDir + "/Perc TAT 1.wav", WesternChromatic.C1),
+    1, 9, false);
+percs.getSources().add(new FileNoteSource(samplesDir + "/Perc TAT 2.wav", WesternChromatic.C1));
+percs.getSources().add(new FileNoteSource(samplesDir + "/Perc TAT 3.wav", WesternChromatic.C1));
+
+// Channel 2: Snare accents
+NoteAudioChoice snareAccents = NoteAudioChoice.fromSource(
+    "Snare Accents",
+    new FileNoteSource(samplesDir + "/Snare Eclipse 1.wav", WesternChromatic.C1),
+    2, 9, false);
+snareAccents.getSources().add(new FileNoteSource(samplesDir + "/Snare Eclipse 2.wav", WesternChromatic.C1));
+snareAccents.getSources().add(new FileNoteSource(samplesDir + "/Snare TripTrap 5.wav", WesternChromatic.C1));
+
+// --- Melodic choices (channels 3-5) ---
+
+// Channel 3: DX Punch synth (multi-octave)
+NoteAudioChoice dxPunch = NoteAudioChoice.fromSource(
+    "DX Punch",
+    new FileNoteSource(samplesDir + "/DX Punch S612 C0.wav", WesternChromatic.C0),
+    3, 9, true);
+dxPunch.getSources().add(new FileNoteSource(samplesDir + "/DX Punch S612 C1.wav", WesternChromatic.C1));
+dxPunch.getSources().add(new FileNoteSource(samplesDir + "/DX Punch S612 C2.wav", WesternChromatic.C2));
+dxPunch.getSources().add(new FileNoteSource(samplesDir + "/DX Punch S612 C3.wav", WesternChromatic.C3));
+dxPunch.getSources().add(new FileNoteSource(samplesDir + "/DX Punch S612 C4.wav", WesternChromatic.C4));
+dxPunch.getSources().add(new FileNoteSource(samplesDir + "/DX Punch S612 C5.wav", WesternChromatic.C5));
+
+// Channel 4: Synth Guitar (multi-octave)
+NoteAudioChoice synthGuitar = NoteAudioChoice.fromSource(
+    "Synth Guitar",
+    new FileNoteSource(samplesDir + "/Synth Guitar S612 C0.wav", WesternChromatic.C0),
+    4, 9, true);
+synthGuitar.getSources().add(new FileNoteSource(samplesDir + "/Synth Guitar S612 C1.wav", WesternChromatic.C1));
+synthGuitar.getSources().add(new FileNoteSource(samplesDir + "/Synth Guitar S612 C2.wav", WesternChromatic.C2));
+synthGuitar.getSources().add(new FileNoteSource(samplesDir + "/Synth Guitar S612 C3.wav", WesternChromatic.C3));
+
+// Channel 5: DX Punch bass (reuse with different channel)
+NoteAudioChoice dxBass = NoteAudioChoice.fromSource(
+    "DX Bass",
+    new FileNoteSource(samplesDir + "/DX Punch S612 C0.wav", WesternChromatic.C0),
+    5, 9, true);
+dxBass.getSources().add(new FileNoteSource(samplesDir + "/DX Punch S612 C1.wav", WesternChromatic.C1));
+```
+
+### Pattern Setup
+
+```java
+// Add all choices to pattern manager
+scene.getPatternManager().getChoices().addAll(
+    List.of(snares, percs, snareAccents, dxPunch, synthGuitar, dxBass));
+
+// Create patterns for each channel (matching optimizer: 1 pattern per channel)
+for (int ch = 0; ch < sourceCount; ch++) {
+    boolean melodic = ch >= 3;  // Channels 3-5 are melodic
+    PatternLayerManager pattern = scene.getPatternManager().addPattern(ch, 1.0, melodic);
+    pattern.setLayerCount(3);  // Multiple layers for more elements
+}
+
+// Add section covering the full arrangement
+scene.addSection(0, 16);
+```
+
+### Multi-Genome Search Strategy
+
+The critical innovation: try multiple random seeds to find a genome that produces audio.
+
+```java
+/**
+ * Searches for a genome that produces non-silent audio output.
+ *
+ * <p>Pattern element generation is stochastic. A random genome may produce
+ * zero elements if noteSelection + bias < 0 for all positions. This method
+ * tries multiple seeds to find one that works, then records the seed for
+ * reproducibility.</p>
+ *
+ * @param scene Configured AudioScene
+ * @param maxAttempts Maximum number of genomes to try
+ * @return The random seed that produced audio, or -1 if none found
+ */
+private long findWorkingGenomeSeed(AudioScene<?> scene, int maxAttempts) {
+    for (int attempt = 0; attempt < maxAttempts; attempt++) {
+        long seed = 42 + attempt;  // Deterministic seed sequence
+        Random random = new Random(seed);
+
+        // Create genome with this seed
+        scene.assignGenome(scene.getGenome().random(random));
+
+        // Check if patterns have elements
+        int totalElements = 0;
+        for (PatternLayerManager plm : scene.getPatternManager().getPatterns()) {
+            List<PatternElement> elements = plm.getAllElements(0.0, plm.getDuration());
+            totalElements += elements.size();
+        }
+
+        log("Seed " + seed + ": " + totalElements + " total pattern elements");
+
+        if (totalElements > 0) {
+            // Try rendering to verify audio is actually produced
+            WaveOutput output = new WaveOutput(() -> new File("results/baseline-seed-" + seed + ".wav"),
+                24, true);
+            Cells cells = scene.getCells(new MultiChannelAudioOutput(output));
+            cells.sec(4.0).get().run();  // 4 seconds (2 measures at 120 BPM)
+            output.write().get().run();
+
+            // Verify non-silence
+            File outFile = new File("results/baseline-seed-" + seed + ".wav");
+            if (outFile.exists() && hasAudioContent(outFile)) {
+                log("SUCCESS: Seed " + seed + " produces audio with " + totalElements + " elements");
+                return seed;
+            } else {
+                log("Seed " + seed + " has elements but output is silent");
+            }
+        }
+    }
+
+    return -1;  // No working seed found
+}
+
+/**
+ * Checks if a WAV file contains non-silent audio.
+ */
+private boolean hasAudioContent(File wavFile) {
+    try {
+        WaveData data = WaveData.load(wavFile);
+        PackedCollection samples = data.getData();
+        int length = samples.getShape().getTotalSize();
+
+        double maxAmplitude = 0;
+        for (int i = 0; i < length; i++) {
+            double val = Math.abs(samples.valueAt(i));
+            if (val > maxAmplitude) maxAmplitude = val;
+        }
+
+        return maxAmplitude > 0.001;
+    } catch (Exception e) {
+        return false;
+    }
+}
+```
+
+### Test Methods
+
+#### Test 1: `baselineAudioGeneration` - Core Baseline
+
+```java
+/**
+ * Verifies that AudioScene produces non-silent audio through the
+ * traditional (non-real-time) pipeline without AudioSceneOptimizer.
+ *
+ * <p>This is the foundational test. If this fails, there is no point
+ * testing real-time rendering.</p>
+ */
+@Test
+public void baselineAudioGeneration() {
+    AudioScene<?> scene = createBaselineScene();
+
+    // Disable effects for clean audio verification
+    MixdownManager.enableMainFilterUp = false;
+    MixdownManager.enableEfxFilters = false;
+    MixdownManager.enableEfx = false;
+
+    long workingSeed = findWorkingGenomeSeed(scene, 20);
+    assertTrue("At least one genome out of 20 should produce audio", workingSeed >= 0);
+
+    log("Working seed: " + workingSeed);
+    log("This seed can be used for deterministic reproduction");
+}
+```
+
+**Pass Criteria**: At least 1 out of 20 genomes produces non-silent audio output.
+
+#### Test 2: `baselineWithEffects` - Effects Chain
+
+```java
+/**
+ * Verifies audio generation with the effects chain enabled.
+ * Uses the working seed from baseline test.
+ */
+@Test
+public void baselineWithEffects() {
+    AudioScene<?> scene = createBaselineScene();
+    Random random = new Random(KNOWN_WORKING_SEED);
+    scene.assignGenome(scene.getGenome().random(random));
+
+    // Leave effects enabled (default)
+    WaveOutput output = new WaveOutput(() -> new File("results/baseline-with-effects.wav"), 24, true);
+    Cells cells = scene.getCells(new MultiChannelAudioOutput(output));
+    cells.sec(4.0).get().run();
+    output.write().get().run();
+
+    assertTrue("Effects pipeline should produce audio",
+        hasAudioContent(new File("results/baseline-with-effects.wav")));
+}
+```
+
+**Pass Criteria**: Audio is non-silent with effects enabled.
+
+#### Test 3: `baselineMelodicContent` - Melodic Path
+
+```java
+/**
+ * Verifies that melodic channels produce pitched audio content.
+ * Uses individual channel rendering to isolate melodic output.
+ */
+@Test
+public void baselineMelodicContent() {
+    AudioScene<?> scene = createBaselineScene();
+
+    // Search for a seed that produces melodic elements specifically
+    long melodicSeed = findSeedWithMelodicElements(scene, 20);
+    assertTrue("At least one genome should produce melodic elements", melodicSeed >= 0);
+
+    log("Melodic working seed: " + melodicSeed);
+}
+```
+
+**Pass Criteria**: At least 1 genome produces elements on melodic channels (3-5).
+
+#### Test 4: `baselineHealthComputation` - StableDurationHealthComputation Path
+
+```java
+/**
+ * Verifies that StableDurationHealthComputation can evaluate the
+ * baseline scene. This confirms compatibility with the optimizer path.
+ */
+@Test
+public void baselineHealthComputation() {
+    AudioScene<?> scene = createBaselineScene();
+    Random random = new Random(KNOWN_WORKING_SEED);
+    scene.assignGenome(scene.getGenome().random(random));
+
+    WaveOutput output = new WaveOutput(() -> new File("results/baseline-health.wav"), 24, true);
+    Cells cells = scene.getCells(new MultiChannelAudioOutput(output));
+
+    // Use StableDurationHealthComputation to evaluate
+    StableDurationHealthComputation health = new StableDurationHealthComputation(cells);
+    health.setMaxDuration(4.0);
+    health.setMaster(output);
+
+    AudioHealthScore score = health.computeHealth();
+
+    log("Health score: " + score.getScore());
+    log("Stable frames: " + score.getFrameCount());
+
+    assertTrue("Health computation should complete", score.getFrameCount() > 0);
+    assertTrue("Audio should have non-zero score", score.getScore() > 0);
+}
+```
+
+**Pass Criteria**: Health computation completes with non-zero score and frame count.
+
+### Execution Notes
+
+- The `Samples/` directory must be present at `../../Samples/` relative to the test working directory
+  (i.e., in the project root alongside `common/`)
+- Tests should be annotated with `@TestDepth(2)` or higher since they involve audio rendering
+- Results directory should be created before running: `compose/results/`
+- The first run will search for working seeds; subsequent runs can use discovered seeds
+  (record them as `KNOWN_WORKING_SEED` constants once found)
+- These tests are **prerequisite** for all real-time comparison tests
+
+### Success Criteria
+
+| Criterion | Target |
+|-----------|--------|
+| At least 1/20 genomes produces audio | **Required** |
+| Audio max amplitude > 0.001 | **Required** |
+| Audio RMS > 0.0001 | **Required** |
+| Both melodic and non-melodic paths exercised | **Required** |
+| StableDurationHealthComputation compatible | **Required** |
+| Working seed recorded for reproducibility | **Required** |
 
 ---
 

@@ -2,10 +2,22 @@
 
 ## Implementation Status
 
-> **STATUS: IMPLEMENTED** (January 2025)
+> **STATUS: BASELINE VALIDATED, REAL-TIME PATH UNVALIDATED** (January 2026)
 >
-> The pattern rendering changes described in this document have been implemented.
-> See [REALTIME_AUDIO_SCENE.md](./REALTIME_AUDIO_SCENE.md) Implementation Summary for details.
+> The traditional pattern rendering pipeline **works** (confirmed via both `AudioSceneOptimizer`
+> and the standalone `AudioSceneBaselineTest` - 3/3 tests passing). The real-time code path
+> modifications (frame-range `sum()` overloads, `PatternRenderCell`, `BatchCell`) have **not
+> been validated** to produce correct audio output.
+>
+> **Issues with current real-time code:**
+> - Real-time mode captures only **85 frames out of 88200** expected (output pipeline not connected)
+> - Performance is **4-10x too slow** for real-time (100-213ms vs 23ms required)
+> - No hardware acceleration (operations not compiled)
+> - Code duplicates existing patterns rather than generalizing them
+>
+> **Next step**: A baseline test now exists (`AudioSceneBaselineTest`). The next step is to
+> compare traditional output against real-time output to validate the real-time code path.
+> See [REALTIME_AUDIO_SCENE.md](./REALTIME_AUDIO_SCENE.md) Implementation Gaps section for full analysis.
 
 ## Overview
 

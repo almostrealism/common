@@ -30,6 +30,7 @@ import org.almostrealism.audio.line.OutputLine;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.audio.notes.FileNoteSource;
 import org.almostrealism.audio.notes.NoteAudioChoice;
+import org.almostrealism.audio.pattern.PatternElement;
 import org.almostrealism.audio.pattern.PatternLayerManager;
 import org.almostrealism.audio.pattern.PatternSystemManager;
 import org.almostrealism.audio.tone.DefaultKeyboardTuning;
@@ -122,7 +123,7 @@ public class AudioSceneRealTimeTest extends TestSuiteBase implements CellFeature
 				log("    - " + c.getName() + " (channels: " + c.getChannels() + ")");
 			}
 			// Check for pattern elements
-			var elements = plm.getAllElements(0.0, plm.getDuration());
+			List<PatternElement> elements = plm.getAllElements(0.0, plm.getDuration());
 			log("    Elements (0.0-" + plm.getDuration() + "): " + elements.size());
 		}
 
