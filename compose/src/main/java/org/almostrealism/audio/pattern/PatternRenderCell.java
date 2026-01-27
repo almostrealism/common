@@ -87,6 +87,7 @@ public class PatternRenderCell implements Cell<PackedCollection>, Temporal, Coll
 
 	private Receptor<PackedCollection> receptor;
 	private PackedCollection destination;
+	private int lastRenderedFrame = -1;
 
 	/**
 	 * Creates a new pattern render cell.
@@ -165,30 +166,29 @@ public class PatternRenderCell implements Cell<PackedCollection>, Temporal, Coll
 	 */
 	@Override
 	public Supplier<Runnable> tick() {
-		return () -> {
-			OperationList op = new OperationList("PatternRenderCell Tick");
-
-			// Get current frame position
+		return () -> () -> {
+			// Read frame position at EXECUTION time (not compile time)
 			int startFrame = currentFrame.getAsInt();
 
-			// Create context with destination buffer set
-			Supplier<AudioSceneContext> tickContext = () -> {
-				AudioSceneContext ctx = contextSupplier.get();
-				ctx.setDestination(destination);
-				return ctx;
-			};
+			// Only render when frame position changes (once per buffer cycle)
+			if (startFrame != lastRenderedFrame) {
+				lastRenderedFrame = startFrame;
 
-			// Clear destination buffer
-			op.add(() -> () -> {
+				// Clear destination buffer
 				if (destination != null) {
 					destination.clear();
 				}
-			});
 
-			// Render patterns for this frame range
-			op.add(patterns.sum(tickContext, channel, startFrame, bufferSize));
+				// Create context with destination buffer set
+				Supplier<AudioSceneContext> tickContext = () -> {
+					AudioSceneContext ctx = contextSupplier.get();
+					ctx.setDestination(destination);
+					return ctx;
+				};
 
-			return op.get();
+				// Render patterns for this frame range
+				patterns.sum(tickContext, channel, startFrame, bufferSize).get().run();
+			}
 		};
 	}
 
@@ -235,6 +235,7 @@ public class PatternRenderCell implements Cell<PackedCollection>, Temporal, Coll
 	 * managed externally.</p>
 	 */
 	public void reset() {
+		lastRenderedFrame = -1;
 		if (destination != null) {
 			destination.clear();
 		}

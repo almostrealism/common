@@ -39,6 +39,7 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.color.RGBFeatures;
 import org.almostrealism.heredity.TemporalCellular;
 import org.almostrealism.time.TemporalRunner;
+import org.almostrealism.util.TestDepth;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
@@ -165,6 +166,7 @@ public class AudioSceneRealTimeTest extends TestSuiteBase implements CellFeature
 	 * </ol>
 	 */
 	@Test
+	@TestDepth(2)
 	public void realTimeWithTimingMeasurements() {
 		File libraryDir = new File(LIBRARY_PATH);
 		if (!libraryDir.exists()) {
@@ -201,11 +203,13 @@ public class AudioSceneRealTimeTest extends TestSuiteBase implements CellFeature
 		List<Long> bufferTimings = new ArrayList<>();
 		long startTime = System.nanoTime();
 
+		// Tick per-sample; measure timing at buffer boundaries
 		for (int buffer = 0; buffer < totalBuffers; buffer++) {
 			long bufferStart = System.nanoTime();
 
-			// Each tick produces one buffer's worth of output
-			tick.run();
+			for (int frame = 0; frame < BUFFER_SIZE; frame++) {
+				tick.run();
+			}
 
 			long bufferEnd = System.nanoTime();
 			bufferTimings.add(bufferEnd - bufferStart);
@@ -276,6 +280,7 @@ public class AudioSceneRealTimeTest extends TestSuiteBase implements CellFeature
 	 * </ul>
 	 */
 	@Test
+	@TestDepth(2)
 	public void multipleBufferCycles() {
 		File libraryDir = new File(LIBRARY_PATH);
 		if (!libraryDir.exists()) {
@@ -306,13 +311,15 @@ public class AudioSceneRealTimeTest extends TestSuiteBase implements CellFeature
 		log("Buffer duration (real-time target): " + String.format("%.2f", bufferDurationMs) + " ms");
 		log("Running " + bufferCount + " buffer cycles (" + totalFrames + " frames)");
 
-		// Tick once per buffer with timing measurements
+		// Tick per-sample; measure timing at buffer boundaries
 		Runnable tick = runner.tick().get();
 		List<Long> bufferTimings = new ArrayList<>();
 
 		for (int i = 0; i < bufferCount; i++) {
 			long start = System.nanoTime();
-			tick.run();
+			for (int frame = 0; frame < BUFFER_SIZE; frame++) {
+				tick.run();
+			}
 			bufferTimings.add(System.nanoTime() - start);
 		}
 		output.write().get().run();
@@ -373,9 +380,8 @@ public class AudioSceneRealTimeTest extends TestSuiteBase implements CellFeature
 
 		runner.setup().get().run();
 		int totalFrames = (int)(DURATION_SECONDS * SAMPLE_RATE);
-		int bufferCount = totalFrames / BUFFER_SIZE;
 		Runnable tick = runner.tick().get();
-		for (int i = 0; i < bufferCount; i++) {
+		for (int i = 0; i < totalFrames; i++) {
 			tick.run();
 		}
 		output2.write().get().run();
