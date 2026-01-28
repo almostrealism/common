@@ -26,6 +26,7 @@ import org.almostrealism.audio.health.StableDurationHealthComputation;
 import org.almostrealism.audio.pattern.PatternSystemManager;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.heredity.TemporalCellular;
+import org.almostrealism.util.TestDepth;
 import org.junit.Test;
 
 import java.io.File;
@@ -66,6 +67,7 @@ public class AudioSceneRealTimeCorrectnessTest extends AudioSceneTestBase {
 	 * pattern render every {@code bufferSize} ticks.</p>
 	 */
 	@Test
+	@TestDepth(2)
 	public void realTimeProducesAudio() {
 		File samplesDir = new File(SAMPLES_PATH);
 		if (!samplesDir.exists()) {
@@ -137,6 +139,7 @@ public class AudioSceneRealTimeCorrectnessTest extends AudioSceneTestBase {
 	 * </ul>
 	 */
 	@Test
+	@TestDepth(2)
 	public void realTimeMatchesTraditional() {
 		File samplesDir = new File(SAMPLES_PATH);
 		if (!samplesDir.exists()) {

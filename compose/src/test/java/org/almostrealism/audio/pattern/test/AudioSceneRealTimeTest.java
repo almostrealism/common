@@ -352,6 +352,7 @@ public class AudioSceneRealTimeTest extends TestSuiteBase implements CellFeature
 	 * Compares traditional and real-time rendering output.
 	 */
 	@Test
+	@TestDepth(2)
 	public void compareTraditionalAndRealTime() {
 		File libraryDir = new File(LIBRARY_PATH);
 		if (!libraryDir.exists()) {
