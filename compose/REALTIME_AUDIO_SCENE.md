@@ -2,33 +2,48 @@
 
 ## Status
 
-> **IMPLEMENTED, CORRECTNESS TESTING IN PROGRESS** (January 2026)
+> **IN PROGRESS** (January 2026)
 >
-> The real-time rendering pipeline is implemented and compiles. The traditional
-> baseline is **validated** (3/3 tests passing). Real-time frame advancement is
-> **validated** (4-buffer tick loop passes). Full-duration correctness tests
-> require hardware acceleration (~15s per buffer cycle vs 23ms required).
+> The real-time rendering pipeline compiles and produces audio output. The
+> traditional baseline is **validated** (3/3 tests passing). Both the
+> `runnerRealTime` (per-sample ticking) and `runnerRealTimeCompiled`
+> (per-buffer ticking via `CompiledBatchCell`) paths produce non-silent audio.
+>
+> **Current focus**: Pattern rendering performance. Each buffer tick takes
+> ~20 seconds (at 1024-frame buffer size), which is far too slow for
+> real-time use. The priority is making `PatternSystemManager.sum()` with
+> small frame ranges performant before continuing with the batch cell
+> architecture.
 
 ### What Works
 
 - **Traditional pipeline**: Confirmed by `AudioSceneBaselineTest` (3/3 passing)
-- **Real-time code compiles and runs**: `PatternRenderCell`, `BatchCell`, frame-range
-  `sum()` overloads, `AudioScene.runnerRealTime()` all execute correctly
-- **PatternRenderCell.tick() bug fixed**: Frame reading at execution time (not compile
-  time), with `lastRenderedFrame` guard for efficiency
-- **Frame advancement**: 4-buffer tick loop completes without error (~138s)
+- **Frame-range sum()**: `PatternSystemManager.sum(ctx, channel, startFrame, frameCount)`
+  produces audio for single-buffer renders
+- **PatternRenderCell**: Incremental rendering per buffer works correctly, with
+  `lastRenderedFrame` guard for efficiency
+- **Compiled batch cell**: `CompiledBatchCell` + `runnerRealTimeCompiled()` produces
+  valid audio (tested with 8 buffer ticks)
+- **Render cell collector**: Pattern render cells are separated from the effects
+  CellList via collector parameter to support compiled-loop architecture
 
 ### Known Issues
 
-1. **No hardware acceleration** - Operations run in interpreted mode (~650x too slow)
-2. **Auto-volume disabled** - Real-time path skips volume normalization (by design)
-3. **Section processing skipped** - `getPatternChannelRealTime()` does not apply
+1. **Pattern rendering is too slow** — Each call to `patterns.sum(ctx, channel, startFrame, bufferSize)`
+   takes ~20 seconds per buffer tick. This must be solved before the batch cell
+   architecture can deliver real-time performance.
+2. **Effects loop not compiled** — `cells.tick()` in the compiled runner path is not
+   a `Computation`, so `CompiledBatchCell` falls back to `javaLoop()` instead of a
+   native compiled `Loop`.
+3. **Auto-volume disabled** — Real-time path skips volume normalization (by design)
+4. **Section processing skipped** — `getPatternChannelRealTime()` does not apply
    `ChannelSection.process()`
 
 ### Next Steps
 
-1. Enable hardware acceleration for real-time operations
-2. Complete full-duration correctness tests (currently gated behind `@TestDepth(2)`)
+1. **Solve pattern rendering performance with small batches** — Make
+   `sum(ctx, channel, startFrame, bufferSize)` fast enough for real-time use
+2. Then revisit compiled Loop architecture for per-frame effects processing
 
 ---
 
@@ -56,7 +71,8 @@ AudioScene.runnerRealTime(output, bufferSize)
 | Component | Module | Purpose |
 |-----------|--------|---------|
 | `PatternRenderCell` | compose | Renders patterns incrementally per buffer |
-| `BatchCell` | compose | Wraps cells to execute once per N frames |
+| `BatchCell` | compose | Wraps cells to execute once per N frames (used by `runnerRealTime`) |
+| `CompiledBatchCell` | compose | Render-once + compiled Loop architecture (used by `runnerRealTimeCompiled`) |
 | `PatternRenderContext` | music | Extended context with frame range awareness |
 | `GlobalTimeManager` | compose | Tracks current frame position across cells |
 
@@ -163,76 +179,120 @@ Abstract base class providing deterministic scene creation. Creates a 6-channel,
 | 4 | Melodic | Lead (DX Punch C2-C5) |
 | 5 | Non-melodic | Accents (Eclipse 1-2, TripTrap 5) |
 
+All tests skip when `Samples/` directory is not present. Genome seed search
+(`findWorkingGenomeSeed`) tries seeds 42–61 and picks the one producing the
+most pattern elements.
+
 ### AudioSceneBaselineTest (3/3 PASS)
 
-| Test | What It Validates |
-|------|-------------------|
-| `baselineAudioGeneration` | `AudioScene` + `StableDurationHealthComputation` produces audio |
-| `baselineHealthComputation` | Health computation completes with non-zero score and frames |
-| `baselineMelodicContent` | At least one genome produces melodic elements (channels 2-4) |
+| Test | What It Does |
+|------|--------------|
+| `baselineAudioGeneration` | Renders audio via `StableDurationHealthComputation`, verifies WAV file produced |
+| `baselineHealthComputation` | Checks health computation returns non-zero score and frames |
+| `baselineMelodicContent` | Verifies at least one genome produces melodic elements (channels 2–4) |
 
 ### AudioSceneRealTimeCorrectnessTest
 
-| Test | Depth | What It Validates | Status |
-|------|-------|-------------------|--------|
-| `realTimeFrameAdvancement` | 0 | 4 buffer cycles complete without error | **PASS** (~138s) |
-| `realTimeProducesAudio` | 2 | Tick loop produces non-silent audio | Pending (needs HW accel) |
-| `realTimeMatchesTraditional` | 2 | Both paths produce audio with same seed | Pending (needs HW accel) |
+This test class contains 10 test methods organized into four groups. All tests
+disable `MixdownManager` filters and `PatternSystemManager` warnings.
+
+#### Original real-time runner tests
+
+These tests use `AudioScene.runnerRealTime()`, which returns a `TemporalCellular`
+that is ticked per sample (44100 ticks per second of audio). Internally, a
+`BatchCell` counts ticks and fires `PatternRenderCell` rendering every
+`bufferSize` ticks.
+
+| Test | Depth | Timeout | What It Does |
+|------|-------|---------|--------------|
+| `realTimeFrameAdvancement` | — | 15 min | Runs 4 buffer cycles (4096 per-sample ticks) through `runnerRealTime`. Checks the output WAV file exists. Does not verify audio content. |
+| `realTimeProducesAudio` | 2 | 30 min | Runs `RENDER_SECONDS` (4.0s) of per-sample ticks through `runnerRealTime`. Verifies non-silent output (max amplitude > 0.001, RMS > 0.0001). |
+| `realTimeMatchesTraditional` | 2 | 45 min | Renders the same scene through both the traditional path (`StableDurationHealthComputation`) and `runnerRealTime`. Verifies both produce non-silent output. Logs RMS comparison but does not assert similarity. |
+
+#### Frame-range sum in isolation
+
+These tests call `PatternSystemManager.sum(ctx, channel, startFrame, frameCount)`
+directly. No cells, no effects pipeline, no `BatchCell`.
+
+| Test | Depth | Timeout | What It Does |
+|------|-------|---------|--------------|
+| `frameRangeSumProducesAudio` | — | 1 min | Renders a single 1024-frame buffer via `patterns.sum(ctx, channel, 0, 1024)`. Logs amplitude/RMS. Does not hard-fail if amplitude is zero (pattern elements may not start at frame 0). |
+| `frameRangeSumMultipleBuffers` | 2 | 2 min | Renders 4 seconds of audio buffer-by-buffer via consecutive `patterns.sum()` calls. Copies each buffer into a concatenated result. Asserts at least some buffers have audio. |
+
+#### Frame-range rendering with effects pipeline
+
+These tests use `AudioScene.getPatternChannelRealTime()` or `runnerRealTime()` to
+combine `PatternRenderCell` with the effects/mixdown pipeline, then tick per sample.
+
+| Test | Depth | Timeout | What It Does |
+|------|-------|---------|--------------|
+| `frameRangeWithEffects` | — | 1 min | Calls `getPatternChannelRealTime()` to get a CellList with `PatternRenderCell` + effects. Ticks 1024 times (per-sample). Verifies no exceptions. Does not check audio content. |
+| `multiBufferWithEffects` | 2 | 30 min | Runs 8 buffer cycles (8192 per-sample ticks) through `runnerRealTime`. Verifies non-silent output in the WAV file. |
+
+#### Compiled batch cell architecture
+
+These tests use `AudioScene.runnerRealTimeCompiled()`, which returns a
+`TemporalCellular` backed by `CompiledBatchCell`. Each tick renders one full
+buffer (not per-sample). Pattern rendering is separated from effects processing
+via the render cell collector pattern.
+
+| Test | Depth | Timeout | What It Does |
+|------|-------|---------|--------------|
+| `batchCellArchitectureValidation` | — | 1 min | Creates a `CompiledBatchCell` with lambda operations (not real scene). Verifies batch size, batch counter advancement, and that `isFrameOpCompilable()` returns false for lambdas. |
+| `compiledBatchCellProducesAudio` | 2 | 10 min | Runs 8 buffer ticks through `runnerRealTimeCompiled`. Verifies non-silent output. Currently falls back to Java loop (~20s per tick). |
+| `compiledBatchCellPerformance` | 3 | 45 min | Renders 0.25s of audio through both `runnerRealTime` (per-sample) and `runnerRealTimeCompiled` (per-buffer). Logs timing comparison. Informational only — no performance assertions. |
 
 ### AudioSceneRealTimeTest (all @TestDepth(2))
 
-| Test | What It Validates |
-|------|-------------------|
+| Test | What It Does |
+|------|--------------|
 | `traditionalRenderBaseline` | Traditional single-channel render baseline |
 | `realTimeWithTimingMeasurements` | Per-buffer timing statistics |
 | `multipleBufferCycles` | Multi-buffer rendering with WAV output |
 | `compareTraditionalAndRealTime` | Side-by-side comparison of both pipelines |
 
-### Remaining Test Gaps
+### Key Observations
 
-| Gap | Priority |
-|-----|----------|
-| Audio content verification of real-time output | HIGH (needs HW accel) |
-| Buffer boundary artifacts | MEDIUM |
-| Effects chain with real-time input | MEDIUM |
+1. **Pattern rendering dominates execution time.** Each `patterns.sum()` call for
+   a 1024-frame buffer takes ~20 seconds. This makes all tests that tick per-sample
+   extremely slow (44100 ticks × overhead per tick), and makes the compiled batch
+   cell tests slow despite ticking only once per buffer (because the render operation
+   itself is the bottleneck).
+
+2. **The compiled Loop falls back to Java.** `cells.tick()` is not a `Computation`,
+   so `CompiledBatchCell` uses `javaLoop()` instead of a native compiled `Loop`.
+   This is a secondary concern — fixing pattern rendering performance is prerequisite.
+
+3. **Most audio content assertions are at depth 2+.** Only `frameRangeSumProducesAudio`,
+   `frameRangeWithEffects`, `batchCellArchitectureValidation`, and
+   `realTimeFrameAdvancement` run at depth 0. Of these, only
+   `frameRangeSumProducesAudio` checks audio content (and it soft-fails on silence).
 
 ### Running Tests
 
 ```
-# Baseline tests (~2.5 minutes)
+# Baseline tests
 mcp__ar-test-runner__start_test_run
   module: "compose"
   test_classes: ["AudioSceneBaselineTest"]
   timeout_minutes: 10
 
-# Real-time frame advancement only (~2.5 minutes)
-# NOTE: AR_TEST_DEPTH defaults to 9; use depth: 0 to skip expensive tests
+# Depth 0 only (frame-range sum, effects integration, architecture validation, frame advancement)
 mcp__ar-test-runner__start_test_run
   module: "compose"
   test_classes: ["AudioSceneRealTimeCorrectnessTest"]
   depth: 0
   timeout_minutes: 10
 
-# Full real-time correctness (needs HW acceleration or long timeout)
+# Depth 2 (includes multi-buffer, compiled batch cell, full-duration tests)
 mcp__ar-test-runner__start_test_run
   module: "compose"
   test_classes: ["AudioSceneRealTimeCorrectnessTest"]
   depth: 2
-  timeout_minutes: 45
+  timeout_minutes: 30
 ```
 
 **Prerequisites:** `Samples/` directory at `../../Samples/` relative to compose module.
-
-### Success Criteria
-
-| Criterion | Target | Status |
-|-----------|--------|--------|
-| Baseline produces audio | At least 1/20 genomes | **MET** |
-| Baseline health score > 0 | Non-zero score and frames | **MET** |
-| Melodic elements generated | At least 1 genome | **MET** |
-| Real-time completes without error | No exceptions during 4-buffer tick loop | **MET** |
-| Real-time produces non-silent audio | Max amplitude > 0.001, RMS > 0.0001 | Pending (depth 2) |
-| Both paths produce audio for same seed | Non-silence in both outputs | Pending (depth 2) |
 
 ---
 
@@ -245,7 +305,7 @@ mcp__ar-test-runner__start_test_run
 | `PatternSystemManager.java` | Added frame-range `sum()` overload |
 | `PatternLayerManager.java` | Added frame-range `sum()` overload |
 | `PatternFeatures.java` | Added `renderRange()` for buffer-aware rendering |
-| `AudioScene.java` | Added `runnerRealTime()`, `getCellsRealTime()`, `getPatternChannelRealTime()` |
+| `AudioScene.java` | Added `runnerRealTime()`, `runnerRealTimeCompiled()`, `getCellsRealTime()`, `getPatternChannelRealTime()` with render cell collector overloads |
 | `PatternRenderCell.java` | Fixed `tick()` to read frame at execution time |
 
 ### Source (Created)
@@ -253,7 +313,8 @@ mcp__ar-test-runner__start_test_run
 | File | Purpose |
 |------|---------|
 | `PatternRenderCell.java` | Cell for incremental pattern rendering |
-| `BatchCell.java` | Wrapper for N-frame batch execution |
+| `BatchCell.java` | Wrapper for N-frame batch execution (per-sample tick counting) |
+| `CompiledBatchCell.java` | Render-once + compiled Loop for per-buffer ticking |
 | `PatternRenderContext.java` | Extended context with frame range |
 | `GlobalTimeManager.java` | Frame position tracking |
 
@@ -261,7 +322,7 @@ mcp__ar-test-runner__start_test_run
 
 | File | Purpose |
 |------|---------|
-| `AudioSceneTestBase.java` | Shared test infrastructure |
+| `AudioSceneTestBase.java` | Shared test infrastructure (scene creation, genome, channel mapping) |
 | `AudioSceneBaselineTest.java` | Traditional pipeline validation (3/3 PASS) |
-| `AudioSceneRealTimeCorrectnessTest.java` | Real-time correctness validation |
+| `AudioSceneRealTimeCorrectnessTest.java` | Real-time correctness: 10 tests across 4 groups |
 | `AudioSceneRealTimeTest.java` | Timing and performance measurements |
