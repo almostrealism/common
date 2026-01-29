@@ -19,6 +19,7 @@ package org.almostrealism.audio.pattern;
 import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.profile.OperationWithInfo;
 import org.almostrealism.audio.arrange.AudioSceneContext;
+import org.almostrealism.audio.arrange.PatternRenderContext;
 import org.almostrealism.audio.arrange.ChannelSection;
 import org.almostrealism.audio.data.ChannelInfo;
 import org.almostrealism.audio.data.ParameterFunction;
@@ -41,6 +42,77 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
+/**
+ * Manages a single pattern with hierarchical layer structure.
+ *
+ * <p>{@code PatternLayerManager} handles the creation and rendering of a multi-layer
+ * musical pattern. Each pattern can have up to 32 layers that build upon each other,
+ * with each successive layer operating at half the granularity of the previous.</p>
+ *
+ * <h2>Layer Hierarchy</h2>
+ *
+ * <p>Patterns are built as a tree of layers:</p>
+ * <pre>
+ * Layer 0 (Root)  - scale = 1.0 (whole measures)
+ *     |
+ *     +-- Layer 1 - scale = 0.5 (half measures)
+ *         |
+ *         +-- Layer 2 - scale = 0.25 (quarter measures)
+ *             |
+ *             +-- Layer 3 - scale = 0.125 (eighth measures)
+ *                 ...
+ * </pre>
+ *
+ * <p>Each layer contains {@link PatternElement}s that define musical events at
+ * specific positions within the pattern duration.</p>
+ *
+ * <h2>Melodic vs. Percussive Modes</h2>
+ *
+ * <p>Patterns operate in one of two modes:</p>
+ * <ul>
+ *   <li><strong>Percussive:</strong> Uses percussive note choices, no scale traversal</li>
+ *   <li><strong>Melodic:</strong> Uses melodic note choices with scale traversal</li>
+ * </ul>
+ *
+ * <h2>Scale Traversal</h2>
+ *
+ * <p>Melodic patterns use a {@link ScaleTraversalStrategy} to navigate through scales:</p>
+ * <ul>
+ *   <li>{@code CHORD} - Stays on chord tones</li>
+ *   <li>{@code SEQUENCE} - Follows sequential scale patterns</li>
+ * </ul>
+ *
+ * <h2>Pattern Rendering</h2>
+ *
+ * <p>The {@link #sum} method renders all pattern elements to the destination buffer.
+ * For each pattern repetition within the arrangement:</p>
+ * <ol>
+ *   <li>Check section activity (skip if section inactive)</li>
+ *   <li>Get all elements by note choice</li>
+ *   <li>Render each element's audio to the destination</li>
+ * </ol>
+ *
+ * <h2>Genetic Algorithm Integration</h2>
+ *
+ * <p>Pattern parameters are controlled by chromosomes:</p>
+ * <ul>
+ *   <li>{@code layerChoiceChromosome} - Controls note selection per layer</li>
+ *   <li>{@code envelopeAutomationChromosome} - Controls automation per layer</li>
+ * </ul>
+ *
+ * <h2>Real-Time Considerations</h2>
+ *
+ * <p><strong>Current Limitation:</strong> The {@link #sum} method renders all pattern
+ * repetitions at once. For real-time rendering, frame range parameters would need
+ * to be added to render only elements within the current buffer window.</p>
+ *
+ * @see PatternSystemManager
+ * @see PatternLayer
+ * @see PatternElement
+ * @see PatternFeatures
+ *
+ * @author Michael Murray
+ */
 public class PatternLayerManager implements PatternFeatures, HeredityFeatures {
 	public static int AUTOMATION_GENE_LENGTH = 6;
 	public static int MAX_LAYERS = 32;
@@ -261,7 +333,7 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures {
 	}
 
 	public int getLayerCount() {
-		return layerChoiceChromosome.length();
+		return layerCount;
 	}
 
 	public void setLayerCount(int count) {
@@ -355,7 +427,7 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures {
 			throw new IllegalStateException("Layer count mismatch (" + layerParams.size() +
 											" != " + layerChoiceChromosome.length() + ")");
 
-		IntStream.range(0, getLayerCount()).forEach(i -> layer(layerChoiceChromosome.valueAt(i)));
+		IntStream.range(0, layerCount).forEach(i -> layer(layerChoiceChromosome.valueAt(i)));
 	}
 
 	public NoteAudioChoice choose(double scale, ParameterSet params) {
@@ -372,6 +444,45 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures {
 		return options.get((int) (options.size() * c));
 	}
 
+	/**
+	 * Renders all pattern elements to the destination buffer.
+	 *
+	 * <p>This method creates an operation that iterates through all pattern repetitions
+	 * within the arrangement and renders their elements to the destination buffer.</p>
+	 *
+	 * <h3>Rendering Process</h3>
+	 * <ol>
+	 *   <li>Get all elements organized by NoteAudioChoice</li>
+	 *   <li>Calculate number of pattern repetitions: {@code measures / duration}</li>
+	 *   <li>For each repetition:
+	 *       <ul>
+	 *         <li>Check section activity (skip if inactive)</li>
+	 *         <li>Create NoteAudioContext with voicing information</li>
+	 *         <li>Call {@link PatternFeatures#render} for each choice's elements</li>
+	 *       </ul>
+	 *   </li>
+	 * </ol>
+	 *
+	 * <h3>Section Activity</h3>
+	 * <p>Each pattern repetition checks the active selection function plus activity bias.
+	 * If the result is negative, the repetition is skipped (silent).</p>
+	 *
+	 * <h3>Real-Time Limitation</h3>
+	 * <p>This method renders all repetitions from measure 0 to {@code totalMeasures}.
+	 * For real-time rendering, frame range parameters would enable rendering only
+	 * elements that overlap with the current buffer window:</p>
+	 * <pre>{@code
+	 * // Proposed signature for real-time
+	 * sum(context, voicing, audioChannel, startFrame, frameCount)
+	 * }</pre>
+	 *
+	 * @param context Supplier for AudioSceneContext with destination buffer
+	 * @param voicing Target voicing (MAIN or WET)
+	 * @param audioChannel Target stereo channel (LEFT or RIGHT)
+	 * @return Operation that renders all elements for this pattern
+	 *
+	 * @see PatternFeatures#render
+	 */
 	public Supplier<Runnable> sum(Supplier<AudioSceneContext> context,
 								  ChannelInfo.Voicing voicing,
 								  ChannelInfo.StereoChannel audioChannel) {
@@ -417,6 +528,112 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures {
 				});
 			});
 		});
+	}
+
+	/**
+	 * Renders pattern elements for a specific frame range.
+	 *
+	 * <p>This method filters pattern elements to only those that overlap with
+	 * the specified frame range, then renders only the overlapping portions
+	 * of each element's audio.</p>
+	 *
+	 * <h3>Rendering Process</h3>
+	 * <ol>
+	 *   <li>Convert frame range to measure range</li>
+	 *   <li>Calculate which pattern repetitions overlap with frame range</li>
+	 *   <li>For each overlapping repetition:
+	 *       <ul>
+	 *         <li>Check section activity (skip if inactive)</li>
+	 *         <li>Render elements using {@link PatternFeatures#renderRange}</li>
+	 *       </ul>
+	 *   </li>
+	 * </ol>
+	 *
+	 * <h3>Real-Time Mode</h3>
+	 * <p>This method is optimized for real-time rendering by:</p>
+	 * <ul>
+	 *   <li>Only processing relevant pattern repetitions</li>
+	 *   <li>Using buffer-relative offsets</li>
+	 *   <li>Handling notes that span buffer boundaries</li>
+	 * </ul>
+	 *
+	 * @param context Render context supplier with frame range information
+	 * @param voicing Target voicing (MAIN or WET)
+	 * @param audioChannel Target stereo channel (LEFT or RIGHT)
+	 * @param startFrame Starting frame (absolute position)
+	 * @param frameCount Number of frames to render
+	 * @return Operation that renders elements within the frame range
+	 *
+	 * @see PatternFeatures#renderRange
+	 * @see PatternRenderContext
+	 */
+	public Supplier<Runnable> sum(Supplier<PatternRenderContext> context,
+								  ChannelInfo.Voicing voicing,
+								  ChannelInfo.StereoChannel audioChannel,
+								  int startFrame,
+								  int frameCount) {
+		return OperationWithInfo.of(
+				new OperationMetadata("PatternLayerManager.sum",
+						String.format("PatternLayerManager.sum [%d:%d]", startFrame, startFrame + frameCount)),
+				() -> () -> {
+					PatternRenderContext ctx = context.get();
+
+					// Get all elements for this pattern
+					Map<NoteAudioChoice, List<PatternElement>> elements = getAllElementsByChoice(0.0, duration);
+					if (elements.isEmpty()) {
+						if (!roots.isEmpty() && enableWarnings)
+							warn("No pattern elements (channel " + channel + ")");
+						return;
+					}
+
+					// Calculate measure range for the frame range
+					double startMeasure = ctx.frameToMeasure(startFrame);
+					double endMeasure = ctx.frameToMeasure(startFrame + frameCount);
+
+					// Determine which pattern repetitions overlap with frame range
+					int totalRepetitions = (int) (ctx.getMeasures() / duration);
+					if (totalRepetitions == 0) {
+						if (enableWarnings) warn("Pattern duration longer than arrangement");
+						return;
+					}
+
+					int firstRepetition = Math.max(0, (int) Math.floor(startMeasure / duration));
+					int lastRepetition = Math.min(totalRepetitions, (int) Math.ceil(endMeasure / duration));
+
+					IntStream.range(firstRepetition, lastRepetition).forEach(rep -> {
+						double repStart = rep * duration;
+						double repEnd = repStart + duration;
+
+						// Check if this repetition overlaps with frame range
+						if (!ctx.overlapsFrameRange(repStart, repEnd)) return;
+
+						// Check section activity
+						ChannelSection section = ctx.getSection(repStart);
+						if (section == null) {
+							if (enableWarnings) warn("No ChannelSection at measure " + repStart);
+						} else {
+							double active = activeSelection.apply(
+									layerParams.get(layerParams.size() - 1),
+									section.getPosition()) + ctx.getActivityBias();
+							if (active < 0) return;
+						}
+
+						// Render each choice's elements for this repetition
+						elements.keySet().forEach(choice -> {
+							NoteAudioContext audioContext = new NoteAudioContext(
+									voicing, audioChannel,
+									choice.getValidPatternNotes(),
+									this::nextNotePosition);
+
+							if (destination.get(new ChannelInfo(voicing, audioChannel)) != ctx.getDestination()) {
+								throw new IllegalArgumentException("Destination buffer mismatch");
+							}
+
+							renderRange(ctx, audioContext, elements.get(choice), melodic,
+									repStart, startFrame, frameCount);
+						});
+					});
+				});
 	}
 
 	public double nextNotePosition(double position) {

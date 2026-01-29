@@ -20,6 +20,41 @@ import org.almostrealism.io.ConsoleFeatures;
 
 import java.util.function.DoubleUnaryOperator;
 
+/**
+ * Determines how note duration is calculated for pattern elements.
+ *
+ * <p>{@code NoteDurationStrategy} controls the length of audio samples played
+ * by {@link PatternElement}s. This affects both the musical character (staccato
+ * vs legato) and the memory/computation requirements.</p>
+ *
+ * <h2>Strategies</h2>
+ *
+ * <ul>
+ *   <li><strong>NONE</strong>: Use the note's original/natural duration as provided
+ *       by the audio sample. No modification is applied.</li>
+ *   <li><strong>FIXED</strong>: Use a fixed duration specified by
+ *       {@link PatternElement#getNoteDurationSelection()}, clamped to not exceed
+ *       the original duration.</li>
+ *   <li><strong>NO_OVERLAP</strong>: Extend the note until the next note position,
+ *       preventing gaps while avoiding overlap. Useful for legato passages.</li>
+ * </ul>
+ *
+ * <h2>Duration Calculation</h2>
+ *
+ * <p>The {@link #getLength} method computes the final duration in seconds:</p>
+ * <ul>
+ *   <li>{@code timeForDuration}: Converts measure durations to seconds</li>
+ *   <li>{@code position}: Current note position in measures</li>
+ *   <li>{@code nextPosition}: Next note position (for NO_OVERLAP)</li>
+ *   <li>{@code originalDurationSeconds}: Natural sample duration</li>
+ *   <li>{@code durationSelection}: Selected duration multiplier (for FIXED)</li>
+ * </ul>
+ *
+ * @see PatternElement#getNoteDuration
+ * @see PatternElement#getDurationStrategy
+ *
+ * @author Michael Murray
+ */
 public enum NoteDurationStrategy implements ConsoleFeatures {
 	NONE, FIXED, NO_OVERLAP;
 

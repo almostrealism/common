@@ -19,6 +19,7 @@ package org.almostrealism.audio.pattern;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.audio.arrange.AudioSceneContext;
+import org.almostrealism.audio.arrange.PatternRenderContext;
 import org.almostrealism.audio.data.ChannelInfo;
 import org.almostrealism.audio.data.FileWaveDataProviderTree;
 import org.almostrealism.audio.data.ParameterFunction;
@@ -45,11 +46,81 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
-// TODO  Excluded from the genome (manually configured):
-// 	     1. The number of layers
-// 	     2. Melodic/Percussive flag
-// 	     3. The duration of each layer
-
+/**
+ * Top-level manager for the pattern system in an audio scene.
+ *
+ * <p>{@code PatternSystemManager} coordinates multiple {@link PatternLayerManager}
+ * instances to create a complete musical arrangement. It manages note audio choices,
+ * volume control, and renders patterns to destination buffers.</p>
+ *
+ * <h2>Architecture</h2>
+ *
+ * <p>The pattern system has a hierarchical structure:</p>
+ * <pre>
+ * PatternSystemManager
+ *     |
+ *     +-- NoteAudioChoice[] (available audio samples)
+ *     |
+ *     +-- PatternLayerManager[] (one per pattern slot)
+ *         |
+ *         +-- PatternLayer (hierarchical layers)
+ *             |
+ *             +-- PatternElement[] (musical events)
+ * </pre>
+ *
+ * <h2>Pattern Rendering</h2>
+ *
+ * <p>The key method {@link #sum(java.util.function.Supplier, ChannelInfo)} renders
+ * all patterns for a channel to a destination buffer. The rendering process:</p>
+ * <ol>
+ *   <li>Updates destination buffers for each pattern manager</li>
+ *   <li>Iterates through all patterns assigned to the channel</li>
+ *   <li>Calls each pattern's sum method to render elements</li>
+ *   <li>Applies auto-volume normalization (if enabled)</li>
+ * </ol>
+ *
+ * <h2>Genetic Algorithm Integration</h2>
+ *
+ * <p>PatternSystemManager integrates with the heredity module for evolutionary
+ * optimization. Each pattern is associated with a {@link ProjectedChromosome}
+ * that controls its parameters.</p>
+ *
+ * <h2>Configuration</h2>
+ *
+ * <p>Manually configured parameters (not in genome):</p>
+ * <ul>
+ *   <li>Number of layers per pattern</li>
+ *   <li>Melodic vs. percussive mode</li>
+ *   <li>Duration of each layer</li>
+ * </ul>
+ *
+ * <h2>Real-Time Considerations</h2>
+ *
+ * <p><strong>Current Limitation:</strong> The {@link #sum} method renders the entire
+ * arrangement at once. For real-time streaming, frame range parameters would need
+ * to be added. See {@code REALTIME_PATTERNS.md} for the proposed solution.</p>
+ *
+ * <h2>Usage Example</h2>
+ * <pre>{@code
+ * // Create manager with chromosomes
+ * PatternSystemManager patterns = new PatternSystemManager(choices, chromosomes);
+ * patterns.init();
+ *
+ * // Add patterns for each channel
+ * patterns.addPattern(0, 1.0, false);  // Channel 0, 1 measure, percussive
+ * patterns.addPattern(2, 4.0, true);   // Channel 2, 4 measures, melodic
+ *
+ * // Render patterns
+ * Supplier<Runnable> render = patterns.sum(contextSupplier, channel);
+ * render.get().run();
+ * }</pre>
+ *
+ * @see PatternLayerManager
+ * @see NoteAudioChoice
+ * @see PatternElement
+ *
+ * @author Michael Murray
+ */
 public class PatternSystemManager implements NoteSourceProvider, CodeFeatures {
 	public static final boolean enableAutoVolume = true;
 	public static final boolean enableLazyDestination = false;
@@ -174,6 +245,44 @@ public class PatternSystemManager implements NoteSourceProvider, CodeFeatures {
 		patterns.clear();
 	}
 
+	/**
+	 * Renders all patterns for the specified channel to the destination buffer.
+	 *
+	 * <p>This is the main entry point for pattern rendering. It creates an operation
+	 * that iterates through all patterns assigned to the channel and sums their
+	 * audio output to the destination buffer from the context.</p>
+	 *
+	 * <h3>Rendering Steps</h3>
+	 * <ol>
+	 *   <li>Update destination buffers from context</li>
+	 *   <li>For each pattern assigned to channel:
+	 *       <ul>
+	 *         <li>Call {@link PatternLayerManager#sum} to render elements</li>
+	 *       </ul>
+	 *   </li>
+	 *   <li>If auto-volume enabled, normalize to target level</li>
+	 * </ol>
+	 *
+	 * <h3>Auto-Volume Normalization</h3>
+	 * <p>When {@link #enableAutoVolume} is true, the maximum amplitude of the
+	 * destination buffer is computed and volume is adjusted to reach a target
+	 * level of 0.8. This requires the full buffer to be available, which is
+	 * incompatible with real-time rendering.</p>
+	 *
+	 * <h3>Real-Time Limitation</h3>
+	 * <p>This method processes the entire arrangement duration. For real-time
+	 * rendering, a frame-range aware version would be needed:</p>
+	 * <pre>{@code
+	 * // Proposed signature for real-time
+	 * sum(context, channel, startFrame, frameCount)
+	 * }</pre>
+	 *
+	 * @param context Supplier for the AudioSceneContext containing destination buffer
+	 * @param channel Target channel (index, voicing, audio channel)
+	 * @return Operation that renders all patterns for the channel
+	 *
+	 * @see PatternLayerManager#sum(Supplier, ChannelInfo.Voicing, ChannelInfo.StereoChannel)
+	 */
 	public Supplier<Runnable> sum(Supplier<AudioSceneContext> context,
 								  ChannelInfo channel) {
 		OperationList updateDestinations = new OperationList("PatternSystemManager Update Destinations");
@@ -216,6 +325,80 @@ public class PatternSystemManager implements NoteSourceProvider, CodeFeatures {
 		op.add(() -> () -> {
 			AudioProcessingUtils.getSum().adjustVolume(context.get().getDestination(), volume);
 		});
+
+		return op;
+	}
+
+	/**
+	 * Renders patterns for a specific frame range into the destination buffer.
+	 *
+	 * <p>This method is designed for real-time audio generation where patterns
+	 * are rendered incrementally as playback progresses. Only pattern elements
+	 * that overlap with the specified frame range are processed.</p>
+	 *
+	 * <p>The destination buffer in the context should be sized to match
+	 * {@code frameCount}, not the full arrangement duration.</p>
+	 *
+	 * <h3>Real-Time Mode</h3>
+	 * <p>Unlike the full-buffer {@link #sum(Supplier, ChannelInfo)} method, this
+	 * version:</p>
+	 * <ul>
+	 *   <li>Does not perform auto-volume normalization (disabled in real-time mode)</li>
+	 *   <li>Only processes elements overlapping the frame range</li>
+	 *   <li>Expects the destination buffer to be pre-cleared</li>
+	 * </ul>
+	 *
+	 * @param context Supplier for the AudioSceneContext containing destination buffer
+	 * @param channel Target channel (index, voicing, audio channel)
+	 * @param startFrame Starting frame (0-based, relative to arrangement start)
+	 * @param frameCount Number of frames to render
+	 * @return Operation that renders the specified frame range
+	 *
+	 * @see PatternLayerManager#sum(Supplier, ChannelInfo.Voicing, ChannelInfo.StereoChannel, int, int)
+	 */
+	public Supplier<Runnable> sum(Supplier<AudioSceneContext> context,
+								  ChannelInfo channel,
+								  int startFrame,
+								  int frameCount) {
+		OperationList op = new OperationList(
+				String.format("PatternSystemManager Sum [%d:%d]", startFrame, startFrame + frameCount));
+
+		// Create frame-aware context supplier
+		Supplier<PatternRenderContext> renderContext = () -> {
+			AudioSceneContext ctx = context.get();
+			return new PatternRenderContext(ctx, startFrame, frameCount);
+		};
+
+		// Update destinations for frame range
+		if (enableLazyDestination) {
+			op.add(() -> () -> {
+				AudioSceneContext ctx = context.get();
+				this.destination = ctx.getDestination();
+				IntStream.range(0, patterns.size()).forEach(i ->
+						patterns.get(i).updateDestination(ctx));
+			});
+		} else {
+			AudioSceneContext ctx = context.get();
+			this.destination = ctx.getDestination();
+			IntStream.range(0, patterns.size()).forEach(i ->
+					patterns.get(i).updateDestination(ctx));
+		}
+
+		List<Integer> patternsForChannel = IntStream.range(0, patterns.size())
+				.filter(i -> channel.getPatternChannel() == patterns.get(i).getChannel())
+				.boxed().toList();
+
+		if (patternsForChannel.isEmpty()) {
+			if (enableWarnings) warn("No patterns for channel " + channel);
+			return op;
+		}
+
+		patternsForChannel.forEach(i -> {
+			op.add(patterns.get(i).sum(renderContext, channel.getVoicing(),
+					channel.getAudioChannel(), startFrame, frameCount));
+		});
+
+		// Note: Auto-volume is disabled in real-time mode (see REALTIME_AUDIO_SCENE.md Out of Scope section)
 
 		return op;
 	}

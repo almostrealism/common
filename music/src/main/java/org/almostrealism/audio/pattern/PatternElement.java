@@ -37,6 +37,57 @@ import java.util.function.DoubleUnaryOperator;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
+/**
+ * Represents a single musical event within a pattern layer.
+ *
+ * <p>{@code PatternElement} is the fundamental unit of musical arrangement in the
+ * pattern system. Each element specifies:</p>
+ * <ul>
+ *   <li><strong>Position</strong>: When the element occurs within its pattern (in measures)</li>
+ *   <li><strong>Notes</strong>: The audio samples to play, mapped by {@link ChannelInfo.Voicing}</li>
+ *   <li><strong>Duration Strategy</strong>: How note length is determined</li>
+ *   <li><strong>Scale Traversal</strong>: How melodic notes traverse the current scale</li>
+ *   <li><strong>Repetition</strong>: Optional repeat count and duration for rhythmic patterns</li>
+ * </ul>
+ *
+ * <h2>Note Destinations</h2>
+ *
+ * <p>The key method {@link #getNoteDestinations(boolean, double, AudioSceneContext, NoteAudioContext)}
+ * converts this element into renderable {@link RenderedNoteAudio} objects. This involves:</p>
+ * <ol>
+ *   <li>Determining all positions (accounting for repeats)</li>
+ *   <li>Looking up the current scale at each position</li>
+ *   <li>Applying the {@link ScaleTraversalStrategy} to select pitches</li>
+ *   <li>Computing frame offsets for each note</li>
+ * </ol>
+ *
+ * <h2>Voicing Support</h2>
+ *
+ * <p>Elements can have different notes for MAIN and WET voicings, enabling parallel
+ * dry/wet signal paths with different audio content.</p>
+ *
+ * <h2>Duration Strategies</h2>
+ *
+ * <ul>
+ *   <li>{@link NoteDurationStrategy#NONE}: Use the note's natural duration</li>
+ *   <li>{@link NoteDurationStrategy#UNTIL_NEXT}: Extend until the next note</li>
+ *   <li>{@link NoteDurationStrategy#FIXED}: Use a fixed duration multiplier</li>
+ * </ul>
+ *
+ * <h2>Real-Time Considerations</h2>
+ *
+ * <p>For real-time rendering, the frame offset computation in {@link #getNoteDestinations}
+ * needs to account for buffer-relative positioning. The {@code AudioSceneContext} must
+ * provide frame conversion that works with incremental buffer positions.</p>
+ *
+ * @see PatternLayer
+ * @see PatternNote
+ * @see ScaleTraversalStrategy
+ * @see NoteDurationStrategy
+ * @see RenderedNoteAudio
+ *
+ * @author Michael Murray
+ */
 public class PatternElement implements CodeFeatures {
 	private Map<ChannelInfo.Voicing, PatternNote> notes;
 	private double position;

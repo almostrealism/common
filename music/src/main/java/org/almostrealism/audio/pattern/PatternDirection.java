@@ -16,6 +16,23 @@
 
 package org.almostrealism.audio.pattern;
 
+/**
+ * Defines the playback direction for pattern elements.
+ *
+ * <p>{@code PatternDirection} controls the temporal direction in which
+ * pattern elements are played:</p>
+ * <ul>
+ *   <li><strong>FORWARD</strong>: Elements play from start to end (normal)</li>
+ *   <li><strong>BACKWARD</strong>: Elements play in reverse order</li>
+ * </ul>
+ *
+ * <p>This is primarily used for creative effects like reverse percussion
+ * fills or reversed melodic phrases.</p>
+ *
+ * @see PatternElement#getDirection
+ *
+ * @author Michael Murray
+ */
 public enum PatternDirection {
 	FORWARD, BACKWARD
 }
