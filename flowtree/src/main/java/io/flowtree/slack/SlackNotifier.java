@@ -16,27 +16,23 @@
 
 package io.flowtree.slack;
 
+import com.slack.api.Slack;
+import com.slack.api.methods.MethodsClient;
+import com.slack.api.methods.SlackApiException;
+import com.slack.api.methods.response.chat.ChatPostMessageResponse;
 import io.flowtree.jobs.JobCompletionEvent;
 import io.flowtree.jobs.JobCompletionListener;
 
 import java.io.IOException;
-import java.io.OutputStream;
-import java.net.HttpURLConnection;
-import java.net.URL;
-import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.function.Consumer;
 
 /**
- * Posts job status updates to Slack channels.
+ * Posts job status updates to Slack channels using the Slack SDK.
  *
  * <p>This class implements {@link JobCompletionListener} to receive job events
- * and formats them as Slack messages. It can work with either the Slack Web API
- * (via bot token) or incoming webhooks.</p>
- *
- * <p>Message formatting uses Slack's Block Kit for rich formatting including
- * emoji status indicators, code blocks for commit info, and action buttons.</p>
+ * and formats them as Slack messages with emoji status indicators.</p>
  *
  * @author Michael Murray
  * @see JobCompletionListener
@@ -44,9 +40,8 @@ import java.util.function.Consumer;
  */
 public class SlackNotifier implements JobCompletionListener {
 
-    private static final String SLACK_API_BASE = "https://slack.com/api";
-
     private final String botToken;
+    private final MethodsClient client;
     private final Map<String, SlackWorkstream> workstreams;
     private Consumer<String> messageCallback;
 
@@ -58,6 +53,12 @@ public class SlackNotifier implements JobCompletionListener {
     public SlackNotifier(String botToken) {
         this.botToken = botToken;
         this.workstreams = new HashMap<>();
+
+        if (botToken != null && !botToken.isEmpty()) {
+            this.client = Slack.getInstance().methods(botToken);
+        } else {
+            this.client = null;
+        }
     }
 
     /**
@@ -73,7 +74,7 @@ public class SlackNotifier implements JobCompletionListener {
     /**
      * Sets a callback for receiving formatted messages (useful for testing).
      *
-     * @param callback the callback to receive message JSON
+     * @param callback the callback to receive message text
      */
     public void setMessageCallback(Consumer<String> callback) {
         this.messageCallback = callback;
@@ -107,25 +108,34 @@ public class SlackNotifier implements JobCompletionListener {
      * Posts a message directly to a channel.
      *
      * @param channelId the Slack channel ID
-     * @param text      the message text
+     * @param text      the message text (supports Slack mrkdwn formatting)
      */
     public void postMessage(String channelId, String text) {
-        String payload = buildMessagePayload(channelId, text);
-
+        // Notify callback for testing
         if (messageCallback != null) {
-            messageCallback.accept(payload);
+            messageCallback.accept("{\"channel\":\"" + channelId + "\",\"text\":\"" +
+                                   escapeJson(text) + "\"}");
         }
 
-        if (botToken == null || botToken.isEmpty()) {
-            System.out.println("[SlackNotifier] No bot token - message would be:");
+        if (client == null) {
+            System.out.println("[SlackNotifier] No bot token - message would be posted to " + channelId + ":");
             System.out.println(text);
             return;
         }
 
         try {
-            sendToSlack(SLACK_API_BASE + "/chat.postMessage", payload);
-        } catch (IOException e) {
-            System.err.println("[SlackNotifier] Failed to post message: " + e.getMessage());
+            ChatPostMessageResponse response = client.chatPostMessage(req -> req
+                .channel(channelId)
+                .text(text)
+                .unfurlLinks(false)
+                .unfurlMedia(false)
+            );
+
+            if (!response.isOk()) {
+                System.err.println("[SlackNotifier] Failed to post message: " + response.getError());
+            }
+        } catch (IOException | SlackApiException e) {
+            System.err.println("[SlackNotifier] Error posting message: " + e.getMessage());
         }
     }
 
@@ -137,22 +147,32 @@ public class SlackNotifier implements JobCompletionListener {
      * @param text      the message text
      */
     public void postThreadReply(String channelId, String threadTs, String text) {
-        String payload = buildThreadReplyPayload(channelId, threadTs, text);
-
         if (messageCallback != null) {
-            messageCallback.accept(payload);
+            messageCallback.accept("{\"channel\":\"" + channelId +
+                                   "\",\"thread_ts\":\"" + threadTs +
+                                   "\",\"text\":\"" + escapeJson(text) + "\"}");
         }
 
-        if (botToken == null || botToken.isEmpty()) {
+        if (client == null) {
             System.out.println("[SlackNotifier] No bot token - thread reply would be:");
             System.out.println(text);
             return;
         }
 
         try {
-            sendToSlack(SLACK_API_BASE + "/chat.postMessage", payload);
-        } catch (IOException e) {
-            System.err.println("[SlackNotifier] Failed to post thread reply: " + e.getMessage());
+            ChatPostMessageResponse response = client.chatPostMessage(req -> req
+                .channel(channelId)
+                .threadTs(threadTs)
+                .text(text)
+                .unfurlLinks(false)
+                .unfurlMedia(false)
+            );
+
+            if (!response.isOk()) {
+                System.err.println("[SlackNotifier] Failed to post thread reply: " + response.getError());
+            }
+        } catch (IOException | SlackApiException e) {
+            System.err.println("[SlackNotifier] Error posting thread reply: " + e.getMessage());
         }
     }
 
@@ -190,8 +210,10 @@ public class SlackNotifier implements JobCompletionListener {
                 }
 
                 if (event.getCommitHash() != null) {
-                    sb.append("   Commit: `").append(event.getCommitHash().substring(0, 7));
-                    sb.append("` ");
+                    String shortHash = event.getCommitHash().length() > 7
+                        ? event.getCommitHash().substring(0, 7)
+                        : event.getCommitHash();
+                    sb.append("   Commit: `").append(shortHash).append("` ");
                     sb.append(truncate(event.getDescription(), 50));
                     sb.append("\n");
                 }
@@ -206,7 +228,7 @@ public class SlackNotifier implements JobCompletionListener {
             case FAILED:
                 sb.append(":x: *Work failed*\n");
                 if (event.getErrorMessage() != null) {
-                    sb.append("   Error: ").append(event.getErrorMessage()).append("\n");
+                    sb.append("   Error: ").append(truncate(event.getErrorMessage(), 200)).append("\n");
                 }
                 if (event.getExitCode() != 0) {
                     sb.append("   Exit code: ").append(event.getExitCode()).append("\n");
@@ -224,47 +246,6 @@ public class SlackNotifier implements JobCompletionListener {
         }
 
         return sb.toString();
-    }
-
-    private String buildMessagePayload(String channelId, String text) {
-        return String.format(
-            "{\"channel\":\"%s\",\"text\":\"%s\",\"unfurl_links\":false,\"unfurl_media\":false}",
-            escapeJson(channelId),
-            escapeJson(text)
-        );
-    }
-
-    private String buildThreadReplyPayload(String channelId, String threadTs, String text) {
-        return String.format(
-            "{\"channel\":\"%s\",\"thread_ts\":\"%s\",\"text\":\"%s\",\"unfurl_links\":false,\"unfurl_media\":false}",
-            escapeJson(channelId),
-            escapeJson(threadTs),
-            escapeJson(text)
-        );
-    }
-
-    private void sendToSlack(String endpoint, String payload) throws IOException {
-        URL url = new URL(endpoint);
-        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-
-        try {
-            conn.setRequestMethod("POST");
-            conn.setRequestProperty("Content-Type", "application/json; charset=utf-8");
-            conn.setRequestProperty("Authorization", "Bearer " + botToken);
-            conn.setDoOutput(true);
-
-            try (OutputStream os = conn.getOutputStream()) {
-                byte[] input = payload.getBytes(StandardCharsets.UTF_8);
-                os.write(input, 0, input.length);
-            }
-
-            int responseCode = conn.getResponseCode();
-            if (responseCode != 200) {
-                System.err.println("[SlackNotifier] Slack API returned: " + responseCode);
-            }
-        } finally {
-            conn.disconnect();
-        }
     }
 
     private static String escapeJson(String s) {

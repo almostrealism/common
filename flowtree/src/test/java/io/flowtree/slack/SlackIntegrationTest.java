@@ -21,10 +21,9 @@ import io.flowtree.jobs.JobCompletionListener;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
 
 import static org.junit.Assert.*;
 
@@ -224,5 +223,90 @@ public class SlackIntegrationTest extends TestSuiteBase {
         assertEquals(2, events.size());
         assertEquals(JobCompletionEvent.Status.STARTED, events.get(0).getStatus());
         assertEquals(JobCompletionEvent.Status.SUCCESS, events.get(1).getStatus());
+    }
+
+    @Test
+    public void testYamlConfigLoading() throws IOException {
+        String yaml = "workstreams:\n" +
+                      "  - channelId: \"C0123456789\"\n" +
+                      "    channelName: \"#project-alpha\"\n" +
+                      "    agents:\n" +
+                      "      - host: \"localhost\"\n" +
+                      "        port: 7766\n" +
+                      "      - host: \"localhost\"\n" +
+                      "        port: 7767\n" +
+                      "    defaultBranch: \"feature/alpha\"\n" +
+                      "    pushToOrigin: true\n" +
+                      "    maxTurns: 100\n" +
+                      "    maxBudgetUsd: 25.0\n" +
+                      "  - channelId: \"C9876543210\"\n" +
+                      "    channelName: \"#project-beta\"\n" +
+                      "    agents:\n" +
+                      "      - host: \"192.168.1.100\"\n" +
+                      "        port: 7768\n" +
+                      "    defaultBranch: \"feature/beta\"\n";
+
+        WorkstreamConfig config = WorkstreamConfig.loadFromYamlString(yaml);
+
+        assertEquals(2, config.getWorkstreams().size());
+
+        // First workstream
+        WorkstreamConfig.WorkstreamEntry entry1 = config.getWorkstreams().get(0);
+        assertEquals("C0123456789", entry1.getChannelId());
+        assertEquals("#project-alpha", entry1.getChannelName());
+        assertEquals(2, entry1.getAgents().size());
+        assertEquals("localhost", entry1.getAgents().get(0).getHost());
+        assertEquals(7766, entry1.getAgents().get(0).getPort());
+        assertEquals("feature/alpha", entry1.getDefaultBranch());
+        assertEquals(100, entry1.getMaxTurns());
+        assertEquals(25.0, entry1.getMaxBudgetUsd(), 0.001);
+
+        // Second workstream
+        WorkstreamConfig.WorkstreamEntry entry2 = config.getWorkstreams().get(1);
+        assertEquals("C9876543210", entry2.getChannelId());
+        assertEquals("192.168.1.100", entry2.getAgents().get(0).getHost());
+
+        // Convert to SlackWorkstream objects
+        List<SlackWorkstream> workstreams = config.toWorkstreams();
+        assertEquals(2, workstreams.size());
+
+        SlackWorkstream ws1 = workstreams.get(0);
+        assertEquals("C0123456789", ws1.getChannelId());
+        assertEquals("#project-alpha", ws1.getChannelName());
+        assertEquals(2, ws1.getAgents().size());
+        assertEquals("feature/alpha", ws1.getDefaultBranch());
+    }
+
+    @Test
+    public void testJsonConfigLoading() throws IOException {
+        String json = "{\"workstreams\":[" +
+                      "{\"channelId\":\"C111\",\"channelName\":\"#test\"," +
+                      "\"agents\":[{\"host\":\"localhost\",\"port\":7766}]," +
+                      "\"defaultBranch\":\"main\"}]}";
+
+        WorkstreamConfig config = WorkstreamConfig.loadFromJsonString(json);
+
+        assertEquals(1, config.getWorkstreams().size());
+        assertEquals("C111", config.getWorkstreams().get(0).getChannelId());
+        assertEquals("main", config.getWorkstreams().get(0).getDefaultBranch());
+    }
+
+    @Test
+    public void testConfigDefaults() throws IOException {
+        // Minimal config - should use defaults
+        String yaml = "workstreams:\n" +
+                      "  - channelId: \"C123\"\n" +
+                      "    agents:\n" +
+                      "      - host: \"localhost\"\n";
+
+        WorkstreamConfig config = WorkstreamConfig.loadFromYamlString(yaml);
+        WorkstreamConfig.WorkstreamEntry entry = config.getWorkstreams().get(0);
+
+        // Check defaults
+        assertEquals(7766, entry.getAgents().get(0).getPort()); // default port
+        assertEquals(50, entry.getMaxTurns()); // default turns
+        assertEquals(10.0, entry.getMaxBudgetUsd(), 0.001); // default budget
+        assertTrue(entry.isPushToOrigin()); // default push
+        assertEquals("Read,Edit,Write,Bash,Glob,Grep", entry.getAllowedTools()); // default tools
     }
 }
