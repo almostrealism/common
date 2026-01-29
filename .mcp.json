@@ -14,6 +14,11 @@
       "command": "python3",
       "args": ["tools/mcp/profile-analyzer/server.py"],
       "description": "Performance profile analysis server"
+    },
+    "ar-memory": {
+      "command": "python3",
+      "args": ["tools/mcp/memory/server.py"],
+      "description": "Semantic memory storage and retrieval server"
     }
   }
 }

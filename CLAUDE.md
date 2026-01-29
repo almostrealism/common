@@ -74,6 +74,75 @@ RIGHT: Search ar-docs → Read module docs → Trace actual data flow → Unders
 
 ---
 
+## ⚠️ CRITICAL: USE AR-MEMORY MCP AGGRESSIVELY ⚠️
+
+**THIS IS THE SECOND MOST IMPORTANT TOOL AFTER AR-DOCS.**
+
+The `ar-memory` MCP server provides persistent semantic memory across sessions. Information stored here survives context window limits and session boundaries. **You MUST use it aggressively to preserve knowledge that will be useful in future sessions.**
+
+### When to STORE memories
+
+**Store EVERY TIME you:**
+- Make a design decision or learn why something was done a certain way
+- Discover a non-obvious behavior, gotcha, or quirk in the codebase
+- Complete a task (summarize what was done, what files changed, and why)
+- Encounter and resolve a bug (record the root cause and fix)
+- Learn something about the architecture that isn't in ar-docs
+- Receive explicit instructions or preferences from the user
+- Identify a pattern, convention, or anti-pattern in the codebase
+- Find that something does NOT work (so future sessions don't repeat the mistake)
+- Start a multi-session task (record progress, next steps, and open questions)
+
+**Example of WRONG behavior:**
+```
+[Spends 30 minutes debugging a FAISS index issue, finds the fix]
+[Does NOT store the finding]
+[Next session: re-discovers the same issue from scratch]
+```
+
+**Example of CORRECT behavior:**
+```
+[Fixes the issue]
+[Calls mcp__ar-memory__memory_store with the root cause, fix, and affected files]
+[Next session: searches memory, finds the prior work immediately]
+```
+
+### When to SEARCH memories
+
+**Search EVERY TIME you:**
+- Start a new session or task (check for prior context)
+- Work on a module or feature area (check for prior decisions/findings)
+- Encounter an error or unexpected behavior (check if it was seen before)
+- Are about to make a design decision (check if it was already decided)
+- Resume work that may have started in a prior session
+
+### How to use it
+
+**Available tools:**
+| Tool | Purpose |
+|------|---------|
+| `mcp__ar-memory__memory_store` | Store a memory entry with semantic embedding |
+| `mcp__ar-memory__memory_search` | Search by semantic similarity |
+| `mcp__ar-memory__memory_delete` | Delete an entry by ID |
+| `mcp__ar-memory__memory_list` | List entries (newest first, with pagination) |
+
+**Parameters for `memory_store`:**
+- `content`: The text to store (be detailed and specific)
+- `namespace`: Logical grouping (e.g., `"decisions"`, `"bugs"`, `"context"`, `"progress"`)
+- `tags`: List of tags for filtering (e.g., `["ml", "attention"]`, `["bug", "hardware"]`)
+- `source`: Source identifier (e.g., file path, PR number, task description)
+
+**Best practices:**
+- Use **namespaces** to organize: `"decisions"` for design choices, `"bugs"` for issues found, `"context"` for codebase knowledge, `"progress"` for multi-session task tracking
+- Use **tags** liberally — they enable filtered searches later
+- Write **detailed content** — include file paths, class names, method names, and the "why" not just the "what"
+- **Search before you start working** — prior sessions may have left you exactly the context you need
+- When completing a multi-step task, store a **progress summary** with next steps so the next session can pick up seamlessly
+
+**This rule exists because:** Claude loses all context between sessions. Without aggressive memory use, every session starts from zero. The memory server makes cross-session continuity possible. USE IT.
+
+---
+
 ## ⚠️ CRITICAL: DO NOT COMMIT CODE ⚠️
 
 **THIS IS AN ABSOLUTE RULE WITH NO EXCEPTIONS.**
