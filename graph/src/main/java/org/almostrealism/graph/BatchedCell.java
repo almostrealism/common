@@ -19,6 +19,7 @@ package org.almostrealism.graph;
 import io.almostrealism.lifecycle.Lifecycle;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionFeatures;
+import org.almostrealism.hardware.OperationList;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.time.Temporal;
 
@@ -234,7 +235,7 @@ public abstract class BatchedCell extends CellAdapter<PackedCollection>
 		if (getReceptor() != null) {
 			return getReceptor().push(getOutputProducer());
 		}
-		return () -> () -> {};
+		return new OperationList("BatchedCell Push (empty)");
 	}
 
 	/**

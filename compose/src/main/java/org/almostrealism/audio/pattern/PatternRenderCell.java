@@ -134,11 +134,14 @@ public class PatternRenderCell extends BatchedCell implements CollectionFeatures
 			return ctx;
 		};
 
-		Runnable sumOp = patterns.sum(tickContext, channel, currentFrame, getBatchSize()).get();
+		Supplier<Runnable> sumSupplier = patterns.sum(tickContext, channel, currentFrame, getBatchSize());
 
-		return () -> () -> {
-			getOutputBuffer().clear();
-			sumOp.run();
+		return () -> {
+			Runnable sumOp = sumSupplier.get();
+			return () -> {
+				getOutputBuffer().clear();
+				sumOp.run();
+			};
 		};
 	}
 
