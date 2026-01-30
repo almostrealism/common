@@ -67,11 +67,16 @@ import java.util.function.Supplier;
  * executes, providing the current absolute frame position. This can be used
  * to update frame tracking state used by {@link PatternRenderCell}.</p>
  *
+ * @deprecated Use {@link org.almostrealism.graph.BatchedCell} instead, which provides
+ *             a unified Cell-based batching pattern with output buffer management.
+ *
  * @see PatternRenderCell
+ * @see org.almostrealism.graph.BatchedCell
  * @see Temporal
  *
  * @author Michael Murray
  */
+@Deprecated
 public class BatchCell implements Temporal, Lifecycle {
 	private final Temporal delegate;
 	private final int batchSize;

@@ -17,18 +17,17 @@
 package org.almostrealism.audio.pattern;
 
 import io.almostrealism.code.Computation;
-import io.almostrealism.lifecycle.Lifecycle;
 import org.almostrealism.CodeFeatures;
+import org.almostrealism.graph.BatchedCell;
 import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.hardware.OperationList;
-import org.almostrealism.time.Temporal;
-import org.almostrealism.time.TemporalFeatures;
 
 import java.util.function.IntConsumer;
 import java.util.function.Supplier;
 
 /**
- * A batch cell that combines pattern rendering with a compiled loop for per-frame processing.
+ * A {@link BatchedCell} that combines pattern rendering with a compiled loop
+ * for per-frame processing.
  *
  * <p>{@code CompiledBatchCell} implements the optimized real-time audio architecture where:</p>
  * <ul>
@@ -49,12 +48,11 @@ import java.util.function.Supplier;
  *
  * <h2>Performance Benefit</h2>
  * <p>Unlike {@link BatchCell} which uses Java lambdas for per-sample iteration (44100
- * lambda invocations per second), this class:
+ * lambda invocations per second), this class:</p>
  * <ul>
  *   <li>Calls tick() once per buffer (~43 calls/sec at 1024-sample buffers)</li>
  *   <li>Executes per-frame processing as a native for-loop in compiled code</li>
  * </ul>
- * </p>
  *
  * <h2>Usage</h2>
  * <pre>{@code
@@ -75,32 +73,30 @@ import java.util.function.Supplier;
  * batchCell.tick().get().run();  // Renders patterns + runs N-frame loop
  * }</pre>
  *
- * <h2>Loop Compilation</h2>
- * <p>The {@code frameOp} is wrapped using {@link TemporalFeatures#loop(Supplier, int)}.
- * If {@code frameOp} is a {@link Computation}, the loop compiles to a native for-loop.
- * If not, it falls back to a Java loop (which defeats the performance optimization).</p>
+ * <h2>Tick Override</h2>
+ * <p>This class overrides {@link BatchedCell#tick()} because the compiled path
+ * is called once per buffer (not per sample). The tick method directly orchestrates
+ * the frame callback, render operation, compiled loop, and batch advancement,
+ * rather than using the base class's tick-counting mechanism.</p>
  *
  * @see BatchCell
+ * @see BatchedCell
  * @see org.almostrealism.hardware.computations.Loop
- * @see TemporalFeatures#loop(Supplier, int)
  *
  * @author Michael Murray
  */
-public class CompiledBatchCell implements Temporal, Lifecycle, CodeFeatures {
+public class CompiledBatchCell extends BatchedCell implements CodeFeatures {
 
 	private final Supplier<Runnable> renderOp;
 	private final Supplier<Runnable> frameOp;
-	private final int batchSize;
 	private final IntConsumer frameCallback;
-
-	private int currentBatch;
 
 	/**
 	 * Creates a CompiledBatchCell without frame callback.
 	 *
-	 * @param renderOp The pattern rendering operation (non-compilable, runs once per tick)
-	 * @param frameOp The per-frame effects processing (should be Computation for native loop)
-	 * @param batchSize Number of frames per batch
+	 * @param renderOp  the pattern rendering operation (non-compilable, runs once per tick)
+	 * @param frameOp   the per-frame effects processing (should be Computation for native loop)
+	 * @param batchSize number of frames per batch
 	 */
 	public CompiledBatchCell(Supplier<Runnable> renderOp, Supplier<Runnable> frameOp, int batchSize) {
 		this(renderOp, frameOp, batchSize, null);
@@ -109,39 +105,27 @@ public class CompiledBatchCell implements Temporal, Lifecycle, CodeFeatures {
 	/**
 	 * Creates a CompiledBatchCell with frame callback.
 	 *
-	 * @param renderOp The pattern rendering operation (non-compilable, runs once per tick)
-	 * @param frameOp The per-frame effects processing (should be Computation for native loop)
-	 * @param batchSize Number of frames per batch
-	 * @param frameCallback Called with start frame position before each batch
+	 * @param renderOp      the pattern rendering operation (non-compilable, runs once per tick)
+	 * @param frameOp       the per-frame effects processing (should be Computation for native loop)
+	 * @param batchSize     number of frames per batch
+	 * @param frameCallback called with start frame position before each batch
 	 */
 	public CompiledBatchCell(Supplier<Runnable> renderOp, Supplier<Runnable> frameOp,
 							 int batchSize, IntConsumer frameCallback) {
+		super(batchSize, batchSize);
 		this.renderOp = renderOp;
 		this.frameOp = frameOp;
-		this.batchSize = batchSize;
 		this.frameCallback = frameCallback;
-		this.currentBatch = 0;
 	}
 
 	/**
-	 * Returns the batch size (frames per batch).
+	 * Delegates to the render operation provided at construction.
+	 *
+	 * @return the render operation
 	 */
-	public int getBatchSize() {
-		return batchSize;
-	}
-
-	/**
-	 * Returns the current batch number.
-	 */
-	public int getCurrentBatch() {
-		return currentBatch;
-	}
-
-	/**
-	 * Returns the start frame of the current batch.
-	 */
-	public int getCurrentFrame() {
-		return currentBatch * batchSize;
+	@Override
+	protected Supplier<Runnable> renderBatch() {
+		return renderOp;
 	}
 
 	/**
@@ -157,13 +141,14 @@ public class CompiledBatchCell implements Temporal, Lifecycle, CodeFeatures {
 	}
 
 	/**
-	 * Performs one batch tick.
+	 * Performs one batch tick, called once per buffer (not per sample).
 	 *
-	 * <p>This method should be called once per buffer (not per sample). Each call:</p>
+	 * <p>This overrides the base class's tick-counting mechanism because the
+	 * compiled path manages its own per-buffer invocation cadence. Each call:</p>
 	 * <ol>
 	 *   <li>Notifies the frame callback of the current position</li>
 	 *   <li>Executes the render operation once (pattern rendering)</li>
-	 *   <li>Executes the frame operation N times via a Loop</li>
+	 *   <li>Executes the frame operation N times via a compiled Loop</li>
 	 *   <li>Advances to the next batch</li>
 	 * </ol>
 	 *
@@ -173,42 +158,35 @@ public class CompiledBatchCell implements Temporal, Lifecycle, CodeFeatures {
 	public Supplier<Runnable> tick() {
 		OperationList tick = new OperationList("CompiledBatchCell Tick");
 
-		// (1) Frame position callback (advance frame counter before rendering)
 		tick.add(() -> () -> {
-			int framePosition = currentBatch * batchSize;
 			if (frameCallback != null) {
-				frameCallback.accept(framePosition);
+				frameCallback.accept(getCurrentFrame());
 			}
 		});
 
-		// (2) Render patterns for this buffer (non-compilable, runs once)
 		tick.add(renderOp);
 
-		// (3) Per-frame effects processing as compiled Loop
 		if (frameOp instanceof Computation) {
-			// Use HardwareFeatures.loop to create a compiled Loop
-			tick.add(HardwareFeatures.getInstance().loop((Computation<Void>) frameOp, batchSize));
+			tick.add(HardwareFeatures.getInstance().loop((Computation<Void>) frameOp, getBatchSize()));
 		} else {
-			// Fall back to Java loop iteration
-			tick.add(javaLoop(frameOp, batchSize));
+			tick.add(javaLoop(frameOp, getBatchSize()));
 		}
 
-		// (4) Advance batch counter (runs after loop completes)
-		tick.add(() -> () -> currentBatch++);
+		tick.add(() -> () -> advanceBatch());
 
 		return tick;
 	}
 
 	/**
-	 * Resets the batch counter.
+	 * Resets the batch counter and output buffer.
 	 */
 	@Override
 	public void reset() {
-		currentBatch = 0;
+		super.reset();
 	}
 
 	/**
-	 * Helper method to create a Java-based loop (fallback when frameOp is not a Computation).
+	 * Creates a Java-based loop (fallback when frameOp is not a Computation).
 	 */
 	private Supplier<Runnable> javaLoop(Supplier<Runnable> op, int iterations) {
 		return () -> {

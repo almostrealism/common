@@ -988,7 +988,7 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 				patterns, ctx, channel, bufferSize, frameSupplier);
 
 		// Apply effects to the render cell's output
-		CellList cells = efx.apply(channel, renderCell.getOutput(), getTotalDuration(), new OperationList());
+		CellList cells = efx.apply(channel, renderCell.getOutputProducer(), getTotalDuration(), new OperationList());
 
 		if (renderCellCollector != null) {
 			// Compiled path: collect render cell for separate ticking
@@ -1138,7 +1138,7 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 	private Supplier<Runnable> createRenderCellOp(List<PatternRenderCell> renderCells) {
 		return () -> () -> {
 			for (PatternRenderCell cell : renderCells) {
-				cell.tick().get().run();
+				cell.renderNow().get().run();
 			}
 		};
 	}

@@ -16,21 +16,17 @@
 
 package org.almostrealism.audio.pattern;
 
-import io.almostrealism.relation.Producer;
 import org.almostrealism.audio.arrange.AudioSceneContext;
 import org.almostrealism.audio.data.ChannelInfo;
 import org.almostrealism.collect.CollectionFeatures;
-import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.graph.Cell;
-import org.almostrealism.graph.Receptor;
-import org.almostrealism.hardware.OperationList;
-import org.almostrealism.time.Temporal;
+import org.almostrealism.graph.BatchedCell;
 
 import java.util.function.IntSupplier;
 import java.util.function.Supplier;
 
 /**
- * A Cell that performs incremental pattern rendering for real-time audio streaming.
+ * A {@link BatchedCell} that performs incremental pattern rendering for real-time
+ * audio streaming.
  *
  * <p>{@code PatternRenderCell} is the key component enabling real-time AudioScene
  * operation. It renders pattern audio incrementally as playback progresses, rather
@@ -38,13 +34,18 @@ import java.util.function.Supplier;
  *
  * <h2>Operation Model</h2>
  *
- * <p>Unlike traditional pattern rendering which happens once during setup, this cell:</p>
+ * <p>This cell extends {@link BatchedCell} with {@code batchSize == outputSize == bufferSize}.
+ * The base class handles:</p>
  * <ul>
- *   <li>Tracks the current playback position via {@link #currentFrame}</li>
- *   <li>Renders only the frame range needed for each buffer</li>
- *   <li>Clears the destination buffer before rendering each chunk</li>
- *   <li>Advances the frame position after each tick</li>
+ *   <li>Tick counting (fires {@link #renderBatch()} once per buffer)</li>
+ *   <li>Output buffer allocation and management</li>
+ *   <li>push() forwarding to receptor (without triggering rendering)</li>
+ *   <li>Lifecycle (setup/reset)</li>
  * </ul>
+ *
+ * <p>This subclass provides the actual pattern rendering logic via
+ * {@link #renderBatch()}, which delegates to
+ * {@link PatternSystemManager#sum(Supplier, ChannelInfo, int, int)}.</p>
  *
  * <h2>Usage</h2>
  * <pre>{@code
@@ -56,16 +57,18 @@ import java.util.function.Supplier;
  * // In setup phase - only light initialization
  * cell.setup().get().run();
  *
- * // In tick phase - renders current buffer
+ * // In tick phase (called per-sample, renders once per buffer)
  * cell.tick().get().run();
+ *
+ * // In compiled path (renders immediately, no counting)
+ * cell.renderNow().get().run();
  * }</pre>
  *
  * <h2>Frame Tracking</h2>
  *
- * <p>The cell does not manage frame position internally. Instead, it accepts
- * a {@link IntSupplier} that provides the current frame position. This allows
- * the frame tracking to be managed externally, typically by the {@link GlobalTimeManager}
- * or a {@link BatchCell} wrapper.</p>
+ * <p>The cell accepts a {@link IntSupplier} that provides the current frame
+ * position. This allows frame tracking to be managed externally, typically
+ * by the {@code GlobalTimeManager} or a {@link BatchCell} wrapper.</p>
  *
  * <h2>Thread Safety</h2>
  *
@@ -74,56 +77,77 @@ import java.util.function.Supplier;
  *
  * @see PatternSystemManager#sum(Supplier, ChannelInfo, int, int)
  * @see org.almostrealism.audio.arrange.PatternRenderContext
- * @see BatchCell
+ * @see BatchedCell
  *
  * @author Michael Murray
  */
-public class PatternRenderCell implements Cell<PackedCollection>, Temporal, CollectionFeatures {
+public class PatternRenderCell extends BatchedCell implements CollectionFeatures {
 	private final PatternSystemManager patterns;
 	private final Supplier<AudioSceneContext> contextSupplier;
 	private final ChannelInfo channel;
-	private final int bufferSize;
 	private final IntSupplier currentFrame;
-
-	private Receptor<PackedCollection> receptor;
-	private PackedCollection destination;
-	private int lastRenderedFrame = -1;
 
 	/**
 	 * Creates a new pattern render cell.
 	 *
-	 * <p>The destination buffer is allocated immediately in the constructor
-	 * to ensure that {@link #getOutput()} can provide a valid producer before
-	 * setup() is called. This is required because the cell pipeline is built
-	 * (including effects processing) before setup runs.</p>
+	 * <p>The output buffer is allocated immediately by the {@link BatchedCell}
+	 * constructor to ensure that {@link #getOutputProducer()} can provide a valid
+	 * producer before setup() is called. This is required because the cell
+	 * pipeline (including effects processing) is built before setup runs.</p>
 	 *
-	 * @param patterns The pattern system manager containing patterns to render
-	 * @param contextSupplier Supplier for the audio scene context
-	 * @param channel The channel to render (index, voicing, stereo channel)
-	 * @param bufferSize The size of each render buffer in frames
-	 * @param currentFrame Supplier providing the current absolute frame position
+	 * @param patterns       the pattern system manager containing patterns to render
+	 * @param contextSupplier supplier for the audio scene context
+	 * @param channel        the channel to render (index, voicing, stereo channel)
+	 * @param bufferSize     the size of each render buffer in frames
+	 * @param currentFrame   supplier providing the current absolute frame position
 	 */
 	public PatternRenderCell(PatternSystemManager patterns,
 							 Supplier<AudioSceneContext> contextSupplier,
 							 ChannelInfo channel,
 							 int bufferSize,
 							 IntSupplier currentFrame) {
+		super(bufferSize, bufferSize);
 		this.patterns = patterns;
 		this.contextSupplier = contextSupplier;
 		this.channel = channel;
-		this.bufferSize = bufferSize;
 		this.currentFrame = currentFrame;
+	}
 
-		// Allocate destination buffer immediately so getOutput() works
-		// before setup() is called (effects pipeline is built during construction)
-		this.destination = new PackedCollection(bufferSize);
+	/**
+	 * Renders one buffer of pattern audio into the output buffer.
+	 *
+	 * <p>Each render:</p>
+	 * <ol>
+	 *   <li>Reads the current frame position from the frame supplier</li>
+	 *   <li>Clears the output buffer</li>
+	 *   <li>Creates a context with the output buffer as destination</li>
+	 *   <li>Calls {@link PatternSystemManager#sum} with the frame range</li>
+	 * </ol>
+	 *
+	 * @return operation that renders one buffer of pattern audio
+	 */
+	@Override
+	protected Supplier<Runnable> renderBatch() {
+		return () -> () -> {
+			int startFrame = currentFrame.getAsInt();
+
+			getOutputBuffer().clear();
+
+			Supplier<AudioSceneContext> tickContext = () -> {
+				AudioSceneContext ctx = contextSupplier.get();
+				ctx.setDestination(getOutputBuffer());
+				return ctx;
+			};
+
+			patterns.sum(tickContext, channel, startFrame, getBatchSize()).get().run();
+		};
 	}
 
 	/**
 	 * Returns the buffer size used by this cell.
 	 */
 	public int getBufferSize() {
-		return bufferSize;
+		return getBatchSize();
 	}
 
 	/**
@@ -134,110 +158,13 @@ public class PatternRenderCell implements Cell<PackedCollection>, Temporal, Coll
 	}
 
 	/**
-	 * Performs setup for pattern rendering.
+	 * Returns the rendered audio destination as a producer with shape information.
 	 *
-	 * <p>In real-time mode, setup is lightweight. The destination buffer
-	 * is already allocated in the constructor, so setup just clears it
-	 * to ensure a clean starting state.</p>
-	 *
-	 * @return Operation that initializes the cell
+	 * @return producer for the destination buffer with shape info
+	 * @deprecated Use {@link #getOutputProducer()} instead
 	 */
-	@Override
-	public Supplier<Runnable> setup() {
-		return () -> () -> {
-			// Clear destination buffer for a clean starting state
-			// (buffer is allocated in constructor)
-			destination.clear();
-		};
-	}
-
-	/**
-	 * Performs one tick of pattern rendering.
-	 *
-	 * <p>Each tick:</p>
-	 * <ol>
-	 *   <li>Clears the destination buffer</li>
-	 *   <li>Gets the current frame position from the frame supplier</li>
-	 *   <li>Calls {@link PatternSystemManager#sum} with the frame range</li>
-	 *   <li>Pushes the result to the receptor if set</li>
-	 * </ol>
-	 *
-	 * @return Operation that renders one buffer of audio
-	 */
-	@Override
-	public Supplier<Runnable> tick() {
-		return () -> () -> {
-			// Read frame position at EXECUTION time (not compile time)
-			int startFrame = currentFrame.getAsInt();
-
-			// Only render when frame position changes (once per buffer cycle)
-			if (startFrame != lastRenderedFrame) {
-				lastRenderedFrame = startFrame;
-
-				// Clear destination buffer
-				if (destination != null) {
-					destination.clear();
-				}
-
-				// Create context with destination buffer set
-				Supplier<AudioSceneContext> tickContext = () -> {
-					AudioSceneContext ctx = contextSupplier.get();
-					ctx.setDestination(destination);
-					return ctx;
-				};
-
-				// Render patterns for this frame range
-				patterns.sum(tickContext, channel, startFrame, bufferSize).get().run();
-			}
-		};
-	}
-
-	/**
-	 * Returns the rendered audio destination.
-	 *
-	 * <p>This producer can be used to access the rendered audio after
-	 * tick() has been called. The returned producer includes shape information
-	 * (buffer size) to enable proper integration with EfxManager.</p>
-	 *
-	 * @return Producer for the destination buffer with shape info
-	 */
-	public Producer<PackedCollection> getOutput() {
-		// Use func() to create a producer with proper shape information
-		// This is required for EfxManager.createCells() to determine the audio size
-		return func(shape(bufferSize).traverseEach(), args -> destination, false);
-	}
-
-	@Override
-	public Supplier<Runnable> push(Producer<PackedCollection> protein) {
-		// Pattern cells generate their own output, they don't transform input
-		// Just execute tick and push result to receptor
-		return () -> {
-			OperationList op = new OperationList("PatternRenderCell Push");
-			op.add(tick());
-
-			if (receptor != null) {
-				op.add(receptor.push(getOutput()));
-			}
-
-			return op.get();
-		};
-	}
-
-	@Override
-	public void setReceptor(Receptor<PackedCollection> r) {
-		this.receptor = r;
-	}
-
-	/**
-	 * Resets the cell for reuse.
-	 *
-	 * <p>Note: This does not reset the frame position since that is
-	 * managed externally.</p>
-	 */
-	public void reset() {
-		lastRenderedFrame = -1;
-		if (destination != null) {
-			destination.clear();
-		}
+	@Deprecated
+	public io.almostrealism.relation.Producer<org.almostrealism.collect.PackedCollection> getOutput() {
+		return getOutputProducer();
 	}
 }
