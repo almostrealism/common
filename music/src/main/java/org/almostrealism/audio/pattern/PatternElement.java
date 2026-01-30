@@ -228,26 +228,41 @@ public class PatternElement implements CodeFeatures {
 									context, audioContext);
 	}
 
+	/**
+	 * Returns the effective duration of this element's note in seconds.
+	 *
+	 * <p>This accounts for the {@link NoteDurationStrategy}: if {@code NONE},
+	 * the note's natural duration is used; otherwise the strategy computes
+	 * a modified duration based on position and next-note timing.</p>
+	 *
+	 * @param details voicing details for the note
+	 * @param audioSelection audio selection function
+	 * @param timeForDuration measure-to-seconds conversion
+	 * @return the effective note duration in seconds
+	 */
+	public double getEffectiveDuration(ElementVoicingDetails details,
+									   DoubleFunction<PatternNoteAudio> audioSelection,
+									   DoubleUnaryOperator timeForDuration) {
+		double originalDuration = getNote(details.getVoicing())
+				.getDuration(details.getTarget(), audioSelection);
+
+		if (getDurationStrategy() == NoteDurationStrategy.NONE) {
+			return originalDuration;
+		} else {
+			return getNoteDuration(timeForDuration, details.getPosition(),
+					details.getNextNotePosition(), originalDuration);
+		}
+	}
+
 	public Producer<PackedCollection> getNoteAudio(ElementVoicingDetails details,
 													  Factor<PackedCollection> automationLevel,
 													  DoubleFunction<PatternNoteAudio> audioSelection,
 													  DoubleUnaryOperator timeForDuration) {
 		KeyPosition<?> k = details.isMelodic() ? details.getTarget() : null;
-
-		double originalDuration = getNote(details.getVoicing())
-				.getDuration(details.getTarget(), audioSelection);
-
-		if (getDurationStrategy() == NoteDurationStrategy.NONE) {
-			return getNote(details.getVoicing()).getAudio(k,
-					details.getStereoChannel().getIndex(),
-					originalDuration, automationLevel, audioSelection);
-		} else {
-			double duration = getNoteDuration(timeForDuration, details.getPosition(),
-					details.getNextNotePosition(), originalDuration);
-			return getNote(details.getVoicing()).getAudio(k,
-					details.getStereoChannel().getIndex(), duration,
-					automationLevel, audioSelection);
-		}
+		double duration = getEffectiveDuration(details, audioSelection, timeForDuration);
+		return getNote(details.getVoicing()).getAudio(k,
+				details.getStereoChannel().getIndex(), duration,
+				automationLevel, audioSelection);
 	}
 
 	public boolean isPresent(double start, double end) {

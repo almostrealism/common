@@ -27,8 +27,13 @@ import org.almostrealism.audio.data.WaveData;
 import org.almostrealism.audio.health.AudioHealthScore;
 import org.almostrealism.audio.health.MultiChannelAudioOutput;
 import org.almostrealism.audio.health.StableDurationHealthComputation;
+import org.almostrealism.audio.notes.NoteAudioChoice;
+import org.almostrealism.audio.notes.NoteAudioContext;
 import org.almostrealism.audio.pattern.CompiledBatchCell;
+import org.almostrealism.audio.pattern.PatternElement;
+import org.almostrealism.audio.pattern.PatternLayerManager;
 import org.almostrealism.audio.pattern.PatternSystemManager;
+import org.almostrealism.audio.pattern.RenderedNoteAudio;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.hardware.computations.Loop;
@@ -39,6 +44,7 @@ import org.junit.Test;
 import java.io.File;
 import java.io.IOException;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Supplier;
 
 import static org.junit.Assert.*;
@@ -940,5 +946,270 @@ public class AudioSceneRealTimeCorrectnessTest extends AudioSceneTestBase {
 		// The compiled version should generally be faster due to reduced overhead
 		// but we don't assert on this as it depends on JIT optimization and hardware
 		log("Performance test completed (no assertions - informational only)");
+	}
+
+	// =========================================================================
+	// DIAGNOSTIC TESTS (Pattern Rendering Performance)
+	// =========================================================================
+
+	/**
+	 * Measures whether pattern rendering time scales with buffer size.
+	 *
+	 * <p>Times {@link PatternSystemManager#sum} with different buffer sizes
+	 * at the same start position. If a 1024-frame buffer takes nearly as long
+	 * as a 44100-frame buffer, the rendering is computing full note audio
+	 * regardless of how many frames the caller actually needs.</p>
+	 *
+	 * <p>Expected result if rendering is efficient: time should scale roughly
+	 * linearly with buffer size. If it doesn't, something in the rendering
+	 * pipeline is doing work proportional to note duration, not buffer size.</p>
+	 */
+	@Test(timeout = 180_000)
+	public void renderTimingVsBufferSize() {
+		File samplesDir = new File(SAMPLES_PATH);
+		if (!samplesDir.exists()) {
+			log("Skipping test - Samples directory not found");
+			return;
+		}
+
+		MixdownManager.enableMainFilterUp = false;
+		MixdownManager.enableEfxFilters = false;
+		MixdownManager.enableEfx = false;
+		PatternSystemManager.enableWarnings = false;
+
+		AudioScene<?> seedScene = createBaselineScene(samplesDir);
+		long seed = findWorkingGenomeSeed(seedScene, samplesDir);
+		if (seed < 0) {
+			log("No working genome found - skipping test");
+			return;
+		}
+
+		log("=== Render Timing vs Buffer Size ===");
+		log("Seed: " + seed);
+
+		int[] bufferSizes = {256, 1024, 4096, 44100};
+
+		for (int bufSize : bufferSizes) {
+			AudioScene<?> scene = createBaselineScene(samplesDir);
+			applyGenome(scene, seed);
+
+			PatternSystemManager patterns = scene.getPatternManager();
+			patterns.setTuning(scene.getTuning());
+			patterns.init();
+
+			ChannelInfo channel = new ChannelInfo(0, ChannelInfo.Voicing.MAIN,
+					ChannelInfo.StereoChannel.LEFT);
+			PackedCollection dest = new PackedCollection(bufSize);
+
+			final AudioScene<?> finalScene = scene;
+			Supplier<AudioSceneContext> ctx = () -> {
+				AudioSceneContext c = finalScene.getContext(List.of(channel));
+				c.setDestination(dest);
+				return c;
+			};
+
+			long startNs = System.nanoTime();
+			patterns.sum(ctx, channel, 0, bufSize).get().run();
+			long elapsedNs = System.nanoTime() - startNs;
+
+			double elapsedMs = elapsedNs / 1_000_000.0;
+			double msPerFrame = elapsedMs / bufSize;
+
+			log(String.format("Buffer %6d frames: %8.1f ms  (%8.4f ms/frame)",
+					bufSize, elapsedMs, msPerFrame));
+
+			dest.destroy();
+		}
+
+		log("If times are similar across buffer sizes, the rendering is not");
+		log("scaling to the buffer - it computes full note audio regardless.");
+	}
+
+	/**
+	 * Analyzes note-level waste in frame-range rendering.
+	 *
+	 * <p>Replicates the inner loop of {@code PatternFeatures.renderRange()} with
+	 * instrumentation to measure:</p>
+	 * <ul>
+	 *   <li>How many notes are created vs how many overlap the target buffer</li>
+	 *   <li>Total audio frames evaluated vs frames that fall within the buffer</li>
+	 *   <li>Time spent in {@code getNoteDestinations()} vs {@code evaluate()}</li>
+	 *   <li>Average note audio length compared to buffer size</li>
+	 * </ul>
+	 *
+	 * <p>This test isolates exactly where time is spent in pattern rendering
+	 * and quantifies the waste from computing full note audio when only a
+	 * small slice is needed.</p>
+	 */
+	@Test(timeout = 180_000)
+	public void renderNoteAudioLengthAnalysis() {
+		File samplesDir = new File(SAMPLES_PATH);
+		if (!samplesDir.exists()) {
+			log("Skipping test - Samples directory not found");
+			return;
+		}
+
+		MixdownManager.enableMainFilterUp = false;
+		MixdownManager.enableEfxFilters = false;
+		MixdownManager.enableEfx = false;
+		PatternSystemManager.enableWarnings = false;
+
+		AudioScene<?> seedScene = createBaselineScene(samplesDir);
+		long seed = findWorkingGenomeSeed(seedScene, samplesDir);
+		if (seed < 0) {
+			log("No working genome found - skipping test");
+			return;
+		}
+
+		AudioScene<?> scene = createBaselineScene(samplesDir);
+		applyGenome(scene, seed);
+
+		PatternSystemManager patterns = scene.getPatternManager();
+		patterns.setTuning(scene.getTuning());
+		patterns.init();
+
+		ChannelInfo channel = new ChannelInfo(0, ChannelInfo.Voicing.MAIN,
+				ChannelInfo.StereoChannel.LEFT);
+
+		log("=== Note Audio Length Analysis ===");
+		log("Seed: " + seed + ", Buffer: " + BUFFER_SIZE + " frames");
+		log("Target range: [0, " + BUFFER_SIZE + ")");
+
+		int startFrame = 0;
+		int endFrame = BUFFER_SIZE;
+
+		int totalNotesCreated = 0;
+		int notesOverlapping = 0;
+		int notesNonOverlapping = 0;
+		long totalFramesEvaluated = 0;
+		long framesUseful = 0;
+		long totalEvalTimeNs = 0;
+		long overlapEvalTimeNs = 0;
+		long nonOverlapEvalTimeNs = 0;
+		int totalElements = 0;
+		long getNotesTimeNs = 0;
+		long minNoteLength = Long.MAX_VALUE;
+		long maxNoteLength = 0;
+
+		AudioSceneContext ctx = scene.getContext(List.of(channel));
+		PackedCollection dest = new PackedCollection(BUFFER_SIZE);
+		ctx.setDestination(dest);
+
+		for (PatternLayerManager plm : patterns.getPatterns()) {
+			if (plm.getChannel() != channel.getPatternChannel()) continue;
+
+			plm.updateDestination(ctx);
+			boolean melodic = plm.isMelodic();
+
+			Map<NoteAudioChoice, List<PatternElement>> elementsByChoice =
+					plm.getAllElementsByChoice(0.0, plm.getDuration());
+
+			log("Pattern channel=" + plm.getChannel()
+					+ " melodic=" + melodic
+					+ " duration=" + plm.getDuration() + " measures"
+					+ " choices=" + elementsByChoice.size());
+
+			for (Map.Entry<NoteAudioChoice, List<PatternElement>> entry :
+					elementsByChoice.entrySet()) {
+				NoteAudioChoice choice = entry.getKey();
+				List<PatternElement> elements = entry.getValue();
+				totalElements += elements.size();
+
+				NoteAudioContext audioContext = new NoteAudioContext(
+						ChannelInfo.Voicing.MAIN,
+						ChannelInfo.StereoChannel.LEFT,
+						choice.getValidPatternNotes(),
+						pos -> pos + 1.0);
+
+				for (PatternElement element : elements) {
+					long t0 = System.nanoTime();
+					List<RenderedNoteAudio> notes = element.getNoteDestinations(
+							melodic, 0.0, ctx, audioContext);
+					getNotesTimeNs += System.nanoTime() - t0;
+
+					for (RenderedNoteAudio note : notes) {
+						totalNotesCreated++;
+						int noteStart = note.getOffset();
+
+						long evalStart = System.nanoTime();
+						PackedCollection audio;
+						try {
+							audio = traverse(1, note.getProducer()).get().evaluate();
+						} catch (Exception e) {
+							continue;
+						}
+						long evalNs = System.nanoTime() - evalStart;
+						totalEvalTimeNs += evalNs;
+
+						if (audio == null) continue;
+
+						int noteLength = audio.getShape().getCount();
+						int noteEnd = noteStart + noteLength;
+						totalFramesEvaluated += noteLength;
+
+						if (noteLength < minNoteLength) minNoteLength = noteLength;
+						if (noteLength > maxNoteLength) maxNoteLength = noteLength;
+
+						boolean overlaps = noteEnd > startFrame && noteStart < endFrame;
+						if (overlaps) {
+							notesOverlapping++;
+							overlapEvalTimeNs += evalNs;
+							int overlapLen = Math.min(noteEnd, endFrame)
+									- Math.max(noteStart, startFrame);
+							framesUseful += overlapLen;
+						} else {
+							notesNonOverlapping++;
+							nonOverlapEvalTimeNs += evalNs;
+						}
+					}
+				}
+			}
+		}
+
+		log("");
+		log("--- Elements & Notes ---");
+		log("Total pattern elements: " + totalElements);
+		log("Total notes created (incl. repeats): " + totalNotesCreated);
+		log("Notes overlapping buffer: " + notesOverlapping);
+		log("Notes NOT overlapping buffer: " + notesNonOverlapping);
+
+		log("");
+		log("--- Note Lengths ---");
+		log("Buffer size: " + BUFFER_SIZE + " frames");
+		if (minNoteLength <= maxNoteLength) {
+			log("Min note length: " + minNoteLength + " frames");
+			log("Max note length: " + maxNoteLength + " frames");
+			log("Max note / buffer ratio: "
+					+ String.format("%.1fx", (double) maxNoteLength / BUFFER_SIZE));
+		}
+
+		log("");
+		log("--- Frame Waste ---");
+		log("Total frames evaluated: " + totalFramesEvaluated);
+		log("Frames actually useful: " + framesUseful);
+		long framesWasted = totalFramesEvaluated - framesUseful;
+		log("Frames wasted: " + framesWasted);
+		if (totalFramesEvaluated > 0) {
+			double wasteRatio = (double) framesWasted / totalFramesEvaluated;
+			log("Waste ratio: " + String.format("%.1f%%", wasteRatio * 100));
+		}
+
+		log("");
+		log("--- Timing ---");
+		log("getNoteDestinations total: "
+				+ String.format("%.1f ms", getNotesTimeNs / 1_000_000.0));
+		log("evaluate() total: "
+				+ String.format("%.1f ms", totalEvalTimeNs / 1_000_000.0));
+		log("  overlapping notes: "
+				+ String.format("%.1f ms", overlapEvalTimeNs / 1_000_000.0));
+		log("  non-overlapping notes: "
+				+ String.format("%.1f ms", nonOverlapEvalTimeNs / 1_000_000.0));
+		if (totalNotesCreated > 0) {
+			log("Avg evaluate per note: "
+					+ String.format("%.1f ms",
+					totalEvalTimeNs / 1_000_000.0 / totalNotesCreated));
+		}
+
+		dest.destroy();
 	}
 }

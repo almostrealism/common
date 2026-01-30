@@ -19,7 +19,6 @@ package org.almostrealism.audio.pattern;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.audio.arrange.AudioSceneContext;
-import org.almostrealism.audio.arrange.PatternRenderContext;
 import org.almostrealism.audio.data.ChannelInfo;
 import org.almostrealism.audio.data.FileWaveDataProviderTree;
 import org.almostrealism.audio.data.ParameterFunction;
@@ -363,12 +362,6 @@ public class PatternSystemManager implements NoteSourceProvider, CodeFeatures {
 		OperationList op = new OperationList(
 				String.format("PatternSystemManager Sum [%d:%d]", startFrame, startFrame + frameCount));
 
-		// Create frame-aware context supplier
-		Supplier<PatternRenderContext> renderContext = () -> {
-			AudioSceneContext ctx = context.get();
-			return new PatternRenderContext(ctx, startFrame, frameCount);
-		};
-
 		// Update destinations for frame range
 		if (enableLazyDestination) {
 			op.add(() -> () -> {
@@ -394,11 +387,9 @@ public class PatternSystemManager implements NoteSourceProvider, CodeFeatures {
 		}
 
 		patternsForChannel.forEach(i -> {
-			op.add(patterns.get(i).sum(renderContext, channel.getVoicing(),
+			op.add(patterns.get(i).sum(context, channel.getVoicing(),
 					channel.getAudioChannel(), startFrame, frameCount));
 		});
-
-		// Note: Auto-volume is disabled in real-time mode (see REALTIME_AUDIO_SCENE.md Out of Scope section)
 
 		return op;
 	}

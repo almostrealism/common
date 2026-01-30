@@ -19,7 +19,6 @@ package org.almostrealism.audio.pattern;
 import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.profile.OperationWithInfo;
 import org.almostrealism.audio.arrange.AudioSceneContext;
-import org.almostrealism.audio.arrange.PatternRenderContext;
 import org.almostrealism.audio.arrange.ChannelSection;
 import org.almostrealism.audio.data.ChannelInfo;
 import org.almostrealism.audio.data.ParameterFunction;
@@ -145,6 +144,7 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures {
 	private int layerCount;
 
 	private Map<ChannelInfo, PackedCollection> destination;
+	private final NoteAudioCache noteAudioCache = new NoteAudioCache();
 
 	public PatternLayerManager(List<NoteAudioChoice> choices,
 							   ProjectedChromosome chromosome,
@@ -445,36 +445,11 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures {
 	}
 
 	/**
-	 * Renders all pattern elements to the destination buffer.
+	 * Renders all pattern elements to the destination buffer (full arrangement).
 	 *
-	 * <p>This method creates an operation that iterates through all pattern repetitions
-	 * within the arrangement and renders their elements to the destination buffer.</p>
-	 *
-	 * <h3>Rendering Process</h3>
-	 * <ol>
-	 *   <li>Get all elements organized by NoteAudioChoice</li>
-	 *   <li>Calculate number of pattern repetitions: {@code measures / duration}</li>
-	 *   <li>For each repetition:
-	 *       <ul>
-	 *         <li>Check section activity (skip if inactive)</li>
-	 *         <li>Create NoteAudioContext with voicing information</li>
-	 *         <li>Call {@link PatternFeatures#render} for each choice's elements</li>
-	 *       </ul>
-	 *   </li>
-	 * </ol>
-	 *
-	 * <h3>Section Activity</h3>
-	 * <p>Each pattern repetition checks the active selection function plus activity bias.
-	 * If the result is negative, the repetition is skipped (silent).</p>
-	 *
-	 * <h3>Real-Time Limitation</h3>
-	 * <p>This method renders all repetitions from measure 0 to {@code totalMeasures}.
-	 * For real-time rendering, frame range parameters would enable rendering only
-	 * elements that overlap with the current buffer window:</p>
-	 * <pre>{@code
-	 * // Proposed signature for real-time
-	 * sum(context, voicing, audioChannel, startFrame, frameCount)
-	 * }</pre>
+	 * <p>Delegates to the shared {@link #sumInternal} implementation with
+	 * {@code startFrame=0} and {@code frameCount=totalFrames}, rendering all
+	 * pattern repetitions across the entire arrangement.</p>
 	 *
 	 * @param context Supplier for AudioSceneContext with destination buffer
 	 * @param voicing Target voicing (MAIN or WET)
@@ -486,88 +461,32 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures {
 	public Supplier<Runnable> sum(Supplier<AudioSceneContext> context,
 								  ChannelInfo.Voicing voicing,
 								  ChannelInfo.StereoChannel audioChannel) {
-		return OperationWithInfo.of(new OperationMetadata("PatternLayerManager.sum", "PatternLayerManager.sum"), () -> () -> {
-			Map<NoteAudioChoice, List<PatternElement>> elements = getAllElementsByChoice(0.0, duration);
-			if (elements.isEmpty()) {
-				if (!roots.isEmpty() && enableWarnings)
-					warn("No pattern elements (channel " + channel + ")");
-				return;
-			}
-
-			AudioSceneContext ctx = context.get();
-
-			// TODO  What about when duration is longer than measures?
-			// TODO  This results in count being 0, and nothing being output
-			int count = (int) (ctx.getMeasures() / duration);
-			if (ctx.getMeasures() / duration - count > 0.0001) {
-				warn("Pattern duration does not divide measures; there will be gaps");
-			}
-
-			IntStream.range(0, count).forEach(i -> {
-				ChannelSection section = ctx.getSection(i * duration);
-
-				if (section == null) {
-					warn("No ChannelSection at measure " + i);
-				} else {
-					double active = activeSelection.apply(layerParams.get(layerParams.size() - 1), section.getPosition()) + ctx.getActivityBias();
-					if (active < 0) return;
-				}
-
-				double offset = i * duration;
-				elements.keySet().forEach(choice -> {
-					NoteAudioContext audioContext =
-							new NoteAudioContext(voicing, audioChannel,
-									choice.getValidPatternNotes(),
-									this::nextNotePosition);
-
-					if (destination.get(new ChannelInfo(voicing, audioChannel)) != ctx.getDestination()) {
-						throw new IllegalArgumentException();
-					}
-
-					render(ctx, audioContext, elements.get(choice), melodic, offset);
+		return OperationWithInfo.of(
+				new OperationMetadata("PatternLayerManager.sum", "PatternLayerManager.sum"),
+				() -> () -> {
+					AudioSceneContext ctx = context.get();
+					sumInternal(ctx, voicing, audioChannel, 0, ctx.getFrames(), null);
 				});
-			});
-		});
 	}
 
 	/**
 	 * Renders pattern elements for a specific frame range.
 	 *
-	 * <p>This method filters pattern elements to only those that overlap with
-	 * the specified frame range, then renders only the overlapping portions
-	 * of each element's audio.</p>
+	 * <p>Delegates to the shared {@link #sumInternal} implementation, rendering
+	 * only the pattern repetitions that overlap with the specified frame range.
+	 * Uses the {@link NoteAudioCache} to avoid re-evaluating notes that span
+	 * multiple buffers.</p>
 	 *
-	 * <h3>Rendering Process</h3>
-	 * <ol>
-	 *   <li>Convert frame range to measure range</li>
-	 *   <li>Calculate which pattern repetitions overlap with frame range</li>
-	 *   <li>For each overlapping repetition:
-	 *       <ul>
-	 *         <li>Check section activity (skip if inactive)</li>
-	 *         <li>Render elements using {@link PatternFeatures#renderRange}</li>
-	 *       </ul>
-	 *   </li>
-	 * </ol>
-	 *
-	 * <h3>Real-Time Mode</h3>
-	 * <p>This method is optimized for real-time rendering by:</p>
-	 * <ul>
-	 *   <li>Only processing relevant pattern repetitions</li>
-	 *   <li>Using buffer-relative offsets</li>
-	 *   <li>Handling notes that span buffer boundaries</li>
-	 * </ul>
-	 *
-	 * @param context Render context supplier with frame range information
+	 * @param context Supplier for AudioSceneContext with destination buffer
 	 * @param voicing Target voicing (MAIN or WET)
 	 * @param audioChannel Target stereo channel (LEFT or RIGHT)
 	 * @param startFrame Starting frame (absolute position)
 	 * @param frameCount Number of frames to render
 	 * @return Operation that renders elements within the frame range
 	 *
-	 * @see PatternFeatures#renderRange
-	 * @see PatternRenderContext
+	 * @see PatternFeatures#render
 	 */
-	public Supplier<Runnable> sum(Supplier<PatternRenderContext> context,
+	public Supplier<Runnable> sum(Supplier<? extends AudioSceneContext> context,
 								  ChannelInfo.Voicing voicing,
 								  ChannelInfo.StereoChannel audioChannel,
 								  int startFrame,
@@ -576,64 +495,90 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures {
 				new OperationMetadata("PatternLayerManager.sum",
 						String.format("PatternLayerManager.sum [%d:%d]", startFrame, startFrame + frameCount)),
 				() -> () -> {
-					PatternRenderContext ctx = context.get();
-
-					// Get all elements for this pattern
-					Map<NoteAudioChoice, List<PatternElement>> elements = getAllElementsByChoice(0.0, duration);
-					if (elements.isEmpty()) {
-						if (!roots.isEmpty() && enableWarnings)
-							warn("No pattern elements (channel " + channel + ")");
-						return;
-					}
-
-					// Calculate measure range for the frame range
-					double startMeasure = ctx.frameToMeasure(startFrame);
-					double endMeasure = ctx.frameToMeasure(startFrame + frameCount);
-
-					// Determine which pattern repetitions overlap with frame range
-					int totalRepetitions = (int) (ctx.getMeasures() / duration);
-					if (totalRepetitions == 0) {
-						if (enableWarnings) warn("Pattern duration longer than arrangement");
-						return;
-					}
-
-					int firstRepetition = Math.max(0, (int) Math.floor(startMeasure / duration));
-					int lastRepetition = Math.min(totalRepetitions, (int) Math.ceil(endMeasure / duration));
-
-					IntStream.range(firstRepetition, lastRepetition).forEach(rep -> {
-						double repStart = rep * duration;
-						double repEnd = repStart + duration;
-
-						// Check if this repetition overlaps with frame range
-						if (!ctx.overlapsFrameRange(repStart, repEnd)) return;
-
-						// Check section activity
-						ChannelSection section = ctx.getSection(repStart);
-						if (section == null) {
-							if (enableWarnings) warn("No ChannelSection at measure " + repStart);
-						} else {
-							double active = activeSelection.apply(
-									layerParams.get(layerParams.size() - 1),
-									section.getPosition()) + ctx.getActivityBias();
-							if (active < 0) return;
-						}
-
-						// Render each choice's elements for this repetition
-						elements.keySet().forEach(choice -> {
-							NoteAudioContext audioContext = new NoteAudioContext(
-									voicing, audioChannel,
-									choice.getValidPatternNotes(),
-									this::nextNotePosition);
-
-							if (destination.get(new ChannelInfo(voicing, audioChannel)) != ctx.getDestination()) {
-								throw new IllegalArgumentException("Destination buffer mismatch");
-							}
-
-							renderRange(ctx, audioContext, elements.get(choice), melodic,
-									repStart, startFrame, frameCount);
-						});
-					});
+					AudioSceneContext ctx = context.get();
+					noteAudioCache.evictBefore(startFrame);
+					sumInternal(ctx, voicing, audioChannel, startFrame, frameCount, noteAudioCache);
 				});
+	}
+
+	/**
+	 * Shared rendering implementation for both full and frame-range modes.
+	 *
+	 * <p>Converts the frame range to a measure range, determines which pattern
+	 * repetitions overlap, checks section activity for each, and calls the unified
+	 * {@link PatternFeatures#render} for each choice's elements.</p>
+	 *
+	 * @param ctx the audio scene context
+	 * @param voicing target voicing
+	 * @param audioChannel target stereo channel
+	 * @param startFrame starting frame (0 for full render)
+	 * @param frameCount number of frames (total frames for full render)
+	 * @param cache optional note audio cache (null for full render)
+	 */
+	private void sumInternal(AudioSceneContext ctx,
+							 ChannelInfo.Voicing voicing,
+							 ChannelInfo.StereoChannel audioChannel,
+							 int startFrame, int frameCount,
+							 NoteAudioCache cache) {
+		Map<NoteAudioChoice, List<PatternElement>> elements = getAllElementsByChoice(0.0, duration);
+		if (elements.isEmpty()) {
+			if (!roots.isEmpty() && enableWarnings)
+				warn("No pattern elements (channel " + channel + ")");
+			return;
+		}
+
+		int totalRepetitions = (int) (ctx.getMeasures() / duration);
+		if (totalRepetitions == 0) {
+			if (enableWarnings) warn("Pattern duration longer than arrangement");
+			return;
+		}
+
+		if (ctx.getMeasures() / duration - totalRepetitions > 0.0001) {
+			warn("Pattern duration does not divide measures; there will be gaps");
+		}
+
+		// Convert frame range to measure range to determine overlapping repetitions
+		double framesPerMeasure = (double) ctx.getFrames() / ctx.getMeasures();
+		double startMeasure = startFrame / framesPerMeasure;
+		double endMeasure = (startFrame + frameCount) / framesPerMeasure;
+
+		int firstRepetition = Math.max(0, (int) Math.floor(startMeasure / duration));
+		int lastRepetition = Math.min(totalRepetitions, (int) Math.ceil(endMeasure / duration));
+
+		IntStream.range(firstRepetition, lastRepetition).forEach(rep -> {
+			double repStart = rep * duration;
+
+			// Check if this repetition overlaps with frame range
+			int repStartFrame = ctx.frameForPosition(repStart);
+			int repEndFrame = ctx.frameForPosition(repStart + duration);
+			if (repEndFrame <= startFrame || repStartFrame >= startFrame + frameCount) return;
+
+			// Check section activity
+			ChannelSection section = ctx.getSection(repStart);
+			if (section == null) {
+				if (enableWarnings) warn("No ChannelSection at measure " + repStart);
+			} else {
+				double active = activeSelection.apply(
+						layerParams.get(layerParams.size() - 1),
+						section.getPosition()) + ctx.getActivityBias();
+				if (active < 0) return;
+			}
+
+			// Render each choice's elements for this repetition
+			elements.keySet().forEach(choice -> {
+				NoteAudioContext audioContext = new NoteAudioContext(
+						voicing, audioChannel,
+						choice.getValidPatternNotes(),
+						this::nextNotePosition);
+
+				if (destination.get(new ChannelInfo(voicing, audioChannel)) != ctx.getDestination()) {
+					throw new IllegalArgumentException("Destination buffer mismatch");
+				}
+
+				render(ctx, audioContext, elements.get(choice), melodic,
+						repStart, startFrame, frameCount, cache);
+			});
+		});
 	}
 
 	public double nextNotePosition(double position) {

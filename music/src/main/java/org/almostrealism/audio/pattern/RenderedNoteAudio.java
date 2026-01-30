@@ -58,14 +58,32 @@ import org.almostrealism.collect.PackedCollection;
 public class RenderedNoteAudio {
 	private Producer<PackedCollection> producer;
 	private int offset;
+	private int expectedFrameCount;
 
 	public RenderedNoteAudio() {
-		this(null, 0);
+		this(null, 0, 0);
 	}
 
 	public RenderedNoteAudio(Producer<PackedCollection> producer, int offset) {
+		this(producer, offset, 0);
+	}
+
+	/**
+	 * Creates a RenderedNoteAudio with an expected frame count for pre-filtering.
+	 *
+	 * <p>The {@code expectedFrameCount} enables overlap checks before the expensive
+	 * {@code evaluate()} call. When non-zero, rendering can skip notes whose
+	 * {@code [offset, offset + expectedFrameCount)} range does not overlap the
+	 * target buffer.</p>
+	 *
+	 * @param producer the audio producer
+	 * @param offset absolute frame offset in the arrangement
+	 * @param expectedFrameCount estimated number of frames this note will produce
+	 */
+	public RenderedNoteAudio(Producer<PackedCollection> producer, int offset, int expectedFrameCount) {
 		this.producer = producer;
 		this.offset = offset;
+		this.expectedFrameCount = expectedFrameCount;
 	}
 
 	public Producer<PackedCollection> getProducer() {
@@ -82,5 +100,20 @@ public class RenderedNoteAudio {
 
 	public void setOffset(int offset) {
 		this.offset = offset;
+	}
+
+	/**
+	 * Returns the estimated number of frames this note will produce.
+	 *
+	 * <p>This estimate is computed from the note's duration before the
+	 * producer is evaluated. A value of 0 means no estimate is available
+	 * and pre-filtering should be skipped for this note.</p>
+	 */
+	public int getExpectedFrameCount() {
+		return expectedFrameCount;
+	}
+
+	public void setExpectedFrameCount(int expectedFrameCount) {
+		this.expectedFrameCount = expectedFrameCount;
 	}
 }

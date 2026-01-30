@@ -4,7 +4,6 @@ import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.audio.CellFeatures;
 import org.almostrealism.audio.arrange.AudioSceneContext;
-import org.almostrealism.audio.arrange.PatternRenderContext;
 import org.almostrealism.audio.filter.AudioProcessingUtils;
 import org.almostrealism.audio.notes.NoteAudioContext;
 import org.almostrealism.collect.PackedCollection;
@@ -12,7 +11,6 @@ import org.almostrealism.hardware.mem.Heap;
 import org.almostrealism.io.DistributionMetric;
 
 import java.util.List;
-import java.util.function.Function;
 
 /**
  * Interface providing core pattern rendering functionality.
@@ -21,36 +19,31 @@ import java.util.function.Function;
  * of the pattern audio generation system. This method converts pattern elements
  * into audio and sums them to a destination buffer.</p>
  *
- * <h2>Rendering Process</h2>
+ * <h2>Unified Render Path</h2>
  *
- * <p>The {@link #render} method:</p>
- * <ol>
- *   <li>Iterates through all provided pattern elements</li>
- *   <li>Calls {@link PatternElement#getNoteDestinations} to convert each element
- *       to {@link RenderedNoteAudio} instances with frame offsets</li>
- *   <li>For each rendered note:
- *     <ul>
- *       <li>Evaluates the audio producer inside {@link Heap#stage}</li>
- *       <li>Sums the audio to the destination buffer at the note's offset</li>
- *       <li>Clips audio that extends beyond the destination buffer</li>
- *     </ul>
- *   </li>
- * </ol>
- *
- * <h2>Real-Time Rendering</h2>
- *
- * <p>For real-time streaming, use the {@link #renderRange} method which:</p>
+ * <p>A single {@link #render} method handles both full-buffer (offline) and
+ * frame-range (real-time) rendering. The {@code startFrame} and {@code frameCount}
+ * parameters define which portion of the arrangement to render:</p>
  * <ul>
- *   <li>Filters elements to only those intersecting the current buffer</li>
- *   <li>Converts absolute offsets to buffer-relative offsets</li>
- *   <li>Handles notes that started in previous buffers (partial rendering)</li>
- *   <li>Bypasses {@link Heap#stage} for lower latency</li>
+ *   <li><strong>Full render:</strong> {@code startFrame=0, frameCount=destination.length}</li>
+ *   <li><strong>Real-time buffer:</strong> {@code startFrame=currentPosition, frameCount=bufferSize}</li>
+ * </ul>
+ *
+ * <h2>Optimizations</h2>
+ * <ul>
+ *   <li><strong>Pre-filtering:</strong> Notes with a known {@code expectedFrameCount}
+ *       are skipped before the expensive {@code evaluate()} call if they do not
+ *       overlap with the target frame range.</li>
+ *   <li><strong>Caching:</strong> When a {@link NoteAudioCache} is provided, evaluated
+ *       note audio is cached and reused across consecutive buffer ticks. Notes that
+ *       span multiple buffers are evaluated only once.</li>
  * </ul>
  *
  * @see PatternElement#getNoteDestinations
  * @see RenderedNoteAudio
  * @see PatternLayerManager#sum
  * @see AudioProcessingUtils#getSum()
+ * @see NoteAudioCache
  *
  * @author Michael Murray
  */
@@ -58,85 +51,47 @@ public interface PatternFeatures extends CodeFeatures {
 	DistributionMetric sizes = CellFeatures.console.distribution("patternSizes");
 
 	/**
-	 * Renders all pattern elements to the destination buffer.
+	 * Renders pattern elements to a destination buffer for a specific frame range.
 	 *
-	 * <p>This is the original full-buffer rendering method, used for non-real-time
-	 * audio generation. All elements are rendered to their full extent with
-	 * absolute frame offsets.</p>
+	 * <p>This is the single render path shared by both offline and real-time modes.
+	 * For each element, it:</p>
+	 * <ol>
+	 *   <li>Creates {@link RenderedNoteAudio} instances via
+	 *       {@link PatternElement#getNoteDestinations}</li>
+	 *   <li>Pre-filters notes by {@code expectedFrameCount} to skip notes that
+	 *       cannot overlap the frame range (avoids expensive {@code evaluate()})</li>
+	 *   <li>Checks the {@link NoteAudioCache} for previously evaluated audio</li>
+	 *   <li>Evaluates the note's audio producer if not cached</li>
+	 *   <li>Computes the overlap region and sums audio to the destination buffer</li>
+	 * </ol>
 	 *
-	 * @param sceneContext Scene context containing destination buffer
-	 * @param audioContext Note audio context
-	 * @param elements Elements to render
-	 * @param melodic Whether to use melodic or percussive rendering
-	 * @param offset Measure offset for pattern positioning
-	 */
-	default void render(AudioSceneContext sceneContext, NoteAudioContext audioContext,
-						List<PatternElement> elements, boolean melodic, double offset) {
-		PackedCollection destination = sceneContext.getDestination();
-		if (destination == null) {
-			throw new IllegalArgumentException();
-		}
-
-		elements.stream()
-				.map(e -> e.getNoteDestinations(melodic, offset, sceneContext, audioContext))
-				.flatMap(List::stream)
-				.forEach(note -> {
-					if (note.getOffset() >= destination.getShape().length(0)) return;
-
-					Function<PackedCollection, PackedCollection> process = audio -> {
-						int frames = Math.min(audio.getShape().getCount(),
-								destination.getShape().length(0) - note.getOffset());
-						sizes.addEntry(frames);
-
-						TraversalPolicy shape = shape(frames);
-						return AudioProcessingUtils.getSum().sum(destination.range(shape, note.getOffset()), audio.range(shape));
-					};
-
-					Heap.stage(() ->
-							process.apply(traverse(1, note.getProducer()).get().evaluate()));
-				});
-	}
-
-	/**
-	 * Renders pattern elements to a specific frame range in the destination buffer.
-	 *
-	 * <p>This method handles the complexity of rendering notes that may:</p>
-	 * <ul>
-	 *   <li>Start before the frame range but extend into it</li>
-	 *   <li>Start within the frame range</li>
-	 *   <li>End after the frame range</li>
-	 * </ul>
-	 *
-	 * <p>Only the portion of each note that overlaps with the frame range is
-	 * rendered to the destination buffer.</p>
+	 * <h3>Full-buffer rendering</h3>
+	 * <p>For offline rendering of the entire arrangement, pass {@code startFrame=0}
+	 * and {@code frameCount=destination.getShape().length(0)}. The overlap logic
+	 * degenerates to simple clipping at the buffer end, matching the original
+	 * full-render behavior.</p>
 	 *
 	 * <h3>Offset Calculations</h3>
 	 * <ul>
-	 *   <li><strong>noteAbsoluteStart</strong>: The absolute frame position where the note begins</li>
-	 *   <li><strong>overlapStart</strong>: The first frame of the note that falls within the buffer</li>
-	 *   <li><strong>sourceOffset</strong>: How many frames into the note's audio to start reading</li>
-	 *   <li><strong>destOffset</strong>: Where in the destination buffer to write</li>
+	 *   <li><strong>noteStart</strong>: The absolute frame position where the note begins</li>
+	 *   <li><strong>overlapStart</strong>: {@code max(noteStart, startFrame)}</li>
+	 *   <li><strong>sourceOffset</strong>: {@code overlapStart - noteStart} (frames into note audio)</li>
+	 *   <li><strong>destOffset</strong>: {@code overlapStart - startFrame} (position in destination)</li>
 	 * </ul>
 	 *
-	 * <h3>Note on Heap.stage()</h3>
-	 * <p>This method bypasses {@link Heap#stage} for the initial real-time implementation.
-	 * If heap memory management proves beneficial for performance, it can be reintroduced later.</p>
-	 *
-	 * @param context Render context with frame range information
-	 * @param audioContext Note audio context
-	 * @param elements Elements to render
-	 * @param melodic Whether to use melodic or percussive rendering
-	 * @param measureOffset Measure offset for this pattern repetition
-	 * @param startFrame Starting frame of buffer (absolute position)
-	 * @param frameCount Size of destination buffer
-	 *
-	 * @see PatternRenderContext
-	 * @see RenderedNoteAudio
+	 * @param sceneContext scene context containing destination buffer
+	 * @param audioContext note audio context
+	 * @param elements elements to render
+	 * @param melodic whether to use melodic or percussive rendering
+	 * @param offset measure offset for pattern positioning
+	 * @param startFrame starting frame of the target range (absolute position)
+	 * @param frameCount number of frames in the target range
+	 * @param cache optional cache for evaluated note audio (may be null)
 	 */
-	default void renderRange(PatternRenderContext context, NoteAudioContext audioContext,
-							 List<PatternElement> elements, boolean melodic,
-							 double measureOffset, int startFrame, int frameCount) {
-		PackedCollection destination = context.getDestination();
+	default void render(AudioSceneContext sceneContext, NoteAudioContext audioContext,
+						List<PatternElement> elements, boolean melodic, double offset,
+						int startFrame, int frameCount, NoteAudioCache cache) {
+		PackedCollection destination = sceneContext.getDestination();
 		if (destination == null) {
 			throw new IllegalArgumentException("Destination buffer is null");
 		}
@@ -144,57 +99,69 @@ public interface PatternFeatures extends CodeFeatures {
 		int endFrame = startFrame + frameCount;
 
 		elements.stream()
-				.map(e -> e.getNoteDestinations(melodic, measureOffset, context, audioContext))
+				.map(e -> e.getNoteDestinations(melodic, offset, sceneContext, audioContext))
 				.flatMap(List::stream)
 				.forEach(note -> {
-					int noteAbsoluteStart = note.getOffset();
+					int noteStart = note.getOffset();
 
-					// Evaluate the note audio (bypassing Heap.stage for real-time)
-					PackedCollection audio;
-					try {
-						audio = traverse(1, note.getProducer()).get().evaluate();
-					} catch (Exception e) {
-						// Skip notes that fail to evaluate
+					// Pre-filter: skip notes that cannot overlap the frame range
+					if (note.getExpectedFrameCount() > 0) {
+						int noteEstimatedEnd = noteStart + note.getExpectedFrameCount();
+						if (noteEstimatedEnd <= startFrame || noteStart >= endFrame) {
+							return;
+						}
+					} else if (noteStart >= endFrame) {
 						return;
 					}
 
-					if (audio == null) return;
+					// Check cache before expensive evaluate()
+					PackedCollection audio = (cache != null) ? cache.get(noteStart) : null;
+
+					if (audio == null) {
+						PackedCollection[] evaluated = {null};
+						try {
+							Heap.stage(() ->
+									evaluated[0] = traverse(1, note.getProducer()).get().evaluate());
+						} catch (Exception e) {
+							return;
+						}
+
+						audio = evaluated[0];
+						if (audio == null) return;
+
+						// Store in cache for reuse across buffer ticks
+						if (cache != null) {
+							cache.put(noteStart, audio);
+						}
+					}
 
 					int noteLength = audio.getShape().getCount();
-					int noteAbsoluteEnd = noteAbsoluteStart + noteLength;
+					int noteAbsoluteEnd = noteStart + noteLength;
 
-					// Check if note overlaps with frame range
-					if (noteAbsoluteEnd <= startFrame || noteAbsoluteStart >= endFrame) {
-						return;  // No overlap
+					// Post-evaluate overlap check (safety net for inaccurate estimates)
+					if (noteAbsoluteEnd <= startFrame || noteStart >= endFrame) {
+						return;
 					}
 
 					// Calculate overlap region
-					int overlapStart = Math.max(noteAbsoluteStart, startFrame);
+					int overlapStart = Math.max(noteStart, startFrame);
 					int overlapEnd = Math.min(noteAbsoluteEnd, endFrame);
 					int overlapLength = overlapEnd - overlapStart;
 
 					if (overlapLength <= 0) return;
 
-					// Calculate offsets
-					int sourceOffset = overlapStart - noteAbsoluteStart;  // Offset within note audio
-					int destOffset = overlapStart - startFrame;            // Offset within destination buffer
+					int sourceOffset = overlapStart - noteStart;
+					int destOffset = overlapStart - startFrame;
 
-					// Validate ranges
-					if (sourceOffset < 0 || sourceOffset + overlapLength > noteLength) {
-						return;  // Source range out of bounds
-					}
-					if (destOffset < 0 || destOffset + overlapLength > frameCount) {
-						return;  // Dest range out of bounds
-					}
+					if (sourceOffset < 0 || sourceOffset + overlapLength > noteLength) return;
+					if (destOffset < 0 || destOffset + overlapLength > frameCount) return;
 
-					// Sum overlapping portion to destination
 					try {
 						TraversalPolicy shape = shape(overlapLength);
 						sizes.addEntry(overlapLength);
 						AudioProcessingUtils.getSum().sum(
 								destination.range(shape, destOffset),
-								audio.range(shape, sourceOffset)
-						);
+								audio.range(shape, sourceOffset));
 					} catch (Exception e) {
 						// Skip notes that fail during summation
 					}

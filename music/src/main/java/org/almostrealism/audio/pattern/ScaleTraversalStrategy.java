@@ -21,6 +21,7 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.audio.CellFeatures;
 import org.almostrealism.audio.arrange.AudioSceneContext;
+import org.almostrealism.audio.line.OutputLine;
 import org.almostrealism.audio.notes.NoteAudioContext;
 import org.almostrealism.audio.tone.KeyPosition;
 import org.almostrealism.collect.PackedCollection;
@@ -108,13 +109,8 @@ public enum ScaleTraversalStrategy implements CodeFeatures, ConsoleFeatures {
 				ElementVoicingDetails details =
 						audioContext.createVoicingDetails(melodic,
 								keys.get(0), relativePosition);
-				Producer<PackedCollection> note =
-						element.getNoteAudio(
-								details, relativeAutomationLevel,
-								audioContext.getAudioSelection(),
-								context.getTimeForDuration());
-				destinations.add(new RenderedNoteAudio(note,
-						context.frameForPosition(actualPosition)));
+				destinations.add(createRenderedNote(element, details,
+						relativeAutomationLevel, audioContext, context, actualPosition));
 			} else if (this == CHORD) {
 				p: for (double p : element.getScalePositions()) {
 					if (keys.isEmpty()) break;
@@ -123,13 +119,8 @@ public enum ScaleTraversalStrategy implements CodeFeatures, ConsoleFeatures {
 					ElementVoicingDetails details =
 							audioContext.createVoicingDetails(melodic,
 								keys.get(keyIndex), relativePosition);
-					Producer<PackedCollection> note =
-							element.getNoteAudio(
-									details, relativeAutomationLevel,
-									audioContext.getAudioSelection(),
-									context.getTimeForDuration());
-					destinations.add(new RenderedNoteAudio(note,
-							context.frameForPosition(actualPosition)));
+					destinations.add(createRenderedNote(element, details,
+							relativeAutomationLevel, audioContext, context, actualPosition));
 
 					keys.remove(keyIndex);
 				}
@@ -141,17 +132,32 @@ public enum ScaleTraversalStrategy implements CodeFeatures, ConsoleFeatures {
 				ElementVoicingDetails details =
 						audioContext.createVoicingDetails(melodic,
 								keys.get(keyIndex), relativePosition);
-				Producer<PackedCollection> note = element.getNoteAudio(
-							details, relativeAutomationLevel,
-							audioContext.getAudioSelection(),
-							context.getTimeForDuration());
-				destinations.add(new RenderedNoteAudio(note, context.getFrameForPosition().applyAsInt(actualPosition)));
+				destinations.add(createRenderedNote(element, details,
+						relativeAutomationLevel, audioContext, context, actualPosition));
 			} else {
 				throw new UnsupportedOperationException("Unknown ScaleTraversalStrategy (" + this + ")");
 			}
 		}
 
 		return destinations;
+	}
+
+	private RenderedNoteAudio createRenderedNote(PatternElement element,
+												 ElementVoicingDetails details,
+												 Factor<PackedCollection> automationLevel,
+												 NoteAudioContext audioContext,
+												 AudioSceneContext context,
+												 double actualPosition) {
+		Producer<PackedCollection> producer = element.getNoteAudio(
+				details, automationLevel,
+				audioContext.getAudioSelection(),
+				context.getTimeForDuration());
+		int frameOffset = context.frameForPosition(actualPosition);
+		double durationSec = element.getEffectiveDuration(
+				details, audioContext.getAudioSelection(),
+				context.getTimeForDuration());
+		int expectedFrameCount = (int) (durationSec * OutputLine.sampleRate);
+		return new RenderedNoteAudio(producer, frameOffset, expectedFrameCount);
 	}
 
 
