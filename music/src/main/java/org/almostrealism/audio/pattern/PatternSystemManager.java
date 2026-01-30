@@ -70,8 +70,8 @@ import java.util.stream.IntStream;
  *
  * <h2>Pattern Rendering</h2>
  *
- * <p>The key method {@link #sum(java.util.function.Supplier, ChannelInfo)} renders
- * all patterns for a channel to a destination buffer. The rendering process:</p>
+ * <p>The key method {@link #sum(java.util.function.Supplier, ChannelInfo, java.util.function.IntSupplier, int)}
+ * renders patterns for a channel to a destination buffer. The rendering process:</p>
  * <ol>
  *   <li>Updates destination buffers for each pattern manager</li>
  *   <li>Iterates through all patterns assigned to the channel</li>
@@ -94,12 +94,6 @@ import java.util.stream.IntStream;
  *   <li>Duration of each layer</li>
  * </ul>
  *
- * <h2>Real-Time Considerations</h2>
- *
- * <p><strong>Current Limitation:</strong> The {@link #sum} method renders the entire
- * arrangement at once. For real-time streaming, frame range parameters would need
- * to be added. See {@code REALTIME_PATTERNS.md} for the proposed solution.</p>
- *
  * <h2>Usage Example</h2>
  * <pre>{@code
  * // Create manager with chromosomes
@@ -111,7 +105,7 @@ import java.util.stream.IntStream;
  * patterns.addPattern(2, 4.0, true);   // Channel 2, 4 measures, melodic
  *
  * // Render patterns
- * Supplier<Runnable> render = patterns.sum(contextSupplier, channel);
+ * Supplier<Runnable> render = patterns.sum(contextSupplier, channel, () -> 0, totalFrames);
  * render.get().run();
  * }</pre>
  *
@@ -246,107 +240,12 @@ public class PatternSystemManager implements NoteSourceProvider, CodeFeatures {
 	}
 
 	/**
-	 * Renders all patterns for the specified channel to the destination buffer.
+	 * Renders patterns for a frame range into the destination buffer.
 	 *
-	 * <p>This is the main entry point for pattern rendering. It creates an operation
-	 * that iterates through all patterns assigned to the channel and sums their
-	 * audio output to the destination buffer from the context.</p>
-	 *
-	 * <h3>Rendering Steps</h3>
-	 * <ol>
-	 *   <li>Update destination buffers from context</li>
-	 *   <li>For each pattern assigned to channel:
-	 *       <ul>
-	 *         <li>Call {@link PatternLayerManager#sum} to render elements</li>
-	 *       </ul>
-	 *   </li>
-	 *   <li>If auto-volume enabled, normalize to target level</li>
-	 * </ol>
-	 *
-	 * <h3>Auto-Volume Normalization</h3>
-	 * <p>When {@link #enableAutoVolume} is true, the maximum amplitude of the
-	 * destination buffer is computed and volume is adjusted to reach a target
-	 * level of 0.8. This requires the full buffer to be available, which is
-	 * incompatible with real-time rendering.</p>
-	 *
-	 * <h3>Real-Time Limitation</h3>
-	 * <p>This method processes the entire arrangement duration. For real-time
-	 * rendering, a frame-range aware version would be needed:</p>
-	 * <pre>{@code
-	 * // Proposed signature for real-time
-	 * sum(context, channel, startFrame, frameCount)
-	 * }</pre>
-	 *
-	 * @param context Supplier for the AudioSceneContext containing destination buffer
-	 * @param channel Target channel (index, voicing, audio channel)
-	 * @return Operation that renders all patterns for the channel
-	 *
-	 * @see PatternLayerManager#sum(Supplier, ChannelInfo.Voicing, ChannelInfo.StereoChannel)
-	 */
-	public Supplier<Runnable> sum(Supplier<AudioSceneContext> context,
-								  ChannelInfo channel) {
-		OperationList updateDestinations = new OperationList("PatternSystemManager Update Destinations");
-		updateDestinations.add(() -> () -> this.destination = context.get().getDestination());
-		updateDestinations.add(() -> () ->
-				IntStream.range(0, patterns.size()).forEach(i ->
-						patterns.get(i).updateDestination(context.get())));
-
-		OperationList op = new OperationList("PatternSystemManager Sum");
-
-		if (enableLazyDestination) {
-			op.add(updateDestinations);
-		} else {
-			updateDestinations.get().run();
-		}
-
-		List<Integer> patternsForChannel = IntStream.range(0, patterns.size())
-				.filter(i -> channel.getPatternChannel() == patterns.get(i).getChannel())
-				.boxed().toList();
-
-		if (patternsForChannel.isEmpty()) {
-			if (enableWarnings) warn("No patterns");
-			return op;
-		}
-
-		patternsForChannel.forEach(i -> {
-			op.add(patterns.get(i).sum(context, channel.getVoicing(), channel.getAudioChannel()));
-		});
-
-		if (enableAutoVolume) {
-			if (enableLazyDestination) {
-				throw new UnsupportedOperationException("Lazy destination not compatible with computing max");
-			}
-
-			Producer<PackedCollection> max = (Producer) cp(destination).traverse(0).max().isolate();
-			CollectionProducer auto = greaterThan(max, c(0.0), c(0.8).divide(max), c(1.0));
-			op.add(a(1, p(volume), auto));
-		}
-
-		op.add(() -> () -> {
-			AudioProcessingUtils.getSum().adjustVolume(context.get().getDestination(), volume);
-		});
-
-		return op;
-	}
-
-	/**
-	 * Renders patterns for a specific frame range into the destination buffer.
-	 *
-	 * <p>This method is designed for real-time audio generation where patterns
-	 * are rendered incrementally as playback progresses. Only pattern elements
-	 * that overlap with the specified frame range are processed.</p>
-	 *
-	 * <p>The destination buffer in the context should be sized to match
-	 * {@code frameCount}, not the full arrangement duration.</p>
-	 *
-	 * <h3>Real-Time Mode</h3>
-	 * <p>Unlike the full-buffer {@link #sum(Supplier, ChannelInfo)} method, this
-	 * version:</p>
-	 * <ul>
-	 *   <li>Does not perform auto-volume normalization (disabled in real-time mode)</li>
-	 *   <li>Only processes elements overlapping the frame range</li>
-	 *   <li>Expects the destination buffer to be pre-cleared</li>
-	 * </ul>
+	 * <p>This is the single entry point for pattern rendering. It updates
+	 * destination buffers, iterates through all patterns assigned to the
+	 * channel, sums their audio output, and optionally applies auto-volume
+	 * normalization.</p>
 	 *
 	 * @param context Supplier for the AudioSceneContext containing destination buffer
 	 * @param channel Target channel (index, voicing, audio channel)
@@ -360,9 +259,8 @@ public class PatternSystemManager implements NoteSourceProvider, CodeFeatures {
 								  ChannelInfo channel,
 								  IntSupplier startFrame,
 								  int frameCount) {
-		OperationList op = new OperationList("PatternSystemManager Sum [frame-range]");
+		OperationList op = new OperationList("PatternSystemManager Sum");
 
-		// Update destinations for frame range
 		if (enableLazyDestination) {
 			op.add(() -> () -> {
 				AudioSceneContext ctx = context.get();
@@ -389,6 +287,20 @@ public class PatternSystemManager implements NoteSourceProvider, CodeFeatures {
 		patternsForChannel.forEach(i -> {
 			op.add(patterns.get(i).sum(context, channel.getVoicing(),
 					channel.getAudioChannel(), startFrame, frameCount));
+		});
+
+		if (enableAutoVolume) {
+			if (enableLazyDestination) {
+				throw new UnsupportedOperationException("Lazy destination not compatible with computing max");
+			}
+
+			Producer<PackedCollection> max = (Producer) cp(destination).traverse(0).max().isolate();
+			CollectionProducer auto = greaterThan(max, c(0.0), c(0.8).divide(max), c(1.0));
+			op.add(a(1, p(volume), auto));
+		}
+
+		op.add(() -> () -> {
+			AudioProcessingUtils.getSum().adjustVolume(context.get().getDestination(), volume);
 		});
 
 		return op;

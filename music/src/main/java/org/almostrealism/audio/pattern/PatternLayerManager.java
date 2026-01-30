@@ -446,32 +446,7 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures {
 	}
 
 	/**
-	 * Renders all pattern elements to the destination buffer (full arrangement).
-	 *
-	 * <p>Delegates to the shared {@link #sumInternal} implementation with
-	 * {@code startFrame=0} and {@code frameCount=totalFrames}, rendering all
-	 * pattern repetitions across the entire arrangement.</p>
-	 *
-	 * @param context Supplier for AudioSceneContext with destination buffer
-	 * @param voicing Target voicing (MAIN or WET)
-	 * @param audioChannel Target stereo channel (LEFT or RIGHT)
-	 * @return Operation that renders all elements for this pattern
-	 *
-	 * @see PatternFeatures#render
-	 */
-	public Supplier<Runnable> sum(Supplier<AudioSceneContext> context,
-								  ChannelInfo.Voicing voicing,
-								  ChannelInfo.StereoChannel audioChannel) {
-		return OperationWithInfo.of(
-				new OperationMetadata("PatternLayerManager.sum", "PatternLayerManager.sum"),
-				() -> () -> {
-					AudioSceneContext ctx = context.get();
-					sumInternal(ctx, voicing, audioChannel, 0, ctx.getFrames(), null);
-				});
-	}
-
-	/**
-	 * Renders pattern elements for a specific frame range.
+	 * Renders pattern elements for a frame range into the destination buffer.
 	 *
 	 * <p>Delegates to the shared {@link #sumInternal} implementation, rendering
 	 * only the pattern repetitions that overlap with the specified frame range.
@@ -494,7 +469,7 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures {
 								  int frameCount) {
 		return OperationWithInfo.of(
 				new OperationMetadata("PatternLayerManager.sum",
-						"PatternLayerManager.sum [frame-range]"),
+						"PatternLayerManager.sum"),
 				() -> () -> {
 					int frame = startFrame.getAsInt();
 					AudioSceneContext ctx = context.get();
