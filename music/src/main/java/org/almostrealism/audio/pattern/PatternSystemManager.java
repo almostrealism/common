@@ -116,7 +116,7 @@ import java.util.stream.IntStream;
  * @author Michael Murray
  */
 public class PatternSystemManager implements NoteSourceProvider, CodeFeatures {
-	public static final boolean enableAutoVolume = true;
+	public static final boolean enableAutoVolume = false;
 	public static final boolean enableLazyDestination = false;
 	public static boolean enableVerbose = false;
 	public static boolean enableWarnings = true;
