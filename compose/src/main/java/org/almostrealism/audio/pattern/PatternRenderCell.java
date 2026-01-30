@@ -68,7 +68,7 @@ import java.util.function.Supplier;
  *
  * <p>The cell accepts a {@link IntSupplier} that provides the current frame
  * position. This allows frame tracking to be managed externally, typically
- * by the {@code GlobalTimeManager} or a {@link BatchCell} wrapper.</p>
+ * by the {@code GlobalTimeManager} or a {@link BatchedCell} frame callback.</p>
  *
  * <h2>Thread Safety</h2>
  *
@@ -155,16 +155,5 @@ public class PatternRenderCell extends BatchedCell implements CollectionFeatures
 	 */
 	public ChannelInfo getChannel() {
 		return channel;
-	}
-
-	/**
-	 * Returns the rendered audio destination as a producer with shape information.
-	 *
-	 * @return producer for the destination buffer with shape info
-	 * @deprecated Use {@link #getOutputProducer()} instead
-	 */
-	@Deprecated
-	public io.almostrealism.relation.Producer<org.almostrealism.collect.PackedCollection> getOutput() {
-		return getOutputProducer();
 	}
 }

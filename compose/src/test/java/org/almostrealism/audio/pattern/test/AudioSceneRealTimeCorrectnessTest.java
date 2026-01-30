@@ -29,12 +29,12 @@ import org.almostrealism.audio.health.MultiChannelAudioOutput;
 import org.almostrealism.audio.health.StableDurationHealthComputation;
 import org.almostrealism.audio.notes.NoteAudioChoice;
 import org.almostrealism.audio.notes.NoteAudioContext;
-import org.almostrealism.audio.pattern.CompiledBatchCell;
 import org.almostrealism.audio.pattern.PatternElement;
 import org.almostrealism.audio.pattern.PatternLayerManager;
 import org.almostrealism.audio.pattern.PatternSystemManager;
 import org.almostrealism.audio.pattern.RenderedNoteAudio;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.graph.BatchedCell;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.hardware.computations.Loop;
 import org.almostrealism.heredity.TemporalCellular;
@@ -78,7 +78,7 @@ public class AudioSceneRealTimeCorrectnessTest extends AudioSceneTestBase {
 	 * amplitude and RMS).</p>
 	 *
 	 * <p>The tick loop runs {@code totalFrames} times (per-sample), as
-	 * the BatchCell inside runnerRealTime counts ticks and fires the
+	 * the frame tracker inside runnerRealTime counts ticks and fires the
 	 * pattern render every {@code bufferSize} ticks.</p>
 	 */
 	@Test(timeout = 1_800_000)
@@ -239,7 +239,7 @@ public class AudioSceneRealTimeCorrectnessTest extends AudioSceneTestBase {
 	 *
 	 * <p>Creates a scene, runs it for a small number of buffer cycles, and
 	 * verifies that the real-time runner completes without error. This tests
-	 * the interaction between BatchCell's frame callback and
+	 * the interaction between the frame tracker's callback and
 	 * PatternRenderCell's frame-based rendering.</p>
 	 */
 	@Test(timeout = 900_000)
@@ -397,7 +397,7 @@ public class AudioSceneRealTimeCorrectnessTest extends AudioSceneTestBase {
 	 * correctly renders a subset of the arrangement.
 	 *
 	 * <p>This test exercises ONLY the PatternSystemManager/PatternLayerManager/PatternFeatures
-	 * renderRange() functionality - no cells, no effects, no BatchCell.</p>
+	 * renderRange() functionality - no cells, no effects, no batching.</p>
 	 */
 	@Test(timeout = 60_000)
 	public void frameRangeSumProducesAudio() {
@@ -706,67 +706,41 @@ public class AudioSceneRealTimeCorrectnessTest extends AudioSceneTestBase {
 	// =========================================================================
 
 	/**
-	 * Tests that CompiledBatchCell correctly identifies compilable frame operations.
+	 * Tests that BatchedCell correctly tracks batch state with a frame callback.
 	 *
 	 * <p>This test verifies the batch cell architecture is correctly structured:
-	 * the frame operation should be identifiable as a Computation when the
-	 * effects pipeline is compilable.</p>
+	 * tick counting, frame callback invocation, and batch advancement.</p>
 	 */
 	@Test(timeout = 60_000)
 	public void batchCellArchitectureValidation() {
-		File samplesDir = new File(SAMPLES_PATH);
-		if (!samplesDir.exists()) {
-			log("Skipping test - Samples directory not found: " + samplesDir.getAbsolutePath());
-			return;
-		}
-
-		MixdownManager.enableMainFilterUp = false;
-		MixdownManager.enableEfxFilters = false;
-		MixdownManager.enableEfx = false;
-		PatternSystemManager.enableWarnings = false;
-
-		AudioScene<?> scene = createBaselineScene(samplesDir);
-		applyGenome(scene, 42);
-
 		log("=== Batch Cell Architecture Validation ===");
 
-		// Create a simple CompiledBatchCell to test the architecture
-		final int[] currentFrame = {0};
+		final int[] callbackFrame = {-1};
+		final int[] renderCount = {0};
 
-		// Create render operation (non-compilable lambda)
-		Supplier<Runnable> renderOp = () -> () -> {
-			log("  Render operation executed at frame " + currentFrame[0]);
+		BatchedCell cell = new BatchedCell(BUFFER_SIZE, BUFFER_SIZE,
+				frame -> callbackFrame[0] = frame) {
+			@Override
+			protected Supplier<Runnable> renderBatch() {
+				return () -> () -> renderCount[0]++;
+			}
 		};
 
-		// Create frame operation (should be compilable in production use)
-		// For this test, we use a simple lambda which is NOT compilable
-		Supplier<Runnable> frameOpLambda = () -> () -> { };
+		// Verify initial state
+		assertEquals("Batch size should match", BUFFER_SIZE, cell.getBatchSize());
+		assertEquals("Initial batch should be 0", 0, cell.getCurrentBatch());
 
-		// Create batch cell
-		CompiledBatchCell batchCell = new CompiledBatchCell(
-				renderOp, frameOpLambda, BUFFER_SIZE,
-				frame -> currentFrame[0] = frame);
-
-		// Verify the batch cell properties
-		assertEquals("Batch size should match", BUFFER_SIZE, batchCell.getBatchSize());
-		assertEquals("Initial batch should be 0", 0, batchCell.getCurrentBatch());
-
-		// The lambda is NOT a Computation, so isFrameOpCompilable should be false
-		boolean isCompilable = batchCell.isFrameOpCompilable();
-		log("Frame operation compilable (lambda): " + isCompilable);
-		assertFalse("Lambda should not be compilable", isCompilable);
-
-		// Test that tick produces a valid OperationList
-		Supplier<Runnable> tick = batchCell.tick();
-		assertNotNull("Tick should not be null", tick);
-
-		// Execute one tick
-		tick.get().run();
+		// Tick through one full batch
+		for (int i = 0; i < BUFFER_SIZE; i++) {
+			cell.tick().get().run();
+		}
 
 		// Verify batch advanced
-		assertEquals("After tick, current batch should be 1", 1, batchCell.getCurrentBatch());
+		assertEquals("Should have rendered once", 1, renderCount[0]);
+		assertEquals("After batch, current batch should be 1", 1, cell.getCurrentBatch());
 		assertEquals("Current frame should be at buffer boundary",
-				BUFFER_SIZE, batchCell.getCurrentFrame());
+				BUFFER_SIZE, cell.getCurrentFrame());
+		assertEquals("Frame callback should have been called with 0", 0, callbackFrame[0]);
 
 		log("Batch cell architecture validation completed");
 	}

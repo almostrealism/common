@@ -486,7 +486,7 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures {
 	 *
 	 * @see PatternFeatures#render
 	 */
-	public Supplier<Runnable> sum(Supplier<? extends AudioSceneContext> context,
+	public Supplier<Runnable> sum(Supplier<AudioSceneContext> context,
 								  ChannelInfo.Voicing voicing,
 								  ChannelInfo.StereoChannel audioChannel,
 								  int startFrame,

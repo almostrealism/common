@@ -19,13 +19,15 @@ package org.almostrealism.audio.pattern.test;
 import org.almostrealism.audio.arrange.PatternRenderContext;
 import org.almostrealism.audio.arrange.AudioSceneContext;
 import org.almostrealism.audio.data.ChannelInfo;
-import org.almostrealism.audio.pattern.BatchCell;
 import org.almostrealism.audio.pattern.PatternRenderCell;
 import org.almostrealism.audio.pattern.PatternSystemManager;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.hardware.OperationList;
+import org.almostrealism.graph.BatchedCell;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
+
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Supplier;
 
 import static org.junit.Assert.*;
 
@@ -66,60 +68,66 @@ public class RealTimeRenderingTest extends TestSuiteBase {
 	}
 
 	@Test
-	public void testBatchCellBasics() {
-		final int[] executionCount = {0};
+	public void testBatchedCellBasics() {
+		AtomicInteger renderCount = new AtomicInteger(0);
 		final int[] lastFrame = {-1};
 
-		// Create a simple temporal that just counts executions
-		org.almostrealism.time.Temporal countingTemporal = () -> () -> () -> executionCount[0]++;
+		BatchedCell cell = new BatchedCell(100, 100, frame -> lastFrame[0] = frame) {
+			@Override
+			protected Supplier<Runnable> renderBatch() {
+				return () -> () -> renderCount.incrementAndGet();
+			}
+		};
 
-		// Wrap in a batch cell with batch size 100
-		BatchCell batchCell = new BatchCell(countingTemporal, 100, frame -> lastFrame[0] = frame);
-
-		// Tick 99 times - should not execute the wrapped operation
+		// Tick 99 times - should not render
 		for (int i = 0; i < 99; i++) {
-			batchCell.tick().get().run();
+			cell.tick().get().run();
 		}
-		assertEquals("Should not have executed yet", 0, executionCount[0]);
+		assertEquals("Should not have rendered yet", 0, renderCount.get());
 
-		// Tick once more - should execute
-		batchCell.tick().get().run();
-		assertEquals("Should have executed once", 1, executionCount[0]);
+		// Tick once more - should render
+		cell.tick().get().run();
+		assertEquals("Should have rendered once", 1, renderCount.get());
 		assertEquals("Frame callback should have been called with 0", 0, lastFrame[0]);
 
-		// Tick 100 more times - should execute again
+		// Tick 100 more times - should render again
 		for (int i = 0; i < 100; i++) {
-			batchCell.tick().get().run();
+			cell.tick().get().run();
 		}
-		assertEquals("Should have executed twice", 2, executionCount[0]);
+		assertEquals("Should have rendered twice", 2, renderCount.get());
 		assertEquals("Frame callback should have been called with 100", 100, lastFrame[0]);
 
 		// Test reset
-		batchCell.reset();
-		assertEquals("Current frame should be 0 after reset", 0, batchCell.getCurrentFrame());
+		cell.reset();
+		assertEquals("Current frame should be 0 after reset", 0, cell.getCurrentFrame());
 	}
 
 	@Test
-	public void testBatchCellFrameTracking() {
-		BatchCell batchCell = new BatchCell(() -> new OperationList(), 256, null);
+	public void testBatchedCellFrameTracking() {
+		BatchedCell cell = new BatchedCell(256, 256) {
+			@Override
+			protected Supplier<Runnable> renderBatch() {
+				return () -> () -> {};
+			}
+		};
 
 		// Initial state
-		assertEquals(0, batchCell.getCurrentFrame());
-		assertEquals(0, batchCell.getCurrentBatch());
+		assertEquals(0, cell.getCurrentFrame());
+		assertEquals(0, cell.getCurrentBatch());
 
 		// Run through first batch
 		for (int i = 0; i < 256; i++) {
-			batchCell.tick().get().run();
+			cell.tick().get().run();
 		}
-		assertEquals(256, batchCell.getCurrentFrame());
-		assertEquals(1, batchCell.getCurrentBatch());
+		assertEquals(256, cell.getCurrentFrame());
+		assertEquals(1, cell.getCurrentBatch());
 
 		// Run through second batch
 		for (int i = 0; i < 256; i++) {
-			batchCell.tick().get().run();
+			cell.tick().get().run();
 		}
-		assertEquals(512, batchCell.getCurrentFrame());
-		assertEquals(2, batchCell.getCurrentBatch());
+		assertEquals(512, cell.getCurrentFrame());
+		assertEquals(2, cell.getCurrentBatch());
 	}
 
 	@Test

@@ -16,16 +16,13 @@
 
 package org.almostrealism.audio.pattern.test;
 
-import org.almostrealism.audio.CellFeatures;
 import org.almostrealism.audio.CellList;
 import org.almostrealism.audio.WaveOutput;
 import org.almostrealism.audio.data.WaveData;
 import org.almostrealism.audio.line.OutputLine;
 import org.almostrealism.audio.sources.SineWaveCell;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.color.RGBFeatures;
 import org.almostrealism.time.TemporalRunner;
-import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 import java.io.File;
@@ -49,7 +46,7 @@ import static org.junit.Assert.*;
  *   <li>Compares spectrograms numerically and visually</li>
  * </ol>
  */
-public class RealTimeRenderingComparisonTest extends TestSuiteBase implements CellFeatures, RGBFeatures {
+public class RealTimeRenderingComparisonTest extends AudioSceneTestBase {
 
 	private static final int SAMPLE_RATE = OutputLine.sampleRate;
 	private static final double DURATION_SECONDS = 4.0;
@@ -316,46 +313,4 @@ public class RealTimeRenderingComparisonTest extends TestSuiteBase implements Ce
 		}
 	}
 
-	/**
-	 * Generates a spectrogram image from a WAV file.
-	 *
-	 * @param wavPath path to the input WAV file
-	 * @param outputPath path for the output PNG spectrogram image
-	 */
-	private void generateSpectrogram(String wavPath, String outputPath) {
-		try {
-			WaveData waveData = WaveData.load(new File(wavPath));
-			PackedCollection spectrum = waveData.fft(0, true);
-
-			int timeSlices = spectrum.getShape().length(0);
-			int bins = spectrum.getShape().length(1);
-
-			// Find max value for normalization
-			double maxVal = 0;
-			for (int t = 0; t < timeSlices; t++) {
-				for (int b = 0; b < bins; b++) {
-					double val = spectrum.valueAt(t, b, 0);
-					if (val > maxVal) maxVal = val;
-				}
-			}
-
-			// Create RGB image (bins x timeSlices x 3) - frequency on Y, time on X
-			PackedCollection image = new PackedCollection(bins, timeSlices, 3);
-			for (int t = 0; t < timeSlices; t++) {
-				for (int b = 0; b < bins; b++) {
-					int y = bins - 1 - b;  // Flip so low frequencies at bottom
-					double val = spectrum.valueAt(t, b, 0);
-					double normalized = maxVal > 0 ? Math.log1p(val) / Math.log1p(maxVal) : 0;
-					image.setValueAt(normalized, y, t, 0);
-					image.setValueAt(normalized, y, t, 1);
-					image.setValueAt(normalized, y, t, 2);
-				}
-			}
-
-			saveRgb(outputPath, c(p(image))).get().run();
-			log("Generated spectrogram: " + outputPath + " (" + bins + "x" + timeSlices + ")");
-		} catch (Exception e) {
-			log("Failed to generate spectrogram for " + wavPath + ": " + e.getMessage());
-		}
-	}
 }

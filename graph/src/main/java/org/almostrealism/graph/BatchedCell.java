@@ -23,6 +23,7 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.time.Temporal;
 
+import java.util.function.IntConsumer;
 import java.util.function.Supplier;
 
 /**
@@ -81,6 +82,7 @@ public abstract class BatchedCell extends CellAdapter<PackedCollection>
 	private final int batchSize;
 	private final int outputSize;
 	private final PackedCollection output;
+	private IntConsumer frameCallback;
 	private int tickCount;
 	private int currentBatch;
 
@@ -96,6 +98,18 @@ public abstract class BatchedCell extends CellAdapter<PackedCollection>
 		this.output = new PackedCollection(outputSize);
 		this.tickCount = 0;
 		this.currentBatch = 0;
+	}
+
+	/**
+	 * Creates a new batched cell with a frame callback.
+	 *
+	 * @param batchSize     the number of tick() calls that constitute one batch
+	 * @param outputSize    the size of the output buffer in frames
+	 * @param frameCallback called with the current frame position before each batch render
+	 */
+	protected BatchedCell(int batchSize, int outputSize, IntConsumer frameCallback) {
+		this(batchSize, outputSize);
+		this.frameCallback = frameCallback;
 	}
 
 	/**
@@ -157,6 +171,16 @@ public abstract class BatchedCell extends CellAdapter<PackedCollection>
 	}
 
 	/**
+	 * Sets an optional callback that is invoked with the current frame
+	 * position just before each batch render.
+	 *
+	 * @param frameCallback called with the current frame position before each batch
+	 */
+	public void setFrameCallback(IntConsumer frameCallback) {
+		this.frameCallback = frameCallback;
+	}
+
+	/**
 	 * Advances the batch counter by one.
 	 *
 	 * <p>Subclasses that override {@link #tick()} should call this after
@@ -181,6 +205,9 @@ public abstract class BatchedCell extends CellAdapter<PackedCollection>
 		return () -> () -> {
 			tickCount++;
 			if (tickCount >= batchSize) {
+				if (frameCallback != null) {
+					frameCallback.accept(getCurrentFrame());
+				}
 				renderBatch().get().run();
 				currentBatch++;
 				tickCount = 0;
@@ -211,10 +238,9 @@ public abstract class BatchedCell extends CellAdapter<PackedCollection>
 	/**
 	 * Renders immediately without counting ticks.
 	 *
-	 * <p>This method is intended for the compiled path where tick counting
-	 * is managed externally (e.g., by {@code CompiledBatchCell}). It
-	 * delegates directly to {@link #renderBatch()} without affecting
-	 * the tick or batch counters.</p>
+	 * <p>This method delegates directly to {@link #renderBatch()} without
+	 * affecting the tick or batch counters. Useful when rendering is
+	 * managed externally (e.g., in a compiled loop path).</p>
 	 *
 	 * @return an operation that renders one batch of output
 	 */

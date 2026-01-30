@@ -17,7 +17,6 @@
 package org.almostrealism.audio.pattern.test;
 
 import org.almostrealism.audio.AudioScene;
-import org.almostrealism.audio.CellFeatures;
 import org.almostrealism.audio.CellList;
 import org.almostrealism.audio.Cells;
 import org.almostrealism.audio.WaveOutput;
@@ -36,11 +35,9 @@ import org.almostrealism.audio.pattern.PatternSystemManager;
 import org.almostrealism.audio.tone.DefaultKeyboardTuning;
 import org.almostrealism.audio.tone.WesternChromatic;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.color.RGBFeatures;
 import org.almostrealism.heredity.TemporalCellular;
 import org.almostrealism.time.TemporalRunner;
 import org.almostrealism.util.TestDepth;
-import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 import java.io.File;
@@ -59,7 +56,7 @@ import static org.junit.Assert.*;
  * <p>The tests use actual audio samples from the Library directory and
  * generate spectrograms for visual verification.</p>
  */
-public class AudioSceneRealTimeTest extends TestSuiteBase implements CellFeatures, RGBFeatures {
+public class AudioSceneRealTimeTest extends AudioSceneTestBase {
 
 	private static final String LIBRARY_PATH = "../../ringsdesktop/Library";
 	private static final int SAMPLE_RATE = OutputLine.sampleRate;
@@ -567,38 +564,4 @@ public class AudioSceneRealTimeTest extends TestSuiteBase implements CellFeature
 		}
 	}
 
-	private void generateSpectrogram(String wavPath, String outputPath) {
-		try {
-			WaveData waveData = WaveData.load(new File(wavPath));
-			PackedCollection spectrum = waveData.fft(0, true);
-
-			int timeSlices = spectrum.getShape().length(0);
-			int bins = spectrum.getShape().length(1);
-
-			double maxVal = 0;
-			for (int t = 0; t < timeSlices; t++) {
-				for (int b = 0; b < bins; b++) {
-					double val = spectrum.valueAt(t, b, 0);
-					if (val > maxVal) maxVal = val;
-				}
-			}
-
-			PackedCollection image = new PackedCollection(bins, timeSlices, 3);
-			for (int t = 0; t < timeSlices; t++) {
-				for (int b = 0; b < bins; b++) {
-					int y = bins - 1 - b;
-					double val = spectrum.valueAt(t, b, 0);
-					double normalized = maxVal > 0 ? Math.log1p(val) / Math.log1p(maxVal) : 0;
-					image.setValueAt(normalized, y, t, 0);
-					image.setValueAt(normalized, y, t, 1);
-					image.setValueAt(normalized, y, t, 2);
-				}
-			}
-
-			saveRgb(outputPath, c(p(image))).get().run();
-			log("Generated spectrogram: " + outputPath + " (" + bins + "x" + timeSlices + ")");
-		} catch (Exception e) {
-			log("Failed to generate spectrogram for " + wavPath + ": " + e.getMessage());
-		}
-	}
 }
