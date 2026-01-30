@@ -36,6 +36,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.IntSupplier;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -480,7 +481,7 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures {
 	 * @param context Supplier for AudioSceneContext with destination buffer
 	 * @param voicing Target voicing (MAIN or WET)
 	 * @param audioChannel Target stereo channel (LEFT or RIGHT)
-	 * @param startFrame Starting frame (absolute position)
+	 * @param startFrame Supplier for the starting frame (absolute position)
 	 * @param frameCount Number of frames to render
 	 * @return Operation that renders elements within the frame range
 	 *
@@ -489,15 +490,16 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures {
 	public Supplier<Runnable> sum(Supplier<AudioSceneContext> context,
 								  ChannelInfo.Voicing voicing,
 								  ChannelInfo.StereoChannel audioChannel,
-								  int startFrame,
+								  IntSupplier startFrame,
 								  int frameCount) {
 		return OperationWithInfo.of(
 				new OperationMetadata("PatternLayerManager.sum",
-						String.format("PatternLayerManager.sum [%d:%d]", startFrame, startFrame + frameCount)),
+						"PatternLayerManager.sum [frame-range]"),
 				() -> () -> {
+					int frame = startFrame.getAsInt();
 					AudioSceneContext ctx = context.get();
-					noteAudioCache.evictBefore(startFrame);
-					sumInternal(ctx, voicing, audioChannel, startFrame, frameCount, noteAudioCache);
+					noteAudioCache.evictBefore(frame);
+					sumInternal(ctx, voicing, audioChannel, frame, frameCount, noteAudioCache);
 				});
 	}
 

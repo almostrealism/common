@@ -39,6 +39,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.function.DoubleConsumer;
+import java.util.function.IntSupplier;
 import java.util.function.IntToDoubleFunction;
 import java.util.function.IntUnaryOperator;
 import java.util.function.Supplier;
@@ -349,18 +350,17 @@ public class PatternSystemManager implements NoteSourceProvider, CodeFeatures {
 	 *
 	 * @param context Supplier for the AudioSceneContext containing destination buffer
 	 * @param channel Target channel (index, voicing, audio channel)
-	 * @param startFrame Starting frame (0-based, relative to arrangement start)
+	 * @param startFrame Supplier for the starting frame position
 	 * @param frameCount Number of frames to render
 	 * @return Operation that renders the specified frame range
 	 *
-	 * @see PatternLayerManager#sum(Supplier, ChannelInfo.Voicing, ChannelInfo.StereoChannel, int, int)
+	 * @see PatternLayerManager#sum(Supplier, ChannelInfo.Voicing, ChannelInfo.StereoChannel, IntSupplier, int)
 	 */
 	public Supplier<Runnable> sum(Supplier<AudioSceneContext> context,
 								  ChannelInfo channel,
-								  int startFrame,
+								  IntSupplier startFrame,
 								  int frameCount) {
-		OperationList op = new OperationList(
-				String.format("PatternSystemManager Sum [%d:%d]", startFrame, startFrame + frameCount));
+		OperationList op = new OperationList("PatternSystemManager Sum [frame-range]");
 
 		// Update destinations for frame range
 		if (enableLazyDestination) {

@@ -449,7 +449,7 @@ public class AudioSceneRealTimeCorrectnessTest extends AudioSceneTestBase {
 
 		// Render just the first buffer using frame-range sum
 		log("Rendering frame range [0:" + BUFFER_SIZE + "]");
-		Supplier<Runnable> renderOp = patterns.sum(frameRangeCtx, channel, 0, BUFFER_SIZE);
+		Supplier<Runnable> renderOp = patterns.sum(frameRangeCtx, channel, () -> 0, BUFFER_SIZE);
 		renderOp.get().run();
 
 		// Analyze the rendered buffer
@@ -548,7 +548,8 @@ public class AudioSceneRealTimeCorrectnessTest extends AudioSceneTestBase {
 			};
 
 			// Render this buffer
-			Supplier<Runnable> renderOp = patterns.sum(bufferCtx, channel, startFrame, BUFFER_SIZE);
+			int frame = startFrame;
+			Supplier<Runnable> renderOp = patterns.sum(bufferCtx, channel, () -> frame, BUFFER_SIZE);
 			renderOp.get().run();
 
 			// Copy to concatenated result
@@ -983,7 +984,7 @@ public class AudioSceneRealTimeCorrectnessTest extends AudioSceneTestBase {
 			};
 
 			long startNs = System.nanoTime();
-			patterns.sum(ctx, channel, 0, bufSize).get().run();
+			patterns.sum(ctx, channel, () -> 0, bufSize).get().run();
 			long elapsedNs = System.nanoTime() - startNs;
 
 			double elapsedMs = elapsedNs / 1_000_000.0;

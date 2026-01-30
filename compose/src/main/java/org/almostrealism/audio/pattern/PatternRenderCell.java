@@ -116,38 +116,31 @@ public class PatternRenderCell extends BatchedCell implements CollectionFeatures
 	/**
 	 * Renders one buffer of pattern audio into the output buffer.
 	 *
-	 * <p>Each render:</p>
+	 * <p>The returned operation is built once and reused for every render.
+	 * Each execution:</p>
 	 * <ol>
-	 *   <li>Reads the current frame position from the frame supplier</li>
 	 *   <li>Clears the output buffer</li>
 	 *   <li>Creates a context with the output buffer as destination</li>
-	 *   <li>Calls {@link PatternSystemManager#sum} with the frame range</li>
+	 *   <li>Calls {@link PatternSystemManager#sum} which reads the current
+	 *       frame position from the frame supplier</li>
 	 * </ol>
 	 *
 	 * @return operation that renders one buffer of pattern audio
 	 */
 	@Override
 	protected Supplier<Runnable> renderBatch() {
-		return () -> () -> {
-			int startFrame = currentFrame.getAsInt();
-
-			getOutputBuffer().clear();
-
-			Supplier<AudioSceneContext> tickContext = () -> {
-				AudioSceneContext ctx = contextSupplier.get();
-				ctx.setDestination(getOutputBuffer());
-				return ctx;
-			};
-
-			patterns.sum(tickContext, channel, startFrame, getBatchSize()).get().run();
+		Supplier<AudioSceneContext> tickContext = () -> {
+			AudioSceneContext ctx = contextSupplier.get();
+			ctx.setDestination(getOutputBuffer());
+			return ctx;
 		};
-	}
 
-	/**
-	 * Returns the buffer size used by this cell.
-	 */
-	public int getBufferSize() {
-		return getBatchSize();
+		Runnable sumOp = patterns.sum(tickContext, channel, currentFrame, getBatchSize()).get();
+
+		return () -> () -> {
+			getOutputBuffer().clear();
+			sumOp.run();
+		};
 	}
 
 	/**

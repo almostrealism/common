@@ -83,6 +83,7 @@ public abstract class BatchedCell extends CellAdapter<PackedCollection>
 	private final int outputSize;
 	private final PackedCollection output;
 	private IntConsumer frameCallback;
+	private Runnable cachedRender;
 	private int tickCount;
 	private int currentBatch;
 
@@ -208,7 +209,10 @@ public abstract class BatchedCell extends CellAdapter<PackedCollection>
 				if (frameCallback != null) {
 					frameCallback.accept(getCurrentFrame());
 				}
-				renderBatch().get().run();
+				if (cachedRender == null) {
+					cachedRender = renderBatch().get();
+				}
+				cachedRender.run();
 				currentBatch++;
 				tickCount = 0;
 			}
@@ -257,6 +261,7 @@ public abstract class BatchedCell extends CellAdapter<PackedCollection>
 	public Supplier<Runnable> setup() {
 		return () -> () -> {
 			output.clear();
+			cachedRender = null;
 			tickCount = 0;
 			currentBatch = 0;
 		};
@@ -268,6 +273,7 @@ public abstract class BatchedCell extends CellAdapter<PackedCollection>
 	@Override
 	public void reset() {
 		output.clear();
+		cachedRender = null;
 		tickCount = 0;
 		currentBatch = 0;
 	}
