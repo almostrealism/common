@@ -16,12 +16,10 @@
 
 package org.almostrealism.audio.pattern.test;
 
-import org.almostrealism.audio.arrange.PatternRenderContext;
 import org.almostrealism.audio.arrange.AudioSceneContext;
 import org.almostrealism.audio.data.ChannelInfo;
 import org.almostrealism.audio.pattern.PatternRenderCell;
 import org.almostrealism.audio.pattern.PatternSystemManager;
-import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.BatchedCell;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
@@ -35,37 +33,6 @@ import static org.junit.Assert.*;
  * Tests for real-time pattern rendering functionality.
  */
 public class RealTimeRenderingTest extends TestSuiteBase {
-
-	@Test
-	public void testPatternRenderContextBasics() {
-		// Create a mock AudioSceneContext
-		AudioSceneContext baseContext = new AudioSceneContext();
-		baseContext.setMeasures(16);
-		baseContext.setFrames(44100 * 16); // 16 seconds at 44.1kHz
-		baseContext.setFrameForPosition(pos -> (int) (pos * 44100));
-
-		// Create render context for a 1024-frame buffer starting at frame 44100
-		PatternRenderContext renderContext = new PatternRenderContext(baseContext, 44100, 1024);
-
-		// Test basic frame range accessors
-		assertEquals(44100, renderContext.getStartFrame());
-		assertEquals(1024, renderContext.getFrameCount());
-		assertEquals(44100 + 1024, renderContext.getEndFrame());
-
-		// Test measure conversion
-		double startMeasure = renderContext.frameToMeasure(44100);
-		assertTrue("Start measure should be around 1.0", startMeasure > 0.9 && startMeasure < 1.1);
-
-		// Test overlap detection
-		assertTrue("Should overlap with measure range 0.5-1.5",
-				renderContext.overlapsFrameRange(0.5, 1.5));
-		assertFalse("Should not overlap with measure range 5.0-6.0",
-				renderContext.overlapsFrameRange(5.0, 6.0));
-
-		// Test buffer offset calculations
-		int bufferOffset = renderContext.measureToBufferOffset(1.0);
-		assertTrue("Buffer offset should be within range", bufferOffset >= 0 && bufferOffset < 1024);
-	}
 
 	@Test
 	public void testBatchedCellBasics() {
@@ -156,43 +123,4 @@ public class RealTimeRenderingTest extends TestSuiteBase {
 		assertEquals(channel, renderCell.getChannel());
 	}
 
-	@Test
-	public void testPatternRenderContextDelegation() {
-		// Verify that PatternRenderContext properly delegates to the base context
-		AudioSceneContext baseContext = new AudioSceneContext();
-		baseContext.setMeasures(8);
-		baseContext.setFrames(44100 * 8);
-		baseContext.setDestination(new PackedCollection(1024));
-
-		PatternRenderContext renderContext = new PatternRenderContext(baseContext, 0, 1024);
-
-		// Test delegation
-		assertEquals(8, renderContext.getMeasures());
-		assertEquals(44100 * 8, renderContext.getFrames());
-		assertNotNull("Destination should be delegated", renderContext.getDestination());
-	}
-
-	@Test
-	public void testOverlapCalculations() {
-		AudioSceneContext baseContext = new AudioSceneContext();
-		baseContext.setMeasures(16);
-		baseContext.setFrames(44100 * 16);
-		baseContext.setFrameForPosition(pos -> (int) (pos * 44100));
-
-		// Test buffer at the start
-		PatternRenderContext startContext = new PatternRenderContext(baseContext, 0, 1024);
-		assertTrue(startContext.overlapsFrameRange(0.0, 0.5));
-		assertFalse(startContext.overlapsFrameRange(1.0, 2.0));
-
-		// Test buffer in the middle
-		int middleFrame = 44100 * 8; // 8 seconds in
-		PatternRenderContext middleContext = new PatternRenderContext(baseContext, middleFrame, 1024);
-		assertTrue(middleContext.overlapsFrameRange(7.9, 8.1));
-		assertFalse(middleContext.overlapsFrameRange(0.0, 1.0));
-		assertFalse(middleContext.overlapsFrameRange(15.0, 16.0));
-
-		// Test absolute frame overlap
-		assertTrue(middleContext.overlapsAbsoluteFrameRange(middleFrame - 100, middleFrame + 100));
-		assertFalse(middleContext.overlapsAbsoluteFrameRange(0, 1000));
-	}
 }

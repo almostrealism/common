@@ -76,7 +76,6 @@ import java.util.function.Supplier;
  * audio processing thread.</p>
  *
  * @see PatternSystemManager#sum(Supplier, ChannelInfo, int, int)
- * @see org.almostrealism.audio.arrange.PatternRenderContext
  * @see BatchedCell
  *
  * @author Michael Murray

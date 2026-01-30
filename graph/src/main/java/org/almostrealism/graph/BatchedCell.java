@@ -20,7 +20,6 @@ import io.almostrealism.lifecycle.Lifecycle;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.hardware.OperationList;
 import org.almostrealism.time.Temporal;
 
 import java.util.function.IntConsumer;
@@ -232,11 +231,10 @@ public abstract class BatchedCell extends CellAdapter<PackedCollection>
 	 */
 	@Override
 	public Supplier<Runnable> push(Producer<PackedCollection> protein) {
-		OperationList push = new OperationList("BatchedCell Push");
 		if (getReceptor() != null) {
-			push.add(getReceptor().push(getOutputProducer()));
+			return getReceptor().push(getOutputProducer());
 		}
-		return push;
+		return () -> () -> {};
 	}
 
 	/**

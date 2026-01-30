@@ -61,8 +61,7 @@ import java.util.function.Function;
  *
  * <p><strong>Critical:</strong> The {@code frameForPosition} function currently returns
  * absolute frame positions relative to the start of the arrangement. For real-time
- * rendering, this needs to be modified (or wrapped) to return buffer-relative offsets.
- * See the proposed {@code PatternRenderContext} in REALTIME_PATTERNS.md.</p>
+ * rendering, this needs to be modified (or wrapped) to return buffer-relative offsets.</p>
  *
  * <p>Key methods for real-time adaptation:</p>
  * <ul>
