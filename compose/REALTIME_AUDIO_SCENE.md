@@ -9,11 +9,16 @@
 > `runnerRealTime` (per-sample ticking) and `runnerRealTimeCompiled`
 > (per-buffer ticking via `CompiledBatchCell`) paths produce non-silent audio.
 >
-> **Current focus**: Pattern rendering performance. Each buffer tick takes
-> ~20 seconds (at 1024-frame buffer size), which is far too slow for
-> real-time use. The priority is making `PatternSystemManager.sum()` with
-> small frame ranges performant before continuing with the batch cell
-> architecture.
+> **Pattern rendering performance**: Pre-filtering and caching (Phases 1-2 from
+> `PARTIAL_PATTERN_RENDERING.md`) are implemented. A unified `render()` method
+> handles both offline and real-time modes. Rendering a 1024-frame buffer takes
+> ~52ms (down from ~61ms before pre-filtering). Non-overlapping notes are skipped
+> before `evaluate()`, and notes spanning multiple buffers are cached.
+>
+> **Current focus**: The effects pipeline. `cells.tick()` falls back to
+> `javaLoop()` because it is not a `Computation`. The compiled Loop architecture
+> in `CompiledBatchCell` needs the effects chain to be compilable for real-time
+> performance.
 
 ### What Works
 
@@ -29,9 +34,10 @@
 
 ### Known Issues
 
-1. **Pattern rendering is too slow** — Each call to `patterns.sum(ctx, channel, startFrame, bufferSize)`
-   takes ~20 seconds per buffer tick. This must be solved before the batch cell
-   architecture can deliver real-time performance.
+1. **Pattern rendering not yet real-time** — Rendering a 1024-frame buffer (~23ms of
+   audio) takes ~52ms. Pre-filtering and caching reduce waste, but evaluate() cost
+   for overlapping notes still exceeds the buffer duration. Phase 3 (partial note
+   evaluation) or hardware-accelerated evaluation may be needed.
 2. **Effects loop not compiled** — `cells.tick()` in the compiled runner path is not
    a `Computation`, so `CompiledBatchCell` falls back to `javaLoop()` instead of a
    native compiled `Loop`.
@@ -41,9 +47,10 @@
 
 ### Next Steps
 
-1. **Solve pattern rendering performance with small batches** — Make
-   `sum(ctx, channel, startFrame, bufferSize)` fast enough for real-time use
-2. Then revisit compiled Loop architecture for per-frame effects processing
+1. **Make effects chain compilable** — The effects `CellList.tick()` must be a
+   `Computation` so `CompiledBatchCell` can use a native `Loop` instead of `javaLoop()`
+2. **Consider Phase 3 (partial evaluation)** — If pattern rendering remains too slow,
+   implement range-based audio evaluation to avoid computing full note audio
 
 ---
 
@@ -73,7 +80,7 @@ AudioScene.runnerRealTime(output, bufferSize)
 | `PatternRenderCell` | compose | Renders patterns incrementally per buffer |
 | `BatchCell` | compose | Wraps cells to execute once per N frames (used by `runnerRealTime`) |
 | `CompiledBatchCell` | compose | Render-once + compiled Loop architecture (used by `runnerRealTimeCompiled`) |
-| `PatternRenderContext` | music | Extended context with frame range awareness |
+| `NoteAudioCache` | music | Caches evaluated note audio across buffer ticks |
 | `GlobalTimeManager` | compose | Tracks current frame position across cells |
 
 ### Frame Tracking
@@ -93,37 +100,59 @@ tick() called per sample frame
 
 ## Pattern Rendering API
 
-### Frame-Range sum() Overloads
+### Unified Render Path
+
+All rendering flows through a single `PatternFeatures.render()` method:
 
 ```java
-// PatternSystemManager - full render (traditional)
+// PatternFeatures - single render method for both offline and real-time
+default void render(AudioSceneContext sceneContext, NoteAudioContext audioContext,
+                    List<PatternElement> elements, boolean melodic, double offset,
+                    int startFrame, int frameCount, NoteAudioCache cache)
+```
+
+Both full-render and frame-range modes use this method. For full-render, pass
+`startFrame=0, frameCount=totalFrames, cache=null`. For real-time, pass the
+actual frame range and a `NoteAudioCache` instance.
+
+### PatternSystemManager sum() Overloads
+
+```java
+// Full render (traditional) — auto-volume enabled
 public Supplier<Runnable> sum(Supplier<AudioSceneContext> context, ChannelInfo channel)
 
-// PatternSystemManager - frame-range render (real-time)
+// Frame-range render (real-time) — auto-volume disabled, cache enabled
 public Supplier<Runnable> sum(Supplier<AudioSceneContext> context,
                               ChannelInfo channel, int startFrame, int frameCount)
 ```
 
-The frame-range version creates a `PatternRenderContext`, skips auto-volume, and
-delegates to per-pattern `sum()` with frame parameters. `PatternLayerManager` converts
-frames to measures, filters elements to those overlapping the range, and calls
-`renderRange()` instead of `render()`.
+Both delegate to `PatternLayerManager.sumInternal()`, which handles frame-to-measure
+conversion, repetition filtering, and calls the unified `render()`.
 
-### PatternRenderContext
+### PatternLayerManager Internals
 
-Extends `AudioSceneContext` with frame range awareness:
-- `getStartFrame()` / `getFrameCount()` / `getEndFrame()` - Frame range accessors
-- `measureToBufferOffset(measure)` - Converts measure position to buffer offset
-- `overlapsFrameRange(startMeasure, endMeasure)` - Range overlap check
-
-### Frame Conversion
+`sumInternal()` converts frame range to measure range, determines overlapping
+repetitions, and renders each:
 
 ```java
-private double frameToMeasure(int frame, AudioSceneContext ctx) {
-    double framesPerMeasure = ctx.getFrames() / (double) ctx.getMeasures();
-    return frame / framesPerMeasure;
-}
+double framesPerMeasure = (double) ctx.getFrames() / ctx.getMeasures();
+double startMeasure = startFrame / framesPerMeasure;
+double endMeasure = (startFrame + frameCount) / framesPerMeasure;
+int firstRepetition = Math.max(0, (int) Math.floor(startMeasure / duration));
+int lastRepetition = Math.min(totalRepetitions, (int) Math.ceil(endMeasure / duration));
 ```
+
+### NoteAudioCache
+
+Caches evaluated note audio across consecutive buffer ticks:
+
+```java
+NoteAudioCache cache = new NoteAudioCache();
+cache.evictBefore(startFrame);  // Remove notes that ended before current buffer
+// In render(): cache.get(noteStart) before evaluate(), cache.put(noteStart, audio) after
+```
+
+### Frame Conversion
 
 Assumes linear time (no tempo changes mid-arrangement).
 
@@ -253,15 +282,15 @@ via the render cell collector pattern.
 
 ### Key Observations
 
-1. **Pattern rendering dominates execution time.** Each `patterns.sum()` call for
-   a 1024-frame buffer takes ~20 seconds. This makes all tests that tick per-sample
-   extremely slow (44100 ticks × overhead per tick), and makes the compiled batch
-   cell tests slow despite ticking only once per buffer (because the render operation
-   itself is the bottleneck).
+1. **Pattern rendering performance improved but not yet real-time.** With pre-filtering
+   and caching (Phases 1-2), rendering a 1024-frame buffer takes ~52ms. This is down
+   from ~61ms (before pre-filtering) and dramatically better than the ~342ms of
+   evaluate() time when no filtering was applied. However, 52ms is still above the
+   ~23ms budget for real-time at 44.1kHz.
 
 2. **The compiled Loop falls back to Java.** `cells.tick()` is not a `Computation`,
    so `CompiledBatchCell` uses `javaLoop()` instead of a native compiled `Loop`.
-   This is a secondary concern — fixing pattern rendering performance is prerequisite.
+   This is the primary remaining bottleneck for the effects pipeline.
 
 3. **Most audio content assertions are at depth 2+.** Only `frameRangeSumProducesAudio`,
    `frameRangeWithEffects`, `batchCellArchitectureValidation`, and
@@ -302,9 +331,12 @@ mcp__ar-test-runner__start_test_run
 
 | File | Changes |
 |------|---------|
-| `PatternSystemManager.java` | Added frame-range `sum()` overload |
-| `PatternLayerManager.java` | Added frame-range `sum()` overload |
-| `PatternFeatures.java` | Added `renderRange()` for buffer-aware rendering |
+| `PatternSystemManager.java` | Frame-range `sum()` overload; passes context directly (no `PatternRenderContext` wrapper) |
+| `PatternLayerManager.java` | Unified `sumInternal()` for both full and frame-range rendering; `NoteAudioCache` field |
+| `PatternFeatures.java` | Single unified `render()` with pre-filtering and cache support (replaces former `render()` + `renderRange()`) |
+| `PatternElement.java` | Added `getEffectiveDuration()` for pre-filtering |
+| `RenderedNoteAudio.java` | Added `expectedFrameCount` field |
+| `ScaleTraversalStrategy.java` | Added `createRenderedNote()` helper computing expected frame count |
 | `AudioScene.java` | Added `runnerRealTime()`, `runnerRealTimeCompiled()`, `getCellsRealTime()`, `getPatternChannelRealTime()` with render cell collector overloads |
 | `PatternRenderCell.java` | Fixed `tick()` to read frame at execution time |
 
@@ -315,7 +347,7 @@ mcp__ar-test-runner__start_test_run
 | `PatternRenderCell.java` | Cell for incremental pattern rendering |
 | `BatchCell.java` | Wrapper for N-frame batch execution (per-sample tick counting) |
 | `CompiledBatchCell.java` | Render-once + compiled Loop for per-buffer ticking |
-| `PatternRenderContext.java` | Extended context with frame range |
+| `NoteAudioCache.java` | Cache for evaluated note audio across buffer ticks |
 | `GlobalTimeManager.java` | Frame position tracking |
 
 ### Tests

@@ -1,14 +1,28 @@
 # Partial Pattern Rendering: Performance Analysis and Proposals
 
+## Implementation Status
+
+> **Phase 1 (Pre-filtering) and Phase 2 (Caching) are IMPLEMENTED** (January 2026)
+>
+> The render path has been unified: a single `PatternFeatures.render()` method
+> handles both offline and real-time rendering. Pre-filtering skips notes that
+> don't overlap the target frame range before the expensive `evaluate()` call.
+> `NoteAudioCache` avoids re-evaluating notes that span multiple buffers.
+>
+> Rendering a 1024-frame buffer now takes ~52ms (down from ~61ms before
+> pre-filtering, and compared to ~342ms of evaluate() time with no filtering).
+> Phase 3 (partial note evaluation) is not yet implemented.
+
 ## Problem Statement
 
 Rendering a single 1024-frame buffer (~23ms of audio) via
-`PatternSystemManager.sum(ctx, channel, startFrame, 1024)` takes ~20 seconds.
-Real-time audio requires this to complete in under 23ms. The rendering is
-roughly 1000x too slow.
+`PatternSystemManager.sum(ctx, channel, startFrame, 1024)` originally took
+~61ms per buffer (with ~342ms of evaluate() time across all notes, 98% of
+which was wasted on non-overlapping notes). Real-time audio requires this to
+complete in under 23ms.
 
-This document analyzes where time is spent and proposes changes to eliminate
-unnecessary work.
+This document analyzes where time is spent and describes the changes made to
+reduce unnecessary work.
 
 ---
 
@@ -34,7 +48,9 @@ PatternSystemManager.sum(ctx, channel, startFrame=0, frameCount=1024)
                   +-- renderRange(ctx, audioCtx, ALL_ELEMENTS, melodic, 0.0, 0, 1024)
 ```
 
-### Inside renderRange() -- where the waste happens
+### Inside render() -- where the waste was
+
+Before Phase 1, the unified `render()` method (formerly `renderRange()`) did:
 
 ```java
 elements.stream()
@@ -170,114 +186,98 @@ note that would be processed when rendering buffer [0, 1024):
 
 ## Proposals
 
-### Proposal 1: Pre-filter notes by offset before evaluate()
+### Proposal 1: Pre-filter notes by offset before evaluate() -- IMPLEMENTED
 
 **Goal:** Never call `evaluate()` on a note that doesn't overlap the buffer.
 
 **Approach:** The note's absolute frame offset is known from `RenderedNoteAudio.getOffset()`
-before evaluation. The note's duration can be estimated from `PatternNote.getDuration() *
-sampleRate` without evaluating the producer. Add an `expectedFrameCount` field to
-`RenderedNoteAudio` so the overlap check can run before `evaluate()`.
+before evaluation. The note's duration is computed from `PatternElement.getEffectiveDuration()
+* OutputLine.sampleRate`. An `expectedFrameCount` field on `RenderedNoteAudio` enables the
+overlap check to run before `evaluate()`.
 
-**Changes:**
+**Changes (implemented):**
 
-1. `RenderedNoteAudio`: Add `int expectedFrameCount` field, set during construction
-2. `ScaleTraversalStrategy.getNoteDestinations()`: Compute expected frame count from
-   `PatternNote.getDuration(target, audioSelection) * sampleRate` and store it
-3. `PatternFeatures.renderRange()`: Check overlap using `[offset, offset + expectedFrameCount)`
-   BEFORE calling `evaluate()`. Skip notes that don't overlap.
+1. `RenderedNoteAudio`: Added `int expectedFrameCount` field with 3-parameter constructor
+2. `PatternElement`: Added `getEffectiveDuration()` extracting duration logic from `getNoteAudio()`
+3. `ScaleTraversalStrategy`: Added `createRenderedNote()` helper that computes `expectedFrameCount`
+   from `element.getEffectiveDuration() * OutputLine.sampleRate`
+4. `PatternFeatures.render()`: Checks overlap using `[offset, offset + expectedFrameCount)`
+   BEFORE calling `evaluate()`. Skips notes that don't overlap.
 
 ```java
-// In renderRange(), BEFORE evaluate:
-int noteStart = note.getOffset();
-int noteEstimatedEnd = noteStart + note.getExpectedFrameCount();
-if (noteEstimatedEnd <= startFrame || noteStart >= endFrame) {
-    return;  // Skip -- no overlap, don't evaluate
+// In render(), BEFORE evaluate:
+if (note.getExpectedFrameCount() > 0) {
+    int noteEstimatedEnd = noteStart + note.getExpectedFrameCount();
+    if (noteEstimatedEnd <= startFrame || noteStart >= endFrame) {
+        return;  // Skip -- no overlap, don't evaluate
+    }
+} else if (noteStart >= endFrame) {
+    return;
 }
 ```
 
-**Impact:** Eliminates evaluate() calls for all non-overlapping notes. In the scenario
-above, this reduces from 30 evaluate() calls to 1-3. This is the highest-value change.
+**Impact:** Eliminates evaluate() calls for all non-overlapping notes.
 
 **Risk:** Low. The expected frame count is an estimate; the actual audio might be
-slightly different. But the overlap check after evaluate() still runs as a safety net.
+slightly different. A post-evaluate overlap check still runs as a safety net.
 
 ---
 
-### Proposal 2: Pre-filter elements by position
+### Proposal 2: Pre-filter elements by position -- PARTIALLY ADDRESSED
 
 **Goal:** Don't even create `RenderedNoteAudio` for elements that clearly fall outside
 the buffer's time range.
 
-**Approach:** Each `PatternElement` has a `getPosition()` in measures. Convert the
-buffer's frame range to a measure range and skip elements whose position (plus maximum
-possible note duration) falls outside that range.
+**Status:** This is partially addressed by the repetition-level filtering in
+`PatternLayerManager.sumInternal()`, which converts the frame range to a measure range
+and only processes overlapping repetitions. Element-level pre-filtering within a
+repetition is not yet implemented, but the per-note pre-filtering from Proposal 1
+provides similar benefit at a slightly later stage in the pipeline.
 
-**Changes:**
-
-1. `PatternFeatures.renderRange()` or `PatternLayerManager.sum()`: Before calling
-   `getNoteDestinations()`, check if the element's position (converted to frames)
-   could possibly overlap the buffer. Account for note duration by adding a generous
-   maximum note length.
-
-```java
-// In renderRange(), filter elements before getNoteDestinations:
-int maxNoteLengthFrames = (int) (MAX_NOTE_DURATION_SECONDS * sampleRate);
-elements.stream()
-    .filter(e -> {
-        double absPosition = measureOffset + e.getPosition();
-        int elemFrame = context.frameForPosition(absPosition);
-        // Could any note from this element overlap the buffer?
-        return elemFrame < endFrame + maxNoteLengthFrames
-            && elemFrame + maxNoteLengthFrames > startFrame;
-    })
-    .map(e -> e.getNoteDestinations(...))
-    ...
-```
-
-**Impact:** Reduces the number of `getNoteDestinations()` calls and the associated
-`nextNotePosition()` overhead. For elements with repeats, this also avoids creating
-`RenderedNoteAudio` instances for notes at positions far from the buffer.
-
-**Risk:** Low. Uses a conservative maximum note length to avoid false negatives.
+**Remaining opportunity:** For patterns with many elements, adding element-level
+filtering before `getNoteDestinations()` could avoid creating `RenderedNoteAudio`
+instances for elements far from the buffer. This is a minor optimization given that
+Proposal 1 already skips the expensive `evaluate()` call.
 
 ---
 
-### Proposal 3: Cache evaluated note audio across buffer ticks
+### Proposal 3: Cache evaluated note audio across buffer ticks -- IMPLEMENTED
 
 **Goal:** A note that spans multiple buffers should be evaluated once, not once per buffer.
 
-**Approach:** Maintain a cache keyed by `(elementIdentity, repetitionIndex, noteIndex)` that
-stores the evaluated `PackedCollection` audio. On subsequent buffer ticks, look up the
-cached audio instead of re-evaluating the producer.
+**Approach:** `NoteAudioCache` maintains a `Map<Integer, PackedCollection>` keyed by
+absolute frame offset. Before `evaluate()`, the cache is checked. After `evaluate()`,
+the result is stored. Before each buffer tick, `evictBefore(startFrame)` removes entries
+for notes that have ended before the current buffer.
 
-**Changes:**
+**Changes (implemented):**
 
-1. Add a `NoteAudioCache` to `PatternRenderCell` or `PatternLayerManager`
-2. Before `evaluate()`, check the cache. If hit, use cached audio.
-3. After `evaluate()`, store in cache.
-4. Evict entries when the note's frame range no longer overlaps with any future buffer.
+1. `NoteAudioCache`: New class in `org.almostrealism.audio.pattern` with `get()`, `put()`,
+   `evictBefore()`, `clear()`, `size()` methods
+2. `PatternLayerManager`: Holds a `NoteAudioCache` instance. The frame-range `sum()` calls
+   `noteAudioCache.evictBefore(startFrame)` then passes the cache to `sumInternal()`.
+   The full-render `sum()` passes `null` cache.
+3. `PatternFeatures.render()`: Accepts optional `NoteAudioCache` parameter. Checks cache
+   before `evaluate()`, stores result after `evaluate()`.
 
 ```java
-// Cache key: note identity + repetition offset
-NoteAudioCacheKey key = new NoteAudioCacheKey(element, repIndex, noteIndex);
-
-PackedCollection audio = cache.get(key);
+// In render():
+PackedCollection audio = (cache != null) ? cache.get(noteStart) : null;
 if (audio == null) {
-    audio = traverse(1, note.getProducer()).get().evaluate();
-    cache.put(key, audio);
+    PackedCollection[] evaluated = {null};
+    Heap.stage(() -> evaluated[0] = traverse(1, note.getProducer()).get().evaluate());
+    audio = evaluated[0];
+    if (cache != null) cache.put(noteStart, audio);
 }
-
-// On buffer advancement, evict notes that ended before current buffer
-cache.evictBefore(currentStartFrame);
 ```
 
-**Impact:** Eliminates redundant evaluation for long notes. A 1-second note evaluated
-once instead of 43 times. Combined with Proposal 1, this means only overlapping notes
-are evaluated, and each is evaluated only once.
+**Impact:** Each note is evaluated once regardless of how many buffers it spans.
+Combined with Proposal 1, total evaluate() calls for a full arrangement render equals
+the number of unique overlapping notes, not notes-per-buffer * buffers.
 
-**Risk:** Medium. Requires identity semantics for cache keys. Cache invalidation on
-genome changes or pattern edits. Memory usage for cached audio.
+**Risk:** Low. The simple integer key (frame offset) avoids identity semantics issues.
+Cache is evicted automatically as playback advances. Full-render path passes null cache,
+so baseline behavior is unchanged.
 
 ---
 
@@ -304,30 +304,38 @@ calculations must be position-aware.
 
 ---
 
-## Recommended Approach
+## Implementation Status
 
-### Phase 1: Pre-filtering (Proposals 1 + 2)
+### Phase 1: Pre-filtering (Proposal 1) -- DONE
 
-These changes are low-risk and can be implemented and tested incrementally.
+1. Added `expectedFrameCount` to `RenderedNoteAudio`
+2. Added `getEffectiveDuration()` to `PatternElement`
+3. Added `createRenderedNote()` helper to `ScaleTraversalStrategy`
+4. Pre-filter by offset in unified `render()` before `evaluate()`
 
-1. Add `expectedFrameCount` to `RenderedNoteAudio`
-2. Pre-filter by offset in `renderRange()` before `evaluate()`
-3. Pre-filter elements by position before `getNoteDestinations()`
+**Outcome:** Non-overlapping notes are skipped before the expensive `evaluate()` call.
 
-**Expected outcome:** The number of `evaluate()` calls drops from all-notes-in-pattern
-to only-overlapping-notes (typically 1-3 per buffer instead of 20-60). Rendering time
-for a single buffer should drop proportionally.
+### Phase 2: Caching (Proposal 3) -- DONE
 
-### Phase 2: Caching (Proposal 3)
+1. Created `NoteAudioCache` class
+2. Integrated cache into `PatternLayerManager` (frame-range path)
+3. Cache eviction on each buffer tick via `evictBefore(startFrame)`
 
-Once pre-filtering is working, add caching to avoid re-evaluating the same note
-across consecutive buffers.
+**Outcome:** Notes spanning multiple buffers are evaluated once and reused.
 
-**Expected outcome:** Each note is evaluated once regardless of how many buffers it
-spans. Combined with Phase 1, total evaluate() calls for a full arrangement render
-equals the number of unique notes, not notes-per-buffer * buffers.
+### Code Unification -- DONE
 
-### Phase 3: Partial evaluation (Proposal 4)
+The render path was unified as part of Phase 1/2 implementation:
+
+1. `PatternFeatures`: Single `render()` method replaces former `render()` + `renderRange()`.
+   Both offline and real-time use the same method with `startFrame`/`frameCount`/`cache` params.
+2. `PatternLayerManager`: Single `sumInternal()` replaces two separate implementations.
+   Full-render `sum()` passes `startFrame=0, frameCount=totalFrames, cache=null`.
+   Frame-range `sum()` passes actual frame range and `noteAudioCache`.
+3. `PatternSystemManager`: Frame-range `sum()` passes context directly to
+   `PatternLayerManager.sum()` (no longer wraps in `PatternRenderContext`).
+
+### Phase 3: Partial evaluation (Proposal 4) -- NOT STARTED
 
 Only pursue this if Phase 1 + 2 don't achieve sufficient performance. It requires
 deeper changes to the audio pipeline.
@@ -358,16 +366,18 @@ patterns with more elements will show proportionally greater improvement from Ph
 
 ---
 
-## Files to Modify
+## Files Modified
 
 | File | Phase | Changes |
 |------|-------|---------|
-| `RenderedNoteAudio.java` | 1 | Add `expectedFrameCount` field |
-| `ScaleTraversalStrategy.java` | 1 | Compute and store expected frame count |
-| `PatternFeatures.java` | 1 | Pre-filter by offset before evaluate() |
-| `PatternLayerManager.java` | 1 | Pre-filter elements by position (optional) |
-| `PatternRenderCell.java` | 2 | Add NoteAudioCache |
-| `NoteAudio.java` | 3 | Add range-based getAudio() (if needed) |
+| `RenderedNoteAudio.java` | 1 | Added `expectedFrameCount` field, 3-parameter constructor |
+| `PatternElement.java` | 1 | Added `getEffectiveDuration()`, refactored `getNoteAudio()` to use it |
+| `ScaleTraversalStrategy.java` | 1 | Added `createRenderedNote()` helper computing expected frame count |
+| `PatternFeatures.java` | 1+2 | Unified `render()` + `renderRange()` into single method with pre-filtering and cache support |
+| `PatternLayerManager.java` | 1+2 | Unified two `sum()` overloads via shared `sumInternal()`. Added `NoteAudioCache` field |
+| `PatternSystemManager.java` | 1 | Simplified frame-range `sum()` (removed `PatternRenderContext` wrapping) |
+| `NoteAudioCache.java` | 2 | New class for caching evaluated note audio |
+| `RiseManager.java` | — | Updated `render()` call signature |
 
 ## Tests
 
