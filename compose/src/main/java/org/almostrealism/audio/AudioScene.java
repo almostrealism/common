@@ -23,7 +23,6 @@ import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.deser.std.StdDeserializer;
 import com.fasterxml.jackson.databind.module.SimpleModule;
-import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.cycle.Setup;
 import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.relation.Evaluable;
@@ -71,13 +70,12 @@ import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Random;
 import java.util.function.Consumer;
 import java.util.function.DoubleConsumer;
 import java.util.function.Function;
+import java.util.function.IntSupplier;
 import java.util.function.IntToDoubleFunction;
 import java.util.function.IntUnaryOperator;
 import java.util.function.Supplier;
@@ -146,18 +144,20 @@ import java.util.stream.IntStream;
  * runner.tick().get().run();   // Tick phase (repeat for each buffer)
  * }</pre>
  *
- * <h2>Real-Time Considerations</h2>
+ * <h2>Real-Time Support</h2>
  *
- * <p><strong>Current Limitation:</strong> The entire pattern arrangement is rendered
- * during the setup phase, which blocks real-time streaming. See
- * {@code REALTIME_AUDIO_SCENE.md} for the proposed solution to enable true
- * real-time audio generation.</p>
+ * <p>Both offline and real-time rendering use the same cell construction pipeline
+ * via {@link PatternRenderCell}. The offline path ({@link #runner}) renders all
+ * patterns during setup, while the real-time path ({@link #runnerRealTime})
+ * renders incrementally during tick. See {@code REALTIME_AUDIO_SCENE.md} for
+ * design details.</p>
  *
  * <h2>Pattern Rendering Flow</h2>
  *
- * <p>The key method for pattern rendering is {@link #getPatternSetup}, which calls
- * {@link PatternSystemManager#sum} to render all patterns for a channel. This
- * operation populates pre-allocated destination buffers with the full arrangement.</p>
+ * <p>Pattern rendering is handled by {@link PatternRenderCell}, which calls
+ * {@link PatternSystemManager#sum} to render patterns for a channel. The unified
+ * {@link #getPatternChannel} method constructs cells for both offline and real-time
+ * paths, differing only in buffer size and frame supplier.</p>
  *
  * <h2>Genetic Algorithm Integration</h2>
  *
@@ -255,7 +255,7 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 
 	private AudioLibrary library;
 	private final PatternSystemManager patterns;
-	private Map<ChannelInfo, PackedCollection> patternDestinations;
+	private List<PatternRenderCell> lastRenderCells;
 	private final List<String> channelNames;
 	private double patternActivityBias;
 
@@ -326,8 +326,7 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 		patterns.init();
 
 		this.channelNames = new ArrayList<>();
-
-		addDurationListener(duration -> destroyPatternDestinations());
+		this.lastRenderCells = new ArrayList<>();
 
 		this.automation = new AutomationManager(genome.addChromosome(), time.getClock(),
 											this::getMeasureDuration, getSampleRate());
@@ -492,9 +491,6 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 
 		if (!channels.isEmpty()) {
 			context.setSections(sections.getChannelSections(channels.get(0)));
-
-			if (patternDestinations != null)
-				context.setDestination(patternDestinations.get(channels.get(0)));
 		}
 
 		return context;
@@ -574,6 +570,16 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 	@Override
 	public Supplier<Runnable> setup() { return setup; }
 
+	/**
+	 * Creates cells for all channels using offline rendering parameters.
+	 *
+	 * <p>Convenience method that renders all channels with
+	 * {@code bufferSize = getAvailableSamples()} and
+	 * {@code frameSupplier = () -> 0}.</p>
+	 *
+	 * @param output the audio output to write to
+	 * @return cells configured for offline rendering
+	 */
 	public Cells getCells(MultiChannelAudioOutput output) {
 		long start = System.nanoTime();
 
@@ -586,132 +592,152 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 		}
 	}
 
+	/**
+	 * Creates cells for the specified channels using offline rendering parameters.
+	 *
+	 * @param output   the audio output to write to
+	 * @param channels the channel indices to render
+	 * @return cells configured for offline rendering
+	 */
 	public Cells getCells(MultiChannelAudioOutput output, List<Integer> channels) {
-		CellList cells;
+		return getCells(output, channels, getAvailableSamples(), () -> 0);
+	}
 
+	/**
+	 * Creates cells for the specified channels with the given buffer configuration.
+	 *
+	 * <p>This is the single entry point for cell construction used by both the
+	 * offline and real-time paths. The only difference between them is the
+	 * {@code bufferSize} and {@code frameSupplier}:</p>
+	 * <ul>
+	 *   <li><strong>Offline:</strong> {@code bufferSize = totalFrames},
+	 *       {@code frameSupplier = () -> 0}. Renders everything in one batch.</li>
+	 *   <li><strong>Real-time:</strong> {@code bufferSize = 1024},
+	 *       {@code frameSupplier} tracks playback position. Renders incrementally.</li>
+	 * </ul>
+	 *
+	 * @param output        the audio output to write to
+	 * @param channels      the channel indices to render
+	 * @param bufferSize    frames per render buffer
+	 * @param frameSupplier supplies the current frame position for rendering
+	 * @return cells with pattern rendering and effects
+	 */
+	public Cells getCells(MultiChannelAudioOutput output,
+						  List<Integer> channels,
+						  int bufferSize,
+						  IntSupplier frameSupplier) {
+		return getCells(output, channels, bufferSize, frameSupplier, true);
+	}
+
+	/**
+	 * Internal cell construction with control over render cell requirement behavior.
+	 *
+	 * @param addRenderCellRequirements if true, render cells participate in tick
+	 *                                  (standard path). If false, render cells are
+	 *                                  collected but not added as requirements
+	 *                                  (compiled path manages them separately).
+	 */
+	private Cells getCells(MultiChannelAudioOutput output,
+						   List<Integer> channels,
+						   int bufferSize,
+						   IntSupplier frameSupplier,
+						   boolean addRenderCellRequirements) {
 		setup = new OperationList("AudioScene Setup");
 		addCommonSetup(setup);
+		setup.add(() -> () -> patterns.setTuning(tuning));
+		setup.add(sections.setup());
 
-		cells = getPatternCells(output, channels);
+		lastRenderCells = new ArrayList<>();
+
+		CellList cells = cells(
+				getPatternCells(output, channels, ChannelInfo.StereoChannel.LEFT,
+						bufferSize, frameSupplier, setup, addRenderCellRequirements),
+				getPatternCells(output, channels, ChannelInfo.StereoChannel.RIGHT,
+						bufferSize, frameSupplier, setup, addRenderCellRequirements));
+
 		return cells.addRequirement(time::tick);
 	}
 
-	public CellList getPatternCells(MultiChannelAudioOutput output,
-									List<Integer> channels) {
-		return cells(
-				getPatternCells(output, channels, ChannelInfo.StereoChannel.LEFT),
-				getPatternCells(output, channels, ChannelInfo.StereoChannel.RIGHT));
-	}
-
-	public CellList getPatternCells(MultiChannelAudioOutput output,
-									List<Integer> channels,
-									ChannelInfo.StereoChannel audioChannel) {
-		int totalSamples;
-		if (getTotalSamples() > HealthComputationAdapter.standardDurationFrames) {
-			warn("AudioScene arrangement extends beyond the standard duration");
-			totalSamples = HealthComputationAdapter.standardDurationFrames;
-		} else {
-			totalSamples = getTotalSamples();
-		}
-
-		int[] channelIndex = channels.stream().mapToInt(i -> i).toArray();
-		CellList main = all(channelIndex.length, i ->
-				getPatternChannel(new ChannelInfo(channelIndex[i], ChannelInfo.Voicing.MAIN, audioChannel), totalSamples, setup));
-		CellList wet = all(channelIndex.length, i ->
-				getPatternChannel(new ChannelInfo(channelIndex[i], ChannelInfo.Voicing.WET, audioChannel), totalSamples, setup));
-		return mixdown.cells(main, wet, riser.getRise(totalSamples), output, audioChannel, i -> channelIndex[i]);
+	/**
+	 * Creates pattern cells for all channels on one stereo channel.
+	 *
+	 * @param output        the audio output
+	 * @param channels      channel indices to render
+	 * @param audioChannel  LEFT or RIGHT stereo channel
+	 * @param bufferSize    frames per render buffer
+	 * @param frameSupplier current frame position supplier
+	 * @param setup         the setup OperationList to accumulate operations in
+	 * @param addRenderCellRequirements whether to add render cells as CellList requirements
+	 * @return CellList containing all channel cells for this stereo channel
+	 */
+	private CellList getPatternCells(MultiChannelAudioOutput output,
+									 List<Integer> channels,
+									 ChannelInfo.StereoChannel audioChannel,
+									 int bufferSize,
+									 IntSupplier frameSupplier,
+									 OperationList setup,
+									 boolean addRenderCellRequirements) {
+		int[] idx = channels.stream().mapToInt(i -> i).toArray();
+		CellList main = all(idx.length, i ->
+				getPatternChannel(new ChannelInfo(idx[i], ChannelInfo.Voicing.MAIN, audioChannel),
+						bufferSize, frameSupplier, setup, addRenderCellRequirements));
+		CellList wet = all(idx.length, i ->
+				getPatternChannel(new ChannelInfo(idx[i], ChannelInfo.Voicing.WET, audioChannel),
+						bufferSize, frameSupplier, setup, addRenderCellRequirements));
+		return mixdown.cells(main, wet, riser.getRise(bufferSize),
+				output, audioChannel, i -> idx[i]);
 	}
 
 	/**
-	 * Creates a CellList for a single pattern channel with all patterns rendered.
+	 * Creates a CellList for a single pattern channel using {@link PatternRenderCell}.
 	 *
-	 * <p>This method is the core of the pattern rendering pipeline. It:</p>
-	 * <ol>
-	 *   <li>Creates a pattern setup operation via {@link #getPatternSetup}</li>
-	 *   <li>Renders all pattern elements to the destination buffer</li>
-	 *   <li>Processes channel sections for activity control</li>
-	 *   <li>Applies effects via {@link EfxManager}</li>
-	 * </ol>
+	 * <p>This unified method replaces the former separate offline and real-time
+	 * channel methods. Both paths now use {@link PatternRenderCell}; they differ
+	 * only in buffer size and frame supplier:</p>
+	 * <ul>
+	 *   <li><strong>Offline:</strong> bufferSize = totalFrames, frameSupplier = () -> 0</li>
+	 *   <li><strong>Real-time:</strong> bufferSize = 1024, dynamic frameSupplier</li>
+	 * </ul>
 	 *
-	 * <p><strong>Current Limitation:</strong> The pattern rendering happens entirely
-	 * during setup, not incrementally during tick. This blocks real-time audio
-	 * streaming. See {@code REALTIME_AUDIO_SCENE.md} for the proposed solution.</p>
+	 * <p>The setup OperationList receives both {@link BatchedCell#setup()} and
+	 * {@link BatchedCell#renderNow()} for the created render cell, so the first
+	 * buffer is pre-rendered when setup runs. For real-time buffers, subsequent
+	 * buffers are rendered via tick counting.</p>
 	 *
-	 * @param channel The channel information (index, voicing, stereo channel)
-	 * @param frames Total number of frames to render
-	 * @param setup The setup OperationList to add pattern setup to
+	 * @param channel       the channel (index, voicing, stereo channel)
+	 * @param bufferSize    frames per render buffer
+	 * @param frameSupplier supplies the current frame position
+	 * @param setup         the setup OperationList (render cell setup and initial render are added here)
 	 * @return CellList with effects applied, ready for mixdown
 	 */
-	public CellList getPatternChannel(ChannelInfo channel, int frames, OperationList setup) {
-		OperationList patternSetup = new OperationList("PatternChannel Setup");
-		patternSetup.add(() -> () -> patterns.setTuning(tuning));
-		patternSetup.add(sections.setup());
-		patternSetup.add(getPatternSetup(channel));
-
-		TraversalPolicy audioShape =
-				(frames > getAvailableSamples() ? shape(getAvailableSamples()) : shape(frames))
-						.traverseEach();
-
-		sections.getChannelSections(channel).stream()
-				.map(section -> {
-					int pos = section.getPosition() * getMeasureSamples();
-					int len = section.getLength() * getMeasureSamples();
-
-					if (audioShape.getTotalSize() < pos + len) {
-						warn("Section at position " + pos +
-								" extends beyond the end of the pattern destination (" +
-								audioShape.getTotalSize() + " frames)");
-						return new OperationList("Section Processing (Invalid Size)");
-					} else {
-						Producer<PackedCollection> sectionAudio =
-								func(audioShape, args ->
-										patternDestinations.get(channel).range(shape(len), pos), false);
-						return section.process(sectionAudio, sectionAudio);
-					}
-				})
-				.forEach(patternSetup::add);
-
-		setup.add(patternSetup);
-
-		Producer<PackedCollection> result =
-				func(audioShape, args -> patternDestinations.get(channel).range(audioShape), false);
-		return efx.apply(channel, result, getTotalDuration(), setup);
+	public CellList getPatternChannel(ChannelInfo channel,
+									  int bufferSize,
+									  IntSupplier frameSupplier,
+									  OperationList setup) {
+		return getPatternChannel(channel, bufferSize, frameSupplier, setup, true);
 	}
 
-	/**
-	 * Creates the pattern setup operation for a channel.
-	 *
-	 * <p>This method creates an operation that renders all patterns for the specified
-	 * channel to the pattern destination buffer. The operation:</p>
-	 * <ol>
-	 *   <li>Refreshes the pattern destination buffer (allocating if needed, clearing if exists)</li>
-	 *   <li>Creates an AudioSceneContext with channel-specific configuration</li>
-	 *   <li>Calls {@link PatternSystemManager#sum} to render all patterns</li>
-	 * </ol>
-	 *
-	 * <p>The destination buffer is sized to hold the full arrangement duration,
-	 * limited by {@code HealthComputationAdapter.standardDurationFrames}.</p>
-	 *
-	 * <p><strong>Real-Time Limitation:</strong> This method renders the entire
-	 * arrangement at once. For real-time rendering, the sum operation would need
-	 * to accept frame range parameters and be executed during tick phase instead
-	 * of setup phase.</p>
-	 *
-	 * @param channel The channel to render patterns for
-	 * @return Operation that renders all patterns for the channel
-	 *
-	 * @see PatternSystemManager#sum(java.util.function.Supplier, ChannelInfo)
-	 */
-	public Supplier<Runnable> getPatternSetup(ChannelInfo channel) {
-		Supplier<AudioSceneContext> ctx = () -> {
-			refreshPatternDestination(channel, false);
-			return getContext(List.of(channel));
-		};
+	private CellList getPatternChannel(ChannelInfo channel,
+									   int bufferSize,
+									   IntSupplier frameSupplier,
+									   OperationList setup,
+									   boolean addAsRequirement) {
+		Supplier<AudioSceneContext> ctx = () -> getContext(List.of(channel));
+		PatternRenderCell renderCell = new PatternRenderCell(
+				patterns, ctx, channel, bufferSize, frameSupplier);
 
-		OperationList op = new OperationList("AudioScene Pattern Setup (Channel " + channel + ")");
-		op.add(() -> () -> refreshPatternDestination(channel, true));
-		op.add(patterns.sum(ctx, channel, () -> 0, getTotalSamples()));
-		return op;
+		setup.add(renderCell.setup());
+		setup.add(renderCell.renderNow());
+		lastRenderCells.add(renderCell);
+
+		CellList cells = efx.apply(channel, renderCell.getOutputProducer(),
+				getTotalDuration(), setup);
+
+		if (addAsRequirement) {
+			cells.addRequirement(renderCell);
+		}
+
+		return cells;
 	}
 
 	/**
@@ -725,20 +751,26 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 	}
 
 	/**
-	 * Adds the common setup operations for real-time runner variants,
-	 * including tuning, sections, and cell initialization.
+	 * Creates an offline runner that renders all patterns during setup.
+	 *
+	 * <p>Pattern audio is rendered to {@link PatternRenderCell} output buffers
+	 * during setup via {@link BatchedCell#renderNow()}. The tick phase processes
+	 * the pre-rendered audio through the effects pipeline per sample.</p>
+	 *
+	 * @param output the audio output to write to
+	 * @return a TemporalCellular for offline rendering
 	 */
-	private void addRealTimeSetup(OperationList setup, Cells cells) {
-		addCommonSetup(setup);
-		setup.add(() -> () -> patterns.setTuning(tuning));
-		setup.add(sections.setup());
-		setup.addAll((List) cells.setup());
-	}
-
 	public TemporalCellular runner(MultiChannelAudioOutput output) {
 		return runner(output, null);
 	}
 
+	/**
+	 * Creates an offline runner for specific channels.
+	 *
+	 * @param output   the audio output to write to
+	 * @param channels channel indices to render, or null for all
+	 * @return a TemporalCellular for offline rendering
+	 */
 	public TemporalCellular runner(MultiChannelAudioOutput output,
 								   List<Integer> channels) {
 		Cells cells = channels == null ?
@@ -768,24 +800,16 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 	/**
 	 * Creates a real-time runner that renders patterns incrementally.
 	 *
-	 * <p>Unlike the standard {@link #runner} method which renders all patterns
-	 * during setup, this method creates a runner that renders patterns
-	 * incrementally during the tick phase, enabling true real-time streaming.</p>
+	 * <p>Unlike {@link #runner} which renders all patterns during setup,
+	 * this runner renders patterns incrementally during the tick phase via
+	 * {@link PatternRenderCell}, enabling true real-time streaming.</p>
 	 *
-	 * <h3>Execution Model</h3>
-	 * <ul>
-	 *   <li><strong>Setup Phase:</strong> Light initialization only - no pattern rendering</li>
-	 *   <li><strong>Tick Phase:</strong> Renders one buffer of patterns per call</li>
-	 * </ul>
+	 * <p>The buffer size determines how many frames are rendered per batch.
+	 * Use {@link #DEFAULT_REALTIME_BUFFER_SIZE} for a reasonable default.</p>
 	 *
-	 * <h3>Buffer Size</h3>
-	 * <p>The buffer size determines how many frames are rendered per tick.
-	 * Use {@link #DEFAULT_REALTIME_BUFFER_SIZE} for a reasonable default,
-	 * or obtain the buffer size from your audio output device.</p>
-	 *
-	 * @param output The audio output to write to
-	 * @param bufferSize Number of frames per buffer
-	 * @return A TemporalCellular that can be used for real-time playback
+	 * @param output     the audio output to write to
+	 * @param bufferSize frames per buffer
+	 * @return a TemporalCellular for real-time playback
 	 *
 	 * @see PatternRenderCell
 	 */
@@ -796,28 +820,29 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 	/**
 	 * Creates a real-time runner for specific channels.
 	 *
-	 * @param output The audio output to write to
-	 * @param channels List of channel indices to render, or null for all
-	 * @param bufferSize Number of frames per buffer
-	 * @return A TemporalCellular for real-time playback
-	 *
-	 * @see #runnerRealTime(MultiChannelAudioOutput, int)
+	 * @param output     the audio output to write to
+	 * @param channels   channel indices to render, or null for all
+	 * @param bufferSize frames per buffer
+	 * @return a TemporalCellular for real-time playback
 	 */
 	public TemporalCellular runnerRealTime(MultiChannelAudioOutput output,
 										   List<Integer> channels,
 										   int bufferSize) {
-		// Frame position tracker
 		final int[] currentFrame = {0};
 		final int[] tickCount = {0};
 
-		// Get cells with real-time pattern rendering
-		Cells cells = getCellsRealTime(output, channels, bufferSize, () -> currentFrame[0]);
+		if (channels == null) {
+			channels = IntStream.range(0, getChannelCount()).boxed().collect(Collectors.toList());
+		}
+
+		Cells cells = getCells(output, channels, bufferSize, () -> currentFrame[0]);
 
 		return new TemporalCellular() {
 			@Override
 			public Supplier<Runnable> setup() {
 				OperationList setup = new OperationList("AudioScene RealTime Runner Setup");
-				addRealTimeSetup(setup, cells);
+				setup.addAll((List) AudioScene.this.setup());
+				setup.addAll((List) cells.setup());
 				return setup.flatten();
 			}
 
@@ -846,198 +871,16 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 	}
 
 	/**
-	 * Creates cells for real-time rendering.
-	 *
-	 * @param output The audio output
-	 * @param channels Channels to render
-	 * @param bufferSize Frames per buffer
-	 * @param frameSupplier Supplier for current frame position
-	 * @return CellList configured for real-time rendering
-	 */
-	public Cells getCellsRealTime(MultiChannelAudioOutput output,
-								  List<Integer> channels,
-								  int bufferSize,
-								  java.util.function.IntSupplier frameSupplier) {
-		return getCellsRealTime(output, channels, bufferSize, frameSupplier, null);
-	}
-
-	/**
-	 * Creates cells for real-time rendering, optionally collecting render cells separately.
-	 *
-	 * <p>When {@code renderCellCollector} is non-null, {@link PatternRenderCell} instances
-	 * are added to the collector instead of being added as requirements to the cell pipeline.
-	 * This allows the caller to tick render cells independently (e.g., before a compiled Loop),
-	 * separating non-compilable pattern rendering from compilable effects processing.</p>
-	 *
-	 * @param output The audio output
-	 * @param channels Channels to render
-	 * @param bufferSize Frames per buffer
-	 * @param frameSupplier Supplier for current frame position
-	 * @param renderCellCollector If non-null, collects PatternRenderCells instead of adding
-	 *                           them as requirements. Used by the compiled batch cell path.
-	 * @return CellList configured for real-time rendering
-	 */
-	public Cells getCellsRealTime(MultiChannelAudioOutput output,
-								  List<Integer> channels,
-								  int bufferSize,
-								  java.util.function.IntSupplier frameSupplier,
-								  List<PatternRenderCell> renderCellCollector) {
-		if (channels == null) {
-			channels = IntStream.range(0, getChannelCount()).boxed().collect(Collectors.toList());
-		}
-
-		CellList cells;
-		cells = getPatternCellsRealTime(output, channels, bufferSize, frameSupplier,
-				ChannelInfo.StereoChannel.LEFT, renderCellCollector);
-		cells = cells(cells, getPatternCellsRealTime(output, channels, bufferSize, frameSupplier,
-				ChannelInfo.StereoChannel.RIGHT, renderCellCollector));
-
-		return cells.addRequirement(time::tick);
-	}
-
-	/**
-	 * Creates pattern cells for real-time rendering on a specific stereo channel.
-	 *
-	 * @param output The audio output
-	 * @param channels Channels to render
-	 * @param bufferSize Frames per buffer
-	 * @param frameSupplier Supplier for current frame position
-	 * @param audioChannel LEFT or RIGHT
-	 * @return CellList with pattern render cells
-	 */
-	public CellList getPatternCellsRealTime(MultiChannelAudioOutput output,
-											List<Integer> channels,
-											int bufferSize,
-											java.util.function.IntSupplier frameSupplier,
-											ChannelInfo.StereoChannel audioChannel) {
-		return getPatternCellsRealTime(output, channels, bufferSize, frameSupplier,
-				audioChannel, null);
-	}
-
-	/**
-	 * Creates pattern cells for real-time rendering on a specific stereo channel,
-	 * optionally collecting render cells separately.
-	 *
-	 * @param output The audio output
-	 * @param channels Channels to render
-	 * @param bufferSize Frames per buffer
-	 * @param frameSupplier Supplier for current frame position
-	 * @param audioChannel LEFT or RIGHT
-	 * @param renderCellCollector If non-null, collects PatternRenderCells separately
-	 * @return CellList with pattern render cells
-	 */
-	public CellList getPatternCellsRealTime(MultiChannelAudioOutput output,
-											List<Integer> channels,
-											int bufferSize,
-											java.util.function.IntSupplier frameSupplier,
-											ChannelInfo.StereoChannel audioChannel,
-											List<PatternRenderCell> renderCellCollector) {
-		int[] channelIndex = channels.stream().mapToInt(i -> i).toArray();
-
-		// Create pattern render cells for main voicing
-		CellList main = all(channelIndex.length, i ->
-				getPatternChannelRealTime(
-						new ChannelInfo(channelIndex[i], ChannelInfo.Voicing.MAIN, audioChannel),
-						bufferSize, frameSupplier, renderCellCollector));
-
-		// Create pattern render cells for wet voicing
-		CellList wet = all(channelIndex.length, i ->
-				getPatternChannelRealTime(
-						new ChannelInfo(channelIndex[i], ChannelInfo.Voicing.WET, audioChannel),
-						bufferSize, frameSupplier, renderCellCollector));
-
-		// Apply mixdown (effects, delays, reverb)
-		return mixdown.cells(main, wet, riser.getRise(bufferSize), output, audioChannel, i -> channelIndex[i]);
-	}
-
-	/**
-	 * Creates a CellList for real-time pattern rendering on a single channel.
-	 *
-	 * <p>This is the real-time equivalent of {@link #getPatternChannel}. Instead of
-	 * rendering all patterns during setup, it creates a {@link PatternRenderCell}
-	 * that renders incrementally during tick phase.</p>
-	 *
-	 * @param channel The channel to render
-	 * @param bufferSize Frames per buffer
-	 * @param frameSupplier Supplier for current frame position
-	 * @return CellList containing the pattern render cell
-	 */
-	public CellList getPatternChannelRealTime(ChannelInfo channel,
-											  int bufferSize,
-											  java.util.function.IntSupplier frameSupplier) {
-		return getPatternChannelRealTime(channel, bufferSize, frameSupplier, null);
-	}
-
-	/**
-	 * Creates a CellList for real-time pattern rendering on a single channel,
-	 * optionally collecting the render cell separately.
-	 *
-	 * <p>When {@code renderCellCollector} is non-null, the created {@link PatternRenderCell}
-	 * is added to the collector and NOT added as a requirement to the CellList. This allows
-	 * the compiled batch cell path to tick render cells once per buffer (outside the compiled
-	 * Loop), while the effects-only CellList ticks inside the Loop.</p>
-	 *
-	 * @param channel The channel to render
-	 * @param bufferSize Frames per buffer
-	 * @param frameSupplier Supplier for current frame position
-	 * @param renderCellCollector If non-null, receives the PatternRenderCell instead of
-	 *                           adding it as a CellList requirement
-	 * @return CellList containing the effects chain (and optionally the render cell as requirement)
-	 */
-	public CellList getPatternChannelRealTime(ChannelInfo channel,
-											  int bufferSize,
-											  java.util.function.IntSupplier frameSupplier,
-											  List<PatternRenderCell> renderCellCollector) {
-		Supplier<AudioSceneContext> ctx = () -> getContext(List.of(channel));
-		PatternRenderCell renderCell = new PatternRenderCell(
-				patterns, ctx, channel, bufferSize, frameSupplier);
-
-		// Apply effects to the render cell's output
-		CellList cells = efx.apply(channel, renderCell.getOutputProducer(), getTotalDuration(), new OperationList());
-
-		if (renderCellCollector != null) {
-			// Compiled path: collect render cell for separate ticking
-			renderCellCollector.add(renderCell);
-		} else {
-			// Standard path: add render cell as requirement so it participates in the tick cycle
-			cells.addRequirement(renderCell);
-		}
-
-		return cells;
-	}
-
-	/**
 	 * Creates a compiled real-time runner using the batch cell architecture.
 	 *
-	 * <p>This method implements the optimized real-time architecture where:</p>
-	 * <ul>
-	 *   <li>Pattern rendering happens once per buffer (non-compilable)</li>
-	 *   <li>Per-frame effects processing runs as a compiled Loop (native for-loop)</li>
-	 * </ul>
+	 * <p>This method separates pattern rendering (non-compilable, once per buffer)
+	 * from effects processing (compilable, runs as a native for-loop). Pattern
+	 * render cells are excluded from the effects pipeline's tick cycle and instead
+	 * invoked directly via {@link BatchedCell#renderNow()} before the compiled loop.</p>
 	 *
-	 * <h3>Performance Characteristics</h3>
-	 * <p>Unlike {@link #runnerRealTime} which uses per-sample Java lambdas (44100
-	 * invocations/sec), this runner:</p>
-	 * <ul>
-	 *   <li>Calls tick() once per buffer (~43 calls/sec at 1024-sample buffers)</li>
-	 *   <li>Executes per-frame processing as a native for-loop in compiled code</li>
-	 * </ul>
-	 *
-	 * <h3>Usage</h3>
-	 * <pre>{@code
-	 * TemporalCellular runner = scene.runnerRealTimeCompiled(output, 1024);
-	 * runner.setup().get().run();
-	 *
-	 * // Call tick() once per buffer - NOT per sample
-	 * Runnable tick = runner.tick().get();
-	 * while (playing) {
-	 *     tick.run();  // Renders patterns + runs compiled per-frame loop
-	 * }
-	 * }</pre>
-	 *
-	 * @param output The audio output to write to
-	 * @param bufferSize Number of frames per buffer
-	 * @return A TemporalCellular with compiled batch processing
+	 * @param output     the audio output to write to
+	 * @param bufferSize frames per buffer
+	 * @return a TemporalCellular with compiled batch processing
 	 *
 	 * @see #runnerRealTime(MultiChannelAudioOutput, int)
 	 */
@@ -1048,39 +891,33 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 	/**
 	 * Creates a compiled real-time runner for specific channels.
 	 *
-	 * @param output The audio output to write to
-	 * @param channels List of channel indices to render, or null for all
-	 * @param bufferSize Number of frames per buffer
-	 * @return A TemporalCellular with compiled batch processing
-	 *
-	 * @see #runnerRealTimeCompiled(MultiChannelAudioOutput, int)
+	 * @param output     the audio output to write to
+	 * @param channels   channel indices to render, or null for all
+	 * @param bufferSize frames per buffer
+	 * @return a TemporalCellular with compiled batch processing
 	 */
 	public TemporalCellular runnerRealTimeCompiled(MultiChannelAudioOutput output,
 												   List<Integer> channels,
 												   int bufferSize) {
-		// Frame position tracker
 		final int[] currentFrame = {0};
 
-		// Collect PatternRenderCells separately from the effects pipeline.
-		// This allows pattern rendering (non-compilable) to run once per buffer
-		// BEFORE the effects loop, rather than inside it.
-		List<PatternRenderCell> renderCells = new ArrayList<>();
+		if (channels == null) {
+			channels = IntStream.range(0, getChannelCount()).boxed().collect(Collectors.toList());
+		}
 
-		// Build cells with render cells collected separately (not added as requirements)
-		Cells cells = getCellsRealTime(output, channels, bufferSize,
-				() -> currentFrame[0], renderCells);
+		Cells cells = getCells(output, channels, bufferSize,
+				() -> currentFrame[0], false);
 
-		// Create render operation that ticks all PatternRenderCells once per buffer
-		Supplier<Runnable> renderOp = createRenderCellOp(renderCells);
+		List<PatternRenderCell> renderCells = lastRenderCells;
 
-		// Get the per-frame processing operation from cells (effects-only pipeline)
 		Supplier<Runnable> frameOp = cells.tick();
 
 		return new TemporalCellular() {
 			@Override
 			public Supplier<Runnable> setup() {
 				OperationList setup = new OperationList("AudioScene RealTime Compiled Setup");
-				addRealTimeSetup(setup, cells);
+				setup.addAll((List) AudioScene.this.setup());
+				setup.addAll((List) cells.setup());
 
 				for (PatternRenderCell rc : renderCells) {
 					setup.add(rc.setup());
@@ -1092,7 +929,11 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 			@Override
 			public Supplier<Runnable> tick() {
 				OperationList tick = new OperationList("AudioScene RealTime Compiled Tick");
-				tick.add(renderOp);
+				tick.add(() -> () -> {
+					for (PatternRenderCell cell : renderCells) {
+						cell.renderNow().get().run();
+					}
+				});
 				tick.add(loop(frameOp, bufferSize));
 				tick.add(() -> () -> currentFrame[0] += bufferSize);
 				tick.add(time.tick());
@@ -1108,56 +949,6 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 				}
 			}
 		};
-	}
-
-	/**
-	 * Creates a rendering operation from collected {@link PatternRenderCell} instances.
-	 *
-	 * <p>This operation ticks all render cells once, filling their destination buffers
-	 * with pattern audio for the current frame range. It runs once per buffer as the
-	 * non-compilable step before the compiled effects Loop.</p>
-	 *
-	 * @param renderCells The pattern render cells to tick
-	 * @return Operation that renders all pattern buffers
-	 */
-	private Supplier<Runnable> createRenderCellOp(List<PatternRenderCell> renderCells) {
-		return () -> () -> {
-			for (PatternRenderCell cell : renderCells) {
-				cell.renderNow().get().run();
-			}
-		};
-	}
-
-	private void refreshPatternDestination(ChannelInfo channel, boolean clear) {
-		if (patternDestinations == null) {
-			int frames = Math.min(HealthComputationAdapter.standardDurationFrames, getTotalSamples());
-
-			patternDestinations = new HashMap<>();
-			for (int i = 0; i < getChannelCount(); i++) {
-				patternDestinations.put(new ChannelInfo(i, ChannelInfo.Voicing.MAIN, ChannelInfo.StereoChannel.LEFT),
-						new PackedCollection(frames));
-				patternDestinations.put(new ChannelInfo(i, ChannelInfo.Voicing.MAIN, ChannelInfo.StereoChannel.RIGHT),
-						new PackedCollection(frames));
-				patternDestinations.put(new ChannelInfo(i, ChannelInfo.Voicing.WET, ChannelInfo.StereoChannel.LEFT),
-						new PackedCollection(frames));
-				patternDestinations.put(new ChannelInfo(i, ChannelInfo.Voicing.WET, ChannelInfo.StereoChannel.RIGHT),
-						new PackedCollection(frames));
-			}
-
-			if (MixdownManager.enableRiser) {
-				patternDestinations.put(new ChannelInfo(0, ChannelInfo.Type.RISE, null),
-						new PackedCollection(Math.min(HealthComputationAdapter.standardDurationFrames, getTotalSamples())));
-			}
-		} else if (clear) {
-			patternDestinations.get(channel).clear();
-		}
-	}
-
-	private void destroyPatternDestinations() {
-		if (patternDestinations != null) {
-			patternDestinations.values().forEach(PackedCollection::destroy);
-			patternDestinations = null;
-		}
 	}
 
 	public void saveSettings(File file) throws IOException {
@@ -1189,7 +980,6 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 	@Override
 	public void destroy() {
 		Destroyable.super.destroy();
-		destroyPatternDestinations();
 		getSectionManager().destroy();
 	}
 

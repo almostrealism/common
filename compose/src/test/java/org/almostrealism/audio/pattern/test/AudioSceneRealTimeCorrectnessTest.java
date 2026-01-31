@@ -585,7 +585,7 @@ public class AudioSceneRealTimeCorrectnessTest extends AudioSceneTestBase {
 	/**
 	 * Tests that frame-range rendering integrates correctly with the effects pipeline.
 	 *
-	 * <p>Uses getPatternChannelRealTime() to create a CellList with PatternRenderCell
+	 * <p>Uses getPatternChannel() to create a CellList with PatternRenderCell
 	 * and effects, runs setup, ticks for one buffer's worth, and verifies output.</p>
 	 */
 	@Test(timeout = 60_000)
@@ -618,7 +618,9 @@ public class AudioSceneRealTimeCorrectnessTest extends AudioSceneTestBase {
 
 		// Get the real-time pattern channel (includes effects pipeline)
 		ChannelInfo channel = new ChannelInfo(0, ChannelInfo.Voicing.MAIN, ChannelInfo.StereoChannel.LEFT);
-		CellList cells = scene.getPatternChannelRealTime(channel, BUFFER_SIZE, () -> currentFrame[0]);
+		OperationList patternSetup = new OperationList("Frame-Range With Effects Setup");
+		CellList cells = scene.getPatternChannel(channel, BUFFER_SIZE, () -> currentFrame[0], patternSetup);
+		cells.addSetup(() -> patternSetup);
 
 		// Run setup
 		cells.setup().get().run();

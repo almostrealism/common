@@ -146,15 +146,19 @@ public abstract class BatchedCell extends CellAdapter<PackedCollection>
 	}
 
 	/**
-	 * Returns a {@link Producer} wrapping the output buffer with shape information.
+	 * Returns a {@link Producer} wrapping the output buffer.
 	 *
-	 * <p>The returned producer includes proper shape metadata, which is required
-	 * for integration with downstream processing (e.g., effects chains).</p>
+	 * <p>The returned producer provides a direct reference to the underlying
+	 * {@link PackedCollection}, which allows expression trees (such as
+	 * {@code WaveCellPush}) to resolve the memory address for indexed reads.
+	 * Using {@code cp(output)} rather than a functional producer ensures that
+	 * the computation framework can build correct {@code reference(index)}
+	 * expressions against the backing memory.</p>
 	 *
 	 * @return a producer for the output buffer
 	 */
 	public Producer<PackedCollection> getOutputProducer() {
-		return func(shape(outputSize).traverseEach(), args -> output, false);
+		return cp(output);
 	}
 
 	/**
@@ -252,14 +256,18 @@ public abstract class BatchedCell extends CellAdapter<PackedCollection>
 	}
 
 	/**
-	 * Initializes the cell by clearing the output buffer and resetting counters.
+	 * Initializes the cell by resetting counters and cached state.
+	 *
+	 * <p>The output buffer is intentionally not cleared here because
+	 * {@link #renderBatch()} clears it before each render. This allows
+	 * pre-rendered buffers (via {@link #renderNow()}) to survive
+	 * multiple setup() calls during pipeline initialization.</p>
 	 *
 	 * @return an operation that performs setup
 	 */
 	@Override
 	public Supplier<Runnable> setup() {
 		return () -> () -> {
-			output.clear();
 			cachedRender = null;
 			tickCount = 0;
 			currentBatch = 0;

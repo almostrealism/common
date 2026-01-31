@@ -133,7 +133,7 @@ public class AudioSceneRealTimeTest extends AudioSceneTestBase {
 
 		CellList cells = scene.getPatternChannel(
 				new ChannelInfo(0, ChannelInfo.Voicing.MAIN, ChannelInfo.StereoChannel.LEFT),
-				scene.getTotalSamples(), setup);
+				scene.getTotalSamples(), () -> 0, setup);
 		cells.addSetup(() -> setup);
 		cells.o(i -> new File(outputFile)).sec(DURATION_SECONDS).get().run();
 
@@ -400,7 +400,6 @@ public class AudioSceneRealTimeTest extends AudioSceneTestBase {
 		// Create scene with 2 channels and 2 delay layers
 		AudioScene<?> scene = new AudioScene<>(120, 2, 2, SAMPLE_RATE);
 		scene.setTotalMeasures(16);
-		scene.setTuning(new DefaultKeyboardTuning());
 
 		// Set library root for sample resolution
 		scene.setLibraryRoot(new FileWaveDataProviderNode(libraryDir));
@@ -429,6 +428,9 @@ public class AudioSceneRealTimeTest extends AudioSceneTestBase {
 				WesternChromatic.C1);
 		snareChoice.getSources().add(hatSource);
 		scene.getPatternManager().getChoices().add(snareChoice);
+
+		// Set tuning after adding choices so it propagates to all NoteAudioProviders
+		scene.setTuning(new DefaultKeyboardTuning());
 
 		// Add patterns for each channel
 		PatternLayerManager pattern0 = scene.getPatternManager().addPattern(0, 1.0, false);
