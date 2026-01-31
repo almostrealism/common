@@ -655,6 +655,7 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 				getPatternCells(output, channels, ChannelInfo.StereoChannel.RIGHT,
 						bufferSize, frameSupplier, setup, addRenderCellRequirements));
 
+		cells.addSetup(() -> setup);
 		return cells.addRequirement(time::tick);
 	}
 

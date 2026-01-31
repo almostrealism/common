@@ -59,17 +59,35 @@ public abstract class AudioSceneTestBase extends TestSuiteBase implements CellFe
 	protected static final double RENDER_SECONDS = 4.0;
 
 	/**
+	 * Creates a baseline AudioScene with the default source count (6 channels).
+	 *
+	 * @param samplesDir directory containing sample WAV files
+	 * @return configured AudioScene ready for genome assignment
+	 *
+	 * @see #createBaselineScene(File, int)
+	 */
+	protected AudioScene<?> createBaselineScene(File samplesDir) {
+		return createBaselineScene(samplesDir, AudioScene.DEFAULT_SOURCE_COUNT);
+	}
+
+	/**
 	 * Creates a baseline AudioScene with programmatic NoteAudioChoices.
 	 *
 	 * <p>Mirrors the structure of
 	 * {@link org.almostrealism.audio.optimize.AudioSceneOptimizer#createScene()}
 	 * but uses {@link FileNoteSource} instead of TreeNoteSource for portability.</p>
 	 *
-	 * @param samplesDir directory containing sample WAV files
+	 * <p>The {@code sourceCount} parameter controls how many channels are created.
+	 * Offline rendering tests should use a small count (e.g., 2) because the full
+	 * arrangement is rendered for every channel/voicing/stereo combination during
+	 * setup. Real-time tests can use the default (6) because they render only small
+	 * buffers per tick.</p>
+	 *
+	 * @param samplesDir  directory containing sample WAV files
+	 * @param sourceCount number of source channels to create
 	 * @return configured AudioScene ready for genome assignment
 	 */
-	protected AudioScene<?> createBaselineScene(File samplesDir) {
-		int sourceCount = AudioScene.DEFAULT_SOURCE_COUNT;
+	protected AudioScene<?> createBaselineScene(File samplesDir, int sourceCount) {
 		int delayLayers = AudioScene.DEFAULT_DELAY_LAYERS;
 
 		AudioScene<?> scene = new AudioScene<>(120.0, sourceCount, delayLayers, SAMPLE_RATE);
