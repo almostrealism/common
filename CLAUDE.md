@@ -283,6 +283,47 @@ mcp__ar-test-runner__start_test_run
 
 See [docs/internals/test-examples.md](docs/internals/test-examples.md) for full tool reference and parameters.
 
+### JVM Memory Diagnostics with `ar-jmx`
+
+The `ar-jmx` MCP server provides real-time JVM memory analysis on forked test processes. It connects to the JVM spawned by `ar-test-runner` via JDK diagnostic tools (`jcmd`, `jstat`, `jfr`) and is the primary tool for investigating `OutOfMemoryError`, `HardwareException: Memory max reached`, and suspected memory leaks.
+
+**To enable JVM diagnostics**, pass `jmx_monitoring: true` when starting a test run:
+```
+mcp__ar-test-runner__start_test_run
+  module: "ml"
+  test_classes: ["OobleckDecoderTest"]
+  jmx_monitoring: true
+  jvm_args: ["-Xmx4g"]
+```
+
+This injects JFR and Native Memory Tracking args into the forked JVM and discovers its PID automatically.
+
+**Available `ar-jmx` tools:**
+
+| Tool | Purpose |
+|------|---------|
+| `attach_to_run` | Verify connectivity to the forked JVM |
+| `get_heap_summary` | Heap pool sizes and GC totals (`jstat -gc`) |
+| `get_gc_stats` | GC cause, utilization, and timing (`jstat -gccause`) |
+| `get_class_histogram` | Live object counts by class; save named snapshots |
+| `diff_class_histogram` | Compare two snapshots to find growing classes |
+| `start_jfr_recording` | Start Flight Recorder for allocation profiling |
+| `stop_jfr_recording` | Dump and stop a JFR recording |
+| `get_allocation_report` | Top allocating classes with stack traces from JFR |
+| `get_thread_dump` | Thread dump with regex filtering |
+| `get_native_memory` | Native memory summary (JNI/off-heap) |
+| `start_memory_monitor` | Background `jstat` sampling to JSONL timeline |
+| `get_memory_timeline` | Read timeline with trend analysis (growth rate, estimated OOM) |
+
+**When to use `ar-jmx`:**
+- A test fails with `OutOfMemoryError` or `HardwareException: Memory max reached`
+- You suspect a memory leak (heap or native) during a long-running test
+- You need to understand which classes are consuming heap space
+- You need allocation hotspot analysis to find where objects are being created
+- You need to check native memory usage for `PackedCollection` / JNI leaks
+
+See [tools/mcp/jmx/README.md](tools/mcp/jmx/README.md) for detailed parameter documentation and workflow examples.
+
 ---
 
 ## CRITICAL: TEST CLASS REQUIREMENTS
@@ -828,6 +869,20 @@ If all existing tests pass but the integration test fails:
 - Identify which component combinations are NOT tested
 - Create targeted tests for those gaps
 - Run the new tests and record results
+
+### 5. Memory-Related Failures
+
+If a test fails with `OutOfMemoryError` or `HardwareException: Memory max reached`, use `ar-jmx` instead of guessing at the cause:
+
+1. Re-run the test with `jmx_monitoring: true` and sufficient `timeout_minutes`
+2. `attach_to_run` to verify connectivity, then `start_memory_monitor` for continuous sampling
+3. `get_class_histogram` with `snapshot_id: "baseline"` early in the test
+4. `get_class_histogram` with `snapshot_id: "later"` after the test has progressed
+5. `diff_class_histogram` to identify which classes are growing
+6. `get_allocation_report` to find the stack traces responsible for the allocations
+7. `get_native_memory` if the leak is suspected to be in JNI / `PackedCollection` native memory rather than Java heap
+
+**Do NOT** guess "it's probably PackedCollection" without evidence. The JMX tools exist to give you evidence.
 
 ### What NOT to do:
 - DO NOT speculate about possible causes without running tests

@@ -52,6 +52,7 @@ class RunConfig:
     timeout_minutes: int = DEFAULT_TIMEOUT
     jvm_args: list = field(default_factory=list)
     profile: Optional[str] = None
+    jmx_monitoring: bool = False
 
 
 @dataclass
@@ -65,6 +66,8 @@ class RunMetadata:
     exit_code: Optional[int] = None
     pid: Optional[int] = None
     command: str = ""
+    jmx_monitoring: bool = False
+    forked_pid: Optional[int] = None
 
 
 class TestRunner:
@@ -106,13 +109,28 @@ class TestRunner:
             except Exception:
                 pass
 
-    def build_maven_command(self, config: RunConfig) -> list[str]:
-        """Build the maven test command."""
+    def build_maven_command(self, config: RunConfig,
+                            run_dir: Optional[Path] = None) -> list[str]:
+        """Build the maven test command.
+
+        Args:
+            config: Run configuration.
+            run_dir: Run directory, used for JFR output path when jmx_monitoring is enabled.
+        """
         cmd = ["mvn", "test", "-pl", config.module]
 
+        # Build JVM args, prepending JMX diagnostics args if enabled
+        jvm_args = list(config.jvm_args)
+        if config.jmx_monitoring and run_dir is not None:
+            jfr_path = run_dir / "jmx" / "jfr_recording.jfr"
+            jvm_args = [
+                f"-XX:StartFlightRecording=filename={jfr_path},settings=default,dumponexit=true",
+                "-XX:NativeMemoryTracking=summary",
+            ] + jvm_args
+
         # Add JVM args if specified
-        if config.jvm_args:
-            jvm_arg_str = " ".join(config.jvm_args)
+        if jvm_args:
+            jvm_arg_str = " ".join(jvm_args)
             cmd.append(f"-DargLine={jvm_arg_str}")
 
         # Add test depth
@@ -140,8 +158,13 @@ class TestRunner:
         run_dir = RUNS_DIR / run_id
         run_dir.mkdir(parents=True)
 
+        # Create JMX subdirectories if monitoring is enabled
+        if config.jmx_monitoring:
+            (run_dir / "jmx").mkdir(parents=True, exist_ok=True)
+            (run_dir / "jmx" / "snapshots").mkdir(parents=True, exist_ok=True)
+
         # Build command
-        cmd = self.build_maven_command(config)
+        cmd = self.build_maven_command(config, run_dir)
         cmd_str = " ".join(cmd)
 
         # Set environment
@@ -155,7 +178,8 @@ class TestRunner:
             config=asdict(config),
             status="running",
             started_at=datetime.now().isoformat(),
-            command=cmd_str
+            command=cmd_str,
+            jmx_monitoring=config.jmx_monitoring
         )
 
         # Start process
@@ -183,6 +207,15 @@ class TestRunner:
             daemon=True
         )
         watcher.start()
+
+        # Start forked PID discovery if JMX monitoring is enabled
+        if config.jmx_monitoring:
+            pid_discovery = threading.Thread(
+                target=self._discover_forked_pid_background,
+                args=(process.pid, run_id),
+                daemon=True
+            )
+            pid_discovery.start()
 
         # Start timeout timer
         if config.timeout_minutes:
@@ -265,6 +298,76 @@ class TestRunner:
             return True
 
         return False
+
+    def _get_ppid(self, pid: int) -> Optional[int]:
+        """Read parent PID from /proc/<pid>/stat."""
+        try:
+            stat_path = Path(f"/proc/{pid}/stat")
+            text = stat_path.read_text()
+            close_paren = text.rfind(")")
+            if close_paren == -1:
+                return None
+            fields = text[close_paren + 2:].split()
+            if len(fields) >= 2:
+                return int(fields[1])
+            return None
+        except (OSError, PermissionError, ValueError):
+            return None
+
+    def _discover_forked_pid(self, maven_pid: int, run_id: str) -> Optional[int]:
+        """Poll jps for a ForkedBooter process whose parent is the maven process.
+
+        Polls every 1 second for up to 30 seconds. When found, writes the
+        forked PID to the run metadata.
+
+        Returns:
+            The forked PID, or None if discovery timed out.
+        """
+        for _ in range(30):
+            try:
+                result = subprocess.run(
+                    ["jps", "-l"],
+                    capture_output=True,
+                    text=True,
+                    timeout=5
+                )
+                if result.returncode == 0:
+                    for line in result.stdout.strip().split("\n"):
+                        if "ForkedBooter" in line:
+                            parts = line.split(None, 1)
+                            if parts:
+                                try:
+                                    candidate_pid = int(parts[0])
+                                    # Verify this is a child of our maven process
+                                    ppid = self._get_ppid(candidate_pid)
+                                    if ppid == maven_pid:
+                                        # Write to metadata
+                                        metadata = self._load_metadata(run_id)
+                                        if metadata:
+                                            metadata["forked_pid"] = candidate_pid
+                                            self._save_metadata_dict(run_id, metadata)
+                                        return candidate_pid
+                                except ValueError:
+                                    pass
+            except (subprocess.TimeoutExpired, FileNotFoundError):
+                pass
+
+            import time
+            time.sleep(1)
+
+        return None
+
+    def _discover_forked_pid_background(self, maven_pid: int, run_id: str) -> None:
+        """Run forked PID discovery in a daemon thread.
+
+        On timeout, sets forked_pid_discovery_failed in metadata.
+        """
+        pid = self._discover_forked_pid(maven_pid, run_id)
+        if pid is None:
+            metadata = self._load_metadata(run_id)
+            if metadata:
+                metadata["forked_pid_discovery_failed"] = True
+                self._save_metadata_dict(run_id, metadata)
 
     def _copy_surefire_reports(self, run_id: str, module: str):
         """Copy surefire reports to run directory, only those modified after run started."""
@@ -615,6 +718,10 @@ async def list_tools():
                     "profile": {
                         "type": "string",
                         "description": "Test profile name (sets AR_TEST_PROFILE). Use 'pipeline' to skip comparison tests."
+                    },
+                    "jmx_monitoring": {
+                        "type": "boolean",
+                        "description": "Enable JMX monitoring: injects JFR/NMT JVM args and discovers forked JVM PID for use with ar-jmx tools (default: false)"
                     }
                 }
             }
@@ -728,7 +835,8 @@ async def call_tool(name: str, arguments: dict):
                 test_methods=arguments.get("test_methods", []),
                 timeout_minutes=arguments.get("timeout_minutes", DEFAULT_TIMEOUT),
                 jvm_args=arguments.get("jvm_args", []),
-                profile=arguments.get("profile")
+                profile=arguments.get("profile"),
+                jmx_monitoring=arguments.get("jmx_monitoring", False)
             )
             run_id, command = runner.start_run(config)
             return [TextContent(
