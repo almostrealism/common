@@ -16,11 +16,13 @@
 
 package org.almostrealism.graph;
 
+import io.almostrealism.code.Computation;
 import io.almostrealism.lifecycle.Lifecycle;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionFeatures;
-import org.almostrealism.hardware.OperationList;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.hardware.HardwareFeatures;
+import org.almostrealism.hardware.OperationList;
 import org.almostrealism.time.Temporal;
 
 import java.util.function.IntConsumer;
@@ -199,14 +201,30 @@ public abstract class BatchedCell extends CellAdapter<PackedCollection>
 	 * Counts tick invocations and fires {@link #renderBatch()} once every
 	 * {@code batchSize} ticks.
 	 *
-	 * <p>Each call increments an internal counter. When the counter reaches
-	 * {@code batchSize}, the batch is rendered, the batch counter advances,
-	 * and the tick counter resets to zero.</p>
+	 * <p>When {@link #renderBatch()} returns a {@link Computation}, the counting
+	 * logic is delegated to a {@link org.almostrealism.hardware.computations.Periodic}
+	 * computation, allowing it to be compiled into hardware-accelerated code
+	 * (e.g., inside a {@link org.almostrealism.hardware.computations.Loop}).
+	 * Otherwise, Java-based counting is used as a fallback.</p>
 	 *
 	 * @return an operation that conditionally renders based on tick count
 	 */
 	@Override
 	public Supplier<Runnable> tick() {
+		Supplier<Runnable> render = renderBatch();
+
+		if (render instanceof Computation) {
+			OperationList body = new OperationList("BatchedCell Batch Body");
+			if (frameCallback != null) {
+				body.add(() -> () -> frameCallback.accept(getCurrentFrame()));
+			}
+			body.add(render);
+			body.add(() -> () -> advanceBatch());
+
+			return HardwareFeatures.getInstance().periodic(
+					(Computation<Void>) body, batchSize);
+		}
+
 		return () -> () -> {
 			tickCount++;
 			if (tickCount >= batchSize) {
@@ -214,7 +232,7 @@ public abstract class BatchedCell extends CellAdapter<PackedCollection>
 					frameCallback.accept(getCurrentFrame());
 				}
 				if (cachedRender == null) {
-					cachedRender = renderBatch().get();
+					cachedRender = render.get();
 				}
 				cachedRender.run();
 				currentBatch++;
