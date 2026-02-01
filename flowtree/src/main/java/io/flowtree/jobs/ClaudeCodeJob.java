@@ -1,5 +1,5 @@
 /*
- * Copyright 2025 Michael Murray
+ * Copyright 2026 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -198,10 +198,10 @@ public class ClaudeCodeJob extends GitManagedJob {
             command.add(String.format("%.2f", maxBudgetUsd));
         }
 
-        System.out.println("[ClaudeCodeJob] Starting: " + getTaskString());
-        System.out.println("[ClaudeCodeJob] Tools: " + allowedTools);
+        log("[ClaudeCodeJob] Starting: " + getTaskString());
+        log("[ClaudeCodeJob] Tools: " + allowedTools);
         if (getTargetBranch() != null) {
-            System.out.println("[ClaudeCodeJob] Target branch: " + getTargetBranch());
+            log("[ClaudeCodeJob] Target branch: " + getTargetBranch());
         }
 
         try {
@@ -221,7 +221,7 @@ public class ClaudeCodeJob extends GitManagedJob {
                 String line;
                 while ((line = reader.readLine()) != null) {
                     outputBuilder.append(line).append("\n");
-                    System.out.println("[ClaudeCode] " + line);
+                    log("[ClaudeCode] " + line);
                 }
             }
 
@@ -236,8 +236,8 @@ public class ClaudeCodeJob extends GitManagedJob {
             // Try to extract session ID from JSON output
             extractSessionId(output);
 
-            System.out.println("[ClaudeCodeJob] Completed with exit code: " + exitCode);
-            System.out.println("[ClaudeCodeJob] Output saved to: " + outputFile);
+            log("[ClaudeCodeJob] Completed with exit code: " + exitCode);
+            log("[ClaudeCodeJob] Output saved to: " + outputFile);
 
             if (getOutputConsumer() != null) {
                 getOutputConsumer().accept(new ClaudeCodeJobOutput(
@@ -246,8 +246,7 @@ public class ClaudeCodeJob extends GitManagedJob {
             }
 
         } catch (IOException | InterruptedException e) {
-            System.err.println("[ClaudeCodeJob] Error: " + e.getMessage());
-            e.printStackTrace();
+            warn("[ClaudeCodeJob] Error: " + e.getMessage(), e);
             exitCode = -1;
         }
     }

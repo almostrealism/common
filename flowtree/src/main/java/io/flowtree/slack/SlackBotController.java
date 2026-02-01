@@ -1,5 +1,5 @@
 /*
- * Copyright 2025 Michael Murray
+ * Copyright 2026 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,6 +25,8 @@ import com.slack.api.model.event.AppMentionEvent;
 import com.slack.api.model.event.MessageEvent;
 import io.flowtree.jobs.JobCompletionEvent;
 import io.flowtree.jobs.JobCompletionListener;
+import org.almostrealism.io.Console;
+import org.almostrealism.io.ConsoleFeatures;
 
 import java.io.File;
 import java.io.IOException;
@@ -65,7 +67,7 @@ import java.util.function.BiConsumer;
  * @see SlackNotifier
  * @see SlackWorkstream
  */
-public class SlackBotController implements JobCompletionListener {
+public class SlackBotController implements JobCompletionListener, ConsoleFeatures {
 
     private final String botToken;
     private final String appToken;
@@ -119,7 +121,7 @@ public class SlackBotController implements JobCompletionListener {
         for (SlackWorkstream workstream : config.toWorkstreams()) {
             registerWorkstream(workstream);
         }
-        System.out.println("[SlackBotController] Loaded " + config.getWorkstreams().size() +
+        log("[SlackBotController] Loaded " + config.getWorkstreams().size() +
                           " workstream(s) from " + configFile.getName());
     }
 
@@ -144,7 +146,7 @@ public class SlackBotController implements JobCompletionListener {
      */
     public void registerWorkstream(SlackWorkstream workstream) throws IOException {
         listener.registerWorkstream(workstream);
-        System.out.println("[SlackBotController] Registered workstream: " + workstream.getChannelName());
+        log("[SlackBotController] Registered workstream: " + workstream.getChannelName());
     }
 
     /**
@@ -168,17 +170,17 @@ public class SlackBotController implements JobCompletionListener {
      */
     public void start() throws Exception {
         if (running.getAndSet(true)) {
-            System.out.println("[SlackBotController] Already running");
+            log("[SlackBotController] Already running");
             return;
         }
 
-        System.out.println("===========================================");
-        System.out.println("  Slack Bot Controller - Flowtree Agent");
-        System.out.println("===========================================");
+        log("===========================================");
+        log("  Slack Bot Controller - Flowtree Agent");
+        log("===========================================");
 
         if (botToken == null || botToken.isEmpty() || appToken == null || appToken.isEmpty()) {
-            System.out.println("WARNING: Missing SLACK_BOT_TOKEN or SLACK_APP_TOKEN");
-            System.out.println("         Running in simulation mode");
+            log("WARNING: Missing SLACK_BOT_TOKEN or SLACK_APP_TOKEN");
+            log("         Running in simulation mode");
             simulationMode = true;
             printStartupSummary();
             return;
@@ -198,21 +200,21 @@ public class SlackBotController implements JobCompletionListener {
             AuthTestResponse authTest = app.client().authTest(r -> r.token(botToken));
             if (authTest.isOk()) {
                 botUserId = authTest.getUserId();
-                System.out.println("Bot User ID: " + botUserId);
-                System.out.println("Bot Name: " + authTest.getUser());
-                System.out.println("Team: " + authTest.getTeam());
+                log("Bot User ID: " + botUserId);
+                log("Bot Name: " + authTest.getUser());
+                log("Team: " + authTest.getTeam());
             } else {
-                System.err.println("Auth test failed: " + authTest.getError());
+                warn("Auth test failed: " + authTest.getError());
             }
         } catch (SlackApiException e) {
-            System.err.println("Failed to verify bot token: " + e.getMessage());
+            warn("Failed to verify bot token: " + e.getMessage());
         }
 
         // Start Socket Mode
         socketModeApp = new SocketModeApp(appToken, app);
         socketModeApp.startAsync();
 
-        System.out.println("Socket Mode connection established");
+        log("Socket Mode connection established");
         printStartupSummary();
     }
 
@@ -228,7 +230,7 @@ public class SlackBotController implements JobCompletionListener {
             String text = event.getText();
             String threadTs = event.getThreadTs();
 
-            System.out.println("[SlackBotController] App mention in " + channelId + ": " + text);
+            log("[SlackBotController] App mention in " + channelId + ": " + text);
 
             // Skip bot's own messages
             if (userId != null && userId.equals(botUserId)) {
@@ -258,24 +260,24 @@ public class SlackBotController implements JobCompletionListener {
                 return ctx.ack();
             }
 
-            System.out.println("[SlackBotController] DM from " + userId + ": " + text);
+            log("[SlackBotController] DM from " + userId + ": " + text);
             listener.handleMessage(channelId, userId, text, threadTs);
             return ctx.ack();
         });
     }
 
     private void printStartupSummary() {
-        System.out.println("===========================================");
-        System.out.println("Registered workstreams: " + listener.getWorkstreams().size());
+        log("===========================================");
+        log("Registered workstreams: " + listener.getWorkstreams().size());
         for (SlackWorkstream ws : listener.getWorkstreams().values()) {
-            System.out.println("  - " + ws.getChannelName() + " (" + ws.getChannelId() + ")");
-            System.out.println("    Agents: " + ws.getAgents().size());
+            log("  - " + ws.getChannelName() + " (" + ws.getChannelId() + ")");
+            log("    Agents: " + ws.getAgents().size());
             if (ws.getDefaultBranch() != null) {
-                System.out.println("    Branch: " + ws.getDefaultBranch());
+                log("    Branch: " + ws.getDefaultBranch());
             }
         }
-        System.out.println("Ready to receive messages");
-        System.out.println("===========================================");
+        log("Ready to receive messages");
+        log("===========================================");
     }
 
     /**
@@ -294,7 +296,7 @@ public class SlackBotController implements JobCompletionListener {
             app = null;
         }
 
-        System.out.println("[SlackBotController] Stopped");
+        log("[SlackBotController] Stopped");
     }
 
     /**
@@ -443,8 +445,8 @@ public class SlackBotController implements JobCompletionListener {
             }
             controller.registerWorkstream(workstream);
         } else {
-            System.err.println("Error: No workstream configuration provided");
-            System.err.println("       Use --config <file> or --channel <id>");
+            Console.root().warn("Error: No workstream configuration provided");
+            Console.root().warn("Use --config <file> or --channel <id>");
             printUsage();
             System.exit(1);
         }
@@ -457,7 +459,7 @@ public class SlackBotController implements JobCompletionListener {
             try {
                 controller.stop();
             } catch (Exception e) {
-                e.printStackTrace();
+                Console.root().warn(e.getMessage());
             }
         }));
 

@@ -1,5 +1,5 @@
 /*
- * Copyright 2025 Michael Murray
+ * Copyright 2026 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,6 +17,8 @@
 package io.flowtree;
 
 import io.flowtree.jobs.ClaudeCodeJob;
+import org.almostrealism.io.Console;
+import org.almostrealism.io.ConsoleFeatures;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -74,7 +76,7 @@ import java.util.Properties;
  * @see ClaudeCodeAgent
  * @see io.flowtree.jobs.ClaudeCodeJob
  */
-public class ClaudeCodeClient {
+public class ClaudeCodeClient implements ConsoleFeatures {
 
     private final List<AgentConnection> agents = new ArrayList<>();
     private Server server;
@@ -119,8 +121,8 @@ public class ClaudeCodeClient {
 
         server = new Server(p);
 
-        System.out.println("Claude Code Client started");
-        System.out.println("Connected to " + agents.size() + " agent(s)");
+        log("Claude Code Client started");
+        log("Connected to " + agents.size() + " agent(s)");
     }
 
     /**
@@ -148,7 +150,7 @@ public class ClaudeCodeClient {
         nextAgent++;
 
         AgentConnection agent = agents.get(agentIndex);
-        System.out.println("Submitting " + factory.getPrompts().size() +
+        log("Submitting " + factory.getPrompts().size() +
                           " prompt(s) to " + agent.host + ":" + agent.port);
 
         server.sendTask(factory, agentIndex);
@@ -170,7 +172,7 @@ public class ClaudeCodeClient {
         }
 
         AgentConnection agent = agents.get(agentIndex);
-        System.out.println("Submitting to " + agent.host + ":" + agent.port);
+        log("Submitting to " + agent.host + ":" + agent.port);
 
         server.sendTask(factory, agentIndex);
     }
@@ -231,7 +233,7 @@ public class ClaudeCodeClient {
         }
 
         if (prompt == null) {
-            System.err.println("Error: --prompt is required");
+            Console.root().warn("Error: --prompt is required");
             printUsage();
             System.exit(1);
         }
@@ -252,7 +254,7 @@ public class ClaudeCodeClient {
         // Submit
         client.submit(factory);
 
-        System.out.println("Job submitted. Use Flowtree monitoring to track progress.");
+        Console.root().println("Job submitted. Use Flowtree monitoring to track progress.");
     }
 
     private static void printUsage() {

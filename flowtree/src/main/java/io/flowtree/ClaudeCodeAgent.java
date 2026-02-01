@@ -1,5 +1,5 @@
 /*
- * Copyright 2025 Michael Murray
+ * Copyright 2026 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,6 +15,8 @@
  */
 
 package io.flowtree;
+
+import org.almostrealism.io.Console;
 
 import java.io.IOException;
 import java.util.Properties;
@@ -63,11 +65,11 @@ public class ClaudeCodeAgent {
 
         int serverPort = port != null ? Integer.parseInt(port) : DEFAULT_PORT;
 
-        System.out.println("===========================================");
-        System.out.println("  Claude Code Agent - Flowtree Integration");
-        System.out.println("===========================================");
-        System.out.println("Node ID: " + (nodeId != null ? nodeId : "default"));
-        System.out.println("Listening on port: " + serverPort);
+        Console.root().println("===========================================");
+        Console.root().println("  Claude Code Agent - Flowtree Integration");
+        Console.root().println("===========================================");
+        Console.root().println("Node ID: " + (nodeId != null ? nodeId : "default"));
+        Console.root().println("Listening on port: " + serverPort);
 
         Properties p = new Properties();
         p.setProperty("server.port", String.valueOf(serverPort));
@@ -83,21 +85,21 @@ public class ClaudeCodeAgent {
             p.setProperty("servers.total", "1");
             p.setProperty("servers.0.host", rootHost);
             p.setProperty("servers.0.port", String.valueOf(rPort));
-            System.out.println("Connecting to root: " + rootHost + ":" + rPort);
+            Console.root().println("Connecting to root: " + rootHost + ":" + rPort);
         }
 
         Server server = new Server(p);
         server.start();
 
-        System.out.println("Agent started. Waiting for jobs...");
-        System.out.println("Submit jobs using ClaudeCodeClient or the Java API.");
-        System.out.println("===========================================");
+        Console.root().println("Agent started. Waiting for jobs...");
+        Console.root().println("Submit jobs using ClaudeCodeClient or the Java API.");
+        Console.root().println("===========================================");
 
         // Keep main thread alive
         try {
             Thread.currentThread().join();
         } catch (InterruptedException e) {
-            System.out.println("Agent shutting down.");
+            Console.root().println("Agent shutting down.");
         }
     }
 }

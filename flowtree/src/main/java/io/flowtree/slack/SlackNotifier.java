@@ -1,5 +1,5 @@
 /*
- * Copyright 2025 Michael Murray
+ * Copyright 2026 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,6 +22,7 @@ import com.slack.api.methods.SlackApiException;
 import com.slack.api.methods.response.chat.ChatPostMessageResponse;
 import io.flowtree.jobs.JobCompletionEvent;
 import io.flowtree.jobs.JobCompletionListener;
+import org.almostrealism.io.ConsoleFeatures;
 
 import java.io.IOException;
 import java.util.HashMap;
@@ -38,7 +39,7 @@ import java.util.function.Consumer;
  * @see JobCompletionListener
  * @see SlackBotController
  */
-public class SlackNotifier implements JobCompletionListener {
+public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
 
     private final String botToken;
     private final MethodsClient client;
@@ -84,7 +85,7 @@ public class SlackNotifier implements JobCompletionListener {
     public void onJobStarted(JobCompletionEvent event) {
         SlackWorkstream workstream = workstreams.get(event.getWorkstreamId());
         if (workstream == null) {
-            System.err.println("[SlackNotifier] Unknown workstream: " + event.getWorkstreamId());
+            warn("[SlackNotifier] Unknown workstream: " + event.getWorkstreamId());
             return;
         }
 
@@ -96,7 +97,7 @@ public class SlackNotifier implements JobCompletionListener {
     public void onJobCompleted(JobCompletionEvent event) {
         SlackWorkstream workstream = workstreams.get(event.getWorkstreamId());
         if (workstream == null) {
-            System.err.println("[SlackNotifier] Unknown workstream: " + event.getWorkstreamId());
+            warn("[SlackNotifier] Unknown workstream: " + event.getWorkstreamId());
             return;
         }
 
@@ -118,8 +119,8 @@ public class SlackNotifier implements JobCompletionListener {
         }
 
         if (client == null) {
-            System.out.println("[SlackNotifier] No bot token - message would be posted to " + channelId + ":");
-            System.out.println(text);
+            log("[SlackNotifier] No bot token - message would be posted to " + channelId + ":");
+            log(text);
             return;
         }
 
@@ -132,10 +133,10 @@ public class SlackNotifier implements JobCompletionListener {
             );
 
             if (!response.isOk()) {
-                System.err.println("[SlackNotifier] Failed to post message: " + response.getError());
+                warn("[SlackNotifier] Failed to post message: " + response.getError());
             }
         } catch (IOException | SlackApiException e) {
-            System.err.println("[SlackNotifier] Error posting message: " + e.getMessage());
+            warn("[SlackNotifier] Error posting message: " + e.getMessage());
         }
     }
 
@@ -154,8 +155,8 @@ public class SlackNotifier implements JobCompletionListener {
         }
 
         if (client == null) {
-            System.out.println("[SlackNotifier] No bot token - thread reply would be:");
-            System.out.println(text);
+            log("[SlackNotifier] No bot token - thread reply would be:");
+            log(text);
             return;
         }
 
@@ -169,10 +170,10 @@ public class SlackNotifier implements JobCompletionListener {
             );
 
             if (!response.isOk()) {
-                System.err.println("[SlackNotifier] Failed to post thread reply: " + response.getError());
+                warn("[SlackNotifier] Failed to post thread reply: " + response.getError());
             }
         } catch (IOException | SlackApiException e) {
-            System.err.println("[SlackNotifier] Error posting thread reply: " + e.getMessage());
+            warn("[SlackNotifier] Error posting thread reply: " + e.getMessage());
         }
     }
 

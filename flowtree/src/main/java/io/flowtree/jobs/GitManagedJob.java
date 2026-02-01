@@ -1,5 +1,5 @@
 /*
- * Copyright 2025 Michael Murray
+ * Copyright 2026 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,6 +17,7 @@
 package io.flowtree.jobs;
 
 import io.flowtree.job.Job;
+import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.JobOutput;
 
 import java.io.BufferedReader;
@@ -78,7 +79,7 @@ import java.util.regex.Pattern;
  *
  * @author Michael Murray
  */
-public abstract class GitManagedJob implements Job {
+public abstract class GitManagedJob implements Job, ConsoleFeatures {
 
     /** Default maximum file size to commit (1 MB). */
     public static final long DEFAULT_MAX_FILE_SIZE = 1024 * 1024;
@@ -210,8 +211,7 @@ public abstract class GitManagedJob implements Job {
             }
 
         } catch (Exception e) {
-            System.err.println("[GitManagedJob] Error: " + e.getMessage());
-            e.printStackTrace();
+            warn("[GitManagedJob] Error: " + e.getMessage(), e);
             error = e;
         } finally {
             // Fire completion event
@@ -234,7 +234,7 @@ public abstract class GitManagedJob implements Job {
             try {
                 listener.onJobStarted(event);
             } catch (Exception e) {
-                System.err.println("[GitManagedJob] Listener error: " + e.getMessage());
+                warn("[GitManagedJob] Listener error: " + e.getMessage());
             }
         }
 
@@ -242,7 +242,7 @@ public abstract class GitManagedJob implements Job {
             try {
                 instanceListener.onJobStarted(event);
             } catch (Exception e) {
-                System.err.println("[GitManagedJob] Instance listener error: " + e.getMessage());
+                warn("[GitManagedJob] Instance listener error: " + e.getMessage());
             }
         }
     }
@@ -271,7 +271,7 @@ public abstract class GitManagedJob implements Job {
             try {
                 listener.onJobCompleted(event);
             } catch (Exception e) {
-                System.err.println("[GitManagedJob] Listener error: " + e.getMessage());
+                warn("[GitManagedJob] Listener error: " + e.getMessage());
             }
         }
 
@@ -279,7 +279,7 @@ public abstract class GitManagedJob implements Job {
             try {
                 instanceListener.onJobCompleted(event);
             } catch (Exception e) {
-                System.err.println("[GitManagedJob] Instance listener error: " + e.getMessage());
+                warn("[GitManagedJob] Instance listener error: " + e.getMessage());
             }
         }
     }
@@ -298,20 +298,20 @@ public abstract class GitManagedJob implements Job {
      * Handles all git operations: branch management, staging, committing, and pushing.
      */
     private void handleGitOperations() {
-        System.out.println("[GitManagedJob] Starting git operations...");
-        System.out.println("[GitManagedJob] Target branch: " + targetBranch);
+        log("[GitManagedJob] Starting git operations...");
+        log("[GitManagedJob] Target branch: " + targetBranch);
 
         try {
             // Step 1: Ensure we're on the target branch
             if (!ensureOnTargetBranch()) {
-                System.err.println("[GitManagedJob] Failed to switch to target branch");
+                warn("[GitManagedJob] Failed to switch to target branch");
                 return;
             }
 
             // Step 2: Find and filter changed files
             List<String> changedFiles = findChangedFiles();
             if (changedFiles.isEmpty()) {
-                System.out.println("[GitManagedJob] No changes to commit");
+                log("[GitManagedJob] No changes to commit");
                 gitOperationsSuccessful = true;
                 return;
             }
@@ -319,31 +319,30 @@ public abstract class GitManagedJob implements Job {
             // Step 3: Stage files (with guardrails)
             stageFiles(changedFiles);
             if (stagedFiles.isEmpty()) {
-                System.out.println("[GitManagedJob] No files passed guardrails, nothing to commit");
+                log("[GitManagedJob] No files passed guardrails, nothing to commit");
                 gitOperationsSuccessful = true;
                 return;
             }
 
             // Step 4: Commit
             if (!commit()) {
-                System.err.println("[GitManagedJob] Commit failed");
+                warn("[GitManagedJob] Commit failed");
                 return;
             }
 
             // Step 5: Push to origin
             if (pushToOrigin && !dryRun) {
                 if (!pushToOrigin()) {
-                    System.err.println("[GitManagedJob] Push failed");
+                    warn("[GitManagedJob] Push failed");
                     return;
                 }
             }
 
             gitOperationsSuccessful = true;
-            System.out.println("[GitManagedJob] Git operations completed successfully");
+            log("[GitManagedJob] Git operations completed successfully");
 
         } catch (Exception e) {
-            System.err.println("[GitManagedJob] Git operations failed: " + e.getMessage());
-            e.printStackTrace();
+            warn("[GitManagedJob] Git operations failed: " + e.getMessage(), e);
         }
     }
 
@@ -354,7 +353,7 @@ public abstract class GitManagedJob implements Job {
         String currentBranch = getCurrentBranch();
 
         if (targetBranch.equals(currentBranch)) {
-            System.out.println("[GitManagedJob] Already on target branch: " + targetBranch);
+            log("[GitManagedJob] Already on target branch: " + targetBranch);
             return true;
         }
 
@@ -362,12 +361,12 @@ public abstract class GitManagedJob implements Job {
         boolean branchExists = branchExists(targetBranch);
 
         if (!branchExists && !createBranchIfMissing) {
-            System.err.println("[GitManagedJob] Target branch does not exist and createBranchIfMissing=false");
+            warn("[GitManagedJob] Target branch does not exist and createBranchIfMissing=false");
             return false;
         }
 
         if (dryRun) {
-            System.out.println("[GitManagedJob] DRY RUN: Would " +
+            log("[GitManagedJob] DRY RUN: Would " +
                 (branchExists ? "checkout" : "create and checkout") + " branch: " + targetBranch);
             return true;
         }
@@ -377,7 +376,7 @@ public abstract class GitManagedJob implements Job {
             return executeGit("checkout", targetBranch) == 0;
         } else {
             // Create new branch from current HEAD
-            System.out.println("[GitManagedJob] Creating new branch: " + targetBranch);
+            log("[GitManagedJob] Creating new branch: " + targetBranch);
             return executeGit("checkout", "-b", targetBranch) == 0;
         }
     }
@@ -403,7 +402,7 @@ public abstract class GitManagedJob implements Job {
             }
         }
 
-        System.out.println("[GitManagedJob] Found " + files.size() + " changed files");
+        log("[GitManagedJob] Found " + files.size() + " changed files");
         return files;
     }
 
@@ -422,39 +421,39 @@ public abstract class GitManagedJob implements Job {
 
             // Guardrail 1: Check excluded patterns
             if (matchesAnyPattern(file, allExcluded)) {
-                System.out.println("[GitManagedJob] SKIP (pattern): " + file);
+                log("[GitManagedJob] SKIP (pattern): " + file);
                 skippedFiles.add(file + " (excluded pattern)");
                 continue;
             }
 
             // Guardrail 2: Check file size (only for existing files)
             if (!isDeleted && f.length() > maxFileSizeBytes) {
-                System.out.println("[GitManagedJob] SKIP (size " + formatSize(f.length()) + "): " + file);
+                log("[GitManagedJob] SKIP (size " + formatSize(f.length()) + "): " + file);
                 skippedFiles.add(file + " (exceeds " + formatSize(maxFileSizeBytes) + ")");
                 continue;
             }
 
             // Guardrail 3: Check if binary (only for existing files)
             if (!isDeleted && isBinaryFile(f)) {
-                System.out.println("[GitManagedJob] SKIP (binary): " + file);
+                log("[GitManagedJob] SKIP (binary): " + file);
                 skippedFiles.add(file + " (binary file)");
                 continue;
             }
 
             // File passed all guardrails
             if (dryRun) {
-                System.out.println("[GitManagedJob] DRY RUN: Would stage: " + file);
+                log("[GitManagedJob] DRY RUN: Would stage: " + file);
             } else {
                 if (executeGit("add", file) == 0) {
                     stagedFiles.add(file);
-                    System.out.println("[GitManagedJob] Staged: " + file);
+                    log("[GitManagedJob] Staged: " + file);
                 } else {
-                    System.err.println("[GitManagedJob] Failed to stage: " + file);
+                    warn("[GitManagedJob] Failed to stage: " + file);
                 }
             }
         }
 
-        System.out.println("[GitManagedJob] Staged " + stagedFiles.size() + " files, skipped " + skippedFiles.size());
+        log("[GitManagedJob] Staged " + stagedFiles.size() + " files, skipped " + skippedFiles.size());
     }
 
     /**
@@ -464,7 +463,7 @@ public abstract class GitManagedJob implements Job {
         String message = getCommitMessage();
 
         if (dryRun) {
-            System.out.println("[GitManagedJob] DRY RUN: Would commit with message: " + message);
+            log("[GitManagedJob] DRY RUN: Would commit with message: " + message);
             return true;
         }
 
@@ -472,7 +471,7 @@ public abstract class GitManagedJob implements Job {
         if (result == 0) {
             // Get the commit hash
             commitHash = executeGitWithOutput("rev-parse", "HEAD").trim();
-            System.out.println("[GitManagedJob] Committed: " + commitHash);
+            log("[GitManagedJob] Committed: " + commitHash);
             return true;
         }
 
@@ -483,12 +482,12 @@ public abstract class GitManagedJob implements Job {
      * Pushes changes to origin.
      */
     private boolean pushToOrigin() throws IOException, InterruptedException {
-        System.out.println("[GitManagedJob] Pushing to origin...");
+        log("[GitManagedJob] Pushing to origin...");
 
         // Push with -u to set upstream if this is a new branch
         int result = executeGit("push", "-u", "origin", targetBranch);
         if (result == 0) {
-            System.out.println("[GitManagedJob] Pushed to origin/" + targetBranch);
+            log("[GitManagedJob] Pushed to origin/" + targetBranch);
             return true;
         }
 

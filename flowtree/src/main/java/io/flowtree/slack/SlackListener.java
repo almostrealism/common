@@ -1,5 +1,5 @@
 /*
- * Copyright 2025 Michael Murray
+ * Copyright 2026 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,6 +20,7 @@ import io.flowtree.ClaudeCodeClient;
 import io.flowtree.jobs.ClaudeCodeJob;
 import io.flowtree.jobs.JobCompletionEvent;
 import io.flowtree.jobs.JobCompletionListener;
+import org.almostrealism.io.ConsoleFeatures;
 
 import java.io.IOException;
 import java.util.HashMap;
@@ -44,7 +45,7 @@ import java.util.regex.Pattern;
  * @see SlackBotController
  * @see ClaudeCodeJob
  */
-public class SlackListener {
+public class SlackListener implements ConsoleFeatures {
 
     /** Pattern to extract prompt from mentions: @bot /task prompt or @bot prompt */
     private static final Pattern MENTION_PATTERN = Pattern.compile(
@@ -99,7 +100,7 @@ public class SlackListener {
         channelToWorkstream.put(workstream.getChannelId(), workstream);
         workstreamClients.put(workstream.getWorkstreamId(), client);
 
-        System.out.println("[SlackListener] Registered workstream: " + workstream);
+        log("[SlackListener] Registered workstream: " + workstream);
     }
 
     /**
@@ -126,7 +127,7 @@ public class SlackListener {
     public boolean handleMessage(String channelId, String userId, String text, String threadTs) {
         SlackWorkstream workstream = channelToWorkstream.get(channelId);
         if (workstream == null) {
-            System.out.println("[SlackListener] Ignoring message from unknown channel: " + channelId);
+            log("[SlackListener] Ignoring message from unknown channel: " + channelId);
             return false;
         }
 
@@ -141,7 +142,7 @@ public class SlackListener {
         // Extract prompt from mention
         String prompt = extractPrompt(text);
         if (prompt == null || prompt.trim().isEmpty()) {
-            System.out.println("[SlackListener] No prompt found in message: " + text);
+            log("[SlackListener] No prompt found in message: " + text);
             return false;
         }
 
@@ -172,7 +173,7 @@ public class SlackListener {
                 return false;
 
             default:
-                System.out.println("[SlackListener] Unknown command: " + command);
+                log("[SlackListener] Unknown command: " + command);
                 return false;
         }
     }
@@ -208,7 +209,7 @@ public class SlackListener {
     private boolean submitJob(SlackWorkstream workstream, String prompt, String threadTs) {
         ClaudeCodeClient client = workstreamClients.get(workstream.getWorkstreamId());
         if (client == null) {
-            System.err.println("[SlackListener] No client for workstream: " + workstream.getWorkstreamId());
+            warn("[SlackListener] No client for workstream: " + workstream.getWorkstreamId());
             return false;
         }
 
@@ -244,7 +245,7 @@ public class SlackListener {
         // Submit the job
         client.submit(factory);
 
-        System.out.println("[SlackListener] Submitted job: " + factory.getTaskId());
+        log("[SlackListener] Submitted job: " + factory.getTaskId());
         return true;
     }
 
