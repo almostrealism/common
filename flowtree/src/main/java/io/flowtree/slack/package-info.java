@@ -27,7 +27,7 @@
  *
  * <h2>Architecture</h2>
  * <pre>
- * Slack Channel          SlackBotController           ClaudeCodeAgent
+ * Slack Channel          SlackBotController           Flowtree Server
  *       |                       |                           |
  *       | @agent "Fix bug"      |                           |
  *       |----------------------&gt;|                           |

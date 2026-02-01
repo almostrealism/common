@@ -28,7 +28,7 @@ import java.util.Properties;
 /**
  * Client for submitting Claude Code jobs to remote Flowtree agents.
  *
- * <p>This client connects to one or more remote {@link ClaudeCodeAgent} instances
+ * <p>This client connects to one or more remote Flowtree {@link Server} instances
  * and submits jobs to be executed by Claude Code in those environments.</p>
  *
  * <h2>Usage</h2>
@@ -73,7 +73,7 @@ import java.util.Properties;
  * </pre>
  *
  * @author Michael Murray
- * @see ClaudeCodeAgent
+ * @see Server
  * @see io.flowtree.jobs.ClaudeCodeJob
  */
 public class ClaudeCodeClient implements ConsoleFeatures {
