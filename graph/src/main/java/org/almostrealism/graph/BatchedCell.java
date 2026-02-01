@@ -84,10 +84,10 @@ public abstract class BatchedCell extends CellAdapter<PackedCollection>
 	private final int batchSize;
 	private final int outputSize;
 	private final PackedCollection output;
+	private final PackedCollection batchCounter;
 	private IntConsumer frameCallback;
 	private Runnable cachedRender;
 	private int tickCount;
-	private int currentBatch;
 
 	/**
 	 * Creates a new batched cell.
@@ -99,8 +99,8 @@ public abstract class BatchedCell extends CellAdapter<PackedCollection>
 		this.batchSize = batchSize;
 		this.outputSize = outputSize;
 		this.output = new PackedCollection(outputSize);
+		this.batchCounter = new PackedCollection(1);
 		this.tickCount = 0;
-		this.currentBatch = 0;
 	}
 
 	/**
@@ -167,14 +167,14 @@ public abstract class BatchedCell extends CellAdapter<PackedCollection>
 	 * Returns the current batch number (number of completed batches).
 	 */
 	public int getCurrentBatch() {
-		return currentBatch;
+		return (int) batchCounter.toDouble(0);
 	}
 
 	/**
 	 * Returns the absolute frame position (start frame of the current batch).
 	 */
 	public int getCurrentFrame() {
-		return currentBatch * batchSize;
+		return (int) batchCounter.toDouble(0) * batchSize;
 	}
 
 	/**
@@ -188,13 +188,17 @@ public abstract class BatchedCell extends CellAdapter<PackedCollection>
 	}
 
 	/**
-	 * Advances the batch counter by one.
+	 * Returns an accelerator-friendly operation that increments the batch counter by one.
 	 *
-	 * <p>Subclasses that override {@link #tick()} should call this after
-	 * completing a batch to keep the counter in sync.</p>
+	 * <p>Uses the standard {@code a(dest, add(dest, 1))} pattern so the
+	 * increment compiles into native code when nested inside a
+	 * {@link org.almostrealism.hardware.computations.Periodic} or
+	 * {@link org.almostrealism.hardware.computations.Loop}.</p>
+	 *
+	 * @return an operation that advances the batch counter
 	 */
-	protected void advanceBatch() {
-		currentBatch++;
+	protected Supplier<Runnable> advanceBatch() {
+		return a(p(batchCounter), add(p(batchCounter), c(1.0)));
 	}
 
 	/**
@@ -219,7 +223,7 @@ public abstract class BatchedCell extends CellAdapter<PackedCollection>
 				body.add(() -> () -> frameCallback.accept(getCurrentFrame()));
 			}
 			body.add(render);
-			body.add(() -> () -> advanceBatch());
+			body.add(advanceBatch());
 
 			return HardwareFeatures.getInstance().periodic(
 					(Computation<Void>) body, batchSize);
@@ -235,7 +239,7 @@ public abstract class BatchedCell extends CellAdapter<PackedCollection>
 					cachedRender = render.get();
 				}
 				cachedRender.run();
-				currentBatch++;
+				batchCounter.setMem(0, batchCounter.toDouble(0) + 1);
 				tickCount = 0;
 			}
 		};
@@ -285,11 +289,13 @@ public abstract class BatchedCell extends CellAdapter<PackedCollection>
 	 */
 	@Override
 	public Supplier<Runnable> setup() {
-		return () -> () -> {
+		OperationList setup = new OperationList("BatchedCell Setup");
+		setup.add(() -> () -> {
 			cachedRender = null;
 			tickCount = 0;
-			currentBatch = 0;
-		};
+		});
+		setup.add(a(p(batchCounter), c(0.0)));
+		return setup;
 	}
 
 	/**
@@ -300,6 +306,6 @@ public abstract class BatchedCell extends CellAdapter<PackedCollection>
 		output.clear();
 		cachedRender = null;
 		tickCount = 0;
-		currentBatch = 0;
+		batchCounter.setMem(0, 0.0);
 	}
 }
