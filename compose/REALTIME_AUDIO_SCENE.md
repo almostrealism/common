@@ -75,17 +75,12 @@ during setup via `renderNow()`.
 
 Real-time runner. The tick phase wraps `cells.tick()` in
 `loop(frameOp, bufferSize)`. The frame counter advances by `bufferSize`
-after each loop iteration. `time.tick()` fires once per buffer.
+after each loop iteration. `time.tick()` fires per-sample inside the loop
+via the `addRequirement(time::tick)` in `getCells()`.
 
 The `loop()` call dispatches via `TemporalFeatures.loop(Supplier<Runnable>, int)`
 at runtime — if the cell pipeline produces a `Computation`, it becomes a
 compiled `Loop`; otherwise it falls back to Java iteration.
-
-### `runnerRealTimeCompiled(output, bufferSize)` (deprecated)
-
-Delegates to `runnerRealTime`. The separate compiled path is no longer needed
-because `Periodic` computation handles the batch counting within the compiled
-loop automatically.
 
 ## Compiled Code Structure
 

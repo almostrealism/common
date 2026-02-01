@@ -16,7 +16,6 @@
 
 package org.almostrealism.audio.pattern.test;
 
-import io.almostrealism.code.Computation;
 import org.almostrealism.audio.AudioScene;
 import org.almostrealism.audio.CellList;
 import org.almostrealism.audio.WaveOutput;
@@ -36,7 +35,6 @@ import org.almostrealism.audio.pattern.RenderedNoteAudio;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.BatchedCell;
 import org.almostrealism.hardware.OperationList;
-import org.almostrealism.hardware.computations.Loop;
 import org.almostrealism.heredity.TemporalCellular;
 import org.almostrealism.util.TestDepth;
 import org.junit.Test;
@@ -707,7 +705,7 @@ public class AudioSceneRealTimeCorrectnessTest extends AudioSceneTestBase {
 	}
 
 	// =========================================================================
-	// PROGRESSIVE CAPABILITY TESTS (Step 3: Compiled Batch Cell Architecture)
+	// PROGRESSIVE CAPABILITY TESTS (Step 3: Batch Cell Architecture)
 	// =========================================================================
 
 	/**
@@ -751,86 +749,15 @@ public class AudioSceneRealTimeCorrectnessTest extends AudioSceneTestBase {
 	}
 
 	/**
-	 * Tests that the compiled real-time runner produces valid audio output.
+	 * Measures the per-buffer tick time for the real-time runner.
 	 *
-	 * <p>This is the main validation test for the compiled batch cell architecture.
-	 * It creates a scene with the compiled runner and verifies non-silent output.</p>
-	 */
-	@Test(timeout = 600_000)
-	@TestDepth(2)
-	public void compiledBatchCellProducesAudio() {
-		File samplesDir = new File(SAMPLES_PATH);
-		if (!samplesDir.exists()) {
-			log("Skipping test - Samples directory not found: " + samplesDir.getAbsolutePath());
-			return;
-		}
-
-		MixdownManager.enableMainFilterUp = false;
-		MixdownManager.enableEfxFilters = false;
-		MixdownManager.enableEfx = false;
-		PatternSystemManager.enableWarnings = false;
-
-		AudioScene<?> scene = createBaselineScene(samplesDir);
-		long seed = findWorkingGenomeSeed(scene, samplesDir);
-		if (seed < 0) {
-			log("No working genome found - skipping test");
-			return;
-		}
-
-		scene = createBaselineScene(samplesDir);
-		applyGenome(scene, seed);
-
-		int totalElements = countElements(scene);
-		log("=== Compiled Batch Cell Produces Audio ===");
-		log("Seed: " + seed + ", elements: " + totalElements);
-
-		String outputFile = "results/realtime-compiled-batchcell.wav";
-		WaveOutput output = new WaveOutput(() -> new File(outputFile), 24, true);
-
-		// Use the compiled real-time runner
-		TemporalCellular runner = scene.runnerRealTimeCompiled(
-				new MultiChannelAudioOutput(output), BUFFER_SIZE);
-
-		runner.setup().get().run();
-
-		// Run a small number of buffer ticks to validate the architecture.
-		// The effects loop currently falls back to Java iteration (not a compiled
-		// Loop), so each buffer tick takes ~20 seconds. We use a small count to
-		// keep the test under 10 minutes while still proving audio output works.
-		int numBuffers = 8;
-		int totalFrames = numBuffers * BUFFER_SIZE;
-		log("Running " + numBuffers + " buffer ticks (" + totalFrames + " frames)");
-
-		Runnable tick = runner.tick().get();
-		for (int buf = 0; buf < numBuffers; buf++) {
-			tick.run();
-		}
-
-		output.write().get().run();
-
-		File outFile = new File(outputFile);
-		assertTrue("Output file should exist", outFile.exists());
-
-		if (outFile.length() > 1000) {
-			verifyNonSilence(outputFile, "Compiled batch cell output");
-		} else {
-			log("Output file size: " + outFile.length() + " bytes");
-		}
-
-		log("Compiled batch cell test completed");
-	}
-
-	/**
-	 * Tests the performance characteristics of the real-time runner.
-	 *
-	 * <p>Measures the per-buffer tick time for the unified real-time runner.
-	 * Both {@code runnerRealTime} and {@code runnerRealTimeCompiled} now use
-	 * the same per-buffer implementation, so this test primarily validates
-	 * consistent timing rather than comparing two different paths.</p>
+	 * <p>Runs a short duration through {@link AudioScene#runnerRealTime} and
+	 * logs per-buffer timing. This is informational only — no assertions on
+	 * timing — and serves as a regression baseline for future optimizations.</p>
 	 */
 	@Test(timeout = 2_700_000)
 	@TestDepth(3)
-	public void compiledBatchCellPerformance() {
+	public void realTimeRunnerPerformance() {
 		File samplesDir = new File(SAMPLES_PATH);
 		if (!samplesDir.exists()) {
 			log("Skipping test - Samples directory not found: " + samplesDir.getAbsolutePath());
@@ -842,7 +769,7 @@ public class AudioSceneRealTimeCorrectnessTest extends AudioSceneTestBase {
 		MixdownManager.enableEfx = false;
 		PatternSystemManager.enableWarnings = false;
 
-		log("=== Compiled Batch Cell Performance Test ===");
+		log("=== Real-Time Runner Performance Test ===");
 
 		// Find a working seed
 		AudioScene<?> seedScene = createBaselineScene(samplesDir);
@@ -853,9 +780,6 @@ public class AudioSceneRealTimeCorrectnessTest extends AudioSceneTestBase {
 		}
 
 		// Use a short duration to keep the test feasible.
-		// The effects loop currently falls back to Java iteration (not a compiled
-		// Loop), so each buffer tick takes ~20 seconds. We use a fraction of a second
-		// to get meaningful timing data without exceeding the test timeout.
 		double perfDuration = 0.25;
 		int totalFrames = (int) (perfDuration * SAMPLE_RATE);
 		int numBuffers = totalFrames / BUFFER_SIZE;

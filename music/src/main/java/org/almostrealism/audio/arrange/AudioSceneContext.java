@@ -57,18 +57,13 @@ import java.util.function.Function;
  *   <li>{@code channels}: Which channels are being rendered</li>
  * </ul>
  *
- * <h2>Real-Time Considerations</h2>
+ * <h2>Real-Time Usage</h2>
  *
- * <p><strong>Critical:</strong> The {@code frameForPosition} function currently returns
- * absolute frame positions relative to the start of the arrangement. For real-time
- * rendering, this needs to be modified (or wrapped) to return buffer-relative offsets.</p>
- *
- * <p>Key methods for real-time adaptation:</p>
- * <ul>
- *   <li>{@link #frameForPosition(double)}: Must return buffer-relative offsets</li>
- *   <li>{@link #getDestination()}: Must be the current buffer, not full arrangement</li>
- *   <li>{@link #getSection(double)}: Must work with current playback position</li>
- * </ul>
+ * <p>For real-time rendering, {@code frameForPosition} returns absolute frame positions
+ * relative to the start of the arrangement. The rendering pipeline uses
+ * {@code startFrame} and {@code frameCount} parameters to select only the notes
+ * overlapping the current buffer window, then writes into the buffer at
+ * buffer-relative offsets.</p>
  *
  * @see PatternSystemManager#sum
  * @see PatternLayerManager#sum

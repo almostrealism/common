@@ -831,7 +831,6 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 				OperationList tick = new OperationList("AudioScene RealTime Runner Tick");
 				tick.add(loop(frameOp, bufferSize));
 				tick.add(() -> () -> currentFrame[0] += bufferSize);
-				tick.add(time.tick());
 				return tick;
 			}
 
@@ -841,28 +840,6 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 				cells.reset();
 			}
 		};
-	}
-
-	/**
-	 * @deprecated Use {@link #runnerRealTime(MultiChannelAudioOutput, int)} instead.
-	 *             The real-time runner now handles both compiled and non-compiled
-	 *             paths via {@link org.almostrealism.hardware.computations.Periodic}.
-	 */
-	@Deprecated
-	public TemporalCellular runnerRealTimeCompiled(MultiChannelAudioOutput output, int bufferSize) {
-		return runnerRealTime(output, bufferSize);
-	}
-
-	/**
-	 * @deprecated Use {@link #runnerRealTime(MultiChannelAudioOutput, List, int)} instead.
-	 *             The real-time runner now handles both compiled and non-compiled
-	 *             paths via {@link org.almostrealism.hardware.computations.Periodic}.
-	 */
-	@Deprecated
-	public TemporalCellular runnerRealTimeCompiled(MultiChannelAudioOutput output,
-												   List<Integer> channels,
-												   int bufferSize) {
-		return runnerRealTime(output, channels, bufferSize);
 	}
 
 	public void saveSettings(File file) throws IOException {
