@@ -57,7 +57,7 @@ public class DiffusionTransformer implements DiffusionModel, DiffusionTransforme
 	private Model model;
 
 	private OperationProfile profile;
-	private CompiledModel compiled;
+	protected CompiledModel compiled;
 
 	private PackedCollection preTransformerState, postTransformerState;
 	private Map<Integer, PackedCollection> attentionScores;
@@ -126,6 +126,11 @@ public class DiffusionTransformer implements DiffusionModel, DiffusionTransforme
 			condEmbed.add(dense(condProjWeight2));
 			condEmbed.reshape(batchSize, condSeqLen, embedDim);
 			model.addInput(condEmbed);
+		} else if (condTokenDim > 0) {
+			// Cross-attention conditioning weights exist in the StateDictionary but
+			// are not used when condSeqLen is 0 — mark them as expected-unused
+			unusedWeights.remove("model.model.to_cond_embed.0.weight");
+			unusedWeights.remove("model.model.to_cond_embed.2.weight");
 		}
 
 		// Add global condition input if needed
@@ -246,6 +251,23 @@ public class DiffusionTransformer implements DiffusionModel, DiffusionTransforme
 
 		boolean hasCrossAttention = condTokenDim > 0 && condEmbed != null;
 
+		// When cross-attention is disabled, mark those weight keys as expected-unused
+		// so that validateWeights() does not reject them
+		if (!hasCrossAttention) {
+			for (int i = 0; i < depth; i++) {
+				String prefix = "model.model.transformer.layers." + i;
+				unusedWeights.remove(prefix + ".cross_attend_norm.gamma");
+				unusedWeights.remove(prefix + ".cross_attend_norm.beta");
+				unusedWeights.remove(prefix + ".cross_attn.to_q.weight");
+				unusedWeights.remove(prefix + ".cross_attn.to_kv.weight");
+				unusedWeights.remove(prefix + ".cross_attn.to_out.weight");
+				unusedWeights.remove(prefix + ".cross_attn.q_norm.weight");
+				unusedWeights.remove(prefix + ".cross_attn.q_norm.bias");
+				unusedWeights.remove(prefix + ".cross_attn.k_norm.weight");
+				unusedWeights.remove(prefix + ".cross_attn.k_norm.bias");
+			}
+		}
+
 		if (globalCondDim > 0) {
 			main.add(prependConditioning(timestepEmbed, globalEmbed));
 		}
@@ -339,22 +361,32 @@ public class DiffusionTransformer implements DiffusionModel, DiffusionTransforme
 									   PackedCollection crossAttnCond,
 									   PackedCollection globalCond) {
 		if (compiled == null) {
-			validateWeights();
-
 			if (enableProfile) {
 				profile = new OperationProfileNode("dit");
 				Hardware.getLocalHardware().assignProfile(profile);
 			}
 
 			long start = System.currentTimeMillis();
-			compiled = getModel().compile(false, profile);
+			// getModel() triggers buildModel() which consumes weights via createWeight(),
+			// so validateWeights() must come after getModel()
+			Model m = getModel();
+			validateWeights();
+			compiled = m.compile(false, profile);
 			log("Compiled DiffusionTransformer in " + (System.currentTimeMillis() - start) + "ms");
 		}
 
-		// Run the model with appropriate inputs
-		if (condTokenDim > 0 && globalCondDim > 0) {
+		// The argument order must match what buildModel() added as model inputs:
+		// cross-attention is only present when condSeqLen > 0 (not just condTokenDim > 0)
+		boolean hasCrossAttn = condTokenDim > 0 && condSeqLen > 0;
+
+		// Provide a zero tensor for null conditioning when the model expects the input
+		if (globalCondDim > 0 && globalCond == null) {
+			globalCond = new PackedCollection(globalCondDim);
+		}
+
+		if (hasCrossAttn && globalCondDim > 0) {
 			return compiled.forward(x, t, crossAttnCond, globalCond);
-		} else if (condTokenDim > 0) {
+		} else if (hasCrossAttn) {
 			return compiled.forward(x, t, crossAttnCond);
 		} else if (globalCondDim > 0) {
 			return compiled.forward(x, t, globalCond);
