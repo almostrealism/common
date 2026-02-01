@@ -4,15 +4,22 @@
 
 # 🛑 STOP. READ THIS FIRST. 🛑
 
-## ⚠️ ABSOLUTE PREREQUISITE: USE AR-DOCS MCP BEFORE ANY ACTION ⚠️
+## ⚠️ ABSOLUTE PREREQUISITE: USE AR-CONSULTANT BEFORE ANY ACTION ⚠️
 
 **THIS IS THE MOST IMPORTANT RULE. IT COMES BEFORE ALL OTHER RULES.**
 
-**BEFORE you write ANY code, make ANY assumptions, or take ANY action, you MUST:**
+The `ar-consultant` MCP server is a documentation-aware assistant that combines documentation search, semantic memory, and local LLM inference into a single interface. It **replaces direct use of `ar-docs` and `ar-memory`** for most tasks. Use it as your primary tool for understanding the codebase, recalling prior context, and storing new knowledge.
 
-1. **SEARCH ar-docs**: `mcp__ar-docs__search_ar_docs query:"<relevant terms>"`
-2. **READ module documentation**: `mcp__ar-docs__read_ar_module module:"<module>"`
-3. **CHECK quick reference**: `mcp__ar-docs__read_quick_reference`
+**BEFORE you write ANY code, make ANY assumptions, or take ANY action, you MUST consult:**
+
+```
+mcp__ar-consultant__consult question:"<your question about the codebase>"
+```
+
+For specific documentation lookups:
+```
+mcp__ar-consultant__search_docs query:"<search terms>"
+```
 
 **YOU ARE NOT ALLOWED TO:**
 - Assume you know how something works
@@ -24,70 +31,100 @@
 **THE AR CODEBASE IS A PRODUCTION APPLICATION** used by real people worldwide. If something seems like it "doesn't work" or "isn't stored," YOU ARE WRONG. The application works. You need to LOOK UP how it works.
 
 **EVERY TIME you are about to:**
-- Implement a feature → SEARCH ar-docs first
-- Fix a bug → SEARCH ar-docs first
-- Answer a question about architecture → SEARCH ar-docs first
-- Modify existing code → SEARCH ar-docs first
-- Make ANY claim about the codebase → SEARCH ar-docs first
+- Implement a feature → **consult** first
+- Fix a bug → **consult** first
+- Answer a question about architecture → **consult** first
+- Modify existing code → **consult** first
+- Make ANY claim about the codebase → **consult** first
 
 **Example of WRONG behavior:**
 ```
 User: "The prototype discovery doesn't show file paths"
 Claude: "The protobuf schema only stores MD5 hash, not file path..."
 ```
-This is WRONG because Claude did NOT search ar-docs to understand how the actual application handles this.
+This is WRONG because Claude did NOT consult the documentation to understand how the actual application handles this.
 
 **Example of CORRECT behavior:**
 ```
 User: "The prototype discovery doesn't show file paths"
-Claude: [Calls mcp__ar-docs__search_ar_docs query:"AudioLibrary file path identifier"]
-Claude: [Calls mcp__ar-docs__read_ar_module module:"audio"]
-Claude: [Now understands how it actually works before responding]
+Claude: [Calls mcp__ar-consultant__consult question:"How does AudioLibrary handle file path identifiers in prototype discovery?"]
+Claude: [Now has a documentation-grounded answer with sources cited before responding]
 ```
 
-**If ar-docs doesn't have the information you need:**
+**If the Consultant doesn't have enough information:**
 1. READ the actual source code thoroughly
 2. TRACE the data flow from end to end
 3. NEVER guess or speculate
 
-### Specific Scenarios Requiring ar-docs
+### Specific Scenarios Requiring Consultation
 
 **Infrastructure changes (tests, build, framework classes):**
 ```
 WRONG: See TestDepthRule in source, assume how it works, add @Rule manually
-RIGHT: Search ar-docs first → Learn TestDepthRule is INTERNAL to TestSuiteBase
+RIGHT: Consult first → Learn TestDepthRule is INTERNAL to TestSuiteBase
 ```
 
 **API discovery (finding operations, interfaces, utilities):**
 ```
 WRONG: Grep source for "sin" → Don't find it → Conclude "doesn't exist"
-RIGHT: mcp__ar-docs__read_quick_reference → Find sin/cos in GeometryFeatures
+RIGHT: mcp__ar-consultant__search_docs query:"trigonometry sin cos" → Find sin/cos in GeometryFeatures
 ```
 
 **Understanding data flow (how library handles file paths, identifiers, etc.):**
 ```
 WRONG: Read one class → Make assumptions → Write incorrect code
-RIGHT: Search ar-docs → Read module docs → Trace actual data flow → Understand
+RIGHT: Consult → Get synthesized answer with source references → Understand
 ```
 
-**This rule exists because:** Claude repeatedly makes assumptions, writes incorrect code, and wastes the developer's time. The ar-docs MCP contains authoritative documentation. USE IT.
+**Complex topics requiring back-and-forth:**
+```
+mcp__ar-consultant__start_consultation topic:"How does process isolation interact with attention layers?"
+mcp__ar-consultant__continue_consultation session_id:"..." message:"What about the QK-norm case?"
+mcp__ar-consultant__end_consultation session_id:"..."  # Summary stored as memory
+```
+
+**This rule exists because:** Claude repeatedly makes assumptions, writes incorrect code, and wastes the developer's time. The Consultant has access to the full documentation corpus, prior session memories, and a local LLM for synthesis. USE IT.
+
+### Available Consultant Tools
+
+| Tool | Purpose | When to Use |
+|------|---------|-------------|
+| `consult` | Ask a question, get a documentation-grounded answer | Default for any question about the codebase |
+| `search_docs` | Search docs with Consultant summary | When you need raw doc results with a synthesis |
+| `recall` | Search memories, contextualized with docs | Check for prior decisions, findings, or progress |
+| `remember` | Store a memory with Consultant reformulation | After completing work, finding bugs, making decisions |
+| `start_consultation` | Begin multi-turn session | Complex topics needing back-and-forth |
+| `continue_consultation` | Follow up in a session | Refining understanding of a complex topic |
+| `end_consultation` | End session, auto-store summary | Done with a multi-turn consultation |
+| `consultant_status` | Check backend health | Verify the Consultant is operational |
+| `list_request_history` | List recent Consultant calls | Check what was already asked in this session |
+| `export_request_history` | Export full history for analysis | Quality review, dataset construction |
+
+### Direct Tool Access (When Needed)
+
+The `ar-docs` and `ar-memory` MCP servers are still available for direct access. Use them when:
+
+- **ar-docs** (`mcp__ar-docs__*`): You need raw documentation without LLM synthesis (e.g., reading a full module page, checking quick reference, searching source comments)
+- **ar-memory** (`mcp__ar-memory__*`): You need raw memory operations without reformulation (e.g., deleting entries, listing by tag, bulk operations)
+
+For **all other documentation and memory needs**, prefer `ar-consultant`. It searches the same documentation and memory stores but adds synthesis, contextualization, and quality control.
 
 ---
 
-## ⚠️ CRITICAL: USE AR-MEMORY MCP AGGRESSIVELY ⚠️
+## ⚠️ CRITICAL: USE MEMORY AGGRESSIVELY ⚠️
 
-**THIS IS THE SECOND MOST IMPORTANT TOOL AFTER AR-DOCS.**
+**Persistent memory is essential for cross-session continuity. USE IT.**
 
-The `ar-memory` MCP server provides persistent semantic memory across sessions. Information stored here survives context window limits and session boundaries. **You MUST use it aggressively to preserve knowledge that will be useful in future sessions.**
+The Consultant's `remember` tool stores memories after reformulating them to be consistent with project terminology. The Consultant's `recall` tool searches memories and contextualizes them with current documentation. **You MUST use these aggressively.**
 
-### When to STORE memories
+### When to STORE memories (use `remember`)
 
 **Store EVERY TIME you:**
 - Make a design decision or learn why something was done a certain way
 - Discover a non-obvious behavior, gotcha, or quirk in the codebase
 - Complete a task (summarize what was done, what files changed, and why)
 - Encounter and resolve a bug (record the root cause and fix)
-- Learn something about the architecture that isn't in ar-docs
+- Learn something about the architecture that isn't in the docs
 - Receive explicit instructions or preferences from the user
 - Identify a pattern, convention, or anti-pattern in the codebase
 - Find that something does NOT work (so future sessions don't repeat the mistake)
@@ -103,11 +140,11 @@ The `ar-memory` MCP server provides persistent semantic memory across sessions. 
 **Example of CORRECT behavior:**
 ```
 [Fixes the issue]
-[Calls mcp__ar-memory__memory_store with the root cause, fix, and affected files]
-[Next session: searches memory, finds the prior work immediately]
+[Calls mcp__ar-consultant__remember content:"FAISS index rebuild required after..." namespace:"bugs" tags:["memory","faiss"]]
+[Next session: recall finds the prior work immediately, contextualized with current docs]
 ```
 
-### When to SEARCH memories
+### When to SEARCH memories (use `recall`)
 
 **Search EVERY TIME you:**
 - Start a new session or task (check for prior context)
@@ -116,30 +153,16 @@ The `ar-memory` MCP server provides persistent semantic memory across sessions. 
 - Are about to make a design decision (check if it was already decided)
 - Resume work that may have started in a prior session
 
-### How to use it
+### Best practices for memory
 
-**Available tools:**
-| Tool | Purpose |
-|------|---------|
-| `mcp__ar-memory__memory_store` | Store a memory entry with semantic embedding |
-| `mcp__ar-memory__memory_search` | Search by semantic similarity |
-| `mcp__ar-memory__memory_delete` | Delete an entry by ID |
-| `mcp__ar-memory__memory_list` | List entries (newest first, with pagination) |
-
-**Parameters for `memory_store`:**
-- `content`: The text to store (be detailed and specific)
-- `namespace`: Logical grouping (e.g., `"decisions"`, `"bugs"`, `"context"`, `"progress"`)
-- `tags`: List of tags for filtering (e.g., `["ml", "attention"]`, `["bug", "hardware"]`)
-- `source`: Source identifier (e.g., file path, PR number, task description)
-
-**Best practices:**
 - Use **namespaces** to organize: `"decisions"` for design choices, `"bugs"` for issues found, `"context"` for codebase knowledge, `"progress"` for multi-session task tracking
-- Use **tags** liberally — they enable filtered searches later
-- Write **detailed content** — include file paths, class names, method names, and the "why" not just the "what"
-- **Search before you start working** — prior sessions may have left you exactly the context you need
+- Use **tags** liberally -- they enable filtered searches later
+- Write **detailed content** -- include file paths, class names, method names, and the "why" not just the "what"
+- **Search before you start working** -- prior sessions may have left you exactly the context you need
 - When completing a multi-step task, store a **progress summary** with next steps so the next session can pick up seamlessly
+- The Consultant will reformulate your notes for terminology consistency -- write naturally and let the reformulation handle the polish
 
-**This rule exists because:** Claude loses all context between sessions. Without aggressive memory use, every session starts from zero. The memory server makes cross-session continuity possible. USE IT.
+**This rule exists because:** Claude loses all context between sessions. Without aggressive memory use, every session starts from zero. The Consultant's memory system makes cross-session continuity possible. USE IT.
 
 ---
 
