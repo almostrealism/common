@@ -73,13 +73,14 @@ public class AudioSceneRealTimeCorrectnessTest extends AudioSceneTestBase {
 	 *
 	 * <p>This test creates the same baseline scene used by
 	 * {@link AudioSceneBaselineTest}, then renders it through the real-time
-	 * pipeline ({@link AudioScene#runnerRealTime}) using per-sample ticking.
+	 * pipeline ({@link AudioScene#runnerRealTime}) using per-buffer ticking.
 	 * The output is verified to contain actual audio content (non-zero
 	 * amplitude and RMS).</p>
 	 *
-	 * <p>The tick loop runs {@code totalFrames} times (per-sample), as
-	 * the frame tracker inside runnerRealTime counts ticks and fires the
-	 * pattern render every {@code bufferSize} ticks.</p>
+	 * <p>Each {@code tick.run()} invocation processes one full buffer
+	 * ({@code bufferSize} frames) via the internal {@code loop()}. The
+	 * test calls tick {@code totalFrames / bufferSize} times to render
+	 * the full duration.</p>
 	 */
 	@Test(timeout = 1_800_000)
 	@TestDepth(2)
@@ -123,10 +124,11 @@ public class AudioSceneRealTimeCorrectnessTest extends AudioSceneTestBase {
 		runner.setup().get().run();
 
 		int totalFrames = (int) (RENDER_SECONDS * SAMPLE_RATE);
-		log("Ticking " + totalFrames + " frames (buffer size: " + BUFFER_SIZE + ")");
+		int numBuffers = totalFrames / BUFFER_SIZE;
+		log("Ticking " + numBuffers + " buffers (" + totalFrames + " frames, buffer size: " + BUFFER_SIZE + ")");
 
 		Runnable tick = runner.tick().get();
-		for (int i = 0; i < totalFrames; i++) {
+		for (int buf = 0; buf < numBuffers; buf++) {
 			tick.run();
 		}
 
@@ -208,8 +210,9 @@ public class AudioSceneRealTimeCorrectnessTest extends AudioSceneTestBase {
 		realtimeRunner.setup().get().run();
 
 		int totalFrames = (int) (RENDER_SECONDS * SAMPLE_RATE);
+		int numBuffers = totalFrames / BUFFER_SIZE;
 		Runnable tick = realtimeRunner.tick().get();
-		for (int i = 0; i < totalFrames; i++) {
+		for (int buf = 0; buf < numBuffers; buf++) {
 			tick.run();
 		}
 
@@ -267,12 +270,12 @@ public class AudioSceneRealTimeCorrectnessTest extends AudioSceneTestBase {
 
 		runner.setup().get().run();
 
-		// Run for exactly 4 buffer cycles worth of frames
-		int framesToRun = BUFFER_SIZE * 4;
-		log("Running " + framesToRun + " frames (" + 4 + " buffer cycles)");
+		// Run for exactly 4 buffer cycles
+		int numBufferCycles = 4;
+		log("Running " + numBufferCycles + " buffer cycles (" + (BUFFER_SIZE * numBufferCycles) + " frames)");
 
 		Runnable tick = runner.tick().get();
-		for (int i = 0; i < framesToRun; i++) {
+		for (int i = 0; i < numBufferCycles; i++) {
 			tick.run();
 		}
 
@@ -680,13 +683,12 @@ public class AudioSceneRealTimeCorrectnessTest extends AudioSceneTestBase {
 
 		runner.setup().get().run();
 
-		// Run for 8 buffer cycles
+		// Run for 8 buffer cycles (each tick processes one full buffer)
 		int numBuffers = 8;
-		int totalFrames = BUFFER_SIZE * numBuffers;
-		log("Running " + totalFrames + " frames (" + numBuffers + " buffer cycles)");
+		log("Running " + numBuffers + " buffer cycles (" + (BUFFER_SIZE * numBuffers) + " frames)");
 
 		Runnable tick = runner.tick().get();
-		for (int i = 0; i < totalFrames; i++) {
+		for (int buf = 0; buf < numBuffers; buf++) {
 			tick.run();
 		}
 
@@ -819,17 +821,12 @@ public class AudioSceneRealTimeCorrectnessTest extends AudioSceneTestBase {
 	}
 
 	/**
-	 * Tests the performance characteristics of the compiled batch cell.
+	 * Tests the performance characteristics of the real-time runner.
 	 *
-	 * <p>Compares timing between:
-	 * <ul>
-	 *   <li>Traditional real-time runner (per-sample ticking)</li>
-	 *   <li>Compiled batch cell runner (per-buffer ticking)</li>
-	 * </ul>
-	 * </p>
-	 *
-	 * <p>The compiled version should show significantly lower overhead per
-	 * audio frame since it avoids 44100 Java lambda invocations per second.</p>
+	 * <p>Measures the per-buffer tick time for the unified real-time runner.
+	 * Both {@code runnerRealTime} and {@code runnerRealTimeCompiled} now use
+	 * the same per-buffer implementation, so this test primarily validates
+	 * consistent timing rather than comparing two different paths.</p>
 	 */
 	@Test(timeout = 2_700_000)
 	@TestDepth(3)
@@ -865,63 +862,34 @@ public class AudioSceneRealTimeCorrectnessTest extends AudioSceneTestBase {
 		log("Performance test: " + perfDuration + "s = " + totalFrames + " frames, "
 				+ numBuffers + " buffer ticks");
 
-		// Test 1: Traditional per-sample runner
-		AudioScene<?> traditionalScene = createBaselineScene(samplesDir);
-		applyGenome(traditionalScene, seed);
+		// Test: unified per-buffer runner
+		AudioScene<?> testScene = createBaselineScene(samplesDir);
+		applyGenome(testScene, seed);
 
-		WaveOutput traditionalOutput = new WaveOutput(
-				() -> new File("results/perf-traditional.wav"), 24, true);
-		TemporalCellular traditionalRunner = traditionalScene.runnerRealTime(
-				new MultiChannelAudioOutput(traditionalOutput), BUFFER_SIZE);
+		WaveOutput testOutput = new WaveOutput(
+				() -> new File("results/perf-realtime.wav"), 24, true);
+		TemporalCellular testRunner = testScene.runnerRealTime(
+				new MultiChannelAudioOutput(testOutput), BUFFER_SIZE);
 
-		traditionalRunner.setup().get().run();
+		testRunner.setup().get().run();
 
-		long startTraditional = System.nanoTime();
-		Runnable traditionalTick = traditionalRunner.tick().get();
-		for (int i = 0; i < totalFrames; i++) {
-			traditionalTick.run();
-		}
-		long traditionalTime = System.nanoTime() - startTraditional;
-
-		traditionalOutput.write().get().run();
-
-		// Test 2: Compiled batch cell runner
-		AudioScene<?> compiledScene = createBaselineScene(samplesDir);
-		applyGenome(compiledScene, seed);
-
-		WaveOutput compiledOutput = new WaveOutput(
-				() -> new File("results/perf-compiled.wav"), 24, true);
-		TemporalCellular compiledRunner = compiledScene.runnerRealTimeCompiled(
-				new MultiChannelAudioOutput(compiledOutput), BUFFER_SIZE);
-
-		compiledRunner.setup().get().run();
-
-		long startCompiled = System.nanoTime();
-		Runnable compiledTick = compiledRunner.tick().get();
+		long startTime = System.nanoTime();
+		Runnable tick = testRunner.tick().get();
 		for (int buf = 0; buf < numBuffers; buf++) {
-			compiledTick.run();
+			tick.run();
 		}
-		long compiledTime = System.nanoTime() - startCompiled;
+		long elapsed = System.nanoTime() - startTime;
 
-		compiledOutput.write().get().run();
+		testOutput.write().get().run();
 
 		// Log results
-		double traditionalMs = traditionalTime / 1_000_000.0;
-		double compiledMs = compiledTime / 1_000_000.0;
-		double speedup = traditionalTime / (double) compiledTime;
+		double elapsedMs = elapsed / 1_000_000.0;
 
-		log("Traditional runner (per-sample): " + String.format("%.2f", traditionalMs) + " ms");
-		log("  Tick invocations: " + totalFrames);
-		log("  Time per tick: " + String.format("%.3f", traditionalMs / totalFrames) + " ms");
+		log("Real-time runner (per-buffer): " + String.format("%.2f", elapsedMs) + " ms");
+		log("  Buffer ticks: " + numBuffers);
+		log("  Time per buffer tick: " + String.format("%.3f", elapsedMs / numBuffers) + " ms");
+		log("  Frames per buffer: " + BUFFER_SIZE);
 
-		log("Compiled runner (per-buffer): " + String.format("%.2f", compiledMs) + " ms");
-		log("  Tick invocations: " + numBuffers);
-		log("  Time per tick: " + String.format("%.3f", compiledMs / numBuffers) + " ms");
-
-		log("Speedup factor: " + String.format("%.2fx", speedup));
-
-		// The compiled version should generally be faster due to reduced overhead
-		// but we don't assert on this as it depends on JIT optimization and hardware
 		log("Performance test completed (no assertions - informational only)");
 	}
 

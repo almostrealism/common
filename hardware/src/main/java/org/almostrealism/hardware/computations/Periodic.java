@@ -23,9 +23,9 @@ import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.compute.ParallelProcess;
 import io.almostrealism.compute.Process;
 import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Provider;
-import io.almostrealism.scope.PeriodicScope;
 import io.almostrealism.scope.Scope;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.OperationComputationAdapter;
@@ -95,7 +95,8 @@ import java.util.List;
  * produces a Java-based fallback that reads and writes the counter via
  * {@link MemoryData} directly.</p>
  *
- * @see PeriodicScope
+ * @see Scope
+ * @see io.almostrealism.scope.Cases
  * @see Loop
  * @see OperationComputationAdapter
  * @see ExpressionFeatures
@@ -217,19 +218,31 @@ public class Periodic extends OperationComputationAdapter<MemoryData>
 	/**
 	 * Generates the compiled scope for this periodic computation.
 	 *
-	 * <p>Creates a {@link PeriodicScope} with the counter expression pointing
-	 * to argument 0, element 0 (the persistent counter collection), and
-	 * the atom's scope as a child.</p>
+	 * <p>Builds a {@link Scope} containing a counter increment
+	 * {@link io.almostrealism.code.ExpressionAssignment} and a conditional
+	 * (via {@link Scope#addCase}) that executes the atom body and resets
+	 * the counter when the period is reached. All assignments use proper
+	 * {@link io.almostrealism.code.ExpressionAssignment} statements so
+	 * that argument dependencies are automatically tracked.</p>
 	 *
 	 * @param context the kernel structure context for scope generation
-	 * @return a {@link PeriodicScope} representing this computation
+	 * @return a {@link Scope} representing this computation
 	 */
 	@Override
 	public Scope<Void> getScope(KernelStructureContext context) {
-		PeriodicScope<Void> scope = new PeriodicScope<>(getFunctionName(), getMetadata());
-		scope.setCounter(getArgument(0).valueAt(e(0)));
-		scope.setPeriod(period);
-		scope.add(atom.getScope(context));
+		Scope<Void> scope = new Scope<>(getFunctionName(), getMetadata());
+		Expression counter = getArgument(0).valueAt(e(0));
+
+		scope.assign(counter, counter.add(1));
+
+		Scope<Void> bodyScope = new Scope<>();
+		bodyScope.add(atom.getScope(context));
+
+		Scope<Void> resetScope = new Scope<>();
+		resetScope.assign(counter, e(0));
+		bodyScope.add(resetScope);
+
+		scope.addCase(counter.greaterThanOrEqual(period), bodyScope);
 		return scope;
 	}
 }

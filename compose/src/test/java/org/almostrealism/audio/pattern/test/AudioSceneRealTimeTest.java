@@ -200,14 +200,10 @@ public class AudioSceneRealTimeTest extends AudioSceneTestBase {
 		List<Long> bufferTimings = new ArrayList<>();
 		long startTime = System.nanoTime();
 
-		// Tick per-sample; measure timing at buffer boundaries
+		// Each tick.run() processes one full buffer via the internal loop
 		for (int buffer = 0; buffer < totalBuffers; buffer++) {
 			long bufferStart = System.nanoTime();
-
-			for (int frame = 0; frame < BUFFER_SIZE; frame++) {
-				tick.run();
-			}
-
+			tick.run();
 			long bufferEnd = System.nanoTime();
 			bufferTimings.add(bufferEnd - bufferStart);
 		}
@@ -308,15 +304,13 @@ public class AudioSceneRealTimeTest extends AudioSceneTestBase {
 		log("Buffer duration (real-time target): " + String.format("%.2f", bufferDurationMs) + " ms");
 		log("Running " + bufferCount + " buffer cycles (" + totalFrames + " frames)");
 
-		// Tick per-sample; measure timing at buffer boundaries
+		// Each tick.run() processes one full buffer via the internal loop
 		Runnable tick = runner.tick().get();
 		List<Long> bufferTimings = new ArrayList<>();
 
 		for (int i = 0; i < bufferCount; i++) {
 			long start = System.nanoTime();
-			for (int frame = 0; frame < BUFFER_SIZE; frame++) {
-				tick.run();
-			}
+			tick.run();
 			bufferTimings.add(System.nanoTime() - start);
 		}
 		output.write().get().run();
@@ -378,8 +372,9 @@ public class AudioSceneRealTimeTest extends AudioSceneTestBase {
 
 		runner.setup().get().run();
 		int totalFrames = (int)(DURATION_SECONDS * SAMPLE_RATE);
+		int numBuffers = totalFrames / BUFFER_SIZE;
 		Runnable tick = runner.tick().get();
-		for (int i = 0; i < totalFrames; i++) {
+		for (int buf = 0; buf < numBuffers; buf++) {
 			tick.run();
 		}
 		output2.write().get().run();
