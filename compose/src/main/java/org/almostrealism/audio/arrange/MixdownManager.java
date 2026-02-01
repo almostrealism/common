@@ -50,6 +50,63 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
+/**
+ * Manages the effects chain and mixdown processing for audio scenes.
+ *
+ * <p>{@code MixdownManager} creates and controls the signal processing chain that
+ * transforms raw pattern audio into the final mixed output. It handles:</p>
+ *
+ * <h2>Signal Flow</h2>
+ * <pre>
+ * Pattern Sources (main) --+--> Volume Adjustment --> Main Filter Up --+--> Master Output
+ *                          |                                           |
+ * Pattern Sources (wet) ---+--> Wet Processing --> Delay Network ------+
+ *                                      |
+ *                                      +--> Reverb --> Reverb Output
+ * </pre>
+ *
+ * <h2>Key Components</h2>
+ * <ul>
+ *   <li><strong>Volume Adjustment</strong>: Per-channel volume with automation</li>
+ *   <li><strong>Main Filters</strong>: High-pass and low-pass filtering with automation</li>
+ *   <li><strong>Delay Network</strong>: Multi-tap delay with feedback and transmission</li>
+ *   <li><strong>Reverb</strong>: Reverb processing via {@link DelayNetwork}</li>
+ *   <li><strong>Transmission</strong>: Cross-channel routing between delays</li>
+ * </ul>
+ *
+ * <h2>Chromosome Integration</h2>
+ *
+ * <p>Most parameters are controlled by {@link Chromosome} instances, enabling
+ * genetic algorithm optimization of the mix settings.</p>
+ *
+ * <h2>Configuration Flags</h2>
+ * <ul>
+ *   <li>{@code enableMixdown}: Master enable for all processing (default: false)</li>
+ *   <li>{@code enableReverb}: Enable reverb processing (default: true)</li>
+ *   <li>{@code enableTransmission}: Enable cross-channel delay routing (default: true)</li>
+ *   <li>{@code enableRiser}: Enable rise/swell effects (default: false)</li>
+ * </ul>
+ *
+ * <h2>CellList Creation</h2>
+ *
+ * <p>The {@link #cells} method creates a {@link CellList} containing the full
+ * signal processing chain. This CellList supports buffering for both real-time
+ * and non-real-time rendering via its {@code buffer()} methods.</p>
+ *
+ * <h2>Real-Time Considerations</h2>
+ *
+ * <p>The effects chain created by MixdownManager operates on a per-frame basis
+ * and is already compatible with real-time rendering. The buffering happens
+ * in the CellList, which works with both {@link BufferedOutputScheduler} and
+ * {@link TemporalRunner}.</p>
+ *
+ * @see CellList
+ * @see DelayNetwork
+ * @see AutomationManager
+ * @see AudioScene
+ *
+ * @author Michael Murray
+ */
 public class MixdownManager implements Setup, Destroyable, CellFeatures, OptimizeFactorFeatures {
 	public static final int mixdownDuration = 140;
 

@@ -96,7 +96,7 @@ public class AudioSceneOptimizationTest implements CellFeatures {
 		OperationList setup = new OperationList();
 		setup.add(pattern.getTimeManager().setup());
 
-		CellList cells = pattern.getPatternChannel(new ChannelInfo(0, ChannelInfo.Voicing.MAIN, null), pattern.getTotalSamples(), setup);
+		CellList cells = pattern.getPatternChannel(new ChannelInfo(0, ChannelInfo.Voicing.MAIN, null), pattern.getTotalSamples(), () -> 0, setup);
 		cells.addSetup(() -> setup);
 		cells.o(i -> new File("results/pattern-test.wav")).sec(20).get().run();
 	}

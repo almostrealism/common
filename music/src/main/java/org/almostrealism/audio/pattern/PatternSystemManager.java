@@ -39,19 +39,84 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.function.DoubleConsumer;
+import java.util.function.IntSupplier;
 import java.util.function.IntToDoubleFunction;
 import java.util.function.IntUnaryOperator;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
-// TODO  Excluded from the genome (manually configured):
-// 	     1. The number of layers
-// 	     2. Melodic/Percussive flag
-// 	     3. The duration of each layer
-
+/**
+ * Top-level manager for the pattern system in an audio scene.
+ *
+ * <p>{@code PatternSystemManager} coordinates multiple {@link PatternLayerManager}
+ * instances to create a complete musical arrangement. It manages note audio choices,
+ * volume control, and renders patterns to destination buffers.</p>
+ *
+ * <h2>Architecture</h2>
+ *
+ * <p>The pattern system has a hierarchical structure:</p>
+ * <pre>
+ * PatternSystemManager
+ *     |
+ *     +-- NoteAudioChoice[] (available audio samples)
+ *     |
+ *     +-- PatternLayerManager[] (one per pattern slot)
+ *         |
+ *         +-- PatternLayer (hierarchical layers)
+ *             |
+ *             +-- PatternElement[] (musical events)
+ * </pre>
+ *
+ * <h2>Pattern Rendering</h2>
+ *
+ * <p>The key method {@link #sum(java.util.function.Supplier, ChannelInfo, java.util.function.IntSupplier, int)}
+ * renders patterns for a channel to a destination buffer. The rendering process:</p>
+ * <ol>
+ *   <li>Updates destination buffers for each pattern manager</li>
+ *   <li>Iterates through all patterns assigned to the channel</li>
+ *   <li>Calls each pattern's sum method to render elements</li>
+ *   <li>Applies auto-volume normalization (if enabled)</li>
+ * </ol>
+ *
+ * <h2>Genetic Algorithm Integration</h2>
+ *
+ * <p>PatternSystemManager integrates with the heredity module for evolutionary
+ * optimization. Each pattern is associated with a {@link ProjectedChromosome}
+ * that controls its parameters.</p>
+ *
+ * <h2>Configuration</h2>
+ *
+ * <p>Manually configured parameters (not in genome):</p>
+ * <ul>
+ *   <li>Number of layers per pattern</li>
+ *   <li>Melodic vs. percussive mode</li>
+ *   <li>Duration of each layer</li>
+ * </ul>
+ *
+ * <h2>Usage Example</h2>
+ * <pre>{@code
+ * // Create manager with chromosomes
+ * PatternSystemManager patterns = new PatternSystemManager(choices, chromosomes);
+ * patterns.init();
+ *
+ * // Add patterns for each channel
+ * patterns.addPattern(0, 1.0, false);  // Channel 0, 1 measure, percussive
+ * patterns.addPattern(2, 4.0, true);   // Channel 2, 4 measures, melodic
+ *
+ * // Render patterns
+ * Supplier<Runnable> render = patterns.sum(contextSupplier, channel, () -> 0, totalFrames);
+ * render.get().run();
+ * }</pre>
+ *
+ * @see PatternLayerManager
+ * @see NoteAudioChoice
+ * @see PatternElement
+ *
+ * @author Michael Murray
+ */
 public class PatternSystemManager implements NoteSourceProvider, CodeFeatures {
-	public static final boolean enableAutoVolume = true;
+	public static final boolean enableAutoVolume = false;
 	public static final boolean enableLazyDestination = false;
 	public static boolean enableVerbose = false;
 	public static boolean enableWarnings = true;
@@ -174,20 +239,40 @@ public class PatternSystemManager implements NoteSourceProvider, CodeFeatures {
 		patterns.clear();
 	}
 
+	/**
+	 * Renders patterns for a frame range into the destination buffer.
+	 *
+	 * <p>This is the single entry point for pattern rendering. It updates
+	 * destination buffers, iterates through all patterns assigned to the
+	 * channel, sums their audio output, and optionally applies auto-volume
+	 * normalization.</p>
+	 *
+	 * @param context Supplier for the AudioSceneContext containing destination buffer
+	 * @param channel Target channel (index, voicing, audio channel)
+	 * @param startFrame Supplier for the starting frame position
+	 * @param frameCount Number of frames to render
+	 * @return Operation that renders the specified frame range
+	 *
+	 * @see PatternLayerManager#sum(Supplier, ChannelInfo.Voicing, ChannelInfo.StereoChannel, IntSupplier, int)
+	 */
 	public Supplier<Runnable> sum(Supplier<AudioSceneContext> context,
-								  ChannelInfo channel) {
-		OperationList updateDestinations = new OperationList("PatternSystemManager Update Destinations");
-		updateDestinations.add(() -> () -> this.destination = context.get().getDestination());
-		updateDestinations.add(() -> () ->
-				IntStream.range(0, patterns.size()).forEach(i ->
-						patterns.get(i).updateDestination(context.get())));
-
+								  ChannelInfo channel,
+								  IntSupplier startFrame,
+								  int frameCount) {
 		OperationList op = new OperationList("PatternSystemManager Sum");
 
 		if (enableLazyDestination) {
-			op.add(updateDestinations);
+			op.add(() -> () -> {
+				AudioSceneContext ctx = context.get();
+				this.destination = ctx.getDestination();
+				IntStream.range(0, patterns.size()).forEach(i ->
+						patterns.get(i).updateDestination(ctx));
+			});
 		} else {
-			updateDestinations.get().run();
+			AudioSceneContext ctx = context.get();
+			this.destination = ctx.getDestination();
+			IntStream.range(0, patterns.size()).forEach(i ->
+					patterns.get(i).updateDestination(ctx));
 		}
 
 		List<Integer> patternsForChannel = IntStream.range(0, patterns.size())
@@ -195,12 +280,13 @@ public class PatternSystemManager implements NoteSourceProvider, CodeFeatures {
 				.boxed().toList();
 
 		if (patternsForChannel.isEmpty()) {
-			if (enableWarnings) warn("No patterns");
+			if (enableWarnings) warn("No patterns for channel " + channel);
 			return op;
 		}
 
 		patternsForChannel.forEach(i -> {
-			op.add(patterns.get(i).sum(context, channel.getVoicing(), channel.getAudioChannel()));
+			op.add(patterns.get(i).sum(context, channel.getVoicing(),
+					channel.getAudioChannel(), startFrame, frameCount));
 		});
 
 		if (enableAutoVolume) {

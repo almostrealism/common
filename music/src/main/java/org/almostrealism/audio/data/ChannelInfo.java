@@ -18,6 +18,43 @@ package org.almostrealism.audio.data;
 
 import java.util.Objects;
 
+/**
+ * Describes a channel in the audio scene with pattern, voicing, and stereo information.
+ *
+ * <p>{@code ChannelInfo} is used throughout the pattern rendering system to identify
+ * which audio path is being processed. It combines several orthogonal concepts:</p>
+ *
+ * <h2>Channel Dimensions</h2>
+ *
+ * <ul>
+ *   <li><strong>patternChannel</strong>: The index of the pattern channel (0-based).
+ *       Each pattern channel can have different instruments and patterns.</li>
+ *   <li><strong>type</strong>: Whether this is a PATTERN channel or RISE (swell/build) channel</li>
+ *   <li><strong>voicing</strong>: MAIN (dry) or WET (effects send) signal path</li>
+ *   <li><strong>audioChannel</strong>: LEFT or RIGHT stereo channel</li>
+ * </ul>
+ *
+ * <h2>Usage in Pattern System</h2>
+ *
+ * <p>ChannelInfo is used to:</p>
+ * <ul>
+ *   <li>Route patterns to specific destination buffers</li>
+ *   <li>Select appropriate notes for voicing (MAIN vs WET can have different audio)</li>
+ *   <li>Apply stereo-specific processing</li>
+ * </ul>
+ *
+ * <h2>Equality</h2>
+ *
+ * <p>Two ChannelInfo instances are equal if they have the same pattern channel, type,
+ * voicing, and audio channel. This is important for buffer lookup in
+ * {@link PatternSystemManager} and {@link PatternLayerManager}.</p>
+ *
+ * @see AudioSceneContext
+ * @see PatternElement
+ * @see PatternLayerManager
+ *
+ * @author Michael Murray
+ */
 public class ChannelInfo {
 	private final int patternChannel;
 	private final Type type;

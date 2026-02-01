@@ -20,6 +20,8 @@ import io.almostrealism.code.Computation;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.ProducerFeatures;
 import org.almostrealism.hardware.computations.Loop;
+import org.almostrealism.hardware.computations.Periodic;
+import org.almostrealism.hardware.mem.Bytes;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.SystemUtils;
 
@@ -231,6 +233,40 @@ public interface HardwareFeatures extends MemoryDataFeatures, ConsoleFeatures {
 	}
 
 	default Supplier<Runnable> lp(Computation<Void> c, int iterations) { return loop(c, iterations); }
+
+	/**
+	 * Creates a periodic operation that executes the given computation once
+	 * every {@code period} invocations.
+	 *
+	 * <p>If the computation is a compilable {@link Computation}, a
+	 * {@link Periodic} is created that generates counter-based conditional
+	 * execution in compiled code. Otherwise, a Java-based fallback is used
+	 * with a {@link PackedCollection} counter.</p>
+	 *
+	 * @param c      the computation to execute periodically
+	 * @param period the number of invocations between executions
+	 * @return a supplier that produces the periodic runnable
+	 *
+	 * @see Periodic
+	 */
+	default Supplier<Runnable> periodic(Computation<Void> c, int period) {
+		if (c instanceof OperationList && !((OperationList) c).isComputation()) {
+			MemoryData counter = new Bytes(1);
+			return () -> {
+				Runnable r = ((OperationList) c).get();
+				return () -> {
+					double count = counter.toDouble(0) + 1;
+					if (count >= period) {
+						r.run();
+						count = 0;
+					}
+					counter.setMem(0, count);
+				};
+			};
+		} else {
+			return new Periodic(c, period);
+		}
+	}
 
 	static HardwareFeatures getInstance() {
 		return new HardwareFeatures() { };

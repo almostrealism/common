@@ -111,7 +111,8 @@ public class StatelessSourceNoteTests implements CellFeatures, SamplingFeatures,
 		elements.get(3).setScalePosition(List.of(0.5));
 
 		// Render the composition
-		render(sceneContext, audioContext, elements, true, 0.0);
+		render(sceneContext, audioContext, elements, true, 0.0,
+				0, sceneContext.getDestination().getShape().getCount(), null);
 
 		// Save the composition to a file
 		new WaveData(sceneContext.getDestination().traverse(1), sampleRate)
@@ -151,7 +152,8 @@ public class StatelessSourceNoteTests implements CellFeatures, SamplingFeatures,
 		elements.add(new PatternElement(noiseNote, 0.0));
 
 		// Render the composition
-		render(sceneContext, audioContext, elements, true, 0.0);
+		render(sceneContext, audioContext, elements, true, 0.0,
+				0, sceneContext.getDestination().getShape().getCount(), null);
 
 		// Save the composition to a file
 		new WaveData(sceneContext.getDestination().traverse(1), sampleRate)

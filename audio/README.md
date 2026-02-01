@@ -348,6 +348,109 @@ double peak = TestAudioData.peak(signal);
 boolean isSilent = TestAudioData.isSilent(signal, 0.001);
 ```
 
+## CellList Tick Ordering (CRITICAL)
+
+Understanding tick ordering is essential for building correct audio pipelines. CellList uses a hierarchical parent-child model that determines execution order.
+
+### Tick Order Determination
+
+When `tick()` is called, temporals are collected and executed in this order:
+
+1. **Parents' temporals** - Collected recursively, depth-first
+2. **This list's cells** - Cells that implement `Temporal`
+3. **Requirements** - Added via `addRequirement(Temporal)`
+
+```
+CellList Hierarchy:
+
+    Parent CellList(s)  --  tick FIRST
+          |
+    Current CellList    --  tick SECOND
+          |
+    Requirements        --  tick LAST
+```
+
+### Controlling Tick Order
+
+**To make A tick before B**: Make A's CellList a parent of B's CellList
+
+```java
+// CORRECT: Use parent hierarchy
+CellList renderList = new CellList();
+renderList.add(renderCell);  // Ticks first
+
+CellList outputList = new CellList(renderList);  // renderList is parent
+outputList.add(outputCell);  // Ticks after renderCell
+```
+
+**To make A tick after B**: Add A via `addRequirement()` to B's CellList
+
+```java
+CellList main = w(0, "input.wav").m(i -> scale(0.8));
+main.addRequirement(postProcessor);  // Ticks after all cells
+```
+
+### Fluent API and Parents
+
+Each fluent method creates a new CellList with the current list as parent:
+
+```java
+CellList pipeline = w(0, "input.wav")   // Creates base CellList
+    .d(i -> _250ms())                    // Creates child with delay
+    .f(i -> hp(c(500), scalar(0.1)))    // Creates child with filter
+    .m(i -> scale(0.8));                 // Creates child with scale
+```
+
+This automatically creates the parent chain, ensuring tick order:
+wave cell -> delay cell -> filter cell -> scale cell
+
+## Real-Time Audio Streaming
+
+CellList integrates with `BufferedOutputScheduler` for real-time audio output.
+
+### Basic Real-Time Playback
+
+```java
+// Create processing pipeline
+CellList pipeline = w(0, "music.wav")
+    .f(i -> hp(c(80), scalar(0.1)))
+    .m(i -> scale(0.8));
+
+// Create scheduler for real-time output
+BufferedOutputScheduler scheduler = pipeline.buffer("/dev/shm/audio");
+scheduler.start();
+
+// Play for 60 seconds
+Thread.sleep(60000);
+
+// Cleanup
+scheduler.stop();
+pipeline.destroy();
+```
+
+### BufferedOutputScheduler Features
+
+- **Adaptive timing**: Automatically adjusts sleep durations to maintain real-time
+- **Buffer safety**: Divides buffer into groups and pauses to prevent overruns
+- **Degraded mode**: Detects when processing can't keep up and continues without pause
+- **Suspend/Resume**: User-initiated pause/resume for playback control
+
+### Monitoring Performance
+
+```java
+BufferedOutputScheduler.enableVerbose = true;  // Enable logging
+
+scheduler.start();
+
+// Monitor in separate thread
+while (!stopped) {
+    System.out.println("Gap: " + scheduler.getRenderingGap() + "ms");
+    System.out.println("Buffer: " + scheduler.getBufferGapPercent() + "%");
+    System.out.println("Degraded: " + scheduler.isDegradedMode());
+    Thread.sleep(1000);
+}
+```
+
 ## AudioLibrary System
 
 The `AudioLibrary` class provides centralized management for audio sample collections with asynchronous loading, analysis, and similarity computation.
@@ -396,6 +499,7 @@ for (WaveDetails details : library.getAllDetails()) {
 
 For detailed documentation, see [Audio Library Documentation](docs/AUDIO_LIBRARY.md).
 
+
 ## See Also
 
 - [Audio Library Documentation](docs/AUDIO_LIBRARY.md) - Detailed AudioLibrary system docs
@@ -404,3 +508,7 @@ For detailed documentation, see [Audio Library Documentation](docs/AUDIO_LIBRARY
 - [Time Module](../time/README.md) - Temporal processing
 - [Collect Module](../collect/README.md) - PackedCollection operations
 - [Hardware Module](../hardware/README.md) - GPU acceleration
+- [Internal Docs: CellList Architecture](../docs/internals/celllist-architecture.md) - Detailed architecture
+- [Internal Docs: CellList Tick Ordering](../docs/internals/celllist-tick-ordering.md) - Tick order details
+- [Internal Docs: CellList Fluent API](../docs/internals/celllist-fluent-api.md) - Fluent API reference
+- [Internal Docs: CellList Real-Time Streaming](../docs/internals/celllist-realtime-streaming.md) - Streaming details
