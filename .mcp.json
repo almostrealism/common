@@ -19,6 +19,11 @@
       "command": "python3",
       "args": ["tools/mcp/memory/server.py"],
       "description": "Semantic memory storage and retrieval server"
+    },
+    "ar-consultant": {
+      "command": "python3",
+      "args": ["tools/mcp/consultant/server.py"],
+      "description": "Documentation-aware consultant combining docs, memory, and local LLM inference"
     }
   }
 }
