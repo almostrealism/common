@@ -20,6 +20,7 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.layers.AdapterConfig;
 import org.almostrealism.layers.LoRALinear;
 import org.almostrealism.layers.LowRankAdapterSupport;
+import org.almostrealism.layers.ProjectionFactory;
 import org.almostrealism.ml.AttentionFeatures;
 import org.almostrealism.ml.ModelBundle;
 import org.almostrealism.ml.StateDictionary;
@@ -147,6 +148,22 @@ public class LoRADiffusionTransformer extends DiffusionTransformer implements At
 	@Override
 	public void addLoraLayer(LoRALinear layer) {
 		loraLayers.add(layer);
+	}
+
+	/**
+	 * Returns a LoRA-enabled projection factory.
+	 *
+	 * <p>This override is necessary because {@link DiffusionTransformer} defines a concrete
+	 * {@code getProjectionFactory()} method returning {@link ProjectionFactory#dense()}.
+	 * Java resolves concrete superclass methods over interface default methods, so without
+	 * this override the {@link LowRankAdapterSupport#getProjectionFactory()} default
+	 * would never be called and no LoRA layers would be created.</p>
+	 *
+	 * @return A ProjectionFactory that wraps targeted projections with LoRA adapters
+	 */
+	@Override
+	public ProjectionFactory getProjectionFactory() {
+		return LowRankAdapterSupport.super.getProjectionFactory();
 	}
 
 	/**
@@ -312,10 +329,16 @@ public class LoRADiffusionTransformer extends DiffusionTransformer implements At
 	/**
 	 * Compiles the model for training with backward pass enabled.
 	 *
+	 * <p>The compiled model is also stored so that {@link #forward} reuses it
+	 * rather than compiling a second inference-only copy.  This avoids doubling
+	 * the native memory footprint when the same model is used for both training
+	 * and sample generation.</p>
+	 *
 	 * @return CompiledModel ready for training
 	 */
 	public CompiledModel compileForTraining() {
-		return getModel().compile(true);
+		compiled = getModel().compile(true);
+		return compiled;
 	}
 
 }
