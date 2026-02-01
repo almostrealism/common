@@ -1,3 +1,19 @@
+/*
+ * Copyright 2026 Michael Murray
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *    http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package org.almostrealism.ml.qwen3;
 
 import org.almostrealism.collect.PackedCollection;
@@ -6,6 +22,7 @@ import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.OutputFeatures;
 import org.almostrealism.ml.AttentionFeatures;
 import org.almostrealism.ml.StateDictionary;
+import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 import org.almostrealism.util.TestSuiteBase;
 import org.almostrealism.util.TestUtils;
@@ -67,7 +84,7 @@ public class MultiTokenGenerationTest extends TestSuiteBase implements Attention
 
 		log("Compiling model...");
 		long compileStart = System.currentTimeMillis();
-		var compiledModel = transformer.compile();
+		CompiledModel compiledModel = transformer.compile();
 		log("Model compiled in " + (System.currentTimeMillis() - compileStart) + "ms");
 
 		// Load PyTorch reference logits for position 0

@@ -1,5 +1,5 @@
 /*
- * Copyright 2025 Michael Murray
+ * Copyright 2026 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -279,7 +279,7 @@ import java.util.stream.Stream;
  * @see MatrixFeatures
  * @see DeltaFeatures
  */
-public interface CollectionFeatures extends ExpressionFeatures {
+public interface CollectionFeatures extends GradientFeatures, CollectionCreationFeatures {
 	boolean enableShapelessWarning = false;
 	boolean enableVariableRepeat = false;
 

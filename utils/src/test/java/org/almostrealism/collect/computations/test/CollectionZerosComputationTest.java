@@ -1,5 +1,5 @@
 /*
- * Copyright 2025 Michael Murray
+ * Copyright 2026 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -169,12 +169,12 @@ public class CollectionZerosComputationTest extends TestSuiteBase {
 				new CollectionZerosComputation(new TraversalPolicy(5));
 
 		// Generate parallel process (should return self)
-		var parallelProcess = zeros.generate(java.util.Collections.emptyList());
+		CollectionZerosComputation parallelProcess = (CollectionZerosComputation) zeros.generate(java.util.Collections.emptyList());
 
 		assertSame("Zero computation should serve as its own parallel process",
 				zeros, parallelProcess);
 		assertTrue("Parallel process should still be zero",
-				((CollectionZerosComputation) parallelProcess).isZero());
+				parallelProcess.isZero());
 	}
 
 	/**

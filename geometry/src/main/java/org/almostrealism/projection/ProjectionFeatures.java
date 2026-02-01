@@ -1,5 +1,5 @@
 /*
- * Copyright 2025 Michael Murray
+ * Copyright 2026 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -85,15 +85,15 @@ public interface ProjectionFeatures extends PairFeatures, RayFeatures {
 		CollectionProducer pdx = l(pd);
 		CollectionProducer pdy = r(pd);
 
-		var p = pdx.multiply(l(pos))
+		CollectionProducer p = pdx.multiply(l(pos))
 								.multiply(sdx.add(c(-1.0)).pow(c(-1.0))).add(pdx.multiply(c(-0.5)));
-		var q = pdy.multiply(r(pos))
+		CollectionProducer q = pdy.multiply(r(pos))
 								.multiply(sdy.add(c(-1.0)).pow(-1.0)).add(pdy.multiply(c(-0.5)));
-		var r = c(-focalLength);
+		CollectionProducer r = c(-focalLength);
 
-		var x = p.multiply(c(u.getX())).add(q.multiply(c(v.getX()))).add(r.multiply(c(w.getX())));
-		var y = p.multiply(c(u.getY())).add(q.multiply(c(v.getY()))).add(r.multiply(c(w.getY())));
-		var z = p.multiply(c(u.getZ())).add(q.multiply(c(v.getZ()))).add(r.multiply(c(w.getZ())));
+		CollectionProducer x = p.multiply(c(u.getX())).add(q.multiply(c(v.getX()))).add(r.multiply(c(w.getX())));
+		CollectionProducer y = p.multiply(c(u.getY())).add(q.multiply(c(v.getY()))).add(r.multiply(c(w.getY())));
+		CollectionProducer z = p.multiply(c(u.getZ())).add(q.multiply(c(v.getZ()))).add(r.multiply(c(w.getZ())));
 
 		CollectionProducer pqr = vector(x, y, z);
 		Producer<PackedCollection> len = length(pqr);

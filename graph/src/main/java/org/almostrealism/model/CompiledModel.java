@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2026 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -147,6 +147,21 @@ public class CompiledModel implements Destroyable, CodeFeatures {
 	 * @return the shape expected for the first input
 	 */
 	public TraversalPolicy getInputShape() { return inputShapes.get(0); }
+
+	/**
+	 * Returns the number of inputs this model expects.
+	 *
+	 * @return the number of inputs (primary + auxiliary)
+	 */
+	public int getInputCount() { return inputShapes.size(); }
+
+	/**
+	 * Returns the shape of a specific input.
+	 *
+	 * @param index the input index (0 = primary input)
+	 * @return the shape expected for that input
+	 */
+	public TraversalPolicy getInputShape(int index) { return inputShapes.get(index); }
 
 	/**
 	 * Returns the output shape.

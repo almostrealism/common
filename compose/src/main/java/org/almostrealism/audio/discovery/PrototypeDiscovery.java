@@ -1,5 +1,5 @@
 /*
- * Copyright 2025 Michael Murray
+ * Copyright 2026 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -17,6 +17,7 @@
 package org.almostrealism.audio.discovery;
 
 import org.almostrealism.audio.AudioLibrary;
+import org.almostrealism.audio.api.Audio;
 import org.almostrealism.audio.data.WaveDataProvider;
 import org.almostrealism.audio.data.WaveDetails;
 import org.almostrealism.audio.persistence.AudioLibraryPersistence;
@@ -121,9 +122,9 @@ public class PrototypeDiscovery implements ConsoleFeatures, GraphFeatures {
 		} else {
 			// No samples directory - load directly from protobuf
 			LibraryDestination destination = new LibraryDestination(dataPrefix);
-			var libraryDataList = destination.load();
-			for (var libraryData : libraryDataList) {
-				for (var entry : libraryData.getInfoMap().entrySet()) {
+			List<Audio.AudioLibraryData> libraryDataList = destination.load();
+			for (Audio.AudioLibraryData libraryData : libraryDataList) {
+				for (Map.Entry<String, Audio.WaveDetailData> entry : libraryData.getInfoMap().entrySet()) {
 					WaveDetails details = AudioLibraryPersistence.decode(entry.getValue());
 					if (hasFeatures(details)) {
 						allDetails.add(details);

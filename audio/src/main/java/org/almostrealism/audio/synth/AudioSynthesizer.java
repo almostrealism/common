@@ -40,6 +40,8 @@ import org.almostrealism.hardware.OperationList;
 import org.almostrealism.time.Frequency;
 import org.almostrealism.time.Temporal;
 
+import io.almostrealism.cycle.Setup;
+
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
@@ -58,7 +60,7 @@ import java.util.function.Supplier;
  * @see RelativeFrequencySet
  * @see OvertoneSeries
  */
-public class AudioSynthesizer implements Temporal, StatelessSource, SamplingFeatures {
+public class AudioSynthesizer implements Temporal, Setup, StatelessSource, SamplingFeatures {
 
 	/**
 	 * Available oscillator waveform types.
@@ -464,6 +466,23 @@ public class AudioSynthesizer implements Temporal, StatelessSource, SamplingFeat
 	}
 
 	@Override
+	public Supplier<Runnable> setup() {
+		OperationList setup = new OperationList("AudioSynthesizer Setup");
+
+		// Setup all oscillator cells
+		for (CollectionTemporalCellAdapter cell : cells) {
+			setup.add(cell.setup());
+		}
+
+		// Setup filter if present
+		if (filter != null) {
+			setup.add(filter.setup());
+		}
+
+		return setup;
+	}
+
+	@Override
 	public Supplier<Runnable> tick() {
 		OperationList tick = new OperationList("AudioSynthesizer Tick");
 
@@ -487,8 +506,14 @@ public class AudioSynthesizer implements Temporal, StatelessSource, SamplingFeat
 			}
 		}
 
-		// Push audio from all oscillators
-		cells.stream().map(cell -> cell.push(null)).forEach(tick::add);
+		// Push audio from all oscillators and tick to advance wave position
+		for (CollectionTemporalCellAdapter cell : cells) {
+			tick.add(cell.push(null));
+			tick.add(cell.tick());
+		}
+
+		// Tick the output cell to forward accumulated audio to receptor
+		tick.add(output.tick());
 
 		// Apply filter if present
 		if (filter != null) {

@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2026 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -25,6 +25,10 @@ import org.almostrealism.io.Console;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 
+import java.time.Duration;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.function.BiFunction;
 import java.util.function.BiPredicate;
 import java.util.function.Consumer;
@@ -53,8 +57,10 @@ import java.util.function.Supplier;
  * <h2>Features</h2>
  * <ul>
  *   <li>Configurable loss functions (MSE, MAE, NLL)</li>
- *   <li>Early stopping based on loss target</li>
+ *   <li>Early stopping based on loss target or validation loss</li>
  *   <li>Periodic logging of training progress</li>
+ *   <li>Validation dataset evaluation</li>
+ *   <li>Progress callbacks for UI integration</li>
  *   <li>Accuracy evaluation on validation data</li>
  *   <li>Loss receptor for external monitoring</li>
  * </ul>
@@ -79,41 +85,31 @@ import java.util.function.Supplier;
  * optimizer.setLossTarget(0.001);   // Early stopping threshold
  *
  * // Train
- * optimizer.optimize(100);  // Up to 100 epochs
+ * TrainingResult result = optimizer.optimize(100);  // Up to 100 epochs
  *
  * // Evaluate
  * double accuracy = optimizer.accuracy((expected, output) ->
  *     argmax(expected) == argmax(output)
  * );
  *
- * System.out.println("Final loss: " + optimizer.getLoss());
+ * System.out.println("Final loss: " + result.getFinalTrainLoss());
  * System.out.println("Accuracy: " + (accuracy * 100) + "%");
- * }</pre>
- *
- * <h2>Classification Training</h2>
- * <pre>{@code
- * // For classification with softmax output
- * optimizer.setLossFunction(new NegativeLogLikelihood());
- *
- * // Custom accuracy check
- * double accuracy = optimizer.accuracy((target, output) -> {
- *     int expectedClass = target.argmax();
- *     int predictedClass = output.argmax();
- *     return expectedClass == predictedClass;
- * });
  * }</pre>
  *
  * @see CompiledModel
  * @see LossProvider
  * @see Dataset
- * @see AdamOptimizer
+ * @see TrainingResult
+ * @see TrainingProgress
  *
  * @author Michael Murray
  */
 public class ModelOptimizer implements CodeFeatures {
 	private final CompiledModel model;
 	private Supplier<Dataset<?>> dataset;
+	private Supplier<Dataset<?>> validationDataset;
 	private Receptor<Double> receptor;
+	private Consumer<TrainingProgress> progressCallback;
 	private int logFrequency;
 	private Consumer<String> log;
 
@@ -122,6 +118,10 @@ public class ModelOptimizer implements CodeFeatures {
 	private double averageLoss;
 	private double lossTarget;
 	private int totalIterations;
+
+	// Early stopping on validation loss
+	private int earlyStoppingPatience = 0;
+	private double earlyStoppingMinDelta = 1e-6;
 
 	/**
 	 * Creates a model optimizer for an uncompiled model.
@@ -226,6 +226,19 @@ public class ModelOptimizer implements CodeFeatures {
 	}
 
 	/**
+	 * Sets the validation dataset supplier.
+	 * <p>
+	 * When set, validation loss is computed after each epoch and included
+	 * in progress callbacks and the training result.
+	 * </p>
+	 *
+	 * @param validationDataset supplier for the validation dataset
+	 */
+	public void setValidationDataset(Supplier<Dataset<?>> validationDataset) {
+		this.validationDataset = validationDataset;
+	}
+
+	/**
 	 * Sets a receptor to receive loss values during training.
 	 * <p>
 	 * This can be used for external monitoring or visualization.
@@ -235,6 +248,15 @@ public class ModelOptimizer implements CodeFeatures {
 	 */
 	public void setReceptor(Receptor<Double> receptor) {
 		this.receptor = receptor;
+	}
+
+	/**
+	 * Sets a callback to receive progress updates at the end of each epoch.
+	 *
+	 * @param callback the progress callback
+	 */
+	public void setProgressCallback(Consumer<TrainingProgress> callback) {
+		this.progressCallback = callback;
 	}
 
 	/**
@@ -297,6 +319,46 @@ public class ModelOptimizer implements CodeFeatures {
 	public double getLossTarget() { return lossTarget; }
 
 	/**
+	 * Sets the early stopping patience for validation loss.
+	 * <p>
+	 * Training will stop if validation loss doesn't improve for this many epochs.
+	 * Set to 0 to disable early stopping on validation loss.
+	 * </p>
+	 *
+	 * @param patience number of epochs without improvement before stopping
+	 */
+	public void setEarlyStoppingPatience(int patience) {
+		this.earlyStoppingPatience = patience;
+	}
+
+	/**
+	 * Returns the early stopping patience.
+	 *
+	 * @return number of epochs without improvement before stopping
+	 */
+	public int getEarlyStoppingPatience() {
+		return earlyStoppingPatience;
+	}
+
+	/**
+	 * Sets the minimum improvement required to reset early stopping counter.
+	 *
+	 * @param minDelta minimum improvement in validation loss
+	 */
+	public void setEarlyStoppingMinDelta(double minDelta) {
+		this.earlyStoppingMinDelta = minDelta;
+	}
+
+	/**
+	 * Returns the minimum improvement for early stopping.
+	 *
+	 * @return minimum improvement in validation loss
+	 */
+	public double getEarlyStoppingMinDelta() {
+		return earlyStoppingMinDelta;
+	}
+
+	/**
 	 * Returns the current average loss.
 	 *
 	 * @return the average loss from the last epoch, or -1 if not yet computed
@@ -329,15 +391,27 @@ public class ModelOptimizer implements CodeFeatures {
 	 * <ul>
 	 *   <li>Average loss falls below {@link #getLossTarget()}</li>
 	 *   <li>Average loss stops improving (converged)</li>
+	 *   <li>Validation loss doesn't improve for {@link #getEarlyStoppingPatience()} epochs</li>
 	 * </ul>
 	 *
 	 * @param iterations the maximum number of epochs to run
+	 * @return TrainingResult containing loss history and metrics
 	 * @throws RuntimeException if loss increases after the first sample
 	 *                          (indicates gradient computation issues)
 	 * @throws RuntimeException if no dataset samples produce valid results
 	 */
-	public void optimize(int iterations) {
+	public TrainingResult optimize(int iterations) {
 		Dataset<?> data = dataset.get();
+		Dataset<?> valData = validationDataset != null ? validationDataset.get() : null;
+
+		List<Double> trainLossHistory = new ArrayList<>();
+		List<Double> validationLossHistory = new ArrayList<>();
+		Instant startTime = Instant.now();
+
+		int bestEpoch = 0;
+		double bestValidationLoss = Double.MAX_VALUE;
+		int epochsWithoutImprovement = 0;
+		boolean earlyStopped = false;
 
 		for (int i = 0; i < iterations; i++) {
 			boolean first = true;
@@ -392,14 +466,90 @@ public class ModelOptimizer implements CodeFeatures {
 
 			double previousLoss = averageLoss;
 			averageLoss = totalLoss / count;
+			trainLossHistory.add(averageLoss);
 
-			if (logIteration(totalIterations))
-				log("Average Loss = " + averageLoss);
+			// Validation phase
+			Double avgValidationLoss = null;
+			if (valData != null) {
+				avgValidationLoss = evaluate(valData);
+				validationLossHistory.add(avgValidationLoss);
+
+				// Early stopping check on validation loss
+				if (avgValidationLoss < bestValidationLoss - earlyStoppingMinDelta) {
+					bestValidationLoss = avgValidationLoss;
+					bestEpoch = i;
+					epochsWithoutImprovement = 0;
+				} else {
+					epochsWithoutImprovement++;
+				}
+
+				if (earlyStoppingPatience > 0 &&
+						epochsWithoutImprovement >= earlyStoppingPatience) {
+					log("Early stopping at epoch " + i + " (no improvement for " +
+							epochsWithoutImprovement + " epochs)");
+					earlyStopped = true;
+					break;
+				}
+			}
+
+			if (logIteration(totalIterations)) {
+				String summary = "Average Loss = " + averageLoss;
+				if (avgValidationLoss != null) {
+					summary += " - Validation Loss = " + avgValidationLoss;
+				}
+				log(summary);
+			}
+
+			// Progress callback
+			if (progressCallback != null) {
+				progressCallback.accept(new TrainingProgress(
+						i, totalIterations, averageLoss, avgValidationLoss
+				));
+			}
 
 			if (averageLoss < lossTarget || averageLoss == previousLoss) {
-				return;
+				break;
 			}
 		}
+
+		Duration trainingTime = Duration.between(startTime, Instant.now());
+
+		return new TrainingResult(
+				trainLossHistory,
+				validationLossHistory,
+				totalIterations,
+				bestEpoch,
+				bestValidationLoss,
+				trainingTime,
+				earlyStopped
+		);
+	}
+
+	/**
+	 * Evaluates the model on a dataset and returns the average loss.
+	 *
+	 * @param data the dataset to evaluate
+	 * @return the average loss over the dataset
+	 */
+	public double evaluate(Dataset<?> data) {
+		double totalLoss = 0;
+		int count = 0;
+
+		for (ValueTarget<?> target : data) {
+			PackedCollection input = target.getInput();
+			PackedCollection expected = target.getExpectedOutput();
+			PackedCollection[] arguments = target.getArguments();
+
+			PackedCollection output = model.forward(input, arguments);
+			double ls = loss.apply(output, expected);
+
+			if (!Double.isNaN(ls)) {
+				totalLoss += ls;
+				count++;
+			}
+		}
+
+		return count > 0 ? totalLoss / count : Double.NaN;
 	}
 
 	protected boolean logIteration(int iteration) {

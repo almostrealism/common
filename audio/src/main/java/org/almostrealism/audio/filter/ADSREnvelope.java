@@ -154,11 +154,19 @@ public class ADSREnvelope implements TemporalFactor<PackedCollection>, Lifecycle
 	public double getRelease() { return data.releaseTime().toDouble(0); }
 
 	/**
-	 * Multiplies the input signal by the current envelope level.
+	 * Returns the current envelope level as an amplitude multiplier.
+	 * <p>
+	 * The input parameter is ignored because ADSREnvelope manages its own timing
+	 * via {@link #noteOn()}, {@link #noteOff()}, and {@link #tick()}. This is
+	 * different from position-based envelopes that derive amplitude from note position.
+	 * </p>
+	 *
+	 * @param input ignored - ADSREnvelope uses internal timing, not input position
+	 * @return a Producer that reads the current envelope level (0-1)
 	 */
 	@Override
 	public Producer<PackedCollection> getResultant(Producer<PackedCollection> input) {
-		return multiply(input, data.getCurrentLevel());
+		return data.getCurrentLevel();
 	}
 
 	/**

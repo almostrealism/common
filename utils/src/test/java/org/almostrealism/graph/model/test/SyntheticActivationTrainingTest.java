@@ -149,7 +149,7 @@ public class SyntheticActivationTrainingTest extends TestSuiteBase implements Mo
 				.collect(Collectors.toList()));
 
 		// Train
-		train("denseWithReLU", model, data, epochs, steps, 1.0, 0.1);
+		train("denseWithReLU", model, data, epochs, steps, 2.0, 0.4);
 
 		log("Test 4.2 completed successfully");
 	}

@@ -605,7 +605,11 @@ public interface CellFeatures extends HeredityFeatures, TemporalFeatures, CodeFe
 			throw new UnsupportedOperationException();
 		}
 
-		cells = map(cells, i -> new WaveOutput(destination).getWriterCell(0));
+		cells = map(cells, i -> {
+			WaveOutput output = new WaveOutput(destination);
+			output.setCircular(true);
+			return output.getWriterCell(0);
+		});
 		return cells.buffer(shape.getTotalSize());
 	}
 

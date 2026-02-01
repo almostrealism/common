@@ -38,6 +38,15 @@ SYNONYMS = {
     "scope": {"context", "block", "statement"},
     "evaluate": {"eval", "compute", "execute", "run"},
     "compile": {"compilation", "generate", "codegen"},
+    # Memory copy operations
+    "copy": {"setmem", "memcpy", "transfer", "bulk", "memorydatacopy", "clone"},
+    "setmem": {"copy", "transfer", "memcpy", "bulk", "write"},
+    "transfer": {"copy", "setmem", "memcpy", "move", "bulk"},
+    "memcpy": {"copy", "setmem", "transfer", "bulk"},
+    "bulk": {"copy", "batch", "setmem", "transfer", "memcpy"},
+    "memorydatacopy": {"copy", "setmem", "transfer", "bulk", "memcpy"},
+    "memorydata": {"memory", "packedcollection", "buffer", "data", "setmem"},
+    "into": {"destination", "target", "output", "assignment"},
     # Math/trigonometry - these are in GeometryFeatures
     "sin": {"sine", "trigonometry", "trig", "sinusoidal"},
     "cos": {"cosine", "trigonometry", "trig"},

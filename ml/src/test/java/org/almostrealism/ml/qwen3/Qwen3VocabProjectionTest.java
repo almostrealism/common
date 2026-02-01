@@ -1,9 +1,26 @@
+/*
+ * Copyright 2026 Michael Murray
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *    http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package org.almostrealism.ml.qwen3;
 
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.layers.LayerFeatures;
+import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
@@ -59,7 +76,7 @@ public class Qwen3VocabProjectionTest extends TestSuiteBase implements LayerFeat
 		// Compile (inference-only, no backprop)
 		log("\n[4] Compiling model (inference-only)...");
 		start = System.currentTimeMillis();
-		var compiled = model.compile(false);
+		CompiledModel compiled = model.compile(false);
 		log("    Compiled in " + (System.currentTimeMillis() - start) + "ms");
 
 		// Test forward pass
@@ -104,7 +121,7 @@ public class Qwen3VocabProjectionTest extends TestSuiteBase implements LayerFeat
 		// Compile (inference-only, no backprop)
 		log("\n[3] Compiling model (inference-only)...");
 		start = System.currentTimeMillis();
-		var compiled = model.compile(false);
+		CompiledModel compiled = model.compile(false);
 		log("    Compiled in " + (System.currentTimeMillis() - start) + "ms");
 
 		// Test forward pass
@@ -145,7 +162,7 @@ public class Qwen3VocabProjectionTest extends TestSuiteBase implements LayerFeat
 			log("  Layer: " + (System.currentTimeMillis() - start) + "ms");
 
 			start = System.currentTimeMillis();
-			var compiled = model.compile(false);  // inference-only
+			CompiledModel compiled = model.compile(false);  // inference-only
 			log("  Compile: " + (System.currentTimeMillis() - start) + "ms");
 
 			start = System.currentTimeMillis();
