@@ -7,12 +7,17 @@ AR documentation + memory systems.  Combines documentation retrieval,
 semantic memory, and local LLM inference to provide grounded answers,
 contextualized memory recall, and terminology-consistent memory storage.
 
+Every tool invocation is recorded in a local SQLite history database for
+quality evaluation, retrieval accuracy assessment, and fine-tuning
+dataset construction.
+
 Environment variables:
     AR_CONSULTANT_BACKEND      - "llamacpp", "ollama", "mlx", "passthrough", or "auto" (default)
     AR_CONSULTANT_LLAMACPP_URL - llama.cpp server URL (default: http://host.docker.internal:8080)
     AR_CONSULTANT_MODEL        - Ollama model name (default: qwen2.5-coder:32b-instruct-q4_K_M)
     AR_CONSULTANT_MLX_MODEL    - MLX model path (default: mlx-community/Qwen2.5-Coder-32B-Instruct-4bit)
     AR_CONSULTANT_OLLAMA_URL   - Ollama base URL (default: http://localhost:11434)
+    AR_CONSULTANT_HISTORY_DIR  - Directory for history.db (default: tools/mcp/consultant/data)
     AR_MEMORY_DATA_DIR         - Shared memory data directory
     AR_MEMORY_BACKEND          - Memory embedding backend
 """
@@ -31,6 +36,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 from mcp.server.fastmcp import FastMCP
 
 from docs_retriever import DocsRetriever
+from history import HistoryStore, _current_request, tracked_generate, tracked_tool
 from inference import SYSTEM_PROMPT, create_backend
 from memory_client import MemoryClient
 
@@ -44,8 +50,10 @@ log = logging.getLogger("ar-consultant")
 docs = DocsRetriever()
 memory = MemoryClient()
 llm = create_backend()
+history = HistoryStore()
 
 log.info("Consultant LLM backend: %s", llm.name)
+log.info("History database: %s", history._db_path)
 
 # Session storage for multi-turn consultations
 # session_id -> {"messages": [...], "topic": str, "created": float}
@@ -140,6 +148,38 @@ def _format_memory_context(memories: list[dict], max_entries: int = 3) -> str:
 
 
 # ---------------------------------------------------------------------------
+# History-logging helpers
+# ---------------------------------------------------------------------------
+
+def _log_doc_results(query: str, results: list[dict]) -> None:
+    """Record doc retrieval results on the active request record."""
+    record = _current_request.get()
+    if record is not None:
+        record.add_doc_results(query, results)
+
+
+def _log_memory_results(query: str, results: list[dict]) -> None:
+    """Record memory retrieval results on the active request record."""
+    record = _current_request.get()
+    if record is not None:
+        record.add_memory_results(query, results)
+
+
+def _log_session_id(session_id: str) -> None:
+    """Associate the active request record with a consultation session."""
+    record = _current_request.get()
+    if record is not None:
+        record.session_id = session_id
+
+
+def _generate(prompt: str, system: Optional[str] = None, max_tokens: int = 1024,
+              temperature: float = 0.3) -> str:
+    """Tracked wrapper around ``llm.generate()``."""
+    return tracked_generate(llm, prompt, system=system, max_tokens=max_tokens,
+                            temperature=temperature)
+
+
+# ---------------------------------------------------------------------------
 # MCP Server and Tools
 # ---------------------------------------------------------------------------
 
@@ -147,6 +187,7 @@ mcp = FastMCP("ar-consultant")
 
 
 @mcp.tool()
+@tracked_tool(history, "consult")
 def consult(question: str, context: Optional[str] = None) -> dict:
     """Ask the Consultant a question about the AR codebase.
 
@@ -167,12 +208,16 @@ def consult(question: str, context: Optional[str] = None) -> dict:
     memories = memory.search(query=question, namespace="default", limit=3)
     mem_context = _format_memory_context(memories)
 
+    # Log retrieval results
+    doc_results = docs.search(question, max_results=5)
+    _log_doc_results(question, doc_results)
+    _log_memory_results(question, memories)
+
     # Build prompt and generate
     prompt = _build_consult_prompt(question, doc_context, mem_context, context)
-    answer = llm.generate(prompt, system=SYSTEM_PROMPT)
+    answer = _generate(prompt, system=SYSTEM_PROMPT)
 
     # Extract source file references from doc results
-    doc_results = docs.search(question, max_results=5)
     sources = list({r["file"] for r in doc_results})
 
     return {
@@ -187,6 +232,7 @@ def consult(question: str, context: Optional[str] = None) -> dict:
 
 
 @mcp.tool()
+@tracked_tool(history, "recall")
 def recall(query: str, namespace: str = "default", limit: int = 5) -> dict:
     """Search memories and return Consultant-summarized results.
 
@@ -214,11 +260,15 @@ def recall(query: str, namespace: str = "default", limit: int = 5) -> dict:
     # Get documentation context related to the query
     doc_context = docs.get_context_for_query(query)
 
+    # Log retrieval results
+    doc_results = docs.search(query, max_results=5)
+    _log_doc_results(query, doc_results)
+    _log_memory_results(query, memories)
+
     # Summarize with the model
     prompt = _build_recall_prompt(query, memories, doc_context)
-    summary = llm.generate(prompt, system=SYSTEM_PROMPT)
+    summary = _generate(prompt, system=SYSTEM_PROMPT)
 
-    doc_results = docs.search(query, max_results=5)
     doc_refs = list({r["file"] for r in doc_results})
 
     return {
@@ -239,6 +289,7 @@ def recall(query: str, namespace: str = "default", limit: int = 5) -> dict:
 
 
 @mcp.tool()
+@tracked_tool(history, "remember")
 def remember(
     content: str,
     namespace: str = "default",
@@ -264,9 +315,13 @@ def remember(
     # Get documentation context for the note's subject matter
     doc_context = docs.get_context_for_query(content)
 
+    # Log doc retrieval (remember doesn't search memories, it stores)
+    doc_results = docs.search(content, max_results=5)
+    _log_doc_results(content, doc_results)
+
     # Reformulate with the model
     prompt = _build_reformulate_prompt(content, doc_context)
-    reformulated = llm.generate(prompt, system=SYSTEM_PROMPT, max_tokens=512)
+    reformulated = _generate(prompt, system=SYSTEM_PROMPT, max_tokens=512)
 
     # Strip any wrapping the model might add
     reformulated = reformulated.strip().strip('"').strip("'")
@@ -291,6 +346,7 @@ def remember(
 
 
 @mcp.tool()
+@tracked_tool(history, "search_docs")
 def search_docs(query: str, module: Optional[str] = None) -> dict:
     """Search project documentation with a Consultant-generated summary.
 
@@ -305,6 +361,9 @@ def search_docs(query: str, module: Optional[str] = None) -> dict:
         Dictionary with summary and raw search results.
     """
     results = docs.search(query, module=module, max_results=8)
+
+    # Log doc retrieval
+    _log_doc_results(query, results)
 
     if not results:
         return {
@@ -324,7 +383,7 @@ def search_docs(query: str, module: Optional[str] = None) -> dict:
         "Provide a brief summary of what the documentation says about this "
         "topic. Reference specific files, classes, or methods. Be concise."
     )
-    summary = llm.generate(prompt, system=SYSTEM_PROMPT)
+    summary = _generate(prompt, system=SYSTEM_PROMPT)
 
     return {
         "summary": summary,
@@ -337,6 +396,7 @@ def search_docs(query: str, module: Optional[str] = None) -> dict:
 
 
 @mcp.tool()
+@tracked_tool(history, "start_consultation")
 def start_consultation(topic: str) -> dict:
     """Begin a multi-turn consultation session.
 
@@ -353,14 +413,20 @@ def start_consultation(topic: str) -> dict:
     _cleanup_sessions()
 
     session_id = str(uuid.uuid4())[:8]
+    _log_session_id(session_id)
 
     # Get initial documentation context
     doc_context = docs.get_context_for_query(topic)
     memories = memory.search(query=topic, namespace="default", limit=3)
     mem_context = _format_memory_context(memories)
 
+    # Log retrieval results
+    doc_results = docs.search(topic, max_results=5)
+    _log_doc_results(topic, doc_results)
+    _log_memory_results(topic, memories)
+
     prompt = _build_consult_prompt(topic, doc_context, mem_context)
-    response = llm.generate(prompt, system=SYSTEM_PROMPT)
+    response = _generate(prompt, system=SYSTEM_PROMPT)
 
     _sessions[session_id] = {
         "topic": topic,
@@ -380,6 +446,7 @@ def start_consultation(topic: str) -> dict:
 
 
 @mcp.tool()
+@tracked_tool(history, "continue_consultation")
 def continue_consultation(session_id: str, message: str) -> dict:
     """Continue an existing consultation session.
 
@@ -394,6 +461,8 @@ def continue_consultation(session_id: str, message: str) -> dict:
     Returns:
         Dictionary with the Consultant's response and session_id.
     """
+    _log_session_id(session_id)
+
     if session_id not in _sessions:
         return {
             "error": f"Session '{session_id}' not found or expired.",
@@ -404,6 +473,10 @@ def continue_consultation(session_id: str, message: str) -> dict:
 
     # Optionally fetch more doc context for the new message
     new_doc_context = docs.get_context_for_query(message, max_chunks=3, max_total_chars=4000)
+
+    # Log doc retrieval for the follow-up
+    doc_results = docs.search(message, max_results=5)
+    _log_doc_results(message, doc_results)
 
     # Build prompt with conversation history
     history_text = ""
@@ -423,7 +496,7 @@ def continue_consultation(session_id: str, message: str) -> dict:
                         "conversation history.")
 
     prompt = "\n\n".join(prompt_parts)
-    response = llm.generate(prompt, system=SYSTEM_PROMPT)
+    response = _generate(prompt, system=SYSTEM_PROMPT)
 
     session["messages"].append({"role": "user", "content": message})
     session["messages"].append({"role": "assistant", "content": response})
@@ -437,6 +510,7 @@ def continue_consultation(session_id: str, message: str) -> dict:
 
 
 @mcp.tool()
+@tracked_tool(history, "end_consultation")
 def end_consultation(
     session_id: str,
     store_summary: bool = True,
@@ -455,6 +529,8 @@ def end_consultation(
     Returns:
         Dictionary with the session summary and optional memory entry ID.
     """
+    _log_session_id(session_id)
+
     if session_id not in _sessions:
         return {
             "error": f"Session '{session_id}' not found or expired.",
@@ -477,7 +553,7 @@ def end_consultation(
         "recommendations made. This summary will be stored as a memory "
         "entry for future reference."
     )
-    summary = llm.generate(prompt, system=SYSTEM_PROMPT, max_tokens=512)
+    summary = _generate(prompt, system=SYSTEM_PROMPT, max_tokens=512)
 
     result = {
         "summary": summary,
@@ -500,6 +576,7 @@ def end_consultation(
 
 
 @mcp.tool()
+@tracked_tool(history, "consultant_status")
 def consultant_status() -> dict:
     """Check the Consultant's status and backend configuration.
 
@@ -512,6 +589,75 @@ def consultant_status() -> dict:
         "active_sessions": len(_sessions),
         "session_ttl_seconds": _SESSION_TTL,
         "docs_modules_available": len(docs._all_doc_files()),
+        "history_db": str(history._db_path),
+    }
+
+
+# ---------------------------------------------------------------------------
+# History query tools
+# ---------------------------------------------------------------------------
+
+@mcp.tool()
+def list_request_history(
+    limit: int = 20,
+    tool_name: Optional[str] = None,
+    status: Optional[str] = None,
+    session_id: Optional[str] = None,
+) -> dict:
+    """List recent request history with optional filters.
+
+    Returns summarized records (no full prompt/response) for quick
+    inspection, e.g. checking whether recent queries found documentation.
+
+    Args:
+        limit: Maximum number of records to return (default: 20).
+        tool_name: Filter by tool name (e.g. "consult", "recall").
+        status: Filter by status ("success" or "error").
+        session_id: Filter by consultation session ID.
+
+    Returns:
+        Dictionary with list of request summaries and total count.
+    """
+    records = history.list_requests(
+        limit=limit, tool_name=tool_name, status=status, session_id=session_id,
+    )
+    return {
+        "count": len(records),
+        "requests": records,
+    }
+
+
+@mcp.tool()
+def export_request_history(
+    since: Optional[str] = None,
+    until: Optional[str] = None,
+    tool_name: Optional[str] = None,
+    include_prompts: bool = True,
+    include_chunks: bool = True,
+) -> dict:
+    """Export full request history records for offline analysis.
+
+    Each record is a complete (input, context, response) triple suitable
+    for fine-tuning dataset construction.  Supports time range and tool
+    filtering.
+
+    Args:
+        since: ISO 8601 start timestamp (inclusive).
+        until: ISO 8601 end timestamp (inclusive).
+        tool_name: Filter by tool name.
+        include_prompts: Include full prompt_text and llm_response (default: True).
+        include_chunks: Include doc_chunks and memory_hits (default: True).
+
+    Returns:
+        Dictionary with list of full request records and total count.
+    """
+    records = history.export_requests(
+        since=since, until=until, tool_name=tool_name,
+        include_prompts=include_prompts, include_chunks=include_chunks,
+    )
+    return {
+        "count": len(records),
+        "requests": records,
     }
 
 
