@@ -1,0 +1,36 @@
+# Example Slack workstream configuration for Flowtree Claude Code Agent
+#
+# Copy this file and customize for your workspace:
+#   cp workstreams-example.yaml workstreams.yaml
+#
+# Then run:
+#   export SLACK_BOT_TOKEN=xoxb-your-bot-token
+#   export SLACK_APP_TOKEN=xapp-your-app-token
+#   java -cp flowtree.jar io.flowtree.slack.SlackBotController --config workstreams.yaml
+
+workstreams:
+  # Project Alpha - single agent
+  - channelId: "C0123456789"           # Get from Slack channel details
+    channelName: "#project-alpha-agent"
+    agents:
+      - host: "localhost"
+        port: 7766
+    defaultBranch: "feature/alpha"
+    pushToOrigin: true
+    allowedTools: "Read,Edit,Write,Bash,Glob,Grep"
+    maxTurns: 50
+    maxBudgetUsd: 10.0
+
+  # Project Beta - multiple agents for parallel work
+  - channelId: "C9876543210"
+    channelName: "#project-beta-agent"
+    agents:
+      - host: "localhost"
+        port: 7767
+      - host: "localhost"
+        port: 7768
+    defaultBranch: "feature/beta"
+    pushToOrigin: true
+    workingDirectory: "/workspace/project-beta"
+    maxTurns: 100
+    maxBudgetUsd: 25.0

@@ -4,15 +4,22 @@
 
 # STOP. READ THIS FIRST.
 
-## ABSOLUTE PREREQUISITE: USE AR-DOCS MCP BEFORE ANY ACTION
+## ABSOLUTE PREREQUISITE: USE AR-CONSULTANT BEFORE ANY ACTION
 
 **THIS IS THE MOST IMPORTANT RULE. IT COMES BEFORE ALL OTHER RULES.**
 
-**BEFORE you write ANY code, make ANY assumptions, or take ANY action, you MUST:**
+The `ar-consultant` MCP server is a documentation-aware assistant that combines documentation search, semantic memory, and local LLM inference into a single interface. It **replaces direct use of `ar-docs` and `ar-memory`** for most tasks. Use it as your primary tool for understanding the codebase, recalling prior context, and storing new knowledge.
 
-1. **SEARCH ar-docs**: `mcp__ar-docs__search_ar_docs query:"<relevant terms>"`
-2. **READ module documentation**: `mcp__ar-docs__read_ar_module module:"<module>"`
-3. **CHECK quick reference**: `mcp__ar-docs__read_quick_reference`
+**BEFORE you write ANY code, make ANY assumptions, or take ANY action, you MUST consult:**
+
+```
+mcp__ar-consultant__consult question:"<your question about the codebase>"
+```
+
+For specific documentation lookups:
+```
+mcp__ar-consultant__search_docs query:"<search terms>"
+```
 
 **YOU ARE NOT ALLOWED TO:**
 - Assume you know how something works
@@ -24,53 +31,171 @@
 **THE AR CODEBASE IS A PRODUCTION APPLICATION** used by real people worldwide. If something seems like it "doesn't work" or "isn't stored," YOU ARE WRONG. The application works. You need to LOOK UP how it works.
 
 **EVERY TIME you are about to:**
-- Implement a feature -> SEARCH ar-docs first
-- Fix a bug -> SEARCH ar-docs first
-- **Investigate a CI/test failure** -> SEARCH ar-docs first
-- **Debug any issue** -> SEARCH ar-docs first
-- **Run git commands to understand changes** -> SEARCH ar-docs first
-- Answer a question about architecture -> SEARCH ar-docs first
-- Modify existing code -> SEARCH ar-docs first
-- Make ANY claim about the codebase -> SEARCH ar-docs first
+- Implement a feature -> CONSULT first
+- Fix a bug -> CONSULT first
+- **Investigate a CI/test failure** -> CONSULT first
+- **Debug any issue** -> CONSULT first
+- **Run git commands to understand changes** -> CONSULT first
+- Answer a question about architecture -> CONSULT first
+- Modify existing code -> CONSULT first
+- Make ANY claim about the codebase -> CONSULT first
 
 **"Investigation" and "debugging" ARE actions.** Running `git log`, `git diff`, reading test files, or exploring code changes are NOT exempt from this rule. You must understand the component architecture BEFORE looking at what changed.
 
-**If ar-docs doesn't have the information you need:**
+**Example of WRONG behavior:**
+```
+User: "The prototype discovery doesn't show file paths"
+Claude: "The protobuf schema only stores MD5 hash, not file path..."
+```
+This is WRONG because Claude did NOT consult the documentation to understand how the actual application handles this.
+
+**Example of CORRECT behavior:**
+```
+User: "The prototype discovery doesn't show file paths"
+Claude: [Calls mcp__ar-consultant__consult question:"How does AudioLibrary handle file path identifiers in prototype discovery?"]
+Claude: [Now has a documentation-grounded answer with sources cited before responding]
+```
+
+**If the Consultant doesn't have enough information:**
 1. READ the actual source code thoroughly
 2. TRACE the data flow from end to end
 3. NEVER guess or speculate
 
-**This rule exists because:** Claude repeatedly makes assumptions, writes incorrect code, and wastes the developer's time. The ar-docs MCP contains authoritative documentation. USE IT.
+### Specific Scenarios Requiring Consultation
+
+**Infrastructure changes (tests, build, framework classes):**
+```
+WRONG: See TestDepthRule in source, assume how it works, add @Rule manually
+RIGHT: Consult first → Learn TestDepthRule is INTERNAL to TestSuiteBase
+```
+
+**API discovery (finding operations, interfaces, utilities):**
+```
+WRONG: Grep source for "sin" → Don't find it → Conclude "doesn't exist"
+RIGHT: mcp__ar-consultant__search_docs query:"trigonometry sin cos" → Find sin/cos in GeometryFeatures
+```
+
+**Understanding data flow (how library handles file paths, identifiers, etc.):**
+```
+WRONG: Read one class → Make assumptions → Write incorrect code
+RIGHT: Consult → Get synthesized answer with source references → Understand
+```
+
+**Complex topics requiring back-and-forth:**
+```
+mcp__ar-consultant__start_consultation topic:"How does process isolation interact with attention layers?"
+mcp__ar-consultant__continue_consultation session_id:"..." message:"What about the QK-norm case?"
+mcp__ar-consultant__end_consultation session_id:"..."  # Summary stored as memory
+```
+
+**This rule exists because:** Claude repeatedly makes assumptions, writes incorrect code, and wastes the developer's time. The Consultant has access to the full documentation corpus, prior session memories, and a local LLM for synthesis. USE IT.
+
+### Available Consultant Tools
+
+| Tool | Purpose | When to Use |
+|------|---------|-------------|
+| `consult` | Ask a question, get a documentation-grounded answer | Default for any question about the codebase |
+| `search_docs` | Search docs with Consultant summary | When you need raw doc results with a synthesis |
+| `recall` | Search memories, contextualized with docs | Check for prior decisions, findings, or progress |
+| `remember` | Store a memory with Consultant reformulation | After completing work, finding bugs, making decisions |
+| `start_consultation` | Begin multi-turn session | Complex topics needing back-and-forth |
+| `continue_consultation` | Follow up in a session | Refining understanding of a complex topic |
+| `end_consultation` | End session, auto-store summary | Done with a multi-turn consultation |
+| `consultant_status` | Check backend health | Verify the Consultant is operational |
+| `list_request_history` | List recent Consultant calls | Check what was already asked in this session |
+| `export_request_history` | Export full history for analysis | Quality review, dataset construction |
+
+### Direct Tool Access (When Needed)
+
+The `ar-docs` and `ar-memory` MCP servers are still available for direct access. Use them when:
+
+- **ar-docs** (`mcp__ar-docs__*`): You need raw documentation without LLM synthesis (e.g., reading a full module page, checking quick reference, searching source comments)
+- **ar-memory** (`mcp__ar-memory__*`): You need raw memory operations without reformulation (e.g., deleting entries, listing by tag, bulk operations)
+
+For **all other documentation and memory needs**, prefer `ar-consultant`. It searches the same documentation and memory stores but adds synthesis, contextualization, and quality control.
+
+---
+
+## ⚠️ CRITICAL: USE MEMORY AGGRESSIVELY ⚠️
+
+**Persistent memory is essential for cross-session continuity. USE IT.**
+
+The Consultant's `remember` tool stores memories after reformulating them to be consistent with project terminology. The Consultant's `recall` tool searches memories and contextualizes them with current documentation. **You MUST use these aggressively.**
+
+### When to STORE memories (use `remember`)
+
+**Store EVERY TIME you:**
+- Make a design decision or learn why something was done a certain way
+- Discover a non-obvious behavior, gotcha, or quirk in the codebase
+- Complete a task (summarize what was done, what files changed, and why)
+- Encounter and resolve a bug (record the root cause and fix)
+- Learn something about the architecture that isn't in the docs
+- Receive explicit instructions or preferences from the user
+- Identify a pattern, convention, or anti-pattern in the codebase
+- Find that something does NOT work (so future sessions don't repeat the mistake)
+- Start a multi-session task (record progress, next steps, and open questions)
+
+**Example of WRONG behavior:**
+```
+[Spends 30 minutes debugging a FAISS index issue, finds the fix]
+[Does NOT store the finding]
+[Next session: re-discovers the same issue from scratch]
+```
+
+**Example of CORRECT behavior:**
+```
+[Fixes the issue]
+[Calls mcp__ar-consultant__remember content:"FAISS index rebuild required after..." namespace:"bugs" tags:["memory","faiss"]]
+[Next session: recall finds the prior work immediately, contextualized with current docs]
+```
+
+### When to SEARCH memories (use `recall`)
+
+**Search EVERY TIME you:**
+- Start a new session or task (check for prior context)
+- Work on a module or feature area (check for prior decisions/findings)
+- Encounter an error or unexpected behavior (check if it was seen before)
+- Are about to make a design decision (check if it was already decided)
+- Resume work that may have started in a prior session
+
+### Best practices for memory
+
+- Use **namespaces** to organize: `"decisions"` for design choices, `"bugs"` for issues found, `"context"` for codebase knowledge, `"progress"` for multi-session task tracking
+- Use **tags** liberally -- they enable filtered searches later
+- Write **detailed content** -- include file paths, class names, method names, and the "why" not just the "what"
+- **Search before you start working** -- prior sessions may have left you exactly the context you need
+- When completing a multi-step task, store a **progress summary** with next steps so the next session can pick up seamlessly
+- The Consultant will reformulate your notes for terminology consistency -- write naturally and let the reformulation handle the polish
+
+**This rule exists because:** Claude loses all context between sessions. Without aggressive memory use, every session starts from zero. The Consultant's memory system makes cross-session continuity possible. USE IT.
 
 See [docs/internals/ar-docs-examples.md](docs/internals/ar-docs-examples.md) for detailed wrong/right examples.
 
 ---
 
-## MECHANICAL GATE: AR-DOCS IN FIRST RESPONSE
+## MECHANICAL GATE: AR-CONSULTANT IN FIRST RESPONSE
 
-**Your first response to any task MUST include ar-docs search results before any other tool calls.**
+**Your first response to any task MUST include an ar-consultant call before any other tool calls.**
 
-This is a mechanical requirement, not a judgment call. If your first tool call is `git log`, `git diff`, `Read`, `Grep`, or any tool other than an ar-docs MCP tool, you are violating this rule.
+This is a mechanical requirement, not a judgment call. If your first tool call is `git log`, `git diff`, `Read`, `Grep`, or any tool other than an ar-consultant MCP tool, you are violating this rule.
 
 **Correct first response pattern:**
 ```
-1. mcp__ar-docs__search_ar_docs query:"<component/test/feature name>"
-2. mcp__ar-docs__read_ar_module module:"<relevant module>"
-3. THEN git commands, file reads, etc.
+1. mcp__ar-consultant__consult question:"<question about component/test/feature>"
+2. THEN git commands, file reads, etc.
 ```
 
-**Why this is mechanical:** Judgment-based rules ("search ar-docs when relevant") fail because Claude always thinks the current task is an exception. Making it mechanical removes ambiguity.
+**Why this is mechanical:** Judgment-based rules ("consult when relevant") fail because Claude always thinks the current task is an exception. Making it mechanical removes ambiguity.
 
 ---
 
-## DEBUGGING PROTOCOL: AR-DOCS FIRST, THEN INVESTIGATE
+## DEBUGGING PROTOCOL: CONSULT FIRST, THEN INVESTIGATE
 
 **When a user reports a CI failure, test failure, or bug:**
 
 1. **FIRST**: Extract component/test names from the error message
-2. **SECOND**: Search ar-docs for those components: `mcp__ar-docs__search_ar_docs query:"<component name>"`
-3. **THIRD**: Read the relevant module documentation: `mcp__ar-docs__read_ar_module module:"<module>"`
-4. **FOURTH**: NOW you may run git commands, read files, investigate changes
+2. **SECOND**: Consult about those components: `mcp__ar-consultant__consult question:"How does <component> work? What are its dependencies and expected behavior?"`
+3. **THIRD**: NOW you may run git commands, read files, investigate changes
 
 **Example - CI failure in OobleckComponentTests:**
 ```
@@ -80,9 +205,8 @@ WRONG ORDER:
 3. Read the test file           <- VIOLATION
 
 CORRECT ORDER:
-1. mcp__ar-docs__search_ar_docs query:"Oobleck decoder block"
-2. mcp__ar-docs__read_ar_module module:"ml"
-3. NOW: git log, git diff, Read test file
+1. mcp__ar-consultant__consult question:"How does the Oobleck decoder block work in the ml module?"
+2. NOW: git log, git diff, Read test file
 ```
 
 **The reason for this order:** You cannot effectively investigate changes if you don't understand what the component is supposed to do. Understanding architecture first prevents wasted effort chasing red herrings.
@@ -306,9 +430,8 @@ All training scenarios (supervised learning, diffusion, reinforcement learning, 
 ### Before Implementing ANY Training-Related Code
 
 **You MUST:**
-1. Run `mcp__ar-docs__search_ar_docs query:"ModelOptimizer training"`
-2. Run `mcp__ar-docs__read_ar_module module:"optimize"`
-3. Read the relevant design document (e.g., `ringsdesktop/docs/planning/10-MODEL-FINE-TUNING.md`)
+1. Run `mcp__ar-consultant__consult question:"How does ModelOptimizer handle training loops and what is the correct usage pattern?"`
+2. Read the relevant design document (e.g., `ringsdesktop/docs/planning/10-MODEL-FINE-TUNING.md`)
 4. Explicitly state: "According to the design document, I should use `ModelOptimizer` for the training loop and create a custom `Dataset` for [X]"
 
 ### Duplication Red Flags
@@ -350,7 +473,7 @@ All diffusion generation scenarios (text-conditional, unconditional, img2img, in
 ### Before Implementing ANY Diffusion Generation Code
 
 **You MUST:**
-1. Run `mcp__ar-docs__search_ar_docs query:"DiffusionSampler sampling"`
+1. Run `mcp__ar-consultant__consult question:"How does DiffusionSampler handle sampling loops and what SamplingStrategy options exist?"`
 2. Explicitly state: "According to the architecture, I should use `DiffusionSampler` for the sampling loop with a `[DDIM/PingPong/etc]SamplingStrategy`"
 
 ### Duplication Red Flags
@@ -385,13 +508,12 @@ See [docs/internals/sampling-loop-examples.md](docs/internals/sampling-loop-exam
 - `PackedCollection` is a *handle* to memory that may be on a completely different device (GPU, external accelerator, native memory)
 - Operations on `PackedCollection` must go through the AR framework, not Java primitives
 
-### Mandatory ar-docs MCP Consultation
+### Mandatory Consultation
 
 **Before writing code that creates, copies, or transforms `PackedCollection` objects, you MUST:**
 
-1. Run `mcp__ar-docs__search_ar_docs query:"PackedCollection operations"`
-2. Run `mcp__ar-docs__read_ar_module module:"collect"`
-3. Look for existing methods like `copy()`, `reshape()`, `traverse()`, etc.
+1. Run `mcp__ar-consultant__consult question:"What are the correct PackedCollection operations for <your use case>? How do copy, reshape, traverse work?"`
+2. Look for existing methods like `copy()`, `reshape()`, `traverse()`, etc.
 
 ### RED FLAG PATTERNS - STOP IMMEDIATELY
 
@@ -658,7 +780,7 @@ REPEAT THIS PRINCIPLE IN THE SUMMARY
 2. **Search for existing implementations** before writing new code:
    - `Grep pattern:"ModelOptimizer"` for training-related code
    - `Grep pattern:"extends CellularLayer"` for layer implementations
-   - `mcp__ar-docs__search_ar_docs query:"<feature>"` for framework patterns
+   - `mcp__ar-consultant__consult question:"How does <feature> work?"` for framework patterns
 3. **Explicitly state your reuse plan**: "I will reuse [X] rather than reimplementing it"
 4. **Check the summary for incomplete tasks** - if the summary mentions "remaining work" or "TODO", that work is YOUR responsibility
 

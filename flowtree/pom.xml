@@ -157,6 +157,26 @@
 			<version>0.66.19</version>
 		</dependency>
 
+		<!-- Slack SDK for bot integration -->
+		<dependency>
+			<groupId>com.slack.api</groupId>
+			<artifactId>slack-api-client</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>com.slack.api</groupId>
+			<artifactId>bolt-socket-mode</artifactId>
+		</dependency>
+
+		<!-- Jackson for YAML/JSON configuration -->
+		<dependency>
+			<groupId>com.fasterxml.jackson.core</groupId>
+			<artifactId>jackson-databind</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>com.fasterxml.jackson.dataformat</groupId>
+			<artifactId>jackson-dataformat-yaml</artifactId>
+		</dependency>
+
 		<dependency>
 			<groupId>junit</groupId>
 			<artifactId>junit</artifactId>
