@@ -341,4 +341,23 @@ public class LoRADiffusionTransformer extends DiffusionTransformer implements At
 		return compiled;
 	}
 
+	/**
+	 * Releases the compiled model, freeing its native memory.
+	 *
+	 * <p>After calling this method, the next call to {@link #forward} will
+	 * recompile the model for inference only (without backward pass support),
+	 * which uses significantly less memory. This is useful after training
+	 * completes and the backward pass graphs are no longer needed.</p>
+	 *
+	 * <p>The underlying {@link org.almostrealism.model.Model} and its layers
+	 * (including trained LoRA weights) are preserved. Only the compiled
+	 * execution plan is released.</p>
+	 */
+	public void releaseCompiledModel() {
+		if (compiled != null) {
+			compiled.destroy();
+			compiled = null;
+		}
+	}
+
 }

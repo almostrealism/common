@@ -22,6 +22,7 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.layers.AdapterConfig;
 import org.almostrealism.ml.DiffusionTrainingDataset;
 import org.almostrealism.ml.StateDictionary;
+import org.almostrealism.layers.LoRALinear;
 import org.almostrealism.ml.audio.*;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
@@ -87,8 +88,8 @@ public class AggressiveFineTuningTest extends TestSuiteBase {
 	 *   <li>Load 5 audio files from BASS LOOPS</li>
 	 *   <li>Encode them to latent space</li>
 	 *   <li>Train for 20 epochs with aggressive settings</li>
-	 *   <li>Generate 3 audio samples</li>
-	 *   <li>Save before/after samples for comparison</li>
+	 *   <li>Release training-compiled model, then generate 3 audio samples</li>
+	 *   <li>Save LoRA adapter weights</li>
 	 * </ul>
 	 */
 	@Test
@@ -157,16 +158,7 @@ public class AggressiveFineTuningTest extends TestSuiteBase {
 				adapterConfig,
 				false
 		);
-		log("  Created model with " + loraModel.getLoraLayers().size() + " LoRA layers");
-
-		// Count trainable parameters
-		long trainableParams = 0;
-		for (var layer : loraModel.getLoraLayers()) {
-			for (var weight : layer.getWeights()) {
-				trainableParams += weight.getMemLength();
-			}
-		}
-		log("  Trainable parameters: " + trainableParams);
+		log("  Model object created (LoRA layers are created during compilation)");
 
 		// Step 4: Compile model
 		log("");
@@ -174,12 +166,22 @@ public class AggressiveFineTuningTest extends TestSuiteBase {
 		CompiledModel compiledModel = loraModel.compileForTraining();
 		log("  Model compiled with backward pass enabled");
 
-		// Step 5: Generate "before" sample (untrained model)
-		log("");
-		log("Step 5: Generating 'before' sample (untrained model)...");
+		// Log LoRA layer count after compilation (buildModel runs lazily during compile)
+		log("  LoRA layers created: " + loraModel.getLoraLayers().size());
+
+		// Count trainable parameters
+		long trainableParams = 0;
+		for (LoRALinear layer : loraModel.getLoraLayers()) {
+			for (PackedCollection weight : layer.getWeights()) {
+				trainableParams += weight.getMemLength();
+			}
+		}
+		log("  Trainable parameters: " + trainableParams);
+
+		// Step 5: Create scheduler (skip "before" sample to conserve memory;
+		// the training-compiled model with backward pass graphs consumes too
+		// much native memory to also compile the decoder simultaneously)
 		DiffusionNoiseScheduler scheduler = new DiffusionNoiseScheduler(NUM_DIFFUSION_STEPS);
-		generateAndSaveSample(loraModel, autoencoderWeights, scheduler,
-				dataset.getLatentLength(), OUTPUT_DIR.resolve("before_training.wav"));
 
 		// Step 6: Aggressive fine-tuning
 		log("");
@@ -219,8 +221,14 @@ public class AggressiveFineTuningTest extends TestSuiteBase {
 		}
 
 		// Step 7: Generate "after" samples
+		// Release the training-compiled model (with backward pass graphs) to free
+		// native memory. The forward() method will recompile for inference only,
+		// which uses significantly less memory and allows the decoder to fit.
 		log("");
 		log("Step 7: Generating 'after' samples (trained model)...");
+		log("  Releasing training-compiled model to free memory for decoder...");
+		loraModel.releaseCompiledModel();
+
 		for (int i = 0; i < 3; i++) {
 			generateAndSaveSample(loraModel, autoencoderWeights, scheduler,
 					dataset.getLatentLength(),
@@ -247,13 +255,12 @@ public class AggressiveFineTuningTest extends TestSuiteBase {
 		log("");
 		log("=== Test Complete ===");
 		log("Output files:");
-		log("  " + OUTPUT_DIR.resolve("before_training.wav"));
 		log("  " + OUTPUT_DIR.resolve("after_training_1.wav"));
 		log("  " + OUTPUT_DIR.resolve("after_training_2.wav"));
 		log("  " + OUTPUT_DIR.resolve("after_training_3.wav"));
 		log("  " + adaptersPath);
 		log("");
-		log("Listen to the before/after samples to hear if the model learned");
+		log("Listen to the generated samples to hear if the model learned");
 		log("the characteristics of the BASS LOOPS training data.");
 	}
 
@@ -334,7 +341,7 @@ public class AggressiveFineTuningTest extends TestSuiteBase {
 				latentLength, 0,
 				transformerWeights, adapterConfig, false
 		);
-		log("  LoRA model created with " + loraModel.getLoraLayers().size() + " layers");
+		log("  LoRA model object created (layers built lazily during compilation)");
 
 		// Test noise addition
 		PackedCollection testLatent = new PackedCollection(1, IO_CHANNELS, latentLength);
