@@ -121,7 +121,7 @@ public class SlackBotController implements JobCompletionListener, ConsoleFeature
         for (SlackWorkstream workstream : config.toWorkstreams()) {
             registerWorkstream(workstream);
         }
-        log("[SlackBotController] Loaded " + config.getWorkstreams().size() +
+        log("Loaded " + config.getWorkstreams().size() +
                           " workstream(s) from " + configFile.getName());
     }
 
@@ -146,7 +146,7 @@ public class SlackBotController implements JobCompletionListener, ConsoleFeature
      */
     public void registerWorkstream(SlackWorkstream workstream) throws IOException {
         listener.registerWorkstream(workstream);
-        log("[SlackBotController] Registered workstream: " + workstream.getChannelName());
+        log("Registered workstream: " + workstream.getChannelName());
     }
 
     /**
@@ -170,7 +170,7 @@ public class SlackBotController implements JobCompletionListener, ConsoleFeature
      */
     public void start() throws Exception {
         if (running.getAndSet(true)) {
-            log("[SlackBotController] Already running");
+            log("Already running");
             return;
         }
 
@@ -230,7 +230,7 @@ public class SlackBotController implements JobCompletionListener, ConsoleFeature
             String text = event.getText();
             String threadTs = event.getThreadTs();
 
-            log("[SlackBotController] App mention in " + channelId + ": " + text);
+            log("App mention in " + channelId + ": " + text);
 
             // Skip bot's own messages
             if (userId != null && userId.equals(botUserId)) {
@@ -260,7 +260,7 @@ public class SlackBotController implements JobCompletionListener, ConsoleFeature
                 return ctx.ack();
             }
 
-            log("[SlackBotController] DM from " + userId + ": " + text);
+            log("DM from " + userId + ": " + text);
             listener.handleMessage(channelId, userId, text, threadTs);
             return ctx.ack();
         });
@@ -296,7 +296,7 @@ public class SlackBotController implements JobCompletionListener, ConsoleFeature
             app = null;
         }
 
-        log("[SlackBotController] Stopped");
+        log("Stopped");
     }
 
     /**

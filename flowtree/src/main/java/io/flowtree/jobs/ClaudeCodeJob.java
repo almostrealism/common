@@ -198,10 +198,10 @@ public class ClaudeCodeJob extends GitManagedJob {
             command.add(String.format("%.2f", maxBudgetUsd));
         }
 
-        log("[ClaudeCodeJob] Starting: " + getTaskString());
-        log("[ClaudeCodeJob] Tools: " + allowedTools);
+        log("Starting: " + getTaskString());
+        log("Tools: " + allowedTools);
         if (getTargetBranch() != null) {
-            log("[ClaudeCodeJob] Target branch: " + getTargetBranch());
+            log("Target branch: " + getTargetBranch());
         }
 
         try {
@@ -236,8 +236,8 @@ public class ClaudeCodeJob extends GitManagedJob {
             // Try to extract session ID from JSON output
             extractSessionId(output);
 
-            log("[ClaudeCodeJob] Completed with exit code: " + exitCode);
-            log("[ClaudeCodeJob] Output saved to: " + outputFile);
+            log("Completed with exit code: " + exitCode);
+            log("Output saved to: " + outputFile);
 
             if (getOutputConsumer() != null) {
                 getOutputConsumer().accept(new ClaudeCodeJobOutput(
@@ -246,7 +246,7 @@ public class ClaudeCodeJob extends GitManagedJob {
             }
 
         } catch (IOException | InterruptedException e) {
-            warn("[ClaudeCodeJob] Error: " + e.getMessage(), e);
+            warn("Error: " + e.getMessage(), e);
             exitCode = -1;
         }
     }

@@ -100,7 +100,7 @@ public class SlackListener implements ConsoleFeatures {
         channelToWorkstream.put(workstream.getChannelId(), workstream);
         workstreamClients.put(workstream.getWorkstreamId(), client);
 
-        log("[SlackListener] Registered workstream: " + workstream);
+        log("Registered workstream: " + workstream);
     }
 
     /**
@@ -127,7 +127,7 @@ public class SlackListener implements ConsoleFeatures {
     public boolean handleMessage(String channelId, String userId, String text, String threadTs) {
         SlackWorkstream workstream = channelToWorkstream.get(channelId);
         if (workstream == null) {
-            log("[SlackListener] Ignoring message from unknown channel: " + channelId);
+            log("Ignoring message from unknown channel: " + channelId);
             return false;
         }
 
@@ -142,7 +142,7 @@ public class SlackListener implements ConsoleFeatures {
         // Extract prompt from mention
         String prompt = extractPrompt(text);
         if (prompt == null || prompt.trim().isEmpty()) {
-            log("[SlackListener] No prompt found in message: " + text);
+            log("No prompt found in message: " + text);
             return false;
         }
 
@@ -173,7 +173,7 @@ public class SlackListener implements ConsoleFeatures {
                 return false;
 
             default:
-                log("[SlackListener] Unknown command: " + command);
+                log("Unknown command: " + command);
                 return false;
         }
     }
@@ -209,7 +209,7 @@ public class SlackListener implements ConsoleFeatures {
     private boolean submitJob(SlackWorkstream workstream, String prompt, String threadTs) {
         ClaudeCodeClient client = workstreamClients.get(workstream.getWorkstreamId());
         if (client == null) {
-            warn("[SlackListener] No client for workstream: " + workstream.getWorkstreamId());
+            warn("No client for workstream: " + workstream.getWorkstreamId());
             return false;
         }
 
@@ -245,7 +245,7 @@ public class SlackListener implements ConsoleFeatures {
         // Submit the job
         client.submit(factory);
 
-        log("[SlackListener] Submitted job: " + factory.getTaskId());
+        log("Submitted job: " + factory.getTaskId());
         return true;
     }
 

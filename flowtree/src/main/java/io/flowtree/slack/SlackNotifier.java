@@ -85,7 +85,7 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
     public void onJobStarted(JobCompletionEvent event) {
         SlackWorkstream workstream = workstreams.get(event.getWorkstreamId());
         if (workstream == null) {
-            warn("[SlackNotifier] Unknown workstream: " + event.getWorkstreamId());
+            warn("Unknown workstream: " + event.getWorkstreamId());
             return;
         }
 
@@ -97,7 +97,7 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
     public void onJobCompleted(JobCompletionEvent event) {
         SlackWorkstream workstream = workstreams.get(event.getWorkstreamId());
         if (workstream == null) {
-            warn("[SlackNotifier] Unknown workstream: " + event.getWorkstreamId());
+            warn("Unknown workstream: " + event.getWorkstreamId());
             return;
         }
 
@@ -119,7 +119,7 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
         }
 
         if (client == null) {
-            log("[SlackNotifier] No bot token - message would be posted to " + channelId + ":");
+            log("No bot token - message would be posted to " + channelId + ":");
             log(text);
             return;
         }
@@ -133,10 +133,10 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
             );
 
             if (!response.isOk()) {
-                warn("[SlackNotifier] Failed to post message: " + response.getError());
+                warn("Failed to post message: " + response.getError());
             }
         } catch (IOException | SlackApiException e) {
-            warn("[SlackNotifier] Error posting message: " + e.getMessage());
+            warn("Error posting message: " + e.getMessage());
         }
     }
 
@@ -155,7 +155,7 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
         }
 
         if (client == null) {
-            log("[SlackNotifier] No bot token - thread reply would be:");
+            log("No bot token - thread reply would be:");
             log(text);
             return;
         }
@@ -170,10 +170,10 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
             );
 
             if (!response.isOk()) {
-                warn("[SlackNotifier] Failed to post thread reply: " + response.getError());
+                warn("Failed to post thread reply: " + response.getError());
             }
         } catch (IOException | SlackApiException e) {
-            warn("[SlackNotifier] Error posting thread reply: " + e.getMessage());
+            warn("Error posting thread reply: " + e.getMessage());
         }
     }
 

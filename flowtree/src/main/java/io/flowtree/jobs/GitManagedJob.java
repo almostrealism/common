@@ -211,7 +211,7 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
             }
 
         } catch (Exception e) {
-            warn("[GitManagedJob] Error: " + e.getMessage(), e);
+            warn("Error: " + e.getMessage(), e);
             error = e;
         } finally {
             // Fire completion event
@@ -234,7 +234,7 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
             try {
                 listener.onJobStarted(event);
             } catch (Exception e) {
-                warn("[GitManagedJob] Listener error: " + e.getMessage());
+                warn("Listener error: " + e.getMessage());
             }
         }
 
@@ -242,7 +242,7 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
             try {
                 instanceListener.onJobStarted(event);
             } catch (Exception e) {
-                warn("[GitManagedJob] Instance listener error: " + e.getMessage());
+                warn("Instance listener error: " + e.getMessage());
             }
         }
     }
@@ -271,7 +271,7 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
             try {
                 listener.onJobCompleted(event);
             } catch (Exception e) {
-                warn("[GitManagedJob] Listener error: " + e.getMessage());
+                warn("Listener error: " + e.getMessage());
             }
         }
 
@@ -279,7 +279,7 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
             try {
                 instanceListener.onJobCompleted(event);
             } catch (Exception e) {
-                warn("[GitManagedJob] Instance listener error: " + e.getMessage());
+                warn("Instance listener error: " + e.getMessage());
             }
         }
     }
@@ -298,20 +298,20 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
      * Handles all git operations: branch management, staging, committing, and pushing.
      */
     private void handleGitOperations() {
-        log("[GitManagedJob] Starting git operations...");
-        log("[GitManagedJob] Target branch: " + targetBranch);
+        log("Starting git operations...");
+        log("Target branch: " + targetBranch);
 
         try {
             // Step 1: Ensure we're on the target branch
             if (!ensureOnTargetBranch()) {
-                warn("[GitManagedJob] Failed to switch to target branch");
+                warn("Failed to switch to target branch");
                 return;
             }
 
             // Step 2: Find and filter changed files
             List<String> changedFiles = findChangedFiles();
             if (changedFiles.isEmpty()) {
-                log("[GitManagedJob] No changes to commit");
+                log("No changes to commit");
                 gitOperationsSuccessful = true;
                 return;
             }
@@ -319,30 +319,30 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
             // Step 3: Stage files (with guardrails)
             stageFiles(changedFiles);
             if (stagedFiles.isEmpty()) {
-                log("[GitManagedJob] No files passed guardrails, nothing to commit");
+                log("No files passed guardrails, nothing to commit");
                 gitOperationsSuccessful = true;
                 return;
             }
 
             // Step 4: Commit
             if (!commit()) {
-                warn("[GitManagedJob] Commit failed");
+                warn("Commit failed");
                 return;
             }
 
             // Step 5: Push to origin
             if (pushToOrigin && !dryRun) {
                 if (!pushToOrigin()) {
-                    warn("[GitManagedJob] Push failed");
+                    warn("Push failed");
                     return;
                 }
             }
 
             gitOperationsSuccessful = true;
-            log("[GitManagedJob] Git operations completed successfully");
+            log("Git operations completed successfully");
 
         } catch (Exception e) {
-            warn("[GitManagedJob] Git operations failed: " + e.getMessage(), e);
+            warn("Git operations failed: " + e.getMessage(), e);
         }
     }
 
@@ -353,7 +353,7 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
         String currentBranch = getCurrentBranch();
 
         if (targetBranch.equals(currentBranch)) {
-            log("[GitManagedJob] Already on target branch: " + targetBranch);
+            log("Already on target branch: " + targetBranch);
             return true;
         }
 
@@ -361,12 +361,12 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
         boolean branchExists = branchExists(targetBranch);
 
         if (!branchExists && !createBranchIfMissing) {
-            warn("[GitManagedJob] Target branch does not exist and createBranchIfMissing=false");
+            warn("Target branch does not exist and createBranchIfMissing=false");
             return false;
         }
 
         if (dryRun) {
-            log("[GitManagedJob] DRY RUN: Would " +
+            log("DRY RUN: Would " +
                 (branchExists ? "checkout" : "create and checkout") + " branch: " + targetBranch);
             return true;
         }
@@ -376,7 +376,7 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
             return executeGit("checkout", targetBranch) == 0;
         } else {
             // Create new branch from current HEAD
-            log("[GitManagedJob] Creating new branch: " + targetBranch);
+            log("Creating new branch: " + targetBranch);
             return executeGit("checkout", "-b", targetBranch) == 0;
         }
     }
@@ -402,7 +402,7 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
             }
         }
 
-        log("[GitManagedJob] Found " + files.size() + " changed files");
+        log("Found " + files.size() + " changed files");
         return files;
     }
 
@@ -421,39 +421,39 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
 
             // Guardrail 1: Check excluded patterns
             if (matchesAnyPattern(file, allExcluded)) {
-                log("[GitManagedJob] SKIP (pattern): " + file);
+                log("SKIP (pattern): " + file);
                 skippedFiles.add(file + " (excluded pattern)");
                 continue;
             }
 
             // Guardrail 2: Check file size (only for existing files)
             if (!isDeleted && f.length() > maxFileSizeBytes) {
-                log("[GitManagedJob] SKIP (size " + formatSize(f.length()) + "): " + file);
+                log("SKIP (size " + formatSize(f.length()) + "): " + file);
                 skippedFiles.add(file + " (exceeds " + formatSize(maxFileSizeBytes) + ")");
                 continue;
             }
 
             // Guardrail 3: Check if binary (only for existing files)
             if (!isDeleted && isBinaryFile(f)) {
-                log("[GitManagedJob] SKIP (binary): " + file);
+                log("SKIP (binary): " + file);
                 skippedFiles.add(file + " (binary file)");
                 continue;
             }
 
             // File passed all guardrails
             if (dryRun) {
-                log("[GitManagedJob] DRY RUN: Would stage: " + file);
+                log("DRY RUN: Would stage: " + file);
             } else {
                 if (executeGit("add", file) == 0) {
                     stagedFiles.add(file);
-                    log("[GitManagedJob] Staged: " + file);
+                    log("Staged: " + file);
                 } else {
-                    warn("[GitManagedJob] Failed to stage: " + file);
+                    warn("Failed to stage: " + file);
                 }
             }
         }
 
-        log("[GitManagedJob] Staged " + stagedFiles.size() + " files, skipped " + skippedFiles.size());
+        log("Staged " + stagedFiles.size() + " files, skipped " + skippedFiles.size());
     }
 
     /**
@@ -463,7 +463,7 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
         String message = getCommitMessage();
 
         if (dryRun) {
-            log("[GitManagedJob] DRY RUN: Would commit with message: " + message);
+            log("DRY RUN: Would commit with message: " + message);
             return true;
         }
 
@@ -471,7 +471,7 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
         if (result == 0) {
             // Get the commit hash
             commitHash = executeGitWithOutput("rev-parse", "HEAD").trim();
-            log("[GitManagedJob] Committed: " + commitHash);
+            log("Committed: " + commitHash);
             return true;
         }
 
@@ -482,12 +482,12 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
      * Pushes changes to origin.
      */
     private boolean pushToOrigin() throws IOException, InterruptedException {
-        log("[GitManagedJob] Pushing to origin...");
+        log("Pushing to origin...");
 
         // Push with -u to set upstream if this is a new branch
         int result = executeGit("push", "-u", "origin", targetBranch);
         if (result == 0) {
-            log("[GitManagedJob] Pushed to origin/" + targetBranch);
+            log("Pushed to origin/" + targetBranch);
             return true;
         }
 
