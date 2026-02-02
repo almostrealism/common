@@ -6,11 +6,13 @@ An MCP server for JVM memory analysis and leak detection on forked test JVMs. Co
 
 - **Heap Inspection**: Pool-level memory utilization from `jstat -gc`
 - **GC Analysis**: Cause, timing, and utilization from `jstat -gccause`
-- **Class Histograms**: Live object counts via `jcmd GC.class_histogram` with snapshot diffing
+- **Class Histograms**: Live object counts via `jcmd GC.class_histogram` with snapshot diffing (same-run and cross-run)
 - **JFR Allocation Profiling**: Start/stop Flight Recorder and aggregate allocation samples by class
 - **Thread Dumps**: `jcmd Thread.print` with regex filtering
 - **Native Memory Tracking**: `jcmd VM.native_memory summary` for JNI/off-heap leaks
 - **Continuous Monitoring**: Background `jstat` sampling with JSONL timeline and trend analysis (growth rate, estimated OOM time)
+- **Standalone JVM Attach**: Connect to any JVM by PID for diagnostics outside the test framework
+- **Fork Failure Recovery**: Automatic retry without JFR/NMT when Surefire fork fails due to injected JVM arguments
 
 ## Installation
 
@@ -38,11 +40,15 @@ Already configured in `.mcp.json`:
 
 ## Prerequisites
 
-The target JVM must be started with `jmx_monitoring: true` via `ar-test-runner`. This injects:
+**For test JVMs**: Start the test with `jmx_monitoring: true` via `ar-test-runner`. This injects:
 - `-XX:StartFlightRecording=...` for JFR allocation profiling
 - `-XX:NativeMemoryTracking=summary` for native memory reports
 
 The test runner automatically discovers the forked Surefire `ForkedBooter` PID and writes it to `metadata.json`.
+
+If the forked JVM fails to start with JFR/NMT arguments (incompatible JDK, path issues, etc.), the test runner detects the fork failure within 15 seconds, logs a diagnostic message to `output.txt`, and automatically retries without JFR/NMT. The metadata is updated with `jmx_monitoring_degraded: true`. In degraded mode, `jstat`-based tools still work but JFR (`get_allocation_report`) and NMT (`get_native_memory`) are unavailable.
+
+**For standalone JVMs**: Use `attach_to_pid` to connect to any running JVM by PID. This creates a synthetic run entry so all diagnostic tools work without `ar-test-runner`. JFR and NMT are only available if the target JVM was started with those flags manually.
 
 ## Available Tools
 
@@ -53,6 +59,17 @@ Verify connectivity to a forked test JVM. Returns JVM version info.
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `run_id` | string | Yes | Test run ID from `ar-test-runner` |
+
+### attach_to_pid
+
+Attach to an arbitrary JVM process by PID. Creates a synthetic run entry so all other tools can be used with the returned `run_id`. Use this when the JVM was started outside of `ar-test-runner` (e.g., a standalone application, an IDE process, or a manually launched benchmark).
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `pid` | int | Yes | JVM process ID to attach to |
+| `label` | string | No | Human-readable label (e.g., `AudioSceneOptimizer`) |
+
+Returns a `run_id` that works with all other `ar-jmx` tools. JFR and NMT tools are only available if the target JVM was started with the corresponding flags.
 
 ### get_heap_summary
 
@@ -84,14 +101,23 @@ Live object histogram from `jcmd GC.class_histogram`. Supports filtering, sortin
 
 ### diff_class_histogram
 
-Compare two saved histogram snapshots to identify per-class memory growth.
+Compare two saved histogram snapshots to identify per-class memory growth. Supports both same-run and cross-run comparison.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `run_id` | string | Yes | Test run ID |
+| `run_id` | string | Yes | Default run ID (used when `before_run_id`/`after_run_id` are omitted) |
 | `before_snapshot` | string | Yes | Name of the earlier snapshot |
 | `after_snapshot` | string | Yes | Name of the later snapshot |
 | `limit` | int | No | Max classes to return (default: 30) |
+| `before_run_id` | string | No | Run ID for the before snapshot (defaults to `run_id`) |
+| `after_run_id` | string | No | Run ID for the after snapshot (defaults to `run_id`) |
+
+**Cross-run example** (comparing memory profiles between branches):
+```
+diff_class_histogram  run_id:"<any>"
+  before_run_id:"<develop_run>"  before_snapshot:"baseline"
+  after_run_id:"<feature_run>"   after_snapshot:"feature"
+```
 
 ### start_jfr_recording
 
@@ -155,12 +181,18 @@ Read timeline samples and compute trend analysis (heap growth rate, GC frequency
 | `run_id` | string | Yes | Test run ID |
 | `last_n` | int | No | Return only the last N samples |
 
-## Typical Workflow
+## Typical Workflows
+
+### Test JVM (via ar-test-runner)
 
 ```
 1. Start test with monitoring:
    start_test_run  module:"ml"  test_classes:["OobleckDecoderTest"]
                    jmx_monitoring:true  jvm_args:["-Xmx4g"]
+
+   Note: If the fork fails due to JFR/NMT args, the test runner
+   automatically retries without them. Check output.txt or metadata
+   for jmx_monitoring_degraded:true.
 
 2. Attach and verify connectivity:
    attach_to_run  run_id:"<id>"
@@ -187,6 +219,42 @@ Read timeline samples and compute trend analysis (heap growth rate, GC frequency
    get_native_memory  run_id:"<id>"
 ```
 
+### Standalone JVM (via attach_to_pid)
+
+```
+1. Attach to a running JVM:
+   attach_to_pid  pid:12345  label:"AudioSceneOptimizer"
+   -> Returns run_id:"<synthetic_id>"
+
+2. Use all diagnostic tools with the returned run_id:
+   get_heap_summary       run_id:"<synthetic_id>"
+   get_class_histogram    run_id:"<synthetic_id>"  snapshot_id:"snap1"
+   start_memory_monitor   run_id:"<synthetic_id>"
+   get_thread_dump        run_id:"<synthetic_id>"
+
+   Note: JFR and NMT tools require the JVM to have been started
+   with the corresponding flags. If not, use jstat-based tools.
+```
+
+### Cross-Run Regression Detection
+
+```
+1. On develop branch: run test, take snapshot "baseline"
+   start_test_run  ...  jmx_monitoring:true
+   get_class_histogram  run_id:"<develop_run>"  snapshot_id:"baseline"
+
+2. On feature branch: run same test, take snapshot "feature"
+   start_test_run  ...  jmx_monitoring:true
+   get_class_histogram  run_id:"<feature_run>"  snapshot_id:"feature"
+
+3. Compare across runs:
+   diff_class_histogram  run_id:"<any>"
+     before_run_id:"<develop_run>"  before_snapshot:"baseline"
+     after_run_id:"<feature_run>"   after_snapshot:"feature"
+
+4. Response includes cross_run:true and per-class count/size deltas
+```
+
 ## Storage
 
 Run data is stored under `tools/mcp/test-runner/runs/{run_id}/jmx/`:
@@ -209,9 +277,29 @@ ar-test-runner                    ar-jmx
         v                                |
    ForkedBooter JVM  <-------------------+
    (JFR + NMT enabled)
+
+   --- OR (standalone JVM) ---
+
+   attach_to_pid(pid) -----> ar-jmx creates synthetic
+                              runs/{id}/metadata.json
+                              with forked_pid = pid
+                                     |
+                                     v
+                               jcmd / jstat / jfr
+                                     |
+                                     v
+                              Any JVM process
 ```
 
-The two servers communicate via the filesystem: `ar-test-runner` writes PID and config to `metadata.json`, and `ar-jmx` reads it.
+The two servers communicate via the filesystem: `ar-test-runner` writes PID and config to `metadata.json`, and `ar-jmx` reads it. The `attach_to_pid` tool bypasses `ar-test-runner` entirely by creating its own metadata entry for an arbitrary JVM process.
+
+### Fork Failure Fallback
+
+When `jmx_monitoring: true` is set and the forked JVM fails to start (detected by early exit + non-zero code + fork error patterns in output), the test runner:
+1. Logs the failure to `output.txt`
+2. Retries the Maven command without JFR/NMT arguments
+3. Updates metadata with `jmx_monitoring_degraded: true` and `jmx_retry_reason`
+4. Spawns PID discovery for the new process (jstat monitoring still works)
 
 ## Limitations
 
