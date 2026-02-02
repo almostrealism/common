@@ -473,7 +473,11 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures {
 				() -> () -> {
 					int frame = startFrame.getAsInt();
 					AudioSceneContext ctx = context.get();
-					noteAudioCache.evictBefore(frame);
+					if (frame == 0) {
+						noteAudioCache.clear();
+					} else {
+						noteAudioCache.evictBefore(frame);
+					}
 					sumInternal(ctx, voicing, audioChannel, frame, frameCount, noteAudioCache);
 				});
 	}
