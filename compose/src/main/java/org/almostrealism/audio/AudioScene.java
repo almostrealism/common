@@ -752,7 +752,6 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 			@Override
 			public Supplier<Runnable> setup() {
 				OperationList setup = new OperationList("AudioScene Runner Setup");
-				setup.addAll((List) AudioScene.this.setup());
 				setup.addAll((List) cells.setup());
 				return setup.flatten();
 			}
@@ -821,7 +820,6 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 			@Override
 			public Supplier<Runnable> setup() {
 				OperationList setup = new OperationList("AudioScene RealTime Runner Setup");
-				setup.addAll((List) AudioScene.this.setup());
 				setup.addAll((List) cells.setup());
 				return setup.flatten();
 			}
