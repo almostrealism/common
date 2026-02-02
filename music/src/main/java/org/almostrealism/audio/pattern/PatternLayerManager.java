@@ -526,6 +526,14 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures {
 		int firstRepetition = Math.max(0, (int) Math.floor(startMeasure / duration));
 		int lastRepetition = Math.min(totalRepetitions, (int) Math.ceil(endMeasure / duration));
 
+		// Disable caching for full-arrangement renders (offline mode).
+		// When frameCount covers the entire arrangement, all notes are rendered
+		// in a single call and the cache would hold all evaluated audio
+		// simultaneously, causing excessive memory usage. Caching is only
+		// beneficial for real-time rendering where notes span multiple small
+		// buffers and can be reused across consecutive ticks.
+		NoteAudioCache effectiveCache = (frameCount < ctx.getFrames()) ? cache : null;
+
 		IntStream.range(firstRepetition, lastRepetition).forEach(rep -> {
 			double repStart = rep * duration;
 
@@ -557,7 +565,7 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures {
 				}
 
 				render(ctx, audioContext, elements.get(choice), melodic,
-						repStart, startFrame, frameCount, cache);
+						repStart, startFrame, frameCount, effectiveCache);
 			});
 		});
 	}
