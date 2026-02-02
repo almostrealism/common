@@ -37,6 +37,11 @@ DEFAULT_TIMEOUT = 30
 DEFAULT_OUTPUT_LINES = 200  # Default max lines for get_run_output
 DEFAULT_STACKTRACE_LINES = 30  # Max lines per stacktrace
 MAX_OUTPUT_BYTES = 50000  # ~50KB max response size
+FORK_FAILURE_PATTERNS = [
+    "Error occurred in starting fork",
+    "ForkedBooter",
+]
+EARLY_EXIT_THRESHOLD_SECONDS = 15
 
 # Ensure runs directory exists
 RUNS_DIR.mkdir(parents=True, exist_ok=True)
@@ -203,7 +208,7 @@ class TestRunner:
         # Start completion watcher
         watcher = threading.Thread(
             target=self._watch_completion,
-            args=(run_id, process, config.module),
+            args=(run_id, process, config.module, config, run_dir),
             daemon=True
         )
         watcher.start()
@@ -229,9 +234,21 @@ class TestRunner:
 
         return run_id, cmd_str
 
-    def _watch_completion(self, run_id: str, process: subprocess.Popen, module: str):
+    def _watch_completion(self, run_id: str, process: subprocess.Popen, module: str,
+                          config: RunConfig = None, run_dir: Path = None):
         """Watch for process completion and update metadata."""
+        start_time = datetime.now()
         exit_code = process.wait()
+        elapsed_seconds = (datetime.now() - start_time).total_seconds()
+
+        # Detect JMX-induced fork failure: early exit + non-zero + jmx enabled
+        if (config is not None
+                and config.jmx_monitoring
+                and exit_code != 0
+                and elapsed_seconds < EARLY_EXIT_THRESHOLD_SECONDS
+                and self._is_fork_failure(run_id)):
+            self._retry_without_jmx_args(run_id, config, run_dir, module)
+            return  # Retry spawns its own watcher; this thread exits
 
         # Cancel timeout timer if it exists
         if run_id in self.timeout_timers:
@@ -252,6 +269,70 @@ class TestRunner:
 
             # Copy surefire reports
             self._copy_surefire_reports(run_id, module)
+
+    def _is_fork_failure(self, run_id: str) -> bool:
+        """Check output.txt for Surefire fork failure patterns."""
+        output_file = RUNS_DIR / run_id / "output.txt"
+        if not output_file.exists():
+            return False
+        try:
+            with open(output_file) as f:
+                head = f.read(8192)  # Fork failures appear in first few KB
+            return any(p in head for p in FORK_FAILURE_PATTERNS)
+        except OSError:
+            return False
+
+    def _retry_without_jmx_args(self, run_id: str, config: RunConfig,
+                                 run_dir: Path, module: str):
+        """Retry a test run without JFR/NMT JVM arguments after a fork failure."""
+        # Create degraded config (jmx_monitoring=False skips JFR/NMT in build_maven_command)
+        degraded_config = RunConfig(
+            depth=config.depth,
+            module=config.module,
+            test_classes=list(config.test_classes),
+            test_methods=list(config.test_methods),
+            timeout_minutes=config.timeout_minutes,
+            jvm_args=list(config.jvm_args),
+            profile=config.profile,
+            jmx_monitoring=False,
+        )
+        cmd = self.build_maven_command(degraded_config, run_dir)
+
+        # Log to output.txt
+        output_file = run_dir / "output.txt"
+        with open(output_file, "a") as f:
+            f.write("\n[ar-test-runner] JMX monitoring: forked JVM failed to start with JFR/NMT arguments.\n")
+            f.write("[ar-test-runner] Retrying without JFR/NMT. jstat-based monitoring will still be available.\n\n")
+
+        # Start new process (append to output)
+        env = os.environ.copy()
+        env["AR_HARDWARE_LIBS"] = "/tmp/ar_libs/"
+        env["AR_HARDWARE_DRIVER"] = "native"
+        with open(output_file, "a") as f:
+            new_process = subprocess.Popen(
+                cmd, stdout=f, stderr=subprocess.STDOUT,
+                env=env, cwd=PROJECT_ROOT, preexec_fn=os.setsid)
+
+        self.active_runs[run_id] = new_process
+
+        # Update metadata
+        metadata = self._load_metadata(run_id)
+        if metadata:
+            metadata["pid"] = new_process.pid
+            metadata["command"] = " ".join(cmd)
+            metadata["jmx_monitoring_degraded"] = True
+            metadata["jmx_retry_reason"] = "Fork failure with JFR/NMT arguments"
+            self._save_metadata_dict(run_id, metadata)
+
+        # New watcher (config=None prevents infinite retry)
+        threading.Thread(target=self._watch_completion,
+                         args=(run_id, new_process, module),
+                         daemon=True).start()
+
+        # PID discovery for jstat-based monitoring
+        threading.Thread(target=self._discover_forked_pid_background,
+                         args=(new_process.pid, run_id),
+                         daemon=True).start()
 
     def _timeout_run(self, run_id: str):
         """Handle run timeout."""

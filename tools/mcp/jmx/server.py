@@ -8,10 +8,11 @@ ar-test-runner by reading run metadata to discover forked JVM PIDs.
 
 Tools:
   attach_to_run         - Verify connectivity to a forked test JVM
+  attach_to_pid         - Attach to any JVM by PID (creates synthetic run entry)
   get_heap_summary      - Heap pool sizes and utilization from jstat
   get_gc_stats          - GC cause, utilization, and timing from jstat
   get_class_histogram   - Object histogram from jcmd GC.class_histogram
-  diff_class_histogram  - Per-class growth between two histogram snapshots
+  diff_class_histogram  - Per-class growth between two histogram snapshots (same-run or cross-run)
   start_jfr_recording   - Start a JFR recording on the target JVM
   stop_jfr_recording    - Dump and stop a JFR recording
   get_allocation_report - Aggregate allocation samples from a JFR recording
@@ -24,6 +25,8 @@ Tools:
 import asyncio
 import json
 import re
+import uuid
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
@@ -213,6 +216,14 @@ async def list_tools():
                     "limit": {
                         "type": "integer",
                         "description": "Max classes to return (default: 30)"
+                    },
+                    "before_run_id": {
+                        "type": "string",
+                        "description": "Run ID for the before snapshot (defaults to run_id)"
+                    },
+                    "after_run_id": {
+                        "type": "string",
+                        "description": "Run ID for the after snapshot (defaults to run_id)"
                     }
                 },
                 "required": ["run_id", "before_snapshot", "after_snapshot"]
@@ -342,6 +353,24 @@ async def list_tools():
                 "required": ["run_id"]
             }
         ),
+        Tool(
+            name="attach_to_pid",
+            description="Attach to an arbitrary JVM process by PID. Creates a synthetic run entry so all other tools can be used with the returned run_id.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "pid": {
+                        "type": "integer",
+                        "description": "JVM process ID to attach to"
+                    },
+                    "label": {
+                        "type": "string",
+                        "description": "Optional label for this JVM (e.g., 'AudioSceneOptimizer')"
+                    }
+                },
+                "required": ["pid"]
+            }
+        ),
     ]
 
 
@@ -467,18 +496,20 @@ async def call_tool(name: str, arguments: dict):
         elif name == "diff_class_histogram":
             before_id = arguments["before_snapshot"]
             after_id = arguments["after_snapshot"]
-            snapshot_dir = _jmx_dir(run_id) / "snapshots"
 
-            before_path = snapshot_dir / f"{before_id}.txt"
-            after_path = snapshot_dir / f"{after_id}.txt"
+            before_run = arguments.get("before_run_id", run_id)
+            after_run = arguments.get("after_run_id", run_id)
+
+            before_path = _jmx_dir(before_run) / "snapshots" / f"{before_id}.txt"
+            after_path = _jmx_dir(after_run) / "snapshots" / f"{after_id}.txt"
 
             if not before_path.exists():
                 return _error_response(
-                    f"Snapshot '{before_id}' not found", run_id
+                    f"Snapshot '{before_id}' not found in run {before_run}", run_id
                 )
             if not after_path.exists():
                 return _error_response(
-                    f"Snapshot '{after_id}' not found", run_id
+                    f"Snapshot '{after_id}' not found in run {after_run}", run_id
                 )
 
             before_classes = parse_histogram(before_path.read_text())
@@ -490,8 +521,11 @@ async def call_tool(name: str, arguments: dict):
 
             return _ok_response({
                 "run_id": run_id,
+                "before_run_id": before_run,
+                "after_run_id": after_run,
                 "before_snapshot": before_id,
                 "after_snapshot": after_id,
+                "cross_run": before_run != after_run,
                 "classes_with_growth": len([d for d in diffs if d["byte_growth"] > 0]),
                 "top_growth": diffs
             })
@@ -638,6 +672,45 @@ async def call_tool(name: str, arguments: dict):
                 "monitor_status": monitor_status,
                 "trend": trend,
                 "samples": samples
+            })
+
+        elif name == "attach_to_pid":
+            pid = arguments["pid"]
+            label = arguments.get("label", "")
+
+            if not is_process_alive(pid):
+                return _error_response(f"Process {pid} is not running", "")
+
+            # Verify it's a JVM
+            version_info = run_jcmd(pid, "VM.version")
+
+            # Create synthetic run
+            synthetic_run_id = uuid.uuid4().hex[:8]
+            run_dir = RUNS_DIR / synthetic_run_id
+            run_dir.mkdir(parents=True, exist_ok=True)
+            (run_dir / "jmx").mkdir(exist_ok=True)
+            (run_dir / "jmx" / "snapshots").mkdir(exist_ok=True)
+
+            metadata = {
+                "run_id": synthetic_run_id,
+                "source": "manual_attach",
+                "forked_pid": pid,
+                "label": label,
+                "jmx_monitoring": False,
+                "status": "attached",
+                "started_at": datetime.now().isoformat(),
+                "config": {},
+            }
+            with open(run_dir / "metadata.json", "w") as f:
+                json.dump(metadata, f, indent=2)
+
+            return _ok_response({
+                "run_id": synthetic_run_id,
+                "pid": pid,
+                "label": label,
+                "vm_version": version_info.strip(),
+                "note": "Use this run_id with all other ar-jmx tools. "
+                        "JFR and NMT are not available unless the JVM was started with those args."
             })
 
         else:
