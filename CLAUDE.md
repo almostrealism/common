@@ -285,44 +285,13 @@ See [docs/internals/test-examples.md](docs/internals/test-examples.md) for full 
 
 ### JVM Memory Diagnostics with `ar-jmx`
 
-The `ar-jmx` MCP server provides real-time JVM memory analysis on forked test processes. It connects to the JVM spawned by `ar-test-runner` via JDK diagnostic tools (`jcmd`, `jstat`, `jfr`) and is the primary tool for investigating `OutOfMemoryError`, `HardwareException: Memory max reached`, and suspected memory leaks.
+The `ar-jmx` MCP server provides real-time JVM memory analysis via JDK diagnostic tools (`jcmd`, `jstat`, `jfr`). Use it for `OutOfMemoryError`, `HardwareException: Memory max reached`, and suspected memory leaks.
 
-**To enable JVM diagnostics**, pass `jmx_monitoring: true` when starting a test run:
-```
-mcp__ar-test-runner__start_test_run
-  module: "ml"
-  test_classes: ["OobleckDecoderTest"]
-  jmx_monitoring: true
-  jvm_args: ["-Xmx4g"]
-```
+**Two ways to connect:**
+- **Test JVMs**: Pass `jmx_monitoring: true` to `start_test_run`. If the fork fails due to JFR/NMT args, the test runner retries automatically (metadata shows `jmx_monitoring_degraded: true`).
+- **Standalone JVMs**: Use `attach_to_pid` with a PID to create a synthetic `run_id` for any running JVM.
 
-This injects JFR and Native Memory Tracking args into the forked JVM and discovers its PID automatically.
-
-**Available `ar-jmx` tools:**
-
-| Tool | Purpose |
-|------|---------|
-| `attach_to_run` | Verify connectivity to the forked JVM |
-| `get_heap_summary` | Heap pool sizes and GC totals (`jstat -gc`) |
-| `get_gc_stats` | GC cause, utilization, and timing (`jstat -gccause`) |
-| `get_class_histogram` | Live object counts by class; save named snapshots |
-| `diff_class_histogram` | Compare two snapshots to find growing classes |
-| `start_jfr_recording` | Start Flight Recorder for allocation profiling |
-| `stop_jfr_recording` | Dump and stop a JFR recording |
-| `get_allocation_report` | Top allocating classes with stack traces from JFR |
-| `get_thread_dump` | Thread dump with regex filtering |
-| `get_native_memory` | Native memory summary (JNI/off-heap) |
-| `start_memory_monitor` | Background `jstat` sampling to JSONL timeline |
-| `get_memory_timeline` | Read timeline with trend analysis (growth rate, estimated OOM) |
-
-**When to use `ar-jmx`:**
-- A test fails with `OutOfMemoryError` or `HardwareException: Memory max reached`
-- You suspect a memory leak (heap or native) during a long-running test
-- You need to understand which classes are consuming heap space
-- You need allocation hotspot analysis to find where objects are being created
-- You need to check native memory usage for `PackedCollection` / JNI leaks
-
-See [tools/mcp/jmx/README.md](tools/mcp/jmx/README.md) for detailed parameter documentation and workflow examples.
+**See [tools/mcp/jmx/README.md](tools/mcp/jmx/README.md)** for the full tool reference, parameter tables, and workflow examples (test JVM, standalone JVM, and cross-run regression detection).
 
 ---
 
@@ -872,15 +841,7 @@ If all existing tests pass but the integration test fails:
 
 ### 5. Memory-Related Failures
 
-If a test fails with `OutOfMemoryError` or `HardwareException: Memory max reached`, use `ar-jmx` instead of guessing at the cause:
-
-1. Re-run the test with `jmx_monitoring: true` and sufficient `timeout_minutes`
-2. `attach_to_run` to verify connectivity, then `start_memory_monitor` for continuous sampling
-3. `get_class_histogram` with `snapshot_id: "baseline"` early in the test
-4. `get_class_histogram` with `snapshot_id: "later"` after the test has progressed
-5. `diff_class_histogram` to identify which classes are growing
-6. `get_allocation_report` to find the stack traces responsible for the allocations
-7. `get_native_memory` if the leak is suspected to be in JNI / `PackedCollection` native memory rather than Java heap
+If a test fails with `OutOfMemoryError` or `HardwareException: Memory max reached`, use `ar-jmx` instead of guessing. Re-run with `jmx_monitoring: true`, take histogram snapshots, diff them, and check allocation reports. See [tools/mcp/jmx/README.md](tools/mcp/jmx/README.md) for the full diagnostic workflow.
 
 **Do NOT** guess "it's probably PackedCollection" without evidence. The JMX tools exist to give you evidence.
 
@@ -903,40 +864,14 @@ For module-specific development notes, see:
 
 ## Common Patterns
 
-### Loading Model Weights
+### Loading Model Weights and Building Layers
 
 ```java
-// Standard pattern for all models
 StateDictionary stateDict = new StateDictionary(weightsDirectory);
-
-// Access weights by HuggingFace key names
-PackedCollection<?> embeddings = stateDict.get("model.embed_tokens.weight");
 PackedCollection<?> wq = stateDict.get("model.layers.0.self_attn.q_proj.weight");
-
-// Use helper methods for repeated patterns
-private PackedCollection<?> getLayerWeight(StateDictionary dict, int layer, String name) {
-    return dict.get(String.format("model.layers.%d.%s", layer, name));
-}
 ```
 
-### Building Transformer Layers
-
-```java
-Model transformer = new Model(shape(dim));
-
-for (int i = 0; i < layerCount; i++) {
-    PackedCollection<?> wq = getLayerWeight(stateDict, i, "self_attn.q_proj.weight");
-    // ...
-
-    transformer.add(attention(
-        heads, kvHeads, headSize,
-        wq, wk, wv, wo,
-        qkNormQ, qkNormK,  // null if not using QK-Norm
-        freqCis,
-        requirements
-    ));
-}
-```
+Use `StateDictionary` for all weight access. Build transformer layers by iterating over layer indices and calling generalized methods like `attention(...)` — see the existing model implementations for patterns.
 
 ---
 
@@ -951,30 +886,7 @@ for (int i = 0; i < layerCount; i++) {
 
 ### Test Output Logging
 
-**IMPORTANT**: Use `Console` and `OutputFeatures` (from `ar-io` module) to log test output to files for later review.
-
-```java
-import org.almostrealism.io.Console;
-import org.almostrealism.io.ConsoleFeatures;
-import org.almostrealism.io.OutputFeatures;
-
-public class MyTest implements ConsoleFeatures {
-    @Test
-    public void myTest() throws Exception {
-        String logFile = "/workspace/project/common/<module>/test_output/my_test_results.txt";
-        Console.root().addListener(OutputFeatures.fileOutput(logFile));
-
-        log("=== My Test ===");
-        log("Result: " + someValue);
-    }
-}
-```
-
-**Best Practices**:
-- Create test_output directories in each module for test logs
-- Use descriptive file names: `<TestName>_results.txt`
-- Add file logging setup at the START of each test method
-- Use `log()` instead of `System.err.println()` for important results
+Use `Console` and `OutputFeatures` (from `ar-io` module) to log test output to files. Implement `ConsoleFeatures`, call `Console.root().addListener(OutputFeatures.fileOutput(path))` at the start of each test, and use `log()` instead of `System.err.println()`.
 
 ---
 
