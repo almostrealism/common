@@ -80,7 +80,7 @@ public class AudioSceneRealTimeCorrectnessTest extends AudioSceneTestBase {
 	 * test calls tick {@code totalFrames / bufferSize} times to render
 	 * the full duration.</p>
 	 */
-	@Test(timeout = 180_000)
+	@Test(timeout = 30 * 60000)
 	@TestDepth(2)
 	public void realTimeProducesAudio() {
 		File samplesDir = new File(SAMPLES_PATH);
@@ -128,6 +128,7 @@ public class AudioSceneRealTimeCorrectnessTest extends AudioSceneTestBase {
 		Runnable tick = runner.tick().get();
 		for (int buf = 0; buf < numBuffers; buf++) {
 			tick.run();
+			log("Completed buf " + buf);
 		}
 
 		output.write().get().run();

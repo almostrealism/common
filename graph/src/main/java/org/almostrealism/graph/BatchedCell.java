@@ -178,16 +178,6 @@ public abstract class BatchedCell extends CellAdapter<PackedCollection>
 	}
 
 	/**
-	 * Sets an optional callback that is invoked with the current frame
-	 * position just before each batch render.
-	 *
-	 * @param frameCallback called with the current frame position before each batch
-	 */
-	public void setFrameCallback(IntConsumer frameCallback) {
-		this.frameCallback = frameCallback;
-	}
-
-	/**
 	 * Returns an accelerator-friendly operation that increments the batch counter by one.
 	 *
 	 * <p>Uses the standard {@code a(dest, add(dest, 1))} pattern so the

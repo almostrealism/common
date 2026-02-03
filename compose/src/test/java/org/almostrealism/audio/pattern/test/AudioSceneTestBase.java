@@ -28,6 +28,7 @@ import org.almostrealism.audio.tone.DefaultKeyboardTuning;
 import org.almostrealism.audio.tone.WesternChromatic;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.color.RGBFeatures;
+import org.almostrealism.io.SystemUtils;
 import org.almostrealism.util.TestSuiteBase;
 
 import java.io.File;
@@ -47,7 +48,8 @@ import java.util.List;
 public abstract class AudioSceneTestBase extends TestSuiteBase implements CellFeatures, RGBFeatures {
 
 	/** Path to the Samples directory relative to the compose module. */
-	protected static final String SAMPLES_PATH = "../../Samples";
+	protected static final String SAMPLES_PATH =
+			SystemUtils.getProperty("AR_RINGS_LIBRARY", "../../Samples");
 
 	/** Sample rate used for all tests. */
 	protected static final int SAMPLE_RATE = OutputLine.sampleRate;
