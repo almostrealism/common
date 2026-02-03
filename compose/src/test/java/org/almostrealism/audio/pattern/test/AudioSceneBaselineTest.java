@@ -71,7 +71,7 @@ public class AudioSceneBaselineTest extends AudioSceneTestBase {
 	 * <p>This is the foundational baseline test. If this fails, there is no
 	 * point testing real-time rendering.</p>
 	 */
-	@Test
+	@Test(timeout = 300_000)
 	@TestDepth(2)
 	public void baselineAudioGeneration() {
 		File samplesDir = new File(SAMPLES_PATH);
@@ -132,7 +132,7 @@ public class AudioSceneBaselineTest extends AudioSceneTestBase {
 	 * <p>This test uses the full health computation pipeline which is
 	 * significantly slower than direct rendering.</p>
 	 */
-	@Test
+	@Test(timeout = 600_000)
 	@TestDepth(2)
 	public void baselineHealthComputation() {
 		File samplesDir = new File(SAMPLES_PATH);
@@ -186,7 +186,7 @@ public class AudioSceneBaselineTest extends AudioSceneTestBase {
 	 * to ensure roots exist and push operations can reach the WaveOutput.
 	 * Runs only a handful of ticks to keep execution fast.</p>
 	 */
-	@Test
+	@Test(timeout = 60_000)
 	public void cellPipelineDiagnostic() {
 		File samplesDir = new File(SAMPLES_PATH);
 		if (!samplesDir.exists()) {
@@ -247,7 +247,7 @@ public class AudioSceneBaselineTest extends AudioSceneTestBase {
 	 * Verifies that melodic channels produce audio content by searching
 	 * for a genome that generates elements on melodic channels (2-4).
 	 */
-	@Test
+	@Test(timeout = 30_000)
 	public void baselineMelodicContent() {
 		File samplesDir = new File(SAMPLES_PATH);
 		if (!samplesDir.exists()) {

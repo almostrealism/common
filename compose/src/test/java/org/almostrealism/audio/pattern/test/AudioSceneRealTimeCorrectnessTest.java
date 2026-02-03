@@ -80,7 +80,7 @@ public class AudioSceneRealTimeCorrectnessTest extends AudioSceneTestBase {
 	 * test calls tick {@code totalFrames / bufferSize} times to render
 	 * the full duration.</p>
 	 */
-	@Test(timeout = 1_800_000)
+	@Test(timeout = 180_000)
 	@TestDepth(2)
 	public void realTimeProducesAudio() {
 		File samplesDir = new File(SAMPLES_PATH);
@@ -153,7 +153,7 @@ public class AudioSceneRealTimeCorrectnessTest extends AudioSceneTestBase {
 	 *   <li>Buffer boundary alignment may differ</li>
 	 * </ul>
 	 */
-	@Test(timeout = 2_700_000)
+	@Test(timeout = 600_000)
 	@TestDepth(2)
 	public void realTimeMatchesTraditional() {
 		File samplesDir = new File(SAMPLES_PATH);
@@ -243,7 +243,7 @@ public class AudioSceneRealTimeCorrectnessTest extends AudioSceneTestBase {
 	 * the interaction between the frame tracker's callback and
 	 * PatternRenderCell's frame-based rendering.</p>
 	 */
-	@Test(timeout = 900_000)
+	@Test(timeout = 60_000)
 	public void realTimeFrameAdvancement() {
 		File samplesDir = new File(SAMPLES_PATH);
 		if (!samplesDir.exists()) {
@@ -491,7 +491,7 @@ public class AudioSceneRealTimeCorrectnessTest extends AudioSceneTestBase {
 	 * <p>Renders the full arrangement buffer-by-buffer using frame-range sum,
 	 * then verifies the concatenated result is non-silent.</p>
 	 */
-	@Test(timeout = 120_000)
+	@Test(timeout = 180_000)
 	@TestDepth(2)
 	public void frameRangeSumMultipleBuffers() {
 		File samplesDir = new File(SAMPLES_PATH);
@@ -647,7 +647,7 @@ public class AudioSceneRealTimeCorrectnessTest extends AudioSceneTestBase {
 	 *
 	 * <p>Enhanced version of realTimeFrameAdvancement with actual content verification.</p>
 	 */
-	@Test(timeout = 1_800_000)
+	@Test(timeout = 180_000)
 	@TestDepth(2)
 	public void multiBufferWithEffects() {
 		File samplesDir = new File(SAMPLES_PATH);
@@ -714,7 +714,7 @@ public class AudioSceneRealTimeCorrectnessTest extends AudioSceneTestBase {
 	 * <p>This test verifies the batch cell architecture is correctly structured:
 	 * tick counting, frame callback invocation, and batch advancement.</p>
 	 */
-	@Test(timeout = 60_000)
+	@Test(timeout = 10_000)
 	public void batchCellArchitectureValidation() {
 		log("=== Batch Cell Architecture Validation ===");
 
@@ -755,7 +755,7 @@ public class AudioSceneRealTimeCorrectnessTest extends AudioSceneTestBase {
 	 * logs per-buffer timing. This is informational only — no assertions on
 	 * timing — and serves as a regression baseline for future optimizations.</p>
 	 */
-	@Test(timeout = 2_700_000)
+	@Test(timeout = 180_000)
 	@TestDepth(3)
 	public void realTimeRunnerPerformance() {
 		File samplesDir = new File(SAMPLES_PATH);

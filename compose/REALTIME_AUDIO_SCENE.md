@@ -1,119 +1,234 @@
-# Real-Time AudioScene Architecture
+# Real-Time AudioScene Rendering
 
-## Overview
+## Goal
 
-AudioScene renders audio in two phases: (1) pattern arrangement via
-`PatternSystemManager`/`PatternLayerManager`, producing raw audio for each
-channel, and (2) effects processing via `MixdownManager`, which constructs a
-`CellList` pipeline for mixing, delay, reverb, etc.
+Enable `AudioScene` to render audio at real-time speeds for live playback,
+where each buffer must be computed faster than its playback duration.
 
-The original architecture rendered all patterns during the *setup* phase,
-before any audio output. This blocked real-time streaming. The solution was
-to move pattern rendering into the *tick* phase via `PatternRenderCell`, a
-`BatchedCell` subclass that renders one buffer of pattern audio per batch.
+**Constraint**: At 44,100 Hz sample rate with a 1024-frame buffer:
+- Buffer duration: ~23.2 ms
+- Render time must be < 23.2 ms per buffer (with headroom for scheduling jitter)
 
-## Unified Method Hierarchy
+**Current status**: The architecture supports real-time rendering, but
+performance has not been validated against the real-time constraint. Tests
+produce audio and measure timing but do not assert on timing thresholds.
 
-AudioScene uses a single method hierarchy for building the cell pipeline,
-shared by both offline and real-time paths:
+---
+
+## Architecture Overview
+
+AudioScene renders audio in two phases:
+
+1. **Pattern rendering**: `PatternSystemManager` evaluates note patterns,
+   applies sample playback and pitch shifting, sums to per-channel buffers
+2. **Effects processing**: `MixdownManager` applies filters, delay, reverb,
+   and routes audio through the cell pipeline to `WaveOutput`
+
+### Offline vs Real-Time
+
+Both paths share the same cell construction via `getCells()`:
+
+| Aspect | Offline (`runner`) | Real-Time (`runnerRealTime`) |
+|--------|--------------------|-----------------------------|
+| Buffer size | `totalFrames` (entire arrangement) | 1024 (configurable) |
+| Frame supplier | `() -> 0` (static) | `() -> currentFrame[0]` (advancing) |
+| Pattern rendering | Once during setup via `renderNow()` | Per-buffer via `tick()` counting |
+| Tick invocation | Per-sample (`cells.tick()`) | Per-buffer (`loop(frameOp, bufferSize)`) |
+
+### Key Components
+
+| Component | Module | Role |
+|-----------|--------|------|
+| `AudioScene.runnerRealTime()` | compose | Creates runner that wraps tick in `loop()` |
+| `PatternRenderCell` | compose | `BatchedCell` subclass that calls `patterns.sum()` |
+| `BatchedCell` | graph | Base class with tick counting, output buffer management |
+| `Periodic` | hardware | Compilable counter-based conditional execution |
+| `PatternSystemManager.sum()` | compose | Renders patterns over a frame range |
+| `NoteAudioCache` | music | Caches evaluated note audio across buffers |
+
+### Data Flow (Real-Time Path)
 
 ```
-getCells(output, channels, bufferSize, frameSupplier)
-  -> getPatternCells(output, channels, audioChannel, bufferSize, frameSupplier, setup)
-       -> getPatternChannel(channel, bufferSize, frameSupplier, setup)
-            -> PatternRenderCell + efx.apply(channel, producer, duration, setup)
+runnerRealTime.tick()
+  |
+  v
+loop(cells.tick(), bufferSize)     // Loop wraps the cell pipeline
+  |
+  v
+[per iteration within loop]
+  |
+  +-> BatchedCell.tick()           // Periodic counting (1/bufferSize fires renderBatch)
+  |     |
+  |     v (when counter reaches bufferSize)
+  |   PatternRenderCell.renderBatch()
+  |     |
+  |     v
+  |   PatternSystemManager.sum(ctx, channel, startFrame, bufferSize)
+  |     |
+  |     v
+  |   PatternFeatures.render() for each overlapping note
+  |     - NoteAudioCache.get() / put() for cross-buffer caching
+  |     - traverse(1, producer).get().evaluate() for new notes
+  |
+  +-> Effects pipeline (MixdownManager cells)
+  |
+  +-> WaveOutput cursor advancement
+  |
+  v
+currentFrame[0] += bufferSize      // Advance frame position after loop
 ```
 
-Both offline and real-time paths use `PatternRenderCell`. They differ only in
-buffer size and frame supplier:
+---
 
-- **Offline** (`runner`): `bufferSize = totalFrames`, `frameSupplier = () -> 0`.
-  Pattern rendering fires once on the first batch during setup via
-  `renderNow()`, equivalent to the former setup-phase rendering.
+## Progress Summary
 
-- **Real-time** (`runnerRealTime`): `bufferSize = 1024`, dynamic `frameSupplier`.
-  The tick phase wraps the cell pipeline in `loop(frameOp, bufferSize)`.
-  `BatchedCell.tick()` uses `Periodic` counting to trigger rendering once
-  per buffer within the loop.
+### Completed
 
-## Key Components
+1. **Unified cell construction** (`getCells` hierarchy) - both paths share code
+2. **`PatternRenderCell`** - incremental pattern rendering in tick phase
+3. **`BatchedCell`** - tick counting with `Periodic` support
+4. **`Periodic` computation** - compilable counter logic using `Scope.addCase()`
+5. **`NoteAudioCache`** - avoids re-evaluating notes spanning multiple buffers
+6. **Pre-filtering** - skips notes that don't overlap the current buffer
+7. **Frame tracking** - `currentFrame` supplier drives incremental rendering
+8. **Test suite** - correctness and timing measurement tests
 
-- **`BatchedCell`** (`graph` module): Abstract base class that adapts
-  per-sample `tick()` to per-buffer `renderBatch()`. Uses `Periodic`
-  computation for compilable counter-based triggering when the render body
-  is a `Computation`, or a Java fallback otherwise.
+### Not Yet Done
 
-- **`Periodic`** (`hardware` module): `OperationComputationAdapter` that
-  generates counter-based conditional execution in compiled code. Wraps an
-  atom computation and a period N, maintaining a persistent counter in a
-  `Bytes(1)`. Generates an increment-and-check pattern using `Scope`,
-  `ExpressionAssignment`, and `Cases` — no custom scope subclass needed.
-  When nested inside a `Loop`, the counter logic compiles directly into the
-  native for-loop body.
+1. **Performance validation** - no tests assert that render time < buffer duration
+2. **Compilable render path** - `PatternRenderCell.renderBatch()` returns a plain
+   lambda, not a `Computation`, so the `Periodic` compilable path is not active
+3. **Section processing** - real-time path skips `ChannelSection.process()`
+4. **Live audio output** - tests write to `WaveOutput` files, not audio hardware
 
-- **`PatternRenderCell`** (`compose` module): Extends `BatchedCell`. Calls
-  `PatternSystemManager.sum(context, channel, startFrame, bufferSize)` to
-  render one buffer of pattern audio.
+---
 
-- **`PatternSystemManager.sum(context, channel, startFrame, frameCount)`**:
-  Single unified method for rendering patterns over any frame range, used by
-  both the offline and real-time paths.
+## Test Coverage
 
-- **Pre-filtering and caching** in `PatternFeatures.render()` and
-  `NoteAudioCache`: Skip non-overlapping notes before `evaluate()`, cache
-  results across buffers. See `PARTIAL_PATTERN_RENDERING.md`.
+### Unit Tests (infrastructure validation)
 
-## Runner Methods
+| Test Class | Module | What It Validates |
+|------------|--------|-------------------|
+| **PeriodicTest** (5 tests) | utils | `Periodic` computation counting, reset, persistence |
+| **BatchedCellTest** (7 tests) | compose | Tick counting, push/render separation, state management |
 
-### `runner(output)` / `runner(output, channels)`
+### Correctness Tests (audio output validation)
 
-Offline runner. Uses `bufferSize = totalFrames` and `frameSupplier = () -> 0`.
-The tick phase calls `cells.tick()` per sample. Pattern rendering fires once
-during setup via `renderNow()`.
+| Test | Class | Timeout | What It Validates |
+|------|-------|---------|-------------------|
+| `realTimeProducesAudio` | Correctness | 3 min | `runnerRealTime` produces non-silent WAV |
+| `realTimeMatchesTraditional` | Correctness | 10 min | Real-time and offline paths both produce audio |
+| `realTimeFrameAdvancement` | Correctness | 1 min | Frame tracking advances across 4 buffer boundaries |
+| `frameRangeSumProducesAudio` | Correctness | 1 min | `PatternSystemManager.sum()` renders a single buffer |
+| `frameRangeSumMultipleBuffers` | Correctness | 3 min | Consecutive buffer renders stitch correctly |
+| `frameRangeWithEffects` | Correctness | 1 min | Pattern channel + effects pipeline ticks without error |
+| `multiBufferWithEffects` | Correctness | 3 min | 8 buffer cycles through full runner produce audio |
+| `batchCellArchitectureValidation` | Correctness | 10 sec | BatchedCell tick counting and callback mechanics |
+| `traditionalRenderBaseline` | RealTime | 2 min | Baseline scene renders via traditional path |
+| `compareTraditionalAndRealTime` | RealTime | 10 min | Spectrograms for visual comparison |
 
-### `runnerRealTime(output, bufferSize)` / `runnerRealTime(output, channels, bufferSize)`
+### Performance Tests (timing measurement, no assertions)
 
-Real-time runner. The tick phase wraps `cells.tick()` in
-`loop(frameOp, bufferSize)`. The frame counter advances by `bufferSize`
-after each loop iteration. `time.tick()` fires per-sample inside the loop
-via the `addRequirement(time::tick)` in `getCells()`.
+| Test | Class | Timeout | What It Measures |
+|------|-------|---------|------------------|
+| `realTimeRunnerPerformance` | Correctness | 3 min | Per-buffer timing for 0.25s render |
+| `renderTimingVsBufferSize` | Correctness | 3 min | Whether render time scales with buffer size |
+| `renderNoteAudioLengthAnalysis` | Correctness | 3 min | Note-level evaluate() waste and timing |
+| `realTimeWithTimingMeasurements` | RealTime | 5 min | Per-buffer timing with overrun counting |
+| `multipleBufferCycles` | RealTime | 3 min | 2 seconds of buffers with timing stats |
 
-The `loop()` call dispatches via `TemporalFeatures.loop(Supplier<Runnable>, int)`
-at runtime — if the cell pipeline produces a `Computation`, it becomes a
-compiled `Loop`; otherwise it falls back to Java iteration.
+### Baseline Tests (non-real-time pipeline validation)
 
-## Compiled Code Structure
+| Test | Class | Timeout | What It Validates |
+|------|-------|---------|-------------------|
+| `baselineAudioGeneration` | Baseline | 5 min | Per-sample pipeline produces WAV |
+| `baselineHealthComputation` | Baseline | 10 min | `StableDurationHealthComputation` works |
+| `cellPipelineDiagnostic` | Baseline | 1 min | Cell roots, cursor advancement |
+| `baselineMelodicContent` | Baseline | 30 sec | Pattern elements are generated |
 
-When `Periodic` is inside a `Loop` (the common audio processing case), the
-compiled output is:
+---
 
-```c
-for (int i = 1; i < 1024; i += 1) {
-    // Periodic counter logic:
-    counter[0] = counter[0] + 1;
-    if (counter[0] >= 1024) {
-        // atom body (renderBatch, etc.)
-        counter[0] = 0;
-    }
-    // other tick operations (effects, WaveOutput cursor, etc.)
-}
+## Remaining Work
+
+### Priority 1: Performance Validation
+
+Add assertions to verify render time < buffer duration:
+
+```java
+// In realTimeRunnerPerformance or a new test
+double bufferDurationMs = BUFFER_SIZE / (double) SAMPLE_RATE * 1000;
+assertTrue("Average buffer render time must be < buffer duration",
+    avgBufferTimeMs < bufferDurationMs);
 ```
 
-The counter is a `Bytes(1)` — persistent memory that survives across compiled
-invocations. It is passed as an argument to the `Periodic` computation, so
-the compiled code reads/writes it via pointer. Dependencies are tracked
-automatically through `ExpressionAssignment` statements and `Cases` scope.
+This will reveal whether the current implementation actually meets real-time
+constraints.
 
-## Section Processing
+### Priority 2: Profile Bottlenecks
 
-Section processing (`ChannelSection.process()`) is currently offline-only.
-It operates on the full pre-rendered buffer. The real-time path skips it.
-Incremental section processing can be addressed separately.
+If tests fail the real-time constraint, profile to identify bottlenecks:
 
-## Verification
+- `PatternFeatures.render()` evaluate() calls
+- `traverse(1, producer).get().evaluate()` compilation overhead
+- `NoteAudioCache` miss rates
+- Effects pipeline per-sample processing
 
-1. `mvn clean install -DskipTests` passes
-2. `AudioSceneBaselineTest` passes (offline path still works)
-3. `AudioSceneRealTimeCorrectnessTest` depth 0 passes
-4. `BatchedCellTest` passes
-5. `PeriodicTest` passes (5/5 tests)
+### Priority 3: Compilable Render Path
+
+Make `PatternRenderCell.renderBatch()` return a `Computation` so that
+`BatchedCell.tick()` uses the `Periodic` compilable path. This requires:
+
+1. `PatternSystemManager.sum()` to return a `Computation`, not `Supplier<Runnable>`
+2. Evaluate whether `NoteAudioCache` can work with compiled code
+
+### Priority 4: Section Processing
+
+`ChannelSection.process()` currently operates on full pre-rendered buffers.
+For real-time, this needs incremental processing or removal.
+
+### Priority 5: Live Audio Output
+
+Replace `WaveOutput` file writing with a real-time audio output (e.g., PortAudio,
+JACK, or platform-specific API).
+
+---
+
+## Running Tests
+
+```bash
+# All real-time tests (depth 0 only)
+mcp__ar-test-runner__start_test_run module="compose" \
+    test_classes=["AudioSceneRealTimeCorrectnessTest", "AudioSceneRealTimeTest"] \
+    depth=0 timeout_minutes=15
+
+# Full test suite including depth 2 tests
+mcp__ar-test-runner__start_test_run module="compose" \
+    test_classes=["AudioSceneRealTimeCorrectnessTest", "AudioSceneRealTimeTest", \
+                  "AudioSceneBaselineTest"] \
+    depth=2 timeout_minutes=30
+
+# Infrastructure tests
+mcp__ar-test-runner__start_test_run module="utils" \
+    test_classes=["PeriodicTest"] timeout_minutes=5
+mcp__ar-test-runner__start_test_run module="compose" \
+    test_classes=["BatchedCellTest"] timeout_minutes=5
+```
+
+---
+
+## File Locations
+
+| File | Module | Purpose |
+|------|--------|---------|
+| `AudioScene.java` | compose | `runnerRealTime()`, `getCells()` hierarchy |
+| `PatternRenderCell.java` | compose | Incremental pattern rendering |
+| `PatternSystemManager.java` | compose | `sum()` for frame-range rendering |
+| `PatternFeatures.java` | music | `render()` with pre-filtering and caching |
+| `NoteAudioCache.java` | music | Cross-buffer note audio cache |
+| `BatchedCell.java` | graph | Tick counting, output buffer management |
+| `Periodic.java` | hardware | Compilable counter-based execution |
+| `AudioSceneRealTimeCorrectnessTest.java` | compose/test | Correctness and timing tests |
+| `AudioSceneRealTimeTest.java` | compose/test | Integration tests with Library samples |
+| `AudioSceneBaselineTest.java` | compose/test | Baseline non-real-time tests |
+| `PeriodicTest.java` | utils/test | Periodic computation unit tests |
+| `BatchedCellTest.java` | compose/test | BatchedCell unit tests |

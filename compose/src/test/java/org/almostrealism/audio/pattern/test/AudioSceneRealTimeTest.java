@@ -76,7 +76,7 @@ public class AudioSceneRealTimeTest extends AudioSceneTestBase {
 	 * Tests traditional rendering works with our test scene setup.
 	 * This serves as a baseline to compare against real-time rendering.
 	 */
-	@Test
+	@Test(timeout = 120_000)
 	public void traditionalRenderBaseline() {
 		File libraryDir = new File(LIBRARY_PATH);
 		if (!libraryDir.exists()) {
@@ -162,7 +162,7 @@ public class AudioSceneRealTimeTest extends AudioSceneTestBase {
 	 *   <li>Generates spectrograms for visual comparison</li>
 	 * </ol>
 	 */
-	@Test
+	@Test(timeout = 300_000)
 	@TestDepth(2)
 	public void realTimeWithTimingMeasurements() {
 		File libraryDir = new File(LIBRARY_PATH);
@@ -272,7 +272,7 @@ public class AudioSceneRealTimeTest extends AudioSceneTestBase {
 	 *   <li><b>Real-time ratio</b>: bufferDuration / avgRenderTime (>1 means faster than real-time)</li>
 	 * </ul>
 	 */
-	@Test
+	@Test(timeout = 180_000)
 	@TestDepth(2)
 	public void multipleBufferCycles() {
 		File libraryDir = new File(LIBRARY_PATH);
@@ -342,7 +342,7 @@ public class AudioSceneRealTimeTest extends AudioSceneTestBase {
 	/**
 	 * Compares traditional and real-time rendering output.
 	 */
-	@Test
+	@Test(timeout = 600_000)
 	@TestDepth(2)
 	public void compareTraditionalAndRealTime() {
 		File libraryDir = new File(LIBRARY_PATH);
