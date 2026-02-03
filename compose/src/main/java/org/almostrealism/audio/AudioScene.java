@@ -65,6 +65,7 @@ import org.almostrealism.io.Console;
 import org.almostrealism.io.TimingMetric;
 import org.almostrealism.space.Animation;
 import org.almostrealism.time.Frequency;
+import org.almostrealism.time.Temporal;
 
 import java.io.File;
 import java.io.IOException;
@@ -679,9 +680,10 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 	 * </ul>
 	 *
 	 * <p>The setup OperationList receives both {@link PatternRenderCell#setup()} and
-	 * {@link PatternRenderCell#renderNow()} for the created render cell, so the first
-	 * buffer is pre-rendered when setup runs. For real-time buffers, subsequent
-	 * buffers are rendered via tick counting.</p>
+	 * {@link PatternRenderCell#prepareBatch()} for the created render cell, so the first
+	 * buffer is pre-rendered when setup runs. For real-time rendering, subsequent
+	 * buffers are rendered via {@link PatternRenderCell#prepareBatch()} calls in
+	 * {@link #runnerRealTime}.</p>
 	 *
 	 * @param channel       the channel (index, voicing, stereo channel)
 	 * @param bufferSize    frames per render buffer
@@ -698,7 +700,7 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 				patterns, ctx, channel, bufferSize, frameSupplier);
 
 		setup.add(renderCell.setup());
-		setup.add(renderCell.renderNow());
+		setup.add(renderCell.prepareBatch());
 
 		CellList cells = efx.apply(channel, renderCell.getOutputProducer(),
 				getTotalDuration(), setup);
@@ -766,18 +768,27 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 	/**
 	 * Creates a real-time runner for specific channels.
 	 *
-	 * <p>The tick phase wraps the cell pipeline in a {@code loop()} of
-	 * {@code bufferSize} iterations. Render cells participate in the tick
-	 * cycle through {@link PatternRenderCell#tick()}, which uses
-	 * {@link org.almostrealism.hardware.computations.Periodic} to trigger
-	 * rendering once per buffer. When the rendering body is a compilable
-	 * {@link io.almostrealism.code.Computation}, the periodic counting
-	 * compiles into the native loop automatically.</p>
+	 * <p>This runner separates pattern preparation from per-frame processing:</p>
+	 * <ul>
+	 *   <li><strong>Prepare phase</strong> - {@link PatternRenderCell#prepareBatch()}
+	 *       renders pattern audio into output buffers. Called <em>outside</em> the loop,
+	 *       once per buffer. This is Java code that cannot be compiled.</li>
+	 *   <li><strong>Tick phase</strong> - The per-frame loop applies effects, advances
+	 *       cursors, and writes to output. This <em>must</em> be a compilable
+	 *       {@link io.almostrealism.code.Computation} for real-time performance.</li>
+	 *   <li><strong>Advance phase</strong> - Increments the frame counter by bufferSize.</li>
+	 * </ul>
+	 *
+	 * <p>The key insight is that {@link PatternRenderCell#tick()} is now a no-op,
+	 * so the per-frame loop contains only compilable operations (effects processing,
+	 * cursor advancement, output writing).</p>
 	 *
 	 * @param output     the audio output to write to
 	 * @param channels   channel indices to render, or null for all
 	 * @param bufferSize frames per buffer
 	 * @return a TemporalCellular for real-time playback
+	 *
+	 * @see PatternRenderCell
 	 */
 	public TemporalCellular runnerRealTime(MultiChannelAudioOutput output,
 										   List<Integer> channels,
@@ -788,10 +799,13 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 			channels = IntStream.range(0, getChannelCount()).boxed().collect(Collectors.toList());
 		}
 
+		CellList cells = (CellList) getCells(output, channels, bufferSize, () -> currentFrame[0]);
 
-		// TODO  We are asking for Cells which we know are going to contain
-		// TODO  tick operations that CANNOT BE COMPILED (BIG PROBLEM)
-		Cells cells = getCells(output, channels, bufferSize, () -> currentFrame[0]);
+		// Collect all PatternRenderCells from the cell pipeline requirements
+		List<PatternRenderCell> renderCells = new ArrayList<>();
+		collectRenderCells(cells, renderCells);
+
+		// Per-frame operation (must be compilable)
 		Supplier<Runnable> frameOp = cells.tick();
 
 		return new TemporalCellular() {
@@ -804,13 +818,15 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 			public Supplier<Runnable> tick() {
 				OperationList tick = new OperationList("AudioScene RealTime Runner Tick");
 
-				// TODO  Here should be an operation that renders all of the pattern data that is required
-				// TODO  for the frameOp to work properly
-				// tick.add(......)
+				// OUTSIDE LOOP: Prepare pattern data for this buffer (Java, per-buffer)
+				for (PatternRenderCell renderCell : renderCells) {
+					tick.add(renderCell.prepareBatch());
+				}
 
-				// TODO  frameOp MUST BE A COMPILABLE COMPUTATION FOR THIS TO WORK
+				// INSIDE LOOP: Compilable per-frame processing
 				tick.add(loop(frameOp, bufferSize));
 
+				// AFTER LOOP: Advance frame position
 				tick.add(() -> () -> currentFrame[0] += bufferSize);
 				return tick;
 			}
@@ -821,6 +837,27 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 				cells.reset();
 			}
 		};
+	}
+
+	/**
+	 * Recursively collects all {@link PatternRenderCell} instances from a CellList
+	 * and its parent hierarchy.
+	 *
+	 * @param cells       the CellList to search
+	 * @param renderCells the list to add found render cells to
+	 */
+	private void collectRenderCells(CellList cells, List<PatternRenderCell> renderCells) {
+		// Check requirements for PatternRenderCells
+		for (Temporal t : cells.getRequirements()) {
+			if (t instanceof PatternRenderCell) {
+				renderCells.add((PatternRenderCell) t);
+			}
+		}
+
+		// Recursively check parents
+		for (CellList parent : cells.getParents()) {
+			collectRenderCells(parent, renderCells);
+		}
 	}
 
 	public void saveSettings(File file) throws IOException {

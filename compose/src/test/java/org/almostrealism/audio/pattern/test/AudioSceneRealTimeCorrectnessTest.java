@@ -37,6 +37,7 @@ import org.almostrealism.graph.BatchedCell;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.heredity.TemporalCellular;
 import org.almostrealism.util.TestDepth;
+import org.junit.Before;
 import org.junit.Test;
 
 import java.io.File;
@@ -48,125 +49,124 @@ import java.util.function.Supplier;
 import static org.junit.Assert.*;
 
 /**
- * Tests for real-time audio scene correctness.
+ * Tests for real-time audio scene correctness and performance.
  *
  * <p>These tests verify that the real-time rendering path
  * ({@link AudioScene#runnerRealTime}) produces valid, non-silent audio
  * output under conditions identical to the validated baseline.</p>
  *
- * <p>The test scene uses the same 6-channel, 120 BPM, 16-measure configuration
- * as {@link AudioSceneBaselineTest}, ensuring that any differences are due to
- * the real-time pipeline, not scene configuration.</p>
+ * <h2>Test Categories</h2>
+ *
+ * <p>Tests are categorized by what they verify:</p>
+ * <ul>
+ *   <li><b>Correctness tests</b> verify that audio content is valid (non-silent,
+ *       reasonable amplitude, expected duration). These generate spectrograms
+ *       and summaries for manual inspection.</li>
+ *   <li><b>Performance tests</b> measure render timing against real-time
+ *       constraints. They report timing statistics but do not assert on them.</li>
+ *   <li><b>Diagnostic tests</b> analyze specific behaviors (frame advancement,
+ *       pattern rendering efficiency) without full correctness verification.</li>
+ * </ul>
+ *
+ * <h2>Visual Artifacts</h2>
+ *
+ * <p>Correctness tests generate artifacts in the {@code results/} directory:</p>
+ * <ul>
+ *   <li>{@code <test-name>.wav} - rendered audio file</li>
+ *   <li>{@code <test-name>-spectrogram.png} - visual frequency content</li>
+ *   <li>{@code <test-name>-summary.txt} - human-readable statistics</li>
+ * </ul>
  *
  * @see AudioSceneBaselineTest
  * @see AudioSceneTestBase
+ * @see RealTimeTestHelper
  * @see org.almostrealism.audio.pattern.PatternRenderCell
  */
 public class AudioSceneRealTimeCorrectnessTest extends AudioSceneTestBase {
 
 	private static final int BUFFER_SIZE = 1024;
 
+	private RealTimeTestHelper helper;
+
+	@Before
+	public void setUp() {
+		helper = new RealTimeTestHelper(this);
+	}
+
 	/**
 	 * Verifies that the real-time rendering path produces non-silent audio.
 	 *
-	 * <p>This test creates the same baseline scene used by
-	 * {@link AudioSceneBaselineTest}, then renders it through the real-time
-	 * pipeline ({@link AudioScene#runnerRealTime}) using per-buffer ticking.
-	 * The output is verified to contain actual audio content (non-zero
-	 * amplitude and RMS).</p>
+	 * <h3>Correctness Property</h3>
+	 * <p>Validates that the real-time rendering pipeline produces actual
+	 * audio content, not silence. Uses {@link AudioStats#assertNonSilent}
+	 * to verify amplitude and RMS levels exceed silence thresholds.</p>
 	 *
-	 * <p>Each {@code tick.run()} invocation processes one full buffer
-	 * ({@code bufferSize} frames) via the internal {@code loop()}. The
-	 * test calls tick {@code totalFrames / bufferSize} times to render
-	 * the full duration.</p>
+	 * <h3>Artifacts Generated</h3>
+	 * <ul>
+	 *   <li>{@code results/realtime-correctness.wav} - rendered audio</li>
+	 *   <li>{@code results/realtime-correctness-spectrogram.png} - visual verification</li>
+	 *   <li>{@code results/realtime-correctness-summary.txt} - statistics</li>
+	 * </ul>
+	 *
+	 * <h3>What This Does NOT Test</h3>
+	 * <p>This test does not verify timing/performance. For performance
+	 * validation, see {@link #realTimeRunnerPerformance}.</p>
 	 */
 	@Test(timeout = 30 * 60000)
 	@TestDepth(2)
 	public void realTimeProducesAudio() {
-		File samplesDir = new File(SAMPLES_PATH);
-		if (!samplesDir.exists()) {
-			log("Skipping test - Samples directory not found: " + samplesDir.getAbsolutePath());
+		helper.disableEffects();
+		File samplesDir = helper.requireSamplesDir();
+
+		AudioScene<?> scene = helper.createSceneWithWorkingSeed(samplesDir, AudioScene.DEFAULT_SOURCE_COUNT);
+		if (scene == null) {
+			log("No working genome found - skipping test");
 			return;
 		}
 
-		MixdownManager.enableMainFilterUp = false;
-		MixdownManager.enableEfxFilters = false;
-		MixdownManager.enableEfx = false;
-		PatternSystemManager.enableWarnings = false;
+		log("=== Real-Time Produces Audio (Correctness Test) ===");
 
-		AudioScene<?> scene = createBaselineScene(samplesDir);
-		applyGenome(scene, 42);
+		RenderResult result = helper.renderRealTime(scene, BUFFER_SIZE, RENDER_SECONDS,
+				"results/realtime-correctness.wav");
 
-		int totalElements = countElements(scene);
-		log("=== Real-Time Produces Audio ===");
-		log("Scene elements: " + totalElements);
+		// Correctness verification
+		assertTrue("Output file should exist", new File(result.outputFile()).exists());
+		assertNotNull("Should have audio statistics", result.stats());
+		result.stats().assertNonSilent("Real-time output");
 
-		if (totalElements == 0) {
-			log("Seed 42 produces no elements - trying other seeds");
-			long seed = findWorkingGenomeSeed(scene, samplesDir);
-			if (seed < 0) {
-				log("No working genome found - skipping test");
-				return;
-			}
-			scene = createBaselineScene(samplesDir);
-			applyGenome(scene, seed);
-			totalElements = countElements(scene);
-			log("Using seed " + seed + " with " + totalElements + " elements");
-		}
+		// Generate visual artifacts for manual review
+		helper.generateArtifacts(result, "realtime-correctness");
 
-		String outputFile = "results/realtime-correctness.wav";
-		WaveOutput output = new WaveOutput(() -> new File(outputFile), 24, true);
-		TemporalCellular runner = scene.runnerRealTime(
-				new MultiChannelAudioOutput(output), BUFFER_SIZE);
-
-		runner.setup().get().run();
-
-		int totalFrames = (int) (RENDER_SECONDS * SAMPLE_RATE);
-		int numBuffers = totalFrames / BUFFER_SIZE;
-		log("Ticking " + numBuffers + " buffers (" + totalFrames + " frames, buffer size: " + BUFFER_SIZE + ")");
-
-		Runnable tick = runner.tick().get();
-		for (int buf = 0; buf < numBuffers; buf++) {
-			tick.run();
-			log("Completed buf " + buf);
-		}
-
-		output.write().get().run();
-
-		File outFile = new File(outputFile);
-		assertTrue("Output file should exist", outFile.exists());
-		assertTrue("Output file should have content", outFile.length() > 1000);
-
-		verifyNonSilence(outputFile, "Real-time output");
+		log(result.toString());
 	}
 
 	/**
 	 * Compares real-time output against the traditional baseline output.
 	 *
-	 * <p>Creates two identical scenes with the same seed, renders one through
-	 * the traditional path ({@link StableDurationHealthComputation}) and one
-	 * through the real-time path. Both outputs are verified to be non-silent.</p>
+	 * <h3>Correctness Property</h3>
+	 * <p>Validates that real-time and traditional rendering paths both produce
+	 * non-silent audio for the same scene configuration. This ensures the
+	 * real-time architecture doesn't break audio generation.</p>
 	 *
-	 * <p>Exact sample-level match is NOT expected because:</p>
+	 * <h3>Why Exact Match Is Not Expected</h3>
 	 * <ul>
 	 *   <li>Traditional path applies auto-volume normalization</li>
 	 *   <li>Real-time path skips section processing</li>
 	 *   <li>Buffer boundary alignment may differ</li>
 	 * </ul>
+	 *
+	 * <h3>Artifacts Generated</h3>
+	 * <ul>
+	 *   <li>{@code results/comparison-traditional.wav} - traditional render</li>
+	 *   <li>{@code results/comparison-realtime.wav} - real-time render</li>
+	 *   <li>Spectrograms and summaries for both</li>
+	 * </ul>
 	 */
 	@Test(timeout = 600_000)
 	@TestDepth(2)
 	public void realTimeMatchesTraditional() {
-		File samplesDir = new File(SAMPLES_PATH);
-		if (!samplesDir.exists()) {
-			log("Skipping test - Samples directory not found: " + samplesDir.getAbsolutePath());
-			return;
-		}
-
-		MixdownManager.enableMainFilterUp = false;
-		MixdownManager.enableEfxFilters = false;
-		MixdownManager.enableEfx = false;
-		PatternSystemManager.enableWarnings = false;
+		helper.disableEffects();
+		File samplesDir = helper.requireSamplesDir();
 
 		// Find a working seed
 		AudioScene<?> seedScene = createBaselineScene(samplesDir);
@@ -176,218 +176,79 @@ public class AudioSceneRealTimeCorrectnessTest extends AudioSceneTestBase {
 			return;
 		}
 
-		log("=== Real-Time vs Traditional Comparison ===");
+		log("=== Real-Time vs Traditional Comparison (Correctness Test) ===");
 		log("Using seed: " + seed);
 
 		// Traditional rendering
-		AudioScene<?> traditionalScene = createBaselineScene(samplesDir);
-		applyGenome(traditionalScene, seed);
-
-		int channelCount = AudioScene.DEFAULT_SOURCE_COUNT;
-		StableDurationHealthComputation health =
-				new StableDurationHealthComputation(channelCount);
-		health.setMaxDuration((long) RENDER_SECONDS);
-		health.setOutputFile("results/comparison-traditional-correctness.wav");
-
-		TemporalCellular traditionalRunner = traditionalScene.runner(health.getOutput());
-		health.setTarget(traditionalRunner);
-
-		AudioHealthScore score = health.computeHealth();
-		log("Traditional: health score=" + score.getScore() +
-				", frames=" + score.getFrames());
-		health.destroy();
+		AudioScene<?> traditionalScene = helper.createSceneWithSeed(samplesDir,
+				AudioScene.DEFAULT_SOURCE_COUNT, seed);
+		RenderResult traditionalResult = helper.renderTraditional(traditionalScene,
+				RENDER_SECONDS, "results/comparison-traditional.wav");
 
 		// Real-time rendering
-		AudioScene<?> realtimeScene = createBaselineScene(samplesDir);
-		applyGenome(realtimeScene, seed);
+		AudioScene<?> realtimeScene = helper.createSceneWithSeed(samplesDir,
+				AudioScene.DEFAULT_SOURCE_COUNT, seed);
+		RenderResult realtimeResult = helper.renderRealTime(realtimeScene, BUFFER_SIZE,
+				RENDER_SECONDS, "results/comparison-realtime.wav");
 
-		String realtimeFile = "results/comparison-realtime-correctness.wav";
-		WaveOutput realtimeOutput = new WaveOutput(() -> new File(realtimeFile), 24, true);
-		TemporalCellular realtimeRunner = realtimeScene.runnerRealTime(
-				new MultiChannelAudioOutput(realtimeOutput), BUFFER_SIZE);
+		// Correctness verification
+		assertNotNull("Traditional should have stats", traditionalResult.stats());
+		assertNotNull("Real-time should have stats", realtimeResult.stats());
 
-		realtimeRunner.setup().get().run();
+		traditionalResult.stats().assertNonSilent("Traditional output");
+		realtimeResult.stats().assertNonSilent("Real-time output");
 
-		int totalFrames = (int) (RENDER_SECONDS * SAMPLE_RATE);
-		int numBuffers = totalFrames / BUFFER_SIZE;
-		Runnable tick = realtimeRunner.tick().get();
-		for (int buf = 0; buf < numBuffers; buf++) {
-			tick.run();
-		}
+		// Log comparison
+		helper.logComparison("Traditional", traditionalResult, "Real-time", realtimeResult);
 
-		realtimeOutput.write().get().run();
+		// Generate visual artifacts for both
+		helper.generateArtifacts(traditionalResult, "comparison-traditional");
+		helper.generateArtifacts(realtimeResult, "comparison-realtime");
 
-		// Verify both are non-silent
-		boolean traditionalHasAudio = score.getScore() > 0;
-		log("Traditional has audio: " + traditionalHasAudio);
-
-		File rtFile = new File(realtimeFile);
-		assertTrue("Real-time output file should exist", rtFile.exists());
-
-		if (rtFile.length() > 1000) {
-			verifyNonSilence(realtimeFile, "Real-time comparison output");
-		} else {
-			log("Real-time output file too small: " + rtFile.length() + " bytes");
-		}
-
-		// Log comparison metrics
-		logAudioComparison(
-				"results/comparison-traditional-correctness.wav",
-				realtimeFile);
+		log(traditionalResult.toString());
+		log(realtimeResult.toString());
 	}
 
 	/**
 	 * Validates that frame tracking advances correctly across buffer boundaries.
 	 *
-	 * <p>Creates a scene, runs it for a small number of buffer cycles, and
-	 * verifies that the real-time runner completes without error. This tests
-	 * the interaction between the frame tracker's callback and
-	 * PatternRenderCell's frame-based rendering.</p>
+	 * <h3>Diagnostic Purpose</h3>
+	 * <p>This test verifies the low-level mechanics of the real-time runner:
+	 * frame counter advancement, buffer boundary handling, and interaction
+	 * between the frame tracker and PatternRenderCell. It uses a short
+	 * duration (4 buffers) to isolate these mechanics from full rendering.</p>
+	 *
+	 * <h3>What This Tests</h3>
+	 * <ul>
+	 *   <li>Runner setup completes without error</li>
+	 *   <li>Multiple tick() calls complete without exception</li>
+	 *   <li>Output file is created with content</li>
+	 * </ul>
+	 *
+	 * <h3>What This Does NOT Test</h3>
+	 * <p>Does not verify audio correctness (too short to assess) or
+	 * performance (no timing assertions).</p>
 	 */
 	@Test(timeout = 60_000)
 	public void realTimeFrameAdvancement() {
-		File samplesDir = new File(SAMPLES_PATH);
-		if (!samplesDir.exists()) {
-			log("Skipping test - Samples directory not found: " + samplesDir.getAbsolutePath());
-			return;
-		}
+		helper.disableEffects();
+		File samplesDir = helper.requireSamplesDir();
 
-		MixdownManager.enableMainFilterUp = false;
-		MixdownManager.enableEfxFilters = false;
-		MixdownManager.enableEfx = false;
-		PatternSystemManager.enableWarnings = false;
+		AudioScene<?> scene = helper.createSceneWithSeed(samplesDir,
+				AudioScene.DEFAULT_SOURCE_COUNT, 42);
 
-		AudioScene<?> scene = createBaselineScene(samplesDir);
-		applyGenome(scene, 42);
+		log("=== Frame Advancement Test (Diagnostic) ===");
 
-		log("=== Frame Advancement Test ===");
+		// Short render - just 4 buffers to test mechanics
+		double shortDuration = (double) (BUFFER_SIZE * 4) / SAMPLE_RATE;
+		RenderResult result = helper.renderRealTime(scene, BUFFER_SIZE, shortDuration,
+				"results/realtime-frame-advancement.wav");
 
-		String outputFile = "results/realtime-frame-advancement.wav";
-		WaveOutput output = new WaveOutput(() -> new File(outputFile), 24, true);
-		TemporalCellular runner = scene.runnerRealTime(
-				new MultiChannelAudioOutput(output), BUFFER_SIZE);
-
-		runner.setup().get().run();
-
-		// Run for exactly 4 buffer cycles
-		int numBufferCycles = 4;
-		log("Running " + numBufferCycles + " buffer cycles (" + (BUFFER_SIZE * numBufferCycles) + " frames)");
-
-		Runnable tick = runner.tick().get();
-		for (int i = 0; i < numBufferCycles; i++) {
-			tick.run();
-		}
-
-		output.write().get().run();
-
-		File outFile = new File(outputFile);
-		assertTrue("Output file should exist after 4 buffer cycles", outFile.exists());
+		assertTrue("Output file should exist", new File(result.outputFile()).exists());
+		assertEquals("Should have rendered 4 buffers", 4, result.bufferCount());
 
 		log("Frame advancement test completed successfully");
-		log("Output file size: " + outFile.length() + " bytes");
-	}
-
-	/**
-	 * Verifies that an audio file contains non-silent content.
-	 *
-	 * @param filePath path to the WAV file
-	 * @param description label for log output
-	 */
-	private void verifyNonSilence(String filePath, String description) {
-		try {
-			WaveData data = WaveData.load(new File(filePath));
-			int frameCount = data.getFrameCount();
-
-			PackedCollection channel0 = data.getChannelData(0);
-			int length = channel0.getShape().getTotalSize();
-
-			double maxAmplitude = 0;
-			double sumSquares = 0;
-			int nonZeroCount = 0;
-
-			for (int i = 0; i < length; i++) {
-				double val = Math.abs(channel0.valueAt(i));
-				if (val > maxAmplitude) maxAmplitude = val;
-				sumSquares += val * val;
-				if (val > 0.0001) nonZeroCount++;
-			}
-
-			double rms = Math.sqrt(sumSquares / length);
-			double nonZeroRatio = (double) nonZeroCount / length;
-
-			log("=== Audio Verification: " + description + " ===");
-			log("Frames: " + frameCount);
-			log("Duration: " + String.format("%.2f", (double) frameCount / SAMPLE_RATE) + " s");
-			log("Max amplitude: " + String.format("%.6f", maxAmplitude));
-			log("RMS level: " + String.format("%.6f", rms));
-			log("Non-zero samples: " + String.format("%.1f%%", nonZeroRatio * 100));
-
-			assertTrue(description + " should have non-zero max amplitude",
-					maxAmplitude > 0.001);
-			assertTrue(description + " should have reasonable RMS level",
-					rms > 0.0001);
-
-		} catch (IOException e) {
-			fail("Failed to verify audio content: " + e.getMessage());
-		}
-	}
-
-	/**
-	 * Logs comparison metrics between two audio files.
-	 *
-	 * @param file1 path to the first WAV file (traditional output)
-	 * @param file2 path to the second WAV file (real-time output)
-	 */
-	private void logAudioComparison(String file1, String file2) {
-		try {
-			File f1 = new File(file1);
-			File f2 = new File(file2);
-
-			if (!f1.exists() || !f2.exists()) {
-				log("Cannot compare - one or both files missing");
-				return;
-			}
-
-			WaveData data1 = WaveData.load(f1);
-			WaveData data2 = WaveData.load(f2);
-
-			PackedCollection ch1 = data1.getChannelData(0);
-			PackedCollection ch2 = data2.getChannelData(0);
-
-			int len1 = ch1.getShape().getTotalSize();
-			int len2 = ch2.getShape().getTotalSize();
-
-			log("=== Audio Comparison ===");
-			log("Traditional: " + len1 + " samples");
-			log("Real-time: " + len2 + " samples");
-
-			// Compute RMS for each
-			double rms1 = computeRms(ch1, len1);
-			double rms2 = computeRms(ch2, len2);
-
-			log("Traditional RMS: " + String.format("%.6f", rms1));
-			log("Real-time RMS: " + String.format("%.6f", rms2));
-
-			if (rms1 > 0 && rms2 > 0) {
-				double rmsRatio = rms2 / rms1;
-				log("RMS ratio (realtime/traditional): " + String.format("%.4f", rmsRatio));
-			}
-
-		} catch (IOException e) {
-			log("Comparison failed: " + e.getMessage());
-		}
-	}
-
-	/**
-	 * Computes RMS amplitude for a collection of audio samples.
-	 */
-	private double computeRms(PackedCollection channel, int length) {
-		double sumSquares = 0;
-		for (int i = 0; i < length; i++) {
-			double val = channel.valueAt(i);
-			sumSquares += val * val;
-		}
-		return Math.sqrt(sumSquares / length);
+		log(result.toString());
 	}
 
 	// =========================================================================
@@ -395,24 +256,29 @@ public class AudioSceneRealTimeCorrectnessTest extends AudioSceneTestBase {
 	// =========================================================================
 
 	/**
-	 * Tests that PatternSystemManager.sum(ctx, channel, startFrame, frameCount)
-	 * correctly renders a subset of the arrangement.
+	 * Tests that PatternSystemManager.sum() correctly renders a subset of the arrangement.
 	 *
-	 * <p>This test exercises ONLY the PatternSystemManager/PatternLayerManager/PatternFeatures
-	 * renderRange() functionality - no cells, no effects, no batching.</p>
+	 * <h3>Diagnostic Purpose</h3>
+	 * <p>Exercises ONLY the PatternSystemManager/PatternLayerManager/PatternFeatures
+	 * {@code renderRange()} functionality in isolation - no cells, no effects, no
+	 * batching. This validates the core pattern rendering API that the real-time
+	 * pipeline builds upon.</p>
+	 *
+	 * <h3>What This Tests</h3>
+	 * <ul>
+	 *   <li>PatternSystemManager.sum() populates a destination buffer</li>
+	 *   <li>Frame-range rendering respects the buffer size parameter</li>
+	 *   <li>Pattern elements that overlap frame 0 are correctly rendered</li>
+	 * </ul>
+	 *
+	 * <h3>What This Does NOT Test</h3>
+	 * <p>Does not test the full pipeline (cells, effects, WaveOutput).
+	 * See {@link #realTimeProducesAudio} for full pipeline testing.</p>
 	 */
 	@Test(timeout = 60_000)
 	public void frameRangeSumProducesAudio() {
-		File samplesDir = new File(SAMPLES_PATH);
-		if (!samplesDir.exists()) {
-			log("Skipping test - Samples directory not found: " + samplesDir.getAbsolutePath());
-			return;
-		}
-
-		MixdownManager.enableMainFilterUp = false;
-		MixdownManager.enableEfxFilters = false;
-		MixdownManager.enableEfx = false;
-		PatternSystemManager.enableWarnings = false;
+		helper.disableEffects();
+		File samplesDir = helper.requireSamplesDir();
 
 		AudioScene<?> seedScene = createBaselineScene(samplesDir);
 		long seed = findWorkingGenomeSeed(seedScene, samplesDir);
@@ -489,22 +355,24 @@ public class AudioSceneRealTimeCorrectnessTest extends AudioSceneTestBase {
 	/**
 	 * Tests that consecutive frame-range renders stitch together correctly.
 	 *
-	 * <p>Renders the full arrangement buffer-by-buffer using frame-range sum,
-	 * then verifies the concatenated result is non-silent.</p>
+	 * <h3>Diagnostic Purpose</h3>
+	 * <p>Validates that buffer-by-buffer pattern rendering produces consistent
+	 * results that can be concatenated into a coherent audio stream. This
+	 * tests the low-level {@code PatternSystemManager.sum()} API directly,
+	 * bypassing the cell/effects infrastructure.</p>
+	 *
+	 * <h3>What This Tests</h3>
+	 * <ul>
+	 *   <li>Frame-range sum produces non-zero audio in at least some buffers</li>
+	 *   <li>Buffer boundaries don't cause data loss or corruption</li>
+	 *   <li>Pattern rendering correctly respects startFrame parameter</li>
+	 * </ul>
 	 */
 	@Test(timeout = 180_000)
 	@TestDepth(2)
 	public void frameRangeSumMultipleBuffers() {
-		File samplesDir = new File(SAMPLES_PATH);
-		if (!samplesDir.exists()) {
-			log("Skipping test - Samples directory not found: " + samplesDir.getAbsolutePath());
-			return;
-		}
-
-		MixdownManager.enableMainFilterUp = false;
-		MixdownManager.enableEfxFilters = false;
-		MixdownManager.enableEfx = false;
-		PatternSystemManager.enableWarnings = false;
+		helper.disableEffects();
+		File samplesDir = helper.requireSamplesDir();
 
 		AudioScene<?> seedScene = createBaselineScene(samplesDir);
 		long seed = findWorkingGenomeSeed(seedScene, samplesDir);
@@ -516,7 +384,7 @@ public class AudioSceneRealTimeCorrectnessTest extends AudioSceneTestBase {
 		final AudioScene<?> scene = createBaselineScene(samplesDir);
 		applyGenome(scene, seed);
 
-		log("=== Frame-Range Sum Multiple Buffers ===");
+		log("=== Frame-Range Sum Multiple Buffers (Diagnostic) ===");
 
 		PatternSystemManager patterns = scene.getPatternManager();
 		patterns.setTuning(scene.getTuning());
@@ -569,9 +437,9 @@ public class AudioSceneRealTimeCorrectnessTest extends AudioSceneTestBase {
 		log("Buffers with audio: " + buffersWithAudio + "/" + numBuffers);
 		log("Total max amplitude: " + String.format("%.6f", totalMaxAmplitude));
 
-		// Verify the concatenated result has audio
-		double rms = computeRms(concatenatedResult, concatenatedResult.getMemLength());
-		log("Concatenated RMS: " + String.format("%.6f", rms));
+		// Use AudioStats for RMS computation
+		AudioStats stats = AudioStats.fromBuffer(concatenatedResult, SAMPLE_RATE);
+		log("Concatenated RMS: " + String.format("%.6f", stats.rmsLevel()));
 
 		assertTrue("Frame-range stitching should produce non-silent audio",
 				totalMaxAmplitude > 0.001 || buffersWithAudio > 0);
@@ -587,33 +455,35 @@ public class AudioSceneRealTimeCorrectnessTest extends AudioSceneTestBase {
 	/**
 	 * Tests that frame-range rendering integrates correctly with the effects pipeline.
 	 *
-	 * <p>Uses getPatternChannel() to create a CellList with PatternRenderCell
-	 * and effects, runs setup, ticks for one buffer's worth, and verifies output.</p>
+	 * <h3>Diagnostic Purpose</h3>
+	 * <p>Uses {@code getPatternChannel()} to create a CellList with PatternRenderCell
+	 * and effects pipeline. Validates that the cell infrastructure can be set up
+	 * and ticked without error.</p>
+	 *
+	 * <h3>What This Tests</h3>
+	 * <ul>
+	 *   <li>CellList construction from pattern channel succeeds</li>
+	 *   <li>Cell setup completes without exception</li>
+	 *   <li>Per-frame ticking completes without exception</li>
+	 * </ul>
+	 *
+	 * <h3>What This Does NOT Test</h3>
+	 * <p>Audio content is NOT verified (too short). See {@link #multiBufferWithEffects}
+	 * for content verification.</p>
 	 */
 	@Test(timeout = 60_000)
 	public void frameRangeWithEffects() {
-		File samplesDir = new File(SAMPLES_PATH);
-		if (!samplesDir.exists()) {
-			log("Skipping test - Samples directory not found: " + samplesDir.getAbsolutePath());
-			return;
-		}
+		helper.disableEffects();
+		File samplesDir = helper.requireSamplesDir();
 
-		MixdownManager.enableMainFilterUp = false;
-		MixdownManager.enableEfxFilters = false;
-		MixdownManager.enableEfx = false;
-		PatternSystemManager.enableWarnings = false;
-
-		AudioScene<?> scene = createBaselineScene(samplesDir);
-		long seed = findWorkingGenomeSeed(scene, samplesDir);
-		if (seed < 0) {
+		AudioScene<?> scene = helper.createSceneWithWorkingSeed(samplesDir,
+				AudioScene.DEFAULT_SOURCE_COUNT);
+		if (scene == null) {
 			log("No working genome found - skipping test");
 			return;
 		}
 
-		scene = createBaselineScene(samplesDir);
-		applyGenome(scene, seed);
-
-		log("=== Frame-Range With Effects ===");
+		log("=== Frame-Range With Effects (Diagnostic) ===");
 
 		// Track current frame position
 		final int[] currentFrame = {0};
@@ -632,77 +502,60 @@ public class AudioSceneRealTimeCorrectnessTest extends AudioSceneTestBase {
 		Runnable tick = cells.tick().get();
 		for (int i = 0; i < BUFFER_SIZE; i++) {
 			tick.run();
-			if ((i + 1) % BUFFER_SIZE == 0) {
-				// Advance to next buffer
-				currentFrame[0] = i + 1;
-			}
 		}
+		currentFrame[0] = BUFFER_SIZE;
 
-		// The test primarily verifies no exceptions occurred
-		// Audio content verification is handled by multiBufferWithEffects
 		log("Frame-range with effects completed successfully");
 	}
 
 	/**
 	 * Tests that multiple buffer rendering with effects produces valid audio.
 	 *
-	 * <p>Enhanced version of realTimeFrameAdvancement with actual content verification.</p>
+	 * <h3>Correctness Property</h3>
+	 * <p>Validates that the effects pipeline (filters, mixing) integrates
+	 * correctly with the real-time pattern rendering. Uses a moderate
+	 * duration (8 buffers) to verify audio accumulation across multiple
+	 * buffer boundaries.</p>
+	 *
+	 * <h3>Artifacts Generated</h3>
+	 * <ul>
+	 *   <li>{@code results/realtime-multibuffer-effects.wav}</li>
+	 *   <li>{@code results/realtime-multibuffer-effects-spectrogram.png}</li>
+	 *   <li>{@code results/realtime-multibuffer-effects-summary.txt}</li>
+	 * </ul>
 	 */
 	@Test(timeout = 180_000)
 	@TestDepth(2)
 	public void multiBufferWithEffects() {
-		File samplesDir = new File(SAMPLES_PATH);
-		if (!samplesDir.exists()) {
-			log("Skipping test - Samples directory not found: " + samplesDir.getAbsolutePath());
-			return;
-		}
+		helper.disableEffects();
+		File samplesDir = helper.requireSamplesDir();
 
-		MixdownManager.enableMainFilterUp = false;
-		MixdownManager.enableEfxFilters = false;
-		MixdownManager.enableEfx = false;
-		PatternSystemManager.enableWarnings = false;
-
-		AudioScene<?> scene = createBaselineScene(samplesDir);
-		long seed = findWorkingGenomeSeed(scene, samplesDir);
-		if (seed < 0) {
+		AudioScene<?> scene = helper.createSceneWithWorkingSeed(samplesDir,
+				AudioScene.DEFAULT_SOURCE_COUNT);
+		if (scene == null) {
 			log("No working genome found - skipping test");
 			return;
 		}
 
-		scene = createBaselineScene(samplesDir);
-		applyGenome(scene, seed);
+		log("=== Multi-Buffer With Effects (Correctness Test) ===");
 
-		log("=== Multi-Buffer With Effects ===");
-		log("Seed: " + seed + ", elements: " + countElements(scene));
+		// 8 buffers - enough to verify accumulation
+		double duration = (double) (BUFFER_SIZE * 8) / SAMPLE_RATE;
+		RenderResult result = helper.renderRealTime(scene, BUFFER_SIZE, duration,
+				"results/realtime-multibuffer-effects.wav");
 
-		String outputFile = "results/realtime-multibuffer-effects.wav";
-		WaveOutput output = new WaveOutput(() -> new File(outputFile), 24, true);
-		TemporalCellular runner = scene.runnerRealTime(
-				new MultiChannelAudioOutput(output), BUFFER_SIZE);
+		assertTrue("Output file should exist", new File(result.outputFile()).exists());
+		assertNotNull("Should have audio statistics", result.stats());
 
-		runner.setup().get().run();
-
-		// Run for 8 buffer cycles (each tick processes one full buffer)
-		int numBuffers = 8;
-		log("Running " + numBuffers + " buffer cycles (" + (BUFFER_SIZE * numBuffers) + " frames)");
-
-		Runnable tick = runner.tick().get();
-		for (int buf = 0; buf < numBuffers; buf++) {
-			tick.run();
-		}
-
-		output.write().get().run();
-
-		File outFile = new File(outputFile);
-		assertTrue("Output file should exist", outFile.exists());
-
-		if (outFile.length() > 1000) {
-			verifyNonSilence(outputFile, "Multi-buffer with effects");
+		// Only assert non-silence if file has content
+		if (new File(result.outputFile()).length() > 1000) {
+			result.stats().assertNonSilent("Multi-buffer with effects");
+			helper.generateArtifacts(result, "realtime-multibuffer-effects");
 		} else {
-			log("Output file small: " + outFile.length() + " bytes - may be expected for short render");
+			log("Output file small - may be expected for short render");
 		}
 
-		log("Multi-buffer with effects test completed");
+		log(result.toString());
 	}
 
 	// =========================================================================
@@ -712,8 +565,22 @@ public class AudioSceneRealTimeCorrectnessTest extends AudioSceneTestBase {
 	/**
 	 * Tests that BatchedCell correctly tracks batch state with a frame callback.
 	 *
-	 * <p>This test verifies the batch cell architecture is correctly structured:
-	 * tick counting, frame callback invocation, and batch advancement.</p>
+	 * <h3>Diagnostic Purpose</h3>
+	 * <p>Validates the low-level {@link BatchedCell} infrastructure that underpins
+	 * the pattern rendering pipeline. Uses a mock implementation to verify the
+	 * counting and callback mechanics in isolation.</p>
+	 *
+	 * <h3>What This Tests</h3>
+	 * <ul>
+	 *   <li>Tick counting advances correctly to batch boundary</li>
+	 *   <li>Frame callback is invoked at batch start</li>
+	 *   <li>Batch counter increments after rendering</li>
+	 *   <li>Current frame tracks position correctly</li>
+	 * </ul>
+	 *
+	 * <h3>What This Does NOT Test</h3>
+	 * <p>Does not test audio content or actual pattern rendering.
+	 * This is a unit test for the batching mechanics only.</p>
 	 */
 	@Test(timeout = 10_000)
 	public void batchCellArchitectureValidation() {
@@ -752,70 +619,62 @@ public class AudioSceneRealTimeCorrectnessTest extends AudioSceneTestBase {
 	/**
 	 * Measures the per-buffer tick time for the real-time runner.
 	 *
-	 * <p>Runs a short duration through {@link AudioScene#runnerRealTime} and
-	 * logs per-buffer timing. This is informational only — no assertions on
-	 * timing — and serves as a regression baseline for future optimizations.</p>
+	 * <h3>Performance Focus</h3>
+	 * <p>This test measures render timing against real-time constraints.
+	 * At 44.1kHz with 1024-frame buffers, each buffer represents ~23.2ms
+	 * of audio. For real-time playback, render time must be below this.</p>
+	 *
+	 * <h3>Metrics Reported</h3>
+	 * <ul>
+	 *   <li>Total render time</li>
+	 *   <li>Average, min, max buffer times</li>
+	 *   <li>Real-time ratio (target/actual)</li>
+	 *   <li>Overrun count (buffers exceeding target)</li>
+	 * </ul>
+	 *
+	 * <h3>What This Does NOT Test</h3>
+	 * <p>No timing assertions - this is informational only. Audio correctness
+	 * is not verified (see {@link #realTimeProducesAudio} for that).</p>
+	 *
+	 * @see TimingStats
 	 */
 	@Test(timeout = 180_000)
 	@TestDepth(3)
 	public void realTimeRunnerPerformance() {
-		File samplesDir = new File(SAMPLES_PATH);
-		if (!samplesDir.exists()) {
-			log("Skipping test - Samples directory not found: " + samplesDir.getAbsolutePath());
-			return;
-		}
+		helper.disableEffects();
+		File samplesDir = helper.requireSamplesDir();
 
-		MixdownManager.enableMainFilterUp = false;
-		MixdownManager.enableEfxFilters = false;
-		MixdownManager.enableEfx = false;
-		PatternSystemManager.enableWarnings = false;
-
-		log("=== Real-Time Runner Performance Test ===");
-
-		// Find a working seed
-		AudioScene<?> seedScene = createBaselineScene(samplesDir);
-		long seed = findWorkingGenomeSeed(seedScene, samplesDir);
-		if (seed < 0) {
+		AudioScene<?> scene = helper.createSceneWithWorkingSeed(samplesDir,
+				AudioScene.DEFAULT_SOURCE_COUNT);
+		if (scene == null) {
 			log("No working genome found - skipping test");
 			return;
 		}
 
-		// Use a short duration to keep the test feasible.
+		log("=== Real-Time Runner Performance Test ===");
+
+		// Short duration to keep test fast
 		double perfDuration = 0.25;
-		int totalFrames = (int) (perfDuration * SAMPLE_RATE);
-		int numBuffers = totalFrames / BUFFER_SIZE;
-		log("Performance test: " + perfDuration + "s = " + totalFrames + " frames, "
-				+ numBuffers + " buffer ticks");
+		RenderResult result = helper.renderRealTime(scene, BUFFER_SIZE, perfDuration,
+				"results/perf-realtime.wav");
 
-		// Test: unified per-buffer runner
-		AudioScene<?> testScene = createBaselineScene(samplesDir);
-		applyGenome(testScene, seed);
+		// Log timing statistics
+		TimingStats timing = result.timing();
+		assertNotNull("Should have timing statistics", timing);
 
-		WaveOutput testOutput = new WaveOutput(
-				() -> new File("results/perf-realtime.wav"), 24, true);
-		TemporalCellular testRunner = testScene.runnerRealTime(
-				new MultiChannelAudioOutput(testOutput), BUFFER_SIZE);
-
-		testRunner.setup().get().run();
-
-		long startTime = System.nanoTime();
-		Runnable tick = testRunner.tick().get();
-		for (int buf = 0; buf < numBuffers; buf++) {
-			tick.run();
-		}
-		long elapsed = System.nanoTime() - startTime;
-
-		testOutput.write().get().run();
-
-		// Log results
-		double elapsedMs = elapsed / 1_000_000.0;
-
-		log("Real-time runner (per-buffer): " + String.format("%.2f", elapsedMs) + " ms");
-		log("  Buffer ticks: " + numBuffers);
-		log("  Time per buffer tick: " + String.format("%.3f", elapsedMs / numBuffers) + " ms");
-		log("  Frames per buffer: " + BUFFER_SIZE);
+		log("Performance results:");
+		log("  Total render time: " + String.format("%.2f ms", timing.totalTimeMs()));
+		log("  Buffer count: " + result.bufferCount());
+		log("  Target buffer time: " + String.format("%.2f ms", timing.targetBufferMs()));
+		log("  Avg buffer time: " + String.format("%.3f ms", timing.avgBufferMs()));
+		log("  Min buffer time: " + String.format("%.3f ms", timing.minBufferMs()));
+		log("  Max buffer time: " + String.format("%.3f ms", timing.maxBufferMs()));
+		log("  Real-time ratio: " + String.format("%.2fx", timing.realTimeRatio()));
+		log("  Overruns: " + timing.overrunCount() + "/" + result.bufferCount());
+		log("  Meets real-time: " + (timing.meetsRealTime() ? "YES" : "NO"));
 
 		log("Performance test completed (no assertions - informational only)");
+		log(result.toString());
 	}
 
 	// =========================================================================
@@ -825,27 +684,24 @@ public class AudioSceneRealTimeCorrectnessTest extends AudioSceneTestBase {
 	/**
 	 * Measures whether pattern rendering time scales with buffer size.
 	 *
+	 * <h3>Performance Diagnostic</h3>
 	 * <p>Times {@link PatternSystemManager#sum} with different buffer sizes
-	 * at the same start position. If a 1024-frame buffer takes nearly as long
-	 * as a 44100-frame buffer, the rendering is computing full note audio
-	 * regardless of how many frames the caller actually needs.</p>
+	 * at the same start position. Identifies whether rendering does work
+	 * proportional to note duration (wasteful) or buffer size (efficient).</p>
 	 *
-	 * <p>Expected result if rendering is efficient: time should scale roughly
-	 * linearly with buffer size. If it doesn't, something in the rendering
-	 * pipeline is doing work proportional to note duration, not buffer size.</p>
+	 * <h3>Expected Results</h3>
+	 * <ul>
+	 *   <li><b>Efficient</b>: Time scales roughly linearly with buffer size</li>
+	 *   <li><b>Inefficient</b>: All buffer sizes take similar time</li>
+	 * </ul>
+	 *
+	 * <h3>What This Does NOT Test</h3>
+	 * <p>No assertions - informational only. Does not verify audio correctness.</p>
 	 */
 	@Test(timeout = 180_000)
 	public void renderTimingVsBufferSize() {
-		File samplesDir = new File(SAMPLES_PATH);
-		if (!samplesDir.exists()) {
-			log("Skipping test - Samples directory not found");
-			return;
-		}
-
-		MixdownManager.enableMainFilterUp = false;
-		MixdownManager.enableEfxFilters = false;
-		MixdownManager.enableEfx = false;
-		PatternSystemManager.enableWarnings = false;
+		helper.disableEffects();
+		File samplesDir = helper.requireSamplesDir();
 
 		AudioScene<?> seedScene = createBaselineScene(samplesDir);
 		long seed = findWorkingGenomeSeed(seedScene, samplesDir);
@@ -854,7 +710,7 @@ public class AudioSceneRealTimeCorrectnessTest extends AudioSceneTestBase {
 			return;
 		}
 
-		log("=== Render Timing vs Buffer Size ===");
+		log("=== Render Timing vs Buffer Size (Performance Diagnostic) ===");
 		log("Seed: " + seed);
 
 		int[] bufferSizes = {256, 1024, 4096, 44100};
@@ -898,31 +754,27 @@ public class AudioSceneRealTimeCorrectnessTest extends AudioSceneTestBase {
 	/**
 	 * Analyzes note-level waste in frame-range rendering.
 	 *
+	 * <h3>Performance Diagnostic</h3>
 	 * <p>Replicates the inner loop of {@code PatternFeatures.renderRange()} with
-	 * instrumentation to measure:</p>
+	 * instrumentation to identify rendering inefficiencies. Measures the gap
+	 * between work done (full note audio evaluation) and work useful (frames
+	 * that fall within the target buffer).</p>
+	 *
+	 * <h3>Metrics Reported</h3>
 	 * <ul>
-	 *   <li>How many notes are created vs how many overlap the target buffer</li>
-	 *   <li>Total audio frames evaluated vs frames that fall within the buffer</li>
-	 *   <li>Time spent in {@code getNoteDestinations()} vs {@code evaluate()}</li>
-	 *   <li>Average note audio length compared to buffer size</li>
+	 *   <li>Notes created vs notes overlapping target buffer</li>
+	 *   <li>Total frames evaluated vs frames actually useful</li>
+	 *   <li>Time in {@code getNoteDestinations()} vs {@code evaluate()}</li>
+	 *   <li>Note audio length vs buffer size ratio</li>
 	 * </ul>
 	 *
-	 * <p>This test isolates exactly where time is spent in pattern rendering
-	 * and quantifies the waste from computing full note audio when only a
-	 * small slice is needed.</p>
+	 * <h3>What This Does NOT Test</h3>
+	 * <p>No assertions - purely informational. Does not verify audio correctness.</p>
 	 */
 	@Test(timeout = 180_000)
 	public void renderNoteAudioLengthAnalysis() {
-		File samplesDir = new File(SAMPLES_PATH);
-		if (!samplesDir.exists()) {
-			log("Skipping test - Samples directory not found");
-			return;
-		}
-
-		MixdownManager.enableMainFilterUp = false;
-		MixdownManager.enableEfxFilters = false;
-		MixdownManager.enableEfx = false;
-		PatternSystemManager.enableWarnings = false;
+		helper.disableEffects();
+		File samplesDir = helper.requireSamplesDir();
 
 		AudioScene<?> seedScene = createBaselineScene(samplesDir);
 		long seed = findWorkingGenomeSeed(seedScene, samplesDir);

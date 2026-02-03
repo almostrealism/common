@@ -119,7 +119,7 @@ public class RealTimeRenderingTest extends TestSuiteBase {
 		renderCell.setup().get().run();
 
 		// Verify accessors
-		assertEquals(1024, renderCell.getBatchSize());
+		assertEquals(1024, renderCell.getBufferSize());
 		assertEquals(channel, renderCell.getChannel());
 	}
 
