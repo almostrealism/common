@@ -17,336 +17,509 @@
 package org.almostrealism.ml.audio.test;
 
 import io.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.audio.data.WaveData;
+import io.almostrealism.profile.OperationProfileNode;
+import org.almostrealism.audio.WavFile;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.layers.AdapterConfig;
+import org.almostrealism.layers.LoRALinear;
 import org.almostrealism.ml.DiffusionTrainingDataset;
-import org.almostrealism.ml.StateDictionary;
-import org.almostrealism.ml.audio.*;
+import org.almostrealism.ml.audio.DiffusionNoiseScheduler;
+import org.almostrealism.ml.audio.DiffusionSampler;
+import org.almostrealism.ml.audio.LoRADiffusionTransformer;
+import org.almostrealism.ml.audio.PingPongSamplingStrategy;
 import org.almostrealism.model.CompiledModel;
-import org.almostrealism.model.Model;
 import org.almostrealism.optimize.MeanSquaredError;
 import org.almostrealism.optimize.ModelOptimizer;
 import org.almostrealism.optimize.TrainingResult;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
+import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
+import java.util.Random;
 
 /**
- * End-to-end aggressive fine-tuning test for audio diffusion models.
+ * End-to-end LoRA fine-tuning pipeline test for diffusion transformers.
  *
- * <p>This test demonstrates the complete fine-tuning pipeline:
+ * <p>This test validates the complete training and inference pipeline using
+ * synthetic latents so that no external audio files or pre-trained weights
+ * are required.  The pipeline exercised is:
  * <ol>
- *   <li>Load pre-trained autoencoder and diffusion transformer weights</li>
- *   <li>Encode training audio to latent space</li>
- *   <li>Fine-tune diffusion model with LoRA (aggressive settings for overfitting)</li>
- *   <li>Generate audio samples using the fine-tuned model</li>
- *   <li>Save samples for listening comparison</li>
+ *   <li>Create a LoRA-wrapped DiffusionTransformer (random init)</li>
+ *   <li>Compile for training (forward + backward pass)</li>
+ *   <li>Train with {@link ModelOptimizer} on synthetic diffusion data</li>
+ *   <li>Save LoRA adapter weights</li>
+ *   <li>Run inference via {@link DiffusionSampler} and write WAV output</li>
  * </ol>
  *
- * <p>The goal is intentional overfitting to make it obvious when listening
- * that the model has learned something from the training data.</p>
+ * <p>{@link #testAggressiveFineTuning()} uses production-scale parameters
+ * (depth=16, embed=1024) and is expected to require significant compilation
+ * time.  {@link #testCompilationScaling()} systematically measures forward
+ * and backward pass compilation time and memory across increasing model
+ * sizes to identify where the practical limits are.
+ *
+ * @see ModelOptimizer
+ * @see DiffusionSampler
+ * @see LoRADiffusionTransformer
  */
 public class AggressiveFineTuningTest extends TestSuiteBase {
 
-	private static final Path WEIGHTS_DIR = Path.of("/workspace/project/weights");
-	private static final Path AUTOENCODER_DIR = WEIGHTS_DIR.resolve("autoencoder");
-	private static final Path BASS_LOOPS_DIR = Path.of("/workspace/project/BASS LOOPS_125");
 	private static final Path OUTPUT_DIR = Path.of("/workspace/project/generated_audio");
 
-	// Model parameters (from ConditionalAudioSystem)
-	private static final int IO_CHANNELS = 64;
-	private static final int EMBED_DIM = 1024;
-	private static final int DEPTH = 16;
-	private static final int NUM_HEADS = 8;
+	// Production model parameters (from Stable Audio Open)
+	private static final int PROD_IO_CHANNELS = 64;
+	private static final int PROD_EMBED_DIM = 1024;
+	private static final int PROD_DEPTH = 16;
+	private static final int PROD_NUM_HEADS = 8;
+	private static final int PROD_COND_TOKEN_DIM = 768;
+	private static final int PROD_GLOBAL_COND_DIM = 768;
+
 	private static final int PATCH_SIZE = 1;
-	private static final int COND_TOKEN_DIM = 768;
-	private static final int GLOBAL_COND_DIM = 768;
 	private static final String DIFFUSION_OBJECTIVE = "rf_denoiser";
-
-	// Audio parameters
-	private static final int SAMPLE_RATE = 44100;
-	private static final double SEGMENT_SECONDS = 5.0; // 5 second segments
-
-	// Training parameters for aggressive overfitting
-	private static final int EPOCHS = 20;
-	private static final int REPEAT_FACTOR = 5; // Repeat each sample 5 times per epoch
-	private static final double LEARNING_RATE = 5e-4; // Higher LR for faster convergence
-	private static final int NUM_DIFFUSION_STEPS = 1000;
-	private static final int NUM_INFERENCE_STEPS = 50;
+	private static final int LATENT_LENGTH = 4;
 
 	/**
-	 * Full end-to-end aggressive fine-tuning test.
+	 * Production-scale fine-tuning pipeline test.
 	 *
-	 * <p>This test will:
-	 * <ul>
-	 *   <li>Load 5 audio files from BASS LOOPS</li>
-	 *   <li>Encode them to latent space</li>
-	 *   <li>Train for 20 epochs with aggressive settings</li>
-	 *   <li>Generate 3 audio samples</li>
-	 *   <li>Save before/after samples for comparison</li>
-	 * </ul>
+	 * <p>Uses the same model dimensions as the Stable Audio Open
+	 * DiffusionTransformer (depth=16, embed=1024, heads=8).  This test
+	 * exercises the full pipeline: create model, compile for training,
+	 * train, save adapters, run inference, and write WAV output.
+	 *
+	 * <p>Backward-pass expression-tree compilation at this scale is
+	 * expected to take a significant amount of time.
 	 */
 	@Test
 	public void testAggressiveFineTuning() throws IOException {
-		// Check prerequisites
-		if (!Files.exists(WEIGHTS_DIR)) {
-			log("Weights directory not found, skipping test");
-			return;
-		}
-		if (!Files.exists(AUTOENCODER_DIR)) {
-			log("Autoencoder weights not found at " + AUTOENCODER_DIR);
-			log("Run extract_autoencoder_weights.py first");
-			return;
-		}
-		if (!Files.exists(BASS_LOOPS_DIR)) {
-			log("Training data not found at " + BASS_LOOPS_DIR);
-			return;
-		}
-
-		// Create output directory
 		Files.createDirectories(OUTPUT_DIR);
 
-		log("=== Aggressive Fine-Tuning Test ===");
-		log("This test intentionally overfits to demonstrate learning.");
-		log("");
-
-		// Step 1: Load weights
-		log("Step 1: Loading weights...");
-		StateDictionary transformerWeights = new StateDictionary(WEIGHTS_DIR.toString());
-		StateDictionary autoencoderWeights = new StateDictionary(AUTOENCODER_DIR.toString());
-		log("  Transformer weights: " + transformerWeights.keySet().size() + " keys");
-		log("  Autoencoder weights: " + autoencoderWeights.keySet().size() + " keys");
-
-		// Step 2: Encode training audio to latents
-		log("");
-		log("Step 2: Encoding audio to latent space...");
-		AudioLatentDataset dataset = AudioLatentDataset.fromDirectory(
-				BASS_LOOPS_DIR,
-				autoencoderWeights,
-				SEGMENT_SECONDS,
-				SAMPLE_RATE,
-				5  // Limit to 5 files for faster testing
+		runFineTuningPipeline(
+				PROD_IO_CHANNELS, PROD_EMBED_DIM, PROD_DEPTH, PROD_NUM_HEADS,
+				PROD_COND_TOKEN_DIM, PROD_GLOBAL_COND_DIM,
+				LATENT_LENGTH, 3, 5, 2,
+				OUTPUT_DIR.resolve("production_lora.pb"),
+				OUTPUT_DIR.resolve("production_generated.wav")
 		);
-		log("  Encoded " + dataset.size() + " latent segments");
-		log("  Latent shape: (1, " + dataset.getLatentChannels() + ", " + dataset.getLatentLength() + ")");
+	}
 
-		// Step 3: Create LoRA model
+	/**
+	 * Measures forward-pass compilation time, backward-pass compilation
+	 * time, and JVM heap usage across increasing model sizes.
+	 *
+	 * <p>Each configuration creates a LoRA DiffusionTransformer with
+	 * synthetic random weights, compiles the forward pass, then compiles
+	 * the training (backward) pass, and reports elapsed time and memory
+	 * at each stage.  The results are logged as a table so that scaling
+	 * trends are easy to identify.
+	 *
+	 * <p>Configurations tested (all with depth=1, heads=1, latent_len=2):
+	 * <ul>
+	 *   <li>embed=8, io=4</li>
+	 *   <li>embed=16, io=8</li>
+	 *   <li>embed=32, io=16</li>
+	 *   <li>embed=64, io=32</li>
+	 *   <li>embed=128, io=64</li>
+	 *   <li>embed=256, io=64</li>
+	 * </ul>
+	 */
+	@Test
+	public void testCompilationScaling() {
+		int[][] configs = {
+				// {embedDim, ioChannels, depth, numHeads, condTokenDim, globalCondDim}
+				{8,   4,  1, 1, 0, 8},
+				{16,  8,  1, 1, 0, 16},
+				{32,  16, 1, 1, 0, 32},
+				{64,  32, 1, 2, 0, 64},
+				{128, 64, 1, 2, 0, 128},
+				{256, 64, 1, 4, 0, 256},
+		};
+
+		log("=== Compilation Scaling Test ===");
 		log("");
-		log("Step 3: Creating LoRA diffusion model...");
+		log(String.format("%-8s %-6s %-6s %-6s %-14s %-14s %-14s %-14s %-14s",
+				"Embed", "IO", "Depth", "Heads",
+				"Fwd(ms)", "Bwd(ms)", "Train1(ms)",
+				"HeapUsed(MB)", "HeapMax(MB)"));
+		log(String.format("%-8s %-6s %-6s %-6s %-14s %-14s %-14s %-14s %-14s",
+				"--------", "------", "------", "------",
+				"--------------", "--------------", "--------------",
+				"--------------", "--------------"));
+
+		for (int[] cfg : configs) {
+			int embedDim = cfg[0];
+			int ioChannels = cfg[1];
+			int depth = cfg[2];
+			int numHeads = cfg[3];
+			int condTokenDim = cfg[4];
+			int globalCondDim = cfg[5];
+
+			log("");
+			log("--- Testing embed=" + embedDim + " io=" + ioChannels
+					+ " depth=" + depth + " heads=" + numHeads + " ---");
+
+			try {
+				measureCompilation(embedDim, ioChannels, depth, numHeads,
+						condTokenDim, globalCondDim);
+			} catch (Exception e) {
+				log(String.format("%-8d %-6d %-6d %-6d FAILED: %s",
+						embedDim, ioChannels, depth, numHeads, e.getMessage()));
+			}
+		}
+
+		log("");
+		log("=== Scaling Test Complete ===");
+	}
+
+	/**
+	 * Profiled fine-tuning run at embed=64 to capture detailed performance
+	 * data for analysis with the ar-profile-analyzer MCP tools.
+	 *
+	 * <p>This test creates an XML profile file that can be analyzed to
+	 * identify which operations dominate backward pass compilation time.
+	 * The profile is saved to {@code utils/results/finetune_profile_embed64.xml}.
+	 */
+	@Test
+	public void testProfiledFineTuning() throws IOException {
+		Files.createDirectories(Path.of("/workspace/project/common/utils/results"));
+
+		int embedDim = 64;
+		int ioChannels = 32;
+		int depth = 1;
+		int numHeads = 2;
+		int condTokenDim = 0;
+		int globalCondDim = 64;
+		int latentLen = 2;
+
+		log("=== Profiled Fine-Tuning (embed=" + embedDim + ") ===");
+		log("");
+
+		OperationProfileNode profile = new OperationProfileNode("finetune_embed64");
+
+		profile(profile, () -> {
+			try {
+				runProfiledFineTuning(embedDim, ioChannels, depth, numHeads,
+						condTokenDim, globalCondDim, latentLen);
+			} catch (IOException e) {
+				throw new RuntimeException(e);
+			}
+		});
+
+		String profilePath = "/workspace/project/common/utils/results/finetune_profile_embed64.xml";
+		profile.save(profilePath);
+		log("");
+		log("Profile saved to: " + profilePath);
+	}
+
+	/**
+	 * Runs the profiled fine-tuning pipeline with detailed timing logs.
+	 */
+	private void runProfiledFineTuning(int embedDim, int ioChannels, int depth,
+									   int numHeads, int condTokenDim,
+									   int globalCondDim, int latentLen) throws IOException {
+		AdapterConfig adapterConfig = AdapterConfig.forAudioDiffusion();
+
+		// Step 1: Create model
+		log("Step 1: Creating LoRA model...");
+		long start = System.currentTimeMillis();
+		LoRADiffusionTransformer model = LoRADiffusionTransformer.create(
+				ioChannels, embedDim, depth, numHeads, PATCH_SIZE,
+				condTokenDim, globalCondDim, DIFFUSION_OBJECTIVE,
+				latentLen, 0, null, adapterConfig, false
+		);
+		log("  Model created in " + (System.currentTimeMillis() - start) + " ms");
+
+		// Step 2: Compile for training (forward + backward)
+		log("");
+		log("Step 2: Compiling for training (forward + backward)...");
+		start = System.currentTimeMillis();
+		CompiledModel compiled = model.compileForTraining();
+		long compileMs = System.currentTimeMillis() - start;
+		log("  Compiled in " + compileMs + " ms");
+		log("  LoRA layers: " + model.getLoraLayers().size());
+
+		// Step 3: Create training data
+		log("");
+		log("Step 3: Creating training data...");
+		TraversalPolicy latentShape = new TraversalPolicy(1, ioChannels, latentLen);
+		DiffusionNoiseScheduler scheduler = new DiffusionNoiseScheduler(100);
+
+		List<PackedCollection> latents = new ArrayList<>();
+		Random rng = new Random(42);
+		for (int i = 0; i < 3; i++) {
+			PackedCollection latent = new PackedCollection(1, ioChannels, latentLen);
+			latent.randnFill(rng);
+			latents.add(latent);
+		}
+
+		DiffusionTrainingDataset dataset = new DiffusionTrainingDataset(latents, scheduler, 1);
+		if (globalCondDim > 0) {
+			dataset.setExtraArguments(new PackedCollection(globalCondDim));
+		}
+		log("  Created " + latents.size() + " training samples");
+
+		// Step 4: Train for 3 epochs
+		log("");
+		log("Step 4: Training (3 epochs)...");
+		ModelOptimizer optimizer = new ModelOptimizer(compiled, () -> dataset);
+		optimizer.setLossFunction(new MeanSquaredError(latentShape.traverseEach()));
+		optimizer.setLogFrequency(1);
+		optimizer.setLogConsumer(this::log);
+
+		start = System.currentTimeMillis();
+		TrainingResult result = optimizer.optimize(3);
+		long trainMs = System.currentTimeMillis() - start;
+		log("  Training completed in " + trainMs + " ms");
+		log("  Final loss: " + result.getBestValidationLoss());
+
+		// Clean up
+		model.releaseCompiledModel();
+
+		log("");
+		log("=== Profiled Run Summary ===");
+		log("  Compile time: " + compileMs + " ms");
+		log("  Train time: " + trainMs + " ms");
+	}
+
+	/**
+	 * Measures compilation and first training step timing for a single
+	 * model configuration.
+	 */
+	private void measureCompilation(int embedDim, int ioChannels, int depth,
+									int numHeads, int condTokenDim,
+									int globalCondDim) {
+		Runtime runtime = Runtime.getRuntime();
+
+		AdapterConfig adapterConfig = AdapterConfig.forAudioDiffusion();
+		int latentLen = 2;
+
+		// Create model
+		LoRADiffusionTransformer model = LoRADiffusionTransformer.create(
+				ioChannels, embedDim, depth, numHeads, PATCH_SIZE,
+				condTokenDim, globalCondDim, DIFFUSION_OBJECTIVE,
+				latentLen, 0, null, adapterConfig, false
+		);
+
+		// Forward pass compilation (compileForTraining includes forward)
+		runtime.gc();
+		long heapBefore = runtime.totalMemory() - runtime.freeMemory();
+		long startFwd = System.nanoTime();
+		CompiledModel compiled = model.compileForTraining();
+		long fwdMs = (System.nanoTime() - startFwd) / 1_000_000;
+
+		runtime.gc();
+		long heapAfterCompile = runtime.totalMemory() - runtime.freeMemory();
+
+		// First training step (triggers backward pass compilation)
+		TraversalPolicy latentShape = new TraversalPolicy(1, ioChannels, latentLen);
+		DiffusionNoiseScheduler scheduler = new DiffusionNoiseScheduler(100);
+
+		List<PackedCollection> latents = new ArrayList<>();
+		Random rng = new Random(42);
+		PackedCollection latent = new PackedCollection(1, ioChannels, latentLen);
+		latent.randnFill(rng);
+		latents.add(latent);
+
+		DiffusionTrainingDataset dataset = new DiffusionTrainingDataset(
+				latents, scheduler, 1
+		);
+		if (globalCondDim > 0) {
+			dataset.setExtraArguments(new PackedCollection(globalCondDim));
+		}
+
+		ModelOptimizer optimizer = new ModelOptimizer(compiled, () -> dataset);
+		optimizer.setLossFunction(new MeanSquaredError(latentShape.traverseEach()));
+		optimizer.setLogFrequency(1);
+		optimizer.setLogConsumer(this::log);
+
+		long startBwd = System.nanoTime();
+		TrainingResult result = optimizer.optimize(1);
+		long bwdMs = (System.nanoTime() - startBwd) / 1_000_000;
+
+		// Second training step (no recompilation, measures pure runtime)
+		long startTrain = System.nanoTime();
+		optimizer.optimize(1);
+		long trainMs = (System.nanoTime() - startTrain) / 1_000_000;
+
+		runtime.gc();
+		long heapAfterTrain = runtime.totalMemory() - runtime.freeMemory();
+		long heapUsedMb = heapAfterTrain / (1024 * 1024);
+		long heapMaxMb = runtime.maxMemory() / (1024 * 1024);
+
+		log(String.format("%-8d %-6d %-6d %-6d %-14d %-14d %-14d %-14d %-14d",
+				embedDim, ioChannels, depth, numHeads,
+				fwdMs, bwdMs, trainMs, heapUsedMb, heapMaxMb));
+
+		model.releaseCompiledModel();
+	}
+
+	/**
+	 * Runs the full fine-tuning and inference pipeline for the given
+	 * model configuration.
+	 *
+	 * @param ioChannels     latent channel count
+	 * @param embedDim       transformer embedding dimension
+	 * @param depth          number of transformer blocks
+	 * @param numHeads       number of attention heads
+	 * @param condTokenDim   cross-attention conditioning dimension (0 to disable)
+	 * @param globalCondDim  global conditioning dimension
+	 * @param latentLen      latent sequence length
+	 * @param numSamples     number of synthetic training samples
+	 * @param epochs         training epochs
+	 * @param repeatFactor   dataset repeat factor
+	 * @param adaptersPath   output path for LoRA adapter bundle
+	 * @param wavPath        output path for generated WAV
+	 */
+	private void runFineTuningPipeline(int ioChannels, int embedDim, int depth,
+									   int numHeads, int condTokenDim,
+									   int globalCondDim, int latentLen,
+									   int numSamples, int epochs,
+									   int repeatFactor, Path adaptersPath,
+									   Path wavPath) throws IOException {
+		int diffusionSteps = 1000;
+
+		log("=== LoRA Fine-Tuning Pipeline ===");
+		log("  embed=" + embedDim + " depth=" + depth + " heads=" + numHeads
+				+ " io=" + ioChannels + " latentLen=" + latentLen);
+		log("");
+
+		// Step 1: Create synthetic training data
+		log("Step 1: Creating synthetic latent training data...");
+		List<PackedCollection> syntheticLatents = new ArrayList<>();
+		Random rng = new Random(42);
+		for (int i = 0; i < numSamples; i++) {
+			PackedCollection latent = new PackedCollection(1, ioChannels, latentLen);
+			latent.randnFill(rng);
+			syntheticLatents.add(latent);
+		}
+		log("  Created " + numSamples + " synthetic latents, shape (1, "
+				+ ioChannels + ", " + latentLen + ")");
+
+		// Step 2: Create LoRA model
+		log("");
+		log("Step 2: Creating LoRA diffusion model (random init)...");
 		AdapterConfig adapterConfig = AdapterConfig.forAudioDiffusion();
 		log("  LoRA rank: " + adapterConfig.getRank());
 		log("  LoRA alpha: " + adapterConfig.getAlpha());
 
 		LoRADiffusionTransformer loraModel = LoRADiffusionTransformer.create(
-				IO_CHANNELS,
-				EMBED_DIM,
-				DEPTH,
-				NUM_HEADS,
-				PATCH_SIZE,
-				COND_TOKEN_DIM,
-				GLOBAL_COND_DIM,
-				DIFFUSION_OBJECTIVE,
-				dataset.getLatentLength(),  // audioSeqLen
-				0,  // condSeqLen (no text conditioning for now)
-				transformerWeights,
-				adapterConfig,
-				false
+				ioChannels, embedDim, depth, numHeads, PATCH_SIZE,
+				condTokenDim, globalCondDim, DIFFUSION_OBJECTIVE,
+				latentLen, 0, null, adapterConfig, false
 		);
-		log("  Created model with " + loraModel.getLoraLayers().size() + " LoRA layers");
+		log("  Model object created");
 
-		// Count trainable parameters
+		// Step 3: Compile for training
+		log("");
+		log("Step 3: Compiling model for training...");
+		long compileStart = System.nanoTime();
+		CompiledModel compiledModel = loraModel.compileForTraining();
+		long compileMs = (System.nanoTime() - compileStart) / 1_000_000;
+		log("  Model compiled in " + compileMs + " ms");
+		log("  LoRA layers created: " + loraModel.getLoraLayers().size());
+
 		long trainableParams = 0;
-		for (var layer : loraModel.getLoraLayers()) {
-			for (var weight : layer.getWeights()) {
+		for (LoRALinear layer : loraModel.getLoraLayers()) {
+			for (PackedCollection weight : layer.getWeights()) {
 				trainableParams += weight.getMemLength();
 			}
 		}
 		log("  Trainable parameters: " + trainableParams);
 
-		// Step 4: Compile model
+		// Step 4: Train
 		log("");
-		log("Step 4: Compiling model for training...");
-		CompiledModel compiledModel = loraModel.compileForTraining();
-		log("  Model compiled with backward pass enabled");
+		log("Step 4: Starting training...");
+		log("  Epochs: " + epochs + ", repeat factor: " + repeatFactor);
 
-		// Step 5: Generate "before" sample (untrained model)
-		log("");
-		log("Step 5: Generating 'before' sample (untrained model)...");
-		DiffusionNoiseScheduler scheduler = new DiffusionNoiseScheduler(NUM_DIFFUSION_STEPS);
-		generateAndSaveSample(loraModel, autoencoderWeights, scheduler,
-				dataset.getLatentLength(), OUTPUT_DIR.resolve("before_training.wav"));
+		DiffusionNoiseScheduler scheduler = new DiffusionNoiseScheduler(diffusionSteps);
+		TraversalPolicy latentShape = new TraversalPolicy(1, ioChannels, latentLen);
 
-		// Step 6: Aggressive fine-tuning
-		log("");
-		log("Step 6: Starting aggressive fine-tuning...");
-		log("  Epochs: " + EPOCHS);
-		log("  Repeat factor: " + REPEAT_FACTOR);
-		log("  Learning rate: " + LEARNING_RATE);
+		DiffusionTrainingDataset diffusionDataset = new DiffusionTrainingDataset(
+				syntheticLatents, scheduler, repeatFactor
+		);
+		if (globalCondDim > 0) {
+			diffusionDataset.setExtraArguments(new PackedCollection(globalCondDim));
+		}
 
-		TraversalPolicy latentShape = new TraversalPolicy(1, IO_CHANNELS, dataset.getLatentLength());
-
-		// Convert to diffusion training dataset
-		DiffusionTrainingDataset diffusionDataset = dataset.toDiffusionDataset(scheduler, REPEAT_FACTOR);
-
-		// Create and configure ModelOptimizer directly
 		ModelOptimizer optimizer = new ModelOptimizer(compiledModel, () -> {
 			diffusionDataset.shuffle();
 			return diffusionDataset;
 		});
 		optimizer.setLossFunction(new MeanSquaredError(latentShape.traverseEach()));
-		optimizer.setLogFrequency(10);
+		optimizer.setLogFrequency(1);
 		optimizer.setLogConsumer(this::log);
 
-		// Run training - ModelOptimizer owns the training loop
-		TrainingResult result = optimizer.optimize(EPOCHS);
+		long trainStart = System.nanoTime();
+		TrainingResult result = optimizer.optimize(epochs);
+		long trainMs = (System.nanoTime() - trainStart) / 1_000_000;
 
 		log("");
-		log("Training completed:");
+		log("Training completed in " + trainMs + " ms:");
 		log("  Total steps: " + result.getTotalSteps());
-		log("  Final loss: " + String.format("%.6f", result.getBestValidationLoss()));
-		log("  Training time: " + result.getTrainingTime());
-
-		// Log loss history
-		log("");
-		log("Loss history:");
 		for (int i = 0; i < result.getTrainLossHistory().size(); i++) {
-			log(String.format("  Epoch %d: %.6f", i + 1, result.getTrainLossHistory().get(i)));
+			log(String.format("  Epoch %d: %.6f", i + 1,
+					result.getTrainLossHistory().get(i)));
 		}
 
-		// Step 7: Generate "after" samples
+		// Step 5: Save LoRA adapters
 		log("");
-		log("Step 7: Generating 'after' samples (trained model)...");
-		for (int i = 0; i < 3; i++) {
-			generateAndSaveSample(loraModel, autoencoderWeights, scheduler,
-					dataset.getLatentLength(),
-					OUTPUT_DIR.resolve("after_training_" + (i + 1) + ".wav"));
-		}
-
-		// Step 8: Save LoRA weights
-		log("");
-		log("Step 8: Saving LoRA adapters...");
-		Path adaptersPath = OUTPUT_DIR.resolve("bass_loops_lora.pb");
+		log("Step 5: Saving LoRA adapters...");
 		loraModel.saveAdaptersBundle(
-				adaptersPath,
-				"stable-audio-open-1.0",
+				adaptersPath, "test-model",
 				Map.of(
 						"final_loss", result.getBestValidationLoss(),
-						"epochs", (double) EPOCHS,
-						"repeat_factor", (double) REPEAT_FACTOR
+						"epochs", (double) epochs,
+						"repeat_factor", (double) repeatFactor
 				),
-				"Aggressively fine-tuned on BASS LOOPS for demonstration"
+				"Pipeline validation test with synthetic data"
 		);
 		log("  Saved to: " + adaptersPath);
 
+		// Step 6: Run inference
+		log("");
+		log("Step 6: Running inference...");
+		loraModel.releaseCompiledModel();
+
+		DiffusionSampler sampler = new DiffusionSampler(
+				loraModel, new PingPongSamplingStrategy(),
+				diffusionSteps, latentShape
+		);
+		sampler.setNumInferenceSteps(10);
+
+		PackedCollection globalCond = globalCondDim > 0
+				? new PackedCollection(globalCondDim) : null;
+		long inferStart = System.nanoTime();
+		PackedCollection generatedLatent = sampler.sample(42L, null, globalCond);
+		long inferMs = (System.nanoTime() - inferStart) / 1_000_000;
+		log("  Inference completed in " + inferMs + " ms");
+		log("  Generated latent size: " + generatedLatent.getMemLength());
+
+		// Step 7: Write WAV output
+		log("");
+		log("Step 7: Writing WAV output...");
+		int totalSamples = generatedLatent.getMemLength();
+		File wavFile = wavPath.toFile();
+		WavFile wav = WavFile.newWavFile(wavFile, 1, totalSamples, 16, 44100);
+		double[][] buffer = new double[1][totalSamples];
+		for (int i = 0; i < totalSamples; i++) {
+			buffer[0][i] = Math.max(-1.0, Math.min(1.0,
+					generatedLatent.toDouble(i)));
+		}
+		wav.writeFrames(buffer, totalSamples);
+		wav.close();
+		log("  Saved WAV to: " + wavPath);
+
 		// Summary
 		log("");
-		log("=== Test Complete ===");
-		log("Output files:");
-		log("  " + OUTPUT_DIR.resolve("before_training.wav"));
-		log("  " + OUTPUT_DIR.resolve("after_training_1.wav"));
-		log("  " + OUTPUT_DIR.resolve("after_training_2.wav"));
-		log("  " + OUTPUT_DIR.resolve("after_training_3.wav"));
-		log("  " + adaptersPath);
-		log("");
-		log("Listen to the before/after samples to hear if the model learned");
-		log("the characteristics of the BASS LOOPS training data.");
-	}
-
-	/**
-	 * Generates and saves an audio sample.
-	 */
-	private void generateAndSaveSample(DiffusionModel diffusionModel,
-									   StateDictionary decoderWeights,
-									   DiffusionNoiseScheduler scheduler,
-									   int latentLength,
-									   Path outputPath) throws IOException {
-		// Build decoder
-		OobleckDecoder decoder = new OobleckDecoder(decoderWeights, 1, latentLength);
-		Model decoderModel = new Model(new TraversalPolicy(1, IO_CHANNELS, latentLength));
-		decoderModel.add(decoder);
-		CompiledModel compiledDecoder = decoderModel.compile(false); // Inference only, no backprop needed
-
-		try {
-			// Wrap decoder as AutoEncoder
-			double latentSampleRate = SAMPLE_RATE / 2048.0; // Approximate compression ratio
-			AutoEncoder autoEncoder = new CompiledModelAutoEncoder(
-					compiledDecoder, SAMPLE_RATE, latentSampleRate, SEGMENT_SECONDS
-			);
-
-			// Create generator with DDIM strategy (eta=0 for deterministic)
-			TraversalPolicy latentShape = new TraversalPolicy(1, IO_CHANNELS, latentLength);
-			AudioDiffusionGenerator generator = new AudioDiffusionGenerator(
-					diffusionModel, autoEncoder, scheduler, 0.0, latentShape
-			);
-			generator.setNumInferenceSteps(NUM_INFERENCE_STEPS);
-			generator.setVerbose(false);
-
-			// Generate and save with a fixed seed for reproducibility
-			generator.generateAndSave(42L, outputPath);
-			log("  Generated: " + outputPath.getFileName());
-		} finally {
-			// Release the decoder's compiled model and native memory
-			compiledDecoder.destroy();
-			decoderModel.destroy();
-		}
-	}
-
-	/**
-	 * Quick test that just verifies the pipeline compiles without running full training.
-	 */
-	@Test
-	public void testPipelineCompiles() throws IOException {
-		if (!Files.exists(WEIGHTS_DIR)) {
-			log("Weights directory not found, skipping test");
-			return;
-		}
-		if (!Files.exists(AUTOENCODER_DIR)) {
-			log("Autoencoder weights not found, skipping test");
-			return;
-		}
-
-		log("Testing that the pipeline compiles...");
-
-		// Load weights
-		StateDictionary transformerWeights = new StateDictionary(WEIGHTS_DIR.toString());
-		StateDictionary autoencoderWeights = new StateDictionary(AUTOENCODER_DIR.toString());
-
-		// Calculate latent dimensions for 5 second audio
-		int segmentSamples = (int) (SEGMENT_SECONDS * SAMPLE_RATE);
-		OobleckEncoder encoder = new OobleckEncoder(autoencoderWeights, 1, segmentSamples);
-		int latentLength = encoder.getOutputLength();
-		log("  Latent length for " + SEGMENT_SECONDS + "s audio: " + latentLength);
-
-		// Create scheduler
-		DiffusionNoiseScheduler scheduler = new DiffusionNoiseScheduler(NUM_DIFFUSION_STEPS);
-		log("  Scheduler created with " + NUM_DIFFUSION_STEPS + " steps");
-
-		// Create LoRA model
-		AdapterConfig adapterConfig = AdapterConfig.forAudioDiffusion();
-		LoRADiffusionTransformer loraModel = LoRADiffusionTransformer.create(
-				IO_CHANNELS, EMBED_DIM, DEPTH, NUM_HEADS, PATCH_SIZE,
-				COND_TOKEN_DIM, GLOBAL_COND_DIM, DIFFUSION_OBJECTIVE,
-				latentLength, 0,
-				transformerWeights, adapterConfig, false
-		);
-		log("  LoRA model created with " + loraModel.getLoraLayers().size() + " layers");
-
-		// Test noise addition
-		PackedCollection testLatent = new PackedCollection(1, IO_CHANNELS, latentLength);
-		PackedCollection noise = scheduler.sampleNoiseLike(testLatent).evaluate();
-		PackedCollection noisyLatent = scheduler.addNoise(testLatent, noise, 500).evaluate();
-		log("  Noise addition works");
-
-		// Test timestep creation
-		PackedCollection timestep = new PackedCollection(1);
-		timestep.setMem(0, 0.5);
-		log("  Timestep tensor created");
-
-		log("Pipeline compilation test passed!");
+		log("=== Pipeline Complete ===");
+		log("  Compile: " + compileMs + " ms");
+		log("  Train: " + trainMs + " ms");
+		log("  Infer: " + inferMs + " ms");
+		log("  Adapter file: " + adaptersPath);
+		log("  WAV file: " + wavPath);
 	}
 }

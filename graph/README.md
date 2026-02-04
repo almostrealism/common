@@ -354,6 +354,112 @@ CellularLayer layer = rmsnorm(shape, size, weights, eps);
 
 3. **Test validation**: The test `validate()` method expects groups of `(shape.length(0) / groups) * shape.length(1)` elements. Ensure your layer creation matches this expectation.
 
+## LoRA (Low-Rank Adaptation)
+
+The graph module provides built-in support for LoRA, enabling parameter-efficient fine-tuning of large models.
+
+### Core Classes
+
+| Class | Purpose |
+|-------|---------|
+| `LoRALinear` | Low-rank linear layer that wraps frozen base weights |
+| `AdapterConfig` | Configuration for which layers to adapt and hyperparameters |
+| `LowRankAdapterSupport` | Interface for models that support LoRA fine-tuning |
+| `ProjectionFactory` | Factory abstraction for creating dense vs LoRA layers |
+
+### Basic Usage
+
+```java
+import org.almostrealism.layers.*;
+
+// Create LoRA-wrapped layer
+LoRALinear loraLayer = new LoRALinear(
+    inputShape,
+    baseWeights,    // Frozen base weights
+    baseBias,       // Frozen bias (may be null)
+    8,              // rank (typical: 4, 8, 16)
+    16.0            // alpha (typical: 2 * rank)
+);
+
+// Only LoRA matrices are trainable
+List<PackedCollection> trainable = loraLayer.getWeights();  // [loraA, loraB]
+
+// After training, merge for deployment (no runtime overhead)
+PackedCollection merged = loraLayer.mergeWeights();
+CellularLayer deploymentLayer = loraLayer.toMergedLayer();
+```
+
+### AdapterConfig Presets
+
+```java
+// For audio diffusion models (attention projections)
+AdapterConfig config = AdapterConfig.forAudioDiffusion();
+
+// Full LoRA (all layers)
+AdapterConfig config = AdapterConfig.full();
+
+// Minimal (self-attention only, rank=4)
+AdapterConfig config = AdapterConfig.minimal();
+
+// Custom configuration
+AdapterConfig config = new AdapterConfig()
+    .rank(16)
+    .alpha(32.0)
+    .targets(TargetLayer.SELF_ATTENTION_QKV, TargetLayer.CROSS_ATTENTION_Q);
+```
+
+### Using ProjectionFactory
+
+`ProjectionFactory` allows attention methods to create either dense or LoRA layers:
+
+```java
+// Standard dense layers (default)
+ProjectionFactory factory = ProjectionFactory.dense();
+
+// LoRA-enabled layers
+List<LoRALinear> loraLayers = new ArrayList<>();
+ProjectionFactory factory = ProjectionFactory.lora(config, loraLayers);
+
+// Pass to attention methods
+Block attention = sequenceAttention(shape, weights, factory);
+
+// After model construction, loraLayers contains all created LoRA layers
+List<PackedCollection> trainable = loraLayers.stream()
+    .flatMap(l -> l.getWeights().stream())
+    .toList();
+```
+
+### Implementing LowRankAdapterSupport
+
+For models that need LoRA support:
+
+```java
+public class MyModel implements LowRankAdapterSupport, AttentionFeatures {
+    private final AdapterConfig config;
+    private final List<LoRALinear> loraLayers = new ArrayList<>();
+
+    @Override
+    public AdapterConfig getAdapterConfig() { return config; }
+
+    @Override
+    public List<LoRALinear> getLoraLayers() { return loraLayers; }
+
+    @Override
+    public void addLoraLayer(LoRALinear layer) { loraLayers.add(layer); }
+
+    private void buildModel() {
+        // getProjectionFactory() automatically creates LoRA or dense based on config
+        Block attention = sequenceAttention(shape, weights, getProjectionFactory());
+        model.add(attention);
+    }
+
+    // Convenience methods from the interface:
+    // - getTrainableParameters() - all LoRA weights
+    // - getTrainableParameterCount() - total trainable params
+    // - mergeAllLoraWeights() - merge for deployment
+}
+```
+
 ## Dependencies
 
 - **ar-relation** - Producer/Evaluable abstraction

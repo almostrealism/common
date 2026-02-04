@@ -444,6 +444,46 @@ collection.stream().forEach(expr -> {
         return scope;
     }
 }</code></pre>
+
+                <h3>Expression Caching</h3>
+                <p><code>ExpressionCache</code> provides thread-local deduplication of expressions during compilation to prevent expression tree explosion and improve performance.</p>
+
+                <div class="class-list">
+                    <div class="class-item">
+                        <h4>ExpressionCache</h4>
+                        <p>Thread-local cache that identifies and reuses equivalent expressions. Organized by tree depth with frequency-based eviction.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>ScopeSettings</h4>
+                        <p>Configuration for cache behavior including target expression types and cache size limits.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>FrequencyCache</h4>
+                        <p>Underlying cache implementation that tracks usage frequency for intelligent eviction.</p>
+                    </div>
+                </div>
+
+                <pre><code class="language-java">import io.almostrealism.scope.ExpressionCache;
+
+// Create and activate a cache for a compilation scope
+ExpressionCache cache = new ExpressionCache();
+
+cache.use(() -> {
+    // All expression matching within this scope uses this cache
+    // Equivalent expressions return the same cached instance
+    Expression&lt;?&gt; result = buildComplexExpression();
+    return result;
+});
+
+// Static lookup using the current thread's cache
+Expression&lt;?&gt; deduped = ExpressionCache.match(expression);
+
+// Get frequently occurring expressions (optimization analysis)
+List&lt;Expression&lt;?&gt;&gt; frequent = cache.getFrequentExpressions();</code></pre>
+
+                <div class="warning">
+                    <strong>Why Expression Caching Matters:</strong> Without caching, the same sub-expressions appear multiple times during compilation, leading to exponentially growing expression trees, redundant computations in generated code, longer compilation times, and larger kernels.
+                </div>
             </section>
 
             <section id="resources">

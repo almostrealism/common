@@ -188,7 +188,11 @@ mcp = FastMCP("ar-consultant")
 
 @mcp.tool()
 @tracked_tool(history, "consult")
-def consult(question: str, context: Optional[str] = None) -> dict:
+def consult(
+    question: str,
+    context: Optional[str] = None,
+    keywords: Optional[list[str]] = None,
+) -> dict:
     """Ask the Consultant a question about the AR codebase.
 
     The Consultant searches documentation, retrieves relevant memories,
@@ -197,12 +201,19 @@ def consult(question: str, context: Optional[str] = None) -> dict:
     Args:
         question: The question to ask.
         context: Optional additional context (e.g., code snippet, error message).
+        keywords: Optional list of specific search terms. If provided, these are
+            used directly for documentation search instead of extracting keywords
+            from the question. Use this to specify domain-specific terms that
+            matter most (e.g., ["AttentionFeatures", "backward", "gradient"]).
 
     Returns:
         Dictionary with answer, sources, and related memories.
     """
     # Retrieve documentation context
-    doc_context = docs.get_context_for_query(question)
+    if keywords:
+        doc_context = docs.get_context_for_keywords(keywords)
+    else:
+        doc_context = docs.get_context_for_query(question)
 
     # Search memories for related prior knowledge
     memories = memory.search(query=question, namespace="default", limit=3)
@@ -634,6 +645,7 @@ def export_request_history(
     tool_name: Optional[str] = None,
     include_prompts: bool = True,
     include_chunks: bool = True,
+    output_file: Optional[str] = None,
 ) -> dict:
     """Export full request history records for offline analysis.
 
@@ -641,23 +653,66 @@ def export_request_history(
     for fine-tuning dataset construction.  Supports time range and tool
     filtering.
 
+    The full dataset is written to a JSON file (to avoid context window
+    overflow). The response includes only the file path, total count,
+    and a few example records to show the data structure.
+
     Args:
         since: ISO 8601 start timestamp (inclusive).
         until: ISO 8601 end timestamp (inclusive).
         tool_name: Filter by tool name.
         include_prompts: Include full prompt_text and llm_response (default: True).
         include_chunks: Include doc_chunks and memory_hits (default: True).
+        output_file: Path to write JSON output. Defaults to data/export_<timestamp>.json.
 
     Returns:
-        Dictionary with list of full request records and total count.
+        Dictionary with file path, total count, and example records.
     """
+    from datetime import datetime, timezone
+
     records = history.export_requests(
         since=since, until=until, tool_name=tool_name,
         include_prompts=include_prompts, include_chunks=include_chunks,
     )
+
+    # Determine output file path
+    if output_file is None:
+        ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        output_dir = history._dir
+        output_file = str(output_dir / f"export_{ts}.json")
+
+    # Write full dataset to file
+    from pathlib import Path
+    output_path = Path(output_file)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(output_path, "w") as f:
+        json.dump({"count": len(records), "requests": records}, f, indent=2)
+
+    # Prepare example records (first 3, with truncated content for display)
+    examples = []
+    for rec in records[:3]:
+        example = {
+            "id": rec.get("id"),
+            "timestamp": rec.get("timestamp"),
+            "tool_name": rec.get("tool_name"),
+            "doc_query": rec.get("doc_query"),
+            "doc_result_count": rec.get("doc_result_count"),
+            "memory_result_count": rec.get("memory_result_count"),
+            "status": rec.get("status"),
+            "latency_ms": rec.get("latency_ms"),
+        }
+        # Include truncated prompt/response to show structure
+        if include_prompts and rec.get("prompt_text"):
+            example["prompt_text_preview"] = rec["prompt_text"][:200] + "..." if len(rec.get("prompt_text", "")) > 200 else rec.get("prompt_text")
+        if include_prompts and rec.get("llm_response"):
+            example["llm_response_preview"] = rec["llm_response"][:200] + "..." if len(rec.get("llm_response", "")) > 200 else rec.get("llm_response")
+        examples.append(example)
+
     return {
+        "file": output_file,
         "count": len(records),
-        "requests": records,
+        "example_records": examples,
+        "note": f"Full dataset written to {output_file}. Use Read tool or file transfer to access.",
     }
 
 

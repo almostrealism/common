@@ -13,7 +13,17 @@ The `ar-consultant` MCP server is a documentation-aware assistant that combines 
 **BEFORE you write ANY code, make ANY assumptions, or take ANY action, you MUST consult:**
 
 ```
-mcp__ar-consultant__consult question:"<your question about the codebase>"
+mcp__ar-consultant__consult question:"<your question>" keywords:["RelevantClass", "specific_method", "domain_term"]
+```
+
+**IMPORTANT: Always provide keywords.** The `keywords` parameter dramatically improves search relevance. Provide 2-5 domain-specific terms ordered by importance (most specific first). Without keywords, generic words in your question may match irrelevant documentation.
+
+```
+# GOOD: Keywords help find relevant docs
+consult question:"How do I create an attention layer?" keywords:["AttentionFeatures", "attention", "LayerFeatures"]
+
+# BAD: No keywords - may return irrelevant results
+consult question:"How do I create a simple attention layer for testing?"
 ```
 
 For specific documentation lookups:
@@ -52,7 +62,7 @@ This is WRONG because Claude did NOT consult the documentation to understand how
 **Example of CORRECT behavior:**
 ```
 User: "The prototype discovery doesn't show file paths"
-Claude: [Calls mcp__ar-consultant__consult question:"How does AudioLibrary handle file path identifiers in prototype discovery?"]
+Claude: [Calls mcp__ar-consultant__consult question:"How does AudioLibrary handle file path identifiers in prototype discovery?" keywords:["AudioLibrary", "PrototypeDiscovery", "identifier", "filepath"]]
 Claude: [Now has a documentation-grounded answer with sources cited before responding]
 ```
 
@@ -205,7 +215,7 @@ WRONG ORDER:
 3. Read the test file           <- VIOLATION
 
 CORRECT ORDER:
-1. mcp__ar-consultant__consult question:"How does the Oobleck decoder block work in the ml module?"
+1. mcp__ar-consultant__consult question:"How does the Oobleck decoder block work in the ml module?" keywords:["Oobleck", "decoder", "OobleckDecoder", "ml"]
 2. NOW: git log, git diff, Read test file
 ```
 

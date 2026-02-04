@@ -507,6 +507,215 @@ for (int step = 0; step < maxTokens; step++) {
 }</code></pre>
             </section>
 
+            <section id="audio-diffusion">
+                <h2>Audio Diffusion Models</h2>
+                <p>The ar-ml module includes support for transformer-based diffusion models designed for audio generation, including the <code>DiffusionTransformer</code> architecture and LoRA fine-tuning support.</p>
+
+                <h3>DiffusionTransformer</h3>
+                <p><code>DiffusionTransformer</code> implements a conditional diffusion architecture combining self-attention transformer blocks with optional cross-attention for conditioning. Key features:</p>
+                <ul>
+                    <li><strong>Rotary Position Embeddings (RoPE)</strong> for positional information</li>
+                    <li><strong>Timestep Embeddings</strong> using Fourier features</li>
+                    <li><strong>Cross-Attention Conditioning</strong> for conditional generation</li>
+                    <li><strong>Prepended Conditioning</strong> approach (not AdaLayerNorm)</li>
+                    <li><strong>Configurable depth, heads, and patch sizes</strong></li>
+                </ul>
+
+                <h4>Architecture</h4>
+                <div class="code-example">
+                    <strong>DiffusionTransformer Architecture</strong><br>
+                    1. Input Preprocessing<br>
+                    &nbsp;&nbsp;&nbsp;- 1D Convolution Projection<br>
+                    &nbsp;&nbsp;&nbsp;- Optional Patchification<br>
+                    2. Conditioning Inputs<br>
+                    &nbsp;&nbsp;&nbsp;- Timestep Embedding (Fourier features → MLP)<br>
+                    &nbsp;&nbsp;&nbsp;- Cross-Attention Conditioning (optional)<br>
+                    &nbsp;&nbsp;&nbsp;- Global Conditioning (optional)<br>
+                    &nbsp;&nbsp;&nbsp;- Prepended as tokens to sequence<br>
+                    3. Transformer Blocks (×depth)<br>
+                    &nbsp;&nbsp;&nbsp;- LayerNorm + Self-Attention (with RoPE)<br>
+                    &nbsp;&nbsp;&nbsp;- LayerNorm + Cross-Attention (optional, QK-normalized)<br>
+                    &nbsp;&nbsp;&nbsp;- LayerNorm + Feed-Forward (4x expansion)<br>
+                    4. Output Postprocessing<br>
+                    &nbsp;&nbsp;&nbsp;- Unpatchification<br>
+                    &nbsp;&nbsp;&nbsp;- 1D Convolution to audio channels
+                </div>
+
+                <h4>Usage Example</h4>
+                <pre><code class="language-java">import org.almostrealism.ml.audio.DiffusionTransformer;
+import org.almostrealism.ml.StateDictionary;
+
+// Load weights
+StateDictionary weights = new StateDictionary(weightsDir);
+
+// Create model
+DiffusionTransformer model = new DiffusionTransformer(
+    64,    // ioChannels - input/output audio channels
+    1536,  // embedDim - transformer embedding dimension
+    24,    // depth - number of transformer layers
+    24,    // numHeads - attention heads
+    1,     // patchSize - 1 = no patching
+    768,   // condTokenDim - cross-attention conditioning (0 = disabled)
+    1536,  // globalCondDim - global conditioning (0 = disabled)
+    "predict_noise",  // diffusion objective
+    weights
+);
+
+// Forward pass
+PackedCollection output = model.forward(
+    audioInput,      // [batch, ioChannels, seqLen]
+    timestep,        // [batch, 1]
+    crossAttnCond,   // [batch, condSeqLen, condTokenDim] or null
+    globalCond       // [batch, globalCondDim] or null
+);</code></pre>
+
+                <h4>Key Parameters</h4>
+                <table class="comparison-table">
+                    <tr>
+                        <th>Parameter</th>
+                        <th>Description</th>
+                        <th>Typical Values</th>
+                    </tr>
+                    <tr>
+                        <td>ioChannels</td>
+                        <td>Number of input/output audio channels</td>
+                        <td>64, 128</td>
+                    </tr>
+                    <tr>
+                        <td>embedDim</td>
+                        <td>Embedding dimension for transformer blocks</td>
+                        <td>768, 1536</td>
+                    </tr>
+                    <tr>
+                        <td>depth</td>
+                        <td>Number of transformer layers</td>
+                        <td>12, 24</td>
+                    </tr>
+                    <tr>
+                        <td>numHeads</td>
+                        <td>Number of attention heads</td>
+                        <td>12, 24</td>
+                    </tr>
+                    <tr>
+                        <td>patchSize</td>
+                        <td>Patch size for patchify/unpatchify (1 = disabled)</td>
+                        <td>1, 2, 4</td>
+                    </tr>
+                    <tr>
+                        <td>condTokenDim</td>
+                        <td>Cross-attention conditioning dimension (0 = disabled)</td>
+                        <td>768, 1024</td>
+                    </tr>
+                    <tr>
+                        <td>globalCondDim</td>
+                        <td>Global conditioning dimension (0 = disabled)</td>
+                        <td>1536</td>
+                    </tr>
+                </table>
+
+                <h3>Conditioning Approach: Prepended Conditioning vs AdaLayerNorm</h3>
+                <p>DiffusionTransformer uses <strong>prepended conditioning</strong> instead of Adaptive Layer Normalization (AdaLayerNorm). This is an intentional design decision.</p>
+
+                <h4>What is AdaLayerNorm?</h4>
+                <p>AdaLayerNorm (Adaptive Layer Normalization) is a conditioning technique used in some diffusion architectures where normalization parameters (scale and shift) are dynamically computed from conditioning signals like timestep or class labels. The formula modulates the normalized activations: <code>y = gamma(cond) * norm(x) + beta(cond)</code>.</p>
+
+                <h4>Why AR Uses Prepended Conditioning Instead</h4>
+                <ul>
+                    <li><strong>Simpler architecture</strong>: No need for per-layer conditioning projections</li>
+                    <li><strong>Standard normalization</strong>: Uses regular LayerNorm throughout, reducing code complexity</li>
+                    <li><strong>Attention-based integration</strong>: Conditioning tokens participate in self-attention, providing natural information flow</li>
+                    <li><strong>Flexibility</strong>: Easy to add/remove conditioning types without architectural changes</li>
+                </ul>
+
+                <h4>How Prepended Conditioning Works</h4>
+                <ol>
+                    <li>Timestep and global conditioning are projected to embedding dimension</li>
+                    <li>Projected vectors are prepended as extra tokens to the input sequence</li>
+                    <li>Self-attention naturally integrates conditioning information</li>
+                    <li>Conditioning tokens are removed before output</li>
+                </ol>
+
+                <p>See <code>DiffusionTransformer.prependConditioning()</code> for implementation details. Cross-attention provides additional conditioning via a separate attention mechanism when <code>condTokenDim &gt; 0</code>.</p>
+
+                <h3>LoRA Fine-Tuning</h3>
+                <p>For parameter-efficient fine-tuning, use <code>LoRADiffusionTransformer</code> which extends DiffusionTransformer with <code>LowRankAdapterSupport</code>:</p>
+                <pre><code class="language-java">import org.almostrealism.ml.audio.LoRADiffusionTransformer;
+import org.almostrealism.layers.AdapterConfig;
+
+// Create LoRA-enabled model
+AdapterConfig config = AdapterConfig.forAudioDiffusion();  // rank=8, targets attention
+LoRADiffusionTransformer loraModel = new LoRADiffusionTransformer(
+    config,
+    64, 1536, 24, 24, 1, 768, 1536, "predict_noise",
+    weights
+);
+
+// Get trainable parameters (only LoRA weights)
+List&lt;PackedCollection&gt; trainable = loraModel.getTrainableParameters();
+int paramCount = loraModel.getTrainableParameterCount();
+
+// After training, merge LoRA weights into base model
+loraModel.mergeAllLoraWeights();
+
+// Save adapter weights
+loraModel.saveAdaptersBundle(outputPath, "base-model-id", metrics);</code></pre>
+
+                <h4>LowRankAdapterSupport Interface</h4>
+                <p>The <code>LowRankAdapterSupport</code> interface (in ar-graph module) provides:</p>
+                <ul>
+                    <li><code>getProjectionFactory()</code> - Returns factory that wraps targeted layers with LoRA</li>
+                    <li><code>getTrainableParameters()</code> - Returns list of LoRA adapter weights</li>
+                    <li><code>getLoraLayers()</code> - Access to created LoRALinear instances</li>
+                    <li><code>mergeAllLoraWeights()</code> - Bake adapter weights into base model</li>
+                </ul>
+
+                <h4>AdapterConfig Options</h4>
+                <table class="comparison-table">
+                    <tr>
+                        <th>Factory Method</th>
+                        <th>Rank</th>
+                        <th>Alpha</th>
+                        <th>Targets</th>
+                    </tr>
+                    <tr>
+                        <td><code>forAudioDiffusion()</code></td>
+                        <td>8</td>
+                        <td>16.0</td>
+                        <td>All attention projections</td>
+                    </tr>
+                    <tr>
+                        <td><code>full()</code></td>
+                        <td>8</td>
+                        <td>16.0</td>
+                        <td>All layers including FFN</td>
+                    </tr>
+                    <tr>
+                        <td><code>minimal()</code></td>
+                        <td>4</td>
+                        <td>8.0</td>
+                        <td>Only Q/K/V projections</td>
+                    </tr>
+                </table>
+
+                <h3>ProjectionFactory</h3>
+                <p><code>ProjectionFactory</code> is a functional interface that abstracts the creation of projection layers, enabling conditional LoRA vs dense layer selection:</p>
+                <pre><code class="language-java">import org.almostrealism.layers.ProjectionFactory;
+
+// Standard dense projections
+ProjectionFactory denseFactory = ProjectionFactory.dense();
+
+// LoRA-wrapped projections
+List&lt;LoRALinear&gt; loraLayers = new ArrayList&lt;&gt;();
+ProjectionFactory loraFactory = ProjectionFactory.lora(config, loraLayers);
+
+// Use with attention methods
+Block attention = sequenceAttention(
+    batchSize, seqLen, dim, heads,
+    qkvWeight, outWeight, invFreq,
+    loraFactory  // Projections automatically wrapped with LoRA
+);</code></pre>
+            </section>
+
             <section id="performance">
                 <h2>Performance Features</h2>
 

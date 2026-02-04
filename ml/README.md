@@ -376,6 +376,107 @@ for (int step = 0; step < maxTokens; step++) {
 }
 ```
 
+## Audio Diffusion Models
+
+The ar-ml module also includes support for transformer-based diffusion models for audio generation.
+
+### DiffusionTransformer
+
+A conditional diffusion architecture combining self-attention with optional cross-attention:
+
+```java
+import org.almostrealism.ml.audio.DiffusionTransformer;
+
+// Create model
+DiffusionTransformer model = new DiffusionTransformer(
+    64,    // ioChannels - input/output audio channels
+    1536,  // embedDim - transformer embedding dimension
+    24,    // depth - number of transformer layers
+    24,    // numHeads - attention heads
+    1,     // patchSize - 1 = no patching
+    768,   // condTokenDim - cross-attention conditioning (0 = disabled)
+    1536,  // globalCondDim - global conditioning (0 = disabled)
+    "predict_noise",  // diffusion objective
+    weights
+);
+
+// Forward pass
+PackedCollection output = model.forward(
+    audioInput,      // [batch, ioChannels, seqLen]
+    timestep,        // [batch, 1] - diffusion timestep
+    crossAttnCond,   // [batch, condSeqLen, condTokenDim] or null
+    globalCond       // [batch, globalCondDim] or null
+);
+```
+
+**Key Features:**
+- Rotary Position Embeddings (RoPE)
+- Timestep embeddings via Fourier features
+- Optional cross-attention conditioning
+- Prepended conditioning approach (not AdaLayerNorm)
+
+### LoRA Fine-Tuning
+
+For parameter-efficient fine-tuning, use `LoRADiffusionTransformer`:
+
+```java
+import org.almostrealism.ml.audio.LoRADiffusionTransformer;
+import org.almostrealism.layers.AdapterConfig;
+
+// Create LoRA-enabled model
+AdapterConfig config = AdapterConfig.forAudioDiffusion();
+LoRADiffusionTransformer loraModel = new LoRADiffusionTransformer(
+    config, 64, 1536, 24, 24, 1, 768, 1536, "predict_noise", weights
+);
+
+// Get trainable parameters (only LoRA weights)
+List<PackedCollection> trainable = loraModel.getTrainableParameters();
+
+// After training, merge LoRA into base model
+loraModel.mergeAllLoraWeights();
+```
+
+**AdapterConfig Options:**
+- `forAudioDiffusion()` - rank=8, targets all attention projections
+- `full()` - targets all layers including FFN
+- `minimal()` - rank=4, only Q/K/V projections
+
+### ProjectionFactory
+
+Abstracts projection layer creation for LoRA vs dense selection:
+
+```java
+// Standard dense projections
+ProjectionFactory factory = ProjectionFactory.dense();
+
+// LoRA-wrapped projections
+ProjectionFactory factory = ProjectionFactory.lora(config, loraLayers);
+
+// Pass to attention methods
+Block attention = sequenceAttention(shape, weights, factory);
+```
+
+### Conditioning Approach: Prepended Conditioning vs AdaLayerNorm
+
+DiffusionTransformer uses **prepended conditioning** instead of Adaptive Layer Normalization (AdaLayerNorm).
+
+**What is AdaLayerNorm?**
+AdaLayerNorm is a technique where normalization parameters (scale/shift) are computed from conditioning signals like timestep. Formula: `y = gamma(cond) * norm(x) + beta(cond)`. Some diffusion models use this for timestep conditioning.
+
+**Why AR uses prepended conditioning instead:**
+- **Simpler architecture**: No per-layer conditioning projections needed
+- **Standard normalization**: Regular LayerNorm throughout, less complexity
+- **Attention-based integration**: Conditioning tokens participate in self-attention naturally
+- **Flexibility**: Easy to add/remove conditioning types without architecture changes
+
+**How it works:**
+1. Timestep and global conditioning projected to embedding dimension
+2. Prepended as extra tokens to the input sequence
+3. Self-attention integrates conditioning information
+4. Conditioning tokens removed before output
+
+See `DiffusionTransformer.prependConditioning()` for implementation.
+
 ## Integration with Other Modules
 
 ### Graph Module

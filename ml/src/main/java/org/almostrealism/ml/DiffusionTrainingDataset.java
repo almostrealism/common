@@ -67,6 +67,7 @@ public class DiffusionTrainingDataset implements Dataset<PackedCollection> {
 	private final DiffusionNoiseScheduler scheduler;
 	private final int repeatFactor;
 	private final Random shuffleRandom;
+	private PackedCollection[] extraArguments;
 
 	/**
 	 * Creates a diffusion training dataset.
@@ -111,6 +112,20 @@ public class DiffusionTrainingDataset implements Dataset<PackedCollection> {
 	 */
 	public int uniqueSize() {
 		return samples.size();
+	}
+
+	/**
+	 * Sets additional static arguments to include with each training sample.
+	 *
+	 * <p>These arguments are appended after the timestep when constructing
+	 * the {@link ValueTarget} for each sample. This is useful for models that
+	 * require additional inputs beyond the noisy sample and timestep, such as
+	 * global conditioning vectors.</p>
+	 *
+	 * @param extraArguments Additional arguments for each sample
+	 */
+	public void setExtraArguments(PackedCollection... extraArguments) {
+		this.extraArguments = extraArguments;
 	}
 
 	/**
@@ -169,10 +184,20 @@ public class DiffusionTrainingDataset implements Dataset<PackedCollection> {
 				sampleIndex++;
 			}
 
-			// Return with timestep as argument (for multi-input model)
-			// Input: noisy sample, Arguments: [timestep], Target: noise
+			// Build arguments array: [timestep, extraArguments...]
+			PackedCollection[] arguments;
+			if (extraArguments != null && extraArguments.length > 0) {
+				arguments = new PackedCollection[1 + extraArguments.length];
+				arguments[0] = timestep;
+				System.arraycopy(extraArguments, 0, arguments, 1, extraArguments.length);
+			} else {
+				arguments = new PackedCollection[]{timestep};
+			}
+
+			// Return with all arguments (for multi-input model)
+			// Input: noisy sample, Arguments: [timestep, extras...], Target: noise
 			return ValueTarget.<PackedCollection>of(noisySample, noise)
-					.withArguments(timestep);
+					.withArguments(arguments);
 		}
 
 		private PackedCollection createTimestepTensor(int t) {

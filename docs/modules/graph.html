@@ -35,6 +35,7 @@
                 <a href="#examples">Examples</a>
                 <a href="#shape-validation">Shape Validation</a>
                 <a href="#normalization">Normalization</a>
+                <a href="#lora">LoRA</a>
                 <a href="#resources">Resources</a>
             </nav>
         </header>
@@ -562,6 +563,151 @@ CellularLayer layer = rmsnorm(shape, size, weights, eps);</code></pre>
                 </div>
                 <div class="warning">
                     <strong>Shape vs size mismatch:</strong> When using <code>norm(shape, size, groups, ...)</code>, ensure <code>size</code> typically equals <code>shape.getTotalSize()</code> unless you intentionally want different grouping.
+                </div>
+            </section>
+
+            <section id="lora">
+                <h2>LoRA (Low-Rank Adaptation)</h2>
+                <p>The graph module provides built-in support for LoRA, enabling parameter-efficient fine-tuning of large models by adding trainable low-rank matrices to frozen base weights.</p>
+
+                <h3>Core Classes</h3>
+                <div class="class-list">
+                    <div class="class-item">
+                        <h4>LoRALinear</h4>
+                        <p>Low-rank linear layer that wraps frozen base weights. Output = base(x) + (alpha/rank) * x @ A @ B</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>AdapterConfig</h4>
+                        <p>Configuration specifying which layers to adapt (attention, FFN) and hyperparameters (rank, alpha).</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>LowRankAdapterSupport</h4>
+                        <p>Interface for models that support LoRA fine-tuning. Provides convenience methods for parameter access and weight merging.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>ProjectionFactory</h4>
+                        <p>Factory abstraction for creating dense vs LoRA layers. Enables attention methods to be LoRA-agnostic.</p>
+                    </div>
+                </div>
+
+                <h3>Basic Usage</h3>
+                <div class="code-example">
+<pre><code class="language-java">import org.almostrealism.layers.*;
+
+// Create LoRA-wrapped layer
+LoRALinear loraLayer = new LoRALinear(
+    inputShape,
+    baseWeights,    // Frozen base weights
+    baseBias,       // Frozen bias (may be null)
+    8,              // rank (typical: 4, 8, 16)
+    16.0            // alpha (typical: 2 * rank)
+);
+
+// Only LoRA matrices are trainable
+List&lt;PackedCollection&gt; trainable = loraLayer.getWeights();  // [loraA, loraB]
+
+// After training, merge for deployment (no runtime overhead)
+PackedCollection merged = loraLayer.mergeWeights();
+CellularLayer deploymentLayer = loraLayer.toMergedLayer();</code></pre>
+                </div>
+
+                <h3>AdapterConfig Presets</h3>
+                <table class="comparison-table">
+                    <tr>
+                        <th>Preset</th>
+                        <th>Targets</th>
+                        <th>Rank</th>
+                        <th>Use Case</th>
+                    </tr>
+                    <tr>
+                        <td><code>forAudioDiffusion()</code></td>
+                        <td>All attention projections</td>
+                        <td>8</td>
+                        <td>Audio diffusion model fine-tuning</td>
+                    </tr>
+                    <tr>
+                        <td><code>full()</code></td>
+                        <td>All layers (attention + FFN)</td>
+                        <td>8</td>
+                        <td>Maximum adaptation capacity</td>
+                    </tr>
+                    <tr>
+                        <td><code>minimal()</code></td>
+                        <td>Self-attention only</td>
+                        <td>4</td>
+                        <td>Quick experimentation, limited compute</td>
+                    </tr>
+                </table>
+
+                <div class="code-example">
+<pre><code class="language-java">// Preset configurations
+AdapterConfig config = AdapterConfig.forAudioDiffusion();
+AdapterConfig config = AdapterConfig.full();
+AdapterConfig config = AdapterConfig.minimal();
+
+// Custom configuration
+AdapterConfig config = new AdapterConfig()
+    .rank(16)
+    .alpha(32.0)
+    .targets(TargetLayer.SELF_ATTENTION_QKV, TargetLayer.CROSS_ATTENTION_Q);</code></pre>
+                </div>
+
+                <h3>Using ProjectionFactory</h3>
+                <p><code>ProjectionFactory</code> allows attention methods to create either dense or LoRA layers without code changes:</p>
+                <div class="code-example">
+<pre><code class="language-java">// Standard dense layers (default)
+ProjectionFactory factory = ProjectionFactory.dense();
+
+// LoRA-enabled layers
+List&lt;LoRALinear&gt; loraLayers = new ArrayList&lt;&gt;();
+ProjectionFactory factory = ProjectionFactory.lora(config, loraLayers);
+
+// Pass to attention methods
+Block attention = sequenceAttention(shape, weights, factory);
+
+// After model construction, loraLayers contains all created LoRA layers
+List&lt;PackedCollection&gt; trainable = loraLayers.stream()
+    .flatMap(l -&gt; l.getWeights().stream())
+    .toList();</code></pre>
+                </div>
+
+                <h3>Implementing LowRankAdapterSupport</h3>
+                <p>For models that need LoRA support:</p>
+                <div class="code-example">
+<pre><code class="language-java">public class MyModel implements LowRankAdapterSupport, AttentionFeatures {
+    private final AdapterConfig config;
+    private final List&lt;LoRALinear&gt; loraLayers = new ArrayList&lt;&gt;();
+
+    @Override
+    public AdapterConfig getAdapterConfig() { return config; }
+
+    @Override
+    public List&lt;LoRALinear&gt; getLoraLayers() { return loraLayers; }
+
+    @Override
+    public void addLoraLayer(LoRALinear layer) { loraLayers.add(layer); }
+
+    private void buildModel() {
+        // getProjectionFactory() automatically creates LoRA or dense based on config
+        Block attention = sequenceAttention(shape, weights, getProjectionFactory());
+        model.add(attention);
+    }
+
+    // Convenience methods from the interface:
+    // - getTrainableParameters() - all LoRA weights
+    // - getTrainableParameterCount() - total trainable params
+    // - mergeAllLoraWeights() - merge for deployment
+}</code></pre>
+                </div>
+
+                <div class="tip">
+                    <strong>Key Benefits of LoRA:</strong>
+                    <ul>
+                        <li>Only ~0.1-1% of base parameters need to be trained</li>
+                        <li>Base model weights remain frozen, preserving original capabilities</li>
+                        <li>Multiple LoRA adaptations can be stored and swapped efficiently</li>
+                        <li>LoRA weights can be merged into base for deployment (no runtime overhead)</li>
+                    </ul>
                 </div>
             </section>
 
