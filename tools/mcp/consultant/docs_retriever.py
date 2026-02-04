@@ -325,6 +325,55 @@ class DocsRetriever:
         """Read the condensed API quick reference."""
         return _read_file(self.docs_dir / "QUICK_REFERENCE.md")
 
+    def get_context_for_keywords(
+        self,
+        keywords: list[str],
+        max_chunks: int = 5,
+        max_total_chars: int = 8000,
+    ) -> str:
+        """Get documentation context for a list of agent-provided keywords.
+
+        Use this when the calling agent provides specific search terms.
+        Keywords are searched in the order provided, so put the most
+        important/specific terms first.
+
+        Args:
+            keywords: List of search terms, ordered by importance.
+            max_chunks: Maximum number of chunks to include.
+            max_total_chars: Maximum total characters in the context.
+
+        Returns:
+            A formatted string of documentation excerpts.
+        """
+        results = []
+        seen: set[tuple[str, int]] = set()
+
+        for kw in keywords:
+            if len(results) >= max_chunks:
+                break
+            kw_results = self.search(kw, max_results=3, context_lines=6)
+            for r in kw_results:
+                key = (r["file"], r["line"])
+                if key not in seen:
+                    seen.add(key)
+                    results.append(r)
+                    if len(results) >= max_chunks:
+                        break
+
+        if not results:
+            return ""
+
+        parts = []
+        total = 0
+        for r in results:
+            chunk = f"[{r['file']}:{r['line']}]\n{r['context']}"
+            if total + len(chunk) > max_total_chars:
+                break
+            parts.append(chunk)
+            total += len(chunk)
+
+        return "\n\n---\n\n".join(parts)
+
     def get_context_for_query(
         self,
         query: str,
