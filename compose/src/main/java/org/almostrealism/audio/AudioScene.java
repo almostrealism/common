@@ -625,6 +625,29 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 						  List<Integer> channels,
 						  int bufferSize,
 						  IntSupplier frameSupplier) {
+		return getCells(output, channels, bufferSize, frameSupplier, null);
+	}
+
+	/**
+	 * Creates cells with optional external frame control for WaveCells.
+	 *
+	 * <p>When {@code waveCellFrame} is provided, the WaveCells in the effects
+	 * pipeline use external frame control. This is essential for real-time
+	 * rendering where the frame position within each buffer must be controlled
+	 * by the runner loop rather than by WaveCell's internal clock.</p>
+	 *
+	 * @param output         the audio output to write to
+	 * @param channels       the channel indices to render
+	 * @param bufferSize     frames per render buffer
+	 * @param frameSupplier  supplies the current frame position for pattern rendering
+	 * @param waveCellFrame  external frame producer for WaveCells, or null for internal clock
+	 * @return cells with pattern rendering and effects
+	 */
+	public Cells getCells(MultiChannelAudioOutput output,
+						  List<Integer> channels,
+						  int bufferSize,
+						  IntSupplier frameSupplier,
+						  Producer<PackedCollection> waveCellFrame) {
 		setup = new OperationList("AudioScene Setup");
 		addCommonSetup(setup);
 		setup.add(() -> () -> patterns.setTuning(tuning));
@@ -632,9 +655,9 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 
 		CellList cells = cells(
 				getPatternCells(output, channels, ChannelInfo.StereoChannel.LEFT,
-						bufferSize, frameSupplier, setup),
+						bufferSize, frameSupplier, setup, waveCellFrame),
 				getPatternCells(output, channels, ChannelInfo.StereoChannel.RIGHT,
-						bufferSize, frameSupplier, setup));
+						bufferSize, frameSupplier, setup, waveCellFrame));
 
 		cells.addSetup(() -> setup);
 		return cells.addRequirement(time::tick);
@@ -657,13 +680,35 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 									 int bufferSize,
 									 IntSupplier frameSupplier,
 									 OperationList setup) {
+		return getPatternCells(output, channels, audioChannel, bufferSize, frameSupplier, setup, null);
+	}
+
+	/**
+	 * Creates pattern cells with optional external frame control for WaveCells.
+	 *
+	 * @param output         the audio output
+	 * @param channels       channel indices to render
+	 * @param audioChannel   LEFT or RIGHT stereo channel
+	 * @param bufferSize     frames per render buffer
+	 * @param frameSupplier  current frame position supplier for pattern rendering
+	 * @param setup          the setup OperationList to accumulate operations in
+	 * @param waveCellFrame  external frame producer for WaveCells, or null for internal clock
+	 * @return CellList containing all channel cells for this stereo channel
+	 */
+	private CellList getPatternCells(MultiChannelAudioOutput output,
+									 List<Integer> channels,
+									 ChannelInfo.StereoChannel audioChannel,
+									 int bufferSize,
+									 IntSupplier frameSupplier,
+									 OperationList setup,
+									 Producer<PackedCollection> waveCellFrame) {
 		int[] idx = channels.stream().mapToInt(i -> i).toArray();
 		CellList main = all(idx.length, i ->
 				getPatternChannel(new ChannelInfo(idx[i], ChannelInfo.Voicing.MAIN, audioChannel),
-						bufferSize, frameSupplier, setup));
+						bufferSize, frameSupplier, setup, waveCellFrame));
 		CellList wet = all(idx.length, i ->
 				getPatternChannel(new ChannelInfo(idx[i], ChannelInfo.Voicing.WET, audioChannel),
-						bufferSize, frameSupplier, setup));
+						bufferSize, frameSupplier, setup, waveCellFrame));
 		return mixdown.cells(main, wet, riser.getRise(bufferSize),
 				output, audioChannel, i -> idx[i]);
 	}
@@ -695,6 +740,29 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 									  int bufferSize,
 									  IntSupplier frameSupplier,
 									  OperationList setup) {
+		return getPatternChannel(channel, bufferSize, frameSupplier, setup, null);
+	}
+
+	/**
+	 * Creates a CellList for a single pattern channel with optional external frame control.
+	 *
+	 * <p>When {@code waveCellFrame} is provided, the WaveCells in the effects pipeline
+	 * use external frame control instead of internal clocks. This is essential for
+	 * real-time rendering where the frame position within each buffer must be controlled
+	 * by the runner loop.</p>
+	 *
+	 * @param channel        the channel (index, voicing, stereo channel)
+	 * @param bufferSize     frames per render buffer
+	 * @param frameSupplier  supplies the current frame position for pattern rendering
+	 * @param setup          the setup OperationList
+	 * @param waveCellFrame  external frame producer for WaveCells, or null for internal clock
+	 * @return CellList with effects applied, ready for mixdown
+	 */
+	public CellList getPatternChannel(ChannelInfo channel,
+									  int bufferSize,
+									  IntSupplier frameSupplier,
+									  OperationList setup,
+									  Producer<PackedCollection> waveCellFrame) {
 		Supplier<AudioSceneContext> ctx = () -> getContext(List.of(channel));
 		PatternRenderCell renderCell = new PatternRenderCell(
 				patterns, ctx, channel, bufferSize, frameSupplier);
@@ -703,7 +771,7 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 		setup.add(renderCell.prepareBatch());
 
 		CellList cells = efx.apply(channel, renderCell.getOutputProducer(),
-				getTotalDuration(), setup);
+				getTotalDuration(), setup, waveCellFrame);
 		cells.addRequirement(renderCell);
 
 		return cells;
@@ -799,7 +867,13 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 			channels = IntStream.range(0, getChannelCount()).boxed().collect(Collectors.toList());
 		}
 
-		CellList cells = (CellList) getCells(output, channels, bufferSize, () -> currentFrame[0]);
+		// Create per-buffer frame index for WaveCell external frame control
+		// This tracks position 0 to bufferSize-1 within each buffer
+		PackedCollection bufferFrameIndex = new PackedCollection(1);
+		Producer<PackedCollection> bufferFrameProducer = cp(bufferFrameIndex);
+
+		CellList cells = (CellList) getCells(output, channels, bufferSize,
+				() -> currentFrame[0], bufferFrameProducer);
 
 		// Collect all PatternRenderCells from the cell pipeline requirements
 		List<PatternRenderCell> renderCells = new ArrayList<>();
@@ -807,6 +881,12 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 
 		// Per-frame operation (must be compilable)
 		Supplier<Runnable> frameOp = cells.tick();
+
+		// Create loop body: tick + increment buffer frame index
+		OperationList loopBody = new OperationList("RealTime Per-Frame Body");
+		loopBody.add(frameOp);
+		// Increment buffer frame index: bufferFrameIndex = bufferFrameIndex + 1
+		loopBody.add(a(1, cp(bufferFrameIndex), c(1.0).add(cp(bufferFrameIndex))));
 
 		return new TemporalCellular() {
 			@Override
@@ -818,15 +898,16 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 			public Supplier<Runnable> tick() {
 				OperationList tick = new OperationList("AudioScene RealTime Runner Tick");
 
-				// OUTSIDE LOOP: Prepare pattern data for this buffer (Java, per-buffer)
+				// OUTSIDE LOOP: Reset buffer frame index and prepare pattern data
+				tick.add(() -> () -> bufferFrameIndex.setMem(0, 0));
 				for (PatternRenderCell renderCell : renderCells) {
 					tick.add(renderCell.prepareBatch());
 				}
 
-				// INSIDE LOOP: Compilable per-frame processing
-				tick.add(loop(frameOp, bufferSize));
+				// INSIDE LOOP: Compilable per-frame processing with frame index increment
+				tick.add(loop(loopBody, bufferSize));
 
-				// AFTER LOOP: Advance frame position
+				// AFTER LOOP: Advance global frame position
 				tick.add(() -> () -> currentFrame[0] += bufferSize);
 				return tick;
 			}

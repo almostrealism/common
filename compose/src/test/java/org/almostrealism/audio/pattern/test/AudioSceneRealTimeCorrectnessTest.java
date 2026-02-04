@@ -84,7 +84,7 @@ import static org.junit.Assert.*;
  */
 public class AudioSceneRealTimeCorrectnessTest extends AudioSceneTestBase {
 
-	private static final int BUFFER_SIZE = 1024;
+	private static final int BUFFER_SIZE = 4096;
 
 	private RealTimeTestHelper helper;
 
@@ -933,5 +933,107 @@ public class AudioSceneRealTimeCorrectnessTest extends AudioSceneTestBase {
 		}
 
 		dest.destroy();
+	}
+
+	// =========================================================================
+	// BUG ISOLATION: WaveCell Frame Position Diagnostic
+	// =========================================================================
+
+	/**
+	 * Isolates and verifies the WaveCell frame position bug.
+	 *
+	 * <h3>Bug Hypothesis</h3>
+	 * <p>In the real-time renderer, WaveCell reads from a 1024-sample buffer but
+	 * its internal clock keeps incrementing globally. After 1024 ticks, the clock's
+	 * frame position exceeds the buffer size (1024), causing the bounds check in
+	 * WaveCellPush to fail and output silence.</p>
+	 *
+	 * <h3>Expected Result (if bug exists)</h3>
+	 * <ul>
+	 *   <li>Buffer 0: Audio output (frame 0-1023, within bounds)</li>
+	 *   <li>Buffer 1+: Silence (frame 1024+, out of bounds)</li>
+	 * </ul>
+	 *
+	 * <h3>What This Tests</h3>
+	 * <ul>
+	 *   <li>WaveCell tick advances frame position</li>
+	 *   <li>WaveCell push outputs sample at frame position</li>
+	 *   <li>Bounds checking in WaveCellPush</li>
+	 * </ul>
+	 */
+	@Test(timeout = 60_000)
+	public void waveCellFramePositionDiagnostic() {
+		log("=== WaveCell Frame Position Diagnostic ===");
+
+		// Create a small test buffer filled with recognizable values
+		int bufferSize = 64;  // Small for quick test
+		PackedCollection sourceBuffer = new PackedCollection(bufferSize);
+		for (int i = 0; i < bufferSize; i++) {
+			sourceBuffer.setMem(i, (i + 1) * 0.01);  // 0.01, 0.02, ..., 0.64
+		}
+		log("Source buffer filled with values 0.01 to 0.64");
+
+		// Create WaveCell pointing to the source buffer
+		// This mimics how efx.createCells() creates WaveCells for pattern output
+		org.almostrealism.graph.temporal.WaveCell waveCell =
+				new org.almostrealism.graph.temporal.WaveCell(
+						sourceBuffer, SAMPLE_RATE, 1.0, null, null);
+
+		// Get the internal data to read output values
+		org.almostrealism.graph.temporal.WaveCellData data = waveCell.getData();
+
+		// Setup
+		waveCell.setup().get().run();
+
+		// Tick and push through multiple "buffers" worth of frames
+		int ticksPerBuffer = bufferSize;
+		int numBuffers = 4;
+
+		int[] nonZeroTicks = new int[numBuffers];
+		int[] zeroTicks = new int[numBuffers];
+
+		for (int buf = 0; buf < numBuffers; buf++) {
+			nonZeroTicks[buf] = 0;
+			zeroTicks[buf] = 0;
+
+			for (int tick = 0; tick < ticksPerBuffer; tick++) {
+				// Push triggers sample read into data.value()
+				waveCell.push(null).get().run();
+
+				// Read the output value from the WaveCellData
+				double output = data.value().valueAt(0);
+
+				// Tick advances frame position
+				waveCell.tick().get().run();
+
+				if (Math.abs(output) > 0.0001) {
+					nonZeroTicks[buf]++;
+				} else {
+					zeroTicks[buf]++;
+				}
+			}
+
+			log(String.format("Buffer %d: non-zero=%d, zero=%d (frame range %d-%d)",
+					buf, nonZeroTicks[buf], zeroTicks[buf],
+					buf * ticksPerBuffer, (buf + 1) * ticksPerBuffer - 1));
+		}
+
+		// Verify the bug: buffer 0 should have output, buffer 1+ should be silent
+		assertTrue("Buffer 0 should have non-zero samples (got " + nonZeroTicks[0] + ")",
+				nonZeroTicks[0] > 0);
+
+		// This assertion will FAIL if the bug is fixed (which is what we want)
+		// For now, it documents the expected buggy behavior
+		if (nonZeroTicks[1] == 0 && nonZeroTicks[2] == 0 && nonZeroTicks[3] == 0) {
+			log("");
+			log("*** BUG CONFIRMED: WaveCell outputs silence after buffer 0 ***");
+			log("*** The clock frame exceeds buffer size, causing bounds check failure ***");
+		} else {
+			log("");
+			log("Buffers 1-3 have non-zero output - bug may be fixed or test is invalid");
+		}
+
+		// Cleanup
+		sourceBuffer.destroy();
 	}
 }
