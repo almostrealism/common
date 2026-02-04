@@ -283,6 +283,16 @@ mcp__ar-test-runner__start_test_run
 
 See [docs/internals/test-examples.md](docs/internals/test-examples.md) for full tool reference and parameters.
 
+### JVM Memory Diagnostics with `ar-jmx`
+
+The `ar-jmx` MCP server provides real-time JVM memory analysis via JDK diagnostic tools (`jcmd`, `jstat`, `jfr`). Use it for `OutOfMemoryError`, `HardwareException: Memory max reached`, and suspected memory leaks.
+
+**Two ways to connect:**
+- **Test JVMs**: Pass `jmx_monitoring: true` to `start_test_run`. If the fork fails due to JFR/NMT args, the test runner retries automatically (metadata shows `jmx_monitoring_degraded: true`).
+- **Standalone JVMs**: Use `attach_to_pid` with a PID to create a synthetic `run_id` for any running JVM.
+
+**See [tools/mcp/jmx/README.md](tools/mcp/jmx/README.md)** for the full tool reference, parameter tables, and workflow examples (test JVM, standalone JVM, and cross-run regression detection).
+
 ---
 
 ## CRITICAL: TEST CLASS REQUIREMENTS
@@ -829,6 +839,12 @@ If all existing tests pass but the integration test fails:
 - Create targeted tests for those gaps
 - Run the new tests and record results
 
+### 5. Memory-Related Failures
+
+If a test fails with `OutOfMemoryError` or `HardwareException: Memory max reached`, use `ar-jmx` instead of guessing. Re-run with `jmx_monitoring: true`, take histogram snapshots, diff them, and check allocation reports. See [tools/mcp/jmx/README.md](tools/mcp/jmx/README.md) for the full diagnostic workflow.
+
+**Do NOT** guess "it's probably PackedCollection" without evidence. The JMX tools exist to give you evidence.
+
 ### What NOT to do:
 - DO NOT speculate about possible causes without running tests
 - DO NOT claim a component is correct without a test proving it
@@ -848,40 +864,14 @@ For module-specific development notes, see:
 
 ## Common Patterns
 
-### Loading Model Weights
+### Loading Model Weights and Building Layers
 
 ```java
-// Standard pattern for all models
 StateDictionary stateDict = new StateDictionary(weightsDirectory);
-
-// Access weights by HuggingFace key names
-PackedCollection<?> embeddings = stateDict.get("model.embed_tokens.weight");
 PackedCollection<?> wq = stateDict.get("model.layers.0.self_attn.q_proj.weight");
-
-// Use helper methods for repeated patterns
-private PackedCollection<?> getLayerWeight(StateDictionary dict, int layer, String name) {
-    return dict.get(String.format("model.layers.%d.%s", layer, name));
-}
 ```
 
-### Building Transformer Layers
-
-```java
-Model transformer = new Model(shape(dim));
-
-for (int i = 0; i < layerCount; i++) {
-    PackedCollection<?> wq = getLayerWeight(stateDict, i, "self_attn.q_proj.weight");
-    // ...
-
-    transformer.add(attention(
-        heads, kvHeads, headSize,
-        wq, wk, wv, wo,
-        qkNormQ, qkNormK,  // null if not using QK-Norm
-        freqCis,
-        requirements
-    ));
-}
-```
+Use `StateDictionary` for all weight access. Build transformer layers by iterating over layer indices and calling generalized methods like `attention(...)` — see the existing model implementations for patterns.
 
 ---
 
@@ -896,30 +886,7 @@ for (int i = 0; i < layerCount; i++) {
 
 ### Test Output Logging
 
-**IMPORTANT**: Use `Console` and `OutputFeatures` (from `ar-io` module) to log test output to files for later review.
-
-```java
-import org.almostrealism.io.Console;
-import org.almostrealism.io.ConsoleFeatures;
-import org.almostrealism.io.OutputFeatures;
-
-public class MyTest implements ConsoleFeatures {
-    @Test
-    public void myTest() throws Exception {
-        String logFile = "/workspace/project/common/<module>/test_output/my_test_results.txt";
-        Console.root().addListener(OutputFeatures.fileOutput(logFile));
-
-        log("=== My Test ===");
-        log("Result: " + someValue);
-    }
-}
-```
-
-**Best Practices**:
-- Create test_output directories in each module for test logs
-- Use descriptive file names: `<TestName>_results.txt`
-- Add file logging setup at the START of each test method
-- Use `log()` instead of `System.err.println()` for important results
+Use `Console` and `OutputFeatures` (from `ar-io` module) to log test output to files. Implement `ConsoleFeatures`, call `Console.root().addListener(OutputFeatures.fileOutput(path))` at the start of each test, and use `log()` instead of `System.err.println()`.
 
 ---
 
