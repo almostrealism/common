@@ -141,6 +141,41 @@ public class AudioSceneRealTimeCorrectnessTest extends AudioSceneTestBase {
 	}
 
 	/**
+	 * Renders 2 minutes of audio using the real-time method for manual listening verification.
+	 *
+	 * <p>This test generates a longer audio file to allow manual verification of
+	 * audio quality over an extended duration.</p>
+	 */
+	@Test(timeout = 30 * 60000)
+	public void realTimeTwoMinuteRender() {
+		helper.disableEffects();
+		File samplesDir = helper.requireSamplesDir();
+
+		AudioScene<?> scene = helper.createSceneWithWorkingSeed(samplesDir, AudioScene.DEFAULT_SOURCE_COUNT);
+		if (scene == null) {
+			log("No working genome found - skipping test");
+			return;
+		}
+
+		log("=== Real-Time Two Minute Render ===");
+
+		double twoMinutes = 120.0;
+		RenderResult result = helper.renderRealTime(scene, BUFFER_SIZE, twoMinutes,
+				"results/realtime-two-minutes.wav");
+
+		// Correctness verification
+		assertTrue("Output file should exist", new File(result.outputFile()).exists());
+		assertNotNull("Should have audio statistics", result.stats());
+		result.stats().assertNonSilent("Real-time 2-minute output");
+
+		// Generate visual artifacts for manual review
+		helper.generateArtifacts(result, "realtime-two-minutes");
+
+		log(result.toString());
+		log("Audio file saved to: results/realtime-two-minutes.wav");
+	}
+
+	/**
 	 * Compares real-time output against the traditional baseline output.
 	 *
 	 * <h3>Correctness Property</h3>
