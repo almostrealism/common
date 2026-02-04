@@ -293,6 +293,39 @@ filter.get().evaluate(data2);  // Same kernel, different data
 - No recompilation overhead
 - Supports variable-size inputs
 
+### Loop Compilation and Caching
+
+The `Loop` class generates fixed-iteration for-loops in compiled code. Each `Loop.get()` call compiles to native code, and **compilation results are cached by the instruction caching system**.
+
+```java
+import org.almostrealism.hardware.computations.Loop;
+
+// Create a loop that repeats 10 times
+Computation<Void> update = updateWeights();
+Loop loop = new Loop(update, 10);
+
+// First call: compiles to native code (slow)
+Runnable compiled = loop.get();
+
+// Execute the compiled loop (fast)
+compiled.run();
+```
+
+**Caching Behavior:**
+- The same `Loop` instance reuses its compiled code on subsequent `get()` calls
+- Different `Loop` instances with identical inner operations may share cached kernels via instruction caching
+- Nested loops (Loop containing Loop) compile to nested for-loops in native code
+
+**Generated Code Structure:**
+```c
+void loop_x10() {
+    for (int loop_i = 1; loop_i < 10; loop_i += 1) {
+        // Inner computation
+        update();
+    }
+}
+```
+
 ### Instruction Caching
 
 The `instruct()` pattern caches compiled operations for reuse:

@@ -80,6 +80,8 @@ def _build_consult_prompt(question: str, doc_context: str, memory_context: str,
 
     if doc_context:
         parts.append(f"## Relevant Documentation\n\n{doc_context}")
+    else:
+        parts.append("## Relevant Documentation\n\n(No documentation found for this query)")
 
     if memory_context:
         parts.append(f"## Relevant Memories from Prior Sessions\n\n{memory_context}")
@@ -90,8 +92,8 @@ def _build_consult_prompt(question: str, doc_context: str, memory_context: str,
     parts.append(f"## Question\n\n{question}")
 
     parts.append(
-        "Answer the question using the documentation and memory context above. "
-        "Be specific, cite module and class names, and keep the answer concise."
+        "Answer the question using ONLY the documentation context above. "
+        "If no relevant documentation was found, respond with 'Not documented'."
     )
 
     return "\n\n".join(parts)
@@ -212,15 +214,24 @@ def consult(
     # Retrieve documentation context
     if keywords:
         doc_context = docs.get_context_for_keywords(keywords)
+        # Log results from keyword searches (same source as context)
+        doc_results = []
+        seen_keys = set()
+        for kw in keywords[:4]:
+            for r in docs.search(kw, max_results=3):
+                key = (r["file"], r["line"])
+                if key not in seen_keys:
+                    seen_keys.add(key)
+                    doc_results.append(r)
     else:
         doc_context = docs.get_context_for_query(question)
+        doc_results = docs.search(question, max_results=5)
 
     # Search memories for related prior knowledge
     memories = memory.search(query=question, namespace="default", limit=3)
     mem_context = _format_memory_context(memories)
 
     # Log retrieval results
-    doc_results = docs.search(question, max_results=5)
     _log_doc_results(question, doc_results)
     _log_memory_results(question, memories)
 

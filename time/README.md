@@ -50,12 +50,48 @@ public class MyProcessor implements TemporalFeatures {
 ```
 
 #### TemporalRunner
-Orchestrates setup and execution of temporal operations:
+
+Orchestrates setup and execution of temporal operations, managing initialization, iteration, optimization, and resource lifecycle.
+
+**Key Methods:**
+- `get()` - Returns a `Runnable` that executes setup + tick (first call compiles, subsequent calls reuse)
+- `getContinue()` - Returns a `Runnable` that executes tick only (skips setup)
+- `compile()` - Explicitly compiles setup and tick operations (called automatically by `get()`)
+- `destroy()` - Releases all resources
+
+**Two-Phase Execution Model:**
+1. **Setup Phase** (runs once): Initialize state, allocate memory, compile kernels
+2. **Tick Phase** (runs many times): Execute the main operation logic
 
 ```java
+// Basic usage
 TemporalRunner runner = myTemporal.buffer(frames);
-runner.setup();  // Initialize
-runner.tick();   // Execute one step
+runner.get().run();  // First call: setup + tick (compiles operations)
+runner.getContinue().run();  // Subsequent calls: tick only (fast!)
+runner.getContinue().run();
+runner.destroy();  // Release resources
+```
+
+**Configuration Flags:**
+```java
+TemporalRunner.enableFlatten = true;       // Flatten nested OperationLists (default: true)
+TemporalRunner.enableOptimization = false; // Apply hardware optimizations (default: false)
+TemporalRunner.enableIsolation = false;    // Isolate operations (default: false)
+```
+
+**Creating from Temporal:**
+```java
+// From a Temporal that also implements Setup
+Temporal temporal = ...;
+TemporalRunner runner = new TemporalRunner(temporal, iterations);
+
+// From explicit suppliers
+Supplier<Runnable> setup = () -> () -> initializeState();
+Supplier<Runnable> tick = () -> () -> processFrame();
+TemporalRunner runner = new TemporalRunner(setup, tick, iterations);
+
+// With optimization enabled
+TemporalRunner runner = new TemporalRunner(setup, tick, iterations, true);
 ```
 
 ### Time-Series Data
