@@ -16,10 +16,15 @@ This module exists to:
 
 ### 1. Model Loading with StateDictionary
 
+StateDictionary loads model weights from **protobuf format** (`.pb` files), NOT safetensors or PyTorch checkpoints. Weights must be exported to protobuf format first using the provided Python extraction scripts.
+
+**Supported Format:** Protobuf (`CollectionLibraryData`)
+**NOT Supported:** safetensors, PyTorch checkpoints (`.pt`/`.bin`), GGUF
+
 ```java
 import org.almostrealism.model.StateDictionary;
 
-// Load model weights from directory
+// Load model weights from directory containing .pb files
 StateDictionary stateDict = new StateDictionary("/path/to/weights");
 
 // Access weights by HuggingFace-style keys
@@ -27,6 +32,32 @@ PackedCollection<?> embeddings = stateDict.get("model.embed_tokens.weight");
 PackedCollection<?> wq = stateDict.get("model.layers.0.self_attn.q_proj.weight");
 PackedCollection<?> wk = stateDict.get("model.layers.0.self_attn.k_proj.weight");
 PackedCollection<?> wv = stateDict.get("model.layers.0.self_attn.v_proj.weight");
+```
+
+**Loading from different sources:**
+```java
+// From directory path
+StateDictionary stateDict = new StateDictionary("/path/to/weights");
+
+// From AssetGroupInfo (for remote/bundled assets)
+StateDictionary stateDict = new StateDictionary(assetGroupInfo);
+
+// From a list of Assets
+StateDictionary stateDict = new StateDictionary(assetList);
+
+// For testing: from a pre-built map
+Map<String, PackedCollection> weights = new HashMap<>();
+weights.put("model.embed_tokens.weight", embeddings);
+StateDictionary stateDict = new StateDictionary(weights);
+```
+
+**Saving weights:**
+```java
+// Save to protobuf file
+stateDict.save(Path.of("/output/weights.pb"));
+
+// Save with specific precision
+stateDict.save(Path.of("/output/weights.pb"), Precision.FP32);
 ```
 
 ### 2. Transformer Attention
