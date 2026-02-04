@@ -37,10 +37,11 @@ import java.util.stream.Collectors;
  * java -cp ar-tools.jar org.almostrealism.ui.ProfileAnalyzerCLI &lt;command&gt; &lt;args...&gt;
  *
  * Commands:
- *   summary &lt;file&gt;              - Load profile and output summary as JSON
- *   slowest &lt;file&gt; [limit]      - Find slowest operations
- *   children &lt;file&gt; [node_key]  - List children of a node
- *   search &lt;file&gt; &lt;pattern&gt;     - Search operations by name pattern
+ *   summary &lt;file&gt;                           - Load profile and output summary as JSON
+ *   slowest &lt;file&gt; [limit] [--category=X]    - Find slowest operations (category: compile|run|all)
+ *   children &lt;file&gt; [node_key]               - List children of a node
+ *   search &lt;file&gt; &lt;pattern&gt;                  - Search operations by name pattern
+ *   breakdown &lt;file&gt; &lt;node_key&gt;              - Get compile vs run time breakdown for a node
  * </pre>
  */
 public class ProfileAnalyzerCLI {
@@ -60,8 +61,16 @@ public class ProfileAnalyzerCLI {
                     printSummary(filePath);
                     break;
                 case "slowest":
-                    int limit = args.length > 2 ? Integer.parseInt(args[2]) : 10;
-                    printSlowest(filePath, limit);
+                    int limit = 10;
+                    String category = "all";
+                    for (int i = 2; i < args.length; i++) {
+                        if (args[i].startsWith("--category=")) {
+                            category = args[i].substring("--category=".length());
+                        } else {
+                            limit = Integer.parseInt(args[i]);
+                        }
+                    }
+                    printSlowest(filePath, limit, category);
                     break;
                 case "children":
                     String nodeKey = args.length > 2 ? args[2] : null;
@@ -73,6 +82,13 @@ public class ProfileAnalyzerCLI {
                         System.exit(1);
                     }
                     searchOperations(filePath, args[2]);
+                    break;
+                case "breakdown":
+                    if (args.length < 3) {
+                        System.err.println("Error: breakdown requires a node_key argument");
+                        System.exit(1);
+                    }
+                    printBreakdown(filePath, args[2]);
                     break;
                 default:
                     System.err.println("Unknown command: " + command);
@@ -89,10 +105,12 @@ public class ProfileAnalyzerCLI {
     private static void printUsage() {
         System.err.println("Usage: ProfileAnalyzerCLI <command> <file> [args...]");
         System.err.println("Commands:");
-        System.err.println("  summary <file>              - Load profile and output summary");
-        System.err.println("  slowest <file> [limit]      - Find slowest operations");
-        System.err.println("  children <file> [node_key]  - List children of a node");
-        System.err.println("  search <file> <pattern>     - Search operations by name");
+        System.err.println("  summary <file>                           - Load profile and output summary");
+        System.err.println("  slowest <file> [limit] [--category=X]    - Find slowest operations");
+        System.err.println("                                             category: compile|run|all (default: all)");
+        System.err.println("  children <file> [node_key]               - List children of a node");
+        System.err.println("  search <file> <pattern>                  - Search operations by name");
+        System.err.println("  breakdown <file> <node_key>              - Get compile vs run time breakdown");
     }
 
     private static void printSummary(String filePath) throws IOException {
@@ -145,7 +163,7 @@ public class ProfileAnalyzerCLI {
         System.out.println(json);
     }
 
-    private static void printSlowest(String filePath, int limit) throws IOException {
+    private static void printSlowest(String filePath, int limit, String category) throws IOException {
         OperationProfileNode root = OperationProfileNode.load(filePath);
 
         List<OperationProfileNode> allNodes = new ArrayList<>();
@@ -156,19 +174,20 @@ public class ProfileAnalyzerCLI {
                 .sum();
 
         List<OperationProfileNode> slowest = allNodes.stream()
-                .filter(n -> getNodeDuration(n) > 0 && n.getKey() != null)
-                .sorted(Comparator.comparingDouble(ProfileAnalyzerCLI::getNodeDuration).reversed())
+                .filter(n -> getCategoryDuration(n, category) > 0 && n.getKey() != null)
+                .sorted(Comparator.comparingDouble((OperationProfileNode n) -> getCategoryDuration(n, category)).reversed())
                 .limit(limit)
                 .collect(Collectors.toList());
 
         StringBuilder json = new StringBuilder();
         json.append("{\n");
         json.append("  \"total_profile_duration\": ").append(round(totalDuration, 4)).append(",\n");
+        json.append("  \"category\": \"").append(escapeJson(category)).append("\",\n");
         json.append("  \"slowest\": [\n");
 
         for (int i = 0; i < slowest.size(); i++) {
             OperationProfileNode n = slowest.get(i);
-            double nodeDuration = getNodeDuration(n);
+            double nodeDuration = getCategoryDuration(n, category);
             double pct = totalDuration > 0 ? (nodeDuration / totalDuration * 100) : 0;
 
             json.append("    {");
@@ -180,7 +199,7 @@ public class ProfileAnalyzerCLI {
 
             Map<String, Integer> counts = n.getMetricCounts();
             if (counts != null && !counts.isEmpty()) {
-                int invocations = counts.values().stream().mapToInt(Integer::intValue).sum();
+                int invocations = getCategoryCounts(n, category);
                 json.append("\"invocations\": ").append(invocations).append(", ");
                 if (invocations > 0) {
                     json.append("\"avg_duration\": ").append(round(nodeDuration / invocations, 6)).append(", ");
@@ -193,6 +212,81 @@ public class ProfileAnalyzerCLI {
             json.append("\n");
         }
         json.append("  ]\n");
+        json.append("}");
+
+        System.out.println(json);
+    }
+
+    private static void printBreakdown(String filePath, String nodeKey) throws IOException {
+        OperationProfileNode root = OperationProfileNode.load(filePath);
+
+        OperationProfileNode node = findByKey(root, nodeKey);
+        if (node == null) {
+            System.out.println("{\"error\": \"Node not found: " + escapeJson(nodeKey) + "\"}");
+            return;
+        }
+
+        double compileTime = 0;
+        double runTime = 0;
+        int compileCount = 0;
+        int runCount = 0;
+
+        Map<String, Double> entries = node.getMetricEntries();
+        Map<String, Integer> counts = node.getMetricCounts();
+
+        if (entries != null) {
+            for (Map.Entry<String, Double> entry : entries.entrySet()) {
+                String key = entry.getKey();
+                if (key.endsWith(" compile")) {
+                    compileTime += entry.getValue();
+                    if (counts != null && counts.containsKey(key)) {
+                        compileCount += counts.get(key);
+                    }
+                } else if (key.endsWith(" run")) {
+                    runTime += entry.getValue();
+                    if (counts != null && counts.containsKey(key)) {
+                        runCount += counts.get(key);
+                    }
+                }
+            }
+        }
+
+        StringBuilder json = new StringBuilder();
+        json.append("{\n");
+        json.append("  \"node_key\": \"").append(escapeJson(nodeKey)).append("\",\n");
+        json.append("  \"node_name\": \"").append(escapeJson(node.getName())).append("\",\n");
+        json.append("  \"compile_time\": ").append(round(compileTime, 6)).append(",\n");
+        json.append("  \"compile_time_formatted\": \"").append(formatDuration(compileTime)).append("\",\n");
+        json.append("  \"compile_count\": ").append(compileCount).append(",\n");
+        json.append("  \"run_time\": ").append(round(runTime, 6)).append(",\n");
+        json.append("  \"run_time_formatted\": \"").append(formatDuration(runTime)).append("\",\n");
+        json.append("  \"run_count\": ").append(runCount).append(",\n");
+        json.append("  \"total_time\": ").append(round(compileTime + runTime, 6)).append(",\n");
+        json.append("  \"total_time_formatted\": \"").append(formatDuration(compileTime + runTime)).append("\",\n");
+
+        // Stage details if available
+        if (node.getStageDetailTime() != null) {
+            Map<String, Double> stageEntries = node.getStageDetailTime().getEntries();
+            if (stageEntries != null && !stageEntries.isEmpty()) {
+                json.append("  \"stage_details\": {\n");
+                List<String> keys = new ArrayList<>(stageEntries.keySet());
+                for (int i = 0; i < keys.size(); i++) {
+                    String key = keys.get(i);
+                    double value = stageEntries.get(key);
+                    json.append("    \"").append(escapeJson(key)).append("\": ").append(round(value, 6));
+                    if (i < keys.size() - 1) json.append(",");
+                    json.append("\n");
+                }
+                json.append("  },\n");
+            }
+        }
+
+        // Calculate percentages
+        double total = compileTime + runTime;
+        double compilePct = total > 0 ? (compileTime / total * 100) : 0;
+        double runPct = total > 0 ? (runTime / total * 100) : 0;
+        json.append("  \"compile_percentage\": ").append(round(compilePct, 1)).append(",\n");
+        json.append("  \"run_percentage\": ").append(round(runPct, 1)).append("\n");
         json.append("}");
 
         System.out.println(json);
@@ -340,6 +434,36 @@ public class ProfileAnalyzerCLI {
     private static double getNodeDuration(OperationProfileNode node) {
         double measured = node.getMeasuredDuration();
         return measured > 0 ? measured : node.getSelfDuration();
+    }
+
+    private static double getCategoryDuration(OperationProfileNode node, String category) {
+        if ("all".equals(category)) {
+            return getNodeDuration(node);
+        }
+
+        Map<String, Double> entries = node.getMetricEntries();
+        if (entries == null) return 0;
+
+        String suffix = " " + category;
+        return entries.entrySet().stream()
+                .filter(e -> e.getKey().endsWith(suffix))
+                .mapToDouble(Map.Entry::getValue)
+                .sum();
+    }
+
+    private static int getCategoryCounts(OperationProfileNode node, String category) {
+        Map<String, Integer> counts = node.getMetricCounts();
+        if (counts == null) return 0;
+
+        if ("all".equals(category)) {
+            return counts.values().stream().mapToInt(Integer::intValue).sum();
+        }
+
+        String suffix = " " + category;
+        return counts.entrySet().stream()
+                .filter(e -> e.getKey().endsWith(suffix))
+                .mapToInt(Map.Entry::getValue)
+                .sum();
     }
 
     private static String formatDuration(double seconds) {

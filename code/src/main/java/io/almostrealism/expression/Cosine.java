@@ -16,6 +16,8 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.collect.CollectionExpression;
+import io.almostrealism.collect.ConstantCollectionExpression;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
 
@@ -49,6 +51,15 @@ public class Cosine extends Expression<Double> {
 		}
 
 		return new Cosine((Expression<Double>) children.get(0));
+	}
+
+	/** Chain rule: d/dx[cos(f)] = -sin(f) * df/dx */
+	@Override
+	public CollectionExpression<?> delta(CollectionExpression<?> target) {
+		CollectionExpression<?> childDelta = getChildren().get(0).delta(target);
+		Expression<?> negSin = Minus.of(Sine.of((Expression<Double>) getChildren().get(0)));
+		CollectionExpression<?> cofactor = new ConstantCollectionExpression(target.getShape(), negSin);
+		return product(target.getShape(), List.of(childDelta, cofactor));
 	}
 
 	public static Expression<Double> of(Expression<Double> input) {

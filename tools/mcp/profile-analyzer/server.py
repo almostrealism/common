@@ -177,5 +177,53 @@ def search_operations(
     return run_java_cli("search", path, pattern)
 
 
+@mcp.tool()
+def get_timing_breakdown(
+    path: str,
+    node_key: str
+) -> dict:
+    """
+    Get compile vs run time breakdown for an operation.
+
+    Args:
+        path: Path to the profile XML file.
+        node_key: Node key to analyze.
+
+    Returns:
+        Dictionary with compile_time, run_time, compile_count, run_count,
+        stage_details (if available), and percentages.
+    """
+    if not os.path.exists(path):
+        return {"error": f"File not found: {path}"}
+
+    return run_java_cli("breakdown", path, node_key)
+
+
+@mcp.tool()
+def find_slowest_by_category(
+    path: str,
+    category: str = "all",
+    limit: int = 10
+) -> dict:
+    """
+    Find slowest operations filtered by timing category.
+
+    Args:
+        path: Path to the profile XML file.
+        category: "compile", "run", or "all" (default: "all").
+        limit: Maximum number of results (default: 10).
+
+    Returns:
+        Dictionary with operations sorted by the specified category's duration.
+    """
+    if not os.path.exists(path):
+        return {"error": f"File not found: {path}"}
+
+    if category not in ("compile", "run", "all"):
+        return {"error": f"Invalid category: {category}. Must be 'compile', 'run', or 'all'."}
+
+    return run_java_cli("slowest", path, str(limit), f"--category={category}")
+
+
 if __name__ == "__main__":
     mcp.run()

@@ -443,6 +443,54 @@ mvn test -pl <module> -Dtest=<TestName>
 
 ---
 
+## Profiling
+
+### Enable/Disable
+```java
+import io.almostrealism.profile.OperationProfileNode;
+
+// Enable profiling
+OperationProfileNode profile = new OperationProfileNode("my_profile");
+Hardware.getLocalHardware().getCompileScope().setProfile(profile);
+
+// Run operations...
+model.forward(input);
+
+// Disable and save
+Hardware.getLocalHardware().getCompileScope().setProfile(null);
+profile.save("utils/results/my_profile.xml");
+```
+
+### CLI Analysis
+```bash
+# Find slowest operations
+mvn -q exec:java -pl tools \
+  -Dexec.mainClass=org.almostrealism.ui.ProfileAnalyzerCLI \
+  -Dexec.args="slowest utils/results/my_profile.xml 10"
+
+# Get compile vs run breakdown for node
+mvn -q exec:java -pl tools \
+  -Dexec.mainClass=org.almostrealism.ui.ProfileAnalyzerCLI \
+  -Dexec.args="breakdown utils/results/my_profile.xml 1047"
+```
+
+### Timing Categories
+| Entry Suffix | Meaning |
+|--------------|---------|
+| `" compile"` | Code generation + native compilation |
+| `" run"` | Kernel execution on hardware |
+
+### Duration Types
+| Method | Description |
+|--------|-------------|
+| `getMeasuredDuration()` | Direct wall-clock time |
+| `getSelfDuration()` | This node's metric only |
+| `getTotalDuration()` | Self + children |
+
+See [docs/internals/profiling.md](docs/internals/profiling.md) for full documentation.
+
+---
+
 ## Common Errors
 
 | Error | Cause | Fix |
