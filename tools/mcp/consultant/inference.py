@@ -33,7 +33,9 @@ the AR framework codebase ONLY using the documentation context provided.
 RULES:
 1. ONLY use information from the "Relevant Documentation" section. Do NOT use \
 your training knowledge - it may be outdated or wrong.
-2. If NO documentation is provided or the topic is absent, say "Not documented".
+2. If the documentation says something is NOT supported or does NOT exist, \
+say so explicitly - that IS an answer. Only say "Not documented" if the topic \
+is completely absent from the provided documentation.
 3. EXTRACT answers even from indirect mentions. Example: if docs say "Create a \
 `Foo` (TypeA, TypeB, TypeC)" and the question asks "What Foo types exist?", \
 answer "TypeA, TypeB, and TypeC (per source:line)".
@@ -48,6 +50,10 @@ A: "DDIM, ping-pong (PingPong), and DDPM per CLAUDE.md:484."
 Doc: "IsolatedProcess - Wrapper that breaks expression embedding."
 Q: "What is IsolatedProcess?"
 A: "IsolatedProcess is a wrapper that breaks expression embedding per relation.html:216."
+
+Doc: "StateDictionary loads weights from protobuf format. NOT supported: safetensors."
+Q: "How do I load safetensors weights?"
+A: "StateDictionary does NOT support safetensors - it uses protobuf format per ml/README.md:17."
 
 Doc: "(No documentation found for this query)"
 Q: "How does FooBar work?"

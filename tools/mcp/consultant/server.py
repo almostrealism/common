@@ -211,21 +211,15 @@ def consult(
     Returns:
         Dictionary with answer, sources, and related memories.
     """
-    # Retrieve documentation context
+    # Retrieve documentation context (searches markdown and HTML separately)
     if keywords:
-        doc_context = docs.get_context_for_keywords(keywords)
-        # Log results from keyword searches (same source as context)
-        doc_results = []
-        seen_keys = set()
-        for kw in keywords[:4]:
-            for r in docs.search(kw, max_results=3):
-                key = (r["file"], r["line"])
-                if key not in seen_keys:
-                    seen_keys.add(key)
-                    doc_results.append(r)
+        doc_retrieval = docs.get_context_for_keywords(keywords)
     else:
-        doc_context = docs.get_context_for_query(question)
-        doc_results = docs.search(question, max_results=5)
+        doc_retrieval = docs.get_context_for_query(question)
+
+    doc_context = doc_retrieval["context"]
+    doc_results = doc_retrieval["markdown_results"]
+    html_refs = doc_retrieval["html_refs"]
 
     # Search memories for related prior knowledge
     memories = memory.search(query=question, namespace="default", limit=3)
@@ -239,12 +233,13 @@ def consult(
     prompt = _build_consult_prompt(question, doc_context, mem_context, context)
     answer = _generate(prompt, system=SYSTEM_PROMPT)
 
-    # Extract source file references from doc results
+    # Source references: markdown files used in context + HTML for exploration
     sources = list({r["file"] for r in doc_results})
 
     return {
         "answer": answer,
         "sources": sources,
+        "html_refs": html_refs,  # HTML docs for agent to explore if needed
         "related_memories": [
             {"content": m["content"], "score": m.get("score")}
             for m in memories
@@ -280,10 +275,11 @@ def recall(query: str, namespace: str = "default", limit: int = 5) -> dict:
         }
 
     # Get documentation context related to the query
-    doc_context = docs.get_context_for_query(query)
+    doc_retrieval = docs.get_context_for_query(query)
+    doc_context = doc_retrieval["context"]
+    doc_results = doc_retrieval["markdown_results"]
 
     # Log retrieval results
-    doc_results = docs.search(query, max_results=5)
     _log_doc_results(query, doc_results)
     _log_memory_results(query, memories)
 
@@ -292,6 +288,7 @@ def recall(query: str, namespace: str = "default", limit: int = 5) -> dict:
     summary = _generate(prompt, system=SYSTEM_PROMPT)
 
     doc_refs = list({r["file"] for r in doc_results})
+    doc_refs.extend(doc_retrieval["html_refs"])  # Include HTML refs too
 
     return {
         "summary": summary,
@@ -335,7 +332,8 @@ def remember(
         Dictionary with both versions of the text and the entry ID.
     """
     # Get documentation context for the note's subject matter
-    doc_context = docs.get_context_for_query(content)
+    doc_retrieval = docs.get_context_for_query(content)
+    doc_context = doc_retrieval["context"]
 
     # Log doc retrieval (remember doesn't search memories, it stores)
     doc_results = docs.search(content, max_results=5)
@@ -438,12 +436,14 @@ def start_consultation(topic: str) -> dict:
     _log_session_id(session_id)
 
     # Get initial documentation context
-    doc_context = docs.get_context_for_query(topic)
+    doc_retrieval = docs.get_context_for_query(topic)
+    doc_context = doc_retrieval["context"]
+    doc_results = doc_retrieval["markdown_results"]
+
     memories = memory.search(query=topic, namespace="default", limit=3)
     mem_context = _format_memory_context(memories)
 
     # Log retrieval results
-    doc_results = docs.search(topic, max_results=5)
     _log_doc_results(topic, doc_results)
     _log_memory_results(topic, memories)
 
@@ -494,10 +494,11 @@ def continue_consultation(session_id: str, message: str) -> dict:
     session = _sessions[session_id]
 
     # Optionally fetch more doc context for the new message
-    new_doc_context = docs.get_context_for_query(message, max_chunks=3, max_total_chars=4000)
+    new_doc_retrieval = docs.get_context_for_query(message, max_chunks=3, max_total_chars=4000)
+    new_doc_context = new_doc_retrieval["context"]
+    doc_results = new_doc_retrieval["markdown_results"]
 
     # Log doc retrieval for the follow-up
-    doc_results = docs.search(message, max_results=5)
     _log_doc_results(message, doc_results)
 
     # Build prompt with conversation history

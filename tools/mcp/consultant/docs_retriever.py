@@ -190,6 +190,18 @@ def _extract_keywords(query: str) -> list[str]:
     return keywords
 
 
+def _path_depth(path: Path, base: Path) -> int:
+    """Calculate the depth of a path relative to a base directory.
+
+    Deeper paths (more subdirectories) are considered more specific.
+    """
+    try:
+        rel = path.relative_to(base)
+        return len(rel.parts)
+    except ValueError:
+        return 0
+
+
 class DocsRetriever:
     """Searches project documentation and returns relevant chunks."""
 
@@ -198,6 +210,62 @@ class DocsRetriever:
         self.docs_dir = self.common_dir / "docs"
         self.modules_dir = self.docs_dir / "modules"
         self.internals_dir = self.docs_dir / "internals"
+
+    def _markdown_files(self, module: Optional[str] = None) -> tuple[list[Path], list[Path]]:
+        """Collect markdown documentation files, split into READMEs and others.
+
+        Returns:
+            Tuple of (readme_files, other_files) where:
+            - readme_files: Module README.md files (searched first to guarantee coverage)
+            - other_files: All other markdown files, sorted by depth (deepest first)
+        """
+        readmes = []
+        others = []
+
+        if module:
+            readme = self.common_dir / module / "README.md"
+            if readme.exists():
+                readmes.append(readme)
+            module_docs = self.common_dir / module / "docs"
+            if module_docs.exists():
+                others.extend(module_docs.glob("*.md"))
+        else:
+            # All module READMEs
+            for mod in MODULES:
+                readme = self.common_dir / mod / "README.md"
+                if readme.exists():
+                    readmes.append(readme)
+                mod_docs = self.common_dir / mod / "docs"
+                if mod_docs.exists():
+                    others.extend(mod_docs.glob("*.md"))
+
+            # Quick reference, CLAUDE.md, internals (not READMEs)
+            qr = self.docs_dir / "QUICK_REFERENCE.md"
+            if qr.exists():
+                others.append(qr)
+            claude_md = self.common_dir / "CLAUDE.md"
+            if claude_md.exists():
+                others.append(claude_md)
+            if self.internals_dir.exists():
+                others.extend(self.internals_dir.glob("*.md"))
+
+        # Sort others by depth (deepest/most specific first), then alphabetically
+        others.sort(key=lambda p: (-_path_depth(p, self.common_dir), str(p)))
+        return readmes, others
+
+    def _html_files(self, module: Optional[str] = None) -> list[Path]:
+        """Collect HTML documentation files."""
+        files = []
+
+        if module:
+            html = self.modules_dir / f"{module}.html"
+            if html.exists():
+                files.append(html)
+        else:
+            if self.modules_dir.exists():
+                files.extend(sorted(self.modules_dir.glob("*.html")))
+
+        return files
 
     def _all_doc_files(self, module: Optional[str] = None) -> list[Path]:
         """Collect all documentation file paths."""
@@ -291,6 +359,211 @@ class DocsRetriever:
 
         return results
 
+    def search_by_type(
+        self,
+        query: str,
+        module: Optional[str] = None,
+        max_md_results: int = 8,
+        max_html_results: int = 5,
+        context_lines: int = 6,
+    ) -> dict:
+        """Search documentation separately by file type.
+
+        Markdown files are searched with prioritization:
+        - READMEs are searched first to guarantee at least one README result
+        - Then deeper/more specific files are searched
+        - Results are deduplicated by file to ensure diversity
+
+        HTML files are searched separately and returned for reference.
+
+        Args:
+            query: The search term or phrase.
+            module: Optional module name to restrict search.
+            max_md_results: Maximum markdown result chunks.
+            max_html_results: Maximum HTML result chunks.
+            context_lines: Lines of context around each match.
+
+        Returns:
+            Dict with 'markdown' and 'html' keys, each containing a list of
+            result dicts with keys: file, line, context.
+        """
+        readme_files, other_md_files = self._markdown_files(module)
+
+        readme_results = []
+        other_results = []
+        html_results = []
+
+        def _search_file(file_path: Path) -> list[dict]:
+            """Search a single file and return matching results."""
+            results = []
+            content = _read_file(file_path)
+            if not content:
+                return results
+
+            if file_path.suffix == ".html":
+                content = _extract_text_from_html(content)
+
+            lines = content.split("\n")
+            for i, line in enumerate(lines):
+                if _fuzzy_match(query, line):
+                    start = max(0, i - context_lines)
+                    end = min(len(lines), i + context_lines + 1)
+                    chunk = "\n".join(lines[start:end])
+
+                    try:
+                        rel_path = str(file_path.relative_to(self.common_dir))
+                    except ValueError:
+                        rel_path = str(file_path)
+
+                    results.append({
+                        "file": rel_path,
+                        "line": i + 1,
+                        "context": chunk,
+                    })
+
+                    # Limit results per file to avoid one file dominating
+                    if len(results) >= 3:
+                        break
+
+            return results
+
+        # Step 1: Search all READMEs and track match counts for prioritization
+        readme_match_counts: dict[str, int] = {}  # file -> match count
+
+        # Extract individual words from query for multi-keyword matching
+        query_words = [w.lower() for w in re.split(r'\s+', query) if len(w) >= 3]
+
+        for file_path in readme_files:
+            content = _read_file(file_path)
+            if not content:
+                continue
+            lines = content.split("\n")
+
+            # Find all matching lines and score by number of query words matched
+            scored_matches = []
+            for i, line in enumerate(lines):
+                if _fuzzy_match(query, line):
+                    # Score: count how many query words appear in this line
+                    line_lower = line.lower()
+                    word_matches = sum(1 for w in query_words if w in line_lower)
+                    scored_matches.append((i, word_matches))
+
+            if not scored_matches:
+                continue
+
+            total_matches = len(scored_matches)
+            readme_match_counts[str(file_path.relative_to(self.common_dir))] = total_matches
+
+            # Sort by score (most keywords matched) then by position
+            scored_matches.sort(key=lambda x: (-x[1], x[0]))
+
+            # Take top results, prioritizing lines that match multiple keywords
+            file_results = []
+            seen_line_ranges = set()  # Avoid overlapping context
+            for line_idx, score in scored_matches[:8]:  # Consider up to 8 candidates
+                # Skip if this line's context would overlap with already-added result
+                if any(abs(line_idx - prev) < context_lines * 2 for prev in seen_line_ranges):
+                    continue
+
+                start = max(0, line_idx - context_lines)
+                end = min(len(lines), line_idx + context_lines + 1)
+                chunk = "\n".join(lines[start:end])
+
+                try:
+                    rel_path = str(file_path.relative_to(self.common_dir))
+                except ValueError:
+                    rel_path = str(file_path)
+
+                file_results.append({
+                    "file": rel_path,
+                    "line": line_idx + 1,
+                    "context": chunk,
+                })
+                seen_line_ranges.add(line_idx)
+
+                if len(file_results) >= 3:  # Max 3 non-overlapping results per file
+                    break
+
+            readme_results.extend(file_results)
+
+        # Sort README results by match count (most relevant first)
+        readme_results.sort(
+            key=lambda r: -readme_match_counts.get(r["file"], 0)
+        )
+
+        # Step 2: Search other markdown files (sorted by depth, deepest first)
+        for file_path in other_md_files:
+            file_results = _search_file(file_path)
+            other_results.extend(file_results)
+
+        # Step 3: Combine results with README priority and file diversity
+        final_md = []
+        seen_files: set[str] = set()
+        file_result_count: dict[str, int] = {}  # Track results per file
+
+        # Allow up to 2 results from high-relevance READMEs (those with many matches)
+        HIGH_MATCH_THRESHOLD = 10
+
+        # First, add results from the best README (up to 2 if high-relevance)
+        if readme_results:
+            best_readme = readme_results[0]["file"]
+            best_match_count = readme_match_counts.get(best_readme, 0)
+            max_from_best = 2 if best_match_count >= HIGH_MATCH_THRESHOLD else 1
+
+            for r in readme_results:
+                if r["file"] != best_readme:
+                    continue
+                if file_result_count.get(best_readme, 0) >= max_from_best:
+                    break
+                if len(final_md) >= max_md_results:
+                    break
+                final_md.append(r)
+                file_result_count[best_readme] = file_result_count.get(best_readme, 0) + 1
+
+            seen_files.add(best_readme)
+
+        # Then add specific (deeper) results, one per file for diversity
+        for r in other_results:
+            if len(final_md) >= max_md_results:
+                break
+            if r["file"] not in seen_files:
+                final_md.append(r)
+                seen_files.add(r["file"])
+                file_result_count[r["file"]] = 1
+
+        # If we have slots left, add more README results from different files
+        for r in readme_results:
+            if len(final_md) >= max_md_results:
+                break
+            if r["file"] not in seen_files:
+                final_md.append(r)
+                seen_files.add(r["file"])
+                file_result_count[r["file"]] = 1
+
+        # If still have slots, add additional results from already-seen files
+        all_md_results = readme_results + other_results
+        for r in all_md_results:
+            if len(final_md) >= max_md_results:
+                break
+            # Check if this exact result is already included
+            if not any(r["file"] == m["file"] and r["line"] == m["line"] for m in final_md):
+                final_md.append(r)
+
+        # Step 4: Search HTML files
+        for file_path in self._html_files(module):
+            if len(html_results) >= max_html_results:
+                break
+            file_results = _search_file(file_path)
+            for r in file_results:
+                if len(html_results) >= max_html_results:
+                    break
+                html_results.append(r)
+
+        return {
+            "markdown": final_md,
+            "html": html_results,
+        }
+
     def read_module(self, module: str) -> str:
         """Read the full documentation for a module.
 
@@ -331,99 +604,188 @@ class DocsRetriever:
         keywords: list[str],
         max_chunks: int = 5,
         max_total_chars: int = 8000,
-    ) -> str:
+    ) -> dict:
         """Get documentation context for a list of agent-provided keywords.
 
-        Use this when the calling agent provides specific search terms.
-        Keywords are searched in the order provided, so put the most
-        important/specific terms first.
+        Searches markdown and HTML documentation separately. Markdown results
+        are formatted into a context string for the LLM. HTML results are
+        returned as references for the coding agent to explore if needed.
+
+        Markdown prioritization:
+        - At least one README.md result is guaranteed if available
+        - Deeper/more specific files are prioritized over shallow ones
 
         Args:
             keywords: List of search terms, ordered by importance.
-            max_chunks: Maximum number of chunks to include.
-            max_total_chars: Maximum total characters in the context.
+            max_chunks: Maximum number of markdown chunks to include in context.
+            max_total_chars: Maximum total characters in the markdown context.
 
         Returns:
-            A formatted string of documentation excerpts.
+            Dict with:
+            - 'context': Formatted markdown context string for LLM
+            - 'html_refs': List of HTML file references for agent exploration
+            - 'markdown_results': Raw markdown results list
         """
-        results = []
-        seen: set[tuple[str, int]] = set()
+        md_results = []
+        html_results = []
+        seen_md: set[tuple[str, int]] = set()
+        seen_html: set[tuple[str, int]] = set()
 
+        # Search each keyword and merge results
         for kw in keywords:
-            if len(results) >= max_chunks:
+            if len(md_results) >= max_chunks and len(html_results) >= 3:
                 break
-            kw_results = self.search(kw, max_results=3, context_lines=6)
-            for r in kw_results:
+
+            typed = self.search_by_type(
+                kw,
+                max_md_results=max_chunks,
+                max_html_results=3,
+                context_lines=6,
+            )
+
+            # Merge markdown results
+            for r in typed["markdown"]:
+                if len(md_results) >= max_chunks:
+                    break
                 key = (r["file"], r["line"])
-                if key not in seen:
-                    seen.add(key)
-                    results.append(r)
-                    if len(results) >= max_chunks:
-                        break
+                if key not in seen_md:
+                    seen_md.add(key)
+                    md_results.append(r)
 
-        if not results:
-            return ""
+            # Merge HTML results (for reference only)
+            for r in typed["html"]:
+                if len(html_results) >= 5:
+                    break
+                key = (r["file"], r["line"])
+                if key not in seen_html:
+                    seen_html.add(key)
+                    html_results.append(r)
 
-        parts = []
-        total = 0
-        for r in results:
-            chunk = f"[{r['file']}:{r['line']}]\n{r['context']}"
-            if total + len(chunk) > max_total_chars:
-                break
-            parts.append(chunk)
-            total += len(chunk)
+        # Format markdown context
+        context = ""
+        if md_results:
+            parts = []
+            total = 0
+            for r in md_results:
+                chunk = f"[{r['file']}:{r['line']}]\n{r['context']}"
+                if total + len(chunk) > max_total_chars:
+                    break
+                parts.append(chunk)
+                total += len(chunk)
+            context = "\n\n---\n\n".join(parts)
 
-        return "\n\n---\n\n".join(parts)
+        # Extract unique HTML file references
+        html_refs = list({r["file"] for r in html_results})
+
+        return {
+            "context": context,
+            "html_refs": html_refs,
+            "markdown_results": md_results,
+        }
 
     def get_context_for_query(
         self,
         query: str,
         max_chunks: int = 5,
         max_total_chars: int = 8000,
-    ) -> str:
-        """Get a consolidated documentation context string for a query.
+    ) -> dict:
+        """Get documentation context for a natural language query.
 
-        Handles natural language questions by extracting keywords and
-        searching for each independently, then deduplicating and assembling
-        the best chunks.
+        Searches markdown and HTML documentation separately. Markdown results
+        are formatted into a context string for the LLM. HTML results are
+        returned as references for the coding agent to explore if needed.
+
+        Handles natural language questions by:
+        1. First searching for the full query
+        2. Then extracting keywords and searching each independently
+        3. Deduplicating and assembling the best chunks
+
+        Markdown prioritization:
+        - At least one README.md result is guaranteed if available
+        - Deeper/more specific files are prioritized over shallow ones
 
         Args:
             query: The search query (can be a full natural language question).
-            max_chunks: Maximum number of chunks to include.
-            max_total_chars: Maximum total characters in the context.
+            max_chunks: Maximum number of markdown chunks to include in context.
+            max_total_chars: Maximum total characters in the markdown context.
 
         Returns:
-            A formatted string of documentation excerpts.
+            Dict with:
+            - 'context': Formatted markdown context string for LLM
+            - 'html_refs': List of HTML file references for agent exploration
+            - 'markdown_results': Raw markdown results list
         """
-        # First try the raw query (works for short keyword queries)
-        results = self.search(query, max_results=max_chunks, context_lines=6)
+        md_results = []
+        html_results = []
+        seen_md: set[tuple[str, int]] = set()
+        seen_html: set[tuple[str, int]] = set()
 
-        # If that didn't find enough, extract keywords and search each one
-        if len(results) < max_chunks:
+        # First try the full query
+        typed = self.search_by_type(
+            query,
+            max_md_results=max_chunks,
+            max_html_results=3,
+            context_lines=6,
+        )
+
+        for r in typed["markdown"]:
+            key = (r["file"], r["line"])
+            seen_md.add(key)
+            md_results.append(r)
+
+        for r in typed["html"]:
+            key = (r["file"], r["line"])
+            seen_html.add(key)
+            html_results.append(r)
+
+        # If we didn't find enough markdown results, extract keywords and search
+        if len(md_results) < max_chunks:
             keywords = _extract_keywords(query)
-            seen = {(r["file"], r["line"]) for r in results}
             for kw in keywords:
-                if len(results) >= max_chunks:
+                if len(md_results) >= max_chunks:
                     break
-                kw_results = self.search(kw, max_results=3, context_lines=6)
-                for r in kw_results:
+
+                kw_typed = self.search_by_type(
+                    kw,
+                    max_md_results=3,
+                    max_html_results=2,
+                    context_lines=6,
+                )
+
+                for r in kw_typed["markdown"]:
+                    if len(md_results) >= max_chunks:
+                        break
                     key = (r["file"], r["line"])
-                    if key not in seen:
-                        seen.add(key)
-                        results.append(r)
-                        if len(results) >= max_chunks:
-                            break
+                    if key not in seen_md:
+                        seen_md.add(key)
+                        md_results.append(r)
 
-        if not results:
-            return ""
+                for r in kw_typed["html"]:
+                    if len(html_results) >= 5:
+                        break
+                    key = (r["file"], r["line"])
+                    if key not in seen_html:
+                        seen_html.add(key)
+                        html_results.append(r)
 
-        parts = []
-        total = 0
-        for r in results:
-            chunk = f"[{r['file']}:{r['line']}]\n{r['context']}"
-            if total + len(chunk) > max_total_chars:
-                break
-            parts.append(chunk)
-            total += len(chunk)
+        # Format markdown context
+        context = ""
+        if md_results:
+            parts = []
+            total = 0
+            for r in md_results:
+                chunk = f"[{r['file']}:{r['line']}]\n{r['context']}"
+                if total + len(chunk) > max_total_chars:
+                    break
+                parts.append(chunk)
+                total += len(chunk)
+            context = "\n\n---\n\n".join(parts)
 
-        return "\n\n---\n\n".join(parts)
+        # Extract unique HTML file references
+        html_refs = list({r["file"] for r in html_results})
+
+        return {
+            "context": context,
+            "html_refs": html_refs,
+            "markdown_results": md_results,
+        }
