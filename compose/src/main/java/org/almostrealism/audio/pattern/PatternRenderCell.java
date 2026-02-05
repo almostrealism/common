@@ -1,5 +1,5 @@
 /*
- * Copyright 2025 Michael Murray
+ * Copyright 2026 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -24,8 +24,6 @@ import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.CellAdapter;
 import org.almostrealism.hardware.OperationList;
-import org.almostrealism.time.Temporal;
-
 import java.util.function.IntSupplier;
 import java.util.function.Supplier;
 
@@ -43,8 +41,6 @@ import java.util.function.Supplier;
  * <ul>
  *   <li><strong>{@link #prepareBatch()}</strong> - Renders patterns into the output
  *       buffer. Called <em>outside</em> the per-frame loop, before each buffer.</li>
- *   <li><strong>{@link #tick()}</strong> - A no-op that returns an empty compilable
- *       operation. Called <em>inside</em> the per-frame loop.</li>
  *   <li><strong>{@link #push(Producer)}</strong> - Forwards the output buffer to
  *       the receptor (effects pipeline). Compilable.</li>
  * </ul>
@@ -83,7 +79,7 @@ import java.util.function.Supplier;
  * @author Michael Murray
  */
 public class PatternRenderCell extends CellAdapter<PackedCollection>
-		implements Temporal, Lifecycle, CollectionFeatures {
+		implements Lifecycle, CollectionFeatures {
 
 	private final PatternSystemManager patterns;
 	private final Supplier<AudioSceneContext> contextSupplier;
@@ -186,23 +182,6 @@ public class PatternRenderCell extends CellAdapter<PackedCollection>
 	 */
 	public ChannelInfo getChannel() {
 		return channel;
-	}
-
-	/**
-	 * No-op tick operation.
-	 *
-	 * <p>Pattern data is already in the output buffer (prepared by
-	 * {@link #prepareBatch()}). The per-frame loop reads from the buffer
-	 * via downstream cells that receive data through {@link #push}.</p>
-	 *
-	 * <p>This method returns an empty {@link OperationList} which is a
-	 * compilable no-op, ensuring the per-frame loop remains fully compilable.</p>
-	 *
-	 * @return an empty compilable operation
-	 */
-	@Override
-	public Supplier<Runnable> tick() {
-		return new OperationList("PatternRenderCell Tick (no-op)");
 	}
 
 	/**

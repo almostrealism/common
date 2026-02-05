@@ -1,5 +1,5 @@
 /*
- * Copyright 2025 Michael Murray
+ * Copyright 2026 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -270,6 +270,7 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 	private final ProjectedGenome genome;
 	
 	private OperationList setup;
+	private List<PatternRenderCell> renderCells;
 	private Function<PackedCollection, Factor<PackedCollection>> automationLevel;
 
 	private final List<Consumer<Frequency>> tempoListeners;
@@ -649,6 +650,7 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 						  IntSupplier frameSupplier,
 						  Producer<PackedCollection> waveCellFrame) {
 		setup = new OperationList("AudioScene Setup");
+		renderCells = new ArrayList<>();
 		addCommonSetup(setup);
 		setup.add(() -> () -> patterns.setTuning(tuning));
 		setup.add(sections.setup());
@@ -752,7 +754,7 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 
 		CellList cells = efx.apply(channel, renderCell.getOutputProducer(),
 				getTotalDuration(), setup, waveCellFrame);
-		cells.addRequirement(renderCell);
+		renderCells.add(renderCell);
 
 		return cells;
 	}
@@ -827,10 +829,6 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 	 *   <li><strong>Advance phase</strong> - Increments the frame counter by bufferSize.</li>
 	 * </ul>
 	 *
-	 * <p>The key insight is that {@link PatternRenderCell#tick()} is now a no-op,
-	 * so the per-frame loop contains only compilable operations (effects processing,
-	 * cursor advancement, output writing).</p>
-	 *
 	 * @param output     the audio output to write to
 	 * @param channels   channel indices to render, or null for all
 	 * @param bufferSize frames per buffer
@@ -854,12 +852,6 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 
 		CellList cells = (CellList) getCells(output, channels, bufferSize,
 				() -> currentFrame[0], bufferFrameProducer);
-
-		// Collect all PatternRenderCells from the cell pipeline requirements
-		List<PatternRenderCell> renderCells = cells.getAllTemporals().stream()
-				.filter(t -> t instanceof PatternRenderCell)
-				.map(t -> (PatternRenderCell) t)
-				.toList();
 
 		// Per-frame operation (must be compilable)
 		Supplier<Runnable> frameOp = cells.tick();

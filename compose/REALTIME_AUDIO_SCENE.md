@@ -60,10 +60,10 @@ class PatternRenderCell extends BatchedCell {
 
 **After** (direct Cell):
 ```java
-class PatternRenderCell extends CellAdapter<PackedCollection> {
+class PatternRenderCell extends CellAdapter<PackedCollection> implements Lifecycle {
     // prepareBatch(frames) - renders patterns into output buffer (outside loop)
-    // tick() - no-op or simple cursor logic (compilable, inside loop)
     // push() - forwards output buffer to receptor (compilable)
+    // NOTE: PatternRenderCell does NOT implement Temporal - it has no tick()
 }
 ```
 
@@ -71,13 +71,8 @@ class PatternRenderCell extends CellAdapter<PackedCollection> {
 
 ```java
 public TemporalCellular runnerRealTime(output, channels, bufferSize) {
+    // getCells() populates this.renderCells field via getPatternChannel()
     Cells cells = getCells(output, channels, bufferSize, frameSupplier);
-
-    // Collect all PatternRenderCells that need batch preparation
-    List<PatternRenderCell> renderCells = cells.getAllRequirements().stream()
-            .filter(t -> t instanceof PatternRenderCell)
-            .map(t -> (PatternRenderCell) t)
-            .collect(Collectors.toList());
 
     return new TemporalCellular() {
         Supplier<Runnable> tick() {
@@ -135,7 +130,7 @@ currentFrame[0] += 1024
 
 - ✅ Removed `extends BatchedCell`, replaced with `extends CellAdapter<PackedCollection>`
 - ✅ Added `prepareBatch()` method that calls `PatternSystemManager.sum()`
-- ✅ Changed `tick()` to return an empty `OperationList` (compilable no-op)
+- ✅ Removed `Temporal` interface - `PatternRenderCell` has no `tick()` method
 - ✅ Kept `getOutputProducer()` and output buffer management
 - ✅ Frame position provided via `IntSupplier` constructor argument
 
@@ -159,7 +154,7 @@ currentFrame[0] += 1024
 
 **Status**: COMPLETE - all 11 tests pass
 
-- ✅ `PatternRenderCell.tick()` returns an empty `OperationList` (compilable no-op)
+- ✅ `PatternRenderCell` does not implement `Temporal` - no tick method to pollute the loop
 - ✅ Pattern rendering now happens outside the loop via `prepareBatch()`
 - ✅ All `AudioSceneRealTimeCorrectnessTest` tests pass (11/11)
 
@@ -187,7 +182,7 @@ flow is broken. See "Audio Quality Assessment" section below for details.
 
 | File | Changes | Status |
 |------|---------|--------|
-| `PatternRenderCell.java` | Removed BatchedCell, added `prepareBatch()`, `tick()` is no-op | ✅ Complete |
+| `PatternRenderCell.java` | Removed BatchedCell and Temporal, added `prepareBatch()` | ✅ Complete |
 | `AudioScene.java` | Updated `getPatternChannel()`, `runnerRealTime()` | ✅ Complete |
 | `BatchedCell.java` | No changes (still useful for other use cases) |
 | `Periodic.java` | No changes (still useful for other use cases) |
