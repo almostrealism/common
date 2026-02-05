@@ -18,7 +18,7 @@ package org.almostrealism.audio.pattern.test;
 
 import org.almostrealism.audio.arrange.AudioSceneContext;
 import org.almostrealism.audio.data.ChannelInfo;
-import org.almostrealism.audio.pattern.PatternRenderCell;
+import org.almostrealism.audio.pattern.PatternAudioBuffer;
 import org.almostrealism.audio.pattern.PatternSystemManager;
 import org.almostrealism.graph.BatchedCell;
 import org.almostrealism.util.TestSuiteBase;
@@ -98,7 +98,7 @@ public class RealTimeRenderingTest extends TestSuiteBase {
 	}
 
 	@Test
-	public void testPatternRenderCellSetup() {
+	public void testPatternAudioBufferSetup() {
 		// Create a minimal pattern system manager
 		PatternSystemManager patterns = new PatternSystemManager(new java.util.ArrayList<>());
 
@@ -112,7 +112,7 @@ public class RealTimeRenderingTest extends TestSuiteBase {
 
 		// Create render cell
 		ChannelInfo channel = new ChannelInfo(0, ChannelInfo.Voicing.MAIN, ChannelInfo.StereoChannel.LEFT);
-		PatternRenderCell renderCell = new PatternRenderCell(
+		PatternAudioBuffer renderCell = new PatternAudioBuffer(
 				patterns, contextSupplier, channel, 1024, () -> 0);
 
 		// Verify setup runs without error

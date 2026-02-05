@@ -93,7 +93,7 @@ public class AudioSceneMultiGenomeTest extends AudioSceneTestBase {
 	 * in a buffer loop, bypassing the effects pipeline.
 	 *
 	 * <p>This mirrors what happens inside
-	 * {@link org.almostrealism.audio.pattern.PatternRenderCell#renderBatch}
+	 * {@link org.almostrealism.audio.pattern.PatternAudioBuffer#renderBatch}
 	 * when the setup phase calls {@code renderNow()}: the PatternSystemManager
 	 * evaluates all notes in the current genome's pattern configuration,
 	 * creating expression trees, compiling native code, and allocating

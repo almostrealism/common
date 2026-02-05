@@ -80,7 +80,7 @@ import static org.junit.Assert.*;
  * @see AudioSceneBaselineTest
  * @see AudioSceneTestBase
  * @see RealTimeTestHelper
- * @see org.almostrealism.audio.pattern.PatternRenderCell
+ * @see org.almostrealism.audio.pattern.PatternAudioBuffer
  */
 public class AudioSceneRealTimeCorrectnessTest extends AudioSceneTestBase {
 
@@ -250,7 +250,7 @@ public class AudioSceneRealTimeCorrectnessTest extends AudioSceneTestBase {
 	 * <h3>Diagnostic Purpose</h3>
 	 * <p>This test verifies the low-level mechanics of the real-time runner:
 	 * frame counter advancement, buffer boundary handling, and interaction
-	 * between the frame tracker and PatternRenderCell. It uses a short
+	 * between the frame tracker and PatternAudioBuffer. It uses a short
 	 * duration (4 buffers) to isolate these mechanics from full rendering.</p>
 	 *
 	 * <h3>What This Tests</h3>
@@ -491,7 +491,7 @@ public class AudioSceneRealTimeCorrectnessTest extends AudioSceneTestBase {
 	 * Tests that frame-range rendering integrates correctly with the effects pipeline.
 	 *
 	 * <h3>Diagnostic Purpose</h3>
-	 * <p>Uses {@code getPatternChannel()} to create a CellList with PatternRenderCell
+	 * <p>Uses {@code getPatternChannel()} to create a CellList with PatternAudioBuffer
 	 * and effects pipeline. Validates that the cell infrastructure can be set up
 	 * and ticked without error.</p>
 	 *

@@ -47,11 +47,11 @@ The per-frame loop simply reads from that buffer (a compilable operation).
 | **Tick** | Read from buffer, apply effects, write output | Inside loop | **Yes** |
 | **Advance** | Increment frame counter | After loop | Yes |
 
-### `PatternRenderCell` Interface Change
+### `PatternAudioBuffer` Interface Change
 
 **Before** (BatchedCell-based):
 ```java
-class PatternRenderCell extends BatchedCell {
+class PatternAudioBuffer extends BatchedCell {
     // tick() counts to batchSize, then calls renderBatch()
     // renderBatch() calls PatternSystemManager.sum()
     // Problem: tick() contains non-compilable work
@@ -60,10 +60,10 @@ class PatternRenderCell extends BatchedCell {
 
 **After** (direct Cell):
 ```java
-class PatternRenderCell extends CellAdapter<PackedCollection> implements Lifecycle {
+class PatternAudioBuffer implements Setup, CollectionFeatures {
     // prepareBatch(frames) - renders patterns into output buffer (outside loop)
-    // push() - forwards output buffer to receptor (compilable)
-    // NOTE: PatternRenderCell does NOT implement Temporal - it has no tick()
+    // getOutputProducer() - provides buffer for downstream WaveCells to read
+    // NOTE: Not a Cell - just a buffer holder with batch rendering capability
 }
 ```
 
@@ -79,7 +79,7 @@ public TemporalCellular runnerRealTime(output, channels, bufferSize) {
             OperationList tick = new OperationList();
 
             // 1. OUTSIDE LOOP: Prepare pattern data for this buffer
-            for (PatternRenderCell cell : renderCells) {
+            for (PatternAudioBuffer cell : renderCells) {
                 tick.add(cell.prepareBatch(bufferSize));
             }
 
@@ -102,16 +102,16 @@ runnerRealTime.tick()
   |
   v
 [OUTSIDE LOOP - Java, per buffer]
-PatternRenderCell.prepareBatch(1024)
+PatternAudioBuffer.prepareBatch(1024)
   -> PatternSystemManager.sum(ctx, channel, startFrame, 1024)
   -> PatternFeatures.render() for each overlapping note
-  -> Result written to PatternRenderCell.outputBuffer
+  -> Result written to PatternAudioBuffer.outputBuffer
   |
   v
 [INSIDE LOOP - Compiled, per frame]
 loop(cells.tick(), 1024)
   |
-  +-> PatternRenderCell.tick()     // No-op or index advance
+  +-> PatternAudioBuffer.tick()     // No-op or index advance
   +-> Effects pipeline cells       // Compilable DSP
   +-> WaveOutput cursor advance    // Compilable
   |
@@ -124,21 +124,20 @@ currentFrame[0] += 1024
 
 ## Implementation Plan
 
-### Step 1: Refactor `PatternRenderCell` to not extend `BatchedCell` ✅ COMPLETE
+### Step 1: Refactor `PatternAudioBuffer` to not extend `BatchedCell` ✅ COMPLETE
 
-**File**: `compose/src/main/java/org/almostrealism/audio/pattern/PatternRenderCell.java`
+**File**: `compose/src/main/java/org/almostrealism/audio/pattern/PatternAudioBuffer.java`
 
-- ✅ Removed `extends BatchedCell`, replaced with `extends CellAdapter<PackedCollection>`
+- ✅ Simplified to `implements Setup, CollectionFeatures` (not a Cell at all)
 - ✅ Added `prepareBatch()` method that calls `PatternSystemManager.sum()`
-- ✅ Removed `Temporal` interface - `PatternRenderCell` has no `tick()` method
-- ✅ Kept `getOutputProducer()` and output buffer management
+- ✅ `getOutputProducer()` provides buffer for downstream WaveCells
 - ✅ Frame position provided via `IntSupplier` constructor argument
 
 ### Step 2: Update `AudioScene.getPatternChannel()` ✅ COMPLETE
 
 **File**: `compose/src/main/java/org/almostrealism/audio/AudioScene.java`
 
-- ✅ `PatternRenderCell` no longer uses BatchedCell parameters
+- ✅ `PatternAudioBuffer` no longer uses BatchedCell parameters
 - ✅ Changed `setup.add(renderCell.renderNow())` to `setup.add(renderCell.prepareBatch())`
 - ✅ Render cells are tracked via CellList requirements
 
@@ -146,7 +145,7 @@ currentFrame[0] += 1024
 
 **File**: `compose/src/main/java/org/almostrealism/audio/AudioScene.java`
 
-- ✅ Uses `CellList.getAllRequirements()` with stream filter to find all PatternRenderCells
+- ✅ Uses `CellList.getAllRequirements()` with stream filter to find all PatternAudioBuffers
 - ✅ In `tick()`, `prepareBatch()` is called for each render cell **before** the loop
 - ✅ Updated Javadoc to reflect the new architecture
 
@@ -154,7 +153,7 @@ currentFrame[0] += 1024
 
 **Status**: COMPLETE - all 11 tests pass
 
-- ✅ `PatternRenderCell` does not implement `Temporal` - no tick method to pollute the loop
+- ✅ `PatternAudioBuffer` is just a buffer holder - no Cell/Temporal interfaces
 - ✅ Pattern rendering now happens outside the loop via `prepareBatch()`
 - ✅ All `AudioSceneRealTimeCorrectnessTest` tests pass (11/11)
 
@@ -182,7 +181,7 @@ flow is broken. See "Audio Quality Assessment" section below for details.
 
 | File | Changes | Status |
 |------|---------|--------|
-| `PatternRenderCell.java` | Removed BatchedCell and Temporal, added `prepareBatch()` | ✅ Complete |
+| `PatternAudioBuffer.java` | Simple buffer holder with `prepareBatch()`, not a Cell | ✅ Complete |
 | `AudioScene.java` | Updated `getPatternChannel()`, `runnerRealTime()` | ✅ Complete |
 | `BatchedCell.java` | No changes (still useful for other use cases) |
 | `Periodic.java` | No changes (still useful for other use cases) |
@@ -354,26 +353,26 @@ local index (0 to bufferSize-1).
 
 ---
 
-#### Option B: Modify PatternRenderCell to Push Samples Directly
+#### Option B: Modify PatternAudioBuffer to Push Samples Directly
 
-Make `PatternRenderCell` a true source cell that reads from its buffer on each
+Make `PatternAudioBuffer` a true source cell that reads from its buffer on each
 `push()` and forwards samples directly to the receptor.
 
 **Changes required:**
-1. Add a per-buffer frame index to `PatternRenderCell`
+1. Add a per-buffer frame index to `PatternAudioBuffer`
 2. Modify `push()` to read from `outputBuffer[frameIndex]` and forward to receptor
 3. Modify `tick()` to increment the frame index
 4. Remove `EfxManager.createCells()` from the pattern path
 
 **Pros:**
 - Simpler data flow (no intermediate WaveCell)
-- Frame indexing is local to PatternRenderCell
+- Frame indexing is local to PatternAudioBuffer
 - No need to plumb frame producer through multiple layers
 
 **Cons:**
 - Changes the cell architecture pattern
 - Loses WaveCell features (looping, offset timing) - though not needed here
-- More invasive change to PatternRenderCell
+- More invasive change to PatternAudioBuffer
 
 ---
 
@@ -393,7 +392,7 @@ Reset WaveCell's internal clock to 0 at the start of each buffer.
 
 **Recommendation**: Option A is the cleanest fix because:
 1. It uses WaveCell as designed (external frame control is a supported feature)
-2. It doesn't require changing WaveCell or PatternRenderCell internals
+2. It doesn't require changing WaveCell or PatternAudioBuffer internals
 3. It aligns with how real-time audio systems typically work (local frame index)
 
 The main work is plumbing the frame producer through the cell construction chain.

@@ -16,61 +16,60 @@
 
 package org.almostrealism.audio.pattern;
 
-import io.almostrealism.lifecycle.Lifecycle;
+import io.almostrealism.cycle.Setup;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.audio.arrange.AudioSceneContext;
 import org.almostrealism.audio.data.ChannelInfo;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.graph.CellAdapter;
 import org.almostrealism.hardware.OperationList;
+
 import java.util.function.IntSupplier;
 import java.util.function.Supplier;
 
 /**
- * A {@link org.almostrealism.graph.Cell} that performs incremental pattern rendering
- * for real-time audio streaming.
+ * A buffer that holds rendered pattern audio for real-time streaming.
  *
- * <p>{@code PatternRenderCell} is the key component enabling real-time AudioScene
- * operation. It renders pattern audio incrementally as playback progresses, rather
- * than rendering the entire arrangement during setup.</p>
+ * <p>{@code PatternAudioBuffer} extends the pattern system to support incremental
+ * rendering. It renders pattern audio into a buffer as playback progresses, rather
+ * than rendering the entire arrangement upfront.</p>
  *
  * <h2>Architecture</h2>
  *
- * <p>This cell separates pattern preparation from per-frame processing:</p>
+ * <p>This class is a buffer holder with batch rendering capability:</p>
  * <ul>
  *   <li><strong>{@link #prepareBatch()}</strong> - Renders patterns into the output
  *       buffer. Called <em>outside</em> the per-frame loop, before each buffer.</li>
- *   <li><strong>{@link #push(Producer)}</strong> - Forwards the output buffer to
- *       the receptor (effects pipeline). Compilable.</li>
+ *   <li><strong>{@link #getOutputProducer()}</strong> - Provides a producer for the
+ *       output buffer that downstream components can read from.</li>
  * </ul>
  *
- * <p>This separation allows the per-frame loop to be a compiled hardware-accelerated
- * {@link org.almostrealism.hardware.computations.Loop}, while pattern rendering
- * (which involves Java-based note evaluation) happens outside the loop.</p>
+ * <p>This separation allows per-frame processing loops to be compiled and
+ * hardware-accelerated, while pattern rendering (which involves Java-based
+ * note evaluation) happens outside the loop.</p>
  *
  * <h2>Usage</h2>
  * <pre>{@code
- * PatternRenderCell cell = new PatternRenderCell(
+ * PatternAudioBuffer buffer = new PatternAudioBuffer(
  *     patterns, contextSupplier, channel, bufferSize, frameSupplier);
  *
  * // In setup phase
- * cell.setup().get().run();
- * cell.prepareBatch().get().run();  // Render first buffer
+ * buffer.setup().get().run();
+ * buffer.prepareBatch().get().run();  // Render first buffer
  *
  * // In tick phase (per buffer)
- * cell.prepareBatch().get().run();  // Render next buffer (outside loop)
- * loop(cells.tick(), bufferSize);   // Per-frame processing (compiled loop)
+ * buffer.prepareBatch().get().run();  // Render next buffer (outside loop)
+ * loop(cells.tick(), bufferSize);     // Per-frame processing (compiled loop)
  * }</pre>
  *
  * <h2>Frame Tracking</h2>
  *
- * <p>The cell accepts an {@link IntSupplier} that provides the current frame
+ * <p>The buffer accepts an {@link IntSupplier} that provides the current frame
  * position. This allows frame tracking to be managed externally by the runner.</p>
  *
  * <h2>Thread Safety</h2>
  *
- * <p>This cell is not thread-safe. It should only be accessed from a single
+ * <p>This class is not thread-safe. It should only be accessed from a single
  * audio processing thread.</p>
  *
  * @see PatternSystemManager#sum(Supplier, ChannelInfo, IntSupplier, int)
@@ -78,8 +77,7 @@ import java.util.function.Supplier;
  *
  * @author Michael Murray
  */
-public class PatternRenderCell extends CellAdapter<PackedCollection>
-		implements Lifecycle, CollectionFeatures {
+public class PatternAudioBuffer implements Setup, CollectionFeatures {
 
 	private final PatternSystemManager patterns;
 	private final Supplier<AudioSceneContext> contextSupplier;
@@ -89,12 +87,12 @@ public class PatternRenderCell extends CellAdapter<PackedCollection>
 	private final PackedCollection outputBuffer;
 
 	/**
-	 * Creates a new pattern render cell.
+	 * Creates a new pattern audio buffer.
 	 *
 	 * <p>The output buffer is allocated immediately to ensure that
 	 * {@link #getOutputProducer()} can provide a valid producer before
-	 * setup() is called. This is required because the cell pipeline
-	 * (including effects processing) is built before setup runs.</p>
+	 * setup() is called. This is required because downstream components
+	 * are built before setup runs.</p>
 	 *
 	 * @param patterns       the pattern system manager containing patterns to render
 	 * @param contextSupplier supplier for the audio scene context
@@ -102,11 +100,11 @@ public class PatternRenderCell extends CellAdapter<PackedCollection>
 	 * @param bufferSize     the size of each render buffer in frames
 	 * @param currentFrame   supplier providing the current absolute frame position
 	 */
-	public PatternRenderCell(PatternSystemManager patterns,
-							 Supplier<AudioSceneContext> contextSupplier,
-							 ChannelInfo channel,
-							 int bufferSize,
-							 IntSupplier currentFrame) {
+	public PatternAudioBuffer(PatternSystemManager patterns,
+							  Supplier<AudioSceneContext> contextSupplier,
+							  ChannelInfo channel,
+							  int bufferSize,
+							  IntSupplier currentFrame) {
 		this.patterns = patterns;
 		this.contextSupplier = contextSupplier;
 		this.channel = channel;
@@ -178,44 +176,25 @@ public class PatternRenderCell extends CellAdapter<PackedCollection>
 	}
 
 	/**
-	 * Returns the channel this cell renders.
+	 * Returns the channel this buffer handles.
 	 */
 	public ChannelInfo getChannel() {
 		return channel;
 	}
 
 	/**
-	 * Forwards the output buffer to the receptor.
-	 *
-	 * <p>This cell is a source cell: it generates its own output via
-	 * {@link #prepareBatch()}, so the {@code protein} argument is ignored.
-	 * The current output buffer is forwarded to the receptor as-is.</p>
-	 *
-	 * @param protein ignored (this cell generates its own output)
-	 * @return an operation that pushes the output buffer to the receptor
-	 */
-	@Override
-	public Supplier<Runnable> push(Producer<PackedCollection> protein) {
-		if (getReceptor() != null) {
-			return getReceptor().push(getOutputProducer());
-		}
-		return new OperationList("PatternRenderCell Push (no receptor)");
-	}
-
-	/**
-	 * Initializes the cell.
+	 * Initializes the buffer.
 	 *
 	 * @return an empty setup operation
 	 */
 	@Override
 	public Supplier<Runnable> setup() {
-		return new OperationList("PatternRenderCell Setup");
+		return new OperationList("PatternAudioBuffer Setup");
 	}
 
 	/**
-	 * Resets the cell by clearing the output buffer.
+	 * Resets the buffer by clearing its contents.
 	 */
-	@Override
 	public void reset() {
 		outputBuffer.clear();
 	}

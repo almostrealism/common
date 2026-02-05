@@ -47,7 +47,7 @@ import org.almostrealism.audio.health.HealthComputationAdapter;
 import org.almostrealism.audio.health.MultiChannelAudioOutput;
 import org.almostrealism.audio.notes.NoteAudioChoice;
 import org.almostrealism.audio.pattern.ChordProgressionManager;
-import org.almostrealism.audio.pattern.PatternRenderCell;
+import org.almostrealism.audio.pattern.PatternAudioBuffer;
 import org.almostrealism.audio.pattern.NoteAudioChoiceList;
 import org.almostrealism.audio.pattern.PatternSystemManager;
 import org.almostrealism.audio.tone.DefaultKeyboardTuning;
@@ -148,14 +148,14 @@ import java.util.stream.IntStream;
  * <h2>Real-Time Support</h2>
  *
  * <p>Both offline and real-time rendering use the same cell construction pipeline
- * via {@link PatternRenderCell}. The offline path ({@link #runner}) renders all
+ * via {@link PatternAudioBuffer}. The offline path ({@link #runner}) renders all
  * patterns during setup, while the real-time path ({@link #runnerRealTime})
  * renders incrementally during tick. See {@code REALTIME_AUDIO_SCENE.md} for
  * design details.</p>
  *
  * <h2>Pattern Rendering Flow</h2>
  *
- * <p>Pattern rendering is handled by {@link PatternRenderCell}, which calls
+ * <p>Pattern rendering is handled by {@link PatternAudioBuffer}, which calls
  * {@link PatternSystemManager#sum} to render patterns for a channel. The unified
  * {@link #getPatternChannel} method constructs cells for both offline and real-time
  * paths, differing only in buffer size and frame supplier.</p>
@@ -270,7 +270,7 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 	private final ProjectedGenome genome;
 	
 	private OperationList setup;
-	private List<PatternRenderCell> renderCells;
+	private List<PatternAudioBuffer> renderCells;
 	private Function<PackedCollection, Factor<PackedCollection>> automationLevel;
 
 	private final List<Consumer<Frequency>> tempoListeners;
@@ -696,20 +696,20 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 	}
 
 	/**
-	 * Creates a CellList for a single pattern channel using {@link PatternRenderCell}.
+	 * Creates a CellList for a single pattern channel using {@link PatternAudioBuffer}.
 	 *
 	 * <p>This unified method replaces the former separate offline and real-time
-	 * channel methods. Both paths now use {@link PatternRenderCell}; they differ
+	 * channel methods. Both paths now use {@link PatternAudioBuffer}; they differ
 	 * only in buffer size and frame supplier:</p>
 	 * <ul>
 	 *   <li><strong>Offline:</strong> bufferSize = totalFrames, frameSupplier = () -> 0</li>
 	 *   <li><strong>Real-time:</strong> bufferSize = 1024, dynamic frameSupplier</li>
 	 * </ul>
 	 *
-	 * <p>The setup OperationList receives both {@link PatternRenderCell#setup()} and
-	 * {@link PatternRenderCell#prepareBatch()} for the created render cell, so the first
+	 * <p>The setup OperationList receives both {@link PatternAudioBuffer#setup()} and
+	 * {@link PatternAudioBuffer#prepareBatch()} for the created render cell, so the first
 	 * buffer is pre-rendered when setup runs. For real-time rendering, subsequent
-	 * buffers are rendered via {@link PatternRenderCell#prepareBatch()} calls in
+	 * buffers are rendered via {@link PatternAudioBuffer#prepareBatch()} calls in
 	 * {@link #runnerRealTime}.</p>
 	 *
 	 * @param channel       the channel (index, voicing, stereo channel)
@@ -746,7 +746,7 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 									  OperationList setup,
 									  Producer<PackedCollection> waveCellFrame) {
 		Supplier<AudioSceneContext> ctx = () -> getContext(List.of(channel));
-		PatternRenderCell renderCell = new PatternRenderCell(
+		PatternAudioBuffer renderCell = new PatternAudioBuffer(
 				patterns, ctx, channel, bufferSize, frameSupplier);
 
 		setup.add(renderCell.setup());
@@ -772,8 +772,8 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 	/**
 	 * Creates an offline runner that renders all patterns during setup.
 	 *
-	 * <p>Pattern audio is rendered to {@link PatternRenderCell} output buffers
-	 * during setup via {@link PatternRenderCell#prepareBatch()}. The tick phase
+	 * <p>Pattern audio is rendered to {@link PatternAudioBuffer} output buffers
+	 * during setup via {@link PatternAudioBuffer#prepareBatch()}. The tick phase
 	 * processes the pre-rendered audio through the effects pipeline per sample.</p>
 	 *
 	 * @param output the audio output to write to
@@ -800,7 +800,7 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 	 *
 	 * <p>Unlike {@link #runner} which renders all patterns during setup,
 	 * this runner renders patterns incrementally during the tick phase via
-	 * {@link PatternRenderCell}, enabling true real-time streaming.</p>
+	 * {@link PatternAudioBuffer}, enabling true real-time streaming.</p>
 	 *
 	 * <p>The buffer size determines how many frames are rendered per batch.
 	 * Use {@link #DEFAULT_REALTIME_BUFFER_SIZE} for a reasonable default.</p>
@@ -809,7 +809,7 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 	 * @param bufferSize frames per buffer
 	 * @return a TemporalCellular for real-time playback
 	 *
-	 * @see PatternRenderCell
+	 * @see PatternAudioBuffer
 	 */
 	public TemporalCellular runnerRealTime(MultiChannelAudioOutput output, int bufferSize) {
 		return runnerRealTime(output, null, bufferSize);
@@ -820,7 +820,7 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 	 *
 	 * <p>This runner separates pattern preparation from per-frame processing:</p>
 	 * <ul>
-	 *   <li><strong>Prepare phase</strong> - {@link PatternRenderCell#prepareBatch()}
+	 *   <li><strong>Prepare phase</strong> - {@link PatternAudioBuffer#prepareBatch()}
 	 *       renders pattern audio into output buffers. Called <em>outside</em> the loop,
 	 *       once per buffer. This is Java code that cannot be compiled.</li>
 	 *   <li><strong>Tick phase</strong> - The per-frame loop applies effects, advances
@@ -834,7 +834,7 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 	 * @param bufferSize frames per buffer
 	 * @return a TemporalCellular for real-time playback
 	 *
-	 * @see PatternRenderCell
+	 * @see PatternAudioBuffer
 	 */
 	public TemporalCellular runnerRealTime(MultiChannelAudioOutput output,
 										   List<Integer> channels,
@@ -874,7 +874,7 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 
 				// OUTSIDE LOOP: Reset buffer frame index and prepare pattern data
 				tick.add(() -> () -> bufferFrameIndex.setMem(0, 0));
-				for (PatternRenderCell renderCell : renderCells) {
+				for (PatternAudioBuffer renderCell : renderCells) {
 					tick.add(renderCell.prepareBatch());
 				}
 
