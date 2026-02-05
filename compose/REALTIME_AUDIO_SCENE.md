@@ -74,7 +74,10 @@ public TemporalCellular runnerRealTime(output, channels, bufferSize) {
     Cells cells = getCells(output, channels, bufferSize, frameSupplier);
 
     // Collect all PatternRenderCells that need batch preparation
-    List<PatternRenderCell> renderCells = collectRenderCells(cells);
+    List<PatternRenderCell> renderCells = cells.getAllRequirements().stream()
+            .filter(t -> t instanceof PatternRenderCell)
+            .map(t -> (PatternRenderCell) t)
+            .collect(Collectors.toList());
 
     return new TemporalCellular() {
         Supplier<Runnable> tick() {
@@ -148,7 +151,7 @@ currentFrame[0] += 1024
 
 **File**: `compose/src/main/java/org/almostrealism/audio/AudioScene.java`
 
-- ✅ Added `collectRenderCells()` helper method to find all PatternRenderCells
+- ✅ Uses `CellList.getAllRequirements()` with stream filter to find all PatternRenderCells
 - ✅ In `tick()`, `prepareBatch()` is called for each render cell **before** the loop
 - ✅ Updated Javadoc to reflect the new architecture
 
@@ -185,7 +188,7 @@ flow is broken. See "Audio Quality Assessment" section below for details.
 | File | Changes | Status |
 |------|---------|--------|
 | `PatternRenderCell.java` | Removed BatchedCell, added `prepareBatch()`, `tick()` is no-op | ✅ Complete |
-| `AudioScene.java` | Updated `getPatternChannel()`, `runnerRealTime()`, added `collectRenderCells()` | ✅ Complete |
+| `AudioScene.java` | Updated `getPatternChannel()`, `runnerRealTime()` | ✅ Complete |
 | `BatchedCell.java` | No changes (still useful for other use cases) |
 | `Periodic.java` | No changes (still useful for other use cases) |
 

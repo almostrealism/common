@@ -104,33 +104,29 @@ public class EfxManager implements CellFeatures {
 	public List<Integer> getWetChannels() { return wetChannels; }
 	public void setWetChannels(List<Integer> wetChannels) { this.wetChannels = wetChannels; }
 
-	public CellList apply(ChannelInfo channel, Producer<PackedCollection> audio, double totalDuration, OperationList setup) {
-		return apply(channel, audio, totalDuration, setup, null);
-	}
-
 	/**
 	 * Applies effects to audio with optional external frame control.
 	 *
-	 * <p>When {@code frameProducer} is provided, WaveCells are created with external
+	 * <p>When {@code frame} is provided, WaveCells are created with external
 	 * frame control instead of internal clocks. This is essential for real-time
 	 * rendering where the frame position must be controlled per-buffer.</p>
 	 *
 	 * @param channel       the channel to process
 	 * @param audio         the audio producer
-	 * @param totalDuration total duration in seconds (used for looping when frameProducer is null)
+	 * @param totalDuration total duration in seconds (used for looping when frame is null)
 	 * @param setup         setup operations list
-	 * @param frameProducer external frame position producer, or null for internal clock
+	 * @param frame external frame position producer, or null for internal clock
 	 * @return CellList with effects applied
 	 */
 	public CellList apply(ChannelInfo channel, Producer<PackedCollection> audio, double totalDuration,
-						  OperationList setup, Producer<PackedCollection> frameProducer) {
-		if (!enableEfx || !wetChannels.contains(channel)) {
-			return createCells(audio, totalDuration, frameProducer);
+						  OperationList setup, Producer<PackedCollection> frame) {
+		if (!enableEfx || !wetChannels.contains(channel.getPatternChannel())) {
+			return createCells(audio, totalDuration, frame);
 		}
 
-		CellList wet = createCells(applyFilter(channel, audio, setup), totalDuration, frameProducer)
+		CellList wet = createCells(applyFilter(channel, audio, setup), totalDuration, frame)
 						.map(fc(i -> delayLevels.valueAt(channel.getPatternChannel(), 0)));
-		CellList dry = createCells(audio, totalDuration, frameProducer);
+		CellList dry = createCells(audio, totalDuration, frame);
 
 		Producer<PackedCollection> delay = delayTimes.valueAt(channel.getPatternChannel(), 0).getResultant(c(1.0));
 

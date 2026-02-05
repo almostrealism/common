@@ -664,26 +664,6 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 	}
 
 	/**
-	 * Creates pattern cells for all channels on one stereo channel.
-	 *
-	 * @param output        the audio output
-	 * @param channels      channel indices to render
-	 * @param audioChannel  LEFT or RIGHT stereo channel
-	 * @param bufferSize    frames per render buffer
-	 * @param frameSupplier current frame position supplier
-	 * @param setup         the setup OperationList to accumulate operations in
-	 * @return CellList containing all channel cells for this stereo channel
-	 */
-	private CellList getPatternCells(MultiChannelAudioOutput output,
-									 List<Integer> channels,
-									 ChannelInfo.StereoChannel audioChannel,
-									 int bufferSize,
-									 IntSupplier frameSupplier,
-									 OperationList setup) {
-		return getPatternCells(output, channels, audioChannel, bufferSize, frameSupplier, setup, null);
-	}
-
-	/**
 	 * Creates pattern cells with optional external frame control for WaveCells.
 	 *
 	 * @param output         the audio output
@@ -791,8 +771,8 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 	 * Creates an offline runner that renders all patterns during setup.
 	 *
 	 * <p>Pattern audio is rendered to {@link PatternRenderCell} output buffers
-	 * during setup via {@link PatternRenderCell#renderNow()}. The tick phase processes
-	 * the pre-rendered audio through the effects pipeline per sample.</p>
+	 * during setup via {@link PatternRenderCell#prepareBatch()}. The tick phase
+	 * processes the pre-rendered audio through the effects pipeline per sample.</p>
 	 *
 	 * @param output the audio output to write to
 	 * @return a TemporalCellular for offline rendering
@@ -876,8 +856,10 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 				() -> currentFrame[0], bufferFrameProducer);
 
 		// Collect all PatternRenderCells from the cell pipeline requirements
-		List<PatternRenderCell> renderCells = new ArrayList<>();
-		collectRenderCells(cells, renderCells);
+		List<PatternRenderCell> renderCells = cells.getAllTemporals().stream()
+				.filter(t -> t instanceof PatternRenderCell)
+				.map(t -> (PatternRenderCell) t)
+				.toList();
 
 		// Per-frame operation (must be compilable)
 		Supplier<Runnable> frameOp = cells.tick();
@@ -918,27 +900,6 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 				cells.reset();
 			}
 		};
-	}
-
-	/**
-	 * Recursively collects all {@link PatternRenderCell} instances from a CellList
-	 * and its parent hierarchy.
-	 *
-	 * @param cells       the CellList to search
-	 * @param renderCells the list to add found render cells to
-	 */
-	private void collectRenderCells(CellList cells, List<PatternRenderCell> renderCells) {
-		// Check requirements for PatternRenderCells
-		for (Temporal t : cells.getRequirements()) {
-			if (t instanceof PatternRenderCell) {
-				renderCells.add((PatternRenderCell) t);
-			}
-		}
-
-		// Recursively check parents
-		for (CellList parent : cells.getParents()) {
-			collectRenderCells(parent, renderCells);
-		}
 	}
 
 	public void saveSettings(File file) throws IOException {
