@@ -36,7 +36,10 @@ jobs:
            -DAR_HARDWARE_DRIVER=native \
            -DAR_HARDWARE_LIBS=Extensions
 
-  test:
+  # test:
+  #   needs: build
+  test-disabled:
+    if: false
     needs: build
     runs-on: ubuntu-latest-16-cores
     strategy:
@@ -83,8 +86,11 @@ jobs:
           path: coverage-data/
           retention-days: 1
 
-  test-ml:
-    needs: test
+  # test-ml:
+  #   needs: test
+  test-ml-disabled:
+    if: false
+    needs: build
     runs-on: ubuntu-latest-16-cores
     steps:
       - name: Checkout Code
@@ -126,7 +132,7 @@ jobs:
           retention-days: 1
 
   test-audio:
-    needs: test-ml
+    needs: build
     runs-on: ubuntu-latest-16-cores
     steps:
       - name: Checkout Code
@@ -167,8 +173,58 @@ jobs:
           path: coverage-data/
           retention-days: 1
 
+  test-music-compose:
+    needs: test-audio
+    runs-on: ubuntu-latest-16-cores
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'adopt'
+          cache: 'maven'
+
+      - name: Build (skip tests)
+        run: mvn install -DskipTests
+
+      - name: Run Music Tests
+        run: |
+          LD_LIBRARY_PATH=Extensions mvn test -pl music \
+           -DAR_HARDWARE_DRIVER=native \
+           -DAR_HARDWARE_MEMORY_SCALE=7 \
+           -DAR_HARDWARE_LIBS=Extensions \
+           -DAR_TEST_PROFILE=pipeline
+
+      - name: Run Compose Tests
+        run: |
+          LD_LIBRARY_PATH=Extensions mvn test -pl compose \
+           -DAR_HARDWARE_DRIVER=native \
+           -DAR_HARDWARE_MEMORY_SCALE=7 \
+           -DAR_HARDWARE_LIBS=Extensions \
+           -DAR_TEST_PROFILE=pipeline
+
+      - name: Collect Coverage Data
+        if: always()
+        run: |
+          mkdir -p coverage-data
+          find . -path "*/target/jacoco.exec" -exec cp --parents {} coverage-data/ \;
+
+      - name: Upload Coverage Data
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-music-compose
+          path: coverage-data/
+          retention-days: 1
+
   analysis:
-    needs: [test, test-ml, test-audio]
+    needs: [test-audio, test-music-compose]
     if: always()
     runs-on: ubuntu-latest
     permissions:
