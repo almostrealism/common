@@ -249,39 +249,24 @@ public abstract class AudioSceneTestBase extends TestSuiteBase implements CellFe
 	/**
 	 * Generates a spectrogram image from a WAV file and saves it as a PNG.
 	 *
+	 * <p>Uses hardware-accelerated spectrogram generation via {@link WaveData#spectrogram(int)}.</p>
+	 *
 	 * @param wavPath    path to the WAV file
 	 * @param outputPath path to save the spectrogram PNG
 	 */
 	protected void generateSpectrogram(String wavPath, String outputPath) {
 		try {
 			WaveData waveData = WaveData.load(new File(wavPath));
-			PackedCollection spectrum = waveData.fft(0, true);
+			PackedCollection spectrogram = waveData.spectrogram(0);
 
-			int timeSlices = spectrum.getShape().length(0);
-			int bins = spectrum.getShape().length(1);
+			int bins = spectrogram.getShape().length(0);
+			int timeSlices = spectrogram.getShape().length(1);
 
-			double maxVal = 0;
-			for (int t = 0; t < timeSlices; t++) {
-				for (int b = 0; b < bins; b++) {
-					double val = spectrum.valueAt(t, b, 0);
-					if (val > maxVal) maxVal = val;
-				}
-			}
-
-			PackedCollection image = new PackedCollection(bins, timeSlices, 3);
-			for (int t = 0; t < timeSlices; t++) {
-				for (int b = 0; b < bins; b++) {
-					int y = bins - 1 - b;
-					double val = spectrum.valueAt(t, b, 0);
-					double normalized = maxVal > 0 ? Math.log1p(val) / Math.log1p(maxVal) : 0;
-					image.setValueAt(normalized, y, t, 0);
-					image.setValueAt(normalized, y, t, 1);
-					image.setValueAt(normalized, y, t, 2);
-				}
-			}
-
-			saveRgb(outputPath, c(p(image))).get().run();
+			saveRgb(outputPath, cp(spectrogram)).get().run();
 			log("Generated spectrogram: " + outputPath + " (" + bins + "x" + timeSlices + ")");
+
+			spectrogram.destroy();
+			waveData.destroy();
 		} catch (Exception e) {
 			log("Failed to generate spectrogram for " + wavPath + ": " + e.getMessage());
 		}

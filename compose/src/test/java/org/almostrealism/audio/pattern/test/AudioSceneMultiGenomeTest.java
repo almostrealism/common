@@ -225,8 +225,8 @@ public class AudioSceneMultiGenomeTest extends AudioSceneTestBase {
 
 	/**
 	 * Evaluates multiple genomes through the full runner lifecycle:
-	 * {@code scene.runner()} → {@link TemporalCellular} →
-	 * {@link StableDurationHealthComputation} → compile → setup → tick loop.
+	 * {@code scene.runner()} to {@link TemporalCellular} to
+	 * {@link StableDurationHealthComputation} to compile to setup to tick loop.
 	 *
 	 * <p>This exercises code paths NOT covered by {@link #multiGenomePatternRender()}:
 	 * the effects pipeline (MixdownManager, filters), TemporalRunner compilation,
