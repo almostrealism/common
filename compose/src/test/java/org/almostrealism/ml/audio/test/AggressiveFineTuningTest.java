@@ -94,7 +94,7 @@ public class AggressiveFineTuningTest extends TestSuiteBase {
 	 * <p>Backward-pass expression-tree compilation at this scale is
 	 * expected to take a significant amount of time.
 	 */
-	@Test(timeout = 1_800_000)
+	@Test(timeout = 5 * 60000)
 	public void testAggressiveFineTuning() throws IOException {
 		Files.createDirectories(OUTPUT_DIR);
 
@@ -127,7 +127,7 @@ public class AggressiveFineTuningTest extends TestSuiteBase {
 	 *   <li>embed=256, io=64</li>
 	 * </ul>
 	 */
-	@Test(timeout = 1_800_000)
+	@Test(timeout = 5 * 60000)
 	public void testCompilationScaling() {
 		int[][] configs = {
 				// {embedDim, ioChannels, depth, numHeads, condTokenDim, globalCondDim}
@@ -183,7 +183,7 @@ public class AggressiveFineTuningTest extends TestSuiteBase {
 	 * identify which operations dominate backward pass compilation time.
 	 * The profile is saved to {@code utils/results/finetune_profile_embed64.xml}.
 	 */
-	@Test(timeout = 600_000)
+	@Test(timeout = 5 * 60000)
 	public void testProfiledFineTuning() throws IOException {
 		Files.createDirectories(Path.of("/workspace/project/common/utils/results"));
 

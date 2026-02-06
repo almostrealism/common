@@ -253,7 +253,9 @@ public class AudioSceneOptimizer extends AudioPopulationOptimizer<TemporalCellul
 			File results = new File("results");
 			if (!results.exists()) results.mkdir();
 
-			profile.save("results/optimizer.xml");
+			if (profile != null) {
+				profile.save("results/optimizer.xml");
+			}
 
 			Hardware.getLocalHardware().getAllDataContexts().forEach(DataContext::destroy);
 		}
