@@ -404,7 +404,7 @@ public class TrigonometricDeltaComputationTests extends TestSuiteBase {
 
 	/**
 	 * Tests sin(matmul) pattern used in Fourier features.
-	 * This matches the pattern: sin(2π * matmul(input, weights.T))
+	 * This matches the pattern: sin(2*PI * matmul(input, weights.T))
 	 */
 	@Test
 	public void sinOfMatmulSmall() throws IOException {
@@ -418,7 +418,7 @@ public class TrigonometricDeltaComputationTests extends TestSuiteBase {
 		CollectionProducer x = cp(input);
 		CollectionProducer w = cp(weights);
 
-		// f = 2π * matmul(input, weights.T)
+		// f = 2*PI * matmul(input, weights.T)
 		CollectionProducer f = matmul(x, w.transpose(1)).multiply(2.0 * Math.PI);
 
 		// sin(f)
@@ -445,7 +445,7 @@ public class TrigonometricDeltaComputationTests extends TestSuiteBase {
 
 	/**
 	 * Tests the full Fourier features pattern: concat(cos(f), sin(f))
-	 * where f = 2π * matmul(input, weights.T)
+	 * where f = 2*PI * matmul(input, weights.T)
 	 */
 	@Test
 	public void fourierFeaturesPatternSmall() throws IOException {
@@ -460,7 +460,7 @@ public class TrigonometricDeltaComputationTests extends TestSuiteBase {
 		CollectionProducer x = cp(input);
 		CollectionProducer w = cp(weights);
 
-		// f = 2π * matmul(input, weights.T)
+		// f = 2*PI * matmul(input, weights.T)
 		CollectionProducer f = matmul(x, w.transpose(1)).multiply(2.0 * Math.PI);
 
 		// Fourier features: concat(cos(f), sin(f))
@@ -518,7 +518,7 @@ public class TrigonometricDeltaComputationTests extends TestSuiteBase {
 			CollectionProducer x = cp(input);
 			CollectionProducer w = cp(weights);
 
-			// f = 2π * matmul(input, weights.T)
+			// f = 2*PI * matmul(input, weights.T)
 			CollectionProducer f = matmul(x, w.transpose(1)).multiply(2.0 * Math.PI);
 
 			// Fourier features: concat(cos(f), sin(f))
@@ -555,7 +555,7 @@ public class TrigonometricDeltaComputationTests extends TestSuiteBase {
 		CollectionProducer x = cp(input);
 		CollectionProducer w = cp(weights);
 
-		// f = 2π * matmul(input, weights.T)
+		// f = 2*PI * matmul(input, weights.T)
 		CollectionProducer f = matmul(x, w.transpose(1)).multiply(2.0 * Math.PI);
 
 		// sin(f)
@@ -610,7 +610,7 @@ public class TrigonometricDeltaComputationTests extends TestSuiteBase {
 			CollectionProducer x = cp(input);
 			CollectionProducer w = cp(weights);
 
-			// f = 2π * matmul(input, weights.T)
+			// f = 2*PI * matmul(input, weights.T)
 			CollectionProducer f = matmul(x, w.transpose(1)).multiply(2.0 * Math.PI);
 
 			// Fourier features: concat(cos(f), sin(f))

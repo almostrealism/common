@@ -49,6 +49,7 @@ import org.almostrealism.collect.computations.ArithmeticSequenceComputation;
 import org.almostrealism.collect.computations.AtomicConstantComputation;
 import org.almostrealism.collect.computations.CollectionAddComputation;
 import org.almostrealism.collect.computations.CollectionComparisonComputation;
+import org.almostrealism.collect.computations.CollectionConcatenateComputation;
 import org.almostrealism.collect.computations.CollectionConjunctionComputation;
 import org.almostrealism.collect.computations.CollectionExponentComputation;
 import org.almostrealism.collect.computations.CollectionExponentialComputation;
@@ -1154,7 +1155,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 			}
 		}
 
-		return concat(new TraversalPolicy(dims), producers);
+		return new CollectionConcatenateComputation(new TraversalPolicy(dims), axis, producers);
 	}
 
 	default CollectionProducer concat(TraversalPolicy shape, Producer<PackedCollection>... producers) {
