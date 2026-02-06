@@ -23,11 +23,11 @@ import org.almostrealism.audio.AudioTestFeatures;
 import org.almostrealism.audio.CellFeatures;
 import org.almostrealism.audio.CellList;
 import org.almostrealism.audio.data.WaveData;
+import org.almostrealism.color.RGBFeatures;
 import org.almostrealism.audio.filter.DelayNetwork;
 import org.almostrealism.audio.line.OutputLine;
 import org.almostrealism.audio.sources.SineWaveCell;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.color.RGBFeatures;
 import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.heredity.CellularTemporalFactor;
@@ -36,6 +36,7 @@ import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 import java.io.File;
+import java.io.IOException;
 import java.util.function.Supplier;
 
 /**
@@ -69,14 +70,16 @@ public class DelayCellTest extends TestSuiteBase implements CellFeatures, AudioT
 	 * to the right compared to the original sample timing.</p>
 	 */
 	@Test
-	public void delay() {
+	public void delay() throws IOException {
 		CellList c = w(0, getTestWavPath())
 				.d(i -> c(2.0))
 				.o(i -> new File("results/delay-cell-test.wav"));
 		Supplier<Runnable> r = c.sec(6);
 		r.get().run();
 
-		generateSpectrogram("results/delay-cell-test.wav", "results/delay-cell-test-spectrogram.png");
+		WaveData wav = WaveData.load(new File("results/delay-cell-test.wav"));
+		saveRgb("results/delay-cell-test-spectrogram.png", cp(wav.spectrogram(0))).get().run();
+		wav.destroy();
 	}
 
 	/**
@@ -94,7 +97,7 @@ public class DelayCellTest extends TestSuiteBase implements CellFeatures, AudioT
 	 * without clipping or distortion.</p>
 	 */
 	@Test
-	public void delaySum() {
+	public void delaySum() throws IOException {
 		CellList c = w(0, getTestWavPath(), getTestWavPath())
 				.d(i -> i > 0 ? c(2.0) : c(1.0))
 				.sum()
@@ -102,7 +105,9 @@ public class DelayCellTest extends TestSuiteBase implements CellFeatures, AudioT
 		Supplier<Runnable> r = c.sec(6);
 		r.get().run();
 
-		generateSpectrogram("results/delay-cell-sum-test.wav", "results/delay-cell-sum-test-spectrogram.png");
+		WaveData wav = WaveData.load(new File("results/delay-cell-sum-test.wav"));
+		saveRgb("results/delay-cell-sum-test-spectrogram.png", cp(wav.spectrogram(0))).get().run();
+		wav.destroy();
 	}
 
 	/**
@@ -121,7 +126,7 @@ public class DelayCellTest extends TestSuiteBase implements CellFeatures, AudioT
 	 * timing but reduced brightness across all frequencies.</p>
 	 */
 	@Test
-	public void delayScaleFactor() {
+	public void delayScaleFactor() throws IOException {
 		CellList c = w(0, getTestWavPath())
 				.d(i -> c(2.0))
 				.map(fc(i -> sf(0.5)))
@@ -129,7 +134,9 @@ public class DelayCellTest extends TestSuiteBase implements CellFeatures, AudioT
 		Supplier<Runnable> r = c.sec(6);
 		r.get().run();
 
-		generateSpectrogram("results/delay-cell-scale-factor-test.wav", "results/delay-cell-scale-factor-test-spectrogram.png");
+		WaveData wav = WaveData.load(new File("results/delay-cell-scale-factor-test.wav"));
+		saveRgb("results/delay-cell-scale-factor-test-spectrogram.png", cp(wav.spectrogram(0))).get().run();
+		wav.destroy();
 	}
 
 	/**
@@ -149,7 +156,7 @@ public class DelayCellTest extends TestSuiteBase implements CellFeatures, AudioT
 	 * reduction in energy in the lower frequency bands.</p>
 	 */
 	@Test
-	public void filter() {
+	public void filter() throws IOException {
 		Supplier<Runnable> r =
 				w(0, getTestWavPath())
 						.f(i -> hp(2000, 0.1))
@@ -158,7 +165,9 @@ public class DelayCellTest extends TestSuiteBase implements CellFeatures, AudioT
 						.sec(6);
 		r.get().run();
 
-		generateSpectrogram("results/filter-delay-cell.wav", "results/filter-delay-cell-spectrogram.png");
+		WaveData wav = WaveData.load(new File("results/filter-delay-cell.wav"));
+		saveRgb("results/filter-delay-cell-spectrogram.png", cp(wav.spectrogram(0))).get().run();
+		wav.destroy();
 	}
 
 	/**
@@ -179,7 +188,7 @@ public class DelayCellTest extends TestSuiteBase implements CellFeatures, AudioT
 	 * console shows performance differences, but the audio should be the same.</p>
 	 */
 	@Test
-	public void filterLoopComparison() {
+	public void filterLoopComparison() throws IOException {
 		Supplier<Runnable> r =
 				iter(w(0, getTestWavPath())
 								.f(i -> hp(2000, 0.1))
@@ -216,8 +225,13 @@ public class DelayCellTest extends TestSuiteBase implements CellFeatures, AudioT
 		hardwareProfile.print();
 		System.out.println();
 
-		generateSpectrogram("results/filter-loop-comparison-a.wav", "results/filter-loop-comparison-a-spectrogram.png");
-		generateSpectrogram("results/filter-loop-comparison-b.wav", "results/filter-loop-comparison-b-spectrogram.png");
+		WaveData wavA = WaveData.load(new File("results/filter-loop-comparison-a.wav"));
+		saveRgb("results/filter-loop-comparison-a-spectrogram.png", cp(wavA.spectrogram(0))).get().run();
+		wavA.destroy();
+
+		WaveData wavB = WaveData.load(new File("results/filter-loop-comparison-b.wav"));
+		saveRgb("results/filter-loop-comparison-b-spectrogram.png", cp(wavB.spectrogram(0))).get().run();
+		wavB.destroy();
 	}
 
 	/**
@@ -238,7 +252,7 @@ public class DelayCellTest extends TestSuiteBase implements CellFeatures, AudioT
 	 * "smearing" over time rather than appearing as discrete hits.</p>
 	 */
 	@Test
-	public void reverb() {
+	public void reverb() throws IOException {
 		Supplier<Runnable> r =
 				iter(w(0, getTestWavPath())
 								.f(i -> hp(2000, 0.1))
@@ -249,7 +263,9 @@ public class DelayCellTest extends TestSuiteBase implements CellFeatures, AudioT
 
 		r.get().run();
 
-		generateSpectrogram("results/reverb-delay-cell-test.wav", "results/reverb-delay-cell-test-spectrogram.png");
+		WaveData wav = WaveData.load(new File("results/reverb-delay-cell-test.wav"));
+		saveRgb("results/reverb-delay-cell-test-spectrogram.png", cp(wav.spectrogram(0))).get().run();
+		wav.destroy();
 	}
 
 	/**
@@ -269,7 +285,7 @@ public class DelayCellTest extends TestSuiteBase implements CellFeatures, AudioT
 	 * may show frequency smearing or pitch variation due to the changing delay time.</p>
 	 */
 	@Test
-	public void adjust() {
+	public void adjust() throws IOException {
 		SineWaveCell generator = new SineWaveCell();
 		generator.setPhase(0.5);
 		generator.setNoteLength(0);
@@ -292,7 +308,9 @@ public class DelayCellTest extends TestSuiteBase implements CellFeatures, AudioT
 
 		log(v);
 
-		generateSpectrogram("results/adjust-delay-cell-test.wav", "results/adjust-delay-cell-test-spectrogram.png");
+		WaveData wav = WaveData.load(new File("results/adjust-delay-cell-test.wav"));
+		saveRgb("results/adjust-delay-cell-test-spectrogram.png", cp(wav.spectrogram(0))).get().run();
+		wav.destroy();
 	}
 
 	/**
@@ -312,7 +330,7 @@ public class DelayCellTest extends TestSuiteBase implements CellFeatures, AudioT
 	 * terminates early rather than running for the full 120 seconds.</p>
 	 */
 	@Test
-	public void abortDelay() {
+	public void abortDelay() throws IOException {
 		PackedCollection abortFlag = new PackedCollection(1);
 		OperationList.setAbortFlag(abortFlag);
 
@@ -337,49 +355,9 @@ public class DelayCellTest extends TestSuiteBase implements CellFeatures, AudioT
 
 		op.run();
 
-		generateSpectrogram("results/delay-cell-abort-test.wav", "results/delay-cell-abort-test-spectrogram.png");
+		WaveData wav = WaveData.load(new File("results/delay-cell-abort-test.wav"));
+		saveRgb("results/delay-cell-abort-test-spectrogram.png", cp(wav.spectrogram(0))).get().run();
+		wav.destroy();
 	}
 
-	/**
-	 * Generates a spectrogram image from a WAV file.
-	 *
-	 * @param wavPath path to the input WAV file
-	 * @param outputPath path for the output PNG spectrogram image
-	 */
-	private void generateSpectrogram(String wavPath, String outputPath) {
-		try {
-			WaveData waveData = WaveData.load(new File(wavPath));
-			PackedCollection spectrum = waveData.fft(0, true);
-
-			int timeSlices = spectrum.getShape().length(0);
-			int bins = spectrum.getShape().length(1);
-
-			// Find max value for normalization
-			double maxVal = 0;
-			for (int t = 0; t < timeSlices; t++) {
-				for (int b = 0; b < bins; b++) {
-					double val = spectrum.valueAt(t, b, 0);
-					if (val > maxVal) maxVal = val;
-				}
-			}
-
-			// Create RGB image (bins x timeSlices x 3) - frequency on Y, time on X
-			PackedCollection image = new PackedCollection(bins, timeSlices, 3);
-			for (int t = 0; t < timeSlices; t++) {
-				for (int b = 0; b < bins; b++) {
-					int y = bins - 1 - b;  // Flip so low frequencies at bottom
-					double val = spectrum.valueAt(t, b, 0);
-					double normalized = maxVal > 0 ? Math.log1p(val) / Math.log1p(maxVal) : 0;
-					image.setValueAt(normalized, y, t, 0);
-					image.setValueAt(normalized, y, t, 1);
-					image.setValueAt(normalized, y, t, 2);
-				}
-			}
-
-			saveRgb(outputPath, c(p(image))).get().run();
-			log("Generated spectrogram: " + outputPath + " (" + bins + "x" + timeSlices + ")");
-		} catch (Exception e) {
-			log("Failed to generate spectrogram for " + wavPath + ": " + e.getMessage());
-		}
-	}
 }
