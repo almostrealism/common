@@ -61,7 +61,7 @@ public class StreamingAudioPlayerTest extends TestSuiteBase {
 		return new StreamingAudioPlayer(scheduledPlayer, delegatedLine, recordingLine);
 	}
 
-	@Test
+	@Test(timeout = 10_000)
 	public void testInitialDirectMode() {
 		config = createPlayer(null);
 		config.setDirectMode(); // Must explicitly set mode after construction
@@ -72,7 +72,7 @@ public class StreamingAudioPlayerTest extends TestSuiteBase {
 		assertFalse(config.hasDawConnection());
 	}
 
-	@Test
+	@Test(timeout = 10_000)
 	public void testInitialDawMode() {
 		config = createPlayer(null);
 		config.setDawMode(); // Must explicitly set mode after construction
@@ -83,7 +83,7 @@ public class StreamingAudioPlayerTest extends TestSuiteBase {
 		assertFalse(config.hasDawConnection());
 	}
 
-	@Test
+	@Test(timeout = 10_000)
 	public void testSwitchFromDirectToDaw() {
 		config = createPlayer(null);
 		config.setDirectMode(); // Initialize mode
@@ -96,7 +96,7 @@ public class StreamingAudioPlayerTest extends TestSuiteBase {
 		assertFalse(config.isDirectMode());
 	}
 
-	@Test
+	@Test(timeout = 10_000)
 	public void testSwitchFromDawToDirect() {
 		config = createPlayer(null);
 		config.setDawMode(); // Initialize mode
@@ -109,7 +109,7 @@ public class StreamingAudioPlayerTest extends TestSuiteBase {
 		assertFalse(config.isDawMode());
 	}
 
-	@Test
+	@Test(timeout = 10_000)
 	public void testSetDirectModeIdempotent() {
 		config = createPlayer(null);
 		config.setDirectMode(); // Initialize mode
@@ -122,7 +122,7 @@ public class StreamingAudioPlayerTest extends TestSuiteBase {
 		assertEquals(OutputMode.DIRECT, config.getActiveMode());
 	}
 
-	@Test
+	@Test(timeout = 10_000)
 	public void testSetDawModeIdempotent() {
 		config = createPlayer(null);
 		config.setDawMode(); // Initialize mode
@@ -135,7 +135,7 @@ public class StreamingAudioPlayerTest extends TestSuiteBase {
 		assertEquals(OutputMode.SHARED, config.getActiveMode());
 	}
 
-	@Test
+	@Test(timeout = 10_000)
 	public void testDawConnectionStoredButNotActivatedInDirectMode() {
 		config = createPlayer(null);
 		config.setDirectMode(); // Initialize mode
@@ -160,7 +160,7 @@ public class StreamingAudioPlayerTest extends TestSuiteBase {
 		// the delegate remains as it was (could be null initially)
 	}
 
-	@Test
+	@Test(timeout = 10_000)
 	public void testDawConnectionActivatedWhenSwitchingToDaw() {
 		config = createPlayer(null);
 		config.setDirectMode(); // Initialize mode
@@ -177,7 +177,7 @@ public class StreamingAudioPlayerTest extends TestSuiteBase {
 		assertEquals(dawLine, delegatedLine.getOutputDelegate());
 	}
 
-	@Test
+	@Test(timeout = 10_000)
 	public void testDawConnectionImmediatelyActiveInDawMode() {
 		config = createPlayer(null);
 		config.setDawMode(); // Initialize mode
@@ -191,7 +191,7 @@ public class StreamingAudioPlayerTest extends TestSuiteBase {
 		assertEquals(dawLine, delegatedLine.getOutputDelegate());
 	}
 
-	@Test
+	@Test(timeout = 10_000)
 	public void testDawConnectionReplacedProperly() {
 		config = createPlayer(null);
 		config.setDawMode(); // Initialize mode
@@ -209,7 +209,7 @@ public class StreamingAudioPlayerTest extends TestSuiteBase {
 		assertEquals(secondDaw, delegatedLine.getOutputDelegate());
 	}
 
-	@Test
+	@Test(timeout = 10_000)
 	public void testNullDawConnectionHandled() {
 		config = createPlayer(null);
 		config.setDawMode(); // Initialize mode
@@ -226,7 +226,7 @@ public class StreamingAudioPlayerTest extends TestSuiteBase {
 		assertNull(config.getDawConnection());
 	}
 
-	@Test
+	@Test(timeout = 10_000)
 	public void testSwitchToDawWithNoConnection() {
 		config = createPlayer(null);
 		config.setDirectMode(); // Initialize mode
@@ -240,7 +240,7 @@ public class StreamingAudioPlayerTest extends TestSuiteBase {
 		assertNull(delegatedLine.getOutputDelegate());
 	}
 
-	@Test
+	@Test(timeout = 10_000)
 	public void testModePreservedAcrossDawConnections() {
 		config = createPlayer(null);
 		config.setDirectMode(); // Initialize mode
@@ -272,7 +272,7 @@ public class StreamingAudioPlayerTest extends TestSuiteBase {
 		assertTrue(config.hasDawConnection()); // DAW connection still stored
 	}
 
-	@Test
+	@Test(timeout = 10_000)
 	public void testWithRecordingLine() {
 		OutputLine recordingLine = createMockOutputLine();
 		config = createPlayer(recordingLine);

@@ -59,7 +59,7 @@ public class PatternFactoryTest implements CellFeatures {
 		if (arg != null) LIBRARY = arg;
 	}
 
-	@Test
+	@Test(timeout = 30_000)
 	public void fixChoices() throws IOException {
 		List<NoteAudioChoice> choices = readChoices();
 		new ObjectMapper().writeValue(new File("pattern-factory-new.json"), choices);
@@ -109,7 +109,7 @@ public class PatternFactoryTest implements CellFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 300_000)
 	public void runLayers() throws IOException {
 		Frequency bpm = bpm(120);
 

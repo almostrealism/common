@@ -44,7 +44,7 @@ import java.util.List;
 public class StatelessSourceNoteTests extends TestSuiteBase implements CellFeatures, SamplingFeatures, PatternFeatures, AudioTestFeatures {
 	int sampleRate = OutputLine.sampleRate;
 
-	@Test
+	@Test(timeout = 120_000)
 	public void sineAndSnare() {
 		// Define the shared parameters, including how notes should be
 		// tuned and a root for the scale and the synth
@@ -121,7 +121,7 @@ public class StatelessSourceNoteTests extends TestSuiteBase implements CellFeatu
 				.save(new File("results/sine-notes.wav"));
 	}
 
-	@Test
+	@Test(timeout = 120_000)
 	public void riser() {
 		double duration = 8.0;
 

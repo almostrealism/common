@@ -44,7 +44,7 @@ import java.util.stream.IntStream;
 public class GrainTest extends TestSuiteBase implements CellFeatures, EnvelopeFeatures {
 	private static final String ORGAN_FILE = "Library/organ.wav";
 
-	@Test
+	@Test(timeout = 120_000)
 	public void grainsTimeSeries() {
 		Assume.assumeTrue(new File(ORGAN_FILE).exists());
 		WaveOutput source = new WaveOutput();
@@ -84,7 +84,7 @@ public class GrainTest extends TestSuiteBase implements CellFeatures, EnvelopeFe
 		System.out.println("GrainTest: Done");
 	}
 
-	@Test
+	@Test(timeout = 120_000)
 	public void grains() throws IOException {
 		Assume.assumeTrue(new File(ORGAN_FILE).exists());
 		WaveData wav = WaveData.load(new File(ORGAN_FILE));
@@ -126,7 +126,7 @@ public class GrainTest extends TestSuiteBase implements CellFeatures, EnvelopeFe
 		System.out.println("GrainTest: Done");
 	}
 
-	@Test
+	@Test(timeout = 300_000)
 	public void grainProcessor() throws IOException {
 		Assume.assumeTrue(new File(ORGAN_FILE).exists());
 		WaveData wav = WaveData.load(new File(ORGAN_FILE));
@@ -165,7 +165,7 @@ public class GrainTest extends TestSuiteBase implements CellFeatures, EnvelopeFe
 				.sec(5).get().run();
 	}
 
-	@Test
+	@Test(timeout = 300_000)
 	public void grainProcessorEnvelope() throws IOException {
 		Assume.assumeTrue(new File(ORGAN_FILE).exists());
 		WaveData wav = WaveData.load(new File(ORGAN_FILE));
@@ -210,7 +210,7 @@ public class GrainTest extends TestSuiteBase implements CellFeatures, EnvelopeFe
 				.sec(5).get().run();
 	}
 
-	@Test
+	@Test(timeout = 120_000)
 	public void granularSynth() {
 		Assume.assumeTrue(new File(ORGAN_FILE).exists());
 		GranularSynthesizer synth = new GranularSynthesizer(OutputLine.sampleRate);

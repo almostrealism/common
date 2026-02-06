@@ -27,7 +27,7 @@ import java.io.File;
 import java.util.function.Supplier;
 
 public class AudioSceneTest {
-	@Test
+	@Test(timeout = 600_000)
 	public void runScene() {
 		// Settings for the scene
 		double bpm = 120.0;

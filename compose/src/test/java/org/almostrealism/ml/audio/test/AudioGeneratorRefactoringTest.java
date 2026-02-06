@@ -49,7 +49,7 @@ public class AudioGeneratorRefactoringTest extends TestSuiteBase {
 	 * Tests that both generators produce the same latent output from the sampler.
 	 * This validates that the refactoring didn't change the diffusion behavior.
 	 */
-	@Test
+	@Test(timeout = 60_000)
 	public void testSamplerOutputEquivalence() {
 		log("=== Testing Sampler Output Equivalence ===");
 
@@ -90,7 +90,7 @@ public class AudioGeneratorRefactoringTest extends TestSuiteBase {
 	/**
 	 * Tests the structural equivalence of the generators.
 	 */
-	@Test
+	@Test(timeout = 60_000)
 	public void testStructuralEquivalence() {
 		log("=== Testing Structural Equivalence ===");
 

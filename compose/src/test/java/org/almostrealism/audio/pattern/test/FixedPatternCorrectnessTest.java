@@ -180,7 +180,7 @@ public class FixedPatternCorrectnessTest extends TestSuiteBase implements CellFe
 	 *   <li>The first non-zero sample in each second is at frame 0 (or very close)</li>
 	 * </ul>
 	 */
-	@Test
+	@Test(timeout = 30_000)
 	public void testFixedNotePositionsExactFrames() {
 		ensureResultsDir();
 
@@ -228,7 +228,7 @@ public class FixedPatternCorrectnessTest extends TestSuiteBase implements CellFe
 	 * continuous audio coverage. Verifies that every second has significant
 	 * non-zero content.</p>
 	 */
-	@Test
+	@Test(timeout = 60_000)
 	public void testContinuousNoteCoverage() {
 		ensureResultsDir();
 
@@ -286,7 +286,7 @@ public class FixedPatternCorrectnessTest extends TestSuiteBase implements CellFe
 	 * <p>This tests determinism: the buffer size should not affect the content of the
 	 * rendered audio, only the performance.</p>
 	 */
-	@Test
+	@Test(timeout = 30_000)
 	public void testBufferSizeDoesNotAffectOutput() {
 		ensureResultsDir();
 
@@ -348,7 +348,7 @@ public class FixedPatternCorrectnessTest extends TestSuiteBase implements CellFe
 	 * <p>Places audio exactly at buffer boundaries to test for off-by-one errors
 	 * or boundary handling issues.</p>
 	 */
-	@Test
+	@Test(timeout = 30_000)
 	public void testBufferBoundaryAccuracy() {
 		ensureResultsDir();
 
@@ -406,7 +406,7 @@ public class FixedPatternCorrectnessTest extends TestSuiteBase implements CellFe
 	 * <p>This specifically tests the issue reported where a 2-minute render
 	 * had only 26.5% non-zero samples.</p>
 	 */
-	@Test
+	@Test(timeout = 120_000)
 	public void testTwoMinuteContinuousAudio() {
 		ensureResultsDir();
 

@@ -65,7 +65,7 @@ public class RealTimeRenderingComparisonTest extends AudioSceneTestBase {
 	 *   <li>No harmonics or noise (pure sine wave)</li>
 	 * </ul>
 	 */
-	@Test
+	@Test(timeout = 60_000)
 	public void sineWaveBaseline() {
 		SineWaveCell sine = new SineWaveCell();
 		sine.setFreq(440.0);
@@ -96,7 +96,7 @@ public class RealTimeRenderingComparisonTest extends AudioSceneTestBase {
 	 *   <li>Any differences indicate processing issues</li>
 	 * </ul>
 	 */
-	@Test
+	@Test(timeout = 60_000)
 	public void sineWaveWithTemporalRunner() {
 		SineWaveCell sine = new SineWaveCell();
 		sine.setFreq(440.0);
@@ -129,7 +129,7 @@ public class RealTimeRenderingComparisonTest extends AudioSceneTestBase {
 	 *   <li>Consistent brightness throughout</li>
 	 * </ul>
 	 */
-	@Test
+	@Test(timeout = 60_000)
 	public void multiFrequencyTest() {
 		// Create three sine waves at different frequencies (A3, A4, A5)
 		SineWaveCell sine1 = new SineWaveCell();
@@ -175,7 +175,7 @@ public class RealTimeRenderingComparisonTest extends AudioSceneTestBase {
 	 *   <li>Clear transition at the 1-second mark</li>
 	 * </ul>
 	 */
-	@Test
+	@Test(timeout = 60_000)
 	public void delayedSineWave() {
 		SineWaveCell sine = new SineWaveCell();
 		sine.setFreq(440.0);
@@ -207,7 +207,7 @@ public class RealTimeRenderingComparisonTest extends AudioSceneTestBase {
 	 *   <li>Smooth transition without discontinuities</li>
 	 * </ul>
 	 */
-	@Test
+	@Test(timeout = 60_000)
 	public void frequencySweep() {
 		// Create a simple sweep by summing multiple timed sine waves
 		// Each starts at a different time with a different frequency
@@ -242,7 +242,7 @@ public class RealTimeRenderingComparisonTest extends AudioSceneTestBase {
 	 * <p>This verifies that two identical pipelines produce numerically
 	 * identical results, which confirms the test infrastructure is working.</p>
 	 */
-	@Test
+	@Test(timeout = 120_000)
 	public void identicalPipelinesComparison() {
 		final String file1 = "results/realtime-pipeline-a.wav";
 		final String file2 = "results/realtime-pipeline-b.wav";

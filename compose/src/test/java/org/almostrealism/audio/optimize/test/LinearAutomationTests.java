@@ -33,7 +33,7 @@ import org.junit.Test;
 import java.io.File;
 
 public class LinearAutomationTests extends TestSuiteBase implements CellFeatures, SamplingFeatures, OptimizeFactorFeatures, AudioTestFeatures {
-	@Test
+	@Test(timeout = 120_000)
 	public void riseFall() {
 		String testAudio = getTestWavPath();
 		int sr = OutputLine.sampleRate;
@@ -64,7 +64,7 @@ public class LinearAutomationTests extends TestSuiteBase implements CellFeatures
 		cells.sec(seconds).get().run();
 	}
 
-	@Test
+	@Test(timeout = 120_000)
 	public void riseFallAutomationClock() {
 		String testAudio = getTestWavPath();
 		int sr = OutputLine.sampleRate;
@@ -95,7 +95,7 @@ public class LinearAutomationTests extends TestSuiteBase implements CellFeatures
 		cells.sec(seconds).get().run();
 	}
 
-	@Test
+	@Test(timeout = 120_000)
 	public void riseFallAutomation() {
 		int sr = OutputLine.sampleRate;
 

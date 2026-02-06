@@ -88,7 +88,7 @@ public class AudioSceneOptimizationTest implements CellFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 300_000)
 	public void pattern() {
 		AudioScene pattern = pattern(2, 2, true);
 		pattern.assignGenome(pattern.getGenome().random());
@@ -106,7 +106,7 @@ public class AudioSceneOptimizationTest implements CellFeatures {
 		return scene.getCells(output);
 	}
 
-	@Test
+	@Test(timeout = 180_000)
 	public void withOutput() {
 		MixdownManager.enableMainFilterUp = false;
 		MixdownManager.enableEfxFilters = false;
@@ -118,7 +118,7 @@ public class AudioSceneOptimizationTest implements CellFeatures {
 		output.write().get().run();
 	}
 
-	@Test
+	@Test(timeout = 600_000)
 	public void many() {
 		WaveOutput out = new WaveOutput(new File("results/organ-factory-many-test.wav"));
 		Cells organ = randomOrgan(pattern(2, 2), new MultiChannelAudioOutput(out));
@@ -132,7 +132,7 @@ public class AudioSceneOptimizationTest implements CellFeatures {
 		});
 	}
 
-	@Test
+	@Test(timeout = 180_000)
 	public void random() {
 		WaveOutput out = new WaveOutput(new File("factory-rand-test.wav"));
 		Cells organ = randomOrgan(pattern(2, 2), new MultiChannelAudioOutput(out));

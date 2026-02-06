@@ -39,7 +39,7 @@ public class BatchedCellTest extends TestSuiteBase {
 	 * Verifies that renderBatch() is called exactly once after batchSize ticks,
 	 * and not before.
 	 */
-	@Test
+	@Test(timeout = 30_000)
 	public void testTickCountingTriggersRenderAtBatchBoundary() {
 		int batchSize = 4;
 		AtomicInteger renderCount = new AtomicInteger(0);
@@ -68,7 +68,7 @@ public class BatchedCellTest extends TestSuiteBase {
 	/**
 	 * Verifies that push() does not trigger renderBatch().
 	 */
-	@Test
+	@Test(timeout = 30_000)
 	public void testPushDoesNotTriggerRender() {
 		int batchSize = 8;
 		AtomicInteger renderCount = new AtomicInteger(0);
@@ -85,7 +85,7 @@ public class BatchedCellTest extends TestSuiteBase {
 	/**
 	 * Verifies that renderNow() triggers renderBatch() without requiring ticks.
 	 */
-	@Test
+	@Test(timeout = 30_000)
 	public void testRenderNowBypassesCounting() {
 		int batchSize = 1024;
 		AtomicInteger renderCount = new AtomicInteger(0);
@@ -110,7 +110,7 @@ public class BatchedCellTest extends TestSuiteBase {
 	/**
 	 * Verifies that getOutputSize() returns the constructor value.
 	 */
-	@Test
+	@Test(timeout = 30_000)
 	public void testOutputSizeAccessor() {
 		int outputSize = 512;
 		BatchedCell cell = createTestCell(1024, outputSize, new AtomicInteger(0));
@@ -124,7 +124,7 @@ public class BatchedCellTest extends TestSuiteBase {
 	/**
 	 * Verifies that getCurrentFrame() advances correctly after completed batches.
 	 */
-	@Test
+	@Test(timeout = 30_000)
 	public void testGetCurrentFrame() {
 		int batchSize = 100;
 		AtomicInteger renderCount = new AtomicInteger(0);
@@ -149,7 +149,7 @@ public class BatchedCellTest extends TestSuiteBase {
 	/**
 	 * Verifies that setup() and reset() clear counters and output.
 	 */
-	@Test
+	@Test(timeout = 30_000)
 	public void testSetupAndResetClearState() {
 		int batchSize = 4;
 		AtomicInteger renderCount = new AtomicInteger(0);
@@ -180,7 +180,7 @@ public class BatchedCellTest extends TestSuiteBase {
 	/**
 	 * Verifies that push() forwards output to receptor.
 	 */
-	@Test
+	@Test(timeout = 30_000)
 	public void testPushForwardsToReceptor() {
 		int batchSize = 4;
 		AtomicInteger pushCount = new AtomicInteger(0);

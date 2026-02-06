@@ -34,7 +34,7 @@ import java.io.File;
 import java.io.IOException;
 
 public class DefaultChannelSectionTest extends TestSuiteBase implements CellFeatures, AudioTestFeatures {
-	@Test
+	@Test(timeout = 120_000)
 	public void section() throws IOException {
 		int samples = 2 * 8 * OutputLine.sampleRate;
 

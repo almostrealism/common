@@ -43,7 +43,7 @@ import java.io.File;
 
 public class PatternAudioTest extends TestSuiteBase implements EnvelopeFeatures {
 
-	@Test
+	@Test(timeout = 60_000)
 	public void noteAudio() {
 		Assume.assumeTrue(new File("Library/SN_Forever_Future.wav").exists());
 		NoteAudioProvider provider =
@@ -58,7 +58,7 @@ public class PatternAudioTest extends TestSuiteBase implements EnvelopeFeatures 
 				.save(new File("results/pattern-note.wav"));
 	}
 
-	@Test
+	@Test(timeout = 60_000)
 	public void noteAudioReversed() {
 		Assume.assumeTrue(new File("Library/Snare Perc DD.wav").exists());
 		NoteAudioProvider provider =
@@ -74,7 +74,7 @@ public class PatternAudioTest extends TestSuiteBase implements EnvelopeFeatures 
 				.save(new File("results/pattern-note-reversed.wav"));
 	}
 
-	@Test
+	@Test(timeout = 60_000)
 	public void envelope() {
 		Assume.assumeTrue(new File("Library/Snare Perc DD.wav").exists());
 		NoteAudioProvider provider =
@@ -90,7 +90,7 @@ public class PatternAudioTest extends TestSuiteBase implements EnvelopeFeatures 
 				.save(new File("results/pattern-note-envelope.wav"));
 	}
 
-	@Test
+	@Test(timeout = 120_000)
 	public void conditionalEnvelope() {
 		Assume.assumeTrue(new File("Library/Snare Perc DD.wav").exists());
 		Factor<PackedCollection> factor = in ->
@@ -122,7 +122,7 @@ public class PatternAudioTest extends TestSuiteBase implements EnvelopeFeatures 
 				.save(new File("results/pattern-note-conditional-envelope.wav"));
 	}
 
-	@Test
+	@Test(timeout = 60_000)
 	public void envelopePassThrough() {
 		Assume.assumeTrue(new File("Library/Snare Perc DD.wav").exists());
 		Factor<PackedCollection> factor = envelope(attack(c(0.5)))
@@ -151,7 +151,7 @@ public class PatternAudioTest extends TestSuiteBase implements EnvelopeFeatures 
 				.save(new File("results/pattern-note-envelope-passthrough.wav"));
 	}
 
-	@Test
+	@Test(timeout = 60_000)
 	public void envelopeSections() {
 		Assume.assumeTrue(new File("Library/Snare Perc DD.wav").exists());
 		EnvelopeSection section = envelope(attack(c(0.5)))
@@ -170,7 +170,7 @@ public class PatternAudioTest extends TestSuiteBase implements EnvelopeFeatures 
 				.save(new File("results/pattern-note-envelope-sections.wav"));
 	}
 
-	@Test
+	@Test(timeout = 60_000)
 	public void parameterizedEnvelope() {
 		Assume.assumeTrue(new File("Library/SN_Forever_Future.wav").exists());
 		ParameterizedVolumeEnvelope envelope = ParameterizedVolumeEnvelope.random(ParameterizedVolumeEnvelope.Mode.STANDARD_NOTE);

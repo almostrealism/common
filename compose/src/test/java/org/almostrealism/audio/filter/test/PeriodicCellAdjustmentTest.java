@@ -50,7 +50,7 @@ public class PeriodicCellAdjustmentTest extends TestSuiteBase {
 		return new AudioScene<>(null, 120, 2, 2, OutputLine.sampleRate, new ArrayList<>(), new NoOpGenerationProvider());
 	}
 
-	@Test
+	@Test(timeout = 300_000)
 	public void healthTestNoAdjustment() {
 		if (testDepth < 1) return;
 
@@ -64,7 +64,7 @@ public class PeriodicCellAdjustmentTest extends TestSuiteBase {
 		health.computeHealth();
 	}
 
-	@Test
+	@Test(timeout = 300_000)
 	public void healthTestWithAdjustment() {
 		if (testDepth < 1) return;
 

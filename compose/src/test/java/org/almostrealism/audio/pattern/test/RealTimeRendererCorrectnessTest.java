@@ -66,7 +66,7 @@ public class RealTimeRendererCorrectnessTest extends AudioSceneTestBase {
 	 * <p>This is the core correctness test. Both renderers should produce
 	 * similar output when using the same genome seed.</p>
 	 */
-	@Test
+	@Test(timeout = 300_000)
 	public void testRealTimeVsTraditionalSameSeed() {
 		log("=== Test: Real-Time vs Traditional (Same Seed) ===");
 
@@ -127,7 +127,7 @@ public class RealTimeRendererCorrectnessTest extends AudioSceneTestBase {
 	 * <p>Compares the per-second audio statistics between traditional
 	 * and real-time rendering to ensure timing is correct.</p>
 	 */
-	@Test
+	@Test(timeout = 300_000)
 	public void testPerSecondTimingAccuracy() {
 		log("=== Test: Per-Second Timing Accuracy ===");
 
@@ -178,7 +178,7 @@ public class RealTimeRendererCorrectnessTest extends AudioSceneTestBase {
 	 *
 	 * <p>Verifies that different buffer sizes produce consistent results.</p>
 	 */
-	@Test
+	@Test(timeout = 300_000)
 	public void testBufferSizeConsistency() {
 		log("=== Test: Buffer Size Consistency ===");
 
@@ -217,7 +217,7 @@ public class RealTimeRendererCorrectnessTest extends AudioSceneTestBase {
 	 *
 	 * <p>Verifies that audio coverage doesn't degrade over longer durations.</p>
 	 */
-	@Test
+	@Test(timeout = 300_000)
 	public void testLongDurationCoverage() {
 		log("=== Test: Long Duration Coverage (30s) ===");
 

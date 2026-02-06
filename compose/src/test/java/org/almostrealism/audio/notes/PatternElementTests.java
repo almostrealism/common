@@ -39,7 +39,7 @@ import java.util.List;
 public class PatternElementTests extends TestSuiteBase implements CellFeatures, SamplingFeatures, PatternFeatures, AudioTestFeatures {
 	int sampleRate = OutputLine.sampleRate;
 
-	@Test
+	@Test(timeout = 120_000)
 	public void pattern() {
 		// Define the shared parameters, including how notes should be
 		// tuned and a root for the scale and the synth

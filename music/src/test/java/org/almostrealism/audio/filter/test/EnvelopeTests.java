@@ -46,7 +46,7 @@ public class EnvelopeTests extends TestSuiteBase implements CellFeatures, Envelo
 
 	int filterOrder = 40;
 
-	@Test
+	@Test(timeout = 60_000)
 	public void attackSample() throws IOException {
 		Assume.assumeTrue(new File("Library/organ.wav").exists());
 		WaveData.load(new File("Library/organ.wav"))
@@ -54,7 +54,7 @@ public class EnvelopeTests extends TestSuiteBase implements CellFeatures, Envelo
 				.save(new File("results/attack-sample.wav"));
 	}
 
-	@Test
+	@Test(timeout = 60_000)
 	public void attack() {
 		double attack = 0.5;
 
@@ -67,7 +67,7 @@ public class EnvelopeTests extends TestSuiteBase implements CellFeatures, Envelo
 				.sample(0,env).save(new File("results/attack.wav"));
 	}
 
-	@Test
+	@Test(timeout = 60_000)
 	public void adsr() {
 		double duration = 8.0;
 		double attack = 0.5;
@@ -88,7 +88,7 @@ public class EnvelopeTests extends TestSuiteBase implements CellFeatures, Envelo
 				.sample(0,env).save(new File("results/adsr.wav"));
 	}
 
-	@Test
+	@Test(timeout = 60_000)
 	public void asr() {
 		double d0 = 0.5;
 		double d1 = 3.0;
@@ -111,7 +111,7 @@ public class EnvelopeTests extends TestSuiteBase implements CellFeatures, Envelo
 				.sample(0,env).save(new File("results/asr.wav"));
 	}
 
-	@Test
+	@Test(timeout = 60_000)
 	public void adsrFilter() throws IOException {
 		Assume.assumeTrue(new File(TEST_INPUT).exists());
 		double duration = 4.0;
@@ -134,7 +134,7 @@ public class EnvelopeTests extends TestSuiteBase implements CellFeatures, Envelo
 				.get().run();
 	}
 
-	@Test
+	@Test(timeout = 60_000)
 	public void adsrMultiOrderFilter() throws IOException {
 		Assume.assumeTrue(new File(TEST_INPUT).exists());
 		double duration = 4.0;
@@ -160,7 +160,7 @@ public class EnvelopeTests extends TestSuiteBase implements CellFeatures, Envelo
 				.save(new File("results/adsr-multi-order-filter.wav"));
 	}
 
-	@Test
+	@Test(timeout = 60_000)
 	public void adsrMultiOrderFilterArguments1() throws IOException {
 		Assume.assumeTrue(new File(TEST_INPUT).exists());
 		double duration = 4.0;
@@ -189,7 +189,7 @@ public class EnvelopeTests extends TestSuiteBase implements CellFeatures, Envelo
 				.save(new File("results/adsr-multi-order-filter-args1.wav"));
 	}
 
-	@Test
+	@Test(timeout = 60_000)
 	public void adsrMultiOrderFilterArguments2() throws IOException {
 		Assume.assumeTrue(new File(TEST_INPUT).exists());
 		double duration = 8.0;
@@ -222,7 +222,7 @@ public class EnvelopeTests extends TestSuiteBase implements CellFeatures, Envelo
 				.save(new File("results/adsr-multi-order-filter-args2.wav"));
 	}
 
-	@Test
+	@Test(timeout = 60_000)
 	public void adsrMultiOrderFilterCoefficientArguments() throws IOException {
 		Assume.assumeTrue(new File(TEST_INPUT).exists());
 		double duration = 4.0;
@@ -254,7 +254,7 @@ public class EnvelopeTests extends TestSuiteBase implements CellFeatures, Envelo
 				.save(new File("results/adsr-multi-order-filter-coeff.wav"));
 	}
 
-	@Test
+	@Test(timeout = 60_000)
 	public void parameterizedVolumeEnvelope() {
 		Assume.assumeTrue(new File(TEST_INPUT).exists());
 		NoteAudioProvider provider =
@@ -271,7 +271,7 @@ public class EnvelopeTests extends TestSuiteBase implements CellFeatures, Envelo
 				.save(new File("results/parameterized-volume-envelope.wav"));
 	}
 
-	@Test
+	@Test(timeout = 60_000)
 	public void parameterizedFilterEnvelope() {
 		Assume.assumeTrue(new File(TEST_INPUT).exists());
 		NoteAudioProvider provider =
@@ -289,7 +289,7 @@ public class EnvelopeTests extends TestSuiteBase implements CellFeatures, Envelo
 				.save(new File("results/parameterized-filter-envelope.wav"));
 	}
 
-	@Test
+	@Test(timeout = 60_000)
 	public void envelope() {
 		double duration = 8.0;
 		double attack = 0.5;
@@ -306,7 +306,7 @@ public class EnvelopeTests extends TestSuiteBase implements CellFeatures, Envelo
 				.sample(0,env).save(new File("results/envelope.wav"));
 	}
 
-	@Test
+	@Test(timeout = 60_000)
 	public void extractEnvelope() throws IOException {
 		Assume.assumeTrue(new File("Library/Snare Gold 1.wav").exists());
 		VolumeEnvelopeExtraction extraction = new VolumeEnvelopeExtraction();

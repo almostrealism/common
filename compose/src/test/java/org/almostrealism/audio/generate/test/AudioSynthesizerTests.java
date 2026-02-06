@@ -42,7 +42,7 @@ import java.io.File;
 public class AudioSynthesizerTests extends TestSuiteBase {
 	private final LibraryDestination library = new LibraryDestination("model");
 
-	@Test
+	@Test(timeout = 120_000)
 	public void generate() {
 		double lfo1 = 0.5;
 		double lfo2 = 1.1;
@@ -69,19 +69,19 @@ public class AudioSynthesizerTests extends TestSuiteBase {
 				.save(new File("results/test-synth.wav"));
 	}
 
-	@Test
+	@Test(timeout = 120_000)
 	public void generateFromFile1() {
 		generateFromFile("model-synth", "SinePattern",
 						WesternChromatic.A4, WesternChromatic.A4);
 	}
 
-	@Test
+	@Test(timeout = 120_000)
 	public void generateFromFile2() {
 		generateFromFile("model-synth-acid-c3", "Acid",
 				WesternChromatic.C3, WesternChromatic.C3);
 	}
 
-	@Test
+	@Test(timeout = 120_000)
 	public void generateFromFile3() {
 		generateFromFile("model-synth-acid-g3", "Acid",
 				WesternChromatic.C3, WesternChromatic.G3);

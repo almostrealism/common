@@ -30,7 +30,7 @@ public class BufferedAudioPlayerTest extends TestSuiteBase implements AudioTestF
 	private double total = 0.0;
 	private int count = 0;
 
-	@Test
+	@Test(timeout = 60_000)
 	public void play() throws InterruptedException {
 		int sampleRate = OutputLine.sampleRate;
 		double duration = 180.0;

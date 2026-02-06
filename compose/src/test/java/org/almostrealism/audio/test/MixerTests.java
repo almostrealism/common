@@ -30,7 +30,7 @@ import org.junit.Assert;
 import org.junit.Test;
 
 public class MixerTests extends TestSuiteBase implements CellFeatures, AudioTestFeatures {
-	@Test
+	@Test(timeout = 30_000)
 	public void sampleMixer() {
 		String testAudio = getTestWavPath();
 

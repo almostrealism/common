@@ -34,7 +34,7 @@ import static org.junit.Assert.*;
  */
 public class RealTimeRenderingTest extends TestSuiteBase {
 
-	@Test
+	@Test(timeout = 30_000)
 	public void testBatchedCellBasics() {
 		AtomicInteger renderCount = new AtomicInteger(0);
 		final int[] lastFrame = {-1};
@@ -69,7 +69,7 @@ public class RealTimeRenderingTest extends TestSuiteBase {
 		assertEquals("Current frame should be 0 after reset", 0, cell.getCurrentFrame());
 	}
 
-	@Test
+	@Test(timeout = 30_000)
 	public void testBatchedCellFrameTracking() {
 		BatchedCell cell = new BatchedCell(256, 256) {
 			@Override
@@ -97,7 +97,7 @@ public class RealTimeRenderingTest extends TestSuiteBase {
 		assertEquals(2, cell.getCurrentBatch());
 	}
 
-	@Test
+	@Test(timeout = 30_000)
 	public void testPatternAudioBufferSetup() {
 		// Create a minimal pattern system manager
 		PatternSystemManager patterns = new PatternSystemManager(new java.util.ArrayList<>());

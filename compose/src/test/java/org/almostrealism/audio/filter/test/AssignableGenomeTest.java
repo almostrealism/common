@@ -79,7 +79,7 @@ public class AssignableGenomeTest implements CellFeatures {
 			return cells;
 	}
 
-	@Test
+	@Test(timeout = 300_000)
 	public void cellExamples() {
 		AcceleratedTimeSeries.defaultCacheLevel = CacheLevel.ALL;
 

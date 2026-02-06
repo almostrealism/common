@@ -60,7 +60,7 @@ public class AudioScenePopulationTest extends AdjustmentLayerOrganSystemFactoryT
 		return pop;
 	}
 
-	@Test
+	@Test(timeout = 300_000)
 	public void genomesFromPopulation() {
 		WaveOutput out = new WaveOutput(new File("layered-organ-pop-test.wav"));
 		AudioScenePopulation pop = population(pattern(1, 1), new MultiChannelAudioOutput(out));
@@ -83,7 +83,7 @@ public class AudioScenePopulationTest extends AdjustmentLayerOrganSystemFactoryT
 		});
 	}
 
-	@Test
+	@Test(timeout = 600_000)
 	public void genomesFromPopulationHealth() {
 		AtomicInteger index = new AtomicInteger();
 
@@ -100,7 +100,7 @@ public class AudioScenePopulationTest extends AdjustmentLayerOrganSystemFactoryT
 		});
 	}
 
-	@Test
+	@Test(timeout = 120_000)
 	public void createGenomes() throws IOException {
 		createGenomes(12);
 	}
@@ -124,7 +124,7 @@ public class AudioScenePopulationTest extends AdjustmentLayerOrganSystemFactoryT
 		pop.store(new FileOutputStream(AudioSceneOptimizer.POPULATION_FILE));
 	}
 
-	@Test
+	@Test(timeout = 600_000)
 	public void generate() throws Exception {
 		AudioSceneOptimizer.setFeatureLevel(4);
 

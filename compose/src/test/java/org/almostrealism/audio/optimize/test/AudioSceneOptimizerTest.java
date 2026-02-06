@@ -75,13 +75,13 @@ public class AudioSceneOptimizerTest extends TestSuiteBase implements CellFeatur
 		return optimizer;
 	}
 
-	@Test
+	@Test(timeout = 600_000)
 	public void optimize() {
 		PopulationOptimizer.enableVerbose = true;
 		optimizer().run();
 	}
 
-	@Test
+	@Test(timeout = 900_000)
 	public void healthTest() throws IOException {
 		AudioScene<?> scene = scene();
 

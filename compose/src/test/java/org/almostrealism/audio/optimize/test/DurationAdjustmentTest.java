@@ -35,7 +35,7 @@ import org.junit.Test;
 import java.io.File;
 
 public class DurationAdjustmentTest extends TestSuiteBase implements CellFeatures, OptimizeFactorFeatures, AudioTestFeatures {
-	@Test
+	@Test(timeout = 120_000)
 	public void dynamicRepeat() {
 		String testAudio = getTestWavPath();
 		int sr = OutputLine.sampleRate;
@@ -60,7 +60,7 @@ public class DurationAdjustmentTest extends TestSuiteBase implements CellFeature
 		cells.sec(bpm(120).l(count)).get().run();
 	}
 
-	@Test
+	@Test(timeout = 120_000)
 	public void durationAdjustment() {
 		String testAudio = getTestWavPath();
 		int sr = OutputLine.sampleRate;
