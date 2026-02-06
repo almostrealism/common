@@ -127,7 +127,7 @@ public class AggressiveFineTuningTest extends TestSuiteBase {
 	 *   <li>embed=256, io=64</li>
 	 * </ul>
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void testCompilationScaling() {
 		int[][] configs = {
 				// {embedDim, ioChannels, depth, numHeads, condTokenDim, globalCondDim}
@@ -183,7 +183,7 @@ public class AggressiveFineTuningTest extends TestSuiteBase {
 	 * identify which operations dominate backward pass compilation time.
 	 * The profile is saved to {@code utils/results/finetune_profile_embed64.xml}.
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void testProfiledFineTuning() throws IOException {
 		Files.createDirectories(Path.of("/workspace/project/common/utils/results"));
 
