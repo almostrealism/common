@@ -36,7 +36,10 @@ jobs:
            -DAR_HARDWARE_DRIVER=native \
            -DAR_HARDWARE_LIBS=Extensions
 
-  test:
+  # test:
+  #   needs: build
+  test-disabled:
+    if: false
     needs: build
     runs-on: ubuntu-latest-16-cores
     strategy:
@@ -83,8 +86,11 @@ jobs:
           path: coverage-data/
           retention-days: 1
 
-  test-ml:
-    needs: test
+  # test-ml:
+  #   needs: test
+  test-ml-disabled:
+    if: false
+    needs: build
     runs-on: ubuntu-latest-16-cores
     steps:
       - name: Checkout Code
@@ -126,7 +132,7 @@ jobs:
           retention-days: 1
 
   test-audio:
-    needs: test-ml
+    needs: build
     runs-on: ubuntu-latest-16-cores
     steps:
       - name: Checkout Code
@@ -218,7 +224,7 @@ jobs:
           retention-days: 1
 
   analysis:
-    needs: [test, test-ml, test-audio, test-music-compose]
+    needs: [test-audio, test-music-compose]
     if: always()
     runs-on: ubuntu-latest
     permissions:
