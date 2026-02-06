@@ -16,6 +16,7 @@
 
 package org.almostrealism.audio.notes;
 
+import org.almostrealism.audio.AudioTestFeatures;
 import org.almostrealism.audio.CellFeatures;
 import org.almostrealism.audio.SamplingFeatures;
 import org.almostrealism.audio.arrange.AudioSceneContext;
@@ -28,13 +29,14 @@ import org.almostrealism.audio.tone.KeyboardTuning;
 import org.almostrealism.audio.tone.WesternChromatic;
 import org.almostrealism.audio.tone.WesternScales;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 
-public class PatternElementTests implements CellFeatures, SamplingFeatures, PatternFeatures {
+public class PatternElementTests extends TestSuiteBase implements CellFeatures, SamplingFeatures, PatternFeatures, AudioTestFeatures {
 	int sampleRate = OutputLine.sampleRate;
 
 	@Test
@@ -59,13 +61,13 @@ public class PatternElementTests implements CellFeatures, SamplingFeatures, Patt
 		sceneContext.setScaleForPosition(pos -> WesternScales.major(root, 1));
 		sceneContext.setDestination(new PackedCollection((int) (duration * sampleRate)));
 
-		// Setup context for voicing the notes, including the library
-		// of samples to use (choiceNote will select from those)
+		// Setup context for voicing the notes, using synthetic test audio
 		NoteAudioContext audioContext = new NoteAudioContext();
 		audioContext.setNextNotePosition(pos -> duration);
+		String testAudioPath = getTestWavPath();
 		audioContext.setAudioSelection((choice) ->
 				new SimplePatternNote(NoteAudioProvider
-						.create("Library/Triangle MS10 C3.wav", WesternChromatic.C3, tuning)));
+						.create(testAudioPath, WesternChromatic.C3, tuning)));
 
 		// Create the elements of the composition, leveraging
 		// the notes that have been defined in multiple places

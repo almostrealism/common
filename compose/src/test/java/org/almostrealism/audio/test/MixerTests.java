@@ -16,6 +16,7 @@
 
 package org.almostrealism.audio.test;
 
+import org.almostrealism.audio.AudioTestFeatures;
 import org.almostrealism.audio.CellFeatures;
 import org.almostrealism.audio.SampleMixer;
 import org.almostrealism.audio.line.BufferDefaults;
@@ -24,18 +25,20 @@ import org.almostrealism.audio.line.SharedMemoryAudioLine;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.TimeCell;
 import org.almostrealism.graph.temporal.WaveCell;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
-public class MixerTests implements CellFeatures {
+public class MixerTests extends TestSuiteBase implements CellFeatures, AudioTestFeatures {
 	@Test
 	public void sampleMixer() {
+		String testAudio = getTestWavPath();
+
 		TimeCell clock = new TimeCell();
 		SampleMixer mixer = new SampleMixer(1);
 		mixer.init(c -> {
 			try {
-//				return WaveData.load(new File("Library/RAW_IU_ARCHE_B.wav")).toCell(clock);
-				return (WaveCell) w(0, "Library/RAW_IU_ARCHE_B.wav").get(0);
+				return (WaveCell) w(0, testAudio).get(0);
 			} catch (Exception e) {
 				throw new RuntimeException(e);
 			}

@@ -28,8 +28,6 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 
-import static org.junit.Assert.*;
-
 /**
  * Test utility interface providing helper methods for audio testing.
  * Implement this interface in test classes to gain access to:
@@ -145,7 +143,9 @@ public interface AudioTestFeatures {
 	 * @param output The buffer output line to check
 	 */
 	default void assertHasAudio(BufferOutputLine output) {
-		assertTrue("Expected audio output but buffer is silent", output.hasAudio());
+		if (!output.hasAudio()) {
+			throw new AssertionError("Expected audio output but buffer is silent");
+		}
 	}
 
 	/**
@@ -154,7 +154,9 @@ public interface AudioTestFeatures {
 	 * @param output The buffer output line to check
 	 */
 	default void assertSilent(BufferOutputLine output) {
-		assertFalse("Expected silence but buffer has audio", output.hasAudio());
+		if (output.hasAudio()) {
+			throw new AssertionError("Expected silence but buffer has audio");
+		}
 	}
 
 	/**
@@ -166,7 +168,9 @@ public interface AudioTestFeatures {
 	 */
 	default void assertFrequencyApprox(BufferOutputLine output, double expectedHz, double toleranceHz) {
 		double estimated = output.estimateFrequency();
-		assertEquals("Frequency mismatch", expectedHz, estimated, toleranceHz);
+		if (Math.abs(estimated - expectedHz) > toleranceHz) {
+			throw new AssertionError("Frequency mismatch: expected " + expectedHz + " but was " + estimated);
+		}
 	}
 
 	/**
@@ -189,8 +193,12 @@ public interface AudioTestFeatures {
 	 */
 	default void assertPeakAmplitudeInRange(BufferOutputLine output, double minPeak, double maxPeak) {
 		double peak = output.getPeakAmplitude();
-		assertTrue("Peak amplitude " + peak + " below minimum " + minPeak, peak >= minPeak);
-		assertTrue("Peak amplitude " + peak + " above maximum " + maxPeak, peak <= maxPeak);
+		if (peak < minPeak) {
+			throw new AssertionError("Peak amplitude " + peak + " below minimum " + minPeak);
+		}
+		if (peak > maxPeak) {
+			throw new AssertionError("Peak amplitude " + peak + " above maximum " + maxPeak);
+		}
 	}
 
 	/**
@@ -202,7 +210,9 @@ public interface AudioTestFeatures {
 	 */
 	default void assertPeakAmplitudeApprox(BufferOutputLine output, double expected, double tolerance) {
 		double peak = output.getPeakAmplitude();
-		assertEquals("Peak amplitude mismatch", expected, peak, tolerance);
+		if (Math.abs(peak - expected) > tolerance) {
+			throw new AssertionError("Peak amplitude mismatch: expected " + expected + " but was " + peak);
+		}
 	}
 
 	/**
@@ -214,7 +224,9 @@ public interface AudioTestFeatures {
 	 */
 	default void assertRmsAmplitudeApprox(BufferOutputLine output, double expected, double tolerance) {
 		double rms = output.getRmsAmplitude();
-		assertEquals("RMS amplitude mismatch", expected, rms, tolerance);
+		if (Math.abs(rms - expected) > tolerance) {
+			throw new AssertionError("RMS amplitude mismatch: expected " + expected + " but was " + rms);
+		}
 	}
 
 	/**
@@ -224,7 +236,9 @@ public interface AudioTestFeatures {
 	 */
 	default void assertNoClipping(BufferOutputLine output) {
 		double peak = output.getPeakAmplitude();
-		assertTrue("Audio is clipping (peak=" + peak + ")", peak <= 1.0);
+		if (peak > 1.0) {
+			throw new AssertionError("Audio is clipping (peak=" + peak + ")");
+		}
 	}
 
 	/**
@@ -235,8 +249,9 @@ public interface AudioTestFeatures {
 	 */
 	default void assertMinFramesWritten(BufferOutputLine output, long minFrames) {
 		long written = output.getTotalFramesWritten();
-		assertTrue("Expected at least " + minFrames + " frames but only " + written + " written",
-				written >= minFrames);
+		if (written < minFrames) {
+			throw new AssertionError("Expected at least " + minFrames + " frames but only " + written + " written");
+		}
 	}
 
 	/**
@@ -247,8 +262,9 @@ public interface AudioTestFeatures {
 	 */
 	default void assertMinFramesWritten(MockOutputLine output, long minFrames) {
 		long written = output.getFramesWritten();
-		assertTrue("Expected at least " + minFrames + " frames but only " + written + " written",
-				written >= minFrames);
+		if (written < minFrames) {
+			throw new AssertionError("Expected at least " + minFrames + " frames but only " + written + " written");
+		}
 	}
 
 	/**
@@ -259,8 +275,9 @@ public interface AudioTestFeatures {
 	 */
 	default void assertMinDurationWritten(BufferOutputLine output, double minSeconds) {
 		double duration = output.getDurationWritten();
-		assertTrue("Expected at least " + minSeconds + "s but only " + duration + "s written",
-				duration >= minSeconds);
+		if (duration < minSeconds) {
+			throw new AssertionError("Expected at least " + minSeconds + "s but only " + duration + "s written");
+		}
 	}
 
 	/**
@@ -350,8 +367,9 @@ public interface AudioTestFeatures {
 	default void assertAudioSimilar(PackedCollection expected, PackedCollection actual,
 									 double minCorrelation) {
 		double correlation = computeCorrelation(expected, actual);
-		assertTrue("Audio correlation " + correlation + " below threshold " + minCorrelation,
-				correlation >= minCorrelation);
+		if (correlation < minCorrelation) {
+			throw new AssertionError("Audio correlation " + correlation + " below threshold " + minCorrelation);
+		}
 	}
 
 	/**

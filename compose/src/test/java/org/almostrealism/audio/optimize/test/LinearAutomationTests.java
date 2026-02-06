@@ -18,6 +18,7 @@ package org.almostrealism.audio.optimize.test;
 
 import io.almostrealism.relation.Factor;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.audio.AudioTestFeatures;
 import org.almostrealism.audio.CellFeatures;
 import org.almostrealism.audio.CellList;
 import org.almostrealism.audio.SamplingFeatures;
@@ -26,13 +27,15 @@ import org.almostrealism.audio.line.OutputLine;
 import org.almostrealism.audio.optimize.OptimizeFactorFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.TimeCell;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 import java.io.File;
 
-public class LinearAutomationTests implements CellFeatures, SamplingFeatures, OptimizeFactorFeatures {
+public class LinearAutomationTests extends TestSuiteBase implements CellFeatures, SamplingFeatures, OptimizeFactorFeatures, AudioTestFeatures {
 	@Test
 	public void riseFall() {
+		String testAudio = getTestWavPath();
 		int sr = OutputLine.sampleRate;
 
 		TimeCell clock = new TimeCell();
@@ -52,7 +55,7 @@ public class LinearAutomationTests implements CellFeatures, SamplingFeatures, Op
 		Producer<PackedCollection> freq = riseFall(0, 18000, 0.0,
 														d, m, s, e, clock.time(sr), c(seconds));
 
-		CellList cells = w(0, c(0.0), c(1.0), "Library/Snare Perc DD.wav")
+		CellList cells = w(0, c(0.0), c(1.0), testAudio)
 				.addRequirements(clock)
 				.map(fc(i -> sf(0.1)))
 				.map(fc(i -> lp(freq, c(0.2))))
@@ -63,6 +66,7 @@ public class LinearAutomationTests implements CellFeatures, SamplingFeatures, Op
 
 	@Test
 	public void riseFallAutomationClock() {
+		String testAudio = getTestWavPath();
 		int sr = OutputLine.sampleRate;
 
 		TimeCell clock = new TimeCell();
@@ -82,7 +86,7 @@ public class LinearAutomationTests implements CellFeatures, SamplingFeatures, Op
 		Producer<PackedCollection> freq = riseFall(0, 1.0, 0.0,
 				d, m, p, e, clock.time(sr), c(seconds));
 
-		CellList cells = w(0, c(0.0), c(1.0), "Library/Snare Perc DD.wav")
+		CellList cells = w(0, c(0.0), c(1.0), testAudio)
 				.addRequirements(clock)
 				.map(fc(i -> sf(0.1)))
 				.map(fc(i -> in -> freq))

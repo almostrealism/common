@@ -19,6 +19,7 @@ package org.almostrealism.audio.optimize.test;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Factor;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.audio.AudioTestFeatures;
 import org.almostrealism.audio.CellFeatures;
 import org.almostrealism.audio.CellList;
 import org.almostrealism.audio.WaveOutput;
@@ -33,9 +34,10 @@ import org.junit.Test;
 
 import java.io.File;
 
-public class DurationAdjustmentTest extends TestSuiteBase implements CellFeatures, OptimizeFactorFeatures {
+public class DurationAdjustmentTest extends TestSuiteBase implements CellFeatures, OptimizeFactorFeatures, AudioTestFeatures {
 	@Test
 	public void dynamicRepeat() {
+		String testAudio = getTestWavPath();
 		int sr = OutputLine.sampleRate;
 
 		TimeCell clock = new TimeCell();
@@ -51,8 +53,7 @@ public class DurationAdjustmentTest extends TestSuiteBase implements CellFeature
 
 		int count = 32;
 
-		CellList cells = w(0, c(0.0), factor.getResultant(c(1.0)),
-				"Library/Snare Perc DD.wav")
+		CellList cells = w(0, c(0.0), factor.getResultant(c(1.0)), testAudio)
 				.addRequirements(clock, (TemporalFactor) factor)
 				.o(i -> new File("results/dynamic-repeat.wav"));
 
@@ -61,6 +62,7 @@ public class DurationAdjustmentTest extends TestSuiteBase implements CellFeature
 
 	@Test
 	public void durationAdjustment() {
+		String testAudio = getTestWavPath();
 		int sr = OutputLine.sampleRate;
 
 		TimeCell clock = new TimeCell();
@@ -75,7 +77,7 @@ public class DurationAdjustmentTest extends TestSuiteBase implements CellFeature
 
 		int count = 32;
 
-		CellList cells = w(0, c(0.0), adjust, "Library/Snare Perc DD.wav")
+		CellList cells = w(0, c(0.0), adjust, testAudio)
 				.addRequirements(clock)
 				.map(fc(i -> sf(0.1)))
 				.o(i -> new File("results/duration-adjustment.wav"));
