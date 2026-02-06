@@ -2,11 +2,12 @@ package org.almostrealism.audio.data.test;
 
 import org.almostrealism.audio.data.ParameterFunction;
 import org.almostrealism.audio.data.ParameterSet;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 import java.util.stream.IntStream;
 
-public class ParameterFunctionTest {
+public class ParameterFunctionTest extends TestSuiteBase {
 	@Test
 	public void power() {
 		ParameterFunction f = ParameterFunction.random();

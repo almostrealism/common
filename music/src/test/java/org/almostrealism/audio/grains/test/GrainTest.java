@@ -33,6 +33,7 @@ import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.time.Frequency;
 import org.almostrealism.util.TestSuiteBase;
+import org.junit.Assume;
 import org.junit.Test;
 
 import java.io.File;
@@ -41,11 +42,13 @@ import java.util.List;
 import java.util.stream.IntStream;
 
 public class GrainTest extends TestSuiteBase implements CellFeatures, EnvelopeFeatures {
+	private static final String ORGAN_FILE = "Library/organ.wav";
 
 	@Test
 	public void grainsTimeSeries() {
+		Assume.assumeTrue(new File(ORGAN_FILE).exists());
 		WaveOutput source = new WaveOutput();
-		w(0, new File("Library/organ.wav")).map(i -> source.getWriterCell(0)).sec(1.0, false).get().run();
+		w(0, new File(ORGAN_FILE)).map(i -> source.getWriterCell(0)).sec(1.0, false).get().run();
 
 		Grain grain = new Grain();
 		grain.setStart(0.2);
@@ -60,7 +63,7 @@ public class GrainTest extends TestSuiteBase implements CellFeatures, EnvelopeFe
 		CollectionProducer duration = c(g, 1);
 		CollectionProducer rate = c(g, 2);
 
-		int frames = 240 * OutputLine.sampleRate;
+		int frames = WaveOutput.defaultTimelineFrames;
 
 //		Producer<Scalar> pos = start.add(mod(multiply(rate, in), duration))
 //									.multiply(scalar(OutputLine.sampleRate));
@@ -83,7 +86,8 @@ public class GrainTest extends TestSuiteBase implements CellFeatures, EnvelopeFe
 
 	@Test
 	public void grains() throws IOException {
-		WaveData wav = WaveData.load(new File("Library/organ.wav"));
+		Assume.assumeTrue(new File(ORGAN_FILE).exists());
+		WaveData wav = WaveData.load(new File(ORGAN_FILE));
 
 		Grain grain = new Grain();
 		grain.setStart(0.2);
@@ -124,7 +128,8 @@ public class GrainTest extends TestSuiteBase implements CellFeatures, EnvelopeFe
 
 	@Test
 	public void grainProcessor() throws IOException {
-		WaveData wav = WaveData.load(new File("Library/organ.wav"));
+		Assume.assumeTrue(new File(ORGAN_FILE).exists());
+		WaveData wav = WaveData.load(new File(ORGAN_FILE));
 		PackedCollection input = wav.getChannelData(0);
 
 		Evaluable<PackedCollection> processor =
@@ -162,7 +167,8 @@ public class GrainTest extends TestSuiteBase implements CellFeatures, EnvelopeFe
 
 	@Test
 	public void grainProcessorEnvelope() throws IOException {
-		WaveData wav = WaveData.load(new File("Library/organ.wav"));
+		Assume.assumeTrue(new File(ORGAN_FILE).exists());
+		WaveData wav = WaveData.load(new File(ORGAN_FILE));
 		PackedCollection input = wav.getChannelData(0);
 
 		double attack = 1.0;
@@ -206,8 +212,9 @@ public class GrainTest extends TestSuiteBase implements CellFeatures, EnvelopeFe
 
 	@Test
 	public void granularSynth() {
+		Assume.assumeTrue(new File(ORGAN_FILE).exists());
 		GranularSynthesizer synth = new GranularSynthesizer(OutputLine.sampleRate);
-		GrainSet set = synth.addFile("Library/organ.wav");
+		GrainSet set = synth.addFile(ORGAN_FILE);
 		set.addGrain(new Grain(0.2, 0.015, 2.0));
 
 		WaveDataProviderList providers = synth.create(scalar(0.0), scalar(0.0), scalar(0.0), List.of(new Frequency(1.0)));

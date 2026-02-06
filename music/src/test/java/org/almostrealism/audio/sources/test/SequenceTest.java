@@ -38,6 +38,7 @@ import org.almostrealism.heredity.ScaleFactor;
 import org.almostrealism.time.Frequency;
 import org.almostrealism.time.TemporalRunner;
 import org.almostrealism.util.TestSuiteBase;
+import org.junit.Assume;
 import org.junit.Test;
 
 import java.io.File;
@@ -67,7 +68,7 @@ public class SequenceTest extends TestSuiteBase implements CellFeatures {
 
 		AcceleratedOperation op = (AcceleratedOperation) tick.get();
 		op.run();
-		assertEquals(1.0, data.wavePosition());
+		assertEquals(1.0, data.wavePosition().toDouble(0));
 	}
 
 	@Test
@@ -153,6 +154,7 @@ public class SequenceTest extends TestSuiteBase implements CellFeatures {
 
 	@Test
 	public void samples() {
+		Assume.assumeTrue(new File("Library/GT_HAT_31.wav").exists());
 		int count = 32;
 
 		CellList cells =
@@ -166,6 +168,7 @@ public class SequenceTest extends TestSuiteBase implements CellFeatures {
 
 	@Test
 	public void stems() {
+		Assume.assumeTrue(new File("Library/Snare Perc DD.wav").exists());
 		int count = 212;
 
 		Producer<PackedCollection> one = c(1.0);
@@ -184,6 +187,9 @@ public class SequenceTest extends TestSuiteBase implements CellFeatures {
 
 	@Test
 	public void mix() {
+		Assume.assumeTrue(new File("Library/BD 909 Color 06.wav").exists());
+		Assume.assumeTrue(new File("Library/Snare Perc DD.wav").exists());
+		Assume.assumeTrue(new File("Library/GT_HAT_31.wav").exists());
 		int count = 32;
 
 		CellList cells = cells(
@@ -201,6 +207,9 @@ public class SequenceTest extends TestSuiteBase implements CellFeatures {
 
 	@Test
 	public void parameterizedMix() {
+		Assume.assumeTrue(new File("Library/BD 909 Color 06.wav").exists());
+		Assume.assumeTrue(new File("Library/Snare Perc DD.wav").exists());
+		Assume.assumeTrue(new File("Library/GT_HAT_31.wav").exists());
 		int count = 32;
 
 		ParameterSet params = new ParameterSet();
@@ -222,6 +231,9 @@ public class SequenceTest extends TestSuiteBase implements CellFeatures {
 
 	@Test
 	public void mixExport() throws IOException {
+		Assume.assumeTrue(new File("Library/BD 909 Color 06.wav").exists());
+		Assume.assumeTrue(new File("Library/Snare Perc DD.wav").exists());
+		Assume.assumeTrue(new File("Library/GT_HAT_31.wav").exists());
 		WaveOutput.enableVerbose = true;
 
 		int count = 32;
