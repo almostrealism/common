@@ -397,4 +397,238 @@ public class TrigonometricDeltaComputationTests extends TestSuiteBase {
 			}
 		}
 	}
+
+	// =========================================================================
+	// Realistic Fourier Features Tests - matching DiffusionTransformerFeatures
+	// =========================================================================
+
+	/**
+	 * Tests sin(matmul) pattern used in Fourier features.
+	 * This matches the pattern: sin(2π * matmul(input, weights.T))
+	 */
+	@Test
+	public void sinOfMatmulSmall() throws IOException {
+		int batchSize = 1;
+		int inFeatures = 4;
+		int outFeatures = 8;
+
+		PackedCollection input = new PackedCollection(shape(batchSize, inFeatures)).randnFill();
+		PackedCollection weights = new PackedCollection(shape(outFeatures, inFeatures)).randnFill();
+
+		CollectionProducer x = cp(input);
+		CollectionProducer w = cp(weights);
+
+		// f = 2π * matmul(input, weights.T)
+		CollectionProducer f = matmul(x, w.transpose(1)).multiply(2.0 * Math.PI);
+
+		// sin(f)
+		CollectionProducer sinF = sin(f);
+
+		log("sinOfMatmul: input shape = " + input.getShape());
+		log("sinOfMatmul: weights shape = " + weights.getShape());
+		log("sinOfMatmul: f shape = " + shape(batchSize, outFeatures));
+
+		// Compute delta with respect to input
+		long start = System.currentTimeMillis();
+		CollectionProducer delta = sinF.delta(x);
+		PackedCollection gradient = delta.get().evaluate();
+		long elapsed = System.currentTimeMillis() - start;
+
+		log("sinOfMatmul: gradient shape = " + gradient.getShape());
+		log("sinOfMatmul: delta computation took " + elapsed + " ms");
+
+		// Verify shape: (batchSize * outFeatures) x (batchSize * inFeatures)
+		int outputSize = batchSize * outFeatures;
+		int inputSize = batchSize * inFeatures;
+		assertEquals(outputSize * inputSize, gradient.getMemLength());
+	}
+
+	/**
+	 * Tests the full Fourier features pattern: concat(cos(f), sin(f))
+	 * where f = 2π * matmul(input, weights.T)
+	 */
+	@Test
+	public void fourierFeaturesPatternSmall() throws IOException {
+		int batchSize = 1;
+		int inFeatures = 4;
+		int halfOut = 4;  // cos and sin each produce halfOut features
+		int outFeatures = halfOut * 2;
+
+		PackedCollection input = new PackedCollection(shape(batchSize, inFeatures)).randnFill();
+		PackedCollection weights = new PackedCollection(shape(halfOut, inFeatures)).randnFill();
+
+		CollectionProducer x = cp(input);
+		CollectionProducer w = cp(weights);
+
+		// f = 2π * matmul(input, weights.T)
+		CollectionProducer f = matmul(x, w.transpose(1)).multiply(2.0 * Math.PI);
+
+		// Fourier features: concat(cos(f), sin(f))
+		CollectionProducer cosF = cos(f);
+		CollectionProducer sinF = sin(f);
+		CollectionProducer fourier = concat(shape(batchSize, outFeatures), cosF, sinF);
+
+		log("fourierFeatures: output shape = " + shape(batchSize, outFeatures));
+
+		// Compute delta with respect to input
+		long start = System.currentTimeMillis();
+		CollectionProducer delta = fourier.delta(x);
+		PackedCollection gradient = delta.get().evaluate();
+		long elapsed = System.currentTimeMillis() - start;
+
+		log("fourierFeatures: gradient shape = " + gradient.getShape());
+		log("fourierFeatures: delta computation took " + elapsed + " ms");
+
+		// Verify shape
+		int outputSize = batchSize * outFeatures;
+		int inputSize = batchSize * inFeatures;
+		assertEquals(outputSize * inputSize, gradient.getMemLength());
+	}
+
+	/**
+	 * Performance test for Fourier features gradient at model-realistic scale.
+	 * Uses dimensions similar to the DiffusionTransformer: batchSize=1, inFeatures=1, outFeatures=256
+	 */
+	@Test
+	@TestDepth(1)
+	public void fourierFeaturesPerformanceMedium() throws IOException {
+		fourierFeaturesPerformance("fourierMedium", 1, 1, 128);
+	}
+
+	/**
+	 * Performance test for Fourier features gradient at larger scale.
+	 * outFeatures=256 matches the actual timestep embedding in DiffusionTransformer.
+	 */
+	@Test
+	@TestDepth(2)
+	public void fourierFeaturesPerformanceLarge() throws IOException {
+		fourierFeaturesPerformance("fourierLarge", 1, 1, 256);
+	}
+
+	private void fourierFeaturesPerformance(String name, int batchSize, int inFeatures, int halfOut) throws IOException {
+		int outFeatures = halfOut * 2;
+
+		log("Testing Fourier features gradient: batch=" + batchSize
+				+ ", in=" + inFeatures + ", out=" + outFeatures);
+
+		PackedCollection input = new PackedCollection(shape(batchSize, inFeatures)).randnFill();
+		PackedCollection weights = new PackedCollection(shape(halfOut, inFeatures)).randnFill();
+
+		OperationProfileNode profile = kernelTest(name, () -> {
+			CollectionProducer x = cp(input);
+			CollectionProducer w = cp(weights);
+
+			// f = 2π * matmul(input, weights.T)
+			CollectionProducer f = matmul(x, w.transpose(1)).multiply(2.0 * Math.PI);
+
+			// Fourier features: concat(cos(f), sin(f))
+			CollectionProducer cosF = cos(f);
+			CollectionProducer sinF = sin(f);
+			CollectionProducer fourier = concat(shape(batchSize, outFeatures), cosF, sinF);
+
+			return fourier.delta(x);
+		}, output -> {
+			log("Output shape: " + output.getShape());
+			int outputSize = batchSize * outFeatures;
+			int inputSize = batchSize * inFeatures;
+			log("Expected total size: " + (outputSize * inputSize));
+			assertEquals(outputSize * inputSize, output.getMemLength());
+		}, true, true, true);
+
+		profile.save("results/" + name + ".xml");
+		log("Profile saved to results/" + name + ".xml");
+	}
+
+	/**
+	 * Tests gradient through sin(matmul) with respect to WEIGHTS (not input).
+	 * This is what actually happens during training - we need gradients w.r.t. learned weights.
+	 */
+	@Test
+	public void sinOfMatmulWeightGradient() throws IOException {
+		int batchSize = 1;
+		int inFeatures = 4;
+		int outFeatures = 8;
+
+		PackedCollection input = new PackedCollection(shape(batchSize, inFeatures)).randnFill();
+		PackedCollection weights = new PackedCollection(shape(outFeatures, inFeatures)).randnFill();
+
+		CollectionProducer x = cp(input);
+		CollectionProducer w = cp(weights);
+
+		// f = 2π * matmul(input, weights.T)
+		CollectionProducer f = matmul(x, w.transpose(1)).multiply(2.0 * Math.PI);
+
+		// sin(f)
+		CollectionProducer sinF = sin(f);
+
+		log("sinOfMatmul weight gradient: weights shape = " + weights.getShape());
+
+		// Compute delta with respect to WEIGHTS
+		long start = System.currentTimeMillis();
+		CollectionProducer delta = sinF.delta(w);
+		PackedCollection gradient = delta.get().evaluate();
+		long elapsed = System.currentTimeMillis() - start;
+
+		log("sinOfMatmul weight gradient: gradient shape = " + gradient.getShape());
+		log("sinOfMatmul weight gradient: delta computation took " + elapsed + " ms");
+
+		// Verify shape: (batchSize * outFeatures) x (outFeatures * inFeatures)
+		int outputSize = batchSize * outFeatures;
+		int weightSize = outFeatures * inFeatures;
+		assertEquals(outputSize * weightSize, gradient.getMemLength());
+	}
+
+	/**
+	 * Performance test for Fourier features weight gradient at model-realistic scale.
+	 * This is the pattern that occurs during backpropagation through the timestep embedding.
+	 */
+	@Test
+	@TestDepth(1)
+	public void fourierFeaturesWeightGradientMedium() throws IOException {
+		fourierFeaturesWeightGradient("fourierWeightMedium", 1, 1, 64);
+	}
+
+	/**
+	 * Performance test for Fourier features weight gradient at larger scale.
+	 */
+	@Test
+	@TestDepth(2)
+	public void fourierFeaturesWeightGradientLarge() throws IOException {
+		fourierFeaturesWeightGradient("fourierWeightLarge", 1, 1, 128);
+	}
+
+	private void fourierFeaturesWeightGradient(String name, int batchSize, int inFeatures, int halfOut) throws IOException {
+		int outFeatures = halfOut * 2;
+
+		log("Testing Fourier features WEIGHT gradient: batch=" + batchSize
+				+ ", in=" + inFeatures + ", out=" + outFeatures);
+
+		PackedCollection input = new PackedCollection(shape(batchSize, inFeatures)).randnFill();
+		PackedCollection weights = new PackedCollection(shape(halfOut, inFeatures)).randnFill();
+
+		OperationProfileNode profile = kernelTest(name, () -> {
+			CollectionProducer x = cp(input);
+			CollectionProducer w = cp(weights);
+
+			// f = 2π * matmul(input, weights.T)
+			CollectionProducer f = matmul(x, w.transpose(1)).multiply(2.0 * Math.PI);
+
+			// Fourier features: concat(cos(f), sin(f))
+			CollectionProducer cosF = cos(f);
+			CollectionProducer sinF = sin(f);
+			CollectionProducer fourier = concat(shape(batchSize, outFeatures), cosF, sinF);
+
+			// Delta with respect to WEIGHTS
+			return fourier.delta(w);
+		}, output -> {
+			log("Output shape: " + output.getShape());
+			int outputSize = batchSize * outFeatures;
+			int weightSize = halfOut * inFeatures;
+			log("Expected total size: " + (outputSize * weightSize));
+			assertEquals(outputSize * weightSize, output.getMemLength());
+		}, true, true, true);
+
+		profile.save("results/" + name + ".xml");
+		log("Profile saved to results/" + name + ".xml");
+	}
 }
