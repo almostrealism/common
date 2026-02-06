@@ -21,7 +21,9 @@ import org.almostrealism.audio.line.MockOutputLine;
 import org.almostrealism.audio.line.OutputLine;
 import org.almostrealism.audio.line.LineUtilities;
 import org.almostrealism.audio.line.BufferDefaults;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.geometry.GeometryFeatures;
 
 import java.io.File;
 import java.io.IOException;
@@ -51,7 +53,7 @@ import java.nio.file.Files;
  * }
  * </pre>
  */
-public interface AudioTestFeatures {
+public interface AudioTestFeatures extends GeometryFeatures {
 
 	/**
 	 * Tolerance for frequency comparisons in Hz.
@@ -283,6 +285,8 @@ public interface AudioTestFeatures {
 	/**
 	 * Generates a test sine wave directly into a PackedCollection.
 	 *
+	 * <p>Uses hardware-accelerated computation via the Producer pattern.</p>
+	 *
 	 * @param frequency Frequency in Hz
 	 * @param amplitude Amplitude (0.0 to 1.0)
 	 * @param durationSeconds Duration in seconds
@@ -292,17 +296,16 @@ public interface AudioTestFeatures {
 	default PackedCollection generateTestSine(double frequency, double amplitude,
 												  double durationSeconds, int sampleRate) {
 		int frames = (int) (durationSeconds * sampleRate);
-		PackedCollection result = new PackedCollection(frames);
 
-		double phaseIncrement = 2.0 * Math.PI * frequency / sampleRate;
-		double phase = 0.0;
+		// GPU-accelerated sine generation using Producer pattern
+		// time = indices / sampleRate
+		// result = amplitude * sin(2 * PI * frequency * time)
+		CollectionProducer indices = integers(0, frames);
+		CollectionProducer time = indices.divide(c(sampleRate));
+		CollectionProducer phase = time.multiply(c(2.0 * Math.PI * frequency));
+		CollectionProducer sine = sin(phase).multiply(c(amplitude));
 
-		for (int i = 0; i < frames; i++) {
-			result.setMem(i, amplitude * Math.sin(phase));
-			phase += phaseIncrement;
-		}
-
-		return result;
+		return sine.evaluate();
 	}
 
 	/**

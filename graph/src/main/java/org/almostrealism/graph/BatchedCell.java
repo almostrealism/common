@@ -87,6 +87,7 @@ public abstract class BatchedCell extends CellAdapter<PackedCollection>
 	private final PackedCollection batchCounter;
 	private IntConsumer frameCallback;
 	private Runnable cachedRender;
+	private Runnable cachedAdvance;
 	private int tickCount;
 
 	/**
@@ -228,8 +229,11 @@ public abstract class BatchedCell extends CellAdapter<PackedCollection>
 				if (cachedRender == null) {
 					cachedRender = render.get();
 				}
+				if (cachedAdvance == null) {
+					cachedAdvance = advanceBatch().get();
+				}
 				cachedRender.run();
-				batchCounter.setMem(0, batchCounter.toDouble(0) + 1);
+				cachedAdvance.run();
 				tickCount = 0;
 			}
 		};
