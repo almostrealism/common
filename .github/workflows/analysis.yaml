@@ -36,10 +36,7 @@ jobs:
            -DAR_HARDWARE_DRIVER=native \
            -DAR_HARDWARE_LIBS=Extensions
 
-  # test:
-  #   needs: build
-  test-disabled:
-    if: false
+  test:
     needs: build
     runs-on: ubuntu-latest-16-cores
     strategy:
@@ -86,11 +83,8 @@ jobs:
           path: coverage-data/
           retention-days: 1
 
-  # test-ml:
-  #   needs: test
-  test-ml-disabled:
-    if: false
-    needs: build
+  test-ml:
+    needs: test
     runs-on: ubuntu-latest-16-cores
     steps:
       - name: Checkout Code
@@ -132,7 +126,7 @@ jobs:
           retention-days: 1
 
   test-audio:
-    needs: build
+    needs: test
     runs-on: ubuntu-latest-16-cores
     steps:
       - name: Checkout Code
@@ -173,8 +167,8 @@ jobs:
           path: coverage-data/
           retention-days: 1
 
-  test-music-compose:
-    needs: test-audio
+  test-music:
+    needs: [test-ml, test-audio]
     runs-on: ubuntu-latest-16-cores
     steps:
       - name: Checkout Code
@@ -219,12 +213,12 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: coverage-music-compose
+          name: coverage-music
           path: coverage-data/
           retention-days: 1
 
   analysis:
-    needs: [test-audio, test-music-compose]
+    needs: [test-ml, test-audio, test-music]
     if: always()
     runs-on: ubuntu-latest
     permissions:

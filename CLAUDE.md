@@ -425,245 +425,35 @@ See [hardware/README.md](hardware/README.md) for complete memory and performance
 
 ---
 
-## CRITICAL: Training Loop Architecture
+## Architectural Principles
 
-**THIS IS A SACRED ARCHITECTURAL PRINCIPLE. VIOLATING IT WILL RESULT IN WASTED EFFORT.**
+These are sacred principles. Violating them will result in wasted effort and broken code. Each links to a detailed reference - **CONSULT the linked document before writing related code.**
 
-### The Golden Rule
+### Training Loops: `ModelOptimizer` Owns the Loop
 
-**`ModelOptimizer` is the ONLY class that should contain a training loop.** Full stop.
+**`ModelOptimizer` is the ONLY class that should contain a training loop.** If you are writing `for (int epoch = 0; ...)` outside of `ModelOptimizer`, you are wrong. Delete it. Create a `Dataset`, create a `ModelOptimizer`, call `optimizer.optimize(epochs)` ONCE.
 
-**YOU DO NOT OWN THE TRAINING LOOP.**
+See [docs/internals/training-loop-examples.md](docs/internals/training-loop-examples.md) for correct and wrong patterns.
 
-All training scenarios (supervised learning, diffusion, reinforcement learning, fine-tuning, etc.) must:
+### Sampling Loops: `DiffusionSampler` Owns the Loop
 
-1. Create a `Dataset` implementation that yields appropriate `(input, target)` pairs
-2. Create a `ModelOptimizer`
-3. Configure it (loss function, log frequency, etc.)
-4. Call `optimizer.optimize(epochs)` ONCE
-5. Return
+**`DiffusionSampler` is the ONLY class that should contain a diffusion sampling loop.** If you are writing `for (int step = 0; ...)` outside of `DiffusionSampler`, you are wrong. Delete it. Create a `SamplingStrategy`, create a `DiffusionSampler`, call `sampler.sample(...)` ONCE.
 
-**There is NO scenario where your class should contain a `for` loop that iterates over epochs or samples.** If you have a loop, you are wrong. Delete it.
+See [docs/internals/sampling-loop-examples.md](docs/internals/sampling-loop-examples.md) for correct and wrong patterns.
 
-**If you want progress reporting**, use `ModelOptimizer.setLogFrequency()` and `ModelOptimizer.setReceptor()`. Do NOT create custom progress classes.
+### PackedCollection is NOT a Java Array
 
-### Before Implementing ANY Training-Related Code
+**`PackedCollection` is a HANDLE to potentially GPU-resident memory.** Never use `System.arraycopy`, `Arrays.copyOf`, or tight `setMem` loops. Use the **Producer pattern**: `cp(source).multiply(2.0).evaluate()`. Consult before writing code that creates, copies, or transforms `PackedCollection` objects.
 
-**You MUST:**
-1. Run `mcp__ar-consultant__consult question:"How does ModelOptimizer handle training loops and what is the correct usage pattern?"`
-2. Read the relevant design document (e.g., `ringsdesktop/docs/planning/10-MODEL-FINE-TUNING.md`)
-4. Explicitly state: "According to the design document, I should use `ModelOptimizer` for the training loop and create a custom `Dataset` for [X]"
+See [docs/internals/packed-collection-examples.md](docs/internals/packed-collection-examples.md) for correct and wrong patterns.
 
-### Duplication Red Flags
+### Process Isolation: Only `IsolatedProcess` Breaks Expression Embedding
 
-**STOP IMMEDIATELY if you find yourself writing:**
+**Never** return null from `getValueAt()` to force isolation. Call `Process.optimize()` before `Process.get()` and let `IsolatedProcess` handle it through the proper `isIsolationTarget()` / `isolate()` chain.
 
-- `for (int epoch = 0; epoch < ...)` outside of `ModelOptimizer` - **DELETE IT**
-- `for (...) { optimizer.optimize(1); }` - wrapping optimize in a loop - **DELETE IT**
-- `model.forward(...)` followed by `model.backward(...)` outside of `ModelOptimizer`
-- `lossFunction.apply(...)` or `lossGradient.evaluate(...)` outside of `ModelOptimizer`
-- Custom progress logging that duplicates `ModelOptimizer.setLogFrequency()`
-- Custom progress/callback classes (e.g., `TrainingProgress`) - **DELETE IT**
+### StateDictionary for Model Weights
 
-See [docs/internals/training-loop-examples.md](docs/internals/training-loop-examples.md) for correct and wrong code patterns.
-
----
-
-## CRITICAL: Sampling Loop Architecture
-
-**THIS IS A SACRED ARCHITECTURAL PRINCIPLE. VIOLATING IT WILL RESULT IN WASTED EFFORT.**
-
-### The Golden Rule
-
-**`DiffusionSampler` is the ONLY class that should contain a diffusion sampling loop.** Full stop.
-
-**YOU DO NOT OWN THE SAMPLING LOOP.**
-
-All diffusion generation scenarios (text-conditional, unconditional, img2img, inpainting, etc.) must:
-
-1. Create a `SamplingStrategy` (DDIM, ping-pong, DDPM, etc.)
-2. Create a `DiffusionSampler`
-3. Configure it (inference steps, progress callback, etc.)
-4. Call `sampler.sample(seed, conditioning...)` or `sampler.sampleFrom(latent, strength, seed, conditioning...)` ONCE
-5. Decode the resulting latent with `AutoEncoder`
-6. Return
-
-**There is NO scenario where your generator class should contain a `for` loop that iterates over timesteps.** If you have a loop, you are wrong. Delete it.
-
-### Before Implementing ANY Diffusion Generation Code
-
-**You MUST:**
-1. Run `mcp__ar-consultant__consult question:"How does DiffusionSampler handle sampling loops and what SamplingStrategy options exist?"`
-2. Explicitly state: "According to the architecture, I should use `DiffusionSampler` for the sampling loop with a `[DDIM/PingPong/etc]SamplingStrategy`"
-
-### Duplication Red Flags
-
-**STOP IMMEDIATELY if you find yourself writing:**
-
-- `for (int step = 0; step < numSteps; step++)` outside of `DiffusionSampler` - **DELETE IT**
-- `for (...) { sampler.sample(...); }` - wrapping sample in a loop - **DELETE IT**
-- `model.forward(x, t, ...)` in a loop outside of `DiffusionSampler`
-- Custom timestep schedule computation (e.g., `fillSigmas()`) - use `SamplingStrategy`
-- Custom progress logging that duplicates `DiffusionSampler.setProgressCallback()`
-
-See [docs/internals/sampling-loop-examples.md](docs/internals/sampling-loop-examples.md) for correct and wrong code patterns.
-
----
-
-## CRITICAL: PackedCollection is NOT a Java Array
-
-**THIS IS A FUNDAMENTAL ARCHITECTURAL PRINCIPLE. MISUNDERSTANDING IT SHOWS YOU DON'T KNOW HOW A GPU WORKS.**
-
-### The Golden Rule
-
-**`PackedCollection` is a HANDLE to potentially GPU-resident memory.** It is NOT a Java array. You CANNOT use Java operations on `PackedCollection` data.
-
-### Mandatory Mental Model Check
-
-**Before writing ANY code that manipulates `PackedCollection`, ask yourself:**
-
-> "Where does this data physically live?"
-
-- If you're thinking "it's just a Java object" -> **STOP. You are wrong.**
-- `PackedCollection` is a *handle* to memory that may be on a completely different device (GPU, external accelerator, native memory)
-- Operations on `PackedCollection` must go through the AR framework, not Java primitives
-
-### Mandatory Consultation
-
-**Before writing code that creates, copies, or transforms `PackedCollection` objects, you MUST:**
-
-1. Run `mcp__ar-consultant__consult question:"What are the correct PackedCollection operations for <your use case>? How do copy, reshape, traverse work?"`
-2. Look for existing methods like `copy()`, `reshape()`, `traverse()`, etc.
-
-### RED FLAG PATTERNS - STOP IMMEDIATELY
-
-**STOP IMMEDIATELY if you find yourself writing:**
-
-- `System.arraycopy` anywhere near `PackedCollection` -> **DELETE IT**
-- `Arrays.copyOf` with `PackedCollection` -> **DELETE IT**
-- `for` loops that call `setMem(i, ...)` in a tight loop -> **DELETE IT** (defeats GPU parallelism)
-- Direct `.toArray()` followed by manipulation followed by `.setMem()` -> **DELETE IT** (round-trip through CPU)
-
-**These patterns will either cause silent data corruption, runtime errors, or destroy performance.**
-
-### What You MUST Do Instead
-
-Use the **Producer pattern** with `CollectionProducer`:
-
-```java
-// WRONG: CPU loop defeats GPU parallelism
-for (int i = 0; i < size; i++) {
-    result.setMem(i, source.toDouble(i) * 2);  // Round-trip per element!
-}
-
-// CORRECT: GPU-accelerated computation
-CollectionProducer result = cp(source).multiply(2.0);
-PackedCollection evaluated = result.evaluate();  // Runs on GPU
-```
-
-### Common Operations - Quick Reference
-
-| Task | WRONG | CORRECT |
-|------|-------|---------|
-| Multiply by scalar | `for (i) result.setMem(i, x.toDouble(i) * 2)` | `cp(x).multiply(2.0).evaluate()` |
-| Add two collections | `for (i) result.setMem(i, a.toDouble(i) + b.toDouble(i))` | `cp(a).add(cp(b)).evaluate()` |
-| Clamp values | `for (i) result.setMem(i, Math.max(min, x.toDouble(i)))` | `max(cp(x), c(min)).evaluate()` |
-| Fill with noise | `for (i) result.setMem(i, random.nextGaussian())` | `new PackedCollection(shape).randnFill(random)` |
-
-See [docs/internals/packed-collection-examples.md](docs/internals/packed-collection-examples.md) for more detailed examples.
-
----
-
-## CRITICAL: Process Optimization and Isolation Architecture
-
-**THIS IS A SACRED ARCHITECTURAL PRINCIPLE. VIOLATING IT WILL BREAK THE SYSTEM.**
-
-### The Golden Rule
-
-**ONLY `IsolatedProcess` is empowered to break expression embedding. No other computation should return null from `getValueAt()` to force isolation.**
-
-### How Process Isolation Works
-
-1. **`Process.optimize()`** must be called before `Process.get()` for proper isolation
-2. **`ParallelProcess.optimize(ctx, process)`** checks `process.isIsolationTarget(ctx)` on each child
-3. If isolation is needed, it calls `process.isolate()` which wraps in `IsolatedProcess`
-4. **`IsolatedProcess` does NOT implement `TraversableExpression`**
-5. When a parent's `getValueAt()` checks `producer instanceof TraversableExpression`, it naturally returns `null`
-6. This is the ONLY proper way to break expression embedding
-
-### What NOT to Do
-
-```java
-// NEVER DO THIS - it violates the isolation architecture
-@Override
-public Expression<Double> getValueAt(Expression index) {
-    // BAD: Returning null to "force" isolation
-    if (producer instanceof SomeComputationType) {
-        return null;  // WRONG! This bypasses proper isolation
-    }
-    return producer.getValueAt(index);
-}
-```
-
-### Debugging Expression Tree Issues
-
-If expression trees are growing too large:
-
-1. **Check if `optimize()` is being called** before `get()`
-2. If `isIsolationTarget()` returns true but isolation isn't happening, trace the optimization path
-3. Ensure `OperationList.enableAutomaticOptimization` is set appropriately, OR ensure callers call `optimize()` explicitly
-4. **NEVER** hack `getValueAt()` to return null - fix the optimization chain instead
-
-### Proper Fix Pattern
-
-```java
-// CORRECT: Ensure optimize() is called
-OperationList op = model.getForward().push(input);
-op = (OperationList) op.optimize();  // This triggers proper isolation
-Runnable compiled = op.get();
-```
-
-### Key Classes
-
-- **`Process.optimize()`** - Entry point for optimization
-- **`ParallelProcess.optimize(ctx, process)`** - Checks `isIsolationTarget()` and calls `isolate()`
-- **`IsolatedProcess`** - The ONLY class that should break expression embedding
-- **`isIsolationTarget()`** - Return true if computation requires isolation (e.g., native loops)
-
----
-
-## StateDictionary for Model Weights
-
-**Standard Pattern**: All model implementations should use `StateDictionary` for weight management.
-
-```java
-// GOOD: Use StateDictionary directly
-StateDictionary stateDict = new StateDictionary(weightsDirectory);
-PackedCollection<?> embeddings = stateDict.get("model.embed_tokens.weight");
-PackedCollection<?> wq = stateDict.get("model.layers.0.self_attn.q_proj.weight");
-```
-
-```java
-// AVOID: Creating separate weight container classes
-// Unless there's a compelling reason (e.g., weight transformations, caching)
-public class ModelWeights {
-    PackedCollection<?> wq;  // Duplicates StateDictionary storage
-    PackedCollection<?> wk;
-    // ...
-}
-```
-
-**When to use a wrapper class**:
-- Weight transformations are needed (e.g., transposing, reshaping)
-- Complex weight organization logic
-- Caching computed values (e.g., RoPE frequencies)
-
-**If needed**, make it a subclass or thin wrapper:
-```java
-public class ModelWeights extends StateDictionary {
-    // Add specialized methods only
-}
-```
+All model implementations should use `StateDictionary` for weight management. Avoid separate weight container classes unless transformations or caching are needed.
 
 ---
 
@@ -708,25 +498,6 @@ default Block mistralAttention(...) { /* ... */ }
 - Fundamentally different architectures (encoder-decoder vs decoder-only)
 - Performance-critical paths requiring specialization
 - Temporary experimentation (mark with TODO to generalize)
-
-### Deprecation Guidelines
-
-**Mark deprecated code clearly**:
-```java
-/**
- * @deprecated Use StateDictionary constructor instead.
- * Binary checkpoint format is deprecated and will be removed in a future version.
- * This constructor remains for backward compatibility only.
- */
-public ModelWeights(FloatBuffer buffer) {
-    // Legacy code...
-}
-```
-
-**Common deprecated patterns**:
-- Binary checkpoint constructors (use StateDictionary)
-- Model-specific weight container classes (use StateDictionary directly)
-- Duplicate attention/layer implementations (generalize existing code)
 
 ---
 
@@ -808,144 +579,16 @@ REPEAT THIS PRINCIPLE IN THE SUMMARY
 
 ---
 
-## SYSTEMATIC Debugging Approach
+## Debugging: No Speculation, Only Evidence
 
-**THIS IS MANDATORY. NO SPECULATION. ONLY EVIDENCE.**
+When debugging, follow a systematic bottom-up approach: inventory all components in the failing path, run tests from smallest to largest scope, record results at each level, and only draw conclusions supported by test evidence. **Never say "the problem might be X" without a test proving it.**
 
-When debugging a failing test or numerical discrepancy, you MUST follow this systematic process:
-
-### 1. Component Inventory
-First, identify ALL components involved in the failing code path. For example, if a decoder test fails:
-- List every layer type used (conv1d, convTranspose1d, activation, normalization, etc.)
-- List every test that exists for each component
-- Document this inventory BEFORE making any claims about the bug
-
-### 2. Bottom-Up Test Execution
-Run tests from smallest to largest scope. For each test, record:
-- **Test name**: The exact test method
-- **Result**: PASS or FAIL
-- **Relevant output**: Key numbers or error messages
-
-**Example test hierarchy:**
-```
-Level 1 (Unit): testConv1dSmall, testConvTranspose1dSmall
-Level 2 (Scale): testConv1dLargeChannels, testConvTranspose1dLargeChannels
-Level 3 (Component): testWNConv1d, testSnakeActivation
-Level 4 (Block): testDecoderBlock1, testDecoderBlock3
-Level 5 (Integration): testFullDecoder
-```
-
-### 3. Evidence-Based Conclusions
-**NEVER say "the problem might be X" without test evidence.**
-
-Instead, structure conclusions as:
-- "Tests A, B, C passed, proving components X, Y, Z work correctly"
-- "Test D failed, which isolates the bug to component W"
-- "No test exists for component V, so I need to create one to verify"
-
-### 4. Gap Identification
-If all existing tests pass but the integration test fails:
-- Identify which component combinations are NOT tested
-- Create targeted tests for those gaps
-- Run the new tests and record results
-
-### 5. Memory-Related Failures
-
-If a test fails with `OutOfMemoryError` or `HardwareException: Memory max reached`, use `ar-jmx` instead of guessing. Re-run with `jmx_monitoring: true`, take histogram snapshots, diff them, and check allocation reports. See [tools/mcp/jmx/README.md](tools/mcp/jmx/README.md) for the full diagnostic workflow.
-
-**Do NOT** guess "it's probably PackedCollection" without evidence. The JMX tools exist to give you evidence.
-
-### What NOT to do:
-- DO NOT speculate about possible causes without running tests
-- DO NOT claim a component is correct without a test proving it
-- DO NOT skip levels in the test hierarchy
-- DO NOT make changes without understanding exactly which test will verify the fix
+For memory-related failures (`OutOfMemoryError`, `HardwareException: Memory max reached`), use `ar-jmx` diagnostics instead of guessing. See [tools/mcp/jmx/README.md](tools/mcp/jmx/README.md).
 
 ---
 
-## Module-Specific Guidelines
+## Further Reference
 
-For module-specific development notes, see:
-- [ML Module](./ml/claude.md) - Machine learning models and layers
-- [Graph Module](./graph/README.md) - Computation graph and layers
-- [Collect Module](./collect/README.md) - Collection operations
-
----
-
-## Common Patterns
-
-### Loading Model Weights and Building Layers
-
-```java
-StateDictionary stateDict = new StateDictionary(weightsDirectory);
-PackedCollection<?> wq = stateDict.get("model.layers.0.self_attn.q_proj.weight");
-```
-
-Use `StateDictionary` for all weight access. Build transformer layers by iterating over layer indices and calling generalized methods like `attention(...)` — see the existing model implementations for patterns.
-
----
-
-## Testing
-
-### Test Organization
-
-- **Unit tests**: Test individual components in isolation
-- **Integration tests**: Test component interactions
-- **Synthetic tests**: Validate architecture with random weights
-- **Validation tests**: Compare against reference implementations
-
-### Test Output Logging
-
-Use `Console` and `OutputFeatures` (from `ar-io` module) to log test output to files. Implement `ConsoleFeatures`, call `Console.root().addListener(OutputFeatures.fileOutput(path))` at the start of each test, and use `log()` instead of `System.err.println()`.
-
----
-
-## Module Overview
-
-### Foundation & Core
-| Module | Purpose | Key Classes |
-|--------|---------|-------------|
-| **uml** | Annotations, lifecycle, metadata | `@Function`, `Lifecycle`, `Named` |
-| **io** | Logging, metrics, file I/O | `Console`, `ConsoleFeatures`, `OutputFeatures` |
-| **relation** | Producer/Evaluable pattern | `Producer`, `Evaluable`, `Countable` |
-
-### Data & Computation
-| Module | Purpose | Key Classes |
-|--------|---------|-------------|
-| **code** | Expression trees, code generation | `Expression`, `Scope`, `TraversalPolicy` |
-| **collect** | Multi-dimensional arrays | `PackedCollection`, `CollectionProducer`, `Shape` |
-| **hardware** | Hardware acceleration | `Hardware`, `ComputeRequirement`, `MemoryData` |
-
-### Mathematics
-| Module | Purpose | Key Classes |
-|--------|---------|-------------|
-| **algebra** | Linear algebra operations | `Vector`, `Pair`, `PairFeatures`, `VectorFeatures` |
-| **geometry** | 3D geometry, ray tracing | `Ray`, `TransformMatrix`, `Intersection` |
-| **time** | Temporal, FFT, filtering | `Temporal`, `TemporalScalar`, `CursorPair` |
-
-### Domain
-| Module | Purpose | Key Classes |
-|--------|---------|-------------|
-| **graph** | Neural network layers | `Cell`, `Receptor`, `Layer`, `Model` |
-| **ml** | Transformer models | `StateDictionary`, `AttentionFeatures`, `AutoregressiveModel` |
-| **color** | Color and lighting | `RGB`, `Light`, `Shader` |
-| **space** | Scene management | `Scene`, `Mesh`, `Triangle` |
-| **physics** | Physical simulation | `Atom`, `PhotonField`, `RigidBody` |
-| **heredity** | Genetic algorithms | `Gene`, `Chromosome`, `Genome` |
-
-### Application
-| Module | Purpose | Key Classes |
-|--------|---------|-------------|
-| **optimize** | Training, optimization | `Loss`, `Adam`, `PopulationOptimizer` |
-| **render** | Ray tracing engine | `RayTracer`, `RenderParameters` |
-
-For detailed documentation on any module, see `docs/modules/<module>.html`.
-
----
-
-## Questions or Issues?
-
-If you encounter issues or have questions about these guidelines:
-1. Check module-specific documentation
-2. Review existing implementations for patterns
-3. Ask for clarification before creating duplicate code
+- **Module-specific guidelines**: [ML Module](./ml/claude.md), [Graph Module](./graph/README.md), [Collect Module](./collect/README.md)
+- **Module overview and key classes**: See [docs/QUICK_REFERENCE.md](docs/QUICK_REFERENCE.md) or `docs/modules/<module>.html`
+- **Test output logging**: Use `Console` and `OutputFeatures` from `ar-io`. See module documentation for details.
