@@ -27,6 +27,40 @@ import java.util.List;
 import java.util.function.DoubleFunction;
 import java.util.function.DoubleUnaryOperator;
 
+/**
+ * Provides context for rendering note audio within a pattern.
+ *
+ * <p>{@code NoteAudioContext} encapsulates the information needed during the
+ * note destination generation process in {@link ScaleTraversalStrategy}:</p>
+ * <ul>
+ *   <li><strong>voicing</strong>: MAIN or WET signal path</li>
+ *   <li><strong>audioChannel</strong>: LEFT or RIGHT stereo channel</li>
+ *   <li><strong>audioSelection</strong>: Function to select note audio based on a 0-1 value</li>
+ *   <li><strong>nextNotePosition</strong>: Function to find the next note position (for duration)</li>
+ * </ul>
+ *
+ * <h2>Audio Selection</h2>
+ *
+ * <p>The {@code audioSelection} function maps a double value [0, 1) to a {@link PatternNoteAudio}.
+ * This is typically constructed from a list of available notes, with the selection value
+ * indexing into the list.</p>
+ *
+ * <h2>Voicing Details Creation</h2>
+ *
+ * <p>The {@link #createVoicingDetails} method creates an {@link ElementVoicingDetails}
+ * instance that combines this context with melodic/pitch information for rendering.</p>
+ *
+ * <h2>Duration Calculation</h2>
+ *
+ * <p>The {@code nextNotePosition} function is used by {@link NoteDurationStrategy#NO_OVERLAP}
+ * to extend notes until the next note begins.</p>
+ *
+ * @see ScaleTraversalStrategy
+ * @see ElementVoicingDetails
+ * @see PatternNoteAudio
+ *
+ * @author Michael Murray
+ */
 public class NoteAudioContext implements ConsoleFeatures {
 	private ChannelInfo.Voicing voicing;
 	private ChannelInfo.StereoChannel audioChannel;

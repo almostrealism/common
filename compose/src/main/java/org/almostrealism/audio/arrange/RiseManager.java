@@ -75,7 +75,8 @@ public class RiseManager implements Setup, PatternFeatures, CellFeatures {
 		setup.add(OperationWithInfo.of(new OperationMetadata("RiseManager.render", "RiseManager.render"),
 				() -> () -> {
 					AudioSceneContext ctx = context.get();
-					render(ctx, new NoteAudioContext(), elements, false, 0);
+					render(ctx, new NoteAudioContext(), elements, false, 0,
+							0, ctx.getFrames(), null);
 					destination = ctx.getDestination();
 				}
 		));

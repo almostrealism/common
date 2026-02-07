@@ -21,6 +21,7 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.audio.CellFeatures;
 import org.almostrealism.audio.arrange.AudioSceneContext;
+import org.almostrealism.audio.line.OutputLine;
 import org.almostrealism.audio.notes.NoteAudioContext;
 import org.almostrealism.audio.tone.KeyPosition;
 import org.almostrealism.collect.PackedCollection;
@@ -30,6 +31,54 @@ import org.almostrealism.io.ConsoleFeatures;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Defines how melodic pattern elements traverse the current musical scale.
+ *
+ * <p>{@code ScaleTraversalStrategy} determines how notes within a {@link PatternElement}
+ * are mapped to pitches in the current scale. This is critical for melodic (pitched)
+ * patterns as opposed to percussive (unpitched) patterns.</p>
+ *
+ * <h2>Strategies</h2>
+ *
+ * <ul>
+ *   <li><strong>CHORD</strong>: All scale positions play simultaneously as a chord.
+ *       Each scale position from {@link PatternElement#getScalePositions()} selects
+ *       a different key from the current scale, and all notes trigger at the same time.</li>
+ *   <li><strong>SEQUENCE</strong>: Scale positions are traversed sequentially across
+ *       repetitions. For repeating elements, each repetition plays the next scale position
+ *       in sequence, creating arpeggios or melodic runs.</li>
+ * </ul>
+ *
+ * <h2>Note Destination Generation</h2>
+ *
+ * <p>The primary method {@link #getNoteDestinations} converts a pattern element into
+ * renderable note audio by:</p>
+ * <ol>
+ *   <li>Iterating through each repetition of the element</li>
+ *   <li>Looking up the scale at the current position via {@code context.getScaleForPosition()}</li>
+ *   <li>Applying automation levels from the element's parameters</li>
+ *   <li>Selecting keys based on scale positions and the traversal strategy</li>
+ *   <li>Computing frame offsets via {@code context.frameForPosition()}</li>
+ * </ol>
+ *
+ * <h2>Frame Position Computation</h2>
+ *
+ * <p><strong>Critical for real-time:</strong> This enum uses {@code context.frameForPosition()}
+ * and {@code context.getFrameForPosition()} to compute absolute frame offsets. For real-time
+ * rendering with buffer-relative positions, the context must translate measure positions
+ * to offsets within the current buffer, not the full arrangement.</p>
+ *
+ * <h2>Non-Melodic Handling</h2>
+ *
+ * <p>For non-melodic (percussive) elements, only the first key from the scale is used,
+ * and a warning is logged if multiple scale positions are specified.</p>
+ *
+ * @see PatternElement
+ * @see RenderedNoteAudio
+ * @see AudioSceneContext#frameForPosition(double)
+ *
+ * @author Michael Murray
+ */
 public enum ScaleTraversalStrategy implements CodeFeatures, ConsoleFeatures {
 	CHORD, SEQUENCE;
 
@@ -60,13 +109,8 @@ public enum ScaleTraversalStrategy implements CodeFeatures, ConsoleFeatures {
 				ElementVoicingDetails details =
 						audioContext.createVoicingDetails(melodic,
 								keys.get(0), relativePosition);
-				Producer<PackedCollection> note =
-						element.getNoteAudio(
-								details, relativeAutomationLevel,
-								audioContext.getAudioSelection(),
-								context.getTimeForDuration());
-				destinations.add(new RenderedNoteAudio(note,
-						context.frameForPosition(actualPosition)));
+				destinations.add(createRenderedNote(element, details,
+						relativeAutomationLevel, audioContext, context, actualPosition));
 			} else if (this == CHORD) {
 				p: for (double p : element.getScalePositions()) {
 					if (keys.isEmpty()) break;
@@ -75,13 +119,8 @@ public enum ScaleTraversalStrategy implements CodeFeatures, ConsoleFeatures {
 					ElementVoicingDetails details =
 							audioContext.createVoicingDetails(melodic,
 								keys.get(keyIndex), relativePosition);
-					Producer<PackedCollection> note =
-							element.getNoteAudio(
-									details, relativeAutomationLevel,
-									audioContext.getAudioSelection(),
-									context.getTimeForDuration());
-					destinations.add(new RenderedNoteAudio(note,
-							context.frameForPosition(actualPosition)));
+					destinations.add(createRenderedNote(element, details,
+							relativeAutomationLevel, audioContext, context, actualPosition));
 
 					keys.remove(keyIndex);
 				}
@@ -93,17 +132,32 @@ public enum ScaleTraversalStrategy implements CodeFeatures, ConsoleFeatures {
 				ElementVoicingDetails details =
 						audioContext.createVoicingDetails(melodic,
 								keys.get(keyIndex), relativePosition);
-				Producer<PackedCollection> note = element.getNoteAudio(
-							details, relativeAutomationLevel,
-							audioContext.getAudioSelection(),
-							context.getTimeForDuration());
-				destinations.add(new RenderedNoteAudio(note, context.getFrameForPosition().applyAsInt(actualPosition)));
+				destinations.add(createRenderedNote(element, details,
+						relativeAutomationLevel, audioContext, context, actualPosition));
 			} else {
 				throw new UnsupportedOperationException("Unknown ScaleTraversalStrategy (" + this + ")");
 			}
 		}
 
 		return destinations;
+	}
+
+	private RenderedNoteAudio createRenderedNote(PatternElement element,
+												 ElementVoicingDetails details,
+												 Factor<PackedCollection> automationLevel,
+												 NoteAudioContext audioContext,
+												 AudioSceneContext context,
+												 double actualPosition) {
+		Producer<PackedCollection> producer = element.getNoteAudio(
+				details, automationLevel,
+				audioContext.getAudioSelection(),
+				context.getTimeForDuration());
+		int frameOffset = context.frameForPosition(actualPosition);
+		double durationSec = element.getEffectiveDuration(
+				details, audioContext.getAudioSelection(),
+				context.getTimeForDuration());
+		int expectedFrameCount = (int) (durationSec * OutputLine.sampleRate);
+		return new RenderedNoteAudio(producer, frameOffset, expectedFrameCount);
 	}
 
 

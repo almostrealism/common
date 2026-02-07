@@ -57,7 +57,7 @@ public class StableDurationHealthComputationTest extends AudioScenePopulationTes
 		StableDurationHealthComputation.enableVerbose = false;
 	}
 
-	@Test
+	@Test(timeout = 600_000)
 	public void cells() {
 		WaveOutput output1 = new WaveOutput(new File("results/health-test-firstcell.wav"));
 		WaveOutput output2 = new WaveOutput(new File("results/health-test-lastcell.wav"));
@@ -85,7 +85,7 @@ public class StableDurationHealthComputationTest extends AudioScenePopulationTes
 		System.out.println("Done");
 	}
 
-	@Test
+	@Test(timeout = 600_000)
 	public void cellsPatternDataContext() {
 		AtomicInteger index = new AtomicInteger();
 
@@ -105,7 +105,7 @@ public class StableDurationHealthComputationTest extends AudioScenePopulationTes
 		});
 	}
 
-	@Test
+	@Test(timeout = 300_000)
 	public void cellsPatternSmall() {
 		int channels = 5;
 
@@ -128,7 +128,7 @@ public class StableDurationHealthComputationTest extends AudioScenePopulationTes
 		health.computeHealth();
 	}
 
-	@Test
+	@Test(timeout = 300_000)
 	public void cellsPatternLarge() {
 		SilenceDurationHealthComputation.enableSilenceCheck = false;
 		HealthComputationAdapter.setStandardDuration(150);
@@ -143,7 +143,7 @@ public class StableDurationHealthComputationTest extends AudioScenePopulationTes
 		health.computeHealth();
 	}
 
-	@Test
+	@Test(timeout = 900_000)
 	public void samplesPopulationHealth() throws IOException {
 		AudioScene<?> scene = pattern(2, 2);
 

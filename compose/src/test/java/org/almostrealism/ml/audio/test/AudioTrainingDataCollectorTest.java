@@ -45,7 +45,7 @@ public class AudioTrainingDataCollectorTest extends TestSuiteBase {
 	/**
 	 * Test that the collector can load and segment audio files.
 	 */
-	@Test
+	@Test(timeout = 120_000)
 	public void testBasicCollection() throws IOException {
 		if (!Files.exists(BASS_LOOPS_DIR)) {
 			log("BASS LOOPS directory not found, skipping test");
@@ -88,7 +88,7 @@ public class AudioTrainingDataCollectorTest extends TestSuiteBase {
 	/**
 	 * Test that collected audio is properly normalized.
 	 */
-	@Test
+	@Test(timeout = 120_000)
 	public void testAmplitudeNormalization() throws IOException {
 		if (!Files.exists(BASS_LOOPS_DIR)) {
 			log("BASS LOOPS directory not found, skipping test");
@@ -123,7 +123,7 @@ public class AudioTrainingDataCollectorTest extends TestSuiteBase {
 	/**
 	 * Test train/validation split ratio.
 	 */
-	@Test
+	@Test(timeout = 120_000)
 	public void testTrainValidationSplit() throws IOException {
 		if (!Files.exists(BASS_LOOPS_DIR)) {
 			log("BASS LOOPS directory not found, skipping test");
@@ -157,7 +157,7 @@ public class AudioTrainingDataCollectorTest extends TestSuiteBase {
 	/**
 	 * Test that augmentation produces more samples.
 	 */
-	@Test
+	@Test(timeout = 120_000)
 	public void testAugmentation() throws IOException {
 		if (!Files.exists(BASS_LOOPS_DIR)) {
 			log("BASS LOOPS directory not found, skipping test");
@@ -201,7 +201,7 @@ public class AudioTrainingDataCollectorTest extends TestSuiteBase {
 	/**
 	 * Test collecting from a directory.
 	 */
-	@Test
+	@Test(timeout = 120_000)
 	public void testCollectFromDirectory() throws IOException {
 		if (!Files.exists(BASS_LOOPS_DIR)) {
 			log("BASS LOOPS directory not found, skipping test");
@@ -228,7 +228,7 @@ public class AudioTrainingDataCollectorTest extends TestSuiteBase {
 	/**
 	 * Test that segment lengths are correct.
 	 */
-	@Test
+	@Test(timeout = 120_000)
 	public void testSegmentLength() throws IOException {
 		if (!Files.exists(BASS_LOOPS_DIR)) {
 			log("BASS LOOPS directory not found, skipping test");

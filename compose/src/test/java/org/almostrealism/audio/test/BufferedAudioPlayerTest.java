@@ -16,6 +16,7 @@
 
 package org.almostrealism.audio.test;
 
+import org.almostrealism.audio.AudioTestFeatures;
 import org.almostrealism.audio.BufferedAudioPlayer;
 import org.almostrealism.audio.line.BufferedOutputScheduler;
 import org.almostrealism.audio.line.OutputLine;
@@ -24,18 +25,18 @@ import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
-public class BufferedAudioPlayerTest extends TestSuiteBase {
+public class BufferedAudioPlayerTest extends TestSuiteBase implements AudioTestFeatures {
 	private PackedCollection data;
 	private double total = 0.0;
 	private int count = 0;
 
-	@Test
+	@Test(timeout = 60_000)
 	public void play() throws InterruptedException {
 		int sampleRate = OutputLine.sampleRate;
 		double duration = 180.0;
 
 		BufferedAudioPlayer player = new BufferedAudioPlayer(1, sampleRate, (int) (duration * sampleRate));
-		player.load(0, "Library/RAW_IU_ARCHE_B.wav");
+		player.load(0, getTestWavPath());
 
 		BufferedOutputScheduler scheduler = player.deliver(new OutputLine() {
 			@Override

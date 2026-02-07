@@ -89,7 +89,7 @@ public class SentencePieceTokenizer implements Tokenizer {
 				sb.append(piece);
 			}
 		}
-		// SentencePiece uses ▁ (U+2581) as word boundary marker, replace with space
-		return sb.toString().replace("▁", " ").trim();
+		// SentencePiece uses U+2581 as word boundary marker, replace with space
+		return sb.toString().replace("\u2581", " ").trim();
 	}
 }
