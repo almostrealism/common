@@ -73,6 +73,7 @@ import org.almostrealism.collect.computations.PackedCollectionEnumerate;
 import org.almostrealism.collect.computations.PackedCollectionMap;
 import org.almostrealism.collect.computations.PackedCollectionPad;
 import org.almostrealism.collect.computations.PackedCollectionRepeat;
+import org.almostrealism.collect.computations.CollectionSubsetComputation;
 import org.almostrealism.collect.computations.PackedCollectionSubset;
 import org.almostrealism.collect.computations.Random;
 import org.almostrealism.collect.computations.ReshapeProducer;
@@ -1583,7 +1584,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * @see TraversalPolicy
 	 */
 	default CollectionProducerComputation subset(TraversalPolicy shape, Producer<?> collection, int... position) {
-		return new PackedCollectionSubset(shape, collection, position);
+		return new CollectionSubsetComputation(shape, (Producer<PackedCollection>) collection, position);
 	}
 
 	/**
@@ -1621,7 +1622,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * @see Expression
 	 */
 	default CollectionProducerComputation subset(TraversalPolicy shape, Producer<?> collection, Expression... position) {
-		return new PackedCollectionSubset(shape, collection, position);
+		return new CollectionSubsetComputation(shape, (Producer<PackedCollection>) collection, position);
 	}
 
 	/**
