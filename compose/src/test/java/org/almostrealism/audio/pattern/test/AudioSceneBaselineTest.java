@@ -38,6 +38,7 @@ import java.io.File;
 import java.util.List;
 
 import static org.junit.Assert.*;
+import static org.junit.Assume.assumeTrue;
 
 /**
  * Baseline tests for AudioScene audio generation without {@link org.almostrealism.audio.optimize.AudioSceneOptimizer}.
@@ -75,10 +76,8 @@ public class AudioSceneBaselineTest extends AudioSceneTestBase {
 	@TestDepth(2)
 	public void baselineAudioGeneration() {
 		File samplesDir = new File(SAMPLES_PATH);
-		if (!samplesDir.exists()) {
-			log("Skipping test - Samples directory not found: " + samplesDir.getAbsolutePath());
-			return;
-		}
+		assumeTrue("Samples directory required: " + samplesDir.getAbsolutePath(),
+				samplesDir.exists());
 
 		MixdownManager.enableMainFilterUp = false;
 		MixdownManager.enableEfxFilters = false;
@@ -136,10 +135,8 @@ public class AudioSceneBaselineTest extends AudioSceneTestBase {
 	@TestDepth(2)
 	public void baselineHealthComputation() {
 		File samplesDir = new File(SAMPLES_PATH);
-		if (!samplesDir.exists()) {
-			log("Skipping test - Samples directory not found: " + samplesDir.getAbsolutePath());
-			return;
-		}
+		assumeTrue("Samples directory required: " + samplesDir.getAbsolutePath(),
+				samplesDir.exists());
 
 		MixdownManager.enableMainFilterUp = false;
 		MixdownManager.enableEfxFilters = false;
@@ -189,10 +186,8 @@ public class AudioSceneBaselineTest extends AudioSceneTestBase {
 	@Test(timeout = 60_000)
 	public void cellPipelineDiagnostic() {
 		File samplesDir = new File(SAMPLES_PATH);
-		if (!samplesDir.exists()) {
-			log("Skipping test - Samples directory not found: " + samplesDir.getAbsolutePath());
-			return;
-		}
+		assumeTrue("Samples directory required: " + samplesDir.getAbsolutePath(),
+				samplesDir.exists());
 
 		MixdownManager.enableMainFilterUp = false;
 		MixdownManager.enableEfxFilters = false;
@@ -250,10 +245,8 @@ public class AudioSceneBaselineTest extends AudioSceneTestBase {
 	@Test(timeout = 30_000)
 	public void baselineMelodicContent() {
 		File samplesDir = new File(SAMPLES_PATH);
-		if (!samplesDir.exists()) {
-			log("Skipping test - Samples directory not found: " + samplesDir.getAbsolutePath());
-			return;
-		}
+		assumeTrue("Samples directory required: " + samplesDir.getAbsolutePath(),
+				samplesDir.exists());
 
 		MixdownManager.enableMainFilterUp = false;
 		MixdownManager.enableEfxFilters = false;

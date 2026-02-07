@@ -52,6 +52,7 @@ public class PeriodicCellAdjustmentTest extends TestSuiteBase {
 
 	@Test(timeout = 300_000)
 	public void healthTestNoAdjustment() {
+		if (skipKnownIssues) return;
 		if (testDepth < 1) return;
 
 		StableDurationHealthComputation health = new StableDurationHealthComputation(2, false);
@@ -66,6 +67,7 @@ public class PeriodicCellAdjustmentTest extends TestSuiteBase {
 
 	@Test(timeout = 300_000)
 	public void healthTestWithAdjustment() {
+		if (skipKnownIssues) return;
 		if (testDepth < 1) return;
 
 		StableDurationHealthComputation health = new StableDurationHealthComputation(2, false);

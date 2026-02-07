@@ -35,6 +35,8 @@ import org.almostrealism.audio.tone.DefaultKeyboardTuning;
 import org.almostrealism.heredity.ProjectedGenome;
 import org.almostrealism.io.SystemUtils;
 import org.almostrealism.time.Frequency;
+import org.almostrealism.util.TestSuiteBase;
+import org.junit.Assume;
 import org.junit.Test;
 
 import java.io.File;
@@ -47,7 +49,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Collectors;
 
-public class PatternFactoryTest implements CellFeatures {
+public class PatternFactoryTest extends TestSuiteBase implements CellFeatures {
 
 	public static String LIBRARY = "Library";
 
@@ -61,6 +63,8 @@ public class PatternFactoryTest implements CellFeatures {
 
 	@Test(timeout = 30_000)
 	public void fixChoices() throws IOException {
+		Assume.assumeTrue("pattern-factory.json required",
+				new File("pattern-factory.json").exists() || new File("pattern-factory.json.old").exists());
 		List<NoteAudioChoice> choices = readChoices();
 		new ObjectMapper().writeValue(new File("pattern-factory-new.json"), choices);
 	}
@@ -111,6 +115,11 @@ public class PatternFactoryTest implements CellFeatures {
 
 	@Test(timeout = 300_000)
 	public void runLayers() throws IOException {
+		Assume.assumeTrue("Library directory required", new File(LIBRARY).exists());
+		Assume.assumeTrue("pattern-factory.json required",
+				new File("pattern-factory.json").exists());
+		Assume.assumeTrue("scene-settings.json required",
+				new File(SystemUtils.getLocalDestination("scene-settings.json")).exists());
 		Frequency bpm = bpm(120);
 
 		int measures = 32;

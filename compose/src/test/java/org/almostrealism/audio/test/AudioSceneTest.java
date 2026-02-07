@@ -20,15 +20,21 @@ import org.almostrealism.audio.AudioLibrary;
 import org.almostrealism.audio.AudioScene;
 import org.almostrealism.audio.WaveOutput;
 import org.almostrealism.audio.health.MultiChannelAudioOutput;
+import org.almostrealism.audio.optimize.AudioSceneOptimizer;
 import org.almostrealism.heredity.ProjectedGenome;
+import org.almostrealism.util.TestSuiteBase;
+import org.junit.Assume;
 import org.junit.Test;
 
 import java.io.File;
 import java.util.function.Supplier;
 
-public class AudioSceneTest {
+public class AudioSceneTest extends TestSuiteBase {
 	@Test(timeout = 600_000)
 	public void runScene() {
+		File samplesDir = new File(AudioSceneOptimizer.LIBRARY);
+		Assume.assumeTrue("Library directory required", samplesDir.exists());
+
 		// Settings for the scene
 		double bpm = 120.0;
 		int sourceCount = 4;
@@ -40,7 +46,7 @@ public class AudioSceneTest {
 
 		// Load a library of material to use for creating notes to use
 		// in the patterns that make up the arrangement
-		scene.setLibrary(new AudioLibrary(new File("/Users/michael/Music/Samples"), sampleRate));
+		scene.setLibrary(new AudioLibrary(samplesDir, sampleRate));
 
 		// Create a random parameterization of the scene
 		ProjectedGenome random = scene.getGenome().random();

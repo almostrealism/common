@@ -20,6 +20,7 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.audio.AudioTestFeatures;
 import org.almostrealism.audio.CellFeatures;
 import org.almostrealism.audio.SamplingFeatures;
+import org.almostrealism.audio.data.ChannelInfo;
 import org.almostrealism.audio.arrange.AudioSceneContext;
 import org.almostrealism.audio.data.WaveData;
 import org.almostrealism.audio.line.OutputLine;
@@ -85,12 +86,14 @@ public class StatelessSourceNoteTests extends TestSuiteBase implements CellFeatu
 		// destination for the audio
 		AudioSceneContext sceneContext = new AudioSceneContext();
 		sceneContext.setFrameForPosition(pos -> (int) (pos * sampleRate));
+		sceneContext.setTimeForDuration(pos -> duration);
 		sceneContext.setScaleForPosition(pos -> WesternScales.major(root, 1));
 		sceneContext.setDestination(new PackedCollection((int) (duration * sampleRate)));
 
 		// Setup context for voicing the notes, using synthetic test audio
 		NoteAudioContext audioContext = new NoteAudioContext();
 		audioContext.setNextNotePosition(pos -> duration);
+		audioContext.setAudioChannel(ChannelInfo.StereoChannel.LEFT);
 		String testAudioPath = getTestWavPath();
 		audioContext.setAudioSelection((choice) ->
 				new SimplePatternNote(NoteAudioProvider
@@ -139,6 +142,7 @@ public class StatelessSourceNoteTests extends TestSuiteBase implements CellFeatu
 		// destination for the audio
 		AudioSceneContext sceneContext = new AudioSceneContext();
 		sceneContext.setFrameForPosition(pos -> (int) (pos * sampleRate));
+		sceneContext.setTimeForDuration(pos -> duration);
 		sceneContext.setScaleForPosition(pos -> WesternScales.major(WesternChromatic.C3, 1));
 		sceneContext.setDestination(new PackedCollection((int) (duration * sampleRate)));
 		sceneContext.setAutomationLevel(
@@ -147,6 +151,7 @@ public class StatelessSourceNoteTests extends TestSuiteBase implements CellFeatu
 		// Setup context for voicing the notes
 		NoteAudioContext audioContext = new NoteAudioContext();
 		audioContext.setNextNotePosition(pos -> duration);
+		audioContext.setAudioChannel(ChannelInfo.StereoChannel.LEFT);
 
 		// Create the elements of the composition
 		List<PatternElement> elements = new ArrayList<>();

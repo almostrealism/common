@@ -19,6 +19,7 @@ package org.almostrealism.audio.notes;
 import org.almostrealism.audio.AudioTestFeatures;
 import org.almostrealism.audio.CellFeatures;
 import org.almostrealism.audio.SamplingFeatures;
+import org.almostrealism.audio.data.ChannelInfo;
 import org.almostrealism.audio.arrange.AudioSceneContext;
 import org.almostrealism.audio.data.WaveData;
 import org.almostrealism.audio.line.OutputLine;
@@ -64,6 +65,7 @@ public class PatternElementTests extends TestSuiteBase implements CellFeatures, 
 		// Setup context for voicing the notes, using synthetic test audio
 		NoteAudioContext audioContext = new NoteAudioContext();
 		audioContext.setNextNotePosition(pos -> duration);
+		audioContext.setAudioChannel(ChannelInfo.StereoChannel.LEFT);
 		String testAudioPath = getTestWavPath();
 		audioContext.setAudioSelection((choice) ->
 				new SimplePatternNote(NoteAudioProvider

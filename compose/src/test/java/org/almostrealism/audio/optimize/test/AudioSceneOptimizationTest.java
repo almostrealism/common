@@ -32,13 +32,16 @@ import org.almostrealism.audio.tone.DefaultKeyboardTuning;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.io.SystemUtils;
 import org.almostrealism.time.TemporalRunner;
+import org.almostrealism.util.TestSuiteBase;
+import org.junit.Assume;
+import org.junit.Before;
 import org.junit.Test;
 
 import java.io.File;
 import java.io.IOException;
 import java.util.stream.IntStream;
 
-public class AudioSceneOptimizationTest implements CellFeatures {
+public class AudioSceneOptimizationTest extends TestSuiteBase implements CellFeatures {
 	public static final boolean enableDelay = true;
 	public static final boolean enableFilter = true;
 
@@ -61,6 +64,14 @@ public class AudioSceneOptimizationTest implements CellFeatures {
 
 	public static final String sampleFile1 = "Library/Snare Perc DD.wav";
 	public static final String sampleFile2 = "Library/GT_HAT_31.wav";
+
+	@Before
+	public void checkResources() {
+		Assume.assumeTrue("Library directory required",
+				new File(AudioSceneOptimizer.LIBRARY).exists());
+		Assume.assumeTrue("pattern-factory.json required",
+				new File(SystemUtils.getLocalDestination("pattern-factory.json")).exists());
+	}
 
 	public AudioScene<?> pattern(int sources, int delayLayers) {
 		return pattern(sources, delayLayers, false);

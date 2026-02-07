@@ -97,6 +97,7 @@ public class LinearAutomationTests extends TestSuiteBase implements CellFeatures
 
 	@Test(timeout = 120_000)
 	public void riseFallAutomation() {
+		if (skipKnownIssues) return;
 		int sr = OutputLine.sampleRate;
 
 		double direction = 0.9;

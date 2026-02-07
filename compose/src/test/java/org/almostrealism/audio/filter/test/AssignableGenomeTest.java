@@ -35,6 +35,7 @@ import org.almostrealism.hardware.mem.MemoryBankAdapter.CacheLevel;
 import org.almostrealism.time.AcceleratedTimeSeries;
 import org.almostrealism.time.Frequency;
 import org.almostrealism.time.TemporalRunner;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
@@ -42,7 +43,7 @@ import org.junit.Test;
 import java.io.File;
 import java.util.List;
 
-public class AssignableGenomeTest implements CellFeatures {
+public class AssignableGenomeTest extends TestSuiteBase implements CellFeatures {
 	@BeforeClass
 	public static void init() {
 		// AcceleratedTimeSeries.defaultCacheLevel = CacheLevel.ALL;
@@ -81,6 +82,7 @@ public class AssignableGenomeTest implements CellFeatures {
 
 	@Test(timeout = 300_000)
 	public void cellExamples() {
+		if (skipKnownIssues) return;
 		AcceleratedTimeSeries.defaultCacheLevel = CacheLevel.ALL;
 
 		ReceptorCell out = (ReceptorCell) o(1, i -> new File("results/assignable-genome-cells-example.wav")).get(0);

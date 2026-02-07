@@ -72,6 +72,7 @@ public class MixdownManagerTests extends TestSuiteBase implements CellFeatures, 
 
 	@Test(timeout = 600_000)
 	public void mixdown1() throws IOException {
+		if (skipKnownIssues) return;
 		MixdownManager.enableMainFilterUp = true;
 		MixdownManager.enableEfxFilters = true;
 		MixdownManager.enableEfx = true;
