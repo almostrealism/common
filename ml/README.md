@@ -16,10 +16,15 @@ This module exists to:
 
 ### 1. Model Loading with StateDictionary
 
+StateDictionary loads model weights from **protobuf format** (`.pb` files), NOT safetensors or PyTorch checkpoints. Weights must be exported to protobuf format first using the provided Python extraction scripts.
+
+**Supported Format:** Protobuf (`CollectionLibraryData`)
+**NOT Supported:** safetensors, PyTorch checkpoints (`.pt`/`.bin`), GGUF
+
 ```java
 import org.almostrealism.model.StateDictionary;
 
-// Load model weights from directory
+// Load model weights from directory containing .pb files
 StateDictionary stateDict = new StateDictionary("/path/to/weights");
 
 // Access weights by HuggingFace-style keys
@@ -27,6 +32,32 @@ PackedCollection<?> embeddings = stateDict.get("model.embed_tokens.weight");
 PackedCollection<?> wq = stateDict.get("model.layers.0.self_attn.q_proj.weight");
 PackedCollection<?> wk = stateDict.get("model.layers.0.self_attn.k_proj.weight");
 PackedCollection<?> wv = stateDict.get("model.layers.0.self_attn.v_proj.weight");
+```
+
+**Loading from different sources:**
+```java
+// From directory path
+StateDictionary stateDict = new StateDictionary("/path/to/weights");
+
+// From AssetGroupInfo (for remote/bundled assets)
+StateDictionary stateDict = new StateDictionary(assetGroupInfo);
+
+// From a list of Assets
+StateDictionary stateDict = new StateDictionary(assetList);
+
+// For testing: from a pre-built map
+Map<String, PackedCollection> weights = new HashMap<>();
+weights.put("model.embed_tokens.weight", embeddings);
+StateDictionary stateDict = new StateDictionary(weights);
+```
+
+**Saving weights:**
+```java
+// Save to protobuf file
+stateDict.save(Path.of("/output/weights.pb"));
+
+// Save with specific precision
+stateDict.save(Path.of("/output/weights.pb"), Precision.FP32);
 ```
 
 ### 2. Transformer Attention
@@ -375,6 +406,107 @@ for (int step = 0; step < maxTokens; step++) {
     input = tokenEmbeddings.get(nextToken);
 }
 ```
+
+## Audio Diffusion Models
+
+The ar-ml module also includes support for transformer-based diffusion models for audio generation.
+
+### DiffusionTransformer
+
+A conditional diffusion architecture combining self-attention with optional cross-attention:
+
+```java
+import org.almostrealism.ml.audio.DiffusionTransformer;
+
+// Create model
+DiffusionTransformer model = new DiffusionTransformer(
+    64,    // ioChannels - input/output audio channels
+    1536,  // embedDim - transformer embedding dimension
+    24,    // depth - number of transformer layers
+    24,    // numHeads - attention heads
+    1,     // patchSize - 1 = no patching
+    768,   // condTokenDim - cross-attention conditioning (0 = disabled)
+    1536,  // globalCondDim - global conditioning (0 = disabled)
+    "predict_noise",  // diffusion objective
+    weights
+);
+
+// Forward pass
+PackedCollection output = model.forward(
+    audioInput,      // [batch, ioChannels, seqLen]
+    timestep,        // [batch, 1] - diffusion timestep
+    crossAttnCond,   // [batch, condSeqLen, condTokenDim] or null
+    globalCond       // [batch, globalCondDim] or null
+);
+```
+
+**Key Features:**
+- Rotary Position Embeddings (RoPE)
+- Timestep embeddings via Fourier features
+- Optional cross-attention conditioning
+- Prepended conditioning approach (not AdaLayerNorm)
+
+### LoRA Fine-Tuning
+
+For parameter-efficient fine-tuning, use `LoRADiffusionTransformer`:
+
+```java
+import org.almostrealism.ml.audio.LoRADiffusionTransformer;
+import org.almostrealism.layers.AdapterConfig;
+
+// Create LoRA-enabled model
+AdapterConfig config = AdapterConfig.forAudioDiffusion();
+LoRADiffusionTransformer loraModel = new LoRADiffusionTransformer(
+    config, 64, 1536, 24, 24, 1, 768, 1536, "predict_noise", weights
+);
+
+// Get trainable parameters (only LoRA weights)
+List<PackedCollection> trainable = loraModel.getTrainableParameters();
+
+// After training, merge LoRA into base model
+loraModel.mergeAllLoraWeights();
+```
+
+**AdapterConfig Options:**
+- `forAudioDiffusion()` - rank=8, targets all attention projections
+- `full()` - targets all layers including FFN
+- `minimal()` - rank=4, only Q/K/V projections
+
+### ProjectionFactory
+
+Abstracts projection layer creation for LoRA vs dense selection:
+
+```java
+// Standard dense projections
+ProjectionFactory factory = ProjectionFactory.dense();
+
+// LoRA-wrapped projections
+ProjectionFactory factory = ProjectionFactory.lora(config, loraLayers);
+
+// Pass to attention methods
+Block attention = sequenceAttention(shape, weights, factory);
+```
+
+### Conditioning Approach: Prepended Conditioning vs AdaLayerNorm
+
+DiffusionTransformer uses **prepended conditioning** instead of Adaptive Layer Normalization (AdaLayerNorm).
+
+**What is AdaLayerNorm?**
+AdaLayerNorm is a technique where normalization parameters (scale/shift) are computed from conditioning signals like timestep. Formula: `y = gamma(cond) * norm(x) + beta(cond)`. Some diffusion models use this for timestep conditioning.
+
+**Why AR uses prepended conditioning instead:**
+- **Simpler architecture**: No per-layer conditioning projections needed
+- **Standard normalization**: Regular LayerNorm throughout, less complexity
+- **Attention-based integration**: Conditioning tokens participate in self-attention naturally
+- **Flexibility**: Easy to add/remove conditioning types without architecture changes
+
+**How it works:**
+1. Timestep and global conditioning projected to embedding dimension
+2. Prepended as extra tokens to the input sequence
+3. Self-attention integrates conditioning information
+4. Conditioning tokens removed before output
+
+See `DiffusionTransformer.prependConditioning()` for implementation.
 
 ## Integration with Other Modules
 

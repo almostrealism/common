@@ -18,6 +18,7 @@
 package org.almostrealism.audio.sources.test;
 
 import io.almostrealism.relation.Evaluable;
+import org.almostrealism.audio.AudioTestFeatures;
 import org.almostrealism.audio.CellFeatures;
 import org.almostrealism.audio.CellList;
 import org.almostrealism.audio.data.WaveData;
@@ -30,7 +31,9 @@ import org.almostrealism.graph.temporal.WaveCell;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.heredity.ScaleFactor;
 import org.almostrealism.time.TemporalList;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestDepth;
+import org.almostrealism.util.TestSuiteBase;
+import org.almostrealism.util.TestUtils;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -40,9 +43,9 @@ import java.time.Instant;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.IntStream;
 
-public class WaveCellTest implements CellFeatures, TestFeatures {
+public class WaveCellTest extends TestSuiteBase implements CellFeatures, AudioTestFeatures {
 	protected WaveCell cell() throws IOException {
-		return WaveData.load(new File("Library/Snare Perc DD.wav"))
+		return WaveData.load(getTestWavFile())
 						.toCell(0, 1000, null, c(10))
 				.apply(new DefaultWaveCellData());
 	}
@@ -62,14 +65,16 @@ public class WaveCellTest implements CellFeatures, TestFeatures {
 	}
 
 	@Test
+	@TestDepth(1)
 	public void endless() {
-		if (skipLongTests || testDepth < 1) return;
+		if (testProfileIs(TestUtils.PIPELINE)) return;
+		if (skipLongTests) return;
 
 		AtomicInteger total = new AtomicInteger();
 
 		IntStream.range(0, 100).forEach(x -> {
 			dc(() -> {
-				CellList cells = w(0, "Library/Snare Perc DD.wav")
+				CellList cells = w(0, getTestWavPath())
 						.o(i -> new File("results/snare-clean-test.wav"));
 				Runnable r = cells.sec(70).get();
 
@@ -89,7 +94,7 @@ public class WaveCellTest implements CellFeatures, TestFeatures {
 	public void clean() {
 		int count = 8;
 
-		CellList cells = w(0, "Library/Snare Perc DD.wav")
+		CellList cells = w(0, getTestWavPath())
 				.o(i -> new File("results/snare-clean-test.wav"));
 
 		cells.sec(bpm(128).l(count)).get().run();
@@ -100,7 +105,7 @@ public class WaveCellTest implements CellFeatures, TestFeatures {
 		int count = 32;
 
 		CellList cells = w(0, c(bpm(128).l(0.5)), c(bpm(128).l(4)),
-						"Library/GT_HAT_31.wav")
+						getTestWavPath())
 				.o(i -> new File("results/hat-repeat-test.wav"));
 
 		cells.sec(bpm(128).l(count)).get().run();
@@ -111,7 +116,7 @@ public class WaveCellTest implements CellFeatures, TestFeatures {
 		int count = 32;
 
 		CellList cells = w(0, c(bpm(128).l(1)), c(bpm(128).l(2)),
-				"Library/Snare Perc DD.wav")
+				getTestWavPath())
 				.o(i -> new File("results/snare-repeat-test.wav"));
 
 		cells.sec(bpm(128).l(count)).get().run();
@@ -119,10 +124,12 @@ public class WaveCellTest implements CellFeatures, TestFeatures {
 
 	@Test
 	public void sequence() {
+		if (testProfileIs(TestUtils.PIPELINE)) return;
+
 		int count = 32;
 
 		CellList cells = silence().and(w(0, c(bpm(128).l(0.5)), c(bpm(128).l(1)),
-							"Library/GT_HAT_31.wav"))
+							getTestWavPath()))
 							.gr(bpm(128).l(count), count, i -> 1)
 							.f(i -> i == 0 ? new ScaleFactor(0.5) : new ScaleFactor(0.1))
 							.o(i -> new File("results/wav-cell-seq-test-" + i + ".wav"));
@@ -134,7 +141,7 @@ public class WaveCellTest implements CellFeatures, TestFeatures {
 	public void assignment() {
 		PackedCollection out = new PackedCollection(1);
 		CellList cells = w(0, c(0), c(bpm(128).l(2)),
-				"Library/Snare Perc DD.wav")
+				getTestWavPath())
 				.map(i -> new ReceptorCell<>(protein -> a(1, p(out), protein)));
 		OperationList ops = (OperationList) cells.sec(10);
 		Runnable r = ops.get();

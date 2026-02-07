@@ -12,29 +12,54 @@ The `ar-utils` module provides cross-cutting infrastructure for:
 
 ## Core Components
 
-### TestFeatures
+### TestSuiteBase
 
-Primary testing interface providing comprehensive test utilities.
+Base class for all Almost Realism tests. Extend this to get automatic test depth filtering and parallel test execution support.
 
 ```java
-public class MyTest implements TestFeatures {
+public class MyTest extends TestSuiteBase {
     @Test
-    public void test() {
-        // Assertions
+    public void basicTest() {
+        // Runs at any depth
         assertEquals(expected, actual);
-        assertTrue(condition);
-        
-        // Collection comparison
-        assertSimilar(collection1, collection2, tolerance);
-        
-        // Kernel testing
-        kernelTest(operation);
-        
-        // Hardware metrics
-        initKernelMetrics();
-        logKernelMetrics();
+    }
+
+    @Test
+    @TestDepth(2)
+    public void expensiveTest() {
+        // Only runs if AR_TEST_DEPTH >= 2
     }
 }
+```
+
+### TestDepth Annotation
+
+Control which tests run based on depth level:
+
+| Depth | Usage |
+|-------|-------|
+| No annotation | Basic smoke tests (always run) |
+| `@TestDepth(1)` | Medium complexity tests |
+| `@TestDepth(2)` | Comprehensive tests |
+| `@TestDepth(3)` | Heavy/expensive tests |
+| `@TestDepth(10)` | Very expensive tests |
+
+### TestFeatures
+
+Interface providing comprehensive test utilities. Implemented by TestSuiteBase.
+
+```java
+// Assertions
+assertEquals(expected, actual);
+assertTrue(condition);
+assertSimilar(collection1, collection2, tolerance);
+
+// Kernel testing
+kernelTest(operation);
+
+// Hardware metrics
+initKernelMetrics();
+logKernelMetrics();
 ```
 
 ### TestSettings
@@ -42,10 +67,18 @@ public class MyTest implements TestFeatures {
 Global test configuration via environment variables:
 
 ```bash
+# Test depth and filtering
+export AR_TEST_DEPTH=2          # Test thoroughness level (default: 9)
+export AR_TEST_PROFILE=pipeline # Test profile (enables all tests)
+
+# Test behavior
 export AR_LONG_TESTS=true       # Enable long-running tests
 export AR_TRAIN_TESTS=true      # Enable training tests
-export AR_TEST_DEPTH=2          # Test thoroughness level
-export AR_TEST_PROFILE=pipeline # Test profile
+export AR_KNOWN_ISSUES=true     # Include tests for known issues
+
+# Parallel execution (CI)
+export AR_TEST_GROUP=0          # Which group to run (0-3)
+export AR_TEST_GROUPS=4         # Total number of groups
 ```
 
 ### ModelTestFeatures
@@ -88,6 +121,21 @@ String hash = KeyUtils.sha256(data);
 ```java
 String output = executeProcess("command", args);
 ```
+
+## Parallel Test Execution
+
+Tests can be split across multiple VMs for faster CI execution using hash-based grouping:
+
+```bash
+# Run tests in parallel across 4 VMs
+VM1: mvn test -DAR_TEST_GROUP=0 -DAR_TEST_GROUPS=4
+VM2: mvn test -DAR_TEST_GROUP=1 -DAR_TEST_GROUPS=4
+VM3: mvn test -DAR_TEST_GROUP=2 -DAR_TEST_GROUPS=4
+VM4: mvn test -DAR_TEST_GROUP=3 -DAR_TEST_GROUPS=4
+```
+
+Each test class is deterministically assigned to a group based on its class name hash.
+Tests not extending `TestSuiteBase` will run in all groups.
 
 ## Testing Patterns
 

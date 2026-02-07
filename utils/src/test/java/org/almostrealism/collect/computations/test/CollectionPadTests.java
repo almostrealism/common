@@ -19,11 +19,11 @@ package org.almostrealism.collect.computations.test;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
-public class CollectionPadTests implements TestFeatures {
+public class CollectionPadTests extends TestSuiteBase {
 	/**
 	 * Tests padding computation with subset operations.
 	 * Creates a 6-element collection and performs subset operations followed by arithmetic.
@@ -57,7 +57,7 @@ public class CollectionPadTests implements TestFeatures {
 	public void pad2d1() {
 		// Create a 2x3 input collection with random data
 		PackedCollection data = new PackedCollection(2, 3).randFill();
-		
+
 		// Apply padding: 0 zeros before, 1 zero after in dimension 1
 		// This creates a 2x5 output (2x3 original + 0+1 padding in dim 1)
 		PackedCollection out = cp(data).pad(0, 1).traverse(1).evaluate();
@@ -91,7 +91,7 @@ public class CollectionPadTests implements TestFeatures {
 		// Create input data and compute its padded version with delta
 		PackedCollection data = new PackedCollection(2, 3).randFill();
 		PackedCollection out = cp(data).pad(0, 1)
-								.delta(cp(data)).evaluate();
+				.delta(cp(data)).evaluate();
 		log(out.getShape());
 		out.traverse(2).print();
 
@@ -103,8 +103,10 @@ public class CollectionPadTests implements TestFeatures {
 
 		// Verify gradient flow: should be 1.0 where output connects to input, 0.0 elsewhere
 		out.getShape().stream().forEach(pos -> {
-			int iOut = pos[0]; int jOut = pos[1]; // Output position indices
-			int iIn = pos[2]; int jIn = pos[3];   // Input position indices
+			int iOut = pos[0];
+			int jOut = pos[1]; // Output position indices
+			int iIn = pos[2];
+			int jIn = pos[3];   // Input position indices
 
 			// Gradient should be 1.0 when output position corresponds to input position
 			if (iOut == iIn && jOut == jIn + 1) { // jOut offset by 1 due to padding
@@ -128,7 +130,7 @@ public class CollectionPadTests implements TestFeatures {
 	public void pad2d2() {
 		// Create a 2x3 input collection
 		PackedCollection data = new PackedCollection(2, 3).randFill();
-		
+
 		// Apply symmetric padding: 1 unit on all sides of both dimensions
 		// This creates a 4x5 output (2+2 x 3+2 = 4x5)
 		PackedCollection out = cp(data).pad(1, 1).traverse(1).evaluate();
@@ -163,7 +165,7 @@ public class CollectionPadTests implements TestFeatures {
 
 		// Create a 3D input collection: 2x2x3
 		PackedCollection data = new PackedCollection(n, 2, 3).randFill();
-		
+
 		// Apply padding: 0 in dim 0, 1 in dim 1, 1 in dim 2
 		// This creates a 2x4x5 output (2+0, 2+2, 3+2)
 		PackedCollection out = cp(data).pad(0, 1, 1).traverse(1).evaluate();
@@ -202,8 +204,8 @@ public class CollectionPadTests implements TestFeatures {
 		// Create 3D input and compute delta through padding operation
 		PackedCollection data = new PackedCollection(n, 2, 3).randFill();
 		PackedCollection out = cp(data)
-								.pad(0, 1, 1).delta(cp(data))
-								.evaluate();
+				.pad(0, 1, 1).delta(cp(data))
+				.evaluate();
 		log(out.getShape());
 		out.traverse(4).print();
 
@@ -217,8 +219,12 @@ public class CollectionPadTests implements TestFeatures {
 
 		// Verify 3D gradient flow relationships
 		out.getShape().stream().forEach(pos -> {
-			int nOut = pos[0]; int iOut = pos[1]; int jOut = pos[2]; // Output indices
-			int nIn = pos[3]; int iIn = pos[4]; int jIn = pos[5];    // Input indices
+			int nOut = pos[0];
+			int iOut = pos[1];
+			int jOut = pos[2]; // Output indices
+			int nIn = pos[3];
+			int iIn = pos[4];
+			int jIn = pos[5];    // Input indices
 
 			// Gradient is 1.0 when output position maps to input position
 			if (nIn == nOut && iOut == iIn + 1 && jOut == jIn + 1) {
@@ -250,7 +256,7 @@ public class CollectionPadTests implements TestFeatures {
 
 		// Create 4D input: [batch, channels, height, width] = [2, 4, 2, 3]
 		PackedCollection data = new PackedCollection(n, c, 2, 3).randFill();
-		
+
 		// Apply padding only to spatial dimensions (height and width)
 		// Padding: [0, 0, 1, 1] means no padding for batch/channels, 1 unit padding for spatial dims
 		PackedCollection out = cp(data).pad(0, 0, 1, 1).traverse(1).evaluate();
@@ -399,7 +405,7 @@ public class CollectionPadTests implements TestFeatures {
 		PackedCollection result = new PackedCollection(shape(h, w, 2).traverse(2));
 		concatenated.get().into(result.each()).evaluate(scalars);
 
-		System.out.println("Concat 2D traversal test (size=" + (h*w) + "):");
+		System.out.println("Concat 2D traversal test (size=" + (h * w) + "):");
 		System.out.println("  [0,0]: [" + result.valueAt(0, 0, 0) + ", " + result.valueAt(0, 0, 1) + "] (expected [0.0, 0.0])");
 		System.out.println("  [0,1]: [" + result.valueAt(0, 1, 0) + ", " + result.valueAt(0, 1, 1) + "] (expected [1.0, 2.0])");
 		System.out.println("  [8,8]: [" + result.valueAt(8, 8, 0) + ", " + result.valueAt(8, 8, 1) + "] (expected [136.0, 272.0])");

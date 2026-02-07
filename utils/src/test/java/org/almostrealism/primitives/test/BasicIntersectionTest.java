@@ -25,15 +25,14 @@ import org.almostrealism.geometry.ContinuousField;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.geometry.ShadableIntersection;
 import org.almostrealism.primitives.Sphere;
-import org.almostrealism.space.AbstractSurface;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 /**
  * Basic intersection tests to verify ray-surface intersection calculation
  * works with current ar-common API.
  */
-public class BasicIntersectionTest implements TestFeatures {
+public class BasicIntersectionTest extends TestSuiteBase {
 
 	@Test(timeout = 10000)
 	public void sphereIntersection() {
@@ -94,8 +93,8 @@ public class BasicIntersectionTest implements TestFeatures {
 		sphere.setLocation(new Vector(0.0, 0.0, 0.0));
 		sphere.setSize(1.0);
 		sphere.setColor(new org.almostrealism.color.RGB(0.8, 0.2, 0.2)); // Red
-		sphere.setShaders(new org.almostrealism.color.Shader[] {
-			DiffuseShader.defaultDiffuseShader
+		sphere.setShaders(new org.almostrealism.color.Shader[]{
+				DiffuseShader.defaultDiffuseShader
 		});
 
 		log("Sphere created with color and diffuse shader");

@@ -86,12 +86,29 @@ import java.util.function.Function;
 public interface RotationFeatures extends PairFeatures, LayerFeatures {
 
 	/**
-	 * Creates a RoPE rotation layer for single-position autoregressive attention.
+	 * Creates a RoPE rotation layer for single-position autoregressive attention using split-half format.
 	 *
 	 * <p>This method applies rotary embeddings at a specific position, suitable for
 	 * token-by-token generation where only one position is processed at a time.</p>
 	 *
-	 * @param shape Input shape (heads, headSize/2, 2) - last dimension is [real, imag]
+	 * <p>Split-half format pairs elements as (x[i], x[i+headSize/2]) for rotation,
+	 * which matches PyTorch's Qwen/Llama RoPE implementation:</p>
+	 * <pre>
+	 * output[i] = x[i] * cos[i] - x[i+headSize/2] * sin[i]
+	 * output[i+headSize/2] = x[i+headSize/2] * cos[i] + x[i] * sin[i]
+	 * </pre>
+	 *
+	 * <p>Input shape interpretation (heads, freqDim, 2):</p>
+	 * <ul>
+	 *   <li>When used with interleaved layout (legacy): dimension 2 is [even, odd] elements</li>
+	 *   <li>When used with split-half layout: dimension 2 is [firstHalf, secondHalf] elements</li>
+	 * </ul>
+	 *
+	 * <p><strong>IMPORTANT:</strong> For Qwen/Llama models, use with split-half reshape:
+	 * {@code reshape(shape(kvDim), shape(kvHeads, 2, headSize/2))} followed by
+	 * permutation to get (kvHeads, headSize/2, 2).</p>
+	 *
+	 * @param shape Input shape (heads, headSize/2, 2) - last dimension is [x1, x2] pair
 	 * @param weights Precomputed frequency tensor (seqLen, headSize/2, 2) containing [cos, sin]
 	 * @param position Producer that provides the current sequence position
 	 * @param requirements Compute requirements for hardware acceleration
@@ -111,13 +128,95 @@ public interface RotationFeatures extends PairFeatures, LayerFeatures {
 			throw new IllegalArgumentException();
 
 		int heads = shape.length(0);
-		int headSize = shape.length(1);
+		int freqDim = shape.length(1);  // headSize / 2
+		int weightsFreqSize = freqDim * 2;
+		int totalHeadFreq = heads * freqDim;
+
+		// Precompute index maps to avoid subset and repeat operations at runtime
+		// All maps are flat arrays for direct index-based gathering
+
+		// For cos/sin: all heads share the same frequencies, so we expand directly
+		// cosFullIndexMap[h * freqDim + f] = f * 2 (relative offset in weights for this position)
+		// sinFullIndexMap[h * freqDim + f] = f * 2 + 1
+		PackedCollection cosRelativeIndexMap = new PackedCollection(shape(totalHeadFreq));
+		PackedCollection sinRelativeIndexMap = new PackedCollection(shape(totalHeadFreq));
+		for (int h = 0; h < heads; h++) {
+			for (int f = 0; f < freqDim; f++) {
+				int idx = h * freqDim + f;
+				cosRelativeIndexMap.setMem(idx, f * 2);      // cos at freq offset
+				sinRelativeIndexMap.setMem(idx, f * 2 + 1);  // sin at freq offset
+			}
+		}
+
+		// For input: x1[h,f] = input[h * freqDim * 2 + f * 2], x2[h,f] = input[h * freqDim * 2 + f * 2 + 1]
+		PackedCollection x1IndexMap = new PackedCollection(shape(totalHeadFreq));
+		PackedCollection x2IndexMap = new PackedCollection(shape(totalHeadFreq));
+		for (int h = 0; h < heads; h++) {
+			for (int f = 0; f < freqDim; f++) {
+				int idx = h * freqDim + f;
+				x1IndexMap.setMem(idx, h * freqDim * 2 + f * 2);      // x1 at offset 0
+				x2IndexMap.setMem(idx, h * freqDim * 2 + f * 2 + 1);  // x2 at offset 1
+			}
+		}
+
+		// For output interleaving: output[h, f, 0] = out1[h,f], output[h, f, 1] = out2[h,f]
+		// Flat output index i maps to: h = i / (freqDim * 2), f = (i % (freqDim * 2)) / 2, comp = i % 2
+		PackedCollection outputSourceMap = new PackedCollection(shape(heads * freqDim * 2));
+		PackedCollection componentMap = new PackedCollection(shape(heads * freqDim * 2));
+		for (int i = 0; i < heads * freqDim * 2; i++) {
+			int h = i / (freqDim * 2);
+			int f = (i % (freqDim * 2)) / 2;
+			int comp = i % 2;
+			int sourceIdx = h * freqDim + f;
+			outputSourceMap.setMem(i, sourceIdx);
+			componentMap.setMem(i, comp);
+		}
+
+		// Create an array of weightsFreqSize values for broadcasting without using repeat
+		PackedCollection weightsFreqSizeArray = new PackedCollection(shape(totalHeadFreq));
+		for (int i = 0; i < totalHeadFreq; i++) {
+			weightsFreqSizeArray.setMem(i, weightsFreqSize);
+		}
 
 		return layer("ropeRotation", shape, shape, input -> {
-			Producer<PackedCollection> pos = pad(shape(3), position, 0);
-			CollectionProducer r = subset(shape(1, headSize, 2), c(p(weights)), pos);
-			return multiplyComplex(traverse(1, input), r.traverse(1));
-		}, List.of(weights), requirements);
+			// weights layout: (seqLen, freqDim, 2) = (seqLen, freqDim * 2) flattened
+			// We need: cos[h,f] = weights[position, f, 0], sin[h,f] = weights[position, f, 1]
+			// All heads share the same cos/sin at each freq
+
+			// Broadcast position to all elements by multiplying with precomputed array
+			// posOffset[i] = position * weightsFreqSize for all i in [0, totalHeadFreq)
+			// Using elementwise multiplication: position * weightsFreqSizeArray[i] = position * weightsFreqSize
+			CollectionProducer posScalar = c(position);
+			CollectionProducer posExpanded = c(p(weightsFreqSizeArray)).multiply(posScalar);
+
+			// Add relative offsets to get absolute indices
+			CollectionProducer cosIdx = c(p(cosRelativeIndexMap)).add(posExpanded);
+			CollectionProducer sinIdx = c(p(sinRelativeIndexMap)).add(posExpanded);
+
+			// Gather cos and sin values directly for all heads
+			CollectionProducer cos = c(shape(totalHeadFreq), p(weights), cosIdx);
+			CollectionProducer sin = c(shape(totalHeadFreq), p(weights), sinIdx);
+
+			// Gather x1 and x2 from input using precomputed index maps
+			CollectionProducer x1 = c(shape(totalHeadFreq), input, p(x1IndexMap));
+			CollectionProducer x2 = c(shape(totalHeadFreq), input, p(x2IndexMap));
+
+			// Apply split-half rotation:
+			// out1 = x1 * cos - x2 * sin
+			// out2 = x2 * cos + x1 * sin
+			CollectionProducer out1 = x1.multiply(cos).subtract(x2.multiply(sin));
+			CollectionProducer out2 = x2.multiply(cos).add(x1.multiply(sin));
+
+			// Interleave out1 and out2 to create (heads, freqDim, 2)
+			CollectionProducer out1Vals = c(shape(heads * freqDim * 2), out1, p(outputSourceMap));
+			CollectionProducer out2Vals = c(shape(heads * freqDim * 2), out2, p(outputSourceMap));
+
+			// Select based on component: comp==0 ? out1 : out2
+			CollectionProducer compVals = c(p(componentMap));
+			CollectionProducer result = greaterThan(compVals, c(0.5), out2Vals, out1Vals, true);
+
+			return result.reshape(shape(heads, freqDim, 2));
+		}, List.of(weights, cosRelativeIndexMap, sinRelativeIndexMap, x1IndexMap, x2IndexMap, outputSourceMap, componentMap, weightsFreqSizeArray), requirements);
 	}
 
 	/**

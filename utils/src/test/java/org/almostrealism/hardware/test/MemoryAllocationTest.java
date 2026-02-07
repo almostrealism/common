@@ -18,14 +18,14 @@ package org.almostrealism.hardware.test;
 
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.Hardware;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestDepth;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
-public class MemoryAllocationTest implements TestFeatures {
+public class MemoryAllocationTest extends TestSuiteBase {
 	@Test(timeout = 5 * 60000)
+	@TestDepth(3)
 	public void allocateAndDestroy() throws InterruptedException {
-		if (testDepth < 3) return;
-
 		long gb = 1024L * 1024L * 1024L;
 		long limit = 256L * gb;
 		int size = 256 * 1024 * 1024;

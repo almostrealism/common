@@ -19,10 +19,10 @@ package org.almostrealism.algebra.computations.test;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.computations.Choice;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
-public class ChoiceTest implements TestFeatures {
+public class ChoiceTest extends TestSuiteBase {
 
 	@Test(timeout = 10000)
 	public void oneOrTwo() {

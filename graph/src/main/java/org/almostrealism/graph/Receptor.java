@@ -19,8 +19,10 @@ package org.almostrealism.graph;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.hardware.OperationList;
 
+import java.util.List;
 import java.util.Objects;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 /**
@@ -101,6 +103,8 @@ public interface Receptor<T> {
 	 * @return a receptor that distributes data to all downstream receptors
 	 */
 	static <T> Receptor<T> to(Stream<Receptor<T>> downstream) {
-		return protein -> downstream.map(r -> r.push(protein)).collect(OperationList.collector());
+		// Convert stream to list to allow multiple iterations (push() can be called multiple times)
+		List<Receptor<T>> receptors = downstream.collect(Collectors.toList());
+		return protein -> receptors.stream().map(r -> r.push(protein)).collect(OperationList.collector());
 	}
 }

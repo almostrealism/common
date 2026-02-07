@@ -20,7 +20,10 @@ import io.almostrealism.lifecycle.Lifecycle;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.audio.data.AudioFilterData;
 import org.almostrealism.audio.data.PolymorphicAudioData;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.geometry.GeometryFeatures;
+import org.almostrealism.hardware.OperationList;
 import org.almostrealism.heredity.TemporalFactor;
 
 import java.util.function.Supplier;
@@ -70,8 +73,9 @@ import java.util.function.Supplier;
  * @see CellFeatures#lp(Producer, Producer)
  * @see DelayNetwork
  */
-public class AudioPassFilter implements TemporalFactor<PackedCollection>, Lifecycle {
+public class AudioPassFilter implements TemporalFactor<PackedCollection>, Lifecycle, GeometryFeatures {
 	public static final double MIN_FREQUENCY = 10.0;
+	public static final double MAX_INPUT = 0.99;
 
 	private final AudioFilterData data;
 	private Producer<PackedCollection> frequency;
@@ -127,7 +131,82 @@ public class AudioPassFilter implements TemporalFactor<PackedCollection>, Lifecy
 
 	@Override
 	public Supplier<Runnable> tick() {
-		return new AudioPassFilterComputation(data, frequency, resonance, input, high);
+		OperationList ops = new OperationList("AudioPassFilter");
+
+		Producer<PackedCollection> sampleRate = data.getSampleRate();
+
+		// Compute c coefficient using tan
+		// High-pass: c = tan(PI * frequency / sampleRate)
+		// Low-pass: c = 1 / tan(PI * frequency / sampleRate)
+		CollectionProducer angle = multiply(c(Math.PI), divide(frequency, sampleRate));
+		CollectionProducer tanVal = tan(angle);
+		CollectionProducer cVal = high ? tanVal : divide(c(1), tanVal);
+		ops.add(a(p(data.c()), cVal));
+
+		// After c is computed, read it back for coefficient calculations
+		Producer<PackedCollection> cProd = data.getC();
+		CollectionProducer cSquared = multiply(cProd, cProd);
+
+		// a1 = 1 / (1 + resonance*c + c*c)
+		CollectionProducer a1Val = divide(c(1),
+				add(c(1), add(multiply(resonance, cProd), cSquared)));
+		ops.add(a(p(data.a1()), a1Val));
+
+		// After a1 is computed, read it back
+		Producer<PackedCollection> a1Prod = data.getA1();
+
+		if (high) {
+			// High-pass coefficients:
+			// a2 = -2 * a1
+			// a3 = a1
+			// b1 = 2 * (c*c - 1) * a1
+			// b2 = (1 - resonance*c + c*c) * a1
+			ops.add(a(p(data.a2()), multiply(c(-2), a1Prod)));
+			ops.add(a(p(data.a3()), a1Prod));
+			ops.add(a(p(data.b1()), multiply(multiply(c(2), subtract(cSquared, c(1))), a1Prod)));
+			ops.add(a(p(data.b2()), multiply(add(subtract(c(1), multiply(resonance, cProd)), cSquared), a1Prod)));
+		} else {
+			// Low-pass coefficients:
+			// a2 = 2 * a1
+			// a3 = a1
+			// b1 = 2 * (1 - c*c) * a1
+			// b2 = (1 - resonance*c + c*c) * a1
+			ops.add(a(p(data.a2()), multiply(c(2), a1Prod)));
+			ops.add(a(p(data.a3()), a1Prod));
+			ops.add(a(p(data.b1()), multiply(multiply(c(2), subtract(c(1), cSquared)), a1Prod)));
+			ops.add(a(p(data.b2()), multiply(add(subtract(c(1), multiply(resonance, cProd)), cSquared), a1Prod)));
+		}
+
+		// Clamp input to [-MAX_INPUT, MAX_INPUT]
+		CollectionProducer clampedInput = max(min(input, c(MAX_INPUT)), c(-MAX_INPUT));
+
+		// Get coefficient and history producers
+		Producer<PackedCollection> a1 = data.getA1();
+		Producer<PackedCollection> a2 = data.getA2();
+		Producer<PackedCollection> a3 = data.getA3();
+		Producer<PackedCollection> b1 = data.getB1();
+		Producer<PackedCollection> b2 = data.getB2();
+		Producer<PackedCollection> inHist0 = data.getInputHistory0();
+		Producer<PackedCollection> inHist1 = data.getInputHistory1();
+		Producer<PackedCollection> outHist0 = data.getOutputHistory0();
+		Producer<PackedCollection> outHist1 = data.getOutputHistory1();
+
+		// Apply IIR filter: y = a1*x + a2*x[n-1] + a3*x[n-2] - b1*y[n-1] - b2*y[n-2]
+		CollectionProducer outputVal = subtract(
+				subtract(
+						add(add(multiply(a1, clampedInput), multiply(a2, inHist0)), multiply(a3, inHist1)),
+						multiply(b1, outHist0)),
+				multiply(b2, outHist1));
+		ops.add(a(p(data.output()), outputVal));
+
+		// Update history buffers (order matters - read before overwrite)
+		ops.add(a(p(data.inputHistory1()), inHist0));
+		ops.add(a(p(data.inputHistory0()), clampedInput));
+		ops.add(a(p(data.outputHistory2()), outHist1));
+		ops.add(a(p(data.outputHistory1()), outHist0));
+		ops.add(a(p(data.outputHistory0()), data.getOutput()));
+
+		return ops;
 	}
 
 	@Override

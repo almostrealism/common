@@ -19,10 +19,10 @@ package org.almostrealism.time.test;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
-public class TemporalFeaturesTest implements TestFeatures {
+public class TemporalFeaturesTest extends TestSuiteBase {
 	protected double[] lowPassCoefficients(double cutoff, int sampleRate, int filterOrder) {
 		double[] coefficients = new double[filterOrder + 1];
 		double normalizedCutoff = 2 * cutoff / sampleRate;

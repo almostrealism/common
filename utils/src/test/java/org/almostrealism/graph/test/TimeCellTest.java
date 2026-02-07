@@ -22,10 +22,10 @@ import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.TimeCell;
 import org.almostrealism.hardware.computations.Assignment;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
-public class TimeCellTest implements TestFeatures {
+public class TimeCellTest extends TestSuiteBase {
 	@Test(timeout = 10000)
 	public void timeCell() {
 		TimeCell cell = new TimeCell(null, c(44100));

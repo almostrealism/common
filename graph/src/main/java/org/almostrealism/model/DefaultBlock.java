@@ -99,6 +99,11 @@ public class DefaultBlock implements Block {
 
 					DefaultBlock.this.downstream = r;
 				}
+
+				@Override
+				public Receptor<PackedCollection> getReceptor() {
+					return DefaultBlock.this.downstream;
+				}
 			};
 		}
 

@@ -109,6 +109,11 @@ public class BranchBlock implements Block {
 
 					BranchBlock.this.downstream = r;
 				}
+
+				@Override
+				public Receptor<PackedCollection> getReceptor() {
+					return BranchBlock.this.downstream;
+				}
 			};
 		}
 

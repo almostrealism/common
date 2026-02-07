@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2026 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -26,6 +26,7 @@ import org.almostrealism.Ops;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.DynamicCollectionProducer;
 import org.almostrealism.graph.Cell;
+import org.almostrealism.graph.Receptor;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
@@ -148,6 +149,21 @@ public class CompiledModel implements Destroyable, CodeFeatures {
 	public TraversalPolicy getInputShape() { return inputShapes.get(0); }
 
 	/**
+	 * Returns the number of inputs this model expects.
+	 *
+	 * @return the number of inputs (primary + auxiliary)
+	 */
+	public int getInputCount() { return inputShapes.size(); }
+
+	/**
+	 * Returns the shape of a specific input.
+	 *
+	 * @param index the input index (0 = primary input)
+	 * @return the shape expected for that input
+	 */
+	public TraversalPolicy getInputShape(int index) { return inputShapes.get(index); }
+
+	/**
 	 * Returns the output shape.
 	 *
 	 * @return the shape of the model output
@@ -224,8 +240,17 @@ public class CompiledModel implements Destroyable, CodeFeatures {
 		InputManager grad = new InputManager(model.lastBlock().getOutputShape());
 
 		PackedCollection output = new PackedCollection(model.lastBlock().getOutputShape());
-		model.lastBlock().getForward().setReceptor(out ->
-				Ops.o().copy("Model Forward Output", out, Ops.o().p(output), output.getMemLength()));
+		Receptor<PackedCollection> outputReceptor = out ->
+				Ops.o().copy("Model Forward Output", out, Ops.o().p(output), output.getMemLength());
+
+		// Chain with existing receptor if one was set (e.g., via andThen() for cache writes)
+		Cell<PackedCollection> lastForward = model.lastBlock().getForward();
+		Receptor<PackedCollection> existingReceptor = lastForward.getReceptor();
+		if (existingReceptor != null) {
+			lastForward.setReceptor(Receptor.to(existingReceptor, outputReceptor));
+		} else {
+			lastForward.setReceptor(outputReceptor);
+		}
 
 		PackedCollection gradOut;
 

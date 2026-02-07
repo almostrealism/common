@@ -22,14 +22,14 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.test.KernelAssertions;
 import org.almostrealism.hardware.AcceleratedComputationOperation;
 import org.almostrealism.hardware.OperationList;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
 import java.util.Arrays;
 import java.util.stream.IntStream;
 
-public class KernelOperationTests implements TestFeatures, KernelAssertions {
+public class KernelOperationTests extends TestSuiteBase implements KernelAssertions {
 	@Test(timeout = 30000)
 	public void assignment() {
 		PackedCollection x = new PackedCollection(shape(10)).traverse();

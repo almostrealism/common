@@ -21,7 +21,7 @@ import org.almostrealism.audio.tone.KeyNumbering;
 import org.almostrealism.audio.tone.KeyboardTuning;
 import org.almostrealism.audio.tone.WesternChromatic;
 import org.almostrealism.time.Frequency;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -29,7 +29,7 @@ import org.junit.Test;
  * Tests for {@link DefaultKeyboardTuning} covering standard musical
  * tuning with 12-tone equal temperament based on A4 = 440 Hz.
  */
-public class DefaultKeyboardTuningTest implements TestFeatures {
+public class DefaultKeyboardTuningTest extends TestSuiteBase {
 
 	private static final double FREQ_TOLERANCE = 0.01; // Hz tolerance for frequency comparison
 	private static final double RATIO_TOLERANCE = 0.0001; // Tolerance for ratio comparisons

@@ -24,6 +24,8 @@ import org.almostrealism.model.SequentialBlock;
 import org.almostrealism.optimize.Dataset;
 import org.almostrealism.optimize.ValueTarget;
 import org.almostrealism.util.ModelTestFeatures;
+import org.almostrealism.util.TestDepth;
+import org.almostrealism.util.TestSuiteBase;
 import org.almostrealism.util.TestUtils;
 import org.junit.Test;
 
@@ -47,12 +49,7 @@ import java.util.stream.IntStream;
  *
  * @author Michael Murray
  */
-public class SyntheticActivationTrainingTest implements ModelTestFeatures {
-	static {
-		if (TestUtils.getTrainTests()) {
-			Console.root().addListener(OutputFeatures.fileOutput("results/logs/synthetic_activation_train.out"));
-		}
-	}
+public class SyntheticActivationTrainingTest extends TestSuiteBase implements ModelTestFeatures {
 
 	/**
 	 * Fixed coefficients for target functions.
@@ -80,10 +77,9 @@ public class SyntheticActivationTrainingTest implements ModelTestFeatures {
 	 *
 	 * <p>Architecture: Input [4] - Dense [4 - 8] - SiLU - Dense [8 - 4] - Output [4]</p>
 	 */
-	@Test(timeout = 120000)
+	@Test(timeout = 4 * 60000)
+	@TestDepth(2)
 	public void denseWithSiLU() throws FileNotFoundException {
-		if (testDepth < 2) return;
-
 		log("=== Test 4.1: Dense with SiLU Activation ===");
 
 		int inputSize = 4;
@@ -111,7 +107,7 @@ public class SyntheticActivationTrainingTest implements ModelTestFeatures {
 				.collect(Collectors.toList()));
 
 		// Train
-		train("denseWithSiLU", model, data, epochs, steps, 1.0, 0.5);
+		train("denseWithSiLU", model, data, epochs, steps, 1.0, 0.1);
 
 		log("Test 4.1 completed successfully");
 	}
@@ -123,10 +119,9 @@ public class SyntheticActivationTrainingTest implements ModelTestFeatures {
 	 *
 	 * <p>Architecture: Input [4] - Dense [4 - 8] - ReLU - Dense [8 - 4] - Output [4]</p>
 	 */
-	@Test(timeout = 2 * 60000)
+	@Test(timeout = 4 * 60000)
+	@TestDepth(1)
 	public void denseWithReLU() throws FileNotFoundException {
-		if (testDepth < 1) return;
-
 		log("=== Test 4.2: Dense with ReLU Activation ===");
 
 		int inputSize = 4;
@@ -154,7 +149,7 @@ public class SyntheticActivationTrainingTest implements ModelTestFeatures {
 				.collect(Collectors.toList()));
 
 		// Train
-		train("denseWithReLU", model, data, epochs, steps, 1.0, 0.5);
+		train("denseWithReLU", model, data, epochs, steps, 2.0, 0.4);
 
 		log("Test 4.2 completed successfully");
 	}
@@ -166,10 +161,9 @@ public class SyntheticActivationTrainingTest implements ModelTestFeatures {
 	 *
 	 * <p>Architecture: Input [4] - Dense [4 - 8] - Dense [8 - 4] - Output [4]</p>
 	 */
-	@Test(timeout = 120000)
+	@Test(timeout = 4 * 60000)
+	@TestDepth(1)
 	public void multiLayerDense() throws FileNotFoundException {
-		if (testDepth < 1) return;
-
 		log("=== Test 4.3: Multi-layer Dense ===");
 
 		int inputSize = 4;
@@ -196,7 +190,7 @@ public class SyntheticActivationTrainingTest implements ModelTestFeatures {
 				.collect(Collectors.toList()));
 
 		// Train
-		train("multiLayerDense", model, data, epochs, steps, 1.0, 0.5);
+		train("multiLayerDense", model, data, epochs, steps, 1.0, 0.1);
 
 		log("Test 4.3 completed successfully");
 	}

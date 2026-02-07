@@ -3,10 +3,10 @@ package org.almostrealism.algebra.computations.test;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
-public class MinMaxTests implements TestFeatures {
+public class MinMaxTests extends TestSuiteBase {
 
 	@Test(timeout = 10000)
 	public void min() {

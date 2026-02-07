@@ -1,15 +1,14 @@
 package org.almostrealism.ml.qwen3;
 
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 import java.util.Arrays;
 
-import static org.junit.Assert.*;
-
 /**
  * Tests for Qwen3Tokenizer.
  */
-public class Qwen3TokenizerTest {
+public class Qwen3TokenizerTest extends TestSuiteBase {
 
 	@Test
 	public void testBasicEncoding() {
@@ -150,7 +149,7 @@ public class Qwen3TokenizerTest {
 			System.out.println("[PASS] 'Hello' encodes to 9707 (matches PyTorch)");
 		} else {
 			System.out.println("[INFO] 'Hello' did not encode to 9707 (got " +
-				Arrays.toString(helloTokens) + ")");
+					Arrays.toString(helloTokens) + ")");
 			// Show what token 9707 decodes to
 			String token9707 = tokenizer.decode(new int[]{9707});
 			System.out.println("Token 9707 decodes to: '" + token9707 + "'");

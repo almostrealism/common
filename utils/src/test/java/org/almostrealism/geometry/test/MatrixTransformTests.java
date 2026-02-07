@@ -20,10 +20,10 @@ import org.almostrealism.algebra.Vector;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.geometry.TransformMatrix;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
-public class MatrixTransformTests implements TestFeatures {
+public class MatrixTransformTests extends TestSuiteBase {
 	@Test(timeout = 10000)
 	public void scaleTranslateThenTransform() {
 		scaleAndTranslate();
@@ -83,15 +83,15 @@ public class MatrixTransformTests implements TestFeatures {
 
 	@Test(timeout = 10000)
 	public void scaleAndTranslate() {
-		TransformMatrix matrix = new TransformMatrix(new double[][] {
-				{ 0.25, 0.0,  0.0,   0.0 },
-				{ 0.0,  0.25, 0.0,   3.4 },
-				{ 0.0,  0.0,  0.25, -3.0 },
-				{ 0.0,  0.0,  0.0,   1.0 }
+		TransformMatrix matrix = new TransformMatrix(new double[][]{
+				{0.25, 0.0, 0.0, 0.0},
+				{0.0, 0.25, 0.0, 3.4},
+				{0.0, 0.0, 0.25, -3.0},
+				{0.0, 0.0, 0.0, 1.0}
 		});
 
 		CollectionProducer transform = transform(matrix,
-				ray(1.0, 2.0, 3.0,4.0, 5.0, 6.0));
+				ray(1.0, 2.0, 3.0, 4.0, 5.0, 6.0));
 		Ray r = new Ray(transform.evaluate(), 0);
 		log(r);
 

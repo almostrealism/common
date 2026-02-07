@@ -16,23 +16,24 @@
 
 package org.almostrealism.audio.filter.test;
 
+import org.almostrealism.audio.AudioTestFeatures;
 import org.almostrealism.audio.CellFeatures;
 import org.almostrealism.audio.CellList;
 import org.almostrealism.audio.filter.DelayNetwork;
 import org.almostrealism.audio.line.OutputLine;
 import org.almostrealism.graph.TimeCell;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 import java.io.File;
 import java.util.function.Supplier;
 
-public class ReverbCellTests implements CellFeatures, TestFeatures {
+public class ReverbCellTests extends TestSuiteBase implements CellFeatures, AudioTestFeatures {
 	private final int sampleRate = OutputLine.sampleRate;
 
 	@Test
 	public void reverb1() {
-		CellList c = w(0, "Library/Snare Perc DD.wav")
+		CellList c = w(0, getTestWavPath())
 				.map(fc(i -> new DelayNetwork(sampleRate, false)))
 				.o(i -> new File("results/reverb1.wav"));
 		Supplier<Runnable> r = c.sec(12);
@@ -43,7 +44,7 @@ public class ReverbCellTests implements CellFeatures, TestFeatures {
 	public void reverbAutomation() {
 		TimeCell clock = new TimeCell();
 
-		CellList c = w(0, c(0.35), "Library/organ.wav")
+		CellList c = w(0, c(0.35), getTestWavPath())
 				.map(fc(i -> in -> multiply(in, c(1.0).add(sin(clock.time(sampleRate))))))
 				.map(fc(i -> new DelayNetwork(sampleRate, false)))
 				.addRequirement(clock)
@@ -54,7 +55,7 @@ public class ReverbCellTests implements CellFeatures, TestFeatures {
 
 	@Test
 	public void delayReverb() {
-		CellList c = w(0, "Library/Snare Perc DD.wav")
+		CellList c = w(0, getTestWavPath())
 				.d(i -> c(2.0))
 				.map(fc(i -> new DelayNetwork(sampleRate, false)))
 				.o(i -> new File("results/delay-reverb.wav"));

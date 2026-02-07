@@ -21,10 +21,10 @@ import org.almostrealism.algebra.Vector;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.space.MeshData;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
-public class PointExtractionTest implements TestFeatures {
+public class PointExtractionTest extends TestSuiteBase {
 
 	@Test(timeout = 10000)
 	public void batchEdgeComputation() {
@@ -97,12 +97,20 @@ public class PointExtractionTest implements TestFeatures {
 		PackedCollection v2 = new PackedCollection(shape(2, 3));
 
 		// Pair 0: [1,2,3] - [0,1,0] = [1,1,3]
-		v1.setMem(0, 1.0); v1.setMem(1, 2.0); v1.setMem(2, 3.0);
-		v2.setMem(0, 0.0); v2.setMem(1, 1.0); v2.setMem(2, 0.0);
+		v1.setMem(0, 1.0);
+		v1.setMem(1, 2.0);
+		v1.setMem(2, 3.0);
+		v2.setMem(0, 0.0);
+		v2.setMem(1, 1.0);
+		v2.setMem(2, 0.0);
 
 		// Pair 1: [5,6,7] - [2,3,4] = [3,3,3]
-		v1.setMem(3, 5.0); v1.setMem(4, 6.0); v1.setMem(5, 7.0);
-		v2.setMem(3, 2.0); v2.setMem(4, 3.0); v2.setMem(5, 4.0);
+		v1.setMem(3, 5.0);
+		v1.setMem(4, 6.0);
+		v1.setMem(5, 7.0);
+		v2.setMem(3, 2.0);
+		v2.setMem(4, 3.0);
+		v2.setMem(5, 4.0);
 
 		log("\n=== Batch Subtract Test ===");
 
@@ -311,13 +319,13 @@ public class PointExtractionTest implements TestFeatures {
 		triangle(c(p(reshaped))).get().into(output.traverse(1)).evaluate();
 
 		log("\nTriangle 0 normal: [" +
-			output.get(0).get(3).toDouble(0) + ", " +
-			output.get(0).get(3).toDouble(1) + ", " +
-			output.get(0).get(3).toDouble(2) + "]");
+				output.get(0).get(3).toDouble(0) + ", " +
+				output.get(0).get(3).toDouble(1) + ", " +
+				output.get(0).get(3).toDouble(2) + "]");
 		log("Triangle 1 normal: [" +
-			output.get(1).get(3).toDouble(0) + ", " +
-			output.get(1).get(3).toDouble(1) + ", " +
-			output.get(1).get(3).toDouble(2) + "]");
+				output.get(1).get(3).toDouble(0) + ", " +
+				output.get(1).get(3).toDouble(1) + ", " +
+				output.get(1).get(3).toDouble(2) + "]");
 
 		// Triangle 0 should have normal [0, 0, 1]
 		assertEquals(0.0, output.get(0).get(3).toDouble(0));
@@ -445,21 +453,39 @@ public class PointExtractionTest implements TestFeatures {
 
 		// Triangle 0: vertices (0,1,0), (-1,-1,0), (1,-1,0)
 		// Occupies indices 0-8 (9 scalars)
-		flatData.setMem(0, 0.0); flatData.setMem(1, 1.0); flatData.setMem(2, 0.0);    // v0
-		flatData.setMem(3, -1.0); flatData.setMem(4, -1.0); flatData.setMem(5, 0.0);  // v1
-		flatData.setMem(6, 1.0); flatData.setMem(7, -1.0); flatData.setMem(8, 0.0);   // v2
+		flatData.setMem(0, 0.0);
+		flatData.setMem(1, 1.0);
+		flatData.setMem(2, 0.0);    // v0
+		flatData.setMem(3, -1.0);
+		flatData.setMem(4, -1.0);
+		flatData.setMem(5, 0.0);  // v1
+		flatData.setMem(6, 1.0);
+		flatData.setMem(7, -1.0);
+		flatData.setMem(8, 0.0);   // v2
 
 		// Triangle 1: vertices (-1,1,-1), (-1,-1,0), (0,1,0)
 		// Occupies indices 9-17
-		flatData.setMem(9, -1.0); flatData.setMem(10, 1.0); flatData.setMem(11, -1.0);   // v0
-		flatData.setMem(12, -1.0); flatData.setMem(13, -1.0); flatData.setMem(14, 0.0);  // v1
-		flatData.setMem(15, 0.0); flatData.setMem(16, 1.0); flatData.setMem(17, 0.0);    // v2
+		flatData.setMem(9, -1.0);
+		flatData.setMem(10, 1.0);
+		flatData.setMem(11, -1.0);   // v0
+		flatData.setMem(12, -1.0);
+		flatData.setMem(13, -1.0);
+		flatData.setMem(14, 0.0);  // v1
+		flatData.setMem(15, 0.0);
+		flatData.setMem(16, 1.0);
+		flatData.setMem(17, 0.0);    // v2
 
 		// Triangle 2: vertices (0,1,0), (1,-1,0), (1,1,-1)
 		// Occupies indices 18-26
-		flatData.setMem(18, 0.0); flatData.setMem(19, 1.0); flatData.setMem(20, 0.0);    // v0
-		flatData.setMem(21, 1.0); flatData.setMem(22, -1.0); flatData.setMem(23, 0.0);   // v1
-		flatData.setMem(24, 1.0); flatData.setMem(25, 1.0); flatData.setMem(26, -1.0);   // v2
+		flatData.setMem(18, 0.0);
+		flatData.setMem(19, 1.0);
+		flatData.setMem(20, 0.0);    // v0
+		flatData.setMem(21, 1.0);
+		flatData.setMem(22, -1.0);
+		flatData.setMem(23, 0.0);   // v1
+		flatData.setMem(24, 1.0);
+		flatData.setMem(25, 1.0);
+		flatData.setMem(26, -1.0);   // v2
 
 		log("\n=== Mesh Data Structure Test ===");
 

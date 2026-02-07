@@ -30,14 +30,14 @@ import org.almostrealism.model.Block;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 import org.almostrealism.model.SequentialBlock;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.almostrealism.util.TestUtils;
 import org.junit.Test;
 
 import java.util.ArrayList;
 import java.util.List;
 
-public class AttentionTests implements AttentionFeatures, TestFeatures {
+public class AttentionTests extends TestSuiteBase implements AttentionFeatures {
 
 	private static final int TEST_BATCH_SIZE = 1;
 	private static final int TEST_SEQ_LEN = 4;
@@ -64,11 +64,11 @@ public class AttentionTests implements AttentionFeatures, TestFeatures {
 		keyCache.fill(pos -> Math.random());
 
 		Producer<PackedCollection> o = c(p(keyCache)).traverse(1).map(v -> v.multiply(p(q)))
-											.traverse(2).sum()
-											.divide(c(Math.sqrt(headSize)))
-											.reshape(shape(seqLength, heads))
-											.enumerate(1, 1)
-											.reshape(outputShape);
+				.traverse(2).sum()
+				.divide(c(Math.sqrt(headSize)))
+				.reshape(shape(seqLength, heads))
+				.enumerate(1, 1)
+				.reshape(outputShape);
 
 //		PackedCollection att = o.get().evaluate();
 		// TODO This should not require optimization to pass, but currently it does
@@ -117,8 +117,8 @@ public class AttentionTests implements AttentionFeatures, TestFeatures {
 		int p = seqLength - 1;
 
 		CollectionProducer v = c(p(values)).reshape(shape(seqLength, dim))
-														.enumerate(1, 1)
-														.reshape(shape(heads, headSize, seqLength));
+				.enumerate(1, 1)
+				.reshape(shape(heads, headSize, seqLength));
 		CollectionProducer a = c(p(att)).traverse(1).repeat(headSize);
 		CollectionProducer o = multiply(traverseEach(a), traverseEach(v)).traverse(2).sum().reshape(finalShape);
 
@@ -182,7 +182,7 @@ public class AttentionTests implements AttentionFeatures, TestFeatures {
 		main.reshape(batchSize, seqLen, 3, embedDim);
 
 		// Test the QKV split using subset operations
-		List<Block> qkv = main.split(shape( batchSize, seqLen, 1, embedDim), 0);
+		List<Block> qkv = main.split(shape(batchSize, seqLen, 1, embedDim), 0);
 		SequentialBlock q = (SequentialBlock) qkv.get(0).reshape(batchSize, seqLen, embedDim);
 		SequentialBlock k = (SequentialBlock) qkv.get(1).reshape(batchSize, seqLen, embedDim);
 		SequentialBlock v = (SequentialBlock) qkv.get(2).reshape(batchSize, seqLen, embedDim);
@@ -353,7 +353,7 @@ public class AttentionTests implements AttentionFeatures, TestFeatures {
 
 		// Create simple test data
 		PackedCollection input = new PackedCollection(shape(batchSize, seqLen, embedDim)).randnFill();
-		
+
 		// QKV weight that keeps values mostly unchanged (near-identity)
 		PackedCollection toQKV = new PackedCollection(shape(embedDim * 3, embedDim));
 		toQKV.fill(pos -> {
@@ -365,17 +365,17 @@ public class AttentionTests implements AttentionFeatures, TestFeatures {
 			else if (outIdx >= 2 * embedDim && inIdx == (outIdx - 2 * embedDim)) return 1.0;
 			else return 0.0;
 		});
-		
+
 		// Identity output projection
 		PackedCollection toOut = new PackedCollection(shape(embedDim, embedDim));
 		toOut.fill(pos -> pos[0] == pos[1] ? 1.0 : 0.0);
-		
+
 		// Identity norms
 		PackedCollection qNormWeight = new PackedCollection(shape(dimHead)).fill(pos -> 1.0);
 		PackedCollection qNormBias = new PackedCollection(shape(dimHead)).fill(pos -> 0.0);
 		PackedCollection kNormWeight = new PackedCollection(shape(dimHead)).fill(pos -> 1.0);
 		PackedCollection kNormBias = new PackedCollection(shape(dimHead)).fill(pos -> 0.0);
-		
+
 		// Simple inv_freq for rotary
 		PackedCollection invFreq = new PackedCollection(shape(dimHead / 4)).fill(pos -> 0.01);
 
@@ -390,14 +390,14 @@ public class AttentionTests implements AttentionFeatures, TestFeatures {
 
 		Model model = new Model(shape(batchSize, seqLen, embedDim));
 		model.sequential().add(attention);
-		
+
 		CompiledModel compiled = model.compile(false);
 		PackedCollection output = compiled.forward(input);
 
 		log("Simplified attention test:");
 		log("Input shape: " + input.getShape() + ", total: " + input.doubleStream().map(Math::abs).sum());
 		log("Output shape: " + output.getShape() + ", total: " + output.doubleStream().map(Math::abs).sum());
-		
+
 		// The output should be somewhat similar to input with these near-identity weights
 		double diff = compare(input, output);
 		log("Difference between input and output: " + diff);
@@ -493,10 +493,10 @@ public class AttentionTests implements AttentionFeatures, TestFeatures {
 	}
 
 	/**
-	* Tests sequenceCrossAttention against reference data generated from the actual
-	* DiT Attention class in cross-attention mode. This ensures our Java implementation
-	* matches the real Python cross-attention behavior.
-	*/
+	 * Tests sequenceCrossAttention against reference data generated from the actual
+	 * DiT Attention class in cross-attention mode. This ensures our Java implementation
+	 * matches the real Python cross-attention behavior.
+	 */
 	@Test
 	public void sequenceCrossAttentionCompare() throws Exception {
 		if (testProfileIs(TestUtils.PIPELINE)) return;
@@ -581,10 +581,10 @@ public class AttentionTests implements AttentionFeatures, TestFeatures {
 
 		// Compile and run the model
 		CompiledModel mainCompiled = mainModel.compile(false);
-		
+
 		// Set context input in context model
 		contextModel.compile(false).forward(contextInput);
-		
+
 		// Run main model with cross-attention
 		PackedCollection actualOutput = mainCompiled.forward(mainInput);
 
@@ -601,10 +601,10 @@ public class AttentionTests implements AttentionFeatures, TestFeatures {
 	}
 
 	/**
-	* Tests feedForward against reference data generated from the actual
-	* DiT FeedForward class. This ensures our Java SwiGLU implementation
-	* matches the real Python behavior.
-	*/
+	 * Tests feedForward against reference data generated from the actual
+	 * DiT FeedForward class. This ensures our Java SwiGLU implementation
+	 * matches the real Python behavior.
+	 */
 	@Test
 	public void feedForwardCompare() throws Exception {
 		if (testProfileIs(TestUtils.PIPELINE)) return;
@@ -682,11 +682,11 @@ public class AttentionTests implements AttentionFeatures, TestFeatures {
 	}
 
 	/**
-	* Tests transformerBlock against reference data generated from the actual
-	* DiT TransformerBlock class. This ensures our Java implementation of the
-	* complete transformer block (self-attention + cross-attention + feed-forward)
-	* matches the real Python behavior.
-	*/
+	 * Tests transformerBlock against reference data generated from the actual
+	 * DiT TransformerBlock class. This ensures our Java implementation of the
+	 * complete transformer block (self-attention + cross-attention + feed-forward)
+	 * matches the real Python behavior.
+	 */
 	@Test
 	public void transformerBlockCompare() throws Exception {
 		if (testProfileIs(TestUtils.PIPELINE)) return;
@@ -778,7 +778,7 @@ public class AttentionTests implements AttentionFeatures, TestFeatures {
 
 		// Create main model with transformer block
 		Model model = new Model(shape(batchSize, seqLen, dim));
-		
+
 		// Create context input using addInput
 		SequentialBlock contextBlock = new SequentialBlock(shape(batchSize, contextSeqLen, contextDim));
 		// Context block passes input through as-is for this test

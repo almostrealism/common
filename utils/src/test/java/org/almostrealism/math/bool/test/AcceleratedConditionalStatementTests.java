@@ -22,13 +22,13 @@ import org.almostrealism.algebra.Vector;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.geometry.Ray;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
 import java.util.stream.IntStream;
 
-public class AcceleratedConditionalStatementTests implements TestFeatures {
+public class AcceleratedConditionalStatementTests extends TestSuiteBase {
 
 	@Test(timeout = 10000)
 	public void randomLessThanKernel() {
@@ -76,8 +76,8 @@ public class AcceleratedConditionalStatementTests implements TestFeatures {
 		if (skipKnownIssues) return;
 
 		Evaluable<PackedCollection> lt = lessThan(
-					oDotd(ray(i -> Math.random())),
-					oDotd(v(Ray.shape(), 0)))
+				oDotd(ray(i -> Math.random())),
+				oDotd(v(Ray.shape(), 0)))
 				.get();
 
 		PackedCollection r = lt.evaluate(ray(i -> Math.random()).evaluate());
@@ -93,7 +93,7 @@ public class AcceleratedConditionalStatementTests implements TestFeatures {
 				oDotd(v(Ray.shape(), 0)));
 		CollectionProducer lt2 =
 				lessThan(length(crossProduct(vector(i -> Math.random()), v(Vector.shape(), 1))),
-														lt1, c(1), c(2), false);
+						lt1, c(1), c(2), false);
 
 		double v = lt2.get().evaluate(
 				ray(i -> Math.random()).evaluate(),

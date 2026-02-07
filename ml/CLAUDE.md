@@ -2,6 +2,48 @@
 
 ---
 
+# 🛑 STOP. READ THIS FIRST. 🛑
+
+## ⚠️ ABSOLUTE PREREQUISITE: USE AR-DOCS MCP BEFORE ANY ACTION ⚠️
+
+**BEFORE you write ANY code, make ANY assumptions, or take ANY action:**
+
+1. `mcp__ar-docs__search_ar_docs query:"<relevant terms>"`
+2. `mcp__ar-docs__read_ar_module module:"ml"` (or relevant module)
+3. `mcp__ar-docs__read_quick_reference`
+
+**DO NOT** assume you know how something works. **DO NOT** speculate. **LOOK IT UP FIRST.**
+
+See [../CLAUDE.md](../CLAUDE.md) for the full policy on why this is mandatory.
+
+---
+
+## ⚠️ CRITICAL: DO NOT COMMIT CODE ⚠️
+
+**THIS IS AN ABSOLUTE RULE WITH NO EXCEPTIONS.**
+
+- **NEVER** use `git commit` commands
+- Claude does not have the ability to create valid commits
+- You can only **stage changes** using `git add`
+- The human developer must review and commit all changes themselves
+
+See [../CLAUDE.md](../CLAUDE.md) for full details on this policy.
+
+---
+
+## ⚠️ CRITICAL: DO NOT MODIFY POM.XML FILES ⚠️
+
+**THIS IS AN ABSOLUTE RULE WITH NO EXCEPTIONS.**
+
+- **NEVER** add dependencies to pom.xml files
+- **NEVER** assume you understand the module dependency graph
+- **IF IN DOUBT, DO NOT TOUCH THE POM FILE**
+- Write your code, run `mvn compile`, and if it fails inform the user
+
+See [../CLAUDE.md](../CLAUDE.md) for full details on this policy.
+
+---
+
 ## ⚠️ CRITICAL: NEVER REFERENCE VERSION NUMBERS ⚠️
 
 **THIS IS AN ABSOLUTE RULE WITH NO EXCEPTIONS.**
@@ -15,6 +57,38 @@
 - If you need to mention a dependency, use just its name without any version
 
 **Why this matters:** Hardcoded version numbers in documentation become outdated instantly, cause confusion, and lead to errors when developers trust stale documentation over actual build files.
+
+---
+
+## ⚠️ CRITICAL: USE MCP TEST RUNNER FOR ALL TESTS ⚠️
+
+**THIS IS AN ABSOLUTE RULE WITH NO EXCEPTIONS.**
+
+- **NEVER** use `Bash` tool with `mvn test` commands to run tests
+- **ALWAYS** use the `mcp__ar-test-runner__start_test_run` MCP tool for running tests
+
+```
+# Correct way to run ML module tests:
+mcp__ar-test-runner__start_test_run
+  module: "ml"
+  profile: "pipeline"  # Skips comparison tests that need external data
+  timeout_minutes: 10
+
+# Then check status and failures:
+mcp__ar-test-runner__get_run_status  run_id: "<id>"
+mcp__ar-test-runner__get_run_failures  run_id: "<id>"
+```
+
+See [../CLAUDE.md](../CLAUDE.md) for full MCP test runner documentation.
+
+---
+
+## ⚠️ CRITICAL: TEST CLASS REQUIREMENTS ⚠️
+
+All test classes **MUST** extend `TestSuiteBase`. See [../CLAUDE.md](../CLAUDE.md) for:
+- Why `TestSuiteBase` is required (test grouping, depth filtering)
+- Why you must NEVER manually add `@Rule TestDepthRule`
+- Why you must ALWAYS consult ar-docs MCP before infrastructure changes
 
 ---
 
@@ -109,14 +183,48 @@ This creates a directory of `.pb` files that StateDictionary can load directly.
 
 ### Environment Variables Required
 
-See [../claude.md](../claude.md) for AR_HARDWARE setup instructions.
+See [../claude.md](../claude.md) for AR_HARDWARE setup instructions. Note that the MCP test runner handles these automatically.
+
+### Memory Configuration for Large Models
+
+Large models (e.g., full Oobleck autoencoder, LLMs) require more memory than the default 8GB:
+
+```bash
+# Increase memory for large ML models
+export AR_HARDWARE_MEMORY_SCALE=8   # 16GB
+export AR_HARDWARE_MEMORY_SCALE=9   # 32GB
+```
+
+**If you see `HardwareException: Memory max reached`**, increase `AR_HARDWARE_MEMORY_SCALE`.
 
 ### Test Structure
 
+**⚠️ Use MCP test runner - NOT bash commands!**
+
+```
+# Run all ML tests with pipeline profile (skips comparison tests):
+mcp__ar-test-runner__start_test_run
+  module: "ml"
+  profile: "pipeline"
+
+# Run a specific test class:
+mcp__ar-test-runner__start_test_run
+  module: "ml"
+  test_classes: ["CausalMaskIsolationTest"]
+
+# Run a specific test method:
+mcp__ar-test-runner__start_test_run
+  module: "ml"
+  test_methods: [{"class": "CausalMaskIsolationTest", "method": "testCausalMaskDynamicPositionUpdates"}]
+```
+
+**Reference only** (what the MCP tool runs internally):
 ```bash
+# DO NOT RUN DIRECTLY - use MCP tool instead
+export AR_HARDWARE_MEMORY_SCALE=8 && \
 export AR_HARDWARE_LIBS=/home/developer/.libs/ && \
 export AR_HARDWARE_DRIVER=native && \
-mvn test -pl ml -Dtest=<TestName>
+mvn test -pl ml -Dtest=<TestName> -DAR_TEST_PROFILE=pipeline
 ```
 
 ### Test Output Logging

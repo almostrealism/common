@@ -44,6 +44,40 @@ shape.length(axis)                   // Axis size
 shape.getTotalSize()                 // Total size
 ```
 
+### Memory Copy Operations
+
+PackedCollection extends MemoryData, providing efficient memory transfer operations:
+
+```java
+// Copy entire collection to another (same size)
+target.setMem(0, source);                    // Copy all of source to target at offset 0
+
+// Copy with offsets and length
+target.setMem(targetOffset, source, srcOffset, length);
+
+// Copy a range
+target.setMem(source, srcOffset, length);    // Copy to target starting at 0
+```
+
+**Using CodeFeatures.copy()** (via interface - preferred for producer pattern):
+```java
+// Hardware-accelerated copy between producers
+Supplier<Runnable> copyOp = copy("my copy", sourceProducer, targetProducer, length);
+copyOp.get().run();  // Execute the copy
+```
+
+**Using into() pattern** (for evaluated results):
+```java
+// Evaluate producer directly into existing collection
+producer.get().into(destination).evaluate();
+
+// Example: normalize and store in-place
+normalize(cp(vector)).into(vector).evaluate();
+```
+
+> **Note**: `setMem(MemoryData)` is more efficient than element-by-element loops.
+> Both PackedCollection and other MemoryData implementations support these operations.
+
 ---
 
 ## Producer/Evaluable Pattern
@@ -91,6 +125,7 @@ producer.get(CPU);      // Force CPU
 | * | `a.multiply(b)` | Element-wise |
 | / | `a.divide(b)` | Element-wise |
 | - | `a.minus()` | Negate |
+| \|x\| | `a.abs()` | Absolute value |
 | ^ | `a.pow(n)` | Power |
 | √ | `a.sqrt()` | Square root |
 | exp | `a.exp()` | e^x |
@@ -121,6 +156,8 @@ producer.get(CPU);      // Force CPU
 | range | `a.range(shape, offset)` | Slice |
 | traverse | `a.traverse(axis)` | Iterate |
 | each | `a.each()` | Per-element |
+| concat | `concat(a, b, c)` | Concatenate along axis 0 |
+| concat | `concat(axis, a, b)` | Concatenate along specified axis |
 
 ### Comparison
 | Op | Method | Notes |
@@ -130,6 +167,18 @@ producer.get(CPU);      // Force CPU
 | < | `a.lessThan(b)` | |
 | ≤ | `a.lessThanOrEqual(b)` | |
 | = | `a.eq(b)` | Equality |
+
+### Trigonometry (via GeometryFeatures)
+| Op | Method | Notes |
+|----|--------|-------|
+| sin | `sin(a)` | Sine (requires `GeometryFeatures`) |
+| cos | `cos(a)` | Cosine (requires `GeometryFeatures`) |
+| tan | `tan(a)` | Tangent (requires `GeometryFeatures`) |
+| tanh | `tanh(a)` | Hyperbolic tangent |
+| sinw | `sinw(freq, phase, amp)` | Sinusoidal wave function |
+
+> **Note**: Trigonometric functions are in `GeometryFeatures`, not `CollectionFeatures`.
+> Import: `import org.almostrealism.geometry.GeometryFeatures;`
 
 ### Special
 | Op | Method | Notes |
@@ -327,6 +376,40 @@ data.reallocate(newSize);
 data.destroy();  // Release
 ```
 
+### MemoryData Interface
+
+PackedCollection implements `MemoryData`. Key operations:
+
+```java
+// Direct memory copy (efficient, hardware-accelerated)
+destination.setMem(0, source);                         // Copy all
+destination.setMem(destOffset, source, srcOffset, len); // Copy range
+
+// Read/write individual values
+double val = data.toDouble(index);
+data.setMem(index, value);
+
+// Bulk operations
+data.setMem(index, doubleArray, arrayOffset, length);  // From double[]
+data.getMem(floatArray, offset, length);               // To float[]
+```
+
+### MemoryDataCopy (Low-level)
+
+For explicit control over memory copy operations:
+
+```java
+import org.almostrealism.hardware.mem.MemoryDataCopy;
+
+// Create and execute a copy operation
+MemoryDataCopy copy = new MemoryDataCopy("my copy", source, target);
+copy.get().run();
+
+// With length limit
+MemoryDataCopy copy = new MemoryDataCopy("partial",
+    () -> source, () -> target, length);
+```
+
 ---
 
 ## Testing Pattern
@@ -360,6 +443,54 @@ mvn test -pl <module> -Dtest=<TestName>
 
 ---
 
+## Profiling
+
+### Enable/Disable
+```java
+import io.almostrealism.profile.OperationProfileNode;
+
+// Enable profiling
+OperationProfileNode profile = new OperationProfileNode("my_profile");
+Hardware.getLocalHardware().getCompileScope().setProfile(profile);
+
+// Run operations...
+model.forward(input);
+
+// Disable and save
+Hardware.getLocalHardware().getCompileScope().setProfile(null);
+profile.save("utils/results/my_profile.xml");
+```
+
+### CLI Analysis
+```bash
+# Find slowest operations
+mvn -q exec:java -pl tools \
+  -Dexec.mainClass=org.almostrealism.ui.ProfileAnalyzerCLI \
+  -Dexec.args="slowest utils/results/my_profile.xml 10"
+
+# Get compile vs run breakdown for node
+mvn -q exec:java -pl tools \
+  -Dexec.mainClass=org.almostrealism.ui.ProfileAnalyzerCLI \
+  -Dexec.args="breakdown utils/results/my_profile.xml 1047"
+```
+
+### Timing Categories
+| Entry Suffix | Meaning |
+|--------------|---------|
+| `" compile"` | Code generation + native compilation |
+| `" run"` | Kernel execution on hardware |
+
+### Duration Types
+| Method | Description |
+|--------|-------------|
+| `getMeasuredDuration()` | Direct wall-clock time |
+| `getSelfDuration()` | This node's metric only |
+| `getTotalDuration()` | Self + children |
+
+See [docs/internals/profiling.md](docs/internals/profiling.md) for full documentation.
+
+---
+
 ## Common Errors
 
 | Error | Cause | Fix |
@@ -385,13 +516,22 @@ import static org.almostrealism.collect.Shape.shape;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Evaluable;
 
+// Features (common interfaces to implement)
+import org.almostrealism.CodeFeatures;              // copy(), c(), p(), shape()
+import org.almostrealism.collect.CollectionFeatures; // concat(), add(), multiply()
+
 // Operations
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.PairFeatures;
 
+// Trigonometry (sin, cos, tan, tanh)
+import org.almostrealism.geometry.GeometryFeatures;
+
 // Hardware
 import org.almostrealism.hardware.Hardware;
+import org.almostrealism.hardware.MemoryData;          // Base interface for memory
+import org.almostrealism.hardware.mem.MemoryDataCopy;  // Explicit copy operations
 import static org.almostrealism.hardware.ComputeRequirement.*;
 
 // Graph

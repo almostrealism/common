@@ -37,22 +37,17 @@ public interface DiffusionTransformerFeatures extends AttentionFeatures, Diffusi
 				shape(batchSize, inFeatures),
 				shape(batchSize, outFeatures),
 				in -> {
-					CollectionProducer input = c(in);  // Shape: [batchSize, inFeatures]
-					CollectionProducer weights = cp(learnedWeights);  // Shape: [outFeatures // 2, inFeatures]
+					CollectionProducer input = c(in);
+					CollectionProducer weights = cp(learnedWeights);
 
-					// Compute f = 2 * pi * input @ weights.T as in Python FourierFeatures
-					// input: [batchSize, inFeatures] @ weights.T: [inFeatures, outFeatures // 2]
-					// -> [batchSize, outFeatures // 2]
 					CollectionProducer f = multiply(
 							c(2.0 * Math.PI),
 							matmul(input, weights.transpose(1))
 					);
 
-					// Calculate cos and sin components as in Python: torch.cat([f.cos(), f.sin()], dim=-1)
 					CollectionProducer cosValues = cos(f);
 					CollectionProducer sinValues = sin(f);
 
-					// Concatenate cos first, then sin (matching Python order)
 					return concat(shape(batchSize, outFeatures),
 							cosValues, sinValues);
 				},

@@ -6,12 +6,10 @@
 
     <groupId>org.almostrealism</groupId>
     <artifactId>common</artifactId>
-    <version>0.72</version>
+    <version>0.73</version>
 
 	<properties>
 		<jacoco.version>0.8.11</jacoco.version>
-		<maven.compiler.source>17</maven.compiler.source>
-		<maven.compiler.target>17</maven.compiler.target>
 		<kotlin.version>1.8.20</kotlin.version>
 
 		<protobuf.version>3.21.7</protobuf.version>
@@ -20,6 +18,9 @@
 		<!-- TODO - These should not be necessary -->
 		<javafx.version>21</javafx.version>
 		<javafx.classifier>mac-aarch64</javafx.classifier>
+
+		<!-- Flowtree dependencies -->
+		<dcache.version>0.24.1</dcache.version>
 	</properties>
 
 	<modules>
@@ -47,6 +48,16 @@
 		<module>tools</module>
 		<module>render</module>
 		<module>audio</module>
+		<module>music</module>
+		<module>compose</module>
+		<module>graphpersist</module>
+		<module>flowtreeapi</module>
+		<module>flowtree-python</module>
+		<module>flowtree</module>
+		<module>ml-onnx</module>
+		<module>ml-djl</module>
+		<module>spatial</module>
+		<module>utils-http</module>
 	</modules>
 
 	<packaging>pom</packaging>
@@ -62,8 +73,8 @@
 						<arg>-h</arg>
 						<arg>target/headers</arg>
 					</compilerArgs>
-					<source>11</source>
-					<target>11</target>
+					<source>17</source>
+					<target>17</target>
 				</configuration>
 			</plugin>
 			<plugin>
@@ -71,8 +82,8 @@
 				<artifactId>maven-surefire-plugin</artifactId>
 				<version>3.2.1</version>
 				<configuration>
-					<!-- Timeout in seconds for forked test processes (1 hour default) -->
-					<forkedProcessTimeoutInSeconds>3600</forkedProcessTimeoutInSeconds>
+					<!-- Timeout in seconds for forked test processes (4 hour default) -->
+					<forkedProcessTimeoutInSeconds>14400</forkedProcessTimeoutInSeconds>
 				</configuration>
 			</plugin>
 			<plugin>
@@ -131,11 +142,39 @@
 					</links>
 				</configuration>
 			</plugin>
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-checkstyle-plugin</artifactId>
+				<version>3.3.1</version>
+				<configuration>
+					<configLocation>checkstyle.xml</configLocation>
+					<consoleOutput>true</consoleOutput>
+					<failsOnError>true</failsOnError>
+					<includeTestSourceDirectory>true</includeTestSourceDirectory>
+				</configuration>
+				<executions>
+					<execution>
+						<id>validate</id>
+						<phase>validate</phase>
+						<goals>
+							<goal>check</goal>
+						</goals>
+					</execution>
+				</executions>
+				<dependencies>
+					<dependency>
+						<groupId>com.puppycrawl.tools</groupId>
+						<artifactId>checkstyle</artifactId>
+						<version>10.12.5</version>
+					</dependency>
+				</dependencies>
+			</plugin>
 		</plugins>
 	</build>
 
 	<dependencyManagement>
 		<dependencies>
+			<!-- Data and Persistence -->
 			<dependency>
 				<groupId>com.google.protobuf</groupId>
 				<artifactId>protobuf-java</artifactId>
@@ -155,6 +194,56 @@
 			</dependency>
 
 			<dependency>
+				<groupId>com.fasterxml.jackson.core</groupId>
+				<artifactId>jackson-databind</artifactId>
+				<version>2.16.1</version>
+			</dependency>
+			<dependency>
+				<groupId>com.fasterxml.jackson.dataformat</groupId>
+				<artifactId>jackson-dataformat-yaml</artifactId>
+				<version>2.16.1</version>
+			</dependency>
+
+			<!-- ML Libraries -->
+			<dependency>
+				<groupId>com.microsoft.onnxruntime</groupId>
+				<artifactId>onnxruntime</artifactId>
+				<version>1.22.0</version>
+			</dependency>
+
+			<dependency>
+				<groupId>ai.djl.sentencepiece</groupId>
+				<artifactId>sentencepiece</artifactId>
+				<version>0.33.0</version>
+			</dependency>
+
+			<!-- Python -->
+			<dependency>
+				<groupId>org.python</groupId>
+				<artifactId>jython-standalone</artifactId>
+				<version>2.7.2</version>
+			</dependency>
+
+			<!-- Cloud -->
+			<dependency>
+				<groupId>com.amazonaws</groupId>
+				<artifactId>aws-java-sdk</artifactId>
+				<version>1.11.289</version>
+			</dependency>
+
+			<!-- Slack SDK -->
+			<dependency>
+				<groupId>com.slack.api</groupId>
+				<artifactId>slack-api-client</artifactId>
+				<version>1.46.0</version>
+			</dependency>
+			<dependency>
+				<groupId>com.slack.api</groupId>
+				<artifactId>bolt-socket-mode</artifactId>
+				<version>1.46.0</version>
+			</dependency>
+
+			<dependency>
 				<groupId>junit</groupId>
 				<artifactId>junit</artifactId>
 				<version>4.12</version>
@@ -170,4 +259,13 @@
 			<url>https://maven.pkg.github.com/almostrealism/common</url>
 		</repository>
 	</distributionManagement>
+
+	<repositories>
+		<repository>
+			<id>dcache-releases</id>
+			<name>dCache.ORG maven repository</name>
+			<url>https://download.dcache.org/nexus/repository/public/</url>
+			<layout>default</layout>
+		</repository>
+	</repositories>
 </project>

@@ -61,15 +61,16 @@ public class Absolute extends Expression<Double> {
 	/**
 	 * Generates the string representation of this expression for the target language.
 	 * <p>
-	 * Produces an {@code abs(...)} function call wrapping the child expression.
+	 * Delegates to {@link LanguageOperations#abs(String)} for the appropriate function
+	 * name (e.g., {@code fabs()} for C/CUDA/OpenCL/Metal).
 	 * </p>
 	 *
 	 * @param lang the language operations provider used to generate language-specific syntax
-	 * @return a string in the form {@code "abs(childExpression)"}
+	 * @return a string in the form {@code "fabs(childExpression)"} or equivalent for the target language
 	 */
 	@Override
 	public String getExpression(LanguageOperations lang) {
-		return "abs(" + getChildren().get(0).getExpression(lang) + ")";
+		return lang.abs(getChildren().get(0).getExpression(lang));
 	}
 
 	/**

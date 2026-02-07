@@ -21,6 +21,7 @@ import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.ProducerComputation;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.scope.ArrayVariable;
+import io.almostrealism.streams.EvaluableStreamingAdapter;
 import io.almostrealism.streams.StreamingEvaluable;
 import io.almostrealism.uml.Multiple;
 import org.almostrealism.hardware.instructions.ComputableInstructionSetManager;
@@ -447,7 +448,8 @@ public class AcceleratedComputationEvaluable<T extends MemoryData>
 	 * Sets the downstream consumer for streaming evaluation results.
 	 *
 	 * <p>Once set, {@link #request(Object[])} will push results to this consumer
-	 * upon completion. The downstream can only be set once per evaluable instance.</p>
+	 * upon completion. The downstream can only be set once per evaluable instance
+	 * to prevent race conditions in concurrent execution.</p>
 	 *
 	 * <p>Example:</p>
 	 * <pre>{@code
@@ -458,31 +460,35 @@ public class AcceleratedComputationEvaluable<T extends MemoryData>
 	 * }</pre>
 	 *
 	 * @param consumer The consumer to receive evaluation results
-	 * @throws UnsupportedOperationException if downstream is already set
+	 * @throws UnsupportedOperationException if a different downstream is already set
 	 */
 	@Override
 	public void setDownstream(Consumer<T> consumer) {
-		if (downstream != null) {
-			throw new UnsupportedOperationException();
+		if (downstream != null && downstream != consumer) {
+			throw new UnsupportedOperationException(
+					"Cannot change downstream on AcceleratedComputationEvaluable; use async() to get a fresh wrapper");
 		}
-
 		this.downstream = consumer;
 	}
 
 	/**
-	 * Returns this evaluable configured for asynchronous execution.
+	 * Returns a new streaming evaluable wrapper for asynchronous execution.
 	 *
-	 * <p>Since {@link AcceleratedComputationEvaluable} already supports asynchronous
-	 * execution via {@link #request(Object[])}, this method simply returns {@code this}.
-	 * The provided executor is not used, as hardware kernel dispatch is already
-	 * non-blocking.</p>
+	 * <p>This method creates a new {@link EvaluableStreamingAdapter} wrapper around
+	 * this evaluable. Each call returns a fresh wrapper with its own downstream
+	 * consumer, allowing the same underlying evaluable to be used in multiple
+	 * concurrent execution contexts without race conditions.</p>
 	 *
-	 * @param executor The executor (ignored, hardware dispatch is inherently async)
-	 * @return This evaluable instance
+	 * <p>Note: Unlike the previous implementation that returned {@code this}, this
+	 * now creates a wrapper to avoid the race condition where multiple construct()
+	 * calls would overwrite each other's downstream consumers.</p>
+	 *
+	 * @param executor The executor for asynchronous operations
+	 * @return A new streaming evaluable wrapper
 	 */
 	@Override
 	public StreamingEvaluable<T> async(Executor executor) {
-		return this;
+		return new EvaluableStreamingAdapter<>(this, executor);
 	}
 
 	/**

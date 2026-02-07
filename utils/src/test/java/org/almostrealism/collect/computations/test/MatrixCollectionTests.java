@@ -17,11 +17,11 @@
 package org.almostrealism.collect.computations.test;
 
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
-public class MatrixCollectionTests implements TestFeatures {
+public class MatrixCollectionTests extends TestSuiteBase {
 	@Test(timeout = 30000)
 	public void matrixMultiplyMap() {
 		int size = 48;
@@ -35,7 +35,7 @@ public class MatrixCollectionTests implements TestFeatures {
 		weight.fill(pos -> Math.random());
 
 		kernelTest(() -> reduce(traverse(1, p(weight)),
-							v -> v.multiply(p(x)).sum()),
+						v -> v.multiply(p(x)).sum()),
 				output -> {
 					for (int i = 0; i < d; i++) {
 						double v = 0.0;

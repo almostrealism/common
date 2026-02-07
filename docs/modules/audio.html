@@ -222,6 +222,77 @@
                     </div>
                 </div>
 
+                <h3>AudioLibrary System</h3>
+                <p>The AudioLibrary provides centralized management for audio sample collections with asynchronous loading, analysis, and similarity computation.</p>
+
+                <div class="concept-card" style="margin: 20px 0;">
+                    <h4>Key-Identifier Architecture</h4>
+                    <p>The library uses a <strong>two-level identification scheme</strong> for content-based deduplication:</p>
+                    <table class="package-table">
+                        <tr>
+                            <th>Concept</th>
+                            <th>Method</th>
+                            <th>Example</th>
+                            <th>Purpose</th>
+                        </tr>
+                        <tr>
+                            <td><strong>Key</strong></td>
+                            <td><code>WaveDataProvider.getKey()</code></td>
+                            <td><code>/path/to/kick.wav</code></td>
+                            <td>File location (display, access)</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Identifier</strong></td>
+                            <td><code>WaveDataProvider.getIdentifier()</code></td>
+                            <td><code>a1b2c3d4e5f6...</code> (MD5)</td>
+                            <td>Content hash (deduplication, storage)</td>
+                        </tr>
+                    </table>
+                </div>
+
+                <div class="class-list">
+                    <div class="class-item">
+                        <h4>AudioLibrary</h4>
+                        <p>Main library class. Manages <code>identifiers</code> map (key→identifier) and <code>info</code> map (identifier→WaveDetails). Use <code>find(identifier)</code> to resolve identifiers to file paths.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>WaveDataProvider</h4>
+                        <p>Interface for audio data sources. <code>getKey()</code> returns file path, <code>getIdentifier()</code> returns content hash. Implementations: FileWaveDataProvider, DelegateWaveDataProvider.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>WaveDetails</h4>
+                        <p>Analyzed metadata for a sample: sample rate, channels, frame count, frequency analysis data (FFT), feature data, and pre-computed similarity scores.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>AudioSimilarityGraph</h4>
+                        <p>Graph adapter for similarity algorithms. Use <code>fromLibrary()</code> or <code>fromDetails()</code> factory methods. Compatible with CommunityDetection and GraphCentrality.</p>
+                    </div>
+                </div>
+
+                <h4>Resolving Identifiers to File Paths</h4>
+                <div class="code-example">
+<pre>// Load library with file tree (to resolve file paths)
+AudioLibrary library = new AudioLibrary(new File("/path/to/samples"), 44100);
+
+// Load pre-computed data from protobuf (in ar-compose module)
+AudioLibraryPersistence.loadLibrary(library, "/path/to/library");
+
+// Resolve identifier to file path
+for (WaveDetails details : library.getAllDetails()) {
+    String identifier = details.getIdentifier();  // MD5 hash
+
+    WaveDataProvider provider = library.find(identifier);
+    if (provider != null) {
+        String filePath = provider.getKey();  // Actual file path
+        System.out.println(filePath + ": " + details.getFrameCount() + " frames");
+    }
+}</pre>
+                </div>
+
+                <div class="tip">
+                    <strong>Important:</strong> Protobuf persistence stores only the identifier (MD5 hash), not file paths. You need BOTH the protobuf data AND a file tree to resolve identifiers to paths using <code>library.find(identifier).getKey()</code>.
+                </div>
+
                 <h3>org.almostrealism.audio.tone</h3>
                 <p>Musical tuning and scale management.</p>
                 <div class="class-list">

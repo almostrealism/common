@@ -195,37 +195,71 @@ public interface MatrixFeatures extends AlgebraFeatures {
 		boolean each = vShape.getTraversalAxis() >= (vShape.getDimensions() - 1);
 		boolean onlyColumns = vShape.getDimensions() > 1 && vShape.length(vShape.getDimensions() - 1) == 1;
 		boolean singleRow = vShape.getDimensions() == 1;
+		boolean isVectorPath = each || onlyColumns || singleRow;
 
 		// If the matrix is being multiplied by a vector, or by
 		// a batch of vectors, rather than a matrix (or batch of
 		// matrices) then simple multiplication followed by a sum
 		// is a sufficient alternative to matrix multiplication
 		// via genuine weighted sum
-		if (each || onlyColumns || singleRow) {
-			if (onlyColumns) {
-				vShape = vShape.trim();
-				vector = reshape(vShape, vector);
-			}
-
-			if (vShape.length(0) == 1) {
-				vShape = shape(vShape.length(1));
-				vector = reshape(vShape, vector);
-			}
-
-			if (vShape.getTraversalAxis() != vShape.getDimensions() - 1) {
-				vShape = vShape.traverse(vShape.getDimensions() - 1);
-				vector = reshape(vShape, vector);
-			}
-
-			int batchAxis = vShape.getDimensions();
+		if (isVectorPath) {
+			// For large output dimensions (>1000), the repeat+multiply+sum
+			// path creates enormous expression trees that scale O(n^2) in compile time.
+			// In that case, fall through to the weightedSum path below WITHOUT preprocessing.
+			// Empirically: 1000 outputs ~3s, 5000 outputs ~106s, 10000 outputs ~10+ minutes.
 			int outputSize = mShape.length(0);
-			CollectionProducer a = c(matrix);
-			CollectionProducer b = repeat(outputSize, vector);
-			return multiply(traverseEach(a), traverseEach(b)).traverse(batchAxis).sum();
+			if (outputSize <= 1000) {
+				// Only do preprocessing for the repeat+multiply+sum path
+				if (onlyColumns) {
+					vShape = vShape.trim();
+					vector = reshape(vShape, vector);
+				}
+
+				if (vShape.length(0) == 1) {
+					vShape = shape(vShape.length(1));
+					vector = reshape(vShape, vector);
+				}
+
+				if (vShape.getTraversalAxis() != vShape.getDimensions() - 1) {
+					vShape = vShape.traverse(vShape.getDimensions() - 1);
+					vector = reshape(vShape, vector);
+				}
+
+				int batchAxis = vShape.getDimensions();
+				CollectionProducer a = c(matrix);
+				CollectionProducer b = repeat(outputSize, vector);
+				return multiply(traverseEach(a), traverseEach(b)).traverse(batchAxis).sum();
+			}
+			// For large outputs, continue to weightedSum path with original vShape/vector
 		}
 
-		TraversalPolicy vectorShape = padDimensions(vShape, 1, 2, true);
-		vectorShape = padDimensions(vectorShape, 3);
+		// Check if this is a batch of vectors falling through from the vector path (each/onlyColumns/singleRow).
+		// In that case, the batch dimension should be preserved at the front.
+		// Handle both 2D (batch, n) and 3D (batch, n, 1) batched vectors.
+		// Also handle single 2D vectors (1, n) which should be treated as column vectors with p=1.
+		// The singleVector2D check doesn't require isVectorPath because (1, n) inputs may not
+		// satisfy any of the vector path conditions (traversal axis, onlyColumns, singleRow).
+		boolean batchedVectors2D = isVectorPath && vShape.getDimensions() == 2 && vShape.length(0) > 1;
+		boolean batchedVectors3D = isVectorPath && onlyColumns && vShape.getDimensions() == 3 && vShape.length(0) > 1;
+		boolean singleVector2D = vShape.getDimensions() == 2 && vShape.length(0) == 1 && vShape.length(1) == mShape.length(1);
+		boolean batchedVectors = batchedVectors2D || batchedVectors3D;
+
+		TraversalPolicy vectorShape;
+		if (batchedVectors2D) {
+			// Batch of column vectors: (batch, n) -> (batch, n, 1)
+			// This ensures b=batch, p=1 for proper matrix-vector batch multiplication
+			vectorShape = shape(vShape.length(0), vShape.length(1), 1);
+		} else if (batchedVectors3D) {
+			// Batch of column vectors with trailing 1: (batch, n, 1) -> keep as (batch, n, 1)
+			vectorShape = shape(vShape.length(0), vShape.length(1), 1);
+		} else if (singleVector2D) {
+			// Single column vector: (1, n) -> (1, n, 1)
+			// This ensures b=1, p=1 for proper matrix-vector multiplication
+			vectorShape = shape(1, vShape.length(1), 1);
+		} else {
+			vectorShape = padDimensions(vShape, 1, 2, true);
+			vectorShape = padDimensions(vectorShape, 3);
+		}
 
 		int b = vectorShape.length(0);
 		int m = mShape.length(0);
@@ -278,7 +312,18 @@ public interface MatrixFeatures extends AlgebraFeatures {
 		if (vShape.getDimensions() == 1) {
 			finalShape = shape(m);
 		} else if (vShape.getDimensions() == 2) {
-			finalShape = shape(m, p);
+			// For batched 2D vectors, include the batch dimension
+			if (batchedVectors2D) {
+				finalShape = p == 1 ? shape(b, m) : shape(b, m, p);
+			} else if (singleVector2D) {
+				// Single vector: (1, n) -> output (1, m) to maintain batch structure
+				finalShape = shape(1, m);
+			} else {
+				finalShape = shape(m, p);
+			}
+		} else if (batchedVectors3D) {
+			// For batched 3D vectors with trailing 1, output is 2D (batch, m)
+			finalShape = p == 1 ? shape(b, m) : shape(b, m, p);
 		} else {
 			finalShape = shape(b, m, p);
 		}

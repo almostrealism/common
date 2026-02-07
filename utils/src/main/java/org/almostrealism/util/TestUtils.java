@@ -115,23 +115,6 @@ public class TestUtils implements TestSettings {
 	}
 
 	/**
-	 * Determines whether ML training tests are enabled.
-	 *
-	 * <p>Returns true only when:</p>
-	 * <ul>
-	 *   <li>Profile is NOT "pipeline"</li>
-	 *   <li>{@code AR_TRAIN_TESTS=true} environment variable is set</li>
-	 * </ul>
-	 *
-	 * @return true if training tests are enabled, false otherwise
-	 */
-	public static boolean getTrainTests() {
-		if (Objects.equals(getTestProfile(), PIPELINE)) return false;
-
-		return SystemUtils.isEnabled("AR_TRAIN_TESTS").orElse(false);
-	}
-
-	/**
 	 * Determines whether verbose logging is enabled during tests.
 	 *
 	 * <p>Returns true when:</p>
@@ -180,4 +163,74 @@ public class TestUtils implements TestSettings {
 	 * @return the test profile name from {@code AR_TEST_PROFILE}, or "default" if not set
 	 */
 	public static String getTestProfile() { return SystemUtils.getProperty("AR_TEST_PROFILE", "default"); }
+
+	/**
+	 * Determines whether comparison tests requiring external model weights should run.
+	 *
+	 * <p>Returns false when profile is "pipeline", since CI/CD environments typically
+	 * don't have access to large model weight files. Tests can use this with
+	 * {@code Assume.assumeTrue(TestUtils.isComparisonTestEnabled())} to skip.</p>
+	 *
+	 * @return true if comparison tests should run, false if profile is "pipeline"
+	 */
+	public static boolean isComparisonTestEnabled() {
+		return !Objects.equals(getTestProfile(), PIPELINE);
+	}
+
+	/**
+	 * Returns the test group this runner should execute, or null if all groups should run.
+	 *
+	 * <p>When running tests in parallel across multiple VMs, each VM is assigned a group
+	 * number (0 to {@link #getTestGroupCount()}-1). Tests are deterministically assigned
+	 * to groups based on a hash of their class name.</p>
+	 *
+	 * @return the group number (0-based) from {@code AR_TEST_GROUP}, or null if not set
+	 */
+	public static Integer getTestGroup() {
+		String group = SystemUtils.getProperty("AR_TEST_GROUP");
+		if (group == null) return null;
+		return Integer.parseInt(group);
+	}
+
+	/**
+	 * Returns the total number of test groups for parallel execution.
+	 *
+	 * <p>This is used with {@link #getTestGroup()} to split tests across multiple VMs.
+	 * Tests are assigned to groups using: {@code hash(className) % groupCount}</p>
+	 *
+	 * @return the total number of groups from {@code AR_TEST_GROUPS}, or 4 if not set
+	 */
+	public static int getTestGroupCount() {
+		String count = SystemUtils.getProperty("AR_TEST_GROUPS");
+		if (count == null) return 4;
+		return Integer.parseInt(count);
+	}
+
+	/**
+	 * Determines which group a test class belongs to based on its name.
+	 *
+	 * <p>Uses a hash of the class name to deterministically assign classes to groups.
+	 * This ensures the same class always runs in the same group across different runs.</p>
+	 *
+	 * @param className the fully qualified class name
+	 * @return the group number (0 to {@link #getTestGroupCount()}-1)
+	 */
+	public static int getGroupForClass(String className) {
+		return Math.abs(className.hashCode()) % getTestGroupCount();
+	}
+
+	/**
+	 * Checks if a test class should run in the current test group.
+	 *
+	 * <p>If no group is specified ({@link #getTestGroup()} returns null), all tests run.
+	 * Otherwise, only tests whose class hashes to the current group will run.</p>
+	 *
+	 * @param className the fully qualified class name
+	 * @return true if the test should run, false if it should be skipped
+	 */
+	public static boolean shouldRunInCurrentGroup(String className) {
+		Integer targetGroup = getTestGroup();
+		if (targetGroup == null) return true;
+		return getGroupForClass(className) == targetGroup;
+	}
 }

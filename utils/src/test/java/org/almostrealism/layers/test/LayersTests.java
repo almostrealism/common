@@ -29,7 +29,8 @@ import org.almostrealism.optimize.Dataset;
 import org.almostrealism.optimize.ModelOptimizer;
 import org.almostrealism.optimize.ValueTarget;
 import org.almostrealism.stats.DistributionFeatures;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestDepth;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 import java.io.IOException;
@@ -38,7 +39,7 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
-public class LayersTests implements LayerFeatures, DistributionFeatures, TestFeatures {
+public class LayersTests extends TestSuiteBase implements LayerFeatures, DistributionFeatures {
 	private static final int SIZE = 768;
 
 	private float[] cpuOut;
@@ -160,9 +161,8 @@ public class LayersTests implements LayerFeatures, DistributionFeatures, TestFea
 	}
 
 	@Test(timeout = 30000)
+	@TestDepth(3)
 	public void siluTrain() throws IOException {
-		if (testDepth < 3) return;
-
 		int size = 21952;
 		int steps = 1;
 

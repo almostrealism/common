@@ -295,8 +295,6 @@ public class MyNativeEnabledApplication implements CodeFeatures {
 
 	@Test(timeout = 30000)
 	public void trainCnn() {
-		if (!TestSettings.trainingTests) return;
-
 		int s = 10;
 
 		Tensor<Double> t = new Tensor<>();

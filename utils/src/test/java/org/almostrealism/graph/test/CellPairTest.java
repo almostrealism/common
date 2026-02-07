@@ -21,9 +21,9 @@ import org.almostrealism.graph.CellPair;
 import org.almostrealism.graph.CollectionCachedStateCell;
 import org.almostrealism.hardware.AcceleratedOperation;
 import org.almostrealism.hardware.OperationList;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 
-public class CellPairTest implements TestFeatures {
+public class CellPairTest extends TestSuiteBase {
 
 	// TODO @Test(timeout = 10000)
 	public void scalarCachedStatePair() {

@@ -22,7 +22,7 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -36,7 +36,7 @@ import java.util.stream.IntStream;
  * These tests validate traversal, transformation, and aggregation patterns
  * used in neural network layers and tensor operations.
  */
-public class PackedCollectionMapTests implements TestFeatures {
+public class PackedCollectionMapTests extends TestSuiteBase {
 
 	/**
 	 * Tests 2D mapping operation that multiplies each element of a collection by all elements of another collection.
@@ -310,8 +310,8 @@ public class PackedCollectionMapTests implements TestFeatures {
 
 		Supplier<Producer<PackedCollection>> product =
 				() -> traverse(1, p(input))
-					.map(v -> v.multiply(p(filter)))
-					.reduce(v -> v.sum());
+						.map(v -> v.multiply(p(filter)))
+						.reduce(v -> v.sum());
 
 		Consumer<PackedCollection> validate = output -> {
 			for (int i = 0; i < 8; i++) {
@@ -905,11 +905,11 @@ public class PackedCollectionMapTests implements TestFeatures {
 		verboseLog(() -> {
 			CollectionProducer pool =
 					c(p(input))
-					.enumerate(2, 1)
-					.enumerate(2, w)
-					.enumerate(2, w)
-					.traverse(3)
-					.max();
+							.enumerate(2, 1)
+							.enumerate(2, w)
+							.enumerate(2, w)
+							.traverse(3)
+							.max();
 			log(pool.getShape());
 
 			int r2 = r / w;

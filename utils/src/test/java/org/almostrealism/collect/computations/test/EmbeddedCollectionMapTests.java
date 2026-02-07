@@ -18,13 +18,13 @@ package org.almostrealism.collect.computations.test;
 
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
 import java.util.Arrays;
 
-public class EmbeddedCollectionMapTests implements TestFeatures, KernelAssertions {
+public class EmbeddedCollectionMapTests extends TestSuiteBase implements KernelAssertions {
 
 	@Test(timeout = 30000)
 	public void multiply() {
@@ -53,7 +53,7 @@ public class EmbeddedCollectionMapTests implements TestFeatures, KernelAssertion
 			for (int i = 0; i < 8; i++) {
 				for (int j = 0; j < n; j++) {
 					Assert.assertEquals(input.valueAt(i, j) * filter.valueAt(j),
-								output.valueAt(i, j), 0.0001);
+							output.valueAt(i, j), 0.0001);
 				}
 			}
 		});

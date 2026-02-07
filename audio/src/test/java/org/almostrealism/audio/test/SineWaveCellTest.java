@@ -31,7 +31,7 @@ import org.almostrealism.graph.Receptor;
 import org.almostrealism.graph.ReceptorCell;
 import org.almostrealism.heredity.Gene;
 import org.almostrealism.heredity.IdentityFactor;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -44,7 +44,7 @@ import java.util.stream.IntStream;
  * Tests for {@link SineWaveCell} covering frequency generation,
  * amplitude control, envelope application, and cell integration.
  */
-public class SineWaveCellTest implements CellFeatures, TestFeatures {
+public class SineWaveCellTest extends TestSuiteBase implements CellFeatures {
 	public static final int DURATION_FRAMES = 10 * OutputLine.sampleRate;
 
 	/**

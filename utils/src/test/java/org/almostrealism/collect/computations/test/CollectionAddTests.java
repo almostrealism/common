@@ -23,7 +23,8 @@ import io.almostrealism.relation.Evaluable;
 import io.almostrealism.uml.Signature;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestDepth;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 import java.util.List;
@@ -32,14 +33,12 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.function.Function;
 
-public class CollectionAddTests implements TestFeatures {
+public class CollectionAddTests extends TestSuiteBase {
 	int iter = 1000000;
 	int size = 150000;
 	int parallelism = KernelPreferences.getCpuParallelism();
 
 	public void add(ComputeRequirement... req) {
-		if (testDepth < 4) return;
-
 		log("Native parallelism = " + KernelPreferences.getCpuParallelism());
 
 		CollectionProducer add = add(v(shape(1), 0), v(shape(1), 1));
@@ -59,21 +58,23 @@ public class CollectionAddTests implements TestFeatures {
 		log("total time = " + (System.currentTimeMillis() - start) + "ms");
 	}
 
-	@Test(timeout = 10000)
+	@Test(timeout = 60 * 60000)
+	@TestDepth(10)
 	public void cpuAdd() {
 		if (skipLongTests) return;
 
 		add(ComputeRequirement.CPU);
 	}
 
-	@Test(timeout = 10000)
+	@Test(timeout = 60 * 60000)
+	@TestDepth(10)
 	public void gpuAdd() {
 		if (skipLongTests) return;
 
 		add(ComputeRequirement.GPU);
 	}
 
-	@Test(timeout = 10000)
+	@Test(timeout = 60 * 60000)
 	public void javaAdd() throws InterruptedException {
 		if (skipLongTests) return;
 

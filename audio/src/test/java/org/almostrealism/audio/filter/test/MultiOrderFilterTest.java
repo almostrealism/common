@@ -17,16 +17,17 @@
 package org.almostrealism.audio.filter.test;
 
 import io.almostrealism.compute.Process;
+import org.almostrealism.audio.AudioTestFeatures;
 import org.almostrealism.audio.data.WaveData;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.time.computations.MultiOrderFilter;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 import java.io.File;
 import java.io.IOException;
 
-public class MultiOrderFilterTest implements TestFeatures {
+public class MultiOrderFilterTest extends TestSuiteBase implements AudioTestFeatures {
 
 	@Test
 	public void lowPass() throws IOException {
@@ -39,11 +40,11 @@ public class MultiOrderFilterTest implements TestFeatures {
 	}
 
 	public void lowPass(boolean optimized) throws IOException {
-		WaveData data = WaveData.load(new File("Library/Snare Gold 1.wav"));
+		WaveData data = WaveData.load(getTestWavFile());
 
 		MultiOrderFilter filter = lowPass(
-					cp(data.getChannelData(0)), c(2000),
-					data.getSampleRate(), 40);
+				cp(data.getChannelData(0)), c(2000),
+				data.getSampleRate(), 40);
 
 		PackedCollection result = (optimized ? Process.optimized(filter) : filter).get().evaluate();
 		WaveData output = new WaveData(result, data.getSampleRate());
@@ -61,11 +62,11 @@ public class MultiOrderFilterTest implements TestFeatures {
 	}
 
 	public void highPass(boolean optimized) throws IOException {
-		WaveData data = WaveData.load(new File("Library/Snare Gold 1.wav"));
+		WaveData data = WaveData.load(getTestWavFile());
 
 		MultiOrderFilter filter = highPass(
-					cp(data.getChannelData(0)), c(3000),
-					data.getSampleRate(), 40);
+				cp(data.getChannelData(0)), c(3000),
+				data.getSampleRate(), 40);
 
 		PackedCollection result = (optimized ? Process.optimized(filter) : filter).get().evaluate();
 		WaveData output = new WaveData(result, data.getSampleRate());

@@ -22,7 +22,7 @@ import org.almostrealism.audio.filter.AudioPassFilter;
 import org.almostrealism.audio.line.OutputLine;
 import org.almostrealism.audio.test.support.TestAudioData;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -30,7 +30,7 @@ import org.junit.Test;
  * Tests for {@link AudioPassFilter} covering high-pass and low-pass
  * filtering with synthetic test signals.
  */
-public class AudioPassFilterTest implements CellFeatures, TestFeatures {
+public class AudioPassFilterTest extends TestSuiteBase implements CellFeatures {
 
 	private static final int SAMPLE_RATE = OutputLine.sampleRate;
 	private static final double DURATION = 0.5; // seconds

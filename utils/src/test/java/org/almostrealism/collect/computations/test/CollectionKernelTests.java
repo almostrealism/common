@@ -21,13 +21,13 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.DynamicCollectionProducer;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
 import java.util.Arrays;
 
-public class CollectionKernelTests implements TestFeatures {
+public class CollectionKernelTests extends TestSuiteBase {
 	@Test(timeout = 30000)
 	public void func() {
 		DynamicCollectionProducer a = func(shape(2, 5), args ->
@@ -45,8 +45,8 @@ public class CollectionKernelTests implements TestFeatures {
 
 	@Test(timeout = 30000)
 	public void multiply() {
-		double[] v1 = { 2.0, 3.0, 4.0, 6.0, 7.0, 8.0, 11.0, 13.0, 15.0, 17.0};
-		double[] v2 = { 2.0, 3.0, 0.5, 0.25, 0.1 };
+		double[] v1 = {2.0, 3.0, 4.0, 6.0, 7.0, 8.0, 11.0, 13.0, 15.0, 17.0};
+		double[] v2 = {2.0, 3.0, 0.5, 0.25, 0.1};
 
 		CollectionProducer a = func(shape(2, 5), args ->
 				c(shape(2, 5), v1)
@@ -78,8 +78,8 @@ public class CollectionKernelTests implements TestFeatures {
 
 	@Test(timeout = 30000)
 	public void divide() {
-		double[] v1 = { 2.0, 3.0, 4.0, 6.0, 7.0, 8.0, 11.0, 13.0, 15.0, 17.0};
-		double[] v2 = { 2.0 };
+		double[] v1 = {2.0, 3.0, 4.0, 6.0, 7.0, 8.0, 11.0, 13.0, 15.0, 17.0};
+		double[] v2 = {2.0};
 
 		CollectionProducer a = func(shape(2, 5), args ->
 				c(shape(2, 5), v1)

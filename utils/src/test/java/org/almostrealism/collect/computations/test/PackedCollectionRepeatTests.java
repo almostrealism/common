@@ -20,14 +20,14 @@ import io.almostrealism.collect.RepeatTraversalOrdering;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Tensor;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
-public class PackedCollectionRepeatTests implements TestFeatures {
+public class PackedCollectionRepeatTests extends TestSuiteBase {
 	@Test(timeout = 30000)
 	public void isolatedRepeat() {
 		if (skipKnownIssues) return;

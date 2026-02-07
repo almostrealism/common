@@ -17,7 +17,7 @@
 package org.almostrealism.collect.computations.test;
 
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 /**
@@ -28,7 +28,7 @@ import org.junit.Test;
  * @see CollectionPermute
  * @see org.almostrealism.collect.CollectionFeatures#permute(io.almostrealism.relation.Producer, int...)
  */
-public class CollectionPermuteTests implements TestFeatures {
+public class CollectionPermuteTests extends TestSuiteBase {
 	/**
 	 * Tests basic 2D transpose operation (matrix transpose).
 	 * Demonstrates swapping the two dimensions of a 2D collection using permute(1, 0).

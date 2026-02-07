@@ -22,6 +22,7 @@ import io.almostrealism.cycle.Setup;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.graph.Cell;
 import org.almostrealism.graph.CellularPropagation;
 import org.almostrealism.graph.CollectionReceptor;
 import org.almostrealism.graph.Receptor;
@@ -293,12 +294,13 @@ public interface Block extends Component, CellularPropagation<PackedCollection>,
 	 * @return the next block (for method chaining)
 	 */
 	default <T extends Block> Block andThen(T next) {
-//		SequentialBlock block = new SequentialBlock(getInputShape());
-//		block.add(this);
-//		block.add(next);
-//		return block;
-
-		getForward().setReceptor(next.getForward());
+		// Chain with existing receptor instead of replacing it
+		Receptor<PackedCollection> existing = getForward().getReceptor();
+		if (existing != null) {
+			getForward().setReceptor(Receptor.to(existing, next.getForward()));
+		} else {
+			getForward().setReceptor(next.getForward());
+		}
 		next.getBackward().setReceptor(getBackward());
 		return next;
 	}
@@ -310,7 +312,14 @@ public interface Block extends Component, CellularPropagation<PackedCollection>,
 	default <T extends Receptor<PackedCollection>> T andThen(T next) {
 		if (Layer.propagationWarnings)
 			warn("andThen(" + next + ") may not support backpropagation");
-		getForward().setReceptor(next);
+		// Chain with existing receptor instead of replacing it
+		Cell<PackedCollection> forward = getForward();
+		Receptor<PackedCollection> existing = forward.getReceptor();
+		if (existing != null) {
+			forward.setReceptor(Receptor.to(existing, next));
+		} else {
+			forward.setReceptor(next);
+		}
 		return next;
 	}
 
@@ -318,7 +327,13 @@ public interface Block extends Component, CellularPropagation<PackedCollection>,
 		if (Layer.propagationWarnings)
 			warn("andThen(" + destination + ") may not support backpropagation");
 		CollectionReceptor r = new CollectionReceptor(destination);
-		getForward().setReceptor(r);
+		// Chain with existing receptor instead of replacing it
+		Receptor<PackedCollection> existing = getForward().getReceptor();
+		if (existing != null) {
+			getForward().setReceptor(Receptor.to(existing, r));
+		} else {
+			getForward().setReceptor(r);
+		}
 		return r;
 	}
 

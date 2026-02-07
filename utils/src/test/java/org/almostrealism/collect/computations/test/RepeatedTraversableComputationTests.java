@@ -21,12 +21,12 @@ import io.almostrealism.relation.Evaluable;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.CollectionProducerComputationAdapter;
 import org.almostrealism.hardware.HardwareOperator;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 import java.util.stream.IntStream;
 
-public class RepeatedTraversableComputationTests implements TestFeatures {
+public class RepeatedTraversableComputationTests extends TestSuiteBase {
 
 	@Test(timeout = 60000)
 	public void add() {

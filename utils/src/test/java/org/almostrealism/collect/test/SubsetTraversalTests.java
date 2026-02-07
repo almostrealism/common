@@ -22,11 +22,11 @@ import io.almostrealism.collect.WeightedSumDeltaExpression;
 import io.almostrealism.expression.Expression;
 import org.almostrealism.algebra.computations.WeightedSumComputation;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
-public class SubsetTraversalTests implements TestFeatures {
+public class SubsetTraversalTests extends TestSuiteBase {
 
 	@Test(timeout = 10000)
 	public void traversal() {

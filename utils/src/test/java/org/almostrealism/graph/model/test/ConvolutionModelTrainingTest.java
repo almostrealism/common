@@ -1,5 +1,5 @@
 /*
- * Copyright 2025 Michael Murray
+ * Copyright 2026 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -20,8 +20,6 @@ import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.profile.OperationProfileNode;
 import io.almostrealism.scope.ScopeSettings;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.io.Console;
-import org.almostrealism.io.OutputFeatures;
 import org.almostrealism.layers.ParameterUpdate;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
@@ -32,7 +30,8 @@ import org.almostrealism.optimize.NegativeLogLikelihood;
 import org.almostrealism.optimize.ValueTarget;
 import org.almostrealism.texture.GraphicsConverter;
 import org.almostrealism.util.ModelTestFeatures;
-import org.almostrealism.util.TestUtils;
+import org.almostrealism.util.TestDepth;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 import java.io.File;
@@ -43,7 +42,7 @@ import java.util.List;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
-public class ConvolutionModelTrainingTest implements ModelFeatures, ModelTestFeatures {
+public class ConvolutionModelTrainingTest extends TestSuiteBase implements ModelFeatures, ModelTestFeatures {
 	static boolean large = true;
 	static int batchSize;
 	static int rows, cols;
@@ -57,10 +56,6 @@ public class ConvolutionModelTrainingTest implements ModelFeatures, ModelTestFea
 		} else {
 			rows = 30;
 			cols = 30;
-		}
-
-		if (TestUtils.getTrainTests()) {
-			Console.root().addListener(OutputFeatures.fileOutput("results/logs/train.out"));
 		}
 	}
 
@@ -130,19 +125,18 @@ public class ConvolutionModelTrainingTest implements ModelFeatures, ModelTestFea
 				}
 			}
 		}
-		
+
 		return data;
 	}
 
 	@Test(timeout = 120000)
+	@TestDepth(10)
 	public void train() throws IOException {
-		if (!trainingTests) return;
-
 		int runs = 1; // 10;
 		int epochs = 10;
 
 		Model model = convolution2dModel(
-						batchSize, 1, rows, cols,
+				batchSize, 1, rows, cols,
 				3, 6, large ? 3 : 2,
 				4, 4, true);
 		model.setParameterUpdate(ParameterUpdate.scaled(c(0.001)));
@@ -189,9 +183,9 @@ public class ConvolutionModelTrainingTest implements ModelFeatures, ModelTestFea
 	}
 
 	public double[] optimize(String name, CompiledModel model,
-						 Supplier<Dataset<?>> trainData,
-						 Supplier<Dataset<?>> testData,
-						 int epochs, int steps, double lossTarget) throws IOException {
+							 Supplier<Dataset<?>> trainData,
+							 Supplier<Dataset<?>> testData,
+							 int epochs, int steps, double lossTarget) throws IOException {
 		double[] accuracy = new double[epochs];
 
 		ModelOptimizer optimizer = new ModelOptimizer(model, trainData);

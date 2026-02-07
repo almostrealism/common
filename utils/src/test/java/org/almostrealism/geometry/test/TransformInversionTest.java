@@ -3,16 +3,16 @@ package org.almostrealism.geometry.test;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.geometry.TransformMatrix;
 import org.almostrealism.geometry.TransformMatrixFeatures;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 /**
  * Comprehensive tests for TransformMatrix inversion issues.
- *
+ * <p>
  * This test suite demonstrates the critical bug in TransformMatrix.getInverse()
  * where scale matrix inversions produce incorrect results.
  */
-public class TransformInversionTest implements TransformMatrixFeatures, TestFeatures {
+public class TransformInversionTest extends TestSuiteBase implements TransformMatrixFeatures {
 
 	@Test(timeout = 10000)
 	public void testIdentityMatrixInverse() {
@@ -29,10 +29,10 @@ public class TransformInversionTest implements TransformMatrixFeatures, TestFeat
 
 		// Inverse of identity should be identity
 		assertMatrixEquals("Identity inverse", inverse,
-			1, 0, 0, 0,
-			0, 1, 0, 0,
-			0, 0, 1, 0,
-			0, 0, 0, 1);
+				1, 0, 0, 0,
+				0, 1, 0, 0,
+				0, 0, 1, 0,
+				0, 0, 0, 1);
 	}
 
 	@Test(timeout = 10000)
@@ -53,10 +53,10 @@ public class TransformInversionTest implements TransformMatrixFeatures, TestFeat
 
 		// Inverse of translation(3,2,1) should be translation(-3,-2,-1)
 		assertMatrixEquals("Translation inverse", inverse,
-			1, 0, 0, -3,
-			0, 1, 0, -2,
-			0, 0, 1, -1,
-			0, 0, 0, 1);
+				1, 0, 0, -3,
+				0, 1, 0, -2,
+				0, 0, 1, -1,
+				0, 0, 0, 1);
 	}
 
 	@Test(timeout = 10000)
@@ -84,10 +84,10 @@ public class TransformInversionTest implements TransformMatrixFeatures, TestFeat
 		// Inverse of scale(2,2,2) should be scale(0.5,0.5,0.5)
 		log("Expected: scale(0.5,0.5,0.5)");
 		assertMatrixEquals("Scale inverse", inverse,
-			0.5, 0,   0,   0,
-			0,   0.5, 0,   0,
-			0,   0,   0.5, 0,
-			0,   0,   0,   1);
+				0.5, 0, 0, 0,
+				0, 0.5, 0, 0,
+				0, 0, 0.5, 0,
+				0, 0, 0, 1);
 	}
 
 	@Test(timeout = 10000)
@@ -115,10 +115,10 @@ public class TransformInversionTest implements TransformMatrixFeatures, TestFeat
 		// Inverse of scale(2,3,4) should be scale(0.5, 0.333, 0.25)
 		log("Expected: scale(0.5, 0.333, 0.25)");
 		assertMatrixEquals("Non-uniform scale inverse", inverse,
-			0.5,  0,     0,    0,
-			0,    0.333, 0,    0,
-			0,    0,     0.25, 0,
-			0,    0,     0,    1);
+				0.5, 0, 0, 0,
+				0, 0.333, 0, 0,
+				0, 0, 0.25, 0,
+				0, 0, 0, 1);
 	}
 
 	@Test(timeout = 10000)
@@ -142,10 +142,10 @@ public class TransformInversionTest implements TransformMatrixFeatures, TestFeat
 
 		// Should get identity matrix
 		assertMatrixEquals("M * M^-1", product,
-			1, 0, 0, 0,
-			0, 1, 0, 0,
-			0, 0, 1, 0,
-			0, 0, 0, 1);
+				1, 0, 0, 0,
+				0, 1, 0, 0,
+				0, 0, 1, 0,
+				0, 0, 0, 1);
 	}
 
 	@Test(timeout = 10000)
@@ -169,10 +169,10 @@ public class TransformInversionTest implements TransformMatrixFeatures, TestFeat
 
 		// Should get back original matrix
 		assertMatrixEquals("(M^-1)^-1", inverseOfInverse,
-			2, 0, 0, 0,
-			0, 2, 0, 0,
-			0, 0, 2, 0,
-			0, 0, 0, 1);
+				2, 0, 0, 0,
+				0, 2, 0, 0,
+				0, 0, 2, 0,
+				0, 0, 0, 1);
 	}
 
 	@Test(timeout = 10000)
@@ -200,10 +200,10 @@ public class TransformInversionTest implements TransformMatrixFeatures, TestFeat
 		// Inverse of scale(0.5,0.5,0.5) should be scale(2,2,2)
 		log("Expected: scale(2,2,2)");
 		assertMatrixEquals("Small scale inverse", inverse,
-			2, 0, 0, 0,
-			0, 2, 0, 0,
-			0, 0, 2, 0,
-			0, 0, 0, 1);
+				2, 0, 0, 0,
+				0, 2, 0, 0,
+				0, 0, 2, 0,
+				0, 0, 0, 1);
 	}
 
 	@Test(timeout = 10000)
@@ -241,7 +241,7 @@ public class TransformInversionTest implements TransformMatrixFeatures, TestFeat
 		log("Determinant: " + det);
 
 		log("Inverse calculation: adjoint / " + det);
-		log("Expected diagonal after division: [" + (a00/det) + ", " + (a11/det) + ", " + (a22/det) + ", " + (a33/det) + "]");
+		log("Expected diagonal after division: [" + (a00 / det) + ", " + (a11 / det) + ", " + (a22 / det) + ", " + (a33 / det) + "]");
 	}
 
 	// Helper methods
@@ -251,30 +251,30 @@ public class TransformInversionTest implements TransformMatrixFeatures, TestFeat
 		log(label + " matrix:");
 		for (int i = 0; i < 4; i++) {
 			log(String.format("  [%7.3f, %7.3f, %7.3f, %7.3f]",
-				data[i*4], data[i*4+1], data[i*4+2], data[i*4+3]));
+					data[i * 4], data[i * 4 + 1], data[i * 4 + 2], data[i * 4 + 3]));
 		}
 	}
 
 	private void assertMatrixEquals(String message, TransformMatrix actual,
-		double m00, double m01, double m02, double m03,
-		double m10, double m11, double m12, double m13,
-		double m20, double m21, double m22, double m23,
-		double m30, double m31, double m32, double m33) {
+									double m00, double m01, double m02, double m03,
+									double m10, double m11, double m12, double m13,
+									double m20, double m21, double m22, double m23,
+									double m30, double m31, double m32, double m33) {
 
 		double[] data = actual.toArray();
 		double[] expected = {
-			m00, m01, m02, m03,
-			m10, m11, m12, m13,
-			m20, m21, m22, m23,
-			m30, m31, m32, m33
+				m00, m01, m02, m03,
+				m10, m11, m12, m13,
+				m20, m21, m22, m23,
+				m30, m31, m32, m33
 		};
 
 		for (int i = 0; i < 16; i++) {
 			int row = i / 4;
 			int col = i % 4;
 			assertTrue(
-				message + " - M[" + row + "," + col + "] should be " + expected[i] + " but was " + data[i],
-				Math.abs(data[i] - expected[i]) < 0.01
+					message + " - M[" + row + "," + col + "] should be " + expected[i] + " but was " + data[i],
+					Math.abs(data[i] - expected[i]) < 0.01
 			);
 		}
 	}

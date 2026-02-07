@@ -19,11 +19,11 @@ package org.almostrealism.algebra.test;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
-public class ComplexMathTests implements TestFeatures {
+public class ComplexMathTests extends TestSuiteBase {
 	@Test(timeout = 30000)
 	public void complexFromPartsBatches1() {
 		PackedCollection values = new PackedCollection(10, 2, 1024).randFill();
@@ -85,7 +85,7 @@ public class ComplexMathTests implements TestFeatures {
 				complexFromParts(
 						v(shape(1024).traverseEach(), 0),
 						v(shape(1024).traverseEach(), 1))
-				.magnitude().get();
+						.magnitude().get();
 
 		PackedCollection real = new PackedCollection(1024).fill(Math::random);
 		PackedCollection imag = new PackedCollection(1024).fill(Math::random);

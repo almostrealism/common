@@ -404,10 +404,24 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 			if (this.kernelArgs[i] != null) kernelArgs[i] = this.kernelArgs[i];
 		}
 
+		/*
+		 * Reset asyncEvaluables for each construct() call.
+		 * This ensures fresh StreamingEvaluable instances are created with
+		 * new downstream consumers that point to the new AcceleratedProcessDetails.
+		 * Without this reset, reused asyncEvaluables would throw UnsupportedOperationException
+		 * when trying to set a different downstream consumer.
+		 */
+		asyncEvaluables = new StreamingEvaluable[arguments.size()];
+
+		/*
+		 * First pass: determine which arguments need async evaluation and create
+		 * their StreamingEvaluable instances. We don't set downstream yet because
+		 * we need to create the AcceleratedProcessDetails first.
+		 */
+		boolean[] evaluateAhead = new boolean[arguments.size()];
+
 		i: for (int i = 0; i < arguments.size(); i++) {
 			if (kernelArgs[i] != null) continue i;
-
-			boolean evaluateAhead;
 
 			// Determine if the argument can be evaluated immediately,
 			// or if its evaluation may actually depend on the kernel
@@ -416,19 +430,19 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 			if (kernelArgEvaluables[i] instanceof HardwareEvaluable) {
 				// There is no need to attempt kernel evaluation if
 				// HardwareEvaluable will not support it
-				evaluateAhead = !((HardwareEvaluable<?>) kernelArgEvaluables[i]).isKernel();
+				evaluateAhead[i] = !((HardwareEvaluable<?>) kernelArgEvaluables[i]).isKernel();
 			} else if (kernelArgEvaluables[i] instanceof MemoryDataDestination) {
 				// Kernel evaluation is not necessary, but it is preferable to
 				// leverage MemoryDataDestination::createDestination anyway
-				evaluateAhead = false;
+				evaluateAhead[i] = false;
 			} else {
 				// Kernel evaluation will not be necessary, and Evaluable::evaluate
 				// can be directly invoked without creating a correctly sized
 				// destination
-				evaluateAhead = true;
+				evaluateAhead[i] = true;
 			}
 
-			if (evaluateAhead) {
+			if (evaluateAhead[i]) {
 				if (!Hardware.getLocalHardware().isAsync() ||
 						kernelArgEvaluables[i] instanceof DestinationEvaluable<?> ||
 						kernelArgEvaluables[i] instanceof HardwareEvaluable) {
@@ -436,8 +450,6 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 				} else {
 					asyncEvaluables[i] = kernelArgEvaluables[i].async();
 				}
-
-				asyncEvaluables[i].setDownstream(result(i));
 			}
 		}
 
@@ -453,8 +465,8 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 		int size = Math.toIntExact(kernelSize);
 
 		/*
-		 * In the final pass, kernel arguments are evaluated in a way that ensures the
-		 * result is compatible with the kernel size inferred earlier.
+		 * Second pass: create async evaluables for kernel arguments that need
+		 * sized destinations.
 		 */
 		for (int i = 0; i < arguments.size(); i++) {
 			if (kernelArgs[i] != null || asyncEvaluables[i] != null) continue;
@@ -463,7 +475,24 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 			Heap.addCreatedMemory(result);
 
 			asyncEvaluables[i] = kernelArgEvaluables[i].into(result).async(this::execute);
-			asyncEvaluables[i].setDownstream(result(i));
+		}
+
+		/*
+		 * Create AcceleratedProcessDetails BEFORE setting downstream on async evaluables.
+		 * This ensures that the downstream lambdas capture the specific details instance
+		 * rather than accessing the mutable currentDetails field at execution time.
+		 */
+		currentDetails = new AcceleratedProcessDetails(kernelArgs, size,
+											replacements.get(), executor);
+
+		/*
+		 * Set downstream on all async evaluables, passing the specific details instance.
+		 * FIX: Previously, result(i) created a lambda that accessed 'this.currentDetails'
+		 * at execution time. Now we pass the specific instance to avoid the mutable field.
+		 */
+		for (int i = 0; i < asyncEvaluables.length; i++) {
+			if (asyncEvaluables[i] == null || kernelArgs[i] != null) continue;
+			asyncEvaluables[i].setDownstream(result(i, currentDetails));
 		}
 
 		/*
@@ -471,9 +500,6 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 		 * results to the current AcceleratedProcessDetails, their work
 		 * can be initiated via StreamingEvaluable#request
 		 */
-		currentDetails = new AcceleratedProcessDetails(kernelArgs, size,
-											replacements.get(), executor);
-
 		for (int i = 0; i < asyncEvaluables.length; i++) {
 			if (asyncEvaluables[i] == null || kernelArgs[i] != null) continue;
 			asyncEvaluables[i].request(args);
@@ -483,8 +509,20 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 		return currentDetails;
 	}
 
-	protected Consumer<Object> result(int index) {
-		return result -> currentDetails.result(index, result);
+	/**
+	 * Creates a result consumer for the specified argument index that delivers to
+	 * the given {@link AcceleratedProcessDetails} instance.
+	 *
+	 * <p>This method captures the specific details instance in the returned lambda,
+	 * ensuring that async results are delivered to the correct details even when
+	 * multiple constructions overlap.</p>
+	 *
+	 * @param index the argument index
+	 * @param targetDetails the specific details instance to deliver results to
+	 * @return a consumer that delivers results to the target details
+	 */
+	protected Consumer<Object> result(int index, AcceleratedProcessDetails targetDetails) {
+		return result -> targetDetails.result(index, result);
 	}
 
 	protected void execute(Runnable r) {

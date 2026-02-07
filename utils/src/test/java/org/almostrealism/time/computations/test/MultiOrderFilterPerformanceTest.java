@@ -22,7 +22,7 @@ import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.OutputFeatures;
 import org.almostrealism.time.computations.MultiOrderFilter;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 import java.util.List;
@@ -82,11 +82,11 @@ import java.util.List;
  * <p><strong>Throughput:</strong> Frames processed per second. Higher is better. GPU should show
  * significant advantages for large collections (>10,000 frames).</p>
  *
+ * @author Claude Code
  * @see MultiOrderFilter
  * @see org.almostrealism.time.TemporalFeatures#highPass
- * @author Claude Code
  */
-public class MultiOrderFilterPerformanceTest implements TestFeatures, ConsoleFeatures {
+public class MultiOrderFilterPerformanceTest extends TestSuiteBase implements ConsoleFeatures {
 
 	/**
 	 * Performance test for {@link org.almostrealism.time.TemporalFeatures#highPass}
@@ -254,11 +254,11 @@ public class MultiOrderFilterPerformanceTest implements TestFeatures, ConsoleFea
 	 * </ul>
 	 *
 	 * @param collectionSize Number of frames in the input collection
-	 * @param filterOrder Filter order (number of coefficients - 1)
-	 * @param cutoffHz Cutoff frequency in Hz
-	 * @param sampleRate Sample rate in Hz
+	 * @param filterOrder    Filter order (number of coefficients - 1)
+	 * @param cutoffHz       Cutoff frequency in Hz
+	 * @param sampleRate     Sample rate in Hz
 	 * @param warmIterations Number of warm iterations to average
-	 * @param requirement Compute context requirement (CPU/GPU)
+	 * @param requirement    Compute context requirement (CPU/GPU)
 	 * @throws Exception if filter creation or execution fails
 	 */
 	protected void runHighPassPerformanceTest(

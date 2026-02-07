@@ -28,6 +28,61 @@ import java.util.Map;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
+/**
+ * Thread-local cache for expression deduplication during compilation.
+ *
+ * <p>{@code ExpressionCache} identifies and reuses equivalent expressions during
+ * code generation to reduce expression tree size and improve compilation performance.
+ * It uses a frequency-based caching strategy organized by expression tree depth.</p>
+ *
+ * <h2>Purpose</h2>
+ * <p>During compilation, the same sub-expressions often appear multiple times. Without
+ * caching, each occurrence creates a separate node in the expression tree, leading to:
+ * <ul>
+ *   <li>Exponentially growing expression trees</li>
+ *   <li>Redundant computations in generated code</li>
+ *   <li>Longer compilation times</li>
+ *   <li>Larger generated kernels</li>
+ * </ul>
+ * </p>
+ *
+ * <p>{@code ExpressionCache} solves this by returning a cached reference when an
+ * equivalent expression is encountered, ensuring each unique expression exists only once.</p>
+ *
+ * <h2>Usage Pattern</h2>
+ * <p>The cache is thread-local and must be activated via {@link #use(Runnable)} or
+ * {@link #use(Supplier)}:</p>
+ * <pre>{@code
+ * ExpressionCache cache = new ExpressionCache();
+ *
+ * // Activate cache for a scope of work
+ * cache.use(() -> {
+ *     // All expression matching within this scope uses this cache
+ *     Expression<?> result = computeSomething();
+ *     return result;
+ * });
+ *
+ * // Static lookup (uses current thread's cache)
+ * Expression<?> deduped = ExpressionCache.match(expression);
+ * }</pre>
+ *
+ * <h2>Architecture</h2>
+ * <ul>
+ *   <li>Expressions are grouped by tree depth to optimize lookup performance</li>
+ *   <li>{@link FrequencyCache} tracks usage frequency for cache eviction</li>
+ *   <li>{@link ScopeSettings#isExpressionCacheTarget(Expression)} controls which expressions are cached</li>
+ *   <li>{@link #getFrequentExpressions()} returns commonly occurring expressions (useful for optimization analysis)</li>
+ * </ul>
+ *
+ * <h2>Thread Safety</h2>
+ * <p>Each thread has its own cache via {@link ThreadLocal}. The cache is automatically
+ * scoped to the current compilation unit via {@link #use(Runnable)}.</p>
+ *
+ * @see ScopeSettings#isExpressionCacheTarget(Expression)
+ * @see ScopeSettings#getExpressionCacheSize()
+ * @see FrequencyCache
+ * @author Michael Murray
+ */
 public class ExpressionCache {
 	private static ThreadLocal<ExpressionCache> current = new ThreadLocal<>();
 	private static ThreadLocal<OperationMetadata> currentMetadata = new ThreadLocal<>();

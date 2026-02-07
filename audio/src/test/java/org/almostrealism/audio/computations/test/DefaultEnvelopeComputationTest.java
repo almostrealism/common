@@ -19,10 +19,10 @@ package org.almostrealism.audio.computations.test;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.audio.computations.DefaultEnvelopeComputation;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
-public class DefaultEnvelopeComputationTest implements TestFeatures {
+public class DefaultEnvelopeComputationTest extends TestSuiteBase {
 	private static final PackedCollection input = new PackedCollection(1);
 
 	static {

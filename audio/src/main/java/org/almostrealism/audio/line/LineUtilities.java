@@ -284,7 +284,101 @@ public class LineUtilities {
 	public static AudioFormat getAudioFormat() {
 		return lastFormat;
 	}
-	
+
+	/**
+	 * Checks if hardware audio output is available on this system.
+	 * This is useful for determining whether to use real audio output or a mock.
+	 *
+	 * @return true if hardware audio output is available
+	 */
+	public static boolean isHardwareAvailable() {
+		if (lastFormat == null) {
+			lastFormat = new AudioFormat(AudioFormat.Encoding.PCM_SIGNED, OutputLine.sampleRate,
+					16, 2, 4,
+					OutputLine.sampleRate, false);
+		}
+
+		DataLine.Info info = new DataLine.Info(SourceDataLine.class, lastFormat);
+		if (!AudioSystem.isLineSupported(info)) {
+			return false;
+		}
+
+		try {
+			SourceDataLine line = (SourceDataLine) AudioSystem.getLine(info);
+			line.open(lastFormat, 1024);
+			line.close();
+			return true;
+		} catch (LineUnavailableException | IllegalArgumentException e) {
+			return false;
+		}
+	}
+
+	/**
+	 * Returns an output line, falling back to a mock if hardware is unavailable.
+	 * This is useful for writing tests that work both with and without audio hardware.
+	 *
+	 * @return A hardware OutputLine if available, otherwise a MockOutputLine
+	 */
+	public static OutputLine getLineOrMock() {
+		OutputLine line = getLine();
+		return line != null ? line : new MockOutputLine();
+	}
+
+	/**
+	 * Returns an output line, falling back to a mock if hardware is unavailable.
+	 *
+	 * @param bufferFrames The buffer size in frames
+	 * @return A hardware OutputLine if available, otherwise a MockOutputLine
+	 */
+	public static OutputLine getLineOrMock(int bufferFrames) {
+		if (lastFormat == null) {
+			lastFormat = new AudioFormat(AudioFormat.Encoding.PCM_SIGNED, OutputLine.sampleRate,
+					16, 2, 4,
+					OutputLine.sampleRate, false);
+		}
+
+		OutputLine line = getLine(lastFormat, bufferFrames);
+		return line != null ? line : new MockOutputLine(bufferFrames);
+	}
+
+	/**
+	 * Returns a mock output line for testing without audio hardware.
+	 *
+	 * @return A new MockOutputLine with default settings
+	 */
+	public static MockOutputLine getMockLine() {
+		return new MockOutputLine();
+	}
+
+	/**
+	 * Returns a mock output line with the specified buffer size.
+	 *
+	 * @param bufferFrames The buffer size in frames
+	 * @return A new MockOutputLine
+	 */
+	public static MockOutputLine getMockLine(int bufferFrames) {
+		return new MockOutputLine(bufferFrames);
+	}
+
+	/**
+	 * Returns a buffer output line for capturing audio data.
+	 *
+	 * @param capacityFrames The buffer capacity in frames
+	 * @return A new BufferOutputLine
+	 */
+	public static BufferOutputLine getBufferLine(int capacityFrames) {
+		return new BufferOutputLine(capacityFrames);
+	}
+
+	/**
+	 * Returns a buffer output line with default capacity (1 second at sample rate).
+	 *
+	 * @return A new BufferOutputLine
+	 */
+	public static BufferOutputLine getBufferLine() {
+		return new BufferOutputLine(OutputLine.sampleRate);
+	}
+
 	/**
 	 * Initializes the default audio format using that data read from the specified stream.
 	 * This method buffers the stream for you.

@@ -4,6 +4,31 @@
       "command": "python3",
       "args": ["docs/mcp/server.py"],
       "description": "Almost Realism documentation search server"
+    },
+    "ar-test-runner": {
+      "command": "python3",
+      "args": ["tools/mcp/test-runner/server.py"],
+      "description": "Test execution and result tracking server"
+    },
+    "ar-profile-analyzer": {
+      "command": "python3",
+      "args": ["tools/mcp/profile-analyzer/server.py"],
+      "description": "Performance profile analysis server"
+    },
+    "ar-memory": {
+      "command": "python3",
+      "args": ["tools/mcp/memory/server.py"],
+      "description": "Semantic memory storage and retrieval server"
+    },
+    "ar-consultant": {
+      "command": "python3",
+      "args": ["tools/mcp/consultant/server.py"],
+      "description": "Documentation-aware consultant combining docs, memory, and local LLM inference"
+    },
+    "ar-jmx": {
+      "command": "python3",
+      "args": ["tools/mcp/jmx/server.py"],
+      "description": "JVM memory analysis and leak detection via JDK diagnostic tools"
     }
   }
 }

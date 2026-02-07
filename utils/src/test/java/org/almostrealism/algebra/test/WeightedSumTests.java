@@ -19,13 +19,13 @@ package org.almostrealism.algebra.test;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 import java.util.List;
 import java.util.stream.Collectors;
 
-public class WeightedSumTests implements TestFeatures {
+public class WeightedSumTests extends TestSuiteBase {
 	@Test(timeout = 30000)
 	public void broadcast() {
 		int c1 = 3;
@@ -394,7 +394,7 @@ public class WeightedSumTests implements TestFeatures {
 				}
 			}
 		}
-		
+
 		CollectionProducer result = scaledDotProduct(cp(q), cp(k), true);
 		PackedCollection actual = result.evaluate();
 

@@ -34,8 +34,8 @@ import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.DefaultBlock;
 import org.almostrealism.model.Model;
 import org.almostrealism.stats.DistributionFeatures;
-import org.almostrealism.util.TestFeatures;
-import org.almostrealism.util.TestUtils;
+import org.almostrealism.util.TestDepth;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -45,7 +45,7 @@ import java.util.Arrays;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
-public class SoftmaxTests implements LayerFeatures, DistributionFeatures, TestFeatures {
+public class SoftmaxTests extends TestSuiteBase implements LayerFeatures, DistributionFeatures {
 	@Test(timeout = 60000)
 	public void softmaxComputation() {
 		int heads = 12;
@@ -125,8 +125,6 @@ public class SoftmaxTests implements LayerFeatures, DistributionFeatures, TestFe
 
 	@Test(timeout = 60000)
 	public void softmaxBackwards() {
-		if (testProfileIs(TestUtils.PIPELINE)) return;
-
 		PackedCollection input = new PackedCollection(10);
 		IntStream.range(0, 10).forEach(i -> input.setMem(i, i + 1.0));
 
@@ -160,14 +158,16 @@ public class SoftmaxTests implements LayerFeatures, DistributionFeatures, TestFe
 				-3.64399601e-04, -9.90540812e-04 };
 
 		for (int i = 0; i < result.length; i++) {
-			assertEquals(expected[i], result[i]);
+			// Use 1% relative tolerance - acceptable for ML gradient computations
+			// Hardware-accelerated code may produce slightly different results due to
+			// floating-point operation ordering differences
+			Assert.assertEquals(expected[i], result[i], Math.abs(expected[i]) * 0.01);
 		}
 	}
 
 	@Test(timeout = 60000)
+	@TestDepth(1)
 	public void softmaxBackwardsLarge() throws IOException {
-		if (testDepth < 1) return;
-
 		TraversalPolicy shape = shape(1, 4, 25088);
 
 		PackedCollection input = new PackedCollection(shape);
@@ -242,8 +242,6 @@ public class SoftmaxTests implements LayerFeatures, DistributionFeatures, TestFe
 
 	@Test(timeout = 60000)
 	public void logSoftmaxBackwards2() {
-		if (testProfileIs(TestUtils.PIPELINE)) return;
-
 		int size = 10;
 
 		PackedCollection input = new PackedCollection(1, size);

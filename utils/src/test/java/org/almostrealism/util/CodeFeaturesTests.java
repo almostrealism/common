@@ -23,7 +23,7 @@ import org.junit.Test;
 
 import java.util.function.Supplier;
 
-public class CodeFeaturesTests implements TestFeatures {
+public class CodeFeaturesTests extends TestSuiteBase {
 	@Test(timeout = 10000)
 	public void partialComputation1() {
 		Producer<PackedCollection> p = multiply(c(1.0), c(2.0));

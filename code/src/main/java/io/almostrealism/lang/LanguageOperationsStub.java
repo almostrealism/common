@@ -47,6 +47,11 @@ public class LanguageOperationsStub implements LanguageOperations {
 	}
 
 	@Override
+	public String abs(String value) {
+		return "abs(" + value + ")";
+	}
+
+	@Override
 	public String kernelIndex(int index) {
 		return "kernel" + index;
 	}

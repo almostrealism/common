@@ -19,14 +19,14 @@ package org.almostrealism.algebra.test;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.algebra.Tensor;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
 
-public class CollectionPolymorphismTests implements TestFeatures {
+public class CollectionPolymorphismTests extends TestSuiteBase {
 	// @Test(timeout = 10000)
 	public void traversalStream() {
 		TraversalPolicy shape = new TraversalPolicy(2, 3, 3);

@@ -21,10 +21,10 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.AcceleratedComputationOperation;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.time.TemporalScalar;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
-public class ExpressionDelegationTest implements TestFeatures {
+public class ExpressionDelegationTest extends TestSuiteBase {
 	@Test(timeout = 10000)
 	public void scalarFromTemporalScalar() {
 		TemporalScalar t = new TemporalScalar(4, 8);

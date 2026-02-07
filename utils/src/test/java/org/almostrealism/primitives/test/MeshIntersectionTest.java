@@ -31,12 +31,12 @@ import org.almostrealism.space.DefaultVertexData;
 import org.almostrealism.space.Mesh;
 import org.almostrealism.space.MeshData;
 import org.almostrealism.space.Triangle;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 
-public class MeshIntersectionTest implements TestFeatures {
+public class MeshIntersectionTest extends TestSuiteBase {
 	private MeshData data;
 	private Producer<Ray> ray;
 
@@ -66,7 +66,7 @@ public class MeshIntersectionTest implements TestFeatures {
 		c.setLensRadius(0.2);
 
 		width = 100;
-		height = (int)(c.getProjectionHeight() * (width / c.getProjectionWidth()));
+		height = (int) (c.getProjectionHeight() * (width / c.getProjectionWidth()));
 		return (Producer) c.rayAt(v(Pair.shape(), 0), pair(width, height));
 	}
 

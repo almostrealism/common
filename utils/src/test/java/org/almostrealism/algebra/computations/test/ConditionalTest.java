@@ -19,10 +19,10 @@ package org.almostrealism.algebra.computations.test;
 import io.almostrealism.collect.CollectionProducerBase;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
-public class ConditionalTest implements TestFeatures {
+public class ConditionalTest extends TestSuiteBase {
 
 	@Test(timeout = 10000)
 	public void positive() {

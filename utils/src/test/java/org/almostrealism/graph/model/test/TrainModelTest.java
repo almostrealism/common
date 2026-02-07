@@ -34,7 +34,8 @@ import org.almostrealism.model.Block;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 import org.almostrealism.model.ModelFeatures;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestDepth;
+import org.almostrealism.util.TestSuiteBase;
 import org.almostrealism.util.TestUtils;
 import org.junit.Assert;
 import org.junit.Test;
@@ -42,26 +43,15 @@ import org.junit.Test;
 import java.io.IOException;
 import java.util.stream.IntStream;
 
-public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssertions {
-
+public class TrainModelTest extends TestSuiteBase implements ModelFeatures, KernelAssertions {
 	private final int convSize = 3;
 	private final int poolSize = 2;
 	private final int w = 10;
 	private final int h = 10;
 	private TraversalPolicy inputShape = shape(h, w);
 
-	static {
-		if (TestUtils.getTrainTests()) {
-			HardwareOperator.enableLargeInstructionSetMonitoring = true;
-			MetalMemoryProvider.enableLargeAllocationLogging = true;
-
-			Console.root().addListener(OutputFeatures.fileOutput("results/logs/train.out"));
-		}
-	}
-
 	@Test(timeout = 120000)
 	public void dense() {
-		if (testProfileIs(TestUtils.PIPELINE)) return;
 		if (skipKnownIssues) return;
 
 		int size = 30;
@@ -227,9 +217,8 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 	}
 
 	@Test(timeout = 4 * 60000)
+	@TestDepth(1)
 	public void trainSmallest() throws IOException {
-		if (testDepth < 1) return;
-
 		int dim = 3;
 		Tensor<Double> t = tensor(shape(dim, dim));
 		PackedCollection input = t.pack();
@@ -237,9 +226,8 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 	}
 
 	@Test(timeout = 4 * 60000)
+	@TestDepth(2)
 	public void trainVerySmall() throws IOException {
-		if (testDepth < 2) return;
-
 		try {
 			int dim = 8;
 			Tensor<Double> t = tensor(shape(dim, dim));
@@ -252,9 +240,8 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 
 
 	@Test(timeout = 30 * 60000)
+	@TestDepth(3)
 	public void trainSmall() throws IOException {
-		if (testDepth < 3) return;
-		if (testProfileIs(TestUtils.PIPELINE)) return;
 		if (skipKnownIssues) return;
 
 		int dim = 28;
@@ -265,8 +252,9 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 	}
 
 	@Test(timeout = 120000)
+	@TestDepth(10)
 	public void trainMedium() throws IOException {
-		if (skipLongTests || !trainingTests) return;
+		if (skipLongTests) return;
 
 		int dim = 54;
 		int filters = 8;
@@ -276,8 +264,9 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 	}
 
 	@Test(timeout = 120000)
+	@TestDepth(10)
 	public void trainLarge() throws IOException {
-		if (skipLongTests || !trainingTests) return;
+		if (skipLongTests) return;
 
 		try {
 			int dim = 72;
@@ -291,8 +280,9 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 	}
 
 	@Test(timeout = 120000)
+	@TestDepth(10)
 	public void trainProgressive() throws IOException {
-		if (skipLongTests || !trainingTests) return;
+		if (skipLongTests) return;
 
 		double size = 10;
 
@@ -308,7 +298,7 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 	}
 
 	protected void train(PackedCollection input, Model model) throws IOException {
-		train(input, model, trainingTests ? 80 : 2);
+		train(input, model, trainingEpochs);
 	}
 
 	protected void train(PackedCollection input, Model model, int epochCount) throws IOException {

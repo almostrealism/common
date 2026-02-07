@@ -34,11 +34,11 @@ import org.almostrealism.graph.mesh.TriangleIntersectAt;
 import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.Input;
 import org.almostrealism.space.Triangle;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
-public class TriangleTest implements TestFeatures {
+public class TriangleTest extends TestSuiteBase {
 	protected Triangle basicTriangle() {
 		return new Triangle(
 				new Vector(1.0, 1.0, -1.0),
@@ -139,7 +139,7 @@ public class TriangleTest implements TestFeatures {
 		PackedCollection data = new PackedCollection(9);
 		PackedCollection tp = new PackedCollection(new TraversalPolicy(3, 3), 1,
 				delegateSpec ->
-					new Vector(delegateSpec.getDelegate(), delegateSpec.getOffset()),
+						new Vector(delegateSpec.getDelegate(), delegateSpec.getOffset()),
 				data, 0);
 		tp.set(0, new Vector(1.0, 1.0, -1.0));
 		tp.set(1, new Vector(-1.0, 1.0, -1.0));

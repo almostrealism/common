@@ -18,10 +18,10 @@ package org.almostrealism.hardware.test;
 
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
-public class ReusableInstructionSetTests implements TestFeatures {
+public class ReusableInstructionSetTests extends TestSuiteBase {
 	@Test(timeout = 10000)
 	public void add() {
 		int n = 6;

@@ -22,7 +22,7 @@ import org.almostrealism.audio.line.OutputLine;
 import org.almostrealism.audio.test.support.DistractionRunner;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.Hardware;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 import java.io.File;
@@ -43,16 +43,20 @@ import java.util.Random;
  * {@link #distractorProbability}.
  * </p>
  */
-public class MultiOrderFilterEnvelopeProcessorPerformanceTest implements TestFeatures {
+public class MultiOrderFilterEnvelopeProcessorPerformanceTest extends TestSuiteBase {
 	public static final int SAMPLE_RATE = OutputLine.sampleRate;
 	public static final double MAX_SECONDS = 90.0;
 
 	public static boolean enableProfile = true;
 
-	/** Size of distractor computation buffers (frames). */
+	/**
+	 * Size of distractor computation buffers (frames).
+	 */
 	public static final int DISTRACTOR_SIZE = 50000;
 
-	/** Probability of running distractor computation between filter calls (0.0 to 1.0). */
+	/**
+	 * Probability of running distractor computation between filter calls (0.0 to 1.0).
+	 */
 	public static double distractorProbability = 0.1;
 
 	/**
@@ -113,7 +117,7 @@ public class MultiOrderFilterEnvelopeProcessorPerformanceTest implements TestFea
 	/**
 	 * Runs the realistic distribution test with a configurable scale factor.
 	 *
-	 * @param scaleFactor  Fraction of calls to process (0.0 to 1.0)
+	 * @param scaleFactor Fraction of calls to process (0.0 to 1.0)
 	 */
 	protected void runDistribution(double scaleFactor, double distractorProbability) throws IOException {
 		// Try multiple possible paths for the histogram file
@@ -139,7 +143,7 @@ public class MultiOrderFilterEnvelopeProcessorPerformanceTest implements TestFea
 
 		// Create processor
 		MultiOrderFilterEnvelopeProcessor processor =
-			new MultiOrderFilterEnvelopeProcessor(SAMPLE_RATE, MAX_SECONDS);
+				new MultiOrderFilterEnvelopeProcessor(SAMPLE_RATE, MAX_SECONDS);
 
 		// Configure ADSR parameters (typical values)
 		processor.setDuration(5.0);
@@ -194,7 +198,7 @@ public class MultiOrderFilterEnvelopeProcessorPerformanceTest implements TestFea
 			log("Distractor probability: " + (distractorProbability * 100) + "%");
 			log("Distractions per filter operation: " + distractionsPerOp);
 			log("Total operations: " + totalOps + " (" + inputSizes.size() +
-				" filter + " + totalDistractorOps + " distractor)");
+					" filter + " + totalDistractorOps + " distractor)");
 		}
 
 		// Warm-up phase
@@ -236,16 +240,16 @@ public class MultiOrderFilterEnvelopeProcessorPerformanceTest implements TestFea
 		log("Total frames processed: " + totalFramesProcessed);
 		if (distractor != null && distractor.getExecutionCount() > 0) {
 			log("Distractor executions: " + distractor.getExecutionCount() +
-				" (" + String.format("%.1f", (distractor.getExecutionCount() * 100.0) / inputSizes.size()) + "%)");
+					" (" + String.format("%.1f", (distractor.getExecutionCount() * 100.0) / inputSizes.size()) + "%)");
 			log("Distractor operation types: " + distractor.getOperationCount());
 		}
 		log("Total time: " + String.format("%.3f", elapsedSeconds) + " seconds");
 		log("Average time per call: " +
-			String.format("%.3f", (elapsedSeconds / inputSizes.size()) * 1000) + " ms");
+				String.format("%.3f", (elapsedSeconds / inputSizes.size()) * 1000) + " ms");
 		log("Throughput: " +
-			String.format("%.2f", totalFramesProcessed / elapsedSeconds) + " frames/sec");
+				String.format("%.2f", totalFramesProcessed / elapsedSeconds) + " frames/sec");
 		log("Throughput: " +
-			String.format("%.2f", (totalFramesProcessed / SAMPLE_RATE) / elapsedSeconds) + "x realtime");
+				String.format("%.2f", (totalFramesProcessed / SAMPLE_RATE) / elapsedSeconds) + "x realtime");
 
 		processor.destroy();
 	}
@@ -253,8 +257,8 @@ public class MultiOrderFilterEnvelopeProcessorPerformanceTest implements TestFea
 	/**
 	 * Generates a list of input sizes matching the histogram distribution.
 	 *
-	 * @param histogram    The histogram bin counts
-	 * @param scaleFactor  Fraction of calls to generate (0.0 to 1.0)
+	 * @param histogram   The histogram bin counts
+	 * @param scaleFactor Fraction of calls to generate (0.0 to 1.0)
 	 * @return List of input frame sizes to use for testing
 	 */
 	private List<Integer> generateInputSizes(long[] histogram, double scaleFactor) {
@@ -269,13 +273,13 @@ public class MultiOrderFilterEnvelopeProcessorPerformanceTest implements TestFea
 			long scaledCount = Math.max(1, (long) (count * scaleFactor));
 
 			int minFrames = MultiOrderFilterEnvelopeProcessor.HISTOGRAM_MIN_FRAMES +
-				(bin * ((MultiOrderFilterEnvelopeProcessor.HISTOGRAM_MAX_FRAMES -
-					MultiOrderFilterEnvelopeProcessor.HISTOGRAM_MIN_FRAMES) /
-					MultiOrderFilterEnvelopeProcessor.HISTOGRAM_BINS));
+					(bin * ((MultiOrderFilterEnvelopeProcessor.HISTOGRAM_MAX_FRAMES -
+							MultiOrderFilterEnvelopeProcessor.HISTOGRAM_MIN_FRAMES) /
+							MultiOrderFilterEnvelopeProcessor.HISTOGRAM_BINS));
 			int maxFrames = minFrames +
-				((MultiOrderFilterEnvelopeProcessor.HISTOGRAM_MAX_FRAMES -
-					MultiOrderFilterEnvelopeProcessor.HISTOGRAM_MIN_FRAMES) /
-					MultiOrderFilterEnvelopeProcessor.HISTOGRAM_BINS) - 1;
+					((MultiOrderFilterEnvelopeProcessor.HISTOGRAM_MAX_FRAMES -
+							MultiOrderFilterEnvelopeProcessor.HISTOGRAM_MIN_FRAMES) /
+							MultiOrderFilterEnvelopeProcessor.HISTOGRAM_BINS) - 1;
 
 			if (bin == histogram.length - 1) {
 				maxFrames = MultiOrderFilterEnvelopeProcessor.HISTOGRAM_MAX_FRAMES;
@@ -323,7 +327,7 @@ public class MultiOrderFilterEnvelopeProcessorPerformanceTest implements TestFea
 		log("Running baseline performance test...");
 
 		MultiOrderFilterEnvelopeProcessor processor =
-			new MultiOrderFilterEnvelopeProcessor(SAMPLE_RATE, MAX_SECONDS);
+				new MultiOrderFilterEnvelopeProcessor(SAMPLE_RATE, MAX_SECONDS);
 
 		processor.setDuration(5.0);
 		processor.setAttack(0.5);
@@ -358,9 +362,9 @@ public class MultiOrderFilterEnvelopeProcessorPerformanceTest implements TestFea
 		log("\n=== Baseline Results ===");
 		log("Total time: " + String.format("%.3f", elapsedSeconds) + " seconds");
 		log("Average time per call: " +
-			String.format("%.3f", (elapsedSeconds / iterations) * 1000) + " ms");
+				String.format("%.3f", (elapsedSeconds / iterations) * 1000) + " ms");
 		log("Throughput: " +
-			String.format("%.2f", (testSize * iterations) / elapsedSeconds) + " frames/sec");
+				String.format("%.2f", (testSize * iterations) / elapsedSeconds) + " frames/sec");
 
 		processor.destroy();
 	}

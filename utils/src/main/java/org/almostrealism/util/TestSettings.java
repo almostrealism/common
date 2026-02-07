@@ -16,6 +16,8 @@
 
 package org.almostrealism.util;
 
+import org.almostrealism.io.SystemUtils;
+
 import java.util.Objects;
 
 /**
@@ -72,11 +74,7 @@ public interface TestSettings {
 	 */
 	boolean skipKnownIssues = TestUtils.getSkipKnownIssues();
 
-	/**
-	 * If true, ML model training tests are enabled.
-	 * Controlled by the {@code AR_TRAIN_TESTS} environment variable.
-	 */
-	boolean trainingTests = TestUtils.getTrainTests();
+	int trainingEpochs = SystemUtils.getInt("AR_TRAINING_EPOCHS").orElse(2);
 
 	/**
 	 * If true, verbose logging is enabled during test execution.

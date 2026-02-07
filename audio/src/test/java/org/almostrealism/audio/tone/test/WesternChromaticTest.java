@@ -18,7 +18,7 @@ package org.almostrealism.audio.tone.test;
 
 import org.almostrealism.audio.tone.Scale;
 import org.almostrealism.audio.tone.WesternChromatic;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -29,7 +29,7 @@ import java.util.Set;
  * Tests for {@link WesternChromatic} covering note enumeration,
  * position mapping, scale traversal, and note relationships.
  */
-public class WesternChromaticTest implements TestFeatures {
+public class WesternChromaticTest extends TestSuiteBase {
 
 	/**
 	 * Tests that all enum values exist.

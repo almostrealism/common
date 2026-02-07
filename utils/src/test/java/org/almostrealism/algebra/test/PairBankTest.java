@@ -4,10 +4,10 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
-public class PairBankTest implements TestFeatures {
+public class PairBankTest extends TestSuiteBase {
 	@Test(timeout = 10000)
 	public void test() {
 		PackedCollection bank = Pair.bank(2);

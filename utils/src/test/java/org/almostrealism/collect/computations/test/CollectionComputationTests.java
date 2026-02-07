@@ -27,14 +27,14 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.DynamicIndexProjectionProducerComputation;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.hardware.computations.Assignment;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
 import java.util.Arrays;
 import java.util.stream.IntStream;
 
-public class CollectionComputationTests implements TestFeatures {
+public class CollectionComputationTests extends TestSuiteBase {
 	@Test(timeout = 30000)
 	public void evaluateIntegers() {
 		verboseLog(() -> {
@@ -95,10 +95,10 @@ public class CollectionComputationTests implements TestFeatures {
 
 		verboseLog(() -> {
 			CollectionProducer value = c(p(in),
-																shape(2, len, 1),
-																c(0, 1),
-																c(4, 8),
-																c(0, 0));
+					shape(2, len, 1),
+					c(0, 1),
+					c(4, 8),
+					c(0, 0));
 			CollectionProducer product = value.multiply(c(2.0));
 			product.get().into(result).evaluate();
 		});
@@ -126,8 +126,8 @@ public class CollectionComputationTests implements TestFeatures {
 		PackedCollection bufferIndices = new PackedCollection(shape(count)).fill(1, 2, 3);
 		PackedCollection value = new PackedCollection(shape(count)).fill(pos -> 1 + Math.random());
 		Assignment<?> c = a(
-					traverse(0, c(p(buffer), shape(buffer), integers(0, count), traverseEach(p(bufferIndices)))),
-					p(value));
+				traverse(0, c(p(buffer), shape(buffer), integers(0, count), traverseEach(p(bufferIndices)))),
+				p(value));
 
 		verboseLog(() -> {
 			if (optimize) {
@@ -167,7 +167,7 @@ public class CollectionComputationTests implements TestFeatures {
 		PackedCollection in = pack(2.0, 7.0, 5.0);
 		PackedCollection out = pack(0.0, 0.0, 0.0);
 		PackedCollection feedback = empty(shape(count, count))
-								.fill(pos -> pos[0] == pos[1] ? 1.0 : 0.0);
+				.fill(pos -> pos[0] == pos[1] ? 1.0 : 0.0);
 
 		PackedCollection buffer = new PackedCollection(shape(count, size)).fill(0.0);
 		PackedCollection bufferIndices = pack(1, 2, 5);
@@ -179,7 +179,7 @@ public class CollectionComputationTests implements TestFeatures {
 
 		Assignment<PackedCollection> populate =
 				a(traverse(0, c(p(buffer), shape(buffer), integers(0, count), traverseEach(p(bufferIndices)))),
-				p(out));
+						p(out));
 
 		if (isolate) {
 			op.add(populate.isolate());
@@ -198,7 +198,7 @@ public class CollectionComputationTests implements TestFeatures {
 				if (j == (int) bufferIndices.valueAt(i)) {
 					assertEquals(in.toDouble(i) +
 									input.toDouble(0) * gain.toDouble(0),
-								buffer.valueAt(i, j));
+							buffer.valueAt(i, j));
 				} else {
 					assertEquals(0.0, buffer.valueAt(i, j));
 				}
@@ -549,7 +549,7 @@ public class CollectionComputationTests implements TestFeatures {
 					result = index;
 				} else {
 					result = conditional(args[1].getValueAt(index)
-								.greaterThan(args[1].getValueAt(result)),
+									.greaterThan(args[1].getValueAt(result)),
 							index, result);
 				}
 			}

@@ -4,10 +4,10 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.Cell;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.model.Block;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
-public class DiffusionFeaturesTests implements DiffusionFeatures, TestFeatures {
+public class DiffusionFeaturesTests extends TestSuiteBase implements DiffusionFeatures {
 	@Test
 	public void upsample() {
 		int batchSize = 4;

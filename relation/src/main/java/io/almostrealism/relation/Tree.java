@@ -70,12 +70,14 @@ import java.util.stream.Stream;
 public interface Tree<T extends Tree> extends Graph<T>, NodeGroup<T>, Parent<T>, Node {
 
 	/**
-	 * Returns a stream of this node and all descendant nodes.
+	 * {@inheritDoc}
 	 *
-	 * <p>This is equivalent to calling {@code children(true)}.</p>
+	 * <p>For trees, this returns a stream containing this node and all
+	 * descendants. This is equivalent to calling {@code children(true)}.</p>
 	 *
 	 * @return a stream containing this node and all descendants
 	 */
+	@Override
 	default Stream<T> all() {
 		return children(true);
 	}
@@ -89,6 +91,7 @@ public interface Tree<T extends Tree> extends Graph<T>, NodeGroup<T>, Parent<T>,
 	 *
 	 * @return a stream containing this node and all descendants
 	 */
+	@Override
 	default Stream<T> children() {
 		return children(true);
 	}

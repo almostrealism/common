@@ -20,9 +20,8 @@ import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Factor;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.layers.Layer;
 import org.almostrealism.layers.LayerFeatures;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -33,7 +32,7 @@ import org.junit.Test;
  *
  * @author Michael Murray
  */
-public class ShapeValidationTest implements LayerFeatures, TestFeatures {
+public class ShapeValidationTest extends TestSuiteBase implements LayerFeatures {
 
 	/**
 	 * Test that identical shapes are compatible.

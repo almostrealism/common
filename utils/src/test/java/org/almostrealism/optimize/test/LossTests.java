@@ -19,11 +19,11 @@ package org.almostrealism.optimize.test;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.optimize.MeanSquaredError;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
-public class LossTests implements TestFeatures {
+public class LossTests extends TestSuiteBase {
 	@Test(timeout = 10000)
 	public void meanSquaredError() {
 		TraversalPolicy outputShape = new TraversalPolicy(1, 1, 28, 28).traverseEach();

@@ -351,7 +351,7 @@ public class ComputationScopeCompiler<T> implements KernelStructureContext,
 		this.kernelSeriesCache = KernelSeriesCache.create(getComputation(),
 				data -> manager.argumentForInput(nameProvider).apply(() -> new Provider<>(data)));
 		this.traversalGenerator = KernelTraversalOperationGenerator.create(getComputation(),
-				data -> manager.argumentForInput(nameProvider).apply((Supplier<Evaluable<?>>) data));
+				data -> manager.argumentForInput(nameProvider).apply((Supplier) data));
 	}
 
 	/**

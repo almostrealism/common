@@ -19,13 +19,13 @@ package org.almostrealism.geometry.test;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.geometry.TransformMatrix;
 import org.almostrealism.geometry.TransformMatrixFeatures;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 /**
  * Focused test to debug TransformMatrixDeterminant returning 1.0 for all matrices.
  */
-public class DeterminantDebugTest implements TransformMatrixFeatures, TestFeatures {
+public class DeterminantDebugTest extends TestSuiteBase implements TransformMatrixFeatures {
 
 	@Test(timeout = 10000)
 	public void testSimpleDeterminant() {
@@ -65,11 +65,11 @@ public class DeterminantDebugTest implements TransformMatrixFeatures, TestFeatur
 		log("========================================");
 
 		// Create a simple non-diagonal matrix with known determinant
-		double[][] matrixData = new double[][] {
-			{2, 1, 0, 0},
-			{1, 2, 0, 0},
-			{0, 0, 1, 0},
-			{0, 0, 0, 1}
+		double[][] matrixData = new double[][]{
+				{2, 1, 0, 0},
+				{1, 2, 0, 0},
+				{0, 0, 1, 0},
+				{0, 0, 0, 1}
 		};
 		TransformMatrix mat = new TransformMatrix(matrixData);
 		printMatrix("Test matrix", mat);
@@ -105,13 +105,13 @@ public class DeterminantDebugTest implements TransformMatrixFeatures, TestFeatur
 
 		// Let's also check with a different scale
 		TransformMatrix scale5 = new TransformMatrix(
-			scaleMatrix(vector(5.0, 5.0, 5.0)).get().evaluate(), 0);
+				scaleMatrix(vector(5.0, 5.0, 5.0)).get().evaluate(), 0);
 		double det5 = scale5.determinant();
 		log("Scale(5,5,5) determinant: " + det5);
 		log("Should be: 125.0");
 
 		assertFalse("Determinants should not all be 1.0",
-			Math.abs(det - 1.0) < 0.001 && Math.abs(det5 - 1.0) < 0.001);
+				Math.abs(det - 1.0) < 0.001 && Math.abs(det5 - 1.0) < 0.001);
 	}
 
 	private void printMatrix(String label, TransformMatrix mat) {
@@ -119,7 +119,7 @@ public class DeterminantDebugTest implements TransformMatrixFeatures, TestFeatur
 		log(label + " matrix:");
 		for (int i = 0; i < 4; i++) {
 			log(String.format("  [%7.3f, %7.3f, %7.3f, %7.3f]",
-				data[i*4], data[i*4+1], data[i*4+2], data[i*4+3]));
+					data[i * 4], data[i * 4 + 1], data[i * 4 + 2], data[i * 4 + 3]));
 		}
 	}
 }

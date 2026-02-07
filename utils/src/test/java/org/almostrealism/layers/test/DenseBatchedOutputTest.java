@@ -17,16 +17,13 @@
 package org.almostrealism.layers.test;
 
 import io.almostrealism.collect.TraversalPolicy;
-import io.almostrealism.relation.Evaluable;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.layers.LayerFeatures;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 import org.almostrealism.model.SequentialBlock;
-import org.almostrealism.util.TestFeatures;
-import org.junit.Assert;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 /**
@@ -46,7 +43,7 @@ import org.junit.Test;
  *
  * @author Michael Murray
  */
-public class DenseBatchedOutputTest implements LayerFeatures, TestFeatures {
+public class DenseBatchedOutputTest extends TestSuiteBase implements LayerFeatures {
 
 	/**
 	 * Test 1: Single sample - verify basic dense layer math.

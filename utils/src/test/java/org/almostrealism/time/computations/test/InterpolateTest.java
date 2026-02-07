@@ -20,12 +20,12 @@ import io.almostrealism.expression.Sum;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.time.computations.Interpolate;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 import java.util.Arrays;
 
-public class InterpolateTest implements TestFeatures {
+public class InterpolateTest extends TestSuiteBase {
 	@Test(timeout = 10000)
 	public void interpolateTwoSeries() {
 		PackedCollection series = new PackedCollection(2, 10);

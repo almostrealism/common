@@ -27,7 +27,8 @@ import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.util.GradientTestFeatures;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestDepth;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 import java.io.IOException;
@@ -37,7 +38,7 @@ import java.util.function.IntFunction;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
-public class TraversableDeltaComputationTests implements GradientTestFeatures, TestFeatures {
+public class TraversableDeltaComputationTests extends TestSuiteBase implements GradientTestFeatures {
 
 	@Test(timeout = 60000)
 	public void polynomial0() {
@@ -720,9 +721,8 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 	}
 
 	@Test(timeout = 60000)
+	@TestDepth(1)
 	public void divide7() {
-		if (testDepth < 1) return;
-
 		recursiveDivisionTest(in -> {
 					CollectionProducer input = c(in).reshape(-1, 1, 2);
 					CollectionProducer out = input.subtractMean()
@@ -742,9 +742,8 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 	}
 
 	@Test(timeout = 60000)
+	@TestDepth(1)
 	public void divide8() {
-		if (testDepth < 1) return;
-
 		PackedCollection b = new PackedCollection(2);
 
 		recursiveDivisionTest(in -> {
@@ -786,9 +785,8 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 	}
 
 	@Test(timeout = 60000)
+	@TestDepth(2)
 	public void divide10() {
-		if (testDepth < 2) return;
-
 		double eps = 1e-5;
 
 		recursiveDivisionTest(in -> {
@@ -813,9 +811,8 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 	}
 
 	@Test(timeout = 60000)
+	@TestDepth(1)
 	public void divide11() {
-		if (testDepth < 1) return;
-
 		double eps = 1e-5;
 
 		PackedCollection b = new PackedCollection(2);
@@ -843,9 +840,8 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 	}
 
 	@Test(timeout = 60000)
+	@TestDepth(1)
 	public void divideProduct1() {
-		if (testDepth < 1) return;
-
 		int c = 2;
 
 		PackedCollection o = new PackedCollection(c).fill(() -> Math.random() / 10.0);

@@ -23,11 +23,11 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.geometry.ShadableIntersection;
 import org.almostrealism.space.Plane;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
-public class PlaneTest implements TestFeatures {
+public class PlaneTest extends TestSuiteBase {
 	protected ShadableIntersection test1() {
 		Plane p = new Plane(Plane.XZ);
 		p.setLocation(new Vector(0.0, -10, 0.0));
@@ -73,19 +73,19 @@ public class PlaneTest implements TestFeatures {
 	// TODO @Test(timeout = 10000)
 	public void transformTest() {
 		Provider<Ray> r = new Provider<>(new Ray(new Vector(0.0, 0.0, 1.0),
-												new Vector(0.0, 0.5, -1.0)));
+				new Vector(0.0, 0.5, -1.0)));
 		ray(0.0, 0.0, 1.0, 0.0, 0.5, -1.0);
 
 		Plane p = new Plane(Plane.XZ);
 		p.setLocation(new Vector(0.0, -10, 0.0));
 
 		Producer<Ray> t = (Producer) transform(p.getTransform(true),
-					ray(0.0, 0.0, 1.0, 0.0, 0.5, -1.0));
+				ray(0.0, 0.0, 1.0, 0.0, 0.5, -1.0));
 		Assert.assertEquals(new Ray(new Vector(0.0, -10.0, 1.0),
 				new Vector(0.0, 0.5, -1.0)), t.get().evaluate());
 
 		t = (Producer) transform(p.getTransform(true).getInverse(),
-					ray(0.0, 0.0, 1.0, 0.0, 0.5, -1.0));
+				ray(0.0, 0.0, 1.0, 0.0, 0.5, -1.0));
 		Assert.assertEquals(new Ray(new Vector(0.0, 10.0, 1.0),
 				new Vector(0.0, 0.5, -1.0)), t.get().evaluate());
 

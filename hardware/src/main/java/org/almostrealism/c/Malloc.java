@@ -71,8 +71,8 @@ public class Malloc extends BaseNative {
 	/**
 	 * Returns the C function definition for the native malloc operation.
 	 *
-	 * <p>Generates a JNI-compatible C function that allocates memory using
-	 * the standard C {@code malloc()} function and returns the pointer as a {@code jlong}.</p>
+	 * <p>Generates a JNI-compatible C function that allocates zero-initialized memory
+	 * using the standard C {@code calloc()} function and returns the pointer as a {@code jlong}.</p>
 	 *
 	 * @return The C code defining the JNI malloc function
 	 */
@@ -80,7 +80,7 @@ public class Malloc extends BaseNative {
 	public String getFunctionDefinition() {
 		return "JNIEXPORT jlong JNICALL " + getFunctionName() + " (JNIEnv* env, jobject thisObject, jint len) {\n" +
 				(enableVerbose ? "\tprintf(\"malloc - %i bytes\\n\", len);\n" : "") +
-				"\treturn (jlong) malloc((size_t) len);\n" +
+				"\treturn (jlong) calloc((size_t) len, 1);\n" +
 				"}\n";
 	}
 

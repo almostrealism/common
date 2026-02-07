@@ -171,6 +171,67 @@ p.get().evaluate();  // Data transferred to GPU, computation executed
 - Automatic hardware transfer
 - Traversal policies for complex layouts
 
+### Bulk Memory Copy Operations
+
+`MemoryData` supports efficient bulk copy operations between memory regions:
+
+```java
+// Copy entire collection to another (same size)
+PackedCollection<?> source = new PackedCollection<>(1000);
+PackedCollection<?> target = new PackedCollection<>(1000);
+target.setMem(0, source);  // Copy all of source to target at offset 0
+
+// Copy with offsets and length
+target.setMem(targetOffset, source, srcOffset, length);
+
+// Copy a range starting at target offset 0
+target.setMem(source, srcOffset, length);
+```
+
+**Using `MemoryDataCopy` for Explicit Control:**
+
+For low-level control over memory copy operations:
+
+```java
+import org.almostrealism.hardware.mem.MemoryDataCopy;
+
+// Create and execute a copy operation
+MemoryDataCopy copy = new MemoryDataCopy("my copy", source, target);
+copy.get().run();
+
+// With length limit
+MemoryDataCopy copy = new MemoryDataCopy("partial",
+    () -> source, () -> target, length);
+copy.get().run();
+```
+
+**Using `CodeFeatures.copy()` (Producer Pattern - Recommended):**
+
+For hardware-accelerated copy between producers:
+
+```java
+import org.almostrealism.CodeFeatures;
+
+public class MyProcessor implements CodeFeatures {
+    public void copyData() {
+        Supplier<Runnable> copyOp = copy("my copy", sourceProducer, targetProducer, length);
+        copyOp.get().run();  // Execute the copy
+    }
+}
+```
+
+**Using `into()` Pattern for Evaluated Results:**
+
+```java
+// Evaluate producer directly into existing collection
+producer.get().into(destination).evaluate();
+
+// Example: normalize and store in-place
+normalize(cp(vector)).into(vector).evaluate();
+```
+
+> **Performance Note:** `setMem(MemoryData)` is significantly more efficient than element-by-element loops. Use bulk operations whenever possible.
+
 ### OperationList: Composing Operations
 
 `OperationList` combines multiple operations into a single executable unit:
@@ -190,6 +251,29 @@ training.run();  // Executes entire sequence
 - **Compiled**: All operations merged into single kernel (fast)
 - **Sequential**: Operations executed one-by-one (flexible)
 
+#### ⚠️ CRITICAL: Call optimize() Before get()
+
+When using OperationList with computations that require isolation (like LoopedWeightedSumComputation), you **MUST** call `optimize()` before `get()`:
+
+```java
+// CORRECT: Call optimize() before get()
+OperationList op = model.getForward().push(input);
+op = (OperationList) op.optimize();  // Required for isolation!
+Runnable compiled = op.get();
+compiled.run();
+
+// INCORRECT: May cause timeouts and massive expression trees!
+OperationList op = model.getForward().push(input);
+Runnable compiled = op.get();  // Missing optimize() call!
+```
+
+`OperationList.enableAutomaticOptimization` is `false` by default. Either:
+1. Call `optimize()` explicitly
+2. Set `OperationList.enableAutomaticOptimization = true`
+3. Use `CompiledModel` which calls `optimize()` internally
+
+See [relation/README.md](../relation/README.md) for Process optimization details.
+
 ### PassThroughProducer: Dynamic Inputs
 
 `PassThroughProducer` creates placeholder inputs that allow kernel reuse:
@@ -208,6 +292,39 @@ filter.get().evaluate(data2);  // Same kernel, different data
 - Kernel compiled once, reused many times
 - No recompilation overhead
 - Supports variable-size inputs
+
+### Loop Compilation and Caching
+
+The `Loop` class generates fixed-iteration for-loops in compiled code. Each `Loop.get()` call compiles to native code, and **compilation results are cached by the instruction caching system**.
+
+```java
+import org.almostrealism.hardware.computations.Loop;
+
+// Create a loop that repeats 10 times
+Computation<Void> update = updateWeights();
+Loop loop = new Loop(update, 10);
+
+// First call: compiles to native code (slow)
+Runnable compiled = loop.get();
+
+// Execute the compiled loop (fast)
+compiled.run();
+```
+
+**Caching Behavior:**
+- The same `Loop` instance reuses its compiled code on subsequent `get()` calls
+- Different `Loop` instances with identical inner operations may share cached kernels via instruction caching
+- Nested loops (Loop containing Loop) compile to nested for-loops in native code
+
+**Generated Code Structure:**
+```c
+void loop_x10() {
+    for (int loop_i = 1; loop_i < 10; loop_i += 1) {
+        // Inner computation
+        update();
+    }
+}
+```
 
 ### Instruction Caching
 
