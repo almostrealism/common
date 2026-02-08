@@ -1071,4 +1071,159 @@ public class AudioSceneRealTimeCorrectnessTest extends AudioSceneTestBase {
 		// Cleanup
 		sourceBuffer.destroy();
 	}
+
+	// =========================================================================
+	// PERFORMANCE INVESTIGATION: Cache Warming Benefit
+	// =========================================================================
+
+	/**
+	 * Measures whether pre-evaluating notes during a warmup phase
+	 * reduces per-buffer render time during subsequent ticks.
+	 *
+	 * <p>Compares two scenarios:</p>
+	 * <ol>
+	 *   <li><b>Cold</b>: Render buffers from a fresh scene (no warmup)</li>
+	 *   <li><b>Warm</b>: Pre-evaluate all notes first, then render the same buffers</li>
+	 * </ol>
+	 *
+	 * <p>If computation signatures are the same across notes, warmup should
+	 * populate the {@code InstructionSetManager} cache and eliminate
+	 * recompilation. If signatures differ per note, warmup provides no
+	 * benefit (each note requires unique compilation).</p>
+	 *
+	 * <h3>Interpretation Guide</h3>
+	 * <ul>
+	 *   <li><b>Warm &lt;&lt; Cold</b>: Cache warming works; compilation was the bottleneck</li>
+	 *   <li><b>Warm ~= Cold</b>: Compilation is not the bottleneck, or signatures are unique</li>
+	 *   <li><b>Warm &lt; Cold but not enough</b>: Partial benefit; some notes share signatures</li>
+	 * </ul>
+	 *
+	 * @see PatternSystemManager
+	 * @see PatternLayerManager
+	 */
+	@Test(timeout = 300_000)
+	@TestDepth(2)
+	public void cacheWarmingBenefit() {
+		helper.disableEffects();
+		File samplesDir = helper.requireSamplesDir();
+
+		AudioScene<?> seedScene = createBaselineScene(samplesDir);
+		long seed = findWorkingGenomeSeed(seedScene, samplesDir);
+		if (seed < 0) {
+			log("No working genome found - skipping test");
+			return;
+		}
+
+		log("=== Cache Warming Benefit Test ===");
+		log("Seed: " + seed);
+
+		// ---- COLD RUN: Render from a fresh scene with no warmup ----
+		log("");
+		log("--- Cold Run (no warmup) ---");
+		AudioScene<?> coldScene = helper.createSceneWithSeed(samplesDir,
+				AudioScene.DEFAULT_SOURCE_COUNT, seed);
+		RenderResult coldResult = helper.renderRealTime(coldScene, BUFFER_SIZE,
+				RENDER_SECONDS, "results/cache-warming-cold.wav");
+
+		TimingStats coldTiming = coldResult.timing();
+		log("Cold avg buffer time: " + String.format("%.3f ms", coldTiming.avgBufferMs()));
+		log("Cold min buffer time: " + String.format("%.3f ms", coldTiming.minBufferMs()));
+		log("Cold max buffer time: " + String.format("%.3f ms", coldTiming.maxBufferMs()));
+		log("Cold real-time ratio: " + String.format("%.2fx", coldTiming.realTimeRatio()));
+
+		// ---- WARM RUN: Pre-evaluate all notes, then render ----
+		log("");
+		log("--- Warm Run (with warmup phase) ---");
+		AudioScene<?> warmScene = helper.createSceneWithSeed(samplesDir,
+				AudioScene.DEFAULT_SOURCE_COUNT, seed);
+
+		// Warmup phase: iterate all pattern elements and evaluate each note
+		PatternSystemManager patterns = warmScene.getPatternManager();
+		patterns.setTuning(warmScene.getTuning());
+		patterns.init();
+
+		ChannelInfo warmChannel = new ChannelInfo(0, ChannelInfo.Voicing.MAIN,
+				ChannelInfo.StereoChannel.LEFT);
+		AudioSceneContext warmCtx = warmScene.getContext(List.of(warmChannel));
+		PackedCollection warmDest = new PackedCollection(BUFFER_SIZE);
+		warmCtx.setDestination(warmDest);
+
+		int warmupNotesEvaluated = 0;
+		long warmupStartNs = System.nanoTime();
+
+		for (PatternLayerManager plm : patterns.getPatterns()) {
+			plm.updateDestination(warmCtx);
+			boolean melodic = plm.isMelodic();
+
+			Map<NoteAudioChoice, List<PatternElement>> elementsByChoice =
+					plm.getAllElementsByChoice(0.0, plm.getDuration());
+
+			for (Map.Entry<NoteAudioChoice, List<PatternElement>> entry :
+					elementsByChoice.entrySet()) {
+				NoteAudioChoice choice = entry.getKey();
+				List<PatternElement> elements = entry.getValue();
+
+				NoteAudioContext audioContext = new NoteAudioContext(
+						ChannelInfo.Voicing.MAIN,
+						ChannelInfo.StereoChannel.LEFT,
+						choice.getValidPatternNotes(),
+						pos -> pos + 1.0);
+
+				for (PatternElement element : elements) {
+					List<RenderedNoteAudio> notes = element.getNoteDestinations(
+							melodic, 0.0, warmCtx, audioContext);
+
+					for (RenderedNoteAudio note : notes) {
+						try {
+							PackedCollection noteAudio =
+									traverse(1, note.getProducer()).get().evaluate();
+							if (noteAudio != null) {
+								warmupNotesEvaluated++;
+							}
+						} catch (Exception e) {
+							// Skip failed notes during warmup
+						}
+					}
+				}
+			}
+		}
+
+		long warmupElapsedMs = (System.nanoTime() - warmupStartNs) / 1_000_000;
+		log("Warmup: evaluated " + warmupNotesEvaluated + " notes in " + warmupElapsedMs + " ms");
+		warmDest.destroy();
+
+		// Now render the same duration with the warmed-up scene
+		RenderResult warmResult = helper.renderRealTime(warmScene, BUFFER_SIZE,
+				RENDER_SECONDS, "results/cache-warming-warm.wav");
+
+		TimingStats warmTiming = warmResult.timing();
+		log("Warm avg buffer time: " + String.format("%.3f ms", warmTiming.avgBufferMs()));
+		log("Warm min buffer time: " + String.format("%.3f ms", warmTiming.minBufferMs()));
+		log("Warm max buffer time: " + String.format("%.3f ms", warmTiming.maxBufferMs()));
+		log("Warm real-time ratio: " + String.format("%.2fx", warmTiming.realTimeRatio()));
+
+		// ---- COMPARISON ----
+		log("");
+		log("--- Comparison ---");
+		double speedup = coldTiming.avgBufferMs() / warmTiming.avgBufferMs();
+		double improvement = (1.0 - warmTiming.avgBufferMs() / coldTiming.avgBufferMs()) * 100;
+		log("Speedup factor: " + String.format("%.2fx", speedup));
+		log("Improvement: " + String.format("%.1f%%", improvement));
+		log("Target buffer time: " + String.format("%.2f ms", coldTiming.targetBufferMs()));
+
+		if (improvement > 50) {
+			log("RESULT: Cache warming provides SIGNIFICANT benefit");
+			log("  -> Compilation was the bottleneck; kernels are reusable across notes");
+		} else if (improvement > 10) {
+			log("RESULT: Cache warming provides MODERATE benefit");
+			log("  -> Some notes share compilation signatures, but not all");
+		} else {
+			log("RESULT: Cache warming provides MINIMAL benefit");
+			log("  -> Signatures are likely unique per note, or compilation is not the bottleneck");
+		}
+
+		// Generate artifacts for both
+		helper.generateArtifacts(coldResult, "cache-warming-cold");
+		helper.generateArtifacts(warmResult, "cache-warming-warm");
+	}
 }

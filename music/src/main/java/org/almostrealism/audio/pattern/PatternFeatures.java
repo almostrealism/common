@@ -7,7 +7,6 @@ import org.almostrealism.audio.arrange.AudioSceneContext;
 import org.almostrealism.audio.filter.AudioProcessingUtils;
 import org.almostrealism.audio.notes.NoteAudioContext;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.hardware.mem.Heap;
 import org.almostrealism.io.DistributionMetric;
 
 import java.util.List;
@@ -118,15 +117,12 @@ public interface PatternFeatures extends CodeFeatures {
 					PackedCollection audio = (cache != null) ? cache.get(noteStart) : null;
 
 					if (audio == null) {
-						PackedCollection[] evaluated = {null};
 						try {
-							Heap.stage(() ->
-									evaluated[0] = traverse(1, note.getProducer()).get().evaluate());
+							audio = traverse(1, note.getProducer()).get().evaluate();
 						} catch (Exception e) {
 							return;
 						}
 
-						audio = evaluated[0];
 						if (audio == null) return;
 
 						// Store in cache for reuse across buffer ticks

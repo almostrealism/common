@@ -27,6 +27,7 @@ import io.almostrealism.uml.Multiple;
 import org.almostrealism.hardware.instructions.ComputableInstructionSetManager;
 import org.almostrealism.hardware.instructions.ScopeInstructionsManager;
 import org.almostrealism.hardware.mem.AcceleratedProcessDetails;
+import org.almostrealism.io.SystemUtils;
 
 import java.util.concurrent.Executor;
 import java.util.function.Consumer;
@@ -185,7 +186,8 @@ public class AcceleratedComputationEvaluable<T extends MemoryData>
 		extends AcceleratedComputationOperation<T>
 		implements StreamingEvaluable<T>, Evaluable<T> {
 	/** Controls whether multiple evaluables with the same signature can compile independently. */
-	public static boolean enableRedundantCompilation = true;
+	public static boolean enableRedundantCompilation =
+			SystemUtils.isEnabled("AR_REDUNDANT_COMPILATION").orElse(true);
 
 	/** Custom factory for allocating output memory, or null for default allocation. */
 	private IntFunction<Multiple<T>> destinationFactory;

@@ -396,3 +396,110 @@ Reset WaveCell's internal clock to 0 at the start of each buffer.
 3. It aligns with how real-time audio systems typically work (local frame index)
 
 The main work is plumbing the frame producer through the cell construction chain.
+
+---
+
+## Performance Investigation: Compilation & Heap.stage() (2026-02-07)
+
+### Context
+
+With 4096-frame buffers the renderer achieves real-time performance (3.5x ratio),
+but smaller buffers (1024 frames) do not meet real-time constraints. The per-buffer
+overhead is dominated by `PatternFeatures.render()`, which calls
+`traverse(1, note.getProducer()).get().evaluate()` for each note. Two hypotheses
+were proposed:
+
+1. **Heap.stage() destroys reusable compiled operations**: Each note evaluation was
+   wrapped in `Heap.stage()`, which calls `push()`/`pop()` on the default heap. The
+   `pop()` destroys all operations allocated during the stage, potentially including
+   compiled kernels that could be reused across notes within the same tick.
+
+2. **Redundant compilation**: If multiple notes produce computation trees with the
+   same signature, the `InstructionSetManager` cache should prevent recompilation.
+   But `enableRedundantCompilation = true` (hardcoded) allowed bypassing this cache.
+
+### Changes Made
+
+#### 1. `enableRedundantCompilation` now controllable via environment variable
+
+**File**: `hardware/.../AcceleratedComputationEvaluable.java`
+
+```java
+// Before:
+public static boolean enableRedundantCompilation = true;
+
+// After:
+public static boolean enableRedundantCompilation =
+    SystemUtils.isEnabled("AR_REDUNDANT_COMPILATION").orElse(true);
+```
+
+Set `AR_REDUNDANT_COMPILATION=disabled` to prevent redundant compilation. This
+forces the `InstructionSetManager` to reuse cached compiled kernels when the
+computation signature matches.
+
+#### 2. Removed `Heap.stage()` from note evaluation
+
+**File**: `music/.../pattern/PatternFeatures.java`
+
+```java
+// Before:
+Heap.stage(() ->
+    evaluated[0] = traverse(1, note.getProducer()).get().evaluate());
+
+// After:
+audio = traverse(1, note.getProducer()).get().evaluate();
+```
+
+Without `Heap.stage()`, compiled evaluables are not destroyed after each note
+evaluation. This allows compiled kernels to persist in the `InstructionSetManager`
+cache and be reused across notes within the same render call.
+
+#### 3. Added `cacheWarmingBenefit` test
+
+**File**: `compose/.../test/AudioSceneRealTimeCorrectnessTest.java`
+
+New test method that compares cold (no warmup) vs warm (pre-evaluate all notes)
+render times. Interpretation:
+
+| Observation | Meaning |
+|-------------|---------|
+| Warm << Cold | Cache warming works; compilation is the bottleneck |
+| Warm ~= Cold | Compilation is not the bottleneck, or signatures are unique per note |
+| Warm < Cold (moderate) | Partial benefit; some notes share signatures |
+
+### How to Run the Investigation
+
+```bash
+# Run baseline test (Heap.stage removed, redundant compilation still enabled)
+AR_TEST_DEPTH=2 mvn test -pl compose \
+  -Dtest=AudioSceneRealTimeCorrectnessTest#cacheWarmingBenefit
+
+# Run with redundant compilation disabled
+AR_REDUNDANT_COMPILATION=disabled AR_TEST_DEPTH=2 mvn test -pl compose \
+  -Dtest=AudioSceneRealTimeCorrectnessTest#cacheWarmingBenefit
+
+# Run correctness verification after changes
+AR_TEST_DEPTH=2 mvn test -pl compose \
+  -Dtest=AudioSceneRealTimeCorrectnessTest#realTimeProducesAudio
+
+# Run comparison to verify no regression
+AR_TEST_DEPTH=2 mvn test -pl compose \
+  -Dtest=AudioSceneRealTimeCorrectnessTest#realTimeMatchesTraditional
+```
+
+### What to Observe
+
+After running the tests, check `compose/results/` for output files and check
+the test logs for timing comparisons:
+
+- **avg buffer time**: Primary metric for real-time viability
+- **cold vs warm speedup**: Indicates whether compilation caching helps
+- **memory usage**: Monitor for leaks after removing `Heap.stage()`; without
+  staged cleanup, compiled operations may accumulate
+
+### Risks
+
+Removing `Heap.stage()` may cause memory growth during long renders because
+compiled operations are no longer automatically cleaned up after each note
+evaluation. If memory issues are observed, an alternative cleanup strategy
+(e.g., periodic cleanup, LRU cache) should be considered.
