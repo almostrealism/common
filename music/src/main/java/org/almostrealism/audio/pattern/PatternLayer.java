@@ -25,6 +25,49 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+/**
+ * A hierarchical layer within a pattern that contains musical elements.
+ *
+ * <p>{@code PatternLayer} forms a linked list structure where each layer contains
+ * a collection of {@link PatternElement}s and optionally a child layer. This hierarchy
+ * enables patterns with multiple levels of detail, where each child layer typically
+ * operates at half the time granularity of its parent.</p>
+ *
+ * <h2>Layer Hierarchy</h2>
+ *
+ * <pre>
+ * PatternLayer (root, scale = 1.0)
+ *     |
+ *     +-- elements[] (musical events at full measure granularity)
+ *     |
+ *     +-- PatternLayer (child, scale = 0.5)
+ *         |
+ *         +-- elements[] (events at half-measure granularity)
+ *         |
+ *         +-- PatternLayer (child, scale = 0.25)
+ *             ...
+ * </pre>
+ *
+ * <h2>Element Collection</h2>
+ *
+ * <p>Elements can be retrieved for a specific time range using {@link #getElements(double, double)}.
+ * To collect elements from the entire hierarchy, use {@link #getAllElements(double, double)} or
+ * {@link #putAllElementsByChoice(Map, double, double)} which groups elements by their
+ * associated {@link NoteAudioChoice}.</p>
+ *
+ * <h2>Real-Time Considerations</h2>
+ *
+ * <p>For real-time rendering, elements need to be filtered by frame range rather than
+ * the full duration. The current implementation collects all elements at once, which
+ * is incompatible with incremental rendering. A frame-range-aware collection method
+ * would be needed for real-time support.</p>
+ *
+ * @see PatternElement
+ * @see PatternLayerManager
+ * @see NoteAudioChoice
+ *
+ * @author Michael Murray
+ */
 public class PatternLayer {
 	private NoteAudioChoice choice;
 	private List<PatternElement> elements;

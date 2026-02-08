@@ -27,7 +27,7 @@ import java.io.File;
 
 public class AdjustmentLayerOrganSystemFactoryTest extends AudioSceneOptimizationTest {
 
-	@Test
+	@Test(timeout = 300_000)
 	public void compare() {
 		dc(() -> {
 			WaveOutput outa = new WaveOutput(new File("results/layered-organ-factory-comp-a.wav"));
@@ -49,7 +49,7 @@ public class AdjustmentLayerOrganSystemFactoryTest extends AudioSceneOptimizatio
 		});
 	}
 
-	@Test
+	@Test(timeout = 300_000)
 	public void layered() {
 		WaveOutput out = new WaveOutput(new File("results/layered-organ-factory-test.wav"));
 		Cells organ = randomOrgan(pattern(2, 2), new MultiChannelAudioOutput(out));
@@ -63,7 +63,7 @@ public class AdjustmentLayerOrganSystemFactoryTest extends AudioSceneOptimizatio
 		out.write().get().run();
 	}
 
-	@Test
+	@Test(timeout = 180_000)
 	public void layeredRandom() {
 		WaveOutput out = new WaveOutput(new File("results/layered-organ-factory-rand-test.wav"));
 		Cells organ = randomOrgan(pattern(2, 2), new MultiChannelAudioOutput(out));

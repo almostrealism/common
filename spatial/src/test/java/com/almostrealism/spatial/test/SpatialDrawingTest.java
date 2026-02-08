@@ -153,7 +153,7 @@ public class SpatialDrawingTest {
 		double internalTime = context.getSecondsToTime().applyAsDouble(0.5);
 		Vector center = context.position(internalTime, 0, 0, 0.5);
 
-		// Create a single value with known intensity (log(2) ≈ 0.693)
+		// Create a single value with known intensity (log(2) ~= 0.693)
 		List<SpatialValue<?>> values = List.of(
 				new SpatialValue<>(center, Math.log(2.0), 0.5, true)
 		);
@@ -300,7 +300,7 @@ public class SpatialDrawingTest {
 	}
 
 	/**
-	 * Tests the full round-trip: apply values → elements() → verify regeneration.
+	 * Tests the full round-trip: apply values to elements() to verify regeneration.
 	 */
 	@Test
 	public void testFullDrawingRoundTrip() {

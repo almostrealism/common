@@ -26,7 +26,7 @@ import org.junit.Test;
 import java.util.stream.IntStream;
 
 public class ChordProgressionManagerTest {
-	@Test
+	@Test(timeout = 10_000)
 	public void progression() {
 		int params = 8;
 		ProjectedGenome genome = new ProjectedGenome(params);

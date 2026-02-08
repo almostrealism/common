@@ -21,6 +21,34 @@ import org.almostrealism.audio.tone.KeyPosition;
 
 import java.util.Objects;
 
+/**
+ * Context information for rendering a pattern element at a specific voicing.
+ *
+ * <p>{@code ElementVoicingDetails} encapsulates all the information needed to
+ * render a single note from a pattern element:</p>
+ * <ul>
+ *   <li><strong>voicing</strong>: MAIN or WET signal path</li>
+ *   <li><strong>stereoChannel</strong>: LEFT or RIGHT audio channel</li>
+ *   <li><strong>melodic</strong>: Whether this is pitched (melodic) or unpitched (percussive)</li>
+ *   <li><strong>target</strong>: The target key position for melodic content</li>
+ *   <li><strong>position</strong>: Current note position in measures</li>
+ *   <li><strong>nextNotePosition</strong>: Position of the following note (for duration calculation)</li>
+ * </ul>
+ *
+ * <h2>Usage</h2>
+ *
+ * <p>Created by {@link NoteAudioContext#createVoicingDetails} during the note destination
+ * generation process in {@link ScaleTraversalStrategy#getNoteDestinations}.</p>
+ *
+ * <p>Used by {@link PatternElement#getNoteAudio} to retrieve the appropriate audio
+ * sample with the correct pitch, duration, and channel routing.</p>
+ *
+ * @see PatternElement#getNoteAudio
+ * @see NoteAudioContext
+ * @see ScaleTraversalStrategy
+ *
+ * @author Michael Murray
+ */
 public class ElementVoicingDetails {
 	private ChannelInfo.Voicing voicing;
 	private ChannelInfo.StereoChannel stereoChannel;

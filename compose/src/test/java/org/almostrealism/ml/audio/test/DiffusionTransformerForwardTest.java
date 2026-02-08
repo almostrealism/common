@@ -46,7 +46,7 @@ public class DiffusionTransformerForwardTest extends TestSuiteBase {
 	 * but the caller passes null for globalCond during unconditional generation.
 	 * This must not cause UnsupportedOperationException.</p>
 	 */
-	@Test
+	@Test(timeout = 600_000)
 	public void testForwardWithNullGlobalCond() throws IOException {
 		if (!Files.exists(WEIGHTS_DIR)) {
 			log("Weights directory not found, skipping test");

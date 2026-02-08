@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AR-Compose Module - Almost Realism Framework</title>
+    <link rel="stylesheet" href="../css/style.css">
+    <style>
+        .key-concepts { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin: 20px 0; }
+        .concept-card { background: #f8f9fa; border-left: 4px solid #1565c0; padding: 15px; border-radius: 4px; }
+        .concept-card h4 { margin-top: 0; color: #1565c0; }
+        .package-table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+        .package-table th, .package-table td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
+        .package-table th { background-color: #e3f2fd; color: #1565c0; font-weight: bold; }
+        .package-table tr:hover { background-color: #f5f5f5; }
+        .class-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 15px; margin: 20px 0; }
+        .class-item { background: #fff; border: 1px solid #ddd; padding: 12px; border-radius: 4px; }
+        .class-item h4 { margin: 0 0 8px 0; color: #1565c0; font-size: 1.1em; }
+        .class-item p { margin: 0; font-size: 0.9em; color: #666; }
+        .class-item code { background: #e3f2fd; padding: 1px 4px; border-radius: 2px; font-size: 0.85em; }
+        .code-example { background: #f5f5f5; border-left: 4px solid #1565c0; padding: 15px; margin: 15px 0; border-radius: 4px; overflow-x: auto; }
+        .code-example pre { margin: 0; white-space: pre-wrap; }
+        .highlight { background-color: #e3f2fd; padding: 2px 4px; }
+        .warning { background-color: #fff3e0; border-left: 4px solid #ef6c00; padding: 12px; margin: 15px 0; }
+        .tip { background-color: #e8f5e9; border-left: 4px solid #2e7d32; padding: 12px; margin: 15px 0; }
+        .architecture-diagram { background: #fafafa; padding: 20px; border-radius: 8px; margin: 20px 0; font-family: monospace; white-space: pre; overflow-x: auto; }
+        .dep-arrow { color: #1565c0; font-weight: bold; }
+        .limitation { background-color: #ffebee; border-left: 4px solid #c62828; padding: 12px; margin: 15px 0; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>AR-Compose Module</h1>
+            <p class="tagline">Audio Scene Composition, Arrangement & Generation</p>
+            <nav>
+                <a href="../index.html">Home</a>
+                <a href="#overview">Overview</a>
+                <a href="#architecture">Architecture</a>
+                <a href="#audio-scene">AudioScene</a>
+                <a href="#execution-model">Execution Model</a>
+                <a href="#packages">Packages</a>
+                <a href="#realtime">Real-Time</a>
+            </nav>
+        </header>
+
+        <main>
+            <section id="overview">
+                <h2>Overview</h2>
+                <p>The <strong>ar-compose</strong> module provides high-level audio scene composition, arrangement, and generation capabilities. It is the central orchestrator that combines pattern-based music, effects processing, mixdown operations, and real-time audio generation.</p>
+
+                <div class="key-concepts">
+                    <div class="concept-card">
+                        <h4>AudioScene</h4>
+                        <p>Central orchestrator managing tempo, patterns, effects, and automation. Coordinates multiple managers to create complete audio compositions.</p>
+                    </div>
+                    <div class="concept-card">
+                        <h4>MixdownManager</h4>
+                        <p>Creates complex audio processing chains with reverb, delays, transmission routing, and volume automation.</p>
+                    </div>
+                    <div class="concept-card">
+                        <h4>AutomationManager</h4>
+                        <p>Handles parameter automation over time with periodic modulation for short-term oscillation and overall modulation for long-term evolution.</p>
+                    </div>
+                    <div class="concept-card">
+                        <h4>Health Computation</h4>
+                        <p>Audio quality metrics for evolutionary optimization, measuring stable playback duration before clipping or silence.</p>
+                    </div>
+                </div>
+            </section>
+
+            <section id="architecture">
+                <h2>Module Architecture</h2>
+
+                <h3>Dependency Graph</h3>
+                <div class="architecture-diagram">
+                            +-----------+
+                            | ar-compose|
+                            +-----------+
+                                  |
+         +----------+-------------+-------------+-----------+
+         |          |             |             |           |
+         v          v             v             v           v
+    +--------+ +--------+   +--------+   +----------+ +--------+
+    |ar-music| |ar-audio|   |  ar-ml |   |ar-heredity| |ar-time|
+    +--------+ +--------+   +--------+   +----------+ +--------+
+         |          |             |             |           |
+         v          v             v             v           v
+    +--------+ +--------+   +--------+   +----------+ +--------+
+    |patterns| | cells  |   |AudioGen|   | Genetic  | |Temporal|
+    | notes  | |filters |   |Composer|   |  Algo    | | Runner |
+    +--------+ +--------+   +--------+   +----------+ +--------+
+                </div>
+
+                <h3>Key Integration Points</h3>
+                <table class="package-table">
+                    <tr>
+                        <th>Module</th>
+                        <th>Integration</th>
+                        <th>Key Classes Used</th>
+                    </tr>
+                    <tr>
+                        <td><strong>ar-music</strong></td>
+                        <td>Pattern system for musical arrangement</td>
+                        <td><code>PatternSystemManager</code>, <code>PatternLayerManager</code>, <code>PatternElement</code></td>
+                    </tr>
+                    <tr>
+                        <td><strong>ar-audio</strong></td>
+                        <td>Cell-based processing and buffered output</td>
+                        <td><code>CellList</code>, <code>CellFeatures</code>, <code>BufferedOutputScheduler</code></td>
+                    </tr>
+                    <tr>
+                        <td><strong>ar-ml</strong></td>
+                        <td>ML-based audio generation</td>
+                        <td><code>AudioComposer</code>, <code>AudioGenerator</code></td>
+                    </tr>
+                    <tr>
+                        <td><strong>ar-heredity</strong></td>
+                        <td>Genetic algorithm optimization</td>
+                        <td><code>ProjectedChromosome</code>, <code>Gene</code>, <code>Genome</code></td>
+                    </tr>
+                    <tr>
+                        <td><strong>ar-time</strong></td>
+                        <td>Temporal execution framework</td>
+                        <td><code>TemporalRunner</code>, <code>Temporal</code>, <code>Frequency</code></td>
+                    </tr>
+                </table>
+            </section>
+
+            <section id="audio-scene">
+                <h2>AudioScene</h2>
+                <p><code>AudioScene</code> is the central orchestrator for audio composition. It coordinates multiple managers to create complete audio scenes.</p>
+
+                <h3>Manager Hierarchy</h3>
+                <div class="class-list">
+                    <div class="class-item">
+                        <h4>PatternSystemManager</h4>
+                        <p>Manages musical pattern organization and rendering. Contains multiple <code>PatternLayerManager</code> instances.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>MixdownManager</h4>
+                        <p>Creates effects chains with reverb, delays, and volume automation. Produces the final <code>CellList</code>.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>AutomationManager</h4>
+                        <p>Parameter automation with periodic and overall modulation curves.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>GlobalTimeManager</h4>
+                        <p>Playback position tracking with reset points for arrangement structure.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>SceneSectionManager</h4>
+                        <p>Musical section organization with position and length in measures.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>EfxManager</h4>
+                        <p>Per-channel effects including filter envelopes and section processing.</p>
+                    </div>
+                </div>
+
+                <h3>Basic Usage</h3>
+                <div class="code-example">
+<pre>// Create an audio scene at 120 BPM, 44100 Hz
+AudioScene&lt;?&gt; scene = new AudioScene&lt;&gt;(120.0, 6, 3, 44100);
+
+// Configure the scene
+scene.loadSettings(new File("scene.json"));
+scene.loadPatterns("patterns.json");
+scene.setLibraryRoot(new FileWaveDataProviderNode(new File("samples/")));
+
+// Add sections to the arrangement
+scene.addSection(0, 16);   // Intro: measures 0-16
+scene.addSection(16, 16);  // Verse: measures 16-32
+scene.addBreak(32);        // Reset point at measure 32
+
+// Set total duration
+scene.setTotalMeasures(64);
+
+// Get cells for output
+Cells cells = scene.getCells(output);</pre>
+                </div>
+            </section>
+
+            <section id="execution-model">
+                <h2>Execution Model</h2>
+
+                <p>AudioScene uses a two-phase execution model inherited from the <code>Temporal</code> interface:</p>
+
+                <h3>Phase 1: Setup</h3>
+                <p>Runs once before audio processing begins. Currently includes:</p>
+                <ul>
+                    <li>Pattern rendering via <code>PatternSystemManager.sum()</code></li>
+                    <li>Buffer allocation for pattern destinations</li>
+                    <li>Automation initialization</li>
+                    <li>Effects chain compilation</li>
+                </ul>
+
+                <h3>Phase 2: Tick</h3>
+                <p>Runs repeatedly for each audio buffer:</p>
+                <ul>
+                    <li>Effects processing via <code>CellList</code></li>
+                    <li>Output writing</li>
+                    <li>Time advancement</li>
+                </ul>
+
+                <div class="architecture-diagram">
+AudioScene.getCells(output)
+    |
+    +-- [SETUP PHASE] ----------------------------------------+
+    |   +-- automation.setup()                                 |
+    |   +-- riser.setup()                                      |
+    |   +-- mixdown.setup()                                    |
+    |   +-- time.setup()                                       |
+    |   +-- getPatternChannel()                                |
+    |       +-- PatternSystemManager.sum()  &lt;-- FULL RENDER    |
+    |       +-- ChannelSection.process()                       |
+    |       +-- EfxManager.apply()                             |
+    +----------------------------------------------------------+
+    |
+    +-- [TICK PHASE] -----------------------------------------+
+    |   +-- CellList.tick()                                    |
+    |       +-- Effects processing                             |
+    |       +-- Output writing                                 |
+    +----------------------------------------------------------+
+                </div>
+
+                <div class="limitation">
+                    <strong>Current Limitation:</strong> The entire pattern arrangement is rendered during setup, blocking real-time streaming. See the <a href="#realtime">Real-Time Rendering</a> section for the proposed solution.
+                </div>
+            </section>
+
+            <section id="packages">
+                <h2>Package Reference</h2>
+
+                <h3>org.almostrealism.audio</h3>
+                <p>Core audio scene classes.</p>
+                <div class="class-list">
+                    <div class="class-item">
+                        <h4>AudioScene</h4>
+                        <p>Central orchestrator coordinating patterns, effects, automation, and time management. Entry point for audio composition.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>AudioPlayer / AudioPlayerBase</h4>
+                        <p>Audio playback control interfaces and base implementations for real-time output.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>Mixer / SampleMixer</h4>
+                        <p>Multi-channel audio mixing with summation cells for combining audio sources.</p>
+                    </div>
+                </div>
+
+                <h3>org.almostrealism.audio.arrange</h3>
+                <p>Arrangement and timing management.</p>
+                <div class="class-list">
+                    <div class="class-item">
+                        <h4>MixdownManager</h4>
+                        <p>Complex mixdown with reverb, delays, and automation. Creates the final <code>CellList</code> processing chain.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>AutomationManager</h4>
+                        <p>Parameter automation with periodic (short) and polycyclic (long) modulation curves.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>GlobalTimeManager</h4>
+                        <p>Global playback position with reset points. Tracks measures and provides frame conversion.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>SceneSectionManager</h4>
+                        <p>Manages musical sections with position/length. Controls per-section activity.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>EfxManager</h4>
+                        <p>Per-channel effects management including filter envelopes and compression.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>RiseManager</h4>
+                        <p>Rise/swell effect processing for transitions and builds.</p>
+                    </div>
+                </div>
+
+                <h3>org.almostrealism.audio.health</h3>
+                <p>Audio quality metrics for optimization.</p>
+                <div class="class-list">
+                    <div class="class-item">
+                        <h4>StableDurationHealthComputation</h4>
+                        <p>Measures playback duration before clipping or silence. Uses <code>TemporalRunner</code> for execution.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>SilenceDurationHealthComputation</h4>
+                        <p>Detects and measures silence in audio output for quality assessment.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>AudioHealthScore</h4>
+                        <p>Health score container with frame count, normalized score, and output file paths.</p>
+                    </div>
+                </div>
+
+                <h3>org.almostrealism.audio.generative</h3>
+                <p>Audio generation management.</p>
+                <div class="class-list">
+                    <div class="class-item">
+                        <h4>GenerationManager</h4>
+                        <p>Coordinates audio generation from patterns and ML models.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>GenerationProvider</h4>
+                        <p>Interface for audio generation providers (patterns, ML, hybrid).</p>
+                    </div>
+                </div>
+
+                <h3>org.almostrealism.ml.audio</h3>
+                <p>ML-based audio generation.</p>
+                <div class="class-list">
+                    <div class="class-item">
+                        <h4>AudioComposer</h4>
+                        <p>Autoencoder-based audio composition with latent space interpolation.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>ComposableAudioFeatures</h4>
+                        <p>Weighted feature composition for blending audio characteristics.</p>
+                    </div>
+                </div>
+            </section>
+
+            <section id="realtime">
+                <h2>Real-Time Rendering</h2>
+
+                <h3>Current Limitation</h3>
+                <p>The pattern rendering process in <code>PatternSystemManager.sum()</code> operates on the <strong>entire arrangement</strong> at once. There is no mechanism to:</p>
+                <ul>
+                    <li>Specify a frame range (e.g., "render frames 0 to 1024")</li>
+                    <li>Incrementally render patterns as playback progresses</li>
+                    <li>Defer pattern rendering to the tick phase</li>
+                </ul>
+
+                <h3>Proposed Solution</h3>
+                <p>The proposed solution involves:</p>
+                <ol>
+                    <li><strong>Buffer-Aware Pattern Sum</strong>: Add <code>startFrame</code> and <code>frameCount</code> parameters to <code>sum()</code> methods</li>
+                    <li><strong>Move Pattern Sum to Tick</strong>: Execute pattern rendering during tick phase</li>
+                    <li><strong>N-Frame Batch Processing</strong>: New Cell tooling for operations that run once per N frames</li>
+                    <li><strong>Incremental Auto-Volume</strong>: Replace full-buffer max computation</li>
+                </ol>
+
+                <p>See <code>REALTIME_AUDIO_SCENE.md</code> and <code>REALTIME_PATTERNS.md</code> for detailed proposals.</p>
+
+                <h3>Where Buffering Works (MixdownManager)</h3>
+                <p>The <code>MixdownManager.cells()</code> method creates a <code>CellList</code> that supports buffering:</p>
+
+                <div class="code-example">
+<pre>// Real-time buffered output
+CellList cells = scene.getCells(output);
+BufferedOutputScheduler scheduler = cells.buffer(outputLine);
+scheduler.start();
+
+// Non-real-time buffered processing
+TemporalRunner runner = cells.buffer(destination);</pre>
+                </div>
+
+                <p>The issue is that by the time we reach this point, the pattern data has already been fully rendered to pre-allocated buffers.</p>
+            </section>
+
+            <section id="configuration">
+                <h2>Configuration</h2>
+
+                <h3>MixdownManager Flags</h3>
+                <div class="code-example">
+<pre>MixdownManager.enableMixdown = false;     // Enable mixdown processing
+MixdownManager.enableReverb = true;       // Enable reverb effect
+MixdownManager.enableTransmission = true; // Enable delay transmission
+MixdownManager.enableWetSources = true;   // Enable wet source processing</pre>
+                </div>
+
+                <h3>PatternSystemManager Flags</h3>
+                <div class="code-example">
+<pre>PatternSystemManager.enableAutoVolume = true;      // Auto-normalize volume
+PatternSystemManager.enableLazyDestination = false; // Immediate buffer update
+PatternSystemManager.enableVerbose = false;         // Debug logging</pre>
+                </div>
+
+                <div class="tip">
+                    <strong>Performance Tip:</strong> Set <code>enableAutoVolume = false</code> for real-time rendering to avoid full-buffer computation.
+                </div>
+            </section>
+
+            <section id="testing">
+                <h2>Testing</h2>
+
+                <h3>Running Tests</h3>
+                <div class="code-example">
+<pre># Using MCP test runner (recommended)
+mcp__ar-test-runner__start_test_run
+  module: "compose"
+  profile: "pipeline"
+  timeout_minutes: 30</pre>
+                </div>
+
+                <h3>Key Test Classes</h3>
+                <ul>
+                    <li><code>StableDurationHealthComputation</code> - Audio quality evaluation</li>
+                    <li><code>AudioSceneTest</code> - Scene configuration and rendering</li>
+                    <li><code>MixdownTest</code> - Effects chain validation</li>
+                </ul>
+            </section>
+
+        </main>
+
+        <footer>
+            <p>&copy; Almost Realism Framework. <a href="../index.html">Back to Documentation Home</a></p>
+        </footer>
+    </div>
+</body>
+</html>

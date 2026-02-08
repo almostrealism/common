@@ -189,7 +189,10 @@ public class DiffusionTrainingDataset implements Dataset<PackedCollection> {
 			if (extraArguments != null && extraArguments.length > 0) {
 				arguments = new PackedCollection[1 + extraArguments.length];
 				arguments[0] = timestep;
-				System.arraycopy(extraArguments, 0, arguments, 1, extraArguments.length);
+				// Copy references manually (not GPU data, just array of references)
+				for (int j = 0; j < extraArguments.length; j++) {
+					arguments[1 + j] = extraArguments[j];
+				}
 			} else {
 				arguments = new PackedCollection[]{timestep};
 			}

@@ -1,40 +1,70 @@
-# AR-Music Module
-
-**Musical pattern composition, note management, and audio rendering for the Almost Realism framework.**
+# Almost Realism Music Module (ar-music)
 
 ## Overview
 
-The `ar-music` module provides tools for:
-- **Pattern composition** - Creating and managing hierarchical musical patterns
-- **Note management** - Individual note events with timing, duration, and scale traversal
-- **Audio rendering** - Converting patterns to audio via hardware-accelerated operations
-- **Melodic generation** - Scale-aware traversal strategies for melodic content
+The **ar-music** module provides pattern-based music composition capabilities for the Almost Realism framework. It handles the creation, organization, and rendering of musical patterns from audio samples and synthesized notes.
 
-## Core Components
+This module is the core music engine that:
+- Organizes audio samples into musical patterns
+- Manages multi-layer pattern hierarchies
+- Handles scale traversal and chord progressions
+- Provides automation and envelope control
+- Integrates with genetic algorithm optimization
+
+## Architecture
+
+### Module Dependencies
+
+```
+ar-music
+    |
+    +-- ar-audio (CellFeatures, CellList)
+    |
+    +-- ar-heredity (Chromosome, Gene, genetic algorithms)
+    |
+    +-- ar-collect (PackedCollection, shapes)
+    |
+    +-- ar-time (Temporal processing)
+```
+
+### Package Organization
+
+```
+org.almostrealism.audio
+    |
+    +-- arrange/          [AudioSceneContext, ChannelSection]
+    |
+    +-- pattern/          [PatternSystemManager, PatternLayerManager, etc.]
+    |
+    +-- notes/            [PatternNote, NoteAudioChoice, etc.]
+    |
+    +-- data/             [ChannelInfo, ParameterSet]
+    |
+    +-- filter/           [ParameterizedEnvelopes]
+    |
+    +-- grains/           [Granular synthesis]
+    |
+    +-- sequence/         [GridSequencer]
+```
+
+## Core Classes
 
 ### PatternSystemManager
 
-Manages a hierarchical system of musical patterns across multiple channels and layers.
+The top-level manager for the entire pattern system. Coordinates multiple `PatternLayerManager` instances across all channels.
 
+**Key Responsibilities:**
+- Maintains list of `NoteAudioChoice` options (audio sample configurations)
+- Creates and manages `PatternLayerManager` for each pattern
+- Provides the `sum()` method for rendering patterns to audio
+- Handles auto-volume normalization
+- Integrates with genetic algorithm via `ProjectedChromosome`
+
+**Configuration:**
 ```java
-import org.almostrealism.audio.pattern.PatternSystemManager;
-
-// Create pattern system
-PatternSystemManager manager = new PatternSystemManager();
-
-// Add patterns to channels
-manager.addPattern(0, 4.0, false);  // Channel 0, 4 measures, non-melodic (drums)
-manager.addPattern(1, 4.0, true);   // Channel 1, 4 measures, melodic (bass)
-
-// Render all patterns in a channel to audio
-Producer<PackedCollection<?>> audio = manager.sum(
-    () -> sceneContext,
-    channelInfo
-);
-
-// Get pattern elements within a time range
-Map<NoteAudioChoice, List<PatternElement>> elements =
-    manager.getPatternElements(startBeat, endBeat);
+PatternSystemManager.enableAutoVolume = true;   // Normalize output volume
+PatternSystemManager.enableLazyDestination = false;  // Immediate buffer update
+PatternSystemManager.enableVerbose = false;     // Debug logging
 ```
 
 **Key Methods:**
@@ -42,20 +72,44 @@ Map<NoteAudioChoice, List<PatternElement>> elements =
 - `sum(contextSupplier, channelInfo)` - Aggregates audio from all patterns with auto-volume
 - `getPatternElements(start, end)` - Retrieves notes within a time range grouped by audio choice
 
+### PatternLayerManager
+
+Manages a single pattern with hierarchical layers. Each pattern can have up to 32 layers that build upon each other.
+
+**Key Responsibilities:**
+- Multi-layer pattern generation
+- Melodic vs. percussive mode handling
+- Scale traversal strategies (CHORD, SEQUENCE)
+- Note selection via genetic algorithm parameters
+- Pattern rendering via `sum()`
+
+**Layer Hierarchy:**
+```
+Layer 0 (Root)
+    |-- Seeds: Initial pattern elements from NoteAudioChoice
+    |
+Layer 1
+    |-- Built from Layer 0 with scale/2 granularity
+    |
+Layer 2
+    |-- Built from Layer 1 with scale/4 granularity
+    |
+... up to 32 layers
+```
+
 ### PatternElement
 
-Represents a single musical note event with timing, duration, scale traversal, and repetition.
+Represents a single musical event in a pattern.
+
+**Properties:**
+- `position`: Where in the measure(s) the element occurs
+- `duration`: How long the element lasts
+- `notes`: Map of voicing (MAIN, WET) to PatternNote
+- `repeat`: Number of repetitions
+- `repeatDuration`: Duration between repetitions
+- `automationParameters`: Dynamic control values
 
 ```java
-import org.almostrealism.audio.pattern.PatternElement;
-
-// PatternElement contains:
-// - Position in beats
-// - Duration
-// - Scale position and traversal strategy
-// - Repeat count and spacing
-// - Automation parameters
-
 // Get rendered audio destinations for a note
 List<NoteDestination> destinations = element.getNoteDestinations(
     isMelodic,
@@ -68,12 +122,20 @@ List<NoteDestination> destinations = element.getNoteDestinations(
 List<Double> positions = element.getPositions();
 ```
 
-**Key Properties:**
-- `position` - Beat position in the pattern
-- `duration` - Note length (can use `DurationStrategy` for dynamic calculation)
-- `scalePosition` - Position in musical scale (for melodic patterns)
-- `repeatCount` / `repeatDuration` - Note repetition settings
-- `automation` - `PackedCollection` of automation parameters
+### PatternNote
+
+Adapter for audio samples that handles:
+- Multi-layer note audio
+- Keyboard tuning application
+- Layer aggregation and filtering
+
+### NoteAudioChoice
+
+Configuration for a set of audio samples that can be used in patterns:
+- Sample sources (files, synthesized)
+- Scale/granularity constraints
+- Seed patterns
+- Channel restrictions
 
 ### PatternFeatures
 
@@ -101,33 +163,114 @@ The `render()` method:
 2. Sums the audio into the destination buffer using staged heap operations
 3. Uses `AudioProcessingUtils` for efficient audio mixing
 
-### PatternLayerManager
+## The Pattern Rendering Process
 
-Manages a single layer within the pattern system, handling note placement and generation.
+### Current (Non-Real-Time) Flow
 
-```java
-import org.almostrealism.audio.pattern.PatternLayerManager;
-
-// PatternLayerManager coordinates:
-// - Note placement within a layer
-// - Pattern generation from genomes
-// - Layer-level audio rendering
+```
+AudioScene.getPatternSetup(channel)
+    |
+    +-- PatternSystemManager.sum(context, channel)
+        |
+        +-- updateDestinations()  // Set output buffer
+        |
+        +-- For each PatternLayerManager:
+            |
+            +-- PatternLayerManager.sum(context, voicing, audioChannel)
+                |
+                +-- getAllElementsByChoice(0.0, duration)
+                |
+                +-- For each pattern repetition:
+                    |
+                    +-- render(context, audioContext, elements, melodic, offset)
+                        |
+                        +-- For each element:
+                            +-- getNoteDestinations()
+                            +-- Sum audio to destination buffer
+        |
+        +-- Auto-volume normalization (if enabled)
 ```
 
-### Note Audio Pipeline
+### The `sum()` Method
 
-#### NoteAudioChoice
-
-Represents an audio source selection for a note (e.g., a drum sample or synth patch).
+The critical method that renders patterns to audio:
 
 ```java
-import org.almostrealism.audio.notes.NoteAudioChoice;
+// PatternSystemManager.sum()
+public Supplier<Runnable> sum(Supplier<AudioSceneContext> context, ChannelInfo channel) {
+    OperationList op = new OperationList("PatternSystemManager Sum");
 
-// NoteAudioChoice links patterns to audio sources
-// Used as key in PatternSystemManager.getPatternElements() grouping
+    // Update destination buffers
+    op.add(updateDestinations);
+
+    // Sum each pattern for this channel
+    patternsForChannel.forEach(i -> {
+        op.add(patterns.get(i).sum(context, channel.getVoicing(), channel.getAudioChannel()));
+    });
+
+    // Auto-volume normalization
+    if (enableAutoVolume) {
+        Producer<PackedCollection> max = cp(destination).traverse(0).max().isolate();
+        op.add(volumeAdjustment);
+    }
+
+    return op;
+}
 ```
 
-#### NoteAudioProvider
+```java
+// PatternLayerManager.sum()
+public Supplier<Runnable> sum(Supplier<AudioSceneContext> context,
+                              ChannelInfo.Voicing voicing,
+                              ChannelInfo.StereoChannel audioChannel) {
+    return OperationWithInfo.of(metadata, () -> () -> {
+        Map<NoteAudioChoice, List<PatternElement>> elements = getAllElementsByChoice(0.0, duration);
+
+        int count = ctx.getMeasures() / duration;  // How many times pattern repeats
+
+        IntStream.range(0, count).forEach(i -> {
+            // Check if section is active
+            ChannelSection section = ctx.getSection(i * duration);
+            double active = activeSelection.apply(params, section.getPosition());
+            if (active < 0) return;
+
+            // Render each choice's elements
+            elements.keySet().forEach(choice -> {
+                render(ctx, audioContext, elements.get(choice), melodic, offset);
+            });
+        });
+    });
+}
+```
+
+### Pattern Rendering (`PatternFeatures.render()`)
+
+The actual audio summation happens in `PatternFeatures.render()`:
+
+```java
+default void render(AudioSceneContext sceneContext, NoteAudioContext audioContext,
+                    List<PatternElement> elements, boolean melodic, double offset) {
+    PackedCollection destination = sceneContext.getDestination();
+
+    elements.stream()
+        .map(e -> e.getNoteDestinations(melodic, offset, sceneContext, audioContext))
+        .flatMap(List::stream)
+        .forEach(note -> {
+            // Calculate frame range
+            int frames = Math.min(audio.getShape().getCount(),
+                    destination.getShape().length(0) - note.getOffset());
+
+            // Sum audio to destination
+            AudioProcessingUtils.getSum().sum(
+                destination.range(shape(frames), note.getOffset()),
+                audio.range(shape(frames)));
+        });
+}
+```
+
+## Note Audio Pipeline
+
+### NoteAudioProvider
 
 Provides audio data for notes, typically from sample files.
 
@@ -138,7 +281,7 @@ import org.almostrealism.audio.notes.NoteAudioProvider;
 // Implementations include FileNoteSource for sample playback
 ```
 
-#### FileNoteSource
+### FileNoteSource
 
 Loads audio samples from files for use as note sources.
 
@@ -151,20 +294,140 @@ FileNoteSource kickSource = new FileNoteSource("/samples/kick.wav");
 // The audio is available for pattern rendering
 ```
 
-## Pattern Rendering Flow
+## Limitations for Real-Time Audio
 
+### Current Issues
+
+1. **Full Duration Rendering**: `sum()` renders the entire pattern duration at once
+   - Cannot specify a frame range to render
+   - Must complete before any audio output begins
+
+2. **Destination Buffer Pre-allocation**:
+   - Buffers sized for `standardDurationFrames` or `getTotalSamples()`
+   - Cannot be incrementally filled
+
+3. **No Frame Range Support**:
+   - `getAllElementsByChoice(start, end)` uses measure-based time, not frames
+   - No mechanism to render "frames N to N+buffer_size"
+
+### Required Changes for Real-Time
+
+See `REALTIME_PATTERNS.md` for the detailed proposal. Key changes needed:
+
+1. Add frame range parameters to `sum()` methods
+2. Modify `render()` to respect frame boundaries
+3. Add incremental element filtering
+4. Integrate with tick-based execution
+
+## Supporting Classes
+
+### AudioSceneContext
+
+Provides context for pattern rendering:
+- `measures`: Total measures in the scene
+- `frames`: Total frames (samples)
+- `destination`: Output buffer
+- `sections`: Channel sections for activity
+- `automationLevel`: Parameter automation function
+
+### ChannelSection
+
+Defines a section of the arrangement:
+- `position`: Start measure
+- `length`: Duration in measures
+- `process()`: Section-specific processing
+
+### ParameterizedEnvelopes
+
+Envelope generators for dynamic control:
+- `ParameterizedVolumeEnvelope`
+- `ParameterizedFilterEnvelope`
+- `ParameterizedLayerEnvelope`
+
+### ChordProgressionManager
+
+Manages chord changes throughout the scene:
+- Scale selection per position
+- Genetic algorithm integration
+- Configurable duration and size
+
+## Scale Traversal
+
+For melodic patterns, `ScaleTraversalStrategy` controls how notes move through the musical scale:
+
+```java
+// PatternElement uses scale traversal for melodic content
+element.setScalePosition(0);  // Root note
+element.setScaleTraversalStrategy(strategy);  // How to move through scale
 ```
-PatternSystemManager
-    │
-    ├── PatternLayerManager (per layer)
-    │       │
-    │       └── PatternElement (individual notes)
-    │               │
-    │               └── NoteAudioChoice → NoteAudioProvider
-    │
-    └── sum() → PatternFeatures.render()
-            │
-            └── PackedCollection (rendered audio buffer)
+
+## Usage Examples
+
+### Creating Pattern Layers
+
+```java
+// Create system manager with choices and chromosomes
+PatternSystemManager patterns = new PatternSystemManager(choices, chromosomes);
+patterns.init();
+
+// Add patterns for each channel
+PatternLayerManager kickPattern = patterns.addPattern(0, 1.0, false);  // 1 measure, percussive
+PatternLayerManager bassPattern = patterns.addPattern(2, 4.0, true);   // 4 measures, melodic
+
+// Configure layers
+kickPattern.setLayerCount(4);
+bassPattern.setLayerCount(6);
+bassPattern.setScaleTraversalStrategy(ScaleTraversalStrategy.SEQUENCE);
+```
+
+### Rendering Patterns
+
+```java
+// In AudioScene
+Supplier<Runnable> patternSetup = patterns.sum(
+    () -> getContext(List.of(channel)),
+    channel
+);
+
+// Execute (renders entire arrangement)
+patternSetup.get().run();
+```
+
+### Accessing Pattern Elements
+
+```java
+// Get elements in a time range (in measures)
+Map<NoteAudioChoice, List<PatternElement>> elements =
+    patterns.getPatternElements(0.0, 4.0);
+
+// Get all elements from a specific pattern
+List<PatternElement> bassElements =
+    bassPattern.getAllElements(0.0, 4.0);
+```
+
+## Configuration
+
+### PatternLayerManager Settings
+
+```java
+PatternLayerManager.Settings settings = new PatternLayerManager.Settings();
+settings.setChannel(2);                    // Bass channel
+settings.setDuration(4.0);                 // 4 measures
+settings.setMelodic(true);                 // Melodic mode
+settings.setScaleTraversalStrategy(ScaleTraversalStrategy.SEQUENCE);
+settings.setScaleTraversalDepth(5);        // How deep in scale
+settings.setMinLayerScale(0.0625);         // Minimum granularity (1/16)
+settings.setLayerCount(6);                 // Number of layers
+```
+
+### PatternElementFactory Configuration
+
+```java
+PatternElementFactory factory = new PatternElementFactory();
+factory.setVolumeEnvelope(...);
+factory.setFilterEnvelope(...);
+factory.setChordPositionSelection(...);
+factory.setNoteDurationStrategy(...);
 ```
 
 ## Integration with AudioScene
@@ -183,14 +446,20 @@ Producer<PackedCollection<?>> channelAudio = patterns.sum(
 );
 ```
 
-## Scale Traversal
+## Pattern Rendering Flow
 
-For melodic patterns, `ScaleTraversalStrategy` controls how notes move through the musical scale:
-
-```java
-// PatternElement uses scale traversal for melodic content
-element.setScalePosition(0);  // Root note
-element.setScaleTraversalStrategy(strategy);  // How to move through scale
+```
+PatternSystemManager
+    │
+    ├── PatternLayerManager (per layer)
+    │       │
+    │       └── PatternElement (individual notes)
+    │               │
+    │               └── NoteAudioChoice → NoteAudioProvider
+    │
+    └── sum() → PatternFeatures.render()
+            │
+            └── PackedCollection (rendered audio buffer)
 ```
 
 ## Dependencies
@@ -201,8 +470,18 @@ The music module depends on:
 - `ar-collect` - `PackedCollection` for audio buffers
 - `ar-heredity` - Genetic representation via `ProjectedChromosome`
 
-## See Also
+## Testing
 
-- [AR-Audio Module](../audio/README.md) - Core audio processing
-- [AR-Compose Module](../compose/README.md) - Audio scene optimization
-- [AR-Time Module](../time/README.md) - Temporal operations
+Run tests using the MCP test runner:
+
+```
+mcp__ar-test-runner__start_test_run
+  module: "music"
+  profile: "pipeline"
+```
+
+## Related Documentation
+
+- [ar-compose README](../compose/README.md) - Audio scene orchestration
+- [ar-audio README](../audio/README.md) - Cell infrastructure
+- [REALTIME_PATTERNS.md](../compose/REALTIME_PATTERNS.md) - Real-time pattern proposal
