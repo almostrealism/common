@@ -16,6 +16,8 @@
 
 package org.almostrealism.collect.computations;
 
+import io.almostrealism.collect.Algebraic;
+import org.almostrealism.algebra.AlgebraFeatures;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.DefaultCollectionExpression;
 import io.almostrealism.collect.Shape;
@@ -25,6 +27,9 @@ import io.almostrealism.compute.Process;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.algebra.MatrixFeatures;
+import org.almostrealism.collect.CollectionFeatures;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerParallelProcess;
 import org.almostrealism.collect.PackedCollection;
 
@@ -64,7 +69,8 @@ import java.util.stream.Stream;
  *
  * @author Michael Murray
  */
-public class CollectionSubsetComputation extends TransitiveDeltaExpressionComputation {
+public class CollectionSubsetComputation extends TransitiveDeltaExpressionComputation
+		implements CollectionFeatures {
 
 	private final Expression<?>[] pos;
 	private final TraversalPolicy inputShape;
@@ -208,10 +214,76 @@ public class CollectionSubsetComputation extends TransitiveDeltaExpressionComput
 				.addAllDependentLifecycles(getDependentLifecycles());
 	}
 
+	/**
+	 * Computes the derivative (delta) of this subset computation using a direct
+	 * projection matrix representation.
+	 *
+	 * <p>For a subset operation, the Jacobian is a sparse projection matrix where:
+	 * <ul>
+	 *   <li>For each output position i, there's exactly one non-zero entry at input position j</li>
+	 *   <li>j = computeInputIndex(i) based on the position offset</li>
+	 *   <li>All other entries are zero</li>
+	 * </ul>
+	 *
+	 * <p>This method creates a direct projection expression rather than relying on the
+	 * transitive delta pattern (which would compute subset(identity)), providing better
+	 * performance for large Jacobians.</p>
+	 *
+	 * @param target The {@link Producer} with respect to which the derivative is computed
+	 * @return A {@link CollectionProducer} that computes the projection matrix Jacobian
+	 */
+	@Override
+	public CollectionProducer delta(Producer<?> target) {
+		// First try the standard optimizations (same producer, no match, etc.)
+		CollectionProducer delta = MatrixFeatures.getInstance().attemptDelta(this, target);
+		if (delta != null) {
+			return delta;
+		}
+
+		// Get the input producer
+		CollectionProducer input = (CollectionProducer) getInputs().get(1);
+
+		// Check if the input matches the target (the common case: d(subset(x))/dx)
+		if (AlgebraFeatures.match(input, target)) {
+			// Create a direct projection matrix
+			return createProjectionMatrix();
+		}
+
+		// For the chain rule case: d(subset(f(x)))/dx = d(subset)/df * df/dx
+		// Use the transitive delta pattern from the superclass
+		return super.delta(target);
+	}
+
+	/**
+	 * Creates a projection matrix representing the subset's Jacobian.
+	 *
+	 * <p>The projection matrix has shape [outputShape..., inputShape...] where:
+	 * <ul>
+	 *   <li>Entry (..., ...) = 1 if output position corresponds to input position</li>
+	 *   <li>Entry (..., ...) = 0 otherwise</li>
+	 * </ul>
+	 *
+	 * @return A CollectionProducer representing the projection matrix
+	 */
+	private CollectionProducer createProjectionMatrix() {
+		TraversalPolicy outputShape = getShape();
+		long outputSize = outputShape.getTotalSizeLong();
+		long inputSizeTotal = inputShape.getTotalSizeLong();
+
+		// Jacobian shape is [outputShape..., inputShape...]
+		TraversalPolicy jacobianShape = outputShape.append(inputShape);
+
+		// Capture the position and input shape in local finals for the lambda
+		Expression<?>[] positionOffsets = this.pos;
+		TraversalPolicy thisInputShape = this.inputShape;
+
+		return new SubsetProjectionComputation(jacobianShape, outputShape, thisInputShape, positionOffsets);
+	}
+
 	@Override
 	public String signature() {
 		String signature = super.signature();
-		if (signature == null) {
+		if (signature == null || pos == null) {
 			return null;
 		}
 
