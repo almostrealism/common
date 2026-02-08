@@ -268,15 +268,15 @@ public class PatternElement implements CodeFeatures {
 	/**
 	 * Returns a {@link Producer} for a specific frame range within this note's audio.
 	 *
-	 * <p>This enables partial note evaluation for real-time rendering. Only the
-	 * frames in {@code [startFrame, startFrame + frameCount)} are produced,
-	 * with filters and automation seeing correct note-relative positions.</p>
+	 * <p>This enables partial note evaluation for real-time rendering. Only
+	 * {@code frameCount} frames are produced, with the start position determined
+	 * by the value stored in the {@code offset} {@link PackedCollection}.</p>
 	 *
 	 * @param details voicing details
 	 * @param automationLevel automation factor
 	 * @param audioSelection audio selection function
 	 * @param timeForDuration measure-to-seconds conversion
-	 * @param startFrame first frame to evaluate (note-relative)
+	 * @param offset PackedCollection containing the start frame (note-relative)
 	 * @param frameCount number of frames to evaluate
 	 * @return a Producer generating only the requested frame range
 	 */
@@ -284,13 +284,13 @@ public class PatternElement implements CodeFeatures {
 													  Factor<PackedCollection> automationLevel,
 													  DoubleFunction<PatternNoteAudio> audioSelection,
 													  DoubleUnaryOperator timeForDuration,
-													  int startFrame, int frameCount) {
+													  PackedCollection offset, int frameCount) {
 		KeyPosition<?> k = details.isMelodic() ? details.getTarget() : null;
 		double duration = getEffectiveDuration(details, audioSelection, timeForDuration);
 		return getNote(details.getVoicing()).getAudio(k,
 				details.getStereoChannel().getIndex(), duration,
 				automationLevel, audioSelection,
-				startFrame, frameCount);
+				offset, frameCount);
 	}
 
 	public boolean isPresent(double start, double end) {

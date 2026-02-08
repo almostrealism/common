@@ -19,7 +19,7 @@ package org.almostrealism.audio.pattern;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
 
-import java.util.function.BiFunction;
+import java.util.function.IntFunction;
 
 /**
  * Represents a note audio sample ready for rendering at a specific frame offset.
@@ -36,9 +36,9 @@ import java.util.function.BiFunction;
  *
  * <p>In {@link PatternFeatures#render}, each {@code RenderedNoteAudio} is processed as follows:</p>
  * <ol>
- *   <li>The producer is evaluated within a {@code Heap.stage()} context</li>
- *   <li>The resulting audio is summed to the destination buffer at the specified offset</li>
- *   <li>Audio that extends beyond the buffer is clipped</li>
+ *   <li>The producer is evaluated via {@code traverse(1, note.getProducer()).get().evaluate()}</li>
+ *   <li>The resulting audio is cached by note offset for reuse across buffer ticks</li>
+ *   <li>The overlap region is summed to the destination buffer at the correct offset</li>
  * </ol>
  *
  * <h2>Real-Time Considerations</h2>
@@ -61,7 +61,8 @@ public class RenderedNoteAudio {
 	private Producer<PackedCollection> producer;
 	private int offset;
 	private int expectedFrameCount;
-	private BiFunction<Integer, Integer, Producer<PackedCollection>> partialProducerFactory;
+	private PackedCollection offsetArg;
+	private IntFunction<Producer<PackedCollection>> partialProducerFactory;
 
 	public RenderedNoteAudio() {
 		this(null, 0, 0);
@@ -121,30 +122,52 @@ public class RenderedNoteAudio {
 	}
 
 	/**
+	 * Returns the caller-owned {@link PackedCollection} used to pass the
+	 * start frame offset to partial producers. The caller sets the value
+	 * via {@code getOffsetArg().setMem(0, startFrame)} before calling
+	 * {@link #getPartialProducer(int)}.
+	 *
+	 * <p>Because the same {@link PackedCollection} instance is reused across
+	 * calls, the {@link org.almostrealism.collect.computations.CollectionProviderProducer}
+	 * signature remains stable (based on memory address, not data value),
+	 * enabling compiled kernel reuse via the instruction set cache.</p>
+	 */
+	public PackedCollection getOffsetArg() {
+		return offsetArg;
+	}
+
+	public void setOffsetArg(PackedCollection offsetArg) {
+		this.offsetArg = offsetArg;
+	}
+
+	/**
 	 * Sets a factory for creating partial {@link Producer}s that evaluate only
 	 * a subset of this note's frames.
 	 *
-	 * <p>The factory accepts two integers: (startFrame, frameCount) where
-	 * startFrame is note-relative and frameCount is the number of frames
-	 * to produce. The returned Producer will generate exactly frameCount
-	 * output frames with filters and automation correctly positioned.</p>
+	 * <p>The factory accepts a frame count and returns a Producer that generates
+	 * exactly that many output frames. The start frame offset is communicated
+	 * via the {@link #getOffsetArg()} PackedCollection, which the caller sets
+	 * before invoking the factory. This design keeps the computation signature
+	 * independent of the actual start frame value.</p>
 	 *
-	 * @param factory function mapping (startFrame, frameCount) to a partial Producer
+	 * @param factory function mapping frameCount to a partial Producer
 	 */
 	public void setPartialProducerFactory(
-			BiFunction<Integer, Integer, Producer<PackedCollection>> factory) {
+			IntFunction<Producer<PackedCollection>> factory) {
 		this.partialProducerFactory = factory;
 	}
 
 	/**
-	 * Creates a {@link Producer} that evaluates only the specified frame range.
+	 * Creates a {@link Producer} that evaluates only the specified number of frames.
 	 *
-	 * @param startFrame first frame to evaluate (note-relative)
+	 * <p>The caller must set the start frame offset in {@link #getOffsetArg()}
+	 * before calling this method.</p>
+	 *
 	 * @param frameCount number of frames to produce
 	 * @return a partial Producer, or {@code null} if no factory is set
 	 */
-	public Producer<PackedCollection> getPartialProducer(int startFrame, int frameCount) {
+	public Producer<PackedCollection> getPartialProducer(int frameCount) {
 		if (partialProducerFactory == null) return null;
-		return partialProducerFactory.apply(startFrame, frameCount);
+		return partialProducerFactory.apply(frameCount);
 	}
 }

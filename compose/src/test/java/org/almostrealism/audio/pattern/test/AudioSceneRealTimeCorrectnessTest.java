@@ -1357,8 +1357,11 @@ public class AudioSceneRealTimeCorrectnessTest extends AudioSceneTestBase {
 						if (overlapLength <= 0) continue;
 
 						// --- Partial evaluation ---
+						if (note.getOffsetArg() != null) {
+							note.getOffsetArg().setMem(0, sourceOffset);
+						}
 						io.almostrealism.relation.Producer<PackedCollection> partialProducer =
-								note.getPartialProducer(sourceOffset, overlapLength);
+								note.getPartialProducer(overlapLength);
 						if (partialProducer == null) continue;
 
 						PackedCollection partialAudio = null;

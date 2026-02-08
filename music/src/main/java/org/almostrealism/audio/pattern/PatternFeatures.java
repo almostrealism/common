@@ -1,6 +1,7 @@
 package org.almostrealism.audio.pattern;
 
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.relation.Producer;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.audio.CellFeatures;
 import org.almostrealism.audio.arrange.AudioSceneContext;
@@ -36,6 +37,14 @@ import java.util.List;
  *   <li><strong>Caching:</strong> When a {@link NoteAudioCache} is provided, evaluated
  *       note audio is cached and reused across consecutive buffer ticks. Notes that
  *       span multiple buffers are evaluated only once.</li>
+ *   <li><strong>Partial rendering:</strong> When no cache is available and a note's
+ *       {@link RenderedNoteAudio#getPartialProducer} is set, only the overlap
+ *       frames are evaluated instead of the full note. The computation signature
+ *       is independent of the start frame position (the offset is a runtime data
+ *       argument via {@link org.almostrealism.collect.computations.CollectionProviderProducer}),
+ *       so the compiled kernel is reused across different frame positions.
+ *       When a cache IS available, full evaluation + caching is preferred
+ *       because cache hits are O(1) memory reads.</li>
  * </ul>
  *
  * @see PatternElement#getNoteDestinations
@@ -60,7 +69,10 @@ public interface PatternFeatures extends CodeFeatures {
 	 *   <li>Pre-filters notes by {@code expectedFrameCount} to skip notes that
 	 *       cannot overlap the frame range (avoids expensive {@code evaluate()})</li>
 	 *   <li>Checks the {@link NoteAudioCache} for previously evaluated audio</li>
-	 *   <li>Evaluates the note's audio producer if not cached</li>
+	 *   <li>If no cache is available, attempts partial evaluation via
+	 *       {@link RenderedNoteAudio#getPartialProducer} to compute only the
+	 *       overlap frames</li>
+	 *   <li>Falls back to full note evaluation (with optional caching)</li>
 	 *   <li>Computes the overlap region and sums audio to the destination buffer</li>
 	 * </ol>
 	 *
@@ -116,6 +128,50 @@ public interface PatternFeatures extends CodeFeatures {
 					// Check cache first (fastest path for real-time rendering)
 					PackedCollection audio = (cache != null) ? cache.get(noteStart) : null;
 
+					// Partial evaluation: only when no cache is available. The
+					// computation signature is independent of startFrame (offset
+					// is a runtime CollectionProviderProducer argument), so the
+					// compiled kernel is reused across different frame positions.
+					// When a cache IS available, full evaluation + caching is
+					// preferred because cache hits are O(1) memory reads, while
+					// partial evaluation still requires kernel invocation per tick.
+					if (audio == null && cache == null && note.getExpectedFrameCount() > 0
+							&& note.getOffsetArg() != null) {
+						int pOverlapStart = Math.max(noteStart, startFrame);
+						int pOverlapEnd = Math.min(noteStart + note.getExpectedFrameCount(), endFrame);
+						int pOverlapLength = pOverlapEnd - pOverlapStart;
+						int pSourceOffset = pOverlapStart - noteStart;
+						int pDestOffset = pOverlapStart - startFrame;
+
+						if (pOverlapLength > 0) {
+							note.getOffsetArg().setMem(0, pSourceOffset);
+							Producer<PackedCollection> partialProducer =
+									note.getPartialProducer(pOverlapLength);
+							if (partialProducer != null) {
+								try {
+									PackedCollection partialAudio =
+											traverse(1, partialProducer).get().evaluate();
+									if (partialAudio != null) {
+										int actualLen = Math.min(pOverlapLength,
+												partialAudio.getShape().getCount());
+										if (actualLen > 0 && pDestOffset >= 0
+												&& pDestOffset + actualLen <= frameCount) {
+											TraversalPolicy shape = shape(actualLen);
+											sizes.addEntry(actualLen);
+											AudioProcessingUtils.getSum().sum(
+													destination.range(shape, pDestOffset),
+													partialAudio.range(shape, 0));
+										}
+										return;
+									}
+								} catch (Exception e) {
+									// Partial evaluation failed, fall through to full
+								}
+							}
+						}
+					}
+
+					// Full evaluation fallback
 					if (audio == null) {
 						try {
 							audio = traverse(1, note.getProducer()).get().evaluate();

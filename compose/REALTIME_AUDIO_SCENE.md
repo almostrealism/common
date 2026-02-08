@@ -5,39 +5,13 @@
 Enable `AudioScene` to render audio at real-time speeds for live playback,
 where each buffer must be computed faster than its playback duration.
 
-**Constraint**: At 44,100 Hz sample rate with a 1024-frame buffer:
-- Buffer duration: ~23.2 ms
-- Render time must be < 23.2 ms per buffer (with headroom for scheduling jitter)
-
-**Current status**: Architecture refactoring is complete, but **audio quality is
-incorrect**. Real-time renderer produces mostly silence (0.6% non-zero samples)
-while traditional renderer produces full audio. Root cause investigation needed.
+**Constraint**: At 44,100 Hz sample rate with a 4096-frame buffer:
+- Buffer duration: ~92.9 ms
+- Render time must be < 92.9 ms per buffer (with headroom for scheduling jitter)
 
 ---
 
-## The Core Problem
-
-The per-frame tick loop (processing effects, advancing cursors, writing to
-output) **must be a compiled hardware-accelerated Loop** for real-time
-performance. This requires that everything inside the loop be a `Computation`.
-
-The previous approach used `BatchedCell` with `Periodic` counting to trigger
-pattern rendering once per buffer *inside* the loop. This fundamentally breaks
-compilation because:
-
-1. Pattern rendering (`PatternSystemManager.sum()`) involves Java-based note
-   evaluation, caching, and sample interpolation that cannot be compiled
-2. `Periodic` counting logic pollutes the loop with non-compilable operations
-3. Even if `renderBatch()` returned a `Computation`, the pattern evaluation
-   underneath it would not be compilable
-
-**The solution**: Separate pattern preparation from per-frame processing.
-Pattern rendering happens **outside** the per-frame loop, filling a buffer.
-The per-frame loop simply reads from that buffer (a compilable operation).
-
----
-
-## New Architecture
+## Architecture
 
 ### Separation of Concerns
 
@@ -47,31 +21,10 @@ The per-frame loop simply reads from that buffer (a compilable operation).
 | **Tick** | Read from buffer, apply effects, write output | Inside loop | **Yes** |
 | **Advance** | Increment frame counter | After loop | Yes |
 
-### `PatternAudioBuffer` Interface Change
-
-**Before** (BatchedCell-based):
-```java
-class PatternAudioBuffer extends BatchedCell {
-    // tick() counts to batchSize, then calls renderBatch()
-    // renderBatch() calls PatternSystemManager.sum()
-    // Problem: tick() contains non-compilable work
-}
-```
-
-**After** (direct Cell):
-```java
-class PatternAudioBuffer implements Setup, CollectionFeatures {
-    // prepareBatch(frames) - renders patterns into output buffer (outside loop)
-    // getOutputProducer() - provides buffer for downstream WaveCells to read
-    // NOTE: Not a Cell - just a buffer holder with batch rendering capability
-}
-```
-
 ### `runnerRealTime` Structure
 
 ```java
 public TemporalCellular runnerRealTime(output, channels, bufferSize) {
-    // getCells() populates this.renderCells field via getPatternChannel()
     Cells cells = getCells(output, channels, bufferSize, frameSupplier);
 
     return new TemporalCellular() {
@@ -84,7 +37,7 @@ public TemporalCellular runnerRealTime(output, channels, bufferSize) {
             }
 
             // 2. INSIDE LOOP: Compilable per-frame processing
-            tick.add(loop(cells.tick(), bufferSize));  // THIS MUST COMPILE
+            tick.add(loop(cells.tick(), bufferSize));
 
             // 3. AFTER LOOP: Advance frame position
             tick.add(() -> () -> currentFrame[0] += bufferSize);
@@ -102,14 +55,14 @@ runnerRealTime.tick()
   |
   v
 [OUTSIDE LOOP - Java, per buffer]
-PatternAudioBuffer.prepareBatch(1024)
-  -> PatternSystemManager.sum(ctx, channel, startFrame, 1024)
+PatternAudioBuffer.prepareBatch(4096)
+  -> PatternSystemManager.sum(ctx, channel, startFrame, 4096)
   -> PatternFeatures.render() for each overlapping note
   -> Result written to PatternAudioBuffer.outputBuffer
   |
   v
 [INSIDE LOOP - Compiled, per frame]
-loop(cells.tick(), 1024)
+loop(cells.tick(), 4096)
   |
   +-> PatternAudioBuffer.tick()     // No-op or index advance
   +-> Effects pipeline cells       // Compilable DSP
@@ -117,389 +70,171 @@ loop(cells.tick(), 1024)
   |
   v
 [AFTER LOOP]
-currentFrame[0] += 1024
+currentFrame[0] += 4096
 ```
 
----
+### WaveCell Frame Control
 
-## Implementation Plan
-
-### Step 1: Refactor `PatternAudioBuffer` to not extend `BatchedCell` ✅ COMPLETE
-
-**File**: `compose/src/main/java/org/almostrealism/audio/pattern/PatternAudioBuffer.java`
-
-- ✅ Simplified to `implements Setup, CollectionFeatures` (not a Cell at all)
-- ✅ Added `prepareBatch()` method that calls `PatternSystemManager.sum()`
-- ✅ `getOutputProducer()` provides buffer for downstream WaveCells
-- ✅ Frame position provided via `IntSupplier` constructor argument
-
-### Step 2: Update `AudioScene.getPatternChannel()` ✅ COMPLETE
-
-**File**: `compose/src/main/java/org/almostrealism/audio/AudioScene.java`
-
-- ✅ `PatternAudioBuffer` no longer uses BatchedCell parameters
-- ✅ Changed `setup.add(renderCell.renderNow())` to `setup.add(renderCell.prepareBatch())`
-- ✅ Render cells are tracked via CellList requirements
-
-### Step 3: Update `AudioScene.runnerRealTime()` ✅ COMPLETE
-
-**File**: `compose/src/main/java/org/almostrealism/audio/AudioScene.java`
-
-- ✅ Uses `CellList.getAllRequirements()` with stream filter to find all PatternAudioBuffers
-- ✅ In `tick()`, `prepareBatch()` is called for each render cell **before** the loop
-- ✅ Updated Javadoc to reflect the new architecture
-
-### Step 4: Verify `cells.tick()` is Compilable ✅ VERIFIED
-
-**Status**: COMPLETE - all 11 tests pass
-
-- ✅ `PatternAudioBuffer` is just a buffer holder - no Cell/Temporal interfaces
-- ✅ Pattern rendering now happens outside the loop via `prepareBatch()`
-- ✅ All `AudioSceneRealTimeCorrectnessTest` tests pass (11/11)
-
-### Step 5: Test Verification ⚠️ TESTS PASS BUT AUDIO QUALITY INCORRECT
-
-**Test Results** (2026-02-03):
-- All 11 tests pass (no exceptions thrown)
-- However, **spectrogram analysis reveals real-time output is mostly silence**
-
-| Test | Status | Audio Quality |
-|------|--------|---------------|
-| `realTimeRunnerPerformance` | ✅ PASS | Not assessed (perf only) |
-| `realTimeProducesAudio` | ✅ PASS | ❌ 0.6% non-zero (bad) |
-| `realTimeMatchesTraditional` | ✅ PASS | ❌ Real-time output nearly silent |
-| `realTimeFrameAdvancement` | ✅ PASS | Not assessed |
-| `multiBufferWithEffects` | ✅ PASS | Not assessed |
-| `batchCellArchitectureValidation` | ✅ PASS | N/A (unit test) |
-
-**Conclusion**: Tests verify the architecture doesn't crash, but the audio data
-flow is broken. See "Audio Quality Assessment" section below for details.
+WaveCells use external frame control mode for the real-time path. A
+`PackedCollection(1)` holds the buffer-local frame index (0 to bufferSize-1),
+reset at each buffer start. This is passed via `wWithExternalFrame()` and
+plumbed through `EfxManager.apply()` → `createCells()`.
 
 ---
 
 ## Key Files
 
-| File | Changes | Status |
-|------|---------|--------|
-| `PatternAudioBuffer.java` | Simple buffer holder with `prepareBatch()`, not a Cell | ✅ Complete |
-| `AudioScene.java` | Updated `getPatternChannel()`, `runnerRealTime()` | ✅ Complete |
-| `BatchedCell.java` | No changes (still useful for other use cases) |
-| `Periodic.java` | No changes (still useful for other use cases) |
+| File | Role |
+|------|------|
+| `PatternAudioBuffer.java` | Buffer holder with `prepareBatch()`, not a Cell |
+| `AudioScene.java` | `runnerRealTime()` orchestration |
+| `PatternFeatures.java` | `render()` — unified offline/real-time note rendering |
+| `PatternLayerManager.java` | `sumInternal()` — repetition-aware render dispatch |
+| `RenderedNoteAudio.java` | Per-note audio + offset arg for partial rendering |
+| `ScaleTraversalStrategy.java` | Creates `RenderedNoteAudio` with offset PackedCollection |
+| `SamplingFeatures.java` | `sampling(rate, offset, frameCount, supplier)` |
 
 ---
 
-## What `BatchedCell` and `Periodic` Are Still Good For
+## Render Path Priority in `PatternFeatures.render()`
 
-`BatchedCell` and `Periodic` remain valuable for cases where:
+```
+1. Cache hit → return cached full audio (fastest, O(1) memory read)
+2. Cache miss + cache available → full evaluation + store in cache
+3. No cache + partial available → partial evaluation (overlap frames only)
+4. No cache + no partial → full evaluation (no caching)
+```
 
-1. The batched operation **is** compilable (e.g., periodic state snapshots)
-2. The tick rate is already per-buffer (not per-sample)
-3. The counting logic needs to be part of the compiled code
+Partial rendering is only used when no `NoteAudioCache` is available. Even
+with cached kernels, partial rendering requires kernel invocation per tick.
+Cache hits are zero-computation memory reads. For a note spanning N buffers:
 
-They are **not** appropriate when the batched operation is fundamentally
-non-compilable (like pattern rendering with Java-based note evaluation).
+- Full + cache: 1 evaluation + (N-1) cache reads ≈ **280ms + 0ms**
+- Partial × N: N kernel invocations ≈ **N × 17ms**
 
 ---
 
-## Success Criteria
+## Signature-Independent Partial Rendering
 
-| # | Criterion | Status |
-|---|-----------|--------|
-| 1 | `runnerRealTime().tick()` contains a `loop()` call where the body is a compilable `Computation` | ✅ MET |
-| 2 | Pattern rendering happens entirely outside the loop | ✅ MET (architecturally) |
-| 3 | Per-buffer render time meets real-time constraint | ✅ MET with 4096 buffer (26ms avg vs 93ms target) |
-| 4 | All existing correctness tests pass | ✅ MET (11/12 pass, 1 test infra error) |
-| 5 | Real-time output produces audio (non-silent) | ✅ MET |
+Partial rendering evaluates only the overlap frames of a note instead of
+the full note. The computation signature must be independent of the start
+frame position so compiled kernels can be reused across different buffer ticks.
 
-**Note**: Buffer size significantly impacts performance. With 4096-frame buffers (~93ms at 44.1kHz),
-the renderer achieves **3.52x real-time** (26ms render time for 93ms of audio).
+### Mechanism
+
+`SamplingFeatures.sampling(rate, PackedCollection offset, int frameCount, Supplier r)`
+constructs frame indices as `integers(0, frameCount).add(p(offset))`. The offset
+is a caller-owned `PackedCollection` whose value is set before each evaluation.
+`CollectionProviderProducer.signature()` returns `"offset:memLength|shapeDetails"`
+based on the memory address of the PackedCollection, not the stored value. Same
+PackedCollection instance → same signature → compiled kernel reuse.
+
+### Call Chain
+
+```
+ScaleTraversalStrategy.createRenderedNote()
+  creates PackedCollection(1) per note → stored on RenderedNoteAudio.offsetArg
+  factory closure captures offsetArg, passes it through:
+    → PatternElement.getNoteAudio(..., PackedCollection offset, int frameCount)
+    → PatternNoteAudio.getAudio(..., PackedCollection offset, int frameCount)
+    → PatternNoteAudioAdapter.computeAudio(..., PackedCollection offset, int frameCount)
+    → SamplingFeatures.sampling(rate, offset, frameCount, supplier)
+```
+
+In `PatternFeatures.render()`:
+```java
+note.getOffsetArg().setMem(0, pSourceOffset);  // set runtime value
+Producer partial = note.getPartialProducer(pOverlapLength);  // build/reuse graph
+PackedCollection audio = traverse(1, partial).get().evaluate();  // execute kernel
+```
+
+### Performance
+
+| Note | Full Eval | Partial Eval | Speedup | Kernel |
+|------|-----------|-------------|---------|--------|
+| 1 (cold) | 273.9ms / 10195 frames | 20.6ms / 4096 frames | 13.30x | Compiled |
+| 2 | 19.0ms / 10195 frames | 16.8ms / 4096 frames | 1.13x | Reused |
+| 3 | 16.5ms / 10063 frames | 14.5ms / 4096 frames | 1.14x | Reused |
+
+Note 1 incurs compilation cost. Notes 2-3 reuse the compiled kernel, narrowing
+the speedup to ~1.13x (pure frame-count reduction). All partial evaluations
+produced correct audio.
+
+---
+
+## Current Performance
+
+With 4096-frame buffers (~93ms at 44.1kHz) and ~350 pattern elements:
+
+| Metric | Value |
+|--------|-------|
+| Avg Buffer Time | ~220 ms |
+| Real-Time Ratio | ~0.42x |
+| Audio Quality | 99.9% non-zero, RMS ~0.32 |
+
+The bottleneck is **first-time note evaluation** — each unique instrument chain
+costs ~270ms to compile. With many pattern elements, the aggregate cost across
+all buffers is high. Caching prevents re-evaluation, but the first buffer that
+encounters each note pays the full compilation cost.
+
+---
+
+## Configuration
+
+### `enableRedundantCompilation` (Environment Variable)
+
+`AR_REDUNDANT_COMPILATION=disabled` prevents redundant compilation by forcing
+the `InstructionSetManager` to reuse cached compiled kernels when the computation
+signature matches. Default is enabled (for backward compatibility).
+
+**File**: `hardware/.../AcceleratedComputationEvaluable.java`
+
+### `Heap.stage()` Removal
+
+`Heap.stage()` was removed from note evaluation in `PatternFeatures.render()`.
+This eliminates per-note overhead from creating/destroying `OperationAdapter`
+wrappers. The instruction cache (`FrequencyCache`) is independent of
+`Heap.stage()`. Without staged cleanup, temporary allocations are reclaimed by
+GC. Monitor for memory growth during long renders.
 
 ---
 
 ## Test Coverage
 
-### Test Infrastructure ✅ COMPLETE
-
-The test suite has been refactored to use a shared helper infrastructure:
-
 | Class | Purpose |
 |-------|---------|
-| `RealTimeTestHelper` | Consolidates common setup, rendering, and verification |
+| `RealTimeTestHelper` | Shared setup, rendering, and verification |
 | `AudioStats` | Correctness verification (amplitude, RMS, non-zero ratio) |
 | `TimingStats` | Performance analysis (buffer timing, overruns, real-time ratio) |
-| `RenderResult` | Bundles output file, audio stats, and timing stats |
 
-### Test Categories
+### Tests
 
-**Correctness Tests** (generate visual artifacts):
-- `realTimeProducesAudio` - verifies non-silent output
-- `realTimeMatchesTraditional` - compares with baseline
-- `multiBufferWithEffects` - verifies effects integration
-
-**Performance Tests** (informational, no assertions):
-- `realTimeRunnerPerformance` - measures buffer timing vs real-time constraint
-- `renderTimingVsBufferSize` - checks if render time scales with buffer size
-
-**Diagnostic Tests** (verify mechanics):
-- `batchCellArchitectureValidation` - verifies BatchedCell counting/callback
-- `realTimeFrameAdvancement` - verifies frame tracking across buffers
-- `frameRangeSumProducesAudio` - tests PatternSystemManager.sum() in isolation
-- `frameRangeSumMultipleBuffers` - tests buffer stitching
-- `frameRangeWithEffects` - tests cell pipeline setup
-- `renderNoteAudioLengthAnalysis` - quantifies rendering waste
-
-### Visual Artifacts
-
-Correctness tests generate artifacts in `results/` for manual review:
-- `<test>-spectrogram.png` - frequency content visualization
-- `<test>-summary.txt` - human-readable statistics
+| Test | Category | What it verifies |
+|------|----------|-----------------|
+| `realTimeProducesAudio` | Correctness | Non-silent output |
+| `realTimeMatchesTraditional` | Correctness | Comparison with baseline |
+| `multiBufferWithEffects` | Correctness | Effects integration |
+| `realTimeRunnerPerformance` | Performance | Buffer timing vs real-time constraint |
+| `renderTimingVsBufferSize` | Performance | Render time scaling with buffer size |
+| `partialNoteRenderingPerformance` | Performance | Partial vs full evaluation speedup |
+| `cacheWarmingBenefit` | Performance | Cold vs warm render comparison |
+| `batchCellArchitectureValidation` | Diagnostic | BatchedCell counting/callback |
+| `realTimeFrameAdvancement` | Diagnostic | Frame tracking across buffers |
+| `frameRangeSumProducesAudio` | Diagnostic | PatternSystemManager.sum() isolation |
+| `frameRangeSumMultipleBuffers` | Diagnostic | Buffer stitching |
+| `frameRangeWithEffects` | Diagnostic | Cell pipeline setup |
+| `renderNoteAudioLengthAnalysis` | Diagnostic | Rendering waste quantification |
 
 ---
 
-## Audio Quality Assessment (2026-02-04) - ✅ FIXED
+## Next Steps
 
-### Fix Implementation: External Frame Control for WaveCell
+1. **Warmup strategy**: Pre-evaluate all notes during scene initialization
+   (before the real-time loop starts) to populate both the `NoteAudioCache` and
+   the `FrequencyCache`. This would eliminate the ~270ms compilation spike on
+   first encounter of each instrument chain. The `cacheWarmingBenefit` test
+   exists to measure this.
 
-The audio quality issue has been **fixed** by using WaveCell's external frame
-control configuration for the real-time pattern path.
-
-**Changes made:**
-1. `CellFeatures.java`: Added `wWithExternalFrame()` factory method for WaveCells
-   with external frame control
-2. `EfxManager.java`: Added overloaded `apply()` and `createCells()` methods that
-   accept a `frameProducer` parameter for external frame control
-3. `AudioScene.java`: Added overloaded `getCells()`, `getPatternCells()`, and
-   `getPatternChannel()` methods; modified `runnerRealTime()` to create and manage
-   a per-buffer frame index that resets to 0 at the start of each buffer
-
-### Results After Fix
-
-| Metric | Before Fix | After Fix |
-|--------|------------|-----------|
-| Non-Zero Ratio | **0.6%** | **99.5%** ✅ |
-| RMS Level | 0.037707 | 0.265192 |
-| Max Amplitude | 0.999310 | 0.999991 |
-| Is Silent | Effectively YES | **NO** ✅ |
-
-From `realtime-correctness-summary.txt` (with 4096-frame buffer):
-```
-Audio Statistics:
-  Duration: 3.99 s
-  Frames: 176127
-  Max Amplitude: 0.996415
-  RMS Level: 0.068968
-  Non-Zero Ratio: 58.5%
-  Is Silent: NO
-
-Timing Statistics:
-  Buffer Count: 43
-  Target Buffer Time: 92.880 ms
-  Avg Buffer Time: 26.379 ms
-  Real-Time Ratio: 3.52x     <-- MEETS REAL-TIME! 3.5x faster than needed
-  Overruns: 1
-  Meets Real-Time: YES
-```
-
-**Buffer size impact on performance**:
-| Buffer Size | Render Time | Target | Real-Time Ratio |
-|-------------|-------------|--------|-----------------|
-| 256 frames | 313 ms | 5.8 ms | 0.02x (too slow) |
-| 1024 frames | 43 ms | 23.2 ms | 0.5x (too slow) |
-| **4096 frames** | **4.2 ms** | **92.9 ms** | **22x (excellent!)** |
-| 44100 frames | 28 ms | 1000 ms | 36x (excellent) |
-
-The bottleneck is per-buffer overhead (pattern rendering), not per-frame processing.
-Larger buffers amortize this overhead and achieve real-time performance.
-
-### Root Cause (Historical)
-
-**BUG**: The `WaveCell` used by the effects pipeline had a global clock that
-kept incrementing, but it read from a buffer that only had `bufferSize` samples.
-After `bufferSize` ticks, the clock's frame position exceeded the buffer bounds,
-and the WaveCell output silence.
-
-**Solution**: Use WaveCell's external frame control mode. When configured with
-a `Producer<PackedCollection> frame` parameter, WaveCell uses that external
-producer for frame position instead of its internal clock. The runner now:
-1. Creates a `PackedCollection(1)` to hold the buffer frame index
-2. Resets it to 0 at the start of each buffer
-3. Increments it inside the per-frame loop
-4. Passes it to WaveCell via `wWithExternalFrame()`
-
----
-
-#### Option A: Use WaveCell with External Per-Buffer Frame Producer (Recommended)
-
-Configure WaveCell with an external frame producer that provides a per-buffer
-local index (0 to bufferSize-1).
-
-**Changes required:**
-1. Create a `PackedCollection(1)` that holds the current in-buffer frame index
-2. Pass a producer for this to `EfxManager.apply()` (new parameter)
-3. Modify `EfxManager.createCells()` to use the external-frame WaveCell constructor
-4. In `runnerRealTime()`, increment the frame index before each loop iteration
-
-**Pros:**
-- Uses existing WaveCell infrastructure
-- WaveCell already supports this use case (external frame control)
-- Minimal changes to cell architecture
-- Keeps WaveCell's bounds checking, amplitude scaling, etc.
-
-**Cons:**
-- Requires plumbing frame producer through `getCells()` → `getPatternCells()` →
-  `getPatternChannel()` → `EfxManager.apply()` → `createCells()`
-- The frame index update must happen inside the compiled loop (or the loop
-  must be unrolled)
-
----
-
-#### Option B: Modify PatternAudioBuffer to Push Samples Directly
-
-Make `PatternAudioBuffer` a true source cell that reads from its buffer on each
-`push()` and forwards samples directly to the receptor.
-
-**Changes required:**
-1. Add a per-buffer frame index to `PatternAudioBuffer`
-2. Modify `push()` to read from `outputBuffer[frameIndex]` and forward to receptor
-3. Modify `tick()` to increment the frame index
-4. Remove `EfxManager.createCells()` from the pattern path
-
-**Pros:**
-- Simpler data flow (no intermediate WaveCell)
-- Frame indexing is local to PatternAudioBuffer
-- No need to plumb frame producer through multiple layers
-
-**Cons:**
-- Changes the cell architecture pattern
-- Loses WaveCell features (looping, offset timing) - though not needed here
-- More invasive change to PatternAudioBuffer
-
----
-
-#### Option C: Per-Buffer Clock Reset
-
-Reset WaveCell's internal clock to 0 at the start of each buffer.
-
-**Pros:**
-- Minimal code changes
-
-**Cons:**
-- Requires accessing WaveCell internals from runner
-- Breaks encapsulation
-- Doesn't address the fundamental mismatch between global clock and local buffer
-
----
-
-**Recommendation**: Option A is the cleanest fix because:
-1. It uses WaveCell as designed (external frame control is a supported feature)
-2. It doesn't require changing WaveCell or PatternAudioBuffer internals
-3. It aligns with how real-time audio systems typically work (local frame index)
-
-The main work is plumbing the frame producer through the cell construction chain.
-
----
-
-## Performance Investigation: Compilation & Heap.stage() (2026-02-07)
-
-### Context
-
-With 4096-frame buffers the renderer achieves real-time performance (3.5x ratio),
-but smaller buffers (1024 frames) do not meet real-time constraints. The per-buffer
-overhead is dominated by `PatternFeatures.render()`, which calls
-`traverse(1, note.getProducer()).get().evaluate()` for each note. Two hypotheses
-were proposed:
-
-1. **Heap.stage() destroys reusable compiled operations**: Each note evaluation was
-   wrapped in `Heap.stage()`, which calls `push()`/`pop()` on the default heap. The
-   `pop()` destroys all operations allocated during the stage, potentially including
-   compiled kernels that could be reused across notes within the same tick.
-
-2. **Redundant compilation**: If multiple notes produce computation trees with the
-   same signature, the `InstructionSetManager` cache should prevent recompilation.
-   But `enableRedundantCompilation = true` (hardcoded) allowed bypassing this cache.
-
-### Changes Made
-
-#### 1. `enableRedundantCompilation` now controllable via environment variable
-
-**File**: `hardware/.../AcceleratedComputationEvaluable.java`
-
-```java
-// Before:
-public static boolean enableRedundantCompilation = true;
-
-// After:
-public static boolean enableRedundantCompilation =
-    SystemUtils.isEnabled("AR_REDUNDANT_COMPILATION").orElse(true);
-```
-
-Set `AR_REDUNDANT_COMPILATION=disabled` to prevent redundant compilation. This
-forces the `InstructionSetManager` to reuse cached compiled kernels when the
-computation signature matches.
-
-#### 2. Removed `Heap.stage()` from note evaluation
-
-**File**: `music/.../pattern/PatternFeatures.java`
-
-```java
-// Before:
-Heap.stage(() ->
-    evaluated[0] = traverse(1, note.getProducer()).get().evaluate());
-
-// After:
-audio = traverse(1, note.getProducer()).get().evaluate();
-```
-
-Without `Heap.stage()`, compiled evaluables are not destroyed after each note
-evaluation. This allows compiled kernels to persist in the `InstructionSetManager`
-cache and be reused across notes within the same render call.
-
-#### 3. Added `cacheWarmingBenefit` test
-
-**File**: `compose/.../test/AudioSceneRealTimeCorrectnessTest.java`
-
-New test method that compares cold (no warmup) vs warm (pre-evaluate all notes)
-render times. Interpretation:
-
-| Observation | Meaning |
-|-------------|---------|
-| Warm << Cold | Cache warming works; compilation is the bottleneck |
-| Warm ~= Cold | Compilation is not the bottleneck, or signatures are unique per note |
-| Warm < Cold (moderate) | Partial benefit; some notes share signatures |
-
-### How to Run the Investigation
-
-```bash
-# Run baseline test (Heap.stage removed, redundant compilation still enabled)
-AR_TEST_DEPTH=2 mvn test -pl compose \
-  -Dtest=AudioSceneRealTimeCorrectnessTest#cacheWarmingBenefit
-
-# Run with redundant compilation disabled
-AR_REDUNDANT_COMPILATION=disabled AR_TEST_DEPTH=2 mvn test -pl compose \
-  -Dtest=AudioSceneRealTimeCorrectnessTest#cacheWarmingBenefit
-
-# Run correctness verification after changes
-AR_TEST_DEPTH=2 mvn test -pl compose \
-  -Dtest=AudioSceneRealTimeCorrectnessTest#realTimeProducesAudio
-
-# Run comparison to verify no regression
-AR_TEST_DEPTH=2 mvn test -pl compose \
-  -Dtest=AudioSceneRealTimeCorrectnessTest#realTimeMatchesTraditional
-```
-
-### What to Observe
-
-After running the tests, check `compose/results/` for output files and check
-the test logs for timing comparisons:
-
-- **avg buffer time**: Primary metric for real-time viability
-- **cold vs warm speedup**: Indicates whether compilation caching helps
-- **memory usage**: Monitor for leaks after removing `Heap.stage()`; without
-  staged cleanup, compiled operations may accumulate
-
-### Risks
-
-Removing `Heap.stage()` may cause memory growth during long renders because
-compiled operations are no longer automatically cleaned up after each note
-evaluation. If memory issues are observed, an alternative cleanup strategy
-(e.g., periodic cleanup, LRU cache) should be considered.
+2. **Buffer size tuning**: Larger buffers amortize per-buffer overhead better.
+   At 4096 frames the system is at ~0.42x real-time. Larger buffers or fewer
+   pattern elements would reach real-time.

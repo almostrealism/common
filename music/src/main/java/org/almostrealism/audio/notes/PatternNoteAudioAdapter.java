@@ -58,8 +58,8 @@ public abstract class PatternNoteAudioAdapter implements
 	public Producer<PackedCollection> getAudio(KeyPosition<?> target, int channel, double noteDuration,
 												  Factor<PackedCollection> automationLevel,
 												  DoubleFunction<PatternNoteAudio> audioSelection,
-												  int startFrame, int frameCount) {
-		return computeAudio(target, channel, noteDuration, automationLevel, audioSelection, startFrame, frameCount);
+												  PackedCollection offset, int frameCount) {
+		return computeAudio(target, channel, noteDuration, automationLevel, audioSelection, offset, frameCount);
 	}
 
 	@Override
@@ -98,19 +98,19 @@ public abstract class PatternNoteAudioAdapter implements
 	/**
 	 * Computes audio for a specific frame range within the note.
 	 *
-	 * <p>Uses {@link #sampling(int, int, int, java.util.function.Supplier)} to set up
-	 * frame indices starting at {@code startFrame}, producing only {@code frameCount}
-	 * output frames. The filter sees correct note-relative positions.</p>
+	 * <p>Uses {@link #sampling(int, PackedCollection, int, java.util.function.Supplier)}
+	 * to set up frame indices offset by the value in {@code offset}, producing only
+	 * {@code frameCount} output frames. The filter sees correct note-relative positions.</p>
 	 */
 	protected Producer<PackedCollection> computeAudio(KeyPosition<?> target, int channel,
 														 double noteDuration,
 														 Factor<PackedCollection> automationLevel,
 														 DoubleFunction<PatternNoteAudio> audioSelection,
-														 int startFrame, int frameCount) {
+														 PackedCollection offset, int frameCount) {
 		if (getDelegate() == null) {
 			return computeAudio(target, channel, noteDuration, automationLevel, audioSelection);
 		} else if (noteDuration > 0) {
-			return sampling(getSampleRate(target, audioSelection), startFrame, frameCount,
+			return sampling(getSampleRate(target, audioSelection), offset, frameCount,
 					() -> getFilter().apply(getDelegate()
 									.getAudio(target, channel, noteDuration,
 											automationLevel, audioSelection),

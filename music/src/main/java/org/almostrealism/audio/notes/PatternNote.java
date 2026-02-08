@@ -189,17 +189,17 @@ public class PatternNote extends PatternNoteAudioAdapter {
 														 double noteDuration,
 														 Factor<PackedCollection> automationLevel,
 														 DoubleFunction<PatternNoteAudio> audioSelection,
-														 int startFrame, int frameCount) {
+														 PackedCollection offset, int frameCount) {
 		if (getDelegate() != null) {
 			return super.computeAudio(
 					target, channel,
 					noteDuration,
 					automationLevel, audioSelection,
-					startFrame, frameCount);
+					offset, frameCount);
 		}
 
 		return combineLayers(target, channel, noteDuration, automationLevel, audioSelection,
-				startFrame, frameCount);
+				offset, frameCount);
 	}
 
 	protected Producer<PackedCollection> combineLayers(KeyPosition<?> target, int channel,
@@ -257,7 +257,7 @@ public class PatternNote extends PatternNoteAudioAdapter {
 														  double noteDuration,
 														  Factor<PackedCollection> automationLevel,
 														  DoubleFunction<PatternNoteAudio> audioSelection,
-														  int startFrame, int frameCount) {
+														  PackedCollection offset, int frameCount) {
 		if (noteDuration < 0) {
 			throw new UnsupportedOperationException();
 		}
@@ -273,7 +273,7 @@ public class PatternNote extends PatternNoteAudioAdapter {
 					layers.stream()
 							.map(l -> l.getAudio(target, channel, noteDuration,
 									automationLevel, audioSelection,
-									startFrame, frameCount))
+									offset, frameCount))
 							.toArray(Producer[]::new));
 		}
 	}
