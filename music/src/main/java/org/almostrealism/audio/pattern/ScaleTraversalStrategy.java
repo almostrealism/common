@@ -157,7 +157,13 @@ public enum ScaleTraversalStrategy implements CodeFeatures, ConsoleFeatures {
 				details, audioContext.getAudioSelection(),
 				context.getTimeForDuration());
 		int expectedFrameCount = (int) (durationSec * OutputLine.sampleRate);
-		return new RenderedNoteAudio(producer, frameOffset, expectedFrameCount);
+		RenderedNoteAudio note = new RenderedNoteAudio(producer, frameOffset, expectedFrameCount);
+		note.setPartialProducerFactory((startFrame, frameCount) ->
+				element.getNoteAudio(details, automationLevel,
+						audioContext.getAudioSelection(),
+						context.getTimeForDuration(),
+						startFrame, frameCount));
+		return note;
 	}
 
 

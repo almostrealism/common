@@ -110,6 +110,26 @@ public interface SamplingFeatures extends CodeFeatures {
 		return sampleRate(rate, () -> frames(integers(), r));
 	}
 
+	/**
+	 * Sets up sampling context for a specific frame range within a note.
+	 *
+	 * <p>Unlike {@link #sampling(int, double, Supplier)}, which uses dynamic-sized
+	 * frame indices starting at 0, this method uses fixed-size frame indices starting
+	 * at {@code startFrame}. This enables partial note evaluation: the expression
+	 * tree produces only {@code frameCount} output frames, and filters/automation
+	 * see frame indices {@code [startFrame, startFrame + frameCount)}, correctly
+	 * positioning time-dependent effects within the note.</p>
+	 *
+	 * @param rate sample rate
+	 * @param startFrame first frame index (note-relative)
+	 * @param frameCount number of frames to produce
+	 * @param r supplier to evaluate within the sampling context
+	 * @return the result of the supplier
+	 */
+	default <T> T sampling(int rate, int startFrame, int frameCount, Supplier<T> r) {
+		return sampleRate(rate, () -> frames(integers(startFrame, startFrame + frameCount), r));
+	}
+
 	default int toFrames(double sec) { return (int) (sampleRate() * sec); }
 
 	default Producer<PackedCollection> toFrames(Producer<PackedCollection> sec) {

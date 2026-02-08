@@ -19,6 +19,8 @@ package org.almostrealism.audio.pattern;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
 
+import java.util.function.BiFunction;
+
 /**
  * Represents a note audio sample ready for rendering at a specific frame offset.
  *
@@ -59,6 +61,7 @@ public class RenderedNoteAudio {
 	private Producer<PackedCollection> producer;
 	private int offset;
 	private int expectedFrameCount;
+	private BiFunction<Integer, Integer, Producer<PackedCollection>> partialProducerFactory;
 
 	public RenderedNoteAudio() {
 		this(null, 0, 0);
@@ -115,5 +118,33 @@ public class RenderedNoteAudio {
 
 	public void setExpectedFrameCount(int expectedFrameCount) {
 		this.expectedFrameCount = expectedFrameCount;
+	}
+
+	/**
+	 * Sets a factory for creating partial {@link Producer}s that evaluate only
+	 * a subset of this note's frames.
+	 *
+	 * <p>The factory accepts two integers: (startFrame, frameCount) where
+	 * startFrame is note-relative and frameCount is the number of frames
+	 * to produce. The returned Producer will generate exactly frameCount
+	 * output frames with filters and automation correctly positioned.</p>
+	 *
+	 * @param factory function mapping (startFrame, frameCount) to a partial Producer
+	 */
+	public void setPartialProducerFactory(
+			BiFunction<Integer, Integer, Producer<PackedCollection>> factory) {
+		this.partialProducerFactory = factory;
+	}
+
+	/**
+	 * Creates a {@link Producer} that evaluates only the specified frame range.
+	 *
+	 * @param startFrame first frame to evaluate (note-relative)
+	 * @param frameCount number of frames to produce
+	 * @return a partial Producer, or {@code null} if no factory is set
+	 */
+	public Producer<PackedCollection> getPartialProducer(int startFrame, int frameCount) {
+		if (partialProducerFactory == null) return null;
+		return partialProducerFactory.apply(startFrame, frameCount);
 	}
 }

@@ -113,7 +113,7 @@ public interface PatternFeatures extends CodeFeatures {
 						return;
 					}
 
-					// Check cache before expensive evaluate()
+					// Check cache first (fastest path for real-time rendering)
 					PackedCollection audio = (cache != null) ? cache.get(noteStart) : null;
 
 					if (audio == null) {

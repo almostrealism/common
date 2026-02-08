@@ -1,0 +1,601 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Heap - Thread-Local Arena Allocator - Almost Realism Framework</title>
+    <link rel="stylesheet" href="../css/style.css">
+    <style>
+        .key-concepts { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin: 20px 0; }
+        .concept-card { background: #f8f9fa; border-left: 4px solid #1976d2; padding: 15px; border-radius: 4px; }
+        .concept-card h4 { margin-top: 0; color: #1976d2; }
+        .class-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 15px; margin: 20px 0; }
+        .class-item { background: #fff; border: 1px solid #ddd; padding: 12px; border-radius: 4px; }
+        .class-item h4 { margin: 0 0 8px 0; color: #1976d2; font-size: 1.1em; }
+        .class-item p { margin: 0; font-size: 0.9em; color: #666; }
+        .code-example { background: #f5f5f5; border-left: 4px solid #1976d2; padding: 15px; margin: 15px 0; border-radius: 4px; }
+        .warning { background-color: #ffebee; border-left: 4px solid #c62828; padding: 12px; margin: 15px 0; }
+        .success { background-color: #e8f5e9; border-left: 4px solid #2e7d32; padding: 12px; margin: 15px 0; }
+        .api-table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+        .api-table th, .api-table td { padding: 10px 12px; text-align: left; border-bottom: 1px solid #ddd; }
+        .api-table th { background-color: #e3f2fd; color: #1976d2; font-weight: bold; }
+        .api-table tr:hover { background-color: #f5f5f5; }
+        .api-table code { background: #f0f0f0; padding: 2px 5px; border-radius: 3px; font-size: 0.9em; }
+        .diagram { background: #fafafa; border: 1px solid #e0e0e0; padding: 20px; margin: 20px 0; border-radius: 4px; overflow-x: auto; }
+        .diagram pre { margin: 0; font-family: 'Courier New', monospace; font-size: 0.85em; line-height: 1.4; }
+        .integration-card { background: #fff; border: 2px solid #1976d2; padding: 15px; margin: 15px 0; border-radius: 4px; }
+        .integration-card h4 { margin-top: 0; color: #1976d2; }
+        .lifecycle-step { display: flex; align-items: flex-start; margin: 10px 0; }
+        .lifecycle-step .step-num { background: #1976d2; color: white; border-radius: 50%; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; font-weight: bold; margin-right: 12px; flex-shrink: 0; font-size: 0.85em; }
+        .lifecycle-step .step-content { flex: 1; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Heap</h1>
+            <p class="tagline">Thread-Local Arena Allocator with Staged Scopes and Dependency Lifecycle Management</p>
+            <nav>
+                <a href="../index.html">Home</a>
+                <a href="hardware.html">Hardware Module</a>
+                <a href="#overview">Overview</a>
+                <a href="#architecture">Architecture</a>
+                <a href="#api">API Reference</a>
+                <a href="#patterns">Usage Patterns</a>
+                <a href="#integration">Integration</a>
+                <a href="#lifecycle">Lifecycle</a>
+            </nav>
+        </header>
+
+        <main>
+            <section id="overview">
+                <h2>Overview</h2>
+                <p><strong>Heap</strong> is a thread-local arena allocator in the <code>org.almostrealism.hardware.mem</code> package. It pre-allocates a single large memory block and serves allocation requests by advancing a bump pointer, reducing allocation overhead from O(n) provider calls to a single allocation plus O(1) pointer bumps.</p>
+
+                <div class="key-concepts">
+                    <div class="concept-card">
+                        <h4>Arena Allocation</h4>
+                        <p>Pre-allocates a large memory block and suballocates via bump pointer advancement. Each allocation returns a zero-copy <code>Bytes</code> view into the backing block &mdash; no new memory provider calls are made.</p>
+                    </div>
+                    <div class="concept-card">
+                        <h4>Staged Scopes</h4>
+                        <p>Nested stages create independent allocation scopes. When a stage exits, all its allocations and tracked dependencies are automatically freed. Stages can be nested arbitrarily deep.</p>
+                    </div>
+                    <div class="concept-card">
+                        <h4>Dependency Lifecycle</h4>
+                        <p>Each stage tracks compiled operations, dependent operations, and temporary memory. When the stage is destroyed, all tracked resources are automatically cleaned up in a defined order.</p>
+                    </div>
+                    <div class="concept-card">
+                        <h4>Thread-Local Default</h4>
+                        <p>A thread-local default heap enables transparent integration. When active, <code>PackedCollection.factory()</code>, <code>MemoryDataAdapter.init()</code>, and other framework components automatically use heap-backed allocation.</p>
+                    </div>
+                </div>
+            </section>
+
+            <section id="architecture">
+                <h2>Architecture</h2>
+
+                <h3>Memory Layout</h3>
+                <div class="diagram">
+<pre>
++------------------------- Heap --------------------------+
+|                                                          |
+|  +------------ Root Stage (rootSize) ----------------+  |
+|  |  [alloc1][alloc2][alloc3]...        [free space]   |  |
+|  |  ^                           ^end                  |  |
+|  |  HeapDependencies: ops, compiled, memory           |  |
+|  +----------------------------------------------------+  |
+|                                                          |
+|  +------------ Pushed Stage (stageSize) --------------+  |
+|  |  [alloc4][alloc5]...                [free space]   |  |
+|  |  ^                     ^end                        |  |
+|  |  HeapDependencies: ops, compiled, memory           |  |
+|  +----------------------------------------------------+  |
+|                                                          |
+|  (additional pushed stages as needed)                    |
++----------------------------------------------------------+
+</pre>
+                </div>
+
+                <p>The root stage is created at construction time and persists for the heap's lifetime. Additional stages are pushed and popped via <code>push()</code>/<code>pop()</code> (or <code>Heap.stage()</code>). Each stage is an independent bump allocator with its own backing <code>Bytes</code> block and dependency tracker.</p>
+
+                <h3>Class Structure</h3>
+                <div class="class-list">
+                    <div class="class-item">
+                        <h4><a href="../apidocs/org/almostrealism/hardware/mem/Heap.html">Heap</a></h4>
+                        <p>Top-level arena allocator. Manages root stage, stage stack, and thread-local default. Provides static methods for scoped staging and dependency registration.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4><a href="../apidocs/org/almostrealism/hardware/mem/Heap.HeapStage.html">HeapStage</a></h4>
+                        <p>Public inner class. Bump allocator over a pre-allocated <code>Bytes</code> block. Tracks allocated entries and a <code>HeapDependencies</code> instance. Implements <code>Destroyable</code>.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>HeapDependencies</h4>
+                        <p>Private inner class. Tracks three categories of resources (dependent operations, compiled operations, created memory) for automatic cleanup when the stage is destroyed.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4><a href="../apidocs/org/almostrealism/hardware/mem/Bytes.html">Bytes</a></h4>
+                        <p>Lightweight memory wrapper returned by <code>HeapStage.allocate()</code>. Supports zero-copy delegation, atomic elements, and range views.</p>
+                    </div>
+                </div>
+
+                <h3>Allocation Mechanism</h3>
+                <p>When <code>HeapStage.allocate(count)</code> is called:</p>
+                <ol>
+                    <li>Checks <code>end + count &lt;= data.getMemLength()</code></li>
+                    <li>Creates <code>new Bytes(count, data, end)</code> &mdash; a zero-copy view into the backing block at the current bump pointer</li>
+                    <li>Advances the bump pointer: <code>end += count</code></li>
+                    <li>Adds the new <code>Bytes</code> to the entries list</li>
+                </ol>
+                <p>Because the returned <code>Bytes</code> delegates to the stage's backing block, <strong>no new memory is allocated from the provider</strong>. This is the key performance advantage.</p>
+            </section>
+
+            <section id="api">
+                <h2>API Reference</h2>
+
+                <h3>Constructors</h3>
+                <table class="api-table">
+                    <thead>
+                        <tr>
+                            <th>Constructor</th>
+                            <th>Description</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code>Heap(int size)</code></td>
+                            <td>Creates a heap with root size <code>size</code> and stage size <code>size / 4</code>. Uses default memory provider.</td>
+                        </tr>
+                        <tr>
+                            <td><code>Heap(int rootSize, int stageSize)</code></td>
+                            <td>Creates a heap with explicit root and stage sizes. Uses default memory provider.</td>
+                        </tr>
+                        <tr>
+                            <td><code>Heap(MemoryProvider, int rootSize, int stageSize)</code></td>
+                            <td>Creates a heap using a specific memory provider. When provider is <code>null</code>, stages use <code>new Bytes(size)</code>.</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <h3>Instance Methods</h3>
+                <table class="api-table">
+                    <thead>
+                        <tr>
+                            <th>Method</th>
+                            <th>Returns</th>
+                            <th>Description</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code>getStage()</code></td>
+                            <td><code>HeapStage</code></td>
+                            <td>Returns the active stage (top of stack, or root if no pushed stages).</td>
+                        </tr>
+                        <tr>
+                            <td><code>allocate(int count)</code></td>
+                            <td><code>Bytes</code></td>
+                            <td>Allocates from the active stage. Throws <code>IllegalArgumentException</code> if insufficient space.</td>
+                        </tr>
+                        <tr>
+                            <td><code>wrap(Callable&lt;T&gt;)</code></td>
+                            <td><code>Callable&lt;T&gt;</code></td>
+                            <td>Returns a callable that activates this heap during execution.</td>
+                        </tr>
+                        <tr>
+                            <td><code>use(Runnable)</code></td>
+                            <td><code>Heap</code></td>
+                            <td>Executes runnable with this heap as default. Restores previous default. Returns <code>this</code>.</td>
+                        </tr>
+                        <tr>
+                            <td><code>use(Supplier&lt;T&gt;)</code></td>
+                            <td><code>T</code></td>
+                            <td>Executes supplier with this heap as default. Returns the supplier's result.</td>
+                        </tr>
+                        <tr>
+                            <td><code>destroy()</code></td>
+                            <td><code>void</code></td>
+                            <td>Destroys all stages (pushed + root) and all tracked dependencies. Synchronized.</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <h3>Static Methods</h3>
+                <table class="api-table">
+                    <thead>
+                        <tr>
+                            <th>Method</th>
+                            <th>Returns</th>
+                            <th>Description</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code>getDefault()</code></td>
+                            <td><code>Heap</code></td>
+                            <td>Returns the thread-local default heap, or <code>null</code>.</td>
+                        </tr>
+                        <tr>
+                            <td><code>stage(Runnable)</code></td>
+                            <td><code>void</code></td>
+                            <td>Pushes a new stage, runs the code, pops and destroys the stage. <strong>No-op if no default heap.</strong></td>
+                        </tr>
+                        <tr>
+                            <td><code>addOperation(Supplier&lt;T&gt;)</code></td>
+                            <td><code>Supplier&lt;T&gt;</code></td>
+                            <td>Registers a dependent operation for cleanup. No-op if no default heap.</td>
+                        </tr>
+                        <tr>
+                            <td><code>addCompiled(T extends OperationAdapter)</code></td>
+                            <td><code>T</code></td>
+                            <td>Registers a compiled operation for cleanup. No-op if no default heap.</td>
+                        </tr>
+                        <tr>
+                            <td><code>addCreatedMemory(T extends MemoryData)</code></td>
+                            <td><code>T</code></td>
+                            <td>Registers created memory for cleanup. No-op if no default heap.</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <div class="success">
+                    <strong>Key Design Property:</strong> All static methods (<code>stage()</code>, <code>addCompiled()</code>, <code>addOperation()</code>, <code>addCreatedMemory()</code>) are <strong>no-ops</strong> when no default heap is active. This means code can call them unconditionally &mdash; they simply pass through when no heap is present.
+                </div>
+
+                <h3>HeapStage API</h3>
+                <table class="api-table">
+                    <thead>
+                        <tr>
+                            <th>Method</th>
+                            <th>Returns</th>
+                            <th>Description</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code>allocate(int count)</code></td>
+                            <td><code>Bytes</code></td>
+                            <td>Bump-pointer allocation. Synchronized. Returns zero-copy view into backing block.</td>
+                        </tr>
+                        <tr>
+                            <td><code>get(int index)</code></td>
+                            <td><code>Bytes</code></td>
+                            <td>Returns the allocation at the given index (allocation order).</td>
+                        </tr>
+                        <tr>
+                            <td><code>getBytes()</code></td>
+                            <td><code>Bytes</code></td>
+                            <td>Returns the backing memory block.</td>
+                        </tr>
+                        <tr>
+                            <td><code>stream()</code></td>
+                            <td><code>Stream&lt;Bytes&gt;</code></td>
+                            <td>Streams all allocations in order.</td>
+                        </tr>
+                        <tr>
+                            <td><code>destroy()</code></td>
+                            <td><code>void</code></td>
+                            <td>Clears entries, resets pointer, destroys backing block and all dependencies.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </section>
+
+            <section id="patterns">
+                <h2>Usage Patterns</h2>
+
+                <h3>Basic Arena Allocation</h3>
+                <div class="code-example">
+<pre>// Create a heap for temporary work
+Heap heap = new Heap(50_000);
+
+heap.use(() -&gt; {
+    // All allocations come from the heap's pre-allocated block
+    Bytes workspace1 = Heap.getDefault().allocate(1000);
+    Bytes workspace2 = Heap.getDefault().allocate(500);
+
+    // PackedCollection.factory() also uses the heap when active
+    PackedCollection temp = PackedCollection.factory().apply(200);
+});
+
+heap.destroy();</pre>
+                </div>
+
+                <h3>Scoped Stages for Batch Processing</h3>
+                <div class="code-example">
+<pre>Heap heap = new Heap(100_000);
+heap.use(() -&gt; {
+    // Root-level long-lived allocation
+    Bytes persistent = Heap.getDefault().allocate(5000);
+
+    for (int i = 0; i &lt; 100; i++) {
+        Heap.stage(() -&gt; {
+            // Per-iteration temporaries
+            PackedCollection temp = PackedCollection.factory().apply(100);
+            Runnable op = someComputation.get();
+            op.run();
+            // temp and compiled op freed here
+        });
+    }
+
+    // persistent still valid
+});
+heap.destroy();</pre>
+                </div>
+
+                <h3>Nested Stages</h3>
+                <div class="code-example">
+<pre>Heap.stage(() -&gt; {
+    Bytes outer = Heap.getDefault().allocate(100);
+
+    Heap.stage(() -&gt; {
+        Bytes inner = Heap.getDefault().allocate(50);
+        // inner freed when this stage exits
+    });
+
+    // outer still valid; inner is now invalid
+});
+// outer freed when this stage exits</pre>
+                </div>
+
+                <h3>Deferred Execution with wrap()</h3>
+                <div class="code-example">
+<pre>Heap heap = new Heap(10_000);
+Callable&lt;PackedCollection&gt; deferred = heap.wrap(() -&gt; {
+    return someProducer.get().evaluate();
+});
+
+// Later, in a different context:
+PackedCollection result = deferred.call();
+// heap was active during the call, now restored</pre>
+                </div>
+
+                <div class="warning">
+                    <strong>Do not hold references past stage exit.</strong> Allocations returned by <code>allocate()</code> become invalid when their stage is destroyed. Accessing them after stage exit is undefined behavior.
+                </div>
+            </section>
+
+            <section id="integration">
+                <h2>Framework Integration</h2>
+
+                <p>When a default heap is active, several framework components automatically integrate with it:</p>
+
+                <div class="integration-card">
+                    <h4>PackedCollection.factory()</h4>
+                    <p>Checks <code>Heap.getDefault()</code>. When non-null, returns a factory that allocates from the heap via <code>heap::allocate</code> instead of creating standalone <code>PackedCollection</code> instances. Any code that creates collections via <code>factory()</code> automatically benefits from arena allocation.</p>
+<pre style="margin-top: 10px; background: #f5f5f5; padding: 10px;">// From PackedCollection:
+public static IntFunction&lt;PackedCollection&gt; factory() {
+    Heap heap = Heap.getDefault();
+    return heap == null ? PackedCollection::new : factory(heap::allocate);
+}</pre>
+                </div>
+
+                <div class="integration-card">
+                    <h4>DefaultComputer.compileRunnable()</h4>
+                    <p>Every compiled <code>AcceleratedComputationOperation</code> is registered via <code>Heap.addCompiled()</code>. When the enclosing stage exits, the operation's <code>destroy()</code> releases its <code>ScopeInstructionsManager</code> and native kernel resources.</p>
+<pre style="margin-top: 10px; background: #f5f5f5; padding: 10px;">// From DefaultComputer:
+public Runnable compileRunnable(Computation&lt;Void&gt; c) {
+    return Heap.addCompiled(
+        new AcceleratedComputationOperation&lt;&gt;(getContext(c), c, true));
+}</pre>
+                </div>
+
+                <div class="integration-card">
+                    <h4>ProcessDetailsFactory</h4>
+                    <p>When creating temporary buffers for kernel arguments that need sized destinations, registers them via <code>Heap.addCreatedMemory()</code>. This ensures temporary argument buffers are freed when the stage exits.</p>
+<pre style="margin-top: 10px; background: #f5f5f5; padding: 10px;">// From ProcessDetailsFactory:
+MemoryData result = kernelArgEvaluables[i].createDestination(size);
+Heap.addCreatedMemory(result);</pre>
+                </div>
+
+                <div class="integration-card">
+                    <h4>getDefaultDelegate() Pattern</h4>
+                    <p>Several <code>MemoryDataAdapter</code> subclasses override <code>getDefaultDelegate()</code> to return <code>Heap.getDefault()</code>. When <code>init()</code> is called with a heap active, memory is allocated from the heap instead of the global provider.</p>
+                    <table class="api-table" style="margin-top: 10px;">
+                        <thead>
+                            <tr><th>Class</th><th>Module</th></tr>
+                        </thead>
+                        <tbody>
+                            <tr><td><code>Vector</code></td><td>algebra</td></tr>
+                            <tr><td><code>Pair</code></td><td>algebra</td></tr>
+                            <tr><td><code>TransformMatrix</code></td><td>geometry</td></tr>
+                            <tr><td><code>RGBData192</code></td><td>color</td></tr>
+                            <tr><td><code>PolymorphicAudioData</code></td><td>audio</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="warning">
+                    <strong>Heap Guards:</strong> <code>AudioSumProvider</code> and <code>AudioProcessingUtils</code> throw <code>RuntimeException</code> if <code>Heap.getDefault() != null</code> during construction. These components compile kernels with <code>PassThroughProducer</code> dynamic inputs that are incompatible with heap-backed memory. Create them before activating a heap.
+                </div>
+            </section>
+
+            <section id="dependencies">
+                <h2>Dependency Tracking</h2>
+
+                <p>Each <code>HeapStage</code> tracks three categories of resources via its <code>HeapDependencies</code> instance:</p>
+
+                <table class="api-table">
+                    <thead>
+                        <tr>
+                            <th>Category</th>
+                            <th>Type</th>
+                            <th>Registered By</th>
+                            <th>Destroy Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>Dependent operations</strong></td>
+                            <td><code>List&lt;Supplier&gt;</code></td>
+                            <td><code>Heap.addOperation()</code></td>
+                            <td><code>destroy()</code> if <code>Destroyable</code></td>
+                        </tr>
+                        <tr>
+                            <td><strong>Compiled operations</strong></td>
+                            <td><code>List&lt;OperationAdapter&gt;</code></td>
+                            <td><code>Heap.addCompiled()</code></td>
+                            <td><code>OperationAdapter.destroy()</code></td>
+                        </tr>
+                        <tr>
+                            <td><strong>Created memory</strong></td>
+                            <td><code>List&lt;MemoryData&gt;</code></td>
+                            <td><code>Heap.addCreatedMemory()</code></td>
+                            <td><code>MemoryData.destroy()</code></td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <h3>Relationship to Instruction Caching</h3>
+                <p>Heap dependency tracking and the instruction cache in <code>DefaultComputer</code> are <strong>independent systems</strong>:</p>
+                <ul>
+                    <li><strong>Heap</strong> tracks compiled operation <em>instances</em> for lifecycle management. When a stage is destroyed, the operation wrapper is destroyed.</li>
+                    <li><strong>Instruction cache</strong> (<code>DefaultComputer.instructionsCache</code>, a <code>FrequencyCache</code> with capacity 500) caches <code>ScopeInstructionsManager</code> instances by computation signature. The same compiled kernel can be reused by future operations with the same signature.</li>
+                </ul>
+                <p>When a stage destroys a compiled operation, the underlying <code>ScopeInstructionsManager</code> may still exist in the instruction cache if its signature has not been evicted. A future compilation with the same signature will reuse the cached kernel, performing only argument substitution via <code>ProcessArgumentMap.putSubstitutions()</code> instead of full recompilation.</p>
+
+                <div class="success">
+                    <strong>Key insight:</strong> <code>Heap.stage()</code> does <strong>not</strong> invalidate the instruction cache. It frees only the operation wrapper and its per-invocation resources. Kernel reuse across stages is handled by the instruction cache, not the heap.
+                </div>
+            </section>
+
+            <section id="lifecycle">
+                <h2>Lifecycle Management</h2>
+
+                <h3>Stage Lifecycle</h3>
+                <div class="lifecycle-step">
+                    <div class="step-num">1</div>
+                    <div class="step-content"><strong>Creation:</strong> <code>push()</code> creates a <code>HeapStage</code> with a backing block of size <code>stageSize</code></div>
+                </div>
+                <div class="lifecycle-step">
+                    <div class="step-num">2</div>
+                    <div class="step-content"><strong>Allocation:</strong> <code>allocate(count)</code> advances the bump pointer and returns a <code>Bytes</code> view</div>
+                </div>
+                <div class="lifecycle-step">
+                    <div class="step-num">3</div>
+                    <div class="step-content"><strong>Tracking:</strong> <code>addCompiled()</code>, <code>addOperation()</code>, <code>addCreatedMemory()</code> register resources with the stage's dependencies</div>
+                </div>
+                <div class="lifecycle-step">
+                    <div class="step-num">4</div>
+                    <div class="step-content"><strong>Destruction:</strong> <code>pop()</code> calls <code>HeapStage.destroy()</code>, which clears entries, resets the pointer, destroys the backing block, and destroys all dependencies</div>
+                </div>
+
+                <h3>Heap Lifecycle</h3>
+                <div class="lifecycle-step">
+                    <div class="step-num">1</div>
+                    <div class="step-content"><strong>Construction:</strong> Allocates root stage with specified size</div>
+                </div>
+                <div class="lifecycle-step">
+                    <div class="step-num">2</div>
+                    <div class="step-content"><strong>Activation:</strong> <code>use(Runnable)</code> or <code>use(Supplier)</code> sets this heap as the thread-local default</div>
+                </div>
+                <div class="lifecycle-step">
+                    <div class="step-num">3</div>
+                    <div class="step-content"><strong>Operation:</strong> Allocations and registrations target the active stage (root or pushed)</div>
+                </div>
+                <div class="lifecycle-step">
+                    <div class="step-num">4</div>
+                    <div class="step-content"><strong>Stage cycling:</strong> <code>stage(Runnable)</code> creates temporary nested stages for scoped cleanup</div>
+                </div>
+                <div class="lifecycle-step">
+                    <div class="step-num">5</div>
+                    <div class="step-content"><strong>Destruction:</strong> <code>destroy()</code> pops all pushed stages and destroys root</div>
+                </div>
+
+                <h3>Dependency Destroy Order</h3>
+                <p>When <code>HeapDependencies.destroy()</code> is called, resources are freed in this order:</p>
+                <ol>
+                    <li><strong>Dependent operations</strong> &mdash; they may reference compiled ops or memory</li>
+                    <li><strong>Compiled operations</strong> &mdash; kernel teardown may access argument memory</li>
+                    <li><strong>Created memory</strong> &mdash; safe to free after all references are released</li>
+                </ol>
+                <p>Each list is set to <code>null</code> after processing to prevent double-destruction and release references for garbage collection.</p>
+            </section>
+
+            <section id="threading">
+                <h2>Thread Safety</h2>
+
+                <table class="api-table">
+                    <thead>
+                        <tr>
+                            <th>Aspect</th>
+                            <th>Guarantee</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Thread-local default</td>
+                            <td>Each thread has its own default heap via <code>ThreadLocal</code>. Different threads cannot interfere.</td>
+                        </tr>
+                        <tr>
+                            <td><code>HeapStage.allocate()</code></td>
+                            <td>Synchronized to guard against re-entrant allocation (e.g., during compilation callbacks).</td>
+                        </tr>
+                        <tr>
+                            <td><code>Heap.destroy()</code></td>
+                            <td>Synchronized to prevent concurrent destruction.</td>
+                        </tr>
+                        <tr>
+                            <td>Cross-thread sharing</td>
+                            <td><strong>Not supported.</strong> A heap instance should only be used by one thread at a time.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </section>
+
+            <section id="pitfalls">
+                <h2>Common Pitfalls</h2>
+
+                <div class="warning">
+                    <h4>Holding References Past Stage Exit</h4>
+                    <p><code>Bytes</code> allocated from a stage become invalid when that stage is destroyed. Do not store references to stage-allocated memory outside the stage's scope.</p>
+<pre style="margin-top: 10px;">// WRONG: retained reference is invalid after stage exits
+Bytes[] retained = new Bytes[1];
+Heap.stage(() -&gt; {
+    retained[0] = Heap.getDefault().allocate(100);
+});
+retained[0].setMem(0, 42.0);  // UNDEFINED BEHAVIOR</pre>
+                </div>
+
+                <div class="warning">
+                    <h4>Exceeding Stage Capacity</h4>
+                    <p>Each stage has a fixed capacity set at construction. Allocating more than the stage can hold throws <code>IllegalArgumentException</code>. Size the heap appropriately for your workload.</p>
+<pre style="margin-top: 10px;">Heap heap = new Heap(1000);
+heap.use(() -&gt; {
+    heap.allocate(800);
+    heap.allocate(300);  // IllegalArgumentException: No room remaining
+});</pre>
+                </div>
+
+                <div class="warning">
+                    <h4>Creating Guarded Components</h4>
+                    <p><code>AudioSumProvider</code> and <code>AudioProcessingUtils</code> must be created <strong>before</strong> activating a heap. They throw <code>RuntimeException</code> if <code>Heap.getDefault() != null</code>.</p>
+                </div>
+
+                <div class="warning">
+                    <h4>Forgetting to Destroy</h4>
+                    <p>Always call <code>heap.destroy()</code> when finished. The root stage's backing memory is not freed until <code>destroy()</code> is called.</p>
+                </div>
+            </section>
+
+            <section id="resources">
+                <h2>Additional Resources</h2>
+                <ul>
+                    <li><a href="../../hardware/docs/HEAP.md">Heap Module Documentation</a> &mdash; Markdown reference in the hardware module</li>
+                    <li><a href="../../hardware/README.md">Hardware Module README</a> &mdash; Comprehensive module documentation</li>
+                    <li><a href="../apidocs/org/almostrealism/hardware/mem/Heap.html">Heap JavaDoc</a> &mdash; Complete API reference</li>
+                    <li><a href="../apidocs/org/almostrealism/hardware/mem/Bytes.html">Bytes JavaDoc</a> &mdash; Memory wrapper reference</li>
+                    <li><a href="hardware.html">Hardware Module Overview</a> &mdash; Full hardware module documentation</li>
+                </ul>
+            </section>
+        </main>
+
+        <footer>
+            <p><a href="../index.html">&larr; Back to Framework Documentation</a></p>
+            <p>&copy; 2025 Michael Murray. Licensed under the Apache License, Version 2.0.</p>
+        </footer>
+    </div>
+
+    <script src="../js/docs.js"></script>
+</body>
+</html>

@@ -21,6 +21,7 @@ import io.almostrealism.relation.Factor;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.audio.filter.AudioProcessingUtils;
 import org.almostrealism.audio.line.OutputLine;
+import org.almostrealism.audio.sources.BufferDetails;
 import org.almostrealism.audio.tone.KeyPosition;
 import org.almostrealism.audio.tone.KeyboardTuned;
 import org.almostrealism.audio.tone.KeyboardTuning;
@@ -183,6 +184,24 @@ public class PatternNote extends PatternNoteAudioAdapter {
 		return combineLayers(target, channel, noteDuration, automationLevel, audioSelection);
 	}
 
+	@Override
+	protected Producer<PackedCollection> computeAudio(KeyPosition<?> target, int channel,
+														 double noteDuration,
+														 Factor<PackedCollection> automationLevel,
+														 DoubleFunction<PatternNoteAudio> audioSelection,
+														 int startFrame, int frameCount) {
+		if (getDelegate() != null) {
+			return super.computeAudio(
+					target, channel,
+					noteDuration,
+					automationLevel, audioSelection,
+					startFrame, frameCount);
+		}
+
+		return combineLayers(target, channel, noteDuration, automationLevel, audioSelection,
+				startFrame, frameCount);
+	}
+
 	protected Producer<PackedCollection> combineLayers(KeyPosition<?> target, int channel,
 														  double noteDuration,
 														  Factor<PackedCollection> automationLevel,
@@ -223,6 +242,38 @@ public class PatternNote extends PatternNoteAudioAdapter {
 					null, null,
 					layers.stream()
 							.map(l -> l.getAudio(target, channel, noteDuration, automationLevel, audioSelection))
+							.toArray(Producer[]::new));
+		}
+	}
+
+	/**
+	 * Combines layers for a specific frame range, producing only {@code frameCount} output frames.
+	 *
+	 * <p>Each layer receives the frame range so it can evaluate only the needed subset.
+	 * The aggregator receives a {@link BufferDetails} sized to {@code frameCount} so
+	 * the output buffer is limited to the requested range.</p>
+	 */
+	protected Producer<PackedCollection> combineLayers(KeyPosition<?> target, int channel,
+														  double noteDuration,
+														  Factor<PackedCollection> automationLevel,
+														  DoubleFunction<PatternNoteAudio> audioSelection,
+														  int startFrame, int frameCount) {
+		if (noteDuration < 0) {
+			throw new UnsupportedOperationException();
+		}
+
+		BufferDetails partialBuffer = new BufferDetails(
+				getSampleRate(target, audioSelection), frameCount);
+
+		if (layerAggregator == null) {
+			return combineLayers(target, channel, noteDuration, automationLevel, audioSelection);
+		} else {
+			return layerAggregator.getAggregator(c(aggregationChoice)).aggregate(partialBuffer,
+					null, null,
+					layers.stream()
+							.map(l -> l.getAudio(target, channel, noteDuration,
+									automationLevel, audioSelection,
+									startFrame, frameCount))
 							.toArray(Producer[]::new));
 		}
 	}

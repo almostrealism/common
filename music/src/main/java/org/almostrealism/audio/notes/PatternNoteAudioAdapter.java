@@ -55,6 +55,14 @@ public abstract class PatternNoteAudioAdapter implements
 	}
 
 	@Override
+	public Producer<PackedCollection> getAudio(KeyPosition<?> target, int channel, double noteDuration,
+												  Factor<PackedCollection> automationLevel,
+												  DoubleFunction<PatternNoteAudio> audioSelection,
+												  int startFrame, int frameCount) {
+		return computeAudio(target, channel, noteDuration, automationLevel, audioSelection, startFrame, frameCount);
+	}
+
+	@Override
 	public Producer<PackedCollection> getAudio(KeyPosition<?> target, int channel,
 												  DoubleFunction<PatternNoteAudio> audioSelection) {
 		if (getDelegate() != null) {
@@ -78,6 +86,31 @@ public abstract class PatternNoteAudioAdapter implements
 			return p.getAudio(target, channel, audioSelection);
 		} else if (noteDuration > 0) {
 			return sampling(getSampleRate(target, audioSelection), getDuration(target, audioSelection),
+					() -> getFilter().apply(getDelegate()
+									.getAudio(target, channel, noteDuration,
+											automationLevel, audioSelection),
+												c(noteDuration), automationLevel.getResultant(c(0.0))));
+		} else {
+			throw new UnsupportedOperationException();
+		}
+	}
+
+	/**
+	 * Computes audio for a specific frame range within the note.
+	 *
+	 * <p>Uses {@link #sampling(int, int, int, java.util.function.Supplier)} to set up
+	 * frame indices starting at {@code startFrame}, producing only {@code frameCount}
+	 * output frames. The filter sees correct note-relative positions.</p>
+	 */
+	protected Producer<PackedCollection> computeAudio(KeyPosition<?> target, int channel,
+														 double noteDuration,
+														 Factor<PackedCollection> automationLevel,
+														 DoubleFunction<PatternNoteAudio> audioSelection,
+														 int startFrame, int frameCount) {
+		if (getDelegate() == null) {
+			return computeAudio(target, channel, noteDuration, automationLevel, audioSelection);
+		} else if (noteDuration > 0) {
+			return sampling(getSampleRate(target, audioSelection), startFrame, frameCount,
 					() -> getFilter().apply(getDelegate()
 									.getAudio(target, channel, noteDuration,
 											automationLevel, audioSelection),
