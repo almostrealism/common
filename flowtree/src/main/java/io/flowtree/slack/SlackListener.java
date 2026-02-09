@@ -267,7 +267,12 @@ public class SlackListener implements ConsoleFeatures {
         }
 
         // Submit the job
-        client.submit(factory);
+        boolean submitted = client.submit(factory);
+        if (!submitted) {
+            notifier.postMessage(workstream.getChannelId(),
+                ":x: Unable to reach agent - job not submitted. The agent may be offline.");
+            return false;
+        }
 
         log("Submitted job: " + factory.getTaskId());
         return true;

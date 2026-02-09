@@ -67,15 +67,18 @@ factory.setMaxBudgetUsd(25.0);
 
 ### ClaudeCodeClient
 
-Connects to one or more FlowTree agents and submits job factories with round-robin distribution.
+Connects to one or more FlowTree agents and submits job factories with round-robin distribution. Connections are **lazy** -- no TCP sockets are opened until the first job is submitted to a given agent. If an agent has restarted since the last submission, the client automatically detects the dead connection and reconnects (with one retry). All `submit` methods return a `boolean` indicating success so callers can handle unreachable agents.
 
 ```java
 ClaudeCodeClient client = new ClaudeCodeClient();
 client.addAgent("localhost", 7766);
 client.addAgent("localhost", 7767);
-client.start();
+client.start();  // No connections opened yet
 
-client.submit("Fix the bug in auth.py");
+boolean ok = client.submit("Fix the bug in auth.py");  // Connects lazily
+if (!ok) {
+    System.err.println("Agent unreachable");
+}
 ```
 
 **Command-line usage:**
@@ -120,3 +123,32 @@ Events include the prompt, session ID, exit code, staged files, and commit hash.
 ## Serialization
 
 `ClaudeCodeJob` and its factory support FlowTree's wire protocol via `encode()` and `set(key, value)`. Prompts and string properties are Base64-encoded for safe transport over the peer-to-peer message layer.
+
+## Operator Scripts
+
+Convenience scripts live in `flowtree/bin/` and use `mvn exec:java` for classpath resolution. Each script auto-builds the module on first run if the `target/` directory is missing.
+
+### start-slack-controller.sh
+
+Starts the `SlackBotController`. Requires Slack tokens via environment variables or a `--tokens` file.
+
+```bash
+# Using environment variables
+export SLACK_BOT_TOKEN="xoxb-..."
+export SLACK_APP_TOKEN="xapp-..."
+./flowtree/bin/start-slack-controller.sh --channel C0123ABCDEF --agent localhost:7766
+
+# Using a tokens file
+./flowtree/bin/start-slack-controller.sh --tokens slack-tokens.json --config workstreams.yaml
+
+# Show full usage
+./flowtree/bin/start-slack-controller.sh --help
+```
+
+### start-agent.sh
+
+Starts a FlowTree `Agent` node that listens for job submissions. Sets `AR_HARDWARE_LIBS` and `AR_HARDWARE_DRIVER` defaults automatically if not already present in the environment.
+
+```bash
+./flowtree/bin/start-agent.sh
+```
