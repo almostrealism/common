@@ -260,6 +260,17 @@ public class Model implements Setup, Destroyable, CodeFeatures {
 	}
 
 	/**
+	 * Disables I/O tracking for all blocks in this model.
+	 * When called before compilation, this eliminates entry and exit memory
+	 * copy operations from the forward pass, reducing overhead for
+	 * inference-only compilation where backpropagation is not needed.
+	 */
+	public void disableTracking() {
+		blocks.disableTracking();
+		inputs.forEach(Block::disableTracking);
+	}
+
+	/**
 	 * Returns all forward cells for the main chain and auxiliary inputs.
 	 *
 	 * @return a list of forward cells

@@ -167,6 +167,25 @@ public class DefaultCellularLayer implements CellularLayer, CodeFeatures, Learni
 		this.monitor = monitor;
 	}
 
+	/**
+	 * Disables input tracking for this layer by nulling the input buffer.
+	 * When the input buffer is null, the entry cell skips the input copy
+	 * operation, passing data directly to the forward cell. The exit copy
+	 * to the output buffer is preserved to maintain expression tree
+	 * isolation boundaries between layers.
+	 *
+	 * <p>This has the same effect as calling {@code init(inputShape, false, true)},
+	 * which is the path used when {@code Layer.ioTracking} is disabled via
+	 * the {@code AR_GRAPH_IO_TRACKING} system property.</p>
+	 */
+	@Override
+	public void disableTracking() {
+		if (this.input != null) {
+			this.input.destroy();
+			this.input = null;
+		}
+	}
+
 	@Override
 	public Cell<PackedCollection> getForward() {
 		if (this.output == null) {

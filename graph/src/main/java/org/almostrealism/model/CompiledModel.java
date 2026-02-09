@@ -262,6 +262,10 @@ public class CompiledModel implements Destroyable, CodeFeatures {
 			gradOut = null;
 		}
 
+		if (!backprop) {
+			model.disableTracking();
+		}
+
 		List<Cell<PackedCollection>> cells = model.forward();
 		OperationList forward = new OperationList("CompiledModel Forward");
 		for (int i = cells.size() - 1; i >= 0; i--) {

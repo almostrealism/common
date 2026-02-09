@@ -337,6 +337,20 @@ public interface Block extends Component, CellularPropagation<PackedCollection>,
 		return r;
 	}
 
+	/**
+	 * Disables I/O tracking for this block.
+	 *
+	 * <p>When I/O tracking is disabled, layer entry and exit memory copy operations
+	 * are bypassed during the forward pass, reducing overhead when backpropagation
+	 * is not needed (inference mode).</p>
+	 *
+	 * <p>The default implementation is a no-op. Subclasses that perform I/O tracking
+	 * (such as {@link org.almostrealism.layers.DefaultCellularLayer}) should override
+	 * this method. Container blocks (such as {@link SequentialBlock}) should propagate
+	 * the call to their children.</p>
+	 */
+	default void disableTracking() { }
+
 	@Override
 	default String describe() {
 		return getInputShape().toStringDetail() + " -> " + getOutputShape().toStringDetail();
