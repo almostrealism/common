@@ -29,16 +29,14 @@ import java.util.List;
 /**
  * Configuration for Slack workstreams, loadable from YAML or JSON files.
  *
+ * <p>Agents connect inbound to the controller's FlowTree server, so the
+ * {@code agents} field is optional and typically omitted.</p>
+ *
  * <p>Example YAML configuration:</p>
  * <pre>
  * workstreams:
  *   - channelId: "C0123456789"
  *     channelName: "#project-agent"
- *     agents:
- *       - host: "localhost"
- *         port: 7766
- *       - host: "localhost"
- *         port: 7767
  *     defaultBranch: "feature/work"
  *     pushToOrigin: true
  *     allowedTools: "Read,Edit,Write,Bash,Glob,Grep"
