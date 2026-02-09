@@ -19,6 +19,7 @@ package io.flowtree.slack;
 import com.slack.api.bolt.App;
 import com.slack.api.bolt.AppConfig;
 import com.slack.api.bolt.socket_mode.SocketModeApp;
+import fi.iki.elonen.NanoHTTPD;
 import com.slack.api.methods.SlackApiException;
 import com.slack.api.methods.response.auth.AuthTestResponse;
 import com.slack.api.model.event.AppMentionEvent;
@@ -39,11 +40,15 @@ import java.util.function.BiConsumer;
  * <p>This class manages the Slack bot lifecycle using the Bolt SDK's Socket Mode,
  * which allows real-time event handling without requiring a public HTTP endpoint.</p>
  *
- * <h2>Environment Variables</h2>
- * <ul>
- *   <li>{@code SLACK_BOT_TOKEN} - Bot User OAuth Token (xoxb-...)</li>
- *   <li>{@code SLACK_APP_TOKEN} - App-level token for Socket Mode (xapp-...)</li>
- * </ul>
+ * <h2>Token Resolution</h2>
+ * <p>Tokens are resolved in the following order (first match wins):</p>
+ * <ol>
+ *   <li>{@code --tokens <file>} CLI argument (explicit path)</li>
+ *   <li>{@code slack-tokens.json} in the current working directory</li>
+ *   <li>{@code SLACK_BOT_TOKEN} / {@code SLACK_APP_TOKEN} environment variables</li>
+ * </ol>
+ *
+ * @see SlackTokens
  *
  * <h2>Usage</h2>
  * <pre>{@code
@@ -79,18 +84,31 @@ public class SlackBotController implements JobCompletionListener, ConsoleFeature
     private SocketModeApp socketModeApp;
     private String botUserId;
 
+    private SlackApiEndpoint apiEndpoint;
+    private int apiPort = SlackApiEndpoint.DEFAULT_PORT;
+
     // For testing/simulation
     private BiConsumer<String, String> eventSimulator;
     private boolean simulationMode = false;
 
     /**
-     * Creates a new controller using environment variables for configuration.
+     * Creates a new controller, resolving tokens from the default
+     * locations (convention file, then environment variables).
+     *
+     * @throws IOException if token resolution fails
+     * @see SlackTokens#resolve(java.io.File)
      */
-    public SlackBotController() {
-        this(
-            System.getenv("SLACK_BOT_TOKEN"),
-            System.getenv("SLACK_APP_TOKEN")
-        );
+    public SlackBotController() throws IOException {
+        this(SlackTokens.resolve(null));
+    }
+
+    /**
+     * Creates a new controller with tokens loaded from a {@link SlackTokens} instance.
+     *
+     * @param tokens the resolved tokens
+     */
+    public SlackBotController(SlackTokens tokens) {
+        this(tokens.getBotToken(), tokens.getAppToken());
     }
 
     /**
@@ -108,6 +126,22 @@ public class SlackBotController implements JobCompletionListener, ConsoleFeature
 
         // Wire up completion events
         listener.setCompletionListener(this);
+    }
+
+    /**
+     * Returns the port used by the HTTP API endpoint.
+     */
+    public int getApiPort() {
+        return apiPort;
+    }
+
+    /**
+     * Sets the port for the HTTP API endpoint. Must be called before {@link #start()}.
+     *
+     * @param apiPort the port number (0 for ephemeral)
+     */
+    public void setApiPort(int apiPort) {
+        this.apiPort = apiPort;
     }
 
     /**
@@ -182,6 +216,7 @@ public class SlackBotController implements JobCompletionListener, ConsoleFeature
             log("WARNING: Missing SLACK_BOT_TOKEN or SLACK_APP_TOKEN");
             log("         Running in simulation mode");
             simulationMode = true;
+            startApiEndpoint();
             printStartupSummary();
             return;
         }
@@ -215,6 +250,8 @@ public class SlackBotController implements JobCompletionListener, ConsoleFeature
         socketModeApp.startAsync();
 
         log("Socket Mode connection established");
+
+        startApiEndpoint();
         printStartupSummary();
     }
 
@@ -266,8 +303,26 @@ public class SlackBotController implements JobCompletionListener, ConsoleFeature
         });
     }
 
+    /**
+     * Starts the HTTP API endpoint for receiving messages from MCP tools.
+     */
+    private void startApiEndpoint() {
+        try {
+            apiEndpoint = new SlackApiEndpoint(apiPort, notifier);
+            apiEndpoint.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false);
+            int listeningPort = apiEndpoint.getListeningPort();
+            listener.setApiPort(listeningPort);
+            log("API endpoint started on port " + listeningPort);
+        } catch (IOException e) {
+            warn("Failed to start API endpoint on port " + apiPort + ": " + e.getMessage());
+        }
+    }
+
     private void printStartupSummary() {
         log("===========================================");
+        if (apiEndpoint != null) {
+            log("API endpoint: http://localhost:" + apiEndpoint.getListeningPort());
+        }
         log("Registered workstreams: " + listener.getWorkstreams().size());
         for (SlackWorkstream ws : listener.getWorkstreams().values()) {
             log("  - " + ws.getChannelName() + " (" + ws.getChannelId() + ")");
@@ -285,6 +340,11 @@ public class SlackBotController implements JobCompletionListener, ConsoleFeature
      */
     public void stop() throws Exception {
         running.set(false);
+
+        if (apiEndpoint != null) {
+            apiEndpoint.stop();
+            apiEndpoint = null;
+        }
 
         if (socketModeApp != null) {
             socketModeApp.stop();
@@ -383,6 +443,7 @@ public class SlackBotController implements JobCompletionListener, ConsoleFeature
      *
      * <p>Arguments:</p>
      * <ul>
+     *   <li>--tokens &lt;file&gt; - JSON file containing botToken and appToken</li>
      *   <li>--config &lt;file&gt; - YAML configuration file</li>
      *   <li>--channel &lt;id&gt; - Single channel to monitor</li>
      *   <li>--agent &lt;host:port&gt; - Agent endpoint</li>
@@ -391,11 +452,13 @@ public class SlackBotController implements JobCompletionListener, ConsoleFeature
      */
     public static void main(String[] args) throws Exception {
         String configFile = null;
+        String tokensFile = null;
         String channelId = System.getenv("SLACK_CHANNEL_ID");
         String channelName = System.getenv("SLACK_CHANNEL_NAME");
         String agentHost = System.getenv().getOrDefault("FLOWTREE_AGENT_HOST", "localhost");
         String agentPort = System.getenv().getOrDefault("FLOWTREE_AGENT_PORT", "7766");
         String defaultBranch = System.getenv("GIT_DEFAULT_BRANCH");
+        int apiPort = SlackApiEndpoint.DEFAULT_PORT;
 
         // Parse command-line arguments
         for (int i = 0; i < args.length; i++) {
@@ -403,6 +466,10 @@ public class SlackBotController implements JobCompletionListener, ConsoleFeature
                 case "--config":
                 case "-c":
                     configFile = args[++i];
+                    break;
+                case "--tokens":
+                case "-t":
+                    tokensFile = args[++i];
                     break;
                 case "--channel":
                     channelId = args[++i];
@@ -420,6 +487,9 @@ public class SlackBotController implements JobCompletionListener, ConsoleFeature
                 case "--branch":
                     defaultBranch = args[++i];
                     break;
+                case "--api-port":
+                    apiPort = Integer.parseInt(args[++i]);
+                    break;
                 case "--help":
                 case "-h":
                     printUsage();
@@ -427,8 +497,13 @@ public class SlackBotController implements JobCompletionListener, ConsoleFeature
             }
         }
 
+        // Resolve tokens
+        File tokensPath = tokensFile != null ? new File(tokensFile) : null;
+        SlackTokens tokens = SlackTokens.resolve(tokensPath);
+
         // Create controller
-        SlackBotController controller = new SlackBotController();
+        SlackBotController controller = new SlackBotController(tokens);
+        controller.setApiPort(apiPort);
 
         // Load configuration
         if (configFile != null) {
@@ -470,12 +545,22 @@ public class SlackBotController implements JobCompletionListener, ConsoleFeature
         System.out.println("Usage: SlackBotController [options]");
         System.out.println();
         System.out.println("Options:");
+        System.out.println("  --tokens, -t <file>    JSON file with botToken/appToken");
         System.out.println("  --config, -c <file>    YAML configuration file");
         System.out.println("  --channel <id>         Slack channel ID to monitor");
         System.out.println("  --channel-name <name>  Human-readable channel name");
         System.out.println("  --agent <host:port>    Flowtree agent endpoint");
         System.out.println("  --branch <name>        Default git branch for commits");
+        System.out.println("  --api-port <port>      Port for the HTTP API endpoint (default: 7780)");
         System.out.println("  --help, -h             Show this help");
+        System.out.println();
+        System.out.println("Token resolution (first match wins):");
+        System.out.println("  1. --tokens <file>           Explicit token file");
+        System.out.println("  2. ./slack-tokens.json       Convention file in working directory");
+        System.out.println("  3. SLACK_BOT_TOKEN / SLACK_APP_TOKEN environment variables");
+        System.out.println();
+        System.out.println("Token file format (JSON):");
+        System.out.println("  { \"botToken\": \"xoxb-...\", \"appToken\": \"xapp-...\" }");
         System.out.println();
         System.out.println("Environment variables:");
         System.out.println("  SLACK_BOT_TOKEN        Bot User OAuth Token (xoxb-...)");
@@ -485,7 +570,11 @@ public class SlackBotController implements JobCompletionListener, ConsoleFeature
         System.out.println("  FLOWTREE_AGENT_PORT    Agent port (default: 7766)");
         System.out.println("  GIT_DEFAULT_BRANCH     Default branch for commits");
         System.out.println();
-        System.out.println("Example:");
+        System.out.println("Example with token file:");
+        System.out.println("  java -cp flowtree.jar io.flowtree.slack.SlackBotController \\");
+        System.out.println("      --tokens slack-tokens.json --config workstreams.yaml");
+        System.out.println();
+        System.out.println("Example with environment variables:");
         System.out.println("  export SLACK_BOT_TOKEN=xoxb-...");
         System.out.println("  export SLACK_APP_TOKEN=xapp-...");
         System.out.println("  java -cp flowtree.jar io.flowtree.slack.SlackBotController \\");

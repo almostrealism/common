@@ -39,6 +39,9 @@ Extensions/**
 
 **/docs/apidocs
 
+# Secrets
+**/slack-tokens.json
+
 # Data
 flowtreedb**
 graphpersistdb**

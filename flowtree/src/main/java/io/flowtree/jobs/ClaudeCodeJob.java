@@ -75,6 +75,10 @@ public class ClaudeCodeJob extends GitManagedJob {
     private int maxTurns;
     private double maxBudgetUsd;
 
+    private String slackApiUrl;
+    private String slackChannelId;
+    private String slackThreadTs;
+
     private String sessionId;
     private String output;
     private int exitCode;
@@ -154,6 +158,55 @@ public class ClaudeCodeJob extends GitManagedJob {
     }
 
     /**
+     * Returns the Slack API endpoint URL for this job.
+     */
+    public String getSlackApiUrl() {
+        return slackApiUrl;
+    }
+
+    /**
+     * Sets the Slack API endpoint URL. When set, the Claude Code process
+     * will have access to the ar-slack MCP server for sending messages.
+     *
+     * @param slackApiUrl the HTTP URL of the SlackApiEndpoint
+     */
+    public void setSlackApiUrl(String slackApiUrl) {
+        this.slackApiUrl = slackApiUrl;
+    }
+
+    /**
+     * Returns the Slack channel ID for this job.
+     */
+    public String getSlackChannelId() {
+        return slackChannelId;
+    }
+
+    /**
+     * Sets the Slack channel ID for messages from this job.
+     *
+     * @param slackChannelId the Slack channel ID (e.g., "C0123456789")
+     */
+    public void setSlackChannelId(String slackChannelId) {
+        this.slackChannelId = slackChannelId;
+    }
+
+    /**
+     * Returns the Slack thread timestamp for this job.
+     */
+    public String getSlackThreadTs() {
+        return slackThreadTs;
+    }
+
+    /**
+     * Sets the Slack thread timestamp for replies from this job.
+     *
+     * @param slackThreadTs the thread timestamp
+     */
+    public void setSlackThreadTs(String slackThreadTs) {
+        this.slackThreadTs = slackThreadTs;
+    }
+
+    /**
      * Returns the Claude Code session ID from the last execution.
      * Can be used to resume the session later.
      */
@@ -204,6 +257,12 @@ public class ClaudeCodeJob extends GitManagedJob {
             log("Target branch: " + getTargetBranch());
         }
 
+        // Add MCP config for the Slack tool if a Slack API URL is set
+        if (slackApiUrl != null && !slackApiUrl.isEmpty()) {
+            command.add("--mcp-config");
+            command.add(buildSlackMcpConfig());
+        }
+
         try {
             ProcessBuilder pb = new ProcessBuilder(command);
 
@@ -212,8 +271,26 @@ public class ClaudeCodeJob extends GitManagedJob {
                 pb.directory(new File(workDir));
             }
 
+            // Set Slack environment variables for the MCP server
+            if (slackApiUrl != null && !slackApiUrl.isEmpty()) {
+                pb.environment().put("AR_SLACK_API_URL", slackApiUrl);
+            }
+            if (slackChannelId != null && !slackChannelId.isEmpty()) {
+                pb.environment().put("AR_SLACK_CHANNEL_ID", slackChannelId);
+            }
+            if (slackThreadTs != null && !slackThreadTs.isEmpty()) {
+                pb.environment().put("AR_SLACK_THREAD_TS", slackThreadTs);
+            }
+
+            log("Command: " + String.join(" ", command));
+            log("Working directory: " + (workDir != null ? workDir : System.getProperty("user.dir")));
+
             pb.redirectErrorStream(true);
+            pb.redirectInput(ProcessBuilder.Redirect.from(new File("/dev/null")));
             Process process = pb.start();
+
+            long pid = process.pid();
+            log("Process started (PID: " + pid + ")");
 
             StringBuilder outputBuilder = new StringBuilder();
             try (BufferedReader reader = new BufferedReader(
@@ -225,6 +302,7 @@ public class ClaudeCodeJob extends GitManagedJob {
                 }
             }
 
+            log("Process output stream closed, waiting for exit...");
             exitCode = process.waitFor();
             output = outputBuilder.toString();
 
@@ -279,6 +357,17 @@ public class ClaudeCodeJob extends GitManagedJob {
         return msg.toString();
     }
 
+    /**
+     * Builds a JSON MCP configuration string pointing to the ar-slack server.
+     * This is passed to Claude Code via the {@code --mcp-config} flag.
+     */
+    private String buildSlackMcpConfig() {
+        return "{\"mcpServers\":{\"ar-slack\":{" +
+               "\"command\":\"python3\"," +
+               "\"args\":[\"tools/mcp/slack/server.py\"]" +
+               "}}}";
+    }
+
     private void extractSessionId(String jsonOutput) {
         // Simple extraction - look for "session_id":"..."
         int idx = jsonOutput.indexOf("\"session_id\"");
@@ -299,6 +388,15 @@ public class ClaudeCodeJob extends GitManagedJob {
         sb.append("::tools:=").append(base64Encode(allowedTools));
         sb.append("::maxTurns:=").append(maxTurns);
         sb.append("::maxBudget:=").append(maxBudgetUsd);
+        if (slackApiUrl != null) {
+            sb.append("::slackApiUrl:=").append(base64Encode(slackApiUrl));
+        }
+        if (slackChannelId != null) {
+            sb.append("::slackChannelId:=").append(base64Encode(slackChannelId));
+        }
+        if (slackThreadTs != null) {
+            sb.append("::slackThreadTs:=").append(base64Encode(slackThreadTs));
+        }
         return sb.toString();
     }
 
@@ -316,6 +414,15 @@ public class ClaudeCodeJob extends GitManagedJob {
                 break;
             case "maxBudget":
                 this.maxBudgetUsd = Double.parseDouble(value);
+                break;
+            case "slackApiUrl":
+                this.slackApiUrl = base64Decode(value);
+                break;
+            case "slackChannelId":
+                this.slackChannelId = base64Decode(value);
+                break;
+            case "slackThreadTs":
+                this.slackThreadTs = base64Decode(value);
                 break;
             default:
                 // Delegate to parent for git-related properties
@@ -367,6 +474,8 @@ public class ClaudeCodeJob extends GitManagedJob {
         private boolean pushToOrigin = true;
         private String workstreamId;
         private JobCompletionListener completionListener;
+        private String slackApiUrl;
+        private String slackChannelId;
 
         /**
          * Default constructor for deserialization.
@@ -495,6 +604,40 @@ public class ClaudeCodeJob extends GitManagedJob {
             this.completionListener = listener;
         }
 
+        /**
+         * Returns the Slack API endpoint URL for jobs created by this factory.
+         */
+        public String getSlackApiUrl() {
+            return slackApiUrl;
+        }
+
+        /**
+         * Sets the Slack API endpoint URL for jobs created by this factory.
+         *
+         * @param slackApiUrl the HTTP URL of the SlackApiEndpoint
+         */
+        public void setSlackApiUrl(String slackApiUrl) {
+            this.slackApiUrl = slackApiUrl;
+            set("slackApiUrl", base64Encode(slackApiUrl));
+        }
+
+        /**
+         * Returns the Slack channel ID for jobs created by this factory.
+         */
+        public String getSlackChannelId() {
+            return slackChannelId;
+        }
+
+        /**
+         * Sets the Slack channel ID for jobs created by this factory.
+         *
+         * @param slackChannelId the Slack channel ID
+         */
+        public void setSlackChannelId(String slackChannelId) {
+            this.slackChannelId = slackChannelId;
+            set("slackChannelId", base64Encode(slackChannelId));
+        }
+
         @Override
         public Job nextJob() {
             List<String> p = getPrompts();
@@ -518,6 +661,14 @@ public class ClaudeCodeJob extends GitManagedJob {
             }
             if (completionListener != null) {
                 job.setCompletionListener(completionListener);
+            }
+
+            // Slack MCP settings
+            if (slackApiUrl != null) {
+                job.setSlackApiUrl(slackApiUrl);
+            }
+            if (slackChannelId != null) {
+                job.setSlackChannelId(slackChannelId);
             }
 
             return job;
@@ -560,6 +711,12 @@ public class ClaudeCodeJob extends GitManagedJob {
                     break;
                 case "workstream":
                     this.workstreamId = base64Decode(value);
+                    break;
+                case "slackApiUrl":
+                    this.slackApiUrl = base64Decode(value);
+                    break;
+                case "slackChannelId":
+                    this.slackChannelId = base64Decode(value);
                     break;
             }
         }

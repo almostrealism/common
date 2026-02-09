@@ -64,6 +64,7 @@ public class SlackListener implements ConsoleFeatures {
     private final SlackNotifier notifier;
 
     private JobCompletionListener completionListener;
+    private int apiPort;
 
     /**
      * Creates a new SlackListener with the specified notifier.
@@ -110,6 +111,23 @@ public class SlackListener implements ConsoleFeatures {
      */
     public void setCompletionListener(JobCompletionListener listener) {
         this.completionListener = listener;
+    }
+
+    /**
+     * Returns the API endpoint port used for Slack MCP tool communication.
+     */
+    public int getApiPort() {
+        return apiPort;
+    }
+
+    /**
+     * Sets the API endpoint port. Called by {@link SlackBotController} after the
+     * API endpoint starts so that jobs can be configured with the correct URL.
+     *
+     * @param apiPort the port the SlackApiEndpoint is listening on
+     */
+    public void setApiPort(int apiPort) {
+        this.apiPort = apiPort;
     }
 
     /**
@@ -227,6 +245,12 @@ public class SlackListener implements ConsoleFeatures {
 
         if (workstream.getWorkingDirectory() != null) {
             factory.setWorkingDirectory(workstream.getWorkingDirectory());
+        }
+
+        // Configure Slack MCP tool access
+        if (apiPort > 0) {
+            factory.setSlackApiUrl("http://localhost:" + apiPort);
+            factory.setSlackChannelId(workstream.getChannelId());
         }
 
         // Notify that work is starting

@@ -16,14 +16,23 @@
 
 package io.flowtree.slack;
 
+import fi.iki.elonen.NanoHTTPD;
+import io.flowtree.jobs.ClaudeCodeJob;
 import io.flowtree.jobs.JobCompletionEvent;
 import io.flowtree.jobs.JobCompletionListener;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
+import java.io.File;
 import java.io.IOException;
+import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.Assert.*;
 
@@ -292,6 +301,50 @@ public class SlackIntegrationTest extends TestSuiteBase {
     }
 
     @Test
+    public void testTokensLoadFromFile() throws IOException {
+        File tempFile = File.createTempFile("slack-tokens-test", ".json");
+        tempFile.deleteOnExit();
+
+        String json = "{ \"botToken\": \"xoxb-test-bot-token\", " +
+                       "\"appToken\": \"xapp-test-app-token\" }";
+        Files.write(tempFile.toPath(), json.getBytes());
+
+        SlackTokens tokens = SlackTokens.loadFromFile(tempFile);
+
+        assertEquals("xoxb-test-bot-token", tokens.getBotToken());
+        assertEquals("xapp-test-app-token", tokens.getAppToken());
+    }
+
+    @Test
+    public void testTokensResolveFromExplicitFile() throws IOException {
+        File tempFile = File.createTempFile("slack-tokens-explicit", ".json");
+        tempFile.deleteOnExit();
+
+        String json = "{ \"botToken\": \"xoxb-explicit\", \"appToken\": \"xapp-explicit\" }";
+        Files.write(tempFile.toPath(), json.getBytes());
+
+        SlackTokens tokens = SlackTokens.resolve(tempFile);
+
+        assertEquals("xoxb-explicit", tokens.getBotToken());
+        assertEquals("xapp-explicit", tokens.getAppToken());
+    }
+
+    @Test
+    public void testTokensIgnoresUnknownFields() throws IOException {
+        File tempFile = File.createTempFile("slack-tokens-extra", ".json");
+        tempFile.deleteOnExit();
+
+        String json = "{ \"botToken\": \"xoxb-123\", \"appToken\": \"xapp-456\", " +
+                       "\"unknownField\": \"ignored\" }";
+        Files.write(tempFile.toPath(), json.getBytes());
+
+        SlackTokens tokens = SlackTokens.loadFromFile(tempFile);
+
+        assertEquals("xoxb-123", tokens.getBotToken());
+        assertEquals("xapp-456", tokens.getAppToken());
+    }
+
+    @Test
     public void testConfigDefaults() throws IOException {
         // Minimal config - should use defaults
         String yaml = "workstreams:\n" +
@@ -308,5 +361,147 @@ public class SlackIntegrationTest extends TestSuiteBase {
         assertEquals(10.0, entry.getMaxBudgetUsd(), 0.001); // default budget
         assertTrue(entry.isPushToOrigin()); // default push
         assertEquals("Read,Edit,Write,Bash,Glob,Grep", entry.getAllowedTools()); // default tools
+    }
+
+    @Test
+    public void testApiEndpointPostMessage() throws Exception {
+        AtomicReference<String> receivedChannel = new AtomicReference<>();
+        AtomicReference<String> receivedText = new AtomicReference<>();
+
+        SlackNotifier notifier = new SlackNotifier(null);
+        notifier.setMessageCallback(json -> {
+            receivedChannel.set(SlackApiEndpoint.extractJsonField(json, "channel"));
+            receivedText.set(SlackApiEndpoint.extractJsonField(json, "text"));
+        });
+
+        SlackApiEndpoint endpoint = new SlackApiEndpoint(0, notifier);
+        endpoint.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false);
+
+        try {
+            int port = endpoint.getListeningPort();
+            String body = "{\"channel_id\":\"C_TEST_123\",\"text\":\"Hello from agent\"}";
+
+            HttpURLConnection conn = (HttpURLConnection) new URL(
+                    "http://localhost:" + port + "/api/slack/message").openConnection();
+            conn.setRequestMethod("POST");
+            conn.setDoOutput(true);
+            conn.setRequestProperty("Content-Type", "application/json");
+
+            try (OutputStream os = conn.getOutputStream()) {
+                os.write(body.getBytes(StandardCharsets.UTF_8));
+            }
+
+            assertEquals(200, conn.getResponseCode());
+            assertEquals("C_TEST_123", receivedChannel.get());
+            assertEquals("Hello from agent", receivedText.get());
+        } finally {
+            endpoint.stop();
+        }
+    }
+
+    @Test
+    public void testApiEndpointHealthCheck() throws Exception {
+        SlackNotifier notifier = new SlackNotifier(null);
+        SlackApiEndpoint endpoint = new SlackApiEndpoint(0, notifier);
+        endpoint.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false);
+
+        try {
+            int port = endpoint.getListeningPort();
+            HttpURLConnection conn = (HttpURLConnection) new URL(
+                    "http://localhost:" + port + "/api/slack/health").openConnection();
+            conn.setRequestMethod("GET");
+
+            assertEquals(200, conn.getResponseCode());
+
+            String response = new String(conn.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+            assertTrue(response.contains("\"status\":\"ok\""));
+        } finally {
+            endpoint.stop();
+        }
+    }
+
+    @Test
+    public void testApiEndpointMissingFields() throws Exception {
+        SlackNotifier notifier = new SlackNotifier(null);
+        SlackApiEndpoint endpoint = new SlackApiEndpoint(0, notifier);
+        endpoint.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false);
+
+        try {
+            int port = endpoint.getListeningPort();
+
+            // Missing channel_id
+            String body = "{\"text\":\"Hello\"}";
+            HttpURLConnection conn = (HttpURLConnection) new URL(
+                    "http://localhost:" + port + "/api/slack/message").openConnection();
+            conn.setRequestMethod("POST");
+            conn.setDoOutput(true);
+            conn.setRequestProperty("Content-Type", "application/json");
+
+            try (OutputStream os = conn.getOutputStream()) {
+                os.write(body.getBytes(StandardCharsets.UTF_8));
+            }
+
+            assertEquals(400, conn.getResponseCode());
+
+            String error = new String(conn.getErrorStream().readAllBytes(), StandardCharsets.UTF_8);
+            assertTrue(error.contains("channel_id"));
+        } finally {
+            endpoint.stop();
+        }
+    }
+
+    @Test
+    public void testFactorySlackConfiguration() {
+        ClaudeCodeJob.Factory factory = new ClaudeCodeJob.Factory("Test prompt");
+        factory.setSlackApiUrl("http://localhost:7780");
+        factory.setSlackChannelId("C_FACTORY_TEST");
+
+        assertEquals("http://localhost:7780", factory.getSlackApiUrl());
+        assertEquals("C_FACTORY_TEST", factory.getSlackChannelId());
+
+        // Verify propagation to created job
+        ClaudeCodeJob job = (ClaudeCodeJob) factory.nextJob();
+        assertNotNull(job);
+        assertEquals("http://localhost:7780", job.getSlackApiUrl());
+        assertEquals("C_FACTORY_TEST", job.getSlackChannelId());
+    }
+
+    @Test
+    public void testApiEndpointThreadReply() throws Exception {
+        AtomicReference<String> receivedChannel = new AtomicReference<>();
+        AtomicReference<String> receivedThread = new AtomicReference<>();
+        AtomicReference<String> receivedText = new AtomicReference<>();
+
+        SlackNotifier notifier = new SlackNotifier(null);
+        notifier.setMessageCallback(json -> {
+            receivedChannel.set(SlackApiEndpoint.extractJsonField(json, "channel"));
+            receivedThread.set(SlackApiEndpoint.extractJsonField(json, "thread_ts"));
+            receivedText.set(SlackApiEndpoint.extractJsonField(json, "text"));
+        });
+
+        SlackApiEndpoint endpoint = new SlackApiEndpoint(0, notifier);
+        endpoint.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false);
+
+        try {
+            int port = endpoint.getListeningPort();
+            String body = "{\"channel_id\":\"C_THREAD\",\"thread_ts\":\"1234567890.123456\",\"text\":\"Thread reply\"}";
+
+            HttpURLConnection conn = (HttpURLConnection) new URL(
+                    "http://localhost:" + port + "/api/slack/thread").openConnection();
+            conn.setRequestMethod("POST");
+            conn.setDoOutput(true);
+            conn.setRequestProperty("Content-Type", "application/json");
+
+            try (OutputStream os = conn.getOutputStream()) {
+                os.write(body.getBytes(StandardCharsets.UTF_8));
+            }
+
+            assertEquals(200, conn.getResponseCode());
+            assertEquals("C_THREAD", receivedChannel.get());
+            assertEquals("1234567890.123456", receivedThread.get());
+            assertEquals("Thread reply", receivedText.get());
+        } finally {
+            endpoint.stop();
+        }
     }
 }

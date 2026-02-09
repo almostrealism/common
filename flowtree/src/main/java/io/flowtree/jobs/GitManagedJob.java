@@ -296,54 +296,52 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
 
     /**
      * Handles all git operations: branch management, staging, committing, and pushing.
+     *
+     * @throws IOException if a git command fails to execute
+     * @throws InterruptedException if a git command is interrupted
+     * @throws RuntimeException if a git operation (branch switch, commit, push) fails
      */
-    private void handleGitOperations() {
+    private void handleGitOperations() throws IOException, InterruptedException {
         log("Starting git operations...");
         log("Target branch: " + targetBranch);
 
-        try {
-            // Step 1: Ensure we're on the target branch
-            if (!ensureOnTargetBranch()) {
-                warn("Failed to switch to target branch");
-                return;
-            }
-
-            // Step 2: Find and filter changed files
-            List<String> changedFiles = findChangedFiles();
-            if (changedFiles.isEmpty()) {
-                log("No changes to commit");
-                gitOperationsSuccessful = true;
-                return;
-            }
-
-            // Step 3: Stage files (with guardrails)
-            stageFiles(changedFiles);
-            if (stagedFiles.isEmpty()) {
-                log("No files passed guardrails, nothing to commit");
-                gitOperationsSuccessful = true;
-                return;
-            }
-
-            // Step 4: Commit
-            if (!commit()) {
-                warn("Commit failed");
-                return;
-            }
-
-            // Step 5: Push to origin
-            if (pushToOrigin && !dryRun) {
-                if (!pushToOrigin()) {
-                    warn("Push failed");
-                    return;
-                }
-            }
-
-            gitOperationsSuccessful = true;
-            log("Git operations completed successfully");
-
-        } catch (Exception e) {
-            warn("Git operations failed: " + e.getMessage(), e);
+        // Step 1: Ensure we're on the target branch
+        if (!ensureOnTargetBranch()) {
+            String msg = "Failed to switch to target branch '" + targetBranch + "'" +
+                " (working directory: " + (workingDirectory != null ? workingDirectory : System.getProperty("user.dir")) + ")";
+            throw new RuntimeException(msg);
         }
+
+        // Step 2: Find and filter changed files
+        List<String> changedFiles = findChangedFiles();
+        if (changedFiles.isEmpty()) {
+            log("No changes to commit");
+            gitOperationsSuccessful = true;
+            return;
+        }
+
+        // Step 3: Stage files (with guardrails)
+        stageFiles(changedFiles);
+        if (stagedFiles.isEmpty()) {
+            log("No files passed guardrails, nothing to commit");
+            gitOperationsSuccessful = true;
+            return;
+        }
+
+        // Step 4: Commit
+        if (!commit()) {
+            throw new RuntimeException("Git commit failed after staging " + stagedFiles.size() + " files");
+        }
+
+        // Step 5: Push to origin
+        if (pushToOrigin && !dryRun) {
+            if (!pushToOrigin()) {
+                throw new RuntimeException("Git push to origin/" + targetBranch + " failed");
+            }
+        }
+
+        gitOperationsSuccessful = true;
+        log("Git operations completed successfully");
     }
 
     /**
@@ -522,13 +520,21 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
         pb.redirectErrorStream(true);
 
         Process process = pb.start();
-        // Consume output to prevent blocking
+        StringBuilder output = new StringBuilder();
         try (BufferedReader reader = new BufferedReader(
                 new InputStreamReader(process.getInputStream()))) {
-            while (reader.readLine() != null) { /* consume */ }
+            String line;
+            while ((line = reader.readLine()) != null) {
+                output.append(line).append("\n");
+            }
         }
 
-        return process.waitFor();
+        int exitCode = process.waitFor();
+        if (exitCode != 0) {
+            warn("git " + String.join(" ", args) + " failed (exit " + exitCode + "): " + output.toString().trim());
+        }
+
+        return exitCode;
     }
 
     private String executeGitWithOutput(String... args) throws IOException, InterruptedException {
