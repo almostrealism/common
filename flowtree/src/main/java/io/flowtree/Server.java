@@ -262,7 +262,7 @@ public class Server implements JobFactory, Runnable {
 				System.exit(2);
 			}
 		}
-		
+
 		JobFactory j = null;
 
 		if (args.length < 2) {
@@ -284,13 +284,18 @@ public class Server implements JobFactory, Runnable {
 				System.exit(6);
 			}
 		}
-		
+
 		try {
 			Server s = new Server(p, j);
 			s.start();
+
+			// Keep the JVM alive (all server threads are daemon)
+			Thread.currentThread().join();
 		} catch (IOException ioe) {
 			System.out.println("Server: " + ioe);
 			System.exit(7);
+		} catch (InterruptedException ie) {
+			System.out.println("Server: Interrupted");
 		}
 	}
 

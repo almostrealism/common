@@ -16,13 +16,13 @@
 
 package io.flowtree.slack;
 
-import io.flowtree.ClaudeCodeClient;
+import io.flowtree.Server;
 import io.flowtree.jobs.ClaudeCodeJob;
 import io.flowtree.jobs.JobCompletionEvent;
 import io.flowtree.jobs.JobCompletionListener;
+import io.flowtree.msg.NodeProxy;
 import org.almostrealism.io.ConsoleFeatures;
 
-import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.regex.Matcher;
@@ -60,9 +60,10 @@ public class SlackListener implements ConsoleFeatures {
     );
 
     private final Map<String, SlackWorkstream> channelToWorkstream;
-    private final Map<String, ClaudeCodeClient> workstreamClients;
     private final SlackNotifier notifier;
 
+    private Server server;
+    private int nextAgent = 0;
     private JobCompletionListener completionListener;
     private int apiPort;
 
@@ -74,34 +75,27 @@ public class SlackListener implements ConsoleFeatures {
     public SlackListener(SlackNotifier notifier) {
         this.notifier = notifier;
         this.channelToWorkstream = new HashMap<>();
-        this.workstreamClients = new HashMap<>();
     }
 
     /**
-     * Registers a workstream and initializes its client connection.
+     * Registers a workstream. Agents connect inbound to the controller's
+     * FlowTree {@link Server}, so no outbound connections are needed here.
      *
      * @param workstream the workstream to register
-     * @throws IOException if client connection fails
      */
-    public void registerWorkstream(SlackWorkstream workstream) throws IOException {
-        if (workstream.getAgents().isEmpty()) {
-            throw new IllegalArgumentException("Workstream has no agents configured");
-        }
-
-        // Register with notifier
+    public void registerWorkstream(SlackWorkstream workstream) {
         notifier.registerWorkstream(workstream);
-
-        // Create client for this workstream
-        ClaudeCodeClient client = new ClaudeCodeClient();
-        for (SlackWorkstream.AgentEndpoint agent : workstream.getAgents()) {
-            client.addAgent(agent.getHost(), agent.getPort());
-        }
-        client.start();
-
         channelToWorkstream.put(workstream.getChannelId(), workstream);
-        workstreamClients.put(workstream.getWorkstreamId(), client);
-
         log("Registered workstream: " + workstream);
+    }
+
+    /**
+     * Sets the FlowTree {@link Server} used to send tasks to connected agents.
+     *
+     * @param server the server accepting inbound agent connections
+     */
+    public void setServer(Server server) {
+        this.server = server;
     }
 
     /**
@@ -200,10 +194,12 @@ public class SlackListener implements ConsoleFeatures {
      * Handles the /status command.
      */
     private void handleStatusCommand(SlackWorkstream workstream) {
+        int connectedAgents = server != null ? server.getNodeGroup().getServers().length : 0;
+
         StringBuilder sb = new StringBuilder();
         sb.append(":information_source: *Workstream Status*\n");
         sb.append("   Channel: ").append(workstream.getChannelName()).append("\n");
-        sb.append("   Agents: ").append(workstream.getAgents().size()).append(" configured\n");
+        sb.append("   Connected agents: ").append(connectedAgents).append("\n");
         if (workstream.getDefaultBranch() != null) {
             sb.append("   Default branch: `").append(workstream.getDefaultBranch()).append("`\n");
         }
@@ -222,12 +218,18 @@ public class SlackListener implements ConsoleFeatures {
     }
 
     /**
-     * Submits a job to the workstream's agents.
+     * Submits a job to connected agents via the FlowTree {@link Server}.
      */
     private boolean submitJob(SlackWorkstream workstream, String prompt, String threadTs) {
-        ClaudeCodeClient client = workstreamClients.get(workstream.getWorkstreamId());
-        if (client == null) {
-            warn("No client for workstream: " + workstream.getWorkstreamId());
+        if (server == null) {
+            warn("No FlowTree server configured");
+            return false;
+        }
+
+        NodeProxy[] peers = server.getNodeGroup().getServers();
+        if (peers.length == 0) {
+            notifier.postMessage(workstream.getChannelId(),
+                ":x: No agents connected - job not submitted. Start an agent with FLOWTREE_ROOT_HOST pointed at this controller.");
             return false;
         }
 
@@ -266,15 +268,11 @@ public class SlackListener implements ConsoleFeatures {
             completionListener.onJobStarted(startEvent);
         }
 
-        // Submit the job
-        boolean submitted = client.submit(factory);
-        if (!submitted) {
-            notifier.postMessage(workstream.getChannelId(),
-                ":x: Unable to reach agent - job not submitted. The agent may be offline.");
-            return false;
-        }
+        // Round-robin to connected agents
+        int index = nextAgent++ % peers.length;
+        server.sendTask(factory, index);
 
-        log("Submitted job: " + factory.getTaskId());
+        log("Submitted job to agent " + index + ": " + factory.getTaskId());
         return true;
     }
 

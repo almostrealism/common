@@ -4,22 +4,28 @@ FlowTree integrates with Claude Code to execute AI coding prompts as distributed
 
 ## How It Works
 
-1. A **ClaudeCodeJob.Factory** is created with one or more prompts.
-2. The factory is submitted to the FlowTree network via a **ClaudeCodeClient** (or through the [Slack integration](slack-integration.md)).
-3. An idle Node picks up the job and executes `claude -p "<prompt>" --output-format json`.
-4. When Claude Code finishes, the job optionally stages, commits, and pushes changes via **GitManagedJob**.
-5. A **JobCompletionEvent** fires, notifying any registered listeners (e.g., the Slack notifier).
+1. A **SlackBotController** starts a FlowTree **Server** that listens for inbound agent connections.
+2. Agents (Docker containers or remote hosts) connect OUT to the controller by setting `FLOWTREE_ROOT_HOST` and `FLOWTREE_ROOT_PORT` environment variables.
+3. When a Slack message arrives, the controller creates a **ClaudeCodeJob.Factory** and sends it to a connected agent via `Server.sendTask()`.
+4. The agent's idle Node picks up the job and executes `claude -p "<prompt>" --output-format json`.
+5. When Claude Code finishes, the job optionally stages, commits, and pushes changes via **GitManagedJob**.
+6. A **JobCompletionEvent** fires, notifying any registered listeners (e.g., the Slack notifier).
 
 ```
-ClaudeCodeClient            FlowTree Network            Claude Code
-    |                            |                          |
-    |-- submit(factory) -------->|                          |
-    |                            |-- Node picks up job ---->|
-    |                            |                          |-- executes prompt
-    |                            |                          |-- edits files
-    |                            |<--- output + exit code --|
-    |                            |-- GitManagedJob: stage, commit, push
-    |                            |-- fire JobCompletionEvent
+Agent (Docker)                  SlackBotController              Claude Code
+    |                                |                              |
+    |-- connects to controller ----->|                              |
+    |   (FLOWTREE_ROOT_HOST/PORT)    |                              |
+    |                                |                              |
+    |                      Slack msg |                              |
+    |                                |-- sendTask(factory, idx) --->|
+    |                                |                              |
+    |<--- Node picks up job ---------|                              |
+    |                                                               |
+    |-- executes prompt ------------------------------------------->|
+    |<-- output + exit code ----------------------------------------|
+    |-- GitManagedJob: stage, commit, push                          |
+    |-- fire JobCompletionEvent                                     |
 ```
 
 ## Key Classes
@@ -67,18 +73,15 @@ factory.setMaxBudgetUsd(25.0);
 
 ### ClaudeCodeClient
 
-Connects to one or more FlowTree agents and submits job factories with round-robin distribution. Connections are **lazy** -- no TCP sockets are opened until the first job is submitted to a given agent. If an agent has restarted since the last submission, the client automatically detects the dead connection and reconnects (with one retry). All `submit` methods return a `boolean` indicating success so callers can handle unreachable agents.
+Standalone client for submitting jobs from the command line. Connects outbound to one or more FlowTree agents and submits job factories with round-robin distribution. Connections are **lazy** -- no TCP sockets are opened until the first job is submitted to a given agent.
 
 ```java
 ClaudeCodeClient client = new ClaudeCodeClient();
 client.addAgent("localhost", 7766);
 client.addAgent("localhost", 7767);
-client.start();  // No connections opened yet
+client.start();
 
-boolean ok = client.submit("Fix the bug in auth.py");  // Connects lazily
-if (!ok) {
-    System.err.println("Agent unreachable");
-}
+boolean ok = client.submit("Fix the bug in auth.py");
 ```
 
 **Command-line usage:**
@@ -130,16 +133,19 @@ Convenience scripts live in `flowtree/bin/` and use `mvn exec:java` for classpat
 
 ### start-slack-controller.sh
 
-Starts the `SlackBotController`. Requires Slack tokens via environment variables or a `--tokens` file.
+Starts the `SlackBotController`. Requires Slack tokens via environment variables or a `--tokens` file. The controller starts a FlowTree Server that listens for inbound agent connections.
 
 ```bash
 # Using environment variables
 export SLACK_BOT_TOKEN="xoxb-..."
 export SLACK_APP_TOKEN="xapp-..."
-./flowtree/bin/start-slack-controller.sh --channel C0123ABCDEF --agent localhost:7766
+./flowtree/bin/start-slack-controller.sh --channel C0123ABCDEF
 
 # Using a tokens file
 ./flowtree/bin/start-slack-controller.sh --tokens slack-tokens.json --config workstreams.yaml
+
+# Custom FlowTree port
+./flowtree/bin/start-slack-controller.sh --flowtree-port 8800 --config workstreams.yaml
 
 # Show full usage
 ./flowtree/bin/start-slack-controller.sh --help
@@ -147,8 +153,12 @@ export SLACK_APP_TOKEN="xapp-..."
 
 ### start-agent.sh
 
-Starts a FlowTree `Agent` node that listens for job submissions. Sets `AR_HARDWARE_LIBS` and `AR_HARDWARE_DRIVER` defaults automatically if not already present in the environment.
+Starts a FlowTree agent that connects OUT to a controller. The agent uses `FLOWTREE_ROOT_HOST` and `FLOWTREE_ROOT_PORT` environment variables to locate the controller and auto-reconnects every 30 seconds if the connection drops.
 
 ```bash
+# Connect to controller on the Docker host (default)
 ./flowtree/bin/start-agent.sh
+
+# Connect to a specific controller
+FLOWTREE_ROOT_HOST=10.0.0.1 FLOWTREE_ROOT_PORT=7766 ./flowtree/bin/start-agent.sh
 ```

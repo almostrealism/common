@@ -3,7 +3,8 @@
 # Start the FlowTree Slack Bot Controller.
 #
 # Connects to Slack via Socket Mode and dispatches coding prompts
-# to FlowTree agents as ClaudeCodeJob instances.
+# to FlowTree agents as ClaudeCodeJob instances. Agents connect
+# inbound to this controller on the FlowTree port.
 #
 # Required environment variables (or use --tokens <file>):
 #   SLACK_BOT_TOKEN   - Slack bot token (xoxb-...)
@@ -12,22 +13,21 @@
 # Optional environment variables:
 #   SLACK_CHANNEL_ID        - Default channel to monitor
 #   SLACK_CHANNEL_NAME      - Human-readable channel name
-#   FLOWTREE_AGENT_HOST     - Agent hostname (default: localhost)
-#   FLOWTREE_AGENT_PORT     - Agent port (default: 7766)
+#   FLOWTREE_PORT           - FlowTree listening port (default: 7766)
 #   GIT_DEFAULT_BRANCH      - Default git branch for commits
 #
 # Usage:
 #   ./start-slack-controller.sh [options]
 #
 # Options:
-#   --tokens, -t <file>    JSON file with botToken/appToken
-#   --config, -c <file>    YAML configuration file
-#   --channel <id>         Slack channel ID to monitor
-#   --channel-name <name>  Human-readable channel name
-#   --agent <host:port>    FlowTree agent endpoint
-#   --branch <name>        Default git branch for commits
-#   --api-port <port>      Port for the HTTP API endpoint (default: 7780)
-#   --help, -h             Show this help
+#   --tokens, -t <file>       JSON file with botToken/appToken
+#   --config, -c <file>       YAML configuration file
+#   --channel <id>            Slack channel ID to monitor
+#   --channel-name <name>     Human-readable channel name
+#   --branch <name>           Default git branch for commits
+#   --api-port <port>         Port for the HTTP API endpoint (default: 7780)
+#   --flowtree-port <port>    Port for the FlowTree server (default: 7766)
+#   --help, -h                Show this help
 #
 
 set -euo pipefail
@@ -46,22 +46,24 @@ for arg in "$@"; do
         echo ""
         echo "Usage: $(basename "$0") [options]"
         echo ""
+        echo "Agents connect TO this controller on the FlowTree port."
+        echo "Set FLOWTREE_ROOT_HOST and FLOWTREE_ROOT_PORT on each agent."
+        echo ""
         echo "Options:"
-        echo "  --tokens, -t <file>    JSON file with botToken/appToken"
-        echo "  --config, -c <file>    YAML configuration file"
-        echo "  --channel <id>         Slack channel ID to monitor"
-        echo "  --channel-name <name>  Human-readable channel name"
-        echo "  --agent <host:port>    FlowTree agent endpoint"
-        echo "  --branch <name>        Default git branch for commits"
-        echo "  --api-port <port>      Port for the HTTP API endpoint (default: 7780)"
-        echo "  --help, -h             Show this help"
+        echo "  --tokens, -t <file>       JSON file with botToken/appToken"
+        echo "  --config, -c <file>       YAML configuration file"
+        echo "  --channel <id>            Slack channel ID to monitor"
+        echo "  --channel-name <name>     Human-readable channel name"
+        echo "  --branch <name>           Default git branch for commits"
+        echo "  --api-port <port>         Port for the HTTP API endpoint (default: 7780)"
+        echo "  --flowtree-port <port>    Port for the FlowTree server (default: 7766)"
+        echo "  --help, -h                Show this help"
         echo ""
         echo "Environment variables:"
         echo "  SLACK_BOT_TOKEN        Slack bot token (xoxb-...)"
         echo "  SLACK_APP_TOKEN        Slack app-level token for Socket Mode (xapp-...)"
         echo "  SLACK_CHANNEL_ID       Default channel to monitor"
-        echo "  FLOWTREE_AGENT_HOST    Agent hostname (default: localhost)"
-        echo "  FLOWTREE_AGENT_PORT    Agent port (default: 7766)"
+        echo "  FLOWTREE_PORT          FlowTree listening port (default: 7766)"
         echo "  GIT_DEFAULT_BRANCH     Default git branch for commits"
         echo ""
         echo "Token resolution (first match wins):"
