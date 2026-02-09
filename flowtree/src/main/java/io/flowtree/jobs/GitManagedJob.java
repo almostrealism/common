@@ -310,17 +310,14 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
         log("Starting git operations...");
         log("Target branch: " + targetBranch);
 
-        // Step 1: Ensure we're on the target branch
+        // Ensure we're on the target branch
         if (!ensureOnTargetBranch()) {
             String msg = "Failed to switch to target branch '" + targetBranch + "'" +
                 " (working directory: " + (workingDirectory != null ? workingDirectory : System.getProperty("user.dir")) + ")";
             throw new RuntimeException(msg);
         }
 
-        // Step 2: Configure git identity (if provided)
-        configureGitIdentity();
-
-        // Step 3: Find and filter changed files
+        // Find and filter changed files
         List<String> changedFiles = findChangedFiles();
         if (changedFiles.isEmpty()) {
             log("No changes to commit");
@@ -328,7 +325,7 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
             return;
         }
 
-        // Step 4: Stage files (with guardrails)
+        // Stage files (with guardrails)
         stageFiles(changedFiles);
         if (stagedFiles.isEmpty()) {
             log("No files passed guardrails, nothing to commit");
@@ -336,12 +333,12 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
             return;
         }
 
-        // Step 5: Commit
+        // Commit
         if (!commit()) {
             throw new RuntimeException("Git commit failed after staging " + stagedFiles.size() + " files");
         }
 
-        // Step 6: Push to origin
+        // Push to origin
         if (pushToOrigin && !dryRun) {
             if (!pushToOrigin()) {
                 throw new RuntimeException("Git push to origin/" + targetBranch + " failed");
