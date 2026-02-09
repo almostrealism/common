@@ -32,6 +32,47 @@ import java.util.function.DoubleFunction;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
+/**
+ * A composite note that can contain multiple audio layers.
+ *
+ * <p>{@code PatternNote} is the primary implementation of {@link PatternNoteAudio} used
+ * by {@link PatternElement}s. It supports two modes of operation:</p>
+ * <ol>
+ *   <li><strong>Delegate Mode</strong>: Wraps a single {@link PatternNoteAudio} with an optional filter</li>
+ *   <li><strong>Layer Mode</strong>: Combines multiple {@link PatternNoteAudio} layers</li>
+ * </ol>
+ *
+ * <h2>Layer Composition</h2>
+ *
+ * <p>In layer mode, multiple audio sources are combined using the static {@code layerAggregator}.
+ * This enables rich sounds by layering different samples (e.g., attack + sustain, or
+ * multiple instrument layers).</p>
+ *
+ * <h2>Audio Generation</h2>
+ *
+ * <p>The {@link #getAudio} method produces audio by:</p>
+ * <ol>
+ *   <li>If in delegate mode, delegating to the wrapped audio with optional filtering</li>
+ *   <li>If in layer mode, combining all layers via {@link #combineLayers}</li>
+ * </ol>
+ *
+ * <h2>Pitch Support</h2>
+ *
+ * <p>For melodic content, {@link #setTuning} propagates keyboard tuning to all layers
+ * or the delegate, enabling pitch shifting based on the target key position.</p>
+ *
+ * <h2>Duration</h2>
+ *
+ * <p>In layer mode, the duration is the maximum of all layer durations, ensuring
+ * the full sound is captured.</p>
+ *
+ * @see PatternNoteAudio
+ * @see PatternNoteAudioAdapter
+ * @see PatternElement
+ * @see NoteAudioSourceAggregator
+ *
+ * @author Michael Murray
+ */
 public class PatternNote extends PatternNoteAudioAdapter {
 	private static final NoteAudioSourceAggregator layerAggregator;
 

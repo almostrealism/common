@@ -8,9 +8,8 @@ This server provides tools for:
 - Loading and caching profile XML files
 - Navigating hierarchical profile trees
 - Examining timing metrics and invocation counts
-- Retrieving generated kernel source code
 - Finding performance bottlenecks
-- Comparing profiles before/after optimizations
+- Analyzing compile vs run time breakdown
 
 ## Installation
 
@@ -26,7 +25,7 @@ Environment variables:
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `AR_PROFILE_DIR` | `utils/results` | Default directory for profile files |
-| `AR_PROFILE_CACHE_SIZE` | `10` | Maximum number of profiles to cache |
+| `AR_TOOLS_DIR` | `/workspace/project/common/tools` | Path to tools module |
 
 ## Running the Server
 
@@ -37,7 +36,7 @@ python server.py
 Or with custom configuration:
 
 ```bash
-AR_PROFILE_DIR=/path/to/profiles AR_PROFILE_CACHE_SIZE=20 python server.py
+AR_PROFILE_DIR=/path/to/profiles python server.py
 ```
 
 ## Claude Desktop Configuration
@@ -81,81 +80,71 @@ Load a profile and return its summary with top operations.
 - `path` (required): Path to the profile XML file
 
 **Returns:**
-- `profile_id`: Use this ID in subsequent calls
+- `name`: Root node name
 - `total_duration_seconds`: Overall execution time
 - `node_count`: Number of operations in the profile
 - `compiled_operations`: Operations with generated source code
-- `top_operations`: Top 5 operations by time
-
-### get_node_summary
-
-Get detailed timing information for a specific node.
-
-**Parameters:**
-- `profile_id` (required): Profile ID from load_profile
-- `node_key` (optional): Node key (uses root if omitted)
-
-**Returns:**
-- Timing breakdown (total, self, children)
-- Invocation counts
-- Stage breakdown (compile, run)
-- Metadata
-
-### list_children
-
-List children of a node with timing information.
-
-**Parameters:**
-- `profile_id` (required): Profile ID
-- `node_key` (optional): Parent node key
-- `sort_by` (optional): `duration`, `name`, or `invocations`
-- `limit` (optional): Maximum results (default: 20)
-
-### get_source
-
-Get generated kernel source code for an operation.
-
-**Parameters:**
-- `profile_id` (required): Profile ID
-- `node_key` (required): Node key
-- `format` (optional): `full` or `summary` (first 50 lines)
-
-**Returns:**
-- Source code with language detection (C, OpenCL, Metal)
-- Argument information with keys and descriptions
+- `top_operations`: Top 10 operations by time
 
 ### find_slowest
 
 Find the N slowest operations in the profile.
 
 **Parameters:**
-- `profile_id` (required): Profile ID
+- `path` (required): Path to the profile XML file
 - `limit` (optional): Number of results (default: 10)
-- `min_duration` (optional): Minimum duration filter (seconds)
-- `include_children` (optional): Include child time (default: false)
+
+**Returns:**
+- List of operations sorted by duration, with percentage of total time
+
+### list_children
+
+List children of a node with timing information.
+
+**Parameters:**
+- `path` (required): Path to the profile XML file
+- `node_key` (optional): Parent node key (uses root if omitted)
+
+**Returns:**
+- Parent info and list of children sorted by duration
 
 ### search_operations
 
 Search for operations by name pattern.
 
 **Parameters:**
-- `profile_id` (required): Profile ID
-- `pattern` (required): Regex pattern to match
-- `limit` (optional): Maximum results (default: 20)
-
-### compare_profiles
-
-Compare timing between two profiles.
-
-**Parameters:**
-- `profile_id_a` (required): First profile ID
-- `profile_id_b` (required): Second profile ID
-- `threshold` (optional): Minimum % change to report (default: 10)
+- `path` (required): Path to the profile XML file
+- `pattern` (required): Pattern to match operation names (case-insensitive substring match)
 
 **Returns:**
-- Overall timing change
-- List of operations with significant changes
-- Status (improved/regressed) for each
+- Matching operations sorted by duration
+
+### get_timing_breakdown
+
+Get compile vs run time breakdown for an operation.
+
+**Parameters:**
+- `path` (required): Path to the profile XML file
+- `node_key` (required): Node key to analyze
+
+**Returns:**
+- `compile_time`: Total time spent compiling (seconds)
+- `run_time`: Total time spent executing (seconds)
+- `compile_count`: Number of compilations
+- `run_count`: Number of executions
+- `stage_details`: Compilation stage breakdown if available
+
+### find_slowest_by_category
+
+Find slowest operations filtered by timing category.
+
+**Parameters:**
+- `path` (required): Path to the profile XML file
+- `category` (optional): `"compile"`, `"run"`, or `"all"` (default: `"all"`)
+- `limit` (optional): Maximum results (default: 10)
+
+**Returns:**
+- Operations sorted by the specified category's duration
 
 ## Usage Example
 
@@ -164,23 +153,16 @@ Compare timing between two profiles.
 list_profiles()
 
 # 2. Load a profile
-load_profile(path="utils/results/matmulLarge1.xml")
-# Returns profile_id="abc123"
+load_profile(path="utils/results/my_profile.xml")
 
 # 3. Find slowest operations
-find_slowest(profile_id="abc123", limit=5)
+find_slowest(path="utils/results/my_profile.xml", limit=5)
 
-# 4. Get details on a specific operation
-get_node_summary(profile_id="abc123", node_key="45")
+# 4. Get compile vs run breakdown for a specific operation
+get_timing_breakdown(path="utils/results/my_profile.xml", node_key="1047")
 
-# 5. View generated source code
-get_source(profile_id="abc123", node_key="45")
-
-# 6. Compare with another run
-load_profile(path="utils/results/matmulLarge2.xml")
-# Returns profile_id="def456"
-
-compare_profiles(profile_id_a="abc123", profile_id_b="def456")
+# 5. Find slowest compilation operations
+find_slowest_by_category(path="utils/results/my_profile.xml", category="compile", limit=5)
 ```
 
 ## Profile XML Format
@@ -191,7 +173,31 @@ The server parses JavaBeans XML format produced by `OperationProfileNode.save()`
 - `TimingMetric`: Entries (operation -> seconds) and counts
 - `OperationSource`: Generated kernel code with arguments
 
+### Timing Entry Suffixes
+
+Profile entries use suffixes to distinguish timing categories:
+
+| Suffix | Meaning |
+|--------|---------|
+| `" compile"` | Code generation + native compilation time |
+| `" run"` | Kernel execution time |
+
+Example: `"f_assignment_1047 compile"` and `"f_assignment_1047 run"` track the compile and run times for operation 1047 separately.
+
+## Architecture Notes
+
+This MCP server uses a stateless design - each tool call specifies the profile path directly rather than using profile IDs. The Java `ProfileAnalyzerCLI` handles XML parsing to avoid memory issues with large profiles in Python.
+
+## Planned Features
+
+The following features are planned but not yet implemented:
+
+- `get_source`: Retrieve generated kernel source code for an operation
+- `compare_profiles`: Compare timing between two profile files
+
 ## See Also
 
+- [Profiling Guide](../../../docs/internals/profiling.md) - Full profiling documentation
 - `OperationProfileNode.java` - Java profile data structure
 - `OperationProfileFX.java` - JavaFX UI for human users
+- `ProfileAnalyzerCLI.java` - Java CLI for JSON output

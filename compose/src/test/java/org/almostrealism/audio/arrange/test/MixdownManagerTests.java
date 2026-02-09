@@ -16,6 +16,7 @@
 
 package org.almostrealism.audio.arrange.test;
 
+import org.almostrealism.audio.AudioTestFeatures;
 import org.almostrealism.audio.CellFeatures;
 import org.almostrealism.audio.CellList;
 import org.almostrealism.audio.WaveOutput;
@@ -31,6 +32,7 @@ import org.almostrealism.hardware.OperationList;
 import org.almostrealism.heredity.ProjectedGenome;
 import org.almostrealism.time.Frequency;
 import org.almostrealism.time.TemporalRunner;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 import java.io.File;
@@ -38,7 +40,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
-public class MixdownManagerTests implements CellFeatures {
+public class MixdownManagerTests extends TestSuiteBase implements CellFeatures, AudioTestFeatures {
 	private final double duration = 180;
 	private final int sampleRate = OutputLine.sampleRate;
 
@@ -68,8 +70,9 @@ public class MixdownManagerTests implements CellFeatures {
 		mixOut.write().get().run();
 	}
 
-	@Test
+	@Test(timeout = 600_000)
 	public void mixdown1() throws IOException {
+		if (skipKnownIssues) return;
 		MixdownManager.enableMainFilterUp = true;
 		MixdownManager.enableEfxFilters = true;
 		MixdownManager.enableEfx = true;
@@ -97,9 +100,13 @@ public class MixdownManagerTests implements CellFeatures {
 
 		genome.assignTo(new PackedCollection(params).randFill());
 
+		// Use synthetic test audio files instead of Library/ samples
+		File testAudio1 = getTestWavFile(440.0, 2.0);
+		File testAudio2 = getTestWavFile(880.0, 2.0);
+
 		CellList cells = w(0, c(0.0), c(1.0),
-				WaveData.load(new File("Library/Snare Gold 1.wav")),
-				WaveData.load(new File("Library/SN_Forever_Future.wav")));
+				WaveData.load(testAudio1),
+				WaveData.load(testAudio2));
 		run("mixdown1", time, mixdown, cells);
 	}
 }

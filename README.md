@@ -32,6 +32,10 @@ with pluggable native acceleration.
     <img src="https://img.shields.io/github/contributors/almostrealism/common.svg?style=for-the-badge"/>
   </p>
 
+### Stable Versions
+
+The `master` branch may contain changes that are not yet fully tested. If you are checking out the repository and want a stable version, use the most recent [tagged release](https://github.com/almostrealism/common/tags).
+
 ### What does this do?
 It provides data structures for operations in algebra, geometry, and other mathematics along
 with datatypes for both video and audio that are useful in both scientific computations and
@@ -42,8 +46,8 @@ a commitment to a particular strategy for production use of your model code ahea
 Using this library correctly allows you to take complex operations, written in Java, and end
 up with binaries for CPU, GPU, or FPGA that are as fast or faster than hand-written native code.
 
-*Note: A subset of this documentation for use as the preamble to a LLM prompt is available in PROMPT.md*
-*(This can sometimes be an easier way to get help using the library, than reading this yourself.)*
+*Note: LLM-friendly documentation is available in [llms.txt](llms.txt) and [llms-full.txt](llms-full.txt).
+Dedicated [MCP tools](tools/mcp) are also available for AI-assisted development with this repository.*
 
 #### An Intermediate Representation for Portable Programs
 
@@ -107,12 +111,12 @@ Add Maven Repository:
                 </repository>
         </repositories>
 
-Add utils:
+Add utils (check the latest [tagged release](https://github.com/almostrealism/common/tags) for the current version):
 
         <dependency>
             <groupId>org.almostrealism</groupId>
             <artifactId>ar-utils</artifactId>
-            <version>0.71</version>
+            <version>${ar.version}</version>
         </dependency>
 
 ### Enabling Your Application

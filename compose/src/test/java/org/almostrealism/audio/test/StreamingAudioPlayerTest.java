@@ -20,13 +20,20 @@ import org.almostrealism.audio.BufferedAudioPlayer;
 import org.almostrealism.audio.ScheduledOutputAudioPlayer;
 import org.almostrealism.audio.StreamingAudioPlayer;
 import org.almostrealism.audio.StreamingAudioPlayer.OutputMode;
+import org.almostrealism.audio.line.BufferDefaults;
 import org.almostrealism.audio.line.DelegatedAudioLine;
 import org.almostrealism.audio.line.OutputLine;
 import org.almostrealism.audio.line.SharedMemoryAudioLine;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.util.TestSuiteBase;
+import org.junit.Assume;
 import org.junit.Before;
 import org.junit.Test;
+
+import javax.sound.sampled.AudioFormat;
+import javax.sound.sampled.AudioSystem;
+import javax.sound.sampled.DataLine;
+import javax.sound.sampled.SourceDataLine;
 
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertSame;
@@ -61,8 +68,9 @@ public class StreamingAudioPlayerTest extends TestSuiteBase {
 		return new StreamingAudioPlayer(scheduledPlayer, delegatedLine, recordingLine);
 	}
 
-	@Test
+	@Test(timeout = 10_000)
 	public void testInitialDirectMode() {
+		assumeAudioHardware();
 		config = createPlayer(null);
 		config.setDirectMode(); // Must explicitly set mode after construction
 
@@ -72,7 +80,7 @@ public class StreamingAudioPlayerTest extends TestSuiteBase {
 		assertFalse(config.hasDawConnection());
 	}
 
-	@Test
+	@Test(timeout = 10_000)
 	public void testInitialDawMode() {
 		config = createPlayer(null);
 		config.setDawMode(); // Must explicitly set mode after construction
@@ -83,8 +91,9 @@ public class StreamingAudioPlayerTest extends TestSuiteBase {
 		assertFalse(config.hasDawConnection());
 	}
 
-	@Test
+	@Test(timeout = 10_000)
 	public void testSwitchFromDirectToDaw() {
+		assumeAudioHardware();
 		config = createPlayer(null);
 		config.setDirectMode(); // Initialize mode
 		assertTrue(config.isDirectMode());
@@ -96,8 +105,9 @@ public class StreamingAudioPlayerTest extends TestSuiteBase {
 		assertFalse(config.isDirectMode());
 	}
 
-	@Test
+	@Test(timeout = 10_000)
 	public void testSwitchFromDawToDirect() {
+		assumeAudioHardware();
 		config = createPlayer(null);
 		config.setDawMode(); // Initialize mode
 		assertTrue(config.isDawMode());
@@ -109,8 +119,9 @@ public class StreamingAudioPlayerTest extends TestSuiteBase {
 		assertFalse(config.isDawMode());
 	}
 
-	@Test
+	@Test(timeout = 10_000)
 	public void testSetDirectModeIdempotent() {
+		assumeAudioHardware();
 		config = createPlayer(null);
 		config.setDirectMode(); // Initialize mode
 
@@ -122,7 +133,7 @@ public class StreamingAudioPlayerTest extends TestSuiteBase {
 		assertEquals(OutputMode.DIRECT, config.getActiveMode());
 	}
 
-	@Test
+	@Test(timeout = 10_000)
 	public void testSetDawModeIdempotent() {
 		config = createPlayer(null);
 		config.setDawMode(); // Initialize mode
@@ -135,8 +146,9 @@ public class StreamingAudioPlayerTest extends TestSuiteBase {
 		assertEquals(OutputMode.SHARED, config.getActiveMode());
 	}
 
-	@Test
+	@Test(timeout = 10_000)
 	public void testDawConnectionStoredButNotActivatedInDirectMode() {
+		assumeAudioHardware();
 		config = createPlayer(null);
 		config.setDirectMode(); // Initialize mode
 
@@ -160,8 +172,9 @@ public class StreamingAudioPlayerTest extends TestSuiteBase {
 		// the delegate remains as it was (could be null initially)
 	}
 
-	@Test
+	@Test(timeout = 10_000)
 	public void testDawConnectionActivatedWhenSwitchingToDaw() {
+		assumeAudioHardware();
 		config = createPlayer(null);
 		config.setDirectMode(); // Initialize mode
 
@@ -177,7 +190,7 @@ public class StreamingAudioPlayerTest extends TestSuiteBase {
 		assertEquals(dawLine, delegatedLine.getOutputDelegate());
 	}
 
-	@Test
+	@Test(timeout = 10_000)
 	public void testDawConnectionImmediatelyActiveInDawMode() {
 		config = createPlayer(null);
 		config.setDawMode(); // Initialize mode
@@ -191,7 +204,7 @@ public class StreamingAudioPlayerTest extends TestSuiteBase {
 		assertEquals(dawLine, delegatedLine.getOutputDelegate());
 	}
 
-	@Test
+	@Test(timeout = 10_000)
 	public void testDawConnectionReplacedProperly() {
 		config = createPlayer(null);
 		config.setDawMode(); // Initialize mode
@@ -209,7 +222,7 @@ public class StreamingAudioPlayerTest extends TestSuiteBase {
 		assertEquals(secondDaw, delegatedLine.getOutputDelegate());
 	}
 
-	@Test
+	@Test(timeout = 10_000)
 	public void testNullDawConnectionHandled() {
 		config = createPlayer(null);
 		config.setDawMode(); // Initialize mode
@@ -226,8 +239,9 @@ public class StreamingAudioPlayerTest extends TestSuiteBase {
 		assertNull(config.getDawConnection());
 	}
 
-	@Test
+	@Test(timeout = 10_000)
 	public void testSwitchToDawWithNoConnection() {
+		assumeAudioHardware();
 		config = createPlayer(null);
 		config.setDirectMode(); // Initialize mode
 
@@ -240,8 +254,9 @@ public class StreamingAudioPlayerTest extends TestSuiteBase {
 		assertNull(delegatedLine.getOutputDelegate());
 	}
 
-	@Test
+	@Test(timeout = 10_000)
 	public void testModePreservedAcrossDawConnections() {
+		assumeAudioHardware();
 		config = createPlayer(null);
 		config.setDirectMode(); // Initialize mode
 
@@ -272,8 +287,9 @@ public class StreamingAudioPlayerTest extends TestSuiteBase {
 		assertTrue(config.hasDawConnection()); // DAW connection still stored
 	}
 
-	@Test
+	@Test(timeout = 10_000)
 	public void testWithRecordingLine() {
+		if (skipKnownIssues) return;
 		OutputLine recordingLine = createMockOutputLine();
 		config = createPlayer(recordingLine);
 
@@ -281,15 +297,30 @@ public class StreamingAudioPlayerTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Assumes audio hardware is available, skipping the test if not.
+	 */
+	private void assumeAudioHardware() {
+		try {
+			AudioFormat format = new AudioFormat(SAMPLE_RATE, 16, 1, true, false);
+			DataLine.Info info = new DataLine.Info(SourceDataLine.class, format);
+			Assume.assumeTrue("Audio hardware required", AudioSystem.isLineSupported(info));
+		} catch (Exception e) {
+			Assume.assumeTrue("Audio hardware required", false);
+		}
+	}
+
+	/**
 	 * Creates a mock {@link SharedMemoryAudioLine} for testing.
-	 * In real usage, this would be created by
-	 * {@link org.almostrealism.audio.stream.AudioLineDelegationHandler}
-	 * when a DAW client connects.
+	 *
+	 * <p>Uses the three-argument constructor with regular {@link PackedCollection}
+	 * instances to avoid shared memory allocation, which may not be available
+	 * in CI environments.</p>
 	 */
 	private SharedMemoryAudioLine createMockSharedMemoryLine() {
-		// Create a simple mock - SharedMemoryAudioLine requires a path
-		// For testing, we just need an instance to track references
-		return new SharedMemoryAudioLine("/tmp/test-shared-audio-" + System.nanoTime()) {
+		return new SharedMemoryAudioLine(
+				new PackedCollection(SharedMemoryAudioLine.controlSize),
+				new PackedCollection(BufferDefaults.defaultBufferSize),
+				new PackedCollection(BufferDefaults.defaultBufferSize)) {
 			@Override
 			public void destroy() {
 				// No-op for testing

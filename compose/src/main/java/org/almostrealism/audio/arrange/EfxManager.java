@@ -104,14 +104,29 @@ public class EfxManager implements CellFeatures {
 	public List<Integer> getWetChannels() { return wetChannels; }
 	public void setWetChannels(List<Integer> wetChannels) { this.wetChannels = wetChannels; }
 
-	public CellList apply(ChannelInfo channel, Producer<PackedCollection> audio, double totalDuration, OperationList setup) {
-		if (!enableEfx || !wetChannels.contains(channel)) {
-			return createCells(audio, totalDuration);
+	/**
+	 * Applies effects to audio with optional external frame control.
+	 *
+	 * <p>When {@code frame} is provided, WaveCells are created with external
+	 * frame control instead of internal clocks. This is essential for real-time
+	 * rendering where the frame position must be controlled per-buffer.</p>
+	 *
+	 * @param channel       the channel to process
+	 * @param audio         the audio producer
+	 * @param totalDuration total duration in seconds (used for looping when frame is null)
+	 * @param setup         setup operations list
+	 * @param frame external frame position producer, or null for internal clock
+	 * @return CellList with effects applied
+	 */
+	public CellList apply(ChannelInfo channel, Producer<PackedCollection> audio, double totalDuration,
+						  OperationList setup, Producer<PackedCollection> frame) {
+		if (!enableEfx || !wetChannels.contains(channel.getPatternChannel())) {
+			return createCells(audio, totalDuration, frame);
 		}
 
-		CellList wet = createCells(applyFilter(channel, audio, setup), totalDuration)
+		CellList wet = createCells(applyFilter(channel, audio, setup), totalDuration, frame)
 						.map(fc(i -> delayLevels.valueAt(channel.getPatternChannel(), 0)));
-		CellList dry = createCells(audio, totalDuration);
+		CellList dry = createCells(audio, totalDuration, frame);
 
 		Producer<PackedCollection> delay = delayTimes.valueAt(channel.getPatternChannel(), 0).getResultant(c(1.0));
 
@@ -140,9 +155,34 @@ public class EfxManager implements CellFeatures {
 	}
 
 	protected CellList createCells(Producer<PackedCollection> audio, double totalDuration) {
-		return w(PolymorphicAudioData.supply(PackedCollection.factory()),
-				sampleRate, shape(audio).getTotalSize(),
-				null, c(totalDuration), traverse(0, audio));
+		return createCells(audio, totalDuration, null);
+	}
+
+	/**
+	 * Creates WaveCells for the given audio producer.
+	 *
+	 * <p>When {@code frameProducer} is provided, creates WaveCells with external frame
+	 * control (no internal clock). When null, creates WaveCells with internal clocks
+	 * that loop over {@code totalDuration}.</p>
+	 *
+	 * @param audio         the audio producer
+	 * @param totalDuration total duration in seconds (ignored when frameProducer is provided)
+	 * @param frameProducer external frame position producer, or null for internal clock
+	 * @return CellList containing WaveCells
+	 */
+	protected CellList createCells(Producer<PackedCollection> audio, double totalDuration,
+								   Producer<PackedCollection> frameProducer) {
+		if (frameProducer != null) {
+			// Real-time mode: use external frame control
+			Producer<PackedCollection> waveProducer = traverse(0, audio);
+			return w(PolymorphicAudioData.supply(PackedCollection.factory()),
+					shape(audio).getTotalSize(), frameProducer, waveProducer);
+		} else {
+			// Traditional mode: use internal clock with looping
+			return w(PolymorphicAudioData.supply(PackedCollection.factory()),
+					sampleRate, shape(audio).getTotalSize(),
+					null, c(totalDuration), traverse(0, audio));
+		}
 	}
 
 	protected Producer<PackedCollection> applyFilter(ChannelInfo channel, Producer<PackedCollection> audio, OperationList setup) {

@@ -174,16 +174,22 @@ public class AudioLatentDataset implements Dataset<PackedCollection>, Collection
 		// Process audio files
 		List<PackedCollection> latents = new ArrayList<>();
 
-		for (Path audioFile : audioFiles) {
-			System.out.println("Processing: " + audioFile.getFileName());
-			try {
-				List<PackedCollection> fileLatents = encodeAudioFile(
-						audioFile, compiledEncoder, segmentSamples, sampleRate);
-				latents.addAll(fileLatents);
-				System.out.println("  Encoded " + fileLatents.size() + " segments");
-			} catch (Exception e) {
-				System.err.println("  Failed to process: " + e.getMessage());
+		try {
+			for (Path audioFile : audioFiles) {
+				System.out.println("Processing: " + audioFile.getFileName());
+				try {
+					List<PackedCollection> fileLatents = encodeAudioFile(
+							audioFile, compiledEncoder, segmentSamples, sampleRate);
+					latents.addAll(fileLatents);
+					System.out.println("  Encoded " + fileLatents.size() + " segments");
+				} catch (Exception e) {
+					System.err.println("  Failed to process: " + e.getMessage());
+				}
 			}
+		} finally {
+			// Release the compiled encoder and its intermediate buffers
+			compiledEncoder.destroy();
+			encoderModel.destroy();
 		}
 
 		System.out.println("Total latents: " + latents.size());
@@ -216,8 +222,15 @@ public class AudioLatentDataset implements Dataset<PackedCollection>, Collection
 			audioData.setMem(frameCount, right);      // Right channel (bulk copy)
 		}
 
+		// Release the raw WaveData now that we have copied its samples
+		audio.destroy();
+
 		// Normalize amplitude using hardware acceleration
-		audioData = normalizeAmplitude(audioData);
+		PackedCollection normalizedData = normalizeAmplitude(audioData);
+		if (normalizedData != audioData) {
+			audioData.destroy();
+			audioData = normalizedData;
+		}
 
 		// Split into segments and encode
 		int offset = 0;
@@ -233,6 +246,9 @@ public class AudioLatentDataset implements Dataset<PackedCollection>, Collection
 			// Encode segment
 			PackedCollection latent = encoder.forward(segment);
 
+			// Release the segment now that encoding is done
+			segment.destroy();
+
 			// Clone the latent using bulk copy (encoder may reuse buffers)
 			PackedCollection latentCopy = new PackedCollection(latent.getShape());
 			latentCopy.setMem(0, latent);
@@ -241,18 +257,26 @@ public class AudioLatentDataset implements Dataset<PackedCollection>, Collection
 			offset += segmentSamples;
 		}
 
-		audio.destroy();
+		// Release the normalized audio data
+		audioData.destroy();
 		return latents;
 	}
 
 	/**
 	 * Normalizes audio amplitude to the range [-1, 1] using hardware acceleration.
+	 *
+	 * <p>If normalization is applied, a new {@link PackedCollection} is returned
+	 * and the caller is responsible for destroying the original {@code data}.
+	 * If the data is already normalized (max is 0 or 1), the same instance is
+	 * returned unchanged.</p>
 	 */
 	private static PackedCollection normalizeAmplitude(PackedCollection data) {
 		CollectionFeatures cf = CollectionFeatures.getInstance();
 
 		// Use hardware-accelerated abs().max() to find maximum absolute value
-		double maxAbs = cf.c(cf.p(data)).abs().max().evaluate().toDouble(0);
+		PackedCollection maxResult = cf.c(cf.p(data)).abs().max().evaluate();
+		double maxAbs = maxResult.toDouble(0);
+		maxResult.destroy();
 
 		if (maxAbs > 0 && maxAbs != 1.0) {
 			double scale = 1.0 / maxAbs;

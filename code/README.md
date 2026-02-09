@@ -243,6 +243,51 @@ Expression<Double> simplified = complex.getSimplified();
 // May simplify to: a * (b + c)
 ```
 
+## Expression Caching
+
+`ExpressionCache` provides thread-local deduplication of expressions during compilation to prevent expression tree explosion and improve performance.
+
+### Why Expression Caching Matters
+
+During compilation, the same sub-expressions often appear multiple times. Without caching:
+- Expression trees grow exponentially
+- Generated code contains redundant computations
+- Compilation times increase significantly
+- Larger kernels are produced
+
+### Usage
+
+```java
+import io.almostrealism.scope.ExpressionCache;
+
+// Create and activate a cache for a compilation scope
+ExpressionCache cache = new ExpressionCache();
+
+cache.use(() -> {
+    // All expression matching within this scope uses this cache
+    // Equivalent expressions return the same cached instance
+    Expression<?> result = buildComplexExpression();
+    return result;
+});
+
+// Static lookup using the current thread's cache
+Expression<?> deduped = ExpressionCache.match(expression);
+```
+
+### Architecture
+
+- **Thread-local**: Each thread has its own cache via `ThreadLocal`
+- **Depth-organized**: Expressions grouped by tree depth for efficient lookup
+- **Frequency-based eviction**: `FrequencyCache` tracks usage for cache management
+- **Configurable**: `ScopeSettings.isExpressionCacheTarget()` controls which expressions are cached
+
+### Analysis
+
+```java
+// Get frequently occurring expressions (useful for optimization analysis)
+List<Expression<?>> frequent = cache.getFrequentExpressions();
+```
+
 ## See Also
 
 - `ar-relation` module - Provides `Computable`, `Evaluable`, `Producer` abstractions

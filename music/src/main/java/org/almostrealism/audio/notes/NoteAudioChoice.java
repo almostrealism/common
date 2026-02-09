@@ -37,6 +37,53 @@ import java.util.List;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
+/**
+ * Represents a collection of audio sources that can be selected for pattern elements.
+ *
+ * <p>{@code NoteAudioChoice} is a key component in the pattern system, grouping related
+ * {@link NoteAudioSource}s that share similar characteristics (e.g., different velocities
+ * of the same drum, different articulations of the same instrument).</p>
+ *
+ * <h2>Pattern System Integration</h2>
+ *
+ * <p>In the pattern hierarchy:</p>
+ * <pre>
+ * PatternSystemManager
+ *     +-- NoteAudioChoice[]  &lt;-- This class
+ *         +-- NoteAudioSource[]
+ *             +-- PatternNoteAudio[]
+ * </pre>
+ *
+ * <h2>Key Properties</h2>
+ *
+ * <ul>
+ *   <li><strong>sources</strong>: List of audio sources available for selection</li>
+ *   <li><strong>melodic</strong>: Whether this choice is pitched (true) or percussive (false)</li>
+ *   <li><strong>weight</strong>: Selection probability weight for genetic algorithms</li>
+ *   <li><strong>minScale/maxScale</strong>: Time granularity bounds for pattern elements</li>
+ *   <li><strong>channels</strong>: Which audio channels can use this choice</li>
+ *   <li><strong>seed</strong>: Whether this choice can seed new pattern layers</li>
+ *   <li><strong>bias</strong>: Selection bias adjustment</li>
+ * </ul>
+ *
+ * <h2>Layer Generation</h2>
+ *
+ * <p>The {@link #seeds} method creates {@link PatternLayerSeeds} for generating new
+ * pattern layers. The {@link #apply} methods create {@link PatternLayer}s by expanding
+ * existing elements with the configured element factory.</p>
+ *
+ * <h2>Validity Filtering</h2>
+ *
+ * <p>{@link #getValidPatternNotes()} filters to only notes that pass validity checks,
+ * ensuring audio sources are properly loaded and usable.</p>
+ *
+ * @see NoteAudioSource
+ * @see PatternNoteAudio
+ * @see PatternLayerManager
+ * @see PatternSystemManager
+ *
+ * @author Michael Murray
+ */
 public class NoteAudioChoice implements ConsoleFeatures {
 	public static int[] GRANULARITY_DIST;
 

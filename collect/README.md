@@ -206,7 +206,121 @@ Evaluable<?> kernel = op.get();  // Generates GPU code
 PackedCollection result = kernel.evaluate();
 ```
 
+## PackedCollection and CollectionProducer Relationship
+
+### The Core Pattern
+
+`PackedCollection` and `CollectionProducer` work together in a data/computation separation pattern:
+
+- **PackedCollection** - Holds actual data in memory (CPU or GPU)
+- **CollectionProducer** - Describes computations to perform on data
+
+```java
+// PackedCollection: The data container
+PackedCollection data = new PackedCollection<>(shape(100, 50));
+data.setMem(0, 1.0);  // Direct memory access
+
+// CollectionProducer: The computation description
+CollectionProducer producer = cp(data);  // Wrap data
+CollectionProducer result = producer.multiply(2.0).add(1.0);  // Build computation graph
+
+// Execute computation, get new PackedCollection
+PackedCollection output = result.get().evaluate();
+```
+
+### Key Differences
+
+| Aspect | PackedCollection | CollectionProducer |
+|--------|------------------|-------------------|
+| Purpose | Data storage | Computation description |
+| Memory | Allocates physical memory | No memory allocation |
+| Execution | Immediate (setMem, toArray) | Lazy (deferred until evaluate) |
+| Operations | get/set values | Chainable transformations |
+| GPU | Holds GPU buffers | Compiles to GPU kernels |
+
+### Converting Between Them
+
+```java
+// PackedCollection → CollectionProducer
+PackedCollection data = new PackedCollection<>(shape(10));
+CollectionProducer producer = cp(data);           // Static method
+CollectionProducer producer2 = c(data);           // Alternative
+CollectionProducer producer3 = p(data);           // Producer wrapper
+
+// CollectionProducer → PackedCollection
+CollectionProducer computation = producer.multiply(2.0);
+Evaluable<PackedCollection> evaluable = computation.get();  // Compile
+PackedCollection result = evaluable.evaluate();              // Execute
+```
+
+### Why This Pattern?
+
+1. **Optimization** - Computation graph can be optimized before execution
+2. **Hardware Acceleration** - Entire graph compiles to single GPU kernel
+3. **Reusability** - Same computation can run on different data
+4. **Memory Efficiency** - Intermediate results don't allocate memory
+
 ## Memory Management
+
+### On-Heap vs Off-Heap Allocation
+
+PackedCollection uses a threshold-based memory allocation strategy:
+
+- **Small collections (< 1024 elements)** → Java heap (on-heap)
+- **Large collections (≥ 1024 elements)** → Native memory (off-heap)
+
+```java
+// Small collection: allocated on Java heap
+PackedCollection small = new PackedCollection<>(shape(100));  // 100 < 1024
+
+// Large collection: allocated off-heap via native memory
+PackedCollection large = new PackedCollection<>(shape(2000)); // 2000 >= 1024
+```
+
+**Why off-heap for large collections?**
+- Avoids GC pressure for large allocations
+- Enables direct GPU memory transfer
+- Provides predictable memory layout for native code
+
+### Memory Configuration
+
+The hardware module controls memory limits:
+
+```bash
+# Default: 8GB max (2^7 * 64MB = 8192MB)
+export AR_HARDWARE_MEMORY_SCALE=7
+
+# Increase for large models:
+export AR_HARDWARE_MEMORY_SCALE=8   # 16GB
+export AR_HARDWARE_MEMORY_SCALE=9   # 32GB
+```
+
+### Hardware Memory Provider
+
+The `Hardware` class manages native memory allocation:
+
+```java
+// Memory is allocated through Hardware singleton
+PackedCollection data = new PackedCollection<>(shape(largeSize));
+// Internally: Hardware.getLocalHardware().getMemoryProvider().allocate(...)
+```
+
+### Memory Lifecycle
+
+```java
+// Allocation
+PackedCollection data = new PackedCollection<>(shape(1000, 1000));
+
+// Use the data...
+CollectionProducer result = cp(data).multiply(2.0);
+PackedCollection output = result.get().evaluate();
+
+// Cleanup (important for off-heap!)
+data.destroy();   // Release native memory
+output.destroy();
+```
+
+**Important**: Off-heap memory is NOT automatically garbage collected. Call `destroy()` when done, or use try-with-resources if the collection implements `AutoCloseable`.
 
 ### Three-Level Architecture
 

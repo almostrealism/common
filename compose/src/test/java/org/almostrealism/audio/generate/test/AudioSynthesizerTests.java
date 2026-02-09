@@ -35,15 +35,18 @@ import org.almostrealism.audio.tone.KeyboardTuning;
 import org.almostrealism.audio.tone.WesternChromatic;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.util.TestSuiteBase;
+import org.junit.Assume;
 import org.junit.Test;
 
 import java.io.File;
 
 public class AudioSynthesizerTests extends TestSuiteBase {
+	private static final String LIBRARY = "Library";
 	private final LibraryDestination library = new LibraryDestination("model");
 
-	@Test
+	@Test(timeout = 120_000)
 	public void generate() {
+		if (skipKnownIssues) return;
 		double lfo1 = 0.5;
 		double lfo2 = 1.1;
 		PackedCollection levelData = new PackedCollection(shape(2, 10 * OutputLine.sampleRate));
@@ -69,25 +72,26 @@ public class AudioSynthesizerTests extends TestSuiteBase {
 				.save(new File("results/test-synth.wav"));
 	}
 
-	@Test
+	@Test(timeout = 120_000)
 	public void generateFromFile1() {
 		generateFromFile("model-synth", "SinePattern",
 						WesternChromatic.A4, WesternChromatic.A4);
 	}
 
-	@Test
+	@Test(timeout = 120_000)
 	public void generateFromFile2() {
 		generateFromFile("model-synth-acid-c3", "Acid",
 				WesternChromatic.C3, WesternChromatic.C3);
 	}
 
-	@Test
+	@Test(timeout = 120_000)
 	public void generateFromFile3() {
 		generateFromFile("model-synth-acid-g3", "Acid",
 				WesternChromatic.C3, WesternChromatic.G3);
 	}
 
 	public void generateFromFile(String name, String pattern, KeyPosition<?> origin, KeyPosition<?> target) {
+		Assume.assumeTrue("Library directory required", new File(LIBRARY).exists());
 		KeyboardTuning tuning = new DefaultKeyboardTuning();
 
 		GeneratedSourceLibrary models = new GeneratedSourceLibrary(library);

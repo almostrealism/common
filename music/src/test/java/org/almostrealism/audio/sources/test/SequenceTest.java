@@ -38,6 +38,7 @@ import org.almostrealism.heredity.ScaleFactor;
 import org.almostrealism.time.Frequency;
 import org.almostrealism.time.TemporalRunner;
 import org.almostrealism.util.TestSuiteBase;
+import org.junit.Assume;
 import org.junit.Test;
 
 import java.io.File;
@@ -47,7 +48,7 @@ import java.util.stream.IntStream;
 
 
 public class SequenceTest extends TestSuiteBase implements CellFeatures {
-	@Test
+	@Test(timeout = 10_000)
 	public void valueSequencePush() {
 		PolymorphicAudioData data = new PolymorphicAudioData();
 		PackedCollection out = new PackedCollection(1);
@@ -59,7 +60,7 @@ public class SequenceTest extends TestSuiteBase implements CellFeatures {
 		assertEquals(2.0, out);
 	}
 
-	@Test
+	@Test(timeout = 10_000)
 	public void valueSequenceTick() {
 		PolymorphicAudioData data = new PolymorphicAudioData();
 		ValueSequenceTick tick = new ValueSequenceTick(data, c(4), c(1.0), c(2.0));
@@ -67,10 +68,10 @@ public class SequenceTest extends TestSuiteBase implements CellFeatures {
 
 		AcceleratedOperation op = (AcceleratedOperation) tick.get();
 		op.run();
-		assertEquals(1.0, data.wavePosition());
+		assertEquals(1.0, data.wavePosition().toDouble(0));
 	}
 
-	@Test
+	@Test(timeout = 30_000)
 	public void valueSequenceCell() {
 		ValueSequenceCell cell = new ValueSequenceCell(i -> c(i + 1), c(0.1), 2);
 		cell.setReceptor(loggingReceptor());
@@ -85,7 +86,7 @@ public class SequenceTest extends TestSuiteBase implements CellFeatures {
 		});
 	}
 
-	@Test
+	@Test(timeout = 30_000)
 	public void valueSequenceCsv() {
 		CellList cells = seq(i -> c(i + 1), c(0.1), 2).csv(i -> new File("results/value-sequence-test.csv"));
 
@@ -94,7 +95,7 @@ public class SequenceTest extends TestSuiteBase implements CellFeatures {
 		cells.reset();
 	}
 
-	@Test
+	@Test(timeout = 30_000)
 	public void valueSequenceAssign() {
 		PackedCollection out = new PackedCollection(1);
 
@@ -116,7 +117,7 @@ public class SequenceTest extends TestSuiteBase implements CellFeatures {
 		return cell;
 	}
 
-	@Test
+	@Test(timeout = 120_000)
 	public void valueSequenceWithDynamicCell() {
 		SineWaveCell cell1 = cell(196);
 		SineWaveCell cell2 = cell(261);
@@ -139,7 +140,7 @@ public class SequenceTest extends TestSuiteBase implements CellFeatures {
 		System.out.println(out);
 	}
 
-	@Test
+	@Test(timeout = 60_000)
 	public void notes() {
 		CellList cells = w(new Frequency(196), new Frequency(196));
 		((SineWaveCell) cells.get(0)).setNoteLength(2000);
@@ -151,8 +152,9 @@ public class SequenceTest extends TestSuiteBase implements CellFeatures {
 		cells.sec(2).get().run();
 	}
 
-	@Test
+	@Test(timeout = 120_000)
 	public void samples() {
+		Assume.assumeTrue(new File("Library/GT_HAT_31.wav").exists());
 		int count = 32;
 
 		CellList cells =
@@ -164,8 +166,9 @@ public class SequenceTest extends TestSuiteBase implements CellFeatures {
 		cells.sec(bpm(128).l(count)).get().run();
 	}
 
-	@Test
+	@Test(timeout = 120_000)
 	public void stems() {
+		Assume.assumeTrue(new File("Library/Snare Perc DD.wav").exists());
 		int count = 212;
 
 		Producer<PackedCollection> one = c(1.0);
@@ -182,8 +185,11 @@ public class SequenceTest extends TestSuiteBase implements CellFeatures {
 		r.run();
 	}
 
-	@Test
+	@Test(timeout = 120_000)
 	public void mix() {
+		Assume.assumeTrue(new File("Library/BD 909 Color 06.wav").exists());
+		Assume.assumeTrue(new File("Library/Snare Perc DD.wav").exists());
+		Assume.assumeTrue(new File("Library/GT_HAT_31.wav").exists());
 		int count = 32;
 
 		CellList cells = cells(
@@ -199,8 +205,11 @@ public class SequenceTest extends TestSuiteBase implements CellFeatures {
 		cells.sec(bpm(128).l(count)).get().run();
 	}
 
-	@Test
+	@Test(timeout = 120_000)
 	public void parameterizedMix() {
+		Assume.assumeTrue(new File("Library/BD 909 Color 06.wav").exists());
+		Assume.assumeTrue(new File("Library/Snare Perc DD.wav").exists());
+		Assume.assumeTrue(new File("Library/GT_HAT_31.wav").exists());
 		int count = 32;
 
 		ParameterSet params = new ParameterSet();
@@ -220,8 +229,11 @@ public class SequenceTest extends TestSuiteBase implements CellFeatures {
 		cells.sec(bpm(128).l(count)).get().run();
 	}
 
-	@Test
+	@Test(timeout = 120_000)
 	public void mixExport() throws IOException {
+		Assume.assumeTrue(new File("Library/BD 909 Color 06.wav").exists());
+		Assume.assumeTrue(new File("Library/Snare Perc DD.wav").exists());
+		Assume.assumeTrue(new File("Library/GT_HAT_31.wav").exists());
 		WaveOutput.enableVerbose = true;
 
 		int count = 32;

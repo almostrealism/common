@@ -27,7 +27,7 @@ import java.util.Random;
  * <h2>Intensity Profile</h2>
  * <p>Intensity follows the Gaussian bell curve:</p>
  * <pre>
- * intensity = baseIntensity * pressure * exp(-distance² / (2 * radius²))
+ * intensity = baseIntensity * pressure * exp(-distance^2 / (2 * radius^2))
  * </pre>
  * <p>This creates a smooth falloff from full intensity at center to near-zero
  * at the edges, with no hard boundary.</p>
@@ -93,7 +93,7 @@ public class GaussianBrush implements SpatialBrush {
 			// Compute distance from center
 			double distanceSquared = dx * dx + dy * dy + dz * dz;
 
-			// Gaussian intensity falloff: exp(-d² / (2σ²))
+			// Gaussian intensity falloff: exp(-d^2 / (2*sigma^2))
 			double gaussianFalloff = Math.exp(-distanceSquared / (2 * radius * radius));
 			double intensity = baseIntensity * pressure * gaussianFalloff;
 

@@ -25,6 +25,8 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.Ops;
 import org.almostrealism.audio.SamplingFeatures;
 import org.almostrealism.audio.WavFile;
+import org.almostrealism.collect.CollectionFeatures;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.audio.sources.BufferDetails;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.TimeCell;
@@ -88,7 +90,7 @@ import java.util.function.Supplier;
  * @see org.almostrealism.audio.WavFile
  * @see org.almostrealism.graph.temporal.WaveCell
  */
-public class WaveData implements Destroyable, SamplingFeatures {
+public class WaveData implements Destroyable, SamplingFeatures, CollectionFeatures {
 	public static final boolean enableGpu = false;
 
 	public static final int FFT_BINS = enableGpu ? 256 : 1024;
@@ -393,6 +395,85 @@ public class WaveData implements Destroyable, SamplingFeatures {
 									offset == null ? null : Ops.o().c(offset),
 									repeat == null ? null : Ops.o().c(repeat),
 									Ops.o().c(0.0), Ops.o().c(getFrameCount()));
+	}
+
+	/**
+	 * Generates a spectrogram image from this audio data.
+	 *
+	 * <p>The spectrogram shows frequency content over time, with:</p>
+	 * <ul>
+	 *   <li>X-axis: time (left to right)</li>
+	 *   <li>Y-axis: frequency (low at bottom, high at top)</li>
+	 *   <li>Brightness: magnitude (log-scaled for better visibility)</li>
+	 * </ul>
+	 *
+	 * <p>The returned collection has shape (height, width, 3) suitable for
+	 * saving as an RGB image. All computation is hardware-accelerated.</p>
+	 *
+	 * @param channel the audio channel to analyze
+	 * @return PackedCollection with shape (bins, timeSlices, 3) containing RGB data
+	 */
+	public PackedCollection spectrogram(int channel) {
+		return spectrogram(channel, true);
+	}
+
+	/**
+	 * Generates a spectrogram image from this audio data.
+	 *
+	 * @param channel the audio channel to analyze
+	 * @param pooling if true, reduces resolution for faster processing
+	 * @return PackedCollection with shape (bins, timeSlices, 3) containing RGB data
+	 */
+	public PackedCollection spectrogram(int channel, boolean pooling) {
+		PackedCollection spectrum = fft(channel, pooling);
+
+		int timeSlices = spectrum.getShape().length(0);
+		int bins = spectrum.getShape().length(1);
+
+		// Find max value using hardware-accelerated max operation
+		double maxVal = cp(spectrum).max().evaluate().toDouble(0);
+
+		if (maxVal <= 0) {
+			// Return black image if no signal
+			return new PackedCollection(bins, timeSlices, 3);
+		}
+
+		// Compute log(1 + maxVal) for normalization denominator
+		double logMaxPlusOne = Math.log1p(maxVal);
+
+		// Transpose spectrum from (time, bins, 1) to (bins, time) for proper memory layout
+		// and flip vertically (low frequencies at bottom = high Y index)
+		PackedCollection transposed = cp(spectrum).reshape(timeSlices, bins).transpose().evaluate();
+		// transposed now has shape (bins, timeSlices) with frequency bins as rows
+
+		// Normalize: log(1 + x) / log(1 + max) for all values
+		CollectionProducer normalized = c(1.0).add(cp(transposed)).log().divide(c(logMaxPlusOne));
+		PackedCollection normalizedData = normalized.evaluate();
+
+		// Flip vertically: row 0 becomes row (bins-1), etc.
+		PackedCollection flipped = new PackedCollection(bins, timeSlices);
+		for (int b = 0; b < bins; b++) {
+			int srcBin = bins - 1 - b;  // Flip: low frequencies at bottom
+			flipped.setMem(b * timeSlices, normalizedData, srcBin * timeSlices, timeSlices);
+		}
+
+		// Create RGB image by repeating grayscale values across 3 channels
+		// Output shape: (bins, timeSlices, 3)
+		PackedCollection image = new PackedCollection(bins, timeSlices, 3);
+
+		// Use hardware-accelerated repeat operation
+		// Reshape flipped to (bins * timeSlices, 1) and repeat 3x for RGB channels
+		CollectionProducer gray = cp(flipped).reshape(bins * timeSlices, 1);
+		CollectionProducer rgb = gray.repeat(3).reshape(bins, timeSlices, 3);
+
+		rgb.into(image).evaluate();
+
+		// Clean up intermediate collections
+		transposed.destroy();
+		normalizedData.destroy();
+		flipped.destroy();
+
+		return image;
 	}
 
 	@Override

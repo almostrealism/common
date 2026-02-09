@@ -286,6 +286,31 @@ public interface CellFeatures extends HeredityFeatures, TemporalFeatures, CodeFe
 		return cells;
 	}
 
+	/**
+	 * Creates WaveCells with external frame control for real-time streaming.
+	 *
+	 * <p>Unlike the other {@code w()} methods which create WaveCells with internal
+	 * clocks, this method creates WaveCells that use an external frame producer.
+	 * This is essential for real-time rendering where the frame position must be
+	 * controlled per-buffer rather than globally.</p>
+	 *
+	 * @param data   supplier for polymorphic audio data storage
+	 * @param frames number of frames in the wave buffer
+	 * @param frame  external frame position producer (values 0 to frames-1)
+	 * @param waves  wave data producers to create cells for
+	 * @return CellList containing WaveCells with external frame control
+	 */
+	default CellList w(Supplier<PolymorphicAudioData> data, int frames,
+					   Producer<PackedCollection> frame,
+					   Producer<PackedCollection>... waves) {
+		CellList cells = new CellList();
+		Stream.of(waves)
+				.map(wav -> new WaveCell(data.get(), wav, 1.0, frame,
+						Ops.o().c(0.0), Ops.o().c(frames)))
+				.forEach(cells::addRoot);
+		return cells;
+	}
+
 	default CellList w(int channel, Supplier<PolymorphicAudioData> data, Producer<PackedCollection> offset, Producer<PackedCollection> repeat, WaveData... waves) {
 		CellList cells = new CellList();
 		Stream.of(waves)

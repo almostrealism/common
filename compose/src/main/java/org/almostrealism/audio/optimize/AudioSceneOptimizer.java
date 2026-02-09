@@ -70,24 +70,16 @@ public class AudioSceneOptimizer extends AudioPopulationOptimizer<TemporalCellul
 	public static final int singleChannel = -1;
 
 	public static boolean enableVerbose = false;
-	public static boolean enableProfile = true;
+	public static boolean enableProfile = false;
 	public static boolean enableHeap = false;
 	public static boolean enableShort = false;
 
 	public static int DEFAULT_HEAP_SIZE = 384 * 1024 * 1024;
 	public static double breederPerturbation = 0.02;
 
-	public static String LIBRARY = "Library";
+	public static String LIBRARY = SystemUtils.getProperty("AR_RINGS_LIBRARY", "Library");
 
 	private static final ConsoleFeatures console = Console.root().features(AudioSceneOptimizer.class);
-
-	static {
-		String env = System.getenv("AR_RINGS_LIBRARY");
-		if (env != null) LIBRARY = env;
-
-		String arg = System.getProperty("AR_RINGS_LIBRARY");
-		if (arg != null) LIBRARY = arg;
-	}
 
 	private AudioScenePopulation population;
 	private Consumer<WaveDetails> detailsProcessor;
@@ -261,7 +253,9 @@ public class AudioSceneOptimizer extends AudioPopulationOptimizer<TemporalCellul
 			File results = new File("results");
 			if (!results.exists()) results.mkdir();
 
-			profile.save("results/optimizer.xml");
+			if (profile != null) {
+				profile.save("results/optimizer.xml");
+			}
 
 			Hardware.getLocalHardware().getAllDataContexts().forEach(DataContext::destroy);
 		}

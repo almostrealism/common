@@ -34,6 +34,69 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 
+/**
+ * A transformer-based diffusion model designed for audio processing.
+ *
+ * <p>{@code DiffusionTransformer} implements a conditional diffusion architecture that
+ * combines self-attention transformer blocks with optional cross-attention for
+ * conditioning. The model uses rotary position embeddings (RoPE) and supports
+ * configurable depth, attention heads, and patch sizes.
+ *
+ * <h2>Architecture Overview</h2>
+ * <ol>
+ *   <li><b>Input Preprocessing</b>: 1D convolution projection with optional patchification</li>
+ *   <li><b>Conditioning</b>: Timestep embeddings (Fourier features), optional cross-attention
+ *       conditioning, and optional global conditioning - combined via prepending</li>
+ *   <li><b>Transformer Blocks</b>: {@code depth} layers of self-attention + optional
+ *       cross-attention + feed-forward networks with QK-normalization</li>
+ *   <li><b>Output Postprocessing</b>: Unpatchification and projection back to audio channels</li>
+ * </ol>
+ *
+ * <h2>Key Parameters</h2>
+ * <ul>
+ *   <li>{@code ioChannels} - Number of input/output audio channels</li>
+ *   <li>{@code embedDim} - Embedding dimension for transformer blocks</li>
+ *   <li>{@code depth} - Number of transformer layers</li>
+ *   <li>{@code numHeads} - Number of attention heads</li>
+ *   <li>{@code patchSize} - Patch size for patchify/unpatchify (1 = no patching)</li>
+ *   <li>{@code condTokenDim} - Conditioning token dimension (0 = no cross-attention)</li>
+ *   <li>{@code globalCondDim} - Global condition dimension (0 = no global conditioning)</li>
+ * </ul>
+ *
+ * <h2>Usage Example</h2>
+ * <pre>{@code
+ * StateDictionary weights = new StateDictionary(weightsDir);
+ * DiffusionTransformer model = new DiffusionTransformer(
+ *     64,    // ioChannels
+ *     1536,  // embedDim
+ *     24,    // depth
+ *     24,    // numHeads
+ *     1,     // patchSize
+ *     768,   // condTokenDim
+ *     1536,  // globalCondDim
+ *     "predict_noise",
+ *     weights
+ * );
+ *
+ * // Forward pass
+ * PackedCollection output = model.forward(audioInput, timestep, crossAttnCond, globalCond);
+ * }</pre>
+ *
+ * <h2>Conditioning Approach</h2>
+ * This model uses <b>prepended conditioning</b> rather than adaptive layer normalization
+ * (AdaLayerNorm). Timestep and global conditioning are projected and prepended as
+ * extra tokens to the sequence before the transformer blocks. See
+ * {@link #prependConditioning(Block, Block)} for implementation details.
+ *
+ * <h2>LoRA Fine-Tuning</h2>
+ * For parameter-efficient fine-tuning, use {@link LoRADiffusionTransformer} which
+ * extends this class with {@link org.almostrealism.layers.LowRankAdapterSupport}.
+ *
+ * @see DiffusionModel
+ * @see DiffusionTransformerFeatures
+ * @see LoRADiffusionTransformer
+ * @see org.almostrealism.layers.LowRankAdapterSupport
+ */
 public class DiffusionTransformer implements DiffusionModel, DiffusionTransformerFeatures {
 	private static final int SAMPLE_SIZE = 524288;
 	private static final int DOWNSAMPLING_RATIO = 2048;
@@ -57,7 +120,7 @@ public class DiffusionTransformer implements DiffusionModel, DiffusionTransforme
 	private Model model;
 
 	private OperationProfile profile;
-	private CompiledModel compiled;
+	protected CompiledModel compiled;
 
 	private PackedCollection preTransformerState, postTransformerState;
 	private Map<Integer, PackedCollection> attentionScores;
@@ -126,6 +189,11 @@ public class DiffusionTransformer implements DiffusionModel, DiffusionTransforme
 			condEmbed.add(dense(condProjWeight2));
 			condEmbed.reshape(batchSize, condSeqLen, embedDim);
 			model.addInput(condEmbed);
+		} else if (condTokenDim > 0) {
+			// Cross-attention conditioning weights exist in the StateDictionary but
+			// are not used when condSeqLen is 0 - mark them as expected-unused
+			unusedWeights.remove("model.model.to_cond_embed.0.weight");
+			unusedWeights.remove("model.model.to_cond_embed.2.weight");
 		}
 
 		// Add global condition input if needed
@@ -246,6 +314,23 @@ public class DiffusionTransformer implements DiffusionModel, DiffusionTransforme
 
 		boolean hasCrossAttention = condTokenDim > 0 && condEmbed != null;
 
+		// When cross-attention is disabled, mark those weight keys as expected-unused
+		// so that validateWeights() does not reject them
+		if (!hasCrossAttention) {
+			for (int i = 0; i < depth; i++) {
+				String prefix = "model.model.transformer.layers." + i;
+				unusedWeights.remove(prefix + ".cross_attend_norm.gamma");
+				unusedWeights.remove(prefix + ".cross_attend_norm.beta");
+				unusedWeights.remove(prefix + ".cross_attn.to_q.weight");
+				unusedWeights.remove(prefix + ".cross_attn.to_kv.weight");
+				unusedWeights.remove(prefix + ".cross_attn.to_out.weight");
+				unusedWeights.remove(prefix + ".cross_attn.q_norm.weight");
+				unusedWeights.remove(prefix + ".cross_attn.q_norm.bias");
+				unusedWeights.remove(prefix + ".cross_attn.k_norm.weight");
+				unusedWeights.remove(prefix + ".cross_attn.k_norm.bias");
+			}
+		}
+
 		if (globalCondDim > 0) {
 			main.add(prependConditioning(timestepEmbed, globalEmbed));
 		}
@@ -339,22 +424,32 @@ public class DiffusionTransformer implements DiffusionModel, DiffusionTransforme
 									   PackedCollection crossAttnCond,
 									   PackedCollection globalCond) {
 		if (compiled == null) {
-			validateWeights();
-
 			if (enableProfile) {
 				profile = new OperationProfileNode("dit");
 				Hardware.getLocalHardware().assignProfile(profile);
 			}
 
 			long start = System.currentTimeMillis();
-			compiled = getModel().compile(false, profile);
+			// getModel() triggers buildModel() which consumes weights via createWeight(),
+			// so validateWeights() must come after getModel()
+			Model m = getModel();
+			validateWeights();
+			compiled = m.compile(false, profile);
 			log("Compiled DiffusionTransformer in " + (System.currentTimeMillis() - start) + "ms");
 		}
 
-		// Run the model with appropriate inputs
-		if (condTokenDim > 0 && globalCondDim > 0) {
+		// The argument order must match what buildModel() added as model inputs:
+		// cross-attention is only present when condSeqLen > 0 (not just condTokenDim > 0)
+		boolean hasCrossAttn = condTokenDim > 0 && condSeqLen > 0;
+
+		// Provide a zero tensor for null conditioning when the model expects the input
+		if (globalCondDim > 0 && globalCond == null) {
+			globalCond = new PackedCollection(globalCondDim);
+		}
+
+		if (hasCrossAttn && globalCondDim > 0) {
 			return compiled.forward(x, t, crossAttnCond, globalCond);
-		} else if (condTokenDim > 0) {
+		} else if (hasCrossAttn) {
 			return compiled.forward(x, t, crossAttnCond);
 		} else if (globalCondDim > 0) {
 			return compiled.forward(x, t, globalCond);
