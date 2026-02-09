@@ -27,6 +27,8 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -228,6 +230,32 @@ public class ClaudeCodeJob extends GitManagedJob {
         return exitCode;
     }
 
+    /**
+     * Builds the full instruction prompt that wraps the user's request
+     * with operational context for autonomous execution.
+     */
+    private String buildInstructionPrompt() {
+        StringBuilder sb = new StringBuilder();
+        sb.append("You are working autonomously as a coding agent. ");
+        sb.append("There is no TTY and no interactive session — do not attempt to wait ");
+        sb.append("for user input or interactive chat responses.\n\n");
+
+        sb.append("You can communicate about the project using the Slack MCP tools ");
+        sb.append("(slack_send_message, slack_send_thread_reply). ");
+        sb.append("Use these freely to ask questions, report progress, or share results. ");
+        sb.append("However, do not wait for a reply — continue working after sending a message.\n\n");
+
+        sb.append("Do NOT make git commits. Your work will be committed by the harness ");
+        sb.append("after you finish. If you want to control the commit message, write it ");
+        sb.append("to a file called `commit.txt` in the working directory root.\n\n");
+
+        sb.append("--- BEGIN USER REQUEST ---\n");
+        sb.append(prompt);
+        sb.append("\n--- END USER REQUEST ---");
+
+        return sb.toString();
+    }
+
     @Override
     protected void doWork() {
         File outputDir = new File("claude-output");
@@ -238,7 +266,7 @@ public class ClaudeCodeJob extends GitManagedJob {
         List<String> command = new ArrayList<>();
         command.add("claude");
         command.add("-p");
-        command.add(prompt);
+        command.add(buildInstructionPrompt());
         command.add("--output-format");
         command.add("json");
         command.add("--allowedTools");
@@ -336,10 +364,24 @@ public class ClaudeCodeJob extends GitManagedJob {
 
     @Override
     protected String getCommitMessage() {
+        // Check if the agent wrote a commit.txt
+        Path commitFile = resolveWorkingPath("commit.txt");
+        if (commitFile != null && Files.exists(commitFile)) {
+            try {
+                String agentMessage = Files.readString(commitFile, StandardCharsets.UTF_8).trim();
+                if (!agentMessage.isEmpty()) {
+                    log("Using commit message from commit.txt");
+                    return agentMessage;
+                }
+            } catch (IOException e) {
+                warn("Failed to read commit.txt: " + e.getMessage());
+            }
+        }
+
+        // Fallback: generate commit message from prompt
         StringBuilder msg = new StringBuilder();
         msg.append("Claude Code: ");
 
-        // Create a summary from the prompt
         String summary = prompt;
         if (summary.length() > 72) {
             summary = summary.substring(0, 69) + "...";
@@ -355,6 +397,17 @@ public class ClaudeCodeJob extends GitManagedJob {
         msg.append("\nExit code: ").append(exitCode);
 
         return msg.toString();
+    }
+
+    /**
+     * Resolves a path relative to the working directory.
+     */
+    private Path resolveWorkingPath(String filename) {
+        String workDir = getWorkingDirectory();
+        if (workDir != null) {
+            return Path.of(workDir, filename);
+        }
+        return Path.of(filename);
     }
 
     /**
@@ -473,6 +526,8 @@ public class ClaudeCodeJob extends GitManagedJob {
         private String targetBranch;
         private boolean pushToOrigin = true;
         private String workstreamId;
+        private String gitUserName;
+        private String gitUserEmail;
         private JobCompletionListener completionListener;
         private String slackApiUrl;
         private String slackChannelId;
@@ -580,6 +635,40 @@ public class ClaudeCodeJob extends GitManagedJob {
             set("push", String.valueOf(pushToOrigin));
         }
 
+        /**
+         * Returns the git user name for commits.
+         */
+        public String getGitUserName() {
+            return gitUserName;
+        }
+
+        /**
+         * Sets the git user name for commits made by jobs from this factory.
+         *
+         * @param gitUserName the name to use in git commits
+         */
+        public void setGitUserName(String gitUserName) {
+            this.gitUserName = gitUserName;
+            set("gitUserName", base64Encode(gitUserName));
+        }
+
+        /**
+         * Returns the git user email for commits.
+         */
+        public String getGitUserEmail() {
+            return gitUserEmail;
+        }
+
+        /**
+         * Sets the git user email for commits made by jobs from this factory.
+         *
+         * @param gitUserEmail the email to use in git commits
+         */
+        public void setGitUserEmail(String gitUserEmail) {
+            this.gitUserEmail = gitUserEmail;
+            set("gitUserEmail", base64Encode(gitUserEmail));
+        }
+
         public String getWorkstreamId() {
             return workstreamId;
         }
@@ -654,6 +743,12 @@ public class ClaudeCodeJob extends GitManagedJob {
                 job.setTargetBranch(targetBranch);
                 job.setPushToOrigin(pushToOrigin);
             }
+            if (gitUserName != null) {
+                job.setGitUserName(gitUserName);
+            }
+            if (gitUserEmail != null) {
+                job.setGitUserEmail(gitUserEmail);
+            }
 
             // Workstream and listener settings
             if (workstreamId != null) {
@@ -717,6 +812,12 @@ public class ClaudeCodeJob extends GitManagedJob {
                     break;
                 case "slackChannelId":
                     this.slackChannelId = base64Decode(value);
+                    break;
+                case "gitUserName":
+                    this.gitUserName = base64Decode(value);
+                    break;
+                case "gitUserEmail":
+                    this.gitUserEmail = base64Decode(value);
                     break;
             }
         }
