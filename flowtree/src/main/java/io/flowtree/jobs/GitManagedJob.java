@@ -110,7 +110,10 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
         "*.db", "*.sqlite", "*.log",
 
         // Hardware acceleration outputs (AR-specific)
-        "Extensions/**", "*.cl", "*.metal"
+        "Extensions/**", "*.cl", "*.metal",
+
+        // Claude Code agent outputs
+        "claude-output/**", "commit.txt"
     ));
 
     /** Global list of completion listeners. */
@@ -144,6 +147,8 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
     private boolean pushToOrigin = true;
     private boolean createBranchIfMissing = true;
     private boolean dryRun = false;
+    private String gitUserName;
+    private String gitUserEmail;
 
     private String originalBranch;
     private List<String> stagedFiles = new ArrayList<>();
@@ -494,6 +499,25 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
 
     // ==================== Git Utilities ====================
 
+    /**
+     * Applies git identity environment variables to a {@link ProcessBuilder}.
+     *
+     * <p>Uses {@code GIT_AUTHOR_NAME}, {@code GIT_AUTHOR_EMAIL},
+     * {@code GIT_COMMITTER_NAME}, and {@code GIT_COMMITTER_EMAIL} so the
+     * identity is scoped to the process and never persisted in the repo's
+     * local config.</p>
+     */
+    private void applyGitIdentity(ProcessBuilder pb) {
+        if (gitUserName != null && !gitUserName.isEmpty()) {
+            pb.environment().put("GIT_AUTHOR_NAME", gitUserName);
+            pb.environment().put("GIT_COMMITTER_NAME", gitUserName);
+        }
+        if (gitUserEmail != null && !gitUserEmail.isEmpty()) {
+            pb.environment().put("GIT_AUTHOR_EMAIL", gitUserEmail);
+            pb.environment().put("GIT_COMMITTER_EMAIL", gitUserEmail);
+        }
+    }
+
     private String getCurrentBranch() throws IOException, InterruptedException {
         return executeGitWithOutput("rev-parse", "--abbrev-ref", "HEAD").trim();
     }
@@ -518,6 +542,11 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
             pb.directory(new File(workingDirectory));
         }
         pb.redirectErrorStream(true);
+
+        // Prevent SSH from hanging on unknown host keys (no TTY available)
+        pb.environment().put("GIT_SSH_COMMAND",
+                "ssh -o StrictHostKeyChecking=accept-new -o BatchMode=yes");
+        applyGitIdentity(pb);
 
         Process process = pb.start();
         StringBuilder output = new StringBuilder();
@@ -547,6 +576,11 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
             pb.directory(new File(workingDirectory));
         }
         pb.redirectErrorStream(true);
+
+        // Prevent SSH from hanging on unknown host keys (no TTY available)
+        pb.environment().put("GIT_SSH_COMMAND",
+                "ssh -o StrictHostKeyChecking=accept-new -o BatchMode=yes");
+        applyGitIdentity(pb);
 
         Process process = pb.start();
         StringBuilder output = new StringBuilder();
@@ -727,6 +761,40 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
     }
 
     /**
+     * Returns the git user name for commits.
+     */
+    public String getGitUserName() {
+        return gitUserName;
+    }
+
+    /**
+     * Sets the git user name for commits made by this job.
+     * When set, {@code git config user.name} is run before committing.
+     *
+     * @param gitUserName the name to use in git commits
+     */
+    public void setGitUserName(String gitUserName) {
+        this.gitUserName = gitUserName;
+    }
+
+    /**
+     * Returns the git user email for commits.
+     */
+    public String getGitUserEmail() {
+        return gitUserEmail;
+    }
+
+    /**
+     * Sets the git user email for commits made by this job.
+     * When set, {@code git config user.email} is run before committing.
+     *
+     * @param gitUserEmail the email to use in git commits
+     */
+    public void setGitUserEmail(String gitUserEmail) {
+        this.gitUserEmail = gitUserEmail;
+    }
+
+    /**
      * Adds additional patterns to exclude from commits.
      *
      * @param patterns glob patterns to exclude
@@ -829,6 +897,12 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
         sb.append("::push:=").append(pushToOrigin);
         sb.append("::createBranch:=").append(createBranchIfMissing);
         sb.append("::dryRun:=").append(dryRun);
+        if (gitUserName != null) {
+            sb.append("::gitUserName:=").append(base64Encode(gitUserName));
+        }
+        if (gitUserEmail != null) {
+            sb.append("::gitUserEmail:=").append(base64Encode(gitUserEmail));
+        }
         return sb.toString();
     }
 
@@ -855,6 +929,12 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
                 break;
             case "dryRun":
                 this.dryRun = Boolean.parseBoolean(value);
+                break;
+            case "gitUserName":
+                this.gitUserName = base64Decode(value);
+                break;
+            case "gitUserEmail":
+                this.gitUserEmail = base64Decode(value);
                 break;
         }
     }

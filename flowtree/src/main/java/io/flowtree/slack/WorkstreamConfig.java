@@ -42,6 +42,8 @@ import java.util.List;
  *     allowedTools: "Read,Edit,Write,Bash,Glob,Grep"
  *     maxTurns: 50
  *     maxBudgetUsd: 10.0
+ *     gitUserName: "CI Bot"
+ *     gitUserEmail: "ci-bot@example.com"
  * </pre>
  *
  * @author Michael Murray
@@ -66,6 +68,8 @@ public class WorkstreamConfig {
         private String allowedTools = "Read,Edit,Write,Bash,Glob,Grep";
         private int maxTurns = 50;
         private double maxBudgetUsd = 10.0;
+        private String gitUserName;
+        private String gitUserEmail;
 
         public String getChannelId() { return channelId; }
         public void setChannelId(String channelId) { this.channelId = channelId; }
@@ -94,6 +98,12 @@ public class WorkstreamConfig {
         public double getMaxBudgetUsd() { return maxBudgetUsd; }
         public void setMaxBudgetUsd(double maxBudgetUsd) { this.maxBudgetUsd = maxBudgetUsd; }
 
+        public String getGitUserName() { return gitUserName; }
+        public void setGitUserName(String gitUserName) { this.gitUserName = gitUserName; }
+
+        public String getGitUserEmail() { return gitUserEmail; }
+        public void setGitUserEmail(String gitUserEmail) { this.gitUserEmail = gitUserEmail; }
+
         /**
          * Converts this entry to a SlackWorkstream instance.
          */
@@ -108,6 +118,8 @@ public class WorkstreamConfig {
             ws.setAllowedTools(allowedTools);
             ws.setMaxTurns(maxTurns);
             ws.setMaxBudgetUsd(maxBudgetUsd);
+            ws.setGitUserName(gitUserName);
+            ws.setGitUserEmail(gitUserEmail);
             return ws;
         }
     }

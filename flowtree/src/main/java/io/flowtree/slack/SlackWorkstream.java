@@ -74,6 +74,10 @@ public class SlackWorkstream {
     private int maxTurns;
     private double maxBudgetUsd;
 
+    // Git identity
+    private String gitUserName;
+    private String gitUserEmail;
+
     /**
      * Creates a new workstream with default settings.
      */
@@ -190,6 +194,38 @@ public class SlackWorkstream {
 
     public void setMaxBudgetUsd(double maxBudgetUsd) {
         this.maxBudgetUsd = maxBudgetUsd;
+    }
+
+    /**
+     * Returns the git user name for commits made by this workstream.
+     */
+    public String getGitUserName() {
+        return gitUserName;
+    }
+
+    /**
+     * Sets the git user name for commits made by this workstream.
+     *
+     * @param gitUserName the name to use in git commits (e.g., "CI Bot")
+     */
+    public void setGitUserName(String gitUserName) {
+        this.gitUserName = gitUserName;
+    }
+
+    /**
+     * Returns the git user email for commits made by this workstream.
+     */
+    public String getGitUserEmail() {
+        return gitUserEmail;
+    }
+
+    /**
+     * Sets the git user email for commits made by this workstream.
+     *
+     * @param gitUserEmail the email to use in git commits (e.g., "ci-bot@example.com")
+     */
+    public void setGitUserEmail(String gitUserEmail) {
+        this.gitUserEmail = gitUserEmail;
     }
 
     /**

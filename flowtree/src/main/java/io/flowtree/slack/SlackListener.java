@@ -249,6 +249,14 @@ public class SlackListener implements ConsoleFeatures {
             factory.setWorkingDirectory(workstream.getWorkingDirectory());
         }
 
+        // Git identity
+        if (workstream.getGitUserName() != null) {
+            factory.setGitUserName(workstream.getGitUserName());
+        }
+        if (workstream.getGitUserEmail() != null) {
+            factory.setGitUserEmail(workstream.getGitUserEmail());
+        }
+
         // Configure Slack MCP tool access
         if (apiPort > 0) {
             factory.setSlackApiUrl("http://localhost:" + apiPort);
