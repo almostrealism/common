@@ -63,17 +63,19 @@ Sends messages to Slack channels using the Bot User OAuth Token. Handles job-sta
 
 ### SlackApiEndpoint
 
-Lightweight HTTP server (NanoHTTPD, default port 7780) that Claude Code sessions use to send messages back to Slack via the `ar-slack` MCP tool.
+Lightweight HTTP server (NanoHTTPD, default port 7780) that receives status events and Slack messages from agents via the workstream URL pattern.
 
 **Endpoints:**
 
 | Method | Path | Body | Description |
 |--------|------|------|-------------|
-| POST | `/api/slack/message` | `{"channel_id":"C...","text":"..."}` | Post a message |
-| POST | `/api/slack/thread` | `{"channel_id":"C...","thread_ts":"...","text":"..."}` | Reply in a thread |
-| GET | `/api/slack/health` | -- | Health check |
+| POST | `/api/workstreams/{id}/messages` | `{"text":"..."}` | Post a message to the workstream's channel |
+| POST | `/api/workstreams/{id}/jobs/{jobId}/messages` | `{"text":"..."}` | Post a message to the job's thread |
+| POST | `/api/workstreams/{id}` | `{"jobId":"...","status":"..."}` | Receive a status event |
+| POST | `/api/workstreams/{id}/jobs/{jobId}` | `{"jobId":"...","status":"..."}` | Receive a job status event |
+| GET | `/api/health` | -- | Health check |
 
-When a `ClaudeCodeJob` has `slackApiUrl` set, it passes the URL to Claude Code as the `AR_SLACK_API_URL` environment variable. The `ar-slack` MCP server reads this and routes calls to the endpoint.
+When a `ClaudeCodeJob` has `workstreamUrl` set, it passes the URL to Claude Code as the `AR_WORKSTREAM_URL` environment variable. The `ar-slack` MCP server reads this and POSTs messages to `{url}/messages`.
 
 ### SlackWorkstream
 

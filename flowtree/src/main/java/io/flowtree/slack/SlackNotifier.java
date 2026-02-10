@@ -150,43 +150,6 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
         }
     }
 
-    /**
-     * Posts a message as a reply in a thread.
-     *
-     * @param channelId the Slack channel ID
-     * @param threadTs  the thread timestamp to reply to
-     * @param text      the message text
-     */
-    public void postThreadReply(String channelId, String threadTs, String text) {
-        if (messageCallback != null) {
-            messageCallback.accept("{\"channel\":\"" + channelId +
-                                   "\",\"thread_ts\":\"" + threadTs +
-                                   "\",\"text\":\"" + escapeJson(text) + "\"}");
-        }
-
-        if (client == null) {
-            log("No bot token - thread reply would be:");
-            log(text);
-            return;
-        }
-
-        try {
-            ChatPostMessageResponse response = client.chatPostMessage(req -> req
-                .channel(channelId)
-                .threadTs(threadTs)
-                .text(text)
-                .unfurlLinks(false)
-                .unfurlMedia(false)
-            );
-
-            if (!response.isOk()) {
-                warn("Failed to post thread reply: " + response.getError());
-            }
-        } catch (IOException | SlackApiException e) {
-            warn("Error posting thread reply: " + e.getMessage());
-        }
-    }
-
     private String formatStartedMessage(JobCompletionEvent event, SlackWorkstream workstream) {
         StringBuilder sb = new StringBuilder();
         sb.append(":arrows_counterclockwise: *Starting work:* ");

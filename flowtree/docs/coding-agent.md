@@ -43,9 +43,7 @@ Executes a single Claude Code prompt. Extends `GitManagedJob`.
 | `maxTurns` | `50` | Maximum number of agent turns |
 | `maxBudgetUsd` | `10.0` | Spending cap per job |
 | `targetBranch` | `null` | Git branch for commits (disables git if null) |
-| `slackApiUrl` | `null` | HTTP URL for the ar-slack MCP endpoint |
-| `slackChannelId` | `null` | Slack channel ID for MCP messages |
-| `slackThreadTs` | `null` | Thread timestamp for threaded replies |
+| `workstreamUrl` | `null` | Controller URL for status events and Slack messaging |
 
 **Results:**
 
