@@ -34,6 +34,11 @@
       "command": "python3",
       "args": ["tools/mcp/slack/server.py"],
       "description": "Send messages to Slack channels via the SlackBotController API endpoint"
+    },
+    "ar-github": {
+      "command": "python3",
+      "args": ["tools/mcp/github/server.py"],
+      "description": "Read and respond to GitHub PR review comments"
     }
   }
 }

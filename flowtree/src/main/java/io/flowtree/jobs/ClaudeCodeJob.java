@@ -245,6 +245,10 @@ public class ClaudeCodeJob extends GitManagedJob {
         sb.append("Use these freely to ask questions, report progress, or share results. ");
         sb.append("However, do not wait for a reply — continue working after sending a message.\n\n");
 
+        sb.append("You can read and respond to GitHub PR review comments using the GitHub MCP tools ");
+        sb.append("(github_pr_find, github_pr_review_comments, github_pr_conversation, github_pr_reply). ");
+        sb.append("Use these to check for code review feedback and address it.\n\n");
+
         sb.append("Do NOT make git commits. Your work will be committed by the harness ");
         sb.append("after you finish. If you want to control the commit message, write it ");
         sb.append("to a file called `commit.txt` in the working directory root.\n\n");
@@ -288,7 +292,7 @@ public class ClaudeCodeJob extends GitManagedJob {
         // Add MCP config for the Slack tool if a Slack API URL is set
         if (slackApiUrl != null && !slackApiUrl.isEmpty()) {
             command.add("--mcp-config");
-            command.add(buildSlackMcpConfig());
+            command.add(buildMcpConfig());
         }
 
         try {
@@ -411,14 +415,22 @@ public class ClaudeCodeJob extends GitManagedJob {
     }
 
     /**
-     * Builds a JSON MCP configuration string pointing to the ar-slack server.
+     * Builds a JSON MCP configuration string for agent MCP servers.
+     * Includes ar-slack for Slack messaging and ar-github for reading
+     * and responding to GitHub PR review comments.
      * This is passed to Claude Code via the {@code --mcp-config} flag.
      */
-    private String buildSlackMcpConfig() {
-        return "{\"mcpServers\":{\"ar-slack\":{" +
+    private String buildMcpConfig() {
+        return "{\"mcpServers\":{" +
+               "\"ar-slack\":{" +
                "\"command\":\"python3\"," +
                "\"args\":[\"tools/mcp/slack/server.py\"]" +
-               "}}}";
+               "}," +
+               "\"ar-github\":{" +
+               "\"command\":\"python3\"," +
+               "\"args\":[\"tools/mcp/github/server.py\"]" +
+               "}" +
+               "}}";
     }
 
     private void extractSessionId(String jsonOutput) {
