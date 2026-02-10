@@ -14,12 +14,17 @@ Configuration via environment variables:
 
 import json
 import os
+import sys
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 from mcp.server.fastmcp import FastMCP
 
 WORKSTREAM_URL = os.environ.get("AR_WORKSTREAM_URL", "")
+
+# Log startup configuration to stderr for diagnostics
+print(f"ar-slack: AR_WORKSTREAM_URL={'<not set>' if not WORKSTREAM_URL else WORKSTREAM_URL}",
+      file=sys.stderr)
 
 mcp = FastMCP("ar-slack")
 
@@ -33,19 +38,26 @@ def _post_message(text: str) -> dict:
     data = json.dumps({"text": text}).encode("utf-8")
     req = Request(url, data=data, headers={"Content-Type": "application/json"})
 
+    print(f"ar-slack: POST {url}", file=sys.stderr)
+
     try:
         with urlopen(req, timeout=10) as resp:
             body = resp.read().decode("utf-8")
-            return json.loads(body) if body else {"ok": True}
+            result = json.loads(body) if body else {"ok": True}
+            print(f"ar-slack: response: {result}", file=sys.stderr)
+            return result
     except HTTPError as e:
         body = e.read().decode("utf-8", errors="replace")
+        print(f"ar-slack: HTTP error {e.code}: {body[:200]}", file=sys.stderr)
         try:
             return json.loads(body)
         except json.JSONDecodeError:
             return {"ok": False, "error": f"HTTP {e.code}: {body[:200]}"}
     except URLError as e:
-        return {"ok": False, "error": f"Connection failed: {e.reason}"}
+        print(f"ar-slack: Connection failed to {url}: {e.reason}", file=sys.stderr)
+        return {"ok": False, "error": f"Connection failed to {url}: {e.reason}"}
     except Exception as e:
+        print(f"ar-slack: Unexpected error: {e}", file=sys.stderr)
         return {"ok": False, "error": str(e)}
 
 

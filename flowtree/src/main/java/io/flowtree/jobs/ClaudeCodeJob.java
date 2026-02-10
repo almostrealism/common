@@ -267,10 +267,14 @@ public class ClaudeCodeJob extends GitManagedJob {
                 pb.directory(new File(workDir));
             }
 
-            // Set workstream URL for the ar-slack MCP server
-            String wsUrl = getWorkstreamUrl();
+            // Set resolved workstream URL for MCP servers (ar-slack, ar-github).
+            // resolveWorkstreamUrl() replaces the 0.0.0.0 placeholder with the
+            // actual controller host from FLOWTREE_ROOT_HOST, which is required
+            // when the agent runs in a Docker container.
+            String wsUrl = resolveWorkstreamUrl();
             if (wsUrl != null && !wsUrl.isEmpty()) {
                 pb.environment().put("AR_WORKSTREAM_URL", wsUrl);
+                log("AR_WORKSTREAM_URL: " + wsUrl);
             }
 
             log("Command: " + String.join(" ", command));

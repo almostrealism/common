@@ -138,8 +138,13 @@ public class SlackApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
 
         log("Message [" + workstreamId + (jobId != null ? "/" + jobId : "") + "]: " + truncate(text, 80));
 
-        // TODO: When job thread tracking is added, use jobId to route to the thread
-        notifier.postMessage(workstream.getChannelId(), text);
+        // Route to job's Slack thread if one exists, otherwise post to channel
+        String threadTs = jobId != null ? notifier.getThreadTs(jobId) : null;
+        if (threadTs != null) {
+            notifier.postMessageInThread(workstream.getChannelId(), text, threadTs);
+        } else {
+            notifier.postMessage(workstream.getChannelId(), text);
+        }
 
         return newFixedLengthResponse(Response.Status.OK,
                 "application/json", "{\"ok\":true}");

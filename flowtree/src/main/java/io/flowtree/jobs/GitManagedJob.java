@@ -868,8 +868,13 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
     /**
      * Resolves the workstream URL, replacing the {@code 0.0.0.0} placeholder
      * with the controller's actual address from {@code FLOWTREE_ROOT_HOST}.
+     *
+     * <p>Subclasses should use this method when passing the workstream URL
+     * to external processes (e.g., environment variables for MCP tools).</p>
+     *
+     * @return the resolved URL, or the original URL if no resolution is needed
      */
-    private String resolveWorkstreamUrl() {
+    protected String resolveWorkstreamUrl() {
         String url = workstreamUrl;
 
         String rootHost = System.getenv("FLOWTREE_ROOT_HOST");
