@@ -19,7 +19,6 @@ package io.flowtree.slack;
 import io.flowtree.Server;
 import io.flowtree.jobs.ClaudeCodeJob;
 import io.flowtree.jobs.JobCompletionEvent;
-import io.flowtree.jobs.JobCompletionListener;
 import io.flowtree.msg.NodeProxy;
 import org.almostrealism.io.ConsoleFeatures;
 
@@ -64,7 +63,6 @@ public class SlackListener implements ConsoleFeatures {
 
     private Server server;
     private int nextAgent = 0;
-    private JobCompletionListener completionListener;
     private int apiPort;
 
     /**
@@ -96,15 +94,6 @@ public class SlackListener implements ConsoleFeatures {
      */
     public void setServer(Server server) {
         this.server = server;
-    }
-
-    /**
-     * Sets the completion listener for job events.
-     *
-     * @param listener the listener to receive job events
-     */
-    public void setCompletionListener(JobCompletionListener listener) {
-        this.completionListener = listener;
     }
 
     /**
@@ -257,13 +246,14 @@ public class SlackListener implements ConsoleFeatures {
             factory.setGitUserEmail(workstream.getGitUserEmail());
         }
 
-        // Configure Slack MCP tool access
+        // Configure Slack MCP tool access and status reporting
         if (apiPort > 0) {
             factory.setSlackApiUrl("http://localhost:" + apiPort);
             factory.setSlackChannelId(workstream.getChannelId());
+            factory.setStatusReportUrl("http://0.0.0.0:" + apiPort + "/api/job/event");
         }
 
-        // Notify that work is starting
+        // Notify that work is starting (locally, before the job leaves)
         JobCompletionEvent startEvent = JobCompletionEvent.started(
             factory.getTaskId(),
             workstream.getWorkstreamId(),
@@ -272,9 +262,6 @@ public class SlackListener implements ConsoleFeatures {
         startEvent.withGitInfo(workstream.getDefaultBranch(), null, null, null, false);
 
         notifier.onJobStarted(startEvent);
-        if (completionListener != null) {
-            completionListener.onJobStarted(startEvent);
-        }
 
         // Round-robin to connected agents
         int index = nextAgent++ % peers.length;

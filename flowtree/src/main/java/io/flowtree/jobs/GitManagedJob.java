@@ -24,6 +24,9 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -34,7 +37,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Consumer;
 import java.util.regex.Pattern;
 
@@ -117,28 +119,6 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
         ".claude/**", "settings.local.json"
     ));
 
-    /** Global list of completion listeners. */
-    private static final List<JobCompletionListener> completionListeners = new CopyOnWriteArrayList<>();
-
-    /**
-     * Registers a global listener for job completion events.
-     * Listeners are notified when any GitManagedJob completes.
-     *
-     * @param listener the listener to register
-     */
-    public static void addCompletionListener(JobCompletionListener listener) {
-        completionListeners.add(listener);
-    }
-
-    /**
-     * Removes a previously registered completion listener.
-     *
-     * @param listener the listener to remove
-     */
-    public static void removeCompletionListener(JobCompletionListener listener) {
-        completionListeners.remove(listener);
-    }
-
     private String taskId;
     private String targetBranch;
     private String workingDirectory;
@@ -161,7 +141,7 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
     private final CompletableFuture<Void> future = new CompletableFuture<>();
 
     private String workstreamId;
-    private JobCompletionListener instanceListener;
+    private String statusReportUrl;
 
     /**
      * Default constructor for deserialization.
@@ -227,7 +207,7 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
     }
 
     /**
-     * Fires the job started event to all registered listeners.
+     * Fires the job started event by POSTing to the status report URL.
      */
     protected void fireJobStarted() {
         JobCompletionEvent event = JobCompletionEvent.started(
@@ -235,26 +215,11 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
         );
         event.withGitInfo(targetBranch, null, null, null, false);
         populateEventDetails(event);
-
-        for (JobCompletionListener listener : completionListeners) {
-            try {
-                listener.onJobStarted(event);
-            } catch (Exception e) {
-                warn("Listener error: " + e.getMessage());
-            }
-        }
-
-        if (instanceListener != null) {
-            try {
-                instanceListener.onJobStarted(event);
-            } catch (Exception e) {
-                warn("Instance listener error: " + e.getMessage());
-            }
-        }
+        postStatusEvent(event);
     }
 
     /**
-     * Fires the job completed event to all registered listeners.
+     * Fires the job completed event by POSTing to the status report URL.
      */
     protected void fireJobCompleted(Exception error) {
         JobCompletionEvent event;
@@ -272,22 +237,7 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
 
         event.withGitInfo(targetBranch, commitHash, stagedFiles, skippedFiles, gitOperationsSuccessful && pushToOrigin);
         populateEventDetails(event);
-
-        for (JobCompletionListener listener : completionListeners) {
-            try {
-                listener.onJobCompleted(event);
-            } catch (Exception e) {
-                warn("Listener error: " + e.getMessage());
-            }
-        }
-
-        if (instanceListener != null) {
-            try {
-                instanceListener.onJobCompleted(event);
-            } catch (Exception e) {
-                warn("Instance listener error: " + e.getMessage());
-            }
-        }
+        postStatusEvent(event);
     }
 
     /**
@@ -851,13 +801,20 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
     }
 
     /**
-     * Sets an instance-level completion listener for this job.
-     * This listener is called in addition to any global listeners.
-     *
-     * @param listener the listener to notify on completion
+     * Returns the URL where job status events are POSTed.
      */
-    public void setCompletionListener(JobCompletionListener listener) {
-        this.instanceListener = listener;
+    public String getStatusReportUrl() {
+        return statusReportUrl;
+    }
+
+    /**
+     * Sets the URL where job status events will be POSTed as JSON.
+     * If null, status reporting is silently skipped.
+     *
+     * @param statusReportUrl the HTTP URL of the controller's job event endpoint
+     */
+    public void setStatusReportUrl(String statusReportUrl) {
+        this.statusReportUrl = statusReportUrl;
     }
 
     // ==================== Results ====================
@@ -897,6 +854,119 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
         return originalBranch;
     }
 
+    // ==================== Status Reporting ====================
+
+    /**
+     * POSTs a job status event as JSON to the configured {@link #statusReportUrl}.
+     * Fire-and-forget: errors are logged but do not fail the job.
+     *
+     * @param event the event to report
+     */
+    private void postStatusEvent(JobCompletionEvent event) {
+        if (statusReportUrl == null || statusReportUrl.isEmpty()) {
+            return;
+        }
+
+        String url = statusReportUrl;
+
+        // The controller sets 0.0.0.0 as a placeholder because it doesn't
+        // know its own external address. The agent knows the controller's
+        // address via FLOWTREE_ROOT_HOST.
+        String rootHost = System.getenv("FLOWTREE_ROOT_HOST");
+        if (rootHost != null && !rootHost.isEmpty() && url.contains("0.0.0.0")) {
+            url = url.replace("0.0.0.0", rootHost);
+        }
+
+        String json = buildEventJson(event);
+
+        try {
+            HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
+            conn.setRequestMethod("POST");
+            conn.setRequestProperty("Content-Type", "application/json");
+            conn.setConnectTimeout(5000);
+            conn.setReadTimeout(10000);
+            conn.setDoOutput(true);
+
+            try (OutputStream os = conn.getOutputStream()) {
+                os.write(json.getBytes(StandardCharsets.UTF_8));
+            }
+
+            int responseCode = conn.getResponseCode();
+            if (responseCode < 200 || responseCode >= 300) {
+                warn("Status report POST returned " + responseCode);
+            }
+        } catch (Exception e) {
+            warn("Failed to POST status event to " + url + ": " + e.getMessage());
+        }
+    }
+
+    /**
+     * Serializes a {@link JobCompletionEvent} to a JSON string.
+     * Called after {@link #populateEventDetails(JobCompletionEvent)} so
+     * subclass fields (prompt, sessionId, exitCode) are included.
+     *
+     * @param event the event to serialize
+     * @return JSON string representation
+     */
+    private String buildEventJson(JobCompletionEvent event) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("{");
+        appendJsonField(sb, "jobId", event.getJobId(), true);
+        appendJsonField(sb, "workstreamId", event.getWorkstreamId(), false);
+        appendJsonField(sb, "status", event.getStatus().name(), false);
+        appendJsonField(sb, "description", event.getDescription(), false);
+        appendJsonField(sb, "targetBranch", event.getTargetBranch(), false);
+        appendJsonField(sb, "commitHash", event.getCommitHash(), false);
+        sb.append(",\"pushed\":").append(event.isPushed());
+
+        // Staged files
+        sb.append(",\"stagedFiles\":[");
+        List<String> staged = event.getStagedFiles();
+        for (int i = 0; i < staged.size(); i++) {
+            if (i > 0) sb.append(",");
+            sb.append("\"").append(escapeJson(staged.get(i))).append("\"");
+        }
+        sb.append("]");
+
+        // Skipped files
+        sb.append(",\"skippedFiles\":[");
+        List<String> skipped = event.getSkippedFiles();
+        for (int i = 0; i < skipped.size(); i++) {
+            if (i > 0) sb.append(",");
+            sb.append("\"").append(escapeJson(skipped.get(i))).append("\"");
+        }
+        sb.append("]");
+
+        // Error info
+        appendJsonField(sb, "errorMessage", event.getErrorMessage(), false);
+
+        // Claude Code specific
+        appendJsonField(sb, "prompt", event.getPrompt(), false);
+        appendJsonField(sb, "sessionId", event.getSessionId(), false);
+        sb.append(",\"exitCode\":").append(event.getExitCode());
+
+        sb.append("}");
+        return sb.toString();
+    }
+
+    private void appendJsonField(StringBuilder sb, String name, String value, boolean first) {
+        if (!first) sb.append(",");
+        sb.append("\"").append(name).append("\":");
+        if (value == null) {
+            sb.append("null");
+        } else {
+            sb.append("\"").append(escapeJson(value)).append("\"");
+        }
+    }
+
+    private static String escapeJson(String s) {
+        if (s == null) return "";
+        return s.replace("\\", "\\\\")
+                .replace("\"", "\\\"")
+                .replace("\n", "\\n")
+                .replace("\r", "\\r");
+    }
+
     // ==================== Encoding ====================
 
     protected static String base64Encode(String s) {
@@ -927,6 +997,9 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
         }
         if (gitUserEmail != null) {
             sb.append("::gitUserEmail:=").append(base64Encode(gitUserEmail));
+        }
+        if (statusReportUrl != null) {
+            sb.append("::statusReportUrl:=").append(base64Encode(statusReportUrl));
         }
         return sb.toString();
     }
@@ -960,6 +1033,9 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
                 break;
             case "gitUserEmail":
                 this.gitUserEmail = base64Decode(value);
+                break;
+            case "statusReportUrl":
+                this.statusReportUrl = base64Decode(value);
                 break;
         }
     }

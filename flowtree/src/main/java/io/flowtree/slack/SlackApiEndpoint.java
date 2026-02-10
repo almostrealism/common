@@ -17,10 +17,13 @@
 package io.flowtree.slack;
 
 import fi.iki.elonen.NanoHTTPD;
+import io.flowtree.jobs.JobCompletionEvent;
 import org.almostrealism.io.ConsoleFeatures;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -40,6 +43,9 @@ import java.util.Map;
  *   <tr><td>POST</td><td>/api/slack/thread</td>
  *       <td>{@code {"channel_id":"C...","thread_ts":"...","text":"..."}}</td>
  *       <td>Reply in a thread</td></tr>
+ *   <tr><td>POST</td><td>/api/job/event</td>
+ *       <td>{@code {"jobId":"...","status":"STARTED|SUCCESS|FAILED",...}}</td>
+ *       <td>Receive a job status event from an agent</td></tr>
  *   <tr><td>GET</td><td>/api/slack/health</td><td>—</td>
  *       <td>Health check</td></tr>
  * </table>
@@ -81,6 +87,8 @@ public class SlackApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
                     return handlePostMessage(session);
                 case "/api/slack/thread":
                     return handlePostThread(session);
+                case "/api/job/event":
+                    return handleJobEvent(session);
             }
         }
 
@@ -147,6 +155,66 @@ public class SlackApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
 
         log("API thread reply to " + channelId + " (" + threadTs + "): " + truncate(text, 80));
         notifier.postThreadReply(channelId, threadTs, text);
+
+        return newFixedLengthResponse(Response.Status.OK,
+                "application/json", "{\"ok\":true}");
+    }
+
+    /**
+     * Handles POST /api/job/event — receives a job status event from an agent
+     * and delegates to the {@link SlackNotifier} for Slack messaging.
+     */
+    private Response handleJobEvent(IHTTPSession session) {
+        String body = readBody(session);
+        if (body == null) {
+            return errorResponse("Failed to read request body");
+        }
+
+        String status = extractJsonField(body, "status");
+        if (status == null || status.isEmpty()) {
+            return errorResponse("Missing required field: status");
+        }
+
+        String jobId = extractJsonField(body, "jobId");
+        String workstreamId = extractJsonField(body, "workstreamId");
+        String description = extractJsonField(body, "description");
+
+        JobCompletionEvent.Status eventStatus;
+        try {
+            eventStatus = JobCompletionEvent.Status.valueOf(status);
+        } catch (IllegalArgumentException e) {
+            return errorResponse("Invalid status: " + status);
+        }
+
+        JobCompletionEvent event;
+        if (eventStatus == JobCompletionEvent.Status.FAILED) {
+            String errorMessage = extractJsonField(body, "errorMessage");
+            event = JobCompletionEvent.failed(jobId, workstreamId, description, errorMessage, null);
+        } else {
+            event = new JobCompletionEvent(jobId, workstreamId, eventStatus, description);
+        }
+
+        // Populate git info
+        String targetBranch = extractJsonField(body, "targetBranch");
+        String commitHash = extractJsonField(body, "commitHash");
+        boolean pushed = extractJsonBooleanField(body, "pushed");
+        List<String> stagedFiles = extractJsonArrayField(body, "stagedFiles");
+        List<String> skippedFiles = extractJsonArrayField(body, "skippedFiles");
+        event.withGitInfo(targetBranch, commitHash, stagedFiles, skippedFiles, pushed);
+
+        // Populate Claude Code info
+        String prompt = extractJsonField(body, "prompt");
+        String sessionId = extractJsonField(body, "sessionId");
+        int exitCode = extractJsonIntField(body, "exitCode");
+        event.withClaudeCodeInfo(prompt, sessionId, exitCode);
+
+        log("Job event: " + eventStatus + " for " + jobId);
+
+        if (eventStatus == JobCompletionEvent.Status.STARTED) {
+            notifier.onJobStarted(event);
+        } else {
+            notifier.onJobCompleted(event);
+        }
 
         return newFixedLengthResponse(Response.Status.OK,
                 "application/json", "{\"ok\":true}");
@@ -224,6 +292,126 @@ public class SlackApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         }
 
         return sb.toString();
+    }
+
+    /**
+     * Extracts a boolean field from a JSON string.
+     * Returns false if the field is not found.
+     *
+     * @param json  the JSON string
+     * @param field the field name
+     * @return the boolean value, or false if not found
+     */
+    static boolean extractJsonBooleanField(String json, String field) {
+        if (json == null) return false;
+
+        int fieldStart = json.indexOf("\"" + field + "\"");
+        if (fieldStart < 0) return false;
+
+        int colonPos = json.indexOf(":", fieldStart);
+        if (colonPos < 0) return false;
+
+        String rest = json.substring(colonPos + 1).trim();
+        return rest.startsWith("true");
+    }
+
+    /**
+     * Extracts an integer field from a JSON string.
+     * Returns 0 if the field is not found or cannot be parsed.
+     *
+     * @param json  the JSON string
+     * @param field the field name
+     * @return the integer value, or 0 if not found
+     */
+    static int extractJsonIntField(String json, String field) {
+        if (json == null) return 0;
+
+        int fieldStart = json.indexOf("\"" + field + "\"");
+        if (fieldStart < 0) return 0;
+
+        int colonPos = json.indexOf(":", fieldStart);
+        if (colonPos < 0) return 0;
+
+        String rest = json.substring(colonPos + 1).trim();
+        StringBuilder numStr = new StringBuilder();
+        for (int i = 0; i < rest.length(); i++) {
+            char c = rest.charAt(i);
+            if (c == '-' || (c >= '0' && c <= '9')) {
+                numStr.append(c);
+            } else if (numStr.length() > 0) {
+                break;
+            }
+        }
+
+        try {
+            return Integer.parseInt(numStr.toString());
+        } catch (NumberFormatException e) {
+            return 0;
+        }
+    }
+
+    /**
+     * Extracts a JSON array of strings from a JSON string.
+     * Returns an empty list if the field is not found.
+     *
+     * @param json  the JSON string
+     * @param field the field name
+     * @return list of string values from the array
+     */
+    static List<String> extractJsonArrayField(String json, String field) {
+        List<String> result = new ArrayList<>();
+        if (json == null) return result;
+
+        int fieldStart = json.indexOf("\"" + field + "\"");
+        if (fieldStart < 0) return result;
+
+        int colonPos = json.indexOf(":", fieldStart);
+        if (colonPos < 0) return result;
+
+        int arrayStart = json.indexOf("[", colonPos);
+        if (arrayStart < 0) return result;
+
+        int arrayEnd = json.indexOf("]", arrayStart);
+        if (arrayEnd < 0) return result;
+
+        String arrayContent = json.substring(arrayStart + 1, arrayEnd);
+        if (arrayContent.trim().isEmpty()) return result;
+
+        // Parse each quoted string in the array
+        int i = 0;
+        while (i < arrayContent.length()) {
+            int quoteStart = arrayContent.indexOf("\"", i);
+            if (quoteStart < 0) break;
+
+            StringBuilder value = new StringBuilder();
+            int j = quoteStart + 1;
+            while (j < arrayContent.length()) {
+                char c = arrayContent.charAt(j);
+                if (c == '\\' && j + 1 < arrayContent.length()) {
+                    char next = arrayContent.charAt(j + 1);
+                    if (next == '"') {
+                        value.append('"');
+                        j += 2;
+                    } else if (next == '\\') {
+                        value.append('\\');
+                        j += 2;
+                    } else {
+                        value.append(c);
+                        j++;
+                    }
+                } else if (c == '"') {
+                    break;
+                } else {
+                    value.append(c);
+                    j++;
+                }
+            }
+
+            result.add(value.toString());
+            i = j + 1;
+        }
+
+        return result;
     }
 
     private static String escapeJson(String s) {

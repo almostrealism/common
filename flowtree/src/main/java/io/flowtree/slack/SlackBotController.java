@@ -25,8 +25,6 @@ import com.slack.api.methods.response.auth.AuthTestResponse;
 import com.slack.api.model.event.AppMentionEvent;
 import com.slack.api.model.event.MessageEvent;
 import io.flowtree.Server;
-import io.flowtree.jobs.JobCompletionEvent;
-import io.flowtree.jobs.JobCompletionListener;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 
@@ -75,7 +73,7 @@ import java.util.function.BiConsumer;
  * @see SlackNotifier
  * @see SlackWorkstream
  */
-public class SlackBotController implements JobCompletionListener, ConsoleFeatures {
+public class SlackBotController implements ConsoleFeatures {
 
     private final String botToken;
     private final String appToken;
@@ -129,9 +127,6 @@ public class SlackBotController implements JobCompletionListener, ConsoleFeature
         this.notifier = new SlackNotifier(botToken);
         this.listener = new SlackListener(notifier);
         this.running = new AtomicBoolean(false);
-
-        // Wire up completion events
-        listener.setCompletionListener(this);
     }
 
     /**
@@ -433,18 +428,6 @@ public class SlackBotController implements JobCompletionListener, ConsoleFeature
      */
     public boolean isSimulationMode() {
         return simulationMode;
-    }
-
-    // JobCompletionListener implementation
-
-    @Override
-    public void onJobStarted(JobCompletionEvent event) {
-        // Already handled by SlackListener -> SlackNotifier chain
-    }
-
-    @Override
-    public void onJobCompleted(JobCompletionEvent event) {
-        notifier.onJobCompleted(event);
     }
 
     /**

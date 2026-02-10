@@ -528,9 +528,9 @@ public class ClaudeCodeJob extends GitManagedJob {
         private String workstreamId;
         private String gitUserName;
         private String gitUserEmail;
-        private JobCompletionListener completionListener;
         private String slackApiUrl;
         private String slackChannelId;
+        private String statusReportUrl;
 
         /**
          * Default constructor for deserialization.
@@ -685,15 +685,6 @@ public class ClaudeCodeJob extends GitManagedJob {
         }
 
         /**
-         * Sets a completion listener for jobs created by this factory.
-         *
-         * @param listener the listener to notify on job completion
-         */
-        public void setCompletionListener(JobCompletionListener listener) {
-            this.completionListener = listener;
-        }
-
-        /**
          * Returns the Slack API endpoint URL for jobs created by this factory.
          */
         public String getSlackApiUrl() {
@@ -727,6 +718,23 @@ public class ClaudeCodeJob extends GitManagedJob {
             set("slackChannelId", base64Encode(slackChannelId));
         }
 
+        /**
+         * Returns the status report URL for jobs created by this factory.
+         */
+        public String getStatusReportUrl() {
+            return statusReportUrl;
+        }
+
+        /**
+         * Sets the URL where job status events will be POSTed as JSON.
+         *
+         * @param statusReportUrl the HTTP URL of the controller's job event endpoint
+         */
+        public void setStatusReportUrl(String statusReportUrl) {
+            this.statusReportUrl = statusReportUrl;
+            set("statusReportUrl", base64Encode(statusReportUrl));
+        }
+
         @Override
         public Job nextJob() {
             List<String> p = getPrompts();
@@ -750,12 +758,14 @@ public class ClaudeCodeJob extends GitManagedJob {
                 job.setGitUserEmail(gitUserEmail);
             }
 
-            // Workstream and listener settings
+            // Workstream settings
             if (workstreamId != null) {
                 job.setWorkstreamId(workstreamId);
             }
-            if (completionListener != null) {
-                job.setCompletionListener(completionListener);
+
+            // Status reporting
+            if (statusReportUrl != null) {
+                job.setStatusReportUrl(statusReportUrl);
             }
 
             // Slack MCP settings
@@ -818,6 +828,9 @@ public class ClaudeCodeJob extends GitManagedJob {
                     break;
                 case "gitUserEmail":
                     this.gitUserEmail = base64Decode(value);
+                    break;
+                case "statusReportUrl":
+                    this.statusReportUrl = base64Decode(value);
                     break;
             }
         }
