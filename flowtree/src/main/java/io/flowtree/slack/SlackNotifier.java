@@ -209,31 +209,30 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
 
         switch (event.getStatus()) {
             case SUCCESS:
-                sb.append(":white_check_mark: *Work complete*");
-                if (event.isPushed()) {
-                    sb.append(" - changes pushed\n");
+                int fileCount = event.getStagedFiles().size();
+
+                if (fileCount > 0 && event.isPushed()) {
+                    sb.append(":white_check_mark: *Work complete* — pushed ");
+                    sb.append(fileCount).append(" file(s)\n");
+
+                    if (event.getTargetBranch() != null) {
+                        sb.append("   Branch: `").append(event.getTargetBranch()).append("`\n");
+                    }
+
+                    if (event.getCommitHash() != null) {
+                        String shortHash = event.getCommitHash().length() > 7
+                            ? event.getCommitHash().substring(0, 7)
+                            : event.getCommitHash();
+                        sb.append("   Commit: `").append(shortHash).append("` ");
+                        sb.append(truncate(event.getDescription(), 50));
+                        sb.append("\n");
+                    }
+
+                    sb.append("   :arrow_right: Please review and provide next instructions");
                 } else {
-                    sb.append("\n");
+                    sb.append(":white_check_mark: *Work complete* — no changes to push\n");
+                    sb.append("   ").append(truncate(event.getDescription(), 100));
                 }
-
-                if (event.getTargetBranch() != null) {
-                    sb.append("   Branch: `").append(event.getTargetBranch()).append("`\n");
-                }
-
-                if (event.getCommitHash() != null) {
-                    String shortHash = event.getCommitHash().length() > 7
-                        ? event.getCommitHash().substring(0, 7)
-                        : event.getCommitHash();
-                    sb.append("   Commit: `").append(shortHash).append("` ");
-                    sb.append(truncate(event.getDescription(), 50));
-                    sb.append("\n");
-                }
-
-                if (!event.getStagedFiles().isEmpty()) {
-                    sb.append("   Files changed: ").append(event.getStagedFiles().size()).append("\n");
-                }
-
-                sb.append("   :arrow_right: Please review and provide next instructions");
                 break;
 
             case FAILED:

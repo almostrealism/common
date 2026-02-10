@@ -179,9 +179,6 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
         Exception error = null;
 
         try {
-            // Fire started event
-            fireJobStarted();
-
             // Capture original branch before work begins
             if (targetBranch != null) {
                 originalBranch = getCurrentBranch();
@@ -206,17 +203,10 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
     }
 
     /**
-     * Fires the job started event by POSTing to the status report URL.
-     */
-    protected void fireJobStarted() {
-        JobCompletionEvent event = JobCompletionEvent.started(taskId, getTaskString());
-        event.withGitInfo(targetBranch, null, null, null, false);
-        populateEventDetails(event);
-        postStatusEvent(event);
-    }
-
-    /**
-     * Fires the job completed event by POSTing to the status report URL.
+     * Fires the job completed event by POSTing to the workstream URL.
+     * The controller's {@code SlackNotifier} receives this event and
+     * formats an appropriate Slack message, so no separate Slack message
+     * is sent from here.
      */
     protected void fireJobCompleted(Exception error) {
         JobCompletionEvent event;
@@ -230,37 +220,10 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
             event = JobCompletionEvent.success(taskId, getTaskString());
         }
 
-        event.withGitInfo(targetBranch, commitHash, stagedFiles, skippedFiles, gitOperationsSuccessful && pushToOrigin);
+        event.withGitInfo(targetBranch, commitHash, stagedFiles, skippedFiles,
+            gitOperationsSuccessful && pushToOrigin && !stagedFiles.isEmpty());
         populateEventDetails(event);
         postStatusEvent(event);
-
-        // Send a human-readable completion message to Slack
-        sendSlackMessage(buildCompletionMessage(error));
-    }
-
-    /**
-     * Builds a human-readable Slack message summarizing the job outcome.
-     */
-    private String buildCompletionMessage(Exception error) {
-        StringBuilder sb = new StringBuilder();
-
-        if (error != null) {
-            sb.append("Job failed: ").append(getTaskString());
-            sb.append("\\nError: ").append(error.getMessage());
-        } else {
-            sb.append("Job completed: ").append(getTaskString());
-            if (!stagedFiles.isEmpty()) {
-                sb.append("\\nCommitted ").append(stagedFiles.size()).append(" file(s)");
-                if (targetBranch != null) {
-                    sb.append(" to ").append(targetBranch);
-                }
-                if (gitOperationsSuccessful && pushToOrigin) {
-                    sb.append(" (pushed)");
-                }
-            }
-        }
-
-        return sb.toString();
     }
 
     /**
@@ -900,25 +863,6 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
 
         log("Posting status event (" + event.getStatus() + ") to " + baseUrl);
         postJson(baseUrl, json);
-    }
-
-    /**
-     * Sends a message to the Slack channel or thread associated with this
-     * job's workstream URL. The message is POSTed to
-     * {@code {workstreamUrl}/messages}.
-     *
-     * @param text the message text (supports Slack mrkdwn formatting)
-     */
-    protected void sendSlackMessage(String text) {
-        if (workstreamUrl == null || workstreamUrl.isEmpty()) {
-            return;
-        }
-
-        String url = resolveWorkstreamUrl() + "/messages";
-        String json = "{\"text\":\"" + escapeJson(text) + "\"}";
-
-        log("Sending Slack message to " + url);
-        postJson(url, json);
     }
 
     /**

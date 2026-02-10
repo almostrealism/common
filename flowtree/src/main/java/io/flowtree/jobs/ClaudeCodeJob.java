@@ -72,6 +72,14 @@ public class ClaudeCodeJob extends GitManagedJob {
     public static final String PROMPT_SEPARATOR = ";;PROMPT;;";
     public static final String DEFAULT_TOOLS = "Read,Edit,Write,Bash,Glob,Grep";
 
+    /** MCP tools always appended to the allowed tools list. */
+    private static final String MCP_TOOLS =
+        "mcp__ar-slack__slack_send_message," +
+        "mcp__ar-github__github_pr_find," +
+        "mcp__ar-github__github_pr_review_comments," +
+        "mcp__ar-github__github_pr_conversation," +
+        "mcp__ar-github__github_pr_reply";
+
     private String prompt;
     private String allowedTools;
     private int maxTurns;
@@ -232,7 +240,7 @@ public class ClaudeCodeJob extends GitManagedJob {
         command.add("--output-format");
         command.add("json");
         command.add("--allowedTools");
-        command.add(allowedTools);
+        command.add(allowedTools + "," + MCP_TOOLS);
         command.add("--max-turns");
         command.add(String.valueOf(maxTurns));
 
@@ -479,6 +487,16 @@ public class ClaudeCodeJob extends GitManagedJob {
          */
         public Factory() {
             super(KeyUtils.generateKey());
+            // Persist taskId in properties so it survives wire serialization.
+            // AbstractJobFactory.encode() does NOT serialize the taskId field,
+            // so without this the deserialized factory would get a new random ID.
+            set("factoryTaskId", super.getTaskId());
+        }
+
+        @Override
+        public String getTaskId() {
+            String stored = get("factoryTaskId");
+            return stored != null ? stored : super.getTaskId();
         }
 
         /**
