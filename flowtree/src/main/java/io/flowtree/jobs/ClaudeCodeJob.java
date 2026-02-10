@@ -77,10 +77,6 @@ public class ClaudeCodeJob extends GitManagedJob {
     private int maxTurns;
     private double maxBudgetUsd;
 
-    private String slackApiUrl;
-    private String slackChannelId;
-    private String slackThreadTs;
-
     private String sessionId;
     private String output;
     private int exitCode;
@@ -160,55 +156,6 @@ public class ClaudeCodeJob extends GitManagedJob {
     }
 
     /**
-     * Returns the Slack API endpoint URL for this job.
-     */
-    public String getSlackApiUrl() {
-        return slackApiUrl;
-    }
-
-    /**
-     * Sets the Slack API endpoint URL. When set, the Claude Code process
-     * will have access to the ar-slack MCP server for sending messages.
-     *
-     * @param slackApiUrl the HTTP URL of the SlackApiEndpoint
-     */
-    public void setSlackApiUrl(String slackApiUrl) {
-        this.slackApiUrl = slackApiUrl;
-    }
-
-    /**
-     * Returns the Slack channel ID for this job.
-     */
-    public String getSlackChannelId() {
-        return slackChannelId;
-    }
-
-    /**
-     * Sets the Slack channel ID for messages from this job.
-     *
-     * @param slackChannelId the Slack channel ID (e.g., "C0123456789")
-     */
-    public void setSlackChannelId(String slackChannelId) {
-        this.slackChannelId = slackChannelId;
-    }
-
-    /**
-     * Returns the Slack thread timestamp for this job.
-     */
-    public String getSlackThreadTs() {
-        return slackThreadTs;
-    }
-
-    /**
-     * Sets the Slack thread timestamp for replies from this job.
-     *
-     * @param slackThreadTs the thread timestamp
-     */
-    public void setSlackThreadTs(String slackThreadTs) {
-        this.slackThreadTs = slackThreadTs;
-    }
-
-    /**
      * Returns the Claude Code session ID from the last execution.
      * Can be used to resume the session later.
      */
@@ -240,9 +187,9 @@ public class ClaudeCodeJob extends GitManagedJob {
         sb.append("There is no TTY and no interactive session — do not attempt to wait ");
         sb.append("for user input or interactive chat responses.\n\n");
 
-        sb.append("You can communicate about the project using the Slack MCP tools ");
-        sb.append("(slack_send_message, slack_send_thread_reply). ");
-        sb.append("Use these freely to ask questions, report progress, or share results. ");
+        sb.append("You can communicate about the project using the Slack MCP tool ");
+        sb.append("(slack_send_message). ");
+        sb.append("Use it freely to ask questions, report progress, or share results. ");
         sb.append("However, do not wait for a reply — continue working after sending a message.\n\n");
 
         sb.append("You can read and respond to GitHub PR review comments using the GitHub MCP tools ");
@@ -262,6 +209,17 @@ public class ClaudeCodeJob extends GitManagedJob {
 
     @Override
     protected void doWork() {
+        // Remove stale commit.txt from any previous run
+        Path staleCommitFile = resolveWorkingPath("commit.txt");
+        if (staleCommitFile != null && Files.exists(staleCommitFile)) {
+            try {
+                Files.delete(staleCommitFile);
+                log("Removed stale commit.txt");
+            } catch (IOException e) {
+                warn("Failed to remove stale commit.txt: " + e.getMessage());
+            }
+        }
+
         File outputDir = new File("claude-output");
         if (!outputDir.exists()) outputDir.mkdir();
 
@@ -289,11 +247,9 @@ public class ClaudeCodeJob extends GitManagedJob {
             log("Target branch: " + getTargetBranch());
         }
 
-        // Add MCP config for the Slack tool if a Slack API URL is set
-        if (slackApiUrl != null && !slackApiUrl.isEmpty()) {
-            command.add("--mcp-config");
-            command.add(buildMcpConfig());
-        }
+        // Always include MCP config (ar-slack and ar-github)
+        command.add("--mcp-config");
+        command.add(buildMcpConfig());
 
         try {
             ProcessBuilder pb = new ProcessBuilder(command);
@@ -303,15 +259,10 @@ public class ClaudeCodeJob extends GitManagedJob {
                 pb.directory(new File(workDir));
             }
 
-            // Set Slack environment variables for the MCP server
-            if (slackApiUrl != null && !slackApiUrl.isEmpty()) {
-                pb.environment().put("AR_SLACK_API_URL", slackApiUrl);
-            }
-            if (slackChannelId != null && !slackChannelId.isEmpty()) {
-                pb.environment().put("AR_SLACK_CHANNEL_ID", slackChannelId);
-            }
-            if (slackThreadTs != null && !slackThreadTs.isEmpty()) {
-                pb.environment().put("AR_SLACK_THREAD_TS", slackThreadTs);
+            // Set workstream URL for the ar-slack MCP server
+            String wsUrl = getWorkstreamUrl();
+            if (wsUrl != null && !wsUrl.isEmpty()) {
+                pb.environment().put("AR_WORKSTREAM_URL", wsUrl);
             }
 
             log("Command: " + String.join(" ", command));
@@ -453,15 +404,6 @@ public class ClaudeCodeJob extends GitManagedJob {
         sb.append("::tools:=").append(base64Encode(allowedTools));
         sb.append("::maxTurns:=").append(maxTurns);
         sb.append("::maxBudget:=").append(maxBudgetUsd);
-        if (slackApiUrl != null) {
-            sb.append("::slackApiUrl:=").append(base64Encode(slackApiUrl));
-        }
-        if (slackChannelId != null) {
-            sb.append("::slackChannelId:=").append(base64Encode(slackChannelId));
-        }
-        if (slackThreadTs != null) {
-            sb.append("::slackThreadTs:=").append(base64Encode(slackThreadTs));
-        }
         return sb.toString();
     }
 
@@ -479,15 +421,6 @@ public class ClaudeCodeJob extends GitManagedJob {
                 break;
             case "maxBudget":
                 this.maxBudgetUsd = Double.parseDouble(value);
-                break;
-            case "slackApiUrl":
-                this.slackApiUrl = base64Decode(value);
-                break;
-            case "slackChannelId":
-                this.slackChannelId = base64Decode(value);
-                break;
-            case "slackThreadTs":
-                this.slackThreadTs = base64Decode(value);
                 break;
             default:
                 // Delegate to parent for git-related properties
@@ -537,12 +470,9 @@ public class ClaudeCodeJob extends GitManagedJob {
         private double maxBudgetUsd = 10.0;
         private String targetBranch;
         private boolean pushToOrigin = true;
-        private String workstreamId;
+        private String workstreamUrl;
         private String gitUserName;
         private String gitUserEmail;
-        private String slackApiUrl;
-        private String slackChannelId;
-        private String statusReportUrl;
 
         /**
          * Default constructor for deserialization.
@@ -681,70 +611,23 @@ public class ClaudeCodeJob extends GitManagedJob {
             set("gitUserEmail", base64Encode(gitUserEmail));
         }
 
-        public String getWorkstreamId() {
-            return workstreamId;
+        /**
+         * Returns the workstream URL for jobs created by this factory.
+         */
+        public String getWorkstreamUrl() {
+            return workstreamUrl;
         }
 
         /**
-         * Sets the workstream ID for jobs created by this factory.
-         * Used for routing completion events to the correct Slack channel.
+         * Sets the workstream URL for jobs created by this factory.
+         * This single URL is used for both status reporting and Slack
+         * messaging (by appending {@code /messages}).
          *
-         * @param workstreamId the workstream identifier
+         * @param workstreamUrl the controller URL for the workstream
          */
-        public void setWorkstreamId(String workstreamId) {
-            this.workstreamId = workstreamId;
-            set("workstream", base64Encode(workstreamId));
-        }
-
-        /**
-         * Returns the Slack API endpoint URL for jobs created by this factory.
-         */
-        public String getSlackApiUrl() {
-            return slackApiUrl;
-        }
-
-        /**
-         * Sets the Slack API endpoint URL for jobs created by this factory.
-         *
-         * @param slackApiUrl the HTTP URL of the SlackApiEndpoint
-         */
-        public void setSlackApiUrl(String slackApiUrl) {
-            this.slackApiUrl = slackApiUrl;
-            set("slackApiUrl", base64Encode(slackApiUrl));
-        }
-
-        /**
-         * Returns the Slack channel ID for jobs created by this factory.
-         */
-        public String getSlackChannelId() {
-            return slackChannelId;
-        }
-
-        /**
-         * Sets the Slack channel ID for jobs created by this factory.
-         *
-         * @param slackChannelId the Slack channel ID
-         */
-        public void setSlackChannelId(String slackChannelId) {
-            this.slackChannelId = slackChannelId;
-            set("slackChannelId", base64Encode(slackChannelId));
-        }
-
-        /**
-         * Returns the status report URL for jobs created by this factory.
-         */
-        public String getStatusReportUrl() {
-            return statusReportUrl;
-        }
-
-        /**
-         * Sets the URL where job status events will be POSTed as JSON.
-         *
-         * @param statusReportUrl the HTTP URL of the controller's job event endpoint
-         */
-        public void setStatusReportUrl(String statusReportUrl) {
-            this.statusReportUrl = statusReportUrl;
-            set("statusReportUrl", base64Encode(statusReportUrl));
+        public void setWorkstreamUrl(String workstreamUrl) {
+            this.workstreamUrl = workstreamUrl;
+            set("workstreamUrl", base64Encode(workstreamUrl));
         }
 
         @Override
@@ -770,22 +653,9 @@ public class ClaudeCodeJob extends GitManagedJob {
                 job.setGitUserEmail(gitUserEmail);
             }
 
-            // Workstream settings
-            if (workstreamId != null) {
-                job.setWorkstreamId(workstreamId);
-            }
-
-            // Status reporting
-            if (statusReportUrl != null) {
-                job.setStatusReportUrl(statusReportUrl);
-            }
-
-            // Slack MCP settings
-            if (slackApiUrl != null) {
-                job.setSlackApiUrl(slackApiUrl);
-            }
-            if (slackChannelId != null) {
-                job.setSlackChannelId(slackChannelId);
+            // Workstream URL (status reporting + Slack messaging)
+            if (workstreamUrl != null) {
+                job.setWorkstreamUrl(workstreamUrl);
             }
 
             return job;
@@ -826,23 +696,14 @@ public class ClaudeCodeJob extends GitManagedJob {
                 case "push":
                     this.pushToOrigin = Boolean.parseBoolean(value);
                     break;
-                case "workstream":
-                    this.workstreamId = base64Decode(value);
-                    break;
-                case "slackApiUrl":
-                    this.slackApiUrl = base64Decode(value);
-                    break;
-                case "slackChannelId":
-                    this.slackChannelId = base64Decode(value);
+                case "workstreamUrl":
+                    this.workstreamUrl = base64Decode(value);
                     break;
                 case "gitUserName":
                     this.gitUserName = base64Decode(value);
                     break;
                 case "gitUserEmail":
                     this.gitUserEmail = base64Decode(value);
-                    break;
-                case "statusReportUrl":
-                    this.statusReportUrl = base64Decode(value);
                     break;
             }
         }

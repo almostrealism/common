@@ -140,8 +140,7 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
     private Consumer<JobOutput> outputConsumer;
     private final CompletableFuture<Void> future = new CompletableFuture<>();
 
-    private String workstreamId;
-    private String statusReportUrl;
+    private String workstreamUrl;
 
     /**
      * Default constructor for deserialization.
@@ -210,9 +209,7 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
      * Fires the job started event by POSTing to the status report URL.
      */
     protected void fireJobStarted() {
-        JobCompletionEvent event = JobCompletionEvent.started(
-            taskId, workstreamId, getTaskString()
-        );
+        JobCompletionEvent event = JobCompletionEvent.started(taskId, getTaskString());
         event.withGitInfo(targetBranch, null, null, null, false);
         populateEventDetails(event);
         postStatusEvent(event);
@@ -226,18 +223,44 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
 
         if (error != null) {
             event = JobCompletionEvent.failed(
-                taskId, workstreamId, getTaskString(),
+                taskId, getTaskString(),
                 error.getMessage(), error
             );
         } else {
-            event = JobCompletionEvent.success(
-                taskId, workstreamId, getTaskString()
-            );
+            event = JobCompletionEvent.success(taskId, getTaskString());
         }
 
         event.withGitInfo(targetBranch, commitHash, stagedFiles, skippedFiles, gitOperationsSuccessful && pushToOrigin);
         populateEventDetails(event);
         postStatusEvent(event);
+
+        // Send a human-readable completion message to Slack
+        sendSlackMessage(buildCompletionMessage(error));
+    }
+
+    /**
+     * Builds a human-readable Slack message summarizing the job outcome.
+     */
+    private String buildCompletionMessage(Exception error) {
+        StringBuilder sb = new StringBuilder();
+
+        if (error != null) {
+            sb.append("Job failed: ").append(getTaskString());
+            sb.append("\\nError: ").append(error.getMessage());
+        } else {
+            sb.append("Job completed: ").append(getTaskString());
+            if (!stagedFiles.isEmpty()) {
+                sb.append("\\nCommitted ").append(stagedFiles.size()).append(" file(s)");
+                if (targetBranch != null) {
+                    sb.append(" to ").append(targetBranch);
+                }
+                if (gitOperationsSuccessful && pushToOrigin) {
+                    sb.append(" (pushed)");
+                }
+            }
+        }
+
+        return sb.toString();
     }
 
     /**
@@ -426,6 +449,17 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
             // Get the commit hash
             commitHash = executeGitWithOutput("rev-parse", "HEAD").trim();
             log("Committed: " + commitHash);
+
+            // Clean up commit.txt so it is not reused by a subsequent run
+            File commitFile = resolveFile("commit.txt");
+            if (commitFile.exists()) {
+                if (commitFile.delete()) {
+                    log("Cleaned up commit.txt");
+                } else {
+                    log("Warning: could not delete commit.txt");
+                }
+            }
+
             return true;
         }
 
@@ -786,35 +820,29 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
         excludedPatterns.clear();
     }
 
-    public String getWorkstreamId() {
-        return workstreamId;
+    /**
+     * Returns the workstream URL for this job.
+     * This URL serves as a prefix for controller interactions:
+     * POST to the URL itself sends status events, appending
+     * {@code /messages} sends Slack messages.
+     */
+    public String getWorkstreamUrl() {
+        return workstreamUrl;
     }
 
     /**
-     * Sets the workstream ID for this job.
-     * Used for routing completion events to the correct Slack channel.
+     * Sets the workstream URL for this job.
      *
-     * @param workstreamId the workstream identifier
-     */
-    public void setWorkstreamId(String workstreamId) {
-        this.workstreamId = workstreamId;
-    }
-
-    /**
-     * Returns the URL where job status events are POSTed.
-     */
-    public String getStatusReportUrl() {
-        return statusReportUrl;
-    }
-
-    /**
-     * Sets the URL where job status events will be POSTed as JSON.
-     * If null, status reporting is silently skipped.
+     * <p>The URL follows the pattern
+     * {@code http://controller/api/workstreams/{id}/jobs/{jobId}} for job-level
+     * communication (messages go to the job's Slack thread) or
+     * {@code http://controller/api/workstreams/{id}} for workstream-level
+     * communication (messages go to the channel).</p>
      *
-     * @param statusReportUrl the HTTP URL of the controller's job event endpoint
+     * @param workstreamUrl the controller URL for this job's workstream
      */
-    public void setStatusReportUrl(String statusReportUrl) {
-        this.statusReportUrl = statusReportUrl;
+    public void setWorkstreamUrl(String workstreamUrl) {
+        this.workstreamUrl = workstreamUrl;
     }
 
     // ==================== Results ====================
@@ -857,28 +885,62 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
     // ==================== Status Reporting ====================
 
     /**
-     * POSTs a job status event as JSON to the configured {@link #statusReportUrl}.
+     * POSTs a job status event as JSON to the {@link #workstreamUrl}.
      * Fire-and-forget: errors are logged but do not fail the job.
      *
      * @param event the event to report
      */
     private void postStatusEvent(JobCompletionEvent event) {
-        if (statusReportUrl == null || statusReportUrl.isEmpty()) {
+        if (workstreamUrl == null || workstreamUrl.isEmpty()) {
             return;
         }
 
-        String url = statusReportUrl;
+        String baseUrl = resolveWorkstreamUrl();
+        String json = buildEventJson(event);
 
-        // The controller sets 0.0.0.0 as a placeholder because it doesn't
-        // know its own external address. The agent knows the controller's
-        // address via FLOWTREE_ROOT_HOST.
+        log("Posting status event (" + event.getStatus() + ") to " + baseUrl);
+        postJson(baseUrl, json);
+    }
+
+    /**
+     * Sends a message to the Slack channel or thread associated with this
+     * job's workstream URL. The message is POSTed to
+     * {@code {workstreamUrl}/messages}.
+     *
+     * @param text the message text (supports Slack mrkdwn formatting)
+     */
+    protected void sendSlackMessage(String text) {
+        if (workstreamUrl == null || workstreamUrl.isEmpty()) {
+            return;
+        }
+
+        String url = resolveWorkstreamUrl() + "/messages";
+        String json = "{\"text\":\"" + escapeJson(text) + "\"}";
+
+        log("Sending Slack message to " + url);
+        postJson(url, json);
+    }
+
+    /**
+     * Resolves the workstream URL, replacing the {@code 0.0.0.0} placeholder
+     * with the controller's actual address from {@code FLOWTREE_ROOT_HOST}.
+     */
+    private String resolveWorkstreamUrl() {
+        String url = workstreamUrl;
+
         String rootHost = System.getenv("FLOWTREE_ROOT_HOST");
         if (rootHost != null && !rootHost.isEmpty() && url.contains("0.0.0.0")) {
             url = url.replace("0.0.0.0", rootHost);
         }
 
-        String json = buildEventJson(event);
+        return url;
+    }
 
+    /**
+     * POSTs a JSON string to the given URL.
+     * Fire-and-forget: errors are logged but do not propagate.
+     */
+    private void postJson(String url, String json) {
         try {
             HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
             conn.setRequestMethod("POST");
@@ -893,10 +955,10 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
 
             int responseCode = conn.getResponseCode();
             if (responseCode < 200 || responseCode >= 300) {
-                warn("Status report POST returned " + responseCode);
+                warn("POST to " + url + " returned " + responseCode);
             }
         } catch (Exception e) {
-            warn("Failed to POST status event to " + url + ": " + e.getMessage());
+            warn("Failed to POST to " + url + ": " + e.getMessage());
         }
     }
 
@@ -912,7 +974,6 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
         StringBuilder sb = new StringBuilder();
         sb.append("{");
         appendJsonField(sb, "jobId", event.getJobId(), true);
-        appendJsonField(sb, "workstreamId", event.getWorkstreamId(), false);
         appendJsonField(sb, "status", event.getStatus().name(), false);
         appendJsonField(sb, "description", event.getDescription(), false);
         appendJsonField(sb, "targetBranch", event.getTargetBranch(), false);
@@ -998,8 +1059,8 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
         if (gitUserEmail != null) {
             sb.append("::gitUserEmail:=").append(base64Encode(gitUserEmail));
         }
-        if (statusReportUrl != null) {
-            sb.append("::statusReportUrl:=").append(base64Encode(statusReportUrl));
+        if (workstreamUrl != null) {
+            sb.append("::workstreamUrl:=").append(base64Encode(workstreamUrl));
         }
         return sb.toString();
     }
@@ -1034,8 +1095,8 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
             case "gitUserEmail":
                 this.gitUserEmail = base64Decode(value);
                 break;
-            case "statusReportUrl":
-                this.statusReportUrl = base64Decode(value);
+            case "workstreamUrl":
+                this.workstreamUrl = base64Decode(value);
                 break;
         }
     }

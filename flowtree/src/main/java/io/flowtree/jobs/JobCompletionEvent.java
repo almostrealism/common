@@ -46,7 +46,6 @@ public class JobCompletionEvent {
     }
 
     private final String jobId;
-    private final String workstreamId;
     private final Status status;
     private final String description;
     private final Instant timestamp;
@@ -70,14 +69,12 @@ public class JobCompletionEvent {
     /**
      * Creates a new job completion event.
      *
-     * @param jobId        the job identifier
-     * @param workstreamId the workstream identifier (for Slack channel routing)
-     * @param status       the completion status
-     * @param description  human-readable description of the job
+     * @param jobId       the job identifier
+     * @param status      the completion status
+     * @param description human-readable description of the job
      */
-    public JobCompletionEvent(String jobId, String workstreamId, Status status, String description) {
+    public JobCompletionEvent(String jobId, Status status, String description) {
         this.jobId = jobId;
-        this.workstreamId = workstreamId;
         this.status = status;
         this.description = description;
         this.timestamp = Instant.now();
@@ -88,23 +85,23 @@ public class JobCompletionEvent {
     /**
      * Creates a started event for a job.
      */
-    public static JobCompletionEvent started(String jobId, String workstreamId, String description) {
-        return new JobCompletionEvent(jobId, workstreamId, Status.STARTED, description);
+    public static JobCompletionEvent started(String jobId, String description) {
+        return new JobCompletionEvent(jobId, Status.STARTED, description);
     }
 
     /**
      * Creates a success event for a job.
      */
-    public static JobCompletionEvent success(String jobId, String workstreamId, String description) {
-        return new JobCompletionEvent(jobId, workstreamId, Status.SUCCESS, description);
+    public static JobCompletionEvent success(String jobId, String description) {
+        return new JobCompletionEvent(jobId, Status.SUCCESS, description);
     }
 
     /**
      * Creates a failure event for a job.
      */
-    public static JobCompletionEvent failed(String jobId, String workstreamId, String description,
+    public static JobCompletionEvent failed(String jobId, String description,
                                             String errorMessage, Throwable exception) {
-        JobCompletionEvent event = new JobCompletionEvent(jobId, workstreamId, Status.FAILED, description);
+        JobCompletionEvent event = new JobCompletionEvent(jobId, Status.FAILED, description);
         event.errorMessage = errorMessage;
         event.exception = exception;
         return event;
@@ -114,10 +111,6 @@ public class JobCompletionEvent {
 
     public String getJobId() {
         return jobId;
-    }
-
-    public String getWorkstreamId() {
-        return workstreamId;
     }
 
     public Status getStatus() {
@@ -195,7 +188,6 @@ public class JobCompletionEvent {
     public String toString() {
         return "JobCompletionEvent{" +
                "jobId='" + jobId + '\'' +
-               ", workstreamId='" + workstreamId + '\'' +
                ", status=" + status +
                ", description='" + description + '\'' +
                ", commitHash='" + commitHash + '\'' +

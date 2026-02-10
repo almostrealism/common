@@ -23,6 +23,10 @@ package io.flowtree.jobs;
  * when jobs complete, fail, or are cancelled. This is particularly useful for
  * integrations like Slack that need to post status updates.</p>
  *
+ * <p>The {@code workstreamId} parameter identifies the workstream that owns
+ * the job. When events arrive via HTTP, the workstream ID is extracted from
+ * the URL path rather than from the event payload.</p>
+ *
  * @author Michael Murray
  * @see JobCompletionEvent
  */
@@ -31,17 +35,19 @@ public interface JobCompletionListener {
     /**
      * Called when a job completes (successfully or with failure).
      *
-     * @param event the completion event containing job details and results
+     * @param workstreamId the workstream that owns this job
+     * @param event        the completion event containing job details and results
      */
-    void onJobCompleted(JobCompletionEvent event);
+    void onJobCompleted(String workstreamId, JobCompletionEvent event);
 
     /**
      * Called when a job starts execution.
      * Default implementation does nothing.
      *
-     * @param event the event containing job details
+     * @param workstreamId the workstream that owns this job
+     * @param event        the event containing job details
      */
-    default void onJobStarted(JobCompletionEvent event) {
+    default void onJobStarted(String workstreamId, JobCompletionEvent event) {
         // Default: no-op
     }
 }

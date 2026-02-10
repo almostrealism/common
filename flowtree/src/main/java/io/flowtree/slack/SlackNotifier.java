@@ -73,6 +73,16 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
     }
 
     /**
+     * Returns the workstream for a given ID.
+     *
+     * @param workstreamId the workstream identifier
+     * @return the workstream, or null if not registered
+     */
+    public SlackWorkstream getWorkstream(String workstreamId) {
+        return workstreams.get(workstreamId);
+    }
+
+    /**
      * Sets a callback for receiving formatted messages (useful for testing).
      *
      * @param callback the callback to receive message text
@@ -82,10 +92,10 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
     }
 
     @Override
-    public void onJobStarted(JobCompletionEvent event) {
-        SlackWorkstream workstream = workstreams.get(event.getWorkstreamId());
+    public void onJobStarted(String workstreamId, JobCompletionEvent event) {
+        SlackWorkstream workstream = workstreams.get(workstreamId);
         if (workstream == null) {
-            warn("Unknown workstream: " + event.getWorkstreamId());
+            warn("Unknown workstream: " + workstreamId);
             return;
         }
 
@@ -94,10 +104,10 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
     }
 
     @Override
-    public void onJobCompleted(JobCompletionEvent event) {
-        SlackWorkstream workstream = workstreams.get(event.getWorkstreamId());
+    public void onJobCompleted(String workstreamId, JobCompletionEvent event) {
+        SlackWorkstream workstream = workstreams.get(workstreamId);
         if (workstream == null) {
-            warn("Unknown workstream: " + event.getWorkstreamId());
+            warn("Unknown workstream: " + workstreamId);
             return;
         }
 

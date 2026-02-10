@@ -227,7 +227,6 @@ public class SlackListener implements ConsoleFeatures {
         factory.setAllowedTools(workstream.getAllowedTools());
         factory.setMaxTurns(workstream.getMaxTurns());
         factory.setMaxBudgetUsd(workstream.getMaxBudgetUsd());
-        factory.setWorkstreamId(workstream.getWorkstreamId());
 
         if (workstream.getDefaultBranch() != null) {
             factory.setTargetBranch(workstream.getDefaultBranch());
@@ -246,22 +245,20 @@ public class SlackListener implements ConsoleFeatures {
             factory.setGitUserEmail(workstream.getGitUserEmail());
         }
 
-        // Configure Slack MCP tool access and status reporting
+        // Build workstream URL for status reporting and Slack messaging
         if (apiPort > 0) {
-            factory.setSlackApiUrl("http://localhost:" + apiPort);
-            factory.setSlackChannelId(workstream.getChannelId());
-            factory.setStatusReportUrl("http://0.0.0.0:" + apiPort + "/api/job/event");
+            String baseUrl = "http://0.0.0.0:" + apiPort
+                + "/api/workstreams/" + workstream.getWorkstreamId()
+                + "/jobs/" + factory.getTaskId();
+            factory.setWorkstreamUrl(baseUrl);
         }
 
         // Notify that work is starting (locally, before the job leaves)
-        JobCompletionEvent startEvent = JobCompletionEvent.started(
-            factory.getTaskId(),
-            workstream.getWorkstreamId(),
-            prompt.length() > 100 ? prompt.substring(0, 97) + "..." : prompt
-        );
+        String description = prompt.length() > 100 ? prompt.substring(0, 97) + "..." : prompt;
+        JobCompletionEvent startEvent = JobCompletionEvent.started(factory.getTaskId(), description);
         startEvent.withGitInfo(workstream.getDefaultBranch(), null, null, null, false);
 
-        notifier.onJobStarted(startEvent);
+        notifier.onJobStarted(workstream.getWorkstreamId(), startEvent);
 
         // Round-robin to connected agents
         int index = nextAgent++ % peers.length;

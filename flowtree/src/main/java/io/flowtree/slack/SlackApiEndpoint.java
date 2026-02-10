@@ -25,6 +25,8 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Lightweight HTTP API endpoint for receiving Slack message requests from
@@ -34,19 +36,23 @@ import java.util.Map;
  * (running inside Claude Code sessions) can call to send messages back to
  * Slack channels. It delegates all Slack operations to {@link SlackNotifier}.</p>
  *
- * <h2>Endpoints</h2>
+ * <h2>URL Pattern</h2>
+ * <p>All endpoints use the workstream URL as a prefix:</p>
  * <table>
  *   <tr><th>Method</th><th>Path</th><th>Body</th><th>Description</th></tr>
- *   <tr><td>POST</td><td>/api/slack/message</td>
- *       <td>{@code {"channel_id":"C...","text":"..."}}</td>
- *       <td>Post a message to a channel</td></tr>
- *   <tr><td>POST</td><td>/api/slack/thread</td>
- *       <td>{@code {"channel_id":"C...","thread_ts":"...","text":"..."}}</td>
- *       <td>Reply in a thread</td></tr>
- *   <tr><td>POST</td><td>/api/job/event</td>
- *       <td>{@code {"jobId":"...","status":"STARTED|SUCCESS|FAILED",...}}</td>
- *       <td>Receive a job status event from an agent</td></tr>
- *   <tr><td>GET</td><td>/api/slack/health</td><td>—</td>
+ *   <tr><td>POST</td><td>/api/workstreams/{id}/messages</td>
+ *       <td>{@code {"text":"..."}}</td>
+ *       <td>Post a message to the workstream's Slack channel</td></tr>
+ *   <tr><td>POST</td><td>/api/workstreams/{id}/jobs/{jobId}/messages</td>
+ *       <td>{@code {"text":"..."}}</td>
+ *       <td>Post a message to the job's Slack thread</td></tr>
+ *   <tr><td>POST</td><td>/api/workstreams/{id}</td>
+ *       <td>{@code {"jobId":"...","status":"..."}}</td>
+ *       <td>Receive a status event for the workstream</td></tr>
+ *   <tr><td>POST</td><td>/api/workstreams/{id}/jobs/{jobId}</td>
+ *       <td>{@code {"jobId":"...","status":"..."}}</td>
+ *       <td>Receive a job status event</td></tr>
+ *   <tr><td>GET</td><td>/api/health</td><td>—</td>
  *       <td>Health check</td></tr>
  * </table>
  *
@@ -58,6 +64,11 @@ public class SlackApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
 
     /** Default port for the API endpoint. */
     public static final int DEFAULT_PORT = 7780;
+
+    /** Matches /api/workstreams/{wsId} with optional /jobs/{jobId} and optional /messages suffix. */
+    private static final Pattern WORKSTREAM_PATTERN = Pattern.compile(
+        "/api/workstreams/([^/]+)(?:/jobs/([^/]+))?(/messages)?"
+    );
 
     private final SlackNotifier notifier;
 
@@ -77,18 +88,23 @@ public class SlackApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         String uri = session.getUri();
         Method method = session.getMethod();
 
-        if (Method.GET.equals(method) && "/api/slack/health".equals(uri)) {
-            return handleHealth();
+        if (Method.GET.equals(method) && "/api/health".equals(uri)) {
+            return newFixedLengthResponse(Response.Status.OK,
+                    "application/json", "{\"status\":\"ok\"}");
         }
 
         if (Method.POST.equals(method)) {
-            switch (uri) {
-                case "/api/slack/message":
-                    return handlePostMessage(session);
-                case "/api/slack/thread":
-                    return handlePostThread(session);
-                case "/api/job/event":
-                    return handleJobEvent(session);
+            Matcher m = WORKSTREAM_PATTERN.matcher(uri);
+            if (m.matches()) {
+                String workstreamId = m.group(1);
+                String jobId = m.group(2);       // null if no /jobs/{id}
+                boolean isMessages = m.group(3) != null;  // /messages suffix
+
+                if (isMessages) {
+                    return handleMessage(session, workstreamId, jobId);
+                } else {
+                    return handleStatusEvent(session, workstreamId);
+                }
             }
         }
 
@@ -97,74 +113,44 @@ public class SlackApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
     }
 
     /**
-     * Handles GET /api/slack/health.
+     * Handles POST to {@code /api/workstreams/{id}/messages} or
+     * {@code /api/workstreams/{id}/jobs/{jobId}/messages}.
+     *
+     * <p>Posts a Slack message to the workstream's channel. When a
+     * {@code jobId} is present, the controller can optionally thread the
+     * message under that job's Slack thread.</p>
      */
-    private Response handleHealth() {
-        return newFixedLengthResponse(Response.Status.OK,
-                "application/json", "{\"status\":\"ok\"}");
-    }
-
-    /**
-     * Handles POST /api/slack/message.
-     */
-    private Response handlePostMessage(IHTTPSession session) {
+    private Response handleMessage(IHTTPSession session, String workstreamId, String jobId) {
         String body = readBody(session);
         if (body == null) {
             return errorResponse("Failed to read request body");
         }
 
-        String channelId = extractJsonField(body, "channel_id");
         String text = extractJsonField(body, "text");
-
-        if (channelId == null || channelId.isEmpty()) {
-            return errorResponse("Missing required field: channel_id");
-        }
         if (text == null || text.isEmpty()) {
             return errorResponse("Missing required field: text");
         }
 
-        log("API message to " + channelId + ": " + truncate(text, 80));
-        notifier.postMessage(channelId, text);
+        SlackWorkstream workstream = notifier.getWorkstream(workstreamId);
+        if (workstream == null) {
+            return errorResponse("Unknown workstream: " + workstreamId);
+        }
+
+        log("Message [" + workstreamId + (jobId != null ? "/" + jobId : "") + "]: " + truncate(text, 80));
+
+        // TODO: When job thread tracking is added, use jobId to route to the thread
+        notifier.postMessage(workstream.getChannelId(), text);
 
         return newFixedLengthResponse(Response.Status.OK,
                 "application/json", "{\"ok\":true}");
     }
 
     /**
-     * Handles POST /api/slack/thread.
+     * Handles POST to {@code /api/workstreams/{id}} or
+     * {@code /api/workstreams/{id}/jobs/{jobId}} — receives a status event
+     * from an agent and delegates to the {@link SlackNotifier}.
      */
-    private Response handlePostThread(IHTTPSession session) {
-        String body = readBody(session);
-        if (body == null) {
-            return errorResponse("Failed to read request body");
-        }
-
-        String channelId = extractJsonField(body, "channel_id");
-        String threadTs = extractJsonField(body, "thread_ts");
-        String text = extractJsonField(body, "text");
-
-        if (channelId == null || channelId.isEmpty()) {
-            return errorResponse("Missing required field: channel_id");
-        }
-        if (threadTs == null || threadTs.isEmpty()) {
-            return errorResponse("Missing required field: thread_ts");
-        }
-        if (text == null || text.isEmpty()) {
-            return errorResponse("Missing required field: text");
-        }
-
-        log("API thread reply to " + channelId + " (" + threadTs + "): " + truncate(text, 80));
-        notifier.postThreadReply(channelId, threadTs, text);
-
-        return newFixedLengthResponse(Response.Status.OK,
-                "application/json", "{\"ok\":true}");
-    }
-
-    /**
-     * Handles POST /api/job/event — receives a job status event from an agent
-     * and delegates to the {@link SlackNotifier} for Slack messaging.
-     */
-    private Response handleJobEvent(IHTTPSession session) {
+    private Response handleStatusEvent(IHTTPSession session, String workstreamId) {
         String body = readBody(session);
         if (body == null) {
             return errorResponse("Failed to read request body");
@@ -176,7 +162,6 @@ public class SlackApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         }
 
         String jobId = extractJsonField(body, "jobId");
-        String workstreamId = extractJsonField(body, "workstreamId");
         String description = extractJsonField(body, "description");
 
         JobCompletionEvent.Status eventStatus;
@@ -189,9 +174,9 @@ public class SlackApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         JobCompletionEvent event;
         if (eventStatus == JobCompletionEvent.Status.FAILED) {
             String errorMessage = extractJsonField(body, "errorMessage");
-            event = JobCompletionEvent.failed(jobId, workstreamId, description, errorMessage, null);
+            event = JobCompletionEvent.failed(jobId, description, errorMessage, null);
         } else {
-            event = new JobCompletionEvent(jobId, workstreamId, eventStatus, description);
+            event = new JobCompletionEvent(jobId, eventStatus, description);
         }
 
         // Populate git info
@@ -208,12 +193,12 @@ public class SlackApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         int exitCode = extractJsonIntField(body, "exitCode");
         event.withClaudeCodeInfo(prompt, sessionId, exitCode);
 
-        log("Job event: " + eventStatus + " for " + jobId);
+        log("Status event: " + eventStatus + " for job " + jobId + " in workstream " + workstreamId);
 
         if (eventStatus == JobCompletionEvent.Status.STARTED) {
-            notifier.onJobStarted(event);
+            notifier.onJobStarted(workstreamId, event);
         } else {
-            notifier.onJobCompleted(event);
+            notifier.onJobCompleted(workstreamId, event);
         }
 
         return newFixedLengthResponse(Response.Status.OK,
