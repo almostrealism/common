@@ -112,8 +112,9 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
         // Hardware acceleration outputs (AR-specific)
         "Extensions/**", "*.cl", "*.metal",
 
-        // Claude Code agent outputs
-        "claude-output/**", "commit.txt"
+        // Claude Code agent outputs and settings
+        "claude-output/**", "commit.txt",
+        ".claude/**", "settings.local.json"
     ));
 
     /** Global list of completion listeners. */
@@ -615,16 +616,40 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
     }
 
     private boolean matchesGlobPattern(String path, String pattern) {
-        // Convert glob pattern to regex
-        String regex = pattern
-            .replace(".", "\\.")
-            .replace("**/", "(.*/)?")
-            .replace("**", ".*")
-            .replace("*", "[^/]*")
-            .replace("?", ".");
+        // Convert glob pattern to regex by processing tokens so that
+        // replacing '*' does not corrupt the '.*' produced by '**'.
+        StringBuilder regex = new StringBuilder();
+        int i = 0;
+        while (i < pattern.length()) {
+            char c = pattern.charAt(i);
+            if (c == '*' && i + 1 < pattern.length() && pattern.charAt(i + 1) == '*') {
+                // "**/" matches zero or more directories
+                if (i + 2 < pattern.length() && pattern.charAt(i + 2) == '/') {
+                    regex.append("(.*/)?");
+                    i += 3;
+                } else {
+                    // trailing "**" matches everything
+                    regex.append(".*");
+                    i += 2;
+                }
+            } else if (c == '*') {
+                regex.append("[^/]*");
+                i++;
+            } else if (c == '?') {
+                regex.append("[^/]");
+                i++;
+            } else if (c == '.') {
+                regex.append("\\.");
+                i++;
+            } else {
+                regex.append(c);
+                i++;
+            }
+        }
 
-        return Pattern.matches(regex, path) ||
-               Pattern.matches(".*/" + regex, path) ||
+        String r = regex.toString();
+        return Pattern.matches(r, path) ||
+               Pattern.matches(".*/" + r, path) ||
                path.endsWith("/" + pattern) ||
                path.equals(pattern);
     }
