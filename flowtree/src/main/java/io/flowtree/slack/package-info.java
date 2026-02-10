@@ -22,6 +22,7 @@
  *   <li>{@link io.flowtree.slack.SlackBotController} - Main entry point and lifecycle manager</li>
  *   <li>{@link io.flowtree.slack.SlackListener} - Parses Slack messages and creates jobs</li>
  *   <li>{@link io.flowtree.slack.SlackNotifier} - Posts status updates to Slack channels</li>
+ *   <li>{@link io.flowtree.slack.SlackApiEndpoint} - HTTP API for receiving agent status events and MCP messages</li>
  *   <li>{@link io.flowtree.slack.SlackWorkstream} - Configuration for channel-to-agent mapping</li>
  * </ul>
  *

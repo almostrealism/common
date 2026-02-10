@@ -192,13 +192,13 @@ public class ClaudeCodeJob extends GitManagedJob {
     private String buildInstructionPrompt() {
         StringBuilder sb = new StringBuilder();
         sb.append("You are working autonomously as a coding agent. ");
-        sb.append("There is no TTY and no interactive session — do not attempt to wait ");
+        sb.append("There is no TTY and no interactive session --do not attempt to wait ");
         sb.append("for user input or interactive chat responses.\n\n");
 
         sb.append("You can communicate about the project using the Slack MCP tool ");
         sb.append("(slack_send_message). ");
         sb.append("Use it freely to ask questions, report progress, or share results. ");
-        sb.append("However, do not wait for a reply — continue working after sending a message.\n\n");
+        sb.append("However, do not wait for a reply --continue working after sending a message.\n\n");
 
         sb.append("You can read and respond to GitHub PR review comments using the GitHub MCP tools ");
         sb.append("(github_pr_find, github_pr_review_comments, github_pr_conversation, github_pr_reply). ");

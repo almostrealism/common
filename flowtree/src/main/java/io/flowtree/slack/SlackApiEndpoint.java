@@ -52,7 +52,7 @@ import java.util.regex.Pattern;
  *   <tr><td>POST</td><td>/api/workstreams/{id}/jobs/{jobId}</td>
  *       <td>{@code {"jobId":"...","status":"..."}}</td>
  *       <td>Receive a job status event</td></tr>
- *   <tr><td>GET</td><td>/api/health</td><td>—</td>
+ *   <tr><td>GET</td><td>/api/health</td><td>--</td>
  *       <td>Health check</td></tr>
  * </table>
  *
@@ -147,7 +147,7 @@ public class SlackApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
 
     /**
      * Handles POST to {@code /api/workstreams/{id}} or
-     * {@code /api/workstreams/{id}/jobs/{jobId}} — receives a status event
+     * {@code /api/workstreams/{id}/jobs/{jobId}} -- receives a status event
      * from an agent and delegates to the {@link SlackNotifier}.
      */
     private Response handleStatusEvent(IHTTPSession session, String workstreamId) {

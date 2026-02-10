@@ -12,7 +12,7 @@ Slack (Socket Mode)          SlackBotController          FlowTree Network
     |                              |   extract prompt          |
     |                              |   create Factory          |
     |<-- "Starting job..." --------|                          |
-    |                              |-- ClaudeCodeClient ------>|
+    |                              |-- Server.sendTask() ---->|
     |                              |                          |-- Node runs job
     |                              |                          |
     |                    SlackApiEndpoint (port 7780)          |
@@ -79,14 +79,13 @@ When a `ClaudeCodeJob` has `workstreamUrl` set, it passes the URL to Claude Code
 
 ### SlackWorkstream
 
-Maps a Slack channel to a pool of FlowTree agents and a set of job defaults. Each workstream has:
+Maps a Slack channel to a set of job defaults. Each workstream has:
 
 - **channelId / channelName** -- the Slack channel
-- **agents** -- one or more FlowTree agent endpoints (host + port)
 - **defaultBranch** -- git branch for commits
 - **allowedTools, maxTurns, maxBudgetUsd** -- job configuration defaults
 
-Agent selection uses round-robin within the workstream.
+Agents connect inbound to the controller's FlowTree server. The controller distributes jobs round-robin to whichever agents are currently connected.
 
 ## Configuration
 
@@ -113,11 +112,6 @@ Tokens are resolved in order (first match wins):
 workstreams:
   - channelId: "C0123456789"
     channelName: "#project-agent"
-    agents:
-      - host: "localhost"
-        port: 7766
-      - host: "localhost"
-        port: 7767
     defaultBranch: "feature/work"
     pushToOrigin: true
     allowedTools: "Read,Edit,Write,Bash,Glob,Grep"
@@ -126,9 +120,6 @@ workstreams:
 
   - channelId: "C9876543210"
     channelName: "#ops-agent"
-    agents:
-      - host: "10.0.1.5"
-        port: 7766
     defaultBranch: "feature/ops"
     maxBudgetUsd: 5.0
 ```
@@ -141,8 +132,7 @@ workstreams:
 | `SLACK_APP_TOKEN` | App-level token for Socket Mode (`xapp-...`) |
 | `SLACK_CHANNEL_ID` | Default channel (when not using YAML config) |
 | `SLACK_CHANNEL_NAME` | Human-readable name for the default channel |
-| `FLOWTREE_AGENT_HOST` | Agent hostname (default: `localhost`) |
-| `FLOWTREE_AGENT_PORT` | Agent port (default: `7766`) |
+| `FLOWTREE_PORT` | FlowTree server listening port (default: `7766`) |
 | `GIT_DEFAULT_BRANCH` | Default branch for commits |
 
 ### CLI Arguments
@@ -153,9 +143,9 @@ workstreams:
 | `--config, -c <file>` | YAML workstream configuration file |
 | `--channel <id>` | Single channel to monitor |
 | `--channel-name <name>` | Human-readable channel name |
-| `--agent <host:port>` | FlowTree agent endpoint |
 | `--branch <name>` | Default git branch |
 | `--api-port <port>` | HTTP API endpoint port (default: 7780) |
+| `--flowtree-port <port>` | FlowTree server listening port (default: 7766) |
 
 ## Simulation Mode
 

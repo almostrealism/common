@@ -175,7 +175,7 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
                 int fileCount = event.getStagedFiles().size();
 
                 if (fileCount > 0 && event.isPushed()) {
-                    sb.append(":white_check_mark: *Work complete* — pushed ");
+                    sb.append(":white_check_mark: *Work complete* -pushed ");
                     sb.append(fileCount).append(" file(s)\n");
 
                     if (event.getTargetBranch() != null) {
@@ -193,7 +193,7 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
 
                     sb.append("   :arrow_right: Please review and provide next instructions");
                 } else {
-                    sb.append(":white_check_mark: *Work complete* — no changes to push\n");
+                    sb.append(":white_check_mark: *Work complete* -no changes to push\n");
                     sb.append("   ").append(truncate(event.getDescription(), 100));
                 }
                 break;

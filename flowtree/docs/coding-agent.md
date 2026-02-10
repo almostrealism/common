@@ -18,14 +18,15 @@ Agent (Docker)                  SlackBotController              Claude Code
     |   (FLOWTREE_ROOT_HOST/PORT)    |                              |
     |                                |                              |
     |                      Slack msg |                              |
-    |                                |-- sendTask(factory, idx) --->|
+    |<-- Server.sendTask(factory) ---|                              |
     |                                |                              |
-    |<--- Node picks up job ---------|                              |
-    |                                                               |
+    |   Node picks up job            |                              |
     |-- executes prompt ------------------------------------------->|
     |<-- output + exit code ----------------------------------------|
+    |                                                               |
     |-- GitManagedJob: stage, commit, push                          |
-    |-- fire JobCompletionEvent                                     |
+    |-- POST status event ---------> SlackApiEndpoint               |
+    |                                |-- SlackNotifier (Slack msg)  |
 ```
 
 ## Key Classes
@@ -39,7 +40,7 @@ Executes a single Claude Code prompt. Extends `GitManagedJob`.
 | Property | Default | Description |
 |----------|---------|-------------|
 | `prompt` | -- | The prompt to send to Claude Code |
-| `allowedTools` | `Read,Edit,Write,Bash,Glob,Grep` | Comma-separated tool allowlist |
+| `allowedTools` | `Read,Edit,Write,Bash,Glob,Grep` | Comma-separated tool allowlist (MCP tools are appended automatically) |
 | `maxTurns` | `50` | Maximum number of agent turns |
 | `maxBudgetUsd` | `10.0` | Spending cap per job |
 | `targetBranch` | `null` | Git branch for commits (disables git if null) |
@@ -109,17 +110,26 @@ Base class providing automatic git operations after job completion:
 - Binary files detected by content inspection
 - Files larger than 1MB (configurable via `setMaxFileSizeBytes`)
 
+## MCP Tools
+
+Claude Code sessions started by `ClaudeCodeJob` automatically have access to these MCP tools:
+
+- **ar-slack** — Send messages back to the Slack channel via the controller's `SlackApiEndpoint`
+- **ar-github** — Read and respond to GitHub PR review comments
+
+These tools are appended to `--allowedTools` regardless of the configured allowlist. The `ar-slack` tool uses the `AR_WORKSTREAM_URL` environment variable (derived from `workstreamUrl`) to route messages to the correct channel.
+
 ## Job Lifecycle Events
 
 `JobCompletionEvent` carries lifecycle information through the system:
 
-| Event | When |
-|-------|------|
-| `JobCompletionEvent.started(...)` | Job begins execution |
-| `JobCompletionEvent.success(...)` | Job completed successfully |
-| `JobCompletionEvent.failed(...)` | Job failed with an error |
+| Event | Fired by | When |
+|-------|----------|------|
+| `JobCompletionEvent.started(...)` | Controller (SlackListener) | Job is created and dispatched |
+| `JobCompletionEvent.success(...)` | Agent (GitManagedJob) | Job completed successfully |
+| `JobCompletionEvent.failed(...)` | Agent (GitManagedJob) | Job failed with an error |
 
-Events include the prompt, session ID, exit code, staged files, and commit hash. Listeners implement `JobCompletionListener` to receive these events.
+Start events are fired by the controller immediately when a job is submitted, providing fast feedback to the Slack channel. Completion events are fired by the agent after Claude Code finishes and git operations complete. The agent POSTs completion events to the controller via the `workstreamUrl`, where `SlackNotifier` formats and posts the result to Slack.
 
 ## Serialization
 
