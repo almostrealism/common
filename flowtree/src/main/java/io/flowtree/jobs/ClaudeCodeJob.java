@@ -72,13 +72,15 @@ public class ClaudeCodeJob extends GitManagedJob {
     public static final String PROMPT_SEPARATOR = ";;PROMPT;;";
     public static final String DEFAULT_TOOLS = "Read,Edit,Write,Bash,Glob,Grep";
 
-    /** MCP tools always appended to the allowed tools list. */
-    private static final String MCP_TOOLS =
-        "mcp__ar-slack__slack_send_message," +
+    /** GitHub MCP tools, always included when ar-github is enabled. */
+    private static final String GITHUB_MCP_TOOLS =
         "mcp__ar-github__github_pr_find," +
         "mcp__ar-github__github_pr_review_comments," +
         "mcp__ar-github__github_pr_conversation," +
         "mcp__ar-github__github_pr_reply";
+
+    /** Slack MCP tool, included only when a workstream URL is configured. */
+    private static final String SLACK_MCP_TOOL = "mcp__ar-slack__slack_send_message";
 
     private String prompt;
     private String allowedTools;
@@ -188,6 +190,12 @@ public class ClaudeCodeJob extends GitManagedJob {
     /**
      * Builds the full instruction prompt that wraps the user's request
      * with operational context for autonomous execution.
+     *
+     * <p>Sections are conditionally included based on the job's configuration:
+     * Slack instructions appear only when a workstream URL is configured,
+     * GitHub instructions only when the MCP config includes ar-github,
+     * commit.txt instructions only when git management is active, and
+     * budget/turn/task/workstream context is included when available.</p>
      */
     private String buildInstructionPrompt() {
         StringBuilder sb = new StringBuilder();
@@ -195,24 +203,80 @@ public class ClaudeCodeJob extends GitManagedJob {
         sb.append("There is no TTY and no interactive session --do not attempt to wait ");
         sb.append("for user input or interactive chat responses.\n\n");
 
-        sb.append("You can communicate about the project using the Slack MCP tool ");
-        sb.append("(slack_send_message). ");
-        sb.append("Use it freely to ask questions, report progress, or share results. ");
-        sb.append("However, do not wait for a reply --continue working after sending a message.\n\n");
+        // Slack instructions -only when a workstream URL is configured
+        if (getWorkstreamUrl() != null && !getWorkstreamUrl().isEmpty()) {
+            sb.append("You can communicate about the project using the Slack MCP tool ");
+            sb.append("(slack_send_message). ");
+            sb.append("Use it freely to ask questions, report progress, or share results. ");
+            sb.append("However, do not wait for a reply --continue working after sending a message.\n\n");
+        }
 
-        sb.append("You can read and respond to GitHub PR review comments using the GitHub MCP tools ");
-        sb.append("(github_pr_find, github_pr_review_comments, github_pr_conversation, github_pr_reply). ");
-        sb.append("Use these to check for code review feedback and address it.\n\n");
+        // GitHub instructions -only when ar-github is in the MCP config
+        if (isGitHubMcpEnabled()) {
+            sb.append("You can read and respond to GitHub PR review comments using the GitHub MCP tools ");
+            sb.append("(github_pr_find, github_pr_review_comments, github_pr_conversation, github_pr_reply). ");
+            sb.append("Use these to check for code review feedback and address it.\n\n");
+        }
 
-        sb.append("Do NOT make git commits. Your work will be committed by the harness ");
-        sb.append("after you finish. If you want to control the commit message, write it ");
-        sb.append("to a file called `commit.txt` in the working directory root.\n\n");
+        // Git commit instructions -conditional on git management being active
+        if (getTargetBranch() != null && !getTargetBranch().isEmpty()) {
+            sb.append("Do NOT make git commits. Your work will be committed by the harness ");
+            sb.append("after you finish. If you want to control the commit message, write it ");
+            sb.append("to a file called `commit.txt` in the working directory root.\n\n");
+        } else {
+            sb.append("Do NOT make git commits. Your work will be committed by the harness ");
+            sb.append("after you finish.\n\n");
+        }
+
+        // Working directory and branch context
+        String workDir = getWorkingDirectory();
+        sb.append("Your working directory is: ");
+        sb.append(workDir != null ? workDir : System.getProperty("user.dir"));
+        sb.append("\n");
+        if (getTargetBranch() != null && !getTargetBranch().isEmpty()) {
+            sb.append("Target branch: ").append(getTargetBranch()).append("\n");
+        }
+        sb.append("\n");
+
+        // Budget and turn limits
+        if (maxBudgetUsd > 0 || maxTurns > 0) {
+            sb.append("You have");
+            if (maxBudgetUsd > 0) {
+                sb.append(String.format(" a budget of $%.2f", maxBudgetUsd));
+            }
+            if (maxTurns > 0) {
+                sb.append(maxBudgetUsd > 0 ? " and" : "");
+                sb.append(" a maximum of ").append(maxTurns).append(" turns");
+            }
+            sb.append(". Pace yourself accordingly.\n\n");
+        }
+
+        // Task ID and workstream context
+        if (getTaskId() != null && !getTaskId().isEmpty()) {
+            sb.append("Task ID: ").append(getTaskId()).append("\n");
+        }
+        if (getWorkstreamUrl() != null && !getWorkstreamUrl().isEmpty()) {
+            sb.append("Workstream URL: ").append(getWorkstreamUrl()).append("\n");
+        }
+        if (getTaskId() != null || getWorkstreamUrl() != null) {
+            sb.append("\n");
+        }
 
         sb.append("--- BEGIN USER REQUEST ---\n");
         sb.append(prompt);
         sb.append("\n--- END USER REQUEST ---");
 
         return sb.toString();
+    }
+
+    /**
+     * Returns whether the GitHub MCP server is enabled in the MCP configuration.
+     * Currently this is always true since ar-github is included in
+     * {@link #buildMcpConfig()}, but this method exists as a guard so the
+     * prompt can be made conditional if that changes.
+     */
+    private boolean isGitHubMcpEnabled() {
+        return true;
     }
 
     @Override
@@ -240,7 +304,7 @@ public class ClaudeCodeJob extends GitManagedJob {
         command.add("--output-format");
         command.add("json");
         command.add("--allowedTools");
-        command.add(allowedTools + "," + MCP_TOOLS);
+        command.add(buildAllowedTools());
         command.add("--max-turns");
         command.add(String.valueOf(maxTurns));
 
@@ -255,7 +319,7 @@ public class ClaudeCodeJob extends GitManagedJob {
             log("Target branch: " + getTargetBranch());
         }
 
-        // Always include MCP config (ar-slack and ar-github)
+        // MCP config (ar-github always; ar-slack when workstream URL is set)
         command.add("--mcp-config");
         command.add(buildMcpConfig());
 
@@ -378,22 +442,47 @@ public class ClaudeCodeJob extends GitManagedJob {
     }
 
     /**
+     * Builds the complete allowed-tools string by appending MCP tool
+     * names to the base {@link #allowedTools} list. Slack tools are
+     * only included when a workstream URL is configured; GitHub tools
+     * are always included.
+     */
+    private String buildAllowedTools() {
+        StringBuilder sb = new StringBuilder(allowedTools);
+        sb.append(",").append(GITHUB_MCP_TOOLS);
+        if (getWorkstreamUrl() != null && !getWorkstreamUrl().isEmpty()) {
+            sb.append(",").append(SLACK_MCP_TOOL);
+        }
+        return sb.toString();
+    }
+
+    /**
      * Builds a JSON MCP configuration string for agent MCP servers.
-     * Includes ar-slack for Slack messaging and ar-github for reading
-     * and responding to GitHub PR review comments.
+     * Includes ar-github for reading and responding to GitHub PR review
+     * comments, and conditionally includes ar-slack for Slack messaging
+     * when a workstream URL is configured.
      * This is passed to Claude Code via the {@code --mcp-config} flag.
      */
     private String buildMcpConfig() {
-        return "{\"mcpServers\":{" +
-               "\"ar-slack\":{" +
-               "\"command\":\"python3\"," +
-               "\"args\":[\"tools/mcp/slack/server.py\"]" +
-               "}," +
-               "\"ar-github\":{" +
-               "\"command\":\"python3\"," +
-               "\"args\":[\"tools/mcp/github/server.py\"]" +
-               "}" +
-               "}}";
+        StringBuilder sb = new StringBuilder();
+        sb.append("{\"mcpServers\":{");
+
+        // ar-github is always included
+        sb.append("\"ar-github\":{");
+        sb.append("\"command\":\"python3\",");
+        sb.append("\"args\":[\"tools/mcp/github/server.py\"]");
+        sb.append("}");
+
+        // ar-slack is included only when a workstream URL is configured
+        if (getWorkstreamUrl() != null && !getWorkstreamUrl().isEmpty()) {
+            sb.append(",\"ar-slack\":{");
+            sb.append("\"command\":\"python3\",");
+            sb.append("\"args\":[\"tools/mcp/slack/server.py\"]");
+            sb.append("}");
+        }
+
+        sb.append("}}");
+        return sb.toString();
     }
 
     private void extractSessionId(String jsonOutput) {
