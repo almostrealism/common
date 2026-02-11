@@ -74,11 +74,36 @@ public class SlackWorkstream {
     private int maxTurns;
     private double maxBudgetUsd;
 
+    // Git identity
+    private String gitUserName;
+    private String gitUserEmail;
+
     /**
      * Creates a new workstream with default settings.
      */
     public SlackWorkstream() {
         this.workstreamId = UUID.randomUUID().toString();
+        this.agents = new ArrayList<>();
+        this.pushToOrigin = true;
+        this.allowedTools = "Read,Edit,Write,Bash,Glob,Grep";
+        this.maxTurns = 50;
+        this.maxBudgetUsd = 10.0;
+    }
+
+    /**
+     * Creates a new workstream with a persistent workstream ID.
+     *
+     * <p>Use this constructor for workstreams loaded from YAML configuration,
+     * where the workstream ID has been previously generated and persisted.</p>
+     *
+     * @param workstreamId the persistent workstream identifier
+     * @param channelId    the Slack channel ID (e.g., "C0123456789")
+     * @param channelName  the human-readable channel name (e.g., "#project-agent")
+     */
+    public SlackWorkstream(String workstreamId, String channelId, String channelName) {
+        this.workstreamId = workstreamId;
+        this.channelId = channelId;
+        this.channelName = channelName;
         this.agents = new ArrayList<>();
         this.pushToOrigin = true;
         this.allowedTools = "Read,Edit,Write,Bash,Glob,Grep";
@@ -190,6 +215,38 @@ public class SlackWorkstream {
 
     public void setMaxBudgetUsd(double maxBudgetUsd) {
         this.maxBudgetUsd = maxBudgetUsd;
+    }
+
+    /**
+     * Returns the git user name for commits made by this workstream.
+     */
+    public String getGitUserName() {
+        return gitUserName;
+    }
+
+    /**
+     * Sets the git user name for commits made by this workstream.
+     *
+     * @param gitUserName the name to use in git commits (e.g., "CI Bot")
+     */
+    public void setGitUserName(String gitUserName) {
+        this.gitUserName = gitUserName;
+    }
+
+    /**
+     * Returns the git user email for commits made by this workstream.
+     */
+    public String getGitUserEmail() {
+        return gitUserEmail;
+    }
+
+    /**
+     * Sets the git user email for commits made by this workstream.
+     *
+     * @param gitUserEmail the email to use in git commits (e.g., "ci-bot@example.com")
+     */
+    public void setGitUserEmail(String gitUserEmail) {
+        this.gitUserEmail = gitUserEmail;
     }
 
     /**

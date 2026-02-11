@@ -17,6 +17,7 @@
 package io.flowtree.slack;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 
@@ -25,25 +26,26 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 /**
  * Configuration for Slack workstreams, loadable from YAML or JSON files.
+ *
+ * <p>Agents connect inbound to the controller's FlowTree server, so the
+ * {@code agents} field is optional and typically omitted.</p>
  *
  * <p>Example YAML configuration:</p>
  * <pre>
  * workstreams:
  *   - channelId: "C0123456789"
  *     channelName: "#project-agent"
- *     agents:
- *       - host: "localhost"
- *         port: 7766
- *       - host: "localhost"
- *         port: 7767
  *     defaultBranch: "feature/work"
  *     pushToOrigin: true
  *     allowedTools: "Read,Edit,Write,Bash,Glob,Grep"
  *     maxTurns: 50
  *     maxBudgetUsd: 10.0
+ *     gitUserName: "CI Bot"
+ *     gitUserEmail: "ci-bot@example.com"
  * </pre>
  *
  * @author Michael Murray
@@ -59,6 +61,7 @@ public class WorkstreamConfig {
      */
     @JsonIgnoreProperties(ignoreUnknown = true)
     public static class WorkstreamEntry {
+        private String workstreamId;
         private String channelId;
         private String channelName;
         private List<AgentEntry> agents = new ArrayList<>();
@@ -68,6 +71,11 @@ public class WorkstreamConfig {
         private String allowedTools = "Read,Edit,Write,Bash,Glob,Grep";
         private int maxTurns = 50;
         private double maxBudgetUsd = 10.0;
+        private String gitUserName;
+        private String gitUserEmail;
+
+        public String getWorkstreamId() { return workstreamId; }
+        public void setWorkstreamId(String workstreamId) { this.workstreamId = workstreamId; }
 
         public String getChannelId() { return channelId; }
         public void setChannelId(String channelId) { this.channelId = channelId; }
@@ -96,11 +104,25 @@ public class WorkstreamConfig {
         public double getMaxBudgetUsd() { return maxBudgetUsd; }
         public void setMaxBudgetUsd(double maxBudgetUsd) { this.maxBudgetUsd = maxBudgetUsd; }
 
+        public String getGitUserName() { return gitUserName; }
+        public void setGitUserName(String gitUserName) { this.gitUserName = gitUserName; }
+
+        public String getGitUserEmail() { return gitUserEmail; }
+        public void setGitUserEmail(String gitUserEmail) { this.gitUserEmail = gitUserEmail; }
+
         /**
-         * Converts this entry to a SlackWorkstream instance.
+         * Converts this entry to a {@link SlackWorkstream} instance.
+         *
+         * <p>If a {@code workstreamId} is present, it is used as the persistent
+         * identifier. Otherwise, a random UUID is generated.</p>
          */
         public SlackWorkstream toWorkstream() {
-            SlackWorkstream ws = new SlackWorkstream(channelId, channelName);
+            SlackWorkstream ws;
+            if (workstreamId != null && !workstreamId.isEmpty()) {
+                ws = new SlackWorkstream(workstreamId, channelId, channelName);
+            } else {
+                ws = new SlackWorkstream(channelId, channelName);
+            }
             for (AgentEntry agent : agents) {
                 ws.addAgent(agent.getHost(), agent.getPort());
             }
@@ -110,6 +132,8 @@ public class WorkstreamConfig {
             ws.setAllowedTools(allowedTools);
             ws.setMaxTurns(maxTurns);
             ws.setMaxBudgetUsd(maxBudgetUsd);
+            ws.setGitUserName(gitUserName);
+            ws.setGitUserEmail(gitUserEmail);
             return ws;
         }
     }
@@ -210,5 +234,36 @@ public class WorkstreamConfig {
             result.add(entry.toWorkstream());
         }
         return result;
+    }
+
+    /**
+     * Populates missing workstream IDs with randomly generated UUIDs.
+     *
+     * @return true if any IDs were generated, indicating the config should be saved
+     */
+    public boolean ensureWorkstreamIds() {
+        boolean changed = false;
+        for (WorkstreamEntry entry : workstreams) {
+            if (entry.getWorkstreamId() == null || entry.getWorkstreamId().isEmpty()) {
+                entry.setWorkstreamId(UUID.randomUUID().toString());
+                changed = true;
+            }
+        }
+        return changed;
+    }
+
+    /**
+     * Writes the configuration back to a YAML file.
+     *
+     * <p>Uses {@link JsonInclude.Include#NON_EMPTY} to omit null fields
+     * and empty collections, keeping the output readable.</p>
+     *
+     * @param file the target YAML file
+     * @throws IOException if the file cannot be written
+     */
+    public void saveToYaml(File file) throws IOException {
+        ObjectMapper mapper = new ObjectMapper(new YAMLFactory());
+        mapper.setSerializationInclusion(JsonInclude.Include.NON_EMPTY);
+        mapper.writeValue(file, this);
     }
 }

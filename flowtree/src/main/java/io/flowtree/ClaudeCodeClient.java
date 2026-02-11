@@ -17,6 +17,8 @@
 package io.flowtree;
 
 import io.flowtree.jobs.ClaudeCodeJob;
+import io.flowtree.msg.Message;
+import io.flowtree.msg.NodeProxy;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 
@@ -24,12 +26,15 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Client for submitting Claude Code jobs to remote Flowtree agents.
  *
- * <p>This client connects to one or more remote Flowtree {@link Server} instances
- * and submits jobs to be executed by Claude Code in those environments.</p>
+ * <p>This client manages connections to one or more remote Flowtree {@link Server}
+ * instances and submits jobs to be executed by Claude Code in those environments.
+ * Connections are established lazily on the first submission to each agent and
+ * automatically reconnected if the agent has restarted.</p>
  *
  * <h2>Usage</h2>
  * <pre>{@code
@@ -78,206 +83,299 @@ import java.util.Properties;
  */
 public class ClaudeCodeClient implements ConsoleFeatures {
 
-    private final List<AgentConnection> agents = new ArrayList<>();
-    private Server server;
-    private int nextAgent = 0;
+	private final List<AgentConnection> agents = new ArrayList<>();
+	private final ConcurrentHashMap<Integer, NodeProxy> proxyMap = new ConcurrentHashMap<>();
+	private Server server;
+	private int nextAgent = 0;
 
-    /**
-     * Creates a new client with no initial connections.
-     */
-    public ClaudeCodeClient() {
-    }
+	/**
+	 * Creates a new client with no initial connections.
+	 */
+	public ClaudeCodeClient() {
+	}
 
-    /**
-     * Adds a remote agent to the connection pool.
-     *
-     * @param host the hostname or IP of the agent
-     * @param port the port the agent is listening on
-     */
-    public void addAgent(String host, int port) {
-        agents.add(new AgentConnection(host, port));
-    }
+	/**
+	 * Adds a remote agent to the connection pool.
+	 *
+	 * @param host the hostname or IP of the agent
+	 * @param port the port the agent is listening on
+	 */
+	public void addAgent(String host, int port) {
+		agents.add(new AgentConnection(host, port));
+	}
 
-    /**
-     * Starts the client and establishes connections to all configured agents.
-     *
-     * @throws IOException if connection fails
-     */
-    public void start() throws IOException {
-        if (agents.isEmpty()) {
-            throw new IllegalStateException("No agents configured. Call addAgent() first.");
-        }
+	/**
+	 * Starts the client without establishing any connections.
+	 * Connections are created lazily when the first job is submitted
+	 * to each agent.
+	 *
+	 * @throws IOException if the local server cannot be initialized
+	 */
+	public void start() throws IOException {
+		if (agents.isEmpty()) {
+			throw new IllegalStateException("No agents configured. Call addAgent() first.");
+		}
 
-        Properties p = new Properties();
-        p.setProperty("server.port", "-1"); // Don't listen
-        p.setProperty("nodes.initial", "0"); // No local nodes
-        p.setProperty("servers.total", String.valueOf(agents.size()));
+		Properties p = new Properties();
+		p.setProperty("server.port", "-1"); // Don't listen
+		p.setProperty("nodes.initial", "0"); // No local nodes
+		p.setProperty("servers.total", "0"); // No eager connections
 
-        for (int i = 0; i < agents.size(); i++) {
-            AgentConnection agent = agents.get(i);
-            p.setProperty("servers." + i + ".host", agent.host);
-            p.setProperty("servers." + i + ".port", String.valueOf(agent.port));
-        }
+		server = new Server(p);
 
-        server = new Server(p);
+		log("Claude Code Client started (lazy connections to " + agents.size() + " agent(s))");
+	}
 
-        log("Claude Code Client started");
-        log("Connected to " + agents.size() + " agent(s)");
-    }
+	/**
+	 * Ensures that a live connection exists for the given agent index.
+	 * If no connection exists or the existing connection is dead, a new
+	 * connection is established.
+	 *
+	 * @param agentIndex the index of the agent to connect to
+	 * @return the live {@link NodeProxy}, or null if connection failed
+	 */
+	private synchronized NodeProxy ensureConnected(int agentIndex) {
+		NodeProxy existing = proxyMap.get(agentIndex);
+		if (existing != null && existing.isConnected()) {
+			return existing;
+		}
 
-    /**
-     * Submits one or more prompts to be executed by available agents.
-     * Prompts are packaged into a single JobFactory and sent to the next agent.
-     *
-     * @param prompts the prompts to execute
-     */
-    public void submit(String... prompts) {
-        ClaudeCodeJob.Factory factory = new ClaudeCodeJob.Factory(prompts);
-        submit(factory);
-    }
+		// Remove stale proxy if present
+		if (existing != null) {
+			removeProxy(agentIndex);
+		}
 
-    /**
-     * Submits a pre-configured job factory to the next available agent.
-     *
-     * @param factory the job factory to submit
-     */
-    public void submit(ClaudeCodeJob.Factory factory) {
-        if (server == null) {
-            throw new IllegalStateException("Client not started. Call start() first.");
-        }
+		AgentConnection agent = agents.get(agentIndex);
+		log("Connecting to agent " + agentIndex + " at " + agent.host + ":" + agent.port);
 
-        int agentIndex = nextAgent % agents.size();
-        nextAgent++;
+		try {
+			server.open(agent.host, agent.port);
 
-        AgentConnection agent = agents.get(agentIndex);
-        log("Submitting " + factory.getPrompts().size() +
-                          " prompt(s) to " + agent.host + ":" + agent.port);
+			NodeProxy[] servers = server.getNodeGroup().getServers();
+			NodeProxy proxy = servers[servers.length - 1];
+			proxyMap.put(agentIndex, proxy);
 
-        server.sendTask(factory, agentIndex);
-    }
+			log("Connected to agent " + agentIndex + " at " + agent.host + ":" + agent.port);
+			return proxy;
+		} catch (IOException e) {
+			warn("Failed to connect to agent " + agentIndex +
+					" at " + agent.host + ":" + agent.port + ": " + e.getMessage());
+			return null;
+		}
+	}
 
-    /**
-     * Submits a job factory to a specific agent by index.
-     *
-     * @param factory    the job factory to submit
-     * @param agentIndex the index of the agent (0-based)
-     */
-    public void submitTo(ClaudeCodeJob.Factory factory, int agentIndex) {
-        if (server == null) {
-            throw new IllegalStateException("Client not started. Call start() first.");
-        }
+	/**
+	 * Removes a dead proxy from both the proxy map and the underlying
+	 * {@link io.flowtree.node.NodeGroup}.
+	 *
+	 * @param agentIndex the index of the agent whose proxy should be removed
+	 */
+	private synchronized void removeProxy(int agentIndex) {
+		NodeProxy proxy = proxyMap.remove(agentIndex);
+		if (proxy != null) {
+			server.getNodeGroup().removeServer(proxy);
+		}
+	}
 
-        if (agentIndex < 0 || agentIndex >= agents.size()) {
-            throw new IllegalArgumentException("Invalid agent index: " + agentIndex);
-        }
+	/**
+	 * Attempts to send a job factory to the specified agent. If the first
+	 * attempt fails due to a dead connection, the proxy is replaced and
+	 * one retry is attempted.
+	 *
+	 * @param factory    the job factory to send
+	 * @param agentIndex the index of the target agent
+	 * @return true if the job was sent successfully, false otherwise
+	 */
+	private boolean trySendToAgent(ClaudeCodeJob.Factory factory, int agentIndex) {
+		for (int attempt = 0; attempt < 2; attempt++) {
+			NodeProxy proxy = ensureConnected(agentIndex);
+			if (proxy == null) {
+				return false;
+			}
 
-        AgentConnection agent = agents.get(agentIndex);
-        log("Submitting to " + agent.host + ":" + agent.port);
+			try {
+				Message m = new Message(Message.Task, -1, proxy);
+				m.setString(factory.encode());
+				m.send(-1);
+				return true;
+			} catch (IOException e) {
+				warn("Send attempt " + (attempt + 1) + " failed for agent " +
+						agentIndex + ": " + e.getMessage());
+				removeProxy(agentIndex);
+			}
+		}
 
-        server.sendTask(factory, agentIndex);
-    }
+		return false;
+	}
 
-    /**
-     * Returns the number of connected agents.
-     */
-    public int getAgentCount() {
-        return agents.size();
-    }
+	/**
+	 * Submits one or more prompts to be executed by available agents.
+	 * Prompts are packaged into a single JobFactory and sent to the next agent.
+	 *
+	 * @param prompts the prompts to execute
+	 * @return true if the job was submitted successfully, false if the agent
+	 *         could not be reached
+	 */
+	public boolean submit(String... prompts) {
+		ClaudeCodeJob.Factory factory = new ClaudeCodeJob.Factory(prompts);
+		return submit(factory);
+	}
 
-    private static class AgentConnection {
-        final String host;
-        final int port;
+	/**
+	 * Submits a pre-configured job factory to the next available agent.
+	 * The connection is established lazily on first use and automatically
+	 * reconnected if the agent has restarted.
+	 *
+	 * @param factory the job factory to submit
+	 * @return true if the job was submitted successfully, false if the agent
+	 *         could not be reached
+	 */
+	public boolean submit(ClaudeCodeJob.Factory factory) {
+		if (server == null) {
+			throw new IllegalStateException("Client not started. Call start() first.");
+		}
 
-        AgentConnection(String host, int port) {
-            this.host = host;
-            this.port = port;
-        }
-    }
+		int agentIndex = nextAgent % agents.size();
+		nextAgent++;
 
-    // Command-line interface
-    public static void main(String[] args) throws IOException {
-        String host = "localhost";
-        String ports = "7766";
-        String prompt = null;
-        String tools = ClaudeCodeJob.DEFAULT_TOOLS;
-        int maxTurns = 50;
-        double maxBudget = 10.0;
+		AgentConnection agent = agents.get(agentIndex);
+		log("Submitting " + factory.getPrompts().size() +
+				" prompt(s) to " + agent.host + ":" + agent.port);
 
-        // Parse arguments
-        for (int i = 0; i < args.length; i++) {
-            switch (args[i]) {
-                case "--host":
-                case "-h":
-                    host = args[++i];
-                    break;
-                case "--port":
-                case "-p":
-                    ports = args[++i];
-                    break;
-                case "--prompt":
-                    prompt = args[++i];
-                    break;
-                case "--tools":
-                    tools = args[++i];
-                    break;
-                case "--max-turns":
-                    maxTurns = Integer.parseInt(args[++i]);
-                    break;
-                case "--max-budget":
-                    maxBudget = Double.parseDouble(args[++i]);
-                    break;
-                case "--help":
-                    printUsage();
-                    return;
-            }
-        }
+		return trySendToAgent(factory, agentIndex);
+	}
 
-        if (prompt == null) {
-            Console.root().warn("Error: --prompt is required");
-            printUsage();
-            System.exit(1);
-        }
+	/**
+	 * Submits a job factory to a specific agent by index.
+	 * The connection is established lazily on first use and automatically
+	 * reconnected if the agent has restarted.
+	 *
+	 * @param factory    the job factory to submit
+	 * @param agentIndex the index of the agent (0-based)
+	 * @return true if the job was submitted successfully, false if the agent
+	 *         could not be reached
+	 */
+	public boolean submitTo(ClaudeCodeJob.Factory factory, int agentIndex) {
+		if (server == null) {
+			throw new IllegalStateException("Client not started. Call start() first.");
+		}
 
-        // Create client and add agents
-        ClaudeCodeClient client = new ClaudeCodeClient();
-        for (String portStr : ports.split(",")) {
-            client.addAgent(host, Integer.parseInt(portStr.trim()));
-        }
-        client.start();
+		if (agentIndex < 0 || agentIndex >= agents.size()) {
+			throw new IllegalArgumentException("Invalid agent index: " + agentIndex);
+		}
 
-        // Create and configure job factory
-        ClaudeCodeJob.Factory factory = new ClaudeCodeJob.Factory(prompt);
-        factory.setAllowedTools(tools);
-        factory.setMaxTurns(maxTurns);
-        factory.setMaxBudgetUsd(maxBudget);
+		AgentConnection agent = agents.get(agentIndex);
+		log("Submitting to " + agent.host + ":" + agent.port);
 
-        // Submit
-        client.submit(factory);
+		return trySendToAgent(factory, agentIndex);
+	}
 
-        Console.root().println("Job submitted. Use Flowtree monitoring to track progress.");
-    }
+	/**
+	 * Returns the number of configured agents.
+	 */
+	public int getAgentCount() {
+		return agents.size();
+	}
 
-    private static void printUsage() {
-        System.out.println("Usage: ClaudeCodeClient [options]");
-        System.out.println();
-        System.out.println("Options:");
-        System.out.println("  --host, -h <host>       Agent hostname (default: localhost)");
-        System.out.println("  --port, -p <port,...>   Agent port(s), comma-separated (default: 7766)");
-        System.out.println("  --prompt <text>         The prompt to execute (required)");
-        System.out.println("  --tools <list>          Allowed tools (default: Read,Edit,Write,Bash,Glob,Grep)");
-        System.out.println("  --max-turns <n>         Maximum agent turns (default: 50)");
-        System.out.println("  --max-budget <usd>      Maximum budget in USD (default: 10.0)");
-        System.out.println("  --help                  Show this help");
-        System.out.println();
-        System.out.println("Examples:");
-        System.out.println("  # Submit to single agent");
-        System.out.println("  java -cp flowtree.jar io.flowtree.ClaudeCodeClient \\");
-        System.out.println("      --host localhost --port 7766 \\");
-        System.out.println("      --prompt \"Fix the null pointer in UserService\"");
-        System.out.println();
-        System.out.println("  # Submit to multiple agents");
-        System.out.println("  java -cp flowtree.jar io.flowtree.ClaudeCodeClient \\");
-        System.out.println("      --host localhost --port 7766,7767,7768,7769 \\");
-        System.out.println("      --prompt \"Review error handling across the codebase\"");
-    }
+	private static class AgentConnection {
+		final String host;
+		final int port;
+
+		AgentConnection(String host, int port) {
+			this.host = host;
+			this.port = port;
+		}
+	}
+
+	// Command-line interface
+	public static void main(String[] args) throws IOException {
+		String host = "localhost";
+		String ports = "7766";
+		String prompt = null;
+		String tools = ClaudeCodeJob.DEFAULT_TOOLS;
+		int maxTurns = 50;
+		double maxBudget = 10.0;
+
+		// Parse arguments
+		for (int i = 0; i < args.length; i++) {
+			switch (args[i]) {
+				case "--host":
+				case "-h":
+					host = args[++i];
+					break;
+				case "--port":
+				case "-p":
+					ports = args[++i];
+					break;
+				case "--prompt":
+					prompt = args[++i];
+					break;
+				case "--tools":
+					tools = args[++i];
+					break;
+				case "--max-turns":
+					maxTurns = Integer.parseInt(args[++i]);
+					break;
+				case "--max-budget":
+					maxBudget = Double.parseDouble(args[++i]);
+					break;
+				case "--help":
+					printUsage();
+					return;
+			}
+		}
+
+		if (prompt == null) {
+			Console.root().warn("Error: --prompt is required");
+			printUsage();
+			System.exit(1);
+		}
+
+		// Create client and add agents
+		ClaudeCodeClient client = new ClaudeCodeClient();
+		for (String portStr : ports.split(",")) {
+			client.addAgent(host, Integer.parseInt(portStr.trim()));
+		}
+		client.start();
+
+		// Create and configure job factory
+		ClaudeCodeJob.Factory factory = new ClaudeCodeJob.Factory(prompt);
+		factory.setAllowedTools(tools);
+		factory.setMaxTurns(maxTurns);
+		factory.setMaxBudgetUsd(maxBudget);
+
+		// Submit
+		boolean submitted = client.submit(factory);
+
+		if (submitted) {
+			Console.root().println("Job submitted. Use Flowtree monitoring to track progress.");
+		} else {
+			Console.root().warn("Failed to submit job. Agent may be offline.");
+			System.exit(1);
+		}
+	}
+
+	private static void printUsage() {
+		System.out.println("Usage: ClaudeCodeClient [options]");
+		System.out.println();
+		System.out.println("Options:");
+		System.out.println("  --host, -h <host>       Agent hostname (default: localhost)");
+		System.out.println("  --port, -p <port,...>   Agent port(s), comma-separated (default: 7766)");
+		System.out.println("  --prompt <text>         The prompt to execute (required)");
+		System.out.println("  --tools <list>          Allowed tools (default: Read,Edit,Write,Bash,Glob,Grep)");
+		System.out.println("  --max-turns <n>         Maximum agent turns (default: 50)");
+		System.out.println("  --max-budget <usd>      Maximum budget in USD (default: 10.0)");
+		System.out.println("  --help                  Show this help");
+		System.out.println();
+		System.out.println("Examples:");
+		System.out.println("  # Submit to single agent");
+		System.out.println("  java -cp flowtree.jar io.flowtree.ClaudeCodeClient \\");
+		System.out.println("      --host localhost --port 7766 \\");
+		System.out.println("      --prompt \"Fix the null pointer in UserService\"");
+		System.out.println();
+		System.out.println("  # Submit to multiple agents");
+		System.out.println("  java -cp flowtree.jar io.flowtree.ClaudeCodeClient \\");
+		System.out.println("      --host localhost --port 7766,7767,7768,7769 \\");
+		System.out.println("      --prompt \"Review error handling across the codebase\"");
+	}
 }
