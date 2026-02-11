@@ -27,6 +27,7 @@ import com.slack.api.model.event.MessageEvent;
 import io.flowtree.Server;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
+import org.almostrealism.io.OutputFeatures;
 
 import java.util.Properties;
 
@@ -266,6 +267,11 @@ public class SlackBotController implements ConsoleFeatures {
             log("Already running");
             return;
         }
+
+        String logFile = System.getProperty("flowtree.log.file",
+            System.getenv().getOrDefault("FLOWTREE_LOG_FILE", "flowtree-controller.log"));
+        Console.root().addListener(OutputFeatures.fileOutput(logFile));
+        log("Logging to file: " + logFile);
 
         log("===========================================");
         log("  Slack Bot Controller - Flowtree Agent");
@@ -556,6 +562,9 @@ public class SlackBotController implements ConsoleFeatures {
                 case "--flowtree-port":
                     flowtreePort = Integer.parseInt(args[++i]);
                     break;
+                case "--log-file":
+                    System.setProperty("flowtree.log.file", args[++i]);
+                    break;
                 case "--help":
                 case "-h":
                     printUsage();
@@ -618,6 +627,7 @@ public class SlackBotController implements ConsoleFeatures {
         System.out.println("  --branch <name>        Default git branch for commits");
         System.out.println("  --api-port <port>      Port for the HTTP API endpoint (default: 7780)");
         System.out.println("  --flowtree-port <port> Port for the FlowTree server (default: 7766)");
+        System.out.println("  --log-file <path>      Log file path (default: flowtree-controller.log)");
         System.out.println("  --help, -h             Show this help");
         System.out.println();
         System.out.println("Agents connect TO this controller on the FlowTree port.");

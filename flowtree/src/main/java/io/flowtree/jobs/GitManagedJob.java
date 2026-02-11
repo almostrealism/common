@@ -634,6 +634,17 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
 
     // ==================== Job Interface ====================
 
+    /** {@inheritDoc} */
+    @Override
+    public String formatMessage(String msg) {
+        String prefix = getLogClass().getSimpleName();
+        String id = getTaskId();
+        if (id != null && !id.isEmpty()) {
+            return prefix + " [" + id + "]: " + msg;
+        }
+        return prefix + ": " + msg;
+    }
+
     @Override
     public String getTaskId() {
         return taskId;

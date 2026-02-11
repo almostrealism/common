@@ -42,6 +42,8 @@ import io.flowtree.node.NodeGroup;
 import io.flowtree.www.TomcatNode;
 import org.almostrealism.auth.Login;
 import org.almostrealism.color.RGB;
+import org.almostrealism.io.Console;
+import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.OutputHandler;
 import org.almostrealism.texture.GraphicsConverter;
 
@@ -83,7 +85,7 @@ import java.util.concurrent.CompletableFuture;
  * 
  * @author  Michael Murrays
  */
-public class Server implements JobFactory, Runnable {
+public class Server implements JobFactory, Runnable, ConsoleFeatures {
 	public interface ResourceProvider {
 		Resource loadResource(String uri);
 		Resource loadResource(String uri, String exclude);
@@ -107,7 +109,7 @@ public class Server implements JobFactory, Runnable {
 		public void end() { this.end = true; }
 		
 		public String getUri(String uri) {
-			System.out.println("ResourceServer: Received request for " + uri);
+			Server.this.log("ResourceServer: Received request for " + uri);
 			
 			if (!uri.startsWith("/")) uri = "/" + uri;
 			
@@ -119,18 +121,17 @@ public class Server implements JobFactory, Runnable {
 
 		@Override
 		public void run() {
-			System.out.println("ResourceServer: Awaiting connections.");
-			
+			Server.this.log("ResourceServer: Awaiting connections.");
+
 			while (!end) {
 				try {
 					IOStreams io = new IOStreams(this.serv.accept());
 					ResourceServerThread t = new ResourceServerThread(io);
 					t.start();
-					System.out.println("ResourceServer: Started " + t);
+					Server.this.log("ResourceServer: Started " + t);
 				} catch (IOException ioe) {
-					System.out.println("Server: IO error sending resource (" +
+					Server.this.warn("IO error sending resource (" +
 										ioe.getMessage() + ")");
-					ioe.printStackTrace();
 				}
 			}
 		}
@@ -149,7 +150,7 @@ public class Server implements JobFactory, Runnable {
 				String uri = io.in.readUTF();
 				
 				if (Server.resourceVerbose)
-					System.out.println("ResourceServer: Received request for " + uri);
+					Server.this.log("ResourceServer: Received request for " + uri);
 				
 				Object citem = Server.this.cache.get(uri);
 				
@@ -165,7 +166,7 @@ public class Server implements JobFactory, Runnable {
 							if (uri.startsWith(key)) {
 								String value = (String) ent.getValue();
 								String nuri = value + uri.substring(key.length());
-								System.out.println("ResourceServer: Found link " +
+								Server.this.log("ResourceServer: Found link " +
 													uri + " --> " + nuri);
 								citem = DistributedResource.createDistributedResource(uri);
 								((DistributedResource)citem).loadFromStream(new URL(nuri).openStream());
@@ -198,9 +199,8 @@ public class Server implements JobFactory, Runnable {
 				
 				io.close();
 			} catch (IOException ioe) {
-				System.out.println("Server: IO error sending resource (" +
+				Server.this.warn("IO error sending resource (" +
 									ioe.getMessage() + ")");
-				ioe.printStackTrace();
 			}
 		}
 	}
@@ -255,10 +255,10 @@ public class Server implements JobFactory, Runnable {
 			try {
 				p.load(new FileInputStream(args[0]));
 			} catch (FileNotFoundException fnf) {
-				System.out.println("Server: Properties file not found.");
+				Console.root().println("Server: Properties file not found.");
 				System.exit(1);
 			} catch (IOException ioe) {
-				System.out.println("Server: IO error loading properties file.");
+				Console.root().println("Server: IO error loading properties file.");
 				System.exit(2);
 			}
 		}
@@ -271,16 +271,16 @@ public class Server implements JobFactory, Runnable {
 			try {
 				j = (JobFactory) Class.forName(args[1]).newInstance();
 			} catch (InstantiationException ie) {
-				System.out.println("Server: " + ie);
+				Console.root().warn("Server: " + ie);
 				System.exit(3);
 			} catch (IllegalAccessException ia) {
-				System.out.println("Server: " + ia);
+				Console.root().warn("Server: " + ia);
 				System.exit(4);
 			} catch (ClassNotFoundException cnf) {
-				System.out.println("Server: " + cnf);
+				Console.root().warn("Server: " + cnf);
 				System.exit(5);
 			} catch (ClassCastException cc) {
-				System.out.println("Server: " + cc);
+				Console.root().warn("Server: " + cc);
 				System.exit(6);
 			}
 		}
@@ -292,10 +292,10 @@ public class Server implements JobFactory, Runnable {
 			// Keep the JVM alive (all server threads are daemon)
 			Thread.currentThread().join();
 		} catch (IOException ioe) {
-			System.out.println("Server: " + ioe);
+			Console.root().warn("Server: " + ioe);
 			System.exit(7);
 		} catch (InterruptedException ie) {
-			System.out.println("Server: Interrupted");
+			Console.root().println("Server: Interrupted");
 		}
 	}
 
@@ -362,7 +362,7 @@ public class Server implements JobFactory, Runnable {
 		this.logins = new ArrayList<>();
 
 		if (System.getenv("AWS_ACCESS_KEY_ID") != null) {
-			System.out.println("Server: Starting CognitoLogin...");
+			log("Starting CognitoLogin...");
 
 			try {
 				Encryptor e = new Encryptor(System.getenv("AWS_ACCESS_KEY_ID"),
@@ -378,7 +378,7 @@ public class Server implements JobFactory, Runnable {
 					@Override public void refresh() { }
 				}));
 			} catch (NoSuchAlgorithmException nsa) {
-				nsa.printStackTrace();
+				warn("CognitoLogin initialization failed: " + nsa.getMessage());
 			}
 		}
 		
@@ -411,9 +411,9 @@ public class Server implements JobFactory, Runnable {
 			String value = (String) ent.getValue();
 			key = key.substring(11);
 			this.cIndex.put(key, value);
-			System.out.println("Server: Added resource link " + key + " --> " + value);
+			log("Added resource link " + key + " --> " + value);
 		}
-		
+
 		if (!p.getProperty("server.resource.disableHttpRedirect", "no").equals("yes")) {
 			this.cIndex.put("/http/", "http://");
 		}
@@ -462,7 +462,7 @@ public class Server implements JobFactory, Runnable {
 		} else if (name.startsWith("resource://")) {
 			name = name.substring(11);
 			this.cIndex.put(name, value);
-			System.out.println("Server: Added resource link " + name + " --> " + value);
+			log("Added resource link " + name + " --> " + value);
 		} else {
 			return false;
 		}
@@ -652,7 +652,7 @@ public class Server implements JobFactory, Runnable {
 		try {
 			this.socket.close();
 		} catch (IOException ioe) {
-			System.out.println("Server: IO error closing socket (" + ioe.getMessage() + ")");
+			warn("IO error closing socket (" + ioe.getMessage() + ")");
 		}
 		
 		this.displayMessage("Stopped");
@@ -696,7 +696,7 @@ public class Server implements JobFactory, Runnable {
 						Server.this.getNodeGroup().writeLogFile(sleep / 60);
 					} catch (InterruptedException e) {
 					} catch (IOException ioe) {
-						System.out.println("Server: IO error writing status file (" +
+						Server.this.warn("IO error writing status file (" +
 								ioe.getMessage() + ").");
 					}
 				}
@@ -716,7 +716,7 @@ public class Server implements JobFactory, Runnable {
 		
 		if (t != null) {
 			if (Message.verbose)
-				System.out.println("Server: Writing status to distributed file system...");
+				log("Writing status to distributed file system...");
 			
 			int index = file.lastIndexOf("/");
 			if (index >= 0) file = file.substring(index + 1);
@@ -737,7 +737,7 @@ public class Server implements JobFactory, Runnable {
 	public boolean addTask(JobFactory task) {
 		if (this.rserver != null && task instanceof ResourceProvider) {
 			this.addResourceProvider((ResourceProvider) task);
-			System.out.println("Server: Added resource provider " + task);
+			log("Added resource provider " + task);
 		}
 		
 		return this.group.addTask(task);
@@ -952,7 +952,7 @@ public class Server implements JobFactory, Runnable {
 
 					Thread.sleep(sleep);
 
-					System.out.println("Server: Waited " + sleep / 1000.0 +
+					log("Waited " + sleep / 1000.0 +
 							" seconds for " + uri);
 				} catch (InterruptedException ie) {}
 			} else if (s == null) {
@@ -1016,7 +1016,7 @@ public class Server implements JobFactory, Runnable {
 		try {
 			return this.loadResource(res);
 		} catch (IOException e) {
-			System.out.println("Server: IO error loading local resource (" +
+			warn("IO error loading local resource (" +
 								e.getMessage() + ")");
 			return null;
 		}
@@ -1061,7 +1061,7 @@ public class Server implements JobFactory, Runnable {
 			
 			if (c != null) {
 				this.cache.remove(c);
-				System.out.println("Server: Removed cache of " + c);
+				log("Removed cache of " + c);
 			}
 			
 			this.cache.put(r.getURI(), r);
@@ -1070,12 +1070,11 @@ public class Server implements JobFactory, Runnable {
 		if (this.logCache != null) {
 			try {
 				String output = "cache/" + System.currentTimeMillis();
-				
-				System.out.print("Server: Writing " + output + ": ");
+				log("Writing " + output);
 				r.saveLocal(output);
-				System.out.println("Done");
+				log("Done writing " + output);
 			} catch (IOException ioe) {
-				ioe.printStackTrace();
+				warn("Error writing cache: " + ioe.getMessage());
 			}
 		}
 		
@@ -1131,7 +1130,7 @@ public class Server implements JobFactory, Runnable {
 		try {
 			res = (ImageResource) this.loadResource(res, noCache);
 		} catch (IOException ioe) {
-			System.out.println("Server: Error loading image (" + ioe.getMessage() + ")");
+			warn("Error loading image (" + ioe.getMessage() + ")");
 			res = null;
 		}
 		
@@ -1170,7 +1169,7 @@ public class Server implements JobFactory, Runnable {
 					if (io != null) return io;
 				}
 			} catch (IOException ioe) {
-				System.out.println("Server: Error making resource request (" +
+				warn("Error making resource request (" +
 									ioe.getMessage() + ")");
 			}
 		}
@@ -1182,7 +1181,7 @@ public class Server implements JobFactory, Runnable {
 		if (host == null || host.equals("") || host.equals("localhost"))
 			return null;
 		
-		System.out.println("Server: Opening resource stream to " +
+		log("Opening resource stream to " +
 							host + " on " + port + " for " + uri);
 		
 		Socket s = new Socket(host, port);
@@ -1192,7 +1191,7 @@ public class Server implements JobFactory, Runnable {
 		
 		io.out.writeUTF(uri);
 		
-		System.out.println("Wrote request for " + uri);
+		log("Wrote request for " + uri);
 		
 		if (io.in.readInt() > 0)
 			return io;
@@ -1238,42 +1237,42 @@ public class Server implements JobFactory, Runnable {
 		
 		if (dbs != null) {
 			if (Message.verbose)
-				System.out.println("Server: Executing " + q);
-			
+				log("Executing " + q);
+
 			Hashtable h = dbs.getDatabaseConnection().executeQuery(q);
-			
+
 			if (Message.verbose)
-				System.out.println("Server: Received " + h.size() +
+				log("Received " + h.size() +
 									" elements from query.");
-			
+
 			result.append(Query.toString(h));
-			
+
 			if (Message.verbose)
-				System.out.println("Server: Query result contains " +
+				log("Query result contains " +
 									result.length() + " characters.");
 		}
-		
+
 		if (q.getRelay() > 0) {
 			if (Message.verbose)
-				System.out.println("Server: Relaying Query...");
-			
+				log("Relaying Query...");
+
 			q.deincrementRelay();
-			
+
 			NodeProxy[] peers = this.group.getServers();
-			
+
 			i: for (int i = 0; i < peers.length; i++) {
 				if (peers[i] == p) continue i;
-				
+
 				if (Message.verbose)
-					System.out.println("Server: Writing " + q);
-				
+					log("Writing " + q);
+
 				peers[i].writeObject(q, -1);
 				Message m = (Message) peers[i].waitForMessage(Message.StringMessage, null, timeout);
-				
+
 				if (Message.verbose)
-					System.out.println("Server: Received " + m + " after waiting " +
+					log("Received " + m + " after waiting " +
 										timeout + " msecs.");
-				
+
 				if (m != null && m.getData() != null && m.getData().length() > 0) {
 					if (result.length() > 0) result.append(Query.sep);
 					result.append(m.getData());
@@ -1294,7 +1293,7 @@ public class Server implements JobFactory, Runnable {
 		if (ResourceDistributionTask.getCurrentTask() != null) return ResourceDistributionTask.getCurrentTask();
 		ResourceDistributionTask rtask = new ResourceDistributionTask(server, jobs, jsleep);
 		addTask(rtask);
-		System.out.println("Server: Added task " + rtask);
+		log("Added task " + rtask);
 		return rtask;
 	}
 	
@@ -1309,7 +1308,7 @@ public class Server implements JobFactory, Runnable {
 				this.displayMessage("Accepted connection from " + s.getInetAddress());
 				this.group.addServer(s, true);
 			} catch (IOException ioe) {
-				System.out.println("Server: " + ioe);
+				warn(ioe.getMessage());
 				continue w;
 			}
 		}
@@ -1390,9 +1389,9 @@ public class Server implements JobFactory, Runnable {
 				}
 			}
 		} catch (Exception e) {
-			System.out.println("Server: " + e);
+			Console.root().warn("Server: " + e);
 		}
-		
+
 		return j;
 	}
 	
@@ -1413,7 +1412,7 @@ public class Server implements JobFactory, Runnable {
 	 * @param message  Message to display.
 	 */
 	protected void displayMessage(String message) {
-		System.out.println("Server: " + message);
+		log(message);
 		if (this.label != null) this.label.setText("Status: " + message);
 	}
 	
