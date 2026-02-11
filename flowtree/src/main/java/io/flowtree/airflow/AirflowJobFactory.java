@@ -24,15 +24,18 @@ import org.eclipse.jetty.server.Request;
 import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.server.handler.AbstractHandler;
 
+import org.almostrealism.io.ConsoleFeatures;
+
 import javax.servlet.ServletException;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import java.io.IOException;
+import java.net.BindException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
-public class AirflowJobFactory extends AbstractHandler implements JobFactory {
+public class AirflowJobFactory extends AbstractHandler implements JobFactory, ConsoleFeatures {
 	private static AirflowJobFactory defaultFactory;
 
 	private double pri = 1.0;
@@ -60,7 +63,11 @@ public class AirflowJobFactory extends AbstractHandler implements JobFactory {
 	}
 
 	private static synchronized void initDefaultFactory(AirflowJobFactory f) {
-		if (defaultFactory != null) throw new RuntimeException("Cannot create more than one AirflowJobFactory per JVM");
+		if (defaultFactory != null) {
+			f.warn("AirflowJobFactory already initialized in this JVM -- skipping");
+			return;
+		}
+
 		defaultFactory = f;
 
 		Server server = new Server(7070);
@@ -68,9 +75,12 @@ public class AirflowJobFactory extends AbstractHandler implements JobFactory {
 
 		try {
 			server.start();
-//            server.join();
 		} catch (Exception e) {
-			throw new RuntimeException(e);
+			if (e instanceof BindException || e.getCause() instanceof BindException) {
+				f.warn("Airflow HTTP port 7070 already in use -- Airflow endpoint disabled");
+			} else {
+				f.warn("Failed to start Airflow HTTP endpoint: " + e.getMessage());
+			}
 		}
 	}
 
