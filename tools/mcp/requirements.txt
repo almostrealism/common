@@ -1,0 +1,17 @@
+# Consolidated requirements for all AR MCP servers
+# Install with: pip install -r tools/mcp/requirements.txt
+#
+# Covers: ar-consultant, ar-memory, ar-test-runner, ar-jmx, ar-profile-analyzer
+
+# Core MCP framework (all servers)
+mcp>=1.0.0
+
+# Embeddings and vector search (ar-consultant, ar-memory)
+fastembed>=0.2.0
+faiss-cpu>=1.7.0
+numpy
+
+# Optional: MLX inference backend (Apple Silicon only)
+# Uncomment on macOS with Apple Silicon for local LLM in ar-consultant:
+# mlx>=0.4.0
+# mlx-lm>=0.4.0
