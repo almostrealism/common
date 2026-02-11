@@ -95,6 +95,19 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
 
     @Override
     public void onJobStarted(String workstreamId, JobCompletionEvent event) {
+        onJobStarted(workstreamId, event, null);
+    }
+
+    /**
+     * Notifies that a job has started, optionally threading under an
+     * existing message.
+     *
+     * @param workstreamId the workstream identifier
+     * @param event        the start event
+     * @param replyTo      if non-null, post the "Starting work" message as a
+     *                      reply under this message timestamp (creating a thread)
+     */
+    public void onJobStarted(String workstreamId, JobCompletionEvent event, String replyTo) {
         SlackWorkstream workstream = workstreams.get(workstreamId);
         if (workstream == null) {
             warn("Unknown workstream: " + workstreamId);
@@ -102,10 +115,21 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
         }
 
         String message = formatStartedMessage(event, workstream);
-        String ts = postMessage(workstream.getChannelId(), message);
+        String ts;
 
-        if (ts != null && event.getJobId() != null) {
-            jobThreadTs.put(event.getJobId(), ts);
+        if (replyTo != null && !replyTo.isEmpty()) {
+            // Post as a thread reply under the user's message
+            ts = postMessageInThread(workstream.getChannelId(), message, replyTo);
+            // Store the user's message ts as the thread parent so completion
+            // messages also appear in the same thread
+            if (event.getJobId() != null) {
+                jobThreadTs.put(event.getJobId(), replyTo);
+            }
+        } else {
+            ts = postMessage(workstream.getChannelId(), message);
+            if (ts != null && event.getJobId() != null) {
+                jobThreadTs.put(event.getJobId(), ts);
+            }
         }
     }
 

@@ -277,9 +277,12 @@ public class SlackBotController implements ConsoleFeatures {
         log("  Slack Bot Controller - Flowtree Agent");
         log("===========================================");
 
-        // Start FlowTree server for inbound agent connections
+        // Start FlowTree server for inbound agent connections.
+        // Set nodes.initial=0 so the controller never processes jobs locally --
+        // all jobs are forwarded to connected agents.
         Properties flowtreeProps = new Properties();
         flowtreeProps.setProperty("server.port", String.valueOf(flowtreePort));
+        flowtreeProps.setProperty("nodes.initial", "0");
         flowtreeServer = new Server(flowtreeProps);
         flowtreeServer.start();
         listener.setServer(flowtreeServer);
@@ -339,6 +342,7 @@ public class SlackBotController implements ConsoleFeatures {
             String channelId = event.getChannel();
             String userId = event.getUser();
             String text = event.getText();
+            String messageTs = event.getTs();
             String threadTs = event.getThreadTs();
 
             log("App mention in " + channelId + ": " + text);
@@ -348,7 +352,7 @@ public class SlackBotController implements ConsoleFeatures {
                 return ctx.ack();
             }
 
-            listener.handleMessage(channelId, userId, text, threadTs);
+            listener.handleMessage(channelId, userId, text, messageTs, threadTs);
             return ctx.ack();
         });
 
@@ -364,6 +368,7 @@ public class SlackBotController implements ConsoleFeatures {
             String channelId = event.getChannel();
             String userId = event.getUser();
             String text = event.getText();
+            String messageTs = event.getTs();
             String threadTs = event.getThreadTs();
 
             // Skip bot's own messages
@@ -372,7 +377,7 @@ public class SlackBotController implements ConsoleFeatures {
             }
 
             log("DM from " + userId + ": " + text);
-            listener.handleMessage(channelId, userId, text, threadTs);
+            listener.handleMessage(channelId, userId, text, messageTs, threadTs);
             return ctx.ack();
         });
     }
@@ -455,7 +460,7 @@ public class SlackBotController implements ConsoleFeatures {
      * @param text      the message text
      */
     public void simulateMessage(String channelId, String text) {
-        listener.handleMessage(channelId, "U_SIMULATED", text, null);
+        listener.handleMessage(channelId, "U_SIMULATED", text, null, null);
     }
 
     /**

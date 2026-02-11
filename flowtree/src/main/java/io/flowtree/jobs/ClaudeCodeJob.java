@@ -30,7 +30,11 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * A {@link Job} implementation that executes a Claude Code prompt.
@@ -205,10 +209,20 @@ public class ClaudeCodeJob extends GitManagedJob {
 
         // Slack instructions -only when a workstream URL is configured
         if (getWorkstreamUrl() != null && !getWorkstreamUrl().isEmpty()) {
-            sb.append("You can communicate about the project using the Slack MCP tool ");
-            sb.append("(slack_send_message). ");
-            sb.append("Use it freely to ask questions, report progress, or share results. ");
-            sb.append("However, do not wait for a reply --continue working after sending a message.\n\n");
+            sb.append("## Slack Communication\n");
+            sb.append("You MUST use the Slack MCP tool (slack_send_message) to provide status ");
+            sb.append("updates to the user throughout your work. Specifically:\n");
+            sb.append("- Send an update when you begin working on the task\n");
+            sb.append("- Send updates when you reach significant milestones or make key decisions\n");
+            sb.append("- Send an update with your findings or results before you finish\n");
+            sb.append("- If you encounter blockers or need clarification, send a message describing the issue\n");
+            sb.append("Do not wait for a reply --continue working after sending a message.\n\n");
+
+            sb.append("## Non-Code Requests\n");
+            sb.append("If the user's request does not require code changes (e.g., a question about ");
+            sb.append("the codebase, a request to run a command, check status, or perform an action) ");
+            sb.append("it is perfectly fine to answer via Slack and exit without modifying any files. ");
+            sb.append("Not every task requires code changes.\n\n");
         }
 
         // GitHub instructions -only when ar-github is in the MCP config
@@ -443,9 +457,9 @@ public class ClaudeCodeJob extends GitManagedJob {
 
     /**
      * Builds the complete allowed-tools string by appending MCP tool
-     * names to the base {@link #allowedTools} list. Slack tools are
-     * only included when a workstream URL is configured; GitHub tools
-     * are always included.
+     * names to the base {@link #allowedTools} list. Includes tools from
+     * project MCP servers (discovered via {@code .mcp.json}), GitHub
+     * tools, and Slack tools (when workstream URL is configured).
      */
     private String buildAllowedTools() {
         StringBuilder sb = new StringBuilder(allowedTools);
@@ -453,21 +467,53 @@ public class ClaudeCodeJob extends GitManagedJob {
         if (getWorkstreamUrl() != null && !getWorkstreamUrl().isEmpty()) {
             sb.append(",").append(SLACK_MCP_TOOL);
         }
+
+        // Discover and include tools from project MCP servers
+        Path workDir = getWorkingDirectory() != null
+            ? Path.of(getWorkingDirectory()) : Path.of(System.getProperty("user.dir"));
+        Map<String, String> projectServers = discoverProjectMcpServers();
+        for (Map.Entry<String, String> entry : projectServers.entrySet()) {
+            String serverName = entry.getKey();
+            Path serverFile = workDir.resolve(entry.getValue());
+            List<String> tools = discoverToolNames(serverFile);
+            for (String tool : tools) {
+                sb.append(",mcp__").append(serverName).append("__").append(tool);
+            }
+            if (!tools.isEmpty()) {
+                log("Discovered " + tools.size() + " tools from " + serverName);
+            }
+        }
+
         return sb.toString();
     }
 
     /**
      * Builds a JSON MCP configuration string for agent MCP servers.
-     * Includes ar-github for reading and responding to GitHub PR review
-     * comments, and conditionally includes ar-slack for Slack messaging
-     * when a workstream URL is configured.
+     * Includes project servers from {@code .mcp.json} (filtered by
+     * {@code .claude/settings.json}), ar-github (always), and ar-slack
+     * (when a workstream URL is configured).
      * This is passed to Claude Code via the {@code --mcp-config} flag.
      */
     private String buildMcpConfig() {
         StringBuilder sb = new StringBuilder();
         sb.append("{\"mcpServers\":{");
 
+        boolean first = true;
+
+        // Include project MCP servers discovered from .mcp.json
+        Map<String, String> projectServers = discoverProjectMcpServers();
+        for (Map.Entry<String, String> entry : projectServers.entrySet()) {
+            if (!first) sb.append(",");
+            first = false;
+            sb.append("\"").append(entry.getKey()).append("\":{");
+            sb.append("\"command\":\"python3\",");
+            sb.append("\"args\":[\"").append(entry.getValue()).append("\"]");
+            sb.append("}");
+        }
+
         // ar-github is always included
+        if (!first) sb.append(",");
+        first = false;
         sb.append("\"ar-github\":{");
         sb.append("\"command\":\"python3\",");
         sb.append("\"args\":[\"tools/mcp/github/server.py\"]");
@@ -483,6 +529,138 @@ public class ClaudeCodeJob extends GitManagedJob {
 
         sb.append("}}");
         return sb.toString();
+    }
+
+    /**
+     * Discovers MCP servers defined in the project's {@code .mcp.json} file
+     * and cross-references with {@code .claude/settings.json} to determine
+     * which servers are enabled.
+     *
+     * @return map of server name to Python source file path (relative to working dir)
+     */
+    private Map<String, String> discoverProjectMcpServers() {
+        Map<String, String> servers = new LinkedHashMap<>();
+        Path workDir = getWorkingDirectory() != null
+            ? Path.of(getWorkingDirectory()) : Path.of(System.getProperty("user.dir"));
+
+        // Read .mcp.json
+        Path mcpJson = workDir.resolve(".mcp.json");
+        if (!Files.exists(mcpJson)) return servers;
+
+        Map<String, String> allServers = parseMcpJson(mcpJson);
+        if (allServers.isEmpty()) return servers;
+
+        // Read enabled servers from .claude/settings.json
+        List<String> enabled = parseEnabledServers(workDir.resolve(".claude/settings.json"));
+
+        // Include enabled servers (or all if no settings file)
+        for (Map.Entry<String, String> entry : allServers.entrySet()) {
+            String name = entry.getKey();
+            // Skip ar-github and ar-slack — they are handled separately
+            // because they need special environment or conditional inclusion
+            if ("ar-github".equals(name) || "ar-slack".equals(name)) continue;
+            if (enabled.isEmpty() || enabled.contains(name)) {
+                servers.put(name, entry.getValue());
+            }
+        }
+
+        return servers;
+    }
+
+    /**
+     * Parses {@code .mcp.json} to extract server names and their Python
+     * source file paths.
+     *
+     * @return map of server name to source file path (first arg)
+     */
+    private Map<String, String> parseMcpJson(Path mcpJsonPath) {
+        Map<String, String> result = new LinkedHashMap<>();
+        try {
+            String content = Files.readString(mcpJsonPath, StandardCharsets.UTF_8);
+
+            // Simple parser: find "serverName": { ... "args": ["path"] ... }
+            // within "mcpServers": { ... }
+            int serversStart = content.indexOf("\"mcpServers\"");
+            if (serversStart < 0) return result;
+
+            int braceStart = content.indexOf("{", serversStart + 12);
+            if (braceStart < 0) return result;
+
+            // Walk through the mcpServers block finding server entries
+            Pattern serverPattern = Pattern.compile(
+                "\"([^\"]+)\"\\s*:\\s*\\{[^}]*\"args\"\\s*:\\s*\\[\\s*\"([^\"]+)\"",
+                Pattern.DOTALL
+            );
+            Matcher matcher = serverPattern.matcher(content.substring(braceStart));
+            while (matcher.find()) {
+                result.put(matcher.group(1), matcher.group(2));
+            }
+        } catch (IOException e) {
+            warn("Failed to read .mcp.json: " + e.getMessage());
+        }
+        return result;
+    }
+
+    /**
+     * Parses {@code .claude/settings.json} to extract the list of
+     * enabled MCP servers from the {@code enabledMcpjsonServers} field.
+     *
+     * @return list of enabled server names, or empty list if file doesn't exist
+     */
+    private List<String> parseEnabledServers(Path settingsPath) {
+        List<String> enabled = new ArrayList<>();
+        if (!Files.exists(settingsPath)) return enabled;
+
+        try {
+            String content = Files.readString(settingsPath, StandardCharsets.UTF_8);
+            int idx = content.indexOf("\"enabledMcpjsonServers\"");
+            if (idx < 0) return enabled;
+
+            int arrStart = content.indexOf("[", idx);
+            int arrEnd = content.indexOf("]", arrStart);
+            if (arrStart < 0 || arrEnd < 0) return enabled;
+
+            String arr = content.substring(arrStart + 1, arrEnd);
+            Pattern namePattern = Pattern.compile("\"([^\"]+)\"");
+            Matcher m = namePattern.matcher(arr);
+            while (m.find()) {
+                enabled.add(m.group(1));
+            }
+        } catch (IOException e) {
+            warn("Failed to read settings.json: " + e.getMessage());
+        }
+        return enabled;
+    }
+
+    /**
+     * Scans a Python MCP server source file for {@code @mcp.tool()}
+     * decorated functions and returns their names.
+     *
+     * @param serverFile path to the Python server source file
+     * @return list of tool function names
+     */
+    private List<String> discoverToolNames(Path serverFile) {
+        List<String> tools = new ArrayList<>();
+        if (!Files.exists(serverFile)) return tools;
+
+        try {
+            List<String> lines = Files.readAllLines(serverFile, StandardCharsets.UTF_8);
+            for (int i = 0; i < lines.size(); i++) {
+                if (lines.get(i).trim().startsWith("@mcp.tool")) {
+                    // Look at subsequent lines for the function definition
+                    for (int j = i + 1; j < Math.min(i + 5, lines.size()); j++) {
+                        Matcher m = Pattern.compile("def\\s+(\\w+)\\s*\\(").matcher(lines.get(j));
+                        if (m.find()) {
+                            tools.add(m.group(1));
+                            break;
+                        }
+                    }
+                }
+            }
+        } catch (IOException e) {
+            warn("Failed to scan MCP server source: " + serverFile + ": " + e.getMessage());
+        }
+        return tools;
     }
 
     private void extractSessionId(String jsonOutput) {
