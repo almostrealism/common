@@ -88,6 +88,8 @@ public class SlackBotController implements ConsoleFeatures {
     private Server flowtreeServer;
     private int flowtreePort = Server.defaultPort;
 
+    private File configFile;
+
     private SlackApiEndpoint apiEndpoint;
     private int apiPort = SlackApiEndpoint.DEFAULT_PORT;
 
@@ -165,11 +167,21 @@ public class SlackBotController implements ConsoleFeatures {
     /**
      * Loads workstream configuration from a YAML file.
      *
+     * <p>If any workstream entries lack a {@code workstreamId}, one is
+     * auto-generated and the file is rewritten to persist the IDs.</p>
+     *
      * @param configFile the YAML configuration file
      * @throws IOException if the file cannot be read or parsed
      */
     public void loadConfig(File configFile) throws IOException {
+        this.configFile = configFile;
         WorkstreamConfig config = WorkstreamConfig.loadFromYaml(configFile);
+
+        if (config.ensureWorkstreamIds()) {
+            config.saveToYaml(configFile);
+            log("Generated workstream IDs and saved to " + configFile.getName());
+        }
+
         for (SlackWorkstream workstream : config.toWorkstreams()) {
             registerWorkstream(workstream);
         }
@@ -187,6 +199,36 @@ public class SlackBotController implements ConsoleFeatures {
         WorkstreamConfig config = WorkstreamConfig.loadFromYamlString(yaml);
         for (SlackWorkstream workstream : config.toWorkstreams()) {
             registerWorkstream(workstream);
+        }
+    }
+
+    /**
+     * Reloads workstream configuration from the YAML file originally
+     * passed to {@link #loadConfig(File)}.
+     *
+     * <p>New workstreams are registered and existing ones are updated.
+     * Any missing workstream IDs are generated and persisted.</p>
+     */
+    public synchronized void reloadConfig() {
+        if (configFile == null || !configFile.exists()) {
+            log("No config file to reload");
+            return;
+        }
+
+        try {
+            WorkstreamConfig config = WorkstreamConfig.loadFromYaml(configFile);
+            if (config.ensureWorkstreamIds()) {
+                config.saveToYaml(configFile);
+                log("Generated workstream IDs and saved to " + configFile.getName());
+            }
+
+            for (SlackWorkstream workstream : config.toWorkstreams()) {
+                registerWorkstream(workstream);
+            }
+            log("Reloaded " + config.getWorkstreams().size() +
+                              " workstream(s) from " + configFile.getName());
+        } catch (IOException e) {
+            warn("Failed to reload config: " + e.getMessage());
         }
     }
 
@@ -235,6 +277,7 @@ public class SlackBotController implements ConsoleFeatures {
         flowtreeServer = new Server(flowtreeProps);
         flowtreeServer.start();
         listener.setServer(flowtreeServer);
+        listener.setConfigReloader(this::reloadConfig);
         log("FlowTree server listening on port " + flowtreePort);
 
         if (botToken == null || botToken.isEmpty() || appToken == null || appToken.isEmpty()) {

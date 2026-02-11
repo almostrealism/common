@@ -91,6 +91,27 @@ public class SlackWorkstream {
     }
 
     /**
+     * Creates a new workstream with a persistent workstream ID.
+     *
+     * <p>Use this constructor for workstreams loaded from YAML configuration,
+     * where the workstream ID has been previously generated and persisted.</p>
+     *
+     * @param workstreamId the persistent workstream identifier
+     * @param channelId    the Slack channel ID (e.g., "C0123456789")
+     * @param channelName  the human-readable channel name (e.g., "#project-agent")
+     */
+    public SlackWorkstream(String workstreamId, String channelId, String channelName) {
+        this.workstreamId = workstreamId;
+        this.channelId = channelId;
+        this.channelName = channelName;
+        this.agents = new ArrayList<>();
+        this.pushToOrigin = true;
+        this.allowedTools = "Read,Edit,Write,Bash,Glob,Grep";
+        this.maxTurns = 50;
+        this.maxBudgetUsd = 10.0;
+    }
+
+    /**
      * Creates a new workstream for the specified channel.
      *
      * @param channelId   the Slack channel ID (e.g., "C0123456789")

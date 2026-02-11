@@ -13,6 +13,9 @@
 #   java -cp flowtree.jar io.flowtree.slack.SlackBotController --config workstreams.yaml
 
 workstreams:
+  # workstreamId is auto-generated on first run and written back to this file.
+  # Do not remove it once generated — it is used for job tracking and threading.
+
   # Project Alpha
   - channelId: "C0123456789"           # Get from Slack channel details
     channelName: "#project-alpha-agent"

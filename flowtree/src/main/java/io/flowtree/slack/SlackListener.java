@@ -62,6 +62,7 @@ public class SlackListener implements ConsoleFeatures {
     private final SlackNotifier notifier;
 
     private Server server;
+    private Runnable configReloader;
     private int nextAgent = 0;
     private int apiPort;
 
@@ -97,6 +98,16 @@ public class SlackListener implements ConsoleFeatures {
     }
 
     /**
+     * Sets a callback to reload workstream configuration from the YAML file.
+     * Called when a message arrives from an unknown channel.
+     *
+     * @param configReloader the reload callback
+     */
+    public void setConfigReloader(Runnable configReloader) {
+        this.configReloader = configReloader;
+    }
+
+    /**
      * Returns the API endpoint port used for Slack MCP tool communication.
      */
     public int getApiPort() {
@@ -127,6 +138,13 @@ public class SlackListener implements ConsoleFeatures {
      */
     public boolean handleMessage(String channelId, String userId, String text, String threadTs) {
         SlackWorkstream workstream = channelToWorkstream.get(channelId);
+
+        if (workstream == null && configReloader != null) {
+            log("Unknown channel " + channelId + " - reloading config");
+            configReloader.run();
+            workstream = channelToWorkstream.get(channelId);
+        }
+
         if (workstream == null) {
             log("Ignoring message from unknown channel: " + channelId);
             return false;
