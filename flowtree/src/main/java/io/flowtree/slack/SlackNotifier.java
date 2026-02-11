@@ -286,6 +286,10 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
                         sb.append("\n");
                     }
 
+                    if (event.getPullRequestUrl() != null) {
+                        sb.append("   :link: PR: ").append(event.getPullRequestUrl()).append("\n");
+                    }
+
                     sb.append("   :arrow_right: Please review and provide next instructions");
                 } else {
                     sb.append(":white_check_mark: *Work complete* - no changes to push\n");

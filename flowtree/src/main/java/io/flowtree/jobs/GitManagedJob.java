@@ -135,6 +135,7 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
     private List<String> stagedFiles = new ArrayList<>();
     private List<String> skippedFiles = new ArrayList<>();
     private String commitHash;
+    private String pullRequestUrl;
     private boolean gitOperationsSuccessful = false;
 
     private Consumer<JobOutput> outputConsumer;
@@ -179,9 +180,12 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
         Exception error = null;
 
         try {
-            // Capture original branch before work begins
-            if (targetBranch != null) {
+            // Prepare working directory: verify clean state, checkout branch,
+            // pull latest. This must happen before doWork() so the agent
+            // operates on the current remote state of the target branch.
+            if (targetBranch != null && !targetBranch.isEmpty()) {
                 originalBranch = getCurrentBranch();
+                prepareWorkingDirectory();
             }
 
             // Perform the actual work
@@ -200,6 +204,99 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
             fireJobCompleted(error);
             future.complete(null);
         }
+    }
+
+    /**
+     * Prepares the working directory before the agent starts work.
+     *
+     * <p>This method ensures the repo is in a clean, up-to-date state:
+     * <ol>
+     *   <li>Checks for uncommitted changes (excluding ignored files like
+     *       claude-output, .claude settings, etc.). Fails if any are found.</li>
+     *   <li>Fetches latest refs from origin.</li>
+     *   <li>Checks out the target branch (creating it if needed).</li>
+     *   <li>Pulls the latest changes from origin (fast-forward only).
+     *       Fails if the local branch has diverged.</li>
+     * </ol>
+     *
+     * @throws IOException if a git command fails to execute
+     * @throws InterruptedException if a git command is interrupted
+     * @throws RuntimeException if any pre-flight check fails
+     */
+    private void prepareWorkingDirectory() throws IOException, InterruptedException {
+        // 1. Check for uncommitted changes (excluding ignored files)
+        List<String> dirtyFiles = checkForUncommittedChanges();
+        if (!dirtyFiles.isEmpty()) {
+            String fileList = dirtyFiles.size() <= 5
+                ? String.join(", ", dirtyFiles)
+                : String.join(", ", dirtyFiles.subList(0, 5)) + " (+" + (dirtyFiles.size() - 5) + " more)";
+            throw new RuntimeException(
+                "Uncommitted changes found: " + fileList +
+                " -- refusing to proceed to avoid conflicts");
+        }
+
+        // 2. Fetch latest from origin
+        log("Fetching latest from origin...");
+        if (executeGit("fetch", "origin") != 0) {
+            throw new RuntimeException("Failed to fetch from origin");
+        }
+
+        // 3. Checkout target branch
+        if (!ensureOnTargetBranch()) {
+            throw new RuntimeException("Failed to switch to target branch: " + targetBranch);
+        }
+
+        // 4. Pull latest if remote branch exists
+        boolean remoteBranchExists = executeGit(
+            "show-ref", "--verify", "--quiet",
+            "refs/remotes/origin/" + targetBranch) == 0;
+        if (remoteBranchExists) {
+            log("Pulling latest changes for " + targetBranch + "...");
+            int pullResult = executeGit("pull", "--ff-only", "origin", targetBranch);
+            if (pullResult != 0) {
+                throw new RuntimeException(
+                    "Failed to pull latest changes for " + targetBranch +
+                    " -- local branch may have diverged from origin");
+            }
+            log("Working directory is up to date with origin/" + targetBranch);
+        } else {
+            log("No remote branch origin/" + targetBranch + " -- skipping pull");
+        }
+    }
+
+    /**
+     * Checks the working directory for uncommitted changes, excluding files
+     * that match the job's excluded patterns (e.g., claude-output, .claude
+     * settings, build artifacts).
+     *
+     * @return list of dirty file paths that are NOT excluded
+     */
+    private List<String> checkForUncommittedChanges() throws IOException, InterruptedException {
+        String statusOutput = executeGitWithOutput("status", "--porcelain");
+        List<String> dirtyFiles = new ArrayList<>();
+
+        Set<String> allExcluded = new HashSet<>(excludedPatterns);
+        allExcluded.addAll(additionalExcludedPatterns);
+
+        for (String line : statusOutput.split("\n")) {
+            if (line.length() > 3) {
+                String file = line.substring(3).trim();
+                if (file.contains(" -> ")) {
+                    file = file.split(" -> ")[1];
+                }
+                if (!file.isEmpty() && !matchesAnyPattern(file, allExcluded)) {
+                    dirtyFiles.add(file);
+                }
+            }
+        }
+
+        if (!dirtyFiles.isEmpty()) {
+            warn("Found " + dirtyFiles.size() + " uncommitted file(s) not in exclude list");
+        } else {
+            log("Working directory is clean (excluding ignored files)");
+        }
+
+        return dirtyFiles;
     }
 
     /**
@@ -222,6 +319,9 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
 
         event.withGitInfo(targetBranch, commitHash, stagedFiles, skippedFiles,
             gitOperationsSuccessful && pushToOrigin && !stagedFiles.isEmpty());
+        if (pullRequestUrl != null) {
+            event.withPullRequestUrl(pullRequestUrl);
+        }
         populateEventDetails(event);
         postStatusEvent(event);
     }
@@ -280,6 +380,12 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
             if (!pushToOrigin()) {
                 throw new RuntimeException("Git push to origin/" + targetBranch + " failed");
             }
+        }
+
+        // Detect open PR for the target branch (if remote is GitHub)
+        pullRequestUrl = detectPullRequestUrl();
+        if (pullRequestUrl != null) {
+            log("Open PR: " + pullRequestUrl);
         }
 
         gitOperationsSuccessful = true;
@@ -445,6 +551,39 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
         return false;
     }
 
+    // ==================== PR Detection ====================
+
+    /**
+     * Detects an open pull request URL for the target branch.
+     *
+     * <p>Only attempts detection if the origin remote points to GitHub.
+     * Uses the {@code gh} CLI to query for an open PR. Returns {@code null}
+     * if {@code gh} is not installed, no PR exists, or the remote is not GitHub.</p>
+     *
+     * @return the PR URL, or null if no PR was found
+     */
+    private String detectPullRequestUrl() {
+        try {
+            // Check if remote is GitHub
+            String remoteUrl = executeGitWithOutput("remote", "get-url", "origin").trim();
+            if (!remoteUrl.contains("github.com")) {
+                return null;
+            }
+
+            // Try to find open PR for this branch
+            String prUrl = executeCommandWithOutput(
+                "gh", "pr", "view", targetBranch,
+                "--json", "url", "-q", ".url").trim();
+            if (!prUrl.isEmpty() && prUrl.startsWith("http")) {
+                return prUrl;
+            }
+        } catch (Exception e) {
+            log("Could not detect PR URL: " + e.getMessage());
+        }
+
+        return null;
+    }
+
     // ==================== Git Utilities ====================
 
     /**
@@ -529,6 +668,31 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
         pb.environment().put("GIT_SSH_COMMAND",
                 "ssh -o StrictHostKeyChecking=accept-new -o BatchMode=yes");
         applyGitIdentity(pb);
+
+        Process process = pb.start();
+        StringBuilder output = new StringBuilder();
+        try (BufferedReader reader = new BufferedReader(
+                new InputStreamReader(process.getInputStream()))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                output.append(line).append("\n");
+            }
+        }
+
+        process.waitFor();
+        return output.toString();
+    }
+
+    /**
+     * Executes an arbitrary command and returns its output.
+     * Used for non-git commands like {@code gh}.
+     */
+    private String executeCommandWithOutput(String... command) throws IOException, InterruptedException {
+        ProcessBuilder pb = new ProcessBuilder(command);
+        if (workingDirectory != null) {
+            pb.directory(new File(workingDirectory));
+        }
+        pb.redirectErrorStream(true);
 
         Process process = pb.start();
         StringBuilder output = new StringBuilder();
@@ -843,6 +1007,13 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
     }
 
     /**
+     * Returns the pull request URL if one was detected after push.
+     */
+    public String getPullRequestUrl() {
+        return pullRequestUrl;
+    }
+
+    /**
      * Returns whether git operations completed successfully.
      */
     public boolean isGitOperationsSuccessful() {
@@ -957,6 +1128,9 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
             sb.append("\"").append(escapeJson(skipped.get(i))).append("\"");
         }
         sb.append("]");
+
+        // PR URL
+        appendJsonField(sb, "pullRequestUrl", event.getPullRequestUrl(), false);
 
         // Error info
         appendJsonField(sb, "errorMessage", event.getErrorMessage(), false);

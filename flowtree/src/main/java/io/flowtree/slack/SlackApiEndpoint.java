@@ -192,6 +192,12 @@ public class SlackApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         List<String> skippedFiles = extractJsonArrayField(body, "skippedFiles");
         event.withGitInfo(targetBranch, commitHash, stagedFiles, skippedFiles, pushed);
 
+        // Populate PR URL
+        String pullRequestUrl = extractJsonField(body, "pullRequestUrl");
+        if (pullRequestUrl != null) {
+            event.withPullRequestUrl(pullRequestUrl);
+        }
+
         // Populate Claude Code info
         String prompt = extractJsonField(body, "prompt");
         String sessionId = extractJsonField(body, "sessionId");

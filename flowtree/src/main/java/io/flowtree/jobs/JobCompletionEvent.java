@@ -61,6 +61,9 @@ public class JobCompletionEvent {
     private String errorMessage;
     private Throwable exception;
 
+    // Pull request
+    private String pullRequestUrl;
+
     // Claude Code specific
     private String prompt;
     private String sessionId;
@@ -145,6 +148,10 @@ public class JobCompletionEvent {
         return pushed;
     }
 
+    public String getPullRequestUrl() {
+        return pullRequestUrl;
+    }
+
     public String getErrorMessage() {
         return errorMessage;
     }
@@ -174,6 +181,17 @@ public class JobCompletionEvent {
         this.stagedFiles = staged != null ? staged : Collections.emptyList();
         this.skippedFiles = skipped != null ? skipped : Collections.emptyList();
         this.pushed = pushed;
+        return this;
+    }
+
+    /**
+     * Sets the pull request URL for this event.
+     *
+     * @param url the GitHub PR URL, or null if no PR was found
+     * @return this event for chaining
+     */
+    public JobCompletionEvent withPullRequestUrl(String url) {
+        this.pullRequestUrl = url;
         return this;
     }
 
