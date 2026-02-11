@@ -1257,7 +1257,10 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 				this.jobWasNull = 1;
 			}
 			
-			if (j != null) this.getLeastActiveNode().addJob(j);
+			if (j != null) {
+				Node target = this.getLeastActiveNode();
+				if (target != null) target.addJob(j);
+			}
 
 			addJobs(defaultFactory);
 
@@ -1329,7 +1332,12 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 			
 			if (type == Message.Job) {
 				System.out.println("NodeGroup: Received job. Data = " + m.getData());
-				this.getLeastActiveNode().addJob(this.defaultFactory.createJob(m.getData()));
+				Node target = this.getLeastActiveNode();
+				if (target != null) {
+					target.addJob(this.defaultFactory.createJob(m.getData()));
+				} else {
+					System.out.println("NodeGroup: No local nodes available, ignoring received job");
+				}
 			} else if (type == Message.StringMessage) {
 				System.out.println("Message from " + p.toString() + ": " + m.getData());
 			} else if (type == Message.ConnectionRequest) {

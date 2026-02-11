@@ -119,9 +119,9 @@ public class SlackIntegrationTest extends TestSuiteBase {
 
         // Test started notification
         JobCompletionEvent startEvent = JobCompletionEvent.started(
-            "job-123", workstream.getWorkstreamId(), "Fix authentication bug"
+            "job-123", "Fix authentication bug"
         );
-        notifier.onJobStarted(startEvent);
+        notifier.onJobStarted(workstream.getWorkstreamId(), startEvent);
 
         assertTrue(messages.size() > 0);
         String startMsg = messages.get(0);
@@ -132,11 +132,11 @@ public class SlackIntegrationTest extends TestSuiteBase {
 
         // Test success notification
         JobCompletionEvent successEvent = JobCompletionEvent.success(
-            "job-123", workstream.getWorkstreamId(), "Fix authentication bug"
+            "job-123", "Fix authentication bug"
         );
         successEvent.withGitInfo("feature/test", "abc1234567890",
             List.of("auth.py", "tests/test_auth.py"), List.of(), true);
-        notifier.onJobCompleted(successEvent);
+        notifier.onJobCompleted(workstream.getWorkstreamId(), successEvent);
 
         assertTrue(messages.size() > 0);
         String successMsg = messages.get(0);
@@ -148,11 +148,11 @@ public class SlackIntegrationTest extends TestSuiteBase {
 
         // Test failure notification
         JobCompletionEvent failEvent = JobCompletionEvent.failed(
-            "job-456", workstream.getWorkstreamId(), "Build the thing",
+            "job-456", "Build the thing",
             "Compilation failed", new RuntimeException("Syntax error")
         );
         failEvent.withClaudeCodeInfo("Build the thing", "session-789", 1);
-        notifier.onJobCompleted(failEvent);
+        notifier.onJobCompleted(workstream.getWorkstreamId(), failEvent);
 
         assertTrue(messages.size() > 0);
         String failMsg = messages.get(0);
@@ -163,18 +163,17 @@ public class SlackIntegrationTest extends TestSuiteBase {
     @Test
     public void testJobCompletionEvent() {
         // Test started event
-        JobCompletionEvent started = JobCompletionEvent.started("j1", "w1", "Test task");
+        JobCompletionEvent started = JobCompletionEvent.started("j1", "Test task");
         assertEquals(JobCompletionEvent.Status.STARTED, started.getStatus());
         assertEquals("j1", started.getJobId());
-        assertEquals("w1", started.getWorkstreamId());
 
         // Test success event
-        JobCompletionEvent success = JobCompletionEvent.success("j2", "w1", "Done");
+        JobCompletionEvent success = JobCompletionEvent.success("j2", "Done");
         assertEquals(JobCompletionEvent.Status.SUCCESS, success.getStatus());
 
         // Test failed event
         Exception ex = new RuntimeException("Test error");
-        JobCompletionEvent failed = JobCompletionEvent.failed("j3", "w1", "Failed", "Test error", ex);
+        JobCompletionEvent failed = JobCompletionEvent.failed("j3", "Failed", "Test error", ex);
         assertEquals(JobCompletionEvent.Status.FAILED, failed.getStatus());
         assertEquals("Test error", failed.getErrorMessage());
         assertEquals(ex, failed.getException());
@@ -215,19 +214,19 @@ public class SlackIntegrationTest extends TestSuiteBase {
 
         JobCompletionListener listener = new JobCompletionListener() {
             @Override
-            public void onJobCompleted(JobCompletionEvent event) {
+            public void onJobCompleted(String workstreamId, JobCompletionEvent event) {
                 events.add(event);
             }
 
             @Override
-            public void onJobStarted(JobCompletionEvent event) {
+            public void onJobStarted(String workstreamId, JobCompletionEvent event) {
                 events.add(event);
             }
         };
 
         // Fire events
-        listener.onJobStarted(JobCompletionEvent.started("j1", "w1", "Starting"));
-        listener.onJobCompleted(JobCompletionEvent.success("j1", "w1", "Done"));
+        listener.onJobStarted("w1", JobCompletionEvent.started("j1", "Starting"));
+        listener.onJobCompleted("w1", JobCompletionEvent.success("j1", "Done"));
 
         assertEquals(2, events.size());
         assertEquals(JobCompletionEvent.Status.STARTED, events.get(0).getStatus());
@@ -374,15 +373,19 @@ public class SlackIntegrationTest extends TestSuiteBase {
             receivedText.set(SlackApiEndpoint.extractJsonField(json, "text"));
         });
 
+        SlackWorkstream workstream = new SlackWorkstream("C_TEST_123", "#test");
+        notifier.registerWorkstream(workstream);
+
         SlackApiEndpoint endpoint = new SlackApiEndpoint(0, notifier);
         endpoint.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false);
 
         try {
             int port = endpoint.getListeningPort();
-            String body = "{\"channel_id\":\"C_TEST_123\",\"text\":\"Hello from agent\"}";
+            String body = "{\"text\":\"Hello from agent\"}";
 
             HttpURLConnection conn = (HttpURLConnection) new URL(
-                    "http://localhost:" + port + "/api/slack/message").openConnection();
+                    "http://localhost:" + port + "/api/workstreams/"
+                    + workstream.getWorkstreamId() + "/messages").openConnection();
             conn.setRequestMethod("POST");
             conn.setDoOutput(true);
             conn.setRequestProperty("Content-Type", "application/json");
@@ -408,7 +411,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         try {
             int port = endpoint.getListeningPort();
             HttpURLConnection conn = (HttpURLConnection) new URL(
-                    "http://localhost:" + port + "/api/slack/health").openConnection();
+                    "http://localhost:" + port + "/api/health").openConnection();
             conn.setRequestMethod("GET");
 
             assertEquals(200, conn.getResponseCode());
@@ -421,18 +424,22 @@ public class SlackIntegrationTest extends TestSuiteBase {
     }
 
     @Test
-    public void testApiEndpointMissingFields() throws Exception {
+    public void testApiEndpointMissingText() throws Exception {
         SlackNotifier notifier = new SlackNotifier(null);
+        SlackWorkstream workstream = new SlackWorkstream("C123", "#test");
+        notifier.registerWorkstream(workstream);
+
         SlackApiEndpoint endpoint = new SlackApiEndpoint(0, notifier);
         endpoint.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false);
 
         try {
             int port = endpoint.getListeningPort();
 
-            // Missing channel_id
-            String body = "{\"text\":\"Hello\"}";
+            // Missing text field
+            String body = "{\"something\":\"else\"}";
             HttpURLConnection conn = (HttpURLConnection) new URL(
-                    "http://localhost:" + port + "/api/slack/message").openConnection();
+                    "http://localhost:" + port + "/api/workstreams/"
+                    + workstream.getWorkstreamId() + "/messages").openConnection();
             conn.setRequestMethod("POST");
             conn.setDoOutput(true);
             conn.setRequestProperty("Content-Type", "application/json");
@@ -444,64 +451,23 @@ public class SlackIntegrationTest extends TestSuiteBase {
             assertEquals(400, conn.getResponseCode());
 
             String error = new String(conn.getErrorStream().readAllBytes(), StandardCharsets.UTF_8);
-            assertTrue(error.contains("channel_id"));
+            assertTrue(error.contains("text"));
         } finally {
             endpoint.stop();
         }
     }
 
     @Test
-    public void testFactorySlackConfiguration() {
+    public void testFactoryWorkstreamUrlConfiguration() {
         ClaudeCodeJob.Factory factory = new ClaudeCodeJob.Factory("Test prompt");
-        factory.setSlackApiUrl("http://localhost:7780");
-        factory.setSlackChannelId("C_FACTORY_TEST");
+        factory.setWorkstreamUrl("http://localhost:7780/api/workstreams/ws1/jobs/j1");
 
-        assertEquals("http://localhost:7780", factory.getSlackApiUrl());
-        assertEquals("C_FACTORY_TEST", factory.getSlackChannelId());
+        assertEquals("http://localhost:7780/api/workstreams/ws1/jobs/j1", factory.getWorkstreamUrl());
 
         // Verify propagation to created job
         ClaudeCodeJob job = (ClaudeCodeJob) factory.nextJob();
         assertNotNull(job);
-        assertEquals("http://localhost:7780", job.getSlackApiUrl());
-        assertEquals("C_FACTORY_TEST", job.getSlackChannelId());
+        assertEquals("http://localhost:7780/api/workstreams/ws1/jobs/j1", job.getWorkstreamUrl());
     }
 
-    @Test
-    public void testApiEndpointThreadReply() throws Exception {
-        AtomicReference<String> receivedChannel = new AtomicReference<>();
-        AtomicReference<String> receivedThread = new AtomicReference<>();
-        AtomicReference<String> receivedText = new AtomicReference<>();
-
-        SlackNotifier notifier = new SlackNotifier(null);
-        notifier.setMessageCallback(json -> {
-            receivedChannel.set(SlackApiEndpoint.extractJsonField(json, "channel"));
-            receivedThread.set(SlackApiEndpoint.extractJsonField(json, "thread_ts"));
-            receivedText.set(SlackApiEndpoint.extractJsonField(json, "text"));
-        });
-
-        SlackApiEndpoint endpoint = new SlackApiEndpoint(0, notifier);
-        endpoint.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false);
-
-        try {
-            int port = endpoint.getListeningPort();
-            String body = "{\"channel_id\":\"C_THREAD\",\"thread_ts\":\"1234567890.123456\",\"text\":\"Thread reply\"}";
-
-            HttpURLConnection conn = (HttpURLConnection) new URL(
-                    "http://localhost:" + port + "/api/slack/thread").openConnection();
-            conn.setRequestMethod("POST");
-            conn.setDoOutput(true);
-            conn.setRequestProperty("Content-Type", "application/json");
-
-            try (OutputStream os = conn.getOutputStream()) {
-                os.write(body.getBytes(StandardCharsets.UTF_8));
-            }
-
-            assertEquals(200, conn.getResponseCode());
-            assertEquals("C_THREAD", receivedChannel.get());
-            assertEquals("1234567890.123456", receivedThread.get());
-            assertEquals("Thread reply", receivedText.get());
-        } finally {
-            endpoint.stop();
-        }
-    }
 }

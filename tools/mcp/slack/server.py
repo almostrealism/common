@@ -3,56 +3,66 @@
 AR Slack MCP Server
 
 Provides tools for Claude Code agents to send messages back to Slack
-channels via the SlackApiEndpoint HTTP server running in the
-SlackBotController process.
+via the controller's workstream API.
 
 Configuration via environment variables:
-    AR_SLACK_API_URL    - Base URL of the SlackApiEndpoint (default: http://localhost:7780)
-    AR_SLACK_CHANNEL_ID - Default Slack channel ID for messages
-    AR_SLACK_THREAD_TS  - Default thread timestamp for replies (optional)
+    AR_WORKSTREAM_URL - The workstream URL provided by the controller.
+                        Messages are POSTed to {url}/messages.
+                        Format: http://controller/api/workstreams/{id}
+                        or:     http://controller/api/workstreams/{id}/jobs/{jobId}
 """
 
 import json
 import os
 import sys
-from typing import Optional
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 from mcp.server.fastmcp import FastMCP
 
-# Configuration from environment
-SLACK_API_URL = os.environ.get("AR_SLACK_API_URL", "http://localhost:7780")
-DEFAULT_CHANNEL_ID = os.environ.get("AR_SLACK_CHANNEL_ID", "")
-DEFAULT_THREAD_TS = os.environ.get("AR_SLACK_THREAD_TS", "")
+WORKSTREAM_URL = os.environ.get("AR_WORKSTREAM_URL", "")
+
+# Log startup configuration to stderr for diagnostics
+print(f"ar-slack: AR_WORKSTREAM_URL={'<not set>' if not WORKSTREAM_URL else WORKSTREAM_URL}",
+      file=sys.stderr)
 
 mcp = FastMCP("ar-slack")
 
 
-def _post(path: str, payload: dict) -> dict:
-    """POST JSON to the SlackApiEndpoint and return the parsed response."""
-    url = SLACK_API_URL.rstrip("/") + path
-    data = json.dumps(payload).encode("utf-8")
+def _post_message(text: str) -> dict:
+    """POST a message to the workstream's /messages endpoint."""
+    if not WORKSTREAM_URL:
+        return {"ok": False, "error": "AR_WORKSTREAM_URL not set"}
+
+    url = WORKSTREAM_URL.rstrip("/") + "/messages"
+    data = json.dumps({"text": text}).encode("utf-8")
     req = Request(url, data=data, headers={"Content-Type": "application/json"})
+
+    print(f"ar-slack: POST {url}", file=sys.stderr)
 
     try:
         with urlopen(req, timeout=10) as resp:
             body = resp.read().decode("utf-8")
-            return json.loads(body) if body else {"ok": True}
+            result = json.loads(body) if body else {"ok": True}
+            print(f"ar-slack: response: {result}", file=sys.stderr)
+            return result
     except HTTPError as e:
         body = e.read().decode("utf-8", errors="replace")
+        print(f"ar-slack: HTTP error {e.code}: {body[:200]}", file=sys.stderr)
         try:
             return json.loads(body)
         except json.JSONDecodeError:
             return {"ok": False, "error": f"HTTP {e.code}: {body[:200]}"}
     except URLError as e:
-        return {"ok": False, "error": f"Connection failed: {e.reason}"}
+        print(f"ar-slack: Connection failed to {url}: {e.reason}", file=sys.stderr)
+        return {"ok": False, "error": f"Connection failed to {url}: {e.reason}"}
     except Exception as e:
+        print(f"ar-slack: Unexpected error: {e}", file=sys.stderr)
         return {"ok": False, "error": str(e)}
 
 
 @mcp.tool()
-def slack_send_message(text: str, channel_id: Optional[str] = None) -> dict:
+def slack_send_message(text: str) -> dict:
     """
     Send a message to a Slack channel.
 
@@ -61,56 +71,11 @@ def slack_send_message(text: str, channel_id: Optional[str] = None) -> dict:
 
     Args:
         text: The message text to send (supports Slack mrkdwn formatting).
-        channel_id: The Slack channel ID. If omitted, uses the channel
-                     that triggered this job (from AR_SLACK_CHANNEL_ID).
 
     Returns:
         Dictionary with ok=true on success or ok=false with error details.
     """
-    resolved_channel = channel_id or DEFAULT_CHANNEL_ID
-    if not resolved_channel:
-        return {"ok": False, "error": "No channel_id provided and AR_SLACK_CHANNEL_ID not set"}
-
-    return _post("/api/slack/message", {
-        "channel_id": resolved_channel,
-        "text": text,
-    })
-
-
-@mcp.tool()
-def slack_send_thread_reply(
-    text: str,
-    thread_ts: Optional[str] = None,
-    channel_id: Optional[str] = None,
-) -> dict:
-    """
-    Reply in a Slack thread.
-
-    Use this to reply in the same thread where the user issued the original
-    instruction, keeping the conversation organized.
-
-    Args:
-        text: The reply text (supports Slack mrkdwn formatting).
-        thread_ts: The thread timestamp to reply to. If omitted, uses
-                   the thread from the original message (AR_SLACK_THREAD_TS).
-        channel_id: The Slack channel ID. If omitted, uses the default channel.
-
-    Returns:
-        Dictionary with ok=true on success or ok=false with error details.
-    """
-    resolved_channel = channel_id or DEFAULT_CHANNEL_ID
-    resolved_thread = thread_ts or DEFAULT_THREAD_TS
-
-    if not resolved_channel:
-        return {"ok": False, "error": "No channel_id provided and AR_SLACK_CHANNEL_ID not set"}
-    if not resolved_thread:
-        return {"ok": False, "error": "No thread_ts provided and AR_SLACK_THREAD_TS not set"}
-
-    return _post("/api/slack/thread", {
-        "channel_id": resolved_channel,
-        "thread_ts": resolved_thread,
-        "text": text,
-    })
+    return _post_message(text)
 
 
 if __name__ == "__main__":

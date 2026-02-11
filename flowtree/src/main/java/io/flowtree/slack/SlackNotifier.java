@@ -44,6 +44,7 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
     private final String botToken;
     private final MethodsClient client;
     private final Map<String, SlackWorkstream> workstreams;
+    private final Map<String, String> jobThreadTs;
     private Consumer<String> messageCallback;
 
     /**
@@ -54,6 +55,7 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
     public SlackNotifier(String botToken) {
         this.botToken = botToken;
         this.workstreams = new HashMap<>();
+        this.jobThreadTs = new HashMap<>();
 
         if (botToken != null && !botToken.isEmpty()) {
             this.client = Slack.getInstance().methods(botToken);
@@ -73,6 +75,16 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
     }
 
     /**
+     * Returns the workstream for a given ID.
+     *
+     * @param workstreamId the workstream identifier
+     * @return the workstream, or null if not registered
+     */
+    public SlackWorkstream getWorkstream(String workstreamId) {
+        return workstreams.get(workstreamId);
+    }
+
+    /**
      * Sets a callback for receiving formatted messages (useful for testing).
      *
      * @param callback the callback to receive message text
@@ -82,27 +94,61 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
     }
 
     @Override
-    public void onJobStarted(JobCompletionEvent event) {
-        SlackWorkstream workstream = workstreams.get(event.getWorkstreamId());
+    public void onJobStarted(String workstreamId, JobCompletionEvent event) {
+        onJobStarted(workstreamId, event, null);
+    }
+
+    /**
+     * Notifies that a job has started, optionally threading under an
+     * existing message.
+     *
+     * @param workstreamId the workstream identifier
+     * @param event        the start event
+     * @param replyTo      if non-null, post the "Starting work" message as a
+     *                      reply under this message timestamp (creating a thread)
+     */
+    public void onJobStarted(String workstreamId, JobCompletionEvent event, String replyTo) {
+        SlackWorkstream workstream = workstreams.get(workstreamId);
         if (workstream == null) {
-            warn("Unknown workstream: " + event.getWorkstreamId());
+            warn("Unknown workstream: " + workstreamId);
             return;
         }
 
         String message = formatStartedMessage(event, workstream);
-        postMessage(workstream.getChannelId(), message);
+        String ts;
+
+        if (replyTo != null && !replyTo.isEmpty()) {
+            // Post as a thread reply under the user's message
+            ts = postMessageInThread(workstream.getChannelId(), message, replyTo);
+            // Store the user's message ts as the thread parent so completion
+            // messages also appear in the same thread
+            if (event.getJobId() != null) {
+                jobThreadTs.put(event.getJobId(), replyTo);
+            }
+        } else {
+            ts = postMessage(workstream.getChannelId(), message);
+            if (ts != null && event.getJobId() != null) {
+                jobThreadTs.put(event.getJobId(), ts);
+            }
+        }
     }
 
     @Override
-    public void onJobCompleted(JobCompletionEvent event) {
-        SlackWorkstream workstream = workstreams.get(event.getWorkstreamId());
+    public void onJobCompleted(String workstreamId, JobCompletionEvent event) {
+        SlackWorkstream workstream = workstreams.get(workstreamId);
         if (workstream == null) {
-            warn("Unknown workstream: " + event.getWorkstreamId());
+            warn("Unknown workstream: " + workstreamId);
             return;
         }
 
         String message = formatCompletedMessage(event, workstream);
-        postMessage(workstream.getChannelId(), message);
+        String threadTs = event.getJobId() != null ? jobThreadTs.remove(event.getJobId()) : null;
+
+        if (threadTs != null) {
+            postMessageInThread(workstream.getChannelId(), message, threadTs);
+        } else {
+            postMessage(workstream.getChannelId(), message);
+        }
     }
 
     /**
@@ -110,8 +156,9 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
      *
      * @param channelId the Slack channel ID
      * @param text      the message text (supports Slack mrkdwn formatting)
+     * @return the message timestamp (for threading), or null on failure
      */
-    public void postMessage(String channelId, String text) {
+    public String postMessage(String channelId, String text) {
         // Notify callback for testing
         if (messageCallback != null) {
             messageCallback.accept("{\"channel\":\"" + channelId + "\",\"text\":\"" +
@@ -121,7 +168,7 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
         if (client == null) {
             log("No bot token - message would be posted to " + channelId + ":");
             log(text);
-            return;
+            return null;
         }
 
         try {
@@ -132,49 +179,70 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
                 .unfurlMedia(false)
             );
 
-            if (!response.isOk()) {
+            if (response.isOk()) {
+                return response.getTs();
+            } else {
                 warn("Failed to post message: " + response.getError());
             }
         } catch (IOException | SlackApiException e) {
             warn("Error posting message: " + e.getMessage());
         }
+
+        return null;
     }
 
     /**
-     * Posts a message as a reply in a thread.
+     * Posts a message as a thread reply under an existing message.
      *
      * @param channelId the Slack channel ID
-     * @param threadTs  the thread timestamp to reply to
-     * @param text      the message text
+     * @param text      the message text (supports Slack mrkdwn formatting)
+     * @param threadTs  the timestamp of the parent message to reply under
+     * @return the reply message timestamp, or null on failure
      */
-    public void postThreadReply(String channelId, String threadTs, String text) {
+    public String postMessageInThread(String channelId, String text, String threadTs) {
         if (messageCallback != null) {
             messageCallback.accept("{\"channel\":\"" + channelId +
-                                   "\",\"thread_ts\":\"" + threadTs +
+                                   "\",\"thread_ts\":\"" + escapeJson(threadTs) +
                                    "\",\"text\":\"" + escapeJson(text) + "\"}");
         }
 
         if (client == null) {
-            log("No bot token - thread reply would be:");
+            log("No bot token - thread reply would be posted to " + channelId +
+                " (thread " + threadTs + "):");
             log(text);
-            return;
+            return null;
         }
 
         try {
             ChatPostMessageResponse response = client.chatPostMessage(req -> req
                 .channel(channelId)
-                .threadTs(threadTs)
                 .text(text)
+                .threadTs(threadTs)
                 .unfurlLinks(false)
                 .unfurlMedia(false)
             );
 
-            if (!response.isOk()) {
+            if (response.isOk()) {
+                return response.getTs();
+            } else {
                 warn("Failed to post thread reply: " + response.getError());
             }
         } catch (IOException | SlackApiException e) {
             warn("Error posting thread reply: " + e.getMessage());
         }
+
+        return null;
+    }
+
+    /**
+     * Returns the Slack thread timestamp for a job, if one has been established.
+     * This is the timestamp of the "Starting work" message posted when the job began.
+     *
+     * @param jobId the job ID
+     * @return the thread timestamp, or null if no thread exists for this job
+     */
+    public String getThreadTs(String jobId) {
+        return jobId != null ? jobThreadTs.get(jobId) : null;
     }
 
     private String formatStartedMessage(JobCompletionEvent event, SlackWorkstream workstream) {
@@ -199,31 +267,34 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
 
         switch (event.getStatus()) {
             case SUCCESS:
-                sb.append(":white_check_mark: *Work complete*");
-                if (event.isPushed()) {
-                    sb.append(" - changes pushed\n");
+                int fileCount = event.getStagedFiles().size();
+
+                if (fileCount > 0 && event.isPushed()) {
+                    sb.append(":white_check_mark: *Work complete* - pushed ");
+                    sb.append(fileCount).append(" file(s)\n");
+
+                    if (event.getTargetBranch() != null) {
+                        sb.append("   Branch: `").append(event.getTargetBranch()).append("`\n");
+                    }
+
+                    if (event.getCommitHash() != null) {
+                        String shortHash = event.getCommitHash().length() > 7
+                            ? event.getCommitHash().substring(0, 7)
+                            : event.getCommitHash();
+                        sb.append("   Commit: `").append(shortHash).append("` ");
+                        sb.append(truncate(event.getDescription(), 50));
+                        sb.append("\n");
+                    }
+
+                    if (event.getPullRequestUrl() != null) {
+                        sb.append("   :link: PR: ").append(event.getPullRequestUrl()).append("\n");
+                    }
+
+                    sb.append("   :arrow_right: Please review and provide next instructions");
                 } else {
-                    sb.append("\n");
+                    sb.append(":white_check_mark: *Work complete* - no changes to push\n");
+                    sb.append("   ").append(truncate(event.getDescription(), 100));
                 }
-
-                if (event.getTargetBranch() != null) {
-                    sb.append("   Branch: `").append(event.getTargetBranch()).append("`\n");
-                }
-
-                if (event.getCommitHash() != null) {
-                    String shortHash = event.getCommitHash().length() > 7
-                        ? event.getCommitHash().substring(0, 7)
-                        : event.getCommitHash();
-                    sb.append("   Commit: `").append(shortHash).append("` ");
-                    sb.append(truncate(event.getDescription(), 50));
-                    sb.append("\n");
-                }
-
-                if (!event.getStagedFiles().isEmpty()) {
-                    sb.append("   Files changed: ").append(event.getStagedFiles().size()).append("\n");
-                }
-
-                sb.append("   :arrow_right: Please review and provide next instructions");
                 break;
 
             case FAILED:

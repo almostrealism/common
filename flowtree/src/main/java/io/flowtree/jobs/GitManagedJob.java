@@ -24,6 +24,9 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -34,7 +37,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Consumer;
 import java.util.regex.Pattern;
 
@@ -110,30 +112,12 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
         "*.db", "*.sqlite", "*.log",
 
         // Hardware acceleration outputs (AR-specific)
-        "Extensions/**", "*.cl", "*.metal"
+        "Extensions/**", "*.cl", "*.metal",
+
+        // Claude Code agent outputs and settings
+        "claude-output/**", "commit.txt",
+        ".claude/**", "settings.local.json"
     ));
-
-    /** Global list of completion listeners. */
-    private static final List<JobCompletionListener> completionListeners = new CopyOnWriteArrayList<>();
-
-    /**
-     * Registers a global listener for job completion events.
-     * Listeners are notified when any GitManagedJob completes.
-     *
-     * @param listener the listener to register
-     */
-    public static void addCompletionListener(JobCompletionListener listener) {
-        completionListeners.add(listener);
-    }
-
-    /**
-     * Removes a previously registered completion listener.
-     *
-     * @param listener the listener to remove
-     */
-    public static void removeCompletionListener(JobCompletionListener listener) {
-        completionListeners.remove(listener);
-    }
 
     private String taskId;
     private String targetBranch;
@@ -144,18 +128,20 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
     private boolean pushToOrigin = true;
     private boolean createBranchIfMissing = true;
     private boolean dryRun = false;
+    private String gitUserName;
+    private String gitUserEmail;
 
     private String originalBranch;
     private List<String> stagedFiles = new ArrayList<>();
     private List<String> skippedFiles = new ArrayList<>();
     private String commitHash;
+    private String pullRequestUrl;
     private boolean gitOperationsSuccessful = false;
 
     private Consumer<JobOutput> outputConsumer;
     private final CompletableFuture<Void> future = new CompletableFuture<>();
 
-    private String workstreamId;
-    private JobCompletionListener instanceListener;
+    private String workstreamUrl;
 
     /**
      * Default constructor for deserialization.
@@ -194,12 +180,12 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
         Exception error = null;
 
         try {
-            // Fire started event
-            fireJobStarted();
-
-            // Capture original branch before work begins
-            if (targetBranch != null) {
+            // Prepare working directory: verify clean state, checkout branch,
+            // pull latest. This must happen before doWork() so the agent
+            // operates on the current remote state of the target branch.
+            if (targetBranch != null && !targetBranch.isEmpty()) {
                 originalBranch = getCurrentBranch();
+                prepareWorkingDirectory();
             }
 
             // Perform the actual work
@@ -221,67 +207,123 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
     }
 
     /**
-     * Fires the job started event to all registered listeners.
+     * Prepares the working directory before the agent starts work.
+     *
+     * <p>This method ensures the repo is in a clean, up-to-date state:
+     * <ol>
+     *   <li>Checks for uncommitted changes (excluding ignored files like
+     *       claude-output, .claude settings, etc.). Fails if any are found.</li>
+     *   <li>Fetches latest refs from origin.</li>
+     *   <li>Checks out the target branch (creating it if needed).</li>
+     *   <li>Pulls the latest changes from origin (fast-forward only).
+     *       Fails if the local branch has diverged.</li>
+     * </ol>
+     *
+     * @throws IOException if a git command fails to execute
+     * @throws InterruptedException if a git command is interrupted
+     * @throws RuntimeException if any pre-flight check fails
      */
-    protected void fireJobStarted() {
-        JobCompletionEvent event = JobCompletionEvent.started(
-            taskId, workstreamId, getTaskString()
-        );
-        event.withGitInfo(targetBranch, null, null, null, false);
-        populateEventDetails(event);
-
-        for (JobCompletionListener listener : completionListeners) {
-            try {
-                listener.onJobStarted(event);
-            } catch (Exception e) {
-                warn("Listener error: " + e.getMessage());
-            }
+    private void prepareWorkingDirectory() throws IOException, InterruptedException {
+        // 1. Check for uncommitted changes (excluding ignored files)
+        List<String> dirtyFiles = checkForUncommittedChanges();
+        if (!dirtyFiles.isEmpty()) {
+            String fileList = dirtyFiles.size() <= 5
+                ? String.join(", ", dirtyFiles)
+                : String.join(", ", dirtyFiles.subList(0, 5)) + " (+" + (dirtyFiles.size() - 5) + " more)";
+            throw new RuntimeException(
+                "Uncommitted changes found: " + fileList +
+                " -- refusing to proceed to avoid conflicts");
         }
 
-        if (instanceListener != null) {
-            try {
-                instanceListener.onJobStarted(event);
-            } catch (Exception e) {
-                warn("Instance listener error: " + e.getMessage());
+        // 2. Fetch latest from origin
+        log("Fetching latest from origin...");
+        if (executeGit("fetch", "origin") != 0) {
+            throw new RuntimeException("Failed to fetch from origin");
+        }
+
+        // 3. Checkout target branch
+        if (!ensureOnTargetBranch()) {
+            throw new RuntimeException("Failed to switch to target branch: " + targetBranch);
+        }
+
+        // 4. Pull latest if remote branch exists
+        boolean remoteBranchExists = executeGit(
+            "show-ref", "--verify", "--quiet",
+            "refs/remotes/origin/" + targetBranch) == 0;
+        if (remoteBranchExists) {
+            log("Pulling latest changes for " + targetBranch + "...");
+            int pullResult = executeGit("pull", "--ff-only", "origin", targetBranch);
+            if (pullResult != 0) {
+                throw new RuntimeException(
+                    "Failed to pull latest changes for " + targetBranch +
+                    " -- local branch may have diverged from origin");
             }
+            log("Working directory is up to date with origin/" + targetBranch);
+        } else {
+            log("No remote branch origin/" + targetBranch + " -- skipping pull");
         }
     }
 
     /**
-     * Fires the job completed event to all registered listeners.
+     * Checks the working directory for uncommitted changes, excluding files
+     * that match the job's excluded patterns (e.g., claude-output, .claude
+     * settings, build artifacts).
+     *
+     * @return list of dirty file paths that are NOT excluded
+     */
+    private List<String> checkForUncommittedChanges() throws IOException, InterruptedException {
+        String statusOutput = executeGitWithOutput("status", "--porcelain");
+        List<String> dirtyFiles = new ArrayList<>();
+
+        Set<String> allExcluded = new HashSet<>(excludedPatterns);
+        allExcluded.addAll(additionalExcludedPatterns);
+
+        for (String line : statusOutput.split("\n")) {
+            if (line.length() > 3) {
+                String file = line.substring(3).trim();
+                if (file.contains(" -> ")) {
+                    file = file.split(" -> ")[1];
+                }
+                if (!file.isEmpty() && !matchesAnyPattern(file, allExcluded)) {
+                    dirtyFiles.add(file);
+                }
+            }
+        }
+
+        if (!dirtyFiles.isEmpty()) {
+            warn("Found " + dirtyFiles.size() + " uncommitted file(s) not in exclude list");
+        } else {
+            log("Working directory is clean (excluding ignored files)");
+        }
+
+        return dirtyFiles;
+    }
+
+    /**
+     * Fires the job completed event by POSTing to the workstream URL.
+     * The controller's {@code SlackNotifier} receives this event and
+     * formats an appropriate Slack message, so no separate Slack message
+     * is sent from here.
      */
     protected void fireJobCompleted(Exception error) {
         JobCompletionEvent event;
 
         if (error != null) {
             event = JobCompletionEvent.failed(
-                taskId, workstreamId, getTaskString(),
+                taskId, getTaskString(),
                 error.getMessage(), error
             );
         } else {
-            event = JobCompletionEvent.success(
-                taskId, workstreamId, getTaskString()
-            );
+            event = JobCompletionEvent.success(taskId, getTaskString());
         }
 
-        event.withGitInfo(targetBranch, commitHash, stagedFiles, skippedFiles, gitOperationsSuccessful && pushToOrigin);
+        event.withGitInfo(targetBranch, commitHash, stagedFiles, skippedFiles,
+            gitOperationsSuccessful && pushToOrigin && !stagedFiles.isEmpty());
+        if (pullRequestUrl != null) {
+            event.withPullRequestUrl(pullRequestUrl);
+        }
         populateEventDetails(event);
-
-        for (JobCompletionListener listener : completionListeners) {
-            try {
-                listener.onJobCompleted(event);
-            } catch (Exception e) {
-                warn("Listener error: " + e.getMessage());
-            }
-        }
-
-        if (instanceListener != null) {
-            try {
-                instanceListener.onJobCompleted(event);
-            } catch (Exception e) {
-                warn("Instance listener error: " + e.getMessage());
-            }
-        }
+        postStatusEvent(event);
     }
 
     /**
@@ -305,14 +347,14 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
         log("Starting git operations...");
         log("Target branch: " + targetBranch);
 
-        // Step 1: Ensure we're on the target branch
+        // Ensure we're on the target branch
         if (!ensureOnTargetBranch()) {
             String msg = "Failed to switch to target branch '" + targetBranch + "'" +
                 " (working directory: " + (workingDirectory != null ? workingDirectory : System.getProperty("user.dir")) + ")";
             throw new RuntimeException(msg);
         }
 
-        // Step 2: Find and filter changed files
+        // Find and filter changed files
         List<String> changedFiles = findChangedFiles();
         if (changedFiles.isEmpty()) {
             log("No changes to commit");
@@ -320,7 +362,7 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
             return;
         }
 
-        // Step 3: Stage files (with guardrails)
+        // Stage files (with guardrails)
         stageFiles(changedFiles);
         if (stagedFiles.isEmpty()) {
             log("No files passed guardrails, nothing to commit");
@@ -328,16 +370,22 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
             return;
         }
 
-        // Step 4: Commit
+        // Commit
         if (!commit()) {
             throw new RuntimeException("Git commit failed after staging " + stagedFiles.size() + " files");
         }
 
-        // Step 5: Push to origin
+        // Push to origin
         if (pushToOrigin && !dryRun) {
             if (!pushToOrigin()) {
                 throw new RuntimeException("Git push to origin/" + targetBranch + " failed");
             }
+        }
+
+        // Detect open PR for the target branch (if remote is GitHub)
+        pullRequestUrl = detectPullRequestUrl();
+        if (pullRequestUrl != null) {
+            log("Open PR: " + pullRequestUrl);
         }
 
         gitOperationsSuccessful = true;
@@ -470,6 +518,17 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
             // Get the commit hash
             commitHash = executeGitWithOutput("rev-parse", "HEAD").trim();
             log("Committed: " + commitHash);
+
+            // Clean up commit.txt so it is not reused by a subsequent run
+            File commitFile = resolveFile("commit.txt");
+            if (commitFile.exists()) {
+                if (commitFile.delete()) {
+                    log("Cleaned up commit.txt");
+                } else {
+                    log("Warning: could not delete commit.txt");
+                }
+            }
+
             return true;
         }
 
@@ -492,7 +551,59 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
         return false;
     }
 
+    // ==================== PR Detection ====================
+
+    /**
+     * Detects an open pull request URL for the target branch.
+     *
+     * <p>Only attempts detection if the origin remote points to GitHub.
+     * Uses the {@code gh} CLI to query for an open PR. Returns {@code null}
+     * if {@code gh} is not installed, no PR exists, or the remote is not GitHub.</p>
+     *
+     * @return the PR URL, or null if no PR was found
+     */
+    private String detectPullRequestUrl() {
+        try {
+            // Check if remote is GitHub
+            String remoteUrl = executeGitWithOutput("remote", "get-url", "origin").trim();
+            if (!remoteUrl.contains("github.com")) {
+                return null;
+            }
+
+            // Try to find open PR for this branch
+            String prUrl = executeCommandWithOutput(
+                "gh", "pr", "view", targetBranch,
+                "--json", "url", "-q", ".url").trim();
+            if (!prUrl.isEmpty() && prUrl.startsWith("http")) {
+                return prUrl;
+            }
+        } catch (Exception e) {
+            log("Could not detect PR URL: " + e.getMessage());
+        }
+
+        return null;
+    }
+
     // ==================== Git Utilities ====================
+
+    /**
+     * Applies git identity environment variables to a {@link ProcessBuilder}.
+     *
+     * <p>Uses {@code GIT_AUTHOR_NAME}, {@code GIT_AUTHOR_EMAIL},
+     * {@code GIT_COMMITTER_NAME}, and {@code GIT_COMMITTER_EMAIL} so the
+     * identity is scoped to the process and never persisted in the repo's
+     * local config.</p>
+     */
+    private void applyGitIdentity(ProcessBuilder pb) {
+        if (gitUserName != null && !gitUserName.isEmpty()) {
+            pb.environment().put("GIT_AUTHOR_NAME", gitUserName);
+            pb.environment().put("GIT_COMMITTER_NAME", gitUserName);
+        }
+        if (gitUserEmail != null && !gitUserEmail.isEmpty()) {
+            pb.environment().put("GIT_AUTHOR_EMAIL", gitUserEmail);
+            pb.environment().put("GIT_COMMITTER_EMAIL", gitUserEmail);
+        }
+    }
 
     private String getCurrentBranch() throws IOException, InterruptedException {
         return executeGitWithOutput("rev-parse", "--abbrev-ref", "HEAD").trim();
@@ -519,6 +630,11 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
         }
         pb.redirectErrorStream(true);
 
+        // Prevent SSH from hanging on unknown host keys (no TTY available)
+        pb.environment().put("GIT_SSH_COMMAND",
+                "ssh -o StrictHostKeyChecking=accept-new -o BatchMode=yes");
+        applyGitIdentity(pb);
+
         Process process = pb.start();
         StringBuilder output = new StringBuilder();
         try (BufferedReader reader = new BufferedReader(
@@ -542,6 +658,36 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
         command.add("git");
         command.addAll(Arrays.asList(args));
 
+        ProcessBuilder pb = new ProcessBuilder(command);
+        if (workingDirectory != null) {
+            pb.directory(new File(workingDirectory));
+        }
+        pb.redirectErrorStream(true);
+
+        // Prevent SSH from hanging on unknown host keys (no TTY available)
+        pb.environment().put("GIT_SSH_COMMAND",
+                "ssh -o StrictHostKeyChecking=accept-new -o BatchMode=yes");
+        applyGitIdentity(pb);
+
+        Process process = pb.start();
+        StringBuilder output = new StringBuilder();
+        try (BufferedReader reader = new BufferedReader(
+                new InputStreamReader(process.getInputStream()))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                output.append(line).append("\n");
+            }
+        }
+
+        process.waitFor();
+        return output.toString();
+    }
+
+    /**
+     * Executes an arbitrary command and returns its output.
+     * Used for non-git commands like {@code gh}.
+     */
+    private String executeCommandWithOutput(String... command) throws IOException, InterruptedException {
         ProcessBuilder pb = new ProcessBuilder(command);
         if (workingDirectory != null) {
             pb.directory(new File(workingDirectory));
@@ -581,16 +727,40 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
     }
 
     private boolean matchesGlobPattern(String path, String pattern) {
-        // Convert glob pattern to regex
-        String regex = pattern
-            .replace(".", "\\.")
-            .replace("**/", "(.*/)?")
-            .replace("**", ".*")
-            .replace("*", "[^/]*")
-            .replace("?", ".");
+        // Convert glob pattern to regex by processing tokens so that
+        // replacing '*' does not corrupt the '.*' produced by '**'.
+        StringBuilder regex = new StringBuilder();
+        int i = 0;
+        while (i < pattern.length()) {
+            char c = pattern.charAt(i);
+            if (c == '*' && i + 1 < pattern.length() && pattern.charAt(i + 1) == '*') {
+                // "**/" matches zero or more directories
+                if (i + 2 < pattern.length() && pattern.charAt(i + 2) == '/') {
+                    regex.append("(.*/)?");
+                    i += 3;
+                } else {
+                    // trailing "**" matches everything
+                    regex.append(".*");
+                    i += 2;
+                }
+            } else if (c == '*') {
+                regex.append("[^/]*");
+                i++;
+            } else if (c == '?') {
+                regex.append("[^/]");
+                i++;
+            } else if (c == '.') {
+                regex.append("\\.");
+                i++;
+            } else {
+                regex.append(c);
+                i++;
+            }
+        }
 
-        return Pattern.matches(regex, path) ||
-               Pattern.matches(".*/" + regex, path) ||
+        String r = regex.toString();
+        return Pattern.matches(r, path) ||
+               Pattern.matches(".*/" + r, path) ||
                path.endsWith("/" + pattern) ||
                path.equals(pattern);
     }
@@ -627,6 +797,17 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
     }
 
     // ==================== Job Interface ====================
+
+    /** {@inheritDoc} */
+    @Override
+    public String formatMessage(String msg) {
+        String prefix = getLogClass().getSimpleName();
+        String id = getTaskId();
+        if (id != null && !id.isEmpty()) {
+            return prefix + " [" + id + "]: " + msg;
+        }
+        return prefix + ": " + msg;
+    }
 
     @Override
     public String getTaskId() {
@@ -727,6 +908,40 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
     }
 
     /**
+     * Returns the git user name for commits.
+     */
+    public String getGitUserName() {
+        return gitUserName;
+    }
+
+    /**
+     * Sets the git user name for commits made by this job.
+     * When set, {@code git config user.name} is run before committing.
+     *
+     * @param gitUserName the name to use in git commits
+     */
+    public void setGitUserName(String gitUserName) {
+        this.gitUserName = gitUserName;
+    }
+
+    /**
+     * Returns the git user email for commits.
+     */
+    public String getGitUserEmail() {
+        return gitUserEmail;
+    }
+
+    /**
+     * Sets the git user email for commits made by this job.
+     * When set, {@code git config user.email} is run before committing.
+     *
+     * @param gitUserEmail the email to use in git commits
+     */
+    public void setGitUserEmail(String gitUserEmail) {
+        this.gitUserEmail = gitUserEmail;
+    }
+
+    /**
      * Adds additional patterns to exclude from commits.
      *
      * @param patterns glob patterns to exclude
@@ -743,28 +958,29 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
         excludedPatterns.clear();
     }
 
-    public String getWorkstreamId() {
-        return workstreamId;
+    /**
+     * Returns the workstream URL for this job.
+     * This URL serves as a prefix for controller interactions:
+     * POST to the URL itself sends status events, appending
+     * {@code /messages} sends Slack messages.
+     */
+    public String getWorkstreamUrl() {
+        return workstreamUrl;
     }
 
     /**
-     * Sets the workstream ID for this job.
-     * Used for routing completion events to the correct Slack channel.
+     * Sets the workstream URL for this job.
      *
-     * @param workstreamId the workstream identifier
-     */
-    public void setWorkstreamId(String workstreamId) {
-        this.workstreamId = workstreamId;
-    }
-
-    /**
-     * Sets an instance-level completion listener for this job.
-     * This listener is called in addition to any global listeners.
+     * <p>The URL follows the pattern
+     * {@code http://controller/api/workstreams/{id}/jobs/{jobId}} for job-level
+     * communication (messages go to the job's Slack thread) or
+     * {@code http://controller/api/workstreams/{id}} for workstream-level
+     * communication (messages go to the channel).</p>
      *
-     * @param listener the listener to notify on completion
+     * @param workstreamUrl the controller URL for this job's workstream
      */
-    public void setCompletionListener(JobCompletionListener listener) {
-        this.instanceListener = listener;
+    public void setWorkstreamUrl(String workstreamUrl) {
+        this.workstreamUrl = workstreamUrl;
     }
 
     // ==================== Results ====================
@@ -791,6 +1007,13 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
     }
 
     /**
+     * Returns the pull request URL if one was detected after push.
+     */
+    public String getPullRequestUrl() {
+        return pullRequestUrl;
+    }
+
+    /**
      * Returns whether git operations completed successfully.
      */
     public boolean isGitOperationsSuccessful() {
@@ -802,6 +1025,141 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
      */
     public String getOriginalBranch() {
         return originalBranch;
+    }
+
+    // ==================== Status Reporting ====================
+
+    /**
+     * POSTs a job status event as JSON to the {@link #workstreamUrl}.
+     * Fire-and-forget: errors are logged but do not fail the job.
+     *
+     * @param event the event to report
+     */
+    private void postStatusEvent(JobCompletionEvent event) {
+        if (workstreamUrl == null || workstreamUrl.isEmpty()) {
+            return;
+        }
+
+        String baseUrl = resolveWorkstreamUrl();
+        String json = buildEventJson(event);
+
+        log("Posting status event (" + event.getStatus() + ") to " + baseUrl);
+        postJson(baseUrl, json);
+    }
+
+    /**
+     * Resolves the workstream URL, replacing the {@code 0.0.0.0} placeholder
+     * with the controller's actual address from {@code FLOWTREE_ROOT_HOST}.
+     *
+     * <p>Subclasses should use this method when passing the workstream URL
+     * to external processes (e.g., environment variables for MCP tools).</p>
+     *
+     * @return the resolved URL, or the original URL if no resolution is needed
+     */
+    protected String resolveWorkstreamUrl() {
+        String url = workstreamUrl;
+
+        String rootHost = System.getenv("FLOWTREE_ROOT_HOST");
+        if (rootHost != null && !rootHost.isEmpty() && url.contains("0.0.0.0")) {
+            url = url.replace("0.0.0.0", rootHost);
+        }
+
+        return url;
+    }
+
+    /**
+     * POSTs a JSON string to the given URL.
+     * Fire-and-forget: errors are logged but do not propagate.
+     */
+    private void postJson(String url, String json) {
+        try {
+            HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
+            conn.setRequestMethod("POST");
+            conn.setRequestProperty("Content-Type", "application/json");
+            conn.setConnectTimeout(5000);
+            conn.setReadTimeout(10000);
+            conn.setDoOutput(true);
+
+            try (OutputStream os = conn.getOutputStream()) {
+                os.write(json.getBytes(StandardCharsets.UTF_8));
+            }
+
+            int responseCode = conn.getResponseCode();
+            if (responseCode < 200 || responseCode >= 300) {
+                warn("POST to " + url + " returned " + responseCode);
+            }
+        } catch (Exception e) {
+            warn("Failed to POST to " + url + ": " + e.getMessage());
+        }
+    }
+
+    /**
+     * Serializes a {@link JobCompletionEvent} to a JSON string.
+     * Called after {@link #populateEventDetails(JobCompletionEvent)} so
+     * subclass fields (prompt, sessionId, exitCode) are included.
+     *
+     * @param event the event to serialize
+     * @return JSON string representation
+     */
+    private String buildEventJson(JobCompletionEvent event) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("{");
+        appendJsonField(sb, "jobId", event.getJobId(), true);
+        appendJsonField(sb, "status", event.getStatus().name(), false);
+        appendJsonField(sb, "description", event.getDescription(), false);
+        appendJsonField(sb, "targetBranch", event.getTargetBranch(), false);
+        appendJsonField(sb, "commitHash", event.getCommitHash(), false);
+        sb.append(",\"pushed\":").append(event.isPushed());
+
+        // Staged files
+        sb.append(",\"stagedFiles\":[");
+        List<String> staged = event.getStagedFiles();
+        for (int i = 0; i < staged.size(); i++) {
+            if (i > 0) sb.append(",");
+            sb.append("\"").append(escapeJson(staged.get(i))).append("\"");
+        }
+        sb.append("]");
+
+        // Skipped files
+        sb.append(",\"skippedFiles\":[");
+        List<String> skipped = event.getSkippedFiles();
+        for (int i = 0; i < skipped.size(); i++) {
+            if (i > 0) sb.append(",");
+            sb.append("\"").append(escapeJson(skipped.get(i))).append("\"");
+        }
+        sb.append("]");
+
+        // PR URL
+        appendJsonField(sb, "pullRequestUrl", event.getPullRequestUrl(), false);
+
+        // Error info
+        appendJsonField(sb, "errorMessage", event.getErrorMessage(), false);
+
+        // Claude Code specific
+        appendJsonField(sb, "prompt", event.getPrompt(), false);
+        appendJsonField(sb, "sessionId", event.getSessionId(), false);
+        sb.append(",\"exitCode\":").append(event.getExitCode());
+
+        sb.append("}");
+        return sb.toString();
+    }
+
+    private void appendJsonField(StringBuilder sb, String name, String value, boolean first) {
+        if (!first) sb.append(",");
+        sb.append("\"").append(name).append("\":");
+        if (value == null) {
+            sb.append("null");
+        } else {
+            sb.append("\"").append(escapeJson(value)).append("\"");
+        }
+    }
+
+    private static String escapeJson(String s) {
+        if (s == null) return "";
+        return s.replace("\\", "\\\\")
+                .replace("\"", "\\\"")
+                .replace("\n", "\\n")
+                .replace("\r", "\\r");
     }
 
     // ==================== Encoding ====================
@@ -829,6 +1187,15 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
         sb.append("::push:=").append(pushToOrigin);
         sb.append("::createBranch:=").append(createBranchIfMissing);
         sb.append("::dryRun:=").append(dryRun);
+        if (gitUserName != null) {
+            sb.append("::gitUserName:=").append(base64Encode(gitUserName));
+        }
+        if (gitUserEmail != null) {
+            sb.append("::gitUserEmail:=").append(base64Encode(gitUserEmail));
+        }
+        if (workstreamUrl != null) {
+            sb.append("::workstreamUrl:=").append(base64Encode(workstreamUrl));
+        }
         return sb.toString();
     }
 
@@ -855,6 +1222,15 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
                 break;
             case "dryRun":
                 this.dryRun = Boolean.parseBoolean(value);
+                break;
+            case "gitUserName":
+                this.gitUserName = base64Decode(value);
+                break;
+            case "gitUserEmail":
+                this.gitUserEmail = base64Decode(value);
+                break;
+            case "workstreamUrl":
+                this.workstreamUrl = base64Decode(value);
                 break;
         }
     }

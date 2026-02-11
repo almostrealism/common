@@ -15,6 +15,7 @@ target/**
 **/target/**
 commands/**
 **.versionsBackup
+**/docs/apidocs
 
 # Testing and Monitoring
 **/*.hwcache/**
@@ -37,7 +38,9 @@ Extensions/**
 # Python
 **/__pycache__
 
-**/docs/apidocs
+# Automated coding
+claude-output/**
+commit.txt
 
 # Secrets
 **/slack-tokens.json

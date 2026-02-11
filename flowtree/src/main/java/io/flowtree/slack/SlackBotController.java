@@ -24,10 +24,12 @@ import com.slack.api.methods.SlackApiException;
 import com.slack.api.methods.response.auth.AuthTestResponse;
 import com.slack.api.model.event.AppMentionEvent;
 import com.slack.api.model.event.MessageEvent;
-import io.flowtree.jobs.JobCompletionEvent;
-import io.flowtree.jobs.JobCompletionListener;
+import io.flowtree.Server;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
+import org.almostrealism.io.OutputFeatures;
+
+import java.util.Properties;
 
 import java.io.File;
 import java.io.IOException;
@@ -72,7 +74,7 @@ import java.util.function.BiConsumer;
  * @see SlackNotifier
  * @see SlackWorkstream
  */
-public class SlackBotController implements JobCompletionListener, ConsoleFeatures {
+public class SlackBotController implements ConsoleFeatures {
 
     private final String botToken;
     private final String appToken;
@@ -83,6 +85,11 @@ public class SlackBotController implements JobCompletionListener, ConsoleFeature
     private App app;
     private SocketModeApp socketModeApp;
     private String botUserId;
+
+    private Server flowtreeServer;
+    private int flowtreePort = Server.defaultPort;
+
+    private File configFile;
 
     private SlackApiEndpoint apiEndpoint;
     private int apiPort = SlackApiEndpoint.DEFAULT_PORT;
@@ -123,9 +130,6 @@ public class SlackBotController implements JobCompletionListener, ConsoleFeature
         this.notifier = new SlackNotifier(botToken);
         this.listener = new SlackListener(notifier);
         this.running = new AtomicBoolean(false);
-
-        // Wire up completion events
-        listener.setCompletionListener(this);
     }
 
     /**
@@ -145,13 +149,40 @@ public class SlackBotController implements JobCompletionListener, ConsoleFeature
     }
 
     /**
+     * Returns the port the FlowTree server listens on for agent connections.
+     */
+    public int getFlowtreePort() {
+        return flowtreePort;
+    }
+
+    /**
+     * Sets the port the FlowTree server listens on for agent connections.
+     * Must be called before {@link #start()}.
+     *
+     * @param flowtreePort the port number
+     */
+    public void setFlowtreePort(int flowtreePort) {
+        this.flowtreePort = flowtreePort;
+    }
+
+    /**
      * Loads workstream configuration from a YAML file.
+     *
+     * <p>If any workstream entries lack a {@code workstreamId}, one is
+     * auto-generated and the file is rewritten to persist the IDs.</p>
      *
      * @param configFile the YAML configuration file
      * @throws IOException if the file cannot be read or parsed
      */
     public void loadConfig(File configFile) throws IOException {
+        this.configFile = configFile;
         WorkstreamConfig config = WorkstreamConfig.loadFromYaml(configFile);
+
+        if (config.ensureWorkstreamIds()) {
+            config.saveToYaml(configFile);
+            log("Generated workstream IDs and saved to " + configFile.getName());
+        }
+
         for (SlackWorkstream workstream : config.toWorkstreams()) {
             registerWorkstream(workstream);
         }
@@ -173,12 +204,41 @@ public class SlackBotController implements JobCompletionListener, ConsoleFeature
     }
 
     /**
+     * Reloads workstream configuration from the YAML file originally
+     * passed to {@link #loadConfig(File)}.
+     *
+     * <p>New workstreams are registered and existing ones are updated.
+     * Any missing workstream IDs are generated and persisted.</p>
+     */
+    public synchronized void reloadConfig() {
+        if (configFile == null || !configFile.exists()) {
+            log("No config file to reload");
+            return;
+        }
+
+        try {
+            WorkstreamConfig config = WorkstreamConfig.loadFromYaml(configFile);
+            if (config.ensureWorkstreamIds()) {
+                config.saveToYaml(configFile);
+                log("Generated workstream IDs and saved to " + configFile.getName());
+            }
+
+            for (SlackWorkstream workstream : config.toWorkstreams()) {
+                registerWorkstream(workstream);
+            }
+            log("Reloaded " + config.getWorkstreams().size() +
+                              " workstream(s) from " + configFile.getName());
+        } catch (IOException e) {
+            warn("Failed to reload config: " + e.getMessage());
+        }
+    }
+
+    /**
      * Registers a workstream with the controller.
      *
      * @param workstream the workstream configuration
-     * @throws IOException if agent connection fails
      */
-    public void registerWorkstream(SlackWorkstream workstream) throws IOException {
+    public void registerWorkstream(SlackWorkstream workstream) {
         listener.registerWorkstream(workstream);
         log("Registered workstream: " + workstream.getChannelName());
     }
@@ -208,9 +268,26 @@ public class SlackBotController implements JobCompletionListener, ConsoleFeature
             return;
         }
 
+        String logFile = System.getProperty("flowtree.log.file",
+            System.getenv().getOrDefault("FLOWTREE_LOG_FILE", "flowtree-controller.log"));
+        Console.root().addListener(OutputFeatures.fileOutput(logFile));
+        log("Logging to file: " + logFile);
+
         log("===========================================");
         log("  Slack Bot Controller - Flowtree Agent");
         log("===========================================");
+
+        // Start FlowTree server for inbound agent connections.
+        // Set nodes.initial=0 so the controller never processes jobs locally --
+        // all jobs are forwarded to connected agents.
+        Properties flowtreeProps = new Properties();
+        flowtreeProps.setProperty("server.port", String.valueOf(flowtreePort));
+        flowtreeProps.setProperty("nodes.initial", "0");
+        flowtreeServer = new Server(flowtreeProps);
+        flowtreeServer.start();
+        listener.setServer(flowtreeServer);
+        listener.setConfigReloader(this::reloadConfig);
+        log("FlowTree server listening on port " + flowtreePort);
 
         if (botToken == null || botToken.isEmpty() || appToken == null || appToken.isEmpty()) {
             log("WARNING: Missing SLACK_BOT_TOKEN or SLACK_APP_TOKEN");
@@ -265,6 +342,7 @@ public class SlackBotController implements JobCompletionListener, ConsoleFeature
             String channelId = event.getChannel();
             String userId = event.getUser();
             String text = event.getText();
+            String messageTs = event.getTs();
             String threadTs = event.getThreadTs();
 
             log("App mention in " + channelId + ": " + text);
@@ -274,7 +352,7 @@ public class SlackBotController implements JobCompletionListener, ConsoleFeature
                 return ctx.ack();
             }
 
-            listener.handleMessage(channelId, userId, text, threadTs);
+            listener.handleMessage(channelId, userId, text, messageTs, threadTs);
             return ctx.ack();
         });
 
@@ -290,6 +368,7 @@ public class SlackBotController implements JobCompletionListener, ConsoleFeature
             String channelId = event.getChannel();
             String userId = event.getUser();
             String text = event.getText();
+            String messageTs = event.getTs();
             String threadTs = event.getThreadTs();
 
             // Skip bot's own messages
@@ -298,7 +377,7 @@ public class SlackBotController implements JobCompletionListener, ConsoleFeature
             }
 
             log("DM from " + userId + ": " + text);
-            listener.handleMessage(channelId, userId, text, threadTs);
+            listener.handleMessage(channelId, userId, text, messageTs, threadTs);
             return ctx.ack();
         });
     }
@@ -320,13 +399,16 @@ public class SlackBotController implements JobCompletionListener, ConsoleFeature
 
     private void printStartupSummary() {
         log("===========================================");
+        if (flowtreeServer != null) {
+            log("FlowTree server: port " + flowtreePort + " (agents connect here)");
+            log("Connected agents: " + flowtreeServer.getNodeGroup().getServers().length);
+        }
         if (apiEndpoint != null) {
             log("API endpoint: http://localhost:" + apiEndpoint.getListeningPort());
         }
         log("Registered workstreams: " + listener.getWorkstreams().size());
         for (SlackWorkstream ws : listener.getWorkstreams().values()) {
             log("  - " + ws.getChannelName() + " (" + ws.getChannelId() + ")");
-            log("    Agents: " + ws.getAgents().size());
             if (ws.getDefaultBranch() != null) {
                 log("    Branch: " + ws.getDefaultBranch());
             }
@@ -340,6 +422,11 @@ public class SlackBotController implements JobCompletionListener, ConsoleFeature
      */
     public void stop() throws Exception {
         running.set(false);
+
+        if (flowtreeServer != null) {
+            flowtreeServer.stop();
+            flowtreeServer = null;
+        }
 
         if (apiEndpoint != null) {
             apiEndpoint.stop();
@@ -373,7 +460,7 @@ public class SlackBotController implements JobCompletionListener, ConsoleFeature
      * @param text      the message text
      */
     public void simulateMessage(String channelId, String text) {
-        listener.handleMessage(channelId, "U_SIMULATED", text, null);
+        listener.handleMessage(channelId, "U_SIMULATED", text, null, null);
     }
 
     /**
@@ -395,18 +482,6 @@ public class SlackBotController implements JobCompletionListener, ConsoleFeature
      */
     public boolean isSimulationMode() {
         return simulationMode;
-    }
-
-    // JobCompletionListener implementation
-
-    @Override
-    public void onJobStarted(JobCompletionEvent event) {
-        // Already handled by SlackListener -> SlackNotifier chain
-    }
-
-    @Override
-    public void onJobCompleted(JobCompletionEvent event) {
-        notifier.onJobCompleted(event);
     }
 
     /**
@@ -435,10 +510,15 @@ public class SlackBotController implements JobCompletionListener, ConsoleFeature
     /**
      * Main entry point for running the Slack bot controller.
      *
+     * <p>The controller starts a FlowTree {@link Server} that listens for
+     * inbound agent connections. Agents connect to this server by setting
+     * {@code FLOWTREE_ROOT_HOST} and {@code FLOWTREE_ROOT_PORT}.</p>
+     *
      * <p>Environment variables:</p>
      * <ul>
      *   <li>SLACK_BOT_TOKEN - Required</li>
      *   <li>SLACK_APP_TOKEN - Required for Socket Mode</li>
+     *   <li>FLOWTREE_PORT - FlowTree listening port (default: 7766)</li>
      * </ul>
      *
      * <p>Arguments:</p>
@@ -446,8 +526,8 @@ public class SlackBotController implements JobCompletionListener, ConsoleFeature
      *   <li>--tokens &lt;file&gt; - JSON file containing botToken and appToken</li>
      *   <li>--config &lt;file&gt; - YAML configuration file</li>
      *   <li>--channel &lt;id&gt; - Single channel to monitor</li>
-     *   <li>--agent &lt;host:port&gt; - Agent endpoint</li>
      *   <li>--branch &lt;name&gt; - Default branch</li>
+     *   <li>--flowtree-port &lt;port&gt; - FlowTree listening port</li>
      * </ul>
      */
     public static void main(String[] args) throws Exception {
@@ -455,10 +535,11 @@ public class SlackBotController implements JobCompletionListener, ConsoleFeature
         String tokensFile = null;
         String channelId = System.getenv("SLACK_CHANNEL_ID");
         String channelName = System.getenv("SLACK_CHANNEL_NAME");
-        String agentHost = System.getenv().getOrDefault("FLOWTREE_AGENT_HOST", "localhost");
-        String agentPort = System.getenv().getOrDefault("FLOWTREE_AGENT_PORT", "7766");
         String defaultBranch = System.getenv("GIT_DEFAULT_BRANCH");
         int apiPort = SlackApiEndpoint.DEFAULT_PORT;
+        int flowtreePort = Integer.parseInt(
+                System.getenv().getOrDefault("FLOWTREE_PORT",
+                        String.valueOf(Server.defaultPort)));
 
         // Parse command-line arguments
         for (int i = 0; i < args.length; i++) {
@@ -477,18 +558,17 @@ public class SlackBotController implements JobCompletionListener, ConsoleFeature
                 case "--channel-name":
                     channelName = args[++i];
                     break;
-                case "--agent":
-                    String[] parts = args[++i].split(":");
-                    agentHost = parts[0];
-                    if (parts.length > 1) {
-                        agentPort = parts[1];
-                    }
-                    break;
                 case "--branch":
                     defaultBranch = args[++i];
                     break;
                 case "--api-port":
                     apiPort = Integer.parseInt(args[++i]);
+                    break;
+                case "--flowtree-port":
+                    flowtreePort = Integer.parseInt(args[++i]);
+                    break;
+                case "--log-file":
+                    System.setProperty("flowtree.log.file", args[++i]);
                     break;
                 case "--help":
                 case "-h":
@@ -504,6 +584,7 @@ public class SlackBotController implements JobCompletionListener, ConsoleFeature
         // Create controller
         SlackBotController controller = new SlackBotController(tokens);
         controller.setApiPort(apiPort);
+        controller.setFlowtreePort(flowtreePort);
 
         // Load configuration
         if (configFile != null) {
@@ -514,7 +595,6 @@ public class SlackBotController implements JobCompletionListener, ConsoleFeature
                 channelId,
                 channelName != null ? channelName : channelId
             );
-            workstream.addAgent(agentHost, Integer.parseInt(agentPort));
             if (defaultBranch != null) {
                 workstream.setDefaultBranch(defaultBranch);
             }
@@ -549,10 +629,14 @@ public class SlackBotController implements JobCompletionListener, ConsoleFeature
         System.out.println("  --config, -c <file>    YAML configuration file");
         System.out.println("  --channel <id>         Slack channel ID to monitor");
         System.out.println("  --channel-name <name>  Human-readable channel name");
-        System.out.println("  --agent <host:port>    Flowtree agent endpoint");
         System.out.println("  --branch <name>        Default git branch for commits");
         System.out.println("  --api-port <port>      Port for the HTTP API endpoint (default: 7780)");
+        System.out.println("  --flowtree-port <port> Port for the FlowTree server (default: 7766)");
+        System.out.println("  --log-file <path>      Log file path (default: flowtree-controller.log)");
         System.out.println("  --help, -h             Show this help");
+        System.out.println();
+        System.out.println("Agents connect TO this controller on the FlowTree port.");
+        System.out.println("Set FLOWTREE_ROOT_HOST and FLOWTREE_ROOT_PORT on each agent.");
         System.out.println();
         System.out.println("Token resolution (first match wins):");
         System.out.println("  1. --tokens <file>           Explicit token file");
@@ -566,8 +650,7 @@ public class SlackBotController implements JobCompletionListener, ConsoleFeature
         System.out.println("  SLACK_BOT_TOKEN        Bot User OAuth Token (xoxb-...)");
         System.out.println("  SLACK_APP_TOKEN        App-level token for Socket Mode (xapp-...)");
         System.out.println("  SLACK_CHANNEL_ID       Default channel to monitor");
-        System.out.println("  FLOWTREE_AGENT_HOST    Agent host (default: localhost)");
-        System.out.println("  FLOWTREE_AGENT_PORT    Agent port (default: 7766)");
+        System.out.println("  FLOWTREE_PORT          FlowTree listening port (default: 7766)");
         System.out.println("  GIT_DEFAULT_BRANCH     Default branch for commits");
         System.out.println();
         System.out.println("Example with token file:");

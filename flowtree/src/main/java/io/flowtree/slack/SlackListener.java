@@ -16,13 +16,12 @@
 
 package io.flowtree.slack;
 
-import io.flowtree.ClaudeCodeClient;
+import io.flowtree.Server;
 import io.flowtree.jobs.ClaudeCodeJob;
 import io.flowtree.jobs.JobCompletionEvent;
-import io.flowtree.jobs.JobCompletionListener;
+import io.flowtree.msg.NodeProxy;
 import org.almostrealism.io.ConsoleFeatures;
 
-import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.regex.Matcher;
@@ -60,10 +59,11 @@ public class SlackListener implements ConsoleFeatures {
     );
 
     private final Map<String, SlackWorkstream> channelToWorkstream;
-    private final Map<String, ClaudeCodeClient> workstreamClients;
     private final SlackNotifier notifier;
 
-    private JobCompletionListener completionListener;
+    private Server server;
+    private Runnable configReloader;
+    private int nextAgent = 0;
     private int apiPort;
 
     /**
@@ -74,43 +74,37 @@ public class SlackListener implements ConsoleFeatures {
     public SlackListener(SlackNotifier notifier) {
         this.notifier = notifier;
         this.channelToWorkstream = new HashMap<>();
-        this.workstreamClients = new HashMap<>();
     }
 
     /**
-     * Registers a workstream and initializes its client connection.
+     * Registers a workstream. Agents connect inbound to the controller's
+     * FlowTree {@link Server}, so no outbound connections are needed here.
      *
      * @param workstream the workstream to register
-     * @throws IOException if client connection fails
      */
-    public void registerWorkstream(SlackWorkstream workstream) throws IOException {
-        if (workstream.getAgents().isEmpty()) {
-            throw new IllegalArgumentException("Workstream has no agents configured");
-        }
-
-        // Register with notifier
+    public void registerWorkstream(SlackWorkstream workstream) {
         notifier.registerWorkstream(workstream);
-
-        // Create client for this workstream
-        ClaudeCodeClient client = new ClaudeCodeClient();
-        for (SlackWorkstream.AgentEndpoint agent : workstream.getAgents()) {
-            client.addAgent(agent.getHost(), agent.getPort());
-        }
-        client.start();
-
         channelToWorkstream.put(workstream.getChannelId(), workstream);
-        workstreamClients.put(workstream.getWorkstreamId(), client);
-
         log("Registered workstream: " + workstream);
     }
 
     /**
-     * Sets the completion listener for job events.
+     * Sets the FlowTree {@link Server} used to send tasks to connected agents.
      *
-     * @param listener the listener to receive job events
+     * @param server the server accepting inbound agent connections
      */
-    public void setCompletionListener(JobCompletionListener listener) {
-        this.completionListener = listener;
+    public void setServer(Server server) {
+        this.server = server;
+    }
+
+    /**
+     * Sets a callback to reload workstream configuration from the YAML file.
+     * Called when a message arrives from an unknown channel.
+     *
+     * @param configReloader the reload callback
+     */
+    public void setConfigReloader(Runnable configReloader) {
+        this.configReloader = configReloader;
     }
 
     /**
@@ -139,11 +133,19 @@ public class SlackListener implements ConsoleFeatures {
      * @param channelId the channel where the message was posted
      * @param userId    the user who posted the message
      * @param text      the message text
-     * @param threadTs  the thread timestamp (for threading replies)
+     * @param messageTs the timestamp of this message (used to create a thread under it)
+     * @param threadTs  the thread timestamp (non-null if the message is already in a thread)
      * @return true if a job was created, false if the message was ignored
      */
-    public boolean handleMessage(String channelId, String userId, String text, String threadTs) {
+    public boolean handleMessage(String channelId, String userId, String text, String messageTs, String threadTs) {
         SlackWorkstream workstream = channelToWorkstream.get(channelId);
+
+        if (workstream == null && configReloader != null) {
+            log("Unknown channel " + channelId + " - reloading config");
+            configReloader.run();
+            workstream = channelToWorkstream.get(channelId);
+        }
+
         if (workstream == null) {
             log("Ignoring message from unknown channel: " + channelId);
             return false;
@@ -154,7 +156,7 @@ public class SlackListener implements ConsoleFeatures {
         if (commandMatcher.matches()) {
             String command = commandMatcher.group(1);
             String args = commandMatcher.group(2);
-            return handleCommand(workstream, command, args, threadTs);
+            return handleCommand(workstream, command, args, messageTs, threadTs);
         }
 
         // Extract prompt from mention
@@ -164,13 +166,13 @@ public class SlackListener implements ConsoleFeatures {
             return false;
         }
 
-        return submitJob(workstream, prompt, threadTs);
+        return submitJob(workstream, prompt, messageTs, threadTs);
     }
 
     /**
      * Handles a slash command or in-message command.
      */
-    private boolean handleCommand(SlackWorkstream workstream, String command, String args, String threadTs) {
+    private boolean handleCommand(SlackWorkstream workstream, String command, String args, String messageTs, String threadTs) {
         switch (command.toLowerCase()) {
             case "status":
                 handleStatusCommand(workstream);
@@ -184,7 +186,7 @@ public class SlackListener implements ConsoleFeatures {
             case "do":
             case "run":
                 if (args != null && !args.trim().isEmpty()) {
-                    return submitJob(workstream, args.trim(), threadTs);
+                    return submitJob(workstream, args.trim(), messageTs, threadTs);
                 }
                 notifier.postMessage(workstream.getChannelId(),
                     ":warning: Usage: /" + command + " <prompt>");
@@ -200,10 +202,12 @@ public class SlackListener implements ConsoleFeatures {
      * Handles the /status command.
      */
     private void handleStatusCommand(SlackWorkstream workstream) {
+        int connectedAgents = server != null ? server.getNodeGroup().getServers().length : 0;
+
         StringBuilder sb = new StringBuilder();
         sb.append(":information_source: *Workstream Status*\n");
         sb.append("   Channel: ").append(workstream.getChannelName()).append("\n");
-        sb.append("   Agents: ").append(workstream.getAgents().size()).append(" configured\n");
+        sb.append("   Connected agents: ").append(connectedAgents).append("\n");
         if (workstream.getDefaultBranch() != null) {
             sb.append("   Default branch: `").append(workstream.getDefaultBranch()).append("`\n");
         }
@@ -222,12 +226,23 @@ public class SlackListener implements ConsoleFeatures {
     }
 
     /**
-     * Submits a job to the workstream's agents.
+     * Submits a job to connected agents via the FlowTree {@link Server}.
+     *
+     * @param workstream the target workstream
+     * @param prompt     the user prompt
+     * @param messageTs  the timestamp of the triggering message (for threading)
+     * @param threadTs   the existing thread timestamp (non-null if already in a thread)
      */
-    private boolean submitJob(SlackWorkstream workstream, String prompt, String threadTs) {
-        ClaudeCodeClient client = workstreamClients.get(workstream.getWorkstreamId());
-        if (client == null) {
-            warn("No client for workstream: " + workstream.getWorkstreamId());
+    private boolean submitJob(SlackWorkstream workstream, String prompt, String messageTs, String threadTs) {
+        if (server == null) {
+            warn("No FlowTree server configured");
+            return false;
+        }
+
+        NodeProxy[] peers = server.getNodeGroup().getServers();
+        if (peers.length == 0) {
+            notifier.postMessage(workstream.getChannelId(),
+                ":x: No agents connected - job not submitted. Start an agent with FLOWTREE_ROOT_HOST pointed at this controller.");
             return false;
         }
 
@@ -236,7 +251,6 @@ public class SlackListener implements ConsoleFeatures {
         factory.setAllowedTools(workstream.getAllowedTools());
         factory.setMaxTurns(workstream.getMaxTurns());
         factory.setMaxBudgetUsd(workstream.getMaxBudgetUsd());
-        factory.setWorkstreamId(workstream.getWorkstreamId());
 
         if (workstream.getDefaultBranch() != null) {
             factory.setTargetBranch(workstream.getDefaultBranch());
@@ -247,29 +261,38 @@ public class SlackListener implements ConsoleFeatures {
             factory.setWorkingDirectory(workstream.getWorkingDirectory());
         }
 
-        // Configure Slack MCP tool access
-        if (apiPort > 0) {
-            factory.setSlackApiUrl("http://localhost:" + apiPort);
-            factory.setSlackChannelId(workstream.getChannelId());
+        // Git identity
+        if (workstream.getGitUserName() != null) {
+            factory.setGitUserName(workstream.getGitUserName());
+        }
+        if (workstream.getGitUserEmail() != null) {
+            factory.setGitUserEmail(workstream.getGitUserEmail());
         }
 
-        // Notify that work is starting
-        JobCompletionEvent startEvent = JobCompletionEvent.started(
-            factory.getTaskId(),
-            workstream.getWorkstreamId(),
-            prompt.length() > 100 ? prompt.substring(0, 97) + "..." : prompt
-        );
+        // Build workstream URL for status reporting and Slack messaging
+        if (apiPort > 0) {
+            String baseUrl = "http://0.0.0.0:" + apiPort
+                + "/api/workstreams/" + workstream.getWorkstreamId()
+                + "/jobs/" + factory.getTaskId();
+            factory.setWorkstreamUrl(baseUrl);
+        }
+
+        // Notify that work is starting (locally, before the job leaves).
+        // If the triggering message is a top-level message (threadTs == null),
+        // reply under it to create a thread. If already in a thread, continue there.
+        String replyTo = (threadTs == null) ? messageTs : threadTs;
+
+        String description = prompt.length() > 100 ? prompt.substring(0, 97) + "..." : prompt;
+        JobCompletionEvent startEvent = JobCompletionEvent.started(factory.getTaskId(), description);
         startEvent.withGitInfo(workstream.getDefaultBranch(), null, null, null, false);
 
-        notifier.onJobStarted(startEvent);
-        if (completionListener != null) {
-            completionListener.onJobStarted(startEvent);
-        }
+        notifier.onJobStarted(workstream.getWorkstreamId(), startEvent, replyTo);
 
-        // Submit the job
-        client.submit(factory);
+        // Round-robin to connected agents
+        int index = nextAgent++ % peers.length;
+        server.sendTask(factory, index);
 
-        log("Submitted job: " + factory.getTaskId());
+        log("Submitted job to agent " + index + ": " + factory.getTaskId());
         return true;
     }
 

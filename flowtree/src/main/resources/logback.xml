@@ -1,0 +1,22 @@
+<configuration>
+    <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%d{HH:mm:ss.SSS} %-5level %logger{36} - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <!-- Suppress verbose Slack SDK logging -->
+    <logger name="com.slack.api" level="WARN" />
+    <logger name="com.slack.api.bolt" level="WARN" />
+    <logger name="com.slack.api.socket_mode" level="WARN" />
+
+    <!-- Suppress verbose OkHttp logging -->
+    <logger name="okhttp3" level="WARN" />
+
+    <!-- Suppress verbose Tyrus WebSocket logging -->
+    <logger name="org.glassfish.tyrus" level="WARN" />
+
+    <root level="INFO">
+        <appender-ref ref="STDOUT" />
+    </root>
+</configuration>
