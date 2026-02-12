@@ -443,6 +443,16 @@ public class SlackBotController implements ConsoleFeatures {
                 ProcessBuilder pb = new ProcessBuilder("python3", sourcePath.toString());
                 pb.environment().put("MCP_TRANSPORT", "http");
                 pb.environment().put("MCP_PORT", String.valueOf(serverEntry.getPort()));
+
+                // Forward AR_* environment variables to the subprocess so that
+                // server-specific configuration (e.g., AR_CONSULTANT_LLAMACPP_URL)
+                // set on the controller is visible to the Python process.
+                for (Map.Entry<String, String> env : System.getenv().entrySet()) {
+                    if (env.getKey().startsWith("AR_")) {
+                        pb.environment().put(env.getKey(), env.getValue());
+                    }
+                }
+
                 pb.inheritIO();
 
                 Process process = pb.start();
