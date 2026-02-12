@@ -65,6 +65,8 @@ public class SlackListener implements ConsoleFeatures {
     private Runnable configReloader;
     private int nextAgent = 0;
     private int apiPort;
+    private String centralizedMcpConfig;
+    private String pushedToolsConfig;
 
     /**
      * Creates a new SlackListener with the specified notifier.
@@ -122,6 +124,42 @@ public class SlackListener implements ConsoleFeatures {
      */
     public void setApiPort(int apiPort) {
         this.apiPort = apiPort;
+    }
+
+    /**
+     * Returns the centralized MCP configuration JSON.
+     */
+    public String getCentralizedMcpConfig() {
+        return centralizedMcpConfig;
+    }
+
+    /**
+     * Sets the centralized MCP configuration JSON. When set, this config
+     * is passed to every {@link ClaudeCodeJob.Factory} so that agents
+     * connect to centralized servers over HTTP.
+     *
+     * @param centralizedMcpConfig JSON mapping server names to URLs and tool names
+     */
+    public void setCentralizedMcpConfig(String centralizedMcpConfig) {
+        this.centralizedMcpConfig = centralizedMcpConfig;
+    }
+
+    /**
+     * Returns the pushed MCP tools configuration JSON.
+     */
+    public String getPushedToolsConfig() {
+        return pushedToolsConfig;
+    }
+
+    /**
+     * Sets the pushed MCP tools configuration JSON. When set, this config
+     * is passed to every {@link ClaudeCodeJob.Factory} so that agents
+     * download tool source files from the controller and run them locally.
+     *
+     * @param pushedToolsConfig JSON mapping server names to download URLs and tool names
+     */
+    public void setPushedToolsConfig(String pushedToolsConfig) {
+        this.pushedToolsConfig = pushedToolsConfig;
     }
 
     /**
@@ -267,6 +305,16 @@ public class SlackListener implements ConsoleFeatures {
         }
         if (workstream.getGitUserEmail() != null) {
             factory.setGitUserEmail(workstream.getGitUserEmail());
+        }
+
+        // Centralized MCP server config
+        if (centralizedMcpConfig != null) {
+            factory.setCentralizedMcpConfig(centralizedMcpConfig);
+        }
+
+        // Pushed MCP tools config
+        if (pushedToolsConfig != null) {
+            factory.setPushedToolsConfig(pushedToolsConfig);
         }
 
         // Build workstream URL for status reporting and Slack messaging

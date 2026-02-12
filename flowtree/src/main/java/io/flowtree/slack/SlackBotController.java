@@ -25,10 +25,16 @@ import com.slack.api.methods.response.auth.AuthTestResponse;
 import com.slack.api.model.event.AppMentionEvent;
 import com.slack.api.model.event.MessageEvent;
 import io.flowtree.Server;
+import io.flowtree.jobs.McpToolDiscovery;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.OutputFeatures;
 
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.Properties;
 
 import java.io.File;
@@ -90,9 +96,12 @@ public class SlackBotController implements ConsoleFeatures {
     private int flowtreePort = Server.defaultPort;
 
     private File configFile;
+    private WorkstreamConfig loadedConfig;
 
     private SlackApiEndpoint apiEndpoint;
     private int apiPort = SlackApiEndpoint.DEFAULT_PORT;
+
+    private List<Process> mcpProcesses = new ArrayList<>();
 
     // For testing/simulation
     private BiConsumer<String, String> eventSimulator;
@@ -177,6 +186,7 @@ public class SlackBotController implements ConsoleFeatures {
     public void loadConfig(File configFile) throws IOException {
         this.configFile = configFile;
         WorkstreamConfig config = WorkstreamConfig.loadFromYaml(configFile);
+        this.loadedConfig = config;
 
         if (config.ensureWorkstreamIds()) {
             config.saveToYaml(configFile);
@@ -188,6 +198,9 @@ public class SlackBotController implements ConsoleFeatures {
         }
         log("Loaded " + config.getWorkstreams().size() +
                           " workstream(s) from " + configFile.getName());
+
+        // Start centralized MCP servers if configured
+        startCentralizedMcpServers(config, configFile.getParentFile());
     }
 
     /**
@@ -294,6 +307,7 @@ public class SlackBotController implements ConsoleFeatures {
             log("         Running in simulation mode");
             simulationMode = true;
             startApiEndpoint();
+            registerPushedTools();
             printStartupSummary();
             return;
         }
@@ -329,6 +343,7 @@ public class SlackBotController implements ConsoleFeatures {
         log("Socket Mode connection established");
 
         startApiEndpoint();
+        registerPushedTools();
         printStartupSummary();
     }
 
@@ -383,6 +398,157 @@ public class SlackBotController implements ConsoleFeatures {
     }
 
     /**
+     * Starts centralized MCP servers as HTTP processes and builds the
+     * centralized config JSON for passing to agents.
+     *
+     * <p>Each server in the YAML {@code mcpServers} section is started as a
+     * Python subprocess with {@code MCP_TRANSPORT=http} and its configured
+     * port. The source file paths are resolved relative to the config file's
+     * parent directory.</p>
+     *
+     * @param config    the parsed workstream configuration
+     * @param configDir the directory containing the YAML config file, used to
+     *                  resolve relative source paths (may be null)
+     */
+    private void startCentralizedMcpServers(WorkstreamConfig config, File configDir) {
+        Map<String, WorkstreamConfig.McpServerEntry> mcpServers = config.getMcpServers();
+        if (mcpServers == null || mcpServers.isEmpty()) return;
+
+        log("Starting " + mcpServers.size() + " centralized MCP server(s)...");
+
+        // Build the centralized config JSON as we start each server
+        StringBuilder configJson = new StringBuilder("{");
+        boolean first = true;
+
+        for (Map.Entry<String, WorkstreamConfig.McpServerEntry> entry : mcpServers.entrySet()) {
+            String serverName = entry.getKey();
+            WorkstreamConfig.McpServerEntry serverEntry = entry.getValue();
+
+            // Resolve source path relative to config file directory
+            Path sourcePath;
+            if (configDir != null) {
+                sourcePath = configDir.toPath().resolve(serverEntry.getSource());
+            } else {
+                sourcePath = Path.of(serverEntry.getSource());
+            }
+
+            // Discover tool names from the source file
+            List<String> tools = McpToolDiscovery.discoverToolNames(sourcePath);
+            if (tools.isEmpty()) {
+                warn("No tools discovered from " + sourcePath + " for server " + serverName);
+            }
+
+            // Start the Python process
+            try {
+                ProcessBuilder pb = new ProcessBuilder("python3", sourcePath.toString());
+                pb.environment().put("MCP_TRANSPORT", "http");
+                pb.environment().put("MCP_PORT", String.valueOf(serverEntry.getPort()));
+                pb.inheritIO();
+
+                Process process = pb.start();
+                mcpProcesses.add(process);
+                log("Started " + serverName + " on port " + serverEntry.getPort()
+                    + " (PID " + process.pid() + ", " + tools.size() + " tools)");
+            } catch (IOException e) {
+                warn("Failed to start " + serverName + ": " + e.getMessage());
+                continue;
+            }
+
+            // Build this server's entry in the config JSON
+            String url = "http://0.0.0.0:" + serverEntry.getPort() + "/mcp";
+
+            if (!first) configJson.append(",");
+            first = false;
+            configJson.append("\"").append(serverName).append("\":{");
+            configJson.append("\"url\":\"").append(url).append("\",");
+            configJson.append("\"tools\":[");
+            for (int i = 0; i < tools.size(); i++) {
+                if (i > 0) configJson.append(",");
+                configJson.append("\"").append(tools.get(i)).append("\"");
+            }
+            configJson.append("]}");
+        }
+
+        configJson.append("}");
+        String centralizedConfig = configJson.toString();
+
+        listener.setCentralizedMcpConfig(centralizedConfig);
+        log("Centralized MCP config: " + centralizedConfig);
+    }
+
+    /**
+     * Registers pushed MCP tool files with the API endpoint and builds
+     * the pushed tools config JSON for passing to agents.
+     *
+     * <p>Each tool in the YAML {@code pushedTools} section is registered
+     * with the API endpoint for serving via {@code GET /api/tools/{name}}.
+     * Tool names are discovered from the Python source files so they can
+     * be included in the agent's allowed tools list.</p>
+     *
+     * <p>Must be called after {@link #startApiEndpoint()} since it requires
+     * the API endpoint reference and listening port.</p>
+     */
+    private void registerPushedTools() {
+        if (loadedConfig == null || apiEndpoint == null) return;
+
+        Map<String, WorkstreamConfig.PushedToolEntry> pushedTools = loadedConfig.getPushedTools();
+        if (pushedTools == null || pushedTools.isEmpty()) return;
+
+        File configDir = configFile != null ? configFile.getParentFile() : null;
+        int listeningPort = apiEndpoint.getListeningPort();
+
+        log("Registering " + pushedTools.size() + " pushed tool(s)...");
+
+        StringBuilder configJson = new StringBuilder("{");
+        boolean first = true;
+
+        for (Map.Entry<String, WorkstreamConfig.PushedToolEntry> entry : pushedTools.entrySet()) {
+            String serverName = entry.getKey();
+            WorkstreamConfig.PushedToolEntry toolEntry = entry.getValue();
+
+            // Resolve source path relative to config file directory
+            Path sourcePath;
+            if (configDir != null) {
+                sourcePath = configDir.toPath().resolve(toolEntry.getSource());
+            } else {
+                sourcePath = Path.of(toolEntry.getSource());
+            }
+
+            // Discover tool names from the source file
+            List<String> tools = McpToolDiscovery.discoverToolNames(sourcePath);
+            if (tools.isEmpty()) {
+                warn("No tools discovered from " + sourcePath + " for pushed tool " + serverName);
+            }
+
+            // Register the file with the API endpoint
+            apiEndpoint.registerToolFile(serverName, sourcePath);
+
+            // Build this tool's entry in the config JSON
+            String url = "http://0.0.0.0:" + listeningPort + "/api/tools/" + serverName;
+
+            if (!first) configJson.append(",");
+            first = false;
+            configJson.append("\"").append(serverName).append("\":{");
+            configJson.append("\"url\":\"").append(url).append("\",");
+            configJson.append("\"tools\":[");
+            for (int i = 0; i < tools.size(); i++) {
+                if (i > 0) configJson.append(",");
+                configJson.append("\"").append(tools.get(i)).append("\"");
+            }
+            configJson.append("]}");
+
+            log("Registered pushed tool: " + serverName
+                + " (" + tools.size() + " tools, served at /api/tools/" + serverName + ")");
+        }
+
+        configJson.append("}");
+        String pushedConfig = configJson.toString();
+
+        listener.setPushedToolsConfig(pushedConfig);
+        log("Pushed tools config: " + pushedConfig);
+    }
+
+    /**
      * Starts the HTTP API endpoint for receiving messages from MCP tools.
      */
     private void startApiEndpoint() {
@@ -422,6 +588,15 @@ public class SlackBotController implements ConsoleFeatures {
      */
     public void stop() throws Exception {
         running.set(false);
+
+        // Stop centralized MCP server processes
+        for (Process p : mcpProcesses) {
+            if (p.isAlive()) {
+                p.destroy();
+                log("Stopped MCP server process (PID " + p.pid() + ")");
+            }
+        }
+        mcpProcesses.clear();
 
         if (flowtreeServer != null) {
             flowtreeServer.stop();

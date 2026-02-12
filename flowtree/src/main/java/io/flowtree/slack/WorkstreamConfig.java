@@ -25,7 +25,9 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -54,6 +56,8 @@ import java.util.UUID;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class WorkstreamConfig {
 
+    private Map<String, McpServerEntry> mcpServers = new LinkedHashMap<>();
+    private Map<String, PushedToolEntry> pushedTools = new LinkedHashMap<>();
     private List<WorkstreamEntry> workstreams = new ArrayList<>();
 
     /**
@@ -159,6 +163,52 @@ public class WorkstreamConfig {
         public int getPort() { return port; }
         public void setPort(int port) { this.port = port; }
     }
+
+    /**
+     * Configuration entry for a centralized MCP server.
+     *
+     * <p>When present in the YAML configuration, the controller starts
+     * each server as an HTTP process and agents connect over HTTP
+     * instead of stdio.</p>
+     */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public static class McpServerEntry {
+        private String source;
+        private int port;
+
+        /** Returns the Python source file path (relative to project root). */
+        public String getSource() { return source; }
+        public void setSource(String source) { this.source = source; }
+
+        /** Returns the HTTP port to listen on. */
+        public int getPort() { return port; }
+        public void setPort(int port) { this.port = port; }
+    }
+
+    /**
+     * Configuration entry for a pushed MCP tool.
+     *
+     * <p>Pushed tools are served as files by the controller and downloaded
+     * into dev containers on first use. Unlike centralized servers (which
+     * run as HTTP processes on the controller), pushed tools run locally
+     * inside each container via stdio.</p>
+     */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public static class PushedToolEntry {
+        private String source;
+
+        /** Returns the Python source file path (relative to config directory). */
+        public String getSource() { return source; }
+        public void setSource(String source) { this.source = source; }
+    }
+
+    /** Returns the centralized MCP server configurations. */
+    public Map<String, McpServerEntry> getMcpServers() { return mcpServers; }
+    public void setMcpServers(Map<String, McpServerEntry> mcpServers) { this.mcpServers = mcpServers; }
+
+    /** Returns the pushed MCP tool configurations. */
+    public Map<String, PushedToolEntry> getPushedTools() { return pushedTools; }
+    public void setPushedTools(Map<String, PushedToolEntry> pushedTools) { this.pushedTools = pushedTools; }
 
     public List<WorkstreamEntry> getWorkstreams() { return workstreams; }
     public void setWorkstreams(List<WorkstreamEntry> workstreams) { this.workstreams = workstreams; }

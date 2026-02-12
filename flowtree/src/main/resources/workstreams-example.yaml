@@ -12,6 +12,33 @@
 #   export SLACK_APP_TOKEN=xapp-your-app-token
 #   java -cp flowtree.jar io.flowtree.slack.SlackBotController --config workstreams.yaml
 
+# Centralized MCP servers (optional).
+# When present, these servers are started as HTTP processes by the controller
+# and agents connect over HTTP instead of stdio. This enables cross-project
+# portability and shared state (e.g., memory, history) across containers.
+# Remove this section entirely to use local stdio servers (the default).
+#
+# mcpServers:
+#   ar-memory:
+#     source: tools/mcp/memory/server.py
+#     port: 7783
+#   ar-consultant:
+#     source: tools/mcp/consultant/server.py
+#     port: 7784
+
+# Pushed MCP tools (optional).
+# Tools listed here are served as files by the controller and downloaded into
+# dev containers on first use. Unlike centralized servers (which run as HTTP
+# processes on the controller), pushed tools run locally inside each container
+# via stdio. Use this for tools that depend on per-job state (e.g., the local
+# git repo or per-job environment variables).
+#
+# pushedTools:
+#   ar-slack:
+#     source: tools/mcp/slack/server.py
+#   ar-github:
+#     source: tools/mcp/github/server.py
+
 workstreams:
   # workstreamId is auto-generated on first run and written back to this file.
   # Do not remove it once generated — it is used for job tracking and threading.
