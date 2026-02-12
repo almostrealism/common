@@ -82,9 +82,13 @@ if __name__ == "__main__":
     transport = os.environ.get("MCP_TRANSPORT", "stdio")
     if transport == "http":
         port = int(os.environ.get("MCP_PORT", "8000"))
-        mcp.run(transport="streamable-http", host="0.0.0.0", port=port)
+        mcp.settings.host = "0.0.0.0"
+        mcp.settings.port = port
+        mcp.run(transport="streamable-http")
     elif transport == "sse":
         port = int(os.environ.get("MCP_PORT", "8000"))
-        mcp.run(transport="sse", host="0.0.0.0", port=port)
+        mcp.settings.host = "0.0.0.0"
+        mcp.settings.port = port
+        mcp.run(transport="sse")
     else:
         mcp.run()
