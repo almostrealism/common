@@ -556,7 +556,7 @@ public class ClaudeCodeJob extends GitManagedJob {
         // Include enabled servers (or all if no settings file)
         for (Map.Entry<String, String> entry : allServers.entrySet()) {
             String name = entry.getKey();
-            // Skip ar-github and ar-slack — they are handled separately
+            // Skip ar-github and ar-slack -- they are handled separately
             // because they need special environment or conditional inclusion
             if ("ar-github".equals(name) || "ar-slack".equals(name)) continue;
             if (enabled.isEmpty() || enabled.contains(name)) {

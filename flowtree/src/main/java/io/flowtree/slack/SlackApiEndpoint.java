@@ -262,7 +262,7 @@ public class SlackApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         int valueStart = json.indexOf("\"", colonPos) + 1;
         if (valueStart <= 0) return null;
 
-        // Handle escaped quotes
+        // Handle JSON escape sequences including \\uXXXX Unicode escapes
         StringBuilder sb = new StringBuilder();
         for (int i = valueStart; i < json.length(); i++) {
             char c = json.charAt(i);
@@ -271,12 +271,35 @@ public class SlackApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
                 if (next == '"') {
                     sb.append('"');
                     i++;
-                } else if (next == 'n') {
-                    sb.append('\n');
-                    i++;
                 } else if (next == '\\') {
                     sb.append('\\');
                     i++;
+                } else if (next == 'n') {
+                    sb.append('\n');
+                    i++;
+                } else if (next == 'r') {
+                    sb.append('\r');
+                    i++;
+                } else if (next == 't') {
+                    sb.append('\t');
+                    i++;
+                } else if (next == 'b') {
+                    sb.append('\b');
+                    i++;
+                } else if (next == 'f') {
+                    sb.append('\f');
+                    i++;
+                } else if (next == '/') {
+                    sb.append('/');
+                    i++;
+                } else if (next == 'u' && i + 5 < json.length()) {
+                    String hex = json.substring(i + 2, i + 6);
+                    try {
+                        sb.append((char) Integer.parseInt(hex, 16));
+                        i += 5;
+                    } catch (NumberFormatException e) {
+                        sb.append(c);
+                    }
                 } else {
                     sb.append(c);
                 }
@@ -391,6 +414,24 @@ public class SlackApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
                     } else if (next == '\\') {
                         value.append('\\');
                         j += 2;
+                    } else if (next == 'n') {
+                        value.append('\n');
+                        j += 2;
+                    } else if (next == 'r') {
+                        value.append('\r');
+                        j += 2;
+                    } else if (next == 't') {
+                        value.append('\t');
+                        j += 2;
+                    } else if (next == 'u' && j + 5 < arrayContent.length()) {
+                        String hex = arrayContent.substring(j + 2, j + 6);
+                        try {
+                            value.append((char) Integer.parseInt(hex, 16));
+                            j += 6;
+                        } catch (NumberFormatException e) {
+                            value.append(c);
+                            j++;
+                        }
                     } else {
                         value.append(c);
                         j++;
