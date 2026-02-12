@@ -545,7 +545,22 @@ public class SlackBotController implements ConsoleFeatures {
                 if (i > 0) configJson.append(",");
                 configJson.append("\"").append(tools.get(i)).append("\"");
             }
-            configJson.append("]}");
+            configJson.append("]");
+
+            Map<String, String> env = toolEntry.getEnv();
+            if (env != null && !env.isEmpty()) {
+                configJson.append(",\"env\":{");
+                boolean firstEnv = true;
+                for (Map.Entry<String, String> e : env.entrySet()) {
+                    if (!firstEnv) configJson.append(",");
+                    firstEnv = false;
+                    configJson.append("\"").append(e.getKey()).append("\":\"")
+                              .append(e.getValue()).append("\"");
+                }
+                configJson.append("}");
+            }
+
+            configJson.append("}");
 
             log("Registered pushed tool: " + serverName
                 + " (" + tools.size() + " tools, served at /api/tools/" + serverName + ")");

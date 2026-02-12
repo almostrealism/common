@@ -196,10 +196,15 @@ public class WorkstreamConfig {
     @JsonIgnoreProperties(ignoreUnknown = true)
     public static class PushedToolEntry {
         private String source;
+        private Map<String, String> env;
 
         /** Returns the Python source file path (relative to config directory). */
         public String getSource() { return source; }
         public void setSource(String source) { this.source = source; }
+
+        /** Returns per-tool environment variables to inject into the MCP stdio config. */
+        public Map<String, String> getEnv() { return env; }
+        public void setEnv(Map<String, String> env) { this.env = env; }
     }
 
     /** Returns the centralized MCP server configurations. */

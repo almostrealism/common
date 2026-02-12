@@ -745,6 +745,12 @@ public class ClaudeCodeJob extends GitManagedJob {
             sb.append("\"").append(serverName).append("\":{");
             sb.append("\"command\":\"python3\",");
             sb.append("\"args\":[\"").append(path).append("\"]");
+
+            String envJson = extractJsonObjectField(pushedToolsConfig, serverName, "env");
+            if (envJson != null) {
+                sb.append(",\"env\":").append(envJson);
+            }
+
             sb.append("}");
         }
 
@@ -895,6 +901,64 @@ public class ClaudeCodeJob extends GitManagedJob {
         if (valueEnd < 0) return null;
 
         return obj.substring(valueStart, valueEnd);
+    }
+
+    /**
+     * Extracts a nested JSON object field from a JSON config.
+     * Looks for {@code "parentKey": { ... "fieldName": {...} ... }} and
+     * returns the raw JSON object string (including braces).
+     *
+     * @param json      the JSON string
+     * @param parentKey the parent object key
+     * @param fieldName the field to extract (must be an object value)
+     * @return the raw JSON object string, or null if not found
+     */
+    private String extractJsonObjectField(String json, String parentKey, String fieldName) {
+        int parentIdx = json.indexOf("\"" + parentKey + "\"");
+        if (parentIdx < 0) return null;
+
+        int objStart = json.indexOf("{", parentIdx);
+        if (objStart < 0) return null;
+
+        int depth = 1;
+        int objEnd = objStart + 1;
+        while (objEnd < json.length() && depth > 0) {
+            char c = json.charAt(objEnd);
+            if (c == '{') depth++;
+            else if (c == '}') depth--;
+            objEnd++;
+        }
+
+        String obj = json.substring(objStart, objEnd);
+
+        int fieldIdx = obj.indexOf("\"" + fieldName + "\"");
+        if (fieldIdx < 0) return null;
+
+        int colonIdx = obj.indexOf(":", fieldIdx);
+        if (colonIdx < 0) return null;
+
+        // Skip whitespace after the colon to find the opening brace
+        int braceStart = -1;
+        for (int i = colonIdx + 1; i < obj.length(); i++) {
+            char c = obj.charAt(i);
+            if (c == '{') {
+                braceStart = i;
+                break;
+            }
+            if (!Character.isWhitespace(c)) return null;
+        }
+        if (braceStart < 0) return null;
+
+        int innerDepth = 1;
+        int braceEnd = braceStart + 1;
+        while (braceEnd < obj.length() && innerDepth > 0) {
+            char c = obj.charAt(braceEnd);
+            if (c == '{') innerDepth++;
+            else if (c == '}') innerDepth--;
+            braceEnd++;
+        }
+
+        return obj.substring(braceStart, braceEnd);
     }
 
     /**

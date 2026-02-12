@@ -38,6 +38,8 @@
 #     source: tools/mcp/slack/server.py
 #   ar-github:
 #     source: tools/mcp/github/server.py
+#     env:
+#       GITHUB_TOKEN: ghp_your_token_here
 
 workstreams:
   # workstreamId is auto-generated on first run and written back to this file.

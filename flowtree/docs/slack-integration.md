@@ -125,11 +125,14 @@ mcpServers:
 
 # Optional: pushed MCP tools served as files by the controller and downloaded
 # into dev containers on first use. Use for tools that depend on per-job state.
+# Each entry supports an optional 'env' map for per-tool environment variables.
 pushedTools:
   ar-slack:
     source: tools/mcp/slack/server.py
   ar-github:
     source: tools/mcp/github/server.py
+    env:
+      GITHUB_TOKEN: ghp_your_token_here
 
 workstreams:
   - channelId: "C0123456789"

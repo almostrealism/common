@@ -169,7 +169,11 @@ pushedTools:
     source: tools/mcp/slack/server.py
   ar-github:
     source: tools/mcp/github/server.py
+    env:
+      GITHUB_TOKEN: ghp_your_token_here
 ```
+
+Each entry supports an optional `env` map of environment variables that are injected into the MCP stdio config. This allows per-job credentials (e.g., different `GITHUB_TOKEN` values for repos in different orgs) without modifying the tool source or the container's global environment.
 
 **How it works:**
 
