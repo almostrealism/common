@@ -38,6 +38,7 @@ MODULE_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 PROJECT_ROOT="$(cd "${MODULE_DIR}/.." && pwd)"
 
 MAIN_CLASS="io.flowtree.slack.SlackBotController"
+AR_CONSULTANT_LLAMACPP_URL="http://localhost:8083"
 
 # Show help if requested (before potentially building)
 for arg in "$@"; do
