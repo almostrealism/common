@@ -21,6 +21,9 @@ import io.flowtree.jobs.JobCompletionEvent;
 import org.almostrealism.io.ConsoleFeatures;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -71,6 +74,7 @@ public class SlackApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
     );
 
     private final SlackNotifier notifier;
+    private final Map<String, Path> toolFiles = new HashMap<>();
 
     /**
      * Creates a new API endpoint on the specified port.
@@ -81,6 +85,17 @@ public class SlackApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
     public SlackApiEndpoint(int port, SlackNotifier notifier) {
         super(port);
         this.notifier = notifier;
+    }
+
+    /**
+     * Registers a pushed tool file that can be served via
+     * {@code GET /api/tools/{name}}.
+     *
+     * @param name     the tool server name (e.g., "ar-slack")
+     * @param filePath the path to the Python source file on disk
+     */
+    public void registerToolFile(String name, Path filePath) {
+        toolFiles.put(name, filePath);
     }
 
     @Override
@@ -108,8 +123,38 @@ public class SlackApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             }
         }
 
+        if (Method.GET.equals(method) && uri.startsWith("/api/tools/")) {
+            String toolName = uri.substring("/api/tools/".length());
+            return handleToolDownload(toolName);
+        }
+
         return newFixedLengthResponse(Response.Status.NOT_FOUND,
                 MIME_PLAINTEXT, "Not found");
+    }
+
+    /**
+     * Handles {@code GET /api/tools/{name}} by serving the registered
+     * Python source file as {@code text/plain}.
+     *
+     * @param name the tool server name
+     * @return the file content or a 404 response
+     */
+    private Response handleToolDownload(String name) {
+        Path filePath = toolFiles.get(name);
+        if (filePath == null || !Files.exists(filePath)) {
+            return newFixedLengthResponse(Response.Status.NOT_FOUND,
+                    MIME_PLAINTEXT, "Tool not found: " + name);
+        }
+
+        try {
+            String content = Files.readString(filePath, StandardCharsets.UTF_8);
+            log("Served pushed tool: " + name + " (" + content.length() + " bytes)");
+            return newFixedLengthResponse(Response.Status.OK, MIME_PLAINTEXT, content);
+        } catch (IOException e) {
+            warn("Failed to read tool file " + name + ": " + e.getMessage());
+            return newFixedLengthResponse(Response.Status.INTERNAL_ERROR,
+                    MIME_PLAINTEXT, "Failed to read tool file");
+        }
     }
 
     /**

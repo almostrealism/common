@@ -222,14 +222,21 @@ class LlamaCppBackend(InferenceBackend):
 
     Environment variables:
         AR_CONSULTANT_LLAMACPP_URL  - Server base URL
-                                      (default: http://host.docker.internal:8083)
+                                      (default: http://host.docker.internal:8083 in containers,
+                                       http://localhost:8083 on the host)
     """
 
-    DEFAULT_BASE_URL = "http://host.docker.internal:8083"
+    CONTAINER_BASE_URL = "http://host.docker.internal:8083"
+    HOST_BASE_URL = "http://localhost:8083"
 
     def __init__(self, base_url: Optional[str] = None):
+        default_url = (
+            self.CONTAINER_BASE_URL
+            if os.path.exists("/.dockerenv") or os.path.exists("/run/.containerenv")
+            else self.HOST_BASE_URL
+        )
         self.base_url = base_url or os.environ.get(
-            "AR_CONSULTANT_LLAMACPP_URL", self.DEFAULT_BASE_URL
+            "AR_CONSULTANT_LLAMACPP_URL", default_url
         )
         self._available: Optional[bool] = None
 
