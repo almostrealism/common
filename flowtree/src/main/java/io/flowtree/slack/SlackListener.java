@@ -317,6 +317,11 @@ public class SlackListener implements ConsoleFeatures {
             factory.setPushedToolsConfig(pushedToolsConfig);
         }
 
+        // Per-workstream env vars for pushed tools
+        if (workstream.getEnv() != null && !workstream.getEnv().isEmpty()) {
+            factory.setWorkstreamEnv(workstream.getEnv());
+        }
+
         // Build workstream URL for status reporting and Slack messaging
         if (apiPort > 0) {
             String baseUrl = "http://0.0.0.0:" + apiPort

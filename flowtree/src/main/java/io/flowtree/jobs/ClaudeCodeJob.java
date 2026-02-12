@@ -94,6 +94,7 @@ public class ClaudeCodeJob extends GitManagedJob {
     private double maxBudgetUsd;
     private String centralizedMcpConfig;
     private String pushedToolsConfig;
+    private Map<String, String> workstreamEnv;
 
     private String sessionId;
     private String output;
@@ -211,6 +212,23 @@ public class ClaudeCodeJob extends GitManagedJob {
      */
     public void setPushedToolsConfig(String pushedToolsConfig) {
         this.pushedToolsConfig = pushedToolsConfig;
+    }
+
+    /**
+     * Returns per-workstream environment variables that override the global
+     * pushed tool env in the final MCP stdio config.
+     */
+    public Map<String, String> getWorkstreamEnv() {
+        return workstreamEnv;
+    }
+
+    /**
+     * Sets per-workstream environment variables for pushed tools.
+     *
+     * @param workstreamEnv map of environment variable names to values
+     */
+    public void setWorkstreamEnv(Map<String, String> workstreamEnv) {
+        this.workstreamEnv = workstreamEnv;
     }
 
     /**
@@ -746,9 +764,17 @@ public class ClaudeCodeJob extends GitManagedJob {
             sb.append("\"command\":\"python3\",");
             sb.append("\"args\":[\"").append(path).append("\"]");
 
-            String envJson = extractJsonObjectField(pushedToolsConfig, serverName, "env");
-            if (envJson != null) {
-                sb.append(",\"env\":").append(envJson);
+            // Merge global pushed-tool env with per-workstream env (workstream wins)
+            Map<String, String> mergedEnv = new LinkedHashMap<>();
+            String globalEnvJson = extractJsonObjectField(pushedToolsConfig, serverName, "env");
+            if (globalEnvJson != null) {
+                mergedEnv.putAll(parseJsonObjectToMap(globalEnvJson));
+            }
+            if (workstreamEnv != null) {
+                mergedEnv.putAll(workstreamEnv);
+            }
+            if (!mergedEnv.isEmpty()) {
+                sb.append(",\"env\":").append(mapToJsonObject(mergedEnv));
             }
 
             sb.append("}");
@@ -962,6 +988,43 @@ public class ClaudeCodeJob extends GitManagedJob {
     }
 
     /**
+     * Parses a simple JSON object string like {@code {"key":"value","k2":"v2"}}
+     * into a {@link Map}. Only handles flat string-valued objects.
+     *
+     * @param json the JSON object string (including braces)
+     * @return parsed map, empty if input is null or unparseable
+     */
+    private static Map<String, String> parseJsonObjectToMap(String json) {
+        Map<String, String> result = new LinkedHashMap<>();
+        if (json == null) return result;
+        Pattern p = Pattern.compile("\"([^\"]+)\"\\s*:\\s*\"([^\"]+)\"");
+        Matcher m = p.matcher(json);
+        while (m.find()) {
+            result.put(m.group(1), m.group(2));
+        }
+        return result;
+    }
+
+    /**
+     * Serializes a {@link Map} of string entries to a JSON object string
+     * like {@code {"key":"value","k2":"v2"}}.
+     *
+     * @param map the map to serialize
+     * @return JSON object string
+     */
+    private static String mapToJsonObject(Map<String, String> map) {
+        StringBuilder sb = new StringBuilder("{");
+        boolean first = true;
+        for (Map.Entry<String, String> e : map.entrySet()) {
+            if (!first) sb.append(",");
+            first = false;
+            sb.append("\"").append(e.getKey()).append("\":\"").append(e.getValue()).append("\"");
+        }
+        sb.append("}");
+        return sb.toString();
+    }
+
+    /**
      * Discovers MCP servers defined in the project's {@code .mcp.json} file
      * and cross-references with {@code .claude/settings.json} to determine
      * which servers are enabled.
@@ -1104,6 +1167,9 @@ public class ClaudeCodeJob extends GitManagedJob {
         if (pushedToolsConfig != null) {
             sb.append("::pushedTools:=").append(base64Encode(pushedToolsConfig));
         }
+        if (workstreamEnv != null && !workstreamEnv.isEmpty()) {
+            sb.append("::wsEnv:=").append(base64Encode(mapToJsonObject(workstreamEnv)));
+        }
         return sb.toString();
     }
 
@@ -1127,6 +1193,9 @@ public class ClaudeCodeJob extends GitManagedJob {
                 break;
             case "pushedTools":
                 this.pushedToolsConfig = base64Decode(value);
+                break;
+            case "wsEnv":
+                this.workstreamEnv = parseJsonObjectToMap(base64Decode(value));
                 break;
             default:
                 // Delegate to parent for git-related properties
@@ -1181,6 +1250,7 @@ public class ClaudeCodeJob extends GitManagedJob {
         private String gitUserEmail;
         private String centralizedMcpConfig;
         private String pushedToolsConfig;
+        private Map<String, String> workstreamEnv;
 
         /**
          * Default constructor for deserialization.
@@ -1382,6 +1452,24 @@ public class ClaudeCodeJob extends GitManagedJob {
             set("pushedTools", base64Encode(pushedToolsConfig));
         }
 
+        /**
+         * Returns per-workstream environment variables for pushed tools.
+         */
+        public Map<String, String> getWorkstreamEnv() {
+            return workstreamEnv;
+        }
+
+        /**
+         * Sets per-workstream environment variables for pushed tools.
+         * These override global env vars defined on the pushed tool entry.
+         *
+         * @param workstreamEnv map of environment variable names to values
+         */
+        public void setWorkstreamEnv(Map<String, String> workstreamEnv) {
+            this.workstreamEnv = workstreamEnv;
+            set("wsEnv", base64Encode(mapToJsonObject(workstreamEnv)));
+        }
+
         @Override
         public Job nextJob() {
             List<String> p = getPrompts();
@@ -1418,6 +1506,11 @@ public class ClaudeCodeJob extends GitManagedJob {
             // Pushed MCP tools config
             if (pushedToolsConfig != null) {
                 job.setPushedToolsConfig(pushedToolsConfig);
+            }
+
+            // Per-workstream env vars for pushed tools
+            if (workstreamEnv != null && !workstreamEnv.isEmpty()) {
+                job.setWorkstreamEnv(workstreamEnv);
             }
 
             return job;
@@ -1472,6 +1565,9 @@ public class ClaudeCodeJob extends GitManagedJob {
                     break;
                 case "pushedTools":
                     this.pushedToolsConfig = base64Decode(value);
+                    break;
+                case "wsEnv":
+                    this.workstreamEnv = parseJsonObjectToMap(base64Decode(value));
                     break;
             }
         }

@@ -45,7 +45,7 @@ workstreams:
   # workstreamId is auto-generated on first run and written back to this file.
   # Do not remove it once generated — it is used for job tracking and threading.
 
-  # Project Alpha
+  # Project Alpha — uses global pushed tool env (if any)
   - channelId: "C0123456789"           # Get from Slack channel details
     channelName: "#project-alpha-agent"
     defaultBranch: "feature/alpha"
@@ -54,7 +54,8 @@ workstreams:
     maxTurns: 50
     maxBudgetUsd: 10.0
 
-  # Project Beta - custom working directory and higher limits
+  # Project Beta — per-workstream env overrides the global pushed tool env.
+  # Useful when different workstreams target repos in different GitHub orgs.
   - channelId: "C9876543210"
     channelName: "#project-beta-agent"
     defaultBranch: "feature/beta"
@@ -62,3 +63,5 @@ workstreams:
     workingDirectory: "/workspace/project-beta"
     maxTurns: 100
     maxBudgetUsd: 25.0
+    env:
+      GITHUB_TOKEN: "ghp_beta_org_token"

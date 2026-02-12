@@ -77,6 +77,7 @@ public class WorkstreamConfig {
         private double maxBudgetUsd = 10.0;
         private String gitUserName;
         private String gitUserEmail;
+        private Map<String, String> env;
 
         public String getWorkstreamId() { return workstreamId; }
         public void setWorkstreamId(String workstreamId) { this.workstreamId = workstreamId; }
@@ -114,6 +115,10 @@ public class WorkstreamConfig {
         public String getGitUserEmail() { return gitUserEmail; }
         public void setGitUserEmail(String gitUserEmail) { this.gitUserEmail = gitUserEmail; }
 
+        /** Returns per-workstream environment variables injected into pushed tool MCP configs. */
+        public Map<String, String> getEnv() { return env; }
+        public void setEnv(Map<String, String> env) { this.env = env; }
+
         /**
          * Converts this entry to a {@link SlackWorkstream} instance.
          *
@@ -138,6 +143,7 @@ public class WorkstreamConfig {
             ws.setMaxBudgetUsd(maxBudgetUsd);
             ws.setGitUserName(gitUserName);
             ws.setGitUserEmail(gitUserEmail);
+            ws.setEnv(env);
             return ws;
         }
     }

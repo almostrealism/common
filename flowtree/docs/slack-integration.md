@@ -143,10 +143,14 @@ workstreams:
     maxTurns: 50
     maxBudgetUsd: 10.0
 
+  # Per-workstream env vars override global pushed tool env.
+  # Useful for per-org tokens or workstream-specific config.
   - channelId: "C9876543210"
     channelName: "#ops-agent"
     defaultBranch: "feature/ops"
     maxBudgetUsd: 5.0
+    env:
+      GITHUB_TOKEN: ghp_ops_org_token
 ```
 
 See the [Centralized MCP Servers](coding-agent.md#centralized-mcp-servers) and [Pushed Tools](coding-agent.md#pushed-tools) sections in the coding agent docs for architecture details.

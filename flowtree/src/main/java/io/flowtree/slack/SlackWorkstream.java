@@ -18,6 +18,7 @@ package io.flowtree.slack;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -77,6 +78,9 @@ public class SlackWorkstream {
     // Git identity
     private String gitUserName;
     private String gitUserEmail;
+
+    // Per-workstream env vars for pushed tools
+    private Map<String, String> env;
 
     /**
      * Creates a new workstream with default settings.
@@ -247,6 +251,24 @@ public class SlackWorkstream {
      */
     public void setGitUserEmail(String gitUserEmail) {
         this.gitUserEmail = gitUserEmail;
+    }
+
+    /**
+     * Returns per-workstream environment variables that are injected into
+     * pushed tool MCP stdio configs. These override any global env vars
+     * defined on the pushed tool entry itself.
+     */
+    public Map<String, String> getEnv() {
+        return env;
+    }
+
+    /**
+     * Sets per-workstream environment variables for pushed tools.
+     *
+     * @param env map of environment variable names to values
+     */
+    public void setEnv(Map<String, String> env) {
+        this.env = env;
     }
 
     /**
