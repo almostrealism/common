@@ -730,15 +730,15 @@ def export_request_history(
 
 if __name__ == "__main__":
     transport = os.environ.get("MCP_TRANSPORT", "stdio")
-    if transport == "http":
+    if transport in ("http", "sse"):
+        from mcp.server.transport_security import TransportSecuritySettings
+
         port = int(os.environ.get("MCP_PORT", "8000"))
         mcp.settings.host = "0.0.0.0"
         mcp.settings.port = port
-        mcp.run(transport="streamable-http")
-    elif transport == "sse":
-        port = int(os.environ.get("MCP_PORT", "8000"))
-        mcp.settings.host = "0.0.0.0"
-        mcp.settings.port = port
-        mcp.run(transport="sse")
+        mcp.settings.transport_security = TransportSecuritySettings(
+            enable_dns_rebinding_protection=False,
+        )
+        mcp.run(transport="streamable-http" if transport == "http" else "sse")
     else:
         mcp.run()
