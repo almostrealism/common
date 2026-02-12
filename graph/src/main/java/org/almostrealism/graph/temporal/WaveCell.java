@@ -22,6 +22,7 @@ import io.almostrealism.relation.Factor;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
 import org.almostrealism.Ops;
+import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.TimeCell;
 import org.almostrealism.hardware.OperationList;
@@ -147,7 +148,7 @@ public class WaveCell extends CollectionTemporalCellAdapter {
 	public WaveCell(WaveCellData data, PackedCollection wav, int sampleRate, double amplitude,
 					Producer<PackedCollection> offset, Producer<PackedCollection> repeat,
 					Producer<PackedCollection> frameIndex, Producer<PackedCollection> frameCount) {
-		this(data, () -> new Provider<>(wav), sampleRate, amplitude,
+		this(data, CollectionFeatures.getInstance().cp(wav), sampleRate, amplitude,
 				offset, repeat, frameIndex, frameCount);
 	}
 
