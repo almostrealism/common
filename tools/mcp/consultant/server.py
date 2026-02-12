@@ -13,7 +13,7 @@ dataset construction.
 
 Environment variables:
     AR_CONSULTANT_BACKEND      - "llamacpp", "ollama", "mlx", "passthrough", or "auto" (default)
-    AR_CONSULTANT_LLAMACPP_URL - llama.cpp server URL (default: http://host.docker.internal:8080)
+    AR_CONSULTANT_LLAMACPP_URL - llama.cpp server URL (default: localhost:8083 on host, host.docker.internal:8083 in containers)
     AR_CONSULTANT_MODEL        - Ollama model name (default: qwen2.5-coder:32b-instruct-q4_K_M)
     AR_CONSULTANT_MLX_MODEL    - MLX model path (default: mlx-community/Qwen2.5-Coder-32B-Instruct-4bit)
     AR_CONSULTANT_OLLAMA_URL   - Ollama base URL (default: http://localhost:11434)
