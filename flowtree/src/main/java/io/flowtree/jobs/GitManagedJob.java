@@ -227,12 +227,21 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
         // 1. Check for uncommitted changes (excluding ignored files)
         List<String> dirtyFiles = checkForUncommittedChanges();
         if (!dirtyFiles.isEmpty()) {
+            // Discard uncommitted changes left by a previous job so the
+            // working directory can be synced cleanly.  This is safe because
+            // agent workers should never have manual edits; any uncommitted
+            // changes are residue from a prior (likely failed) job run.
             String fileList = dirtyFiles.size() <= 5
                 ? String.join(", ", dirtyFiles)
                 : String.join(", ", dirtyFiles.subList(0, 5)) + " (+" + (dirtyFiles.size() - 5) + " more)";
-            throw new RuntimeException(
-                "Uncommitted changes found: " + fileList +
-                " -- refusing to proceed to avoid conflicts");
+            warn("Uncommitted changes found: " + fileList + " -- resetting to clean state");
+            if (executeGit("checkout", ".") != 0) {
+                throw new RuntimeException(
+                    "Failed to discard uncommitted changes: " + fileList);
+            }
+            // Also remove untracked files that are not in .gitignore
+            executeGit("clean", "-fd");
+            log("Working directory cleaned");
         }
 
         // 2. Fetch latest from origin
@@ -246,19 +255,29 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
             throw new RuntimeException("Failed to switch to target branch: " + targetBranch);
         }
 
-        // 4. Pull latest if remote branch exists
+        // 4. Sync with remote if remote branch exists
         boolean remoteBranchExists = executeGit(
             "show-ref", "--verify", "--quiet",
             "refs/remotes/origin/" + targetBranch) == 0;
         if (remoteBranchExists) {
-            log("Pulling latest changes for " + targetBranch + "...");
+            log("Syncing with origin/" + targetBranch + "...");
             int pullResult = executeGit("pull", "--ff-only", "origin", targetBranch);
             if (pullResult != 0) {
-                throw new RuntimeException(
-                    "Failed to pull latest changes for " + targetBranch +
-                    " -- local branch may have diverged from origin");
+                // Fast-forward failed, likely because the local branch diverged
+                // (e.g., a previous job's commit was force-pushed or rebased).
+                // Since we already verified there are no uncommitted changes,
+                // reset to match the remote exactly. This ensures tool server
+                // files (MCP Python scripts, etc.) are always up to date.
+                log("Fast-forward pull failed; resetting to origin/" + targetBranch);
+                int resetResult = executeGit("reset", "--hard", "origin/" + targetBranch);
+                if (resetResult != 0) {
+                    throw new RuntimeException(
+                        "Failed to sync with origin/" + targetBranch +
+                        " -- both pull and reset failed");
+                }
             }
-            log("Working directory is up to date with origin/" + targetBranch);
+            String headHash = executeGitWithOutput("rev-parse", "--short", "HEAD").trim();
+            log("Working directory is up to date with origin/" + targetBranch + " at " + headHash);
         } else {
             log("No remote branch origin/" + targetBranch + " -- skipping pull");
         }
