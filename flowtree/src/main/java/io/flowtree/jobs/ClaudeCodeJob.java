@@ -527,6 +527,9 @@ public class ClaudeCodeJob extends GitManagedJob {
             log("Target branch: " + getTargetBranch());
         }
 
+        // Verify MCP tool server files exist before launching Claude Code
+        verifyMcpToolFiles();
+
         // MCP config (ar-github always; ar-slack when workstream URL is set)
         command.add("--mcp-config");
         command.add(buildMcpConfig());
@@ -1022,6 +1025,38 @@ public class ClaudeCodeJob extends GitManagedJob {
         }
         sb.append("}");
         return sb.toString();
+    }
+
+    /**
+     * Verifies that MCP tool server files exist in the working directory
+     * and logs their modification times for deployment diagnostics.
+     *
+     * <p>This helps diagnose cases where tool server updates fail to reach
+     * workers (e.g., git pull failures, stale Docker volumes).</p>
+     */
+    private void verifyMcpToolFiles() {
+        Path workDir = getWorkingDirectory() != null
+            ? Path.of(getWorkingDirectory()) : Path.of(System.getProperty("user.dir"));
+
+        String[] toolFiles = {
+            "tools/mcp/slack/server.py",
+            "tools/mcp/github/server.py"
+        };
+
+        for (String toolFile : toolFiles) {
+            Path resolved = workDir.resolve(toolFile);
+            if (Files.exists(resolved)) {
+                try {
+                    long lastModified = Files.getLastModifiedTime(resolved).toMillis();
+                    long ageSeconds = (System.currentTimeMillis() - lastModified) / 1000;
+                    log("MCP tool: " + toolFile + " (modified " + ageSeconds + "s ago)");
+                } catch (IOException e) {
+                    log("MCP tool: " + toolFile + " (exists, could not read mtime)");
+                }
+            } else {
+                warn("MCP tool missing: " + resolved.toAbsolutePath());
+            }
+        }
     }
 
     /**

@@ -304,6 +304,18 @@ public class SlackApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         int colonPos = json.indexOf(":", fieldStart);
         if (colonPos < 0) return null;
 
+        // Skip whitespace after the colon to inspect the value token
+        int afterColon = colonPos + 1;
+        while (afterColon < json.length() && json.charAt(afterColon) == ' ') {
+            afterColon++;
+        }
+
+        // Handle JSON null literal
+        if (afterColon + 4 <= json.length() &&
+                json.substring(afterColon, afterColon + 4).equals("null")) {
+            return null;
+        }
+
         int valueStart = json.indexOf("\"", colonPos) + 1;
         if (valueStart <= 0) return null;
 
