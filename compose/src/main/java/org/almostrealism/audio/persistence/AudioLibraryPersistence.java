@@ -21,6 +21,7 @@ import org.almostrealism.audio.AudioLibrary;
 import org.almostrealism.audio.api.Audio;
 import org.almostrealism.audio.data.WaveData;
 import org.almostrealism.audio.data.WaveDetails;
+import org.almostrealism.audio.similarity.PrototypeIndexData;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.io.Console;
 import org.almostrealism.persistence.CollectionEncoder;
@@ -154,6 +155,10 @@ public class AudioLibraryPersistence {
 
 		for (int i = 0; i < details.size(); i++) {
 			if (byteCount > batchSize || i == details.size() - 1) {
+				if (i == details.size() - 1 && library.getPrototypeIndex() != null) {
+					data.setPrototypeIndex(encodePrototypeIndex(library.getPrototypeIndex()));
+				}
+
 				OutputStream o = out.get();
 
 				try {
@@ -237,6 +242,10 @@ public class AudioLibraryPersistence {
 				} else {
 					library.include(details);
 				}
+			}
+
+			if (data.hasPrototypeIndex()) {
+				library.setPrototypeIndex(decodePrototypeIndex(data.getPrototypeIndex()));
 			}
 
 			input = in.get();
@@ -415,6 +424,38 @@ public class AudioLibraryPersistence {
 		details.getSimilarities().putAll(data.getSimilaritiesMap());
 		if (data.hasData()) details.setData(CollectionEncoder.decode(data.getData()));
 		return details;
+	}
+
+	/**
+	 * Encodes a {@link PrototypeIndexData} to its protobuf representation.
+	 */
+	public static Audio.PrototypeIndex encodePrototypeIndex(PrototypeIndexData index) {
+		Audio.PrototypeIndex.Builder builder = Audio.PrototypeIndex.newBuilder()
+				.setComputedAt(index.computedAt());
+
+		for (PrototypeIndexData.Community community : index.communities()) {
+			builder.addCommunities(Audio.PrototypeCommunity.newBuilder()
+					.setPrototypeIdentifier(community.prototypeIdentifier())
+					.setCentrality(community.centrality())
+					.addAllMemberIdentifiers(community.memberIdentifiers())
+					.build());
+		}
+
+		return builder.build();
+	}
+
+	/**
+	 * Decodes a protobuf {@code PrototypeIndex} to its in-memory representation.
+	 */
+	public static PrototypeIndexData decodePrototypeIndex(Audio.PrototypeIndex proto) {
+		List<PrototypeIndexData.Community> communities = proto.getCommunitiesList().stream()
+				.map(c -> new PrototypeIndexData.Community(
+						c.getPrototypeIdentifier(),
+						c.getCentrality(),
+						List.copyOf(c.getMemberIdentifiersList())))
+				.toList();
+
+		return new PrototypeIndexData(proto.getComputedAt(), communities);
 	}
 
 	public static WaveData toWaveData(List<Audio.WaveDetailData> data) {

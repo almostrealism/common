@@ -24,15 +24,19 @@ import org.almostrealism.audio.data.WaveDetails;
 import org.almostrealism.audio.data.WaveDetailsFactory;
 import org.almostrealism.audio.data.WaveDetailsJob;
 import org.almostrealism.audio.similarity.AudioSimilarityGraph;
+import org.almostrealism.audio.similarity.PrototypeIndexData;
 import org.almostrealism.concurrent.SuspendableThreadPoolExecutor;
 import org.almostrealism.io.ConsoleFeatures;
 
 import java.io.File;
 import java.io.IOException;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -167,6 +171,18 @@ public class AudioLibrary implements ConsoleFeatures {
 	private Consumer<Exception> errorListener;
 	private SuspendableThreadPoolExecutor executor;
 
+	/**
+	 * The most recent {@link CompletableFuture} returned by {@link #refresh()}.
+	 * Used by {@link #awaitRefresh()} to allow callers to wait until all queued
+	 * feature-extraction jobs have completed before starting work that depends
+	 * on stable similarity data.
+	 */
+	private volatile CompletableFuture<Void> latestRefresh =
+			CompletableFuture.completedFuture(null);
+
+	/** Persisted prototype index loaded from protobuf at startup. */
+	private PrototypeIndexData prototypeIndex;
+
 	public AudioLibrary(File root, int sampleRate) {
 		this(new FileWaveDataProviderNode(root), sampleRate);
 	}
@@ -205,6 +221,41 @@ public class AudioLibrary implements ConsoleFeatures {
 		executor.resumeAllTasks();
 	}
 
+	/**
+	 * Returns a {@link CompletableFuture} that completes when the most recent
+	 * {@link #refresh()} has finished processing all queued jobs. If no refresh
+	 * is in progress, the returned future is already complete.
+	 *
+	 * <p>Prototype discovery should call {@code awaitRefresh().join()} before
+	 * computing similarities or building a similarity graph, to avoid racing
+	 * against {@code resetSimilarities()} which is called by {@code refresh()}
+	 * when incomplete files are found.</p>
+	 *
+	 * @return a future that completes when the current refresh finishes
+	 */
+	public CompletableFuture<Void> awaitRefresh() {
+		return latestRefresh;
+	}
+
+	/**
+	 * Returns the persisted prototype index, or null if none has been loaded.
+	 *
+	 * @see #setPrototypeIndex(PrototypeIndexData)
+	 */
+	public PrototypeIndexData getPrototypeIndex() {
+		return prototypeIndex;
+	}
+
+	/**
+	 * Sets the prototype index, typically after loading from protobuf or
+	 * after background recomputation.
+	 *
+	 * @param prototypeIndex the index to store, or null to clear
+	 */
+	public void setPrototypeIndex(PrototypeIndexData prototypeIndex) {
+		this.prototypeIndex = prototypeIndex;
+	}
+
 	public FileWaveDataProviderTree<? extends Supplier<FileWaveDataProvider>> getRoot() {
 		return root;
 	}
@@ -237,21 +288,34 @@ public class AudioLibrary implements ConsoleFeatures {
 	/**
 	 * Creates an {@link AudioSimilarityGraph} from this library's details.
 	 *
-	 * <p>The returned graph treats each sample as a node and similarity scores
-	 * as edge weights. Use it with graph algorithms like PageRank or community
-	 * detection to discover relationships between audio samples.</p>
+	 * <p>The returned graph treats each sample as a node and the pre-existing
+	 * similarity scores (from {@link WaveDetails#getSimilarities()}) as edge
+	 * weights. <b>This method does not compute any missing similarity data.</b>
+	 * If a sample's similarity map is empty, it will appear as an isolated node
+	 * with no edges.</p>
 	 *
-	 * <h3>Example</h3>
+	 * <p>Callers that need a fully-connected graph should call
+	 * {@link #computeSimilarities(WaveDetails)} for each detail before building
+	 * the graph. That method is incremental: it only computes missing pairs,
+	 * so it is safe and cheap to call even when most similarities are already
+	 * present.</p>
+	 *
+	 * <h3>Example (assuming similarities are pre-computed)</h3>
 	 * <pre>{@code
-	 * AudioLibrary library = new AudioLibrary(samplesDir, 44100);
 	 * AudioSimilarityGraph graph = library.toSimilarityGraph();
+	 * double[] ranks = pageRank(graph, 0.85, 50);
+	 * int[] communities = louvain(graph, 1.0);
+	 * }</pre>
 	 *
-	 * double[] ranks = GraphCentrality.pageRank(graph, 0.85, 50);
-	 * int[] communities = CommunityDetection.louvain(graph, 1.0);
+	 * <h3>Example (ensuring similarities are computed first)</h3>
+	 * <pre>{@code
+	 * library.getAllDetails().forEach(library::computeSimilarities);
+	 * AudioSimilarityGraph graph = library.toSimilarityGraph();
 	 * }</pre>
 	 *
 	 * @return a new AudioSimilarityGraph containing all details from this library
 	 * @see AudioSimilarityGraph
+	 * @see #computeSimilarities(WaveDetails)
 	 */
 	public AudioSimilarityGraph toSimilarityGraph() {
 		return new AudioSimilarityGraph(getAllDetails());
@@ -535,7 +599,34 @@ public class AudioLibrary implements ConsoleFeatures {
 		return details;
 	}
 
-	protected WaveDetails computeSimilarities(WaveDetails details) {
+	/**
+	 * Incrementally computes similarity scores between the given {@link WaveDetails}
+	 * and every other detail in this library.
+	 *
+	 * <p>This method is <b>incremental</b>: it only computes similarities for pairs
+	 * that are not already present in {@code details.getSimilarities()}. If the
+	 * similarity map is already fully populated, this method does nothing. This
+	 * makes it safe and cheap to call as a pre-condition before building a
+	 * similarity graph.</p>
+	 *
+	 * <p>Similarity is stored bidirectionally: when computing the similarity between
+	 * A and B, the result is stored in both {@code A.getSimilarities()} and
+	 * {@code B.getSimilarities()}. This means calling {@code computeSimilarities(A)}
+	 * also partially fills in the maps of other details, reducing work for subsequent
+	 * calls.</p>
+	 *
+	 * <h3>Typical usage before prototype discovery</h3>
+	 * <pre>{@code
+	 * // Ensure all pairwise similarities exist before graph construction
+	 * library.getAllDetails().forEach(library::computeSimilarities);
+	 * AudioSimilarityGraph graph = library.toSimilarityGraph();
+	 * }</pre>
+	 *
+	 * @param details the WaveDetails to compute similarities for; must not be null
+	 * @return the same WaveDetails instance with its similarity map updated
+	 * @see #toSimilarityGraph()
+	 */
+	public WaveDetails computeSimilarities(WaveDetails details) {
 		try {
 			allDetails()
 					.filter(d -> details == null || !Objects.equals(d.getIdentifier(), details.getIdentifier()))
@@ -588,6 +679,7 @@ public class AudioLibrary implements ConsoleFeatures {
 			WaveDetailsJob last = new WaveDetailsJob(this::processJob, null, false, -1.0);
 			last.getFuture().thenRun(() -> future.complete(null));
 			executor.execute(last);
+			latestRefresh = future;
 			return future;
 		} finally {
 			reportProgress();
@@ -611,5 +703,66 @@ public class AudioLibrary implements ConsoleFeatures {
 
 		// Remove everything else
 		keys.forEach(info::remove);
+	}
+
+	/**
+	 * Checks whether the persisted {@link PrototypeIndexData} is stale and
+	 * needs recomputation.
+	 *
+	 * <p>Staleness is determined by these conditions (checked in order of cost):</p>
+	 * <ol>
+	 *   <li>No index present (first run / bootstrap)</li>
+	 *   <li>Any prototype identifier not found in current info (prototype was deleted)</li>
+	 *   <li>More than 5% of indexed member identifiers not found in current info (significant removal)</li>
+	 *   <li>Current info size exceeds total indexed members by more than 5% (significant additions)</li>
+	 *   <li>Index is older than 24 hours AND any difference exists between indexed and current members</li>
+	 * </ol>
+	 *
+	 * @return true if the index should be recomputed
+	 */
+	public boolean isPrototypeIndexStale() {
+		if (prototypeIndex == null || prototypeIndex.communities().isEmpty()) {
+			return true;
+		}
+
+		Set<String> currentIds = info.keySet();
+		int totalIndexed = 0;
+		int missingMembers = 0;
+
+		for (PrototypeIndexData.Community community : prototypeIndex.communities()) {
+			// Check if the prototype itself was deleted
+			if (!currentIds.contains(community.prototypeIdentifier())) {
+				return true;
+			}
+
+			for (String memberId : community.memberIdentifiers()) {
+				totalIndexed++;
+				if (!currentIds.contains(memberId)) {
+					missingMembers++;
+				}
+			}
+		}
+
+		// More than 5% of indexed members are missing
+		if (totalIndexed > 0 && missingMembers > totalIndexed * 0.05) {
+			return true;
+		}
+
+		// More than 5% new samples added beyond what's indexed
+		int currentSize = info.size();
+		if (totalIndexed > 0 && currentSize > totalIndexed * 1.05) {
+			return true;
+		}
+
+		// Time-based: older than 24 hours with any difference
+		long age = System.currentTimeMillis() - prototypeIndex.computedAt();
+		if (age > Duration.ofHours(24).toMillis()) {
+			boolean anyDifference = currentSize != totalIndexed || missingMembers > 0;
+			if (anyDifference) {
+				return true;
+			}
+		}
+
+		return false;
 	}
 }
