@@ -35,8 +35,8 @@ def _post_message(text: str) -> dict:
         return {"ok": False, "error": "AR_WORKSTREAM_URL not set"}
 
     url = WORKSTREAM_URL.rstrip("/") + "/messages"
-    data = json.dumps({"text": text}).encode("utf-8")
-    req = Request(url, data=data, headers={"Content-Type": "application/json"})
+    data = json.dumps({"text": text}, ensure_ascii=False).encode("utf-8")
+    req = Request(url, data=data, headers={"Content-Type": "application/json; charset=utf-8"})
 
     print(f"ar-slack: POST {url}", file=sys.stderr)
 
