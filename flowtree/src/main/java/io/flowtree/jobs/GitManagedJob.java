@@ -576,8 +576,9 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
      * Detects an open pull request URL for the target branch.
      *
      * <p>Only attempts detection if the origin remote points to GitHub.
-     * Uses the {@code gh} CLI to query for an open PR. Returns {@code null}
-     * if {@code gh} is not installed, no PR exists, or the remote is not GitHub.</p>
+     * Uses the GitHub REST API directly (via {@link HttpURLConnection})
+     * to query for an open PR, authenticated with a {@code GITHUB_TOKEN}
+     * or {@code GH_TOKEN} environment variable.</p>
      *
      * @return the PR URL, or null if no PR was found
      */
@@ -589,15 +590,105 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
                 return null;
             }
 
-            // Try to find open PR for this branch
-            String prUrl = executeCommandWithOutput(
-                "gh", "pr", "view", targetBranch,
-                "--json", "url", "-q", ".url").trim();
-            if (!prUrl.isEmpty() && prUrl.startsWith("http")) {
-                return prUrl;
+            // Extract owner/repo from remote URL
+            // Handles both SSH (git@github.com:owner/repo.git) and
+            // HTTPS (https://github.com/owner/repo.git) formats
+            String ownerRepo = extractOwnerRepo(remoteUrl);
+            if (ownerRepo == null) {
+                log("Could not extract owner/repo from remote URL: " + remoteUrl);
+                return null;
+            }
+
+            // Look for GITHUB_TOKEN or GH_TOKEN
+            String token = System.getenv("GITHUB_TOKEN");
+            if (token == null || token.isEmpty()) {
+                token = System.getenv("GH_TOKEN");
+            }
+            if (token == null || token.isEmpty()) {
+                log("No GITHUB_TOKEN or GH_TOKEN set, cannot query GitHub API for PR");
+                return null;
+            }
+
+            // Query GitHub API for open PRs on this branch
+            String apiUrl = "https://api.github.com/repos/" + ownerRepo +
+                "/pulls?head=" + ownerRepo.split("/")[0] + ":" + targetBranch +
+                "&state=open&per_page=1";
+
+            HttpURLConnection conn = (HttpURLConnection) new URL(apiUrl).openConnection();
+            conn.setRequestMethod("GET");
+            conn.setRequestProperty("Authorization", "Bearer " + token);
+            conn.setRequestProperty("Accept", "application/vnd.github+json");
+            conn.setConnectTimeout(10000);
+            conn.setReadTimeout(10000);
+
+            int responseCode = conn.getResponseCode();
+            if (responseCode != 200) {
+                log("GitHub API returned " + responseCode + " for PR query");
+                return null;
+            }
+
+            StringBuilder response = new StringBuilder();
+            try (BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(conn.getInputStream(), StandardCharsets.UTF_8))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    response.append(line);
+                }
+            }
+
+            // Extract html_url from the first PR in the JSON array response
+            String body = response.toString();
+            if (body.startsWith("[") && !body.equals("[]")) {
+                int htmlUrlIdx = body.indexOf("\"html_url\"");
+                if (htmlUrlIdx >= 0) {
+                    int colonIdx = body.indexOf(":", htmlUrlIdx);
+                    int valueStart = body.indexOf("\"", colonIdx) + 1;
+                    int valueEnd = body.indexOf("\"", valueStart);
+                    if (valueStart > 0 && valueEnd > valueStart) {
+                        String prUrl = body.substring(valueStart, valueEnd);
+                        if (prUrl.startsWith("https://github.com/") && prUrl.contains("/pull/")) {
+                            return prUrl;
+                        }
+                    }
+                }
             }
         } catch (Exception e) {
             log("Could not detect PR URL: " + e.getMessage());
+        }
+
+        return null;
+    }
+
+    /**
+     * Extracts the {@code owner/repo} string from a GitHub remote URL.
+     *
+     * <p>Supports both SSH ({@code git@github.com:owner/repo.git}) and
+     * HTTPS ({@code https://github.com/owner/repo.git}) formats.</p>
+     *
+     * @param remoteUrl the git remote URL
+     * @return the owner/repo string, or null if not parseable
+     */
+    private static String extractOwnerRepo(String remoteUrl) {
+        // SSH format: git@github.com:owner/repo.git
+        if (remoteUrl.contains("git@github.com:")) {
+            String path = remoteUrl.substring(remoteUrl.indexOf("git@github.com:") + 15);
+            if (path.endsWith(".git")) {
+                path = path.substring(0, path.length() - 4);
+            }
+            if (path.contains("/")) {
+                return path;
+            }
+        }
+
+        // HTTPS format: https://github.com/owner/repo.git
+        if (remoteUrl.contains("github.com/")) {
+            String path = remoteUrl.substring(remoteUrl.indexOf("github.com/") + 11);
+            if (path.endsWith(".git")) {
+                path = path.substring(0, path.length() - 4);
+            }
+            if (path.contains("/")) {
+                return path;
+            }
         }
 
         return null;
