@@ -16,6 +16,8 @@
 
 package io.flowtree.jobs;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.flowtree.job.Job;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.JobOutput;
@@ -629,28 +631,16 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
                 return null;
             }
 
-            StringBuilder response = new StringBuilder();
-            try (BufferedReader reader = new BufferedReader(
-                    new InputStreamReader(conn.getInputStream(), StandardCharsets.UTF_8))) {
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    response.append(line);
-                }
-            }
-
-            // Extract html_url from the first PR in the JSON array response
-            String body = response.toString();
-            if (body.startsWith("[") && !body.equals("[]")) {
-                int htmlUrlIdx = body.indexOf("\"html_url\"");
-                if (htmlUrlIdx >= 0) {
-                    int colonIdx = body.indexOf(":", htmlUrlIdx);
-                    int valueStart = body.indexOf("\"", colonIdx) + 1;
-                    int valueEnd = body.indexOf("\"", valueStart);
-                    if (valueStart > 0 && valueEnd > valueStart) {
-                        String prUrl = body.substring(valueStart, valueEnd);
-                        if (prUrl.startsWith("https://github.com/") && prUrl.contains("/pull/")) {
-                            return prUrl;
-                        }
+            // Parse the JSON array response with Jackson
+            ObjectMapper mapper = new ObjectMapper();
+            JsonNode root = mapper.readTree(conn.getInputStream());
+            if (root.isArray() && root.size() > 0) {
+                JsonNode firstPr = root.get(0);
+                JsonNode htmlUrlNode = firstPr.get("html_url");
+                if (htmlUrlNode != null && htmlUrlNode.isTextual()) {
+                    String prUrl = htmlUrlNode.asText();
+                    if (prUrl.startsWith("https://github.com/") && prUrl.contains("/pull/")) {
+                        return prUrl;
                     }
                 }
             }
