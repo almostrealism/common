@@ -22,6 +22,7 @@ import io.almostrealism.relation.Provider;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.HybridScope;
 import io.almostrealism.scope.Scope;
+import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.OperationComputationAdapter;
 
@@ -52,23 +53,6 @@ import java.util.Objects;
  * @see WaveCellData
  */
 public abstract class WaveCellComputation extends OperationComputationAdapter<PackedCollection> {
-	/** The hybrid scope for this computation, if custom scope generation is used. */
-	protected HybridScope scope;
-
-	/**
-	 * Creates a new wave cell computation with the specified parameters.
-	 *
-	 * @param data   the wave cell data containing processing state
-	 * @param wave   the source waveform data
-	 * @param frame  producer for the current frame position
-	 * @param output the destination for computed values
-	 */
-	public WaveCellComputation(WaveCellData data,
-							   PackedCollection wave,
-							   Producer<PackedCollection> frame,
-							   PackedCollection output) {
-		this(data, () -> new Provider<>(wave), frame, output);
-	}
 
 	/**
 	 * Creates a new wave cell computation with producer-based wave data.
@@ -83,7 +67,7 @@ public abstract class WaveCellComputation extends OperationComputationAdapter<Pa
 							   Producer<PackedCollection> wave,
 							   Producer<PackedCollection> frame,
 							   PackedCollection output) {
-		super(() -> new Provider<>(output), wave,
+		super(CollectionFeatures.getInstance().cp(output), wave,
 				Objects.requireNonNull(frame),
 				data.getWaveLength(),
 				data.getWaveIndex(),
@@ -148,12 +132,4 @@ public abstract class WaveCellComputation extends OperationComputationAdapter<Pa
 	 * @return the amplitude array variable at index 6
 	 */
 	public ArrayVariable getAmplitude() { return getArgument(6); }
-
-	/**
-	 * {@inheritDoc}
-	 *
-	 * <p>Returns the custom scope if set, otherwise delegates to the parent implementation.</p>
-	 */
-	@Override
-	public Scope getScope(KernelStructureContext context) { return scope == null ? super.getScope(context) : scope; }
 }

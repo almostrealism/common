@@ -35,8 +35,8 @@ def _post_message(text: str) -> dict:
         return {"ok": False, "error": "AR_WORKSTREAM_URL not set"}
 
     url = WORKSTREAM_URL.rstrip("/") + "/messages"
-    data = json.dumps({"text": text}).encode("utf-8")
-    req = Request(url, data=data, headers={"Content-Type": "application/json"})
+    data = json.dumps({"text": text}, ensure_ascii=False).encode("utf-8")
+    req = Request(url, data=data, headers={"Content-Type": "application/json; charset=utf-8"})
 
     print(f"ar-slack: POST {url}", file=sys.stderr)
 
@@ -79,4 +79,16 @@ def slack_send_message(text: str) -> dict:
 
 
 if __name__ == "__main__":
-    mcp.run()
+    transport = os.environ.get("MCP_TRANSPORT", "stdio")
+    if transport in ("http", "sse"):
+        from mcp.server.transport_security import TransportSecuritySettings
+
+        port = int(os.environ.get("MCP_PORT", "8000"))
+        mcp.settings.host = "0.0.0.0"
+        mcp.settings.port = port
+        mcp.settings.transport_security = TransportSecuritySettings(
+            enable_dns_rebinding_protection=False,
+        )
+        mcp.run(transport="streamable-http" if transport == "http" else "sse")
+    else:
+        mcp.run()

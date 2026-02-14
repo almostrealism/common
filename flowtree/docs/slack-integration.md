@@ -26,13 +26,15 @@ Slack (Socket Mode)          SlackBotController          FlowTree Network
 
 ### SlackBotController
 
-Top-level coordinator. Manages the Slack connection (Socket Mode), HTTP API endpoint, and event routing.
+Top-level coordinator. Manages the Slack connection (Socket Mode), HTTP API endpoint, centralized MCP server lifecycle, pushed tool registration, and event routing.
+
+When the YAML config includes an `mcpServers` section, `loadConfig()` starts each server as an HTTP Python process and builds a `centralizedMcpConfig` JSON that is passed to all jobs via `SlackListener`. When `pushedTools` is present, `registerPushedTools()` (called after the API endpoint starts) registers each tool's source file for serving via `GET /api/tools/{name}` and builds a `pushedToolsConfig` JSON that is also passed to all jobs.
 
 **Startup:**
 
 ```java
 SlackBotController controller = new SlackBotController();
-controller.loadConfig(new File("workstreams.yaml"));
+controller.loadConfig(new File("workstreams.yaml")); // also starts centralized MCP servers
 controller.setApiPort(7780);
 controller.start();
 ```
@@ -48,7 +50,7 @@ java -cp flowtree.jar io.flowtree.slack.SlackBotController \
 
 ### SlackListener
 
-Processes incoming Slack messages. Extracts the prompt from `@bot` mentions, looks up the workstream for the channel, creates a `ClaudeCodeJob.Factory`, and submits it to the connected FlowTree agents.
+Processes incoming Slack messages. Extracts the prompt from `@bot` mentions, looks up the workstream for the channel, creates a `ClaudeCodeJob.Factory`, and submits it to the connected FlowTree agents. If the controller has started centralized MCP servers, the `centralizedMcpConfig` is passed to each factory so agents connect to those servers over HTTP. If pushed tools are configured, the `pushedToolsConfig` is also passed so agents can download and run those tools locally.
 
 **Built-in commands:**
 
@@ -74,6 +76,7 @@ Lightweight HTTP server (NanoHTTPD, default port 7780) that receives status even
 | POST | `/api/workstreams/{id}` | `{"jobId":"...","status":"..."}` | Receive a status event |
 | POST | `/api/workstreams/{id}/jobs/{jobId}` | `{"jobId":"...","status":"..."}` | Receive a job status event |
 | GET | `/api/health` | -- | Health check |
+| GET | `/api/tools/{name}` | -- | Download a pushed tool's Python source file |
 
 When a `ClaudeCodeJob` has `workstreamUrl` set, it passes the URL to Claude Code as the `AR_WORKSTREAM_URL` environment variable. The `ar-slack` MCP server reads this and POSTs messages to `{url}/messages`.
 
@@ -109,6 +112,28 @@ Tokens are resolved in order (first match wins):
 ### Workstream Configuration (YAML)
 
 ```yaml
+# Optional: centralized MCP servers started by the controller as HTTP processes.
+# Agents connect over HTTP instead of stdio. Enables shared state and
+# cross-project portability. Omit this section for local stdio (the default).
+mcpServers:
+  ar-memory:
+    source: tools/mcp/memory/server.py
+    port: 7783
+  ar-consultant:
+    source: tools/mcp/consultant/server.py
+    port: 7784
+
+# Optional: pushed MCP tools served as files by the controller and downloaded
+# into dev containers on first use. Use for tools that depend on per-job state.
+# Each entry supports an optional 'env' map for per-tool environment variables.
+pushedTools:
+  ar-slack:
+    source: tools/mcp/slack/server.py
+  ar-github:
+    source: tools/mcp/github/server.py
+    env:
+      GITHUB_TOKEN: ghp_your_token_here
+
 workstreams:
   - channelId: "C0123456789"
     channelName: "#project-agent"
@@ -118,11 +143,17 @@ workstreams:
     maxTurns: 50
     maxBudgetUsd: 10.0
 
+  # Per-workstream env vars override global pushed tool env.
+  # Useful for per-org tokens or workstream-specific config.
   - channelId: "C9876543210"
     channelName: "#ops-agent"
     defaultBranch: "feature/ops"
     maxBudgetUsd: 5.0
+    env:
+      GITHUB_TOKEN: ghp_ops_org_token
 ```
+
+See the [Centralized MCP Servers](coding-agent.md#centralized-mcp-servers) and [Pushed Tools](coding-agent.md#pushed-tools) sections in the coding agent docs for architecture details.
 
 ### Environment Variables
 

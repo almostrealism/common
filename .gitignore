@@ -41,6 +41,8 @@ Extensions/**
 # Automated coding
 claude-output/**
 commit.txt
+workstreams.yaml
+flowtree-controller.log
 
 # Secrets
 **/slack-tokens.json
