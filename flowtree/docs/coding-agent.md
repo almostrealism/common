@@ -45,6 +45,8 @@ Executes a single Claude Code prompt. Extends `GitManagedJob`.
 | `maxBudgetUsd` | `10.0` | Spending cap per job |
 | `targetBranch` | `null` | Git branch for commits (disables git if null) |
 | `workstreamUrl` | `null` | Controller URL for status events and Slack messaging |
+| `centralizedMcpConfig` | `null` | JSON mapping centralized MCP server names to HTTP URLs and tool names |
+| `pushedToolsConfig` | `null` | JSON mapping pushed tool server names to download URLs and tool names |
 
 **Results:**
 
@@ -116,8 +118,92 @@ Claude Code sessions started by `ClaudeCodeJob` automatically have access to the
 
 - **ar-slack** — Send messages back to the Slack channel via the controller's `SlackApiEndpoint`
 - **ar-github** — Read and respond to GitHub PR review comments
+- **Project servers** — Any servers defined in `.mcp.json` (filtered by `.claude/settings.json`) are included automatically
 
 These tools are appended to `--allowedTools` regardless of the configured allowlist. The `ar-slack` tool uses the `AR_WORKSTREAM_URL` environment variable (derived from `workstreamUrl`) to route messages to the correct channel.
+
+### Centralized MCP Servers
+
+When the controller's YAML config includes an `mcpServers` section, those servers are started as HTTP processes on the controller host. Agents connect to them over HTTP instead of stdio, which enables:
+
+- **Cross-project portability** — agents don't need local Python source files for these tools
+- **Shared state** — stateful servers like ar-memory and ar-consultant share a single database across all agents
+
+**Server classification:**
+
+| Server | Mode | Reason |
+|--------|------|--------|
+| ar-slack | Pushed | Depends on per-job `AR_WORKSTREAM_URL` |
+| ar-github | Pushed | Depends on local git repo/branch |
+| ar-memory | Centralized | SQLite + FAISS state shared across agents |
+| ar-consultant | Centralized | Memory + history DB; must be shared |
+| ar-docs | Local (.mcp.json) | Project-specific repo docs |
+| ar-test-runner | Local (.mcp.json) | Local `mvn test` |
+| ar-jmx | Local (.mcp.json) | Local JVM attachment |
+| ar-profile-analyzer | Local (.mcp.json) | Local XML files |
+
+When `centralizedMcpConfig` is set on a job, `buildMcpConfig()` emits `{"type":"http","url":"..."}` entries for centralized servers and stdio entries for local ones. The `0.0.0.0` placeholder in URLs is resolved to `FLOWTREE_ROOT_HOST` at runtime.
+
+**Backward compatibility:** When the `mcpServers` section is absent from the YAML, behavior is identical to the all-local-stdio default. Python servers default to stdio when `MCP_TRANSPORT` is not set, so interactive `claude` sessions are unaffected. `discoverProjectMcpServers()` skips servers that appear in the centralized config.
+
+**Known limitations:**
+
+- When ar-consultant is centralized, it searches docs from the controller host's repo, not the target project
+- No auto-restart if a centralized server process crashes
+- Ports are fixed per config; dynamic allocation is future work
+
+### Pushed Tools
+
+Some MCP tools cannot run as centralized HTTP servers because they depend on per-job state:
+
+- **ar-slack** reads `AR_WORKSTREAM_URL` at module load time, and each agent job has a different workstream URL
+- **ar-github** detects the local git branch via subprocess, so it must run inside the agent's working directory
+
+These tools are **pushed** to dev containers: the controller serves the Python source files over HTTP, and `ClaudeCodeJob` downloads them to `~/.flowtree/tools/mcp/{name}/server.py` before starting Claude Code.
+
+**YAML configuration:**
+
+```yaml
+pushedTools:
+  ar-slack:
+    source: tools/mcp/slack/server.py
+  ar-github:
+    source: tools/mcp/github/server.py
+    env:
+      GITHUB_TOKEN: ghp_your_token_here
+```
+
+Each entry supports an optional `env` map of environment variables that are injected into the MCP stdio config as defaults. Per-workstream overrides are also supported via the `env` field on each workstream entry:
+
+```yaml
+workstreams:
+  - channelId: "C0123456789"
+    channelName: "#org-a-agent"
+    env:
+      GITHUB_TOKEN: ghp_org_a_token
+
+  - channelId: "C9876543210"
+    channelName: "#org-b-agent"
+    env:
+      GITHUB_TOKEN: ghp_org_b_token
+```
+
+When both are present, workstream-level env vars override the global pushed tool defaults. This allows different workstreams to target repos in different GitHub orgs without modifying the tool source or the container's global environment.
+
+**How it works:**
+
+1. At startup, `SlackBotController.registerPushedTools()` resolves each source path, discovers tool names via `McpToolDiscovery`, and registers the files with `SlackApiEndpoint` for serving via `GET /api/tools/{name}`.
+2. The resulting `pushedToolsConfig` JSON (mapping server names to download URLs and tool lists) is stored on `SlackListener` and passed to every `ClaudeCodeJob.Factory`.
+3. At job execution time, `ClaudeCodeJob.ensurePushedTools()` downloads any missing tools from the controller to `~/.flowtree/tools/mcp/{name}/server.py`.
+4. `buildMcpConfig()` emits stdio entries pointing to `~/.flowtree/tools/mcp/{name}/server.py` for pushed tools.
+
+**Download-on-first-use:** Tools are only downloaded once per container. Subsequent jobs reuse the files already present in `~/.flowtree/tools/`. The `FLOWTREE_ROOT_HOST` environment variable is used to resolve the `0.0.0.0` placeholder in download URLs.
+
+**Backward compatibility:** When the `pushedTools` section is absent from the YAML, ar-slack and ar-github fall back to the hardcoded `tools/mcp/` paths (requiring the files to exist locally in the project directory).
+
+### McpToolDiscovery
+
+Shared utility class (`io.flowtree.jobs.McpToolDiscovery`) that scans Python MCP server source files for `@mcp.tool()` decorated functions. Used by `ClaudeCodeJob` (for local servers), `SlackBotController` (for centralized servers and pushed tools at startup).
 
 ## Job Lifecycle Events
 
@@ -133,7 +219,7 @@ Start events are fired by the controller immediately when a job is submitted, pr
 
 ## Serialization
 
-`ClaudeCodeJob` and its factory support FlowTree's wire protocol via `encode()` and `set(key, value)`. Prompts and string properties are Base64-encoded for safe transport over the peer-to-peer message layer.
+`ClaudeCodeJob` and its factory support FlowTree's wire protocol via `encode()` and `set(key, value)`. Prompts and string properties are Base64-encoded for safe transport over the peer-to-peer message layer. The `centralizedMcpConfig` JSON is serialized under the `centralMcp` key and `pushedToolsConfig` under the `pushedTools` key.
 
 ## Operator Scripts
 

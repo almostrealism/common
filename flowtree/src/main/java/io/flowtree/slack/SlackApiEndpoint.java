@@ -21,6 +21,9 @@ import io.flowtree.jobs.JobCompletionEvent;
 import org.almostrealism.io.ConsoleFeatures;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -71,6 +74,7 @@ public class SlackApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
     );
 
     private final SlackNotifier notifier;
+    private final Map<String, Path> toolFiles = new HashMap<>();
 
     /**
      * Creates a new API endpoint on the specified port.
@@ -81,6 +85,17 @@ public class SlackApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
     public SlackApiEndpoint(int port, SlackNotifier notifier) {
         super(port);
         this.notifier = notifier;
+    }
+
+    /**
+     * Registers a pushed tool file that can be served via
+     * {@code GET /api/tools/{name}}.
+     *
+     * @param name     the tool server name (e.g., "ar-slack")
+     * @param filePath the path to the Python source file on disk
+     */
+    public void registerToolFile(String name, Path filePath) {
+        toolFiles.put(name, filePath);
     }
 
     @Override
@@ -108,8 +123,38 @@ public class SlackApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             }
         }
 
+        if (Method.GET.equals(method) && uri.startsWith("/api/tools/")) {
+            String toolName = uri.substring("/api/tools/".length());
+            return handleToolDownload(toolName);
+        }
+
         return newFixedLengthResponse(Response.Status.NOT_FOUND,
                 MIME_PLAINTEXT, "Not found");
+    }
+
+    /**
+     * Handles {@code GET /api/tools/{name}} by serving the registered
+     * Python source file as {@code text/plain}.
+     *
+     * @param name the tool server name
+     * @return the file content or a 404 response
+     */
+    private Response handleToolDownload(String name) {
+        Path filePath = toolFiles.get(name);
+        if (filePath == null || !Files.exists(filePath)) {
+            return newFixedLengthResponse(Response.Status.NOT_FOUND,
+                    MIME_PLAINTEXT, "Tool not found: " + name);
+        }
+
+        try {
+            String content = Files.readString(filePath, StandardCharsets.UTF_8);
+            log("Served pushed tool: " + name + " (" + content.length() + " bytes)");
+            return newFixedLengthResponse(Response.Status.OK, MIME_PLAINTEXT, content);
+        } catch (IOException e) {
+            warn("Failed to read tool file " + name + ": " + e.getMessage());
+            return newFixedLengthResponse(Response.Status.INTERNAL_ERROR,
+                    MIME_PLAINTEXT, "Failed to read tool file");
+        }
     }
 
     /**
@@ -259,10 +304,22 @@ public class SlackApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         int colonPos = json.indexOf(":", fieldStart);
         if (colonPos < 0) return null;
 
+        // Skip whitespace after the colon to inspect the value token
+        int afterColon = colonPos + 1;
+        while (afterColon < json.length() && json.charAt(afterColon) == ' ') {
+            afterColon++;
+        }
+
+        // Handle JSON null literal
+        if (afterColon + 4 <= json.length() &&
+                json.substring(afterColon, afterColon + 4).equals("null")) {
+            return null;
+        }
+
         int valueStart = json.indexOf("\"", colonPos) + 1;
         if (valueStart <= 0) return null;
 
-        // Handle escaped quotes
+        // Handle JSON escape sequences including \\uXXXX Unicode escapes
         StringBuilder sb = new StringBuilder();
         for (int i = valueStart; i < json.length(); i++) {
             char c = json.charAt(i);
@@ -271,12 +328,35 @@ public class SlackApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
                 if (next == '"') {
                     sb.append('"');
                     i++;
-                } else if (next == 'n') {
-                    sb.append('\n');
-                    i++;
                 } else if (next == '\\') {
                     sb.append('\\');
                     i++;
+                } else if (next == 'n') {
+                    sb.append('\n');
+                    i++;
+                } else if (next == 'r') {
+                    sb.append('\r');
+                    i++;
+                } else if (next == 't') {
+                    sb.append('\t');
+                    i++;
+                } else if (next == 'b') {
+                    sb.append('\b');
+                    i++;
+                } else if (next == 'f') {
+                    sb.append('\f');
+                    i++;
+                } else if (next == '/') {
+                    sb.append('/');
+                    i++;
+                } else if (next == 'u' && i + 5 < json.length()) {
+                    String hex = json.substring(i + 2, i + 6);
+                    try {
+                        sb.append((char) Integer.parseInt(hex, 16));
+                        i += 5;
+                    } catch (NumberFormatException e) {
+                        sb.append(c);
+                    }
                 } else {
                     sb.append(c);
                 }
@@ -391,6 +471,24 @@ public class SlackApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
                     } else if (next == '\\') {
                         value.append('\\');
                         j += 2;
+                    } else if (next == 'n') {
+                        value.append('\n');
+                        j += 2;
+                    } else if (next == 'r') {
+                        value.append('\r');
+                        j += 2;
+                    } else if (next == 't') {
+                        value.append('\t');
+                        j += 2;
+                    } else if (next == 'u' && j + 5 < arrayContent.length()) {
+                        String hex = arrayContent.substring(j + 2, j + 6);
+                        try {
+                            value.append((char) Integer.parseInt(hex, 16));
+                            j += 6;
+                        } catch (NumberFormatException e) {
+                            value.append(c);
+                            j++;
+                        }
                     } else {
                         value.append(c);
                         j++;

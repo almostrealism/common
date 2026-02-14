@@ -28,6 +28,7 @@ import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.HybridScope;
 import io.almostrealism.scope.Scope;
 import org.almostrealism.algebra.Pair;
+import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.OperationComputationAdapter;
 
@@ -74,7 +75,7 @@ public class TimeCellReset extends OperationComputationAdapter<PackedCollection>
 	 * @param resets the collection of scheduled reset frame numbers (-1 = disabled)
 	 */
 	public TimeCellReset(Producer<Pair> time, PackedCollection resets) {
-		super((Producer) time, () -> new Provider<>(resets));
+		super((Producer) time, CollectionFeatures.getInstance().cp(resets));
 		len = resets.getMemLength();
 	}
 

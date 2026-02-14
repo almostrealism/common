@@ -13,7 +13,7 @@ dataset construction.
 
 Environment variables:
     AR_CONSULTANT_BACKEND      - "llamacpp", "ollama", "mlx", "passthrough", or "auto" (default)
-    AR_CONSULTANT_LLAMACPP_URL - llama.cpp server URL (default: http://host.docker.internal:8080)
+    AR_CONSULTANT_LLAMACPP_URL - llama.cpp server URL (default: localhost:8083 on host, host.docker.internal:8083 in containers)
     AR_CONSULTANT_MODEL        - Ollama model name (default: qwen2.5-coder:32b-instruct-q4_K_M)
     AR_CONSULTANT_MLX_MODEL    - MLX model path (default: mlx-community/Qwen2.5-Coder-32B-Instruct-4bit)
     AR_CONSULTANT_OLLAMA_URL   - Ollama base URL (default: http://localhost:11434)
@@ -729,4 +729,16 @@ def export_request_history(
 
 
 if __name__ == "__main__":
-    mcp.run()
+    transport = os.environ.get("MCP_TRANSPORT", "stdio")
+    if transport in ("http", "sse"):
+        from mcp.server.transport_security import TransportSecuritySettings
+
+        port = int(os.environ.get("MCP_PORT", "8000"))
+        mcp.settings.host = "0.0.0.0"
+        mcp.settings.port = port
+        mcp.settings.transport_security = TransportSecuritySettings(
+            enable_dns_rebinding_protection=False,
+        )
+        mcp.run(transport="streamable-http" if transport == "http" else "sse")
+    else:
+        mcp.run()
