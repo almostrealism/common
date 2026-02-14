@@ -677,9 +677,8 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
             if (path.endsWith(".git")) {
                 path = path.substring(0, path.length() - 4);
             }
-            if (path.contains("/")) {
-                return path;
-            }
+            String validated = validateOwnerRepo(path);
+            if (validated != null) return validated;
         }
 
         // HTTPS format: https://github.com/owner/repo.git
@@ -688,11 +687,25 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
             if (path.endsWith(".git")) {
                 path = path.substring(0, path.length() - 4);
             }
-            if (path.contains("/")) {
-                return path;
-            }
+            String validated = validateOwnerRepo(path);
+            if (validated != null) return validated;
         }
 
+        return null;
+    }
+
+    /**
+     * Validates that a path is exactly {@code owner/repo} — two non-empty
+     * parts separated by a single slash.
+     *
+     * @param path the candidate owner/repo string
+     * @return the path if valid, or null
+     */
+    private static String validateOwnerRepo(String path) {
+        String[] parts = path.split("/");
+        if (parts.length == 2 && !parts[0].isEmpty() && !parts[1].isEmpty()) {
+            return path;
+        }
         return null;
     }
 
