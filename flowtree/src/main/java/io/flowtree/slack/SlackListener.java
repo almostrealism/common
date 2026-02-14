@@ -316,6 +316,10 @@ public class SlackListener implements ConsoleFeatures {
             factory.setPushToOrigin(workstream.isPushToOrigin());
         }
 
+        if (workstream.getBaseBranch() != null) {
+            factory.setBaseBranch(workstream.getBaseBranch());
+        }
+
         if (workstream.getWorkingDirectory() != null) {
             factory.setWorkingDirectory(workstream.getWorkingDirectory());
         }
@@ -515,6 +519,9 @@ public class SlackListener implements ConsoleFeatures {
         if (ws.getDefaultBranch() != null) {
             sb.append("   Branch: `").append(ws.getDefaultBranch()).append("`\n");
         }
+        if (ws.getBaseBranch() != null) {
+            sb.append("   Base branch: `").append(ws.getBaseBranch()).append("`\n");
+        }
         sb.append("   Push to origin: ").append(ws.isPushToOrigin()).append("\n");
         sb.append("   Allowed tools: ").append(ws.getAllowedTools()).append("\n");
         sb.append("   Max turns: ").append(ws.getMaxTurns()).append("\n");
@@ -610,6 +617,7 @@ public class SlackListener implements ConsoleFeatures {
             sb.append("   `maxBudgetUsd` = ").append(String.format("%.2f", ws.getMaxBudgetUsd())).append("\n");
             sb.append("   `maxTurns` = ").append(ws.getMaxTurns()).append("\n");
             sb.append("   `defaultBranch` = ").append(ws.getDefaultBranch() != null ? ws.getDefaultBranch() : "(not set)").append("\n");
+            sb.append("   `baseBranch` = ").append(ws.getBaseBranch() != null ? ws.getBaseBranch() : "(not set)").append("\n");
             sb.append("   `workingDirectory` = ").append(ws.getWorkingDirectory() != null ? ws.getWorkingDirectory() : "(not set)").append("\n");
             sb.append("   `pushToOrigin` = ").append(ws.isPushToOrigin()).append("\n");
             sb.append("   `allowedTools` = ").append(ws.getAllowedTools());
@@ -627,7 +635,7 @@ public class SlackListener implements ConsoleFeatures {
             if (currentValue == null) {
                 ctx.respond(":warning: Unknown setting: `" + key + "`\n"
                     + "Modifiable settings: `maxBudgetUsd`, `maxTurns`, `defaultBranch`, "
-                    + "`workingDirectory`, `pushToOrigin`, `allowedTools`");
+                    + "`baseBranch`, `workingDirectory`, `pushToOrigin`, `allowedTools`");
             } else {
                 ctx.respond(":gear: `" + key + "` = " + currentValue);
             }
@@ -706,6 +714,7 @@ public class SlackListener implements ConsoleFeatures {
             case "maxBudgetUsd": return String.format("%.2f", ws.getMaxBudgetUsd());
             case "maxTurns": return String.valueOf(ws.getMaxTurns());
             case "defaultBranch": return ws.getDefaultBranch() != null ? ws.getDefaultBranch() : "(not set)";
+            case "baseBranch": return ws.getBaseBranch() != null ? ws.getBaseBranch() : "(not set)";
             case "workingDirectory": return ws.getWorkingDirectory() != null ? ws.getWorkingDirectory() : "(not set)";
             case "pushToOrigin": return String.valueOf(ws.isPushToOrigin());
             case "allowedTools": return ws.getAllowedTools();
@@ -739,6 +748,9 @@ public class SlackListener implements ConsoleFeatures {
             case "defaultBranch":
                 ws.setDefaultBranch(value);
                 return null;
+            case "baseBranch":
+                ws.setBaseBranch(value);
+                return null;
             case "workingDirectory":
                 ws.setWorkingDirectory(value);
                 return null;
@@ -755,7 +767,7 @@ public class SlackListener implements ConsoleFeatures {
             default:
                 return "Unknown setting: `" + key + "`\n"
                     + "Modifiable settings: `maxBudgetUsd`, `maxTurns`, `defaultBranch`, "
-                    + "`workingDirectory`, `pushToOrigin`, `allowedTools`";
+                    + "`baseBranch`, `workingDirectory`, `pushToOrigin`, `allowedTools`";
         }
     }
 

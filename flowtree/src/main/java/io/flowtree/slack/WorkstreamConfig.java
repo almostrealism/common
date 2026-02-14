@@ -70,6 +70,7 @@ public class WorkstreamConfig {
         private String channelName;
         private List<AgentEntry> agents = new ArrayList<>();
         private String defaultBranch;
+        private String baseBranch;
         private boolean pushToOrigin = true;
         private String workingDirectory;
         private String allowedTools = "Read,Edit,Write,Bash,Glob,Grep";
@@ -93,6 +94,9 @@ public class WorkstreamConfig {
 
         public String getDefaultBranch() { return defaultBranch; }
         public void setDefaultBranch(String defaultBranch) { this.defaultBranch = defaultBranch; }
+
+        public String getBaseBranch() { return baseBranch; }
+        public void setBaseBranch(String baseBranch) { this.baseBranch = baseBranch; }
 
         public boolean isPushToOrigin() { return pushToOrigin; }
         public void setPushToOrigin(boolean pushToOrigin) { this.pushToOrigin = pushToOrigin; }
@@ -136,6 +140,7 @@ public class WorkstreamConfig {
                 ws.addAgent(agent.getHost(), agent.getPort());
             }
             ws.setDefaultBranch(defaultBranch);
+            ws.setBaseBranch(baseBranch);
             ws.setPushToOrigin(pushToOrigin);
             ws.setWorkingDirectory(workingDirectory);
             ws.setAllowedTools(allowedTools);
@@ -328,6 +333,7 @@ public class WorkstreamConfig {
         entry.setChannelId(ws.getChannelId());
         entry.setChannelName(ws.getChannelName());
         entry.setDefaultBranch(ws.getDefaultBranch());
+        entry.setBaseBranch(ws.getBaseBranch());
         entry.setPushToOrigin(ws.isPushToOrigin());
         entry.setWorkingDirectory(ws.getWorkingDirectory());
         entry.setAllowedTools(ws.getAllowedTools());
@@ -356,6 +362,7 @@ public class WorkstreamConfig {
                     entry.setWorkstreamId(ws.getWorkstreamId());
                     entry.setChannelName(ws.getChannelName());
                     entry.setDefaultBranch(ws.getDefaultBranch());
+                    entry.setBaseBranch(ws.getBaseBranch());
                     entry.setPushToOrigin(ws.isPushToOrigin());
                     entry.setWorkingDirectory(ws.getWorkingDirectory());
                     entry.setAllowedTools(ws.getAllowedTools());

@@ -121,6 +121,7 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
 
     private String taskId;
     private String targetBranch;
+    private String baseBranch = "master";
     private String workingDirectory;
     private long maxFileSizeBytes = DEFAULT_MAX_FILE_SIZE;
     private Set<String> excludedPatterns = new HashSet<>(DEFAULT_EXCLUDED_PATTERNS);
@@ -440,9 +441,10 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
             // Checkout existing branch
             return executeGit("checkout", targetBranch) == 0;
         } else {
-            // Create new branch from current HEAD
-            log("Creating new branch: " + targetBranch);
-            return executeGit("checkout", "-b", targetBranch) == 0;
+            // Create new branch from the configured base branch
+            String startPoint = "origin/" + baseBranch;
+            log("Creating new branch: " + targetBranch + " from " + startPoint);
+            return executeGit("checkout", "-b", targetBranch, startPoint) == 0;
         }
     }
 
@@ -956,6 +958,28 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
         this.targetBranch = targetBranch;
     }
 
+    /**
+     * Returns the base branch used as the starting point when creating
+     * a new target branch.
+     */
+    public String getBaseBranch() {
+        return baseBranch;
+    }
+
+    /**
+     * Sets the base branch used as the starting point when creating
+     * a new target branch. Defaults to {@code "master"}.
+     *
+     * <p>When the target branch does not exist, the job creates it from
+     * {@code origin/<baseBranch>} (after fetching) rather than from
+     * whatever HEAD happens to be checked out.</p>
+     *
+     * @param baseBranch the branch name to base new branches on
+     */
+    public void setBaseBranch(String baseBranch) {
+        this.baseBranch = baseBranch;
+    }
+
     public String getWorkingDirectory() {
         return workingDirectory;
     }
@@ -1290,6 +1314,9 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
         if (targetBranch != null) {
             sb.append("::branch:=").append(base64Encode(targetBranch));
         }
+        if (baseBranch != null && !"master".equals(baseBranch)) {
+            sb.append("::baseBranch:=").append(base64Encode(baseBranch));
+        }
         if (workingDirectory != null) {
             sb.append("::workDir:=").append(base64Encode(workingDirectory));
         }
@@ -1317,6 +1344,9 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
                 break;
             case "branch":
                 this.targetBranch = base64Decode(value);
+                break;
+            case "baseBranch":
+                this.baseBranch = base64Decode(value);
                 break;
             case "workDir":
                 this.workingDirectory = base64Decode(value);
