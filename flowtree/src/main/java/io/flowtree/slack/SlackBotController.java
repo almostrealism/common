@@ -199,6 +199,9 @@ public class SlackBotController implements ConsoleFeatures {
         log("Loaded " + config.getWorkstreams().size() +
                           " workstream(s) from " + configFile.getName());
 
+        // Pass config and file reference to listener for /flowtree setup persistence
+        listener.setWorkstreamConfig(config, configFile);
+
         // Start centralized MCP servers if configured
         startCentralizedMcpServers(config, configFile.getParentFile());
     }
@@ -348,9 +351,19 @@ public class SlackBotController implements ConsoleFeatures {
     }
 
     /**
-     * Registers Slack event handlers with the Bolt app.
+     * Registers Slack event handlers with the Bolt app, including
+     * the {@code /flowtree} slash command.
      */
     private void registerEventHandlers() {
+        // Handle /flowtree slash command
+        app.command("/flowtree", (req, ctx) -> {
+            String channelId = req.getPayload().getChannelId();
+            String channelName = req.getPayload().getChannelName();
+            String text = req.getPayload().getText();
+            listener.handleSlashCommand(text, channelId, channelName, ctx::respond);
+            return ctx.ack();
+        });
+
         // Handle app mentions (@bot message)
         app.event(AppMentionEvent.class, (payload, ctx) -> {
             AppMentionEvent event = payload.getEvent();

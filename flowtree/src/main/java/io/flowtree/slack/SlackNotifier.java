@@ -25,7 +25,9 @@ import io.flowtree.jobs.JobCompletionListener;
 import org.almostrealism.io.ConsoleFeatures;
 
 import java.io.IOException;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.function.Consumer;
 
@@ -41,10 +43,14 @@ import java.util.function.Consumer;
  */
 public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
 
+    /** Maximum number of completed jobs to retain per workstream. */
+    private static final int MAX_JOB_HISTORY = 100;
+
     private final String botToken;
     private final MethodsClient client;
     private final Map<String, SlackWorkstream> workstreams;
     private final Map<String, String> jobThreadTs;
+    private final Map<String, Map<String, JobCompletionEvent>> jobHistory;
     private Consumer<String> messageCallback;
 
     /**
@@ -56,6 +62,7 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
         this.botToken = botToken;
         this.workstreams = new HashMap<>();
         this.jobThreadTs = new HashMap<>();
+        this.jobHistory = new HashMap<>();
 
         if (botToken != null && !botToken.isEmpty()) {
             this.client = Slack.getInstance().methods(botToken);
@@ -114,6 +121,8 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
             return;
         }
 
+        trackJob(workstreamId, event);
+
         String message = formatStartedMessage(event, workstream);
         String ts;
 
@@ -140,6 +149,8 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
             warn("Unknown workstream: " + workstreamId);
             return;
         }
+
+        trackJob(workstreamId, event);
 
         String message = formatCompletedMessage(event, workstream);
         String threadTs = event.getJobId() != null ? jobThreadTs.remove(event.getJobId()) : null;
@@ -243,6 +254,38 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
      */
     public String getThreadTs(String jobId) {
         return jobId != null ? jobThreadTs.get(jobId) : null;
+    }
+
+    /**
+     * Tracks a job event for the {@code /flowtree jobs} command.
+     * Maintains a bounded history per workstream.
+     *
+     * @param workstreamId the workstream identifier
+     * @param event        the job event to track
+     */
+    private void trackJob(String workstreamId, JobCompletionEvent event) {
+        if (event.getJobId() == null) return;
+
+        Map<String, JobCompletionEvent> jobs = jobHistory.computeIfAbsent(
+            workstreamId, k -> new LinkedHashMap<String, JobCompletionEvent>() {
+                @Override
+                protected boolean removeEldestEntry(Map.Entry<String, JobCompletionEvent> eldest) {
+                    return size() > MAX_JOB_HISTORY;
+                }
+            });
+        jobs.put(event.getJobId(), event);
+    }
+
+    /**
+     * Returns recent jobs for a workstream, ordered from oldest to newest.
+     *
+     * @param workstreamId the workstream identifier
+     * @return an unmodifiable map of job ID to event, or an empty map
+     */
+    public Map<String, JobCompletionEvent> getRecentJobs(String workstreamId) {
+        Map<String, JobCompletionEvent> jobs = jobHistory.get(workstreamId);
+        if (jobs == null) return Collections.emptyMap();
+        return Collections.unmodifiableMap(jobs);
     }
 
     private String formatStartedMessage(JobCompletionEvent event, SlackWorkstream workstream) {

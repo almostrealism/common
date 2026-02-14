@@ -314,6 +314,67 @@ public class WorkstreamConfig {
     }
 
     /**
+     * Adds a new workstream to the configuration from a {@link SlackWorkstream} instance.
+     *
+     * <p>This creates a new {@link WorkstreamEntry} from the workstream's current
+     * state and appends it to the workstreams list. Used by {@code /flowtree setup}
+     * when creating a workstream from Slack.</p>
+     *
+     * @param ws the workstream to add
+     */
+    public void addWorkstream(SlackWorkstream ws) {
+        WorkstreamEntry entry = new WorkstreamEntry();
+        entry.setWorkstreamId(ws.getWorkstreamId());
+        entry.setChannelId(ws.getChannelId());
+        entry.setChannelName(ws.getChannelName());
+        entry.setDefaultBranch(ws.getDefaultBranch());
+        entry.setPushToOrigin(ws.isPushToOrigin());
+        entry.setWorkingDirectory(ws.getWorkingDirectory());
+        entry.setAllowedTools(ws.getAllowedTools());
+        entry.setMaxTurns(ws.getMaxTurns());
+        entry.setMaxBudgetUsd(ws.getMaxBudgetUsd());
+        entry.setGitUserName(ws.getGitUserName());
+        entry.setGitUserEmail(ws.getGitUserEmail());
+        entry.setEnv(ws.getEnv());
+        workstreams.add(entry);
+    }
+
+    /**
+     * Synchronizes the configuration entries from the in-memory workstream state.
+     *
+     * <p>Updates existing entries that match by channel ID and adds any new
+     * workstreams that are not yet represented in the config. This ensures
+     * that runtime changes (via {@code /flowtree config}) are persisted.</p>
+     *
+     * @param activeWorkstreams the current in-memory workstreams
+     */
+    public void syncFromWorkstreams(java.util.Collection<SlackWorkstream> activeWorkstreams) {
+        for (SlackWorkstream ws : activeWorkstreams) {
+            boolean found = false;
+            for (WorkstreamEntry entry : workstreams) {
+                if (ws.getChannelId().equals(entry.getChannelId())) {
+                    entry.setWorkstreamId(ws.getWorkstreamId());
+                    entry.setChannelName(ws.getChannelName());
+                    entry.setDefaultBranch(ws.getDefaultBranch());
+                    entry.setPushToOrigin(ws.isPushToOrigin());
+                    entry.setWorkingDirectory(ws.getWorkingDirectory());
+                    entry.setAllowedTools(ws.getAllowedTools());
+                    entry.setMaxTurns(ws.getMaxTurns());
+                    entry.setMaxBudgetUsd(ws.getMaxBudgetUsd());
+                    entry.setGitUserName(ws.getGitUserName());
+                    entry.setGitUserEmail(ws.getGitUserEmail());
+                    entry.setEnv(ws.getEnv());
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
+                addWorkstream(ws);
+            }
+        }
+    }
+
+    /**
      * Writes the configuration back to a YAML file.
      *
      * <p>Uses {@link JsonInclude.Include#NON_EMPTY} to omit null fields
