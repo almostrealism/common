@@ -17,6 +17,7 @@
 package org.almostrealism.audio.arrange.test;
 
 import io.almostrealism.relation.Producer;
+import org.almostrealism.audio.AudioTestFeatures;
 import org.almostrealism.audio.CellFeatures;
 import org.almostrealism.audio.arrange.ChannelSection;
 import org.almostrealism.audio.arrange.DefaultChannelSectionFactory;
@@ -26,13 +27,14 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.heredity.ProjectedGenome;
 import org.almostrealism.time.Frequency;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 import java.io.File;
 import java.io.IOException;
 
-public class DefaultChannelSectionTest implements CellFeatures {
-	@Test
+public class DefaultChannelSectionTest extends TestSuiteBase implements CellFeatures, AudioTestFeatures {
+	@Test(timeout = 120_000)
 	public void section() throws IOException {
 		int samples = 2 * 8 * OutputLine.sampleRate;
 
@@ -43,7 +45,7 @@ public class DefaultChannelSectionTest implements CellFeatures {
 											8, OutputLine.sampleRate);
 		ChannelSection section = factory.createSection(0);
 
-		WaveData data = WaveData.load(new File("Library/Snare Perc DD.wav"));
+		WaveData data = WaveData.load(getTestWavFile());
 		PackedCollection input = new PackedCollection(samples);
 		input.setMem(data.getChannelData(0).toArray());
 

@@ -32,13 +32,16 @@ import org.almostrealism.audio.tone.DefaultKeyboardTuning;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.io.SystemUtils;
 import org.almostrealism.time.TemporalRunner;
+import org.almostrealism.util.TestSuiteBase;
+import org.junit.Assume;
+import org.junit.Before;
 import org.junit.Test;
 
 import java.io.File;
 import java.io.IOException;
 import java.util.stream.IntStream;
 
-public class AudioSceneOptimizationTest implements CellFeatures {
+public class AudioSceneOptimizationTest extends TestSuiteBase implements CellFeatures {
 	public static final boolean enableDelay = true;
 	public static final boolean enableFilter = true;
 
@@ -61,6 +64,14 @@ public class AudioSceneOptimizationTest implements CellFeatures {
 
 	public static final String sampleFile1 = "Library/Snare Perc DD.wav";
 	public static final String sampleFile2 = "Library/GT_HAT_31.wav";
+
+	@Before
+	public void checkResources() {
+		Assume.assumeTrue("Library directory required",
+				new File(AudioSceneOptimizer.LIBRARY).exists());
+		Assume.assumeTrue("pattern-factory.json required",
+				new File(SystemUtils.getLocalDestination("pattern-factory.json")).exists());
+	}
 
 	public AudioScene<?> pattern(int sources, int delayLayers) {
 		return pattern(sources, delayLayers, false);
@@ -88,7 +99,7 @@ public class AudioSceneOptimizationTest implements CellFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 300_000)
 	public void pattern() {
 		AudioScene pattern = pattern(2, 2, true);
 		pattern.assignGenome(pattern.getGenome().random());
@@ -96,7 +107,7 @@ public class AudioSceneOptimizationTest implements CellFeatures {
 		OperationList setup = new OperationList();
 		setup.add(pattern.getTimeManager().setup());
 
-		CellList cells = pattern.getPatternChannel(new ChannelInfo(0, ChannelInfo.Voicing.MAIN, null), pattern.getTotalSamples(), setup);
+		CellList cells = pattern.getPatternChannel(new ChannelInfo(0, ChannelInfo.Voicing.MAIN, null), pattern.getTotalSamples(), () -> 0, setup);
 		cells.addSetup(() -> setup);
 		cells.o(i -> new File("results/pattern-test.wav")).sec(20).get().run();
 	}
@@ -106,7 +117,7 @@ public class AudioSceneOptimizationTest implements CellFeatures {
 		return scene.getCells(output);
 	}
 
-	@Test
+	@Test(timeout = 180_000)
 	public void withOutput() {
 		MixdownManager.enableMainFilterUp = false;
 		MixdownManager.enableEfxFilters = false;
@@ -118,7 +129,7 @@ public class AudioSceneOptimizationTest implements CellFeatures {
 		output.write().get().run();
 	}
 
-	@Test
+	@Test(timeout = 600_000)
 	public void many() {
 		WaveOutput out = new WaveOutput(new File("results/organ-factory-many-test.wav"));
 		Cells organ = randomOrgan(pattern(2, 2), new MultiChannelAudioOutput(out));
@@ -132,7 +143,7 @@ public class AudioSceneOptimizationTest implements CellFeatures {
 		});
 	}
 
-	@Test
+	@Test(timeout = 180_000)
 	public void random() {
 		WaveOutput out = new WaveOutput(new File("factory-rand-test.wav"));
 		Cells organ = randomOrgan(pattern(2, 2), new MultiChannelAudioOutput(out));

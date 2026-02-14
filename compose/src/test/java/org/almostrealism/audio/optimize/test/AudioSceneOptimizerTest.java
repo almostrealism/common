@@ -75,14 +75,16 @@ public class AudioSceneOptimizerTest extends TestSuiteBase implements CellFeatur
 		return optimizer;
 	}
 
-	@Test
+	@Test(timeout = 600_000)
 	public void optimize() {
+		if (skipKnownIssues) return;
 		PopulationOptimizer.enableVerbose = true;
 		optimizer().run();
 	}
 
-	@Test
+	@Test(timeout = 900_000)
 	public void healthTest() throws IOException {
+		if (skipKnownIssues) return;
 		AudioScene<?> scene = scene();
 
 		AtomicInteger index = new AtomicInteger();

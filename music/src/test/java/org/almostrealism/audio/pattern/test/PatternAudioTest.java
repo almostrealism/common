@@ -35,56 +35,64 @@ import org.almostrealism.audio.notes.SimplePatternNote;
 import org.almostrealism.audio.tone.DefaultKeyboardTuning;
 import org.almostrealism.audio.tone.WesternChromatic;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.util.TestSuiteBase;
+import org.junit.Assume;
 import org.junit.Test;
 
 import java.io.File;
 
-public class PatternAudioTest implements EnvelopeFeatures {
+public class PatternAudioTest extends TestSuiteBase implements EnvelopeFeatures {
 
-	@Test
+	@Test(timeout = 60_000)
 	public void noteAudio() {
+		Assume.assumeTrue(new File("Library/SN_Forever_Future.wav").exists());
 		NoteAudioProvider provider =
-				NoteAudioProvider.create("Library/SN_Forever_Future.wav", WesternChromatic.C1);
+				NoteAudioProvider.create("Library/SN_Forever_Future.wav", WesternChromatic.C1,
+						new DefaultKeyboardTuning());
 
 		PatternNoteAudio note = new PatternNoteAudioChoice();
-		new WaveData(note.getAudio(WesternChromatic.G2, -1, 1.0,
+		new WaveData(note.getAudio(WesternChromatic.G2, 0, 1.0,
 						null, d -> new SimplePatternNote(provider))
 							.evaluate(),
-					note.getSampleRate(WesternChromatic.G2, null))
+					note.getSampleRate(WesternChromatic.G2, d -> new SimplePatternNote(provider)))
 				.save(new File("results/pattern-note.wav"));
 	}
 
-	@Test
+	@Test(timeout = 60_000)
 	public void noteAudioReversed() {
+		Assume.assumeTrue(new File("Library/Snare Perc DD.wav").exists());
 		NoteAudioProvider provider =
-				NoteAudioProvider.create("Library/Snare Perc DD.wav", WesternChromatic.C1);
+				NoteAudioProvider.create("Library/Snare Perc DD.wav", WesternChromatic.C1,
+						new DefaultKeyboardTuning());
 
 		PatternNoteLayer note = PatternNoteLayer.create(new SimplePatternNote(provider),
 													new ReversePlaybackAudioFilter());
 		note.setTuning(new DefaultKeyboardTuning());
-		new WaveData(note.getAudio(WesternChromatic.C1, -1, 1.0, null, null)
+		new WaveData(note.getAudio(WesternChromatic.C1, 0, 1.0, in -> in, null)
 				.evaluate(),
 				note.getSampleRate(WesternChromatic.C1, null))
 				.save(new File("results/pattern-note-reversed.wav"));
 	}
 
-	@Test
+	@Test(timeout = 60_000)
 	public void envelope() {
+		Assume.assumeTrue(new File("Library/Snare Perc DD.wav").exists());
 		NoteAudioProvider provider =
-				NoteAudioProvider.create("Library/Snare Perc DD.wav", WesternChromatic.C1);
+				NoteAudioProvider.create("Library/Snare Perc DD.wav", WesternChromatic.C1,
+						new DefaultKeyboardTuning());
 
-		PatternNoteLayer note = new PatternNoteLayer();
-		note = PatternNoteLayer.create(note, attack(c(0.5)));
+		PatternNoteLayer note = PatternNoteLayer.create(new SimplePatternNote(provider), attack(c(0.5)));
 		note.setTuning(new DefaultKeyboardTuning());
 
-		new WaveData(note.getAudio(WesternChromatic.C1, -1, 1.0, null, d -> new SimplePatternNote(provider))
+		new WaveData(note.getAudio(WesternChromatic.C1, 0, 1.0, in -> in, null)
 							.evaluate(),
-					note.getSampleRate(WesternChromatic.G2, null))
+					note.getSampleRate(WesternChromatic.C1, null))
 				.save(new File("results/pattern-note-envelope.wav"));
 	}
 
-	@Test
+	@Test(timeout = 120_000)
 	public void conditionalEnvelope() {
+		Assume.assumeTrue(new File("Library/Snare Perc DD.wav").exists());
 		Factor<PackedCollection> factor = in ->
 				greaterThanConditional(time(), c(1.0),
 						volume(c(0.5)).getResultant(in),
@@ -95,26 +103,28 @@ public class PatternAudioTest implements EnvelopeFeatures {
 						() -> factor.getResultant(v(1, 0))).get();
 
 		NoteAudioProvider provider =
-				NoteAudioProvider.create("Library/Snare Perc DD.wav", WesternChromatic.C1);
+				NoteAudioProvider.create("Library/Snare Perc DD.wav", WesternChromatic.C1,
+						new DefaultKeyboardTuning());
 
-		PatternNoteLayer note = new PatternNoteLayer();
-		note = PatternNoteLayer.create(note, (audio, duration, automationLevel) -> () -> args -> {
-			PackedCollection audioData = audio.get().evaluate();
-			PackedCollection dr = duration.get().evaluate();
+		PatternNoteLayer note = PatternNoteLayer.create(new SimplePatternNote(provider),
+				(audio, duration, automationLevel) -> () -> args -> {
+					PackedCollection audioData = audio.get().evaluate();
+					PackedCollection dr = duration.get().evaluate();
 
-			return env.evaluate(audioData, dr);
-		});
+					return env.evaluate(audioData, dr);
+				});
 
 		note.setTuning(new DefaultKeyboardTuning());
 
-		new WaveData(note.getAudio(WesternChromatic.C1, -1, 1.0, factor, d -> new SimplePatternNote(provider))
+		new WaveData(note.getAudio(WesternChromatic.C1, 0, 1.0, factor, null)
 							.evaluate(),
-					note.getSampleRate(WesternChromatic.C1, d -> new SimplePatternNote(provider)))
+					note.getSampleRate(WesternChromatic.C1, null))
 				.save(new File("results/pattern-note-conditional-envelope.wav"));
 	}
 
-	@Test
+	@Test(timeout = 60_000)
 	public void envelopePassThrough() {
+		Assume.assumeTrue(new File("Library/Snare Perc DD.wav").exists());
 		Factor<PackedCollection> factor = envelope(attack(c(0.5)))
 				.andThenDecay(c(0.5), c(1.0), c(0.0)).get();
 		Evaluable<PackedCollection> env =
@@ -122,56 +132,60 @@ public class PatternAudioTest implements EnvelopeFeatures {
 					() -> factor.getResultant(v(1, 0))).get();
 
 		NoteAudioProvider provider =
-				NoteAudioProvider.create("Library/Snare Perc DD.wav", WesternChromatic.C1);
+				NoteAudioProvider.create("Library/Snare Perc DD.wav", WesternChromatic.C1,
+						new DefaultKeyboardTuning());
 
-		PatternNoteLayer note = new PatternNoteLayer();
-		note = PatternNoteLayer.create(note, (audio, duration, automationLevel) -> () -> args -> {
-			PackedCollection audioData = audio.get().evaluate();
-			PackedCollection dr = duration.get().evaluate();
+		PatternNoteLayer note = PatternNoteLayer.create(new SimplePatternNote(provider),
+				(audio, duration, automationLevel) -> () -> args -> {
+					PackedCollection audioData = audio.get().evaluate();
+					PackedCollection dr = duration.get().evaluate();
 
-			return env.evaluate(audioData, dr);
-		});
+					return env.evaluate(audioData, dr);
+				});
 
 		note.setTuning(new DefaultKeyboardTuning());
 
-		new WaveData(note.getAudio(WesternChromatic.C1, -1, 1.0, factor, d -> new SimplePatternNote(provider))
+		new WaveData(note.getAudio(WesternChromatic.C1, 0, 1.0, factor, null)
 							.evaluate(),
-					note.getSampleRate(WesternChromatic.C1, d -> new SimplePatternNote(provider)))
+					note.getSampleRate(WesternChromatic.C1, null))
 				.save(new File("results/pattern-note-envelope-passthrough.wav"));
 	}
 
-	@Test
+	@Test(timeout = 60_000)
 	public void envelopeSections() {
+		Assume.assumeTrue(new File("Library/Snare Perc DD.wav").exists());
 		EnvelopeSection section = envelope(attack(c(0.5)))
 									.andThen(c(0.5), sustain(c(3.2)));
 
 		NoteAudioProvider provider =
-				NoteAudioProvider.create("Library/Snare Perc DD.wav", WesternChromatic.C1);
+				NoteAudioProvider.create("Library/Snare Perc DD.wav", WesternChromatic.C1,
+						new DefaultKeyboardTuning());
 
-		PatternNoteLayer note = new PatternNoteLayer();
-		note = PatternNoteLayer.create(note, section.get());
+		PatternNoteLayer note = PatternNoteLayer.create(new SimplePatternNote(provider), section.get());
 		note.setTuning(new DefaultKeyboardTuning());
 
-		new WaveData(note.getAudio(WesternChromatic.C1, -1, 1.0, null, d -> new SimplePatternNote(provider))
+		new WaveData(note.getAudio(WesternChromatic.C1, 0, 1.0, in -> in, null)
 							.evaluate(),
-					note.getSampleRate(WesternChromatic.C1, d -> new SimplePatternNote(provider)))
+					note.getSampleRate(WesternChromatic.C1, null))
 				.save(new File("results/pattern-note-envelope-sections.wav"));
 	}
 
-	@Test
+	@Test(timeout = 60_000)
 	public void parameterizedEnvelope() {
+		Assume.assumeTrue(new File("Library/SN_Forever_Future.wav").exists());
 		ParameterizedVolumeEnvelope envelope = ParameterizedVolumeEnvelope.random(ParameterizedVolumeEnvelope.Mode.STANDARD_NOTE);
 
 		NoteAudioProvider provider =
-				NoteAudioProvider.create("Library/SN_Forever_Future.wav", WesternChromatic.C1);
+				NoteAudioProvider.create("Library/SN_Forever_Future.wav", WesternChromatic.C1,
+						new DefaultKeyboardTuning());
 
-		PatternNoteLayer note = new PatternNoteLayer();
-		note = envelope.apply(new ParameterSet(), ChannelInfo.Voicing.MAIN, note);
+		PatternNoteLayer note = envelope.apply(new ParameterSet(), ChannelInfo.Voicing.MAIN,
+				new SimplePatternNote(provider));
 		note.setTuning(new DefaultKeyboardTuning());
 
-		new WaveData(note.getAudio(WesternChromatic.C1, -1, 1.0, null, d -> new SimplePatternNote(provider))
+		new WaveData(note.getAudio(WesternChromatic.C1, 0, 1.0, in -> in, null)
 							.evaluate(),
-					note.getSampleRate(WesternChromatic.C1, d -> new SimplePatternNote(provider)))
+					note.getSampleRate(WesternChromatic.C1, null))
 				.save(new File("results/pattern-note-param-envelope.wav"));
 	}
 }

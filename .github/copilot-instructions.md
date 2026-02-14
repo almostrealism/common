@@ -1,65 +1,53 @@
-# Agent Instructions
+# Almost Realism Common - Development Guidelines
 
 ## Overview
-This repository provides data structures in Java for operations in algebra, geometry, and
-other mathematics along with datatypes for both video and audio that are useful in both
-scientific computations and the automated production of artwork. These libraries provide
-abstractions that can be used at runtime with a whole range of different acceleration
-strategies, so the developer does not have to make a commitment to a particular strategy
-for production use of your model code ahead of time.
 
-PLEASE suggest improvements to this document based on any PR comments you observe,
-and make sure to update relevant agent memory files when you need to remember information
-for future sessions.
+This is a monorepo of Maven modules for the Almost Realism framework - Java libraries for
+high-performance scientific computing, generative art, machine learning, and multimedia generation
+with pluggable native acceleration (OpenCL, Metal, JNI).
 
-## Repository Structure
-- This repository is organized according to the standard Maven directory layout.
-- All tests should be located in the `utils` module (except for those that depend on code in the
-  `ml` module, which can remain in the `ml` module), because this module includes many helpful
-  utilities for testing across the data types from throughout the repository.
+**Before making assumptions about how something works, read the source code and documentation.**
+The AR codebase is a production application. If something seems like it "doesn't work," look it
+up before speculating.
 
+## Quick Links
 
-## Development Standards and Process
+- **[CLAUDE.md](../CLAUDE.md)** - Full development guidelines (authoritative)
+- **[Quick Reference](../docs/QUICK_REFERENCE.md)** - Condensed API cheatsheet
+- **[llms.txt](../llms.txt)** - Documentation index for AI agents
+- **[Documentation Portal](../docs/index.html)** - Full HTML documentation
 
-Do NOT consider any work complete until you CONFIRM that the pipeline will pass
-(see .github/workflows/analysis.yml for details if you are unsure of the process).
+---
 
-Do NOT attempt to run `mvn` commands for a specific module by navigating to that
-module's directory as doing this will prevent the dependent modules from being
-loaded and respected. Always run `mvn` commands from the root of the repository.
+## Build and Test
 
-### Build and Package
-
-To confirm that the code compiles, you can run the build process using mvn
-without running tets. You may not be able to figure out how to get every test
-to pass, but you should at least ensure that the code compiles before making
-a commit.
+**Always run `mvn` from the repository root**, never from module subdirectories.
 
 ```shell
-mvn package -DskipTests
+mvn package -DskipTests                    # Build all modules
+mvn package -pl utils -DskipTests          # Build specific module
 ```
 
-If you want to run the build process on a specific module, you can use the `-pl` option:
-
+**Before declaring any task complete**, verify the full build succeeds:
 ```shell
-mvn package -pl utils -DskipTests
+export AR_HARDWARE_LIBS=/tmp/ar_libs/ && \
+export AR_HARDWARE_DRIVER=native && \
+mvn clean install -DskipTests
 ```
 
-Do NOT attempt to run the build for a specific module by navigating to that
-module's directory as doing this will prevent the dependent modules from being
-loaded and respected.
+### Environment Variables
 
-Always run `mvn` commands from the root of the repository.
+**Required** before running any Java code or tests:
+```shell
+export AR_HARDWARE_LIBS=/tmp/ar_libs/
+export AR_HARDWARE_DRIVER=native
+```
 
+Available drivers: `native` (JNI, default), `opencl` (CPU/GPU), `metal` (Apple Silicon), `external` (generated executable).
 
-### Testing
-It may be okay for some tests to fail, because not all tests pass on all hardware platforms.
-However, all tests that run as part of the CI/CD pipeline MUST pass before a PR can be merged.
+For large models or memory-intensive tests: `export AR_HARDWARE_MEMORY_SCALE=8` (16GB) or `9` (32GB). Default is `7` (8GB).
 
-NOTE: Running tests will generate dynamic libraries in the `Extensions` directory.
-DO NOT EVER COMMIT THESE FILES or ANY generated code.
-
-To confirm that the tests pass, you can run the test suite using mvn.
+### Running Tests
 
 ```shell
 LD_LIBRARY_PATH=Extensions mvn test \
@@ -69,70 +57,193 @@ LD_LIBRARY_PATH=Extensions mvn test \
   -DAR_TEST_PROFILE=pipeline
 ```
 
-If you want to run the tests on a specific module, you can use the `-pl` option:
+Use `-pl <module>` for a specific module, `-Dtest=ClassName` for a specific test class.
 
-```shell
-LD_LIBRARY_PATH=Extensions mvn test \
-  -pl utils \
-  -DAR_HARDWARE_DRIVER=native \
-  -DAR_HARDWARE_MEMORY_SCALE=7 \
-  -DAR_HARDWARE_LIBS=Extensions
+Running tests generates dynamic libraries in `Extensions/`. **Never commit generated files.**
+
+### Test Class Requirements
+
+All test classes **MUST** extend `TestSuiteBase`:
+
+```java
+public class MyTest extends TestSuiteBase {
+    @Test
+    public void testSomething() {
+        // Automatically participates in grouping and depth filtering
+    }
+
+    @Test
+    @TestDepth(2)
+    public void expensiveTest() {
+        // Skipped if AR_TEST_DEPTH < 2
+    }
+}
 ```
 
-If you want to run just one specific test class, you MUST specify it's module using the `-pl` option:
+For long-running tests (30+ minutes), use `if (skipLongTests) return;` at the start.
 
-```shell
-LD_LIBRARY_PATH=Extensions mvn test \
-  -pl utils \
-  -Dtest=MinMaxTests \
-  -DAR_HARDWARE_DRIVER=native \
-  -DAR_HARDWARE_MEMORY_SCALE=7 \
-  -DAR_HARDWARE_LIBS=Extensions \
-  -DAR_TEST_PROFILE=pipeline
-```
+---
 
-Do NOT attempt to run the build for a specific module by navigating to that
-module's directory as doing this will prevent the dependent modules from being
-loaded and respected.
+## Absolute Rules
 
-Always run `mvn` commands from the root of the repository.
+### Do Not Modify pom.xml Files
 
+The AR project has a complex transitive dependency structure. **Never** add dependencies unless
+100% certain they are not already available transitively. Write code assuming the dependency
+exists, run `mvn compile`, and if it fails inform the developer rather than editing the pom.
 
-## Agent Memory
-- Every module contains a file named `agent-memory.md` that can be used to keep track of
-  information that seems relevant to agents working on code in that module.
-- Whenever you receive instructions from PR comments for changes, or when you notice something
-  that you want to remember for future session, make sure to include modifications to the memory
-  file in the relevant module(s).
-- DO NOT use the agent memory file to simple record the same information that is already available
-  in the javadoc documentation for the module; agent memory is for general concepts that are useful
-  to remember during development, NOT regurgitation of the documentation in markdown form.
-- If something is obvious from looking at the code (which a future agent clearly will do!),
-  then it DOES NOT need to be recorded in the agent memory file.
+### Never Reference Version Numbers
 
+**Never** include specific version numbers in documentation or instruction files. Version numbers
+change constantly. Always refer to pom.xml files as the single source of truth.
 
-## Guidance
-Follow Java best practices and idiomatic patterns, while maintaining the existing code structure and organization.
+### No Code Duplication
 
-### Key Principles
-1. Do not introduce excessive comments, such as explaining each step of a process.
-2. Always review the `agent-memory.md` file in the module you plan to modify before making changes (see above).
+If you have written more than 3-5 lines that are structurally similar to other code, refactor to
+eliminate the duplication before proceeding. Extend and generalize existing code rather than
+creating model-specific copies.
 
-### Tests
-1. Always write unit tests using junit for new functionality.
-2. Try to use the utilities in TestFeatures (assertEquals, compare, etc) rather than
-   relying on those from junit or implementing your own, if possible.
+---
+
+## Code Organization Principles
+
+1. Never use `@SuppressWarnings`
+2. Always include javadoc for newly introduced code
+3. Do not include excessive comments within method implementations
+4. Never use `var` for variable declarations - always use explicit types
+5. Use `@link` for types referenced in javadoc
+6. Ensure `@param`, `@throws`, `@return` appear last in method javadoc (in that order)
+7. Ensure `@see`, `@param`, `@author` appear last in class javadoc (in that order)
 
 ### Error Handling
-1. Do not include complex messages in Exceptions; use a single, simple sentence. 
-2. If there is a strong need to report the value of certain fields in an Exception, create a
-   custom Exception class that tracks those values separately from the message.
 
-### Documentation
-1. Always refer to types referenced in javadoc documentation using their formal class name
-   along with `@link` so that the javadoc generator can link to the class.
-2. Always make sure that @param, @throws, and @return macros appear LAST in the javadoc
-   documentation for a method, in that order; do NOT put examples or other text after these.
-3. Always make sure that @see, @param, and @author appear LAST in the javadoc documentation
-   for a class, in that order, with a single blank line separating @author from the rest of
-   the documentation.
+- Use simple, single-sentence exception messages
+- For field values in exceptions, create a custom Exception class that tracks those values
+  separately from the message
+
+### Agent Memory
+
+Each module contains an `agent-memory.md` file for development notes and patterns discovered
+during work. Update these when you learn something useful about a module. Do not duplicate
+information already available in javadoc.
+
+---
+
+## Architectural Principles
+
+### PackedCollection is NOT a Java Array
+
+`PackedCollection` is a **handle** to potentially GPU-resident memory. You cannot use Java
+operations (`System.arraycopy`, `Arrays.copyOf`, tight `setMem` loops) on it. Use the
+**Producer pattern** with `CollectionProducer`:
+
+```java
+// WRONG: CPU loop defeats GPU parallelism
+for (int i = 0; i < size; i++) {
+    result.setMem(i, source.toDouble(i) * 2);
+}
+
+// CORRECT: GPU-accelerated computation
+CollectionProducer result = cp(source).multiply(2.0);
+PackedCollection evaluated = result.evaluate();
+```
+
+### Training Loop Architecture
+
+**`ModelOptimizer` is the ONLY class that should contain a training loop.**
+
+All training scenarios must: create a `Dataset`, create a `ModelOptimizer`, configure it,
+call `optimizer.optimize(epochs)` once, and return. Never write `for` loops over epochs or
+samples outside of `ModelOptimizer`.
+
+### Sampling Loop Architecture
+
+**`DiffusionSampler` is the ONLY class that should contain a diffusion sampling loop.**
+
+All diffusion generation must: create a `SamplingStrategy`, create a `DiffusionSampler`,
+configure it, call `sampler.sample(...)` once, decode with `AutoEncoder`, and return.
+Never write `for` loops over timesteps outside of `DiffusionSampler`.
+
+### Process Optimization and Isolation
+
+**Only `IsolatedProcess` is empowered to break expression embedding.** No other computation
+should return null from `getValueAt()` to force isolation. If expression trees grow too large,
+check that `optimize()` is being called before `get()`. Never hack `getValueAt()` - fix the
+optimization chain instead.
+
+### StateDictionary for Model Weights
+
+All model implementations should use `StateDictionary` for weight management:
+```java
+StateDictionary stateDict = new StateDictionary(weightsDirectory);
+PackedCollection<?> wq = stateDict.get("model.layers.0.self_attn.q_proj.weight");
+```
+
+Avoid creating separate weight container classes unless weight transformations or caching are needed.
+
+---
+
+## Development Workflow
+
+### Before Starting
+
+1. Check for existing implementations - don't reinvent the wheel
+2. Identify generalization opportunities - can existing code be extended?
+3. Check design documents in `ringsdesktop/docs/planning/` if implementing a planned feature
+4. State your reuse plan before writing code
+
+### Before Completing
+
+1. Verify the full build succeeds (`mvn clean install -DskipTests`)
+2. Ensure all pipeline tests pass (see `.github/workflows/analysis.yaml`)
+3. Remove TODO markers for completed work
+4. Mark deprecated code with `@deprecated` tags
+
+### Debugging
+
+Follow a systematic, evidence-based approach:
+1. Identify all components involved in the failing code path
+2. Run tests bottom-up from smallest to largest scope
+3. Record results for each level before drawing conclusions
+4. Never speculate about causes without test evidence
+
+---
+
+## Module Overview
+
+### Foundation & Core
+| Module | Purpose | Key Classes |
+|--------|---------|-------------|
+| **uml** | Annotations, lifecycle, metadata | `@Function`, `Lifecycle`, `Named` |
+| **io** | Logging, metrics, file I/O | `Console`, `ConsoleFeatures`, `OutputFeatures` |
+| **relation** | Producer/Evaluable pattern | `Producer`, `Evaluable`, `Countable` |
+
+### Data & Computation
+| Module | Purpose | Key Classes |
+|--------|---------|-------------|
+| **code** | Expression trees, code generation | `Expression`, `Scope`, `TraversalPolicy` |
+| **collect** | Multi-dimensional arrays | `PackedCollection`, `CollectionProducer`, `Shape` |
+| **hardware** | Hardware acceleration | `Hardware`, `ComputeRequirement`, `MemoryData` |
+
+### Mathematics
+| Module | Purpose | Key Classes |
+|--------|---------|-------------|
+| **algebra** | Linear algebra operations | `Vector`, `Pair`, `PairFeatures`, `VectorFeatures` |
+| **geometry** | 3D geometry, ray tracing | `Ray`, `TransformMatrix`, `Intersection` |
+| **time** | Temporal, FFT, filtering | `Temporal`, `TemporalScalar`, `CursorPair` |
+
+### Domain
+| Module | Purpose | Key Classes |
+|--------|---------|-------------|
+| **graph** | Neural network layers | `Cell`, `Receptor`, `Layer`, `Model` |
+| **ml** | Transformer models | `StateDictionary`, `AttentionFeatures`, `AutoregressiveModel` |
+| **color** | Color and lighting | `RGB`, `Light`, `Shader` |
+| **space** | Scene management | `Scene`, `Mesh`, `Triangle` |
+| **physics** | Physical simulation | `Atom`, `PhotonField`, `RigidBody` |
+| **heredity** | Genetic algorithms | `Gene`, `Chromosome`, `Genome` |
+
+### Application
+| Module | Purpose | Key Classes |
+|--------|---------|-------------|
+| **optimize** | Training, optimization | `Loss`, `Adam`, `PopulationOptimizer` |
+| **render** | Ray tracing engine | `RayTracer`, `RenderParameters` |

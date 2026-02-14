@@ -17,8 +17,10 @@
 package org.almostrealism.audio.notes;
 
 import io.almostrealism.relation.Producer;
+import org.almostrealism.audio.AudioTestFeatures;
 import org.almostrealism.audio.CellFeatures;
 import org.almostrealism.audio.SamplingFeatures;
+import org.almostrealism.audio.data.ChannelInfo;
 import org.almostrealism.audio.arrange.AudioSceneContext;
 import org.almostrealism.audio.data.WaveData;
 import org.almostrealism.audio.line.OutputLine;
@@ -33,16 +35,17 @@ import org.almostrealism.audio.tone.WesternChromatic;
 import org.almostrealism.audio.tone.WesternScales;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 
-public class StatelessSourceNoteTests implements CellFeatures, SamplingFeatures, PatternFeatures {
+public class StatelessSourceNoteTests extends TestSuiteBase implements CellFeatures, SamplingFeatures, PatternFeatures, AudioTestFeatures {
 	int sampleRate = OutputLine.sampleRate;
 
-	@Test
+	@Test(timeout = 120_000)
 	public void sineAndSnare() {
 		// Define the shared parameters, including how notes should be
 		// tuned and a root for the scale and the synth
@@ -83,16 +86,18 @@ public class StatelessSourceNoteTests implements CellFeatures, SamplingFeatures,
 		// destination for the audio
 		AudioSceneContext sceneContext = new AudioSceneContext();
 		sceneContext.setFrameForPosition(pos -> (int) (pos * sampleRate));
+		sceneContext.setTimeForDuration(pos -> duration);
 		sceneContext.setScaleForPosition(pos -> WesternScales.major(root, 1));
 		sceneContext.setDestination(new PackedCollection((int) (duration * sampleRate)));
 
-		// Setup context for voicing the notes, including the library
-		// of samples to use (choiceNote will select from those)
+		// Setup context for voicing the notes, using synthetic test audio
 		NoteAudioContext audioContext = new NoteAudioContext();
 		audioContext.setNextNotePosition(pos -> duration);
+		audioContext.setAudioChannel(ChannelInfo.StereoChannel.LEFT);
+		String testAudioPath = getTestWavPath();
 		audioContext.setAudioSelection((choice) ->
 				new SimplePatternNote(NoteAudioProvider
-						.create("Library/Snare Gold 1.wav",WesternChromatic.D3, tuning)));
+						.create(testAudioPath, WesternChromatic.D3, tuning)));
 
 		// Create the elements of the composition, leveraging
 		// the notes that have been defined in multiple places
@@ -111,14 +116,15 @@ public class StatelessSourceNoteTests implements CellFeatures, SamplingFeatures,
 		elements.get(3).setScalePosition(List.of(0.5));
 
 		// Render the composition
-		render(sceneContext, audioContext, elements, true, 0.0);
+		render(sceneContext, audioContext, elements, true, 0.0,
+				0, sceneContext.getDestination().getShape().getCount(), null);
 
 		// Save the composition to a file
 		new WaveData(sceneContext.getDestination().traverse(1), sampleRate)
 				.save(new File("results/sine-notes.wav"));
 	}
 
-	@Test
+	@Test(timeout = 120_000)
 	public void riser() {
 		double duration = 8.0;
 
@@ -136,6 +142,7 @@ public class StatelessSourceNoteTests implements CellFeatures, SamplingFeatures,
 		// destination for the audio
 		AudioSceneContext sceneContext = new AudioSceneContext();
 		sceneContext.setFrameForPosition(pos -> (int) (pos * sampleRate));
+		sceneContext.setTimeForDuration(pos -> duration);
 		sceneContext.setScaleForPosition(pos -> WesternScales.major(WesternChromatic.C3, 1));
 		sceneContext.setDestination(new PackedCollection((int) (duration * sampleRate)));
 		sceneContext.setAutomationLevel(
@@ -144,6 +151,7 @@ public class StatelessSourceNoteTests implements CellFeatures, SamplingFeatures,
 		// Setup context for voicing the notes
 		NoteAudioContext audioContext = new NoteAudioContext();
 		audioContext.setNextNotePosition(pos -> duration);
+		audioContext.setAudioChannel(ChannelInfo.StereoChannel.LEFT);
 
 		// Create the elements of the composition
 		List<PatternElement> elements = new ArrayList<>();
@@ -151,7 +159,8 @@ public class StatelessSourceNoteTests implements CellFeatures, SamplingFeatures,
 		elements.add(new PatternElement(noiseNote, 0.0));
 
 		// Render the composition
-		render(sceneContext, audioContext, elements, true, 0.0);
+		render(sceneContext, audioContext, elements, true, 0.0,
+				0, sceneContext.getDestination().getShape().getCount(), null);
 
 		// Save the composition to a file
 		new WaveData(sceneContext.getDestination().traverse(1), sampleRate)

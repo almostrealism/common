@@ -17,6 +17,7 @@
 package io.flowtree.slack;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 
@@ -24,26 +25,29 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 
 /**
  * Configuration for Slack workstreams, loadable from YAML or JSON files.
+ *
+ * <p>Agents connect inbound to the controller's FlowTree server, so the
+ * {@code agents} field is optional and typically omitted.</p>
  *
  * <p>Example YAML configuration:</p>
  * <pre>
  * workstreams:
  *   - channelId: "C0123456789"
  *     channelName: "#project-agent"
- *     agents:
- *       - host: "localhost"
- *         port: 7766
- *       - host: "localhost"
- *         port: 7767
  *     defaultBranch: "feature/work"
  *     pushToOrigin: true
  *     allowedTools: "Read,Edit,Write,Bash,Glob,Grep"
  *     maxTurns: 50
  *     maxBudgetUsd: 10.0
+ *     gitUserName: "CI Bot"
+ *     gitUserEmail: "ci-bot@example.com"
  * </pre>
  *
  * @author Michael Murray
@@ -52,6 +56,8 @@ import java.util.List;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class WorkstreamConfig {
 
+    private Map<String, McpServerEntry> mcpServers = new LinkedHashMap<>();
+    private Map<String, PushedToolEntry> pushedTools = new LinkedHashMap<>();
     private List<WorkstreamEntry> workstreams = new ArrayList<>();
 
     /**
@@ -59,6 +65,7 @@ public class WorkstreamConfig {
      */
     @JsonIgnoreProperties(ignoreUnknown = true)
     public static class WorkstreamEntry {
+        private String workstreamId;
         private String channelId;
         private String channelName;
         private List<AgentEntry> agents = new ArrayList<>();
@@ -68,6 +75,12 @@ public class WorkstreamConfig {
         private String allowedTools = "Read,Edit,Write,Bash,Glob,Grep";
         private int maxTurns = 50;
         private double maxBudgetUsd = 10.0;
+        private String gitUserName;
+        private String gitUserEmail;
+        private Map<String, String> env;
+
+        public String getWorkstreamId() { return workstreamId; }
+        public void setWorkstreamId(String workstreamId) { this.workstreamId = workstreamId; }
 
         public String getChannelId() { return channelId; }
         public void setChannelId(String channelId) { this.channelId = channelId; }
@@ -96,11 +109,29 @@ public class WorkstreamConfig {
         public double getMaxBudgetUsd() { return maxBudgetUsd; }
         public void setMaxBudgetUsd(double maxBudgetUsd) { this.maxBudgetUsd = maxBudgetUsd; }
 
+        public String getGitUserName() { return gitUserName; }
+        public void setGitUserName(String gitUserName) { this.gitUserName = gitUserName; }
+
+        public String getGitUserEmail() { return gitUserEmail; }
+        public void setGitUserEmail(String gitUserEmail) { this.gitUserEmail = gitUserEmail; }
+
+        /** Returns per-workstream environment variables injected into pushed tool MCP configs. */
+        public Map<String, String> getEnv() { return env; }
+        public void setEnv(Map<String, String> env) { this.env = env; }
+
         /**
-         * Converts this entry to a SlackWorkstream instance.
+         * Converts this entry to a {@link SlackWorkstream} instance.
+         *
+         * <p>If a {@code workstreamId} is present, it is used as the persistent
+         * identifier. Otherwise, a random UUID is generated.</p>
          */
         public SlackWorkstream toWorkstream() {
-            SlackWorkstream ws = new SlackWorkstream(channelId, channelName);
+            SlackWorkstream ws;
+            if (workstreamId != null && !workstreamId.isEmpty()) {
+                ws = new SlackWorkstream(workstreamId, channelId, channelName);
+            } else {
+                ws = new SlackWorkstream(channelId, channelName);
+            }
             for (AgentEntry agent : agents) {
                 ws.addAgent(agent.getHost(), agent.getPort());
             }
@@ -110,6 +141,9 @@ public class WorkstreamConfig {
             ws.setAllowedTools(allowedTools);
             ws.setMaxTurns(maxTurns);
             ws.setMaxBudgetUsd(maxBudgetUsd);
+            ws.setGitUserName(gitUserName);
+            ws.setGitUserEmail(gitUserEmail);
+            ws.setEnv(env);
             return ws;
         }
     }
@@ -135,6 +169,57 @@ public class WorkstreamConfig {
         public int getPort() { return port; }
         public void setPort(int port) { this.port = port; }
     }
+
+    /**
+     * Configuration entry for a centralized MCP server.
+     *
+     * <p>When present in the YAML configuration, the controller starts
+     * each server as an HTTP process and agents connect over HTTP
+     * instead of stdio.</p>
+     */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public static class McpServerEntry {
+        private String source;
+        private int port;
+
+        /** Returns the Python source file path (relative to project root). */
+        public String getSource() { return source; }
+        public void setSource(String source) { this.source = source; }
+
+        /** Returns the HTTP port to listen on. */
+        public int getPort() { return port; }
+        public void setPort(int port) { this.port = port; }
+    }
+
+    /**
+     * Configuration entry for a pushed MCP tool.
+     *
+     * <p>Pushed tools are served as files by the controller and downloaded
+     * into dev containers on first use. Unlike centralized servers (which
+     * run as HTTP processes on the controller), pushed tools run locally
+     * inside each container via stdio.</p>
+     */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public static class PushedToolEntry {
+        private String source;
+        private Map<String, String> env;
+
+        /** Returns the Python source file path (relative to config directory). */
+        public String getSource() { return source; }
+        public void setSource(String source) { this.source = source; }
+
+        /** Returns per-tool environment variables to inject into the MCP stdio config. */
+        public Map<String, String> getEnv() { return env; }
+        public void setEnv(Map<String, String> env) { this.env = env; }
+    }
+
+    /** Returns the centralized MCP server configurations. */
+    public Map<String, McpServerEntry> getMcpServers() { return mcpServers; }
+    public void setMcpServers(Map<String, McpServerEntry> mcpServers) { this.mcpServers = mcpServers; }
+
+    /** Returns the pushed MCP tool configurations. */
+    public Map<String, PushedToolEntry> getPushedTools() { return pushedTools; }
+    public void setPushedTools(Map<String, PushedToolEntry> pushedTools) { this.pushedTools = pushedTools; }
 
     public List<WorkstreamEntry> getWorkstreams() { return workstreams; }
     public void setWorkstreams(List<WorkstreamEntry> workstreams) { this.workstreams = workstreams; }
@@ -210,5 +295,36 @@ public class WorkstreamConfig {
             result.add(entry.toWorkstream());
         }
         return result;
+    }
+
+    /**
+     * Populates missing workstream IDs with randomly generated UUIDs.
+     *
+     * @return true if any IDs were generated, indicating the config should be saved
+     */
+    public boolean ensureWorkstreamIds() {
+        boolean changed = false;
+        for (WorkstreamEntry entry : workstreams) {
+            if (entry.getWorkstreamId() == null || entry.getWorkstreamId().isEmpty()) {
+                entry.setWorkstreamId(UUID.randomUUID().toString());
+                changed = true;
+            }
+        }
+        return changed;
+    }
+
+    /**
+     * Writes the configuration back to a YAML file.
+     *
+     * <p>Uses {@link JsonInclude.Include#NON_EMPTY} to omit null fields
+     * and empty collections, keeping the output readable.</p>
+     *
+     * @param file the target YAML file
+     * @throws IOException if the file cannot be written
+     */
+    public void saveToYaml(File file) throws IOException {
+        ObjectMapper mapper = new ObjectMapper(new YAMLFactory());
+        mapper.setSerializationInclusion(JsonInclude.Include.NON_EMPTY);
+        mapper.writeValue(file, this);
     }
 }

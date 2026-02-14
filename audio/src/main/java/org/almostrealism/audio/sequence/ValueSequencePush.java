@@ -58,6 +58,6 @@ public class ValueSequencePush extends ValueSequenceComputation implements CodeF
 		choice.prepareScope(manager, context);
 
 		scope = new HybridScope(this);
-		scope.add(choice.getScope(null));
+		scope.add(choice.getScope(context));
 	}
 }

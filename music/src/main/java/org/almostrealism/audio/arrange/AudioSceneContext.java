@@ -28,6 +28,49 @@ import java.util.function.DoubleToIntFunction;
 import java.util.function.DoubleUnaryOperator;
 import java.util.function.Function;
 
+/**
+ * Provides rendering context for pattern audio generation.
+ *
+ * <p>{@code AudioSceneContext} is the central context object passed through the pattern
+ * rendering pipeline. It contains all the information needed to convert pattern elements
+ * into actual audio samples:</p>
+ *
+ * <h2>Time and Position Conversion</h2>
+ * <ul>
+ *   <li>{@code measures}: Total measures in the arrangement</li>
+ *   <li>{@code frames}: Total audio frames in the destination</li>
+ *   <li>{@code frameForPosition}: Converts measure position to frame offset</li>
+ *   <li>{@code timeForDuration}: Converts duration (in measures) to seconds</li>
+ * </ul>
+ *
+ * <h2>Musical Context</h2>
+ * <ul>
+ *   <li>{@code scaleForPosition}: Returns the active scale at a given measure position</li>
+ *   <li>{@code activityBias}: Global bias for pattern activity selection</li>
+ *   <li>{@code automationLevel}: Function providing automation modulation</li>
+ *   <li>{@code sections}: Channel sections defining activity regions</li>
+ * </ul>
+ *
+ * <h2>Rendering Target</h2>
+ * <ul>
+ *   <li>{@code destination}: The buffer where rendered audio is summed</li>
+ *   <li>{@code channels}: Which channels are being rendered</li>
+ * </ul>
+ *
+ * <h2>Real-Time Usage</h2>
+ *
+ * <p>For real-time rendering, {@code frameForPosition} returns absolute frame positions
+ * relative to the start of the arrangement. The rendering pipeline uses
+ * {@code startFrame} and {@code frameCount} parameters to select only the notes
+ * overlapping the current buffer window, then writes into the buffer at
+ * buffer-relative offsets.</p>
+ *
+ * @see PatternSystemManager#sum
+ * @see PatternLayerManager#sum
+ * @see ScaleTraversalStrategy
+ *
+ * @author Michael Murray
+ */
 public class AudioSceneContext {
 	private int measures;
 	private int frames;
