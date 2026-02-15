@@ -49,6 +49,7 @@ workstreams:
   - channelId: "C0123456789"           # Get from Slack channel details
     channelName: "#project-alpha-agent"
     defaultBranch: "feature/alpha"
+    baseBranch: "master"               # New branches are created from origin/<baseBranch>
     pushToOrigin: true
     allowedTools: "Read,Edit,Write,Bash,Glob,Grep"
     maxTurns: 50
@@ -59,6 +60,7 @@ workstreams:
   - channelId: "C9876543210"
     channelName: "#project-beta-agent"
     defaultBranch: "feature/beta"
+    baseBranch: "develop"              # Branch from develop instead of master
     pushToOrigin: true
     workingDirectory: "/workspace/project-beta"
     maxTurns: 100

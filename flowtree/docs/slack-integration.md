@@ -86,6 +86,7 @@ Maps a Slack channel to a set of job defaults. Each workstream has:
 
 - **channelId / channelName** -- the Slack channel
 - **defaultBranch** -- git branch for commits
+- **baseBranch** -- branch to create new target branches from (defaults to `"master"`)
 - **allowedTools, maxTurns, maxBudgetUsd** -- job configuration defaults
 
 Agents connect inbound to the controller's FlowTree server. The controller distributes jobs round-robin to whichever agents are currently connected.
@@ -138,6 +139,7 @@ workstreams:
   - channelId: "C0123456789"
     channelName: "#project-agent"
     defaultBranch: "feature/work"
+    baseBranch: "master"             # New branches created from origin/<baseBranch>
     pushToOrigin: true
     allowedTools: "Read,Edit,Write,Bash,Glob,Grep"
     maxTurns: 50
@@ -148,6 +150,7 @@ workstreams:
   - channelId: "C9876543210"
     channelName: "#ops-agent"
     defaultBranch: "feature/ops"
+    baseBranch: "develop"            # Branch from develop instead of master
     maxBudgetUsd: 5.0
     env:
       GITHUB_TOKEN: ghp_ops_org_token

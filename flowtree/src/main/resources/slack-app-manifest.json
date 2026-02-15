@@ -12,13 +12,21 @@
     "bot_user": {
       "display_name": "flowtree.io",
       "always_online": true
-    }
+    },
+    "slash_commands": [
+      {
+        "command": "/flowtree",
+        "description": "Manage the workstream for this channel",
+        "usage_hint": "setup <dir> <branch> | info | status | task <prompt> | cancel [job-id] | config [key] [value] | jobs"
+      }
+    ]
   },
   "oauth_config": {
     "scopes": {
       "bot": [
         "app_mentions:read",
         "chat:write",
+        "commands",
         "im:history",
         "im:read",
         "im:write"

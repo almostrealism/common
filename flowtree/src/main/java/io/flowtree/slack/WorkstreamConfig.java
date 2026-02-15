@@ -70,6 +70,7 @@ public class WorkstreamConfig {
         private String channelName;
         private List<AgentEntry> agents = new ArrayList<>();
         private String defaultBranch;
+        private String baseBranch;
         private boolean pushToOrigin = true;
         private String workingDirectory;
         private String allowedTools = "Read,Edit,Write,Bash,Glob,Grep";
@@ -93,6 +94,9 @@ public class WorkstreamConfig {
 
         public String getDefaultBranch() { return defaultBranch; }
         public void setDefaultBranch(String defaultBranch) { this.defaultBranch = defaultBranch; }
+
+        public String getBaseBranch() { return baseBranch; }
+        public void setBaseBranch(String baseBranch) { this.baseBranch = baseBranch; }
 
         public boolean isPushToOrigin() { return pushToOrigin; }
         public void setPushToOrigin(boolean pushToOrigin) { this.pushToOrigin = pushToOrigin; }
@@ -136,6 +140,7 @@ public class WorkstreamConfig {
                 ws.addAgent(agent.getHost(), agent.getPort());
             }
             ws.setDefaultBranch(defaultBranch);
+            ws.setBaseBranch(baseBranch);
             ws.setPushToOrigin(pushToOrigin);
             ws.setWorkingDirectory(workingDirectory);
             ws.setAllowedTools(allowedTools);
@@ -311,6 +316,69 @@ public class WorkstreamConfig {
             }
         }
         return changed;
+    }
+
+    /**
+     * Adds a new workstream to the configuration from a {@link SlackWorkstream} instance.
+     *
+     * <p>This creates a new {@link WorkstreamEntry} from the workstream's current
+     * state and appends it to the workstreams list. Used by {@code /flowtree setup}
+     * when creating a workstream from Slack.</p>
+     *
+     * @param ws the workstream to add
+     */
+    public void addWorkstream(SlackWorkstream ws) {
+        WorkstreamEntry entry = new WorkstreamEntry();
+        entry.setWorkstreamId(ws.getWorkstreamId());
+        entry.setChannelId(ws.getChannelId());
+        entry.setChannelName(ws.getChannelName());
+        entry.setDefaultBranch(ws.getDefaultBranch());
+        entry.setBaseBranch(ws.getBaseBranch());
+        entry.setPushToOrigin(ws.isPushToOrigin());
+        entry.setWorkingDirectory(ws.getWorkingDirectory());
+        entry.setAllowedTools(ws.getAllowedTools());
+        entry.setMaxTurns(ws.getMaxTurns());
+        entry.setMaxBudgetUsd(ws.getMaxBudgetUsd());
+        entry.setGitUserName(ws.getGitUserName());
+        entry.setGitUserEmail(ws.getGitUserEmail());
+        entry.setEnv(ws.getEnv());
+        workstreams.add(entry);
+    }
+
+    /**
+     * Synchronizes the configuration entries from the in-memory workstream state.
+     *
+     * <p>Updates existing entries that match by channel ID and adds any new
+     * workstreams that are not yet represented in the config. This ensures
+     * that runtime changes (via {@code /flowtree config}) are persisted.</p>
+     *
+     * @param activeWorkstreams the current in-memory workstreams
+     */
+    public void syncFromWorkstreams(java.util.Collection<SlackWorkstream> activeWorkstreams) {
+        for (SlackWorkstream ws : activeWorkstreams) {
+            boolean found = false;
+            for (WorkstreamEntry entry : workstreams) {
+                if (ws.getChannelId().equals(entry.getChannelId())) {
+                    entry.setWorkstreamId(ws.getWorkstreamId());
+                    entry.setChannelName(ws.getChannelName());
+                    entry.setDefaultBranch(ws.getDefaultBranch());
+                    entry.setBaseBranch(ws.getBaseBranch());
+                    entry.setPushToOrigin(ws.isPushToOrigin());
+                    entry.setWorkingDirectory(ws.getWorkingDirectory());
+                    entry.setAllowedTools(ws.getAllowedTools());
+                    entry.setMaxTurns(ws.getMaxTurns());
+                    entry.setMaxBudgetUsd(ws.getMaxBudgetUsd());
+                    entry.setGitUserName(ws.getGitUserName());
+                    entry.setGitUserEmail(ws.getGitUserEmail());
+                    entry.setEnv(ws.getEnv());
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
+                addWorkstream(ws);
+            }
+        }
     }
 
     /**
