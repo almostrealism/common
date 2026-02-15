@@ -35,7 +35,7 @@ jobs:
 
   test:
     needs: build
-    runs-on: [self-hosted, ar-ci]
+    runs-on: [self-hosted, linux, ar-ci]
     strategy:
       fail-fast: true
       matrix:
@@ -82,7 +82,7 @@ jobs:
 
   test-ml:
     needs: test
-    runs-on: [self-hosted, ar-ci]
+    runs-on: [self-hosted, linux, ar-ci]
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -124,7 +124,7 @@ jobs:
 
   test-audio:
     needs: test
-    runs-on: [self-hosted, ar-ci]
+    runs-on: [self-hosted, linux, ar-ci]
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -166,7 +166,7 @@ jobs:
 
   test-music:
     needs: [test-ml, test-audio]
-    runs-on: [self-hosted, ar-ci]
+    runs-on: [self-hosted, linux, ar-ci]
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -213,6 +213,131 @@ jobs:
           name: coverage-music
           path: coverage-data/
           retention-days: 1
+
+  # ─── macOS Test Jobs ────────────────────────────────────────────────
+  # Each macOS job depends on its Linux counterpart passing, but does
+  # NOT block subsequent Linux jobs. This creates a trailing verification
+  # pattern where macOS tests run in parallel with the next Linux stage.
+
+  test-mac:
+    needs: test
+    runs-on: [self-hosted, macos, ar-ci]
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'adopt'
+          cache: 'maven'
+
+      - name: Build (skip tests)
+        run: mvn install -DskipTests
+
+      - name: Run Utils Tests
+        run: |
+          DYLD_LIBRARY_PATH=Extensions mvn test -pl utils \
+           -DAR_HARDWARE_DRIVER=native \
+           -DAR_HARDWARE_MEMORY_SCALE=7 \
+           -DAR_HARDWARE_LIBS=Extensions \
+           -DAR_TEST_PROFILE=pipeline
+
+  test-ml-mac:
+    needs: test-ml
+    runs-on: [self-hosted, macos, ar-ci]
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'adopt'
+          cache: 'maven'
+
+      - name: Build (skip tests)
+        run: mvn install -DskipTests
+
+      - name: Run ML Tests
+        run: |
+          DYLD_LIBRARY_PATH=Extensions mvn test -pl ml \
+           -DAR_HARDWARE_DRIVER=native \
+           -DAR_HARDWARE_MEMORY_SCALE=7 \
+           -DAR_HARDWARE_LIBS=Extensions \
+           -DAR_TEST_PROFILE=pipeline
+
+  test-audio-mac:
+    needs: test-audio
+    runs-on: [self-hosted, macos, ar-ci]
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'adopt'
+          cache: 'maven'
+
+      - name: Build (skip tests)
+        run: mvn install -DskipTests
+
+      - name: Run Audio Tests
+        run: |
+          DYLD_LIBRARY_PATH=Extensions mvn test -pl audio \
+           -DAR_HARDWARE_DRIVER=native \
+           -DAR_HARDWARE_MEMORY_SCALE=7 \
+           -DAR_HARDWARE_LIBS=Extensions \
+           -DAR_TEST_PROFILE=pipeline
+
+  test-music-mac:
+    needs: test-music
+    runs-on: [self-hosted, macos, ar-ci]
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'adopt'
+          cache: 'maven'
+
+      - name: Build (skip tests)
+        run: mvn install -DskipTests
+
+      - name: Run Music Tests
+        run: |
+          DYLD_LIBRARY_PATH=Extensions mvn test -pl music \
+           -DAR_HARDWARE_DRIVER=native \
+           -DAR_HARDWARE_MEMORY_SCALE=7 \
+           -DAR_HARDWARE_LIBS=Extensions \
+           -DAR_TEST_PROFILE=pipeline
+
+      - name: Run Compose Tests
+        run: |
+          DYLD_LIBRARY_PATH=Extensions mvn test -pl compose \
+           -DAR_HARDWARE_DRIVER=native \
+           -DAR_HARDWARE_MEMORY_SCALE=7 \
+           -DAR_HARDWARE_LIBS=Extensions \
+           -DAR_TEST_PROFILE=pipeline
 
   analysis:
     needs: [test-ml, test-audio, test-music]
