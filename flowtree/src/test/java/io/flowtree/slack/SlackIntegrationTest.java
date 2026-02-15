@@ -32,6 +32,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.Assert.*;
@@ -468,6 +469,438 @@ public class SlackIntegrationTest extends TestSuiteBase {
         ClaudeCodeJob job = (ClaudeCodeJob) factory.nextJob();
         assertNotNull(job);
         assertEquals("http://localhost:7780/api/workstreams/ws1/jobs/j1", job.getWorkstreamUrl());
+    }
+
+    // --- Slash command tests ---
+
+    @Test
+    public void testSlashCommandHelp() {
+        SlackNotifier notifier = new SlackNotifier(null);
+        SlackListener listener = new SlackListener(notifier);
+
+        AtomicReference<String> response = new AtomicReference<>();
+        listener.handleSlashCommand("", "C123", "#test", response::set);
+
+        assertNotNull(response.get());
+        assertTrue(response.get().contains("Flowtree Commands"));
+        assertTrue(response.get().contains("/flowtree setup"));
+        assertTrue(response.get().contains("/flowtree info"));
+        assertTrue(response.get().contains("/flowtree status"));
+        assertTrue(response.get().contains("/flowtree task"));
+    }
+
+    @Test
+    public void testSlashCommandUnknownSubcommand() {
+        SlackNotifier notifier = new SlackNotifier(null);
+        SlackListener listener = new SlackListener(notifier);
+
+        AtomicReference<String> response = new AtomicReference<>();
+        listener.handleSlashCommand("foobar", "C123", "#test", response::set);
+
+        assertNotNull(response.get());
+        assertTrue(response.get().contains("Flowtree Commands"));
+    }
+
+    @Test
+    public void testSlashCommandSetupCreatesWorkstream() {
+        SlackNotifier notifier = new SlackNotifier(null);
+        SlackListener listener = new SlackListener(notifier);
+
+        AtomicReference<String> response = new AtomicReference<>();
+        listener.handleSlashCommand("setup /workspace/project feature/test",
+            "C_SETUP_1", "#setup-channel", response::set);
+
+        assertNotNull(response.get());
+        assertTrue(response.get().contains("Workstream created"));
+        assertTrue(response.get().contains("/workspace/project"));
+        assertTrue(response.get().contains("feature/test"));
+
+        // Verify workstream was registered
+        SlackWorkstream ws = listener.getWorkstream("C_SETUP_1");
+        assertNotNull(ws);
+        assertEquals("/workspace/project", ws.getWorkingDirectory());
+        assertEquals("feature/test", ws.getDefaultBranch());
+        assertEquals("#setup-channel", ws.getChannelName());
+        assertEquals(10.0, ws.getMaxBudgetUsd(), 0.001);
+        assertEquals(50, ws.getMaxTurns());
+    }
+
+    @Test
+    public void testSlashCommandSetupUpdatesExisting() {
+        SlackNotifier notifier = new SlackNotifier(null);
+        SlackListener listener = new SlackListener(notifier);
+
+        // Create initial workstream
+        SlackWorkstream ws = new SlackWorkstream("C_UPD_1", "#update-channel");
+        ws.setWorkingDirectory("/old/dir");
+        ws.setDefaultBranch("old-branch");
+        listener.registerWorkstream(ws);
+
+        AtomicReference<String> response = new AtomicReference<>();
+        listener.handleSlashCommand("setup /new/dir new-branch",
+            "C_UPD_1", "#update-channel", response::set);
+
+        assertNotNull(response.get());
+        assertTrue(response.get().contains("Workstream updated"));
+        assertTrue(response.get().contains("/old/dir"));
+        assertTrue(response.get().contains("/new/dir"));
+        assertTrue(response.get().contains("old-branch"));
+        assertTrue(response.get().contains("new-branch"));
+
+        // Verify the workstream was updated in place
+        assertEquals("/new/dir", ws.getWorkingDirectory());
+        assertEquals("new-branch", ws.getDefaultBranch());
+    }
+
+    @Test
+    public void testSlashCommandSetupMissingArgs() {
+        SlackNotifier notifier = new SlackNotifier(null);
+        SlackListener listener = new SlackListener(notifier);
+
+        AtomicReference<String> response = new AtomicReference<>();
+
+        // No arguments
+        listener.handleSlashCommand("setup", "C123", "#test", response::set);
+        assertTrue(response.get().contains("Usage"));
+
+        // Only one argument
+        response.set(null);
+        listener.handleSlashCommand("setup /workspace/only", "C123", "#test", response::set);
+        assertTrue(response.get().contains("Both working directory and branch are required"));
+    }
+
+    @Test
+    public void testSlashCommandInfo() {
+        SlackNotifier notifier = new SlackNotifier(null);
+        SlackListener listener = new SlackListener(notifier);
+
+        SlackWorkstream ws = new SlackWorkstream("C_INFO_1", "#info-channel");
+        ws.setWorkingDirectory("/workspace/project");
+        ws.setDefaultBranch("feature/info");
+        ws.setMaxBudgetUsd(25.0);
+        ws.setMaxTurns(100);
+        ws.setGitUserName("CI Bot");
+        ws.setGitUserEmail("ci@example.com");
+        listener.registerWorkstream(ws);
+
+        AtomicReference<String> response = new AtomicReference<>();
+        listener.handleSlashCommand("info", "C_INFO_1", "#info-channel", response::set);
+
+        assertNotNull(response.get());
+        assertTrue(response.get().contains("Workstream Details"));
+        assertTrue(response.get().contains(ws.getWorkstreamId()));
+        assertTrue(response.get().contains("/workspace/project"));
+        assertTrue(response.get().contains("feature/info"));
+        assertTrue(response.get().contains("25.00"));
+        assertTrue(response.get().contains("100"));
+        assertTrue(response.get().contains("CI Bot"));
+        assertTrue(response.get().contains("ci@example.com"));
+    }
+
+    @Test
+    public void testSlashCommandInfoNoWorkstream() {
+        SlackNotifier notifier = new SlackNotifier(null);
+        SlackListener listener = new SlackListener(notifier);
+
+        AtomicReference<String> response = new AtomicReference<>();
+        listener.handleSlashCommand("info", "C_NONE", "#no-ws", response::set);
+
+        assertNotNull(response.get());
+        assertTrue(response.get().contains("No workstream configured"));
+        assertTrue(response.get().contains("/flowtree setup"));
+    }
+
+    @Test
+    public void testSlashCommandStatus() {
+        SlackNotifier notifier = new SlackNotifier(null);
+        SlackListener listener = new SlackListener(notifier);
+
+        SlackWorkstream ws = new SlackWorkstream("C_STATUS_1", "#status-channel");
+        ws.setDefaultBranch("main");
+        listener.registerWorkstream(ws);
+
+        AtomicReference<String> response = new AtomicReference<>();
+        listener.handleSlashCommand("status", "C_STATUS_1", "#status-channel", response::set);
+
+        assertNotNull(response.get());
+        assertTrue(response.get().contains("Agent Status"));
+        assertTrue(response.get().contains("Connected agents: 0"));
+        assertTrue(response.get().contains("#status-channel"));
+        assertTrue(response.get().contains("main"));
+    }
+
+    @Test
+    public void testSlashCommandConfigShowAll() {
+        SlackNotifier notifier = new SlackNotifier(null);
+        SlackListener listener = new SlackListener(notifier);
+
+        SlackWorkstream ws = new SlackWorkstream("C_CFG_1", "#config-channel");
+        ws.setMaxBudgetUsd(15.0);
+        ws.setMaxTurns(75);
+        ws.setDefaultBranch("develop");
+        listener.registerWorkstream(ws);
+
+        AtomicReference<String> response = new AtomicReference<>();
+        listener.handleSlashCommand("config", "C_CFG_1", "#config-channel", response::set);
+
+        assertNotNull(response.get());
+        assertTrue(response.get().contains("Workstream Configuration"));
+        assertTrue(response.get().contains("maxBudgetUsd"));
+        assertTrue(response.get().contains("15.00"));
+        assertTrue(response.get().contains("maxTurns"));
+        assertTrue(response.get().contains("75"));
+        assertTrue(response.get().contains("develop"));
+    }
+
+    @Test
+    public void testSlashCommandConfigShowSingle() {
+        SlackNotifier notifier = new SlackNotifier(null);
+        SlackListener listener = new SlackListener(notifier);
+
+        SlackWorkstream ws = new SlackWorkstream("C_CFG_2", "#config-channel");
+        ws.setMaxBudgetUsd(20.0);
+        listener.registerWorkstream(ws);
+
+        AtomicReference<String> response = new AtomicReference<>();
+        listener.handleSlashCommand("config maxBudgetUsd", "C_CFG_2", "#config-channel", response::set);
+
+        assertNotNull(response.get());
+        assertTrue(response.get().contains("20.00"));
+    }
+
+    @Test
+    public void testSlashCommandConfigUpdate() {
+        SlackNotifier notifier = new SlackNotifier(null);
+        SlackListener listener = new SlackListener(notifier);
+
+        SlackWorkstream ws = new SlackWorkstream("C_CFG_3", "#config-channel");
+        listener.registerWorkstream(ws);
+
+        AtomicReference<String> response = new AtomicReference<>();
+
+        // Update maxBudgetUsd
+        listener.handleSlashCommand("config maxBudgetUsd 30.0", "C_CFG_3", "#config-channel", response::set);
+        assertTrue(response.get().contains("Updated"));
+        assertTrue(response.get().contains("30.0"));
+        assertEquals(30.0, ws.getMaxBudgetUsd(), 0.001);
+
+        // Update maxTurns
+        response.set(null);
+        listener.handleSlashCommand("config maxTurns 200", "C_CFG_3", "#config-channel", response::set);
+        assertTrue(response.get().contains("Updated"));
+        assertEquals(200, ws.getMaxTurns());
+
+        // Update defaultBranch
+        response.set(null);
+        listener.handleSlashCommand("config defaultBranch feature/new", "C_CFG_3", "#config-channel", response::set);
+        assertTrue(response.get().contains("Updated"));
+        assertEquals("feature/new", ws.getDefaultBranch());
+
+        // Try read-only field
+        response.set(null);
+        listener.handleSlashCommand("config workstreamId new-id", "C_CFG_3", "#config-channel", response::set);
+        assertTrue(response.get().contains("read-only"));
+
+        // Try unknown field
+        response.set(null);
+        listener.handleSlashCommand("config unknownField value", "C_CFG_3", "#config-channel", response::set);
+        assertTrue(response.get().contains("Unknown setting"));
+    }
+
+    @Test
+    public void testSlashCommandConfigInvalidNumber() {
+        SlackNotifier notifier = new SlackNotifier(null);
+        SlackListener listener = new SlackListener(notifier);
+
+        SlackWorkstream ws = new SlackWorkstream("C_CFG_4", "#config-channel");
+        listener.registerWorkstream(ws);
+
+        AtomicReference<String> response = new AtomicReference<>();
+        listener.handleSlashCommand("config maxBudgetUsd notanumber", "C_CFG_4", "#config-channel", response::set);
+        assertTrue(response.get().contains("Invalid number"));
+    }
+
+    @Test
+    public void testSlashCommandJobs() {
+        SlackNotifier notifier = new SlackNotifier(null);
+        SlackListener listener = new SlackListener(notifier);
+
+        SlackWorkstream ws = new SlackWorkstream("C_JOBS_1", "#jobs-channel");
+        listener.registerWorkstream(ws);
+
+        // No jobs initially
+        AtomicReference<String> response = new AtomicReference<>();
+        listener.handleSlashCommand("jobs", "C_JOBS_1", "#jobs-channel", response::set);
+        assertNotNull(response.get());
+        assertTrue(response.get().contains("No recent jobs"));
+
+        // Add a tracked job via notifier
+        JobCompletionEvent startEvent = JobCompletionEvent.started("job-abc", "Fix auth bug");
+        notifier.onJobStarted(ws.getWorkstreamId(), startEvent);
+
+        response.set(null);
+        listener.handleSlashCommand("jobs", "C_JOBS_1", "#jobs-channel", response::set);
+        assertNotNull(response.get());
+        assertTrue(response.get().contains("Recent Jobs"));
+        assertTrue(response.get().contains("job-abc"));
+        assertTrue(response.get().contains("Fix auth bug"));
+    }
+
+    @Test
+    public void testSlashCommandCancel() {
+        SlackNotifier notifier = new SlackNotifier(null);
+        SlackListener listener = new SlackListener(notifier);
+
+        SlackWorkstream ws = new SlackWorkstream("C_CANCEL_1", "#cancel-channel");
+        listener.registerWorkstream(ws);
+
+        AtomicReference<String> response = new AtomicReference<>();
+        listener.handleSlashCommand("cancel", "C_CANCEL_1", "#cancel-channel", response::set);
+        assertNotNull(response.get());
+        assertTrue(response.get().contains("not yet implemented"));
+    }
+
+    @Test
+    public void testSlashCommandSetupPersistence() throws IOException {
+        // Create a temp YAML config file
+        File tempFile = File.createTempFile("workstreams-test", ".yaml");
+        tempFile.deleteOnExit();
+
+        String yaml = "workstreams:\n"
+            + "  - channelId: \"C_EXISTING\"\n"
+            + "    channelName: \"#existing\"\n"
+            + "    defaultBranch: \"main\"\n";
+        Files.write(tempFile.toPath(), yaml.getBytes());
+
+        WorkstreamConfig config = WorkstreamConfig.loadFromYaml(tempFile);
+
+        SlackNotifier notifier = new SlackNotifier(null);
+        SlackListener listener = new SlackListener(notifier);
+        listener.setWorkstreamConfig(config, tempFile);
+
+        // Register existing workstreams
+        for (SlackWorkstream ws : config.toWorkstreams()) {
+            listener.registerWorkstream(ws);
+        }
+
+        // Create a new workstream via setup command
+        AtomicReference<String> response = new AtomicReference<>();
+        listener.handleSlashCommand("setup /workspace/new feature/new",
+            "C_NEW", "#new-channel", response::set);
+
+        assertTrue(response.get().contains("Workstream created"));
+
+        // Verify the config was persisted
+        WorkstreamConfig reloaded = WorkstreamConfig.loadFromYaml(tempFile);
+        assertEquals(2, reloaded.getWorkstreams().size());
+
+        // Find the new entry
+        WorkstreamConfig.WorkstreamEntry newEntry = null;
+        for (WorkstreamConfig.WorkstreamEntry entry : reloaded.getWorkstreams()) {
+            if ("C_NEW".equals(entry.getChannelId())) {
+                newEntry = entry;
+                break;
+            }
+        }
+        assertNotNull(newEntry);
+        assertEquals("#new-channel", newEntry.getChannelName());
+        assertEquals("/workspace/new", newEntry.getWorkingDirectory());
+        assertEquals("feature/new", newEntry.getDefaultBranch());
+    }
+
+    @Test
+    public void testWorkstreamConfigAddWorkstream() {
+        WorkstreamConfig config = new WorkstreamConfig();
+
+        SlackWorkstream ws = new SlackWorkstream("C_ADD_1", "#add-channel");
+        ws.setWorkingDirectory("/workspace/test");
+        ws.setDefaultBranch("develop");
+        ws.setMaxBudgetUsd(20.0);
+        ws.setMaxTurns(75);
+
+        config.addWorkstream(ws);
+
+        assertEquals(1, config.getWorkstreams().size());
+        WorkstreamConfig.WorkstreamEntry entry = config.getWorkstreams().get(0);
+        assertEquals("C_ADD_1", entry.getChannelId());
+        assertEquals("#add-channel", entry.getChannelName());
+        assertEquals("/workspace/test", entry.getWorkingDirectory());
+        assertEquals("develop", entry.getDefaultBranch());
+        assertEquals(20.0, entry.getMaxBudgetUsd(), 0.001);
+        assertEquals(75, entry.getMaxTurns());
+        assertEquals(ws.getWorkstreamId(), entry.getWorkstreamId());
+    }
+
+    @Test
+    public void testWorkstreamConfigSyncFromWorkstreams() throws IOException {
+        // Start with a config that has one workstream
+        String yaml = "workstreams:\n"
+            + "  - channelId: \"C_SYNC\"\n"
+            + "    channelName: \"#sync-channel\"\n"
+            + "    defaultBranch: \"main\"\n"
+            + "    maxBudgetUsd: 10.0\n";
+
+        WorkstreamConfig config = WorkstreamConfig.loadFromYamlString(yaml);
+        List<SlackWorkstream> wsList = config.toWorkstreams();
+        assertEquals(1, wsList.size());
+
+        // Modify the in-memory workstream
+        SlackWorkstream ws = wsList.get(0);
+        ws.setDefaultBranch("develop");
+        ws.setMaxBudgetUsd(25.0);
+        ws.setWorkingDirectory("/new/path");
+
+        // Sync back
+        config.syncFromWorkstreams(wsList);
+
+        // Verify the entry was updated
+        WorkstreamConfig.WorkstreamEntry entry = config.getWorkstreams().get(0);
+        assertEquals("develop", entry.getDefaultBranch());
+        assertEquals(25.0, entry.getMaxBudgetUsd(), 0.001);
+        assertEquals("/new/path", entry.getWorkingDirectory());
+    }
+
+    @Test
+    public void testNotifierJobTracking() {
+        SlackNotifier notifier = new SlackNotifier(null);
+
+        SlackWorkstream ws = new SlackWorkstream("C_TRACK_1", "#track-channel");
+        notifier.registerWorkstream(ws);
+
+        // No jobs initially
+        Map<String, JobCompletionEvent> jobs = notifier.getRecentJobs(ws.getWorkstreamId());
+        assertTrue(jobs.isEmpty());
+
+        // Track a started job
+        JobCompletionEvent startEvent = JobCompletionEvent.started("job-1", "Task one");
+        notifier.onJobStarted(ws.getWorkstreamId(), startEvent);
+
+        jobs = notifier.getRecentJobs(ws.getWorkstreamId());
+        assertEquals(1, jobs.size());
+        assertEquals(JobCompletionEvent.Status.STARTED, jobs.get("job-1").getStatus());
+
+        // Complete the job - should update the entry
+        JobCompletionEvent completeEvent = JobCompletionEvent.success("job-1", "Task one");
+        notifier.onJobCompleted(ws.getWorkstreamId(), completeEvent);
+
+        jobs = notifier.getRecentJobs(ws.getWorkstreamId());
+        assertEquals(1, jobs.size());
+        assertEquals(JobCompletionEvent.Status.SUCCESS, jobs.get("job-1").getStatus());
+
+        // Unknown workstream returns empty
+        assertTrue(notifier.getRecentJobs("unknown-ws").isEmpty());
+    }
+
+    @Test
+    public void testSlackManifestIncludesSlashCommand() throws IOException {
+        // Load manifest from classpath (it's a resource in the same module)
+        java.io.InputStream is = getClass().getResourceAsStream("/slack-app-manifest.json");
+        assertNotNull("Manifest should be on classpath", is);
+
+        String content = new String(is.readAllBytes(), StandardCharsets.UTF_8);
+        assertTrue(content.contains("slash_commands"));
+        assertTrue(content.contains("/flowtree"));
+        assertTrue(content.contains("commands"));
     }
 
 }

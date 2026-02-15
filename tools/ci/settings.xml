@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Maven settings for AR CI runners.
+  The local repository is mounted as a shared Docker volume so that
+  artifacts built by one runner are immediately available to others,
+  avoiding redundant downloads and rebuilds.
+-->
+<settings xmlns="http://maven.apache.org/SETTINGS/1.0.0"
+          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.0.0
+                              https://maven.apache.org/xsd/settings-1.0.0.xsd">
+
+    <localRepository>/home/runner/.m2/repository</localRepository>
+
+</settings>

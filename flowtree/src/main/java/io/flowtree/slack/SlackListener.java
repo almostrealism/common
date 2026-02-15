@@ -22,6 +22,8 @@ import io.flowtree.jobs.JobCompletionEvent;
 import io.flowtree.msg.NodeProxy;
 import org.almostrealism.io.ConsoleFeatures;
 
+import java.io.File;
+import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.regex.Matcher;
@@ -46,6 +48,22 @@ import java.util.regex.Pattern;
  */
 public class SlackListener implements ConsoleFeatures {
 
+    /**
+     * Functional interface for sending slash command responses.
+     * Abstracts away the Bolt SDK {@code SlashCommandContext} to allow
+     * testing without a real Slack connection.
+     */
+    @FunctionalInterface
+    public interface SlashCommandResponder {
+        /**
+         * Sends a response to the slash command invoker.
+         *
+         * @param text the response text (supports Slack mrkdwn)
+         * @throws IOException if the response cannot be sent
+         */
+        void respond(String text) throws IOException;
+    }
+
     /** Pattern to extract prompt from mentions: @bot /task prompt or @bot prompt */
     private static final Pattern MENTION_PATTERN = Pattern.compile(
         "<@[A-Z0-9]+>\\s*(?:/task\\s+)?(.+)",
@@ -67,6 +85,9 @@ public class SlackListener implements ConsoleFeatures {
     private int apiPort;
     private String centralizedMcpConfig;
     private String pushedToolsConfig;
+
+    private WorkstreamConfig workstreamConfig;
+    private File configFile;
 
     /**
      * Creates a new SlackListener with the specified notifier.
@@ -295,6 +316,10 @@ public class SlackListener implements ConsoleFeatures {
             factory.setPushToOrigin(workstream.isPushToOrigin());
         }
 
+        if (workstream.getBaseBranch() != null) {
+            factory.setBaseBranch(workstream.getBaseBranch());
+        }
+
         if (workstream.getWorkingDirectory() != null) {
             factory.setWorkingDirectory(workstream.getWorkingDirectory());
         }
@@ -347,6 +372,430 @@ public class SlackListener implements ConsoleFeatures {
 
         log("Submitted job to agent " + index + ": " + factory.getTaskId());
         return true;
+    }
+
+    /**
+     * Sets the workstream configuration and file reference for persistence.
+     * Called by {@link SlackBotController} after loading config from YAML.
+     *
+     * @param config     the loaded workstream configuration
+     * @param configFile the YAML file to persist changes to (may be null)
+     */
+    public void setWorkstreamConfig(WorkstreamConfig config, File configFile) {
+        this.workstreamConfig = config;
+        this.configFile = configFile;
+    }
+
+    /**
+     * Handles the {@code /flowtree} slash command.
+     *
+     * <p>Parses the subcommand from the text and dispatches to the
+     * appropriate handler. Supports ephemeral responses (visible only
+     * to the invoking user) for informational commands and public
+     * responses for actions that the team should see.</p>
+     *
+     * @param text        the full command text after "/flowtree " (e.g., "setup /workspace feature/x")
+     * @param channelId   the channel where the command was invoked
+     * @param channelName the human-readable channel name (from Slack payload)
+     * @param responder   the responder for sending ephemeral replies
+     */
+    public void handleSlashCommand(String text, String channelId,
+                                    String channelName, SlashCommandResponder responder) {
+        String[] parts = (text != null ? text.trim() : "").split("\\s+", 2);
+        String subcommand = parts.length > 0 ? parts[0].toLowerCase() : "";
+        String args = parts.length > 1 ? parts[1] : null;
+
+        try {
+            switch (subcommand) {
+                case "setup":
+                    handleSetupCommand(channelId, channelName, args, responder);
+                    break;
+                case "info":
+                    handleInfoCommand(channelId, responder);
+                    break;
+                case "status":
+                    handleSlashStatusCommand(channelId, responder);
+                    break;
+                case "task":
+                    handleSlashTaskCommand(channelId, args, responder);
+                    break;
+                case "cancel":
+                    handleSlashCancelCommand(channelId, args, responder);
+                    break;
+                case "config":
+                    handleSlashConfigCommand(channelId, args, responder);
+                    break;
+                case "jobs":
+                    handleSlashJobsCommand(channelId, responder);
+                    break;
+                default:
+                    responder.respond(":information_source: *Flowtree Commands*\n"
+                        + "  `/flowtree setup <directory> <branch>` \u2014 Set up a workstream for this channel\n"
+                        + "  `/flowtree info` \u2014 Show workstream details\n"
+                        + "  `/flowtree status` \u2014 Show agent status\n"
+                        + "  `/flowtree task <prompt>` \u2014 Submit a task\n"
+                        + "  `/flowtree cancel [job-id]` \u2014 Cancel a running job\n"
+                        + "  `/flowtree config [key] [value]` \u2014 View or update settings\n"
+                        + "  `/flowtree jobs` \u2014 List recent jobs");
+            }
+        } catch (IOException e) {
+            warn("Error responding to slash command: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Handles {@code /flowtree setup <working-directory> <branch>}.
+     * Creates a new workstream for the channel or updates the existing one.
+     */
+    private void handleSetupCommand(String channelId, String channelName,
+                                     String args, SlashCommandResponder ctx) throws IOException {
+        if (args == null || args.trim().isEmpty()) {
+            ctx.respond(":warning: Usage: `/flowtree setup <working-directory> <branch>`\n"
+                + "Example: `/flowtree setup /workspace/project feature/my-work`");
+            return;
+        }
+
+        String[] setupArgs = args.trim().split("\\s+", 2);
+        if (setupArgs.length < 2) {
+            ctx.respond(":warning: Both working directory and branch are required.\n"
+                + "Usage: `/flowtree setup <working-directory> <branch>`");
+            return;
+        }
+
+        String workingDirectory = setupArgs[0];
+        String branch = setupArgs[1];
+
+        SlackWorkstream existing = channelToWorkstream.get(channelId);
+        if (existing != null) {
+            String oldDir = existing.getWorkingDirectory();
+            String oldBranch = existing.getDefaultBranch();
+            existing.setWorkingDirectory(workingDirectory);
+            existing.setDefaultBranch(branch);
+            persistConfig();
+
+            ctx.respond(":white_check_mark: *Workstream updated*\n"
+                + "   Working directory: `" + (oldDir != null ? oldDir : "(none)") + "` \u2192 `" + workingDirectory + "`\n"
+                + "   Branch: `" + (oldBranch != null ? oldBranch : "(none)") + "` \u2192 `" + branch + "`");
+        } else {
+            SlackWorkstream ws = new SlackWorkstream(channelId, channelName);
+            ws.setWorkingDirectory(workingDirectory);
+            ws.setDefaultBranch(branch);
+            registerWorkstream(ws);
+
+            if (workstreamConfig != null) {
+                workstreamConfig.addWorkstream(ws);
+            }
+            persistConfig();
+
+            ctx.respond(":white_check_mark: *Workstream created*\n"
+                + "   Workstream ID: `" + ws.getWorkstreamId() + "`\n"
+                + "   Channel: " + channelName + "\n"
+                + "   Working directory: `" + workingDirectory + "`\n"
+                + "   Branch: `" + branch + "`\n"
+                + "   Max budget: $" + String.format("%.2f", ws.getMaxBudgetUsd()) + "\n"
+                + "   Max turns: " + ws.getMaxTurns());
+        }
+    }
+
+    /**
+     * Handles {@code /flowtree info}. Displays the full workstream
+     * configuration for the current channel.
+     */
+    private void handleInfoCommand(String channelId, SlashCommandResponder ctx) throws IOException {
+        SlackWorkstream ws = channelToWorkstream.get(channelId);
+        if (ws == null) {
+            ctx.respond(":warning: No workstream configured for this channel.\n"
+                + "Use `/flowtree setup <working-directory> <branch>` to create one.");
+            return;
+        }
+
+        StringBuilder sb = new StringBuilder();
+        sb.append(":page_facing_up: *Workstream Details*\n");
+        sb.append("   Workstream ID: `").append(ws.getWorkstreamId()).append("`\n");
+        sb.append("   Channel: ").append(ws.getChannelName()).append(" (").append(ws.getChannelId()).append(")\n");
+        if (ws.getWorkingDirectory() != null) {
+            sb.append("   Working directory: `").append(ws.getWorkingDirectory()).append("`\n");
+        }
+        if (ws.getDefaultBranch() != null) {
+            sb.append("   Branch: `").append(ws.getDefaultBranch()).append("`\n");
+        }
+        if (ws.getBaseBranch() != null) {
+            sb.append("   Base branch: `").append(ws.getBaseBranch()).append("`\n");
+        }
+        sb.append("   Push to origin: ").append(ws.isPushToOrigin()).append("\n");
+        sb.append("   Allowed tools: ").append(ws.getAllowedTools()).append("\n");
+        sb.append("   Max turns: ").append(ws.getMaxTurns()).append("\n");
+        sb.append("   Max budget: $").append(String.format("%.2f", ws.getMaxBudgetUsd()));
+        if (ws.getGitUserName() != null || ws.getGitUserEmail() != null) {
+            sb.append("\n   Git user: ");
+            if (ws.getGitUserName() != null) sb.append(ws.getGitUserName());
+            if (ws.getGitUserEmail() != null) sb.append(" <").append(ws.getGitUserEmail()).append(">");
+        }
+
+        ctx.respond(sb.toString());
+    }
+
+    /**
+     * Handles {@code /flowtree status}. Shows agent and connection status.
+     */
+    private void handleSlashStatusCommand(String channelId, SlashCommandResponder ctx) throws IOException {
+        SlackWorkstream ws = channelToWorkstream.get(channelId);
+        if (ws == null) {
+            ctx.respond(":warning: No workstream configured for this channel.\n"
+                + "Use `/flowtree setup <working-directory> <branch>` to create one.");
+            return;
+        }
+
+        int connectedAgents = server != null ? server.getNodeGroup().getServers().length : 0;
+
+        StringBuilder sb = new StringBuilder();
+        sb.append(":satellite: *Agent Status*\n");
+        sb.append("   Connected agents: ").append(connectedAgents).append("\n");
+        sb.append("   Channel: ").append(ws.getChannelName()).append("\n");
+        if (ws.getDefaultBranch() != null) {
+            sb.append("   Branch: `").append(ws.getDefaultBranch()).append("`");
+        }
+
+        ctx.respond(sb.toString());
+    }
+
+    /**
+     * Handles {@code /flowtree task <prompt>}. Submits a task to an agent.
+     * This command posts a public message (visible to the channel) since
+     * the team should see that a task was submitted.
+     */
+    private void handleSlashTaskCommand(String channelId, String args, SlashCommandResponder ctx) throws IOException {
+        if (args == null || args.trim().isEmpty()) {
+            ctx.respond(":warning: Usage: `/flowtree task <prompt>`");
+            return;
+        }
+
+        SlackWorkstream ws = channelToWorkstream.get(channelId);
+        if (ws == null) {
+            ctx.respond(":warning: No workstream configured for this channel.\n"
+                + "Use `/flowtree setup <working-directory> <branch>` to create one.");
+            return;
+        }
+
+        boolean submitted = submitJob(ws, args.trim(), null, null);
+        if (submitted) {
+            ctx.respond(":arrow_forward: Task submitted: " + truncate(args.trim(), 100));
+        }
+    }
+
+    /**
+     * Handles {@code /flowtree cancel [job-id]}. Cancels a running job.
+     * Posts a public message since the team should see cancellations.
+     */
+    private void handleSlashCancelCommand(String channelId, String args, SlashCommandResponder ctx) throws IOException {
+        SlackWorkstream ws = channelToWorkstream.get(channelId);
+        if (ws == null) {
+            ctx.respond(":warning: No workstream configured for this channel.\n"
+                + "Use `/flowtree setup <working-directory> <branch>` to create one.");
+            return;
+        }
+
+        ctx.respond(":construction: Job cancellation not yet implemented");
+    }
+
+    /**
+     * Handles {@code /flowtree config [key] [value]}. Views or updates
+     * workstream settings at runtime.
+     */
+    private void handleSlashConfigCommand(String channelId, String args, SlashCommandResponder ctx) throws IOException {
+        SlackWorkstream ws = channelToWorkstream.get(channelId);
+        if (ws == null) {
+            ctx.respond(":warning: No workstream configured for this channel.\n"
+                + "Use `/flowtree setup <working-directory> <branch>` to create one.");
+            return;
+        }
+
+        if (args == null || args.trim().isEmpty()) {
+            // Show all settings
+            StringBuilder sb = new StringBuilder();
+            sb.append(":gear: *Workstream Configuration*\n");
+            sb.append("   `maxBudgetUsd` = ").append(String.format("%.2f", ws.getMaxBudgetUsd())).append("\n");
+            sb.append("   `maxTurns` = ").append(ws.getMaxTurns()).append("\n");
+            sb.append("   `defaultBranch` = ").append(ws.getDefaultBranch() != null ? ws.getDefaultBranch() : "(not set)").append("\n");
+            sb.append("   `baseBranch` = ").append(ws.getBaseBranch() != null ? ws.getBaseBranch() : "(not set)").append("\n");
+            sb.append("   `workingDirectory` = ").append(ws.getWorkingDirectory() != null ? ws.getWorkingDirectory() : "(not set)").append("\n");
+            sb.append("   `pushToOrigin` = ").append(ws.isPushToOrigin()).append("\n");
+            sb.append("   `allowedTools` = ").append(ws.getAllowedTools());
+            ctx.respond(sb.toString());
+            return;
+        }
+
+        String[] configArgs = args.trim().split("\\s+", 2);
+        String key = configArgs[0];
+        String value = configArgs.length > 1 ? configArgs[1] : null;
+
+        if (value == null) {
+            // Show single setting
+            String currentValue = getConfigValue(ws, key);
+            if (currentValue == null) {
+                ctx.respond(":warning: Unknown setting: `" + key + "`\n"
+                    + "Modifiable settings: `maxBudgetUsd`, `maxTurns`, `defaultBranch`, "
+                    + "`baseBranch`, `workingDirectory`, `pushToOrigin`, `allowedTools`");
+            } else {
+                ctx.respond(":gear: `" + key + "` = " + currentValue);
+            }
+            return;
+        }
+
+        // Update setting
+        String result = setConfigValue(ws, key, value);
+        if (result != null) {
+            ctx.respond(":warning: " + result);
+        } else {
+            persistConfig();
+            ctx.respond(":white_check_mark: Updated `" + key + "` = " + value);
+        }
+    }
+
+    /**
+     * Handles {@code /flowtree jobs}. Lists recent jobs for the workstream.
+     */
+    private void handleSlashJobsCommand(String channelId, SlashCommandResponder ctx) throws IOException {
+        SlackWorkstream ws = channelToWorkstream.get(channelId);
+        if (ws == null) {
+            ctx.respond(":warning: No workstream configured for this channel.\n"
+                + "Use `/flowtree setup <working-directory> <branch>` to create one.");
+            return;
+        }
+
+        Map<String, JobCompletionEvent> jobs = notifier.getRecentJobs(ws.getWorkstreamId());
+        if (jobs == null || jobs.isEmpty()) {
+            ctx.respond(":clipboard: No recent jobs for this workstream.");
+            return;
+        }
+
+        StringBuilder sb = new StringBuilder();
+        sb.append(":clipboard: *Recent Jobs*\n");
+        int count = 0;
+        for (Map.Entry<String, JobCompletionEvent> entry : jobs.entrySet()) {
+            if (count >= 10) break;
+            JobCompletionEvent event = entry.getValue();
+            String emoji;
+            String statusText;
+            switch (event.getStatus()) {
+                case SUCCESS:
+                    emoji = ":white_check_mark:";
+                    statusText = "";
+                    break;
+                case FAILED:
+                    emoji = ":x:";
+                    statusText = " (failed)";
+                    break;
+                case CANCELLED:
+                    emoji = ":no_entry_sign:";
+                    statusText = " (cancelled)";
+                    break;
+                case STARTED:
+                    emoji = ":hourglass_flowing_sand:";
+                    statusText = " (running)";
+                    break;
+                default:
+                    emoji = ":grey_question:";
+                    statusText = "";
+            }
+            sb.append("   ").append(emoji).append(" `").append(truncate(entry.getKey(), 8)).append("` - ");
+            sb.append(truncate(event.getDescription(), 60)).append(statusText).append("\n");
+            count++;
+        }
+
+        ctx.respond(sb.toString());
+    }
+
+    /**
+     * Returns the value of a workstream configuration key.
+     */
+    private String getConfigValue(SlackWorkstream ws, String key) {
+        switch (key) {
+            case "maxBudgetUsd": return String.format("%.2f", ws.getMaxBudgetUsd());
+            case "maxTurns": return String.valueOf(ws.getMaxTurns());
+            case "defaultBranch": return ws.getDefaultBranch() != null ? ws.getDefaultBranch() : "(not set)";
+            case "baseBranch": return ws.getBaseBranch() != null ? ws.getBaseBranch() : "(not set)";
+            case "workingDirectory": return ws.getWorkingDirectory() != null ? ws.getWorkingDirectory() : "(not set)";
+            case "pushToOrigin": return String.valueOf(ws.isPushToOrigin());
+            case "allowedTools": return ws.getAllowedTools();
+            case "workstreamId": return ws.getWorkstreamId();
+            case "channelId": return ws.getChannelId();
+            case "channelName": return ws.getChannelName();
+            default: return null;
+        }
+    }
+
+    /**
+     * Sets a workstream configuration value. Returns an error message
+     * if the key is unknown or non-modifiable, or null on success.
+     */
+    private String setConfigValue(SlackWorkstream ws, String key, String value) {
+        switch (key) {
+            case "maxBudgetUsd":
+                try {
+                    ws.setMaxBudgetUsd(Double.parseDouble(value));
+                } catch (NumberFormatException e) {
+                    return "Invalid number: `" + value + "`";
+                }
+                return null;
+            case "maxTurns":
+                try {
+                    ws.setMaxTurns(Integer.parseInt(value));
+                } catch (NumberFormatException e) {
+                    return "Invalid integer: `" + value + "`";
+                }
+                return null;
+            case "defaultBranch":
+                ws.setDefaultBranch(value);
+                return null;
+            case "baseBranch":
+                ws.setBaseBranch(value);
+                return null;
+            case "workingDirectory":
+                ws.setWorkingDirectory(value);
+                return null;
+            case "pushToOrigin":
+                ws.setPushToOrigin(Boolean.parseBoolean(value));
+                return null;
+            case "allowedTools":
+                ws.setAllowedTools(value);
+                return null;
+            case "workstreamId":
+            case "channelId":
+            case "channelName":
+                return "`" + key + "` is read-only and cannot be modified.";
+            default:
+                return "Unknown setting: `" + key + "`\n"
+                    + "Modifiable settings: `maxBudgetUsd`, `maxTurns`, `defaultBranch`, "
+                    + "`baseBranch`, `workingDirectory`, `pushToOrigin`, `allowedTools`";
+        }
+    }
+
+    /**
+     * Persists the current workstream configuration to the YAML file.
+     * If no config file was loaded, changes are runtime-only.
+     */
+    private void persistConfig() {
+        if (workstreamConfig == null || configFile == null) {
+            log("No config file loaded - changes are runtime-only");
+            return;
+        }
+
+        // Sync in-memory workstream state back to config entries
+        workstreamConfig.syncFromWorkstreams(channelToWorkstream.values());
+
+        try {
+            workstreamConfig.saveToYaml(configFile);
+            log("Persisted config to " + configFile.getName());
+        } catch (IOException e) {
+            warn("Failed to persist config: " + e.getMessage());
+        }
+    }
+
+    private static String truncate(String s, int maxLength) {
+        if (s == null) return "";
+        if (s.length() <= maxLength) return s;
+        return s.substring(0, maxLength - 3) + "...";
     }
 
     /**

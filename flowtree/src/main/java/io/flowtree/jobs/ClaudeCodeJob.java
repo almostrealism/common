@@ -1279,6 +1279,7 @@ public class ClaudeCodeJob extends GitManagedJob {
         private int maxTurns = 50;
         private double maxBudgetUsd = 10.0;
         private String targetBranch;
+        private String baseBranch;
         private boolean pushToOrigin = true;
         private String workstreamUrl;
         private String gitUserName;
@@ -1389,6 +1390,24 @@ public class ClaudeCodeJob extends GitManagedJob {
         public void setTargetBranch(String targetBranch) {
             this.targetBranch = targetBranch;
             set("branch", base64Encode(targetBranch));
+        }
+
+        /**
+         * Returns the base branch for new branch creation.
+         */
+        public String getBaseBranch() {
+            return baseBranch;
+        }
+
+        /**
+         * Sets the base branch used as the starting point when the target
+         * branch does not yet exist. Defaults to {@code "master"}.
+         *
+         * @param baseBranch the branch name to base new branches on
+         */
+        public void setBaseBranch(String baseBranch) {
+            this.baseBranch = baseBranch;
+            set("baseBranch", base64Encode(baseBranch));
         }
 
         public boolean isPushToOrigin() {
@@ -1521,6 +1540,9 @@ public class ClaudeCodeJob extends GitManagedJob {
                 job.setTargetBranch(targetBranch);
                 job.setPushToOrigin(pushToOrigin);
             }
+            if (baseBranch != null) {
+                job.setBaseBranch(baseBranch);
+            }
             if (gitUserName != null) {
                 job.setGitUserName(gitUserName);
             }
@@ -1582,6 +1604,9 @@ public class ClaudeCodeJob extends GitManagedJob {
                     break;
                 case "branch":
                     this.targetBranch = base64Decode(value);
+                    break;
+                case "baseBranch":
+                    this.baseBranch = base64Decode(value);
                     break;
                 case "push":
                     this.pushToOrigin = Boolean.parseBoolean(value);
