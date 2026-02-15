@@ -28,7 +28,7 @@ RUNNER_GROUP="${RUNNER_GROUP:-Default}"
 RUNNER_WORKDIR="${RUNNER_WORKDIR:-/home/runner/_work}"
 
 # Build label string: always include baseline labels
-BASE_LABELS="self-hosted,linux,ar-ci"
+BASE_LABELS="self-hosted,linux"
 if [ -n "${RUNNER_LABELS}" ]; then
     ALL_LABELS="${BASE_LABELS},${RUNNER_LABELS}"
 else

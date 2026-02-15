@@ -14,7 +14,6 @@
 FROM ubuntu:22.04
 
 ARG RUNNER_VERSION=2.321.0
-ARG TARGETPLATFORM=linux/amd64
 
 # Avoid interactive prompts during package installation
 ENV DEBIAN_FRONTEND=noninteractive
@@ -44,9 +43,10 @@ RUN curl -fsSL https://packages.adoptium.net/artifactory/api/gpg/key/public \
         > /etc/apt/sources.list.d/adoptium.list && \
     apt-get update && \
     apt-get install -y --no-install-recommends temurin-17-jdk && \
-    rm -rf /var/lib/apt/lists/*
+    rm -rf /var/lib/apt/lists/* && \
+    ln -s /usr/lib/jvm/temurin-17-jdk-* /usr/lib/jvm/temurin-17-jdk
 
-ENV JAVA_HOME=/usr/lib/jvm/temurin-17-jdk-amd64
+ENV JAVA_HOME=/usr/lib/jvm/temurin-17-jdk
 ENV PATH="${JAVA_HOME}/bin:${PATH}"
 
 # ---------- Maven ----------
@@ -61,7 +61,6 @@ ENV PATH="${MAVEN_HOME}/bin:${PATH}"
 # ---------- AR environment ----------
 ENV AR_HARDWARE_LIBS=/tmp/ar_libs/
 ENV AR_HARDWARE_DRIVER=native
-ENV AR_HARDWARE_MEMORY_SCALE=7
 
 # ---------- Runner user ----------
 RUN useradd -m -s /bin/bash runner && \
@@ -70,13 +69,14 @@ RUN useradd -m -s /bin/bash runner && \
 # ---------- GitHub Actions Runner ----------
 WORKDIR /home/runner
 
-RUN ARCH=$(case "${TARGETPLATFORM}" in \
-        "linux/amd64") echo "x64" ;; \
-        "linux/arm64") echo "arm64" ;; \
-        *) echo "x64" ;; \
-    esac) && \
+RUN ARCH=$(dpkg --print-architecture) && \
+    case "${ARCH}" in \
+        amd64) RUNNER_ARCH="x64" ;; \
+        arm64) RUNNER_ARCH="arm64" ;; \
+        *)     RUNNER_ARCH="x64" ;; \
+    esac && \
     curl -fsSL -o runner.tar.gz \
-        "https://github.com/actions/runner/releases/download/v${RUNNER_VERSION}/actions-runner-linux-${ARCH}-${RUNNER_VERSION}.tar.gz" && \
+        "https://github.com/actions/runner/releases/download/v${RUNNER_VERSION}/actions-runner-linux-${RUNNER_ARCH}-${RUNNER_VERSION}.tar.gz" && \
     tar xzf runner.tar.gz && \
     rm runner.tar.gz && \
     ./bin/installdependencies.sh || true

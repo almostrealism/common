@@ -81,10 +81,8 @@ defaults).
 | `GITHUB_PAT` | *(required)* | GitHub personal access token |
 | `GITHUB_OWNER` | `almostrealism` | GitHub org or user |
 | `GITHUB_REPO` | `common` | Repository name |
-| `RUNNER_SCALE` | `10` | Number of containers to launch |
 | `RUNNER_MEMORY_LIMIT` | `16g` | Memory limit per container |
 | `RUNNER_CPU_LIMIT` | `4` | CPU cores per container |
-| `AR_HARDWARE_MEMORY_SCALE` | `7` | AR memory scale (7=8GB) |
 
 ### Why 10 runners?
 
@@ -235,7 +233,6 @@ The Docker image pre-configures the AR environment:
 ```
 AR_HARDWARE_LIBS=/tmp/ar_libs/
 AR_HARDWARE_DRIVER=native
-AR_HARDWARE_MEMORY_SCALE=7
 ```
 
 The `actions/setup-java` step in the workflow remains for JDK path
@@ -268,7 +265,6 @@ already installed just means the step completes faster.
 ### Out of memory errors
 
 - Increase `RUNNER_MEMORY_LIMIT` in `.env`
-- Increase `AR_HARDWARE_MEMORY_SCALE` in `.env` (e.g., `8` for 16 GB)
 - Ensure the host has enough total RAM for all runners
 
 ### Tests fail with native library errors
