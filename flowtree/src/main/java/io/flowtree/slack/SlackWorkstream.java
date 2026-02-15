@@ -67,6 +67,7 @@ public class SlackWorkstream {
     private String channelName;
     private final List<AgentEndpoint> agents;
     private String defaultBranch;
+    private String baseBranch;
     private boolean pushToOrigin;
     private String workingDirectory;
 
@@ -179,6 +180,23 @@ public class SlackWorkstream {
      */
     public void setDefaultBranch(String defaultBranch) {
         this.defaultBranch = defaultBranch;
+    }
+
+    /**
+     * Returns the base branch used as the starting point when creating
+     * a new target branch. Defaults to {@code "master"} if not set.
+     */
+    public String getBaseBranch() {
+        return baseBranch;
+    }
+
+    /**
+     * Sets the base branch for new branch creation.
+     *
+     * @param baseBranch the branch name to base new branches on (e.g., "master", "main", "develop")
+     */
+    public void setBaseBranch(String baseBranch) {
+        this.baseBranch = baseBranch;
     }
 
     public boolean isPushToOrigin() {

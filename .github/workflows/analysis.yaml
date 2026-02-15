@@ -8,7 +8,7 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, ar-ci]
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -35,7 +35,7 @@ jobs:
 
   test:
     needs: build
-    runs-on: ubuntu-latest-16-cores
+    runs-on: [self-hosted, linux, ar-ci]
     strategy:
       fail-fast: true
       matrix:
@@ -82,7 +82,7 @@ jobs:
 
   test-ml:
     needs: test
-    runs-on: ubuntu-latest-16-cores
+    runs-on: [self-hosted, linux, ar-ci]
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -124,7 +124,7 @@ jobs:
 
   test-audio:
     needs: test
-    runs-on: ubuntu-latest-16-cores
+    runs-on: [self-hosted, linux, ar-ci]
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -166,7 +166,7 @@ jobs:
 
   test-music:
     needs: [test-ml, test-audio]
-    runs-on: ubuntu-latest-16-cores
+    runs-on: [self-hosted, linux, ar-ci]
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4

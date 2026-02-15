@@ -16,6 +16,8 @@
 
 package io.flowtree.jobs;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.flowtree.job.Job;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.JobOutput;
@@ -121,6 +123,7 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
 
     private String taskId;
     private String targetBranch;
+    private String baseBranch = "master";
     private String workingDirectory;
     private long maxFileSizeBytes = DEFAULT_MAX_FILE_SIZE;
     private Set<String> excludedPatterns = new HashSet<>(DEFAULT_EXCLUDED_PATTERNS);
@@ -440,9 +443,13 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
             // Checkout existing branch
             return executeGit("checkout", targetBranch) == 0;
         } else {
-            // Create new branch from current HEAD
-            log("Creating new branch: " + targetBranch);
-            return executeGit("checkout", "-b", targetBranch) == 0;
+            // Create new branch from the configured base branch.
+            // Use --no-track so the new branch does NOT inherit
+            // origin/<baseBranch> as its upstream; pushToOrigin() will
+            // set the upstream to origin/<targetBranch> explicitly.
+            String startPoint = "origin/" + baseBranch;
+            log("Creating new branch: " + targetBranch + " from " + startPoint);
+            return executeGit("checkout", "-b", targetBranch, "--no-track", startPoint) == 0;
         }
     }
 
@@ -523,6 +530,11 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
 
     /**
      * Commits the staged changes.
+     *
+     * <p>If {@link #gitUserName} and/or {@link #gitUserEmail} are set,
+     * they are passed via {@code git -c user.name=... -c user.email=...}
+     * directly on the command line, which is the most reliable way to
+     * override identity regardless of container or SSH environment.</p>
      */
     private boolean commit() throws IOException, InterruptedException {
         String message = getCommitMessage();
@@ -532,7 +544,26 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
             return true;
         }
 
-        int result = executeGit("commit", "-m", message);
+        // Build command with identity config flags for reliability.
+        // The -c flags must appear before the subcommand ("commit").
+        List<String> args = new ArrayList<>();
+        if (gitUserName != null && !gitUserName.isEmpty()) {
+            args.add("-c");
+            args.add("user.name=" + gitUserName);
+        }
+        if (gitUserEmail != null && !gitUserEmail.isEmpty()) {
+            args.add("-c");
+            args.add("user.email=" + gitUserEmail);
+        }
+        args.add("commit");
+        args.add("-m");
+        args.add(message);
+
+        log("Committing as: " +
+            (gitUserName != null ? gitUserName : "(default)") + " <" +
+            (gitUserEmail != null ? gitUserEmail : "(default)") + ">");
+
+        int result = executeGit(args.toArray(new String[0]));
         if (result == 0) {
             // Get the commit hash
             commitHash = executeGitWithOutput("rev-parse", "HEAD").trim();
@@ -556,12 +587,20 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
 
     /**
      * Pushes changes to origin.
+     *
+     * <p>Uses an explicit refspec ({@code targetBranch:targetBranch})
+     * so the push always targets the correct remote branch, regardless
+     * of any inherited upstream tracking configuration.</p>
      */
     private boolean pushToOrigin() throws IOException, InterruptedException {
-        log("Pushing to origin...");
+        log("Pushing to origin/" + targetBranch + "...");
 
-        // Push with -u to set upstream if this is a new branch
-        int result = executeGit("push", "-u", "origin", targetBranch);
+        // Use explicit refspec so the push always targets the correct
+        // remote branch, even if the local branch was created from a
+        // different base (e.g., origin/master).  The -u flag sets the
+        // upstream to origin/<targetBranch> for subsequent operations.
+        String refspec = targetBranch + ":" + targetBranch;
+        int result = executeGit("push", "-u", "origin", refspec);
         if (result == 0) {
             log("Pushed to origin/" + targetBranch);
             return true;
@@ -576,8 +615,9 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
      * Detects an open pull request URL for the target branch.
      *
      * <p>Only attempts detection if the origin remote points to GitHub.
-     * Uses the {@code gh} CLI to query for an open PR. Returns {@code null}
-     * if {@code gh} is not installed, no PR exists, or the remote is not GitHub.</p>
+     * Uses the GitHub REST API directly (via {@link HttpURLConnection})
+     * to query for an open PR, authenticated with a {@code GITHUB_TOKEN}
+     * or {@code GH_TOKEN} environment variable.</p>
      *
      * @return the PR URL, or null if no PR was found
      */
@@ -589,17 +629,108 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
                 return null;
             }
 
-            // Try to find open PR for this branch
-            String prUrl = executeCommandWithOutput(
-                "gh", "pr", "view", targetBranch,
-                "--json", "url", "-q", ".url").trim();
-            if (!prUrl.isEmpty() && prUrl.startsWith("http")) {
-                return prUrl;
+            // Extract owner/repo from remote URL
+            // Handles both SSH (git@github.com:owner/repo.git) and
+            // HTTPS (https://github.com/owner/repo.git) formats
+            String ownerRepo = extractOwnerRepo(remoteUrl);
+            if (ownerRepo == null) {
+                log("Could not extract owner/repo from remote URL: " + remoteUrl);
+                return null;
+            }
+
+            // Look for GITHUB_TOKEN or GH_TOKEN
+            String token = System.getenv("GITHUB_TOKEN");
+            if (token == null || token.isEmpty()) {
+                token = System.getenv("GH_TOKEN");
+            }
+            if (token == null || token.isEmpty()) {
+                log("No GITHUB_TOKEN or GH_TOKEN set, cannot query GitHub API for PR");
+                return null;
+            }
+
+            // Query GitHub API for open PRs on this branch
+            String apiUrl = "https://api.github.com/repos/" + ownerRepo +
+                "/pulls?head=" + ownerRepo.split("/")[0] + ":" + targetBranch +
+                "&state=open&per_page=1";
+
+            HttpURLConnection conn = (HttpURLConnection) new URL(apiUrl).openConnection();
+            conn.setRequestMethod("GET");
+            conn.setRequestProperty("Authorization", "Bearer " + token);
+            conn.setRequestProperty("Accept", "application/vnd.github+json");
+            conn.setConnectTimeout(10000);
+            conn.setReadTimeout(10000);
+
+            int responseCode = conn.getResponseCode();
+            if (responseCode != 200) {
+                log("GitHub API returned " + responseCode + " for PR query");
+                return null;
+            }
+
+            // Parse the JSON array response with Jackson
+            ObjectMapper mapper = new ObjectMapper();
+            JsonNode root = mapper.readTree(conn.getInputStream());
+            if (root.isArray() && root.size() > 0) {
+                JsonNode firstPr = root.get(0);
+                JsonNode htmlUrlNode = firstPr.get("html_url");
+                if (htmlUrlNode != null && htmlUrlNode.isTextual()) {
+                    String prUrl = htmlUrlNode.asText();
+                    if (prUrl.startsWith("https://github.com/") && prUrl.contains("/pull/")) {
+                        return prUrl;
+                    }
+                }
             }
         } catch (Exception e) {
             log("Could not detect PR URL: " + e.getMessage());
         }
 
+        return null;
+    }
+
+    /**
+     * Extracts the {@code owner/repo} string from a GitHub remote URL.
+     *
+     * <p>Supports both SSH ({@code git@github.com:owner/repo.git}) and
+     * HTTPS ({@code https://github.com/owner/repo.git}) formats.</p>
+     *
+     * @param remoteUrl the git remote URL
+     * @return the owner/repo string, or null if not parseable
+     */
+    private static String extractOwnerRepo(String remoteUrl) {
+        // SSH format: git@github.com:owner/repo.git
+        if (remoteUrl.contains("git@github.com:")) {
+            String path = remoteUrl.substring(remoteUrl.indexOf("git@github.com:") + 15);
+            if (path.endsWith(".git")) {
+                path = path.substring(0, path.length() - 4);
+            }
+            String validated = validateOwnerRepo(path);
+            if (validated != null) return validated;
+        }
+
+        // HTTPS format: https://github.com/owner/repo.git
+        if (remoteUrl.contains("github.com/")) {
+            String path = remoteUrl.substring(remoteUrl.indexOf("github.com/") + 11);
+            if (path.endsWith(".git")) {
+                path = path.substring(0, path.length() - 4);
+            }
+            String validated = validateOwnerRepo(path);
+            if (validated != null) return validated;
+        }
+
+        return null;
+    }
+
+    /**
+     * Validates that a path is exactly {@code owner/repo} — two non-empty
+     * parts separated by a single slash.
+     *
+     * @param path the candidate owner/repo string
+     * @return the path if valid, or null
+     */
+    private static String validateOwnerRepo(String path) {
+        String[] parts = path.split("/");
+        if (parts.length == 2 && !parts[0].isEmpty() && !parts[1].isEmpty()) {
+            return path;
+        }
         return null;
     }
 
@@ -865,6 +996,28 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
         this.targetBranch = targetBranch;
     }
 
+    /**
+     * Returns the base branch used as the starting point when creating
+     * a new target branch.
+     */
+    public String getBaseBranch() {
+        return baseBranch;
+    }
+
+    /**
+     * Sets the base branch used as the starting point when creating
+     * a new target branch. Defaults to {@code "master"}.
+     *
+     * <p>When the target branch does not exist, the job creates it from
+     * {@code origin/<baseBranch>} (after fetching) rather than from
+     * whatever HEAD happens to be checked out.</p>
+     *
+     * @param baseBranch the branch name to base new branches on
+     */
+    public void setBaseBranch(String baseBranch) {
+        this.baseBranch = baseBranch;
+    }
+
     public String getWorkingDirectory() {
         return workingDirectory;
     }
@@ -935,7 +1088,8 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
 
     /**
      * Sets the git user name for commits made by this job.
-     * When set, {@code git config user.name} is run before committing.
+     * When set, the name is passed via {@code git -c user.name=...}
+     * on the commit command line.
      *
      * @param gitUserName the name to use in git commits
      */
@@ -952,7 +1106,8 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
 
     /**
      * Sets the git user email for commits made by this job.
-     * When set, {@code git config user.email} is run before committing.
+     * When set, the email is passed via {@code git -c user.email=...}
+     * on the commit command line.
      *
      * @param gitUserEmail the email to use in git commits
      */
@@ -1199,6 +1354,9 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
         if (targetBranch != null) {
             sb.append("::branch:=").append(base64Encode(targetBranch));
         }
+        if (baseBranch != null && !"master".equals(baseBranch)) {
+            sb.append("::baseBranch:=").append(base64Encode(baseBranch));
+        }
         if (workingDirectory != null) {
             sb.append("::workDir:=").append(base64Encode(workingDirectory));
         }
@@ -1226,6 +1384,9 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
                 break;
             case "branch":
                 this.targetBranch = base64Decode(value);
+                break;
+            case "baseBranch":
+                this.baseBranch = base64Decode(value);
                 break;
             case "workDir":
                 this.workingDirectory = base64Decode(value);
