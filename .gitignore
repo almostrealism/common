@@ -46,6 +46,7 @@ flowtree-controller.log
 
 # Secrets
 **/slack-tokens.json
+tools/ci/.env
 
 # Data
 flowtreedb**
