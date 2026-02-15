@@ -44,6 +44,7 @@ Executes a single Claude Code prompt. Extends `GitManagedJob`.
 | `maxTurns` | `50` | Maximum number of agent turns |
 | `maxBudgetUsd` | `10.0` | Spending cap per job |
 | `targetBranch` | `null` | Git branch for commits (disables git if null) |
+| `baseBranch` | `"master"` | Branch to create new target branches from (`origin/<baseBranch>`) |
 | `workstreamUrl` | `null` | Controller URL for status events and Slack messaging |
 | `centralizedMcpConfig` | `null` | JSON mapping centralized MCP server names to HTTP URLs and tool names |
 | `pushedToolsConfig` | `null` | JSON mapping pushed tool server names to download URLs and tool names |
@@ -98,7 +99,7 @@ java -cp flowtree.jar io.flowtree.ClaudeCodeClient \
 
 Base class providing automatic git operations after job completion:
 
-- Creates or switches to the target branch
+- Creates or switches to the target branch (new branches are created from `origin/<baseBranch>`)
 - Detects modified files via `git status`
 - Stages files with guardrails (skips secrets, binaries, large files, build artifacts)
 - Commits with a descriptive message
