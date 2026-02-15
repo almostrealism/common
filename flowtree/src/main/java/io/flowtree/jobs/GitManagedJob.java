@@ -443,10 +443,13 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
             // Checkout existing branch
             return executeGit("checkout", targetBranch) == 0;
         } else {
-            // Create new branch from the configured base branch
+            // Create new branch from the configured base branch.
+            // Use --no-track so the new branch does NOT inherit
+            // origin/<baseBranch> as its upstream; pushToOrigin() will
+            // set the upstream to origin/<targetBranch> explicitly.
             String startPoint = "origin/" + baseBranch;
             log("Creating new branch: " + targetBranch + " from " + startPoint);
-            return executeGit("checkout", "-b", targetBranch, startPoint) == 0;
+            return executeGit("checkout", "-b", targetBranch, "--no-track", startPoint) == 0;
         }
     }
 
@@ -527,6 +530,11 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
 
     /**
      * Commits the staged changes.
+     *
+     * <p>If {@link #gitUserName} and/or {@link #gitUserEmail} are set,
+     * they are passed via {@code git -c user.name=... -c user.email=...}
+     * directly on the command line, which is the most reliable way to
+     * override identity regardless of container or SSH environment.</p>
      */
     private boolean commit() throws IOException, InterruptedException {
         String message = getCommitMessage();
@@ -536,7 +544,26 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
             return true;
         }
 
-        int result = executeGit("commit", "-m", message);
+        // Build command with identity config flags for reliability.
+        // The -c flags must appear before the subcommand ("commit").
+        List<String> args = new ArrayList<>();
+        if (gitUserName != null && !gitUserName.isEmpty()) {
+            args.add("-c");
+            args.add("user.name=" + gitUserName);
+        }
+        if (gitUserEmail != null && !gitUserEmail.isEmpty()) {
+            args.add("-c");
+            args.add("user.email=" + gitUserEmail);
+        }
+        args.add("commit");
+        args.add("-m");
+        args.add(message);
+
+        log("Committing as: " +
+            (gitUserName != null ? gitUserName : "(default)") + " <" +
+            (gitUserEmail != null ? gitUserEmail : "(default)") + ">");
+
+        int result = executeGit(args.toArray(new String[0]));
         if (result == 0) {
             // Get the commit hash
             commitHash = executeGitWithOutput("rev-parse", "HEAD").trim();
@@ -560,12 +587,20 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
 
     /**
      * Pushes changes to origin.
+     *
+     * <p>Uses an explicit refspec ({@code targetBranch:targetBranch})
+     * so the push always targets the correct remote branch, regardless
+     * of any inherited upstream tracking configuration.</p>
      */
     private boolean pushToOrigin() throws IOException, InterruptedException {
-        log("Pushing to origin...");
+        log("Pushing to origin/" + targetBranch + "...");
 
-        // Push with -u to set upstream if this is a new branch
-        int result = executeGit("push", "-u", "origin", targetBranch);
+        // Use explicit refspec so the push always targets the correct
+        // remote branch, even if the local branch was created from a
+        // different base (e.g., origin/master).  The -u flag sets the
+        // upstream to origin/<targetBranch> for subsequent operations.
+        String refspec = targetBranch + ":" + targetBranch;
+        int result = executeGit("push", "-u", "origin", refspec);
         if (result == 0) {
             log("Pushed to origin/" + targetBranch);
             return true;
@@ -1053,7 +1088,8 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
 
     /**
      * Sets the git user name for commits made by this job.
-     * When set, {@code git config user.name} is run before committing.
+     * When set, the name is passed via {@code git -c user.name=...}
+     * on the commit command line.
      *
      * @param gitUserName the name to use in git commits
      */
@@ -1070,7 +1106,8 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
 
     /**
      * Sets the git user email for commits made by this job.
-     * When set, {@code git config user.email} is run before committing.
+     * When set, the email is passed via {@code git -c user.email=...}
+     * on the commit command line.
      *
      * @param gitUserEmail the email to use in git commits
      */
