@@ -50,7 +50,15 @@ jobs:
           cache: 'maven'
 
       - name: Build (skip tests)
-        run: mvn install -DskipTests
+        run: |
+          mvn install -DskipTests 2>&1 || {
+            echo "Build failed — fixing macOS quarantine on protoc binaries and retrying..."
+            find . -type f -name "*.exe" -exec chmod +x {} \;
+            find . -type f -name "*.exe" -exec xattr -d com.apple.quarantine {} 2>/dev/null \; || true
+            find "${HOME}/.m2/repository" -type f -name "*.exe" -exec chmod +x {} \;
+            find "${HOME}/.m2/repository" -type f -name "*.exe" -exec xattr -d com.apple.quarantine {} 2>/dev/null \; || true
+            mvn install -DskipTests
+          }
 
   test:
     needs: build
@@ -256,7 +264,15 @@ jobs:
           cache: 'maven'
 
       - name: Build (skip tests)
-        run: mvn install -DskipTests
+        run: |
+          mvn install -DskipTests 2>&1 || {
+            echo "Build failed — fixing macOS quarantine on protoc binaries and retrying..."
+            find . -type f -name "*.exe" -exec chmod +x {} \;
+            find . -type f -name "*.exe" -exec xattr -d com.apple.quarantine {} 2>/dev/null \; || true
+            find "${HOME}/.m2/repository" -type f -name "*.exe" -exec chmod +x {} \;
+            find "${HOME}/.m2/repository" -type f -name "*.exe" -exec xattr -d com.apple.quarantine {} 2>/dev/null \; || true
+            mvn install -DskipTests
+          }
 
       - name: Run Utils Tests
         run: |
@@ -284,7 +300,15 @@ jobs:
           cache: 'maven'
 
       - name: Build (skip tests)
-        run: mvn install -DskipTests
+        run: |
+          mvn install -DskipTests 2>&1 || {
+            echo "Build failed — fixing macOS quarantine on protoc binaries and retrying..."
+            find . -type f -name "*.exe" -exec chmod +x {} \;
+            find . -type f -name "*.exe" -exec xattr -d com.apple.quarantine {} 2>/dev/null \; || true
+            find "${HOME}/.m2/repository" -type f -name "*.exe" -exec chmod +x {} \;
+            find "${HOME}/.m2/repository" -type f -name "*.exe" -exec xattr -d com.apple.quarantine {} 2>/dev/null \; || true
+            mvn install -DskipTests
+          }
 
       - name: Run ML Tests
         run: |
@@ -312,7 +336,15 @@ jobs:
           cache: 'maven'
 
       - name: Build (skip tests)
-        run: mvn install -DskipTests
+        run: |
+          mvn install -DskipTests 2>&1 || {
+            echo "Build failed — fixing macOS quarantine on protoc binaries and retrying..."
+            find . -type f -name "*.exe" -exec chmod +x {} \;
+            find . -type f -name "*.exe" -exec xattr -d com.apple.quarantine {} 2>/dev/null \; || true
+            find "${HOME}/.m2/repository" -type f -name "*.exe" -exec chmod +x {} \;
+            find "${HOME}/.m2/repository" -type f -name "*.exe" -exec xattr -d com.apple.quarantine {} 2>/dev/null \; || true
+            mvn install -DskipTests
+          }
 
       - name: Run Audio Tests
         run: |
@@ -340,7 +372,15 @@ jobs:
           cache: 'maven'
 
       - name: Build (skip tests)
-        run: mvn install -DskipTests
+        run: |
+          mvn install -DskipTests 2>&1 || {
+            echo "Build failed — fixing macOS quarantine on protoc binaries and retrying..."
+            find . -type f -name "*.exe" -exec chmod +x {} \;
+            find . -type f -name "*.exe" -exec xattr -d com.apple.quarantine {} 2>/dev/null \; || true
+            find "${HOME}/.m2/repository" -type f -name "*.exe" -exec chmod +x {} \;
+            find "${HOME}/.m2/repository" -type f -name "*.exe" -exec xattr -d com.apple.quarantine {} 2>/dev/null \; || true
+            mvn install -DskipTests
+          }
 
       - name: Run Music Tests
         run: |
