@@ -62,9 +62,19 @@ if [ "${JAVA_MAJOR}" -lt 17 ]; then
 fi
 echo "  JDK ${JAVA_MAJOR} - OK"
 
-# ---------- Detect architecture ----------
+# ---------- Install Rosetta 2 (Apple Silicon only) ----------
 
 ARCH="$(uname -m)"
+if [ "${ARCH}" = "arm64" ]; then
+    if ! /usr/bin/pgrep -q oahd; then
+        echo "Installing Rosetta 2 (required for x86_64 protoc binaries)..."
+        softwareupdate --install-rosetta --agree-to-license
+    else
+        echo "  Rosetta 2 - OK"
+    fi
+fi
+
+# ---------- Detect architecture ----------
 case "${ARCH}" in
     x86_64)  RUNNER_ARCH="x64" ;;
     arm64)   RUNNER_ARCH="arm64" ;;

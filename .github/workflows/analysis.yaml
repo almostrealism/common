@@ -49,17 +49,11 @@ jobs:
           distribution: 'adopt'
           cache: 'maven'
 
-      - name: Fix macOS protoc binaries
+      - name: Ensure Rosetta 2
         run: |
-          # Trigger protoc plugin download (will fail on execution, that's expected)
-          mvn generate-sources -pl ml -DskipTests 2>/dev/null || true
-          # Fix permissions, clear extended attributes, and ad-hoc codesign
-          find . -path "*/protoc-plugins/*" -type f -exec chmod +x {} \; \
-            -exec xattr -cr {} \; \
-            -exec codesign -f -s - {} \;
-          find "${HOME}/.m2/repository" -type f -name "*.exe" -exec chmod +x {} \; \
-            -exec xattr -cr {} \; \
-            -exec codesign -f -s - {} \;
+          if [ "$(uname -m)" = "arm64" ] && ! /usr/bin/pgrep -q oahd; then
+            sudo softwareupdate --install-rosetta --agree-to-license
+          fi
 
       - name: Build (skip tests)
         run: mvn install -DskipTests
@@ -267,16 +261,6 @@ jobs:
           distribution: 'adopt'
           cache: 'maven'
 
-      - name: Fix macOS protoc binaries
-        run: |
-          mvn generate-sources -pl ml -DskipTests 2>/dev/null || true
-          find . -path "*/protoc-plugins/*" -type f -exec chmod +x {} \; \
-            -exec xattr -cr {} \; \
-            -exec codesign -f -s - {} \; 2>/dev/null || true
-          find "${HOME}/.m2/repository" -type f -name "*.exe" -exec chmod +x {} \; \
-            -exec xattr -cr {} \; \
-            -exec codesign -f -s - {} \; 2>/dev/null || true
-
       - name: Build (skip tests)
         run: mvn install -DskipTests
 
@@ -304,16 +288,6 @@ jobs:
           java-version: '17'
           distribution: 'adopt'
           cache: 'maven'
-
-      - name: Fix macOS protoc binaries
-        run: |
-          mvn generate-sources -pl ml -DskipTests 2>/dev/null || true
-          find . -path "*/protoc-plugins/*" -type f -exec chmod +x {} \; \
-            -exec xattr -cr {} \; \
-            -exec codesign -f -s - {} \; 2>/dev/null || true
-          find "${HOME}/.m2/repository" -type f -name "*.exe" -exec chmod +x {} \; \
-            -exec xattr -cr {} \; \
-            -exec codesign -f -s - {} \; 2>/dev/null || true
 
       - name: Build (skip tests)
         run: mvn install -DskipTests
@@ -343,16 +317,6 @@ jobs:
           distribution: 'adopt'
           cache: 'maven'
 
-      - name: Fix macOS protoc binaries
-        run: |
-          mvn generate-sources -pl ml -DskipTests 2>/dev/null || true
-          find . -path "*/protoc-plugins/*" -type f -exec chmod +x {} \; \
-            -exec xattr -cr {} \; \
-            -exec codesign -f -s - {} \; 2>/dev/null || true
-          find "${HOME}/.m2/repository" -type f -name "*.exe" -exec chmod +x {} \; \
-            -exec xattr -cr {} \; \
-            -exec codesign -f -s - {} \; 2>/dev/null || true
-
       - name: Build (skip tests)
         run: mvn install -DskipTests
 
@@ -380,16 +344,6 @@ jobs:
           java-version: '17'
           distribution: 'adopt'
           cache: 'maven'
-
-      - name: Fix macOS protoc binaries
-        run: |
-          mvn generate-sources -pl ml -DskipTests 2>/dev/null || true
-          find . -path "*/protoc-plugins/*" -type f -exec chmod +x {} \; \
-            -exec xattr -cr {} \; \
-            -exec codesign -f -s - {} \; 2>/dev/null || true
-          find "${HOME}/.m2/repository" -type f -name "*.exe" -exec chmod +x {} \; \
-            -exec xattr -cr {} \; \
-            -exec codesign -f -s - {} \; 2>/dev/null || true
 
       - name: Build (skip tests)
         run: mvn install -DskipTests
