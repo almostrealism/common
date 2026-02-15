@@ -48,7 +48,7 @@ fi
 # Verify JDK version
 JAVA_VERSION_RAW="$(java -version 2>&1 | head -1)"
 echo "  Java version string: ${JAVA_VERSION_RAW}"
-JAVA_MAJOR="$(echo "${JAVA_VERSION_RAW}" | sed -n 's/.*"\([0-9]*\).*/\1/p')"
+JAVA_MAJOR="$(echo "${JAVA_VERSION_RAW}" | sed -n 's/.*"\([0-9][0-9]*\).*/\1/p')"
 
 if [ -z "${JAVA_MAJOR}" ]; then
     echo "ERROR: Could not parse Java version from: ${JAVA_VERSION_RAW}"
