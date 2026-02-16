@@ -39,7 +39,7 @@ import java.util.function.Consumer;
  *
  * @author Michael Murray
  * @see JobCompletionListener
- * @see SlackBotController
+ * @see FlowTreeController
  */
 public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
 

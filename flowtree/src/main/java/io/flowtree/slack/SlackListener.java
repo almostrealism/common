@@ -43,7 +43,7 @@ import java.util.regex.Pattern;
  * </ul>
  *
  * @author Michael Murray
- * @see SlackBotController
+ * @see FlowTreeController
  * @see ClaudeCodeJob
  */
 public class SlackListener implements ConsoleFeatures {
@@ -138,10 +138,10 @@ public class SlackListener implements ConsoleFeatures {
     }
 
     /**
-     * Sets the API endpoint port. Called by {@link SlackBotController} after the
+     * Sets the API endpoint port. Called by {@link FlowTreeController} after the
      * API endpoint starts so that jobs can be configured with the correct URL.
      *
-     * @param apiPort the port the SlackApiEndpoint is listening on
+     * @param apiPort the port the FlowTreeApiEndpoint is listening on
      */
     public void setApiPort(int apiPort) {
         this.apiPort = apiPort;
@@ -186,7 +186,7 @@ public class SlackListener implements ConsoleFeatures {
     /**
      * Handles an incoming Slack message event.
      *
-     * <p>This method is typically called by {@link SlackBotController} when
+     * <p>This method is typically called by {@link FlowTreeController} when
      * an app_mention event is received.</p>
      *
      * @param channelId the channel where the message was posted
@@ -376,7 +376,7 @@ public class SlackListener implements ConsoleFeatures {
 
     /**
      * Sets the workstream configuration and file reference for persistence.
-     * Called by {@link SlackBotController} after loading config from YAML.
+     * Called by {@link FlowTreeController} after loading config from YAML.
      *
      * @param config     the loaded workstream configuration
      * @param configFile the YAML file to persist changes to (may be null)

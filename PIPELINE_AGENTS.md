@@ -9,10 +9,10 @@ This document describes an experimental GitHub Actions workflow that spawns a Fl
 ```
 GitHub Actions (self-hosted ar-ci runner)
     |
-    |  curl POST to SlackApiEndpoint
+    |  curl POST to FlowTreeApiEndpoint
     |
     v
-SlackBotController (port 7780)
+FlowTreeController (port 7780)
     |
     |  Server.sendTask(factory)
     |
@@ -32,7 +32,7 @@ The self-hosted `ar-ci` runners and the slack controller are on the same network
 
 ### 1. New HTTP Endpoint: `POST /api/workstreams/{id}/submit`
 
-The `SlackApiEndpoint` currently handles status events and messages from agents, but has no endpoint for **submitting** new jobs. We add one:
+The `FlowTreeApiEndpoint` currently handles status events and messages from agents, but has no endpoint for **submitting** new jobs. We add one:
 
 **Request:**
 ```
@@ -65,7 +65,7 @@ Content-Type: application/json
 }
 ```
 
-**Implementation:** Add a `handleSubmit` method to `SlackApiEndpoint` that:
+**Implementation:** Add a `handleSubmit` method to `FlowTreeApiEndpoint` that:
 
 1. Parses the JSON body for `prompt` and optional overrides (`targetBranch`, `baseBranch`, `maxTurns`, `maxBudgetUsd`)
 2. Looks up the `SlackWorkstream` for the given workstream ID
@@ -73,7 +73,7 @@ Content-Type: application/json
 4. Delegates to the same `Server.sendTask()` path that `SlackListener.submitJob()` uses
 5. Returns the job ID
 
-This keeps the existing Slack-based submission path untouched and adds a parallel HTTP-based entry point that reuses the same job creation logic. The `SlackApiEndpoint` needs a reference to the `Server` and `SlackListener` (or a shared submission interface) to create and dispatch jobs.
+This keeps the existing Slack-based submission path untouched and adds a parallel HTTP-based entry point that reuses the same job creation logic. The `FlowTreeApiEndpoint` needs a reference to the `Server` and `SlackListener` (or a shared submission interface) to create and dispatch jobs.
 
 **Why not use ClaudeCodeClient from the runner?** The `ClaudeCodeClient` connects directly to agent FlowTree ports and bypasses the controller entirely. Using the controller's HTTP API is simpler (a single `curl` call), doesn't require Java on the runner, and lets the controller handle agent selection, MCP config injection, and status tracking.
 
@@ -229,9 +229,9 @@ Summary of changes needed in the flowtree module:
 
 | File | Change |
 |------|--------|
-| `SlackApiEndpoint.java` | Add route for `POST /api/workstreams/{id}/submit`, add `handleSubmit()` method |
-| `SlackApiEndpoint.java` | Add `setServer(Server)` and `setSlackListener(SlackListener)` (or a shared submission interface) |
-| `SlackBotController.java` | Wire the server and listener references into the API endpoint during startup |
+| `FlowTreeApiEndpoint.java` | Add route for `POST /api/workstreams/{id}/submit`, add `handleSubmit()` method |
+| `FlowTreeApiEndpoint.java` | Add `setServer(Server)` and `setSlackListener(SlackListener)` (or a shared submission interface) |
+| `FlowTreeController.java` | Wire the server and listener references into the API endpoint during startup |
 
 The `handleSubmit` implementation:
 
@@ -267,6 +267,7 @@ The exact factoring (whether `SlackListener.submitJob()` is made public, or the 
 ### 5. Security Considerations
 
 - **No authentication on the submit endpoint (initial version).** The controller is on a private network behind a firewall. Only self-hosted runners and internal services can reach it. A future iteration should add a shared secret or API key header.
+
 - **Budget cap per job.** The workstream config enforces `maxBudgetUsd: 5.0` and `maxTurns: 30`, preventing runaway agent costs even if the endpoint is misused.
 - **Minimal tool allowlist.** The agent can only read code and use `ar-github` (for PR comments). It cannot edit files, run bash commands, or push code.
 - **GITHUB_TOKEN scoping.** The token used by the `ar-github` pushed tool should have `pull_requests: write` permission on the target repo, and nothing else.
@@ -285,8 +286,8 @@ Once the basic end-to-end flow is validated:
 
 ### Phase 1: Proof of Concept (this PR)
 
-1. Add `POST /api/workstreams/{id}/submit` endpoint to `SlackApiEndpoint`
-2. Wire the endpoint to the server/listener in `SlackBotController`
+1. Add `POST /api/workstreams/{id}/submit` endpoint to `FlowTreeApiEndpoint`
+2. Wire the endpoint to the server/listener in `FlowTreeController`
 3. Add the `pipeline-agents.yaml` workflow file
 4. Add a pipeline workstream entry to the example YAML config
 5. Test manually via `workflow_dispatch`

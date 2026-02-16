@@ -17,7 +17,10 @@
 package io.flowtree.slack;
 
 import fi.iki.elonen.NanoHTTPD;
+import io.flowtree.Server;
+import io.flowtree.jobs.ClaudeCodeJob;
 import io.flowtree.jobs.JobCompletionEvent;
+import io.flowtree.msg.NodeProxy;
 import org.almostrealism.io.ConsoleFeatures;
 
 import java.io.IOException;
@@ -32,23 +35,25 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Lightweight HTTP API endpoint for receiving Slack message requests from
- * Claude Code agents running on Flowtree nodes.
+ * HTTP API endpoint for FlowTree orchestration.
  *
- * <p>This server uses NanoHTTPD to expose a simple REST API that MCP tools
- * (running inside Claude Code sessions) can call to send messages back to
- * Slack channels. It delegates all Slack operations to {@link SlackNotifier}.</p>
+ * <p>This server uses NanoHTTPD to expose a REST API for agent communication
+ * and programmatic job submission. MCP tools running inside Claude Code sessions
+ * call this endpoint to send messages back to channels, and external systems
+ * (such as GitHub Actions) use it to submit new jobs.</p>
  *
  * <h2>URL Pattern</h2>
- * <p>All endpoints use the workstream URL as a prefix:</p>
  * <table>
  *   <tr><th>Method</th><th>Path</th><th>Body</th><th>Description</th></tr>
  *   <tr><td>POST</td><td>/api/workstreams/{id}/messages</td>
  *       <td>{@code {"text":"..."}}</td>
- *       <td>Post a message to the workstream's Slack channel</td></tr>
+ *       <td>Post a message to the workstream's channel</td></tr>
  *   <tr><td>POST</td><td>/api/workstreams/{id}/jobs/{jobId}/messages</td>
  *       <td>{@code {"text":"..."}}</td>
- *       <td>Post a message to the job's Slack thread</td></tr>
+ *       <td>Post a message to the job's thread</td></tr>
+ *   <tr><td>POST</td><td>/api/workstreams/{id}/submit</td>
+ *       <td>{@code {"prompt":"..."}}</td>
+ *       <td>Submit a new job to connected agents</td></tr>
  *   <tr><td>POST</td><td>/api/workstreams/{id}</td>
  *       <td>{@code {"jobId":"...","status":"..."}}</td>
  *       <td>Receive a status event for the workstream</td></tr>
@@ -61,30 +66,51 @@ import java.util.regex.Pattern;
  *
  * @author Michael Murray
  * @see SlackNotifier
- * @see SlackBotController
+ * @see FlowTreeController
  */
-public class SlackApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
+public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
 
     /** Default port for the API endpoint. */
     public static final int DEFAULT_PORT = 7780;
 
-    /** Matches /api/workstreams/{wsId} with optional /jobs/{jobId} and optional /messages suffix. */
+    /** Matches /api/workstreams/{wsId} with optional /jobs/{jobId} and optional /messages or /submit suffix. */
     private static final Pattern WORKSTREAM_PATTERN = Pattern.compile(
-        "/api/workstreams/([^/]+)(?:/jobs/([^/]+))?(/messages)?"
+        "/api/workstreams/([^/]+)(?:/jobs/([^/]+))?(/messages|/submit)?"
     );
 
     private final SlackNotifier notifier;
     private final Map<String, Path> toolFiles = new HashMap<>();
 
+    private Server server;
+    private SlackListener listener;
+
     /**
      * Creates a new API endpoint on the specified port.
      *
      * @param port     the port to listen on
-     * @param notifier the notifier to delegate Slack operations to
+     * @param notifier the notifier to delegate message operations to
      */
-    public SlackApiEndpoint(int port, SlackNotifier notifier) {
+    public FlowTreeApiEndpoint(int port, SlackNotifier notifier) {
         super(port);
         this.notifier = notifier;
+    }
+
+    /**
+     * Sets the FlowTree {@link Server} used for job submission.
+     *
+     * @param server the server accepting inbound agent connections
+     */
+    public void setServer(Server server) {
+        this.server = server;
+    }
+
+    /**
+     * Sets the {@link SlackListener} used for job creation.
+     *
+     * @param listener the listener that manages workstream-to-job mapping
+     */
+    public void setListener(SlackListener listener) {
+        this.listener = listener;
     }
 
     /**
@@ -113,10 +139,12 @@ public class SlackApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             if (m.matches()) {
                 String workstreamId = m.group(1);
                 String jobId = m.group(2);       // null if no /jobs/{id}
-                boolean isMessages = m.group(3) != null;  // /messages suffix
+                String suffix = m.group(3);      // /messages, /submit, or null
 
-                if (isMessages) {
+                if ("/messages".equals(suffix)) {
                     return handleMessage(session, workstreamId, jobId);
+                } else if ("/submit".equals(suffix)) {
+                    return handleSubmit(session, workstreamId);
                 } else {
                     return handleStatusEvent(session, workstreamId);
                 }
@@ -161,9 +189,9 @@ public class SlackApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
      * Handles POST to {@code /api/workstreams/{id}/messages} or
      * {@code /api/workstreams/{id}/jobs/{jobId}/messages}.
      *
-     * <p>Posts a Slack message to the workstream's channel. When a
+     * <p>Posts a message to the workstream's channel. When a
      * {@code jobId} is present, the controller can optionally thread the
-     * message under that job's Slack thread.</p>
+     * message under that job's thread.</p>
      */
     private Response handleMessage(IHTTPSession session, String workstreamId, String jobId) {
         String body = readBody(session);
@@ -183,7 +211,7 @@ public class SlackApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
 
         log("Message [" + workstreamId + (jobId != null ? "/" + jobId : "") + "]: " + truncate(text, 80));
 
-        // Route to job's Slack thread if one exists, otherwise post to channel
+        // Route to job's thread if one exists, otherwise post to channel
         String threadTs = jobId != null ? notifier.getThreadTs(jobId) : null;
         if (threadTs != null) {
             notifier.postMessageInThread(workstream.getChannelId(), text, threadTs);
@@ -193,6 +221,129 @@ public class SlackApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
 
         return newFixedLengthResponse(Response.Status.OK,
                 "application/json", "{\"ok\":true}");
+    }
+
+    /**
+     * Handles {@code POST /api/workstreams/{id}/submit} for programmatic
+     * job submission from external systems (e.g., GitHub Actions).
+     *
+     * <p>Request body:</p>
+     * <pre>{@code
+     * {
+     *   "prompt": "Post a comment on PR #42...",
+     *   "targetBranch": "feature/pipeline-agents",
+     *   "baseBranch": "develop",
+     *   "maxTurns": 30,
+     *   "maxBudgetUsd": 5.0
+     * }
+     * }</pre>
+     *
+     * @param session       the HTTP session
+     * @param workstreamId  the target workstream identifier
+     * @return JSON response with {@code ok}, {@code jobId}, and {@code workstreamId}
+     */
+    private Response handleSubmit(IHTTPSession session, String workstreamId) {
+        String body = readBody(session);
+        if (body == null) {
+            return errorResponse("Failed to read request body");
+        }
+
+        String prompt = extractJsonField(body, "prompt");
+        if (prompt == null || prompt.isEmpty()) {
+            return errorResponse("Missing required field: prompt");
+        }
+
+        SlackWorkstream workstream = notifier.getWorkstream(workstreamId);
+        if (workstream == null) {
+            return errorResponse("Unknown workstream: " + workstreamId);
+        }
+
+        if (server == null) {
+            return errorResponse("No FlowTree server configured");
+        }
+
+        NodeProxy[] peers = server.getNodeGroup().getServers();
+        if (peers.length == 0) {
+            String json = "{\"ok\":false,\"error\":\"No agents connected\"}";
+            return newFixedLengthResponse(Response.Status.OK,
+                    "application/json", json);
+        }
+
+        // Apply optional overrides from the request body
+        String targetBranch = extractJsonField(body, "targetBranch");
+        String baseBranch = extractJsonField(body, "baseBranch");
+        int maxTurns = extractJsonIntField(body, "maxTurns");
+        double maxBudgetUsd = extractJsonDoubleField(body, "maxBudgetUsd");
+
+        // Create job factory with workstream defaults, overridden by request values
+        ClaudeCodeJob.Factory factory = new ClaudeCodeJob.Factory(prompt);
+        factory.setAllowedTools(workstream.getAllowedTools());
+        factory.setMaxTurns(maxTurns > 0 ? maxTurns : workstream.getMaxTurns());
+        factory.setMaxBudgetUsd(maxBudgetUsd > 0 ? maxBudgetUsd : workstream.getMaxBudgetUsd());
+
+        String effectiveBranch = targetBranch != null ? targetBranch : workstream.getDefaultBranch();
+        if (effectiveBranch != null) {
+            factory.setTargetBranch(effectiveBranch);
+            factory.setPushToOrigin(workstream.isPushToOrigin());
+        }
+
+        String effectiveBase = baseBranch != null ? baseBranch : workstream.getBaseBranch();
+        if (effectiveBase != null) {
+            factory.setBaseBranch(effectiveBase);
+        }
+
+        if (workstream.getWorkingDirectory() != null) {
+            factory.setWorkingDirectory(workstream.getWorkingDirectory());
+        }
+
+        // Git identity
+        if (workstream.getGitUserName() != null) {
+            factory.setGitUserName(workstream.getGitUserName());
+        }
+        if (workstream.getGitUserEmail() != null) {
+            factory.setGitUserEmail(workstream.getGitUserEmail());
+        }
+
+        // MCP configs from listener
+        if (listener != null) {
+            if (listener.getCentralizedMcpConfig() != null) {
+                factory.setCentralizedMcpConfig(listener.getCentralizedMcpConfig());
+            }
+            if (listener.getPushedToolsConfig() != null) {
+                factory.setPushedToolsConfig(listener.getPushedToolsConfig());
+            }
+        }
+
+        // Per-workstream env vars
+        if (workstream.getEnv() != null && !workstream.getEnv().isEmpty()) {
+            factory.setWorkstreamEnv(workstream.getEnv());
+        }
+
+        // Build workstream URL for status reporting
+        int listeningPort = getListeningPort();
+        if (listeningPort > 0) {
+            String baseUrl = "http://0.0.0.0:" + listeningPort
+                + "/api/workstreams/" + workstream.getWorkstreamId()
+                + "/jobs/" + factory.getTaskId();
+            factory.setWorkstreamUrl(baseUrl);
+        }
+
+        // Notify that work is starting
+        String description = prompt.length() > 100 ? prompt.substring(0, 97) + "..." : prompt;
+        JobCompletionEvent startEvent = JobCompletionEvent.started(factory.getTaskId(), description);
+        startEvent.withGitInfo(effectiveBranch, null, null, null, false);
+        notifier.onJobStarted(workstream.getWorkstreamId(), startEvent);
+
+        // Round-robin to connected agents
+        int index = peers.length > 1 ? (int) (System.currentTimeMillis() % peers.length) : 0;
+        server.sendTask(factory, index);
+
+        log("Submitted job via API: " + factory.getTaskId() + " to agent " + index);
+
+        String json = "{\"ok\":true,\"jobId\":\"" + factory.getTaskId()
+            + "\",\"workstreamId\":\"" + workstreamId + "\"}";
+        return newFixedLengthResponse(Response.Status.OK,
+                "application/json", json);
     }
 
     /**
@@ -423,6 +574,41 @@ public class SlackApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             return Integer.parseInt(numStr.toString());
         } catch (NumberFormatException e) {
             return 0;
+        }
+    }
+
+    /**
+     * Extracts a double field from a JSON string.
+     * Returns 0.0 if the field is not found or cannot be parsed.
+     *
+     * @param json  the JSON string
+     * @param field the field name
+     * @return the double value, or 0.0 if not found
+     */
+    static double extractJsonDoubleField(String json, String field) {
+        if (json == null) return 0.0;
+
+        int fieldStart = json.indexOf("\"" + field + "\"");
+        if (fieldStart < 0) return 0.0;
+
+        int colonPos = json.indexOf(":", fieldStart);
+        if (colonPos < 0) return 0.0;
+
+        String rest = json.substring(colonPos + 1).trim();
+        StringBuilder numStr = new StringBuilder();
+        for (int i = 0; i < rest.length(); i++) {
+            char c = rest.charAt(i);
+            if (c == '-' || c == '.' || (c >= '0' && c <= '9')) {
+                numStr.append(c);
+            } else if (numStr.length() > 0) {
+                break;
+            }
+        }
+
+        try {
+            return Double.parseDouble(numStr.toString());
+        } catch (NumberFormatException e) {
+            return 0.0;
         }
     }
 

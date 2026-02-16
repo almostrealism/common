@@ -33,7 +33,7 @@
     "ar-slack": {
       "command": "python3",
       "args": ["tools/mcp/slack/server.py"],
-      "description": "Send messages to Slack channels via the SlackBotController API endpoint"
+      "description": "Send messages to channels via the FlowTreeController API endpoint"
     },
     "ar-github": {
       "command": "python3",

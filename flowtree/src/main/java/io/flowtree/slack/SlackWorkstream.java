@@ -32,7 +32,7 @@ import java.util.UUID;
  * integration, allowing both agents and operators to share context.</p>
  *
  * @author Michael Murray
- * @see SlackBotController
+ * @see FlowTreeController
  */
 public class SlackWorkstream {
 

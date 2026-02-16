@@ -10,7 +10,7 @@
 # Then run:
 #   export SLACK_BOT_TOKEN=xoxb-your-bot-token
 #   export SLACK_APP_TOKEN=xapp-your-app-token
-#   java -cp flowtree.jar io.flowtree.slack.SlackBotController --config workstreams.yaml
+#   java -cp flowtree.jar io.flowtree.slack.FlowTreeController --config workstreams.yaml
 
 # Centralized MCP servers (optional).
 # When present, these servers are started as HTTP processes by the controller
@@ -67,3 +67,14 @@ workstreams:
     maxBudgetUsd: 25.0
     env:
       GITHUB_TOKEN: "ghp_beta_org_token"
+
+  # Pipeline Agents — synthetic workstream for CI/CD-triggered jobs.
+  # No real Slack channel; jobs are submitted via POST /api/workstreams/{id}/submit.
+  - channelId: "pipeline"
+    channelName: "#pipeline-agents"
+    workstreamId: "ws-pipeline"
+    baseBranch: "develop"
+    pushToOrigin: false
+    allowedTools: "Read,Glob,Grep"
+    maxTurns: 30
+    maxBudgetUsd: 5.0

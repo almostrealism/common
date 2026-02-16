@@ -38,10 +38,11 @@ import java.util.concurrent.atomic.AtomicReference;
 import static org.junit.Assert.*;
 
 /**
- * Tests for the Slack integration components.
+ * Tests for the FlowTree orchestration and Slack integration components.
  *
  * <p>These tests verify the message parsing, workstream configuration,
- * and notification formatting without requiring a real Slack connection.</p>
+ * notification formatting, and HTTP API without requiring a real Slack
+ * connection or connected agents.</p>
  */
 public class SlackIntegrationTest extends TestSuiteBase {
 
@@ -194,7 +195,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
 
     @Test
     public void testControllerSimulation() throws Exception {
-        SlackBotController controller = new SlackBotController(null, null);
+        FlowTreeController controller = new FlowTreeController(null, null);
 
         List<String> receivedMessages = new ArrayList<>();
         controller.setEventSimulator((channel, message) -> {
@@ -370,14 +371,14 @@ public class SlackIntegrationTest extends TestSuiteBase {
 
         SlackNotifier notifier = new SlackNotifier(null);
         notifier.setMessageCallback(json -> {
-            receivedChannel.set(SlackApiEndpoint.extractJsonField(json, "channel"));
-            receivedText.set(SlackApiEndpoint.extractJsonField(json, "text"));
+            receivedChannel.set(FlowTreeApiEndpoint.extractJsonField(json, "channel"));
+            receivedText.set(FlowTreeApiEndpoint.extractJsonField(json, "text"));
         });
 
         SlackWorkstream workstream = new SlackWorkstream("C_TEST_123", "#test");
         notifier.registerWorkstream(workstream);
 
-        SlackApiEndpoint endpoint = new SlackApiEndpoint(0, notifier);
+        FlowTreeApiEndpoint endpoint = new FlowTreeApiEndpoint(0, notifier);
         endpoint.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false);
 
         try {
@@ -406,7 +407,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
     @Test
     public void testApiEndpointHealthCheck() throws Exception {
         SlackNotifier notifier = new SlackNotifier(null);
-        SlackApiEndpoint endpoint = new SlackApiEndpoint(0, notifier);
+        FlowTreeApiEndpoint endpoint = new FlowTreeApiEndpoint(0, notifier);
         endpoint.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false);
 
         try {
@@ -430,7 +431,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         SlackWorkstream workstream = new SlackWorkstream("C123", "#test");
         notifier.registerWorkstream(workstream);
 
-        SlackApiEndpoint endpoint = new SlackApiEndpoint(0, notifier);
+        FlowTreeApiEndpoint endpoint = new FlowTreeApiEndpoint(0, notifier);
         endpoint.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false);
 
         try {
@@ -453,6 +454,104 @@ public class SlackIntegrationTest extends TestSuiteBase {
 
             String error = new String(conn.getErrorStream().readAllBytes(), StandardCharsets.UTF_8);
             assertTrue(error.contains("text"));
+        } finally {
+            endpoint.stop();
+        }
+    }
+
+    @Test
+    public void testApiEndpointSubmitMissingPrompt() throws Exception {
+        SlackNotifier notifier = new SlackNotifier(null);
+        SlackWorkstream workstream = new SlackWorkstream("C_SUBMIT_1", "#submit-test");
+        notifier.registerWorkstream(workstream);
+
+        FlowTreeApiEndpoint endpoint = new FlowTreeApiEndpoint(0, notifier);
+        endpoint.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false);
+
+        try {
+            int port = endpoint.getListeningPort();
+
+            // Missing prompt field
+            String body = "{\"targetBranch\":\"main\"}";
+            HttpURLConnection conn = (HttpURLConnection) new URL(
+                    "http://localhost:" + port + "/api/workstreams/"
+                    + workstream.getWorkstreamId() + "/submit").openConnection();
+            conn.setRequestMethod("POST");
+            conn.setDoOutput(true);
+            conn.setRequestProperty("Content-Type", "application/json");
+
+            try (OutputStream os = conn.getOutputStream()) {
+                os.write(body.getBytes(StandardCharsets.UTF_8));
+            }
+
+            assertEquals(400, conn.getResponseCode());
+
+            String error = new String(conn.getErrorStream().readAllBytes(), StandardCharsets.UTF_8);
+            assertTrue(error.contains("prompt"));
+        } finally {
+            endpoint.stop();
+        }
+    }
+
+    @Test
+    public void testApiEndpointSubmitUnknownWorkstream() throws Exception {
+        SlackNotifier notifier = new SlackNotifier(null);
+
+        FlowTreeApiEndpoint endpoint = new FlowTreeApiEndpoint(0, notifier);
+        endpoint.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false);
+
+        try {
+            int port = endpoint.getListeningPort();
+
+            String body = "{\"prompt\":\"Do something\"}";
+            HttpURLConnection conn = (HttpURLConnection) new URL(
+                    "http://localhost:" + port + "/api/workstreams/nonexistent/submit").openConnection();
+            conn.setRequestMethod("POST");
+            conn.setDoOutput(true);
+            conn.setRequestProperty("Content-Type", "application/json");
+
+            try (OutputStream os = conn.getOutputStream()) {
+                os.write(body.getBytes(StandardCharsets.UTF_8));
+            }
+
+            assertEquals(400, conn.getResponseCode());
+
+            String error = new String(conn.getErrorStream().readAllBytes(), StandardCharsets.UTF_8);
+            assertTrue(error.contains("Unknown workstream"));
+        } finally {
+            endpoint.stop();
+        }
+    }
+
+    @Test
+    public void testApiEndpointSubmitNoServer() throws Exception {
+        SlackNotifier notifier = new SlackNotifier(null);
+        SlackWorkstream workstream = new SlackWorkstream("C_SUBMIT_2", "#submit-test");
+        notifier.registerWorkstream(workstream);
+
+        FlowTreeApiEndpoint endpoint = new FlowTreeApiEndpoint(0, notifier);
+        // Note: no server set
+        endpoint.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false);
+
+        try {
+            int port = endpoint.getListeningPort();
+
+            String body = "{\"prompt\":\"Do something\"}";
+            HttpURLConnection conn = (HttpURLConnection) new URL(
+                    "http://localhost:" + port + "/api/workstreams/"
+                    + workstream.getWorkstreamId() + "/submit").openConnection();
+            conn.setRequestMethod("POST");
+            conn.setDoOutput(true);
+            conn.setRequestProperty("Content-Type", "application/json");
+
+            try (OutputStream os = conn.getOutputStream()) {
+                os.write(body.getBytes(StandardCharsets.UTF_8));
+            }
+
+            assertEquals(400, conn.getResponseCode());
+
+            String error = new String(conn.getErrorStream().readAllBytes(), StandardCharsets.UTF_8);
+            assertTrue(error.contains("No FlowTree server"));
         } finally {
             endpoint.stop();
         }
