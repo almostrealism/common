@@ -43,7 +43,7 @@ import java.util.regex.Pattern;
  * </ul>
  *
  * @author Michael Murray
- * @see SlackBotController
+ * @see FlowTreeController
  * @see ClaudeCodeJob
  */
 public class SlackListener implements ConsoleFeatures {
@@ -138,10 +138,10 @@ public class SlackListener implements ConsoleFeatures {
     }
 
     /**
-     * Sets the API endpoint port. Called by {@link SlackBotController} after the
+     * Sets the API endpoint port. Called by {@link FlowTreeController} after the
      * API endpoint starts so that jobs can be configured with the correct URL.
      *
-     * @param apiPort the port the SlackApiEndpoint is listening on
+     * @param apiPort the port the FlowTreeApiEndpoint is listening on
      */
     public void setApiPort(int apiPort) {
         this.apiPort = apiPort;
@@ -186,7 +186,7 @@ public class SlackListener implements ConsoleFeatures {
     /**
      * Handles an incoming Slack message event.
      *
-     * <p>This method is typically called by {@link SlackBotController} when
+     * <p>This method is typically called by {@link FlowTreeController} when
      * an app_mention event is received.</p>
      *
      * @param channelId the channel where the message was posted
@@ -298,6 +298,17 @@ public class SlackListener implements ConsoleFeatures {
             return false;
         }
 
+        // Validate git identity before submitting - commits will fail without it
+        if (workstream.getGitUserName() == null || workstream.getGitUserName().isEmpty()
+                || workstream.getGitUserEmail() == null || workstream.getGitUserEmail().isEmpty()) {
+            notifier.postMessage(workstream.getChannelId(),
+                ":x: Git identity not configured - job not submitted.\n"
+                + "Set git user name and email with:\n"
+                + "  `/flowtree config gitUserName <name>`\n"
+                + "  `/flowtree config gitUserEmail <email>`");
+            return false;
+        }
+
         NodeProxy[] peers = server.getNodeGroup().getServers();
         if (peers.length == 0) {
             notifier.postMessage(workstream.getChannelId(),
@@ -376,7 +387,7 @@ public class SlackListener implements ConsoleFeatures {
 
     /**
      * Sets the workstream configuration and file reference for persistence.
-     * Called by {@link SlackBotController} after loading config from YAML.
+     * Called by {@link FlowTreeController} after loading config from YAML.
      *
      * @param config     the loaded workstream configuration
      * @param configFile the YAML file to persist changes to (may be null)
@@ -620,7 +631,9 @@ public class SlackListener implements ConsoleFeatures {
             sb.append("   `baseBranch` = ").append(ws.getBaseBranch() != null ? ws.getBaseBranch() : "(not set)").append("\n");
             sb.append("   `workingDirectory` = ").append(ws.getWorkingDirectory() != null ? ws.getWorkingDirectory() : "(not set)").append("\n");
             sb.append("   `pushToOrigin` = ").append(ws.isPushToOrigin()).append("\n");
-            sb.append("   `allowedTools` = ").append(ws.getAllowedTools());
+            sb.append("   `allowedTools` = ").append(ws.getAllowedTools()).append("\n");
+            sb.append("   `gitUserName` = ").append(ws.getGitUserName() != null ? ws.getGitUserName() : "(not set)").append("\n");
+            sb.append("   `gitUserEmail` = ").append(ws.getGitUserEmail() != null ? ws.getGitUserEmail() : "(not set)");
             ctx.respond(sb.toString());
             return;
         }
@@ -635,7 +648,8 @@ public class SlackListener implements ConsoleFeatures {
             if (currentValue == null) {
                 ctx.respond(":warning: Unknown setting: `" + key + "`\n"
                     + "Modifiable settings: `maxBudgetUsd`, `maxTurns`, `defaultBranch`, "
-                    + "`baseBranch`, `workingDirectory`, `pushToOrigin`, `allowedTools`");
+                    + "`baseBranch`, `workingDirectory`, `pushToOrigin`, `allowedTools`, "
+                    + "`gitUserName`, `gitUserEmail`");
             } else {
                 ctx.respond(":gear: `" + key + "` = " + currentValue);
             }
@@ -718,6 +732,8 @@ public class SlackListener implements ConsoleFeatures {
             case "workingDirectory": return ws.getWorkingDirectory() != null ? ws.getWorkingDirectory() : "(not set)";
             case "pushToOrigin": return String.valueOf(ws.isPushToOrigin());
             case "allowedTools": return ws.getAllowedTools();
+            case "gitUserName": return ws.getGitUserName() != null ? ws.getGitUserName() : "(not set)";
+            case "gitUserEmail": return ws.getGitUserEmail() != null ? ws.getGitUserEmail() : "(not set)";
             case "workstreamId": return ws.getWorkstreamId();
             case "channelId": return ws.getChannelId();
             case "channelName": return ws.getChannelName();
@@ -760,6 +776,12 @@ public class SlackListener implements ConsoleFeatures {
             case "allowedTools":
                 ws.setAllowedTools(value);
                 return null;
+            case "gitUserName":
+                ws.setGitUserName(value);
+                return null;
+            case "gitUserEmail":
+                ws.setGitUserEmail(value);
+                return null;
             case "workstreamId":
             case "channelId":
             case "channelName":
@@ -767,7 +789,8 @@ public class SlackListener implements ConsoleFeatures {
             default:
                 return "Unknown setting: `" + key + "`\n"
                     + "Modifiable settings: `maxBudgetUsd`, `maxTurns`, `defaultBranch`, "
-                    + "`baseBranch`, `workingDirectory`, `pushToOrigin`, `allowedTools`";
+                    + "`baseBranch`, `workingDirectory`, `pushToOrigin`, `allowedTools`, "
+                    + "`gitUserName`, `gitUserEmail`";
         }
     }
 

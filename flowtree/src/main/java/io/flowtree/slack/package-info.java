@@ -15,22 +15,23 @@
  */
 
 /**
- * Slack integration for the Flowtree Claude Code agent system.
+ * FlowTree orchestration with optional Slack integration.
  *
- * <p>This package provides components for controlling Claude Code agents via Slack:</p>
+ * <p>This package provides components for controlling Claude Code agents via
+ * HTTP API and optionally through Slack:</p>
  * <ul>
- *   <li>{@link io.flowtree.slack.SlackBotController} - Main entry point and lifecycle manager</li>
+ *   <li>{@link io.flowtree.slack.FlowTreeController} - Main entry point and lifecycle manager</li>
  *   <li>{@link io.flowtree.slack.SlackListener} - Parses Slack messages and creates jobs</li>
  *   <li>{@link io.flowtree.slack.SlackNotifier} - Posts status updates to Slack channels</li>
- *   <li>{@link io.flowtree.slack.SlackApiEndpoint} - HTTP API for receiving agent status events and MCP messages</li>
+ *   <li>{@link io.flowtree.slack.FlowTreeApiEndpoint} - HTTP API for agent communication and job submission</li>
  *   <li>{@link io.flowtree.slack.SlackWorkstream} - Configuration for channel-to-agent mapping</li>
  * </ul>
  *
  * <h2>Architecture</h2>
  * <pre>
- * Slack Channel          SlackBotController           Flowtree Server
+ * External System          FlowTreeController           Flowtree Server
  *       |                       |                           |
- *       | @agent "Fix bug"      |                           |
+ *       | POST /submit          |                           |
  *       |----------------------&gt;|                           |
  *       |                       |   SlackListener           |
  *       |                       |--------------&gt;            |
@@ -46,7 +47,7 @@
  * </pre>
  *
  * <h2>Configuration</h2>
- * <p>Required environment variables:</p>
+ * <p>Optional environment variables (for Slack integration):</p>
  * <ul>
  *   <li>{@code SLACK_BOT_TOKEN} - Bot User OAuth Token (xoxb-...)</li>
  *   <li>{@code SLACK_APP_TOKEN} - App-level token for Socket Mode (xapp-...)</li>

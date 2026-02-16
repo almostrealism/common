@@ -32,7 +32,7 @@ import java.util.UUID;
  * integration, allowing both agents and operators to share context.</p>
  *
  * @author Michael Murray
- * @see SlackBotController
+ * @see FlowTreeController
  */
 public class SlackWorkstream {
 
@@ -83,6 +83,12 @@ public class SlackWorkstream {
     // Per-workstream env vars for pushed tools
     private Map<String, String> env;
 
+    /** Default git user name for new workstreams. */
+    public static final String DEFAULT_GIT_USER_NAME = "Flowtree Coding Agent";
+
+    /** Default git user email for new workstreams. */
+    public static final String DEFAULT_GIT_USER_EMAIL = "michael@almostrealism.com";
+
     /**
      * Creates a new workstream with default settings.
      */
@@ -93,6 +99,8 @@ public class SlackWorkstream {
         this.allowedTools = "Read,Edit,Write,Bash,Glob,Grep";
         this.maxTurns = 50;
         this.maxBudgetUsd = 10.0;
+        this.gitUserName = DEFAULT_GIT_USER_NAME;
+        this.gitUserEmail = DEFAULT_GIT_USER_EMAIL;
     }
 
     /**

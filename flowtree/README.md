@@ -74,7 +74,7 @@ flowtree/
     node/                   # Node, NodeGroup, Client, Proxy
     msg/                    # Message, Connection, NodeProxy
     jobs/                   # ClaudeCodeJob, GitManagedJob, ExternalProcessJob
-    slack/                  # SlackBotController, SlackListener, SlackNotifier
+    slack/                  # FlowTreeController, SlackListener, SlackNotifier
     job/                    # Job, JobFactory interfaces
     fs/                     # Distributed file system
     scheduler/              # Scheduled job support
