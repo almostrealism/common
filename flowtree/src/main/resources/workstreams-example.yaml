@@ -67,14 +67,3 @@ workstreams:
     maxBudgetUsd: 25.0
     env:
       GITHUB_TOKEN: "ghp_beta_org_token"
-
-  # Pipeline Agents — synthetic workstream for CI/CD-triggered jobs.
-  # No real Slack channel; jobs are submitted via POST /api/workstreams/{id}/submit.
-  - channelId: "pipeline"
-    channelName: "#pipeline-agents"
-    workstreamId: "ws-pipeline"
-    baseBranch: "develop"
-    pushToOrigin: false
-    allowedTools: "Read,Glob,Grep"
-    maxTurns: 30
-    maxBudgetUsd: 5.0

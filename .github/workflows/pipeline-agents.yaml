@@ -7,10 +7,6 @@ on:
         description: "Prompt to send to the coding agent"
         required: false
         default: ""
-  pull_request:
-    branches:
-      - develop
-      - master
 
 jobs:
   agent-review:

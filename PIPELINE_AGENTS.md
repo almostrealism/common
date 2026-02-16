@@ -79,31 +79,11 @@ This keeps the existing Slack-based submission path untouched and adds a paralle
 
 **Why not post a Slack message to trigger the bot?** This would work but adds a Slack API dependency to the CI pipeline, requires bot tokens in the runner's environment, and is fragile (the bot mention format, channel routing, etc.). A direct HTTP POST to the controller is more reliable and explicit.
 
-### 2. Workstream Configuration for Pipeline Jobs
+### 2. Workstream Resolution for Pipeline Jobs
 
-A dedicated workstream entry in the controller's YAML config handles pipeline-triggered jobs:
+Pipeline jobs do **not** require a dedicated workstream entry. Instead, the submit endpoint uses **branch-to-workstream resolution** (see section 6) to automatically match the `targetBranch` from the request to an existing workstream whose `defaultBranch` matches. This means pipeline-triggered jobs inherit the full context (env vars, MCP tools, allowed tools, budget) of the matching workstream.
 
-```yaml
-workstreams:
-  # ... existing workstreams ...
-
-  - channelId: "pipeline"
-    channelName: "#pipeline-agents"
-    workstreamId: "ws-pipeline"
-    defaultBranch: null            # Overridden per-request from GH Actions
-    baseBranch: "develop"
-    pushToOrigin: false            # Agent should not push; it only comments
-    allowedTools: "Read,Glob,Grep"
-    maxTurns: 30
-    maxBudgetUsd: 5.0
-    env:
-      GITHUB_TOKEN: "${GITHUB_TOKEN}"   # Resolved from controller environment
-```
-
-Notes:
-- `channelId: "pipeline"` is a synthetic channel ID (no real Slack channel). The `SlackNotifier` will skip posting to Slack when the channel ID doesn't resolve to a real channel, but status events are still tracked internally.
-- `pushToOrigin: false` because the initial use case only posts a PR comment, not code changes.
-- `allowedTools` is minimal for safety. The agent only needs to read code and use the `ar-github` MCP tool (which is appended automatically).
+If no workstream matches the target branch, the endpoint falls back to the workstream ID in the URL path. Operators can define a generic fallback workstream for unmatched branches if desired, but this is not required.
 
 ### 3. GitHub Actions Workflow
 
@@ -119,10 +99,6 @@ on:
         description: "Prompt to send to the coding agent"
         required: false
         default: ""
-  pull_request:
-    branches:
-      - develop
-      - master
 
 jobs:
   agent-review:
@@ -217,8 +193,7 @@ jobs:
 ```
 
 Key design choices:
-- **`workflow_dispatch` support** allows manual testing with custom prompts.
-- **`pull_request` trigger** is the production path -- runs on PRs to `develop` or `master`.
+- **`workflow_dispatch` only** -- the workflow is manually triggered until the end-to-end flow is validated. A `pull_request` trigger will be added in a future iteration once the system is proven stable.
 - **Non-blocking failure** -- if the controller is unreachable or no agents are connected, the workflow logs a warning but does not fail. This is experimental infrastructure and must not block merges.
 - **No wait-for-completion** -- the workflow fires-and-forgets. The agent posts its PR comment asynchronously. A future iteration could poll for job completion.
 - **`jq`** is used for safe JSON construction, avoiding shell injection through prompt text.
@@ -272,32 +247,29 @@ The exact factoring (whether `SlackListener.submitJob()` is made public, or the 
 - **Minimal tool allowlist.** The agent can only read code and use `ar-github` (for PR comments). It cannot edit files, run bash commands, or push code.
 - **GITHUB_TOKEN scoping.** The token used by the `ar-github` pushed tool should have `pull_requests: write` permission on the target repo, and nothing else.
 
-### 6. Design Gap: Branch-to-Workstream Resolution
+### 6. Branch-to-Workstream Resolution
 
-The current design uses a single hardcoded workstream ID (`ws-pipeline`) for all pipeline-triggered jobs. The branch name is passed as `targetBranch` to tell the agent which branch to check out, but it does **not** influence which workstream context (working directory, env vars, MCP tools, allowed tools, budget) the agent receives.
+The submit endpoint implements **branch-to-workstream resolution** so that pipeline jobs automatically inherit the context of an active workstream when one is configured for the target branch. This eliminates the need for a dedicated pipeline workstream entry.
 
-This means that if a Slack workstream `ws-rings` is actively configured for `feature/new-decoder` with specific env vars and MCP tools, a pipeline agent triggered by a PR on that same branch will run with the generic `ws-pipeline` context instead of the richer `ws-rings` context.
+**Resolution order** (implemented in `FlowTreeApiEndpoint.handleSubmit()`):
 
-**Proposed solution: branch-to-workstream resolution.** When a pipeline job arrives, the submit endpoint should:
+1. If the request body contains a `workstreamId` field, use that workstream directly
+2. If the request body contains a `targetBranch`, search all registered workstreams for one whose `defaultBranch` matches exactly
+3. Fall back to the workstream identified by the URL path parameter
 
-1. Accept an optional `workstreamId` field in the request body (in addition to the URL path parameter)
-2. If no explicit workstream ID is provided in the body, search registered workstreams for one whose `defaultBranch` matches the `targetBranch`
-3. Fall back to the workstream ID from the URL path (e.g., `ws-pipeline`) if no branch match is found
+This means that if a Slack workstream `ws-rings` is actively configured for `feature/new-decoder` with specific env vars and MCP tools, a pipeline agent triggered for that branch will automatically inherit the `ws-rings` context -- including its working directory, allowed tools, budget, and environment variables.
 
-This keeps the current behavior as the default while allowing pipeline jobs to automatically inherit the context of an active workstream when one exists for the target branch.
-
-**Workflow-side change:** The GitHub Actions workflow could also be enhanced to omit the workstream ID from the URL (or use a generic `/api/submit` endpoint) and let the controller resolve it from the branch. Alternatively, it could pass both `targetBranch` and let the controller decide.
-
-**Edge cases:**
-- Multiple workstreams configured for the same branch: use the first match or require explicit disambiguation
-- Workstream's `defaultBranch` is null: skip it during branch matching
-- Branch matching should be exact-match only (no prefix/glob matching) to avoid false positives
+**Implementation details:**
+- `SlackNotifier.findWorkstreamByBranch(String)` performs exact-match lookup across all registered workstreams
+- Workstreams with a null `defaultBranch` are skipped during branch matching
+- Multiple workstreams for the same branch: first match wins
+- No prefix or glob matching -- exact match only to avoid false positives
 
 ### 7. Future Iterations
 
 Once the basic end-to-end flow is validated:
 
-1. **Branch-to-workstream resolution.** Implement the branch matching described in section 6 so pipeline agents inherit workstream context automatically.
+1. **`pull_request` trigger.** Add `pull_request` trigger to the workflow once manual testing confirms the system is working reliably.
 2. **Conditional triggering.** Add `needs: [build, test]` and gate the agent job on build/test outcomes. For example, only spawn the agent if tests pass but static analysis flags issues.
 3. **Richer prompts.** Include build logs, test results, or Qodana findings in the prompt so the agent can perform meaningful code review.
 4. **Wait-for-completion.** Poll the controller's status endpoint and include the agent's result in the workflow summary.
@@ -308,26 +280,27 @@ Once the basic end-to-end flow is validated:
 
 ### Phase 1: Proof of Concept (this PR)
 
-1. Add `POST /api/workstreams/{id}/submit` endpoint to `FlowTreeApiEndpoint`
-2. Wire the endpoint to the server/listener in `FlowTreeController`
-3. Add the `pipeline-agents.yaml` workflow file
-4. Add a pipeline workstream entry to the example YAML config
+1. Add `POST /api/workstreams/{id}/submit` endpoint to `FlowTreeApiEndpoint` -- **done**
+2. Wire the endpoint to the server/listener in `FlowTreeController` -- **done**
+3. Implement branch-to-workstream resolution in the submit endpoint -- **done**
+4. Add the `pipeline-agents.yaml` workflow file (manual `workflow_dispatch` only) -- **done**
 5. Test manually via `workflow_dispatch`
 
 ### Phase 2: Production Hardening
 
-1. Add API key authentication to the submit endpoint
-2. Add `needs: [build]` dependency to the workflow
-3. Add job completion polling and workflow summary output
-4. Add conditional trigger logic (only run when review criteria are met)
+1. Add `pull_request` trigger to the workflow once manual testing confirms stability
+2. Add API key authentication to the submit endpoint
+3. Add `needs: [build]` dependency to the workflow
+4. Add job completion polling and workflow summary output
+5. Add conditional trigger logic (only run when review criteria are met)
 
 ## Testing
 
 The proof-of-concept can be validated with these steps:
 
-1. **Unit test the new endpoint.** Extend `SlackIntegrationTest` to test `POST /api/workstreams/{id}/submit` with a mock server, verifying that a `ClaudeCodeJob.Factory` is created with the correct prompt and settings.
+1. **Unit test the new endpoint.** `SlackIntegrationTest` includes tests for `POST /api/workstreams/{id}/submit`, verifying job creation, workstream resolution, branch-to-workstream matching, and git identity validation.
 2. **Manual workflow_dispatch.** Trigger the workflow manually from the GitHub Actions UI with a custom prompt and verify:
    - The curl request reaches the controller (check controller logs)
    - The job is dispatched to an agent (check FlowTree logs)
    - The agent posts a comment on the PR (check GitHub)
-3. **PR trigger.** Open a test PR to `develop` and verify the workflow runs and the agent comments on the PR.
+3. **PR trigger (Phase 2).** Once manual testing confirms stability, add the `pull_request` trigger and verify the workflow runs automatically on PRs to `develop`.

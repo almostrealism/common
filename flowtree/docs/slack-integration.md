@@ -73,6 +73,7 @@ Lightweight HTTP server (NanoHTTPD, default port 7780) that receives status even
 |--------|------|------|-------------|
 | POST | `/api/workstreams/{id}/messages` | `{"text":"..."}` | Post a message to the workstream's channel |
 | POST | `/api/workstreams/{id}/jobs/{jobId}/messages` | `{"text":"..."}` | Post a message to the job's thread |
+| POST | `/api/workstreams/{id}/submit` | `{"prompt":"..."}` | Submit a new job (see [Pipeline Agents](../../PIPELINE_AGENTS.md)) |
 | POST | `/api/workstreams/{id}` | `{"jobId":"...","status":"..."}` | Receive a status event |
 | POST | `/api/workstreams/{id}/jobs/{jobId}` | `{"jobId":"...","status":"..."}` | Receive a job status event |
 | GET | `/api/health` | -- | Health check |
