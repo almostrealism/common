@@ -92,6 +92,29 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
     }
 
     /**
+     * Finds a workstream whose {@code defaultBranch} exactly matches the
+     * given branch name. Workstreams with a null {@code defaultBranch}
+     * are skipped. If multiple workstreams match, the first one found is
+     * returned.
+     *
+     * @param branch the branch name to match (e.g., "feature/new-decoder")
+     * @return the matching workstream, or null if no match is found
+     */
+    public SlackWorkstream findWorkstreamByBranch(String branch) {
+        if (branch == null || branch.isEmpty()) {
+            return null;
+        }
+
+        for (SlackWorkstream ws : workstreams.values()) {
+            if (branch.equals(ws.getDefaultBranch())) {
+                return ws;
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * Sets a callback for receiving formatted messages (useful for testing).
      *
      * @param callback the callback to receive message text

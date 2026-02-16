@@ -233,16 +233,29 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
      *   "prompt": "Post a comment on PR #42...",
      *   "targetBranch": "feature/pipeline-agents",
      *   "baseBranch": "develop",
+     *   "workstreamId": "ws-rings",
      *   "maxTurns": 30,
      *   "maxBudgetUsd": 5.0
      * }
      * }</pre>
      *
-     * @param session       the HTTP session
-     * @param workstreamId  the target workstream identifier
+     * <p><b>Workstream resolution order:</b></p>
+     * <ol>
+     *   <li>If the request body contains a {@code workstreamId} field, use that workstream</li>
+     *   <li>If the request body contains a {@code targetBranch}, search all registered
+     *       workstreams for one whose {@code defaultBranch} matches exactly</li>
+     *   <li>Fall back to the workstream identified by the URL path parameter</li>
+     * </ol>
+     *
+     * <p>This allows pipeline jobs to automatically inherit the context (env vars,
+     * MCP tools, allowed tools, budget) of an active workstream when one is
+     * configured for the target branch.</p>
+     *
+     * @param session          the HTTP session
+     * @param pathWorkstreamId the workstream identifier from the URL path (fallback)
      * @return JSON response with {@code ok}, {@code jobId}, and {@code workstreamId}
      */
-    private Response handleSubmit(IHTTPSession session, String workstreamId) {
+    private Response handleSubmit(IHTTPSession session, String pathWorkstreamId) {
         String body = readBody(session);
         if (body == null) {
             return errorResponse("Failed to read request body");
@@ -253,10 +266,43 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             return errorResponse("Missing required field: prompt");
         }
 
-        SlackWorkstream workstream = notifier.getWorkstream(workstreamId);
-        if (workstream == null) {
-            return errorResponse("Unknown workstream: " + workstreamId);
+        // Branch-to-workstream resolution:
+        // 1. Explicit workstreamId in request body takes priority
+        // 2. Search for a workstream whose defaultBranch matches targetBranch
+        // 3. Fall back to the URL path workstream ID
+        String targetBranch = extractJsonField(body, "targetBranch");
+        String bodyWorkstreamId = extractJsonField(body, "workstreamId");
+
+        SlackWorkstream workstream = null;
+        String resolvedWorkstreamId = pathWorkstreamId;
+
+        if (bodyWorkstreamId != null && !bodyWorkstreamId.isEmpty()) {
+            workstream = notifier.getWorkstream(bodyWorkstreamId);
+            if (workstream != null) {
+                resolvedWorkstreamId = bodyWorkstreamId;
+                log("Workstream resolved from request body: " + resolvedWorkstreamId);
+            }
         }
+
+        if (workstream == null && targetBranch != null && !targetBranch.isEmpty()) {
+            SlackWorkstream branchMatch = notifier.findWorkstreamByBranch(targetBranch);
+            if (branchMatch != null) {
+                workstream = branchMatch;
+                resolvedWorkstreamId = branchMatch.getWorkstreamId();
+                log("Workstream resolved from branch match (" + targetBranch + "): "
+                    + resolvedWorkstreamId);
+            }
+        }
+
+        if (workstream == null) {
+            workstream = notifier.getWorkstream(pathWorkstreamId);
+        }
+
+        if (workstream == null) {
+            return errorResponse("Unknown workstream: " + pathWorkstreamId);
+        }
+
+        String workstreamId = resolvedWorkstreamId;
 
         if (server == null) {
             return errorResponse("No FlowTree server configured");
@@ -270,7 +316,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         }
 
         // Apply optional overrides from the request body
-        String targetBranch = extractJsonField(body, "targetBranch");
+        // (targetBranch was already extracted during workstream resolution above)
         String baseBranch = extractJsonField(body, "baseBranch");
         int maxTurns = extractJsonIntField(body, "maxTurns");
         double maxBudgetUsd = extractJsonDoubleField(body, "maxBudgetUsd");

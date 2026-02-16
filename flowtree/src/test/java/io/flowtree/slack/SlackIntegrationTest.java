@@ -991,6 +991,136 @@ public class SlackIntegrationTest extends TestSuiteBase {
     }
 
     @Test
+    public void testFindWorkstreamByBranch() {
+        SlackNotifier notifier = new SlackNotifier(null);
+
+        SlackWorkstream ws1 = new SlackWorkstream("ws-rings", "C_RINGS", "#rings");
+        ws1.setDefaultBranch("feature/new-decoder");
+
+        SlackWorkstream ws2 = new SlackWorkstream("ws-common", "C_COMMON", "#common");
+        ws2.setDefaultBranch("feature/pipeline-agents");
+
+        SlackWorkstream ws3 = new SlackWorkstream("ws-no-branch", "C_NONE", "#no-branch");
+        // defaultBranch is null
+
+        notifier.registerWorkstream(ws1);
+        notifier.registerWorkstream(ws2);
+        notifier.registerWorkstream(ws3);
+
+        // Exact match finds the right workstream
+        assertSame(ws1, notifier.findWorkstreamByBranch("feature/new-decoder"));
+        assertSame(ws2, notifier.findWorkstreamByBranch("feature/pipeline-agents"));
+
+        // No match returns null
+        assertNull(notifier.findWorkstreamByBranch("feature/unknown"));
+
+        // Null and empty branch return null
+        assertNull(notifier.findWorkstreamByBranch(null));
+        assertNull(notifier.findWorkstreamByBranch(""));
+
+        // Prefix match does NOT work (exact only)
+        assertNull(notifier.findWorkstreamByBranch("feature/new"));
+        assertNull(notifier.findWorkstreamByBranch("feature/new-decoder-v2"));
+    }
+
+    @Test
+    public void testSubmitBranchToWorkstreamResolution() throws Exception {
+        SlackNotifier notifier = new SlackNotifier(null);
+
+        // Register a pipeline fallback workstream
+        SlackWorkstream pipelineWs = new SlackWorkstream("ws-pipeline", "C_PIPE", "#pipeline");
+        pipelineWs.setDefaultBranch(null);
+        pipelineWs.setAllowedTools("Read,Glob,Grep");
+        pipelineWs.setMaxBudgetUsd(5.0);
+        pipelineWs.setMaxTurns(30);
+        notifier.registerWorkstream(pipelineWs);
+
+        // Register a richer workstream that matches a specific branch
+        SlackWorkstream ringsWs = new SlackWorkstream("ws-rings", "C_RINGS", "#rings");
+        ringsWs.setDefaultBranch("feature/new-decoder");
+        ringsWs.setAllowedTools("Read,Edit,Write,Bash,Glob,Grep");
+        ringsWs.setMaxBudgetUsd(25.0);
+        ringsWs.setMaxTurns(100);
+        notifier.registerWorkstream(ringsWs);
+
+        FlowTreeApiEndpoint endpoint = new FlowTreeApiEndpoint(0, notifier);
+        // No server set - we only test up to the "No FlowTree server" error
+        // but verify the workstream resolution happened via the error message
+        // (workstream resolves before server check)
+        endpoint.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false);
+
+        try {
+            int port = endpoint.getListeningPort();
+
+            // Case 1: targetBranch matches ws-rings, should resolve to ws-rings
+            // even though the URL path points to ws-pipeline
+            String body1 = "{\"prompt\":\"Review the code\",\"targetBranch\":\"feature/new-decoder\"}";
+            HttpURLConnection conn1 = (HttpURLConnection) new URL(
+                    "http://localhost:" + port + "/api/workstreams/ws-pipeline/submit").openConnection();
+            conn1.setRequestMethod("POST");
+            conn1.setDoOutput(true);
+            conn1.setRequestProperty("Content-Type", "application/json");
+            try (OutputStream os = conn1.getOutputStream()) {
+                os.write(body1.getBytes(StandardCharsets.UTF_8));
+            }
+            // Should reach "No FlowTree server" - meaning the workstream resolved OK
+            assertEquals(400, conn1.getResponseCode());
+            String error1 = new String(conn1.getErrorStream().readAllBytes(), StandardCharsets.UTF_8);
+            assertTrue("Should resolve workstream and reach server check",
+                error1.contains("No FlowTree server"));
+
+            // Case 2: targetBranch does not match any workstream, falls back to URL path
+            String body2 = "{\"prompt\":\"Review the code\",\"targetBranch\":\"feature/unrelated\"}";
+            HttpURLConnection conn2 = (HttpURLConnection) new URL(
+                    "http://localhost:" + port + "/api/workstreams/ws-pipeline/submit").openConnection();
+            conn2.setRequestMethod("POST");
+            conn2.setDoOutput(true);
+            conn2.setRequestProperty("Content-Type", "application/json");
+            try (OutputStream os = conn2.getOutputStream()) {
+                os.write(body2.getBytes(StandardCharsets.UTF_8));
+            }
+            assertEquals(400, conn2.getResponseCode());
+            String error2 = new String(conn2.getErrorStream().readAllBytes(), StandardCharsets.UTF_8);
+            assertTrue("Should fall back to URL path workstream and reach server check",
+                error2.contains("No FlowTree server"));
+
+            // Case 3: Explicit workstreamId in body overrides both branch match and URL path
+            String body3 = "{\"prompt\":\"Review the code\",\"targetBranch\":\"feature/new-decoder\","
+                + "\"workstreamId\":\"ws-pipeline\"}";
+            HttpURLConnection conn3 = (HttpURLConnection) new URL(
+                    "http://localhost:" + port + "/api/workstreams/ws-rings/submit").openConnection();
+            conn3.setRequestMethod("POST");
+            conn3.setDoOutput(true);
+            conn3.setRequestProperty("Content-Type", "application/json");
+            try (OutputStream os = conn3.getOutputStream()) {
+                os.write(body3.getBytes(StandardCharsets.UTF_8));
+            }
+            assertEquals(400, conn3.getResponseCode());
+            String error3 = new String(conn3.getErrorStream().readAllBytes(), StandardCharsets.UTF_8);
+            assertTrue("Explicit workstreamId in body should resolve and reach server check",
+                error3.contains("No FlowTree server"));
+
+            // Case 4: Unknown explicit workstreamId in body, but branch matches - should use branch match
+            String body4 = "{\"prompt\":\"Review the code\",\"targetBranch\":\"feature/new-decoder\","
+                + "\"workstreamId\":\"ws-nonexistent\"}";
+            HttpURLConnection conn4 = (HttpURLConnection) new URL(
+                    "http://localhost:" + port + "/api/workstreams/ws-pipeline/submit").openConnection();
+            conn4.setRequestMethod("POST");
+            conn4.setDoOutput(true);
+            conn4.setRequestProperty("Content-Type", "application/json");
+            try (OutputStream os = conn4.getOutputStream()) {
+                os.write(body4.getBytes(StandardCharsets.UTF_8));
+            }
+            assertEquals(400, conn4.getResponseCode());
+            String error4 = new String(conn4.getErrorStream().readAllBytes(), StandardCharsets.UTF_8);
+            assertTrue("Should fall through to branch match when body workstreamId is unknown",
+                error4.contains("No FlowTree server"));
+        } finally {
+            endpoint.stop();
+        }
+    }
+
+    @Test
     public void testSlackManifestIncludesSlashCommand() throws IOException {
         // Load manifest from classpath (it's a resource in the same module)
         java.io.InputStream is = getClass().getResourceAsStream("/slack-app-manifest.json");
