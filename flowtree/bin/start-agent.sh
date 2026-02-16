@@ -2,7 +2,7 @@
 #
 # Start a FlowTree Agent node.
 #
-# The agent connects OUT to a SlackBotController (or any FlowTree Server)
+# The agent connects OUT to a FlowTreeController (or any FlowTree Server)
 # and executes ClaudeCodeJob instances via Claude Code.
 #
 # Environment variables (set automatically if not present):

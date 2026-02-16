@@ -720,7 +720,7 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
     }
 
     /**
-     * Validates that a path is exactly {@code owner/repo} — two non-empty
+     * Validates that a path is exactly {@code owner/repo} -- two non-empty
      * parts separated by a single slash.
      *
      * @param path the candidate owner/repo string

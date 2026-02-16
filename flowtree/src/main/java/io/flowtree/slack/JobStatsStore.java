@@ -40,7 +40,7 @@ import java.util.Map;
  *
  * @author Michael Murray
  * @see SlackNotifier
- * @see SlackApiEndpoint
+ * @see FlowTreeApiEndpoint
  */
 public class JobStatsStore implements ConsoleFeatures {
 

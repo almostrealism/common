@@ -5,7 +5,7 @@ The Slack integration allows operators to submit coding agent prompts by mention
 ## Architecture
 
 ```
-Slack (Socket Mode)          SlackBotController          FlowTree Network
+Slack (Socket Mode)          FlowTreeController          FlowTree Network
     |                              |                          |
     |-- @bot fix the bug --------->|                          |
     |                              |-- SlackListener          |
@@ -15,7 +15,7 @@ Slack (Socket Mode)          SlackBotController          FlowTree Network
     |                              |-- Server.sendTask() ---->|
     |                              |                          |-- Node runs job
     |                              |                          |
-    |                    SlackApiEndpoint (port 7780)          |
+    |                    FlowTreeApiEndpoint (port 7780)          |
     |<-- "Progress update" --------|<-- ar-slack MCP ---------|
     |                              |                          |
     |                              |<-- JobCompletionEvent ---|
@@ -24,7 +24,7 @@ Slack (Socket Mode)          SlackBotController          FlowTree Network
 
 ## Components
 
-### SlackBotController
+### FlowTreeController
 
 Top-level coordinator. Manages the Slack connection (Socket Mode), HTTP API endpoint, centralized MCP server lifecycle, pushed tool registration, and event routing.
 
@@ -33,7 +33,7 @@ When the YAML config includes an `mcpServers` section, `loadConfig()` starts eac
 **Startup:**
 
 ```java
-SlackBotController controller = new SlackBotController();
+FlowTreeController controller = new FlowTreeController();
 controller.loadConfig(new File("workstreams.yaml")); // also starts centralized MCP servers
 controller.setApiPort(7780);
 controller.start();
@@ -42,7 +42,7 @@ controller.start();
 **Command-line:**
 
 ```bash
-java -cp flowtree.jar io.flowtree.slack.SlackBotController \
+java -cp flowtree.jar io.flowtree.slack.FlowTreeController \
     --tokens slack-tokens.json \
     --config workstreams.yaml \
     --api-port 7780
@@ -64,7 +64,7 @@ Processes incoming Slack messages. Extracts the prompt from `@bot` mentions, loo
 
 Sends messages to Slack channels using the Bot User OAuth Token. Handles job-started and job-completed notifications with status indicators.
 
-### SlackApiEndpoint
+### FlowTreeApiEndpoint
 
 Lightweight HTTP server (NanoHTTPD, default port 7780) that receives status events and Slack messages from agents via the workstream URL pattern.
 
@@ -74,6 +74,7 @@ Lightweight HTTP server (NanoHTTPD, default port 7780) that receives status even
 |--------|------|------|-------------|
 | POST | `/api/workstreams/{id}/messages` | `{"text":"..."}` | Post a message to the workstream's channel |
 | POST | `/api/workstreams/{id}/jobs/{jobId}/messages` | `{"text":"..."}` | Post a message to the job's thread |
+| POST | `/api/workstreams/{id}/submit` | `{"prompt":"..."}` | Submit a new job (see [Pipeline Agents](../../PIPELINE_AGENTS.md)) |
 | POST | `/api/workstreams/{id}` | `{"jobId":"...","status":"..."}` | Receive a status event |
 | POST | `/api/workstreams/{id}/jobs/{jobId}` | `{"jobId":"...","status":"..."}` | Receive a job status event |
 | GET | `/api/health` | -- | Health check |
@@ -88,7 +89,7 @@ HSQLDB-backed storage for job timing data and statistics. Records job start/comp
 
 - Database path: `~/.flowtree/stats` (HSQLDB file database)
 - Automatically cleans orphaned STARTED rows older than 7 days on initialization
-- Initialized and wired by `SlackBotController` at startup
+- Initialized and wired by `FlowTreeController` at startup
 
 ### SlackWorkstream
 
@@ -196,7 +197,7 @@ See the [Centralized MCP Servers](coding-agent.md#centralized-mcp-servers) and [
 When Slack tokens are not provided, the controller starts in **simulation mode**. The HTTP API endpoint still runs, but no Slack connection is established. Use `simulateMessage(channelId, text)` to test the pipeline without a live Slack workspace.
 
 ```java
-SlackBotController controller = new SlackBotController("", "");
+FlowTreeController controller = new FlowTreeController("", "");
 controller.registerWorkstream(workstream);
 controller.start(); // Enters simulation mode
 

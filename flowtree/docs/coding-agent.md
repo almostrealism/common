@@ -4,7 +4,7 @@ FlowTree integrates with Claude Code to execute AI coding prompts as distributed
 
 ## How It Works
 
-1. A **SlackBotController** starts a FlowTree **Server** that listens for inbound agent connections.
+1. A **FlowTreeController** starts a FlowTree **Server** that listens for inbound agent connections.
 2. Agents (Docker containers or remote hosts) connect OUT to the controller by setting `FLOWTREE_ROOT_HOST` and `FLOWTREE_ROOT_PORT` environment variables.
 3. When a Slack message arrives, the controller creates a **ClaudeCodeJob.Factory** and sends it to a connected agent via `Server.sendTask()`.
 4. The agent's idle Node picks up the job and executes `claude -p "<prompt>" --output-format json`.
@@ -12,7 +12,7 @@ FlowTree integrates with Claude Code to execute AI coding prompts as distributed
 6. A **JobCompletionEvent** fires, notifying any registered listeners (e.g., the Slack notifier).
 
 ```
-Agent (Docker)                  SlackBotController              Claude Code
+Agent (Docker)                  FlowTreeController              Claude Code
     |                                |                              |
     |-- connects to controller ----->|                              |
     |   (FLOWTREE_ROOT_HOST/PORT)    |                              |
@@ -25,7 +25,7 @@ Agent (Docker)                  SlackBotController              Claude Code
     |<-- output + exit code ----------------------------------------|
     |                                                               |
     |-- GitManagedJob: stage, commit, push                          |
-    |-- POST status event ---------> SlackApiEndpoint               |
+    |-- POST status event ---------> FlowTreeApiEndpoint               |
     |                                |-- SlackNotifier (Slack msg)  |
 ```
 
@@ -121,7 +121,7 @@ Base class providing automatic git operations after job completion:
 
 Claude Code sessions started by `ClaudeCodeJob` automatically have access to these MCP tools:
 
-- **ar-slack** — Send messages back to the Slack channel and query job statistics via the controller's `SlackApiEndpoint`
+- **ar-slack** — Send messages back to the Slack channel and query job statistics via the controller's `FlowTreeApiEndpoint`
 - **ar-github** — Read and respond to GitHub PR review comments
 - **Project servers** — Any servers defined in `.mcp.json` (filtered by `.claude/settings.json`) are included automatically
 
@@ -197,7 +197,7 @@ When both are present, workstream-level env vars override the global pushed tool
 
 **How it works:**
 
-1. At startup, `SlackBotController.registerPushedTools()` resolves each source path, discovers tool names via `McpToolDiscovery`, and registers the files with `SlackApiEndpoint` for serving via `GET /api/tools/{name}`.
+1. At startup, `FlowTreeController.registerPushedTools()` resolves each source path, discovers tool names via `McpToolDiscovery`, and registers the files with `FlowTreeApiEndpoint` for serving via `GET /api/tools/{name}`.
 2. The resulting `pushedToolsConfig` JSON (mapping server names to download URLs and tool lists) is stored on `SlackListener` and passed to every `ClaudeCodeJob.Factory`.
 3. At job execution time, `ClaudeCodeJob.ensurePushedTools()` downloads any missing tools from the controller to `~/.flowtree/tools/mcp/{name}/server.py`.
 4. `buildMcpConfig()` emits stdio entries pointing to `~/.flowtree/tools/mcp/{name}/server.py` for pushed tools.
@@ -208,7 +208,7 @@ When both are present, workstream-level env vars override the global pushed tool
 
 ### McpToolDiscovery
 
-Shared utility class (`io.flowtree.jobs.McpToolDiscovery`) that scans Python MCP server source files for `@mcp.tool()` decorated functions. Used by `ClaudeCodeJob` (for local servers), `SlackBotController` (for centralized servers and pushed tools at startup).
+Shared utility class (`io.flowtree.jobs.McpToolDiscovery`) that scans Python MCP server source files for `@mcp.tool()` decorated functions. Used by `ClaudeCodeJob` (for local servers), `FlowTreeController` (for centralized servers and pushed tools at startup).
 
 ## Job Lifecycle Events
 
@@ -222,7 +222,7 @@ Shared utility class (`io.flowtree.jobs.McpToolDiscovery`) that scans Python MCP
 
 Start events are fired by the controller immediately when a job is submitted, providing fast feedback to the Slack channel. Completion events are fired by the agent after Claude Code finishes and git operations complete. The agent POSTs completion events to the controller via the `workstreamUrl`, where `SlackNotifier` formats and posts the result to Slack.
 
-Completion events carry timing information extracted from Claude Code's `--output-format json` output: `durationMs`, `durationApiMs`, `costUsd`, and `numTurns`. These are populated via `withTimingInfo()` on the agent side (by `ClaudeCodeJob.populateEventDetails()`) and deserialized on the controller side (by `SlackApiEndpoint.handleStatusEvent()`). The `SlackNotifier` writes timing data to `JobStatsStore` for aggregation.
+Completion events carry timing information extracted from Claude Code's `--output-format json` output: `durationMs`, `durationApiMs`, `costUsd`, and `numTurns`. These are populated via `withTimingInfo()` on the agent side (by `ClaudeCodeJob.populateEventDetails()`) and deserialized on the controller side (by `FlowTreeApiEndpoint.handleStatusEvent()`). The `SlackNotifier` writes timing data to `JobStatsStore` for aggregation.
 
 ## Serialization
 
@@ -234,7 +234,7 @@ Convenience scripts live in `flowtree/bin/` and use `mvn exec:java` for classpat
 
 ### start-slack-controller.sh
 
-Starts the `SlackBotController`. Requires Slack tokens via environment variables or a `--tokens` file. The controller starts a FlowTree Server that listens for inbound agent connections.
+Starts the `FlowTreeController`. Requires Slack tokens via environment variables or a `--tokens` file. The controller starts a FlowTree Server that listens for inbound agent connections.
 
 ```bash
 # Using environment variables
