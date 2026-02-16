@@ -272,15 +272,37 @@ The exact factoring (whether `SlackListener.submitJob()` is made public, or the 
 - **Minimal tool allowlist.** The agent can only read code and use `ar-github` (for PR comments). It cannot edit files, run bash commands, or push code.
 - **GITHUB_TOKEN scoping.** The token used by the `ar-github` pushed tool should have `pull_requests: write` permission on the target repo, and nothing else.
 
-### 6. Future Iterations
+### 6. Design Gap: Branch-to-Workstream Resolution
+
+The current design uses a single hardcoded workstream ID (`ws-pipeline`) for all pipeline-triggered jobs. The branch name is passed as `targetBranch` to tell the agent which branch to check out, but it does **not** influence which workstream context (working directory, env vars, MCP tools, allowed tools, budget) the agent receives.
+
+This means that if a Slack workstream `ws-rings` is actively configured for `feature/new-decoder` with specific env vars and MCP tools, a pipeline agent triggered by a PR on that same branch will run with the generic `ws-pipeline` context instead of the richer `ws-rings` context.
+
+**Proposed solution: branch-to-workstream resolution.** When a pipeline job arrives, the submit endpoint should:
+
+1. Accept an optional `workstreamId` field in the request body (in addition to the URL path parameter)
+2. If no explicit workstream ID is provided in the body, search registered workstreams for one whose `defaultBranch` matches the `targetBranch`
+3. Fall back to the workstream ID from the URL path (e.g., `ws-pipeline`) if no branch match is found
+
+This keeps the current behavior as the default while allowing pipeline jobs to automatically inherit the context of an active workstream when one exists for the target branch.
+
+**Workflow-side change:** The GitHub Actions workflow could also be enhanced to omit the workstream ID from the URL (or use a generic `/api/submit` endpoint) and let the controller resolve it from the branch. Alternatively, it could pass both `targetBranch` and let the controller decide.
+
+**Edge cases:**
+- Multiple workstreams configured for the same branch: use the first match or require explicit disambiguation
+- Workstream's `defaultBranch` is null: skip it during branch matching
+- Branch matching should be exact-match only (no prefix/glob matching) to avoid false positives
+
+### 7. Future Iterations
 
 Once the basic end-to-end flow is validated:
 
-1. **Conditional triggering.** Add `needs: [build, test]` and gate the agent job on build/test outcomes. For example, only spawn the agent if tests pass but static analysis flags issues.
-2. **Richer prompts.** Include build logs, test results, or Qodana findings in the prompt so the agent can perform meaningful code review.
-3. **Wait-for-completion.** Poll the controller's status endpoint and include the agent's result in the workflow summary.
-4. **Authentication.** Add an API key check to the submit endpoint.
-5. **Agent job as a reusable workflow.** Extract the submit step into a composite action so other repos can use it.
+1. **Branch-to-workstream resolution.** Implement the branch matching described in section 6 so pipeline agents inherit workstream context automatically.
+2. **Conditional triggering.** Add `needs: [build, test]` and gate the agent job on build/test outcomes. For example, only spawn the agent if tests pass but static analysis flags issues.
+3. **Richer prompts.** Include build logs, test results, or Qodana findings in the prompt so the agent can perform meaningful code review.
+4. **Wait-for-completion.** Poll the controller's status endpoint and include the agent's result in the workflow summary.
+5. **Authentication.** Add an API key check to the submit endpoint.
+6. **Agent job as a reusable workflow.** Extract the submit step into a composite action so other repos can use it.
 
 ## Implementation Plan
 
