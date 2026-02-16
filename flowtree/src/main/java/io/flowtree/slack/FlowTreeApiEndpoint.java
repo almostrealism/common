@@ -302,6 +302,16 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             return errorResponse("Unknown workstream: " + pathWorkstreamId);
         }
 
+        // Validate git identity before submitting - commits will fail without it
+        String gitUserName = workstream.getGitUserName();
+        String gitUserEmail = workstream.getGitUserEmail();
+        if (gitUserName == null || gitUserName.isEmpty()
+                || gitUserEmail == null || gitUserEmail.isEmpty()) {
+            return errorResponse("Git identity not configured for workstream "
+                + resolvedWorkstreamId + ". Set gitUserName and gitUserEmail "
+                + "in the workstream config or via /flowtree config.");
+        }
+
         String workstreamId = resolvedWorkstreamId;
 
         if (server == null) {
