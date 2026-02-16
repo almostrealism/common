@@ -24,6 +24,10 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.DayOfWeek;
+import java.time.LocalDate;
+import java.time.ZoneId;
+import java.time.temporal.TemporalAdjusters;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -75,6 +79,7 @@ public class SlackApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
 
     private final SlackNotifier notifier;
     private final Map<String, Path> toolFiles = new HashMap<>();
+    private JobStatsStore statsStore;
 
     /**
      * Creates a new API endpoint on the specified port.
@@ -98,6 +103,15 @@ public class SlackApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         toolFiles.put(name, filePath);
     }
 
+    /**
+     * Sets the stats store for the {@code /api/stats} endpoint.
+     *
+     * @param statsStore the stats store, or null to disable stats queries
+     */
+    public void setStatsStore(JobStatsStore statsStore) {
+        this.statsStore = statsStore;
+    }
+
     @Override
     public Response serve(IHTTPSession session) {
         String uri = session.getUri();
@@ -106,6 +120,10 @@ public class SlackApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         if (Method.GET.equals(method) && "/api/health".equals(uri)) {
             return newFixedLengthResponse(Response.Status.OK,
                     "application/json", "{\"status\":\"ok\"}");
+        }
+
+        if (Method.GET.equals(method) && uri.startsWith("/api/stats")) {
+            return handleStatsQuery(session);
         }
 
         if (Method.POST.equals(method)) {
@@ -248,6 +266,13 @@ public class SlackApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         String sessionId = extractJsonField(body, "sessionId");
         int exitCode = extractJsonIntField(body, "exitCode");
         event.withClaudeCodeInfo(prompt, sessionId, exitCode);
+
+        // Populate timing info
+        long durationMs = extractJsonLongField(body, "durationMs");
+        long durationApiMs = extractJsonLongField(body, "durationApiMs");
+        double costUsd = extractJsonDoubleField(body, "costUsd");
+        int numTurns = extractJsonIntField(body, "numTurns");
+        event.withTimingInfo(durationMs, durationApiMs, costUsd, numTurns);
 
         log("Status event: " + eventStatus + " for job " + jobId + " in workstream " + workstreamId);
 
@@ -427,6 +452,76 @@ public class SlackApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
     }
 
     /**
+     * Extracts a long field from a JSON string.
+     * Returns 0 if the field is not found or cannot be parsed.
+     *
+     * @param json  the JSON string
+     * @param field the field name
+     * @return the long value, or 0 if not found
+     */
+    static long extractJsonLongField(String json, String field) {
+        if (json == null) return 0;
+
+        int fieldStart = json.indexOf("\"" + field + "\"");
+        if (fieldStart < 0) return 0;
+
+        int colonPos = json.indexOf(":", fieldStart);
+        if (colonPos < 0) return 0;
+
+        String rest = json.substring(colonPos + 1).trim();
+        StringBuilder numStr = new StringBuilder();
+        for (int i = 0; i < rest.length(); i++) {
+            char c = rest.charAt(i);
+            if (c == '-' || (c >= '0' && c <= '9')) {
+                numStr.append(c);
+            } else if (numStr.length() > 0) {
+                break;
+            }
+        }
+
+        try {
+            return Long.parseLong(numStr.toString());
+        } catch (NumberFormatException e) {
+            return 0;
+        }
+    }
+
+    /**
+     * Extracts a double field from a JSON string.
+     * Returns 0.0 if the field is not found or cannot be parsed.
+     *
+     * @param json  the JSON string
+     * @param field the field name
+     * @return the double value, or 0.0 if not found
+     */
+    static double extractJsonDoubleField(String json, String field) {
+        if (json == null) return 0.0;
+
+        int fieldStart = json.indexOf("\"" + field + "\"");
+        if (fieldStart < 0) return 0.0;
+
+        int colonPos = json.indexOf(":", fieldStart);
+        if (colonPos < 0) return 0.0;
+
+        String rest = json.substring(colonPos + 1).trim();
+        StringBuilder numStr = new StringBuilder();
+        for (int i = 0; i < rest.length(); i++) {
+            char c = rest.charAt(i);
+            if (c == '-' || c == '.' || (c >= '0' && c <= '9')) {
+                numStr.append(c);
+            } else if (numStr.length() > 0) {
+                break;
+            }
+        }
+
+        try {
+            return Double.parseDouble(numStr.toString());
+        } catch (NumberFormatException e) {
+            return 0.0;
+        }
+    }
+
+    /**
      * Extracts a JSON array of strings from a JSON string.
      * Returns an empty list if the field is not found.
      *
@@ -520,5 +615,77 @@ public class SlackApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         if (s == null) return "";
         if (s.length() <= maxLength) return s;
         return s.substring(0, maxLength - 3) + "...";
+    }
+
+    /**
+     * Handles {@code GET /api/stats}. Returns weekly job statistics as JSON.
+     *
+     * <p>Query parameters:</p>
+     * <ul>
+     *   <li>{@code workstream} - optional workstream ID filter</li>
+     * </ul>
+     */
+    private Response handleStatsQuery(IHTTPSession session) {
+        if (statsStore == null) {
+            return newFixedLengthResponse(Response.Status.OK,
+                "application/json", "{\"error\":\"Stats not configured\"}");
+        }
+
+        String workstreamFilter = session.getParms().get("workstream");
+
+        LocalDate today = LocalDate.now(ZoneId.of("UTC"));
+        LocalDate thisWeekStart = today.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
+        LocalDate lastWeekStart = thisWeekStart.minusWeeks(1);
+
+        StringBuilder json = new StringBuilder();
+        json.append("{\"thisWeek\":");
+        json.append(formatWeekJson(thisWeekStart, workstreamFilter));
+        json.append(",\"lastWeek\":");
+        json.append(formatWeekJson(lastWeekStart, workstreamFilter));
+        json.append("}");
+
+        return newFixedLengthResponse(Response.Status.OK,
+            "application/json", json.toString());
+    }
+
+    /**
+     * Formats a week's stats as JSON.
+     */
+    private String formatWeekJson(LocalDate weekStart, String workstreamFilter) {
+        StringBuilder json = new StringBuilder();
+        json.append("{\"weekStart\":\"").append(weekStart).append("\",\"stats\":{");
+
+        if (workstreamFilter != null && !workstreamFilter.isEmpty()) {
+            JobStatsStore.WeeklyStats stats = statsStore.getWeeklyStats(workstreamFilter, weekStart);
+            json.append("\"").append(escapeJson(workstreamFilter)).append("\":");
+            appendStatsJson(json, stats);
+        } else {
+            Map<String, JobStatsStore.WeeklyStats> byWs = statsStore.getWeeklyStatsByWorkstream(weekStart);
+            boolean first = true;
+            for (Map.Entry<String, JobStatsStore.WeeklyStats> entry : byWs.entrySet()) {
+                if (!first) json.append(",");
+                first = false;
+                json.append("\"").append(escapeJson(entry.getKey())).append("\":");
+                appendStatsJson(json, entry.getValue());
+            }
+        }
+
+        json.append("}}");
+        return json.toString();
+    }
+
+    /**
+     * Appends a single {@link JobStatsStore.WeeklyStats} as a JSON object.
+     */
+    private static void appendStatsJson(StringBuilder json, JobStatsStore.WeeklyStats stats) {
+        json.append("{\"jobCount\":").append(stats.jobCount);
+        json.append(",\"successCount\":").append(stats.successCount);
+        json.append(",\"failedCount\":").append(stats.failedCount);
+        json.append(",\"cancelledCount\":").append(stats.cancelledCount);
+        json.append(",\"totalWallClockMs\":").append(stats.totalWallClockMs);
+        json.append(",\"totalDurationMs\":").append(stats.totalDurationMs);
+        json.append(",\"totalCostUsd\":").append(stats.totalCostUsd);
+        json.append(",\"totalTurns\":").append(stats.totalTurns);
+        json.append("}");
     }
 }

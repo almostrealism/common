@@ -69,6 +69,12 @@ public class JobCompletionEvent {
     private String sessionId;
     private int exitCode;
 
+    // Timing information from Claude Code output
+    private long durationMs;
+    private long durationApiMs;
+    private double costUsd;
+    private int numTurns;
+
     /**
      * Creates a new job completion event.
      *
@@ -172,6 +178,22 @@ public class JobCompletionEvent {
         return exitCode;
     }
 
+    public long getDurationMs() {
+        return durationMs;
+    }
+
+    public long getDurationApiMs() {
+        return durationApiMs;
+    }
+
+    public double getCostUsd() {
+        return costUsd;
+    }
+
+    public int getNumTurns() {
+        return numTurns;
+    }
+
     // Setters (builder pattern)
 
     public JobCompletionEvent withGitInfo(String branch, String commitHash, List<String> staged,
@@ -199,6 +221,24 @@ public class JobCompletionEvent {
         this.prompt = prompt;
         this.sessionId = sessionId;
         this.exitCode = exitCode;
+        return this;
+    }
+
+    /**
+     * Sets timing information extracted from Claude Code output.
+     *
+     * @param durationMs    total wall-clock duration reported by Claude Code
+     * @param durationApiMs time spent in API calls
+     * @param costUsd       total cost in USD
+     * @param numTurns      number of agentic turns
+     * @return this event for chaining
+     */
+    public JobCompletionEvent withTimingInfo(long durationMs, long durationApiMs,
+                                              double costUsd, int numTurns) {
+        this.durationMs = durationMs;
+        this.durationApiMs = durationApiMs;
+        this.costUsd = costUsd;
+        this.numTurns = numTurns;
         return this;
     }
 

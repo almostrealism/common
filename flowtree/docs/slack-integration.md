@@ -58,6 +58,7 @@ Processes incoming Slack messages. Extracts the prompt from `@bot` mentions, loo
 |---------|-------------|
 | `/status` | Show workstream status |
 | `/task <prompt>`, `/do <prompt>`, `/run <prompt>` | Submit a prompt |
+| `/stats` | Show weekly job statistics (this week and last week) |
 
 ### SlackNotifier
 
@@ -76,9 +77,18 @@ Lightweight HTTP server (NanoHTTPD, default port 7780) that receives status even
 | POST | `/api/workstreams/{id}` | `{"jobId":"...","status":"..."}` | Receive a status event |
 | POST | `/api/workstreams/{id}/jobs/{jobId}` | `{"jobId":"...","status":"..."}` | Receive a job status event |
 | GET | `/api/health` | -- | Health check |
+| GET | `/api/stats` | -- | Weekly job statistics (query params: `workstream`, `period`) |
 | GET | `/api/tools/{name}` | -- | Download a pushed tool's Python source file |
 
 When a `ClaudeCodeJob` has `workstreamUrl` set, it passes the URL to Claude Code as the `AR_WORKSTREAM_URL` environment variable. The `ar-slack` MCP server reads this and POSTs messages to `{url}/messages`.
+
+### JobStatsStore
+
+HSQLDB-backed storage for job timing data and statistics. Records job start/completion events with timing metrics extracted from Claude Code output. Provides weekly aggregation queries for the `/flowtree stats` command and the `/api/stats` endpoint.
+
+- Database path: `~/.flowtree/stats` (HSQLDB file database)
+- Automatically cleans orphaned STARTED rows older than 7 days on initialization
+- Initialized and wired by `SlackBotController` at startup
 
 ### SlackWorkstream
 

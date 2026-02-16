@@ -56,6 +56,10 @@ Executes a single Claude Code prompt. Extends `GitManagedJob`.
 | `getSessionId()` | Claude Code session ID (for resuming) |
 | `getOutput()` | Full JSON output |
 | `getExitCode()` | Process exit code |
+| `getDurationMs()` | Total duration reported by Claude Code (ms) |
+| `getDurationApiMs()` | Time spent in API calls (ms) |
+| `getCostUsd()` | Total cost in USD |
+| `getNumTurns()` | Number of agentic turns |
 | `getStagedFiles()` | Files that were committed (from GitManagedJob) |
 | `getCommitHash()` | Git commit hash (from GitManagedJob) |
 
@@ -117,7 +121,7 @@ Base class providing automatic git operations after job completion:
 
 Claude Code sessions started by `ClaudeCodeJob` automatically have access to these MCP tools:
 
-- **ar-slack** — Send messages back to the Slack channel via the controller's `SlackApiEndpoint`
+- **ar-slack** — Send messages back to the Slack channel and query job statistics via the controller's `SlackApiEndpoint`
 - **ar-github** — Read and respond to GitHub PR review comments
 - **Project servers** — Any servers defined in `.mcp.json` (filtered by `.claude/settings.json`) are included automatically
 
@@ -218,9 +222,11 @@ Shared utility class (`io.flowtree.jobs.McpToolDiscovery`) that scans Python MCP
 
 Start events are fired by the controller immediately when a job is submitted, providing fast feedback to the Slack channel. Completion events are fired by the agent after Claude Code finishes and git operations complete. The agent POSTs completion events to the controller via the `workstreamUrl`, where `SlackNotifier` formats and posts the result to Slack.
 
+Completion events carry timing information extracted from Claude Code's `--output-format json` output: `durationMs`, `durationApiMs`, `costUsd`, and `numTurns`. These are populated via `withTimingInfo()` on the agent side (by `ClaudeCodeJob.populateEventDetails()`) and deserialized on the controller side (by `SlackApiEndpoint.handleStatusEvent()`). The `SlackNotifier` writes timing data to `JobStatsStore` for aggregation.
+
 ## Serialization
 
-`ClaudeCodeJob` and its factory support FlowTree's wire protocol via `encode()` and `set(key, value)`. Prompts and string properties are Base64-encoded for safe transport over the peer-to-peer message layer. The `centralizedMcpConfig` JSON is serialized under the `centralMcp` key and `pushedToolsConfig` under the `pushedTools` key.
+`ClaudeCodeJob` and its factory support FlowTree's wire protocol via `encode()` and `set(key, value)`. Prompts and string properties are Base64-encoded for safe transport over the peer-to-peer message layer. The `centralizedMcpConfig` JSON is serialized under the `centralMcp` key and `pushedToolsConfig` under the `pushedTools` key. Completion events include timing fields (`durationMs`, `durationApiMs`, `costUsd`, `numTurns`) serialized by `GitManagedJob.buildEventJson()`.
 
 ## Operator Scripts
 

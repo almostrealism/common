@@ -52,6 +52,7 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
     private final Map<String, String> jobThreadTs;
     private final Map<String, Map<String, JobCompletionEvent>> jobHistory;
     private Consumer<String> messageCallback;
+    private JobStatsStore statsStore;
 
     /**
      * Creates a new notifier with the specified bot token.
@@ -92,6 +93,22 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
     }
 
     /**
+     * Sets the job stats store for recording timing data.
+     *
+     * @param store the stats store, or null to disable recording
+     */
+    public void setStatsStore(JobStatsStore store) {
+        this.statsStore = store;
+    }
+
+    /**
+     * Returns the job stats store.
+     */
+    public JobStatsStore getStatsStore() {
+        return statsStore;
+    }
+
+    /**
      * Sets a callback for receiving formatted messages (useful for testing).
      *
      * @param callback the callback to receive message text
@@ -123,6 +140,11 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
 
         trackJob(workstreamId, event);
 
+        if (statsStore != null) {
+            statsStore.recordJobStarted(event.getJobId(), workstreamId,
+                event.getDescription(), event.getTimestamp());
+        }
+
         String message = formatStartedMessage(event, workstream);
         String ts;
 
@@ -151,6 +173,14 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
         }
 
         trackJob(workstreamId, event);
+
+        if (statsStore != null) {
+            statsStore.recordJobCompleted(event.getJobId(),
+                event.getStatus().name(), event.getTimestamp(),
+                event.getDurationMs(), event.getDurationApiMs(),
+                event.getCostUsd(), event.getNumTurns(),
+                event.getSessionId(), event.getExitCode());
+        }
 
         String message = formatCompletedMessage(event, workstream);
         String threadTs = event.getJobId() != null ? jobThreadTs.remove(event.getJobId()) : null;

@@ -78,6 +78,52 @@ def slack_send_message(text: str) -> dict:
     return _post_message(text)
 
 
+@mcp.tool()
+def slack_get_stats(period: str = "weekly") -> dict:
+    """
+    Get job timing statistics for the current workstream.
+
+    Returns aggregated stats for this week and last week, including
+    job counts, total time, cost, and turns.
+
+    Args:
+        period: The reporting period (default: "weekly").
+
+    Returns:
+        Dictionary with thisWeek and lastWeek stats, or error details.
+    """
+    if not WORKSTREAM_URL:
+        return {"ok": False, "error": "AR_WORKSTREAM_URL not set"}
+
+    # Derive controller base URL and workstream ID from the workstream URL.
+    # URL format: http://controller:port/api/workstreams/{id}[/jobs/{jobId}]
+    try:
+        parts = WORKSTREAM_URL.split("/api/workstreams/")
+        base_url = parts[0]
+        ws_path = parts[1] if len(parts) > 1 else ""
+        workstream_id = ws_path.split("/")[0]
+    except (IndexError, ValueError):
+        return {"ok": False, "error": f"Cannot parse workstream URL: {WORKSTREAM_URL}"}
+
+    url = f"{base_url}/api/stats?workstream={workstream_id}&period={period}"
+    req = Request(url, headers={"Accept": "application/json"})
+
+    print(f"ar-slack: GET {url}", file=sys.stderr)
+
+    try:
+        with urlopen(req, timeout=10) as resp:
+            body = resp.read().decode("utf-8")
+            result = json.loads(body) if body else {}
+            return result
+    except HTTPError as e:
+        body = e.read().decode("utf-8", errors="replace")
+        return {"ok": False, "error": f"HTTP {e.code}: {body[:200]}"}
+    except URLError as e:
+        return {"ok": False, "error": f"Connection failed to {url}: {e.reason}"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
 if __name__ == "__main__":
     transport = os.environ.get("MCP_TRANSPORT", "stdio")
     if transport in ("http", "sse"):
