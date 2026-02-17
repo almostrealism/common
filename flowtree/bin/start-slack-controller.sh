@@ -37,12 +37,12 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MODULE_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 PROJECT_ROOT="$(cd "${MODULE_DIR}/.." && pwd)"
 
-MAIN_CLASS="io.flowtree.slack.SlackBotController"
+MAIN_CLASS="io.flowtree.slack.FlowTreeController"
 
 # Show help if requested (before potentially building)
 for arg in "$@"; do
     if [[ "$arg" == "--help" || "$arg" == "-h" ]]; then
-        echo "FlowTree Slack Bot Controller"
+        echo "FlowTree Controller"
         echo ""
         echo "Usage: $(basename "$0") [options]"
         echo ""

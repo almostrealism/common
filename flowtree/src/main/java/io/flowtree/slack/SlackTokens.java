@@ -44,7 +44,7 @@ import java.io.IOException;
  * }</pre>
  *
  * @author Michael Murray
- * @see SlackBotController
+ * @see FlowTreeController
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class SlackTokens {

@@ -39,7 +39,7 @@ import java.util.function.Consumer;
  *
  * @author Michael Murray
  * @see JobCompletionListener
- * @see SlackBotController
+ * @see FlowTreeController
  */
 public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
 
@@ -89,6 +89,29 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
      */
     public SlackWorkstream getWorkstream(String workstreamId) {
         return workstreams.get(workstreamId);
+    }
+
+    /**
+     * Finds a workstream whose {@code defaultBranch} exactly matches the
+     * given branch name. Workstreams with a null {@code defaultBranch}
+     * are skipped. If multiple workstreams match, the first one found is
+     * returned.
+     *
+     * @param branch the branch name to match (e.g., "feature/new-decoder")
+     * @return the matching workstream, or null if no match is found
+     */
+    public SlackWorkstream findWorkstreamByBranch(String branch) {
+        if (branch == null || branch.isEmpty()) {
+            return null;
+        }
+
+        for (SlackWorkstream ws : workstreams.values()) {
+            if (branch.equals(ws.getDefaultBranch())) {
+                return ws;
+            }
+        }
+
+        return null;
     }
 
     /**

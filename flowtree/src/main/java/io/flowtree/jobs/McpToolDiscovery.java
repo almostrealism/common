@@ -30,7 +30,7 @@ import java.util.regex.Pattern;
  *
  * <p>Scans Python files for {@code @mcp.tool()} decorated functions
  * and extracts their names. Used by both {@link ClaudeCodeJob} (for local
- * servers) and {@link io.flowtree.slack.SlackBotController} (for centralized
+ * servers) and {@link io.flowtree.slack.FlowTreeController} (for centralized
  * servers).</p>
  *
  * @author Michael Murray
