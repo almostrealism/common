@@ -15,7 +15,7 @@
 # Optional environment variables:
 #   CONTROLLER_HOST  - FlowTree controller hostname (default: localhost)
 #   CONTROLLER_PORT  - FlowTree controller port     (default: 7780)
-#   MAX_TURNS        - agent turn budget             (default: 50)
+#   MAX_TURNS        - agent turn budget             (omitted → workstream default)
 #   MAX_BUDGET_USD   - agent dollar budget           (omitted → workstream default)
 #
 # Exit codes:
@@ -42,24 +42,27 @@ done
 
 CONTROLLER_HOST="${CONTROLLER_HOST:-localhost}"
 CONTROLLER_PORT="${CONTROLLER_PORT:-7780}"
-MAX_TURNS="${MAX_TURNS:-50}"
 
 PROMPT=$(cat "$PROMPT_FILE")
 
 ENDPOINT="http://${CONTROLLER_HOST}:${CONTROLLER_PORT}/api/submit"
 
-# Build the JSON payload; include maxBudgetUsd only when explicitly set
+# Build the JSON payload; maxTurns and maxBudgetUsd are omitted by default
+# so the workstream's own defaults are used. Include them only when
+# explicitly provided via environment variables.
 PAYLOAD=$(jq -n \
     --arg prompt "$PROMPT" \
     --arg branch "$BRANCH" \
     --arg base "$BASE_BRANCH" \
-    --argjson maxTurns "$MAX_TURNS" \
     '{
         prompt: $prompt,
         targetBranch: $branch,
-        baseBranch: $base,
-        maxTurns: $maxTurns
+        baseBranch: $base
     }')
+
+if [ -n "${MAX_TURNS:-}" ]; then
+    PAYLOAD=$(echo "$PAYLOAD" | jq --argjson t "$MAX_TURNS" '. + {maxTurns: $t}')
+fi
 
 if [ -n "${MAX_BUDGET_USD:-}" ]; then
     PAYLOAD=$(echo "$PAYLOAD" | jq --argjson b "$MAX_BUDGET_USD" '. + {maxBudgetUsd: $b}')
