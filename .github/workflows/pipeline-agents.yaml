@@ -11,7 +11,8 @@ on:
 jobs:
   agent-review:
     # Only run on self-hosted runners (same network as controller)
-    runs-on: [self-hosted, linux, ar-ci]
+    # Note that linux runners may not work due to docker networking
+    runs-on: [self-hosted, macos, ar-ci]
 
     # Gate: only run after the build succeeds.
     # For now this job is standalone; future iterations will add
@@ -55,41 +56,14 @@ jobs:
       - name: Submit agent job
         if: steps.prompt.outputs.skip != 'true'
         env:
-          CONTROLLER_HOST: ${{ secrets.FLOWTREE_CONTROLLER_HOST || 'localhost' }}
+          CONTROLLER_HOST: ${{ secrets.FLOWTREE_CONTROLLER_HOST || 'mac-studio' }}
           CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
-          WORKSTREAM_ID: "ws-pipeline"
+          BRANCH: ${{ steps.pr.outputs.branch }}
+          BASE_BRANCH: ${{ steps.pr.outputs.base }}
+          MAX_TURNS: "30"
+          MAX_BUDGET_USD: "5.0"
         run: |
-          PROMPT=$(cat /tmp/agent-prompt.txt)
-
-          RESPONSE=$(curl -s -w "\n%{http_code}" \
-            -X POST \
-            -H "Content-Type: application/json" \
-            -d "$(jq -n \
-              --arg prompt "$PROMPT" \
-              --arg branch "${{ steps.pr.outputs.branch }}" \
-              --arg base "${{ steps.pr.outputs.base }}" \
-              '{
-                prompt: $prompt,
-                targetBranch: $branch,
-                baseBranch: $base,
-                maxTurns: 30,
-                maxBudgetUsd: 5.0
-              }')" \
-            "http://${CONTROLLER_HOST}:${CONTROLLER_PORT}/api/workstreams/${WORKSTREAM_ID}/submit")
-
-          HTTP_CODE=$(echo "$RESPONSE" | tail -1)
-          BODY=$(echo "$RESPONSE" | head -n -1)
-
-          echo "Response ($HTTP_CODE): $BODY"
-
-          if [ "$HTTP_CODE" != "200" ]; then
-            echo "::warning::Agent job submission failed (HTTP $HTTP_CODE): $BODY"
-            # Don't fail the workflow - this is experimental
-            exit 0
-          fi
-
-          JOB_ID=$(echo "$BODY" | jq -r '.jobId // empty')
-          echo "Agent job submitted: $JOB_ID"
+          ./tools/ci/submit-agent-job.sh /tmp/agent-prompt.txt
 
       - name: Summary
         if: always()

@@ -297,19 +297,51 @@ For macOS self-hosted runners (no Docker), see [macos/README.md](macos/README.md
 The macOS runner uses a simple shell script loop instead of Docker Compose,
 and registers with labels `[self-hosted, macos, ar-ci]`.
 
+## Auto-Resolve Pipeline
+
+When tests fail in the `analysis.yaml` workflow, the `auto-resolve` job
+automatically submits a FlowTree coding-agent job to attempt a fix:
+
+```
+test jobs (upload Surefire XML artifacts)
+         │
+         ▼
+    auto-resolve job
+    ├── download all surefire-* artifacts
+    ├── parse-surefire-failures.sh  → extract ClassName#method list
+    ├── build-resolve-prompt.sh     → assemble natural-language prompt
+    └── submit-agent-job.sh         → POST to FlowTree controller
+```
+
+The job runs with `if: always()` (so it executes even when tests fail)
+and is skipped on the `master` branch. A concurrency group scoped per
+branch (`auto-resolve-${{ github.ref }}`) ensures only one auto-resolve
+job runs per branch at a time.
+
+| Configuration              | Source                      | Default       |
+|----------------------------|-----------------------------|---------------|
+| Controller host            | `FLOWTREE_CONTROLLER_HOST`  | `localhost`   |
+| Controller port            | `FLOWTREE_CONTROLLER_PORT`  | `7780`        |
+| Workstream ID              | Hardcoded in workflow       | `ws-pipeline` |
+| Agent turn budget          | `MAX_TURNS`                 | `50`          |
+| Agent dollar budget        | `MAX_BUDGET_USD`            | `10.0`        |
+
 ## Files
 
 ```
 tools/ci/
-├── .env.example        # Template for environment configuration
-├── docker-compose.yml  # Compose definition for the runner fleet
-├── Dockerfile          # Runner image (Ubuntu 22.04 + JDK 17 + Maven + GH runner)
-├── entrypoint.sh       # Container entrypoint (register, run, cleanup)
-├── settings.xml        # Maven settings (shared local repo)
-├── README.md           # This file
+├── .env.example                # Template for environment configuration
+├── docker-compose.yml          # Compose definition for the runner fleet
+├── Dockerfile                  # Runner image (Ubuntu 22.04 + JDK 17 + Maven + GH runner)
+├── entrypoint.sh               # Container entrypoint (register, run, cleanup)
+├── settings.xml                # Maven settings (shared local repo)
+├── parse-surefire-failures.sh  # Extract failing tests from Surefire XML reports
+├── build-resolve-prompt.sh     # Build natural-language prompt for auto-resolve agent
+├── submit-agent-job.sh         # Submit auto-resolve job to FlowTree controller
+├── README.md                   # This file
 └── macos/
-    ├── .env.example    # macOS runner configuration template
-    ├── setup.sh        # One-time setup (downloads runner agent)
-    ├── run.sh          # Runner loop (register, run, re-register)
-    └── README.md       # macOS runner documentation
+    ├── .env.example            # macOS runner configuration template
+    ├── setup.sh                # One-time setup (downloads runner agent)
+    ├── run.sh                  # Runner loop (register, run, re-register)
+    └── README.md               # macOS runner documentation
 ```

@@ -24,7 +24,13 @@ import org.almostrealism.io.ConsoleFeatures;
 
 import java.io.File;
 import java.io.IOException;
+import java.time.DayOfWeek;
+import java.time.LocalDate;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.time.temporal.TemporalAdjusters;
 import java.util.HashMap;
+import java.util.Locale;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -439,6 +445,9 @@ public class SlackListener implements ConsoleFeatures {
                 case "jobs":
                     handleSlashJobsCommand(channelId, responder);
                     break;
+                case "stats":
+                    handleSlashStatsCommand(channelId, args, responder);
+                    break;
                 default:
                     responder.respond(":information_source: *Flowtree Commands*\n"
                         + "  `/flowtree setup <directory> <branch>` \u2014 Set up a workstream for this channel\n"
@@ -447,7 +456,8 @@ public class SlackListener implements ConsoleFeatures {
                         + "  `/flowtree task <prompt>` \u2014 Submit a task\n"
                         + "  `/flowtree cancel [job-id]` \u2014 Cancel a running job\n"
                         + "  `/flowtree config [key] [value]` \u2014 View or update settings\n"
-                        + "  `/flowtree jobs` \u2014 List recent jobs");
+                        + "  `/flowtree jobs` \u2014 List recent jobs\n"
+                        + "  `/flowtree stats` \u2014 Show weekly job statistics");
             }
         } catch (IOException e) {
             warn("Error responding to slash command: " + e.getMessage());
@@ -792,6 +802,75 @@ public class SlackListener implements ConsoleFeatures {
                     + "`baseBranch`, `workingDirectory`, `pushToOrigin`, `allowedTools`, "
                     + "`gitUserName`, `gitUserEmail`";
         }
+    }
+
+    /**
+     * Handles {@code /flowtree stats}. Shows weekly job statistics.
+     */
+    private void handleSlashStatsCommand(String channelId, String args,
+                                          SlashCommandResponder ctx) throws IOException {
+        SlackWorkstream ws = channelToWorkstream.get(channelId);
+        if (ws == null) {
+            ctx.respond(":warning: No workstream configured for this channel.\n"
+                + "Use `/flowtree setup <working-directory> <branch>` to create one.");
+            return;
+        }
+
+        JobStatsStore statsStore = notifier.getStatsStore();
+        if (statsStore == null) {
+            ctx.respond(":warning: Job statistics are not available.");
+            return;
+        }
+
+        LocalDate today = LocalDate.now(ZoneId.of("UTC"));
+        LocalDate thisWeekStart = today.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
+        LocalDate lastWeekStart = thisWeekStart.minusWeeks(1);
+
+        JobStatsStore.WeeklyStats thisWeek = statsStore.getWeeklyStats(ws.getWorkstreamId(), thisWeekStart);
+        JobStatsStore.WeeklyStats lastWeek = statsStore.getWeeklyStats(ws.getWorkstreamId(), lastWeekStart);
+
+        StringBuilder sb = new StringBuilder();
+        sb.append(":bar_chart: *Agent Activity \u2014 ").append(ws.getChannelName()).append("*\n\n");
+        sb.append(formatWeeklyStats("This Week", thisWeekStart, thisWeek));
+        sb.append("\n");
+        sb.append(formatWeeklyStats("Last Week", lastWeekStart, lastWeek));
+
+        ctx.respond(sb.toString());
+    }
+
+    /**
+     * Formats a week's statistics for Slack display.
+     */
+    private String formatWeeklyStats(String label, LocalDate weekStart,
+                                      JobStatsStore.WeeklyStats stats) {
+        DateTimeFormatter fmt = DateTimeFormatter.ofPattern("EEE MMM d", Locale.US);
+        LocalDate weekEnd = weekStart.plusDays(6);
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("*").append(label).append("* (");
+        sb.append(weekStart.format(fmt)).append(" \u2014 ").append(weekEnd.format(fmt)).append(")\n");
+        sb.append("  :clock1: Total time: ").append(formatDuration(stats.totalWallClockMs)).append("\n");
+        sb.append("  :hammer: Jobs: ").append(stats.jobCount);
+        sb.append(" (:white_check_mark: ").append(stats.successCount);
+        sb.append("  :x: ").append(stats.failedCount);
+        sb.append("  :no_entry_sign: ").append(stats.cancelledCount).append(")\n");
+        sb.append("  :moneybag: Cost: $").append(String.format("%.2f", stats.totalCostUsd)).append("\n");
+        sb.append("  :speech_balloon: Turns: ").append(String.format("%,d", stats.totalTurns)).append("\n");
+        return sb.toString();
+    }
+
+    /**
+     * Formats a duration in milliseconds as a human-readable string.
+     */
+    private static String formatDuration(long ms) {
+        if (ms <= 0) return "0m";
+        long totalMinutes = ms / 60000;
+        long hours = totalMinutes / 60;
+        long minutes = totalMinutes % 60;
+        if (hours > 0) {
+            return hours + "h " + minutes + "m";
+        }
+        return minutes + "m";
     }
 
     /**
