@@ -2,7 +2,8 @@
 # ─── Submit a job to the FlowTree coding-agent controller ────────────
 #
 # Reads a prompt from a file and POSTs it to the FlowTree controller's
-# workstream submission endpoint.
+# submission endpoint. The workstream is resolved server-side from the
+# target branch.
 #
 # Usage:
 #   submit-agent-job.sh <prompt-file>
@@ -14,7 +15,6 @@
 # Optional environment variables:
 #   CONTROLLER_HOST  - FlowTree controller hostname (default: localhost)
 #   CONTROLLER_PORT  - FlowTree controller port     (default: 7780)
-#   WORKSTREAM_ID    - workstream to submit to       (default: ws-pipeline)
 #   MAX_TURNS        - agent turn budget             (default: 50)
 #   MAX_BUDGET_USD   - agent dollar budget           (default: 10.0)
 #
@@ -42,13 +42,12 @@ done
 
 CONTROLLER_HOST="${CONTROLLER_HOST:-localhost}"
 CONTROLLER_PORT="${CONTROLLER_PORT:-7780}"
-WORKSTREAM_ID="${WORKSTREAM_ID:-ws-pipeline}"
 MAX_TURNS="${MAX_TURNS:-50}"
 MAX_BUDGET_USD="${MAX_BUDGET_USD:-10.0}"
 
 PROMPT=$(cat "$PROMPT_FILE")
 
-ENDPOINT="http://${CONTROLLER_HOST}:${CONTROLLER_PORT}/api/workstreams/${WORKSTREAM_ID}/submit"
+ENDPOINT="http://${CONTROLLER_HOST}:${CONTROLLER_PORT}/api/submit"
 
 RESPONSE=$(curl -s -w "\n%{http_code}" \
     -X POST \
@@ -66,18 +65,23 @@ RESPONSE=$(curl -s -w "\n%{http_code}" \
             maxTurns: $maxTurns,
             maxBudgetUsd: $maxBudget
         }')" \
-    "$ENDPOINT")
+    "$ENDPOINT") || CURL_EXIT=$?
+
+if [ "${CURL_EXIT:-0}" -ne 0 ]; then
+    echo "::warning::curl failed (exit code $CURL_EXIT) — controller may be unreachable at ${CONTROLLER_HOST}:${CONTROLLER_PORT}"
+    exit 0
+fi
 
 HTTP_CODE=$(echo "$RESPONSE" | tail -1)
-BODY=$(echo "$RESPONSE" | head -n -1)
+BODY=$(echo "$RESPONSE" | sed '$d')
 
 echo "Response ($HTTP_CODE): $BODY"
 
 if [ "$HTTP_CODE" != "200" ]; then
-    echo "::warning::Auto-resolve agent job submission failed (HTTP $HTTP_CODE): $BODY"
+    echo "::warning::Agent job submission failed (HTTP $HTTP_CODE): $BODY"
     exit 0
 fi
 
 JOB_ID=$(echo "$BODY" | jq -r '.jobId // empty')
 echo "job_id=$JOB_ID"
-echo "Auto-resolve agent job submitted: $JOB_ID"
+echo "Agent job submitted: $JOB_ID"

@@ -58,43 +58,12 @@ jobs:
         env:
           CONTROLLER_HOST: ${{ secrets.FLOWTREE_CONTROLLER_HOST || 'mac-studio' }}
           CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
+          BRANCH: ${{ steps.pr.outputs.branch }}
+          BASE_BRANCH: ${{ steps.pr.outputs.base }}
+          MAX_TURNS: "30"
+          MAX_BUDGET_USD: "5.0"
         run: |
-          PROMPT=$(cat /tmp/agent-prompt.txt)
-
-          RESPONSE=$(curl -s -w "\n%{http_code}" \
-            -X POST \
-            -H "Content-Type: application/json" \
-            -d "$(jq -n \
-              --arg prompt "$PROMPT" \
-              --arg branch "${{ steps.pr.outputs.branch }}" \
-              --arg base "${{ steps.pr.outputs.base }}" \
-              '{
-                prompt: $prompt,
-                targetBranch: $branch,
-                baseBranch: $base,
-                maxTurns: 30,
-                maxBudgetUsd: 5.0
-              }')" \
-            "http://${CONTROLLER_HOST}:${CONTROLLER_PORT}/api/submit") || CURL_EXIT=$?
-
-          if [ "${CURL_EXIT:-0}" -ne 0 ]; then
-            echo "::warning::curl failed (exit code $CURL_EXIT) — controller may be unreachable at ${CONTROLLER_HOST}:${CONTROLLER_PORT}"
-            exit 0
-          fi
-
-          HTTP_CODE=$(echo "$RESPONSE" | tail -1)
-          BODY=$(echo "$RESPONSE" | sed '$d')
-
-          echo "Response ($HTTP_CODE): $BODY"
-
-          if [ "$HTTP_CODE" != "200" ]; then
-            echo "::warning::Agent job submission failed (HTTP $HTTP_CODE): $BODY"
-            # Don't fail the workflow - this is experimental
-            exit 0
-          fi
-
-          JOB_ID=$(echo "$BODY" | jq -r '.jobId // empty')
-          echo "Agent job submitted: $JOB_ID"
+          ./tools/ci/submit-agent-job.sh /tmp/agent-prompt.txt
 
       - name: Summary
         if: always()

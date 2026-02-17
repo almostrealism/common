@@ -576,9 +576,8 @@ jobs:
       - name: Submit agent job
         if: steps.failures.outputs.has_failures == 'true'
         env:
-          CONTROLLER_HOST: ${{ secrets.FLOWTREE_CONTROLLER_HOST || 'localhost' }}
+          CONTROLLER_HOST: ${{ secrets.FLOWTREE_CONTROLLER_HOST || 'mac-studio' }}
           CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
-          WORKSTREAM_ID: ws-pipeline
           BRANCH: ${{ steps.ctx.outputs.branch }}
           BASE_BRANCH: ${{ steps.ctx.outputs.base }}
         run: |
