@@ -291,6 +291,12 @@ already installed just means the step completes faster.
 - The Docker containers run as a non-root `runner` user (with
   passwordless sudo for package installation if needed by actions).
 
+## macOS Runners
+
+For macOS self-hosted runners (no Docker), see [macos/README.md](macos/README.md).
+The macOS runner uses a simple shell script loop instead of Docker Compose,
+and registers with labels `[self-hosted, macos, ar-ci]`.
+
 ## Files
 
 ```
@@ -300,5 +306,10 @@ tools/ci/
 ├── Dockerfile          # Runner image (Ubuntu 22.04 + JDK 17 + Maven + GH runner)
 ├── entrypoint.sh       # Container entrypoint (register, run, cleanup)
 ├── settings.xml        # Maven settings (shared local repo)
-└── README.md           # This file
+├── README.md           # This file
+└── macos/
+    ├── .env.example    # macOS runner configuration template
+    ├── setup.sh        # One-time setup (downloads runner agent)
+    ├── run.sh          # Runner loop (register, run, re-register)
+    └── README.md       # macOS runner documentation
 ```
