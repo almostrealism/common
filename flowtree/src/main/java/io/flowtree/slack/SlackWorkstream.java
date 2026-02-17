@@ -97,8 +97,8 @@ public class SlackWorkstream {
         this.agents = new ArrayList<>();
         this.pushToOrigin = true;
         this.allowedTools = "Read,Edit,Write,Bash,Glob,Grep";
-        this.maxTurns = 50;
-        this.maxBudgetUsd = 10.0;
+        this.maxTurns = 500;
+        this.maxBudgetUsd = 100.0;
         this.gitUserName = DEFAULT_GIT_USER_NAME;
         this.gitUserEmail = DEFAULT_GIT_USER_EMAIL;
     }
@@ -120,8 +120,8 @@ public class SlackWorkstream {
         this.agents = new ArrayList<>();
         this.pushToOrigin = true;
         this.allowedTools = "Read,Edit,Write,Bash,Glob,Grep";
-        this.maxTurns = 50;
-        this.maxBudgetUsd = 10.0;
+        this.maxTurns = 500;
+        this.maxBudgetUsd = 100.0;
     }
 
     /**
