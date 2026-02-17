@@ -1,0 +1,74 @@
+name: "Pipeline Agents (Experimental)"
+
+on:
+  workflow_dispatch:
+    inputs:
+      prompt:
+        description: "Prompt to send to the coding agent"
+        required: false
+        default: ""
+
+jobs:
+  agent-review:
+    # Only run on self-hosted runners (same network as controller)
+    # Note that linux runners may not work due to docker networking
+    runs-on: [self-hosted, macos, ar-ci]
+
+    # Gate: only run after the build succeeds.
+    # For now this job is standalone; future iterations will add
+    # `needs: [build]` to depend on the main build job.
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Determine PR context
+        id: pr
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "number=${{ github.event.pull_request.number }}" >> "$GITHUB_OUTPUT"
+            echo "branch=${{ github.head_ref }}" >> "$GITHUB_OUTPUT"
+            echo "base=${{ github.base_ref }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "number=" >> "$GITHUB_OUTPUT"
+            echo "branch=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+            echo "base=develop" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build prompt
+        id: prompt
+        run: |
+          if [ -n "${{ github.event.inputs.prompt }}" ]; then
+            PROMPT="${{ github.event.inputs.prompt }}"
+          elif [ -n "${{ steps.pr.outputs.number }}" ]; then
+            PROMPT="This is an automated pipeline agent run. Write a comment on pull request #${{ steps.pr.outputs.number }} in the almostrealism/common repository confirming that the pipeline agent process executed successfully. Include the commit SHA ${{ github.event.pull_request.head.sha }} and branch name ${{ steps.pr.outputs.branch }} in your comment."
+          else
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Write prompt to file to avoid shell escaping issues
+          echo "$PROMPT" > /tmp/agent-prompt.txt
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+
+      - name: Submit agent job
+        if: steps.prompt.outputs.skip != 'true'
+        env:
+          CONTROLLER_HOST: ${{ secrets.FLOWTREE_CONTROLLER_HOST || 'mac-studio' }}
+          CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
+          BRANCH: ${{ steps.pr.outputs.branch }}
+          BASE_BRANCH: ${{ steps.pr.outputs.base }}
+          MAX_TURNS: "30"
+          MAX_BUDGET_USD: "5.0"
+        run: |
+          ./tools/ci/submit-agent-job.sh /tmp/agent-prompt.txt
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "## Pipeline Agent" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "An experimental coding agent job was submitted to the FlowTree controller." >> "$GITHUB_STEP_SUMMARY"
+          echo "The agent will post a comment on this PR when it completes." >> "$GITHUB_STEP_SUMMARY"

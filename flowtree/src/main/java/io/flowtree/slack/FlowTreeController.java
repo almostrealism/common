@@ -43,13 +43,15 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BiConsumer;
 
 /**
- * Main controller for the Slack bot integration using Socket Mode.
+ * Main controller for FlowTree orchestration with optional Slack integration.
  *
- * <p>This class manages the Slack bot lifecycle using the Bolt SDK's Socket Mode,
- * which allows real-time event handling without requiring a public HTTP endpoint.</p>
+ * <p>This class manages the FlowTree agent lifecycle. When Slack tokens are provided,
+ * it connects via the Bolt SDK's Socket Mode for real-time event handling. When
+ * tokens are absent, it runs in simulation mode with only the HTTP API endpoint
+ * active, allowing job submission via {@code POST /api/workstreams/{id}/submit}.</p>
  *
  * <h2>Token Resolution</h2>
- * <p>Tokens are resolved in the following order (first match wins):</p>
+ * <p>Slack tokens are resolved in the following order (first match wins):</p>
  * <ol>
  *   <li>{@code --tokens <file>} CLI argument (explicit path)</li>
  *   <li>{@code slack-tokens.json} in the current working directory</li>
@@ -60,7 +62,7 @@ import java.util.function.BiConsumer;
  *
  * <h2>Usage</h2>
  * <pre>{@code
- * SlackBotController controller = new SlackBotController();
+ * FlowTreeController controller = new FlowTreeController();
  *
  * // Load workstreams from YAML
  * controller.loadConfig(new File("workstreams.yaml"));
@@ -71,7 +73,7 @@ import java.util.function.BiConsumer;
  * workstream.setDefaultBranch("feature/work");
  * controller.registerWorkstream(workstream);
  *
- * // Start the bot
+ * // Start the controller
  * controller.start();
  * }</pre>
  *
@@ -80,7 +82,7 @@ import java.util.function.BiConsumer;
  * @see SlackNotifier
  * @see SlackWorkstream
  */
-public class SlackBotController implements ConsoleFeatures {
+public class FlowTreeController implements ConsoleFeatures {
 
     private final String botToken;
     private final String appToken;
@@ -98,8 +100,9 @@ public class SlackBotController implements ConsoleFeatures {
     private File configFile;
     private WorkstreamConfig loadedConfig;
 
-    private SlackApiEndpoint apiEndpoint;
-    private int apiPort = SlackApiEndpoint.DEFAULT_PORT;
+    private FlowTreeApiEndpoint apiEndpoint;
+    private int apiPort = FlowTreeApiEndpoint.DEFAULT_PORT;
+    private JobStatsStore statsStore;
 
     private List<Process> mcpProcesses = new ArrayList<>();
 
@@ -114,7 +117,7 @@ public class SlackBotController implements ConsoleFeatures {
      * @throws IOException if token resolution fails
      * @see SlackTokens#resolve(java.io.File)
      */
-    public SlackBotController() throws IOException {
+    public FlowTreeController() throws IOException {
         this(SlackTokens.resolve(null));
     }
 
@@ -123,7 +126,7 @@ public class SlackBotController implements ConsoleFeatures {
      *
      * @param tokens the resolved tokens
      */
-    public SlackBotController(SlackTokens tokens) {
+    public FlowTreeController(SlackTokens tokens) {
         this(tokens.getBotToken(), tokens.getAppToken());
     }
 
@@ -133,7 +136,7 @@ public class SlackBotController implements ConsoleFeatures {
      * @param botToken the Slack Bot User OAuth Token
      * @param appToken the Slack App-level token (for Socket Mode)
      */
-    public SlackBotController(String botToken, String appToken) {
+    public FlowTreeController(String botToken, String appToken) {
         this.botToken = botToken;
         this.appToken = appToken;
         this.notifier = new SlackNotifier(botToken);
@@ -274,7 +277,11 @@ public class SlackBotController implements ConsoleFeatures {
     }
 
     /**
-     * Starts the bot controller with Socket Mode.
+     * Starts the controller.
+     *
+     * <p>When Slack tokens are present, connects via Socket Mode. Otherwise,
+     * runs in simulation mode with only the HTTP API endpoint active for
+     * programmatic job submission.</p>
      *
      * @throws Exception if startup fails
      */
@@ -290,7 +297,7 @@ public class SlackBotController implements ConsoleFeatures {
         log("Logging to file: " + logFile);
 
         log("===========================================");
-        log("  Slack Bot Controller - Flowtree Agent");
+        log("  FlowTree Controller - Agent Orchestrator");
         log("===========================================");
 
         // Start FlowTree server for inbound agent connections.
@@ -587,11 +594,22 @@ public class SlackBotController implements ConsoleFeatures {
     }
 
     /**
-     * Starts the HTTP API endpoint for receiving messages from MCP tools.
+     * Starts the HTTP API endpoint for receiving messages from MCP tools
+     * and for programmatic job submission.
      */
     private void startApiEndpoint() {
+        // Initialize stats store
+        String dataDir = System.getProperty("user.home") + "/.flowtree";
+        new File(dataDir).mkdirs();
+        statsStore = new JobStatsStore(dataDir + "/stats");
+        statsStore.initialize();
+        notifier.setStatsStore(statsStore);
+
         try {
-            apiEndpoint = new SlackApiEndpoint(apiPort, notifier);
+            apiEndpoint = new FlowTreeApiEndpoint(apiPort, notifier);
+            apiEndpoint.setServer(flowtreeServer);
+            apiEndpoint.setListener(listener);
+            apiEndpoint.setStatsStore(statsStore);
             apiEndpoint.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false);
             int listeningPort = apiEndpoint.getListeningPort();
             listener.setApiPort(listeningPort);
@@ -622,7 +640,7 @@ public class SlackBotController implements ConsoleFeatures {
     }
 
     /**
-     * Stops the bot controller.
+     * Stops the controller.
      */
     public void stop() throws Exception {
         running.set(false);
@@ -644,6 +662,11 @@ public class SlackBotController implements ConsoleFeatures {
         if (apiEndpoint != null) {
             apiEndpoint.stop();
             apiEndpoint = null;
+        }
+
+        if (statsStore != null) {
+            statsStore.close();
+            statsStore = null;
         }
 
         if (socketModeApp != null) {
@@ -721,7 +744,7 @@ public class SlackBotController implements ConsoleFeatures {
     // Command-line interface
 
     /**
-     * Main entry point for running the Slack bot controller.
+     * Main entry point for running the FlowTree controller.
      *
      * <p>The controller starts a FlowTree {@link Server} that listens for
      * inbound agent connections. Agents connect to this server by setting
@@ -729,7 +752,7 @@ public class SlackBotController implements ConsoleFeatures {
      *
      * <p>Environment variables:</p>
      * <ul>
-     *   <li>SLACK_BOT_TOKEN - Required</li>
+     *   <li>SLACK_BOT_TOKEN - Required for Slack integration</li>
      *   <li>SLACK_APP_TOKEN - Required for Socket Mode</li>
      *   <li>FLOWTREE_PORT - FlowTree listening port (default: 7766)</li>
      * </ul>
@@ -749,7 +772,7 @@ public class SlackBotController implements ConsoleFeatures {
         String channelId = System.getenv("SLACK_CHANNEL_ID");
         String channelName = System.getenv("SLACK_CHANNEL_NAME");
         String defaultBranch = System.getenv("GIT_DEFAULT_BRANCH");
-        int apiPort = SlackApiEndpoint.DEFAULT_PORT;
+        int apiPort = FlowTreeApiEndpoint.DEFAULT_PORT;
         int flowtreePort = Integer.parseInt(
                 System.getenv().getOrDefault("FLOWTREE_PORT",
                         String.valueOf(Server.defaultPort)));
@@ -795,7 +818,7 @@ public class SlackBotController implements ConsoleFeatures {
         SlackTokens tokens = SlackTokens.resolve(tokensPath);
 
         // Create controller
-        SlackBotController controller = new SlackBotController(tokens);
+        FlowTreeController controller = new FlowTreeController(tokens);
         controller.setApiPort(apiPort);
         controller.setFlowtreePort(flowtreePort);
 
@@ -835,7 +858,7 @@ public class SlackBotController implements ConsoleFeatures {
     }
 
     private static void printUsage() {
-        System.out.println("Usage: SlackBotController [options]");
+        System.out.println("Usage: FlowTreeController [options]");
         System.out.println();
         System.out.println("Options:");
         System.out.println("  --tokens, -t <file>    JSON file with botToken/appToken");
@@ -864,16 +887,16 @@ public class SlackBotController implements ConsoleFeatures {
         System.out.println("  SLACK_APP_TOKEN        App-level token for Socket Mode (xapp-...)");
         System.out.println("  SLACK_CHANNEL_ID       Default channel to monitor");
         System.out.println("  FLOWTREE_PORT          FlowTree listening port (default: 7766)");
-        System.out.println("  GIT_DEFAULT_BRANCH     Default branch for commits");
+        System.out.println("  GIT_DEFAULT_BRANCH     Default git branch for commits");
         System.out.println();
         System.out.println("Example with token file:");
-        System.out.println("  java -cp flowtree.jar io.flowtree.slack.SlackBotController \\");
+        System.out.println("  java -cp flowtree.jar io.flowtree.slack.FlowTreeController \\");
         System.out.println("      --tokens slack-tokens.json --config workstreams.yaml");
         System.out.println();
         System.out.println("Example with environment variables:");
         System.out.println("  export SLACK_BOT_TOKEN=xoxb-...");
         System.out.println("  export SLACK_APP_TOKEN=xapp-...");
-        System.out.println("  java -cp flowtree.jar io.flowtree.slack.SlackBotController \\");
+        System.out.println("  java -cp flowtree.jar io.flowtree.slack.FlowTreeController \\");
         System.out.println("      --config workstreams.yaml");
     }
 }

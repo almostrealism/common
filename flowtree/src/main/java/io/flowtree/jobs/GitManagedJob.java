@@ -720,7 +720,7 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
     }
 
     /**
-     * Validates that a path is exactly {@code owner/repo} — two non-empty
+     * Validates that a path is exactly {@code owner/repo} -- two non-empty
      * parts separated by a single slash.
      *
      * @param path the candidate owner/repo string
@@ -1313,6 +1313,12 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
         appendJsonField(sb, "prompt", event.getPrompt(), false);
         appendJsonField(sb, "sessionId", event.getSessionId(), false);
         sb.append(",\"exitCode\":").append(event.getExitCode());
+
+        // Timing information
+        sb.append(",\"durationMs\":").append(event.getDurationMs());
+        sb.append(",\"durationApiMs\":").append(event.getDurationApiMs());
+        sb.append(",\"costUsd\":").append(event.getCostUsd());
+        sb.append(",\"numTurns\":").append(event.getNumTurns());
 
         sb.append("}");
         return sb.toString();

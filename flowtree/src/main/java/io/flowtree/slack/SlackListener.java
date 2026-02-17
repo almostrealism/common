@@ -24,7 +24,13 @@ import org.almostrealism.io.ConsoleFeatures;
 
 import java.io.File;
 import java.io.IOException;
+import java.time.DayOfWeek;
+import java.time.LocalDate;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.time.temporal.TemporalAdjusters;
 import java.util.HashMap;
+import java.util.Locale;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -43,7 +49,7 @@ import java.util.regex.Pattern;
  * </ul>
  *
  * @author Michael Murray
- * @see SlackBotController
+ * @see FlowTreeController
  * @see ClaudeCodeJob
  */
 public class SlackListener implements ConsoleFeatures {
@@ -138,10 +144,10 @@ public class SlackListener implements ConsoleFeatures {
     }
 
     /**
-     * Sets the API endpoint port. Called by {@link SlackBotController} after the
+     * Sets the API endpoint port. Called by {@link FlowTreeController} after the
      * API endpoint starts so that jobs can be configured with the correct URL.
      *
-     * @param apiPort the port the SlackApiEndpoint is listening on
+     * @param apiPort the port the FlowTreeApiEndpoint is listening on
      */
     public void setApiPort(int apiPort) {
         this.apiPort = apiPort;
@@ -186,7 +192,7 @@ public class SlackListener implements ConsoleFeatures {
     /**
      * Handles an incoming Slack message event.
      *
-     * <p>This method is typically called by {@link SlackBotController} when
+     * <p>This method is typically called by {@link FlowTreeController} when
      * an app_mention event is received.</p>
      *
      * @param channelId the channel where the message was posted
@@ -298,6 +304,17 @@ public class SlackListener implements ConsoleFeatures {
             return false;
         }
 
+        // Validate git identity before submitting - commits will fail without it
+        if (workstream.getGitUserName() == null || workstream.getGitUserName().isEmpty()
+                || workstream.getGitUserEmail() == null || workstream.getGitUserEmail().isEmpty()) {
+            notifier.postMessage(workstream.getChannelId(),
+                ":x: Git identity not configured - job not submitted.\n"
+                + "Set git user name and email with:\n"
+                + "  `/flowtree config gitUserName <name>`\n"
+                + "  `/flowtree config gitUserEmail <email>`");
+            return false;
+        }
+
         NodeProxy[] peers = server.getNodeGroup().getServers();
         if (peers.length == 0) {
             notifier.postMessage(workstream.getChannelId(),
@@ -376,7 +393,7 @@ public class SlackListener implements ConsoleFeatures {
 
     /**
      * Sets the workstream configuration and file reference for persistence.
-     * Called by {@link SlackBotController} after loading config from YAML.
+     * Called by {@link FlowTreeController} after loading config from YAML.
      *
      * @param config     the loaded workstream configuration
      * @param configFile the YAML file to persist changes to (may be null)
@@ -428,6 +445,9 @@ public class SlackListener implements ConsoleFeatures {
                 case "jobs":
                     handleSlashJobsCommand(channelId, responder);
                     break;
+                case "stats":
+                    handleSlashStatsCommand(channelId, args, responder);
+                    break;
                 default:
                     responder.respond(":information_source: *Flowtree Commands*\n"
                         + "  `/flowtree setup <directory> <branch>` \u2014 Set up a workstream for this channel\n"
@@ -436,7 +456,8 @@ public class SlackListener implements ConsoleFeatures {
                         + "  `/flowtree task <prompt>` \u2014 Submit a task\n"
                         + "  `/flowtree cancel [job-id]` \u2014 Cancel a running job\n"
                         + "  `/flowtree config [key] [value]` \u2014 View or update settings\n"
-                        + "  `/flowtree jobs` \u2014 List recent jobs");
+                        + "  `/flowtree jobs` \u2014 List recent jobs\n"
+                        + "  `/flowtree stats` \u2014 Show weekly job statistics");
             }
         } catch (IOException e) {
             warn("Error responding to slash command: " + e.getMessage());
@@ -620,7 +641,9 @@ public class SlackListener implements ConsoleFeatures {
             sb.append("   `baseBranch` = ").append(ws.getBaseBranch() != null ? ws.getBaseBranch() : "(not set)").append("\n");
             sb.append("   `workingDirectory` = ").append(ws.getWorkingDirectory() != null ? ws.getWorkingDirectory() : "(not set)").append("\n");
             sb.append("   `pushToOrigin` = ").append(ws.isPushToOrigin()).append("\n");
-            sb.append("   `allowedTools` = ").append(ws.getAllowedTools());
+            sb.append("   `allowedTools` = ").append(ws.getAllowedTools()).append("\n");
+            sb.append("   `gitUserName` = ").append(ws.getGitUserName() != null ? ws.getGitUserName() : "(not set)").append("\n");
+            sb.append("   `gitUserEmail` = ").append(ws.getGitUserEmail() != null ? ws.getGitUserEmail() : "(not set)");
             ctx.respond(sb.toString());
             return;
         }
@@ -635,7 +658,8 @@ public class SlackListener implements ConsoleFeatures {
             if (currentValue == null) {
                 ctx.respond(":warning: Unknown setting: `" + key + "`\n"
                     + "Modifiable settings: `maxBudgetUsd`, `maxTurns`, `defaultBranch`, "
-                    + "`baseBranch`, `workingDirectory`, `pushToOrigin`, `allowedTools`");
+                    + "`baseBranch`, `workingDirectory`, `pushToOrigin`, `allowedTools`, "
+                    + "`gitUserName`, `gitUserEmail`");
             } else {
                 ctx.respond(":gear: `" + key + "` = " + currentValue);
             }
@@ -718,6 +742,8 @@ public class SlackListener implements ConsoleFeatures {
             case "workingDirectory": return ws.getWorkingDirectory() != null ? ws.getWorkingDirectory() : "(not set)";
             case "pushToOrigin": return String.valueOf(ws.isPushToOrigin());
             case "allowedTools": return ws.getAllowedTools();
+            case "gitUserName": return ws.getGitUserName() != null ? ws.getGitUserName() : "(not set)";
+            case "gitUserEmail": return ws.getGitUserEmail() != null ? ws.getGitUserEmail() : "(not set)";
             case "workstreamId": return ws.getWorkstreamId();
             case "channelId": return ws.getChannelId();
             case "channelName": return ws.getChannelName();
@@ -760,6 +786,12 @@ public class SlackListener implements ConsoleFeatures {
             case "allowedTools":
                 ws.setAllowedTools(value);
                 return null;
+            case "gitUserName":
+                ws.setGitUserName(value);
+                return null;
+            case "gitUserEmail":
+                ws.setGitUserEmail(value);
+                return null;
             case "workstreamId":
             case "channelId":
             case "channelName":
@@ -767,8 +799,78 @@ public class SlackListener implements ConsoleFeatures {
             default:
                 return "Unknown setting: `" + key + "`\n"
                     + "Modifiable settings: `maxBudgetUsd`, `maxTurns`, `defaultBranch`, "
-                    + "`baseBranch`, `workingDirectory`, `pushToOrigin`, `allowedTools`";
+                    + "`baseBranch`, `workingDirectory`, `pushToOrigin`, `allowedTools`, "
+                    + "`gitUserName`, `gitUserEmail`";
         }
+    }
+
+    /**
+     * Handles {@code /flowtree stats}. Shows weekly job statistics.
+     */
+    private void handleSlashStatsCommand(String channelId, String args,
+                                          SlashCommandResponder ctx) throws IOException {
+        SlackWorkstream ws = channelToWorkstream.get(channelId);
+        if (ws == null) {
+            ctx.respond(":warning: No workstream configured for this channel.\n"
+                + "Use `/flowtree setup <working-directory> <branch>` to create one.");
+            return;
+        }
+
+        JobStatsStore statsStore = notifier.getStatsStore();
+        if (statsStore == null) {
+            ctx.respond(":warning: Job statistics are not available.");
+            return;
+        }
+
+        LocalDate today = LocalDate.now(ZoneId.of("UTC"));
+        LocalDate thisWeekStart = today.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
+        LocalDate lastWeekStart = thisWeekStart.minusWeeks(1);
+
+        JobStatsStore.WeeklyStats thisWeek = statsStore.getWeeklyStats(ws.getWorkstreamId(), thisWeekStart);
+        JobStatsStore.WeeklyStats lastWeek = statsStore.getWeeklyStats(ws.getWorkstreamId(), lastWeekStart);
+
+        StringBuilder sb = new StringBuilder();
+        sb.append(":bar_chart: *Agent Activity \u2014 ").append(ws.getChannelName()).append("*\n\n");
+        sb.append(formatWeeklyStats("This Week", thisWeekStart, thisWeek));
+        sb.append("\n");
+        sb.append(formatWeeklyStats("Last Week", lastWeekStart, lastWeek));
+
+        ctx.respond(sb.toString());
+    }
+
+    /**
+     * Formats a week's statistics for Slack display.
+     */
+    private String formatWeeklyStats(String label, LocalDate weekStart,
+                                      JobStatsStore.WeeklyStats stats) {
+        DateTimeFormatter fmt = DateTimeFormatter.ofPattern("EEE MMM d", Locale.US);
+        LocalDate weekEnd = weekStart.plusDays(6);
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("*").append(label).append("* (");
+        sb.append(weekStart.format(fmt)).append(" \u2014 ").append(weekEnd.format(fmt)).append(")\n");
+        sb.append("  :clock1: Total time: ").append(formatDuration(stats.totalWallClockMs)).append("\n");
+        sb.append("  :hammer: Jobs: ").append(stats.jobCount);
+        sb.append(" (:white_check_mark: ").append(stats.successCount);
+        sb.append("  :x: ").append(stats.failedCount);
+        sb.append("  :no_entry_sign: ").append(stats.cancelledCount).append(")\n");
+        sb.append("  :moneybag: Cost: $").append(String.format("%.2f", stats.totalCostUsd)).append("\n");
+        sb.append("  :speech_balloon: Turns: ").append(String.format("%,d", stats.totalTurns)).append("\n");
+        return sb.toString();
+    }
+
+    /**
+     * Formats a duration in milliseconds as a human-readable string.
+     */
+    private static String formatDuration(long ms) {
+        if (ms <= 0) return "0m";
+        long totalMinutes = ms / 60000;
+        long hours = totalMinutes / 60;
+        long minutes = totalMinutes % 60;
+        if (hours > 0) {
+            return hours + "h " + minutes + "m";
+        }
+        return minutes + "m";
     }
 
     /**
