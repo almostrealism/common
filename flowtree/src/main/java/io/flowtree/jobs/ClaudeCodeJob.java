@@ -99,6 +99,10 @@ public class ClaudeCodeJob extends GitManagedJob {
     private String sessionId;
     private String output;
     private int exitCode;
+    private long durationMs;
+    private long durationApiMs;
+    private double costUsd;
+    private int numTurns;
 
     /**
      * Default constructor for deserialization.
@@ -581,8 +585,8 @@ public class ClaudeCodeJob extends GitManagedJob {
                 writer.write(output);
             }
 
-            // Try to extract session ID from JSON output
-            extractSessionId(output);
+            // Extract session ID and timing metrics from JSON output
+            extractOutputMetrics(output);
 
             log("Completed with exit code: " + exitCode);
             log("Output saved to: " + outputFile);
@@ -602,6 +606,7 @@ public class ClaudeCodeJob extends GitManagedJob {
     @Override
     protected void populateEventDetails(JobCompletionEvent event) {
         event.withClaudeCodeInfo(prompt, sessionId, exitCode);
+        event.withTimingInfo(durationMs, durationApiMs, costUsd, numTurns);
     }
 
     @Override
@@ -1176,8 +1181,15 @@ public class ClaudeCodeJob extends GitManagedJob {
         return McpToolDiscovery.discoverToolNames(serverFile);
     }
 
-    private void extractSessionId(String jsonOutput) {
-        // Simple extraction - look for "session_id":"..."
+    /**
+     * Extracts session ID and timing metrics from the Claude Code JSON output.
+     *
+     * @param jsonOutput the raw JSON output from Claude Code
+     */
+    private void extractOutputMetrics(String jsonOutput) {
+        if (jsonOutput == null || jsonOutput.isEmpty()) return;
+
+        // Extract session_id (string field)
         int idx = jsonOutput.indexOf("\"session_id\"");
         if (idx >= 0) {
             int start = jsonOutput.indexOf("\"", idx + 12) + 1;
@@ -1185,6 +1197,75 @@ public class ClaudeCodeJob extends GitManagedJob {
             if (start > 0 && end > start) {
                 sessionId = jsonOutput.substring(start, end);
             }
+        }
+
+        // Extract timing metrics (numeric fields)
+        durationMs = extractJsonLongValue(jsonOutput, "duration_ms");
+        durationApiMs = extractJsonLongValue(jsonOutput, "duration_api_ms");
+        numTurns = (int) extractJsonLongValue(jsonOutput, "num_turns");
+
+        // Cost field may be "total_cost_usd" or "cost_usd"
+        costUsd = extractJsonDoubleValue(jsonOutput, "total_cost_usd");
+        if (costUsd == 0.0) {
+            costUsd = extractJsonDoubleValue(jsonOutput, "cost_usd");
+        }
+    }
+
+    /**
+     * Extracts a long value from a JSON string by field name.
+     * Returns 0 if the field is not found or cannot be parsed.
+     */
+    private static long extractJsonLongValue(String json, String field) {
+        int fieldIdx = json.indexOf("\"" + field + "\"");
+        if (fieldIdx < 0) return 0;
+
+        int colonIdx = json.indexOf(":", fieldIdx);
+        if (colonIdx < 0) return 0;
+
+        String rest = json.substring(colonIdx + 1).trim();
+        StringBuilder numStr = new StringBuilder();
+        for (int i = 0; i < rest.length(); i++) {
+            char c = rest.charAt(i);
+            if (c == '-' || (c >= '0' && c <= '9')) {
+                numStr.append(c);
+            } else if (numStr.length() > 0) {
+                break;
+            }
+        }
+
+        try {
+            return Long.parseLong(numStr.toString());
+        } catch (NumberFormatException e) {
+            return 0;
+        }
+    }
+
+    /**
+     * Extracts a double value from a JSON string by field name.
+     * Returns 0.0 if the field is not found or cannot be parsed.
+     */
+    private static double extractJsonDoubleValue(String json, String field) {
+        int fieldIdx = json.indexOf("\"" + field + "\"");
+        if (fieldIdx < 0) return 0.0;
+
+        int colonIdx = json.indexOf(":", fieldIdx);
+        if (colonIdx < 0) return 0.0;
+
+        String rest = json.substring(colonIdx + 1).trim();
+        StringBuilder numStr = new StringBuilder();
+        for (int i = 0; i < rest.length(); i++) {
+            char c = rest.charAt(i);
+            if (c == '-' || c == '.' || (c >= '0' && c <= '9')) {
+                numStr.append(c);
+            } else if (numStr.length() > 0) {
+                break;
+            }
+        }
+
+        try {
+            return Double.parseDouble(numStr.toString());
+        } catch (NumberFormatException e) {
+            return 0.0;
         }
     }
 
