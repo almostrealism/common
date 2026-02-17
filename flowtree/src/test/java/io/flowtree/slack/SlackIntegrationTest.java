@@ -361,8 +361,8 @@ public class SlackIntegrationTest extends TestSuiteBase {
 
         // Check defaults
         assertEquals(7766, entry.getAgents().get(0).getPort()); // default port
-        assertEquals(50, entry.getMaxTurns()); // default turns
-        assertEquals(10.0, entry.getMaxBudgetUsd(), 0.001); // default budget
+        assertEquals(500, entry.getMaxTurns()); // default turns
+        assertEquals(100.0, entry.getMaxBudgetUsd(), 0.001); // default budget
         assertTrue(entry.isPushToOrigin()); // default push
         assertEquals("Read,Edit,Write,Bash,Glob,Grep", entry.getAllowedTools()); // default tools
     }
@@ -623,8 +623,8 @@ public class SlackIntegrationTest extends TestSuiteBase {
         assertEquals("/workspace/project", ws.getWorkingDirectory());
         assertEquals("feature/test", ws.getDefaultBranch());
         assertEquals("#setup-channel", ws.getChannelName());
-        assertEquals(10.0, ws.getMaxBudgetUsd(), 0.001);
-        assertEquals(50, ws.getMaxTurns());
+        assertEquals(100.0, ws.getMaxBudgetUsd(), 0.001);
+        assertEquals(500, ws.getMaxTurns());
     }
 
     @Test

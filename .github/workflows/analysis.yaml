@@ -33,6 +33,44 @@ jobs:
            -DAR_HARDWARE_DRIVER=native \
            -DAR_HARDWARE_LIBS=Extensions
 
+  javadoc-check:
+    needs: build
+    runs-on: ubuntu-latest
+    # Out of the critical path: does not block tests or other jobs.
+    # Failures are reported but do not fail the overall workflow.
+    continue-on-error: true
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'adopt'
+          cache: 'maven'
+
+      - name: Build (skip tests)
+        run: mvn install -DskipTests
+
+      - name: Check Javadoc Coverage
+        run: mvn checkstyle:check -Pjavadoc-check
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "## Javadoc Coverage Check" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          if [ "${{ job.status }}" = "success" ]; then
+            echo "All non-private classes and methods have Javadoc documentation." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Some non-private classes or methods are missing Javadoc documentation." >> "$GITHUB_STEP_SUMMARY"
+            echo "Run \`mvn checkstyle:check -Pjavadoc-check\` locally to see details." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
   build-mac:
     runs-on: [self-hosted, macos, ar-ci]
     steps:
