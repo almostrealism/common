@@ -58,6 +58,9 @@ import java.util.regex.Pattern;
  *   <tr><td>POST</td><td>/api/workstreams/{id}/submit</td>
  *       <td>{@code {"prompt":"..."}}</td>
  *       <td>Submit a new job to connected agents</td></tr>
+ *   <tr><td>POST</td><td>/api/submit</td>
+ *       <td>{@code {"prompt":"...","targetBranch":"..."}}</td>
+ *       <td>Submit a job, resolving the workstream from the request body</td></tr>
  *   <tr><td>POST</td><td>/api/workstreams/{id}</td>
  *       <td>{@code {"jobId":"...","status":"..."}}</td>
  *       <td>Receive a status event for the workstream</td></tr>
@@ -153,6 +156,10 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         }
 
         if (Method.POST.equals(method)) {
+            if ("/api/submit".equals(uri)) {
+                return handleSubmit(session, null);
+            }
+
             Matcher m = WORKSTREAM_PATTERN.matcher(uri);
             if (m.matches()) {
                 String workstreamId = m.group(1);
@@ -312,12 +319,15 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             }
         }
 
-        if (workstream == null) {
+        if (workstream == null && pathWorkstreamId != null) {
             workstream = notifier.getWorkstream(pathWorkstreamId);
         }
 
         if (workstream == null) {
-            return errorResponse("Unknown workstream: " + pathWorkstreamId);
+            String detail = pathWorkstreamId != null
+                ? "Unknown workstream: " + pathWorkstreamId
+                : "No workstream found for branch: " + targetBranch;
+            return errorResponse(detail);
         }
 
         // Validate git identity before submitting - commits will fail without it

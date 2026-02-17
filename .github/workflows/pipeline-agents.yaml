@@ -55,9 +55,8 @@ jobs:
       - name: Submit agent job
         if: steps.prompt.outputs.skip != 'true'
         env:
-          CONTROLLER_HOST: ${{ secrets.FLOWTREE_CONTROLLER_HOST || 'localhost' }}
+          CONTROLLER_HOST: ${{ secrets.FLOWTREE_CONTROLLER_HOST || 'mac-studio' }}
           CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
-          WORKSTREAM_ID: "ws-pipeline"
         run: |
           PROMPT=$(cat /tmp/agent-prompt.txt)
 
@@ -75,7 +74,7 @@ jobs:
                 maxTurns: 30,
                 maxBudgetUsd: 5.0
               }')" \
-            "http://${CONTROLLER_HOST}:${CONTROLLER_PORT}/api/workstreams/${WORKSTREAM_ID}/submit")
+            "http://${CONTROLLER_HOST}:${CONTROLLER_PORT}/api/submit")
 
           HTTP_CODE=$(echo "$RESPONSE" | tail -1)
           BODY=$(echo "$RESPONSE" | head -n -1)
