@@ -411,8 +411,6 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
-      checks: write
-      security-events: write
 
     steps:
       - name: Checkout Code
@@ -480,6 +478,31 @@ jobs:
           path: .qodana/code-coverage/
           retention-days: 30
 
+  qodana:
+    needs: [analysis]
+    if: always()
+    runs-on: ubuntu-latest
+    permissions:
+      checks: write
+      security-events: write
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'adopt'
+          cache: 'maven'
+
+      - name: Build for Analysis
+        run: mvn install -DskipTests
+
       - name: Qodana Scan
         uses: JetBrains/qodana-action@main
         env:
@@ -507,9 +530,9 @@ jobs:
   # from starting until it completes.
 
   auto-resolve:
-    needs: [test, test-ml, test-audio, test-music, analysis]
+    needs: [test, test-ml, test-audio, test-music]
     if: always() && github.ref != 'refs/heads/master'
-    runs-on: [self-hosted, linux, ar-ci]
+    runs-on: [self-hosted, macos, ar-ci]
     concurrency:
       group: auto-resolve-${{ github.ref }}
       cancel-in-progress: true
