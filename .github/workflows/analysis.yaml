@@ -91,6 +91,16 @@ jobs:
            -DAR_TEST_GROUP=${{ matrix.group }} \
            -DAR_TEST_GROUPS=7
 
+      - name: Upload Surefire Reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-utils-group-${{ matrix.group }}
+          path: |
+            **/target/surefire-reports/TEST-*.xml
+          retention-days: 7
+          if-no-files-found: ignore
+
       - name: Collect Coverage Data
         if: always()
         run: |
@@ -133,6 +143,16 @@ jobs:
            -DAR_HARDWARE_LIBS=Extensions \
            -DAR_TEST_PROFILE=pipeline
 
+      - name: Upload Surefire Reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-ml
+          path: |
+            **/target/surefire-reports/TEST-*.xml
+          retention-days: 7
+          if-no-files-found: ignore
+
       - name: Collect Coverage Data
         if: always()
         run: |
@@ -174,6 +194,16 @@ jobs:
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS=Extensions \
            -DAR_TEST_PROFILE=pipeline
+
+      - name: Upload Surefire Reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-audio
+          path: |
+            **/target/surefire-reports/TEST-*.xml
+          retention-days: 7
+          if-no-files-found: ignore
 
       - name: Collect Coverage Data
         if: always()
@@ -224,6 +254,16 @@ jobs:
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS=Extensions \
            -DAR_TEST_PROFILE=pipeline
+
+      - name: Upload Surefire Reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-music-compose
+          path: |
+            **/target/surefire-reports/TEST-*.xml
+          retention-days: 7
+          if-no-files-found: ignore
 
       - name: Collect Coverage Data
         if: always()
@@ -454,3 +494,109 @@ jobs:
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: ${{ runner.temp }}/qodana/results/qodana.sarif.json
+
+  # ─── Auto-Resolve Job ─────────────────────────────────────────────────
+  # Downloads Surefire reports from all test jobs, parses them for
+  # failures, and submits a FlowTree coding-agent job to attempt a fix.
+  #
+  # Concurrency note: GitHub Actions does not natively support "skip if
+  # already running" semantics. The concurrency group below ensures only
+  # one auto-resolve job runs per branch at a time. If a new run is
+  # triggered while one is pending (queued), the pending one is cancelled
+  # in favor of the newer run. A truly running job will block the new one
+  # from starting until it completes.
+
+  auto-resolve:
+    needs: [test, test-ml, test-audio, test-music, analysis]
+    if: always() && github.ref != 'refs/heads/master'
+    runs-on: [self-hosted, linux, ar-ci]
+    concurrency:
+      group: auto-resolve-${{ github.ref }}
+      cancel-in-progress: true
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Download Surefire Reports
+        uses: actions/download-artifact@v4
+        with:
+          pattern: surefire-*
+          path: all-surefire-reports
+          merge-multiple: false
+
+      - name: Parse test failures
+        id: failures
+        run: |
+          eval "$(./tools/ci/parse-surefire-failures.sh all-surefire-reports /tmp/test-failures.txt)"
+          echo "failure_count=$failure_count" >> "$GITHUB_OUTPUT"
+          echo "has_failures=$has_failures" >> "$GITHUB_OUTPUT"
+          if [ "$has_failures" = "true" ]; then
+            echo "::notice::Found $failure_count test failure(s) to auto-resolve"
+          else
+            echo "::notice::No test failures found -- skipping auto-resolve"
+          fi
+
+      - name: Upload failure summary
+        if: steps.failures.outputs.has_failures == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-failure-summary
+          path: /tmp/test-failures.txt
+          retention-days: 7
+
+      - name: Determine branch context
+        if: steps.failures.outputs.has_failures == 'true'
+        id: ctx
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "branch=${{ github.head_ref }}" >> "$GITHUB_OUTPUT"
+            echo "base=${{ github.base_ref }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "branch=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+            echo "base=master" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build prompt
+        if: steps.failures.outputs.has_failures == 'true'
+        env:
+          FAILURE_COUNT: ${{ steps.failures.outputs.failure_count }}
+          BRANCH: ${{ steps.ctx.outputs.branch }}
+          COMMIT_SHA: ${{ github.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          ./tools/ci/build-resolve-prompt.sh /tmp/test-failures.txt /tmp/agent-prompt.txt
+
+      - name: Submit agent job
+        if: steps.failures.outputs.has_failures == 'true'
+        env:
+          CONTROLLER_HOST: ${{ secrets.FLOWTREE_CONTROLLER_HOST || 'localhost' }}
+          CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
+          WORKSTREAM_ID: ws-pipeline
+          BRANCH: ${{ steps.ctx.outputs.branch }}
+          BASE_BRANCH: ${{ steps.ctx.outputs.base }}
+        run: |
+          ./tools/ci/submit-agent-job.sh /tmp/agent-prompt.txt
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "## Auto-Resolve" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          if [ "${{ steps.failures.outputs.has_failures }}" = "true" ]; then
+            echo "Found **${{ steps.failures.outputs.failure_count }}** test failure(s)." >> "$GITHUB_STEP_SUMMARY"
+            echo "A FlowTree coding agent job was submitted to attempt automatic resolution." >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "### Failing tests" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            cat /tmp/test-failures.txt >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || echo "(no failure file)" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "No test failures detected. Auto-resolve skipped." >> "$GITHUB_STEP_SUMMARY"
+          fi

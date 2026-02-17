@@ -1,0 +1,83 @@
+#!/usr/bin/env bash
+# ─── Submit a job to the FlowTree coding-agent controller ────────────
+#
+# Reads a prompt from a file and POSTs it to the FlowTree controller's
+# workstream submission endpoint.
+#
+# Usage:
+#   submit-agent-job.sh <prompt-file>
+#
+# Required environment variables:
+#   BRANCH           - target branch for the agent to work on
+#   BASE_BRANCH      - base branch for comparison
+#
+# Optional environment variables:
+#   CONTROLLER_HOST  - FlowTree controller hostname (default: localhost)
+#   CONTROLLER_PORT  - FlowTree controller port     (default: 7780)
+#   WORKSTREAM_ID    - workstream to submit to       (default: ws-pipeline)
+#   MAX_TURNS        - agent turn budget             (default: 50)
+#   MAX_BUDGET_USD   - agent dollar budget           (default: 10.0)
+#
+# Exit codes:
+#   0 - always (failures are warnings, not errors)
+#
+# Outputs (to stdout):
+#   job_id=<id>   (on success)
+
+set -euo pipefail
+
+PROMPT_FILE="${1:-}"
+
+if [ -z "$PROMPT_FILE" ]; then
+    echo "Usage: $0 <prompt-file>" >&2
+    exit 1
+fi
+
+for var in BRANCH BASE_BRANCH; do
+    if [ -z "${!var:-}" ]; then
+        echo "ERROR: ${var} is not set." >&2
+        exit 1
+    fi
+done
+
+CONTROLLER_HOST="${CONTROLLER_HOST:-localhost}"
+CONTROLLER_PORT="${CONTROLLER_PORT:-7780}"
+WORKSTREAM_ID="${WORKSTREAM_ID:-ws-pipeline}"
+MAX_TURNS="${MAX_TURNS:-50}"
+MAX_BUDGET_USD="${MAX_BUDGET_USD:-10.0}"
+
+PROMPT=$(cat "$PROMPT_FILE")
+
+ENDPOINT="http://${CONTROLLER_HOST}:${CONTROLLER_PORT}/api/workstreams/${WORKSTREAM_ID}/submit"
+
+RESPONSE=$(curl -s -w "\n%{http_code}" \
+    -X POST \
+    -H "Content-Type: application/json" \
+    -d "$(jq -n \
+        --arg prompt "$PROMPT" \
+        --arg branch "$BRANCH" \
+        --arg base "$BASE_BRANCH" \
+        --argjson maxTurns "$MAX_TURNS" \
+        --argjson maxBudget "$MAX_BUDGET_USD" \
+        '{
+            prompt: $prompt,
+            targetBranch: $branch,
+            baseBranch: $base,
+            maxTurns: $maxTurns,
+            maxBudgetUsd: $maxBudget
+        }')" \
+    "$ENDPOINT")
+
+HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+BODY=$(echo "$RESPONSE" | head -n -1)
+
+echo "Response ($HTTP_CODE): $BODY"
+
+if [ "$HTTP_CODE" != "200" ]; then
+    echo "::warning::Auto-resolve agent job submission failed (HTTP $HTTP_CODE): $BODY"
+    exit 0
+fi
+
+JOB_ID=$(echo "$BODY" | jq -r '.jobId // empty')
+echo "job_id=$JOB_ID"
+echo "Auto-resolve agent job submitted: $JOB_ID"
