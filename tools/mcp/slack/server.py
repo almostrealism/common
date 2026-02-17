@@ -16,6 +16,7 @@ import json
 import os
 import sys
 from urllib.error import HTTPError, URLError
+from urllib.parse import urlencode, urljoin
 from urllib.request import Request, urlopen
 
 from mcp.server.fastmcp import FastMCP
@@ -99,13 +100,17 @@ def slack_get_stats(period: str = "weekly") -> dict:
     # URL format: http://controller:port/api/workstreams/{id}[/jobs/{jobId}]
     try:
         parts = WORKSTREAM_URL.split("/api/workstreams/")
+        if len(parts) < 2:
+            return {"ok": False, "error": f"Cannot parse workstream URL: {WORKSTREAM_URL}"}
         base_url = parts[0]
-        ws_path = parts[1] if len(parts) > 1 else ""
-        workstream_id = ws_path.split("/")[0]
+        workstream_id = parts[1].split("/")[0]
+        if not workstream_id:
+            return {"ok": False, "error": f"Empty workstream ID in URL: {WORKSTREAM_URL}"}
     except (IndexError, ValueError):
         return {"ok": False, "error": f"Cannot parse workstream URL: {WORKSTREAM_URL}"}
 
-    url = f"{base_url}/api/stats?workstream={workstream_id}&period={period}"
+    query = urlencode({"workstream": workstream_id, "period": period})
+    url = f"{base_url}/api/stats?{query}"
     req = Request(url, headers={"Accept": "application/json"})
 
     print(f"ar-slack: GET {url}", file=sys.stderr)

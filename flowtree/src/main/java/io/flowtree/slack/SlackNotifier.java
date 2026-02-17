@@ -199,7 +199,7 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
 
         if (statsStore != null) {
             statsStore.recordJobCompleted(event.getJobId(),
-                event.getStatus().name(), event.getTimestamp(),
+                workstreamId, event.getStatus().name(), event.getTimestamp(),
                 event.getDurationMs(), event.getDurationApiMs(),
                 event.getCostUsd(), event.getNumTurns(),
                 event.getSessionId(), event.getExitCode());

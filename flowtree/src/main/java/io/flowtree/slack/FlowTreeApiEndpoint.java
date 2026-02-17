@@ -830,12 +830,20 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
      * <p>Query parameters:</p>
      * <ul>
      *   <li>{@code workstream} - optional workstream ID filter</li>
+     *   <li>{@code period} - reporting period; only {@code "weekly"} is
+     *       currently supported (default). Unsupported values return a
+     *       400 error.</li>
      * </ul>
      */
     private Response handleStatsQuery(IHTTPSession session) {
         if (statsStore == null) {
             return newFixedLengthResponse(Response.Status.OK,
                 "application/json", "{\"error\":\"Stats not configured\"}");
+        }
+
+        String period = session.getParms().get("period");
+        if (period != null && !period.isEmpty() && !"weekly".equals(period)) {
+            return errorResponse("Unsupported period: " + period + ". Only 'weekly' is supported.");
         }
 
         String workstreamFilter = session.getParms().get("workstream");

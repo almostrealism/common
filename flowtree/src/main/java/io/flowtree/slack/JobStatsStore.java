@@ -162,9 +162,11 @@ public class JobStatsStore implements ConsoleFeatures {
      *
      * <p>Updates the existing row if the job was previously recorded as started.
      * If no row exists (e.g., controller restarted), inserts a new row with
-     * {@code started_at} set to the completion time.</p>
+     * {@code started_at} set to the completion time and uses the provided
+     * {@code workstreamId} to attribute the job correctly.</p>
      *
      * @param jobId         the job identifier
+     * @param workstreamId  the workstream this job belongs to
      * @param status        the completion status (SUCCESS, FAILED, CANCELLED)
      * @param completedAt   the completion timestamp
      * @param durationMs    duration reported by Claude Code
@@ -174,7 +176,8 @@ public class JobStatsStore implements ConsoleFeatures {
      * @param sessionId     the Claude Code session ID
      * @param exitCode      the process exit code
      */
-    public synchronized void recordJobCompleted(String jobId, String status,
+    public synchronized void recordJobCompleted(String jobId, String workstreamId,
+                                                 String status,
                                                  Instant completedAt, long durationMs,
                                                  long durationApiMs, double costUsd,
                                                  int numTurns, String sessionId,
@@ -208,22 +211,25 @@ public class JobStatsStore implements ConsoleFeatures {
         }
 
         // No row existed - insert with started_at = completedAt
+        String wsId = workstreamId != null ? workstreamId : "unknown";
         String insertSql = "INSERT INTO job_timing (job_id, workstream_id, status, "
             + "started_at, completed_at, wall_clock_ms, duration_ms, duration_api_ms, "
             + "cost_usd, num_turns, session_id, exit_code) "
-            + "VALUES (?, 'unknown', ?, ?, ?, 0, ?, ?, ?, ?, ?, ?)";
+            + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
         try (PreparedStatement ps = connection.prepareStatement(insertSql)) {
             ps.setString(1, jobId);
-            ps.setString(2, status);
-            ps.setTimestamp(3, Timestamp.from(completedAt));
+            ps.setString(2, wsId);
+            ps.setString(3, status);
             ps.setTimestamp(4, Timestamp.from(completedAt));
-            ps.setLong(5, durationMs);
-            ps.setLong(6, durationApiMs);
-            ps.setDouble(7, costUsd);
-            ps.setInt(8, numTurns);
-            ps.setString(9, sessionId);
-            ps.setInt(10, exitCode);
+            ps.setTimestamp(5, Timestamp.from(completedAt));
+            ps.setLong(6, durationMs);
+            ps.setLong(7, durationMs);
+            ps.setLong(8, durationApiMs);
+            ps.setDouble(9, costUsd);
+            ps.setInt(10, numTurns);
+            ps.setString(11, sessionId);
+            ps.setInt(12, exitCode);
             ps.executeUpdate();
         } catch (SQLException e) {
             warn("Failed to insert job completed: " + e.getMessage());
@@ -247,7 +253,7 @@ public class JobStatsStore implements ConsoleFeatures {
      * @param weekStart    the Monday starting the week
      * @return the aggregated stats
      */
-    public WeeklyStats getWeeklyStats(String workstreamId, LocalDate weekStart) {
+    public synchronized WeeklyStats getWeeklyStats(String workstreamId, LocalDate weekStart) {
         if (connection == null) return new WeeklyStats();
 
         LocalDate weekEnd = weekStart.plusDays(7);
@@ -304,7 +310,7 @@ public class JobStatsStore implements ConsoleFeatures {
      * @param weekStart the Monday starting the week
      * @return map of workstream ID to stats
      */
-    public Map<String, WeeklyStats> getWeeklyStatsByWorkstream(LocalDate weekStart) {
+    public synchronized Map<String, WeeklyStats> getWeeklyStatsByWorkstream(LocalDate weekStart) {
         Map<String, WeeklyStats> result = new LinkedHashMap<>();
         if (connection == null) return result;
 
