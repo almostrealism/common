@@ -16,7 +16,7 @@
 #   CONTROLLER_HOST  - FlowTree controller hostname (default: localhost)
 #   CONTROLLER_PORT  - FlowTree controller port     (default: 7780)
 #   MAX_TURNS        - agent turn budget             (default: 50)
-#   MAX_BUDGET_USD   - agent dollar budget           (default: 10.0)
+#   MAX_BUDGET_USD   - agent dollar budget           (omitted → workstream default)
 #
 # Exit codes:
 #   0 - always (failures are warnings, not errors)
@@ -43,28 +43,32 @@ done
 CONTROLLER_HOST="${CONTROLLER_HOST:-localhost}"
 CONTROLLER_PORT="${CONTROLLER_PORT:-7780}"
 MAX_TURNS="${MAX_TURNS:-50}"
-MAX_BUDGET_USD="${MAX_BUDGET_USD:-10.0}"
 
 PROMPT=$(cat "$PROMPT_FILE")
 
 ENDPOINT="http://${CONTROLLER_HOST}:${CONTROLLER_PORT}/api/submit"
 
+# Build the JSON payload; include maxBudgetUsd only when explicitly set
+PAYLOAD=$(jq -n \
+    --arg prompt "$PROMPT" \
+    --arg branch "$BRANCH" \
+    --arg base "$BASE_BRANCH" \
+    --argjson maxTurns "$MAX_TURNS" \
+    '{
+        prompt: $prompt,
+        targetBranch: $branch,
+        baseBranch: $base,
+        maxTurns: $maxTurns
+    }')
+
+if [ -n "${MAX_BUDGET_USD:-}" ]; then
+    PAYLOAD=$(echo "$PAYLOAD" | jq --argjson b "$MAX_BUDGET_USD" '. + {maxBudgetUsd: $b}')
+fi
+
 RESPONSE=$(curl -s -w "\n%{http_code}" \
     -X POST \
     -H "Content-Type: application/json" \
-    -d "$(jq -n \
-        --arg prompt "$PROMPT" \
-        --arg branch "$BRANCH" \
-        --arg base "$BASE_BRANCH" \
-        --argjson maxTurns "$MAX_TURNS" \
-        --argjson maxBudget "$MAX_BUDGET_USD" \
-        '{
-            prompt: $prompt,
-            targetBranch: $branch,
-            baseBranch: $base,
-            maxTurns: $maxTurns,
-            maxBudgetUsd: $maxBudget
-        }')" \
+    -d "$PAYLOAD" \
     "$ENDPOINT") || CURL_EXIT=$?
 
 if [ "${CURL_EXIT:-0}" -ne 0 ]; then
