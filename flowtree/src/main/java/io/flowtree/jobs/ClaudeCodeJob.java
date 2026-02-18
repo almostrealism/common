@@ -292,6 +292,18 @@ public class ClaudeCodeJob extends GitManagedJob {
             sb.append("the codebase, a request to run a command, check status, or perform an action) ");
             sb.append("it is perfectly fine to answer via Slack and exit without modifying any files. ");
             sb.append("Not every task requires code changes.\n\n");
+
+            sb.append("## Justifying No Code Changes\n");
+            sb.append("If you finish your work without making any changes to files in the git repository, ");
+            sb.append("you MUST send a Slack message explaining why no code changes were needed. ");
+            sb.append("This justification should clearly explain either:\n");
+            sb.append("- Why the user's request was fulfilled without code changes ");
+            sb.append("(e.g., it was an informational question, a status check, or a run command)\n");
+            sb.append("- Why you were unable to make the requested changes ");
+            sb.append("(e.g., a blocker, missing context, or ambiguity that needs clarification)\n");
+            sb.append("This requirement does NOT apply if you have already fully addressed the user's ");
+            sb.append("request through earlier Slack messages (e.g., answering a question, reporting ");
+            sb.append("results). In that case, the earlier messages serve as sufficient justification.\n\n");
         }
 
         // GitHub instructions -only when ar-github is in the MCP config
