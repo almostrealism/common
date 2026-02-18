@@ -307,10 +307,9 @@ jobs:
       - name: Run Utils Tests
         run: |
           DYLD_LIBRARY_PATH=Extensions mvn test -pl utils \
-           -DAR_HARDWARE_DRIVER=native \
+           -DAR_HARDWARE_DRIVER=mtl \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
-           -DAR_HARDWARE_LIBS=Extensions \
-           -DAR_TEST_PROFILE=pipeline
+           -DAR_HARDWARE_LIBS=Extensions
 
   test-ml-mac:
     needs: [build-mac, test-ml]
@@ -335,10 +334,9 @@ jobs:
       - name: Run ML Tests
         run: |
           DYLD_LIBRARY_PATH=Extensions mvn test -pl ml \
-           -DAR_HARDWARE_DRIVER=native \
+           -DAR_HARDWARE_DRIVER=* \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
-           -DAR_HARDWARE_LIBS=Extensions \
-           -DAR_TEST_PROFILE=pipeline
+           -DAR_HARDWARE_LIBS=Extensions
 
   test-audio-mac:
     needs: [build-mac, test-audio]
@@ -363,10 +361,9 @@ jobs:
       - name: Run Audio Tests
         run: |
           DYLD_LIBRARY_PATH=Extensions mvn test -pl audio \
-           -DAR_HARDWARE_DRIVER=native \
+           -DAR_HARDWARE_DRIVER=* \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
-           -DAR_HARDWARE_LIBS=Extensions \
-           -DAR_TEST_PROFILE=pipeline
+           -DAR_HARDWARE_LIBS=Extensions
 
   test-music-mac:
     needs: [build-mac, test-music]
@@ -391,10 +388,9 @@ jobs:
       - name: Run Music Tests
         run: |
           DYLD_LIBRARY_PATH=Extensions mvn test -pl music \
-           -DAR_HARDWARE_DRIVER=native \
+           -DAR_HARDWARE_DRIVER=* \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
-           -DAR_HARDWARE_LIBS=Extensions \
-           -DAR_TEST_PROFILE=pipeline
+           -DAR_HARDWARE_LIBS=Extensions
 
       - name: Run Compose Tests
         run: |

@@ -32,7 +32,7 @@ FAILURE_COUNT=0
 
 for xml in $(find "$REPORTS_DIR" -name "TEST-*.xml" 2>/dev/null); do
     # Extract test class name from the testsuite element
-    CLASS=$(grep -oP 'testsuite[^>]+name="\K[^"]+' "$xml" | head -1)
+    CLASS=$(sed -n 's/.*testsuite[^>]*name="\([^"]*\)".*/\1/p' "$xml" | head -1)
 
     # Find test methods that have <failure> or <error> children.
     # The grep -B1 looks for the <testcase> line preceding a <failure>/<error>.
@@ -41,8 +41,8 @@ for xml in $(find "$REPORTS_DIR" -name "TEST-*.xml" 2>/dev/null); do
             echo "- ${CLASS}#${method}" >> "$OUTPUT_FILE"
             FAILURE_COUNT=$((FAILURE_COUNT + 1))
         fi
-    done < <(grep -B1 '<failure\b\|<error\b' "$xml" \
-             | grep -oP 'testcase[^>]+name="\K[^"]+' || true)
+    done < <(grep -B1 -E '<failure|<error' "$xml" \
+             | sed -n 's/.*testcase[^>]*name="\([^"]*\)".*/\1/p' || true)
 done
 
 echo "failure_count=$FAILURE_COUNT"
