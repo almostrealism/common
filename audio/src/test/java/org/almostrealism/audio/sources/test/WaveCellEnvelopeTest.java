@@ -82,7 +82,7 @@ public class WaveCellEnvelopeTest extends TestSuiteBase implements CellFeatures 
 	 * Test that SineWaveCell passes note position to the envelope Factor.
 	 * Verifies by checking that output goes to zero after note ends.
 	 */
-	@Test(timeout = 120000)
+	@Test(timeout = 60000)
 	public void sineWaveCellEnvelopeReceivesNotePosition() {
 		PositionBasedEnvelope envelope = new PositionBasedEnvelope();
 
@@ -123,7 +123,7 @@ public class WaveCellEnvelopeTest extends TestSuiteBase implements CellFeatures 
 	 * Test that SawtoothWaveCell passes note position to the envelope Factor.
 	 * Verifies by checking that output goes to zero after note ends.
 	 */
-	@Test(timeout = 120000)
+	@Test(timeout = 60000)
 	public void sawtoothWaveCellEnvelopeReceivesNotePosition() {
 		PositionBasedEnvelope envelope = new PositionBasedEnvelope();
 
@@ -161,7 +161,7 @@ public class WaveCellEnvelopeTest extends TestSuiteBase implements CellFeatures 
 	 * Test that SquareWaveCell passes note position to the envelope Factor.
 	 * Verifies by checking that output goes to zero after note ends.
 	 */
-	@Test(timeout = 120000)
+	@Test(timeout = 60000)
 	public void squareWaveCellEnvelopeReceivesNotePosition() {
 		PositionBasedEnvelope envelope = new PositionBasedEnvelope();
 
@@ -199,7 +199,7 @@ public class WaveCellEnvelopeTest extends TestSuiteBase implements CellFeatures 
 	 * Test that TriangleWaveCell passes note position to the envelope Factor.
 	 * Verifies by checking that output goes to zero after note ends.
 	 */
-	@Test(timeout = 120000)
+	@Test(timeout = 60000)
 	public void triangleWaveCellEnvelopeReceivesNotePosition() {
 		PositionBasedEnvelope envelope = new PositionBasedEnvelope();
 
@@ -237,7 +237,7 @@ public class WaveCellEnvelopeTest extends TestSuiteBase implements CellFeatures 
 	 * Test that SineWaveCell envelope controls amplitude over the note's lifecycle.
 	 * Uses a linear decay envelope to verify amplitude decreases as note position advances.
 	 */
-	@Test(timeout = 120000)
+	@Test(timeout = 60000)
 	public void sineWaveCellEnvelopeControlsAmplitude() {
 		LinearDecayEnvelope envelope = new LinearDecayEnvelope();
 
@@ -284,7 +284,7 @@ public class WaveCellEnvelopeTest extends TestSuiteBase implements CellFeatures 
 	/**
 	 * Test that SawtoothWaveCell envelope controls amplitude over the note's lifecycle.
 	 */
-	@Test(timeout = 120000)
+	@Test(timeout = 60000)
 	public void sawtoothWaveCellEnvelopeControlsAmplitude() {
 		LinearDecayEnvelope envelope = new LinearDecayEnvelope();
 
@@ -324,7 +324,7 @@ public class WaveCellEnvelopeTest extends TestSuiteBase implements CellFeatures 
 	/**
 	 * Test that SquareWaveCell envelope controls amplitude over the note's lifecycle.
 	 */
-	@Test(timeout = 120000)
+	@Test(timeout = 60000)
 	public void squareWaveCellEnvelopeControlsAmplitude() {
 		LinearDecayEnvelope envelope = new LinearDecayEnvelope();
 
@@ -364,7 +364,7 @@ public class WaveCellEnvelopeTest extends TestSuiteBase implements CellFeatures 
 	/**
 	 * Test that TriangleWaveCell envelope controls amplitude over the note's lifecycle.
 	 */
-	@Test(timeout = 120000)
+	@Test(timeout = 60000)
 	public void triangleWaveCellEnvelopeControlsAmplitude() {
 		LinearDecayEnvelope envelope = new LinearDecayEnvelope();
 
@@ -404,7 +404,7 @@ public class WaveCellEnvelopeTest extends TestSuiteBase implements CellFeatures 
 	/**
 	 * Test that without an envelope, SineWaveCell produces constant amplitude output.
 	 */
-	@Test(timeout = 120000)
+	@Test(timeout = 60000)
 	public void sineWaveCellWithoutEnvelopeHasConstantAmplitude() {
 		SineWaveCell cell = new SineWaveCell();
 		cell.setFreq(440.0);
@@ -445,7 +445,7 @@ public class WaveCellEnvelopeTest extends TestSuiteBase implements CellFeatures 
 	 * Test that DefaultEnvelopeComputation properly uses note position.
 	 * This test verifies the envelope at specific note positions.
 	 */
-	@Test(timeout = 120000)
+	@Test(timeout = 60000)
 	public void defaultEnvelopeComputationUsesNotePosition() {
 		// Create cells with DefaultEnvelopeComputation
 		SineWaveCell cell = new SineWaveCell();

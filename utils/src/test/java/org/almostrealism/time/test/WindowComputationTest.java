@@ -100,7 +100,7 @@ public class WindowComputationTest extends TestSuiteBase {
 
 	// ==================== Hann Window Tests ====================
 
-	@Test(timeout = 120000)
+	@Test(timeout = 30000)
 	public void testHannWindowSmall() {
 		int size = 64;
 		double[] expected = referenceHann(size);
@@ -111,7 +111,7 @@ public class WindowComputationTest extends TestSuiteBase {
 		}
 	}
 
-	@Test(timeout = 120000)
+	@Test(timeout = 30000)
 	public void testHannWindowMedium() {
 		int size = 512;
 		double[] expected = referenceHann(size);
@@ -122,7 +122,7 @@ public class WindowComputationTest extends TestSuiteBase {
 		}
 	}
 
-	@Test(timeout = 120000)
+	@Test(timeout = 30000)
 	public void testHannWindowLarge() {
 		int size = 2048;
 		double[] expected = referenceHann(size);
@@ -133,7 +133,7 @@ public class WindowComputationTest extends TestSuiteBase {
 		}
 	}
 
-	@Test(timeout = 120000)
+	@Test(timeout = 30000)
 	public void testHannWindowProperties() {
 		int size = 256;
 		PackedCollection window = hannWindow(size).get().evaluate();
@@ -155,7 +155,7 @@ public class WindowComputationTest extends TestSuiteBase {
 
 	// ==================== Hamming Window Tests ====================
 
-	@Test(timeout = 120000)
+	@Test(timeout = 30000)
 	public void testHammingWindowSmall() {
 		int size = 64;
 		double[] expected = referenceHamming(size);
@@ -166,7 +166,7 @@ public class WindowComputationTest extends TestSuiteBase {
 		}
 	}
 
-	@Test(timeout = 120000)
+	@Test(timeout = 30000)
 	public void testHammingWindowMedium() {
 		int size = 512;
 		double[] expected = referenceHamming(size);
@@ -177,7 +177,7 @@ public class WindowComputationTest extends TestSuiteBase {
 		}
 	}
 
-	@Test(timeout = 120000)
+	@Test(timeout = 30000)
 	public void testHammingWindowProperties() {
 		int size = 256;
 		PackedCollection window = hammingWindow(size).get().evaluate();
@@ -198,7 +198,7 @@ public class WindowComputationTest extends TestSuiteBase {
 
 	// ==================== Blackman Window Tests ====================
 
-	@Test(timeout = 120000)
+	@Test(timeout = 30000)
 	public void testBlackmanWindowSmall() {
 		int size = 64;
 		double[] expected = referenceBlackman(size);
@@ -209,7 +209,7 @@ public class WindowComputationTest extends TestSuiteBase {
 		}
 	}
 
-	@Test(timeout = 120000)
+	@Test(timeout = 30000)
 	public void testBlackmanWindowMedium() {
 		int size = 512;
 		double[] expected = referenceBlackman(size);
@@ -220,7 +220,7 @@ public class WindowComputationTest extends TestSuiteBase {
 		}
 	}
 
-	@Test(timeout = 120000)
+	@Test(timeout = 30000)
 	public void testBlackmanWindowProperties() {
 		int size = 256;
 		PackedCollection window = blackmanWindow(size).get().evaluate();
@@ -241,7 +241,7 @@ public class WindowComputationTest extends TestSuiteBase {
 
 	// ==================== Bartlett Window Tests ====================
 
-	@Test(timeout = 120000)
+	@Test(timeout = 30000)
 	public void testBartlettWindowSmall() {
 		int size = 64;
 		double[] expected = referenceBartlett(size);
@@ -252,7 +252,7 @@ public class WindowComputationTest extends TestSuiteBase {
 		}
 	}
 
-	@Test(timeout = 120000)
+	@Test(timeout = 30000)
 	public void testBartlettWindowMedium() {
 		int size = 512;
 		double[] expected = referenceBartlett(size);
@@ -263,7 +263,7 @@ public class WindowComputationTest extends TestSuiteBase {
 		}
 	}
 
-	@Test(timeout = 120000)
+	@Test(timeout = 30000)
 	public void testBartlettWindowProperties() {
 		int size = 256;
 		PackedCollection window = bartlettWindow(size).get().evaluate();
@@ -290,7 +290,7 @@ public class WindowComputationTest extends TestSuiteBase {
 
 	// ==================== Flat-top Window Tests ====================
 
-	@Test(timeout = 120000)
+	@Test(timeout = 30000)
 	public void testFlattopWindowSmall() {
 		int size = 64;
 		double[] expected = referenceFlattop(size);
@@ -301,7 +301,7 @@ public class WindowComputationTest extends TestSuiteBase {
 		}
 	}
 
-	@Test(timeout = 120000)
+	@Test(timeout = 30000)
 	public void testFlattopWindowMedium() {
 		int size = 512;
 		double[] expected = referenceFlattop(size);
@@ -312,7 +312,7 @@ public class WindowComputationTest extends TestSuiteBase {
 		}
 	}
 
-	@Test(timeout = 120000)
+	@Test(timeout = 30000)
 	public void testFlattopWindowProperties() {
 		int size = 256;
 		PackedCollection window = flattopWindow(size).get().evaluate();
@@ -330,7 +330,7 @@ public class WindowComputationTest extends TestSuiteBase {
 
 	// ==================== Generic Window Type Tests ====================
 
-	@Test(timeout = 120000)
+	@Test(timeout = 30000)
 	public void testWindowByType() {
 		int size = 128;
 
@@ -345,7 +345,7 @@ public class WindowComputationTest extends TestSuiteBase {
 
 	// ==================== Apply Window Tests ====================
 
-	@Test(timeout = 120000)
+	@Test(timeout = 30000)
 	public void testApplyWindow() {
 		int size = 64;
 
@@ -365,7 +365,7 @@ public class WindowComputationTest extends TestSuiteBase {
 		}
 	}
 
-	@Test(timeout = 120000)
+	@Test(timeout = 30000)
 	public void testApplyWindowToSineWave() {
 		int size = 256;
 		double frequency = 4.0; // 4 cycles in window

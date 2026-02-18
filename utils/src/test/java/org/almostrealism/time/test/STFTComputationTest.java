@@ -34,7 +34,7 @@ public class STFTComputationTest extends TestSuiteBase implements TemporalFeatur
 	/**
 	 * Test basic STFT computation with a simple signal.
 	 */
-	@Test(timeout = 120000)
+	@Test(timeout = 60000)
 	public void testBasicSTFT() {
 		int fftSize = 64;
 		int hopSize = 32;
@@ -61,7 +61,7 @@ public class STFTComputationTest extends TestSuiteBase implements TemporalFeatur
 	/**
 	 * Test STFT with different window types.
 	 */
-	@Test(timeout = 120000)
+	@Test(timeout = 60000)
 	public void testSTFTWithDifferentWindows() {
 		int fftSize = 32;
 		int hopSize = 16;
@@ -82,7 +82,7 @@ public class STFTComputationTest extends TestSuiteBase implements TemporalFeatur
 	/**
 	 * Test STFT frame count calculation.
 	 */
-	@Test(timeout = 120000)
+	@Test(timeout = 60000)
 	public void testFrameCountCalculation() {
 		// Test case 1: Exact fit
 		assertEquals(5, TemporalFeatures.computeNumFrames(256, 64, 48));
@@ -103,7 +103,7 @@ public class STFTComputationTest extends TestSuiteBase implements TemporalFeatur
 	/**
 	 * Test that STFT produces non-zero output for non-zero input.
 	 */
-	@Test(timeout = 120000)
+	@Test(timeout = 60000)
 	public void testNonZeroOutput() {
 		int fftSize = 64;
 		int hopSize = 32;
@@ -132,7 +132,7 @@ public class STFTComputationTest extends TestSuiteBase implements TemporalFeatur
 	/**
 	 * Test STFT with DC signal (all ones).
 	 */
-	@Test(timeout = 120000)
+	@Test(timeout = 60000)
 	public void testDCSignal() {
 		int fftSize = 64;
 		int hopSize = 32;
@@ -164,7 +164,7 @@ public class STFTComputationTest extends TestSuiteBase implements TemporalFeatur
 	/**
 	 * Test STFT factory method with default Hann window.
 	 */
-	@Test(timeout = 120000)
+	@Test(timeout = 60000)
 	public void testDefaultHannWindow() {
 		int fftSize = 64;
 		int hopSize = 32;
@@ -188,7 +188,7 @@ public class STFTComputationTest extends TestSuiteBase implements TemporalFeatur
 	/**
 	 * Test STFT output shape.
 	 */
-	@Test(timeout = 120000)
+	@Test(timeout = 60000)
 	public void testOutputShape() {
 		int fftSize = 128;
 		int hopSize = 64;

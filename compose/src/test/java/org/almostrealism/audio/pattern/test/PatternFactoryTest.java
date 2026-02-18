@@ -69,7 +69,7 @@ public class PatternFactoryTest extends TestSuiteBase implements CellFeatures {
 		new ObjectMapper().writeValue(new File("pattern-factory-new.json"), choices);
 	}
 
-	// @Test(timeout = 120000)
+	// @Test(timeout = 30000)
 	public void consolidateChoices() throws IOException {
 		List<NoteAudioChoice> choices = readChoices();
 

@@ -31,7 +31,7 @@ import static org.junit.Assert.*;
  */
 public class BufferOutputLineTest extends TestSuiteBase implements AudioTestFeatures {
 
-	@Test(timeout = 120000)
+	@Test(timeout = 30000)
 	public void testDefaultConstruction() {
 		BufferOutputLine buffer = new BufferOutputLine(1024);
 
@@ -43,7 +43,7 @@ public class BufferOutputLineTest extends TestSuiteBase implements AudioTestFeat
 		assertTrue(buffer.isCircular());
 	}
 
-	@Test(timeout = 120000)
+	@Test(timeout = 30000)
 	public void testCustomSampleRate() {
 		BufferOutputLine buffer = new BufferOutputLine(1024, 48000);
 
@@ -51,7 +51,7 @@ public class BufferOutputLineTest extends TestSuiteBase implements AudioTestFeat
 		assertEquals(48000, buffer.getSampleRate());
 	}
 
-	@Test(timeout = 120000)
+	@Test(timeout = 30000)
 	public void testWriteCapturesData() {
 		BufferOutputLine buffer = new BufferOutputLine(100);
 
@@ -70,7 +70,7 @@ public class BufferOutputLineTest extends TestSuiteBase implements AudioTestFeat
 		}
 	}
 
-	@Test(timeout = 120000)
+	@Test(timeout = 30000)
 	public void testCircularBufferWraps() {
 		BufferOutputLine buffer = new BufferOutputLine(10);
 
@@ -92,7 +92,7 @@ public class BufferOutputLineTest extends TestSuiteBase implements AudioTestFeat
 		assertEquals(10.0, buffer.getSample(9), 0.0001);
 	}
 
-	@Test(timeout = 120000)
+	@Test(timeout = 30000)
 	public void testNonCircularBufferStops() {
 		BufferOutputLine buffer = new BufferOutputLine(10);
 		buffer.setCircular(false);
@@ -111,7 +111,7 @@ public class BufferOutputLineTest extends TestSuiteBase implements AudioTestFeat
 		assertEquals(10.0, buffer.getSample(9), 0.0001);
 	}
 
-	@Test(timeout = 120000)
+	@Test(timeout = 30000)
 	public void testGetCapturedAudio() {
 		BufferOutputLine buffer = new BufferOutputLine(100);
 
@@ -130,7 +130,7 @@ public class BufferOutputLineTest extends TestSuiteBase implements AudioTestFeat
 		}
 	}
 
-	@Test(timeout = 120000)
+	@Test(timeout = 30000)
 	public void testHasAudio() {
 		BufferOutputLine buffer = new BufferOutputLine(100);
 
@@ -148,7 +148,7 @@ public class BufferOutputLineTest extends TestSuiteBase implements AudioTestFeat
 		assertTrue(buffer.hasAudio());
 	}
 
-	@Test(timeout = 120000)
+	@Test(timeout = 30000)
 	public void testPeakAmplitude() {
 		BufferOutputLine buffer = new BufferOutputLine(100);
 
@@ -161,7 +161,7 @@ public class BufferOutputLineTest extends TestSuiteBase implements AudioTestFeat
 		assertEquals(0.8, buffer.getPeakAmplitude(), 0.0001);
 	}
 
-	@Test(timeout = 120000)
+	@Test(timeout = 30000)
 	public void testRmsAmplitude() {
 		BufferOutputLine buffer = new BufferOutputLine(100);
 
@@ -176,7 +176,7 @@ public class BufferOutputLineTest extends TestSuiteBase implements AudioTestFeat
 		assertEquals(1.0, buffer.getRmsAmplitude(), 0.0001);
 	}
 
-	@Test(timeout = 120000)
+	@Test(timeout = 30000)
 	public void testZeroCrossings() {
 		BufferOutputLine buffer = new BufferOutputLine(100);
 
@@ -195,7 +195,7 @@ public class BufferOutputLineTest extends TestSuiteBase implements AudioTestFeat
 		assertEquals(2, buffer.countZeroCrossings());
 	}
 
-	@Test(timeout = 120000)
+	@Test(timeout = 30000)
 	public void testEstimateFrequency() {
 		int sampleRate = 44100;
 		BufferOutputLine buffer = new BufferOutputLine(sampleRate, sampleRate);
@@ -207,7 +207,7 @@ public class BufferOutputLineTest extends TestSuiteBase implements AudioTestFeat
 		assertEquals(440.0, estimated, 10.0);
 	}
 
-	@Test(timeout = 120000)
+	@Test(timeout = 30000)
 	public void testStartStop() {
 		BufferOutputLine buffer = new BufferOutputLine(100);
 
@@ -220,7 +220,7 @@ public class BufferOutputLineTest extends TestSuiteBase implements AudioTestFeat
 		assertFalse(buffer.isActive());
 	}
 
-	@Test(timeout = 120000)
+	@Test(timeout = 30000)
 	public void testReset() {
 		BufferOutputLine buffer = new BufferOutputLine(100);
 
@@ -240,7 +240,7 @@ public class BufferOutputLineTest extends TestSuiteBase implements AudioTestFeat
 		assertFalse(buffer.hasAudio());
 	}
 
-	@Test(timeout = 120000)
+	@Test(timeout = 30000)
 	public void testDestroy() {
 		BufferOutputLine buffer = new BufferOutputLine(100);
 		buffer.start();
@@ -255,7 +255,7 @@ public class BufferOutputLineTest extends TestSuiteBase implements AudioTestFeat
 		assertEquals(0, buffer.getWritePosition());
 	}
 
-	@Test(timeout = 120000)
+	@Test(timeout = 30000)
 	public void testDurationCalculation() {
 		BufferOutputLine buffer = new BufferOutputLine(44100, 44100);
 
@@ -265,21 +265,21 @@ public class BufferOutputLineTest extends TestSuiteBase implements AudioTestFeat
 		assertEquals(0.5, buffer.getDurationWritten(), 0.001);
 	}
 
-	@Test(timeout = 120000)
+	@Test(timeout = 30000)
 	public void testLineUtilitiesGetBufferLine() {
 		BufferOutputLine buffer = LineUtilities.getBufferLine(2048);
 		assertNotNull(buffer);
 		assertEquals(2048, buffer.getBufferSize());
 	}
 
-	@Test(timeout = 120000)
+	@Test(timeout = 30000)
 	public void testLineUtilitiesGetBufferLineDefault() {
 		BufferOutputLine buffer = LineUtilities.getBufferLine();
 		assertNotNull(buffer);
 		assertEquals(OutputLine.sampleRate, buffer.getBufferSize());
 	}
 
-	@Test(timeout = 120000)
+	@Test(timeout = 30000)
 	public void testAudioTestFeaturesAssertions() {
 		BufferOutputLine buffer = bufferOutput(44100);
 
@@ -294,7 +294,7 @@ public class BufferOutputLineTest extends TestSuiteBase implements AudioTestFeat
 		assertMinDurationWritten(buffer, 0.09);
 	}
 
-	@Test(timeout = 120000)
+	@Test(timeout = 30000)
 	public void testCorrelationWithGeneratedSine() {
 		PackedCollection reference = generateTestSine(440.0, 1.0, 0.1);
 		PackedCollection similar = generateTestSine(440.0, 1.0, 0.1);
@@ -309,7 +309,7 @@ public class BufferOutputLineTest extends TestSuiteBase implements AudioTestFeat
 				Math.abs(diffCorrelation) < sameCorrelation);
 	}
 
-	@Test(timeout = 120000)
+	@Test(timeout = 30000)
 	public void testAssertAudioSimilar() {
 		PackedCollection reference = generateTestSine(440.0, 1.0, 0.1);
 		PackedCollection similar = generateTestSine(440.0, 1.0, 0.1);

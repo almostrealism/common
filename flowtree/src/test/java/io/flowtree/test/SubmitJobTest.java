@@ -28,7 +28,7 @@ import java.util.Properties;
 import java.util.stream.IntStream;
 
 public class SubmitJobTest extends TestSuiteBase {
-	@Test(timeout = 120000)
+	@Test(timeout = 10000)
 	public void submitProcess() throws IOException {
 		Properties p = new Properties();
 		p.setProperty("server.port", "7701");

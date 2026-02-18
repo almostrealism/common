@@ -18,7 +18,7 @@ public class Qwen3EmbeddingTest extends TestSuiteBase implements AttentionFeatur
 	private static final String WEIGHTS_DIR = "/workspace/project/common/ml/qwen3_weights";
 	private static final String TOKENIZER_PATH = WEIGHTS_DIR + "/tokenizer.bin";
 
-	@Test(timeout = 120000)
+	@Test(timeout = 30000)
 	public void testEmbeddingLookup() throws Exception {
 		Assume.assumeTrue("Skipping comparison test in pipeline profile", TestUtils.isComparisonTestEnabled());
 

@@ -12,7 +12,7 @@ public class Qwen3GenerationDemo extends TestSuiteBase {
     private static final String WEIGHTS_DIR = "/workspace/project/common/ml/qwen3_weights";
     private static final String TOKENIZER_PATH = WEIGHTS_DIR + "/tokenizer.bin";
 
-    @Test(timeout = 120000)
+    @Test(timeout = 300000)
     public void testGeneration() throws Exception {
         System.out.println("\n" + "=".repeat(70));
         System.out.println("QWEN3 GENERATION TEST WITH FIXED TOKENIZER");

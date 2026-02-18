@@ -88,7 +88,7 @@ public class SineWaveCellTest extends TestSuiteBase implements CellFeatures {
 	/**
 	 * Tests that a sine wave cell produces non-zero output when pushed.
 	 */
-	@Test(timeout = 120000)
+	@Test(timeout = 30000)
 	public void sineWaveProducesOutput() {
 		SineWaveCell cell = cell();
 		AtomicReference<Double> lastValue = new AtomicReference<>(0.0);
@@ -116,7 +116,7 @@ public class SineWaveCellTest extends TestSuiteBase implements CellFeatures {
 	/**
 	 * Tests that amplitude parameter controls output level.
 	 */
-	@Test(timeout = 120000)
+	@Test(timeout = 30000)
 	public void amplitudeControlsOutputLevel() {
 		SineWaveCell cell = new SineWaveCell();
 		cell.setFreq(440.0);
@@ -152,7 +152,7 @@ public class SineWaveCellTest extends TestSuiteBase implements CellFeatures {
 	/**
 	 * Tests that different frequencies produce different output patterns.
 	 */
-	@Test(timeout = 120000)
+	@Test(timeout = 30000)
 	public void frequencyAffectsOutput() {
 		// Low frequency cell
 		SineWaveCell lowFreqCell = new SineWaveCell();
@@ -212,7 +212,7 @@ public class SineWaveCellTest extends TestSuiteBase implements CellFeatures {
 	/**
 	 * Tests that the cell works with a simple output receptor.
 	 */
-	@Test(timeout = 120000)
+	@Test(timeout = 30000)
 	public void cellProducesOutputThroughReceptor() {
 		SineWaveCell cell = cell();
 		List<Double> outputValues = new ArrayList<>();
@@ -243,7 +243,7 @@ public class SineWaveCellTest extends TestSuiteBase implements CellFeatures {
 	/**
 	 * Tests cell pair integration.
 	 */
-	@Test(timeout = 120000)
+	@Test(timeout = 30000)
 	public void withCellPairIntegration() {
 		SineWaveCell cell = cell();
 		List<Double> capturedValues = new ArrayList<>();
@@ -278,7 +278,7 @@ public class SineWaveCellTest extends TestSuiteBase implements CellFeatures {
 	/**
 	 * Tests that zero amplitude produces no output.
 	 */
-	@Test(timeout = 120000)
+	@Test(timeout = 30000)
 	public void zeroAmplitudeProducesNoOutput() {
 		SineWaveCell cell = new SineWaveCell();
 		cell.setFreq(440.0);
@@ -307,7 +307,7 @@ public class SineWaveCellTest extends TestSuiteBase implements CellFeatures {
 	/**
 	 * Tests standard musical frequencies from keyboard tuning.
 	 */
-	@Test(timeout = 120000)
+	@Test(timeout = 30000)
 	public void keyboardTuningFrequencies() {
 		DefaultKeyboardTuning tuning = new DefaultKeyboardTuning();
 

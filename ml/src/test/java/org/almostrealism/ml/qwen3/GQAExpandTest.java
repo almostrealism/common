@@ -16,7 +16,7 @@ import org.junit.Test;
  */
 public class GQAExpandTest extends TestSuiteBase implements AttentionFeatures, ConsoleFeatures {
 
-	@Test(timeout = 120000)
+	@Test(timeout = 30000)
 	public void testGQAExpand() throws Exception {
 		Assume.assumeTrue("Skipping comparison test in pipeline profile", TestUtils.isComparisonTestEnabled());
 

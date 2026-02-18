@@ -113,7 +113,7 @@ public class MidiSynthesizerManualTest extends TestSuiteBase implements CellFeat
 	 *   <li>Runs for TEST_DURATION_SECONDS, allowing manual play testing</li>
 	 * </ol>
 	 */
-	@Test(timeout = 120000)
+	@Test(timeout = 10000)
 	public void playWithMidiController() throws Exception {
 		// Skip in CI pipeline - requires real hardware
 		if (testProfileIs(TestUtils.PIPELINE)) return;
@@ -465,7 +465,7 @@ public class MidiSynthesizerManualTest extends TestSuiteBase implements CellFeat
 	 * Simpler test that just lists MIDI devices without requiring audio.
 	 * Useful for verifying MIDI detection works.
 	 */
-	@Test(timeout = 120000)
+	@Test(timeout = 10000)
 	public void listMidiDevices() {
 		if (testProfileIs(TestUtils.PIPELINE)) return;
 
@@ -498,7 +498,7 @@ public class MidiSynthesizerManualTest extends TestSuiteBase implements CellFeat
 	 * Test synthesizer audio output without MIDI - generates a test tone.
 	 * Useful for verifying audio pipeline works before adding MIDI.
 	 */
-	@Test(timeout = 120000)
+	@Test(timeout = 10000)
 	public void synthesizerAudioOnly() throws Exception {
 		if (testProfileIs(TestUtils.PIPELINE)) return;
 
@@ -566,7 +566,7 @@ public class MidiSynthesizerManualTest extends TestSuiteBase implements CellFeat
 	 *   <li>Audio routing to speakers (this test will pass but no sound)</li>
 	 * </ul>
 	 */
-	@Test(timeout = 120000)
+	@Test(timeout = 10000)
 	public void verifySynthesizerProducesOutput() throws Exception {
 		if (testProfileIs(TestUtils.PIPELINE)) return;
 
@@ -729,7 +729,7 @@ public class MidiSynthesizerManualTest extends TestSuiteBase implements CellFeat
 	 * BufferedOutputScheduler. This helps isolate whether the issue is in
 	 * the synthesizer itself or the scheduling/routing layer.
 	 */
-	@Test(timeout = 120000)
+	@Test(timeout = 10000)
 	public void directSynthesizerTest() {
 		if (testProfileIs(TestUtils.PIPELINE)) return;
 
@@ -810,7 +810,7 @@ public class MidiSynthesizerManualTest extends TestSuiteBase implements CellFeat
 	 * Diagnostic test: Verify that a simple SineWaveCell works with CellList + BufferedOutputScheduler.
 	 * This isolates whether the issue is with the scheduler/CellList pattern or specific to PolyphonicSynthesizer.
 	 */
-	@Test(timeout = 120000)
+	@Test(timeout = 10000)
 	public void simpleSineWaveThroughScheduler() throws Exception {
 		if (testProfileIs(TestUtils.PIPELINE)) return;
 
@@ -884,7 +884,7 @@ public class MidiSynthesizerManualTest extends TestSuiteBase implements CellFeat
 	 * Diagnostic test: Verify SineWaveCell works when manually ticked (like directSynthesizerTest).
 	 * This establishes the baseline that SineWaveCell works before testing scheduler integration.
 	 */
-	@Test(timeout = 120000)
+	@Test(timeout = 10000)
 	public void directSineWaveTest() {
 		if (testProfileIs(TestUtils.PIPELINE)) return;
 
@@ -945,7 +945,7 @@ public class MidiSynthesizerManualTest extends TestSuiteBase implements CellFeat
 	 * Diagnostic test: Verify that WaveCell (from file) works with CellList + BufferedOutputScheduler.
 	 * This mirrors the RealtimePlaybackTest pattern which is known to work.
 	 */
-	@Test(timeout = 120000)
+	@Test(timeout = 10000)
 	public void waveCellThroughScheduler() throws Exception {
 		if (testProfileIs(TestUtils.PIPELINE)) return;
 
@@ -1008,7 +1008,7 @@ public class MidiSynthesizerManualTest extends TestSuiteBase implements CellFeat
 	 * Diagnostic test: Trace the audio flow through the synth with manual receptor chain.
 	 * This helps isolate exactly where audio is lost in the CellList integration.
 	 */
-	@Test(timeout = 120000)
+	@Test(timeout = 10000)
 	public void traceAudioFlowThroughSynth() {
 		if (testProfileIs(TestUtils.PIPELINE)) return;
 
@@ -1073,7 +1073,7 @@ public class MidiSynthesizerManualTest extends TestSuiteBase implements CellFeat
 	 * Diagnostic test: Test synth through CellList tick() with WaveOutput receptor.
 	 * This mimics the exact pattern used by BufferedOutputScheduler.
 	 */
-	@Test(timeout = 120000)
+	@Test(timeout = 10000)
 	public void testSynthWithCellListAndWaveOutput() {
 		if (testProfileIs(TestUtils.PIPELINE)) return;
 
@@ -1171,7 +1171,7 @@ public class MidiSynthesizerManualTest extends TestSuiteBase implements CellFeat
 	 * This helps diagnose whether the issue is with MIDI integration or
 	 * the BufferedOutputScheduler + real audio output combination.
 	 */
-	@Test(timeout = 120000)
+	@Test(timeout = 10000)
 	public void realAudioOutputTest() throws Exception {
 		if (testProfileIs(TestUtils.PIPELINE)) return;
 
@@ -1265,7 +1265,7 @@ public class MidiSynthesizerManualTest extends TestSuiteBase implements CellFeat
 	 * This tests the realistic scenario where notes arrive after the scheduler has started,
 	 * which is what happens with a real MIDI controller.
 	 */
-	@Test(timeout = 120000)
+	@Test(timeout = 10000)
 	public void programmaticMidiTest() throws Exception {
 		if (testProfileIs(TestUtils.PIPELINE)) return;
 
