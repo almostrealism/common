@@ -9,9 +9,10 @@
 #   check-quality-gates.sh <output-file>
 #
 # Required environment variables:
-#   JAVADOC_PASSED    - "true" or "false"
-#   TIMEOUT_PASSED    - "true" or "false"
-#   DUPLICATE_PASSED  - "true" or "false"
+#   JAVADOC_PASSED          - "true" or "false"
+#   TIMEOUT_PASSED          - "true" or "false"
+#   DUPLICATE_PASSED        - "true" or "false"
+#   TEST_INTEGRITY_PASSED   - "true" or "false" (optional; defaults to "true")
 #
 # Outputs (to GITHUB_OUTPUT):
 #   failure_count=<N>
@@ -43,6 +44,11 @@ fi
 
 if [ "${DUPLICATE_PASSED:-true}" != "true" ]; then
     echo "- duplicate-code-check: Duplicate code blocks (10+ identical lines) detected across different files. Run \`mvn test -pl utils -Dtest=CodePolicyEnforcementTest#enforceNoDuplicateCode\` locally to see details." >> "$OUTPUT_FILE"
+    FAILURE_COUNT=$((FAILURE_COUNT + 1))
+fi
+
+if [ "${TEST_INTEGRITY_PASSED:-true}" != "true" ]; then
+    echo "- test-integrity-check: CRITICAL — Existing test files were modified in ways that hide failures (e.g., adding @Ignore, deleting assertions, weakening checks). This is NEVER acceptable for tests that exist on the base branch. Revert the test modifications and fix the production code instead. Run \`./tools/ci/detect-test-hiding.sh origin/master\` locally to see details." >> "$OUTPUT_FILE"
     FAILURE_COUNT=$((FAILURE_COUNT + 1))
 fi
 
