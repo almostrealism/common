@@ -1297,6 +1297,7 @@ public class ClaudeCodeJob extends GitManagedJob {
 
     /**
      * Extracts a string value from a JSON string by field name.
+     * Handles escaped quotes within string values.
      * Returns null if the field is not found.
      */
     private static String extractJsonStringValue(String json, String field) {
@@ -1310,10 +1311,19 @@ public class ClaudeCodeJob extends GitManagedJob {
         if (rest.startsWith("null")) return null;
         if (!rest.startsWith("\"")) return null;
 
-        int start = 1;
-        int end = rest.indexOf("\"", start);
-        if (end < 0) return null;
-        return rest.substring(start, end);
+        int i = 1;
+        while (i < rest.length()) {
+            char c = rest.charAt(i);
+            if (c == '\\') {
+                i += 2;
+            } else if (c == '"') {
+                return rest.substring(1, i).replace("\\\"", "\"");
+            } else {
+                i++;
+            }
+        }
+
+        return null;
     }
 
     /**
