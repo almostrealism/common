@@ -8,7 +8,7 @@ import org.junit.Test;
  */
 public class ByteLevelEncoderDebugTest extends TestSuiteBase {
 
-	@Test
+	@Test(timeout = 120000)
 	public void testByteEncoding() {
 		System.out.println("\n=== ByteLevelEncoder Debug ===\n");
 

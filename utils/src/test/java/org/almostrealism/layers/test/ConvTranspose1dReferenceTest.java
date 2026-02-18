@@ -120,7 +120,7 @@ public class ConvTranspose1dReferenceTest extends TestSuiteBase {
 	 * Minimal test: 1 input channel, 1 output channel, stride=2, no padding.
 	 * Input: [1, 2] -> Output: [0.01, 0.02, 0.02, 0.04]
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testMinimal() throws IOException {
 		if (!BASE_DIR.resolve("minimal").toFile().exists()) {
 			log("Skipping - reference data not found. Run generate_reference.py");
@@ -172,7 +172,7 @@ public class ConvTranspose1dReferenceTest extends TestSuiteBase {
 	/**
 	 * Test with padding: kernel=4, stride=2, padding=1.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testWithPadding() throws IOException {
 		if (!BASE_DIR.resolve("with_padding").toFile().exists()) {
 			log("Skipping - reference data not found. Run generate_reference.py");
@@ -222,7 +222,7 @@ public class ConvTranspose1dReferenceTest extends TestSuiteBase {
 	/**
 	 * Multi-channel test: in_ch=2, out_ch=2, stride=2.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testMultichannelSmall() throws IOException {
 		if (!BASE_DIR.resolve("multichannel_small").toFile().exists()) {
 			log("Skipping - reference data not found. Run generate_reference.py");
@@ -272,7 +272,7 @@ public class ConvTranspose1dReferenceTest extends TestSuiteBase {
 	 * Oobleck-like test: stride=4, outputPadding=3.
 	 * Similar to real Oobleck decoder but with tiny dimensions.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testOobleckLike() throws IOException {
 		if (!BASE_DIR.resolve("oobleck_like").toFile().exists()) {
 			log("Skipping - reference data not found. Run generate_reference.py");
@@ -323,7 +323,7 @@ public class ConvTranspose1dReferenceTest extends TestSuiteBase {
 	 * in_ch=2, out_ch=1, seq=2, kernel=16, stride=16, padding=7, outputPadding=15.
 	 * Output length = (2-1)*16 - 2*7 + 16 + 15 = 16 - 14 + 31 = 33.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testStride16Tiny() throws IOException {
 		if (!BASE_DIR.resolve("stride16_tiny").toFile().exists()) {
 			log("Skipping - reference data not found. Run generate_reference.py");

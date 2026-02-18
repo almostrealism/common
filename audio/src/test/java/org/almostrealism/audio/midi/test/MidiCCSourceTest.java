@@ -27,7 +27,7 @@ import static org.junit.Assert.*;
  */
 public class MidiCCSourceTest implements TestFeatures {
 
-	@Test
+	@Test(timeout = 120000)
 	public void testDefaultRange() {
 		MidiCCSource source = new MidiCCSource(1);
 
@@ -41,7 +41,7 @@ public class MidiCCSourceTest implements TestFeatures {
 		assertEquals(0.5, source.getValue(), 0.02);  // 64/127 ~= 0.504
 	}
 
-	@Test
+	@Test(timeout = 120000)
 	public void testCustomRange() {
 		MidiCCSource source = new MidiCCSource(1);
 		source.setRange(100.0, 5000.0);
@@ -58,7 +58,7 @@ public class MidiCCSourceTest implements TestFeatures {
 		assertTrue("Mid value should be around 2550", mid > 2400 && mid < 2700);
 	}
 
-	@Test
+	@Test(timeout = 120000)
 	public void testBipolarMode() {
 		MidiCCSource source = new MidiCCSource(1);
 		source.setBipolar(true);
@@ -77,7 +77,7 @@ public class MidiCCSourceTest implements TestFeatures {
 		assertEquals(1.0, source.getValue(), 0.02);
 	}
 
-	@Test
+	@Test(timeout = 120000)
 	public void testExponentialCurve() {
 		MidiCCSource source = new MidiCCSource(1);
 		source.setCurve(MidiCCSource.CurveType.EXPONENTIAL);
@@ -93,7 +93,7 @@ public class MidiCCSourceTest implements TestFeatures {
 		assertTrue("Exponential should be lower at low input", expValue < linearValue);
 	}
 
-	@Test
+	@Test(timeout = 120000)
 	public void testLogarithmicCurve() {
 		MidiCCSource source = new MidiCCSource(1);
 		source.setCurve(MidiCCSource.CurveType.LOGARITHMIC);
@@ -109,7 +109,7 @@ public class MidiCCSourceTest implements TestFeatures {
 		assertTrue("Logarithmic should be higher at low input", logValue > linearValue);
 	}
 
-	@Test
+	@Test(timeout = 120000)
 	public void testSmoothing() {
 		MidiCCSource source = new MidiCCSource(1);
 		source.setSmoothing(0.9);  // High smoothing
@@ -134,13 +134,13 @@ public class MidiCCSourceTest implements TestFeatures {
 			laterRead > 0.9);
 	}
 
-	@Test
+	@Test(timeout = 120000)
 	public void testCCNumber() {
 		MidiCCSource source = new MidiCCSource(74);  // Cutoff
 		assertEquals(74, source.getCCNumber());
 	}
 
-	@Test
+	@Test(timeout = 120000)
 	public void testRawValue() {
 		MidiCCSource source = new MidiCCSource(1);
 
@@ -155,7 +155,7 @@ public class MidiCCSourceTest implements TestFeatures {
 		assertEquals(127, source.getRawValue());
 	}
 
-	@Test
+	@Test(timeout = 120000)
 	public void testIsBipolar() {
 		MidiCCSource source = new MidiCCSource(1);
 		assertFalse(source.isBipolar());
@@ -164,7 +164,7 @@ public class MidiCCSourceTest implements TestFeatures {
 		assertTrue(source.isBipolar());
 	}
 
-	@Test
+	@Test(timeout = 120000)
 	public void testTickReturnsOperation() {
 		MidiCCSource source = new MidiCCSource(1);
 		assertNotNull(source.tick());

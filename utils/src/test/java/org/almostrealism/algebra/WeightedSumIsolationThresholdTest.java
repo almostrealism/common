@@ -78,7 +78,7 @@ public class WeightedSumIsolationThresholdTest extends TestSuiteBase implements 
 	 * Test standalone WeightedSumComputation with various group sizes.
 	 * This simulates a dot product / reduction over groupSize elements.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testStandaloneGroupSizes() {
 		System.out.println("=== Standalone WeightedSumComputation: Group Size vs Compilation Time ===\n");
 
@@ -109,7 +109,7 @@ public class WeightedSumIsolationThresholdTest extends TestSuiteBase implements 
 	/**
 	 * Test WeightedSumComputation embedded in multiply operation.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testEmbeddedInMultiply() {
 		System.out.println("=== WeightedSumComputation Embedded in Multiply ===\n");
 
@@ -137,7 +137,7 @@ public class WeightedSumIsolationThresholdTest extends TestSuiteBase implements 
 	/**
 	 * Test WeightedSumComputation embedded in add operation.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testEmbeddedInAdd() {
 		System.out.println("=== WeightedSumComputation Embedded in Add ===\n");
 
@@ -165,7 +165,7 @@ public class WeightedSumIsolationThresholdTest extends TestSuiteBase implements 
 	/**
 	 * Fine-grained test around suspected threshold to find exact crossover.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testFineGrainedThreshold() {
 		System.out.println("=== Fine-Grained Threshold Analysis ===\n");
 

@@ -26,7 +26,7 @@ public class SharedEmbeddingsTest extends TestSuiteBase implements ConsoleFeatur
 
 	private static final String WEIGHTS_DIR = "/workspace/project/common/ml/qwen3_weights";
 
-	@Test
+	@Test(timeout = 120000)
 	public void testSharedEmbeddingsConfiguration() throws Exception {
 		Assume.assumeTrue("Skipping comparison test in pipeline profile", TestUtils.isComparisonTestEnabled());
 
@@ -128,7 +128,7 @@ public class SharedEmbeddingsTest extends TestSuiteBase implements ConsoleFeatur
 		stateDict.destroy();
 	}
 
-	@Test
+	@Test(timeout = 120000)
 	public void testOutputProjectionShape() throws Exception {
 		Assume.assumeTrue("Skipping comparison test in pipeline profile", TestUtils.isComparisonTestEnabled());
 

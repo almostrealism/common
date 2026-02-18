@@ -33,7 +33,7 @@ public class DefaultEnvelopeComputationTest extends TestSuiteBase {
 		return new DefaultEnvelopeComputation(p(input));
 	}
 
-	@Test
+	@Test(timeout = 120000)
 	public void evaluate() {
 		Evaluable<PackedCollection> s = computation().get();
 

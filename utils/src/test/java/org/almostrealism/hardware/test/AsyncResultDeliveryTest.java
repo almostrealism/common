@@ -60,7 +60,7 @@ public class AsyncResultDeliveryTest implements TestFeatures {
 	 *
 	 * <p>This is a simplified reproduction of the pattern in ProcessDetailsFactory.result().</p>
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void lambdaCapturesMutableFieldBug() {
 		log("=== Lambda Captures Mutable Field Bug Demo ===");
 
@@ -95,7 +95,7 @@ public class AsyncResultDeliveryTest implements TestFeatures {
 	/**
 	 * Simulates how duplicate result errors occur when async operations overlap.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void duplicateResultErrorSimulation() {
 		log("\n=== Duplicate Result Error Simulation ===");
 
@@ -167,7 +167,7 @@ public class AsyncResultDeliveryTest implements TestFeatures {
 	 * Demonstrates the fix: lambda should capture the specific details instance,
 	 * not the mutable field.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void proposedFixWithExplicitCapture() {
 		log("\n=== Proposed Fix: Explicit Instance Capture ===");
 

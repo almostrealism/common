@@ -35,7 +35,7 @@ public class SimpleRenderTest extends TestSuiteBase {
 	int width = 640;
 	int height = 640;
 
-	@Test
+	@Test(timeout = 120000)
 	public void testSinglePixelRendering() {
 		log("Testing single pixel rendering with transforms enabled...");
 
@@ -118,7 +118,7 @@ public class SimpleRenderTest extends TestSuiteBase {
 		assertTrue("Single pixel should be non-black", isNonBlack);
 	}
 
-	@Test
+	@Test(timeout = 120000)
 	public void testRankCacheComparison() {
 		log("Comparing working intersection test vs broken rank cache...");
 
@@ -218,7 +218,7 @@ public class SimpleRenderTest extends TestSuiteBase {
 		PinholeCamera.enableHardwareAcceleration = originalHwAccel;
 	}
 
-	@Test
+	@Test(timeout = 120000)
 	public void testCameraRayDirection() {
 		log("Testing camera ray direction computation...");
 
@@ -277,7 +277,7 @@ public class SimpleRenderTest extends TestSuiteBase {
 		log("\nTest passed!");
 	}
 
-	@Test
+	@Test(timeout = 120000)
 	public void testShaderIsolated() {
 		log("Testing shader/lighting calculation in isolation...");
 
@@ -339,7 +339,7 @@ public class SimpleRenderTest extends TestSuiteBase {
 		assertTrue("Shader should produce non-black color for lit sphere", isNonBlack);
 	}
 
-	@Test
+	@Test(timeout = 120000)
 	public void debugIntersection() {
 		log("Testing direct sphere intersection...");
 
@@ -368,7 +368,7 @@ public class SimpleRenderTest extends TestSuiteBase {
 		assertTrue("Distance should be ~9.0 (was " + distVal + ")", Math.abs(distVal - 9.0) < 0.1);
 	}
 
-	@Test
+	@Test(timeout = 120000)
 	public void debugCameraRay() {
 		log("Testing camera ray generation...");
 
@@ -413,7 +413,7 @@ public class SimpleRenderTest extends TestSuiteBase {
 		log("Camera ray correctly hits sphere at distance " + dist);
 	}
 
-	@Test
+	@Test(timeout = 120000)
 	public void renderSingleSphere() throws Exception {
 		log("Creating simple scene with one sphere...");
 
@@ -521,7 +521,7 @@ public class SimpleRenderTest extends TestSuiteBase {
 		}
 	}
 
-	@Test
+	@Test(timeout = 120000)
 	public void renderTwoSpheres() throws Exception {
 		log("Creating scene with two spheres...");
 

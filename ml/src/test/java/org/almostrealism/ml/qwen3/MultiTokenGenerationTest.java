@@ -54,7 +54,7 @@ public class MultiTokenGenerationTest extends TestSuiteBase implements Attention
 	 * Test multi-token generation starting from "Hello" (token 9707).
 	 * Compares each step against PyTorch reference logits.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testMultiTokenGeneration() throws Exception {
 		Assume.assumeTrue("Skipping comparison test in pipeline profile", TestUtils.isComparisonTestEnabled());
 

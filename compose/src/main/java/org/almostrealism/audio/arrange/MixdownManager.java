@@ -238,6 +238,7 @@ public class MixdownManager implements Setup, Destroyable, CellFeatures, Optimiz
 		this.reverbChannels = reverbChannels;
 	}
 
+	/** Initializes the gene ranges for volume, pan, delay, and filter based on the given configuration. */
 	public void initRanges(Configuration config, int delayLayers) {
 		volumeSimple.forEach(gene -> {
 			((ProjectedGene) gene).setRange(0,

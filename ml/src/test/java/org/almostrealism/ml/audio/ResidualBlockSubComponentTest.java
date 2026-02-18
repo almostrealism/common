@@ -71,7 +71,7 @@ public class ResidualBlockSubComponentTest extends TestSuiteBase {
 	 * Input: decoder_block1_res0_input.bin (after upsample)
 	 * Expected: decoder_block1_res0_after_snake1.bin
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testRes0Snake1() throws IOException {
 		runSubComponentTest("res0", "snake1", "decoder.layers.1.layers.2",
 				this::buildSnake1);
@@ -82,7 +82,7 @@ public class ResidualBlockSubComponentTest extends TestSuiteBase {
 	 * Input: decoder_block1_res0_after_snake1.bin
 	 * Expected: decoder_block1_res0_after_conv1.bin
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testRes0Conv1() throws IOException {
 		runSubComponentTest("res0", "conv1", "decoder.layers.1.layers.2",
 				this::buildConv1);
@@ -93,7 +93,7 @@ public class ResidualBlockSubComponentTest extends TestSuiteBase {
 	 * Input: decoder_block1_res0_after_conv1.bin
 	 * Expected: decoder_block1_res0_after_snake2.bin
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testRes0Snake2() throws IOException {
 		runSubComponentTest("res0", "snake2", "decoder.layers.1.layers.2",
 				this::buildSnake2);
@@ -104,7 +104,7 @@ public class ResidualBlockSubComponentTest extends TestSuiteBase {
 	 * Input: decoder_block1_res0_after_snake2.bin
 	 * Expected: decoder_block1_res0_after_conv2.bin
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testRes0Conv2() throws IOException {
 		runSubComponentTest("res0", "conv2", "decoder.layers.1.layers.2",
 				this::buildConv2);
@@ -115,7 +115,7 @@ public class ResidualBlockSubComponentTest extends TestSuiteBase {
 	 * Input: decoder_block1_res1_input.bin (output of res0)
 	 * Expected: decoder_block1_res1_after_snake1.bin
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testRes1Snake1() throws IOException {
 		runSubComponentTest("res1", "snake1", "decoder.layers.1.layers.3",
 				this::buildSnake1);
@@ -126,7 +126,7 @@ public class ResidualBlockSubComponentTest extends TestSuiteBase {
 	 * Input: decoder_block1_res1_after_snake1.bin
 	 * Expected: decoder_block1_res1_after_conv1.bin
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testRes1Conv1() throws IOException {
 		runSubComponentTest("res1", "conv1", "decoder.layers.1.layers.3",
 				this::buildConv1);
@@ -137,7 +137,7 @@ public class ResidualBlockSubComponentTest extends TestSuiteBase {
 	 * Input: decoder_block1_res1_after_conv1.bin
 	 * Expected: decoder_block1_res1_after_snake2.bin
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testRes1Snake2() throws IOException {
 		runSubComponentTest("res1", "snake2", "decoder.layers.1.layers.3",
 				this::buildSnake2);
@@ -148,7 +148,7 @@ public class ResidualBlockSubComponentTest extends TestSuiteBase {
 	 * Input: decoder_block1_res1_after_snake2.bin
 	 * Expected: decoder_block1_res1_after_conv2.bin
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testRes1Conv2() throws IOException {
 		runSubComponentTest("res1", "conv2", "decoder.layers.1.layers.3",
 				this::buildConv2);
@@ -157,7 +157,7 @@ public class ResidualBlockSubComponentTest extends TestSuiteBase {
 	/**
 	 * Tests Residual Block 2's Snake1 activation output.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testRes2Snake1() throws IOException {
 		runSubComponentTest("res2", "snake1", "decoder.layers.1.layers.4",
 				this::buildSnake1);
@@ -166,7 +166,7 @@ public class ResidualBlockSubComponentTest extends TestSuiteBase {
 	/**
 	 * Tests Residual Block 2's Conv1 output.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testRes2Conv1() throws IOException {
 		runSubComponentTest("res2", "conv1", "decoder.layers.1.layers.4",
 				this::buildConv1);
@@ -175,7 +175,7 @@ public class ResidualBlockSubComponentTest extends TestSuiteBase {
 	/**
 	 * Tests Residual Block 2's Snake2 activation output.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testRes2Snake2() throws IOException {
 		runSubComponentTest("res2", "snake2", "decoder.layers.1.layers.4",
 				this::buildSnake2);
@@ -184,7 +184,7 @@ public class ResidualBlockSubComponentTest extends TestSuiteBase {
 	/**
 	 * Tests Residual Block 2's Conv2 output.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testRes2Conv2() throws IOException {
 		runSubComponentTest("res2", "conv2", "decoder.layers.1.layers.4",
 				this::buildConv2);
@@ -197,7 +197,7 @@ public class ResidualBlockSubComponentTest extends TestSuiteBase {
 	 *
 	 * This tests the residual() wrapper functionality.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testRes0FullBlock() throws IOException {
 		runFullResidualBlockTest("res0", "decoder.layers.1.layers.2");
 	}
@@ -209,7 +209,7 @@ public class ResidualBlockSubComponentTest extends TestSuiteBase {
 	 *
 	 * This tests where the error jump occurs (MAE goes from 0.000148 to 0.306).
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testRes1FullBlock() throws IOException {
 		runFullResidualBlockTest("res1", "decoder.layers.1.layers.3");
 	}
@@ -217,7 +217,7 @@ public class ResidualBlockSubComponentTest extends TestSuiteBase {
 	/**
 	 * Tests FULL Residual Block 2 with residual add.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testRes2FullBlock() throws IOException {
 		runFullResidualBlockTest("res2", "decoder.layers.1.layers.4");
 	}
@@ -280,7 +280,7 @@ public class ResidualBlockSubComponentTest extends TestSuiteBase {
 	 * - This slightly-wrong output is fed into res1
 	 * - The error amplifies (~2000x to MAE ~0.3)
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testComposedRes0ThenRes1() throws IOException {
 		if (!WEIGHTS_DIR.toFile().exists()) {
 			System.out.println("Skipping - weights not found at " + WEIGHTS_DIR);

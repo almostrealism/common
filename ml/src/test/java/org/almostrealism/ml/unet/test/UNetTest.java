@@ -233,7 +233,7 @@ public class UNetTest extends TestSuiteBase implements AttentionFeatures, Diffus
 		return block;
 	}
 
-	@Test
+	@Test(timeout = 120000)
 	public void resNet() {
 		if (skipKnownIssues) return;
 
@@ -447,7 +447,7 @@ public class UNetTest extends TestSuiteBase implements AttentionFeatures, Diffus
 		return imageTransformReverse(cp(xNoisy));
 	}
 
-	@Test
+	@Test(timeout = 120000)
 	public void imageTransform() throws IOException {
 		if (testProfileIs(TestUtils.PIPELINE)) return;
 
@@ -537,7 +537,7 @@ public class UNetTest extends TestSuiteBase implements AttentionFeatures, Diffus
 		}
 	}
 
-	@Test
+	@Test(timeout = 120000)
 	public void unet() throws IOException {
 		int dim = 28;
 

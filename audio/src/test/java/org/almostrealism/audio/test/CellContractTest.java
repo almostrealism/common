@@ -136,7 +136,7 @@ public abstract class CellContractTest<T extends Cell<PackedCollection>> extends
 	 * data and forwarding it. A Cell that returns no-op from push() when it
 	 * should be producing output violates the contract.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void pushMustProduceOutputToReceptor() {
 		T cell = createCell();
 		if (!requiresConfigurationAfterSetup()) {
@@ -178,7 +178,7 @@ public abstract class CellContractTest<T extends Cell<PackedCollection>> extends
 	 * is set and behaves differently. The internal computation of push() must be
 	 * the same regardless of whether output is being captured.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void pushBehaviorMustBeIndependentOfReceptorPresence() {
 		// Run WITH receptor
 		T cellWithReceptor = createCell();
@@ -252,7 +252,7 @@ public abstract class CellContractTest<T extends Cell<PackedCollection>> extends
 	 * A properly implemented tick() should do its work regardless of receptor presence.
 	 * The receptor being set just means the output has somewhere to go.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void tickMustNotBeNoOpWhenReceptorIsSet() {
 		if (!isTemporalCell()) {
 			return;
@@ -323,7 +323,7 @@ public abstract class CellContractTest<T extends Cell<PackedCollection>> extends
 	 * While setup() should be called first, a robust Cell implementation
 	 * should handle this gracefully (either with default values or a clear error).
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void pushWithoutSetupShouldNotCrash() {
 		T cell = createCell();
 		configureForAudioGeneration(cell);
@@ -349,7 +349,7 @@ public abstract class CellContractTest<T extends Cell<PackedCollection>> extends
 	 * <p>
 	 * Calling setup() multiple times should not corrupt state or cause errors.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void multipleSetupCallsShouldBeIdempotent() {
 		T cell = createCell();
 		if (!requiresConfigurationAfterSetup()) {

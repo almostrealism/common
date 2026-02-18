@@ -49,7 +49,7 @@ public class LoRALinearTests extends TestSuiteBase implements LayerFeatures {
 	 * Test that LoRA layer with zero-initialized B matrix produces same output as base layer.
 	 * Since B is initialized to zeros, the LoRA contribution should be zero initially.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testZeroInitializationPreservesBaseOutput() {
 		int batchSize = 2;
 		int inputSize = 64;
@@ -96,7 +96,7 @@ public class LoRALinearTests extends TestSuiteBase implements LayerFeatures {
 	/**
 	 * Test that LoRA layer produces different output after modifying B matrix.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testNonZeroBProducesDifferentOutput() {
 		int batchSize = 2;
 		int inputSize = 64;
@@ -147,7 +147,7 @@ public class LoRALinearTests extends TestSuiteBase implements LayerFeatures {
 	/**
 	 * Test weight merging produces identical output to LoRA layer.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testWeightMergingCorrectness() {
 		int batchSize = 2;
 		int inputSize = 64;
@@ -199,7 +199,7 @@ public class LoRALinearTests extends TestSuiteBase implements LayerFeatures {
 	/**
 	 * Test that only LoRA weights are exposed via getWeights().
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testOnlyLoraWeightsExposed() {
 		int inputSize = 64;
 		int outputSize = 32;
@@ -229,7 +229,7 @@ public class LoRALinearTests extends TestSuiteBase implements LayerFeatures {
 	/**
 	 * Test LoRA parameters: rank and alpha.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testLoraParameters() {
 		int inputSize = 64;
 		int outputSize = 32;
@@ -258,7 +258,7 @@ public class LoRALinearTests extends TestSuiteBase implements LayerFeatures {
 	/**
 	 * Test that LoRA can be used in a model that compiles successfully.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testModelCompilation() {
 		int batchSize = 4;
 		int inputSize = 32;
@@ -295,7 +295,7 @@ public class LoRALinearTests extends TestSuiteBase implements LayerFeatures {
 	/**
 	 * Test loading pre-existing LoRA weights (simulating checkpoint loading).
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testLoadExistingLoraWeights() {
 		int inputSize = 64;
 		int outputSize = 32;
@@ -332,7 +332,7 @@ public class LoRALinearTests extends TestSuiteBase implements LayerFeatures {
 	/**
 	 * Test the toMergedLayer() method creates a functional dense layer.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testToMergedLayer() {
 		int batchSize = 2;
 		int inputSize = 64;
@@ -381,7 +381,7 @@ public class LoRALinearTests extends TestSuiteBase implements LayerFeatures {
 	/**
 	 * Test shapes are correct throughout the layer.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testShapes() {
 		int batchSize = 4;
 		int inputSize = 128;

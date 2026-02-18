@@ -65,7 +65,7 @@ public class AdjustableDelayCellTest extends SineWaveCellTest {
 		return ops;
 	}
 
-	@Test
+	@Test(timeout = 120000)
 	public void computationSeparately() {
 		if (testProfileIs(TestUtils.PIPELINE)) return;
 
@@ -82,7 +82,7 @@ public class AdjustableDelayCellTest extends SineWaveCellTest {
 		assertions(delay);
 	}
 
-	@Test
+	@Test(timeout = 120000)
 	public void computationTogether() {
 		AdjustableDelayCell delay = adjustableDelay();
 		Supplier<Runnable> setupOp = delay.setup();
@@ -96,7 +96,7 @@ public class AdjustableDelayCellTest extends SineWaveCellTest {
 		assertions(delay);
 	}
 
-	@Test
+	@Test(timeout = 120000)
 	public void computationLoop() {
 		if (testProfileIs(TestUtils.PIPELINE)) return;
 
@@ -119,7 +119,7 @@ public class AdjustableDelayCellTest extends SineWaveCellTest {
 		assertEquals(0.1, t.getValue());
 	}
 
-	@Test
+	@Test(timeout = 120000)
 	public void withAdjustableDelayCell() {
 		if (testProfileIs(TestUtils.PIPELINE)) return;
 

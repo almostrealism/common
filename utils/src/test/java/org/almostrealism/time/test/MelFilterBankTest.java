@@ -33,7 +33,7 @@ public class MelFilterBankTest extends TestSuiteBase implements TemporalFeatures
 	/**
 	 * Test mel scale conversion: Hz to mel.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testHzToMel() {
 		// Known reference values
 		assertEquals("0 Hz should be 0 mel", 0.0, hzToMel(0.0), TOLERANCE);
@@ -52,7 +52,7 @@ public class MelFilterBankTest extends TestSuiteBase implements TemporalFeatures
 	/**
 	 * Test mel scale conversion: mel to Hz.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testMelToHz() {
 		// Round-trip test
 		for (double hz = 100; hz <= 8000; hz += 100) {
@@ -65,7 +65,7 @@ public class MelFilterBankTest extends TestSuiteBase implements TemporalFeatures
 	/**
 	 * Test basic mel filterbank creation and application.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testBasicMelFilterBank() {
 		int fftSize = 512;
 		int sampleRate = 16000;
@@ -94,7 +94,7 @@ public class MelFilterBankTest extends TestSuiteBase implements TemporalFeatures
 	/**
 	 * Test filterbank matrix properties.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testFilterbankMatrix() {
 		int fftSize = 512;
 		int sampleRate = 16000;
@@ -128,7 +128,7 @@ public class MelFilterBankTest extends TestSuiteBase implements TemporalFeatures
 	/**
 	 * Test mel filterbank with frequency-limited range.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testFrequencyLimitedRange() {
 		int fftSize = 512;
 		int sampleRate = 16000;
@@ -150,7 +150,7 @@ public class MelFilterBankTest extends TestSuiteBase implements TemporalFeatures
 	/**
 	 * Test that mel filterbank responds to spectral peaks.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testSpectralPeakResponse() {
 		int fftSize = 512;
 		int sampleRate = 16000;
@@ -186,7 +186,7 @@ public class MelFilterBankTest extends TestSuiteBase implements TemporalFeatures
 	/**
 	 * Test MFCC computation.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testMFCC() {
 		int numMelBands = 26;
 		int numMfccCoeffs = 13;
@@ -218,7 +218,7 @@ public class MelFilterBankTest extends TestSuiteBase implements TemporalFeatures
 	/**
 	 * Test MFCC with constant mel energies (should produce specific pattern).
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testMFCCConstantInput() {
 		int numMelBands = 26;
 		int numMfccCoeffs = 13;
@@ -244,7 +244,7 @@ public class MelFilterBankTest extends TestSuiteBase implements TemporalFeatures
 	/**
 	 * Test MFCC error handling for invalid parameters.
 	 */
-	@Test(expected = IllegalArgumentException.class)
+	@Test(timeout = 120000, expected = IllegalArgumentException.class)
 	public void testMFCCInvalidNumCoeffs() {
 		int numMelBands = 10;
 		int numMfccCoeffs = 20;  // More coefficients than mel bands
@@ -260,7 +260,7 @@ public class MelFilterBankTest extends TestSuiteBase implements TemporalFeatures
 	/**
 	 * Test factory method with default frequency range.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testDefaultFrequencyRange() {
 		int fftSize = 512;
 		int sampleRate = 16000;

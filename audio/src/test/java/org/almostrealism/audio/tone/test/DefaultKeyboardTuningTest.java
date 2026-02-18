@@ -42,7 +42,7 @@ public class DefaultKeyboardTuningTest extends TestSuiteBase {
 	/**
 	 * Tests that A4 is 440 Hz with default tuning.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void a4Is440Hz() {
 		KeyboardTuning tuning = new DefaultKeyboardTuning();
 		Frequency a4 = tuning.getTone(WesternChromatic.A4);
@@ -53,7 +53,7 @@ public class DefaultKeyboardTuningTest extends TestSuiteBase {
 	/**
 	 * Tests that custom A4 tuning works (e.g., A4 = 432 Hz).
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void customA4Tuning() {
 		KeyboardTuning tuning = new DefaultKeyboardTuning(432);
 		Frequency a4 = tuning.getTone(WesternChromatic.A4);
@@ -64,7 +64,7 @@ public class DefaultKeyboardTuningTest extends TestSuiteBase {
 	/**
 	 * Tests that octaves have a 2:1 frequency ratio.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void octaveRatioIs2To1() {
 		KeyboardTuning tuning = new DefaultKeyboardTuning();
 
@@ -86,7 +86,7 @@ public class DefaultKeyboardTuningTest extends TestSuiteBase {
 	/**
 	 * Tests that semitones follow equal temperament ratio.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void semitoneRatioIsCorrect() {
 		KeyboardTuning tuning = new DefaultKeyboardTuning();
 
@@ -108,7 +108,7 @@ public class DefaultKeyboardTuningTest extends TestSuiteBase {
 	/**
 	 * Tests standard reference frequencies.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void standardFrequencies() {
 		KeyboardTuning tuning = new DefaultKeyboardTuning();
 
@@ -128,7 +128,7 @@ public class DefaultKeyboardTuningTest extends TestSuiteBase {
 	/**
 	 * Tests that all chromatic notes return valid frequencies.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void allChromaticNotesHaveValidFrequencies() {
 		KeyboardTuning tuning = new DefaultKeyboardTuning();
 
@@ -146,7 +146,7 @@ public class DefaultKeyboardTuningTest extends TestSuiteBase {
 	/**
 	 * Tests frequency ranges across the keyboard.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void frequencyRanges() {
 		KeyboardTuning tuning = new DefaultKeyboardTuning();
 
@@ -163,7 +163,7 @@ public class DefaultKeyboardTuningTest extends TestSuiteBase {
 	 * Tests perfect fifth interval (7 semitones = 3:2 ratio in just intonation,
 	 * approximately 1.4983 in equal temperament).
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void perfectFifthInterval() {
 		KeyboardTuning tuning = new DefaultKeyboardTuning();
 
@@ -179,7 +179,7 @@ public class DefaultKeyboardTuningTest extends TestSuiteBase {
 	/**
 	 * Tests perfect fourth interval (5 semitones).
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void perfectFourthInterval() {
 		KeyboardTuning tuning = new DefaultKeyboardTuning();
 
@@ -195,7 +195,7 @@ public class DefaultKeyboardTuningTest extends TestSuiteBase {
 	/**
 	 * Tests major third interval (4 semitones).
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void majorThirdInterval() {
 		KeyboardTuning tuning = new DefaultKeyboardTuning();
 
@@ -211,7 +211,7 @@ public class DefaultKeyboardTuningTest extends TestSuiteBase {
 	/**
 	 * Tests MIDI key numbering conversion.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void midiKeyNumbering() {
 		KeyboardTuning tuning = new DefaultKeyboardTuning();
 
@@ -232,7 +232,7 @@ public class DefaultKeyboardTuningTest extends TestSuiteBase {
 	 * Note: This test skips E7 due to a known bug in WesternChromatic.position()
 	 * where E7 returns 70 instead of 79.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void frequenciesIncreaseMonotonically() {
 		KeyboardTuning tuning = new DefaultKeyboardTuning();
 
@@ -258,7 +258,7 @@ public class DefaultKeyboardTuningTest extends TestSuiteBase {
 	/**
 	 * Tests that 12 semitones equal one octave (2:1 ratio).
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void twelveSemitonesEqualOctave() {
 		KeyboardTuning tuning = new DefaultKeyboardTuning();
 

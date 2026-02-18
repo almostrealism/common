@@ -46,7 +46,7 @@ import static org.junit.Assume.assumeTrue;
  *
  * <h2>Typical Usage</h2>
  * <pre>{@code
- * @Test
+ * @Test(timeout = 120000)
  * public void myTest() {
  *     RealTimeTestHelper helper = new RealTimeTestHelper(this::log);
  *     helper.disableEffects();

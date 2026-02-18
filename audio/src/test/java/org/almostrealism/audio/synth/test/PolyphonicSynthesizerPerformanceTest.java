@@ -75,7 +75,7 @@ public class PolyphonicSynthesizerPerformanceTest extends TestSuiteBase implemen
 	 * Profiles the tick operation of a PolyphonicSynthesizer.
 	 * This test measures per-tick performance without BufferedOutputScheduler overhead.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void profileSynthTicks() throws IOException {
 		if (testProfileIs(TestUtils.PIPELINE)) return;
 
@@ -182,7 +182,7 @@ public class PolyphonicSynthesizerPerformanceTest extends TestSuiteBase implemen
 	 * Profiles the complete audio pipeline including BufferedOutputScheduler.
 	 * This measures end-to-end performance for real-time audio output.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void profileSchedulerPipeline() throws IOException {
 		if (testProfileIs(TestUtils.PIPELINE)) return;
 
@@ -292,7 +292,7 @@ public class PolyphonicSynthesizerPerformanceTest extends TestSuiteBase implemen
 	 * Profiles the TemporalRunner execution pattern which is used internally
 	 * by BufferedOutputScheduler. This isolates the runner overhead.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void profileTemporalRunner() throws IOException {
 		if (testProfileIs(TestUtils.PIPELINE)) return;
 
@@ -384,7 +384,7 @@ public class PolyphonicSynthesizerPerformanceTest extends TestSuiteBase implemen
 	/**
 	 * Profiles with varying voice counts to understand scaling behavior.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void profileVoiceScaling() throws IOException {
 		if (testProfileIs(TestUtils.PIPELINE)) return;
 

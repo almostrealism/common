@@ -56,7 +56,7 @@ public class OobleckAutoEncoderTest extends TestSuiteBase {
 	/**
 	 * Tests that encoder output length calculation works correctly.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testEncoderConstruction() {
 		// Just verify output length calculation without building full model
 		// Full model tests are memory-intensive; see OobleckValidationTest for real validation
@@ -81,7 +81,7 @@ public class OobleckAutoEncoderTest extends TestSuiteBase {
 	/**
 	 * Tests decoder output length calculation.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testDecoderConstruction() {
 		// Just verify output length calculation without building full model
 		// ConvTranspose1d: out = (in - 1) * stride - 2*padding + kernel + output_padding
@@ -103,7 +103,7 @@ public class OobleckAutoEncoderTest extends TestSuiteBase {
 	/**
 	 * Tests that the VAE bottleneck can be constructed.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testBottleneckConstruction() {
 		int batchSize = 1;
 		int seqLength = 256;
@@ -120,7 +120,7 @@ public class OobleckAutoEncoderTest extends TestSuiteBase {
 	 *
 	 * <p>Total theoretical compression: 4 * 8 * 8 * 16 * 16 = 65536x.</p>
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testCompressionRatio() {
 		int totalCompression = 1;
 		for (int stride : STRIDES) {
