@@ -33,7 +33,7 @@ public class DiffusionTransformerTests extends TestSuiteBase implements Diffusio
 	 * This isolates the transformer block from the full DiffusionTransformer to
 	 * identify shape mismatch issues.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void transformerBlockShapes() {
 		int batchSize = 1;
 		int seqLen = 8;
@@ -117,7 +117,7 @@ public class DiffusionTransformerTests extends TestSuiteBase implements Diffusio
 	 * This verifies that shape validation passes for all layers without needing
 	 * external reference data.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void forwardPassWithRandomWeights() {
 		// Use minimal sizes for fast testing while still exercising the full architecture
 		int ioChannels = 2;
@@ -171,7 +171,7 @@ public class DiffusionTransformerTests extends TestSuiteBase implements Diffusio
 	/**
 	 * Tests DiffusionTransformer with cross-attention conditioning.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void forwardPassWithCrossAttention() {
 		int ioChannels = 2;
 		int embedDim = 32;
@@ -221,7 +221,7 @@ public class DiffusionTransformerTests extends TestSuiteBase implements Diffusio
 	/**
 	 * Tests DiffusionTransformer with global conditioning.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void forwardPassWithGlobalConditioning() {
 		int ioChannels = 2;
 		int embedDim = 32;
@@ -273,7 +273,7 @@ public class DiffusionTransformerTests extends TestSuiteBase implements Diffusio
 	 * This is a sanity check to ensure the 2*pi factor, matrix multiplication, and
 	 * concatenation order are working correctly.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void fourierFeaturesBasic() {
 		int batchSize = 1;
 		int inFeatures = 1;

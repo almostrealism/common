@@ -38,7 +38,7 @@ public class SourceDataOutputLineTest extends TestSuiteBase implements CellFeatu
 	 * Tests buffered playback of WAV file data using BufferedOutputScheduler.
 	 * This replaces the old direct write approach with proper Producer-based scheduling.
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void playWaveData() throws Exception {
 		if (testProfileIs(TestUtils.PIPELINE)) return;
 

@@ -171,6 +171,13 @@ public class DistributionMetric extends MetricBase {
 		return summary(displayName, s -> s);
 	}
 
+	/**
+	 * Returns a stream of distribution entries, optionally filtered to a summary
+	 * of the most significant entries.
+	 *
+	 * @param summary if true, only entries above the minimum percentage threshold are included
+	 * @return stream of name-to-value entries
+	 */
 	public Stream<Map.Entry<String, Double>> entries(boolean summary) {
 		double all = getTotal();
 

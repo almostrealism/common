@@ -13,7 +13,7 @@ import java.io.IOException;
 import java.util.function.Supplier;
 
 public class MultiCellFilterTest extends TestSuiteBase implements CellFeatures, AudioTestFeatures {
-	@Test
+	@Test(timeout = 120000)
 	public void identity() {
 		w(0, getTestWavPath())
 				.m(f(2, i -> new IdentityFactor<>()),
@@ -22,7 +22,7 @@ public class MultiCellFilterTest extends TestSuiteBase implements CellFeatures, 
 				.sec(5).get().run();
 	}
 
-	@Test
+	@Test(timeout = 120000)
 	public void identityDelay() {
 		w(0, getTestWavPath())
 				.m(f(2, i -> new IdentityFactor<>()),
@@ -32,7 +32,7 @@ public class MultiCellFilterTest extends TestSuiteBase implements CellFeatures, 
 				.sec(8).get().run();
 	}
 
-	@Test
+	@Test(timeout = 120000)
 	public void identityDelayFeedback() {
 		CellList c = w(0, getTestWavPath(), getTestWavPath())
 				.d(i -> c(2))
@@ -42,7 +42,7 @@ public class MultiCellFilterTest extends TestSuiteBase implements CellFeatures, 
 		op.get().run();
 	}
 
-	@Test
+	@Test(timeout = 120000)
 	public void scale() {
 		w(0, getTestWavPath())
 				.m(f(2, i -> new ScaleFactor(0.3 * (i + 1))),
@@ -51,7 +51,7 @@ public class MultiCellFilterTest extends TestSuiteBase implements CellFeatures, 
 				.sec(5).get().run();
 	}
 
-	@Test
+	@Test(timeout = 120000)
 	public void scaleDelay() throws IOException {
 		w(0, getTestWavPath())
 				.m(f(2, i -> new ScaleFactor(0.3 * (i + 1))),
@@ -61,7 +61,7 @@ public class MultiCellFilterTest extends TestSuiteBase implements CellFeatures, 
 				.sec(8).get().run();
 	}
 
-	@Test
+	@Test(timeout = 120000)
 	public void scaleDelayFeedback() {
 		w(0, getTestWavPath(), getTestWavPath())
 				.d(i -> c(2))
@@ -70,7 +70,7 @@ public class MultiCellFilterTest extends TestSuiteBase implements CellFeatures, 
 				.sec(8).get().run();
 	}
 
-	@Test
+	@Test(timeout = 120000)
 	public void filter() {
 		w(0, getTestWavPath())
 				.m(f(2, i -> hp(2000, 0.1)),
@@ -79,7 +79,7 @@ public class MultiCellFilterTest extends TestSuiteBase implements CellFeatures, 
 				.sec(5).get().run();
 	}
 
-	@Test
+	@Test(timeout = 120000)
 	public void filterDelay() {
 		w(0, getTestWavPath())
 				.m(f(2, i -> hp(2000, 0.1)),
@@ -89,7 +89,7 @@ public class MultiCellFilterTest extends TestSuiteBase implements CellFeatures, 
 				.sec(8).get().run();
 	}
 
-	@Test
+	@Test(timeout = 120000)
 	public void filterDelayFeedback() {
 		w(0, getTestWavPath(), getTestWavPath())
 				.d(i -> c(2))

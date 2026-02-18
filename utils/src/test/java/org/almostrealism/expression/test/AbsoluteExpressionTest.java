@@ -35,7 +35,7 @@ public class AbsoluteExpressionTest extends TestSuiteBase implements ExpressionF
 	/**
 	 * Test that Absolute expression evaluates correctly for a negative constant.
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void testAbsoluteOfNegativeConstant() {
 		Expression<Double> neg = e(-5.0);
 		Absolute abs = new Absolute(neg);
@@ -47,7 +47,7 @@ public class AbsoluteExpressionTest extends TestSuiteBase implements ExpressionF
 	/**
 	 * Test that Absolute expression evaluates correctly for a positive constant.
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void testAbsoluteOfPositiveConstant() {
 		Expression<Double> pos = e(3.0);
 		Absolute abs = new Absolute(pos);
@@ -60,7 +60,7 @@ public class AbsoluteExpressionTest extends TestSuiteBase implements ExpressionF
 	 * Test that Absolute.doubleValue() returns empty (not a compile-time constant).
 	 * This is important because Difference.of() filters based on doubleValue().
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void testAbsoluteDoubleValueIsEmpty() {
 		Expression<Double> inner = e(-5.0);
 		Absolute abs = new Absolute(inner);
@@ -75,7 +75,7 @@ public class AbsoluteExpressionTest extends TestSuiteBase implements ExpressionF
 	 * Test that Difference correctly preserves Absolute as an operand.
 	 * This is the core issue we're investigating.
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void testDifferenceWithAbsolute() {
 		Expression<Double> inner = e(-0.5);  // -0.5
 		Absolute abs = new Absolute(inner);   // |-0.5| = 0.5
@@ -101,7 +101,7 @@ public class AbsoluteExpressionTest extends TestSuiteBase implements ExpressionF
 	 * Test that 1.0 - |x - 1| computes correctly when x = 0.5.
 	 * Expected: 1.0 - |0.5 - 1.0| = 1.0 - |-0.5| = 1.0 - 0.5 = 0.5
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void testOneMinusAbsoluteOfDifference() {
 		// Inner: 0.5 - 1.0 = -0.5
 		Expression<Double> inner = (Expression<Double>) e(0.5).subtract(e(1.0));
@@ -130,7 +130,7 @@ public class AbsoluteExpressionTest extends TestSuiteBase implements ExpressionF
 	/**
 	 * Test Difference.of() factory method directly with Absolute.
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void testDifferenceOfFactoryWithAbsolute() {
 		Expression<Double> one = e(1.0);
 		Expression<Double> negHalf = e(-0.5);
@@ -150,7 +150,7 @@ public class AbsoluteExpressionTest extends TestSuiteBase implements ExpressionF
 	/**
 	 * Test that simplification doesn't incorrectly remove Absolute.
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void testSimplificationPreservesAbsolute() {
 		Expression<Double> inner = e(-0.5);
 		Absolute abs = new Absolute(inner);

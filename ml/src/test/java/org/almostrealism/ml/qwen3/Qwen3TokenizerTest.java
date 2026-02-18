@@ -10,7 +10,7 @@ import java.util.Arrays;
  */
 public class Qwen3TokenizerTest extends TestSuiteBase {
 
-	@Test
+	@Test(timeout = 5000)
 	public void testBasicEncoding() {
 		// Create test tokenizer with simple vocab
 		Qwen3Tokenizer tokenizer = Qwen3Tokenizer.createTestTokenizer();
@@ -26,7 +26,7 @@ public class Qwen3TokenizerTest extends TestSuiteBase {
 		System.out.println("Tokens: " + Arrays.toString(tokens));
 	}
 
-	@Test
+	@Test(timeout = 5000)
 	public void testEncodeDecode() {
 		Qwen3Tokenizer tokenizer = Qwen3Tokenizer.createTestTokenizer();
 
@@ -42,7 +42,7 @@ public class Qwen3TokenizerTest extends TestSuiteBase {
 		assertTrue("Decoded text should not be empty", decoded.length() > 0);
 	}
 
-	@Test
+	@Test(timeout = 5000)
 	public void testSpecialTokens() {
 		Qwen3Tokenizer tokenizer = Qwen3Tokenizer.createTestTokenizer();
 
@@ -70,7 +70,7 @@ public class Qwen3TokenizerTest extends TestSuiteBase {
 				Qwen3Tokenizer.EOS_TOKEN, tokensWithBoth[tokensWithBoth.length - 1]);
 	}
 
-	@Test
+	@Test(timeout = 5000)
 	public void testEmptyString() {
 		Qwen3Tokenizer tokenizer = Qwen3Tokenizer.createTestTokenizer();
 
@@ -79,7 +79,7 @@ public class Qwen3TokenizerTest extends TestSuiteBase {
 		assertEquals("Empty string should produce 0 tokens", 0, tokens.length);
 	}
 
-	@Test
+	@Test(timeout = 5000)
 	public void testMultiByteCharacters() {
 		Qwen3Tokenizer tokenizer = Qwen3Tokenizer.createTestTokenizer();
 
@@ -94,7 +94,7 @@ public class Qwen3TokenizerTest extends TestSuiteBase {
 		System.out.println("Tokens: " + Arrays.toString(tokens));
 	}
 
-	@Test
+	@Test(timeout = 5000)
 	public void testVocabSize() {
 		Qwen3Tokenizer tokenizer = Qwen3Tokenizer.createTestTokenizer();
 
@@ -105,7 +105,7 @@ public class Qwen3TokenizerTest extends TestSuiteBase {
 		System.out.println("Vocabulary size: " + vocabSize);
 	}
 
-	@Test
+	@Test(timeout = 5000)
 	public void testDecode() {
 		Qwen3Tokenizer tokenizer = Qwen3Tokenizer.createTestTokenizer();
 
@@ -128,7 +128,7 @@ public class Qwen3TokenizerTest extends TestSuiteBase {
 	 * Test loading the real Qwen3 tokenizer from weights directory.
 	 * Verifies that "Hello" encodes to token 9707 (matching PyTorch).
 	 */
-	@Test
+	@Test(timeout = 5000)
 	public void testRealTokenizerEncoding() throws Exception {
 		String tokenizerPath = "/workspace/project/common/ml/qwen3_weights/tokenizer.bin";
 		java.io.File f = new java.io.File(tokenizerPath);

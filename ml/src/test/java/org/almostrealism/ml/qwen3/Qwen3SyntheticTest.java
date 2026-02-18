@@ -106,7 +106,7 @@ public class Qwen3SyntheticTest extends TestSuiteBase {
 		return collection;
 	}
 
-	@Test
+	@Test(timeout = 120000)
 	public void testTinyModelConstruction() {
 		System.out.println("\n=== Test 1: Tiny Model Construction ===");
 
@@ -160,7 +160,7 @@ public class Qwen3SyntheticTest extends TestSuiteBase {
 		System.out.println("[OK] All construction tests passed!\n");
 	}
 
-	@Test
+	@Test(timeout = 120000)
 	public void testModelCompilation() {
 		System.out.println("\n=== Test 2: Model Compilation ===");
 
@@ -188,7 +188,7 @@ public class Qwen3SyntheticTest extends TestSuiteBase {
 		System.out.println("[OK] Compilation test passed!\n");
 	}
 
-	@Test
+	@Test(timeout = 120000)
 	public void testWeightShapes() {
 		System.out.println("\n=== Test 3: Weight Shape Verification ===");
 
