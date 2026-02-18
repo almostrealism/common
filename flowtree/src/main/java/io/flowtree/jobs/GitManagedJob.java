@@ -1320,6 +1320,11 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
         sb.append(",\"costUsd\":").append(event.getCostUsd());
         sb.append(",\"numTurns\":").append(event.getNumTurns());
 
+        // Session details
+        appendJsonField(sb, "subtype", event.getSubtype(), false);
+        sb.append(",\"sessionIsError\":").append(event.isSessionError());
+        sb.append(",\"permissionDenials\":").append(event.getPermissionDenials());
+
         sb.append("}");
         return sb.toString();
     }
