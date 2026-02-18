@@ -32,7 +32,7 @@ jobs:
       - name: Code Policy Enforcement
         run: |
           LD_LIBRARY_PATH=Extensions mvn test -pl utils \
-           -Dtest=CodePolicyEnforcementTest \
+           -Dtest="CodePolicyEnforcementTest#enforceCodePolicies+testDetector*" \
            -DAR_HARDWARE_DRIVER=native \
            -DAR_HARDWARE_LIBS=Extensions
 
@@ -277,7 +277,8 @@ jobs:
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS=Extensions \
            -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=7
+           -DAR_TEST_GROUPS=7 \
+           -Dsurefire.excludes="**/CodePolicyEnforcementTest.java"
 
       - name: Upload Surefire Reports
         if: always()
@@ -497,7 +498,8 @@ jobs:
           DYLD_LIBRARY_PATH=Extensions mvn test -pl utils \
            -DAR_HARDWARE_DRIVER=mtl \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
-           -DAR_HARDWARE_LIBS=Extensions
+           -DAR_HARDWARE_LIBS=Extensions \
+           -Dsurefire.excludes="**/CodePolicyEnforcementTest.java"
 
   test-ml-mac:
     needs: [build-mac, test-ml]
