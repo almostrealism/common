@@ -665,8 +665,7 @@ jobs:
           retention-days: 30
 
   qodana:
-    needs: [analysis]
-    if: always() && github.ref == 'refs/heads/master'
+    needs: [analysis, build, test, test-ml, test-audio, test-music]
     runs-on: ubuntu-latest
     permissions:
       checks: write
