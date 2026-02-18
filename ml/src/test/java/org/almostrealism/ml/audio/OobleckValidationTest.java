@@ -66,7 +66,7 @@ public class OobleckValidationTest extends TestSuiteBase {
 	 *   <li>Comparing output against PyTorch reference</li>
 	 * </ol>
 	 */
-	@Test
+	@Test(timeout = 300000)
 	public void testEncoderAgainstPyTorchReference() throws IOException {
 		// Skip if test data not available
 		if (!WEIGHTS_DIR.toFile().exists()) {
@@ -135,7 +135,7 @@ public class OobleckValidationTest extends TestSuiteBase {
 	 * <p>This validates the intermediate layer outputs to help identify
 	 * where any discrepancies might originate.</p>
 	 */
-	@Test
+	@Test(timeout = 300000)
 	public void testEncoderIntermediatesAgainstPyTorch() throws IOException {
 		// Skip if test data not available
 		if (!WEIGHTS_DIR.toFile().exists()) {
@@ -173,7 +173,7 @@ public class OobleckValidationTest extends TestSuiteBase {
 	/**
 	 * Tests decoder output against PyTorch reference.
 	 */
-	@Test
+	@Test(timeout = 300000)
 	public void testDecoderAgainstPyTorchReference() throws IOException {
 		// Skip if test data not available
 		if (!WEIGHTS_DIR.toFile().exists()) {
@@ -338,7 +338,7 @@ public class OobleckValidationTest extends TestSuiteBase {
 	 *   <li>... and so on through all blocks</li>
 	 * </ul>
 	 */
-	@Test
+	@Test(timeout = 300000)
 	public void testDecoderBlockByBlockComparison() throws IOException {
 		if (!WEIGHTS_DIR.toFile().exists()) {
 			System.out.println("Skipping - weights not found at " + WEIGHTS_DIR);
@@ -528,7 +528,7 @@ public class OobleckValidationTest extends TestSuiteBase {
 	 * Tests Block 1 sub-components individually to isolate where numerical discrepancy begins.
 	 * Tests: Snake, WNConvTranspose1d, each residual block in sequence.
 	 */
-	@Test
+	@Test(timeout = 300000)
 	public void testBlock1SubComponents() throws IOException {
 		if (!WEIGHTS_DIR.toFile().exists()) {
 			System.out.println("Skipping - weights not found at " + WEIGHTS_DIR);

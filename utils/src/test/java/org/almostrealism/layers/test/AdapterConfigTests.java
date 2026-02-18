@@ -64,7 +64,7 @@ public class AdapterConfigTests extends TestSuiteBase implements LayerFeatures, 
 	/**
 	 * Test default AdapterConfig values.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testDefaultConfig() {
 		AdapterConfig config = new AdapterConfig();
 
@@ -83,7 +83,7 @@ public class AdapterConfigTests extends TestSuiteBase implements LayerFeatures, 
 	/**
 	 * Test AdapterConfig builder pattern.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testBuilderPattern() {
 		AdapterConfig config = new AdapterConfig()
 				.rank(16)
@@ -102,7 +102,7 @@ public class AdapterConfigTests extends TestSuiteBase implements LayerFeatures, 
 	/**
 	 * Test invalid rank validation.
 	 */
-	@Test(expected = IllegalArgumentException.class)
+	@Test(timeout = 5000, expected = IllegalArgumentException.class)
 	public void testInvalidRank() {
 		new AdapterConfig().rank(0);
 	}
@@ -110,7 +110,7 @@ public class AdapterConfigTests extends TestSuiteBase implements LayerFeatures, 
 	/**
 	 * Test invalid alpha validation.
 	 */
-	@Test(expected = IllegalArgumentException.class)
+	@Test(timeout = 5000, expected = IllegalArgumentException.class)
 	public void testInvalidAlpha() {
 		new AdapterConfig().alpha(-1.0);
 	}
@@ -118,7 +118,7 @@ public class AdapterConfigTests extends TestSuiteBase implements LayerFeatures, 
 	/**
 	 * Test forAudioDiffusion factory method.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testForAudioDiffusionFactory() {
 		AdapterConfig config = AdapterConfig.forAudioDiffusion();
 
@@ -140,7 +140,7 @@ public class AdapterConfigTests extends TestSuiteBase implements LayerFeatures, 
 	/**
 	 * Test full() factory method.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testFullFactory() {
 		AdapterConfig config = AdapterConfig.full();
 
@@ -154,7 +154,7 @@ public class AdapterConfigTests extends TestSuiteBase implements LayerFeatures, 
 	/**
 	 * Test minimal() factory method.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testMinimalFactory() {
 		AdapterConfig config = AdapterConfig.minimal();
 
@@ -170,7 +170,7 @@ public class AdapterConfigTests extends TestSuiteBase implements LayerFeatures, 
 	/**
 	 * Test loraOrDense creates LoRA layer when configured.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testLoraOrDenseCreatesLoraWhenTargeted() {
 		testConfig = new AdapterConfig()
 				.rank(8)
@@ -200,7 +200,7 @@ public class AdapterConfigTests extends TestSuiteBase implements LayerFeatures, 
 	/**
 	 * Test loraOrDense creates dense layer when not configured.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testLoraOrDenseCreatesDenseWhenNotTargeted() {
 		testConfig = new AdapterConfig()
 				.targets(TargetLayer.SELF_ATTENTION_QKV);  // Only QKV targeted
@@ -228,7 +228,7 @@ public class AdapterConfigTests extends TestSuiteBase implements LayerFeatures, 
 	/**
 	 * Test loraOrDense with null config creates dense layer.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testLoraOrDenseWithNullConfig() {
 		testConfig = null;
 		testLoraLayers.clear();
@@ -253,7 +253,7 @@ public class AdapterConfigTests extends TestSuiteBase implements LayerFeatures, 
 	/**
 	 * Test getTrainableParameters returns LoRA weights.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testGetTrainableParameters() {
 		testConfig = AdapterConfig.full();
 		testLoraLayers.clear();
@@ -280,7 +280,7 @@ public class AdapterConfigTests extends TestSuiteBase implements LayerFeatures, 
 	/**
 	 * Test getTrainableParameterCount.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testGetTrainableParameterCount() {
 		testConfig = new AdapterConfig().rank(4);
 		testLoraLayers.clear();
@@ -306,7 +306,7 @@ public class AdapterConfigTests extends TestSuiteBase implements LayerFeatures, 
 	/**
 	 * Test that LoRA layer output matches base layer when B is zero.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testLoraLayerOutputMatchesBaseInitially() {
 		testConfig = AdapterConfig.minimal();
 		testLoraLayers.clear();

@@ -35,7 +35,7 @@ public class DiffusionTransformerComparisonTests extends TestSuiteBase implement
 	 * matches the real Python behavior including the 2pi factor, matrix multiplication,
 	 * and correct concatenation order.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void fourierFeaturesCompare() throws Exception {
 		if (testProfileIs(TestUtils.PIPELINE)) return;
 
@@ -124,7 +124,7 @@ public class DiffusionTransformerComparisonTests extends TestSuiteBase implement
 	 * from the actual DiT model. This is critical because it's one of the first operations
 	 * in the forward pass, so any errors here propagate through the entire model.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void inputProjectionCompare() throws Exception {
 		if (testProfileIs(TestUtils.PIPELINE)) return;
 
@@ -209,7 +209,7 @@ public class DiffusionTransformerComparisonTests extends TestSuiteBase implement
 	 * from the actual DiT model. This tests the two linear layers with SiLU activation
 	 * that process conditioning tokens from T5 embeddings.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void conditioningEmbeddingCompare() throws Exception {
 		if (testProfileIs(TestUtils.PIPELINE)) return;
 
@@ -298,7 +298,7 @@ public class DiffusionTransformerComparisonTests extends TestSuiteBase implement
 	 * from the actual DiT model. This tests the two linear layers with SiLU activation
 	 * that process global conditioning vectors.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void globalEmbeddingCompare() throws Exception {
 		if (testProfileIs(TestUtils.PIPELINE)) return;
 
@@ -385,7 +385,7 @@ public class DiffusionTransformerComparisonTests extends TestSuiteBase implement
 	 * from the actual DiT model. This compares the state right before transformer blocks
 	 * are applied, which is critical for identifying where discrepancies occur in the pipeline.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	@TestDepth(3)
 	public void ditIntermediateStateCompare() throws Exception {
 		if (testProfileIs(TestUtils.PIPELINE)) return;
@@ -490,7 +490,7 @@ public class DiffusionTransformerComparisonTests extends TestSuiteBase implement
 	 * but before output projection, which helps isolate whether issues are in the
 	 * transformer processing or in the post-processing steps.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	@TestDepth(3)
 	public void ditPostTransformerStateCompare() throws Exception {
 		if (testProfileIs(TestUtils.PIPELINE)) return;

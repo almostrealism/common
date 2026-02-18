@@ -37,7 +37,7 @@ public class FeedbackDelayMatrixTest extends TestSuiteBase implements CellFeatur
 	/**
 	 * Tests that DelayNetwork can be created with default parameters.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void delayNetworkCreation() {
 		DelayNetwork verb = new DelayNetwork(SAMPLE_RATE, false);
 		Assert.assertNotNull("DelayNetwork should be created", verb);
@@ -46,7 +46,7 @@ public class FeedbackDelayMatrixTest extends TestSuiteBase implements CellFeatur
 	/**
 	 * Tests that DelayNetwork can be created with custom parameters.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void delayNetworkCustomParameters() {
 		DelayNetwork verb = new DelayNetwork(0.001, 512, 1.5, SAMPLE_RATE, true);
 		Assert.assertNotNull("DelayNetwork with custom params should be created", verb);
@@ -55,7 +55,7 @@ public class FeedbackDelayMatrixTest extends TestSuiteBase implements CellFeatur
 	/**
 	 * Tests that DelayNetwork can process a signal without errors.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void signalProcessing() {
 		DelayNetwork verb = new DelayNetwork(0.5, 2, 1.0 / 44100.0, SAMPLE_RATE, false);
 
@@ -72,7 +72,7 @@ public class FeedbackDelayMatrixTest extends TestSuiteBase implements CellFeatur
 	/**
 	 * Tests that default delay network can be constructed and used.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void defaultDelayNetworkProcessing() {
 		DelayNetwork verb = new DelayNetwork(SAMPLE_RATE, false);
 
@@ -89,7 +89,7 @@ public class FeedbackDelayMatrixTest extends TestSuiteBase implements CellFeatur
 	/**
 	 * Tests that silence through delay network remains silent.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void silenceRemainsSilent() {
 		DelayNetwork verb = new DelayNetwork(SAMPLE_RATE, false);
 		PackedCollection silence = TestAudioData.silence(SAMPLE_RATE / 10);

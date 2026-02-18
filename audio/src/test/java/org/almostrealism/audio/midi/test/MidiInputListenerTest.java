@@ -31,7 +31,7 @@ import static org.junit.Assert.*;
  */
 public class MidiInputListenerTest implements TestFeatures {
 
-	@Test
+	@Test(timeout = 5000)
 	public void testDefaultMethodsDoNotThrow() {
 		MidiInputListener listener = new MidiInputListener() {};
 
@@ -49,7 +49,7 @@ public class MidiInputListenerTest implements TestFeatures {
 		listener.midiContinue();
 	}
 
-	@Test
+	@Test(timeout = 5000)
 	public void testCCConstants() {
 		assertEquals(1, MidiInputListener.CC.MODULATION);
 		assertEquals(7, MidiInputListener.CC.VOLUME);
@@ -58,7 +58,7 @@ public class MidiInputListenerTest implements TestFeatures {
 		assertEquals(123, MidiInputListener.CC.ALL_NOTES_OFF);
 	}
 
-	@Test
+	@Test(timeout = 5000)
 	public void testCustomListenerReceivesMessages() {
 		List<String> received = new ArrayList<>();
 
@@ -89,14 +89,14 @@ public class MidiInputListenerTest implements TestFeatures {
 		assertEquals("cc:0:1:64", received.get(2));
 	}
 
-	@Test
+	@Test(timeout = 5000)
 	public void testVelocityCurveLinear() {
 		assertEquals(0.0, VelocityCurve.LINEAR.apply(0), 0.001);
 		assertEquals(0.5, VelocityCurve.LINEAR.apply(64), 0.02);  // 64/127 ~= 0.504
 		assertEquals(1.0, VelocityCurve.LINEAR.apply(127), 0.001);
 	}
 
-	@Test
+	@Test(timeout = 5000)
 	public void testVelocityCurveSoft() {
 		// Soft curve should give higher values at low velocities
 		double soft32 = VelocityCurve.SOFT.apply(32);
@@ -107,7 +107,7 @@ public class MidiInputListenerTest implements TestFeatures {
 		assertEquals(1.0, VelocityCurve.SOFT.apply(127), 0.001);
 	}
 
-	@Test
+	@Test(timeout = 5000)
 	public void testVelocityCurveHard() {
 		// Hard curve should give lower values at low velocities
 		double hard32 = VelocityCurve.HARD.apply(32);
@@ -118,7 +118,7 @@ public class MidiInputListenerTest implements TestFeatures {
 		assertEquals(1.0, VelocityCurve.HARD.apply(127), 0.001);
 	}
 
-	@Test
+	@Test(timeout = 5000)
 	public void testVelocityCurveFixed() {
 		assertEquals(0.0, VelocityCurve.FIXED.apply(0), 0.001);
 		assertEquals(1.0, VelocityCurve.FIXED.apply(1), 0.001);
@@ -126,7 +126,7 @@ public class MidiInputListenerTest implements TestFeatures {
 		assertEquals(1.0, VelocityCurve.FIXED.apply(127), 0.001);
 	}
 
-	@Test
+	@Test(timeout = 5000)
 	public void testVelocityCurveWithFloor() {
 		double floor = 0.2;
 

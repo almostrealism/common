@@ -24,7 +24,7 @@ public class SpatialDrawingTest {
 	/**
 	 * Tests that position() and inverse() are true inverses.
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void testCoordinateRoundTrip() {
 		TemporalSpatialContext context = new TemporalSpatialContext();
 		context.setDuration(10.0);
@@ -55,7 +55,7 @@ public class SpatialDrawingTest {
 	/**
 	 * Tests that inverse() correctly extracts layer information.
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void testInverseWithLayers() {
 		TemporalSpatialContext context = new TemporalSpatialContext();
 
@@ -69,7 +69,7 @@ public class SpatialDrawingTest {
 	/**
 	 * Tests SphericalBrush generates correct number of points.
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void testSphericalBrushDensity() {
 		SphericalBrush brush = new SphericalBrush();
 		brush.setDensity(100.0); // 100 points per second
@@ -92,7 +92,7 @@ public class SpatialDrawingTest {
 	/**
 	 * Tests SphericalBrush generates points within radius.
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void testSphericalBrushRadius() {
 		SphericalBrush brush = new SphericalBrush();
 		double radius = 10.0;
@@ -116,7 +116,7 @@ public class SpatialDrawingTest {
 	/**
 	 * Tests EditableSpatialWaveDetails creation and basic properties.
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void testEditableSpatialWaveDetailsCreation() {
 		int timeFrames = 100;
 		int frequencyBins = 256;
@@ -135,7 +135,7 @@ public class SpatialDrawingTest {
 	/**
 	 * Tests applying brush strokes to EditableSpatialWaveDetails.
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void testApplyBrushStrokes() {
 		int timeFrames = 100;
 		int frequencyBins = 256;
@@ -183,7 +183,7 @@ public class SpatialDrawingTest {
 	/**
 	 * Tests clear functionality.
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void testClear() {
 		EditableSpatialWaveDetails canvas = new EditableSpatialWaveDetails(
 				100, 256, 44100, 100);
@@ -213,7 +213,7 @@ public class SpatialDrawingTest {
 	/**
 	 * Tests that getSeries returns the frequency data.
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void testGetSeries() {
 		EditableSpatialWaveDetails canvas = new EditableSpatialWaveDetails(
 				100, 256, 44100, 100);
@@ -230,7 +230,7 @@ public class SpatialDrawingTest {
 	 * <p>In the application, mouse positions like [-193.811, 21.358, 0.0] were
 	 * observed. This test verifies that such positions are correctly mapped.</p>
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void testNegativeXPositionHandling() {
 		TemporalSpatialContext context = new TemporalSpatialContext();
 		context.setDuration(10.0); // 10 seconds
@@ -260,7 +260,7 @@ public class SpatialDrawingTest {
 	/**
 	 * Tests what X position is needed for valid time indices.
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void testRequiredXPositionForValidTime() {
 		TemporalSpatialContext context = new TemporalSpatialContext();
 
@@ -302,7 +302,7 @@ public class SpatialDrawingTest {
 	/**
 	 * Tests the full round-trip: apply values to elements() to verify regeneration.
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void testFullDrawingRoundTrip() {
 		int timeFrames = 100;
 		int frequencyBins = 256;
@@ -384,7 +384,7 @@ public class SpatialDrawingTest {
 	/**
 	 * Tests that brush strokes produce values that survive the round-trip.
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void testBrushStrokeRoundTrip() {
 		int timeFrames = 100;
 		int frequencyBins = 256;
@@ -456,7 +456,7 @@ public class SpatialDrawingTest {
 	 * by subtracting the visualization origin offset. This offset is applied
 	 * when rendering, so we reverse it to convert back to canvas space.</p>
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void testVisualizationOriginTransformation() {
 		int timeFrames = 1000;  // 10 seconds at 100 Hz
 		int frequencyBins = 256;

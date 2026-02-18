@@ -55,6 +55,11 @@ public class ArrayColorBuffer implements ColorBuffer {
 		this.back = new RGB[this.back.length][this.back[0].length];
 	}
 	
+	/**
+	 * Returns the interpolated color at the given UV coordinates from
+	 * the front or back buffer, using distance-weighted averaging of
+	 * neighboring samples.
+	 */
 	public RGB getColorAt(double u, double v, boolean front) {
 		if (front && this.front == null) return null;
 		if (!front && this.back == null) return null;
