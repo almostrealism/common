@@ -5,6 +5,9 @@ on:
   push:
     branches:
       - master
+  pull_request:
+    branches:
+      - master
 
 jobs:
   build:
@@ -32,6 +35,60 @@ jobs:
            -Dtest="CodePolicyEnforcementTest#enforceCodePolicies+testDetector*" \
            -DAR_HARDWARE_DRIVER=native \
            -DAR_HARDWARE_LIBS=Extensions
+
+  # ─── Test Integrity Check ────────────────────────────────────────────
+  # Detects modifications to existing test files that hide failures
+  # (e.g., adding @Ignore, deleting assertions, weakening checks).
+  # This job FAILS the build to prevent test-hiding from being merged.
+  test-integrity-check:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.ref != 'refs/heads/master'
+    outputs:
+      passed: ${{ steps.check.outcome == 'success' }}
+      violation_count: ${{ steps.check.outputs.violation_count }}
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Fetch base branch
+        run: git fetch origin master:refs/remotes/origin/master --no-tags
+
+      - name: Check for test-hiding modifications
+        id: check
+        run: |
+          chmod +x ./tools/ci/detect-test-hiding.sh
+          ./tools/ci/detect-test-hiding.sh origin/master /tmp/test-integrity-report.txt || {
+            EXIT_CODE=$?
+            if [ "$EXIT_CODE" -eq 2 ]; then
+              echo "::error::Test integrity violations detected — existing tests were modified to hide failures"
+              exit 1
+            fi
+            exit "$EXIT_CODE"
+          }
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "## Test Integrity Check" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          if [ "${{ steps.check.outcome }}" = "success" ]; then
+            echo "No test-hiding modifications detected." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "**FAILED: Existing tests were modified in ways that hide failures.**" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "Tests that exist on the base branch are the specification. If the branch breaks" >> "$GITHUB_STEP_SUMMARY"
+            echo "them, the production code must be fixed — not the tests." >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            if [ -f /tmp/test-integrity-report.txt ]; then
+              echo '```' >> "$GITHUB_STEP_SUMMARY"
+              cat /tmp/test-integrity-report.txt >> "$GITHUB_STEP_SUMMARY"
+              echo '```' >> "$GITHUB_STEP_SUMMARY"
+            fi
+          fi
 
   javadoc-check:
     needs: build
@@ -659,7 +716,7 @@ jobs:
   # from starting until it completes.
 
   auto-resolve:
-    needs: [test, test-ml, test-audio, test-music, javadoc-check, test-timeout-check, duplicate-code-check]
+    needs: [test, test-ml, test-audio, test-music, javadoc-check, test-timeout-check, duplicate-code-check, test-integrity-check]
     if: always() && github.ref != 'refs/heads/master'
     runs-on: [self-hosted, macos, ar-ci]
     concurrency:
@@ -746,6 +803,7 @@ jobs:
           JAVADOC_PASSED: ${{ needs.javadoc-check.outputs.passed }}
           TIMEOUT_PASSED: ${{ needs.test-timeout-check.outputs.passed }}
           DUPLICATE_PASSED: ${{ needs.duplicate-code-check.outputs.passed }}
+          TEST_INTEGRITY_PASSED: ${{ needs.test-integrity-check.outputs.passed }}
         run: |
           ./tools/ci/check-quality-gates.sh /tmp/quality-gate-failures.txt
 
@@ -777,6 +835,30 @@ jobs:
         run: |
           ./tools/ci/submit-agent-job.sh /tmp/agent-prompt.txt
 
+      # ── General review fallback ─────────────────────────────────
+      # When all tests and quality gates pass, submit a general
+      # review job covering design, test quality, correctness,
+      # documentation, and consistency with existing patterns.
+
+      - name: Build prompt (general review)
+        if: steps.failures.outputs.has_failures != 'true' && steps.quality.outputs.has_failures != 'true'
+        env:
+          BRANCH: ${{ steps.ctx.outputs.branch }}
+          BASE_BRANCH: ${{ steps.ctx.outputs.base }}
+          COMMIT_SHA: ${{ github.sha }}
+        run: |
+          ./tools/ci/build-review-prompt.sh /tmp/agent-prompt.txt
+
+      - name: Submit agent job (general review)
+        if: steps.failures.outputs.has_failures != 'true' && steps.quality.outputs.has_failures != 'true'
+        env:
+          CONTROLLER_HOST: ${{ secrets.FLOWTREE_CONTROLLER_HOST || 'mac-studio' }}
+          CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
+          BRANCH: ${{ steps.ctx.outputs.branch }}
+          BASE_BRANCH: ${{ steps.ctx.outputs.base }}
+        run: |
+          ./tools/ci/submit-agent-job.sh /tmp/agent-prompt.txt
+
       - name: Summary
         if: always()
         run: |
@@ -799,5 +881,6 @@ jobs:
             cat /tmp/quality-gate-failures.txt >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || echo "(no failure file)" >> "$GITHUB_STEP_SUMMARY"
             echo '```' >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "All tests and quality gates passed. Auto-resolve skipped." >> "$GITHUB_STEP_SUMMARY"
+            echo "All tests and quality gates passed." >> "$GITHUB_STEP_SUMMARY"
+            echo "A FlowTree coding agent job was submitted for general review." >> "$GITHUB_STEP_SUMMARY"
           fi
