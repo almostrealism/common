@@ -127,7 +127,7 @@ public class AggressiveFineTuningTest extends TestSuiteBase {
 	 *   <li>embed=256, io=64</li>
 	 * </ul>
 	 */
-	@Test(timeout = 30 * 60000)
+	@Test(timeout = 5 * 60000)
 	public void testCompilationScaling() {
 		int[][] configs = {
 				// {embedDim, ioChannels, depth, numHeads, condTokenDim, globalCondDim}
@@ -183,22 +183,22 @@ public class AggressiveFineTuningTest extends TestSuiteBase {
 	 * identify which operations dominate backward pass compilation time.
 	 * The profile is saved to {@code utils/results/finetune_profile_embed64.xml}.
 	 */
-	@Test(timeout = 30 * 60000)
+	@Test(timeout = 5 * 60000)
 	public void testProfiledFineTuning() throws IOException {
 		Files.createDirectories(Path.of("/workspace/project/common/utils/results"));
 
-		int embedDim = 8;
-		int ioChannels = 4;
+		int embedDim = 64;
+		int ioChannels = 32;
 		int depth = 1;
-		int numHeads = 1;
+		int numHeads = 2;
 		int condTokenDim = 0;
-		int globalCondDim = 8;
+		int globalCondDim = 64;
 		int latentLen = 2;
 
 		log("=== Profiled Fine-Tuning (embed=" + embedDim + ") ===");
 		log("");
 
-		OperationProfileNode profile = new OperationProfileNode("finetune_embed8");
+		OperationProfileNode profile = new OperationProfileNode("finetune_embed64");
 
 		profile(profile, () -> {
 			try {
@@ -209,7 +209,7 @@ public class AggressiveFineTuningTest extends TestSuiteBase {
 			}
 		});
 
-		String profilePath = "/workspace/project/common/utils/results/finetune_profile_embed8.xml";
+		String profilePath = "/workspace/project/common/utils/results/finetune_profile_embed64.xml";
 		profile.save(profilePath);
 		log("");
 		log("Profile saved to: " + profilePath);
