@@ -102,6 +102,7 @@ public class FlowTreeController implements ConsoleFeatures {
 
     private FlowTreeApiEndpoint apiEndpoint;
     private int apiPort = FlowTreeApiEndpoint.DEFAULT_PORT;
+    private JobStatsStore statsStore;
 
     private List<Process> mcpProcesses = new ArrayList<>();
 
@@ -597,10 +598,18 @@ public class FlowTreeController implements ConsoleFeatures {
      * and for programmatic job submission.
      */
     private void startApiEndpoint() {
+        // Initialize stats store
+        String dataDir = System.getProperty("user.home") + "/.flowtree";
+        new File(dataDir).mkdirs();
+        statsStore = new JobStatsStore(dataDir + "/stats");
+        statsStore.initialize();
+        notifier.setStatsStore(statsStore);
+
         try {
             apiEndpoint = new FlowTreeApiEndpoint(apiPort, notifier);
             apiEndpoint.setServer(flowtreeServer);
             apiEndpoint.setListener(listener);
+            apiEndpoint.setStatsStore(statsStore);
             apiEndpoint.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false);
             int listeningPort = apiEndpoint.getListeningPort();
             listener.setApiPort(listeningPort);
@@ -653,6 +662,11 @@ public class FlowTreeController implements ConsoleFeatures {
         if (apiEndpoint != null) {
             apiEndpoint.stop();
             apiEndpoint = null;
+        }
+
+        if (statsStore != null) {
+            statsStore.close();
+            statsStore = null;
         }
 
         if (socketModeApp != null) {

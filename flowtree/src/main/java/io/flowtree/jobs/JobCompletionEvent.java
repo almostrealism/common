@@ -69,6 +69,17 @@ public class JobCompletionEvent {
     private String sessionId;
     private int exitCode;
 
+    // Timing information from Claude Code output
+    private long durationMs;
+    private long durationApiMs;
+    private double costUsd;
+    private int numTurns;
+
+    // Session details from Claude Code output
+    private String subtype;
+    private boolean sessionIsError;
+    private int permissionDenials;
+
     /**
      * Creates a new job completion event.
      *
@@ -172,6 +183,44 @@ public class JobCompletionEvent {
         return exitCode;
     }
 
+    public long getDurationMs() {
+        return durationMs;
+    }
+
+    public long getDurationApiMs() {
+        return durationApiMs;
+    }
+
+    public double getCostUsd() {
+        return costUsd;
+    }
+
+    public int getNumTurns() {
+        return numTurns;
+    }
+
+    /**
+     * Returns the session subtype (stop reason) from Claude Code output.
+     * Common values: "success", "error_max_turns".
+     */
+    public String getSubtype() {
+        return subtype;
+    }
+
+    /**
+     * Returns whether the Claude Code session ended with an error.
+     */
+    public boolean isSessionError() {
+        return sessionIsError;
+    }
+
+    /**
+     * Returns the number of permission denials during the session.
+     */
+    public int getPermissionDenials() {
+        return permissionDenials;
+    }
+
     // Setters (builder pattern)
 
     public JobCompletionEvent withGitInfo(String branch, String commitHash, List<String> staged,
@@ -199,6 +248,40 @@ public class JobCompletionEvent {
         this.prompt = prompt;
         this.sessionId = sessionId;
         this.exitCode = exitCode;
+        return this;
+    }
+
+    /**
+     * Sets timing information extracted from Claude Code output.
+     *
+     * @param durationMs    total wall-clock duration reported by Claude Code
+     * @param durationApiMs time spent in API calls
+     * @param costUsd       total cost in USD
+     * @param numTurns      number of agentic turns
+     * @return this event for chaining
+     */
+    public JobCompletionEvent withTimingInfo(long durationMs, long durationApiMs,
+                                              double costUsd, int numTurns) {
+        this.durationMs = durationMs;
+        this.durationApiMs = durationApiMs;
+        this.costUsd = costUsd;
+        this.numTurns = numTurns;
+        return this;
+    }
+
+    /**
+     * Sets session detail fields extracted from Claude Code output.
+     *
+     * @param subtype           the session subtype / stop reason (e.g. "success", "error_max_turns")
+     * @param sessionIsError    whether Claude Code flagged the session as an error
+     * @param permissionDenials number of tool permission denials during the session
+     * @return this event for chaining
+     */
+    public JobCompletionEvent withSessionDetails(String subtype, boolean sessionIsError,
+                                                  int permissionDenials) {
+        this.subtype = subtype;
+        this.sessionIsError = sessionIsError;
+        this.permissionDenials = permissionDenials;
         return this;
     }
 

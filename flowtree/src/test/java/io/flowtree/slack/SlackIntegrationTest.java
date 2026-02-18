@@ -30,6 +30,9 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -358,8 +361,8 @@ public class SlackIntegrationTest extends TestSuiteBase {
 
         // Check defaults
         assertEquals(7766, entry.getAgents().get(0).getPort()); // default port
-        assertEquals(50, entry.getMaxTurns()); // default turns
-        assertEquals(10.0, entry.getMaxBudgetUsd(), 0.001); // default budget
+        assertEquals(500, entry.getMaxTurns()); // default turns
+        assertEquals(100.0, entry.getMaxBudgetUsd(), 0.001); // default budget
         assertTrue(entry.isPushToOrigin()); // default push
         assertEquals("Read,Edit,Write,Bash,Glob,Grep", entry.getAllowedTools()); // default tools
     }
@@ -620,8 +623,8 @@ public class SlackIntegrationTest extends TestSuiteBase {
         assertEquals("/workspace/project", ws.getWorkingDirectory());
         assertEquals("feature/test", ws.getDefaultBranch());
         assertEquals("#setup-channel", ws.getChannelName());
-        assertEquals(10.0, ws.getMaxBudgetUsd(), 0.001);
-        assertEquals(50, ws.getMaxTurns());
+        assertEquals(100.0, ws.getMaxBudgetUsd(), 0.001);
+        assertEquals(500, ws.getMaxTurns());
     }
 
     @Test
@@ -1130,6 +1133,132 @@ public class SlackIntegrationTest extends TestSuiteBase {
         assertTrue(content.contains("slash_commands"));
         assertTrue(content.contains("/flowtree"));
         assertTrue(content.contains("commands"));
+    }
+
+    @Test
+    public void testApiStatsEndpoint() throws Exception {
+        File tempDir = Files.createTempDirectory("stats-test").toFile();
+        tempDir.deleteOnExit();
+        String dbPath = new File(tempDir, "stats").getAbsolutePath();
+
+        JobStatsStore store = new JobStatsStore(dbPath);
+        store.initialize();
+
+        try {
+            // Seed jobs in the current week
+            LocalDate today = LocalDate.now(ZoneOffset.UTC);
+            LocalDate monday = today.with(java.time.DayOfWeek.MONDAY);
+            Instant jobTime = monday.atStartOfDay(ZoneOffset.UTC).toInstant()
+                .plusSeconds(3600);
+
+            store.recordJobStarted("j1", "ws-alpha", "Fix bug", jobTime);
+            store.recordJobCompleted("j1", "ws-alpha", "SUCCESS",
+                jobTime.plusMillis(60000), 55000, 30000, 0.50, 10, "sess-1", 0,
+                "success", false, 0);
+
+            store.recordJobStarted("j2", "ws-beta", "Add feature", jobTime);
+            store.recordJobCompleted("j2", "ws-beta", "FAILED",
+                jobTime.plusMillis(120000), 100000, 80000, 1.20, 25, "sess-2", 1,
+                "error_max_turns", true, 3);
+
+            SlackNotifier notifier = new SlackNotifier(null);
+            FlowTreeApiEndpoint endpoint = new FlowTreeApiEndpoint(0, notifier);
+            endpoint.setStatsStore(store);
+            endpoint.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false);
+
+            try {
+                int port = endpoint.getListeningPort();
+
+                // Unfiltered query - should return both workstreams
+                HttpURLConnection conn = (HttpURLConnection) new URL(
+                    "http://localhost:" + port + "/api/stats").openConnection();
+                conn.setRequestMethod("GET");
+                assertEquals(200, conn.getResponseCode());
+
+                String response = new String(conn.getInputStream().readAllBytes(),
+                    StandardCharsets.UTF_8);
+                assertTrue("Should contain thisWeek", response.contains("\"thisWeek\""));
+                assertTrue("Should contain lastWeek", response.contains("\"lastWeek\""));
+                assertTrue("Should contain ws-alpha", response.contains("ws-alpha"));
+                assertTrue("Should contain ws-beta", response.contains("ws-beta"));
+                assertTrue("Should contain jobCount", response.contains("\"jobCount\""));
+
+                // Filtered query - only ws-alpha
+                HttpURLConnection conn2 = (HttpURLConnection) new URL(
+                    "http://localhost:" + port + "/api/stats?workstream=ws-alpha").openConnection();
+                conn2.setRequestMethod("GET");
+                assertEquals(200, conn2.getResponseCode());
+
+                String filtered = new String(conn2.getInputStream().readAllBytes(),
+                    StandardCharsets.UTF_8);
+                assertTrue("Filtered should contain ws-alpha",
+                    filtered.contains("ws-alpha"));
+                assertFalse("Filtered should not contain ws-beta",
+                    filtered.contains("ws-beta"));
+            } finally {
+                endpoint.stop();
+            }
+        } finally {
+            store.close();
+        }
+    }
+
+    @Test
+    public void testApiStatsUnsupportedPeriod() throws Exception {
+        File tempDir = Files.createTempDirectory("stats-period-test").toFile();
+        tempDir.deleteOnExit();
+        String dbPath = new File(tempDir, "stats").getAbsolutePath();
+
+        JobStatsStore store = new JobStatsStore(dbPath);
+        store.initialize();
+
+        try {
+            SlackNotifier notifier = new SlackNotifier(null);
+            FlowTreeApiEndpoint endpoint = new FlowTreeApiEndpoint(0, notifier);
+            endpoint.setStatsStore(store);
+            endpoint.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false);
+
+            try {
+                int port = endpoint.getListeningPort();
+
+                HttpURLConnection conn = (HttpURLConnection) new URL(
+                    "http://localhost:" + port + "/api/stats?period=monthly").openConnection();
+                conn.setRequestMethod("GET");
+                assertEquals(400, conn.getResponseCode());
+
+                String error = new String(conn.getErrorStream().readAllBytes(),
+                    StandardCharsets.UTF_8);
+                assertTrue("Should mention unsupported period",
+                    error.contains("Unsupported period"));
+            } finally {
+                endpoint.stop();
+            }
+        } finally {
+            store.close();
+        }
+    }
+
+    @Test
+    public void testApiStatsNotConfigured() throws Exception {
+        SlackNotifier notifier = new SlackNotifier(null);
+        FlowTreeApiEndpoint endpoint = new FlowTreeApiEndpoint(0, notifier);
+        // No stats store set
+        endpoint.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false);
+
+        try {
+            int port = endpoint.getListeningPort();
+            HttpURLConnection conn = (HttpURLConnection) new URL(
+                "http://localhost:" + port + "/api/stats").openConnection();
+            conn.setRequestMethod("GET");
+            assertEquals(200, conn.getResponseCode());
+
+            String response = new String(conn.getInputStream().readAllBytes(),
+                StandardCharsets.UTF_8);
+            assertTrue("Should indicate stats not configured",
+                response.contains("Stats not configured"));
+        } finally {
+            endpoint.stop();
+        }
     }
 
 }

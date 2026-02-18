@@ -99,6 +99,13 @@ public class ClaudeCodeJob extends GitManagedJob {
     private String sessionId;
     private String output;
     private int exitCode;
+    private long durationMs;
+    private long durationApiMs;
+    private double costUsd;
+    private int numTurns;
+    private String subtype;
+    private boolean isError;
+    private int permissionDenials;
 
     /**
      * Default constructor for deserialization.
@@ -285,6 +292,18 @@ public class ClaudeCodeJob extends GitManagedJob {
             sb.append("the codebase, a request to run a command, check status, or perform an action) ");
             sb.append("it is perfectly fine to answer via Slack and exit without modifying any files. ");
             sb.append("Not every task requires code changes.\n\n");
+
+            sb.append("## Justifying No Code Changes\n");
+            sb.append("If you finish your work without making any changes to files in the git repository, ");
+            sb.append("you MUST send a Slack message explaining why no code changes were needed. ");
+            sb.append("This justification should clearly explain either:\n");
+            sb.append("- Why the user's request was fulfilled without code changes ");
+            sb.append("(e.g., it was an informational question, a status check, or a run command)\n");
+            sb.append("- Why you were unable to make the requested changes ");
+            sb.append("(e.g., a blocker, missing context, or ambiguity that needs clarification)\n");
+            sb.append("This requirement does NOT apply if you have already fully addressed the user's ");
+            sb.append("request through earlier Slack messages (e.g., answering a question, reporting ");
+            sb.append("results). In that case, the earlier messages serve as sufficient justification.\n\n");
         }
 
         // GitHub instructions -only when ar-github is in the MCP config
@@ -581,8 +600,8 @@ public class ClaudeCodeJob extends GitManagedJob {
                 writer.write(output);
             }
 
-            // Try to extract session ID from JSON output
-            extractSessionId(output);
+            // Extract session ID and timing metrics from JSON output
+            extractOutputMetrics(output);
 
             log("Completed with exit code: " + exitCode);
             log("Output saved to: " + outputFile);
@@ -602,6 +621,8 @@ public class ClaudeCodeJob extends GitManagedJob {
     @Override
     protected void populateEventDetails(JobCompletionEvent event) {
         event.withClaudeCodeInfo(prompt, sessionId, exitCode);
+        event.withTimingInfo(durationMs, durationApiMs, costUsd, numTurns);
+        event.withSessionDetails(subtype, isError, permissionDenials);
     }
 
     @Override
@@ -1176,8 +1197,16 @@ public class ClaudeCodeJob extends GitManagedJob {
         return McpToolDiscovery.discoverToolNames(serverFile);
     }
 
-    private void extractSessionId(String jsonOutput) {
-        // Simple extraction - look for "session_id":"..."
+    /**
+     * Extracts session ID, timing metrics, stop reason, and permission denials
+     * from the Claude Code JSON output.
+     *
+     * @param jsonOutput the raw JSON output from Claude Code
+     */
+    private void extractOutputMetrics(String jsonOutput) {
+        if (jsonOutput == null || jsonOutput.isEmpty()) return;
+
+        // Extract session_id (string field)
         int idx = jsonOutput.indexOf("\"session_id\"");
         if (idx >= 0) {
             int start = jsonOutput.indexOf("\"", idx + 12) + 1;
@@ -1186,6 +1215,174 @@ public class ClaudeCodeJob extends GitManagedJob {
                 sessionId = jsonOutput.substring(start, end);
             }
         }
+
+        // Extract timing metrics (numeric fields)
+        durationMs = extractJsonLongValue(jsonOutput, "duration_ms");
+        durationApiMs = extractJsonLongValue(jsonOutput, "duration_api_ms");
+        numTurns = (int) extractJsonLongValue(jsonOutput, "num_turns");
+
+        // Cost field may be "total_cost_usd" or "cost_usd"
+        costUsd = extractJsonDoubleValue(jsonOutput, "total_cost_usd");
+        if (costUsd == 0.0) {
+            costUsd = extractJsonDoubleValue(jsonOutput, "cost_usd");
+        }
+
+        // Extract subtype (stop reason: "success", "error_max_turns", etc.)
+        subtype = extractJsonStringValue(jsonOutput, "subtype");
+
+        // Extract is_error boolean
+        isError = extractJsonBooleanValue(jsonOutput, "is_error");
+
+        // Count permission_denials array entries
+        permissionDenials = countJsonArrayEntries(jsonOutput, "permission_denials");
+    }
+
+    /**
+     * Extracts a long value from a JSON string by field name.
+     * Returns 0 if the field is not found or cannot be parsed.
+     */
+    private static long extractJsonLongValue(String json, String field) {
+        int fieldIdx = json.indexOf("\"" + field + "\"");
+        if (fieldIdx < 0) return 0;
+
+        int colonIdx = json.indexOf(":", fieldIdx);
+        if (colonIdx < 0) return 0;
+
+        String rest = json.substring(colonIdx + 1).trim();
+        StringBuilder numStr = new StringBuilder();
+        for (int i = 0; i < rest.length(); i++) {
+            char c = rest.charAt(i);
+            if (c == '-' || (c >= '0' && c <= '9')) {
+                numStr.append(c);
+            } else if (numStr.length() > 0) {
+                break;
+            }
+        }
+
+        try {
+            return Long.parseLong(numStr.toString());
+        } catch (NumberFormatException e) {
+            return 0;
+        }
+    }
+
+    /**
+     * Extracts a double value from a JSON string by field name.
+     * Returns 0.0 if the field is not found or cannot be parsed.
+     */
+    private static double extractJsonDoubleValue(String json, String field) {
+        int fieldIdx = json.indexOf("\"" + field + "\"");
+        if (fieldIdx < 0) return 0.0;
+
+        int colonIdx = json.indexOf(":", fieldIdx);
+        if (colonIdx < 0) return 0.0;
+
+        String rest = json.substring(colonIdx + 1).trim();
+        StringBuilder numStr = new StringBuilder();
+        for (int i = 0; i < rest.length(); i++) {
+            char c = rest.charAt(i);
+            if (c == '-' || c == '.' || (c >= '0' && c <= '9')) {
+                numStr.append(c);
+            } else if (numStr.length() > 0) {
+                break;
+            }
+        }
+
+        try {
+            return Double.parseDouble(numStr.toString());
+        } catch (NumberFormatException e) {
+            return 0.0;
+        }
+    }
+
+    /**
+     * Extracts a string value from a JSON string by field name.
+     * Handles escaped quotes within string values.
+     * Returns null if the field is not found.
+     */
+    private static String extractJsonStringValue(String json, String field) {
+        int fieldIdx = json.indexOf("\"" + field + "\"");
+        if (fieldIdx < 0) return null;
+
+        int colonIdx = json.indexOf(":", fieldIdx);
+        if (colonIdx < 0) return null;
+
+        String rest = json.substring(colonIdx + 1).trim();
+        if (rest.startsWith("null")) return null;
+        if (!rest.startsWith("\"")) return null;
+
+        int i = 1;
+        while (i < rest.length()) {
+            char c = rest.charAt(i);
+            if (c == '\\') {
+                i += 2;
+            } else if (c == '"') {
+                return rest.substring(1, i).replace("\\\"", "\"");
+            } else {
+                i++;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Extracts a boolean value from a JSON string by field name.
+     * Returns false if the field is not found.
+     */
+    private static boolean extractJsonBooleanValue(String json, String field) {
+        int fieldIdx = json.indexOf("\"" + field + "\"");
+        if (fieldIdx < 0) return false;
+
+        int colonIdx = json.indexOf(":", fieldIdx);
+        if (colonIdx < 0) return false;
+
+        String rest = json.substring(colonIdx + 1).trim();
+        return rest.startsWith("true");
+    }
+
+    /**
+     * Counts the number of object entries in a JSON array field.
+     * Uses a simple brace-counting approach to count top-level objects.
+     * Returns 0 if the field is not found or the array is empty.
+     */
+    private static int countJsonArrayEntries(String json, String field) {
+        int fieldIdx = json.indexOf("\"" + field + "\"");
+        if (fieldIdx < 0) return 0;
+
+        int colonIdx = json.indexOf(":", fieldIdx);
+        if (colonIdx < 0) return 0;
+
+        int arrStart = json.indexOf("[", colonIdx);
+        if (arrStart < 0) return 0;
+
+        int arrEnd = -1;
+        int depth = 1;
+        for (int i = arrStart + 1; i < json.length() && depth > 0; i++) {
+            char c = json.charAt(i);
+            if (c == '[') depth++;
+            else if (c == ']') {
+                depth--;
+                if (depth == 0) arrEnd = i;
+            }
+        }
+
+        if (arrEnd < 0) return 0;
+
+        // Count top-level objects by counting opening braces at depth 0
+        String arrContent = json.substring(arrStart + 1, arrEnd).trim();
+        if (arrContent.isEmpty()) return 0;
+
+        int count = 0;
+        int braceDepth = 0;
+        for (int i = 0; i < arrContent.length(); i++) {
+            char c = arrContent.charAt(i);
+            if (c == '{' && braceDepth == 0) count++;
+            if (c == '{') braceDepth++;
+            else if (c == '}') braceDepth--;
+        }
+
+        return count;
     }
 
     @Override

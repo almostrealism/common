@@ -1,0 +1,102 @@
+All tests and quality gates are passing on branch "${BRANCH}" (commit ${COMMIT_SHA}).
+
+Since there are no failures to fix, please perform a thorough review of the changes
+on this branch compared to ${BASE_BRANCH}. Use `git log ${BASE_BRANCH}..HEAD` and
+`git diff ${BASE_BRANCH}...HEAD` to understand the full scope of changes.
+
+Your review should cover the following areas. **Section 0 is the HIGHEST PRIORITY
+and must be checked before all others.**
+
+## 0. Test Integrity (HIGHEST PRIORITY)
+
+**Check whether any existing tests were modified in ways that hide failures.**
+
+Run `git diff ${BASE_BRANCH}...HEAD -- '**/*Test*.java' '**/test/**/*.java'` to see
+all test file changes. For each modified test file, determine if the file existed
+on ${BASE_BRANCH}:
+
+    git log --oneline ${BASE_BRANCH} -- <path/to/TestFile.java>
+
+If the test file existed on ${BASE_BRANCH}, flag ANY of the following as a
+**CRITICAL violation**:
+
+- Adding `@Ignore`, `@Disabled`, or skip annotations to test methods
+- Deleting or commenting out test methods or assertions
+- Weakening assertions (loosening tolerances, removing checks, changing
+  `assertEquals` to `assertTrue`, etc.)
+- Adding `try/catch` blocks that swallow exceptions in tests
+- Changing expected values to match incorrect actual output instead of fixing
+  production code
+- Reducing test inputs or edge cases
+- Adding `if (skipLongTests) return;` guards that did not exist before
+- Adding `@TestDepth` annotations that push tests out of the default run
+- Renaming, moving, or splitting tests to avoid detection
+
+**These modifications are NEVER acceptable for tests that existed on ${BASE_BRANCH}.**
+The test is the specification; if the branch breaks a test, the production code must
+be fixed, not the test.
+
+If you find any such violations, report them as the FIRST and most prominent finding
+in your review. Use the label **"TEST INTEGRITY VIOLATION"** so it is impossible to
+miss.
+
+## 1. Design Quality
+
+- Are the changes solving the right problem in the right way, or do they feel
+  like they are "cheating at the goal" (e.g. disabling a check rather than
+  fixing the underlying issue, hard-coding values instead of generalizing)?
+- Do the changes follow the architectural principles documented in CLAUDE.md
+  (ModelOptimizer owns training loops, PackedCollection is not a Java array,
+  StateDictionary for weights, etc.)?
+- Is the level of abstraction appropriate? Are there premature abstractions or,
+  conversely, missed opportunities to generalize?
+
+## 2. Test Quality
+
+- Do the tests actually prove that the new or changed functionality works
+  correctly, or are they superficial?
+- Are edge cases covered? Are there scenarios that should be tested but are not?
+- Do the tests follow the project conventions (extend TestSuiteBase, use
+  @TestDepth for expensive tests, include timeout parameters)?
+- Could existing test utilities or assertions be reused instead of writing
+  ad-hoc checks?
+
+## 3. Correctness
+
+- Are there logical defects in the implementation?
+- Are there changes that are likely to encourage future defects (e.g. fragile
+  assumptions, implicit ordering dependencies, missing null checks at system
+  boundaries)?
+- Are error handling and resource management correct?
+
+## 4. Documentation Quality
+
+- Do all new non-private classes and methods have Javadoc?
+- Is the documentation accurate and useful (not just boilerplate)?
+- Are there changes to behavior that should be reflected in existing
+  documentation but are not?
+
+## 5. Consistency with Existing Patterns
+
+- Is all new code in the correct module? (Consult the module documentation
+  via ar-consultant to verify placement.)
+- Does the new code introduce anything that is duplicative of what already
+  exists without being compatible? (Search the codebase for similar
+  functionality before concluding.)
+- Are naming conventions, coding style, and structural patterns consistent
+  with the surrounding code?
+- Is all relevant documentation present such that future searches of the docs
+  using ar-consultant will give good answers to future developers working in
+  this area?
+
+## How to Report
+
+Post your findings as a comment on the pull request (if one exists for this
+branch) or send a summary via Slack. Organize your findings by the categories
+above. For each issue found, include:
+- The file path and line number(s)
+- A clear description of the concern
+- A concrete suggestion for improvement
+
+If the changes look good across all categories, say so explicitly and explain
+why you are confident.
