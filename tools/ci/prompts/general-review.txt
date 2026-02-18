@@ -4,7 +4,41 @@ Since there are no failures to fix, please perform a thorough review of the chan
 on this branch compared to ${BASE_BRANCH}. Use `git log ${BASE_BRANCH}..HEAD` and
 `git diff ${BASE_BRANCH}...HEAD` to understand the full scope of changes.
 
-Your review should cover the following areas:
+Your review should cover the following areas. **Section 0 is the HIGHEST PRIORITY
+and must be checked before all others.**
+
+## 0. Test Integrity (HIGHEST PRIORITY)
+
+**Check whether any existing tests were modified in ways that hide failures.**
+
+Run `git diff ${BASE_BRANCH}...HEAD -- '**/*Test*.java' '**/test/**/*.java'` to see
+all test file changes. For each modified test file, determine if the file existed
+on ${BASE_BRANCH}:
+
+    git log --oneline ${BASE_BRANCH} -- <path/to/TestFile.java>
+
+If the test file existed on ${BASE_BRANCH}, flag ANY of the following as a
+**CRITICAL violation**:
+
+- Adding `@Ignore`, `@Disabled`, or skip annotations to test methods
+- Deleting or commenting out test methods or assertions
+- Weakening assertions (loosening tolerances, removing checks, changing
+  `assertEquals` to `assertTrue`, etc.)
+- Adding `try/catch` blocks that swallow exceptions in tests
+- Changing expected values to match incorrect actual output instead of fixing
+  production code
+- Reducing test inputs or edge cases
+- Adding `if (skipLongTests) return;` guards that did not exist before
+- Adding `@TestDepth` annotations that push tests out of the default run
+- Renaming, moving, or splitting tests to avoid detection
+
+**These modifications are NEVER acceptable for tests that existed on ${BASE_BRANCH}.**
+The test is the specification; if the branch breaks a test, the production code must
+be fixed, not the test.
+
+If you find any such violations, report them as the FIRST and most prominent finding
+in your review. Use the label **"TEST INTEGRITY VIOLATION"** so it is impossible to
+miss.
 
 ## 1. Design Quality
 
