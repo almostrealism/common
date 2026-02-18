@@ -2,9 +2,10 @@
 """
 AR GitHub MCP Server
 
-Provides tools for Claude Code agents to read and respond to GitHub PR
-review comments. This enables agents to address code review feedback
-autonomously without going through Slack.
+Provides tools for Claude Code agents to interact with GitHub: reading
+and responding to PR review comments, listing open PRs, and creating
+new PRs. This enables agents to manage code review feedback and project
+branches autonomously.
 
 Token resolution (first match wins):
     1. GITHUB_TOKEN environment variable
@@ -13,18 +14,26 @@ Token resolution (first match wins):
 Other configuration:
     AR_GITHUB_REPO  - Optional. Format: owner/repo. Auto-detected from
                       git remote if unset.
+
+CLI mode:
+    When invoked with command-line arguments, runs a single tool and
+    prints JSON output to stdout. This allows CI scripts and workflows
+    to use the same GitHub API logic without requiring the `gh` CLI.
+
+    Usage:
+        python server.py list-open-prs [--base master]
+        python server.py create-pr --title "..." --body "..." [--base master] [--head branch]
 """
 
 import json
 import os
 import re
 import subprocess
+import sys
 from typing import Optional
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
-
-from mcp.server.fastmcp import FastMCP
 
 TOKEN_FILE = os.path.expanduser("~/.config/ar/github-token")
 GITHUB_REPO_OVERRIDE = os.environ.get("AR_GITHUB_REPO", "")
@@ -33,7 +42,22 @@ MAX_PAGES = 5
 
 _cached_token: Optional[str] = None
 
-mcp = FastMCP("ar-github")
+# Defer MCP framework import so CLI mode works without the mcp package.
+# The FastMCP instance is created lazily in _get_mcp().
+_mcp_instance = None
+
+
+def _get_mcp():
+    """Lazily create the FastMCP instance.
+
+    This allows the CLI code paths (which only need stdlib) to run
+    without the mcp package installed.
+    """
+    global _mcp_instance
+    if _mcp_instance is None:
+        from mcp.server.fastmcp import FastMCP
+        _mcp_instance = FastMCP("ar-github")
+    return _mcp_instance
 
 
 def _resolve_token() -> str:
@@ -275,7 +299,6 @@ def _resolve_pr(pr_number: Optional[int], branch: Optional[str]) -> tuple[str, i
     return repo, pr["number"]
 
 
-@mcp.tool()
 def github_pr_find(branch: Optional[str] = None) -> dict:
     """
     Find the open pull request for a branch.
@@ -318,7 +341,6 @@ def github_pr_find(branch: Optional[str] = None) -> dict:
         return {"ok": False, "error": str(e)}
 
 
-@mcp.tool()
 def github_pr_review_comments(
     pr_number: Optional[int] = None,
     branch: Optional[str] = None,
@@ -365,7 +387,6 @@ def github_pr_review_comments(
         return {"ok": False, "error": str(e)}
 
 
-@mcp.tool()
 def github_pr_conversation(
     pr_number: Optional[int] = None,
     branch: Optional[str] = None,
@@ -405,7 +426,6 @@ def github_pr_conversation(
         return {"ok": False, "error": str(e)}
 
 
-@mcp.tool()
 def github_pr_reply(
     comment_id: int,
     body: str,
@@ -446,7 +466,188 @@ def github_pr_reply(
         return {"ok": False, "error": str(e)}
 
 
+def github_list_open_prs(base: Optional[str] = None) -> dict:
+    """
+    List open pull requests targeting a base branch.
+
+    Returns summary metadata for each open PR including number, title,
+    branch name, author, and creation date. Useful for counting active
+    work branches and understanding current project activity.
+
+    Args:
+        base: Base branch to filter by (e.g., "master"). If omitted,
+              returns all open PRs regardless of target branch.
+
+    Returns:
+        Dictionary with list of open PRs and count, or error.
+    """
+    try:
+        repo = _detect_repo()
+        if not repo:
+            return {"ok": False, "error": "Could not detect GitHub repo"}
+
+        query = f"/repos/{repo}/pulls?state=open&per_page=100"
+        if base:
+            query += f"&base={base}"
+
+        prs = _github_get(query)
+
+        entries = []
+        for pr in prs:
+            entries.append({
+                "number": pr["number"],
+                "title": pr["title"],
+                "branch": pr["head"]["ref"],
+                "author": pr["user"]["login"],
+                "created_at": pr["created_at"],
+                "url": pr["html_url"],
+                "draft": pr.get("draft", False),
+            })
+
+        return {
+            "ok": True,
+            "count": len(entries),
+            "pull_requests": entries,
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def github_create_pr(
+    title: str,
+    body: str,
+    head: Optional[str] = None,
+    base: str = "master",
+) -> dict:
+    """
+    Create a new pull request.
+
+    Opens a PR from the head branch to the base branch. Auto-detects
+    the head branch from the current git checkout if not specified.
+
+    Args:
+        title: PR title.
+        body: PR body/description (supports GitHub markdown).
+        head: Source branch name. If omitted, auto-detected from git.
+        base: Target branch name (default: "master").
+
+    Returns:
+        Dictionary with PR number, URL, and title on success, or error.
+    """
+    try:
+        repo = _detect_repo()
+        if not repo:
+            return {"ok": False, "error": "Could not detect GitHub repo"}
+
+        resolved_head = head or _detect_branch()
+        if not resolved_head:
+            return {"ok": False, "error": "Could not detect current branch. Provide head explicitly."}
+
+        result = _github_post(f"/repos/{repo}/pulls", {
+            "title": title,
+            "body": body,
+            "head": resolved_head,
+            "base": base,
+        })
+
+        return {
+            "ok": True,
+            "pr_number": result["number"],
+            "url": result["html_url"],
+            "title": result["title"],
+        }
+    except HTTPError as e:
+        error_body = e.read().decode("utf-8", errors="replace")
+        try:
+            detail = json.loads(error_body).get("message", error_body[:200])
+        except json.JSONDecodeError:
+            detail = f"HTTP {e.code}: {error_body[:200]}"
+        return {"ok": False, "error": detail}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+# ─── CLI mode ────────────────────────────────────────────────────────
+# When invoked with command-line arguments, runs a single tool and
+# prints JSON to stdout. This allows CI workflows to use the same
+# GitHub API logic without requiring `gh` CLI.
+
+def _cli_list_open_prs(args: list[str]) -> dict:
+    """CLI handler for list-open-prs."""
+    base = None
+    i = 0
+    while i < len(args):
+        if args[i] == "--base" and i + 1 < len(args):
+            base = args[i + 1]
+            i += 2
+        else:
+            i += 1
+    return github_list_open_prs(base=base)
+
+
+def _cli_create_pr(args: list[str]) -> dict:
+    """CLI handler for create-pr."""
+    title = ""
+    body = ""
+    head = None
+    base = "master"
+    i = 0
+    while i < len(args):
+        if args[i] == "--title" and i + 1 < len(args):
+            title = args[i + 1]
+            i += 2
+        elif args[i] == "--body" and i + 1 < len(args):
+            body = args[i + 1]
+            i += 2
+        elif args[i] == "--head" and i + 1 < len(args):
+            head = args[i + 1]
+            i += 2
+        elif args[i] == "--base" and i + 1 < len(args):
+            base = args[i + 1]
+            i += 2
+        else:
+            i += 1
+    if not title:
+        return {"ok": False, "error": "--title is required"}
+    return github_create_pr(title=title, body=body, head=head, base=base)
+
+
+CLI_COMMANDS = {
+    "list-open-prs": _cli_list_open_prs,
+    "create-pr": _cli_create_pr,
+}
+
+
+def _register_mcp_tools():
+    """Register all tool functions with the MCP server.
+
+    Called only when running in MCP server mode (not CLI mode) so
+    that the mcp package import is deferred.
+    """
+    server = _get_mcp()
+    for fn in [
+        github_pr_find,
+        github_pr_review_comments,
+        github_pr_conversation,
+        github_pr_reply,
+        github_list_open_prs,
+        github_create_pr,
+    ]:
+        server.tool()(fn)
+
+
 if __name__ == "__main__":
+    # CLI mode: python server.py <command> [args...]
+    # Runs without the mcp package — only needs stdlib.
+    if len(sys.argv) > 1 and sys.argv[1] in CLI_COMMANDS:
+        result = CLI_COMMANDS[sys.argv[1]](sys.argv[2:])
+        print(json.dumps(result))
+        sys.exit(0 if result.get("ok") else 1)
+
+    # MCP server mode
+    _register_mcp_tools()
+    mcp = _get_mcp()
+
     transport = os.environ.get("MCP_TRANSPORT", "stdio")
     if transport in ("http", "sse"):
         from mcp.server.transport_security import TransportSecuritySettings
