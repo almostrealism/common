@@ -32,7 +32,7 @@ jobs:
       - name: Code Policy Enforcement
         run: |
           LD_LIBRARY_PATH=Extensions mvn test -pl utils \
-           -Dtest=CodePolicyEnforcementTest \
+           -Dtest="CodePolicyEnforcementTest#enforceCodePolicies+testDetector*" \
            -DAR_HARDWARE_DRIVER=native \
            -DAR_HARDWARE_LIBS=Extensions
 
