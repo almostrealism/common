@@ -17,7 +17,9 @@
 package org.almostrealism.util.test;
 
 import org.almostrealism.util.CodePolicyViolationDetector;
+import org.almostrealism.util.DuplicateCodeDetector;
 import org.almostrealism.util.TestSuiteBase;
+import org.almostrealism.util.TestTimeoutEnforcementScanner;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -330,5 +332,66 @@ public class CodePolicyEnforcementTest extends TestSuiteBase {
 			Files.deleteIfExists(testFile);
 			Files.deleteIfExists(tempDir);
 		}
+	}
+
+	/**
+	 * Enforces that every {@code @Test} annotation includes a {@code timeout} parameter.
+	 *
+	 * <p>Tests without timeouts can hang indefinitely, blocking CI runners.
+	 * This test scans all test source directories and fails if any
+	 * {@code @Test} annotation omits the timeout value.</p>
+	 */
+	@Test
+	public void enforceTestTimeouts() throws IOException {
+		log("=== Test Timeout Enforcement ===");
+		log("Project root: " + PROJECT_ROOT);
+
+		TestTimeoutEnforcementScanner scanner = new TestTimeoutEnforcementScanner(PROJECT_ROOT);
+		scanner.scan();
+
+		if (scanner.hasViolations()) {
+			String report = scanner.generateReport();
+			log("\n" + report);
+
+			Assert.fail("BUILD FAILED: " + scanner.getViolations().size() +
+					" @Test annotation(s) missing timeout parameter.\n\n" +
+					"Every @Test MUST specify a timeout, e.g.: @Test(timeout = 30000)\n\n" +
+					report);
+		}
+
+		log("All @Test annotations include a timeout parameter.");
+		log("=== Test Timeout Enforcement PASSED ===");
+	}
+
+	/**
+	 * Enforces that no block of 10 or more identical lines appears in
+	 * multiple source files.
+	 *
+	 * <p>Duplicate code is a maintenance hazard. This test scans all main
+	 * source directories and fails if any block of
+	 * {@value DuplicateCodeDetector#DEFAULT_THRESHOLD}+ identical
+	 * (non-trivial) lines is found across different files.</p>
+	 */
+	@Test
+	public void enforceNoDuplicateCode() throws IOException {
+		log("=== Duplicate Code Detection ===");
+		log("Project root: " + PROJECT_ROOT);
+
+		DuplicateCodeDetector detector = new DuplicateCodeDetector(PROJECT_ROOT);
+		detector.scan();
+
+		if (detector.hasViolations()) {
+			String report = detector.generateReport();
+			log("\n" + report);
+
+			Assert.fail("BUILD FAILED: " + detector.getViolations().size() +
+					" duplicate code block(s) detected.\n\n" +
+					"Blocks of " + DuplicateCodeDetector.DEFAULT_THRESHOLD +
+					"+ identical lines across different files must be refactored.\n\n" +
+					report);
+		}
+
+		log("No duplicate code blocks detected.");
+		log("=== Duplicate Code Detection PASSED ===");
 	}
 }
