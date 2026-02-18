@@ -42,6 +42,8 @@ jobs:
     # Out of the critical path: does not block tests or other jobs.
     # Failures are reported but do not fail the overall workflow.
     continue-on-error: true
+    outputs:
+      passed: ${{ steps.check.outcome == 'success' }}
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -60,6 +62,7 @@ jobs:
         run: mvn install -DskipTests
 
       - name: Check Javadoc Coverage
+        id: check
         run: mvn checkstyle:check -Pjavadoc-check
 
       - name: Summary
@@ -67,11 +70,101 @@ jobs:
         run: |
           echo "## Javadoc Coverage Check" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          if [ "${{ job.status }}" = "success" ]; then
+          if [ "${{ steps.check.outcome }}" = "success" ]; then
             echo "All non-private classes and methods have Javadoc documentation." >> "$GITHUB_STEP_SUMMARY"
           else
             echo "Some non-private classes or methods are missing Javadoc documentation." >> "$GITHUB_STEP_SUMMARY"
             echo "Run \`mvn checkstyle:check -Pjavadoc-check\` locally to see details." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+  test-timeout-check:
+    needs: build
+    runs-on: ubuntu-latest
+    # Out of the critical path: does not block tests or other jobs.
+    # Failures are reported but do not fail the overall workflow.
+    continue-on-error: true
+    outputs:
+      passed: ${{ steps.check.outcome == 'success' }}
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'adopt'
+          cache: 'maven'
+
+      - name: Build (skip tests)
+        run: mvn install -DskipTests
+
+      - name: Check Test Timeouts
+        id: check
+        run: |
+          LD_LIBRARY_PATH=Extensions mvn test -pl utils \
+           -Dtest=CodePolicyEnforcementTest#enforceTestTimeouts \
+           -DAR_HARDWARE_DRIVER=native \
+           -DAR_HARDWARE_LIBS=Extensions
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "## Test Timeout Enforcement" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          if [ "${{ steps.check.outcome }}" = "success" ]; then
+            echo "All @Test annotations include a timeout parameter." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Some @Test annotations are missing a timeout parameter." >> "$GITHUB_STEP_SUMMARY"
+            echo "Run \`mvn test -pl utils -Dtest=CodePolicyEnforcementTest#enforceTestTimeouts\` locally to see details." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+  duplicate-code-check:
+    needs: build
+    runs-on: ubuntu-latest
+    # Out of the critical path: does not block tests or other jobs.
+    # Failures are reported but do not fail the overall workflow.
+    continue-on-error: true
+    outputs:
+      passed: ${{ steps.check.outcome == 'success' }}
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'adopt'
+          cache: 'maven'
+
+      - name: Build (skip tests)
+        run: mvn install -DskipTests
+
+      - name: Check Duplicate Code
+        id: check
+        run: |
+          LD_LIBRARY_PATH=Extensions mvn test -pl utils \
+           -Dtest=CodePolicyEnforcementTest#enforceNoDuplicateCode \
+           -DAR_HARDWARE_DRIVER=native \
+           -DAR_HARDWARE_LIBS=Extensions
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "## Duplicate Code Detection" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          if [ "${{ steps.check.outcome }}" = "success" ]; then
+            echo "No blocks of 10+ identical lines found across different files." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Duplicate code blocks (10+ identical lines) detected across different files." >> "$GITHUB_STEP_SUMMARY"
+            echo "Run \`mvn test -pl utils -Dtest=CodePolicyEnforcementTest#enforceNoDuplicateCode\` locally to see details." >> "$GITHUB_STEP_SUMMARY"
           fi
 
   build-mac:
@@ -567,7 +660,7 @@ jobs:
   # from starting until it completes.
 
   auto-resolve:
-    needs: [test, test-ml, test-audio, test-music]
+    needs: [test, test-ml, test-audio, test-music, javadoc-check, test-timeout-check, duplicate-code-check]
     if: always() && github.ref != 'refs/heads/master'
     runs-on: [self-hosted, macos, ar-ci]
     concurrency:
@@ -600,7 +693,7 @@ jobs:
           if [ "$has_failures" = "true" ]; then
             echo "::notice::Found $failure_count test failure(s) to auto-resolve"
           else
-            echo "::notice::No test failures found -- skipping auto-resolve"
+            echo "::notice::No test failures found"
           fi
 
       - name: Upload failure summary
@@ -612,7 +705,6 @@ jobs:
           retention-days: 7
 
       - name: Determine branch context
-        if: steps.failures.outputs.has_failures == 'true'
         id: ctx
         run: |
           if [ "${{ github.event_name }}" = "pull_request" ]; then
@@ -623,7 +715,7 @@ jobs:
             echo "base=master" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Build prompt
+      - name: Build prompt (test failures)
         if: steps.failures.outputs.has_failures == 'true'
         env:
           FAILURE_COUNT: ${{ steps.failures.outputs.failure_count }}
@@ -633,8 +725,51 @@ jobs:
         run: |
           ./tools/ci/build-resolve-prompt.sh /tmp/test-failures.txt /tmp/agent-prompt.txt
 
-      - name: Submit agent job
+      - name: Submit agent job (test failures)
         if: steps.failures.outputs.has_failures == 'true'
+        env:
+          CONTROLLER_HOST: ${{ secrets.FLOWTREE_CONTROLLER_HOST || 'mac-studio' }}
+          CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
+          BRANCH: ${{ steps.ctx.outputs.branch }}
+          BASE_BRANCH: ${{ steps.ctx.outputs.base }}
+        run: |
+          ./tools/ci/submit-agent-job.sh /tmp/agent-prompt.txt
+
+      # ── Quality gate fallback ──────────────────────────────────────
+      # When no test failures exist, check quality gates and submit
+      # those for auto-resolution instead. This ensures style and
+      # reusability issues are addressed only after correctness.
+
+      - name: Check quality gates
+        if: steps.failures.outputs.has_failures != 'true'
+        id: quality
+        env:
+          JAVADOC_PASSED: ${{ needs.javadoc-check.outputs.passed }}
+          TIMEOUT_PASSED: ${{ needs.test-timeout-check.outputs.passed }}
+          DUPLICATE_PASSED: ${{ needs.duplicate-code-check.outputs.passed }}
+        run: |
+          ./tools/ci/check-quality-gates.sh /tmp/quality-gate-failures.txt
+
+      - name: Upload quality gate summary
+        if: steps.failures.outputs.has_failures != 'true' && steps.quality.outputs.has_failures == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: quality-gate-summary
+          path: /tmp/quality-gate-failures.txt
+          retention-days: 7
+
+      - name: Build prompt (quality gates)
+        if: steps.failures.outputs.has_failures != 'true' && steps.quality.outputs.has_failures == 'true'
+        env:
+          FAILURE_COUNT: ${{ steps.quality.outputs.failure_count }}
+          BRANCH: ${{ steps.ctx.outputs.branch }}
+          COMMIT_SHA: ${{ github.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          ./tools/ci/build-quality-gate-prompt.sh /tmp/quality-gate-failures.txt /tmp/agent-prompt.txt
+
+      - name: Submit agent job (quality gates)
+        if: steps.failures.outputs.has_failures != 'true' && steps.quality.outputs.has_failures == 'true'
         env:
           CONTROLLER_HOST: ${{ secrets.FLOWTREE_CONTROLLER_HOST || 'mac-studio' }}
           CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
@@ -656,6 +791,14 @@ jobs:
             echo '```' >> "$GITHUB_STEP_SUMMARY"
             cat /tmp/test-failures.txt >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || echo "(no failure file)" >> "$GITHUB_STEP_SUMMARY"
             echo '```' >> "$GITHUB_STEP_SUMMARY"
+          elif [ "${{ steps.quality.outputs.has_failures }}" = "true" ]; then
+            echo "No test failures. Found **${{ steps.quality.outputs.failure_count }}** quality gate failure(s)." >> "$GITHUB_STEP_SUMMARY"
+            echo "A FlowTree coding agent job was submitted to resolve quality issues." >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "### Failing quality gates" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            cat /tmp/quality-gate-failures.txt >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || echo "(no failure file)" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "No test failures detected. Auto-resolve skipped." >> "$GITHUB_STEP_SUMMARY"
+            echo "All tests and quality gates passed. Auto-resolve skipped." >> "$GITHUB_STEP_SUMMARY"
           fi
