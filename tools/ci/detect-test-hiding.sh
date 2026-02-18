@@ -67,7 +67,8 @@ if [ -z "$MODIFIED_TEST_FILES" ]; then
     exit 0
 fi
 
-echo "Checking ${#MODIFIED_TEST_FILES[@]} modified test file(s) for test-hiding patterns..."
+FILE_COUNT=$(echo "$MODIFIED_TEST_FILES" | wc -l)
+echo "Checking ${FILE_COUNT} modified test file(s) for test-hiding patterns..."
 
 for FILE in $MODIFIED_TEST_FILES; do
     # Verify the file actually existed on the base branch (belt-and-suspenders)
