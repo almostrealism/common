@@ -175,7 +175,9 @@ public class DuplicateCodeDetector {
 			// Audio persistence implementations with shared protobuf serialization
 			new String[]{"AudioLibraryPersistence.java", "GeneratedSourceLibrary.java"},
 			// Legacy compatibility - AudioGenerator delegates to LegacyAudioGenerator
-			new String[]{"AudioGenerator.java", "LegacyAudioGenerator.java"}
+			new String[]{"AudioGenerator.java", "LegacyAudioGenerator.java"},
+		// Legacy compatibility - FlowTreeController supersedes SlackBotController
+		new String[]{"FlowTreeController.java", "SlackBotController.java"}
 	);
 
 	private final List<Violation> violations = new ArrayList<>();
