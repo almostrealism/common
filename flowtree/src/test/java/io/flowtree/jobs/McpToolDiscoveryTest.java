@@ -34,7 +34,7 @@ import static org.junit.Assert.assertTrue;
  */
 public class McpToolDiscoveryTest extends TestSuiteBase {
 
-	@Test
+	@Test(timeout = 30000)
 	public void discoverDecoratorPattern() throws IOException {
 		Path tempFile = Files.createTempFile("mcp_decorator_", ".py");
 		try {
@@ -60,7 +60,7 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void discoverListToolsPattern() throws IOException {
 		Path tempFile = Files.createTempFile("mcp_list_tools_", ".py");
 		try {
@@ -104,7 +104,7 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 		}
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void discoverFromActualTestRunner() {
 		Path serverFile = Path.of("tools/mcp/test-runner/server.py");
 		if (!Files.exists(serverFile)) return;
@@ -120,7 +120,7 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 		assertTrue("Expected cancel_run", tools.contains("cancel_run"));
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void discoverFromActualDocs() {
 		Path serverFile = Path.of("docs/mcp/server.py");
 		if (!Files.exists(serverFile)) return;
@@ -131,7 +131,7 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 		assertTrue("Expected search_ar_docs", tools.contains("search_ar_docs"));
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void discoverFromActualJmx() {
 		Path serverFile = Path.of("tools/mcp/jmx/server.py");
 		if (!Files.exists(serverFile)) return;
@@ -143,13 +143,13 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 		assertTrue("Expected get_heap_summary", tools.contains("get_heap_summary"));
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void missingFileReturnsEmpty() {
 		List<String> tools = McpToolDiscovery.discoverToolNames(Path.of("/nonexistent/server.py"));
 		assertTrue(tools.isEmpty());
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void nullFileReturnsEmpty() {
 		List<String> tools = McpToolDiscovery.discoverToolNames(null);
 		assertTrue(tools.isEmpty());
