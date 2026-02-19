@@ -71,7 +71,7 @@ jobs:
           }
 
       - name: Summary
-        if: always()
+        if: ${{ !cancelled() }}
         run: |
           echo "## Test Integrity Check" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
@@ -120,7 +120,7 @@ jobs:
         run: mvn checkstyle:check -Pjavadoc-check
 
       - name: Summary
-        if: always()
+        if: ${{ !cancelled() }}
         run: |
           echo "## Javadoc Coverage Check" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
@@ -165,7 +165,7 @@ jobs:
            -DAR_HARDWARE_LIBS=Extensions
 
       - name: Summary
-        if: always()
+        if: ${{ !cancelled() }}
         run: |
           echo "## Test Timeout Enforcement" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
@@ -210,7 +210,7 @@ jobs:
            -DAR_HARDWARE_LIBS=Extensions
 
       - name: Summary
-        if: always()
+        if: ${{ !cancelled() }}
         run: |
           echo "## Duplicate Code Detection" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
@@ -220,31 +220,6 @@ jobs:
             echo "Duplicate code blocks (10+ identical lines) detected across different files." >> "$GITHUB_STEP_SUMMARY"
             echo "Run \`mvn test -pl utils -Dtest=CodePolicyEnforcementTest#enforceNoDuplicateCode\` locally to see details." >> "$GITHUB_STEP_SUMMARY"
           fi
-
-  build-mac:
-    runs-on: [self-hosted, macos, ar-ci]
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}
-          fetch-depth: 0
-
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
-        with:
-          java-version: '17'
-          distribution: 'adopt'
-          cache: 'maven'
-
-      - name: Ensure Rosetta 2
-        run: |
-          if [ "$(uname -m)" = "arm64" ] && ! /usr/bin/pgrep -q oahd; then
-            sudo softwareupdate --install-rosetta --agree-to-license
-          fi
-
-      - name: Build (skip tests)
-        run: mvn install -DskipTests
 
   test:
     needs: build
@@ -474,7 +449,7 @@ jobs:
   # pattern where macOS tests run in parallel with the next Linux stage.
 
   test-mac:
-    needs: [build-mac, test]
+    needs: [test]
     runs-on: [self-hosted, macos, ar-ci]
     steps:
       - name: Checkout Code
@@ -502,7 +477,7 @@ jobs:
            -Dsurefire.excludes="**/CodePolicyEnforcementTest.java"
 
   test-ml-mac:
-    needs: [build-mac, test-ml]
+    needs: [test-ml]
     runs-on: [self-hosted, macos, ar-ci]
     steps:
       - name: Checkout Code
@@ -529,7 +504,7 @@ jobs:
            -DAR_HARDWARE_LIBS=Extensions
 
   test-audio-mac:
-    needs: [build-mac, test-audio]
+    needs: [test-audio]
     runs-on: [self-hosted, macos, ar-ci]
     steps:
       - name: Checkout Code
@@ -556,7 +531,7 @@ jobs:
            -DAR_HARDWARE_LIBS=Extensions
 
   test-music-mac:
-    needs: [build-mac, test-music]
+    needs: [test-music]
     runs-on: [self-hosted, macos, ar-ci]
     steps:
       - name: Checkout Code
@@ -592,7 +567,7 @@ jobs:
 
   analysis:
     needs: [test-ml, test-audio, test-music]
-    if: always()
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -716,7 +691,7 @@ jobs:
 
   auto-resolve:
     needs: [build, test, test-ml, test-audio, test-music, javadoc-check, test-timeout-check, duplicate-code-check, test-integrity-check]
-    if: always() && github.ref != 'refs/heads/master'
+    if: ${{ !cancelled() && github.ref != 'refs/heads/master' && contains(needs.*.result, 'failure') }}
     runs-on: [self-hosted, macos, ar-ci]
     concurrency:
       group: auto-resolve-${{ github.ref }}
@@ -897,7 +872,7 @@ jobs:
           ./tools/ci/submit-agent-job.sh /tmp/agent-prompt.txt
 
       - name: Summary
-        if: always()
+        if: ${{ !cancelled() }}
         run: |
           echo "## Auto-Resolve" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
