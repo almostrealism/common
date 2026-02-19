@@ -31,7 +31,7 @@ jobs:
 
       - name: Code Policy Enforcement
         run: |
-          LD_LIBRARY_PATH=Extensions mvn test -pl utils \
+          LD_LIBRARY_PATH=Extensions mvn test -pl tools \
            -Dtest="CodePolicyEnforcementTest#enforceCodePolicies+testDetector*" \
            -DAR_HARDWARE_DRIVER=native \
            -DAR_HARDWARE_LIBS=Extensions
@@ -157,7 +157,7 @@ jobs:
       - name: Check Test Timeouts
         id: check
         run: |
-          LD_LIBRARY_PATH=Extensions mvn test -pl utils \
+          LD_LIBRARY_PATH=Extensions mvn test -pl tools \
            -Dtest=CodePolicyEnforcementTest#enforceTestTimeouts \
            -DAR_HARDWARE_DRIVER=native \
            -DAR_HARDWARE_LIBS=Extensions
@@ -171,7 +171,7 @@ jobs:
             echo "All @Test annotations include a timeout parameter." >> "$GITHUB_STEP_SUMMARY"
           else
             echo "Some @Test annotations are missing a timeout parameter." >> "$GITHUB_STEP_SUMMARY"
-            echo "Run \`mvn test -pl utils -Dtest=CodePolicyEnforcementTest#enforceTestTimeouts\` locally to see details." >> "$GITHUB_STEP_SUMMARY"
+            echo "Run \`mvn test -pl tools -Dtest=CodePolicyEnforcementTest#enforceTestTimeouts\` locally to see details." >> "$GITHUB_STEP_SUMMARY"
           fi
 
   duplicate-code-check:
@@ -200,7 +200,7 @@ jobs:
       - name: Check Duplicate Code
         id: check
         run: |
-          LD_LIBRARY_PATH=Extensions mvn test -pl utils \
+          LD_LIBRARY_PATH=Extensions mvn test -pl tools \
            -Dtest=CodePolicyEnforcementTest#enforceNoDuplicateCode \
            -DAR_HARDWARE_DRIVER=native \
            -DAR_HARDWARE_LIBS=Extensions
@@ -214,7 +214,7 @@ jobs:
             echo "No blocks of 10+ identical lines found across different files." >> "$GITHUB_STEP_SUMMARY"
           else
             echo "Duplicate code blocks (10+ identical lines) detected across different files." >> "$GITHUB_STEP_SUMMARY"
-            echo "Run \`mvn test -pl utils -Dtest=CodePolicyEnforcementTest#enforceNoDuplicateCode\` locally to see details." >> "$GITHUB_STEP_SUMMARY"
+            echo "Run \`mvn test -pl tools -Dtest=CodePolicyEnforcementTest#enforceNoDuplicateCode\` locally to see details." >> "$GITHUB_STEP_SUMMARY"
           fi
 
   test:
@@ -248,8 +248,7 @@ jobs:
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS=Extensions \
            -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=7 \
-           -Dsurefire.excludes="**/CodePolicyEnforcementTest.java"
+           -DAR_TEST_GROUPS=7
 
       - name: Upload Surefire Reports
         if: always()
@@ -469,8 +468,7 @@ jobs:
           DYLD_LIBRARY_PATH=Extensions mvn test -pl utils \
            -DAR_HARDWARE_DRIVER=mtl \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
-           -DAR_HARDWARE_LIBS=Extensions \
-           -Dsurefire.excludes="**/CodePolicyEnforcementTest.java"
+           -DAR_HARDWARE_LIBS=Extensions
 
   test-ml-mac:
     needs: [test-ml]
