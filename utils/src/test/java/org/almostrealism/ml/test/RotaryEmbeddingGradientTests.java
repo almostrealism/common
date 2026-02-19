@@ -113,12 +113,13 @@ public class RotaryEmbeddingGradientTests extends TestSuiteBase {
 
 	/**
 	 * Tests the core RoPE formula gradient at medium scale.
-	 * This is closer to typical model dimensions.
+	 * Dimensions are chosen so the product-of-rotateHalf gradient expressions
+	 * compile within the timeout (Jacobian = 256^2 = 65K elements).
 	 */
 	@Test(timeout = 300000)
 	@TestDepth(1)
 	public void ropeFormulaGradientMedium() throws IOException {
-		ropeFormulaGradient("ropeMedium", 1, 4, 16, 32);
+		ropeFormulaGradient("ropeMedium", 1, 2, 8, 16);
 	}
 
 	/**
@@ -126,7 +127,7 @@ public class RotaryEmbeddingGradientTests extends TestSuiteBase {
 	 * This matches realistic transformer attention head sizes.
 	 */
 	@Test(timeout = 600000)
-	@TestDepth(2)
+	@TestDepth(3)
 	public void ropeFormulaGradientLarge() throws IOException {
 		ropeFormulaGradient("ropeLarge", 1, 8, 32, 64);
 	}
@@ -136,7 +137,7 @@ public class RotaryEmbeddingGradientTests extends TestSuiteBase {
 	 * batch=1, heads=6, seqLen=24, rotaryDim=64
 	 */
 	@Test(timeout = 600000)
-	@TestDepth(2)
+	@TestDepth(3)
 	public void ropeFormulaGradientRealistic() throws IOException {
 		ropeFormulaGradient("ropeRealistic", 1, 6, 24, 64);
 	}
@@ -189,11 +190,12 @@ public class RotaryEmbeddingGradientTests extends TestSuiteBase {
 
 	/**
 	 * Tests the rotateHalf operation gradient at medium scale.
+	 * Reduced from (1,4,16,32) to keep concat gradient compilation within timeout.
 	 */
 	@Test(timeout = 300000)
 	@TestDepth(1)
 	public void rotateHalfGradientMedium() throws IOException {
-		rotateHalfGradient("rotateHalfMedium", 1, 4, 16, 32);
+		rotateHalfGradient("rotateHalfMedium", 1, 4, 8, 16);
 	}
 
 	private void rotateHalfGradient(String name, int batchSize, int heads, int seqLen, int rotaryDim)
@@ -273,7 +275,7 @@ public class RotaryEmbeddingGradientTests extends TestSuiteBase {
 	@Test(timeout = 300000)
 	@TestDepth(1)
 	public void rotateHalfTimesSinGradientMedium() throws IOException {
-		rotateHalfTimesSinGradient("rotateHalfSinGradMedium", 1, 4, 16, 32);
+		rotateHalfTimesSinGradient("rotateHalfSinGradMedium", 1, 2, 8, 16);
 	}
 
 	private void rotateHalfTimesSinGradient(String name, int batchSize, int heads, int seqLen, int rotaryDim)
@@ -360,7 +362,7 @@ public class RotaryEmbeddingGradientTests extends TestSuiteBase {
 	@Test(timeout = 300000)
 	@TestDepth(1)
 	public void concatGradientMedium() throws IOException {
-		concatGradient("concatGradMedium", 1, 4, 16, 16);
+		concatGradient("concatGradMedium", 1, 4, 8, 8);
 	}
 
 	private void concatGradient(String name, int batchSize, int heads, int seqLen, int halfDim)

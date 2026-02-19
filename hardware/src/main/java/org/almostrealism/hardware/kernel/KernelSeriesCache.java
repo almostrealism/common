@@ -113,6 +113,7 @@ public class KernelSeriesCache implements KernelSeriesProvider, ExpressionFeatur
 	public static int defaultMaxEntries = 32; // 16;
 	public static int minNodeCountMatch = 12; // 6;
 	public static int minNodeCountCache = 128;
+	public static long maxSeriesEvaluationCost = 50_000_000L;
 
 	static {
 		if (8L * ScopeSettings.maxKernelSeriesCount * defaultMaxEntries > Integer.MAX_VALUE) {
@@ -242,6 +243,7 @@ public class KernelSeriesCache implements KernelSeriesProvider, ExpressionFeatur
 								boolean isInt, IntSupplier nodes) {
 		int n = nodes.getAsInt();
 		if (n < minNodeCountMatch) return null;
+		if ((long) n * count > maxSeriesEvaluationCost) return null;
 
 		IndexSequence seq = sequence.get();
 		if (seq == null) return null;

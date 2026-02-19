@@ -21,6 +21,7 @@ import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.algebra.AlgebraFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerParallelProcess;
 import org.almostrealism.collect.PackedCollection;
@@ -199,6 +200,9 @@ public class CollectionProductComputation extends TraversableExpressionComputati
 	 */
 	@Override
 	public CollectionProducer delta(Producer<?> target) {
+		CollectionProducer delta = attemptDelta(target);
+		if (delta != null) return delta;
+
 		TraversalPolicy targetShape = shape(target);
 
 		List<CollectionProducer> operands = List.of(
@@ -226,6 +230,19 @@ public class CollectionProductComputation extends TraversableExpressionComputati
 
 		CollectionProducer u = operands.get(0);
 		CollectionProducer v = operands.get(1);
+
+		if (AlgebraFeatures.cannotMatch(v, target)) {
+			CollectionProducer uDelta = u.delta(target);
+			uDelta = uDelta.reshape(v.getShape().getTotalSize(), -1).traverse(0);
+			return expandAndMultiply(v.flatten(), uDelta).reshape(shape);
+		}
+
+		if (AlgebraFeatures.cannotMatch(u, target)) {
+			CollectionProducer vDelta = v.delta(target);
+			vDelta = vDelta.reshape(u.getShape().getTotalSize(), -1).traverse(0);
+			return expandAndMultiply(u.flatten(), vDelta).reshape(shape);
+		}
+
 		CollectionProducer uDelta = u.delta(target);
 		CollectionProducer vDelta = v.delta(target);
 
