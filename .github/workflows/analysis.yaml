@@ -562,7 +562,7 @@ jobs:
            -DAR_TEST_PROFILE=pipeline
 
   analysis:
-    needs: [test-music]
+    needs: [test-music, test-music-mac]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     permissions:
@@ -636,7 +636,7 @@ jobs:
           retention-days: 30
 
   qodana:
-    needs: [analysis, build, test, test-ml, test-audio, test-music]
+    needs: [analysis]
     runs-on: ubuntu-latest
     permissions:
       checks: write
