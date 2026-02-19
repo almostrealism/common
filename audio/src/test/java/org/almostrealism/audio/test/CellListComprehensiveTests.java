@@ -57,7 +57,7 @@ public class CellListComprehensiveTests extends TestSuiteBase implements CellFea
 	/**
 	 * Test 1: Basic parent-child tick ordering - parent ticks before child
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testParentTicksBeforeChild() {
 		List<String> tickOrder = new ArrayList<>();
 
@@ -80,7 +80,7 @@ public class CellListComprehensiveTests extends TestSuiteBase implements CellFea
 	/**
 	 * Test 2: Requirement ticks after cells
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testRequirementTicksAfterCells() {
 		List<String> tickOrder = new ArrayList<>();
 
@@ -101,7 +101,7 @@ public class CellListComprehensiveTests extends TestSuiteBase implements CellFea
 	/**
 	 * Test 3: Full hierarchy - parent, cell, requirement ordering
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testFullHierarchyOrder() {
 		List<String> tickOrder = new ArrayList<>();
 
@@ -127,7 +127,7 @@ public class CellListComprehensiveTests extends TestSuiteBase implements CellFea
 	/**
 	 * Test 4: Multiple parents tick in order
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testMultipleParentsOrder() {
 		List<String> tickOrder = new ArrayList<>();
 
@@ -155,7 +155,7 @@ public class CellListComprehensiveTests extends TestSuiteBase implements CellFea
 	/**
 	 * Test 5: Nested parent hierarchy (grandparent -> parent -> child)
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testNestedParentHierarchy() {
 		List<String> tickOrder = new ArrayList<>();
 
@@ -183,7 +183,7 @@ public class CellListComprehensiveTests extends TestSuiteBase implements CellFea
 	/**
 	 * Test 6: Multiple requirements tick in order
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testMultipleRequirementsOrder() {
 		List<String> tickOrder = new ArrayList<>();
 
@@ -207,7 +207,7 @@ public class CellListComprehensiveTests extends TestSuiteBase implements CellFea
 	/**
 	 * Test 7: addRequirements varargs method
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testAddRequirementsVarargs() {
 		List<String> tickOrder = new ArrayList<>();
 
@@ -230,7 +230,7 @@ public class CellListComprehensiveTests extends TestSuiteBase implements CellFea
 	/**
 	 * Test 8: Empty CellList tick does not throw
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testEmptyCellListTick() {
 		CellList cells = new CellList();
 		cells.tick().get().run();
@@ -240,7 +240,7 @@ public class CellListComprehensiveTests extends TestSuiteBase implements CellFea
 	/**
 	 * Test 9: CellList with only requirements
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testOnlyRequirements() {
 		List<String> tickOrder = new ArrayList<>();
 
@@ -258,7 +258,7 @@ public class CellListComprehensiveTests extends TestSuiteBase implements CellFea
 	/**
 	 * Test 10: CellList with only parent
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testOnlyParent() {
 		List<String> tickOrder = new ArrayList<>();
 
@@ -281,7 +281,7 @@ public class CellListComprehensiveTests extends TestSuiteBase implements CellFea
 	/**
 	 * Test 11: Setup is called on all cells
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testSetupCalledOnAllCells() {
 		AtomicInteger setupCount = new AtomicInteger(0);
 
@@ -300,7 +300,7 @@ public class CellListComprehensiveTests extends TestSuiteBase implements CellFea
 	/**
 	 * Test 12: Setup follows parent hierarchy
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testSetupFollowsHierarchy() {
 		List<String> setupOrder = new ArrayList<>();
 
@@ -323,7 +323,7 @@ public class CellListComprehensiveTests extends TestSuiteBase implements CellFea
 	/**
 	 * Test 13: addSetup adds explicit setup operation
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testAddSetup() {
 		AtomicInteger setupCount = new AtomicInteger(0);
 
@@ -340,7 +340,7 @@ public class CellListComprehensiveTests extends TestSuiteBase implements CellFea
 	/**
 	 * Test 14: Reset is called on all cells
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testResetCalledOnAllCells() {
 		AtomicInteger resetCount = new AtomicInteger(0);
 
@@ -359,7 +359,7 @@ public class CellListComprehensiveTests extends TestSuiteBase implements CellFea
 	/**
 	 * Test 15: Finals are called during reset
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testFinalsCalledDuringReset() {
 		AtomicInteger finalCount = new AtomicInteger(0);
 
@@ -375,7 +375,7 @@ public class CellListComprehensiveTests extends TestSuiteBase implements CellFea
 	/**
 	 * Test 16: addData tracks collections for destroy
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testAddDataTracksForDestroy() {
 		PackedCollection col1 = new PackedCollection(10);
 		PackedCollection col2 = new PackedCollection(20);
@@ -394,7 +394,7 @@ public class CellListComprehensiveTests extends TestSuiteBase implements CellFea
 	/**
 	 * Test 17: and() combines two lists
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testAndCombinesLists() {
 		CellList list1 = new CellList();
 		list1.add(new TestTemporal("a", new ArrayList<>()));
@@ -412,7 +412,7 @@ public class CellListComprehensiveTests extends TestSuiteBase implements CellFea
 	/**
 	 * Test 18: sum() creates summing cell
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testSumCreatesCell() {
 		CellList cells = new CellList();
 		cells.add(new TestTemporal("a", new ArrayList<>()));
@@ -427,7 +427,7 @@ public class CellListComprehensiveTests extends TestSuiteBase implements CellFea
 	/**
 	 * Test 19: map() creates mapped cells
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testMapCreatesMappedCells() {
 		CellList source = new CellList();
 		source.add(new TestTemporal("a", new ArrayList<>()));
@@ -441,7 +441,7 @@ public class CellListComprehensiveTests extends TestSuiteBase implements CellFea
 	/**
 	 * Test 20: branch() creates multiple branches
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testBranchCreatesMultiple() {
 		CellList source = new CellList();
 		source.add(new TestTemporal("source", new ArrayList<>()));
@@ -457,7 +457,7 @@ public class CellListComprehensiveTests extends TestSuiteBase implements CellFea
 	/**
 	 * Test 21: getParents() returns correct parents
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testGetParentsReturnsCorrect() {
 		CellList parent1 = new CellList();
 		CellList parent2 = new CellList();
@@ -473,7 +473,7 @@ public class CellListComprehensiveTests extends TestSuiteBase implements CellFea
 	/**
 	 * Test 22: getRequirements() returns requirements
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testGetRequirementsReturns() {
 		TestTemporal req = new TestTemporal("req", new ArrayList<>());
 
@@ -486,7 +486,7 @@ public class CellListComprehensiveTests extends TestSuiteBase implements CellFea
 	/**
 	 * Test 23: getAll() collects all cells from hierarchy
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testGetAllCollectsHierarchy() {
 		TestTemporal parent = new TestTemporal("parent", new ArrayList<>());
 		TestTemporal child = new TestTemporal("child", new ArrayList<>());
@@ -503,7 +503,7 @@ public class CellListComprehensiveTests extends TestSuiteBase implements CellFea
 	/**
 	 * Test 24: getAllTemporals() collects in correct order
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testGetAllTemporalsOrder() {
 		TestTemporal parent = new TestTemporal("parent", new ArrayList<>());
 		TestTemporal child = new TestTemporal("child", new ArrayList<>());
@@ -522,7 +522,7 @@ public class CellListComprehensiveTests extends TestSuiteBase implements CellFea
 	/**
 	 * Test 25: getAllSetup() collects all setup operations
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testGetAllSetupCollects() {
 		TestSetupTemporal parent = new TestSetupTemporal("parent", new ArrayList<>());
 		TestSetupTemporal child = new TestSetupTemporal("child", new ArrayList<>());
@@ -541,7 +541,7 @@ public class CellListComprehensiveTests extends TestSuiteBase implements CellFea
 	/**
 	 * Test 26: addRoot adds both as root and cell
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testAddRootAddsAsBoth() {
 		TestTemporal cell = new TestTemporal("root", new ArrayList<>());
 
@@ -555,7 +555,7 @@ public class CellListComprehensiveTests extends TestSuiteBase implements CellFea
 	/**
 	 * Test 27: getAllRoots() collects from hierarchy
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testGetAllRootsCollectsHierarchy() {
 		TestTemporal parentRoot = new TestTemporal("parentRoot", new ArrayList<>());
 		TestTemporal childRoot = new TestTemporal("childRoot", new ArrayList<>());
@@ -572,7 +572,7 @@ public class CellListComprehensiveTests extends TestSuiteBase implements CellFea
 	/**
 	 * Test 28: Roots receive push during tick
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testRootsReceivePush() {
 		AtomicInteger pushCount = new AtomicInteger(0);
 
@@ -591,7 +591,7 @@ public class CellListComprehensiveTests extends TestSuiteBase implements CellFea
 	/**
 	 * Test 29: Frame-by-frame single iteration
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testFrameByFrameSingleIteration() {
 		AtomicInteger tickCount = new AtomicInteger(0);
 
@@ -609,7 +609,7 @@ public class CellListComprehensiveTests extends TestSuiteBase implements CellFea
 	/**
 	 * Test 30: Frame-by-frame 10 iterations
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testFrameByFrame10Iterations() {
 		AtomicInteger tickCount = new AtomicInteger(0);
 
@@ -627,7 +627,7 @@ public class CellListComprehensiveTests extends TestSuiteBase implements CellFea
 	/**
 	 * Test 31: Frame-by-frame 100 iterations
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testFrameByFrame100Iterations() {
 		AtomicInteger tickCount = new AtomicInteger(0);
 
@@ -645,7 +645,7 @@ public class CellListComprehensiveTests extends TestSuiteBase implements CellFea
 	/**
 	 * Test 32: Frame-by-frame 1000 iterations
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testFrameByFrame1000Iterations() {
 		AtomicInteger tickCount = new AtomicInteger(0);
 
@@ -663,7 +663,7 @@ public class CellListComprehensiveTests extends TestSuiteBase implements CellFea
 	/**
 	 * Test 33: Frame-by-frame with multiple cells
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testFrameByFrameMultipleCells() {
 		AtomicInteger tickCount1 = new AtomicInteger(0);
 		AtomicInteger tickCount2 = new AtomicInteger(0);
@@ -685,7 +685,7 @@ public class CellListComprehensiveTests extends TestSuiteBase implements CellFea
 	/**
 	 * Test 34: Frame-by-frame with parent hierarchy
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testFrameByFrameWithHierarchy() {
 		AtomicInteger parentCount = new AtomicInteger(0);
 		AtomicInteger childCount = new AtomicInteger(0);
@@ -711,7 +711,7 @@ public class CellListComprehensiveTests extends TestSuiteBase implements CellFea
 	/**
 	 * Test 35: Multi-frame buffer 512 frames
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testMultiFrameBuffer512() {
 		AtomicInteger tickCount = new AtomicInteger(0);
 
@@ -729,7 +729,7 @@ public class CellListComprehensiveTests extends TestSuiteBase implements CellFea
 	/**
 	 * Test 36: Multi-frame buffer 1024 frames
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testMultiFrameBuffer1024() {
 		AtomicInteger tickCount = new AtomicInteger(0);
 
@@ -747,7 +747,7 @@ public class CellListComprehensiveTests extends TestSuiteBase implements CellFea
 	/**
 	 * Test 37: Multi-frame buffer 2048 frames
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testMultiFrameBuffer2048() {
 		AtomicInteger tickCount = new AtomicInteger(0);
 
@@ -765,7 +765,7 @@ public class CellListComprehensiveTests extends TestSuiteBase implements CellFea
 	/**
 	 * Test 38: Multi-frame multiple batches
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testMultiFrameMultipleBatches() {
 		AtomicInteger tickCount = new AtomicInteger(0);
 
@@ -788,7 +788,7 @@ public class CellListComprehensiveTests extends TestSuiteBase implements CellFea
 	/**
 	 * Test 39: Multi-frame with getContinue() skips setup
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testMultiFrameGetContinueSkipsSetup() {
 		AtomicInteger setupCount = new AtomicInteger(0);
 		AtomicInteger tickCount = new AtomicInteger(0);
@@ -812,7 +812,7 @@ public class CellListComprehensiveTests extends TestSuiteBase implements CellFea
 	/**
 	 * Test 40: collector() collects cells into CellList
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testCollectorCollectsCells() {
 		List<Cell<PackedCollection>> cells = List.of(
 				new TestTemporal("a", new ArrayList<>()),
@@ -830,7 +830,7 @@ public class CellListComprehensiveTests extends TestSuiteBase implements CellFea
 	/**
 	 * Test 41: Complex hierarchy with all features
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testComplexHierarchy() {
 		List<String> tickOrder = new ArrayList<>();
 
@@ -870,7 +870,7 @@ public class CellListComprehensiveTests extends TestSuiteBase implements CellFea
 	/**
 	 * Test 42: Deep nesting (5 levels)
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testDeepNesting5Levels() {
 		List<String> tickOrder = new ArrayList<>();
 
@@ -900,7 +900,7 @@ public class CellListComprehensiveTests extends TestSuiteBase implements CellFea
 	/**
 	 * Test 43: Diamond inheritance pattern
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testDiamondPattern() {
 		List<String> tickOrder = new ArrayList<>();
 
@@ -930,7 +930,7 @@ public class CellListComprehensiveTests extends TestSuiteBase implements CellFea
 	/**
 	 * Test 44: Empty parent list
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testEmptyParentList() {
 		List<String> tickOrder = new ArrayList<>();
 
@@ -948,7 +948,7 @@ public class CellListComprehensiveTests extends TestSuiteBase implements CellFea
 	/**
 	 * Test 45: Mixed cell types
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testMixedCellTypes() {
 		AtomicInteger temporalCount = new AtomicInteger(0);
 		AtomicInteger nonTemporalCount = new AtomicInteger(0);
@@ -969,7 +969,7 @@ public class CellListComprehensiveTests extends TestSuiteBase implements CellFea
 	/**
 	 * Test 46: Requirements from different types
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testRequirementsFromTypes() {
 		AtomicInteger setupReqCount = new AtomicInteger(0);
 		AtomicInteger tickCount = new AtomicInteger(0);
@@ -993,7 +993,7 @@ public class CellListComprehensiveTests extends TestSuiteBase implements CellFea
 	/**
 	 * Test 47: Null-safe operations
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testNullSafeOperations() {
 		CellList cells = new CellList();
 
@@ -1010,7 +1010,7 @@ public class CellListComprehensiveTests extends TestSuiteBase implements CellFea
 	/**
 	 * Test 48: Large number of cells
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testLargeNumberOfCells() {
 		AtomicInteger totalTicks = new AtomicInteger(0);
 
@@ -1027,7 +1027,7 @@ public class CellListComprehensiveTests extends TestSuiteBase implements CellFea
 	/**
 	 * Test 49: Large number of requirements
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testLargeNumberOfRequirements() {
 		AtomicInteger totalTicks = new AtomicInteger(0);
 
@@ -1044,7 +1044,7 @@ public class CellListComprehensiveTests extends TestSuiteBase implements CellFea
 	/**
 	 * Test 50: Combined large cells and requirements
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testCombinedLargeCellsAndRequirements() {
 		AtomicInteger cellTicks = new AtomicInteger(0);
 		AtomicInteger reqTicks = new AtomicInteger(0);
@@ -1068,7 +1068,7 @@ public class CellListComprehensiveTests extends TestSuiteBase implements CellFea
 	/**
 	 * Test 51: Repeated tick execution
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testRepeatedTickExecution() {
 		AtomicInteger tickCount = new AtomicInteger(0);
 
@@ -1089,7 +1089,7 @@ public class CellListComprehensiveTests extends TestSuiteBase implements CellFea
 	/**
 	 * Test 52: Reset followed by tick
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testResetFollowedByTick() {
 		AtomicInteger tickCount = new AtomicInteger(0);
 		AtomicInteger resetCount = new AtomicInteger(0);

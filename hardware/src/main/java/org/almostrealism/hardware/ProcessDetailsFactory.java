@@ -397,6 +397,13 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 		this.asyncEvaluables = null;
 	}
 
+	/**
+	 * Constructs an {@link AcceleratedProcessDetails} by resolving kernel arguments,
+	 * creating async evaluables for arguments that require evaluation, and wiring
+	 * downstream result consumers.
+	 *
+	 * @return the fully configured process details ready for execution
+	 */
 	public AcceleratedProcessDetails construct() {
 		MemoryData kernelArgs[] = new MemoryData[arguments.size()];
 

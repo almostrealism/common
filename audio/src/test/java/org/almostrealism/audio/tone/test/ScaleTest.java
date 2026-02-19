@@ -37,7 +37,7 @@ public class ScaleTest extends TestSuiteBase {
 	/**
 	 * Tests Scale.of() factory method with varargs.
 	 */
-	@Test
+	@Test(timeout = 5000)
 	public void scaleOfFactory() {
 		Scale<WesternChromatic> scale = Scale.of(
 				WesternChromatic.C4, WesternChromatic.E4, WesternChromatic.G4);
@@ -51,7 +51,7 @@ public class ScaleTest extends TestSuiteBase {
 	/**
 	 * Tests StaticScale construction and access.
 	 */
-	@Test
+	@Test(timeout = 5000)
 	public void staticScaleBasics() {
 		WesternChromatic[] notes = {WesternChromatic.C4, WesternChromatic.D4, WesternChromatic.E4};
 		StaticScale<WesternChromatic> scale = new StaticScale<>(notes);
@@ -63,7 +63,7 @@ public class ScaleTest extends TestSuiteBase {
 	/**
 	 * Tests StaticScale setNotes with List.
 	 */
-	@Test
+	@Test(timeout = 5000)
 	public void staticScaleSetNotes() {
 		StaticScale<WesternChromatic> scale = new StaticScale<>();
 		scale.setNotes(List.of(WesternChromatic.A4, WesternChromatic.B4, WesternChromatic.C5));
@@ -75,7 +75,7 @@ public class ScaleTest extends TestSuiteBase {
 	/**
 	 * Tests C major scale has correct notes.
 	 */
-	@Test
+	@Test(timeout = 5000)
 	public void cMajorScale() {
 		Scale<WesternChromatic> cMajor = WesternScales.major(WesternChromatic.C4, 1);
 
@@ -92,7 +92,7 @@ public class ScaleTest extends TestSuiteBase {
 	/**
 	 * Tests G major scale has correct notes.
 	 */
-	@Test
+	@Test(timeout = 5000)
 	public void gMajorScale() {
 		Scale<WesternChromatic> gMajor = WesternScales.major(WesternChromatic.G3, 1);
 
@@ -109,7 +109,7 @@ public class ScaleTest extends TestSuiteBase {
 	/**
 	 * Tests A minor scale has correct notes.
 	 */
-	@Test
+	@Test(timeout = 5000)
 	public void aMinorScale() {
 		Scale<WesternChromatic> aMinor = WesternScales.minor(WesternChromatic.A3, 1);
 
@@ -126,7 +126,7 @@ public class ScaleTest extends TestSuiteBase {
 	/**
 	 * Tests major scale length is correct for multiple octaves.
 	 */
-	@Test
+	@Test(timeout = 5000)
 	public void majorScaleLength() {
 		Scale<WesternChromatic> oneOctave = WesternScales.major(WesternChromatic.C4, 1);
 		Scale<WesternChromatic> twoOctaves = WesternScales.major(WesternChromatic.C4, 2);
@@ -138,7 +138,7 @@ public class ScaleTest extends TestSuiteBase {
 	/**
 	 * Tests minor scale length is correct for multiple octaves.
 	 */
-	@Test
+	@Test(timeout = 5000)
 	public void minorScaleLength() {
 		Scale<WesternChromatic> oneOctave = WesternScales.minor(WesternChromatic.A3, 1);
 		Scale<WesternChromatic> threeOctaves = WesternScales.minor(WesternChromatic.A3, 3);
@@ -150,7 +150,7 @@ public class ScaleTest extends TestSuiteBase {
 	/**
 	 * Tests SetIntervalScale root getter/setter.
 	 */
-	@Test
+	@Test(timeout = 5000)
 	public void setIntervalScaleRoot() {
 		SetIntervalScale<WesternChromatic> scale = new SetIntervalScale<>();
 		scale.setRoot(WesternChromatic.D4);
@@ -164,7 +164,7 @@ public class ScaleTest extends TestSuiteBase {
 	/**
 	 * Tests SetIntervalScale with string root setter.
 	 */
-	@Test
+	@Test(timeout = 5000)
 	public void setIntervalScaleStringRoot() {
 		SetIntervalScale<WesternChromatic> scale = new SetIntervalScale<>();
 		scale.setRoot("E4");
@@ -177,7 +177,7 @@ public class ScaleTest extends TestSuiteBase {
 	/**
 	 * Tests scale forEach iteration.
 	 */
-	@Test
+	@Test(timeout = 5000)
 	public void forEachIteration() {
 		Scale<WesternChromatic> scale = Scale.of(
 				WesternChromatic.C4, WesternChromatic.D4, WesternChromatic.E4);
@@ -194,7 +194,7 @@ public class ScaleTest extends TestSuiteBase {
 	/**
 	 * Tests that major and minor scales starting on same root differ.
 	 */
-	@Test
+	@Test(timeout = 5000)
 	public void majorVsMinorDifferent() {
 		Scale<WesternChromatic> cMajor = WesternScales.major(WesternChromatic.C4, 1);
 		Scale<WesternChromatic> cMinor = WesternScales.minor(WesternChromatic.C4, 1);
@@ -210,7 +210,7 @@ public class ScaleTest extends TestSuiteBase {
 	/**
 	 * Tests chromatic scale spans 12 semitones per octave.
 	 */
-	@Test
+	@Test(timeout = 5000)
 	public void chromaticScaleSpan() {
 		Scale<WesternChromatic> chromatic = WesternChromatic.scale();
 
@@ -222,7 +222,7 @@ public class ScaleTest extends TestSuiteBase {
 	/**
 	 * Tests that intervallic relationship is consistent across octaves.
 	 */
-	@Test
+	@Test(timeout = 5000)
 	public void intervalConsistencyAcrossOctaves() {
 		// Major third from C should always be E
 		Scale<WesternChromatic> c3Major = WesternScales.major(WesternChromatic.C3, 1);

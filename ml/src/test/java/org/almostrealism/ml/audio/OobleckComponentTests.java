@@ -89,7 +89,7 @@ public class OobleckComponentTests extends TestSuiteBase {
 
 	// ==================== Snake Tests ====================
 
-	@Test
+	@Test(timeout = 120000)
 	public void testSnakeSmall() {
 		Console.root().addListener(OutputFeatures.fileOutput(
 				"test_data/stable_audio/component_snake_small.log"));
@@ -108,7 +108,7 @@ public class OobleckComponentTests extends TestSuiteBase {
 		timeComponent("Snake Small", channels, seqLen, snake);
 	}
 
-	@Test
+	@Test(timeout = 120000)
 	public void testSnakeMedium() {
 		Console.root().addListener(OutputFeatures.fileOutput(
 				"test_data/stable_audio/component_snake_medium.log"));
@@ -127,7 +127,7 @@ public class OobleckComponentTests extends TestSuiteBase {
 		timeComponent("Snake Medium", channels, seqLen, snake);
 	}
 
-	@Test
+	@Test(timeout = 120000)
 	public void testSnakeLarge() {
 		Console.root().addListener(OutputFeatures.fileOutput(
 				"test_data/stable_audio/component_snake_large.log"));
@@ -148,7 +148,7 @@ public class OobleckComponentTests extends TestSuiteBase {
 
 	// ==================== WNConv1d Tests ====================
 
-	@Test
+	@Test(timeout = 120000)
 	public void testWNConv1dSmall() {
 		Console.root().addListener(OutputFeatures.fileOutput(
 				"test_data/stable_audio/component_wnconv1d_small.log"));
@@ -167,7 +167,7 @@ public class OobleckComponentTests extends TestSuiteBase {
 		timeComponent("WNConv1d Small", channels, seqLen, conv);
 	}
 
-	@Test
+	@Test(timeout = 120000)
 	public void testWNConv1dLarge() {
 		Console.root().addListener(OutputFeatures.fileOutput(
 				"test_data/stable_audio/component_wnconv1d_large.log"));
@@ -188,7 +188,7 @@ public class OobleckComponentTests extends TestSuiteBase {
 
 	// ==================== WNConvTranspose1d Tests ====================
 
-	@Test
+	@Test(timeout = 120000)
 	public void testWNConvTranspose16x() {
 		Console.root().addListener(OutputFeatures.fileOutput(
 				"test_data/stable_audio/component_wnconvtranspose_16x.log"));
@@ -212,7 +212,7 @@ public class OobleckComponentTests extends TestSuiteBase {
 		timeComponent("WNConvTranspose 16x", inChannels, seqLen, conv);
 	}
 
-	@Test
+	@Test(timeout = 120000)
 	public void testWNConvTranspose4xLarge() {
 		Console.root().addListener(OutputFeatures.fileOutput(
 				"test_data/stable_audio/component_wnconvtranspose_4x_large.log"));
@@ -239,7 +239,7 @@ public class OobleckComponentTests extends TestSuiteBase {
 
 	// ==================== Residual Block Tests ====================
 
-	@Test
+	@Test(timeout = 120000)
 	public void testResidualBlockSmall() {
 		Console.root().addListener(OutputFeatures.fileOutput(
 				"test_data/stable_audio/component_residual_small.log"));
@@ -252,7 +252,7 @@ public class OobleckComponentTests extends TestSuiteBase {
 		timeComponent("ResidualBlock Small", channels, seqLen, resBlock);
 	}
 
-	@Test
+	@Test(timeout = 120000)
 	public void testResidualBlockLarge() {
 		Console.root().addListener(OutputFeatures.fileOutput(
 				"test_data/stable_audio/component_residual_large.log"));
@@ -302,7 +302,7 @@ public class OobleckComponentTests extends TestSuiteBase {
 
 	// ==================== Decoder Block Tests ====================
 
-	@Test
+	@Test(timeout = 120000)
 	public void testDecoderBlock1() {
 		Console.root().addListener(OutputFeatures.fileOutput(
 				"test_data/stable_audio/component_decoder_block1.log"));
@@ -318,7 +318,7 @@ public class OobleckComponentTests extends TestSuiteBase {
 		timeComponent("DecoderBlock 1", inChannels, seqLen, block);
 	}
 
-	@Test
+	@Test(timeout = 120000)
 	public void testDecoderBlock5() {
 		Console.root().addListener(OutputFeatures.fileOutput(
 				"test_data/stable_audio/component_decoder_block5.log"));

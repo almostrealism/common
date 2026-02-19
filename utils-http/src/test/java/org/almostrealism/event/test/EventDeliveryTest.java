@@ -25,7 +25,7 @@ import org.junit.Test;
 import java.io.IOException;
 
 public class EventDeliveryTest {
-	@Test
+	@Test(timeout = 60000)
 	public void deliver() throws IOException, InterruptedException {
 		SimpleEventServer server = new SimpleEventServer();
 		server.start();

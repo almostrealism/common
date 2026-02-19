@@ -64,7 +64,7 @@ public class EndToEndFineTuningTest extends TestSuiteBase {
 	/**
 	 * Test that we can load the pre-trained weights.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testLoadWeights() throws IOException {
 		if (!Files.exists(WEIGHTS_DIR)) {
 			log("Weights directory not found, skipping test");
@@ -95,7 +95,7 @@ public class EndToEndFineTuningTest extends TestSuiteBase {
 	 *
 	 * <p>This verifies the model architecture matches the weights.</p>
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testCreateLoRAModel() throws IOException {
 		if (!Files.exists(WEIGHTS_DIR)) {
 			log("Weights directory not found, skipping test");
@@ -149,7 +149,7 @@ public class EndToEndFineTuningTest extends TestSuiteBase {
 	 * <p>This verifies the extracted autoencoder weights are in the correct format
 	 * for use with OobleckEncoder and OobleckDecoder.</p>
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testLoadAutoencoderWeights() throws IOException {
 		Path autoencoderDir = WEIGHTS_DIR.resolve("autoencoder");
 		if (!Files.exists(autoencoderDir)) {

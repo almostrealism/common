@@ -12,7 +12,7 @@ import org.junit.Test;
 import java.io.File;
 
 public class MixdownTest extends TestSuiteBase implements CellFeatures, AudioTestFeatures {
-	@Test
+	@Test(timeout = 60000)
 	public void samples() {
 		if (testProfileIs(TestUtils.PIPELINE)) return;
 

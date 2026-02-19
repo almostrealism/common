@@ -224,6 +224,7 @@ public class DatabaseConnection {
 		}
 	}
 	
+	/** Loads the JDBC driver and establishes a connection to the database. */
 	public void loadDriver(String driver, String dburi, String dbuser, String dbpasswd) {
 		try {
 			System.out.print("DBS: Loading " + driver + "... ");

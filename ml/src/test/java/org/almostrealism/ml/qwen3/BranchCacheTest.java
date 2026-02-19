@@ -15,7 +15,7 @@ import org.junit.Test;
  */
 public class BranchCacheTest extends TestSuiteBase implements AttentionFeatures, ConsoleFeatures {
 
-	@Test
+	@Test(timeout = 60000)
 	public void testSimpleBranchWithCache() throws Exception {
 		String logFile = "/workspace/project/common/ml/results/branch_cache_test.txt";
 		Console.root().addListener(OutputFeatures.fileOutput(logFile));
@@ -87,7 +87,7 @@ public class BranchCacheTest extends TestSuiteBase implements AttentionFeatures,
 		log(pass ? "  [PASS] Branch and cache work correctly" : "  [FAIL] Branch or cache has issues");
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void testBranchWithTransformAndCache() throws Exception {
 		String logFile = "/workspace/project/common/ml/results/branch_transform_cache_test.txt";
 		Console.root().addListener(OutputFeatures.fileOutput(logFile));
@@ -162,7 +162,7 @@ public class BranchCacheTest extends TestSuiteBase implements AttentionFeatures,
 		log(pass ? "  [PASS] Branch, transform, and cache work correctly" : "  [FAIL] Something is wrong");
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void testTwoBranchesWithCaches() throws Exception {
 		String logFile = "/workspace/project/common/ml/results/two_branches_cache_test.txt";
 		Console.root().addListener(OutputFeatures.fileOutput(logFile));

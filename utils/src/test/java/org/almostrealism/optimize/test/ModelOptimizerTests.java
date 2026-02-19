@@ -54,7 +54,7 @@ public class ModelOptimizerTests extends TestSuiteBase implements LayerFeatures 
 	 * <p>This test creates a simple linear model with LoRA adapters, generates
 	 * synthetic training data, and verifies that loss decreases after training.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testTrainingReducesLoss() {
 		int batchSize = 1;
 		int inputSize = 16;
@@ -134,7 +134,7 @@ public class ModelOptimizerTests extends TestSuiteBase implements LayerFeatures 
 	 * <p>LoRA B matrix is initialized to zeros, so after training it should
 	 * contain non-zero values if learning is occurring.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testLoRAWeightsAreUpdated() {
 		int batchSize = 1;
 		int inputSize = 16;
@@ -206,7 +206,7 @@ public class ModelOptimizerTests extends TestSuiteBase implements LayerFeatures 
 	 * <p>This test verifies that validation loss is properly tracked
 	 * and reported in the training result.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testValidationLossTracking() {
 		int batchSize = 1;
 		int inputSize = 8;
@@ -267,7 +267,7 @@ public class ModelOptimizerTests extends TestSuiteBase implements LayerFeatures 
 	/**
 	 * Test TrainingResult metrics calculation.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testTrainingResultMetrics() {
 		int batchSize = 1;
 		int inputSize = 8;
