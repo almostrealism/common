@@ -57,6 +57,8 @@ class MemoryClient:
         namespace: str = "default",
         limit: int = 5,
         tag: Optional[str] = None,
+        repo_url: Optional[str] = None,
+        branch: Optional[str] = None,
     ) -> list[dict]:
         """Search memories by semantic similarity.
 
@@ -65,11 +67,38 @@ class MemoryClient:
             namespace: Namespace to search within.
             limit: Maximum results.
             tag: Optional tag filter.
+            repo_url: Optional repository URL filter.
+            branch: Optional branch name filter.
 
         Returns:
             Ranked list of memory entries with similarity scores.
         """
-        return self._store.search(query=query, namespace=namespace, limit=limit, tag=tag)
+        return self._store.search(
+            query=query, namespace=namespace, limit=limit, tag=tag,
+            repo_url=repo_url, branch=branch,
+        )
+
+    def search_by_branch(
+        self,
+        repo_url: str,
+        branch: str,
+        namespace: str = "default",
+        limit: int = 20,
+    ) -> list[dict]:
+        """List memories for a specific repo and branch, newest first.
+
+        Args:
+            repo_url: Repository URL to match.
+            branch: Branch name to match.
+            namespace: Namespace to search within.
+            limit: Maximum results.
+
+        Returns:
+            List of memory entries ordered by creation time (newest first).
+        """
+        return self._store.search_by_branch(
+            repo_url=repo_url, branch=branch, namespace=namespace, limit=limit,
+        )
 
     def store(
         self,
@@ -77,6 +106,8 @@ class MemoryClient:
         namespace: str = "default",
         tags: Optional[list[str]] = None,
         source: Optional[str] = None,
+        repo_url: Optional[str] = None,
+        branch: Optional[str] = None,
     ) -> dict:
         """Store a memory entry.
 
@@ -85,12 +116,15 @@ class MemoryClient:
             namespace: Logical grouping.
             tags: Optional tags for filtering.
             source: Optional source identifier.
+            repo_url: Optional repository URL to associate.
+            branch: Optional branch name to associate.
 
         Returns:
             The created entry.
         """
         return self._store.store(
             content=content, namespace=namespace, tags=tags, source=source,
+            repo_url=repo_url, branch=branch,
         )
 
     def store_dual(
@@ -100,6 +134,8 @@ class MemoryClient:
         namespace: str = "default",
         tags: Optional[list[str]] = None,
         source: Optional[str] = None,
+        repo_url: Optional[str] = None,
+        branch: Optional[str] = None,
     ) -> dict:
         """Store a memory with both original and reformulated text.
 
@@ -113,6 +149,8 @@ class MemoryClient:
             namespace: Logical grouping.
             tags: Optional tags.
             source: Optional source identifier.
+            repo_url: Optional repository URL to associate.
+            branch: Optional branch name to associate.
 
         Returns:
             The created entry with both texts accessible.
@@ -133,6 +171,8 @@ class MemoryClient:
             namespace=namespace,
             tags=tags,
             source=json.dumps({"original": original, "user_source": source}),
+            repo_url=repo_url,
+            branch=branch,
         )
 
         # Augment the returned dict with both versions for the caller

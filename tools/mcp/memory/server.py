@@ -46,6 +46,8 @@ def memory_store(
     namespace: str = "default",
     tags: Optional[list[str]] = None,
     source: Optional[str] = None,
+    repo_url: Optional[str] = None,
+    branch: Optional[str] = None,
 ) -> dict:
     """
     Store a memory entry with semantic embedding for later retrieval.
@@ -55,11 +57,16 @@ def memory_store(
         namespace: Logical grouping (e.g., "decisions", "bugs", "context").
         tags: Optional tags for categorical filtering.
         source: Optional source identifier (e.g., file path, PR number).
+        repo_url: Optional repository URL to associate with this memory.
+        branch: Optional branch name to associate with this memory.
 
     Returns:
         The created entry with its ID and metadata.
     """
-    return store.store(content=content, namespace=namespace, tags=tags, source=source)
+    return store.store(
+        content=content, namespace=namespace, tags=tags, source=source,
+        repo_url=repo_url, branch=branch,
+    )
 
 
 @mcp.tool()
@@ -68,6 +75,8 @@ def memory_search(
     namespace: str = "default",
     limit: int = 5,
     tag: Optional[str] = None,
+    repo_url: Optional[str] = None,
+    branch: Optional[str] = None,
 ) -> list[dict]:
     """
     Search memory entries by semantic similarity to the query.
@@ -77,11 +86,16 @@ def memory_search(
         namespace: Namespace to search within.
         limit: Maximum number of results.
         tag: Optional tag to filter results.
+        repo_url: Optional repository URL to filter results.
+        branch: Optional branch name to filter results.
 
     Returns:
         Ranked list of matching entries with similarity scores.
     """
-    return store.search(query=query, namespace=namespace, limit=limit, tag=tag)
+    return store.search(
+        query=query, namespace=namespace, limit=limit, tag=tag,
+        repo_url=repo_url, branch=branch,
+    )
 
 
 @mcp.tool()

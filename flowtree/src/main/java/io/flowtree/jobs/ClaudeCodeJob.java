@@ -367,6 +367,54 @@ public class ClaudeCodeJob extends GitManagedJob {
         }
         sb.append("\n");
 
+        // Branch awareness and anti-loop guidance
+        if (getTargetBranch() != null && !getTargetBranch().isEmpty()) {
+            sb.append("## Branch Awareness and Continuity\n");
+            sb.append("IMPORTANT: You are not the first agent to work on this branch. ");
+            sb.append("Previous coding agent sessions have already made changes that are ");
+            sb.append("reflected in the git history. Those changes are YOUR team's work -- ");
+            sb.append("treat them as intentional progress, not as problems to undo.\n\n");
+
+            sb.append("### Catching Up on Prior Work\n");
+            sb.append("Before making any changes, you MUST use the `branch_catchup` tool ");
+            sb.append("to understand what has already been done on this branch:\n");
+            sb.append("```\n");
+            sb.append("mcp__ar-consultant__branch_catchup repo_url:\"<from git remote ");
+            sb.append("get-url origin>\" branch:\"").append(getTargetBranch()).append("\"\n");
+            sb.append("```\n");
+            sb.append("This will show you memories from prior agent sessions and the ");
+            sb.append("commit timeline, synthesized into a briefing.\n\n");
+
+            sb.append("### Recording Your Work\n");
+            sb.append("When you make decisions, discover issues, or complete tasks, ");
+            sb.append("store memories with the branch context so future sessions can ");
+            sb.append("pick up where you left off:\n");
+            sb.append("```\n");
+            sb.append("mcp__ar-consultant__remember content:\"<what you learned>\" ");
+            sb.append("repo_url:\"<repo url>\" branch:\"").append(getTargetBranch());
+            sb.append("\" tags:[\"progress\"]\n");
+            sb.append("```\n\n");
+
+            sb.append("### CRITICAL: Avoid Add/Revert Loops\n");
+            sb.append("A common failure mode for coding agents is getting stuck in a loop:\n");
+            sb.append("1. Agent adds a feature or makes changes\n");
+            sb.append("2. CI pipeline fails\n");
+            sb.append("3. Agent reverts the changes to \"fix\" the failure\n");
+            sb.append("4. Next session re-adds the same changes\n");
+            sb.append("5. CI fails again, agent reverts again\n");
+            sb.append("6. Repeat indefinitely\n\n");
+            sb.append("This is NEVER the right approach. If CI fails after your changes:\n");
+            sb.append("- **DO NOT** simply revert the changes. That undoes prior agent work.\n");
+            sb.append("- **DO** investigate the actual failure and fix it properly.\n");
+            sb.append("- **DO** check `branch_catchup` to see if this same pattern ");
+            sb.append("has already occurred in prior sessions.\n");
+            sb.append("- **DO** store a memory describing the CI failure and your ");
+            sb.append("analysis so the next session doesn't repeat the same mistake.\n");
+            sb.append("- If the failure is in code YOU did not write (i.e., pre-existing ");
+            sb.append("on the branch from prior sessions), investigate whether it's a ");
+            sb.append("real bug that needs fixing vs. an environment/configuration issue.\n\n");
+        }
+
         // Budget and turn limits
         if (maxBudgetUsd > 0 || maxTurns > 0) {
             sb.append("You have");
