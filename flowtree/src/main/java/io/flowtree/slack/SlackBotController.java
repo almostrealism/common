@@ -106,8 +106,7 @@ public class SlackBotController implements JobCompletionListener, ConsoleFeature
         this.listener = new SlackListener(notifier);
         this.running = new AtomicBoolean(false);
 
-        // Wire up completion events
-        listener.setCompletionListener(this);
+        // Completion events are handled by the SlackNotifier directly
     }
 
     /**
@@ -228,6 +227,7 @@ public class SlackBotController implements JobCompletionListener, ConsoleFeature
             String channelId = event.getChannel();
             String userId = event.getUser();
             String text = event.getText();
+            String messageTs = event.getTs();
             String threadTs = event.getThreadTs();
 
             log("App mention in " + channelId + ": " + text);
@@ -237,7 +237,7 @@ public class SlackBotController implements JobCompletionListener, ConsoleFeature
                 return ctx.ack();
             }
 
-            listener.handleMessage(channelId, userId, text, threadTs);
+            listener.handleMessage(channelId, userId, text, messageTs, threadTs);
             return ctx.ack();
         });
 
@@ -253,6 +253,7 @@ public class SlackBotController implements JobCompletionListener, ConsoleFeature
             String channelId = event.getChannel();
             String userId = event.getUser();
             String text = event.getText();
+            String messageTs = event.getTs();
             String threadTs = event.getThreadTs();
 
             // Skip bot's own messages
@@ -261,7 +262,7 @@ public class SlackBotController implements JobCompletionListener, ConsoleFeature
             }
 
             log("DM from " + userId + ": " + text);
-            listener.handleMessage(channelId, userId, text, threadTs);
+            listener.handleMessage(channelId, userId, text, messageTs, threadTs);
             return ctx.ack();
         });
     }
@@ -313,7 +314,7 @@ public class SlackBotController implements JobCompletionListener, ConsoleFeature
      * @param text      the message text
      */
     public void simulateMessage(String channelId, String text) {
-        listener.handleMessage(channelId, "U_SIMULATED", text, null);
+        listener.handleMessage(channelId, "U_SIMULATED", text, null, null);
     }
 
     /**
@@ -340,13 +341,13 @@ public class SlackBotController implements JobCompletionListener, ConsoleFeature
     // JobCompletionListener implementation
 
     @Override
-    public void onJobStarted(JobCompletionEvent event) {
+    public void onJobStarted(String workstreamId, JobCompletionEvent event) {
         // Already handled by SlackListener -> SlackNotifier chain
     }
 
     @Override
-    public void onJobCompleted(JobCompletionEvent event) {
-        notifier.onJobCompleted(event);
+    public void onJobCompleted(String workstreamId, JobCompletionEvent event) {
+        notifier.onJobCompleted(workstreamId, event);
     }
 
     /**
