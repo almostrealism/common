@@ -255,14 +255,16 @@ public class NativeCompiler implements Destroyable, ConsoleFeatures {
 
 	/**
 	 * Code size threshold (in characters) above which generated C source
-	 * files receive a {@code #pragma GCC optimize("O0")} directive.
-	 * This prevents prohibitively slow compilation of large generated
+	 * files receive a {@code #pragma GCC optimize("O1")} directive.
+	 * This prevents prohibitively slow compilation of very large generated
 	 * functions (e.g., recursive FFT) under {@code -O3}, where GCC
-	 * optimization passes can exceed test timeouts.
+	 * optimization passes can exceed test timeouts.  {@code -O1} retains
+	 * basic optimizations (constant folding, dead-code elimination) so
+	 * that runtime performance remains acceptable for numerical kernels.
 	 */
-	private static final int REDUCED_OPT_THRESHOLD = 5000;
+	private static final int REDUCED_OPT_THRESHOLD = 50000;
 
-	private static final String REDUCED_OPT_PRAGMA = "#pragma GCC optimize(\"O0\")\n";
+	private static final String REDUCED_OPT_PRAGMA = "#pragma GCC optimize(\"O1\")\n";
 
 	private static int runnableCount;
 	private static int dataCount;
