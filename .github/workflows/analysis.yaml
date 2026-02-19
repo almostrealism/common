@@ -91,7 +91,7 @@ jobs:
           fi
 
   javadoc-check:
-    needs: test-media
+    needs: test-media-mac
     runs-on: ubuntu-latest
     # Out of the critical path: does not block tests or other jobs.
     # Failures are reported but do not fail the overall workflow.
@@ -620,7 +620,7 @@ jobs:
   # from starting until it completes.
 
   auto-resolve:
-    needs: [build, test, test-ml, test-media, javadoc-check, test-timeout-check, duplicate-code-check, test-integrity-check]
+    needs: [javadoc-check, test-timeout-check, duplicate-code-check, test-integrity-check]
     if: ${{ !cancelled() && github.ref != 'refs/heads/master' && contains(needs.*.result, 'failure') }}
     runs-on: [self-hosted, macos, ar-ci]
     concurrency:
