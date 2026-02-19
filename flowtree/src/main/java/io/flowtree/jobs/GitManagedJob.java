@@ -1325,6 +1325,15 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
         sb.append(",\"sessionIsError\":").append(event.isSessionError());
         sb.append(",\"permissionDenials\":").append(event.getPermissionDenials());
 
+        // Denied tool names array
+        List<String> denied = event.getDeniedToolNames();
+        sb.append(",\"deniedToolNames\":[");
+        for (int i = 0; i < denied.size(); i++) {
+            if (i > 0) sb.append(",");
+            sb.append("\"").append(escapeJson(denied.get(i))).append("\"");
+        }
+        sb.append("]");
+
         sb.append("}");
         return sb.toString();
     }

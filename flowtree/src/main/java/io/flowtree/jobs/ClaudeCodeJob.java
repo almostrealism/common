@@ -106,6 +106,7 @@ public class ClaudeCodeJob extends GitManagedJob {
     private String subtype;
     private boolean isError;
     private int permissionDenials;
+    private List<String> deniedToolNames;
 
     /**
      * Default constructor for deserialization.
@@ -622,7 +623,7 @@ public class ClaudeCodeJob extends GitManagedJob {
     protected void populateEventDetails(JobCompletionEvent event) {
         event.withClaudeCodeInfo(prompt, sessionId, exitCode);
         event.withTimingInfo(durationMs, durationApiMs, costUsd, numTurns);
-        event.withSessionDetails(subtype, isError, permissionDenials);
+        event.withSessionDetails(subtype, isError, permissionDenials, deniedToolNames);
     }
 
     @Override
@@ -1233,8 +1234,10 @@ public class ClaudeCodeJob extends GitManagedJob {
         // Extract is_error boolean
         isError = extractJsonBooleanValue(jsonOutput, "is_error");
 
-        // Count permission_denials array entries
+        // Count permission_denials array entries and extract denied tool names
         permissionDenials = countJsonArrayEntries(jsonOutput, "permission_denials");
+        deniedToolNames = io.flowtree.JsonFieldExtractor.extractFieldFromArrayObjects(
+            jsonOutput, "permission_denials", "tool");
     }
 
     /**

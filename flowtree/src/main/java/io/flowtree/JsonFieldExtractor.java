@@ -307,6 +307,74 @@ public final class JsonFieldExtractor {
 	}
 
 	/**
+	 * Extracts values of a specific string field from each object in a JSON array.
+	 *
+	 * <p>For example, given JSON containing {@code "items": [{"name": "a"}, {"name": "b"}]}
+	 * and parameters {@code arrayField="items", objectField="name"}, returns
+	 * {@code ["a", "b"]}.</p>
+	 *
+	 * @param json        the JSON string
+	 * @param arrayField  the name of the array field
+	 * @param objectField the name of the string field within each array object
+	 * @return list of extracted string values, empty if not found
+	 */
+	public static List<String> extractFieldFromArrayObjects(String json, String arrayField,
+															String objectField) {
+		List<String> result = new ArrayList<>();
+		if (json == null) return result;
+
+		int fieldIdx = json.indexOf("\"" + arrayField + "\"");
+		if (fieldIdx < 0) return result;
+
+		int colonIdx = json.indexOf(":", fieldIdx);
+		if (colonIdx < 0) return result;
+
+		int arrStart = json.indexOf("[", colonIdx);
+		if (arrStart < 0) return result;
+
+		// Find matching closing bracket
+		int arrEnd = -1;
+		int depth = 1;
+		for (int i = arrStart + 1; i < json.length() && depth > 0; i++) {
+			char c = json.charAt(i);
+			if (c == '[') depth++;
+			else if (c == ']') {
+				depth--;
+				if (depth == 0) arrEnd = i;
+			}
+		}
+
+		if (arrEnd < 0) return result;
+
+		// Walk through each object in the array and extract the target field
+		String arrContent = json.substring(arrStart + 1, arrEnd);
+		int pos = 0;
+		while (pos < arrContent.length()) {
+			int objStart = arrContent.indexOf("{", pos);
+			if (objStart < 0) break;
+
+			int objDepth = 1;
+			int objEnd = objStart + 1;
+			while (objEnd < arrContent.length() && objDepth > 0) {
+				char c = arrContent.charAt(objEnd);
+				if (c == '{') objDepth++;
+				else if (c == '}') objDepth--;
+				objEnd++;
+			}
+
+			String objBody = arrContent.substring(objStart, objEnd);
+			String value = extractString(objBody, objectField);
+			if (value != null) {
+				result.add(value);
+			}
+
+			pos = objEnd;
+		}
+
+		return result;
+	}
+
+	/**
 	 * Extracts a numeric string from the beginning of the input.
 	 *
 	 * @param rest         the string to extract from (already trimmed after the colon)
