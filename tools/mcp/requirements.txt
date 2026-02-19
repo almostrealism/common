@@ -1,7 +1,8 @@
 # Consolidated requirements for all AR MCP servers
 # Install with: pip install -r tools/mcp/requirements.txt
 #
-# Covers: ar-consultant, ar-memory, ar-test-runner, ar-jmx, ar-profile-analyzer
+# Covers: ar-consultant, ar-memory, ar-test-runner, ar-jmx,
+#          ar-profile-analyzer, ar-github, ar-slack
 
 # Core MCP framework (all servers)
 mcp>=1.0.0
@@ -15,3 +16,8 @@ numpy
 # Uncomment on macOS with Apple Silicon for local LLM in ar-consultant:
 # mlx>=0.4.0
 # mlx-lm>=0.4.0
+
+# Optional: Alternative embedding backend (ar-memory)
+# PyTorch-based, larger install (~1-2 GB). Use fastembed by default.
+# Uncomment if you need the sentence-transformers backend:
+# sentence-transformers

@@ -52,14 +52,17 @@ class MemoryStore:
             CREATE INDEX IF NOT EXISTS idx_entries_namespace
             ON entries(namespace)
         """)
+        self._conn.commit()
+
+        # Migrate existing databases that lack the repo_url/branch columns
+        # (must run BEFORE creating indexes that reference those columns)
+        self._migrate_add_columns()
+
         self._conn.execute("""
             CREATE INDEX IF NOT EXISTS idx_entries_repo_branch
             ON entries(repo_url, branch)
         """)
         self._conn.commit()
-
-        # Migrate existing databases that lack the repo_url/branch columns
-        self._migrate_add_columns()
 
     def _migrate_add_columns(self):
         """Add repo_url and branch columns if they don't exist yet (schema migration)."""
