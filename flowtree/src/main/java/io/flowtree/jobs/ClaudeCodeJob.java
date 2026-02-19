@@ -324,6 +324,39 @@ public class ClaudeCodeJob extends GitManagedJob {
             sb.append("after you finish.\n\n");
         }
 
+        // Merge conflict instructions -- when the base branch has diverged
+        if (hasMergeConflicts()) {
+            sb.append("## Merge Conflicts\n");
+            sb.append("IMPORTANT: The base branch (origin/").append(getBaseBranch());
+            sb.append(") has diverged from your working branch (").append(getTargetBranch());
+            sb.append(") and a merge attempt produced conflicts. ");
+            sb.append("The merge was aborted so your working directory is clean, ");
+            sb.append("but you MUST resolve these conflicts as part of your work.\n\n");
+            sb.append("To resolve:\n");
+            sb.append("1. Run `git merge origin/").append(getBaseBranch()).append("`\n");
+            sb.append("2. Resolve the conflicts in the following files:\n");
+            for (String file : getMergeConflictFiles()) {
+                sb.append("   - `").append(file).append("`\n");
+            }
+            sb.append("3. After resolving all conflicts, stage the resolved files with `git add`\n");
+            sb.append("4. Complete the merge with `git commit --no-edit`\n");
+            sb.append("5. Then proceed with the user's requested work\n\n");
+            sb.append("Do NOT skip conflict resolution. The merge must be completed before ");
+            sb.append("any other changes are made.\n\n");
+        }
+
+        // Remote branch context -- user instructions always refer to remote branches
+        sb.append("## Branch Context\n");
+        sb.append("This work is being done in a sandboxed environment. ");
+        sb.append("When the user's instructions mention branch names (e.g., \"this works ");
+        sb.append("on master\", \"compare with develop\", \"based on main\"), they are ALWAYS ");
+        sb.append("referring to the remote branch (origin/<branch>). Local branches in this ");
+        sb.append("sandbox may be stale or absent. Always use `origin/<branch>` when ");
+        sb.append("comparing, cherry-picking, or referencing other branches. For example:\n");
+        sb.append("- \"works on master\" means `origin/master`\n");
+        sb.append("- \"merge from develop\" means `origin/develop`\n");
+        sb.append("- \"diff against main\" means `git diff origin/main`\n\n");
+
         // Working directory and branch context
         String workDir = getWorkingDirectory();
         sb.append("Your working directory is: ");
