@@ -61,7 +61,7 @@ public class ProductDeltaIsolationTest extends TestSuiteBase implements TestFeat
 	 *
 	 * <p>Configuration: 2x2 matrix multiply</p>
 	 */
-	@Test
+	@Test(timeout = 600000)
 	public void testProductDelta2x2() throws IOException {
 		runProductDeltaTest("product_delta_2x2", 2, 2, 2);
 	}
@@ -71,7 +71,7 @@ public class ProductDeltaIsolationTest extends TestSuiteBase implements TestFeat
 	 *
 	 * <p>Configuration: 4x4 matrix multiply</p>
 	 */
-	@Test
+	@Test(timeout = 600000)
 	public void testProductDelta4x4() throws IOException {
 		runProductDeltaTest("product_delta_4x4", 4, 4, 4);
 	}
@@ -81,7 +81,7 @@ public class ProductDeltaIsolationTest extends TestSuiteBase implements TestFeat
 	 *
 	 * <p>Configuration: 8x8 matrix multiply</p>
 	 */
-	@Test
+	@Test(timeout = 600000)
 	public void testProductDelta8x8() throws IOException {
 		runProductDeltaTest("product_delta_8x8", 8, 8, 8);
 	}
@@ -91,7 +91,7 @@ public class ProductDeltaIsolationTest extends TestSuiteBase implements TestFeat
 	 *
 	 * <p>Configuration: 16x16 matrix multiply</p>
 	 */
-	@Test
+	@Test(timeout = 600000)
 	public void testProductDelta16x16() throws IOException {
 		runProductDeltaTest("product_delta_16x16", 16, 16, 16);
 	}
@@ -101,7 +101,7 @@ public class ProductDeltaIsolationTest extends TestSuiteBase implements TestFeat
 	 *
 	 * <p>Configuration: 32x32 matrix multiply</p>
 	 */
-	@Test
+	@Test(timeout = 600000)
 	public void testProductDelta32x32() throws IOException {
 		runProductDeltaTest("product_delta_32x32", 32, 32, 32);
 	}
@@ -111,7 +111,7 @@ public class ProductDeltaIsolationTest extends TestSuiteBase implements TestFeat
 	 *
 	 * <p>Configuration: 64x64 matrix multiply</p>
 	 */
-	@Test
+	@Test(timeout = 600000)
 	public void testProductDelta64x64() throws IOException {
 		runProductDeltaTest("product_delta_64x64", 64, 64, 64);
 	}
@@ -122,7 +122,7 @@ public class ProductDeltaIsolationTest extends TestSuiteBase implements TestFeat
 	 * <p>This tests if the pattern emerges from chained operations rather
 	 * than a single multiply.</p>
 	 */
-	@Test
+	@Test(timeout = 600000)
 	public void testChainedProductDelta() throws IOException {
 		runChainedProductTest("chained_product_delta", 16, 16, 16);
 	}
@@ -132,7 +132,7 @@ public class ProductDeltaIsolationTest extends TestSuiteBase implements TestFeat
 	 *
 	 * <p>Configuration: (batch=1, seq=2, dim=64) x (64, 64) - mimics Q projection</p>
 	 */
-	@Test
+	@Test(timeout = 600000)
 	public void testProductDeltaProjection() throws IOException {
 		runProjectionDeltaTest("product_delta_projection", 1, 2, 64, 64);
 	}
@@ -140,7 +140,7 @@ public class ProductDeltaIsolationTest extends TestSuiteBase implements TestFeat
 	/**
 	 * Tests dense layer backward pass (the actual layer used in transformer).
 	 */
-	@Test
+	@Test(timeout = 600000)
 	public void testDenseLayerDelta() throws IOException {
 		runDenseLayerTest("dense_layer_delta", 1, 2, 64, 64);
 	}
@@ -148,7 +148,7 @@ public class ProductDeltaIsolationTest extends TestSuiteBase implements TestFeat
 	/**
 	 * Tests two stacked dense layers (like attention Q + O projections).
 	 */
-	@Test
+	@Test(timeout = 600000)
 	public void testStackedDenseLayersDelta() throws IOException {
 		runStackedDenseLayersTest("stacked_dense_delta", 1, 2, 64, 64);
 	}
@@ -158,7 +158,7 @@ public class ProductDeltaIsolationTest extends TestSuiteBase implements TestFeat
 	 * This is to check if the expressionCacheMatch pattern emerges from
 	 * repeated execution rather than single-shot compilation.
 	 */
-	@Test
+	@Test(timeout = 600000)
 	public void testRepeatedBackwardPasses() throws IOException {
 		runRepeatedBackwardTest("repeated_backward", 1, 2, 64, 64, 5);
 	}
@@ -168,7 +168,7 @@ public class ProductDeltaIsolationTest extends TestSuiteBase implements TestFeat
 	 * ModelOptimizer computes loss gradient: dloss.evaluate(out, target)
 	 * and passes that to backward(). This might be the trigger.
 	 */
-	@Test
+	@Test(timeout = 600000)
 	public void testWithLossFunction() throws IOException {
 		runLossFunctionTest("with_loss_function", 1, 2, 64, 64, 3);
 	}
@@ -178,7 +178,7 @@ public class ProductDeltaIsolationTest extends TestSuiteBase implements TestFeat
 	 * The DiffusionTransformer has many layers, each creating gradient expressions.
 	 * This test aims to recreate the expressionCacheMatch_7_27_Sum pattern.
 	 */
-	@Test
+	@Test(timeout = 600000)
 	public void testDeepModelBackward() throws IOException {
 		runDeepModelTest("deep_model_backward", 1, 2, 64, 64, 8);
 	}
@@ -186,7 +186,7 @@ public class ProductDeltaIsolationTest extends TestSuiteBase implements TestFeat
 	/**
 	 * Tests with 16 layers - closer to real transformer depth.
 	 */
-	@Test
+	@Test(timeout = 600000)
 	public void testVeryDeepModelBackward() throws IOException {
 		runDeepModelTest("very_deep_model_backward", 1, 2, 64, 64, 16);
 	}
@@ -196,7 +196,7 @@ public class ProductDeltaIsolationTest extends TestSuiteBase implements TestFeat
 	 * This creates more complex expression trees than simple dense layers,
 	 * potentially triggering the expressionCacheMatch_7_27_Sum pattern.
 	 */
-	@Test
+	@Test(timeout = 600000)
 	public void testAttentionLikeBackward() throws IOException {
 		runAttentionLikeTest("attention_like_backward", 1, 4, 64, 8);
 	}
@@ -204,7 +204,7 @@ public class ProductDeltaIsolationTest extends TestSuiteBase implements TestFeat
 	/**
 	 * Tests multiple attention-like blocks to increase expression complexity.
 	 */
-	@Test
+	@Test(timeout = 600000)
 	public void testMultiAttentionBackward() throws IOException {
 		runMultiAttentionTest("multi_attention_backward", 1, 4, 64, 8, 4);
 	}
@@ -213,7 +213,7 @@ public class ProductDeltaIsolationTest extends TestSuiteBase implements TestFeat
 	 * Tests a single attention-like block (reduced from 4).
 	 * Goal: Complete within 15 minutes to generate a profile.
 	 */
-	@Test
+	@Test(timeout = 600000)
 	public void testSingleAttentionBackward() throws IOException {
 		runMultiAttentionTest("single_attention_backward", 1, 4, 64, 8, 1);
 	}
@@ -222,7 +222,7 @@ public class ProductDeltaIsolationTest extends TestSuiteBase implements TestFeat
 	 * Tests two attention-like blocks.
 	 * If single block works, try two to see scaling.
 	 */
-	@Test
+	@Test(timeout = 600000)
 	public void testTwoAttentionBackward() throws IOException {
 		runMultiAttentionTest("two_attention_backward", 1, 4, 64, 8, 2);
 	}
@@ -232,7 +232,7 @@ public class ProductDeltaIsolationTest extends TestSuiteBase implements TestFeat
 	 * Based on analysis, we need to create expressions with EXACTLY depth=7 and nodes=27.
 	 * The pattern appears in matmul backward with specific dimension combinations.
 	 */
-	@Test
+	@Test(timeout = 600000)
 	public void testExpressionPatternHunting() throws IOException {
 		Files.createDirectories(RESULTS_DIR);
 

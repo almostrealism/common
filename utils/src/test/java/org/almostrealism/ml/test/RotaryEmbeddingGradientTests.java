@@ -98,7 +98,7 @@ public class RotaryEmbeddingGradientTests extends TestSuiteBase {
 	 * Tests the core RoPE formula gradient at minimal scale.
 	 * Formula: input * cos(freqs) + rotate_half(input) * sin(freqs)
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void ropeFormulaGradientTiny() throws IOException {
 		ropeFormulaGradient("ropeTiny", 1, 1, 4, 8);
 	}
@@ -106,7 +106,7 @@ public class RotaryEmbeddingGradientTests extends TestSuiteBase {
 	/**
 	 * Tests the core RoPE formula gradient at small scale.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void ropeFormulaGradientSmall() throws IOException {
 		ropeFormulaGradient("ropeSmall", 1, 2, 8, 16);
 	}
@@ -115,7 +115,7 @@ public class RotaryEmbeddingGradientTests extends TestSuiteBase {
 	 * Tests the core RoPE formula gradient at medium scale.
 	 * This is closer to typical model dimensions.
 	 */
-	@Test
+	@Test(timeout = 300000)
 	@TestDepth(1)
 	public void ropeFormulaGradientMedium() throws IOException {
 		ropeFormulaGradient("ropeMedium", 1, 4, 16, 32);
@@ -125,7 +125,7 @@ public class RotaryEmbeddingGradientTests extends TestSuiteBase {
 	 * Tests the core RoPE formula gradient at larger scale.
 	 * This matches realistic transformer attention head sizes.
 	 */
-	@Test
+	@Test(timeout = 600000)
 	@TestDepth(2)
 	public void ropeFormulaGradientLarge() throws IOException {
 		ropeFormulaGradient("ropeLarge", 1, 8, 32, 64);
@@ -135,7 +135,7 @@ public class RotaryEmbeddingGradientTests extends TestSuiteBase {
 	 * Tests RoPE gradient with realistic DiffusionTransformer dimensions.
 	 * batch=1, heads=6, seqLen=24, rotaryDim=64
 	 */
-	@Test
+	@Test(timeout = 600000)
 	@TestDepth(2)
 	public void ropeFormulaGradientRealistic() throws IOException {
 		ropeFormulaGradient("ropeRealistic", 1, 6, 24, 64);
@@ -182,7 +182,7 @@ public class RotaryEmbeddingGradientTests extends TestSuiteBase {
 	 * Tests the rotateHalf operation gradient in isolation.
 	 * rotateHalf(input) = concat(3, -x2, x1) where x1=first half, x2=second half
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void rotateHalfGradientTiny() throws IOException {
 		rotateHalfGradient("rotateHalfTiny", 1, 1, 4, 8);
 	}
@@ -190,7 +190,7 @@ public class RotaryEmbeddingGradientTests extends TestSuiteBase {
 	/**
 	 * Tests the rotateHalf operation gradient at medium scale.
 	 */
-	@Test
+	@Test(timeout = 300000)
 	@TestDepth(1)
 	public void rotateHalfGradientMedium() throws IOException {
 		rotateHalfGradient("rotateHalfMedium", 1, 4, 16, 32);
@@ -221,12 +221,12 @@ public class RotaryEmbeddingGradientTests extends TestSuiteBase {
 	/**
 	 * Tests input*cos(freqs) gradient pattern in isolation.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void inputTimesCosGradientTiny() throws IOException {
 		inputTimesCosGradient("inputCosGradTiny", 1, 1, 4, 8);
 	}
 
-	@Test
+	@Test(timeout = 300000)
 	@TestDepth(1)
 	public void inputTimesCosGradientMedium() throws IOException {
 		inputTimesCosGradient("inputCosGradMedium", 1, 4, 16, 32);
@@ -265,12 +265,12 @@ public class RotaryEmbeddingGradientTests extends TestSuiteBase {
 	/**
 	 * Tests rotateHalf(input)*sin(freqs) gradient pattern in isolation.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void rotateHalfTimesSinGradientTiny() throws IOException {
 		rotateHalfTimesSinGradient("rotateHalfSinGradTiny", 1, 1, 4, 8);
 	}
 
-	@Test
+	@Test(timeout = 300000)
 	@TestDepth(1)
 	public void rotateHalfTimesSinGradientMedium() throws IOException {
 		rotateHalfTimesSinGradient("rotateHalfSinGradMedium", 1, 4, 16, 32);
@@ -314,12 +314,12 @@ public class RotaryEmbeddingGradientTests extends TestSuiteBase {
 	/**
 	 * Tests subset operation gradient in isolation.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void subsetGradientTiny() throws IOException {
 		subsetGradient("subsetGradTiny", 1, 2, 4, 16);
 	}
 
-	@Test
+	@Test(timeout = 300000)
 	@TestDepth(1)
 	public void subsetGradientMedium() throws IOException {
 		subsetGradient("subsetGradMedium", 1, 4, 16, 64);
@@ -352,12 +352,12 @@ public class RotaryEmbeddingGradientTests extends TestSuiteBase {
 	/**
 	 * Tests concat operation gradient in isolation.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void concatGradientTiny() throws IOException {
 		concatGradient("concatGradTiny", 1, 2, 4, 8);
 	}
 
-	@Test
+	@Test(timeout = 300000)
 	@TestDepth(1)
 	public void concatGradientMedium() throws IOException {
 		concatGradient("concatGradMedium", 1, 4, 16, 16);

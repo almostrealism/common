@@ -39,7 +39,7 @@ public class TrigonometricDeltaComputationTests extends TestSuiteBase {
 	/**
 	 * Tests that d/dx[sin(x)] = cos(x) for a simple scalar case.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void sineDeltaScalar() {
 		PackedCollection input = pack(0.0, Math.PI / 6, Math.PI / 4, Math.PI / 3, Math.PI / 2);
 		CollectionProducer x = cp(input);
@@ -76,7 +76,7 @@ public class TrigonometricDeltaComputationTests extends TestSuiteBase {
 	/**
 	 * Tests that d/dx[cos(x)] = -sin(x) for a simple scalar case.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void cosineDeltaScalar() {
 		PackedCollection input = pack(0.0, Math.PI / 6, Math.PI / 4, Math.PI / 3, Math.PI / 2);
 		CollectionProducer x = cp(input);
@@ -113,7 +113,7 @@ public class TrigonometricDeltaComputationTests extends TestSuiteBase {
 	/**
 	 * Tests the chain rule: d/dx[sin(2x)] = 2*cos(2x).
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void sineChainRule() {
 		PackedCollection input = pack(0.0, Math.PI / 6, Math.PI / 4, Math.PI / 3, Math.PI / 2);
 		CollectionProducer x = cp(input);
@@ -147,7 +147,7 @@ public class TrigonometricDeltaComputationTests extends TestSuiteBase {
 	/**
 	 * Tests the chain rule: d/dx[cos(3x + 1)] = -3*sin(3x + 1).
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void cosineChainRule() {
 		PackedCollection input = pack(0.0, 0.5, 1.0, 1.5, 2.0);
 		CollectionProducer x = cp(input);
@@ -183,7 +183,7 @@ public class TrigonometricDeltaComputationTests extends TestSuiteBase {
 	/**
 	 * Tests composed functions: d/dx[sin(cos(x))] = cos(cos(x)) * (-sin(x)).
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void sinCosComposition() {
 		PackedCollection input = pack(0.0, 0.5, 1.0, 1.5, 2.0);
 		CollectionProducer x = cp(input);
@@ -220,7 +220,7 @@ public class TrigonometricDeltaComputationTests extends TestSuiteBase {
 	/**
 	 * Tests sine gradient with 2D input to verify batch handling.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void sineDelta2D() {
 		int rows = 3;
 		int cols = 4;
@@ -249,7 +249,7 @@ public class TrigonometricDeltaComputationTests extends TestSuiteBase {
 	/**
 	 * Performance test for sine gradient at small scale.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void sineDeltaPerformanceSmall() throws IOException {
 		sineDeltaPerformance("sineDeltaSmall", 16);
 	}
@@ -257,7 +257,7 @@ public class TrigonometricDeltaComputationTests extends TestSuiteBase {
 	/**
 	 * Performance test for sine gradient at medium scale.
 	 */
-	@Test
+	@Test(timeout = 300000)
 	@TestDepth(1)
 	public void sineDeltaPerformanceMedium() throws IOException {
 		sineDeltaPerformance("sineDeltaMedium", 64);
@@ -266,7 +266,7 @@ public class TrigonometricDeltaComputationTests extends TestSuiteBase {
 	/**
 	 * Performance test for sine gradient at larger scale.
 	 */
-	@Test
+	@Test(timeout = 600000)
 	@TestDepth(2)
 	public void sineDeltaPerformanceLarge() throws IOException {
 		sineDeltaPerformance("sineDeltaLarge", 256);
@@ -304,7 +304,7 @@ public class TrigonometricDeltaComputationTests extends TestSuiteBase {
 	/**
 	 * Performance test for cosine gradient at small scale.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void cosineDeltaPerformanceSmall() throws IOException {
 		cosineDeltaPerformance("cosineDeltaSmall", 16);
 	}
@@ -312,7 +312,7 @@ public class TrigonometricDeltaComputationTests extends TestSuiteBase {
 	/**
 	 * Performance test for cosine gradient at medium scale.
 	 */
-	@Test
+	@Test(timeout = 300000)
 	@TestDepth(1)
 	public void cosineDeltaPerformanceMedium() throws IOException {
 		cosineDeltaPerformance("cosineDeltaMedium", 64);
@@ -350,7 +350,7 @@ public class TrigonometricDeltaComputationTests extends TestSuiteBase {
 	 * Tests sin + cos combination gradient.
 	 * d/dx[sin(x) + cos(x)] = cos(x) - sin(x)
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void sinPlusCosGradient() {
 		PackedCollection input = pack(0.0, Math.PI / 4, Math.PI / 2, Math.PI);
 		CollectionProducer x = cp(input);
@@ -375,7 +375,7 @@ public class TrigonometricDeltaComputationTests extends TestSuiteBase {
 	 * Tests sin * cos combination gradient.
 	 * d/dx[sin(x) * cos(x)] = cos^2(x) - sin^2(x)
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void sinTimesCosGradient() {
 		PackedCollection input = pack(0.0, Math.PI / 6, Math.PI / 4, Math.PI / 3);
 		CollectionProducer x = cp(input);
@@ -406,7 +406,7 @@ public class TrigonometricDeltaComputationTests extends TestSuiteBase {
 	 * Tests sin(matmul) pattern used in Fourier features.
 	 * This matches the pattern: sin(2*PI * matmul(input, weights.T))
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void sinOfMatmulSmall() throws IOException {
 		int batchSize = 1;
 		int inFeatures = 4;
@@ -447,7 +447,7 @@ public class TrigonometricDeltaComputationTests extends TestSuiteBase {
 	 * Tests the full Fourier features pattern: concat(cos(f), sin(f))
 	 * where f = 2*PI * matmul(input, weights.T)
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void fourierFeaturesPatternSmall() throws IOException {
 		int batchSize = 1;
 		int inFeatures = 4;
@@ -489,7 +489,7 @@ public class TrigonometricDeltaComputationTests extends TestSuiteBase {
 	 * Performance test for Fourier features gradient at model-realistic scale.
 	 * Uses dimensions similar to the DiffusionTransformer: batchSize=1, inFeatures=1, outFeatures=256
 	 */
-	@Test
+	@Test(timeout = 300000)
 	@TestDepth(1)
 	public void fourierFeaturesPerformanceMedium() throws IOException {
 		fourierFeaturesPerformance("fourierMedium", 1, 1, 128);
@@ -499,7 +499,7 @@ public class TrigonometricDeltaComputationTests extends TestSuiteBase {
 	 * Performance test for Fourier features gradient at larger scale.
 	 * outFeatures=256 matches the actual timestep embedding in DiffusionTransformer.
 	 */
-	@Test
+	@Test(timeout = 600000)
 	@TestDepth(2)
 	public void fourierFeaturesPerformanceLarge() throws IOException {
 		fourierFeaturesPerformance("fourierLarge", 1, 1, 256);
@@ -543,7 +543,7 @@ public class TrigonometricDeltaComputationTests extends TestSuiteBase {
 	 * Tests gradient through sin(matmul) with respect to WEIGHTS (not input).
 	 * This is what actually happens during training - we need gradients w.r.t. learned weights.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void sinOfMatmulWeightGradient() throws IOException {
 		int batchSize = 1;
 		int inFeatures = 4;
@@ -582,7 +582,7 @@ public class TrigonometricDeltaComputationTests extends TestSuiteBase {
 	 * Performance test for Fourier features weight gradient at model-realistic scale.
 	 * This is the pattern that occurs during backpropagation through the timestep embedding.
 	 */
-	@Test
+	@Test(timeout = 300000)
 	@TestDepth(1)
 	public void fourierFeaturesWeightGradientMedium() throws IOException {
 		fourierFeaturesWeightGradient("fourierWeightMedium", 1, 1, 64);
@@ -591,7 +591,7 @@ public class TrigonometricDeltaComputationTests extends TestSuiteBase {
 	/**
 	 * Performance test for Fourier features weight gradient at larger scale.
 	 */
-	@Test
+	@Test(timeout = 600000)
 	@TestDepth(2)
 	public void fourierFeaturesWeightGradientLarge() throws IOException {
 		fourierFeaturesWeightGradient("fourierWeightLarge", 1, 1, 128);

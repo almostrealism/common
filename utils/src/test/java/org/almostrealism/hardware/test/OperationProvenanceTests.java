@@ -32,7 +32,7 @@ import static org.junit.Assert.*;
  */
 public class OperationProvenanceTests extends TestSuiteBase {
 
-	@Test
+	@Test(timeout = 30000)
 	public void testMetadataWithProvenance() {
 		OperationMetadata original = new OperationMetadata("add", "add values");
 		OperationMetadata withProv = original.withProvenance("layer X");
@@ -41,7 +41,7 @@ public class OperationProvenanceTests extends TestSuiteBase {
 		assertEquals("add", withProv.getDisplayName());
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void testMetadataWithProvenanceNoShortDescription() {
 		OperationMetadata original = new OperationMetadata("multiply", null);
 		OperationMetadata withProv = original.withProvenance("parent op");
@@ -50,7 +50,7 @@ public class OperationProvenanceTests extends TestSuiteBase {
 		assertEquals("multiply", withProv.getDisplayName());
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void testNestedProvenanceChain() {
 		OperationMetadata original = new OperationMetadata("add", null);
 		OperationMetadata level1 = original.withProvenance("inner");
@@ -59,7 +59,7 @@ public class OperationProvenanceTests extends TestSuiteBase {
 		assertEquals("outer ==> inner ==> add", level2.getShortDescription());
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void testFlattenPreservesProvenance() {
 		PackedCollection a = new PackedCollection(shape(10));
 		PackedCollection b = new PackedCollection(shape(10));
@@ -89,7 +89,7 @@ public class OperationProvenanceTests extends TestSuiteBase {
 		assertEquals("layer gradient ==> inner add", metadata.getShortDescription());
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void testFlattenWithComputeRequirementsPreservesStructure() {
 		PackedCollection a = new PackedCollection(shape(10));
 		PackedCollection b = new PackedCollection(shape(10));
@@ -113,7 +113,7 @@ public class OperationProvenanceTests extends TestSuiteBase {
 		assertTrue("Should remain as OperationList", flat.get(0) instanceof OperationList);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void testFlattenNoDescriptionNoProvenance() {
 		PackedCollection a = new PackedCollection(shape(10));
 		PackedCollection b = new PackedCollection(shape(10));
@@ -141,7 +141,7 @@ public class OperationProvenanceTests extends TestSuiteBase {
 		assertEquals("original desc", metadata.getShortDescription());
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void testDeepNestedFlatten() {
 		PackedCollection a = new PackedCollection(shape(10));
 		PackedCollection b = new PackedCollection(shape(10));
