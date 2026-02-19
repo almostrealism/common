@@ -134,9 +134,7 @@ jobs:
   test-timeout-check:
     needs: build
     runs-on: ubuntu-latest
-    # Out of the critical path: does not block tests or other jobs.
-    # Failures are reported but do not fail the overall workflow.
-    continue-on-error: true
+    # Critical path: failures block the test jobs and trigger auto-resolve.
     outputs:
       passed: ${{ steps.check.outcome == 'success' }}
     steps:
@@ -179,9 +177,7 @@ jobs:
   duplicate-code-check:
     needs: build
     runs-on: ubuntu-latest
-    # Out of the critical path: does not block tests or other jobs.
-    # Failures are reported but do not fail the overall workflow.
-    continue-on-error: true
+    # Critical path: failures block the test jobs and trigger auto-resolve.
     outputs:
       passed: ${{ steps.check.outcome == 'success' }}
     steps:
@@ -247,7 +243,7 @@ jobs:
         run: mvn install -DskipTests
 
   test:
-    needs: build
+    needs: [build, test-integrity-check, test-timeout-check, duplicate-code-check]
     runs-on: [self-hosted, linux, ar-ci]
     strategy:
       fail-fast: true
