@@ -38,12 +38,12 @@ if [ "${JAVADOC_PASSED:-true}" != "true" ]; then
 fi
 
 if [ "${TIMEOUT_PASSED:-true}" != "true" ]; then
-    echo "- test-timeout-check: Some @Test annotations are missing a timeout parameter. Run \`mvn test -pl utils -Dtest=CodePolicyEnforcementTest#enforceTestTimeouts\` locally to see details." >> "$OUTPUT_FILE"
+    echo "- test-timeout-check: Some @Test annotations are missing a timeout parameter. Run \`mvn test -pl tools -Dtest=CodePolicyEnforcementTest#enforceTestTimeouts\` locally to see details." >> "$OUTPUT_FILE"
     FAILURE_COUNT=$((FAILURE_COUNT + 1))
 fi
 
 if [ "${DUPLICATE_PASSED:-true}" != "true" ]; then
-    echo "- duplicate-code-check: Duplicate code blocks (10+ identical lines) detected across different files. Run \`mvn test -pl utils -Dtest=CodePolicyEnforcementTest#enforceNoDuplicateCode\` locally to see details." >> "$OUTPUT_FILE"
+    echo "- duplicate-code-check: Duplicate code blocks (10+ identical lines) detected across different files. Run \`mvn test -pl tools -Dtest=CodePolicyEnforcementTest#enforceNoDuplicateCode\` locally to see details." >> "$OUTPUT_FILE"
     FAILURE_COUNT=$((FAILURE_COUNT + 1))
 fi
 
