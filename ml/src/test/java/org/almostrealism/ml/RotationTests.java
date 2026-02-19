@@ -31,7 +31,7 @@ import org.junit.Test;
 
 public class RotationTests extends TestSuiteBase implements RotationFeatures {
 
-	@Test(timeout = 120000)
+	@Test(timeout = 30000)
 	public void permutationCompilation() {
 		int batchSize = 1, seqLen = 4, heads = 2, dimHead = 8;
 		TraversalPolicy inputShape = shape(batchSize, seqLen, heads, dimHead);
@@ -73,7 +73,7 @@ public class RotationTests extends TestSuiteBase implements RotationFeatures {
 		assertEquals(input, compiledResult);
 	}
 
-	@Test(timeout = 120000)
+	@Test(timeout = 30000)
 	public void batchCosineProduct() {
 		int batchSize = 2;
 		int heads = 3;
@@ -111,7 +111,7 @@ public class RotationTests extends TestSuiteBase implements RotationFeatures {
 		assertTrue("Cosine values should match expected", diff < 1e-6);
 	}
 
-	@Test(timeout = 120000)
+	@Test(timeout = 30000)
 	public void batchRotarySum() {
 		int batchSize = 2;
 		int heads = 3;
@@ -155,7 +155,7 @@ public class RotationTests extends TestSuiteBase implements RotationFeatures {
 		assertTrue("Cosine values should match expected", diff < 1e-6);
 	}
 
-	@Test(timeout = 120000)
+	@Test(timeout = 30000)
 	public void rotateHalf() {
 		int batchSize = 1;
 		int heads = 2;
@@ -187,7 +187,7 @@ public class RotationTests extends TestSuiteBase implements RotationFeatures {
 		}
 	}
 
-	@Test(timeout = 120000)
+	@Test(timeout = 30000)
 	public void rotateHalfSum() {
 		int batchSize = 1;
 		int heads = 2;
@@ -225,7 +225,7 @@ public class RotationTests extends TestSuiteBase implements RotationFeatures {
 		assertTrue("Average difference exceeded", diff < 1e-6);
 	}
 
-	@Test(timeout = 120000)
+	@Test(timeout = 30000)
 	public void rotateHalfProductSum() {
 		int batchSize = 1;
 		int heads = 2;
@@ -289,7 +289,7 @@ public class RotationTests extends TestSuiteBase implements RotationFeatures {
 		assertTrue("Average difference exceeded", diff < 1e-6);
 	}
 
-	@Test(timeout = 120000)
+	@Test(timeout = 30000)
 	public void applyRotaryTransform() {
 		int batchSize = 2;
 		int heads = 3;
@@ -343,7 +343,7 @@ public class RotationTests extends TestSuiteBase implements RotationFeatures {
 		assertTrue("Average difference exceeded", diff < 1e-6);
 	}
 
-	@Test(timeout = 120000)
+	@Test(timeout = 30000)
 	public void applyRotaryTransformCompare() throws Exception {
 		if (testProfileIs(TestUtils.PIPELINE)) return;
 

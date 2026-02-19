@@ -50,7 +50,7 @@ import java.util.List;
 public class RescalingAggregationTests extends TestSuiteBase implements PatternFeatures, AudioTestFeatures {
 	private final int sampleRate = OutputLine.sampleRate;
 
-	@Test(timeout = 120000)
+	@Test(timeout = 60000)
 	public void loadAggregated() throws IOException {
 		if (skipKnownIssues) return;
 		// Use synthetic audio for testing FFT aggregation
@@ -70,7 +70,7 @@ public class RescalingAggregationTests extends TestSuiteBase implements PatternF
 		Assert.assertTrue(total > 10);
 	}
 
-	@Test(timeout = 120000)
+	@Test(timeout = 60000)
 	public void rescaleVolume() throws IOException {
 		VolumeRescalingSourceAggregator aggregator = new VolumeRescalingSourceAggregator();
 
@@ -89,7 +89,7 @@ public class RescalingAggregationTests extends TestSuiteBase implements PatternF
 	}
 
 
-	@Test(timeout = 120000)
+	@Test(timeout = 60000)
 	public void rescaleFrequency() throws IOException {
 		FrequencyRescalingSourceAggregator aggregator = new FrequencyRescalingSourceAggregator();
 
@@ -107,7 +107,7 @@ public class RescalingAggregationTests extends TestSuiteBase implements PatternF
 		out.save(new File("results/rescaling-frequency.wav"));
 	}
 
-	@Test(timeout = 120000)
+	@Test(timeout = 60000)
 	public void rescaleModular1() throws IOException {
 		modularRescale("rescaling-modular-1",
 				ModularSourceAggregator.InputType.SOURCE,
@@ -115,7 +115,7 @@ public class RescalingAggregationTests extends TestSuiteBase implements PatternF
 				ModularSourceAggregator.InputType.VOLUME_ENVELOPE);
 	}
 
-	@Test(timeout = 120000)
+	@Test(timeout = 60000)
 	public void rescaleModular2() throws IOException {
 		modularRescale("rescaling-modular-2",
 				ModularSourceAggregator.InputType.SOURCE,
@@ -142,7 +142,7 @@ public class RescalingAggregationTests extends TestSuiteBase implements PatternF
 		out.save(new File("results/" + name + ".wav"));
 	}
 
-	@Test(timeout = 120000)
+	@Test(timeout = 60000)
 	public void aggregatedPattern() {
 		// Define the shared parameters, including how notes should be
 		// tuned and a root for the scale and the synth

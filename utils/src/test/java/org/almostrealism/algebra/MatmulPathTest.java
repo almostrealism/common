@@ -135,7 +135,7 @@ public class MatmulPathTest extends TestSuiteBase implements MatrixFeatures, Con
 	/**
 	 * Benchmark compile times at different output sizes.
 	 */
-	@Test(timeout = 120000)
+	@Test(timeout = 60000)
 	public void testCompileTimeBenchmark() {
 		int inputSize = 128;
 		int[] outputSizes = {100, 500, 1000, 2000, 5000, 8000, 10000, 12000};

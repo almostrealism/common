@@ -78,7 +78,7 @@ public class WeightedSumIsolationRuntimeTest extends TestSuiteBase implements Al
 	 * Comprehensive test measuring both compilation AND execution time.
 	 * Calculates break-even point for various execution counts.
 	 */
-	@Test(timeout = 120000)
+	@Test(timeout = 60000)
 	public void testCompilationVsExecutionTradeoff() {
 		System.out.println("=== Compilation vs Execution Tradeoff Analysis ===\n");
 		System.out.println("Measuring compilation time + execution time for " + MEASUREMENT_ITERATIONS + " iterations\n");
@@ -146,7 +146,7 @@ public class WeightedSumIsolationRuntimeTest extends TestSuiteBase implements Al
 	/**
 	 * Detailed test for a single group size showing the full picture.
 	 */
-	@Test(timeout = 120000)
+	@Test(timeout = 60000)
 	public void testDetailedAnalysis() {
 		System.out.println("=== Detailed Analysis for GroupSize=64 ===\n");
 
@@ -189,7 +189,7 @@ public class WeightedSumIsolationRuntimeTest extends TestSuiteBase implements Al
 	 * Analysis specifically targeting 10K-100K iteration use case.
 	 * Finds the optimal threshold where isolation starts to make sense.
 	 */
-	@Test(timeout = 120000)
+	@Test(timeout = 60000)
 	public void testThresholdForTypicalUsage() {
 		System.out.println("=== Threshold Analysis for 10K-100K Iterations ===\n");
 		System.out.println("Finding where isolation becomes beneficial for typical application usage.\n");

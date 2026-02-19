@@ -41,7 +41,7 @@ public class Conv1dCorrectnessTest implements LayerFeatures {
 	 * Test weightedSum directly with the same parameters as conv1d.
 	 * This isolates whether the bug is in convolution1d setup or weightedSum.
 	 */
-	@Test(timeout = 120000)
+	@Test(timeout = 60000)
 	public void testWeightedSumDirect() {
 		int batchSize = 1;
 		int inputChannels = 1;
@@ -118,7 +118,7 @@ public class Conv1dCorrectnessTest implements LayerFeatures {
 	 * Test 0: Minimal test using manual matrix multiplication.
 	 * This verifies that basic element-by-element operations work.
 	 */
-	@Test(timeout = 120000)
+	@Test(timeout = 60000)
 	public void testManualConv() {
 		// Input: [1, 2, 3, 4, 5]
 		// Weights: [0.5, 1.0, 0.5]
@@ -152,7 +152,7 @@ public class Conv1dCorrectnessTest implements LayerFeatures {
 		System.out.println("=== Manual test PASSED ===\n");
 	}
 
-	@Test(timeout = 120000)
+	@Test(timeout = 60000)
 	public void testSimpleConv1d() {
 		// Disable debug logging - it causes toArray() errors with parameterized expressions
 		io.almostrealism.collect.SubsetTraversalExpression.enableLogging = false;
@@ -213,7 +213,7 @@ public class Conv1dCorrectnessTest implements LayerFeatures {
 	 * Test to isolate whether the issue is with reshape or layer wrapping.
 	 * This calls weightedSum with reshape (like conv1d does) but without a Model wrapper.
 	 */
-	@Test(timeout = 120000)
+	@Test(timeout = 60000)
 	public void testWeightedSumWithReshape() {
 		int batchSize = 1;
 		int inputChannels = 1;
@@ -284,7 +284,7 @@ public class Conv1dCorrectnessTest implements LayerFeatures {
 	 * Test to see what happens when calling weightedSum with reshape but WITHOUT the stride rate.
 	 * This should reproduce the conv1d bug.
 	 */
-	@Test(timeout = 120000)
+	@Test(timeout = 60000)
 	public void testWeightedSumWithReshapeNoStrideRate() {
 		int batchSize = 1;
 		int inputChannels = 1;
@@ -366,7 +366,7 @@ public class Conv1dCorrectnessTest implements LayerFeatures {
 	 * Weights: [1.0, 0, 0] (identity-like, just takes first element of kernel window)
 	 * Expected: [1, 2, 3, 4, 5, 6]
 	 */
-	@Test(timeout = 120000)
+	@Test(timeout = 60000)
 	public void testPositionVariesAcrossSequence() {
 		int batchSize = 1;
 		int inputChannels = 1;
@@ -432,7 +432,7 @@ public class Conv1dCorrectnessTest implements LayerFeatures {
 	 * Test 3: Multiple output channels.
 	 * Tests that each output channel gets the right filter applied.
 	 */
-	@Test(timeout = 120000)
+	@Test(timeout = 60000)
 	public void testMultipleOutputChannels() {
 		int batchSize = 1;
 		int inputChannels = 1;
@@ -498,7 +498,7 @@ public class Conv1dCorrectnessTest implements LayerFeatures {
 	 * Test 4: Stride > 1 (downsampling).
 	 * Tests that stride correctly skips input positions.
 	 */
-	@Test(timeout = 120000)
+	@Test(timeout = 60000)
 	public void testStride2() {
 		int batchSize = 1;
 		int inputChannels = 1;
@@ -554,7 +554,7 @@ public class Conv1dCorrectnessTest implements LayerFeatures {
 	 * Test 5: Multiple input channels.
 	 * Verifies that all input channels are summed correctly.
 	 */
-	@Test(timeout = 120000)
+	@Test(timeout = 60000)
 	public void testMultipleInputChannels() {
 		int batchSize = 1;
 		int inputChannels = 2;

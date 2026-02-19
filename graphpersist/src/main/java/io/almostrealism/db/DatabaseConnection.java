@@ -54,7 +54,6 @@ public class DatabaseConnection {
 
 	public static boolean verbose = false;
 	
-	/** The DefaultOutputHandler class. */
 	protected class DefaultOutputHandler implements OutputHandler {
 		private final String table;
 		
@@ -77,7 +76,6 @@ public class DatabaseConnection {
 		}
 	}
 	
-	/** The DefaultQueryHandler class. */
 	protected class DefaultQueryHandler implements QueryHandler {
 		@Override
 		public Hashtable executeQuery(Query q) {
@@ -226,7 +224,7 @@ public class DatabaseConnection {
 		}
 	}
 	
-	/** Performs the loadDriver operation. */
+	/** Loads the JDBC driver and establishes a connection to the database. */
 	public void loadDriver(String driver, String dburi, String dbuser, String dbpasswd) {
 		try {
 			System.out.print("DBS: Loading " + driver + "... ");
@@ -380,7 +378,6 @@ public class DatabaseConnection {
 	 */
 	public boolean removeQueryHandler(QueryHandler h) { return this.queryHandlers.remove(h); }
 	
-	/** Performs the createOutputTable operation. */
 	public boolean createOutputTable() throws SQLException {
 		try (Statement s = this.db.createStatement()) {
 			s.executeUpdate("CREATE TABLE " + this.outputTable +
@@ -405,7 +402,6 @@ public class DatabaseConnection {
 		return true;
 	}
 	
-	/** Performs the createUserTable operation. */
 	public boolean createUserTable() throws SQLException {
 		// TODO  Add createUserTable
 		
@@ -442,7 +438,6 @@ public class DatabaseConnection {
 	}
 
 	// TODO  It is unclear what this is for
-	/** This method. */
 	@Deprecated
 	public void storeOutput(Hashtable h) {
 		Iterator itr = h.entrySet().iterator();
@@ -483,7 +478,6 @@ public class DatabaseConnection {
 		outputHandlers.forEach(oh -> oh.storeOutput(time, uid, o));
 	}
 	
-	/** Performs the storeOutput operation. */
 	public boolean storeOutput(long time, byte[] data, String uri, int index) {
 		if (this.binaryInsert == null) return false;
 		
@@ -591,7 +585,6 @@ public class DatabaseConnection {
 		return result;
 	}
 	
-	/** Performs the updateDuplication operation. */
 	public void updateDuplication(long toa, int dup) {
 		if (DatabaseConnection.verbose) {
 			System.out.println("DatabaseConnection (" + this.outputTable +
@@ -611,7 +604,6 @@ public class DatabaseConnection {
 		}
 	}
 	
-	/** Performs the configureProperties operation. */
 	public boolean configureProperties(KeyValueStore j, long toa) {
 		try {
 			synchronized (this.configJob) {
@@ -640,7 +632,6 @@ public class DatabaseConnection {
 		}
 	}
 	
-	/** Performs the deleteUri operation. */
 	public void deleteUri(String uri) {
 		try {
 			synchronized (this.deleteUri) {
@@ -658,7 +649,6 @@ public class DatabaseConnection {
 		}
 	}
 	
-	/** Performs the deleteIndex operation. */
 	public boolean deleteIndex(String uri, int index) {
 		if (this.deleteIndex == null) return false;
 		
@@ -683,7 +673,6 @@ public class DatabaseConnection {
 		return false;
 	}
 	
-	/** Performs the deleteToa operation. */
 	public void deleteToa(long toa) {
 		try {
 			synchronized (this.deleteToa) {
@@ -701,7 +690,6 @@ public class DatabaseConnection {
 		}
 	}
 	
-	/** Performs the prepareString operation. */
 	public static String prepareString(String s) {
 		int index = 0;
 		
@@ -717,7 +705,6 @@ public class DatabaseConnection {
 		return this.totalJobTime / ((double)this.totalRecieved);
 	}
 	
-	/** Performs the getTotalAverageThroughput operation. */
 	public double getTotalAverageThroughput() {
 		long time = System.currentTimeMillis();
 		double d = (time - this.firstRecieved) / 60000.0;

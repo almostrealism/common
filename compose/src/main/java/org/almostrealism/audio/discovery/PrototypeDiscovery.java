@@ -84,7 +84,7 @@ public class PrototypeDiscovery implements ConsoleFeatures, GraphFeatures {
 		this.reveal = reveal;
 	}
 
-	/** Performs the run operation. */
+	/** Executes the prototype discovery pipeline, clustering audio samples and revealing prototypes. */
 	public void run() throws Exception {
 		log("=== Prototype Discovery ===");
 		log("Data prefix: " + dataPrefix);
@@ -337,7 +337,6 @@ public class PrototypeDiscovery implements ConsoleFeatures, GraphFeatures {
 
 	record Prototype(int communityId, WaveDetails details, double centrality, int communitySize) {}
 
-	/** Performs the main operation. */
 	public static void main(String[] args) throws Exception {
 		// Parse arguments
 		String dataPrefix = null;

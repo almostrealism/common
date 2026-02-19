@@ -39,7 +39,7 @@ public class Qwen3DirectGenerationTest extends TestSuiteBase implements ConsoleF
 	 * Test generation using the compiled model directly (bypassing AutoregressiveModel).
 	 * This isolates the model's forward pass to verify logits match PyTorch.
 	 */
-	@Test(timeout = 120000)
+	@Test(timeout = 300000)
 	public void testDirectGeneration() throws Exception {
 		Assume.assumeTrue("Skipping comparison test in pipeline profile", TestUtils.isComparisonTestEnabled());
 

@@ -20,7 +20,7 @@ import java.io.IOException;
 import java.util.stream.IntStream;
 
 public class CellListTests extends TestSuiteBase implements CellFeatures, AudioTestFeatures {
-	@Test(timeout = 120000)
+	@Test(timeout = 60000)
 	public void export() throws IOException {
 		WaveData data = WaveData.load(getTestWavFile());
 		int samples = data.getFrameCount();
@@ -44,7 +44,7 @@ public class CellListTests extends TestSuiteBase implements CellFeatures, AudioT
 		Assert.assertNotEquals(0.0, result.toDouble(30), 0.0);
 	}
 
-	@Test(timeout = 120000)
+	@Test(timeout = 60000)
 	public void mselfDelay() {
 		CellList cells = w(0, getTestWavPath());
 

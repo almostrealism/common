@@ -29,7 +29,7 @@ import java.io.File;
 import java.util.function.Supplier;
 
 public class AudioCellTest extends TestSuiteBase implements CellFeatures, AudioTestFeatures {
-	@Test(timeout = 120000)
+	@Test(timeout = 60000)
 	public void filterFrame() {
 		if (testProfileIs(TestUtils.PIPELINE)) return;
 
@@ -52,7 +52,7 @@ public class AudioCellTest extends TestSuiteBase implements CellFeatures, AudioT
 		Assert.assertNotEquals(0.0, result.toDouble(3), 0.0);
 	}
 
-	@Test(timeout = 120000)
+	@Test(timeout = 60000)
 	public void filter() {
 		Supplier<Runnable> op =
 				w(0, getTestWavPath())
@@ -63,7 +63,7 @@ public class AudioCellTest extends TestSuiteBase implements CellFeatures, AudioT
 		r.run();
 	}
 
-	@Test(timeout = 120000)
+	@Test(timeout = 60000)
 	public void repeat() {
 		Supplier<Runnable> op =
 				w(0, c(1.0), getTestWavPath())

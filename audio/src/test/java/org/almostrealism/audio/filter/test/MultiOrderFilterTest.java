@@ -29,12 +29,12 @@ import java.io.IOException;
 
 public class MultiOrderFilterTest extends TestSuiteBase implements AudioTestFeatures {
 
-	@Test(timeout = 120000)
+	@Test(timeout = 60000)
 	public void lowPass() throws IOException {
 		lowPass(false);
 	}
 
-	@Test(timeout = 120000)
+	@Test(timeout = 60000)
 	public void lowPassOptimized() throws IOException {
 		lowPass(true);
 	}
@@ -51,12 +51,12 @@ public class MultiOrderFilterTest extends TestSuiteBase implements AudioTestFeat
 		output.save(new File("results/multi-order-low-pass" + (optimized ? "-opt" : "") + ".wav"));
 	}
 
-	@Test(timeout = 120000)
+	@Test(timeout = 60000)
 	public void highPass() throws IOException {
 		highPass(false);
 	}
 
-	@Test(timeout = 120000)
+	@Test(timeout = 60000)
 	public void highPassOptimized() throws IOException {
 		highPass(true);
 	}

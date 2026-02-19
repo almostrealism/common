@@ -181,7 +181,7 @@ public class Console {
 	 */
 	public String lastLine() { return lastLine.toString(); }
 
-	/** Appends the given string to the console buffer and notifies listeners. */
+	/** Appends text to the console output and notifies all listeners. */
 	protected void append(String s) {
 		data.append(s);
 
@@ -194,12 +194,12 @@ public class Console {
 		}
 	}
 
-	/** Returns the timestamp prefix for console output. */
+	/** Returns the timestamp prefix for console output lines. */
 	protected String pre() {
 		return "[" + format.format(java.time.LocalTime.now()) + "] ";
 	}
 
-	/** Applies filters and formatting to the given output string. */
+	/** Applies output filters and manages the last-line tracking state. */
 	protected String prep(String s) {
 		for (UnaryOperator<String> filter : filters) {
 			s = filter.apply(s);

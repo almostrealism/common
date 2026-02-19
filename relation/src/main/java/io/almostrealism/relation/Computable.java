@@ -68,15 +68,15 @@ public interface Computable {
 		return false;
 	}
 
-	/** Returns whether this computation is a provider. */
+	/** Returns {@code true} if this computation provides a value reference. */
 	default boolean isProvider() { return false; }
 
 	/**
-	 * Returns whether the given object is a constant {@link Computable}.
+	 * Returns {@code true} if the given object is a {@link Computable} with a constant value.
 	 *
-	 * @param <T> the type of the object
-	 * @param c   the object to test
-	 * @return {@code true} if {@code c} is a constant computable
+	 * @param c   the object to check
+	 * @param <T> the object type
+	 * @return {@code true} if the object is a constant computable
 	 */
 	static <T> boolean constant(T c) {
 		if (c instanceof Computable) {
@@ -87,11 +87,11 @@ public interface Computable {
 	}
 
 	/**
-	 * Returns whether the given object is a provider {@link Computable}.
+	 * Returns {@code true} if the given object is a {@link Computable} that is a provider.
 	 *
-	 * @param <T> the type of the object
-	 * @param c   the object to test
-	 * @return {@code true} if {@code c} is a provider computable
+	 * @param c   the object to check
+	 * @param <T> the object type
+	 * @return {@code true} if the object is a provider computable
 	 */
 	static <T> boolean provider(T c) {
 		if (c instanceof Computable) {

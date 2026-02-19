@@ -14,7 +14,7 @@ public class DatabaseTest extends TestSuiteBase {
 		return s;
 	}
 
-	@Test(timeout = 120000)
+	@Test(timeout = 10000)
 	public void storeAndRetrieve() {
 		Tensor<PackedCollection> t = new Tensor<>();
 		t.insert(scalarValue(1), 0, 0);

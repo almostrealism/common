@@ -26,7 +26,7 @@ import java.io.IOException;
 import java.util.Properties;
 
 public class ServerTest extends TestSuiteBase {
-	@Test(timeout = 120000)
+	@Test(timeout = 10000)
 	public void server() throws IOException, InterruptedException {
 		Properties p = new Properties();
 		p.setProperty("server.port", "7700");
@@ -37,7 +37,7 @@ public class ServerTest extends TestSuiteBase {
 		Thread.sleep(2 * 60 * 60 * 1000L);
 	}
 
-	@Test(timeout = 120000)
+	@Test(timeout = 10000)
 	public void decodeJobTest() {
 		String data = "io.flowtree.jobs.ExternalProcessJob::cmd:=c2xlZXA7MzA=";
 		ExternalProcessJob j = (ExternalProcessJob) Server.instantiateJobClass(data);

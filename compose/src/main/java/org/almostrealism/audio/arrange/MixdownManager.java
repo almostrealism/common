@@ -214,22 +214,18 @@ public class MixdownManager implements Setup, Destroyable, CellFeatures, Optimiz
 
 	public AutomationManager getAutomationManager() { return automation; }
 
-	/** Performs the setVolumeAdjustmentScale operation. */
 	public void setVolumeAdjustmentScale(double scale) {
 		volumeAdjustmentScale.set(0, scale);
 	}
 
-	/** Performs the setMainFilterUpAdjustmentScale operation. */
 	public void setMainFilterUpAdjustmentScale(double scale) {
 		mainFilterUpAdjustmentScale.set(0, scale);
 	}
 
-	/** Performs the setMainFilterDownAdjustmentScale operation. */
 	public void setMainFilterDownAdjustmentScale(double scale) {
 		mainFilterDownAdjustmentScale.set(0, scale);
 	}
 
-	/** Performs the setReverbAdjustmentScale operation. */
 	public void setReverbAdjustmentScale(double scale) {
 		reverbAdjustmentScale.set(0, scale);
 	}
@@ -242,7 +238,7 @@ public class MixdownManager implements Setup, Destroyable, CellFeatures, Optimiz
 		this.reverbChannels = reverbChannels;
 	}
 
-	/** Performs the initRanges operation. */
+	/** Initializes the gene ranges for volume, pan, delay, and filter based on the given configuration. */
 	public void initRanges(Configuration config, int delayLayers) {
 		volumeSimple.forEach(gene -> {
 			((ProjectedGene) gene).setRange(0,
@@ -355,14 +351,12 @@ public class MixdownManager implements Setup, Destroyable, CellFeatures, Optimiz
 		return new OperationList("Mixdown Manager Setup");
 	}
 
-	/** Performs the cells operation. */
 	public CellList cells(CellList sources,
 						  MultiChannelAudioOutput output,
 						  ChannelInfo.StereoChannel audioChannel) {
 		return cells(sources, null, null, output, audioChannel, i -> i);
 	}
 
-	/** Performs the cells operation. */
 	public CellList cells(CellList sources, CellList wetSources, CellList riser,
 						  MultiChannelAudioOutput output,
 						  ChannelInfo.StereoChannel audioChannel,
@@ -373,7 +367,6 @@ public class MixdownManager implements Setup, Destroyable, CellFeatures, Optimiz
 		return cells;
 	}
 
-	/** Performs the createCells operation. */
 	protected CellList createCells(CellList sources, CellList wetSources, CellList riser,
 								   MultiChannelAudioOutput output,
 								   ChannelInfo.StereoChannel audioChannel,
@@ -495,7 +488,6 @@ public class MixdownManager implements Setup, Destroyable, CellFeatures, Optimiz
 		return main;
 	}
 
-	/** Performs the createEfx operation. */
 	public CellList createEfx(CellList main, CellList efx, CellList reverb,
 							  CellList riser, int sourceCount,
 							  MultiChannelAudioOutput output,
@@ -625,7 +617,6 @@ public class MixdownManager implements Setup, Destroyable, CellFeatures, Optimiz
 		return g(gene);
 	}
 
-	/** The Configuration class. */
 	public static class Configuration implements OptimizeFactorFeatures {
 		public IntToDoubleFunction minChoice, maxChoice;
 		public double minChoiceValue, maxChoiceValue;

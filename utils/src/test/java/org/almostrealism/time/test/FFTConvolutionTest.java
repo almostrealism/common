@@ -51,7 +51,7 @@ public class FFTConvolutionTest extends TestSuiteBase implements TemporalFeature
 	/**
 	 * Test basic FFT convolution against direct convolution.
 	 */
-	@Test(timeout = 120000)
+	@Test(timeout = 60000)
 	public void testBasicConvolution() {
 		double[] signalArray = {1, 2, 3, 4, 5};
 		double[] kernelArray = {1, 0, -1};
@@ -86,7 +86,7 @@ public class FFTConvolutionTest extends TestSuiteBase implements TemporalFeature
 	/**
 	 * Test convolution with delta function (identity).
 	 */
-	@Test(timeout = 120000)
+	@Test(timeout = 60000)
 	public void testDeltaKernel() {
 		double[] signalArray = {1, 2, 3, 4, 5, 6, 7, 8};
 		double[] kernelArray = {1};  // Delta function
@@ -112,7 +112,7 @@ public class FFTConvolutionTest extends TestSuiteBase implements TemporalFeature
 	/**
 	 * Test convolution commutativity: signal * kernel = kernel * signal
 	 */
-	@Test(timeout = 120000)
+	@Test(timeout = 60000)
 	public void testCommutativity() {
 		double[] aArray = {1, 2, 3, 4};
 		double[] bArray = {0.5, -0.5, 0.5};
@@ -144,7 +144,7 @@ public class FFTConvolutionTest extends TestSuiteBase implements TemporalFeature
 	/**
 	 * Test convolution with all-zeros kernel.
 	 */
-	@Test(timeout = 120000)
+	@Test(timeout = 60000)
 	public void testZeroKernel() {
 		int signalLength = 10;
 		int kernelLength = 5;
@@ -169,7 +169,7 @@ public class FFTConvolutionTest extends TestSuiteBase implements TemporalFeature
 	/**
 	 * Test convolution with moving average kernel.
 	 */
-	@Test(timeout = 120000)
+	@Test(timeout = 60000)
 	public void testMovingAverageKernel() {
 		double[] signalArray = {1, 1, 1, 1, 1, 1, 1, 1};
 		double[] kernelArray = {0.25, 0.25, 0.25, 0.25};  // 4-point moving average
@@ -196,7 +196,7 @@ public class FFTConvolutionTest extends TestSuiteBase implements TemporalFeature
 	/**
 	 * Test convolution output shape calculation.
 	 */
-	@Test(timeout = 120000)
+	@Test(timeout = 60000)
 	public void testOutputShape() {
 		int signalLength = 100;
 		int kernelLength = 25;
@@ -214,7 +214,7 @@ public class FFTConvolutionTest extends TestSuiteBase implements TemporalFeature
 	/**
 	 * Test convolution output shape for various input sizes.
 	 */
-	@Test(timeout = 120000)
+	@Test(timeout = 60000)
 	public void testOutputShapeVariousSizes() {
 		// Test multiple input size combinations
 		int[][] testCases = {
@@ -241,7 +241,7 @@ public class FFTConvolutionTest extends TestSuiteBase implements TemporalFeature
 	/**
 	 * Test convolution with impulse response (single delayed impulse).
 	 */
-	@Test(timeout = 120000)
+	@Test(timeout = 60000)
 	public void testDelayedImpulse() {
 		double[] signalArray = {1, 2, 3, 4, 5};
 		int delay = 3;
@@ -269,7 +269,7 @@ public class FFTConvolutionTest extends TestSuiteBase implements TemporalFeature
 	/**
 	 * Test larger convolution for performance verification.
 	 */
-	@Test(timeout = 120000)
+	@Test(timeout = 60000)
 	public void testLargerConvolution() {
 		int signalLength = 1024;
 		int kernelLength = 64;

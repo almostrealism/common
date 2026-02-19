@@ -1238,151 +1238,38 @@ public class ClaudeCodeJob extends GitManagedJob {
     }
 
     /**
-     * Extracts a long value from a JSON string by field name.
-     * Returns 0 if the field is not found or cannot be parsed.
+     * Delegates to {@link io.flowtree.JsonFieldExtractor#extractLong(String, String)}.
      */
     private static long extractJsonLongValue(String json, String field) {
-        int fieldIdx = json.indexOf("\"" + field + "\"");
-        if (fieldIdx < 0) return 0;
-
-        int colonIdx = json.indexOf(":", fieldIdx);
-        if (colonIdx < 0) return 0;
-
-        String rest = json.substring(colonIdx + 1).trim();
-        StringBuilder numStr = new StringBuilder();
-        for (int i = 0; i < rest.length(); i++) {
-            char c = rest.charAt(i);
-            if (c == '-' || (c >= '0' && c <= '9')) {
-                numStr.append(c);
-            } else if (numStr.length() > 0) {
-                break;
-            }
-        }
-
-        try {
-            return Long.parseLong(numStr.toString());
-        } catch (NumberFormatException e) {
-            return 0;
-        }
+        return io.flowtree.JsonFieldExtractor.extractLong(json, field);
     }
 
     /**
-     * Extracts a double value from a JSON string by field name.
-     * Returns 0.0 if the field is not found or cannot be parsed.
+     * Delegates to {@link io.flowtree.JsonFieldExtractor#extractDouble(String, String)}.
      */
     private static double extractJsonDoubleValue(String json, String field) {
-        int fieldIdx = json.indexOf("\"" + field + "\"");
-        if (fieldIdx < 0) return 0.0;
-
-        int colonIdx = json.indexOf(":", fieldIdx);
-        if (colonIdx < 0) return 0.0;
-
-        String rest = json.substring(colonIdx + 1).trim();
-        StringBuilder numStr = new StringBuilder();
-        for (int i = 0; i < rest.length(); i++) {
-            char c = rest.charAt(i);
-            if (c == '-' || c == '.' || (c >= '0' && c <= '9')) {
-                numStr.append(c);
-            } else if (numStr.length() > 0) {
-                break;
-            }
-        }
-
-        try {
-            return Double.parseDouble(numStr.toString());
-        } catch (NumberFormatException e) {
-            return 0.0;
-        }
+        return io.flowtree.JsonFieldExtractor.extractDouble(json, field);
     }
 
     /**
-     * Extracts a string value from a JSON string by field name.
-     * Handles escaped quotes within string values.
-     * Returns null if the field is not found.
+     * Delegates to {@link io.flowtree.JsonFieldExtractor#extractString(String, String)}.
      */
     private static String extractJsonStringValue(String json, String field) {
-        int fieldIdx = json.indexOf("\"" + field + "\"");
-        if (fieldIdx < 0) return null;
-
-        int colonIdx = json.indexOf(":", fieldIdx);
-        if (colonIdx < 0) return null;
-
-        String rest = json.substring(colonIdx + 1).trim();
-        if (rest.startsWith("null")) return null;
-        if (!rest.startsWith("\"")) return null;
-
-        int i = 1;
-        while (i < rest.length()) {
-            char c = rest.charAt(i);
-            if (c == '\\') {
-                i += 2;
-            } else if (c == '"') {
-                return rest.substring(1, i).replace("\\\"", "\"");
-            } else {
-                i++;
-            }
-        }
-
-        return null;
+        return io.flowtree.JsonFieldExtractor.extractString(json, field);
     }
 
     /**
-     * Extracts a boolean value from a JSON string by field name.
-     * Returns false if the field is not found.
+     * Delegates to {@link io.flowtree.JsonFieldExtractor#extractBoolean(String, String)}.
      */
     private static boolean extractJsonBooleanValue(String json, String field) {
-        int fieldIdx = json.indexOf("\"" + field + "\"");
-        if (fieldIdx < 0) return false;
-
-        int colonIdx = json.indexOf(":", fieldIdx);
-        if (colonIdx < 0) return false;
-
-        String rest = json.substring(colonIdx + 1).trim();
-        return rest.startsWith("true");
+        return io.flowtree.JsonFieldExtractor.extractBoolean(json, field);
     }
 
     /**
-     * Counts the number of object entries in a JSON array field.
-     * Uses a simple brace-counting approach to count top-level objects.
-     * Returns 0 if the field is not found or the array is empty.
+     * Delegates to {@link io.flowtree.JsonFieldExtractor#countArrayEntries(String, String)}.
      */
     private static int countJsonArrayEntries(String json, String field) {
-        int fieldIdx = json.indexOf("\"" + field + "\"");
-        if (fieldIdx < 0) return 0;
-
-        int colonIdx = json.indexOf(":", fieldIdx);
-        if (colonIdx < 0) return 0;
-
-        int arrStart = json.indexOf("[", colonIdx);
-        if (arrStart < 0) return 0;
-
-        int arrEnd = -1;
-        int depth = 1;
-        for (int i = arrStart + 1; i < json.length() && depth > 0; i++) {
-            char c = json.charAt(i);
-            if (c == '[') depth++;
-            else if (c == ']') {
-                depth--;
-                if (depth == 0) arrEnd = i;
-            }
-        }
-
-        if (arrEnd < 0) return 0;
-
-        // Count top-level objects by counting opening braces at depth 0
-        String arrContent = json.substring(arrStart + 1, arrEnd).trim();
-        if (arrContent.isEmpty()) return 0;
-
-        int count = 0;
-        int braceDepth = 0;
-        for (int i = 0; i < arrContent.length(); i++) {
-            char c = arrContent.charAt(i);
-            if (c == '{' && braceDepth == 0) count++;
-            if (c == '{') braceDepth++;
-            else if (c == '}') braceDepth--;
-        }
-
-        return count;
+        return io.flowtree.JsonFieldExtractor.countArrayEntries(json, field);
     }
 
     @Override
