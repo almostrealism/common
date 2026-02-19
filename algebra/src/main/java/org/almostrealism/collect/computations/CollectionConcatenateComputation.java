@@ -24,9 +24,12 @@ import io.almostrealism.compute.Process;
 import io.almostrealism.expression.Conditional;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.collect.CollectionFeatures;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerParallelProcess;
 import org.almostrealism.collect.PackedCollection;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Stream;
 
@@ -62,7 +65,8 @@ import java.util.stream.Stream;
  *
  * @author Michael Murray
  */
-public class CollectionConcatenateComputation extends TransitiveDeltaExpressionComputation {
+public class CollectionConcatenateComputation extends TransitiveDeltaExpressionComputation
+		implements CollectionFeatures {
 
 	private final int axis;
 	private final TraversalPolicy[] inputShapes;
@@ -172,6 +176,47 @@ public class CollectionConcatenateComputation extends TransitiveDeltaExpressionC
 
 			return result;
 		});
+	}
+
+	/**
+	 * Computes the derivative of the concatenation with respect to the target using
+	 * pad+add at the Producer level.
+	 *
+	 * <p>Instead of creating a new {@link CollectionConcatenateComputation} with delta inputs
+	 * (which produces deeply nested {@link Conditional} expressions that cause expression tree
+	 * explosion during simplification), this method computes each input's delta independently
+	 * and combines them using pad+add. Each pad and add becomes a separate compiled kernel,
+	 * avoiding the exponential expression tree growth.</p>
+	 *
+	 * <p>For concat(A1, A2, ..., An) along axis d, the chain rule gives:</p>
+	 * <pre>
+	 * d(concat)/dtarget = pad(dA1/dtarget, offset=0) + pad(dA2/dtarget, offset=n1) + ...
+	 * </pre>
+	 *
+	 * @param target The {@link Producer} with respect to which the derivative is computed
+	 * @return A {@link CollectionProducer} that computes the derivative
+	 */
+	@Override
+	public CollectionProducer delta(Producer<?> target) {
+		CollectionProducer delta = attemptDelta(target);
+		if (delta != null) return delta;
+
+		TraversalPolicy targetShape = shape(target);
+		TraversalPolicy fullShape = getShape().append(targetShape);
+
+		List<Producer<?>> paddedDeltas = new ArrayList<>();
+
+		for (int i = 0; i < inputShapes.length; i++) {
+			CollectionProducer input = (CollectionProducer) getInputs().get(i + 1);
+			CollectionProducer inputDelta = input.delta(target);
+
+			int[] padPos = new int[fullShape.getDimensions()];
+			padPos[axis] = offsets[i];
+
+			paddedDeltas.add(pad(fullShape, new TraversalPolicy(true, padPos), inputDelta));
+		}
+
+		return add(paddedDeltas);
 	}
 
 	/**

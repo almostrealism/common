@@ -203,8 +203,6 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 				return context.getTraversalProvider()
 						.generateReordering(generate(children))
 						.populate(this);
-			} else {
-				throw new UnsupportedOperationException();
 			}
 		}
 
