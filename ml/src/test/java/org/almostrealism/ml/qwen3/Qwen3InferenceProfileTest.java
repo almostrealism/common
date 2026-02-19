@@ -11,6 +11,7 @@ import org.almostrealism.ml.StateDictionary;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
+import java.io.File;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
@@ -33,8 +34,9 @@ import java.util.Random;
  */
 public class Qwen3InferenceProfileTest extends TestSuiteBase implements ConsoleFeatures {
 
-	private static final String PROFILE_PATH = "/workspace/project/common/ml/results/qwen3_inference_profile.xml";
-	private static final String LOG_PATH = "/workspace/project/common/ml/results/qwen3_inference_profile.txt";
+	private static final String RESULTS_DIR = "ml/results";
+	private static final String PROFILE_PATH = RESULTS_DIR + "/qwen3_inference_profile.xml";
+	private static final String LOG_PATH = RESULTS_DIR + "/qwen3_inference_profile.txt";
 
 	/**
 	 * Profile a representative Qwen3 forward pass using 0.6B-scale config.
@@ -45,6 +47,7 @@ public class Qwen3InferenceProfileTest extends TestSuiteBase implements ConsoleF
 	 */
 	@Test
 	public void profileInference() throws IOException {
+		new File(RESULTS_DIR).mkdirs();
 		Console.root().addListener(OutputFeatures.fileOutput(LOG_PATH));
 
 		log("=== Qwen3 Inference Profile Test ===");
