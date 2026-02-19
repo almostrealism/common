@@ -1240,37 +1240,40 @@ public class ClaudeCodeJob extends GitManagedJob {
     private void extractOutputMetrics(String jsonOutput) {
         if (jsonOutput == null || jsonOutput.isEmpty()) return;
 
-        // Extract session_id (string field)
-        int idx = jsonOutput.indexOf("\"session_id\"");
-        if (idx >= 0) {
-            int start = jsonOutput.indexOf("\"", idx + 12) + 1;
-            int end = jsonOutput.indexOf("\"", start);
-            if (start > 0 && end > start) {
-                sessionId = jsonOutput.substring(start, end);
-            }
+        // Claude Code with --output-format json emits NDJSON: one JSON object
+        // per line, with per-turn objects appearing first and the session-level
+        // "type":"result" object last.  Extracting from the full output picks up
+        // the FIRST occurrence of each field (a per-turn value), not the session
+        // total.  Instead, locate the result object and extract from that.
+        String resultJson = io.flowtree.JsonFieldExtractor.extractLastJsonObject(jsonOutput, "result");
+        if (resultJson == null) {
+            resultJson = jsonOutput;
         }
 
-        // Extract timing metrics (numeric fields)
-        durationMs = extractJsonLongValue(jsonOutput, "duration_ms");
-        durationApiMs = extractJsonLongValue(jsonOutput, "duration_api_ms");
-        numTurns = (int) extractJsonLongValue(jsonOutput, "num_turns");
+        // Extract session_id
+        sessionId = extractJsonStringValue(resultJson, "session_id");
+
+        // Extract timing metrics from the result object
+        durationMs = extractJsonLongValue(resultJson, "duration_ms");
+        durationApiMs = extractJsonLongValue(resultJson, "duration_api_ms");
+        numTurns = (int) extractJsonLongValue(resultJson, "num_turns");
 
         // Cost field may be "total_cost_usd" or "cost_usd"
-        costUsd = extractJsonDoubleValue(jsonOutput, "total_cost_usd");
+        costUsd = extractJsonDoubleValue(resultJson, "total_cost_usd");
         if (costUsd == 0.0) {
-            costUsd = extractJsonDoubleValue(jsonOutput, "cost_usd");
+            costUsd = extractJsonDoubleValue(resultJson, "cost_usd");
         }
 
         // Extract subtype (stop reason: "success", "error_max_turns", etc.)
-        subtype = extractJsonStringValue(jsonOutput, "subtype");
+        subtype = extractJsonStringValue(resultJson, "subtype");
 
         // Extract is_error boolean
-        isError = extractJsonBooleanValue(jsonOutput, "is_error");
+        isError = extractJsonBooleanValue(resultJson, "is_error");
 
         // Count permission_denials array entries and extract denied tool names
-        permissionDenials = countJsonArrayEntries(jsonOutput, "permission_denials");
+        permissionDenials = countJsonArrayEntries(resultJson, "permission_denials");
         deniedToolNames = io.flowtree.JsonFieldExtractor.extractFieldFromArrayObjects(
-            jsonOutput, "permission_denials", "tool");
+            resultJson, "permission_denials", "tool");
     }
 
     /**

@@ -375,6 +375,56 @@ public final class JsonFieldExtractor {
 	}
 
 	/**
+	 * Extracts the last JSON object line from newline-delimited JSON output
+	 * that matches the specified {@code "type"} value.
+	 *
+	 * <p>Claude Code with {@code --output-format json} emits one JSON object
+	 * per line (NDJSON). Per-turn objects appear early in the output with
+	 * partial metrics, while the final {@code "type":"result"} line contains
+	 * session-level totals. This method scans backward to find that result
+	 * line, avoiding the first-occurrence problem that afflicts forward
+	 * searches on the full output.</p>
+	 *
+	 * @param ndjson    the full NDJSON output (newline-delimited JSON objects)
+	 * @param typeValue the value of the {@code "type"} field to match
+	 *                  (e.g., {@code "result"}), or {@code null} to return
+	 *                  the last JSON object regardless of type
+	 * @return the matched JSON object line, or {@code null} if not found
+	 */
+	public static String extractLastJsonObject(String ndjson, String typeValue) {
+		if (ndjson == null || ndjson.isEmpty()) return null;
+
+		String fallback = null;
+		int end = ndjson.length();
+
+		while (end > 0) {
+			int lineEnd = end;
+			int lineStart = ndjson.lastIndexOf('\n', end - 1);
+			lineStart = (lineStart < 0) ? 0 : lineStart + 1;
+
+			// Skip blank lines
+			String line = ndjson.substring(lineStart, lineEnd).trim();
+			end = lineStart > 0 ? lineStart - 1 : 0;
+
+			if (!line.startsWith("{")) continue;
+
+			if (typeValue == null) {
+				return line;
+			}
+
+			if (line.contains("\"type\"") && line.contains("\"" + typeValue + "\"")) {
+				return line;
+			}
+
+			if (fallback == null) {
+				fallback = line;
+			}
+		}
+
+		return fallback;
+	}
+
+	/**
 	 * Extracts a numeric string from the beginning of the input.
 	 *
 	 * @param rest         the string to extract from (already trimmed after the colon)
