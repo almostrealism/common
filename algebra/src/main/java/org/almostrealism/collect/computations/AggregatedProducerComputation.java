@@ -335,6 +335,7 @@ public class AggregatedProducerComputation extends TraversableRepeatedProducerCo
 		return scope;
 	}
 
+	/** Performs the checkCache operation. */
 	protected Expression<?> checkCache(Expression<?> index) {
 		if (indexCache == null || index.countNodes() > 100) return null;
 
@@ -349,6 +350,7 @@ public class AggregatedProducerComputation extends TraversableRepeatedProducerCo
 		return null;
 	}
 
+	/** Performs the cache operation. */
 	protected Expression<Double> cache(Expression<?> index, Expression<Double> result) {
 		if (indexCache == null || index.countNodes() > 100) return result;
 

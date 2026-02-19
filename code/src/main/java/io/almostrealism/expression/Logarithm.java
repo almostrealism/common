@@ -24,6 +24,7 @@ import io.almostrealism.lang.LanguageOperations;
 import java.util.List;
 import java.util.OptionalLong;
 
+/** The Logarithm class. */
 public class Logarithm extends Expression<Double> {
 
 	protected Logarithm(Expression<Double> input) {
@@ -62,6 +63,7 @@ public class Logarithm extends Expression<Double> {
 		return quotient(target.getShape(), delta, u);
 	}
 
+	/** Performs the of operation. */
 	public static <T> Expression<T> of(Expression input) {
 		if (input instanceof Exp) {
 			return (Expression<T>) input.getChildren().get(0);

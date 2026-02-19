@@ -23,6 +23,7 @@ import org.almostrealism.hardware.OperationList;
 
 import java.util.function.Supplier;
 
+/** The ForwardOnlyBlock class. */
 public class ForwardOnlyBlock implements Block {
 	private final Block block;
 

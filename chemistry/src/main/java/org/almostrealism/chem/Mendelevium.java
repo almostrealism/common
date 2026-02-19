@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
+/** The Mendelevium class. */
 public class Mendelevium implements Element {
 	public int getAtomicNumber() { return 101; }
 

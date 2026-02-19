@@ -23,11 +23,14 @@ import org.almostrealism.protobuf.Collections;
 
 import java.util.stream.IntStream;
 
+/** The CollectionEncoder class. */
 public class CollectionEncoder {
+	/** Performs the encode operation. */
 	public static Collections.CollectionData encode(PackedCollection c) {
 		return encode(c, Precision.FP64);
 	}
 
+	/** Performs the encode operation. */
 	public static Collections.CollectionData encode(PackedCollection c, Precision precision) {
 		if (c == null) return Collections.CollectionData.getDefaultInstance();
 
@@ -45,6 +48,7 @@ public class CollectionEncoder {
 		return data.build();
 	}
 
+	/** Performs the encode operation. */
 	public static Collections.TraversalPolicyData encode(TraversalPolicy shape) {
 		Collections.TraversalPolicyData.Builder data = Collections.TraversalPolicyData.newBuilder();
 		IntStream.range(0, shape.getDimensions()).forEach(i -> data.addDims(shape.length(i)));
@@ -52,6 +56,7 @@ public class CollectionEncoder {
 		return data.build();
 	}
 
+	/** Performs the decode operation. */
 	public static PackedCollection decode(Collections.CollectionData data) {
 		TraversalPolicy shape = decode(data.getTraversalPolicy());
 		if (shape.getDimensions() == 0) return null;
@@ -59,11 +64,13 @@ public class CollectionEncoder {
 		return decode(data, new PackedCollection(shape.getTotalSize()));
 	}
 
+	/** Performs the decode operation. */
 	public static PackedCollection decode(Collections.CollectionData data,
 											 PackedCollection destination) {
 		return decode(data, destination, 0);
 	}
 
+	/** Performs the decode operation. */
 	public static PackedCollection decode(Collections.CollectionData data,
 											 PackedCollection destination,
 											 int destinationOffset) {
@@ -85,6 +92,7 @@ public class CollectionEncoder {
 		return destination.range(shape, destinationOffset);
 	}
 
+	/** Performs the decode operation. */
 	public static TraversalPolicy decode(Collections.TraversalPolicyData data) {
 		return new TraversalPolicy(true,
 				data.getDimsList().stream().mapToInt(i -> i).toArray())

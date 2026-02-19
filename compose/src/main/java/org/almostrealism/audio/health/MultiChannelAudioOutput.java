@@ -27,6 +27,7 @@ import java.util.Map;
 import java.util.function.Function;
 import java.util.function.Predicate;
 
+/** The MultiChannelAudioOutput class. */
 public class MultiChannelAudioOutput {
 	private final Map<ChannelInfo.StereoChannel, Receptor<PackedCollection>> master;
 	private final Map<ChannelInfo, Receptor<PackedCollection>> stems;
@@ -73,6 +74,7 @@ public class MultiChannelAudioOutput {
 		this.measures = measuresFactory == null ? null : new HashMap<>();
 	}
 
+	/** Performs the getMeasure operation. */
 	public Receptor<PackedCollection> getMeasure(ChannelInfo.Voicing voicing,
 													ChannelInfo.StereoChannel audioChannel) {
 		Receptor<PackedCollection> result =
@@ -82,6 +84,7 @@ public class MultiChannelAudioOutput {
 		return getMeasure(new ChannelInfo(-1, voicing, audioChannel));
 	}
 
+	/** Performs the getStem operation. */
 	public Receptor<PackedCollection> getStem(int patternChannel,
 												 ChannelInfo.StereoChannel audioChannel) {
 		Receptor<PackedCollection> result =
@@ -91,6 +94,7 @@ public class MultiChannelAudioOutput {
 		return getStem(new ChannelInfo(patternChannel, audioChannel));
 	}
 
+	/** Performs the getMeasures operation. */
 	public List<Receptor<PackedCollection>> getMeasures(ChannelInfo.StereoChannel audioChannel) {
 		return measures.keySet().stream()
 				.filter(match(audioChannel))
@@ -98,6 +102,7 @@ public class MultiChannelAudioOutput {
 				.toList();
 	}
 
+	/** Performs the getMeasure operation. */
 	public Receptor<PackedCollection> getMeasure(ChannelInfo channel) {
 		if (measures == null) {
 			return null;
@@ -108,6 +113,7 @@ public class MultiChannelAudioOutput {
 		}
 	}
 
+	/** Performs the getStem operation. */
 	public Receptor<PackedCollection> getStem(ChannelInfo channel) {
 		if (stems == null) {
 			return null;
@@ -118,6 +124,7 @@ public class MultiChannelAudioOutput {
 		}
 	}
 
+	/** Performs the getMaster operation. */
 	public Receptor<PackedCollection> getMaster(ChannelInfo.StereoChannel channel) {
 		if (master == null) {
 			return null;
@@ -132,6 +139,7 @@ public class MultiChannelAudioOutput {
 
 	public boolean isStemsActive() { return stems != null; }
 
+	/** Performs the retrieve operation. */
 	protected <K, V> V retrieve(Map<K, V> map, Predicate<K> predicate) {
 		if (map == null) return null;
 
@@ -148,14 +156,17 @@ public class MultiChannelAudioOutput {
 		}
 	}
 
+	/** Performs the match operation. */
 	protected Predicate<ChannelInfo> match(ChannelInfo.StereoChannel audioChannel) {
 		return c -> c.getAudioChannel() == audioChannel;
 	}
 
+	/** Performs the match operation. */
 	protected Predicate<ChannelInfo> match(int patternChannel) {
 		return c -> c.getPatternChannel() == patternChannel;
 	}
 
+	/** Performs the match operation. */
 	protected Predicate<ChannelInfo> match(ChannelInfo.Voicing voicing) {
 		return c -> c.getVoicing() == voicing;
 	}

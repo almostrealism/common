@@ -162,6 +162,14 @@ public interface Destroyable extends AutoCloseable {
 		return target;
 	}
 
+	/**
+	 * Destroys all {@link Destroyable} elements in the given {@link Iterable},
+	 * returning the number of elements that were destroyed.
+	 *
+	 * @param <T>     the element type
+	 * @param targets the elements to destroy, may be {@code null}
+	 * @return the number of elements that were destroyed
+	 */
 	static <T> int destroy(Iterable<T> targets) {
 		if (targets == null) return 0;
 

@@ -21,6 +21,7 @@ import io.almostrealism.code.Precision;
 import io.almostrealism.compute.PhysicalScope;
 import io.almostrealism.scope.Method;
 
+/** The LanguageOperationsStub class. */
 public class LanguageOperationsStub implements LanguageOperations {
 	@Override
 	public Precision getPrecision() { return Precision.FP64; }

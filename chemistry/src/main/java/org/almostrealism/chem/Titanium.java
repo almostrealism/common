@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
+/** The Titanium class. */
 public class Titanium implements Element {
 	public int getAtomicNumber() { return 22; }
 	

@@ -177,11 +177,13 @@ public class ImageCanvas extends JPanel {
 		g.drawImage(img, 0, 0, Color.black, this);
 	}
 
+	/** Performs the writeImage operation. */
 	public static void writeImage(RGB[][] image, OutputStream o, int encoding)
 			throws IOException {
 		writeImage(new Provider<>(image), o, encoding);
 	}
 
+	/** Performs the writeImage operation. */
 	public static void writeImage(Evaluable<RGB[][]> imageProducer, OutputStream o, int encoding)
 						throws IOException {
 		RGB[][] image = imageProducer.evaluate();

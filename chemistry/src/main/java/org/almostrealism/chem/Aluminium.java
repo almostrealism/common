@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
+/** The Aluminium class. */
 public class Aluminium implements Element {
 	public int getAtomicNumber() { return 13; }
 	

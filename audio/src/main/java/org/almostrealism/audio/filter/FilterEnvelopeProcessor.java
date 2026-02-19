@@ -71,22 +71,27 @@ public class FilterEnvelopeProcessor implements EnvelopeProcessor, CellFeatures,
 				.export(output).get();
 	}
 
+	/** Performs the setDuration operation. */
 	public void setDuration(double duration) {
 		this.duration.set(0, duration);
 	}
 
+	/** Performs the setAttack operation. */
 	public void setAttack(double attack) {
 		this.attack.set(0, attack);
 	}
 
+	/** Performs the setDecay operation. */
 	public void setDecay(double decay) {
 		this.decay.set(0, decay);
 	}
 
+	/** Performs the setSustain operation. */
 	public void setSustain(double sustain) {
 		this.sustain.set(0, sustain);
 	}
 
+	/** Performs the setRelease operation. */
 	public void setRelease(double release) {
 		this.release.set(0, release);
 	}

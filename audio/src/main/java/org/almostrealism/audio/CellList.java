@@ -399,6 +399,7 @@ public class CellList extends ArrayList<Cell<PackedCollection>> implements Cells
 		return branch(this, dest);
 	}
 
+	/** Performs the poly operation. */
 	public CellList poly(IntFunction<CollectionProducer> decision) {
 		CellList l = poly(1, () -> null, decision,
 				stream().map(c -> (Function<DefaultWaveCellData, CollectionTemporalCellAdapter>) data -> (CollectionTemporalCellAdapter) c).toArray(Function[]::new));
@@ -410,69 +411,84 @@ public class CellList extends ArrayList<Cell<PackedCollection>> implements Cells
 		return l;
 	}
 
+	/** Performs the gr operation. */
 	public CellList gr(double duration, int segments, IntUnaryOperator choices) {
 		return gr(this, duration, segments, choices);
 	}
 
+	/** Performs the grid operation. */
 	public CellList grid(double duration, int segments, IntToDoubleFunction choices) {
 		return grid(this, duration, segments, choices);
 	}
 
+	/** Performs the grid operation. */
 	public CellList grid(double duration, int segments, IntFunction<Producer<PackedCollection>> choices) {
 		return grid(this, duration, segments, choices);
 	}
 
+	/** Performs the f operation. */
 	public CellList f(IntFunction<Factor<PackedCollection>> filter) {
 		return f(this, filter);
 	}
 
 	public CellList d(IntFunction<Producer<PackedCollection>> delay) { return d(this, delay); }
 
+	/** Performs the d operation. */
 	public CellList d(IntFunction<Producer<PackedCollection>> delay,
 					  IntFunction<Producer<PackedCollection>> scale) {
 		return d(this, delay, scale);
 	}
 
+	/** Performs the m operation. */
 	public CellList m(IntFunction<Cell<PackedCollection>> adapter) {
 		return m(this, adapter);
 	}
 
+	/** Performs the m operation. */
 	public CellList m(IntFunction<Cell<PackedCollection>> adapter, IntFunction<Gene<PackedCollection>> transmission) {
 		return m(this, adapter, transmission);
 	}
 
+	/** Performs the m operation. */
 	public CellList m(List<Cell<PackedCollection>> adapter, List<Cell<PackedCollection>> destinations) {
 		return m(this, adapter, destinations);
 	}
 
+	/** Performs the m operation. */
 	public CellList m(List<Cell<PackedCollection>> adapter, List<Cell<PackedCollection>> destinations, IntFunction<Gene<PackedCollection>> transmission) {
 		return m(this, adapter, destinations, transmission);
 	}
 
+	/** Performs the mself operation. */
 	public CellList mself(List<Cell<PackedCollection>> adapter, IntFunction<Gene<PackedCollection>> transmission) {
 		return mself(this, adapter, transmission);
 	}
 
+	/** Performs the m operation. */
 	public CellList m(IntFunction<Cell<PackedCollection>> adapter, List<Cell<PackedCollection>> destinations) {
 		return m(this, adapter, destinations);
 	}
 
+	/** Performs the m operation. */
 	public CellList m(IntFunction<Cell<PackedCollection>> adapter,
 					  List<Cell<PackedCollection>> destinations,
 					  IntFunction<Gene<PackedCollection>> transmission) {
 		return m(this, adapter, destinations, transmission);
 	}
 
+	/** Performs the mself operation. */
 	public CellList mself(IntFunction<Cell<PackedCollection>> adapter, IntFunction<Gene<PackedCollection>> transmission) {
 		return mself(this, adapter, transmission);
 	}
 
+	/** Performs the mself operation. */
 	public CellList mself(IntFunction<Cell<PackedCollection>> adapter,
 						  IntFunction<Gene<PackedCollection>> transmission,
 						  IntFunction<Cell<PackedCollection>> passthrough) {
 		return mself(this, adapter, transmission, passthrough);
 	}
 
+	/** Performs the m operation. */
 	public CellList m(IntFunction<Cell<PackedCollection>> adapter,
 					  IntFunction<Cell<PackedCollection>> destinations,
 					  IntFunction<Gene<PackedCollection>> transmission) {
@@ -546,20 +562,24 @@ public class CellList extends ArrayList<Cell<PackedCollection>> implements Cells
 		return (in, out, frames) -> buffer(out);
 	}
 
+	/** Performs the export operation. */
 	public Supplier<Runnable> export(PackedCollection destinations) {
 		return export(this, destinations);
 	}
 
 	public CellList mixdown(double seconds) { return mixdown(this, seconds); }
 
+	/** Performs the csv operation. */
 	public CellList csv(IntFunction<File> f) {
 		return csv(this, f);
 	}
 
+	/** Performs the o operation. */
 	public CellList o(IntFunction<File> f) {
 		return o(this, f);
 	}
 
+	/** Performs the om operation. */
 	public CellList om(IntFunction<File> f) {
 		return om(this, f);
 	}

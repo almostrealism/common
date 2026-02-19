@@ -53,6 +53,7 @@ public class CellPair<T> implements Receptor<T>, Temporal, Lifecycle {
 		this.temporals = new TemporalList();
 	}
 
+	/** Performs the init operation. */
 	public void init() {
 		this.cellA.setReceptor(protein -> push(protein, false, true));
 		this.cellB.setReceptor(protein -> push(protein, true, false));

@@ -82,6 +82,7 @@ public class RigidSphere extends Sphere implements RigidBody, ParticleGroup, Sur
 																			{0.0, 0.0, 0.0, 1.0}}), e);
 	}
 	
+	/** Performs the setRadius operation. */
 	public void setRadius(double radius) {
 		super.setSize(radius);
 		this.updateModel();
@@ -89,6 +90,7 @@ public class RigidSphere extends Sphere implements RigidBody, ParticleGroup, Sur
 	
 	public double getRadius() { return super.getSize(); }
 	
+	/** Performs the updateModel operation. */
 	public void updateModel() {
 		double r = super.getSize();
 		double a = (2.0 / 5.0) * this.state.mass * r * r;
@@ -114,6 +116,7 @@ public class RigidSphere extends Sphere implements RigidBody, ParticleGroup, Sur
 		this.updateVertices();
 	}
 	
+	/** Performs the updateVertices operation. */
 	public void updateVertices() {
 		for (int i = 0; i < this.radialSample; i++) {
 			double theta = 2 * Math.PI * i / this.radialSample;
@@ -151,6 +154,7 @@ public class RigidSphere extends Sphere implements RigidBody, ParticleGroup, Sur
 		}
 	}
 	
+	/** Performs the intersect operation. */
 	public Vector[] intersect(RigidBody b) {
 		double r = super.getSize();
 		
@@ -210,6 +214,7 @@ public class RigidSphere extends Sphere implements RigidBody, ParticleGroup, Sur
 		throw new UnsupportedOperationException();
 	}
 	
+	/** Performs the setLighting operation. */
 	public void setLighting(boolean on) {
 		if (on) {
 			this.light = new SphericalLight();

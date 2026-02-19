@@ -31,6 +31,7 @@ import java.util.function.IntPredicate;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
+/** The SceneSectionManager class. */
 public class SceneSectionManager implements Setup, Destroyable {
 	public static final IntPredicate DEFAULT_REPEAT_CHANNELS = c -> c != 5;
 
@@ -64,10 +65,12 @@ public class SceneSectionManager implements Setup, Destroyable {
 
 	public List<SceneSection> getSections() { return Collections.unmodifiableList(sections); }
 
+	/** Performs the getChannelSections operation. */
 	public List<ChannelSection> getChannelSections(ChannelInfo channel) {
 		return sections.stream().map(s -> s.getChannelSection(channel)).collect(Collectors.toList());
 	}
 
+	/** Performs the addSection operation. */
 	public SceneSection addSection(int position, int length) {
 		ProjectedChromosome chromosome = chromosomes.get(sections.size());
 		DefaultChannelSectionFactory channelFactory = new DefaultChannelSectionFactory(chromosome, channels,
@@ -80,6 +83,7 @@ public class SceneSectionManager implements Setup, Destroyable {
 		return s;
 	}
 
+	/** Performs the removeSection operation. */
 	public void removeSection(int index) {
 		sections.remove(index).destroy();
 		setup.remove(index);

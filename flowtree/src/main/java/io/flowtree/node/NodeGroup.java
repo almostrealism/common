@@ -230,6 +230,7 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 		return this;
 	}
 	
+	/** Performs the startMonitor operation. */
 	public void startMonitor(int priority, int sleep) {
 		this.monitorSleep = sleep;
 		this.monitor.setPriority(priority);
@@ -261,6 +262,7 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 		return false;
 	}
 	
+	/** Performs the setParam operation. */
 	public void setParam(Properties p) {
 		Iterator itr = p.entrySet().iterator();
 		while (itr.hasNext()) {
@@ -277,6 +279,7 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 		}
 	}
 	
+	/** Performs the setParam operation. */
 	public boolean setParam(String name, String value) {
 		String msg = null;
 		
@@ -378,6 +381,7 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 	@Override
 	public JobFactory getJobFactory() { return this.defaultFactory; }
 	
+	/** Performs the taskList operation. */
 	public String[] taskList() {
 		List l = new ArrayList();
 		
@@ -390,6 +394,7 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 		return (String[]) l.toArray(new String[0]);
 	}
 	
+	/** Performs the addCachedTask operation. */
 	public void addCachedTask(String task) {
 		if (!this.cachedTasks.contains(task)) this.cachedTasks.add(task);
 	}
@@ -459,6 +464,7 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 		return this.addServer(s, false);
 	}
 	
+	/** Performs the addServer operation. */
 	public synchronized boolean addServer(Socket s, boolean server) throws IOException {
 		try {
 			return this.addServer(new NodeProxy(s, this.passwd, this.crypt, server));
@@ -477,6 +483,7 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 		return false;
 	}
 	
+	/** Performs the addServer operation. */
 	public synchronized boolean addServer(NodeProxy pr) {
 		this.connecting.add(pr);
 		
@@ -567,6 +574,7 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 		return tot;
 	}
 
+	/** Performs the startPersistentHost operation. */
 	public void startPersistentHost(String host, int port){
 		new Thread(() -> {
 			w: while (true) {
@@ -597,6 +605,7 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 		}, "Persistent Host Attempt").start();
 	}
 	
+	/** Performs the getCurrentWork operation. */
 	public String[] getCurrentWork() {
 		synchronized (this.nodes) {
 			String[] w = new String[this.nodes.size()];
@@ -617,6 +626,7 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 		}
 	}
 	
+	/** Performs the getServers operation. */
 	public NodeProxy[] getServers() {
 		synchronized (this.servers) {
 			return this.servers.toArray(new NodeProxy[0]);
@@ -676,6 +686,7 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 		return c;
 	}
 	
+	/** Performs the createTask operation. */
 	protected JobFactory createTask(String data) {
 		int index = data.indexOf(JobFactory.ENTRY_SEPARATOR);
 		String className = data.substring(0, index);
@@ -833,18 +844,21 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 		while (itr.hasNext()) ((Node)itr.next()).setStatusLabel(label);
 	}
 	
+	/** Performs the setActivitySleepC operation. */
 	public void setActivitySleepC(double acs) {
 		if (this.nodes == null) return;
 		Iterator itr = this.nodes.iterator();
 		while (itr.hasNext()) ((Node)itr.next()).setActivitySleepC(acs);
 	}
 	
+	/** Performs the setPeerActivitySleepC operation. */
 	public void setPeerActivitySleepC(double pacs) {
 		if (this.nodes == null) return;
 		Iterator itr = this.nodes.iterator();
 		while (itr.hasNext()) ((Node)itr.next()).setPeerActivitySleepC(pacs);
 	}
 	
+	/** Performs the setParentalRelayP operation. */
 	public void setParentalRelayP(double parp) {
 		if (this.nodes == null) return;
 		Iterator<Node> itr = this.nodes.iterator();
@@ -861,6 +875,7 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 		while (itr.hasNext()) ((Node)itr.next()).setPeerRelayC(prc);
 	}
 	
+	/** Performs the setMinimumJobP operation. */
 	public void setMinimumJobP(double mjp) {
 		if (this.nodes == null) return;
 		Iterator itr = this.nodes.iterator();
@@ -921,6 +936,7 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 		return t - (t % 1);
 	}
 	
+	/** Performs the getTimeCommunicated operation. */
 	public double getTimeCommunicated() {
 		double t = 0;
 		
@@ -980,6 +996,7 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 	@Override
 	public double getActivityRating() { return this.getAverageActivityRating(); }
 	
+	/** Performs the getAverageActivityRating operation. */
 	public double getAverageActivityRating() {
 		Iterator itr = this.nodes.iterator();
 		
@@ -1202,6 +1219,7 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 		return false;
 	}
 	
+	/** Performs the run operation. */
 	public void run() {
 		while (!this.stop) {
 			this.iteration(this);
@@ -1470,6 +1488,7 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 		}
 	}
 	
+	/** Performs the toString operation. */
 	public String toString() {
 		StringBuffer b = new StringBuffer();
 		b.append("Network Node Group: ");
@@ -1509,6 +1528,7 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 		return b.toString();
 	}
 	
+	/** Performs the iteration operation. */
 	public void iteration(Node n) {
 		n.setSleep((int) (n.getActivityRating() * n.getSleep()));
 		

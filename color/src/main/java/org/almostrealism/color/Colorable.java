@@ -16,6 +16,8 @@
 
 package org.almostrealism.color;
 
+/** The Colorable interface. */
 public interface Colorable {
+	/** Performs the setColor operation. */
 	void setColor(double r, double g, double b);
 }

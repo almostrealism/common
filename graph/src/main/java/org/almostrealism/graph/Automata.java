@@ -18,6 +18,7 @@ package org.almostrealism.graph;
 
 import io.almostrealism.relation.Graph;
 
+/** The Automata interface. */
 public interface Automata<T> extends Graph<Cell<T>> {
 	@Override
 	default int countNodes() {

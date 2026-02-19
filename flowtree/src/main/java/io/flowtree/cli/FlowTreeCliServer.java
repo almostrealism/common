@@ -73,7 +73,9 @@ import java.util.Properties;
  * @author  Michael Murray
  */
 public class FlowTreeCliServer implements Runnable, NodeProxy.EventListener, Node.ActivityListener {
+	/** The Command interface. */
 	public interface Command {
+		/** Performs the run operation. */
 		String run(String command, PrintStream out);
 	}
 
@@ -109,6 +111,7 @@ public class FlowTreeCliServer implements Runnable, NodeProxy.EventListener, Nod
 	public static void main(String[] args) { FlowTreeCliServer.start(args); }
 
 	// TODO  This should not be static
+	/** Performs the start operation. */
 	public static void start(String[] args) {
 		Properties p = new Properties();
 		
@@ -386,6 +389,7 @@ public class FlowTreeCliServer implements Runnable, NodeProxy.EventListener, Nod
 		}
 	}
 	
+	/** Performs the loadIcons operation. */
 	protected void loadIcons() {
 		URL activeIconUrl = FlowTreeCliServer.class.getClassLoader().getResource("active.gif");
 		if (activeIconUrl != null)
@@ -458,6 +462,7 @@ public class FlowTreeCliServer implements Runnable, NodeProxy.EventListener, Nod
 		}
 	}
 	
+	/** Performs the write operation. */
 	public void write(String s) {
 		try {
 			this.out.write(s.getBytes(StandardCharsets.US_ASCII));
@@ -466,6 +471,7 @@ public class FlowTreeCliServer implements Runnable, NodeProxy.EventListener, Nod
 		}
 	}
 	
+	/** Performs the read operation. */
 	public String read() {
 		long s = System.currentTimeMillis();
 		
@@ -489,6 +495,7 @@ public class FlowTreeCliServer implements Runnable, NodeProxy.EventListener, Nod
 		return null;
 	}
 	
+	/** Performs the getPrintStream operation. */
 	public PrintStream getPrintStream() {
 		if (this.ps == null) {
 			this.ps = new PrintStream(this.out, false, StandardCharsets.US_ASCII);
@@ -501,6 +508,7 @@ public class FlowTreeCliServer implements Runnable, NodeProxy.EventListener, Nod
 	
 	public String runCommand(String c) { return FlowTreeCliServer.runCommand(c, this.ps); }
 	
+	/** Performs the execute operation. */
 	public void execute(BufferedReader in) throws IOException {
 		String line = null;
 		
@@ -510,11 +518,13 @@ public class FlowTreeCliServer implements Runnable, NodeProxy.EventListener, Nod
 	
 	public static FlowTreeCliServer getCurrentInstance() { return FlowTreeCliServer.current; }
 	
+	/** Performs the runCommand operation. */
 	public static String runCommand(String c, PrintStream ps) {
 		return FlowTreeCliServer.runCommand(c, ps, null);
 	}
 	
 	// TODO  Add more help for commands and config file parameters.
+	/** Performs the runCommand operation. */
 	public static String runCommand(String c, final PrintStream ps, Hashtable commands) {
 		String inc = c;
 		int in = c.indexOf(" ");
@@ -1401,6 +1411,7 @@ public class FlowTreeCliServer implements Runnable, NodeProxy.EventListener, Nod
 		}
 	}
 	
+	/** Performs the parseCommand operation. */
 	public static String[] parseCommand(String c) {
 		int index = c.indexOf(" ");
 		String s = c;
@@ -1472,5 +1483,6 @@ public class FlowTreeCliServer implements Runnable, NodeProxy.EventListener, Nod
 //		}
 	}
 
+	/** Performs the iteration operation. */
 	public void iteration(Node n) { }
 }

@@ -19,9 +19,11 @@ package io.almostrealism.compute;
 import io.almostrealism.code.Precision;
 import org.almostrealism.io.SystemUtils;
 
+/** The ComputeRequirement enumeration. */
 public enum ComputeRequirement {
 	CPU, GPU, FPGA, C, CL, MTL, JNI, EXTERNAL, PROFILING;
 
+	/** Performs the getMaximumPrecision operation. */
 	public Precision getMaximumPrecision() {
 			switch (this) {
 			case CPU:

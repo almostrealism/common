@@ -18,12 +18,15 @@ package org.almostrealism.event;
 
 import java.util.function.Supplier;
 
+/** The EventDelivery interface. */
 public interface EventDelivery<T> {
+	/** Performs the deliverAll operation. */
 	default int deliverAll(Supplier<T> events) {
 		int total = 0;
 		for (; deliver(events.get()); total++);
 		return total;
 	}
 
+	/** Performs the deliver operation. */
 	boolean deliver(T event);
 }

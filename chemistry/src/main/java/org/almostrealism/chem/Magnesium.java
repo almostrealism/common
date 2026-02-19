@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
+/** The Magnesium class. */
 public class Magnesium implements Element {
 	public int getAtomicNumber() { return 12; }
 

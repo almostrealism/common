@@ -16,6 +16,7 @@
 
 package org.almostrealism.audio.generative;
 
+/** The GeneratorStatus enumeration. */
 public enum GeneratorStatus {
 	NONE, IN_PROGRESS, READY
 }

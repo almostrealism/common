@@ -23,6 +23,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.function.Supplier;
 
+/** The OperationWithInfo class. */
 public class OperationWithInfo implements Operation, OperationInfo {
 	private final OperationMetadata metadata;
 	private final Operation operation;
@@ -61,14 +62,17 @@ public class OperationWithInfo implements Operation, OperationInfo {
 		return getMetadata().getShortDescription();
 	}
 
+	/** Performs the of operation. */
 	public static OperationWithInfo of(OperationMetadata metadata, Operation operation) {
 		return new OperationWithInfo(metadata, operation);
 	}
 
+	/** Performs the of operation. */
 	public static OperationWithInfo of(OperationMetadata metadata, Supplier<Runnable> op) {
 		return OperationWithInfo.of(metadata, Operation.of(op));
 	}
 
+	/** The RunnableWithInfo class. */
 	public static class RunnableWithInfo implements OperationInfo, Runnable {
 		private final OperationMetadata metadata;
 		private final Runnable runnable;
@@ -89,6 +93,7 @@ public class OperationWithInfo implements Operation, OperationInfo {
 			return getMetadata().getShortDescription();
 		}
 
+		/** Performs the of operation. */
 		public static RunnableWithInfo of(OperationMetadata metadata, Runnable runnable) {
 			return new RunnableWithInfo(metadata, runnable);
 		}

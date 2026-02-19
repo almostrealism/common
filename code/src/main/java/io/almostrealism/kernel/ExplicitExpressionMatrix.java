@@ -18,6 +18,7 @@ package io.almostrealism.kernel;
 
 import io.almostrealism.expression.Expression;
 
+/** The ExplicitExpressionMatrix class. */
 public class ExplicitExpressionMatrix<T> extends ExpressionMatrix<T> {
 	public static boolean enableProactiveSimplification = false;
 
@@ -36,6 +37,7 @@ public class ExplicitExpressionMatrix<T> extends ExpressionMatrix<T> {
 		populate(e.getSimplified());
 	}
 
+	/** Performs the populate operation. */
 	protected void populate(Expression e) {
 		matrix = new Expression[rowCount][colCount];
 		rowDuplicates = new int[rowCount];
@@ -65,6 +67,7 @@ public class ExplicitExpressionMatrix<T> extends ExpressionMatrix<T> {
 		}
 	}
 
+	/** Performs the valueAt operation. */
 	public Expression<T> valueAt(int i, int j) {
 		if (rowDuplicates.length <= i || rowDuplicates[i] == i) {
 			throw new UnsupportedOperationException();

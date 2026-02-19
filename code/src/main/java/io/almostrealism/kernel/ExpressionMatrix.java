@@ -24,6 +24,7 @@ import org.almostrealism.io.ConsoleFeatures;
 import java.util.function.Function;
 import java.util.function.Predicate;
 
+/** The ExpressionMatrix class. */
 public abstract class ExpressionMatrix<T> implements ConsoleFeatures {
 	public static long MAX_SEQUENCE_LENGTH = 1 << 24;
 
@@ -58,12 +59,15 @@ public abstract class ExpressionMatrix<T> implements ConsoleFeatures {
 
 	public int[] getRowDuplicates() { return rowDuplicates; }
 
+	/** Performs the valueAt operation. */
 	public abstract Expression<T> valueAt(int i, int j);
 
+	/** Performs the apply operation. */
 	public <O> ExpressionMatrix<O> apply(Function<Expression<T>, Expression<O>> function) {
 		return MatrixFunctionEvaluator.apply(this, function);
 	}
 
+	/** Performs the allMatch operation. */
 	public Expression<T> allMatch() {
 		Expression<T> e = valueAt(0, 0);
 		for (int i = 0; i < rowCount; i++) {
@@ -79,6 +83,7 @@ public abstract class ExpressionMatrix<T> implements ConsoleFeatures {
 
 	public IndexSequence columnSequence() { return null; }
 
+	/** Performs the allColumnsMatch operation. */
 	public Expression[] allColumnsMatch() {
 		if ((long) rowCount * colCount > MAX_SEQUENCE_LENGTH)
 			return null;
@@ -96,10 +101,12 @@ public abstract class ExpressionMatrix<T> implements ConsoleFeatures {
 		return result;
 	}
 
+	/** Performs the uniqueNonZeroOffset operation. */
 	public Expression uniqueNonZeroOffset(Index rowIndex) {
 		return uniqueMatchingOffset(rowIndex, e -> e.doubleValue().orElse(-1.0) != 0.0);
 	}
 
+	/** Performs the uniqueMatchingOffset operation. */
 	public Expression uniqueMatchingOffset(Index rowIndex, Predicate<Expression<?>> predicate) {
 		Number matchingColumns[] = new Number[rowCount];
 
@@ -126,6 +133,7 @@ public abstract class ExpressionMatrix<T> implements ConsoleFeatures {
 		return Scope.console;
 	}
 
+	/** Performs the sequence operation. */
 	protected static <T> IndexSequence sequence(Index row, Index col, Expression<T> e) {
 		IndexChild child = Index.child(row, col);
 		if (child.getLimit().isEmpty()) return null;
@@ -139,6 +147,7 @@ public abstract class ExpressionMatrix<T> implements ConsoleFeatures {
 		return e.sequence(child, child.getLimit().getAsLong(), MAX_SEQUENCE_LENGTH);
 	}
 
+	/** Performs the create operation. */
 	public static <T> ExpressionMatrix<T> create(Index row, Index col, Expression<T> expression) {
 		if (row.getLimit().isEmpty() || col.getLimit().isEmpty()) return null;
 
@@ -155,6 +164,7 @@ public abstract class ExpressionMatrix<T> implements ConsoleFeatures {
 		return new ExplicitExpressionMatrix<>(row, col, expression);
 	}
 
+	/** Performs the create operation. */
 	public static <T, O> ExpressionMatrix<O> create(Index row, Index col, Expression<T> expression,
 												 Function<Expression<T>, Expression<O>> function) {
 		ExpressionMatrix<T> matrix = create(row, col, expression);

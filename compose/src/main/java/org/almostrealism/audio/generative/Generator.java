@@ -26,6 +26,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
+/** The Generator class. */
 public class Generator {
 	private String id;
 	private String name;
@@ -76,6 +77,7 @@ public class Generator {
 	@JsonIgnore
 	public void setGenerationProvider(GenerationProvider provider) { this.generationProvider = provider; }
 
+	/** Performs the refresh operation. */
 	public boolean refresh() {
 		if (state == State.REFRESHING || state == State.GENERATING) {
 			throw new IllegalStateException("Generator is busy");
@@ -97,6 +99,7 @@ public class Generator {
 		return true;
 	}
 
+	/** Performs the generate operation. */
 	public void generate(int count) {
 		if (state != State.READY) {
 			throw new IllegalStateException("Generator is not ready");
@@ -110,9 +113,11 @@ public class Generator {
 		}
 	}
 
+	/** The State enumeration. */
 	public enum State {
 		NONE, REFRESHING, READY, GENERATING;
 
+		/** Performs the getName operation. */
 		public String getName() {
 			switch (this) {
 				case NONE:

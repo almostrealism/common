@@ -23,10 +23,13 @@ import org.almostrealism.optimize.HealthComputation;
 
 import java.util.function.Consumer;
 
+/** The AudioHealthComputation interface. */
 public interface AudioHealthComputation<T extends TemporalCellular>
 		extends HealthComputation<T, AudioHealthScore>, Destroyable {
 
+	/** Performs the getOutput operation. */
 	MultiChannelAudioOutput getOutput();
 
+	/** Performs the setWaveDetailsProcessor operation. */
 	void setWaveDetailsProcessor(Consumer<WaveDetails> processor);
 }

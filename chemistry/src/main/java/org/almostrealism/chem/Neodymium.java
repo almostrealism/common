@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
+/** The Neodymium class. */
 public class Neodymium implements Element {
 	public int getAtomicNumber() { return 60; }
 

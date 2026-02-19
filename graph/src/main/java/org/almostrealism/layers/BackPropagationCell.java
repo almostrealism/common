@@ -26,6 +26,7 @@ import org.almostrealism.hardware.OperationList;
 
 import java.util.function.Supplier;
 
+/** The BackPropagationCell class. */
 public class BackPropagationCell implements Cell<PackedCollection>, Learning, Nameable, CodeFeatures {
 	private String name;
 

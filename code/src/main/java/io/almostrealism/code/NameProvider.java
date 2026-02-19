@@ -16,16 +16,20 @@
 
 package io.almostrealism.code;
 
+/** The NameProvider interface. */
 public interface NameProvider {
 
+	/** Performs the getFunctionName operation. */
 	String getFunctionName();
 
+	/** Performs the getVariablePrefix operation. */
 	default String getVariablePrefix() {
 		String f = getFunctionName();
 		if (f.contains("_")) f = f.substring(f.lastIndexOf("_"));
 		return f;
 	}
 
+	/** Performs the getArgumentName operation. */
 	default String getArgumentName(int index) {
 		if (getVariablePrefix() == null)
 			throw new UnsupportedOperationException();
@@ -33,6 +37,7 @@ public interface NameProvider {
 		return getVariablePrefix() + "_v" + index;
 	}
 
+	/** Performs the getVariableName operation. */
 	default String getVariableName(int index) {
 		if (getVariablePrefix() == null)
 			throw new UnsupportedOperationException();

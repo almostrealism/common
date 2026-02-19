@@ -20,5 +20,6 @@ package org.almostrealism.color;
  * @author  Mike Murray
  */
 public interface Spectrum {
+	/** Performs the getSpectra operation. */
 	ProbabilityDistribution getSpectra();
 }

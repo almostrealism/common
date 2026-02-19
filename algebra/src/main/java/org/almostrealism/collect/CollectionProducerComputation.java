@@ -132,10 +132,12 @@ public interface CollectionProducerComputation extends
 				.filter(f -> !(f instanceof MemoryDataDestinationProducer));
 	}
 
+	/** Performs the createDestination operation. */
 	default PackedCollection createDestination(int len) {
 		throw new UnsupportedOperationException();
 	}
 
+	/** Performs the postProcessOutput operation. */
 	default PackedCollection postProcessOutput(MemoryData output, int offset) {
 		TraversalPolicy shape = getShape();
 
@@ -217,6 +219,7 @@ public interface CollectionProducerComputation extends
 		return new ReshapeProducer(shape, this);
 	}
 
+	/** Performs the collect operation. */
 	default <T extends MemoryDataAdapter> T collect(Function<TraversalPolicy, T> factory) {
 		PackedCollection c = get().evaluate();
 		T data = factory.apply(c.getShape());
@@ -224,6 +227,7 @@ public interface CollectionProducerComputation extends
 		return data;
 	}
 
+	/** This method. */
 	static <T extends PackedCollection> Function<List<Producer<?>>, CollectionProducer>
 				producerFactory(CollectionProducerComputation original) {
 		return args -> {
@@ -241,6 +245,7 @@ public interface CollectionProducerComputation extends
 		};
 	}
 
+	/** Performs the isIsolationPermitted operation. */
 	static <T extends PackedCollection> boolean isIsolationPermitted(CollectionProducer op) {
 		return Process.isolationPermitted(op) &&
 				op.getShape().getTotalSizeLong() <= MemoryProvider.MAX_RESERVATION;
@@ -290,6 +295,7 @@ public interface CollectionProducerComputation extends
 		return shape;
 	}
 
+	/** The IsolatedProcess class. */
 	class IsolatedProcess extends DelegatedCollectionProducer {
 
 		public IsolatedProcess(CollectionProducer op) {

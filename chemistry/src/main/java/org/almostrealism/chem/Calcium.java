@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
+/** The Calcium class. */
 public class Calcium implements Element {
 	public int getAtomicNumber() { return 20; }
 

@@ -30,13 +30,17 @@ import org.almostrealism.collect.PackedCollection;
  * @see WaveDetailsFactory
  */
 public interface WaveDataFeatureProvider {
+	/** Performs the computeFeatures operation. */
 	default PackedCollection computeFeatures(WaveDataProvider provider) {
 		return computeFeatures(provider.get(getAudioSampleRate()));
 	}
 
+	/** Performs the computeFeatures operation. */
 	PackedCollection computeFeatures(WaveData waveData);
 
+	/** Performs the getAudioSampleRate operation. */
 	int getAudioSampleRate();
 
+	/** Performs the getFeatureSampleRate operation. */
 	double getFeatureSampleRate();
 }

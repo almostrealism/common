@@ -18,6 +18,7 @@ package io.almostrealism.util;
 
 import java.text.DecimalFormat;
 
+/** The NumberFormats class. */
 public class NumberFormats {
 	private static class DefaultIntegerFormat extends DecimalFormat {
 		public DefaultIntegerFormat() {
@@ -50,6 +51,7 @@ public class NumberFormats {
 	/** An instance of DecimalFormat that can be used to format decimal numbers for display. */
 	public static final DecimalFormat displayFormat = new TruncatedDecimalFormat();
 
+	/** Performs the formatNumber operation. */
 	public static String formatNumber(Number value) {
 		if (value == null) {
 			return null;

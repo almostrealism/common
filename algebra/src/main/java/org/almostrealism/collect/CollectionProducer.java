@@ -179,18 +179,22 @@ public interface CollectionProducer extends
 		return CollectionProducerBase.super.consolidate();
 	}
 
+	/** Performs the repeat operation. */
 	default CollectionProducerComputation repeat(int repeat) {
 		return repeat(repeat, this);
 	}
 
+	/** Performs the repeat operation. */
 	default CollectionProducerComputation repeat(int axis, int repeat) {
 		return repeat(axis, repeat, this);
 	}
 
+	/** Performs the subset operation. */
 	default CollectionProducer subset(TraversalPolicy shape, int... position) {
 		return subset(shape, this, position);
 	}
 
+	/** Performs the transpose operation. */
 	default CollectionProducer transpose() {
 		TraversalPolicy shape = shape(this);
 
@@ -206,35 +210,43 @@ public interface CollectionProducer extends
 		return (CollectionProducer) reshape(shape(result).trim(), result);
 	}
 
+	/** Performs the transpose operation. */
 	default CollectionProducer transpose(int axis) {
 		CollectionProducerComputation result = traverse(axis - 1).enumerate(axis, 1);
 		return (CollectionProducer) reshape(shape(result).trim(), result);
 	}
 
+	/** Performs the enumerate operation. */
 	default CollectionProducerComputation enumerate(int len) {
 		return enumerate(0, len, len, 1);
 	}
 
+	/** Performs the enumerate operation. */
 	default CollectionProducerComputation enumerate(int axis, int len) {
 		return enumerate(axis, len, len, 1);
 	}
 
+	/** Performs the enumerate operation. */
 	default CollectionProducerComputation enumerate(int axis, int len, int stride) {
 		return enumerate(axis, len, stride, 1);
 	}
 
+	/** Performs the enumerate operation. */
 	default CollectionProducerComputation enumerate(int axis, int len, int stride, int repeat) {
 		return enumerate(axis, len, stride, repeat, this);
 	}
 
+	/** Performs the enumerate operation. */
 	default CollectionProducerComputation enumerate(TraversalPolicy shape) {
 		return enumerate(shape, this);
 	}
 
+	/** Performs the enumerate operation. */
 	default CollectionProducerComputation enumerate(TraversalPolicy shape, TraversalPolicy stride) {
 		return enumerate(shape, stride, this);
 	}
 
+	/** Performs the permute operation. */
 	default CollectionProducerComputation permute(int... order) {
 		return permute(this, order);
 	}
@@ -264,18 +276,22 @@ public interface CollectionProducer extends
 		return pad(this, depths);
 	}
 
+	/** Performs the valueAt operation. */
 	default CollectionProducer valueAt(Producer<PackedCollection>... pos) {
 		return c(this, pos);
 	}
 
+	/** Performs the map operation. */
 	default CollectionProducerComputation map(Function<CollectionProducerComputation, CollectionProducer> mapper) {
 		return map(this, mapper);
 	}
 
+	/** Performs the map operation. */
 	default CollectionProducerComputation map(TraversalPolicy itemShape, Function<CollectionProducerComputation, CollectionProducer> mapper) {
 		return map(itemShape, this, mapper);
 	}
 
+	/** Performs the reduce operation. */
 	default <T extends PackedCollection> CollectionProducerComputation reduce(Function<CollectionProducerComputation, CollectionProducer> mapper) {
 		return reduce(this, mapper);
 	}
@@ -288,188 +304,233 @@ public interface CollectionProducer extends
 		return repeat(repeat, this).consolidate();
 	}
 
+	/** Performs the add operation. */
 	default CollectionProducer add(Producer<PackedCollection> value) {
 		return add(this, value);
 	}
 
+	/** Performs the add operation. */
 	default CollectionProducer add(double value) {
 		return add(this, c(value));
 	}
 
+	/** Performs the subtract operation. */
 	default CollectionProducer subtract(double value) {
 		return subtract(this, c(value));
 	}
 
+	/** Performs the subtract operation. */
 	default CollectionProducer subtract(Producer<PackedCollection> value) {
 		return subtract(this, value);
 	}
 
+	/** Performs the subtractIgnoreZero operation. */
 	default CollectionProducerComputation subtractIgnoreZero(Producer<PackedCollection> value) {
 		return subtractIgnoreZero(this, value);
 	}
 
+	/** Performs the mul operation. */
 	default <T extends PackedCollection> CollectionProducer mul(double value) {
 		return multiply(value);
 	}
 
+	/** Performs the multiply operation. */
 	default <T extends PackedCollection> CollectionProducer multiply(double value) {
 		return multiply(this, c(value));
 	}
 
+	/** Performs the mul operation. */
 	default CollectionProducer mul(Producer<PackedCollection> value) {
 		return multiply(value);
 	}
 
+	/** Performs the multiply operation. */
 	default CollectionProducer multiply(Producer<PackedCollection> value) {
 		return multiply(this, value);
 	}
 
+	/** Performs the div operation. */
 	default CollectionProducer div(double value) {
 		return divide(value);
 	}
 
+	/** Performs the divide operation. */
 	default CollectionProducer divide(double value) {
 		return divide(this, c(value));
 	}
 
+	/** Performs the divide operation. */
 	default CollectionProducer divide(Producer<PackedCollection> value) {
 		return divide(this, value);
 	}
 
+	/** Performs the sqrt operation. */
 	default <T extends PackedCollection> CollectionProducer sqrt() {
 		return sqrt(this);
 	}
 
+	/** Performs the pow operation. */
 	default <T extends PackedCollection> CollectionProducer pow(double value) {
 		return pow(this, c(value));
 	}
 
+	/** Performs the pow operation. */
 	default CollectionProducer pow(Producer<PackedCollection> value) {
 		return pow(this, value);
 	}
 
+	/** Performs the reciprocal operation. */
 	default CollectionProducer reciprocal() {
 		return pow(c(-1.0));
 	}
 
+	/** Performs the minus operation. */
 	default CollectionProducer minus() {
 		return minus(this);
 	}
 
+	/** Performs the exp operation. */
 	default CollectionProducer exp() {
 		return exp(this);
 	}
 
+	/** Performs the expIgnoreZero operation. */
 	default CollectionProducer expIgnoreZero() {
 		return expIgnoreZero(this);
 	}
 
+	/** Performs the log operation. */
 	default CollectionProducer log() {
 		return log(this);
 	}
 
+	/** Performs the sq operation. */
 	default CollectionProducer sq() {
 		return sq(this);
 	}
 
+	/** Performs the abs operation. */
 	default CollectionProducer abs() {
 		return abs(this);
 	}
 
+	/** Performs the magnitude operation. */
 	default CollectionProducer magnitude() {
 		return magnitude(this);
 	}
 
+	/** Performs the magnitude operation. */
 	default CollectionProducer magnitude(int axis) {
 		return magnitude(traverse(axis, this));
 	}
 
+	/** Performs the max operation. */
 	default <T extends PackedCollection> CollectionProducerComputationBase max(int axis) {
 		return max(traverse(axis, this));
 	}
 
+	/** Performs the max operation. */
 	default <T extends PackedCollection> CollectionProducerComputationBase max() {
 		return max(this);
 	}
 
+	/** Performs the indexOfMax operation. */
 	default <T extends PackedCollection> CollectionProducerComputationBase indexOfMax() {
 		return indexOfMax(this);
 	}
 
+	/** Performs the min operation. */
 	default <T extends PackedCollection> CollectionProducerComputationBase min() {
 		// TODO  return min((Producer) this);
 		throw new UnsupportedOperationException();
 	}
 
+	/** Performs the mod operation. */
 	default CollectionProducer mod(double mod) {
 		return mod(this, c(mod));
 	}
 
+	/** Performs the mod operation. */
 	default CollectionProducer mod(Producer<PackedCollection> mod) {
 		return mod(this, mod);
 	}
 
+	/** Performs the sum operation. */
 	default CollectionProducer sum(int axis) {
 		return sum(traverse(axis, this));
 	}
 
+	/** Performs the sum operation. */
 	default CollectionProducer sum() {
 		return sum(this);
 	}
 
+	/** Performs the mean operation. */
 	default CollectionProducer mean(int axis) {
 		return mean(traverse(axis, this));
 	}
 
+	/** Performs the mean operation. */
 	default CollectionProducer mean() {
 		return mean(this);
 	}
 
+	/** Performs the subtractMean operation. */
 	default CollectionProducer subtractMean(int axis) {
 		return subtractMean(traverse(axis, this));
 	}
 
+	/** Performs the subtractMean operation. */
 	default CollectionProducer subtractMean() {
 		return subtractMean(this);
 	}
 
+	/** Performs the variance operation. */
 	default CollectionProducer variance(int axis) {
 		return variance(traverse(axis, this));
 	}
 
+	/** Performs the variance operation. */
 	default CollectionProducer variance() {
 		return variance(this);
 	}
 
+	/** Performs the sigmoid operation. */
 	default CollectionProducer sigmoid() {
 		return sigmoid(this);
 	}
 
+	/** Performs the greaterThan operation. */
 	default CollectionProducer greaterThan(Producer<PackedCollection> operand,
 																		Producer<PackedCollection> trueValue, Producer<PackedCollection> falseValue) {
 		return greaterThan(operand, trueValue, falseValue, false);
 	}
 
+	/** Performs the greaterThan operation. */
 	default CollectionProducer greaterThan(Producer<PackedCollection> operand,
 																		Producer<PackedCollection> trueValue, Producer<PackedCollection> falseValue,
 																		boolean includeEqual) {
 		return greaterThan(this, operand, trueValue, falseValue, includeEqual);
 	}
 
+	/** Performs the lessThan operation. */
 	default <T extends PackedCollection> CollectionProducer lessThan(Supplier operand) {
 		return lessThan(operand, false);
 	}
 
+	/** Performs the lessThan operation. */
 	default <T extends PackedCollection> CollectionProducer lessThan(Supplier operand, boolean includeEqual) {
 		return lessThan(operand, null, null, includeEqual);
 	}
 
+	/** Performs the lessThan operation. */
 	default <T extends PackedCollection> CollectionProducer lessThan(Supplier<Evaluable<? extends PackedCollection>> operand,
 																	 Supplier<Evaluable<? extends PackedCollection>> trueValue,
 																	 Supplier<Evaluable<? extends PackedCollection>> falseValue) {
 		return lessThan(operand, trueValue, falseValue, false);
 	}
 
+	/** Performs the lessThan operation. */
 	default <T extends PackedCollection> CollectionProducer lessThan(Supplier<Evaluable<? extends PackedCollection>> operand,
 																	 Supplier<Evaluable<? extends PackedCollection>> trueValue,
 																	 Supplier<Evaluable<? extends PackedCollection>> falseValue,
@@ -521,10 +582,12 @@ public interface CollectionProducer extends
 		return and(this, operand, trueValue, falseValue);
 	}
 
+	/** Performs the attemptDelta operation. */
 	default CollectionProducer attemptDelta(Producer<?> target) {
 		return attemptDelta(this, target);
 	}
 
+	/** Performs the delta operation. */
 	default CollectionProducer delta(Producer<?> target) {
 		CollectionProducer delta = attemptDelta(target);
 		if (delta != null) return delta;
@@ -532,6 +595,7 @@ public interface CollectionProducer extends
 		throw new UnsupportedOperationException();
 	}
 
+	/** Performs the grad operation. */
 	default CollectionProducer grad(Producer<?> target, Producer<PackedCollection> gradient) {
 		return combineGradient(this, (Producer<PackedCollection>) target, gradient);
 	}

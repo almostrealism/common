@@ -28,6 +28,7 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 
+/** The AverageColor class. */
 public class AverageColor implements ProducerComputation<PackedCollection> {
 	private static class Color {
 		double p;
@@ -42,6 +43,7 @@ public class AverageColor implements ProducerComputation<PackedCollection> {
 		this.colors = new ArrayList<Color>();
 	}
 	
+	/** Performs the addColor operation. */
 	public void addColor(double p, RGB c) {
 		if (this.invert) p = 1.0 / p;
 		

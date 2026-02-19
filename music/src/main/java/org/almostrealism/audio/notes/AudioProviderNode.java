@@ -23,6 +23,7 @@ import org.almostrealism.audio.data.WaveDataProvider;
 import java.util.ArrayList;
 import java.util.Collection;
 
+/** The AudioProviderNode class. */
 public class AudioProviderNode implements NoteAudioNode {
 	private String name;
 	private String identifier;
@@ -71,6 +72,7 @@ public class AudioProviderNode implements NoteAudioNode {
 		return new ArrayList<>();
 	}
 
+	/** Performs the create operation. */
 	public static AudioProviderNode create(WaveDataProvider provider) {
 		if (provider instanceof FileWaveDataProvider) {
 			return new AudioProviderNode(provider.getKey(), provider.getIdentifier());
@@ -84,6 +86,7 @@ public class AudioProviderNode implements NoteAudioNode {
 		}
 	}
 
+	/** Performs the create operation. */
 	public static AudioProviderNode create(NoteAudioProvider note) {
 		return create(note.getProvider());
 	}

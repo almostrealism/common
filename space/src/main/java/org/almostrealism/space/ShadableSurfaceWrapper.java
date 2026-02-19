@@ -24,5 +24,6 @@ import org.almostrealism.color.ShadableSurface;
  * @author Michael Murray
  */
 public interface ShadableSurfaceWrapper {
+	/** Performs the getSurface operation. */
 	ShadableSurface getSurface();
 }

@@ -6,6 +6,7 @@ import java.io.File;
 import java.io.IOException;
 import java.util.Iterator;
 
+/** The Animation class. */
 public abstract class Animation implements Layered<RealizableImage> {
 	private RealizableImage image;
 	private String name;
@@ -36,6 +37,7 @@ public abstract class Animation implements Layered<RealizableImage> {
 		};
 	}
 	
+	/** Performs the render operation. */
 	public Thread render() {
 		return new Thread(() -> {
 			for (RealizableImage r : Animation.this) {
@@ -48,5 +50,6 @@ public abstract class Animation implements Layered<RealizableImage> {
 		});
 	}
 	
+	/** Performs the next operation. */
 	public abstract String next();
 }

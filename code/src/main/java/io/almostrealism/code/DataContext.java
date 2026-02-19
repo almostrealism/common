@@ -23,30 +23,41 @@ import java.util.List;
 import java.util.concurrent.Callable;
 import java.util.function.IntFunction;
 
+/** The DataContext interface. */
 public interface DataContext<MEM> extends Named {
+	/** Performs the getPrecision operation. */
 	Precision getPrecision();
 
+	/** Performs the init operation. */
 	void init();
 
 	default ComputeContext<MEM> getComputeContext() {
 		return getComputeContexts().get(0);
 	}
 
+	/** Performs the getComputeContexts operation. */
 	List<ComputeContext<MEM>> getComputeContexts();
 
+	/** Performs the getMemoryProviders operation. */
 	List<MemoryProvider<? extends Memory>> getMemoryProviders();
 
+	/** Performs the getMemoryProvider operation. */
 	MemoryProvider<? extends Memory> getMemoryProvider(int size);
 
+	/** Performs the getKernelMemoryProvider operation. */
 	MemoryProvider<? extends Memory> getKernelMemoryProvider();
 
+	/** Performs the deviceMemory operation. */
 	<T> T deviceMemory(Callable<T> exec);
 
+	/** Performs the sharedMemory operation. */
 	default <T> T sharedMemory(IntFunction<String> name, Callable<T> exec) {
 		throw new UnsupportedOperationException();
 	}
 
+	/** Performs the computeContext operation. */
 	<T> T computeContext(Callable<T> exec, ComputeRequirement... expectations);
 
+	/** Performs the destroy operation. */
 	void destroy();
 }

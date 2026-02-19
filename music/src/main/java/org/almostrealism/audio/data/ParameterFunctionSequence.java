@@ -20,6 +20,7 @@ import java.util.List;
 import java.util.function.IntFunction;
 import java.util.stream.IntStream;
 
+/** The ParameterFunctionSequence class. */
 public class ParameterFunctionSequence implements IntFunction<ParameterFunction> {
 	private ParameterFunction[] steps;
 
@@ -42,6 +43,7 @@ public class ParameterFunctionSequence implements IntFunction<ParameterFunction>
 		return steps[i];
 	}
 
+	/** Performs the random operation. */
 	public static ParameterFunctionSequence random(int steps) {
 		return new ParameterFunctionSequence(IntStream.range(0, steps)
 				.mapToObj(i -> ParameterFunction.random())

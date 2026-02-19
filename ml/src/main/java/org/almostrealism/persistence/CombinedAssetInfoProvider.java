@@ -21,6 +21,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 
+/** The CombinedAssetInfoProvider class. */
 public class CombinedAssetInfoProvider implements AssetInfoProvider {
 	private List<AssetInfoProvider> providers;
 
@@ -32,6 +33,7 @@ public class CombinedAssetInfoProvider implements AssetInfoProvider {
 		this.providers = Arrays.asList(providers);
 	}
 
+	/** Performs the addProvider operation. */
 	public void addProvider(AssetInfoProvider p) {
 		this.providers.add(p);
 	}

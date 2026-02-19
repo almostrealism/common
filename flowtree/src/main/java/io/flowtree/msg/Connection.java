@@ -125,6 +125,7 @@ public class Connection implements Runnable, NodeProxy.EventListener {
 		return b != null && b.booleanValue();
 	}
 	
+	/** Performs the run operation. */
 	public void run() {
 //		loop: while (true) {
 //			try {
@@ -252,6 +253,7 @@ public class Connection implements Runnable, NodeProxy.EventListener {
 	
 	public String toString() { return this.toString(false); }
 	
+	/** Performs the toString operation. */
 	public String toString(boolean showStat) {
 
 		String b = "Connection from " +

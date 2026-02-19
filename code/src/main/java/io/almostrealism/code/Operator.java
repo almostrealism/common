@@ -22,12 +22,14 @@ import io.almostrealism.relation.Producer;
 
 import java.util.Collection;
 
+/** The Operator interface. */
 public interface Operator<T> extends Process<Process<?, ?>, Evaluable<? extends T>>, ProducerComputation<T> {
 	@Override
 	default Process<Process<?, ?>, Evaluable<? extends T>> isolate() {
 		return new IsolatedProcess<>(this);
 	}
 
+	/** The IsolatedProcess class. */
 	class IsolatedProcess<T> implements Process<Process<?, ?>, Evaluable<? extends T>>, Producer<T> {
 		private Operator<T> op;
 

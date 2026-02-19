@@ -91,6 +91,7 @@ public class AssetGroupInfo {
 		this.assets = assets;
 	}
 
+	/** Performs the getTotalSize operation. */
 	public long getTotalSize() {
 		if (assets == null) return 0;
 
@@ -99,6 +100,7 @@ public class AssetGroupInfo {
 				.sum();
 	}
 
+	/** Performs the subset operation. */
 	public AssetGroupInfo subset(Predicate<AssetInfo> filter) {
 		return new AssetGroupInfo(getName(), getVersion(),
 				getAssets().values().stream()
@@ -106,10 +108,12 @@ public class AssetGroupInfo {
 						.collect(Collectors.toList()));
 	}
 
+	/** Performs the forDirectory operation. */
 	public static AssetGroupInfo forDirectory(File directory) {
 		return forDirectory(directory.getName(), directory);
 	}
 
+	/** Performs the forDirectory operation. */
 	public static AssetGroupInfo forDirectory(String name, File directory) {
 		if (directory.isDirectory()) {
 			return new AssetGroupInfo(name, null,

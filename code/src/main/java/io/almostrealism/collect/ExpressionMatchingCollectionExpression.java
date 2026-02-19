@@ -30,6 +30,7 @@ import org.almostrealism.io.ConsoleFeatures;
 import java.util.Objects;
 import java.util.Optional;
 
+/** The ExpressionMatchingCollectionExpression class. */
 public class ExpressionMatchingCollectionExpression extends CollectionExpressionAdapter implements ConsoleFeatures {
 	public static boolean enablePossibleMatch = true;
 
@@ -96,6 +97,7 @@ public class ExpressionMatchingCollectionExpression extends CollectionExpression
 	@Override
 	public Console console() { return Scope.console; }
 
+	/** Performs the compareExpressions operation. */
 	public static Expression<Boolean> compareExpressions(Expression<?> a, Expression<?> b) {
 		if (a == null && b == null) return new BooleanConstant(true);
 		if (a == null || b == null) return new BooleanConstant(false);
@@ -127,6 +129,7 @@ public class ExpressionMatchingCollectionExpression extends CollectionExpression
 		return new BooleanConstant(false);
 	}
 
+	/** Performs the create operation. */
 	public static CollectionExpression create(
 			CollectionExpression reference, CollectionExpression compareTo,
 			Expression<?> positive, Expression<?> negative) {
@@ -135,6 +138,7 @@ public class ExpressionMatchingCollectionExpression extends CollectionExpression
 				new ConstantCollectionExpression(reference.getShape(), negative));
 	}
 
+	/** Performs the create operation. */
 	public static CollectionExpression create(
 			CollectionExpression reference, CollectionExpression compareTo,
 			CollectionExpression positive, CollectionExpression negative) {
@@ -144,6 +148,7 @@ public class ExpressionMatchingCollectionExpression extends CollectionExpression
 		return comp.orElseThrow() ? positive : negative;
 	}
 
+	/** Performs the checkPossibleMatch operation. */
 	protected static Optional<Boolean> checkPossibleMatch(CollectionExpression reference, CollectionExpression compareTo) {
 		if (!enablePossibleMatch) return Optional.empty();
 

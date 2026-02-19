@@ -20,6 +20,7 @@ import io.almostrealism.profile.OperationInfo;
 
 import java.util.OptionalLong;
 
+/** The DefaultKernelStructureContext class. */
 public class DefaultKernelStructureContext implements KernelStructureContext {
 	private OptionalLong count;
 

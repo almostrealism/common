@@ -115,6 +115,7 @@ public class AudioSceneContext {
 		this.channels = channels;
 	}
 
+	/** Performs the includesChannel operation. */
 	public boolean includesChannel(int channel) {
 		return getChannels() != null && getChannels().stream().anyMatch(c -> c.getPatternChannel() == channel);
 	}
@@ -127,6 +128,7 @@ public class AudioSceneContext {
 		this.frameForPosition = frameForPosition;
 	}
 
+	/** Performs the frameForPosition operation. */
 	public int frameForPosition(double pos) {
 		return frameForPosition.applyAsInt(pos);
 	}
@@ -139,6 +141,7 @@ public class AudioSceneContext {
 		this.timeForDuration = timeForDuration;
 	}
 
+	/** Performs the timeForPosition operation. */
 	public double timeForPosition(double pos) {
 		return getTimeForDuration().applyAsDouble(pos);
 	}
@@ -178,6 +181,7 @@ public class AudioSceneContext {
 		this.sections = sections;
 	}
 
+	/** Performs the getSection operation. */
 	public ChannelSection getSection(double measure) {
 		if (sections == null || sections.isEmpty()) return null;
 

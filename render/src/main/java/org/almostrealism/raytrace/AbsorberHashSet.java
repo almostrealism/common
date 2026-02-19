@@ -80,6 +80,7 @@ public class AbsorberHashSet extends HashSet<AbsorberHashSet.StoredItem> impleme
 
 	private interface SetListener { void noteUpdate(); }
 	
+	/** The StoredItem class. */
 	public static class StoredItem {
 		public Absorber absorber;
 		private Volume volume;
@@ -126,6 +127,7 @@ public class AbsorberHashSet extends HashSet<AbsorberHashSet.StoredItem> impleme
 
 		public void setBufferListener(BufferListener listener) { this.listener = listener; }
 		
+		/** Performs the setColorBufferSize operation. */
 		public void setColorBufferSize(int w, int h, double m) {
 			if (AbsorberHashSet.solidColorBuffer) {
 				this.buf = new ArrayColorBuffer();
@@ -145,6 +147,7 @@ public class AbsorberHashSet extends HashSet<AbsorberHashSet.StoredItem> impleme
 			this.wh = new int[] {w, h};
 		}
 		
+		/** Performs the getColorBufferDimensions operation. */
 		public int[] getColorBufferDimensions() {
 			if (this.buf instanceof ArrayColorBuffer)
 				return ((ArrayColorBuffer) this.buf).getColorBufferDimensions();
@@ -154,6 +157,7 @@ public class AbsorberHashSet extends HashSet<AbsorberHashSet.StoredItem> impleme
 				return new int[2];
 		}
 		
+		/** Performs the getColorBufferScale operation. */
 		public double getColorBufferScale() {
 			if (this.buf == null)
 				return 0.0;
@@ -161,10 +165,12 @@ public class AbsorberHashSet extends HashSet<AbsorberHashSet.StoredItem> impleme
 				return this.buf.getScale();
 		}
 		
+		/** Performs the getColorAt operation. */
 		public RGB getColorAt(double u, double v, boolean front, boolean direct) {
 			return this.getColorAt(u, v, front, direct, null);
 		}
 		
+		/** Performs the getColorAt operation. */
 		public RGB getColorAt(double u, double v, boolean front, boolean direct, Vector n) {
 			RGB c = null;
 			
@@ -188,24 +194,28 @@ public class AbsorberHashSet extends HashSet<AbsorberHashSet.StoredItem> impleme
 			return c;
 		}
 		
+		/** Performs the addColor operation. */
 		public void addColor(double u, double v, boolean front, RGB c) {
 			this.buf.addColor(u, v, front, c);
 			if (this.listener != null)
 				this.listener.updateColorBuffer(u, v, this.getVolume(), this.buf, front);
 		}
 		
+		/** Performs the addIncidence operation. */
 		public void addIncidence(double u, double v, Producer<PackedCollection> e, boolean front) {
 			this.incidence.addVector(u, v, e, front);
 			if (this.listener != null)
 				this.listener.updateIncidenceBuffer(u, v, this.getVolume(), this.incidence, front);
 		}
 
+		/** Performs the addExitance operation. */
 		public void addExitance(double u, double v, Producer<PackedCollection> e, boolean front) {
 			this.exitance.addVector(u, v, e, front);
 			if (this.listener != null)
 				this.listener.updateExitanceBuffer(u, v, this.getVolume(), this.exitance, front);
 		}
 		
+		/** Performs the getVolume operation. */
 		public Volume getVolume() {
 			if (this.volume == null)
 				this.volume = AbsorberHashSet.getVolume(this.absorber);
@@ -253,6 +263,7 @@ public class AbsorberHashSet extends HashSet<AbsorberHashSet.StoredItem> impleme
 		return this.addAbsorber(a, x, a instanceof Fast);
 	}
 
+	/** Performs the addAbsorber operation. */
 	public int addAbsorber(Absorber a, Producer x, boolean fast) {
 		a.setClock(this.clock);
 		StoredItem item = new StoredItem(a, x);
@@ -287,6 +298,7 @@ public class AbsorberHashSet extends HashSet<AbsorberHashSet.StoredItem> impleme
 		return tot;
 	}
 
+	/** Performs the removeAbsorber operation. */
 	public int removeAbsorber(Absorber a) {
 		Iterator itr = this.iterator();
 		
@@ -299,6 +311,7 @@ public class AbsorberHashSet extends HashSet<AbsorberHashSet.StoredItem> impleme
 		return this.size();
 	}
 	
+	/** Performs the init operation. */
 	public void init() {
 		Iterator itr = this.iterator(false);
 		
@@ -314,6 +327,7 @@ public class AbsorberHashSet extends HashSet<AbsorberHashSet.StoredItem> impleme
 		this.itemsEnabled = true;
 	}
 	
+	/** Performs the clearColorBuffers operation. */
 	public void clearColorBuffers() {
 		Iterator itr = this.iterator(false);
 		
@@ -323,6 +337,7 @@ public class AbsorberHashSet extends HashSet<AbsorberHashSet.StoredItem> impleme
 		}
 	}
 	
+	/** Performs the loadColorBuffers operation. */
 	public void loadColorBuffers(Factory<Scene<ShadableSurface>> loader) throws IOException {
 		Iterator itr = this.iterator(false);
 		
@@ -332,19 +347,23 @@ public class AbsorberHashSet extends HashSet<AbsorberHashSet.StoredItem> impleme
 		}
 	}
 	
+	/** Performs the loadColorBuffer operation. */
 	public void loadColorBuffer(Factory<Scene<ShadableSurface>> loader, StoredItem it) throws IOException {
 		// TODO
 	}
 	
+	/** Performs the setBRDF operation. */
 	public void setBRDF(SphericalProbabilityDistribution brdf) {
 		this.setBRDF(this.lastAdded.absorber, brdf);
 	}
 
 	// TODO  This should store the dimensions, and apply them to new absorbers that are added
+	/** Performs the setColorBufferDimensions operation. */
 	public void setColorBufferDimensions(int w, int h, double m) {
 		this.setColorBufferDimensions(this.lastAdded.absorber, w, h, m);
 	}
 	
+	/** Performs the setBRDF operation. */
 	public void setBRDF(Absorber a, SphericalProbabilityDistribution brdf) {
 		Iterator itr = this.iterator(false);
 		
@@ -359,6 +378,7 @@ public class AbsorberHashSet extends HashSet<AbsorberHashSet.StoredItem> impleme
 		}
 	}
 	
+	/** Performs the setColorBufferDimensions operation. */
 	public void setColorBufferDimensions(Absorber a, int w, int h, double m) {
 		Iterator itr = this.iterator(false);
 		
@@ -372,6 +392,7 @@ public class AbsorberHashSet extends HashSet<AbsorberHashSet.StoredItem> impleme
 		}
 	}
 	
+	/** Performs the setBufferListener operation. */
 	public void setBufferListener(BufferListener l) {
 		this.listener = l;
 		Iterator itr = this.iterator(false);
@@ -382,6 +403,7 @@ public class AbsorberHashSet extends HashSet<AbsorberHashSet.StoredItem> impleme
 		}
 	}
 	
+	/** Performs the getLocation operation. */
 	public Producer<PackedCollection> getLocation(Absorber a) {
 		Iterator itr = this.iterator(false);
 		
@@ -493,6 +515,7 @@ public class AbsorberHashSet extends HashSet<AbsorberHashSet.StoredItem> impleme
 		return false;
 	}
 	
+	/** Performs the getVolume operation. */
 	protected static Volume getVolume(Absorber a) {
 		Volume v = null;
 		
@@ -504,6 +527,7 @@ public class AbsorberHashSet extends HashSet<AbsorberHashSet.StoredItem> impleme
 		return v;
 	}
 	
+	/** Performs the spread operation. */
 	protected void spread(Absorber a, Vector n, double[] ox,
 						  double[] x, Vector p, double energy, StoredItem it) {
 		if (this.spreadAngle <= 0.0) return;
@@ -536,6 +560,7 @@ public class AbsorberHashSet extends HashSet<AbsorberHashSet.StoredItem> impleme
 		}
 	}
 	
+	/** Performs the selectEmitter operation. */
 	protected void selectEmitter() {
 		Iterator itr = this.iterator(true);
 		
@@ -637,11 +662,13 @@ public class AbsorberHashSet extends HashSet<AbsorberHashSet.StoredItem> impleme
 		return itr;
 	}
 	
+	/** Performs the notifySetListeners operation. */
 	public void notifySetListeners() {
 		Iterator itr = this.sList.iterator();
 		while (itr.hasNext()) ((SetListener)itr.next()).noteUpdate();
 	}
 	
+	/** Performs the addSetListener operation. */
 	public boolean addSetListener(SetListener l) {
 		this.sList.add(l);
 		return true;
@@ -649,6 +676,7 @@ public class AbsorberHashSet extends HashSet<AbsorberHashSet.StoredItem> impleme
 	
 	public Iterator iterator() { return this.iterator(false); }
 	
+	/** Performs the iterator operation. */
 	public Iterator iterator(boolean shuffle) {
 		if (this.itemsNow || !this.itemsEnabled)
 			return super.iterator();
@@ -733,6 +761,7 @@ public class AbsorberHashSet extends HashSet<AbsorberHashSet.StoredItem> impleme
 		};
 	}
 	
+	/** Performs the clearChecked operation. */
 	protected void clearChecked() {
 		if (this.cleared) return;
 		
@@ -745,6 +774,7 @@ public class AbsorberHashSet extends HashSet<AbsorberHashSet.StoredItem> impleme
 		this.cleared = true;
 	}
 
+	/** Performs the setBound operation. */
 	public void setBound(double bound) {
 		this.bound = bound;
 		this.max = Math.min(this.max, 2*this.bound);
@@ -754,14 +784,17 @@ public class AbsorberHashSet extends HashSet<AbsorberHashSet.StoredItem> impleme
 
 	public BoundingSolid calculateBoundingSolid() { throw new RuntimeException("getBoundingSolid not implemented"); }
 
+	/** Performs the getDistance operation. */
 	public double getDistance(Vector p, Vector d) {
 		return this.getDistance(p, d, true, false);
 	}
 	
+	/** Performs the getDistance operation. */
 	public double getDistance(Vector p, Vector d, boolean fast) {
 		return this.getDistance(p, d, fast, false);
 	}
 	
+	/** Performs the getDistance operation. */
 	public double getDistance(Vector p, Vector d, boolean fast, boolean excludeCamera) {
 		Iterator itr = this.iterator(false);
 		

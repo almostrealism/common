@@ -18,10 +18,16 @@ package org.almostrealism.color.buffer;
 
 import org.almostrealism.color.RGB;
 
+/** The ColorBuffer interface. */
 public interface ColorBuffer {
+	/** Performs the addColor operation. */
 	void addColor(double u, double v, boolean front, RGB c);
+	/** Performs the getColorAt operation. */
 	RGB getColorAt(double u, double v, boolean front);
+	/** Performs the setScale operation. */
 	void setScale(double m);
+	/** Performs the getScale operation. */
 	double getScale();
+	/** Performs the clear operation. */
 	void clear();
 }

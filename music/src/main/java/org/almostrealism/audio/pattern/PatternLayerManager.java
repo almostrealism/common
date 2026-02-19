@@ -174,6 +174,7 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures {
 		init(chromosome);
 	}
 
+	/** Performs the init operation. */
 	public void init(ProjectedChromosome chromosome) {
 		noteSelection = ParameterFunction.random();
 		activeSelection = ParameterizedPositionFunction.random();
@@ -189,6 +190,7 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures {
 
 	public Map<ChannelInfo, PackedCollection> getDestination() { return destination; }
 
+	/** Performs the updateDestination operation. */
 	public void updateDestination(AudioSceneContext context) {
 		if (context.getChannels() == null) return;
 
@@ -209,6 +211,7 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures {
 		return melodic ? melodicChoices.get() : percChoices.get();
 	}
 
+	/** Performs the choices operation. */
 	public Stream<NoteAudioChoice> choices() {
 		return getChoices().stream()
 				.filter(c -> c.getChannels() == null || c.getChannels().contains(channel))
@@ -257,6 +260,7 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures {
 		this.elementFactory = elementFactory;
 	}
 
+	/** Performs the getSeeds operation. */
 	public PatternLayerSeeds getSeeds(ParameterSet params) {
 		List<PatternLayerSeeds> options = choices()
 				.filter(NoteAudioChoice::isSeed)
@@ -271,12 +275,14 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures {
 		return options.get((int) (options.size() * c));
 	}
 
+	/** Performs the getAllElementsByChoice operation. */
 	public Map<NoteAudioChoice, List<PatternElement>> getAllElementsByChoice(double start, double end) {
 		Map<NoteAudioChoice, List<PatternElement>> result = new HashMap<>();
 		roots.forEach(l -> l.putAllElementsByChoice(result, start, end));
 		return result;
 	}
 
+	/** Performs the getAllElements operation. */
 	public List<PatternElement> getAllElements(double start, double end) {
 		return roots.stream()
 				.map(l -> l.getAllElements(start, end))
@@ -284,6 +290,7 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures {
 				.collect(Collectors.toList());
 	}
 
+	/** Performs the getSettings operation. */
 	public Settings getSettings() {
 		Settings settings = new Settings();
 		settings.setChannel(channel);
@@ -299,6 +306,7 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures {
 		return settings;
 	}
 
+	/** Performs the setSettings operation. */
 	public void setSettings(Settings settings) {
 		channel = settings.getChannel();
 		duration = settings.getDuration();
@@ -320,12 +328,14 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures {
 	}
 
 	protected void decrement() { scale *= 2; }
+	/** Performs the increment operation. */
 	protected void increment() {
 		scale /= 2;
 	}
 
 	public int rootCount() { return roots.size(); }
 
+	/** Performs the depth operation. */
 	public int depth() {
 		if (rootCount() <= 0) return 0;
 		return roots.stream()
@@ -337,6 +347,7 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures {
 		return layerCount;
 	}
 
+	/** Performs the setLayerCount operation. */
 	public void setLayerCount(int count) {
 		if (count < 0) throw new IllegalArgumentException(count + " is not a valid number of layers");
 		if (count == getLayerCount()) return;
@@ -345,10 +356,12 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures {
 		refresh();
 	}
 
+	/** Performs the layer operation. */
 	public void layer(Gene<PackedCollection> gene) {
 		layer(ParameterSet.fromGene(gene));
 	}
 
+	/** Performs the layer operation. */
 	protected void layer(ParameterSet params) {
 		Gene<PackedCollection> automationGene = envelopeAutomationChromosome.valueAt(depth());
 		PackedCollection automationParams =
@@ -405,6 +418,7 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures {
 		increment();
 	}
 
+	/** Performs the removeLayer operation. */
 	public void removeLayer() {
 		layerParams.remove(layerParams.size() - 1);
 		decrement();
@@ -418,10 +432,12 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures {
 		roots.forEach(layer -> layer.getLastParent().setChild(null));
 	}
 
+	/** Performs the clear operation. */
 	public void clear() {
 		while (depth() > 0) removeLayer();
 	}
 
+	/** Performs the refresh operation. */
 	public void refresh() {
 		clear();
 		if (layerParams.size() != depth())
@@ -431,6 +447,7 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures {
 		IntStream.range(0, layerCount).forEach(i -> layer(layerChoiceChromosome.valueAt(i)));
 	}
 
+	/** Performs the choose operation. */
 	public NoteAudioChoice choose(double scale, ParameterSet params) {
 		List<NoteAudioChoice> options = choices()
 				.filter(c -> scale >= c.getMinScale())
@@ -570,6 +587,7 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures {
 		});
 	}
 
+	/** Performs the nextNotePosition operation. */
 	public double nextNotePosition(double position) {
 		return getAllElements(position, duration).stream()
 				.map(PatternElement::getPositions)
@@ -579,6 +597,7 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures {
 				.min().orElse(duration);
 	}
 
+	/** The Settings class. */
 	public static class Settings {
 		private int channel;
 		private double duration;
@@ -619,6 +638,7 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures {
 		public PatternElementFactory getElementFactory() { return elementFactory; }
 		public void setElementFactory(PatternElementFactory elementFactory) { this.elementFactory = elementFactory; }
 
+		/** Performs the setLayers operation. */
 		public void setLayers(List<ParameterSet> layers) {
 			if (layers != null) {
 				this.layerCount = layers.size();

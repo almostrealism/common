@@ -25,17 +25,21 @@ import java.util.ArrayList;
 import java.util.stream.Collector;
 import java.util.stream.Collectors;
 
+/** The ExpressionList class. */
 public class ExpressionList<T> extends ArrayList<Expression<T>> {
 
 	// @Override
+	/** Performs the getValue operation. */
 	public Expression<T> getValue(int pos) {
 		return get(pos);
 	}
 
+	/** Performs the minus operation. */
 	public ExpressionList<T> minus() {
 		return stream().map(Expression::minus).collect(collector());
 	}
 
+	/** Performs the multiply operation. */
 	public ExpressionList<T> multiply(ExpressionList<T> operands) {
 		if (this.size() != operands.size()) {
 			throw new IllegalArgumentException("Cannot multiply lists of different sizes");
@@ -50,10 +54,12 @@ public class ExpressionList<T> extends ArrayList<Expression<T>> {
 		return result;
 	}
 
+	/** Performs the sum operation. */
 	public Expression<T> sum() {
 		return Sum.of(toArray(Expression[]::new));
 	}
 
+	/** Performs the max operation. */
 	public Expression<T> max() {
 		if (size() <= 0) {
 			throw new IllegalArgumentException("Maximum of zero expressions is undefined");
@@ -67,12 +73,14 @@ public class ExpressionList<T> extends ArrayList<Expression<T>> {
 		return max;
 	}
 
+	/** Performs the exp operation. */
 	public ExpressionList<T> exp() {
 		ExpressionList result = new ExpressionList();
 		for (Expression<T> e : this) result.add(e.exp());
 		return result;
 	}
 
+	/** Performs the collector operation. */
 	public static Collector<Expression, ?, ExpressionList> collector() {
 		return Collectors.toCollection(() -> new ExpressionList());
 	}

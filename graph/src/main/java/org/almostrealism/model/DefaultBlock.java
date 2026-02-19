@@ -25,6 +25,7 @@ import org.almostrealism.hardware.OperationList;
 
 import java.util.function.Supplier;
 
+/** The DefaultBlock class. */
 public class DefaultBlock implements Block {
 	private final TraversalPolicy inputShape;
 	private final TraversalPolicy outputShape;

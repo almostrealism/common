@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
+/** The Plutonium class. */
 public class Plutonium implements Element {
 	public int getAtomicNumber() { return 94; }
 	

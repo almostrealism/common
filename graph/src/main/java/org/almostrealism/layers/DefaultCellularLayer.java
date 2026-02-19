@@ -32,6 +32,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.function.Supplier;
 
+/** The DefaultCellularLayer class. */
 public class DefaultCellularLayer implements CellularLayer, CodeFeatures, Learning, Nameable {
 	public static boolean enableMemoryDataCopy = true;
 
@@ -105,6 +106,7 @@ public class DefaultCellularLayer implements CellularLayer, CodeFeatures, Learni
 
 	public void setComputeRequirements(List<ComputeRequirement> requirements) { this.requirements = requirements; }
 
+	/** Performs the init operation. */
 	public void init(TraversalPolicy inputShape, boolean inputTracking, boolean outputTracking) {
 		this.inputShape = inputShape;
 

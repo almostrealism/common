@@ -18,16 +18,21 @@ package io.almostrealism.code;
 
 import io.almostrealism.lifecycle.Destroyable;
 
+/** The InstructionSet interface. */
 public interface InstructionSet extends Destroyable {
+	/** Performs the get operation. */
 	default Execution get() {
 		return get("function");
 	}
 
+	/** Performs the get operation. */
 	default Execution get(String function) {
 		return get(function, 0);
 	}
 
+	/** Performs the get operation. */
 	Execution get(String function, int argCount);
 
+	/** Performs the isDestroyed operation. */
 	boolean isDestroyed();
 }

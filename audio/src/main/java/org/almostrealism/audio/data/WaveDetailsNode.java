@@ -240,6 +240,7 @@ public class WaveDetailsNode implements Tree<WaveDetailsNode> {
 				.collect(Collectors.toList());
 	}
 
+	/** Performs the pathForIdentifier operation. */
 	protected String pathForIdentifier(String identifier) {
 		WaveDataProvider provider = library.find(identifier);
 		if (provider instanceof FileWaveDataProvider) {

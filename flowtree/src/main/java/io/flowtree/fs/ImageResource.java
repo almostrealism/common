@@ -39,6 +39,7 @@ import java.io.InputStream;
 import java.io.PipedInputStream;
 import java.io.PipedOutputStream;
 
+/** The ImageResource class. */
 public class ImageResource implements Resource {
 	private String uri;
 	
@@ -75,6 +76,7 @@ public class ImageResource implements Resource {
 	
 	public Permissions getPermissions() { return permissions; }
 	
+	/** Performs the load operation. */
 	public void load(IOStreams io) throws IOException {
 		io.out.writeInt(this.x);
 		io.out.writeInt(this.y);
@@ -108,10 +110,12 @@ public class ImageResource implements Resource {
 		}
 	}
 
+	/** Performs the load operation. */
 	public void load(byte[] data, long offset, int len) {
 		throw new NotImplementedException("load");
 	}
 	
+	/** Performs the loadFromURI operation. */
 	public void loadFromURI() {
 		try {
 			RenderedImage im = null;
@@ -207,6 +211,7 @@ public class ImageResource implements Resource {
 		}
 	}
 	
+	/** Performs the send operation. */
 	public void send(IOStreams io) throws IOException {
 		if (this.data == null) return;
 		
@@ -259,6 +264,7 @@ public class ImageResource implements Resource {
 	
 	
 	// TODO This is probably broken since cx is not used.
+	/** Performs the clip operation. */
 	public int[] clip(int cx, int cy, int cw, int ch) {
 		System.out.println("ImageResource: Clipping to "
 							+ cx + ", " + cy + ", " +
@@ -294,9 +300,11 @@ public class ImageResource implements Resource {
 	public void setURI(String uri) { this.uri = uri; }
 	public Object getData() { return this.data; }
 
+	/** Performs the saveLocal operation. */
 	public void saveLocal(String file) throws IOException {
 	}
 	
+	/** Performs the equals operation. */
 	public boolean equals(Object o) {
 		if (!(o instanceof ImageResource)) return false;
 		
@@ -310,6 +318,7 @@ public class ImageResource implements Resource {
 	
 	public int hashCode() { return this.uri.hashCode(); }
 
+	/** Performs the getInputStream operation. */
 	public InputStream getInputStream() {
 		throw new RuntimeException("Not implemented");
 //		return null;

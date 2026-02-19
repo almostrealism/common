@@ -21,6 +21,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 
+/** The ResourceAdapter class. */
 public abstract class ResourceAdapter<T extends Object> implements Resource<T> {
 	private final Permissions permissions = new Permissions();
 	
@@ -49,6 +50,7 @@ public abstract class ResourceAdapter<T extends Object> implements Resource<T> {
 	}
 	
 	// TODO  This could be made faster by writing a range of bytes at a time
+	/** Performs the send operation. */
 	public synchronized void send(IOStreams io) throws IOException {
 		byte[] data = (byte[]) getData();
 		if (data == null) return;

@@ -21,6 +21,7 @@ import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.heredity.Gene;
 
+/** The ParameterSet class. */
 public class ParameterSet {
 	private double x, y, z;
 
@@ -56,10 +57,12 @@ public class ParameterSet {
 		this.z = z;
 	}
 
+	/** Performs the random operation. */
 	public static ParameterSet random() {
 		return new ParameterSet(Math.random(), Math.random(), Math.random());
 	}
 
+	/** Performs the fromGene operation. */
 	public static ParameterSet fromGene(Gene<PackedCollection> gene) {
 		CollectionProducer one =
 				CollectionFeatures.getInstance().c(1.0);

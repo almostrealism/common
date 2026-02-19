@@ -24,6 +24,7 @@ import io.almostrealism.lang.LanguageOperations;
 
 import java.util.OptionalLong;
 
+/** The MinimumValue class. */
 public class MinimumValue extends StaticReference<Double> {
 
 	public MinimumValue() {

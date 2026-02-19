@@ -16,9 +16,11 @@
 
 package io.almostrealism.code;
 
+/** The Precision enumeration. */
 public enum Precision {
 	FP16, FP32, FP64;
 
+	/** Performs the bytes operation. */
 	public int bytes() {
 		switch (this) {
 			case FP16:
@@ -32,6 +34,7 @@ public enum Precision {
 		}
 	}
 
+	/** Performs the minValue operation. */
 	public double minValue() {
 		switch (this) {
 			case FP16:
@@ -45,10 +48,12 @@ public enum Precision {
 		}
 	}
 
+	/** Performs the epsilon operation. */
 	public double epsilon() {
 		return epsilon(false);
 	}
 
+	/** Performs the epsilon operation. */
 	public double epsilon(boolean strict) {
 		switch (this) {
 			case FP16:
@@ -62,6 +67,7 @@ public enum Precision {
 		}
 	}
 
+	/** Performs the typeName operation. */
 	public String typeName() {
 		switch (this) {
 			case FP16:
@@ -75,6 +81,7 @@ public enum Precision {
 		}
 	}
 
+	/** Performs the stringForInt operation. */
 	public String stringForInt(int i) {
 		if (this == Precision.FP16 && (i < -32768 || i > 32767)) {
 			throw new UnsupportedOperationException();
@@ -83,6 +90,7 @@ public enum Precision {
 		return String.valueOf(i);
 	}
 
+	/** Performs the stringForLong operation. */
 	public String stringForLong(long l) {
 		if (this == Precision.FP64) {
 			return String.valueOf(l);
@@ -93,6 +101,7 @@ public enum Precision {
 		return stringForInt(Math.toIntExact(l));
 	}
 
+	/** Performs the stringForDouble operation. */
 	public String stringForDouble(double d) {
 		boolean enableCast = false;
 
@@ -105,6 +114,7 @@ public enum Precision {
 		}
 	}
 
+	/** Performs the rawStringForDouble operation. */
 	public String rawStringForDouble(double d) {
 		if (this != Precision.FP64) {
 			Float f = (float) d;

@@ -216,6 +216,7 @@ public class PolynomialTerm {
 		return output;
 	}
 	
+	/** Performs the toString operation. */
 	public String toString() {
 		String value = String.valueOf(this.coefficient);
 		

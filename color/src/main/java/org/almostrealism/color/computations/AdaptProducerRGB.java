@@ -23,6 +23,7 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.color.RGB;
 import org.almostrealism.hardware.MemoryBank;
 
+/** The AdaptProducerRGB class. */
 public class AdaptProducerRGB extends AdaptProducer<PackedCollection> {
 	public AdaptProducerRGB(Producer<PackedCollection> p, Producer... args) {
 		super(p, args);

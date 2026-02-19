@@ -8,11 +8,13 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
+/** The Argon class. */
 public class Argon implements Element {
 	public int getAtomicNumber() { return 18; }
 	
 	public Atom construct() { return new Atom(getAtomicNumber(), getShells()); }
 	
+	/** Performs the getShells operation. */
 	protected List<Shell> getShells() {
 		ArrayList<Shell> s = new ArrayList<Shell>();
 		s.addAll(PeriodicTable.Neon.getShells());

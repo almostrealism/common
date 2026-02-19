@@ -21,6 +21,7 @@ import org.almostrealism.audio.data.WaveData;
 import org.almostrealism.audio.data.WaveDataFeatureProvider;
 import org.almostrealism.collect.PackedCollection;
 
+/** The AutoEncoderFeatureProvider class. */
 public class AutoEncoderFeatureProvider implements WaveDataFeatureProvider, CodeFeatures {
 	private final AutoEncoder autoencoder;
 

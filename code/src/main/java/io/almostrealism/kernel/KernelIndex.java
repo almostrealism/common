@@ -25,6 +25,7 @@ import java.util.Objects;
 import java.util.OptionalInt;
 import java.util.OptionalLong;
 
+/** The KernelIndex class. */
 public class KernelIndex extends DefaultIndex {
 	private static IndexSequence kernelSeq;
 
@@ -141,6 +142,7 @@ public class KernelIndex extends DefaultIndex {
 		return super.simplify(context, depth);
 	}
 
+	/** Performs the updateKernelSeq operation. */
 	protected synchronized static void updateKernelSeq(long len) {
 		if (len > Integer.MAX_VALUE) return;
 

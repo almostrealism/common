@@ -23,8 +23,10 @@ import org.almostrealism.audio.tone.KeyboardTuning;
 
 import java.util.List;
 
+/** This type. */
 @JsonTypeInfo(use = JsonTypeInfo.Id.CLASS, include = JsonTypeInfo.As.PROPERTY, property = "@type")
 public interface NoteAudioSource extends KeyboardTuned {
+	/** This method. */
 	@JsonIgnore
 	String getOrigin();
 
@@ -40,8 +42,10 @@ public interface NoteAudioSource extends KeyboardTuned {
 				.toList();
 	}
 
+	/** This method. */
 	@JsonIgnore
 	List<NoteAudio> getNotes();
 
+	/** Performs the checkResourceUsed operation. */
 	boolean checkResourceUsed(String canonicalPath);
 }

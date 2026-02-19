@@ -25,6 +25,7 @@ import java.io.IOException;
 import java.io.ObjectInput;
 import java.io.ObjectOutput;
 
+/** The RGBData192 class. */
 public class RGBData192 extends PackedCollection implements RGB.Data {
 	public static final int depth = 192;
 
@@ -57,6 +58,7 @@ public class RGBData192 extends PackedCollection implements RGB.Data {
 		return rgb[0] + rgb[1] + rgb[2];
 	}
 
+	/** Performs the read operation. */
 	public void read(ObjectInput in) throws IOException {
 		double rgb[] = new double[3];
 		rgb[0] = in.readDouble();
@@ -65,6 +67,7 @@ public class RGBData192 extends PackedCollection implements RGB.Data {
 		setMem(rgb);
 	}
 
+	/** Performs the write operation. */
 	public void write(ObjectOutput out) throws IOException {
 		double rgb[] = toArray();
 		out.writeDouble(rgb[0]);
@@ -74,6 +77,7 @@ public class RGBData192 extends PackedCollection implements RGB.Data {
 
 	public Heap getDefaultDelegate() { return Heap.getDefault(); }
 
+	/** Performs the toArray operation. */
 	public double[] toArray() {
 		double d[] = new double[3];
 		getMem(0, d, 0, 3);

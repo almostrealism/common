@@ -169,6 +169,7 @@ public class ShaderContext extends LightingContext {
 	 */
 	public Curve<PackedCollection>[] getOtherSurfaces() { return this.otherSurfaces; }
 
+	/** Performs the getAllSurfaces operation. */
 	public Iterable<? extends Curve<PackedCollection>> getAllSurfaces() {
 		List<Curve<PackedCollection>> l = new ArrayList<>();
 		if (getSurface() != null) l.add(getSurface());

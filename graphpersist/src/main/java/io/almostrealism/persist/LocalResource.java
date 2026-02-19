@@ -28,6 +28,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 
+/** The LocalResource class. */
 public class LocalResource implements Resource {
 	private String uri;
 	private File file;
@@ -51,6 +52,7 @@ public class LocalResource implements Resource {
 	
 	public Object getData() { return this.file; }
 
+	/** Performs the getInputStream operation. */
 	public InputStream getInputStream() {
 		if (this.in != null) return in;
 		if (this.file == null) return null;
@@ -66,6 +68,7 @@ public class LocalResource implements Resource {
 	
 	public Permissions getPermissions() { return permissions; }
 
+	/** Performs the load operation. */
 	public void load(IOStreams io) throws IOException {
 		this.in = io.in;
 	}
@@ -75,10 +78,12 @@ public class LocalResource implements Resource {
 		// TODO
 	}
 
+	/** Performs the loadFromURI operation. */
 	public void loadFromURI() throws IOException {
 		this.file = new File(this.uri);
 	}
 
+	/** Performs the saveLocal operation. */
 	public void saveLocal(String file) throws IOException {
 		InputStream in = this.getInputStream();
 		
@@ -92,6 +97,7 @@ public class LocalResource implements Resource {
 		}
 	}
 
+	/** Performs the send operation. */
 	public void send(IOStreams io) throws IOException {
 		InputStream in = this.getInputStream();
 		
@@ -104,6 +110,7 @@ public class LocalResource implements Resource {
 		io.out.close();
 	}
 
+	/** Performs the setURI operation. */
 	public void setURI(String uri) {
 		this.uri = uri;
 		this.file = new File(this.uri);

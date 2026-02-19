@@ -35,6 +35,7 @@ import java.util.Set;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
+/** The OperationAdapter class. */
 public abstract class OperationAdapter<T> implements
 											ArgumentList<T>,
 											DescribableParent<Argument<? extends T>>,
@@ -69,6 +70,7 @@ public abstract class OperationAdapter<T> implements
 
 	public List<Argument<? extends T>> getArguments() { return arguments; }
 
+	/** Performs the getArgumentVariables operation. */
 	public synchronized List<ArrayVariable<? extends T>> getArgumentVariables() {
 		if (getArguments() == null) return null;
 
@@ -80,6 +82,7 @@ public abstract class OperationAdapter<T> implements
 
 	public void resetArguments() { this.arguments = null; }
 
+	/** Performs the waitFor operation. */
 	protected void waitFor(Semaphore semaphore) {
 		if (semaphore == null) return;
 		semaphore.waitFor();
@@ -100,6 +103,7 @@ public abstract class OperationAdapter<T> implements
 				"(" + String.join(", ", children) + ")";
 	}
 
+	/** Performs the getArgumentForInput operation. */
 	public static ArrayVariable getArgumentForInput(List<ArrayVariable> vars, Supplier<Evaluable> input) {
 		if (input == null) return null;
 
@@ -128,6 +132,7 @@ public abstract class OperationAdapter<T> implements
 		return null;
 	}
 
+	/** Performs the functionName operation. */
 	protected static String functionName(Class c) {
 		String s = c.getSimpleName();
 		if (s.length() == 0) {
@@ -141,6 +146,7 @@ public abstract class OperationAdapter<T> implements
 		return "f_" + s.substring(0, 1).toLowerCase() + s.substring(1) + "_" + functionId++;
 	}
 
+	/** Performs the operationName operation. */
 	public static String operationName(Named named, Class c, String functionName) {
 		if (named != null && named.getName() != null) {
 			return named.getName();

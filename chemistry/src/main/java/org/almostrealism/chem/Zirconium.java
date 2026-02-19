@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
+/** The Zirconium class. */
 public class Zirconium implements Element {
 	public int getAtomicNumber() { return 40; }
 	

@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
+/** The Flerovium class. */
 public class Flerovium implements Element {
 	public int getAtomicNumber() { return 114; }
 

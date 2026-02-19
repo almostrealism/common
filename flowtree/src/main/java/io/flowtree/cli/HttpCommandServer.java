@@ -64,6 +64,7 @@ public class HttpCommandServer implements Runnable {
 		this.socket = socket;
 	}
 	
+	/** Performs the run operation. */
 	public void run() {
 		while (true) {
 			try (Socket connection = this.socket.accept()) {

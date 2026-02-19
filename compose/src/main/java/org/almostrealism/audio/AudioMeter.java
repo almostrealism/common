@@ -34,6 +34,7 @@ import java.util.List;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
+/** The AudioMeter class. */
 public class AudioMeter implements Receptor<PackedCollection>, Lifecycle, ScalarFeatures, PairFeatures {
 	private Receptor<PackedCollection> forwarding;
 	
@@ -61,10 +62,12 @@ public class AudioMeter implements Receptor<PackedCollection>, Lifecycle, Scalar
 	
 	public long getClipCount() { return (long) clipCount.toDouble(); }
 
+	/** Performs the addListener operation. */
 	public void addListener(Consumer<PackedCollection> listener) {
 		listeners.add(listener);
 	}
 
+	/** Performs the removeListener operation. */
 	public void removeListener(Consumer<PackedCollection> listener) {
 		listeners.remove(listener);
 	}

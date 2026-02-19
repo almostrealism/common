@@ -26,6 +26,7 @@ import org.almostrealism.time.TemporalFeatures;
 
 import java.util.function.Supplier;
 
+/** The AdjustableDelayCell class. */
 public class AdjustableDelayCell extends SummationCell implements TemporalFeatures {
 	public static double defaultPurgeFrequency = 1.0;
 
@@ -54,6 +55,7 @@ public class AdjustableDelayCell extends SummationCell implements TemporalFeatur
 		this.scale = scale;
 	}
 
+	/** Performs the initCursors operation. */
 	protected void initCursors() {
 		cursors = new CursorPair();
 	}

@@ -27,6 +27,7 @@ import java.util.Optional;
 import java.util.OptionalDouble;
 import java.util.OptionalLong;
 
+/** The Conditional class. */
 public class Conditional<T extends Number> extends Expression<T> {
 	public static boolean enableSimplification = false;
 	public static boolean enableInputBranchWarning = false;
@@ -127,10 +128,12 @@ public class Conditional<T extends Number> extends Expression<T> {
 				children.get(1), children.get(2));
 	}
 
+	/** Performs the of operation. */
 	public static Expression of(Expression<Boolean> condition, Expression<?> positive, Expression<?> negative) {
 		return Expression.process(create(condition, positive, negative));
 	}
 
+	/** Performs the create operation. */
 	public static Expression create(Expression<Boolean> condition, Expression<?> positive, Expression<?> negative) {
 		Optional<Boolean> cond = condition.booleanValue();
 

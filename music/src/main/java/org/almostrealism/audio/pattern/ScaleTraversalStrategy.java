@@ -82,6 +82,7 @@ import java.util.List;
 public enum ScaleTraversalStrategy implements CodeFeatures, ConsoleFeatures {
 	CHORD, SEQUENCE;
 
+	/** Performs the getNoteDestinations operation. */
 	public List<RenderedNoteAudio> getNoteDestinations(PatternElement element,
 													   boolean melodic, double offset,
 													   AudioSceneContext context,

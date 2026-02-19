@@ -20,6 +20,7 @@ import org.almostrealism.io.SystemUtils;
 
 import java.util.Optional;
 
+/** The KernelPreferences class. */
 public class KernelPreferences {
 	private static boolean requireUniformPrecision = false;
 	private static boolean enableSharedMemory = false;
@@ -52,6 +53,7 @@ public class KernelPreferences {
 		return 32;
 	}
 
+	/** Performs the requireUniformPrecision operation. */
 	public static void requireUniformPrecision() {
 		requireUniformPrecision = true;
 	}
@@ -60,6 +62,7 @@ public class KernelPreferences {
 		return requireUniformPrecision;
 	}
 
+	/** Performs the enableSharedMemory operation. */
 	public static void enableSharedMemory() {
 		enableSharedMemory = true;
 	}

@@ -25,6 +25,7 @@ import org.almostrealism.heredity.Chromosome;
 import org.almostrealism.heredity.Gene;
 import org.almostrealism.heredity.ProjectedGene;
 
+/** The FixedFilterChromosome class. */
 public class FixedFilterChromosome implements Chromosome<PackedCollection>, CellFeatures {
 	public static final int SIZE = 2;
 
@@ -49,6 +50,7 @@ public class FixedFilterChromosome implements Chromosome<PackedCollection>, Cell
 		return new FixedFilterGene(pos);
 	}
 
+	/** The FixedFilterGene class. */
 	class FixedFilterGene implements Gene<PackedCollection> {
 		private final int index;
 
@@ -69,12 +71,14 @@ public class FixedFilterChromosome implements Chromosome<PackedCollection>, Cell
 		}
 	}
 
+	/** Performs the setHighPassRange operation. */
 	public void setHighPassRange(double min, double max) {
 		source.forEach(gene -> {
 			((ProjectedGene) gene).setRange(0, min / maxFrequency, max / maxFrequency);
 		});
 	}
 
+	/** Performs the setLowPassRange operation. */
 	public void setLowPassRange(double min, double max) {
 		source.forEach(gene -> {
 			((ProjectedGene) gene).setRange(1, min / maxFrequency, max / maxFrequency);

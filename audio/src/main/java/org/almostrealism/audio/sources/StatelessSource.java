@@ -29,6 +29,7 @@ import org.almostrealism.collect.PackedCollection;
  * @see BufferDetails
  */
 public interface StatelessSource {
+	/** Performs the generate operation. */
 	Producer<PackedCollection> generate(BufferDetails buffer,
 										   Producer<PackedCollection> params,
 										   Factor<PackedCollection> frequency);

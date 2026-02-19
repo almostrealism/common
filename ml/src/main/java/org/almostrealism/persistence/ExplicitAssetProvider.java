@@ -19,6 +19,7 @@ package org.almostrealism.persistence;
 import java.util.List;
 import java.util.Optional;
 
+/** The ExplicitAssetProvider class. */
 public class ExplicitAssetProvider implements AssetInfoProvider {
 	private String name;
 	private AssetGroup group;

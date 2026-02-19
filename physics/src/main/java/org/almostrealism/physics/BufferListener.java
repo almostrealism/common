@@ -23,7 +23,10 @@ import org.almostrealism.color.buffer.ColorBuffer;
  * @author  Michael Murray
  */
 public interface BufferListener {
+	/** Performs the updateColorBuffer operation. */
 	void updateColorBuffer(double u, double v, Volume<?> source, ColorBuffer target, boolean front);
+	/** Performs the updateIncidenceBuffer operation. */
 	void updateIncidenceBuffer(double u, double v, Volume<?> source, AveragedVectorMap2D target, boolean front);
+	/** Performs the updateExitanceBuffer operation. */
 	void updateExitanceBuffer(double u, double v, Volume<?> source, AveragedVectorMap2D target, boolean front);
 }

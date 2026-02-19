@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
+/** The Darmstadtium class. */
 public class Darmstadtium implements Element {
 	public int getAtomicNumber() { return 110; }
 

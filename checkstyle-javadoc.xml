@@ -22,6 +22,11 @@
     <!-- Only check main source files, not test sources -->
     <property name="fileExtensions" value="java"/>
 
+    <!-- Exclude generated source files from Javadoc checks -->
+    <module name="BeforeExecutionExclusionFileFilter">
+        <property name="fileNamePattern" value="[\\/]generated[\\/]"/>
+    </module>
+
     <module name="TreeWalker">
         <!-- Require Javadoc on non-private classes, interfaces, enums, and annotations -->
         <module name="MissingJavadocType">

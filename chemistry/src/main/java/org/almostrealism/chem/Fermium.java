@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
+/** The Fermium class. */
 public class Fermium implements Element {
 	public int getAtomicNumber() { return 100; }
 

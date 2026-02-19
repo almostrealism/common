@@ -25,6 +25,7 @@ import org.almostrealism.time.Temporal;
 
 import java.util.function.Supplier;
 
+/** The FilteredCell class. */
 public class FilteredCell<T> extends CellAdapter<T> implements Temporal {
 	private Factor<T> filter;
 	

@@ -294,6 +294,7 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 	public ProcessArgumentEvaluator getEvaluator() { return evaluator; }
 	public void setEvaluator(ProcessArgumentEvaluator evaluator) { this.evaluator = evaluator; }
 
+	/** Performs the init operation. */
 	public ProcessDetailsFactory init(MemoryBank output, Object args[]) {
 		if (kernelArgEvaluables != null && output == this.output &&
 				Arrays.equals(args, this.args, (a, b) -> a == b ? 0 : 1)) {
@@ -392,11 +393,13 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 		return this;
 	}
 	
+	/** Performs the reset operation. */
 	public void reset() {
 		this.kernelArgEvaluables = null;
 		this.asyncEvaluables = null;
 	}
 
+	/** Performs the construct operation. */
 	public AcceleratedProcessDetails construct() {
 		MemoryData kernelArgs[] = new MemoryData[arguments.size()];
 
@@ -525,6 +528,7 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 		return result -> targetDetails.result(index, result);
 	}
 
+	/** Performs the execute operation. */
 	protected void execute(Runnable r) {
 		if (Hardware.getLocalHardware().isAsync()) {
 			executor.execute(r);

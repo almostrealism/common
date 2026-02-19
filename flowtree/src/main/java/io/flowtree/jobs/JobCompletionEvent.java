@@ -223,6 +223,7 @@ public class JobCompletionEvent {
 
     // Setters (builder pattern)
 
+    /** Performs the withGitInfo operation. */
     public JobCompletionEvent withGitInfo(String branch, String commitHash, List<String> staged,
                                           List<String> skipped, boolean pushed) {
         this.targetBranch = branch;
@@ -244,6 +245,7 @@ public class JobCompletionEvent {
         return this;
     }
 
+    /** Performs the withClaudeCodeInfo operation. */
     public JobCompletionEvent withClaudeCodeInfo(String prompt, String sessionId, int exitCode) {
         this.prompt = prompt;
         this.sessionId = sessionId;

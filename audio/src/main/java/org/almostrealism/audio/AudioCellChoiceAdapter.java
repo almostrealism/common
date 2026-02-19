@@ -106,6 +106,7 @@ public abstract class AudioCellChoiceAdapter extends CollectionTemporalCellAdapt
 		return IntStream.range(0, cells.size()).filter(i -> cells.get(i) == c);
 	}
 
+	/** Performs the getCellSet operation. */
 	protected Set<CollectionTemporalCellAdapter> getCellSet() {
 		HashSet<CollectionTemporalCellAdapter> set = new HashSet<>();
 

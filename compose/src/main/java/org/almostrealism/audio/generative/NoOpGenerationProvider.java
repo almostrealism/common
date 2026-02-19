@@ -25,6 +25,7 @@ import java.util.Map;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
+/** The NoOpGenerationProvider class. */
 public class NoOpGenerationProvider implements GenerationProvider {
 	private final Map<String, List<NoteAudio>> sources;
 

@@ -23,6 +23,7 @@ import io.almostrealism.scope.Variable;
 import java.util.ArrayList;
 import java.util.List;
 
+/** The ProductCollectionExpression class. */
 public class ProductCollectionExpression extends UniformCollectionExpression {
 	public static boolean enableDiagonalDelta = true;
 

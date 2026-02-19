@@ -91,11 +91,13 @@ public interface ComparisonFeatures extends AggregationFeatures, ExpressionFeatu
 				a, b, trueValue, falseValue);
 	}
 
+	/** Performs the greaterThanConditional operation. */
 	default CollectionProducer greaterThanConditional(Producer<PackedCollection> a, Producer<PackedCollection> b,
 													  Producer<PackedCollection> trueValue, Producer<PackedCollection> falseValue) {
 		return greaterThanConditional(a, b, trueValue, falseValue, false);
 	}
 
+	/** Performs the greaterThanConditional operation. */
 	default CollectionProducer greaterThanConditional(Producer<PackedCollection> a, Producer<PackedCollection> b,
 													  Producer<PackedCollection> trueValue, Producer<PackedCollection> falseValue,
 													  boolean includeEqual) {
@@ -114,11 +116,13 @@ public interface ComparisonFeatures extends AggregationFeatures, ExpressionFeatu
 				a, b, trueValue, falseValue);
 	}
 
+	/** Performs the lessThan operation. */
 	default CollectionProducer lessThan(Producer<PackedCollection> a, Producer<PackedCollection> b,
 										Producer<PackedCollection> trueValue, Producer<PackedCollection> falseValue) {
 		return lessThan(a, b, trueValue, falseValue, false);
 	}
 
+	/** Performs the lessThan operation. */
 	default CollectionProducer lessThan(Producer<PackedCollection> a, Producer<PackedCollection> b,
 										Producer<PackedCollection> trueValue, Producer<PackedCollection> falseValue,
 										boolean includeEqual) {
@@ -204,6 +208,7 @@ public interface ComparisonFeatures extends AggregationFeatures, ExpressionFeatu
 	}
 
 	// Required for internal use
+	/** Performs the compute operation. */
 	<P extends Producer<PackedCollection>> CollectionProducer compute(BiFunction<TraversalPolicy, List<Producer<PackedCollection>>, P> processor,
 																	  Function<List<String>, String> description, Producer<PackedCollection>... arguments);
 }

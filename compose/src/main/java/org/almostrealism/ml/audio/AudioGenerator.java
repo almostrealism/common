@@ -108,6 +108,7 @@ public class AudioGenerator extends ConditionalAudioSystem {
 	}
 
 	public DoubleConsumer getProgressMonitor() { return progressMonitor; }
+	/** Performs the setProgressMonitor operation. */
 	public void setProgressMonitor(DoubleConsumer monitor) {
 		this.progressMonitor = monitor;
 		generator.getSampler().setProgressCallback(monitor);

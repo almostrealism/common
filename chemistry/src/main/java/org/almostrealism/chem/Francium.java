@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
+/** The Francium class. */
 public class Francium implements Element {
 	public int getAtomicNumber() { return 87; }
 

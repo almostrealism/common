@@ -111,6 +111,7 @@ public class AudioLibraryPersistence {
 	/** Maximum bytes per batch file before starting a new file. */
 	public static int batchSize = Integer.MAX_VALUE / 2;
 
+	/** Performs the saveWaveDetails operation. */
 	public static Consumer<WaveDetails> saveWaveDetails(String destination) {
 		return details -> {
 			try {
@@ -121,6 +122,7 @@ public class AudioLibraryPersistence {
 		};
 	}
 
+	/** Performs the saveWaveDetails operation. */
 	public static void saveWaveDetails(WaveDetails details, String destination) throws IOException {
 		File f = new File(destination);
 		if (f.isDirectory()) {
@@ -130,10 +132,12 @@ public class AudioLibraryPersistence {
 		encode(details, true).writeTo(new FileOutputStream(f));
 	}
 
+	/** Performs the loadWaveDetails operation. */
 	public static WaveDetails loadWaveDetails(String source) throws IOException {
 		return decode(Audio.WaveDetailData.newBuilder().mergeFrom(new FileInputStream(source)).build());
 	}
 
+	/** Performs the saveLibrary operation. */
 	public static void saveLibrary(AudioLibrary library, String dataPrefix) {
 		try (LibraryDestination.Writer out = new LibraryDestination(dataPrefix).out()) {
 			saveLibrary(library, out);
@@ -142,10 +146,12 @@ public class AudioLibraryPersistence {
 		}
 	}
 
+	/** Performs the saveLibrary operation. */
 	public static void saveLibrary(AudioLibrary library, Supplier<OutputStream> out) throws IOException {
 		saveLibrary(library, false, out);
 	}
 
+	/** Performs the saveLibrary operation. */
 	public static void saveLibrary(AudioLibrary library, boolean includeAudio, Supplier<OutputStream> out) throws IOException {
 		Audio.AudioLibraryData.Builder data = Audio.AudioLibraryData.newBuilder();
 		List<WaveDetails> details = new ArrayList<>(library.getAllDetails());
@@ -172,6 +178,7 @@ public class AudioLibraryPersistence {
 		}
 	}
 
+	/** Performs the saveRecordings operation. */
 	public static void saveRecordings(List<Audio.WaveRecording> recordings, Supplier<OutputStream> out) throws IOException {
 		Audio.AudioLibraryData.Builder data = Audio.AudioLibraryData.newBuilder();
 
@@ -201,6 +208,7 @@ public class AudioLibraryPersistence {
 		}
 	}
 
+	/** Performs the loadLibrary operation. */
 	public static AudioLibrary loadLibrary(File root, int sampleRate, String dataPrefix) {
 		try {
 			return loadLibrary(root, sampleRate, new LibraryDestination(dataPrefix).in());
@@ -209,6 +217,7 @@ public class AudioLibraryPersistence {
 		}
 	}
 
+	/** Performs the loadLibrary operation. */
 	public static void loadLibrary(AudioLibrary library, String dataPrefix) {
 		try {
 			loadLibrary(library, new LibraryDestination(dataPrefix).in());
@@ -217,10 +226,12 @@ public class AudioLibraryPersistence {
 		}
 	}
 
+	/** Performs the loadLibrary operation. */
 	public static AudioLibrary loadLibrary(File root, int sampleRate, Supplier<InputStream> in) throws IOException {
 		return loadLibrary(new AudioLibrary(root, sampleRate), in);
 	}
 
+	/** Performs the loadLibrary operation. */
 	public static AudioLibrary loadLibrary(AudioLibrary library, Supplier<InputStream> in) throws IOException {
 		InputStream input = in.get();
 
@@ -245,6 +256,7 @@ public class AudioLibraryPersistence {
 		return library;
 	}
 
+	/** Performs the loadRecording operation. */
 	public static List<Audio.WaveDetailData> loadRecording(String key, String dataPrefix) {
 		try {
 			return loadRecording(key, new LibraryDestination(dataPrefix), false);
@@ -253,6 +265,7 @@ public class AudioLibraryPersistence {
 		}
 	}
 
+	/** Performs the loadRecordingGroup operation. */
 	public static List<Audio.WaveDetailData> loadRecordingGroup(String key, String dataPrefix) {
 		try {
 			return loadRecording(key, new LibraryDestination(dataPrefix), true);
@@ -261,10 +274,12 @@ public class AudioLibraryPersistence {
 		}
 	}
 
+	/** Performs the loadRecording operation. */
 	public static List<Audio.WaveDetailData> loadRecording(String key, LibraryDestination destination, boolean group) throws IOException {
 		return loadRecording(key, destination.in(), group);
 	}
 
+	/** Performs the loadRecording operation. */
 	public static List<Audio.WaveDetailData> loadRecording(String key, Supplier<InputStream> in, boolean group) throws IOException {
 		InputStream input = in.get();
 
@@ -297,6 +312,7 @@ public class AudioLibraryPersistence {
 				.toList();
 	}
 
+	/** Performs the listRecordings operation. */
 	public static Set<String> listRecordings(String dataPrefix) {
 		try {
 			return listRecordings(new LibraryDestination(dataPrefix), false);
@@ -305,15 +321,18 @@ public class AudioLibraryPersistence {
 		}
 	}
 
+	/** Performs the listRecordings operation. */
 	public static Set<String> listRecordings(LibraryDestination destination, boolean group) throws IOException {
 		return listRecordings(destination.in(), group);
 	}
 
+	/** Performs the listRecordingsGrouped operation. */
 	public static Map<String, Set<String>> listRecordingsGrouped(LibraryDestination destination,
 																 boolean includeSilent) throws IOException {
 		return listRecordingsGrouped(destination.in(), includeSilent);
 	}
 
+	/** Performs the listRecordings operation. */
 	public static Set<String> listRecordings(Supplier<InputStream> in, boolean group) throws IOException {
 		if (group) {
 			return listRecordingsGrouped(in, true).keySet();
@@ -322,17 +341,20 @@ public class AudioLibraryPersistence {
 		}
 	}
 
+	/** Performs the listRecordingsGrouped operation. */
 	public static Map<String, Set<String>> listRecordingsGrouped(Supplier<InputStream> in,
 																 boolean includeSilent) throws IOException {
 		return listRecordings(in, includeSilent, null);
 	}
 
+	/** Performs the listRecordingsFlat operation. */
 	public static Set<String> listRecordingsFlat(Supplier<InputStream> in) throws IOException {
 		Set<String> keys = new HashSet<>();
 		listRecordings(in, true, keys::add);
 		return keys;
 	}
 
+	/** Performs the listRecordings operation. */
 	protected static Map<String, Set<String>> listRecordings(Supplier<InputStream> in,
 															 boolean includeSilent,
 															 Consumer<String> keys) throws IOException {
@@ -365,10 +387,12 @@ public class AudioLibraryPersistence {
 		return recordings;
 	}
 
+	/** Performs the encode operation. */
 	public static Audio.WaveDetailData encode(WaveDetails details, boolean includeAudio) {
 		return encode(details, includeAudio ? Precision.FP32 : null);
 	}
 
+	/** Performs the encode operation. */
 	public static Audio.WaveDetailData encode(WaveDetails details, Precision audioPrecision) {
 		Audio.WaveDetailData.Builder data = Audio.WaveDetailData.newBuilder()
 				.setSampleRate(details.getSampleRate())
@@ -395,6 +419,7 @@ public class AudioLibraryPersistence {
 		return data.build();
 	}
 
+	/** Performs the decode operation. */
 	public static WaveDetails decode(Audio.WaveDetailData data) {
 		WaveDetails details = new WaveDetails(data.getIdentifier().isBlank() ? null : data.getIdentifier());
 		details.setSampleRate(data.getSampleRate());
@@ -417,6 +442,7 @@ public class AudioLibraryPersistence {
 		return details;
 	}
 
+	/** Performs the toWaveData operation. */
 	public static WaveData toWaveData(List<Audio.WaveDetailData> data) {
 		if (data == null || data.isEmpty()) return null;
 

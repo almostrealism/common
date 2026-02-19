@@ -27,6 +27,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.function.Function;
 
+/** The NoteAudioSourceBase class. */
 public abstract class NoteAudioSourceBase implements NoteAudioSource {
 	private Function<NoteAudio, StatelessSource> synthesizerFactory;
 
@@ -76,9 +77,13 @@ public abstract class NoteAudioSourceBase implements NoteAudioSource {
 		return notes;
 	}
 
+	/** Performs the getTuning operation. */
 	public abstract KeyboardTuning getTuning();
 
+	/** Performs the isUseSynthesizer operation. */
 	public abstract boolean isUseSynthesizer();
+	/** Performs the isForwardPlayback operation. */
 	public abstract boolean isForwardPlayback();
+	/** Performs the isReversePlayback operation. */
 	public abstract boolean isReversePlayback();
 }

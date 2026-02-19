@@ -41,6 +41,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
+/** The AudioPopulationOptimizer class. */
 public class AudioPopulationOptimizer<O extends Temporal> extends
 		PopulationOptimizer<PackedCollection, PackedCollection, O, AudioHealthScore>
 		implements Runnable, Destroyable {
@@ -78,6 +79,7 @@ public class AudioPopulationOptimizer<O extends Temporal> extends
 		this.count = new AtomicInteger();
 	}
 
+	/** Performs the init operation. */
 	public void init() {
 		if (enableWavOutput) {
 			File d = new File(outputDir);
@@ -103,6 +105,7 @@ public class AudioPopulationOptimizer<O extends Temporal> extends
 		this.completionListener = r;
 	}
 
+	/** Performs the readPopulation operation. */
 	public void readPopulation() throws FileNotFoundException {
 		List<Genome<PackedCollection>> loaded;
 
@@ -167,6 +170,7 @@ public class AudioPopulationOptimizer<O extends Temporal> extends
 		outputPrefix = generatePrefix();
 	}
 
+	/** Performs the storePopulation operation. */
 	public void storePopulation() {
 		try {
 			((AudioScenePopulation) getPopulation()).store(new FileOutputStream(file));
@@ -176,6 +180,7 @@ public class AudioPopulationOptimizer<O extends Temporal> extends
 		}
 	}
 
+	/** Performs the generatePrefix operation. */
 	protected String generatePrefix() {
 		return DigestUtils.md5Hex(String.valueOf(System.currentTimeMillis()));
 	}
@@ -185,6 +190,7 @@ public class AudioPopulationOptimizer<O extends Temporal> extends
 		resetHealth();
 	}
 
+	/** Performs the healthComputation operation. */
 	public static <O extends Temporal> HealthComputation<O, AudioHealthScore> healthComputation(int channels) {
 		return (HealthComputation<O, AudioHealthScore>) new StableDurationHealthComputation(channels, true);
 	}

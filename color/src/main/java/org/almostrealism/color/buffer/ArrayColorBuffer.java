@@ -34,12 +34,14 @@ public class ArrayColorBuffer implements ColorBuffer {
 	private final boolean invertV = false;
 	private final boolean direct = false;
 	
+	/** Performs the setColorBufferSize operation. */
 	public void setColorBufferSize(int w, int h, double m) {
 		this.front = new RGB[w][h];
 		this.back = new RGB[w][h];
 		this.m = m;
 	}
 	
+	/** Performs the getColorBufferDimensions operation. */
 	public int[] getColorBufferDimensions() {
 		if (this.front == null)
 			return new int[2];
@@ -50,11 +52,13 @@ public class ArrayColorBuffer implements ColorBuffer {
 	public void setScale(double m) { this.m = m; }
 	public double getScale() { return this.m; }
 	
+	/** Performs the clear operation. */
 	public void clear() {
 		this.front = new RGB[this.front.length][this.front[0].length];
 		this.back = new RGB[this.back.length][this.back[0].length];
 	}
 	
+	/** Performs the getColorAt operation. */
 	public RGB getColorAt(double u, double v, boolean front) {
 		if (front && this.front == null) return null;
 		if (!front && this.back == null) return null;
@@ -168,6 +172,7 @@ public class ArrayColorBuffer implements ColorBuffer {
 		}
 	}
 	
+	/** Performs the addColor operation. */
 	public void addColor(double u, double v, boolean front, RGB c) {
 		if (front && this.front == null) return;
 		if (!front && this.back == null) return;

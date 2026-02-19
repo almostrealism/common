@@ -23,6 +23,7 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 
+/** The EventDeliveryQueue class. */
 public class EventDeliveryQueue<T extends AbstractEvent> implements ConsoleFeatures {
 	private final ConcurrentLinkedQueue<T> events;
 	private final ScheduledExecutorService executor;
@@ -34,15 +35,18 @@ public class EventDeliveryQueue<T extends AbstractEvent> implements ConsoleFeatu
 		this.delivery = Objects.requireNonNull(delivery);
 	}
 
+	/** Performs the start operation. */
 	public void start() {
 		executor.scheduleAtFixedRate(this::deliverAll, 10,
 				10, java.util.concurrent.TimeUnit.SECONDS);
 	}
 
+	/** Performs the addEvent operation. */
 	public void addEvent(T e) {
 		events.add(e);
 	}
 
+	/** Performs the deliverAll operation. */
 	protected void deliverAll() {
 		delivery.deliverAll(events::poll);
 	}

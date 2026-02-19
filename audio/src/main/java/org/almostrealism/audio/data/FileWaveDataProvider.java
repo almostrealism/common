@@ -94,6 +94,7 @@ public class FileWaveDataProvider extends WaveDataProviderAdapter implements Pat
 		return resourcePath;
 	}
 
+	/** Performs the setResourcePath operation. */
 	public void setResourcePath(String resourcePath) {
 		clearKey(resourcePath);
 		this.resourcePath = resourcePath;
@@ -178,6 +179,7 @@ public class FileWaveDataProvider extends WaveDataProviderAdapter implements Pat
 		return channels;
 	}
 
+	/** Performs the load operation. */
 	protected WaveData load() {
 		if (corruptFiles.contains(getResourcePath())) return null;
 

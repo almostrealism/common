@@ -22,6 +22,7 @@ import org.almostrealism.time.Temporal;
 import java.util.ArrayList;
 import java.util.function.Supplier;
 
+/** The CachedStateCellGroup class. */
 public class CachedStateCellGroup<T> extends ArrayList<CachedStateCell<T>> implements Temporal {
 	@Override
 	public Supplier<Runnable> tick() {

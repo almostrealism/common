@@ -33,13 +33,16 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 
+/** The OnnxFeatures interface. */
 public interface OnnxFeatures extends CodeFeatures {
 	boolean enableCoreMl = false;
 
+	/** Performs the getOnnxEnvironment operation. */
 	default OrtEnvironment getOnnxEnvironment() {
 		throw new UnsupportedOperationException();
 	}
 
+	/** Performs the shape operation. */
 	default TraversalPolicy shape(TensorInfo info) {
 		return new TraversalPolicy(info.getShape());
 	}
@@ -57,6 +60,7 @@ public interface OnnxFeatures extends CodeFeatures {
 		return result;
 	}
 
+	/** Performs the pack operation. */
 	default Map<String, PackedCollection> pack(Map<String, OnnxTensor> tensors) throws OrtException {
 		Map<String, PackedCollection> result = new HashMap<>();
 		tensors.forEach((key, value) -> result.put(key, pack(value)));
@@ -81,22 +85,27 @@ public interface OnnxFeatures extends CodeFeatures {
 		}
 	}
 
+	/** Performs the toOnnx operation. */
 	default OnnxTensor toOnnx(PackedCollection collection) {
 		return toOnnx(getOnnxEnvironment(), collection);
 	}
 
+	/** Performs the packOnnx operation. */
 	default OnnxTensor packOnnx(TraversalPolicy shape, float... data) {
 		return packOnnx(getOnnxEnvironment(), shape, data);
 	}
 
+	/** Performs the packOnnx operation. */
 	default OnnxTensor packOnnx(OrtEnvironment env, TraversalPolicy shape, float... data) {
 		return packOnnx(env, shape, FloatBuffer.wrap(data));
 	}
 
+	/** Performs the packOnnx operation. */
 	default OnnxTensor packOnnx(TraversalPolicy shape, FloatBuffer data) {
 		return packOnnx(getOnnxEnvironment(), shape, data);
 	}
 
+	/** Performs the packOnnx operation. */
 	default OnnxTensor packOnnx(OrtEnvironment env, TraversalPolicy shape, FloatBuffer data) {
 		try {
 			return OnnxTensor.createTensor(env, data,  shape.extentLong());
@@ -106,14 +115,17 @@ public interface OnnxFeatures extends CodeFeatures {
 	}
 
 
+	/** Performs the packOnnx operation. */
 	default OnnxTensor packOnnx(TraversalPolicy shape, long... data) {
 		return packOnnx(getOnnxEnvironment(), shape, data);
 	}
 
+	/** Performs the packOnnx operation. */
 	default OnnxTensor packOnnx(OrtEnvironment env, TraversalPolicy shape, long... data) {
 		return packOnnx(env, shape, LongBuffer.wrap(data));
 	}
 
+	/** Performs the packOnnx operation. */
 	default OnnxTensor packOnnx(OrtEnvironment env, TraversalPolicy shape, LongBuffer data) {
 		try {
 			return OnnxTensor.createTensor(env, data, shape.extentLong());
@@ -122,6 +134,7 @@ public interface OnnxFeatures extends CodeFeatures {
 		}
 	}
 
+	/** Performs the defaultOptions operation. */
 	static OrtSession.SessionOptions defaultOptions() {
 		try {
 			OrtSession.SessionOptions options = new OrtSession.SessionOptions();

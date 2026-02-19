@@ -39,8 +39,11 @@ import java.util.Map;
 public class Query implements Externalizable {
 	public static boolean verbose = false;
 	
+	/** The ResultHandler interface. */
 	public interface ResultHandler {
+		/** Performs the handleResult operation. */
 		void handleResult(String key, String value);
+		/** Performs the handleResult operation. */
 		void handleResult(String key, byte[] value);
 	}
 	
@@ -135,6 +138,7 @@ public class Query implements Externalizable {
 		}
 	}
 	
+	/** Performs the setColumn operation. */
 	public void setColumn(int i, String value) {
 		if (i == 0)
 			this.col1 = value;
@@ -142,6 +146,7 @@ public class Query implements Externalizable {
 			this.col2 = value;
 	}
 	
+	/** Performs the setValue operation. */
 	public void setValue(int i, String value) {
 		if (i == 0)
 			this.val1 = value;
@@ -149,6 +154,7 @@ public class Query implements Externalizable {
 			this.val2 = value;
 	}
 	
+	/** Performs the getValue operation. */
 	public String getValue(int i) {
 		if (i == 0)
 			return this.val1;
@@ -161,6 +167,7 @@ public class Query implements Externalizable {
 	 */
 	public String getCondition() { return this.con; }
 	
+	/** Performs the getBytes operation. */
 	public byte[] getBytes() {
 		byte[] t = this.table.getBytes();
 		byte[] cl1 = this.col1.getBytes();
@@ -191,6 +198,7 @@ public class Query implements Externalizable {
 		return data;
 	}
 	
+	/** Performs the setBytes operation. */
 	public void setBytes(byte[] b) {
 		this.relay = b[4];
 		int index = 5;
@@ -250,6 +258,7 @@ public class Query implements Externalizable {
 						this.col2 + ", " + this.con + ", " + this.relay + "]";
 	}
 	
+	/** Performs the toString operation. */
 	public static String toString(Hashtable h) {
 		if (h.size() <= 0) return "";
 		
@@ -280,12 +289,14 @@ public class Query implements Externalizable {
 		}
 	}
 
+	/** Performs the fromString operation. */
 	public static Hashtable<String, String> fromString(String data) {
 		Hashtable<String, String> h = new Hashtable<>();
 		fromString(data, h);
 		return h;
 	}
 	
+	/** Performs the fromString operation. */
 	public static void fromString(String data, Hashtable<String, String> h) {
 		int index = data.indexOf(Query.sep);
 		String s = data;

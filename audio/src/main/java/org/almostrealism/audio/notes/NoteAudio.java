@@ -34,11 +34,15 @@ import org.almostrealism.collect.PackedCollection;
  * @see KeyPosition
  */
 public interface NoteAudio extends KeyboardTuned {
+	/** Performs the getAudio operation. */
 	Producer<PackedCollection> getAudio(KeyPosition<?> target, int channel);
 
+	/** Performs the getDuration operation. */
 	double getDuration(KeyPosition<?> target);
 
+	/** Performs the getWaveData operation. */
 	WaveData getWaveData();
 
+	/** Performs the getSampleRate operation. */
 	int getSampleRate();
 }

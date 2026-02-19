@@ -168,6 +168,7 @@ public interface AggregationFeatures extends ArithmeticFeatures, ExpressionFeatu
 		return mean(sq(subtractMean(input)));
 	}
 
+	/** Performs the subdivide operation. */
 	default CollectionProducer subdivide(
 			Producer<PackedCollection> input, Function<Producer<PackedCollection>, CollectionProducer> operation) {
 		TraversalPolicy shape = shape(input);
@@ -186,6 +187,7 @@ public interface AggregationFeatures extends ArithmeticFeatures, ExpressionFeatu
 		return null;
 	}
 
+	/** Performs the subdivide operation. */
 	default CollectionProducer subdivide(
 			Producer<PackedCollection> input, Function<Producer<PackedCollection>, CollectionProducer> operation, int sliceSize) {
 		TraversalPolicy shape = shape(input);

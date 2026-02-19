@@ -29,6 +29,7 @@ import java.util.List;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
+/** The DefaultLanguageOperations class. */
 public abstract class DefaultLanguageOperations implements LanguageOperations {
 	boolean int64 = SystemUtils.isEnabled("AR_HARDWARE_INT_64").orElse(false);
 
@@ -95,6 +96,7 @@ public abstract class DefaultLanguageOperations implements LanguageOperations {
 		return destination + " = " + expression;
 	}
 
+	/** Performs the annotationForLocalArray operation. */
 	public String annotationForLocalArray(Class type, String length) {
 		return null;
 	}
@@ -109,6 +111,7 @@ public abstract class DefaultLanguageOperations implements LanguageOperations {
 		return buf.toString();
 	}
 
+	/** This method. */
 	@Deprecated
 	protected void renderParametersExplicit(List<Expression> parameters, Consumer<String> out) {
 		for (int i = 0; i < parameters.size(); i++) {
@@ -122,6 +125,7 @@ public abstract class DefaultLanguageOperations implements LanguageOperations {
 		}
 	}
 
+	/** Performs the renderParameters operation. */
 	protected void renderParameters(String methodName, List<Expression> parameters, Consumer<String> out) {
 		List<ArrayVariable<?>> arguments = parameters.stream()
 				.filter(exp -> exp instanceof InstanceReference)
@@ -157,6 +161,7 @@ public abstract class DefaultLanguageOperations implements LanguageOperations {
 		}
 	}
 
+	/** Performs the renderArguments operation. */
 	public void renderArguments(List<ArrayVariable<?>> arguments, Consumer<String> out, Accessibility access) {
 		if (enableArrayVariables) {
 			if (!arguments.isEmpty()) {
@@ -171,6 +176,7 @@ public abstract class DefaultLanguageOperations implements LanguageOperations {
 		}
 	}
 
+	/** Performs the renderArguments operation. */
 	protected void renderArguments(List<ArrayVariable<?>> arguments, Consumer<String> out, boolean enableType,
 								   boolean enableAnnotation, Accessibility access, ParamType type) {
 		for (int i = 0; i < arguments.size(); i++) {
@@ -192,10 +198,12 @@ public abstract class DefaultLanguageOperations implements LanguageOperations {
 		}
 	}
 
+	/** Performs the renderParameters operation. */
 	public void renderParameters(List<Variable<?, ?>> arguments, Consumer<String> out, Accessibility access) {
 		renderParameters(arguments, out, true, true, access, null, "", "");
 	}
 
+	/** Performs the renderParameters operation. */
 	protected void renderParameters(List<Variable<?, ?>> arguments, Consumer<String> out, boolean enableType,
 									boolean enableAnnotation, Accessibility access, Class replaceType,
 									String prefix, String suffix) {
@@ -215,10 +223,12 @@ public abstract class DefaultLanguageOperations implements LanguageOperations {
 		}
 	}
 
+	/** Performs the argumentPre operation. */
 	protected String argumentPre(Variable arg, boolean enableType, boolean enableAnnotation) {
 		return argumentPre(arg, enableType, enableAnnotation, null, null);
 	}
 
+	/** Performs the argumentPre operation. */
 	protected String argumentPre(Variable arg, boolean enableType, boolean enableAnnotation, Class replaceType, Accessibility access) {
 		StringBuilder buf = new StringBuilder();
 
@@ -235,13 +245,16 @@ public abstract class DefaultLanguageOperations implements LanguageOperations {
 		return buf.toString();
 	}
 
+	/** Performs the argumentPost operation. */
 	protected String argumentPost(int index, boolean enableAnnotation, Accessibility access) {
 		return "";
 	}
 
+	/** The ParamType enumeration. */
 	protected enum ParamType {
 		NONE, ARRAY, OFFSET, SIZE;
 
+		/** Performs the getType operation. */
 		public Class getType() {
 			switch (this) {
 				case NONE:
@@ -254,6 +267,7 @@ public abstract class DefaultLanguageOperations implements LanguageOperations {
 			}
 		}
 
+		/** Performs the getPrefix operation. */
 		public String getPrefix() {
 			switch (this) {
 				case NONE: return "";
@@ -265,6 +279,7 @@ public abstract class DefaultLanguageOperations implements LanguageOperations {
 			}
 		}
 
+		/** Performs the getSuffix operation. */
 		public String getSuffix() {
 			switch (this) {
 				case NONE:
@@ -276,6 +291,7 @@ public abstract class DefaultLanguageOperations implements LanguageOperations {
 			}
 		}
 
+		/** Performs the render operation. */
 		public String render(DefaultLanguageOperations lang, ArrayVariable<?> var) {
 			if (var.getDelegate() == null) {
 				return getPrefix() + var.getName() + getSuffix();

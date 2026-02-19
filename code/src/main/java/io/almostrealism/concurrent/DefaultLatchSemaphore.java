@@ -21,6 +21,7 @@ import io.almostrealism.profile.OperationMetadata;
 import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
 
+/** The DefaultLatchSemaphore class. */
 public class DefaultLatchSemaphore implements Semaphore {
 	private final OperationMetadata requester;
 	private final CountDownLatch latch;

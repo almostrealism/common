@@ -23,6 +23,7 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.mem.Heap;
 
+/** The Grain class. */
 public class Grain extends PackedCollection {
 	public Grain() {
 		super(3);

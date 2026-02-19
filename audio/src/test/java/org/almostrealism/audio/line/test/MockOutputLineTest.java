@@ -32,7 +32,7 @@ import static org.junit.Assert.*;
  */
 public class MockOutputLineTest extends TestSuiteBase implements AudioTestFeatures {
 
-	@Test
+	@Test(timeout = 120000)
 	public void testDefaultConstruction() {
 		MockOutputLine mock = new MockOutputLine();
 
@@ -42,7 +42,7 @@ public class MockOutputLineTest extends TestSuiteBase implements AudioTestFeatur
 		assertFalse(mock.isActive());
 	}
 
-	@Test
+	@Test(timeout = 120000)
 	public void testCustomBufferSize() {
 		int customSize = 2048;
 		MockOutputLine mock = new MockOutputLine(customSize);
@@ -51,7 +51,7 @@ public class MockOutputLineTest extends TestSuiteBase implements AudioTestFeatur
 		assertEquals(OutputLine.sampleRate, mock.getSampleRate());
 	}
 
-	@Test
+	@Test(timeout = 120000)
 	public void testCustomBufferSizeAndSampleRate() {
 		int customSize = 4096;
 		int customRate = 48000;
@@ -61,7 +61,7 @@ public class MockOutputLineTest extends TestSuiteBase implements AudioTestFeatur
 		assertEquals(customRate, mock.getSampleRate());
 	}
 
-	@Test
+	@Test(timeout = 120000)
 	public void testWriteCountsFrames() {
 		MockOutputLine mock = new MockOutputLine();
 
@@ -74,7 +74,7 @@ public class MockOutputLineTest extends TestSuiteBase implements AudioTestFeatur
 		assertEquals(200, mock.getFramesWritten());
 	}
 
-	@Test
+	@Test(timeout = 120000)
 	public void testDurationCalculation() {
 		MockOutputLine mock = new MockOutputLine(1024, 44100);
 
@@ -84,7 +84,7 @@ public class MockOutputLineTest extends TestSuiteBase implements AudioTestFeatur
 		assertEquals(1.0, mock.getDurationWritten(), 0.001);
 	}
 
-	@Test
+	@Test(timeout = 120000)
 	public void testStartStop() {
 		MockOutputLine mock = new MockOutputLine();
 
@@ -97,7 +97,7 @@ public class MockOutputLineTest extends TestSuiteBase implements AudioTestFeatur
 		assertFalse(mock.isActive());
 	}
 
-	@Test
+	@Test(timeout = 120000)
 	public void testReadPositionAdvancesWithTime() throws InterruptedException {
 		MockOutputLine mock = new MockOutputLine(44100, 44100);
 
@@ -113,7 +113,7 @@ public class MockOutputLineTest extends TestSuiteBase implements AudioTestFeatur
 				position < 44100);
 	}
 
-	@Test
+	@Test(timeout = 120000)
 	public void testReset() {
 		MockOutputLine mock = new MockOutputLine();
 
@@ -125,7 +125,7 @@ public class MockOutputLineTest extends TestSuiteBase implements AudioTestFeatur
 		assertEquals(0, mock.getFramesWritten());
 	}
 
-	@Test
+	@Test(timeout = 120000)
 	public void testResetFrameCount() {
 		MockOutputLine mock = new MockOutputLine();
 
@@ -137,7 +137,7 @@ public class MockOutputLineTest extends TestSuiteBase implements AudioTestFeatur
 		assertEquals(0, mock.getFramesWritten());
 	}
 
-	@Test
+	@Test(timeout = 120000)
 	public void testDestroy() {
 		MockOutputLine mock = new MockOutputLine();
 		mock.start();
@@ -154,14 +154,14 @@ public class MockOutputLineTest extends TestSuiteBase implements AudioTestFeatur
 		assertEquals(0, mock.getFramesWritten());
 	}
 
-	@Test
+	@Test(timeout = 120000)
 	public void testLineUtilitiesGetMockLine() {
 		MockOutputLine mock = LineUtilities.getMockLine();
 		assertNotNull(mock);
 		assertEquals(BufferDefaults.defaultBufferSize, mock.getBufferSize());
 	}
 
-	@Test
+	@Test(timeout = 120000)
 	public void testLineUtilitiesGetMockLineWithSize() {
 		int customSize = 8192;
 		MockOutputLine mock = LineUtilities.getMockLine(customSize);
@@ -169,13 +169,13 @@ public class MockOutputLineTest extends TestSuiteBase implements AudioTestFeatur
 		assertEquals(customSize, mock.getBufferSize());
 	}
 
-	@Test
+	@Test(timeout = 120000)
 	public void testLineUtilitiesGetLineOrMock() {
 		OutputLine line = LineUtilities.getLineOrMock();
 		assertNotNull("getLineOrMock should never return null", line);
 	}
 
-	@Test
+	@Test(timeout = 120000)
 	public void testAudioTestFeaturesAssertions() {
 		MockOutputLine mock = mockOutput();
 

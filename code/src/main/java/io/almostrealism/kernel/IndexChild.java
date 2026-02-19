@@ -24,6 +24,7 @@ import io.almostrealism.lang.LanguageOperations;
 
 import java.util.OptionalLong;
 
+/** The IndexChild class. */
 public class IndexChild extends Sum<Integer> implements Index {
 	private Index parent;
 	private Index childIndex;
@@ -39,6 +40,7 @@ public class IndexChild extends Sum<Integer> implements Index {
 		this.childIndex = childIndex;
 	}
 
+	/** Performs the initName operation. */
 	protected String initName() {
 		return parent.getName() + "_" + childIndex.getName();
 	}
@@ -58,6 +60,7 @@ public class IndexChild extends Sum<Integer> implements Index {
 		this.renderAlias = renderAlias;
 	}
 
+	/** This method. */
 	@Deprecated
 	public IndexChild renderAlias() {
 		setRenderAlias(true);

@@ -20,6 +20,7 @@ import org.almostrealism.io.SystemUtils;
 
 import java.nio.file.Path;
 
+/** The LocalAssetsProvider class. */
 public class LocalAssetsProvider implements AssetInfoProvider {
 	private Path directory;
 

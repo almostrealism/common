@@ -8,6 +8,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 
+/** The DefaultHttpEventDelivery class. */
 public class DefaultHttpEventDelivery<T extends AbstractEvent> implements EventDelivery<T>, ConsoleFeatures {
 	private final String deliveryUri;
 	private final ObjectMapper mapper;
@@ -17,6 +18,7 @@ public class DefaultHttpEventDelivery<T extends AbstractEvent> implements EventD
 		this.mapper = new ObjectMapper();
 	}
 
+	/** Performs the deliver operation. */
 	public boolean deliver(T event) {
 		if (event == null) {
 			return false;

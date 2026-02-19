@@ -18,6 +18,7 @@ package org.almostrealism.ml;
 
 import org.almostrealism.collect.PackedCollection;
 
+/** The Tokenizer interface. */
 public interface Tokenizer {
 
 	/**
@@ -69,10 +70,12 @@ public interface Tokenizer {
 		return decodeAsLong(longTokens);
 	}
 
+	/** Performs the encode operation. */
 	default PackedCollection encode(String text) {
 		throw new UnsupportedOperationException();
 	}
 
+	/** Performs the decode operation. */
 	default String decode(PackedCollection tokens) {
 		throw new UnsupportedOperationException();
 	}

@@ -129,8 +129,11 @@ public class ProbabilityDistribution implements Nameable {
 		}
 	}
 	
+	/** The Sampler interface. */
 	public static interface Sampler {
+		/** Performs the getSample operation. */
 		public double getSample(double r);
+		/** Performs the getProbability operation. */
 		public double getProbability(double x);
 	}
 	
@@ -144,6 +147,7 @@ public class ProbabilityDistribution implements Nameable {
 	public ProbabilityDistribution() { }
 	public ProbabilityDistribution(Sampler s) { this.sampler = s; }
 	
+	/** Performs the addRange operation. */
 	public void addRange(double start, double end, double p) {
 		if (p > 1.0) p = 1.0;
 		if (p < 0.0) p = 0.0;
@@ -160,6 +164,7 @@ public class ProbabilityDistribution implements Nameable {
 		this.integrated = null;
 	}
 	
+	/** Performs the getRanges operation. */
 	protected double[][] getRanges() {
 		if (this.root == null) return new double[0][3];
 		
@@ -169,16 +174,19 @@ public class ProbabilityDistribution implements Nameable {
 		return (double[][]) l.toArray(new double[0][3]);
 	}
 	
+	/** Performs the getRangeProbability operation. */
 	public double getRangeProbability(int index) {
 		return this.root.getNode(index).p;
 	}
 	
+	/** Performs the setRangeProbability operation. */
 	public void setRangeProbability(int index, double p) {
 		this.root.getNode(index).p = p;
 		this.ranges = this.getRanges();
 		this.integrated = null;
 	}
 	
+	/** Performs the getSample operation. */
 	public double getSample(double r) {
 		if (this.sampler != null) return this.sampler.getSample(r);
 		if (this.root == null) return 0.0;
@@ -196,6 +204,7 @@ public class ProbabilityDistribution implements Nameable {
 		return this.ranges[i][0] + (r - s) * this.tot / this.ranges[i][2];
 	}
 	
+	/** Performs the integrate operation. */
 	public double integrate(double limit) {
 		if (this.root == null)
 			return 0.0;
@@ -203,6 +212,7 @@ public class ProbabilityDistribution implements Nameable {
 			return this.root.integrate(limit);
 	}
 	
+	/** Performs the getIntegrated operation. */
 	public RGB getIntegrated() {
 		if (this.integrated != null) return this.integrated;
 		
@@ -222,6 +232,7 @@ public class ProbabilityDistribution implements Nameable {
 		return integrated;
 	}
 	
+	/** Performs the getProbability operation. */
 	public double getProbability(double x) {
 		if (this.sampler != null)
 			return this.sampler.getProbability(x);
@@ -231,6 +242,7 @@ public class ProbabilityDistribution implements Nameable {
 	
 	public int getNodeCount() { return this.root.getNodeCount(); }
 	
+	/** Performs the contains operation. */
 	public boolean contains(double start, double end) {
 		if (this.root == null)
 			return false;
@@ -238,6 +250,7 @@ public class ProbabilityDistribution implements Nameable {
 			return this.root.contains(start, end);
 	}
 	
+	/** Performs the loadFromFile operation. */
 	public void loadFromFile(String file, String div) throws IOException {
 		BufferedReader in = new BufferedReader(new FileReader(file));
 		String line = null;

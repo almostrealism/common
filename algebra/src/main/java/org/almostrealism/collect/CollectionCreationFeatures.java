@@ -154,6 +154,7 @@ public interface CollectionCreationFeatures extends CollectionTraversalFeatures 
 		}
 	}
 
+	/** Performs the p operation. */
 	default <T, V> Provider<PackedCollection> p(java.util.function.Supplier<V> ev, Function<V, T> func) {
 		if (ev instanceof CollectionProvider) {
 			return new CollectionProvider(null) {
@@ -234,6 +235,7 @@ public interface CollectionCreationFeatures extends CollectionTraversalFeatures 
 		}
 	}
 
+	/** Performs the c operation. */
 	default CollectionProducer c(TraversalPolicy shape, Evaluable<PackedCollection> ev) {
 		CollectionCreationFeatures self = this;
 		return CollectionFeatures.getInstance().c(new CollectionProducerBase<PackedCollection, CollectionProducer>() {
@@ -369,12 +371,14 @@ public interface CollectionCreationFeatures extends CollectionTraversalFeatures 
 
 	default Random rand(int... dims) { return rand(shape(dims)); }
 	default Random rand(TraversalPolicy shape) { return new Random(shape); }
+	/** Performs the rand operation. */
 	default Random rand(TraversalPolicy shape, java.util.Random source) {
 		return new Random(shape, false, source);
 	}
 
 	default Random randn(int... dims) { return randn(shape(dims)); }
 	default Random randn(TraversalPolicy shape) { return new Random(shape, true); }
+	/** Performs the randn operation. */
 	default Random randn(TraversalPolicy shape, java.util.Random source) {
 		if (source != null) {
 			return new Random(shape, true, source);
@@ -383,10 +387,12 @@ public interface CollectionCreationFeatures extends CollectionTraversalFeatures 
 		return new Random(shape, true);
 	}
 
+	/** Performs the randn operation. */
 	default CollectionProducer randn(TraversalPolicy shape, double mean, double std) {
 		return randn(shape, mean, std, null);
 	}
 
+	/** Performs the randn operation. */
 	default CollectionProducer randn(TraversalPolicy shape, double mean, double std, java.util.Random source) {
 		if (mean == 0.0 && std == 1.0) {
 			return randn(shape, source);
@@ -399,16 +405,19 @@ public interface CollectionCreationFeatures extends CollectionTraversalFeatures 
 		}
 	}
 
+	/** Performs the integers operation. */
 	default CollectionProducerComputation integers() {
 		return new ArithmeticSequenceComputation(0);
 	}
 
+	/** Performs the integers operation. */
 	default CollectionProducerComputation integers(int from, int to) {
 		int len = to - from;
 		TraversalPolicy shape = shape(len).traverseEach();
 		return new ArithmeticSequenceComputation(shape, from);
 	}
 
+	/** Performs the linear operation. */
 	default CollectionProducer linear(double start, double end, int steps) {
 		if (steps < 2) {
 			throw new IllegalArgumentException();

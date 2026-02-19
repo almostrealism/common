@@ -22,6 +22,7 @@ import io.almostrealism.expression.Mask;
 
 import java.util.function.Function;
 
+/** The SequenceFunctionEvaluator class. */
 public class SequenceFunctionEvaluator<I, O> extends MatrixFunctionEvaluator<I, O> {
 	private int valueCount;
 	private Expression<O> resultCache[];

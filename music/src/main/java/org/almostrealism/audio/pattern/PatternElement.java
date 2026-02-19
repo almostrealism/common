@@ -143,6 +143,7 @@ public class PatternElement implements CodeFeatures {
 	public void setNotes(Map<ChannelInfo.Voicing, PatternNote> notes) { this.notes = notes; }
 
 	public PatternNote getNote(ChannelInfo.Voicing voicing) { return notes.get(voicing); }
+	/** Performs the setNote operation. */
 	public void setNote(ChannelInfo.Voicing voicing, PatternNote note) {
 		this.notes.put(voicing, note);
 	}
@@ -167,6 +168,7 @@ public class PatternElement implements CodeFeatures {
 		this.scaleTraversalStrategy = scaleTraversalStrategy;
 	}
 
+	/** Performs the getNoteDuration operation. */
 	public double getNoteDuration(DoubleUnaryOperator timeForDuration,
 								  double position, double nextPosition,
 								  double originalDurationSeconds) {
@@ -209,6 +211,7 @@ public class PatternElement implements CodeFeatures {
 		this.automationParameters = automationParameters;
 	}
 
+	/** This method. */
 	@JsonIgnore
 	public void setTuning(KeyboardTuning tuning) {
 		this.notes.values().forEach(n -> n.setTuning(tuning));
@@ -220,6 +223,7 @@ public class PatternElement implements CodeFeatures {
 				.collect(Collectors.toList());
 	}
 
+	/** Performs the getNoteDestinations operation. */
 	public List<RenderedNoteAudio> getNoteDestinations(boolean melodic, double offset,
 													   AudioSceneContext context,
 													   NoteAudioContext audioContext) {
@@ -254,6 +258,7 @@ public class PatternElement implements CodeFeatures {
 		}
 	}
 
+	/** Performs the getNoteAudio operation. */
 	public Producer<PackedCollection> getNoteAudio(ElementVoicingDetails details,
 													  Factor<PackedCollection> automationLevel,
 													  DoubleFunction<PatternNoteAudio> audioSelection,
@@ -265,6 +270,7 @@ public class PatternElement implements CodeFeatures {
 				automationLevel, audioSelection);
 	}
 
+	/** Performs the isPresent operation. */
 	public boolean isPresent(double start, double end) {
 		for (int i = 0; i < repeatCount; i++) {
 			double pos = getPosition() + i * repeatDuration;

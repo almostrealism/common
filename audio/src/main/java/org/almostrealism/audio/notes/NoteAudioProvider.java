@@ -146,6 +146,7 @@ public class NoteAudioProvider implements NoteAudio, Validity, Comparable<NoteAu
 		return provider.getDuration(r);
 	}
 
+	/** Performs the getShape operation. */
 	public TraversalPolicy getShape(NoteAudioKey key) {
 		double r = tuning.getTone(key.getPosition()).asHertz() / tuning.getTone(getRoot()).asHertz();
 		return new TraversalPolicy(provider.getCount(r, sampleRate)).traverse(1);
@@ -166,6 +167,7 @@ public class NoteAudioProvider implements NoteAudio, Validity, Comparable<NoteAu
 		return notes.get(key);
 	}
 
+	/** Performs the computeAudio operation. */
 	protected Producer<PackedCollection> computeAudio(NoteAudioKey key) {
 		return () -> args -> {
 			double r = key.getPosition() == null ? 1.0 :
@@ -197,6 +199,7 @@ public class NoteAudioProvider implements NoteAudio, Validity, Comparable<NoteAu
 		return valid;
 	}
 
+	/** Performs the split operation. */
 	public List<NoteAudioProvider> split(double durationBeats) {
 		if (getBpm() == null)
 			throw new IllegalArgumentException();
@@ -220,22 +223,27 @@ public class NoteAudioProvider implements NoteAudio, Validity, Comparable<NoteAu
 		return CellFeatures.console;
 	}
 
+	/** Performs the create operation. */
 	public static NoteAudioProvider create(String source) {
 		return create(source, WesternChromatic.C1);
 	}
 
+	/** Performs the create operation. */
 	public static NoteAudioProvider create(String source, KeyPosition root) {
 		return new NoteAudioProvider(new FileWaveDataProvider(source), root);
 	}
 
+	/** Performs the create operation. */
 	public static NoteAudioProvider create(String source, KeyPosition root, KeyboardTuning tuning) {
 		return new NoteAudioProvider(new FileWaveDataProvider(source), root, null, OutputLine.sampleRate, tuning);
 	}
 
+	/** Performs the create operation. */
 	public static NoteAudioProvider create(Supplier<PackedCollection> audioSupplier) {
 		return create(audioSupplier, WesternChromatic.C1);
 	}
 
+	/** Performs the create operation. */
 	public static NoteAudioProvider create(Supplier<PackedCollection> audioSupplier, KeyPosition root) {
 		return new NoteAudioProvider(new SupplierWaveDataProvider(KeyUtils.generateKey(), audioSupplier, OutputLine.sampleRate), root);
 	}

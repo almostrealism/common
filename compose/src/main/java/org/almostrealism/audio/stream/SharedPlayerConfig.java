@@ -16,6 +16,7 @@
 
 package org.almostrealism.audio.stream;
 
+/** The SharedPlayerConfig class. */
 public class SharedPlayerConfig {
 	private String location;
 	private String stream;

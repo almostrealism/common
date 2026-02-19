@@ -38,6 +38,7 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
+/** The SequentialBlock class. */
 public class SequentialBlock implements Block, Learning, LayerFeatures {
 	public static boolean enableWarnings = false;
 	public static boolean enableComposites = true;
@@ -89,21 +90,25 @@ public class SequentialBlock implements Block, Learning, LayerFeatures {
 		});
 	}
 
+	/** Performs the add operation. */
 	public <T extends Block> void add(Function<TraversalPolicy, T> factory) {
 		add(factory.apply(getOutputShape()));
 	}
 
+	/** Performs the add operation. */
 	public CellularLayer add(String name, Factor<PackedCollection> operator,
 							 ComputeRequirement... requirements) {
 		return add(name, getOutputShape(), operator, requirements);
 	}
 
+	/** Performs the add operation. */
 	public CellularLayer add(String name, TraversalPolicy outputShape,
 							 Factor<PackedCollection> operator,
 							 ComputeRequirement... requirements) {
 		return add(layer(name, getOutputShape(), outputShape, operator, requirements));
 	}
 
+	/** Performs the add operation. */
 	public <T extends Block> T add(T block) {
 		if (block.getInputShape().getTotalSize() != getOutputShape().getTotalSize())
 			throw new IllegalArgumentException("Cannot add a Block which expects " + block.getInputShape() +
@@ -145,10 +150,12 @@ public class SequentialBlock implements Block, Learning, LayerFeatures {
 		return block;
 	}
 
+	/** Performs the branch operation. */
 	public <T extends Block> T branch(Function<TraversalPolicy, T> factory) {
 		return branch(factory.apply(getOutputShape()));
 	}
 
+	/** Performs the branch operation. */
 	public <T extends Block> T branch(T branch) {
 		if (branch.getInputShape().getTotalSize() != getOutputShape().getTotalSize())
 			throw new IllegalArgumentException();
@@ -161,10 +168,12 @@ public class SequentialBlock implements Block, Learning, LayerFeatures {
 
 	public List<Block> split(int count) { return split(count, 0); }
 
+	/** Performs the split operation. */
 	public List<Block> split(int count, int axis) {
 		return split(count, axis, -1);
 	}
 
+	/** Performs the split operation. */
 	public List<Block> split(int count, int axis, int mainIndex) {
 		if (count <= 0) {
 			throw new IllegalArgumentException("Count must be greater than zero");
@@ -181,10 +190,12 @@ public class SequentialBlock implements Block, Learning, LayerFeatures {
 		return split(splitShape, mainIndex);
 	}
 
+	/** Performs the split operation. */
 	public List<Block> split(TraversalPolicy subsetShape) {
 		return split(subsetShape, -1);
 	}
 
+	/** Performs the split operation. */
 	public List<Block> split(TraversalPolicy subsetShape, int mainIndex) {
 		TraversalPolicy superShape = getOutputShape();
 		TraversalPolicy splitShape = padDimensions(subsetShape, 1, superShape.getDimensions());
@@ -241,11 +252,13 @@ public class SequentialBlock implements Block, Learning, LayerFeatures {
 	}
 
 
+	/** Performs the accum operation. */
 	public void accum(Block value, ComputeRequirement... requirements) {
 		accum(value, true, requirements);
 	}
 
 	// TODO  Should return 'this'?
+	/** Performs the accum operation. */
 	public void accum(Block value, boolean branch, ComputeRequirement... requirements) {
 		if (branch && value.getInputShape().getTotalSize() != getOutputShape().getTotalSize())
 			throw new IllegalArgumentException();
@@ -264,18 +277,21 @@ public class SequentialBlock implements Block, Learning, LayerFeatures {
 		}
 	}
 
+	/** Performs the product operation. */
 	public void product(Function<TraversalPolicy, ? extends Block> a,
 						Function<TraversalPolicy, ? extends Block> b,
 						ComputeRequirement... requirements) {
 		product(a.apply(getOutputShape()), b.apply(getOutputShape()), requirements);
 	}
 
+	/** Performs the product operation. */
 	public void product(Function<TraversalPolicy, ? extends Block> a, Block b,
 						ComputeRequirement... requirements) {
 		product(a.apply(getOutputShape()), b, requirements);
 	}
 
 	// TODO  Should return 'this'?
+	/** Performs the product operation. */
 	public void product(Block a, Block b, ComputeRequirement... requirements) {
 		if (a.getInputShape().getTotalSize() != getOutputShape().getTotalSize())
 			throw new IllegalArgumentException();
@@ -306,6 +322,7 @@ public class SequentialBlock implements Block, Learning, LayerFeatures {
 		return this;
 	}
 
+	/** Performs the applyParameterUpdate operation. */
 	protected void applyParameterUpdate(Component block) {
 		if (block instanceof Learning) {
 			((Learning) block).setParameterUpdate(parameterUpdate);
@@ -327,10 +344,12 @@ public class SequentialBlock implements Block, Learning, LayerFeatures {
 		return blocks.isEmpty() ? getInputShape() : lastBlock().getOutputShape();
 	}
 
+	/** Performs the firstBlock operation. */
 	public Block firstBlock() {
 		return blocks.isEmpty() ? null : blocks.get(0);
 	}
 
+	/** Performs the lastBlock operation. */
 	public Block lastBlock() {
 		return blocks.isEmpty() ? null : blocks.get(blocks.size() - 1);
 	}

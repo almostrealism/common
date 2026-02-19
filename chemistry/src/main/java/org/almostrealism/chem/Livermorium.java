@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
+/** The Livermorium class. */
 public class Livermorium implements Element {
 	public int getAtomicNumber() { return 116; }
 

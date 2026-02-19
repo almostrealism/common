@@ -38,6 +38,7 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 
+/** The GraphFileSystem class. */
 public class GraphFileSystem<T extends Resource> implements VirtualFileSystem {
 	public static final long KB = 1024;
 	public static final long MB = 1024 * KB;
@@ -277,6 +278,7 @@ public class GraphFileSystem<T extends Resource> implements VirtualFileSystem {
 		throw new UnsupportedOperationException();
 	}
 
+	/** Performs the getPermissionsForMode operation. */
 	protected static Permissions getPermissionsForMode(int m) {
 		int mask = 7;
 		int umask = mask << 6;
@@ -291,6 +293,7 @@ public class GraphFileSystem<T extends Resource> implements VirtualFileSystem {
 								getSettingForMode(o));
 	}
 
+	/** Performs the getModeForPermissions operation. */
 	protected static int getModeForPermissions(Permissions p) {
 		int u = 0, g = 0, o = 0;
 

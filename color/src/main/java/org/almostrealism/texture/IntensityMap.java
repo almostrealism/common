@@ -16,6 +16,8 @@
 
 package org.almostrealism.texture;
 
+/** The IntensityMap interface. */
 public interface IntensityMap {
+	/** Performs the getIntensity operation. */
 	double getIntensity(double u, double v, double w);
 }

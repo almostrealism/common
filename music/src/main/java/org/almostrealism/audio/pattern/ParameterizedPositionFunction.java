@@ -19,6 +19,7 @@ package org.almostrealism.audio.pattern;
 import org.almostrealism.audio.data.ParameterFunction;
 import org.almostrealism.audio.data.ParameterSet;
 
+/** The ParameterizedPositionFunction class. */
 public class ParameterizedPositionFunction {
 
 	private ParameterFunction regularity;
@@ -67,21 +68,25 @@ public class ParameterizedPositionFunction {
 		this.rateOffset = rateOffset;
 	}
 
+	/** Performs the apply operation. */
 	public double apply(ParameterSet params, double position, double scale) {
 		return apply(params, regularize(params, position, scale));
 	}
 
+	/** Performs the apply operation. */
 	public double apply(ParameterSet params, double position) {
 		double r = 2 + rate.apply(params);
 		double o = rateOffset.apply(params);
 		return Math.sin(Math.PI * (Math.pow(2.0, 10) * position * r + Math.pow(2.0, 3) * o));
 	}
 
+	/** Performs the applyPositive operation. */
 	public double applyPositive(ParameterSet params, double position, double scale) {
 		// TODO  Should this wrap instead of being continuous?
 		return Math.abs(apply(params, position, scale));
 	}
 
+	/** Performs the regularize operation. */
 	protected double regularize(ParameterSet params, double position, double scale) {
 		return applyPositional(params, position + regularityOffset.apply(params), scale);
 	}
@@ -102,6 +107,7 @@ public class ParameterizedPositionFunction {
 		return value - result * denominator;
 	}
 
+	/** Performs the random operation. */
 	public static ParameterizedPositionFunction random() {
 		return new ParameterizedPositionFunction(ParameterFunction.random(), ParameterFunction.random(),
 												ParameterFunction.random(), ParameterFunction.random());

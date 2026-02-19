@@ -256,6 +256,7 @@ public enum WesternChromatic implements KeyPosition<WesternChromatic> {
 		return scale().valueAt(position() + 1);
 	}
 
+	/** Performs the scale operation. */
 	public static Scale<WesternChromatic> scale() {
 		return new Scale<>() {
 			@Override

@@ -172,6 +172,7 @@ public abstract class MemoryDataAdapter implements MemoryData, ConsoleFeatures {
 	private int delegateMemOffset;
 	private TraversalOrdering delegateOrder;
 
+	/** Performs the init operation. */
 	protected void init() {
 		if (getDelegate() == null) {
 			Heap heap = getDefaultDelegate();
@@ -186,6 +187,7 @@ public abstract class MemoryDataAdapter implements MemoryData, ConsoleFeatures {
 		}
 	}
 
+	/** Performs the init operation. */
 	protected void init(Memory mem) {
 		this.mem = mem;
 	}

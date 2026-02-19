@@ -24,6 +24,7 @@ import io.almostrealism.lang.LanguageOperations;
 import java.util.List;
 import java.util.OptionalLong;
 
+/** The Exp class. */
 public class Exp extends Expression<Double> {
 	protected Exp(Expression<Double> input) {
 		super(Double.class, input);
@@ -47,6 +48,7 @@ public class Exp extends Expression<Double> {
 		return OptionalLong.empty();
 	}
 
+	/** Performs the evaluate operation. */
 	public Number evaluate(Number... children) {
 		return Math.exp(children[0].doubleValue());
 	}
@@ -67,6 +69,7 @@ public class Exp extends Expression<Double> {
 		return product(target.getShape(), List.of(delta, exp));
 	}
 
+	/** Performs the of operation. */
 	public static <T> Expression<T> of(Expression input) {
 		return (Expression<T>) new Exp(input);
 	}

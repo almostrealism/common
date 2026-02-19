@@ -332,6 +332,7 @@ public class Heap {
 		return root.dependencies == null ? null : root.dependencies.createdMemory;
 	}
 
+	/** The HeapStage class. */
 	public class HeapStage implements Destroyable {
 		private List<Bytes> entries;
 		private Bytes data;
@@ -345,6 +346,7 @@ public class Heap {
 			dependencies = new HeapDependencies();
 		}
 
+		/** Performs the allocate operation. */
 		public synchronized Bytes allocate(int count) {
 			if (end + count > data.getMemLength()) {
 				throw new IllegalArgumentException("No room remaining in Heap");

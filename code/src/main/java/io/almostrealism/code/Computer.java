@@ -20,14 +20,20 @@ import io.almostrealism.relation.Evaluable;
 
 import java.util.Optional;
 
+/** The Computer interface. */
 public interface Computer<B> {
+	/** Performs the getContext operation. */
 	ComputeContext<B> getContext(Computation<?> c);
 
+	/** Performs the compileRunnable operation. */
 	Runnable compileRunnable(Computation<Void> c);
 
+	/** Performs the compileProducer operation. */
 	<T extends B> Evaluable<T> compileProducer(Computation<T> c);
 
+	/** Performs the decompile operation. */
 	<T> Optional<Computation<T>> decompile(Runnable r);
 
+	/** Performs the decompile operation. */
 	<T> Optional<Computation<T>> decompile(Evaluable<T> p);
 }

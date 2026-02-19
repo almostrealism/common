@@ -25,6 +25,7 @@ import org.dcache.nfs.vfs.Inode;
 import java.io.IOException;
 import java.io.InputStream;
 
+/** The ResourceInode class. */
 public class ResourceInode extends Inode implements Resource {
     private final Resource r;
 

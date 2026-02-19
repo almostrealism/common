@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
+/** The Polonium class. */
 public class Polonium implements Element {
 	public int getAtomicNumber() { return 84; }
 	

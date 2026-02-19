@@ -25,6 +25,7 @@ import org.almostrealism.io.ConsoleFeatures;
 
 import java.util.function.Function;
 
+/** The RealizableImage class. */
 public class RealizableImage implements Producer<RGB[][]>, ConsoleFeatures {
 	private Producer<PackedCollection> source;
 	private Function<Pair, RGB> func;
@@ -77,6 +78,7 @@ public class RealizableImage implements Producer<RGB[][]>, ConsoleFeatures {
 		};
 	}
 
+	/** Performs the generateKernelInput operation. */
 	public static PackedCollection generateKernelInput(int x, int y, int width, int height) {
 		int size = width * height;
 		PackedCollection input = Pair.bank(size);
@@ -90,6 +92,7 @@ public class RealizableImage implements Producer<RGB[][]>, ConsoleFeatures {
 		return input;
 	}
 
+	/** Performs the processKernelOutput operation. */
 	public static RGB[][] processKernelOutput(int w, int h, PackedCollection output) {
 		RGB image[][] = new RGB[w][h];
 

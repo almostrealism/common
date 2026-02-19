@@ -18,6 +18,7 @@ package io.almostrealism.collect;
 
 import io.almostrealism.expression.Expression;
 
+/** The IndexExpressionTraversalOrdering class. */
 public class IndexExpressionTraversalOrdering implements TraversalOrdering {
 	private final TraversableExpression<?> indices;
 

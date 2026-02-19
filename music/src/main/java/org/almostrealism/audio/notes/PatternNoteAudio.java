@@ -24,8 +24,10 @@ import org.almostrealism.collect.PackedCollection;
 
 import java.util.function.DoubleFunction;
 
+/** The PatternNoteAudio interface. */
 public interface PatternNoteAudio {
 
+	/** Performs the getBufferDetails operation. */
 	default BufferDetails getBufferDetails(KeyPosition<?> target,
 										   DoubleFunction<PatternNoteAudio> audioSelection) {
 		return new BufferDetails(
@@ -33,26 +35,33 @@ public interface PatternNoteAudio {
 				getDuration(target, audioSelection));
 	}
 
+	/** Performs the getSampleRate operation. */
 	default int getSampleRate(KeyPosition<?> target) {
 		return getSampleRate(target, null);
 	}
 
+	/** Performs the getSampleRate operation. */
 	int getSampleRate(KeyPosition<?> target,
 					  DoubleFunction<PatternNoteAudio> audioSelection);
 
+	/** Performs the getDuration operation. */
 	double getDuration(KeyPosition<?> target, DoubleFunction<PatternNoteAudio> audioSelection);
 
+	/** Performs the getAudio operation. */
 	default Producer<PackedCollection> getAudio(KeyPosition<?> target, int channel) {
 		return getAudio(target, channel, null);
 	}
 
+	/** Performs the filter operation. */
 	default PatternNoteLayer filter(NoteAudioFilter filter) {
 		return new PatternNoteLayer(this, filter);
 	}
 
+	/** Performs the getAudio operation. */
 	Producer<PackedCollection> getAudio(KeyPosition<?> target, int channel,
 										   DoubleFunction<PatternNoteAudio> audioSelection);
 
+	/** Performs the getAudio operation. */
 	Producer<PackedCollection> getAudio(KeyPosition<?> target, int channel,
 										   double noteDuration,
 										   Factor<PackedCollection> automationLevel,

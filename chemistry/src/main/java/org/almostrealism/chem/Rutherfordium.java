@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
+/** The Rutherfordium class. */
 public class Rutherfordium implements Element {
 	public int getAtomicNumber() { return 104; }
 	

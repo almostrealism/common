@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
+/** The Cobalt class. */
 public class Cobalt implements Element {
 	public int getAtomicNumber() { return 27; }
 

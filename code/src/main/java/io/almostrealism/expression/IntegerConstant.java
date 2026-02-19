@@ -28,6 +28,7 @@ import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.OptionalLong;
 
+/** The IntegerConstant class. */
 public class IntegerConstant extends Constant<Integer> {
 	private int value;
 

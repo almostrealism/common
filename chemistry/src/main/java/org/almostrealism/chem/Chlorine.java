@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
+/** The Chlorine class. */
 public class Chlorine implements Element {
 	public int getAtomicNumber() { return 17; }
 

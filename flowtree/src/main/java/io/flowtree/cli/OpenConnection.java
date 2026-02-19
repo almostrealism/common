@@ -26,6 +26,7 @@ import org.jboss.aesh.console.command.invocation.CommandInvocation;
 
 import java.util.List;
 
+/** This type. */
 @CommandDefinition(name="open", description = "Introduce a data source")
 public class OpenConnection implements Command {
 	@Arguments

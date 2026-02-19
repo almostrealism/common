@@ -103,6 +103,7 @@ public class AudioCategory {
 
 	public String getId() { return id; }
 
+	/** Performs the setId operation. */
 	public void setId(String id) {
 		this.id = id;
 		syncIds();
@@ -130,6 +131,7 @@ public class AudioCategory {
 	 */
 	public NoteAudioChoice getChoice() { return choice; }
 
+	/** Performs the setChoice operation. */
 	public void setChoice(NoteAudioChoice choice) {
 		this.choice = choice;
 		if (choice != null) {
@@ -145,6 +147,7 @@ public class AudioCategory {
 	 */
 	public AudioModel getModel() { return model; }
 
+	/** Performs the setModel operation. */
 	public void setModel(AudioModel model) {
 		this.model = model;
 		if (model != null) {
@@ -159,6 +162,7 @@ public class AudioCategory {
 		return choice != null ? choice.getSources() : new ArrayList<>();
 	}
 
+	/** Performs the setSources operation. */
 	public void setSources(List<NoteAudioSource> sources) {
 		if (choice != null) choice.setSources(sources);
 	}
@@ -167,6 +171,7 @@ public class AudioCategory {
 		return choice != null ? choice.getChannels() : new ArrayList<>();
 	}
 
+	/** Performs the setChannels operation. */
 	public void setChannels(List<Integer> channels) {
 		if (choice != null) choice.setChannels(channels);
 	}
@@ -175,6 +180,7 @@ public class AudioCategory {
 		return choice != null && choice.isMelodic();
 	}
 
+	/** Performs the setMelodic operation. */
 	public void setMelodic(boolean melodic) {
 		if (choice != null) choice.setMelodic(melodic);
 	}
@@ -183,6 +189,7 @@ public class AudioCategory {
 		return choice != null ? choice.getMinScale() : 0.0625;
 	}
 
+	/** Performs the setMinScale operation. */
 	public void setMinScale(double minScale) {
 		if (choice != null) choice.setMinScale(minScale);
 	}
@@ -191,6 +198,7 @@ public class AudioCategory {
 		return choice != null ? choice.getMaxScale() : 16.0;
 	}
 
+	/** Performs the setMaxScale operation. */
 	public void setMaxScale(double maxScale) {
 		if (choice != null) choice.setMaxScale(maxScale);
 	}
@@ -199,6 +207,7 @@ public class AudioCategory {
 		return choice != null ? choice.getMaxScaleTraversalDepth() : 9;
 	}
 
+	/** Performs the setMaxScaleTraversalDepth operation. */
 	public void setMaxScaleTraversalDepth(int depth) {
 		if (choice != null) choice.setMaxScaleTraversalDepth(depth);
 	}
@@ -207,6 +216,7 @@ public class AudioCategory {
 		return choice != null && choice.isSeed();
 	}
 
+	/** Performs the setSeed operation. */
 	public void setSeed(boolean seed) {
 		if (choice != null) choice.setSeed(seed);
 	}
@@ -215,6 +225,7 @@ public class AudioCategory {
 		return choice != null ? choice.getBias() : -0.2;
 	}
 
+	/** Performs the setBias operation. */
 	public void setBias(double bias) {
 		if (choice != null) choice.setBias(bias);
 	}
@@ -257,6 +268,7 @@ public class AudioCategory {
 		return model != null ? model.getAudioConditions() : new ArrayList<>();
 	}
 
+	/** Performs the setAudioConditions operation. */
 	public void setAudioConditions(List<String> audioConditions) {
 		if (model != null) model.setAudioConditions(audioConditions);
 	}
@@ -265,6 +277,7 @@ public class AudioCategory {
 		return model != null ? model.getCreativity() : null;
 	}
 
+	/** Performs the setCreativity operation. */
 	public void setCreativity(Double creativity) {
 		if (model != null) model.setCreativity(creativity);
 	}
@@ -273,6 +286,7 @@ public class AudioCategory {
 		return model != null ? model.getDuration() : 1.0;
 	}
 
+	/** Performs the setDuration operation. */
 	public void setDuration(double duration) {
 		if (model != null) model.setDuration(duration);
 	}
@@ -281,6 +295,7 @@ public class AudioCategory {
 		return model != null && model.isPattern();
 	}
 
+	/** Performs the setPattern operation. */
 	public void setPattern(boolean pattern) {
 		if (model != null) model.setPattern(pattern);
 	}

@@ -18,7 +18,9 @@ package io.almostrealism.scope;
 
 import io.almostrealism.expression.Expression;
 
+/** The ExplicitDepthCaching class. */
 public class ExplicitDepthCaching implements CachingSettings {
+	/** Performs the isExpressionCacheTarget operation. */
 	public boolean isExpressionCacheTarget(Expression<?> e) {
 		int depth = e.treeDepth();
 //		return depth == 7 || depth == 11;

@@ -27,6 +27,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 
+/** The StaticReference class. */
 public class StaticReference<T> extends Expression<T> {
 	private String expression;
 	private Variable referent;

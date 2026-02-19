@@ -20,6 +20,7 @@ import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.kernel.Index;
 
+/** The ConstantCollectionExpression class. */
 public class ConstantCollectionExpression extends CollectionExpressionAdapter {
 	private final Expression<?> value;
 

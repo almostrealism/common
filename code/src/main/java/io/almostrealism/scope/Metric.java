@@ -23,6 +23,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+/** The Metric class. */
 public class Metric {
 	private Expression<?> counter;
 	private int logFrequency;
@@ -34,6 +35,7 @@ public class Metric {
 		this.variables = new HashMap<>();
 	}
 
+	/** Performs the getArguments operation. */
 	public List<Expression<?>> getArguments() {
 		List<Expression<?>> refs = new ArrayList<>();
 		refs.add(getCounter());
@@ -45,6 +47,7 @@ public class Metric {
 
 	public int getLogFrequency() { return logFrequency; }
 
+	/** Performs the addMonitoredVariable operation. */
 	public void addMonitoredVariable(String message, Expression<?> variable) {
 		variables.put(message, variable);
 	}

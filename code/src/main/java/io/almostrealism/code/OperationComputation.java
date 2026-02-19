@@ -23,12 +23,14 @@ import io.almostrealism.relation.Operation;
 
 import java.util.Collection;
 
+/** The OperationComputation interface. */
 public interface OperationComputation<T> extends Computation<T>, Operation {
 	@Override
 	default Process<Process<?, ?>, Runnable> isolate() {
 		return new IsolatedProcess(this);
 	}
 
+	/** The IsolatedProcess class. */
 	class IsolatedProcess implements Process<Process<?, ?>, Runnable>, OperationInfo {
 		private Operation op;
 

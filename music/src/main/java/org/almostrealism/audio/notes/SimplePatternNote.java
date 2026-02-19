@@ -26,6 +26,7 @@ import org.almostrealism.collect.PackedCollection;
 
 import java.util.function.DoubleFunction;
 
+/** The SimplePatternNote class. */
 public class SimplePatternNote implements PatternNoteAudio, KeyboardTuned, Validity {
 	private final NoteAudio audio;
 

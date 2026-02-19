@@ -18,29 +18,37 @@ package io.almostrealism.code;
 
 import java.nio.ByteBuffer;
 
+/** The Memory interface. */
 public interface Memory {
+	/** Performs the getProvider operation. */
 	MemoryProvider getProvider();
 
+	/** Performs the set operation. */
 	default void set(double... values) {
 		set(0, values);
 	}
 
+	/** Performs the set operation. */
 	default void set(int offset, double... values) {
 		getProvider().setMem(this, offset, values, 0, values.length);
 	}
 
+	/** Performs the toArray operation. */
 	default double[] toArray(int length) {
 		return toArray(0, length);
 	}
 
+	/** Performs the toArray operation. */
 	default double[] toArray(int offset, int length) {
 		return getProvider().toArray(this, offset, length);
 	}
 
+	/** Performs the getBytes operation. */
 	default ByteBuffer getBytes(int length) {
 		return getBytes(0, length);
 	}
 
+	/** Performs the getBytes operation. */
 	default ByteBuffer getBytes(int offset, int length) {
 		double data[] = toArray(offset, length);
 		ByteBuffer buf = ByteBuffer.allocate(data.length * 8);

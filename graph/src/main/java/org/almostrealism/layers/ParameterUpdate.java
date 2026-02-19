@@ -27,23 +27,29 @@ import java.util.function.Supplier;
 
 // TODO  It may be more consistent for this to be a factory that produces a Cell
 // TODO  the Cell::push implementation would accept the gradient and apply it
+/** The ParameterUpdate interface. */
 public interface ParameterUpdate<T extends PackedCollection> {
+	/** Performs the apply operation. */
 	Supplier<Runnable> apply(String name, Producer<T> weights, Producer<T> gradient);
 
+	/** Performs the of operation. */
 	static ParameterUpdate<PackedCollection> of(Factor<PackedCollection> operator) {
 		return (name, weights, gradient) ->
 				Ops.op(o -> o.a(name + " (\u0394 weights)",
 						o.each(weights), o.subtract(o.each(weights), operator.getResultant(gradient))));
 	}
 
+	/** Performs the scaled operation. */
 	static ParameterUpdate<PackedCollection> scaled(double learningRate) {
 		return scaled(CollectionFeatures.getInstance().cp(PackedCollection.of(learningRate)));
 	}
 
+	/** Performs the scaled operation. */
 	static ParameterUpdate<PackedCollection> scaled(Producer<PackedCollection> learningRate) {
 		return of(gradient -> Ops.o().multiply(learningRate, gradient));
 	}
 
+	/** Performs the disabled operation. */
 	static ParameterUpdate<PackedCollection> disabled() {
 		return (name, weights, gradient) -> new OperationList();
 	}

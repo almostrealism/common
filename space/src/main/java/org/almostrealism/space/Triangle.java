@@ -497,6 +497,7 @@ public class Triangle extends AbstractSurface implements ParticleGroup, Triangle
 		return new Constant<>(zero);
 	}
 
+	/** Performs the toString operation. */
 	public String toString() {
 		return "Triangle: " + this.p1 + " " + this.p2 + " " + this.p3;
 	}

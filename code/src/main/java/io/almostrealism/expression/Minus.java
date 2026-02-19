@@ -29,6 +29,7 @@ import java.util.OptionalInt;
 import java.util.OptionalLong;
 import java.util.stream.IntStream;
 
+/** The Minus class. */
 public class Minus<T extends Number> extends UnaryExpression<T> {
 	public static boolean enableDistributive = true;
 
@@ -104,10 +105,12 @@ public class Minus<T extends Number> extends UnaryExpression<T> {
 		return minus(target.getShape(), getChildren().get(0).delta(target));
 	}
 
+	/** Performs the of operation. */
 	public static Expression<?> of(Expression<?> value) {
 		return Expression.process(create(value));
 	}
 
+	/** Performs the create operation. */
 	protected static Expression<?> create(Expression<?> value) {
 		OptionalLong v = value.longValue();
 

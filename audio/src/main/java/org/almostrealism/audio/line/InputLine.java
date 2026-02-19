@@ -47,6 +47,7 @@ public interface InputLine extends BufferedAudio, Destroyable {
 	 */
 	void read(PackedCollection sample);
 
+	/** Performs the read operation. */
 	default Supplier<Runnable> read(Producer<PackedCollection> destination) {
 		return () -> {
 			Evaluable<PackedCollection> sample = destination.get();

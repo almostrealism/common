@@ -23,6 +23,7 @@ import java.util.List;
 import java.util.Random;
 import java.util.function.UnaryOperator;
 
+/** The AudioModel class. */
 public class AudioModel {
 	public static int DIM = 8;
 
@@ -89,12 +90,14 @@ public class AudioModel {
 		this.creativity = creativity;
 	}
 
+	/** Performs the addAudioCondition operation. */
 	public void addAudioCondition(String condition) {
 		if (audioConditions == null) audioConditions = new ArrayList<>();
 		if (audioConditions.contains(condition)) return;
 		audioConditions.add(condition);
 	}
 
+	/** Performs the conditionSummary operation. */
 	public String conditionSummary(UnaryOperator<String> audioDescription) {
 		StringBuilder builder = new StringBuilder();
 

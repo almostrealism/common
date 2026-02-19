@@ -21,8 +21,12 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 /**
@@ -120,12 +124,27 @@ public class DuplicateCodeDetector {
 	private static final List<String> EXCLUDED_PATHS = List.of(
 			"DuplicateCodeDetector.java",
 			"CodePolicyEnforcementTest.java",
-			"/test/"
+			"/test/",
+			"/target/"
 	);
+
+	/**
+	 * Pattern to extract type names from extends/implements clauses.
+	 */
+	private static final Pattern EXTENDS_PATTERN = Pattern.compile(
+			"(?:extends|implements)\\s+([\\w,\\s<>?]+?)\\s*(?:\\{|$)");
+
+	/**
+	 * Pattern to extract the simple class/interface name from a type declaration.
+	 */
+	private static final Pattern TYPE_NAME_PATTERN = Pattern.compile(
+			"(?:class|interface|enum)\\s+(\\w+)");
 
 	private final List<Violation> violations = new ArrayList<>();
 	private final Path rootDir;
 	private final int threshold;
+	private final Map<String, Set<String>> typeHierarchy = new HashMap<>();
+	private final Map<Path, String> fileToTypeName = new HashMap<>();
 
 	/**
 	 * Creates a detector with the default threshold of {@value #DEFAULT_THRESHOLD} lines.
@@ -170,6 +189,8 @@ public class DuplicateCodeDetector {
 	 */
 	public DuplicateCodeDetector scan() throws IOException {
 		violations.clear();
+		typeHierarchy.clear();
+		fileToTypeName.clear();
 
 		// Collect all significant lines from each file, keyed by file
 		Map<String, List<CodeBlock>> blocksByFingerprint = new HashMap<>();
@@ -177,7 +198,10 @@ public class DuplicateCodeDetector {
 		try (Stream<Path> paths = Files.walk(rootDir)) {
 			paths.filter(p -> p.toString().endsWith(".java"))
 					.filter(p -> !isExcluded(p))
-					.forEach(file -> indexFile(file, blocksByFingerprint));
+					.forEach(file -> {
+						buildHierarchy(file);
+						indexFile(file, blocksByFingerprint);
+					});
 		}
 
 		// Report violations where the same fingerprint appears in different files
@@ -192,6 +216,7 @@ public class DuplicateCodeDetector {
 					CodeBlock b = blocks.get(j);
 
 					if (a.file.equals(b.file)) continue;
+					if (areRelatedTypes(a.file, b.file)) continue;
 
 					String preview = buildPreview(a.normalizedLines);
 					violations.add(new Violation(
@@ -261,8 +286,18 @@ public class DuplicateCodeDetector {
 		// Skip lines that are only braces
 		if (trimmed.equals("{") || trimmed.equals("}") || trimmed.equals("};")) return null;
 
+		// Skip control-flow lines with braces (try, finally, catch, else)
+		if (trimmed.matches("try\\s*\\{") || trimmed.matches("try\\s*\\(.*\\)\\s*\\{")
+				|| trimmed.matches("\\}\\s*(finally|catch\\s*\\(.*\\)|else(\\s+if\\s*\\(.*\\))?)\\s*\\{?")) {
+			return null;
+		}
+
 		// Skip annotation-only lines (e.g., @Override, @Test, @Deprecated)
 		if (trimmed.startsWith("@") && !trimmed.contains("(") && !trimmed.contains(" ")) return null;
+
+		// Skip simple getter returns and setter assignments
+		if (trimmed.matches("return\\s+(this\\.)?\\w+;")) return null;
+		if (trimmed.matches("this\\.\\w+\\s*=\\s*\\w+;")) return null;
 
 		// Skip license boilerplate lines
 		if (trimmed.startsWith("* Copyright") || trimmed.startsWith("* Licensed") ||
@@ -285,6 +320,113 @@ public class DuplicateCodeDetector {
 			sb.append("\n... (").append(lines.size() - previewSize).append(" more lines)");
 		}
 		return sb.toString();
+	}
+
+	/**
+	 * Extracts the type name and its parent types from a Java source file
+	 * to build an interface/class hierarchy map. Only examines top-level
+	 * type declarations (lines starting with access modifiers).
+	 */
+	private void buildHierarchy(Path file) {
+		try {
+			List<String> rawLines = Files.readAllLines(file);
+
+			for (String line : rawLines) {
+				String trimmed = line.trim();
+
+				// Only consider top-level type declarations
+				if (!trimmed.startsWith("public ") && !trimmed.startsWith("abstract ")) {
+					continue;
+				}
+
+				Matcher typeMatcher = TYPE_NAME_PATTERN.matcher(trimmed);
+				if (!typeMatcher.find()) continue;
+
+				String typeName = typeMatcher.group(1);
+				fileToTypeName.put(file, typeName);
+
+				Set<String> parents = new HashSet<>();
+				Matcher extendsMatcher = EXTENDS_PATTERN.matcher(trimmed);
+				while (extendsMatcher.find()) {
+					String parentList = extendsMatcher.group(1);
+					for (String parent : parentList.split(",")) {
+						String[] fragments = parent.split("\\s+(?:implements|extends)\\s+");
+						for (String fragment : fragments) {
+							String cleaned = fragment.trim().replaceAll("<.*>", "").trim();
+							if (!cleaned.isEmpty()) {
+								parents.add(cleaned);
+							}
+						}
+					}
+				}
+
+				if (!parents.isEmpty()) {
+					typeHierarchy.put(typeName, parents);
+				}
+
+				break;
+			}
+		} catch (IOException e) {
+			// Ignore unreadable files
+		}
+	}
+
+	/**
+	 * Returns true if the types declared in the two files are related
+	 * through an extends or implements relationship (directly, transitively,
+	 * or as siblings sharing a common ancestor).
+	 */
+	private boolean areRelatedTypes(Path fileA, Path fileB) {
+		String typeA = fileToTypeName.get(fileA);
+		String typeB = fileToTypeName.get(fileB);
+
+		if (typeA == null || typeB == null) return false;
+
+		if (isAncestor(typeA, typeB, new HashSet<>())
+				|| isAncestor(typeB, typeA, new HashSet<>())) {
+			return true;
+		}
+
+		Set<String> ancestorsA = getAllAncestors(typeA, new HashSet<>());
+		Set<String> ancestorsB = getAllAncestors(typeB, new HashSet<>());
+		ancestorsA.retainAll(ancestorsB);
+		return !ancestorsA.isEmpty();
+	}
+
+	/**
+	 * Returns all direct and transitive ancestors of the given type.
+	 */
+	private Set<String> getAllAncestors(String type, Set<String> visited) {
+		Set<String> result = new HashSet<>();
+		if (!visited.add(type)) return result;
+
+		Set<String> parents = typeHierarchy.get(type);
+		if (parents == null) return result;
+
+		result.addAll(parents);
+		for (String parent : parents) {
+			result.addAll(getAllAncestors(parent, visited));
+		}
+		return result;
+	}
+
+	/**
+	 * Returns true if {@code ancestor} is a direct or transitive parent
+	 * of {@code descendant} in the type hierarchy.
+	 */
+	private boolean isAncestor(String descendant, String ancestor, Set<String> visited) {
+		if (!visited.add(descendant)) return false;
+
+		Set<String> parents = typeHierarchy.get(descendant);
+		if (parents == null) return false;
+
+		if (parents.contains(ancestor)) return true;
+
+		for (String parent : parents) {
+			if (isAncestor(parent, ancestor, visited)) return true;
+		}
+
+		return false;
 	}
 
 	private boolean isExcluded(Path path) {

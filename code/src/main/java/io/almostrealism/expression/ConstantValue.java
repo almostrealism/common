@@ -18,6 +18,7 @@ package io.almostrealism.expression;
 
 import java.util.Objects;
 
+/** The ConstantValue class. */
 public class ConstantValue<T> extends Constant<T> {
 	private T value;
 

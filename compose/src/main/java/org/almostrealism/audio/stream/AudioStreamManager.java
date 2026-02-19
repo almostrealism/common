@@ -84,6 +84,7 @@ public class AudioStreamManager implements ConsoleFeatures {
 
 	public AudioServer getServer() { return server; }
 
+	/** Performs the getMixer operation. */
 	public SampleMixer getMixer(String stream) {
 		BufferedAudioPlayer player = getPlayer(stream);
 		if (player == null) return null;
@@ -91,10 +92,12 @@ public class AudioStreamManager implements ConsoleFeatures {
 		return player.getMixer();
 	}
 
+	/** Performs the getPlayer operation. */
 	public BufferedAudioPlayer getPlayer(String channel) {
 		return audioStreams.get(channel).getPlayer().getPlayer();
 	}
 
+	/** Performs the addPlayer operation. */
 	public BufferedAudioPlayer addPlayer(String channel, int playerCount,
 										 OutputLine inputRecord) {
 		DelegatedAudioLine line = new DelegatedAudioLine();
@@ -102,6 +105,7 @@ public class AudioStreamManager implements ConsoleFeatures {
 		return addPlayer(playerCount, line, inputRecord);
 	}
 
+	/** Performs the addPlayer operation. */
 	public BufferedAudioPlayer addPlayer(int playerCount,
 										 AudioLine out, OutputLine inputRecord) {
 		int maxFrames = (int) (out.getSampleRate() * defaultLiveDuration);

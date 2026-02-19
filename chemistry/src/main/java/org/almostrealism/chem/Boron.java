@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
+/** The Boron class. */
 public class Boron implements Element {
 	public int getAtomicNumber() { return 5; }
 

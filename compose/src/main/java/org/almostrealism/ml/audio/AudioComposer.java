@@ -28,6 +28,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
 
+/** The AudioComposer class. */
 public class AudioComposer implements Factor<PackedCollection>, Destroyable, CodeFeatures {
 	public static boolean normalizeWeights = true;
 
@@ -74,19 +75,23 @@ public class AudioComposer implements Factor<PackedCollection>, Destroyable, Cod
 		this.random = new Random(seed);
 	}
 
+	/** Performs the getFeatureShape operation. */
 	public TraversalPolicy getFeatureShape() {
 		if (features.isEmpty()) return null;
 		return features.get(features.size() - 1).getFeatureShape();
 	}
 
+	/** Performs the addAudio operation. */
 	public void addAudio(Producer<PackedCollection> audio) {
 		addSource(autoencoder.encode(audio));
 	}
 
+	/** Performs the addSource operation. */
 	public void addSource(Producer<PackedCollection> features) {
 		addSource(new ComposableAudioFeatures(features, createWeights(features)));
 	}
 
+	/** Performs the addSource operation. */
 	public void addSource(ComposableAudioFeatures features) {
 		TraversalPolicy featureShape = getFeatureShape();
 		if (featureShape != null && !featureShape.equals(features.getFeatureShape())) {
@@ -96,6 +101,7 @@ public class AudioComposer implements Factor<PackedCollection>, Destroyable, Cod
 		this.features.add(features);
 	}
 
+	/** Performs the clearSources operation. */
 	public void clearSources() {
 		this.features.forEach(ComposableAudioFeatures::destroy);
 		this.features.clear();
@@ -127,6 +133,7 @@ public class AudioComposer implements Factor<PackedCollection>, Destroyable, Cod
 		return autoencoder.decode(getInterpolatedLatent(value));
 	}
 
+	/** Performs the createWeights operation. */
 	protected CollectionProducer createWeights(Producer<PackedCollection> features) {
 		double scale = 1.0;
 		int bins = shape(features).length(0);

@@ -37,7 +37,9 @@ public interface RelativeFrequencySet extends Iterable<Frequency> {
 		return getFrequencies(new Frequency(1.0)).iterator();
 	}
 
+	/** Performs the getFrequencies operation. */
 	Iterable<Frequency> getFrequencies(Frequency fundamental);
 
+	/** Performs the count operation. */
 	int count();
 }

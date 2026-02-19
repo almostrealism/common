@@ -31,6 +31,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.function.Supplier;
 
+/** The BranchBlock class. */
 public class BranchBlock implements Block {
 	private final TraversalPolicy shape;
 
@@ -143,6 +144,7 @@ public class BranchBlock implements Block {
 		return backwards;
 	}
 
+	/** Performs the append operation. */
 	public <T extends CellularPropagation<PackedCollection>> T append(T l) {
 		children.add(l);
 		l.getBackward().setReceptor(aggregator);

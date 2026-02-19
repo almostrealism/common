@@ -46,7 +46,7 @@ public class AttentionTests extends TestSuiteBase implements AttentionFeatures {
 	private static final int TEST_DIM_HEAD = TEST_DIM / TEST_HEADS;
 	private static final int TEST_INV_FREQ_SIZE = TEST_DIM_HEAD / 4;
 
-	@Test
+	@Test(timeout = 120000)
 	public void attentionKeys() {
 		int seqLength = 128;
 		int heads = 12;
@@ -94,7 +94,7 @@ public class AttentionTests extends TestSuiteBase implements AttentionFeatures {
 	}
 
 
-	@Test
+	@Test(timeout = 120000)
 	public void attentionValues() {
 		int seqLength = 1024;
 		int heads = 12;
@@ -146,7 +146,7 @@ public class AttentionTests extends TestSuiteBase implements AttentionFeatures {
 		}
 	}
 
-	@Test
+	@Test(timeout = 120000)
 	public void linearAttention() {
 		int batchSize = 1;
 		int dim = 8;
@@ -166,7 +166,7 @@ public class AttentionTests extends TestSuiteBase implements AttentionFeatures {
 		Process.optimized(b.forward(cp(input))).get().run();
 	}
 
-	@Test
+	@Test(timeout = 120000)
 	public void qkvSplitOperation() {
 		int batchSize = 1;
 		int seqLen = 4;
@@ -225,7 +225,7 @@ public class AttentionTests extends TestSuiteBase implements AttentionFeatures {
 	 * Tests isolated QK normalization against Python LayerNorm reference.
 	 * This helps debug the norm step in sequenceAttention by testing it in isolation.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void qkNormCompare() throws Exception {
 		if (testProfileIs(TestUtils.PIPELINE)) return;
 
@@ -292,7 +292,7 @@ public class AttentionTests extends TestSuiteBase implements AttentionFeatures {
 	 * Tests scaledDotProductAttention against PyTorch's F.scaled_dot_product_attention
 	 * to isolate and verify just the attention computation mechanism.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void scaledDotProductAttentionCompare() throws Exception {
 		if (testProfileIs(TestUtils.PIPELINE)) return;
 
@@ -342,7 +342,7 @@ public class AttentionTests extends TestSuiteBase implements AttentionFeatures {
 		assertTrue("Scaled dot-product attention output does not match PyTorch reference within tolerance", diff < 1e-5);
 	}
 
-	@Test
+	@Test(timeout = 120000)
 	public void sequenceAttentionSimplified() {
 		// Use smaller dimensions for easier debugging
 		int batchSize = 1;
@@ -408,7 +408,7 @@ public class AttentionTests extends TestSuiteBase implements AttentionFeatures {
 	 * DiT Attention class in stable-audio-tools. This ensures our Java implementation
 	 * matches the real Python behavior rather than a made-up reference.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void sequenceAttentionCompare() throws Exception {
 		if (testProfileIs(TestUtils.PIPELINE)) return;
 
@@ -497,7 +497,7 @@ public class AttentionTests extends TestSuiteBase implements AttentionFeatures {
 	 * DiT Attention class in cross-attention mode. This ensures our Java implementation
 	 * matches the real Python cross-attention behavior.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void sequenceCrossAttentionCompare() throws Exception {
 		if (testProfileIs(TestUtils.PIPELINE)) return;
 
@@ -605,7 +605,7 @@ public class AttentionTests extends TestSuiteBase implements AttentionFeatures {
 	 * DiT FeedForward class. This ensures our Java SwiGLU implementation
 	 * matches the real Python behavior.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void feedForwardCompare() throws Exception {
 		if (testProfileIs(TestUtils.PIPELINE)) return;
 
@@ -687,7 +687,7 @@ public class AttentionTests extends TestSuiteBase implements AttentionFeatures {
 	 * complete transformer block (self-attention + cross-attention + feed-forward)
 	 * matches the real Python behavior.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void transformerBlockCompare() throws Exception {
 		if (testProfileIs(TestUtils.PIPELINE)) return;
 

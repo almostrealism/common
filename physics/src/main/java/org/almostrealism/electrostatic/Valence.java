@@ -49,6 +49,7 @@ public class Valence {
 	public List<Electrons> getAtoms() { return atoms; }
 	public void setAtoms(List<Electrons> atoms) { this.atoms = atoms; }
 
+	/** Performs the absorb operation. */
 	public boolean absorb(Photon p) {
     	Set<Integer> excludes = new HashSet<>();
 
@@ -66,6 +67,7 @@ public class Valence {
 		return false;
 	}
 
+	/** Performs the emit operation. */
 	public Photon emit() {
     	for (Electrons e : atoms) {
     		double eV = e.emit();

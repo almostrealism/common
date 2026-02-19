@@ -26,6 +26,7 @@ import java.net.URL;
 import java.util.Hashtable;
 import java.util.TreeSet;
 
+/** The UnicodeResource class. */
 public class UnicodeResource extends ResourceAdapter<byte[]> {
 	private final Hashtable<Long, String> data = new Hashtable<>();
 	
@@ -41,6 +42,7 @@ public class UnicodeResource extends ResourceAdapter<byte[]> {
 		read(in);
 	}
 
+	/** Performs the load operation. */
 	public synchronized void load(byte[] data, long offset, int len) {
 		this.data.put(offset, new String(data, 0, len));
 	}

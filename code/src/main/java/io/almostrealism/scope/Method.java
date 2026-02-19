@@ -72,10 +72,12 @@ public class Method<T> extends Expression<T> implements Statement<Expression<?>>
 		this(type, member, name, Arrays.asList(v));
 	}
 
+	/** Performs the setArgument operation. */
 	public void setArgument(ArrayVariable<?> methodArg, ArrayVariable<?> replacement) {
 		setArgument(methodArg.getName(), replacement.getName());
 	}
 
+	/** Performs the setArgument operation. */
 	protected void setArgument(String methodArg, String replacement) {
 		if (arrayVariableReplacements == null) {
 			arrayVariableReplacements = new HashMap<>();
@@ -123,6 +125,7 @@ public class Method<T> extends Expression<T> implements Statement<Expression<?>>
 				((Method) e).getArguments().equals(getArguments());
 	}
 
+	/** Performs the toString operation. */
 	protected static String toString(LanguageOperations lang, List<Expression<?>> arguments) {
 		StringBuffer buf = new StringBuffer();
 

@@ -23,6 +23,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
+/** The SubsetTraversalExpression class. */
 public class SubsetTraversalExpression {
 	public static boolean enableLogging = false;
 
@@ -45,6 +46,7 @@ public class SubsetTraversalExpression {
 	public TraversalPolicy getGroupShape() { return groupShape; }
 	public TraversalPolicy getPositions() { return positions; }
 
+	/** Performs the getPositionOfGroup operation. */
 	public Expression[] getPositionOfGroup(Expression outputIndex) {
 		// The position in the output being computed
 		Expression[] outputPosition = resultShape.position(outputIndex.imod(resultShape.getTotalSizeLong()));
@@ -58,6 +60,7 @@ public class SubsetTraversalExpression {
 		return positions.position(index.imod(positions.getTotalInputSizeLong()));
 	}
 
+	/** Performs the getPositionInGroup operation. */
 	public Expression[] getPositionInGroup(Expression operandIndex, Expression resultIndex) {
 		Expression subsetPosition[] = getPositionOfGroup(resultIndex);
 		Expression operandPosition[] = operandShape.position(operandIndex);
@@ -70,6 +73,7 @@ public class SubsetTraversalExpression {
 		return groupPosition;
 	}
 
+	/** Performs the isIndexInGroup operation. */
 	public Expression<Boolean> isIndexInGroup(Expression operandIndex, Expression resultIndex) {
 		Expression groupPosition[] = getPositionInGroup(operandIndex, resultIndex);
 
@@ -83,10 +87,12 @@ public class SubsetTraversalExpression {
 		return Conjunction.of(conditions);
 	}
 
+	/** Performs the getIndexInGroup operation. */
 	public Expression getIndexInGroup(Expression operandIndex, Expression resultIndex) {
 		return groupShape.index(getPositionInGroup(operandIndex, resultIndex));
 	}
 
+	/** Performs the getInputIndex operation. */
 	public Expression getInputIndex(Expression<?> groupIndex, Expression<?> outputIndex) {
 		Expression[] groupPosition = groupShape.position(groupIndex);
 

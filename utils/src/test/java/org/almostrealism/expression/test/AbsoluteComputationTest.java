@@ -89,7 +89,7 @@ public class AbsoluteComputationTest extends TestSuiteBase {
 	 * - n=32: 1 - |64/63 - 1| = 1 - 0.016 = 0.984
 	 * - n=63: 1 - |2 - 1| = 0
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testAbsoluteInComputation() {
 		int size = 64;
 		AbsoluteTestComputation comp = new AbsoluteTestComputation(size);
@@ -163,7 +163,7 @@ public class AbsoluteComputationTest extends TestSuiteBase {
 	/**
 	 * Test Absolute directly (without outer subtraction).
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testSimpleAbsoluteComputation() {
 		int size = 64;
 		SimpleAbsoluteComputation comp = new SimpleAbsoluteComputation(size);

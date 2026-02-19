@@ -291,6 +291,7 @@ public class NativeCompiler implements Destroyable, ConsoleFeatures {
 
 	public String getDataDirectory() { return dataDir; }
 
+	/** Performs the reserveDataDirectory operation. */
 	public File reserveDataDirectory() {
 		File data = new File(getDataDirectory() + "/" + dataCount++);
 		if (!data.exists()) {
@@ -300,10 +301,12 @@ public class NativeCompiler implements Destroyable, ConsoleFeatures {
 		return data;
 	}
 
+	/** Performs the getInputFile operation. */
 	protected String getInputFile(String name) {
 		return libDir + "/" + name + ".c";
 	}
 
+	/** Performs the getOutputFile operation. */
 	protected String getOutputFile(String name, boolean lib) {
 		if (lib) {
 			return libDir + "/" + libFormat.replaceAll(LIB_NAME_REPLACE, name);
@@ -312,6 +315,7 @@ public class NativeCompiler implements Destroyable, ConsoleFeatures {
 		}
 	}
 
+	/** Performs the reserveLibraryTarget operation. */
 	public synchronized BaseGeneratedOperation reserveLibraryTarget() {
 		try {
 			BaseGeneratedOperation gen = (BaseGeneratedOperation)
@@ -324,14 +328,17 @@ public class NativeCompiler implements Destroyable, ConsoleFeatures {
 		}
 	}
 
+	/** Performs the compile operation. */
 	public void compile(NativeInstructionSet target, String code) {
 		compileAndLoad(target.getClass(), code);
 	}
 
+	/** Performs the compile operation. */
 	public String compile(Class target, String code) {
 		return compile(target.getName(), code, true);
 	}
 
+	/** Performs the compile operation. */
 	public String compile(String name, String code, boolean lib) {
 		if (HardwareOperator.enableVerboseLog) {
 			log("Compiling native code for " + name + "\nSource:\n" + code);
@@ -354,6 +361,7 @@ public class NativeCompiler implements Destroyable, ConsoleFeatures {
 		return result;
 	}
 
+	/** Performs the compileAndLoad operation. */
 	public void compileAndLoad(Class target, String code) {
 		if (HardwareOperator.enableInstructionSetMonitoring ||
 				(HardwareOperator.enableLargeInstructionSetMonitoring && code.length() > 50000)) {
@@ -381,6 +389,7 @@ public class NativeCompiler implements Destroyable, ConsoleFeatures {
 		}
 	}
 
+	/** Performs the runner operation. */
 	protected Consumer<List<String>> runner(String name) {
 		return command -> {
 			try {
@@ -408,6 +417,7 @@ public class NativeCompiler implements Destroyable, ConsoleFeatures {
 	@Override
 	public Console console() { return Hardware.console; }
 
+	/** Performs the factory operation. */
 	public static Factory<NativeCompiler> factory(Precision precision, boolean cl) {
 		return () -> {
 			String libFormat = System.getProperty("AR_HARDWARE_LIB_FORMAT");

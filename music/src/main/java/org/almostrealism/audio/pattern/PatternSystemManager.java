@@ -138,6 +138,7 @@ public class PatternSystemManager implements NoteSourceProvider, CodeFeatures {
 		this.chromosomes = chromosomes;
 	}
 
+	/** Performs the init operation. */
 	public void init() {
 		volume = new PackedCollection(1);
 		volume.setMem(0, 1.0);
@@ -163,6 +164,7 @@ public class PatternSystemManager implements NoteSourceProvider, CodeFeatures {
 
 	public List<PatternLayerManager> getPatterns() { return patterns; }
 
+	/** Performs the getPatternElements operation. */
 	public Map<NoteAudioChoice, List<PatternElement>> getPatternElements(double start, double end) {
 		Map<NoteAudioChoice, List<PatternElement>> elements = new HashMap<>();
 
@@ -174,21 +176,25 @@ public class PatternSystemManager implements NoteSourceProvider, CodeFeatures {
 		return elements;
 	}
 
+	/** Performs the setVolume operation. */
 	public void setVolume(double volume) {
 		this.volume.setMem(0, volume);
 	}
 
+	/** Performs the getSettings operation. */
 	public Settings getSettings() {
 		Settings settings = new Settings();
 		settings.getPatterns().addAll(patterns.stream().map(PatternLayerManager::getSettings).toList());
 		return settings;
 	}
 
+	/** Performs the setSettings operation. */
 	public void setSettings(Settings settings) {
 		patterns.clear();
 		settings.getPatterns().forEach(s -> addPattern(s.getChannel(), s.getDuration(), s.isMelodic()).setSettings(s));
 	}
 
+	/** Performs the refreshParameters operation. */
 	public void refreshParameters() {
 		patterns.stream().collect(Collectors.groupingBy(PatternLayerManager::getChannel))
 				.forEach((c, channelPatterns) -> {
@@ -201,14 +207,17 @@ public class PatternSystemManager implements NoteSourceProvider, CodeFeatures {
 		patterns.forEach(PatternLayerManager::refresh);
 	}
 
+	/** Performs the setTuning operation. */
 	public void setTuning(KeyboardTuning tuning) {
 		choices.forEach(c -> c.setTuning(tuning));
 	}
 
+	/** Performs the setTree operation. */
 	public void setTree(FileWaveDataProviderTree<?> root) {
 		setTree(root, null);
 	}
 
+	/** Performs the setTree operation. */
 	public void setTree(FileWaveDataProviderTree<?> root, DoubleConsumer progress) {
 		List<NoteAudioSource> sources = getAllSources();
 
@@ -226,6 +235,7 @@ public class PatternSystemManager implements NoteSourceProvider, CodeFeatures {
 		});
 	}
 
+	/** Performs the addPattern operation. */
 	public PatternLayerManager addPattern(int channel, double measures, boolean melodic) {
 		PatternLayerManager pattern =
 				new PatternLayerManager(choices,
@@ -235,6 +245,7 @@ public class PatternSystemManager implements NoteSourceProvider, CodeFeatures {
 		return pattern;
 	}
 
+	/** Performs the clear operation. */
 	public void clear() {
 		patterns.clear();
 	}
@@ -306,12 +317,14 @@ public class PatternSystemManager implements NoteSourceProvider, CodeFeatures {
 		return op;
 	}
 
+	/** The Settings class. */
 	public static class Settings {
 		private List<PatternLayerManager.Settings> patterns = new ArrayList<>();
 
 		public List<PatternLayerManager.Settings> getPatterns() { return patterns; }
 		public void setPatterns(List<PatternLayerManager.Settings> patterns) { this.patterns = patterns; }
 
+		/** Performs the defaultSettings operation. */
 		public static Settings defaultSettings(int channels, int patternsPerChannel,
 											   IntUnaryOperator activePatterns,
 											   IntUnaryOperator layersPerPattern,

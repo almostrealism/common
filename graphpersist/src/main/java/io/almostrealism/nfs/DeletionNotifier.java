@@ -16,6 +16,8 @@
 
 package io.almostrealism.nfs;
 
+/** The DeletionNotifier interface. */
 public interface DeletionNotifier {
+	/** Performs the delete operation. */
 	boolean delete(String path);
 }

@@ -34,6 +34,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
+/** The Mod class. */
 public class Mod<T extends Number> extends BinaryExpression<T> {
 	public static boolean enableMod2Optimization = false;
 	public static boolean enableInnerSumSimplify = true;
@@ -198,6 +199,7 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 		return Mod.of(children.get(0), children.get(1), fp);
 	}
 
+	/** Performs the of operation. */
 	public static Expression of(Expression... inputs) {
 		if (inputs.length != 2) {
 			throw new UnsupportedOperationException();
@@ -206,14 +208,17 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 		return of(inputs[0], inputs[1], inputs[0].isFP() || inputs[1].isFP());
 	}
 
+	/** Performs the of operation. */
 	public static Expression of(Expression input, Expression mod) {
 		return of(input, mod, true);
 	}
 
+	/** Performs the of operation. */
 	public static Expression of(Expression input, Expression mod, boolean fp) {
 		return Expression.process(create(input, mod, fp));
 	}
 
+	/** Performs the create operation. */
 	protected static Expression create(Expression<?> input, Expression mod, boolean fp) {
 		if (fp || (input.longValue().isEmpty() && mod.longValue().isEmpty())) {
 			// There are no possible optimizations

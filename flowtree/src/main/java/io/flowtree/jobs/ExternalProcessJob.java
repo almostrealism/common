@@ -32,6 +32,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+/** The ExternalProcessJob class. */
 public class ExternalProcessJob implements Job {
     public static final String COMMAND_SEPARATOR = ";;";
     public static final String JOB_SEPARATOR = "&;";
@@ -121,6 +122,7 @@ public class ExternalProcessJob implements Job {
         }
     }
 
+    /** The Factory class. */
     public static class Factory extends AbstractJobFactory {
         private List<String> commands;
         private int index;
@@ -133,11 +135,13 @@ public class ExternalProcessJob implements Job {
             setCommands(command);
         }
 
+        /** Performs the setCommands operation. */
         public void setCommands(List<String>... commands) {
             String code = String.join(JOB_SEPARATOR, Stream.of(commands).map(l -> String.join(COMMAND_SEPARATOR, l)).collect(Collectors.toList()));
             set("code", Base64.getEncoder().encodeToString(code.getBytes(StandardCharsets.UTF_8)));
         }
 
+        /** Performs the getCommands operation. */
         public List<String> getCommands() {
             if (commands == null) {
                 String code = new String(Base64.getDecoder().decode(get("code")), StandardCharsets.UTF_8);

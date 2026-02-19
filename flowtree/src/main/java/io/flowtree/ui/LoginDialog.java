@@ -64,6 +64,7 @@ public class LoginDialog extends JPanel {
 		this.frame.getContentPane().add(this);
 	}
 	
+	/** Performs the showDialog operation. */
 	public void showDialog(final Runnable r) {
 		this.okButton.addActionListener(new ActionListener() {
 			public void actionPerformed(ActionEvent event) {

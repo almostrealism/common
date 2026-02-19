@@ -70,6 +70,7 @@ public class AveragedVectorMap2D96Bit implements AveragedVectorMap2D {
 	public int[] getBzBuf() { return bzBuf; }
 	public void setBzBuf(int[] bzBuf) { this.bzBuf = bzBuf; }
 
+	/** Performs the setVector operation. */
 	public void setVector(double x, double y, double z) {
 		this.vector = new double[] {x, y, z};
 		this.fxBuf = null;
@@ -112,6 +113,7 @@ public class AveragedVectorMap2D96Bit implements AveragedVectorMap2D {
 //		}
 	}
 	
+	/** Performs the getVector operation. */
 	public double[] getVector(double u, double v, boolean front) {
 		if (this.vector != null) return this.vector;
 		
@@ -138,6 +140,7 @@ public class AveragedVectorMap2D96Bit implements AveragedVectorMap2D {
 		}
 	}
 	
+	/** Performs the getSampleCount operation. */
 	public int getSampleCount(double u, double v, boolean front) {
 		if (u >= 1.0 || v >= 1.0 || u < 0.0 || v < 0.0) {
 			System.out.println("AveragedVectorMap2D96Bit: Invalid UV " + u + ", " + v);

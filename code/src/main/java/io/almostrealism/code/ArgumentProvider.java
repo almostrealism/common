@@ -53,6 +53,7 @@ public interface ArgumentProvider {
 	 */
 	<T> ArrayVariable<T> getArgument(NameProvider p, Supplier<Evaluable<? extends T>> input, ArrayVariable<T> delegate, int delegateOffset);
 
+	/** Performs the argumentForInput operation. */
 	default <T> Function<Supplier<Evaluable<? extends T>>, ArrayVariable<T>> argumentForInput(NameProvider p) {
 		return input -> {
 			if (input == null) {
@@ -65,6 +66,7 @@ public interface ArgumentProvider {
 		};
 	}
 
+	/** Performs the processOutputVariableDelegation operation. */
 	static void processOutputVariableDelegation(ArrayVariable arg) {
 		if (arg.getProducer() instanceof Computation && ((Computation) arg.getProducer()).getOutputVariable() != null) {
 			Variable<?, ?> output = ((Computation) arg.getProducer()).getOutputVariable();

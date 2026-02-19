@@ -54,6 +54,7 @@ import java.util.stream.IntStream;
  * @see Scale
  */
 public interface KeyboardTuning {
+	/** Performs the getTone operation. */
 	default Frequency getTone(KeyPosition pos) {
 		if (pos.position() < 0) {
 			// Frequency ratios computed against this
@@ -64,6 +65,7 @@ public interface KeyboardTuning {
 		return getTone(pos.position(), KeyNumbering.STANDARD);
 	}
 
+	/** Performs the getTones operation. */
 	default <T extends KeyPosition> List<Frequency> getTones(Scale<T> scale) {
 		return IntStream.range(0, scale.length())
 				.mapToObj(scale::valueAt)
@@ -71,8 +73,10 @@ public interface KeyboardTuning {
 				.collect(Collectors.toList());
 	}
 
+	/** Performs the getTone operation. */
 	Frequency getTone(int key, KeyNumbering numbering);
 
+	/** Performs the getRelativeFrequency operation. */
 	default Frequency getRelativeFrequency(KeyPosition<?> root, KeyPosition<?> target) {
 		return new Frequency(target == null ? 1.0 :
 				(getTone(target).asHertz() / getTone(root).asHertz()));

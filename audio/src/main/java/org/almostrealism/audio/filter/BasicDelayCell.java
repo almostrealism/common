@@ -62,6 +62,7 @@ public class BasicDelayCell extends SummationCell implements CodeFeatures {
 
 	public synchronized int getDelay() { return 1000 * delay / OutputLine.sampleRate; }
 
+	/** Performs the setDelayInFrames operation. */
 	public synchronized void setDelayInFrames(long frames) {
 		if (frames != delay) System.out.println("Delay frames: " + frames);
 		this.delay = (int) frames;
@@ -70,6 +71,7 @@ public class BasicDelayCell extends SummationCell implements CodeFeatures {
 
 	public synchronized long getDelayInFrames() { return this.delay; }
 
+	/** Performs the getPosition operation. */
 	public synchronized Position getPosition() {
 		Position p = new Position();
 		if (delay == 0) delay = 1;
@@ -107,6 +109,7 @@ public class BasicDelayCell extends SummationCell implements CodeFeatures {
 		// TODO throw new UnsupportedOperationException();
 	}
 
+	/** The Position class. */
 	public static class Position {
 		public double pos;
 		public double value;

@@ -89,6 +89,7 @@ public interface WaveDataProvider extends AudioDataProvider, Supplier<WaveData>,
 	 */
 	String getKey();
 
+	/** Performs the getCount operation. */
 	default int getCount(double playbackRate, int sampleRate) {
 		if (getSampleRate() == sampleRate) {
 			return getCount(playbackRate);
@@ -97,14 +98,19 @@ public interface WaveDataProvider extends AudioDataProvider, Supplier<WaveData>,
 		return getCount(playbackRate * getSampleRate() / (double) sampleRate);
 	}
 
+	/** Performs the getCount operation. */
 	int getCount(double playbackRate);
 
+	/** Performs the getDuration operation. */
 	double getDuration();
 
+	/** Performs the getDuration operation. */
 	double getDuration(double playbackRate);
 
+	/** Performs the getChannelCount operation. */
 	int getChannelCount();
 
+	/** Performs the get operation. */
 	default WaveData get(int sampleRate) {
 		if (getSampleRate() == sampleRate) {
 			return get();
@@ -122,6 +128,7 @@ public interface WaveDataProvider extends AudioDataProvider, Supplier<WaveData>,
 		return result;
 	}
 
+	/** Performs the getChannelData operation. */
 	default PackedCollection getChannelData(int channel, double playbackRate, int sampleRate) {
 		if (getSampleRate() == sampleRate) {
 			return getChannelData(channel, playbackRate);
@@ -130,6 +137,7 @@ public interface WaveDataProvider extends AudioDataProvider, Supplier<WaveData>,
 		return getChannelData(channel, playbackRate * getSampleRate() / (double) sampleRate);
 	}
 
+	/** Performs the getChannelData operation. */
 	PackedCollection getChannelData(int channel, double playbackRate);
 
 	@Override

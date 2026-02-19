@@ -19,11 +19,13 @@ package org.almostrealism.utils;
 import java.util.SortedSet;
 import java.util.TreeSet;
 
+/** This type. */
 @Deprecated
 public class PriorityQueue {
 	private static double c = Math.pow(10.0, 10.0);
 	private SortedSet data;
 	
+	/** The StoredItem class. */
 	protected class StoredItem implements Comparable {
 		Object o;
 		double p;
@@ -33,6 +35,7 @@ public class PriorityQueue {
 			this.p = p;
 		}
 		
+		/** Performs the equals operation. */
 		public boolean equals(Object o) {
 			if (o instanceof StoredItem == false) return false;
 			if (((StoredItem)o).o != this.o) return false;
@@ -40,10 +43,12 @@ public class PriorityQueue {
 			return true;
 		}
 		
+		/** Performs the hashCode operation. */
 		public int hashCode() {
 			return (int) (p * c);
 		}
 		
+		/** Performs the compareTo operation. */
 		public int compareTo(Object o) {
 			if (o instanceof StoredItem == false) return Integer.MIN_VALUE;
 			int x = (int) ((((StoredItem) o).p - this.p) * c);
@@ -55,11 +60,13 @@ public class PriorityQueue {
 		this.data = new TreeSet();
 	}
 	
+	/** Performs the put operation. */
 	public int put(Object o, double p) {
 		this.data.add(new StoredItem(o, p));
 		return this.data.size();
 	}
 	
+	/** Performs the peek operation. */
 	public double peek() {
 		if (this.data.size() <= 0) return Double.MAX_VALUE;
 		StoredItem s = (StoredItem) this.data.last();
@@ -69,6 +76,7 @@ public class PriorityQueue {
 		return s.p;
 	}
 	
+	/** Performs the peekNext operation. */
 	public Object peekNext() {
 		if (this.data.size() <= 0) return null;
 		StoredItem s = (StoredItem) this.data.last();
@@ -76,6 +84,7 @@ public class PriorityQueue {
 		return s.o;
 	}
 	
+	/** Performs the next operation. */
 	public Object next() {
 		StoredItem s = (StoredItem) this.data.last();
 		this.data.remove(s);

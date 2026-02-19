@@ -21,6 +21,7 @@ import io.almostrealism.expression.Expression;
 
 import java.util.function.Function;
 
+/** The ConditionalFilterExpression class. */
 public class ConditionalFilterExpression extends UniformConditionalExpression {
 	public ConditionalFilterExpression(String name, TraversalPolicy shape,
 									   Function<Expression<?>, Expression<Boolean>> condition,

@@ -158,6 +158,7 @@ public class BufferedAudioPlayer implements AudioPlayer, CellFeatures {
 		this.mixer = new SampleMixer(playerCount);
 	}
 
+	/** Performs the initMixer operation. */
 	protected void initMixer() {
 		level = new PackedCollection[mixer.getChannelCount()];
 
@@ -179,6 +180,7 @@ public class BufferedAudioPlayer implements AudioPlayer, CellFeatures {
 		}
 	}
 
+	/** Performs the initMonitor operation. */
 	protected void initMonitor() {
 		if (monitor == null) {
 			monitor = new Thread(() -> {
@@ -202,16 +204,19 @@ public class BufferedAudioPlayer implements AudioPlayer, CellFeatures {
 
 	public TimeCell getClock() { return clock; }
 
+	/** Performs the getData operation. */
 	public WaveData getData(int player) {
 		return new WaveData(raw.range(shape(bufferFrames), player * bufferFrames).traverseEach(), sampleRate);
 	}
 
+	/** Performs the load operation. */
 	public synchronized void load(int player, String file) {
 		update(player, file);
 		updateLevel();
 		initMonitor();
 	}
 
+	/** Performs the load operation. */
 	public synchronized void load(int player, WaveData data) {
 		update(player, data);
 		updateLevel();
@@ -232,6 +237,7 @@ public class BufferedAudioPlayer implements AudioPlayer, CellFeatures {
 		return frames;
 	}
 
+	/** Performs the update operation. */
 	protected void update(int player, WaveData source) {
 		if (source == null) {
 			clear(player);
@@ -248,6 +254,7 @@ public class BufferedAudioPlayer implements AudioPlayer, CellFeatures {
 		}
 	}
 
+	/** Performs the update operation. */
 	protected void update(int player, String file) {
 		if (file == null) {
 			clear(player);
@@ -275,11 +282,13 @@ public class BufferedAudioPlayer implements AudioPlayer, CellFeatures {
 		}
 	}
 
+	/** Performs the clear operation. */
 	protected void clear(int player) {
 		loaded[player] = false;
 		playbackDuration[player] = 0.0;
 	}
 
+	/** Performs the updateLevel operation. */
 	protected void updateLevel() {
 		if (clock == null) return;
 
@@ -294,10 +303,12 @@ public class BufferedAudioPlayer implements AudioPlayer, CellFeatures {
 		}
 	}
 
+	/** Performs the setLevel operation. */
 	protected void setLevel(int c, double v) {
 		level[c].setMem(0, v);
 	}
 
+	/** Performs the setLoopDuration operation. */
 	protected void setLoopDuration(int c, double duration) {
 		loopDuration[c].setMem(duration);
 
@@ -306,11 +317,13 @@ public class BufferedAudioPlayer implements AudioPlayer, CellFeatures {
 		}
 	}
 
+	/** Performs the deliver operation. */
 	public BufferedOutputScheduler deliver(OutputLine out) {
 		return deliver(out, null);
 	}
 
 
+	/** Performs the deliver operation. */
 	public BufferedOutputScheduler deliver(AudioLine main, OutputLine inputRecord) {
 		return deliver((BufferedAudio) main, inputRecord);
 	}
@@ -387,26 +400,31 @@ public class BufferedAudioPlayer implements AudioPlayer, CellFeatures {
 	@Override
 	public double getVolume() { return volume[0]; }
 
+	/** Performs the setMuted operation. */
 	public void setMuted(int player, boolean muted) {
 		this.muted[player] = muted;
 		updateLevel();
 	}
 
+	/** Performs the setPlaybackDuration operation. */
 	public void setPlaybackDuration(int player, double duration) {
 		this.playbackDuration[player] = duration;
 		updateLevel();
 	}
 
+	/** Performs the getPlaybackDuration operation. */
 	public double getPlaybackDuration(int player) {
 		return playbackDuration[player];
 	}
 
+	/** Performs the getSampleDuration operation. */
 	public double getSampleDuration(int player) {
 		return sampleDuration[player];
 	}
 
 	protected double getFrame() { return clock.getFrame(); }
 
+	/** Performs the setFrame operation. */
 	protected void setFrame(double frame) {
 		if (enableUnifiedClock) {
 			clock.setFrame(frame);

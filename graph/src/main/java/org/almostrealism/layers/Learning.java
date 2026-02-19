@@ -18,7 +18,9 @@ package org.almostrealism.layers;
 
 import org.almostrealism.collect.PackedCollection;
 
+/** The Learning interface. */
 public interface Learning {
 
+	/** Performs the setParameterUpdate operation. */
 	void setParameterUpdate(ParameterUpdate<PackedCollection> update);
 }

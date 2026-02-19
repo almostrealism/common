@@ -29,6 +29,7 @@ import java.io.OutputStream;
 import java.util.Hashtable;
 import java.util.Map;
 
+/** The ScpDownloader class. */
 public class ScpDownloader implements UserInfo {
 	private static final int maxCache = 5;
 	private static Map cache;
@@ -69,6 +70,7 @@ public class ScpDownloader implements UserInfo {
 	public void setDownloadDir(String dir) { this.ddir = new File(dir); }
 	public void setRetry(int retry) { this.retry = retry; }
 	
+	/** Performs the init operation. */
 	public void init() throws IOException {
 		try {
 			this.session = this.sch.getSession(this.user, this.host, 22);
@@ -80,6 +82,7 @@ public class ScpDownloader implements UserInfo {
 		}
 	}
 	
+	/** Performs the dispose operation. */
 	public void dispose() {
 		if (this.session != null) {
 			this.session.disconnect();
@@ -87,6 +90,7 @@ public class ScpDownloader implements UserInfo {
 		}
 	}
 	
+	/** Performs the download operation. */
 	public synchronized void download(String file, OutputStream fout) throws IOException {
 		while (this.streamOpen) {
 			try {
@@ -138,6 +142,7 @@ public class ScpDownloader implements UserInfo {
 		this.notify();
 	}
 	
+	/** Performs the download operation. */
 	public String download(String file) throws IOException {
 		String orig = file;
 		
@@ -165,6 +170,7 @@ public class ScpDownloader implements UserInfo {
 		return ofile.getCanonicalPath();
 	}
 	
+	/** Performs the getDownloader operation. */
 	public static synchronized ScpDownloader getDownloader(String host, String user, String passwd) throws IOException {
 		if (ScpDownloader.cache == null) ScpDownloader.cache = new Hashtable();
 		
@@ -218,16 +224,19 @@ public class ScpDownloader implements UserInfo {
 	public String getPassphrase() { return null; }
 	public String getPassword() { return this.passwd; }
 	
+	/** Performs the promptPassword operation. */
 	public boolean promptPassword(String message) {
 		System.out.println("ScpDownloader: " + message);
 		return (this.passwd != null);
 	}
 	
+	/** Performs the promptPassphrase operation. */
 	public boolean promptPassphrase(String message) {
 		System.out.println("ScpDownloader: " + message);
 		return true;
 	}
 	
+	/** Performs the promptYesNo operation. */
 	public boolean promptYesNo(String message) {
 		System.out.println("ScpDownloader: " + message);
 		return true;
@@ -235,6 +244,7 @@ public class ScpDownloader implements UserInfo {
 	
 	public void showMessage(String message) { System.out.println("ScpDownloader: " + message); }
 	
+	/** Performs the finalize operation. */
 	protected void finalize() {
 		System.out.println("ScpDownloader: Disposing " + this);
 		this.dispose();

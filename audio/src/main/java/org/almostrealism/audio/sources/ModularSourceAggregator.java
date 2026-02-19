@@ -82,6 +82,7 @@ public class ModularSourceAggregator implements SourceAggregator, CodeFeatures {
 		return out;
 	}
 
+	/** Performs the extractInputs operation. */
 	protected Producer<PackedCollection>[] extractInputs(InputType type, Producer<PackedCollection>... sources) {
 		int index = 0;
 		int tot = Math.toIntExact(IntStream.range(0, sources.length)
@@ -100,6 +101,7 @@ public class ModularSourceAggregator implements SourceAggregator, CodeFeatures {
 	@Override
 	public Console console() { return CellFeatures.console; }
 
+	/** The InputType enumeration. */
 	public enum InputType {
 		SOURCE, FREQUENCY, FREQUENCY_ENVELOPE, VOLUME_ENVELOPE
 	}

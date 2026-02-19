@@ -22,6 +22,7 @@ import io.almostrealism.util.DescribableParent;
 
 import java.util.List;
 
+/** The OperationMetadata class. */
 public class OperationMetadata implements DescribableParent<OperationMetadata> {
 	private static long opIndex = 0;
 
@@ -79,6 +80,7 @@ public class OperationMetadata implements DescribableParent<OperationMetadata> {
 	public void setId(long id) { this.id = id; }
 
 	public String getDisplayName() { return displayName; }
+	/** Performs the setDisplayName operation. */
 	public void setDisplayName(String displayName) {
 		this.displayName = displayName;
 
@@ -111,30 +113,35 @@ public class OperationMetadata implements DescribableParent<OperationMetadata> {
 	public List<OperationMetadata> getChildren() { return children; }
 	public void setChildren(List<OperationMetadata> children) { this.children = children; }
 
+	/** Performs the withShape operation. */
 	public OperationMetadata withShape(TraversalPolicy shape) {
 		OperationMetadata metadata = new OperationMetadata(this);
 		metadata.setShape(shape);
 		return metadata;
 	}
 
+	/** Performs the withContextName operation. */
 	public OperationMetadata withContextName(String contextName) {
 		OperationMetadata metadata = new OperationMetadata(this);
 		metadata.setContextName(contextName);
 		return metadata;
 	}
 
+	/** Performs the withDisplayName operation. */
 	public OperationMetadata withDisplayName(String name) {
 		OperationMetadata metadata = new OperationMetadata(this);
 		metadata.setDisplayName(name);
 		return metadata;
 	}
 
+	/** Performs the withSignature operation. */
 	public OperationMetadata withSignature(String signature) {
 		OperationMetadata metadata = new OperationMetadata(this);
 		metadata.setSignature(signature);
 		return metadata;
 	}
 
+	/** Performs the appendShortDescription operation. */
 	public OperationMetadata appendShortDescription(String desc) {
 		OperationMetadata metadata = new OperationMetadata(this);
 		metadata.setShortDescription(metadata.getShortDescription() + desc);

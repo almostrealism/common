@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
+/** The Samarium class. */
 public class Samarium implements Element {
 	public int getAtomicNumber() { return 62; }
 	

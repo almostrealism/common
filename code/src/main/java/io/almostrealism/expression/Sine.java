@@ -25,6 +25,7 @@ import java.util.List;
 import java.util.OptionalDouble;
 import java.util.OptionalLong;
 
+/** The Sine class. */
 public class Sine extends Expression<Double> {
 	protected Sine(Expression<Double> input) {
 		super(Double.class, input);
@@ -63,6 +64,7 @@ public class Sine extends Expression<Double> {
 		return product(target.getShape(), List.of(childDelta, cofactor));
 	}
 
+	/** Performs the of operation. */
 	public static Expression<Double> of(Expression<Double> input) {
 		OptionalDouble d = input.doubleValue();
 

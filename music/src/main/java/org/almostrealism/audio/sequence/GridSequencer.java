@@ -41,6 +41,7 @@ import java.util.List;
 import java.util.UUID;
 import java.util.function.IntFunction;
 
+/** The GridSequencer class. */
 public class GridSequencer implements StatelessSource, TempoAware, CellFeatures {
 	private Frequency bpm;
 	private double stepSize;
@@ -58,6 +59,7 @@ public class GridSequencer implements StatelessSource, TempoAware, CellFeatures 
 		setSamples(new ArrayList<>());
 	}
 
+	/** Performs the initParamSequence operation. */
 	public void initParamSequence() {
 		sequence = ParameterFunctionSequence.random(getStepCount());
 	}
@@ -97,6 +99,7 @@ public class GridSequencer implements StatelessSource, TempoAware, CellFeatures 
 	@Deprecated
 	public int getCount() { return (int) (getDuration() * OutputLine.sampleRate); }
 
+	/** This method. */
 	@Deprecated
 	public WaveDataProviderList create(Producer<PackedCollection> x, Producer<PackedCollection> y, Producer<PackedCollection> z, List<Frequency> playbackRates) {
 		PackedCollection export = new PackedCollection(getCount());

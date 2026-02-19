@@ -374,6 +374,7 @@ public interface DeltaFeatures extends MatrixFeatures {
 		}
 	}
 
+	/** Performs the replaceInput operation. */
 	default <T extends PackedCollection> ComputationBase<T, T, Evaluable<T>> replaceInput(
 			ComputationBase<T, T, Evaluable<T>> producer,
 			List<Supplier> toReplace,

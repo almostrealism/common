@@ -297,11 +297,13 @@ public class ModelBundle implements Destroyable {
 			this.modelType = modelType;
 		}
 
+		/** Performs the baseModelId operation. */
 		public Builder baseModelId(String baseModelId) {
 			this.baseModelId = baseModelId;
 			return this;
 		}
 
+		/** Performs the withMetrics operation. */
 		public Builder withMetrics(Map<String, Double> metrics) {
 			if (metrics != null) {
 				this.metrics.putAll(metrics);
@@ -309,26 +311,31 @@ public class ModelBundle implements Destroyable {
 			return this;
 		}
 
+		/** Performs the metric operation. */
 		public Builder metric(String key, double value) {
 			this.metrics.put(key, value);
 			return this;
 		}
 
+		/** Performs the config operation. */
 		public Builder config(String key, String value) {
 			this.config.put(key, value);
 			return this;
 		}
 
+		/** Performs the withDescription operation. */
 		public Builder withDescription(String description) {
 			this.description = description;
 			return this;
 		}
 
+		/** Performs the adapterConfig operation. */
 		Builder adapterConfig(AdapterConfig adapterConfig) {
 			this.adapterConfig = adapterConfig;
 			return this;
 		}
 
+		/** Performs the build operation. */
 		public ModelBundle build() {
 			return new ModelBundle(
 					weights,

@@ -60,19 +60,23 @@ public interface ActivationFeatures extends GeometryFeatures {
 		return shape -> softmax(shape);
 	}
 
+	/** Performs the softmax operation. */
 	default CellularLayer softmax(int size) {
 		return softmax(shape(size));
 	}
 
+	/** Performs the softmax operation. */
 	default CellularLayer softmax(TraversalPolicy shape) {
 		return layer("softmax", shape, shape,
 				input -> c(input).traverse(1).exp().divide(c(input).traverse(1).exp().traverse(0).sum()));
 	}
 
+	/** Performs the softmax operation. */
 	default Function<TraversalPolicy, CellularLayer> softmax(boolean subtractMax, ComputeRequirement... requirements) {
 		return shape -> softmax(shape, subtractMax, requirements);
 	}
 
+	/** Performs the softmax operation. */
 	default CellularLayer softmax(TraversalPolicy shape, boolean subtractMax, ComputeRequirement... requirements) {
 		if (shape.getDimensions() < 2) {
 			throw new IllegalArgumentException();
@@ -120,10 +124,12 @@ public interface ActivationFeatures extends GeometryFeatures {
 		}
 	}
 
+	/** Performs the logSoftmax operation. */
 	default Function<TraversalPolicy, CellularLayer> logSoftmax(ComputeRequirement... requirements) {
 		return shape -> logSoftmax(shape, requirements);
 	}
 
+	/** Performs the logSoftmax operation. */
 	default Function<TraversalPolicy, CellularLayer> logSoftmax(int size, ComputeRequirement... requirements) {
 		return shape -> {
 			shape = padDimensions(shape, 2);
@@ -135,6 +141,7 @@ public interface ActivationFeatures extends GeometryFeatures {
 		};
 	}
 
+	/** Performs the logSoftmax operation. */
 	default CellularLayer logSoftmax(TraversalPolicy shape, ComputeRequirement... requirements) {
 		shape = padDimensions(shape, 2).traverse(1);
 
@@ -155,6 +162,7 @@ public interface ActivationFeatures extends GeometryFeatures {
 		return shape -> relu(shape, requirements);
 	}
 
+	/** Performs the relu operation. */
 	default CellularLayer relu(TraversalPolicy shape, ComputeRequirement... requirements) {
 		return layer("relu", shape, shape, input -> rectify(input), requirements);
 	}
@@ -172,6 +180,7 @@ public interface ActivationFeatures extends GeometryFeatures {
 		return shape -> silu(shape, requirements);
 	}
 
+	/** Performs the silu operation. */
 	default CellularLayer silu(TraversalPolicy shape, ComputeRequirement... requirements) {
 		return layer("silu", shape, shape, input -> multiply(traverseEach(input), sigmoid(traverseEach(input))), requirements);
 	}
@@ -187,6 +196,7 @@ public interface ActivationFeatures extends GeometryFeatures {
 		return shape -> gelu(shape, requirements);
 	}
 
+	/** Performs the gelu operation. */
 	default CellularLayer gelu(TraversalPolicy shape, ComputeRequirement... requirements) {
 		// 0.5 * x * (1 + math.tanh(sqrt(2 / pi) * (x + 0.044715 * x^3)))
 		return layer("gelu", shape, shape, input -> {

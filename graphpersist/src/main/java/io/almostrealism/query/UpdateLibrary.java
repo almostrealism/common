@@ -29,10 +29,12 @@ public class UpdateLibrary<D, K> {
 	
 	protected UpdateLibrary() { updates = new HashMap<>(); }
 	
+	/** Performs the addUpdate operation. */
 	public synchronized <V> void addUpdate(Class<V> type, Update<? extends D, ? extends K, V> q) {
 		updates.put(type, q);
 	}
 	
+	/** Performs the put operation. */
 	public <V> void put(D database, Class<V> type, K key, V data) throws IllegalAccessException, InvocationTargetException, NoSuchMethodException {
 		Update q = null;
 		

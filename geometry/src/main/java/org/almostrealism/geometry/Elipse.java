@@ -19,9 +19,11 @@ package org.almostrealism.geometry;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorMath;
 
+/** The Elipse class. */
 public class Elipse {
 	private static double[] center, major, minor;
 	
+	/** Performs the loadConicSection operation. */
 	public static void loadConicSection(double[] x, double[] p, double[] n, double theta) {
 		double[] l = VectorMath.subtract(x, p);
 		double nl = new Vector(n).dotProduct(new Vector(l));
@@ -47,6 +49,7 @@ public class Elipse {
 		Elipse.minor = VectorMath.multiply(nm, lls / Math.sin(Math.PI - theta - cnml));
 	}
 	
+	/** Performs the getSample operation. */
 	public static double[] getSample() {
 		double x = 1.0;
 		double y = 1.0;

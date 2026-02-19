@@ -28,6 +28,7 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
+/** The PatternLayerSeeds class. */
 public class PatternLayerSeeds implements ConsoleFeatures {
 
 	private double position;
@@ -61,10 +62,12 @@ public class PatternLayerSeeds implements ConsoleFeatures {
 		this.position = position;
 	}
 
+	/** Performs the getScale operation. */
 	public double getScale(double duration) {
 		return Math.min(maxScale, Math.max(minScale, duration * granularity));
 	}
 
+	/** Performs the getScale operation. */
 	public double getScale(double duration, double min) {
 		return Math.max(min, getScale(duration));
 	}
@@ -79,6 +82,7 @@ public class PatternLayerSeeds implements ConsoleFeatures {
 	public double getBias() { return bias; }
 	public void setBias(double bias) { this.bias = bias; }
 
+	/** Performs the generator operation. */
 	public Stream<PatternLayer> generator(PatternElementFactory factory, double offset, double duration,
 										  ScaleTraversalStrategy scaleTraversalStrategy,
 										  int scaleTraversalDepth, double minScale) {

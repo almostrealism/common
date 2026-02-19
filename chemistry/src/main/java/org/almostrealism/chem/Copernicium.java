@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
+/** The Copernicium class. */
 public class Copernicium implements Element {
 	public int getAtomicNumber() { return 112; }
 

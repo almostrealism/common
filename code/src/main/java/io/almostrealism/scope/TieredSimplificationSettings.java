@@ -2,6 +2,7 @@ package io.almostrealism.scope;
 
 import io.almostrealism.expression.Expression;
 
+/** The TieredSimplificationSettings class. */
 public class TieredSimplificationSettings implements SimplificationSettings {
 
 	private static int tier0 = 2;
@@ -14,6 +15,7 @@ public class TieredSimplificationSettings implements SimplificationSettings {
 	private static int pref3 = 4;
 	private static int pref4 = 7;
 
+	/** Performs the isSeriesSimplificationTarget operation. */
 	public boolean isSeriesSimplificationTarget(Expression<?> expression, int depth) {
 		// if (expression.getType() == Boolean.class) return true;
 
@@ -37,10 +39,12 @@ public class TieredSimplificationSettings implements SimplificationSettings {
 		}
 	}
 
+	/** Performs the shortDesc operation. */
 	public String shortDesc() {
 		return "Tiered";
 	}
 
+	/** Performs the targetByDepth operation. */
 	public static boolean targetByDepth(int depth, int preference) {
 		return depth > (preference + 3) && depth % preference == 0;
 	}

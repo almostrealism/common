@@ -25,9 +25,11 @@ import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 
+/** The SimpleEventServer class. */
 public class SimpleEventServer implements ConsoleFeatures {
 	public static final String POST = "POST";
 
+	/** Performs the start operation. */
 	public void start() throws IOException {
 		HttpServer server = HttpServer.create(new InetSocketAddress(8080), 0);
 

@@ -20,5 +20,6 @@ import org.almostrealism.audio.notes.NoteAudioChoice;
 
 import java.util.ArrayList;
 
+/** The NoteAudioChoiceList class. */
 public class NoteAudioChoiceList extends ArrayList<NoteAudioChoice> {
 }

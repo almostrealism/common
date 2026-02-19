@@ -18,19 +18,23 @@ package org.almostrealism.model;
 
 import org.almostrealism.CodeFeatures;
 
+/** The ModelFeatures interface. */
 public interface ModelFeatures extends CodeFeatures {
+	/** Performs the convolution2dModel operation. */
 	default Model convolution2dModel(int h, int w, int convSize, int convFilters, int convLayers,
 									 int denseSize) {
 		return convolution2dModel(h, w, convSize, convFilters, convLayers,
 				-1, denseSize);
 	}
 
+	/** Performs the convolution2dModel operation. */
 	default Model convolution2dModel(int h, int w, int convSize, int convFilters, int convLayers,
 									 int groups, int denseSize) {
 		return convolution2dModel(1, 1, h, w, convSize, convFilters, convLayers,
 				groups, denseSize, false);
 	}
 
+	/** Performs the convolution2dModel operation. */
 	default Model convolution2dModel(int batchSize, int channels, int h, int w,
 									 int convSize, int convFilters, int convLayers,
 									 int groups, int denseSize, boolean logSoftmax) {

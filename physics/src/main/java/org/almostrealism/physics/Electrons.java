@@ -245,6 +245,7 @@ public class Electrons {
 		this.excited = null;
 	}
 
+	/** Performs the refreshAbsorptionEnergies operation. */
 	protected synchronized void refreshAbsorptionEnergies() {
 		int cursor[] = new int[e.length];
 

@@ -20,5 +20,6 @@ package io.almostrealism.html;
  * @author  Michael Murray
  */
 public interface Styleable {
+	/** Performs the addStyleClass operation. */
 	public void addStyleClass(String name);
 }

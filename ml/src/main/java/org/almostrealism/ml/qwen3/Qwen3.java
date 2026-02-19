@@ -251,6 +251,7 @@ public class Qwen3 implements AttentionFeatures {
 		return config;
 	}
 
+	/** Performs the setTemperature operation. */
 	public void setTemperature(double temperature) {
 		model.setTemperature(temperature);
 	}

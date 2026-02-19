@@ -25,6 +25,7 @@ import org.almostrealism.collect.PackedCollection;
 
 import java.util.function.DoubleFunction;
 
+/** The PatternNoteAudioAdapter class. */
 public abstract class PatternNoteAudioAdapter implements
 		PatternNoteAudio, CellFeatures, SamplingFeatures {
 
@@ -65,6 +66,7 @@ public abstract class PatternNoteAudioAdapter implements
 		return getProvider(target, audioSelection).getAudio(target, channel, audioSelection);
 	}
 
+	/** Performs the computeAudio operation. */
 	protected Producer<PackedCollection> computeAudio(KeyPosition<?> target, int channel,
 														 double noteDuration,
 														 Factor<PackedCollection> automationLevel,
@@ -87,10 +89,13 @@ public abstract class PatternNoteAudioAdapter implements
 		}
 	}
 
+	/** Performs the getDelegate operation. */
 	protected abstract PatternNoteAudio getDelegate();
 
+	/** Performs the getFilter operation. */
 	protected abstract NoteAudioFilter getFilter();
 
+	/** Performs the getProvider operation. */
 	protected abstract PatternNoteAudio getProvider(KeyPosition<?> target,
 													DoubleFunction<PatternNoteAudio> audioSelection);
 }

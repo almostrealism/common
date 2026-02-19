@@ -40,16 +40,19 @@ public class QueryLibrary<D> {
 	
 	protected QueryLibrary() { queries = new HashMap<>(); }
 
+	/** Performs the addQuery operation. */
 	public synchronized <V, K> void addQuery(Class<V> type, Class<K> argumentType, Query<? extends D, ? extends K, V> q) {
 		KeyValueTypes t = new KeyValueTypes(argumentType, type);
 		if (queries.get(t) == null) queries.put(t, new ArrayList<Query<? extends D, ?, ?>>());
 		queries.get(t).add(q);
 	}
 	
+	/** Performs the get operation. */
 	public <V> Collection<V> get(D database, Class type) throws IllegalAccessException, InvocationTargetException {
 		return get(database, type, null, null);
 	}
 	
+	/** Performs the get operation. */
 	public <V, K> Collection<V> get(D database, Class<V> type, Class<K> argumentType, K arguments) throws IllegalAccessException, InvocationTargetException {
 		List<Query<? extends D, ?, ?>> ql = null;
 		
@@ -65,6 +68,7 @@ public class QueryLibrary<D> {
 		return l;
 	}
 	
+	/** Performs the getCascades operation. */
 	public Map<Class, List<CascadingQuery>> getCascades(Class type, Map<Class, List<CascadingQuery>> m) {
 		for (KeyValueTypes k : queries.keySet()) {
 			if (k.keyType == type) {

@@ -65,10 +65,12 @@ public abstract class WaveDataProviderAdapter implements WaveDataProvider,
 						v -> Product.of(v, ExpressionFeatures.getInstance().e(OutputLine.sampleRate))).get());
 	}
 
+	/** Performs the clearKey operation. */
 	protected void clearKey(String key) {
 		loaded.remove(key);
 	}
 
+	/** Performs the load operation. */
 	protected abstract WaveData load();
 
 	protected void unload() { clearKey(getKey()); }

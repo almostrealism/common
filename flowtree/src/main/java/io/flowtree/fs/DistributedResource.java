@@ -137,6 +137,7 @@ public class DistributedResource implements Resource {
 		return uri;
 	}
 	
+	/** Performs the isLoaded operation. */
 	protected boolean isLoaded() {
 		if (this.data == null) return false;
 		if (this.loaded == null) return false;
@@ -190,6 +191,7 @@ public class DistributedResource implements Resource {
 	
 	public Object getData() { return this.data; }
 	
+	/** Performs the getData operation. */
 	protected byte[] getData(int index, boolean load) {
 		return this.getData(index, load, load, true);
 	}
@@ -300,6 +302,7 @@ public class DistributedResource implements Resource {
 	
 	protected void setExcludeHost(String host) { this.exclude = host; }
 
+	/** Performs the load operation. */
 	public synchronized void load(byte[] data, long offset, int len) {
 		throw new NotImplementedException("load");
 	}
@@ -666,6 +669,7 @@ public class DistributedResource implements Resource {
 	public void setURI(String uri) { this.uri = uri; }
 	public String getURI() { return this.uri; }
 	
+	/** Performs the load operation. */
 	public synchronized void load(IOStreams io) throws IOException {
 		this.clearCache();
 		
@@ -735,6 +739,7 @@ public class DistributedResource implements Resource {
 		this.checkCache();
 	}
 	
+	/** Performs the send operation. */
 	public synchronized void send(IOStreams io) throws IOException {
 		if (this.data == null) this.getData(0, true);
 		
@@ -771,6 +776,7 @@ public class DistributedResource implements Resource {
 			System.out.println("DistributedResource.send: Recieved end.");
 	}
 
+	/** Performs the cache operation. */
 	public void cache() {
 		String origUri = this.uri;
 
@@ -825,14 +831,17 @@ public class DistributedResource implements Resource {
 		return "DistributedResource (" + this.uri + ")";
 	}
 	
+	/** Performs the createDistributedResource operation. */
 	public static DistributedResource createDistributedResource(String uri) {
 		return getResource(new DistributedResource(uri));
 	}
 	
+	/** Performs the createDistributedResource operation. */
 	public static DistributedResource createDistributedResource(String uri, int size) {
 		return getResource(new DistributedResource(uri, new Permissions(), size));
 	}
 
+	/** Performs the createDistributedResource operation. */
 	public static DistributedResource createDistributedResource(Resource r) {
 		return getResource(new DistributedResource(r));
 	}

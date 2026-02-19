@@ -24,11 +24,14 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.PrintStream;
 
+/** The ConcatenatedResource class. */
 public class ConcatenatedResource extends DistributedResource {
 	private static final String header = "<ConcatenatedResource>";
 	private static final String footer = "";
 	
+	/** The ConcatenatedResourceHeaderParser class. */
 	public static class ConcatenatedResourceHeaderParser implements ResourceHeaderParser {
+		/** Performs the doesHeaderMatch operation. */
 		public boolean doesHeaderMatch(byte[] head) {
 			String s = new String(head);
 			return s.startsWith(header);
@@ -37,6 +40,7 @@ public class ConcatenatedResource extends DistributedResource {
 		public Class getResourceClass() { return ConcatenatedResource.class; }
 	}
 	
+	/** The ConcatenatedInputStream class. */
 	public static class ConcatenatedInputStream extends InputStream {
 		private final String[] files;
 		private byte[] sep = "\n".getBytes();
@@ -49,6 +53,7 @@ public class ConcatenatedResource extends DistributedResource {
 			this.index = 0;
 		}
 		
+		/** Performs the read operation. */
 		public int read() throws IOException {			
 			if (this.index == 0 && this.current == null) this.next();
 			
@@ -91,6 +96,7 @@ public class ConcatenatedResource extends DistributedResource {
 		}
 	}
 	
+	/** Performs the getInputStream operation. */
 	public InputStream getInputStream() {
 		ResourceDistributionTask t = ResourceDistributionTask.getCurrentTask();
 		BufferedReader buf = new BufferedReader(new InputStreamReader(super.getInputStream()));
@@ -106,6 +112,7 @@ public class ConcatenatedResource extends DistributedResource {
 		}
 	}
 	
+	/** Performs the getTotalBytes operation. */
 	public long getTotalBytes() {
 		ResourceDistributionTask t = ResourceDistributionTask.getCurrentTask();
 		

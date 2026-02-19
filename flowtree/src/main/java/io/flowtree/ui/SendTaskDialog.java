@@ -111,6 +111,7 @@ public class SendTaskDialog extends JPanel {
 		this.frame.setSize(300, 200);
 	}
 
+	/** Performs the submit operation. */
 	public void submit() {
 		final int jobSize = Integer.parseInt(SendTaskDialog.jobSizeOptions[this.jobSizeField.getSelectedIndex()]);
 

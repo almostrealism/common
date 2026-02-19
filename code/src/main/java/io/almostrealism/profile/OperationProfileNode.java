@@ -42,6 +42,7 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+/** The OperationProfileNode class. */
 public class OperationProfileNode extends OperationProfile
 		implements DescribableParent<OperationProfileNode>,
 					Tree<OperationProfileNode>, Nameable {
@@ -116,14 +117,17 @@ public class OperationProfileNode extends OperationProfile
 				.collect(Collectors.toList());
 	}
 
+	/** Performs the addChild operation. */
 	public OperationProfileNode addChild(OperationMetadata metadata) {
 		return getProfileNode(metadata);
 	}
 
+	/** Performs the addAllChildren operation. */
 	protected void addAllChildren(List<OperationProfileNode> children) {
 		children.forEach(this::addChild);
 	}
 
+	/** Performs the addChild operation. */
 	protected void addChild(OperationProfileNode node) {
 		if (children == null) children = new ArrayList<>();
 		children.add(node);
@@ -146,6 +150,7 @@ public class OperationProfileNode extends OperationProfile
 	public TimingMetric getMeasuredTime() { return measuredTime; }
 	public void setMeasuredTime(TimingMetric measuredTime) { this.measuredTime = measuredTime; }
 
+	/** Performs the initStageDetailTime operation. */
 	protected void initStageDetailTime() {
 		if (stageDetailTime == null) stageDetailTime = new TimingMetric();
 	}
@@ -153,6 +158,7 @@ public class OperationProfileNode extends OperationProfile
 	public TimingMetric getStageDetailTime() { return stageDetailTime; }
 	public void setStageDetailTime(TimingMetric stageDetailTime) { this.stageDetailTime = stageDetailTime; }
 
+	/** Performs the getMetadataDetail operation. */
 	public String getMetadataDetail(String key) {
 		if (key == null) return "";
 
@@ -178,6 +184,7 @@ public class OperationProfileNode extends OperationProfile
 		return getSelfDuration() + getChildDuration();
 	}
 
+	/** Performs the getMergedMetric operation. */
 	public TimingMetric getMergedMetric() {
 		if (measuredTime != null) return measuredTime;
 		if (getMetric() != null) return getMetric();
@@ -199,6 +206,7 @@ public class OperationProfileNode extends OperationProfile
 		return operationSources;
 	}
 
+	/** Performs the cache operation. */
 	protected void cache(OperationProfileNode node) {
 		if (nodeCache == null) {
 			nodeCache = new HashMap<>();
@@ -231,10 +239,12 @@ public class OperationProfileNode extends OperationProfile
 				});
 	}
 
+	/** Performs the getProfileNode operation. */
 	public OperationProfileNode getProfileNode(OperationMetadata metadata) {
 		return metadata == null ? this : getProfileNode(metadata, true);
 	}
 
+	/** Performs the getProfileNode operation. */
 	public OperationProfileNode getProfileNode(OperationMetadata metadata, boolean top) {
 		if (metadata == null) return null;
 
@@ -258,10 +268,12 @@ public class OperationProfileNode extends OperationProfile
 		return node.orElse(null);
 	}
 
+	/** Performs the getProfileNode operation. */
 	public Optional<OperationProfileNode> getProfileNode(String key) {
 		return getProfileNode(key, children != null);
 	}
 
+	/** Performs the getProfileNode operation. */
 	public Optional<OperationProfileNode> getProfileNode(String key, boolean traverse) {
 		if (Objects.equals(key, getKey())) {
 			return Optional.of(this);
@@ -277,6 +289,7 @@ public class OperationProfileNode extends OperationProfile
 		return Optional.empty();
 	}
 
+	/** Performs the recordMetadata operation. */
 	protected void recordMetadata(OperationMetadata metadata) {
 		if (metadataCache == null) metadataCache = new HashMap<>();
 
@@ -300,6 +313,7 @@ public class OperationProfileNode extends OperationProfile
 		getProfileNode(operationMetadata).recordDuration(requesterMetadata, operationMetadata, nanos);
 	}
 
+	/** Performs the recordCompilation operation. */
 	public <A> void recordCompilation(OperationMetadata metadata,
 									  List<ArrayVariable<? extends A>> arguments,
 									  String code, long nanos) {
@@ -390,20 +404,24 @@ public class OperationProfileNode extends OperationProfile
 	@Override
 	public String description(List<String> children) { return getName(); }
 
+	/** Performs the save operation. */
 	public void save(String file) throws IOException {
 		save(new File(file));
 	}
 
+	/** Performs the save operation. */
 	public void save(File file) throws IOException {
 		try (XMLEncoder encoder = new XMLEncoder(new FileOutputStream(file))) {
 			encoder.writeObject(this);
 		}
 	}
 
+	/** Performs the forMetadata operation. */
 	public static OperationProfileNode forMetadata(OperationMetadata metadata) {
 		return forMetadata(metadata, null, OperationProfile::defaultIdentifier);
 	}
 
+	/** Performs the forMetadata operation. */
 	public static OperationProfileNode forMetadata(OperationMetadata metadata,
 												   Consumer<OperationMetadata> metadataProcessor,
 												   Function<OperationMetadata, String> identifier) {
@@ -425,10 +443,12 @@ public class OperationProfileNode extends OperationProfile
 		return node;
 	}
 
+	/** Performs the load operation. */
 	public static OperationProfileNode load(String file) throws IOException {
 		return load(new File(file));
 	}
 
+	/** Performs the load operation. */
 	public static OperationProfileNode load(File file) throws IOException {
 		try (XMLDecoder in = new XMLDecoder(new FileInputStream(file))) {
 			return (OperationProfileNode) in.readObject();

@@ -193,6 +193,7 @@ public interface Block extends Component, CellularPropagation<PackedCollection>,
 				requirements));
 	}
 
+	/** Performs the enumerate operation. */
 	default Block enumerate(TraversalPolicy shape, ComputeRequirement... requirements) {
 		if (getOutputShape().getTotalSize() % shape.getTotalSize() != 0) {
 			throw new IllegalArgumentException();
@@ -305,10 +306,12 @@ public interface Block extends Component, CellularPropagation<PackedCollection>,
 		return next;
 	}
 
+	/** Performs the andThen operation. */
 	default <T extends Block> Block andThen(Function<TraversalPolicy, T> next) {
 		return andThen(next.apply(getOutputShape()));
 	}
 
+	/** Performs the andThen operation. */
 	default <T extends Receptor<PackedCollection>> T andThen(T next) {
 		if (Layer.propagationWarnings)
 			warn("andThen(" + next + ") may not support backpropagation");
@@ -323,6 +326,7 @@ public interface Block extends Component, CellularPropagation<PackedCollection>,
 		return next;
 	}
 
+	/** Performs the andThen operation. */
 	default CollectionReceptor andThen(PackedCollection destination) {
 		if (Layer.propagationWarnings)
 			warn("andThen(" + destination + ") may not support backpropagation");

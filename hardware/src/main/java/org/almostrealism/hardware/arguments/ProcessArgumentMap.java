@@ -212,6 +212,7 @@ public class ProcessArgumentMap implements ProcessArgumentEvaluator {
 		return positionsForArguments;
 	}
 
+	/** Performs the addChildren operation. */
 	protected void addChildren(ProcessTreePositionKey key, Process<?, ?> process) {
 		ArrayVariable<?> argument = getArgumentForProcess(process);
 
@@ -225,16 +226,19 @@ public class ProcessArgumentMap implements ProcessArgumentEvaluator {
 				addChildren(key.append(i), children.get(i)));
 	}
 
+	/** Performs the children operation. */
 	protected List<Process<?, ?>> children(Process<?, ?> process) {
 		return new ArrayList<>(process.getChildren());
 	}
 
+	/** Performs the getArgumentForProcess operation. */
 	public ArrayVariable<?> getArgumentForProcess(Process<?, ?> process) {
 		return arguments.stream()
 				.filter(arg -> match(process, arg.getProducer()))
 				.findFirst().orElse(null);
 	}
 
+	/** Performs the getProducerForPosition operation. */
 	public Supplier<Evaluable<?>> getProducerForPosition(ProcessTreePositionKey key, boolean allowFallback) {
 		if (substitutions.containsKey(key)) {
 			return substitutions.get(key);
@@ -245,14 +249,17 @@ public class ProcessArgumentMap implements ProcessArgumentEvaluator {
 		return null;
 	}
 
+	/** Performs the put operation. */
 	public void put(ProcessTreePositionKey key, Producer producer) {
 		substitutions.put(key, producer);
 	}
 
+	/** Performs the putSubstitutions operation. */
 	public void putSubstitutions(Process<?, ?> process) {
 		addProducers(new ProcessTreePositionKey(), process);
 	}
 
+	/** Performs the addProducers operation. */
 	protected void addProducers(ProcessTreePositionKey key, Process<?, ?> process) {
 		if (process instanceof Producer) {
 			put(key, (Producer) process);
@@ -293,6 +300,7 @@ public class ProcessArgumentMap implements ProcessArgumentEvaluator {
 		return (Evaluable) producer.get();
 	}
 
+	/** Performs the match operation. */
 	public static boolean match(Supplier<?> process, Supplier<?> argumentProducer) {
 		if (argumentProducer instanceof RootDelegateProviderSupplier) {
 			if (process instanceof Computation) {

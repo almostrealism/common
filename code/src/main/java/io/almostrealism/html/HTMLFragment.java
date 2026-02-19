@@ -18,7 +18,9 @@ package io.almostrealism.html;
 
 import java.util.ArrayList;
 
+/** The HTMLFragment class. */
 public class HTMLFragment extends ArrayList<HTMLContent> implements HTMLContent {
+	/** The Type enumeration. */
 	public enum Type { HEAD, BODY, SCRIPT; }
 	
 	private Type type;

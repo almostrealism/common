@@ -341,6 +341,7 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 		this.generation = new GenerationManager(patterns, generation);
 	}
 
+	/** This method. */
 	@Deprecated
 	public void setBPM(double bpm) {
 		this.bpm = bpm;
@@ -351,6 +352,7 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 	@Deprecated
 	public double getBPM() { return this.bpm; }
 
+	/** Performs the setTempo operation. */
 	public void setTempo(Frequency tempo) {
 		this.bpm = tempo.asBPM();
 		tempoListeners.forEach(l -> l.accept(tempo));
@@ -359,6 +361,7 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 
 	public Frequency getTempo() { return Frequency.forBPM(bpm); }
 
+	/** Performs the setTuning operation. */
 	public void setTuning(KeyboardTuning tuning) {
 		this.tuning = tuning;
 		patterns.setTuning(tuning);
@@ -368,10 +371,12 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 
 	public AudioLibrary getLibrary() { return library; }
 
+	/** Performs the setLibrary operation. */
 	public void setLibrary(AudioLibrary library) {
 		setLibrary(library, null);
 	}
 
+	/** Performs the setLibrary operation. */
 	public void setLibrary(AudioLibrary library, DoubleConsumer progress) {
 		this.library = library;
 
@@ -380,14 +385,17 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 		}
 	}
 
+	/** Performs the setLibraryRoot operation. */
 	public void setLibraryRoot(FileWaveDataProviderTree tree) {
 		setLibraryRoot(tree, null);
 	}
 
+	/** Performs the setLibraryRoot operation. */
 	public void setLibraryRoot(FileWaveDataProviderTree tree, DoubleConsumer progress) {
 		setLibrary(new AudioLibrary(tree, getSampleRate()), progress);
 	}
 
+	/** Performs the loadPatterns operation. */
 	public void loadPatterns(String patternsFile) throws IOException {
 		NoteAudioChoiceList choices = defaultMapper()
 				.readValue(new File(patternsFile), NoteAudioChoiceList.class);
@@ -398,12 +406,14 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 
 	public ProjectedGenome getGenome() { return new ProjectedGenome(genome.getParameters()); }
 
+	/** Performs the assignGenome operation. */
 	public void assignGenome(ProjectedGenome genome) {
 		this.genome.assignTo(genome.getParameters());
 		this.progression.refreshParameters();
 		this.patterns.refreshParameters();
 	}
 
+	/** Performs the addSection operation. */
 	public void addSection(int position, int length) {
 		sections.addSection(position, length);
 	}
@@ -454,10 +464,12 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 		return getContext(Collections.emptyList());
 	}
 
+	/** Performs the getContext operation. */
 	public AudioSceneContext getContext(ChannelInfo channel) {
 		return getContext(Collections.singletonList(channel));
 	}
 
+	/** Performs the getContext operation. */
 	public AudioSceneContext getContext(List<ChannelInfo> channels) {
 		if (channels.size() > 1) {
 			throw new IllegalArgumentException();
@@ -496,6 +508,7 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 		return context;
 	}
 
+	/** Performs the getSettings operation. */
 	public Settings getSettings() {
 		Settings settings = new Settings();
 		settings.setBpm(getBPM());
@@ -521,6 +534,7 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 
 	public void setSettings(Settings settings) { setSettings(settings, this::createLibrary, null); }
 
+	/** Performs the setSettings operation. */
 	public void setSettings(Settings settings,
 							Function<String, AudioLibrary> libraryProvider,
 							DoubleConsumer progress) {
@@ -559,10 +573,12 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 		}
 	}
 
+	/** Performs the triggerDurationChange operation. */
 	protected void triggerDurationChange() {
 		durationListeners.forEach(l -> l.accept(getTotalDuration()));
 	}
 
+	/** Performs the checkResourceUsed operation. */
 	public boolean checkResourceUsed(String canonicalPath) {
 		return getPatternManager().getChoices().stream().anyMatch(p -> p.checkResourceUsed(canonicalPath));
 	}
@@ -894,14 +910,17 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 		};
 	}
 
+	/** Performs the saveSettings operation. */
 	public void saveSettings(File file) throws IOException {
 		defaultMapper().writeValue(file, getSettings());
 	}
 
+	/** Performs the loadSettings operation. */
 	public void loadSettings(File file) {
 		loadSettings(file, this::createLibrary, null);
 	}
 
+	/** Performs the loadSettings operation. */
 	public void loadSettings(File file, Function<String, AudioLibrary> libraryProvider, DoubleConsumer progress) {
 		if (file != null && file.exists()) {
 			try {
@@ -926,6 +945,7 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 		getSectionManager().destroy();
 	}
 
+	/** Performs the clone operation. */
 	public AudioScene<T> clone() {
 		AudioScene<T> clone = new AudioScene<>(scene, bpm,
 				channelCount, delayLayerCount, sampleRate,
@@ -947,10 +967,12 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 		return clone;
 	}
 
+	/** Performs the load operation. */
 	public static AudioScene<?> load(String settingsFile, String patternsFile, String libraryRoot, double bpm, int sampleRate) throws IOException {
 		return load(null, settingsFile, patternsFile, libraryRoot, bpm, sampleRate);
 	}
 
+	/** Performs the load operation. */
 	public static AudioScene<?> load(Animation<?> scene, String settingsFile, String patternsFile, String libraryRoot, double bpm, int sampleRate) throws IOException {
 		AudioScene<?> audioScene = new AudioScene<>(scene, bpm, sampleRate);
 		audioScene.loadPatterns(patternsFile);
@@ -960,6 +982,7 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 		return audioScene;
 	}
 
+	/** Performs the defaultMapper operation. */
 	public static ObjectMapper defaultMapper() {
 		ObjectMapper mapper = new ObjectMapper();
 		mapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
@@ -988,6 +1011,7 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 		};
 	}
 
+	/** Performs the defaultVariation operation. */
 	public static UnaryOperator<ProjectedGenome> defaultVariation() {
 		return genome -> {
 			Random rand = new Random();
@@ -996,6 +1020,7 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 		};
 	}
 
+	/** The Settings class. */
 	public static class Settings {
 		private double bpm = 120;
 		private int measureSize = 4;
@@ -1053,6 +1078,7 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 		public GenerationManager.Settings getGeneration() { return generation; }
 		public void setGeneration(GenerationManager.Settings generation) { this.generation = generation; }
 
+		/** The Section class. */
 		public static class Section {
 			private int position, length;
 
@@ -1070,6 +1096,7 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 			public void setLength(int length) { this.length = length; }
 		}
 
+		/** Performs the defaultSettings operation. */
 		public static Settings defaultSettings(int channels, int patternsPerChannel,
 											   IntUnaryOperator activePatterns,
 											   IntUnaryOperator layersPerPattern,

@@ -43,6 +43,7 @@ public class ThinLensCamera extends PinholeCamera {
 		this.setLensRadius(this.getFocalLength() / 10);
 	}
 	
+	/** Performs the updateProjectionDimensions operation. */
 	protected void updateProjectionDimensions() {
 		double u = (super.getFocalLength() - this.focalLength) / this.focalLength;
 		super.setProjectionDimensions(this.width * u, this.height * u);

@@ -49,6 +49,7 @@ public class AudioBuffer {
 	public PackedCollection getInputBuffer() { return input; }
 	public PackedCollection getOutputBuffer() { return output; }
 
+	/** Performs the create operation. */
 	public static AudioBuffer create(int sampleRate, int frames) {
 		return new AudioBuffer(
 				new BufferDetails(sampleRate, frames),

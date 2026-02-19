@@ -32,6 +32,7 @@ import java.util.concurrent.Executors;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 
+/** The WaveDetailsOutputLine class. */
 public class WaveDetailsOutputLine implements OutputLine, CodeFeatures, ConsoleFeatures {
 	private final int sampleRate;
 	private boolean altBuffer;
@@ -114,6 +115,7 @@ public class WaveDetailsOutputLine implements OutputLine, CodeFeatures, ConsoleF
 		return altBuffer ? bufferA : bufferB;
 	}
 
+	/** Performs the publish operation. */
 	protected void publish() {
 		if (!isActive()) return;
 

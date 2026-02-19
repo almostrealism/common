@@ -21,6 +21,7 @@ import io.almostrealism.lang.LanguageOperations;
 import java.util.List;
 import java.util.OptionalDouble;
 
+/** The Tangent class. */
 public class Tangent extends Expression<Double> {
 	private boolean hyperbolic;
 
@@ -59,10 +60,12 @@ public class Tangent extends Expression<Double> {
 		return super.compare(e) && ((Tangent) e).hyperbolic == hyperbolic;
 	}
 
+	/** Performs the of operation. */
 	public static Expression<Double> of(Expression<Double> input) {
 		return of(input, false);
 	}
 
+	/** Performs the of operation. */
 	public static Expression<Double> of(Expression<Double> input, boolean hyperbolic) {
 		OptionalDouble d = input.doubleValue();
 

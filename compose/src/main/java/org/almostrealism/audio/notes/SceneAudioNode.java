@@ -26,6 +26,7 @@ import java.util.Map;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
+/** The SceneAudioNode class. */
 public class SceneAudioNode implements NoteAudioNode, Nameable, ConsoleFeatures {
 	private String key, name;
 	private AudioScene<?> scene;
@@ -50,6 +51,7 @@ public class SceneAudioNode implements NoteAudioNode, Nameable, ConsoleFeatures 
 				.collect(Collectors.toList());
 	}
 
+	/** Performs the setRange operation. */
 	public void setRange(double start, double end) {
 		if (scene == null) {
 			warn("Scene not available for adjusting range");

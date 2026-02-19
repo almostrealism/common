@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
+/** The Roentgenium class. */
 public class Roentgenium implements Element {
 	public int getAtomicNumber() { return 111; }
 	

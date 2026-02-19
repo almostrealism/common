@@ -24,6 +24,7 @@ import org.almostrealism.CodeFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 
+/** The ComposableAudioFeatures class. */
 public class ComposableAudioFeatures implements Factor<PackedCollection>, Destroyable, CodeFeatures {
 	private Producer<PackedCollection> features;
 	private Producer<PackedCollection> weights;

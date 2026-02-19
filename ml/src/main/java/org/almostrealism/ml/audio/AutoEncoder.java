@@ -20,15 +20,21 @@ import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
 
+/** The AutoEncoder interface. */
 public interface AutoEncoder extends Destroyable {
 
+	/** Performs the getSampleRate operation. */
 	double getSampleRate();
 
+	/** Performs the getLatentSampleRate operation. */
 	double getLatentSampleRate();
 
+	/** Performs the getMaximumDuration operation. */
 	double getMaximumDuration();
 
+	/** Performs the encode operation. */
 	Producer<PackedCollection> encode(Producer<PackedCollection> input);
 
+	/** Performs the decode operation. */
 	Producer<PackedCollection> decode(Producer<PackedCollection> latent);
 }

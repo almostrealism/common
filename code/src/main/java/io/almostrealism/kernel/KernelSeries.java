@@ -21,6 +21,7 @@ import io.almostrealism.relation.Series;
 import java.util.List;
 import java.util.OptionalInt;
 
+/** The KernelSeries class. */
 public class KernelSeries implements Series {
 	public static int maximumPeriod = 0;
 
@@ -64,6 +65,7 @@ public class KernelSeries implements Series {
 
 	public OptionalInt getScale() { return scale; }
 
+	/** Performs the scale operation. */
 	public KernelSeries scale(int scale) {
 		if (scale % inverseScale == 0) {
 			return new KernelSeries(period,
@@ -75,6 +77,7 @@ public class KernelSeries implements Series {
 		}
 	}
 
+	/** Performs the loop operation. */
 	public KernelSeries loop(int period) {
 		period = Math.abs(period);
 
@@ -96,14 +99,17 @@ public class KernelSeries implements Series {
 		}
 	}
 
+	/** Performs the infinite operation. */
 	public static KernelSeries infinite() {
 		return new KernelSeries(OptionalInt.empty(), OptionalInt.empty());
 	}
 
+	/** Performs the infinite operation. */
 	public static KernelSeries infinite(int scale) {
 		return new KernelSeries(OptionalInt.empty(), OptionalInt.of(scale));
 	}
 
+	/** Performs the constant operation. */
 	public static KernelSeries constant(double value) {
 		value = Math.abs(value);
 
@@ -118,12 +124,14 @@ public class KernelSeries implements Series {
 		return new KernelSeries(OptionalInt.of(1), OptionalInt.of(1));
 	}
 
+	/** Performs the periodic operation. */
 	public static KernelSeries periodic(List<Integer> periods) {
 		// TODO  This is actually too large, the period should be the LCM of the periods
 		int period = periods.stream().distinct().reduce(1, (a, b) -> a * b);
 		return new KernelSeries(OptionalInt.of(period), OptionalInt.of(period));
 	}
 
+	/** Performs the product operation. */
 	public static KernelSeries product(List<KernelSeries> series) {
 		int scale = series.stream()
 				.map(k -> k.getScale())

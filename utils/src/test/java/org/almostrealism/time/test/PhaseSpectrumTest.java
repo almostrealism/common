@@ -36,7 +36,7 @@ public class PhaseSpectrumTest extends TestSuiteBase implements TemporalFeatures
 	/**
 	 * Test phase unwrapping with simple wrapped phase.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testUnwrapPhase() {
 		// Create a phase sequence that wraps around
 		// Start at 0, increase by PI/3 each step, should wrap at +/-PI
@@ -67,7 +67,7 @@ public class PhaseSpectrumTest extends TestSuiteBase implements TemporalFeatures
 	/**
 	 * Test phase unwrapping with no wrapping needed.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testUnwrapPhaseNoWrapping() {
 		int size = 10;
 		PackedCollection wrappedPhase = new PackedCollection(shape(size));
@@ -89,7 +89,7 @@ public class PhaseSpectrumTest extends TestSuiteBase implements TemporalFeatures
 	/**
 	 * Test phase unwrapping with negative wrap.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testUnwrapPhaseNegativeWrap() {
 		int size = 8;
 		PackedCollection wrappedPhase = new PackedCollection(shape(size));
@@ -117,7 +117,7 @@ public class PhaseSpectrumTest extends TestSuiteBase implements TemporalFeatures
 	/**
 	 * Test phase unwrapping with single value.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testUnwrapPhaseSingleValue() {
 		PackedCollection wrappedPhase = new PackedCollection(shape(1));
 		wrappedPhase.setMem(0, 1.5);
@@ -129,7 +129,7 @@ public class PhaseSpectrumTest extends TestSuiteBase implements TemporalFeatures
 	/**
 	 * Test phase unwrapping handles large jumps.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testUnwrapPhaseLargeJumps() {
 		int size = 5;
 		PackedCollection wrappedPhase = new PackedCollection(shape(size));
@@ -153,7 +153,7 @@ public class PhaseSpectrumTest extends TestSuiteBase implements TemporalFeatures
 	/**
 	 * Test mel to Hz conversion consistency.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testMelToHzRoundTrip() {
 		// Test round-trip conversion for various frequencies
 		double[] testFreqs = {100, 500, 1000, 2000, 4000, 8000};
@@ -167,7 +167,7 @@ public class PhaseSpectrumTest extends TestSuiteBase implements TemporalFeatures
 	/**
 	 * Test mel scale properties.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testMelScaleProperties() {
 		// Mel scale should be monotonically increasing
 		double prevMel = hzToMel(0);
@@ -184,7 +184,7 @@ public class PhaseSpectrumTest extends TestSuiteBase implements TemporalFeatures
 	/**
 	 * Test MFCC computation returns correct size.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testMFCCOutputSize() {
 		int numMelBands = 26;
 		int numMfccCoeffs = 13;
@@ -201,7 +201,7 @@ public class PhaseSpectrumTest extends TestSuiteBase implements TemporalFeatures
 	/**
 	 * Test MFCC with constant input produces expected pattern.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testMFCCConstantInput() {
 		int numMelBands = 26;
 		int numMfccCoeffs = 13;
@@ -227,7 +227,7 @@ public class PhaseSpectrumTest extends TestSuiteBase implements TemporalFeatures
 	/**
 	 * Test MFCC produces meaningful output for varying input.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testMFCCVaryingInput() {
 		int numMelBands = 26;
 		int numMfccCoeffs = 13;
@@ -254,7 +254,7 @@ public class PhaseSpectrumTest extends TestSuiteBase implements TemporalFeatures
 	/**
 	 * Test MFCC error handling for invalid parameters.
 	 */
-	@Test(expected = IllegalArgumentException.class)
+	@Test(timeout = 120000, expected = IllegalArgumentException.class)
 	public void testMFCCInvalidNumCoeffs() {
 		int numMelBands = 10;
 		int numMfccCoeffs = 20;  // More coefficients than mel bands
@@ -270,7 +270,7 @@ public class PhaseSpectrumTest extends TestSuiteBase implements TemporalFeatures
 	/**
 	 * Test MFCC with edge case of equal numCoeffs and numMelBands.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testMFCCMaxCoeffs() {
 		int numMelBands = 10;
 		int numMfccCoeffs = 10;  // Same as mel bands
@@ -288,7 +288,7 @@ public class PhaseSpectrumTest extends TestSuiteBase implements TemporalFeatures
 	 * Test MFCC orthonormality property.
 	 * The DCT basis functions should be orthonormal.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testMFCCOrthonormality() {
 		int numMelBands = 20;
 

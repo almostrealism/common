@@ -99,6 +99,7 @@ public interface CollectionTraversalFeatures extends ShapeFeatures {
 		return new ReshapeProducer(shape, producer);
 	}
 
+	/** Performs the alignTraversalAxes operation. */
 	default <T, P extends Producer<PackedCollection>> Producer<PackedCollection> alignTraversalAxes(
 			List<Producer<PackedCollection>> producers, BiFunction<TraversalPolicy, List<Producer<PackedCollection>>, P> processor) {
 		return TraversalPolicy
@@ -116,18 +117,22 @@ public interface CollectionTraversalFeatures extends ShapeFeatures {
 						processor);
 	}
 
+	/** Performs the largestTotalSize operation. */
 	default <PackedCollection> TraversalPolicy largestTotalSize(List<Producer<PackedCollection>> producers) {
 		return producers.stream().map(this::shape).max(Comparator.comparing(TraversalPolicy::getTotalSizeLong)).get();
 	}
 
+	/** Performs the lowestCount operation. */
 	default <PackedCollection> long lowestCount(List<Producer<PackedCollection>> producers) {
 		return producers.stream().map(this::shape).mapToLong(TraversalPolicy::getCountLong).min().getAsLong();
 	}
 
+	/** Performs the highestCount operation. */
 	default <PackedCollection> long highestCount(List<Producer<PackedCollection>> producers) {
 		return producers.stream().map(this::shape).mapToLong(TraversalPolicy::getCountLong).max().getAsLong();
 	}
 
+	/** Performs the outputShape operation. */
 	default <PackedCollection> TraversalPolicy outputShape(Producer<PackedCollection>... producers) {
 		TraversalPolicy result = largestTotalSize(List.of(producers));
 

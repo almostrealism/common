@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
+/** The Nobelium class. */
 public class Nobelium implements Element {
 	public int getAtomicNumber() { return 102; }
 	

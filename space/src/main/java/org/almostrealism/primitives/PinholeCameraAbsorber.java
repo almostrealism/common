@@ -73,6 +73,7 @@ public class PinholeCameraAbsorber extends PinholeCamera implements Absorber, Vo
 		this.init(pinhole, plane, focalLength);
 	}
 	
+	/** Performs the init operation. */
 	public void init(Pinhole pinhole, AbsorptionPlane plane, double focalLength) {
 		this.pinhole = pinhole;
 		this.plane = plane;
@@ -81,6 +82,7 @@ public class PinholeCameraAbsorber extends PinholeCamera implements Absorber, Vo
 		this.planePos = VectorMath.multiply(norm, -focalLength, true);
 	}
 
+	/** Performs the initPlane operation. */
 	protected void initPlane(double[] norm, double[] orient) {
 		if (this.plane == null) {
 			this.plane = new AbsorptionPlane();

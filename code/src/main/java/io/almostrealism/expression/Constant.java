@@ -27,6 +27,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 
+/** The Constant class. */
 public abstract class Constant<T> extends Expression<T> {
 	public static boolean enableNegationOptimization = true;
 
@@ -50,6 +51,7 @@ public abstract class Constant<T> extends Expression<T> {
 
 	public String getWrappedExpression(LanguageOperations lang) { return getExpression(lang); }
 
+	/** Performs the recreate operation. */
 	public Constant<T> recreate(List<Expression<?>> children) {
 		if (children.size() > 0) {
 			throw new UnsupportedOperationException();
@@ -84,6 +86,7 @@ public abstract class Constant<T> extends Expression<T> {
 		return String.valueOf(getValue()).hashCode();
 	}
 
+	/** Performs the of operation. */
 	public static <T> Constant<T> of(T value) {
 		if (value instanceof Integer) {
 			return (Constant<T>) new IntegerConstant((Integer) value);
@@ -98,6 +101,7 @@ public abstract class Constant<T> extends Expression<T> {
 		}
 	}
 
+	/** Performs the forType operation. */
 	public static <T> Constant<T> forType(Class<T> type) {
 		return new ConstantValue<>(type, null);
 	}

@@ -62,6 +62,7 @@ public abstract class ValueSequenceComputation extends OperationComputationAdapt
 	public Producer<PackedCollection> wavePosition() { return getInputs().get(1); }
 	public Producer<PackedCollection> durationFrames() { return getInputs().get(3); }
 
+	/** Performs the choices operation. */
 	public <T> List<T> choices(Function<Producer<PackedCollection>, T> processor) {
 		return IntStream.range(4, getInputs().size())
 				.mapToObj(i -> (T) processor.apply(getInputs().get(i)))

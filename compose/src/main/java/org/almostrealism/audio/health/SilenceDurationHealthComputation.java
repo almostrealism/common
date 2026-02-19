@@ -24,6 +24,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
+/** The SilenceDurationHealthComputation class. */
 public class SilenceDurationHealthComputation extends HealthComputationAdapter {
 	public static boolean enableVerbose = false;
 	public static boolean enableSilenceCheck = false;
@@ -59,6 +60,7 @@ public class SilenceDurationHealthComputation extends HealthComputationAdapter {
 		measures.values().forEach(m -> m.setSilenceValue(silenceValue));
 	}
 
+	/** Performs the checkForSilence operation. */
 	public boolean checkForSilence(AudioMeter meter) {
 		if (enableSilenceCheck) {
 			if (meter.getSilenceDuration() > maxSilence) {

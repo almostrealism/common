@@ -20,12 +20,17 @@ import io.almostrealism.expression.Expression;
 
 import java.util.OptionalLong;
 
+/** The KernelStructureContext interface. */
 public interface KernelStructureContext {
+	/** Performs the getKernelMaximum operation. */
 	OptionalLong getKernelMaximum();
 
+	/** Performs the getSeriesProvider operation. */
 	KernelSeriesProvider getSeriesProvider();
+	/** Performs the getTraversalProvider operation. */
 	KernelTraversalProvider getTraversalProvider();
 
+	/** Performs the isValidKernelSize operation. */
 	default boolean isValidKernelSize(long size) {
 		if ((getKernelMaximum().isPresent() && size !=
 				getKernelMaximum().getAsLong()) ||
@@ -37,6 +42,7 @@ public interface KernelStructureContext {
 		return true;
 	}
 
+	/** Performs the simplify operation. */
 	default Expression<?> simplify(Expression<?> expression) {
 		Expression<?> e = expression.simplify(this);
 		if (getSeriesProvider() != null) {
@@ -45,6 +51,7 @@ public interface KernelStructureContext {
 		return e;
 	}
 
+	/** Performs the asNoOp operation. */
 	default NoOpKernelStructureContext asNoOp() {
 		return getKernelMaximum().stream()
 				.mapToObj(NoOpKernelStructureContext::new)

@@ -23,6 +23,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.stream.Stream;
 
+/** The NAryExpression class. */
 public class NAryExpression<T> extends Expression<T> {
 
 	private String operator;
@@ -79,10 +80,12 @@ public class NAryExpression<T> extends Expression<T> {
 		return values;
 	}
 
+	/** Performs the type operation. */
 	protected static Class<? extends Number> type(Object... values) {
 		return type(List.of(values));
 	}
 
+	/** Performs the type operation. */
 	protected static Class<? extends Number> type(Iterable values) {
 		boolean ln = false;
 

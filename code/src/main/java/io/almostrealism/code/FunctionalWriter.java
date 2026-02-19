@@ -5,6 +5,7 @@ import java.io.Writer;
 import java.util.function.Consumer;
 import java.util.stream.IntStream;
 
+/** The FunctionalWriter class. */
 public class FunctionalWriter extends Writer {
 	private final Consumer<Character> out;
 	public FunctionalWriter(Consumer<Character> out) {

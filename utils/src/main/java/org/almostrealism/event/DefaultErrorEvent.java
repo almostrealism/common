@@ -3,6 +3,7 @@ package org.almostrealism.event;
 import java.util.List;
 import java.util.stream.Stream;
 
+/** The DefaultErrorEvent class. */
 public class DefaultErrorEvent extends DefaultEvent {
 	private String exceptionType;
 	private String exceptionMessage;
@@ -41,6 +42,7 @@ public class DefaultErrorEvent extends DefaultEvent {
 	}
 
 	
+	/** Performs the forException operation. */
 	public static DefaultErrorEvent forException(Exception e) {
 		DefaultErrorEvent event = new DefaultErrorEvent(e.getClass().getName());
 		event.exceptionType = e.getClass().getName();

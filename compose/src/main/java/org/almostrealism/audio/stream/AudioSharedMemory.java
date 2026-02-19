@@ -24,11 +24,14 @@ import org.almostrealism.audio.persistence.WaveDetailsOutputLine;
 
 import java.io.IOException;
 
+/** The AudioSharedMemory class. */
 public class AudioSharedMemory implements CellFeatures {
+	/** Performs the main operation. */
 	public static void main(String[] args) throws InterruptedException, IOException {
 		new AudioSharedMemory().run();
 	}
 
+	/** Performs the run operation. */
 	public void run() throws IOException, InterruptedException {
 		AudioLibraryDataWriter writer = new AudioLibraryDataWriter("recording_test", "recordings");
 		WaveDetailsOutputLine record = new WaveDetailsOutputLine(writer);

@@ -29,6 +29,8 @@ import io.flowtree.Server;
 
 import java.io.PrintStream;
 
+/** The ServerBehavior interface. */
 public interface ServerBehavior {
+	/** Performs the behave operation. */
 	void behave(Server s, PrintStream out);
 }

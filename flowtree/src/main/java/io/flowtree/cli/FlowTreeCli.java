@@ -33,6 +33,7 @@ import org.jboss.aesh.terminal.TerminalString;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 
+/** The FlowTreeCli class. */
 public class FlowTreeCli {
 	protected static final boolean enableConsoleStop = false;
 
@@ -62,10 +63,12 @@ public class FlowTreeCli {
 				.create();
 	}
 
+	/** Performs the start operation. */
 	public void start() {
 		console.start();
 	}
 
+	/** Performs the getHostName operation. */
 	public String getHostName() {
 		try {
 			return InetAddress.getLocalHost().getHostAddress();
@@ -75,6 +78,7 @@ public class FlowTreeCli {
 		}
 	}
 
+	/** Performs the main operation. */
 	public static void main(String... args) {
 		new FlowTreeCli().start();
 	}

@@ -23,6 +23,7 @@ import io.almostrealism.scope.ArrayVariable;
 import java.util.function.BiFunction;
 import java.util.function.Supplier;
 
+/** The DefaultScopeInputManager class. */
 public class DefaultScopeInputManager implements ScopeInputManager {
 	protected static int counter = 0;
 
@@ -56,6 +57,7 @@ public class DefaultScopeInputManager implements ScopeInputManager {
 		return arg;
 	}
 
+	/** Performs the getInstance operation. */
 	public static DefaultScopeInputManager getInstance(LanguageOperations lang) {
 		if (lang == null) {
 			throw new UnsupportedOperationException("LanguageOperations must be provided");

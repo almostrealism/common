@@ -39,6 +39,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.function.Supplier;
 
+/** The LibraryDestination class. */
 public class LibraryDestination implements ConsoleFeatures {
 	public static final String TEMP = "temp";
 	public static final String SAMPLES = "Samples";
@@ -63,10 +64,12 @@ public class LibraryDestination implements ConsoleFeatures {
 		this.temporaryFiles = new ArrayList<>();
 	}
 
+	/** Performs the nextFile operation. */
 	protected String nextFile() {
 		return prefix + "_" + index++ + ".bin";
 	}
 
+	/** Performs the nextTemporaryFile operation. */
 	protected String nextTemporaryFile() {
 		String tempFile = getTemporaryPath().resolve("lib_" +
 				System.currentTimeMillis() +
@@ -75,6 +78,7 @@ public class LibraryDestination implements ConsoleFeatures {
 		return tempFile;
 	}
 
+	/** Performs the files operation. */
 	protected Iterator<String> files() {
 		return new Iterator<>() {
 			int idx = 0;
@@ -91,6 +95,7 @@ public class LibraryDestination implements ConsoleFeatures {
 		};
 	}
 
+	/** Performs the in operation. */
 	public Supplier<InputStream> in() {
 		Iterator<String> all = files();
 
@@ -155,6 +160,7 @@ public class LibraryDestination implements ConsoleFeatures {
 		temporaryFiles.clear();
 	}
 
+	/** Performs the load operation. */
 	public void load(AudioLibrary library) {
 		try {
 			AudioLibraryPersistence.loadLibrary(library, in());
@@ -163,6 +169,7 @@ public class LibraryDestination implements ConsoleFeatures {
 		}
 	}
 
+	/** Performs the save operation. */
 	public void save(AudioLibrary library) {
 		try (Writer writer = out()) {
 			AudioLibraryPersistence.saveLibrary(library, writer);
@@ -171,6 +178,7 @@ public class LibraryDestination implements ConsoleFeatures {
 		}
 	}
 
+	/** Performs the load operation. */
 	public List<Audio.AudioLibraryData> load() {
 		Supplier<InputStream> in = in();
 		InputStream input = in.get();
@@ -189,6 +197,7 @@ public class LibraryDestination implements ConsoleFeatures {
 		}
 	}
 
+	/** Performs the save operation. */
 	public void save(Audio.AudioLibraryData data) {
 		try (Writer writer = out()) {
 			data.writeTo(writer.get());
@@ -197,11 +206,13 @@ public class LibraryDestination implements ConsoleFeatures {
 		}
 	}
 
+	/** Performs the getTemporaryPath operation. */
 	public Path getTemporaryPath() {
 		Path p = SystemUtils.getLocalDestination().resolve(TEMP);
 		return SystemUtils.ensureDirectoryExists(p);
 	}
 
+	/** Performs the getTemporaryFile operation. */
 	public File getTemporaryFile(String key, String extension) {
 		if (key.contains("/")) {
 			key = Base64.getEncoder().encodeToString(key.getBytes());
@@ -210,6 +221,7 @@ public class LibraryDestination implements ConsoleFeatures {
 		return temporary(getTemporaryPath().resolve(key + "." + extension).toFile());
 	}
 
+	/** Performs the getTemporaryDestination operation. */
 	public OutputStream getTemporaryDestination(String key, String extension) {
 		try {
 			return new FileOutputStream(getTemporaryFile(key, extension));
@@ -218,17 +230,20 @@ public class LibraryDestination implements ConsoleFeatures {
 		}
 	}
 
+	/** Performs the getTemporaryWave operation. */
 	public File getTemporaryWave(String key, WaveData data) {
 		File f = getTemporaryFile(key, "wav");
 		return (f.exists() || data.save(f)) ? f : null;
 	}
 
+	/** Performs the delete operation. */
 	public void delete() {
 		files().forEachRemaining(f -> new File(f).delete());
 		discardTemporary(); // Also clean up any pending temporary files
 		index = 0;
 	}
 
+	/** Performs the cleanup operation. */
 	public void cleanup() {
 		try {
 			clean(getTemporaryPath());
@@ -237,11 +252,13 @@ public class LibraryDestination implements ConsoleFeatures {
 		}
 	}
 
+	/** Performs the temporary operation. */
 	protected File temporary(File f) {
 		f.deleteOnExit();
 		return f;
 	}
 
+	/** Performs the clean operation. */
 	protected void clean(Path directory) {
 		Path root = directory.getRoot();
 		if (root != null && root.equals(directory)) {
@@ -276,6 +293,7 @@ public class LibraryDestination implements ConsoleFeatures {
 		return SystemUtils.ensureDirectoryExists(libraryPath);
 	}
 
+	/** The Writer class. */
 	public class Writer implements Supplier<OutputStream>, AutoCloseable {
 		@Override
 		public OutputStream get() {

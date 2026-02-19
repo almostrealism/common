@@ -32,6 +32,7 @@ import org.almostrealism.collect.PackedCollection;
  * @see ModularSourceAggregator
  */
 public interface SourceAggregator {
+	/** Performs the aggregate operation. */
 	Producer<PackedCollection> aggregate(BufferDetails buffer,
 											Producer<PackedCollection> params,
 											Producer<PackedCollection> frequency,

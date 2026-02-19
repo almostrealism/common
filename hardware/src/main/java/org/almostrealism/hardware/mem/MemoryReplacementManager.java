@@ -178,6 +178,7 @@ public class MemoryReplacementManager implements ConsoleFeatures {
 		return prepare.isEmpty() && postprocess.isEmpty();
 	}
 
+	/** Performs the processArguments operation. */
 	public Object[] processArguments(Object[] args) {
 		Map<MemoryData, Replacement> replacements = new HashMap<>();
 
@@ -229,10 +230,12 @@ public class MemoryReplacementManager implements ConsoleFeatures {
 		return result;
 	}
 
+	/** The Replacement class. */
 	protected class Replacement {
 		private MemoryData root;
 		private List<MemoryData> children;
 
+		/** Performs the processChildren operation. */
 		protected void processChildren(TempMemoryFactory tempFactory, BiConsumer<MemoryData, MemoryData> tempChildren) {
 			int start = children.stream().mapToInt(MemoryData::getOffset).min().getAsInt();
 			int end = children.stream().mapToInt(md -> md.getOffset() + md.getMemLength()).max().getAsInt();
@@ -252,7 +255,9 @@ public class MemoryReplacementManager implements ConsoleFeatures {
 		}
 	}
 
+	/** The TempMemoryFactory interface. */
 	public interface TempMemoryFactory {
+		/** Performs the apply operation. */
 		MemoryData apply(int memLength, int atomicLength);
 	}
 

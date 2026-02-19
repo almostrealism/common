@@ -21,6 +21,7 @@ import org.almostrealism.audio.data.WaveDataProvider;
 import java.util.ArrayList;
 import java.util.List;
 
+/** The GrainSet class. */
 public class GrainSet {
 	private WaveDataProvider source;
 	private List<Grain> grains;
@@ -38,16 +39,19 @@ public class GrainSet {
 
 	public void setSource(WaveDataProvider source) { this.source = source; }
 
+	/** Performs the addGrain operation. */
 	public void addGrain(Grain grain) {
 		grains.add(grain);
 		params.add(GrainParameters.random());
 	}
 
+	/** Performs the removeGrain operation. */
 	public void removeGrain(int index) {
 		grains.remove(index);
 		params.remove(index);
 	}
 
+	/** Performs the addGrain operation. */
 	public Grain addGrain(GrainGenerationSettings settings) {
 		Grain grain = new Grain();
 		grain.setStart(settings.grainPositionMin + source.getDuration() * Math.random() * (settings.grainPositionMax - settings.grainPositionMin));
@@ -57,10 +61,12 @@ public class GrainSet {
 		return grain;
 	}
 
+	/** Performs the getGrain operation. */
 	public Grain getGrain(int index) {
 		return grains.get(index);
 	}
 
+	/** Performs the getParams operation. */
 	public GrainParameters getParams(int index) {
 		return params.get(index);
 	}

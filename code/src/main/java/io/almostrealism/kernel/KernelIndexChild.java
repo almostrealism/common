@@ -20,6 +20,7 @@ import io.almostrealism.expression.Expression;
 
 import java.util.OptionalLong;
 
+/** The KernelIndexChild class. */
 public class KernelIndexChild extends IndexChild {
 	private KernelStructureContext context;
 
@@ -33,12 +34,14 @@ public class KernelIndexChild extends IndexChild {
 		return "k" + getChildIndex().getName();
 	}
 
+	/** This method. */
 	@Deprecated
 	public KernelIndexChild renderAlias() {
 		setRenderAlias(true);
 		return new KernelIndexChild(context, getChildIndex());
 	}
 
+	/** Performs the getAliasType operation. */
 	public Class<? extends Number> getAliasType() {
 		if (upperBound().orElse(Long.MAX_VALUE) > Integer.MAX_VALUE) {
 			return Long.class;
@@ -47,6 +50,7 @@ public class KernelIndexChild extends IndexChild {
 		}
 	}
 
+	/** Performs the kernelIndex operation. */
 	public int kernelIndex(int index) {
 		return Math.toIntExact(index / getChildIndex().getLimit().getAsLong());
 	}

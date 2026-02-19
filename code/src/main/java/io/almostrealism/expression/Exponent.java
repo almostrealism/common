@@ -26,6 +26,7 @@ import java.util.List;
 import java.util.OptionalDouble;
 import java.util.OptionalLong;
 
+/** The Exponent class. */
 public class Exponent extends Expression<Double> {
 
 	protected Exponent(Expression<Double> base, Expression<Double> exponent) {
@@ -86,10 +87,12 @@ public class Exponent extends Expression<Double> {
 		return product(ts, self, sum(ts, term1, term2));
 	}
 
+	/** Performs the of operation. */
 	public static Expression<Double> of(Expression<Double> base, Expression<Double> exponent) {
 		return Expression.process(create(base, exponent));
 	}
 
+	/** Performs the create operation. */
 	public static Expression<Double> create(Expression<Double> base, Expression<Double> exponent) {
 		OptionalDouble exponentValue = exponent.doubleValue();
 		OptionalDouble baseValue = base.doubleValue();

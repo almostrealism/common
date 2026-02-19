@@ -21,6 +21,7 @@ import org.almostrealism.audio.SamplingFeatures;
 import org.almostrealism.audio.data.WaveData;
 import org.almostrealism.collect.PackedCollection;
 
+/** This type. */
 @Deprecated
 public class GrainProcessor implements SamplingFeatures {
 	private final int frames;
@@ -42,6 +43,7 @@ public class GrainProcessor implements SamplingFeatures {
 
 	public int getFrames() { return frames; }
 
+	/** Performs the apply operation. */
 	public WaveData apply(PackedCollection input, Grain grain, PackedCollection wavelength, PackedCollection phase, PackedCollection amp) {
 		PackedCollection result = ev.into(new PackedCollection(shape(frames), 1))
 				.evaluate(input.traverse(0), grain, wavelength, phase, amp);

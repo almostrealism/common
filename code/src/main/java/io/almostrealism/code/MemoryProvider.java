@@ -20,39 +20,50 @@ import io.almostrealism.uml.Named;
 
 import java.util.stream.IntStream;
 
+/** The MemoryProvider interface. */
 public interface MemoryProvider<T extends Memory> extends Named {
 	int MAX_RESERVATION = Integer.MAX_VALUE / Precision.FP64.bytes();
 
+	/** Performs the getNumberSize operation. */
 	int getNumberSize();
 
+	/** Performs the allocate operation. */
 	T allocate(int size);
 
+	/** Performs the deallocate operation. */
 	void deallocate(int size, T mem);
 
+	/** Performs the reallocate operation. */
 	default T reallocate(Memory mem, int offset, int length) {
 		T newMem = allocate(length);
 		setMem(newMem, 0, mem, offset, length);
 		return newMem;
 	}
 
+	/** Performs the toArray operation. */
 	default double[] toArray(T mem, int length) {
 		return toArray(mem, 0, length);
 	}
 
+	/** Performs the toArray operation. */
 	default double[] toArray(T mem, int offset, int length) {
 		double d[] = new double[length];
 		getMem(mem, offset, d, 0, length);
 		return d;
 	}
 
+	/** Performs the setMem operation. */
 	void setMem(T mem, int offset, Memory source, int srcOffset, int length);
 
+	/** Performs the setMem operation. */
 	default void setMem(T mem, int offset, float[] source, int srcOffset, int length) {
 		setMem(mem, offset, IntStream.range(0, source.length).mapToDouble(i -> source[i]).toArray(), srcOffset, length);
 	}
 
+	/** Performs the setMem operation. */
 	void setMem(T mem, int offset, double[] source, int srcOffset, int length);
 
+	/** Performs the getMem operation. */
 	default void getMem(T mem, int sOffset, float out[], int oOffset, int length) {
 		double d[] = new double[length];
 		getMem(mem, sOffset, d, 0, length);
@@ -61,7 +72,9 @@ public interface MemoryProvider<T extends Memory> extends Named {
 		}
 	}
 
+	/** Performs the getMem operation. */
 	void getMem(T mem, int sOffset, double out[], int oOffset, int length);
 
+	/** Performs the destroy operation. */
 	void destroy();
 }

@@ -191,6 +191,7 @@ public class CSG extends AbstractSurface {
         return null;
     }
 
+    /** Performs the interval operation. */
     public double[] interval(double[] intersect) {
         if (intersect.length <= 0) return new double[] {0.0, 0.0};
         
@@ -206,6 +207,7 @@ public class CSG extends AbstractSurface {
         return o;
     }
     
+    /** Performs the intervalDifference operation. */
     public double[][] intervalDifference(double[] ia, double[] ib) {
         double[][] o = new double[2][2];
         
@@ -226,6 +228,7 @@ public class CSG extends AbstractSurface {
         return o;
     }
     
+    /** Performs the intervalIntersection operation. */
     public double[] intervalIntersection(double[] ia, double[] ib) {
         return new double[] {Math.max(ia[0], ib[0]), Math.min(ia[1], ib[1])};
     }

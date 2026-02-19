@@ -264,10 +264,12 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 		}
 	}
 
+	/** Performs the nativeRef operation. */
 	protected NativeRef<T> nativeRef(T ram) {
 		return new NativeRef<>(ram, getReferenceQueue());
 	}
 
+	/** Performs the getNativeRef operation. */
 	protected NativeRef<T> getNativeRef(T ram) {
 		if (ram.getProvider() != this)
 			throw new IllegalArgumentException("RAM does not belong to this provider");
@@ -275,6 +277,7 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 		return allocated.get(ram.getContainerPointer());
 	}
 
+	/** Performs the allocated operation. */
 	protected T allocated(T ram) {
 		if (destroying) {
 			throw new IllegalStateException("Cannot allocate " + ram + " as the provider is being destroyed");
@@ -294,6 +297,7 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 		return ram;
 	}
 
+	/** Performs the deallocate operation. */
 	protected abstract void deallocate(NativeRef<T> ref);
 
 	@Override
@@ -312,6 +316,7 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 		return memoryName.get();
 	}
 
+	/** Performs the sharedMemory operation. */
 	public <V> V sharedMemory(IntFunction<String> name, Callable<V> exec) {
 		IntFunction<String> currentName = memoryName.get();
 		IntFunction<String> nextName = name;

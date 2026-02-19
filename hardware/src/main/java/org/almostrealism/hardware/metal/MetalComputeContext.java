@@ -258,6 +258,7 @@ public class MetalComputeContext extends AbstractComputeContext implements Conso
 	@Override
 	public Console console() { return Hardware.console; }
 
+	/** Performs the key operation. */
 	protected static String key(String name, String signature) {
 		if (ScopeSettings.enableInstructionSetReuse && signature != null) {
 			return signature;

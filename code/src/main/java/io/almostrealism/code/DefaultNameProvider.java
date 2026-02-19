@@ -16,6 +16,7 @@
 
 package io.almostrealism.code;
 
+/** The DefaultNameProvider class. */
 public class DefaultNameProvider implements NameProvider {
 	private String function;
 	private NamedFunction named;

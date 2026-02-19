@@ -176,38 +176,46 @@ public class LocalExternalMemoryProvider implements MemoryProvider<Memory> {
 		// TODO  Destroy all LocalExternalMemory
 	}
 
+	/** Performs the load operation. */
 	protected static void load(LocalExternalMemory... mem) {
 		Stream.of(mem).forEach(LocalExternalMemory::read);
 	}
 
+	/** Performs the unload operation. */
 	protected static void unload(LocalExternalMemory... mem) {
 		Stream.of(mem).forEach(LocalExternalMemory::write);
 	}
 
+	/** Performs the readData operation. */
 	protected static void readData(File dest, MemoryData[] args) throws IOException {
 		for (int i = 0; i < args.length; i++) {
 			readBinary(new File(dest, String.valueOf(i)), args[i]);
 		}
 	}
 
+	/** Performs the writeData operation. */
 	protected static void writeData(File dest, MemoryData[] args) throws IOException {
 		for (int i = 0; i < args.length; i++) {
 			writeBinary(new File(dest, String.valueOf(i)), args[i]);
 		}
 	}
 
+	/** Performs the writeSizes operation. */
 	protected static void writeSizes(File dest, MemoryData[] args) throws IOException {
 		writeBinary(new File(dest, "sizes"), Stream.of(args).mapToInt(MemoryData::getMemLength).toArray());
 	}
 
+	/** Performs the writeOffsets operation. */
 	protected static void writeOffsets(File dest, MemoryData[] args) throws IOException {
 		writeBinary(new File(dest, "offsets"), Stream.of(args).mapToInt(MemoryData::getOffset).toArray());
 	}
 
+	/** Performs the writeCount operation. */
 	protected static void writeCount(File dest, int count) throws IOException {
 		writeBinary(new File(dest, "count"), new int[]{count});
 	}
 
+	/** Performs the readBinary operation. */
 	protected static void readBinary(File src, MemoryData mem) throws IOException {
 		if (enableLazyReading) {
 			mem.getRootDelegate().reassign(local.allocate(src, mem.getRootDelegate().getMemLength()));
@@ -218,20 +226,24 @@ public class LocalExternalMemoryProvider implements MemoryProvider<Memory> {
 		}
 	}
 
+	/** Performs the writeBinary operation. */
 	protected static void writeBinary(File dest, MemoryData mem) throws IOException {
 		writeBinary(dest, mem.getMem(), mem.getMemLength());
 	}
 
+	/** Performs the writeBinary operation. */
 	protected static void writeBinary(File dest, Memory mem, int length) throws IOException {
 		writeBinary(dest, mem.getBytes(length).array());
 	}
 
+	/** Performs the writeBinary operation. */
 	protected static void writeBinary(File dest, int data[]) throws IOException {
 		ByteBuffer buf = ByteBuffer.allocate(data.length * 8);
 		for (int i : data) buf.putInt(i);
 		writeBinary(dest, buf.array());
 	}
 
+	/** Performs the readBinary operation. */
 	protected static void readBinary(File src, double data[]) throws IOException {
 		ByteBuffer buf = ByteBuffer.allocate(8 * data.length);
 		try (InputStream in = new FileInputStream(src)) {
@@ -247,6 +259,7 @@ public class LocalExternalMemoryProvider implements MemoryProvider<Memory> {
 		}
 	}
 
+	/** Performs the writeBinary operation. */
 	protected static void writeBinary(File dest, byte data[]) throws IOException {
 		try (OutputStream out = new FileOutputStream(dest)) {
 			out.write(data);

@@ -210,6 +210,7 @@ public class RefractionShader implements Shader<ShaderContext>, Editable, RGBFea
 		return GeneratedColorProducer.fromProducer(this, pr);
 	}
 	
+	/** Performs the shade operation. */
 	protected Producer<PackedCollection> shade(Vector point, Vector viewerDirection, Producer<PackedCollection> lightDirection,
 								  Light light, Iterable<Light> otherLights, Curve<PackedCollection> surface,
 								  Curve<PackedCollection> otherSurfaces[], Vector n, ShaderContext p) {

@@ -18,6 +18,8 @@ package org.almostrealism.nio;
 
 import io.almostrealism.code.Memory;
 
+/** The NativeBufferWriter interface. */
 public interface NativeBufferWriter<T extends Memory> {
+	/** Performs the setMem operation. */
 	void setMem(NativeBuffer mem, int offset, T source, int srcOffset, int length);
 }

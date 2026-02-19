@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
+/** The Curium class. */
 public class Curium implements Element {
 	public int getAtomicNumber() { return 96; }
 

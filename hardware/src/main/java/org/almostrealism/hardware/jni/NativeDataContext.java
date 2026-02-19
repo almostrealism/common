@@ -224,6 +224,7 @@ public class NativeDataContext extends HardwareDataContext {
 		this.delegate = ctx;
 	}
 
+	/** Performs the setMemoryProvider operation. */
 	public void setMemoryProvider(MemoryProvider<? extends Memory> ram) {
 		if (getPrecision().bytes() != ram.getNumberSize()) {
 			throw new UnsupportedOperationException();
@@ -269,6 +270,7 @@ public class NativeDataContext extends HardwareDataContext {
 		}
 	}
 
+	/** Performs the computeContext operation. */
 	public <T> T computeContext(Callable<T> exec, ComputeRequirement... expectations) {
 		try {
 			return exec.call();

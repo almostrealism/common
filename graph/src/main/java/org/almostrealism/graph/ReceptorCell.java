@@ -23,6 +23,7 @@ import org.almostrealism.hardware.OperationList;
 
 import java.util.function.Supplier;
 
+/** The ReceptorCell class. */
 public class ReceptorCell<T> implements Cell<T> {
 	private Receptor<T> r;
 

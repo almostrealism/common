@@ -25,6 +25,7 @@ import org.almostrealism.io.ConsoleFeatures;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
+/** The MonitorReceptor class. */
 public class MonitorReceptor implements Receptor<PackedCollection>, ConsoleFeatures {
 	public static boolean enableLargeWarning = false;
 

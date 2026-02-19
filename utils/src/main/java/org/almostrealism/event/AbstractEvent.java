@@ -16,6 +16,7 @@
 
 package org.almostrealism.event;
 
+/** The AbstractEvent class. */
 public abstract class AbstractEvent {
 	private String name;
 

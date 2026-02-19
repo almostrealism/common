@@ -666,10 +666,12 @@ public class Vector extends PackedCollection implements VectorFeatures, Cloneabl
 				new Vector(delegateSpec.getDelegate(), delegateSpec.getOffset()));
 	}
 
+	/** Performs the view operation. */
 	public static Vector view(PackedCollection collection) {
 		return view(collection, 0);
 	}
 
+	/** Performs the view operation. */
 	public static Vector view(PackedCollection collection, int pos) {
 		TraversalPolicy shape = collection.getShape();
 		if (shape.length(shape.getDimensions() - 1) != 3) {

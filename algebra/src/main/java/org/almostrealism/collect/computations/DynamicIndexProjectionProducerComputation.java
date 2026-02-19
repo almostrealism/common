@@ -187,6 +187,7 @@ public class DynamicIndexProjectionProducerComputation
 		return projectIndex(getTraversableArguments(index), index);
 	}
 
+	/** Performs the projectIndex operation. */
 	protected Expression<?> projectIndex(TraversableExpression[] args, Expression<?> index) {
 		return indexExpression.apply(args, index);
 	}

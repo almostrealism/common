@@ -50,20 +50,25 @@ import io.almostrealism.lang.LanguageOperations;
 
 import java.util.Collection;
 
+/** The ExpressionFeatures interface. */
 public interface ExpressionFeatures {
 
+	/** Performs the e operation. */
 	default Expression e(boolean value) {
 		return new BooleanConstant(value);
 	}
 
+	/** Performs the e operation. */
 	default Expression e(int value) {
 		return new IntegerConstant(value);
 	}
 
+	/** Performs the expressionForDouble operation. */
 	default Expression<Double> expressionForDouble(double value) {
 		return new DoubleConstant(value);
 	}
 
+	/** Performs the e operation. */
 	default Expression<? extends Number> e(long value) {
 		if (value < Integer.MIN_VALUE || value > Integer.MAX_VALUE) {
 			return new LongConstant(value);
@@ -72,10 +77,12 @@ public interface ExpressionFeatures {
 		return e(Math.toIntExact(value));
 	}
 
+	/** Performs the e operation. */
 	default Expression<Double> e(double value) {
 		return expressionForDouble(value);
 	}
 
+	/** Performs the exp operation. */
 	default Expression<Double> exp(Expression expression) {
 		return Exp.of(expression);
 	}
@@ -88,6 +95,7 @@ public interface ExpressionFeatures {
 
 	default KernelIndex kernel(KernelStructureContext context) { return new KernelIndex(context); }
 
+	/** Performs the pi operation. */
 	default StaticReference<Double> pi() {
 		return new StaticReference<>(Double.class, null) {
 			@Override
@@ -102,34 +110,42 @@ public interface ExpressionFeatures {
 		};
 	}
 
+	/** Performs the declare operation. */
 	default <T> ExpressionAssignment<T> declare(String name, Expression<T> expression) {
 		return declare(new StaticReference<>(expression.getType(), name), expression);
 	}
 
+	/** Performs the assign operation. */
 	default <T> ExpressionAssignment<T> assign(String name, Expression<T> expression) {
 		return assign(new StaticReference<>(expression.getType(), name), expression);
 	}
 
+	/** Performs the declare operation. */
 	default <T> ExpressionAssignment<T> declare(Expression<T> destination, Expression<T> expression) {
 		return new ExpressionAssignment<>(true, destination, expression);
 	}
 
+	/** Performs the assign operation. */
 	default <T> ExpressionAssignment<T> assign(Expression<T> destination, Expression<T> expression) {
 		return new ExpressionAssignment<>(destination, expression);
 	}
 
+	/** Performs the greater operation. */
 	default Greater greater(Expression<?> left, Expression<?> right, boolean includeEqual) {
 		return new Greater(left, right, includeEqual);
 	}
 
+	/** Performs the equals operation. */
 	default Expression equals(Expression<?> left, Expression<?> right) {
 		return Equals.of(left, right);
 	}
 
+	/** Performs the conditional operation. */
 	default Expression conditional(Expression<Boolean> condition, Expression<?> positive, Expression<?> negative) {
 		return Conditional.of(condition, positive, negative);
 	}
 
+	/** Performs the ident operation. */
 	default CollectionExpression ident(TraversalPolicy shape) {
 		if (shape.getTotalSizeLong() == 1) {
 			return new ConstantCollectionExpression(shape, new IntegerConstant(1));
@@ -138,87 +154,106 @@ public interface ExpressionFeatures {
 		}
 	}
 
+	/** Performs the sum operation. */
 	default CollectionExpression sum(TraversalPolicy shape, Collection<? extends TraversableExpression<Double>> expressions) {
 		return sum(shape, expressions.toArray(TraversableExpression[]::new));
 	}
 
+	/** Performs the sum operation. */
 	default CollectionExpression sum(TraversalPolicy shape, TraversableExpression... expressions) {
 		UniformCollectionExpression sum = new UniformCollectionExpression("sum", shape, Sum::of, expressions);
 		sum.setIndexPolicy(UniformCollectionExpression.NonZeroIndexPolicy.EXCLUSIVE);
 		return sum;
 	}
 
+	/** Performs the difference operation. */
 	default CollectionExpression difference(TraversalPolicy shape, Collection<? extends TraversableExpression<Double>> expressions) {
 		return difference(shape, expressions.toArray(TraversableExpression[]::new));
 	}
 
+	/** Performs the difference operation. */
 	default CollectionExpression difference(TraversalPolicy shape, TraversableExpression... expressions) {
 		UniformCollectionExpression difference = new UniformCollectionExpression("difference", shape, Difference::of, expressions);
 		difference.setIndexPolicy(UniformCollectionExpression.NonZeroIndexPolicy.EXCLUSIVE);
 		return difference;
 	}
 
+	/** Performs the product operation. */
 	default CollectionExpression product(TraversalPolicy shape, Collection<? extends TraversableExpression<Double>> expressions) {
 		return product(shape, expressions.toArray(TraversableExpression[]::new));
 	}
 
+	/** Performs the product operation. */
 	default CollectionExpression product(TraversalPolicy shape, TraversableExpression... expressions) {
 		if (expressions.length < 2) throw new IllegalArgumentException();
 		return new ProductCollectionExpression(shape, expressions);
 	}
 
+	/** Performs the quotient operation. */
 	default CollectionExpression quotient(TraversalPolicy shape, Collection<? extends TraversableExpression<Double>> expressions) {
 		return quotient(shape, expressions.toArray(TraversableExpression[]::new));
 	}
 
+	/** Performs the quotient operation. */
 	default CollectionExpression quotient(TraversalPolicy shape, TraversableExpression... expressions) {
 		UniformCollectionExpression quotient = new UniformCollectionExpression("quotient", shape, Quotient::of, expressions);
 		quotient.setIndexPolicy(UniformCollectionExpression.NonZeroIndexPolicy.DISJUNCTIVE);
 		return quotient;
 	}
 
+	/** Performs the reciprocal operation. */
 	default CollectionExpression reciprocal(TraversalPolicy shape, TraversableExpression<Double> input) {
 		return new UniformCollectionExpression("reciprocal", shape, args -> args[0].reciprocal(), input);
 	}
 
+	/** Performs the minus operation. */
 	default CollectionExpression minus(TraversalPolicy shape, TraversableExpression<Double> input) {
 		return new UniformCollectionExpression("minus", shape, args -> Minus.of(args[0]), input);
 	}
 
+	/** Performs the mod operation. */
 	default CollectionExpression mod(TraversalPolicy shape, TraversableExpression in, TraversableExpression mod) {
 		return new UniformCollectionExpression("mod", shape, Mod::of, in, mod);
 	}
 
+	/** Performs the sin operation. */
 	default CollectionExpression sin(TraversalPolicy shape, TraversableExpression<Double> input) {
 		return new UniformCollectionExpression("sin", shape, args -> Sine.of(args[0]), input);
 	}
 
+	/** Performs the cos operation. */
 	default CollectionExpression cos(TraversalPolicy shape, TraversableExpression<Double> input) {
 		return new UniformCollectionExpression("cos", shape, args -> Cosine.of(args[0]), input);
 	}
 
+	/** Performs the tan operation. */
 	default CollectionExpression tan(TraversalPolicy shape, TraversableExpression<Double> input) {
 		return new UniformCollectionExpression("tan", shape, args -> Tangent.of(args[0]), input);
 	}
 
+	/** Performs the tanh operation. */
 	default CollectionExpression tanh(TraversalPolicy shape, TraversableExpression<Double> input) {
 		return new UniformCollectionExpression("tanh", shape, args -> Tangent.of(args[0], true), input);
 	}
 
+	/** Performs the rectify operation. */
 	default CollectionExpression rectify(TraversalPolicy shape, TraversableExpression<Double> input) {
 		return new UniformCollectionExpression("rectify", shape, args -> Rectify.of(args[0]), input);
 	}
 
+	/** Performs the equals operation. */
 	default TraversableExpression<Boolean> equals(TraversalPolicy shape,
 												 TraversableExpression<Double> a, TraversableExpression<Double> b) {
 		return idx -> equals(a.getValueAt(idx), b.getValueAt(idx));
 	}
 
+	/** Performs the conditional operation. */
 	default CollectionExpression conditional(TraversalPolicy shape, Expression<Boolean> condition,
 											TraversableExpression<Double> positive, TraversableExpression<Double> negative) {
 		return CollectionExpression.create(shape, idx -> condition.conditional(positive.getValueAt(idx), negative.getValueAt(idx)));
 	}
 
+	/** Performs the conditional operation. */
 	default CollectionExpression conditional(TraversalPolicy shape, TraversableExpression<Boolean> condition,
 											 TraversableExpression<Double> positive, TraversableExpression<Double> negative) {
 		return CollectionExpression.create(shape, idx ->
@@ -226,10 +261,12 @@ public interface ExpressionFeatures {
 					.conditional(positive.getValueAt(idx), negative.getValueAt(idx)));
 	}
 
+	/** Performs the constantZero operation. */
 	default ConstantCollectionExpression constantZero(TraversalPolicy shape) {
 		return new ConstantCollectionExpression(shape, new IntegerConstant(0));
 	}
 
+	/** Performs the complexProduct operation. */
 	default Expression[] complexProduct(Expression aReal, Expression aImg, Expression bReal, Expression bImg) {
 		return new Expression[] {
 				aReal.multiply(bReal).subtract(aImg.multiply(bImg)),

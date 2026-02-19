@@ -171,6 +171,13 @@ public class DistributionMetric extends MetricBase {
 		return summary(displayName, s -> s);
 	}
 
+	/**
+	 * Returns a stream of entries sorted by value descending, optionally
+	 * filtered to only significant entries for summary display.
+	 *
+	 * @param summary whether to limit to significant entries
+	 * @return the entry stream
+	 */
 	public Stream<Map.Entry<String, Double>> entries(boolean summary) {
 		double all = getTotal();
 

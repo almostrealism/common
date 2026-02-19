@@ -28,5 +28,6 @@ import org.almostrealism.geometry.Ray;
  */
 @Function
 public interface DistanceEstimator {
+	/** Performs the estimateDistance operation. */
 	double estimateDistance(Ray r);
 }

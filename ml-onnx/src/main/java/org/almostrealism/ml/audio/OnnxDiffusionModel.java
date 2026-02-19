@@ -26,6 +26,7 @@ import org.almostrealism.ml.OnnxFeatures;
 import java.util.HashMap;
 import java.util.Map;
 
+/** The OnnxDiffusionModel class. */
 public class OnnxDiffusionModel implements DiffusionModel, OnnxFeatures {
 	private final OrtEnvironment env;
 	private final OrtSession session;
@@ -35,6 +36,7 @@ public class OnnxDiffusionModel implements DiffusionModel, OnnxFeatures {
 		this.session = env.createSession(modelFile, options);
 	}
 
+	/** Performs the forward operation. */
 	public PackedCollection forward(PackedCollection x, PackedCollection t,
 									   PackedCollection crossAttnCond,
 									   PackedCollection globalCond) {

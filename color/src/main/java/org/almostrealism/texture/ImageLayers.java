@@ -32,12 +32,14 @@ public class ImageLayers implements ImageSource, Layered<ImageSource> {
 		this.layers = new HashMap<String, ImageSource>();
 	}
 	
+	/** Performs the addLayer operation. */
 	public void addLayer(String name, ImageSource image) {
 		layers.put(name, image);
 	}
 	
 	public ImageSource getLayer(String name) { return layers.get(name); }
 	
+	/** Performs the addLayers operation. */
 	public void addLayers(ImageLayers l) {
 		for (Map.Entry<String, ImageSource> m : l.layers.entrySet()) {
 			layers.put(m.getKey(), m.getValue());

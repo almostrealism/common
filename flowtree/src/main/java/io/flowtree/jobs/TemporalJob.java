@@ -21,6 +21,7 @@ import org.almostrealism.time.Temporal;
 
 import java.util.concurrent.CompletableFuture;
 
+/** The TemporalJob class. */
 public class TemporalJob implements Job {
 	private Temporal temporal;
 	private int iterations;

@@ -47,18 +47,22 @@ public class RigidBodyPinholeCamera implements Temporal {
 		};
 	}
 	
+	/** Performs the forward operation. */
 	public void forward(double d) {
 		this.model.linearImpulse(model.getRotation().divide(model.getRotation().length()).multiply(d));
 	}
 	
+	/** Performs the backward operation. */
 	public void backward(double d) {
 		this.model.linearImpulse(model.getRotation().divide(model.getRotation().length()).multiply(-d));
 	}
 	
+	/** Performs the turnLeft operation. */
 	public void turnLeft() {
 		// this.model.angularImpulse();
 	}
 	
+	/** Performs the turnRight operation. */
 	public void turnRight() {
 		// this.model.angularImpulse();
 	}

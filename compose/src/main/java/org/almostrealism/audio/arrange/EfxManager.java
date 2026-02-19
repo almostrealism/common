@@ -38,6 +38,7 @@ import java.util.function.IntFunction;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
+/** The EfxManager class. */
 public class EfxManager implements CellFeatures {
 	public static boolean enableEfx = true;
 	public static boolean enableAutomation = true;
@@ -73,6 +74,7 @@ public class EfxManager implements CellFeatures {
 		init();
 	}
 
+	/** Performs the init operation. */
 	protected void init() {
 		double[] choices = IntStream.range(0, 5)
 				.mapToDouble(i -> Math.pow(2, i - 2))
@@ -154,6 +156,7 @@ public class EfxManager implements CellFeatures {
 		return cells;
 	}
 
+	/** Performs the createCells operation. */
 	protected CellList createCells(Producer<PackedCollection> audio, double totalDuration) {
 		return createCells(audio, totalDuration, null);
 	}
@@ -185,6 +188,7 @@ public class EfxManager implements CellFeatures {
 		}
 	}
 
+	/** Performs the applyFilter operation. */
 	protected Producer<PackedCollection> applyFilter(ChannelInfo channel, Producer<PackedCollection> audio, OperationList setup) {
 		PackedCollection destination = PackedCollection.factory().apply(shape(audio).getTotalSize());
 

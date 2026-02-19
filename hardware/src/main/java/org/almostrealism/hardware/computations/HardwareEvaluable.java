@@ -226,6 +226,7 @@ public class HardwareEvaluable<T> implements
 		return withDestination((MemoryBank) destination);
 	}
 
+	/** Performs the withDestination operation. */
 	public Evaluable<T> withDestination(MemoryBank destination) {
 		if (destinationProcessor != null) {
 			destination = destinationProcessor.apply(destination);

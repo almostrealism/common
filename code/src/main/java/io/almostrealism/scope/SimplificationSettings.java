@@ -18,12 +18,16 @@ package io.almostrealism.scope;
 
 import io.almostrealism.expression.Expression;
 
+/** The SimplificationSettings interface. */
 public interface SimplificationSettings {
 
+	/** Performs the isSeriesSimplificationTarget operation. */
 	boolean isSeriesSimplificationTarget(Expression<?> expression, int depth);
 
+	/** Performs the shortDesc operation. */
 	String shortDesc();
 
+	/** Performs the none operation. */
 	static SimplificationSettings none() {
 		return new SimplificationSettings() {
 			@Override

@@ -18,5 +18,6 @@ package io.almostrealism.kernel;
 
 import io.almostrealism.relation.Tree;
 
+/** The KernelTree interface. */
 public interface KernelTree<T extends KernelTree> extends Tree<T>, KernelStructure<T> {
 }

@@ -248,6 +248,7 @@ public interface Algebraic extends Computable {
 		return ((Algebraic) value).getDiagonalScalar(width);
 	}
 
+	/** Performs the getConstant operation. */
 	static <T> OptionalDouble getConstant(T value) {
 		if (!(value instanceof Algebraic)) {
 			return OptionalDouble.empty();

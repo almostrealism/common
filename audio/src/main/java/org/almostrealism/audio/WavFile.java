@@ -74,6 +74,7 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.io.PrintStream;
 
+/** The WavFile class. */
 public class WavFile implements AutoCloseable {
 
 	private enum ReaderState {
@@ -131,14 +132,17 @@ public class WavFile implements AutoCloseable {
 
 	public int getValidBits() { return validBits; }
 
+	/** Performs the newWavFile operation. */
 	public static WavFile newWavFile(File file, int numChannels, long numFrames, int validBits, long sampleRate) throws IOException {
 		return newWavFile(file, new FileOutputStream(file), numChannels, numFrames, validBits, sampleRate);
 	}
 
+	/** Performs the newWavFile operation. */
 	public static WavFile newWavFile(OutputStream stream, int numChannels, long numFrames, int validBits, long sampleRate) throws IOException {
 		return newWavFile(null, stream, numChannels, numFrames, validBits, sampleRate);
 	}
 
+	/** Performs the newWavFile operation. */
 	protected static WavFile newWavFile(File file, OutputStream stream, int numChannels, long numFrames, int validBits, long sampleRate) throws IOException {
 		WavFile wavFile = new WavFile();
 		wavFile.file = file;
@@ -229,16 +233,19 @@ public class WavFile implements AutoCloseable {
 		return wavFile;
 	}
 
+	/** Performs the channel operation. */
 	public static PackedCollection channel(double[][] data, int chan) {
 		return channel(data, chan, 0);
 	}
 
+	/** Performs the channel operation. */
 	public static PackedCollection channel(double[][] data, int chan, int padFrames) {
 		PackedCollection waveform = new PackedCollection(data[chan].length + padFrames);
 		waveform.setMem(0, data[chan]);
 		return waveform.traverse(1);
 	}
 
+	/** Performs the channel operation. */
 	public static PackedCollection channel(int[][] data, int chan) {
 		PackedCollection waveform = new PackedCollection(data[chan].length);
 
@@ -247,6 +254,7 @@ public class WavFile implements AutoCloseable {
 		return waveform;
 	}
 
+	/** This method. */
 	@Deprecated
 	public static PackedCollection channelScalar(int[][] data, int chan) {
 		PackedCollection waveform = new PackedCollection(data[chan].length).traverse(1);
@@ -256,6 +264,7 @@ public class WavFile implements AutoCloseable {
 		return waveform;
 	}
 
+	/** Performs the openWavFile operation. */
 	public static WavFile openWavFile(File file) throws IOException {
 		// Instantiate new Wavfile and store the file reference
 		WavFile wavFile = new WavFile();
@@ -442,10 +451,12 @@ public class WavFile implements AutoCloseable {
 
 	// Integer
 	// -------
+	/** Performs the readFrames operation. */
 	public int readFrames(int[] sampleBuffer, int numFramesToRead) throws IOException {
 		return readFrames(sampleBuffer, 0, numFramesToRead);
 	}
 
+	/** Performs the readFrames operation. */
 	public int readFrames(int[] sampleBuffer, int offset, int numFramesToRead) throws IOException {
 		if (readerState != ReaderState.READING) throw new IOException("Cannot read from WavFile instance");
 
@@ -463,10 +474,12 @@ public class WavFile implements AutoCloseable {
 		return numFramesToRead;
 	}
 
+	/** Performs the readFrames operation. */
 	public int readFrames(int[][] sampleBuffer, int numFramesToRead) throws IOException {
 		return readFrames(sampleBuffer, 0, numFramesToRead);
 	}
 
+	/** Performs the readFrames operation. */
 	public int readFrames(int[][] sampleBuffer, int offset, int numFramesToRead) throws IOException {
 		if (readerState != ReaderState.READING) throw new IOException("Cannot read from WavFile instance");
 
@@ -482,10 +495,12 @@ public class WavFile implements AutoCloseable {
 		return numFramesToRead;
 	}
 
+	/** Performs the writeFrames operation. */
 	public int writeFrames(int[] sampleBuffer, int numFramesToWrite) throws IOException {
 		return writeFrames(sampleBuffer, 0, numFramesToWrite);
 	}
 
+	/** Performs the writeFrames operation. */
 	public int writeFrames(int[] sampleBuffer, int offset, int numFramesToWrite) throws IOException {
 		if (readerState != ReaderState.WRITING) throw new IOException("Cannot write to WavFile instance");
 
@@ -503,10 +518,12 @@ public class WavFile implements AutoCloseable {
 		return numFramesToWrite;
 	}
 
+	/** Performs the writeFrames operation. */
 	public int writeFrames(int[][] sampleBuffer, int numFramesToWrite) throws IOException {
 		return writeFrames(sampleBuffer, 0, numFramesToWrite);
 	}
 
+	/** Performs the writeFrames operation. */
 	public int writeFrames(int[][] sampleBuffer, int offset, int numFramesToWrite) throws IOException {
 		if (readerState != ReaderState.WRITING) throw new IOException("Cannot write to WavFile instance");
 
@@ -524,10 +541,12 @@ public class WavFile implements AutoCloseable {
 
 	// Long
 	// ----
+	/** Performs the readFrames operation. */
 	public int readFrames(long[] sampleBuffer, int numFramesToRead) throws IOException {
 		return readFrames(sampleBuffer, 0, numFramesToRead);
 	}
 
+	/** Performs the readFrames operation. */
 	public int readFrames(long[] sampleBuffer, int offset, int numFramesToRead) throws IOException {
 		if (readerState != ReaderState.READING) throw new IOException("Cannot read from WavFile instance");
 
@@ -545,10 +564,12 @@ public class WavFile implements AutoCloseable {
 		return numFramesToRead;
 	}
 
+	/** Performs the readFrames operation. */
 	public int readFrames(long[][] sampleBuffer, int numFramesToRead) throws IOException {
 		return readFrames(sampleBuffer, 0, numFramesToRead);
 	}
 
+	/** Performs the readFrames operation. */
 	public int readFrames(long[][] sampleBuffer, int offset, int numFramesToRead) throws IOException {
 		if (readerState != ReaderState.READING) throw new IOException("Cannot read from WavFile instance");
 
@@ -564,10 +585,12 @@ public class WavFile implements AutoCloseable {
 		return numFramesToRead;
 	}
 
+	/** Performs the writeFrames operation. */
 	public int writeFrames(long[] sampleBuffer, int numFramesToWrite) throws IOException {
 		return writeFrames(sampleBuffer, 0, numFramesToWrite);
 	}
 
+	/** Performs the writeFrames operation. */
 	public int writeFrames(long[] sampleBuffer, int offset, int numFramesToWrite) throws IOException {
 		if (readerState != ReaderState.WRITING) throw new IOException("Cannot write to WavFile instance");
 
@@ -585,10 +608,12 @@ public class WavFile implements AutoCloseable {
 		return numFramesToWrite;
 	}
 
+	/** Performs the writeFrames operation. */
 	public int writeFrames(long[][] sampleBuffer, int numFramesToWrite) throws IOException {
 		return writeFrames(sampleBuffer, 0, numFramesToWrite);
 	}
 
+	/** Performs the writeFrames operation. */
 	public int writeFrames(long[][] sampleBuffer, int offset, int numFramesToWrite) throws IOException {
 		if (readerState != ReaderState.WRITING) throw new IOException("Cannot write to WavFile instance");
 
@@ -606,10 +631,12 @@ public class WavFile implements AutoCloseable {
 
 	// Double
 	// ------
+	/** Performs the readFrames operation. */
 	public int readFrames(double[] sampleBuffer, int numFramesToRead) throws IOException {
 		return readFrames(sampleBuffer, 0, numFramesToRead);
 	}
 
+	/** Performs the readFrames operation. */
 	public int readFrames(double[] sampleBuffer, int offset, int numFramesToRead) throws IOException {
 		if (readerState != ReaderState.READING) throw new IOException("Cannot read from WavFile instance");
 
@@ -627,10 +654,12 @@ public class WavFile implements AutoCloseable {
 		return numFramesToRead;
 	}
 
+	/** Performs the readFrames operation. */
 	public int readFrames(double[][] sampleBuffer, int numFramesToRead) throws IOException {
 		return readFrames(sampleBuffer, 0, numFramesToRead);
 	}
 
+	/** Performs the readFrames operation. */
 	public int readFrames(double[][] sampleBuffer, int offset, int numFramesToRead) throws IOException {
 		if (readerState != ReaderState.READING) throw new IOException("Cannot read from WavFile instance");
 
@@ -648,10 +677,12 @@ public class WavFile implements AutoCloseable {
 		return numFramesToRead;
 	}
 
+	/** Performs the writeFrames operation. */
 	public int writeFrames(double[] sampleBuffer, int numFramesToWrite) throws IOException {
 		return writeFrames(sampleBuffer, 0, numFramesToWrite);
 	}
 
+	/** Performs the writeFrames operation. */
 	public int writeFrames(double[] sampleBuffer, int offset, int numFramesToWrite) throws IOException {
 		if (readerState != ReaderState.WRITING) throw new IOException("Cannot write to WavFile instance");
 
@@ -669,14 +700,17 @@ public class WavFile implements AutoCloseable {
 		return numFramesToWrite;
 	}
 
+	/** Performs the writeFrames operation. */
 	public int writeFrames(double[][] sampleBuffer) throws IOException {
 		return writeFrames(sampleBuffer, sampleBuffer[0].length);
 	}
 
+	/** Performs the writeFrames operation. */
 	public int writeFrames(double[][] sampleBuffer, int numFramesToWrite) throws IOException {
 		return writeFrames(sampleBuffer, 0, numFramesToWrite);
 	}
 
+	/** Performs the writeFrames operation. */
 	public int writeFrames(double[][] sampleBuffer, int offset, int numFramesToWrite) throws IOException {
 		if (readerState != ReaderState.WRITING) throw new IOException("Cannot write to WavFile instance");
 
@@ -718,10 +752,12 @@ public class WavFile implements AutoCloseable {
 		readerState = ReaderState.CLOSED;
 	}
 
+	/** Performs the display operation. */
 	public void display() {
 		display(System.out);
 	}
 
+	/** Performs the display operation. */
 	public void display(PrintStream out) {
 		if (file != null) out.printf("File: %s\n", file);
 		out.printf("Channels: %d, Frames: %d\n", numChannels, numFrames);

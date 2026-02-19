@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
+/** The Sodium class. */
 public class Sodium implements Element {
 	public int getAtomicNumber() { return 11; }
 	

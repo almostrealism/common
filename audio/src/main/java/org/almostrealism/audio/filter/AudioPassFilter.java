@@ -111,6 +111,7 @@ public class AudioPassFilter implements TemporalFactor<PackedCollection>, Lifecy
 	public int getSampleRate() {
 		return (int) data.sampleRate().toDouble(0);
 	}
+	/** Performs the setSampleRate operation. */
 	public void setSampleRate(int sampleRate) {
 		data.setSampleRate(sampleRate);
 	}

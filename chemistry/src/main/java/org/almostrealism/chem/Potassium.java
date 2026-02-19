@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
+/** The Potassium class. */
 public class Potassium implements Element {
 	public int getAtomicNumber() { return 19; }
 	

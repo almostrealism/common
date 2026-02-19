@@ -392,6 +392,7 @@ public class Mesh extends SpacePartition<Triangle> implements Graph<Vector> {
   	 */
   	public Vertex[] getVectors() { return this.getVectors(this.source == null); }
   	
+  	/** Performs the getVectors operation. */
   	public Vertex[] getVectors(boolean b) {
 		if (this.points == null) return null;
 
@@ -413,6 +414,7 @@ public class Mesh extends SpacePartition<Triangle> implements Graph<Vector> {
 
 	public Iterator iterateVectors() { return this.points.iterator(); }
   	
+  	/** Performs the setTriangleData operation. */
   	public void setTriangleData(int[][] data) {
   		this.triangles.clear();
   		for (int i = 0; i < data.length; i++) this.triangles.add(data[i]);
@@ -456,6 +458,7 @@ public class Mesh extends SpacePartition<Triangle> implements Graph<Vector> {
   		return this.getTriangleData(this.source == null);
   	}
 
+  	/** Performs the getTriangleData operation. */
   	public int[][] getTriangleData(boolean b) {
   		if (b)
   			return (int[][]) this.triangles.toArray(new int[0][0]);
@@ -463,6 +466,7 @@ public class Mesh extends SpacePartition<Triangle> implements Graph<Vector> {
   			return null;
   	}
   	
+	/** Performs the triangles operation. */
 	public Iterable<Triangle> triangles() {
 		return () -> {
 			if (vertexData == null) {
@@ -827,6 +831,7 @@ public class Mesh extends SpacePartition<Triangle> implements Graph<Vector> {
 	 */
 	public ShadableSurface getSurface(int index) { return this.getTriangle(index, false); }
 	
+	/** Performs the encode operation. */
 	public Object encode() {
 		if (this.source != null) {
 			return this.source;

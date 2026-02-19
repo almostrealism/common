@@ -111,6 +111,7 @@ public class PatternElementFactory implements ConsoleFeatures {
 		initSelectionFunctions();
 	}
 
+	/** Performs the initSelectionFunctions operation. */
 	public void initSelectionFunctions() {
 		noteSelection = ParameterizedPositionFunction.random();
 		noteLayerSelections = IntStream.range(0, MAX_LAYERS)
@@ -170,6 +171,7 @@ public class PatternElementFactory implements ConsoleFeatures {
 	}
 
 	// TODO  This should take instruction for whether to apply note duration, relying just on isMelodic limits its use
+	/** Performs the apply operation. */
 	public Optional<PatternElement> apply(ElementParity parity, double position,
 										  double scale, double bias,
 										  ScaleTraversalStrategy scaleTraversalStrategy,

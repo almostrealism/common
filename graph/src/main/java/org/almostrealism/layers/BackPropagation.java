@@ -22,7 +22,9 @@ import org.almostrealism.graph.Receptor;
 
 import java.util.function.Supplier;
 
+/** The BackPropagation interface. */
 public interface BackPropagation {
+	/** Performs the propagate operation. */
 	Supplier<Runnable> propagate(Producer<PackedCollection> gradient,
 								 Producer<PackedCollection> input,
 								 Receptor<PackedCollection> next);

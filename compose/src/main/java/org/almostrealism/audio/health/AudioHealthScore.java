@@ -22,6 +22,7 @@ import org.almostrealism.optimize.HealthScore;
 import java.util.ArrayList;
 import java.util.List;
 
+/** The AudioHealthScore class. */
 public class AudioHealthScore implements HealthScore {
 	private long frames;
 	private double score;
@@ -85,6 +86,7 @@ public class AudioHealthScore implements HealthScore {
 		this.generationTime = generationTime;
 	}
 
+	/** Performs the getFiles operation. */
 	public List<String> getFiles() {
 		ArrayList<String> files = new ArrayList<>();
 		if (getOutput() != null) files.add(getOutput());

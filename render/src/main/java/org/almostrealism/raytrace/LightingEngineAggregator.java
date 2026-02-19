@@ -146,6 +146,7 @@ public class LightingEngineAggregator extends RankedChoiceEvaluableForRGB implem
 	}
 
 	// TODO  Rename this class to SurfaceLightingAggregator and have LightingEngineAggregator sum the lights instead of rank choice them
+	/** Performs the init operation. */
 	protected void init(Producer<?> r, Iterable<Curve<PackedCollection>> surfaces, Iterable<Light> lights, ShaderContext context) {
 		for (Curve<PackedCollection> s : surfaces) {
 			for (Light l : lights) {

@@ -97,6 +97,7 @@ public class LightingEngine<T extends ContinuousField> extends ProducerWithRankA
 		this.distance = ((ShadableIntersection) intersections).getDistance();
 	}
 
+	/** Performs the shadowAndShadeProduct operation. */
 	protected CollectionProducer shadowAndShadeProduct(ContinuousField intersections,
 													   Curve<PackedCollection> surface,
 													   Collection<Curve<PackedCollection>> otherSurfaces,
@@ -105,6 +106,7 @@ public class LightingEngine<T extends ContinuousField> extends ProducerWithRankA
 		return multiply((Producer) shadowAndShade[0], (Producer) shadowAndShade[1]);
 	}
 
+	/** Performs the shadowAndShade operation. */
 	protected Supplier[] shadowAndShade(ContinuousField intersections,
 											   Curve<PackedCollection> surface,
 											   Collection<Curve<PackedCollection>> otherSurfaces,

@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
+/** The Europium class. */
 public class Europium implements Element {
 	public int getAtomicNumber() { return 63; }
 

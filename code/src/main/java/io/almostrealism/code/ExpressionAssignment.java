@@ -29,6 +29,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.function.Supplier;
 
+/** The ExpressionAssignment class. */
 public class ExpressionAssignment<T> implements Statement<ExpressionAssignment<T>> {
 	private final boolean declaration;
 	private final Expression<T> destination;
@@ -55,6 +56,7 @@ public class ExpressionAssignment<T> implements Statement<ExpressionAssignment<T
 
 	public Expression<T> getExpression() { return expression; }
 
+	/** Performs the getPhysicalScope operation. */
 	public PhysicalScope getPhysicalScope() {
 		if (getDestination() == null) return null;
 
@@ -63,6 +65,7 @@ public class ExpressionAssignment<T> implements Statement<ExpressionAssignment<T
 				.findFirst().orElse(null);
 	}
 
+	/** Performs the getArraySize operation. */
 	public Expression<Integer> getArraySize() {
 		if (getDestination() == null) return null;
 
@@ -74,10 +77,12 @@ public class ExpressionAssignment<T> implements Statement<ExpressionAssignment<T
 				.findFirst().orElse(null);
 	}
 
+	/** Performs the getProducer operation. */
 	public Supplier getProducer() {
 		throw new UnsupportedOperationException();
 	}
 
+	/** Performs the getDependencies operation. */
 	public List<Variable<?, ?>> getDependencies() {
 		List<Variable<?, ?>> deps = new ArrayList<>();
 		if (destination != null) deps.addAll(destination.getDependencies());

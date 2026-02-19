@@ -41,7 +41,7 @@ public class WaveDataTest extends TestSuiteBase {
 	/**
 	 * Tests basic construction with explicit channel and frame counts.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void constructWithDimensions() {
 		WaveData data = new WaveData(2, 44100, TEST_SAMPLE_RATE);
 
@@ -55,7 +55,7 @@ public class WaveDataTest extends TestSuiteBase {
 	/**
 	 * Tests construction from a PackedCollection.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void constructFromPackedCollection() {
 		PackedCollection samples = TestAudioData.sineWave(440.0, 1.0);
 		WaveData data = new WaveData(samples, TEST_SAMPLE_RATE);
@@ -68,7 +68,7 @@ public class WaveDataTest extends TestSuiteBase {
 	/**
 	 * Tests duration calculation.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void durationCalculation() {
 		// 1 second at 44100 Hz
 		PackedCollection samples = TestAudioData.silence(TEST_SAMPLE_RATE);
@@ -86,7 +86,7 @@ public class WaveDataTest extends TestSuiteBase {
 	/**
 	 * Tests channel data retrieval for mono audio.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void getChannelDataMono() {
 		PackedCollection samples = TestAudioData.sineWave(440.0, 0.1);
 		WaveData data = new WaveData(samples, TEST_SAMPLE_RATE);
@@ -104,7 +104,7 @@ public class WaveDataTest extends TestSuiteBase {
 	/**
 	 * Tests invalid channel access throws exception.
 	 */
-	@Test(expected = IndexOutOfBoundsException.class)
+	@Test(timeout = 120000, expected = IndexOutOfBoundsException.class)
 	public void getChannelDataInvalidNegative() {
 		PackedCollection samples = TestAudioData.silence(1000);
 		WaveData data = new WaveData(samples, TEST_SAMPLE_RATE);
@@ -114,7 +114,7 @@ public class WaveDataTest extends TestSuiteBase {
 	/**
 	 * Tests range extraction with time-based parameters.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void rangeExtractionTime() {
 		// Create 2 seconds of audio
 		PackedCollection samples = TestAudioData.sineWave(440.0, 2.0);
@@ -131,7 +131,7 @@ public class WaveDataTest extends TestSuiteBase {
 	/**
 	 * Tests range extraction with sample-based parameters.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void rangeExtractionSamples() {
 		PackedCollection samples = TestAudioData.ramp(10000);
 		WaveData data = new WaveData(samples, TEST_SAMPLE_RATE);
@@ -150,7 +150,7 @@ public class WaveDataTest extends TestSuiteBase {
 	/**
 	 * Tests BufferDetails retrieval.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void bufferDetails() {
 		PackedCollection samples = TestAudioData.silence(TEST_SAMPLE_RATE * 2); // 2 seconds
 		WaveData data = new WaveData(samples, TEST_SAMPLE_RATE);
@@ -165,7 +165,7 @@ public class WaveDataTest extends TestSuiteBase {
 	/**
 	 * Tests sample rate modification.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void setSampleRate() {
 		PackedCollection samples = TestAudioData.silence(44100);
 		WaveData data = new WaveData(samples, 44100);
@@ -182,7 +182,7 @@ public class WaveDataTest extends TestSuiteBase {
 	/**
 	 * Tests save and load roundtrip with mono audio.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void saveAndLoadRoundtripMono() throws IOException {
 		// Create mono test data - 1 second of sine wave
 		int frames = TEST_SAMPLE_RATE;
@@ -235,7 +235,7 @@ public class WaveDataTest extends TestSuiteBase {
 	/**
 	 * Tests destroy properly cleans up resources.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void destroyReleasesResources() {
 		PackedCollection samples = TestAudioData.sineWave(440.0, 1.0);
 		WaveData data = new WaveData(samples, TEST_SAMPLE_RATE);
@@ -250,7 +250,7 @@ public class WaveDataTest extends TestSuiteBase {
 	/**
 	 * Tests with different sample rates.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void differentSampleRates() {
 		int[] sampleRates = {22050, 44100, 48000, 96000};
 
@@ -268,7 +268,7 @@ public class WaveDataTest extends TestSuiteBase {
 	/**
 	 * Tests FFT functionality returns correct shape.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void fftReturnsCorrectShape() {
 		// Create at least FFT_BINS worth of samples
 		int frames = WaveData.FFT_BINS * 4;

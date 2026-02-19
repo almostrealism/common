@@ -165,9 +165,13 @@ public class NodeProxy implements Proxy, Runnable {
 		}
 	}
 	
+	/** The EventListener interface. */
 	public interface EventListener {
+		/** Performs the connect operation. */
 		void connect(NodeProxy p);
+		/** Performs the disconnect operation. */
 		int disconnect(NodeProxy p);
+		/** Performs the recievedMessage operation. */
 		boolean recievedMessage(Message m, int reciever);
 	}
 	
@@ -462,6 +466,7 @@ public class NodeProxy implements Proxy, Runnable {
 		return new double[] {min, max, avg, div, error};
 	}
 	
+	/** Performs the writeSecure operation. */
 	protected void writeSecure(byte[] b) throws IOException {
 		ByteWrapper bw = new ByteWrapper(this.outc, b);
 		bw.writeExternal(this.out);
@@ -610,6 +615,7 @@ public class NodeProxy implements Proxy, Runnable {
 		return null;
 	}
 	
+	/** Performs the storeMessage operation. */
 	protected void storeMessage(Message m) {
 		this.println("Storing message -- " + m, this.mwait > 0);
 		
@@ -619,6 +625,7 @@ public class NodeProxy implements Proxy, Runnable {
 		}
 	}
 	
+	/** Performs the close operation. */
 	public void close() {
 		try {
 			this.in.close();
@@ -657,6 +664,7 @@ public class NodeProxy implements Proxy, Runnable {
 				(this.listeners.size() - 1) + " -- " + listener);
 	}
 	
+	/** Performs the getInetAddress operation. */
 	public InetAddress getInetAddress() {
 		if (this.soc == null)
 			return null;
@@ -664,6 +672,7 @@ public class NodeProxy implements Proxy, Runnable {
 			return this.soc.getInetAddress();
 	}
 	
+	/** Performs the getRemotePort operation. */
 	public int getRemotePort() {
 		if (this.soc == null)
 			return -1;
@@ -692,10 +701,12 @@ public class NodeProxy implements Proxy, Runnable {
 	public void setActivityRating(double a) { this.activity = a; }
 	public double getActivityRating() { return this.activity; }
 	
+	/** Performs the activateQueue operation. */
 	protected void activateQueue() {
 		this.useQueue = true;
 	}
 	
+	/** Performs the flushQueue operation. */
 	public void flushQueue() {
 		this.useQueue = false;
 		
@@ -716,6 +727,7 @@ public class NodeProxy implements Proxy, Runnable {
 		}
 	}
 	
+	/** Performs the fireConnect operation. */
 	public void fireConnect() {
 		this.activateQueue();
 		this.connected = true;
@@ -729,6 +741,7 @@ public class NodeProxy implements Proxy, Runnable {
 		this.flushQueue();
 	}
 	
+	/** Performs the fireDisconnect operation. */
 	protected void fireDisconnect() {
 		this.activateQueue();
 		this.connected = false;
@@ -755,6 +768,7 @@ public class NodeProxy implements Proxy, Runnable {
 		this.flushQueue();
 	}
 	
+	/** Performs the fireReceivedMessage operation. */
 	protected void fireReceivedMessage(Message m, int reciever) {
 		this.activateQueue();
 		boolean store = true;
@@ -849,6 +863,7 @@ public class NodeProxy implements Proxy, Runnable {
 		}
 	}
 	
+	/** Performs the reset operation. */
 	protected void reset() throws IOException {
 		if (resets == 0) this.fireDisconnect();
 		
@@ -1024,24 +1039,29 @@ public class NodeProxy implements Proxy, Runnable {
 		System.out.println("NodeProxy: Thread ended");
 	}
 
+	/** Performs the print operation. */
 	public void print(String msg) {
 		System.out.print("NodeProxy (" + this + "): " + msg);
 	}
 	
+	/** Performs the print operation. */
 	public void print(String msg, boolean verbose) {
 		if (!verbose || Message.verbose)
 			System.out.print("NodeProxy (" + this + "): " + msg);
 	}
 	
+	/** Performs the println operation. */
 	public void println(String msg) {
 		System.out.println("NodeProxy (" + this + "): " + msg);
 	}
 	
+	/** Performs the println operation. */
 	public void println(String msg, boolean verbose) {
 		if (!verbose || Message.verbose)
 			System.out.println("NodeProxy (" + this + "): " + msg);
 	}
 	
+	/** Performs the println operation. */
 	public void println(String msg, boolean verbose, boolean ident) {
 		if (ident) {
 			this.println(msg, verbose);
@@ -1056,6 +1076,7 @@ public class NodeProxy implements Proxy, Runnable {
 	@Override
 	public String toString() { return this.toString(false); }
 	
+	/** Performs the toString operation. */
 	public String toString(boolean showStat) {
 		String s = this.label;
 		

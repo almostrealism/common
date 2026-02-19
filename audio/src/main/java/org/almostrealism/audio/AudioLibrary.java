@@ -183,6 +183,7 @@ public class AudioLibrary implements ConsoleFeatures {
 		start();
 	}
 
+	/** Performs the start operation. */
 	public void start() {
 		if (executor != null) return;
 
@@ -195,12 +196,14 @@ public class AudioLibrary implements ConsoleFeatures {
 		return executor == null || executor.getPriorityThreshold() >= HIGH_PRIORITY;
 	}
 
+	/** Performs the pause operation. */
 	public void pause() {
 		if (executor != null) {
 			executor.setPriorityThreshold(HIGH_PRIORITY);
 		}
 	}
 
+	/** Performs the resume operation. */
 	public void resume() {
 		executor.resumeAllTasks();
 	}
@@ -226,6 +229,7 @@ public class AudioLibrary implements ConsoleFeatures {
 	public int getTotalJobs() { return totalJobs; }
 	public int getPendingJobs() { return queue.size(); }
 
+	/** Performs the allDetails operation. */
 	public Stream<WaveDetails> allDetails() {
 		return new ArrayList<>(info.keySet()).stream().map(info::get).filter(Objects::nonNull);
 	}
@@ -327,38 +331,47 @@ public class AudioLibrary implements ConsoleFeatures {
 		info.put(details.getIdentifier(), details);
 	}
 
+	/** Performs the getDetailsNow operation. */
 	public Optional<WaveDetails> getDetailsNow(String key) {
 		return getDetailsNow(new FileWaveDataProvider(key));
 	}
 
+	/** Performs the getDetailsNow operation. */
 	public Optional<WaveDetails> getDetailsNow(String key, boolean persistent) {
 		return getDetailsNow(new FileWaveDataProvider(key), persistent);
 	}
 
+	/** Performs the getDetailsNow operation. */
 	public Optional<WaveDetails> getDetailsNow(WaveDataProvider provider) {
 		return getDetailsNow(provider, false);
 	}
 
+	/** Performs the getDetailsNow operation. */
 	public Optional<WaveDetails> getDetailsNow(WaveDataProvider provider, boolean persistent) {
 		return Optional.ofNullable(getDetails(provider, persistent, DEFAULT_PRIORITY).getNow(null));
 	}
 
+	/** Performs the getDetailsAwait operation. */
 	public WaveDetails getDetailsAwait(String key, boolean persistent) {
 		return getDetailsAwait(new FileWaveDataProvider(key), persistent);
 	}
 
+	/** Performs the getDetailsAwait operation. */
 	public WaveDetails getDetailsAwait(WaveDataProvider provider) {
 		return getDetailsAwait(provider, false);
 	}
 
+	/** Performs the getDetailsAwait operation. */
 	public WaveDetails getDetailsAwait(WaveDataProvider provider, long timeout) {
 		return getDetailsAwait(provider, false, OptionalLong.of(timeout));
 	}
 
+	/** Performs the getDetailsAwait operation. */
 	public WaveDetails getDetailsAwait(WaveDataProvider provider, boolean persistent) {
 		return getDetailsAwait(provider, persistent, OptionalLong.empty());
 	}
 
+	/** Performs the getDetailsAwait operation. */
 	public WaveDetails getDetailsAwait(WaveDataProvider provider, boolean persistent, OptionalLong timeout) {
 		try {
 			CompletableFuture<WaveDetails> future = getDetails(provider, persistent, HIGH_PRIORITY);
@@ -376,10 +389,12 @@ public class AudioLibrary implements ConsoleFeatures {
 		}
 	}
 
+	/** Performs the getDetails operation. */
 	public void getDetails(String file, Consumer<WaveDetails> consumer, boolean priority) {
 		getDetails(new FileWaveDataProvider(file), consumer, priority);
 	}
 
+	/** Performs the getDetails operation. */
 	public void getDetails(WaveDataProvider provider, Consumer<WaveDetails> consumer, boolean priority) {
 		getDetails(provider, false, priority ? HIGH_PRIORITY : DEFAULT_PRIORITY).thenAccept(consumer);
 	}
@@ -442,29 +457,35 @@ public class AudioLibrary implements ConsoleFeatures {
 		}
 	}
 
+	/** Performs the isComplete operation. */
 	public boolean isComplete(WaveDetails details) {
 		return details != null &&
 				details.getFreqData() != null &&
 				details.getFeatureData() != null;
 	}
 
+	/** Performs the getSimilarities operation. */
 	public Map<String, Double> getSimilarities(String key) {
 		return getSimilarities(new FileWaveDataProvider(key));
 	}
 
+	/** Performs the getSimilarities operation. */
 	public Map<String, Double> getSimilarities(WaveDetails details) {
 		return computeSimilarities(details).getSimilarities();
 	}
 
+	/** Performs the getSimilarities operation. */
 	public Map<String, Double> getSimilarities(WaveDataProvider provider) {
 		return computeSimilarities(getDetailsAwait(provider, false)).getSimilarities();
 	}
 
+	/** Performs the resetSimilarities operation. */
 	public void resetSimilarities() {
 		getAllDetails().forEach(d -> d.getSimilarities().clear());
 		// log("Similarities reset");
 	}
 
+	/** Performs the processJob operation. */
 	protected WaveDetails processJob(WaveDetailsJob job) {
 		if (job == null) return null;
 
@@ -475,10 +496,12 @@ public class AudioLibrary implements ConsoleFeatures {
 		}
 	}
 
+	/** Performs the submitJob operation. */
 	protected WaveDetailsJob submitJob(WaveDataProvider provider, boolean persistent, double priority) {
 		return submitJob(new WaveDetailsJob(this::processJob, provider, persistent, priority));
 	}
 
+	/** Performs the submitJob operation. */
 	protected WaveDetailsJob submitJob(WaveDetailsJob job) {
 		if (job.getTarget() != null) {
 			identifiers.computeIfAbsent(job.getTarget().getKey(), k -> job.getTarget().getIdentifier());
@@ -489,6 +512,7 @@ public class AudioLibrary implements ConsoleFeatures {
 		return job;
 	}
 
+	/** Performs the getProgress operation. */
 	public double getProgress() {
 		int totalJobs = getTotalJobs();
 		int queueSize = getPendingJobs();
@@ -506,6 +530,7 @@ public class AudioLibrary implements ConsoleFeatures {
 		return progress;
 	}
 
+	/** Performs the reportProgress operation. */
 	protected void reportProgress() {
 		if (progressListener == null) return;
 		progressListener.accept(getProgress());
@@ -513,6 +538,7 @@ public class AudioLibrary implements ConsoleFeatures {
 
 	public void stop() { stop(5); }
 
+	/** Performs the stop operation. */
 	public void stop(int timeout) {
 		try {
 			queue.clear();
@@ -529,12 +555,14 @@ public class AudioLibrary implements ConsoleFeatures {
 		}
 	}
 
+	/** Performs the computeDetails operation. */
 	protected WaveDetails computeDetails(WaveDataProvider provider, WaveDetails existing, boolean persistent) {
 		WaveDetails details = factory.forProvider(provider, existing);
 		details.setPersistent((existing != null && existing.isPersistent()) || persistent);
 		return details;
 	}
 
+	/** Performs the computeSimilarities operation. */
 	protected WaveDetails computeSimilarities(WaveDetails details) {
 		try {
 			allDetails()
@@ -560,6 +588,7 @@ public class AudioLibrary implements ConsoleFeatures {
 		return details;
 	}
 
+	/** Performs the refresh operation. */
 	public CompletableFuture<Void> refresh() {
 		try {
 			CompletableFuture<Void> future = new CompletableFuture<>();
@@ -594,6 +623,7 @@ public class AudioLibrary implements ConsoleFeatures {
 		}
 	}
 
+	/** Performs the cleanup operation. */
 	public void cleanup(Predicate<String> preserve) {
 		// Identify current library files
 		Set<String> activeIds = root.children()

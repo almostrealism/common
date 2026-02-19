@@ -45,7 +45,7 @@ public class Qwen3InferenceProfileTest extends TestSuiteBase implements ConsoleF
 	 * Vocab is reduced to 1000 to keep memory manageable; the final dense
 	 * projection scaling can be extrapolated linearly.</p>
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void profileInference() throws IOException {
 		new File(RESULTS_DIR).mkdirs();
 		Console.root().addListener(OutputFeatures.fileOutput(LOG_PATH));

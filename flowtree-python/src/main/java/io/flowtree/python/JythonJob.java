@@ -27,6 +27,7 @@ import java.util.Base64;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 
+/** The JythonJob class. */
 public class JythonJob implements Job {
 	private static final ThreadLocal<PythonInterpreter> interpreters = new ThreadLocal<>();
 
@@ -85,6 +86,7 @@ public class JythonJob implements Job {
 		}
 	}
 
+	/** The Factory class. */
 	public static class Factory extends AbstractJobFactory {
 		public Factory() { super(KeyUtils.generateKey()); }
 
@@ -109,6 +111,7 @@ public class JythonJob implements Job {
 		}
 	}
 
+	/** Performs the getInterpreter operation. */
 	protected static PythonInterpreter getInterpreter() {
 		if (interpreters.get() == null) {
 			interpreters.set(new PythonInterpreter());
@@ -117,6 +120,7 @@ public class JythonJob implements Job {
 		return interpreters.get();
 	}
 
+	/** Performs the execute operation. */
 	public static String execute(String instruction) {
 		StringBuilder buf = new StringBuilder();
 		getInterpreter().setOut(new FunctionalWriter(buf::append));
@@ -125,6 +129,7 @@ public class JythonJob implements Job {
 		return buf.toString();
 	}
 
+	/** Performs the closeInterpreter operation. */
 	public static void closeInterpreter() {
 		PythonInterpreter interpreter = interpreters.get();
 

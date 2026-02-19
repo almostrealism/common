@@ -36,7 +36,7 @@ public class Qwen3BenchmarkTest extends TestSuiteBase implements ConsoleFeatures
 	/**
 	 * Run benchmark measuring time per token for autoregressive generation.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void benchmarkGeneration() throws Exception {
 		Assume.assumeTrue("Skipping comparison test in pipeline profile", TestUtils.isComparisonTestEnabled());
 
@@ -53,7 +53,7 @@ public class Qwen3BenchmarkTest extends TestSuiteBase implements ConsoleFeatures
 	 * Benchmark with reduced context length to measure scope optimization impact.
 	 * Uses 128 positions instead of 32K - should be much faster if our hypothesis is correct.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void benchmarkGenerationReducedContext() throws Exception {
 		Assume.assumeTrue("Skipping comparison test in pipeline profile", TestUtils.isComparisonTestEnabled());
 

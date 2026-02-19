@@ -174,6 +174,7 @@ public class WavetableCell extends CollectionTemporalCellAdapter implements Samp
 		this.waveLength = hertz / (double) OutputLine.sampleRate;
 	}
 
+	/** Performs the setFreq operation. */
 	public Supplier<Runnable> setFreq(Producer<PackedCollection> hertz) {
 		return a(data.getWaveLength(), divide(hertz, c(OutputLine.sampleRate)));
 	}
@@ -182,6 +183,7 @@ public class WavetableCell extends CollectionTemporalCellAdapter implements Samp
 		this.noteLength = toFramesMilli(msec);
 	}
 
+	/** Performs the setNoteLength operation. */
 	public Supplier<Runnable> setNoteLength(Producer<PackedCollection> noteLength) {
 		return a(data.getNoteLength(), toFramesMilli(noteLength));
 	}
@@ -190,6 +192,7 @@ public class WavetableCell extends CollectionTemporalCellAdapter implements Samp
 
 	public void setAmplitude(double amp) { amplitude = amp; }
 
+	/** Performs the setAmplitude operation. */
 	public Supplier<Runnable> setAmplitude(Producer<PackedCollection> amp) {
 		return a(data.getAmplitude(), amp);
 	}

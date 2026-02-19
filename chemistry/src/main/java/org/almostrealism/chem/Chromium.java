@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
+/** The Chromium class. */
 public class Chromium implements Element {
 	public int getAtomicNumber() { return 24; }
 

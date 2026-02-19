@@ -19,6 +19,7 @@ package io.almostrealism.collect;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.Mask;
 
+/** The WeightedSumDeltaExpression class. */
 public class WeightedSumDeltaExpression extends CollectionExpressionAdapter {
 
 	private final TraversalPolicy resultShape;

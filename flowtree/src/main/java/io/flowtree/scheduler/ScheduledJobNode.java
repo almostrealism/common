@@ -25,6 +25,7 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
+/** The ScheduledJobNode class. */
 public class ScheduledJobNode extends Node {
 	ScheduledThreadPoolExecutor exec;
 
@@ -47,8 +48,11 @@ public class ScheduledJobNode extends Node {
 		}
 	}
 
+	/** The FixedRate interface. */
 	public interface FixedRate {
+		/** Performs the getFrequency operation. */
 		Frequency getFrequency();
+		/** Performs the getInitialDelay operation. */
 		long getInitialDelay();
 	}
 }

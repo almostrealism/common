@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
+/** The Tungsten class. */
 public class Tungsten implements Element {
 	public int getAtomicNumber() { return 74; }
 	

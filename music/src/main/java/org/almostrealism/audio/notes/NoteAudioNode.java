@@ -21,6 +21,7 @@ import io.almostrealism.relation.Tree;
 import io.almostrealism.uml.Named;
 import org.almostrealism.audio.data.DataResource;
 
+/** This type. */
 @JsonTypeInfo(use = JsonTypeInfo.Id.CLASS, include = JsonTypeInfo.As.PROPERTY, property = "@type")
 public interface NoteAudioNode extends Tree<NoteAudioNode>, DataResource, Named {
 	@Override
@@ -30,6 +31,7 @@ public interface NoteAudioNode extends Tree<NoteAudioNode>, DataResource, Named 
 				.reduce("", (a, b) -> a + b);
 	}
 
+	/** Performs the setIdentifier operation. */
 	default void setIdentifier(String identifier) {
 		// Most implementations will compute the identifier from the children
 		// and assign it is not necessary, even though it is useful for it

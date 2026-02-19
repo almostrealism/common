@@ -27,6 +27,7 @@ import java.util.Optional;
 import java.util.function.Function;
 import java.util.stream.IntStream;
 
+/** The MatrixFunctionEvaluator class. */
 public class MatrixFunctionEvaluator<I, O> implements ConsoleFeatures {
 	private ExpressionMatrix<I> input;
 	private Function<Expression<I>, Expression<O>> function;
@@ -45,6 +46,7 @@ public class MatrixFunctionEvaluator<I, O> implements ConsoleFeatures {
 		return function;
 	}
 
+	/** Performs the attemptSequence operation. */
 	public IndexSequence attemptSequence() {
 		// Determine if the result is dependent on the row and column,
 		// but no other variable
@@ -65,6 +67,7 @@ public class MatrixFunctionEvaluator<I, O> implements ConsoleFeatures {
 
 	public boolean isMultiRow() { return true; }
 
+	/** Performs the setupRowDuplicates operation. */
 	protected void setupRowDuplicates(boolean rowIndependent) {
 		resultRowDuplicates = new int[input.getRowCount()];
 
@@ -76,10 +79,12 @@ public class MatrixFunctionEvaluator<I, O> implements ConsoleFeatures {
 
 	public int[] getResultRowDuplicates() { return resultRowDuplicates; }
 
+	/** Performs the valueAt operation. */
 	public Expression<O> valueAt(int i, int j) {
 		return function.apply(input.valueAt(i, j));
 	}
 
+	/** Performs the getMaskResult operation. */
 	public ExpressionMatrix<O> getMaskResult() {
 		if (!ExpressionMatrix.enableMaskMatrix) return null;
 
@@ -110,6 +115,7 @@ public class MatrixFunctionEvaluator<I, O> implements ConsoleFeatures {
 		return new MaskMatrix<>(input.getRow(), input.getColumn(), mask, value);
 	}
 
+	/** Performs the getResult operation. */
 	public ExpressionMatrix<O> getResult() {
 		ExpressionMatrix<O> maskResult = getMaskResult();
 		if (maskResult != null) return maskResult;
@@ -161,6 +167,7 @@ public class MatrixFunctionEvaluator<I, O> implements ConsoleFeatures {
 	@Override
 	public Console console() { return Scope.console; }
 
+	/** Performs the create operation. */
 	public static <I, O> MatrixFunctionEvaluator<I, O> create(ExpressionMatrix<I> input,
 															  Function<Expression<I>, Expression<O>> function) {
 		if (input instanceof SequenceMatrix) {
@@ -170,6 +177,7 @@ public class MatrixFunctionEvaluator<I, O> implements ConsoleFeatures {
 		}
 	}
 
+	/** Performs the apply operation. */
 	public static <I, O> ExpressionMatrix<O> apply(ExpressionMatrix<I> input, Function<Expression<I>, Expression<O>> function) {
 		return create(input, function).getResult();
 	}

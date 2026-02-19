@@ -18,11 +18,14 @@ package io.almostrealism.code;
 
 import io.almostrealism.concurrent.Semaphore;
 
+/** The Execution interface. */
 public interface Execution {
+	/** Performs the accept operation. */
 	default Semaphore accept(Object[] args) {
 		return accept(args, null);
 	}
 
+	/** Performs the accept operation. */
 	Semaphore accept(Object[] args, Semaphore dependsOn);
 
 	default boolean isDestroyed() {

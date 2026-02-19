@@ -5,6 +5,7 @@ import org.almostrealism.algebra.Pair;
 import org.almostrealism.color.RGB;
 import org.almostrealism.physics.PhysicalConstants;
 
+/** The Photon class. */
 public class Photon extends Pair implements PhysicalConstants {
 	public Photon(double wavelength, double phase) {
 		setWavelength(wavelength);
@@ -27,15 +28,18 @@ public class Photon extends Pair implements PhysicalConstants {
 	 */
 	public double getEnergy() { return HC / getWavelength(); }
 
+	/** Performs the merge operation. */
 	public static Evaluable<RGB> merge(Photon... p) {
 		// TODO Combine Photons taking phase into account so interference patterns are reproduced
 		throw new RuntimeException("Not implemented");
 	}
 
+	/** Performs the withEnergy operation. */
 	public static Photon withEnergy(double e) {
 		return withEnergy(e, (StrictMath.random() * 2.0) - 1.0);
 	}
 
+	/** Performs the withEnergy operation. */
 	public static Photon withEnergy(double e, double phase) {
 		return new Photon(HC / e, phase);
 	}

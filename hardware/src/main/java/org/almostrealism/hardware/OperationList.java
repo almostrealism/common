@@ -804,11 +804,13 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 				.collect(Collectors.toList());
 	}
 
+	/** Performs the isFunctionallyEmpty operation. */
 	public boolean isFunctionallyEmpty() {
 		if (isEmpty()) return true;
 		return stream().noneMatch(o -> !(o instanceof OperationList) || !((OperationList) o).isFunctionallyEmpty());
 	}
 
+	/** Performs the getDepth operation. */
 	public int getDepth() {
 		if (isFunctionallyEmpty()) return 0;
 
@@ -816,6 +818,7 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 				.mapToInt(OperationList::getDepth).max().orElse(0) + 1;
 	}
 
+	/** Performs the flatten operation. */
 	public OperationList flatten() {
 		OperationList flat = stream()
 				.flatMap(o -> {

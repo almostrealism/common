@@ -52,6 +52,7 @@ public interface ADSREnvelopeData extends CodeFeatures {
 	int PHASE_SUSTAIN = 3;
 	int PHASE_RELEASE = 4;
 
+	/** Performs the get operation. */
 	PackedCollection get(int index);
 
 	default PackedCollection attackTime() { return get(0); }

@@ -78,7 +78,7 @@ public class AssignmentStatementReductionTests extends TestSuiteBase {
 	/**
 	 * Verifies that shapes smaller than preferredStatements are not adjusted.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testSmallShapeNoAdjustment() {
 		int size = 64;
 		assertTrue("Test assumes size < preferredStatements",
@@ -102,7 +102,7 @@ public class AssignmentStatementReductionTests extends TestSuiteBase {
 	/**
 	 * Verifies that large shapes trigger traversal adjustment to reduce memLength.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testLargeShapeAdjustment() {
 		int size = 1024;
 		assertTrue("Test assumes size > preferredStatements",
@@ -129,7 +129,7 @@ public class AssignmentStatementReductionTests extends TestSuiteBase {
 	/**
 	 * Tests shape exactly at the preferredStatements boundary.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testExactBoundary() {
 		int size = ScopeSettings.preferredStatements;
 
@@ -151,7 +151,7 @@ public class AssignmentStatementReductionTests extends TestSuiteBase {
 	/**
 	 * Tests shape just over the boundary triggers adjustment.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testJustOverBoundary() {
 		int size = ScopeSettings.preferredStatements + 1;
 
@@ -172,7 +172,7 @@ public class AssignmentStatementReductionTests extends TestSuiteBase {
 	/**
 	 * Tests multi-dimensional shapes for correct axis selection.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testMultiDimensionalShape() {
 		// Shape (4, 256) at axis=0 has size=1024, at axis=1 has size=256
 		int dim0 = 4;
@@ -202,7 +202,7 @@ public class AssignmentStatementReductionTests extends TestSuiteBase {
 	/**
 	 * Tests deep multi-dimensional shapes requiring multiple axis adjustments.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testDeepMultiDimensionalShape() {
 		// Shape (2, 4, 256):
 		// at axis=0 -> size=2048
@@ -236,7 +236,7 @@ public class AssignmentStatementReductionTests extends TestSuiteBase {
 	/**
 	 * Verifies functional correctness for small shapes.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testFunctionalCorrectnessSmall() {
 		int size = 64;
 
@@ -255,7 +255,7 @@ public class AssignmentStatementReductionTests extends TestSuiteBase {
 	/**
 	 * Verifies functional correctness for large shapes with statement reduction.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testFunctionalCorrectnessLarge() {
 		int size = 1024;
 
@@ -274,7 +274,7 @@ public class AssignmentStatementReductionTests extends TestSuiteBase {
 	/**
 	 * Verifies functional correctness for multi-dimensional shapes.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testFunctionalCorrectnessMultiDimensional() {
 		TraversalPolicy shape = shape(8, 128);
 		int totalSize = shape.getTotalSize();
@@ -294,7 +294,7 @@ public class AssignmentStatementReductionTests extends TestSuiteBase {
 	/**
 	 * Tests very large shapes that would far exceed limits.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testVeryLargeShape() {
 		int size = 8192;
 		assertTrue("Test assumes size >> preferredStatements",
@@ -329,7 +329,7 @@ public class AssignmentStatementReductionTests extends TestSuiteBase {
 	/**
 	 * Verifies feature respects preferredStatements configuration.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testPreferredStatementsConfiguration() {
 		int originalPreferred = ScopeSettings.preferredStatements;
 
@@ -361,7 +361,7 @@ public class AssignmentStatementReductionTests extends TestSuiteBase {
 	/**
 	 * Compares memLength before and after adjustment threshold.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testMemLengthComparison() {
 		int smallSize = ScopeSettings.preferredStatements / 2;
 		int largeSize = ScopeSettings.preferredStatements * 4;
@@ -392,7 +392,7 @@ public class AssignmentStatementReductionTests extends TestSuiteBase {
 	/**
 	 * Verifies that the product of count and memLength always equals the total size.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testCountMemLengthProduct() {
 		int[] sizes = {64, 128, 256, 512, 1024, 2048, 4096};
 

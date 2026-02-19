@@ -50,10 +50,12 @@ public class InvalidValueException extends HardwareException {
 		super(cause.getMessage() + " (Destination Total Memory Length " + size + ")", cause);
 	}
 
+	/** Performs the message operation. */
 	protected static String message(int srcIndex, int destIndex, int length) {
 		return "Source Index " + srcIndex + ", Destination Index " + destIndex + ", Length " + length;
 	}
 
+	/** Performs the from operation. */
 	public static Optional<HardwareException> from(CLException e, int srcIndex, int destIndex, int length) {
 		if ("CL_INVALID_VALUE".equals(e.getMessage())) {
 			return Optional.of(new InvalidValueException(e, srcIndex, destIndex, length));

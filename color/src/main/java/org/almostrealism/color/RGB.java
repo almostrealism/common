@@ -75,14 +75,21 @@ import java.util.function.BiFunction;
  * @author Michael Murray
  */
 public class RGB extends PackedCollection implements Externalizable, Cloneable {
+	/** The Data interface. */
 	protected interface Data extends MemoryData {
+		/** Performs the add operation. */
 		void add(int i, double r);
+		/** Performs the scale operation. */
 		void scale(int i, double r);
 
+		/** Performs the sum operation. */
 		double sum();
+		/** Performs the write operation. */
 		void write(ObjectOutput out) throws IOException;
+		/** Performs the read operation. */
 		void read(ObjectInput in) throws IOException;
 		
+		/** Performs the getShape operation. */
 		TraversalPolicy getShape();
 	}
 
@@ -557,6 +564,7 @@ public class RGB extends PackedCollection implements Externalizable, Cloneable {
 		return new RGB(r, g, b);
 	}
 	
+	/** Performs the encode operation. */
 	public char[] encode() {
 		long lr = Double.doubleToRawLongBits(this.getRed());
 		long lg = Double.doubleToRawLongBits(this.getGreen());
@@ -576,6 +584,7 @@ public class RGB extends PackedCollection implements Externalizable, Cloneable {
 	
 	public static RGB decode(char data[]) { return RGB.decode(data, 0); }
 	
+	/** Performs the decode operation. */
 	public static RGB decode(char data[], int index) {
 		long lr = 0, lg = 0, lb = 0;
 		

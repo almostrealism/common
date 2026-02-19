@@ -23,6 +23,7 @@ import java.util.List;
 import java.util.OptionalDouble;
 import java.util.OptionalLong;
 
+/** The Min class. */
 public class Min extends BinaryExpression<Double> {
 	protected Min(Expression<Double> a, Expression<Double> b) {
 		super(Double.class, a, b);
@@ -60,12 +61,14 @@ public class Min extends BinaryExpression<Double> {
 		return Min.of(children.get(0), children.get(1));
 	}
 
+	/** Performs the of operation. */
 	public static Expression<Double> of(Expression<?> a, Expression<?> b) {
 		// TODO
 //		return ExpressionCache.match(create(a, b));
 		return create(a, b);
 	}
 
+	/** Performs the create operation. */
 	public static Expression create(Expression<?> a, Expression<?> b) {
 		OptionalDouble aVal = a.doubleValue();
 		OptionalDouble bVal = b.doubleValue();

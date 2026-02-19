@@ -16,7 +16,9 @@
 
 package io.almostrealism.resource;
 
+/** The Permissions class. */
 public class Permissions {
+    /** The Setting enumeration. */
     public enum Setting {
         EMPTY, EXECUTE, WRITE, WRITE_EXECUTE, READ, READ_EXECUTE, READ_WRITE, READ_WRITE_EXECUTE
 	}
@@ -48,6 +50,7 @@ public class Permissions {
     public Setting getGroupSetting() { return group; }
     public Setting getOthersSetting() { return others; }
 
+    /** Performs the update operation. */
     public void update(Permissions p) {
         this.owner = p.getOwner();
         this.user = p.getUserSetting();

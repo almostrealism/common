@@ -25,8 +25,10 @@ import org.almostrealism.model.SequentialBlock;
 
 import java.util.List;
 
+/** The DiffusionTransformerFeatures interface. */
 public interface DiffusionTransformerFeatures extends AttentionFeatures, DiffusionFeatures {
 
+	/** Performs the fourierFeatures operation. */
 	default Block fourierFeatures(int batchSize, int inFeatures, int outFeatures, PackedCollection learnedWeights) {
 		// Output dim should be even for sin/cos pairs
 		if (outFeatures % 2 != 0) {
@@ -54,6 +56,7 @@ public interface DiffusionTransformerFeatures extends AttentionFeatures, Diffusi
 				List.of(learnedWeights));
 	}
 
+	/** Performs the timestepEmbedding operation. */
 	default Block timestepEmbedding(int batchSize, int embedDim,
 									PackedCollection timestepFeaturesWeight,
 									PackedCollection weight0, PackedCollection bias0,

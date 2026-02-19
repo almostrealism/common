@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
+/** The Oxygen class. */
 public class Oxygen implements Element {
 	public int getAtomicNumber() { return 8; }
 	

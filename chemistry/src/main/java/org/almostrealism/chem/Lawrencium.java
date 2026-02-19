@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
+/** The Lawrencium class. */
 public class Lawrencium implements Element {
 	public int getAtomicNumber() { return 103; }
 	

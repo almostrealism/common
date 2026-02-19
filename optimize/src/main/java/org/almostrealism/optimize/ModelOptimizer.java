@@ -552,6 +552,7 @@ public class ModelOptimizer implements CodeFeatures {
 		return count > 0 ? totalLoss / count : Double.NaN;
 	}
 
+	/** Performs the logIteration operation. */
 	protected boolean logIteration(int iteration) {
 		return logFrequency > 0 && iteration % logFrequency == 0;
 	}

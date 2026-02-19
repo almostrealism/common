@@ -21,6 +21,7 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 
+/** The AbstractJobFactory class. */
 public abstract class AbstractJobFactory implements JobFactory {
 	private String taskId;
 	private String name;

@@ -19,6 +19,7 @@ package org.almostrealism.audio.data;
 import java.util.function.DoubleSupplier;
 import java.util.function.Function;
 
+/** The ParameterFunction class. */
 public class ParameterFunction implements Function<ParameterSet, Double> {
 	private double x, y, z, c;
 
@@ -36,11 +37,13 @@ public class ParameterFunction implements Function<ParameterSet, Double> {
 		return Math.sin(2 * Math.PI * (params.getX() * getX() + params.getY() * getY() + params.getZ() * getZ() + getC()));
 	}
 
+	/** Performs the positive operation. */
 	public Function<ParameterSet, Double> positive() {
 		// TODO  Should this wrap instead of being continuous?
 		return (ParameterSet params) -> Math.abs(apply(params));
 	}
 
+	/** Performs the power operation. */
 	public Function<ParameterSet, Double> power(double base, int unit, int offset) {
 		return (ParameterSet params) -> {
 			double selection = apply(params);
@@ -62,10 +65,12 @@ public class ParameterFunction implements Function<ParameterSet, Double> {
 	public double getC() { return c; }
 	public void setC(double c) { this.c = c; }
 
+	/** Performs the random operation. */
 	public static ParameterFunction random() {
 		return random(2.0);
 	}
 
+	/** Performs the random operation. */
 	public static ParameterFunction random(double scale) {
 		DoubleSupplier rand = () -> (Math.random() - 0.5) * 2.0 * scale;
 		return new ParameterFunction(rand.getAsDouble(), rand.getAsDouble(), rand.getAsDouble(), rand.getAsDouble());

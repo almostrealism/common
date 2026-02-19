@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
+/** The Phosphorus class. */
 public class Phosphorus implements Element {
 	public int getAtomicNumber() { return 15; }
 	

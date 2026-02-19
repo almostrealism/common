@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
+/** The Cadmium class. */
 public class Cadmium implements Element {
 	public int getAtomicNumber() { return 48; }
 

@@ -221,6 +221,7 @@ import java.util.stream.IntStream;
 public interface HardwareFeatures extends MemoryDataFeatures, ConsoleFeatures {
 	boolean outputMonitoring = SystemUtils.isEnabled("AR_HARDWARE_OUTPUT_MONITORING").orElse(false);
 
+	/** Performs the loop operation. */
 	default Supplier<Runnable> loop(Computation<Void> c, int iterations) {
 		if (c instanceof OperationList && !((OperationList) c).isComputation()) {
 			return () -> {

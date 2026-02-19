@@ -26,6 +26,7 @@ import java.util.OptionalInt;
 
 // TODO  Perhaps this should extend UniformCollectionExpression
 // TODO  (it is a uniform translation of the input expression)
+/** The ConditionalIndexExpression class. */
 public class ConditionalIndexExpression extends OperandCollectionExpression {
 	public ConditionalIndexExpression(TraversalPolicy shape, TraversableExpression in) {
 		super(null, shape, in);

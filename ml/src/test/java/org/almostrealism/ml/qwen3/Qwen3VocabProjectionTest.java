@@ -39,7 +39,7 @@ public class Qwen3VocabProjectionTest extends TestSuiteBase implements LayerFeat
 	 * <p>This test validates that large vocab projection uses efficient
 	 * MemoryDataCopy for layer output instead of generating unrolled code.</p>
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testLargeVocabProjection() {
 		int inputDim = 896;  // Qwen3-0.6B dim
 		int vocabSize = 151936;
@@ -96,7 +96,7 @@ public class Qwen3VocabProjectionTest extends TestSuiteBase implements LayerFeat
 	/**
 	 * Test with smaller vocab to establish baseline.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testSmallVocabProjection() {
 		int inputDim = 896;
 		int vocabSize = 1000;
@@ -141,7 +141,7 @@ public class Qwen3VocabProjectionTest extends TestSuiteBase implements LayerFeat
 	/**
 	 * Incrementally test larger vocab sizes to find the breaking point.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void testProgressiveVocabSizes() {
 		int inputDim = 896;
 		int[] vocabSizes = {1000, 5000, 10000, 25000, 50000, 100000, 151936};

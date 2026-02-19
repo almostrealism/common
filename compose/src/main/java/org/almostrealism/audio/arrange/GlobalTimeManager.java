@@ -79,6 +79,7 @@ public class GlobalTimeManager implements Setup, Temporal, ConsoleFeatures {
 		return clock;
 	}
 
+	/** Performs the addReset operation. */
 	public void addReset(int measure) {
 		if (resets.size() >= MAX_RESETS) throw new IllegalArgumentException("Maximum number of resets exceeded");
 		resets.add(measure);

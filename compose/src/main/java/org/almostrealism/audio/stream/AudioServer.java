@@ -30,6 +30,7 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.util.Base64;
 
+/** The AudioServer class. */
 public class AudioServer implements HttpHandler, CodeFeatures {
 	private final FrequencyCache<String, HttpAudioHandler> handlers;
 
@@ -44,6 +45,7 @@ public class AudioServer implements HttpHandler, CodeFeatures {
 		server = HttpServer.create(new InetSocketAddress(port), 20);
 	}
 
+	/** Performs the start operation. */
 	public void start() throws IOException {
 		server.createContext("/", this);
 		server.start();
@@ -51,6 +53,7 @@ public class AudioServer implements HttpHandler, CodeFeatures {
 
 	public int getPort() { return server.getAddress().getPort();}
 
+	/** Performs the addStream operation. */
 	public String addStream(String key, WaveData data) {
 		key = Base64.getEncoder().encodeToString(key.getBytes());
 
@@ -63,11 +66,13 @@ public class AudioServer implements HttpHandler, CodeFeatures {
 		return key;
 	}
 
+	/** Performs the addStream operation. */
 	public void addStream(String channel, AudioProcessor source,
 						  	int totalFrames, int sampleRate) {
 		addStream(channel, new AudioStreamHandler(source, totalFrames, sampleRate));
 	}
 
+	/** Performs the addStream operation. */
 	public void addStream(String channel, HttpAudioHandler handler) {
 		if (containsStream(channel)) {
 			throw new IllegalArgumentException("Stream already exists");
@@ -76,6 +81,7 @@ public class AudioServer implements HttpHandler, CodeFeatures {
 		handlers.put(channel, handler);
 	}
 
+	/** Performs the containsStream operation. */
 	public boolean containsStream(String channel) {
 		return handlers.containsKey(channel);
 	}

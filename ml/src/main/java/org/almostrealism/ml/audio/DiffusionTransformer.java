@@ -169,6 +169,7 @@ public class DiffusionTransformer implements DiffusionModel, DiffusionTransforme
 		// Model is built lazily in getModel() to allow subclass fields to initialize first
 	}
 
+	/** Performs the buildModel operation. */
 	protected Model buildModel() {
 		// Create model with input shape - [batch, channels, sequence_length]
 		Model model = new Model(shape(batchSize, ioChannels, audioSeqLen));
@@ -268,6 +269,7 @@ public class DiffusionTransformer implements DiffusionModel, DiffusionTransforme
 		return model;
 	}
 
+	/** Performs the timestampEmbedding operation. */
 	protected Block timestampEmbedding() {
 		PackedCollection timestepFeaturesWeight = createWeight("model.model.timestep_features.weight", 128, 1);
 		PackedCollection timestampEmbeddingInWeight = createWeight("model.model.to_timestep_embed.0.weight", embedDim, 256);
@@ -281,6 +283,7 @@ public class DiffusionTransformer implements DiffusionModel, DiffusionTransforme
 				timestampEmbeddingOutWeight, timestampEmbeddingOutBias);
 	}
 
+	/** Performs the prependConditioning operation. */
 	protected Block prependConditioning(Block timestampEmbed, Block globalEmbed) {
 		PackedCollection timestep = new PackedCollection(timestampEmbed.getOutputShape());
 		PackedCollection globalCond = new PackedCollection(globalEmbed.getOutputShape());
@@ -295,6 +298,7 @@ public class DiffusionTransformer implements DiffusionModel, DiffusionTransforme
 						concat(1, add(cp(globalCond), cp(timestep)).reshape(batchSize, 1, embedDim), c(in)));
 	}
 
+	/** Performs the addTransformerBlocks operation. */
 	protected void addTransformerBlocks(SequentialBlock main,
 										Block timestepEmbed,
 										Block condEmbed,
@@ -527,10 +531,12 @@ public class DiffusionTransformer implements DiffusionModel, DiffusionTransforme
 		}
 	}
 
+	/** Performs the createWeight operation. */
 	protected PackedCollection createWeight(String key, int... dims) {
 		return createWeight(key, shape(dims));
 	}
 
+	/** Performs the createWeight operation. */
 	protected PackedCollection createWeight(String key, TraversalPolicy expectedShape) {
 		if (stateDictionary == null) {
 			return new PackedCollection(expectedShape);
@@ -555,6 +561,7 @@ public class DiffusionTransformer implements DiffusionModel, DiffusionTransforme
 		return weight.range(expectedShape);
 	}
 
+	/** Performs the validateWeights operation. */
 	protected void validateWeights() {
 		unusedWeights.stream().findFirst().ifPresent(unusedWeight -> {
 			throw new IllegalArgumentException(unusedWeight + " weights were not used by the model");

@@ -18,8 +18,11 @@ package org.almostrealism.graph;
 
 import io.almostrealism.relation.Producer;
 
+/** The Source interface. */
 public interface Source<T> {
+	/** Performs the next operation. */
 	Producer<T> next();
 
+	/** Performs the isDone operation. */
 	boolean isDone();
 }

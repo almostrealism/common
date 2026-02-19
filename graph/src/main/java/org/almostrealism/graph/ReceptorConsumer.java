@@ -21,6 +21,7 @@ import io.almostrealism.relation.Producer;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
+/** The ReceptorConsumer class. */
 public class ReceptorConsumer<T> implements Receptor<T> {
 	private Consumer<T> consumer;
 

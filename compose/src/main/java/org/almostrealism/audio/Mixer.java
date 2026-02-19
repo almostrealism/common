@@ -21,6 +21,7 @@ import org.almostrealism.audio.line.OutputLine;
 import org.almostrealism.graph.CollectionCachedStateCell;
 import org.almostrealism.graph.SummationCell;
 
+/** The Mixer class. */
 public class Mixer implements CellFeatures {
 	private final SummationCell[] channels;
 	private final CellList cells;
@@ -37,6 +38,7 @@ public class Mixer implements CellFeatures {
 
 	public int getChannelCount() { return channels.length; }
 
+	/** Performs the getChannel operation. */
 	public CollectionCachedStateCell getChannel(int i) {
 		return channels[i];
 	}
@@ -45,6 +47,7 @@ public class Mixer implements CellFeatures {
 
 	public SummationCell getOutput() { return (SummationCell) cells.get(0); }
 
+	/** Performs the buffer operation. */
 	public BufferedOutputScheduler buffer(OutputLine out) {
 		return getCells().buffer(out);
 	}

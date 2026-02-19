@@ -21,6 +21,7 @@ import java.awt.*;
 import java.awt.image.PixelGrabber;
 import java.net.URL;
 
+/** The URLImageSource class. */
 public class URLImageSource implements ImageSource {
 	private final URL url;
 	

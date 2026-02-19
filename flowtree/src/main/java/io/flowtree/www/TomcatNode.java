@@ -6,6 +6,7 @@ import org.apache.catalina.LifecycleException;
 import org.apache.catalina.startup.Tomcat;
 import org.slf4j.LoggerFactory;
 
+/** The TomcatNode class. */
 public class TomcatNode extends Node {
 	private final Tomcat httpd;
 
@@ -14,6 +15,7 @@ public class TomcatNode extends Node {
 		this.httpd = new Tomcat();
 	}
 
+	/** Performs the start operation. */
 	public Node start() {
 		try {
 			this.httpd.start();

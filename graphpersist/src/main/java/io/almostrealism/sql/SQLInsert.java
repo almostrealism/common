@@ -97,10 +97,12 @@ public class SQLInsert<V> extends SimpleUpdate<ComboPooledDataSource, String[], 
 		}
 	}
 
+	/** Performs the prepare operation. */
 	public static <V> SQLInsert<V> prepare(String query, Properties columns) {
 		return new SQLInsert(query, columns);
 	}
 	
+	/** Performs the prepare operation. */
 	public static <V> SQLInsert<V> prepare(String query, InputStream columnMap) throws IOException {
 		Properties fieldMap = new Properties();
 		fieldMap.load(columnMap);

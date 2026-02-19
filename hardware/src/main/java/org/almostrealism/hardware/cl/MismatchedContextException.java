@@ -43,6 +43,7 @@ public class MismatchedContextException extends HardwareException {
 		super(text(targetContext, actualContext), cause);
 	}
 
+	/** Performs the text operation. */
 	protected static String text(CLDataContext targetContext, CLDataContext actualContext) {
 		if (actualContext == null) {
 			return "Attempting to use " + name(targetContext) + " when no context supporting OpenCL is in effect";
@@ -51,6 +52,7 @@ public class MismatchedContextException extends HardwareException {
 		}
 	}
 
+	/** Performs the name operation. */
 	public static String name(CLDataContext ctx) {
 		String name = String.valueOf(ctx.toString());
 		if (name.contains(".")) {

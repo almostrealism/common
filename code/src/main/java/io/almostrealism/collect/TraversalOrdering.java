@@ -21,7 +21,9 @@ import io.almostrealism.expression.IntegerConstant;
 
 import java.util.OptionalInt;
 
+/** The TraversalOrdering interface. */
 public interface TraversalOrdering extends IndexSet {
+	/** Performs the indexOf operation. */
 	Expression<Integer> indexOf(Expression<Integer> idx);
 
 	@Override
@@ -29,6 +31,7 @@ public interface TraversalOrdering extends IndexSet {
 		return indexOf(index).greaterThanOrEqual(0);
 	}
 
+	/** Performs the indexOf operation. */
 	default int indexOf(int idx) {
 		return indexOf(new IntegerConstant(idx)).intValue().orElseThrow();
 	}
@@ -37,6 +40,7 @@ public interface TraversalOrdering extends IndexSet {
 		return OptionalInt.empty();
 	}
 
+	/** Performs the compose operation. */
 	default TraversalOrdering compose(TraversalOrdering other) {
 		if (other == null) {
 			return this;

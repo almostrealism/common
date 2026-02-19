@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
+/** The Protactinium class. */
 public class Protactinium implements Element {
 	public int getAtomicNumber() { return 91; }
 	

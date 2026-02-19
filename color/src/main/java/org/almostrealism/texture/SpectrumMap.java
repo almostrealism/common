@@ -49,6 +49,7 @@ public class SpectrumMap extends ProbabilityDistribution implements IntensityMap
 	public void setIntensityMap(IntensityMap m) { this.map = m; }
 	public IntensityMap getIntensityMap() { return this.map; }
 	public void setProbabilityDistribution(ProbabilityDistribution d) { this.spectra = d; }
+	/** Performs the getProbabilityDistribution operation. */
 	public ProbabilityDistribution getProbabilityDistribution() {
 		if (this.spectra == null)
 			return this;
@@ -56,14 +57,17 @@ public class SpectrumMap extends ProbabilityDistribution implements IntensityMap
 			return this.spectra;
 	}
 	
+	/** Performs the getIntensity operation. */
 	public double getIntensity(double u, double v, double w) {
 		return this.map.getIntensity(u, v, w);
 	}
 	
+	/** Performs the getSample operation. */
 	public double getSample(double u, double v, double w) {
 		return this.getSample(this.getIntensity(u, v, w));
 	}
 	
+	/** Performs the getSample operation. */
 	public double getSample(double r) {
 		if (this.spectra != null) {
 			return this.spectra.getSample(r);
@@ -72,6 +76,7 @@ public class SpectrumMap extends ProbabilityDistribution implements IntensityMap
 		}
 	}
 	
+	/** Performs the addRange operation. */
 	public void addRange(double start, double end, double p) {
 		if (this.spectra != null) {
 			this.spectra.addRange(start, end, p);
@@ -80,6 +85,7 @@ public class SpectrumMap extends ProbabilityDistribution implements IntensityMap
 		}
 	}
 	
+	/** Performs the getRanges operation. */
 	protected double[][] getRanges() {
 		if (this.spectra != null) {
 			throw new RuntimeException(new IllegalAccessException("getRanges is protected."));
@@ -88,6 +94,7 @@ public class SpectrumMap extends ProbabilityDistribution implements IntensityMap
 		}
 	}
 	
+	/** Performs the setRangeProbability operation. */
 	public void setRangeProbability(int index, double p) {
 		if (this.spectra != null) {
 			this.spectra.setRangeProbability(index, p);
@@ -96,6 +103,7 @@ public class SpectrumMap extends ProbabilityDistribution implements IntensityMap
 		}
 	}
 	
+	/** Performs the integrate operation. */
 	public double integrate(double limit) {
 		if (this.spectra != null) {
 			return this.spectra.integrate(limit);
@@ -104,6 +112,7 @@ public class SpectrumMap extends ProbabilityDistribution implements IntensityMap
 		}
 	}
 	
+	/** Performs the getIntegrated operation. */
 	public RGB getIntegrated() {
 		if (this.spectra != null) {
 			return this.spectra.getIntegrated();
@@ -112,6 +121,7 @@ public class SpectrumMap extends ProbabilityDistribution implements IntensityMap
 		}
 	}
 	
+	/** Performs the getProbability operation. */
 	public double getProbability(double x) {
 		if (this.spectra != null) {
 			return this.spectra.getProbability(x);
@@ -120,6 +130,7 @@ public class SpectrumMap extends ProbabilityDistribution implements IntensityMap
 		}
 	}
 	
+	/** Performs the getNodeCount operation. */
 	public int getNodeCount() {
 		if (this.spectra != null) {
 			return this.spectra.getNodeCount();
@@ -128,6 +139,7 @@ public class SpectrumMap extends ProbabilityDistribution implements IntensityMap
 		}
 	}
 	
+	/** Performs the contains operation. */
 	public boolean contains(double start, double end) {
 		if (this.spectra != null) {
 			return this.spectra.contains(start, end);
@@ -136,6 +148,7 @@ public class SpectrumMap extends ProbabilityDistribution implements IntensityMap
 		}
 	}
 	
+	/** Performs the loadFromFile operation. */
 	public void loadFromFile(String file, String div) throws IOException {
 		if (this.spectra != null) {
 			this.spectra.loadFromFile(file, div);
