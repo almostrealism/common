@@ -218,7 +218,7 @@ jobs:
           fi
 
   test:
-    needs: [build, test-integrity-check, test-timeout-check, duplicate-code-check]
+    needs: [build, test-timeout-check, duplicate-code-check]
     runs-on: [self-hosted, linux, ar-ci]
     strategy:
       fail-fast: true
