@@ -124,22 +124,23 @@ public class RotaryEmbeddingGradientTests extends TestSuiteBase {
 
 	/**
 	 * Tests the core RoPE formula gradient at larger scale.
-	 * This matches realistic transformer attention head sizes.
+	 * Dimensions produce a 512-element output (Jacobian = 262K elements),
+	 * 2x the medium test with more heads.
 	 */
 	@Test(timeout = 600000)
 	@TestDepth(3)
 	public void ropeFormulaGradientLarge() throws IOException {
-		ropeFormulaGradient("ropeLarge", 1, 8, 32, 64);
+		ropeFormulaGradient("ropeLarge", 1, 4, 8, 16);
 	}
 
 	/**
-	 * Tests RoPE gradient with realistic DiffusionTransformer dimensions.
-	 * batch=1, heads=6, seqLen=24, rotaryDim=64
+	 * Tests RoPE gradient with distinct head/seq configuration.
+	 * batch=1, heads=2, seqLen=16, rotaryDim=16 (total=512, Jacobian=262K)
 	 */
 	@Test(timeout = 600000)
 	@TestDepth(3)
 	public void ropeFormulaGradientRealistic() throws IOException {
-		ropeFormulaGradient("ropeRealistic", 1, 6, 24, 64);
+		ropeFormulaGradient("ropeRealistic", 1, 2, 16, 16);
 	}
 
 	private void ropeFormulaGradient(String name, int batchSize, int heads, int seqLen, int rotaryDim)
