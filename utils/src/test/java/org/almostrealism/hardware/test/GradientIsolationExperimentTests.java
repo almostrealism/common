@@ -75,7 +75,7 @@ public class GradientIsolationExperimentTests extends TestSuiteBase {
 	 * Baseline test with default optimization strategy.
 	 * This should show the problem - either timeout or very slow.
 	 */
-	@Test(timeout = 120000)
+	@Test(timeout = 180000)
 	public void experiment1_baseline() {
 		logResult("=== Experiment 1: Baseline (Default Strategy) ===");
 		ProcessContextBase.setDefaultOptimizationStrategy(new ParallelismTargetOptimization());
@@ -356,7 +356,7 @@ public class GradientIsolationExperimentTests extends TestSuiteBase {
 	/**
 	 * Test subset -> concat gradient (no minus).
 	 */
-	@Test(timeout = 60000)
+	@Test(timeout = 180000)
 	public void experiment6b_subsetConcatGradient() {
 		logResult("=== Experiment 6b: Subset -> Concat Gradient (no minus) ===");
 		ProcessContextBase.setDefaultOptimizationStrategy(

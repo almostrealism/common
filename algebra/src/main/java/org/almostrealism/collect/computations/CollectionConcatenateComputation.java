@@ -24,12 +24,12 @@ import io.almostrealism.compute.Process;
 import io.almostrealism.expression.Conditional;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.algebra.AlgebraFeatures;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerParallelProcess;
 import org.almostrealism.collect.PackedCollection;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Stream;
 
@@ -179,18 +179,15 @@ public class CollectionConcatenateComputation extends TransitiveDeltaExpressionC
 	}
 
 	/**
-	 * Computes the derivative of the concatenation with respect to the target using
-	 * pad+add at the Producer level.
+	 * Computes the derivative of the concatenation with respect to the target.
 	 *
-	 * <p>Instead of creating a new {@link CollectionConcatenateComputation} with delta inputs
-	 * (which produces deeply nested {@link Conditional} expressions that cause expression tree
-	 * explosion during simplification), this method computes each input's delta independently
-	 * and combines them using pad+add. Each pad and add becomes a separate compiled kernel,
-	 * avoiding the exponential expression tree growth.</p>
+	 * <p>When all inputs are subsets of the target (possibly negated), the Jacobian is
+	 * computed directly as a single sparse projection matrix via {@link ConcatProjectionComputation}.
+	 * This avoids materializing intermediate projection matrices for each input.</p>
 	 *
-	 * <p>For concat(A1, A2, ..., An) along axis d, the chain rule gives:</p>
+	 * <p>Otherwise, falls back to concatenating input deltas along the same axis:</p>
 	 * <pre>
-	 * d(concat)/dtarget = pad(dA1/dtarget, offset=0) + pad(dA2/dtarget, offset=n1) + ...
+	 * d(concat)/dtarget = concat(dA1/dtarget, dA2/dtarget, ..., dAn/dtarget) along axis d
 	 * </pre>
 	 *
 	 * @param target The {@link Producer} with respect to which the derivative is computed
@@ -204,19 +201,80 @@ public class CollectionConcatenateComputation extends TransitiveDeltaExpressionC
 		TraversalPolicy targetShape = shape(target);
 		TraversalPolicy fullShape = getShape().append(targetShape);
 
-		List<Producer<?>> paddedDeltas = new ArrayList<>();
+		// Try direct projection for the common subset pattern
+		CollectionProducer projection = tryCreateProjection(target, targetShape, fullShape);
+		if (projection != null) return projection;
+
+		// Fall back to concat of input deltas
+		Producer<PackedCollection>[] inputDeltas = new Producer[inputShapes.length];
 
 		for (int i = 0; i < inputShapes.length; i++) {
 			CollectionProducer input = (CollectionProducer) getInputs().get(i + 1);
-			CollectionProducer inputDelta = input.delta(target);
-
-			int[] padPos = new int[fullShape.getDimensions()];
-			padPos[axis] = offsets[i];
-
-			paddedDeltas.add(pad(fullShape, new TraversalPolicy(true, padPos), inputDelta));
+			inputDeltas[i] = input.delta(target);
 		}
 
-		return add(paddedDeltas);
+		return concat(axis, inputDeltas).reshape(fullShape);
+	}
+
+	/**
+	 * Attempts to create a direct projection matrix for the concat Jacobian.
+	 *
+	 * <p>When all inputs are subsets of the target (possibly negated), the Jacobian
+	 * is a sparse matrix with at most one non-zero per row. This can be computed
+	 * directly without materializing intermediate projection matrices.</p>
+	 *
+	 * @return A ConcatProjectionComputation if applicable, null otherwise
+	 */
+	private CollectionProducer tryCreateProjection(Producer<?> target,
+												   TraversalPolicy targetShape,
+												   TraversalPolicy fullShape) {
+		Expression<?>[][] allOffsets = new Expression[inputShapes.length][];
+		double[] allScales = new double[inputShapes.length];
+
+		for (int i = 0; i < inputShapes.length; i++) {
+			Object input = getInputs().get(i + 1);
+			double[] scale = new double[]{1.0};
+			Expression<?>[] offsets = extractSubsetOffsets(input, target, scale);
+			if (offsets == null) return null;
+			allOffsets[i] = offsets;
+			allScales[i] = scale[0];
+		}
+
+		int[] boundaries = new int[inputShapes.length];
+		int cumulative = 0;
+		for (int i = 0; i < inputShapes.length; i++) {
+			cumulative += inputShapes[i].length(axis);
+			boundaries[i] = cumulative;
+		}
+
+		return new ConcatProjectionComputation(fullShape, getShape(), targetShape,
+				axis, boundaries, allOffsets, allScales);
+	}
+
+	/**
+	 * Extracts subset offsets from an input, tracing through minus operations.
+	 *
+	 * @param input The input producer to analyze
+	 * @param target The differentiation target
+	 * @param scale Output parameter: scale[0] will be set to the accumulated scale factor
+	 * @return The position offsets if the input is a subset of the target, null otherwise
+	 */
+	private Expression<?>[] extractSubsetOffsets(Object input, Producer<?> target, double[] scale) {
+		if (input instanceof CollectionSubsetComputation) {
+			CollectionSubsetComputation subset = (CollectionSubsetComputation) input;
+			if (AlgebraFeatures.match(subset.getInputs().get(1), target)) {
+				return subset.getPosition();
+			}
+		} else if (input instanceof CollectionMinusComputation) {
+			CollectionMinusComputation minus = (CollectionMinusComputation) input;
+			double[] innerScale = new double[]{1.0};
+			Expression<?>[] offsets = extractSubsetOffsets(minus.getInputs().get(1), target, innerScale);
+			if (offsets != null) {
+				scale[0] = -innerScale[0];
+				return offsets;
+			}
+		}
+		return null;
 	}
 
 	/**
