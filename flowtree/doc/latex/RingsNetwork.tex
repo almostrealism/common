@@ -1,0 +1,1403 @@
+\documentclass[12pt]{reedthesis}
+\usepackage{graphicx,latexsym} 
+\usepackage{amssymb,amsthm,amsmath}
+\usepackage{longtable,booktabs}
+\usepackage{natbib}
+\usepackage{url}
+
+\title{Rings Parallel Processing System}
+\author{Michael Murray}
+\division{Mathematics and Natural Sciences}
+\advisor{}
+\department{Mathematics}
+\begin{document}
+\maketitle
+\frontmatter
+\begin{center}
+\small
+Copyright \copyright  2006 Michael Murray. \\
+This document is copyrighted material. \\
+This document may not be reproduced in any form, \\
+digital or otherwise, without express written permission \\
+from Michael Murray.
+\end{center}
+
+\setlength{\parskip}{0pt}
+  \pagestyle{empty}
+
+\chapter*{Acknowledgements}
+I would like to thank Noah Pepper, my friend and confidant throughout this undertaking. I would like to thank Professor Jim Fix and Professor Tom Wieting, who inspired me to raise my standards of logical rigor with their bullet proof lecture styles. I would like to thank my parents, Bill and Kristen Murray for their continuing support for my education. I would like to thank my high school teachers that were not incompetent, including, but not limited to, Charlie Bissell, Craig Childress, Nate Loskutoff, Steve Maskel, Darren Schecter, and Tim Williams. I would like to thank Richard Feynman for reminding me that the universe is an incredibly simple place.
+
+\chapter*{Preface}
+I first fell in love with Portland, Oregon when I attended the O'Reilly Open Source Convention in the late summer of 2004. A perfect location for such a convention, Portland is a breeding ground for new and revolutionary ideas; a place where anything goes, as long as excessive creativity is involved. Two years later, and here I am working to earn a BS in Mathematics at Reed College, located in South East Portland, and only a short bus ride from that first open source convention I attended.
+\par
+We were very lucky with the presenters at this particular convention, at which the entire Dyson family, including Freeman, Esther, and George, attended and gave a keynote presentation. I had an interesting encounter with Freeman himself in an elevator on our way down to the convention center in the Marriott Hotel. I had not realized that the silence of the passengers was due to the presence of this amazing physics mind; at the time I had no idea who he was. At the keynote lecture, I witnessed the audience hang on each word spoken by an aging man who I never could have guessed was a powerhouse of ideas for modern science.
+\par
+But I digress.
+\par
+Another excellent keynote speaker that made an appearance was Milton Ngan, the Chief Architect from Weta Digital Ltd. In 2004 the latest buzz on the street was the recent release of the final episode in the motion picture retelling of the Lord Of The Rings. Weta Digital was contracted to set up the super-computing facility used by the CG artists to render the stunning visuals seen in the film. Mr. Ngan explained to the highly intrigued audience that an array of 500 computers running the brand new Red Hat Enterprise Linux were employed for this purpose.
+\par
+Of course, the single most expensive piece of hardware involved in the project was a machine (I believe purchased from Sun Microsystems, though I can't recall if thats correct) used for moderating the network traffic on the massive local area intranet used at the facility. Computers with the ability to maintain such a large network are incredibly costly and impossible to scale. Mr. Ngan mentioned that, even with so much computing power, rendering frames for the movie was still not nearly fast enough to keep up with the work of the graphic artists. The duration was measured in days or weeks, not minutes or hours. So why not use more computers and make it go faster? The limitation on the scale of any super-computing network is always the capacity of the machine that is used to moderate communication. You don't have to take my word for it, just take a look at what Sun Microsystems has to say about grid computing (\url{http://www.sun.com/service/grid/}). Sun offers ``scalable'' and ``cost effective'' solutions to super-computation with their idea of a computing ``grid''. This means (and again, you can check this out on their website) that one could buy a truck load of really fast computers for about a thousand US dollars a piece which can mount into racks of 20 to 40 computers each. These racks are little intranets all by themselves and the administrator has essentially two choices: 1) Set up each computer as one device and use them each separately. This requires that a human being perform the task of telling each of your 20 or 40 computers what to do and when to do it. 2) Set up each rack with a Sun Microsystems x4600, a 4 core, 64 bit platform designed by sun to maintain a ``grid'' of less important computers. The x4600 costs twenty six thousand US dollars.
+\par
+Imagine the reaction of a project manager to the idea that the system administrator has just purchased 20 computers from Sun Microsystems and spent them time required to them set up in a nice compact rack mount system and everything and now the budget must be doubled because it is necessary to purchase a computer to maintain the network. It doesn't take an expert to be shocked that the computer that maintains the network is valued at higher than the total cost of those computers which are actually performing the required computation. The x4600 will most certainly be kept busy telling 20 different computers what computations need to be performed and when, in addition to collecting the output of these calculations and maintaining the communication between each computer. This incredible investment will be, for all intensive purposes, unusable for anything else. Now I want to make it clear that I am not trying to downplay the need for or efficiency of the product Sun produces. I am about to purchase a whole bunch of their computers, but I will not have to come up with about twenty six grand for an x4600 to tell them all what to do. I'm going to get them to tell each other what to do. And this paper is about exactly how I am going to do it.
+\par
+2004 was the same year that I read a book called Six Degrees by Duncan Watts. This book presented empirical and logical evidence for the hypothesis that every human being is connected to every other by a chain of friends about six people long. In light of this evidence, it is no surprise that rumors (and other types of information) can spread so rapidly by word of mouth. After reading this text, I set out to solve Mr. Ngan's problem with the logic of Mr. Watts (this ``logic'' is known as graph theory). And I ended up with a system strangely futuristic, perhaps as something you would expect to hear from the keynote speech of a certain Freeman Dyson.
+\par
+I hope you enjoy reading this story, but I guarantee you wont have as much fun as I have had writing it.
+
+\tableofcontents
+\listoftables
+\listoffigures
+
+\chapter*{Abstract}
+This paper introduces the theory and implementation of the Rings Parallel Processing System, a tool for load balancing in a decentralized network of computers used to perform computationally intensive tasks. The implementation presented is written in Java. Chapters one and two discuss the mathematical model that is the basis for the load balancing technique, chapter three describes the object model of the Java implementation and explains how the model is represented on the computer, chapter four presents experimental data, chapter five explains how to use the software, chapter six summarizes some ways to extend the product, and chapter seven discusses plans for the project and licensing.
+\par
+The Rings Parallel Processing System and the mathematical model presented here are intellectual property of Mike Murray. This document and other documentation produced for this project may not be reproduced in any form except with express written permission from Mike Murray.
+
+\mainmatter
+\pagestyle{fancyplain}
+	
+
+\chapter{The Living Machine}
+
+\section{The Mind of the Machine}
+I plan to outline here a concept that is subject to change and reinterpretation, but that I believe to be essential to understanding a system that was first observed during the summer of 2005 in Palo Alto, California.
+\par
+I use the term ``Living Machine'' to mean a non-deterministic \textbf{stochastic} process operating on a finite state system. The ``system'' in our case is a network of connected elements called nodes. The connected structure is known as a graph.
+\par
+This text contains many abstractions and ideas that seem to have no foundation in reality. Forgive me for my idealism and take my word that everything contained here is intimately involved in every connected structure used for information exchange. I have always believed that one can learn a lot by pretending to know more than is known. For the purpose of this paper, please do your best to pretend that you know what I am talking about. You may discover that you end up knowing more than you thought. If a word confuses you, try looking it up in the glossary (Appendix A). Words or phrases in \textbf{bold face} are defined there.
+
+\subsection{Time}
+Throughout this document, I will make reference to the concept of time. Time in this case has a particularly abstract meaning. For our purposes, time ``happens'' in discrete increments and each of these increments has a ``before'' and an ``after''. Before a time increment, the state of a connected structure may have one configuration, and after the time increment that configuration may have changed. This document is an explanation of a certain set of rules for what alterations can occur during an interval of time. In other words, what differences there may be in the ``before'' state and the ``after'' state.
+
+\subsection{A Node and a Parent}
+A node is the fundamental element of a connected structure. Nodes maintain reference to zero or more other nodes and together these connected nodes create what is known as a graph. For our purposes, a node is a queue of items. It is unimportant to define what an item is, but it is safe to say that every node contains a certain positive integer number of them, possibly zero. I will denote a node by a bold letter, such as $\textbf{N}$, and the number of items in the queue of that node by $\textbf{N}_{j}$.
+\par
+The state of a node involves some other quantities which are listed in the table below along with the scheme that will be adopted for denoting these properties. I will most often use the short names of the properties, as I will spend much time talking about one node in particular, and rarely need to distinguish between properties of different nodes at the same time. \\
+\par
+Every node has what I call a ``parent''. This has absolutely nothing to do with the graph or connections between nodes. A ``parent'' is something entirely separate, though it is essentially a node in and of itself, which is only connected to the one node that names it as a parent. Each node has one parent and the parent has many of the same properties as the node that it corresponds to. Parent properties of a node will be denoted with the bold letter $\textbf{g}$ prepended. I may also prepend the name of a function with $\textbf{g}$ if the function pertains to the parent. This is noted in the table below.
+
+\begin{table}[h]
+\begin{center}
+\begin{tabular}{l l l p{8 cm}}
+\hline\hline
+Property & Short Name & Parent Property & Description \\ [1ex]
+\hline
+$\textbf{N}_{j}$ & $j$ & $\textbf{g}j$ & The number of items stored by a node $\textbf{N}$ \\ [1ex]
+$\textbf{N}_{Jm}$ & $J_{m}$ & N/A & The number of items desired by a node $\textbf{N}$ \\ [1ex]
+$\textbf{N}_{Jp}$ & $J_{p}$ & N/A & The percentage of items that will not be relayed by a node $\textbf{N}$ \\ [1ex]
+$\textbf{N}_{Jt}$ & $J_{t}$ & N/A & The time constant for a node $\textbf{N}$ \\ [1ex]
+$\textbf{N}_{Rp}$ & $R_{p}$ & $\textbf{g}R_{p}$ & The relay probability for a node $\textbf{N}$ \\ [1ex]
+$\textbf{N}_{k}$ & $k$ & N/A & The number of other nodes connected to a node $\textbf{N}$ in the graph. \\ [1ex]
+$\textbf{N}_{s}$ & $s$ & $\textbf{g}s$ & The sleep time of a node $\textbf{N}$ \\ [1ex]
+$\textbf{N}_{Ac}$ & $A_{c}$ & N/A & The activity coefficient for a node $\textbf{N}$ \\ [1ex]
+$\textbf{N}_{As}$ & $A_{s}$ & N/A & The activity sleep coefficient for a node $\textbf{N}$ \\ [1ex]
+$\textbf{N}_{Ao}$ & $A_{o}$ & N/A & The activity offset value for a node $\textbf{N}$ \\ [1ex]
+$\textbf{N}_{\textbf{g}k}$ & N/A & $\textbf{g}_k$ & The number of item generators for a node $\textbf{N}$ \\ [1ex]
+\hline
+\end{tabular}
+\end{center}
+\caption{Node and Parent Properties}
+\end{table}
+
+\subsection{Changes in State}
+The goal of chapters one and two of this text is to model the change in state of a collection of nodes over discrete intervals of time. There are two ways that the state of a node or its parent may change during an interval of time, denoted as $\Delta t$:
+
+\begin{itemize}
+\item A node may choose to change its own state. The probability of this event during an interval of time is given by $\Delta t / s$. This event is referred to as the ``node iteration''.
+\item The parent of a node may choose to change its state. The probability of this event during an interval of time is given by $\Delta t / \textbf{g}s$. This event is referred to as the ``parent iteration''.
+\item A node may have its state changed by another node that it is connected to in the graph of nodes. The probability of this event is related to the state of the nodes that are connected to the node in question.
+\end{itemize}
+
+\section{The Node Iteration}
+The term ``Node Iteration'' refers to one process by which a node changes its own state. The node iteration occurs during an interval of time with a probability given by $\Delta t / s$. Three separate actions occur, one after another, during the node iteration. Each of these is listed and described in detail below.
+
+\subsection{A change in $j$}
+During the node iteration the value of $j$ may decrease by one. The probability of this happening is given by a function I will call $\rho$.
+
+\begin{equation}
+\rho (\textbf{N}) = \rho _{0} + \frac{j}{J_{m} - 1} \cdot
+\begin{cases}
+2 R_{p} &  j > J_{m}, \\
+R_{p} & j > J_{p} \cdot J_{m}, \\
+0 & \text{otherwise} \\
+\end{cases}
+\end{equation}
+
+This value could be greater than 1.0. From now on, I will assume that a probability of greater than 1.0 is equal to a probability of exactly 1.0. $\rho$ gives the probability of an event, not a decision, but a prediciton. However, if the event that $\rho$ predicts does in fact occur during an interval $\Delta t$, another event may occur with a probability given by $\textbf{g}\rho$.
+
+\begin{equation}
+\textbf{g}\rho (\textbf{N}) =
+\begin{cases}
+1.0 &  k = 0, \\
+\textbf{g}R_{p} & \text{otherwise} \\
+\end{cases}
+\end{equation}
+
+Again, this gives the probability that an event occurs and is not decisive. This probability is dependent on the event predicted by $\rho$ actually occurring.
+
+There exists one other way in which the value of $j$ may decrease during an interval $\Delta t$, and the probability of this event is independent of the two events just mentioned. The probability that $j$ decreases due to this third type of event is given by the ratio of the interval $\Delta t$ to the time constant for the node:
+
+\begin{equation}
+\frac{\Delta t}{J_{t}}
+\end{equation}
+
+In this special case, unlike any other probability equation given throughout this text, values above 1.0 correspond to multiple events occurring. What I mean is that, during the node iteration, $j$ will always be decreased by $\lfloor{\frac{\Delta t}{J_{t}}}\rfloor$ and possibly by decreased by an additional 1.0, with probability given by $\frac{\Delta t}{J_{t}}$ mod $1.0$.
+
+\subsection{A change in $s$}
+During the node iteration the value of $s$ will change according to the following equation. $s'$ refers to the value of $s$ after the node iteration and $s$ refers to the value initially.
+
+\begin{equation}
+s' = s \cdot \frac{A_{s}}{1 - J_{p} + (j - J_{p} \cdot J_{m}) / (A_{c} \cdot J_{m}) + A_{o}}
+\end{equation}
+
+\section{The Parent Iteration}
+The term ``Parent Iteration'' refers to the second process by which a node changes its own state. The parent iteration occurs during an interval of time with a probability given by $\Delta t / \textbf{g}s$. Three separate actions occur, one after another, during the node iteration. Each of these is listed and described in detail below.
+
+\subsection{A change in $j$}
+During the parent iteration there are two ways that the value of $j$ can increase. First, $j$ will always increase by $\textbf{g}_{k}$ during the parent iteration, and will increase by an additional one if $\textbf{g} > 0$.
+
+\begin{equation}
+j' = j + \textbf{g}_{k} +
+\begin{cases}
+1 & \textbf{g}j > 0 \\
+0 & \text{Otherwise}\\
+\end{cases}
+\end{equation}
+
+If $\textbf{g}j > 0$, $\textbf{g}j$ will be decreased by one as $j$ is increased. This may be a good time to mention the fact that the sum total value of $j$ for all nodes in a graph is always conserved, except for the addition of $\textbf{g}_{k}$ during the parent iteration.
+
+\begin{equation}
+\textbf{g}j' = \textbf{g}j -
+\begin{cases}
+1 & \textbf{g}j > 0 \\
+0 & \text{Otherwise}\\
+\end{cases}
+\end{equation}
+
+\subsection{A change in $\textbf{g}s$}
+During the parent iteration the value of $\textbf{g}s$ will change according to the following equation. $\textbf{g}s'$ refers to the value of $\textbf{g}s$ after the node iteration and $\textbf{g}s$ refers to the value initially.
+
+\begin{equation}
+\textbf{g}s' = \textbf{g}s \cdot (1 + \frac{j - J_{p} \cdot J_{m}}{A_{c} \cdot J_{m}} + A_{o})
+\end{equation}
+
+\section{A Recursion Relation for Node State}
+To analyze the formulas presented I will need to construct a \textbf{recursion relation} that completely describes the way that node state changes over the course of many discrete increments of time, $\Delta t$. I will begin by constructing \textbf{vector quantity} which will be used to store the state of a node, $\textbf{N}$.
+
+\subsection{A Node as a Vector}
+I will represent the state of a node $\textbf{N}$ as a 6D vector quantity. There are, of course, many more than 6 independent variable quantities associated with the node (as listed in the table above), but I will choose to analyze only the quantities that are effected by the node and parent iterations just described. For the purpose of constructing a recursion relation for node state I will introduce two quantities not previously mentioned. These are $\Delta s$ and $\Delta \textbf{g}s$. $\Delta s$ refers to the duration of time since the last node iteration occurred and $\Delta \textbf{g}s$ refers to the duration of time since the last parent iteration. The vector representation of node state is given below.
+
+\begin{figure}[h]
+\begin{equation}
+\left(
+\begin{array} {c}
+j \\
+s \\
+\Delta s\\
+\textbf{g}j \\
+\textbf{g}s \\
+\Delta \textbf{g}s
+\end{array}
+\right)
+\end{equation}
+\caption{A vector describing the state of a node}
+\end{figure}
+
+\subsection{From Probability to Action}
+So far I have provided a detailed mathematical description for the probability of the events the occur during the node and parent iterations. However, to describe the system in terms a \textbf{recursion relation} I will need to define functions that determine whether or not the events do occur, based on these probabilities. To do this I will often make use of $\zeta$, a uniform random number in the range $[0, 1)$. I will denote each unique random variable of this sort with a subscript, for example $\zeta _{1}$, $\zeta _{2}$, etc.
+
+\subsubsection{Enacting The Node Iteration}
+\begin{equation}
+\gamma (\textbf{N}, \Delta t) =
+\begin{cases}
+1 & \Delta t \geq \textbf{N}_{s} - \textbf{N}_{\Delta s} \\
+0 & \text{otherwise} \\
+\end{cases}
+\end{equation}
+
+The $\gamma$ function gives 1 if the node iteration occurs during $\Delta t$ and 0 if it does not. The function makes this decision by checking if the duration since the last node iteration plus the duration $\Delta t$ is equal to or greater than the sleep time for the node, $\textbf{N}$.
+
+\begin{equation}
+\delta (\textbf{N}) =
+\begin{cases}
+1 & \zeta _{1} < \rho (\textbf{N}) \\
+0 & \text{otherwise}
+\end{cases}
+\end{equation}
+
+The $\delta$ function gives one if the value of $j$ decreases by one due to the event predicted by the $\rho$ function, given above. Recall that $\zeta _{1}$ is a uniform random variable.
+
+\subsubsection{Enacting the Parent Iteration}
+\begin{equation}
+\gamma _{\textbf{g}} (\textbf{N}, \Delta t) =
+\begin{cases}
+1 & \Delta t \geq \textbf{N}_{\textbf{g}s} - \textbf{N}_{\textbf{g}\Delta s} \\
+0 & \text{otherwise} \\
+\end{cases}
+\end{equation}
+
+The $\gamma _{\textbf{g}}$ function gives one if the parent iteration occurs during $\Delta t$ and 0 if it does not. The function makes this decision by checking if the duration since the last parent iteration plus the duration $\Delta t$ is equal to or greater than the parent sleep time for the node, $\textbf{N}$.
+
+\newpage
+\subsection{The Iteration Matrix}
+Because the node state is represented as a six dimensional vector, a matrix product which is a function of the previous node state can be used to describe the iterative process explained in sections 1.2-3. The node state after a time interval $\Delta t$ (denoted $\textbf{N}'$) is based on the previous node state, $\textbf{N}$. This involves the product of two functions: A vector valued function $\Gamma (\textbf{N}, \Delta t)$ and a matrix valued function $\Omega (\textbf{N}, \Delta t)$. The product is formed:
+
+\begin{equation}
+\textbf{N}' = \Omega (\textbf{N}, \Delta t) \cdot \Gamma (\textbf{N}, \Delta t)
+\end{equation}
+
+The $'$ denotes the value of a variable after the time increment $\Delta t$. Below I have expanded this product using values for $\Gamma$ and $\Omega$ that are described in sections 1.2-3 so that the matrix product represents the recursive process used to update each component of the node state vector. This is shown below.
+
+\begin{figure}[h!!]
+\begin{equation}
+\textbf{N}' = 
+\left(
+\begin{array} {c}
+j' \\
+s' \\
+\Delta s'\\
+\textbf{g}j' \\
+\textbf{g}s' \\
+\Delta \textbf{g}s'
+\end{array}
+\right) = 
+\end{equation}
+
+\begin{equation*}
+\left(
+\begin{array}{c c c}
+- \delta (\textbf{N}) - \lfloor \frac{\Delta t}{J_t} \rfloor -
+\left[1\text{\hspace{1pt} if \hspace{1pt}} \zeta _{2} < (\frac{\Delta t}{J_t} \text{mod} 1) \right]
+&
+\textbf{g}_{k} + 
+\left[
+1\text{\hspace{1pt} if \hspace{1pt}} \textbf{g}j > 0
+\right]
+&
+j
+\\ [2 ex]
+
+s \cdot \frac{A_{s}}{1 - J_{p} + (j - J_{p} \cdot J_{m}) / (A_{c} \cdot J_{m}) + A_{o}} - s
+&
+0
+&
+s
+\\ [2 ex]
+
+-s
+&
+0
+&
+\Delta t + \Delta s
+\\ [2 ex]
+
+\delta (\textbf{N}) \text{\hspace{1pt} if \hspace{1pt}} \zeta _{3} < \textbf{g}R_{p}
+&
+-1 \text{\hspace{1pt} if \hspace{1pt}} \textbf{g}j > 0
+&
+\textbf{g}j
+\\ [2 ex]
+
+0
+&
+\textbf{g}s \cdot (\frac{j - J_{p} \cdot J_{m}}{A_{c} \cdot J_{m}} + A_{o})
+&
+\textbf{g}s
+\\ [2 ex]
+
+0
+&
+-\textbf{g}s
+&
+\Delta t + \Delta \textbf{g}s
+\\ [2 ex]
+
+\end{array}
+\right) \cdot \left(
+\begin{array}{c}
+\gamma (\textbf{N}, \Delta t) \\
+\gamma _{\textbf{g}} (\textbf{N}, \Delta t) \\
+1
+\end{array} \right)
+\end{equation}
+
+\label{eq:IterationMatrix}
+\caption{The iteration matrix}
+\end{figure}
+
+By repeatedly applying the iteration matrix given above for a relatively small time increment, $\Delta t$, I can see how the state of a node changes over a long period of time. For this recursion relation to properly predict the change in state of a node over time, $\Delta t$ must be smaller than the value of $s$ or $\textbf{g}s$.
+
+\chapter{Introducing the Children to the Family}
+So far I have completely described the way in which the state of a node may change due to the internal workings of that node. However, I have not made any mention of the impact of a node on the other nodes in the graph. For this purpose I will introduce the concept of a node family, defined as follows. The immediate family of a node, $\textbf{N}$, is a set containing the collection of nodes connected to $\textbf{N}$ in the graph. I will denote the family of a node with a subscript capital $K$. For example, the family of $\textbf{N}$ is denoted $\textbf{N}_{K}$.
+
+\section{Conserving $j$}
+It was briefly mentioned earlier that the sum total value of $j + \textbf{g}j$ for all nodes in a graph is conserved except for the possible increase in $j$ due to the parent iteration (when $\textbf{g}_{k} > 0$) and the possible decrease in $j$ due to the node iteration (when $\frac{\Delta t}{J_{t}} > 1$).
+\par
+In the case when the node iteration occurs and $\delta (\textbf{N}) > 0$, the value of $j$ for the node decreases. For the sum total of $j + \textbf{g}j$ for all nodes in the graph to be conserved in this scenario, there must be a corresponding increase in the value of $j$ or $\textbf{g}j$ for $\textbf{N}$ or some other node in the graph. I have already mentioned that if $j$ decreases in this way, the value of $\textbf{g}j$ for that node may increase, with a probability given by $\textbf{g}R_{p}$. This is shown in the \textbf{iteration matrix}, but let us jog our memory and take another look.
+
+\begin{equation}
+\delta (\textbf{N}) \text{\hspace{1pt} if \hspace{1pt}} \zeta _{3} < \textbf{g}R_{p}
+\end{equation}
+
+In this case, $\zeta _{3}$ is the uniform random variable that ``determines'' whether the value of $\textbf{g}j$ will increase by the amount $\delta (\textbf{N})$. If the condition for this increase does not hold, meaning $\zeta _{3} \geq \textbf{g}R_{p}$, the sum total value of $j + \textbf{g}j$ for the node $\textbf{N}$ will not be conserved.
+\\
+\\
+\par
+In this case, the node will act in the following way:
+
+\begin{itemize}
+\item Choose a uniform random node $\textbf{M} \in \textbf{N}_{K}$.
+\item Increase the value of $\textbf{M}_{j}$ by the value $\delta (\textbf{N})$.
+\end{itemize}
+
+And this is what the family of a node is for: To conserve the sum total value of $j + \textbf{g}j$ for the graph by accepting an increase in $j$ when a family member experiences a node iteration that decreases $j$.
+
+\section{A Fluid Analogy}
+To provide a more concrete idea of the abstraction presented in chapter one, I would like to propose an analogy for the graph involving fluids. I will venture to say that a node in a graph is analogous to a bucket (or ``graduated cylinder'', shall I say to be precise). This bucket is filled with a certain amount of water, which one can measure by looking at the gradation markings on the cylinder.
+
+\begin{figure}[h]
+\centering
+\includegraphics[scale=0.7]{Diagrams/Bucket.png}
+\caption{A graduated cylinder, or ``bucket''}
+\end{figure}
+
+Each one of these horizontal lines on the bucket corresponds to a value of $j$ for the node that the bucket represents. A higher water level in the bucket indicates a larger value of $j$. Two nodes that are connected to one another in the graph can be imagined as two buckets connected to each other by a complicated sort of pump. This ``pump'' is analogous to the functionality described in the previous section, where a node may increase the value of $j$ for one of the nodes that it maintains a connection to in the graph.
+\par
+This theoretical ``pump'' operates at a rate described by the frequency that the node iteration occurs for the two nodes that are connected to one another. If I simplify and assume, for the moment, that $R_{p} = 1$, $\textbf{g}R_{p} = 0$ and $j > J_{m}$ for both nodes, $\textbf{N}$ and $\textbf{M}$, I can proceed to give a differential equation for the rate of change of $\textbf{M}_{j}$ due to the connection between $\textbf{N}$ and $\textbf{M}$.
+
+\newpage
+\begin{figure}[h!]
+\begin{equation}
+\frac{\partial \textbf{M}_{j}}{\partial t} = \frac{1}{\textbf{N}_{s}(t)} - \frac{1}{\textbf{M}_{s}(t)}
+\end{equation}
+\caption{A rate equation for $j$}
+\end{figure}
+
+The functions $\textbf{N}_{s}(t)$ and $\textbf{M}_{s}(t)$ give the value of $s$ for each node at the time $t$. These functions are defined by the recursion relation given in the previous chapter. To evaluate $\textbf{N}_{s}(t)$, one must recursively apply the iteration matrix calculation for a small interval $\Delta t$.  There is an important difference between a rate (the left side of equation 2.2) and a frequency (the right side of equation 2.2). For more information on this difference, see appendix B.
+
+\chapter{Programming the Machine}
+Thus far I have described a fairly abstract mathematical construction and provided basically no explanation for the equations in the first two chapters. Now I will provide an example of our construction in the context of information exchange, as it was described in the introduction. To accomplish this I will present the object model for a Java program that makes use of the mathematical model presented in chapters one and two for the purpose of automated load balancing in a parallel processing network across the internet.
+\par
+I singlehandedly wrote the Java code for the entire implementation of the software I am about to describe. However, my design decisions were heavily impacted by the influence of my colleagues at Reed College and Stanford University. Frequently throughout the rest of the document I will speak in the first person plural, making reference to ``we'', as oppose to just you the reader and myself. This ``we'' is meant to include those that I mentioned in the acknowledgments, as all of my peers in the academic community have contributed in some way to the fulfillment of this goal.
+
+\begin{figure}[h!]
+\centering
+\includegraphics[scale=0.6]{Diagrams/Classes.png}
+\caption[Data Structures in the Java Implementation]{Some of the data structures employed by the Java implementation of the model described thus far. The dashed lines connecting object types show the inheritance of types. For example, a NodeGroup object is a type of Node object, as denoted by the solid line connecting these two types.}
+\end{figure}
+
+\section{Object Model}
+Java is an object oriented programming language, meaning that a program is written by constructing data structures that represent real world entities and developing functions that operate on these data structures. There are 5 data types (known as ``classes'') that represent the mathematical constructs presented thus far. Many more data types and functions are required for the program to be useful and perform the tasks that are required from a parallel processing system, but they are not important for this discussion and will be presented later.
+
+\subsection{Node}
+The Node class is one part of the representation of a node in the graph. The Node class keeps track of the properties in the second column of table 1.1 (none of the parent properties). The Node class is responsible for performing the node iteration at the appropriate time. In the context of the vector representation of node state, the Node class represents the first 3 elements of the state vector presented in figure 1.1.
+
+\subsection{NodeGroup}
+The NodeGroup class is the other part of the representation of a node in the graph. The NodeGroup class keeps track of the properties in the third column of table 1.1 (the parent properties). The NodeGroup class is responsible for performing the parent iteration at the appropriate time. In the context of the vector representation of node state, the NodeGroup class represents the last 3 elements of the state vector presented in figure 1.1.
+
+\subsection{Job}
+
+\begin{figure}
+\begin{tabular}{c c}
+\includegraphics[scale=0.7]{Diagrams/Job.png}
+&
+\includegraphics[scale=0.7]{Diagrams/JobFactory.png}
+\\
+\end{tabular}
+\caption{The Job and JobFactory Data Structures}
+\end{figure}
+
+The Job interface represents an item attached to a node. You may recall from table 1.1 that $j$ was defined as the number of items for a node. In the Java implementation a Node object maintains $j$ of these Job objects. The Job objects can be moved from node to node across the graph due to the node iteration, which is performed by the Node class.
+\par
+In the Java implementation, the Job interface extends the Java Runnable interface. This means that a Job object, along with being an ``item'' stored by a node, is a set of instructions for a computer to execute. The value of $J_{t}$ given in table 1.1 actually corresponds to the time required to complete the instructions contained in the Job object when it runs on the computer that hosts the node that references it as an item.
+\\
+\\
+
+\subsection{JobFactory}
+You may recall from table 1.1 that $\textbf{g}_{k}$ was defined as the number of item generators for a node. The term ``item generator'' is used because $\textbf{g}_{k}$ is related to the frequency that $j$ is increased by the parent iteration. A JobFactory object represents an ``item generator''.  In the Java implementation a NodeGroup object maintains $\textbf{g}_{k}$ of these JobFactory objects.
+\par
+In the Java implementation, the JobFactory interface provides a nextJob function, which returns a new Job object. During the parent iteration performed by the NodeGroup class, a Job object from each JobFactory is requested and these new Job objects are then added to the list of items maintained by the Node class.
+
+\subsection{Connection}
+The Connection class is used to represent connections between nodes in the graph. If two nodes are connected, the Node objects that represent them will each maintain a Connection object. This Connection object is used to send and receive Job objects during the node iteration.
+\par
+In the Java implementation the Connection class makes use of another data structure called a NodeProxy. The NodeProxy handles moving information around the internet so that each node may be hosted by a Node object on a different computer system.
+
+\section[From Equations to Data Structures]{From Equations to Data Structures: From Math to Science}
+It may be helpful to provide a more systematic comparison of the mathematical model and the Java implementation. For this, I have provided the table below, which lists the data structures provided in the object model and which variables and functions are represented by each.
+
+\begin{table}[h]
+\begin{center}
+\begin{tabular}{l p{6.2 cm} p{5.8 cm}}
+\hline\hline
+Class & Variables & Functions \\ [1ex]
+\hline
+Node &
+$j$, $s$, $J_{m}$, $J_{p}$, $R_{p}$, $k$, $A_{c}$, $A_{s}$, $A_{o}$, $\textbf{g}R_{p}$ &
+$\rho(\textbf{N})$, $\textbf{g} \rho(\textbf{N})$, $s'$, $\gamma (\textbf{N}, \Delta t)$, $\delta (\textbf{N})$ \\ [1 ex]
+NodeGroup &
+$\textbf{g}j$, $\textbf{g}s$, $\textbf{g}_k$ &
+$j'$, $\textbf{g}j'$, $\textbf{g}s'$, $\gamma _{\textbf{g}}(\textbf{N}, \Delta t)$ \\ [1 ex]
+Job &
+$J_{t}$ (also depends on Node) &
+None \\ [1 ex]
+JobFactory &
+None &
+None \\ [1 ex]
+Connection &
+None &
+$\frac{\partial \textbf{M}_{j}}{\partial t}$ \\ [1 ex]
+\hline
+\end{tabular}
+\end{center}
+\caption{Variables and Functions Represented in the Object Model}
+\end{table}
+
+Notice that there is no need to represent the $\Delta s$ and $\Delta \textbf{g}s$ properties from the vector representation. This is because, in the Java implementation, the computer's hardware clock is used to regularly execute the node and parent iterations. A computer program operates in an environment in which certain constructs are externally specified, time being one of them. The mathematical model is an abstraction that does not involve a quantity called ``time'' unless we carefully define this concept. The computer, however, is a physical machine equipped with a device for measuring actual time. This ``external specification'' is, perhaps, the difference between math and science.
+
+\section{So How are we Going to Refer to all This?}
+The Java implementation of this idea is called Rings. Rings is a commercial product available from Almost Realism. Licensing is through Michael Murray. More information is available in the final chapter, titled ``The Product''.
+
+\newpage
+
+\section{Talking to the Machine: The Terminal}
+The Java implementation is bundled with a terminal program which allows the user to connect directly to a running Node and modify the software configuration, change the value of variables, and give instructions for processes to execute. This section outlines each command that the terminal accepts and gives the format of the command, a description of what it does, and an example in some cases.
+\par
+The terminal is accessed by using a telnet client. When a Node is running, simply open a telnet connection to the computer on port 6767. This is usually done with a unix command as shown in figure 3.3.
+
+\begin{figure}
+\begin{verbatim}
+murraym@oberon.reed.edu$ telnet ball 6767
+Trying 134.10.15.90...
+Connected to ball.reed.edu (134.10.15.90).
+Escape character is '^]'.
+Welcome to Rings 0.4 Network Client
+[----]> 
+\end{verbatim}
+\caption{The Rings Network Client Terminal: Logging into a Node}
+\end{figure}
+
+\subsection{behave}
+\subsubsection{Form}
+\begin{verbatim}
+behave <server behavior class>
+\end{verbatim}
+\subsubsection{Description}
+Executes the code contained in the specified server behavior class. For more information on server behaviors, see the generated documentation for the ServerBehavior interface.
+
+\subsection{close}
+\subsubsection{Form}
+\begin{verbatim}
+close <id>
+\end{verbatim}
+\subsubsection{Description}
+Closes the connection (NodeProxy) to the peer with index $\left<\text{id}\right>$ in the peer list.
+\subsubsection{Example}
+\begin{verbatim}
+[----]> close 0
+Dropped 1 node connections to /171.64.142.95
+\end{verbatim}
+
+\subsection{date}
+\subsubsection{Form}
+\begin{verbatim}
+date
+\end{verbatim}
+\subsubsection{Description}
+Gives the date according to the system clock on the machine running the Server (wrapper for NodeGroup).
+\subsubsection{Example}
+\begin{verbatim}
+[----]> date
+Sun Aug 13 14:32:21 PDT 2006
+\end{verbatim}
+
+\subsection{dbs start}
+\subsubsection{Form}
+\begin{verbatim}
+dbs start
+\end{verbatim}
+\subsubsection{Description}
+Starts a DBS thread which can handle the JobOutput objects. More information about JobOutput can be found in the section ``Producing Output'', chapter 5.
+\subsubsection{Example}
+\begin{verbatim}
+[----]> dbs start
+Started DBS.
+\end{verbatim}
+
+\subsection{dbs create}
+\subsubsection{Form}
+\begin{verbatim}
+dbs create
+\end{verbatim}
+\subsubsection{Description}
+Creates a table in the relational database that can be used to store output. For more information on the table structure, see Appendix \ref{app:DefaultOutputHandler}.
+
+\subsection{dbs add}
+\subsubsection{Form}
+\begin{verbatim}
+dbs add <output handler class>
+\end{verbatim}
+\subsubsection{Description}
+Adds the specified output handler class as a handler for JobOutput objects. More information about JobOutput can be found in the section ``Producing Output'', chapter 5.
+\subsubsection{Example}
+\begin{verbatim}
+[----]> dbs add net.sf.j3d.network.tests.UrlProfilingJob$Handler
+Added net.sf.j3d.network.tests.UrlProfilingJob$Handler@17e6a96
+as a handler for output.
+\end{verbatim}
+
+\subsection{giterate}
+\subsubsection{Form}
+\begin{verbatim}
+giterate
+\end{verbatim}
+\subsubsection{Description}
+Manually executes the parent iteration. This is mostly for tinkering/debugging purposes. If manually invoking the parent iteration is necessary, usually the server configuration needs to be modified.
+\subsubsection{Example}
+\begin{verbatim}
+[----]> giterate
+Network Node Group: 1 children and 1 server connections.  iteration performed.
+\end{verbatim}
+
+
+\subsection{inputrate}
+\subsubsection{Form}
+\begin{verbatim}
+inputrate <id>
+\end{verbatim}
+\subsubsection{Description}
+Gives the average number of messages received per minute from a peer with index $\left<\text{id}\right>$ in the peer list. Theses ``messages'' may be jobs or just network messages (ping, open connection, send output, etc). This measurement is an average since the last time the inputrate command was executed (for the purpose of creating external monitoring tools).
+\subsubsection{Example}
+\begin{verbatim}
+[----]> inputrate 0
+0.06732672251870885
+\end{verbatim}
+
+\subsection{jobtime}
+\subsubsection{Form}
+\begin{verbatim}
+jobtime
+\end{verbatim}
+\subsubsection{Description}
+Gives the average time to complete a job by the node(s) on this server. This is analogous to the value of $J_{t}$ in the mathematical model. The value returned is measured in milliseconds.
+\subsubsection{Example}
+\begin{verbatim}
+[----]> jobtime
+40689.42069123369
+\end{verbatim}
+
+\subsection{open}
+\subsubsection{Form}
+\begin{verbatim}
+open <host> [port]
+\end{verbatim}
+\subsubsection{Description}
+Opens a connection (NodeProxy) to the specified host. The port is optional, and if left unspecified defaults to 7766.
+\subsubsection{Example}
+\begin{verbatim}
+[----]> open 171.64.142.95
+Opened host 171.64.142.95
+\end{verbatim}
+
+\subsection{peers}
+\subsubsection{Form}
+\begin{verbatim}
+peers
+\end{verbatim}
+\subsubsection{Description}
+Lists the peers connected to the node(s) on this server.
+\subsubsection{Example}
+\begin{verbatim}
+[----]> peers
+/134.10.15.90
+/134.10.15.93
+\end{verbatim}
+
+\subsection{run test}
+\subsubsection{Form}
+\begin{verbatim}
+run test <time>
+\end{verbatim}
+\subsubsection{Description}
+Sends a test task to the first peer in the peer list for this Sever (wrapper for NodeGroup). A test task produces test jobs that simply instruct the node executing the job to sleep for a predefined number of milliseconds, $\left<\text{time}\right>$.
+
+\subsection{sendtask}
+\subsubsection{Form}
+\begin{verbatim}
+sendtask <id> <task class> [<key1>=<value1> <key2>=<value2> ...]
+\end{verbatim}
+\subsubsection{Description}
+The sendtask command instructs a peer of this node (with index $\left<\text{id}\right>$ in the peer list) to instantiate a JobFactory object of the $\left<\text{task class}\right>$ type and add it to the list of JobFactory objects maintained by the NodeGroup of the remote node specified. The set method of the JobFactory that instantiated will be called with the key value pairs that are optionally specified at the end of the command.
+\subsubsection{Example}
+\begin{verbatim}
+sendtask 0 net.sf.j3d.network.tests.UrlProfilingTask
+dir=http://www.reed.edu/~murraym/images.txt
+uri=http://171.64.142.10/
+size=200
+\end{verbatim}
+This would instruct the remote node with index 0 in the peer list to construct a UrlProfilingTask. The dir, uri, and size variables will be set using the set method of UrlProfilingTask. Note that when actually entering this into the terminal, it must appear all on one line (line breaks inserted here for typesetting would be replaced with single spaces).
+
+\subsection{set}
+\subsubsection{form}
+\begin{verbatim}
+set <key> <value>
+\end{verbatim}
+\subsubsection{Description}
+Sets a variable maintained by the Server,  Node or NodeGroup. A list of ``keys'' for variables are listed below.
+\begin{table}[h]
+\begin{center}
+\begin{tabular}{c p{4 cm} p{4 cm}}
+\hline\hline
+Variable From Model & Property (``key'') & Name\\ [1ex]
+\hline
+$J_{p}$ & nodes.mjp & MinimumJobP \\ [1ex]
+$R_{p}$ & nodes.relay & RelayP \\ [1 ex]
+$\textbf{g}R_{p}$ & nodes.parp & ParentalRelayP \\ [1 ex]
+$A_{s}$ & nodes.acs & ActivitySleepC \\ [1ex]
+$A_{o}$ & group.aco & ActivityOffset \\ [1ex]
+\hline
+\end{tabular}
+\end{center}
+\caption{Variables accessible by the set command}
+\end{table}
+\subsubsection{Example}
+\begin{verbatim}
+[----]> set group.aco -0.2
+Set group.aco to -0.2
+\end{verbatim}
+
+\subsection{status}
+\subsubsection{Form}
+\begin{verbatim}
+status [file]
+\end{verbatim}
+\subsubsection{Description}
+Prints node status HTML page to the terminal or, optionally, to a file.
+
+\subsection{tasks}
+\subsubsection{Form}
+\begin{verbatim}
+tasks
+\end{verbatim}
+\subsubsection{Description}
+Lists the tasks that the nodes maintained by this Server (wrapper for NodeGroup) have worked on. The list also includes tasks that the NodeGroup is producing jobs for (in this case there may be two entries for the same task).
+\subsubsection{Example}
+\begin{verbatim}
+[----]> tasks
+net.sf.j3d.network.tests.UrlProfilingTask@1a125f0
+ImageProfilingTask (1155324825047)
+\end{verbatim}
+
+\subsection{threads}
+\subsubsection{Form}
+\begin{verbatim}
+threads
+\end{verbatim}
+\subsubsection{Description}
+Lists currently running JVM threads that are in the thread group maintained by the Server (wrapper for NodeGroup).
+\subsubsection{Example}
+\begin{verbatim}
+[----]> threads
+Status Output Thread
+Network Server
+Resource Server
+Server Terminal
+HttpCommandServer
+NodeProxy for /134.10.15.90
+DB Server Thread
+7 active threads.
+\end{verbatim}
+
+\subsection{uptime}
+\subsubsection{Form}
+\begin{verbatim}
+uptime
+\end{verbatim}
+\subsubsection{Description}
+Gives the time in minutes since the Server (wrapper for NodeGroup) was initialized.
+\subsubsection{Example}
+\begin{verbatim}
+[----]> uptime
+Client up for 3005.24695 minutes.
+\end{verbatim}
+
+\chapter[The Lonely Node (Experimental Results)]{The Lonely Node: Experimental Results for One Server}
+Here I will present some experimental data collected by running test jobs (see run test command, chapter 3) through one node (one NodeGroup object with one Node object). The test results will show the activity rating of a node over the course of time. Activity rating is a function of $j$ given by the following relation.
+
+\begin{figure}[h]
+\begin{equation}
+\text{Activity Rating} = 1 + \frac{j - J_{p} \cdot J_{m}}{A_{c} \cdot J_{m}} + A_{o}
+\end{equation}
+\caption{Definition of activity rating}
+\end{figure}
+
+\section{Varying $J_{p}$}
+\begin{figure}[h]
+\includegraphics[scale=0.37]{Diagrams/VaryingMJP.png}
+\caption[Activity Rating for Different Values of $J_{p}$]{Activity rating over time since the initialization of the Server for different values of $J_{p}$ in each case. Each tick represents one minute of time.}
+\end{figure}
+
+Figure 4.2 shows the effect of altering the value of $J_{p}$ on a single node's ability to maintain a stable level of jobs in the queue. The values of other parameters for these tests are as follows.
+
+\begin{table}[h]
+\begin{center}
+\begin{tabular}{c c}
+\hline\hline
+Property & Value \\ [1ex]
+\hline
+$J_{m}$ & 40 jobs \\ [1ex]
+$J_{t}$ & 10 seconds \\ [1ex]
+$R_{p}$ & 0.0 \\ [1ex]
+$\textbf{g}R_{p}$ & 0.0 \\ [1ex]
+$k$ & 0 other nodes\\ [1ex]
+$A_{c}$ & 2.0 \\ [1ex]
+$A_{s}$ & 1.5 \\ [1ex]
+$A_{o}$ & 0.0 \\ [1ex]
+$\textbf{g}_k$ & 1 (the test task) \\ [1ex]
+\hline
+\end{tabular}
+\end{center}
+\caption{Node properties for varying $J_{p}$ test}
+\end{table}
+
+Interestingly enough, it can be seen from this graph that the activity rating exhibits a repeating pattern of oscillation with a period of approximately 10 minutes. The oscillation is observed to dampen over longer periods of time, indicating that the recursion relation which defines the change in node state can balance the frequency that the value of $j$ increases with the frequency that the value of $j$ decreases. This does not seem very significant in the case of one node, but the property also holds when other nodes are involved. For a node connected to some members of a complicated graph, the value $j$  varies depending on the peers of the node, as the peers may increase the value of $j$, and the node in question may also decrease the value of $j$. Load balancing across the network can be interpreted as an attempt to dampen the oscillation that results from this information exchange. This recursive dampening strategy is reminiscent of solving the \textbf{maximum flow problem}.
+
+\section{Varying $A_{s}$}
+\begin{figure}[h]
+\includegraphics[scale=0.4]{Diagrams/VaryingASC1.png}
+\caption[Activity Rating for Different Values of $A_{s}$]{Activity rating over time since the initialization of the Server for different values of $A_{s}$ in each case. Each tick represents one minute of time. Yellow: $A_{s} = 0.0$, Blue: $A_{s} = -0.1$, Red: $A_{s} = -0.3$.}
+\end{figure}
+
+Figure 4.3 shows the effect of altering the value of $A_{s}$ on a single node's ability to maintain a stable level of jobs in the queue. The values of other parameters for these tests are as follows.
+
+\begin{table}[h]
+\begin{center}
+\begin{tabular}{c c}
+\hline\hline
+Property & Value \\ [1ex]
+\hline
+$J_{m}$ & 40 jobs \\ [1ex]
+$J_{p}$ & 0.7 \\ [1ex]
+$J_{t}$ & 10 seconds \\ [1ex]
+$R_{p}$ & 0.0 \\ [1ex]
+$\textbf{g}R_{p}$ & 0.0 \\ [1ex]
+$k$ & 0 other nodes\\ [1ex]
+$A_{c}$ & 2.0 \\ [1ex]
+$A_{s}$ & 1.5 \\ [1ex]
+$A_{o}$ & 0.0 \\ [1ex]
+$\textbf{g}_k$ & 1 (the test task) \\ [1ex]
+\hline
+\end{tabular}
+\end{center}
+\caption{Node properties for varying $J_{p}$ test}
+\end{table}
+
+\begin{figure}[h]
+\includegraphics[scale=0.36]{Diagrams/VaryingASC2.png}
+\caption[Activity Rating for More Values of $A_{s}$]{Activity rating over time since the initialization of the Server for different values of $A_{s}$ in each case. Each tick represents one minute of time. The graph includes the data for the following values of $A_{s}$: 0.3, 0.5, 0.7, 0.9, 1.0, 1.1, 1.3, 1.5, 1.7, 2.0.}
+\end{figure}
+
+Figure 4.4 shows the same data as figure 4.3, but includes many different values of $A_{s}$ between 0.3 and 2.0. This data was collected using the same parameters from table 4.2.
+
+\section{What Does This Mean?}
+The experimental data presented above indicates that a node attempts to control the number of jobs it stores by altering the value of $s$ and $\textbf{g}s$ using the iteration matrix presented in chapter one. In terms of a graph of a connected nodes, stress is created by adding jobs to a node more quickly than it can complete them. This stress is dissipated by altering the values of $s$ and $\textbf{g}s$ and relaying jobs to other nodes. The relaying of a job from one node to another occurs during the node iteration and the value of $s$ controls the frequency with which the node iteration occurs.
+
+\chapter{Using the Machine}
+
+\section{Parallel Processing}
+When we speak of ``grid'' or ``distributed'' computing what we are referring to is the concept of coordinating and sharing computing and data storage resources across dynamic and geographically dispersed organizations. ``Grid technologies promise to change the way organizations tackle complex computational problems. However, the vision of large scale resource sharing is not yet a reality in many areas Ñ Grid computing is an evolving area of computing, where standards and technology are still being developed to enable this new paradigm.'' \footnote{``Grid Computing: The Basics.'' GRID.ORG. 2004. Accessed from Reed College. 29 Aug. 2006. http://www.grid.org/about/gc/}
+\par
+Parallel processing, or grid computation, is important for a variety of reasons. One of the most notable improvements on current super computing solutions that grid computation can provide is a financial benefit to organizations which require CPU intensive processing that performs in real time or close to it. Efficient load balancing solutions for grid computing are essential for allowing many different software applications to access the computing hardware investment that has been made by their organization. Load balancing is one of the most important techniques allowing users to maximize the utility of their computing environment.
+\par
+In the case of a centralized grid computing network setup, as described in the preface, load balancing is performed by one computer which maintains communication with every other computer employed for computation. The benefit of this network configuration is that load balancing is relatively easy to implement, but this imparts the cost of maintaining a machine for the purpose of load balancing. A possible solution is the use of a decentralized network configuration, involving each computer communicating with only a few others and autonomous load balancing performed by each computer and its peers.
+\par
+``Upgrading and purchasing new hardware is a costly proposition, and with the rate of technology obsolescence, it is eventually a losing one. By better utilizing and distributing existing compute resources, Grid computing will help alleviate this problem.''\footnotemark[\value{footnote}]
+\par
+
+\subsection{Other Products and Tools}
+``Software tools for distributed processing include standard APIs such as MPI and PVM, and open source-based software solutions such as Beowulf and openMosix which facilitate the creation of a sort of `virtual supercomputer' from a collection of ordinary workstations or servers. Technology like ZeroConf (Rendezvous/Bonjour) pave the way for the creation of ad hoc computer clusters. An example of this is the distributed rendering function in Apple's Shake compositing application. Computers running the Shake software merely need to be in proximity to each other, in networking terms, to automatically discover and use each other's resources. While no one has yet built an ad hoc computer cluster that rivals even yesteryear's supercomputers, the line between desktop, or even laptop, and supercomputer is beginning to blur, and is likely to continue to blur as built-in support for parallelism and distributed processing increases in mainstream desktop operating systems. An easy programming language for supercomputers remains an open research topic in Computer Science.''\footnote{``Supercomputer.'' Wikipedia.org. Accessed from Reed College. 29 Aug. 2006. http://en.wikipedia.org/wiki/Supercomputer}
+
+\subsection{What Makes Rings Different?}
+There are three main types of general-purpose super computers. These are:
+\begin{itemize}
+\item Vector processing machines - Allow arithmetic operations to be carried out on many computers simultaneously
+\item Tightly connected cluster computers - Custom designed computing hardware with the same resources and interface as a normal workstation, but use hardware interconnection between multiple processors which run in parallel, but share the system resources.
+\item Commodity clusters - A large number of network attached commodity workstations used to execute tasks in parallel
+\end{itemize}
+The Rings system is used to facility the necessary communication and distribution of CPU, memory, and hard disk resources to create what is known as a commodity cluster. A commodity cluster is a convenient way to dynamically allocate resources to a multitude of different software projects and applications that require a super computing solution.
+\par
+Rings may take advantage of networking technologies that permit ad hoc computer clustering. Because a Rings Client only requires one or more peers to be a member of the parallel processing network, any TCP/IP network configuration is supported.
+
+\section{Implementing a Task}
+Each type of process that is to be performed by the Rings Parallel Processing System must be implemented in the form of a ``task''.
+
+\subsection{Tasks and Jobs}
+A task is implemented by providing a Java class that implements the JobFactory interface. An implementation of the JobFactory interface will require the corresponding implementation of the Job interface. A ``Job'' represents a small unit of processing work that is independent of other Jobs.
+\par
+The nextJob method of a JobFactory implementation is invoked during the parent iteration (within the NodeGroup class) for a node. (This is represented by the variable $\textbf{g}_{k}$ described in chapter one). The Job produced is then immediately added to the Node maintained by the NodeGroup. The Node is responsible for relaying the Job to other peer nodes or executing the Job by calling the run method for the Job.
+
+\subsection{The JobFactory Interface}
+The JobFactory interface requires that the implementation provide a method, nextJob, that generates the next Job that is required to complete the task. The JobFactory must also provide a way of encoding itself in the form of a String so that the task can be sent across the internet. This String has a standard format that is described by the NodeGroup class (see createTask method of the NodeGroup class). The JobFactory must also provide a way of constructing Job objects based on the String that is produced when the Job objects are encoded and sent across the internet. Some other properties must be maintained by a JobFactory implementation and a complete list of methods to be implemented is given in table 5.1.
+
+\begin{figure}
+\centering
+\includegraphics[scale=0.7]{Diagrams/JobFactory.png}
+\caption{The JobFactory interface}
+\end{figure}
+
+\begin{figure}
+\centering
+\includegraphics[scale=0.7]{Diagrams/Job.png}
+\caption{The Job interface}
+\end{figure}
+
+\begin{figure}
+\small
+\begin{verbatim}
+net.sf.j3d.network.tests.UrlProfilingTask:uri=www.reed.edu:priority=2.0
+net.sf.j3d.network.tests.UrlProfilingJob:uri=www.reed.edu:taskid=1155324825047
+\end{verbatim}
+\caption{Example of an encoded task and an encoded job}
+\end{figure}
+
+\begin{table}[h!]
+\begin{center}
+\begin{tabular}{p{5 cm} p{9 cm}}
+\hline\hline
+Method & Description \\ [1ex]
+\hline
+createJob(String) \newline returns Job & Converts the specified String representation of a Job into a Job object for this task. \\ [1ex]
+encode() \newline returns String & Converts this task into a String representation that can be transmitted across the internet. This encoding takes the form
+``$\left<\text{class name}\right>:\left<\text{key1}\right>=\left<\text{value1}\right>:\left<\text{key2}\right>=\left<\text{value2}\right>\left[...\right]$''
+Where  $\left<\text{class name}\right>$ is the full Java class name for the JobFactory implementation, and $\left<\text{key1}\right>=\left<\text{value1}\right>$ is a key/value pair to be passed to the set method of the JobFactory implementation to reconstruct the state of the object on the remote machine. The $\left[...\right]$ denotes that as many key/value pairs can be specified as are required to restore the state of the object. A backslash ($\backslash$) may be used to escape the colon (:) character. The colon character is automatically ignored if it comes before two forward slashes, in the case of a url. For an example, see figure 5.2. \\ [1ex]
+getCompleteness() \newline returns double & Returns a value between 0.0 and 1.0 that corresponds to the percentage of Jobs for this task that have been sent out already (requested through the nextJob method). \\ [1ex]
+getName() \newline returns String & Returns a name for this task. This is the name that will show up in the task list when the tasks command is invoked on the terminal. \\ [1ex]
+getPriority() \newline returns double & Returns the priority of this task. The priority controls how many jobs will be requested from this task each iteration. If priority is 1.0, one job will be requested each parent iteration. \\ [1ex]
+getTaskId() \newline returns long & Returns a unique ID for this task. This is usually generated by calling System.currentTimeMillis().\\ [1ex]
+isComplete() \newline returns boolean & Returns true if this task has no more Jobs to send out. \\ [1ex]
+nextJob() \newline returns Job & Returns the next Job to completed for this task. \\ [1ex]
+set(String key, String value) \newline & Sets a property of this task. The set method is called by NodeGroup when reconstructing the task from its encoded String form. \\ [1ex]
+setPriority(double) \newline & Sets the priority of this task. \\ [1ex]
+\hline
+\end{tabular}
+\end{center}
+\caption{Methods required by the JobFactory interface}
+\end{table}
+
+\subsection{The Job Interface}
+The Job interface only requires implementing four methods. The encode method must be implemented so that the Server (or JobFactory, if it is set as the default JobFactory) can reconstruct the task when it is sent across the internet (see the instantiateJobClass method of the Server class). This encoded String must take the same form as the encoded String for a task, a class name followed by a list of key/value pairs separated by colons to be passed to the set method when reconstructing the Job. For an example, see figure 5.2. The getTaskId method must be implemented to tie the Job to the JobFactory instance that produced it. The getTaskString method returns text to be displayed in the list when the tasks command is invoked from the terminal. The set method must be implemented to reconstruct the state of the Job when it is sent across the internet.
+
+\subsection{An Example: URL Profiling}
+To illustrate the process of creating a task for the Rings Parallel Processing System we will go through what is required to create a task for profiling a website by repeatedly requesting pages and clocking the time to respond. This task is well suited for the Rings system, because one can construct a network that includes computers from a variety of different physical locations and connection speeds and automatically collect profiling information from a wide variety of possible website users. It seems most logical to start this example by providing the run method for a UrlProfilingJob, as this is the code that is actually executed to perform the test.
+
+\subsubsection{UrlProfilingJob.run()}
+The code for the run method is given in the figure below.
+\begin{figure}
+\small
+\begin{verbatim}
+public void run() throws RuntimeException {
+    long start, end, tot = 0, bs = 0;
+    
+    for (int i = 0; i < this.size; i++) {
+        start = System.currentTimeMillis();
+
+        String d[] = this.uri.split("\\\\");
+        StringBuffer b = new StringBuffer();
+        for (int j = 0; j < d.length; j++) b.append(d[j]);
+        uri = b.toString();
+
+        try {
+            InputStream in = new URL(this.uri).openStream();
+            while (in.available() > 0) { in.read(); bs++; }
+            in.close();
+        } catch (MalformedURLException murl) {
+            throw new RuntimeException("UrlProfilingJob -- " + murl.getMessage());
+        } catch (IOException e) { }
+
+        end = System.currentTimeMillis();
+        tot += end - start;
+
+        try {
+            Thread.sleep(2000);
+        } catch (InterruptedException e) {
+        }
+    }
+    
+    if (this.size <= 0) return;
+    
+    long avgTime = tot / this.size;
+    long avgBs = bs / this.size;
+    
+    StringBuffer b = new StringBuffer();
+    b.append(this.uri.substring(this.uri.lastIndexOf("/")));
+    b.append(":");
+    b.append(this.size);
+    b.append(":");
+    b.append(avgTime);
+    b.append(":");
+    b.append(avgBs);
+    b.append(":");
+    
+    System.out.println(b.toString());
+}
+\end{verbatim}
+\caption{The run method of the UrlProfilingJob class}
+\end{figure}
+This code is relatively simple (and understanding how it works is not central to understanding the Rings system itself). All that is performed here is repeatedly opening a socket stream to a host based on the URL stored by the UrlProfilingJob and timing the response. At the end of this series of requests some statistics are compiled and printed to standard output. What is important to notice is the variables that are referenced, namely this.uri and this.size. These variables are part of the state of the Job implementation and are set using the set(key, value) method. These variables are also included in the String encoded form of the Job so that they will be restored when the Job is transmitted over the internet.
+
+\subsubsection{UrlProfilingJob.set(String key, String value)}
+The set method provided by a Job implementation is used to automatically reconstruct the state of a Job instance when it is transmitted across the internet. Many Java programmers will be familiar with a Serializable or Externalizable class. For more information about why a Job is NOT Serializable or Externalizable and instead uses the set method to restore state, see appendix C.
+\begin{figure}
+\small
+\begin{verbatim}
+public void set(String key, String value) {
+    if (key.equals("id")) {
+        this.id = Long.parseLong(value);
+    } else if (key.equals("uri")) {
+        this.uri = value;
+    } else if (key.equals("size")) {
+        this.size = Integer.parseInt(value);
+    }
+}
+\end{verbatim}
+\caption{The set method of the UrlProfilingJob class}
+\end{figure}
+As you can see, the set method allows three different fields of the UrlProfilingJob object to be initialized. These are id, uri, and size. The id field is required by ALL Job implementations, as every Job must provide a getTaskId method that returns the unique ID of the task that produced the Job. Each Job object is responsible for storing this id and returning it when the getTaskId method is called. Every JobFactory object is, in turn, responsible for setting the ID for each Job object it produces. Jobs with apparently non-unique IDs may be eliminated by a ServerBehavior implementation that is used to ``clean house''.
+\par
+The uri and size fields are unique to the UrlProfilingJob class. The uri property is the unique resource identifier of the web page to be profiled by the UrlProfilingJob and the size property is the number of requests to make.
+
+\subsubsection{UrlProfilingJob.encode()}
+The encode method of a Job implementation is used to convert the Job to a String representation that can be transmitted across the internet. The String returned by the encode method must take a particular form if the Job is to be reconstructed by the Server. The Server class provides a static method, instantiateJobClass, that constructs and initializes a Job object based on a String representation with a specific format. A JobFactory implementation is required to provide a createJob method that performs this same operation (but the format is left up to the architect of the JobFactory implementation), however it is most often convenient to have the JobFactory implementation simply return the value returned by the static instantiateJobClass method the Server class. If a programmer does decide to create a different way of encoding and decoding jobs, the JobFactory used to decode Jobs must be registered with the currently running Server. This is not scalable, as it is tough to ensure that a JobFactory is registered with every running Server in a network and we are looking to provide a computing solution that is adaptable to many types of tasks.
+\begin{figure}
+\small
+\begin{verbatim}
+public String encode() {
+    StringBuffer b = new StringBuffer();
+    
+    b.append(this.getClass().getName());
+    b.append(":id=");
+    b.append(this.id);
+    b.append(":uri=");
+    b.append(this.uri);
+    b.append(":size=");
+    b.append(this.size);
+    
+    return b.toString();
+}
+\end{verbatim}
+\caption{The encode method of the UrlProfilingJob class}
+\end{figure}
+The encode method for UrlProfilingJob produces a String of the form $\left<\text{net.sf.j3d.network.tests.UrlProfilingJob}\right>$:id=$\left<\text{task id}\right>$:uri=$\left<\text{uri}\right>$:size=$\left<\text{size}\right>$, which is a valid encoded Job String that can be decoded by the instantiateJobClass method of the Server class. Notice that the encode method contains the same fields as those that are initialized by the set method. (This is how the instantiateJobClass method will reconstruct the state of the Job after it is transmitted.)
+
+\subsubsection{UrlProfilingJob.getTaskId()}
+The getTaskId method of a Job implementation returns the unique ID of the task that produced the Job object. This should be set using the set method and encoded using the encode method so that the Job maintains reference to the task that produced it when it is transmitted across the internet.
+\begin{figure}
+\small
+\begin{verbatim}
+public long getTaskId() { return this.id; }
+\end{verbatim}
+\caption{The getTaskId method of the UrlProfilingJob class}
+\end{figure}
+
+\subsubsection{UrlProfilingJob.getTaskString()}
+The getTaskString method of a Job implementation should return what would be returned by the toString method of the JobFactory object that produced the Job object.
+\begin{figure}
+\small
+\begin{verbatim}
+public String getTaskString() { return "ImageProfilingTask (" + this.id + ")"; }
+\end{verbatim}
+\caption{The getTaskString method of the UrlProfilingJob class}
+\end{figure}
+
+\subsubsection{Constructor for UrlProfilingJob}
+One important requirement of a Job implementation that has not been mentioned thus far is that a no argument constructor must always be provided. This is essential for the Server.instantiateJobClass method to reconstruct the Job when it is transmitted across the internet. However, in addition to a no argument contructor, UrlProfilingJob has a constructor that is used by UrlProfilingTask.
+\begin{figure}
+\small
+\begin{verbatim}
+public UrlProfilingJob(long id, String uri, int size) {
+    this.id = id;
+    this.uri = uri;
+    this.size = size;
+}
+\end{verbatim}
+\caption{Constructor for the UrlProfilingJob class}
+\end{figure}
+
+\subsubsection{UrlProfilingTask.nextJob()}
+The nextJob method of a JobFactory implementation returns the next Job object that is to be executed to complete the task represented by the JobFactory. In the case of UrlProfilingTask, each Job produced is the same (each opens the same URL some number of times and reports the profile results. Ideally the Jobs will end up on many different computers so that the profile effectively represents response time for a variety of different locations.)
+\begin{figure}
+\small
+\begin{verbatim}
+public Job nextJob() { return new UrlProfilingJob(this.id, this.uri, this.size); }
+\end{verbatim}
+\caption{The nextJob method of the UrlProfilingTask class}
+\end{figure}
+The Job is constructed using data from the fields of the UrlProfilingTask. These properties of the task are set with the set method (and encoded with the encode method).
+
+\subsubsection{UrlProfilingTask.set(String key, String value)}
+The set method provided by a JobFactory implementation is used to automatically reconstruct the state of a JobFactory instance when it is transmitted across the internet. The functionality is the same as the set method of Job (see above).
+\begin{figure}
+\small
+\begin{verbatim}
+public void set(String key, String value) {
+    if (key.equals("id")) {
+        this.id = Long.parseLong(value);
+    } else if (key.equals("uri")) {
+        this.uri = value;
+    } else if (key.equals("size") {
+        this.size = Integer.parseInt(value);
+    }
+}
+\end{verbatim}
+\caption{The set method of the UrlProfilingTask class}
+\end{figure}
+
+\subsubsection{UrlProfilingTask.encode()}
+The encode method provided by a JobFactory implementation is used to convert the JobFactory to a String representation that can be transmitted across the internet. The functionality is the same as the encode method of Job (see above).
+\begin{figure}
+\small
+\begin{verbatim}
+public String encode() {
+    StringBuffer b = new StringBuffer();
+    
+    b.append(this.getClass().getName());
+    b.append(":id=");
+    b.append(this.id);
+    b.append(":uri=");
+    b.append(this.uri);
+    b.append(":size=");
+    b.append(this.size);
+    
+    return b.toString();
+}
+\end{verbatim}
+\caption{The encode method of the UrlProfilingTask class}
+\end{figure}
+
+\subsubsection{UrlProfilingTask.createJob(String data)}
+The createJob method provided by a JobFactory implementation constructs and initializes a Job object based on the encoded String form of the Job. Most often this method will just make a call to the static method Server.instantiateJobClass.
+\begin{figure}
+\small
+\begin{verbatim}
+public Job createJob(String data) { return Server.instantiateJobClass(data); }
+\end{verbatim}
+\caption{The createJob method of the UrlProfilingTask class}
+\end{figure}
+
+\subsubsection{UrlProfilingTask.getTaskId()}
+The getTaskId method of a JobFactory implementation returns a unique ID for this task. This ID is usually generated by making a call to System.currentTimeMillis() when the task is initialized. The task should also provide support for setting the ID using the set method and should include the ID in the encoded String form of the JobFactory.
+\begin{figure}
+\small
+\begin{verbatim}
+public long getTaskId() { return this.id; }
+\end{verbatim}
+\caption{The getTaskId method of the UrlProfilingTask class}
+\end{figure}
+
+\subsubsection{UrlProfilingTask.getName()}
+The getName method of a JobFactory implementation should return a unique name for the task. To make the name unique, the ID of the task is usually included in the name, though this is not required.
+\begin{figure}
+\small
+\begin{verbatim}
+public String getName() { return "UrlProfilingTask (" + this.id + ")"; }
+\end{verbatim}
+\caption{The getName method of the UrlProfilingTask class}
+\end{figure}
+
+\subsubsection{Methods of UrlProfilingTask for Priority and Completeness}
+A JobFactory implementation is responsible for keeping track of a decimal value for the priority of the task (default should be 1.0) and the task ``completeness'', or how many of the Jobs for the task have been sent as a percentage of the total number of Jobs that need to be completed to complete the task.
+\begin{figure}
+\small
+\begin{verbatim}
+public void setPriority(double p) { this.pri = p; }
+public double getPriority() { return this.pri; }
+\end{verbatim}
+\caption{The getPriority and setPriority methods of the UrlProfilingTask class}
+\end{figure}
+The getPriority and setPriority methods simply return and set the priority property of the task, which UrlProfilingTask stores as a private field.
+\begin{figure} [h!]
+\small
+\begin{verbatim}
+public double getCompleteness() { return 0; }
+public boolean isComplete() { return false; }
+\end{verbatim}
+\caption{The getCompleteness and isComplete methods of the UrlProfilingTask class}
+\end{figure}
+The getCompleteness method of UrlProfilingTask returns 0.0 always, because UrlProfilingTask is designed to run indefinitely (until stopped). The isComplete method returns false always.
+\par
+In this section we have described in complete detail how each required method of Job and JobFactory is implemented to create a task that performs URL profiling. This source code is included as part of the Rings API and has been tested with existing websites. Next we will discuss how we can make one very important improvement to this task; something we really can't do without in a large scale network.
+
+\newpage
+
+\section{Producing Output}
+Next we will discuss how we can make one very important improvement to the UrlProfilingTask just described. A drawback of the UrlProfilingJob class is that the run method prints to standard output. What this means is that each machine that executes a job for this task will have the statistics collected by the job displayed on that machine. This does not seem very logical, as we would most likely want the data that is produced by each job to end up in one place, and often that place is the machine where the jobs originated.
+\par
+We have considered a few different approaches for collecting and storing whatever ``information'' may be produced by the execution of a job. The simplest of these methods is presented here, and another is presented in chapter 6. What is outlined here are the Java classes and interfaces provided by the Rings system for the purpose of storing the output produced by a job. There is also a caching system which can be used to persist data during one session of the Rings server, which is separate from the output storage system
+
+\begin{figure}
+\centering
+\includegraphics[scale=0.55]{Diagrams/DBClasses.png}
+\caption{Classes for Storing Output}
+\end{figure}
+
+\subsection{The JobOutput Class}
+The JobOutput class is used to provide a universal way for different Job implementations to encapsulate whatever output needs to be stored by Jobs executing across multiple machines. The JobOutput object provides the getOutput and setOutput methods which provide access to a String field of the JobOutput object which can be used to store whatever information a Job instance needs to persist after execution of the Job.
+\par
+Again, a design choice was made to provide only a String field for persistent output. This is not a requirement because the JobOutput class, as opposed to the Job and JobFactory interfaces, does take advantage of Java serialization through the Externalizable interface (see Appendix \ref{app:Serializable}). It is reasonably easy to replace the functionality provided by JobOutput, or to extend the JobOutput class. Classes which extend JobOutput can be used with the other classes provided by the Rings system without hassle, but the implementor is responsible for providing the methods required by the Java Externalizable interface.  The JobOutput class has been extended in one case to store image output produced by a ray tracing task. This implementation uses Java collections, which are quite conveniently transmitted by the writeExternal and readExternal methods.
+
+\begin{figure}
+\centering
+\includegraphics[scale=0.55]{Diagrams/JobOutput.png}
+\caption{The JobOutput class}
+\end{figure}
+
+\subsection{The Client Class}
+
+The Client class moderates a connection to an output host where JobOutput objects can be sent and persisted. The Client class provides the writeOutput method for sending output and the sendQuery method for requesting persisted data.
+
+\begin{figure}
+\centering
+\includegraphics[scale=0.55]{Diagrams/Client.png}
+\caption{The Client class}
+\end{figure}
+
+\subsection{The OutputHandler Interface}
+An interface is used in Java to define a general category of object that shares certain properties with all objects in the same category. When an object is in a category defined by a Java interface, we say the class for that object implements the interface. The OutputHandler interface can be implemented by classes that provide a method for persisting JobOutput data or by classes that need to be notified when information arrives to be persisted. The OutputHandler interface specifies the storeOutput method which is notified when a JobOutput object is recieved by the output server.
+\par
+A DefaultOutputHandler is provided to store persisted data in a relational database using JDBC. This output handler can be initialized in the configuration file for the Rings server. For more information about the table structure required for this output handler, see appendix \ref{app:DefaultOutputHandler}.
+
+\begin{figure}
+\centering
+\includegraphics[scale=0.55]{Diagrams/OutputHandler.png}
+\caption{The OutputHandler interface}
+\end{figure}
+
+\subsection{The OutputServer Class}
+The OutputServer class accepts connections from Client instances running on remote machines and receives encoded JobOutput objects. The thread maintained by the OutputServer class can be started at the time that a Rings client is initialized. For more information on configuring the Rings client, see appendix D. An OutputServer can also be initialized from the terminal and OutputHandlers can be initialized and added once the OutputServer has been initialized. For more information on working with the terminal see the dbs commands described in chapter 3.
+
+\begin{figure}
+\centering
+\includegraphics[scale=0.55]{Diagrams/OutputServer.png}
+\caption{The OutputServer class}
+\end{figure}
+
+\subsection{Revising the Example}
+Now we will update the UrlProfilingJob class to send the statistics it produces using a running Rings client. We will also create a class for handling the output produced by the UrlProfilingJobs that execute across many computers in a Rings network.
+
+\subsubsection{The new UrlProfilingJob.run()}
+\begin{figure}
+\small
+\begin{verbatim}
+public void run() throws RuntimeException {
+    long start, end, tot = 0, bs = 0;
+    
+    ...
+    ...
+    ...
+    ...
+        
+    StringBuffer b = new StringBuffer();
+    b.append(this.uri.substring(this.uri.lastIndexOf("/")));
+    b.append(":");
+    b.append(this.size);
+    b.append(":");
+    b.append(avgTime);
+    b.append(":");
+    b.append(avgBs);
+    b.append(":");
+    
+    System.out.println(b.toString());
+}
+\end{verbatim}
+\caption{The run method of the UrlProfilingJob class}
+\label{fig:UrlProfilingJobRunNew}
+\end{figure}
+At the very end of execution, the run method in our previous example printed some statistics to standard output. We will replace this print statement with usage of the Client and JobOutput classes. The revised source code is shown in figure \ref{fig:UrlProfilingJobRunNew} (Some of the code has been omitted to keep this figure compact).
+
+\subsubsection{An OutputHandler for UrlProfilingJob}
+\begin{figure}[h]
+\small
+\begin{verbatim}
+public class UrlProflingOutputHandler implements OutputHandler {
+    PrintWriter out;
+
+    public UrlProfilingOutputHandler() throws IOException {
+        this.out = new PrintWriter(
+        new BufferedWriter(new FileWriter("url-profile" +
+        System.currentTimeMillis() + ".txt")));
+    }
+    
+    public void storeOutput(long time, int uid, JobOutput output) {
+        String s[] = output.getOutput().split(":");
+        	
+        StringBuffer b = new StringBuffer();
+        b.append(time);
+        b.append("\t");
+        
+        for (int i = 0; i < s.length; i++) {
+            b.append(s[i]);
+            b.append("\t");
+        }
+    
+        String bs = b.toString();
+        synchronized (this.out) { this.out.println(bs); this.out.flush(); }
+    }
+}
+\end{verbatim}
+\caption{An OutputHandler implementation for UrlProfilingJob}
+\label{fig:UrlProfilingOutputHandler}
+\end{figure}
+The DefaultOutputHandler can be used to store the information reported by UrlProfilingJob and this information can be extracted from the relational database at a later point when another application can be used to aggregate the data and display it in some convenient fashion. However, for the purpose of demonstration, we will implement a custom OutputHandler for the UrlProfilingJob output. This output handler will open an output stream to save the profiling data to a tab delimited file, from which it could be imported into a spread sheet program such as included with OpenOffice. The source code for this OutputHandler is shown in figure \ref{fig:UrlProfilingOutputHandler}.
+\par
+There are a few important things to notice about the the UrlProfilingOutputHandler class. First of all, a no argument constructor is provided. This is required for the output handler to be initialized at run time from the Rings terminal. Also access to the print stream is contained in a synchronized block. This is necessary to prevent concurrent threads from attempting to write to the file. Any code contained in the sotreOutput method of an OutputHandler must be thread safe, as multiple threads may be configured to use the same output handler, not to mention that separate threads are used for simultaneous client connections.
+
+\section{Putting it all Together}
+In the previous section we made minor modifications to the UrlProfilingJob class and created a UrlProfilingOutputHandler. Now we are ready to test the UrlProfilingTask by starting the Rings client and sending the task to a remote machine. For more information on configuring and initializing a Rings client, see appendix \ref{app:RingsClient}.
+
+\subsection{Running a Task}
+To send the UrlProfilingTask we must initialize two Rings clients. These two client can be on the same machine, or on separate machines. Figure \ref{fig:SendingUrlProfilingTask} shows the process of (1) logging in to one client, (2) opening a connection to the other client, (3) listing the peers of the local client, (4) starting the output server, (5) initializing a UrlProfilingOutputHandler, and (6) sending a new UrlProfilingTask to the remote client.
+\par
+Figure \ref{fig:OutputServerConfig} shows the line that must be present in the Rings client configuration file for each client so that the output produced by each UrlProfilingJob is sent to the proper server. For more information about the Rings configuration file, see appendix \ref{app:RingsClient}.
+\par
+Once this is done, the UrlProfilingTask should begin producing jobs and the jobs should be distributed and executed. Data will then be written out to a text file on the host where the output server is running.
+
+\begin{figure}
+\small
+\begin{verbatim}
+murraym@oberon.reed.edu$ telnet ball 6767
+Trying 134.10.15.90...
+Connected to ball.reed.edu (134.10.15.90).
+Escape character is '^]'.
+Welcome to Rings 0.4 Network Client
+[----]> open ring
+Opened host ring
+[----]> peers
+ring/134.10.15.94
+[----]> dbs start
+Started DBS.
+[----]> dbs add net.sf.j3d.network.tests.UrlProfilingOutputHandler
+Added net.sf.j3d.network.tests.UrlProfilingOutputHandler@17e6a96 as a handler for output.
+[----]> sendtask 0 net.sf.j3d.network.tests.UrlProfilingTask uri=http://www.reed.edu size=10
+Started sendtask thread: 1154986910663@ring/134.10.15.94
+\end{verbatim}
+\caption[Sending the UrlPofilingTask from the terminal]{(1) logging in to one client, (2) opening a connection to the other client, (3) Listing the peers of the local client, (4) starting the output server, (5) initializing a UrlProfilingOutputHandler, and (6) sending a new UrlProfilingTask to the remote client.}
+\label{fig:SendingUrlProfilingTask}
+\end{figure}
+
+\begin{figure}
+\small
+\begin{verbatim}
+# Connection info for output host.
+servers.output.host=ball.reed.edu
+\end{verbatim}
+\caption{Configuring the clients to report output}
+\label{fig:OutputServerConfig}
+\end{figure}
+
+\subsection{Viewing Node Status}
+While the Rings client is running, it produces an HTML file that contains information about the current status. For more information about configuring where this HTML file resides, see appendix \ref{app:RingsClient}. An example of this status page is shown in figure \ref{fig:StatusPage}.
+\begin{figure}
+\small
+\includegraphics{Diagrams/StatusPage1.tiff}
+\caption{Automatically generated status page}
+\label{fig:StatusPage}
+\end{figure}
+
+\chapter{Extending the Machine}
+The Rings Server is a very extendable package. Most modules are nicely encapsulated and replaceable with custom solutions. Also, Rings provides an API for caching frequently used data on a local machine and this API. Other APIs of this sort can be developed completely separately from Rings and used by executing Jobs at runtime. The ServerBehavior interface allows modules to be developed that can be accessed using the terminal command $behave$ (see chapter 3). One use of a ServerBehavior is to initialize other threads that may be required for custom Job implementations.
+\par
+A ServerBehavior can be performed using the terminal or upon instruction from a remote Rings client instance. This means that a user can execute a ServerBehavior that propagates through the entire network and reconfigures each client as the message cascades across the node graph.
+
+\section{Decentralized Data Storage}
+One extension of the Rings System that has been scoped for design and implementation during 2006 and early 2007 is an extension of the output server system to provide a mechanism for decentralized data storage. What this means is that a small amount of disk space would be reserved on each machine running the Rings client and this disk space would be used to store information shared across the network. The decentralized data storage solution would provide a safe way to store large quantities of information, as the data can be spread out across as many machines as needed and each chunk of data would be stored in a few different locations to prevent data loss in case of a failure.
+\par
+The implementation of this data storage system involves creating a network file system. The index (directory/file structure) of the filesystem is known by all nodes on the network, but the data is stored whereever is convenient based on popularity and network traffic time.
+\par
+The current plan for decentralized data storage involves a two tiered system as summarized below.
+\begin{itemize}
+\item The ResourceDistributionTask class maintains the index of all files contained in the distributed file system. The ResourceDistributionTask is responsible for notifying the node peers of new files and files that have been removed. Also, the ResourceDistributionTask maintains a collection of Job instances that are cycled into the queue of a running Rings client as necessary for moving local data to peer machines. These Job instances (ResourceDistributionJob) are designed to select the least recently/frequently accessed pieces of data and move them to peer computers. The remote machine persists the data using whatever storage method is configured for the Rings client. This data can be retrieved by a ResourceDistributionTask executing on the remote machine. The storage method could be a relational database using DefaultOutputHandler, a collection of data files in a local directory or any other way of storing information on the local machine.
+\item The DistributedResource class represents a file on the network file system. Many DistributedResource instances are referenced by a ResourceDistributionTask object which maintains the directory structure of the network file system. The data maintained by a DistributedResource instance can be requested from the Resource Server provided as part of the main Rings Server (for more information on initializing the Resource Server, see appendix \ref{app:RingsClient}). When this request occurs, a local instance of ResourceDistributionTask is queried for local data that pertains to the request. Then that request is cascaded to the peers of the local client to fill in the other required information. Finally, when the request has propagated far enough to be completely populated with the proper data, the request is returned with the data. Once data is requested and populated in this manner, it is stored in memory briefly. This cached data then ``competes'' in a popularity contest with data stored on the local disk by the ResourceDistributionTask. The in memory cache may be committed to the disk cache (local OutputServer) if space and popularity permit. Once in the disk cache, the data will be broken into uniform size chunks and distributed among peers as described above.
+\item A plugin for the Slide content repository (\url{http://jakarta.apache.org/slide/})  will be provided as a front end to the ResourceDistributionTask class. When a Rings client is running on the local machine, webdav can be used to mount a network drive that will present the distributed file system as network attached storage. This plugin will make modifications to the file system by notifying the currently running ResourceDistributionTask.
+\end{itemize}
+
+\section{Ideas for Extending the Engine}
+The future of the Rings Parallel Processing system may hold a great many things and at the moment we are in the midst of choosing what direction is most important to take the product so as to provide for the needs of the research and commercial communities that require grid computing. We are also taking into consideration the needs of an online community that may be used to empower graphic artists and independent researchers with the ability to easily develop a connected network of peers willing to donate unused processing power and disk space to meet the needs of personal grid computing on a tight budget. Contained here are some of the ideas that have been brainstormed for the distant future (2008 and onward) of this project.
+
+\subsection{A Parallel Operating System}
+The Rings Server terminal provides some of the functionality expected from a shell to an operating system such as Unix, Linux, or Solaris. One thing that has been proposed is extending the provided terminal to include the ability to run executable files stored on the local machine. A special runtime environment could be used to allow multiple threads of a normal unix executable to run in parallel on separate computers connected as peers in the Rings network. With extensive further development, we see the possibility of distributing the Rings system along with a compact operating system (perhaps some version of Solaris) and marketing the product as a parallel operating system, though this is much further in the future.
+
+\subsection{A Decentralized Social Networking System}
+In chapter 5 it was mentioned that the Rings Server automatically produces an HTML status page containing information about the current state of the running application. In the future we plan to hire a web designer to create a set of JSP pages that can be used to display this information instead. The JSP pages can be populated with information directly from the application and will also have access to the core functionality provided by the terminal. This will provide a very convenient interface for the application that is accessible from anywhere.
+\par
+Taking this a step further, it has been proposed that Rings be set up to provide a way for the user to configure a personal information page that would be similar to those found on the social networking site \url{facebook.com}. This website is popular among college students and is used to keep in touch with friends from all over the world. One draw back of social networking sites, however, is that the information resides all in one place. If each individual were to use their own computer to host their own pages many of the restrictions imposed by the website administrators would be liberated and members of the site would have the freedom to set up their pages how ever they wish.
+\par
+With the Rings a task could be programmed to index all of the information provided by the users of the social networking system. This indexing process would take place on the computers running the application, meaning that the social networking system would be truely democratic: owned and operated by the users of the system. No advertisers would be able to buy space on this network (and if they did, it would be directly from the users) and no restrictions on the content would be applied except those that were universally agreed upon by a large majority of the users (restrictions would come in the form of Rings tasks that move around the network and enforce the rules. Voting would be done by submitting tasks to enforce rules.)
+\par
+Another feature of this system is that the content repository described in section 6.1 would be accessible by all users, meaning the social networking could take on a component of file sharing and backup as well. This is something that simply cannot be offered by current social networking websites. Also, members would be able to take advantage of the unused processing power of their peers in the network simply by using the JSP forms provided to send tasks (such as digital image synthesis) to their peers. This could be a most productive and cost effective tool for graphic artists.
+
+\section{Ideas for Parallel Processing Tasks}
+
+\chapter{The Product}
+The Rings Server and the classes described in this document make up the Rings Parallel Processing system. The Rings system is proprietary software, though we do have plans for a free single user license available to the non commercial user. However, this package will not stand alone, but only operate as part of an public file sharing and parallel processing network.
+
+\section{Plans for the Future}
+Our efforts during the end of 2006 and through the early part of 2007 will be focused on implementing the decentralized content repository described in chapter 5. During the later part of 2007 the software will be tested with personal computers on the Reed College campus, where we will set up an online community of parallel processing nodes. This will allow us to test the scalability of the Rings Parallel Processing system and also support the Rings Photon Field Simulation project. We will use the content repository to create a file sharing network for the Reed community as a public service and as a way to encourage the use of our product.
+\par
+At the end of 2007, when the product has been tested by the community at Reed, we will begin soliciting the attention of a venture capitalist to allow us to fund further testing of the product and to market to research facilities where grid computing is currently necessary.
+\par
+In parallel with our work to start a company and market the tool as a stand alone system, we will work to create an internet wide online community for parallel processing. This would be an attractive tool to digital artists, who would have the ability to take advantage of unused processing power of their peers in the online community. The media that is produced by the system would be conveniently stored and backed up with the provided content repository. This is also a marketing tool and a means for testing the Rings system on a large scale.
+
+\section{Licensing the Machine}
+
+
+\appendix
+\chapter{Glossary}
+\begin{itemize}
+\item Iteration Matrix - A matrix which describes the change in state of a node and a node parent due to the node and parent iterations. A matrix product, given in equation \ref{eq:IterationMatrix}, involving the iteration matrix is used to calculate the new state of a node and its parent from the current state, described by a 6D vector quantity.
+\item Matrix - In mathematics, a matrix (plural matrices) is a rectangular table of numbers or, more generally, a table consisting of abstract quantities that can be added and multiplied. Matrices are used to describe linear equations, keep track of the coefficients of linear transformations and to record data that depend on two parameters. Matrices can be added, multiplied, and decomposed in various ways, marking them as a key concept in linear algebra and matrix theory.
+\item The Maximum Flow Problem - Finding a feasible flow through a single-source, single-sink flow network that is maximum? . Sometimes it is defined as finding the value of such a flow. The maximum flow problem can be seen as special case of more complex network flow problems. For example, it is the multi-commodity flow problem with only one commodity, and it is the minimum-cost flow problem with all costs set to zero except for an additional arc from the sink to the source, which has a cost of negative one and no capacity. The maximum s-t flow in a network is equal to the minimum cardinality s-t cut in the network, as stated in the Max-flow min-cut theorem.
+\item Recursion Relation - In mathematics, a recurrence relation, is an equation which defines a sequence recursively: each term of the sequence is defined as a function of the preceding terms. A difference equation is a specific type of recurrence relation. Some simply defined recurrence relations can have very complex (chaotic) behaviours and are sometimes studied by physicists and mathematicians in a field of mathematics known as nonlinear analysis.
+\item Stochastic - A stochastic process is one whose behavior is non-deterministic in that the next state of the environment is partially but not fully determined by the previous state of the environment.
+\item Vector Space - In mathematics, a vector space (or linear space) is a collection of objects (called vectors) that, informally speaking, may be scaled and added. More formally, a vector space is a set on which two operations, called (vector) addition and (scalar) multiplication, are defined and satisfy certain natural axioms which are listed below. Vector spaces are the basic objects of study in linear algebra, and are used throughout mathematics, the sciences, and engineering.
+\end{itemize}
+
+\chapter{Frequencies and Rates}
+Often in the paper I use the terms ``frequency'' and ``rate'' with a lackadaisical omission of specificity. I would like to clarify the use of these terms here.
+\par
+``Frequency'' is a quantized (discrete) measure of some integer number over a positive, finite measure of time. This implies that a measure of frequency is always reducible to the ratio of an integer to a real number (of course, this is true for all real numbers, as all real numbers have an inverse that is also real).
+
+\begin{equation}
+\text{Frequency} = \frac{\{y \mid y \in \mathbb{Z^{+}}\}}{\{x \mid x \in \mathbb{R^{+}}\}}
+\end{equation}
+
+A similar measure, know as ``rate'', is also measured over a positive, finite interval of time, but the numerator can take on any real value.
+
+\begin{equation}
+\text{Rate} = \frac{\{y \mid y \in \mathbb{R}\}}{\{x \mid x \in \mathbb{R^{+}}\}}
+\end{equation}
+\\
+
+The difference really exists in the quantity that is to be measured. If the quantity comes in integer values only (quantized) it is referred to as a frequency. If a quantity can come in any amount, including fractional, irrational, and possibly negative quantities, it is referred to as a rate. For example, ``7 bullets fired from a gun each second'' is a frequency, while ``3.5 liters of water from a hose each second'' is a rate.
+\par
+The point of this hairsplitting discussion is this: the methods of differential and integral Calculus are used to describe the relationships between the rate of change of a variable quantity to other rates of change or other variables. The assumption of the Calculus is that these quantities are continuously defined and can take on any real value. The Calculus is used, however, to make accurate predictions about systems that are, in reality, quantized. An amount of water, for example, was earlier mentioned as a quantity that is not quantized and is adequately measured using a rate. However, water is actually composed of many tiny molecules and the so called ``rate'' of water coming from a hose is actually a frequency -- a discrete number of water molecules per unit time. ``3.5 liters of water coming from a hose each second'' is an approximation to an actual integer number of water molecules that came from the hose during one second. The Calculus works very well to describe the relationship between a frequency and other variable quantities, as long as that frequency can be adequately approximated by a rate.
+
+\chapter{\label{app:Serializable}Why Avoid Java Serializable and Externalizable?}
+Many Java programmers will be familiar with the concept of a Serializable or Externalizable class and the question naturally arises: Why does the Rings system seem to avoid usage of these interfaces provided by Java? When a Job or JobFactory object is transmitted across the internet, the state of the object is restored using the set method with key/value pairs that are of the String data type. The set method required by these interfaces is an alternative to the methods of restoring the state of an object provided by Java. The reason for using the set method instead of just requiring that a Job implementation be Serializable/Externalizable is because we wish to require that all properties of a Job have some String representation.
+\par
+It is perfectly appropriate for a Job or JobFactory implementation to use some unintelligible method of encoding information in the form of a String, but the String requirement allows us to create columns in a relational database that represent the properties of any Job or JobFactory implementation. Also, if the properties of a Job or JobFactory are written directly to an output stream onto the file system, the resulting file will most likely be human readable, which is another convenient feature of requiring String fields only. From a design perspective, we believe that it is a worthy trade off to add some extra processing time for the conversion between a String and other data types stored by a Job because this places the responsibility for data integrity and validation on the Job instead of on the relational database or the Rings system itself.
+\par
+Again, this is something that was given much thought and could perhaps be changed in the future if performance requires it. For example, we considered representing the properties of a Job with integer or long data types for key/value pairs. However, this proved to be too much of a hassle for the development of new Job implementations, as the Job implementations we have written so far seem to most often use fields that are of the String type. Also, this creates a pretty strict requirement on the size of the key/value data (32 or 64 bits). Overall, I believe the decision that was made is the right one.
+
+\chapter{\label{app:RingsClient}Configuring and Running the Rings Client}
+
+\chapter{\label{app:DefaultOutputHandler}Relational Database Tables for DefaultOutputHandler}
+
+\backmatter
+
+\bibliographystyle{plainnat}
+\nocite{*}
+\bibliography{thesis}
+
+\end{document}
+\end{document}

@@ -253,6 +253,17 @@ public class NativeCompiler implements Destroyable, ConsoleFeatures {
 	private static final String OPENCL = System.getProperty("os.name").toLowerCase().startsWith("mac os") ?
 								"#include <OpenCL/cl.h>\n" : "#include <cl.h>\n";
 
+	/**
+	 * Code size threshold (in characters) above which generated C source
+	 * files receive a {@code #pragma GCC optimize("O0")} directive.
+	 * This prevents prohibitively slow compilation of large generated
+	 * functions (e.g., recursive FFT) under {@code -O3}, where GCC
+	 * optimization passes can exceed test timeouts.
+	 */
+	private static final int REDUCED_OPT_THRESHOLD = 5000;
+
+	private static final String REDUCED_OPT_PRAGMA = "#pragma GCC optimize(\"O0\")\n";
+
 	private static int runnableCount;
 	private static int dataCount;
 	private static int monitorOutputCount;
@@ -342,6 +353,9 @@ public class NativeCompiler implements Destroyable, ConsoleFeatures {
 		try (FileOutputStream out = new FileOutputStream(getInputFile(name));
 				BufferedWriter buf = new BufferedWriter(new OutputStreamWriter(out))) {
 			buf.write(header);
+			if (code.length() > REDUCED_OPT_THRESHOLD) {
+				buf.write(REDUCED_OPT_PRAGMA);
+			}
 			buf.write(code);
 		} catch (IOException e) {
 			throw new HardwareException(e.getMessage(), new UnsupportedOperationException(e));
