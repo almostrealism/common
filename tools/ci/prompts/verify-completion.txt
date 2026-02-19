@@ -1,0 +1,77 @@
+You are verifying that the work on branch "${BRANCH}" (commit ${COMMIT_SHA}) actually
+achieves the original goal described in the plan file below.
+
+## Original Plan
+
+The following file contains the original plan that motivated the changes on this branch:
+
+--- BEGIN PLAN (from ${PLAN_FILE}) ---
+${PLAN_CONTENT}
+--- END PLAN ---
+
+## Your Task
+
+You must determine whether the work on this branch is **complete** and **proven correct
+by tests**. This is not a style review or a general code review — it is a completion
+verification.
+
+Use `git log ${BASE_BRANCH}..HEAD` and `git diff ${BASE_BRANCH}...HEAD` to understand
+the full scope of changes made on this branch.
+
+### Step 1: Verify Completeness
+
+For each goal, requirement, or deliverable described in the plan:
+
+1. Identify the specific code changes that implement it
+2. Determine whether the implementation is **complete** or only **partial**
+3. If partial, describe exactly what is missing
+
+A goal is only "complete" if the code changes fully address it. Scaffolding, TODOs,
+placeholder implementations, or commented-out code do NOT count as complete.
+
+### Step 2: Verify Test Proof
+
+For each completed goal, determine whether there are **tests that prove it works**:
+
+1. Identify the test class(es) and method(s) that exercise the new or changed behavior
+2. Assess whether the tests are **meaningful** — do they actually verify the intended
+   behavior, or are they superficial (e.g., only checking that no exception is thrown,
+   or testing trivial getters/setters)?
+3. Are edge cases covered where appropriate?
+4. Do the tests follow project conventions (extend TestSuiteBase, include @TestDepth
+   for expensive tests, include timeout parameters)?
+
+A goal is only "proven" if there are tests that would **fail** if the implementation
+were removed or broken. Tests that pass regardless of the implementation do not count.
+
+### Step 3: Check for Regressions
+
+Verify that existing tests on ${BASE_BRANCH} have NOT been weakened or disabled:
+
+- No `@Ignore` or `@Disabled` added to pre-existing tests
+- No assertions removed or loosened
+- No `try/catch` blocks added to swallow exceptions in tests
+- No expected values changed to match incorrect output
+
+### How to Report
+
+Post your findings as a comment on the pull request (if one exists for this branch)
+or send a summary via Slack. Use the following structure:
+
+**Completion Status: [COMPLETE / INCOMPLETE]**
+
+| Goal | Status | Test Proof | Notes |
+|------|--------|------------|-------|
+| (each goal from the plan) | Complete/Incomplete | Proven/Unproven/Partial | (details) |
+
+**Unfinished Work** (if any):
+- List each incomplete goal with a description of what remains
+
+**Missing Test Coverage** (if any):
+- List each goal that lacks adequate test proof
+
+**Regressions** (if any):
+- List any pre-existing tests that were weakened or disabled
+
+If everything is complete and proven, say so explicitly and explain why you are
+confident that the tests adequately prove the implementation is correct.
