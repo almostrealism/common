@@ -44,7 +44,7 @@ import java.util.UUID;
  *     defaultBranch: "feature/work"
  *     pushToOrigin: true
  *     allowedTools: "Read,Edit,Write,Bash,Glob,Grep"
- *     maxTurns: 500
+ *     maxTurns: 800
  *     maxBudgetUsd: 100.0
  *     gitUserName: "CI Bot"
  *     gitUserEmail: "ci-bot@example.com"
@@ -74,7 +74,7 @@ public class WorkstreamConfig {
         private boolean pushToOrigin = true;
         private String workingDirectory;
         private String allowedTools = "Read,Edit,Write,Bash,Glob,Grep";
-        private int maxTurns = 500;
+        private int maxTurns = 800;
         private double maxBudgetUsd = 100.0;
         private String gitUserName;
         private String gitUserEmail;

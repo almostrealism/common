@@ -495,7 +495,8 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         String subtype = extractJsonField(body, "subtype");
         boolean sessionIsError = extractJsonBooleanField(body, "sessionIsError");
         int permissionDenials = extractJsonIntField(body, "permissionDenials");
-        event.withSessionDetails(subtype, sessionIsError, permissionDenials);
+        List<String> deniedToolNames = extractJsonArrayField(body, "deniedToolNames");
+        event.withSessionDetails(subtype, sessionIsError, permissionDenials, deniedToolNames);
 
         log("Status event: " + eventStatus + " for job " + jobId + " in workstream " + workstreamId);
 

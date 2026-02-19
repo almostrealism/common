@@ -140,6 +140,8 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
     private String commitHash;
     private String pullRequestUrl;
     private boolean gitOperationsSuccessful = false;
+    private boolean mergeConflictsDetected = false;
+    private List<String> conflictFiles = new ArrayList<>();
 
     private Consumer<JobOutput> outputConsumer;
     private final CompletableFuture<Void> future = new CompletableFuture<>();
@@ -283,6 +285,99 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
             log("Working directory is up to date with origin/" + targetBranch + " at " + headHash);
         } else {
             log("No remote branch origin/" + targetBranch + " -- skipping pull");
+        }
+
+        // 5. Synchronize with the base branch (e.g., origin/master) so our
+        //    working branch incorporates any changes that have landed on the
+        //    base since the branch was created.  This is critical because
+        //    the long-term goal is to merge back into the base branch, and
+        //    staying current reduces merge conflicts at PR time.
+        synchronizeWithBaseBranch();
+    }
+
+    /**
+     * Merges the latest remote base branch into the current working branch.
+     *
+     * <p>If the base branch is the same as the target branch, or if the
+     * remote base branch does not exist, this is a no-op.</p>
+     *
+     * <p>When merge conflicts occur, they are recorded via
+     * {@link #mergeConflictsDetected} and {@link #conflictFiles} so that
+     * subclasses (e.g., {@code ClaudeCodeJob}) can adjust the agent prompt
+     * to include conflict resolution instructions. The merge is left in
+     * a conflicted state so the coding agent can resolve the conflicts.</p>
+     *
+     * @throws IOException if a git command fails to execute
+     * @throws InterruptedException if a git command is interrupted
+     */
+    private void synchronizeWithBaseBranch() throws IOException, InterruptedException {
+        if (baseBranch == null || baseBranch.isEmpty()) {
+            return;
+        }
+
+        // No need to merge if target and base are the same branch
+        if (baseBranch.equals(targetBranch)) {
+            return;
+        }
+
+        String remoteBase = "origin/" + baseBranch;
+        boolean remoteBaseExists = executeGit(
+            "show-ref", "--verify", "--quiet",
+            "refs/remotes/" + remoteBase) == 0;
+        if (!remoteBaseExists) {
+            log("Remote base branch " + remoteBase + " does not exist -- skipping sync");
+            return;
+        }
+
+        // Check if there are new commits on the base branch that we don't have
+        String mergeBase = executeGitWithOutput("merge-base", "HEAD", remoteBase).trim();
+        String baseHead = executeGitWithOutput("rev-parse", remoteBase).trim();
+
+        if (mergeBase.equals(baseHead)) {
+            log("Already up to date with " + remoteBase);
+            return;
+        }
+
+        log("Synchronizing with " + remoteBase + " (merge-base: "
+            + mergeBase.substring(0, Math.min(7, mergeBase.length()))
+            + ", base HEAD: "
+            + baseHead.substring(0, Math.min(7, baseHead.length())) + ")...");
+
+        int mergeResult = executeGit("merge", remoteBase,
+            "--no-edit", "-m", "Merge " + remoteBase + " into " + targetBranch);
+
+        if (mergeResult == 0) {
+            String headHash = executeGitWithOutput("rev-parse", "--short", "HEAD").trim();
+            log("Successfully merged " + remoteBase + " (now at " + headHash + ")");
+        } else {
+            // Merge conflict detected -- identify conflicted files
+            log("Merge conflict detected while synchronizing with " + remoteBase);
+            mergeConflictsDetected = true;
+
+            String statusOutput = executeGitWithOutput("status", "--porcelain");
+            for (String line : statusOutput.split("\n")) {
+                if (line.startsWith("UU ") || line.startsWith("AA ")
+                        || line.startsWith("DD ") || line.startsWith("AU ")
+                        || line.startsWith("UA ") || line.startsWith("DU ")
+                        || line.startsWith("UD ")) {
+                    String file = line.substring(3).trim();
+                    if (!file.isEmpty()) {
+                        conflictFiles.add(file);
+                    }
+                }
+            }
+
+            log("Conflicted files (" + conflictFiles.size() + "): "
+                + (conflictFiles.size() <= 10
+                    ? String.join(", ", conflictFiles)
+                    : String.join(", ", conflictFiles.subList(0, 10))
+                        + " (+" + (conflictFiles.size() - 10) + " more)"));
+
+            // Abort the merge so the working directory is clean for the agent.
+            // The agent will be told about the conflicts and instructed to
+            // perform the merge itself after understanding the changes.
+            executeGit("merge", "--abort");
+            log("Merge aborted -- agent will be instructed to resolve conflicts");
         }
     }
 
@@ -1201,6 +1296,27 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
         return originalBranch;
     }
 
+    /**
+     * Returns whether merge conflicts were detected when synchronizing
+     * with the base branch during {@link #prepareWorkingDirectory()}.
+     *
+     * <p>Subclasses can use this to modify their behavior, for example
+     * by adding conflict resolution instructions to a coding agent's prompt.</p>
+     */
+    protected boolean hasMergeConflicts() {
+        return mergeConflictsDetected;
+    }
+
+    /**
+     * Returns the list of files with merge conflicts, detected during
+     * base branch synchronization.
+     *
+     * @return unmodifiable list of conflicted file paths, empty if no conflicts
+     */
+    protected List<String> getMergeConflictFiles() {
+        return new ArrayList<>(conflictFiles);
+    }
+
     // ==================== Status Reporting ====================
 
     /**
@@ -1324,6 +1440,15 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
         appendJsonField(sb, "subtype", event.getSubtype(), false);
         sb.append(",\"sessionIsError\":").append(event.isSessionError());
         sb.append(",\"permissionDenials\":").append(event.getPermissionDenials());
+
+        // Denied tool names array
+        List<String> denied = event.getDeniedToolNames();
+        sb.append(",\"deniedToolNames\":[");
+        for (int i = 0; i < denied.size(); i++) {
+            if (i > 0) sb.append(",");
+            sb.append("\"").append(escapeJson(denied.get(i))).append("\"");
+        }
+        sb.append("]");
 
         sb.append("}");
         return sb.toString();
