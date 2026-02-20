@@ -100,7 +100,7 @@ public class SyntheticDenseTrainingTest extends TestSuiteBase implements ModelTe
 	 *
 	 * <p>Architecture: Input [5] - Dense [5 - 5] - Output [5]</p>
 	 */
-	@Test
+	@Test(timeout = 120000)
 	@TestDepth(1)
 	public void simpleDenseRegression() throws FileNotFoundException {
 		log("=== Test 1.1: Simple Dense Regression ===");
@@ -138,7 +138,7 @@ public class SyntheticDenseTrainingTest extends TestSuiteBase implements ModelTe
 	 *
 	 * <p>Architecture: Input [3] - Dense [3 - 5] - Dense [5 - 1] - Output [1]</p>
 	 */
-	@Test
+	@Test(timeout = 120000)
 	@TestDepth(1)
 	public void denseWithMultipleLayers() throws FileNotFoundException {
 		log("=== Test 1.2: Dense with Multiple Layers ===");
@@ -179,7 +179,7 @@ public class SyntheticDenseTrainingTest extends TestSuiteBase implements ModelTe
 	 *
 	 * <p>Architecture: Input [4] - Dense [4 - 2] - Softmax - Output [2]</p>
 	 */
-	@Test
+	@Test(timeout = 120000)
 	@TestDepth(1)
 	public void denseClassification() {
 		log("=== Test 1.3: Dense Classification ===");
@@ -259,7 +259,7 @@ public class SyntheticDenseTrainingTest extends TestSuiteBase implements ModelTe
 	 *
 	 * <p>Architecture: Input [bs=10, 3] - Dense [3 - 3] - Output [bs=10, 3]</p>
 	 */
-	@Test
+	@Test(timeout = 120000)
 	@TestDepth(1)
 	public void denseBatched() throws FileNotFoundException {
 		log("=== Test 1.4: Dense Batched Training ===");
