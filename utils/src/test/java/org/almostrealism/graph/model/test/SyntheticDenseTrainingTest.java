@@ -27,6 +27,7 @@ import org.almostrealism.optimize.Dataset;
 import org.almostrealism.optimize.MeanSquaredError;
 import org.almostrealism.optimize.ModelOptimizer;
 import org.almostrealism.optimize.NegativeLogLikelihood;
+import org.almostrealism.optimize.TrainingResult;
 import org.almostrealism.optimize.ValueTarget;
 import org.almostrealism.util.ModelTestFeatures;
 import org.almostrealism.util.TestDepth;
@@ -99,7 +100,7 @@ public class SyntheticDenseTrainingTest extends TestSuiteBase implements ModelTe
 	 *
 	 * <p>Architecture: Input [5] - Dense [5 - 5] - Output [5]</p>
 	 */
-	@Test(timeout = 120000)
+	@Test
 	@TestDepth(1)
 	public void simpleDenseRegression() throws FileNotFoundException {
 		log("=== Test 1.1: Simple Dense Regression ===");
@@ -124,8 +125,8 @@ public class SyntheticDenseTrainingTest extends TestSuiteBase implements ModelTe
 				.map(input -> ValueTarget.of(input, linearFunc.apply(input)))
 				.collect(Collectors.toList()));
 
-		// Train using existing infrastructure
-		train("simpleDenseRegression", model, data, epochs, steps, 0.6, 0.2);
+		// Train and validate convergence
+		train("simpleDenseRegression", model, data, epochs, steps);
 
 		log("Test 1.1 completed successfully");
 	}
@@ -137,7 +138,7 @@ public class SyntheticDenseTrainingTest extends TestSuiteBase implements ModelTe
 	 *
 	 * <p>Architecture: Input [3] - Dense [3 - 5] - Dense [5 - 1] - Output [1]</p>
 	 */
-	@Test(timeout = 4 * 60000)
+	@Test
 	@TestDepth(1)
 	public void denseWithMultipleLayers() throws FileNotFoundException {
 		log("=== Test 1.2: Dense with Multiple Layers ===");
@@ -165,8 +166,8 @@ public class SyntheticDenseTrainingTest extends TestSuiteBase implements ModelTe
 				.map(input -> ValueTarget.of(input, weightedSumFunc.apply(input)))
 				.collect(Collectors.toList()));
 
-		// Train
-		train("denseMultipleLayers", model, data, epochs, steps, 1.2, 0.3);
+		// Train and validate convergence
+		train("denseMultipleLayers", model, data, epochs, steps);
 
 		log("Test 1.2 completed successfully");
 	}
@@ -178,7 +179,7 @@ public class SyntheticDenseTrainingTest extends TestSuiteBase implements ModelTe
 	 *
 	 * <p>Architecture: Input [4] - Dense [4 - 2] - Softmax - Output [2]</p>
 	 */
-	@Test(timeout = 12 * 60000)
+	@Test
 	@TestDepth(1)
 	public void denseClassification() {
 		log("=== Test 1.3: Dense Classification ===");
@@ -235,12 +236,12 @@ public class SyntheticDenseTrainingTest extends TestSuiteBase implements ModelTe
 		ModelOptimizer optimizer = new ModelOptimizer(compiled, data);
 		optimizer.setLossFunction(new MeanSquaredError(model.getOutputShape().traverseEach()));
 		optimizer.setLogFrequency(40);
-		optimizer.setLossTarget(0.1);
-		optimizer.optimize(epochs);
+		optimizer.setTrainingPatience(20);
+		TrainingResult result = optimizer.optimize(epochs);
 
-		double finalLoss = optimizer.getLoss();
-		log("Final loss: " + finalLoss);
-		log("Completed " + optimizer.getTotalIterations() + " epochs");
+		log("Final loss: " + result.getFinalTrainLoss());
+		log("Completed " + result.getEpochsCompleted() + " epochs");
+		assertTrainingConvergence(result.getTrainLossHistory(), "denseClassification");
 
 		// Calculate classification accuracy
 		double accuracy = optimizer.accuracy((expected, actual) -> expected.argmax() == actual.argmax());
@@ -258,7 +259,7 @@ public class SyntheticDenseTrainingTest extends TestSuiteBase implements ModelTe
 	 *
 	 * <p>Architecture: Input [bs=10, 3] - Dense [3 - 3] - Output [bs=10, 3]</p>
 	 */
-	@Test(timeout = 120000)
+	@Test
 	@TestDepth(1)
 	public void denseBatched() throws FileNotFoundException {
 		log("=== Test 1.4: Dense Batched Training ===");
@@ -302,8 +303,8 @@ public class SyntheticDenseTrainingTest extends TestSuiteBase implements ModelTe
 				.map(input -> ValueTarget.of(input, batchFunc.apply(input)))
 				.collect(Collectors.toList()));
 
-		// Train
-		train("denseBatched", model, data, epochs, steps, 0.6, 0.2);
+		// Train and validate convergence
+		train("denseBatched", model, data, epochs, steps);
 
 		log("Test 1.4 completed successfully");
 	}

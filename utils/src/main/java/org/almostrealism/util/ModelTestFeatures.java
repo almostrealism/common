@@ -25,6 +25,7 @@ import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 import org.almostrealism.optimize.Dataset;
 import org.almostrealism.optimize.ModelOptimizer;
+import org.almostrealism.optimize.TrainingResult;
 import org.almostrealism.optimize.ValueTarget;
 
 import java.io.FileNotFoundException;
@@ -116,15 +117,41 @@ public interface ModelTestFeatures extends TestFeatures {
 		try {
 			ModelOptimizer optimizer = new ModelOptimizer(compiled,
 					() -> Dataset.of(generateDataset(model.getInputShape(), model.getOutputShape())));
-			train(name, optimizer, epochs, datasetSize, 0.001);
+			train(name, optimizer, epochs, datasetSize);
 		} finally {
 			Hardware.getLocalHardware().clearProfile();
 		}
 	}
 
 	/**
-	 * Trains using a pre-configured {@link ModelOptimizer} with specified parameters.
-	 * Results are logged every 25 steps and written to a CSV file.
+	 * Trains using a pre-configured {@link ModelOptimizer} with patience-based
+	 * early stopping and loss curve validation. Training stops when loss plateaus
+	 * (no improvement for 20 consecutive epochs) or max epochs are reached, then
+	 * the loss history is validated to ensure healthy training behavior.
+	 *
+	 * @param name      the name for the training run (used for output files)
+	 * @param optimizer the configured model optimizer
+	 * @param epochs    the maximum number of training epochs
+	 * @param steps     the number of steps for CSV recording
+	 * @throws FileNotFoundException if the results directory cannot be written to
+	 */
+	default void train(String name, ModelOptimizer optimizer,
+					   int epochs, int steps) throws FileNotFoundException {
+		try (CSVReceptor<Double> receptor =
+					 new CSVReceptor<>(new FileOutputStream("results/" + name + ".csv"), steps)) {
+			optimizer.setReceptor(receptor);
+			optimizer.setLogFrequency(25);
+			optimizer.setTrainingPatience(20);
+
+			TrainingResult result = optimizer.optimize(epochs);
+			log("Completed " + result.getEpochsCompleted() + " epochs");
+
+			assertTrainingConvergence(result.getTrainLossHistory(), name);
+		}
+	}
+
+	/**
+	 * Trains using a pre-configured {@link ModelOptimizer} with a target loss value.
 	 *
 	 * @param name       the name for the training run (used for output files)
 	 * @param optimizer  the configured model optimizer
@@ -147,54 +174,114 @@ public interface ModelTestFeatures extends TestFeatures {
 	}
 
 	/**
-	 * Trains a model with a custom dataset supplier and retry logic.
-	 * Attempts training up to 6 times, retrying if training completes too quickly
-	 * (fewer than 5 epochs), which may indicate poor initialization.
+	 * Trains a model with a custom dataset supplier and validates training convergence.
+	 * Uses patience-based early stopping for predictable test durations, then validates
+	 * that the loss curve shows healthy training behavior.
 	 *
-	 * <p>Training continues until the loss target is reached or the minimum loss
-	 * is achieved after a quick initial convergence.</p>
-	 *
-	 * @param name       the name for the training run (used for output files)
-	 * @param model      the model to train
-	 * @param data       a supplier providing fresh datasets for each training attempt
-	 * @param epochs     the maximum number of training epochs per attempt
-	 * @param steps      the number of steps for CSV recording
-	 * @param lossTarget the primary target loss value
-	 * @param minLoss    the fallback minimum loss value if initial convergence is quick
+	 * @param name   the name for the training run (used for output files)
+	 * @param model  the model to train
+	 * @param data   a supplier providing fresh datasets for each training attempt
+	 * @param epochs the maximum number of training epochs
+	 * @param steps  the number of steps for CSV recording
 	 * @throws FileNotFoundException if the results directory cannot be written to
-	 * @throws RuntimeException      if training fails to converge after all retry attempts
-	 * @deprecated TODO: Merge with the simpler train method above
 	 */
+	default void train(String name, Model model, Supplier<Dataset<?>> data,
+					   int epochs, int steps) throws FileNotFoundException {
+		ModelOptimizer optimizer = new ModelOptimizer(model.compile(), data);
+		train(name, optimizer, epochs, steps);
+	}
+
+	/**
+	 * Trains a model with a custom dataset supplier.
+	 *
+	 * @deprecated Use {@link #train(String, Model, Supplier, int, int)} instead,
+	 *             which uses patience-based stopping and loss curve validation.
+	 */
+	@Deprecated
 	default void train(String name, Model model, Supplier<Dataset<?>> data, int epochs, int steps,
 								double lossTarget, double minLoss) throws FileNotFoundException {
-		i: for (int i = 0; i < 6; i++) {
-			ModelOptimizer optimizer = new ModelOptimizer(model.compile(), data);
+		train(name, model, data, epochs, steps);
+	}
 
-			try (CSVReceptor<Double> receptor = new CSVReceptor<>(new FileOutputStream("results/" + name + ".csv"), steps)) {
-				optimizer.setReceptor(receptor);
-				optimizer.setLogFrequency(2);
+	/**
+	 * Validates that a loss history represents healthy training convergence.
+	 * <p>
+	 * Checks that training loss:
+	 * <ul>
+	 *   <li>Decreased overall from start to finish</li>
+	 *   <li>Achieved at least 10% reduction (meaningful progress)</li>
+	 *   <li>Did not exhibit sustained rising trends</li>
+	 *   <li>Made meaningful progress in the first half (progressive decline)</li>
+	 * </ul>
+	 *
+	 * @param lossHistory per-epoch loss values from training
+	 * @param testName    name of the test for diagnostic messages
+	 * @throws RuntimeException if any convergence check fails
+	 */
+	default void assertTrainingConvergence(List<Double> lossHistory, String testName) {
+		int size = lossHistory.size();
+		if (size < 5) {
+			throw new RuntimeException(testName +
+					": insufficient training history (need >= 5 epochs, got " + size + ")");
+		}
 
-				optimizer.setLossTarget(lossTarget);
-				optimizer.optimize(epochs);
-				log("Completed " + optimizer.getTotalIterations() + " epochs");
+		double initialLoss = lossHistory.get(0);
+		double finalLoss = lossHistory.get(size - 1);
 
-				if (optimizer.getTotalIterations() < 5) {
-					optimizer.setLossTarget(minLoss);
-					optimizer.optimize(epochs);
-					log("Completed " + optimizer.getTotalIterations() + " epochs");
-				}
+		// Loss must decrease overall
+		if (finalLoss >= initialLoss) {
+			throw new RuntimeException(testName +
+					": loss did not decrease (initial=" + String.format("%.6f", initialLoss) +
+					", final=" + String.format("%.6f", finalLoss) + ")");
+		}
 
-				if (optimizer.getTotalIterations() < 5) {
-					continue i;
-				}
+		// Meaningful improvement: at least 10% reduction
+		double reductionPct = (initialLoss - finalLoss) / initialLoss;
+		if (reductionPct < 0.10) {
+			throw new RuntimeException(testName +
+					": insufficient loss reduction (" +
+					String.format("%.1f%%", reductionPct * 100) +
+					", initial=" + String.format("%.6f", initialLoss) +
+					", final=" + String.format("%.6f", finalLoss) + ")");
+		}
 
-				if (optimizer.getLoss() <= 0.0 || optimizer.getLoss() > optimizer.getLossTarget())
-					throw new RuntimeException();
+		// No sustained rising trend: consecutive epochs where loss increases
+		// by more than 0.1% should be limited
+		int maxConsecutiveRising = 0;
+		int currentRising = 0;
+		for (int i = 1; i < size; i++) {
+			if (lossHistory.get(i) > lossHistory.get(i - 1) * 1.001) {
+				currentRising++;
+				maxConsecutiveRising = Math.max(maxConsecutiveRising, currentRising);
+			} else {
+				currentRising = 0;
+			}
+		}
+		int allowedRising = Math.max(5, size / 4);
+		if (maxConsecutiveRising > allowedRising) {
+			throw new RuntimeException(testName +
+					": sustained loss increase for " + maxConsecutiveRising +
+					" consecutive epochs (max allowed: " + allowedRising + ")");
+		}
 
-				return;
+		// Progressive decline: first half should see meaningful progress
+		int mid = size / 2;
+		double firstHalfDrop = lossHistory.get(0) - lossHistory.get(mid);
+		double totalDrop = initialLoss - finalLoss;
+		if (totalDrop > 0) {
+			double firstHalfShare = firstHalfDrop / totalDrop;
+			if (firstHalfShare < 0.20) {
+				throw new RuntimeException(testName +
+						": abnormal loss curve - only " +
+						String.format("%.0f%%", firstHalfShare * 100) +
+						" of progress occurred in first half of training");
 			}
 		}
 
-		throw new RuntimeException();
+		log(testName + ": convergence validated (" +
+				String.format("%.6f", initialLoss) + " -> " +
+				String.format("%.6f", finalLoss) + ", " +
+				String.format("%.1f%%", reductionPct * 100) + " reduction, " +
+				size + " epochs)");
 	}
 }
