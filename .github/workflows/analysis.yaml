@@ -730,6 +730,7 @@ jobs:
           CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
           BRANCH: ${{ steps.ctx.outputs.branch }}
           BASE_BRANCH: ${{ steps.ctx.outputs.base }}
+          PROTECT_TEST_FILES: "true"
         run: |
           ./tools/ci/submit-agent-job.sh /tmp/agent-prompt.txt
 

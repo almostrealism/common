@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
 #
-# Start the FlowTree Slack Bot Controller.
+# Start the FlowTree Controller.
 #
-# Connects to Slack via Socket Mode and dispatches coding prompts
-# to FlowTree agents as ClaudeCodeJob instances. Agents connect
-# inbound to this controller on the FlowTree port.
+# The controller manages workstreams, dispatches coding prompts to
+# FlowTree agents as ClaudeCodeJob instances, exposes an HTTP API
+# for job submission, and optionally integrates with Slack for
+# interactive messaging. Agents connect inbound to this controller
+# on the FlowTree port.
 #
 # Required environment variables (or use --tokens <file>):
 #   SLACK_BOT_TOKEN   - Slack bot token (xoxb-...)
@@ -17,7 +19,7 @@
 #   GIT_DEFAULT_BRANCH      - Default git branch for commits
 #
 # Usage:
-#   ./start-slack-controller.sh [options]
+#   ./start-controller.sh [options]
 #
 # Options:
 #   --tokens, -t <file>       JSON file with botToken/appToken
