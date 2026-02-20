@@ -200,7 +200,8 @@ public interface ModelTestFeatures extends TestFeatures {
 	@Deprecated
 	default void train(String name, Model model, Supplier<Dataset<?>> data, int epochs, int steps,
 								double lossTarget, double minLoss) throws FileNotFoundException {
-		train(name, model, data, epochs, steps);
+		ModelOptimizer optimizer = new ModelOptimizer(model.compile(), data);
+		train(name, optimizer, epochs, steps, lossTarget);
 	}
 
 	/**
