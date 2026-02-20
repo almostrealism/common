@@ -33,13 +33,24 @@
 # via stdio. Use this for tools that depend on per-job state (e.g., the local
 # git repo or per-job environment variables).
 #
+# GitHub token handling:
+#   ar-github supports two modes for authentication:
+#
+#   1. Controller proxy (recommended): Set GITHUB_TOKEN on the controller
+#      process itself. Agents proxy GitHub API calls through the controller's
+#      /api/github/proxy endpoint -- no token distribution needed.
+#
+#   2. Direct token: Pass GITHUB_TOKEN via the pushed tool env below.
+#      Each container gets its own copy of the token. Use this when
+#      different workstreams need different GitHub tokens.
+#
 # pushedTools:
 #   ar-slack:
 #     source: tools/mcp/slack/server.py
 #   ar-github:
 #     source: tools/mcp/github/server.py
-#     env:
-#       GITHUB_TOKEN: ghp_your_token_here
+#     # env:                                    # Optional: only needed for
+#     #   GITHUB_TOKEN: ghp_your_token_here     # per-workstream token override
 
 workstreams:
   # workstreamId is auto-generated on first run and written back to this file.
