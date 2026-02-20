@@ -232,7 +232,7 @@ Completion events carry timing information extracted from Claude Code's `--outpu
 
 Convenience scripts live in `flowtree/bin/` and use `mvn exec:java` for classpath resolution. Each script auto-builds the module on first run if the `target/` directory is missing.
 
-### start-slack-controller.sh
+### start-controller.sh
 
 Starts the `FlowTreeController`. Requires Slack tokens via environment variables or a `--tokens` file. The controller starts a FlowTree Server that listens for inbound agent connections.
 
@@ -240,16 +240,16 @@ Starts the `FlowTreeController`. Requires Slack tokens via environment variables
 # Using environment variables
 export SLACK_BOT_TOKEN="xoxb-..."
 export SLACK_APP_TOKEN="xapp-..."
-./flowtree/bin/start-slack-controller.sh --channel C0123ABCDEF
+./flowtree/bin/start-controller.sh --channel C0123ABCDEF
 
 # Using a tokens file
-./flowtree/bin/start-slack-controller.sh --tokens slack-tokens.json --config workstreams.yaml
+./flowtree/bin/start-controller.sh --tokens slack-tokens.json --config workstreams.yaml
 
 # Custom FlowTree port
-./flowtree/bin/start-slack-controller.sh --flowtree-port 8800 --config workstreams.yaml
+./flowtree/bin/start-controller.sh --flowtree-port 8800 --config workstreams.yaml
 
 # Show full usage
-./flowtree/bin/start-slack-controller.sh --help
+./flowtree/bin/start-controller.sh --help
 ```
 
 ### start-agent.sh
