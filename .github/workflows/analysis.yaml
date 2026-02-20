@@ -620,7 +620,7 @@ jobs:
   # from starting until it completes.
 
   auto-resolve:
-    needs: [javadoc-check, test-integrity-check, analysis]
+    needs: [build, javadoc-check, test-timeout-check, duplicate-code-check, test-integrity-check, analysis]
     if: ${{ !cancelled() && github.ref != 'refs/heads/master' && contains(needs.*.result, 'failure') }}
     runs-on: [self-hosted, macos, ar-ci]
     concurrency:
@@ -730,6 +730,7 @@ jobs:
           CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
           BRANCH: ${{ steps.ctx.outputs.branch }}
           BASE_BRANCH: ${{ steps.ctx.outputs.base }}
+          PROTECT_TEST_FILES: "true"
         run: |
           ./tools/ci/submit-agent-job.sh /tmp/agent-prompt.txt
 
