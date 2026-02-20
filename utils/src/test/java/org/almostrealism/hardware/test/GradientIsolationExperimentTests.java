@@ -26,6 +26,7 @@ import io.almostrealism.profile.OperationProfile;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.OperationList;
+import org.almostrealism.util.TestDepth;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
@@ -76,6 +77,7 @@ public class GradientIsolationExperimentTests extends TestSuiteBase {
 	 * This should show the problem - either timeout or very slow.
 	 */
 	@Test(timeout = 180000)
+	@TestDepth(10)
 	public void experiment1_baseline() {
 		logResult("=== Experiment 1: Baseline (Default Strategy) ===");
 		ProcessContextBase.setDefaultOptimizationStrategy(new ParallelismTargetOptimization());
@@ -96,6 +98,7 @@ public class GradientIsolationExperimentTests extends TestSuiteBase {
 	 * Test with aggressive depth-based isolation.
 	 */
 	@Test(timeout = 120000)
+	@TestDepth(10)
 	public void experiment1b_aggressiveDepth() {
 		logResult("=== Experiment 1b: Aggressive Depth Strategy (limit=2) ===");
 		ProcessContextBase.setDefaultOptimizationStrategy(
@@ -231,6 +234,7 @@ public class GradientIsolationExperimentTests extends TestSuiteBase {
 	 * Analyze the parallelism and depth that strategies see during optimization.
 	 */
 	@Test(timeout = 120000)
+	@TestDepth(10)
 	public void experiment4_analyzeStrategyDecisions() {
 		logResult("=== Experiment 4: Analyze Strategy Decisions ===");
 
@@ -282,6 +286,7 @@ public class GradientIsolationExperimentTests extends TestSuiteBase {
 	 * The forward pass should work fine; the gradient might not.
 	 */
 	@Test(timeout = 60000)
+	@TestDepth(10)
 	public void experiment5_forwardVsGradient() {
 		logResult("=== Experiment 5: Forward vs Gradient Isolation ===");
 		ProcessContextBase.setDefaultOptimizationStrategy(
@@ -357,6 +362,7 @@ public class GradientIsolationExperimentTests extends TestSuiteBase {
 	 * Test subset -> concat gradient (no minus).
 	 */
 	@Test(timeout = 180000)
+	@TestDepth(10)
 	public void experiment6b_subsetConcatGradient() {
 		logResult("=== Experiment 6b: Subset -> Concat Gradient (no minus) ===");
 		ProcessContextBase.setDefaultOptimizationStrategy(
@@ -505,6 +511,7 @@ public class GradientIsolationExperimentTests extends TestSuiteBase {
 	 * Test just minus gradient (on a subset, but only one operation).
 	 */
 	@Test(timeout = 60000)
+	@TestDepth(10)
 	public void experiment8b_justMinusGradient() {
 		logResult("=== Experiment 8b: Just Minus Gradient ===");
 		ProcessContextBase.setDefaultOptimizationStrategy(
