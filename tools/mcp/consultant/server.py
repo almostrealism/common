@@ -314,6 +314,8 @@ def remember(
     namespace: str = "default",
     tags: Optional[list[str]] = None,
     source: Optional[str] = None,
+    repo_url: Optional[str] = None,
+    branch: Optional[str] = None,
 ) -> dict:
     """Store a memory after Consultant reformulation.
 
@@ -327,6 +329,8 @@ def remember(
         namespace: Memory namespace.
         tags: Optional tags for categorization.
         source: Optional source identifier (e.g., file path).
+        repo_url: Optional repository URL to associate with this memory.
+        branch: Optional branch name to associate with this memory.
 
     Returns:
         Dictionary with both versions of the text and the entry ID.
@@ -353,6 +357,8 @@ def remember(
         namespace=namespace,
         tags=tags,
         source=source,
+        repo_url=repo_url,
+        branch=branch,
     )
 
     return {
@@ -361,6 +367,8 @@ def remember(
         "entry_id": entry["id"],
         "namespace": namespace,
         "tags": tags,
+        "repo_url": repo_url,
+        "branch": branch,
         "backend": llm.name,
     }
 
@@ -596,6 +604,154 @@ def end_consultation(
         result["memory_entry_id"] = entry["id"]
 
     return result
+
+
+@mcp.tool()
+@tracked_tool(history, "branch_catchup")
+def branch_catchup(
+    repo_url: str,
+    branch: str,
+    namespace: str = "default",
+    memory_limit: int = 20,
+    commit_limit: int = 30,
+    working_directory: Optional[str] = None,
+) -> dict:
+    """Catch up on recent branch activity by combining memories and git history.
+
+    This tool is designed for coding agents that are starting a new session
+    on a branch where previous agent sessions have already done work. It
+    combines two sources of context:
+
+    1. **Branch memories**: All memories tagged with this repo_url and branch,
+       ordered by creation time (newest first). These capture decisions,
+       progress notes, bugs found, and other insights from prior sessions.
+
+    2. **Git commit timeline**: Recent commits on the branch (relative to
+       the base branch), showing what code changes have been made and in
+       what order.
+
+    The Consultant synthesizes both into a briefing that highlights:
+    - What work has been done on this branch
+    - Key decisions and findings from prior sessions
+    - Any patterns that suggest the agent may be stuck in a loop
+      (e.g., adding then reverting the same changes repeatedly)
+    - Recommended next steps
+
+    Args:
+        repo_url: The repository URL (e.g., from ``git remote get-url origin``).
+        branch: The branch name to catch up on.
+        namespace: Memory namespace to search (default: "default").
+        memory_limit: Maximum number of branch memories to retrieve.
+        commit_limit: Maximum number of recent commits to include.
+        working_directory: Optional path to the git working directory.
+            If provided, git log is read from this directory.
+
+    Returns:
+        Dictionary with the synthesized briefing, raw memories, and commit log.
+    """
+    import subprocess
+
+    # 1. Retrieve branch-specific memories
+    branch_memories = memory.search_by_branch(
+        repo_url=repo_url, branch=branch,
+        namespace=namespace, limit=memory_limit,
+    )
+
+    # Also do a semantic search for the branch name to catch any
+    # memories that were stored without the repo_url/branch fields
+    semantic_memories = memory.search(
+        query=f"branch {branch} work progress", namespace=namespace, limit=5,
+    )
+    # Deduplicate by ID
+    seen_ids = {m["id"] for m in branch_memories}
+    for m in semantic_memories:
+        if m.get("id") and m["id"] not in seen_ids:
+            branch_memories.append(m)
+            seen_ids.add(m["id"])
+
+    # 2. Get git commit log for the branch
+    commit_log = ""
+    try:
+        cmd = [
+            "git", "log",
+            f"--max-count={commit_limit}",
+            "--format=%h|%ai|%s",
+            branch,
+        ]
+
+        cwd = working_directory or os.getcwd()
+        result = subprocess.run(
+            cmd, capture_output=True, text=True, cwd=cwd, timeout=15,
+        )
+        if result.returncode == 0:
+            commit_log = result.stdout.strip()
+    except Exception as e:
+        commit_log = f"(Could not retrieve git log: {e})"
+
+    # 3. Build synthesis prompt
+    mem_text = ""
+    if branch_memories:
+        for i, m in enumerate(branch_memories, 1):
+            created = m.get("created_at", "unknown")
+            tags = m.get("tags", [])
+            tag_str = f" [{', '.join(tags)}]" if tags else ""
+            mem_text += f"### Memory {i} ({created}){tag_str}\n{m['content']}\n\n"
+    else:
+        mem_text = "(No branch-specific memories found)\n"
+
+    commit_text = ""
+    if commit_log and not commit_log.startswith("("):
+        commit_text = "```\n"
+        for line in commit_log.split("\n"):
+            parts = line.split("|", 2)
+            if len(parts) == 3:
+                commit_text += f"{parts[0]}  {parts[1]}  {parts[2]}\n"
+            else:
+                commit_text += line + "\n"
+        commit_text += "```"
+    else:
+        commit_text = commit_log or "(No commits found)"
+
+    prompt_parts = [
+        f"## Branch: {branch}",
+        f"## Repository: {repo_url}",
+        f"\n## Memories from Prior Agent Sessions\n\n{mem_text}",
+        f"\n## Git Commit Timeline\n\n{commit_text}",
+        "\n## Task\n\n"
+        "You are briefing a coding agent that is about to start working on this branch. "
+        "Synthesize the memories and commit history into a concise briefing that covers:\n\n"
+        "1. **Summary of work done**: What has been accomplished on this branch so far?\n"
+        "2. **Key decisions and findings**: Important architectural decisions, bugs found, "
+        "or constraints discovered by prior sessions.\n"
+        "3. **Loop detection**: Look carefully at the commit history and memories for signs "
+        "that the agent has been stuck in a cycle of adding features, then reverting them "
+        "due to CI failures, then re-adding them. If you detect such patterns, call them "
+        "out explicitly and recommend how to break the cycle.\n"
+        "4. **Current state and next steps**: What is the branch's current state and what "
+        "should the agent focus on?\n\n"
+        "Be specific and reference commit hashes and memory timestamps where relevant.",
+    ]
+
+    prompt = "\n".join(prompt_parts)
+    briefing = _generate(prompt, system=SYSTEM_PROMPT, max_tokens=2048)
+
+    return {
+        "briefing": briefing,
+        "branch": branch,
+        "repo_url": repo_url,
+        "memory_count": len(branch_memories),
+        "memories": [
+            {
+                "id": m.get("id"),
+                "content": m["content"],
+                "tags": m.get("tags"),
+                "created_at": m.get("created_at"),
+            }
+            for m in branch_memories
+        ],
+        "commit_log": commit_log,
+        "backend": llm.name,
+    }
 
 
 @mcp.tool()

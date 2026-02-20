@@ -67,7 +67,7 @@ public class MultiOrderFilterEnvelopeProcessorPerformanceTest extends TestSuiteB
 	 * Use {@link #scaled()} for a faster test.
 	 * </p>
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void standard() throws IOException {
 		runDistribution("filterEnv", 1.0, 0.0);
 	}
@@ -75,7 +75,7 @@ public class MultiOrderFilterEnvelopeProcessorPerformanceTest extends TestSuiteB
 	/**
 	 * Runs the scaled test with 25% distractor probability.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void highDistractor() throws IOException {
 		runDistribution("filterEnvHighDistractor", 1.0, 0.9);
 	}
@@ -84,7 +84,7 @@ public class MultiOrderFilterEnvelopeProcessorPerformanceTest extends TestSuiteB
 	 * Runs a scaled-down version of the realistic distribution test (10% of calls).
 	 * This is faster while still maintaining the distribution shape.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void scaled() throws IOException {
 		runDistribution("filterEnvScaled", 0.1, 0.0);
 	}
@@ -92,7 +92,7 @@ public class MultiOrderFilterEnvelopeProcessorPerformanceTest extends TestSuiteB
 	/**
 	 * Runs the scaled test with 90% distractor probability.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void scaledHighDistractor() throws IOException {
 		runDistribution("filterEnvScaledHighDistractor", 0.1, 0.9);
 	}
@@ -322,7 +322,7 @@ public class MultiOrderFilterEnvelopeProcessorPerformanceTest extends TestSuiteB
 	/**
 	 * Simple performance test with a single input size to establish baseline.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void baseline() {
 		log("Running baseline performance test...");
 

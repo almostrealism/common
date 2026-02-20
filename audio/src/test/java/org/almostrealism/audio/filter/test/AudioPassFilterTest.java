@@ -57,7 +57,7 @@ public class AudioPassFilterTest extends TestSuiteBase implements CellFeatures {
 	/**
 	 * Tests that a high-pass filter attenuates low frequencies.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void highPassAttenuatesLowFrequencies() {
 		// Create a low-frequency signal (100 Hz) below the cutoff
 		PackedCollection lowFreqSignal = TestAudioData.sineWave(100.0, DURATION, SAMPLE_RATE, 1.0);
@@ -78,7 +78,7 @@ public class AudioPassFilterTest extends TestSuiteBase implements CellFeatures {
 	/**
 	 * Tests that a high-pass filter passes high frequencies.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void highPassPassesHighFrequencies() {
 		// Create a high-frequency signal (2000 Hz) above the cutoff
 		PackedCollection highFreqSignal = TestAudioData.sineWave(2000.0, DURATION, SAMPLE_RATE, 1.0);
@@ -99,7 +99,7 @@ public class AudioPassFilterTest extends TestSuiteBase implements CellFeatures {
 	/**
 	 * Tests that a low-pass filter attenuates high frequencies.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void lowPassAttenuatesHighFrequencies() {
 		// Create a high-frequency signal (5000 Hz) above the cutoff
 		PackedCollection highFreqSignal = TestAudioData.sineWave(5000.0, DURATION, SAMPLE_RATE, 1.0);
@@ -120,7 +120,7 @@ public class AudioPassFilterTest extends TestSuiteBase implements CellFeatures {
 	/**
 	 * Tests that a low-pass filter passes low frequencies.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void lowPassPassesLowFrequencies() {
 		// Create a low-frequency signal (100 Hz) below the cutoff
 		PackedCollection lowFreqSignal = TestAudioData.sineWave(100.0, DURATION, SAMPLE_RATE, 1.0);
@@ -141,7 +141,7 @@ public class AudioPassFilterTest extends TestSuiteBase implements CellFeatures {
 	/**
 	 * Tests that filter can process data without throwing exceptions.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void filterProcessesData() {
 		PackedCollection signal = TestAudioData.sineWave(440.0, 0.1, SAMPLE_RATE, 0.5);
 
@@ -157,7 +157,7 @@ public class AudioPassFilterTest extends TestSuiteBase implements CellFeatures {
 	/**
 	 * Tests filter sample rate getter/setter.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void sampleRateAccessors() {
 		AudioPassFilter filter = new AudioPassFilter(44100, c(1000), scalar(0.1), true);
 
@@ -170,7 +170,7 @@ public class AudioPassFilterTest extends TestSuiteBase implements CellFeatures {
 	/**
 	 * Tests filter isHigh() returns correct value.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void isHighAccessor() {
 		AudioPassFilter highPass = new AudioPassFilter(SAMPLE_RATE, c(1000), scalar(0.1), true);
 		AudioPassFilter lowPass = new AudioPassFilter(SAMPLE_RATE, c(1000), scalar(0.1), false);
@@ -184,7 +184,7 @@ public class AudioPassFilterTest extends TestSuiteBase implements CellFeatures {
 	 * Note: AudioPassFilter cannot be reused for filtering after
 	 * getResultant is called, but reset() can still be called.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void filterResetCallable() {
 		AudioPassFilter filter = new AudioPassFilter(SAMPLE_RATE, c(1000), scalar(0.1), true);
 
@@ -201,7 +201,7 @@ public class AudioPassFilterTest extends TestSuiteBase implements CellFeatures {
 	/**
 	 * Tests that high-pass filter with very low cutoff passes most signals.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void highPassVeryLowCutoff() {
 		// Any audio signal at 440 Hz
 		PackedCollection signal = TestAudioData.sineWave(440.0, DURATION, SAMPLE_RATE, 1.0);
@@ -222,7 +222,7 @@ public class AudioPassFilterTest extends TestSuiteBase implements CellFeatures {
 	/**
 	 * Tests that low-pass filter with very high cutoff passes most signals.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void lowPassVeryHighCutoff() {
 		// Any audio signal at 440 Hz
 		PackedCollection signal = TestAudioData.sineWave(440.0, DURATION, SAMPLE_RATE, 1.0);
@@ -243,7 +243,7 @@ public class AudioPassFilterTest extends TestSuiteBase implements CellFeatures {
 	/**
 	 * Tests filter output stays within reasonable bounds.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void outputWithinBounds() {
 		PackedCollection signal = TestAudioData.sineWave(1000.0, DURATION, SAMPLE_RATE, 1.0);
 

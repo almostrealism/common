@@ -68,8 +68,16 @@ public interface Computable {
 		return false;
 	}
 
+	/** Returns {@code true} if this computation provides a value reference. */
 	default boolean isProvider() { return false; }
 
+	/**
+	 * Returns {@code true} if the given object is a {@link Computable} with a constant value.
+	 *
+	 * @param c   the object to check
+	 * @param <T> the object type
+	 * @return {@code true} if the object is a constant computable
+	 */
 	static <T> boolean constant(T c) {
 		if (c instanceof Computable) {
 			return ((Computable) c).isConstant();
@@ -78,6 +86,13 @@ public interface Computable {
 		return false;
 	}
 
+	/**
+	 * Returns {@code true} if the given object is a {@link Computable} that is a provider.
+	 *
+	 * @param c   the object to check
+	 * @param <T> the object type
+	 * @return {@code true} if the object is a provider computable
+	 */
 	static <T> boolean provider(T c) {
 		if (c instanceof Computable) {
 			return ((Computable) c).isProvider();

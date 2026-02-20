@@ -28,7 +28,7 @@ import org.junit.Test;
 import java.io.File;
 
 public class OnnxAutoEncoderTests extends TestSuiteBase {
-	@Test
+	@Test(timeout = 120000)
 	public void encode() throws OrtException {
 		AssetGroup assets = new AssetGroup(AssetGroupInfo
 				.forDirectory(new File("assets/stable-audio")));

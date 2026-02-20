@@ -46,7 +46,7 @@ public class EncoderCompilationProfileTest extends TestSuiteBase {
 	 * Profile encoder compilation with 1-second audio (small).
 	 * This should complete relatively quickly.
 	 */
-	@Test
+	@Test(timeout = 300000)
 	public void profileEncoderSmall() throws IOException {
 		profileEncoder(1.0, "encoder_1sec");
 	}
@@ -54,7 +54,7 @@ public class EncoderCompilationProfileTest extends TestSuiteBase {
 	/**
 	 * Profile encoder compilation with 2-second audio (medium).
 	 */
-	@Test
+	@Test(timeout = 300000)
 	public void profileEncoderMedium() throws IOException {
 		profileEncoder(2.0, "encoder_2sec");
 	}
@@ -62,7 +62,7 @@ public class EncoderCompilationProfileTest extends TestSuiteBase {
 	/**
 	 * Profile encoder compilation with 5-second audio (large - the problematic case).
 	 */
-	@Test
+	@Test(timeout = 300000)
 	public void profileEncoderLarge() throws IOException {
 		profileEncoder(5.0, "encoder_5sec");
 	}
@@ -70,7 +70,7 @@ public class EncoderCompilationProfileTest extends TestSuiteBase {
 	/**
 	 * Profile just the encoder model construction (no compilation).
 	 */
-	@Test
+	@Test(timeout = 300000)
 	public void profileEncoderConstruction() throws IOException {
 		if (!Files.exists(AUTOENCODER_DIR)) {
 			log("Autoencoder weights not found at " + AUTOENCODER_DIR + ", skipping");
@@ -113,7 +113,7 @@ public class EncoderCompilationProfileTest extends TestSuiteBase {
 	/**
 	 * Profile just the compilation step (after model is built).
 	 */
-	@Test
+	@Test(timeout = 300000)
 	public void profileEncoderCompilationOnly() throws IOException {
 		if (!Files.exists(AUTOENCODER_DIR)) {
 			log("Autoencoder weights not found at " + AUTOENCODER_DIR + ", skipping");

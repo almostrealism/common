@@ -36,7 +36,7 @@ public class ManualPlaybackTest extends TestSuiteBase {
 	 * Tests manual playback by repeatedly calling write() with a sine wave.
 	 * This proves the fundamental approach of PackedCollection -> toFrame() -> SourceDataLine works.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void manualSineWavePlayback() throws Exception {
 		if (testProfileIs(TestUtils.PIPELINE)) return;
 
@@ -114,7 +114,7 @@ public class ManualPlaybackTest extends TestSuiteBase {
 	/**
 	 * Simpler test with a shorter burst of tone to quickly verify audio output works.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void manualToneBurst() throws Exception {
 		if (testProfileIs(TestUtils.PIPELINE)) return;
 

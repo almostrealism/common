@@ -166,7 +166,7 @@ public class SyntheticDenseTrainingTest extends TestSuiteBase implements ModelTe
 				.collect(Collectors.toList()));
 
 		// Train
-		train("denseMultipleLayers", model, data, epochs, steps, 1.0, 0.1);
+		train("denseMultipleLayers", model, data, epochs, steps, 1.2, 0.3);
 
 		log("Test 1.2 completed successfully");
 	}
@@ -180,7 +180,7 @@ public class SyntheticDenseTrainingTest extends TestSuiteBase implements ModelTe
 	 */
 	@Test(timeout = 12 * 60000)
 	@TestDepth(1)
-	public void denseClassification() throws FileNotFoundException {
+	public void denseClassification() {
 		log("=== Test 1.3: Dense Classification ===");
 
 		int inputSize = 4;

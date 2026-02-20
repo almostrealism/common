@@ -31,7 +31,7 @@ jobs:
 
       - name: Code Policy Enforcement
         run: |
-          LD_LIBRARY_PATH=Extensions mvn test -pl utils \
+          LD_LIBRARY_PATH=Extensions mvn test -pl tools \
            -Dtest="CodePolicyEnforcementTest#enforceCodePolicies+testDetector*" \
            -DAR_HARDWARE_DRIVER=native \
            -DAR_HARDWARE_LIBS=Extensions
@@ -71,7 +71,7 @@ jobs:
           }
 
       - name: Summary
-        if: always()
+        if: ${{ !cancelled() }}
         run: |
           echo "## Test Integrity Check" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
@@ -91,7 +91,7 @@ jobs:
           fi
 
   javadoc-check:
-    needs: build
+    needs: test-media-mac
     runs-on: ubuntu-latest
     # Out of the critical path: does not block tests or other jobs.
     # Failures are reported but do not fail the overall workflow.
@@ -120,7 +120,7 @@ jobs:
         run: mvn checkstyle:check -Pjavadoc-check
 
       - name: Summary
-        if: always()
+        if: ${{ !cancelled() }}
         run: |
           echo "## Javadoc Coverage Check" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
@@ -134,9 +134,7 @@ jobs:
   test-timeout-check:
     needs: build
     runs-on: ubuntu-latest
-    # Out of the critical path: does not block tests or other jobs.
-    # Failures are reported but do not fail the overall workflow.
-    continue-on-error: true
+    # Critical path: failures block the test jobs and trigger auto-resolve.
     outputs:
       passed: ${{ steps.check.outcome == 'success' }}
     steps:
@@ -159,13 +157,13 @@ jobs:
       - name: Check Test Timeouts
         id: check
         run: |
-          LD_LIBRARY_PATH=Extensions mvn test -pl utils \
+          LD_LIBRARY_PATH=Extensions mvn test -pl tools \
            -Dtest=CodePolicyEnforcementTest#enforceTestTimeouts \
            -DAR_HARDWARE_DRIVER=native \
            -DAR_HARDWARE_LIBS=Extensions
 
       - name: Summary
-        if: always()
+        if: ${{ !cancelled() }}
         run: |
           echo "## Test Timeout Enforcement" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
@@ -173,15 +171,13 @@ jobs:
             echo "All @Test annotations include a timeout parameter." >> "$GITHUB_STEP_SUMMARY"
           else
             echo "Some @Test annotations are missing a timeout parameter." >> "$GITHUB_STEP_SUMMARY"
-            echo "Run \`mvn test -pl utils -Dtest=CodePolicyEnforcementTest#enforceTestTimeouts\` locally to see details." >> "$GITHUB_STEP_SUMMARY"
+            echo "Run \`mvn test -pl tools -Dtest=CodePolicyEnforcementTest#enforceTestTimeouts\` locally to see details." >> "$GITHUB_STEP_SUMMARY"
           fi
 
   duplicate-code-check:
     needs: build
     runs-on: ubuntu-latest
-    # Out of the critical path: does not block tests or other jobs.
-    # Failures are reported but do not fail the overall workflow.
-    continue-on-error: true
+    # Critical path: failures block the test jobs and trigger auto-resolve.
     outputs:
       passed: ${{ steps.check.outcome == 'success' }}
     steps:
@@ -204,13 +200,13 @@ jobs:
       - name: Check Duplicate Code
         id: check
         run: |
-          LD_LIBRARY_PATH=Extensions mvn test -pl utils \
+          LD_LIBRARY_PATH=Extensions mvn test -pl tools \
            -Dtest=CodePolicyEnforcementTest#enforceNoDuplicateCode \
            -DAR_HARDWARE_DRIVER=native \
            -DAR_HARDWARE_LIBS=Extensions
 
       - name: Summary
-        if: always()
+        if: ${{ !cancelled() }}
         run: |
           echo "## Duplicate Code Detection" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
@@ -218,36 +214,11 @@ jobs:
             echo "No blocks of 10+ identical lines found across different files." >> "$GITHUB_STEP_SUMMARY"
           else
             echo "Duplicate code blocks (10+ identical lines) detected across different files." >> "$GITHUB_STEP_SUMMARY"
-            echo "Run \`mvn test -pl utils -Dtest=CodePolicyEnforcementTest#enforceNoDuplicateCode\` locally to see details." >> "$GITHUB_STEP_SUMMARY"
+            echo "Run \`mvn test -pl tools -Dtest=CodePolicyEnforcementTest#enforceNoDuplicateCode\` locally to see details." >> "$GITHUB_STEP_SUMMARY"
           fi
-
-  build-mac:
-    runs-on: [self-hosted, macos, ar-ci]
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}
-          fetch-depth: 0
-
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
-        with:
-          java-version: '17'
-          distribution: 'adopt'
-          cache: 'maven'
-
-      - name: Ensure Rosetta 2
-        run: |
-          if [ "$(uname -m)" = "arm64" ] && ! /usr/bin/pgrep -q oahd; then
-            sudo softwareupdate --install-rosetta --agree-to-license
-          fi
-
-      - name: Build (skip tests)
-        run: mvn install -DskipTests
 
   test:
-    needs: build
+    needs: [build, test-timeout-check, duplicate-code-check]
     runs-on: [self-hosted, linux, ar-ci]
     strategy:
       fail-fast: true
@@ -277,8 +248,7 @@ jobs:
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS=Extensions \
            -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=7 \
-           -Dsurefire.excludes="**/CodePolicyEnforcementTest.java"
+           -DAR_TEST_GROUPS=7
 
       - name: Upload Surefire Reports
         if: always()
@@ -356,8 +326,8 @@ jobs:
           path: coverage-data/
           retention-days: 1
 
-  test-audio:
-    needs: test
+  test-media:
+    needs: [test-ml]
     runs-on: [self-hosted, linux, ar-ci]
     steps:
       - name: Checkout Code
@@ -384,50 +354,6 @@ jobs:
            -DAR_HARDWARE_LIBS=Extensions \
            -DAR_TEST_PROFILE=pipeline
 
-      - name: Upload Surefire Reports
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: surefire-audio
-          path: |
-            **/target/surefire-reports/TEST-*.xml
-          retention-days: 7
-          if-no-files-found: ignore
-
-      - name: Collect Coverage Data
-        if: always()
-        run: |
-          mkdir -p coverage-data
-          find . -path "*/target/jacoco.exec" -exec cp --parents {} coverage-data/ \;
-
-      - name: Upload Coverage Data
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage-audio
-          path: coverage-data/
-          retention-days: 1
-
-  test-music:
-    needs: [test-ml, test-audio]
-    runs-on: [self-hosted, linux, ar-ci]
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}
-          fetch-depth: 0
-
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
-        with:
-          java-version: '17'
-          distribution: 'adopt'
-          cache: 'maven'
-
-      - name: Build (skip tests)
-        run: mvn install -DskipTests
-
       - name: Run Music Tests
         run: |
           LD_LIBRARY_PATH=Extensions mvn test -pl music \
@@ -448,7 +374,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: surefire-music-compose
+          name: surefire-media
           path: |
             **/target/surefire-reports/TEST-*.xml
           retention-days: 7
@@ -464,7 +390,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: coverage-music
+          name: coverage-media
           path: coverage-data/
           retention-days: 1
 
@@ -474,7 +400,7 @@ jobs:
   # pattern where macOS tests run in parallel with the next Linux stage.
 
   test-mac:
-    needs: [build-mac, test]
+    needs: [test-ml]
     runs-on: [self-hosted, macos, ar-ci]
     steps:
       - name: Checkout Code
@@ -498,11 +424,10 @@ jobs:
           DYLD_LIBRARY_PATH=Extensions mvn test -pl utils \
            -DAR_HARDWARE_DRIVER=mtl \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
-           -DAR_HARDWARE_LIBS=Extensions \
-           -Dsurefire.excludes="**/CodePolicyEnforcementTest.java"
+           -DAR_HARDWARE_LIBS=Extensions
 
   test-ml-mac:
-    needs: [build-mac, test-ml]
+    needs: [test-mac]
     runs-on: [self-hosted, macos, ar-ci]
     steps:
       - name: Checkout Code
@@ -528,8 +453,8 @@ jobs:
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS=Extensions
 
-  test-audio-mac:
-    needs: [build-mac, test-audio]
+  test-media-mac:
+    needs: [test-media, test-ml-mac]
     runs-on: [self-hosted, macos, ar-ci]
     steps:
       - name: Checkout Code
@@ -555,26 +480,6 @@ jobs:
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS=Extensions
 
-  test-music-mac:
-    needs: [build-mac, test-music]
-    runs-on: [self-hosted, macos, ar-ci]
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}
-          fetch-depth: 0
-
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
-        with:
-          java-version: '17'
-          distribution: 'adopt'
-          cache: 'maven'
-
-      - name: Build (skip tests)
-        run: mvn install -DskipTests
-
       - name: Run Music Tests
         run: |
           DYLD_LIBRARY_PATH=Extensions mvn test -pl music \
@@ -591,8 +496,8 @@ jobs:
            -DAR_TEST_PROFILE=pipeline
 
   analysis:
-    needs: [test-ml, test-audio, test-music]
-    if: always()
+    needs: [test-media, test-media-mac]
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -666,7 +571,6 @@ jobs:
 
   qodana:
     needs: [analysis]
-    if: always()
     runs-on: ubuntu-latest
     permissions:
       checks: write
@@ -716,8 +620,8 @@ jobs:
   # from starting until it completes.
 
   auto-resolve:
-    needs: [test, test-ml, test-audio, test-music, javadoc-check, test-timeout-check, duplicate-code-check, test-integrity-check]
-    if: always() && github.ref != 'refs/heads/master'
+    needs: [javadoc-check, test-integrity-check, analysis]
+    if: ${{ !cancelled() && github.ref != 'refs/heads/master' && contains(needs.*.result, 'failure') }}
     runs-on: [self-hosted, macos, ar-ci]
     concurrency:
       group: auto-resolve-${{ github.ref }}
@@ -733,32 +637,15 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
 
-      - name: Download Surefire Reports
-        uses: actions/download-artifact@v4
-        with:
-          pattern: surefire-*
-          path: all-surefire-reports
-          merge-multiple: false
-
-      - name: Parse test failures
-        id: failures
+      - name: Check build result
+        id: build-check
         run: |
-          eval "$(./tools/ci/parse-surefire-failures.sh all-surefire-reports /tmp/test-failures.txt)"
-          echo "failure_count=$failure_count" >> "$GITHUB_OUTPUT"
-          echo "has_failures=$has_failures" >> "$GITHUB_OUTPUT"
-          if [ "$has_failures" = "true" ]; then
-            echo "::notice::Found $failure_count test failure(s) to auto-resolve"
+          if [ "${{ needs.build.result }}" != "success" ]; then
+            echo "build_failed=true" >> "$GITHUB_OUTPUT"
+            echo "::warning::Build failed — treating as total test failure"
           else
-            echo "::notice::No test failures found"
+            echo "build_failed=false" >> "$GITHUB_OUTPUT"
           fi
-
-      - name: Upload failure summary
-        if: steps.failures.outputs.has_failures == 'true'
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-failure-summary
-          path: /tmp/test-failures.txt
-          retention-days: 7
 
       - name: Determine branch context
         id: ctx
@@ -771,8 +658,63 @@ jobs:
             echo "base=master" >> "$GITHUB_OUTPUT"
           fi
 
+      # ── Build failure path ──────────────────────────────────────
+      # When the build itself fails, no tests run. Submit an agent
+      # job to fix the compilation error directly.
+
+      - name: Build prompt (build failure)
+        if: steps.build-check.outputs.build_failed == 'true'
+        env:
+          BRANCH: ${{ steps.ctx.outputs.branch }}
+          COMMIT_SHA: ${{ github.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          ./tools/ci/build-build-failure-prompt.sh /tmp/agent-prompt.txt
+
+      - name: Submit agent job (build failure)
+        if: steps.build-check.outputs.build_failed == 'true'
+        env:
+          CONTROLLER_HOST: ${{ secrets.FLOWTREE_CONTROLLER_HOST || 'mac-studio' }}
+          CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
+          BRANCH: ${{ steps.ctx.outputs.branch }}
+          BASE_BRANCH: ${{ steps.ctx.outputs.base }}
+        run: |
+          ./tools/ci/submit-agent-job.sh /tmp/agent-prompt.txt
+
+      # ── Test failure path ───────────────────────────────────────
+      # When the build succeeded, download and parse Surefire reports.
+
+      - name: Download Surefire Reports
+        if: steps.build-check.outputs.build_failed != 'true'
+        uses: actions/download-artifact@v4
+        with:
+          pattern: surefire-*
+          path: all-surefire-reports
+          merge-multiple: false
+
+      - name: Parse test failures
+        if: steps.build-check.outputs.build_failed != 'true'
+        id: failures
+        run: |
+          eval "$(./tools/ci/parse-surefire-failures.sh all-surefire-reports /tmp/test-failures.txt)"
+          echo "failure_count=$failure_count" >> "$GITHUB_OUTPUT"
+          echo "has_failures=$has_failures" >> "$GITHUB_OUTPUT"
+          if [ "$has_failures" = "true" ]; then
+            echo "::notice::Found $failure_count test failure(s) to auto-resolve"
+          else
+            echo "::notice::No test failures found"
+          fi
+
+      - name: Upload failure summary
+        if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-failure-summary
+          path: /tmp/test-failures.txt
+          retention-days: 7
+
       - name: Build prompt (test failures)
-        if: steps.failures.outputs.has_failures == 'true'
+        if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures == 'true'
         env:
           FAILURE_COUNT: ${{ steps.failures.outputs.failure_count }}
           BRANCH: ${{ steps.ctx.outputs.branch }}
@@ -782,7 +724,7 @@ jobs:
           ./tools/ci/build-resolve-prompt.sh /tmp/test-failures.txt /tmp/agent-prompt.txt
 
       - name: Submit agent job (test failures)
-        if: steps.failures.outputs.has_failures == 'true'
+        if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures == 'true'
         env:
           CONTROLLER_HOST: ${{ secrets.FLOWTREE_CONTROLLER_HOST || 'mac-studio' }}
           CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
@@ -797,7 +739,7 @@ jobs:
       # reusability issues are addressed only after correctness.
 
       - name: Check quality gates
-        if: steps.failures.outputs.has_failures != 'true'
+        if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true'
         id: quality
         env:
           JAVADOC_PASSED: ${{ needs.javadoc-check.outputs.passed }}
@@ -808,7 +750,7 @@ jobs:
           ./tools/ci/check-quality-gates.sh /tmp/quality-gate-failures.txt
 
       - name: Upload quality gate summary
-        if: steps.failures.outputs.has_failures != 'true' && steps.quality.outputs.has_failures == 'true'
+        if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.quality.outputs.has_failures == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: quality-gate-summary
@@ -816,7 +758,7 @@ jobs:
           retention-days: 7
 
       - name: Build prompt (quality gates)
-        if: steps.failures.outputs.has_failures != 'true' && steps.quality.outputs.has_failures == 'true'
+        if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.quality.outputs.has_failures == 'true'
         env:
           FAILURE_COUNT: ${{ steps.quality.outputs.failure_count }}
           BRANCH: ${{ steps.ctx.outputs.branch }}
@@ -826,7 +768,7 @@ jobs:
           ./tools/ci/build-quality-gate-prompt.sh /tmp/quality-gate-failures.txt /tmp/agent-prompt.txt
 
       - name: Submit agent job (quality gates)
-        if: steps.failures.outputs.has_failures != 'true' && steps.quality.outputs.has_failures == 'true'
+        if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.quality.outputs.has_failures == 'true'
         env:
           CONTROLLER_HOST: ${{ secrets.FLOWTREE_CONTROLLER_HOST || 'mac-studio' }}
           CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
@@ -841,7 +783,7 @@ jobs:
       # documentation, and consistency with existing patterns.
 
       - name: Build prompt (general review)
-        if: steps.failures.outputs.has_failures != 'true' && steps.quality.outputs.has_failures != 'true'
+        if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.quality.outputs.has_failures != 'true'
         env:
           BRANCH: ${{ steps.ctx.outputs.branch }}
           BASE_BRANCH: ${{ steps.ctx.outputs.base }}
@@ -850,7 +792,7 @@ jobs:
           ./tools/ci/build-review-prompt.sh /tmp/agent-prompt.txt
 
       - name: Submit agent job (general review)
-        if: steps.failures.outputs.has_failures != 'true' && steps.quality.outputs.has_failures != 'true'
+        if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.quality.outputs.has_failures != 'true'
         env:
           CONTROLLER_HOST: ${{ secrets.FLOWTREE_CONTROLLER_HOST || 'mac-studio' }}
           CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
@@ -860,11 +802,14 @@ jobs:
           ./tools/ci/submit-agent-job.sh /tmp/agent-prompt.txt
 
       - name: Summary
-        if: always()
+        if: ${{ !cancelled() }}
         run: |
           echo "## Auto-Resolve" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          if [ "${{ steps.failures.outputs.has_failures }}" = "true" ]; then
+          if [ "${{ steps.build-check.outputs.build_failed }}" = "true" ]; then
+            echo "**Build failed** — no tests were able to run." >> "$GITHUB_STEP_SUMMARY"
+            echo "A FlowTree coding agent job was submitted to fix the build." >> "$GITHUB_STEP_SUMMARY"
+          elif [ "${{ steps.failures.outputs.has_failures }}" = "true" ]; then
             echo "Found **${{ steps.failures.outputs.failure_count }}** test failure(s)." >> "$GITHUB_STEP_SUMMARY"
             echo "A FlowTree coding agent job was submitted to attempt automatic resolution." >> "$GITHUB_STEP_SUMMARY"
             echo "" >> "$GITHUB_STEP_SUMMARY"

@@ -495,7 +495,8 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         String subtype = extractJsonField(body, "subtype");
         boolean sessionIsError = extractJsonBooleanField(body, "sessionIsError");
         int permissionDenials = extractJsonIntField(body, "permissionDenials");
-        event.withSessionDetails(subtype, sessionIsError, permissionDenials);
+        List<String> deniedToolNames = extractJsonArrayField(body, "deniedToolNames");
+        event.withSessionDetails(subtype, sessionIsError, permissionDenials, deniedToolNames);
 
         log("Status event: " + eventStatus + " for job " + jobId + " in workstream " + workstreamId);
 
@@ -533,297 +534,45 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
     }
 
     /**
-     * Simple JSON field extraction for lightweight parsing without
-     * requiring a JSON library dependency.
-     *
-     * <p>Handles escaped quotes within values. For nested or complex JSON,
-     * a proper JSON parser should be used instead.</p>
-     *
-     * @param json  the JSON string
-     * @param field the field name to extract
-     * @return the field value, or null if not found
+     * Delegates to {@link io.flowtree.JsonFieldExtractor#extractString(String, String)}.
      */
     static String extractJsonField(String json, String field) {
-        if (json == null) return null;
-
-        int fieldStart = json.indexOf("\"" + field + "\"");
-        if (fieldStart < 0) return null;
-
-        int colonPos = json.indexOf(":", fieldStart);
-        if (colonPos < 0) return null;
-
-        // Skip whitespace after the colon to inspect the value token
-        int afterColon = colonPos + 1;
-        while (afterColon < json.length() && json.charAt(afterColon) == ' ') {
-            afterColon++;
-        }
-
-        // Handle JSON null literal
-        if (afterColon + 4 <= json.length() &&
-                json.substring(afterColon, afterColon + 4).equals("null")) {
-            return null;
-        }
-
-        int valueStart = json.indexOf("\"", colonPos) + 1;
-        if (valueStart <= 0) return null;
-
-        // Handle JSON escape sequences including \\uXXXX Unicode escapes
-        StringBuilder sb = new StringBuilder();
-        for (int i = valueStart; i < json.length(); i++) {
-            char c = json.charAt(i);
-            if (c == '\\' && i + 1 < json.length()) {
-                char next = json.charAt(i + 1);
-                if (next == '"') {
-                    sb.append('"');
-                    i++;
-                } else if (next == '\\') {
-                    sb.append('\\');
-                    i++;
-                } else if (next == 'n') {
-                    sb.append('\n');
-                    i++;
-                } else if (next == 'r') {
-                    sb.append('\r');
-                    i++;
-                } else if (next == 't') {
-                    sb.append('\t');
-                    i++;
-                } else if (next == 'b') {
-                    sb.append('\b');
-                    i++;
-                } else if (next == 'f') {
-                    sb.append('\f');
-                    i++;
-                } else if (next == '/') {
-                    sb.append('/');
-                    i++;
-                } else if (next == 'u' && i + 5 < json.length()) {
-                    String hex = json.substring(i + 2, i + 6);
-                    try {
-                        sb.append((char) Integer.parseInt(hex, 16));
-                        i += 5;
-                    } catch (NumberFormatException e) {
-                        sb.append(c);
-                    }
-                } else {
-                    sb.append(c);
-                }
-            } else if (c == '"') {
-                break;
-            } else {
-                sb.append(c);
-            }
-        }
-
-        return sb.toString();
+        return io.flowtree.JsonFieldExtractor.extractString(json, field);
     }
 
     /**
-     * Extracts a boolean field from a JSON string.
-     * Returns false if the field is not found.
-     *
-     * @param json  the JSON string
-     * @param field the field name
-     * @return the boolean value, or false if not found
+     * Delegates to {@link io.flowtree.JsonFieldExtractor#extractBoolean(String, String)}.
      */
     static boolean extractJsonBooleanField(String json, String field) {
-        if (json == null) return false;
-
-        int fieldStart = json.indexOf("\"" + field + "\"");
-        if (fieldStart < 0) return false;
-
-        int colonPos = json.indexOf(":", fieldStart);
-        if (colonPos < 0) return false;
-
-        String rest = json.substring(colonPos + 1).trim();
-        return rest.startsWith("true");
+        return io.flowtree.JsonFieldExtractor.extractBoolean(json, field);
     }
 
     /**
-     * Extracts an integer field from a JSON string.
-     * Returns 0 if the field is not found or cannot be parsed.
-     *
-     * @param json  the JSON string
-     * @param field the field name
-     * @return the integer value, or 0 if not found
+     * Delegates to {@link io.flowtree.JsonFieldExtractor#extractInt(String, String)}.
      */
     static int extractJsonIntField(String json, String field) {
-        if (json == null) return 0;
-
-        int fieldStart = json.indexOf("\"" + field + "\"");
-        if (fieldStart < 0) return 0;
-
-        int colonPos = json.indexOf(":", fieldStart);
-        if (colonPos < 0) return 0;
-
-        String rest = json.substring(colonPos + 1).trim();
-        StringBuilder numStr = new StringBuilder();
-        for (int i = 0; i < rest.length(); i++) {
-            char c = rest.charAt(i);
-            if (c == '-' || (c >= '0' && c <= '9')) {
-                numStr.append(c);
-            } else if (numStr.length() > 0) {
-                break;
-            }
-        }
-
-        try {
-            return Integer.parseInt(numStr.toString());
-        } catch (NumberFormatException e) {
-            return 0;
-        }
+        return io.flowtree.JsonFieldExtractor.extractInt(json, field);
     }
 
     /**
-     * Extracts a long field from a JSON string.
-     * Returns 0 if the field is not found or cannot be parsed.
-     *
-     * @param json  the JSON string
-     * @param field the field name
-     * @return the long value, or 0 if not found
+     * Delegates to {@link io.flowtree.JsonFieldExtractor#extractLong(String, String)}.
      */
     static long extractJsonLongField(String json, String field) {
-        if (json == null) return 0;
-
-        int fieldStart = json.indexOf("\"" + field + "\"");
-        if (fieldStart < 0) return 0;
-
-        int colonPos = json.indexOf(":", fieldStart);
-        if (colonPos < 0) return 0;
-
-        String rest = json.substring(colonPos + 1).trim();
-        StringBuilder numStr = new StringBuilder();
-        for (int i = 0; i < rest.length(); i++) {
-            char c = rest.charAt(i);
-            if (c == '-' || (c >= '0' && c <= '9')) {
-                numStr.append(c);
-            } else if (numStr.length() > 0) {
-                break;
-            }
-        }
-
-        try {
-            return Long.parseLong(numStr.toString());
-        } catch (NumberFormatException e) {
-            return 0;
-        }
+        return io.flowtree.JsonFieldExtractor.extractLong(json, field);
     }
 
     /**
-     * Extracts a double field from a JSON string.
-     * Returns 0.0 if the field is not found or cannot be parsed.
-     *
-     * @param json  the JSON string
-     * @param field the field name
-     * @return the double value, or 0.0 if not found
+     * Delegates to {@link io.flowtree.JsonFieldExtractor#extractDouble(String, String)}.
      */
     static double extractJsonDoubleField(String json, String field) {
-        if (json == null) return 0.0;
-
-        int fieldStart = json.indexOf("\"" + field + "\"");
-        if (fieldStart < 0) return 0.0;
-
-        int colonPos = json.indexOf(":", fieldStart);
-        if (colonPos < 0) return 0.0;
-
-        String rest = json.substring(colonPos + 1).trim();
-        StringBuilder numStr = new StringBuilder();
-        for (int i = 0; i < rest.length(); i++) {
-            char c = rest.charAt(i);
-            if (c == '-' || c == '.' || (c >= '0' && c <= '9')) {
-                numStr.append(c);
-            } else if (numStr.length() > 0) {
-                break;
-            }
-        }
-
-        try {
-            return Double.parseDouble(numStr.toString());
-        } catch (NumberFormatException e) {
-            return 0.0;
-        }
+        return io.flowtree.JsonFieldExtractor.extractDouble(json, field);
     }
 
     /**
-     * Extracts a JSON array of strings from a JSON string.
-     * Returns an empty list if the field is not found.
-     *
-     * @param json  the JSON string
-     * @param field the field name
-     * @return list of string values from the array
+     * Delegates to {@link io.flowtree.JsonFieldExtractor#extractStringArray(String, String)}.
      */
     static List<String> extractJsonArrayField(String json, String field) {
-        List<String> result = new ArrayList<>();
-        if (json == null) return result;
-
-        int fieldStart = json.indexOf("\"" + field + "\"");
-        if (fieldStart < 0) return result;
-
-        int colonPos = json.indexOf(":", fieldStart);
-        if (colonPos < 0) return result;
-
-        int arrayStart = json.indexOf("[", colonPos);
-        if (arrayStart < 0) return result;
-
-        int arrayEnd = json.indexOf("]", arrayStart);
-        if (arrayEnd < 0) return result;
-
-        String arrayContent = json.substring(arrayStart + 1, arrayEnd);
-        if (arrayContent.trim().isEmpty()) return result;
-
-        // Parse each quoted string in the array
-        int i = 0;
-        while (i < arrayContent.length()) {
-            int quoteStart = arrayContent.indexOf("\"", i);
-            if (quoteStart < 0) break;
-
-            StringBuilder value = new StringBuilder();
-            int j = quoteStart + 1;
-            while (j < arrayContent.length()) {
-                char c = arrayContent.charAt(j);
-                if (c == '\\' && j + 1 < arrayContent.length()) {
-                    char next = arrayContent.charAt(j + 1);
-                    if (next == '"') {
-                        value.append('"');
-                        j += 2;
-                    } else if (next == '\\') {
-                        value.append('\\');
-                        j += 2;
-                    } else if (next == 'n') {
-                        value.append('\n');
-                        j += 2;
-                    } else if (next == 'r') {
-                        value.append('\r');
-                        j += 2;
-                    } else if (next == 't') {
-                        value.append('\t');
-                        j += 2;
-                    } else if (next == 'u' && j + 5 < arrayContent.length()) {
-                        String hex = arrayContent.substring(j + 2, j + 6);
-                        try {
-                            value.append((char) Integer.parseInt(hex, 16));
-                            j += 6;
-                        } catch (NumberFormatException e) {
-                            value.append(c);
-                            j++;
-                        }
-                    } else {
-                        value.append(c);
-                        j++;
-                    }
-                } else if (c == '"') {
-                    break;
-                } else {
-                    value.append(c);
-                    j++;
-                }
-            }
-
-            result.add(value.toString());
-            i = j + 1;
-        }
-
-        return result;
+        return io.flowtree.JsonFieldExtractor.extractStringArray(json, field);
     }
 
     private static String escapeJson(String s) {

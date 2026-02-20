@@ -106,6 +106,7 @@ public class ClaudeCodeJob extends GitManagedJob {
     private String subtype;
     private boolean isError;
     private int permissionDenials;
+    private List<String> deniedToolNames;
 
     /**
      * Default constructor for deserialization.
@@ -323,6 +324,39 @@ public class ClaudeCodeJob extends GitManagedJob {
             sb.append("after you finish.\n\n");
         }
 
+        // Merge conflict instructions -- when the base branch has diverged
+        if (hasMergeConflicts()) {
+            sb.append("## Merge Conflicts\n");
+            sb.append("IMPORTANT: The base branch (origin/").append(getBaseBranch());
+            sb.append(") has diverged from your working branch (").append(getTargetBranch());
+            sb.append(") and a merge attempt produced conflicts. ");
+            sb.append("The merge was aborted so your working directory is clean, ");
+            sb.append("but you MUST resolve these conflicts as part of your work.\n\n");
+            sb.append("To resolve:\n");
+            sb.append("1. Run `git merge origin/").append(getBaseBranch()).append("`\n");
+            sb.append("2. Resolve the conflicts in the following files:\n");
+            for (String file : getMergeConflictFiles()) {
+                sb.append("   - `").append(file).append("`\n");
+            }
+            sb.append("3. After resolving all conflicts, stage the resolved files with `git add`\n");
+            sb.append("4. Complete the merge with `git commit --no-edit`\n");
+            sb.append("5. Then proceed with the user's requested work\n\n");
+            sb.append("Do NOT skip conflict resolution. The merge must be completed before ");
+            sb.append("any other changes are made.\n\n");
+        }
+
+        // Remote branch context -- user instructions always refer to remote branches
+        sb.append("## Branch Context\n");
+        sb.append("This work is being done in a sandboxed environment. ");
+        sb.append("When the user's instructions mention branch names (e.g., \"this works ");
+        sb.append("on master\", \"compare with develop\", \"based on main\"), they are ALWAYS ");
+        sb.append("referring to the remote branch (origin/<branch>). Local branches in this ");
+        sb.append("sandbox may be stale or absent. Always use `origin/<branch>` when ");
+        sb.append("comparing, cherry-picking, or referencing other branches. For example:\n");
+        sb.append("- \"works on master\" means `origin/master`\n");
+        sb.append("- \"merge from develop\" means `origin/develop`\n");
+        sb.append("- \"diff against main\" means `git diff origin/main`\n\n");
+
         // Working directory and branch context
         String workDir = getWorkingDirectory();
         sb.append("Your working directory is: ");
@@ -332,6 +366,54 @@ public class ClaudeCodeJob extends GitManagedJob {
             sb.append("Target branch: ").append(getTargetBranch()).append("\n");
         }
         sb.append("\n");
+
+        // Branch awareness and anti-loop guidance
+        if (getTargetBranch() != null && !getTargetBranch().isEmpty()) {
+            sb.append("## Branch Awareness and Continuity\n");
+            sb.append("IMPORTANT: You are not the first agent to work on this branch. ");
+            sb.append("Previous coding agent sessions have already made changes that are ");
+            sb.append("reflected in the git history. Those changes are YOUR team's work -- ");
+            sb.append("treat them as intentional progress, not as problems to undo.\n\n");
+
+            sb.append("### Catching Up on Prior Work\n");
+            sb.append("Before making any changes, you MUST use the `branch_catchup` tool ");
+            sb.append("to understand what has already been done on this branch:\n");
+            sb.append("```\n");
+            sb.append("mcp__ar-consultant__branch_catchup repo_url:\"<from git remote ");
+            sb.append("get-url origin>\" branch:\"").append(getTargetBranch()).append("\"\n");
+            sb.append("```\n");
+            sb.append("This will show you memories from prior agent sessions and the ");
+            sb.append("commit timeline, synthesized into a briefing.\n\n");
+
+            sb.append("### Recording Your Work\n");
+            sb.append("When you make decisions, discover issues, or complete tasks, ");
+            sb.append("store memories with the branch context so future sessions can ");
+            sb.append("pick up where you left off:\n");
+            sb.append("```\n");
+            sb.append("mcp__ar-consultant__remember content:\"<what you learned>\" ");
+            sb.append("repo_url:\"<repo url>\" branch:\"").append(getTargetBranch());
+            sb.append("\" tags:[\"progress\"]\n");
+            sb.append("```\n\n");
+
+            sb.append("### CRITICAL: Avoid Add/Revert Loops\n");
+            sb.append("A common failure mode for coding agents is getting stuck in a loop:\n");
+            sb.append("1. Agent adds a feature or makes changes\n");
+            sb.append("2. CI pipeline fails\n");
+            sb.append("3. Agent reverts the changes to \"fix\" the failure\n");
+            sb.append("4. Next session re-adds the same changes\n");
+            sb.append("5. CI fails again, agent reverts again\n");
+            sb.append("6. Repeat indefinitely\n\n");
+            sb.append("This is NEVER the right approach. If CI fails after your changes:\n");
+            sb.append("- **DO NOT** simply revert the changes. That undoes prior agent work.\n");
+            sb.append("- **DO** investigate the actual failure and fix it properly.\n");
+            sb.append("- **DO** check `branch_catchup` to see if this same pattern ");
+            sb.append("has already occurred in prior sessions.\n");
+            sb.append("- **DO** store a memory describing the CI failure and your ");
+            sb.append("analysis so the next session doesn't repeat the same mistake.\n");
+            sb.append("- If the failure is in code YOU did not write (i.e., pre-existing ");
+            sb.append("on the branch from prior sessions), investigate whether it's a ");
+            sb.append("real bug that needs fixing vs. an environment/configuration issue.\n\n");
+        }
 
         // Budget and turn limits
         if (maxBudgetUsd > 0 || maxTurns > 0) {
@@ -622,7 +704,7 @@ public class ClaudeCodeJob extends GitManagedJob {
     protected void populateEventDetails(JobCompletionEvent event) {
         event.withClaudeCodeInfo(prompt, sessionId, exitCode);
         event.withTimingInfo(durationMs, durationApiMs, costUsd, numTurns);
-        event.withSessionDetails(subtype, isError, permissionDenials);
+        event.withSessionDetails(subtype, isError, permissionDenials, deniedToolNames);
     }
 
     @Override
@@ -1206,183 +1288,75 @@ public class ClaudeCodeJob extends GitManagedJob {
     private void extractOutputMetrics(String jsonOutput) {
         if (jsonOutput == null || jsonOutput.isEmpty()) return;
 
-        // Extract session_id (string field)
-        int idx = jsonOutput.indexOf("\"session_id\"");
-        if (idx >= 0) {
-            int start = jsonOutput.indexOf("\"", idx + 12) + 1;
-            int end = jsonOutput.indexOf("\"", start);
-            if (start > 0 && end > start) {
-                sessionId = jsonOutput.substring(start, end);
-            }
+        // Claude Code with --output-format json emits NDJSON: one JSON object
+        // per line, with per-turn objects appearing first and the session-level
+        // "type":"result" object last.  Extracting from the full output picks up
+        // the FIRST occurrence of each field (a per-turn value), not the session
+        // total.  Instead, locate the result object and extract from that.
+        String resultJson = io.flowtree.JsonFieldExtractor.extractLastJsonObject(jsonOutput, "result");
+        if (resultJson == null) {
+            resultJson = jsonOutput;
         }
 
-        // Extract timing metrics (numeric fields)
-        durationMs = extractJsonLongValue(jsonOutput, "duration_ms");
-        durationApiMs = extractJsonLongValue(jsonOutput, "duration_api_ms");
-        numTurns = (int) extractJsonLongValue(jsonOutput, "num_turns");
+        // Extract session_id
+        sessionId = extractJsonStringValue(resultJson, "session_id");
+
+        // Extract timing metrics from the result object
+        durationMs = extractJsonLongValue(resultJson, "duration_ms");
+        durationApiMs = extractJsonLongValue(resultJson, "duration_api_ms");
+        numTurns = (int) extractJsonLongValue(resultJson, "num_turns");
 
         // Cost field may be "total_cost_usd" or "cost_usd"
-        costUsd = extractJsonDoubleValue(jsonOutput, "total_cost_usd");
+        costUsd = extractJsonDoubleValue(resultJson, "total_cost_usd");
         if (costUsd == 0.0) {
-            costUsd = extractJsonDoubleValue(jsonOutput, "cost_usd");
+            costUsd = extractJsonDoubleValue(resultJson, "cost_usd");
         }
 
         // Extract subtype (stop reason: "success", "error_max_turns", etc.)
-        subtype = extractJsonStringValue(jsonOutput, "subtype");
+        subtype = extractJsonStringValue(resultJson, "subtype");
 
         // Extract is_error boolean
-        isError = extractJsonBooleanValue(jsonOutput, "is_error");
+        isError = extractJsonBooleanValue(resultJson, "is_error");
 
-        // Count permission_denials array entries
-        permissionDenials = countJsonArrayEntries(jsonOutput, "permission_denials");
+        // Count permission_denials array entries and extract denied tool names
+        permissionDenials = countJsonArrayEntries(resultJson, "permission_denials");
+        deniedToolNames = io.flowtree.JsonFieldExtractor.extractFieldFromArrayObjects(
+            resultJson, "permission_denials", "tool");
     }
 
     /**
-     * Extracts a long value from a JSON string by field name.
-     * Returns 0 if the field is not found or cannot be parsed.
+     * Delegates to {@link io.flowtree.JsonFieldExtractor#extractLong(String, String)}.
      */
     private static long extractJsonLongValue(String json, String field) {
-        int fieldIdx = json.indexOf("\"" + field + "\"");
-        if (fieldIdx < 0) return 0;
-
-        int colonIdx = json.indexOf(":", fieldIdx);
-        if (colonIdx < 0) return 0;
-
-        String rest = json.substring(colonIdx + 1).trim();
-        StringBuilder numStr = new StringBuilder();
-        for (int i = 0; i < rest.length(); i++) {
-            char c = rest.charAt(i);
-            if (c == '-' || (c >= '0' && c <= '9')) {
-                numStr.append(c);
-            } else if (numStr.length() > 0) {
-                break;
-            }
-        }
-
-        try {
-            return Long.parseLong(numStr.toString());
-        } catch (NumberFormatException e) {
-            return 0;
-        }
+        return io.flowtree.JsonFieldExtractor.extractLong(json, field);
     }
 
     /**
-     * Extracts a double value from a JSON string by field name.
-     * Returns 0.0 if the field is not found or cannot be parsed.
+     * Delegates to {@link io.flowtree.JsonFieldExtractor#extractDouble(String, String)}.
      */
     private static double extractJsonDoubleValue(String json, String field) {
-        int fieldIdx = json.indexOf("\"" + field + "\"");
-        if (fieldIdx < 0) return 0.0;
-
-        int colonIdx = json.indexOf(":", fieldIdx);
-        if (colonIdx < 0) return 0.0;
-
-        String rest = json.substring(colonIdx + 1).trim();
-        StringBuilder numStr = new StringBuilder();
-        for (int i = 0; i < rest.length(); i++) {
-            char c = rest.charAt(i);
-            if (c == '-' || c == '.' || (c >= '0' && c <= '9')) {
-                numStr.append(c);
-            } else if (numStr.length() > 0) {
-                break;
-            }
-        }
-
-        try {
-            return Double.parseDouble(numStr.toString());
-        } catch (NumberFormatException e) {
-            return 0.0;
-        }
+        return io.flowtree.JsonFieldExtractor.extractDouble(json, field);
     }
 
     /**
-     * Extracts a string value from a JSON string by field name.
-     * Handles escaped quotes within string values.
-     * Returns null if the field is not found.
+     * Delegates to {@link io.flowtree.JsonFieldExtractor#extractString(String, String)}.
      */
     private static String extractJsonStringValue(String json, String field) {
-        int fieldIdx = json.indexOf("\"" + field + "\"");
-        if (fieldIdx < 0) return null;
-
-        int colonIdx = json.indexOf(":", fieldIdx);
-        if (colonIdx < 0) return null;
-
-        String rest = json.substring(colonIdx + 1).trim();
-        if (rest.startsWith("null")) return null;
-        if (!rest.startsWith("\"")) return null;
-
-        int i = 1;
-        while (i < rest.length()) {
-            char c = rest.charAt(i);
-            if (c == '\\') {
-                i += 2;
-            } else if (c == '"') {
-                return rest.substring(1, i).replace("\\\"", "\"");
-            } else {
-                i++;
-            }
-        }
-
-        return null;
+        return io.flowtree.JsonFieldExtractor.extractString(json, field);
     }
 
     /**
-     * Extracts a boolean value from a JSON string by field name.
-     * Returns false if the field is not found.
+     * Delegates to {@link io.flowtree.JsonFieldExtractor#extractBoolean(String, String)}.
      */
     private static boolean extractJsonBooleanValue(String json, String field) {
-        int fieldIdx = json.indexOf("\"" + field + "\"");
-        if (fieldIdx < 0) return false;
-
-        int colonIdx = json.indexOf(":", fieldIdx);
-        if (colonIdx < 0) return false;
-
-        String rest = json.substring(colonIdx + 1).trim();
-        return rest.startsWith("true");
+        return io.flowtree.JsonFieldExtractor.extractBoolean(json, field);
     }
 
     /**
-     * Counts the number of object entries in a JSON array field.
-     * Uses a simple brace-counting approach to count top-level objects.
-     * Returns 0 if the field is not found or the array is empty.
+     * Delegates to {@link io.flowtree.JsonFieldExtractor#countArrayEntries(String, String)}.
      */
     private static int countJsonArrayEntries(String json, String field) {
-        int fieldIdx = json.indexOf("\"" + field + "\"");
-        if (fieldIdx < 0) return 0;
-
-        int colonIdx = json.indexOf(":", fieldIdx);
-        if (colonIdx < 0) return 0;
-
-        int arrStart = json.indexOf("[", colonIdx);
-        if (arrStart < 0) return 0;
-
-        int arrEnd = -1;
-        int depth = 1;
-        for (int i = arrStart + 1; i < json.length() && depth > 0; i++) {
-            char c = json.charAt(i);
-            if (c == '[') depth++;
-            else if (c == ']') {
-                depth--;
-                if (depth == 0) arrEnd = i;
-            }
-        }
-
-        if (arrEnd < 0) return 0;
-
-        // Count top-level objects by counting opening braces at depth 0
-        String arrContent = json.substring(arrStart + 1, arrEnd).trim();
-        if (arrContent.isEmpty()) return 0;
-
-        int count = 0;
-        int braceDepth = 0;
-        for (int i = 0; i < arrContent.length(); i++) {
-            char c = arrContent.charAt(i);
-            if (c == '{' && braceDepth == 0) count++;
-            if (c == '{') braceDepth++;
-            else if (c == '}') braceDepth--;
-        }
-
-        return count;
+        return io.flowtree.JsonFieldExtractor.countArrayEntries(json, field);
     }
 
     @Override
