@@ -79,6 +79,7 @@ public class JobCompletionEvent {
     private String subtype;
     private boolean sessionIsError;
     private int permissionDenials;
+    private List<String> deniedToolNames;
 
     /**
      * Creates a new job completion event.
@@ -221,6 +222,17 @@ public class JobCompletionEvent {
         return permissionDenials;
     }
 
+    /**
+     * Returns the tool names that were denied during the session.
+     * Each entry corresponds to a single denial event; the same tool
+     * may appear multiple times if it was denied more than once.
+     *
+     * @return list of denied tool names, or empty list if none
+     */
+    public List<String> getDeniedToolNames() {
+        return deniedToolNames != null ? deniedToolNames : Collections.emptyList();
+    }
+
     // Setters (builder pattern)
 
     /** Performs the withGitInfo operation. */
@@ -277,13 +289,16 @@ public class JobCompletionEvent {
      * @param subtype           the session subtype / stop reason (e.g. "success", "error_max_turns")
      * @param sessionIsError    whether Claude Code flagged the session as an error
      * @param permissionDenials number of tool permission denials during the session
+     * @param deniedToolNames   names of tools that were denied, or null
      * @return this event for chaining
      */
     public JobCompletionEvent withSessionDetails(String subtype, boolean sessionIsError,
-                                                  int permissionDenials) {
+                                                  int permissionDenials,
+                                                  List<String> deniedToolNames) {
         this.subtype = subtype;
         this.sessionIsError = sessionIsError;
         this.permissionDenials = permissionDenials;
+        this.deniedToolNames = deniedToolNames;
         return this;
     }
 

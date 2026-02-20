@@ -31,7 +31,7 @@ jobs:
 
       - name: Code Policy Enforcement
         run: |
-          LD_LIBRARY_PATH=Extensions mvn test -pl utils \
+          LD_LIBRARY_PATH=Extensions mvn test -pl tools \
            -Dtest="CodePolicyEnforcementTest#enforceCodePolicies+testDetector*" \
            -DAR_HARDWARE_DRIVER=native \
            -DAR_HARDWARE_LIBS=Extensions
@@ -91,7 +91,7 @@ jobs:
           fi
 
   javadoc-check:
-    needs: build
+    needs: test-media-mac
     runs-on: ubuntu-latest
     # Out of the critical path: does not block tests or other jobs.
     # Failures are reported but do not fail the overall workflow.
@@ -134,9 +134,7 @@ jobs:
   test-timeout-check:
     needs: build
     runs-on: ubuntu-latest
-    # Out of the critical path: does not block tests or other jobs.
-    # Failures are reported but do not fail the overall workflow.
-    continue-on-error: true
+    # Critical path: failures block the test jobs and trigger auto-resolve.
     outputs:
       passed: ${{ steps.check.outcome == 'success' }}
     steps:
@@ -159,7 +157,7 @@ jobs:
       - name: Check Test Timeouts
         id: check
         run: |
-          LD_LIBRARY_PATH=Extensions mvn test -pl utils \
+          LD_LIBRARY_PATH=Extensions mvn test -pl tools \
            -Dtest=CodePolicyEnforcementTest#enforceTestTimeouts \
            -DAR_HARDWARE_DRIVER=native \
            -DAR_HARDWARE_LIBS=Extensions
@@ -173,15 +171,13 @@ jobs:
             echo "All @Test annotations include a timeout parameter." >> "$GITHUB_STEP_SUMMARY"
           else
             echo "Some @Test annotations are missing a timeout parameter." >> "$GITHUB_STEP_SUMMARY"
-            echo "Run \`mvn test -pl utils -Dtest=CodePolicyEnforcementTest#enforceTestTimeouts\` locally to see details." >> "$GITHUB_STEP_SUMMARY"
+            echo "Run \`mvn test -pl tools -Dtest=CodePolicyEnforcementTest#enforceTestTimeouts\` locally to see details." >> "$GITHUB_STEP_SUMMARY"
           fi
 
   duplicate-code-check:
     needs: build
     runs-on: ubuntu-latest
-    # Out of the critical path: does not block tests or other jobs.
-    # Failures are reported but do not fail the overall workflow.
-    continue-on-error: true
+    # Critical path: failures block the test jobs and trigger auto-resolve.
     outputs:
       passed: ${{ steps.check.outcome == 'success' }}
     steps:
@@ -204,7 +200,7 @@ jobs:
       - name: Check Duplicate Code
         id: check
         run: |
-          LD_LIBRARY_PATH=Extensions mvn test -pl utils \
+          LD_LIBRARY_PATH=Extensions mvn test -pl tools \
            -Dtest=CodePolicyEnforcementTest#enforceNoDuplicateCode \
            -DAR_HARDWARE_DRIVER=native \
            -DAR_HARDWARE_LIBS=Extensions
@@ -218,11 +214,11 @@ jobs:
             echo "No blocks of 10+ identical lines found across different files." >> "$GITHUB_STEP_SUMMARY"
           else
             echo "Duplicate code blocks (10+ identical lines) detected across different files." >> "$GITHUB_STEP_SUMMARY"
-            echo "Run \`mvn test -pl utils -Dtest=CodePolicyEnforcementTest#enforceNoDuplicateCode\` locally to see details." >> "$GITHUB_STEP_SUMMARY"
+            echo "Run \`mvn test -pl tools -Dtest=CodePolicyEnforcementTest#enforceNoDuplicateCode\` locally to see details." >> "$GITHUB_STEP_SUMMARY"
           fi
 
   test:
-    needs: build
+    needs: [build, test-timeout-check, duplicate-code-check]
     runs-on: [self-hosted, linux, ar-ci]
     strategy:
       fail-fast: true
@@ -252,8 +248,7 @@ jobs:
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS=Extensions \
            -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=7 \
-           -Dsurefire.excludes="**/CodePolicyEnforcementTest.java"
+           -DAR_TEST_GROUPS=7
 
       - name: Upload Surefire Reports
         if: always()
@@ -331,8 +326,8 @@ jobs:
           path: coverage-data/
           retention-days: 1
 
-  test-audio:
-    needs: test
+  test-media:
+    needs: [test-ml]
     runs-on: [self-hosted, linux, ar-ci]
     steps:
       - name: Checkout Code
@@ -359,50 +354,6 @@ jobs:
            -DAR_HARDWARE_LIBS=Extensions \
            -DAR_TEST_PROFILE=pipeline
 
-      - name: Upload Surefire Reports
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: surefire-audio
-          path: |
-            **/target/surefire-reports/TEST-*.xml
-          retention-days: 7
-          if-no-files-found: ignore
-
-      - name: Collect Coverage Data
-        if: always()
-        run: |
-          mkdir -p coverage-data
-          find . -path "*/target/jacoco.exec" -exec cp --parents {} coverage-data/ \;
-
-      - name: Upload Coverage Data
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage-audio
-          path: coverage-data/
-          retention-days: 1
-
-  test-music:
-    needs: [test-ml, test-audio]
-    runs-on: [self-hosted, linux, ar-ci]
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}
-          fetch-depth: 0
-
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
-        with:
-          java-version: '17'
-          distribution: 'adopt'
-          cache: 'maven'
-
-      - name: Build (skip tests)
-        run: mvn install -DskipTests
-
       - name: Run Music Tests
         run: |
           LD_LIBRARY_PATH=Extensions mvn test -pl music \
@@ -423,7 +374,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: surefire-music-compose
+          name: surefire-media
           path: |
             **/target/surefire-reports/TEST-*.xml
           retention-days: 7
@@ -439,7 +390,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: coverage-music
+          name: coverage-media
           path: coverage-data/
           retention-days: 1
 
@@ -449,7 +400,7 @@ jobs:
   # pattern where macOS tests run in parallel with the next Linux stage.
 
   test-mac:
-    needs: [test]
+    needs: [test-ml]
     runs-on: [self-hosted, macos, ar-ci]
     steps:
       - name: Checkout Code
@@ -473,11 +424,10 @@ jobs:
           DYLD_LIBRARY_PATH=Extensions mvn test -pl utils \
            -DAR_HARDWARE_DRIVER=mtl \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
-           -DAR_HARDWARE_LIBS=Extensions \
-           -Dsurefire.excludes="**/CodePolicyEnforcementTest.java"
+           -DAR_HARDWARE_LIBS=Extensions
 
   test-ml-mac:
-    needs: [test-ml]
+    needs: [test-mac]
     runs-on: [self-hosted, macos, ar-ci]
     steps:
       - name: Checkout Code
@@ -503,8 +453,8 @@ jobs:
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS=Extensions
 
-  test-audio-mac:
-    needs: [test-audio]
+  test-media-mac:
+    needs: [test-media, test-ml-mac]
     runs-on: [self-hosted, macos, ar-ci]
     steps:
       - name: Checkout Code
@@ -530,26 +480,6 @@ jobs:
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS=Extensions
 
-  test-music-mac:
-    needs: [test-music]
-    runs-on: [self-hosted, macos, ar-ci]
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}
-          fetch-depth: 0
-
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
-        with:
-          java-version: '17'
-          distribution: 'adopt'
-          cache: 'maven'
-
-      - name: Build (skip tests)
-        run: mvn install -DskipTests
-
       - name: Run Music Tests
         run: |
           DYLD_LIBRARY_PATH=Extensions mvn test -pl music \
@@ -566,7 +496,7 @@ jobs:
            -DAR_TEST_PROFILE=pipeline
 
   analysis:
-    needs: [test-ml, test-audio, test-music]
+    needs: [test-media, test-media-mac]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     permissions:
@@ -640,7 +570,7 @@ jobs:
           retention-days: 30
 
   qodana:
-    needs: [analysis, build, test, test-ml, test-audio, test-music]
+    needs: [analysis]
     runs-on: ubuntu-latest
     permissions:
       checks: write
@@ -690,7 +620,7 @@ jobs:
   # from starting until it completes.
 
   auto-resolve:
-    needs: [build, test, test-ml, test-audio, test-music, javadoc-check, test-timeout-check, duplicate-code-check, test-integrity-check]
+    needs: [javadoc-check, test-integrity-check, analysis]
     if: ${{ !cancelled() && github.ref != 'refs/heads/master' && contains(needs.*.result, 'failure') }}
     runs-on: [self-hosted, macos, ar-ci]
     concurrency:

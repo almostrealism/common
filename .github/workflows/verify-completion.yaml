@@ -1,0 +1,68 @@
+name: "Verify Completion"
+
+on:
+  workflow_dispatch:
+    inputs:
+      plan_file:
+        description: "Path to the plan file (relative to repo root)"
+        required: true
+        type: string
+
+jobs:
+  verify:
+    # Do nothing on master — this workflow is only meaningful on feature branches.
+    if: github.ref != 'refs/heads/master'
+    runs-on: [self-hosted, macos, ar-ci]
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Validate plan file exists
+        id: validate
+        run: |
+          if [ ! -f "${{ github.event.inputs.plan_file }}" ]; then
+            echo "::error::Plan file not found: ${{ github.event.inputs.plan_file }}"
+            exit 1
+          fi
+
+      - name: Determine branch context
+        id: ctx
+        run: |
+          echo "branch=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+          echo "base=develop" >> "$GITHUB_OUTPUT"
+
+      - name: Build prompt
+        env:
+          BRANCH: ${{ steps.ctx.outputs.branch }}
+          BASE_BRANCH: ${{ steps.ctx.outputs.base }}
+          COMMIT_SHA: ${{ github.sha }}
+        run: |
+          chmod +x ./tools/ci/build-verify-prompt.sh
+          ./tools/ci/build-verify-prompt.sh "${{ github.event.inputs.plan_file }}" /tmp/agent-prompt.txt
+
+      - name: Submit agent job
+        env:
+          CONTROLLER_HOST: ${{ secrets.FLOWTREE_CONTROLLER_HOST || 'mac-studio' }}
+          CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
+          BRANCH: ${{ steps.ctx.outputs.branch }}
+          BASE_BRANCH: ${{ steps.ctx.outputs.base }}
+        run: |
+          ./tools/ci/submit-agent-job.sh /tmp/agent-prompt.txt
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "## Verify Completion" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "A FlowTree coding agent job was submitted to verify that the changes" >> "$GITHUB_STEP_SUMMARY"
+          echo "on branch \`${{ github.ref_name }}\` achieve the goals described in" >> "$GITHUB_STEP_SUMMARY"
+          echo "\`${{ github.event.inputs.plan_file }}\`." >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "The agent will verify:" >> "$GITHUB_STEP_SUMMARY"
+          echo "1. Every goal in the plan is fully implemented" >> "$GITHUB_STEP_SUMMARY"
+          echo "2. Each completed goal is proven correct by meaningful tests" >> "$GITHUB_STEP_SUMMARY"
+          echo "3. No existing tests were weakened or disabled" >> "$GITHUB_STEP_SUMMARY"

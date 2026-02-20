@@ -65,7 +65,7 @@ public class CodePolicyEnforcementTest extends TestSuiteBase {
 
 	/**
 	 * Root directory of the project.
-	 * Adjusted to find the common/ directory from the utils module.
+	 * Adjusted to find the common/ directory from the tools module.
 	 */
 	private static final Path PROJECT_ROOT = findProjectRoot();
 

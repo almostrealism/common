@@ -43,13 +43,35 @@ class MemoryStore:
                 content TEXT NOT NULL,
                 tags TEXT,
                 source TEXT,
-                created_at TEXT NOT NULL
+                created_at TEXT NOT NULL,
+                repo_url TEXT,
+                branch TEXT
             )
         """)
         self._conn.execute("""
             CREATE INDEX IF NOT EXISTS idx_entries_namespace
             ON entries(namespace)
         """)
+        self._conn.commit()
+
+        # Migrate existing databases that lack the repo_url/branch columns
+        # (must run BEFORE creating indexes that reference those columns)
+        self._migrate_add_columns()
+
+        self._conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_entries_repo_branch
+            ON entries(repo_url, branch)
+        """)
+        self._conn.commit()
+
+    def _migrate_add_columns(self):
+        """Add repo_url and branch columns if they don't exist yet (schema migration)."""
+        cursor = self._conn.execute("PRAGMA table_info(entries)")
+        columns = {row[1] for row in cursor.fetchall()}
+        if "repo_url" not in columns:
+            self._conn.execute("ALTER TABLE entries ADD COLUMN repo_url TEXT")
+        if "branch" not in columns:
+            self._conn.execute("ALTER TABLE entries ADD COLUMN branch TEXT")
         self._conn.commit()
 
     def _index_path(self, namespace: str) -> Path:
@@ -119,6 +141,8 @@ class MemoryStore:
         namespace: str = "default",
         tags: Optional[list[str]] = None,
         source: Optional[str] = None,
+        repo_url: Optional[str] = None,
+        branch: Optional[str] = None,
     ) -> dict:
         """Store a new memory entry.
 
@@ -127,6 +151,8 @@ class MemoryStore:
             namespace: Logical grouping for the entry.
             tags: Optional list of tags for filtering.
             source: Optional source identifier.
+            repo_url: Optional repository URL to associate with this memory.
+            branch: Optional branch name to associate with this memory.
 
         Returns:
             Dictionary with the created entry's fields.
@@ -136,9 +162,9 @@ class MemoryStore:
         tags_json = json.dumps(tags) if tags else None
 
         self._conn.execute(
-            "INSERT INTO entries (id, namespace, content, tags, source, created_at) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
-            (entry_id, namespace, content, tags_json, source, created_at),
+            "INSERT INTO entries (id, namespace, content, tags, source, created_at, repo_url, branch) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (entry_id, namespace, content, tags_json, source, created_at, repo_url, branch),
         )
         self._conn.commit()
 
@@ -165,6 +191,8 @@ class MemoryStore:
             "content": content,
             "tags": tags,
             "source": source,
+            "repo_url": repo_url,
+            "branch": branch,
             "created_at": created_at,
         }
 
@@ -174,6 +202,8 @@ class MemoryStore:
         namespace: str = "default",
         limit: int = 5,
         tag: Optional[str] = None,
+        repo_url: Optional[str] = None,
+        branch: Optional[str] = None,
     ) -> list[dict]:
         """Search for memory entries by semantic similarity.
 
@@ -182,6 +212,8 @@ class MemoryStore:
             namespace: Namespace to search within.
             limit: Maximum number of results to return.
             tag: Optional tag to filter results by (post-filter).
+            repo_url: Optional repo URL to filter results by (post-filter).
+            branch: Optional branch name to filter results by (post-filter).
 
         Returns:
             List of entry dicts with an added "score" field (L2 distance).
@@ -195,8 +227,9 @@ class MemoryStore:
 
         query_vec = self._embedder.embed(query).reshape(1, -1)
 
-        # Search more than needed if we'll post-filter by tag
-        search_k = min(limit * 4 if tag else limit, index.ntotal)
+        # Search more than needed if we'll post-filter
+        has_filter = bool(tag or repo_url or branch)
+        search_k = min(limit * 4 if has_filter else limit, index.ntotal)
         distances, indices = index.search(query_vec, search_k)
 
         results = []
@@ -205,7 +238,7 @@ class MemoryStore:
                 continue
             rowid = id_map[idx]
             row = self._conn.execute(
-                "SELECT id, namespace, content, tags, source, created_at "
+                "SELECT id, namespace, content, tags, source, created_at, repo_url, branch "
                 "FROM entries WHERE rowid = ?",
                 (rowid,),
             ).fetchone()
@@ -216,15 +249,60 @@ class MemoryStore:
             entry["tags"] = json.loads(entry["tags"]) if entry["tags"] else None
             entry["score"] = float(dist)
 
+            # Post-filter by tag
             if tag:
-                if entry["tags"] and tag in entry["tags"]:
-                    results.append(entry)
-            else:
-                results.append(entry)
+                if not (entry["tags"] and tag in entry["tags"]):
+                    continue
+
+            # Post-filter by repo_url
+            if repo_url and entry.get("repo_url") != repo_url:
+                continue
+
+            # Post-filter by branch
+            if branch and entry.get("branch") != branch:
+                continue
+
+            results.append(entry)
 
             if len(results) >= limit:
                 break
 
+        return results
+
+    def search_by_branch(
+        self,
+        repo_url: str,
+        branch: str,
+        namespace: str = "default",
+        limit: int = 20,
+    ) -> list[dict]:
+        """List memory entries for a specific repo and branch, newest first.
+
+        This is a non-semantic lookup (no embedding query) that returns all
+        memories associated with a given repository and branch combination,
+        ordered by creation time.
+
+        Args:
+            repo_url: Repository URL to match.
+            branch: Branch name to match.
+            namespace: Namespace to search within.
+            limit: Maximum number of entries to return.
+
+        Returns:
+            List of entry dicts ordered by creation time (newest first).
+        """
+        rows = self._conn.execute(
+            "SELECT id, namespace, content, tags, source, created_at, repo_url, branch "
+            "FROM entries WHERE namespace = ? AND repo_url = ? AND branch = ? "
+            "ORDER BY created_at DESC LIMIT ?",
+            (namespace, repo_url, branch, limit),
+        ).fetchall()
+
+        results = []
+        for row in rows:
+            entry = dict(row)
+            entry["tags"] = json.loads(entry["tags"]) if entry["tags"] else None
+            results.append(entry)
         return results
 
     def delete(self, entry_id: str, namespace: str = "default") -> dict:
@@ -272,7 +350,7 @@ class MemoryStore:
             List of entry dicts ordered by creation time (newest first).
         """
         rows = self._conn.execute(
-            "SELECT id, namespace, content, tags, source, created_at "
+            "SELECT id, namespace, content, tags, source, created_at, repo_url, branch "
             "FROM entries WHERE namespace = ? "
             "ORDER BY created_at DESC LIMIT ? OFFSET ?",
             (namespace, limit, offset),

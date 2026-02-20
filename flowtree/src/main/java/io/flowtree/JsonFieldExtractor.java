@@ -307,6 +307,124 @@ public final class JsonFieldExtractor {
 	}
 
 	/**
+	 * Extracts values of a specific string field from each object in a JSON array.
+	 *
+	 * <p>For example, given JSON containing {@code "items": [{"name": "a"}, {"name": "b"}]}
+	 * and parameters {@code arrayField="items", objectField="name"}, returns
+	 * {@code ["a", "b"]}.</p>
+	 *
+	 * @param json        the JSON string
+	 * @param arrayField  the name of the array field
+	 * @param objectField the name of the string field within each array object
+	 * @return list of extracted string values, empty if not found
+	 */
+	public static List<String> extractFieldFromArrayObjects(String json, String arrayField,
+															String objectField) {
+		List<String> result = new ArrayList<>();
+		if (json == null) return result;
+
+		int fieldIdx = json.indexOf("\"" + arrayField + "\"");
+		if (fieldIdx < 0) return result;
+
+		int colonIdx = json.indexOf(":", fieldIdx);
+		if (colonIdx < 0) return result;
+
+		int arrStart = json.indexOf("[", colonIdx);
+		if (arrStart < 0) return result;
+
+		// Find matching closing bracket
+		int arrEnd = -1;
+		int depth = 1;
+		for (int i = arrStart + 1; i < json.length() && depth > 0; i++) {
+			char c = json.charAt(i);
+			if (c == '[') depth++;
+			else if (c == ']') {
+				depth--;
+				if (depth == 0) arrEnd = i;
+			}
+		}
+
+		if (arrEnd < 0) return result;
+
+		// Walk through each object in the array and extract the target field
+		String arrContent = json.substring(arrStart + 1, arrEnd);
+		int pos = 0;
+		while (pos < arrContent.length()) {
+			int objStart = arrContent.indexOf("{", pos);
+			if (objStart < 0) break;
+
+			int objDepth = 1;
+			int objEnd = objStart + 1;
+			while (objEnd < arrContent.length() && objDepth > 0) {
+				char c = arrContent.charAt(objEnd);
+				if (c == '{') objDepth++;
+				else if (c == '}') objDepth--;
+				objEnd++;
+			}
+
+			String objBody = arrContent.substring(objStart, objEnd);
+			String value = extractString(objBody, objectField);
+			if (value != null) {
+				result.add(value);
+			}
+
+			pos = objEnd;
+		}
+
+		return result;
+	}
+
+	/**
+	 * Extracts the last JSON object line from newline-delimited JSON output
+	 * that matches the specified {@code "type"} value.
+	 *
+	 * <p>Claude Code with {@code --output-format json} emits one JSON object
+	 * per line (NDJSON). Per-turn objects appear early in the output with
+	 * partial metrics, while the final {@code "type":"result"} line contains
+	 * session-level totals. This method scans backward to find that result
+	 * line, avoiding the first-occurrence problem that afflicts forward
+	 * searches on the full output.</p>
+	 *
+	 * @param ndjson    the full NDJSON output (newline-delimited JSON objects)
+	 * @param typeValue the value of the {@code "type"} field to match
+	 *                  (e.g., {@code "result"}), or {@code null} to return
+	 *                  the last JSON object regardless of type
+	 * @return the matched JSON object line, or {@code null} if not found
+	 */
+	public static String extractLastJsonObject(String ndjson, String typeValue) {
+		if (ndjson == null || ndjson.isEmpty()) return null;
+
+		String fallback = null;
+		int end = ndjson.length();
+
+		while (end > 0) {
+			int lineEnd = end;
+			int lineStart = ndjson.lastIndexOf('\n', end - 1);
+			lineStart = (lineStart < 0) ? 0 : lineStart + 1;
+
+			// Skip blank lines
+			String line = ndjson.substring(lineStart, lineEnd).trim();
+			end = lineStart > 0 ? lineStart - 1 : 0;
+
+			if (!line.startsWith("{")) continue;
+
+			if (typeValue == null) {
+				return line;
+			}
+
+			if (line.contains("\"type\"") && line.contains("\"" + typeValue + "\"")) {
+				return line;
+			}
+
+			if (fallback == null) {
+				fallback = line;
+			}
+		}
+
+		return fallback;
+	}
+
+	/**
 	 * Extracts a numeric string from the beginning of the input.
 	 *
 	 * @param rest         the string to extract from (already trimmed after the colon)

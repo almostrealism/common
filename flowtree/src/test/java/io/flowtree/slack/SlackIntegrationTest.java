@@ -361,7 +361,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
 
         // Check defaults
         assertEquals(7766, entry.getAgents().get(0).getPort()); // default port
-        assertEquals(500, entry.getMaxTurns()); // default turns
+        assertEquals(800, entry.getMaxTurns()); // default turns
         assertEquals(100.0, entry.getMaxBudgetUsd(), 0.001); // default budget
         assertTrue(entry.isPushToOrigin()); // default push
         assertEquals("Read,Edit,Write,Bash,Glob,Grep", entry.getAllowedTools()); // default tools
@@ -624,7 +624,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         assertEquals("feature/test", ws.getDefaultBranch());
         assertEquals("#setup-channel", ws.getChannelName());
         assertEquals(100.0, ws.getMaxBudgetUsd(), 0.001);
-        assertEquals(500, ws.getMaxTurns());
+        assertEquals(800, ws.getMaxTurns());
     }
 
     @Test(timeout = 10000)
@@ -1259,6 +1259,59 @@ public class SlackIntegrationTest extends TestSuiteBase {
         } finally {
             endpoint.stop();
         }
+    }
+
+    @Test(timeout = 10000)
+    public void testExtractLastJsonObjectFindsResultLine() {
+        // Simulates Claude Code NDJSON output: per-turn objects first, result last
+        String ndjson = "{\"type\":\"assistant\",\"duration_ms\":4000,\"session_id\":\"sess-early\"}\n"
+            + "{\"type\":\"assistant\",\"duration_ms\":3500}\n"
+            + "{\"type\":\"result\",\"duration_ms\":1800000,\"duration_api_ms\":1500000,"
+            + "\"cost_usd\":2.50,\"num_turns\":42,\"session_id\":\"sess-final\","
+            + "\"subtype\":\"success\",\"is_error\":false}\n";
+
+        String result = io.flowtree.JsonFieldExtractor.extractLastJsonObject(ndjson, "result");
+        assertNotNull("Should find the result line", result);
+        assertTrue("Should contain the result type", result.contains("\"type\":\"result\""));
+
+        // Verify extracting metrics from the result line yields session-level values
+        long durationMs = io.flowtree.JsonFieldExtractor.extractLong(result, "duration_ms");
+        long durationApiMs = io.flowtree.JsonFieldExtractor.extractLong(result, "duration_api_ms");
+        double costUsd = io.flowtree.JsonFieldExtractor.extractDouble(result, "cost_usd");
+        int numTurns = io.flowtree.JsonFieldExtractor.extractInt(result, "num_turns");
+        String sessionId = io.flowtree.JsonFieldExtractor.extractString(result, "session_id");
+
+        assertEquals("Should get session-level duration, not per-turn", 1800000, durationMs);
+        assertEquals(1500000, durationApiMs);
+        assertEquals(2.50, costUsd, 0.001);
+        assertEquals(42, numTurns);
+        assertEquals("sess-final", sessionId);
+    }
+
+    @Test(timeout = 10000)
+    public void testExtractLastJsonObjectFallsBackToLastLine() {
+        // No "type":"result" marker -- should fall back to last JSON object
+        String ndjson = "{\"duration_ms\":4000}\n"
+            + "{\"duration_ms\":90000,\"cost_usd\":1.0}\n";
+
+        String result = io.flowtree.JsonFieldExtractor.extractLastJsonObject(ndjson, "result");
+        assertNotNull("Should fall back to last JSON object", result);
+        assertEquals(90000, io.flowtree.JsonFieldExtractor.extractLong(result, "duration_ms"));
+    }
+
+    @Test(timeout = 10000)
+    public void testExtractLastJsonObjectNullInput() {
+        assertNull(io.flowtree.JsonFieldExtractor.extractLastJsonObject(null, "result"));
+        assertNull(io.flowtree.JsonFieldExtractor.extractLastJsonObject("", "result"));
+    }
+
+    @Test(timeout = 10000)
+    public void testExtractLastJsonObjectNullType() {
+        // null type should return the very last JSON object
+        String ndjson = "{\"a\":1}\n{\"b\":2}\n";
+        String result = io.flowtree.JsonFieldExtractor.extractLastJsonObject(ndjson, null);
+        assertNotNull(result);
+        assertTrue("Should be the last line", result.contains("\"b\""));
     }
 
 }
