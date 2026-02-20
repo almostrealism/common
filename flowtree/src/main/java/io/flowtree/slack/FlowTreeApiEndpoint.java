@@ -358,6 +358,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         String baseBranch = extractJsonField(body, "baseBranch");
         int maxTurns = extractJsonIntField(body, "maxTurns");
         double maxBudgetUsd = extractJsonDoubleField(body, "maxBudgetUsd");
+        boolean protectTestFiles = extractJsonBooleanField(body, "protectTestFiles");
 
         // Create job factory with workstream defaults, overridden by request values
         ClaudeCodeJob.Factory factory = new ClaudeCodeJob.Factory(prompt);
@@ -401,6 +402,11 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         // Per-workstream env vars
         if (workstream.getEnv() != null && !workstream.getEnv().isEmpty()) {
             factory.setWorkstreamEnv(workstream.getEnv());
+        }
+
+        // Test file protection
+        if (protectTestFiles) {
+            factory.setProtectTestFiles(true);
         }
 
         // Build workstream URL for status reporting
