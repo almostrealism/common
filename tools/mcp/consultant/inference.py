@@ -228,44 +228,60 @@ class LlamaCppBackend(InferenceBackend):
 
     CONTAINER_BASE_URL = "http://host.docker.internal:8083"
     HOST_BASE_URL = "http://localhost:8083"
+    REMOTE_HOST_BASE_URL = "http://mac-studio:8083"
 
     def __init__(self, base_url: Optional[str] = None):
+        self._in_container = (
+            os.path.exists("/.dockerenv") or os.path.exists("/run/.containerenv")
+        )
         default_url = (
-            self.CONTAINER_BASE_URL
-            if os.path.exists("/.dockerenv") or os.path.exists("/run/.containerenv")
-            else self.HOST_BASE_URL
+            self.CONTAINER_BASE_URL if self._in_container else self.HOST_BASE_URL
         )
-        self.base_url = base_url or os.environ.get(
-            "AR_CONSULTANT_LLAMACPP_URL", default_url
-        )
+        self._explicit_url = base_url or os.environ.get("AR_CONSULTANT_LLAMACPP_URL")
+        self.base_url = self._explicit_url or default_url
         self._available: Optional[bool] = None
 
     @property
     def name(self) -> str:
         return f"llamacpp ({self.base_url})"
 
+    def _check_health(self, url: str) -> bool:
+        """Check if a llama.cpp server is reachable and healthy at the given URL."""
+        try:
+            req = urllib.request.Request(f"{url}/health", method="GET")
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                data = json.loads(resp.read())
+                status = data.get("status", "")
+                if status == "ok":
+                    return True
+                log.warning(
+                    "llama.cpp server at %s returned status: %s", url, status,
+                )
+                return False
+        except (urllib.error.URLError, OSError, TimeoutError) as e:
+            log.info("llama.cpp server not reachable at %s: %s", url, e)
+            return False
+
     @property
     def available(self) -> bool:
         if self._available is not None:
             return self._available
-        try:
-            req = urllib.request.Request(
-                f"{self.base_url}/health",
-                method="GET",
-            )
-            with urllib.request.urlopen(req, timeout=5) as resp:
-                data = json.loads(resp.read())
-                status = data.get("status", "")
-                self._available = status == "ok"
-                if not self._available:
-                    log.warning(
-                        "llama.cpp server at %s returned status: %s",
-                        self.base_url, status,
-                    )
-        except (urllib.error.URLError, OSError, TimeoutError) as e:
-            log.info("llama.cpp server not reachable at %s: %s", self.base_url, e)
-            self._available = False
-        return self._available
+
+        if self._check_health(self.base_url):
+            self._available = True
+            return True
+
+        # When using the localhost default (no explicit URL, not in a container),
+        # try mac-studio as a fallback before giving up.
+        if not self._explicit_url and not self._in_container:
+            log.info("Trying fallback host mac-studio...")
+            if self._check_health(self.REMOTE_HOST_BASE_URL):
+                self.base_url = self.REMOTE_HOST_BASE_URL
+                self._available = True
+                return True
+
+        self._available = False
+        return False
 
     def generate(
         self,

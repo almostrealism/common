@@ -28,6 +28,7 @@ import java.io.IOException;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
 
@@ -463,7 +464,22 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
 
         // Permission denials
         if (event.getPermissionDenials() > 0) {
-            sb.append("   :no_entry: Permission denials: ").append(event.getPermissionDenials()).append("\n");
+            sb.append("   :no_entry: Permission denials: ").append(event.getPermissionDenials());
+            List<String> denied = event.getDeniedToolNames();
+            if (!denied.isEmpty()) {
+                // Deduplicate and show unique denied tool names
+                List<String> unique = new java.util.ArrayList<>();
+                for (String name : denied) {
+                    if (!unique.contains(name)) unique.add(name);
+                }
+                sb.append(" (");
+                for (int i = 0; i < unique.size(); i++) {
+                    if (i > 0) sb.append(", ");
+                    sb.append("`").append(unique.get(i)).append("`");
+                }
+                sb.append(")");
+            }
+            sb.append("\n");
         }
     }
 
