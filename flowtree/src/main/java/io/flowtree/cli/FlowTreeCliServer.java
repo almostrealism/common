@@ -108,6 +108,7 @@ public class FlowTreeCliServer implements Runnable, NodeProxy.EventListener, Nod
 
 	public static void main(String[] args) { FlowTreeCliServer.start(args); }
 
+	/** Parses command-line arguments, loads configuration, and starts the FlowTree server. */
 	// TODO  This should not be static
 	public static void start(String[] args) {
 		Properties p = new Properties();
@@ -514,6 +515,7 @@ public class FlowTreeCliServer implements Runnable, NodeProxy.EventListener, Nod
 		return FlowTreeCliServer.runCommand(c, ps, null);
 	}
 	
+	/** Parses and dispatches a CLI command, writing output to the given print stream. */
 	// TODO  Add more help for commands and config file parameters.
 	public static String runCommand(String c, final PrintStream ps, Hashtable commands) {
 		String inc = c;

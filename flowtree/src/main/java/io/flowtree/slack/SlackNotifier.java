@@ -28,6 +28,7 @@ import java.io.IOException;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
 
@@ -39,7 +40,7 @@ import java.util.function.Consumer;
  *
  * @author Michael Murray
  * @see JobCompletionListener
- * @see SlackBotController
+ * @see FlowTreeController
  */
 public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
 
@@ -52,6 +53,7 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
     private final Map<String, String> jobThreadTs;
     private final Map<String, Map<String, JobCompletionEvent>> jobHistory;
     private Consumer<String> messageCallback;
+    private JobStatsStore statsStore;
 
     /**
      * Creates a new notifier with the specified bot token.
@@ -92,6 +94,45 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
     }
 
     /**
+     * Sets the job stats store for recording timing data.
+     *
+     * @param store the stats store, or null to disable recording
+     */
+    public void setStatsStore(JobStatsStore store) {
+        this.statsStore = store;
+    }
+
+    /**
+     * Returns the job stats store.
+     */
+    public JobStatsStore getStatsStore() {
+        return statsStore;
+    }
+
+    /**
+     * Finds a workstream whose {@code defaultBranch} exactly matches the
+     * given branch name. Workstreams with a null {@code defaultBranch}
+     * are skipped. If multiple workstreams match, the first one found is
+     * returned.
+     *
+     * @param branch the branch name to match (e.g., "feature/new-decoder")
+     * @return the matching workstream, or null if no match is found
+     */
+    public SlackWorkstream findWorkstreamByBranch(String branch) {
+        if (branch == null || branch.isEmpty()) {
+            return null;
+        }
+
+        for (SlackWorkstream ws : workstreams.values()) {
+            if (branch.equals(ws.getDefaultBranch())) {
+                return ws;
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * Sets a callback for receiving formatted messages (useful for testing).
      *
      * @param callback the callback to receive message text
@@ -123,6 +164,11 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
 
         trackJob(workstreamId, event);
 
+        if (statsStore != null) {
+            statsStore.recordJobStarted(event.getJobId(), workstreamId,
+                event.getDescription(), event.getTimestamp());
+        }
+
         String message = formatStartedMessage(event, workstream);
         String ts;
 
@@ -151,6 +197,16 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
         }
 
         trackJob(workstreamId, event);
+
+        if (statsStore != null) {
+            statsStore.recordJobCompleted(event.getJobId(),
+                workstreamId, event.getStatus().name(), event.getTimestamp(),
+                event.getDurationMs(), event.getDurationApiMs(),
+                event.getCostUsd(), event.getNumTurns(),
+                event.getSessionId(), event.getExitCode(),
+                event.getSubtype(), event.isSessionError(),
+                event.getPermissionDenials());
+        }
 
         String message = formatCompletedMessage(event, workstream);
         String threadTs = event.getJobId() != null ? jobThreadTs.remove(event.getJobId()) : null;
@@ -332,12 +388,11 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
                     if (event.getPullRequestUrl() != null) {
                         sb.append("   :link: PR: ").append(event.getPullRequestUrl()).append("\n");
                     }
-
-                    sb.append("   :arrow_right: Please review and provide next instructions");
                 } else {
                     sb.append(":white_check_mark: *Work complete* - no changes to push\n");
-                    sb.append("   ").append(truncate(event.getDescription(), 100));
+                    sb.append("   ").append(truncate(event.getDescription(), 100)).append("\n");
                 }
+                appendSessionMetrics(sb, event);
                 break;
 
             case FAILED:
@@ -348,12 +403,14 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
                 if (event.getExitCode() != 0) {
                     sb.append("   Exit code: ").append(event.getExitCode()).append("\n");
                 }
-                sb.append("   Job ID: `").append(event.getJobId()).append("`");
+                sb.append("   Job ID: `").append(event.getJobId()).append("`\n");
+                appendSessionMetrics(sb, event);
                 break;
 
             case CANCELLED:
                 sb.append(":no_entry_sign: *Work cancelled*\n");
-                sb.append("   Job ID: `").append(event.getJobId()).append("`");
+                sb.append("   Job ID: `").append(event.getJobId()).append("`\n");
+                appendSessionMetrics(sb, event);
                 break;
 
             default:
@@ -361,6 +418,98 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
         }
 
         return sb.toString();
+    }
+
+    /**
+     * Appends session metrics (stop reason, turns, cost, time, permission denials)
+     * to the Slack message if any metrics are available.
+     */
+    private void appendSessionMetrics(StringBuilder sb, JobCompletionEvent event) {
+        boolean hasMetrics = event.getNumTurns() > 0
+            || event.getCostUsd() > 0
+            || event.getDurationMs() > 0
+            || event.getSubtype() != null;
+        if (!hasMetrics) return;
+
+        sb.append("   ---\n");
+
+        // Stop reason / subtype
+        if (event.getSubtype() != null) {
+            String stopLabel = formatStopReason(event.getSubtype());
+            if (event.isSessionError()) {
+                sb.append("   :warning: Stop reason: *").append(stopLabel).append("*\n");
+            } else {
+                sb.append("   Stop reason: ").append(stopLabel).append("\n");
+            }
+        }
+
+        // Turns
+        if (event.getNumTurns() > 0) {
+            sb.append("   Turns: ").append(event.getNumTurns()).append("\n");
+        }
+
+        // Cost
+        if (event.getCostUsd() > 0) {
+            sb.append("   Cost: $").append(String.format("%.2f", event.getCostUsd())).append("\n");
+        }
+
+        // Duration (wall time and API time)
+        if (event.getDurationMs() > 0) {
+            sb.append("   Time: ").append(formatDuration(event.getDurationMs()));
+            if (event.getDurationApiMs() > 0) {
+                sb.append(" (API: ").append(formatDuration(event.getDurationApiMs())).append(")");
+            }
+            sb.append("\n");
+        }
+
+        // Permission denials
+        if (event.getPermissionDenials() > 0) {
+            sb.append("   :no_entry: Permission denials: ").append(event.getPermissionDenials());
+            List<String> denied = event.getDeniedToolNames();
+            if (!denied.isEmpty()) {
+                // Deduplicate and show unique denied tool names
+                List<String> unique = new java.util.ArrayList<>();
+                for (String name : denied) {
+                    if (!unique.contains(name)) unique.add(name);
+                }
+                sb.append(" (");
+                for (int i = 0; i < unique.size(); i++) {
+                    if (i > 0) sb.append(", ");
+                    sb.append("`").append(unique.get(i)).append("`");
+                }
+                sb.append(")");
+            }
+            sb.append("\n");
+        }
+    }
+
+    /**
+     * Formats a Claude Code subtype into a human-readable stop reason label.
+     */
+    private static String formatStopReason(String subtype) {
+        if (subtype == null) return "unknown";
+        switch (subtype) {
+            case "success": return "completed normally";
+            case "error_max_turns": return "max turns reached";
+            case "error_budget": return "budget exhausted";
+            case "error": return "error";
+            default: return subtype.replace('_', ' ');
+        }
+    }
+
+    /**
+     * Formats a duration in milliseconds into a human-readable string.
+     */
+    private static String formatDuration(long ms) {
+        if (ms < 1000) return ms + "ms";
+        long seconds = ms / 1000;
+        if (seconds < 60) return seconds + "s";
+        long minutes = seconds / 60;
+        long remainingSeconds = seconds % 60;
+        if (minutes < 60) return minutes + "m " + remainingSeconds + "s";
+        long hours = minutes / 60;
+        long remainingMinutes = minutes % 60;
+        return hours + "h " + remainingMinutes + "m";
     }
 
     private static String escapeJson(String s) {

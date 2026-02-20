@@ -50,7 +50,7 @@ public class WaveCellTest extends TestSuiteBase implements CellFeatures, AudioTe
 				.apply(new DefaultWaveCellData());
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void push() throws IOException {
 		WaveCell cell = cell();
 		cell.setReceptor(protein -> {
@@ -64,7 +64,7 @@ public class WaveCellTest extends TestSuiteBase implements CellFeatures, AudioTe
 		IntStream.range(0, 100).forEach(i -> r.run());
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	@TestDepth(1)
 	public void endless() {
 		if (testProfileIs(TestUtils.PIPELINE)) return;
@@ -90,7 +90,7 @@ public class WaveCellTest extends TestSuiteBase implements CellFeatures, AudioTe
 		});
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void clean() {
 		int count = 8;
 
@@ -100,7 +100,7 @@ public class WaveCellTest extends TestSuiteBase implements CellFeatures, AudioTe
 		cells.sec(bpm(128).l(count)).get().run();
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void repeatHat() {
 		int count = 32;
 
@@ -111,7 +111,7 @@ public class WaveCellTest extends TestSuiteBase implements CellFeatures, AudioTe
 		cells.sec(bpm(128).l(count)).get().run();
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void repeatSnare() {
 		int count = 32;
 
@@ -122,7 +122,7 @@ public class WaveCellTest extends TestSuiteBase implements CellFeatures, AudioTe
 		cells.sec(bpm(128).l(count)).get().run();
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void sequence() {
 		if (testProfileIs(TestUtils.PIPELINE)) return;
 
@@ -137,7 +137,7 @@ public class WaveCellTest extends TestSuiteBase implements CellFeatures, AudioTe
 		cells.sec(bpm(128).l(count)).get().run();
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void assignment() {
 		PackedCollection out = new PackedCollection(1);
 		CellList cells = w(0, c(0), c(bpm(128).l(2)),
@@ -150,7 +150,7 @@ public class WaveCellTest extends TestSuiteBase implements CellFeatures, AudioTe
 		Assert.assertNotEquals(0.0, out.toDouble(0), 0.0);
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void internalClock() {
 		double rate = 2 * Math.PI / 1000;
 
@@ -180,7 +180,7 @@ public class WaveCellTest extends TestSuiteBase implements CellFeatures, AudioTe
 		assertEquals(data.toDouble((int) (0.3 * OutputLine.sampleRate) - 1), out.toDouble(0));
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void externalClock() {
 		double rate = 2 * Math.PI / 1000;
 

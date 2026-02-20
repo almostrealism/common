@@ -34,7 +34,7 @@ public class WesternChromaticTest extends TestSuiteBase {
 	/**
 	 * Tests that all enum values exist.
 	 */
-	@Test
+	@Test(timeout = 5000)
 	public void allNotesExist() {
 		WesternChromatic[] values = WesternChromatic.values();
 		Assert.assertEquals("Should have 88 notes (A0 to C8)", 88, values.length);
@@ -43,7 +43,7 @@ public class WesternChromaticTest extends TestSuiteBase {
 	/**
 	 * Tests that A0 is position 0.
 	 */
-	@Test
+	@Test(timeout = 5000)
 	public void a0IsPositionZero() {
 		Assert.assertEquals("A0 should be position 0", 0, WesternChromatic.A0.position());
 	}
@@ -51,7 +51,7 @@ public class WesternChromaticTest extends TestSuiteBase {
 	/**
 	 * Tests that C8 is position 87.
 	 */
-	@Test
+	@Test(timeout = 5000)
 	public void c8IsPosition87() {
 		Assert.assertEquals("C8 should be position 87", 87, WesternChromatic.C8.position());
 	}
@@ -59,7 +59,7 @@ public class WesternChromaticTest extends TestSuiteBase {
 	/**
 	 * Tests that A4 is position 48.
 	 */
-	@Test
+	@Test(timeout = 5000)
 	public void a4IsPosition48() {
 		Assert.assertEquals("A4 should be position 48", 48, WesternChromatic.A4.position());
 	}
@@ -67,7 +67,7 @@ public class WesternChromaticTest extends TestSuiteBase {
 	/**
 	 * Tests that C4 (middle C) is position 39.
 	 */
-	@Test
+	@Test(timeout = 5000)
 	public void c4IsPosition39() {
 		Assert.assertEquals("C4 (middle C) should be position 39", 39, WesternChromatic.C4.position());
 	}
@@ -75,7 +75,7 @@ public class WesternChromaticTest extends TestSuiteBase {
 	/**
 	 * Tests positions within an octave span from A1 to GS2.
 	 */
-	@Test
+	@Test(timeout = 5000)
 	public void octaveSpan() {
 		// A1 to A2 should be 12 semitones
 		int a1Pos = WesternChromatic.A1.position();
@@ -87,7 +87,7 @@ public class WesternChromaticTest extends TestSuiteBase {
 	/**
 	 * Tests that next() returns the chromatic successor.
 	 */
-	@Test
+	@Test(timeout = 5000)
 	public void nextReturnsSuccessor() {
 		Assert.assertEquals("A0.next() should be AS0", WesternChromatic.AS0, WesternChromatic.A0.next());
 		Assert.assertEquals("AS0.next() should be B0", WesternChromatic.B0, WesternChromatic.AS0.next());
@@ -98,7 +98,7 @@ public class WesternChromaticTest extends TestSuiteBase {
 	/**
 	 * Tests that the chromatic scale has length 88.
 	 */
-	@Test
+	@Test(timeout = 5000)
 	public void scaleLength() {
 		Scale<WesternChromatic> scale = WesternChromatic.scale();
 		Assert.assertEquals("Chromatic scale should have 88 notes", 88, scale.length());
@@ -107,7 +107,7 @@ public class WesternChromaticTest extends TestSuiteBase {
 	/**
 	 * Tests scale valueAt returns correct notes.
 	 */
-	@Test
+	@Test(timeout = 5000)
 	public void scaleValueAt() {
 		Scale<WesternChromatic> scale = WesternChromatic.scale();
 
@@ -120,7 +120,7 @@ public class WesternChromaticTest extends TestSuiteBase {
 	 * Tests that position() and scale.valueAt() are inverse operations,
 	 * excluding E7 which has a known bug.
 	 */
-	@Test
+	@Test(timeout = 5000)
 	public void positionAndScaleInverse() {
 		Scale<WesternChromatic> scale = WesternChromatic.scale();
 
@@ -140,7 +140,7 @@ public class WesternChromaticTest extends TestSuiteBase {
 	/**
 	 * Documents the known bug where E7.position() returns 70 instead of 79.
 	 */
-	@Test
+	@Test(timeout = 5000)
 	public void e7BugDocumented() {
 		// This test documents the pre-existing bug
 		int actualPosition = WesternChromatic.E7.position();
@@ -154,7 +154,7 @@ public class WesternChromaticTest extends TestSuiteBase {
 	/**
 	 * Tests that most positions are unique (excluding E7 bug).
 	 */
-	@Test
+	@Test(timeout = 5000)
 	public void uniquePositions() {
 		Set<Integer> positions = new HashSet<>();
 		int duplicateCount = 0;
@@ -174,7 +174,7 @@ public class WesternChromaticTest extends TestSuiteBase {
 	/**
 	 * Tests that notes are in chromatic order by enum ordinal.
 	 */
-	@Test
+	@Test(timeout = 5000)
 	public void chromaticOrderByOrdinal() {
 		WesternChromatic[] values = WesternChromatic.values();
 
@@ -187,7 +187,7 @@ public class WesternChromaticTest extends TestSuiteBase {
 	/**
 	 * Tests that consecutive notes (except at bug) have positions differing by 1.
 	 */
-	@Test
+	@Test(timeout = 5000)
 	public void consecutivePositions() {
 		Scale<WesternChromatic> scale = WesternChromatic.scale();
 
@@ -212,7 +212,7 @@ public class WesternChromaticTest extends TestSuiteBase {
 	/**
 	 * Tests sharp note naming conventions.
 	 */
-	@Test
+	@Test(timeout = 5000)
 	public void sharpNoteNaming() {
 		// Verify sharps follow their natural notes
 		Assert.assertEquals("CS4 ordinal should be C4 + 1",
@@ -226,7 +226,7 @@ public class WesternChromaticTest extends TestSuiteBase {
 	/**
 	 * Tests forEach iteration on scale.
 	 */
-	@Test
+	@Test(timeout = 5000)
 	public void scaleForEach() {
 		Scale<WesternChromatic> scale = WesternChromatic.scale();
 		int[] count = {0};

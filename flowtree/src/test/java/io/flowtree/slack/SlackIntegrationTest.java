@@ -30,6 +30,9 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -38,14 +41,15 @@ import java.util.concurrent.atomic.AtomicReference;
 import static org.junit.Assert.*;
 
 /**
- * Tests for the Slack integration components.
+ * Tests for the FlowTree orchestration and Slack integration components.
  *
  * <p>These tests verify the message parsing, workstream configuration,
- * and notification formatting without requiring a real Slack connection.</p>
+ * notification formatting, and HTTP API without requiring a real Slack
+ * connection or connected agents.</p>
  */
 public class SlackIntegrationTest extends TestSuiteBase {
 
-    @Test
+    @Test(timeout = 10000)
     public void testWorkstreamConfiguration() {
         SlackWorkstream workstream = new SlackWorkstream("C0123456789", "#test-channel");
         workstream.addAgent("localhost", 7766);
@@ -61,7 +65,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         assertNotNull(workstream.getWorkstreamId());
     }
 
-    @Test
+    @Test(timeout = 10000)
     public void testAgentRoundRobin() {
         SlackWorkstream workstream = new SlackWorkstream("C123", "#test");
         workstream.addAgent("host1", 7766);
@@ -80,7 +84,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         assertEquals("host1", a4.getHost()); // Wraps around
     }
 
-    @Test
+    @Test(timeout = 10000)
     public void testPromptExtraction() {
         SlackNotifier notifier = new SlackNotifier(null);
         SlackListener listener = new SlackListener(notifier);
@@ -101,7 +105,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         assertEquals("Direct prompt", listener.extractPrompt("Direct prompt"));
     }
 
-    @Test
+    @Test(timeout = 10000)
     public void testNotifierMessageFormatting() {
         List<String> messages = new ArrayList<>();
         SlackNotifier notifier = new SlackNotifier(null);
@@ -161,7 +165,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         assertTrue(failMsg.contains("Compilation failed"));
     }
 
-    @Test
+    @Test(timeout = 10000)
     public void testJobCompletionEvent() {
         // Test started event
         JobCompletionEvent started = JobCompletionEvent.started("j1", "Test task");
@@ -192,9 +196,9 @@ public class SlackIntegrationTest extends TestSuiteBase {
         assertEquals(0, success.getExitCode());
     }
 
-    @Test
+    @Test(timeout = 10000)
     public void testControllerSimulation() throws Exception {
-        SlackBotController controller = new SlackBotController(null, null);
+        FlowTreeController controller = new FlowTreeController(null, null);
 
         List<String> receivedMessages = new ArrayList<>();
         controller.setEventSimulator((channel, message) -> {
@@ -209,7 +213,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         // which connects to actual agents. This tests the basic plumbing.
     }
 
-    @Test
+    @Test(timeout = 10000)
     public void testCompletionListenerInterface() {
         List<JobCompletionEvent> events = new ArrayList<>();
 
@@ -234,7 +238,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         assertEquals(JobCompletionEvent.Status.SUCCESS, events.get(1).getStatus());
     }
 
-    @Test
+    @Test(timeout = 10000)
     public void testYamlConfigLoading() throws IOException {
         String yaml = "workstreams:\n" +
                       "  - channelId: \"C0123456789\"\n" +
@@ -286,7 +290,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         assertEquals("feature/alpha", ws1.getDefaultBranch());
     }
 
-    @Test
+    @Test(timeout = 10000)
     public void testJsonConfigLoading() throws IOException {
         String json = "{\"workstreams\":[" +
                       "{\"channelId\":\"C111\",\"channelName\":\"#test\"," +
@@ -300,7 +304,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         assertEquals("main", config.getWorkstreams().get(0).getDefaultBranch());
     }
 
-    @Test
+    @Test(timeout = 10000)
     public void testTokensLoadFromFile() throws IOException {
         File tempFile = File.createTempFile("slack-tokens-test", ".json");
         tempFile.deleteOnExit();
@@ -315,7 +319,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         assertEquals("xapp-test-app-token", tokens.getAppToken());
     }
 
-    @Test
+    @Test(timeout = 10000)
     public void testTokensResolveFromExplicitFile() throws IOException {
         File tempFile = File.createTempFile("slack-tokens-explicit", ".json");
         tempFile.deleteOnExit();
@@ -329,7 +333,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         assertEquals("xapp-explicit", tokens.getAppToken());
     }
 
-    @Test
+    @Test(timeout = 10000)
     public void testTokensIgnoresUnknownFields() throws IOException {
         File tempFile = File.createTempFile("slack-tokens-extra", ".json");
         tempFile.deleteOnExit();
@@ -344,7 +348,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         assertEquals("xapp-456", tokens.getAppToken());
     }
 
-    @Test
+    @Test(timeout = 10000)
     public void testConfigDefaults() throws IOException {
         // Minimal config - should use defaults
         String yaml = "workstreams:\n" +
@@ -357,27 +361,27 @@ public class SlackIntegrationTest extends TestSuiteBase {
 
         // Check defaults
         assertEquals(7766, entry.getAgents().get(0).getPort()); // default port
-        assertEquals(50, entry.getMaxTurns()); // default turns
-        assertEquals(10.0, entry.getMaxBudgetUsd(), 0.001); // default budget
+        assertEquals(800, entry.getMaxTurns()); // default turns
+        assertEquals(100.0, entry.getMaxBudgetUsd(), 0.001); // default budget
         assertTrue(entry.isPushToOrigin()); // default push
         assertEquals("Read,Edit,Write,Bash,Glob,Grep", entry.getAllowedTools()); // default tools
     }
 
-    @Test
+    @Test(timeout = 10000)
     public void testApiEndpointPostMessage() throws Exception {
         AtomicReference<String> receivedChannel = new AtomicReference<>();
         AtomicReference<String> receivedText = new AtomicReference<>();
 
         SlackNotifier notifier = new SlackNotifier(null);
         notifier.setMessageCallback(json -> {
-            receivedChannel.set(SlackApiEndpoint.extractJsonField(json, "channel"));
-            receivedText.set(SlackApiEndpoint.extractJsonField(json, "text"));
+            receivedChannel.set(FlowTreeApiEndpoint.extractJsonField(json, "channel"));
+            receivedText.set(FlowTreeApiEndpoint.extractJsonField(json, "text"));
         });
 
         SlackWorkstream workstream = new SlackWorkstream("C_TEST_123", "#test");
         notifier.registerWorkstream(workstream);
 
-        SlackApiEndpoint endpoint = new SlackApiEndpoint(0, notifier);
+        FlowTreeApiEndpoint endpoint = new FlowTreeApiEndpoint(0, notifier);
         endpoint.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false);
 
         try {
@@ -403,10 +407,10 @@ public class SlackIntegrationTest extends TestSuiteBase {
         }
     }
 
-    @Test
+    @Test(timeout = 10000)
     public void testApiEndpointHealthCheck() throws Exception {
         SlackNotifier notifier = new SlackNotifier(null);
-        SlackApiEndpoint endpoint = new SlackApiEndpoint(0, notifier);
+        FlowTreeApiEndpoint endpoint = new FlowTreeApiEndpoint(0, notifier);
         endpoint.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false);
 
         try {
@@ -424,13 +428,13 @@ public class SlackIntegrationTest extends TestSuiteBase {
         }
     }
 
-    @Test
+    @Test(timeout = 10000)
     public void testApiEndpointMissingText() throws Exception {
         SlackNotifier notifier = new SlackNotifier(null);
         SlackWorkstream workstream = new SlackWorkstream("C123", "#test");
         notifier.registerWorkstream(workstream);
 
-        SlackApiEndpoint endpoint = new SlackApiEndpoint(0, notifier);
+        FlowTreeApiEndpoint endpoint = new FlowTreeApiEndpoint(0, notifier);
         endpoint.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false);
 
         try {
@@ -458,7 +462,105 @@ public class SlackIntegrationTest extends TestSuiteBase {
         }
     }
 
-    @Test
+    @Test(timeout = 10000)
+    public void testApiEndpointSubmitMissingPrompt() throws Exception {
+        SlackNotifier notifier = new SlackNotifier(null);
+        SlackWorkstream workstream = new SlackWorkstream("C_SUBMIT_1", "#submit-test");
+        notifier.registerWorkstream(workstream);
+
+        FlowTreeApiEndpoint endpoint = new FlowTreeApiEndpoint(0, notifier);
+        endpoint.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false);
+
+        try {
+            int port = endpoint.getListeningPort();
+
+            // Missing prompt field
+            String body = "{\"targetBranch\":\"main\"}";
+            HttpURLConnection conn = (HttpURLConnection) new URL(
+                    "http://localhost:" + port + "/api/workstreams/"
+                    + workstream.getWorkstreamId() + "/submit").openConnection();
+            conn.setRequestMethod("POST");
+            conn.setDoOutput(true);
+            conn.setRequestProperty("Content-Type", "application/json");
+
+            try (OutputStream os = conn.getOutputStream()) {
+                os.write(body.getBytes(StandardCharsets.UTF_8));
+            }
+
+            assertEquals(400, conn.getResponseCode());
+
+            String error = new String(conn.getErrorStream().readAllBytes(), StandardCharsets.UTF_8);
+            assertTrue(error.contains("prompt"));
+        } finally {
+            endpoint.stop();
+        }
+    }
+
+    @Test(timeout = 10000)
+    public void testApiEndpointSubmitUnknownWorkstream() throws Exception {
+        SlackNotifier notifier = new SlackNotifier(null);
+
+        FlowTreeApiEndpoint endpoint = new FlowTreeApiEndpoint(0, notifier);
+        endpoint.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false);
+
+        try {
+            int port = endpoint.getListeningPort();
+
+            String body = "{\"prompt\":\"Do something\"}";
+            HttpURLConnection conn = (HttpURLConnection) new URL(
+                    "http://localhost:" + port + "/api/workstreams/nonexistent/submit").openConnection();
+            conn.setRequestMethod("POST");
+            conn.setDoOutput(true);
+            conn.setRequestProperty("Content-Type", "application/json");
+
+            try (OutputStream os = conn.getOutputStream()) {
+                os.write(body.getBytes(StandardCharsets.UTF_8));
+            }
+
+            assertEquals(400, conn.getResponseCode());
+
+            String error = new String(conn.getErrorStream().readAllBytes(), StandardCharsets.UTF_8);
+            assertTrue(error.contains("Unknown workstream"));
+        } finally {
+            endpoint.stop();
+        }
+    }
+
+    @Test(timeout = 10000)
+    public void testApiEndpointSubmitNoServer() throws Exception {
+        SlackNotifier notifier = new SlackNotifier(null);
+        SlackWorkstream workstream = new SlackWorkstream("C_SUBMIT_2", "#submit-test");
+        notifier.registerWorkstream(workstream);
+
+        FlowTreeApiEndpoint endpoint = new FlowTreeApiEndpoint(0, notifier);
+        // Note: no server set
+        endpoint.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false);
+
+        try {
+            int port = endpoint.getListeningPort();
+
+            String body = "{\"prompt\":\"Do something\"}";
+            HttpURLConnection conn = (HttpURLConnection) new URL(
+                    "http://localhost:" + port + "/api/workstreams/"
+                    + workstream.getWorkstreamId() + "/submit").openConnection();
+            conn.setRequestMethod("POST");
+            conn.setDoOutput(true);
+            conn.setRequestProperty("Content-Type", "application/json");
+
+            try (OutputStream os = conn.getOutputStream()) {
+                os.write(body.getBytes(StandardCharsets.UTF_8));
+            }
+
+            assertEquals(400, conn.getResponseCode());
+
+            String error = new String(conn.getErrorStream().readAllBytes(), StandardCharsets.UTF_8);
+            assertTrue(error.contains("No FlowTree server"));
+        } finally {
+            endpoint.stop();
+        }
+    }
+
+    @Test(timeout = 10000)
     public void testFactoryWorkstreamUrlConfiguration() {
         ClaudeCodeJob.Factory factory = new ClaudeCodeJob.Factory("Test prompt");
         factory.setWorkstreamUrl("http://localhost:7780/api/workstreams/ws1/jobs/j1");
@@ -473,7 +575,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
 
     // --- Slash command tests ---
 
-    @Test
+    @Test(timeout = 10000)
     public void testSlashCommandHelp() {
         SlackNotifier notifier = new SlackNotifier(null);
         SlackListener listener = new SlackListener(notifier);
@@ -489,7 +591,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         assertTrue(response.get().contains("/flowtree task"));
     }
 
-    @Test
+    @Test(timeout = 10000)
     public void testSlashCommandUnknownSubcommand() {
         SlackNotifier notifier = new SlackNotifier(null);
         SlackListener listener = new SlackListener(notifier);
@@ -501,7 +603,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         assertTrue(response.get().contains("Flowtree Commands"));
     }
 
-    @Test
+    @Test(timeout = 10000)
     public void testSlashCommandSetupCreatesWorkstream() {
         SlackNotifier notifier = new SlackNotifier(null);
         SlackListener listener = new SlackListener(notifier);
@@ -521,11 +623,11 @@ public class SlackIntegrationTest extends TestSuiteBase {
         assertEquals("/workspace/project", ws.getWorkingDirectory());
         assertEquals("feature/test", ws.getDefaultBranch());
         assertEquals("#setup-channel", ws.getChannelName());
-        assertEquals(10.0, ws.getMaxBudgetUsd(), 0.001);
-        assertEquals(50, ws.getMaxTurns());
+        assertEquals(100.0, ws.getMaxBudgetUsd(), 0.001);
+        assertEquals(800, ws.getMaxTurns());
     }
 
-    @Test
+    @Test(timeout = 10000)
     public void testSlashCommandSetupUpdatesExisting() {
         SlackNotifier notifier = new SlackNotifier(null);
         SlackListener listener = new SlackListener(notifier);
@@ -552,7 +654,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         assertEquals("new-branch", ws.getDefaultBranch());
     }
 
-    @Test
+    @Test(timeout = 10000)
     public void testSlashCommandSetupMissingArgs() {
         SlackNotifier notifier = new SlackNotifier(null);
         SlackListener listener = new SlackListener(notifier);
@@ -569,7 +671,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         assertTrue(response.get().contains("Both working directory and branch are required"));
     }
 
-    @Test
+    @Test(timeout = 10000)
     public void testSlashCommandInfo() {
         SlackNotifier notifier = new SlackNotifier(null);
         SlackListener listener = new SlackListener(notifier);
@@ -597,7 +699,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         assertTrue(response.get().contains("ci@example.com"));
     }
 
-    @Test
+    @Test(timeout = 10000)
     public void testSlashCommandInfoNoWorkstream() {
         SlackNotifier notifier = new SlackNotifier(null);
         SlackListener listener = new SlackListener(notifier);
@@ -610,7 +712,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         assertTrue(response.get().contains("/flowtree setup"));
     }
 
-    @Test
+    @Test(timeout = 10000)
     public void testSlashCommandStatus() {
         SlackNotifier notifier = new SlackNotifier(null);
         SlackListener listener = new SlackListener(notifier);
@@ -629,7 +731,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         assertTrue(response.get().contains("main"));
     }
 
-    @Test
+    @Test(timeout = 10000)
     public void testSlashCommandConfigShowAll() {
         SlackNotifier notifier = new SlackNotifier(null);
         SlackListener listener = new SlackListener(notifier);
@@ -652,7 +754,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         assertTrue(response.get().contains("develop"));
     }
 
-    @Test
+    @Test(timeout = 10000)
     public void testSlashCommandConfigShowSingle() {
         SlackNotifier notifier = new SlackNotifier(null);
         SlackListener listener = new SlackListener(notifier);
@@ -668,7 +770,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         assertTrue(response.get().contains("20.00"));
     }
 
-    @Test
+    @Test(timeout = 10000)
     public void testSlashCommandConfigUpdate() {
         SlackNotifier notifier = new SlackNotifier(null);
         SlackListener listener = new SlackListener(notifier);
@@ -707,7 +809,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         assertTrue(response.get().contains("Unknown setting"));
     }
 
-    @Test
+    @Test(timeout = 10000)
     public void testSlashCommandConfigInvalidNumber() {
         SlackNotifier notifier = new SlackNotifier(null);
         SlackListener listener = new SlackListener(notifier);
@@ -720,7 +822,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         assertTrue(response.get().contains("Invalid number"));
     }
 
-    @Test
+    @Test(timeout = 10000)
     public void testSlashCommandJobs() {
         SlackNotifier notifier = new SlackNotifier(null);
         SlackListener listener = new SlackListener(notifier);
@@ -746,7 +848,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         assertTrue(response.get().contains("Fix auth bug"));
     }
 
-    @Test
+    @Test(timeout = 10000)
     public void testSlashCommandCancel() {
         SlackNotifier notifier = new SlackNotifier(null);
         SlackListener listener = new SlackListener(notifier);
@@ -760,7 +862,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         assertTrue(response.get().contains("not yet implemented"));
     }
 
-    @Test
+    @Test(timeout = 10000)
     public void testSlashCommandSetupPersistence() throws IOException {
         // Create a temp YAML config file
         File tempFile = File.createTempFile("workstreams-test", ".yaml");
@@ -808,7 +910,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         assertEquals("feature/new", newEntry.getDefaultBranch());
     }
 
-    @Test
+    @Test(timeout = 10000)
     public void testWorkstreamConfigAddWorkstream() {
         WorkstreamConfig config = new WorkstreamConfig();
 
@@ -831,7 +933,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         assertEquals(ws.getWorkstreamId(), entry.getWorkstreamId());
     }
 
-    @Test
+    @Test(timeout = 10000)
     public void testWorkstreamConfigSyncFromWorkstreams() throws IOException {
         // Start with a config that has one workstream
         String yaml = "workstreams:\n"
@@ -860,7 +962,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         assertEquals("/new/path", entry.getWorkingDirectory());
     }
 
-    @Test
+    @Test(timeout = 10000)
     public void testNotifierJobTracking() {
         SlackNotifier notifier = new SlackNotifier(null);
 
@@ -891,7 +993,137 @@ public class SlackIntegrationTest extends TestSuiteBase {
         assertTrue(notifier.getRecentJobs("unknown-ws").isEmpty());
     }
 
-    @Test
+    @Test(timeout = 10000)
+    public void testFindWorkstreamByBranch() {
+        SlackNotifier notifier = new SlackNotifier(null);
+
+        SlackWorkstream ws1 = new SlackWorkstream("ws-rings", "C_RINGS", "#rings");
+        ws1.setDefaultBranch("feature/new-decoder");
+
+        SlackWorkstream ws2 = new SlackWorkstream("ws-common", "C_COMMON", "#common");
+        ws2.setDefaultBranch("feature/pipeline-agents");
+
+        SlackWorkstream ws3 = new SlackWorkstream("ws-no-branch", "C_NONE", "#no-branch");
+        // defaultBranch is null
+
+        notifier.registerWorkstream(ws1);
+        notifier.registerWorkstream(ws2);
+        notifier.registerWorkstream(ws3);
+
+        // Exact match finds the right workstream
+        assertSame(ws1, notifier.findWorkstreamByBranch("feature/new-decoder"));
+        assertSame(ws2, notifier.findWorkstreamByBranch("feature/pipeline-agents"));
+
+        // No match returns null
+        assertNull(notifier.findWorkstreamByBranch("feature/unknown"));
+
+        // Null and empty branch return null
+        assertNull(notifier.findWorkstreamByBranch(null));
+        assertNull(notifier.findWorkstreamByBranch(""));
+
+        // Prefix match does NOT work (exact only)
+        assertNull(notifier.findWorkstreamByBranch("feature/new"));
+        assertNull(notifier.findWorkstreamByBranch("feature/new-decoder-v2"));
+    }
+
+    @Test(timeout = 10000)
+    public void testSubmitBranchToWorkstreamResolution() throws Exception {
+        SlackNotifier notifier = new SlackNotifier(null);
+
+        // Register a pipeline fallback workstream
+        SlackWorkstream pipelineWs = new SlackWorkstream("ws-pipeline", "C_PIPE", "#pipeline");
+        pipelineWs.setDefaultBranch(null);
+        pipelineWs.setAllowedTools("Read,Glob,Grep");
+        pipelineWs.setMaxBudgetUsd(5.0);
+        pipelineWs.setMaxTurns(30);
+        notifier.registerWorkstream(pipelineWs);
+
+        // Register a richer workstream that matches a specific branch
+        SlackWorkstream ringsWs = new SlackWorkstream("ws-rings", "C_RINGS", "#rings");
+        ringsWs.setDefaultBranch("feature/new-decoder");
+        ringsWs.setAllowedTools("Read,Edit,Write,Bash,Glob,Grep");
+        ringsWs.setMaxBudgetUsd(25.0);
+        ringsWs.setMaxTurns(100);
+        notifier.registerWorkstream(ringsWs);
+
+        FlowTreeApiEndpoint endpoint = new FlowTreeApiEndpoint(0, notifier);
+        // No server set - we only test up to the "No FlowTree server" error
+        // but verify the workstream resolution happened via the error message
+        // (workstream resolves before server check)
+        endpoint.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false);
+
+        try {
+            int port = endpoint.getListeningPort();
+
+            // Case 1: targetBranch matches ws-rings, should resolve to ws-rings
+            // even though the URL path points to ws-pipeline
+            String body1 = "{\"prompt\":\"Review the code\",\"targetBranch\":\"feature/new-decoder\"}";
+            HttpURLConnection conn1 = (HttpURLConnection) new URL(
+                    "http://localhost:" + port + "/api/workstreams/ws-pipeline/submit").openConnection();
+            conn1.setRequestMethod("POST");
+            conn1.setDoOutput(true);
+            conn1.setRequestProperty("Content-Type", "application/json");
+            try (OutputStream os = conn1.getOutputStream()) {
+                os.write(body1.getBytes(StandardCharsets.UTF_8));
+            }
+            // Should reach "No FlowTree server" - meaning the workstream resolved OK
+            assertEquals(400, conn1.getResponseCode());
+            String error1 = new String(conn1.getErrorStream().readAllBytes(), StandardCharsets.UTF_8);
+            assertTrue("Should resolve workstream and reach server check",
+                error1.contains("No FlowTree server"));
+
+            // Case 2: targetBranch does not match any workstream, falls back to URL path
+            String body2 = "{\"prompt\":\"Review the code\",\"targetBranch\":\"feature/unrelated\"}";
+            HttpURLConnection conn2 = (HttpURLConnection) new URL(
+                    "http://localhost:" + port + "/api/workstreams/ws-pipeline/submit").openConnection();
+            conn2.setRequestMethod("POST");
+            conn2.setDoOutput(true);
+            conn2.setRequestProperty("Content-Type", "application/json");
+            try (OutputStream os = conn2.getOutputStream()) {
+                os.write(body2.getBytes(StandardCharsets.UTF_8));
+            }
+            assertEquals(400, conn2.getResponseCode());
+            String error2 = new String(conn2.getErrorStream().readAllBytes(), StandardCharsets.UTF_8);
+            assertTrue("Should fall back to URL path workstream and reach server check",
+                error2.contains("No FlowTree server"));
+
+            // Case 3: Explicit workstreamId in body overrides both branch match and URL path
+            String body3 = "{\"prompt\":\"Review the code\",\"targetBranch\":\"feature/new-decoder\","
+                + "\"workstreamId\":\"ws-pipeline\"}";
+            HttpURLConnection conn3 = (HttpURLConnection) new URL(
+                    "http://localhost:" + port + "/api/workstreams/ws-rings/submit").openConnection();
+            conn3.setRequestMethod("POST");
+            conn3.setDoOutput(true);
+            conn3.setRequestProperty("Content-Type", "application/json");
+            try (OutputStream os = conn3.getOutputStream()) {
+                os.write(body3.getBytes(StandardCharsets.UTF_8));
+            }
+            assertEquals(400, conn3.getResponseCode());
+            String error3 = new String(conn3.getErrorStream().readAllBytes(), StandardCharsets.UTF_8);
+            assertTrue("Explicit workstreamId in body should resolve and reach server check",
+                error3.contains("No FlowTree server"));
+
+            // Case 4: Unknown explicit workstreamId in body, but branch matches - should use branch match
+            String body4 = "{\"prompt\":\"Review the code\",\"targetBranch\":\"feature/new-decoder\","
+                + "\"workstreamId\":\"ws-nonexistent\"}";
+            HttpURLConnection conn4 = (HttpURLConnection) new URL(
+                    "http://localhost:" + port + "/api/workstreams/ws-pipeline/submit").openConnection();
+            conn4.setRequestMethod("POST");
+            conn4.setDoOutput(true);
+            conn4.setRequestProperty("Content-Type", "application/json");
+            try (OutputStream os = conn4.getOutputStream()) {
+                os.write(body4.getBytes(StandardCharsets.UTF_8));
+            }
+            assertEquals(400, conn4.getResponseCode());
+            String error4 = new String(conn4.getErrorStream().readAllBytes(), StandardCharsets.UTF_8);
+            assertTrue("Should fall through to branch match when body workstreamId is unknown",
+                error4.contains("No FlowTree server"));
+        } finally {
+            endpoint.stop();
+        }
+    }
+
+    @Test(timeout = 10000)
     public void testSlackManifestIncludesSlashCommand() throws IOException {
         // Load manifest from classpath (it's a resource in the same module)
         java.io.InputStream is = getClass().getResourceAsStream("/slack-app-manifest.json");
@@ -901,6 +1133,185 @@ public class SlackIntegrationTest extends TestSuiteBase {
         assertTrue(content.contains("slash_commands"));
         assertTrue(content.contains("/flowtree"));
         assertTrue(content.contains("commands"));
+    }
+
+    @Test(timeout = 10000)
+    public void testApiStatsEndpoint() throws Exception {
+        File tempDir = Files.createTempDirectory("stats-test").toFile();
+        tempDir.deleteOnExit();
+        String dbPath = new File(tempDir, "stats").getAbsolutePath();
+
+        JobStatsStore store = new JobStatsStore(dbPath);
+        store.initialize();
+
+        try {
+            // Seed jobs in the current week
+            LocalDate today = LocalDate.now(ZoneOffset.UTC);
+            LocalDate monday = today.with(java.time.DayOfWeek.MONDAY);
+            Instant jobTime = monday.atStartOfDay(ZoneOffset.UTC).toInstant()
+                .plusSeconds(3600);
+
+            store.recordJobStarted("j1", "ws-alpha", "Fix bug", jobTime);
+            store.recordJobCompleted("j1", "ws-alpha", "SUCCESS",
+                jobTime.plusMillis(60000), 55000, 30000, 0.50, 10, "sess-1", 0,
+                "success", false, 0);
+
+            store.recordJobStarted("j2", "ws-beta", "Add feature", jobTime);
+            store.recordJobCompleted("j2", "ws-beta", "FAILED",
+                jobTime.plusMillis(120000), 100000, 80000, 1.20, 25, "sess-2", 1,
+                "error_max_turns", true, 3);
+
+            SlackNotifier notifier = new SlackNotifier(null);
+            FlowTreeApiEndpoint endpoint = new FlowTreeApiEndpoint(0, notifier);
+            endpoint.setStatsStore(store);
+            endpoint.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false);
+
+            try {
+                int port = endpoint.getListeningPort();
+
+                // Unfiltered query - should return both workstreams
+                HttpURLConnection conn = (HttpURLConnection) new URL(
+                    "http://localhost:" + port + "/api/stats").openConnection();
+                conn.setRequestMethod("GET");
+                assertEquals(200, conn.getResponseCode());
+
+                String response = new String(conn.getInputStream().readAllBytes(),
+                    StandardCharsets.UTF_8);
+                assertTrue("Should contain thisWeek", response.contains("\"thisWeek\""));
+                assertTrue("Should contain lastWeek", response.contains("\"lastWeek\""));
+                assertTrue("Should contain ws-alpha", response.contains("ws-alpha"));
+                assertTrue("Should contain ws-beta", response.contains("ws-beta"));
+                assertTrue("Should contain jobCount", response.contains("\"jobCount\""));
+
+                // Filtered query - only ws-alpha
+                HttpURLConnection conn2 = (HttpURLConnection) new URL(
+                    "http://localhost:" + port + "/api/stats?workstream=ws-alpha").openConnection();
+                conn2.setRequestMethod("GET");
+                assertEquals(200, conn2.getResponseCode());
+
+                String filtered = new String(conn2.getInputStream().readAllBytes(),
+                    StandardCharsets.UTF_8);
+                assertTrue("Filtered should contain ws-alpha",
+                    filtered.contains("ws-alpha"));
+                assertFalse("Filtered should not contain ws-beta",
+                    filtered.contains("ws-beta"));
+            } finally {
+                endpoint.stop();
+            }
+        } finally {
+            store.close();
+        }
+    }
+
+    @Test(timeout = 10000)
+    public void testApiStatsUnsupportedPeriod() throws Exception {
+        File tempDir = Files.createTempDirectory("stats-period-test").toFile();
+        tempDir.deleteOnExit();
+        String dbPath = new File(tempDir, "stats").getAbsolutePath();
+
+        JobStatsStore store = new JobStatsStore(dbPath);
+        store.initialize();
+
+        try {
+            SlackNotifier notifier = new SlackNotifier(null);
+            FlowTreeApiEndpoint endpoint = new FlowTreeApiEndpoint(0, notifier);
+            endpoint.setStatsStore(store);
+            endpoint.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false);
+
+            try {
+                int port = endpoint.getListeningPort();
+
+                HttpURLConnection conn = (HttpURLConnection) new URL(
+                    "http://localhost:" + port + "/api/stats?period=monthly").openConnection();
+                conn.setRequestMethod("GET");
+                assertEquals(400, conn.getResponseCode());
+
+                String error = new String(conn.getErrorStream().readAllBytes(),
+                    StandardCharsets.UTF_8);
+                assertTrue("Should mention unsupported period",
+                    error.contains("Unsupported period"));
+            } finally {
+                endpoint.stop();
+            }
+        } finally {
+            store.close();
+        }
+    }
+
+    @Test(timeout = 10000)
+    public void testApiStatsNotConfigured() throws Exception {
+        SlackNotifier notifier = new SlackNotifier(null);
+        FlowTreeApiEndpoint endpoint = new FlowTreeApiEndpoint(0, notifier);
+        // No stats store set
+        endpoint.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false);
+
+        try {
+            int port = endpoint.getListeningPort();
+            HttpURLConnection conn = (HttpURLConnection) new URL(
+                "http://localhost:" + port + "/api/stats").openConnection();
+            conn.setRequestMethod("GET");
+            assertEquals(200, conn.getResponseCode());
+
+            String response = new String(conn.getInputStream().readAllBytes(),
+                StandardCharsets.UTF_8);
+            assertTrue("Should indicate stats not configured",
+                response.contains("Stats not configured"));
+        } finally {
+            endpoint.stop();
+        }
+    }
+
+    @Test(timeout = 10000)
+    public void testExtractLastJsonObjectFindsResultLine() {
+        // Simulates Claude Code NDJSON output: per-turn objects first, result last
+        String ndjson = "{\"type\":\"assistant\",\"duration_ms\":4000,\"session_id\":\"sess-early\"}\n"
+            + "{\"type\":\"assistant\",\"duration_ms\":3500}\n"
+            + "{\"type\":\"result\",\"duration_ms\":1800000,\"duration_api_ms\":1500000,"
+            + "\"cost_usd\":2.50,\"num_turns\":42,\"session_id\":\"sess-final\","
+            + "\"subtype\":\"success\",\"is_error\":false}\n";
+
+        String result = io.flowtree.JsonFieldExtractor.extractLastJsonObject(ndjson, "result");
+        assertNotNull("Should find the result line", result);
+        assertTrue("Should contain the result type", result.contains("\"type\":\"result\""));
+
+        // Verify extracting metrics from the result line yields session-level values
+        long durationMs = io.flowtree.JsonFieldExtractor.extractLong(result, "duration_ms");
+        long durationApiMs = io.flowtree.JsonFieldExtractor.extractLong(result, "duration_api_ms");
+        double costUsd = io.flowtree.JsonFieldExtractor.extractDouble(result, "cost_usd");
+        int numTurns = io.flowtree.JsonFieldExtractor.extractInt(result, "num_turns");
+        String sessionId = io.flowtree.JsonFieldExtractor.extractString(result, "session_id");
+
+        assertEquals("Should get session-level duration, not per-turn", 1800000, durationMs);
+        assertEquals(1500000, durationApiMs);
+        assertEquals(2.50, costUsd, 0.001);
+        assertEquals(42, numTurns);
+        assertEquals("sess-final", sessionId);
+    }
+
+    @Test(timeout = 10000)
+    public void testExtractLastJsonObjectFallsBackToLastLine() {
+        // No "type":"result" marker -- should fall back to last JSON object
+        String ndjson = "{\"duration_ms\":4000}\n"
+            + "{\"duration_ms\":90000,\"cost_usd\":1.0}\n";
+
+        String result = io.flowtree.JsonFieldExtractor.extractLastJsonObject(ndjson, "result");
+        assertNotNull("Should fall back to last JSON object", result);
+        assertEquals(90000, io.flowtree.JsonFieldExtractor.extractLong(result, "duration_ms"));
+    }
+
+    @Test(timeout = 10000)
+    public void testExtractLastJsonObjectNullInput() {
+        assertNull(io.flowtree.JsonFieldExtractor.extractLastJsonObject(null, "result"));
+        assertNull(io.flowtree.JsonFieldExtractor.extractLastJsonObject("", "result"));
+    }
+
+    @Test(timeout = 10000)
+    public void testExtractLastJsonObjectNullType() {
+        // null type should return the very last JSON object
+        String ndjson = "{\"a\":1}\n{\"b\":2}\n";
+        String result = io.flowtree.JsonFieldExtractor.extractLastJsonObject(ndjson, null);
+        assertNotNull(result);
+        assertTrue("Should be the last line", result.contains("\"b\""));
     }
 
 }

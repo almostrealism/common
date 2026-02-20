@@ -69,6 +69,18 @@ public class JobCompletionEvent {
     private String sessionId;
     private int exitCode;
 
+    // Timing information from Claude Code output
+    private long durationMs;
+    private long durationApiMs;
+    private double costUsd;
+    private int numTurns;
+
+    // Session details from Claude Code output
+    private String subtype;
+    private boolean sessionIsError;
+    private int permissionDenials;
+    private List<String> deniedToolNames;
+
     /**
      * Creates a new job completion event.
      *
@@ -172,6 +184,55 @@ public class JobCompletionEvent {
         return exitCode;
     }
 
+    public long getDurationMs() {
+        return durationMs;
+    }
+
+    public long getDurationApiMs() {
+        return durationApiMs;
+    }
+
+    public double getCostUsd() {
+        return costUsd;
+    }
+
+    public int getNumTurns() {
+        return numTurns;
+    }
+
+    /**
+     * Returns the session subtype (stop reason) from Claude Code output.
+     * Common values: "success", "error_max_turns".
+     */
+    public String getSubtype() {
+        return subtype;
+    }
+
+    /**
+     * Returns whether the Claude Code session ended with an error.
+     */
+    public boolean isSessionError() {
+        return sessionIsError;
+    }
+
+    /**
+     * Returns the number of permission denials during the session.
+     */
+    public int getPermissionDenials() {
+        return permissionDenials;
+    }
+
+    /**
+     * Returns the tool names that were denied during the session.
+     * Each entry corresponds to a single denial event; the same tool
+     * may appear multiple times if it was denied more than once.
+     *
+     * @return list of denied tool names, or empty list if none
+     */
+    public List<String> getDeniedToolNames() {
+        return deniedToolNames != null ? deniedToolNames : Collections.emptyList();
+    }
+
     // Setters (builder pattern)
 
     public JobCompletionEvent withGitInfo(String branch, String commitHash, List<String> staged,
@@ -199,6 +260,43 @@ public class JobCompletionEvent {
         this.prompt = prompt;
         this.sessionId = sessionId;
         this.exitCode = exitCode;
+        return this;
+    }
+
+    /**
+     * Sets timing information extracted from Claude Code output.
+     *
+     * @param durationMs    total wall-clock duration reported by Claude Code
+     * @param durationApiMs time spent in API calls
+     * @param costUsd       total cost in USD
+     * @param numTurns      number of agentic turns
+     * @return this event for chaining
+     */
+    public JobCompletionEvent withTimingInfo(long durationMs, long durationApiMs,
+                                              double costUsd, int numTurns) {
+        this.durationMs = durationMs;
+        this.durationApiMs = durationApiMs;
+        this.costUsd = costUsd;
+        this.numTurns = numTurns;
+        return this;
+    }
+
+    /**
+     * Sets session detail fields extracted from Claude Code output.
+     *
+     * @param subtype           the session subtype / stop reason (e.g. "success", "error_max_turns")
+     * @param sessionIsError    whether Claude Code flagged the session as an error
+     * @param permissionDenials number of tool permission denials during the session
+     * @param deniedToolNames   names of tools that were denied, or null
+     * @return this event for chaining
+     */
+    public JobCompletionEvent withSessionDetails(String subtype, boolean sessionIsError,
+                                                  int permissionDenials,
+                                                  List<String> deniedToolNames) {
+        this.subtype = subtype;
+        this.sessionIsError = sessionIsError;
+        this.permissionDenials = permissionDenials;
+        this.deniedToolNames = deniedToolNames;
         return this;
     }
 

@@ -69,7 +69,7 @@ public class SineWaveComputationTest extends TestSuiteBase implements CellFeatur
 	/**
 	 * Tests that a basic sine wave produces the expected sinusoidal pattern.
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void basicSineWavePattern() {
 		SineWaveCell cell = new SineWaveCell();
 		cell.setFreq(440.0); // Standard A4 frequency
@@ -96,7 +96,7 @@ public class SineWaveComputationTest extends TestSuiteBase implements CellFeatur
 	/**
 	 * Tests that higher frequency produces more oscillations.
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void higherFrequencyMoreOscillations() {
 		// Low frequency cell
 		SineWaveCell lowCell = new SineWaveCell();
@@ -126,7 +126,7 @@ public class SineWaveComputationTest extends TestSuiteBase implements CellFeatur
 	/**
 	 * Tests that amplitude scales the output correctly.
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void amplitudeScalesOutput() {
 		// Full amplitude
 		SineWaveCell fullCell = new SineWaveCell();
@@ -166,7 +166,7 @@ public class SineWaveComputationTest extends TestSuiteBase implements CellFeatur
 	/**
 	 * Tests that zero amplitude produces zero output.
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void zeroAmplitudeProducesZeroOutput() {
 		SineWaveCell cell = new SineWaveCell();
 		cell.setFreq(440.0);
@@ -183,7 +183,7 @@ public class SineWaveComputationTest extends TestSuiteBase implements CellFeatur
 	/**
 	 * Tests output stability over many iterations.
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void outputStabilityOverTime() {
 		SineWaveCell cell = new SineWaveCell();
 		cell.setFreq(440.0);
@@ -209,7 +209,7 @@ public class SineWaveComputationTest extends TestSuiteBase implements CellFeatur
 	/**
 	 * Tests that different frequencies produce proportionally different periods.
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void frequencyProducesPredictablePeriod() {
 		// 440 Hz should complete one cycle in ~100 samples at 44100 Hz sample rate
 		// Period = sample_rate / frequency = 44100 / 440 = ~100.2 samples
@@ -237,7 +237,7 @@ public class SineWaveComputationTest extends TestSuiteBase implements CellFeatur
 	/**
 	 * Tests 440 Hz (A4) produces expected output.
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void a440Frequency() {
 		SineWaveCell cell = new SineWaveCell();
 		cell.setFreq(440.0);

@@ -1,0 +1,79 @@
+## ABSOLUTE RULE: DO NOT MODIFY EXISTING TESTS TO HIDE FAILURES
+
+**THIS IS THE MOST IMPORTANT RULE. VIOLATING IT IS WORSE THAN NOT FIXING ANYTHING.**
+
+You MUST NOT add @Ignore, @Disabled, skip annotations, try/catch blocks that
+swallow exceptions, or weaken any assertion in any test that exists on
+${BASE_BRANCH}. You MUST NOT delete test methods, reduce test inputs, add
+skipLongTests guards, or add @TestDepth annotations to push tests out of the
+default run. **The test is the specification. If a test fails, fix the
+production code, not the test.**
+
+---
+
+All tests and quality gates are passing on branch "${BRANCH}" (commit ${COMMIT_SHA}).
+
+Your job is to **review the changes on this branch and fix every issue you find.**
+You are a coding agent, not a reviewer. Do not post comments suggesting changes —
+make the changes yourself.
+
+Use `git log ${BASE_BRANCH}..HEAD` and `git diff ${BASE_BRANCH}...HEAD` to
+understand the full scope of changes.
+
+## What to look for and fix
+
+### 1. Test Integrity (HIGHEST PRIORITY)
+
+Run `git diff ${BASE_BRANCH}...HEAD -- '**/*Test*.java' '**/test/**/*.java'` to
+see all test file changes. For each modified test that existed on ${BASE_BRANCH}
+(check with `git log --oneline ${BASE_BRANCH} -- <file>`), verify that no
+assertions were weakened, no tests were disabled, and no coverage was reduced.
+If you find violations: **revert the test modifications and fix the production
+code instead** so the original test passes.
+
+### 2. Design and Architecture
+
+- Do the changes follow CLAUDE.md architectural principles (ModelOptimizer owns
+  training loops, PackedCollection is not a Java array, StateDictionary for
+  weights, etc.)?
+- Is the level of abstraction appropriate?
+- Is there code duplication that should be extracted into a shared method?
+
+### 3. Test Quality
+
+- Do the tests actually prove the new functionality works, or are they
+  superficial?
+- Are edge cases covered?
+- Do the tests follow project conventions (extend TestSuiteBase, use @TestDepth
+  for expensive tests, include timeout parameters)?
+
+### 4. Correctness
+
+- Are there logical defects in the implementation?
+- Are there fragile assumptions, implicit ordering dependencies, or missing
+  validation at system boundaries?
+- Is error handling and resource management correct?
+
+### 5. Documentation
+
+- Do all new non-private classes and methods have Javadoc?
+- Is the documentation accurate and useful (not just boilerplate)?
+
+### 6. Consistency with Existing Patterns
+
+- Is new code in the correct module?
+- Does it duplicate existing functionality? (Search the codebase before
+  concluding.)
+- Are naming conventions and structural patterns consistent with surrounding
+  code?
+
+## How to proceed
+
+1. Identify every issue across the categories above.
+2. **Fix each issue directly** by editing the source files.
+3. Verify the build still succeeds: `mvn install -DskipTests`
+4. Send a Slack summary of what you changed and why. Organize by category.
+   For each fix, include the file path and a one-line explanation.
+
+If the changes look good across all categories and nothing needs fixing,
+say so explicitly via Slack and explain why you are confident.

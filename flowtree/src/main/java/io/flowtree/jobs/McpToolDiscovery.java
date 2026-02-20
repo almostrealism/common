@@ -28,45 +28,122 @@ import java.util.regex.Pattern;
 /**
  * Utility for discovering tool names from Python MCP server source files.
  *
- * <p>Scans Python files for {@code @mcp.tool()} decorated functions
- * and extracts their names. Used by both {@link ClaudeCodeJob} (for local
- * servers) and {@link io.flowtree.slack.SlackBotController} (for centralized
- * servers).</p>
+ * <p>Supports two common MCP server patterns:</p>
+ * <ul>
+ *   <li><b>Decorator pattern:</b> {@code @mcp.tool()} decorating individual
+ *       {@code def function_name()} definitions (used by ar-slack, ar-memory,
+ *       ar-consultant, ar-profile-analyzer, ar-github)</li>
+ *   <li><b>List-tools pattern:</b> {@code @server.list_tools()} returning a
+ *       list of {@code Tool(name="tool_name", ...)} entries (used by
+ *       ar-test-runner, ar-jmx, ar-docs)</li>
+ * </ul>
+ *
+ * <p>Used by both {@link ClaudeCodeJob} (for local servers) and
+ * {@link io.flowtree.slack.FlowTreeController} (for centralized servers).</p>
  *
  * @author Michael Murray
  */
 public class McpToolDiscovery {
 
     private static final Pattern FUNC_DEF_PATTERN = Pattern.compile("def\\s+(\\w+)\\s*\\(");
+    private static final Pattern TOOL_NAME_INLINE_PATTERN =
+        Pattern.compile("Tool\\s*\\(\\s*name\\s*=\\s*\"([^\"]+)\"");
+    private static final Pattern TOOL_NAME_SEPARATE_PATTERN =
+        Pattern.compile("^\\s*name\\s*=\\s*\"([^\"]+)\"");
 
     /**
-     * Scans a Python MCP server source file for {@code @mcp.tool()}
-     * decorated functions and returns their names.
+     * Scans a Python MCP server source file for tool definitions and
+     * returns their names.
+     *
+     * <p>First attempts to find {@code @mcp.tool()} decorated functions.
+     * If none are found, falls back to parsing {@code Tool(name="...")}
+     * entries inside a {@code @server.list_tools()} handler.</p>
      *
      * @param serverFile path to the Python server source file
-     * @return list of tool function names, empty if file does not exist or has no tools
+     * @return list of tool names, empty if file does not exist or has no tools
      */
     public static List<String> discoverToolNames(Path serverFile) {
-        List<String> tools = new ArrayList<>();
-        if (serverFile == null || !Files.exists(serverFile)) return tools;
+        if (serverFile == null || !Files.exists(serverFile)) return new ArrayList<>();
 
         try {
             List<String> lines = Files.readAllLines(serverFile, StandardCharsets.UTF_8);
-            for (int i = 0; i < lines.size(); i++) {
-                if (lines.get(i).trim().startsWith("@mcp.tool")) {
-                    for (int j = i + 1; j < Math.min(i + 5, lines.size()); j++) {
-                        Matcher m = FUNC_DEF_PATTERN.matcher(lines.get(j));
-                        if (m.find()) {
-                            tools.add(m.group(1));
-                            break;
-                        }
+            List<String> tools = discoverDecoratorTools(lines);
+            if (tools.isEmpty()) {
+                tools = discoverListToolsEntries(lines);
+            }
+            return tools;
+        } catch (IOException e) {
+            return new ArrayList<>();
+        }
+    }
+
+    /**
+     * Discovers tools from the {@code @mcp.tool()} decorator pattern.
+     * Each decorated function's name is used as the tool name.
+     */
+    private static List<String> discoverDecoratorTools(List<String> lines) {
+        List<String> tools = new ArrayList<>();
+        for (int i = 0; i < lines.size(); i++) {
+            if (lines.get(i).trim().startsWith("@mcp.tool")) {
+                for (int j = i + 1; j < Math.min(i + 5, lines.size()); j++) {
+                    Matcher m = FUNC_DEF_PATTERN.matcher(lines.get(j));
+                    if (m.find()) {
+                        tools.add(m.group(1));
+                        break;
                     }
                 }
             }
-        } catch (IOException e) {
-            // Caller will handle empty list
         }
+        return tools;
+    }
 
+    /**
+     * Discovers tools from the {@code @server.list_tools()} handler pattern.
+     * Parses {@code Tool(name="tool_name", ...)} entries in the body of the
+     * handler function. Handles both inline ({@code Tool(name="x")}) and
+     * multi-line ({@code Tool(\n  name="x"\n)}) formats.
+     */
+    private static List<String> discoverListToolsEntries(List<String> lines) {
+        List<String> tools = new ArrayList<>();
+        boolean inListTools = false;
+        boolean inToolConstructor = false;
+        for (String line : lines) {
+            String trimmed = line.trim();
+            if (trimmed.startsWith("@server.list_tools") || trimmed.startsWith("@mcp.list_tools")) {
+                inListTools = true;
+                continue;
+            }
+
+            if (inListTools) {
+                // Stop at the next decorator (start of call_tool handler or another section)
+                if (trimmed.startsWith("@server.") || trimmed.startsWith("@mcp.")) {
+                    break;
+                }
+
+                // Check for Tool(name="..." on the same line
+                Matcher inlineMatch = TOOL_NAME_INLINE_PATTERN.matcher(trimmed);
+                if (inlineMatch.find()) {
+                    tools.add(inlineMatch.group(1));
+                    inToolConstructor = false;
+                    continue;
+                }
+
+                // Track when we enter a Tool( constructor
+                if (trimmed.startsWith("Tool(")) {
+                    inToolConstructor = true;
+                    continue;
+                }
+
+                // Inside a Tool(...) constructor, look for name="..." on its own line
+                if (inToolConstructor) {
+                    Matcher nameMatch = TOOL_NAME_SEPARATE_PATTERN.matcher(line);
+                    if (nameMatch.find()) {
+                        tools.add(nameMatch.group(1));
+                        inToolConstructor = false;
+                    }
+                }
+            }
+        }
         return tools;
     }
 }

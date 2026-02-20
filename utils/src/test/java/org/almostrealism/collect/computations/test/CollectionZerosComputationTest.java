@@ -182,7 +182,7 @@ public class CollectionZerosComputationTest extends TestSuiteBase {
 	 * Demonstrates that zero computations cannot be isolated as they are already
 	 * optimally isolated by nature.
 	 */
-	@Test(expected = UnsupportedOperationException.class)
+	@Test(timeout = 5000, expected = UnsupportedOperationException.class)
 	public void isolationNotSupported() {
 		CollectionZerosComputation zeros =
 				new CollectionZerosComputation(new TraversalPolicy(3));

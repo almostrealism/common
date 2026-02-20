@@ -172,6 +172,46 @@
 		</plugins>
 	</build>
 
+	<profiles>
+		<!-- Javadoc documentation enforcement profile.
+		     Activated explicitly with -Pjavadoc-check.
+		     Not part of the default build to avoid slowing local development. -->
+		<profile>
+			<id>javadoc-check</id>
+			<build>
+				<plugins>
+					<plugin>
+						<groupId>org.apache.maven.plugins</groupId>
+						<artifactId>maven-checkstyle-plugin</artifactId>
+						<version>3.3.1</version>
+						<configuration>
+							<configLocation>checkstyle-javadoc.xml</configLocation>
+							<consoleOutput>true</consoleOutput>
+							<failsOnError>true</failsOnError>
+							<includeTestSourceDirectory>false</includeTestSourceDirectory>
+						</configuration>
+						<executions>
+							<execution>
+								<id>javadoc-check</id>
+								<phase>validate</phase>
+								<goals>
+									<goal>check</goal>
+								</goals>
+							</execution>
+						</executions>
+						<dependencies>
+							<dependency>
+								<groupId>com.puppycrawl.tools</groupId>
+								<artifactId>checkstyle</artifactId>
+								<version>10.12.5</version>
+							</dependency>
+						</dependencies>
+					</plugin>
+				</plugins>
+			</build>
+		</profile>
+	</profiles>
+
 	<dependencyManagement>
 		<dependencies>
 			<!-- Data and Persistence -->

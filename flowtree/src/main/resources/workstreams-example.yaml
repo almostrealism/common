@@ -10,7 +10,7 @@
 # Then run:
 #   export SLACK_BOT_TOKEN=xoxb-your-bot-token
 #   export SLACK_APP_TOKEN=xapp-your-app-token
-#   java -cp flowtree.jar io.flowtree.slack.SlackBotController --config workstreams.yaml
+#   java -cp flowtree.jar io.flowtree.slack.FlowTreeController --config workstreams.yaml
 
 # Centralized MCP servers (optional).
 # When present, these servers are started as HTTP processes by the controller

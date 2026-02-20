@@ -26,7 +26,7 @@ public class FullAttentionMethodTest extends TestSuiteBase implements AttentionF
 	private static final String WEIGHTS_DIR = "/workspace/project/common/ml/qwen3_weights";
 	private static final String REFERENCE_DIR = "/workspace/project/common/ml/qwen3_reference/layer_outputs";
 
-	@Test
+	@Test(timeout = 120000)
 	public void testLayer0AttentionMethod() throws Exception {
 		Assume.assumeTrue("Skipping comparison test in pipeline profile", TestUtils.isComparisonTestEnabled());
 
@@ -40,7 +40,7 @@ public class FullAttentionMethodTest extends TestSuiteBase implements AttentionF
 		runAttentionMethodTest(0);
 	}
 
-	@Test
+	@Test(timeout = 120000)
 	public void testLayer1AttentionMethod() throws Exception {
 		Assume.assumeTrue("Skipping comparison test in pipeline profile", TestUtils.isComparisonTestEnabled());
 

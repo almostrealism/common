@@ -199,7 +199,7 @@ public class GraphAlgorithmTest extends TestSuiteBase implements GraphFeatures {
 		return graph;
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void testPageRankTriangle() {
 		TestGraph graph = createTriangleGraph();
 
@@ -214,7 +214,7 @@ public class GraphAlgorithmTest extends TestSuiteBase implements GraphFeatures {
 		assertEquals(1.0, sum, 0.01);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void testDegreeCentrality() {
 		TestGraph graph = createTriangleGraph();
 
@@ -227,7 +227,7 @@ public class GraphAlgorithmTest extends TestSuiteBase implements GraphFeatures {
 		assertEquals(2, degrees[2]);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void testBetweennessCentrality() {
 		TestGraph graph = createLinearGraph();
 
@@ -242,7 +242,7 @@ public class GraphAlgorithmTest extends TestSuiteBase implements GraphFeatures {
 		assertEquals(0.0, betweenness[4], 0.01);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void testTopK() {
 		double[] values = {0.1, 0.5, 0.3, 0.8, 0.2};
 
@@ -253,7 +253,7 @@ public class GraphAlgorithmTest extends TestSuiteBase implements GraphFeatures {
 		assertEquals(1, (int) top2.get(1)); // 0.5
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void testLouvainTwoClusters() {
 		TestGraph graph = createTwoClusterGraph();
 
@@ -269,7 +269,7 @@ public class GraphAlgorithmTest extends TestSuiteBase implements GraphFeatures {
 		assertNotEquals(communities[0], communities[3]);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void testModularity() {
 		TestGraph graph = createTwoClusterGraph();
 
@@ -285,13 +285,13 @@ public class GraphAlgorithmTest extends TestSuiteBase implements GraphFeatures {
 		assertTrue(goodModularity > badModularity);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void testCountCommunities() {
 		int[] communities = {0, 0, 1, 1, 2, 0};
 		assertEquals(3, countCommunities(communities));
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void testGetCommunityMembers() {
 		int[] communities = {0, 0, 1, 1, 2, 0};
 		Map<Integer, List<Integer>> members = getCommunityMembers(communities);
@@ -302,7 +302,7 @@ public class GraphAlgorithmTest extends TestSuiteBase implements GraphFeatures {
 		assertEquals(List.of(4), members.get(2));
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void testShortestPathLinear() {
 		TestGraph graph = createLinearGraph();
 
@@ -311,7 +311,7 @@ public class GraphAlgorithmTest extends TestSuiteBase implements GraphFeatures {
 		assertEquals(List.of(0, 1, 2, 3, 4), path);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void testShortestPathNoPath() {
 		TestGraph graph = new TestGraph();
 		graph.addNode(new TestNode("A"));
@@ -323,7 +323,7 @@ public class GraphAlgorithmTest extends TestSuiteBase implements GraphFeatures {
 		assertTrue(path.isEmpty());
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void testPersonalizedPageRank() {
 		TestGraph graph = createTwoClusterGraph();
 
@@ -338,7 +338,7 @@ public class GraphAlgorithmTest extends TestSuiteBase implements GraphFeatures {
 		assertTrue(ppr[0] >= ppr[1]);
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void testFindBridges() {
 		TestGraph graph = createTwoClusterGraph();
 
@@ -350,7 +350,7 @@ public class GraphAlgorithmTest extends TestSuiteBase implements GraphFeatures {
 		assertTrue(bridges.contains(2) || bridges.contains(5));
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void testBFS() {
 		TestGraph graph = createLinearGraph();
 
@@ -364,7 +364,7 @@ public class GraphAlgorithmTest extends TestSuiteBase implements GraphFeatures {
 		assertFalse(bfs.contains(4));
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void testBFSUnlimited() {
 		TestGraph graph = createLinearGraph();
 
@@ -375,7 +375,7 @@ public class GraphAlgorithmTest extends TestSuiteBase implements GraphFeatures {
 		assertEquals(0, (int) bfs.get(0));
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void testEmptyGraph() {
 		TestGraph graph = new TestGraph();
 
@@ -388,7 +388,7 @@ public class GraphAlgorithmTest extends TestSuiteBase implements GraphFeatures {
 		assertTrue(path.isEmpty());
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void testSingleNodeGraph() {
 		TestGraph graph = new TestGraph();
 		graph.addNode(new TestNode("A"));
