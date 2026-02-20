@@ -420,7 +420,9 @@ public interface DeltaFeatures extends MatrixFeatures {
 	// TODO  part of MatrixFeatures, or even an option for matmul
 	default <V extends PackedCollection> CollectionProducer expandAndMultiply(
 			CollectionProducer vector, CollectionProducer matrix) {
-		if (vector.getShape().getDimensions() != 1) {
+		if (Algebraic.isZero(matrix) || Algebraic.isZero(vector)) {
+			return zeros(matrix.getShape());
+		} else if (vector.getShape().getDimensions() != 1) {
 			throw new IllegalArgumentException();
 		} else if (Algebraic.isIdentity(shape(vector).length(0), matrix)) {
 			return diagonal(vector);
