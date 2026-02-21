@@ -1541,7 +1541,7 @@ public class ClaudeCodeJob extends GitManagedJob {
      * distribute prompts across multiple nodes. When a node finishes a prompt,
      * it becomes idle and can pick up the next job.</p>
      */
-    public static class Factory extends AbstractJobFactory {
+    public static class Factory extends AbstractJobFactory implements GitManagedJob.GitPropertyTarget {
         private List<String> prompts;
         private int index;
         private String allowedTools = DEFAULT_TOOLS;
@@ -1947,43 +1947,19 @@ public class ClaudeCodeJob extends GitManagedJob {
         public void set(String key, String value) {
             super.set(key, value);
 
-            // Also handle direct property setting
+            // Delegate shared git properties to the centralized helper
+            if (applyGitProperty(key, value, this)) return;
+
+            // Handle Factory-specific properties
             switch (key) {
                 case "tools":
                     this.allowedTools = value;
-                    break;
-                case "workDir":
-                    this.workingDirectory = base64Decode(value);
-                    break;
-                case "repoUrl":
-                    this.repoUrl = base64Decode(value);
-                    break;
-                case "defaultWsPath":
-                    this.defaultWorkspacePath = base64Decode(value);
                     break;
                 case "maxTurns":
                     this.maxTurns = Integer.parseInt(value);
                     break;
                 case "maxBudget":
                     this.maxBudgetUsd = Double.parseDouble(value);
-                    break;
-                case "branch":
-                    this.targetBranch = base64Decode(value);
-                    break;
-                case "baseBranch":
-                    this.baseBranch = base64Decode(value);
-                    break;
-                case "push":
-                    this.pushToOrigin = Boolean.parseBoolean(value);
-                    break;
-                case "workstreamUrl":
-                    this.workstreamUrl = base64Decode(value);
-                    break;
-                case "gitUserName":
-                    this.gitUserName = base64Decode(value);
-                    break;
-                case "gitUserEmail":
-                    this.gitUserEmail = base64Decode(value);
                     break;
                 case "centralMcp":
                     this.centralizedMcpConfig = base64Decode(value);
@@ -1996,9 +1972,6 @@ public class ClaudeCodeJob extends GitManagedJob {
                     break;
                 case "planDoc":
                     this.planningDocument = base64Decode(value);
-                    break;
-                case "protectTests":
-                    this.protectTestFiles = Boolean.parseBoolean(value);
                     break;
             }
         }

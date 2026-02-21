@@ -85,6 +85,83 @@ import java.util.regex.Pattern;
  */
 public abstract class GitManagedJob implements Job, ConsoleFeatures {
 
+    /**
+     * Interface for objects that can receive git-managed job properties
+     * during deserialization. Both {@link GitManagedJob} instances and
+     * {@link ClaudeCodeJob.Factory} implement this to share the
+     * property-parsing logic in {@link #applyGitProperty}.
+     */
+    public interface GitPropertyTarget {
+        /** Sets the working directory path. */
+        void setWorkingDirectory(String workingDirectory);
+        /** Sets the git repository URL. */
+        void setRepoUrl(String repoUrl);
+        /** Sets the default workspace path for repo checkouts. */
+        void setDefaultWorkspacePath(String defaultWorkspacePath);
+        /** Sets the target branch for git operations. */
+        void setTargetBranch(String targetBranch);
+        /** Sets the base branch for new branch creation. */
+        void setBaseBranch(String baseBranch);
+        /** Sets whether to push commits to origin. */
+        void setPushToOrigin(boolean pushToOrigin);
+        /** Sets the workstream URL for status reporting. */
+        void setWorkstreamUrl(String workstreamUrl);
+        /** Sets the git user name for commits. */
+        void setGitUserName(String gitUserName);
+        /** Sets the git user email for commits. */
+        void setGitUserEmail(String gitUserEmail);
+        /** Sets whether to protect test files from modification. */
+        void setProtectTestFiles(boolean protectTestFiles);
+    }
+
+    /**
+     * Applies a git-managed property to the given target if the key matches
+     * a known git property. This centralizes the deserialization logic for
+     * properties shared between {@link GitManagedJob} and
+     * {@link ClaudeCodeJob.Factory}.
+     *
+     * @param key    the property key
+     * @param value  the encoded property value
+     * @param target the target to apply the property to
+     * @return true if the key was recognized and applied, false otherwise
+     */
+    protected static boolean applyGitProperty(String key, String value, GitPropertyTarget target) {
+        switch (key) {
+            case "workDir":
+                target.setWorkingDirectory(base64Decode(value));
+                return true;
+            case "repoUrl":
+                target.setRepoUrl(base64Decode(value));
+                return true;
+            case "defaultWsPath":
+                target.setDefaultWorkspacePath(base64Decode(value));
+                return true;
+            case "branch":
+                target.setTargetBranch(base64Decode(value));
+                return true;
+            case "baseBranch":
+                target.setBaseBranch(base64Decode(value));
+                return true;
+            case "push":
+                target.setPushToOrigin(Boolean.parseBoolean(value));
+                return true;
+            case "workstreamUrl":
+                target.setWorkstreamUrl(base64Decode(value));
+                return true;
+            case "gitUserName":
+                target.setGitUserName(base64Decode(value));
+                return true;
+            case "gitUserEmail":
+                target.setGitUserEmail(base64Decode(value));
+                return true;
+            case "protectTests":
+                target.setProtectTestFiles(Boolean.parseBoolean(value));
+                return true;
+            default:
+                return false;
+        }
+    }
+
     /** Default maximum file size to commit (1 MB). */
     public static final long DEFAULT_MAX_FILE_SIZE = 1024 * 1024;
 
@@ -161,6 +238,20 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
     private final CompletableFuture<Void> future = new CompletableFuture<>();
 
     private String workstreamUrl;
+
+    /** Adapter that delegates {@link GitPropertyTarget} methods to this job's fields. */
+    private final GitPropertyTarget gitPropertyTarget = new GitPropertyTarget() {
+        @Override public void setWorkingDirectory(String v) { workingDirectory = v; }
+        @Override public void setRepoUrl(String v) { repoUrl = v; }
+        @Override public void setDefaultWorkspacePath(String v) { defaultWorkspacePath = v; }
+        @Override public void setTargetBranch(String v) { targetBranch = v; }
+        @Override public void setBaseBranch(String v) { baseBranch = v; }
+        @Override public void setPushToOrigin(boolean v) { pushToOrigin = v; }
+        @Override public void setWorkstreamUrl(String v) { workstreamUrl = v; }
+        @Override public void setGitUserName(String v) { gitUserName = v; }
+        @Override public void setGitUserEmail(String v) { gitUserEmail = v; }
+        @Override public void setProtectTestFiles(boolean v) { protectTestFiles = v; }
+    };
 
     /**
      * Default constructor for deserialization.
@@ -1852,48 +1943,20 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
 
     @Override
     public void set(String key, String value) {
+        if (applyGitProperty(key, value, gitPropertyTarget)) return;
+
         switch (key) {
             case "taskId":
                 this.taskId = value;
                 break;
-            case "branch":
-                this.targetBranch = base64Decode(value);
-                break;
-            case "baseBranch":
-                this.baseBranch = base64Decode(value);
-                break;
-            case "workDir":
-                this.workingDirectory = base64Decode(value);
-                break;
-            case "repoUrl":
-                this.repoUrl = base64Decode(value);
-                break;
-            case "defaultWsPath":
-                this.defaultWorkspacePath = base64Decode(value);
-                break;
             case "maxFileSize":
                 this.maxFileSizeBytes = Long.parseLong(value);
-                break;
-            case "push":
-                this.pushToOrigin = Boolean.parseBoolean(value);
                 break;
             case "createBranch":
                 this.createBranchIfMissing = Boolean.parseBoolean(value);
                 break;
             case "dryRun":
                 this.dryRun = Boolean.parseBoolean(value);
-                break;
-            case "protectTests":
-                this.protectTestFiles = Boolean.parseBoolean(value);
-                break;
-            case "gitUserName":
-                this.gitUserName = base64Decode(value);
-                break;
-            case "gitUserEmail":
-                this.gitUserEmail = base64Decode(value);
-                break;
-            case "workstreamUrl":
-                this.workstreamUrl = base64Decode(value);
                 break;
         }
     }
