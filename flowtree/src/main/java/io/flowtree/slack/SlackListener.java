@@ -91,6 +91,7 @@ public class SlackListener implements ConsoleFeatures {
     private int apiPort;
     private String centralizedMcpConfig;
     private String pushedToolsConfig;
+    private String defaultWorkspacePath;
 
     private WorkstreamConfig workstreamConfig;
     private File configFile;
@@ -187,6 +188,25 @@ public class SlackListener implements ConsoleFeatures {
      */
     public void setPushedToolsConfig(String pushedToolsConfig) {
         this.pushedToolsConfig = pushedToolsConfig;
+    }
+
+    /**
+     * Returns the global default workspace path for repo checkouts.
+     */
+    public String getDefaultWorkspacePath() {
+        return defaultWorkspacePath;
+    }
+
+    /**
+     * Sets the global default workspace path for repo checkouts.
+     * Passed to every {@link ClaudeCodeJob.Factory} so agents know
+     * where to clone repositories when no explicit working directory
+     * is configured.
+     *
+     * @param defaultWorkspacePath the absolute path for repo checkouts
+     */
+    public void setDefaultWorkspacePath(String defaultWorkspacePath) {
+        this.defaultWorkspacePath = defaultWorkspacePath;
     }
 
     /**
@@ -339,6 +359,16 @@ public class SlackListener implements ConsoleFeatures {
 
         if (workstream.getWorkingDirectory() != null) {
             factory.setWorkingDirectory(workstream.getWorkingDirectory());
+        }
+
+        // Repository URL for automatic checkout
+        if (workstream.getRepoUrl() != null) {
+            factory.setRepoUrl(workstream.getRepoUrl());
+        }
+
+        // Default workspace path for repo checkouts
+        if (defaultWorkspacePath != null) {
+            factory.setDefaultWorkspacePath(defaultWorkspacePath);
         }
 
         // Git identity

@@ -129,10 +129,15 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
         ".github/actions/**"
     ));
 
+    /** Default workspace path when /workspace/project does not exist. */
+    private static final String FALLBACK_WORKSPACE_DIR = "/tmp/flowtree-workspaces";
+
     private String taskId;
     private String targetBranch;
     private String baseBranch = "master";
     private String workingDirectory;
+    private String repoUrl;
+    private String defaultWorkspacePath;
     private long maxFileSizeBytes = DEFAULT_MAX_FILE_SIZE;
     private Set<String> excludedPatterns = new HashSet<>(DEFAULT_EXCLUDED_PATTERNS);
     private Set<String> additionalExcludedPatterns = new HashSet<>();
@@ -205,6 +210,13 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
         Exception error = null;
 
         try {
+            // Resolve working directory from repoUrl if needed.
+            // This clones the repo if a repoUrl is specified but no
+            // working directory is set (or the directory is empty).
+            if (repoUrl != null && !repoUrl.isEmpty()) {
+                resolveAndCloneRepository();
+            }
+
             // Prepare working directory: verify clean state, checkout branch,
             // pull latest. This must happen before doWork() so the agent
             // operates on the current remote state of the target branch.
@@ -403,6 +415,172 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
             executeGit("merge", "--abort");
             log("Merge aborted -- agent will be instructed to resolve conflicts");
         }
+    }
+
+    /**
+     * Resolves the working directory from a {@link #repoUrl} and clones
+     * the repository if needed.
+     *
+     * <p>When {@code repoUrl} is set but {@code workingDirectory} is null,
+     * the directory is resolved using the following priority:</p>
+     * <ol>
+     *   <li>{@link #defaultWorkspacePath} from the global YAML configuration</li>
+     *   <li>{@code /workspace/project} if that directory exists</li>
+     *   <li>{@code /tmp/flowtree-workspaces/<repo-name>} as a last resort</li>
+     * </ol>
+     *
+     * <p>If the resolved directory already contains a {@code .git} directory,
+     * the clone step is skipped (the repo is already present). Otherwise,
+     * the repo is cloned into that directory.</p>
+     *
+     * @throws IOException if a git command fails to execute
+     * @throws InterruptedException if a git command is interrupted
+     */
+    private void resolveAndCloneRepository() throws IOException, InterruptedException {
+        // If workingDirectory is already set, just ensure the repo is there
+        if (workingDirectory != null && !workingDirectory.isEmpty()) {
+            File workDir = new File(workingDirectory);
+            if (!new File(workDir, ".git").exists() && !workDir.exists()) {
+                log("Working directory does not exist, cloning " + repoUrl + " into " + workingDirectory);
+                cloneRepository(workingDirectory);
+            }
+            return;
+        }
+
+        // Resolve the workspace path
+        String resolvedPath = resolveWorkspacePath();
+        log("Resolved workspace path: " + resolvedPath);
+
+        File resolvedDir = new File(resolvedPath);
+        if (new File(resolvedDir, ".git").exists()) {
+            log("Repository already exists at " + resolvedPath);
+            workingDirectory = resolvedPath;
+            return;
+        }
+
+        // Clone the repository
+        cloneRepository(resolvedPath);
+        workingDirectory = resolvedPath;
+    }
+
+    /**
+     * Resolves the workspace path for a repo URL checkout.
+     *
+     * <p>Resolution order:</p>
+     * <ol>
+     *   <li>{@link #defaultWorkspacePath} if explicitly configured</li>
+     *   <li>{@code /workspace/project} if the directory exists</li>
+     *   <li>{@code /tmp/flowtree-workspaces/<repo-name>} as fallback</li>
+     * </ol>
+     *
+     * @return the resolved absolute path for the workspace
+     */
+    private String resolveWorkspacePath() {
+        // 1. Use configured default workspace path
+        if (defaultWorkspacePath != null && !defaultWorkspacePath.isEmpty()) {
+            return defaultWorkspacePath;
+        }
+
+        // 2. Check if /workspace/project exists
+        File defaultDir = new File("/workspace/project");
+        if (defaultDir.exists() && defaultDir.isDirectory()) {
+            return "/workspace/project";
+        }
+
+        // 3. Fall back to /tmp with a repo-derived name
+        String repoName = extractRepoName(repoUrl);
+        return FALLBACK_WORKSPACE_DIR + "/" + repoName;
+    }
+
+    /**
+     * Extracts a filesystem-safe repository name from a git URL.
+     *
+     * <p>Handles SSH ({@code git@github.com:owner/repo.git}) and
+     * HTTPS ({@code https://github.com/owner/repo.git}) formats.
+     * Falls back to a hash-based name if parsing fails.</p>
+     *
+     * @param url the git remote URL
+     * @return a filesystem-safe name derived from the repo
+     */
+    private static String extractRepoName(String url) {
+        if (url == null || url.isEmpty()) {
+            return "unknown";
+        }
+
+        String path = url;
+
+        // SSH format: git@github.com:owner/repo.git
+        if (path.contains(":") && path.contains("@")) {
+            int colonIdx = path.lastIndexOf(':');
+            path = path.substring(colonIdx + 1);
+        } else {
+            // HTTPS format: strip protocol and host
+            int slashSlash = path.indexOf("//");
+            if (slashSlash >= 0) {
+                path = path.substring(slashSlash + 2);
+                int firstSlash = path.indexOf('/');
+                if (firstSlash >= 0) {
+                    path = path.substring(firstSlash + 1);
+                }
+            }
+        }
+
+        // Remove .git suffix
+        if (path.endsWith(".git")) {
+            path = path.substring(0, path.length() - 4);
+        }
+
+        // Replace slashes with dashes for a flat directory name
+        return path.replace('/', '-');
+    }
+
+    /**
+     * Clones the {@link #repoUrl} into the specified directory.
+     *
+     * <p>Creates parent directories as needed. The clone is performed
+     * with {@code git clone} into the target path.</p>
+     *
+     * @param targetPath the directory to clone into
+     * @throws IOException if a git command fails to execute
+     * @throws InterruptedException if a git command is interrupted
+     */
+    private void cloneRepository(String targetPath) throws IOException, InterruptedException {
+        File targetDir = new File(targetPath);
+        File parentDir = targetDir.getParentFile();
+        if (parentDir != null && !parentDir.exists()) {
+            parentDir.mkdirs();
+        }
+
+        log("Cloning " + repoUrl + " into " + targetPath + "...");
+
+        List<String> command = new ArrayList<>();
+        command.add("git");
+        command.add("clone");
+        command.add(repoUrl);
+        command.add(targetPath);
+
+        ProcessBuilder pb = new ProcessBuilder(command);
+        pb.redirectErrorStream(true);
+        pb.environment().put("GIT_SSH_COMMAND",
+                "ssh -o StrictHostKeyChecking=accept-new -o BatchMode=yes");
+
+        Process process = pb.start();
+        StringBuilder output = new StringBuilder();
+        try (BufferedReader reader = new BufferedReader(
+                new InputStreamReader(process.getInputStream()))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                output.append(line).append("\n");
+            }
+        }
+
+        int exitCode = process.waitFor();
+        if (exitCode != 0) {
+            throw new RuntimeException(
+                "Failed to clone " + repoUrl + " (exit " + exitCode + "): " + output.toString().trim());
+        }
+
+        log("Clone completed successfully");
     }
 
     /**
@@ -1219,6 +1397,41 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
         this.workingDirectory = workingDirectory;
     }
 
+    /**
+     * Returns the git repository URL for automatic checkout.
+     */
+    public String getRepoUrl() {
+        return repoUrl;
+    }
+
+    /**
+     * Sets the git repository URL. When set and no
+     * {@link #workingDirectory} is specified, the repo is cloned
+     * into a resolved workspace path before the job starts.
+     *
+     * @param repoUrl the git clone URL (e.g., "https://github.com/owner/repo.git")
+     */
+    public void setRepoUrl(String repoUrl) {
+        this.repoUrl = repoUrl;
+    }
+
+    /**
+     * Returns the default workspace path for repo checkouts.
+     */
+    public String getDefaultWorkspacePath() {
+        return defaultWorkspacePath;
+    }
+
+    /**
+     * Sets the default workspace path used when a repo URL is specified
+     * but no explicit working directory is provided.
+     *
+     * @param defaultWorkspacePath the absolute path for repo checkouts
+     */
+    public void setDefaultWorkspacePath(String defaultWorkspacePath) {
+        this.defaultWorkspacePath = defaultWorkspacePath;
+    }
+
     public long getMaxFileSizeBytes() {
         return maxFileSizeBytes;
     }
@@ -1614,6 +1827,12 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
         if (workingDirectory != null) {
             sb.append("::workDir:=").append(base64Encode(workingDirectory));
         }
+        if (repoUrl != null) {
+            sb.append("::repoUrl:=").append(base64Encode(repoUrl));
+        }
+        if (defaultWorkspacePath != null) {
+            sb.append("::defaultWsPath:=").append(base64Encode(defaultWorkspacePath));
+        }
         sb.append("::maxFileSize:=").append(maxFileSizeBytes);
         sb.append("::push:=").append(pushToOrigin);
         sb.append("::createBranch:=").append(createBranchIfMissing);
@@ -1645,6 +1864,12 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
                 break;
             case "workDir":
                 this.workingDirectory = base64Decode(value);
+                break;
+            case "repoUrl":
+                this.repoUrl = base64Decode(value);
+                break;
+            case "defaultWsPath":
+                this.defaultWorkspacePath = base64Decode(value);
                 break;
             case "maxFileSize":
                 this.maxFileSizeBytes = Long.parseLong(value);

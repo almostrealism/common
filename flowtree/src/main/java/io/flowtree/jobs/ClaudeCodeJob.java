@@ -1546,6 +1546,8 @@ public class ClaudeCodeJob extends GitManagedJob {
         private int index;
         private String allowedTools = DEFAULT_TOOLS;
         private String workingDirectory;
+        private String repoUrl;
+        private String defaultWorkspacePath;
         private int maxTurns = 50;
         private double maxBudgetUsd = 10.0;
         private String targetBranch;
@@ -1629,6 +1631,41 @@ public class ClaudeCodeJob extends GitManagedJob {
         public void setWorkingDirectory(String workingDirectory) {
             this.workingDirectory = workingDirectory;
             set("workDir", base64Encode(workingDirectory));
+        }
+
+        /**
+         * Returns the git repository URL for automatic checkout.
+         */
+        public String getRepoUrl() {
+            return repoUrl;
+        }
+
+        /**
+         * Sets the git repository URL. When set, the agent will clone
+         * this repo if no working directory is specified.
+         *
+         * @param repoUrl the git clone URL
+         */
+        public void setRepoUrl(String repoUrl) {
+            this.repoUrl = repoUrl;
+            set("repoUrl", base64Encode(repoUrl));
+        }
+
+        /**
+         * Returns the default workspace path for repo checkouts.
+         */
+        public String getDefaultWorkspacePath() {
+            return defaultWorkspacePath;
+        }
+
+        /**
+         * Sets the default workspace path for repo checkouts.
+         *
+         * @param defaultWorkspacePath the absolute path for repo checkouts
+         */
+        public void setDefaultWorkspacePath(String defaultWorkspacePath) {
+            this.defaultWorkspacePath = defaultWorkspacePath;
+            set("defaultWsPath", base64Encode(defaultWorkspacePath));
         }
 
         public int getMaxTurns() {
@@ -1841,6 +1878,14 @@ public class ClaudeCodeJob extends GitManagedJob {
             job.setMaxTurns(maxTurns);
             job.setMaxBudgetUsd(maxBudgetUsd);
 
+            // Repository URL for automatic checkout
+            if (repoUrl != null) {
+                job.setRepoUrl(repoUrl);
+            }
+            if (defaultWorkspacePath != null) {
+                job.setDefaultWorkspacePath(defaultWorkspacePath);
+            }
+
             // Git management settings
             if (targetBranch != null) {
                 job.setTargetBranch(targetBranch);
@@ -1909,6 +1954,12 @@ public class ClaudeCodeJob extends GitManagedJob {
                     break;
                 case "workDir":
                     this.workingDirectory = base64Decode(value);
+                    break;
+                case "repoUrl":
+                    this.repoUrl = base64Decode(value);
+                    break;
+                case "defaultWsPath":
+                    this.defaultWorkspacePath = base64Decode(value);
                     break;
                 case "maxTurns":
                     this.maxTurns = Integer.parseInt(value);

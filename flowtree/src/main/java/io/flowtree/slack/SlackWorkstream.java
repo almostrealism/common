@@ -70,6 +70,7 @@ public class SlackWorkstream {
     private String baseBranch;
     private boolean pushToOrigin;
     private String workingDirectory;
+    private String repoUrl;
 
     // Job configuration
     private String allowedTools;
@@ -224,6 +225,25 @@ public class SlackWorkstream {
 
     public void setWorkingDirectory(String workingDirectory) {
         this.workingDirectory = workingDirectory;
+    }
+
+    /**
+     * Returns the git repository URL for automatic checkout.
+     *
+     * <p>When set (and {@code workingDirectory} is not), the job will
+     * clone this repo into a resolved workspace path before starting work.</p>
+     */
+    public String getRepoUrl() {
+        return repoUrl;
+    }
+
+    /**
+     * Sets the git repository URL for automatic checkout.
+     *
+     * @param repoUrl the git clone URL (e.g., "https://github.com/owner/repo.git")
+     */
+    public void setRepoUrl(String repoUrl) {
+        this.repoUrl = repoUrl;
     }
 
     public String getAllowedTools() {

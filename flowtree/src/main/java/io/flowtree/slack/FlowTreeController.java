@@ -203,6 +203,11 @@ public class FlowTreeController implements ConsoleFeatures {
         log("Loaded " + config.getWorkstreams().size() +
                           " workstream(s) from " + configFile.getName());
 
+        // Pass global default workspace path to listener
+        if (config.getDefaultWorkspacePath() != null) {
+            listener.setDefaultWorkspacePath(config.getDefaultWorkspacePath());
+        }
+
         // Pass config and file reference to listener for /flowtree setup persistence
         listener.setWorkstreamConfig(config, configFile);
 
@@ -241,6 +246,10 @@ public class FlowTreeController implements ConsoleFeatures {
             if (config.ensureWorkstreamIds()) {
                 config.saveToYaml(configFile);
                 log("Generated workstream IDs and saved to " + configFile.getName());
+            }
+
+            if (config.getDefaultWorkspacePath() != null) {
+                listener.setDefaultWorkspacePath(config.getDefaultWorkspacePath());
             }
 
             for (SlackWorkstream workstream : config.toWorkstreams()) {
