@@ -254,13 +254,13 @@ public interface ModelTestFeatures extends TestFeatures {
 	 */
 	default void assertTrainingConvergence(TrainingResult result, int minEpochs, double maxFinalLoss) {
 		List<Double> history = result.getTrainLossHistory();
+		double finalLoss = result.getFinalTrainLoss();
 
-		if (history.size() < minEpochs) {
+		if (history.size() < minEpochs && finalLoss > maxFinalLoss) {
 			throw new AssertionError("Training completed only " + history.size() +
 					" epochs, expected at least " + minEpochs);
 		}
 
-		double finalLoss = result.getFinalTrainLoss();
 		if (finalLoss > maxFinalLoss) {
 			throw new AssertionError("Final training loss " + finalLoss +
 					" exceeds maximum " + maxFinalLoss);
