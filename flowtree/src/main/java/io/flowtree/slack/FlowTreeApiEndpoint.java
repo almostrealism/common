@@ -370,6 +370,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
 
         // Apply optional overrides from the request body
         // (targetBranch was already extracted during workstream resolution above)
+        String repoUrl = extractJsonField(body, "repoUrl");
         String baseBranch = extractJsonField(body, "baseBranch");
         int maxTurns = extractJsonIntField(body, "maxTurns");
         double maxBudgetUsd = extractJsonDoubleField(body, "maxBudgetUsd");
@@ -396,6 +397,17 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             factory.setWorkingDirectory(workstream.getWorkingDirectory());
         }
 
+        // Repository URL for automatic checkout (request body overrides workstream default)
+        String effectiveRepoUrl = repoUrl != null ? repoUrl : workstream.getRepoUrl();
+        if (effectiveRepoUrl != null) {
+            factory.setRepoUrl(effectiveRepoUrl);
+        }
+
+        // Default workspace path from listener (global config)
+        if (listener != null && listener.getDefaultWorkspacePath() != null) {
+            factory.setDefaultWorkspacePath(listener.getDefaultWorkspacePath());
+        }
+
         // Git identity
         if (workstream.getGitUserName() != null) {
             factory.setGitUserName(workstream.getGitUserName());
@@ -417,6 +429,11 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         // Per-workstream env vars
         if (workstream.getEnv() != null && !workstream.getEnv().isEmpty()) {
             factory.setWorkstreamEnv(workstream.getEnv());
+        }
+
+        // Planning document
+        if (workstream.getPlanningDocument() != null) {
+            factory.setPlanningDocument(workstream.getPlanningDocument());
         }
 
         // Test file protection

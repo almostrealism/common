@@ -12,6 +12,13 @@
 #   export SLACK_APP_TOKEN=xapp-your-app-token
 #   java -cp flowtree.jar io.flowtree.slack.FlowTreeController --config workstreams.yaml
 
+# Default workspace path (optional, global).
+# When a workstream specifies repoUrl but no workingDirectory, the repo
+# is cloned into this path. If omitted, defaults to /workspace/project
+# (if it exists) or a temporary directory under /tmp.
+#
+# defaultWorkspacePath: /workspace/project
+
 # Centralized MCP servers (optional).
 # When present, these servers are started as HTTP processes by the controller
 # and agents connect over HTTP instead of stdio. This enables cross-project
@@ -56,17 +63,21 @@ workstreams:
   # workstreamId is auto-generated on first run and written back to this file.
   # Do not remove it once generated — it is used for job tracking and threading.
 
-  # Project Alpha — uses global pushed tool env (if any)
+  # Project Alpha — uses repoUrl instead of workingDirectory.
+  # The repo is automatically cloned into the default workspace path
+  # (or /workspace/project if it exists, or /tmp otherwise).
   - channelId: "C0123456789"           # Get from Slack channel details
     channelName: "#project-alpha-agent"
     defaultBranch: "feature/alpha"
     baseBranch: "master"               # New branches are created from origin/<baseBranch>
+    repoUrl: "https://github.com/your-org/project-alpha.git"
     pushToOrigin: true
     allowedTools: "Read,Edit,Write,Bash,Glob,Grep"
     maxTurns: 50
     maxBudgetUsd: 10.0
 
-  # Project Beta — per-workstream env overrides the global pushed tool env.
+  # Project Beta — uses explicit workingDirectory (legacy approach).
+  # Per-workstream env overrides the global pushed tool env.
   # Useful when different workstreams target repos in different GitHub orgs.
   - channelId: "C9876543210"
     channelName: "#project-beta-agent"

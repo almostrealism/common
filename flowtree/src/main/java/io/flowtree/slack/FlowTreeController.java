@@ -29,6 +29,7 @@ import io.flowtree.jobs.McpToolDiscovery;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.OutputFeatures;
+import org.almostrealism.util.SignalWireDeliveryProvider;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -202,6 +203,11 @@ public class FlowTreeController implements ConsoleFeatures {
         log("Loaded " + config.getWorkstreams().size() +
                           " workstream(s) from " + configFile.getName());
 
+        // Pass global default workspace path to listener
+        if (config.getDefaultWorkspacePath() != null) {
+            listener.setDefaultWorkspacePath(config.getDefaultWorkspacePath());
+        }
+
         // Pass config and file reference to listener for /flowtree setup persistence
         listener.setWorkstreamConfig(config, configFile);
 
@@ -240,6 +246,10 @@ public class FlowTreeController implements ConsoleFeatures {
             if (config.ensureWorkstreamIds()) {
                 config.saveToYaml(configFile);
                 log("Generated workstream IDs and saved to " + configFile.getName());
+            }
+
+            if (config.getDefaultWorkspacePath() != null) {
+                listener.setDefaultWorkspacePath(config.getDefaultWorkspacePath());
             }
 
             for (SlackWorkstream workstream : config.toWorkstreams()) {
@@ -604,6 +614,9 @@ public class FlowTreeController implements ConsoleFeatures {
         statsStore = new JobStatsStore(dataDir + "/stats");
         statsStore.initialize();
         notifier.setStatsStore(statsStore);
+
+        // Initialize SignalWire SMS alerting (no-op if config file is absent)
+        SignalWireDeliveryProvider.attachDefault();
 
         try {
             apiEndpoint = new FlowTreeApiEndpoint(apiPort, notifier);
