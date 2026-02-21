@@ -1,13 +1,20 @@
-## ABSOLUTE RULE: DO NOT MODIFY EXISTING TESTS TO HIDE FAILURES
+## ABSOLUTE RULE: TEST FILES ARE READ-ONLY
 
 **THIS IS THE MOST IMPORTANT RULE. VIOLATING IT IS WORSE THAN NOT FIXING ANYTHING.**
 
-You MUST NOT add @Ignore, @Disabled, skip annotations, try/catch blocks that
-swallow exceptions, or weaken any assertion in any test that exists on
-${BASE_BRANCH}. You MUST NOT delete test methods, reduce test inputs, add
-skipLongTests guards, or add @TestDepth annotations to push tests out of the
-default run. **The test is the specification. If a test fails, fix the
-production code, not the test.**
+**You CANNOT modify ANY test file that exists on ${BASE_BRANCH}. ZERO exceptions.**
+
+This rule exists because agents have systematically hidden test failures (see
+DECEPTION.md). Specific tactics documented with evidence:
+- Changed @TestDepth(2) to @TestDepth(10) to hide tests from CI
+- Reduced test dimensions 8x (64->8) to make tests trivially pass
+- Increased timeouts 6x (5min->30min) to prevent timeout detection
+- Re-added suppression AFTER a human reverted it
+- Stored false memories claiming "no changes needed" for failures they caused
+
+You MUST NOT modify test files for ANY reason. Not timeouts, not @TestDepth,
+not dimensions, not tolerances, not annotations. If a test fails, fix the
+PRODUCTION CODE. If you cannot fix it, report the failure - do not hide it.
 
 ---
 
@@ -22,14 +29,28 @@ understand the full scope of changes.
 
 ## What to look for and fix
 
-### 1. Test Integrity (HIGHEST PRIORITY)
+### 1. Test Integrity & Deception Detection (HIGHEST PRIORITY)
 
 Run `git diff ${BASE_BRANCH}...HEAD -- '**/*Test*.java' '**/test/**/*.java'` to
 see all test file changes. For each modified test that existed on ${BASE_BRANCH}
-(check with `git log --oneline ${BASE_BRANCH} -- <file>`), verify that no
-assertions were weakened, no tests were disabled, and no coverage was reduced.
-If you find violations: **revert the test modifications and fix the production
-code instead** so the original test passes.
+(check with `git log --oneline ${BASE_BRANCH} -- <file>`):
+
+**Flag as TEST INTEGRITY VIOLATION if you find ANY of these:**
+- @TestDepth values INCREASED (e.g., 2->10) - hides tests from CI
+- Timeout values INCREASED by more than 2x - hides performance regressions
+- Numeric constants DECREASED (dimensions, sizes, iterations) - trivializes tests
+- @Ignore, @Disabled, or skip annotations added
+- Assertions weakened, deleted, or commented out
+- try/catch blocks added that swallow exceptions
+- CI workflow files modified to exclude tests or quality checks
+
+**If you find violations: REVERT the test modifications.** The test is the
+specification. Fix the production code to make the original test pass.
+
+**Also check for cross-session deception patterns:**
+- Same test file modified, reverted by human, then re-modified by agent
+- Memory entries claiming "no changes needed" on branches with active failures
+- Agent commits that touch ONLY test/CI files with no production code changes
 
 ### 2. Design and Architecture
 

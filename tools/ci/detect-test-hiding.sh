@@ -139,6 +139,60 @@ for FILE in $MODIFIED_TEST_FILES; do
         record_violation "$FILE" "CODE_COMMENTED_OUT" \
             "Significant code deleted (${DELETED_CODE} lines) with many comment lines added (${ADDED_COMMENTED}) — possible commenting-out"
     fi
+
+    # ── Pattern 8: @TestDepth value INCREASED (not just added) ──
+    # Catches the specific tactic of changing @TestDepth(2) to @TestDepth(10)
+    REMOVED_DEPTH_LINES=$(echo "$DIFF" | grep -oP '^\-.*@TestDepth\(\K[0-9]+' || true)
+    ADDED_DEPTH_LINES=$(echo "$DIFF" | grep -oP '^\+.*@TestDepth\(\K[0-9]+' || true)
+    if [ -n "$REMOVED_DEPTH_LINES" ] && [ -n "$ADDED_DEPTH_LINES" ]; then
+        OLD_DEPTH=$(echo "$REMOVED_DEPTH_LINES" | head -1)
+        NEW_DEPTH=$(echo "$ADDED_DEPTH_LINES" | head -1)
+        if [ "$NEW_DEPTH" -gt "$OLD_DEPTH" ]; then
+            record_violation "$FILE" "TEST_DEPTH_ESCALATED" \
+                "@TestDepth increased from ${OLD_DEPTH} to ${NEW_DEPTH} — hides test from CI runs at lower depth"
+        fi
+    fi
+
+    # ── Pattern 9: Timeout value INCREASED by more than 2x ──
+    # Catches inflating timeouts to prevent timeout-based failure detection
+    REMOVED_TIMEOUTS=$(echo "$DIFF" | grep -oP '^\-.*timeout\s*=\s*\K[0-9]+(\s*\*\s*[0-9]+)*' || true)
+    ADDED_TIMEOUTS=$(echo "$DIFF" | grep -oP '^\+.*timeout\s*=\s*\K[0-9]+(\s*\*\s*[0-9]+)*' || true)
+    if [ -n "$REMOVED_TIMEOUTS" ] && [ -n "$ADDED_TIMEOUTS" ]; then
+        # Evaluate expressions like "5 * 60000" to get actual values
+        for OLD_TIMEOUT_EXPR in $REMOVED_TIMEOUTS; do
+            OLD_TIMEOUT=$((OLD_TIMEOUT_EXPR)) 2>/dev/null || OLD_TIMEOUT=0
+            if [ "$OLD_TIMEOUT" -gt 0 ]; then
+                for NEW_TIMEOUT_EXPR in $ADDED_TIMEOUTS; do
+                    NEW_TIMEOUT=$((NEW_TIMEOUT_EXPR)) 2>/dev/null || NEW_TIMEOUT=0
+                    if [ "$NEW_TIMEOUT" -gt "$((OLD_TIMEOUT * 2))" ]; then
+                        record_violation "$FILE" "TIMEOUT_INFLATED" \
+                            "Timeout increased by more than 2x (${OLD_TIMEOUT} -> ${NEW_TIMEOUT}) — may hide performance regressions"
+                        break 2
+                    fi
+                done
+            fi
+        done
+    fi
+
+    # ── Pattern 10: Numeric constants DECREASED in test methods ──
+    # Catches reducing dimensions/sizes/iterations to make tests trivially pass
+    # Look for integer variable assignments where the value decreased
+    REMOVED_ASSIGNMENTS=$(echo "$DIFF" | grep -oP '^\-\s*int\s+\w+\s*=\s*\K[0-9]+' || true)
+    ADDED_ASSIGNMENTS=$(echo "$DIFF" | grep -oP '^\+\s*int\s+\w+\s*=\s*\K[0-9]+' || true)
+    if [ -n "$REMOVED_ASSIGNMENTS" ] && [ -n "$ADDED_ASSIGNMENTS" ]; then
+        DECREASED_COUNT=0
+        while IFS= read -r OLD_VAL; do
+            while IFS= read -r NEW_VAL; do
+                if [ "$NEW_VAL" -lt "$((OLD_VAL / 2))" ] && [ "$OLD_VAL" -gt 4 ]; then
+                    DECREASED_COUNT=$((DECREASED_COUNT + 1))
+                fi
+            done <<< "$ADDED_ASSIGNMENTS"
+        done <<< "$REMOVED_ASSIGNMENTS"
+        if [ "$DECREASED_COUNT" -gt 0 ]; then
+            record_violation "$FILE" "DIMENSIONS_REDUCED" \
+                "${DECREASED_COUNT} numeric constant(s) reduced by more than half — may trivialize test coverage"
+        fi
+    fi
 done
 
 # ── Output results ──

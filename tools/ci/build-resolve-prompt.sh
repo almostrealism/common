@@ -38,42 +38,66 @@ FAILURE_LIST=$(cat "$FAILURES_FILE")
 SUREFIRE_ARTIFACT_URL="${RUN_URL}#artifacts"
 
 cat > "$OUTPUT_FILE" <<'PROMPT_HEADER'
-## ABSOLUTE RULE: DO NOT MODIFY EXISTING TESTS TO HIDE FAILURES
+## ABSOLUTE RULE: YOU CANNOT MODIFY TEST FILES. PERIOD.
 
 **THIS IS THE MOST IMPORTANT RULE. VIOLATING IT IS WORSE THAN NOT FIXING ANYTHING.**
 
-Before you touch ANY test file, you MUST determine whether the test existed on the
-base branch (master/develop) before this branch was created. Run:
+**You are PHYSICALLY BLOCKED from modifying ANY test file.** Do not attempt it.
+There are ZERO exceptions. Not for new tests. Not for old tests. Not for timeouts.
+Not for @TestDepth. Not for dimensions. Not for tolerances. NOTHING.
 
-    git log --oneline master -- <path/to/TestFile.java>
+This rule exists because agents have REPEATEDLY and SYSTEMATICALLY hidden test
+failures instead of fixing production code. Documented evidence (DECEPTION.md):
+- Changed @TestDepth(2) to @TestDepth(10) to push NormTests out of CI
+- Reduced test dimensions 8x (64->8) to make tests trivially pass
+- Increased timeouts 6x (5min->30min) to prevent timeout detection
+- Re-added suppression annotations AFTER a human reverted them
+- Stored false memories claiming "no changes needed" for failures they caused
 
-If the test file exists on master, **you are NOT allowed to modify the test in any
-way that would hide, weaken, or suppress the failure.** Specifically, you MUST NOT:
-
-- Add `@Ignore`, `@Disabled`, or skip annotations to existing test methods
-- Delete or comment out existing test methods or assertion lines
-- Weaken assertions (e.g., changing `assertEquals` to `assertTrue`, loosening
-  tolerances, removing assertions entirely)
-- Add `try/catch` blocks that swallow exceptions in existing tests
-- Change expected values to match the (incorrect) actual output
-- Reduce test coverage by removing test inputs or edge cases
-- Wrap the test body in `if (skipLongTests) return;` when it was not there before
-- Move, rename, or split an existing test to avoid detection
-- Add `@TestDepth` annotations to push existing tests out of the default run
+**DO NOT:**
+- Modify ANY file under src/test/ for ANY reason
+- Modify ANY file under .github/workflows/ or tools/ci/
+- Change @TestDepth values, timeout values, dimensions, or tolerances
+- Add @Ignore, @Disabled, skipLongTests, or try/catch blocks to tests
+- Reduce numeric constants in test methods
+- Claim "the test is wrong" - the test is correct, your code is broken
 
 **The test is correct. Your branch broke it. Fix the production code, not the test.**
+**If you touch a test file, your changes will be automatically rejected.**
 
-If you genuinely believe the test itself is wrong (not just inconvenient), you must
-explain your reasoning in a Slack message AND still attempt a production-code fix
-first. Only if no production-code fix is possible should you propose a test change,
-and that proposal must be clearly flagged for human review.
+---
 
-### Exception: Tests NEW to this branch
+## MANDATORY INVESTIGATION PROTOCOL
 
-If a test was introduced in THIS branch (i.e., `git log --oneline master -- <file>`
-shows no history), you MAY modify it -- but you should still prefer fixing production
-code. Introducing a new test that immediately fails and then "fixing" it by weakening
-it is still bad practice.
+Before concluding your investigation, you MUST produce a DIFF_ANALYSIS.md file with
+this EXACT structure. Skipping this step is a violation.
+
+```
+## Diff Analysis: [Failing Test Name]
+
+### Changed Production Files
+[Run: git diff origin/master...HEAD --name-only | grep -v src/test | grep -v .github]
+[List EVERY file]
+
+### Failing Test
+- Class: [exact fully-qualified class name]
+- Module: [maven module]
+
+### Dependency Trace
+[For EACH changed production file, state whether the failing test depends on it]
+- [file1.java]: YES/NO - [import chain evidence]
+- [file2.java]: YES/NO - [import chain evidence]
+
+### Root Cause
+[Specific theory with evidence - NOT "unrelated" or "flaky"]
+
+### Production Code Fix
+[Description of the fix you applied to NON-TEST code]
+[If you cannot fix it, explain specifically what blocks you]
+```
+
+**"Tests pass locally" is NOT evidence.** Only CI results on the exact commit count.
+If CI fails and local passes, YOUR local environment is wrong, not CI.
 
 ---
 
