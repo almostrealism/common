@@ -54,10 +54,12 @@ PAYLOAD=$(jq -n \
     --arg prompt "$PROMPT" \
     --arg branch "$BRANCH" \
     --arg base "$BASE_BRANCH" \
+    --argjson protect "${PROTECT_TEST_FILES:-false}" \
     '{
         prompt: $prompt,
         targetBranch: $branch,
-        baseBranch: $base
+        baseBranch: $base,
+        protectTestFiles: $protect
     }')
 
 if [ -n "${MAX_TURNS:-}" ]; then

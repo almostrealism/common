@@ -35,14 +35,38 @@ for xml in $(find "$REPORTS_DIR" -name "TEST-*.xml" 2>/dev/null); do
     CLASS=$(sed -n 's/.*testsuite[^>]*name="\([^"]*\)".*/\1/p' "$xml" | head -1)
 
     # Find test methods that have <failure> or <error> children.
-    # The grep -B1 looks for the <testcase> line preceding a <failure>/<error>.
-    while IFS= read -r method; do
-        if [ -n "$method" ]; then
-            echo "- ${CLASS}#${method}" >> "$OUTPUT_FILE"
+    # Uses awk to handle cases where <system-out> or other elements
+    # sit between <testcase> and <failure>/<error> tags.
+    # Note: uses POSIX awk (no gawk extensions) for portability.
+    while IFS= read -r line; do
+        if [ -n "$line" ]; then
+            echo "- ${line}" >> "$OUTPUT_FILE"
             FAILURE_COUNT=$((FAILURE_COUNT + 1))
         fi
-    done < <(grep -B1 -E '<failure|<error' "$xml" \
-             | sed -n 's/.*testcase[^>]*name="\([^"]*\)".*/\1/p' || true)
+    done < <(awk -v suite_class="$CLASS" '
+        /<testcase / {
+            cname = ""; tname = "";
+            s = $0;
+            if (index(s, "classname=\"") > 0) {
+                sub(/.*classname="/, "", s);
+                sub(/".*/, "", s);
+                cname = s;
+            }
+            s = $0;
+            if (index(s, " name=\"") > 0) {
+                sub(/.* name="/, "", s);
+                sub(/".*/, "", s);
+                tname = s;
+            }
+        }
+        /<failure|<error/ {
+            if (tname != "") {
+                cls = (cname != "" ? cname : suite_class);
+                print cls "#" tname;
+            }
+            tname = "";
+        }
+    ' "$xml")
 done
 
 echo "failure_count=$FAILURE_COUNT"

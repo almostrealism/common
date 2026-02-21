@@ -121,6 +121,14 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
         ".claude/**", "settings.local.json"
     ));
 
+    /** Path patterns for test/CI files protected by {@link #protectTestFiles}. */
+    private static final Set<String> PROTECTED_PATH_PATTERNS = new HashSet<>(Arrays.asList(
+        "**/src/test/**",
+        "**/src/it/**",
+        ".github/workflows/**",
+        ".github/actions/**"
+    ));
+
     private String taskId;
     private String targetBranch;
     private String baseBranch = "master";
@@ -131,6 +139,7 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
     private boolean pushToOrigin = true;
     private boolean createBranchIfMissing = true;
     private boolean dryRun = false;
+    private boolean protectTestFiles = false;
     private String gitUserName;
     private String gitUserEmail;
 
@@ -171,6 +180,17 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
     protected abstract void doWork();
 
     /**
+     * Validates changes made by {@link #doWork()} before git operations.
+     * Subclasses can override to implement pre-commit validation logic.
+     *
+     * @return true to proceed with git operations, false to abort
+     * @throws Exception if validation encounters an error
+     */
+    protected boolean validateChanges() throws Exception {
+        return true;
+    }
+
+    /**
      * Returns the commit message for changes made by this job.
      * Subclasses should override to provide a descriptive message.
      *
@@ -198,7 +218,11 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
 
             // Handle git operations if a target branch is specified
             if (targetBranch != null && !targetBranch.isEmpty()) {
-                handleGitOperations();
+                if (validateChanges()) {
+                    handleGitOperations();
+                } else {
+                    warn("Change validation failed - skipping git operations");
+                }
             }
 
         } catch (Exception e) {
@@ -593,6 +617,17 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
                 continue;
             }
 
+            // Guardrail 1.5: Protect test/CI files that exist on the base branch
+            if (protectTestFiles && matchesAnyPattern(file, PROTECTED_PATH_PATTERNS)) {
+                if (existsOnBaseBranch(file)) {
+                    log("BLOCKED (protected - exists on " + baseBranch + "): " + file);
+                    skippedFiles.add(file + " (protected - exists on base branch)");
+                    continue;
+                } else {
+                    log("ALLOWED (branch-new file): " + file);
+                }
+            }
+
             // Guardrail 2: Check file size (only for existing files)
             if (!isDeleted && f.length() > maxFileSizeBytes) {
                 log("SKIP (size " + formatSize(f.length()) + "): " + file);
@@ -862,6 +897,24 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
         // Check remote branches
         result = executeGit("show-ref", "--verify", "--quiet", "refs/remotes/origin/" + branch);
         return result == 0;
+    }
+
+    /**
+     * Checks if a file exists on the base branch.
+     * Branch-new files (not present on the base branch) return {@code false}.
+     * Fails safe: returns {@code true} (protected) if the check errors out.
+     *
+     * @param file the file path to check
+     * @return true if the file exists on the base branch
+     */
+    private boolean existsOnBaseBranch(String file) {
+        try {
+            String ref = "origin/" + (baseBranch != null ? baseBranch : "master");
+            return executeGit("cat-file", "-e", ref + ":" + file) == 0;
+        } catch (Exception e) {
+            warn("Could not check base branch for " + file + ": " + e.getMessage());
+            return true; // Fail safe: protect if uncertain
+        }
     }
 
     private int executeGit(String... args) throws IOException, InterruptedException {
@@ -1172,6 +1225,26 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
      */
     public void setDryRun(boolean dryRun) {
         this.dryRun = dryRun;
+    }
+
+    /**
+     * Returns whether test file protection is enabled.
+     *
+     * <p>When enabled, test and CI files that exist on the base branch
+     * cannot be staged. This prevents agents from hiding test failures
+     * by modifying existing tests instead of fixing production code.</p>
+     */
+    public boolean isProtectTestFiles() {
+        return protectTestFiles;
+    }
+
+    /**
+     * Sets whether to protect test files that exist on the base branch.
+     *
+     * @param protectTestFiles true to block staging of existing test/CI files
+     */
+    public void setProtectTestFiles(boolean protectTestFiles) {
+        this.protectTestFiles = protectTestFiles;
     }
 
     /**
@@ -1502,6 +1575,7 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
         sb.append("::push:=").append(pushToOrigin);
         sb.append("::createBranch:=").append(createBranchIfMissing);
         sb.append("::dryRun:=").append(dryRun);
+        sb.append("::protectTests:=").append(protectTestFiles);
         if (gitUserName != null) {
             sb.append("::gitUserName:=").append(base64Encode(gitUserName));
         }
@@ -1540,6 +1614,9 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
                 break;
             case "dryRun":
                 this.dryRun = Boolean.parseBoolean(value);
+                break;
+            case "protectTests":
+                this.protectTestFiles = Boolean.parseBoolean(value);
                 break;
             case "gitUserName":
                 this.gitUserName = base64Decode(value);

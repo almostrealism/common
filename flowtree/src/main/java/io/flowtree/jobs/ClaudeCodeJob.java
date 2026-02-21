@@ -314,6 +314,16 @@ public class ClaudeCodeJob extends GitManagedJob {
             sb.append("Use these to check for code review feedback and address it.\n\n");
         }
 
+        // Test integrity policy -only when protectTestFiles is enabled
+        if (isProtectTestFiles()) {
+            sb.append("## Test Integrity Policy\n");
+            sb.append("You MUST NOT modify test files that exist on the base branch (");
+            sb.append(getBaseBranch() != null ? getBaseBranch() : "master");
+            sb.append("). Fix the production code instead. ");
+            sb.append("Tests you introduced on this branch may be modified. ");
+            sb.append("The commit harness will reject changes to protected test files.\n\n");
+        }
+
         // Git commit instructions -conditional on git management being active
         if (getTargetBranch() != null && !getTargetBranch().isEmpty()) {
             sb.append("Do NOT make git commits. Your work will be committed by the harness ");
@@ -705,6 +715,44 @@ public class ClaudeCodeJob extends GitManagedJob {
         event.withClaudeCodeInfo(prompt, sessionId, exitCode);
         event.withTimingInfo(durationMs, durationApiMs, costUsd, numTurns);
         event.withSessionDetails(subtype, isError, permissionDenials, deniedToolNames);
+    }
+
+    @Override
+    protected boolean validateChanges() throws Exception {
+        if (!isProtectTestFiles()) {
+            return true;
+        }
+
+        // Use the existing detect-test-hiding.sh script for diff auditing
+        Path auditScript = resolveWorkingPath("tools/ci/detect-test-hiding.sh");
+        if (auditScript == null || !Files.exists(auditScript)) {
+            log("detect-test-hiding.sh not found, skipping validation");
+            return true;
+        }
+
+        String baseBranch = getBaseBranch() != null ? getBaseBranch() : "master";
+        ProcessBuilder pb = new ProcessBuilder("bash", auditScript.toString(),
+            "origin/" + baseBranch);
+        String workDir = getWorkingDirectory();
+        if (workDir != null) {
+            pb.directory(new File(workDir));
+        }
+        pb.redirectErrorStream(true);
+        Process p = pb.start();
+        String output = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        int code = p.waitFor();
+
+        if (code == 2) {
+            // Exit code 2 = violations found
+            warn("Test-hiding violations detected - aborting commit:\n" + output);
+            return false;
+        } else if (code != 0) {
+            warn("detect-test-hiding.sh exited with code " + code + ": " + output);
+            // Non-violation error (code 1 = bad args); don't block on script bugs
+        }
+
+        log("Test integrity check passed");
+        return true;
     }
 
     @Override
@@ -1376,6 +1424,7 @@ public class ClaudeCodeJob extends GitManagedJob {
         if (workstreamEnv != null && !workstreamEnv.isEmpty()) {
             sb.append("::wsEnv:=").append(base64Encode(mapToJsonObject(workstreamEnv)));
         }
+        sb.append("::protectTests:=").append(isProtectTestFiles());
         return sb.toString();
     }
 
@@ -1402,6 +1451,9 @@ public class ClaudeCodeJob extends GitManagedJob {
                 break;
             case "wsEnv":
                 this.workstreamEnv = parseJsonObjectToMap(base64Decode(value));
+                break;
+            case "protectTests":
+                setProtectTestFiles(Boolean.parseBoolean(value));
                 break;
             default:
                 // Delegate to parent for git-related properties
@@ -1458,6 +1510,7 @@ public class ClaudeCodeJob extends GitManagedJob {
         private String centralizedMcpConfig;
         private String pushedToolsConfig;
         private Map<String, String> workstreamEnv;
+        private boolean protectTestFiles = false;
 
         /**
          * Default constructor for deserialization.
@@ -1702,6 +1755,23 @@ public class ClaudeCodeJob extends GitManagedJob {
             set("wsEnv", base64Encode(mapToJsonObject(workstreamEnv)));
         }
 
+        /**
+         * Returns whether test file protection is enabled for jobs.
+         */
+        public boolean isProtectTestFiles() {
+            return protectTestFiles;
+        }
+
+        /**
+         * Sets whether to protect test files that exist on the base branch.
+         *
+         * @param protectTestFiles true to block staging of existing test/CI files
+         */
+        public void setProtectTestFiles(boolean protectTestFiles) {
+            this.protectTestFiles = protectTestFiles;
+            set("protectTests", String.valueOf(protectTestFiles));
+        }
+
         @Override
         public Job nextJob() {
             List<String> p = getPrompts();
@@ -1747,6 +1817,9 @@ public class ClaudeCodeJob extends GitManagedJob {
             if (workstreamEnv != null && !workstreamEnv.isEmpty()) {
                 job.setWorkstreamEnv(workstreamEnv);
             }
+
+            // Test file protection
+            job.setProtectTestFiles(protectTestFiles);
 
             return job;
         }
@@ -1806,6 +1879,9 @@ public class ClaudeCodeJob extends GitManagedJob {
                     break;
                 case "wsEnv":
                     this.workstreamEnv = parseJsonObjectToMap(base64Decode(value));
+                    break;
+                case "protectTests":
+                    this.protectTestFiles = Boolean.parseBoolean(value);
                     break;
             }
         }
