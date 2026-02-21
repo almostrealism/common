@@ -33,6 +33,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Supplier;
 
+import org.almostrealism.optimize.TrainingResult;
+
 /**
  * Machine learning model testing interface providing utilities for dataset generation,
  * model training, and optimization testing.
@@ -196,5 +198,83 @@ public interface ModelTestFeatures extends TestFeatures {
 		}
 
 		throw new RuntimeException();
+	}
+
+	/**
+	 * Trains a model using patience-based early stopping on training loss.
+	 * <p>
+	 * Instead of retrying on poor initialization, this method configures the
+	 * {@link ModelOptimizer} with training patience so that training stops
+	 * when loss plateaus rather than relying on wall-clock timeouts.
+	 * </p>
+	 *
+	 * @param name       the name for the training run (used for output files)
+	 * @param model      the model to train
+	 * @param data       a supplier providing fresh datasets for each training attempt
+	 * @param epochs     the maximum number of training epochs
+	 * @param steps      the number of steps for CSV recording
+	 * @param lossTarget the target loss value to achieve (training stops when reached)
+	 * @param patience   number of epochs without training loss improvement before stopping
+	 * @return the {@link TrainingResult} containing loss history and metrics
+	 * @throws FileNotFoundException if the results directory cannot be written to
+	 */
+	default TrainingResult trainWithPatience(String name, Model model, Supplier<Dataset<?>> data,
+											 int epochs, int steps, double lossTarget,
+											 int patience) throws FileNotFoundException {
+		ModelOptimizer optimizer = new ModelOptimizer(model.compile(), data);
+
+		try (CSVReceptor<Double> receptor =
+					 new CSVReceptor<>(new FileOutputStream("results/" + name + ".csv"), steps)) {
+			optimizer.setReceptor(receptor);
+			optimizer.setLogFrequency(25);
+			optimizer.setLossTarget(lossTarget);
+			optimizer.setTrainingPatience(patience);
+
+			TrainingResult result = optimizer.optimize(epochs);
+			log("Completed " + result.getEpochsCompleted() + " epochs" +
+					(result.isEarlyStopped() ? " (early stopped)" : ""));
+			return result;
+		}
+	}
+
+	/**
+	 * Asserts that a training result shows convergence by validating the loss curve.
+	 * <p>
+	 * Checks that:
+	 * </p>
+	 * <ol>
+	 *   <li>At least {@code minEpochs} were completed (training didn't bail out immediately)</li>
+	 *   <li>The final loss is below {@code maxFinalLoss}</li>
+	 *   <li>The loss curve shows improvement (final loss &lt; initial loss)</li>
+	 * </ol>
+	 *
+	 * @param result       the training result to validate
+	 * @param minEpochs    minimum number of epochs expected
+	 * @param maxFinalLoss maximum acceptable final training loss
+	 */
+	default void assertTrainingConvergence(TrainingResult result, int minEpochs, double maxFinalLoss) {
+		List<Double> history = result.getTrainLossHistory();
+
+		if (history.size() < minEpochs) {
+			throw new AssertionError("Training completed only " + history.size() +
+					" epochs, expected at least " + minEpochs);
+		}
+
+		double finalLoss = result.getFinalTrainLoss();
+		if (finalLoss > maxFinalLoss) {
+			throw new AssertionError("Final training loss " + finalLoss +
+					" exceeds maximum " + maxFinalLoss);
+		}
+
+		double initialLoss = history.get(0);
+		if (finalLoss >= initialLoss) {
+			throw new AssertionError("Training did not improve: initial loss " +
+					initialLoss + ", final loss " + finalLoss);
+		}
+
+		log("Training converged: " + history.size() + " epochs, " +
+				"loss " + String.format("%.6f", initialLoss) + " -> " +
+				String.format("%.6f", finalLoss) +
+				" (improvement ratio: " + String.format("%.2f", result.getImprovementRatio()) + "x)");
 	}
 }
