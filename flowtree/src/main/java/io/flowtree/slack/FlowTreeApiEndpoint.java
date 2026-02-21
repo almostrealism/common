@@ -24,6 +24,11 @@ import io.flowtree.msg.NodeProxy;
 import org.almostrealism.io.ConsoleFeatures;
 
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.URI;
+import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -67,6 +72,11 @@ import java.util.regex.Pattern;
  *   <tr><td>POST</td><td>/api/workstreams/{id}/jobs/{jobId}</td>
  *       <td>{@code {"jobId":"...","status":"..."}}</td>
  *       <td>Receive a job status event</td></tr>
+ *   <tr><td>GET</td><td>/api/github/proxy?url=...</td><td>--</td>
+ *       <td>Proxy a GET request to the GitHub API</td></tr>
+ *   <tr><td>POST</td><td>/api/github/proxy?url=...</td>
+ *       <td><i>raw JSON payload</i></td>
+ *       <td>Proxy a POST request to the GitHub API</td></tr>
  *   <tr><td>GET</td><td>/api/health</td><td>--</td>
  *       <td>Health check</td></tr>
  * </table>
@@ -153,6 +163,11 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
 
         if (Method.GET.equals(method) && uri.startsWith("/api/stats")) {
             return handleStatsQuery(session);
+        }
+
+        if ("/api/github/proxy".equals(uri)
+                && (Method.GET.equals(method) || Method.POST.equals(method))) {
+            return handleGitHubProxy(session, method);
         }
 
         if (Method.POST.equals(method)) {
@@ -358,6 +373,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         String baseBranch = extractJsonField(body, "baseBranch");
         int maxTurns = extractJsonIntField(body, "maxTurns");
         double maxBudgetUsd = extractJsonDoubleField(body, "maxBudgetUsd");
+        boolean protectTestFiles = extractJsonBooleanField(body, "protectTestFiles");
 
         // Create job factory with workstream defaults, overridden by request values
         ClaudeCodeJob.Factory factory = new ClaudeCodeJob.Factory(prompt);
@@ -401,6 +417,11 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         // Per-workstream env vars
         if (workstream.getEnv() != null && !workstream.getEnv().isEmpty()) {
             factory.setWorkstreamEnv(workstream.getEnv());
+        }
+
+        // Test file protection
+        if (protectTestFiles) {
+            factory.setProtectTestFiles(true);
         }
 
         // Build workstream URL for status reporting
@@ -626,6 +647,109 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
 
         return newFixedLengthResponse(Response.Status.OK,
             "application/json", json.toString());
+    }
+
+    /**
+     * Handles requests to {@code /api/github/proxy} by forwarding them to the
+     * GitHub API using the controller's {@code GITHUB_TOKEN}.
+     *
+     * <p>This endpoint allows agents to make GitHub API calls without needing
+     * their own token. The controller acts as an authenticated proxy, so the
+     * token only needs to be configured in one place.</p>
+     *
+     * <p>The HTTP method of the incoming request determines the method used
+     * for the GitHub API call (GET or POST).</p>
+     *
+     * <p>Query parameters:</p>
+     * <ul>
+     *   <li>{@code url} &ndash; GitHub API path (e.g.,
+     *       {@code /repos/owner/repo/pulls}) or a full URL starting with
+     *       {@code https://}. Required.</li>
+     * </ul>
+     *
+     * <p>For POST requests, the request body is forwarded as-is to the
+     * GitHub API.</p>
+     *
+     * <p>Response body format:</p>
+     * <pre>{@code {"status": 200, "link": "<pagination>", "body": <github-json>}}</pre>
+     *
+     * @param session the HTTP session
+     * @param method  the HTTP method (determines GET or POST to GitHub)
+     * @return JSON response wrapping the GitHub API response
+     */
+    private Response handleGitHubProxy(IHTTPSession session, Method method) {
+        String githubToken = System.getenv("GITHUB_TOKEN");
+        if (githubToken == null || githubToken.trim().isEmpty()) {
+            return errorResponse("GITHUB_TOKEN not configured on controller");
+        }
+
+        String urlOrPath = session.getParms().get("url");
+        if (urlOrPath == null || urlOrPath.isEmpty()) {
+            return errorResponse("Missing required query parameter: url");
+        }
+
+        String githubMethod = Method.POST.equals(method) ? "POST" : "GET";
+
+        // Read body for POST requests (forwarded to GitHub as-is)
+        String payload = null;
+        if (Method.POST.equals(method)) {
+            payload = readBody(session);
+        }
+
+        // Resolve full GitHub API URL
+        String fullUrl;
+        if (urlOrPath.startsWith("https://")) {
+            fullUrl = urlOrPath;
+        } else {
+            fullUrl = "https://api.github.com" + urlOrPath;
+        }
+
+        log("GitHub proxy " + githubMethod + " " + urlOrPath);
+
+        try {
+            URL url = URI.create(fullUrl).toURL();
+            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+            conn.setRequestMethod(githubMethod);
+            conn.setRequestProperty("Authorization", "Bearer " + githubToken.trim());
+            conn.setRequestProperty("Accept", "application/vnd.github+json");
+            conn.setRequestProperty("X-GitHub-Api-Version", "2022-11-28");
+            conn.setConnectTimeout(15000);
+            conn.setReadTimeout(15000);
+
+            if ("POST".equals(githubMethod) && payload != null && !payload.isEmpty()) {
+                conn.setDoOutput(true);
+                conn.setRequestProperty("Content-Type", "application/json");
+                OutputStream os = conn.getOutputStream();
+                os.write(payload.getBytes(StandardCharsets.UTF_8));
+                os.close();
+            }
+
+            int status = conn.getResponseCode();
+            String linkHeader = conn.getHeaderField("Link");
+
+            InputStream is = status >= 400 ? conn.getErrorStream() : conn.getInputStream();
+            String responseBody = "";
+            if (is != null) {
+                responseBody = new String(is.readAllBytes(), StandardCharsets.UTF_8);
+                is.close();
+            }
+
+            // Wrap response: {"status":N,"link":"...","body":<raw-github-json>}
+            StringBuilder json = new StringBuilder();
+            json.append("{\"status\":").append(status);
+            json.append(",\"link\":\"")
+                .append(escapeJson(linkHeader != null ? linkHeader : ""))
+                .append("\"");
+            json.append(",\"body\":")
+                .append(responseBody.isEmpty() ? "null" : responseBody);
+            json.append("}");
+
+            return newFixedLengthResponse(Response.Status.OK,
+                    "application/json", json.toString());
+        } catch (Exception e) {
+            log("GitHub proxy error: " + e.getMessage());
+            return errorResponse("GitHub proxy error: " + e.getMessage());
+        }
     }
 
     /**
