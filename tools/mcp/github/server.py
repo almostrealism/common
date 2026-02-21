@@ -6,9 +6,16 @@ Provides tools for Claude Code agents to read and respond to GitHub PR
 review comments. This enables agents to address code review feedback
 autonomously without going through Slack.
 
-Token resolution (first match wins):
-    1. GITHUB_TOKEN environment variable
-    2. ~/.config/ar/github-token file (single line, token only)
+Authentication (first match wins):
+    1. GITHUB_TOKEN environment variable (direct GitHub API access)
+    2. ~/.config/ar/github-token file (direct GitHub API access)
+    3. AR_WORKSTREAM_URL controller proxy (no local token needed)
+
+When a local token is available, the tool calls the GitHub API directly.
+When no local token is found but AR_WORKSTREAM_URL is set, requests are
+proxied through the FlowTree controller's /api/github/proxy endpoint.
+The controller authenticates with its own GITHUB_TOKEN, so the token
+only needs to be configured in one place.
 
 Other configuration:
     AR_GITHUB_REPO  - Optional. Format: owner/repo. Auto-detected from
@@ -19,9 +26,10 @@ import json
 import os
 import re
 import subprocess
+import sys
 from typing import Optional
 from urllib.error import HTTPError, URLError
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 from urllib.request import Request, urlopen
 
 from mcp.server.fastmcp import FastMCP
@@ -29,9 +37,18 @@ from mcp.server.fastmcp import FastMCP
 TOKEN_FILE = os.path.expanduser("~/.config/ar/github-token")
 GITHUB_REPO_OVERRIDE = os.environ.get("AR_GITHUB_REPO", "")
 GITHUB_API = "https://api.github.com"
+WORKSTREAM_URL = os.environ.get("AR_WORKSTREAM_URL", "")
 MAX_PAGES = 5
 
 _cached_token: Optional[str] = None
+
+# Log startup configuration to stderr for diagnostics
+print(f"ar-github: GITHUB_TOKEN={'<set>' if os.environ.get('GITHUB_TOKEN', '').strip() else '<not set>'}",
+      file=sys.stderr)
+print(f"ar-github: AR_WORKSTREAM_URL={'<not set>' if not WORKSTREAM_URL else WORKSTREAM_URL}",
+      file=sys.stderr)
+if WORKSTREAM_URL and not os.environ.get("GITHUB_TOKEN", "").strip():
+    print("ar-github: Will use controller proxy for GitHub API calls", file=sys.stderr)
 
 mcp = FastMCP("ar-github")
 
@@ -73,6 +90,114 @@ def _resolve_token() -> str:
         "GitHub token not found. Set GITHUB_TOKEN env var or write your "
         f"token to {TOKEN_FILE}"
     )
+
+
+def _controller_base_url() -> Optional[str]:
+    """Derive the controller base URL from AR_WORKSTREAM_URL.
+
+    The workstream URL has the format::
+
+        http://controller:port/api/workstreams/{id}[/jobs/{jobId}]
+
+    Returns:
+        The base URL (scheme + host + port), or None if not available.
+    """
+    if not WORKSTREAM_URL:
+        return None
+    parts = WORKSTREAM_URL.split("/api/workstreams/")
+    if len(parts) < 2:
+        return None
+    return parts[0]
+
+
+def _proxy_github_get(path_or_url: str, controller_base: str) -> list | dict:
+    """Make a GET request to the GitHub API via the controller proxy.
+
+    Handles pagination by following Link header URLs through
+    subsequent proxy requests.
+
+    Args:
+        path_or_url: The GitHub API path (e.g., /repos/owner/repo/pulls)
+                     or a full ``https://`` URL for pagination.
+        controller_base: The controller base URL.
+
+    Returns:
+        Parsed JSON response. For paginated list endpoints, all
+        pages are concatenated into a single list.
+
+    Raises:
+        HTTPError: If the GitHub API returns an error status.
+    """
+    all_results: list = []
+    current = path_or_url
+
+    for _ in range(MAX_PAGES):
+        encoded = quote(current, safe="")
+        proxy_url = f"{controller_base}/api/github/proxy?url={encoded}"
+        req = Request(proxy_url)
+
+        with urlopen(req, timeout=20) as resp:
+            wrapper = json.loads(resp.read().decode("utf-8"))
+
+        github_status = wrapper.get("status", 200)
+        if github_status >= 400:
+            error_body = json.dumps(wrapper.get("body", ""))
+            raise HTTPError(
+                current, github_status,
+                f"GitHub API error: {error_body[:200]}",
+                {}, None
+            )
+
+        body = wrapper["body"]
+
+        if not isinstance(body, list):
+            return body
+
+        all_results.extend(body)
+
+        link_header = wrapper.get("link", "")
+        next_url = _parse_next_link(link_header)
+        if not next_url:
+            break
+        current = next_url
+
+    return all_results
+
+
+def _proxy_github_post(path: str, payload: dict, controller_base: str) -> dict:
+    """Make a POST request to the GitHub API via the controller proxy.
+
+    Args:
+        path: The GitHub API path.
+        payload: The JSON body to send.
+        controller_base: The controller base URL.
+
+    Returns:
+        Parsed JSON response.
+
+    Raises:
+        HTTPError: If the GitHub API returns an error status.
+    """
+    encoded = quote(path, safe="")
+    proxy_url = f"{controller_base}/api/github/proxy?url={encoded}"
+    data = json.dumps(payload).encode("utf-8")
+    req = Request(proxy_url, data=data, headers={
+        "Content-Type": "application/json",
+    })
+
+    with urlopen(req, timeout=20) as resp:
+        wrapper = json.loads(resp.read().decode("utf-8"))
+
+    github_status = wrapper.get("status", 200)
+    if github_status >= 400:
+        error_body = json.dumps(wrapper.get("body", ""))
+        raise HTTPError(
+            path, github_status,
+            f"GitHub API error: {error_body[:200]}",
+            {}, None
+        )
+
+    return wrapper["body"]
 
 
 def _detect_repo() -> Optional[str]:
@@ -136,6 +261,10 @@ def _detect_branch() -> Optional[str]:
 def _github_get(path: str) -> list | dict:
     """Make a GET request to the GitHub API with pagination support.
 
+    Uses the local GITHUB_TOKEN for direct access when available.
+    Falls back to proxying through the FlowTree controller when
+    AR_WORKSTREAM_URL is set and no local token exists.
+
     Follows rel="next" Link headers up to MAX_PAGES pages.
 
     Args:
@@ -148,8 +277,15 @@ def _github_get(path: str) -> list | dict:
     Raises:
         HTTPError: If the API returns an error status.
         URLError: If the connection fails.
+        ValueError: If no token and no controller proxy are available.
     """
-    token = _resolve_token()
+    try:
+        token = _resolve_token()
+    except ValueError:
+        base = _controller_base_url()
+        if base is not None:
+            return _proxy_github_get(path, base)
+        raise
 
     url = GITHUB_API + path
     all_results = []
@@ -183,14 +319,27 @@ def _github_get(path: str) -> list | dict:
 def _github_post(path: str, payload: dict) -> dict:
     """Make a POST request to the GitHub API.
 
+    Uses the local GITHUB_TOKEN for direct access when available.
+    Falls back to proxying through the FlowTree controller when
+    AR_WORKSTREAM_URL is set and no local token exists.
+
     Args:
         path: The API path.
         payload: The JSON body to send.
 
     Returns:
         Parsed JSON response.
+
+    Raises:
+        ValueError: If no token and no controller proxy are available.
     """
-    token = _resolve_token()
+    try:
+        token = _resolve_token()
+    except ValueError:
+        base = _controller_base_url()
+        if base is not None:
+            return _proxy_github_post(path, payload, base)
+        raise
 
     url = GITHUB_API + path
     data = json.dumps(payload).encode("utf-8")
