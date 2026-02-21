@@ -49,7 +49,7 @@ import org.almostrealism.collect.computations.ArithmeticSequenceComputation;
 import org.almostrealism.collect.computations.AtomicConstantComputation;
 import org.almostrealism.collect.computations.CollectionAddComputation;
 import org.almostrealism.collect.computations.CollectionComparisonComputation;
-import org.almostrealism.collect.computations.CollectionConcatenateComputation;
+
 import org.almostrealism.collect.computations.CollectionConjunctionComputation;
 import org.almostrealism.collect.computations.CollectionExponentComputation;
 import org.almostrealism.collect.computations.CollectionExponentialComputation;
@@ -73,7 +73,7 @@ import org.almostrealism.collect.computations.PackedCollectionEnumerate;
 import org.almostrealism.collect.computations.PackedCollectionMap;
 import org.almostrealism.collect.computations.PackedCollectionPad;
 import org.almostrealism.collect.computations.PackedCollectionRepeat;
-import org.almostrealism.collect.computations.CollectionSubsetComputation;
+
 import org.almostrealism.collect.computations.PackedCollectionSubset;
 import org.almostrealism.collect.computations.Random;
 import org.almostrealism.collect.computations.ReshapeProducer;
@@ -1156,7 +1156,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 			}
 		}
 
-		return new CollectionConcatenateComputation(new TraversalPolicy(dims), axis, producers);
+		return concat(new TraversalPolicy(dims), producers);
 	}
 
 	default CollectionProducer concat(TraversalPolicy shape, Producer<PackedCollection>... producers) {
@@ -1584,7 +1584,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * @see TraversalPolicy
 	 */
 	default CollectionProducerComputation subset(TraversalPolicy shape, Producer<?> collection, int... position) {
-		return new CollectionSubsetComputation(shape, (Producer<PackedCollection>) collection, position);
+		return new PackedCollectionSubset(shape, collection, position);
 	}
 
 	/**
@@ -1622,7 +1622,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * @see Expression
 	 */
 	default CollectionProducerComputation subset(TraversalPolicy shape, Producer<?> collection, Expression... position) {
-		return new CollectionSubsetComputation(shape, (Producer<PackedCollection>) collection, position);
+		return new PackedCollectionSubset(shape, collection, position);
 	}
 
 	/**
