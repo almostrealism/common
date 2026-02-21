@@ -31,7 +31,7 @@ public class BackPropagationCell implements Cell<PackedCollection>, Learning, Na
 	private String name;
 
 	private final BackPropagation propagation;
-	private PackedCollection input;
+	private Supplier<PackedCollection> inputSupplier;
 
 	private Receptor<PackedCollection> next;
 
@@ -62,11 +62,17 @@ public class BackPropagationCell implements Cell<PackedCollection>, Learning, Na
 
 	@Override
 	public Supplier<Runnable> push(Producer<PackedCollection> gradient) {
-		return propagation.propagate(gradient, p(input), next);
+		return propagation.propagate(gradient, p(inputSupplier.get()), next);
 	}
 
+	/** Sets the forward input for backpropagation from a fixed collection. */
 	public void setForwardInput(PackedCollection input) {
-		this.input = input;
+		this.inputSupplier = () -> input;
+	}
+
+	/** Sets the forward input supplier for lazy resolution during backpropagation. */
+	public void setForwardInput(Supplier<PackedCollection> inputSupplier) {
+		this.inputSupplier = inputSupplier;
 	}
 
 	@Override

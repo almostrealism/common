@@ -23,7 +23,6 @@ import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.collect.WeightedSumDeltaExpression;
 import io.almostrealism.compute.Process;
-import io.almostrealism.compute.ProcessContext;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.AlgebraFeatures;
 import org.almostrealism.collect.CollectionProducer;
@@ -157,22 +156,6 @@ public class WeightedSumComputation
 	 */
 	public SubsetTraversalExpression getWeightsTraversal() {
 		return new SubsetTraversalExpression(resultShape, weightShape, weightGroupShape, weightPositions);
-	}
-
-	/**
-	 * Determines whether this weighted sum should be compiled as an isolated kernel.
-	 *
-	 * <p>Large weighted sums (e.g., convolutions with many channels) produce expression
-	 * trees that are too complex for the simplifier when inlined. Isolating them forces
-	 * independent compilation, preventing expression explosion in the parent kernel.</p>
-	 *
-	 * @param context the process context
-	 * @return {@code true} if the group size exceeds the isolation threshold
-	 */
-	@Override
-	public boolean isIsolationTarget(ProcessContext context) {
-		long groupSize = inputGroupShape.getTotalSizeLong();
-		return groupSize >= 64;
 	}
 
 	/**

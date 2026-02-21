@@ -51,6 +51,8 @@ public class DefaultCellularLayer implements CellularLayer, CodeFeatures, Learni
 	private String name;
 	private List<ComputeRequirement> requirements;
 
+	private boolean inputTrackingEnabled;
+	private boolean optimizeOnForward;
 	private PackedCollection input;
 	private PackedCollection output;
 
@@ -106,6 +108,20 @@ public class DefaultCellularLayer implements CellularLayer, CodeFeatures, Learni
 
 	public void setComputeRequirements(List<ComputeRequirement> requirements) { this.requirements = requirements; }
 
+	/**
+	 * Enables process optimization during forward pass execution.
+	 * When true, {@link #getForward()} wraps the forward operation
+	 * with an {@code optimize()} call to trigger process isolation
+	 * for computations that require it (e.g., native loop generation).
+	 *
+	 * <p>This should be set for layers that contain computations with
+	 * {@code isIsolationTarget() == true}, such as those using
+	 * {@code LoopedWeightedSumComputation}. For layers compiled
+	 * through {@code CompiledModel}, the top-level optimize() handles
+	 * isolation, making this unnecessary.</p>
+	 */
+	public void setOptimizeOnForward(boolean optimize) { this.optimizeOnForward = optimize; }
+
 	/** Performs the init operation. */
 	public void init(TraversalPolicy inputShape, boolean inputTracking, boolean outputTracking) {
 		this.inputShape = inputShape;
@@ -115,13 +131,17 @@ public class DefaultCellularLayer implements CellularLayer, CodeFeatures, Learni
 			return;
 		}
 
-		this.input = inputTracking ? new PackedCollection(inputShape) : null;
+		this.inputTrackingEnabled = inputTracking;
 		this.output = outputTracking ? new PackedCollection(outputShape) : null;
 
 		this.entry = Cell.of((in, next) -> {
-			if (this.input == null) {
+			if (!inputTrackingEnabled) {
 				return next.push(in);
 			} else {
+				if (this.input == null) {
+					this.input = new PackedCollection(this.inputShape);
+				}
+
 				OperationList op = new OperationList(getName() + " layer (Entry)");
 				op.add(into(getName() + " layer (Input Record)", in, p(input),
 						enableMemoryDataCopy, getComputeRequirements()));
@@ -182,6 +202,7 @@ public class DefaultCellularLayer implements CellularLayer, CodeFeatures, Learni
 	 */
 	@Override
 	public void disableTracking() {
+		this.inputTrackingEnabled = false;
 		if (this.input != null) {
 			this.input.destroy();
 			this.input = null;
@@ -194,7 +215,12 @@ public class DefaultCellularLayer implements CellularLayer, CodeFeatures, Learni
 			return this.forward;
 		} else if (fw == null) {
 			fw = Cell.of((in, next) -> {
-				OperationList op = new OperationList(getName() + " Layer (Forward)");
+				OperationList op = optimizeOnForward
+						? new OperationList(getName() + " Layer (Forward)") {
+							@Override
+							public Runnable get() { return optimize().get(); }
+						}
+						: new OperationList(getName() + " Layer (Forward)");
 				op.add(entry.push(in));
 				if (next != null) op.add(next.push(p(output)));
 				return op;

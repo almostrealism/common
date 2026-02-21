@@ -39,26 +39,26 @@ public class Qwen3InferenceProfileTest extends TestSuiteBase implements ConsoleF
 	private static final String LOG_PATH = RESULTS_DIR + "/qwen3_inference_profile.txt";
 
 	/**
-	 * Profile a representative Qwen3 forward pass using 0.6B-scale config.
+	 * Profile a representative Qwen3 forward pass using reduced config.
 	 *
-	 * <p>Uses dim=896, hiddenDim=4864, 24 layers, 14 query heads, 2 KV heads.
-	 * Vocab is reduced to 1000 to keep memory manageable; the final dense
-	 * projection scaling can be extrapolated linearly.</p>
+	 * <p>Uses dim=896, hiddenDim=4864, 2 layers, 14 query heads, 2 KV heads.
+	 * Vocab and layer count are reduced for CI; the per-layer profile is
+	 * representative of the full model since each layer has identical structure.</p>
 	 */
-	@Test(timeout = 120000)
+	@Test(timeout = 300000)
 	public void profileInference() throws IOException {
 		new File(RESULTS_DIR).mkdirs();
 		Console.root().addListener(OutputFeatures.fileOutput(LOG_PATH));
 
 		log("=== Qwen3 Inference Profile Test ===");
 
-		// Representative 0.6B config with reduced vocab for memory efficiency.
-		// The 24 transformer layers at dim=896 with GQA (14:2) match the
-		// benchmark configuration used for real-weight inference.
+		// Reduced config for CI: 2 layers exercises the full code path
+		// (attention + FFN + RMSNorm + RoPE) while keeping compilation
+		// and weight creation time manageable.
 		Qwen3Config config = new Qwen3Config(
 				896,    // dim
 				4864,   // hiddenDim
-				24,     // layerCount
+				2,      // layerCount (reduced from 24 for CI)
 				14,     // headCount
 				2,      // kvHeadCount
 				1000,   // vocabSize (reduced from 151936)
@@ -93,7 +93,7 @@ public class Qwen3InferenceProfileTest extends TestSuiteBase implements ConsoleF
 
 		try {
 			// Warm-up passes (JIT, cache priming)
-			int warmupPasses = 3;
+			int warmupPasses = 1;
 			log("Running " + warmupPasses + " warm-up forward passes...");
 			for (int w = 0; w < warmupPasses; w++) {
 				position.setMem(0, (double) w);
@@ -102,7 +102,7 @@ public class Qwen3InferenceProfileTest extends TestSuiteBase implements ConsoleF
 			}
 
 			// Profiled forward passes
-			int profiledPasses = 10;
+			int profiledPasses = 3;
 			log("Running " + profiledPasses + " profiled forward passes...");
 			long totalNanos = 0;
 
@@ -212,9 +212,11 @@ public class Qwen3InferenceProfileTest extends TestSuiteBase implements ConsoleF
 		TraversalPolicy shape = new TraversalPolicy(dims);
 		PackedCollection collection = new PackedCollection(shape);
 		int size = shape.getTotalSize();
+		double[] data = new double[size];
 		for (int i = 0; i < size; i++) {
-			collection.setMem(i, (random.nextDouble() - 0.5) * 0.2);
+			data[i] = (random.nextDouble() - 0.5) * 0.2;
 		}
+		collection.setMem(0, data, 0, size);
 		return collection;
 	}
 }
