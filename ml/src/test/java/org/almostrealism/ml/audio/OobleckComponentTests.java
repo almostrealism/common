@@ -25,6 +25,7 @@ import org.almostrealism.model.Block;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 import org.almostrealism.model.SequentialBlock;
+import org.almostrealism.util.TestDepth;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
@@ -128,6 +129,7 @@ public class OobleckComponentTests extends TestSuiteBase {
 	}
 
 	@Test(timeout = 120000)
+	@TestDepth(10)
 	public void testSnakeLarge() {
 		Console.root().addListener(OutputFeatures.fileOutput(
 				"test_data/stable_audio/component_snake_large.log"));
