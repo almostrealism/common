@@ -85,6 +85,83 @@ import java.util.regex.Pattern;
  */
 public abstract class GitManagedJob implements Job, ConsoleFeatures {
 
+    /**
+     * Interface for objects that can receive git-managed job properties
+     * during deserialization. Both {@link GitManagedJob} instances and
+     * {@link ClaudeCodeJob.Factory} implement this to share the
+     * property-parsing logic in {@link #applyGitProperty}.
+     */
+    public interface GitPropertyTarget {
+        /** Sets the working directory path. */
+        void setWorkingDirectory(String workingDirectory);
+        /** Sets the git repository URL. */
+        void setRepoUrl(String repoUrl);
+        /** Sets the default workspace path for repo checkouts. */
+        void setDefaultWorkspacePath(String defaultWorkspacePath);
+        /** Sets the target branch for git operations. */
+        void setTargetBranch(String targetBranch);
+        /** Sets the base branch for new branch creation. */
+        void setBaseBranch(String baseBranch);
+        /** Sets whether to push commits to origin. */
+        void setPushToOrigin(boolean pushToOrigin);
+        /** Sets the workstream URL for status reporting. */
+        void setWorkstreamUrl(String workstreamUrl);
+        /** Sets the git user name for commits. */
+        void setGitUserName(String gitUserName);
+        /** Sets the git user email for commits. */
+        void setGitUserEmail(String gitUserEmail);
+        /** Sets whether to protect test files from modification. */
+        void setProtectTestFiles(boolean protectTestFiles);
+    }
+
+    /**
+     * Applies a git-managed property to the given target if the key matches
+     * a known git property. This centralizes the deserialization logic for
+     * properties shared between {@link GitManagedJob} and
+     * {@link ClaudeCodeJob.Factory}.
+     *
+     * @param key    the property key
+     * @param value  the encoded property value
+     * @param target the target to apply the property to
+     * @return true if the key was recognized and applied, false otherwise
+     */
+    protected static boolean applyGitProperty(String key, String value, GitPropertyTarget target) {
+        switch (key) {
+            case "workDir":
+                target.setWorkingDirectory(base64Decode(value));
+                return true;
+            case "repoUrl":
+                target.setRepoUrl(base64Decode(value));
+                return true;
+            case "defaultWsPath":
+                target.setDefaultWorkspacePath(base64Decode(value));
+                return true;
+            case "branch":
+                target.setTargetBranch(base64Decode(value));
+                return true;
+            case "baseBranch":
+                target.setBaseBranch(base64Decode(value));
+                return true;
+            case "push":
+                target.setPushToOrigin(Boolean.parseBoolean(value));
+                return true;
+            case "workstreamUrl":
+                target.setWorkstreamUrl(base64Decode(value));
+                return true;
+            case "gitUserName":
+                target.setGitUserName(base64Decode(value));
+                return true;
+            case "gitUserEmail":
+                target.setGitUserEmail(base64Decode(value));
+                return true;
+            case "protectTests":
+                target.setProtectTestFiles(Boolean.parseBoolean(value));
+                return true;
+            default:
+                return false;
+        }
+    }
+
     /** Default maximum file size to commit (1 MB). */
     public static final long DEFAULT_MAX_FILE_SIZE = 1024 * 1024;
 
@@ -129,10 +206,15 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
         ".github/actions/**"
     ));
 
+    /** Default workspace path when /workspace/project does not exist. */
+    private static final String FALLBACK_WORKSPACE_DIR = "/tmp/flowtree-workspaces";
+
     private String taskId;
     private String targetBranch;
     private String baseBranch = "master";
     private String workingDirectory;
+    private String repoUrl;
+    private String defaultWorkspacePath;
     private long maxFileSizeBytes = DEFAULT_MAX_FILE_SIZE;
     private Set<String> excludedPatterns = new HashSet<>(DEFAULT_EXCLUDED_PATTERNS);
     private Set<String> additionalExcludedPatterns = new HashSet<>();
@@ -156,6 +238,20 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
     private final CompletableFuture<Void> future = new CompletableFuture<>();
 
     private String workstreamUrl;
+
+    /** Adapter that delegates {@link GitPropertyTarget} methods to this job's fields. */
+    private final GitPropertyTarget gitPropertyTarget = new GitPropertyTarget() {
+        @Override public void setWorkingDirectory(String v) { workingDirectory = v; }
+        @Override public void setRepoUrl(String v) { repoUrl = v; }
+        @Override public void setDefaultWorkspacePath(String v) { defaultWorkspacePath = v; }
+        @Override public void setTargetBranch(String v) { targetBranch = v; }
+        @Override public void setBaseBranch(String v) { baseBranch = v; }
+        @Override public void setPushToOrigin(boolean v) { pushToOrigin = v; }
+        @Override public void setWorkstreamUrl(String v) { workstreamUrl = v; }
+        @Override public void setGitUserName(String v) { gitUserName = v; }
+        @Override public void setGitUserEmail(String v) { gitUserEmail = v; }
+        @Override public void setProtectTestFiles(boolean v) { protectTestFiles = v; }
+    };
 
     /**
      * Default constructor for deserialization.
@@ -205,6 +301,13 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
         Exception error = null;
 
         try {
+            // Resolve working directory from repoUrl if needed.
+            // This clones the repo if a repoUrl is specified but no
+            // working directory is set (or the directory is empty).
+            if (repoUrl != null && !repoUrl.isEmpty()) {
+                resolveAndCloneRepository();
+            }
+
             // Prepare working directory: verify clean state, checkout branch,
             // pull latest. This must happen before doWork() so the agent
             // operates on the current remote state of the target branch.
@@ -403,6 +506,172 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
             executeGit("merge", "--abort");
             log("Merge aborted -- agent will be instructed to resolve conflicts");
         }
+    }
+
+    /**
+     * Resolves the working directory from a {@link #repoUrl} and clones
+     * the repository if needed.
+     *
+     * <p>When {@code repoUrl} is set but {@code workingDirectory} is null,
+     * the directory is resolved using the following priority:</p>
+     * <ol>
+     *   <li>{@link #defaultWorkspacePath} from the global YAML configuration</li>
+     *   <li>{@code /workspace/project} if that directory exists</li>
+     *   <li>{@code /tmp/flowtree-workspaces/<repo-name>} as a last resort</li>
+     * </ol>
+     *
+     * <p>If the resolved directory already contains a {@code .git} directory,
+     * the clone step is skipped (the repo is already present). Otherwise,
+     * the repo is cloned into that directory.</p>
+     *
+     * @throws IOException if a git command fails to execute
+     * @throws InterruptedException if a git command is interrupted
+     */
+    private void resolveAndCloneRepository() throws IOException, InterruptedException {
+        // If workingDirectory is already set, just ensure the repo is there
+        if (workingDirectory != null && !workingDirectory.isEmpty()) {
+            File workDir = new File(workingDirectory);
+            if (!new File(workDir, ".git").exists() && !workDir.exists()) {
+                log("Working directory does not exist, cloning " + repoUrl + " into " + workingDirectory);
+                cloneRepository(workingDirectory);
+            }
+            return;
+        }
+
+        // Resolve the workspace path
+        String resolvedPath = resolveWorkspacePath();
+        log("Resolved workspace path: " + resolvedPath);
+
+        File resolvedDir = new File(resolvedPath);
+        if (new File(resolvedDir, ".git").exists()) {
+            log("Repository already exists at " + resolvedPath);
+            workingDirectory = resolvedPath;
+            return;
+        }
+
+        // Clone the repository
+        cloneRepository(resolvedPath);
+        workingDirectory = resolvedPath;
+    }
+
+    /**
+     * Resolves the workspace path for a repo URL checkout.
+     *
+     * <p>Resolution order:</p>
+     * <ol>
+     *   <li>{@link #defaultWorkspacePath} if explicitly configured</li>
+     *   <li>{@code /workspace/project} if the directory exists</li>
+     *   <li>{@code /tmp/flowtree-workspaces/<repo-name>} as fallback</li>
+     * </ol>
+     *
+     * @return the resolved absolute path for the workspace
+     */
+    private String resolveWorkspacePath() {
+        // 1. Use configured default workspace path
+        if (defaultWorkspacePath != null && !defaultWorkspacePath.isEmpty()) {
+            return defaultWorkspacePath;
+        }
+
+        // 2. Check if /workspace/project exists
+        File defaultDir = new File("/workspace/project");
+        if (defaultDir.exists() && defaultDir.isDirectory()) {
+            return "/workspace/project";
+        }
+
+        // 3. Fall back to /tmp with a repo-derived name
+        String repoName = extractRepoName(repoUrl);
+        return FALLBACK_WORKSPACE_DIR + "/" + repoName;
+    }
+
+    /**
+     * Extracts a filesystem-safe repository name from a git URL.
+     *
+     * <p>Handles SSH ({@code git@github.com:owner/repo.git}) and
+     * HTTPS ({@code https://github.com/owner/repo.git}) formats.
+     * Falls back to a hash-based name if parsing fails.</p>
+     *
+     * @param url the git remote URL
+     * @return a filesystem-safe name derived from the repo
+     */
+    private static String extractRepoName(String url) {
+        if (url == null || url.isEmpty()) {
+            return "unknown";
+        }
+
+        String path = url;
+
+        // SSH format: git@github.com:owner/repo.git
+        if (path.contains(":") && path.contains("@")) {
+            int colonIdx = path.lastIndexOf(':');
+            path = path.substring(colonIdx + 1);
+        } else {
+            // HTTPS format: strip protocol and host
+            int slashSlash = path.indexOf("//");
+            if (slashSlash >= 0) {
+                path = path.substring(slashSlash + 2);
+                int firstSlash = path.indexOf('/');
+                if (firstSlash >= 0) {
+                    path = path.substring(firstSlash + 1);
+                }
+            }
+        }
+
+        // Remove .git suffix
+        if (path.endsWith(".git")) {
+            path = path.substring(0, path.length() - 4);
+        }
+
+        // Replace slashes with dashes for a flat directory name
+        return path.replace('/', '-');
+    }
+
+    /**
+     * Clones the {@link #repoUrl} into the specified directory.
+     *
+     * <p>Creates parent directories as needed. The clone is performed
+     * with {@code git clone} into the target path.</p>
+     *
+     * @param targetPath the directory to clone into
+     * @throws IOException if a git command fails to execute
+     * @throws InterruptedException if a git command is interrupted
+     */
+    private void cloneRepository(String targetPath) throws IOException, InterruptedException {
+        File targetDir = new File(targetPath);
+        File parentDir = targetDir.getParentFile();
+        if (parentDir != null && !parentDir.exists()) {
+            parentDir.mkdirs();
+        }
+
+        log("Cloning " + repoUrl + " into " + targetPath + "...");
+
+        List<String> command = new ArrayList<>();
+        command.add("git");
+        command.add("clone");
+        command.add(repoUrl);
+        command.add(targetPath);
+
+        ProcessBuilder pb = new ProcessBuilder(command);
+        pb.redirectErrorStream(true);
+        pb.environment().put("GIT_SSH_COMMAND",
+                "ssh -o StrictHostKeyChecking=accept-new -o BatchMode=yes");
+
+        Process process = pb.start();
+        StringBuilder output = new StringBuilder();
+        try (BufferedReader reader = new BufferedReader(
+                new InputStreamReader(process.getInputStream()))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                output.append(line).append("\n");
+            }
+        }
+
+        int exitCode = process.waitFor();
+        if (exitCode != 0) {
+            throw new RuntimeException(
+                "Failed to clone " + repoUrl + " (exit " + exitCode + "): " + output.toString().trim());
+        }
+
+        log("Clone completed successfully");
     }
 
     /**
@@ -773,32 +1042,77 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
             if (token == null || token.isEmpty()) {
                 token = System.getenv("GH_TOKEN");
             }
-            if (token == null || token.isEmpty()) {
-                log("No GITHUB_TOKEN or GH_TOKEN set, cannot query GitHub API for PR");
-                return null;
-            }
 
-            // Query GitHub API for open PRs on this branch
-            String apiUrl = "https://api.github.com/repos/" + ownerRepo +
+            // Build the GitHub API query path
+            String apiPath = "/repos/" + ownerRepo +
                 "/pulls?head=" + ownerRepo.split("/")[0] + ":" + targetBranch +
                 "&state=open&per_page=1";
 
-            HttpURLConnection conn = (HttpURLConnection) new URL(apiUrl).openConnection();
-            conn.setRequestMethod("GET");
-            conn.setRequestProperty("Authorization", "Bearer " + token);
-            conn.setRequestProperty("Accept", "application/vnd.github+json");
-            conn.setConnectTimeout(10000);
-            conn.setReadTimeout(10000);
+            String responseBody = null;
 
-            int responseCode = conn.getResponseCode();
-            if (responseCode != 200) {
-                log("GitHub API returned " + responseCode + " for PR query");
+            if (token != null && !token.isEmpty()) {
+                // Direct GitHub API call with local token
+                String apiUrl = "https://api.github.com" + apiPath;
+                HttpURLConnection conn = (HttpURLConnection) new URL(apiUrl).openConnection();
+                conn.setRequestMethod("GET");
+                conn.setRequestProperty("Authorization", "Bearer " + token);
+                conn.setRequestProperty("Accept", "application/vnd.github+json");
+                conn.setConnectTimeout(10000);
+                conn.setReadTimeout(10000);
+
+                int responseCode = conn.getResponseCode();
+                if (responseCode != 200) {
+                    log("GitHub API returned " + responseCode + " for PR query");
+                    return null;
+                }
+                responseBody = new String(conn.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+            } else if (workstreamUrl != null && !workstreamUrl.isEmpty()) {
+                // Fallback: use the controller's GitHub proxy endpoint
+                String proxyBaseUrl = resolveWorkstreamUrl();
+                // Strip /jobs/{jobId} and /workstreams/{wsId} to get the API base
+                int wsIdx = proxyBaseUrl.indexOf("/api/workstreams/");
+                if (wsIdx >= 0) {
+                    String controllerBase = proxyBaseUrl.substring(0, wsIdx);
+                    String proxyUrl = controllerBase + "/api/github/proxy?url="
+                        + java.net.URLEncoder.encode(apiPath, StandardCharsets.UTF_8);
+
+                    HttpURLConnection conn = (HttpURLConnection) new URL(proxyUrl).openConnection();
+                    conn.setRequestMethod("GET");
+                    conn.setConnectTimeout(10000);
+                    conn.setReadTimeout(10000);
+
+                    int responseCode = conn.getResponseCode();
+                    if (responseCode != 200) {
+                        log("GitHub proxy returned " + responseCode + " for PR query");
+                        return null;
+                    }
+
+                    // Proxy response wraps the GitHub response: {"status":200,"body":[...]}
+                    String proxyResponse = new String(conn.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+                    ObjectMapper proxyMapper = new ObjectMapper();
+                    JsonNode proxyRoot = proxyMapper.readTree(proxyResponse);
+                    int ghStatus = proxyRoot.has("status") ? proxyRoot.get("status").asInt() : 0;
+                    if (ghStatus != 200) {
+                        log("GitHub proxy: GitHub returned status " + ghStatus);
+                        return null;
+                    }
+                    JsonNode bodyNode = proxyRoot.get("body");
+                    if (bodyNode != null) {
+                        responseBody = bodyNode.toString();
+                    }
+                }
+            } else {
+                log("No GITHUB_TOKEN and no workstream URL, cannot query GitHub API for PR");
+                return null;
+            }
+
+            if (responseBody == null || responseBody.isEmpty()) {
                 return null;
             }
 
             // Parse the JSON array response with Jackson
             ObjectMapper mapper = new ObjectMapper();
-            JsonNode root = mapper.readTree(conn.getInputStream());
+            JsonNode root = mapper.readTree(responseBody);
             if (root.isArray() && root.size() > 0) {
                 JsonNode firstPr = root.get(0);
                 JsonNode htmlUrlNode = firstPr.get("html_url");
@@ -1172,6 +1486,41 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
 
     public void setWorkingDirectory(String workingDirectory) {
         this.workingDirectory = workingDirectory;
+    }
+
+    /**
+     * Returns the git repository URL for automatic checkout.
+     */
+    public String getRepoUrl() {
+        return repoUrl;
+    }
+
+    /**
+     * Sets the git repository URL. When set and no
+     * {@link #workingDirectory} is specified, the repo is cloned
+     * into a resolved workspace path before the job starts.
+     *
+     * @param repoUrl the git clone URL (e.g., "https://github.com/owner/repo.git")
+     */
+    public void setRepoUrl(String repoUrl) {
+        this.repoUrl = repoUrl;
+    }
+
+    /**
+     * Returns the default workspace path for repo checkouts.
+     */
+    public String getDefaultWorkspacePath() {
+        return defaultWorkspacePath;
+    }
+
+    /**
+     * Sets the default workspace path used when a repo URL is specified
+     * but no explicit working directory is provided.
+     *
+     * @param defaultWorkspacePath the absolute path for repo checkouts
+     */
+    public void setDefaultWorkspacePath(String defaultWorkspacePath) {
+        this.defaultWorkspacePath = defaultWorkspacePath;
     }
 
     public long getMaxFileSizeBytes() {
@@ -1569,6 +1918,12 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
         if (workingDirectory != null) {
             sb.append("::workDir:=").append(base64Encode(workingDirectory));
         }
+        if (repoUrl != null) {
+            sb.append("::repoUrl:=").append(base64Encode(repoUrl));
+        }
+        if (defaultWorkspacePath != null) {
+            sb.append("::defaultWsPath:=").append(base64Encode(defaultWorkspacePath));
+        }
         sb.append("::maxFileSize:=").append(maxFileSizeBytes);
         sb.append("::push:=").append(pushToOrigin);
         sb.append("::createBranch:=").append(createBranchIfMissing);
@@ -1588,42 +1943,20 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
 
     @Override
     public void set(String key, String value) {
+        if (applyGitProperty(key, value, gitPropertyTarget)) return;
+
         switch (key) {
             case "taskId":
                 this.taskId = value;
                 break;
-            case "branch":
-                this.targetBranch = base64Decode(value);
-                break;
-            case "baseBranch":
-                this.baseBranch = base64Decode(value);
-                break;
-            case "workDir":
-                this.workingDirectory = base64Decode(value);
-                break;
             case "maxFileSize":
                 this.maxFileSizeBytes = Long.parseLong(value);
-                break;
-            case "push":
-                this.pushToOrigin = Boolean.parseBoolean(value);
                 break;
             case "createBranch":
                 this.createBranchIfMissing = Boolean.parseBoolean(value);
                 break;
             case "dryRun":
                 this.dryRun = Boolean.parseBoolean(value);
-                break;
-            case "protectTests":
-                this.protectTestFiles = Boolean.parseBoolean(value);
-                break;
-            case "gitUserName":
-                this.gitUserName = base64Decode(value);
-                break;
-            case "gitUserEmail":
-                this.gitUserEmail = base64Decode(value);
-                break;
-            case "workstreamUrl":
-                this.workstreamUrl = base64Decode(value);
                 break;
         }
     }
