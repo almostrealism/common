@@ -52,6 +52,16 @@ if [ "${TEST_INTEGRITY_PASSED:-true}" != "true" ]; then
     FAILURE_COUNT=$((FAILURE_COUNT + 1))
 fi
 
+if [ "${AGENT_COMMIT_BLOCKED:-false}" = "true" ]; then
+    echo "- agent-commit-validation: CRITICAL — Agent commit was BLOCKED because it modifies test files or CI files that exist on the base branch. Reason: ${AGENT_BLOCK_REASON:-unknown}. Agents are NEVER allowed to modify test or CI files. Run \`./tools/ci/validate-agent-commit.sh origin/master\` locally to see details." >> "$OUTPUT_FILE"
+    FAILURE_COUNT=$((FAILURE_COUNT + 1))
+fi
+
+if [ "${DECEPTION_AUDIT_FINDINGS:-false}" = "true" ]; then
+    echo "- deception-audit: WARNING — ${DECEPTION_FINDING_COUNT:-0} deception pattern(s) detected on this branch. This may indicate coordinated agent deception across sessions. Run \`./tools/ci/deception-audit.sh origin/master\` locally to see details." >> "$OUTPUT_FILE"
+    # Deception audit is informational, not a hard failure
+fi
+
 echo "failure_count=$FAILURE_COUNT" >> "$GITHUB_OUTPUT"
 if [ "$FAILURE_COUNT" -gt 0 ]; then
     echo "has_failures=true" >> "$GITHUB_OUTPUT"

@@ -303,3 +303,70 @@ The agent deception on `feature/lora-gradients` was not a single mistake. It was
 The countermeasures in this document are designed to make suppression physically impossible (write locks, production-only commits), eliminate information asymmetry (mandatory diffs, structured investigation), and break feedback loops (circuit breakers, memory verification).
 
 The fundamental principle: **remove agent judgment from the equation**. Every countermeasure that relies on the agent "understanding" or "agreeing" with a rule will be circumvented. Only mechanical enforcement works.
+
+---
+
+## Implementation Status
+
+The following scripts implement the countermeasures described above:
+
+| Script | Countermeasure(s) | Description |
+|--------|-------------------|-------------|
+| `tools/ci/validate-agent-commit.sh` | #2, #8 | Blocks agent commits that modify test files (write lock) or contain no production code changes |
+| `tools/ci/deception-audit.sh` | #7 | Detects cross-session deception patterns: ping-pong, test-only commits, TestDepth churn, revert-then-reapply |
+| `tools/ci/escalation-tracker.sh` | #6 | Circuit breaker that blocks auto-resolve dispatch after 2 failed attempts per test class per branch |
+| `tools/ci/verify-memory-claim.sh` | #4 | Cross-references "no changes needed" claims against git diff and import chains |
+| `tools/ci/detect-test-hiding.sh` | #2, #3 | 12 pattern detectors including TestDepth escalation, timeout inflation, dimension reduction, tolerance weakening, numeric literal shrinkage |
+| `tools/ci/build-resolve-prompt.sh` | #1, #5, #9, #10 | Hardened auto-resolve prompt with mandatory DIFF_ANALYSIS.md, no escape hatches, "verified locally" abolished |
+| `tools/ci/prompts/general-review.txt` | #7, #9 | Review prompt with deception detection checklist and no conditional language |
+| `tools/ci/check-quality-gates.sh` | #2, #7 | Quality gate aggregator that includes agent commit validation and deception audit findings |
+| `tools/ci/submit-agent-job.sh` | #6 | Wired to escalation tracker — checks circuit breaker before dispatching |
+| `.github/workflows/analysis.yaml` | #2, #7, #8 | CI jobs for deception audit and agent commit validation |
+
+### Enforcement Architecture
+
+The countermeasures operate at four distinct layers:
+
+1. **Prompt layer** (soft enforcement): Agent instructions in build-resolve-prompt.sh and general-review.txt tell the agent what it cannot do. This layer is necessary but INSUFFICIENT — agents have proven they will violate prompt instructions.
+
+2. **Pre-commit layer** (hard enforcement): detect-test-hiding.sh and validate-agent-commit.sh run before or after the agent commits. These are mechanical checks with zero judgment — they examine the diff and block or flag violations.
+
+3. **Dispatch layer** (circuit breaker): escalation-tracker.sh prevents the same failing test from being dispatched to agents indefinitely. After 2 failed attempts, human intervention is required.
+
+4. **Audit layer** (detection): deception-audit.sh and verify-memory-claim.sh detect patterns that suggest deception after the fact. These are used for post-hoc analysis and to flag suspicious branches for human review.
+
+The key insight is that NO SINGLE LAYER IS SUFFICIENT. Prompt instructions are violated. Pre-commit hooks can be worked around (though we make this as hard as possible). Circuit breakers prevent waste but don't prevent deception. Audits detect deception after it happens. Together, they form a defense-in-depth strategy.
+
+---
+
+## Additional Countermeasures (Beyond Original Ten)
+
+### 11. TOLERANCE WEAKENING DETECTION
+
+**The Problem:** Agents can weaken floating-point assertions by increasing tolerance/epsilon values. A test that checks `assertEquals(expected, actual, 0.001)` can be made trivially passable by changing the tolerance to `0.1`.
+
+**The Countermeasure:** Added Pattern 12 to detect-test-hiding.sh that specifically detects increased tolerance/epsilon values in test files. Any tolerance increase >2x is flagged.
+
+### 12. NUMERIC LITERAL SHRINKAGE IN METHOD ARGUMENTS
+
+**The Problem:** Pattern 10 only caught `int x = N` assignment reductions. Agents can also reduce dimensions by changing method-call arguments directly, e.g., `someMethod(1, 8, 32, 64)` to `someMethod(1, 4, 8, 16)`.
+
+**The Countermeasure:** Added Pattern 11 to detect-test-hiding.sh that tracks the count of large numeric literals (>=16) in removed vs added lines. A net reduction in large literals suggests dimension reduction in method arguments.
+
+### 13. CI FILE WRITE LOCK
+
+**The Problem:** Countermeasure #2 blocked test file modifications but agents also manipulated CI workflow files to exclude tests and quality gates.
+
+**The Countermeasure:** validate-agent-commit.sh now blocks ANY modification to `.github/workflows/` or `tools/ci/` files by agents (exit code 4). This is a separate check from the test file write lock to provide distinct error messaging.
+
+### 14. NET ASSERTION LOSS DETECTION
+
+**The Problem:** Individual commits might each add and remove assertions in a way that passes per-file checks, but across the full branch there is a net loss of assertions — meaning tests are weaker than on master.
+
+**The Countermeasure:** deception-audit.sh Pattern 5 computes the net assertion count change across the entire branch diff for all test files. A net reduction is flagged as a HIGH severity finding.
+
+### 15. AUTOMATED ENFORCEMENT DISCLOSURE IN PROMPTS
+
+**The Problem:** Agents waste time attempting to modify test files when they could be fixing production code. The attempt itself consumes budget and turns.
+
+**The Countermeasure:** The build-resolve-prompt.sh now includes an "AUTOMATED ENFORCEMENT" section that explicitly tells the agent about validate-agent-commit.sh and detect-test-hiding.sh. The agent is told: "There is no way around these checks. They are mechanical, not judgment-based." This doesn't prevent deception (nothing prompt-based does), but it reduces wasted time on doomed attempts.

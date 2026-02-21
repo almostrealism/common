@@ -175,8 +175,15 @@ for FILE in $MODIFIED_TEST_FILES; do
     fi
 
     # ── Pattern 10: Numeric constants DECREASED in test methods ──
-    # Catches reducing dimensions/sizes/iterations to make tests trivially pass
-    # Look for integer variable assignments where the value decreased
+    # Catches reducing dimensions/sizes/iterations to make tests trivially pass.
+    # Checks BOTH variable assignments (int x = N) AND method-call arguments
+    # and constructor parameters where numeric literals decreased.
+    #
+    # This is the "Numeric Constant Freeze" from DECEPTION.md Countermeasure #3.
+    # Evidence: AggressiveFineTuningTest dimensions reduced 8x (64->8, 32->4),
+    # RotaryEmbeddingGradientTests dimensions reduced (1,8,32,64) -> (1,4,8,16).
+
+    # Check variable assignments: int varName = NUMBER
     REMOVED_ASSIGNMENTS=$(echo "$DIFF" | grep -oP '^\-\s*int\s+\w+\s*=\s*\K[0-9]+' || true)
     ADDED_ASSIGNMENTS=$(echo "$DIFF" | grep -oP '^\+\s*int\s+\w+\s*=\s*\K[0-9]+' || true)
     if [ -n "$REMOVED_ASSIGNMENTS" ] && [ -n "$ADDED_ASSIGNMENTS" ]; then
@@ -190,7 +197,53 @@ for FILE in $MODIFIED_TEST_FILES; do
         done <<< "$REMOVED_ASSIGNMENTS"
         if [ "$DECREASED_COUNT" -gt 0 ]; then
             record_violation "$FILE" "DIMENSIONS_REDUCED" \
-                "${DECREASED_COUNT} numeric constant(s) reduced by more than half — may trivialize test coverage"
+                "${DECREASED_COUNT} numeric constant(s) in variable assignments reduced by more than half — may trivialize test coverage"
+        fi
+    fi
+
+    # ── Pattern 11: Numeric literals in method calls DECREASED ──
+    # Catches dimension reductions in method-call arguments like
+    # someMethod(1, 8, 32, 64) -> someMethod(1, 4, 8, 16)
+    # Extract all numeric literals > 4 from removed and added lines
+    REMOVED_LITERALS=$(echo "$DIFF" | grep -E '^\-' | grep -oP '\b[0-9]+\b' | sort -rn | head -50 || true)
+    ADDED_LITERALS=$(echo "$DIFF" | grep -E '^\+' | grep -oP '\b[0-9]+\b' | sort -rn | head -50 || true)
+    if [ -n "$REMOVED_LITERALS" ] && [ -n "$ADDED_LITERALS" ]; then
+        # Count how many large numbers disappeared and were replaced by smaller ones
+        LARGE_REMOVED=0
+        LARGE_ADDED=0
+        while IFS= read -r VAL; do
+            [ -z "$VAL" ] && continue
+            if [ "$VAL" -ge 16 ]; then
+                LARGE_REMOVED=$((LARGE_REMOVED + 1))
+            fi
+        done <<< "$REMOVED_LITERALS"
+        while IFS= read -r VAL; do
+            [ -z "$VAL" ] && continue
+            if [ "$VAL" -ge 16 ]; then
+                LARGE_ADDED=$((LARGE_ADDED + 1))
+            fi
+        done <<< "$ADDED_LITERALS"
+        # If significantly more large numbers were removed than added, flag it
+        if [ "$LARGE_REMOVED" -gt 2 ] && [ "$LARGE_ADDED" -lt "$((LARGE_REMOVED / 2))" ]; then
+            NET_LOST=$((LARGE_REMOVED - LARGE_ADDED))
+            record_violation "$FILE" "NUMERIC_LITERALS_SHRUNK" \
+                "${NET_LOST} large numeric literal(s) (>=16) removed without replacement — may indicate dimension reduction in method arguments"
+        fi
+    fi
+
+    # ── Pattern 12: Tolerance/epsilon values INCREASED ──
+    # Catches weakening of floating-point comparisons by increasing
+    # tolerance thresholds (e.g., 0.001 -> 0.1)
+    REMOVED_TOLERANCES=$(echo "$DIFF" | grep -oP '^\-.*(?:tolerance|epsilon|delta|EPSILON|TOLERANCE)\s*[=,]\s*\K[0-9]*\.?[0-9]+' || true)
+    ADDED_TOLERANCES=$(echo "$DIFF" | grep -oP '^\+.*(?:tolerance|epsilon|delta|EPSILON|TOLERANCE)\s*[=,]\s*\K[0-9]*\.?[0-9]+' || true)
+    if [ -n "$REMOVED_TOLERANCES" ] && [ -n "$ADDED_TOLERANCES" ]; then
+        OLD_TOL=$(echo "$REMOVED_TOLERANCES" | head -1)
+        NEW_TOL=$(echo "$ADDED_TOLERANCES" | head -1)
+        # Use awk for float comparison
+        TOLERANCE_INCREASED=$(awk "BEGIN { print ($NEW_TOL > $OLD_TOL * 2) ? 1 : 0 }" 2>/dev/null || echo "0")
+        if [ "$TOLERANCE_INCREASED" = "1" ]; then
+            record_violation "$FILE" "TOLERANCE_WEAKENED" \
+                "Tolerance/epsilon increased from ${OLD_TOL} to ${NEW_TOL} — weakens assertion precision"
         fi
     fi
 done

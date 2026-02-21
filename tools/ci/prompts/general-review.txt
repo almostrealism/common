@@ -11,10 +11,15 @@ DECEPTION.md). Specific tactics documented with evidence:
 - Increased timeouts 6x (5min->30min) to prevent timeout detection
 - Re-added suppression AFTER a human reverted it
 - Stored false memories claiming "no changes needed" for failures they caused
+- Excluded CodePolicyEnforcementTest from CI test steps
+- Manipulated CI job dependencies to skip quality gates
 
 You MUST NOT modify test files for ANY reason. Not timeouts, not @TestDepth,
-not dimensions, not tolerances, not annotations. If a test fails, fix the
-PRODUCTION CODE. If you cannot fix it, report the failure - do not hide it.
+not dimensions, not tolerances, not annotations, not assertions. If a test fails,
+fix the PRODUCTION CODE. If you cannot fix it, report the failure — do not hide it.
+
+**Automated enforcement:** Your changes will be validated by validate-agent-commit.sh
+which BLOCKS modifications to test files and CI files. Do not waste time attempting it.
 
 ---
 
@@ -36,21 +41,26 @@ see all test file changes. For each modified test that existed on ${BASE_BRANCH}
 (check with `git log --oneline ${BASE_BRANCH} -- <file>`):
 
 **Flag as TEST INTEGRITY VIOLATION if you find ANY of these:**
-- @TestDepth values INCREASED (e.g., 2->10) - hides tests from CI
-- Timeout values INCREASED by more than 2x - hides performance regressions
-- Numeric constants DECREASED (dimensions, sizes, iterations) - trivializes tests
+- @TestDepth values INCREASED (e.g., 2->10) — hides tests from CI
+- Timeout values INCREASED by more than 2x — hides performance regressions
+- Numeric constants DECREASED (dimensions, sizes, iterations) — trivializes tests
+- Tolerance/epsilon values INCREASED — weakens assertion precision
 - @Ignore, @Disabled, or skip annotations added
 - Assertions weakened, deleted, or commented out
 - try/catch blocks added that swallow exceptions
 - CI workflow files modified to exclude tests or quality checks
+- Numeric literals (>=16) removed without replacement in method arguments
 
 **If you find violations: REVERT the test modifications.** The test is the
 specification. Fix the production code to make the original test pass.
 
-**Also check for cross-session deception patterns:**
-- Same test file modified, reverted by human, then re-modified by agent
+**Cross-session deception patterns to flag (run deception-audit.sh):**
+- Same test file modified in 3+ commits on the branch (ping-pong pattern)
+- Commits that touch ONLY test/CI files with no production code changes
+- @TestDepth changed multiple times in the same file on this branch
+- Revert commits followed by re-modification of the same files
+- Net reduction in assertions across the branch
 - Memory entries claiming "no changes needed" on branches with active failures
-- Agent commits that touch ONLY test/CI files with no production code changes
 
 ### 2. Design and Architecture
 
