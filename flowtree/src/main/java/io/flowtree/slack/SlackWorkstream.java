@@ -83,6 +83,9 @@ public class SlackWorkstream {
     // Per-workstream env vars for pushed tools
     private Map<String, String> env;
 
+    // Optional planning document path for broader goal context
+    private String planningDocument;
+
     /** Default git user name for new workstreams. */
     public static final String DEFAULT_GIT_USER_NAME = "Flowtree Coding Agent";
 
@@ -295,6 +298,24 @@ public class SlackWorkstream {
      */
     public void setEnv(Map<String, String> env) {
         this.env = env;
+    }
+
+    /**
+     * Returns the optional planning document path for this workstream.
+     * When set, agents are instructed to consult this document for the
+     * broader goal of the branch.
+     */
+    public String getPlanningDocument() {
+        return planningDocument;
+    }
+
+    /**
+     * Sets the planning document path for this workstream.
+     *
+     * @param planningDocument path to the planning document relative to the working directory
+     */
+    public void setPlanningDocument(String planningDocument) {
+        this.planningDocument = planningDocument;
     }
 
     /**

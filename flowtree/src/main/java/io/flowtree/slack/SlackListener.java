@@ -364,6 +364,11 @@ public class SlackListener implements ConsoleFeatures {
             factory.setWorkstreamEnv(workstream.getEnv());
         }
 
+        // Planning document
+        if (workstream.getPlanningDocument() != null) {
+            factory.setPlanningDocument(workstream.getPlanningDocument());
+        }
+
         // Build workstream URL for status reporting and Slack messaging
         if (apiPort > 0) {
             String baseUrl = "http://0.0.0.0:" + apiPort

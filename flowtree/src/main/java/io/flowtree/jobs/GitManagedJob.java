@@ -773,32 +773,77 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
             if (token == null || token.isEmpty()) {
                 token = System.getenv("GH_TOKEN");
             }
-            if (token == null || token.isEmpty()) {
-                log("No GITHUB_TOKEN or GH_TOKEN set, cannot query GitHub API for PR");
-                return null;
-            }
 
-            // Query GitHub API for open PRs on this branch
-            String apiUrl = "https://api.github.com/repos/" + ownerRepo +
+            // Build the GitHub API query path
+            String apiPath = "/repos/" + ownerRepo +
                 "/pulls?head=" + ownerRepo.split("/")[0] + ":" + targetBranch +
                 "&state=open&per_page=1";
 
-            HttpURLConnection conn = (HttpURLConnection) new URL(apiUrl).openConnection();
-            conn.setRequestMethod("GET");
-            conn.setRequestProperty("Authorization", "Bearer " + token);
-            conn.setRequestProperty("Accept", "application/vnd.github+json");
-            conn.setConnectTimeout(10000);
-            conn.setReadTimeout(10000);
+            String responseBody = null;
 
-            int responseCode = conn.getResponseCode();
-            if (responseCode != 200) {
-                log("GitHub API returned " + responseCode + " for PR query");
+            if (token != null && !token.isEmpty()) {
+                // Direct GitHub API call with local token
+                String apiUrl = "https://api.github.com" + apiPath;
+                HttpURLConnection conn = (HttpURLConnection) new URL(apiUrl).openConnection();
+                conn.setRequestMethod("GET");
+                conn.setRequestProperty("Authorization", "Bearer " + token);
+                conn.setRequestProperty("Accept", "application/vnd.github+json");
+                conn.setConnectTimeout(10000);
+                conn.setReadTimeout(10000);
+
+                int responseCode = conn.getResponseCode();
+                if (responseCode != 200) {
+                    log("GitHub API returned " + responseCode + " for PR query");
+                    return null;
+                }
+                responseBody = new String(conn.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+            } else if (workstreamUrl != null && !workstreamUrl.isEmpty()) {
+                // Fallback: use the controller's GitHub proxy endpoint
+                String proxyBaseUrl = resolveWorkstreamUrl();
+                // Strip /jobs/{jobId} and /workstreams/{wsId} to get the API base
+                int wsIdx = proxyBaseUrl.indexOf("/api/workstreams/");
+                if (wsIdx >= 0) {
+                    String controllerBase = proxyBaseUrl.substring(0, wsIdx);
+                    String proxyUrl = controllerBase + "/api/github/proxy?url="
+                        + java.net.URLEncoder.encode(apiPath, StandardCharsets.UTF_8);
+
+                    HttpURLConnection conn = (HttpURLConnection) new URL(proxyUrl).openConnection();
+                    conn.setRequestMethod("GET");
+                    conn.setConnectTimeout(10000);
+                    conn.setReadTimeout(10000);
+
+                    int responseCode = conn.getResponseCode();
+                    if (responseCode != 200) {
+                        log("GitHub proxy returned " + responseCode + " for PR query");
+                        return null;
+                    }
+
+                    // Proxy response wraps the GitHub response: {"status":200,"body":[...]}
+                    String proxyResponse = new String(conn.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+                    ObjectMapper proxyMapper = new ObjectMapper();
+                    JsonNode proxyRoot = proxyMapper.readTree(proxyResponse);
+                    int ghStatus = proxyRoot.has("status") ? proxyRoot.get("status").asInt() : 0;
+                    if (ghStatus != 200) {
+                        log("GitHub proxy: GitHub returned status " + ghStatus);
+                        return null;
+                    }
+                    JsonNode bodyNode = proxyRoot.get("body");
+                    if (bodyNode != null) {
+                        responseBody = bodyNode.toString();
+                    }
+                }
+            } else {
+                log("No GITHUB_TOKEN and no workstream URL, cannot query GitHub API for PR");
+                return null;
+            }
+
+            if (responseBody == null || responseBody.isEmpty()) {
                 return null;
             }
 
             // Parse the JSON array response with Jackson
             ObjectMapper mapper = new ObjectMapper();
-            JsonNode root = mapper.readTree(conn.getInputStream());
+            JsonNode root = mapper.readTree(responseBody);
             if (root.isArray() && root.size() > 0) {
                 JsonNode firstPr = root.get(0);
                 JsonNode htmlUrlNode = firstPr.get("html_url");

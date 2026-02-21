@@ -29,6 +29,7 @@ import io.flowtree.jobs.McpToolDiscovery;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.OutputFeatures;
+import org.almostrealism.util.SignalWireDeliveryProvider;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -604,6 +605,9 @@ public class FlowTreeController implements ConsoleFeatures {
         statsStore = new JobStatsStore(dataDir + "/stats");
         statsStore.initialize();
         notifier.setStatsStore(statsStore);
+
+        // Initialize SignalWire SMS alerting (no-op if config file is absent)
+        SignalWireDeliveryProvider.attachDefault();
 
         try {
             apiEndpoint = new FlowTreeApiEndpoint(apiPort, notifier);

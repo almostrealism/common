@@ -79,6 +79,7 @@ public class WorkstreamConfig {
         private String gitUserName;
         private String gitUserEmail;
         private Map<String, String> env;
+        private String planningDocument;
 
         public String getWorkstreamId() { return workstreamId; }
         public void setWorkstreamId(String workstreamId) { this.workstreamId = workstreamId; }
@@ -123,6 +124,10 @@ public class WorkstreamConfig {
         public Map<String, String> getEnv() { return env; }
         public void setEnv(Map<String, String> env) { this.env = env; }
 
+        /** Returns the optional planning document path for broader goal context. */
+        public String getPlanningDocument() { return planningDocument; }
+        public void setPlanningDocument(String planningDocument) { this.planningDocument = planningDocument; }
+
         /**
          * Converts this entry to a {@link SlackWorkstream} instance.
          *
@@ -149,6 +154,7 @@ public class WorkstreamConfig {
             ws.setGitUserName(gitUserName);
             ws.setGitUserEmail(gitUserEmail);
             ws.setEnv(env);
+            ws.setPlanningDocument(planningDocument);
             return ws;
         }
     }
@@ -342,6 +348,7 @@ public class WorkstreamConfig {
         entry.setGitUserName(ws.getGitUserName());
         entry.setGitUserEmail(ws.getGitUserEmail());
         entry.setEnv(ws.getEnv());
+        entry.setPlanningDocument(ws.getPlanningDocument());
         workstreams.add(entry);
     }
 
@@ -371,6 +378,7 @@ public class WorkstreamConfig {
                     entry.setGitUserName(ws.getGitUserName());
                     entry.setGitUserEmail(ws.getGitUserEmail());
                     entry.setEnv(ws.getEnv());
+                    entry.setPlanningDocument(ws.getPlanningDocument());
                     found = true;
                     break;
                 }
