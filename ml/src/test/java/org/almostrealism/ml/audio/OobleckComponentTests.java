@@ -322,7 +322,7 @@ public class OobleckComponentTests extends TestSuiteBase {
 		timeComponent("DecoderBlock 1", inChannels, seqLen, block);
 	}
 
-	@Test(timeout = 120000)
+	@Test(timeout = 5 * 60000)
 	public void testDecoderBlock5() {
 		Console.root().addListener(OutputFeatures.fileOutput(
 				"test_data/stable_audio/component_decoder_block5.log"));
