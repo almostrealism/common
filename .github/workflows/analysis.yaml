@@ -220,7 +220,6 @@ jobs:
   test:
     needs: [build, test-timeout-check, duplicate-code-check]
     runs-on: [self-hosted, linux, ar-ci]
-    if: ${{ !cancelled() && github.ref != 'refs/heads/master' }}
     strategy:
       fail-fast: true
       matrix:
@@ -276,8 +275,7 @@ jobs:
           retention-days: 1
 
   test-ml:
-#    needs: test
-    needs: build
+    needs: test
     runs-on: [self-hosted, linux, ar-ci]
     steps:
       - name: Checkout Code
@@ -622,7 +620,7 @@ jobs:
   # from starting until it completes.
 
   auto-resolve:
-    needs: [build, javadoc-check, test-timeout-check, duplicate-code-check, test-integrity-check, analysis]
+    needs: [build, javadoc-check, test-timeout-check, duplicate-code-check, test-integrity-check]
     if: ${{ !cancelled() && github.ref != 'refs/heads/master' && contains(needs.*.result, 'failure') }}
     runs-on: [self-hosted, macos, ar-ci]
     concurrency:
