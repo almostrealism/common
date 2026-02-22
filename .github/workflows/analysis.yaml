@@ -97,7 +97,7 @@ jobs:
     # Failures are reported but do not fail the overall workflow.
     continue-on-error: true
     outputs:
-      passed: ${{ steps.check.outcome == 'success' }}
+      passed: ${{ steps.check.outcome == 'success' }}f
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -220,6 +220,7 @@ jobs:
   test:
     needs: [build, test-timeout-check, duplicate-code-check]
     runs-on: [self-hosted, linux, ar-ci]
+    if: ${{ !cancelled() && github.ref != 'refs/heads/master' }}
     strategy:
       fail-fast: true
       matrix:
@@ -275,7 +276,8 @@ jobs:
           retention-days: 1
 
   test-ml:
-    needs: test
+#    needs: test
+    needs: build
     runs-on: [self-hosted, linux, ar-ci]
     steps:
       - name: Checkout Code

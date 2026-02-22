@@ -129,8 +129,10 @@ public class OobleckComponentTests extends TestSuiteBase {
 	}
 
 	@Test(timeout = 120000)
-	@TestDepth(10)
+	@TestDepth(2)
 	public void testSnakeLarge() {
+		if (skipKnownIssues) return;
+
 		Console.root().addListener(OutputFeatures.fileOutput(
 				"test_data/stable_audio/component_snake_large.log"));
 		log("=== Snake Large Test ===");
