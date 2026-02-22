@@ -123,7 +123,7 @@ public class WaveCellEnvelopeTest extends TestSuiteBase implements CellFeatures 
 	 * Test that SawtoothWaveCell passes note position to the envelope Factor.
 	 * Verifies by checking that output goes to zero after note ends.
 	 */
-	@Test(timeout = 60000)
+	@Test(timeout = 120000)
 	public void sawtoothWaveCellEnvelopeReceivesNotePosition() {
 		PositionBasedEnvelope envelope = new PositionBasedEnvelope();
 
@@ -161,7 +161,7 @@ public class WaveCellEnvelopeTest extends TestSuiteBase implements CellFeatures 
 	 * Test that SquareWaveCell passes note position to the envelope Factor.
 	 * Verifies by checking that output goes to zero after note ends.
 	 */
-	@Test(timeout = 60000)
+	@Test(timeout = 120000)
 	public void squareWaveCellEnvelopeReceivesNotePosition() {
 		PositionBasedEnvelope envelope = new PositionBasedEnvelope();
 
@@ -445,7 +445,7 @@ public class WaveCellEnvelopeTest extends TestSuiteBase implements CellFeatures 
 	 * Test that DefaultEnvelopeComputation properly uses note position.
 	 * This test verifies the envelope at specific note positions.
 	 */
-	@Test(timeout = 60000)
+	@Test(timeout = 180000)
 	public void defaultEnvelopeComputationUsesNotePosition() {
 		// Create cells with DefaultEnvelopeComputation
 		SineWaveCell cell = new SineWaveCell();

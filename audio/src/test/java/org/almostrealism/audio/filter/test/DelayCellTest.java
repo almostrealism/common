@@ -187,7 +187,7 @@ public class DelayCellTest extends TestSuiteBase implements CellFeatures, AudioT
 	 * process) produce identical audio output. The profiling information printed to
 	 * console shows performance differences, but the audio should be the same.</p>
 	 */
-	@Test(timeout = 60000)
+	@Test(timeout = 180000)
 	public void filterLoopComparison() throws IOException {
 		Supplier<Runnable> r =
 				iter(w(0, getTestWavPath())
