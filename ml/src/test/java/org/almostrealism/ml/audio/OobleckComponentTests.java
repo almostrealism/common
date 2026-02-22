@@ -326,6 +326,8 @@ public class OobleckComponentTests extends TestSuiteBase {
 
 	@Test(timeout = 5 * 60000)
 	public void testDecoderBlock5() {
+		if (skipHighMemTests) return;
+
 		Console.root().addListener(OutputFeatures.fileOutput(
 				"test_data/stable_audio/component_decoder_block5.log"));
 		log("=== DecoderBlock 5 Test (last block, largest) ===");
