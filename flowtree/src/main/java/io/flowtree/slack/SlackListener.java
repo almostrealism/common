@@ -582,6 +582,9 @@ public class SlackListener implements ConsoleFeatures {
         sb.append("   Allowed tools: ").append(ws.getAllowedTools()).append("\n");
         sb.append("   Max turns: ").append(ws.getMaxTurns()).append("\n");
         sb.append("   Max budget: $").append(String.format("%.2f", ws.getMaxBudgetUsd()));
+        if (ws.getPlanningDocument() != null) {
+            sb.append("\n   Planning document: `").append(ws.getPlanningDocument()).append("`");
+        }
         if (ws.getGitUserName() != null || ws.getGitUserEmail() != null) {
             sb.append("\n   Git user: ");
             if (ws.getGitUserName() != null) sb.append(ws.getGitUserName());
@@ -678,7 +681,8 @@ public class SlackListener implements ConsoleFeatures {
             sb.append("   `pushToOrigin` = ").append(ws.isPushToOrigin()).append("\n");
             sb.append("   `allowedTools` = ").append(ws.getAllowedTools()).append("\n");
             sb.append("   `gitUserName` = ").append(ws.getGitUserName() != null ? ws.getGitUserName() : "(not set)").append("\n");
-            sb.append("   `gitUserEmail` = ").append(ws.getGitUserEmail() != null ? ws.getGitUserEmail() : "(not set)");
+            sb.append("   `gitUserEmail` = ").append(ws.getGitUserEmail() != null ? ws.getGitUserEmail() : "(not set)").append("\n");
+            sb.append("   `planningDocument` = ").append(ws.getPlanningDocument() != null ? ws.getPlanningDocument() : "(not set)");
             ctx.respond(sb.toString());
             return;
         }
@@ -694,7 +698,7 @@ public class SlackListener implements ConsoleFeatures {
                 ctx.respond(":warning: Unknown setting: `" + key + "`\n"
                     + "Modifiable settings: `maxBudgetUsd`, `maxTurns`, `defaultBranch`, "
                     + "`baseBranch`, `workingDirectory`, `pushToOrigin`, `allowedTools`, "
-                    + "`gitUserName`, `gitUserEmail`");
+                    + "`gitUserName`, `gitUserEmail`, `planningDocument`");
             } else {
                 ctx.respond(":gear: `" + key + "` = " + currentValue);
             }
@@ -779,6 +783,7 @@ public class SlackListener implements ConsoleFeatures {
             case "allowedTools": return ws.getAllowedTools();
             case "gitUserName": return ws.getGitUserName() != null ? ws.getGitUserName() : "(not set)";
             case "gitUserEmail": return ws.getGitUserEmail() != null ? ws.getGitUserEmail() : "(not set)";
+            case "planningDocument": return ws.getPlanningDocument() != null ? ws.getPlanningDocument() : "(not set)";
             case "workstreamId": return ws.getWorkstreamId();
             case "channelId": return ws.getChannelId();
             case "channelName": return ws.getChannelName();
@@ -827,6 +832,9 @@ public class SlackListener implements ConsoleFeatures {
             case "gitUserEmail":
                 ws.setGitUserEmail(value);
                 return null;
+            case "planningDocument":
+                ws.setPlanningDocument(value);
+                return null;
             case "workstreamId":
             case "channelId":
             case "channelName":
@@ -835,7 +843,7 @@ public class SlackListener implements ConsoleFeatures {
                 return "Unknown setting: `" + key + "`\n"
                     + "Modifiable settings: `maxBudgetUsd`, `maxTurns`, `defaultBranch`, "
                     + "`baseBranch`, `workingDirectory`, `pushToOrigin`, `allowedTools`, "
-                    + "`gitUserName`, `gitUserEmail`";
+                    + "`gitUserName`, `gitUserEmail`, `planningDocument`";
         }
     }
 
