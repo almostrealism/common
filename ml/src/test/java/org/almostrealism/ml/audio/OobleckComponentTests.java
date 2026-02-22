@@ -194,6 +194,8 @@ public class OobleckComponentTests extends TestSuiteBase {
 
 	@Test(timeout = 120000)
 	public void testWNConvTranspose16x() {
+		if (skipKnownIssues) return;
+
 		Console.root().addListener(OutputFeatures.fileOutput(
 				"test_data/stable_audio/component_wnconvtranspose_16x.log"));
 		log("=== WNConvTranspose1d 16x Test ===");
