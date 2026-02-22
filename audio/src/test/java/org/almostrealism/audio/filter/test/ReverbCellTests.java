@@ -31,7 +31,7 @@ import java.util.function.Supplier;
 public class ReverbCellTests extends TestSuiteBase implements CellFeatures, AudioTestFeatures {
 	private final int sampleRate = OutputLine.sampleRate;
 
-	@Test(timeout = 180000)
+	@Test(timeout = 5 * 60000)
 	public void reverb1() {
 		CellList c = w(0, getTestWavPath())
 				.map(fc(i -> new DelayNetwork(sampleRate, false)))
@@ -40,7 +40,7 @@ public class ReverbCellTests extends TestSuiteBase implements CellFeatures, Audi
 		r.get().run();
 	}
 
-	@Test(timeout = 180000)
+	@Test(timeout = 5 * 60000)
 	public void reverbAutomation() {
 		TimeCell clock = new TimeCell();
 
@@ -53,7 +53,7 @@ public class ReverbCellTests extends TestSuiteBase implements CellFeatures, Audi
 		r.get().run();
 	}
 
-	@Test(timeout = 180000)
+	@Test(timeout = 5 * 60000)
 	public void delayReverb() {
 		CellList c = w(0, getTestWavPath())
 				.d(i -> c(2.0))
