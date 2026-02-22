@@ -91,7 +91,7 @@ jobs:
           fi
 
   javadoc-check:
-    needs: test-media-mac
+    needs: test-media
     runs-on: ubuntu-latest
     # Out of the critical path: does not block tests or other jobs.
     # Failures are reported but do not fail the overall workflow.
@@ -498,7 +498,7 @@ jobs:
            -DAR_TEST_PROFILE=pipeline
 
   analysis:
-    needs: [test-media, test-media-mac]
+    needs: [test-media]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     permissions:

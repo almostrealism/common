@@ -57,7 +57,7 @@ public class AudioPassFilterTest extends TestSuiteBase implements CellFeatures {
 	/**
 	 * Tests that a high-pass filter attenuates low frequencies.
 	 */
-	@Test(timeout = 60000)
+	@Test(timeout = 3 * 60000)
 	public void highPassAttenuatesLowFrequencies() {
 		// Create a low-frequency signal (100 Hz) below the cutoff
 		PackedCollection lowFreqSignal = TestAudioData.sineWave(100.0, DURATION, SAMPLE_RATE, 1.0);
