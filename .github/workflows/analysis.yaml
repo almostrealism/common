@@ -402,6 +402,9 @@ jobs:
   test-mac:
     needs: [test-ml]
     runs-on: [self-hosted, macos, ar-ci]
+    concurrency:
+      group: test-mac-${{ github.ref }}
+      cancel-in-progress: true
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4

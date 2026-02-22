@@ -22,7 +22,6 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.layers.LayerFeatures;
 import org.almostrealism.util.TestSuiteBase;
-import org.junit.Assert;
 import org.junit.Test;
 
 /**
@@ -38,8 +37,6 @@ import org.junit.Test;
  * </ul>
  */
 public class LoopedWeightedSumCorrectnessTest extends TestSuiteBase implements LayerFeatures {
-
-	private static final double TOLERANCE = 1e-6;
 
 	/**
 	 * Test 1.1: Compare LoopedWeightedSumComputation against hand-computed reference.
@@ -138,16 +135,16 @@ public class LoopedWeightedSumCorrectnessTest extends TestSuiteBase implements L
 		r.run();
 
 		// Verify results
-		System.out.println("=== Test 1.1: Hand-Computed Reference ===");
-		System.out.println("Expected: [" + expected[0] + ", " + expected[1] + "]");
-		System.out.println("Actual:   [" + output.toDouble(0) + ", " + output.toDouble(1) + "]");
+		log("=== Test 1.1: Hand-Computed Reference ===");
+		log("Expected: [" + expected[0] + ", " + expected[1] + "]");
+		log("Actual:   [" + output.toDouble(0) + ", " + output.toDouble(1) + "]");
 
 		for (int i = 0; i < outputSize; i++) {
 			double actual = output.toDouble(i);
-			Assert.assertEquals("Output[" + i + "] mismatch", expected[i], actual, TOLERANCE);
+			assertEquals("Output[" + i + "] mismatch", expected[i], actual);
 		}
 
-		System.out.println("PASSED: All values match within tolerance " + TOLERANCE);
+		log("PASSED");
 	}
 
 	/**
@@ -206,16 +203,16 @@ public class LoopedWeightedSumCorrectnessTest extends TestSuiteBase implements L
 		Runnable r = optimized.get();
 		r.run();
 
-		System.out.println("=== Test 1.1b: Hand-Computed Reference (With Optimization) ===");
-		System.out.println("Expected: [" + expected[0] + ", " + expected[1] + "]");
-		System.out.println("Actual:   [" + output.toDouble(0) + ", " + output.toDouble(1) + "]");
+		log("=== Test 1.1b: Hand-Computed Reference (With Optimization) ===");
+		log("Expected: [" + expected[0] + ", " + expected[1] + "]");
+		log("Actual:   [" + output.toDouble(0) + ", " + output.toDouble(1) + "]");
 
 		for (int i = 0; i < outputSize; i++) {
 			double actual = output.toDouble(i);
-			Assert.assertEquals("Output[" + i + "] mismatch (with optimization)", expected[i], actual, TOLERANCE);
+			assertEquals("Output[" + i + "] mismatch (with optimization)", expected[i], actual);
 		}
 
-		System.out.println("PASSED: All values match within tolerance " + TOLERANCE);
+		log("PASSED");
 	}
 
 	/**
@@ -291,27 +288,14 @@ public class LoopedWeightedSumCorrectnessTest extends TestSuiteBase implements L
 			expectedOutput[o] = sum;
 		}
 
-		System.out.println("=== Test 1.2: LoopedWeightedSumComputation vs Manual Computation ===");
-		System.out.println("Comparing with outerCount=" + outerCount + ", innerCount=" + innerCount + ", outputSize=" + outputSize);
+		log("=== Test 1.2: LoopedWeightedSumComputation vs Manual Computation ===");
+		log("Comparing with outerCount=" + outerCount + ", innerCount=" + innerCount + ", outputSize=" + outputSize);
 
-		boolean allMatch = true;
-		double maxDiff = 0.0;
 		for (int i = 0; i < outputSize; i++) {
-			double looped = loopedOutput.toDouble(i);
-			double expected = expectedOutput[i];
-			double diff = Math.abs(looped - expected);
-			maxDiff = Math.max(maxDiff, diff);
-
-			if (diff > TOLERANCE) {
-				System.out.println("MISMATCH at " + i + ": looped=" + looped + ", expected=" + expected + ", diff=" + diff);
-				allMatch = false;
-			}
+			assertEquals("Output[" + i + "] mismatch", expectedOutput[i], loopedOutput.toDouble(i));
 		}
 
-		System.out.println("Max difference: " + maxDiff);
-
-		Assert.assertTrue("Outputs do not match within tolerance", allMatch);
-		System.out.println("PASSED: All values match within tolerance " + TOLERANCE);
+		log("PASSED");
 	}
 
 	/**
@@ -380,19 +364,14 @@ public class LoopedWeightedSumCorrectnessTest extends TestSuiteBase implements L
 			expected[o] = sum;
 		}
 
-		System.out.println("=== Test 1.3: Larger Scale (outerCount=" + outerCount + ", innerCount=" + innerCount + ") ===");
-		System.out.println("Compile time: " + compileTime + "ms");
-		System.out.println("Run time: " + runTime + "ms");
+		log("=== Test 1.3: Larger Scale (outerCount=" + outerCount + ", innerCount=" + innerCount + ") ===");
+		log("Compile time: " + compileTime + "ms");
+		log("Run time: " + runTime + "ms");
 
-		double maxDiff = 0.0;
 		for (int i = 0; i < outputSize; i++) {
-			double actual = output.toDouble(i);
-			double diff = Math.abs(actual - expected[i]);
-			maxDiff = Math.max(maxDiff, diff);
-			Assert.assertEquals("Output[" + i + "] mismatch", expected[i], actual, TOLERANCE);
+			assertEquals("Output[" + i + "] mismatch", expected[i], output.toDouble(i));
 		}
 
-		System.out.println("Max difference: " + maxDiff);
-		System.out.println("PASSED: All values match within tolerance " + TOLERANCE);
+		log("PASSED");
 	}
 }
