@@ -424,7 +424,7 @@ jobs:
       - name: Run Utils Tests
         run: |
           DYLD_LIBRARY_PATH=Extensions mvn test -pl utils \
-           -DAR_HARDWARE_DRIVER=mtl \
+           -DAR_HARDWARE_DRIVER=* \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS=Extensions
 
