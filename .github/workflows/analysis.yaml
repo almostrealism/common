@@ -691,6 +691,7 @@ jobs:
           BRANCH: ${{ steps.ctx.outputs.branch }}
           BASE_BRANCH: ${{ steps.ctx.outputs.base }}
           PROTECT_TEST_FILES: "true"
+          ENFORCE_CHANGES: "true"
         run: |
           ./tools/ci/submit-agent-job.sh /tmp/agent-prompt.txt
 
