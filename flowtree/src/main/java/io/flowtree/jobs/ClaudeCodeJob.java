@@ -1541,7 +1541,7 @@ public class ClaudeCodeJob extends GitManagedJob {
      * distribute prompts across multiple nodes. When a node finishes a prompt,
      * it becomes idle and can pick up the next job.</p>
      */
-    public static class Factory extends AbstractJobFactory implements GitManagedJob.GitPropertyTarget {
+    public static class Factory extends AbstractJobFactory {
         private List<String> prompts;
         private int index;
         private String allowedTools = DEFAULT_TOOLS;
@@ -1561,25 +1561,6 @@ public class ClaudeCodeJob extends GitManagedJob {
         private Map<String, String> workstreamEnv;
         private String planningDocument;
         private boolean protectTestFiles = false;
-
-        /**
-         * Adapter that sets git property fields directly, avoiding the
-         * infinite recursion that would occur if {@link #set(String, String)}
-         * delegated to {@link GitManagedJob#applyGitProperty} with {@code this}
-         * as the target (since the setter methods call {@code set()} again).
-         */
-        private final GitManagedJob.GitPropertyTarget gitPropertyTarget = new GitManagedJob.GitPropertyTarget() {
-            @Override public void setWorkingDirectory(String v) { workingDirectory = v; }
-            @Override public void setRepoUrl(String v) { repoUrl = v; }
-            @Override public void setDefaultWorkspacePath(String v) { defaultWorkspacePath = v; }
-            @Override public void setTargetBranch(String v) { targetBranch = v; }
-            @Override public void setBaseBranch(String v) { baseBranch = v; }
-            @Override public void setPushToOrigin(boolean v) { pushToOrigin = v; }
-            @Override public void setWorkstreamUrl(String v) { workstreamUrl = v; }
-            @Override public void setGitUserName(String v) { gitUserName = v; }
-            @Override public void setGitUserEmail(String v) { gitUserEmail = v; }
-            @Override public void setProtectTestFiles(boolean v) { protectTestFiles = v; }
-        };
 
         /**
          * Default constructor for deserialization.
@@ -1966,13 +1947,40 @@ public class ClaudeCodeJob extends GitManagedJob {
         public void set(String key, String value) {
             super.set(key, value);
 
-            // Delegate shared git properties to the centralized helper.
-            // Uses the gitPropertyTarget adapter (not 'this') to avoid
-            // infinite recursion: setter -> set() -> applyGitProperty -> setter
-            if (applyGitProperty(key, value, gitPropertyTarget)) return;
-
-            // Handle Factory-specific properties
             switch (key) {
+                // Git properties (shared key names with GitManagedJob)
+                case "workDir":
+                    this.workingDirectory = base64Decode(value);
+                    break;
+                case "repoUrl":
+                    this.repoUrl = base64Decode(value);
+                    break;
+                case "defaultWsPath":
+                    this.defaultWorkspacePath = base64Decode(value);
+                    break;
+                case "branch":
+                    this.targetBranch = base64Decode(value);
+                    break;
+                case "baseBranch":
+                    this.baseBranch = base64Decode(value);
+                    break;
+                case "push":
+                    this.pushToOrigin = Boolean.parseBoolean(value);
+                    break;
+                case "workstreamUrl":
+                    this.workstreamUrl = base64Decode(value);
+                    break;
+                case "gitUserName":
+                    this.gitUserName = base64Decode(value);
+                    break;
+                case "gitUserEmail":
+                    this.gitUserEmail = base64Decode(value);
+                    break;
+                case "protectTests":
+                    this.protectTestFiles = Boolean.parseBoolean(value);
+                    break;
+
+                // Factory-specific properties
                 case "tools":
                     this.allowedTools = value;
                     break;
