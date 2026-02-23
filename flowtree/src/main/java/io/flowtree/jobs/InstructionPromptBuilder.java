@@ -43,6 +43,8 @@ public class InstructionPromptBuilder {
     private String workstreamUrl;
     private boolean gitHubMcpEnabled;
     private boolean protectTestFiles;
+    private boolean enforceChanges;
+    private int enforcementAttempt;
     private String baseBranch;
     private String targetBranch;
     private String workingDirectory;
@@ -94,6 +96,38 @@ public class InstructionPromptBuilder {
      */
     public InstructionPromptBuilder setProtectTestFiles(boolean protectTestFiles) {
         this.protectTestFiles = protectTestFiles;
+        return this;
+    }
+
+    /**
+     * Sets whether this job requires code changes to be considered complete.
+     *
+     * <p>When enabled, the "Non-Code Requests" and "Justifying No Code Changes"
+     * sections are replaced with a strict message warning the agent that it MUST
+     * produce code changes. This is used for auto-resolve jobs where the agent
+     * is known to be responsible for fixing test failures.</p>
+     *
+     * @param enforceChanges true to require code changes for completion
+     * @return this builder for chaining
+     */
+    public InstructionPromptBuilder setEnforceChanges(boolean enforceChanges) {
+        this.enforceChanges = enforceChanges;
+        return this;
+    }
+
+    /**
+     * Sets the enforcement attempt counter for retry-loop mode.
+     *
+     * <p>When greater than zero, a prominent message is prepended warning
+     * the agent that it has already refused to fix the failures this many
+     * times, and that the session will keep restarting until it produces
+     * code changes or successfully runs the CI command.</p>
+     *
+     * @param enforcementAttempt the number of prior failed attempts (0 for first try)
+     * @return this builder for chaining
+     */
+    public InstructionPromptBuilder setEnforcementAttempt(int enforcementAttempt) {
+        this.enforcementAttempt = enforcementAttempt;
         return this;
     }
 
@@ -226,6 +260,28 @@ public class InstructionPromptBuilder {
      */
     public String build() {
         StringBuilder sb = new StringBuilder();
+
+        // Enforcement retry warning -- prepended above everything else so the
+        // agent sees it immediately.  This is used when the job has been
+        // restarted because a previous attempt produced no code changes.
+        if (enforcementAttempt > 0) {
+            sb.append("## !! SESSION RESTARTED -- ATTEMPT ").append(enforcementAttempt + 1).append(" !!\n\n");
+            sb.append("You have refused to investigate and fix the test failures ");
+            sb.append(enforcementAttempt).append(" time");
+            if (enforcementAttempt > 1) sb.append("s");
+            sb.append(". If you claim that you do not have to reproduce the test failure, ");
+            sb.append("this session will restart. Your only option to exit this loop is ");
+            sb.append("to investigate and fix the failure or to run the failing CI command ");
+            sb.append("(not an individual test, not some alternative you invent that you ");
+            sb.append("think is similar enough to the CI command to count -- the exact ");
+            sb.append("CI command) and show that it actually succeeds. Because you have ");
+            sb.append("done neither of these things, your session has been restarted.\n\n");
+            sb.append("Previous sessions ended without producing any code changes. This ");
+            sb.append("is NOT acceptable. The tests fail on this branch and pass on master. ");
+            sb.append("You MUST fix the production code.\n\n");
+            sb.append("---\n\n");
+        }
+
         sb.append("You are working autonomously as a coding agent. ");
         sb.append("There is no TTY and no interactive session --do not attempt to wait ");
         sb.append("for user input or interactive chat responses.\n\n");
@@ -250,23 +306,35 @@ public class InstructionPromptBuilder {
             sb.append("Permission denials should never happen in this environment. ");
             sb.append("Reporting them is critical for diagnosing configuration issues.\n\n");
 
-            sb.append("## Non-Code Requests\n");
-            sb.append("If the user's request does not require code changes (e.g., a question about ");
-            sb.append("the codebase, a request to run a command, check status, or perform an action) ");
-            sb.append("it is perfectly fine to answer via Slack and exit without modifying any files. ");
-            sb.append("Not every task requires code changes.\n\n");
+            if (enforceChanges) {
+                // When changes are enforced, replace the permissive sections with
+                // a strict message that removes the "no changes needed" escape hatch.
+                sb.append("## Code Changes Are REQUIRED\n");
+                sb.append("This task requires you to produce code changes. You are fixing test ");
+                sb.append("failures that your branch introduced. Exiting without code changes ");
+                sb.append("is NOT acceptable and will cause this session to be restarted. ");
+                sb.append("If you believe the tests already pass, you MUST prove it by running ");
+                sb.append("the full CI command (using the MCP test runner, not individual test ");
+                sb.append("methods) and showing that the entire module test suite passes.\n\n");
+            } else {
+                sb.append("## Non-Code Requests\n");
+                sb.append("If the user's request does not require code changes (e.g., a question about ");
+                sb.append("the codebase, a request to run a command, check status, or perform an action) ");
+                sb.append("it is perfectly fine to answer via Slack and exit without modifying any files. ");
+                sb.append("Not every task requires code changes.\n\n");
 
-            sb.append("## Justifying No Code Changes\n");
-            sb.append("If you finish your work without making any changes to files in the git repository, ");
-            sb.append("you MUST send a Slack message explaining why no code changes were needed. ");
-            sb.append("This justification should clearly explain either:\n");
-            sb.append("- Why the user's request was fulfilled without code changes ");
-            sb.append("(e.g., it was an informational question, a status check, or a run command)\n");
-            sb.append("- Why you were unable to make the requested changes ");
-            sb.append("(e.g., a blocker, missing context, or ambiguity that needs clarification)\n");
-            sb.append("This requirement does NOT apply if you have already fully addressed the user's ");
-            sb.append("request through earlier Slack messages (e.g., answering a question, reporting ");
-            sb.append("results). In that case, the earlier messages serve as sufficient justification.\n\n");
+                sb.append("## Justifying No Code Changes\n");
+                sb.append("If you finish your work without making any changes to files in the git repository, ");
+                sb.append("you MUST send a Slack message explaining why no code changes were needed. ");
+                sb.append("This justification should clearly explain either:\n");
+                sb.append("- Why the user's request was fulfilled without code changes ");
+                sb.append("(e.g., it was an informational question, a status check, or a run command)\n");
+                sb.append("- Why you were unable to make the requested changes ");
+                sb.append("(e.g., a blocker, missing context, or ambiguity that needs clarification)\n");
+                sb.append("This requirement does NOT apply if you have already fully addressed the user's ");
+                sb.append("request through earlier Slack messages (e.g., answering a question, reporting ");
+                sb.append("results). In that case, the earlier messages serve as sufficient justification.\n\n");
+            }
         }
 
         // GitHub instructions -only when ar-github is in the MCP config
