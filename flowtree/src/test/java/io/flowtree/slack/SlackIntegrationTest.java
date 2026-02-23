@@ -18,6 +18,7 @@ package io.flowtree.slack;
 
 import fi.iki.elonen.NanoHTTPD;
 import io.flowtree.jobs.ClaudeCodeJob;
+import io.flowtree.jobs.ClaudeCodeJobEvent;
 import io.flowtree.jobs.JobCompletionEvent;
 import io.flowtree.jobs.JobCompletionListener;
 import org.almostrealism.util.TestSuiteBase;
@@ -152,7 +153,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         messages.clear();
 
         // Test failure notification
-        JobCompletionEvent failEvent = JobCompletionEvent.failed(
+        ClaudeCodeJobEvent failEvent = ClaudeCodeJobEvent.failed(
             "job-456", "Build the thing",
             "Compilation failed", new RuntimeException("Syntax error")
         );
@@ -190,10 +191,12 @@ public class SlackIntegrationTest extends TestSuiteBase {
         assertEquals(1, success.getStagedFiles().size());
         assertTrue(success.isPushed());
 
-        success.withClaudeCodeInfo("Fix bug", "sess-1", 0);
-        assertEquals("Fix bug", success.getPrompt());
-        assertEquals("sess-1", success.getSessionId());
-        assertEquals(0, success.getExitCode());
+        // Claude-specific fields require ClaudeCodeJobEvent
+        ClaudeCodeJobEvent ccEvent = ClaudeCodeJobEvent.success("j4", "Done");
+        ccEvent.withClaudeCodeInfo("Fix bug", "sess-1", 0);
+        assertEquals("Fix bug", ccEvent.getPrompt());
+        assertEquals("sess-1", ccEvent.getSessionId());
+        assertEquals(0, ccEvent.getExitCode());
     }
 
     @Test(timeout = 10000)

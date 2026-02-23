@@ -24,9 +24,17 @@ import java.util.List;
  * Event object containing details about a job's completion.
  *
  * <p>This event is fired when a job completes (successfully or with failure)
- * and contains all relevant information for status reporting.</p>
+ * and contains all relevant information for status reporting. Generic fields
+ * (job ID, status, git info, error info) live here; Claude Code-specific
+ * fields (prompt, session, timing) are in {@link ClaudeCodeJobEvent}.</p>
+ *
+ * <p>The Claude-specific getter methods on this base class return zero/null
+ * defaults so that consumers (like {@code SlackNotifier}) can call them
+ * uniformly on any event type. Only {@link ClaudeCodeJobEvent} returns real
+ * values.</p>
  *
  * @author Michael Murray
+ * @see ClaudeCodeJobEvent
  * @see JobCompletionListener
  */
 public class JobCompletionEvent {
@@ -63,23 +71,6 @@ public class JobCompletionEvent {
 
     // Pull request
     private String pullRequestUrl;
-
-    // Claude Code specific
-    private String prompt;
-    private String sessionId;
-    private int exitCode;
-
-    // Timing information from Claude Code output
-    private long durationMs;
-    private long durationApiMs;
-    private double costUsd;
-    private int numTurns;
-
-    // Session details from Claude Code output
-    private String subtype;
-    private boolean sessionIsError;
-    private int permissionDenials;
-    private List<String> deniedToolNames;
 
     /**
      * Creates a new job completion event.
@@ -122,119 +113,78 @@ public class JobCompletionEvent {
         return event;
     }
 
-    // Getters
-
-    public String getJobId() {
-        return jobId;
-    }
-
-    public Status getStatus() {
-        return status;
-    }
-
-    public String getDescription() {
-        return description;
-    }
-
-    public Instant getTimestamp() {
-        return timestamp;
-    }
-
-    public String getTargetBranch() {
-        return targetBranch;
-    }
-
-    public String getCommitHash() {
-        return commitHash;
-    }
-
-    public List<String> getStagedFiles() {
-        return stagedFiles;
-    }
-
-    public List<String> getSkippedFiles() {
-        return skippedFiles;
-    }
-
-    public boolean isPushed() {
-        return pushed;
-    }
-
-    public String getPullRequestUrl() {
-        return pullRequestUrl;
-    }
-
-    public String getErrorMessage() {
-        return errorMessage;
-    }
-
-    public Throwable getException() {
-        return exception;
-    }
-
-    public String getPrompt() {
-        return prompt;
-    }
-
-    public String getSessionId() {
-        return sessionId;
-    }
-
-    public int getExitCode() {
-        return exitCode;
-    }
-
-    public long getDurationMs() {
-        return durationMs;
-    }
-
-    public long getDurationApiMs() {
-        return durationApiMs;
-    }
-
-    public double getCostUsd() {
-        return costUsd;
-    }
-
-    public int getNumTurns() {
-        return numTurns;
-    }
-
     /**
-     * Returns the session subtype (stop reason) from Claude Code output.
-     * Common values: "success", "error_max_turns".
-     */
-    public String getSubtype() {
-        return subtype;
-    }
-
-    /**
-     * Returns whether the Claude Code session ended with an error.
-     */
-    public boolean isSessionError() {
-        return sessionIsError;
-    }
-
-    /**
-     * Returns the number of permission denials during the session.
-     */
-    public int getPermissionDenials() {
-        return permissionDenials;
-    }
-
-    /**
-     * Returns the tool names that were denied during the session.
-     * Each entry corresponds to a single denial event; the same tool
-     * may appear multiple times if it was denied more than once.
+     * Sets the error message for this event.
+     * Intended for use by subclass factory methods.
      *
-     * @return list of denied tool names, or empty list if none
+     * @param errorMessage the error message
      */
-    public List<String> getDeniedToolNames() {
-        return deniedToolNames != null ? deniedToolNames : Collections.emptyList();
+    protected void setErrorMessage(String errorMessage) {
+        this.errorMessage = errorMessage;
     }
 
-    // Setters (builder pattern)
+    /**
+     * Sets the exception for this event.
+     * Intended for use by subclass factory methods.
+     *
+     * @param exception the exception that caused the failure
+     */
+    protected void setException(Throwable exception) {
+        this.exception = exception;
+    }
 
+    // ==================== Getters ====================
+
+    public String getJobId() { return jobId; }
+    public Status getStatus() { return status; }
+    public String getDescription() { return description; }
+    public Instant getTimestamp() { return timestamp; }
+    public String getTargetBranch() { return targetBranch; }
+    public String getCommitHash() { return commitHash; }
+    public List<String> getStagedFiles() { return stagedFiles; }
+    public List<String> getSkippedFiles() { return skippedFiles; }
+    public boolean isPushed() { return pushed; }
+    public String getPullRequestUrl() { return pullRequestUrl; }
+    public String getErrorMessage() { return errorMessage; }
+    public Throwable getException() { return exception; }
+
+    // ---- Claude Code-specific getters (defaults for base class) ----
+
+    /** Returns the prompt sent to Claude Code, or null for non-Claude jobs. */
+    public String getPrompt() { return null; }
+    /** Returns the Claude Code session ID, or null for non-Claude jobs. */
+    public String getSessionId() { return null; }
+    /** Returns the Claude Code exit code, or 0 for non-Claude jobs. */
+    public int getExitCode() { return 0; }
+    /** Returns the wall-clock duration in ms, or 0 for non-Claude jobs. */
+    public long getDurationMs() { return 0; }
+    /** Returns the API call duration in ms, or 0 for non-Claude jobs. */
+    public long getDurationApiMs() { return 0; }
+    /** Returns the cost in USD, or 0 for non-Claude jobs. */
+    public double getCostUsd() { return 0; }
+    /** Returns the number of turns, or 0 for non-Claude jobs. */
+    public int getNumTurns() { return 0; }
+    /** Returns the session subtype (stop reason), or null for non-Claude jobs. */
+    public String getSubtype() { return null; }
+    /** Returns whether the session is an error, always false for non-Claude jobs. */
+    public boolean isSessionError() { return false; }
+    /** Returns the number of permission denials, or 0 for non-Claude jobs. */
+    public int getPermissionDenials() { return 0; }
+    /** Returns the denied tool names, or empty list for non-Claude jobs. */
+    public List<String> getDeniedToolNames() { return Collections.emptyList(); }
+
+    // ==================== Builder-pattern setters ====================
+
+    /**
+     * Sets git information on this event.
+     *
+     * @param branch     the target branch name
+     * @param commitHash the commit hash (if committed)
+     * @param staged     list of staged files
+     * @param skipped    list of skipped files (with reasons)
+     * @param pushed     whether changes were pushed to origin
+     * @return this event for chaining
+     */
     public JobCompletionEvent withGitInfo(String branch, String commitHash, List<String> staged,
                                           List<String> skipped, boolean pushed) {
         this.targetBranch = branch;
@@ -253,50 +203,6 @@ public class JobCompletionEvent {
      */
     public JobCompletionEvent withPullRequestUrl(String url) {
         this.pullRequestUrl = url;
-        return this;
-    }
-
-    public JobCompletionEvent withClaudeCodeInfo(String prompt, String sessionId, int exitCode) {
-        this.prompt = prompt;
-        this.sessionId = sessionId;
-        this.exitCode = exitCode;
-        return this;
-    }
-
-    /**
-     * Sets timing information extracted from Claude Code output.
-     *
-     * @param durationMs    total wall-clock duration reported by Claude Code
-     * @param durationApiMs time spent in API calls
-     * @param costUsd       total cost in USD
-     * @param numTurns      number of agentic turns
-     * @return this event for chaining
-     */
-    public JobCompletionEvent withTimingInfo(long durationMs, long durationApiMs,
-                                              double costUsd, int numTurns) {
-        this.durationMs = durationMs;
-        this.durationApiMs = durationApiMs;
-        this.costUsd = costUsd;
-        this.numTurns = numTurns;
-        return this;
-    }
-
-    /**
-     * Sets session detail fields extracted from Claude Code output.
-     *
-     * @param subtype           the session subtype / stop reason (e.g. "success", "error_max_turns")
-     * @param sessionIsError    whether Claude Code flagged the session as an error
-     * @param permissionDenials number of tool permission denials during the session
-     * @param deniedToolNames   names of tools that were denied, or null
-     * @return this event for chaining
-     */
-    public JobCompletionEvent withSessionDetails(String subtype, boolean sessionIsError,
-                                                  int permissionDenials,
-                                                  List<String> deniedToolNames) {
-        this.subtype = subtype;
-        this.sessionIsError = sessionIsError;
-        this.permissionDenials = permissionDenials;
-        this.deniedToolNames = deniedToolNames;
         return this;
     }
 

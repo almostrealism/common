@@ -58,7 +58,20 @@ print(f"ar-github: AR_WORKSTREAM_URL={'<not set>' if not WORKSTREAM_URL else WOR
 if WORKSTREAM_URL and not os.environ.get("GITHUB_TOKEN", "").strip():
     print("ar-github: Will use controller proxy for GitHub API calls", file=sys.stderr)
 
-mcp = FastMCP("ar-github")
+_mcp_instance = None
+
+
+def _get_mcp():
+    """Lazily create the FastMCP server instance.
+
+    Defers the ``mcp`` import so that CLI mode (which only needs stdlib)
+    can run without the ``mcp`` package installed.
+    """
+    global _mcp_instance
+    if _mcp_instance is None:
+        from mcp.server.fastmcp import FastMCP
+        _mcp_instance = FastMCP("ar-github")
+    return _mcp_instance
 
 
 def _resolve_token() -> str:

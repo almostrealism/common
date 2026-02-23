@@ -346,6 +346,7 @@ See [docs/internals/test-examples.md](docs/internals/test-examples.md) for wrong
 - **[Quick Reference](docs/QUICK_REFERENCE.md)** - Condensed API cheatsheet
 - **[llms.txt](llms.txt)** - Documentation index for AI agents
 - **[Documentation Portal](docs/index.html)** - Full HTML documentation
+- **[CI Pipeline](.github/workflows/analysis.yaml)** - GitHub Actions build and test workflow
 
 ---
 

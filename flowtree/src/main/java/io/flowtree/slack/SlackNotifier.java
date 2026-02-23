@@ -22,6 +22,8 @@ import com.slack.api.methods.SlackApiException;
 import com.slack.api.methods.response.chat.ChatPostMessageResponse;
 import io.flowtree.jobs.JobCompletionEvent;
 import io.flowtree.jobs.JobCompletionListener;
+import org.almostrealism.io.Alert;
+import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 
 import java.io.IOException;
@@ -216,6 +218,9 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
         } else {
             postMessage(workstream.getChannelId(), message);
         }
+
+        // Fire SMS alert via SignalWire (no-op if no provider is attached)
+        fireCompletionAlert(event, workstream);
     }
 
     /**
@@ -342,6 +347,27 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
         Map<String, JobCompletionEvent> jobs = jobHistory.get(workstreamId);
         if (jobs == null) return Collections.emptyMap();
         return Collections.unmodifiableMap(jobs);
+    }
+
+    /**
+     * Fires an SMS alert via {@link Console#alert(Alert)} summarizing
+     * the job completion. This is a no-op if no {@link org.almostrealism.io.AlertDeliveryProvider}
+     * is registered (e.g., no {@code signalwire.properties} file).
+     */
+    private void fireCompletionAlert(JobCompletionEvent event, SlackWorkstream workstream) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("Job ").append(event.getStatus().name().toLowerCase());
+        if (workstream.getChannelName() != null) {
+            sb.append(" (").append(workstream.getChannelName()).append(")");
+        }
+        sb.append(": ").append(truncate(event.getDescription(), 80));
+        if (event.getPullRequestUrl() != null) {
+            sb.append(" | PR: ").append(event.getPullRequestUrl());
+        }
+        if (event.getCostUsd() > 0) {
+            sb.append(String.format(" | $%.2f", event.getCostUsd()));
+        }
+        Console.root().alert(new Alert(Alert.Severity.INFO, sb.toString()));
     }
 
     private String formatStartedMessage(JobCompletionEvent event, SlackWorkstream workstream) {
