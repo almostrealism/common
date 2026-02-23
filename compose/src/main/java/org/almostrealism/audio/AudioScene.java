@@ -338,6 +338,11 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 									channels, delayLayers,
 									automation, time.getClock(), getSampleRate());
 
+		// Consolidate gene values so all genes within each chromosome share a
+		// single contiguous PackedCollection.  This reduces the number of kernel
+		// arguments when the Loop scope is compiled for real-time rendering.
+		genome.consolidateGeneValues();
+
 		this.generation = new GenerationManager(patterns, generation);
 	}
 
@@ -398,6 +403,22 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 
 	public ProjectedGenome getGenome() { return new ProjectedGenome(genome.getParameters()); }
 
+	/**
+	 * Assigns new genome parameters and refreshes all derived values.
+	 *
+	 * <p><b>Runner reuse:</b> The cell graph built by {@link #runnerRealTime} is
+	 * structurally independent of the genome. All genome-derived values flow through
+	 * {@link PackedCollection} references (via {@code cp()}) that are updated in-place
+	 * by this method. A runner that was already compiled can be reused after calling
+	 * this method &mdash; the compiled kernel automatically reads the new values on
+	 * its next tick without requiring recompilation.</p>
+	 *
+	 * <p>The pattern preparation phase ({@link PatternAudioBuffer#prepareBatch()})
+	 * runs outside the compiled loop in Java, so it naturally uses the refreshed
+	 * parameter state.</p>
+	 *
+	 * @param genome the new genome whose parameters will be assigned
+	 */
 	public void assignGenome(ProjectedGenome genome) {
 		this.genome.assignTo(genome.getParameters());
 		this.progression.refreshParameters();
@@ -826,6 +847,13 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 	 *   <li><strong>Tick phase</strong> - The per-frame loop applies effects, advances
 	 *       cursors, and writes to output. This <em>must</em> be a compilable
 	 *       {@link io.almostrealism.code.Computation} for real-time performance.</li>
+	 *
+	 * <p><b>Genome independence:</b> The compiled kernel produced by this runner is
+	 * structurally independent of the genome parameters. All genome-derived values
+	 * are referenced via {@link PackedCollection} handles whose contents are updated
+	 * by {@link #assignGenome}. This means the runner can be built once and reused
+	 * across genome changes without recompilation &mdash; only the underlying
+	 * {@link PackedCollection} values change.</p>
 	 *   <li><strong>Advance phase</strong> - Increments the frame counter by bufferSize.</li>
 	 * </ul>
 	 *

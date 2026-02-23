@@ -337,6 +337,28 @@ This is the primary compilation bottleneck. Approaches to reduce the count:
 - **Shared buffer pools**: Multiple cells using similar-sized buffers could
   share a single allocation, reducing the total argument count.
 
+#### Gene Value Consolidation (Implemented)
+
+`ProjectedChromosome.consolidateGeneValues()` packs all gene value
+collections within a chromosome into a single contiguous `PackedCollection`.
+Each gene's `values` field is replaced with a view (delegate) into the
+consolidated buffer. Because `Scope.getArguments()` resolves variables to
+their root delegate before deduplication, all gene values from a chromosome
+collapse into a single kernel argument instead of one per gene.
+
+`AudioScene` calls `genome.consolidateGeneValues()` at the end of its
+constructor, after all chromosomes and genes have been added. This reduces
+gene-derived arguments from O(genes) to O(chromosomes). The consolidated
+buffers are automatically kept up to date by `refreshValues()`, which writes
+through the views.
+
+**Remaining opportunities** (not yet implemented):
+- Consolidate `PatternAudioBuffer.outputBuffer` collections (one per
+  channel) into a single buffer with offset-based access
+- Consolidate `EfxManager.applyFilter()` destination buffers similarly
+- Profile the full argument list to identify other small collections
+  that could be consolidated
+
 ### 3. Parameterize Computation via `Evaluable` to Avoid Recompilation
 
 The fundamental problem is that each genome change produces a structurally
@@ -361,6 +383,40 @@ This is the most impactful change: it would make slider adjustments
 instantaneous (just update argument values) instead of requiring a full
 recompile cycle. It also enables the warmup strategy (pre-compile during
 scene initialization) because the compiled kernel would be genome-independent.
+
+#### Analysis: Graph Is Already Genome-Independent (Verified)
+
+Investigation of the computation graph construction reveals that the cell
+graph built by `getCells()` is **already structurally independent** of the
+genome parameters:
+
+1. **Gene values use `cp()` references**, not inlined constants.
+   `ProjectedGene.valueAt(pos)` returns
+   `cp(values.range(shape(1), pos))` — a `PackedCollection` reference
+   that is read at runtime. When `assignGenome()` calls
+   `refreshValues()`, the underlying `PackedCollection` values are
+   updated in place, and the compiled kernel sees the new values on its
+   next execution.
+
+2. **EfxManager filter selection is runtime-controlled.** The
+   `applyFilter()` method uses `choice()` to select between high-pass
+   and low-pass coefficients at runtime via a genome-derived decision
+   value. Both coefficient sets are always computed; the decision
+   parameter picks one. No structural branching occurs.
+
+3. **All other genome-derived values** (delay times, wet levels,
+   feedback, automation, mix levels) flow through `Factor` instances
+   that produce `cp()`-based `Producer`s.
+
+**Consequence:** The runner built by `runnerRealTime()` can be reused
+across genome changes. Callers should call `assignGenome()` to update
+the `PackedCollection` values, then continue ticking the existing runner.
+Rebuilding the runner (which triggers recompilation) is unnecessary.
+
+The `assignGenome()` javadoc now documents this capability. The tester
+application (`RealtimeSceneTesterJavaFX`) should be updated to reuse
+the runner on slider changes instead of doing a stop/recompile/restart
+cycle.
 
 ### Previously Identified (Still Relevant)
 

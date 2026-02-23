@@ -75,7 +75,7 @@ public class ProjectedGene extends TransformableGene implements VectorFeatures {
 	private final PackedCollection weights;
 	private final PackedCollection ranges;
 
-	private final PackedCollection values;
+	private PackedCollection values;
 
 	/**
 	 * Constructs a new {@code ProjectedGene} with the specified source data and weights.
@@ -199,4 +199,36 @@ public class ProjectedGene extends TransformableGene implements VectorFeatures {
 	 */
 	@Override
 	public int length() { return weights.getShape().length(0); }
+
+	/**
+	 * Returns the values collection for this gene.
+	 * <p>This is the collection that holds the computed factor values after
+	 * {@link #refreshValues()} has been called.
+	 *
+	 * @return the values collection
+	 */
+	PackedCollection getValues() { return values; }
+
+	/**
+	 * Replaces the values collection with a new one, typically a view into a
+	 * consolidated buffer.
+	 * <p>This enables multiple genes to share a single contiguous
+	 * {@link PackedCollection} as their backing storage. When gene values are
+	 * consolidated, {@link #refreshValues()} writes through the view to the
+	 * shared buffer, and {@link #valueAt(int)} creates sub-views that resolve
+	 * to the same root delegate during scope argument deduplication.
+	 *
+	 * @param newValues the replacement values collection (must have the same length)
+	 * @throws IllegalArgumentException if the lengths do not match
+	 * @see ProjectedChromosome#consolidateGeneValues()
+	 */
+	void replaceValues(PackedCollection newValues) {
+		if (newValues.getMemLength() != values.getMemLength()) {
+			throw new IllegalArgumentException(
+					"Values length mismatch: expected " + values.getMemLength() +
+					", got " + newValues.getMemLength());
+		}
+
+		this.values = newValues;
+	}
 }
