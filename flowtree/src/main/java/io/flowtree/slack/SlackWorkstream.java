@@ -70,6 +70,7 @@ public class SlackWorkstream {
     private String baseBranch;
     private boolean pushToOrigin;
     private String workingDirectory;
+    private String repoUrl;
 
     // Job configuration
     private String allowedTools;
@@ -82,6 +83,9 @@ public class SlackWorkstream {
 
     // Per-workstream env vars for pushed tools
     private Map<String, String> env;
+
+    // Optional planning document path for broader goal context
+    private String planningDocument;
 
     /** Default git user name for new workstreams. */
     public static final String DEFAULT_GIT_USER_NAME = "Flowtree Coding Agent";
@@ -97,8 +101,8 @@ public class SlackWorkstream {
         this.agents = new ArrayList<>();
         this.pushToOrigin = true;
         this.allowedTools = "Read,Edit,Write,Bash,Glob,Grep";
-        this.maxTurns = 50;
-        this.maxBudgetUsd = 10.0;
+        this.maxTurns = 800;
+        this.maxBudgetUsd = 100.0;
         this.gitUserName = DEFAULT_GIT_USER_NAME;
         this.gitUserEmail = DEFAULT_GIT_USER_EMAIL;
     }
@@ -120,8 +124,8 @@ public class SlackWorkstream {
         this.agents = new ArrayList<>();
         this.pushToOrigin = true;
         this.allowedTools = "Read,Edit,Write,Bash,Glob,Grep";
-        this.maxTurns = 50;
-        this.maxBudgetUsd = 10.0;
+        this.maxTurns = 800;
+        this.maxBudgetUsd = 100.0;
     }
 
     /**
@@ -223,6 +227,25 @@ public class SlackWorkstream {
         this.workingDirectory = workingDirectory;
     }
 
+    /**
+     * Returns the git repository URL for automatic checkout.
+     *
+     * <p>When set (and {@code workingDirectory} is not), the job will
+     * clone this repo into a resolved workspace path before starting work.</p>
+     */
+    public String getRepoUrl() {
+        return repoUrl;
+    }
+
+    /**
+     * Sets the git repository URL for automatic checkout.
+     *
+     * @param repoUrl the git clone URL (e.g., "https://github.com/owner/repo.git")
+     */
+    public void setRepoUrl(String repoUrl) {
+        this.repoUrl = repoUrl;
+    }
+
     public String getAllowedTools() {
         return allowedTools;
     }
@@ -295,6 +318,24 @@ public class SlackWorkstream {
      */
     public void setEnv(Map<String, String> env) {
         this.env = env;
+    }
+
+    /**
+     * Returns the optional planning document path for this workstream.
+     * When set, agents are instructed to consult this document for the
+     * broader goal of the branch.
+     */
+    public String getPlanningDocument() {
+        return planningDocument;
+    }
+
+    /**
+     * Sets the planning document path for this workstream.
+     *
+     * @param planningDocument path to the planning document relative to the working directory
+     */
+    public void setPlanningDocument(String planningDocument) {
+        this.planningDocument = planningDocument;
     }
 
     /**

@@ -96,6 +96,14 @@ public class TestUtils implements TestSettings {
 	}
 
 	/**
+	 * Determines whether tests with a very large memory footprint
+	 * should be skipped.
+	 */
+	public static boolean getSkipHighMemoryTests() {
+		return Objects.equals(getTestProfile(), PIPELINE);
+	}
+
+	/**
 	 * Determines whether tests for known issues should be skipped.
 	 *
 	 * <p>Returns true (skip) when:</p>

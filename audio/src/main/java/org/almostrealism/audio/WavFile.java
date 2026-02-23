@@ -256,6 +256,7 @@ public class WavFile implements AutoCloseable {
 		return waveform;
 	}
 
+	/** Opens and parses the header of the specified WAV file for reading. */
 	public static WavFile openWavFile(File file) throws IOException {
 		// Instantiate new Wavfile and store the file reference
 		WavFile wavFile = new WavFile();

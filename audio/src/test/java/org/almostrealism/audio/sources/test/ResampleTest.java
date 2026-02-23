@@ -9,7 +9,7 @@ import java.io.File;
 import java.io.IOException;
 
 public class ResampleTest extends TestSuiteBase implements CellFeatures, AudioTestFeatures {
-	@Test
+	@Test(timeout = 60000)
 	public void resample() throws IOException {
 		w(0, getTestWavPath())
 				.om(i -> new File("results/resample-test.wav"))

@@ -16,8 +16,9 @@
 
 package io.flowtree.jobs;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.flowtree.job.Job;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.JobOutput;
@@ -31,7 +32,6 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Base64;
@@ -40,7 +40,6 @@ import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
-import java.util.regex.Pattern;
 
 /**
  * Abstract base class for jobs that manage their changes via git.
@@ -89,57 +88,48 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
     public static final long DEFAULT_MAX_FILE_SIZE = 1024 * 1024;
 
     /** File patterns that are always excluded from commits. */
-    private static final Set<String> DEFAULT_EXCLUDED_PATTERNS = new HashSet<>(Arrays.asList(
-        // Secrets and credentials
-        ".env", ".env.*", "*.pem", "*.key", "*.p12", "*.pfx",
-        "credentials.json", "secrets.json", "**/secrets/**",
+    private static final Set<String> DEFAULT_EXCLUDED_PATTERNS = GitJobConfig.DEFAULT_EXCLUDED_PATTERNS;
 
-        // Build outputs and dependencies
-        "target/**", "build/**", "dist/**", "out/**",
-        "node_modules/**", ".gradle/**", ".m2/**",
-        "*.class", "*.jar", "*.war", "*.ear",
+    /** Path patterns for test/CI files protected by {@link #protectTestFiles}. */
+    private static final Set<String> PROTECTED_PATH_PATTERNS = GitJobConfig.PROTECTED_PATH_PATTERNS;
 
-        // IDE and OS files
-        ".idea/**", ".vscode/**", "*.iml",
-        ".DS_Store", "Thumbs.db",
+    /** Default workspace path when /workspace/project does not exist. */
+    private static final String FALLBACK_WORKSPACE_DIR = "/tmp/flowtree-workspaces";
 
-        // Binary and media files
-        "*.exe", "*.dll", "*.so", "*.dylib",
-        "*.zip", "*.tar", "*.gz", "*.rar", "*.7z",
-        "*.png", "*.jpg", "*.jpeg", "*.gif", "*.bmp", "*.ico",
-        "*.mp3", "*.mp4", "*.wav", "*.avi", "*.mov",
-        "*.pdf", "*.doc", "*.docx", "*.xls", "*.xlsx",
-
-        // Database and logs
-        "*.db", "*.sqlite", "*.log",
-
-        // Hardware acceleration outputs (AR-specific)
-        "Extensions/**", "*.cl", "*.metal",
-
-        // Claude Code agent outputs and settings
-        "claude-output/**", "commit.txt",
-        ".claude/**", "settings.local.json"
-    ));
-
+    // ---- Identity and branch configuration ----
     private String taskId;
     private String targetBranch;
     private String baseBranch = "master";
+    private String originalBranch;
+
+    // ---- Repository and workspace paths ----
+    private String repoUrl;
     private String workingDirectory;
-    private long maxFileSizeBytes = DEFAULT_MAX_FILE_SIZE;
-    private Set<String> excludedPatterns = new HashSet<>(DEFAULT_EXCLUDED_PATTERNS);
-    private Set<String> additionalExcludedPatterns = new HashSet<>();
+    private String defaultWorkspacePath;
+
+    // ---- Git operation flags ----
     private boolean pushToOrigin = true;
     private boolean createBranchIfMissing = true;
     private boolean dryRun = false;
+    private boolean gitOperationsSuccessful = false;
+
+    // ---- File staging configuration ----
+    private long maxFileSizeBytes = DEFAULT_MAX_FILE_SIZE;
+    private Set<String> excludedPatterns = new HashSet<>(DEFAULT_EXCLUDED_PATTERNS);
+    private Set<String> additionalExcludedPatterns = new HashSet<>();
+    private boolean protectTestFiles = false;
+    private List<String> stagedFiles = new ArrayList<>();
+    private List<String> skippedFiles = new ArrayList<>();
+
+    // ---- Commit and PR state ----
+    private String commitHash;
+    private String pullRequestUrl;
     private String gitUserName;
     private String gitUserEmail;
 
-    private String originalBranch;
-    private List<String> stagedFiles = new ArrayList<>();
-    private List<String> skippedFiles = new ArrayList<>();
-    private String commitHash;
-    private String pullRequestUrl;
-    private boolean gitOperationsSuccessful = false;
+    // ---- Merge conflict state ----
+    private boolean mergeConflictsDetected = false;
+    private List<String> conflictFiles = new ArrayList<>();
 
     private Consumer<JobOutput> outputConsumer;
     private final CompletableFuture<Void> future = new CompletableFuture<>();
@@ -169,6 +159,17 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
     protected abstract void doWork();
 
     /**
+     * Validates changes made by {@link #doWork()} before git operations.
+     * Subclasses can override to implement pre-commit validation logic.
+     *
+     * @return true to proceed with git operations, false to abort
+     * @throws Exception if validation encounters an error
+     */
+    protected boolean validateChanges() throws Exception {
+        return true;
+    }
+
+    /**
      * Returns the commit message for changes made by this job.
      * Subclasses should override to provide a descriptive message.
      *
@@ -183,6 +184,13 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
         Exception error = null;
 
         try {
+            // Resolve working directory from repoUrl if needed.
+            // This clones the repo if a repoUrl is specified but no
+            // working directory is set (or the directory is empty).
+            if (repoUrl != null && !repoUrl.isEmpty()) {
+                resolveAndCloneRepository();
+            }
+
             // Prepare working directory: verify clean state, checkout branch,
             // pull latest. This must happen before doWork() so the agent
             // operates on the current remote state of the target branch.
@@ -196,7 +204,11 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
 
             // Handle git operations if a target branch is specified
             if (targetBranch != null && !targetBranch.isEmpty()) {
-                handleGitOperations();
+                if (validateChanges()) {
+                    handleGitOperations();
+                } else {
+                    warn("Change validation failed - skipping git operations");
+                }
             }
 
         } catch (Exception e) {
@@ -284,6 +296,203 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
         } else {
             log("No remote branch origin/" + targetBranch + " -- skipping pull");
         }
+
+        // 5. Synchronize with the base branch (e.g., origin/master) so our
+        //    working branch incorporates any changes that have landed on the
+        //    base since the branch was created.  This is critical because
+        //    the long-term goal is to merge back into the base branch, and
+        //    staying current reduces merge conflicts at PR time.
+        synchronizeWithBaseBranch();
+    }
+
+    /**
+     * Merges the latest remote base branch into the current working branch.
+     *
+     * <p>If the base branch is the same as the target branch, or if the
+     * remote base branch does not exist, this is a no-op.</p>
+     *
+     * <p>When merge conflicts occur, they are recorded via
+     * {@link #mergeConflictsDetected} and {@link #conflictFiles} so that
+     * subclasses (e.g., {@code ClaudeCodeJob}) can adjust the agent prompt
+     * to include conflict resolution instructions. The merge is left in
+     * a conflicted state so the coding agent can resolve the conflicts.</p>
+     *
+     * @throws IOException if a git command fails to execute
+     * @throws InterruptedException if a git command is interrupted
+     */
+    private void synchronizeWithBaseBranch() throws IOException, InterruptedException {
+        if (baseBranch == null || baseBranch.isEmpty()) {
+            return;
+        }
+
+        // No need to merge if target and base are the same branch
+        if (baseBranch.equals(targetBranch)) {
+            return;
+        }
+
+        String remoteBase = "origin/" + baseBranch;
+        boolean remoteBaseExists = executeGit(
+            "show-ref", "--verify", "--quiet",
+            "refs/remotes/" + remoteBase) == 0;
+        if (!remoteBaseExists) {
+            log("Remote base branch " + remoteBase + " does not exist -- skipping sync");
+            return;
+        }
+
+        // Check if there are new commits on the base branch that we don't have
+        String mergeBase = executeGitWithOutput("merge-base", "HEAD", remoteBase).trim();
+        String baseHead = executeGitWithOutput("rev-parse", remoteBase).trim();
+
+        if (mergeBase.equals(baseHead)) {
+            log("Already up to date with " + remoteBase);
+            return;
+        }
+
+        log("Synchronizing with " + remoteBase + " (merge-base: "
+            + mergeBase.substring(0, Math.min(7, mergeBase.length()))
+            + ", base HEAD: "
+            + baseHead.substring(0, Math.min(7, baseHead.length())) + ")...");
+
+        int mergeResult = executeGit("merge", remoteBase,
+            "--no-edit", "-m", "Merge " + remoteBase + " into " + targetBranch);
+
+        if (mergeResult == 0) {
+            String headHash = executeGitWithOutput("rev-parse", "--short", "HEAD").trim();
+            log("Successfully merged " + remoteBase + " (now at " + headHash + ")");
+        } else {
+            // Merge conflict detected -- identify conflicted files
+            log("Merge conflict detected while synchronizing with " + remoteBase);
+            mergeConflictsDetected = true;
+
+            String statusOutput = executeGitWithOutput("status", "--porcelain");
+            for (String line : statusOutput.split("\n")) {
+                if (line.startsWith("UU ") || line.startsWith("AA ")
+                        || line.startsWith("DD ") || line.startsWith("AU ")
+                        || line.startsWith("UA ") || line.startsWith("DU ")
+                        || line.startsWith("UD ")) {
+                    String file = line.substring(3).trim();
+                    if (!file.isEmpty()) {
+                        conflictFiles.add(file);
+                    }
+                }
+            }
+
+            log("Conflicted files (" + conflictFiles.size() + "): "
+                + (conflictFiles.size() <= 10
+                    ? String.join(", ", conflictFiles)
+                    : String.join(", ", conflictFiles.subList(0, 10))
+                        + " (+" + (conflictFiles.size() - 10) + " more)"));
+
+            // Abort the merge so the working directory is clean for the agent.
+            // The agent will be told about the conflicts and instructed to
+            // perform the merge itself after understanding the changes.
+            executeGit("merge", "--abort");
+            log("Merge aborted -- agent will be instructed to resolve conflicts");
+        }
+    }
+
+    /**
+     * Resolves the working directory from a {@link #repoUrl} and clones
+     * the repository if needed.
+     *
+     * <p>When {@code repoUrl} is set but {@code workingDirectory} is null,
+     * the directory is resolved using the following priority:</p>
+     * <ol>
+     *   <li>{@link #defaultWorkspacePath} from the global YAML configuration</li>
+     *   <li>{@code /workspace/project} if that directory exists</li>
+     *   <li>{@code /tmp/flowtree-workspaces/<repo-name>} as a last resort</li>
+     * </ol>
+     *
+     * <p>If the resolved directory already contains a {@code .git} directory,
+     * the clone step is skipped (the repo is already present). Otherwise,
+     * the repo is cloned into that directory.</p>
+     *
+     * @throws IOException if a git command fails to execute
+     * @throws InterruptedException if a git command is interrupted
+     */
+    private void resolveAndCloneRepository() throws IOException, InterruptedException {
+        // If workingDirectory is already set, just ensure the repo is there
+        if (workingDirectory != null && !workingDirectory.isEmpty()) {
+            File workDir = new File(workingDirectory);
+            if (!new File(workDir, ".git").exists() && !workDir.exists()) {
+                log("Working directory does not exist, cloning " + repoUrl + " into " + workingDirectory);
+                cloneRepository(workingDirectory);
+            }
+            return;
+        }
+
+        // Resolve the workspace path
+        String resolvedPath = resolveWorkspacePath();
+        log("Resolved workspace path: " + resolvedPath);
+
+        File resolvedDir = new File(resolvedPath);
+        if (new File(resolvedDir, ".git").exists()) {
+            log("Repository already exists at " + resolvedPath);
+            workingDirectory = resolvedPath;
+            return;
+        }
+
+        // Clone the repository
+        cloneRepository(resolvedPath);
+        workingDirectory = resolvedPath;
+    }
+
+    /**
+     * Resolves the workspace path for a repo URL checkout.
+     *
+     * <p>Resolution order:</p>
+     * <ol>
+     *   <li>{@link #defaultWorkspacePath} if explicitly configured</li>
+     *   <li>{@code /workspace/project} if the directory exists</li>
+     *   <li>{@code /tmp/flowtree-workspaces/<repo-name>} as fallback</li>
+     * </ol>
+     *
+     * @return the resolved absolute path for the workspace
+     */
+    private String resolveWorkspacePath() {
+        // 1. Use configured default workspace path
+        if (defaultWorkspacePath != null && !defaultWorkspacePath.isEmpty()) {
+            return defaultWorkspacePath;
+        }
+
+        // 2. Check if /workspace/project exists
+        File defaultDir = new File("/workspace/project");
+        if (defaultDir.exists() && defaultDir.isDirectory()) {
+            return "/workspace/project";
+        }
+
+        // 3. Fall back to /tmp with a repo-derived name
+        String repoName = extractRepoName(repoUrl);
+        return FALLBACK_WORKSPACE_DIR + "/" + repoName;
+    }
+
+    /**
+     * Extracts a filesystem-safe repository name from a git URL.
+     *
+     * <p>Handles SSH ({@code git@github.com:owner/repo.git}) and
+     * HTTPS ({@code https://github.com/owner/repo.git}) formats.
+     * Falls back to a hash-based name if parsing fails.</p>
+     *
+     * @param url the git remote URL
+     * @return a filesystem-safe name derived from the repo
+     */
+    private static String extractRepoName(String url) {
+        return WorkspaceResolver.extractRepoName(url);
+    }
+
+    /**
+     * Clones the {@link #repoUrl} into the specified directory.
+     *
+     * <p>Creates parent directories as needed. The clone is performed
+     * with {@code git clone} into the target path.</p>
+     *
+     * @param targetPath the directory to clone into
+     * @throws IOException if a git command fails to execute
+     * @throws InterruptedException if a git command is interrupted
+     */
+    private void cloneRepository(String targetPath) throws IOException, InterruptedException {
+        GitOperations gitOps = new GitOperations(workingDirectory, taskId);
+        gitOps.cloneRepository(repoUrl, targetPath);
     }
 
     /**
@@ -328,16 +537,7 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
      * is sent from here.
      */
     protected void fireJobCompleted(Exception error) {
-        JobCompletionEvent event;
-
-        if (error != null) {
-            event = JobCompletionEvent.failed(
-                taskId, getTaskString(),
-                error.getMessage(), error
-            );
-        } else {
-            event = JobCompletionEvent.success(taskId, getTaskString());
-        }
+        JobCompletionEvent event = createEvent(error);
 
         event.withGitInfo(targetBranch, commitHash, stagedFiles, skippedFiles,
             gitOperationsSuccessful && pushToOrigin && !stagedFiles.isEmpty());
@@ -346,6 +546,26 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
         }
         populateEventDetails(event);
         postStatusEvent(event);
+    }
+
+    /**
+     * Creates the completion event for this job.
+     *
+     * <p>Subclasses can override to return a more specific event type.
+     * For example, {@link ClaudeCodeJob} returns {@link ClaudeCodeJobEvent}.</p>
+     *
+     * @param error the exception if the job failed, or null on success
+     * @return the event to fire
+     */
+    protected JobCompletionEvent createEvent(Exception error) {
+        if (error != null) {
+            return JobCompletionEvent.failed(
+                taskId, getTaskString(),
+                error.getMessage(), error
+            );
+        } else {
+            return JobCompletionEvent.success(taskId, getTaskString());
+        }
     }
 
     /**
@@ -498,6 +718,17 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
                 continue;
             }
 
+            // Guardrail 1.5: Protect test/CI files that exist on the base branch
+            if (protectTestFiles && matchesAnyPattern(file, PROTECTED_PATH_PATTERNS)) {
+                if (existsOnBaseBranch(file)) {
+                    log("BLOCKED (protected - exists on " + baseBranch + "): " + file);
+                    skippedFiles.add(file + " (protected - exists on base branch)");
+                    continue;
+                } else {
+                    log("ALLOWED (branch-new file): " + file);
+                }
+            }
+
             // Guardrail 2: Check file size (only for existing files)
             if (!isDeleted && f.length() > maxFileSizeBytes) {
                 log("SKIP (size " + formatSize(f.length()) + "): " + file);
@@ -623,67 +854,13 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
      */
     private String detectPullRequestUrl() {
         try {
-            // Check if remote is GitHub
             String remoteUrl = executeGitWithOutput("remote", "get-url", "origin").trim();
-            if (!remoteUrl.contains("github.com")) {
-                return null;
-            }
-
-            // Extract owner/repo from remote URL
-            // Handles both SSH (git@github.com:owner/repo.git) and
-            // HTTPS (https://github.com/owner/repo.git) formats
-            String ownerRepo = extractOwnerRepo(remoteUrl);
-            if (ownerRepo == null) {
-                log("Could not extract owner/repo from remote URL: " + remoteUrl);
-                return null;
-            }
-
-            // Look for GITHUB_TOKEN or GH_TOKEN
-            String token = System.getenv("GITHUB_TOKEN");
-            if (token == null || token.isEmpty()) {
-                token = System.getenv("GH_TOKEN");
-            }
-            if (token == null || token.isEmpty()) {
-                log("No GITHUB_TOKEN or GH_TOKEN set, cannot query GitHub API for PR");
-                return null;
-            }
-
-            // Query GitHub API for open PRs on this branch
-            String apiUrl = "https://api.github.com/repos/" + ownerRepo +
-                "/pulls?head=" + ownerRepo.split("/")[0] + ":" + targetBranch +
-                "&state=open&per_page=1";
-
-            HttpURLConnection conn = (HttpURLConnection) new URL(apiUrl).openConnection();
-            conn.setRequestMethod("GET");
-            conn.setRequestProperty("Authorization", "Bearer " + token);
-            conn.setRequestProperty("Accept", "application/vnd.github+json");
-            conn.setConnectTimeout(10000);
-            conn.setReadTimeout(10000);
-
-            int responseCode = conn.getResponseCode();
-            if (responseCode != 200) {
-                log("GitHub API returned " + responseCode + " for PR query");
-                return null;
-            }
-
-            // Parse the JSON array response with Jackson
-            ObjectMapper mapper = new ObjectMapper();
-            JsonNode root = mapper.readTree(conn.getInputStream());
-            if (root.isArray() && root.size() > 0) {
-                JsonNode firstPr = root.get(0);
-                JsonNode htmlUrlNode = firstPr.get("html_url");
-                if (htmlUrlNode != null && htmlUrlNode.isTextual()) {
-                    String prUrl = htmlUrlNode.asText();
-                    if (prUrl.startsWith("https://github.com/") && prUrl.contains("/pull/")) {
-                        return prUrl;
-                    }
-                }
-            }
+            PullRequestDetector detector = new PullRequestDetector();
+            return detector.detect(remoteUrl, targetBranch, workstreamUrl).orElse(null);
         } catch (Exception e) {
             log("Could not detect PR URL: " + e.getMessage());
+            return null;
         }
-
-        return null;
     }
 
     /**
@@ -696,42 +873,7 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
      * @return the owner/repo string, or null if not parseable
      */
     private static String extractOwnerRepo(String remoteUrl) {
-        // SSH format: git@github.com:owner/repo.git
-        if (remoteUrl.contains("git@github.com:")) {
-            String path = remoteUrl.substring(remoteUrl.indexOf("git@github.com:") + 15);
-            if (path.endsWith(".git")) {
-                path = path.substring(0, path.length() - 4);
-            }
-            String validated = validateOwnerRepo(path);
-            if (validated != null) return validated;
-        }
-
-        // HTTPS format: https://github.com/owner/repo.git
-        if (remoteUrl.contains("github.com/")) {
-            String path = remoteUrl.substring(remoteUrl.indexOf("github.com/") + 11);
-            if (path.endsWith(".git")) {
-                path = path.substring(0, path.length() - 4);
-            }
-            String validated = validateOwnerRepo(path);
-            if (validated != null) return validated;
-        }
-
-        return null;
-    }
-
-    /**
-     * Validates that a path is exactly {@code owner/repo} -- two non-empty
-     * parts separated by a single slash.
-     *
-     * @param path the candidate owner/repo string
-     * @return the path if valid, or null
-     */
-    private static String validateOwnerRepo(String path) {
-        String[] parts = path.split("/");
-        if (parts.length == 2 && !parts[0].isEmpty() && !parts[1].isEmpty()) {
-            return path;
-        }
-        return null;
+        return PullRequestDetector.extractOwnerRepo(remoteUrl);
     }
 
     // ==================== Git Utilities ====================
@@ -767,6 +909,24 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
         // Check remote branches
         result = executeGit("show-ref", "--verify", "--quiet", "refs/remotes/origin/" + branch);
         return result == 0;
+    }
+
+    /**
+     * Checks if a file exists on the base branch.
+     * Branch-new files (not present on the base branch) return {@code false}.
+     * Fails safe: returns {@code true} (protected) if the check errors out.
+     *
+     * @param file the file path to check
+     * @return true if the file exists on the base branch
+     */
+    private boolean existsOnBaseBranch(String file) {
+        try {
+            String ref = "origin/" + (baseBranch != null ? baseBranch : "master");
+            return executeGit("cat-file", "-e", ref + ":" + file) == 0;
+        } catch (Exception e) {
+            warn("Could not check base branch for " + file + ": " + e.getMessage());
+            return true; // Fail safe: protect if uncertain
+        }
     }
 
     private int executeGit(String... args) throws IOException, InterruptedException {
@@ -868,51 +1028,11 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
     }
 
     private boolean matchesAnyPattern(String path, Set<String> patterns) {
-        for (String pattern : patterns) {
-            if (matchesGlobPattern(path, pattern)) {
-                return true;
-            }
-        }
-        return false;
+        return FileStager.matchesAnyPattern(path, patterns);
     }
 
     private boolean matchesGlobPattern(String path, String pattern) {
-        // Convert glob pattern to regex by processing tokens so that
-        // replacing '*' does not corrupt the '.*' produced by '**'.
-        StringBuilder regex = new StringBuilder();
-        int i = 0;
-        while (i < pattern.length()) {
-            char c = pattern.charAt(i);
-            if (c == '*' && i + 1 < pattern.length() && pattern.charAt(i + 1) == '*') {
-                // "**/" matches zero or more directories
-                if (i + 2 < pattern.length() && pattern.charAt(i + 2) == '/') {
-                    regex.append("(.*/)?");
-                    i += 3;
-                } else {
-                    // trailing "**" matches everything
-                    regex.append(".*");
-                    i += 2;
-                }
-            } else if (c == '*') {
-                regex.append("[^/]*");
-                i++;
-            } else if (c == '?') {
-                regex.append("[^/]");
-                i++;
-            } else if (c == '.') {
-                regex.append("\\.");
-                i++;
-            } else {
-                regex.append(c);
-                i++;
-            }
-        }
-
-        String r = regex.toString();
-        return Pattern.matches(r, path) ||
-               Pattern.matches(".*/" + r, path) ||
-               path.endsWith("/" + pattern) ||
-               path.equals(pattern);
+        return FileStager.matchesGlobPattern(path, pattern);
     }
 
     private boolean isBinaryFile(File file) {
@@ -1026,6 +1146,41 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
         this.workingDirectory = workingDirectory;
     }
 
+    /**
+     * Returns the git repository URL for automatic checkout.
+     */
+    public String getRepoUrl() {
+        return repoUrl;
+    }
+
+    /**
+     * Sets the git repository URL. When set and no
+     * {@link #workingDirectory} is specified, the repo is cloned
+     * into a resolved workspace path before the job starts.
+     *
+     * @param repoUrl the git clone URL (e.g., "https://github.com/owner/repo.git")
+     */
+    public void setRepoUrl(String repoUrl) {
+        this.repoUrl = repoUrl;
+    }
+
+    /**
+     * Returns the default workspace path for repo checkouts.
+     */
+    public String getDefaultWorkspacePath() {
+        return defaultWorkspacePath;
+    }
+
+    /**
+     * Sets the default workspace path used when a repo URL is specified
+     * but no explicit working directory is provided.
+     *
+     * @param defaultWorkspacePath the absolute path for repo checkouts
+     */
+    public void setDefaultWorkspacePath(String defaultWorkspacePath) {
+        this.defaultWorkspacePath = defaultWorkspacePath;
+    }
+
     public long getMaxFileSizeBytes() {
         return maxFileSizeBytes;
     }
@@ -1077,6 +1232,26 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
      */
     public void setDryRun(boolean dryRun) {
         this.dryRun = dryRun;
+    }
+
+    /**
+     * Returns whether test file protection is enabled.
+     *
+     * <p>When enabled, test and CI files that exist on the base branch
+     * cannot be staged. This prevents agents from hiding test failures
+     * by modifying existing tests instead of fixing production code.</p>
+     */
+    public boolean isProtectTestFiles() {
+        return protectTestFiles;
+    }
+
+    /**
+     * Sets whether to protect test files that exist on the base branch.
+     *
+     * @param protectTestFiles true to block staging of existing test/CI files
+     */
+    public void setProtectTestFiles(boolean protectTestFiles) {
+        this.protectTestFiles = protectTestFiles;
     }
 
     /**
@@ -1201,6 +1376,27 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
         return originalBranch;
     }
 
+    /**
+     * Returns whether merge conflicts were detected when synchronizing
+     * with the base branch during {@link #prepareWorkingDirectory()}.
+     *
+     * <p>Subclasses can use this to modify their behavior, for example
+     * by adding conflict resolution instructions to a coding agent's prompt.</p>
+     */
+    protected boolean hasMergeConflicts() {
+        return mergeConflictsDetected;
+    }
+
+    /**
+     * Returns the list of files with merge conflicts, detected during
+     * base branch synchronization.
+     *
+     * @return unmodifiable list of conflicted file paths, empty if no conflicts
+     */
+    protected List<String> getMergeConflictFiles() {
+        return new ArrayList<>(conflictFiles);
+    }
+
     // ==================== Status Reporting ====================
 
     /**
@@ -1267,79 +1463,57 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
         }
     }
 
+    private static final ObjectMapper eventMapper = new ObjectMapper();
+
     /**
-     * Serializes a {@link JobCompletionEvent} to a JSON string.
-     * Called after {@link #populateEventDetails(JobCompletionEvent)} so
-     * subclass fields (prompt, sessionId, exitCode) are included.
+     * Serializes a {@link JobCompletionEvent} to a JSON string using Jackson.
      *
      * @param event the event to serialize
      * @return JSON string representation
      */
     private String buildEventJson(JobCompletionEvent event) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("{");
-        appendJsonField(sb, "jobId", event.getJobId(), true);
-        appendJsonField(sb, "status", event.getStatus().name(), false);
-        appendJsonField(sb, "description", event.getDescription(), false);
-        appendJsonField(sb, "targetBranch", event.getTargetBranch(), false);
-        appendJsonField(sb, "commitHash", event.getCommitHash(), false);
-        sb.append(",\"pushed\":").append(event.isPushed());
+        ObjectNode root = eventMapper.createObjectNode();
+        root.put("jobId", event.getJobId());
+        root.put("status", event.getStatus().name());
+        root.put("description", event.getDescription());
+        root.put("targetBranch", event.getTargetBranch());
+        root.put("commitHash", event.getCommitHash());
+        root.put("pushed", event.isPushed());
 
-        // Staged files
-        sb.append(",\"stagedFiles\":[");
-        List<String> staged = event.getStagedFiles();
-        for (int i = 0; i < staged.size(); i++) {
-            if (i > 0) sb.append(",");
-            sb.append("\"").append(escapeJson(staged.get(i))).append("\"");
-        }
-        sb.append("]");
+        ArrayNode stagedArray = root.putArray("stagedFiles");
+        for (String f : event.getStagedFiles()) stagedArray.add(f);
 
-        // Skipped files
-        sb.append(",\"skippedFiles\":[");
-        List<String> skipped = event.getSkippedFiles();
-        for (int i = 0; i < skipped.size(); i++) {
-            if (i > 0) sb.append(",");
-            sb.append("\"").append(escapeJson(skipped.get(i))).append("\"");
-        }
-        sb.append("]");
+        ArrayNode skippedArray = root.putArray("skippedFiles");
+        for (String f : event.getSkippedFiles()) skippedArray.add(f);
 
-        // PR URL
-        appendJsonField(sb, "pullRequestUrl", event.getPullRequestUrl(), false);
+        root.put("pullRequestUrl", event.getPullRequestUrl());
+        root.put("errorMessage", event.getErrorMessage());
 
-        // Error info
-        appendJsonField(sb, "errorMessage", event.getErrorMessage(), false);
-
-        // Claude Code specific
-        appendJsonField(sb, "prompt", event.getPrompt(), false);
-        appendJsonField(sb, "sessionId", event.getSessionId(), false);
-        sb.append(",\"exitCode\":").append(event.getExitCode());
+        // Claude Code specific (base class returns defaults)
+        root.put("prompt", event.getPrompt());
+        root.put("sessionId", event.getSessionId());
+        root.put("exitCode", event.getExitCode());
 
         // Timing information
-        sb.append(",\"durationMs\":").append(event.getDurationMs());
-        sb.append(",\"durationApiMs\":").append(event.getDurationApiMs());
-        sb.append(",\"costUsd\":").append(event.getCostUsd());
-        sb.append(",\"numTurns\":").append(event.getNumTurns());
+        root.put("durationMs", event.getDurationMs());
+        root.put("durationApiMs", event.getDurationApiMs());
+        root.put("costUsd", event.getCostUsd());
+        root.put("numTurns", event.getNumTurns());
 
-        sb.append("}");
-        return sb.toString();
-    }
+        // Session details
+        root.put("subtype", event.getSubtype());
+        root.put("sessionIsError", event.isSessionError());
+        root.put("permissionDenials", event.getPermissionDenials());
 
-    private void appendJsonField(StringBuilder sb, String name, String value, boolean first) {
-        if (!first) sb.append(",");
-        sb.append("\"").append(name).append("\":");
-        if (value == null) {
-            sb.append("null");
-        } else {
-            sb.append("\"").append(escapeJson(value)).append("\"");
+        ArrayNode deniedArray = root.putArray("deniedToolNames");
+        for (String t : event.getDeniedToolNames()) deniedArray.add(t);
+
+        try {
+            return eventMapper.writeValueAsString(root);
+        } catch (Exception e) {
+            warn("Failed to serialize event JSON: " + e.getMessage());
+            return "{}";
         }
-    }
-
-    private static String escapeJson(String s) {
-        if (s == null) return "";
-        return s.replace("\\", "\\\\")
-                .replace("\"", "\\\"")
-                .replace("\n", "\\n")
-                .replace("\r", "\\r");
     }
 
     // ==================== Encoding ====================
@@ -1366,10 +1540,17 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
         if (workingDirectory != null) {
             sb.append("::workDir:=").append(base64Encode(workingDirectory));
         }
+        if (repoUrl != null) {
+            sb.append("::repoUrl:=").append(base64Encode(repoUrl));
+        }
+        if (defaultWorkspacePath != null) {
+            sb.append("::defaultWsPath:=").append(base64Encode(defaultWorkspacePath));
+        }
         sb.append("::maxFileSize:=").append(maxFileSizeBytes);
         sb.append("::push:=").append(pushToOrigin);
         sb.append("::createBranch:=").append(createBranchIfMissing);
         sb.append("::dryRun:=").append(dryRun);
+        sb.append("::protectTests:=").append(protectTestFiles);
         if (gitUserName != null) {
             sb.append("::gitUserName:=").append(base64Encode(gitUserName));
         }
@@ -1388,26 +1569,26 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
             case "taskId":
                 this.taskId = value;
                 break;
+            case "workDir":
+                this.workingDirectory = base64Decode(value);
+                break;
+            case "repoUrl":
+                this.repoUrl = base64Decode(value);
+                break;
+            case "defaultWsPath":
+                this.defaultWorkspacePath = base64Decode(value);
+                break;
             case "branch":
                 this.targetBranch = base64Decode(value);
                 break;
             case "baseBranch":
                 this.baseBranch = base64Decode(value);
                 break;
-            case "workDir":
-                this.workingDirectory = base64Decode(value);
-                break;
-            case "maxFileSize":
-                this.maxFileSizeBytes = Long.parseLong(value);
-                break;
             case "push":
                 this.pushToOrigin = Boolean.parseBoolean(value);
                 break;
-            case "createBranch":
-                this.createBranchIfMissing = Boolean.parseBoolean(value);
-                break;
-            case "dryRun":
-                this.dryRun = Boolean.parseBoolean(value);
+            case "workstreamUrl":
+                this.workstreamUrl = base64Decode(value);
                 break;
             case "gitUserName":
                 this.gitUserName = base64Decode(value);
@@ -1415,8 +1596,17 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
             case "gitUserEmail":
                 this.gitUserEmail = base64Decode(value);
                 break;
-            case "workstreamUrl":
-                this.workstreamUrl = base64Decode(value);
+            case "protectTests":
+                this.protectTestFiles = Boolean.parseBoolean(value);
+                break;
+            case "maxFileSize":
+                this.maxFileSizeBytes = Long.parseLong(value);
+                break;
+            case "createBranch":
+                this.createBranchIfMissing = Boolean.parseBoolean(value);
+                break;
+            case "dryRun":
+                this.dryRun = Boolean.parseBoolean(value);
                 break;
         }
     }

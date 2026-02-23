@@ -36,7 +36,7 @@ import org.junit.Test;
  */
 public class RopePositionTest extends TestSuiteBase implements AttentionFeatures, ConsoleFeatures {
 
-	@Test
+	@Test(timeout = 30000)
 	public void testRopeWithDynamicPosition() throws Exception {
 		String logFile = "/workspace/project/common/ml/results/rope_position_test.txt";
 		Console.root().addListener(OutputFeatures.fileOutput(logFile));

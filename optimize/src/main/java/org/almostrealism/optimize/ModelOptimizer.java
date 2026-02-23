@@ -123,6 +123,10 @@ public class ModelOptimizer implements CodeFeatures {
 	private int earlyStoppingPatience = 0;
 	private double earlyStoppingMinDelta = 1e-6;
 
+	// Early stopping on training loss
+	private int trainingPatience = 0;
+	private double trainingPatienceMinDelta = 1e-6;
+
 	/**
 	 * Creates a model optimizer for an uncompiled model.
 	 * <p>
@@ -359,6 +363,47 @@ public class ModelOptimizer implements CodeFeatures {
 	}
 
 	/**
+	 * Sets the training loss patience for early stopping.
+	 * <p>
+	 * When set to a positive value, training will stop if the training loss
+	 * does not improve by at least {@link #getTrainingPatienceMinDelta()} for
+	 * this many consecutive epochs. Set to 0 to disable (default).
+	 * </p>
+	 *
+	 * @param patience number of epochs without training loss improvement before stopping
+	 */
+	public void setTrainingPatience(int patience) {
+		this.trainingPatience = patience;
+	}
+
+	/**
+	 * Returns the training loss patience.
+	 *
+	 * @return number of epochs without training loss improvement before stopping
+	 */
+	public int getTrainingPatience() {
+		return trainingPatience;
+	}
+
+	/**
+	 * Sets the minimum improvement required to reset the training patience counter.
+	 *
+	 * @param minDelta minimum improvement in training loss
+	 */
+	public void setTrainingPatienceMinDelta(double minDelta) {
+		this.trainingPatienceMinDelta = minDelta;
+	}
+
+	/**
+	 * Returns the minimum training loss improvement for patience reset.
+	 *
+	 * @return minimum improvement in training loss
+	 */
+	public double getTrainingPatienceMinDelta() {
+		return trainingPatienceMinDelta;
+	}
+
+	/**
 	 * Returns the current average loss.
 	 *
 	 * @return the average loss from the last epoch, or -1 if not yet computed
@@ -412,6 +457,9 @@ public class ModelOptimizer implements CodeFeatures {
 		double bestValidationLoss = Double.MAX_VALUE;
 		int epochsWithoutImprovement = 0;
 		boolean earlyStopped = false;
+
+		double bestTrainingLoss = Double.MAX_VALUE;
+		int trainingEpochsWithoutImprovement = 0;
 
 		for (int i = 0; i < iterations; i++) {
 			boolean first = true;
@@ -505,6 +553,22 @@ public class ModelOptimizer implements CodeFeatures {
 				progressCallback.accept(new TrainingProgress(
 						i, totalIterations, averageLoss, avgValidationLoss
 				));
+			}
+
+			// Training patience: stop if training loss hasn't improved
+			if (trainingPatience > 0) {
+				if (averageLoss < bestTrainingLoss - trainingPatienceMinDelta) {
+					bestTrainingLoss = averageLoss;
+					trainingEpochsWithoutImprovement = 0;
+				} else {
+					trainingEpochsWithoutImprovement++;
+				}
+
+				if (trainingEpochsWithoutImprovement >= trainingPatience) {
+					log("Training patience exhausted at epoch " + (i + 1));
+					earlyStopped = true;
+					break;
+				}
 			}
 
 			if (averageLoss < lossTarget || averageLoss == previousLoss) {

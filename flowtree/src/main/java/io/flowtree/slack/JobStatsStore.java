@@ -58,11 +58,21 @@ public class JobStatsStore implements ConsoleFeatures {
         + "    num_turns      INTEGER,"
         + "    session_id     VARCHAR(255),"
         + "    exit_code      INTEGER,"
-        + "    description    VARCHAR(1000)"
+        + "    description    VARCHAR(1000),"
+        + "    subtype        VARCHAR(64),"
+        + "    session_error  BOOLEAN,"
+        + "    permission_denials INTEGER"
         + ")";
 
     private static final String CREATE_INDEX =
         "CREATE INDEX IF NOT EXISTS idx_timing_ws_started ON job_timing (workstream_id, started_at)";
+
+    /** ALTER TABLE statements to add new columns to existing databases. */
+    private static final String[] SCHEMA_MIGRATIONS = {
+        "ALTER TABLE job_timing ADD COLUMN IF NOT EXISTS subtype VARCHAR(64)",
+        "ALTER TABLE job_timing ADD COLUMN IF NOT EXISTS session_error BOOLEAN",
+        "ALTER TABLE job_timing ADD COLUMN IF NOT EXISTS permission_denials INTEGER"
+    };
 
     private static final String CLEAN_ORPHANS =
         "DELETE FROM job_timing WHERE status = 'STARTED' AND started_at < ?";
@@ -92,6 +102,14 @@ public class JobStatsStore implements ConsoleFeatures {
             try (Statement stmt = connection.createStatement()) {
                 stmt.execute(CREATE_TABLE);
                 stmt.execute(CREATE_INDEX);
+                for (String migration : SCHEMA_MIGRATIONS) {
+                    try {
+                        stmt.execute(migration);
+                    } catch (SQLException ignored) {
+                        // Column may already exist on databases that were
+                        // created with the updated CREATE TABLE statement
+                    }
+                }
             }
 
             // Clean orphaned STARTED rows older than 7 days
@@ -165,43 +183,69 @@ public class JobStatsStore implements ConsoleFeatures {
      * {@code started_at} set to the completion time and uses the provided
      * {@code workstreamId} to attribute the job correctly.</p>
      *
-     * @param jobId         the job identifier
-     * @param workstreamId  the workstream this job belongs to
-     * @param status        the completion status (SUCCESS, FAILED, CANCELLED)
-     * @param completedAt   the completion timestamp
-     * @param durationMs    duration reported by Claude Code
-     * @param durationApiMs API duration reported by Claude Code
-     * @param costUsd       cost in USD
-     * @param numTurns      number of agentic turns
-     * @param sessionId     the Claude Code session ID
-     * @param exitCode      the process exit code
+     * @param jobId             the job identifier
+     * @param workstreamId      the workstream this job belongs to
+     * @param status            the completion status (SUCCESS, FAILED, CANCELLED)
+     * @param completedAt       the completion timestamp
+     * @param durationMs        duration reported by Claude Code
+     * @param durationApiMs     API duration reported by Claude Code
+     * @param costUsd           cost in USD
+     * @param numTurns          number of agentic turns
+     * @param sessionId         the Claude Code session ID
+     * @param exitCode          the process exit code
+     * @param subtype           session stop reason (e.g. "success", "error_max_turns")
+     * @param sessionError      whether the session ended with an error
+     * @param permissionDenials number of permission denials during the session
      */
     public synchronized void recordJobCompleted(String jobId, String workstreamId,
                                                  String status,
                                                  Instant completedAt, long durationMs,
                                                  long durationApiMs, double costUsd,
                                                  int numTurns, String sessionId,
-                                                 int exitCode) {
+                                                 int exitCode, String subtype,
+                                                 boolean sessionError,
+                                                 int permissionDenials) {
         if (connection == null) return;
+
+        // Compute wall_clock_ms in Java to avoid HSQLDB DATEDIFF compatibility issues
+        long wallClockMs = 0;
+        try (PreparedStatement psQuery = connection.prepareStatement(
+                "SELECT started_at FROM job_timing WHERE job_id = ?")) {
+            psQuery.setString(1, jobId);
+            try (ResultSet rs = psQuery.executeQuery()) {
+                if (rs.next()) {
+                    Timestamp startedTs = rs.getTimestamp("started_at");
+                    if (startedTs != null) {
+                        wallClockMs = completedAt.toEpochMilli() - startedTs.toInstant().toEpochMilli();
+                    }
+                }
+            }
+        } catch (SQLException e) {
+            warn("Failed to query started_at for wall_clock_ms: " + e.getMessage());
+        }
 
         // Try UPDATE first (job was previously started)
         String updateSql = "UPDATE job_timing SET status = ?, completed_at = ?, "
-            + "wall_clock_ms = DATEDIFF('MILLISECOND', started_at, ?), "
+            + "wall_clock_ms = ?, "
             + "duration_ms = ?, duration_api_ms = ?, cost_usd = ?, "
-            + "num_turns = ?, session_id = ?, exit_code = ? "
+            + "num_turns = ?, session_id = ?, exit_code = ?, "
+            + "subtype = ?, session_error = ?, permission_denials = ? "
             + "WHERE job_id = ?";
 
         try (PreparedStatement ps = connection.prepareStatement(updateSql)) {
             ps.setString(1, status);
             ps.setTimestamp(2, Timestamp.from(completedAt));
-            ps.setTimestamp(3, Timestamp.from(completedAt));
+            ps.setLong(3, wallClockMs);
             ps.setLong(4, durationMs);
             ps.setLong(5, durationApiMs);
             ps.setDouble(6, costUsd);
             ps.setInt(7, numTurns);
             ps.setString(8, sessionId);
             ps.setInt(9, exitCode);
-            ps.setString(10, jobId);
+            ps.setString(10, subtype);
+            ps.setBoolean(11, sessionError);
+            ps.setInt(12, permissionDenials);
+            ps.setString(13, jobId);
 
             int updated = ps.executeUpdate();
             if (updated > 0) return;
@@ -214,8 +258,9 @@ public class JobStatsStore implements ConsoleFeatures {
         String wsId = workstreamId != null ? workstreamId : "unknown";
         String insertSql = "INSERT INTO job_timing (job_id, workstream_id, status, "
             + "started_at, completed_at, wall_clock_ms, duration_ms, duration_api_ms, "
-            + "cost_usd, num_turns, session_id, exit_code) "
-            + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+            + "cost_usd, num_turns, session_id, exit_code, "
+            + "subtype, session_error, permission_denials) "
+            + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
         try (PreparedStatement ps = connection.prepareStatement(insertSql)) {
             ps.setString(1, jobId);
@@ -230,6 +275,9 @@ public class JobStatsStore implements ConsoleFeatures {
             ps.setInt(10, numTurns);
             ps.setString(11, sessionId);
             ps.setInt(12, exitCode);
+            ps.setString(13, subtype);
+            ps.setBoolean(14, sessionError);
+            ps.setInt(15, permissionDenials);
             ps.executeUpdate();
         } catch (SQLException e) {
             warn("Failed to insert job completed: " + e.getMessage());

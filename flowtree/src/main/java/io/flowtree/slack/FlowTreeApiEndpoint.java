@@ -19,11 +19,17 @@ package io.flowtree.slack;
 import fi.iki.elonen.NanoHTTPD;
 import io.flowtree.Server;
 import io.flowtree.jobs.ClaudeCodeJob;
+import io.flowtree.jobs.ClaudeCodeJobEvent;
 import io.flowtree.jobs.JobCompletionEvent;
 import io.flowtree.msg.NodeProxy;
 import org.almostrealism.io.ConsoleFeatures;
 
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.URI;
+import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -67,6 +73,11 @@ import java.util.regex.Pattern;
  *   <tr><td>POST</td><td>/api/workstreams/{id}/jobs/{jobId}</td>
  *       <td>{@code {"jobId":"...","status":"..."}}</td>
  *       <td>Receive a job status event</td></tr>
+ *   <tr><td>GET</td><td>/api/github/proxy?url=...</td><td>--</td>
+ *       <td>Proxy a GET request to the GitHub API</td></tr>
+ *   <tr><td>POST</td><td>/api/github/proxy?url=...</td>
+ *       <td><i>raw JSON payload</i></td>
+ *       <td>Proxy a POST request to the GitHub API</td></tr>
  *   <tr><td>GET</td><td>/api/health</td><td>--</td>
  *       <td>Health check</td></tr>
  * </table>
@@ -153,6 +164,11 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
 
         if (Method.GET.equals(method) && uri.startsWith("/api/stats")) {
             return handleStatsQuery(session);
+        }
+
+        if ("/api/github/proxy".equals(uri)
+                && (Method.GET.equals(method) || Method.POST.equals(method))) {
+            return handleGitHubProxy(session, method);
         }
 
         if (Method.POST.equals(method)) {
@@ -355,9 +371,11 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
 
         // Apply optional overrides from the request body
         // (targetBranch was already extracted during workstream resolution above)
+        String repoUrl = extractJsonField(body, "repoUrl");
         String baseBranch = extractJsonField(body, "baseBranch");
         int maxTurns = extractJsonIntField(body, "maxTurns");
         double maxBudgetUsd = extractJsonDoubleField(body, "maxBudgetUsd");
+        boolean protectTestFiles = extractJsonBooleanField(body, "protectTestFiles");
 
         // Create job factory with workstream defaults, overridden by request values
         ClaudeCodeJob.Factory factory = new ClaudeCodeJob.Factory(prompt);
@@ -378,6 +396,17 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
 
         if (workstream.getWorkingDirectory() != null) {
             factory.setWorkingDirectory(workstream.getWorkingDirectory());
+        }
+
+        // Repository URL for automatic checkout (request body overrides workstream default)
+        String effectiveRepoUrl = repoUrl != null ? repoUrl : workstream.getRepoUrl();
+        if (effectiveRepoUrl != null) {
+            factory.setRepoUrl(effectiveRepoUrl);
+        }
+
+        // Default workspace path from listener (global config)
+        if (listener != null && listener.getDefaultWorkspacePath() != null) {
+            factory.setDefaultWorkspacePath(listener.getDefaultWorkspacePath());
         }
 
         // Git identity
@@ -401,6 +430,16 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         // Per-workstream env vars
         if (workstream.getEnv() != null && !workstream.getEnv().isEmpty()) {
             factory.setWorkstreamEnv(workstream.getEnv());
+        }
+
+        // Planning document
+        if (workstream.getPlanningDocument() != null) {
+            factory.setPlanningDocument(workstream.getPlanningDocument());
+        }
+
+        // Test file protection
+        if (protectTestFiles) {
+            factory.setProtectTestFiles(true);
         }
 
         // Build workstream URL for status reporting
@@ -456,12 +495,29 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             return errorResponse("Invalid status: " + status);
         }
 
+        // Populate Claude Code info
+        String prompt = extractJsonField(body, "prompt");
+        String sessionId = extractJsonField(body, "sessionId");
+        int exitCode = extractJsonIntField(body, "exitCode");
+
+        // Create the appropriate event type based on whether Claude-specific fields are present
+        boolean isClaudeCodeEvent = prompt != null || sessionId != null;
+
         JobCompletionEvent event;
-        if (eventStatus == JobCompletionEvent.Status.FAILED) {
-            String errorMessage = extractJsonField(body, "errorMessage");
-            event = JobCompletionEvent.failed(jobId, description, errorMessage, null);
+        if (isClaudeCodeEvent) {
+            if (eventStatus == JobCompletionEvent.Status.FAILED) {
+                String errorMessage = extractJsonField(body, "errorMessage");
+                event = ClaudeCodeJobEvent.failed(jobId, description, errorMessage, null);
+            } else {
+                event = new ClaudeCodeJobEvent(jobId, eventStatus, description);
+            }
         } else {
-            event = new JobCompletionEvent(jobId, eventStatus, description);
+            if (eventStatus == JobCompletionEvent.Status.FAILED) {
+                String errorMessage = extractJsonField(body, "errorMessage");
+                event = JobCompletionEvent.failed(jobId, description, errorMessage, null);
+            } else {
+                event = new JobCompletionEvent(jobId, eventStatus, description);
+            }
         }
 
         // Populate git info
@@ -478,18 +534,25 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             event.withPullRequestUrl(pullRequestUrl);
         }
 
-        // Populate Claude Code info
-        String prompt = extractJsonField(body, "prompt");
-        String sessionId = extractJsonField(body, "sessionId");
-        int exitCode = extractJsonIntField(body, "exitCode");
-        event.withClaudeCodeInfo(prompt, sessionId, exitCode);
+        // Populate Claude Code-specific fields
+        if (event instanceof ClaudeCodeJobEvent) {
+            ClaudeCodeJobEvent ccEvent = (ClaudeCodeJobEvent) event;
+            ccEvent.withClaudeCodeInfo(prompt, sessionId, exitCode);
 
-        // Populate timing info
-        long durationMs = extractJsonLongField(body, "durationMs");
-        long durationApiMs = extractJsonLongField(body, "durationApiMs");
-        double costUsd = extractJsonDoubleField(body, "costUsd");
-        int numTurns = extractJsonIntField(body, "numTurns");
-        event.withTimingInfo(durationMs, durationApiMs, costUsd, numTurns);
+            // Populate timing info
+            long durationMs = extractJsonLongField(body, "durationMs");
+            long durationApiMs = extractJsonLongField(body, "durationApiMs");
+            double costUsd = extractJsonDoubleField(body, "costUsd");
+            int numTurns = extractJsonIntField(body, "numTurns");
+            ccEvent.withTimingInfo(durationMs, durationApiMs, costUsd, numTurns);
+
+            // Populate session details
+            String subtype = extractJsonField(body, "subtype");
+            boolean sessionIsError = extractJsonBooleanField(body, "sessionIsError");
+            int permissionDenials = extractJsonIntField(body, "permissionDenials");
+            List<String> deniedToolNames = extractJsonArrayField(body, "deniedToolNames");
+            ccEvent.withSessionDetails(subtype, sessionIsError, permissionDenials, deniedToolNames);
+        }
 
         log("Status event: " + eventStatus + " for job " + jobId + " in workstream " + workstreamId);
 
@@ -527,297 +590,45 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
     }
 
     /**
-     * Simple JSON field extraction for lightweight parsing without
-     * requiring a JSON library dependency.
-     *
-     * <p>Handles escaped quotes within values. For nested or complex JSON,
-     * a proper JSON parser should be used instead.</p>
-     *
-     * @param json  the JSON string
-     * @param field the field name to extract
-     * @return the field value, or null if not found
+     * Delegates to {@link io.flowtree.JsonFieldExtractor#extractString(String, String)}.
      */
     static String extractJsonField(String json, String field) {
-        if (json == null) return null;
-
-        int fieldStart = json.indexOf("\"" + field + "\"");
-        if (fieldStart < 0) return null;
-
-        int colonPos = json.indexOf(":", fieldStart);
-        if (colonPos < 0) return null;
-
-        // Skip whitespace after the colon to inspect the value token
-        int afterColon = colonPos + 1;
-        while (afterColon < json.length() && json.charAt(afterColon) == ' ') {
-            afterColon++;
-        }
-
-        // Handle JSON null literal
-        if (afterColon + 4 <= json.length() &&
-                json.substring(afterColon, afterColon + 4).equals("null")) {
-            return null;
-        }
-
-        int valueStart = json.indexOf("\"", colonPos) + 1;
-        if (valueStart <= 0) return null;
-
-        // Handle JSON escape sequences including \\uXXXX Unicode escapes
-        StringBuilder sb = new StringBuilder();
-        for (int i = valueStart; i < json.length(); i++) {
-            char c = json.charAt(i);
-            if (c == '\\' && i + 1 < json.length()) {
-                char next = json.charAt(i + 1);
-                if (next == '"') {
-                    sb.append('"');
-                    i++;
-                } else if (next == '\\') {
-                    sb.append('\\');
-                    i++;
-                } else if (next == 'n') {
-                    sb.append('\n');
-                    i++;
-                } else if (next == 'r') {
-                    sb.append('\r');
-                    i++;
-                } else if (next == 't') {
-                    sb.append('\t');
-                    i++;
-                } else if (next == 'b') {
-                    sb.append('\b');
-                    i++;
-                } else if (next == 'f') {
-                    sb.append('\f');
-                    i++;
-                } else if (next == '/') {
-                    sb.append('/');
-                    i++;
-                } else if (next == 'u' && i + 5 < json.length()) {
-                    String hex = json.substring(i + 2, i + 6);
-                    try {
-                        sb.append((char) Integer.parseInt(hex, 16));
-                        i += 5;
-                    } catch (NumberFormatException e) {
-                        sb.append(c);
-                    }
-                } else {
-                    sb.append(c);
-                }
-            } else if (c == '"') {
-                break;
-            } else {
-                sb.append(c);
-            }
-        }
-
-        return sb.toString();
+        return io.flowtree.JsonFieldExtractor.extractString(json, field);
     }
 
     /**
-     * Extracts a boolean field from a JSON string.
-     * Returns false if the field is not found.
-     *
-     * @param json  the JSON string
-     * @param field the field name
-     * @return the boolean value, or false if not found
+     * Delegates to {@link io.flowtree.JsonFieldExtractor#extractBoolean(String, String)}.
      */
     static boolean extractJsonBooleanField(String json, String field) {
-        if (json == null) return false;
-
-        int fieldStart = json.indexOf("\"" + field + "\"");
-        if (fieldStart < 0) return false;
-
-        int colonPos = json.indexOf(":", fieldStart);
-        if (colonPos < 0) return false;
-
-        String rest = json.substring(colonPos + 1).trim();
-        return rest.startsWith("true");
+        return io.flowtree.JsonFieldExtractor.extractBoolean(json, field);
     }
 
     /**
-     * Extracts an integer field from a JSON string.
-     * Returns 0 if the field is not found or cannot be parsed.
-     *
-     * @param json  the JSON string
-     * @param field the field name
-     * @return the integer value, or 0 if not found
+     * Delegates to {@link io.flowtree.JsonFieldExtractor#extractInt(String, String)}.
      */
     static int extractJsonIntField(String json, String field) {
-        if (json == null) return 0;
-
-        int fieldStart = json.indexOf("\"" + field + "\"");
-        if (fieldStart < 0) return 0;
-
-        int colonPos = json.indexOf(":", fieldStart);
-        if (colonPos < 0) return 0;
-
-        String rest = json.substring(colonPos + 1).trim();
-        StringBuilder numStr = new StringBuilder();
-        for (int i = 0; i < rest.length(); i++) {
-            char c = rest.charAt(i);
-            if (c == '-' || (c >= '0' && c <= '9')) {
-                numStr.append(c);
-            } else if (numStr.length() > 0) {
-                break;
-            }
-        }
-
-        try {
-            return Integer.parseInt(numStr.toString());
-        } catch (NumberFormatException e) {
-            return 0;
-        }
+        return io.flowtree.JsonFieldExtractor.extractInt(json, field);
     }
 
     /**
-     * Extracts a long field from a JSON string.
-     * Returns 0 if the field is not found or cannot be parsed.
-     *
-     * @param json  the JSON string
-     * @param field the field name
-     * @return the long value, or 0 if not found
+     * Delegates to {@link io.flowtree.JsonFieldExtractor#extractLong(String, String)}.
      */
     static long extractJsonLongField(String json, String field) {
-        if (json == null) return 0;
-
-        int fieldStart = json.indexOf("\"" + field + "\"");
-        if (fieldStart < 0) return 0;
-
-        int colonPos = json.indexOf(":", fieldStart);
-        if (colonPos < 0) return 0;
-
-        String rest = json.substring(colonPos + 1).trim();
-        StringBuilder numStr = new StringBuilder();
-        for (int i = 0; i < rest.length(); i++) {
-            char c = rest.charAt(i);
-            if (c == '-' || (c >= '0' && c <= '9')) {
-                numStr.append(c);
-            } else if (numStr.length() > 0) {
-                break;
-            }
-        }
-
-        try {
-            return Long.parseLong(numStr.toString());
-        } catch (NumberFormatException e) {
-            return 0;
-        }
+        return io.flowtree.JsonFieldExtractor.extractLong(json, field);
     }
 
     /**
-     * Extracts a double field from a JSON string.
-     * Returns 0.0 if the field is not found or cannot be parsed.
-     *
-     * @param json  the JSON string
-     * @param field the field name
-     * @return the double value, or 0.0 if not found
+     * Delegates to {@link io.flowtree.JsonFieldExtractor#extractDouble(String, String)}.
      */
     static double extractJsonDoubleField(String json, String field) {
-        if (json == null) return 0.0;
-
-        int fieldStart = json.indexOf("\"" + field + "\"");
-        if (fieldStart < 0) return 0.0;
-
-        int colonPos = json.indexOf(":", fieldStart);
-        if (colonPos < 0) return 0.0;
-
-        String rest = json.substring(colonPos + 1).trim();
-        StringBuilder numStr = new StringBuilder();
-        for (int i = 0; i < rest.length(); i++) {
-            char c = rest.charAt(i);
-            if (c == '-' || c == '.' || (c >= '0' && c <= '9')) {
-                numStr.append(c);
-            } else if (numStr.length() > 0) {
-                break;
-            }
-        }
-
-        try {
-            return Double.parseDouble(numStr.toString());
-        } catch (NumberFormatException e) {
-            return 0.0;
-        }
+        return io.flowtree.JsonFieldExtractor.extractDouble(json, field);
     }
 
     /**
-     * Extracts a JSON array of strings from a JSON string.
-     * Returns an empty list if the field is not found.
-     *
-     * @param json  the JSON string
-     * @param field the field name
-     * @return list of string values from the array
+     * Delegates to {@link io.flowtree.JsonFieldExtractor#extractStringArray(String, String)}.
      */
     static List<String> extractJsonArrayField(String json, String field) {
-        List<String> result = new ArrayList<>();
-        if (json == null) return result;
-
-        int fieldStart = json.indexOf("\"" + field + "\"");
-        if (fieldStart < 0) return result;
-
-        int colonPos = json.indexOf(":", fieldStart);
-        if (colonPos < 0) return result;
-
-        int arrayStart = json.indexOf("[", colonPos);
-        if (arrayStart < 0) return result;
-
-        int arrayEnd = json.indexOf("]", arrayStart);
-        if (arrayEnd < 0) return result;
-
-        String arrayContent = json.substring(arrayStart + 1, arrayEnd);
-        if (arrayContent.trim().isEmpty()) return result;
-
-        // Parse each quoted string in the array
-        int i = 0;
-        while (i < arrayContent.length()) {
-            int quoteStart = arrayContent.indexOf("\"", i);
-            if (quoteStart < 0) break;
-
-            StringBuilder value = new StringBuilder();
-            int j = quoteStart + 1;
-            while (j < arrayContent.length()) {
-                char c = arrayContent.charAt(j);
-                if (c == '\\' && j + 1 < arrayContent.length()) {
-                    char next = arrayContent.charAt(j + 1);
-                    if (next == '"') {
-                        value.append('"');
-                        j += 2;
-                    } else if (next == '\\') {
-                        value.append('\\');
-                        j += 2;
-                    } else if (next == 'n') {
-                        value.append('\n');
-                        j += 2;
-                    } else if (next == 'r') {
-                        value.append('\r');
-                        j += 2;
-                    } else if (next == 't') {
-                        value.append('\t');
-                        j += 2;
-                    } else if (next == 'u' && j + 5 < arrayContent.length()) {
-                        String hex = arrayContent.substring(j + 2, j + 6);
-                        try {
-                            value.append((char) Integer.parseInt(hex, 16));
-                            j += 6;
-                        } catch (NumberFormatException e) {
-                            value.append(c);
-                            j++;
-                        }
-                    } else {
-                        value.append(c);
-                        j++;
-                    }
-                } else if (c == '"') {
-                    break;
-                } else {
-                    value.append(c);
-                    j++;
-                }
-            }
-
-            result.add(value.toString());
-            i = j + 1;
-        }
-
-        return result;
+        return io.flowtree.JsonFieldExtractor.extractStringArray(json, field);
     }
 
     private static String escapeJson(String s) {
@@ -871,6 +682,109 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
 
         return newFixedLengthResponse(Response.Status.OK,
             "application/json", json.toString());
+    }
+
+    /**
+     * Handles requests to {@code /api/github/proxy} by forwarding them to the
+     * GitHub API using the controller's {@code GITHUB_TOKEN}.
+     *
+     * <p>This endpoint allows agents to make GitHub API calls without needing
+     * their own token. The controller acts as an authenticated proxy, so the
+     * token only needs to be configured in one place.</p>
+     *
+     * <p>The HTTP method of the incoming request determines the method used
+     * for the GitHub API call (GET or POST).</p>
+     *
+     * <p>Query parameters:</p>
+     * <ul>
+     *   <li>{@code url} &ndash; GitHub API path (e.g.,
+     *       {@code /repos/owner/repo/pulls}) or a full URL starting with
+     *       {@code https://}. Required.</li>
+     * </ul>
+     *
+     * <p>For POST requests, the request body is forwarded as-is to the
+     * GitHub API.</p>
+     *
+     * <p>Response body format:</p>
+     * <pre>{@code {"status": 200, "link": "<pagination>", "body": <github-json>}}</pre>
+     *
+     * @param session the HTTP session
+     * @param method  the HTTP method (determines GET or POST to GitHub)
+     * @return JSON response wrapping the GitHub API response
+     */
+    private Response handleGitHubProxy(IHTTPSession session, Method method) {
+        String githubToken = System.getenv("GITHUB_TOKEN");
+        if (githubToken == null || githubToken.trim().isEmpty()) {
+            return errorResponse("GITHUB_TOKEN not configured on controller");
+        }
+
+        String urlOrPath = session.getParms().get("url");
+        if (urlOrPath == null || urlOrPath.isEmpty()) {
+            return errorResponse("Missing required query parameter: url");
+        }
+
+        String githubMethod = Method.POST.equals(method) ? "POST" : "GET";
+
+        // Read body for POST requests (forwarded to GitHub as-is)
+        String payload = null;
+        if (Method.POST.equals(method)) {
+            payload = readBody(session);
+        }
+
+        // Resolve full GitHub API URL
+        String fullUrl;
+        if (urlOrPath.startsWith("https://")) {
+            fullUrl = urlOrPath;
+        } else {
+            fullUrl = "https://api.github.com" + urlOrPath;
+        }
+
+        log("GitHub proxy " + githubMethod + " " + urlOrPath);
+
+        try {
+            URL url = URI.create(fullUrl).toURL();
+            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+            conn.setRequestMethod(githubMethod);
+            conn.setRequestProperty("Authorization", "Bearer " + githubToken.trim());
+            conn.setRequestProperty("Accept", "application/vnd.github+json");
+            conn.setRequestProperty("X-GitHub-Api-Version", "2022-11-28");
+            conn.setConnectTimeout(15000);
+            conn.setReadTimeout(15000);
+
+            if ("POST".equals(githubMethod) && payload != null && !payload.isEmpty()) {
+                conn.setDoOutput(true);
+                conn.setRequestProperty("Content-Type", "application/json");
+                OutputStream os = conn.getOutputStream();
+                os.write(payload.getBytes(StandardCharsets.UTF_8));
+                os.close();
+            }
+
+            int status = conn.getResponseCode();
+            String linkHeader = conn.getHeaderField("Link");
+
+            InputStream is = status >= 400 ? conn.getErrorStream() : conn.getInputStream();
+            String responseBody = "";
+            if (is != null) {
+                responseBody = new String(is.readAllBytes(), StandardCharsets.UTF_8);
+                is.close();
+            }
+
+            // Wrap response: {"status":N,"link":"...","body":<raw-github-json>}
+            StringBuilder json = new StringBuilder();
+            json.append("{\"status\":").append(status);
+            json.append(",\"link\":\"")
+                .append(escapeJson(linkHeader != null ? linkHeader : ""))
+                .append("\"");
+            json.append(",\"body\":")
+                .append(responseBody.isEmpty() ? "null" : responseBody);
+            json.append("}");
+
+            return newFixedLengthResponse(Response.Status.OK,
+                    "application/json", json.toString());
+        } catch (Exception e) {
+            log("GitHub proxy error: " + e.getMessage());
+            return errorResponse("GitHub proxy error: " + e.getMessage());
+        }
     }
 
     /**

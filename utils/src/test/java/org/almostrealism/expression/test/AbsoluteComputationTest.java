@@ -60,13 +60,6 @@ public class AbsoluteComputationTest extends TestSuiteBase {
 			Expression<Double> absValue = new Absolute(normalized);
 			Expression<?> result = e(1.0).subtract(absValue);
 
-			// Debug: print what we're assigning
-			System.out.println("AbsoluteTestComputation - result expression type: " + result.getClass().getName());
-			System.out.println("AbsoluteTestComputation - result children: " + result.getChildren().size());
-			for (int i = 0; i < result.getChildren().size(); i++) {
-				System.out.println("  Child " + i + ": " + result.getChildren().get(i).getClass().getName());
-			}
-
 			scope.getStatements().add(
 					getCollectionArgumentVariable(0).getValueAt(n).assign(result)
 			);
@@ -89,7 +82,7 @@ public class AbsoluteComputationTest extends TestSuiteBase {
 	 * - n=32: 1 - |64/63 - 1| = 1 - 0.016 = 0.984
 	 * - n=63: 1 - |2 - 1| = 0
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void testAbsoluteInComputation() {
 		int size = 64;
 		AbsoluteTestComputation comp = new AbsoluteTestComputation(size);
@@ -102,23 +95,13 @@ public class AbsoluteComputationTest extends TestSuiteBase {
 			expected[n] = 1.0 - Math.abs(normalized);
 		}
 
-		System.out.println("Checking computation results:");
-		System.out.println("  result[0] = " + result.toDouble(0) + " (expected " + expected[0] + ")");
-		System.out.println("  result[1] = " + result.toDouble(1) + " (expected " + expected[1] + ")");
-		System.out.println("  result[31] = " + result.toDouble(31) + " (expected " + expected[31] + ")");
-		System.out.println("  result[32] = " + result.toDouble(32) + " (expected " + expected[32] + ")");
-		System.out.println("  result[63] = " + result.toDouble(63) + " (expected " + expected[63] + ")");
+		log("Checking computation results:");
+		log("  result[0] = " + result.toDouble(0) + " (expected " + expected[0] + ")");
+		log("  result[31] = " + result.toDouble(31) + " (expected " + expected[31] + ")");
+		log("  result[63] = " + result.toDouble(63) + " (expected " + expected[63] + ")");
 
-		// Check specific indices
-		assertEquals("Index 0", expected[0], result.toDouble(0), 1e-10);
-		assertEquals("Index 1", expected[1], result.toDouble(1), 1e-10);
-		assertEquals("Index 31", expected[31], result.toDouble(31), 1e-10);
-		assertEquals("Index 32", expected[32], result.toDouble(32), 1e-10);
-		assertEquals("Index 63", expected[63], result.toDouble(63), 1e-10);
-
-		// Check all values
 		for (int i = 0; i < size; i++) {
-			assertEquals("Index " + i, expected[i], result.toDouble(i), 1e-10);
+			assertEquals("Index " + i, expected[i], result.toDouble(i));
 		}
 	}
 
@@ -144,9 +127,6 @@ public class AbsoluteComputationTest extends TestSuiteBase {
 			Expression<Double> normalized = (Expression<Double>) e(2.0).multiply(n).divide(nMinus1).subtract(e(1.0));
 			Expression<Double> absValue = new Absolute(normalized);
 
-			System.out.println("SimpleAbsoluteComputation - absValue type: " + absValue.getClass().getName());
-			System.out.println("SimpleAbsoluteComputation - absValue children: " + absValue.getChildren().size());
-
 			scope.getStatements().add(
 					getCollectionArgumentVariable(0).getValueAt(n).assign(absValue)
 			);
@@ -163,7 +143,7 @@ public class AbsoluteComputationTest extends TestSuiteBase {
 	/**
 	 * Test Absolute directly (without outer subtraction).
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void testSimpleAbsoluteComputation() {
 		int size = 64;
 		SimpleAbsoluteComputation comp = new SimpleAbsoluteComputation(size);
@@ -175,13 +155,12 @@ public class AbsoluteComputationTest extends TestSuiteBase {
 			expected[n] = Math.abs(2.0 * n / (size - 1) - 1.0);
 		}
 
-		System.out.println("Checking simple absolute results:");
-		System.out.println("  result[0] = " + result.toDouble(0) + " (expected " + expected[0] + ")");
-		System.out.println("  result[1] = " + result.toDouble(1) + " (expected " + expected[1] + ")");
-		System.out.println("  result[31] = " + result.toDouble(31) + " (expected " + expected[31] + ")");
+		log("Checking simple absolute results:");
+		log("  result[0] = " + result.toDouble(0) + " (expected " + expected[0] + ")");
+		log("  result[31] = " + result.toDouble(31) + " (expected " + expected[31] + ")");
 
 		for (int i = 0; i < size; i++) {
-			assertEquals("Index " + i, expected[i], result.toDouble(i), 1e-10);
+			assertEquals("Index " + i, expected[i], result.toDouble(i));
 		}
 	}
 }

@@ -33,6 +33,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Supplier;
 
+import org.almostrealism.optimize.TrainingResult;
+
 /**
  * Machine learning model testing interface providing utilities for dataset generation,
  * model training, and optimization testing.
@@ -196,5 +198,202 @@ public interface ModelTestFeatures extends TestFeatures {
 		}
 
 		throw new RuntimeException();
+	}
+
+	/**
+	 * Trains a model using patience-based early stopping on training loss,
+	 * with retry logic for poor initialization.
+	 * <p>
+	 * This method configures the {@link ModelOptimizer} with training patience
+	 * so that training stops when loss plateaus. If training stops without making
+	 * meaningful progress (loss did not decline), the model is recompiled with
+	 * fresh random weights and training is retried up to {@code maxRetries} times.
+	 * </p>
+	 * <p>
+	 * This handles the common case where random weight initialization leads to a
+	 * loss landscape region where gradients are too small to make progress. A fresh
+	 * initialization typically resolves this.
+	 * </p>
+	 *
+	 * @param name       the name for the training run (used for output files)
+	 * @param model      the model to train
+	 * @param data       a supplier providing fresh datasets for each training attempt
+	 * @param epochs     the maximum number of training epochs
+	 * @param steps      the number of steps for CSV recording
+	 * @param lossTarget the target loss value to achieve (training stops when reached)
+	 * @param patience   number of epochs without training loss improvement before stopping
+	 * @return the {@link TrainingResult} containing loss history and metrics
+	 * @throws FileNotFoundException if the results directory cannot be written to
+	 */
+	default TrainingResult trainWithPatience(String name, Model model, Supplier<Dataset<?>> data,
+											 int epochs, int steps, double lossTarget,
+											 int patience) throws FileNotFoundException {
+		int maxRetries = 6;
+
+		for (int attempt = 0; attempt < maxRetries; attempt++) {
+			ModelOptimizer optimizer = new ModelOptimizer(model.compile(), data);
+
+			try (CSVReceptor<Double> receptor =
+						 new CSVReceptor<>(new FileOutputStream("results/" + name + ".csv"), steps)) {
+				optimizer.setReceptor(receptor);
+				optimizer.setLogFrequency(25);
+				optimizer.setLossTarget(lossTarget);
+				optimizer.setTrainingPatience(patience);
+
+				TrainingResult result = optimizer.optimize(epochs);
+				log("Attempt " + (attempt + 1) + ": completed " + result.getEpochsCompleted() +
+						" epochs" + (result.isEarlyStopped() ? " (early stopped)" : ""));
+
+				// Check if training made meaningful progress
+				List<Double> history = result.getTrainLossHistory();
+				if (history.size() >= 2) {
+					double initialLoss = history.get(0);
+					double finalLoss = result.getFinalTrainLoss();
+
+					// Training made progress if loss declined
+					if (finalLoss < initialLoss) {
+						return result;
+					}
+				}
+
+				// Training reached the loss target (even in 1 epoch) — success
+				if (!history.isEmpty() && result.getFinalTrainLoss() <= lossTarget) {
+					return result;
+				}
+
+				// Training made no progress — retry with fresh initialization
+				if (attempt < maxRetries - 1) {
+					log("Training made no progress, retrying with fresh initialization " +
+							"(attempt " + (attempt + 2) + "/" + maxRetries + ")");
+				}
+			}
+		}
+
+		// All retries exhausted — return the last result and let
+		// assertTrainingConvergence report the specific failure
+		ModelOptimizer optimizer = new ModelOptimizer(model.compile(), data);
+		try (CSVReceptor<Double> receptor =
+					 new CSVReceptor<>(new FileOutputStream("results/" + name + ".csv"), steps)) {
+			optimizer.setReceptor(receptor);
+			optimizer.setLogFrequency(25);
+			optimizer.setLossTarget(lossTarget);
+			optimizer.setTrainingPatience(patience);
+			return optimizer.optimize(epochs);
+		}
+	}
+
+	/**
+	 * Asserts that a training result shows convergence by analyzing the loss curve.
+	 * <p>
+	 * This method evaluates training quality by examining the loss trajectory rather
+	 * than using hard thresholds. It accepts fast convergence (reaching the loss target
+	 * in few epochs) as success, and only fails when training genuinely did not make
+	 * progress.
+	 * </p>
+	 * <p>
+	 * The analysis checks:
+	 * </p>
+	 * <ol>
+	 *   <li>Whether the final loss is at or below the target (fast convergence = success)</li>
+	 *   <li>Whether the loss curve shows a declining trend</li>
+	 *   <li>Whether the magnitude of improvement is meaningful</li>
+	 * </ol>
+	 *
+	 * @param result       the training result to validate
+	 * @param minEpochs    advisory minimum epochs; used only when loss did NOT reach
+	 *                     the target, to distinguish stalled training from a run that
+	 *                     simply did not have enough time to converge
+	 * @param maxFinalLoss maximum acceptable final training loss
+	 */
+	default void assertTrainingConvergence(TrainingResult result, int minEpochs, double maxFinalLoss) {
+		List<Double> history = result.getTrainLossHistory();
+
+		if (history.isEmpty()) {
+			throw new AssertionError("Training produced no loss history");
+		}
+
+		double finalLoss = result.getFinalTrainLoss();
+		double initialLoss = history.get(0);
+
+		// Fast convergence: if training reached the loss target, that is success
+		// regardless of how many epochs it took
+		if (finalLoss <= maxFinalLoss && finalLoss < initialLoss) {
+			log("Training converged in " + history.size() + " epochs (fast convergence), " +
+					"loss " + String.format("%.6f", initialLoss) + " -> " +
+					String.format("%.6f", finalLoss) +
+					" (target: " + maxFinalLoss + ", improvement: " +
+					String.format("%.2f", result.getImprovementRatio()) + "x)");
+			return;
+		}
+
+		// Loss reached the target but didn't improve from initial — the model
+		// was initialized with loss already below target. This is acceptable
+		// as long as training didn't make things worse.
+		if (finalLoss <= maxFinalLoss && finalLoss <= initialLoss) {
+			log("Training loss within target from start: " + history.size() + " epochs, " +
+					"loss " + String.format("%.6f", initialLoss) + " -> " +
+					String.format("%.6f", finalLoss) + " (target: " + maxFinalLoss + ")");
+			return;
+		}
+
+		// Training did not reach the loss target — analyze the loss curve
+		// to determine whether meaningful progress was made
+		if (finalLoss >= initialLoss) {
+			throw new AssertionError("Training did not improve: initial loss " +
+					String.format("%.6f", initialLoss) + ", final loss " +
+					String.format("%.6f", finalLoss) +
+					" (" + history.size() + " epochs completed)");
+		}
+
+		// Loss improved but didn't reach the target — check if the decline
+		// is meaningful by examining the loss curve trend
+		double improvementRatio = result.getImprovementRatio();
+		double percentReduction = (initialLoss - finalLoss) / initialLoss * 100.0;
+
+		if (finalLoss > maxFinalLoss) {
+			// Loss is declining but still above target. If the trend is clearly
+			// downward and the run was cut short, the issue is likely that the
+			// model needs more epochs, not that training is failing.
+			boolean trendIsDownward = isLossTrendDeclining(history);
+
+			if (trendIsDownward && history.size() < minEpochs) {
+				throw new AssertionError("Training is making progress (loss declining " +
+						String.format("%.1f%%", percentReduction) + " over " + history.size() +
+						" epochs) but was cut short before reaching target " + maxFinalLoss +
+						" (final: " + String.format("%.6f", finalLoss) + ")");
+			}
+
+			throw new AssertionError("Final training loss " + String.format("%.6f", finalLoss) +
+					" exceeds target " + maxFinalLoss +
+					" despite " + String.format("%.1f%%", percentReduction) + " reduction from " +
+					String.format("%.6f", initialLoss) + " over " + history.size() + " epochs");
+		}
+
+		log("Training converged: " + history.size() + " epochs, " +
+				"loss " + String.format("%.6f", initialLoss) + " -> " +
+				String.format("%.6f", finalLoss) +
+				" (improvement: " + String.format("%.2f", improvementRatio) + "x)");
+	}
+
+	/**
+	 * Determines whether the loss history shows a generally declining trend.
+	 * <p>
+	 * Compares the average loss in the first half of training to the average
+	 * loss in the second half. A declining trend means the second half average
+	 * is lower than the first half average.
+	 * </p>
+	 *
+	 * @param history the loss history to analyze
+	 * @return true if the loss trend is declining
+	 */
+	default boolean isLossTrendDeclining(List<Double> history) {
+		if (history.size() < 2) return false;
+
+		int midpoint = history.size() / 2;
+		double firstHalfAvg = history.subList(0, midpoint).stream()
+				.mapToDouble(Double::doubleValue).average().orElse(0);
+		double secondHalfAvg = history.subList(midpoint, history.size()).stream()
+				.mapToDouble(Double::doubleValue).average().orElse(0);
+		return secondHalfAvg < firstHalfAvg;
 	}
 }

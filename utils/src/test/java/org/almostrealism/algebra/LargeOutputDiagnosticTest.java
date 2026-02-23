@@ -39,7 +39,7 @@ public class LargeOutputDiagnosticTest extends TestSuiteBase implements MatrixFe
 	 * Test 1: Raw matmul with output size just below default maxStatements.
 	 * Default maxStatements = 65536.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testMatmulBelowLimit() {
 		int inputSize = 128;
 		int outputSize = 60000;  // Below 65536 default
@@ -68,7 +68,7 @@ public class LargeOutputDiagnosticTest extends TestSuiteBase implements MatrixFe
 	 * Test 2: Raw matmul with output size above default maxStatements.
 	 * Should hit protection and throw an exception.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testMatmulAboveLimit() {
 		int inputSize = 128;
 		int outputSize = 70000;  // Above 65536 default
@@ -101,7 +101,7 @@ public class LargeOutputDiagnosticTest extends TestSuiteBase implements MatrixFe
 	 * Test 3: Dense layer via Model with output size above default limit.
 	 * This is the actual path used by Qwen3.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testDenseModelAboveLimit() {
 		int inputSize = 128;
 		int outputSize = 70000;  // Above 65536 default
@@ -135,7 +135,7 @@ public class LargeOutputDiagnosticTest extends TestSuiteBase implements MatrixFe
 	/**
 	 * Test 4: Check what happens at boundary - exactly at limit.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testAtExactLimit() {
 		int inputSize = 128;
 		int outputSize = ScopeSettings.maxStatements;
@@ -162,7 +162,7 @@ public class LargeOutputDiagnosticTest extends TestSuiteBase implements MatrixFe
 	/**
 	 * Test 5: Verify weightedSum path is being used for large outputs in matmul.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testWeightedSumPath() {
 		int inputSize = 128;
 		int outputSize = 5000;  // Above 1000 threshold for weightedSum

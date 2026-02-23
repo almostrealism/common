@@ -27,6 +27,7 @@ import org.almostrealism.optimize.Dataset;
 import org.almostrealism.optimize.MeanSquaredError;
 import org.almostrealism.optimize.ModelOptimizer;
 import org.almostrealism.optimize.NegativeLogLikelihood;
+import org.almostrealism.optimize.TrainingResult;
 import org.almostrealism.optimize.ValueTarget;
 import org.almostrealism.util.ModelTestFeatures;
 import org.almostrealism.util.TestDepth;
@@ -124,8 +125,10 @@ public class SyntheticDenseTrainingTest extends TestSuiteBase implements ModelTe
 				.map(input -> ValueTarget.of(input, linearFunc.apply(input)))
 				.collect(Collectors.toList()));
 
-		// Train using existing infrastructure
-		train("simpleDenseRegression", model, data, epochs, steps, 0.6, 0.2);
+		// Train with patience-based early stopping
+		TrainingResult result = trainWithPatience("simpleDenseRegression", model, data,
+				epochs, steps, 0.6, 20);
+		assertTrainingConvergence(result, 5, 0.6);
 
 		log("Test 1.1 completed successfully");
 	}
@@ -165,8 +168,10 @@ public class SyntheticDenseTrainingTest extends TestSuiteBase implements ModelTe
 				.map(input -> ValueTarget.of(input, weightedSumFunc.apply(input)))
 				.collect(Collectors.toList()));
 
-		// Train
-		train("denseMultipleLayers", model, data, epochs, steps, 1.0, 0.1);
+		// Train with patience-based early stopping
+		TrainingResult result = trainWithPatience("denseMultipleLayers", model, data,
+				epochs, steps, 1.2, 20);
+		assertTrainingConvergence(result, 5, 1.2);
 
 		log("Test 1.2 completed successfully");
 	}
@@ -180,7 +185,7 @@ public class SyntheticDenseTrainingTest extends TestSuiteBase implements ModelTe
 	 */
 	@Test(timeout = 12 * 60000)
 	@TestDepth(1)
-	public void denseClassification() throws FileNotFoundException {
+	public void denseClassification() {
 		log("=== Test 1.3: Dense Classification ===");
 
 		int inputSize = 4;
@@ -228,7 +233,7 @@ public class SyntheticDenseTrainingTest extends TestSuiteBase implements ModelTe
 			return Dataset.of(samples);
 		};
 
-		// Compile and train
+		// Compile and train with patience-based stopping
 		CompiledModel compiled = model.compile();
 		log("Model compiled");
 
@@ -236,11 +241,13 @@ public class SyntheticDenseTrainingTest extends TestSuiteBase implements ModelTe
 		optimizer.setLossFunction(new MeanSquaredError(model.getOutputShape().traverseEach()));
 		optimizer.setLogFrequency(40);
 		optimizer.setLossTarget(0.1);
-		optimizer.optimize(epochs);
+		optimizer.setTrainingPatience(30);
+		TrainingResult result = optimizer.optimize(epochs);
 
-		double finalLoss = optimizer.getLoss();
+		double finalLoss = result.getFinalTrainLoss();
 		log("Final loss: " + finalLoss);
-		log("Completed " + optimizer.getTotalIterations() + " epochs");
+		log("Completed " + result.getEpochsCompleted() + " epochs" +
+				(result.isEarlyStopped() ? " (early stopped)" : ""));
 
 		// Calculate classification accuracy
 		double accuracy = optimizer.accuracy((expected, actual) -> expected.argmax() == actual.argmax());
@@ -302,8 +309,10 @@ public class SyntheticDenseTrainingTest extends TestSuiteBase implements ModelTe
 				.map(input -> ValueTarget.of(input, batchFunc.apply(input)))
 				.collect(Collectors.toList()));
 
-		// Train
-		train("denseBatched", model, data, epochs, steps, 0.6, 0.2);
+		// Train with patience-based early stopping
+		TrainingResult result = trainWithPatience("denseBatched", model, data,
+				epochs, steps, 0.6, 20);
+		assertTrainingConvergence(result, 5, 0.6);
 
 		log("Test 1.4 completed successfully");
 	}

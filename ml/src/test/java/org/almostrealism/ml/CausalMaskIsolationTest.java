@@ -14,7 +14,7 @@ import org.junit.Test;
  */
 public class CausalMaskIsolationTest extends TestSuiteBase implements AttentionFeatures {
 
-	@Test
+	@Test(timeout = 30000)
 	public void testCausalMaskInMinimalModel() {
 		System.out.println("\n=== Causal Mask Isolation Test ===\n");
 
@@ -95,7 +95,7 @@ public class CausalMaskIsolationTest extends TestSuiteBase implements AttentionF
 		System.out.println("\n[OK] Causal mask lambda approach works correctly!");
 	}
 
-	@Test
+	@Test(timeout = 30000)
 	public void testCausalMaskDynamicPositionUpdates() {
 		System.out.println("\n=== Testing Dynamic Position Updates ===\n");
 

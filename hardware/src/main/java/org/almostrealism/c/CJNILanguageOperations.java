@@ -99,6 +99,25 @@ public class CJNILanguageOperations extends CLanguageOperations {
 	}
 
 	/**
+	 * Returns the absolute value expression using {@code fabs}.
+	 *
+	 * <p>Follows the same pattern as {@link #min} and {@link #max}: the base class
+	 * provides the generic function name ({@code abs}) and this class prepends
+	 * {@code f} to produce the C floating-point variant ({@code fabs}). The
+	 * {@code f} prefix belongs here in {@link CJNILanguageOperations}, not in
+	 * {@link DefaultLanguageOperations} or {@link CLanguageOperations}, because
+	 * other backends that extend those classes (Metal, OpenCL) do not use
+	 * {@code fabs}.</p>
+	 *
+	 * @param value the expression to take the absolute value of
+	 * @return the C fabs expression
+	 */
+	@Override
+	public String abs(String value) {
+		return "f" + super.abs(value);
+	}
+
+	/**
 	 * Returns the JNI type name for the given Java type.
 	 *
 	 * <p>Maps Java types to JNI types:</p>

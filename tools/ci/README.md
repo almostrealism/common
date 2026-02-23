@@ -324,7 +324,7 @@ job runs per branch at a time.
 | Controller port            | `FLOWTREE_CONTROLLER_PORT`  | `7780`        |
 | Workstream ID              | Hardcoded in workflow       | `ws-pipeline` |
 | Agent turn budget          | `MAX_TURNS`                 | `50`          |
-| Agent dollar budget        | `MAX_BUDGET_USD`            | `10.0`        |
+| Agent dollar budget        | `MAX_BUDGET_USD`            | *(workstream default)* |
 
 ## Files
 

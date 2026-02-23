@@ -32,7 +32,7 @@ public class DynamicAudioCellTest extends TestSuiteBase implements CellFeatures 
 	/**
 	 * Verifies the DynamicAudioCell class exists and can be referenced.
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void classExists() {
 		Assert.assertNotNull("DynamicAudioCell class should exist",
 				DynamicAudioCell.class);

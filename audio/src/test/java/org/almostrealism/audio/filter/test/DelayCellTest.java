@@ -69,7 +69,7 @@ public class DelayCellTest extends TestSuiteBase implements CellFeatures, AudioT
 	 * <p>The spectrogram should show the snare's frequency content shifted 2 seconds
 	 * to the right compared to the original sample timing.</p>
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void delay() throws IOException {
 		CellList c = w(0, getTestWavPath())
 				.d(i -> c(2.0))
@@ -96,7 +96,7 @@ public class DelayCellTest extends TestSuiteBase implements CellFeatures, AudioT
 	 * <p>This tests the summing operation - both delayed signals should be combined
 	 * without clipping or distortion.</p>
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void delaySum() throws IOException {
 		CellList c = w(0, getTestWavPath(), getTestWavPath())
 				.d(i -> i > 0 ? c(2.0) : c(1.0))
@@ -125,7 +125,7 @@ public class DelayCellTest extends TestSuiteBase implements CellFeatures, AudioT
 	 * <p>Comparing this spectrogram to the basic delay test should show identical
 	 * timing but reduced brightness across all frequencies.</p>
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void delayScaleFactor() throws IOException {
 		CellList c = w(0, getTestWavPath())
 				.d(i -> c(2.0))
@@ -155,7 +155,7 @@ public class DelayCellTest extends TestSuiteBase implements CellFeatures, AudioT
 	 * the high-frequency "snap" and overtones. The spectrogram should show a clear
 	 * reduction in energy in the lower frequency bands.</p>
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void filter() throws IOException {
 		Supplier<Runnable> r =
 				w(0, getTestWavPath())
@@ -187,7 +187,7 @@ public class DelayCellTest extends TestSuiteBase implements CellFeatures, AudioT
 	 * process) produce identical audio output. The profiling information printed to
 	 * console shows performance differences, but the audio should be the same.</p>
 	 */
-	@Test
+	@Test(timeout = 10 * 60000)
 	public void filterLoopComparison() throws IOException {
 		Supplier<Runnable> r =
 				iter(w(0, getTestWavPath())
@@ -251,7 +251,7 @@ public class DelayCellTest extends TestSuiteBase implements CellFeatures, AudioT
 	 * that simulate room acoustics. The spectrogram should show the snare's energy
 	 * "smearing" over time rather than appearing as discrete hits.</p>
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void reverb() throws IOException {
 		Supplier<Runnable> r =
 				iter(w(0, getTestWavPath())
@@ -284,7 +284,7 @@ public class DelayCellTest extends TestSuiteBase implements CellFeatures, AudioT
 	 * <p>This tests the ability to modulate delay parameters in real-time. The spectrogram
 	 * may show frequency smearing or pitch variation due to the changing delay time.</p>
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void adjust() throws IOException {
 		SineWaveCell generator = new SineWaveCell();
 		generator.setPhase(0.5);
@@ -329,7 +329,7 @@ public class DelayCellTest extends TestSuiteBase implements CellFeatures, AudioT
 	 * is included for completeness but the main verification is that the operation
 	 * terminates early rather than running for the full 120 seconds.</p>
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void abortDelay() throws IOException {
 		PackedCollection abortFlag = new PackedCollection(1);
 		OperationList.setAbortFlag(abortFlag);

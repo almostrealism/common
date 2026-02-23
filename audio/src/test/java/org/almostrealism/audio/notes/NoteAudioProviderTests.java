@@ -35,21 +35,21 @@ public class NoteAudioProviderTests extends TestSuiteBase implements AudioTestFe
 		return note;
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void noteAudioProvider1() {
 		PackedCollection result = organ().getAudio(WesternChromatic.C1, 0).evaluate();
 		WaveData data = new WaveData(result, OutputLine.sampleRate);
 		data.save(new File("results/note-audio-provider-1.wav"));
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void noteAudioProvider2() {
 		PackedCollection result = organ().getAudio(WesternChromatic.G1, 1).evaluate();
 		WaveData data = new WaveData(result, OutputLine.sampleRate);
 		data.save(new File("results/note-audio-provider-2.wav"));
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void alternateSampleRate() {
 		int sampleRate = OutputLine.sampleRate / 2;
 		PackedCollection result = organ().getProvider().getChannelData(0, 1.0, sampleRate);

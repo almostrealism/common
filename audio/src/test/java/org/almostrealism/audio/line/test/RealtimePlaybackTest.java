@@ -45,7 +45,7 @@ public class RealtimePlaybackTest extends TestSuiteBase implements CellFeatures,
 	 * real-time audio in Rings - exactly like MixerTests but with SourceDataOutputLine
 	 * for actual hardware playback.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void bufferedRealtimePlayback() throws Exception {
 		if (testProfileIs(TestUtils.PIPELINE)) return;
 
@@ -109,7 +109,7 @@ public class RealtimePlaybackTest extends TestSuiteBase implements CellFeatures,
 	 * Tests the position tracking accuracy during buffered playback.
 	 * This verifies that getReadPosition() correctly reports hardware progress.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void bufferedPositionTracking() throws Exception {
 		if (testProfileIs(TestUtils.PIPELINE)) return;
 
@@ -159,7 +159,7 @@ public class RealtimePlaybackTest extends TestSuiteBase implements CellFeatures,
 	/**
 	 * Tests lifecycle management with BufferedOutputScheduler.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void bufferedLifecycleManagement() throws Exception {
 		if (testProfileIs(TestUtils.PIPELINE)) return;
 
@@ -208,7 +208,7 @@ public class RealtimePlaybackTest extends TestSuiteBase implements CellFeatures,
 	/**
 	 * Tests buffer size configuration with BufferedOutputScheduler.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void bufferedWithCustomBufferSize() throws Exception {
 		if (testProfileIs(TestUtils.PIPELINE)) return;
 
@@ -253,7 +253,7 @@ public class RealtimePlaybackTest extends TestSuiteBase implements CellFeatures,
 	 * 3. Enabling verbose logging to monitor sleep cycles
 	 * 4. Running for extended duration to observe timing patterns
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void bufferedLoopedPlaybackWithVerboseLogging() throws Exception {
 		if (testProfileIs(TestUtils.PIPELINE)) return;
 

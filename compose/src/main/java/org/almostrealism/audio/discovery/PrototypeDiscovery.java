@@ -84,6 +84,7 @@ public class PrototypeDiscovery implements ConsoleFeatures, GraphFeatures {
 		this.reveal = reveal;
 	}
 
+	/** Executes the prototype discovery pipeline, clustering audio samples and revealing prototypes. */
 	public void run() throws Exception {
 		log("=== Prototype Discovery ===");
 		log("Data prefix: " + dataPrefix);

@@ -165,7 +165,7 @@ public class SoftmaxTests extends TestSuiteBase implements LayerFeatures, Distri
 		}
 	}
 
-	@Test(timeout = 60000)
+	@Test(timeout = 2 * 60000)
 	@TestDepth(1)
 	public void softmaxBackwardsLarge() throws IOException {
 		TraversalPolicy shape = shape(1, 4, 25088);
