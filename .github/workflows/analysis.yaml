@@ -425,7 +425,7 @@ jobs:
            -DAR_HARDWARE_LIBS=Extensions
 
   test-media-mac:
-    needs: [test-media, test-ml-mac]
+    needs: [test-mac]
     runs-on: [self-hosted, macos, ar-ci]
     steps:
       - name: Checkout Code

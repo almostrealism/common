@@ -283,208 +283,21 @@ public class ClaudeCodeJob extends GitManagedJob {
      * budget/turn/task/workstream context is included when available.</p>
      */
     private String buildInstructionPrompt() {
-        StringBuilder sb = new StringBuilder();
-        sb.append("You are working autonomously as a coding agent. ");
-        sb.append("There is no TTY and no interactive session --do not attempt to wait ");
-        sb.append("for user input or interactive chat responses.\n\n");
-
-        // Slack instructions -only when a workstream URL is configured
-        if (getWorkstreamUrl() != null && !getWorkstreamUrl().isEmpty()) {
-            sb.append("## Slack Communication\n");
-            sb.append("You MUST use the Slack MCP tool (slack_send_message) to provide status ");
-            sb.append("updates to the user throughout your work. Specifically:\n");
-            sb.append("- Send an update when you begin working on the task\n");
-            sb.append("- Send updates when you reach significant milestones or make key decisions\n");
-            sb.append("- Send an update with your findings or results before you finish\n");
-            sb.append("- If you encounter blockers or need clarification, send a message describing the issue\n");
-            sb.append("Do not wait for a reply --continue working after sending a message.\n\n");
-
-            sb.append("## Permission Denials\n");
-            sb.append("If any tool call is denied due to a permission issue, you MUST immediately ");
-            sb.append("send a Slack message describing:\n");
-            sb.append("- Which tool was denied (exact tool name)\n");
-            sb.append("- What you were trying to do with it\n");
-            sb.append("- The error message, if any\n");
-            sb.append("Permission denials should never happen in this environment. ");
-            sb.append("Reporting them is critical for diagnosing configuration issues.\n\n");
-
-            sb.append("## Non-Code Requests\n");
-            sb.append("If the user's request does not require code changes (e.g., a question about ");
-            sb.append("the codebase, a request to run a command, check status, or perform an action) ");
-            sb.append("it is perfectly fine to answer via Slack and exit without modifying any files. ");
-            sb.append("Not every task requires code changes.\n\n");
-
-            sb.append("## Justifying No Code Changes\n");
-            sb.append("If you finish your work without making any changes to files in the git repository, ");
-            sb.append("you MUST send a Slack message explaining why no code changes were needed. ");
-            sb.append("This justification should clearly explain either:\n");
-            sb.append("- Why the user's request was fulfilled without code changes ");
-            sb.append("(e.g., it was an informational question, a status check, or a run command)\n");
-            sb.append("- Why you were unable to make the requested changes ");
-            sb.append("(e.g., a blocker, missing context, or ambiguity that needs clarification)\n");
-            sb.append("This requirement does NOT apply if you have already fully addressed the user's ");
-            sb.append("request through earlier Slack messages (e.g., answering a question, reporting ");
-            sb.append("results). In that case, the earlier messages serve as sufficient justification.\n\n");
-        }
-
-        // GitHub instructions -- ar-github is always enabled
-        sb.append("You can read and respond to GitHub PR review comments using the GitHub MCP tools ");
-        sb.append("(github_pr_find, github_pr_review_comments, github_pr_conversation, github_pr_reply). ");
-        sb.append("Use these to check for code review feedback and address it.\n\n");
-
-        // Test integrity policy -only when protectTestFiles is enabled
-        if (isProtectTestFiles()) {
-            sb.append("## Test Integrity Policy\n");
-            sb.append("You MUST NOT modify test files that exist on the base branch (");
-            sb.append(getBaseBranch() != null ? getBaseBranch() : "master");
-            sb.append("). Fix the production code instead. ");
-            sb.append("Tests you introduced on this branch may be modified. ");
-            sb.append("The commit harness will reject changes to protected test files.\n\n");
-        }
-
-        // Git commit instructions -conditional on git management being active
-        if (getTargetBranch() != null && !getTargetBranch().isEmpty()) {
-            sb.append("Do NOT make git commits. Your work will be committed by the harness ");
-            sb.append("after you finish. If you want to control the commit message, write it ");
-            sb.append("to a file called `commit.txt` in the working directory root.\n\n");
-        } else {
-            sb.append("Do NOT make git commits. Your work will be committed by the harness ");
-            sb.append("after you finish.\n\n");
-        }
-
-        // Merge conflict instructions -- when the base branch has diverged
-        if (hasMergeConflicts()) {
-            sb.append("## Merge Conflicts\n");
-            sb.append("IMPORTANT: The base branch (origin/").append(getBaseBranch());
-            sb.append(") has diverged from your working branch (").append(getTargetBranch());
-            sb.append(") and a merge attempt produced conflicts. ");
-            sb.append("The merge was aborted so your working directory is clean, ");
-            sb.append("but you MUST resolve these conflicts as part of your work.\n\n");
-            sb.append("To resolve:\n");
-            sb.append("1. Run `git merge origin/").append(getBaseBranch()).append("`\n");
-            sb.append("2. Resolve the conflicts in the following files:\n");
-            for (String file : getMergeConflictFiles()) {
-                sb.append("   - `").append(file).append("`\n");
-            }
-            sb.append("3. After resolving all conflicts, stage the resolved files with `git add`\n");
-            sb.append("4. Complete the merge with `git commit --no-edit`\n");
-            sb.append("5. Then proceed with the user's requested work\n\n");
-            sb.append("Do NOT skip conflict resolution. The merge must be completed before ");
-            sb.append("any other changes are made.\n\n");
-        }
-
-        // Remote branch context -- user instructions always refer to remote branches
-        sb.append("## Branch Context\n");
-        sb.append("This work is being done in a sandboxed environment. ");
-        sb.append("When the user's instructions mention branch names (e.g., \"this works ");
-        sb.append("on master\", \"compare with develop\", \"based on main\"), they are ALWAYS ");
-        sb.append("referring to the remote branch (origin/<branch>). Local branches in this ");
-        sb.append("sandbox may be stale or absent. Always use `origin/<branch>` when ");
-        sb.append("comparing, cherry-picking, or referencing other branches. For example:\n");
-        sb.append("- \"works on master\" means `origin/master`\n");
-        sb.append("- \"merge from develop\" means `origin/develop`\n");
-        sb.append("- \"diff against main\" means `git diff origin/main`\n\n");
-
-        // Working directory and branch context
-        String workDir = getWorkingDirectory();
-        sb.append("Your working directory is: ");
-        sb.append(workDir != null ? workDir : System.getProperty("user.dir"));
-        sb.append("\n");
-        if (getTargetBranch() != null && !getTargetBranch().isEmpty()) {
-            sb.append("Target branch: ").append(getTargetBranch()).append("\n");
-        }
-        sb.append("\n");
-
-        // Branch awareness and anti-loop guidance
-        if (getTargetBranch() != null && !getTargetBranch().isEmpty()) {
-            sb.append("## Branch Awareness and Continuity\n");
-            sb.append("IMPORTANT: You are not the first agent to work on this branch. ");
-            sb.append("Previous coding agent sessions have already made changes that are ");
-            sb.append("reflected in the git history. Those changes are YOUR team's work -- ");
-            sb.append("treat them as intentional progress, not as problems to undo.\n\n");
-
-            sb.append("### Catching Up on Prior Work\n");
-            sb.append("Before making any changes, you MUST use the `branch_catchup` tool ");
-            sb.append("to understand what has already been done on this branch:\n");
-            sb.append("```\n");
-            sb.append("mcp__ar-consultant__branch_catchup repo_url:\"<from git remote ");
-            sb.append("get-url origin>\" branch:\"").append(getTargetBranch()).append("\"\n");
-            sb.append("```\n");
-            sb.append("This will show you memories from prior agent sessions and the ");
-            sb.append("commit timeline, synthesized into a briefing.\n\n");
-
-            sb.append("### Recording Your Work\n");
-            sb.append("When you make decisions, discover issues, or complete tasks, ");
-            sb.append("store memories with the branch context so future sessions can ");
-            sb.append("pick up where you left off:\n");
-            sb.append("```\n");
-            sb.append("mcp__ar-consultant__remember content:\"<what you learned>\" ");
-            sb.append("repo_url:\"<repo url>\" branch:\"").append(getTargetBranch());
-            sb.append("\" tags:[\"progress\"]\n");
-            sb.append("```\n\n");
-
-            sb.append("### CRITICAL: Avoid Add/Revert Loops\n");
-            sb.append("A common failure mode for coding agents is getting stuck in a loop:\n");
-            sb.append("1. Agent adds a feature or makes changes\n");
-            sb.append("2. CI pipeline fails\n");
-            sb.append("3. Agent reverts the changes to \"fix\" the failure\n");
-            sb.append("4. Next session re-adds the same changes\n");
-            sb.append("5. CI fails again, agent reverts again\n");
-            sb.append("6. Repeat indefinitely\n\n");
-            sb.append("This is NEVER the right approach. If CI fails after your changes:\n");
-            sb.append("- **DO NOT** simply revert the changes. That undoes prior agent work.\n");
-            sb.append("- **DO** investigate the actual failure and fix it properly.\n");
-            sb.append("- **DO** check `branch_catchup` to see if this same pattern ");
-            sb.append("has already occurred in prior sessions.\n");
-            sb.append("- **DO** store a memory describing the CI failure and your ");
-            sb.append("analysis so the next session doesn't repeat the same mistake.\n");
-            sb.append("- If the failure is in code YOU did not write (i.e., pre-existing ");
-            sb.append("on the branch from prior sessions), investigate whether it's a ");
-            sb.append("real bug that needs fixing vs. an environment/configuration issue.\n\n");
-        }
-
-        // Budget and turn limits
-        if (maxBudgetUsd > 0 || maxTurns > 0) {
-            sb.append("You have");
-            if (maxBudgetUsd > 0) {
-                sb.append(String.format(" a budget of $%.2f", maxBudgetUsd));
-            }
-            if (maxTurns > 0) {
-                sb.append(maxBudgetUsd > 0 ? " and" : "");
-                sb.append(" a maximum of ").append(maxTurns).append(" turns");
-            }
-            sb.append(". Pace yourself accordingly.\n\n");
-        }
-
-        // Task ID and workstream context
-        if (getTaskId() != null && !getTaskId().isEmpty()) {
-            sb.append("Task ID: ").append(getTaskId()).append("\n");
-        }
-        if (getWorkstreamUrl() != null && !getWorkstreamUrl().isEmpty()) {
-            sb.append("Workstream URL: ").append(getWorkstreamUrl()).append("\n");
-        }
-        if (getTaskId() != null || getWorkstreamUrl() != null) {
-            sb.append("\n");
-        }
-
-        // Planning document context -only when the workstream has one configured
-        if (planningDocument != null && !planningDocument.isEmpty()) {
-            sb.append("## Planning Document\n");
-            sb.append("This branch has a planning document that describes the broader goal of ");
-            sb.append("the work being done. You MUST read this document before starting work:\n");
-            sb.append("  `").append(planningDocument).append("`\n\n");
-            sb.append("The user's request below is a sub-task of this broader goal. ");
-            sb.append("Do NOT revert or undo work from prior sessions that supports the planning ");
-            sb.append("document's goals, even if the current sub-task doesn't directly relate to it. ");
-            sb.append("If the sub-task conflicts with the planning document, note the conflict in ");
-            sb.append("a Slack message and proceed with the sub-task unless the conflict is severe.\n\n");
-        }
-
-        sb.append("--- BEGIN USER REQUEST ---\n");
-        sb.append(prompt);
-        sb.append("\n--- END USER REQUEST ---");
-
-        return sb.toString();
+        return new InstructionPromptBuilder()
+                .setPrompt(prompt)
+                .setWorkstreamUrl(getWorkstreamUrl())
+                .setProtectTestFiles(isProtectTestFiles())
+                .setBaseBranch(getBaseBranch())
+                .setTargetBranch(getTargetBranch())
+                .setWorkingDirectory(getWorkingDirectory())
+                .setHasMergeConflicts(hasMergeConflicts())
+                .setMergeConflictFiles(getMergeConflictFiles())
+                .setMaxBudgetUsd(maxBudgetUsd)
+                .setMaxTurns(maxTurns)
+                .setTaskId(getTaskId())
+                .setPlanningDocument(planningDocument)
+                .setGitHubMcpEnabled(true)
+                .build();
     }
 
     /**
@@ -921,22 +734,12 @@ public class ClaudeCodeJob extends GitManagedJob {
         private List<String> prompts;
         private int index;
         private String allowedTools = DEFAULT_TOOLS;
-        private String workingDirectory;
-        private String repoUrl;
-        private String defaultWorkspacePath;
         private int maxTurns = 50;
         private double maxBudgetUsd = 10.0;
-        private String targetBranch;
-        private String baseBranch;
-        private boolean pushToOrigin = true;
-        private String workstreamUrl;
-        private String gitUserName;
-        private String gitUserEmail;
         private String centralizedMcpConfig;
         private String pushedToolsConfig;
         private Map<String, String> workstreamEnv;
         private String planningDocument;
-        private boolean protectTestFiles = false;
 
         /**
          * Default constructor for deserialization.
@@ -947,6 +750,10 @@ public class ClaudeCodeJob extends GitManagedJob {
             // AbstractJobFactory.encode() does NOT serialize the taskId field,
             // so without this the deserialized factory would get a new random ID.
             set("factoryTaskId", super.getTaskId());
+
+            // Store default for pushToOrigin so isPushToOrigin() returns true
+            // even before setPushToOrigin() is explicitly called.
+            set("push", String.valueOf(true));
         }
 
         @Override
@@ -1000,12 +807,16 @@ public class ClaudeCodeJob extends GitManagedJob {
             set("tools", allowedTools);
         }
 
+        /**
+         * Returns the working directory for jobs created by this factory.
+         * Reads from the serialized properties map, using the same key
+         * and encoding as {@link GitManagedJob}.
+         */
         public String getWorkingDirectory() {
-            return workingDirectory;
+            return base64Decode(get("workDir"));
         }
 
         public void setWorkingDirectory(String workingDirectory) {
-            this.workingDirectory = workingDirectory;
             set("workDir", base64Encode(workingDirectory));
         }
 
@@ -1013,7 +824,7 @@ public class ClaudeCodeJob extends GitManagedJob {
          * Returns the git repository URL for automatic checkout.
          */
         public String getRepoUrl() {
-            return repoUrl;
+            return base64Decode(get("repoUrl"));
         }
 
         /**
@@ -1023,7 +834,6 @@ public class ClaudeCodeJob extends GitManagedJob {
          * @param repoUrl the git clone URL
          */
         public void setRepoUrl(String repoUrl) {
-            this.repoUrl = repoUrl;
             set("repoUrl", base64Encode(repoUrl));
         }
 
@@ -1031,7 +841,7 @@ public class ClaudeCodeJob extends GitManagedJob {
          * Returns the default workspace path for repo checkouts.
          */
         public String getDefaultWorkspacePath() {
-            return defaultWorkspacePath;
+            return base64Decode(get("defaultWsPath"));
         }
 
         /**
@@ -1040,7 +850,6 @@ public class ClaudeCodeJob extends GitManagedJob {
          * @param defaultWorkspacePath the absolute path for repo checkouts
          */
         public void setDefaultWorkspacePath(String defaultWorkspacePath) {
-            this.defaultWorkspacePath = defaultWorkspacePath;
             set("defaultWsPath", base64Encode(defaultWorkspacePath));
         }
 
@@ -1062,8 +871,11 @@ public class ClaudeCodeJob extends GitManagedJob {
             set("maxBudget", String.valueOf(maxBudgetUsd));
         }
 
+        /**
+         * Returns the target branch for git operations.
+         */
         public String getTargetBranch() {
-            return targetBranch;
+            return base64Decode(get("branch"));
         }
 
         /**
@@ -1073,7 +885,6 @@ public class ClaudeCodeJob extends GitManagedJob {
          * @param targetBranch the branch name (e.g., "feature/my-work")
          */
         public void setTargetBranch(String targetBranch) {
-            this.targetBranch = targetBranch;
             set("branch", base64Encode(targetBranch));
         }
 
@@ -1081,7 +892,7 @@ public class ClaudeCodeJob extends GitManagedJob {
          * Returns the base branch for new branch creation.
          */
         public String getBaseBranch() {
-            return baseBranch;
+            return base64Decode(get("baseBranch"));
         }
 
         /**
@@ -1091,16 +902,17 @@ public class ClaudeCodeJob extends GitManagedJob {
          * @param baseBranch the branch name to base new branches on
          */
         public void setBaseBranch(String baseBranch) {
-            this.baseBranch = baseBranch;
             set("baseBranch", base64Encode(baseBranch));
         }
 
+        /**
+         * Returns whether to push commits to origin. Defaults to {@code true}.
+         */
         public boolean isPushToOrigin() {
-            return pushToOrigin;
+            return Boolean.parseBoolean(get("push"));
         }
 
         public void setPushToOrigin(boolean pushToOrigin) {
-            this.pushToOrigin = pushToOrigin;
             set("push", String.valueOf(pushToOrigin));
         }
 
@@ -1108,7 +920,7 @@ public class ClaudeCodeJob extends GitManagedJob {
          * Returns the git user name for commits.
          */
         public String getGitUserName() {
-            return gitUserName;
+            return base64Decode(get("gitUserName"));
         }
 
         /**
@@ -1117,7 +929,6 @@ public class ClaudeCodeJob extends GitManagedJob {
          * @param gitUserName the name to use in git commits
          */
         public void setGitUserName(String gitUserName) {
-            this.gitUserName = gitUserName;
             set("gitUserName", base64Encode(gitUserName));
         }
 
@@ -1125,7 +936,7 @@ public class ClaudeCodeJob extends GitManagedJob {
          * Returns the git user email for commits.
          */
         public String getGitUserEmail() {
-            return gitUserEmail;
+            return base64Decode(get("gitUserEmail"));
         }
 
         /**
@@ -1134,7 +945,6 @@ public class ClaudeCodeJob extends GitManagedJob {
          * @param gitUserEmail the email to use in git commits
          */
         public void setGitUserEmail(String gitUserEmail) {
-            this.gitUserEmail = gitUserEmail;
             set("gitUserEmail", base64Encode(gitUserEmail));
         }
 
@@ -1142,7 +952,7 @@ public class ClaudeCodeJob extends GitManagedJob {
          * Returns the workstream URL for jobs created by this factory.
          */
         public String getWorkstreamUrl() {
-            return workstreamUrl;
+            return base64Decode(get("workstreamUrl"));
         }
 
         /**
@@ -1153,7 +963,6 @@ public class ClaudeCodeJob extends GitManagedJob {
          * @param workstreamUrl the controller URL for the workstream
          */
         public void setWorkstreamUrl(String workstreamUrl) {
-            this.workstreamUrl = workstreamUrl;
             set("workstreamUrl", base64Encode(workstreamUrl));
         }
 
@@ -1230,7 +1039,7 @@ public class ClaudeCodeJob extends GitManagedJob {
          * Returns whether test file protection is enabled for jobs.
          */
         public boolean isProtectTestFiles() {
-            return protectTestFiles;
+            return "true".equals(get("protectTests"));
         }
 
         /**
@@ -1239,7 +1048,6 @@ public class ClaudeCodeJob extends GitManagedJob {
          * @param protectTestFiles true to block staging of existing test/CI files
          */
         public void setProtectTestFiles(boolean protectTestFiles) {
-            this.protectTestFiles = protectTestFiles;
             set("protectTests", String.valueOf(protectTestFiles));
         }
 
@@ -1247,6 +1055,15 @@ public class ClaudeCodeJob extends GitManagedJob {
         public Job nextJob() {
             List<String> p = getPrompts();
             if (index >= p.size()) return null;
+
+            String workingDirectory = getWorkingDirectory();
+            String repoUrl = getRepoUrl();
+            String defaultWorkspacePath = getDefaultWorkspacePath();
+            String targetBranch = getTargetBranch();
+            String baseBranch = getBaseBranch();
+            String gitUserName = getGitUserName();
+            String gitUserEmail = getGitUserEmail();
+            String workstreamUrl = getWorkstreamUrl();
 
             ClaudeCodeJob job = new ClaudeCodeJob(getTaskId(), p.get(index++));
             job.setAllowedTools(allowedTools);
@@ -1265,7 +1082,7 @@ public class ClaudeCodeJob extends GitManagedJob {
             // Git management settings
             if (targetBranch != null) {
                 job.setTargetBranch(targetBranch);
-                job.setPushToOrigin(pushToOrigin);
+                job.setPushToOrigin(isPushToOrigin());
             }
             if (baseBranch != null) {
                 job.setBaseBranch(baseBranch);
@@ -1303,7 +1120,7 @@ public class ClaudeCodeJob extends GitManagedJob {
             }
 
             // Test file protection
-            job.setProtectTestFiles(protectTestFiles);
+            job.setProtectTestFiles(isProtectTestFiles());
 
             return job;
         }
@@ -1319,44 +1136,20 @@ public class ClaudeCodeJob extends GitManagedJob {
             return p.isEmpty() ? 1.0 : index / (double) p.size();
         }
 
+        /**
+         * Deserializes a property from the wire format.
+         *
+         * <p>Git-related properties (workDir, repoUrl, branch, etc.) are
+         * stored directly in the {@link AbstractJobFactory} properties map
+         * and decoded on read by the corresponding getter methods.  This
+         * avoids duplicating the decode logic that also exists in
+         * {@link GitManagedJob#set(String, String)}.</p>
+         */
         @Override
         public void set(String key, String value) {
             super.set(key, value);
 
             switch (key) {
-                // Git properties (shared key names with GitManagedJob)
-                case "workDir":
-                    this.workingDirectory = base64Decode(value);
-                    break;
-                case "repoUrl":
-                    this.repoUrl = base64Decode(value);
-                    break;
-                case "defaultWsPath":
-                    this.defaultWorkspacePath = base64Decode(value);
-                    break;
-                case "branch":
-                    this.targetBranch = base64Decode(value);
-                    break;
-                case "baseBranch":
-                    this.baseBranch = base64Decode(value);
-                    break;
-                case "push":
-                    this.pushToOrigin = Boolean.parseBoolean(value);
-                    break;
-                case "workstreamUrl":
-                    this.workstreamUrl = base64Decode(value);
-                    break;
-                case "gitUserName":
-                    this.gitUserName = base64Decode(value);
-                    break;
-                case "gitUserEmail":
-                    this.gitUserEmail = base64Decode(value);
-                    break;
-                case "protectTests":
-                    this.protectTestFiles = Boolean.parseBoolean(value);
-                    break;
-
-                // Factory-specific properties
                 case "tools":
                     this.allowedTools = value;
                     break;
@@ -1385,7 +1178,7 @@ public class ClaudeCodeJob extends GitManagedJob {
         public String toString() {
             return "ClaudeCodeJob.Factory[prompts=" + getPrompts().size() +
                    ", tools=" + allowedTools +
-                   ", branch=" + targetBranch +
+                   ", branch=" + getTargetBranch() +
                    ", completeness=" + getCompleteness() + "]";
         }
     }
