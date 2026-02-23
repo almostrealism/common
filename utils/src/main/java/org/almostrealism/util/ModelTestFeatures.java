@@ -307,7 +307,6 @@ public interface ModelTestFeatures extends TestFeatures {
 	 */
 	default void assertTrainingConvergence(TrainingResult result, int minEpochs, double maxFinalLoss) {
 		List<Double> history = result.getTrainLossHistory();
-		double finalLoss = result.getFinalTrainLoss();
 
 		if (history.isEmpty()) {
 			throw new AssertionError("Training produced no loss history");
