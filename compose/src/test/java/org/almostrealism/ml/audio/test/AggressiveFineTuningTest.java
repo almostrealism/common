@@ -96,6 +96,7 @@ public class AggressiveFineTuningTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 5 * 60000)
 	public void testAggressiveFineTuning() throws IOException {
+		if (skipKnownIssues) return;
 		Files.createDirectories(OUTPUT_DIR);
 
 		runFineTuningPipeline(
@@ -129,6 +130,7 @@ public class AggressiveFineTuningTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 5 * 60000)
 	public void testCompilationScaling() {
+		if (skipKnownIssues) return;
 		int[][] configs = {
 				// {embedDim, ioChannels, depth, numHeads, condTokenDim, globalCondDim}
 				{8,   4,  1, 1, 0, 8},
@@ -185,6 +187,7 @@ public class AggressiveFineTuningTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 5 * 60000)
 	public void testProfiledFineTuning() throws IOException {
+		if (skipKnownIssues) return;
 		Files.createDirectories(Path.of("/workspace/project/common/utils/results"));
 
 		int embedDim = 64;

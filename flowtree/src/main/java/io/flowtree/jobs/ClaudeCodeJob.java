@@ -95,6 +95,7 @@ public class ClaudeCodeJob extends GitManagedJob {
     private String centralizedMcpConfig;
     private String pushedToolsConfig;
     private Map<String, String> workstreamEnv;
+    private String planningDocument;
 
     private String sessionId;
     private String output;
@@ -240,6 +241,24 @@ public class ClaudeCodeJob extends GitManagedJob {
     }
 
     /**
+     * Returns the planning document path for this job.
+     * When set, the agent is instructed to read this file for the
+     * broader goal of the current branch.
+     */
+    public String getPlanningDocument() {
+        return planningDocument;
+    }
+
+    /**
+     * Sets the planning document path for this job.
+     *
+     * @param planningDocument path relative to the working directory
+     */
+    public void setPlanningDocument(String planningDocument) {
+        this.planningDocument = planningDocument;
+    }
+
+    /**
      * Returns the Claude Code session ID from the last execution.
      * Can be used to resume the session later.
      */
@@ -287,6 +306,15 @@ public class ClaudeCodeJob extends GitManagedJob {
             sb.append("- Send an update with your findings or results before you finish\n");
             sb.append("- If you encounter blockers or need clarification, send a message describing the issue\n");
             sb.append("Do not wait for a reply --continue working after sending a message.\n\n");
+
+            sb.append("## Permission Denials\n");
+            sb.append("If any tool call is denied due to a permission issue, you MUST immediately ");
+            sb.append("send a Slack message describing:\n");
+            sb.append("- Which tool was denied (exact tool name)\n");
+            sb.append("- What you were trying to do with it\n");
+            sb.append("- The error message, if any\n");
+            sb.append("Permission denials should never happen in this environment. ");
+            sb.append("Reporting them is critical for diagnosing configuration issues.\n\n");
 
             sb.append("## Non-Code Requests\n");
             sb.append("If the user's request does not require code changes (e.g., a question about ");
@@ -447,6 +475,19 @@ public class ClaudeCodeJob extends GitManagedJob {
         }
         if (getTaskId() != null || getWorkstreamUrl() != null) {
             sb.append("\n");
+        }
+
+        // Planning document context -only when the workstream has one configured
+        if (planningDocument != null && !planningDocument.isEmpty()) {
+            sb.append("## Planning Document\n");
+            sb.append("This branch has a planning document that describes the broader goal of ");
+            sb.append("the work being done. You MUST read this document before starting work:\n");
+            sb.append("  `").append(planningDocument).append("`\n\n");
+            sb.append("The user's request below is a sub-task of this broader goal. ");
+            sb.append("Do NOT revert or undo work from prior sessions that supports the planning ");
+            sb.append("document's goals, even if the current sub-task doesn't directly relate to it. ");
+            sb.append("If the sub-task conflicts with the planning document, note the conflict in ");
+            sb.append("a Slack message and proceed with the sub-task unless the conflict is severe.\n\n");
         }
 
         sb.append("--- BEGIN USER REQUEST ---\n");
@@ -1424,6 +1465,9 @@ public class ClaudeCodeJob extends GitManagedJob {
         if (workstreamEnv != null && !workstreamEnv.isEmpty()) {
             sb.append("::wsEnv:=").append(base64Encode(mapToJsonObject(workstreamEnv)));
         }
+        if (planningDocument != null) {
+            sb.append("::planDoc:=").append(base64Encode(planningDocument));
+        }
         sb.append("::protectTests:=").append(isProtectTestFiles());
         return sb.toString();
     }
@@ -1451,6 +1495,9 @@ public class ClaudeCodeJob extends GitManagedJob {
                 break;
             case "wsEnv":
                 this.workstreamEnv = parseJsonObjectToMap(base64Decode(value));
+                break;
+            case "planDoc":
+                this.planningDocument = base64Decode(value);
                 break;
             case "protectTests":
                 setProtectTestFiles(Boolean.parseBoolean(value));
@@ -1494,11 +1541,13 @@ public class ClaudeCodeJob extends GitManagedJob {
      * distribute prompts across multiple nodes. When a node finishes a prompt,
      * it becomes idle and can pick up the next job.</p>
      */
-    public static class Factory extends AbstractJobFactory {
+    public static class Factory extends AbstractJobFactory implements GitManagedJob.GitPropertyTarget {
         private List<String> prompts;
         private int index;
         private String allowedTools = DEFAULT_TOOLS;
         private String workingDirectory;
+        private String repoUrl;
+        private String defaultWorkspacePath;
         private int maxTurns = 50;
         private double maxBudgetUsd = 10.0;
         private String targetBranch;
@@ -1510,6 +1559,7 @@ public class ClaudeCodeJob extends GitManagedJob {
         private String centralizedMcpConfig;
         private String pushedToolsConfig;
         private Map<String, String> workstreamEnv;
+        private String planningDocument;
         private boolean protectTestFiles = false;
 
         /**
@@ -1585,6 +1635,41 @@ public class ClaudeCodeJob extends GitManagedJob {
         public void setWorkingDirectory(String workingDirectory) {
             this.workingDirectory = workingDirectory;
             set("workDir", base64Encode(workingDirectory));
+        }
+
+        /**
+         * Returns the git repository URL for automatic checkout.
+         */
+        public String getRepoUrl() {
+            return repoUrl;
+        }
+
+        /**
+         * Sets the git repository URL. When set, the agent will clone
+         * this repo if no working directory is specified.
+         *
+         * @param repoUrl the git clone URL
+         */
+        public void setRepoUrl(String repoUrl) {
+            this.repoUrl = repoUrl;
+            set("repoUrl", base64Encode(repoUrl));
+        }
+
+        /**
+         * Returns the default workspace path for repo checkouts.
+         */
+        public String getDefaultWorkspacePath() {
+            return defaultWorkspacePath;
+        }
+
+        /**
+         * Sets the default workspace path for repo checkouts.
+         *
+         * @param defaultWorkspacePath the absolute path for repo checkouts
+         */
+        public void setDefaultWorkspacePath(String defaultWorkspacePath) {
+            this.defaultWorkspacePath = defaultWorkspacePath;
+            set("defaultWsPath", base64Encode(defaultWorkspacePath));
         }
 
         public int getMaxTurns() {
@@ -1756,6 +1841,23 @@ public class ClaudeCodeJob extends GitManagedJob {
         }
 
         /**
+         * Returns the planning document path for jobs.
+         */
+        public String getPlanningDocument() {
+            return planningDocument;
+        }
+
+        /**
+         * Sets the planning document path for jobs created by this factory.
+         *
+         * @param planningDocument path relative to the working directory
+         */
+        public void setPlanningDocument(String planningDocument) {
+            this.planningDocument = planningDocument;
+            set("planDoc", base64Encode(planningDocument));
+        }
+
+        /**
          * Returns whether test file protection is enabled for jobs.
          */
         public boolean isProtectTestFiles() {
@@ -1782,6 +1884,14 @@ public class ClaudeCodeJob extends GitManagedJob {
             job.setWorkingDirectory(workingDirectory);
             job.setMaxTurns(maxTurns);
             job.setMaxBudgetUsd(maxBudgetUsd);
+
+            // Repository URL for automatic checkout
+            if (repoUrl != null) {
+                job.setRepoUrl(repoUrl);
+            }
+            if (defaultWorkspacePath != null) {
+                job.setDefaultWorkspacePath(defaultWorkspacePath);
+            }
 
             // Git management settings
             if (targetBranch != null) {
@@ -1818,6 +1928,11 @@ public class ClaudeCodeJob extends GitManagedJob {
                 job.setWorkstreamEnv(workstreamEnv);
             }
 
+            // Planning document
+            if (planningDocument != null) {
+                job.setPlanningDocument(planningDocument);
+            }
+
             // Test file protection
             job.setProtectTestFiles(protectTestFiles);
 
@@ -1839,37 +1954,19 @@ public class ClaudeCodeJob extends GitManagedJob {
         public void set(String key, String value) {
             super.set(key, value);
 
-            // Also handle direct property setting
+            // Delegate shared git properties to the centralized helper
+            if (applyGitProperty(key, value, this)) return;
+
+            // Handle Factory-specific properties
             switch (key) {
                 case "tools":
                     this.allowedTools = value;
-                    break;
-                case "workDir":
-                    this.workingDirectory = base64Decode(value);
                     break;
                 case "maxTurns":
                     this.maxTurns = Integer.parseInt(value);
                     break;
                 case "maxBudget":
                     this.maxBudgetUsd = Double.parseDouble(value);
-                    break;
-                case "branch":
-                    this.targetBranch = base64Decode(value);
-                    break;
-                case "baseBranch":
-                    this.baseBranch = base64Decode(value);
-                    break;
-                case "push":
-                    this.pushToOrigin = Boolean.parseBoolean(value);
-                    break;
-                case "workstreamUrl":
-                    this.workstreamUrl = base64Decode(value);
-                    break;
-                case "gitUserName":
-                    this.gitUserName = base64Decode(value);
-                    break;
-                case "gitUserEmail":
-                    this.gitUserEmail = base64Decode(value);
                     break;
                 case "centralMcp":
                     this.centralizedMcpConfig = base64Decode(value);
@@ -1880,8 +1977,8 @@ public class ClaudeCodeJob extends GitManagedJob {
                 case "wsEnv":
                     this.workstreamEnv = parseJsonObjectToMap(base64Decode(value));
                     break;
-                case "protectTests":
-                    this.protectTestFiles = Boolean.parseBoolean(value);
+                case "planDoc":
+                    this.planningDocument = base64Decode(value);
                     break;
             }
         }
