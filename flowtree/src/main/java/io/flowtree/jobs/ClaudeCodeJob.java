@@ -21,22 +21,20 @@ import io.flowtree.job.Job;
 import org.almostrealism.io.JobOutput;
 import org.almostrealism.util.KeyUtils;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStreamReader;
-import java.net.HttpURLConnection;
-import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 /**
  * A {@link Job} implementation that executes a Claude Code prompt.
@@ -78,16 +76,6 @@ public class ClaudeCodeJob extends GitManagedJob {
     public static final String PROMPT_SEPARATOR = ";;PROMPT;;";
     public static final String DEFAULT_TOOLS = "Read,Edit,Write,Bash,Glob,Grep";
 
-    /** GitHub MCP tools, always included when ar-github is enabled. */
-    private static final String GITHUB_MCP_TOOLS =
-        "mcp__ar-github__github_pr_find," +
-        "mcp__ar-github__github_pr_review_comments," +
-        "mcp__ar-github__github_pr_conversation," +
-        "mcp__ar-github__github_pr_reply";
-
-    /** Slack MCP tool, included only when a workstream URL is configured. */
-    private static final String SLACK_MCP_TOOL = "mcp__ar-slack__slack_send_message";
-
     private String prompt;
     private String allowedTools;
     private int maxTurns;
@@ -96,6 +84,10 @@ public class ClaudeCodeJob extends GitManagedJob {
     private String pushedToolsConfig;
     private Map<String, String> workstreamEnv;
     private String planningDocument;
+
+    private final McpConfigBuilder mcpConfigBuilder = new McpConfigBuilder();
+    private final ManagedToolsDownloader toolsDownloader = new ManagedToolsDownloader(mcpConfigBuilder);
+    private static final ObjectMapper outputMapper = new ObjectMapper();
 
     private String sessionId;
     private String output;
@@ -335,12 +327,10 @@ public class ClaudeCodeJob extends GitManagedJob {
             sb.append("results). In that case, the earlier messages serve as sufficient justification.\n\n");
         }
 
-        // GitHub instructions -only when ar-github is in the MCP config
-        if (isGitHubMcpEnabled()) {
-            sb.append("You can read and respond to GitHub PR review comments using the GitHub MCP tools ");
-            sb.append("(github_pr_find, github_pr_review_comments, github_pr_conversation, github_pr_reply). ");
-            sb.append("Use these to check for code review feedback and address it.\n\n");
-        }
+        // GitHub instructions -- ar-github is always enabled
+        sb.append("You can read and respond to GitHub PR review comments using the GitHub MCP tools ");
+        sb.append("(github_pr_find, github_pr_review_comments, github_pr_conversation, github_pr_reply). ");
+        sb.append("Use these to check for code review feedback and address it.\n\n");
 
         // Test integrity policy -only when protectTestFiles is enabled
         if (isProtectTestFiles()) {
@@ -498,148 +488,22 @@ public class ClaudeCodeJob extends GitManagedJob {
     }
 
     /**
-     * Returns whether the GitHub MCP server is enabled in the MCP configuration.
-     * This is true when ar-github is either centralized or included locally.
+     * Configures the MCP config builder with current job state.
      */
-    private boolean isGitHubMcpEnabled() {
-        return true;
-    }
-
-    /**
-     * Downloads pushed tool source files from the controller to
-     * {@code ~/.flowtree/tools/mcp/{name}/server.py} if not already present.
-     *
-     * <p>This method is called at the start of {@link #doWork()} before
-     * building the Claude command. Each tool's download URL is resolved
-     * from the {@link #pushedToolsConfig} JSON, with the {@code 0.0.0.0}
-     * placeholder replaced by {@code FLOWTREE_ROOT_HOST}.</p>
-     */
-    private void ensurePushedTools() {
-        Map<String, List<String>> pushedTools = parsePushedConfig();
-        if (pushedTools.isEmpty()) return;
-
-        String rootHost = System.getenv("FLOWTREE_ROOT_HOST");
-        String home = System.getProperty("user.home");
-
-        for (String serverName : pushedTools.keySet()) {
-            Path targetDir = Path.of(home, ".flowtree", "tools", "mcp", serverName);
-            Path targetFile = targetDir.resolve("server.py");
-
-            if (Files.exists(targetFile)) {
-                log("Pushed tool already present: " + serverName);
-                continue;
-            }
-
-            // Extract download URL from config
-            String url = extractJsonStringField(pushedToolsConfig, serverName, "url");
-            if (url == null) continue;
-            if (rootHost != null && !rootHost.isEmpty()) {
-                url = url.replace("0.0.0.0", rootHost);
-            }
-
-            try {
-                Files.createDirectories(targetDir);
-                String content = httpGet(url);
-                Files.writeString(targetFile, content, StandardCharsets.UTF_8);
-                log("Downloaded pushed tool: " + serverName + " -> " + targetFile);
-            } catch (IOException e) {
-                warn("Failed to download pushed tool " + serverName + ": " + e.getMessage());
-            }
-        }
-    }
-
-    /**
-     * Performs an HTTP GET request and returns the response body as a string.
-     *
-     * @param url the URL to fetch
-     * @return the response body
-     * @throws IOException if the request fails or returns a non-2xx status
-     */
-    private String httpGet(String url) throws IOException {
-        HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
-        conn.setRequestMethod("GET");
-        conn.setConnectTimeout(10000);
-        conn.setReadTimeout(30000);
-
-        int responseCode = conn.getResponseCode();
-        if (responseCode < 200 || responseCode >= 300) {
-            throw new IOException("HTTP " + responseCode + " from " + url);
-        }
-
-        try (BufferedReader reader = new BufferedReader(
-                new InputStreamReader(conn.getInputStream(), StandardCharsets.UTF_8))) {
-            StringBuilder sb = new StringBuilder();
-            String line;
-            while ((line = reader.readLine()) != null) {
-                sb.append(line).append("\n");
-            }
-            return sb.toString();
-        }
-    }
-
-    /**
-     * Parses the {@link #pushedToolsConfig} JSON to extract server names
-     * and their tool lists. Uses the same format as
-     * {@link #parseCentralizedConfig()}.
-     *
-     * @return map of server name to list of tool names, empty if no config
-     */
-    private Map<String, List<String>> parsePushedConfig() {
-        Map<String, List<String>> result = new LinkedHashMap<>();
-        if (pushedToolsConfig == null || pushedToolsConfig.isEmpty()) return result;
-
-        int pos = 0;
-        while (pos < pushedToolsConfig.length()) {
-            int keyStart = pushedToolsConfig.indexOf("\"", pos);
-            if (keyStart < 0) break;
-            int keyEnd = pushedToolsConfig.indexOf("\"", keyStart + 1);
-            if (keyEnd < 0) break;
-
-            String key = pushedToolsConfig.substring(keyStart + 1, keyEnd);
-
-            int objStart = pushedToolsConfig.indexOf("{", keyEnd);
-            if (objStart < 0) break;
-
-            int depth = 1;
-            int objEnd = objStart + 1;
-            while (objEnd < pushedToolsConfig.length() && depth > 0) {
-                char c = pushedToolsConfig.charAt(objEnd);
-                if (c == '{') depth++;
-                else if (c == '}') depth--;
-                objEnd++;
-            }
-
-            String objBody = pushedToolsConfig.substring(objStart, objEnd);
-
-            List<String> tools = new ArrayList<>();
-            int toolsIdx = objBody.indexOf("\"tools\"");
-            if (toolsIdx >= 0) {
-                int arrStart = objBody.indexOf("[", toolsIdx);
-                int arrEnd = objBody.indexOf("]", arrStart);
-                if (arrStart >= 0 && arrEnd >= 0) {
-                    String arr = objBody.substring(arrStart + 1, arrEnd);
-                    Pattern namePattern = Pattern.compile("\"([^\"]+)\"");
-                    Matcher m = namePattern.matcher(arr);
-                    while (m.find()) {
-                        tools.add(m.group(1));
-                    }
-                }
-            }
-
-            if (!tools.isEmpty()) {
-                result.put(key, tools);
-            }
-
-            pos = objEnd;
-        }
-
-        return result;
+    private void configureMcpBuilder() {
+        mcpConfigBuilder.setCentralizedMcpConfig(centralizedMcpConfig);
+        mcpConfigBuilder.setPushedToolsConfig(pushedToolsConfig);
+        mcpConfigBuilder.setWorkstreamEnv(workstreamEnv);
+        mcpConfigBuilder.setWorkstreamUrl(getWorkstreamUrl());
+        Path workDir = getWorkingDirectory() != null
+            ? Path.of(getWorkingDirectory()) : Path.of(System.getProperty("user.dir"));
+        mcpConfigBuilder.setWorkingDirectory(workDir);
     }
 
     @Override
     protected void doWork() {
         // Download pushed tools from the controller if needed
-        ensurePushedTools();
+        toolsDownloader.ensurePushedTools(pushedToolsConfig);
 
         // Remove stale commit.txt from any previous run
         Path staleCommitFile = resolveWorkingPath("commit.txt");
@@ -664,7 +528,8 @@ public class ClaudeCodeJob extends GitManagedJob {
         command.add("--output-format");
         command.add("json");
         command.add("--allowedTools");
-        command.add(buildAllowedTools());
+        configureMcpBuilder();
+        command.add(mcpConfigBuilder.buildAllowedTools(allowedTools));
         command.add("--max-turns");
         command.add(String.valueOf(maxTurns));
 
@@ -680,11 +545,13 @@ public class ClaudeCodeJob extends GitManagedJob {
         }
 
         // Verify MCP tool server files exist before launching Claude Code
-        verifyMcpToolFiles();
+        Path mcpWorkDir = getWorkingDirectory() != null
+            ? Path.of(getWorkingDirectory()) : Path.of(System.getProperty("user.dir"));
+        toolsDownloader.verifyMcpToolFiles(mcpWorkDir);
 
         // MCP config (ar-github always; ar-slack when workstream URL is set)
         command.add("--mcp-config");
-        command.add(buildMcpConfig());
+        command.add(mcpConfigBuilder.buildMcpConfig());
 
         try {
             ProcessBuilder pb = new ProcessBuilder(command);
@@ -752,10 +619,25 @@ public class ClaudeCodeJob extends GitManagedJob {
     }
 
     @Override
+    protected JobCompletionEvent createEvent(Exception error) {
+        if (error != null) {
+            return ClaudeCodeJobEvent.failed(
+                getTaskId(), getTaskString(),
+                error.getMessage(), error
+            );
+        } else {
+            return ClaudeCodeJobEvent.success(getTaskId(), getTaskString());
+        }
+    }
+
+    @Override
     protected void populateEventDetails(JobCompletionEvent event) {
-        event.withClaudeCodeInfo(prompt, sessionId, exitCode);
-        event.withTimingInfo(durationMs, durationApiMs, costUsd, numTurns);
-        event.withSessionDetails(subtype, isError, permissionDenials, deniedToolNames);
+        if (event instanceof ClaudeCodeJobEvent) {
+            ClaudeCodeJobEvent ccEvent = (ClaudeCodeJobEvent) event;
+            ccEvent.withClaudeCodeInfo(prompt, sessionId, exitCode);
+            ccEvent.withTimingInfo(durationMs, durationApiMs, costUsd, numTurns);
+            ccEvent.withSessionDetails(subtype, isError, permissionDenials, deniedToolNames);
+        }
     }
 
     @Override
@@ -845,532 +727,8 @@ public class ClaudeCodeJob extends GitManagedJob {
     }
 
     /**
-     * Builds the complete allowed-tools string by appending MCP tool
-     * names to the base {@link #allowedTools} list. Includes tools from
-     * centralized servers (if configured), project MCP servers (discovered
-     * via {@code .mcp.json}), GitHub tools, and Slack tools.
-     */
-    private String buildAllowedTools() {
-        // Parse centralized and pushed server names for skip logic
-        Map<String, List<String>> centralizedServers = parseCentralizedConfig();
-        Map<String, List<String>> pushedTools = parsePushedConfig();
-
-        StringBuilder sb = new StringBuilder(allowedTools);
-
-        // Add tools from centralized servers
-        for (Map.Entry<String, List<String>> entry : centralizedServers.entrySet()) {
-            String serverName = entry.getKey();
-            for (String tool : entry.getValue()) {
-                sb.append(",mcp__").append(serverName).append("__").append(tool);
-            }
-            log("Centralized " + entry.getValue().size() + " tools from " + serverName);
-        }
-
-        // Add tools from pushed tools
-        for (Map.Entry<String, List<String>> entry : pushedTools.entrySet()) {
-            String serverName = entry.getKey();
-            for (String tool : entry.getValue()) {
-                sb.append(",mcp__").append(serverName).append("__").append(tool);
-            }
-            log("Pushed " + entry.getValue().size() + " tools from " + serverName);
-        }
-
-        // Add GitHub tools unless centralized or pushed
-        if (!centralizedServers.containsKey("ar-github") && !pushedTools.containsKey("ar-github")) {
-            sb.append(",").append(GITHUB_MCP_TOOLS);
-        }
-
-        // Add Slack tool unless centralized or pushed
-        if (!centralizedServers.containsKey("ar-slack") && !pushedTools.containsKey("ar-slack")) {
-            if (getWorkstreamUrl() != null && !getWorkstreamUrl().isEmpty()) {
-                sb.append(",").append(SLACK_MCP_TOOL);
-            }
-        }
-
-        // Discover and include tools from project MCP servers
-        Path workDir = getWorkingDirectory() != null
-            ? Path.of(getWorkingDirectory()) : Path.of(System.getProperty("user.dir"));
-        Map<String, String> projectServers = discoverProjectMcpServers();
-        for (Map.Entry<String, String> entry : projectServers.entrySet()) {
-            String serverName = entry.getKey();
-            // Skip if this server is centralized or pushed
-            if (centralizedServers.containsKey(serverName)) continue;
-            if (pushedTools.containsKey(serverName)) continue;
-
-            Path serverFile = workDir.resolve(entry.getValue());
-            List<String> tools = discoverToolNames(serverFile);
-            for (String tool : tools) {
-                sb.append(",mcp__").append(serverName).append("__").append(tool);
-            }
-            if (!tools.isEmpty()) {
-                log("Discovered " + tools.size() + " tools from " + serverName);
-            }
-        }
-
-        return sb.toString();
-    }
-
-    /**
-     * Builds a JSON MCP configuration string for agent MCP servers.
-     *
-     * <p>Centralized servers (from {@link #centralizedMcpConfig}) are emitted
-     * as HTTP entries with resolved URLs. Local servers from {@code .mcp.json}
-     * are emitted as stdio entries. ar-github and ar-slack fall back to stdio
-     * only when they are not in the centralized config.</p>
-     */
-    private String buildMcpConfig() {
-        Map<String, List<String>> centralizedServers = parseCentralizedConfig();
-        Map<String, List<String>> pushedTools = parsePushedConfig();
-        String rootHost = System.getenv("FLOWTREE_ROOT_HOST");
-
-        StringBuilder sb = new StringBuilder();
-        sb.append("{\"mcpServers\":{");
-
-        boolean first = true;
-
-        // Emit centralized servers as HTTP entries
-        if (centralizedMcpConfig != null && !centralizedMcpConfig.isEmpty()) {
-            // Parse each server's URL from the config JSON
-            for (String serverName : centralizedServers.keySet()) {
-                String url = extractJsonStringField(centralizedMcpConfig, serverName, "url");
-                if (url == null) continue;
-
-                // Resolve 0.0.0.0 placeholder with actual controller host
-                if (rootHost != null && !rootHost.isEmpty()) {
-                    url = url.replace("0.0.0.0", rootHost);
-                }
-
-                if (!first) sb.append(",");
-                first = false;
-                sb.append("\"").append(serverName).append("\":{");
-                sb.append("\"type\":\"http\",");
-                sb.append("\"url\":\"").append(url).append("\"");
-                sb.append("}");
-            }
-        }
-
-        // Emit pushed tools as stdio entries pointing to ~/.flowtree/tools/mcp/{name}/server.py
-        String home = System.getProperty("user.home");
-        for (String serverName : pushedTools.keySet()) {
-            if (!first) sb.append(",");
-            first = false;
-            String path = home + "/.flowtree/tools/mcp/" + serverName + "/server.py";
-            sb.append("\"").append(serverName).append("\":{");
-            sb.append("\"command\":\"python3\",");
-            sb.append("\"args\":[\"").append(path).append("\"]");
-
-            // Merge global pushed-tool env with per-workstream env (workstream wins)
-            Map<String, String> mergedEnv = new LinkedHashMap<>();
-            String globalEnvJson = extractJsonObjectField(pushedToolsConfig, serverName, "env");
-            if (globalEnvJson != null) {
-                mergedEnv.putAll(parseJsonObjectToMap(globalEnvJson));
-            }
-            if (workstreamEnv != null) {
-                mergedEnv.putAll(workstreamEnv);
-            }
-            if (!mergedEnv.isEmpty()) {
-                sb.append(",\"env\":").append(mapToJsonObject(mergedEnv));
-            }
-
-            sb.append("}");
-        }
-
-        // Include project MCP servers discovered from .mcp.json (skip centralized and pushed)
-        Map<String, String> projectServers = discoverProjectMcpServers();
-        for (Map.Entry<String, String> entry : projectServers.entrySet()) {
-            if (centralizedServers.containsKey(entry.getKey())) continue;
-            if (pushedTools.containsKey(entry.getKey())) continue;
-
-            if (!first) sb.append(",");
-            first = false;
-            sb.append("\"").append(entry.getKey()).append("\":{");
-            sb.append("\"command\":\"python3\",");
-            sb.append("\"args\":[\"").append(entry.getValue()).append("\"]");
-            sb.append("}");
-        }
-
-        // ar-github: stdio fallback only when not centralized and not pushed
-        if (!centralizedServers.containsKey("ar-github") && !pushedTools.containsKey("ar-github")) {
-            if (!first) sb.append(",");
-            first = false;
-            sb.append("\"ar-github\":{");
-            sb.append("\"command\":\"python3\",");
-            sb.append("\"args\":[\"tools/mcp/github/server.py\"]");
-            sb.append("}");
-        }
-
-        // ar-slack: stdio fallback only when not centralized, not pushed, and workstream URL is set
-        if (!centralizedServers.containsKey("ar-slack") && !pushedTools.containsKey("ar-slack")) {
-            if (getWorkstreamUrl() != null && !getWorkstreamUrl().isEmpty()) {
-                if (!first) sb.append(",");
-                sb.append("\"ar-slack\":{");
-                sb.append("\"command\":\"python3\",");
-                sb.append("\"args\":[\"tools/mcp/slack/server.py\"]");
-                sb.append("}");
-            }
-        }
-
-        sb.append("}}");
-        return sb.toString();
-    }
-
-    /**
-     * Parses the {@link #centralizedMcpConfig} JSON to extract server names
-     * and their tool lists.
-     *
-     * @return map of server name to list of tool names, empty if no config
-     */
-    private Map<String, List<String>> parseCentralizedConfig() {
-        Map<String, List<String>> result = new LinkedHashMap<>();
-        if (centralizedMcpConfig == null || centralizedMcpConfig.isEmpty()) return result;
-
-        // Simple JSON parsing: find top-level keys and their "tools" arrays
-        // Format: {"ar-slack":{"url":"...","tools":["tool1","tool2"]}, ...}
-        int pos = 0;
-        while (pos < centralizedMcpConfig.length()) {
-            // Find next key at the top level (skip nested braces)
-            int keyStart = centralizedMcpConfig.indexOf("\"", pos);
-            if (keyStart < 0) break;
-            int keyEnd = centralizedMcpConfig.indexOf("\"", keyStart + 1);
-            if (keyEnd < 0) break;
-
-            String key = centralizedMcpConfig.substring(keyStart + 1, keyEnd);
-
-            // Find the opening brace for this server's object
-            int objStart = centralizedMcpConfig.indexOf("{", keyEnd);
-            if (objStart < 0) break;
-
-            // Find the matching closing brace
-            int depth = 1;
-            int objEnd = objStart + 1;
-            while (objEnd < centralizedMcpConfig.length() && depth > 0) {
-                char c = centralizedMcpConfig.charAt(objEnd);
-                if (c == '{') depth++;
-                else if (c == '}') depth--;
-                objEnd++;
-            }
-
-            String objBody = centralizedMcpConfig.substring(objStart, objEnd);
-
-            // Extract tools array from the object
-            List<String> tools = new ArrayList<>();
-            int toolsIdx = objBody.indexOf("\"tools\"");
-            if (toolsIdx >= 0) {
-                int arrStart = objBody.indexOf("[", toolsIdx);
-                int arrEnd = objBody.indexOf("]", arrStart);
-                if (arrStart >= 0 && arrEnd >= 0) {
-                    String arr = objBody.substring(arrStart + 1, arrEnd);
-                    Pattern namePattern = Pattern.compile("\"([^\"]+)\"");
-                    Matcher m = namePattern.matcher(arr);
-                    while (m.find()) {
-                        tools.add(m.group(1));
-                    }
-                }
-            }
-
-            if (!tools.isEmpty()) {
-                result.put(key, tools);
-            }
-
-            pos = objEnd;
-        }
-
-        return result;
-    }
-
-    /**
-     * Extracts a nested string field from a JSON config.
-     * Looks for {@code "parentKey": { ... "fieldName": "value" ... }}.
-     *
-     * @param json      the JSON string
-     * @param parentKey the parent object key
-     * @param fieldName the field to extract
-     * @return the field value, or null if not found
-     */
-    private String extractJsonStringField(String json, String parentKey, String fieldName) {
-        // Find the parent key
-        int parentIdx = json.indexOf("\"" + parentKey + "\"");
-        if (parentIdx < 0) return null;
-
-        // Find the opening brace of the parent object
-        int objStart = json.indexOf("{", parentIdx);
-        if (objStart < 0) return null;
-
-        // Find the matching closing brace
-        int depth = 1;
-        int objEnd = objStart + 1;
-        while (objEnd < json.length() && depth > 0) {
-            char c = json.charAt(objEnd);
-            if (c == '{') depth++;
-            else if (c == '}') depth--;
-            objEnd++;
-        }
-
-        String obj = json.substring(objStart, objEnd);
-
-        // Find the field within the object
-        int fieldIdx = obj.indexOf("\"" + fieldName + "\"");
-        if (fieldIdx < 0) return null;
-
-        int colonIdx = obj.indexOf(":", fieldIdx);
-        if (colonIdx < 0) return null;
-
-        int valueStart = obj.indexOf("\"", colonIdx) + 1;
-        if (valueStart <= 0) return null;
-
-        int valueEnd = obj.indexOf("\"", valueStart);
-        if (valueEnd < 0) return null;
-
-        return obj.substring(valueStart, valueEnd);
-    }
-
-    /**
-     * Extracts a nested JSON object field from a JSON config.
-     * Looks for {@code "parentKey": { ... "fieldName": {...} ... }} and
-     * returns the raw JSON object string (including braces).
-     *
-     * @param json      the JSON string
-     * @param parentKey the parent object key
-     * @param fieldName the field to extract (must be an object value)
-     * @return the raw JSON object string, or null if not found
-     */
-    private String extractJsonObjectField(String json, String parentKey, String fieldName) {
-        int parentIdx = json.indexOf("\"" + parentKey + "\"");
-        if (parentIdx < 0) return null;
-
-        int objStart = json.indexOf("{", parentIdx);
-        if (objStart < 0) return null;
-
-        int depth = 1;
-        int objEnd = objStart + 1;
-        while (objEnd < json.length() && depth > 0) {
-            char c = json.charAt(objEnd);
-            if (c == '{') depth++;
-            else if (c == '}') depth--;
-            objEnd++;
-        }
-
-        String obj = json.substring(objStart, objEnd);
-
-        int fieldIdx = obj.indexOf("\"" + fieldName + "\"");
-        if (fieldIdx < 0) return null;
-
-        int colonIdx = obj.indexOf(":", fieldIdx);
-        if (colonIdx < 0) return null;
-
-        // Skip whitespace after the colon to find the opening brace
-        int braceStart = -1;
-        for (int i = colonIdx + 1; i < obj.length(); i++) {
-            char c = obj.charAt(i);
-            if (c == '{') {
-                braceStart = i;
-                break;
-            }
-            if (!Character.isWhitespace(c)) return null;
-        }
-        if (braceStart < 0) return null;
-
-        int innerDepth = 1;
-        int braceEnd = braceStart + 1;
-        while (braceEnd < obj.length() && innerDepth > 0) {
-            char c = obj.charAt(braceEnd);
-            if (c == '{') innerDepth++;
-            else if (c == '}') innerDepth--;
-            braceEnd++;
-        }
-
-        return obj.substring(braceStart, braceEnd);
-    }
-
-    /**
-     * Parses a simple JSON object string like {@code {"key":"value","k2":"v2"}}
-     * into a {@link Map}. Only handles flat string-valued objects.
-     *
-     * @param json the JSON object string (including braces)
-     * @return parsed map, empty if input is null or unparseable
-     */
-    private static Map<String, String> parseJsonObjectToMap(String json) {
-        Map<String, String> result = new LinkedHashMap<>();
-        if (json == null) return result;
-        Pattern p = Pattern.compile("\"([^\"]+)\"\\s*:\\s*\"([^\"]+)\"");
-        Matcher m = p.matcher(json);
-        while (m.find()) {
-            result.put(m.group(1), m.group(2));
-        }
-        return result;
-    }
-
-    /**
-     * Serializes a {@link Map} of string entries to a JSON object string
-     * like {@code {"key":"value","k2":"v2"}}.
-     *
-     * @param map the map to serialize
-     * @return JSON object string
-     */
-    private static String mapToJsonObject(Map<String, String> map) {
-        StringBuilder sb = new StringBuilder("{");
-        boolean first = true;
-        for (Map.Entry<String, String> e : map.entrySet()) {
-            if (!first) sb.append(",");
-            first = false;
-            sb.append("\"").append(e.getKey()).append("\":\"").append(e.getValue()).append("\"");
-        }
-        sb.append("}");
-        return sb.toString();
-    }
-
-    /**
-     * Verifies that MCP tool server files exist in the working directory
-     * and logs their modification times for deployment diagnostics.
-     *
-     * <p>This helps diagnose cases where tool server updates fail to reach
-     * workers (e.g., git pull failures, stale Docker volumes).</p>
-     */
-    private void verifyMcpToolFiles() {
-        Path workDir = getWorkingDirectory() != null
-            ? Path.of(getWorkingDirectory()) : Path.of(System.getProperty("user.dir"));
-
-        String[] toolFiles = {
-            "tools/mcp/slack/server.py",
-            "tools/mcp/github/server.py"
-        };
-
-        for (String toolFile : toolFiles) {
-            Path resolved = workDir.resolve(toolFile);
-            if (Files.exists(resolved)) {
-                try {
-                    long lastModified = Files.getLastModifiedTime(resolved).toMillis();
-                    long ageSeconds = (System.currentTimeMillis() - lastModified) / 1000;
-                    log("MCP tool: " + toolFile + " (modified " + ageSeconds + "s ago)");
-                } catch (IOException e) {
-                    log("MCP tool: " + toolFile + " (exists, could not read mtime)");
-                }
-            } else {
-                warn("MCP tool missing: " + resolved.toAbsolutePath());
-            }
-        }
-    }
-
-    /**
-     * Discovers MCP servers defined in the project's {@code .mcp.json} file
-     * and cross-references with {@code .claude/settings.json} to determine
-     * which servers are enabled.
-     *
-     * @return map of server name to Python source file path (relative to working dir)
-     */
-    private Map<String, String> discoverProjectMcpServers() {
-        Map<String, String> servers = new LinkedHashMap<>();
-        Path workDir = getWorkingDirectory() != null
-            ? Path.of(getWorkingDirectory()) : Path.of(System.getProperty("user.dir"));
-
-        // Read .mcp.json
-        Path mcpJson = workDir.resolve(".mcp.json");
-        if (!Files.exists(mcpJson)) return servers;
-
-        Map<String, String> allServers = parseMcpJson(mcpJson);
-        if (allServers.isEmpty()) return servers;
-
-        // Read enabled servers from .claude/settings.json
-        List<String> enabled = parseEnabledServers(workDir.resolve(".claude/settings.json"));
-
-        // Determine centralized server names for skip logic
-        Map<String, List<String>> centralized = parseCentralizedConfig();
-
-        // Include enabled servers (or all if no settings file)
-        for (Map.Entry<String, String> entry : allServers.entrySet()) {
-            String name = entry.getKey();
-            // Skip ar-github and ar-slack -- they are handled separately
-            // because they need special environment or conditional inclusion
-            if ("ar-github".equals(name) || "ar-slack".equals(name)) continue;
-            // Skip servers that are centralized
-            if (centralized.containsKey(name)) continue;
-            if (enabled.isEmpty() || enabled.contains(name)) {
-                servers.put(name, entry.getValue());
-            }
-        }
-
-        return servers;
-    }
-
-    /**
-     * Parses {@code .mcp.json} to extract server names and their Python
-     * source file paths.
-     *
-     * @return map of server name to source file path (first arg)
-     */
-    private Map<String, String> parseMcpJson(Path mcpJsonPath) {
-        Map<String, String> result = new LinkedHashMap<>();
-        try {
-            String content = Files.readString(mcpJsonPath, StandardCharsets.UTF_8);
-
-            // Simple parser: find "serverName": { ... "args": ["path"] ... }
-            // within "mcpServers": { ... }
-            int serversStart = content.indexOf("\"mcpServers\"");
-            if (serversStart < 0) return result;
-
-            int braceStart = content.indexOf("{", serversStart + 12);
-            if (braceStart < 0) return result;
-
-            // Walk through the mcpServers block finding server entries
-            Pattern serverPattern = Pattern.compile(
-                "\"([^\"]+)\"\\s*:\\s*\\{[^}]*\"args\"\\s*:\\s*\\[\\s*\"([^\"]+)\"",
-                Pattern.DOTALL
-            );
-            Matcher matcher = serverPattern.matcher(content.substring(braceStart));
-            while (matcher.find()) {
-                result.put(matcher.group(1), matcher.group(2));
-            }
-        } catch (IOException e) {
-            warn("Failed to read .mcp.json: " + e.getMessage());
-        }
-        return result;
-    }
-
-    /**
-     * Parses {@code .claude/settings.json} to extract the list of
-     * enabled MCP servers from the {@code enabledMcpjsonServers} field.
-     *
-     * @return list of enabled server names, or empty list if file doesn't exist
-     */
-    private List<String> parseEnabledServers(Path settingsPath) {
-        List<String> enabled = new ArrayList<>();
-        if (!Files.exists(settingsPath)) return enabled;
-
-        try {
-            String content = Files.readString(settingsPath, StandardCharsets.UTF_8);
-            int idx = content.indexOf("\"enabledMcpjsonServers\"");
-            if (idx < 0) return enabled;
-
-            int arrStart = content.indexOf("[", idx);
-            int arrEnd = content.indexOf("]", arrStart);
-            if (arrStart < 0 || arrEnd < 0) return enabled;
-
-            String arr = content.substring(arrStart + 1, arrEnd);
-            Pattern namePattern = Pattern.compile("\"([^\"]+)\"");
-            Matcher m = namePattern.matcher(arr);
-            while (m.find()) {
-                enabled.add(m.group(1));
-            }
-        } catch (IOException e) {
-            warn("Failed to read settings.json: " + e.getMessage());
-        }
-        return enabled;
-    }
-
-    /**
-     * Scans a Python MCP server source file for {@code @mcp.tool()}
-     * decorated functions and returns their names.
-     *
-     * @param serverFile path to the Python server source file
-     * @return list of tool function names
-     */
-    private List<String> discoverToolNames(Path serverFile) {
-        return McpToolDiscovery.discoverToolNames(serverFile);
-    }
-
-    /**
      * Extracts session ID, timing metrics, stop reason, and permission denials
-     * from the Claude Code JSON output.
+     * from the Claude Code JSON output using Jackson.
      *
      * @param jsonOutput the raw JSON output from Claude Code
      */
@@ -1378,74 +736,92 @@ public class ClaudeCodeJob extends GitManagedJob {
         if (jsonOutput == null || jsonOutput.isEmpty()) return;
 
         // Claude Code with --output-format json emits NDJSON: one JSON object
-        // per line, with per-turn objects appearing first and the session-level
-        // "type":"result" object last.  Extracting from the full output picks up
-        // the FIRST occurrence of each field (a per-turn value), not the session
-        // total.  Instead, locate the result object and extract from that.
+        // per line. Locate the result object (type=result) and extract from that.
         String resultJson = io.flowtree.JsonFieldExtractor.extractLastJsonObject(jsonOutput, "result");
         if (resultJson == null) {
             resultJson = jsonOutput;
         }
 
-        // Extract session_id
-        sessionId = extractJsonStringValue(resultJson, "session_id");
+        try {
+            JsonNode root = outputMapper.readTree(resultJson);
 
-        // Extract timing metrics from the result object
-        durationMs = extractJsonLongValue(resultJson, "duration_ms");
-        durationApiMs = extractJsonLongValue(resultJson, "duration_api_ms");
-        numTurns = (int) extractJsonLongValue(resultJson, "num_turns");
+            sessionId = getTextOrNull(root, "session_id");
 
-        // Cost field may be "total_cost_usd" or "cost_usd"
-        costUsd = extractJsonDoubleValue(resultJson, "total_cost_usd");
-        if (costUsd == 0.0) {
-            costUsd = extractJsonDoubleValue(resultJson, "cost_usd");
+            durationMs = root.path("duration_ms").asLong(0);
+            durationApiMs = root.path("duration_api_ms").asLong(0);
+            numTurns = root.path("num_turns").asInt(0);
+
+            costUsd = root.path("total_cost_usd").asDouble(0.0);
+            if (costUsd == 0.0) {
+                costUsd = root.path("cost_usd").asDouble(0.0);
+            }
+
+            subtype = getTextOrNull(root, "subtype");
+            isError = root.path("is_error").asBoolean(false);
+
+            // Count permission_denials array entries and extract denied tool names
+            JsonNode denials = root.get("permission_denials");
+            if (denials != null && denials.isArray()) {
+                permissionDenials = denials.size();
+                deniedToolNames = new ArrayList<>();
+                for (JsonNode denial : denials) {
+                    JsonNode toolNode = denial.get("tool");
+                    if (toolNode != null && toolNode.isTextual()) {
+                        deniedToolNames.add(toolNode.asText());
+                    }
+                }
+            } else {
+                permissionDenials = 0;
+            }
+        } catch (Exception e) {
+            warn("Failed to parse output metrics: " + e.getMessage());
         }
+    }
 
-        // Extract subtype (stop reason: "success", "error_max_turns", etc.)
-        subtype = extractJsonStringValue(resultJson, "subtype");
-
-        // Extract is_error boolean
-        isError = extractJsonBooleanValue(resultJson, "is_error");
-
-        // Count permission_denials array entries and extract denied tool names
-        permissionDenials = countJsonArrayEntries(resultJson, "permission_denials");
-        deniedToolNames = io.flowtree.JsonFieldExtractor.extractFieldFromArrayObjects(
-            resultJson, "permission_denials", "tool");
+    private static String getTextOrNull(JsonNode node, String field) {
+        JsonNode child = node.get(field);
+        return (child != null && child.isTextual()) ? child.asText() : null;
     }
 
     /**
-     * Delegates to {@link io.flowtree.JsonFieldExtractor#extractLong(String, String)}.
+     * Serializes a {@link Map} of string entries to a JSON object string
+     * using Jackson.
+     *
+     * @param map the map to serialize
+     * @return JSON object string
      */
-    private static long extractJsonLongValue(String json, String field) {
-        return io.flowtree.JsonFieldExtractor.extractLong(json, field);
+    private static String mapToJsonObject(Map<String, String> map) {
+        try {
+            return outputMapper.writeValueAsString(map);
+        } catch (Exception e) {
+            return "{}";
+        }
     }
 
     /**
-     * Delegates to {@link io.flowtree.JsonFieldExtractor#extractDouble(String, String)}.
+     * Parses a JSON object string into a {@link Map} of string entries
+     * using Jackson.
+     *
+     * @param json the JSON object string
+     * @return parsed map, empty if input is null or unparseable
      */
-    private static double extractJsonDoubleValue(String json, String field) {
-        return io.flowtree.JsonFieldExtractor.extractDouble(json, field);
-    }
-
-    /**
-     * Delegates to {@link io.flowtree.JsonFieldExtractor#extractString(String, String)}.
-     */
-    private static String extractJsonStringValue(String json, String field) {
-        return io.flowtree.JsonFieldExtractor.extractString(json, field);
-    }
-
-    /**
-     * Delegates to {@link io.flowtree.JsonFieldExtractor#extractBoolean(String, String)}.
-     */
-    private static boolean extractJsonBooleanValue(String json, String field) {
-        return io.flowtree.JsonFieldExtractor.extractBoolean(json, field);
-    }
-
-    /**
-     * Delegates to {@link io.flowtree.JsonFieldExtractor#countArrayEntries(String, String)}.
-     */
-    private static int countJsonArrayEntries(String json, String field) {
-        return io.flowtree.JsonFieldExtractor.countArrayEntries(json, field);
+    private static Map<String, String> parseJsonObjectToMap(String json) {
+        Map<String, String> result = new java.util.LinkedHashMap<>();
+        if (json == null) return result;
+        try {
+            JsonNode root = outputMapper.readTree(json);
+            java.util.Iterator<String> fieldNames = root.fieldNames();
+            while (fieldNames.hasNext()) {
+                String key = fieldNames.next();
+                JsonNode valueNode = root.get(key);
+                if (valueNode.isTextual()) {
+                    result.put(key, valueNode.asText());
+                }
+            }
+        } catch (Exception e) {
+            // Return empty map on parse failure
+        }
+        return result;
     }
 
     @Override

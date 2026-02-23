@@ -18,6 +18,8 @@ package io.flowtree.jobs;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.flowtree.job.Job;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.JobOutput;
@@ -625,16 +627,7 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
      * is sent from here.
      */
     protected void fireJobCompleted(Exception error) {
-        JobCompletionEvent event;
-
-        if (error != null) {
-            event = JobCompletionEvent.failed(
-                taskId, getTaskString(),
-                error.getMessage(), error
-            );
-        } else {
-            event = JobCompletionEvent.success(taskId, getTaskString());
-        }
+        JobCompletionEvent event = createEvent(error);
 
         event.withGitInfo(targetBranch, commitHash, stagedFiles, skippedFiles,
             gitOperationsSuccessful && pushToOrigin && !stagedFiles.isEmpty());
@@ -643,6 +636,26 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
         }
         populateEventDetails(event);
         postStatusEvent(event);
+    }
+
+    /**
+     * Creates the completion event for this job.
+     *
+     * <p>Subclasses can override to return a more specific event type.
+     * For example, {@link ClaudeCodeJob} returns {@link ClaudeCodeJobEvent}.</p>
+     *
+     * @param error the exception if the job failed, or null on success
+     * @return the event to fire
+     */
+    protected JobCompletionEvent createEvent(Exception error) {
+        if (error != null) {
+            return JobCompletionEvent.failed(
+                taskId, getTaskString(),
+                error.getMessage(), error
+            );
+        } else {
+            return JobCompletionEvent.success(taskId, getTaskString());
+        }
     }
 
     /**
@@ -1714,93 +1727,57 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
         }
     }
 
+    private static final ObjectMapper eventMapper = new ObjectMapper();
+
     /**
-     * Serializes a {@link JobCompletionEvent} to a JSON string.
-     * Called after {@link #populateEventDetails(JobCompletionEvent)} so
-     * subclass fields (prompt, sessionId, exitCode) are included.
+     * Serializes a {@link JobCompletionEvent} to a JSON string using Jackson.
      *
      * @param event the event to serialize
      * @return JSON string representation
      */
     private String buildEventJson(JobCompletionEvent event) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("{");
-        appendJsonField(sb, "jobId", event.getJobId(), true);
-        appendJsonField(sb, "status", event.getStatus().name(), false);
-        appendJsonField(sb, "description", event.getDescription(), false);
-        appendJsonField(sb, "targetBranch", event.getTargetBranch(), false);
-        appendJsonField(sb, "commitHash", event.getCommitHash(), false);
-        sb.append(",\"pushed\":").append(event.isPushed());
+        ObjectNode root = eventMapper.createObjectNode();
+        root.put("jobId", event.getJobId());
+        root.put("status", event.getStatus().name());
+        root.put("description", event.getDescription());
+        root.put("targetBranch", event.getTargetBranch());
+        root.put("commitHash", event.getCommitHash());
+        root.put("pushed", event.isPushed());
 
-        // Staged files
-        sb.append(",\"stagedFiles\":[");
-        List<String> staged = event.getStagedFiles();
-        for (int i = 0; i < staged.size(); i++) {
-            if (i > 0) sb.append(",");
-            sb.append("\"").append(escapeJson(staged.get(i))).append("\"");
-        }
-        sb.append("]");
+        ArrayNode stagedArray = root.putArray("stagedFiles");
+        for (String f : event.getStagedFiles()) stagedArray.add(f);
 
-        // Skipped files
-        sb.append(",\"skippedFiles\":[");
-        List<String> skipped = event.getSkippedFiles();
-        for (int i = 0; i < skipped.size(); i++) {
-            if (i > 0) sb.append(",");
-            sb.append("\"").append(escapeJson(skipped.get(i))).append("\"");
-        }
-        sb.append("]");
+        ArrayNode skippedArray = root.putArray("skippedFiles");
+        for (String f : event.getSkippedFiles()) skippedArray.add(f);
 
-        // PR URL
-        appendJsonField(sb, "pullRequestUrl", event.getPullRequestUrl(), false);
+        root.put("pullRequestUrl", event.getPullRequestUrl());
+        root.put("errorMessage", event.getErrorMessage());
 
-        // Error info
-        appendJsonField(sb, "errorMessage", event.getErrorMessage(), false);
-
-        // Claude Code specific
-        appendJsonField(sb, "prompt", event.getPrompt(), false);
-        appendJsonField(sb, "sessionId", event.getSessionId(), false);
-        sb.append(",\"exitCode\":").append(event.getExitCode());
+        // Claude Code specific (base class returns defaults)
+        root.put("prompt", event.getPrompt());
+        root.put("sessionId", event.getSessionId());
+        root.put("exitCode", event.getExitCode());
 
         // Timing information
-        sb.append(",\"durationMs\":").append(event.getDurationMs());
-        sb.append(",\"durationApiMs\":").append(event.getDurationApiMs());
-        sb.append(",\"costUsd\":").append(event.getCostUsd());
-        sb.append(",\"numTurns\":").append(event.getNumTurns());
+        root.put("durationMs", event.getDurationMs());
+        root.put("durationApiMs", event.getDurationApiMs());
+        root.put("costUsd", event.getCostUsd());
+        root.put("numTurns", event.getNumTurns());
 
         // Session details
-        appendJsonField(sb, "subtype", event.getSubtype(), false);
-        sb.append(",\"sessionIsError\":").append(event.isSessionError());
-        sb.append(",\"permissionDenials\":").append(event.getPermissionDenials());
+        root.put("subtype", event.getSubtype());
+        root.put("sessionIsError", event.isSessionError());
+        root.put("permissionDenials", event.getPermissionDenials());
 
-        // Denied tool names array
-        List<String> denied = event.getDeniedToolNames();
-        sb.append(",\"deniedToolNames\":[");
-        for (int i = 0; i < denied.size(); i++) {
-            if (i > 0) sb.append(",");
-            sb.append("\"").append(escapeJson(denied.get(i))).append("\"");
+        ArrayNode deniedArray = root.putArray("deniedToolNames");
+        for (String t : event.getDeniedToolNames()) deniedArray.add(t);
+
+        try {
+            return eventMapper.writeValueAsString(root);
+        } catch (Exception e) {
+            warn("Failed to serialize event JSON: " + e.getMessage());
+            return "{}";
         }
-        sb.append("]");
-
-        sb.append("}");
-        return sb.toString();
-    }
-
-    private void appendJsonField(StringBuilder sb, String name, String value, boolean first) {
-        if (!first) sb.append(",");
-        sb.append("\"").append(name).append("\":");
-        if (value == null) {
-            sb.append("null");
-        } else {
-            sb.append("\"").append(escapeJson(value)).append("\"");
-        }
-    }
-
-    private static String escapeJson(String s) {
-        if (s == null) return "";
-        return s.replace("\\", "\\\\")
-                .replace("\"", "\\\"")
-                .replace("\n", "\\n")
-                .replace("\r", "\\r");
     }
 
     // ==================== Encoding ====================
