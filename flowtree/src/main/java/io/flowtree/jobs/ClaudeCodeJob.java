@@ -1563,6 +1563,25 @@ public class ClaudeCodeJob extends GitManagedJob {
         private boolean protectTestFiles = false;
 
         /**
+         * Adapter that sets git property fields directly, avoiding the
+         * infinite recursion that would occur if {@link #set(String, String)}
+         * delegated to {@link GitManagedJob#applyGitProperty} with {@code this}
+         * as the target (since the setter methods call {@code set()} again).
+         */
+        private final GitManagedJob.GitPropertyTarget gitPropertyTarget = new GitManagedJob.GitPropertyTarget() {
+            @Override public void setWorkingDirectory(String v) { workingDirectory = v; }
+            @Override public void setRepoUrl(String v) { repoUrl = v; }
+            @Override public void setDefaultWorkspacePath(String v) { defaultWorkspacePath = v; }
+            @Override public void setTargetBranch(String v) { targetBranch = v; }
+            @Override public void setBaseBranch(String v) { baseBranch = v; }
+            @Override public void setPushToOrigin(boolean v) { pushToOrigin = v; }
+            @Override public void setWorkstreamUrl(String v) { workstreamUrl = v; }
+            @Override public void setGitUserName(String v) { gitUserName = v; }
+            @Override public void setGitUserEmail(String v) { gitUserEmail = v; }
+            @Override public void setProtectTestFiles(boolean v) { protectTestFiles = v; }
+        };
+
+        /**
          * Default constructor for deserialization.
          */
         public Factory() {
@@ -1947,8 +1966,10 @@ public class ClaudeCodeJob extends GitManagedJob {
         public void set(String key, String value) {
             super.set(key, value);
 
-            // Delegate shared git properties to the centralized helper
-            if (applyGitProperty(key, value, this)) return;
+            // Delegate shared git properties to the centralized helper.
+            // Uses the gitPropertyTarget adapter (not 'this') to avoid
+            // infinite recursion: setter -> set() -> applyGitProperty -> setter
+            if (applyGitProperty(key, value, gitPropertyTarget)) return;
 
             // Handle Factory-specific properties
             switch (key) {
