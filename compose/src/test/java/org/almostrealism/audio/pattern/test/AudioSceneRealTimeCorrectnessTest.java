@@ -1102,7 +1102,6 @@ public class AudioSceneRealTimeCorrectnessTest extends AudioSceneTestBase {
 	 * @see PatternLayerManager
 	 */
 	@Test(timeout = 300_000)
-	@TestDepth(2)
 	public void cacheWarmingBenefit() {
 		helper.disableEffects();
 		File samplesDir = helper.requireSamplesDir();
@@ -1174,14 +1173,10 @@ public class AudioSceneRealTimeCorrectnessTest extends AudioSceneTestBase {
 							melodic, 0.0, warmCtx, audioContext);
 
 					for (RenderedNoteAudio note : notes) {
-						try {
-							PackedCollection noteAudio =
-									traverse(1, note.getProducer()).get().evaluate();
-							if (noteAudio != null) {
-								warmupNotesEvaluated++;
-							}
-						} catch (Exception e) {
-							// Skip failed notes during warmup
+						PackedCollection noteAudio =
+								traverse(1, note.getProducer()).get().evaluate();
+						if (noteAudio != null) {
+							warmupNotesEvaluated++;
 						}
 					}
 				}
@@ -1256,7 +1251,6 @@ public class AudioSceneRealTimeCorrectnessTest extends AudioSceneTestBase {
 	 * and the filter/automation only processes the needed range.</p>
 	 */
 	@Test(timeout = 300_000)
-	@TestDepth(2)
 	public void partialNoteRenderingPerformance() {
 		helper.disableEffects();
 		File samplesDir = helper.requireSamplesDir();
@@ -1336,13 +1330,8 @@ public class AudioSceneRealTimeCorrectnessTest extends AudioSceneTestBase {
 						if (overlapLength <= 0) continue;
 
 						// --- Full evaluation ---
-						PackedCollection fullAudio = null;
 						long fullStart = System.nanoTime();
-						try {
-							fullAudio = traverse(1, note.getProducer()).get().evaluate();
-						} catch (Exception e) {
-							continue;
-						}
+						PackedCollection fullAudio = traverse(1, note.getProducer()).get().evaluate();
 						long fullNs = System.nanoTime() - fullStart;
 
 						if (fullAudio == null) continue;
@@ -1364,14 +1353,8 @@ public class AudioSceneRealTimeCorrectnessTest extends AudioSceneTestBase {
 								note.getPartialProducer(overlapLength);
 						if (partialProducer == null) continue;
 
-						PackedCollection partialAudio = null;
 						long partialStart = System.nanoTime();
-						try {
-							partialAudio = traverse(1, partialProducer).get().evaluate();
-						} catch (Exception e) {
-							log("  Partial evaluation failed: " + e.getMessage());
-							continue;
-						}
+						PackedCollection partialAudio = traverse(1, partialProducer).get().evaluate();
 						long partialNs = System.nanoTime() - partialStart;
 
 						if (partialAudio == null) continue;
