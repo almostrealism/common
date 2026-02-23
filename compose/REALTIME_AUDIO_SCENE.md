@@ -25,21 +25,28 @@ where each buffer must be computed faster than its playback duration.
 
 ```java
 public TemporalCellular runnerRealTime(output, channels, bufferSize) {
-    Cells cells = getCells(output, channels, bufferSize, frameSupplier);
+    CellList cells = getCells(output, channels, bufferSize, frameSupplier);
+    PackedCollection bufferFrameIndex = new PackedCollection(1);
+
+    // Loop body is built ONCE at construction time, not per tick
+    OperationList loopBody = new OperationList("RealTime Per-Frame Body");
+    loopBody.add(cells.tick());                                    // per-frame DSP
+    loopBody.add(a(1, cp(bufferFrameIndex), c(1.0).add(cp(bufferFrameIndex))));  // increment frame index
 
     return new TemporalCellular() {
         Supplier<Runnable> tick() {
-            OperationList tick = new OperationList();
+            OperationList tick = new OperationList("AudioScene RealTime Runner Tick");
 
-            // 1. OUTSIDE LOOP: Prepare pattern data for this buffer
+            // 1. OUTSIDE LOOP: Reset buffer frame index and prepare pattern data
+            tick.add(() -> () -> bufferFrameIndex.setMem(0, 0));
             for (PatternAudioBuffer cell : renderCells) {
-                tick.add(cell.prepareBatch(bufferSize));
+                tick.add(cell.prepareBatch());
             }
 
             // 2. INSIDE LOOP: Compilable per-frame processing
-            tick.add(loop(cells.tick(), bufferSize));
+            tick.add(loop(loopBody, bufferSize));
 
-            // 3. AFTER LOOP: Advance frame position
+            // 3. AFTER LOOP: Advance global frame position
             tick.add(() -> () -> currentFrame[0] += bufferSize);
 
             return tick;
@@ -55,23 +62,46 @@ runnerRealTime.tick()
   |
   v
 [OUTSIDE LOOP - Java, per buffer]
-PatternAudioBuffer.prepareBatch(4096)
-  -> PatternSystemManager.sum(ctx, channel, startFrame, 4096)
+bufferFrameIndex.setMem(0, 0)       // Reset buffer-local frame index
+PatternAudioBuffer.prepareBatch()
+  -> PatternSystemManager.sum(ctx, channel, startFrame, bufferSize)
   -> PatternFeatures.render() for each overlapping note
   -> Result written to PatternAudioBuffer.outputBuffer
   |
   v
 [INSIDE LOOP - Compiled, per frame]
-loop(cells.tick(), 4096)
-  |
-  +-> PatternAudioBuffer.tick()     // No-op or index advance
-  +-> Effects pipeline cells       // Compilable DSP
-  +-> WaveOutput cursor advance    // Compilable
+loop(loopBody, bufferSize)
+  loopBody contains:
+  +-> cells.tick()                   // CellList tick (root pushes + temporals)
+  |     +-> PatternAudioBuffer read  // Read from prepared buffer
+  |     +-> Effects pipeline cells   // Compilable DSP
+  |     +-> WaveOutput cursor advance
+  +-> bufferFrameIndex++             // Compiled increment
   |
   v
 [AFTER LOOP]
-currentFrame[0] += 4096
+currentFrame[0] += bufferSize
 ```
+
+### Loop Compilation Path
+
+The `loop(loopBody, bufferSize)` call dispatches through:
+
+1. `TemporalFeatures.loop(Supplier<Runnable>, int)` — checks if `loopBody`
+   is a `Computation`
+2. `HardwareFeatures.loop(Computation<Void>, int)` — checks
+   `loopBody.isComputation()`:
+   - **If true**: Creates a `new Loop(loopBody, iterations)` — a compiled
+     for-loop that generates native kernel code with
+     `for (int i = 1; i < iterations; i++) { ... }`
+   - **If false**: Falls back to a Java loop that calls `loopBody.get()`
+     once and runs it `iterations` times via `IntStream.range(...).forEach(...)`
+
+`Loop.getScope()` creates a `Repeated` scope wrapping the atom's scope. The
+atom is the `loopBody` OperationList, whose scope aggregates **all
+`PackedCollection` arguments** needed by every operation in the cell graph.
+This is where the argument count can become very large (see
+[Tester Application Experiment](#tester-application-experiment) below).
 
 ### WaveCell Frame Control
 
@@ -227,14 +257,119 @@ GC. Monitor for memory growth during long renders.
 
 ---
 
+## Tester Application Experiment
+
+A standalone JavaFX application (`RealtimeSceneTesterJavaFX`) was built in
+`ringsdesktop/audio-desktop` to exercise the real-time pipeline interactively.
+See `ringsdesktop/REALTIME_SCENE_TESTER.md` for the full design.
+
+### What the Tester Does
+
+- 16 sliders control a `ProjectedGenome` embedding, which drives pattern
+  generation via `AudioScene.assignGenome()`
+- Pressing Play builds a runner via `scene.runnerRealTime()`, wraps it in a
+  `BufferedOutputScheduler`, and streams audio to the system speaker via
+  Java Sound API (`SourceDataLine`)
+- Slider changes while playing trigger a debounced stop/recompile/restart
+  cycle
+- An `OperationProfileNode` is assigned to `Hardware` at startup and captures
+  compilation timing, runtime timing, and scope timing for the entire session.
+  The profile is saved to `results/realtime_scene_profile.xml` on demand or
+  on window close.
+
+### Key Findings
+
+1. **Compilation dominates wall-clock time.** The first Play press triggers
+   compilation of the `Loop` scope (the compiled per-frame kernel). This takes
+   far longer than any runtime phase. Subsequent ticks reuse the compiled
+   kernel, but every slider change triggers recompilation because
+   `assignGenome()` produces a structurally different computation graph.
+
+2. **The Loop scope has 500+ arguments.** When `Loop.getScope()` builds the
+   `Repeated` scope, the atom's scope (the `loopBody` OperationList)
+   aggregates every `PackedCollection` argument from the entire cell graph.
+   With 6 channels, each with effects pipelines, the argument count exceeds
+   500. This is the primary driver of slow compilation — scope generation,
+   argument resolution, and native code generation all scale with argument
+   count.
+
+3. **Runtime is not quite real-time.** Even after compilation, tick execution
+   with a 4096-frame buffer (~93ms at 44.1kHz) takes longer than the buffer
+   duration. The system achieves roughly 0.4x real-time. Increasing the buffer
+   size improves the ratio by amortizing per-tick overhead.
+
+4. **Every genome change requires full recompilation.** Because the
+   computation graph changes structurally with each genome (different pattern
+   elements → different cell configurations), the compiled kernel cannot be
+   reused. This makes interactive slider adjustment impractical without a
+   strategy to avoid recompilation.
+
+---
+
 ## Next Steps
 
-1. **Warmup strategy**: Pre-evaluate all notes during scene initialization
-   (before the real-time loop starts) to populate both the `NoteAudioCache` and
-   the `FrequencyCache`. This would eliminate the ~270ms compilation spike on
-   first encounter of each instrument chain. The `cacheWarmingBenefit` test
-   exists to measure this.
+### 1. Increase Buffer Size to 16384 Frames
 
-2. **Buffer size tuning**: Larger buffers amortize per-buffer overhead better.
-   At 4096 frames the system is at ~0.42x real-time. Larger buffers or fewer
-   pattern elements would reach real-time.
+Increase `BUFFER_SIZE` from 4096 to 16384 (~372ms at 44.1kHz). This 4x
+increase accepts higher latency in exchange for better amortization of
+per-tick overhead. At the current ~0.42x real-time ratio with 4096 frames,
+a 4x buffer should bring runtime closer to real-time by reducing the
+relative weight of fixed per-tick costs.
+
+This is a simple constant change in both the tester app
+(`RealtimeSceneTesterController.BUFFER_SIZE`) and in test configurations.
+
+### 2. Reduce Loop Scope Argument Count
+
+The compiled `Loop` scope currently has 500+ arguments because every
+`PackedCollection` referenced by the cell graph becomes a kernel argument.
+This is the primary compilation bottleneck. Approaches to reduce the count:
+
+- **Heap consolidation**: Use `Heap.stage()` or similar to combine many
+  small `PackedCollection` objects into a single contiguous allocation. The
+  kernel would then receive one large buffer plus offset calculations instead
+  of hundreds of individual arguments.
+- **Identify unnecessary arguments**: Some arguments may be constants or
+  duplicates that could be inlined or deduplicated during scope generation.
+  Profile the argument list to categorize what's being passed in (pattern
+  data, effect parameters, frame indices, output buffers) and identify
+  candidates for elimination.
+- **Shared buffer pools**: Multiple cells using similar-sized buffers could
+  share a single allocation, reducing the total argument count.
+
+### 3. Parameterize Computation via `Evaluable` to Avoid Recompilation
+
+The fundamental problem is that each genome change produces a structurally
+different computation graph, forcing full recompilation. The solution is to
+make the genome parameters **runtime arguments** to a single compiled kernel
+rather than baked-in constants.
+
+`Evaluable` already supports runtime arguments — that is its primary purpose.
+The approach:
+
+- Identify which parts of the computation graph change with the genome
+  (pattern element positions, durations, amplitudes, channel assignments)
+  vs. which parts are structurally fixed (the DSP pipeline, effects chain,
+  output routing)
+- Factor the genome-dependent values into `PackedCollection` arguments that
+  are passed at evaluation time rather than embedded in the computation graph
+- Compile the kernel **once** with argument slots for the genome-dependent
+  values, then update those `PackedCollection` values on each genome change
+  without recompilation
+
+This is the most impactful change: it would make slider adjustments
+instantaneous (just update argument values) instead of requiring a full
+recompile cycle. It also enables the warmup strategy (pre-compile during
+scene initialization) because the compiled kernel would be genome-independent.
+
+### Previously Identified (Still Relevant)
+
+4. **Warmup strategy**: Pre-evaluate all notes during scene initialization
+   (before the real-time loop starts) to populate both the `NoteAudioCache`
+   and the `FrequencyCache`. This would eliminate the ~270ms compilation spike
+   on first encounter of each instrument chain. The `cacheWarmingBenefit` test
+   exists to measure this. (Note: this becomes much more viable once step 3
+   is implemented, since the kernel would be genome-independent.)
+
+5. **Buffer size tuning**: Further experimentation with buffer sizes beyond
+   16384 may be warranted depending on the results of steps 2 and 3.
