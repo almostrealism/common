@@ -16,8 +16,9 @@
 
 package io.flowtree.jobs;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.flowtree.job.Job;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.JobOutput;
@@ -31,7 +32,6 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Base64;
@@ -40,7 +40,6 @@ import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
-import java.util.regex.Pattern;
 
 /**
  * Abstract base class for jobs that manage their changes via git.
@@ -85,152 +84,50 @@ import java.util.regex.Pattern;
  */
 public abstract class GitManagedJob implements Job, ConsoleFeatures {
 
-    /**
-     * Interface for objects that can receive git-managed job properties
-     * during deserialization. Both {@link GitManagedJob} instances and
-     * {@link ClaudeCodeJob.Factory} implement this to share the
-     * property-parsing logic in {@link #applyGitProperty}.
-     */
-    public interface GitPropertyTarget {
-        /** Sets the working directory path. */
-        void setWorkingDirectory(String workingDirectory);
-        /** Sets the git repository URL. */
-        void setRepoUrl(String repoUrl);
-        /** Sets the default workspace path for repo checkouts. */
-        void setDefaultWorkspacePath(String defaultWorkspacePath);
-        /** Sets the target branch for git operations. */
-        void setTargetBranch(String targetBranch);
-        /** Sets the base branch for new branch creation. */
-        void setBaseBranch(String baseBranch);
-        /** Sets whether to push commits to origin. */
-        void setPushToOrigin(boolean pushToOrigin);
-        /** Sets the workstream URL for status reporting. */
-        void setWorkstreamUrl(String workstreamUrl);
-        /** Sets the git user name for commits. */
-        void setGitUserName(String gitUserName);
-        /** Sets the git user email for commits. */
-        void setGitUserEmail(String gitUserEmail);
-        /** Sets whether to protect test files from modification. */
-        void setProtectTestFiles(boolean protectTestFiles);
-    }
-
-    /**
-     * Applies a git-managed property to the given target if the key matches
-     * a known git property. This centralizes the deserialization logic for
-     * properties shared between {@link GitManagedJob} and
-     * {@link ClaudeCodeJob.Factory}.
-     *
-     * @param key    the property key
-     * @param value  the encoded property value
-     * @param target the target to apply the property to
-     * @return true if the key was recognized and applied, false otherwise
-     */
-    protected static boolean applyGitProperty(String key, String value, GitPropertyTarget target) {
-        switch (key) {
-            case "workDir":
-                target.setWorkingDirectory(base64Decode(value));
-                return true;
-            case "repoUrl":
-                target.setRepoUrl(base64Decode(value));
-                return true;
-            case "defaultWsPath":
-                target.setDefaultWorkspacePath(base64Decode(value));
-                return true;
-            case "branch":
-                target.setTargetBranch(base64Decode(value));
-                return true;
-            case "baseBranch":
-                target.setBaseBranch(base64Decode(value));
-                return true;
-            case "push":
-                target.setPushToOrigin(Boolean.parseBoolean(value));
-                return true;
-            case "workstreamUrl":
-                target.setWorkstreamUrl(base64Decode(value));
-                return true;
-            case "gitUserName":
-                target.setGitUserName(base64Decode(value));
-                return true;
-            case "gitUserEmail":
-                target.setGitUserEmail(base64Decode(value));
-                return true;
-            case "protectTests":
-                target.setProtectTestFiles(Boolean.parseBoolean(value));
-                return true;
-            default:
-                return false;
-        }
-    }
-
     /** Default maximum file size to commit (1 MB). */
     public static final long DEFAULT_MAX_FILE_SIZE = 1024 * 1024;
 
     /** File patterns that are always excluded from commits. */
-    private static final Set<String> DEFAULT_EXCLUDED_PATTERNS = new HashSet<>(Arrays.asList(
-        // Secrets and credentials
-        ".env", ".env.*", "*.pem", "*.key", "*.p12", "*.pfx",
-        "credentials.json", "secrets.json", "**/secrets/**",
-
-        // Build outputs and dependencies
-        "target/**", "build/**", "dist/**", "out/**",
-        "node_modules/**", ".gradle/**", ".m2/**",
-        "*.class", "*.jar", "*.war", "*.ear",
-
-        // IDE and OS files
-        ".idea/**", ".vscode/**", "*.iml",
-        ".DS_Store", "Thumbs.db",
-
-        // Binary and media files
-        "*.exe", "*.dll", "*.so", "*.dylib",
-        "*.zip", "*.tar", "*.gz", "*.rar", "*.7z",
-        "*.png", "*.jpg", "*.jpeg", "*.gif", "*.bmp", "*.ico",
-        "*.mp3", "*.mp4", "*.wav", "*.avi", "*.mov",
-        "*.pdf", "*.doc", "*.docx", "*.xls", "*.xlsx",
-
-        // Database and logs
-        "*.db", "*.sqlite", "*.log",
-
-        // Hardware acceleration outputs (AR-specific)
-        "Extensions/**", "*.cl", "*.metal",
-
-        // Claude Code agent outputs and settings
-        "claude-output/**", "commit.txt",
-        ".claude/**", "settings.local.json"
-    ));
+    private static final Set<String> DEFAULT_EXCLUDED_PATTERNS = GitJobConfig.DEFAULT_EXCLUDED_PATTERNS;
 
     /** Path patterns for test/CI files protected by {@link #protectTestFiles}. */
-    private static final Set<String> PROTECTED_PATH_PATTERNS = new HashSet<>(Arrays.asList(
-        "**/src/test/**",
-        "**/src/it/**",
-        ".github/workflows/**",
-        ".github/actions/**"
-    ));
+    private static final Set<String> PROTECTED_PATH_PATTERNS = GitJobConfig.PROTECTED_PATH_PATTERNS;
 
     /** Default workspace path when /workspace/project does not exist. */
     private static final String FALLBACK_WORKSPACE_DIR = "/tmp/flowtree-workspaces";
 
+    // ---- Identity and branch configuration ----
     private String taskId;
     private String targetBranch;
     private String baseBranch = "master";
-    private String workingDirectory;
+    private String originalBranch;
+
+    // ---- Repository and workspace paths ----
     private String repoUrl;
+    private String workingDirectory;
     private String defaultWorkspacePath;
-    private long maxFileSizeBytes = DEFAULT_MAX_FILE_SIZE;
-    private Set<String> excludedPatterns = new HashSet<>(DEFAULT_EXCLUDED_PATTERNS);
-    private Set<String> additionalExcludedPatterns = new HashSet<>();
+
+    // ---- Git operation flags ----
     private boolean pushToOrigin = true;
     private boolean createBranchIfMissing = true;
     private boolean dryRun = false;
+    private boolean gitOperationsSuccessful = false;
+
+    // ---- File staging configuration ----
+    private long maxFileSizeBytes = DEFAULT_MAX_FILE_SIZE;
+    private Set<String> excludedPatterns = new HashSet<>(DEFAULT_EXCLUDED_PATTERNS);
+    private Set<String> additionalExcludedPatterns = new HashSet<>();
     private boolean protectTestFiles = false;
+    private List<String> stagedFiles = new ArrayList<>();
+    private List<String> skippedFiles = new ArrayList<>();
+
+    // ---- Commit and PR state ----
+    private String commitHash;
+    private String pullRequestUrl;
     private String gitUserName;
     private String gitUserEmail;
 
-    private String originalBranch;
-    private List<String> stagedFiles = new ArrayList<>();
-    private List<String> skippedFiles = new ArrayList<>();
-    private String commitHash;
-    private String pullRequestUrl;
-    private boolean gitOperationsSuccessful = false;
+    // ---- Merge conflict state ----
     private boolean mergeConflictsDetected = false;
     private List<String> conflictFiles = new ArrayList<>();
 
@@ -238,20 +135,6 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
     private final CompletableFuture<Void> future = new CompletableFuture<>();
 
     private String workstreamUrl;
-
-    /** Adapter that delegates {@link GitPropertyTarget} methods to this job's fields. */
-    private final GitPropertyTarget gitPropertyTarget = new GitPropertyTarget() {
-        @Override public void setWorkingDirectory(String v) { workingDirectory = v; }
-        @Override public void setRepoUrl(String v) { repoUrl = v; }
-        @Override public void setDefaultWorkspacePath(String v) { defaultWorkspacePath = v; }
-        @Override public void setTargetBranch(String v) { targetBranch = v; }
-        @Override public void setBaseBranch(String v) { baseBranch = v; }
-        @Override public void setPushToOrigin(boolean v) { pushToOrigin = v; }
-        @Override public void setWorkstreamUrl(String v) { workstreamUrl = v; }
-        @Override public void setGitUserName(String v) { gitUserName = v; }
-        @Override public void setGitUserEmail(String v) { gitUserEmail = v; }
-        @Override public void setProtectTestFiles(boolean v) { protectTestFiles = v; }
-    };
 
     /**
      * Default constructor for deserialization.
@@ -594,35 +477,7 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
      * @return a filesystem-safe name derived from the repo
      */
     private static String extractRepoName(String url) {
-        if (url == null || url.isEmpty()) {
-            return "unknown";
-        }
-
-        String path = url;
-
-        // SSH format: git@github.com:owner/repo.git
-        if (path.contains(":") && path.contains("@")) {
-            int colonIdx = path.lastIndexOf(':');
-            path = path.substring(colonIdx + 1);
-        } else {
-            // HTTPS format: strip protocol and host
-            int slashSlash = path.indexOf("//");
-            if (slashSlash >= 0) {
-                path = path.substring(slashSlash + 2);
-                int firstSlash = path.indexOf('/');
-                if (firstSlash >= 0) {
-                    path = path.substring(firstSlash + 1);
-                }
-            }
-        }
-
-        // Remove .git suffix
-        if (path.endsWith(".git")) {
-            path = path.substring(0, path.length() - 4);
-        }
-
-        // Replace slashes with dashes for a flat directory name
-        return path.replace('/', '-');
+        return WorkspaceResolver.extractRepoName(url);
     }
 
     /**
@@ -636,42 +491,8 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
      * @throws InterruptedException if a git command is interrupted
      */
     private void cloneRepository(String targetPath) throws IOException, InterruptedException {
-        File targetDir = new File(targetPath);
-        File parentDir = targetDir.getParentFile();
-        if (parentDir != null && !parentDir.exists()) {
-            parentDir.mkdirs();
-        }
-
-        log("Cloning " + repoUrl + " into " + targetPath + "...");
-
-        List<String> command = new ArrayList<>();
-        command.add("git");
-        command.add("clone");
-        command.add(repoUrl);
-        command.add(targetPath);
-
-        ProcessBuilder pb = new ProcessBuilder(command);
-        pb.redirectErrorStream(true);
-        pb.environment().put("GIT_SSH_COMMAND",
-                "ssh -o StrictHostKeyChecking=accept-new -o BatchMode=yes");
-
-        Process process = pb.start();
-        StringBuilder output = new StringBuilder();
-        try (BufferedReader reader = new BufferedReader(
-                new InputStreamReader(process.getInputStream()))) {
-            String line;
-            while ((line = reader.readLine()) != null) {
-                output.append(line).append("\n");
-            }
-        }
-
-        int exitCode = process.waitFor();
-        if (exitCode != 0) {
-            throw new RuntimeException(
-                "Failed to clone " + repoUrl + " (exit " + exitCode + "): " + output.toString().trim());
-        }
-
-        log("Clone completed successfully");
+        GitOperations gitOps = new GitOperations(workingDirectory, taskId);
+        gitOps.cloneRepository(repoUrl, targetPath);
     }
 
     /**
@@ -716,16 +537,7 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
      * is sent from here.
      */
     protected void fireJobCompleted(Exception error) {
-        JobCompletionEvent event;
-
-        if (error != null) {
-            event = JobCompletionEvent.failed(
-                taskId, getTaskString(),
-                error.getMessage(), error
-            );
-        } else {
-            event = JobCompletionEvent.success(taskId, getTaskString());
-        }
+        JobCompletionEvent event = createEvent(error);
 
         event.withGitInfo(targetBranch, commitHash, stagedFiles, skippedFiles,
             gitOperationsSuccessful && pushToOrigin && !stagedFiles.isEmpty());
@@ -734,6 +546,26 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
         }
         populateEventDetails(event);
         postStatusEvent(event);
+    }
+
+    /**
+     * Creates the completion event for this job.
+     *
+     * <p>Subclasses can override to return a more specific event type.
+     * For example, {@link ClaudeCodeJob} returns {@link ClaudeCodeJobEvent}.</p>
+     *
+     * @param error the exception if the job failed, or null on success
+     * @return the event to fire
+     */
+    protected JobCompletionEvent createEvent(Exception error) {
+        if (error != null) {
+            return JobCompletionEvent.failed(
+                taskId, getTaskString(),
+                error.getMessage(), error
+            );
+        } else {
+            return JobCompletionEvent.success(taskId, getTaskString());
+        }
     }
 
     /**
@@ -1022,112 +854,13 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
      */
     private String detectPullRequestUrl() {
         try {
-            // Check if remote is GitHub
             String remoteUrl = executeGitWithOutput("remote", "get-url", "origin").trim();
-            if (!remoteUrl.contains("github.com")) {
-                return null;
-            }
-
-            // Extract owner/repo from remote URL
-            // Handles both SSH (git@github.com:owner/repo.git) and
-            // HTTPS (https://github.com/owner/repo.git) formats
-            String ownerRepo = extractOwnerRepo(remoteUrl);
-            if (ownerRepo == null) {
-                log("Could not extract owner/repo from remote URL: " + remoteUrl);
-                return null;
-            }
-
-            // Look for GITHUB_TOKEN or GH_TOKEN
-            String token = System.getenv("GITHUB_TOKEN");
-            if (token == null || token.isEmpty()) {
-                token = System.getenv("GH_TOKEN");
-            }
-
-            // Build the GitHub API query path
-            String apiPath = "/repos/" + ownerRepo +
-                "/pulls?head=" + ownerRepo.split("/")[0] + ":" + targetBranch +
-                "&state=open&per_page=1";
-
-            String responseBody = null;
-
-            if (token != null && !token.isEmpty()) {
-                // Direct GitHub API call with local token
-                String apiUrl = "https://api.github.com" + apiPath;
-                HttpURLConnection conn = (HttpURLConnection) new URL(apiUrl).openConnection();
-                conn.setRequestMethod("GET");
-                conn.setRequestProperty("Authorization", "Bearer " + token);
-                conn.setRequestProperty("Accept", "application/vnd.github+json");
-                conn.setConnectTimeout(10000);
-                conn.setReadTimeout(10000);
-
-                int responseCode = conn.getResponseCode();
-                if (responseCode != 200) {
-                    log("GitHub API returned " + responseCode + " for PR query");
-                    return null;
-                }
-                responseBody = new String(conn.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-            } else if (workstreamUrl != null && !workstreamUrl.isEmpty()) {
-                // Fallback: use the controller's GitHub proxy endpoint
-                String proxyBaseUrl = resolveWorkstreamUrl();
-                // Strip /jobs/{jobId} and /workstreams/{wsId} to get the API base
-                int wsIdx = proxyBaseUrl.indexOf("/api/workstreams/");
-                if (wsIdx >= 0) {
-                    String controllerBase = proxyBaseUrl.substring(0, wsIdx);
-                    String proxyUrl = controllerBase + "/api/github/proxy?url="
-                        + java.net.URLEncoder.encode(apiPath, StandardCharsets.UTF_8);
-
-                    HttpURLConnection conn = (HttpURLConnection) new URL(proxyUrl).openConnection();
-                    conn.setRequestMethod("GET");
-                    conn.setConnectTimeout(10000);
-                    conn.setReadTimeout(10000);
-
-                    int responseCode = conn.getResponseCode();
-                    if (responseCode != 200) {
-                        log("GitHub proxy returned " + responseCode + " for PR query");
-                        return null;
-                    }
-
-                    // Proxy response wraps the GitHub response: {"status":200,"body":[...]}
-                    String proxyResponse = new String(conn.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-                    ObjectMapper proxyMapper = new ObjectMapper();
-                    JsonNode proxyRoot = proxyMapper.readTree(proxyResponse);
-                    int ghStatus = proxyRoot.has("status") ? proxyRoot.get("status").asInt() : 0;
-                    if (ghStatus != 200) {
-                        log("GitHub proxy: GitHub returned status " + ghStatus);
-                        return null;
-                    }
-                    JsonNode bodyNode = proxyRoot.get("body");
-                    if (bodyNode != null) {
-                        responseBody = bodyNode.toString();
-                    }
-                }
-            } else {
-                log("No GITHUB_TOKEN and no workstream URL, cannot query GitHub API for PR");
-                return null;
-            }
-
-            if (responseBody == null || responseBody.isEmpty()) {
-                return null;
-            }
-
-            // Parse the JSON array response with Jackson
-            ObjectMapper mapper = new ObjectMapper();
-            JsonNode root = mapper.readTree(responseBody);
-            if (root.isArray() && root.size() > 0) {
-                JsonNode firstPr = root.get(0);
-                JsonNode htmlUrlNode = firstPr.get("html_url");
-                if (htmlUrlNode != null && htmlUrlNode.isTextual()) {
-                    String prUrl = htmlUrlNode.asText();
-                    if (prUrl.startsWith("https://github.com/") && prUrl.contains("/pull/")) {
-                        return prUrl;
-                    }
-                }
-            }
+            PullRequestDetector detector = new PullRequestDetector();
+            return detector.detect(remoteUrl, targetBranch, workstreamUrl).orElse(null);
         } catch (Exception e) {
             log("Could not detect PR URL: " + e.getMessage());
+            return null;
         }
-
-        return null;
     }
 
     /**
@@ -1140,42 +873,7 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
      * @return the owner/repo string, or null if not parseable
      */
     private static String extractOwnerRepo(String remoteUrl) {
-        // SSH format: git@github.com:owner/repo.git
-        if (remoteUrl.contains("git@github.com:")) {
-            String path = remoteUrl.substring(remoteUrl.indexOf("git@github.com:") + 15);
-            if (path.endsWith(".git")) {
-                path = path.substring(0, path.length() - 4);
-            }
-            String validated = validateOwnerRepo(path);
-            if (validated != null) return validated;
-        }
-
-        // HTTPS format: https://github.com/owner/repo.git
-        if (remoteUrl.contains("github.com/")) {
-            String path = remoteUrl.substring(remoteUrl.indexOf("github.com/") + 11);
-            if (path.endsWith(".git")) {
-                path = path.substring(0, path.length() - 4);
-            }
-            String validated = validateOwnerRepo(path);
-            if (validated != null) return validated;
-        }
-
-        return null;
-    }
-
-    /**
-     * Validates that a path is exactly {@code owner/repo} -- two non-empty
-     * parts separated by a single slash.
-     *
-     * @param path the candidate owner/repo string
-     * @return the path if valid, or null
-     */
-    private static String validateOwnerRepo(String path) {
-        String[] parts = path.split("/");
-        if (parts.length == 2 && !parts[0].isEmpty() && !parts[1].isEmpty()) {
-            return path;
-        }
-        return null;
+        return PullRequestDetector.extractOwnerRepo(remoteUrl);
     }
 
     // ==================== Git Utilities ====================
@@ -1330,51 +1028,11 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
     }
 
     private boolean matchesAnyPattern(String path, Set<String> patterns) {
-        for (String pattern : patterns) {
-            if (matchesGlobPattern(path, pattern)) {
-                return true;
-            }
-        }
-        return false;
+        return FileStager.matchesAnyPattern(path, patterns);
     }
 
     private boolean matchesGlobPattern(String path, String pattern) {
-        // Convert glob pattern to regex by processing tokens so that
-        // replacing '*' does not corrupt the '.*' produced by '**'.
-        StringBuilder regex = new StringBuilder();
-        int i = 0;
-        while (i < pattern.length()) {
-            char c = pattern.charAt(i);
-            if (c == '*' && i + 1 < pattern.length() && pattern.charAt(i + 1) == '*') {
-                // "**/" matches zero or more directories
-                if (i + 2 < pattern.length() && pattern.charAt(i + 2) == '/') {
-                    regex.append("(.*/)?");
-                    i += 3;
-                } else {
-                    // trailing "**" matches everything
-                    regex.append(".*");
-                    i += 2;
-                }
-            } else if (c == '*') {
-                regex.append("[^/]*");
-                i++;
-            } else if (c == '?') {
-                regex.append("[^/]");
-                i++;
-            } else if (c == '.') {
-                regex.append("\\.");
-                i++;
-            } else {
-                regex.append(c);
-                i++;
-            }
-        }
-
-        String r = regex.toString();
-        return Pattern.matches(r, path) ||
-               Pattern.matches(".*/" + r, path) ||
-               path.endsWith("/" + pattern) ||
-               path.equals(pattern);
+        return FileStager.matchesGlobPattern(path, pattern);
     }
 
     private boolean isBinaryFile(File file) {
@@ -1805,93 +1463,57 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
         }
     }
 
+    private static final ObjectMapper eventMapper = new ObjectMapper();
+
     /**
-     * Serializes a {@link JobCompletionEvent} to a JSON string.
-     * Called after {@link #populateEventDetails(JobCompletionEvent)} so
-     * subclass fields (prompt, sessionId, exitCode) are included.
+     * Serializes a {@link JobCompletionEvent} to a JSON string using Jackson.
      *
      * @param event the event to serialize
      * @return JSON string representation
      */
     private String buildEventJson(JobCompletionEvent event) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("{");
-        appendJsonField(sb, "jobId", event.getJobId(), true);
-        appendJsonField(sb, "status", event.getStatus().name(), false);
-        appendJsonField(sb, "description", event.getDescription(), false);
-        appendJsonField(sb, "targetBranch", event.getTargetBranch(), false);
-        appendJsonField(sb, "commitHash", event.getCommitHash(), false);
-        sb.append(",\"pushed\":").append(event.isPushed());
+        ObjectNode root = eventMapper.createObjectNode();
+        root.put("jobId", event.getJobId());
+        root.put("status", event.getStatus().name());
+        root.put("description", event.getDescription());
+        root.put("targetBranch", event.getTargetBranch());
+        root.put("commitHash", event.getCommitHash());
+        root.put("pushed", event.isPushed());
 
-        // Staged files
-        sb.append(",\"stagedFiles\":[");
-        List<String> staged = event.getStagedFiles();
-        for (int i = 0; i < staged.size(); i++) {
-            if (i > 0) sb.append(",");
-            sb.append("\"").append(escapeJson(staged.get(i))).append("\"");
-        }
-        sb.append("]");
+        ArrayNode stagedArray = root.putArray("stagedFiles");
+        for (String f : event.getStagedFiles()) stagedArray.add(f);
 
-        // Skipped files
-        sb.append(",\"skippedFiles\":[");
-        List<String> skipped = event.getSkippedFiles();
-        for (int i = 0; i < skipped.size(); i++) {
-            if (i > 0) sb.append(",");
-            sb.append("\"").append(escapeJson(skipped.get(i))).append("\"");
-        }
-        sb.append("]");
+        ArrayNode skippedArray = root.putArray("skippedFiles");
+        for (String f : event.getSkippedFiles()) skippedArray.add(f);
 
-        // PR URL
-        appendJsonField(sb, "pullRequestUrl", event.getPullRequestUrl(), false);
+        root.put("pullRequestUrl", event.getPullRequestUrl());
+        root.put("errorMessage", event.getErrorMessage());
 
-        // Error info
-        appendJsonField(sb, "errorMessage", event.getErrorMessage(), false);
-
-        // Claude Code specific
-        appendJsonField(sb, "prompt", event.getPrompt(), false);
-        appendJsonField(sb, "sessionId", event.getSessionId(), false);
-        sb.append(",\"exitCode\":").append(event.getExitCode());
+        // Claude Code specific (base class returns defaults)
+        root.put("prompt", event.getPrompt());
+        root.put("sessionId", event.getSessionId());
+        root.put("exitCode", event.getExitCode());
 
         // Timing information
-        sb.append(",\"durationMs\":").append(event.getDurationMs());
-        sb.append(",\"durationApiMs\":").append(event.getDurationApiMs());
-        sb.append(",\"costUsd\":").append(event.getCostUsd());
-        sb.append(",\"numTurns\":").append(event.getNumTurns());
+        root.put("durationMs", event.getDurationMs());
+        root.put("durationApiMs", event.getDurationApiMs());
+        root.put("costUsd", event.getCostUsd());
+        root.put("numTurns", event.getNumTurns());
 
         // Session details
-        appendJsonField(sb, "subtype", event.getSubtype(), false);
-        sb.append(",\"sessionIsError\":").append(event.isSessionError());
-        sb.append(",\"permissionDenials\":").append(event.getPermissionDenials());
+        root.put("subtype", event.getSubtype());
+        root.put("sessionIsError", event.isSessionError());
+        root.put("permissionDenials", event.getPermissionDenials());
 
-        // Denied tool names array
-        List<String> denied = event.getDeniedToolNames();
-        sb.append(",\"deniedToolNames\":[");
-        for (int i = 0; i < denied.size(); i++) {
-            if (i > 0) sb.append(",");
-            sb.append("\"").append(escapeJson(denied.get(i))).append("\"");
+        ArrayNode deniedArray = root.putArray("deniedToolNames");
+        for (String t : event.getDeniedToolNames()) deniedArray.add(t);
+
+        try {
+            return eventMapper.writeValueAsString(root);
+        } catch (Exception e) {
+            warn("Failed to serialize event JSON: " + e.getMessage());
+            return "{}";
         }
-        sb.append("]");
-
-        sb.append("}");
-        return sb.toString();
-    }
-
-    private void appendJsonField(StringBuilder sb, String name, String value, boolean first) {
-        if (!first) sb.append(",");
-        sb.append("\"").append(name).append("\":");
-        if (value == null) {
-            sb.append("null");
-        } else {
-            sb.append("\"").append(escapeJson(value)).append("\"");
-        }
-    }
-
-    private static String escapeJson(String s) {
-        if (s == null) return "";
-        return s.replace("\\", "\\\\")
-                .replace("\"", "\\\"")
-                .replace("\n", "\\n")
-                .replace("\r", "\\r");
     }
 
     // ==================== Encoding ====================
@@ -1945,11 +1567,39 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
 
     @Override
     public void set(String key, String value) {
-        if (applyGitProperty(key, value, gitPropertyTarget)) return;
-
         switch (key) {
             case "taskId":
                 this.taskId = value;
+                break;
+            case "workDir":
+                this.workingDirectory = base64Decode(value);
+                break;
+            case "repoUrl":
+                this.repoUrl = base64Decode(value);
+                break;
+            case "defaultWsPath":
+                this.defaultWorkspacePath = base64Decode(value);
+                break;
+            case "branch":
+                this.targetBranch = base64Decode(value);
+                break;
+            case "baseBranch":
+                this.baseBranch = base64Decode(value);
+                break;
+            case "push":
+                this.pushToOrigin = Boolean.parseBoolean(value);
+                break;
+            case "workstreamUrl":
+                this.workstreamUrl = base64Decode(value);
+                break;
+            case "gitUserName":
+                this.gitUserName = base64Decode(value);
+                break;
+            case "gitUserEmail":
+                this.gitUserEmail = base64Decode(value);
+                break;
+            case "protectTests":
+                this.protectTestFiles = Boolean.parseBoolean(value);
                 break;
             case "maxFileSize":
                 this.maxFileSizeBytes = Long.parseLong(value);

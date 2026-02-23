@@ -19,6 +19,7 @@ package io.flowtree.slack;
 import fi.iki.elonen.NanoHTTPD;
 import io.flowtree.Server;
 import io.flowtree.jobs.ClaudeCodeJob;
+import io.flowtree.jobs.ClaudeCodeJobEvent;
 import io.flowtree.jobs.JobCompletionEvent;
 import io.flowtree.msg.NodeProxy;
 import org.almostrealism.io.ConsoleFeatures;
@@ -494,12 +495,29 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             return errorResponse("Invalid status: " + status);
         }
 
+        // Populate Claude Code info
+        String prompt = extractJsonField(body, "prompt");
+        String sessionId = extractJsonField(body, "sessionId");
+        int exitCode = extractJsonIntField(body, "exitCode");
+
+        // Create the appropriate event type based on whether Claude-specific fields are present
+        boolean isClaudeCodeEvent = prompt != null || sessionId != null;
+
         JobCompletionEvent event;
-        if (eventStatus == JobCompletionEvent.Status.FAILED) {
-            String errorMessage = extractJsonField(body, "errorMessage");
-            event = JobCompletionEvent.failed(jobId, description, errorMessage, null);
+        if (isClaudeCodeEvent) {
+            if (eventStatus == JobCompletionEvent.Status.FAILED) {
+                String errorMessage = extractJsonField(body, "errorMessage");
+                event = ClaudeCodeJobEvent.failed(jobId, description, errorMessage, null);
+            } else {
+                event = new ClaudeCodeJobEvent(jobId, eventStatus, description);
+            }
         } else {
-            event = new JobCompletionEvent(jobId, eventStatus, description);
+            if (eventStatus == JobCompletionEvent.Status.FAILED) {
+                String errorMessage = extractJsonField(body, "errorMessage");
+                event = JobCompletionEvent.failed(jobId, description, errorMessage, null);
+            } else {
+                event = new JobCompletionEvent(jobId, eventStatus, description);
+            }
         }
 
         // Populate git info
@@ -516,25 +534,25 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             event.withPullRequestUrl(pullRequestUrl);
         }
 
-        // Populate Claude Code info
-        String prompt = extractJsonField(body, "prompt");
-        String sessionId = extractJsonField(body, "sessionId");
-        int exitCode = extractJsonIntField(body, "exitCode");
-        event.withClaudeCodeInfo(prompt, sessionId, exitCode);
+        // Populate Claude Code-specific fields
+        if (event instanceof ClaudeCodeJobEvent) {
+            ClaudeCodeJobEvent ccEvent = (ClaudeCodeJobEvent) event;
+            ccEvent.withClaudeCodeInfo(prompt, sessionId, exitCode);
 
-        // Populate timing info
-        long durationMs = extractJsonLongField(body, "durationMs");
-        long durationApiMs = extractJsonLongField(body, "durationApiMs");
-        double costUsd = extractJsonDoubleField(body, "costUsd");
-        int numTurns = extractJsonIntField(body, "numTurns");
-        event.withTimingInfo(durationMs, durationApiMs, costUsd, numTurns);
+            // Populate timing info
+            long durationMs = extractJsonLongField(body, "durationMs");
+            long durationApiMs = extractJsonLongField(body, "durationApiMs");
+            double costUsd = extractJsonDoubleField(body, "costUsd");
+            int numTurns = extractJsonIntField(body, "numTurns");
+            ccEvent.withTimingInfo(durationMs, durationApiMs, costUsd, numTurns);
 
-        // Populate session details
-        String subtype = extractJsonField(body, "subtype");
-        boolean sessionIsError = extractJsonBooleanField(body, "sessionIsError");
-        int permissionDenials = extractJsonIntField(body, "permissionDenials");
-        List<String> deniedToolNames = extractJsonArrayField(body, "deniedToolNames");
-        event.withSessionDetails(subtype, sessionIsError, permissionDenials, deniedToolNames);
+            // Populate session details
+            String subtype = extractJsonField(body, "subtype");
+            boolean sessionIsError = extractJsonBooleanField(body, "sessionIsError");
+            int permissionDenials = extractJsonIntField(body, "permissionDenials");
+            List<String> deniedToolNames = extractJsonArrayField(body, "deniedToolNames");
+            ccEvent.withSessionDetails(subtype, sessionIsError, permissionDenials, deniedToolNames);
+        }
 
         log("Status event: " + eventStatus + " for job " + jobId + " in workstream " + workstreamId);
 

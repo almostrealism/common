@@ -19,7 +19,8 @@
 #   MAX_BUDGET_USD   - agent dollar budget           (omitted → workstream default)
 #
 # Exit codes:
-#   0 - always (failures are warnings, not errors)
+#   0 - submission succeeded
+#   1 - submission failed (unreachable host, non-200 response, etc.)
 #
 # Outputs (to stdout):
 #   job_id=<id>   (on success)
@@ -77,8 +78,8 @@ RESPONSE=$(curl -s -w "\n%{http_code}" \
     "$ENDPOINT") || CURL_EXIT=$?
 
 if [ "${CURL_EXIT:-0}" -ne 0 ]; then
-    echo "::warning::curl failed (exit code $CURL_EXIT) — controller may be unreachable at ${CONTROLLER_HOST}:${CONTROLLER_PORT}"
-    exit 0
+    echo "::error::curl failed (exit code $CURL_EXIT) — controller may be unreachable at ${CONTROLLER_HOST}:${CONTROLLER_PORT}"
+    exit 1
 fi
 
 HTTP_CODE=$(echo "$RESPONSE" | tail -1)
@@ -87,8 +88,8 @@ BODY=$(echo "$RESPONSE" | sed '$d')
 echo "Response ($HTTP_CODE): $BODY"
 
 if [ "$HTTP_CODE" != "200" ]; then
-    echo "::warning::Agent job submission failed (HTTP $HTTP_CODE): $BODY"
-    exit 0
+    echo "::error::Agent job submission failed (HTTP $HTTP_CODE): $BODY"
+    exit 1
 fi
 
 JOB_ID=$(echo "$BODY" | jq -r '.jobId // empty')
