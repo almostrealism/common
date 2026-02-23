@@ -376,6 +376,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         int maxTurns = extractJsonIntField(body, "maxTurns");
         double maxBudgetUsd = extractJsonDoubleField(body, "maxBudgetUsd");
         boolean protectTestFiles = extractJsonBooleanField(body, "protectTestFiles");
+        boolean enforceChanges = extractJsonBooleanField(body, "enforceChanges");
 
         // Create job factory with workstream defaults, overridden by request values
         ClaudeCodeJob.Factory factory = new ClaudeCodeJob.Factory(prompt);
@@ -440,6 +441,11 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         // Test file protection
         if (protectTestFiles) {
             factory.setProtectTestFiles(true);
+        }
+
+        // Enforcement mode (require code changes or loop)
+        if (enforceChanges) {
+            factory.setEnforceChanges(true);
         }
 
         // Build workstream URL for status reporting
