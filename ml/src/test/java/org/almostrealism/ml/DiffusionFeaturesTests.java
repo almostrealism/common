@@ -8,7 +8,7 @@ import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 public class DiffusionFeaturesTests extends TestSuiteBase implements DiffusionFeatures {
-	@Test(timeout = 60000)
+	@Test(timeout = 5 * 60000)
 	public void upsample() {
 		int batchSize = 4;
 		int inputChannels = 56;

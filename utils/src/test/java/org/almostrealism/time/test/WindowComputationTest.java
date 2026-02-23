@@ -27,8 +27,6 @@ import org.junit.Test;
  */
 public class WindowComputationTest extends TestSuiteBase {
 
-	private static final double TOLERANCE = 1e-10;
-
 	// ==================== Reference Implementations ====================
 
 	/**
@@ -107,7 +105,7 @@ public class WindowComputationTest extends TestSuiteBase {
 		PackedCollection result = WindowComputation.hann(size).get().evaluate();
 
 		for (int i = 0; i < size; i++) {
-			assertEquals(expected[i], result.toDouble(i), TOLERANCE);
+			assertEquals(expected[i], result.toDouble(i));
 		}
 	}
 
@@ -118,7 +116,7 @@ public class WindowComputationTest extends TestSuiteBase {
 		PackedCollection result = hannWindow(size).get().evaluate();
 
 		for (int i = 0; i < size; i++) {
-			assertEquals(expected[i], result.toDouble(i), TOLERANCE);
+			assertEquals(expected[i], result.toDouble(i));
 		}
 	}
 
@@ -129,7 +127,7 @@ public class WindowComputationTest extends TestSuiteBase {
 		PackedCollection result = hannWindow(size).get().evaluate();
 
 		for (int i = 0; i < size; i++) {
-			assertEquals(expected[i], result.toDouble(i), TOLERANCE);
+			assertEquals(expected[i], result.toDouble(i));
 		}
 	}
 
@@ -139,8 +137,8 @@ public class WindowComputationTest extends TestSuiteBase {
 		PackedCollection window = hannWindow(size).get().evaluate();
 
 		// Hann window should be zero at boundaries
-		assertEquals(0.0, window.toDouble(0), TOLERANCE);
-		assertEquals(0.0, window.toDouble(size - 1), TOLERANCE);
+		assertEquals(0.0, window.toDouble(0));
+		assertEquals(0.0, window.toDouble(size - 1));
 
 		// Hann window should be close to 1.0 at center (exact 1.0 only for odd sizes)
 		// For even size N, the center is at (N-1)/2 which is not an integer
@@ -149,7 +147,7 @@ public class WindowComputationTest extends TestSuiteBase {
 
 		// Hann window should be symmetric
 		for (int i = 0; i < size / 2; i++) {
-			assertEquals(window.toDouble(i), window.toDouble(size - 1 - i), TOLERANCE);
+			assertEquals(window.toDouble(i), window.toDouble(size - 1 - i));
 		}
 	}
 
@@ -162,7 +160,7 @@ public class WindowComputationTest extends TestSuiteBase {
 		PackedCollection result = hammingWindow(size).get().evaluate();
 
 		for (int i = 0; i < size; i++) {
-			assertEquals(expected[i], result.toDouble(i), TOLERANCE);
+			assertEquals(expected[i], result.toDouble(i));
 		}
 	}
 
@@ -173,7 +171,7 @@ public class WindowComputationTest extends TestSuiteBase {
 		PackedCollection result = hammingWindow(size).get().evaluate();
 
 		for (int i = 0; i < size; i++) {
-			assertEquals(expected[i], result.toDouble(i), TOLERANCE);
+			assertEquals(expected[i], result.toDouble(i));
 		}
 	}
 
@@ -183,8 +181,8 @@ public class WindowComputationTest extends TestSuiteBase {
 		PackedCollection window = hammingWindow(size).get().evaluate();
 
 		// Hamming window should NOT be zero at boundaries (0.08 at edges)
-		assertEquals(0.08, window.toDouble(0), TOLERANCE);
-		assertEquals(0.08, window.toDouble(size - 1), TOLERANCE);
+		assertEquals(0.08, window.toDouble(0));
+		assertEquals(0.08, window.toDouble(size - 1));
 
 		// Hamming window should be close to 1.0 at center (exact 1.0 only for odd sizes)
 		double centerValue = window.toDouble(size / 2);
@@ -192,7 +190,7 @@ public class WindowComputationTest extends TestSuiteBase {
 
 		// Hamming window should be symmetric
 		for (int i = 0; i < size / 2; i++) {
-			assertEquals(window.toDouble(i), window.toDouble(size - 1 - i), TOLERANCE);
+			assertEquals(window.toDouble(i), window.toDouble(size - 1 - i));
 		}
 	}
 
@@ -205,7 +203,7 @@ public class WindowComputationTest extends TestSuiteBase {
 		PackedCollection result = blackmanWindow(size).get().evaluate();
 
 		for (int i = 0; i < size; i++) {
-			assertEquals(expected[i], result.toDouble(i), TOLERANCE);
+			assertEquals(expected[i], result.toDouble(i));
 		}
 	}
 
@@ -216,7 +214,7 @@ public class WindowComputationTest extends TestSuiteBase {
 		PackedCollection result = blackmanWindow(size).get().evaluate();
 
 		for (int i = 0; i < size; i++) {
-			assertEquals(expected[i], result.toDouble(i), TOLERANCE);
+			assertEquals(expected[i], result.toDouble(i));
 		}
 	}
 
@@ -226,8 +224,8 @@ public class WindowComputationTest extends TestSuiteBase {
 		PackedCollection window = blackmanWindow(size).get().evaluate();
 
 		// Blackman window should be near zero at boundaries
-		assertEquals(0.0, window.toDouble(0), TOLERANCE);
-		assertEquals(0.0, window.toDouble(size - 1), TOLERANCE);
+		assertEquals(0.0, window.toDouble(0));
+		assertEquals(0.0, window.toDouble(size - 1));
 
 		// Blackman window should be close to 1.0 at center (exact 1.0 only for odd sizes)
 		double centerValue = window.toDouble(size / 2);
@@ -235,7 +233,7 @@ public class WindowComputationTest extends TestSuiteBase {
 
 		// Blackman window should be symmetric
 		for (int i = 0; i < size / 2; i++) {
-			assertEquals(window.toDouble(i), window.toDouble(size - 1 - i), TOLERANCE);
+			assertEquals(window.toDouble(i), window.toDouble(size - 1 - i));
 		}
 	}
 
@@ -248,7 +246,7 @@ public class WindowComputationTest extends TestSuiteBase {
 		PackedCollection result = bartlettWindow(size).get().evaluate();
 
 		for (int i = 0; i < size; i++) {
-			assertEquals(expected[i], result.toDouble(i), TOLERANCE);
+			assertEquals(expected[i], result.toDouble(i));
 		}
 	}
 
@@ -259,7 +257,7 @@ public class WindowComputationTest extends TestSuiteBase {
 		PackedCollection result = bartlettWindow(size).get().evaluate();
 
 		for (int i = 0; i < size; i++) {
-			assertEquals(expected[i], result.toDouble(i), TOLERANCE);
+			assertEquals(expected[i], result.toDouble(i));
 		}
 	}
 
@@ -269,8 +267,8 @@ public class WindowComputationTest extends TestSuiteBase {
 		PackedCollection window = bartlettWindow(size).get().evaluate();
 
 		// Bartlett window should be zero at boundaries
-		assertEquals(0.0, window.toDouble(0), TOLERANCE);
-		assertEquals(0.0, window.toDouble(size - 1), TOLERANCE);
+		assertEquals(0.0, window.toDouble(0));
+		assertEquals(0.0, window.toDouble(size - 1));
 
 		// Bartlett window should be close to 1.0 at center (exact 1.0 only for odd sizes)
 		double centerValue = window.toDouble(size / 2);
@@ -278,7 +276,7 @@ public class WindowComputationTest extends TestSuiteBase {
 
 		// Bartlett window should be symmetric
 		for (int i = 0; i < size / 2; i++) {
-			assertEquals(window.toDouble(i), window.toDouble(size - 1 - i), TOLERANCE);
+			assertEquals(window.toDouble(i), window.toDouble(size - 1 - i));
 		}
 
 		// Bartlett window should be linear (triangular)
@@ -297,7 +295,7 @@ public class WindowComputationTest extends TestSuiteBase {
 		PackedCollection result = flattopWindow(size).get().evaluate();
 
 		for (int i = 0; i < size; i++) {
-			assertEquals(expected[i], result.toDouble(i), TOLERANCE);
+			assertEquals(expected[i], result.toDouble(i));
 		}
 	}
 
@@ -308,7 +306,7 @@ public class WindowComputationTest extends TestSuiteBase {
 		PackedCollection result = flattopWindow(size).get().evaluate();
 
 		for (int i = 0; i < size; i++) {
-			assertEquals(expected[i], result.toDouble(i), TOLERANCE);
+			assertEquals(expected[i], result.toDouble(i));
 		}
 	}
 
@@ -319,7 +317,7 @@ public class WindowComputationTest extends TestSuiteBase {
 
 		// Flat-top window should be symmetric
 		for (int i = 0; i < size / 2; i++) {
-			assertEquals(window.toDouble(i), window.toDouble(size - 1 - i), TOLERANCE);
+			assertEquals(window.toDouble(i), window.toDouble(size - 1 - i));
 		}
 
 		// Flat-top window can have negative values at edges (unique property)
@@ -339,7 +337,7 @@ public class WindowComputationTest extends TestSuiteBase {
 		PackedCollection hannByType = window(WindowComputation.Type.HANN, size).get().evaluate();
 
 		for (int i = 0; i < size; i++) {
-			assertEquals(hannDirect.toDouble(i), hannByType.toDouble(i), TOLERANCE);
+			assertEquals(hannDirect.toDouble(i), hannByType.toDouble(i));
 		}
 	}
 
@@ -361,7 +359,7 @@ public class WindowComputationTest extends TestSuiteBase {
 		// Result should equal the window coefficients since signal was all ones
 		double[] expected = referenceHann(size);
 		for (int i = 0; i < size; i++) {
-			assertEquals(expected[i], windowed.toDouble(i), TOLERANCE);
+			assertEquals(expected[i], windowed.toDouble(i));
 		}
 	}
 
@@ -387,6 +385,6 @@ public class WindowComputationTest extends TestSuiteBase {
 		// At center, window is 1, so windowed signal should equal original
 		int center = size / 2;
 		double expectedCenter = Math.sin(2.0 * Math.PI * frequency * center / size);
-		assertEquals(expectedCenter, windowed.toDouble(center), TOLERANCE);
+		assertEquals(expectedCenter, windowed.toDouble(center));
 	}
 }

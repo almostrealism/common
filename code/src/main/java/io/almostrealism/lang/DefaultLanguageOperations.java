@@ -65,9 +65,23 @@ public abstract class DefaultLanguageOperations implements LanguageOperations {
 		return "max(" + a + ", " + b + ")";
 	}
 
+	/**
+	 * Returns the absolute value expression using the generic {@code abs} function name.
+	 *
+	 * <p>This intentionally uses {@code abs}, not {@code fabs}. The generic function
+	 * names in {@link DefaultLanguageOperations} (abs, min, max, pow, etc.) are
+	 * language-neutral. Only {@link org.almostrealism.c.CJNILanguageOperations}
+	 * prepends the {@code f} prefix to produce C-specific floating-point variants
+	 * (fabs, fmin, fmax, powf). Other backends (Metal, OpenCL, etc.) use the
+	 * generic names and must NOT have {@code fabs} injected here or in
+	 * {@link org.almostrealism.c.CLanguageOperations}.</p>
+	 *
+	 * @param value the expression to take the absolute value of
+	 * @return the abs expression string
+	 */
 	@Override
 	public String abs(String value) {
-		return "fabs(" + value + ")";
+		return "abs(" + value + ")";
 	}
 
 	@Override

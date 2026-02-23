@@ -1,0 +1,109 @@
+name: "Project Manager"
+
+# Runs after merges to master. Maintains a fixed number of active project
+# branches by creating new planning tasks whenever a branch is merged.
+
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Create a new planning branch even if at capacity"
+        required: false
+        default: "false"
+
+# Only one project-manager run at a time to avoid race conditions
+# when counting branches and creating new ones.
+concurrency:
+  group: project-manager
+  cancel-in-progress: false
+
+jobs:
+  plan-next-task:
+    runs-on: [self-hosted, macos, ar-ci]
+    permissions:
+      contents: write
+      pull-requests: write
+
+    env:
+      # Target number of active project branches to maintain.
+      # When the count drops below this, a new planning branch is created.
+      PROJECT_BRANCH_TARGET: "3"
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          ref: master
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Count active project branches
+        id: branches
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Count open PRs targeting master using the ar-github MCP server's CLI mode.
+          RESULT=$(python3 tools/mcp/github/server.py list-open-prs --base master)
+          OPEN_PR_COUNT=$(echo "$RESULT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('count', 0))")
+          echo "open_prs=$OPEN_PR_COUNT" >> "$GITHUB_OUTPUT"
+          echo "target=$PROJECT_BRANCH_TARGET" >> "$GITHUB_OUTPUT"
+
+          if [ "${{ github.event.inputs.force }}" = "true" ]; then
+            echo "needs_new_branch=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::Force mode — creating new planning branch regardless of count"
+          elif [ "$OPEN_PR_COUNT" -lt "$PROJECT_BRANCH_TARGET" ]; then
+            echo "needs_new_branch=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::Open PRs ($OPEN_PR_COUNT) below target ($PROJECT_BRANCH_TARGET) — creating new planning branch"
+          else
+            echo "needs_new_branch=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Open PRs ($OPEN_PR_COUNT) at or above target ($PROJECT_BRANCH_TARGET) — no new branch needed"
+          fi
+
+      - name: Create planning branch
+        if: steps.branches.outputs.needs_new_branch == 'true'
+        id: new_branch
+        run: |
+          TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+          BRANCH_NAME="project/plan-${TIMESTAMP}"
+          git checkout -b "$BRANCH_NAME"
+          git push -u origin "$BRANCH_NAME"
+          echo "branch=$BRANCH_NAME" >> "$GITHUB_OUTPUT"
+          echo "::notice::Created branch $BRANCH_NAME"
+
+      - name: Build planning prompt
+        if: steps.branches.outputs.needs_new_branch == 'true'
+        env:
+          BRANCH: ${{ steps.new_branch.outputs.branch }}
+          BASE_BRANCH: master
+        run: |
+          ./tools/ci/build-planning-prompt.sh /tmp/agent-prompt.txt
+
+      - name: Submit planning agent job
+        if: steps.branches.outputs.needs_new_branch == 'true'
+        env:
+          CONTROLLER_HOST: ${{ secrets.FLOWTREE_CONTROLLER_HOST || 'mac-studio' }}
+          CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
+          BRANCH: ${{ steps.new_branch.outputs.branch }}
+          BASE_BRANCH: master
+        run: |
+          ./tools/ci/submit-agent-job.sh /tmp/agent-prompt.txt
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "## Project Manager" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Open PRs:** ${{ steps.branches.outputs.open_prs }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Target:** ${{ steps.branches.outputs.target }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          if [ "${{ steps.branches.outputs.needs_new_branch }}" = "true" ]; then
+            echo "Created new planning branch: \`${{ steps.new_branch.outputs.branch }}\`" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "A FlowTree coding agent job was submitted to investigate the project" >> "$GITHUB_STEP_SUMMARY"
+            echo "and propose a new task." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "No new branch needed — active branch count is at or above target." >> "$GITHUB_STEP_SUMMARY"
+          fi

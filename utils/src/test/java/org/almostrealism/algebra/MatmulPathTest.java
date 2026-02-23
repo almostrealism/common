@@ -2,7 +2,6 @@ package org.almostrealism.algebra;
 
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
@@ -10,7 +9,7 @@ import org.junit.Test;
  * Tests for matmul to verify both vector and weightedSum paths
  * produce correct results and to benchmark compile/run times.
  */
-public class MatmulPathTest extends TestSuiteBase implements MatrixFeatures, ConsoleFeatures {
+public class MatmulPathTest extends TestSuiteBase implements MatrixFeatures {
 
 	/**
 	 * Test matmul with small output (should use vector path).
@@ -121,14 +120,10 @@ public class MatmulPathTest extends TestSuiteBase implements MatrixFeatures, Con
 		}
 
 		// Compare
-		double maxDiff = 0;
 		for (int i = 0; i < outputSize; i++) {
-			double diff = Math.abs(output.toDouble(i) - expected[i]);
-			if (diff > maxDiff) maxDiff = diff;
+			assertEquals("Output[" + i + "]", expected[i], output.toDouble(i));
 		}
 
-		log("Max difference from expected: " + maxDiff);
-		assertTrue("Results should match expected within tolerance", maxDiff < 1e-5);
 		log("=== PASSED ===\n");
 	}
 
@@ -175,18 +170,12 @@ public class MatmulPathTest extends TestSuiteBase implements MatrixFeatures, Con
 
 	private void verifyOutput(PackedCollection output, PackedCollection weights,
 							  PackedCollection input, int outputSize, int inputSize) {
-		// Verify a few values
 		for (int i = 0; i < Math.min(10, outputSize); i++) {
 			double expected = 0;
 			for (int j = 0; j < inputSize; j++) {
 				expected += weights.toDouble(i * inputSize + j) * input.toDouble(j);
 			}
-			double actual = output.toDouble(i);
-			double diff = Math.abs(expected - actual);
-			if (diff > 1e-5) {
-				log("MISMATCH at " + i + ": expected=" + expected + ", actual=" + actual);
-			}
-			assertTrue("Output[" + i + "] should match", diff < 1e-5);
+			assertEquals("Output[" + i + "]", expected, output.toDouble(i));
 		}
 	}
 }
