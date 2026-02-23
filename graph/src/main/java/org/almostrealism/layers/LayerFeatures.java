@@ -961,74 +961,28 @@ public interface LayerFeatures extends MatrixFeatures, ActivationFeatures, Conso
 
 		Factor<PackedCollection> operator = input -> {
 			CollectionProducer in = c(input);
-			CollectionProducer result;
 
-			long groupSize = (long) channels * size * size;
+			CollectionProducer conv =
+					in.reshape(-1, 1, ch, pH, pW);
+			CollectionProducer filter =
+					cp(filters.reshape(1, fc, ch, ks, ks));
 
-			if (groupSize >= 64) {
-				// Use looped computation for large group sizes to avoid
-				// expression tree explosion during compilation
-				TraversalPolicy loopedOutputShape = shape(batch, fc, oH, oW).traverseEach();
-				TraversalPolicy loopedInputShape = shape(batch, ch, pH, pW);
-				int innerCount = ks * ks;
+			TraversalPolicy resultShape = shape(batch, fc, 1, oH, oW);
+			TraversalPolicy inputPositions = resultShape
+					.withRate(1, 1, fc)
+					.withRate(2, ch, 1);
+			TraversalPolicy filterPositions = resultShape
+					.withRate(0, 1, batch)
+					.withRate(2, ch, 1)
+					.withRate(3, ks, oH)
+					.withRate(4, ks, oW);
+			TraversalPolicy groupShape =
+					shape(1, 1, ch, ks, ks);
+			CollectionProducer result = weightedSum("convolutionFilter",
+							inputPositions, filterPositions,
+							groupShape, conv, filter);
 
-				LoopedWeightedSumComputation.InputIndexer inputIndexer = (outputIdx, outerIdx, innerIdx) -> {
-					Expression<?> b = outputIdx.divide(fc * oH * oW);
-					Expression<?> oh = outputIdx.divide(oW).imod(oH);
-					Expression<?> ow = outputIdx.imod(oW);
-					Expression<?> kh = innerIdx.divide(ks);
-					Expression<?> kw = innerIdx.imod(ks);
-					return b.multiply(ch * pH * pW)
-							.add(outerIdx.multiply(pH * pW))
-							.add(oh.add(kh).multiply(pW))
-							.add(ow.add(kw));
-				};
-
-				LoopedWeightedSumComputation.WeightIndexer weightIndexer = (outputIdx, outerIdx, innerIdx) -> {
-					Expression<?> f = outputIdx.divide(oH * oW).imod(fc);
-					return f.multiply(ch * ks * ks)
-							.add(outerIdx.multiply(ks * ks))
-							.add(innerIdx);
-				};
-
-				LoopedWeightedSumComputation computation = new LoopedWeightedSumComputation(
-						"conv2dLooped",
-						loopedOutputShape,
-						ch,
-						innerCount,
-						loopedInputShape,
-						filterShape,
-						inputIndexer,
-						weightIndexer,
-						in,
-						cp(filters));
-
-				result = c(computation).reshape(batch, fc, oH, oW);
-			} else {
-				CollectionProducer conv =
-						in.reshape(-1, 1, ch, pH, pW);
-				CollectionProducer filter =
-						cp(filters.reshape(1, fc, ch, ks, ks));
-
-				int bs = conv.getShape().length(0);
-
-				TraversalPolicy resultShape = shape(batch, fc, 1, oH, oW);
-				TraversalPolicy inputPositions = resultShape
-						.withRate(1, 1, fc)
-						.withRate(2, ch, 1);
-				TraversalPolicy filterPositions = resultShape
-						.withRate(0, 1, batch)
-						.withRate(2, ch, 1)
-						.withRate(3, ks, oH)
-						.withRate(4, ks, oW);
-				TraversalPolicy groupShape =
-						shape(1, 1, ch, ks, ks);
-				result = weightedSum("convolutionFilter",
-								inputPositions, filterPositions,
-								groupShape, conv, filter);
-
-				result = result.reshape(-1, fc, oH, oW);
-			}
+			result = result.reshape(-1, fc, oH, oW);
 
 			if (biases != null) {
 				int bs = result.getShape().length(0);
@@ -1054,9 +1008,6 @@ public interface LayerFeatures extends MatrixFeatures, ActivationFeatures, Conso
 								operator,
 								biases == null ? List.of(filters) : List.of(filters, biases),
 								setup, requirements);
-		if ((long) channels * size * size >= 64) {
-			((DefaultCellularLayer) layer).setOptimizeOnForward(true);
-		}
 		if (padding > 0) {
 			SequentialBlock block = new SequentialBlock(inputShape);
 			block.add(pad(inputShape, convInputShape, 0, 0, padding, padding));
