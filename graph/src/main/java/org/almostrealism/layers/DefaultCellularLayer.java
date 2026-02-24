@@ -175,7 +175,16 @@ public class DefaultCellularLayer implements CellularLayer, CodeFeatures, Learni
 		return op;
 	}
 
-	public PackedCollection getInput() { return input; }
+	/**
+	 * Returns the input buffer for this layer, allocating it lazily
+	 * if input tracking is enabled but the buffer has not yet been created.
+	 */
+	public PackedCollection getInput() {
+		if (input == null && inputTrackingEnabled) {
+			this.input = new PackedCollection(this.inputShape);
+		}
+		return input;
+	}
 	public PackedCollection getOutput() { return output; }
 
 	@Override
