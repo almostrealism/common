@@ -1040,6 +1040,8 @@ public class SlackIntegrationTest extends TestSuiteBase {
         pipelineWs.setAllowedTools("Read,Glob,Grep");
         pipelineWs.setMaxBudgetUsd(5.0);
         pipelineWs.setMaxTurns(30);
+        pipelineWs.setGitUserName("Test Bot");
+        pipelineWs.setGitUserEmail("test@example.com");
         notifier.registerWorkstream(pipelineWs);
 
         // Register a richer workstream that matches a specific branch
@@ -1048,6 +1050,8 @@ public class SlackIntegrationTest extends TestSuiteBase {
         ringsWs.setAllowedTools("Read,Edit,Write,Bash,Glob,Grep");
         ringsWs.setMaxBudgetUsd(25.0);
         ringsWs.setMaxTurns(100);
+        ringsWs.setGitUserName("Test Bot");
+        ringsWs.setGitUserEmail("test@example.com");
         notifier.registerWorkstream(ringsWs);
 
         FlowTreeApiEndpoint endpoint = new FlowTreeApiEndpoint(0, notifier);
