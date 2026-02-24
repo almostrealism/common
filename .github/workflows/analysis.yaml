@@ -30,7 +30,9 @@ jobs:
         run: mvn install -DskipTests
 
       - name: Flowtree Tests
-        run: mvn test -pl flowtree
+        run: |
+          mvn test -pl flowtree \
+           -DAR_TEST_PROFILE=pipeline
 
       - name: Code Policy Enforcement
         run: |

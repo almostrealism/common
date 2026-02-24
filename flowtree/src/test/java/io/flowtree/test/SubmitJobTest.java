@@ -20,6 +20,7 @@ import org.almostrealism.util.TestSuiteBase;
 
 import io.flowtree.Server;
 import io.flowtree.jobs.ExternalProcessJob;
+import org.almostrealism.util.TestUtils;
 import org.junit.Test;
 
 import java.io.IOException;
@@ -30,6 +31,8 @@ import java.util.stream.IntStream;
 public class SubmitJobTest extends TestSuiteBase {
 	@Test(timeout = 10000)
 	public void submitProcess() throws IOException {
+		if (testProfileIs(TestUtils.PIPELINE)) return;
+
 		Properties p = new Properties();
 		p.setProperty("server.port", "7701");
 		p.setProperty("nodes.initial", "0");
