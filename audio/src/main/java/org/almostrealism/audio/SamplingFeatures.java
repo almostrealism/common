@@ -65,7 +65,6 @@ public interface SamplingFeatures extends CodeFeatures {
 	ThreadLocal<Integer> sampleRate = new ThreadLocal<>();
 	ThreadLocal<Producer<PackedCollection>> frames = new ThreadLocal<>();
 
-	/** Performs the frames operation. */
 	default <T> T frames(Producer<PackedCollection> f, Supplier<T> r) {
 		Producer<PackedCollection> lastT = frames.get();
 
@@ -77,7 +76,6 @@ public interface SamplingFeatures extends CodeFeatures {
 		}
 	}
 
-	/** Performs the frame operation. */
 	default Producer<PackedCollection> frame() {
 		Producer<PackedCollection> f = frames.get();
 		if (f == null) {
@@ -89,7 +87,6 @@ public interface SamplingFeatures extends CodeFeatures {
 
 	default CollectionProducer time() { return divide(frame(), c(sampleRate())); }
 
-	/** Performs the sampleRate operation. */
 	default <T> T sampleRate(int sr, Supplier<T> r) {
 		Integer lastSr = sampleRate.get();
 
@@ -103,12 +100,10 @@ public interface SamplingFeatures extends CodeFeatures {
 
 	default int sampleRate() { return sampleRate.get() == null ? OutputLine.sampleRate : sampleRate.get(); }
 
-	/** Performs the sampling operation. */
 	default <T> T sampling(int rate, Supplier<T> r) {
 		return sampleRate(rate, () -> frames(integers(), r));
 	}
 
-	/** Performs the sampling operation. */
 	default <T> T sampling(int rate, double duration, Supplier<T> r) {
 //		int frames = (int) (rate * duration);
 //		return sampleRate(rate, () -> frames(integers(0, frames), r));
@@ -117,19 +112,16 @@ public interface SamplingFeatures extends CodeFeatures {
 
 	default int toFrames(double sec) { return (int) (sampleRate() * sec); }
 
-	/** Performs the toFrames operation. */
 	default Producer<PackedCollection> toFrames(Producer<PackedCollection> sec) {
 		return multiply(c(sampleRate()), sec);
 	}
 
 	default int toFramesMilli(int msec) { return (int) (sampleRate() * msec / 1000d); }
 
-	/** Performs the toFramesMilli operation. */
 	default Producer<PackedCollection> toFramesMilli(Producer<PackedCollection> msec) {
 		return multiply(c(sampleRate() / 1000d), msec);
 	}
 
-	/** Performs the grains operation. */
 	default CollectionProducer grains(Producer<PackedCollection> input,
 									  Producer<PackedCollection> grain,
 									  Producer<PackedCollection> wavelength,

@@ -29,7 +29,6 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
-/** The ProducerComputationBase class. */
 public abstract class ProducerComputationBase<I, O> extends ComputationBase<I, O, Evaluable<? extends O>> implements Operator<O> {
 
 	@Override

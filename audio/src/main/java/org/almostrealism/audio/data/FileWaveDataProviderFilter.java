@@ -71,17 +71,14 @@ public class FileWaveDataProviderFilter {
 	public String getFilter() { return filter; }
 	public void setFilter(String filter) { this.filter = filter; }
 
-	/** Performs the matches operation. */
 	public boolean matches(FileWaveDataProviderTree tree, FileWaveDataProvider p) {
 		return getFilterType().matches(getFilterOn().select(tree, p), getFilter());
 	}
 
-	/** Performs the coerceToMatch operation. */
 	public String coerceToMatch(String value, boolean allowEqual) {
 		return getFilterType().coerceToMatch(value, getFilter(), allowEqual);
 	}
 
-	/** Performs the coerceToMatch operation. */
 	public Path coerceToMatch(Path relativePath) {
 		String selected = getFilterOn().select(relativePath);
 		String result = coerceToMatch(selected, getFilterOn() == FilterOn.PATH);
@@ -99,16 +96,13 @@ public class FileWaveDataProviderFilter {
 		}
 	}
 
-	/** Performs the nameStartsWith operation. */
 	public static FileWaveDataProviderFilter nameStartsWith(String prefix) {
 		return new FileWaveDataProviderFilter(FilterOn.NAME, FilterType.STARTS_WITH, prefix);
 	}
 
-	/** The FilterOn enumeration. */
 	public enum FilterOn {
 		PATH, NAME;
 
-		/** Performs the select operation. */
 		String select(FileWaveDataProviderTree tree, FileWaveDataProvider p) {
 			switch (this) {
 				case NAME:
@@ -120,12 +114,10 @@ public class FileWaveDataProviderFilter {
 			}
 		}
 
-		/** Performs the select operation. */
 		String select(Path relativePath) {
 			return select(relativePath.toFile());
 		}
 
-		/** Performs the select operation. */
 		String select(File relativeFile) {
 			switch (this) {
 				case NAME:
@@ -138,7 +130,6 @@ public class FileWaveDataProviderFilter {
 			}
 		}
 
-		/** Performs the readableName operation. */
 		public String readableName() {
 			switch (this) {
 				case NAME:
@@ -150,7 +141,6 @@ public class FileWaveDataProviderFilter {
 			}
 		}
 
-		/** Performs the stripSlash operation. */
 		public static String stripSlash(String value) {
 			if (value != null && value.startsWith("/")) {
 				return value.substring(1);
@@ -159,7 +149,6 @@ public class FileWaveDataProviderFilter {
 			}
 		}
 
-		/** Performs the fromReadableName operation. */
 		public static FilterOn fromReadableName(String name) {
 			switch (name) {
 				case "File Name":
@@ -172,11 +161,9 @@ public class FileWaveDataProviderFilter {
 		}
 	}
 
-	/** The FilterType enumeration. */
 	public enum FilterType {
 		EQUALS, EQUALS_IGNORE_CASE, STARTS_WITH, ENDS_WITH, CONTAINS, CONTAINS_IGNORE_CASE;
 
-		/** Performs the matches operation. */
 		boolean matches(String value, String filter) {
 			if (value == null || filter == null || filter.isEmpty()) return false;
 
@@ -198,7 +185,6 @@ public class FileWaveDataProviderFilter {
 			}
 		}
 
-		/** Performs the coerceToMatch operation. */
 		String coerceToMatch(String value, String filter, boolean allowEqual) {
 			if (filter == null || filter.isEmpty() || matches(value, filter)) return value;
 
@@ -226,7 +212,6 @@ public class FileWaveDataProviderFilter {
 			}
 		}
 
-		/** Performs the readableName operation. */
 		public String readableName() {
 			switch (this) {
 				case EQUALS:
@@ -246,7 +231,6 @@ public class FileWaveDataProviderFilter {
 			}
 		}
 
-		/** Performs the fromReadableName operation. */
 		public static FilterType fromReadableName(String name) {
 			switch (name) {
 				case "Exactly Matches":
@@ -267,7 +251,6 @@ public class FileWaveDataProviderFilter {
 		}
 	}
 
-	/** Performs the paddedJoin operation. */
 	public static String paddedJoin(String a, String b) {
 		if (endsWithSeparator(a) || startsWithSeparator(b)) {
 			return a + b;
@@ -276,7 +259,6 @@ public class FileWaveDataProviderFilter {
 		}
 	}
 
-	/** Performs the startsWithSeparator operation. */
 	public static boolean startsWithSeparator(String text) {
 		for (String separator : SEPARATORS) {
 			if (text.startsWith(separator)) return true;
@@ -285,7 +267,6 @@ public class FileWaveDataProviderFilter {
 		return false;
 	}
 
-	/** Performs the endsWithSeparator operation. */
 	public static boolean endsWithSeparator(String text) {
 		for (String separator : SEPARATORS) {
 			if (text.endsWith(separator)) return true;

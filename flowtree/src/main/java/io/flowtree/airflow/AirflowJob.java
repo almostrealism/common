@@ -21,7 +21,6 @@ import io.flowtree.job.Job;
 import java.io.IOException;
 import java.util.concurrent.CompletableFuture;
 
-/** The AirflowJob class. */
 public class AirflowJob implements Job {
 	private String taskId;
 	private String command;

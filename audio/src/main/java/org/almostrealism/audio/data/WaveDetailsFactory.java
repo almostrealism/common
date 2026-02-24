@@ -103,17 +103,14 @@ public class WaveDetailsFactory implements CodeFeatures {
 		this.featureProvider = featureProvider;
 	}
 
-	/** Performs the forFile operation. */
 	public WaveDetails forFile(String file) {
 		return forProvider(new FileWaveDataProvider(file), null);
 	}
 
-	/** Performs the forProvider operation. */
 	public WaveDetails forProvider(WaveDataProvider provider) {
 		return forProvider(provider, null);
 	}
 
-	/** Performs the forProvider operation. */
 	public WaveDetails forProvider(WaveDataProvider provider, WaveDetails existing) {
 		if (existing == null) {
 			if (provider == null) return null;
@@ -132,7 +129,6 @@ public class WaveDetailsFactory implements CodeFeatures {
 		return forExisting(existing);
 	}
 
-	/** Performs the forExisting operation. */
 	public WaveDetails forExisting(WaveDetails existing) {
 		if (existing == null) return null;
 
@@ -176,7 +172,6 @@ public class WaveDetailsFactory implements CodeFeatures {
 		return existing;
 	}
 
-	/** Performs the similarity operation. */
 	public double similarity(WaveDetails a, WaveDetails b) {
 		if (a.getFeatureData() != null && b.getFeatureData() != null) {
 			int limit = Math.max(a.getValidFeatureFrameCount(), b.getValidFeatureFrameCount());
@@ -188,7 +183,6 @@ public class WaveDetailsFactory implements CodeFeatures {
 		}
 	}
 
-	/** Performs the productSimilarity operation. */
 	public double productSimilarity(Producer<PackedCollection> a, Producer<PackedCollection> b, int limit) {
 		double[] values = multiply(a, b).sum(1)
 				.divide(multiply(length(1, a), length(1, b)))
@@ -208,7 +202,6 @@ public class WaveDetailsFactory implements CodeFeatures {
 		return DoubleStream.of(values).sorted().skip(skip).limit(total).average().orElseThrow();
 	}
 
-	/** Performs the processFft operation. */
 	protected PackedCollection processFft(PackedCollection fft, PackedCollection output) {
 		if (fft.getShape().length(0) < 1) {
 			throw new IllegalArgumentException();
@@ -234,7 +227,6 @@ public class WaveDetailsFactory implements CodeFeatures {
 		return output;
 	}
 
-	/** Performs the prepareFeatures operation. */
 	protected PackedCollection prepareFeatures(WaveDataProvider provider) {
 		PackedCollection features = featureProvider.computeFeatures(provider);
 
@@ -245,7 +237,6 @@ public class WaveDetailsFactory implements CodeFeatures {
 		return features;
 	}
 
-	/** Performs the getDefault operation. */
 	public static WaveDetailsFactory getDefault() {
 		if (defaultFactory == null) {
 			defaultFactory = new WaveDetailsFactory(OutputLine.sampleRate);

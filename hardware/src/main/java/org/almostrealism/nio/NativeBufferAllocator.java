@@ -18,8 +18,6 @@ package org.almostrealism.nio;
 
 import io.almostrealism.code.Memory;
 
-/** The NativeBufferAllocator interface. */
 public interface NativeBufferAllocator<T extends Memory> {
-	/** Performs the allocate operation. */
 	NativeBuffer allocate(T src, int offset, int length);
 }

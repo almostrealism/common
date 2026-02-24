@@ -126,12 +126,10 @@ public class NoteAudioChoice implements ConsoleFeatures {
 		initSelectionFunctions();
 	}
 
-	/** Performs the initSelectionFunctions operation. */
 	public void initSelectionFunctions() {
 		granularitySelection = ParameterFunction.random();
 	}
 
-	/** Performs the setTuning operation. */
 	public void setTuning(KeyboardTuning tuning) {
 		getSources().forEach(n -> n.setTuning(tuning));
 	}
@@ -196,7 +194,6 @@ public class NoteAudioChoice implements ConsoleFeatures {
 		this.bias = bias;
 	}
 
-	/** Performs the checkResourceUsed operation. */
 	public boolean checkResourceUsed(String canonicalPath) {
 		return getSources().stream().anyMatch(s -> s.checkResourceUsed(canonicalPath));
 	}
@@ -232,7 +229,6 @@ public class NoteAudioChoice implements ConsoleFeatures {
 				.collect(Collectors.toList());
 	}
 
-	/** Performs the seeds operation. */
 	public PatternLayerSeeds seeds(ParameterSet params, double biasAdjustment) {
 		double granularity = granularitySelection.power(2, 3, -3).apply(params);
 
@@ -250,7 +246,6 @@ public class NoteAudioChoice implements ConsoleFeatures {
 		return new PatternLayerSeeds(0, granularity, getMinScale(), getMaxScale(), bias, this, params);
 	}
 
-	/** Performs the apply operation. */
 	public PatternLayer apply(PatternElementFactory factory, List<PatternElement> elements, double scale, ScaleTraversalStrategy scaleTraversalStrategy, int depth, ParameterSet params) {
 		PatternLayer layer = new PatternLayer();
 		layer.setChoice(this);
@@ -259,7 +254,6 @@ public class NoteAudioChoice implements ConsoleFeatures {
 		return layer;
 	}
 
-	/** Performs the apply operation. */
 	public PatternLayer apply(PatternElementFactory factory, PatternElement element, double scale, ScaleTraversalStrategy scaleTraversalStrategy, int depth, ParameterSet params) {
 		PatternLayer layer = new PatternLayer();
 		layer.setChoice(this);
@@ -280,7 +274,6 @@ public class NoteAudioChoice implements ConsoleFeatures {
 		return CellFeatures.console;
 	}
 
-	/** Performs the fromSource operation. */
 	public static NoteAudioChoice fromSource(String name, NoteAudioSource source,
 											 int channel, int maxScaleTraversalDepth,
 											 boolean melodic) {
@@ -294,7 +287,6 @@ public class NoteAudioChoice implements ConsoleFeatures {
 		return c;
 	}
 
-	/** Performs the choices operation. */
 	public static Supplier<List<NoteAudioChoice>> choices(List<NoteAudioChoice> choices, boolean melodic) {
 		return () -> choices.stream()
 				.filter(c -> c.isMelodic() || !melodic)

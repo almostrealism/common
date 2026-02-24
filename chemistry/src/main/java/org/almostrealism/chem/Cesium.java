@@ -8,7 +8,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
-/** The Cesium class. */
 public class Cesium implements Element {
 	public int getAtomicNumber() { return 55; }
 

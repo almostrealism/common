@@ -18,7 +18,6 @@ package org.almostrealism.audio.grains;
 
 import org.almostrealism.audio.data.ParameterFunction;
 
-/** The GrainParameters class. */
 public class GrainParameters {
 	private ParameterFunction amp;
 	private ParameterFunction phase;
@@ -56,7 +55,6 @@ public class GrainParameters {
 		this.wavelength = wavelength;
 	}
 
-	/** Performs the random operation. */
 	public static GrainParameters random() {
 		return new GrainParameters(ParameterFunction.random(), ParameterFunction.random(), ParameterFunction.random());
 	}

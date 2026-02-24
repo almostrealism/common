@@ -8,7 +8,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
-/** The Bohrium class. */
 public class Bohrium implements Element {
 	public int getAtomicNumber() { return 107; }
 

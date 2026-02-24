@@ -1849,13 +1849,11 @@ public interface AttentionFeatures extends RotationFeatures {
 		return attention;
 	}
 
-	/** Performs the scaledDotProductAttention operation. */
 	default Block scaledDotProductAttention(int batchSize, int seqLen, int heads, int dimHead,
 											PackedCollection k, PackedCollection v) {
 		return scaledDotProductAttention(batchSize, seqLen, seqLen, heads, dimHead, k, v, null);
 	}
 
-	/** Performs the scaledDotProductAttention operation. */
 	default Block scaledDotProductAttention(int batchSize, int seqLen, int heads, int dimHead,
 											PackedCollection k, PackedCollection v,
 											Receptor<PackedCollection> attentionScores) {

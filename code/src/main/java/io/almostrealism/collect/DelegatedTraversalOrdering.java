@@ -19,7 +19,6 @@ package io.almostrealism.collect;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Delegated;
 
-/** The DelegatedTraversalOrdering class. */
 public class DelegatedTraversalOrdering implements TraversalOrdering, Delegated<TraversalOrdering> {
 	private TraversalOrdering order;
 	private TraversalOrdering delegate;

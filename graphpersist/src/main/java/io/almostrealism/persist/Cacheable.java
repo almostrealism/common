@@ -22,9 +22,7 @@ import java.io.Serializable;
  * @author  Michael Murray
  */
 public interface Cacheable {
-	/** Performs the toCache operation. */
 	Serializable toCache();
 	
-	/** Performs the fromCache operation. */
 	void fromCache(Serializable s);
 }

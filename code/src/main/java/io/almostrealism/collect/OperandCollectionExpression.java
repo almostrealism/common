@@ -18,7 +18,6 @@ package io.almostrealism.collect;
 
 import java.util.List;
 
-/** The OperandCollectionExpression class. */
 public abstract class OperandCollectionExpression extends CollectionExpressionAdapter {
 	protected TraversableExpression[] operands;
 

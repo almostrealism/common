@@ -222,7 +222,6 @@ public class PinholeCamera extends OrthographicCamera implements ProjectionFeatu
 		}
 	}
 	
-	/** Performs the toString operation. */
 	public String toString() {
 		return "PinholeCamera - " +
 				getLocation() + " " +

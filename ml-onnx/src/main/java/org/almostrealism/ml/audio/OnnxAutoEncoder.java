@@ -31,7 +31,6 @@ import java.nio.FloatBuffer;
 import java.util.HashMap;
 import java.util.Map;
 
-/** The OnnxAutoEncoder class. */
 public class OnnxAutoEncoder implements AutoEncoder, OnnxFeatures {
 	public static double MAX_DURATION = 11.0;
 	public static final int SAMPLE_RATE = 44100;
@@ -96,7 +95,6 @@ public class OnnxAutoEncoder implements AutoEncoder, OnnxFeatures {
 				in -> args -> encode(in[0]), input);
 	}
 
-	/** Performs the encode operation. */
 	public PackedCollection encode(PackedCollection audio) {
 		Map<String, OnnxTensor> inputs = new HashMap<>();
 
@@ -144,7 +142,6 @@ public class OnnxAutoEncoder implements AutoEncoder, OnnxFeatures {
 		}
 	}
 
-	/** Performs the decode operation. */
 	public PackedCollection decode(PackedCollection latent) {
 		TraversalPolicy shape = padDimensions(latent.getShape(), 1, 3);
 

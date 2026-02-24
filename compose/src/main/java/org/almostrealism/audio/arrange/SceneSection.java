@@ -24,7 +24,6 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
-/** The SceneSection class. */
 public class SceneSection implements Destroyable {
 	private final int position;
 	private final int length;
@@ -42,7 +41,6 @@ public class SceneSection implements Destroyable {
 
 	public ChannelSection getChannelSection(ChannelInfo channel) { return channels.get(channel.getPatternChannel()); }
 
-	/** Performs the createSection operation. */
 	public static SceneSection createSection(int position, int length, int channels, Supplier<ChannelSection> supply) {
 		return new SceneSection(position, length, IntStream.range(0, channels)
 				.mapToObj(i -> supply.get()).collect(Collectors.toList()));

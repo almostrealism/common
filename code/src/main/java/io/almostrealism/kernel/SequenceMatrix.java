@@ -19,7 +19,6 @@ package io.almostrealism.kernel;
 import io.almostrealism.expression.Constant;
 import io.almostrealism.expression.Expression;
 
-/** The SequenceMatrix class. */
 public class SequenceMatrix<T> extends ExpressionMatrix<T> {
 	private IndexSequence seq;
 
@@ -38,7 +37,6 @@ public class SequenceMatrix<T> extends ExpressionMatrix<T> {
 		this.rowDuplicates = rowDuplicates;
 	}
 
-	/** Performs the populate operation. */
 	protected void populate() {
 		if (seq == null) {
 			throw new UnsupportedOperationException();
@@ -83,7 +81,6 @@ public class SequenceMatrix<T> extends ExpressionMatrix<T> {
 
 	public IndexSequence getSequence() { return seq; }
 
-	/** Performs the sequenceValueAt operation. */
 	protected Number sequenceValueAt(int i, int j) {
 		return seq.valueAt(i * colCount + j);
 	}

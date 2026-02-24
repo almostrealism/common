@@ -18,8 +18,6 @@ package io.almostrealism.cycle;
 
 import java.util.function.Supplier;
 
-/** The Setup interface. */
 public interface Setup {
-	/** Performs the setup operation. */
 	Supplier<Runnable> setup();
 }

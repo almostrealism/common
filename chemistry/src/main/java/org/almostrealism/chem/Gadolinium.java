@@ -8,7 +8,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
-/** The Gadolinium class. */
 public class Gadolinium implements Element {
 	public int getAtomicNumber() { return 64; }
 

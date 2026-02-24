@@ -39,12 +39,10 @@ public class RayField implements DiscreteField {
     private final HashSet<PackedCollection> raysSet = new HashSet<>();
     private final KdTree<PackedCollection> rays = new KdTree.SqrEuclid<>(3, null);
 
-    /** Performs the getClosestRay operation. */
     public KdTree.Entry<PackedCollection> getClosestRay(Vector vertex) {
         return getClosestRays(vertex, 1, false).get(0);
     }
 
-    /** Performs the getClosestRays operation. */
     public List<KdTree.Entry<PackedCollection>> getClosestRays(Vector vertex, int numberOfResults, boolean sorted) {
         return rays.nearestNeighbor(vertex.getData(), numberOfResults, sorted);
     }

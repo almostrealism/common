@@ -8,7 +8,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
-/** The Strontium class. */
 public class Strontium implements Element {
 	public int getAtomicNumber() { return 38; }
 	

@@ -47,7 +47,6 @@ import java.security.spec.PKCS8EncodedKeySpec;
 import java.security.spec.X509EncodedKeySpec;
 import java.util.Scanner;
 
-/** The KMSEngine class. */
 public class KMSEngine {
     private static final SecureRandom srand = new SecureRandom();
 
@@ -91,7 +90,6 @@ public class KMSEngine {
 
     public AWSKMSClient getClient() { return client; }
 
-    /** Performs the next operation. */
     public ByteBuffer next() {
         Charset charset = StandardCharsets.UTF_8;
         CharsetEncoder encoder = charset.newEncoder();
@@ -109,7 +107,6 @@ public class KMSEngine {
         this.str = s;
     }
 
-    /** Performs the doKeys operation. */
     public void doKeys(String keyDir) throws Exception {
         // Generate RSA key pair of 1024 bits
         KeyPair keypair = genKeyPair("RSA", 2048);
@@ -119,7 +116,6 @@ public class KMSEngine {
         KeyPair loaded = loadKeyPair(keyDir, "RSA");
     }
 
-    /** Performs the genKeyPair operation. */
     public KeyPair genKeyPair(String algorithm, int bitLength)
             throws NoSuchAlgorithmException {
         KeyPairGenerator keyGenerator = KeyPairGenerator.getInstance(algorithm);
@@ -127,7 +123,6 @@ public class KMSEngine {
         return keyGenerator.generateKeyPair();
     }
 
-    /** Performs the saveKeyPair operation. */
     public void saveKeyPair(String dir, KeyPair keyPair) throws IOException {
         PrivateKey privateKey = keyPair.getPrivate();
         PublicKey publicKey = keyPair.getPublic();
@@ -145,7 +140,6 @@ public class KMSEngine {
         fos.close();
     }
 
-    /** Performs the loadKeyPair operation. */
     public KeyPair loadKeyPair(String path, String algorithm)
             throws IOException, NoSuchAlgorithmException,
             InvalidKeySpecException {

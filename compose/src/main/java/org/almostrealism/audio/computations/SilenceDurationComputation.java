@@ -28,7 +28,6 @@ import org.almostrealism.hardware.OperationComputationAdapter;
 import java.util.List;
 import java.util.function.Consumer;
 
-/** The SilenceDurationComputation class. */
 public class SilenceDurationComputation extends OperationComputationAdapter<PackedCollection> {
 	public SilenceDurationComputation(Producer<PackedCollection> silenceDuration,
 									  Producer<PackedCollection> silenceSettings,

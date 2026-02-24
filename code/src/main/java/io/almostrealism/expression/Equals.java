@@ -28,7 +28,6 @@ import java.util.OptionalDouble;
 import java.util.OptionalInt;
 import java.util.OptionalLong;
 
-/** The Equals class. */
 public class Equals extends Comparison {
 	public static boolean enableBoundedComparison = true;
 	public static boolean enableConsolidateConstants = true;
@@ -38,7 +37,6 @@ public class Equals extends Comparison {
 		super(left, right);
 	}
 
-	/** Performs the getExpression operation. */
 	public String getExpression(LanguageOperations lang) {
 		return getChildren().get(0).getWrappedExpression(lang) + " == " + getChildren().get(1).getWrappedExpression(lang);
 	}
@@ -95,12 +93,10 @@ public class Equals extends Comparison {
 		return Equals.of(children.get(0), children.get(1));
 	}
 
-	/** Performs the of operation. */
 	public static Expression of(Expression<?> left, Expression<?> right) {
 		return Expression.process(create(left, right));
 	}
 
-	/** Performs the create operation. */
 	protected static Expression create(Expression<?> left, Expression<?> right) {
 		if (left.longValue().isPresent() && right.longValue().isPresent()) {
 			return new BooleanConstant(left.longValue().getAsLong() == right.longValue().getAsLong());
@@ -170,7 +166,6 @@ public class Equals extends Comparison {
 		return new Equals(left, right);
 	}
 
-	/** Performs the extractTerms operation. */
 	protected static List<Expression<?>> extractTerms(Expression<?> exp) {
 		if (exp instanceof Sum) {
 			return ((Sum) exp).getChildren();
@@ -179,7 +174,6 @@ public class Equals extends Comparison {
 		}
 	}
 
-	/** Performs the checkBounds operation. */
 	protected static Expression<?> checkBounds(Expression<?> value, Expression<?> anchor) {
 		OptionalLong a = anchor.longValue();
 		if (!a.isPresent()) return null;

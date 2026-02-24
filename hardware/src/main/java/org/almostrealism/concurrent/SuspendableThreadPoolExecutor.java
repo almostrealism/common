@@ -25,7 +25,6 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.function.ToDoubleFunction;
 
-/** The SuspendableThreadPoolExecutor class. */
 public class SuspendableThreadPoolExecutor extends ThreadPoolExecutor implements ConsoleFeatures {
 	private static long id = 0;
 
@@ -64,17 +63,14 @@ public class SuspendableThreadPoolExecutor extends ThreadPoolExecutor implements
         this.priority = priority;
     }
 
-    /** Performs the suspendTasks operation. */
     public void suspendTasks(double minPriority) {
         setPriorityThreshold(minPriority);
     }
 
-    /** Performs the resumeAllTasks operation. */
     public void resumeAllTasks() {
         setPriorityThreshold(-1.0);
     }
 
-    /** Performs the setPriorityThreshold operation. */
     public void setPriorityThreshold(double minPriority) {
         if (minPriority == minPriorityThreshold) {
             return;
@@ -154,7 +150,6 @@ public class SuspendableThreadPoolExecutor extends ThreadPoolExecutor implements
         super.afterExecute(r, t);
     }
 
-	/** Performs the threadFactory operation. */
 	public static ThreadFactory threadFactory(long id) {
 		return threadFactory(new ThreadGroup("SuspendableThreadPool-" + id) {
 			@Override
@@ -169,7 +164,6 @@ public class SuspendableThreadPoolExecutor extends ThreadPoolExecutor implements
 		});
 	}
 
-	/** Performs the threadFactory operation. */
 	public static ThreadFactory threadFactory(ThreadGroup group) {
 		return new ThreadFactory() {
 			int id = 0;
@@ -181,7 +175,6 @@ public class SuspendableThreadPoolExecutor extends ThreadPoolExecutor implements
 		};
 	}
 
-	/** The TaskAbandonedException class. */
 	protected static class TaskAbandonedException extends RuntimeException {
 		public TaskAbandonedException(String message) { super(message); }
 	}

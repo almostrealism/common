@@ -288,7 +288,6 @@ public class ClaudeCodeClient implements ConsoleFeatures {
 	}
 
 	// Command-line interface
-	/** Performs the main operation. */
 	public static void main(String[] args) throws IOException {
 		String host = "localhost";
 		String ports = "7766";

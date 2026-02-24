@@ -313,7 +313,6 @@ public class LoRALinear implements CellularLayer, Learning, Named, LayerFeatures
 		}
 	}
 
-	/** Performs the setComputeRequirements operation. */
 	public void setComputeRequirements(List<ComputeRequirement> requirements) {
 		this.requirements = requirements;
 		if (delegate instanceof DefaultCellularLayer) {

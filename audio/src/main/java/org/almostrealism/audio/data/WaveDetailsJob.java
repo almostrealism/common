@@ -73,7 +73,6 @@ public class WaveDetailsJob implements Runnable, ConsoleFeatures {
 		}
 	}
 
-	/** Performs the complete operation. */
 	public void complete(WaveDetails details) {
 		future.complete(details);
 	}

@@ -20,24 +20,19 @@ import io.almostrealism.expression.Expression;
 import io.almostrealism.scope.Scope;
 import org.almostrealism.io.TimingMetric;
 
-/** The KernelTraversalProvider interface. */
 public interface KernelTraversalProvider {
 	TimingMetric timing = Scope.console.timing("kernelTraversal");
 
-	/** Performs the generateReordering operation. */
 	Expression<?> generateReordering(Expression<?> expression);
 
-	/** Performs the clearTimes operation. */
 	static void clearTimes() {
 		KernelTraversalProvider.timing.clear();
 	}
 
-	/** Performs the printTimes operation. */
 	static void printTimes() {
 		printTimes(false);
 	}
 
-	/** Performs the printTimes operation. */
 	static void printTimes(boolean verbose) {
 		if (verbose || KernelTraversalProvider.timing.getTotal() > 10) {
 			KernelTraversalProvider.timing.print();

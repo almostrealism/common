@@ -20,7 +20,6 @@ import io.almostrealism.expression.Expression;
 
 import java.util.Arrays;
 
-/** The SubsetTraversalIndexMapping class. */
 public class SubsetTraversalIndexMapping extends SubsetTraversalExpression implements TraversableExpression<Number> {
 	public static boolean enableLogging = false;
 

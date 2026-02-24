@@ -42,7 +42,6 @@ public class SnellAbsorber implements Absorber, VectorFeatures {
 		
 	// Upon absorption energy of incoming rays is added to the Queue as an array
 	// with important information, like angle and energy, so that conservation is correct.
-	/** Performs the absorb operation. */
 	public boolean absorb(Vector Position, Vector Direction, double Energy) {
 		if (!this.volume.inside(v(Position))) return false;
 		

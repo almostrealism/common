@@ -17,7 +17,6 @@
 package org.almostrealism.texture;
 
 // TODO  Move to common
-/** The Noise class. */
 public class Noise implements IntensityMap {
 	private final double scaleU = 10.0;
 	private final double scaleV = 10.0;
@@ -55,7 +54,6 @@ public class Noise implements IntensityMap {
 		}
 	}
 	
-	/** Performs the getIntensity operation. */
 	public double getIntensity(double u, double v, double w) {
 		u = this.scaleU * u;
 		v = this.scaleV * v;
@@ -78,13 +76,11 @@ public class Noise implements IntensityMap {
 		return n;
 	}
 	
-	/** Performs the omega operation. */
 	protected double omega(double i, double j, double k, double x, double y, double z) {
 		return this.omega(x) * this.omega(y) * this.omega(z) *
 					this.gamma((int) i, (int) j, (int) k, x, y, z);
 	}
 	
-	/** Performs the gamma operation. */
 	protected double gamma(int i, int j, int k, double u, double v, double w) {
 		double[] x = this.g[this.phi(i + this.phi(j + this.phi(k)))];
 		return x[0] * u + x[1] * v + x[2] * w;
@@ -92,7 +88,6 @@ public class Noise implements IntensityMap {
 	
 	protected int phi(int t) { return this.p[t % this.p.length]; }
 	
-	/** Performs the omega operation. */
 	protected double omega(double t) {
 		t = Math.abs(t);
 		

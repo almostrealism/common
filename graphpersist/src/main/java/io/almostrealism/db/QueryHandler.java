@@ -18,8 +18,6 @@ package io.almostrealism.db;
 
 import java.util.Hashtable;
 
-/** The QueryHandler interface. */
 public interface QueryHandler {
-	/** Performs the executeQuery operation. */
 	Hashtable executeQuery(Query q);
 }

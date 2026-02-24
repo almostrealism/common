@@ -189,25 +189,21 @@ public class Ray extends PackedCollection implements GeometryFeatures, Cloneable
 					"] [" + coords[3] + ", " + coords[4] + ", " + coords[5] + "]";
 	}
 
-	/** Performs the shape operation. */
 	public static TraversalPolicy shape() {
 		return new TraversalPolicy(6);
 	}
 
-	/** Performs the blank operation. */
 	public static Producer<Ray> blank() {
 		Supplier<Ray> r = Ray::new;
 		IntFunction<MemoryBank<Ray>> b = (IntFunction) Ray::bank;
 		return new DynamicProducerForMemoryData<>(r, b);
 	}
 
-	/** Performs the bank operation. */
 	public static PackedCollection bank(int count) {
 		return new PackedCollection(new TraversalPolicy(count, 6), 1, delegateSpec ->
 				new Ray(delegateSpec.getDelegate(), delegateSpec.getOffset()));
 	}
 
-	/** This method. */
 	@Deprecated
 	public static PackedCollection bank(int count, Supplier<Evaluable<? extends Ray>> source) {
 		PackedCollection bank = Ray.bank(count);
@@ -218,14 +214,12 @@ public class Ray extends PackedCollection implements GeometryFeatures, Cloneable
 		return bank;
 	}
 
-	/** Performs the bank operation. */
 	public static PackedCollection bank(int count, MemoryData delegate, int delegateOffset) {
 		return new PackedCollection(new TraversalPolicy(count, 6), 1, delegateSpec ->
 				new Ray(delegateSpec.getDelegate(), delegateSpec.getOffset()),
 				delegate, delegateOffset);
 	}
 
-	/** Performs the postprocessor operation. */
 	public static BiFunction<MemoryData, Integer, Ray> postprocessor() {
 		return (output, offset) -> new Ray(output, offset);
 	}

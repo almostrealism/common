@@ -52,7 +52,6 @@ public class TremoloAudioFilter implements NoteAudioFilter {
 		return multiply(traverseEach(input), floor(time().divide(duration)).add(1).mod(2));
 	}
 
-	/** The Type enumeration. */
 	public enum Type {
 		GATE, SINE
 	}

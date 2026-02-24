@@ -26,7 +26,6 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
-/** The UniformCollectionExpression class. */
 public class UniformCollectionExpression extends OperandCollectionExpression {
 	private Function<Expression[], Expression<?>> operation;
 	private NonZeroIndexPolicy indexPolicy;
@@ -117,7 +116,6 @@ public class UniformCollectionExpression extends OperandCollectionExpression {
 		return false;
 	}
 
-	/** The NonZeroIndexPolicy enumeration. */
 	public enum NonZeroIndexPolicy {
 		CONJUNCTIVE, DISJUNCTIVE, EXCLUSIVE
 	}

@@ -19,7 +19,6 @@ package org.almostrealism.audio.stream;
 import com.sun.net.httpserver.HttpHandler;
 import io.almostrealism.lifecycle.Destroyable;
 
-/** The HttpAudioHandler interface. */
 public interface HttpAudioHandler extends HttpHandler, Destroyable {
 
 }

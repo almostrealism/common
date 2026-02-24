@@ -55,15 +55,12 @@ import java.util.function.Consumer;
  * @see SetIntervalScale
  */
 public interface Scale<T extends KeyPosition> extends Plural<T> {
-	/** Performs the length operation. */
 	int length();
 
-	/** Performs the of operation. */
 	static <T extends KeyPosition> Scale<T> of(T... notes) {
 		return new StaticScale<>(notes);
 	}
 
-	/** Performs the forEach operation. */
 	default void forEach(Consumer<T> consumer) {
 		for (int i = 0; i < length(); i++) {
 			consumer.accept(valueAt(i));

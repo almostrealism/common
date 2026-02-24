@@ -35,7 +35,6 @@ public class AtomicProtonCloud extends ProtonCloud implements SphericalAbsorber 
 
 	public AtomicProtonCloud(Atom a) { this.atom = a; }
 
-	/** Performs the setPotentialMap operation. */
 	public void setPotentialMap(PotentialMap m) {
 		// TODO Auto-generated method stub
 
@@ -46,7 +45,6 @@ public class AtomicProtonCloud extends ProtonCloud implements SphericalAbsorber 
 		return null;
 	}
 
-	/** Performs the setRadius operation. */
 	public void setRadius(double r) {
 		// TODO Auto-generated method stub
 
@@ -62,13 +60,11 @@ public class AtomicProtonCloud extends ProtonCloud implements SphericalAbsorber 
 		return null;
 	}
 
-	/** Performs the absorb operation. */
 	public boolean absorb(Vector x, Vector p, double energy) {
 		// TODO Auto-generated method stub
 		return false;
 	}
 
-	/** Performs the emit operation. */
 	public Producer<PackedCollection> emit() {
 		// TODO Auto-generated method stub
 		return null;
@@ -84,7 +80,6 @@ public class AtomicProtonCloud extends ProtonCloud implements SphericalAbsorber 
 		return 0;
 	}
 
-	/** Performs the setClock operation. */
 	public void setClock(Clock c) {
 		// TODO Auto-generated method stub
 

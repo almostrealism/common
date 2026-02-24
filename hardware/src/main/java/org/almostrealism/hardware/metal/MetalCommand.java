@@ -47,6 +47,5 @@ package org.almostrealism.hardware.metal;
  */
 @FunctionalInterface
 public interface MetalCommand {
-	/** Performs the run operation. */
 	void run(MTLBuffer offset, MTLBuffer size, MTLCommandQueue queue);
 }

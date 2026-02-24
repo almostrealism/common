@@ -59,7 +59,6 @@ public class DelegatedAudioLine implements AudioLine, Delegated<AudioLine> {
 		return outputDelegate == inputDelegate ? (AudioLine) outputDelegate : null;
 	}
 
-	/** Performs the setDelegate operation. */
 	public void setDelegate(AudioLine delegate) {
 		setInputDelegate(delegate);
 		setOutputDelegate(delegate);
@@ -112,7 +111,6 @@ public class DelegatedAudioLine implements AudioLine, Delegated<AudioLine> {
 	@Override
 	public double getPassthroughLevel() { return passthrough; }
 
-	/** Performs the updateDelegateSettings operation. */
 	protected void updateDelegateSettings() {
 		if (getDelegate() != null) {
 			getDelegate().setPassthroughLevel(getPassthroughLevel());

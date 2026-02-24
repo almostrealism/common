@@ -22,7 +22,6 @@ import io.almostrealism.lang.LanguageOperations;
 
 import java.util.OptionalLong;
 
-/** The Epsilon class. */
 public class Epsilon extends StaticReference<Double> {
 
 	public Epsilon() {

@@ -73,19 +73,16 @@ public class EnvelopeSection implements Supplier<Factor<PackedCollection>>, Enve
 		this.time = time;
 	}
 
-	/** Performs the andThen operation. */
 	public EnvelopeSection andThen(Producer<PackedCollection> start, Factor<PackedCollection> envelope) {
 		return new EnvelopeSection(time, start, this, envelope);
 	}
 
-	/** Performs the andThenDecay operation. */
 	public EnvelopeSection andThenDecay(Producer<PackedCollection> offset,
 										Producer<PackedCollection> decay,
 										Producer<PackedCollection> endVolume) {
 		return andThen(offset, decay(offset, decay, endVolume));
 	}
 
-	/** Performs the andThenRelease operation. */
 	public EnvelopeSection andThenRelease(Producer<PackedCollection> offset,
 										  Producer<PackedCollection> startVolume,
 										  Producer<PackedCollection> release,

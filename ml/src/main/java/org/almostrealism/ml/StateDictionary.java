@@ -92,7 +92,6 @@ public class StateDictionary extends AssetGroup implements Destroyable, ConsoleF
 		this.weights = weights;
 	}
 
-	/** Performs the init operation. */
 	protected void init() throws IOException {
 		this.weights = new HashMap<>();
 		loadWeights();

@@ -193,7 +193,6 @@ public class Scene<T extends ShadableSurface> extends SurfaceList<T> {
 		return l;
 	}
 
-	/** This method. */
 	@Deprecated
 	public static List<Curve<PackedCollection>> combineSurfaces(Curve<PackedCollection> surface,
 										Iterator<Curve<PackedCollection>> otherSurfaces) {
@@ -203,7 +202,6 @@ public class Scene<T extends ShadableSurface> extends SurfaceList<T> {
 		return allSurfaces;
 	}
 
-	/** This method. */
 	@Deprecated
 	public static List<Curve<PackedCollection>> combineSurfaces(Curve<PackedCollection> surface, Iterable<? extends Curve<PackedCollection>> otherSurfaces) {
 		List<Curve<PackedCollection>> allSurfaces = new ArrayList<>();

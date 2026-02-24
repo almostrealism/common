@@ -406,13 +406,10 @@ public abstract class KdTree<T> {
     }
 
     // Override in subclasses
-    /** Performs the pointDist operation. */
     protected abstract double pointDist(double[] p1, double[] p2);
 
-    /** Performs the pointRegionDist operation. */
     protected abstract double pointRegionDist(double[] point, double[] min, double[] max);
 
-    /** Performs the getAxisWeightHint operation. */
     protected double getAxisWeightHint(int i) {
         return 1.0;
     }
@@ -451,12 +448,10 @@ public abstract class KdTree<T> {
             this.weights = weights;
         }
 
-        /** Performs the getAxisWeightHint operation. */
         protected double getAxisWeightHint(int i) {
             return weights[i];
         }
 
-        /** Performs the pointDist operation. */
         protected double pointDist(double[] p1, double[] p2) {
             double d = 0;
 
@@ -470,7 +465,6 @@ public abstract class KdTree<T> {
             return d;
         }
 
-        /** Performs the pointRegionDist operation. */
         protected double pointRegionDist(double[] point, double[] min, double[] max) {
             double d = 0;
 
@@ -500,7 +494,6 @@ public abstract class KdTree<T> {
             super(dimensions, sizeLimit);
         }
 
-        /** Performs the pointDist operation. */
         protected double pointDist(double[] p1, double[] p2) {
             double d = 0;
 
@@ -514,7 +507,6 @@ public abstract class KdTree<T> {
             return d;
         }
 
-        /** Performs the pointRegionDist operation. */
         protected double pointRegionDist(double[] point, double[] min, double[] max) {
             double d = 0;
 
@@ -552,12 +544,10 @@ public abstract class KdTree<T> {
             this.weights = weights;
         }
 
-        /** Performs the getAxisWeightHint operation. */
         protected double getAxisWeightHint(int i) {
             return weights[i];
         }
 
-        /** Performs the pointDist operation. */
         protected double pointDist(double[] p1, double[] p2) {
             double d = 0;
 
@@ -571,7 +561,6 @@ public abstract class KdTree<T> {
             return d;
         }
 
-        /** Performs the pointRegionDist operation. */
         protected double pointRegionDist(double[] point, double[] min, double[] max) {
             double d = 0;
 
@@ -601,7 +590,6 @@ public abstract class KdTree<T> {
             super(dimensions, sizeLimit);
         }
 
-        /** Performs the pointDist operation. */
         protected double pointDist(double[] p1, double[] p2) {
             double d = 0;
 
@@ -615,7 +603,6 @@ public abstract class KdTree<T> {
             return d;
         }
 
-        /** Performs the pointRegionDist operation. */
         protected double pointRegionDist(double[] point, double[] min, double[] max) {
             double d = 0;
 

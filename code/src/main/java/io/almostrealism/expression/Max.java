@@ -25,7 +25,6 @@ import java.util.OptionalDouble;
 import java.util.OptionalLong;
 import java.util.stream.Stream;
 
-/** The Max class. */
 public class Max extends BinaryExpression<Double> {
 	protected Max(Expression<? extends Number> a, Expression<? extends Number> b) {
 		super(Double.class, a, b);
@@ -71,7 +70,6 @@ public class Max extends BinaryExpression<Double> {
 		return Max.of((Expression<Double>) children.get(0), (Expression<Double>) children.get(1));
 	}
 
-	/** Performs the of operation. */
 	public static Expression<Double> of(Expression<Double>... values) {
 		if (values.length == 0) {
 			throw new IllegalArgumentException();

@@ -15,7 +15,6 @@
  */
 package io.almostrealism.collect;
 
-/** The IndexOfPositionExpression class. */
 public class IndexOfPositionExpression extends UniformCollectionExpression {
 	public IndexOfPositionExpression(TraversalPolicy shape, TraversalPolicy shapeOf,
 									 TraversableExpression... operands) {

@@ -112,7 +112,6 @@ public class MemoryDataCacheManager implements Destroyable, ExpressionFeatures {
 	public int getEntrySize() { return entrySize; }
 	public int getMaxEntries() { return maxEntries; }
 
-	/** Performs the getData operation. */
 	protected Bytes getData() {
 		if (data == null) {
 			long total = getMaxEntries() * (long) entrySize;
@@ -123,7 +122,6 @@ public class MemoryDataCacheManager implements Destroyable, ExpressionFeatures {
 		return data;
 	}
 
-	/** Performs the setValue operation. */
 	public void setValue(int index, double data[]) {
 		if (data.length != entrySize) {
 			throw new IllegalArgumentException();
@@ -132,7 +130,6 @@ public class MemoryDataCacheManager implements Destroyable, ExpressionFeatures {
 		getData().setMem(entrySize * index, data);
 	}
 
-	/** Performs the reference operation. */
 	public Expression<?> reference(int entry, Expression<?> index) {
 		if (variable == null) {
 			throw new IllegalArgumentException("Cannot reference series variable when nothing has been cached");
@@ -148,7 +145,6 @@ public class MemoryDataCacheManager implements Destroyable, ExpressionFeatures {
 		data.destroy();
 	}
 
-	/** Performs the create operation. */
 	public static MemoryDataCacheManager create(int entrySize, int maxEntries,
 												Function<MemoryData, ArrayVariable<?>> variableFactory) {
 		return new MemoryDataCacheManager(maxEntries, entrySize, variableFactory);

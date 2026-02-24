@@ -8,7 +8,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
-/** The Manganese class. */
 public class Manganese implements Element {
 	public int getAtomicNumber() { return 25; }
 

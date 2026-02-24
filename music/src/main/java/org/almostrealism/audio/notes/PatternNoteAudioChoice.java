@@ -23,7 +23,6 @@ import org.almostrealism.collect.PackedCollection;
 
 import java.util.function.DoubleFunction;
 
-/** The PatternNoteAudioChoice class. */
 public class PatternNoteAudioChoice implements PatternNoteAudio {
 	public static final long selectionComparisonGranularity = (long) 1e10;
 
@@ -40,7 +39,6 @@ public class PatternNoteAudioChoice implements PatternNoteAudio {
 		this.noteAudioSelection = noteAudioSelection;
 	}
 
-	/** Performs the getDelegate operation. */
 	public PatternNoteAudio getDelegate(DoubleFunction<PatternNoteAudio> audioSelection) {
 		return audioSelection.apply(getNoteAudioSelection());
 	}

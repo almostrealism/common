@@ -8,7 +8,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
-/** The Vanadium class. */
 public class Vanadium implements Element {
 	public int getAtomicNumber() { return 23; }
 	

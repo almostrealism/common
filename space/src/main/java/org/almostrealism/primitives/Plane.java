@@ -23,7 +23,6 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.color.RGB;
 import org.almostrealism.physics.Volume;
 
-/** The Plane class. */
 public class Plane implements Volume<RGB>, CodeFeatures {
 	public static double d = 0.0;
 	
@@ -78,7 +77,6 @@ public class Plane implements Volume<RGB>, CodeFeatures {
 	 */
 	public double[] getOrientation() { return this.up; }
 	
-	/** Performs the getAcross operation. */
 	public double[] getAcross() {
 		if (this.across == null)
 			this.across = new Vector(this.up).crossProduct(new Vector(normal.get().evaluate(), 0)).toArray();

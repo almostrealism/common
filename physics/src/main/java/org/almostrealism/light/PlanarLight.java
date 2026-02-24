@@ -29,7 +29,6 @@ import org.almostrealism.color.SurfaceLight;
 import org.almostrealism.geometry.Locatable;
 import org.almostrealism.geometry.UniformSphericalRandom;
 
-/** The PlanarLight class. */
 public class PlanarLight extends LightBulb implements SurfaceLight, Locatable, VectorFeatures, RGBFeatures {
 	private double w, h;
 	private Vector normal;

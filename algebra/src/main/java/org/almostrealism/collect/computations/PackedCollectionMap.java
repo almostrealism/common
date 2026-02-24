@@ -43,7 +43,6 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
 
-/** This type. */
 @Deprecated
 public class PackedCollectionMap
 		extends CollectionProducerComputationBase

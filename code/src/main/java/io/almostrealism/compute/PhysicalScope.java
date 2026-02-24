@@ -16,7 +16,6 @@
 
 package io.almostrealism.compute;
 
-/** The PhysicalScope enumeration. */
 public enum PhysicalScope {
 	GLOBAL, LOCAL;
 }

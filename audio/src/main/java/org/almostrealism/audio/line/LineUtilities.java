@@ -65,7 +65,6 @@ public class LineUtilities {
 		return getLine(lastFormat, BufferDefaults.defaultBufferSize);
 	}
 
-	/** Performs the frameCount operation. */
 	public static int frameCount(PackedCollection sample) {
 		if (sample.getShape().getDimensions() == 1) {
 			return sample.getShape().length(0);
@@ -74,7 +73,6 @@ public class LineUtilities {
 		}
 	}
 
-	/** Performs the getLine operation. */
 	public static OutputLine getLine(AudioFormat format) {
 		return getLine(format, 1024);
 	}

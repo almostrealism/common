@@ -20,8 +20,6 @@ package org.almostrealism.space;
  * @author Mike Murray
  */
 public interface Length {
-	/** Performs the setMultiplier operation. */
 	void setMultiplier(double m);
-	/** Performs the getMultiplier operation. */
 	double getMultiplier();
 }

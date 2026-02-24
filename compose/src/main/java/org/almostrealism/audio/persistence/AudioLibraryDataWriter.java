@@ -30,7 +30,6 @@ import java.util.concurrent.Executors;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
-/** The AudioLibraryDataWriter class. */
 public class AudioLibraryDataWriter implements ConsoleFeatures {
 	/**
 	 * Number of {@link Audio.WaveDetailData}s to be buffered before
@@ -92,7 +91,6 @@ public class AudioLibraryDataWriter implements ConsoleFeatures {
 
 	public String start() { return start(KeyUtils.generateKey()); }
 
-	/** Performs the start operation. */
 	public String start(String groupKey) {
 		if (this.groupKey != null) {
 			throw new IllegalArgumentException();
@@ -102,7 +100,6 @@ public class AudioLibraryDataWriter implements ConsoleFeatures {
 		return groupKey;
 	}
 
-	/** Performs the reset operation. */
 	public void reset() {
 		reset(true);
 	}
@@ -146,7 +143,6 @@ public class AudioLibraryDataWriter implements ConsoleFeatures {
 		return start(key);
 	}
 
-	/** Performs the bufferData operation. */
 	public void bufferData(Audio.WaveDetailData data) {
 		if (buffer == null || buffer.size() >= RECORD_SIZE) {
 			flushBuffer();
@@ -164,7 +160,6 @@ public class AudioLibraryDataWriter implements ConsoleFeatures {
 		buffer.add(data);
 	}
 
-	/** Performs the startSample operation. */
 	public void startSample() {
 		if (sampleKey != null) {
 			throw new UnsupportedOperationException();
@@ -178,7 +173,6 @@ public class AudioLibraryDataWriter implements ConsoleFeatures {
 		sampleKey = KeyUtils.generateKey();
 	}
 
-	/** Performs the endSample operation. */
 	public void endSample() {
 		if (sampleKey != null) {
 			flushBuffer();
@@ -189,7 +183,6 @@ public class AudioLibraryDataWriter implements ConsoleFeatures {
 		sampleCount = 0;
 	}
 
-	/** Performs the flushBuffer operation. */
 	protected void flushBuffer() {
 		if (buffer == null) {
 			buffer = new ArrayList<>();
@@ -199,7 +192,6 @@ public class AudioLibraryDataWriter implements ConsoleFeatures {
 		}
 	}
 
-	/** Performs the queueRecording operation. */
 	protected void queueRecording(List<Audio.WaveDetailData> buffer) {
 		Audio.WaveRecording.Builder r = Audio.WaveRecording.newBuilder()
 				.setGroupKey(groupKey).setGroupOrderIndex(groupCount++)
@@ -253,7 +245,6 @@ public class AudioLibraryDataWriter implements ConsoleFeatures {
 		return restart(getGroupKeyProvider().get());
 	}
 
-	/** Performs the flushQueue operation. */
 	protected void flushQueue() {
 		List<Audio.WaveRecording> recordings = new ArrayList<>();
 		queue.drainTo(recordings);

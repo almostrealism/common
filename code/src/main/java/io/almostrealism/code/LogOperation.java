@@ -25,7 +25,6 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.function.Supplier;
 
-/** The LogOperation class. */
 public class LogOperation implements Operation, Named {
 	private String name;
 	private Console console;

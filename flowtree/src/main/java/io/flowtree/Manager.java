@@ -25,9 +25,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
 
-/** The Manager class. */
 public class Manager {
-    /** Performs the main operation. */
     public static void main(String[] args) throws IOException {
         List<String> commands = new ArrayList<>();
         List<List<String>> tasks = new ArrayList<>();

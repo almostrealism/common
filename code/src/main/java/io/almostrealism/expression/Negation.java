@@ -19,7 +19,6 @@ package io.almostrealism.expression;
 import java.util.List;
 import java.util.Optional;
 
-/** The Negation class. */
 public class Negation extends UnaryExpression<Boolean> {
 	protected Negation(Expression<Boolean> value) {
 		super(Boolean.class, "!", value);
@@ -45,7 +44,6 @@ public class Negation extends UnaryExpression<Boolean> {
 		return (Expression) Negation.of(children.get(0));
 	}
 
-	/** Performs the of operation. */
 	public static Expression<?> of(Expression<?> value) {
 		Optional<Boolean> c = value.booleanValue();
 		if (c.isPresent()) {

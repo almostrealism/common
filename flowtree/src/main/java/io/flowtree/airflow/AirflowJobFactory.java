@@ -35,7 +35,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
-/** The AirflowJobFactory class. */
 public class AirflowJobFactory extends AbstractHandler implements JobFactory, ConsoleFeatures {
 	private static AirflowJobFactory defaultFactory;
 

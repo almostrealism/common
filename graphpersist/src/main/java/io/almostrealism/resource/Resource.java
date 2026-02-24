@@ -25,29 +25,19 @@ import java.io.InputStream;
  * @author  Michael Murray
  */
 public interface Resource<T extends Object> extends Node {
-	/** Performs the load operation. */
 	void load(IOStreams io) throws IOException;
-	/** Performs the load operation. */
 	void load(byte[] data, long offset, int len);
-	/** Performs the loadFromURI operation. */
 	void loadFromURI() throws IOException;
 	
-	/** Performs the send operation. */
 	void send(IOStreams io) throws IOException;
 	
-	/** Performs the saveLocal operation. */
 	void saveLocal(String file) throws IOException;
 	
-	/** Performs the getURI operation. */
 	String getURI();
-	/** Performs the setURI operation. */
 	void setURI(String uri);
 	
-	/** Performs the getData operation. */
 	T getData();
-	/** Performs the getInputStream operation. */
 	InputStream getInputStream();
 
-	/** Performs the getPermissions operation. */
 	Permissions getPermissions();
 }

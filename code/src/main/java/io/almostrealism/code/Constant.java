@@ -24,7 +24,6 @@ import io.almostrealism.scope.Scope;
 import java.util.Collection;
 import java.util.Collections;
 
-/** The Constant class. */
 public class Constant<T> implements Operator<T> {
 	private T v;
 

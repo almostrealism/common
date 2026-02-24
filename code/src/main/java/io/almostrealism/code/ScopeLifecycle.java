@@ -70,7 +70,6 @@ public interface ScopeLifecycle {
 	 */
 	default void resetArguments() { }
 
-	/** Performs the prepareArguments operation. */
 	static void prepareArguments(Stream<?> potentialLifecycles, ArgumentMap map) {
 		potentialLifecycles
 				.map(p -> p instanceof ScopeLifecycle ? (ScopeLifecycle) p : null)
@@ -78,7 +77,6 @@ public interface ScopeLifecycle {
 				.forEach(sl -> sl.prepareArguments(map));
 	}
 
-	/** Performs the prepareScope operation. */
 	static void prepareScope(Stream<?> potentialLifecycles, ScopeInputManager manager, KernelStructureContext context) {
 		potentialLifecycles
 				.map(p -> p instanceof ScopeLifecycle ? (ScopeLifecycle) p : null)
@@ -86,7 +84,6 @@ public interface ScopeLifecycle {
 				.forEach(sl -> sl.prepareScope(manager, context));
 	}
 
-	/** Performs the resetArguments operation. */
 	static void resetArguments(Stream<?> potentialLifecycles) {
 		potentialLifecycles
 				.map(p -> p instanceof ScopeLifecycle ? (ScopeLifecycle) p : null)

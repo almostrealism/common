@@ -27,6 +27,5 @@ package org.almostrealism.audio.data;
  * @see FileWaveDataProviderTree
  */
 public interface PathResource {
-	/** Performs the getResourcePath operation. */
 	String getResourcePath();
 }

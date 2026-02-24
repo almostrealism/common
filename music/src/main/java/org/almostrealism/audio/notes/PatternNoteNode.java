@@ -24,7 +24,6 @@ import java.util.List;
 import java.util.Objects;
 import java.util.stream.Collectors;
 
-/** The PatternNoteNode class. */
 public class PatternNoteNode implements NoteAudioNode {
 	private NoteAudioChoice choice;
 	private PatternNote note;
@@ -44,14 +43,12 @@ public class PatternNoteNode implements NoteAudioNode {
 		this.name = name;
 	}
 
-	/** Performs the getName operation. */
 	public String getName() {
 		if (name != null) return name;
 		if (choice == null) return null;
 		return choice.getName() + " Note";
 	}
 
-	/** Performs the initChildren operation. */
 	protected void initChildren() {
 		if (children != null) return;
 
@@ -74,7 +71,6 @@ public class PatternNoteNode implements NoteAudioNode {
 				.collect(Collectors.toList());
 	}
 
-	/** Performs the findChoices operation. */
 	protected List<PatternNoteAudioChoice> findChoices(PatternNoteAudio note) {
 		if (note instanceof PatternNote && ((PatternNote) note).getLayers() != null) {
 			return ((PatternNote) note).getLayers().stream()

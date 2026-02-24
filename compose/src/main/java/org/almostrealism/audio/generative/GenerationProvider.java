@@ -20,17 +20,12 @@ import org.almostrealism.audio.notes.NoteAudio;
 
 import java.util.List;
 
-/** The GenerationProvider interface. */
 public interface GenerationProvider {
-	/** Performs the refresh operation. */
 	boolean refresh(String requestId, String generatorId, List<NoteAudio> sources);
 
-	/** Performs the getStatus operation. */
 	GeneratorStatus getStatus(String id);
 
-	/** Performs the generate operation. */
 	List<NoteAudio> generate(String requestId, String generatorId, int count);
 
-	/** Performs the getSampleRate operation. */
 	int getSampleRate();
 }

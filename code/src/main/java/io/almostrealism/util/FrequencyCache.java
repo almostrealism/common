@@ -28,9 +28,7 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-/** The FrequencyCache class. */
 public class FrequencyCache<K, V> {
-	/** The CacheEntry class. */
 	protected class CacheEntry {
 		V value;
 		int frequency;
@@ -42,7 +40,6 @@ public class FrequencyCache<K, V> {
 			this.time = clock;
 		}
 
-		/** Performs the accessed operation. */
 		void accessed() {
 			FrequencyCache.this.count++;
 			this.frequency++;
@@ -76,7 +73,6 @@ public class FrequencyCache<K, V> {
 		this.evictionListener = listener;
 	}
 
-	/** Performs the get operation. */
 	public V get(K key) {
 		CacheEntry entry = cache.get(key);
 		if (entry == null) {
@@ -88,7 +84,6 @@ public class FrequencyCache<K, V> {
 		return entry.value;
 	}
 
-	/** Performs the containsKey operation. */
 	public boolean containsKey(K key) {
 		return cache.containsKey(key);
 	}
@@ -101,7 +96,6 @@ public class FrequencyCache<K, V> {
 
 	public int size() { return reverseCache.size(); }
 
-	/** Performs the put operation. */
 	public void put(K key, V value) {
 		clock++;
 
@@ -117,12 +111,10 @@ public class FrequencyCache<K, V> {
 		}
 	}
 
-	/** Performs the computeIfAbsent operation. */
 	public V computeIfAbsent(K key, Supplier<V> supplier) {
 		return computeIfAbsent(key, k -> supplier.get());
 	}
 
-	/** Performs the computeIfAbsent operation. */
 	public V computeIfAbsent(K key, Function<K, V> supplier) {
 		if (cache.containsKey(key)) {
 			return get(key);
@@ -133,7 +125,6 @@ public class FrequencyCache<K, V> {
 		return value;
 	}
 
-	/** Performs the evict operation. */
 	public void evict(K key) {
 		CacheEntry e = cache.remove(key);
 		if (e == null) return;
@@ -145,7 +136,6 @@ public class FrequencyCache<K, V> {
 		}
 	}
 
-	/** Performs the valuesByFrequency operation. */
 	public Stream<V> valuesByFrequency(IntPredicate frequencyFilter) {
 		return cache.values().stream()
 				.filter(e -> frequencyFilter.test(e.frequency))
@@ -153,19 +143,16 @@ public class FrequencyCache<K, V> {
 				.map(e -> e.value);
 	}
 
-	/** Performs the forEach operation. */
 	public void forEach(BiConsumer<K, V> consumer) {
 		cache.forEach((k, v) -> consumer.accept(k, v.value));
 	}
 
-	/** Performs the confirmCapacity operation. */
 	protected void confirmCapacity() {
 		if (reverseCache.size() < capacity) return;
 
 		prepareCapacity();
 	}
 
-	/** Performs the prepareCapacity operation. */
 	protected synchronized void prepareCapacity() {
 		while (reverseCache.size() >= capacity) {
 			Map.Entry<V, CacheEntry> ent = Collections.min(reverseCache.entrySet(),
@@ -186,7 +173,6 @@ public class FrequencyCache<K, V> {
 		}
 	}
 
-	/** Performs the score operation. */
 	protected double score(CacheEntry entry) {
 		double age = (clock - entry.time) / (double) clock;
 		double f = entry.frequency / (double) count;

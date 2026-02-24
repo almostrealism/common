@@ -20,7 +20,6 @@ import io.almostrealism.expression.Expression;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 
-/** The SpectrumSimplification class. */
 public class SpectrumSimplification implements SimplificationSettings, ConsoleFeatures {
 	public static int depthLimit = 24;
 

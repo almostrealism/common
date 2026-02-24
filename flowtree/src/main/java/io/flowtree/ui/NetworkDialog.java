@@ -312,13 +312,11 @@ public class NetworkDialog extends JPanel {
 		}
 	}
 	
-	/** Performs the updateStatus operation. */
 	public void updateStatus() {
 		if (this.client == null) return;
 		this.statusDetailPane.setText(this.client.getServer().getNodeGroup().getStatus("<br>\n"));
 	}
 	
-	/** Performs the updateServerList operation. */
 	public void updateServerList() {
 		if (this.client == null) return;
 		
@@ -331,7 +329,6 @@ public class NetworkDialog extends JPanel {
 			m.add(m.getSize(), p[i].getInetAddress().getHostAddress() + ":" + p[i].getRemotePort());
 	}
 	
-	/** Performs the updateFields operation. */
 	public void updateFields() {
 		if (this.client == null) return;
 		
@@ -427,7 +424,6 @@ public class NetworkDialog extends JPanel {
 		this.setLockFields(false);
 	}
 	
-	/** Performs the restart operation. */
 	public void restart() {
 		JFrame f = new JFrame("Network...");
 		f.getContentPane().add(new JLabel("Restarting network client..."));

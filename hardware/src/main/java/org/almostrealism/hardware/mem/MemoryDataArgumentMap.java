@@ -226,7 +226,6 @@ public class MemoryDataArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> 
 		if (aggregateData != null) aggregateData.destroy();
 	}
 
-	/** Performs the getAggregateData operation. */
 	protected MemoryData getAggregateData() {
 		if (aggregateLength > 0 && aggregateData == null) {
 			aggregateData = aggregateGenerator.apply(aggregateLength);
@@ -235,7 +234,6 @@ public class MemoryDataArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> 
 		return aggregateData;
 	}
 
-	/** Performs the getAggregateSupplier operation. */
 	protected Producer<MemoryData> getAggregateSupplier() {
 		if (aggregateSupplier == null) {
 			aggregateSupplier = new AggregateProducer();
@@ -244,7 +242,6 @@ public class MemoryDataArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> 
 		return aggregateSupplier;
 	}
 
-	/** Performs the getAggregateArgument operation. */
 	protected ArrayVariable<A> getAggregateArgument(NameProvider p) {
 		if (aggregateArgument == null) {
 			aggregateArgument = delegateProvider.getArgument(p, (Supplier) getAggregateSupplier(), null, -1);
@@ -300,7 +297,6 @@ public class MemoryDataArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> 
 		}
 	}
 
-	/** Performs the isAggregationTarget operation. */
 	public static boolean isAggregationTarget(Producer<?> p) {
 		Evaluable<?> eval = p.get();
 		if (!(eval instanceof Provider)) return false;
@@ -309,7 +305,6 @@ public class MemoryDataArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> 
 		return v instanceof MemoryData && isAggregationTarget((MemoryData) v);
 	}
 
-	/** Performs the isAggregationTarget operation. */
 	public static boolean isAggregationTarget(MemoryData md) {
 		if (!enableArgumentAggregation || md == null || md.getMem() == null)
 			return false;
@@ -330,7 +325,6 @@ public class MemoryDataArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> 
 		return true;
 	}
 
-	/** Performs the create operation. */
 	public static MemoryDataArgumentMap create(ComputeContext<MemoryData> context, OperationMetadata metadata, IntFunction<MemoryData> aggregateGenerator, boolean kernel) {
 		MemoryDataArgumentMap map = new MemoryDataArgumentMap(context, metadata, aggregateGenerator, kernel);
 		map.setDelegateProvider(CollectionScopeInputManager.getInstance(context.getLanguage()));

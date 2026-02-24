@@ -19,7 +19,6 @@ package org.almostrealism.event;
 import java.util.HashMap;
 import java.util.Map;
 
-/** The DefaultEvent class. */
 public class DefaultEvent extends AbstractEvent {
 	private long time;
 	private long duration;
@@ -34,13 +33,11 @@ public class DefaultEvent extends AbstractEvent {
 		setTime(System.currentTimeMillis());
 	}
 
-	/** Performs the getTags operation. */
 	public Map<String, String> getTags() {
 		if (tags == null) tags = new HashMap<>();
 		return tags;
 	}
 
-	/** Performs the hasTags operation. */
 	public boolean hasTags() {
 		return tags != null && !tags.isEmpty();
 	}

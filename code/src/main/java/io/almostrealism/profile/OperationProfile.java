@@ -25,7 +25,6 @@ import org.almostrealism.io.TimingMetric;
 import java.util.Map;
 import java.util.function.Function;
 
-/** The OperationProfile class. */
 public class OperationProfile implements Nameable, ConsoleFeatures {
 	public static boolean enableMetadataId = true;
 
@@ -74,14 +73,12 @@ public class OperationProfile implements Nameable, ConsoleFeatures {
 	@Override
 	public String getName() { return name; }
 
-	/** Performs the initMetric operation. */
 	protected void initMetric() {
 		if (metric == null) {
 			metric = console().timing(name + "_prof" + id++);
 		}
 	}
 
-	/** Performs the setMetricEntries operation. */
 	public void setMetricEntries(Map<String, Double> entries) {
 		initMetric();
 		metric.setEntries(entries);
@@ -89,7 +86,6 @@ public class OperationProfile implements Nameable, ConsoleFeatures {
 
 	public Map<String, Double> getMetricEntries() { return metric == null ? null : metric.getEntries(); }
 
-	/** Performs the setMetricCounts operation. */
 	public void setMetricCounts(Map<String, Integer> counts) {
 		initMetric();
 		metric.setCounts(counts);
@@ -114,7 +110,6 @@ public class OperationProfile implements Nameable, ConsoleFeatures {
 		return getTimingListener();
 	}
 
-	/** Performs the getScopeListener operation. */
 	public ScopeTimingListener getScopeListener(boolean exclusive) {
 		return (root, metadata, stage, nanos) -> { };
 	}
@@ -127,13 +122,11 @@ public class OperationProfile implements Nameable, ConsoleFeatures {
 
 	public String summary() { return metric == null ? "No metric data" : metric.summary(getName()); }
 
-	/** Performs the recordDuration operation. */
 	public void recordDuration(OperationMetadata requesterMetadata, OperationMetadata operationMetadata, long nanos) {
 		initMetric();
 		metric.addEntry(getIdentifier().apply(operationMetadata), nanos);
 	}
 
-	/** Performs the clear operation. */
 	public void clear() {
 		if (metric != null) metric.clear();
 	}
@@ -141,13 +134,11 @@ public class OperationProfile implements Nameable, ConsoleFeatures {
 	@Override
 	public Console console() { return Computation.console; }
 
-	/** Performs the metadataKey operation. */
 	public static String metadataKey(OperationMetadata metadata) {
 		if (metadata == null) return null;
 		return enableMetadataId ? String.valueOf(metadata.getId()) : metadata.getDisplayName();
 	}
 
-	/** Performs the defaultIdentifier operation. */
 	public static String defaultIdentifier(OperationMetadata metadata) {
 		String key = metadata.getShortDescription();
 		if (key == null) key = "<unknown>";
@@ -156,7 +147,6 @@ public class OperationProfile implements Nameable, ConsoleFeatures {
 		return key;
 	}
 
-	/** Performs the appendShape operation. */
 	public static Function<OperationMetadata, String> appendShape(Function<OperationMetadata, String> key) {
 		return metadata -> {
 			String result = key.apply(metadata);
@@ -165,7 +155,6 @@ public class OperationProfile implements Nameable, ConsoleFeatures {
 		};
 	}
 
-	/** Performs the appendContext operation. */
 	public static Function<OperationMetadata, String> appendContext(Function<OperationMetadata, String> key) {
 		return metadata -> {
 			String result = key.apply(metadata);

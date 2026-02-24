@@ -24,30 +24,24 @@ import java.util.OptionalInt;
 import java.util.function.IntSupplier;
 import java.util.function.Supplier;
 
-/** The KernelSeriesMatcher class. */
 public class KernelSeriesMatcher implements ExpressionFeatures {
 
-	/** Performs the defaultProvider operation. */
 	public static KernelSeriesProvider defaultProvider() {
 		return defaultProvider(null);
 	}
 
-	/** Performs the defaultProvider operation. */
 	public static KernelSeriesProvider defaultProvider(OperationMetadata metadata) {
 		return defaultProvider(metadata, OptionalInt.empty());
 	}
 
-	/** Performs the defaultProvider operation. */
 	public static KernelSeriesProvider defaultProvider(int count) {
 		return defaultProvider(null, count);
 	}
 
-	/** Performs the defaultProvider operation. */
 	public static KernelSeriesProvider defaultProvider(OperationMetadata metadata, int count) {
 		return defaultProvider(metadata, OptionalInt.of(count));
 	}
 
-	/** Performs the defaultProvider operation. */
 	public static KernelSeriesProvider defaultProvider(OperationMetadata metadata, OptionalInt count) {
 		return new KernelSeriesProvider() {
 			@Override

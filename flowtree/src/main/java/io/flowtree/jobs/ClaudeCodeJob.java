@@ -914,13 +914,11 @@ public class ClaudeCodeJob extends GitManagedJob {
             setPrompts(prompts.toArray(new String[0]));
         }
 
-        /** Performs the setPrompts operation. */
         public void setPrompts(String... prompts) {
             String code = String.join(PROMPT_SEPARATOR, prompts);
             set("prompts", base64Encode(code));
         }
 
-        /** Performs the getPrompts operation. */
         public List<String> getPrompts() {
             if (prompts == null) {
                 String code = base64Decode(get("prompts"));
@@ -933,7 +931,6 @@ public class ClaudeCodeJob extends GitManagedJob {
             return allowedTools;
         }
 
-        /** Performs the setAllowedTools operation. */
         public void setAllowedTools(String allowedTools) {
             this.allowedTools = allowedTools;
             set("tools", allowedTools);
@@ -948,7 +945,6 @@ public class ClaudeCodeJob extends GitManagedJob {
             return base64Decode(get("workDir"));
         }
 
-        /** Performs the setWorkingDirectory operation. */
         public void setWorkingDirectory(String workingDirectory) {
             set("workDir", base64Encode(workingDirectory));
         }
@@ -990,7 +986,6 @@ public class ClaudeCodeJob extends GitManagedJob {
             return maxTurns;
         }
 
-        /** Performs the setMaxTurns operation. */
         public void setMaxTurns(int maxTurns) {
             this.maxTurns = maxTurns;
             set("maxTurns", String.valueOf(maxTurns));
@@ -1000,7 +995,6 @@ public class ClaudeCodeJob extends GitManagedJob {
             return maxBudgetUsd;
         }
 
-        /** Performs the setMaxBudgetUsd operation. */
         public void setMaxBudgetUsd(double maxBudgetUsd) {
             this.maxBudgetUsd = maxBudgetUsd;
             set("maxBudget", String.valueOf(maxBudgetUsd));
@@ -1047,7 +1041,6 @@ public class ClaudeCodeJob extends GitManagedJob {
             return Boolean.parseBoolean(get("push"));
         }
 
-        /** Performs the setPushToOrigin operation. */
         public void setPushToOrigin(boolean pushToOrigin) {
             set("push", String.valueOf(pushToOrigin));
         }

@@ -21,26 +21,18 @@ import org.almostrealism.audio.notes.NoteAudioProvider;
 
 import java.io.File;
 
-/** The GenerationResourceManager interface. */
 public interface GenerationResourceManager {
-	/** Performs the storeModel operation. */
 	void storeModel(String id, String vers, File file);
 
-	/** Performs the loadModel operation. */
 	void loadModel(String id, File dest);
 
-	/** Performs the isModelAvailable operation. */
 	boolean isModelAvailable(String id);
 
-	/** Performs the isModelVersionAvailable operation. */
 	boolean isModelVersionAvailable(String vers);
 
-	/** Performs the storeAudio operation. */
 	NoteAudioProvider storeAudio(String id, File file);
 
-	/** Performs the storeAudio operation. */
 	NoteAudioProvider storeAudio(String id, WaveData waveData);
 
-	/** Performs the getAudio operation. */
 	NoteAudioProvider getAudio(String id);
 }

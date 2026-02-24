@@ -22,7 +22,6 @@ import javax.swing.*;
  * @author  Michael Murray
  */
 public class Icons {
-	/** Performs the loadImageIcon operation. */
 	public static ImageIcon loadImageIcon(String internalURI) {
 		return new ImageIcon(ImageIcon.class.getResource(internalURI));
 	}

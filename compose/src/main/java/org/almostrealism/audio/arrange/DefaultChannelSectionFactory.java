@@ -44,7 +44,6 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
-/** The DefaultChannelSectionFactory class. */
 public class DefaultChannelSectionFactory implements Setup, Destroyable,
 						CellFeatures, EnvelopeFeatures, OptimizeFactorFeatures {
 	public static boolean enableVolumeRiseFall = true;
@@ -135,7 +134,6 @@ public class DefaultChannelSectionFactory implements Setup, Destroyable,
 		}).collect(Collectors.toList()));
 	}
 
-	/** Performs the createSection operation. */
 	public Section createSection(int position) {
 		if (channel >= channels)
 			throw new IllegalArgumentException();
@@ -163,7 +161,6 @@ public class DefaultChannelSectionFactory implements Setup, Destroyable,
 	@Override
 	public Console console() { return CellFeatures.console; }
 
-	/** The Section class. */
 	public class Section implements ChannelSection {
 		private int position, length;
 		private int channel;

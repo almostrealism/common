@@ -26,21 +26,15 @@ import org.almostrealism.collect.PackedCollection;
 // TODO  Should use AudioProcessor instead
 @Deprecated
 public interface EnvelopeProcessor {
-	/** Performs the setDuration operation. */
 	void setDuration(double duration);
 
-	/** Performs the setAttack operation. */
 	void setAttack(double attack);
 
-	/** Performs the setDecay operation. */
 	void setDecay(double decay);
 
-	/** Performs the setSustain operation. */
 	void setSustain(double sustain);
 
-	/** Performs the setRelease operation. */
 	void setRelease(double release);
 
-	/** Performs the process operation. */
 	void process(PackedCollection input, PackedCollection output);
 }

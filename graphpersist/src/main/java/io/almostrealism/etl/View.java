@@ -8,7 +8,6 @@ import java.sql.Statement;
 import java.util.Collection;
 import java.util.Map;
 
-/** The View class. */
 public abstract class View<V> {
 	private final SQLConnectionProvider sql;
 	private final String table;
@@ -20,13 +19,10 @@ public abstract class View<V> {
 		this.values = values;
 	}
 	
-	/** Performs the encode operation. */
 	public abstract Map<String, String> encode(V value);
 	
-	/** Performs the getPrimaryKeys operation. */
 	public abstract String[] getPrimaryKeys();
 	
-	/** Performs the process operation. */
 	public void process() throws SQLException {
 		try (Connection c = sql.getSQLConnection(); Statement s = c.createStatement()) {
 			for (V v : values) {
@@ -39,7 +35,6 @@ public abstract class View<V> {
 	
 	protected String quote(String s) { return "'" + s.replaceAll("'", "''") + "'"; }
 	
-	/** Performs the getDelete operation. */
 	protected String getDelete(Map<String, String> data) {
 		StringBuffer buf = new StringBuffer();
 		buf.append("delete from ");
@@ -61,7 +56,6 @@ public abstract class View<V> {
 		return buf.toString();
 	}
 	
-	/** Performs the getInsert operation. */
 	protected String getInsert(Map<String, String> data) {
 		String[] names = new String[data.size()];
 		String[] values = new String[data.size()];

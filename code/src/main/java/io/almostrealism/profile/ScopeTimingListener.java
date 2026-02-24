@@ -18,15 +18,12 @@ package io.almostrealism.profile;
 
 import java.util.function.Supplier;
 
-/** This type. */
 @FunctionalInterface
 public interface ScopeTimingListener {
-	/** Performs the recordDuration operation. */
 	default <T> T recordDuration(String stage, Supplier<T> supplier) {
 		return recordDuration(null, stage, supplier);
 	}
 
-	/** Performs the recordDuration operation. */
 	default <T> T recordDuration(OperationMetadata metadata, String stage, Supplier<T> supplier) {
 		long start = System.nanoTime();
 
@@ -37,11 +34,9 @@ public interface ScopeTimingListener {
 		}
 	}
 
-	/** Performs the recordDuration operation. */
 	default void recordDuration(OperationMetadata metadata, String stage, long nanos) {
 		recordDuration(metadata, metadata, stage, nanos);
 	}
 
-	/** Performs the recordDuration operation. */
 	void recordDuration(OperationMetadata root, OperationMetadata metadata, String stage, long nanos);
 }

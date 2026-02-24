@@ -25,7 +25,6 @@ import org.almostrealism.collect.computations.DynamicCollectionProducer;
 
 import java.util.List;
 
-/** The ParameterizedLayerEnvelope class. */
 public class ParameterizedLayerEnvelope implements ParameterizedEnvelope {
 
 	private final ParameterizedEnvelopeLayers parent;
@@ -41,7 +40,6 @@ public class ParameterizedLayerEnvelope implements ParameterizedEnvelope {
 		return new Filter(params, voicing);
 	}
 
-	/** The Filter class. */
 	public class Filter implements NoteAudioFilter, EnvelopeFeatures {
 		private final ParameterSet params;
 		private final ChannelInfo.Voicing voicing;

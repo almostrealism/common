@@ -30,7 +30,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
 
-/** The NativeBuffer class. */
 public class NativeBuffer extends RAM implements Destroyable {
 	private final NativeBufferMemoryProvider provider;
 	private final ByteBuffer rootBuffer;
@@ -58,7 +57,6 @@ public class NativeBuffer extends RAM implements Destroyable {
 
 	public Buffer getBuffer() { return buffer; }
 
-	/** Performs the sync operation. */
 	public void sync() {
 		if (sharedLocation != null) {
 			NIO.syncSharedMemory(rootBuffer, rootBuffer.capacity());
@@ -77,7 +75,6 @@ public class NativeBuffer extends RAM implements Destroyable {
 		return provider.getNumberSize() * (long) buffer.capacity();
 	}
 
-	/** Performs the addDeallocationListener operation. */
 	public void addDeallocationListener(Consumer<NativeBuffer> listener) {
 		deallocationListeners.add(listener);
 	}
@@ -86,7 +83,6 @@ public class NativeBuffer extends RAM implements Destroyable {
 		return deallocationListeners;
 	}
 
-	/** Performs the buffer operation. */
 	protected static ByteBuffer buffer(int bytes, String sharedLocation) {
 		if (sharedLocation != null) {
 			ByteBuffer buffer = NIO.mapSharedMemory(sharedLocation, bytes)
@@ -99,7 +95,6 @@ public class NativeBuffer extends RAM implements Destroyable {
 		}
 	}
 
-	/** Performs the create operation. */
 	public static NativeBuffer create(NativeBufferMemoryProvider provider, int len, String sharedLocation) {
 		if (provider.getPrecision() == Precision.FP16) {
 			ByteBuffer bufferByte = buffer(len * 2, sharedLocation);

@@ -35,7 +35,6 @@ import java.util.Arrays;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
 
-/** The DefaultGradientPropagation class. */
 public class DefaultGradientPropagation implements BackPropagation, Learning, Nameable, CodeFeatures {
 
 	public static boolean verbose = false;
@@ -74,7 +73,6 @@ public class DefaultGradientPropagation implements BackPropagation, Learning, Na
 		Arrays.fill(updates, update);
 	}
 
-	/** Performs the setParameterUpdate operation. */
 	public void setParameterUpdate(int index, ParameterUpdate<PackedCollection> update) {
 		updates[index] = update;
 	}
@@ -164,21 +162,18 @@ public class DefaultGradientPropagation implements BackPropagation, Learning, Na
 		return op;
 	}
 
-	/** Performs the create operation. */
 	public static DefaultGradientPropagation create(String name,
 													Factor<PackedCollection> operator,
 												    Stream<Producer<PackedCollection>> weights) {
 		return create(name, operator, weights.toArray(Producer[]::new));
 	}
 
-	/** Performs the create operation. */
 	public static DefaultGradientPropagation create(String name,
 													Factor<PackedCollection> operator,
 													Producer<PackedCollection>... weights) {
 		return create(name, operator, null, weights);
 	}
 
-	/** Performs the create operation. */
 	public static DefaultGradientPropagation create(String name,
 													Factor<PackedCollection> operator,
 													ParameterUpdate<PackedCollection> update,

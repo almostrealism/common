@@ -192,20 +192,17 @@ public class AbsorptionPlane extends Plane implements Absorber, Fast {
 	@Override
 	public Clock getClock() { return this.clock; }
 	
-	/** Performs the drawImage operation. */
 	public void drawImage(Graphics g) {
 		System.out.println("AbsorptionPlane.drawImage");
 		g.drawImage(GraphicsConverter.convertToAWTImage(getImage()), 0, 0, display);
 	}
 	
-	/** Performs the writeImage operation. */
 	public void writeImage(OutputStream out) throws IOException {
 		if (this.energy == null) {}
 //		TODO  Need to write image
 //		ImageCanvas.writeImage(this.getImage(), out, ImageCanvas.PPMEncoding);
 	}
 	
-	/** Performs the saveImage operation. */
 	public void saveImage(String file) throws IOException {
 		if (this.energy == null) {}
 		
@@ -225,13 +222,11 @@ public class AbsorptionPlane extends Plane implements Absorber, Fast {
 	
 	public boolean imageAvailable() { return this.image != null; }
 	
-	/** Performs the getImage operation. */
 	public RGB[][] getImage() {
 		if (this.image == null) return new RGB[1][0];
 		return this.image;
 	}
 	
-	/** Performs the getEnergyMap operation. */
 	public RGB[][] getEnergyMap() {
 		if (this.energy == null) return new RGB[1][0];
 		
@@ -247,7 +242,6 @@ public class AbsorptionPlane extends Plane implements Absorber, Fast {
 		return image;
 	}
 	
-	/** Performs the getDisplay operation. */
 	public JPanel getDisplay() {
 		if (this.display != null) return this.display;
 		

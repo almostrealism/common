@@ -8,7 +8,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
-/** The Lithium class. */
 public class Lithium implements Element {
 	public int getAtomicNumber() { return 3; }
 

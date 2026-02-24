@@ -109,7 +109,6 @@ public class InputStub<T extends PackedCollection> implements CollectionProducer
 		prepareMetadata();
 	}
 
-	/** Performs the extendDescription operation. */
 	protected String extendDescription(String description, boolean brief) {
 		if (brief) {
 			return "stub(" + description + ")";
@@ -118,7 +117,6 @@ public class InputStub<T extends PackedCollection> implements CollectionProducer
 		}
 	}
 
-	/** Performs the prepareMetadata operation. */
 	protected void prepareMetadata() {
 		if (producer instanceof OperationInfo) {
 			OperationMetadata child = ((OperationInfo) producer).getMetadata();

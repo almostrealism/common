@@ -254,7 +254,6 @@ public class Message implements Externalizable {
 		this.local = false;
 	}
 	
-	/** Performs the setBytes operation. */
 	public void setBytes(byte[] b) {
 		this.sender = b[0];
 		this.receiver = b[1];
@@ -270,7 +269,6 @@ public class Message implements Externalizable {
 		this.local = false;
 	}
 	
-	/** Performs the getBytes operation. */
 	public byte[] getBytes() {
 		byte[] db = new byte[0];
 		if (this.data != null) db = this.data.getBytes();
@@ -288,7 +286,6 @@ public class Message implements Externalizable {
 		return b;
 	}
 	
-	/** Performs the toString operation. */
 	public String toString() {
 		String t = null;
 		

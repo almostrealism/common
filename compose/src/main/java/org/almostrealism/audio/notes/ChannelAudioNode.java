@@ -23,7 +23,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
-/** The ChannelAudioNode class. */
 public class ChannelAudioNode implements NoteAudioNode {
 	private AudioScene<?> scene;
 	private String name;
@@ -63,7 +62,6 @@ public class ChannelAudioNode implements NoteAudioNode {
 				.collect(Collectors.toList());
 	}
 
-	/** Performs the setPatternElements operation. */
 	public void setPatternElements(Map<NoteAudioChoice, List<PatternElement>> elements) {
 		for (NoteAudioNode node : children) {
 			AudioChoiceNode child = (AudioChoiceNode) node;

@@ -78,12 +78,10 @@ public class SQLSelect<V> extends SimpleQuery<ComboPooledDataSource, String[], V
 		return data;
 	}
 
-	/** Performs the prepare operation. */
 	public static <V> SQLSelect<V> prepare(String query, Properties columns, Factory<V> factory) {
 		return new SQLSelect(query, columns, factory);
 	}
 	
-	/** Performs the prepare operation. */
 	public static <V> SQLSelect<V> prepare(String query, InputStream columnMap, Factory<V> factory) throws IOException {
 		Properties fieldMap = new Properties();
 		fieldMap.load(columnMap);

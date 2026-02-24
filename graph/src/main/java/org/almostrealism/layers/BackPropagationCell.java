@@ -26,7 +26,6 @@ import org.almostrealism.hardware.OperationList;
 
 import java.util.function.Supplier;
 
-/** The BackPropagationCell class. */
 public class BackPropagationCell implements Cell<PackedCollection>, Learning, Nameable, CodeFeatures {
 	private String name;
 
@@ -65,12 +64,10 @@ public class BackPropagationCell implements Cell<PackedCollection>, Learning, Na
 		return propagation.propagate(gradient, p(inputSupplier.get()), next);
 	}
 
-	/** Sets the forward input for backpropagation from a fixed collection. */
 	public void setForwardInput(PackedCollection input) {
 		this.inputSupplier = () -> input;
 	}
 
-	/** Sets the forward input supplier for lazy resolution during backpropagation. */
 	public void setForwardInput(Supplier<PackedCollection> inputSupplier) {
 		this.inputSupplier = inputSupplier;
 	}

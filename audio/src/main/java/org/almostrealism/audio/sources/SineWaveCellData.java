@@ -39,7 +39,6 @@ public interface SineWaveCellData extends BaseAudioData {
 		return cp(notePosition().range(shape(1)));
 	}
 
-	/** Performs the setNotePosition operation. */
 	default void setNotePosition(double notePosition) {
 		notePosition().setMem(0, notePosition);
 	}
@@ -48,7 +47,6 @@ public interface SineWaveCellData extends BaseAudioData {
 		return cp(noteLength().range(shape(1)));
 	}
 
-	/** Performs the setNoteLength operation. */
 	default void setNoteLength(double noteLength) {
 		noteLength().setMem(0, noteLength);
 	}
@@ -57,7 +55,6 @@ public interface SineWaveCellData extends BaseAudioData {
 		return cp(phase().range(shape(1)));
 	}
 
-	/** Performs the setPhase operation. */
 	default void setPhase(double phase) {
 		phase().setMem(0, phase);
 	}

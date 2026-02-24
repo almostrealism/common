@@ -46,7 +46,6 @@ import java.util.stream.Collectors;
  */
 public class ProfileAnalyzerCLI {
 
-    /** Performs the main operation. */
     public static void main(String[] args) {
         if (args.length < 2) {
             printUsage();

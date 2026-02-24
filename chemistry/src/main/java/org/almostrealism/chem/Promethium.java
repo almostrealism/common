@@ -8,7 +8,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
-/** The Promethium class. */
 public class Promethium implements Element {
 	public int getAtomicNumber() { return 61; }
 	

@@ -41,11 +41,7 @@ public class LSystem implements CodeFeatures {
 	public static final String PUSH = "push";
 	public static final String POP = "pop";
 	
-	/** This method. */
-	/** The SurfaceFactory interface. */
 	public interface SurfaceFactory { AbstractSurface next(AbstractSurface current); }
-	/** This method. */
-	/** The Statement interface. */
 	public interface Statement { String[] evaluate(Object o); }
 	
 	private final Hashtable rules;
@@ -57,7 +53,6 @@ public class LSystem implements CodeFeatures {
 		this.setAngle(Math.toRadians(30));
 	}
 	
-	/** Performs the setAngle operation. */
 	public void setAngle(double angle) {
 		this.left = new Vector(0.0, 0.0, -angle);
 		this.right = new Vector(0.0, 0.0, angle);
@@ -78,7 +73,6 @@ public class LSystem implements CodeFeatures {
 	public void setSurfaceFactory(SurfaceFactory f) { this.factory = f; }
 	public SurfaceFactory getSurfaceFactory() { return this.factory; }
 	
-	/** Performs the generate operation. */
 	public List generate(List init, int itr) {
 		if (itr == 0) return init;
 		
@@ -105,7 +99,6 @@ public class LSystem implements CodeFeatures {
 		return this.generate(l, --itr);
 	}
 	
-	/** Performs the generate operation. */
 	public ShadableSurface[] generate(Object[] data, Vector d) {
 		List s = new ArrayList();
 		
@@ -200,7 +193,6 @@ public class LSystem implements CodeFeatures {
 		return (ShadableSurface[]) s.toArray(new ShadableSurface[0]);
 	}
 	
-	/** Performs the print operation. */
 	public static String print(Object[] data) {
 		StringBuffer b = new StringBuffer();
 		

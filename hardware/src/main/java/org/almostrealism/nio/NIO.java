@@ -25,7 +25,6 @@ import java.nio.Buffer;
 import java.nio.ByteBuffer;
 import java.nio.file.Files;
 
-/** The NIO class. */
 public class NIO {
 	static {
 		String lib = SystemUtils.isMacOS() ? "libNIO.dylib" : "libNIO.so";
@@ -47,13 +46,9 @@ public class NIO {
 		System.load(tempLibFile.getAbsolutePath());
 	}
 
-	/** Performs the pointerForBuffer operation. */
 	public static native long pointerForBuffer(Buffer b);
 
-	/** Performs the mapSharedMemory operation. */
 	public static native ByteBuffer mapSharedMemory(String filePath, int length);
-	/** Performs the syncSharedMemory operation. */
 	public static native void syncSharedMemory(ByteBuffer buffer, int length);
-	/** Performs the unmapSharedMemory operation. */
 	public static native void unmapSharedMemory(ByteBuffer buffer, int length);
 }

@@ -28,7 +28,6 @@ import java.io.OutputStream;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-/** The BufferedOutputControl class. */
 public class BufferedOutputControl implements HttpAudioHandler, ConsoleFeatures {
 	private final ExecutorService executor;
 	private final BufferedOutputScheduler scheduler;
@@ -43,7 +42,6 @@ public class BufferedOutputControl implements HttpAudioHandler, ConsoleFeatures 
 
 	public BufferedOutputScheduler getScheduler() { return scheduler; }
 
-	/** Performs the submitResume operation. */
 	protected void submitResume() {
 		this.executor.submit(() -> {
 			try {

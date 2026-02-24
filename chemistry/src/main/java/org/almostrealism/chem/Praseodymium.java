@@ -8,7 +8,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
-/** The Praseodymium class. */
 public class Praseodymium implements Element {
 	public int getAtomicNumber() { return 59; }
 	

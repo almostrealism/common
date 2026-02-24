@@ -28,7 +28,6 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.util.Objects;
 
-/** The AudioStreamHandler class. */
 public class AudioStreamHandler implements HttpAudioHandler, CodeFeatures {
 	public static boolean enableByteCache = false;
 	public static double bufferDuration = 1.0;
@@ -50,7 +49,6 @@ public class AudioStreamHandler implements HttpAudioHandler, CodeFeatures {
 		this.processor = audioProcessor;
 	}
 
-	/** Performs the load operation. */
 	public synchronized void load() {
 		if (data != null) {
 			return;
@@ -66,7 +64,6 @@ public class AudioStreamHandler implements HttpAudioHandler, CodeFeatures {
 		}
 	}
 
-	/** Performs the write operation. */
 	protected void write(OutputStream out) throws IOException {
 		int written = 0;
 

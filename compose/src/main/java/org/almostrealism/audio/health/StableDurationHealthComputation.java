@@ -84,7 +84,6 @@ public class StableDurationHealthComputation extends SilenceDurationHealthComput
 
 	public void setMaxDuration(long sec) { this.max = (int) (sec * OutputLine.sampleRate); }
 
-	/** Performs the setTarget operation. */
 	public void setTarget(TemporalCellular target) {
 		if (getTarget() == null) {
 			super.setTarget(target);
@@ -97,7 +96,6 @@ public class StableDurationHealthComputation extends SilenceDurationHealthComput
 		}
 	}
 
-	/** Performs the startTimeoutTrigger operation. */
 	protected void startTimeoutTrigger() {
 		if (timeoutTrigger != null) {
 			try {
@@ -145,7 +143,6 @@ public class StableDurationHealthComputation extends SilenceDurationHealthComput
 		timeoutTrigger.start();
 	}
 
-	/** Performs the endTimeoutTrigger operation. */
 	protected void endTimeoutTrigger() {
 		endTimeoutTrigger = true;
 		abortFlag.setMem(0, 0.0);
@@ -302,13 +299,11 @@ public class StableDurationHealthComputation extends SilenceDurationHealthComput
 	@Override
 	public Console console() { return console; }
 
-	/** Performs the recordGenerationTime operation. */
 	public static void recordGenerationTime(long generatedFrames, long generationTime) {
 		totalGeneratedFrames += generatedFrames;
 		totalGenerationTime += generationTime;
 	}
 
-	/** Performs the getGenerationTimePerSecond operation. */
 	public static double getGenerationTimePerSecond() {
 		double seconds = totalGeneratedFrames / (double) OutputLine.sampleRate;
 		double generationTime = totalGenerationTime / 1000.0;

@@ -220,17 +220,14 @@ public class CompiledModel implements Destroyable, CodeFeatures {
 		Destroyable.destroy(backward);
 	}
 
-	/** Performs the compile operation. */
 	public static CompiledModel compile(Model model) {
 		return compile(model, true, false, null);
 	}
 
-	/** Performs the compile operation. */
 	public static CompiledModel compile(Model model, OperationProfile profile) {
 		return compile(model, true, false, profile);
 	}
 
-	/** Performs the compile operation. */
 	public static CompiledModel compile(Model model,
 										boolean backprop, boolean returnGradient,
 										OperationProfile profile) {
@@ -300,7 +297,6 @@ public class CompiledModel implements Destroyable, CodeFeatures {
 		return compiled;
 	}
 
-	/** The InputManager class. */
 	protected static class InputManager implements Consumer<PackedCollection>,
 			Supplier<DynamicCollectionProducer>, ConsoleFeatures {
 		private final TraversalPolicy shape;
@@ -324,7 +320,6 @@ public class CompiledModel implements Destroyable, CodeFeatures {
 			this.input = input;
 		}
 
-		/** Performs the get operation. */
 		public DynamicCollectionProducer get() {
 			return new DynamicCollectionProducer(shape, args -> input);
 		}

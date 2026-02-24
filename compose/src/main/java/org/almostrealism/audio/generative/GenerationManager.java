@@ -21,7 +21,6 @@ import org.almostrealism.audio.notes.NoteSourceProvider;
 import java.util.ArrayList;
 import java.util.List;
 
-/** The GenerationManager class. */
 public class GenerationManager {
 	private final NoteSourceProvider sourceProvider;
 	private final GenerationProvider generationProvider;
@@ -32,14 +31,12 @@ public class GenerationManager {
 		this.generationProvider = generationProvider;
 	}
 
-	/** Performs the addGenerator operation. */
 	public Generator addGenerator() {
 		Generator g = new Generator();
 		addGenerator(g);
 		return g;
 	}
 
-	/** Performs the addGenerator operation. */
 	public void addGenerator(Generator g) {
 		g.setSourceProvider(sourceProvider);
 		g.setGenerationProvider(generationProvider);
@@ -50,14 +47,12 @@ public class GenerationManager {
 
 	public GenerationProvider getGenerationProvider() { return generationProvider; }
 
-	/** Performs the getSettings operation. */
 	public Settings getSettings() {
 		Settings settings = new Settings();
 		settings.getGenerators().addAll(generators);
 		return settings;
 	}
 
-	/** Performs the setSettings operation. */
 	public void setSettings(Settings settings) {
 		generators = new ArrayList<>();
 		if (settings.getGenerators() != null) generators.addAll(settings.getGenerators());
@@ -65,7 +60,6 @@ public class GenerationManager {
 		generators.forEach(g -> g.setGenerationProvider(generationProvider));
 	}
 
-	/** The Settings class. */
 	public static class Settings {
 		private List<Generator> generators = new ArrayList<>();
 

@@ -23,7 +23,6 @@ import io.almostrealism.expression.StaticReference;
 import java.util.Objects;
 import java.util.OptionalLong;
 
-/** The DefaultIndex class. */
 public class DefaultIndex extends StaticReference<Integer> implements Index {
 	private OptionalLong limit;
 
@@ -76,7 +75,6 @@ public class DefaultIndex extends StaticReference<Integer> implements Index {
 		return indexValues.getIndex(getName());
 	}
 
-	/** Performs the withLimit operation. */
 	public DefaultIndex withLimit(long limit) {
 		return new DefaultIndex(getName(), limit);
 	}

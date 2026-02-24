@@ -43,27 +43,23 @@ public class BufferDefaults {
 
 	public static int defaultBufferSize = batchSize * batchCount;
 
-	/** Performs the padReadPosition operation. */
 	public static int padReadPosition(int readPosition, int bufferSize) {
 		int rp = readPosition + readGroupSensitivityPadding;
 		if (rp > bufferSize) rp = rp - bufferSize;
 		return rp;
 	}
 
-	/** Performs the isSafeGroup operation. */
 	public static boolean isSafeGroup(int writePosition, int readPosition, int groupSize, int bufferSize) {
 		int activeGroup = writePosition / groupSize;
 		int sensitiveGroup = padReadPosition(readPosition, bufferSize) / groupSize;
 		return activeGroup != sensitiveGroup;
 	}
 
-	/** Performs the getGroupDuration operation. */
 	public static double getGroupDuration(int sampleRate, int totalFrames) {
 		int framesPerGroup = totalFrames / groups;
 		return framesPerGroup / (double) sampleRate;
 	}
 
-	/** Performs the logBufferInfo operation. */
 	public static void logBufferInfo(int sampleRate, int totalFrames, Consumer<String> out) {
 		out.accept("Buffer duration is " +
 				NumberFormats.formatNumber(totalFrames / (double) sampleRate) + "s");

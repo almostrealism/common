@@ -18,32 +18,20 @@ package org.almostrealism.audio;
 
 import java.util.function.DoubleConsumer;
 
-/** The AudioPlayer interface. */
 public interface AudioPlayer {
-	/** Performs the play operation. */
 	boolean play();
-	/** Performs the stop operation. */
 	boolean stop();
 
-	/** Performs the isPlaying operation. */
 	boolean isPlaying();
-	/** Performs the isReady operation. */
 	boolean isReady();
 
-	/** Performs the setVolume operation. */
 	void setVolume(double volume);
-	/** Performs the getVolume operation. */
 	double getVolume();
 
-	/** Performs the seek operation. */
 	void seek(double time);
-	/** Performs the getCurrentTime operation. */
 	double getCurrentTime();
-	/** Performs the getTotalDuration operation. */
 	double getTotalDuration();
-	/** Performs the addTimeListener operation. */
 	void addTimeListener(DoubleConsumer listener);
 
-	/** Performs the destroy operation. */
 	void destroy();
 }

@@ -16,7 +16,6 @@
 
 package io.almostrealism.expression;
 
-/** The ExpressionException class. */
 public class ExpressionException extends RuntimeException {
 	private int depth;
 	private long nodeCount;

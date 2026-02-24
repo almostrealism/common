@@ -21,7 +21,6 @@ import org.almostrealism.collect.PackedCollection;
 
 import java.util.function.Supplier;
 
-/** The RunningAverageCell class. */
 public class RunningAverageCell extends CollectionCachedStateCell {
 	private double total;
 	private int pushes;

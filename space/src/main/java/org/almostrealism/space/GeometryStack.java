@@ -35,7 +35,6 @@ public class GeometryStack extends BasicGeometry {
 		stack.push(this);
 	}
 	
-	/** Performs the pop operation. */
 	public void pop() {
 		if (stack.peek() == this)
 			throw new EmptyStackException();
@@ -54,7 +53,6 @@ public class GeometryStack extends BasicGeometry {
 		this.transformCurrent = false;
 	}
 	
-	/** Performs the push operation. */
 	public void push(BasicGeometry g) {
 		this.stack.push(g);
 		

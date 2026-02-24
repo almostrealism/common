@@ -23,7 +23,6 @@ import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
-/** The ChordPositionFunction class. */
 public class ChordPositionFunction {
 	public static final int MAX_CHORD_DEPTH = 9;
 
@@ -43,19 +42,16 @@ public class ChordPositionFunction {
 		this.scalePositions = scalePositions;
 	}
 
-	/** Performs the apply operation. */
 	public double apply(ParameterSet params, double position, double scale, int depth) {
 		return scalePositions.get(depth).applyPositive(params, position, scale);
 	}
 
-	/** Performs the applyAll operation. */
 	public List<Double> applyAll(ParameterSet params, double position, double scale, int depth) {
 		return IntStream.range(0, depth)
 				.mapToObj(i -> apply(params, position, scale, i))
 				.collect(Collectors.toList());
 	}
 
-	/** Performs the random operation. */
 	public static ChordPositionFunction random() {
 		return new ChordPositionFunction(IntStream.range(0, MAX_CHORD_DEPTH)
 				.mapToObj(i -> ParameterizedPositionFunction.random())

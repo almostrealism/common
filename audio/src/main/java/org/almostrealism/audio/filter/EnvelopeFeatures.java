@@ -45,17 +45,14 @@ import org.almostrealism.collect.PackedCollection;
  * @see SamplingFeatures
  */
 public interface EnvelopeFeatures extends SamplingFeatures {
-	/** Performs the volume operation. */
 	default Factor<PackedCollection> volume(Producer<PackedCollection> volume) {
 		return in -> multiply(in, volume);
 	}
 
-	/** Performs the envelope operation. */
 	default EnvelopeSection envelope(Factor<PackedCollection> envelope) {
 		return new EnvelopeSection(() -> time(), envelope);
 	}
 
-	/** Performs the envelope operation. */
 	default EnvelopeSection envelope(Producer<PackedCollection> duration,
 									 Producer<PackedCollection> attack,
 									 Producer<PackedCollection> decay,
@@ -73,12 +70,10 @@ public interface EnvelopeFeatures extends SamplingFeatures {
 				.andThenRelease(duration, sustain, release, c(0.0));
 	}
 
-	/** Performs the sustain operation. */
 	default Factor<PackedCollection> sustain(Producer<PackedCollection> volume) {
 		return in -> multiply(in, volume);
 	}
 
-	/** Performs the linear operation. */
 	default Factor<PackedCollection> linear(Producer<PackedCollection> offset,
 											    Producer<PackedCollection> duration,
 												Producer<PackedCollection> startVolume,
@@ -93,19 +88,16 @@ public interface EnvelopeFeatures extends SamplingFeatures {
 		};
 	}
 
-	/** Performs the attack operation. */
 	default Factor<PackedCollection> attack(Producer<PackedCollection> attack) {
 		return in -> multiply(in, min(c(1.0), divide(time(), attack)));
 	}
 
-	/** Performs the decay operation. */
 	default Factor<PackedCollection> decay(Producer<PackedCollection> offset,
 											  Producer<PackedCollection> decay,
 											  Producer<PackedCollection> endVolume) {
 		return linear(offset, decay, c(1.0), endVolume);
 	}
 
-	/** Performs the release operation. */
 	default Factor<PackedCollection> release(Producer<PackedCollection> offset,
 											  Producer<PackedCollection> startVolume,
 											  Producer<PackedCollection> release,

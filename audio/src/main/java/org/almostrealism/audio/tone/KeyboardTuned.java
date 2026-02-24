@@ -27,6 +27,5 @@ package org.almostrealism.audio.tone;
  * @see DefaultKeyboardTuning
  */
 public interface KeyboardTuned {
-	/** Performs the setTuning operation. */
 	void setTuning(KeyboardTuning tuning);
 }

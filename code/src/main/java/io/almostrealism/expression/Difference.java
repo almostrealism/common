@@ -27,7 +27,6 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
-/** The Difference class. */
 public class Difference<T extends Number> extends NAryExpression<T> {
 	public static boolean enableFactorySimplification = true;
 
@@ -83,7 +82,6 @@ public class Difference<T extends Number> extends NAryExpression<T> {
 		return Difference.of(children.toArray(new Expression[0]));
 	}
 
-	/** Performs the of operation. */
 	public static <T> Expression<T> of(Expression... values) {
 		if (values.length == 0) throw new IllegalArgumentException();
 		if (!enableFactorySimplification) return new Difference(values);

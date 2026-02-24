@@ -21,7 +21,6 @@ import io.almostrealism.scope.Variable;
 
 import java.util.function.Supplier;
 
-/** The OutputVariablePreservationArgumentMap class. */
 public class OutputVariablePreservationArgumentMap<S, A> extends SupplierArgumentMap<S, A> {
 	/**
 	 * If the provided key is a {@link Computation}, reuse the {@link Variable} it

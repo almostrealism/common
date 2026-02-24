@@ -27,7 +27,6 @@ import io.almostrealism.lang.LanguageOperations;
 import java.util.OptionalDouble;
 import java.util.OptionalLong;
 
-/** The DoubleConstant class. */
 public class DoubleConstant extends Constant<Double> {
 	private double value;
 

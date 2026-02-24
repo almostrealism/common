@@ -58,7 +58,6 @@ import java.util.function.DoubleUnaryOperator;
 public enum NoteDurationStrategy implements ConsoleFeatures {
 	NONE, FIXED, NO_OVERLAP;
 
-	/** Performs the getLength operation. */
 	public double getLength(DoubleUnaryOperator timeForDuration,
 							double position, double nextPosition,
 							double originalDurationSeconds, double durationSelection) {

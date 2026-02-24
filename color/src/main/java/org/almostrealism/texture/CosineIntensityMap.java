@@ -16,7 +16,6 @@
 
 package org.almostrealism.texture;
 
-/** The CosineIntensityMap class. */
 public class CosineIntensityMap implements IntensityMap {
 	private final double alpha;
 	private final double beta;
@@ -41,7 +40,6 @@ public class CosineIntensityMap implements IntensityMap {
 	public void setIntensityMap(IntensityMap map) { this.map = map; }
 	public IntensityMap getIntensityMap() { return this.map; }
 	
-	/** Performs the getIntensity operation. */
 	public double getIntensity(double u, double v, double w) {
 		double z = this.map.getIntensity(this.tau * u, this.tau * v, this.tau * w);
 		double t = 1 + Math.cos(Math.min(this.alpha * v + this.beta * z, 2.0 * Math.PI));

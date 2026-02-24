@@ -9,7 +9,6 @@ import org.slf4j.LoggerFactory;
 import java.io.File;
 import java.io.IOException;
 
-/** The WebServerNode class. */
 public class WebServerNode extends Node {
     private final SimpleWebServer httpd;
 
@@ -18,7 +17,6 @@ public class WebServerNode extends Node {
         this.httpd = new SimpleWebServer("localhost", 80, new File(dir), false);
     }
 
-    /** Performs the start operation. */
     public Node start() {
         try {
             this.httpd.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false);

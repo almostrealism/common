@@ -16,17 +16,12 @@
 
 package org.almostrealism.texture;
 
-/** The ImageSource interface. */
 public interface ImageSource {
-	/** Performs the getPixels operation. */
 	int[] getPixels();
 	
-	/** Performs the getWidth operation. */
 	int getWidth();
 	
-	/** Performs the getHeight operation. */
 	int getHeight();
 	
-	/** Performs the isAlpha operation. */
 	boolean isAlpha();
 }

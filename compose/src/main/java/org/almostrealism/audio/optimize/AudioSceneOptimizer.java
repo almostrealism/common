@@ -63,7 +63,6 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
-/** The AudioSceneOptimizer class. */
 public class AudioSceneOptimizer extends AudioPopulationOptimizer<TemporalCellular> {
 	public static final String POPULATION_FILE = SystemUtils.getLocalDestination("population.json");
 
@@ -139,18 +138,15 @@ public class AudioSceneOptimizer extends AudioPopulationOptimizer<TemporalCellul
 		population = null;
 	}
 
-	/** Performs the build operation. */
 	public static AudioSceneOptimizer build(AudioScene<?> scene, int cycles) {
 		return build(() -> scene.getGenome()::random, scene, cycles);
 	}
 
-	/** Performs the build operation. */
 	public static AudioSceneOptimizer build(Supplier<Supplier<Genome<PackedCollection>>> generator,
 											AudioScene<?> scene, int cycles) {
 		return new AudioSceneOptimizer(scene, () -> defaultBreeder(breederPerturbation), generator, cycles);
 	}
 
-	/** Performs the defaultBreeder operation. */
 	public static GenomeBreeder<PackedCollection> defaultBreeder(double magnitude) {
 		return (g1, g2) -> {
 			PackedCollection a = ((ProjectedGenome) g1).getParameters();
@@ -168,7 +164,6 @@ public class AudioSceneOptimizer extends AudioPopulationOptimizer<TemporalCellul
 		};
 	}
 
-	/** Performs the setFeatureLevel operation. */
 	public static void setFeatureLevel(int featureLevel) {
 		PatternElementFactory.enableVolumeEnvelope = featureLevel > 0;
 		PatternElementFactory.enableFilterEnvelope = featureLevel > 0;
@@ -195,7 +190,6 @@ public class AudioSceneOptimizer extends AudioPopulationOptimizer<TemporalCellul
 		}
 	}
 
-	/** Performs the setVerbosity operation. */
 	public static OperationProfileNode setVerbosity(int verbosity, boolean enableProfile) {
 		// Verbosity level -1
 		enableBreeding = verbosity < 0;
@@ -267,7 +261,6 @@ public class AudioSceneOptimizer extends AudioPopulationOptimizer<TemporalCellul
 		}
 	}
 
-	/** Performs the run operation. */
 	public static void run(OperationProfileNode profile) {
 		try {
 			AudioScene<?> scene = createScene();
@@ -290,7 +283,6 @@ public class AudioSceneOptimizer extends AudioPopulationOptimizer<TemporalCellul
 		}
 	}
 
-	/** Performs the createScene operation. */
 	public static AudioScene<?> createScene() {
 		double bpm = 120.0;
 		int sourceCount = AudioScene.DEFAULT_SOURCE_COUNT;

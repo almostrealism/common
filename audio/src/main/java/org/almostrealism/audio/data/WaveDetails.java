@@ -171,7 +171,6 @@ public class WaveDetails implements CodeFeatures, Node {
 		return freqData;
 	}
 
-	/** Performs the getFreqData operation. */
 	public PackedCollection getFreqData(int channel) {
 		return getFreqData().get(channel, shape(getFreqFrameCount(), getFreqBinCount(), 1));
 	}
@@ -220,7 +219,6 @@ public class WaveDetails implements CodeFeatures, Node {
 		this.featureData = featureData;
 	}
 
-	/** Performs the getFeatureData operation. */
 	public PackedCollection getFeatureData(boolean transpose) {
 		if (transpose) {
 			return featureData.transpose();
@@ -229,7 +227,6 @@ public class WaveDetails implements CodeFeatures, Node {
 		}
 	}
 
-	/** Performs the getValidFeatureFrameCount operation. */
 	public int getValidFeatureFrameCount() {
 		double duration = (double) getFrameCount() / (double) getSampleRate();
 		int limit = (int) Math.ceil(duration * getFeatureSampleRate());
@@ -264,7 +261,6 @@ public class WaveDetails implements CodeFeatures, Node {
 				.magnitude()).get());
 	}
 
-	/** Performs the differenceSimilarity operation. */
 	public static double differenceSimilarity(PackedCollection a, PackedCollection b) {
 		if (a.getShape().getDimensions() != 2 && a.getShape().getDimensions() != 3) {
 			throw new IllegalArgumentException();

@@ -186,14 +186,12 @@ public class WaveOutput implements Lifecycle, Destroyable, CodeFeatures {
 		initChannelWriters();
 	}
 
-	/** Performs the initChannelWriters operation. */
 	protected void initChannelWriters() {
 		this.channels = IntStream.range(0, getChannelCount())
 							.mapToObj(Writer::new)
 							.collect(Collectors.toList());
 	}
 
-	/** Performs the getCursor operation. */
 	public PackedCollection getCursor(int channel) {
 		return channels.get(channel).getCursor();
 	}
@@ -214,22 +212,18 @@ public class WaveOutput implements Lifecycle, Destroyable, CodeFeatures {
 				.min().orElse(0);
 	}
 
-	/** Performs the getWriter operation. */
 	public Receptor<PackedCollection> getWriter(int channel) {
 		return channels.get(channel);
 	}
 
-	/** Performs the getWriterCell operation. */
 	public ReceptorCell<PackedCollection> getWriterCell(int channel) {
 		return new ReceptorCell<>(getWriter(channel));
 	}
 
-	/** Performs the getChannelData operation. */
 	public CollectionProducer getChannelData(int channel) {
 		return channel < data.size() ? data.get(channel) : null;
 	}
 
-	/** Performs the export operation. */
 	public Supplier<Runnable> export(int channel, PackedCollection destination) {
 		TraversalPolicy shape = shape(getChannelData(channel));
 		int len = destination.getMemLength();
@@ -240,7 +234,6 @@ public class WaveOutput implements Lifecycle, Destroyable, CodeFeatures {
 		return new MemoryDataCopy("WaveOutput Export", d::evaluate, () -> destination, len);
 	}
 
-	/** Performs the write operation. */
 	public Supplier<Runnable> write() {
 		// TODO  Write frames in larger batches than 1
 		return () -> {
@@ -299,7 +292,6 @@ public class WaveOutput implements Lifecycle, Destroyable, CodeFeatures {
 		};
 	}
 
-	/** Performs the writeCsv operation. */
 	public Supplier<Runnable> writeCsv(int channel, File file) {
 		return () -> {
 			Evaluable<PackedCollection> d = getChannelData(channel).get();
@@ -345,7 +337,6 @@ public class WaveOutput implements Lifecycle, Destroyable, CodeFeatures {
 	@Override
 	public Console console() { return CellFeatures.console; }
 
-	/** The Writer class. */
 	protected class Writer implements Receptor<PackedCollection>, Lifecycle, Destroyable {
 		private final int channel;
 		private PackedCollection cursor;

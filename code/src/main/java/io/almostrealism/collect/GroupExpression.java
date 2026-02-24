@@ -24,7 +24,6 @@ import java.util.function.IntFunction;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
-/** The GroupExpression class. */
 public class GroupExpression extends OperandCollectionExpression {
 	private final int memberCount;
 	private final MemberIndexGenerator memberGenerator;
@@ -59,7 +58,6 @@ public class GroupExpression extends OperandCollectionExpression {
 		this.combiner = combiner;
 	}
 
-	/** Performs the getMembers operation. */
 	protected List<Expression[]> getMembers(Expression<?> index) {
 		return IntStream.range(0, getOperands().size())
 				.mapToObj(operand -> {
@@ -80,9 +78,7 @@ public class GroupExpression extends OperandCollectionExpression {
 		return combiner.apply(members);
 	}
 
-	/** The MemberIndexGenerator interface. */
 	public interface MemberIndexGenerator {
-		/** Performs the indexGenerator operation. */
 		TraversableExpression<?> indexGenerator(int memberIndex, int operandIndex);
 	}
 }

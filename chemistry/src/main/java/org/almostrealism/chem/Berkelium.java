@@ -8,7 +8,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
-/** The Berkelium class. */
 public class Berkelium implements Element {
 	public int getAtomicNumber() { return 97; }
 

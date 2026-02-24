@@ -27,6 +27,5 @@ package org.almostrealism.audio.data;
  * @see WaveDataProvider
  */
 public interface DataResource {
-	/** Performs the getIdentifier operation. */
 	String getIdentifier();
 }

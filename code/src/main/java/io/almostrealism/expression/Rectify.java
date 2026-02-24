@@ -16,13 +16,11 @@
 
 package io.almostrealism.expression;
 
-/** The Rectify class. */
 public class Rectify extends Max {
 	protected Rectify(Expression<? extends Number> input) {
 		super(input, input.isFP() ? Constant.of(0.0) : Constant.of(0));
 	}
 
-	/** Performs the of operation. */
 	public static Expression of(Expression input) {
 		if (input.doubleValue().isPresent()) {
 			return new DoubleConstant(Math.max(input.doubleValue().getAsDouble(), 0));

@@ -8,7 +8,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
-/** The Fluorine class. */
 public class Fluorine implements Element {
 	public int getAtomicNumber() { return 9; }
 

@@ -34,25 +34,21 @@ import java.util.HashSet;
  */
 public class PotentialMapHashSet extends HashSet implements PotentialMapSet {
 
-	/** Performs the addPotentialMap operation. */
 	public int addPotentialMap(PotentialMap m, double[] x) {
 		// TODO Auto-generated method stub
 		return 0;
 	}
 
-	/** Performs the removePotentialMaps operation. */
 	public int removePotentialMaps(double[] x, double radius) {
 		// TODO Auto-generated method stub
 		return 0;
 	}
 
-	/** Performs the removePotentialMap operation. */
 	public int removePotentialMap(PotentialMap m) {
 		// TODO Auto-generated method stub
 		return 0;
 	}
 
-	/** Performs the setMaxProximity operation. */
 	public void setMaxProximity(double radius) {
 		// TODO Auto-generated method stub
 
@@ -63,7 +59,6 @@ public class PotentialMapHashSet extends HashSet implements PotentialMapSet {
 		return 0;
 	}
 
-	/** Performs the getPotential operation. */
 	public double getPotential(double[] p) {
 		// TODO Auto-generated method stub
 		return 0;

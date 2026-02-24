@@ -30,7 +30,6 @@ import org.almostrealism.hardware.OperationComputationAdapter;
 import java.util.List;
 import java.util.function.Consumer;
 
-/** The ClipCounter class. */
 public class ClipCounter extends OperationComputationAdapter<PackedCollection> {
 	public ClipCounter(Producer<PackedCollection> clipCount,
 					   Producer<PackedCollection> clipSettings,

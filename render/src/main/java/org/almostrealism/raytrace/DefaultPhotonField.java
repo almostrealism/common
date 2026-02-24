@@ -35,7 +35,6 @@ import java.util.Iterator;
 import java.util.Set;
 
 // TODO  Consider creating a custom list for photon set (tick creates many many double[][]).
-/** The DefaultPhotonField class. */
 public class DefaultPhotonField implements PhotonField {
 	public static double verbose = 0.01;
 	public static boolean checkLength = true;

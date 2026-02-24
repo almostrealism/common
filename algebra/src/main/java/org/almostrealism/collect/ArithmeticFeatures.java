@@ -223,7 +223,6 @@ public interface ArithmeticFeatures extends SlicingFeatures, ExpressionFeatures 
 		}
 	}
 
-	/** Performs the multiply operation. */
 	default CollectionProducer multiply(TraversalPolicy shape, double scale, Evaluable<PackedCollection> a) {
 		return c(shape, a.evaluate().doubleStream().parallel().map(d -> d * scale).toArray());
 	}
@@ -487,7 +486,6 @@ public interface ArithmeticFeatures extends SlicingFeatures, ExpressionFeatures 
 	}
 
 	// Utility methods required for internal use
-	/** Performs the withShortCircuit operation. */
 	default <P extends Producer<PackedCollection>> P withShortCircuit(P producer, Evaluable<PackedCollection> shortCircuit) {
 		if (producer instanceof CollectionProducerComputationBase) {
 			((CollectionProducerComputationBase) producer).setShortCircuit(shortCircuit);
@@ -495,7 +493,6 @@ public interface ArithmeticFeatures extends SlicingFeatures, ExpressionFeatures 
 		return producer;
 	}
 
-	/** Performs the withShortCircuit operation. */
 	default CollectionProducer withShortCircuit(CollectionProducer producer, Evaluable<PackedCollection> shortCircuit) {
 		if (producer instanceof CollectionProducerComputationBase) {
 			((CollectionProducerComputationBase) producer).setShortCircuit(shortCircuit);
@@ -503,7 +500,6 @@ public interface ArithmeticFeatures extends SlicingFeatures, ExpressionFeatures 
 		return producer;
 	}
 
-	/** Performs the checkComputable operation. */
 	static boolean checkComputable(Producer<?> p) {
 		if (p instanceof CollectionProducerComputation || p instanceof CollectionProviderProducer) {
 			return true;

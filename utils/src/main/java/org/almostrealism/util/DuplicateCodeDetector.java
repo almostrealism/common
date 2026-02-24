@@ -181,15 +181,9 @@ public class DuplicateCodeDetector {
 			new String[]{"AudioGenerator.java", "LegacyAudioGenerator.java"}
 	);
 
-	/**
-	 * Pattern to extract type names from extends/implements clauses.
-	 */
 	private static final Pattern EXTENDS_PATTERN = Pattern.compile(
 			"(?:extends|implements)\\s+([\\w,\\s<>?]+?)\\s*(?:\\{|$)");
 
-	/**
-	 * Pattern to extract the simple class/interface name from a type declaration.
-	 */
 	private static final Pattern TYPE_NAME_PATTERN = Pattern.compile(
 			"(?:class|interface|enum)\\s+(\\w+)");
 
@@ -405,11 +399,6 @@ public class DuplicateCodeDetector {
 		return sb.toString();
 	}
 
-	/**
-	 * Extracts the type name and its parent types from a Java source file
-	 * to build an interface/class hierarchy map. Only examines top-level
-	 * type declarations (lines starting with access modifiers).
-	 */
 	private void buildHierarchy(Path file) {
 		try {
 			List<String> rawLines = Files.readAllLines(file);
@@ -454,11 +443,6 @@ public class DuplicateCodeDetector {
 		}
 	}
 
-	/**
-	 * Returns true if the types declared in the two files are related
-	 * through an extends or implements relationship (directly, transitively,
-	 * or as siblings sharing a common ancestor).
-	 */
 	private boolean areRelatedTypes(Path fileA, Path fileB) {
 		String typeA = fileToTypeName.get(fileA);
 		String typeB = fileToTypeName.get(fileB);
@@ -476,9 +460,6 @@ public class DuplicateCodeDetector {
 		return !ancestorsA.isEmpty();
 	}
 
-	/**
-	 * Returns all direct and transitive ancestors of the given type.
-	 */
 	private Set<String> getAllAncestors(String type, Set<String> visited) {
 		Set<String> result = new HashSet<>();
 		if (!visited.add(type)) return result;
@@ -493,10 +474,6 @@ public class DuplicateCodeDetector {
 		return result;
 	}
 
-	/**
-	 * Returns true if {@code ancestor} is a direct or transitive parent
-	 * of {@code descendant} in the type hierarchy.
-	 */
 	private boolean isAncestor(String descendant, String ancestor, Set<String> visited) {
 		if (!visited.add(descendant)) return false;
 

@@ -28,31 +28,20 @@ public class TriangularMeshColorBuffer implements ColorBuffer {
 	private static final double bytemax = Byte.MAX_VALUE;
 	private static final double shortmax = Short.MAX_VALUE;
 	
-	/** The Node class. */
 	protected abstract class Node {
 		int start, end, third;
 		Node left, right;
-		/** Performs the add operation. */
 		abstract void add(int index, short[] uv);
-		/** Performs the get operation. */
 		abstract Node[] get(short[] uv);
-		/** Performs the get operation. */
 		abstract Node[] get(short[] uv, Node n);
-		/** Performs the interpolate operation. */
 		abstract short[] interpolate(Node n, short[] uv);
-		/** Performs the u operation. */
 		abstract double u();
-		/** Performs the v operation. */
 		abstract double v();
-		/** Performs the r operation. */
 		abstract double r();
-		/** Performs the g operation. */
 		abstract double g();
-		/** Performs the b operation. */
 		abstract double b();
 	}
 	
-	/** The ByteNode class. */
 	protected class ByteNode extends Node {
 		public short colorThreshold = 255 * 3;
 		
@@ -84,7 +73,6 @@ public class TriangularMeshColorBuffer implements ColorBuffer {
 			TriangularMeshColorBuffer.this.size++;
 		}
 		
-		/** Performs the add operation. */
 		public void add(int index, short[] uv) {
 			Node[] ns = this.get(uv);
 			ByteNode n = (ByteNode) ns[1];
@@ -124,7 +112,6 @@ public class TriangularMeshColorBuffer implements ColorBuffer {
 			}
 		}
 		
-		/** Performs the get operation. */
 		public Node[] get(short[] uv) {
 			this.wasLeft = v * (uv[0] - pa[0]) / u > uv[1];
 			
@@ -139,7 +126,6 @@ public class TriangularMeshColorBuffer implements ColorBuffer {
 			}
 		}
 		
-		/** Performs the get operation. */
 		public Node[] get(short[] uv, Node n) {
 			if (this.u == 0)
 				this.wasLeft = pa[0] > uv[0];
@@ -157,12 +143,10 @@ public class TriangularMeshColorBuffer implements ColorBuffer {
 			}
 		}
 		
-		/** Performs the interpolate operation. */
 		public short[] interpolate(Node n, short[] uv) {
 			return this.interpolate((ByteNode) n, uv);
 		}
 		
-		/** Performs the interpolate operation. */
 		public short[] interpolate(ByteNode n, short[] uv) {
 			short[] d = {(short) (uv[0] - this.pb[0]),
 							(short) (uv[1] - this.pb[1])};
@@ -202,7 +186,6 @@ public class TriangularMeshColorBuffer implements ColorBuffer {
 		this.clear();
 	}
 	
-	/** Performs the addColor operation. */
 	public void addColor(double u, double v, boolean front, RGB c) {
 		short[] uv = {(short) (u * shortmax), (short) (v * shortmax)};
 		short[] rgb = {(short) (c.getRed() * shortmax),
@@ -218,7 +201,6 @@ public class TriangularMeshColorBuffer implements ColorBuffer {
 			this.back.add(this.coords.size() - 1, uv);
 	}
 	
-	/** Performs the getColorAt operation. */
 	public RGB getColorAt(double u, double v, boolean front) {
 		short[] uv = {(short) (u * shortmax), (short) (v * shortmax)};
 		Node[] n;
@@ -232,7 +214,6 @@ public class TriangularMeshColorBuffer implements ColorBuffer {
 		return new RGB(48, rgb[0] / shortmax, rgb[1] / shortmax, rgb[2] / shortmax);
 	}
 	
-	/** Performs the clear operation. */
 	public void clear() {
 		this.coords.clear();
 		this.colors.clear();
@@ -255,6 +236,5 @@ public class TriangularMeshColorBuffer implements ColorBuffer {
 	}
 
 	public double getScale() { return 1.0; }
-	/** Performs the setScale operation. */
 	public void setScale(double m) { }
 }

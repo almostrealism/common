@@ -8,7 +8,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
-/** The Erbium class. */
 public class Erbium implements Element {
 	public int getAtomicNumber() { return 68; }
 

@@ -8,7 +8,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
-/** The Yttrium class. */
 public class Yttrium implements Element {
 	public int getAtomicNumber() { return 39; }
 	

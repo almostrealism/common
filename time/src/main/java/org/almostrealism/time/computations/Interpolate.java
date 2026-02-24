@@ -248,7 +248,6 @@ public class Interpolate extends CollectionProducerComputationBase {
 		this.applyRate = rate != null;
 	}
 
-	/** Performs the getSeriesValue operation. */
 	protected Expression getSeriesValue(Expression<?> pos) {
 		ArrayVariable<?> var = getArgument(1);
 
@@ -276,7 +275,6 @@ public class Interpolate extends CollectionProducerComputationBase {
 		return getArgument(2).reference(kernel());
 	}
 
-	/** Performs the getRate operation. */
 	protected Expression<Double> getRate() {
 		if (applyRate) {
 			return getArgument(3).valueAt(0);
@@ -368,7 +366,6 @@ public class Interpolate extends CollectionProducerComputationBase {
 		return null;
 	}
 
-	/** Performs the computeShape operation. */
 	protected static TraversalPolicy computeShape(Producer<PackedCollection> series, Producer<PackedCollection> position) {
 		if (enableAtomicShape) {
 			return new TraversalPolicy(1);

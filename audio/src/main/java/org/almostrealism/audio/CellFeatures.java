@@ -116,7 +116,6 @@ import java.util.stream.Stream;
 public interface CellFeatures extends HeredityFeatures, TemporalFeatures, CodeFeatures {
 	Console console = Console.root().child();
 
-	/** Performs the a operation. */
 	default Receptor<PackedCollection> a(Producer<PackedCollection>... destinations) {
 		if (destinations.length == 1) {
 			return protein -> a(1, destinations[0], protein);
@@ -125,36 +124,30 @@ public interface CellFeatures extends HeredityFeatures, TemporalFeatures, CodeFe
 		}
 	}
 
-	/** Performs the silent operation. */
 	default CollectionTemporalCellAdapter silent() {
 		return CollectionTemporalCellAdapter.from(c(0.0));
 	}
 
-	/** Performs the silence operation. */
 	default CellList silence() {
 		CellList cells = new CellList();
 		cells.addRoot(silent());
 		return cells;
 	}
 
-	/** Performs the cells operation. */
 	default CellList cells(Cell<PackedCollection>... cells) {
 		return cells(cells.length, i -> cells[i]);
 	}
 
-	/** Performs the cells operation. */
 	default CellList cells(int count, IntFunction<Cell<PackedCollection>> cells) {
 		CellList c = new CellList();
 		IntStream.range(0, count).mapToObj(cells).forEach(c::addRoot);
 		return c;
 	}
 
-	/** Performs the cells operation. */
 	default CellList cells(CellList... cells) {
 		return all(cells.length, i -> cells[i]);
 	}
 
-	/** Performs the all operation. */
 	default CellList all(int count, IntFunction<CellList> cells) {
 		CellList[] all = new CellList[count];
 		IntStream.range(0, count).forEach(i -> all[i] = cells.apply(i));
@@ -164,7 +157,6 @@ public interface CellFeatures extends HeredityFeatures, TemporalFeatures, CodeFe
 		return result;
 	}
 
-	/** Performs the map operation. */
 	default CellList map(CellList cells, IntFunction<Cell<PackedCollection>> dest) {
 		CellList c = new CellList(cells);
 
@@ -177,7 +169,6 @@ public interface CellFeatures extends HeredityFeatures, TemporalFeatures, CodeFe
 		return c;
 	}
 
-	/** Performs the branch operation. */
 	default CellList[] branch(CellList cells, IntFunction<Cell<PackedCollection>>... dest) {
 		CellList[] c = IntStream.range(0, dest.length).mapToObj(i -> new CellList(cells)).toArray(CellList[]::new);
 
@@ -195,37 +186,30 @@ public interface CellFeatures extends HeredityFeatures, TemporalFeatures, CodeFe
 		return c;
 	}
 
-	/** Performs the w operation. */
 	default CellList w(int channel, WaveData... waves) {
 		return w(channel, (Supplier) PolymorphicAudioData::new, waves);
 	}
 
-	/** Performs the w operation. */
 	default CellList w(int channel, Supplier<PolymorphicAudioData> data, WaveData... waves) {
 		return w(channel, data, null, null, waves);
 	}
 
-	/** Performs the w operation. */
 	default CellList w(Collection<Frequency> frequencies) {
 		return w(PolymorphicAudioData::new, frequencies);
 	}
 
-	/** Performs the w operation. */
 	default CellList w(Supplier<PolymorphicAudioData> data, Collection<Frequency> frequencies) {
 		return w(data, frequencies.stream());
 	}
 
-	/** Performs the w operation. */
 	default CellList w(Frequency... frequencies) {
 		return w(PolymorphicAudioData::new, frequencies);
 	}
 
-	/** Performs the w operation. */
 	default CellList w(Supplier<PolymorphicAudioData> data, Frequency... frequencies) {
 		return w(data, Stream.of(frequencies));
 	}
 
-	/** Performs the w operation. */
 	default CellList w(Supplier<PolymorphicAudioData> data, Stream<Frequency> frequencies) {
 		CellList cells = new CellList();
 		frequencies.map(f -> {
@@ -239,52 +223,42 @@ public interface CellFeatures extends HeredityFeatures, TemporalFeatures, CodeFe
 		return cells;
 	}
 
-	/** Performs the w operation. */
 	default CellList w(int channel, String... path) {
 		return w(channel, Stream.of(path).map(File::new).toArray(File[]::new));
 	}
 
-	/** Performs the w operation. */
 	default CellList w(int channel, Producer<PackedCollection> repeat, String... path) {
 		return w(channel, null, repeat, path);
 	}
 
-	/** Performs the w operation. */
 	default CellList w(int channel, Producer<PackedCollection> offset, Producer<PackedCollection> repeat, String... path) {
 		return w(channel, offset, repeat, Stream.of(path).map(File::new).toArray(File[]::new));
 	}
 
-	/** Performs the w operation. */
 	default CellList w(int channel, File... files) {
 		return w(channel, (Supplier<PolymorphicAudioData>) PolymorphicAudioData::new, files);
 	}
 
-	/** Performs the w operation. */
 	default CellList w(int channel, Producer<PackedCollection> repeat, File... files) {
 		return w(channel, null, repeat, files);
 	}
 
-	/** Performs the w operation. */
 	default CellList w(int channel, Producer<PackedCollection> offset, Producer<PackedCollection> repeat, File... files) {
 		return w(channel, PolymorphicAudioData::new, offset, repeat, files);
 	}
 
-	/** Performs the w operation. */
 	default CellList w(int channel, Producer<PackedCollection> repeat, WaveData... data) {
 		return w(channel, null, repeat, data);
 	}
 
-	/** Performs the w operation. */
 	default CellList w(int channel, Producer<PackedCollection> offset, Producer<PackedCollection> repeat, WaveData... data) {
 		return w(channel, PolymorphicAudioData::new, offset, repeat, data);
 	}
 
-	/** Performs the w operation. */
 	default CellList w(int channel, Supplier<PolymorphicAudioData> data, File... files) {
 		return w(channel, data, null, null, files);
 	}
 
-	/** Performs the w operation. */
 	default CellList w(int channel, Supplier<PolymorphicAudioData> data, Producer<PackedCollection> offset, Producer<PackedCollection> repeat, File... files) {
 		CellList cells = new CellList();
 		Stream.of(files).map(f -> {
@@ -298,7 +272,6 @@ public interface CellFeatures extends HeredityFeatures, TemporalFeatures, CodeFe
 		return cells;
 	}
 
-	/** Performs the w operation. */
 	default CellList w(Supplier<PolymorphicAudioData> data, int sampleRate, int frames,
 					   Producer<PackedCollection> offset,
 					   Producer<PackedCollection> repeat,
@@ -338,7 +311,6 @@ public interface CellFeatures extends HeredityFeatures, TemporalFeatures, CodeFe
 		return cells;
 	}
 
-	/** Performs the w operation. */
 	default CellList w(int channel, Supplier<PolymorphicAudioData> data, Producer<PackedCollection> offset, Producer<PackedCollection> repeat, WaveData... waves) {
 		CellList cells = new CellList();
 		Stream.of(waves)
@@ -347,20 +319,17 @@ public interface CellFeatures extends HeredityFeatures, TemporalFeatures, CodeFe
 		return cells;
 	}
 
-	/** Performs the poly operation. */
 	default CellList poly(int count, Supplier<PolymorphicAudioData> data, IntFunction<CollectionProducer> decision, Frequency... choices) {
 		return poly(count, data, decision, Stream.of(choices)
 				.map(f -> (Function<PolymorphicAudioData, CollectionTemporalCellAdapter>) d -> (CollectionTemporalCellAdapter) w(data, f).get(0)).
 				toArray(Function[]::new));
 	}
 
-	/** Performs the poly operation. */
 	default CellList poly(int count, Supplier<PolymorphicAudioData> data, IntFunction<CollectionProducer> decision,
 						  Function<PolymorphicAudioData, CollectionTemporalCellAdapter>... choices) {
 		return poly(count, i -> data.get(), decision, choices);
 	}
 
-	/** Performs the poly operation. */
 	default CellList poly(int count, IntFunction<PolymorphicAudioData> data, IntFunction<CollectionProducer> decision,
 						  Function<PolymorphicAudioData, CollectionTemporalCellAdapter>... choices) {
 		CellList cells = new CellList();
@@ -368,7 +337,6 @@ public interface CellFeatures extends HeredityFeatures, TemporalFeatures, CodeFe
 		return cells;
 	}
 
-	/** Performs the sum operation. */
 	default CellList sum(CellList cells) {
 		SummationCell sum = new SummationCell();
 		cells.forEach(c -> c.setReceptor(sum));
@@ -378,7 +346,6 @@ public interface CellFeatures extends HeredityFeatures, TemporalFeatures, CodeFe
 		return result;
 	}
 
-	/** Performs the o operation. */
 	default CellList o(int count, IntFunction<File> f) {
 		CellList result = new CellList();
 
@@ -391,7 +358,6 @@ public interface CellFeatures extends HeredityFeatures, TemporalFeatures, CodeFe
 		return result;
 	}
 
-	/** Performs the csv operation. */
 	default CellList csv(CellList cells, IntFunction<File> f) {
 		CellList result = new CellList(cells);
 
@@ -404,7 +370,6 @@ public interface CellFeatures extends HeredityFeatures, TemporalFeatures, CodeFe
 		return result;
 	}
 
-	/** Performs the o operation. */
 	default CellList o(CellList cells, IntFunction<File> f) {
 		CellList result = new CellList(cells);
 
@@ -419,7 +384,6 @@ public interface CellFeatures extends HeredityFeatures, TemporalFeatures, CodeFe
 		return result;
 	}
 
-	/** Performs the om operation. */
 	default CellList om(CellList cells, IntFunction<File> f) {
 		CellList result = new CellList(cells);
 
@@ -438,27 +402,22 @@ public interface CellFeatures extends HeredityFeatures, TemporalFeatures, CodeFe
 		return result;
 	}
 
-	/** Performs the fi operation. */
 	default IntFunction<Cell<PackedCollection>> fi() {
 		return i -> new FilteredCell<>(i().apply(i));
 	}
 
-	/** Performs the i operation. */
 	default IntFunction<Factor<PackedCollection>> i() {
 		return i -> new IdentityFactor<>();
 	}
 
-	/** Performs the fi operation. */
 	default CellList fi(int count) {
 		return f(count, i());
 	}
 
-	/** Performs the fc operation. */
 	default IntFunction<Cell<PackedCollection>> fc(IntFunction<Factor<PackedCollection>> filter) {
 		return i -> new FilteredCell<>(filter.apply(i));
 	}
 
-	/** Performs the f operation. */
 	default CellList f(int count, IntFunction<Factor<PackedCollection>> filter) {
 		CellList layer = new CellList();
 
@@ -469,7 +428,6 @@ public interface CellFeatures extends HeredityFeatures, TemporalFeatures, CodeFe
 		return layer;
 	}
 
-	/** Performs the f operation. */
 	default CellList f(CellList cells, IntFunction<Factor<PackedCollection>> filter) {
 		CellList layer = new CellList(cells);
 		Iterator<Cell<PackedCollection>> itr = cells.iterator();
@@ -485,12 +443,10 @@ public interface CellFeatures extends HeredityFeatures, TemporalFeatures, CodeFe
 		return layer;
 	}
 
-	/** Performs the d operation. */
 	default CellList d(int count, IntFunction<Producer<PackedCollection>> d) {
 		return d(count, d, i -> c(1.0));
 	}
 
-	/** Performs the d operation. */
 	default CellList d(int count,
 					   IntFunction<Producer<PackedCollection>> d,
 					   IntFunction<Producer<PackedCollection>> s) {
@@ -503,39 +459,32 @@ public interface CellFeatures extends HeredityFeatures, TemporalFeatures, CodeFe
 		return result;
 	}
 
-	/** Performs the d operation. */
 	default CellList d(CellList cells, IntFunction<Producer<PackedCollection>> delay) {
 		return d(cells, delay, i -> c(1.0));
 	}
 
-	/** Performs the d operation. */
 	default CellList d(CellList cells,
 					   IntFunction<Producer<PackedCollection>> delay,
 					   IntFunction<Producer<PackedCollection>> scale) {
 		return map(cells, i -> new AdjustableDelayCell(OutputLine.sampleRate, delay.apply(i), scale.apply(i)));
 	}
 
-	/** Performs the m operation. */
 	default CellList m(CellList cells, IntFunction<Cell<PackedCollection>> adapter) {
 		return m(cells, adapter, cells::get, cells.size());
 	}
 
-	/** Performs the m operation. */
 	default CellList m(CellList cells, IntFunction<Cell<PackedCollection>> adapter, IntFunction<Gene<PackedCollection>> transmission) {
 		return m(cells, adapter, cells::get, transmission);
 	}
 
-	/** Performs the mself operation. */
 	default CellList mself(CellList cells, List<Cell<PackedCollection>> adapter, IntFunction<Gene<PackedCollection>> transmission) {
 		return m(cells, adapter, cells, transmission);
 	}
 
-	/** Performs the m operation. */
 	default CellList m(CellList cells, List<Cell<PackedCollection>> adapter, List<Cell<PackedCollection>> destinations) {
 		return m(cells, adapter, destinations, null);
 	}
 
-	/** Performs the m operation. */
 	default CellList m(CellList cells, List<Cell<PackedCollection>> adapter, List<Cell<PackedCollection>> destinations, IntFunction<Gene<PackedCollection>> transmission) {
 		CellList result = m(cells, adapter::get, destinations, transmission);
 
@@ -547,30 +496,25 @@ public interface CellFeatures extends HeredityFeatures, TemporalFeatures, CodeFe
 		return result;
 	}
 
-	/** Performs the mself operation. */
 	default CellList mself(CellList cells, IntFunction<Cell<PackedCollection>> adapter, IntFunction<Gene<PackedCollection>> transmission) {
 		return m(cells, adapter, cells, transmission, fi());
 	}
 
-	/** Performs the mself operation. */
 	default CellList mself(CellList cells, IntFunction<Cell<PackedCollection>> adapter, IntFunction<Gene<PackedCollection>> transmission, IntFunction<Cell<PackedCollection>> passthrough) {
 		return m(cells, adapter, cells, transmission, passthrough);
 	}
 
-	/** Performs the m operation. */
 	default CellList m(CellList cells, IntFunction<Cell<PackedCollection>> adapter,
 					   List<Cell<PackedCollection>> destinations) {
 		return m(cells, adapter, destinations::get, null, null, destinations.size());
 	}
 
-	/** Performs the m operation. */
 	default CellList m(CellList cells, IntFunction<Cell<PackedCollection>> adapter,
 					   List<Cell<PackedCollection>> destinations,
 					   IntFunction<Gene<PackedCollection>> transmission) {
 		return m(cells, adapter, destinations, transmission, null);
 	}
 
-	/** Performs the m operation. */
 	default CellList m(CellList cells, IntFunction<Cell<PackedCollection>> adapter,
 					   List<Cell<PackedCollection>> destinations,
 					   IntFunction<Gene<PackedCollection>> transmission,
@@ -585,13 +529,11 @@ public interface CellFeatures extends HeredityFeatures, TemporalFeatures, CodeFe
 		return result;
 	}
 
-	/** Performs the m operation. */
 	default CellList m(CellList cells, IntFunction<Cell<PackedCollection>> adapter,
 					   IntFunction<Cell<PackedCollection>> destinations, int destinationCount) {
 		return m(cells, adapter, destinations, null, null, destinationCount);
 	}
 
-	/** Performs the m operation. */
 	default CellList m(CellList cells, IntFunction<Cell<PackedCollection>> adapter,
 					   IntFunction<Cell<PackedCollection>> destinations,
 					   IntFunction<Gene<PackedCollection>> transmission) {
@@ -631,7 +573,6 @@ public interface CellFeatures extends HeredityFeatures, TemporalFeatures, CodeFe
 		return cleanLayer == null ? layer : cleanLayer;
 	}
 
-	/** Performs the append operation. */
 	default <T> void append(List<T> dest, T v) {
 		for (T c : dest) {
 			if (c == v) return;
@@ -640,24 +581,20 @@ public interface CellFeatures extends HeredityFeatures, TemporalFeatures, CodeFe
 		dest.add(v);
 	}
 
-	/** Performs the seq operation. */
 	default CellList seq(IntFunction<Producer<PackedCollection>> values, Producer<PackedCollection> duration, int steps) {
 		CellList cells = new CellList();
 		cells.addRoot(new ValueSequenceCell(values, duration, steps));
 		return cells;
 	}
 
-	/** Performs the gr operation. */
 	default CellList gr(CellList cells, double duration, int segments, IntUnaryOperator choices) {
 		return grid(cells, duration, segments, (IntToDoubleFunction) i -> (2.0 * choices.applyAsInt(i) + 1) / (2.0 * cells.size()));
 	}
 
-	/** Performs the grid operation. */
 	default CellList grid(CellList cells, double duration, int segments, IntToDoubleFunction choices) {
 		return grid(cells, duration, segments, (IntFunction<Producer<PackedCollection>>) i -> c(choices.applyAsDouble(i)));
 	}
 
-	/** Performs the grid operation. */
 	default CellList grid(CellList cells, double duration, int segments, IntFunction<Producer<PackedCollection>> choices) {
 		PackedCollection out = new PackedCollection(1);
 		List<Function<PolymorphicAudioData, ? extends CollectionTemporalCellAdapter>> cellChoices =
@@ -684,7 +621,6 @@ public interface CellFeatures extends HeredityFeatures, TemporalFeatures, CodeFe
 		return result;
 	}
 
-	/** Performs the buffer operation. */
 	default TemporalRunner buffer(CellList cells, Producer<PackedCollection> destination) {
 		TraversalPolicy shape = shape(destination);
 
@@ -702,7 +638,6 @@ public interface CellFeatures extends HeredityFeatures, TemporalFeatures, CodeFe
 		return cells.buffer(shape.getTotalSize());
 	}
 
-	/** Performs the export operation. */
 	default Supplier<Runnable> export(CellList cells, PackedCollection wavs) {
 		if (wavs.getCount() != cells.size()) throw new IllegalArgumentException("Destination count must match cell count");
 
@@ -720,7 +655,6 @@ public interface CellFeatures extends HeredityFeatures, TemporalFeatures, CodeFe
 		return export;
 	}
 
-	/** Performs the mixdown operation. */
 	default CellList mixdown(CellList cells, double seconds) {
 		List<WaveOutput> outputs = IntStream.range(0, cells.size())
 				.mapToObj(i -> new WaveOutput()).toList();
@@ -751,62 +685,50 @@ public interface CellFeatures extends HeredityFeatures, TemporalFeatures, CodeFe
 		return newCells;
 	}
 
-	/** Performs the min operation. */
 	default Supplier<Runnable> min(Temporal t, double minutes) {
 		return sec(t, minutes * 60);
 	}
 
-	/** Performs the sec operation. */
 	default Supplier<Runnable> sec(Temporal t, double seconds) {
 		return iter(t, (int) (seconds * OutputLine.sampleRate));
 	}
 
-	/** Performs the sec operation. */
 	default Supplier<Runnable> sec(Temporal t, double seconds, boolean resetAfter) {
 		return iter(t, (int) (seconds * OutputLine.sampleRate), resetAfter);
 	}
 
-	/** Performs the sf operation. */
 	default ScaleFactor sf(double scale) {
 		return new ScaleFactor(scale);
 	}
 
-	/** Performs the hp operation. */
 	default AudioPassFilter hp(double frequency, double resonance) {
 		return hp(OutputLine.sampleRate, frequency, resonance);
 	}
 
-	/** Performs the hp operation. */
 	default AudioPassFilter hp(int sampleRate, double frequency, double resonance) {
 		return hp(sampleRate, c(frequency), scalar(resonance));
 	}
 
-	/** Performs the hp operation. */
 	default <T extends PackedCollection> AudioPassFilter hp(Producer<T> frequency, Producer<T> resonance) {
 		return hp(OutputLine.sampleRate, frequency, resonance);
 	}
 
-	/** Performs the hp operation. */
 	default <T extends PackedCollection> AudioPassFilter hp(int sampleRate, Producer<T> frequency, Producer<T> resonance) {
 		return new AudioPassFilter(sampleRate, (Producer) frequency, (Producer) resonance, true);
 	}
 
-	/** Performs the lp operation. */
 	default AudioPassFilter lp(double frequency, double resonance) {
 		return lp(OutputLine.sampleRate, frequency, resonance);
 	}
 
-	/** Performs the lp operation. */
 	default AudioPassFilter lp(int sampleRate, double frequency, double resonance) {
 		return lp(sampleRate, c(frequency), scalar(resonance));
 	}
 
-	/** Performs the lp operation. */
 	default <T extends PackedCollection> AudioPassFilter lp(Producer<T> frequency, Producer<T> resonance) {
 		return lp(OutputLine.sampleRate, frequency, resonance);
 	}
 
-	/** Performs the lp operation. */
 	default <T extends PackedCollection> AudioPassFilter lp(int sampleRate, Producer<T> frequency, Producer<T> resonance) {
 		return new AudioPassFilter(sampleRate, (Producer) frequency, (Producer) resonance, false);
 	}

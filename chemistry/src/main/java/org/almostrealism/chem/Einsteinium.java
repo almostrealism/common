@@ -8,7 +8,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
-/** The Einsteinium class. */
 public class Einsteinium implements Element {
 	public int getAtomicNumber() { return 99; }
 

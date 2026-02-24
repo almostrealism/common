@@ -100,7 +100,6 @@ import io.almostrealism.scope.ArrayVariable;
  * @see NativeComputeContext
  */
 public interface JNIMemoryAccessor {
-	/** Performs the copyInline operation. */
 	default String copyInline(LanguageOperations lang, int index, ArrayVariable<?> variable, boolean write) {
 		String o = "((" + lang.getPrecision().typeName() + " *) argArr[" + index + "])";
 		String v = new InstanceReference<>(variable).getSimpleExpression(lang);

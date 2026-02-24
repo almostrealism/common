@@ -8,7 +8,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
-/** The Barium class. */
 public class Barium implements Element {
 	public int getAtomicNumber() { return 56; }
 

@@ -21,7 +21,6 @@ import io.almostrealism.expression.Expression;
 
 import java.util.OptionalInt;
 
-/** The ConditionalExpressionBase class. */
 public class ConditionalExpressionBase extends OperandCollectionExpression {
 	private TraversableExpression<Double> choice;
 

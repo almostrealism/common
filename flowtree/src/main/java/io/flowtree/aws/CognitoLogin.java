@@ -32,7 +32,6 @@ import org.almostrealism.auth.Login;
 import java.security.SecureRandom;
 import java.util.HashMap;
 
-/** The CognitoLogin class. */
 public class CognitoLogin implements Login {
 	private final AWSCognitoIdentityProvider c;
 	private final AWSCredentialsProvider p;
@@ -43,7 +42,6 @@ public class CognitoLogin implements Login {
 				.withCredentials(p).build();
 	}
 
-	/** Performs the getDefaultPool operation. */
 	public String getDefaultPool() {
 		ListUserPoolsRequest req = new ListUserPoolsRequest();
 		req.setMaxResults(10);

@@ -23,19 +23,15 @@ import org.almostrealism.audio.notes.PatternNote;
 import org.almostrealism.audio.notes.PatternNoteAudio;
 import org.almostrealism.audio.notes.PatternNoteLayer;
 
-/** The ParameterizedEnvelope interface. */
 public interface ParameterizedEnvelope extends EnvelopeFeatures {
 
-	/** Performs the apply operation. */
 	default PatternNoteLayer apply(ParameterSet params, ChannelInfo.Voicing voicing, PatternNoteAudio note) {
 		return PatternNoteLayer.create(note, createFilter(params, voicing));
 	}
 
-	/** Performs the apply operation. */
 	default PatternNote apply(ParameterSet params, ChannelInfo.Voicing voicing, PatternNote note) {
 		return new PatternNote(note, createFilter(params, voicing));
 	}
 
-	/** Performs the createFilter operation. */
 	NoteAudioFilter createFilter(ParameterSet params, ChannelInfo.Voicing voicing);
 }

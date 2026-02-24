@@ -44,7 +44,6 @@ import java.util.function.Consumer;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
-/** The AudioScenePopulation class. */
 public class AudioScenePopulation implements Population<PackedCollection, TemporalCellular>, Destroyable, CodeFeatures {
 
 	private final AudioScene<?> scene;
@@ -65,13 +64,11 @@ public class AudioScenePopulation implements Population<PackedCollection, Tempor
 		this.pop = population;
 	}
 
-	/** Performs the init operation. */
 	public void init(Genome<PackedCollection> templateGenome,
 					 MultiChannelAudioOutput output) {
 		init(templateGenome, output, null);
 	}
 
-	/** Performs the init operation. */
 	public void init(Genome<PackedCollection> templateGenome,
 					 MultiChannelAudioOutput output, List<Integer> channels) {
 		enableGenome(templateGenome);
@@ -112,7 +109,6 @@ public class AudioScenePopulation implements Population<PackedCollection, Tempor
 		}
 	}
 
-	/** Performs the validateGenome operation. */
 	public boolean validateGenome(Genome genome) {
 		if (genome == null) return false;
 
@@ -130,7 +126,6 @@ public class AudioScenePopulation implements Population<PackedCollection, Tempor
 	@Override
 	public int size() { return getGenomes().size(); }
 
-	/** Performs the generate operation. */
 	public Runnable generate(int channel, int frames, Supplier<String> destinations,
 							 Consumer<GenerationResult> output) {
 		return () -> {
@@ -186,7 +181,6 @@ public class AudioScenePopulation implements Population<PackedCollection, Tempor
 	}
 
 
-	/** Performs the store operation. */
 	public void store(OutputStream s) throws IOException{
 		store(getGenomes(), s);
 	}
@@ -201,7 +195,6 @@ public class AudioScenePopulation implements Population<PackedCollection, Tempor
 	@Override
 	public Console console() { return HealthCallable.console; }
 
-	/** The GenerationResult class. */
 	public static class GenerationResult {
 		private final String outputPath;
 		private final Genome<PackedCollection> genome;
@@ -226,7 +219,6 @@ public class AudioScenePopulation implements Population<PackedCollection, Tempor
 		}
 	}
 
-	/** Performs the store operation. */
 	public static <G> void store(List<Genome<G>> genomes, OutputStream s) throws IOException {
 		GenomeData genomeData = new GenomeData();
 		for (Genome<G> genome : genomes) {
@@ -237,17 +229,14 @@ public class AudioScenePopulation implements Population<PackedCollection, Tempor
 		mapper.writeValue(s, genomeData);
 	}
 
-	/** Performs the read operation. */
 	public static List<Genome<PackedCollection>> read(InputStream in) throws IOException {
 		ObjectMapper mapper = new ObjectMapper();
 		GenomeData data = mapper.readValue(in, GenomeData.class);
 		return data.getGenomes();
 	}
 
-	/** The GenomeData class. */
 	static class GenomeData extends ArrayList<double[]> implements CodeFeatures {
 		// This class is used to serialize the genome data as a list of double arrays
-		/** Performs the addGenome operation. */
 		public void addGenome(Genome genome) {
 			this.add(((ProjectedGenome) genome).getParameters().toArray());
 		}

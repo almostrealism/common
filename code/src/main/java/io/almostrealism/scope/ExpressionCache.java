@@ -93,7 +93,6 @@ public class ExpressionCache {
 		caches = new HashMap<>();
 	}
 
-	/** Performs the get operation. */
 	public <T> Expression<T> get(Expression<T> expression) {
 		if (!ScopeSettings.isExpressionCacheTarget(expression))
 			return expression;
@@ -120,13 +119,11 @@ public class ExpressionCache {
 		}
 	}
 
-	/** Performs the getCache operation. */
 	protected FrequencyCache<Expression<?>, Expression<?>> getCache(int depth) {
 		return caches.computeIfAbsent(depth,
 				k -> new FrequencyCache<>(ScopeSettings.getExpressionCacheSize(), 0.7));
 	}
 
-	/** Performs the getFrequentExpressions operation. */
 	public List<Expression<?>> getFrequentExpressions() {
 		List<Integer> depths = caches.keySet().stream().sorted().collect(Collectors.toList());
 		List<Expression<?>> expressions = new ArrayList<>();
@@ -141,19 +138,16 @@ public class ExpressionCache {
 		return expressions;
 	}
 
-	/** Performs the isEmpty operation. */
 	public boolean isEmpty() {
 		if (caches.isEmpty()) return true;
 		return caches.values().stream().allMatch(FrequencyCache::isEmpty);
 	}
 
 
-	/** Performs the use operation. */
 	public ExpressionCache use(Runnable r) {
 		return use(null, r);
 	}
 
-	/** Performs the use operation. */
 	public ExpressionCache use(OperationMetadata metadata, Runnable r) {
 		use(metadata, () -> {
 			r.run();
@@ -163,12 +157,10 @@ public class ExpressionCache {
 		return this;
 	}
 
-	/** Performs the use operation. */
 	public <T> T use(Supplier<T> r) {
 		return use(null, r);
 	}
 
-	/** Performs the use operation. */
 	public <T> T use(OperationMetadata metadata, Supplier<T> r) {
 		OperationMetadata oldMetadata = currentMetadata.get();
 		ExpressionCache old = current.get();
@@ -183,7 +175,6 @@ public class ExpressionCache {
 		}
 	}
 
-	/** Performs the match operation. */
 	public static <T> Expression<T> match(Expression<T> expression) {
 		ExpressionCache cache = getCurrent();
 		if (cache == null) return expression;

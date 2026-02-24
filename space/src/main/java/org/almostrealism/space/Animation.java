@@ -34,7 +34,6 @@ import java.util.List;
 import java.util.Properties;
 import java.util.function.Function;
 
-/** The Animation class. */
 public class Animation<T extends ShadableSurface> extends Scene<T> implements Runnable, VectorFeatures {
 	private int itr;
 	private double dt, fdt, vdt, totalTime;
@@ -121,7 +120,6 @@ public class Animation<T extends ShadableSurface> extends Scene<T> implements Ru
 	 */
 	public void setRenderEachFrame(boolean render) { this.render = render; }
 
-	/** Performs the getAverageLinearVelocity operation. */
 	public double getAverageLinearVelocity() {
 		double total = 0.0;
 
@@ -294,7 +292,6 @@ public class Animation<T extends ShadableSurface> extends Scene<T> implements Ru
 		this.writeEncodeScript(instance);
 	}
 
-	/** Performs the generateProperties operation. */
 	public Properties generateProperties() {
 		Properties p = new Properties();
 
@@ -306,7 +303,6 @@ public class Animation<T extends ShadableSurface> extends Scene<T> implements Ru
 		return p;
 	}
 
-	/** Performs the loadProperties operation. */
 	public void loadProperties(Properties p) {
 		this.fdt = Double.parseDouble(p.getProperty("simulation.fdt", "1.0"));
 		this.vdt = Double.parseDouble(p.getProperty("simulation.vdt", "-1.0"));
@@ -315,9 +311,7 @@ public class Animation<T extends ShadableSurface> extends Scene<T> implements Ru
 		dt = Double.parseDouble(p.getProperty("simulation.dt", "1"));
 	}
 
-	/** Performs the writeImage operation. */
 	public void writeImage(int i, String instance) { }
 
-	/** Performs the writeEncodeScript operation. */
 	public void writeEncodeScript(String instance) { }
 }

@@ -8,13 +8,11 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
-/** The Xenon class. */
 public class Xenon implements Element {
 	public int getAtomicNumber() { return 54; }
 	
 	public Atom construct() { return new Atom(getAtomicNumber(), getShells()); }
 	
-	/** Performs the getShells operation. */
 	protected List<Shell> getShells() {
 		ArrayList<Shell> s = new ArrayList<Shell>();
 		s.addAll(PeriodicTable.Krypton.getShells());

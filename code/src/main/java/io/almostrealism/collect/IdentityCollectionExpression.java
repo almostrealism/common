@@ -18,7 +18,6 @@ package io.almostrealism.collect;
 
 import io.almostrealism.expression.IntegerConstant;
 
-/** The IdentityCollectionExpression class. */
 public class IdentityCollectionExpression extends DiagonalCollectionExpression {
 	public IdentityCollectionExpression(TraversalPolicy shape) {
 		super("identity", shape, new ConstantCollectionExpression(shape.item(), new IntegerConstant(1)));

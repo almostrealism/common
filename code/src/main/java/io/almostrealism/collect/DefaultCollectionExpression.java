@@ -20,7 +20,6 @@ import io.almostrealism.expression.Expression;
 
 import java.util.function.Function;
 
-/** The DefaultCollectionExpression class. */
 public class DefaultCollectionExpression extends CollectionExpressionAdapter {
 	private final Function<Expression<?>, Expression<?>> valueAt;
 
@@ -34,7 +33,6 @@ public class DefaultCollectionExpression extends CollectionExpressionAdapter {
 		return (Expression) valueAt.apply(index);
 	}
 
-	/** Performs the create operation. */
 	public static CollectionExpressionBase create(TraversalPolicy shape, Function<Expression<?>, Expression<?>> valueAt) {
 		return new DefaultCollectionExpression(shape, valueAt);
 	}

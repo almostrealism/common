@@ -8,7 +8,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
-/** The Sulfur class. */
 public class Sulfur implements Element {
 	public int getAtomicNumber() { return 16; }
 	

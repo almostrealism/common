@@ -59,7 +59,6 @@ public class StaticScale<T extends KeyPosition> implements Scale<T> {
 
 	public List<T> getNotes() { return notes; }
 
-	/** Performs the setNotes operation. */
 	public void setNotes(List<T> notes) {
 		this.notes = new ArrayList<>();
 

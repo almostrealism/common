@@ -26,7 +26,6 @@ import io.almostrealism.profile.OperationMetadata;
 
 import java.util.List;
 
-/** The Repeated class. */
 public class Repeated<T> extends Scope<T> {
 	private Variable<Integer, ?> index;
 	private Expression<Integer> interval;

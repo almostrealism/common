@@ -8,7 +8,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
-/** The Zinc class. */
 public class Zinc implements Element {
 	public int getAtomicNumber() { return 30; }
 	

@@ -24,7 +24,6 @@ import java.util.List;
 import java.util.OptionalDouble;
 import java.util.OptionalLong;
 
-/** The Floor class. */
 public class Floor extends Expression<Double> {
 	public Floor(Expression<Double> input) {
 		super(Double.class, input);
@@ -77,7 +76,6 @@ public class Floor extends Expression<Double> {
 		return new Floor((Expression<Double>) children.get(0));
 	}
 
-	/** Performs the of operation. */
 	public static Expression of(Expression in) {
 		return new Floor(in);
 	}

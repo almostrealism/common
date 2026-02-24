@@ -29,7 +29,6 @@ import java.util.Objects;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
-/** The ScopeEncoder class. */
 public class ScopeEncoder implements Function<Scope, String>, PrintWriter {
 	public static final int MAX_CHARACTERS = 512 * 1024 * 1024;
 
@@ -106,7 +105,6 @@ public class ScopeEncoder implements Function<Scope, String>, PrintWriter {
 	@Override
 	public void println() { append("\n"); }
 
-	/** Performs the append operation. */
 	protected void append(String s) {
 		if (result.length() + s.length() > MAX_CHARACTERS) {
 			throw new IllegalArgumentException("Cannot encode Scope with more than " + MAX_CHARACTERS + " characters");

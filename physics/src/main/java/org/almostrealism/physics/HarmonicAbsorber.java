@@ -65,14 +65,12 @@ public class HarmonicAbsorber implements SphericalAbsorber, VectorFeatures {
 		return multiply(p(place), dp);
 	}
 	
-	/** Performs the updateDisplacement operation. */
 	protected void updateDisplacement() {
 		this.d = radius * Math.sqrt(energy / k);
 		double off = d / place.length();
 		this.dp = vector(off, off, off);
 	}
 	
-	/** Performs the absorb operation. */
 	public boolean absorb(Vector x, Vector p, double energy) {
 		if (x.length() > this.radius) return false;
 		

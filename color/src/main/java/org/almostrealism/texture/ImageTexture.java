@@ -172,7 +172,6 @@ public class ImageTexture implements Texture, Editable {
 
   	public URL getURL() { return url; }
   	
-  	/** Performs the update operation. */
   	protected void update() {
   		Image image = Toolkit.getDefaultToolkit().getImage(this.url);
   		MediaTracker m = new MediaTracker(new Panel());

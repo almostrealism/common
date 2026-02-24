@@ -203,7 +203,6 @@ public interface LayerFeatures extends MatrixFeatures, ActivationFeatures, Conso
 		}
 	}
 
-	/** This method. */
 	@Deprecated
 	default CellularLayer layer(String name, TraversalPolicy inputShape, TraversalPolicy outputShape,
 								Cell<PackedCollection> forward, BackPropagation backward,
@@ -212,7 +211,6 @@ public interface LayerFeatures extends MatrixFeatures, ActivationFeatures, Conso
 				Collections.emptyList(), new OperationList(), requirements);
 	}
 
-	/** Performs the monitor operation. */
 	default Function<TraversalPolicy, Block> monitor(Consumer<PackedCollection> consumer) {
 		return layer(Cell.of((in, next) -> {
 				OperationList op = new OperationList("Monitor Layer");
@@ -226,40 +224,34 @@ public interface LayerFeatures extends MatrixFeatures, ActivationFeatures, Conso
 			}), Cell.of((in, next) -> next.push(in)));
 	}
 
-	/** Performs the layer operation. */
 	default Function<TraversalPolicy, Block> layer(Factor<PackedCollection> forward,
 												   Factor<PackedCollection> backward) {
 		return layer(Cell.of(forward), Cell.of(backward));
 	}
 
-	/** Performs the layer operation. */
 	default Function<TraversalPolicy, Block> layer(Cell<PackedCollection> forward,
 												   Cell<PackedCollection> backward) {
 		return shape -> new DefaultBlock(shape, shape, forward, backward);
 	}
 
-	/** Performs the layer operation. */
 	default Function<TraversalPolicy, CellularLayer> layer(String name,
 														   Factor<PackedCollection> operator,
 														   ComputeRequirement... requirements) {
 		return shape -> layer(name, shape, operator, requirements);
 	}
 
-	/** Performs the layer operation. */
 	default CellularLayer layer(String name, TraversalPolicy shape,
 								Factor<PackedCollection> operator,
 								ComputeRequirement... requirements) {
 		return layer(name, shape, shape, operator, requirements);
 	}
 
-	/** Performs the layer operation. */
 	default CellularLayer layer(String name, TraversalPolicy inputShape, TraversalPolicy outputShape,
 								Factor<PackedCollection> operator,
 								ComputeRequirement... requirements) {
 		return layer(name, inputShape, outputShape, operator, Collections.emptyList(), requirements);
 	}
 
-	/** Performs the layer operation. */
 	default CellularLayer layer(String name, TraversalPolicy inputShape, TraversalPolicy outputShape,
 								Factor<PackedCollection> operator,
 								List<PackedCollection> weights,
@@ -301,7 +293,6 @@ public interface LayerFeatures extends MatrixFeatures, ActivationFeatures, Conso
 				weights, setup, requirements);
 	}
 
-	/** Performs the layer operation. */
 	default CellularLayer layer(String name, TraversalPolicy inputShape, TraversalPolicy outputShape,
 								Cell<PackedCollection> forward, BackPropagation backward,
 								List<PackedCollection> weights, Supplier<Runnable> setup,
@@ -320,7 +311,6 @@ public interface LayerFeatures extends MatrixFeatures, ActivationFeatures, Conso
 		return layer;
 	}
 
-	/** Performs the compose operation. */
 	default Function<TraversalPolicy, CellularLayer> compose(String name,
 															 Block aux,
 															 Composition<PackedCollection> operator,
@@ -328,7 +318,6 @@ public interface LayerFeatures extends MatrixFeatures, ActivationFeatures, Conso
 		return shape -> compose(name, shape, aux.getOutputShape(), aux, operator, requirements);
 	}
 
-	/** Performs the compose operation. */
 	default Function<TraversalPolicy, CellularLayer> compose(String name,
 															 Block aux,
 															 TraversalPolicy outputShape,
@@ -337,7 +326,6 @@ public interface LayerFeatures extends MatrixFeatures, ActivationFeatures, Conso
 		return shape -> compose(name, shape, aux, outputShape, operator, requirements);
 	}
 
-	/** Performs the compose operation. */
 	default CellularLayer compose(String name,
 								  TraversalPolicy inputShape,
 								  Block aux, TraversalPolicy outputShape,
@@ -346,7 +334,6 @@ public interface LayerFeatures extends MatrixFeatures, ActivationFeatures, Conso
 		return compose(name, inputShape, aux.getOutputShape(), outputShape, aux, operator, requirements);
 	}
 
-	/** Performs the compose operation. */
 	default CellularLayer compose(String name,
 								  TraversalPolicy shape,
 								  CellularPropagation<PackedCollection> aux,
@@ -355,7 +342,6 @@ public interface LayerFeatures extends MatrixFeatures, ActivationFeatures, Conso
 		return compose(name, shape, shape, aux, operator, requirements);
 	}
 
-	/** Performs the compose operation. */
 	default CellularLayer compose(String name,
 								  TraversalPolicy shape,
 								  TraversalPolicy auxShape,
@@ -365,7 +351,6 @@ public interface LayerFeatures extends MatrixFeatures, ActivationFeatures, Conso
 		return compose(name, shape, auxShape, shape, aux, operator, requirements);
 	}
 
-	/** Performs the compose operation. */
 	default CellularLayer compose(String name,
 								  TraversalPolicy inputShape,
 								  TraversalPolicy auxShape,
@@ -518,22 +503,18 @@ public interface LayerFeatures extends MatrixFeatures, ActivationFeatures, Conso
 		return op;
 	}
 
-	/** Performs the into operation. */
 	default CollectionReceptor into(PackedCollection dest) {
 		return new CollectionReceptor(dest);
 	}
 
-	/** Performs the into operation. */
 	default CollectionReceptor into(PackedCollection dest, Producer<PackedCollection> pos) {
 		return new CollectionReceptor(dest, pos);
 	}
 
-	/** Performs the flattened operation. */
 	default Function<TraversalPolicy, Block> flattened() {
 		return flattened(true);
 	}
 
-	/** Performs the flattened operation. */
 	default Function<TraversalPolicy, Block> flattened(boolean preserveCount) {
 		return shape -> {
 			TraversalPolicy outputShape = shape.flatten(preserveCount);
@@ -543,7 +524,6 @@ public interface LayerFeatures extends MatrixFeatures, ActivationFeatures, Conso
 		};
 	}
 
-	/** Performs the reshape operation. */
 	default Block reshape(TraversalPolicy inputShape, TraversalPolicy outputShape) {
 		if (inputShape.getTotalSize() != outputShape.getTotalSize()) {
 			throw new IllegalArgumentException("Cannot reshape " + inputShape + " to " + outputShape);
@@ -601,7 +581,6 @@ public interface LayerFeatures extends MatrixFeatures, ActivationFeatures, Conso
 						next.push(pad(inputShape, new TraversalPolicy(true, pos), in))));
 	}
 
-	/** Performs the pad operation. */
 	default Block pad(TraversalPolicy inputShape, TraversalPolicy paddedShape, int... pos) {
 			return new DefaultBlock(inputShape, paddedShape,
 				Cell.of((in, next) ->
@@ -874,13 +853,11 @@ public interface LayerFeatures extends MatrixFeatures, ActivationFeatures, Conso
 					new OperationList(), requirements);
 	}
 
-	/** Performs the convolution2d operation. */
 	default Function<TraversalPolicy, Block> convolution2d(int inputChannels, int filterCount, int size, int padding,
 																   ComputeRequirement... requirements) {
 		return convolution2d(inputChannels, filterCount, size, padding, true, requirements);
 	}
 
-	/** Performs the convolution2d operation. */
 	default Function<TraversalPolicy, Block> convolution2d(int inputChannels, int filterCount, int size, int padding,
 														   boolean bias, ComputeRequirement... requirements) {
 		if (inputChannels != 1) {
@@ -898,29 +875,24 @@ public interface LayerFeatures extends MatrixFeatures, ActivationFeatures, Conso
 		return shape -> convolution2d(shape, filterCount, size, padding, bias, requirements);
 	}
 
-	/** Performs the convolution2d operation. */
 	default Function<TraversalPolicy, Block> convolution2d(int filterCount, int size, ComputeRequirement... requirements) {
 		return convolution2d(filterCount, size, 0, requirements);
 	}
 
-	/** Performs the convolution2d operation. */
 	default Function<TraversalPolicy, Block> convolution2d(int filterCount, int size, int padding, ComputeRequirement... requirements) {
 		return shape -> convolution2d(shape, filterCount, size, padding, true, requirements);
 	}
 
-	/** Performs the convolution2d operation. */
 	default Block convolution2d(TraversalPolicy inputShape, int filterCount,
 										int size, ComputeRequirement... requirements) {
 		return convolution2d(inputShape, filterCount, size, 0, true, requirements);
 	}
 
-	/** Performs the convolution2d operation. */
 	default Block convolution2d(TraversalPolicy inputShape, int filterCount,
 										int size, boolean bias, ComputeRequirement... requirements) {
 		return convolution2d(inputShape, filterCount, size, 0, bias, requirements);
 	}
 
-	/** Performs the convolution2d operation. */
 	default Block convolution2d(TraversalPolicy inputShape, int filterCount,
 								int size, int padding,
 								boolean bias, ComputeRequirement... requirements) {
@@ -1016,12 +988,10 @@ public interface LayerFeatures extends MatrixFeatures, ActivationFeatures, Conso
 		}
 	}
 
-	/** Performs the pool2d operation. */
 	default Function<TraversalPolicy, CellularLayer> pool2d(int size) {
 		return shape -> pool2d(shape, size);
 	}
 
-	/** Performs the pool2d operation. */
 	default CellularLayer pool2d(TraversalPolicy inputShape, int size, ComputeRequirement... requirements) {
 		inputShape = padDimensions(inputShape, 2, 4);
 
@@ -1048,42 +1018,35 @@ public interface LayerFeatures extends MatrixFeatures, ActivationFeatures, Conso
 		return layer("pool2d", inputShape, outputShape, operator, requirements);
 	}
 
-	/** Performs the dense operation. */
 	default Function<TraversalPolicy, CellularLayer> dense(int nodes) {
 		return shape -> dense(shape.getSize(), nodes).apply(shape);
 	}
 
-	/** Performs the dense operation. */
 	default Function<TraversalPolicy, CellularLayer> dense(int size, int nodes) {
 		return dense(size, nodes, true);
 	}
 
-	/** Performs the dense operation. */
 	default Function<TraversalPolicy, CellularLayer> dense(int size, int nodes, boolean bias) {
 		return dense(size, nodes, bias, true);
 	}
 
-	/** Performs the dense operation. */
 	default Function<TraversalPolicy, CellularLayer> dense(int size, int nodes,
 														   boolean bias, boolean init,
 														   ComputeRequirement... requirements) {
 		return inputShape -> dense(inputShape, new PackedCollection(shape(nodes, size)), bias, init, requirements);
 	}
 
-	/** Performs the dense operation. */
 	default Function<TraversalPolicy, CellularLayer> dense(PackedCollection weights,
 														   ComputeRequirement... requirements) {
 		return inputShape -> dense(inputShape, weights, false, false, requirements);
 	}
 
-	/** Performs the dense operation. */
 	default Function<TraversalPolicy, CellularLayer> dense(PackedCollection weights,
 														   PackedCollection biases,
 														   ComputeRequirement... requirements) {
 		return inputShape -> dense(inputShape, weights, biases, false, requirements);
 	}
 
-	/** Performs the dense operation. */
 	default CellularLayer dense(TraversalPolicy inputShape,
 								PackedCollection weights,
 								boolean bias, boolean init,
@@ -1093,7 +1056,6 @@ public interface LayerFeatures extends MatrixFeatures, ActivationFeatures, Conso
 				init, requirements);
 	}
 
-	/** Performs the dense operation. */
 	default CellularLayer dense(TraversalPolicy inputShape,
 								PackedCollection weights,
 								PackedCollection biases,
@@ -1141,7 +1103,6 @@ public interface LayerFeatures extends MatrixFeatures, ActivationFeatures, Conso
 				requirements);
 	}
 
-	/** This method. */
 	@Deprecated
 	default CellularLayer accum(TraversalPolicy shape, Cell<PackedCollection> value, ComputeRequirement... requirements) {
 		if (!allowNonComposites) {
@@ -1160,7 +1121,6 @@ public interface LayerFeatures extends MatrixFeatures, ActivationFeatures, Conso
 		}), null, requirements);
 	}
 
-	/** Performs the accum operation. */
 	default CellularLayer accum(TraversalPolicy shape,
 								  CellularPropagation<PackedCollection> aux,
 								  ComputeRequirement... requirements) {
@@ -1169,7 +1129,6 @@ public interface LayerFeatures extends MatrixFeatures, ActivationFeatures, Conso
 				requirements);
 	}
 
-	/** Performs the concat operation. */
 	default Function<TraversalPolicy, CellularLayer> concat(int axis, Block aux, ComputeRequirement... requirements) {
 		return shape -> {
 			TraversalPolicy auxShape = aux.getOutputShape();
@@ -1183,7 +1142,6 @@ public interface LayerFeatures extends MatrixFeatures, ActivationFeatures, Conso
 		};
 	}
 
-	/** Performs the concat operation. */
 	default CellularLayer concat(TraversalPolicy inputShape,
 								 TraversalPolicy outputShape,
 								 Block aux,
@@ -1193,7 +1151,6 @@ public interface LayerFeatures extends MatrixFeatures, ActivationFeatures, Conso
 				requirements);
 	}
 
-	/** This method. */
 	@Deprecated
 	default CellularLayer product(Producer<PackedCollection> value, ComputeRequirement... requirements) {
 		warn("product will not support backpropagation");
@@ -1203,7 +1160,6 @@ public interface LayerFeatures extends MatrixFeatures, ActivationFeatures, Conso
 				requirements);
 	}
 
-	/** This method. */
 	@Deprecated
 	default CellularLayer product(TraversalPolicy inputShape, TraversalPolicy outputShape,
 								  Cell<PackedCollection> a, Cell<PackedCollection> b,
@@ -1225,13 +1181,11 @@ public interface LayerFeatures extends MatrixFeatures, ActivationFeatures, Conso
 		}), null, requirements);
 	}
 
-	/** Performs the product operation. */
 	default Function<TraversalPolicy, CellularLayer> product(CellularPropagation<PackedCollection> aux,
 								  							 ComputeRequirement... requirements) {
 		return shape -> product(shape, aux, requirements);
 	}
 
-	/** Performs the product operation. */
 	default CellularLayer product(TraversalPolicy shape,
 								  CellularPropagation<PackedCollection> aux,
 								  ComputeRequirement... requirements) {
@@ -1240,12 +1194,10 @@ public interface LayerFeatures extends MatrixFeatures, ActivationFeatures, Conso
 				requirements);
 	}
 
-	/** Performs the residual operation. */
 	default Function<TraversalPolicy, Block> residual(Function<TraversalPolicy, Block> block) {
 		return shape -> residual(block.apply(shape));
 	}
 
-	/** Performs the residual operation. */
 	default Block residual(Block block) {
 		if (block.getInputShape().getTotalSize() != block.getOutputShape().getTotalSize())
 			throw new IllegalArgumentException();
@@ -1255,7 +1207,6 @@ public interface LayerFeatures extends MatrixFeatures, ActivationFeatures, Conso
 		return residual;
 	}
 
-	/** Performs the similarity operation. */
 	default Function<TraversalPolicy, CellularLayer> similarity(
 			Block k, int c, int s1, int s2) {
 		if (k.getOutputShape().getDimensions() != 4 ||
@@ -1288,7 +1239,6 @@ public interface LayerFeatures extends MatrixFeatures, ActivationFeatures, Conso
 		});
 	}
 
-	/** Performs the weightedSum operation. */
 	default Function<TraversalPolicy, CellularLayer> weightedSum(
 			Block v, int heads, int dimHead, int size) {
 		if (v.getOutputShape().getDimensions() != 4 ||
@@ -1322,12 +1272,10 @@ public interface LayerFeatures extends MatrixFeatures, ActivationFeatures, Conso
 		}
 	}
 
-	/** Performs the scale operation. */
 	default Function<TraversalPolicy, CellularLayer> scale(double scale, ComputeRequirement... requirements) {
 		return shape -> scale(shape, scale, requirements);
 	}
 
-	/** Performs the scale operation. */
 	default CellularLayer scale(TraversalPolicy shape, double scale, ComputeRequirement... requirements) {
 		return layer("scale", shape, shape, input -> multiply(c(input).each(), c(scale)), requirements);
 	}
@@ -1526,24 +1474,20 @@ public interface LayerFeatures extends MatrixFeatures, ActivationFeatures, Conso
 		}
 	}
 
-	/** Performs the norm operation. */
 	default Function<TraversalPolicy, CellularLayer> norm(ComputeRequirement... requirements) {
 		return norm(1, requirements);
 	}
 
-	/** Performs the norm operation. */
 	default Function<TraversalPolicy, CellularLayer> norm(int groups, ComputeRequirement... requirements) {
 		return shape -> norm(shape, groups, requirements);
 	}
 
-	/** Performs the norm operation. */
 	default Function<TraversalPolicy, CellularLayer> norm(PackedCollection weights,
 														  PackedCollection biases,
 														  ComputeRequirement... requirements) {
 		return shape -> norm(shape, 1, weights, biases, false, requirements);
 	}
 
-	/** Performs the norm operation. */
 	default Function<TraversalPolicy, CellularLayer> norm(PackedCollection weights,
 														  PackedCollection biases,
 														  double eps,
@@ -1552,18 +1496,15 @@ public interface LayerFeatures extends MatrixFeatures, ActivationFeatures, Conso
 	}
 
 
-	/** Performs the norm operation. */
 	default CellularLayer norm(TraversalPolicy shape, int groups, ComputeRequirement... requirements) {
 		return norm(shape, groups, true, requirements);
 	}
 
-	/** Performs the norm operation. */
 	default CellularLayer norm(TraversalPolicy shape, int groups,
 							   boolean trainable, ComputeRequirement... requirements) {
 		return norm(shape, normSize(shape, groups, null, null), groups, trainable, requirements);
 	}
 
-	/** Performs the norm operation. */
 	default CellularLayer norm(TraversalPolicy shape, int size, int groups,
 							   boolean trainable, ComputeRequirement... requirements) {
 		return norm(shape, size, groups,
@@ -1572,7 +1513,6 @@ public interface LayerFeatures extends MatrixFeatures, ActivationFeatures, Conso
 				true, requirements);
 	}
 
-	/** Performs the norm operation. */
 	default CellularLayer norm(int groups,
 							   PackedCollection weights,
 							   PackedCollection biases,
@@ -1580,7 +1520,6 @@ public interface LayerFeatures extends MatrixFeatures, ActivationFeatures, Conso
 		return norm(groups, weights, biases, false, requirements);
 	}
 
-	/** Performs the norm operation. */
 	default CellularLayer norm(int groups, PackedCollection weights, PackedCollection biases,
 							   boolean init, ComputeRequirement... requirements) {
 		TraversalPolicy shape;
@@ -1596,7 +1535,6 @@ public interface LayerFeatures extends MatrixFeatures, ActivationFeatures, Conso
 		return norm(shape, groups, weights, biases, init, requirements);
 	}
 
-	/** Performs the norm operation. */
 	default CellularLayer norm(TraversalPolicy shape,
 							   PackedCollection weights,
 							   PackedCollection biases,
@@ -1604,7 +1542,6 @@ public interface LayerFeatures extends MatrixFeatures, ActivationFeatures, Conso
 		return norm(shape, 1, weights, biases, requirements);
 	}
 
-	/** Performs the norm operation. */
 	default CellularLayer norm(TraversalPolicy shape, int groups,
 							   PackedCollection weights,
 							   PackedCollection biases,
@@ -1612,7 +1549,6 @@ public interface LayerFeatures extends MatrixFeatures, ActivationFeatures, Conso
 		return norm(shape, groups, weights, biases, true, requirements);
 	}
 
-	/** Performs the norm operation. */
 	default CellularLayer norm(TraversalPolicy shape, int groups,
 							   PackedCollection weights,
 							   PackedCollection biases,
@@ -1622,7 +1558,6 @@ public interface LayerFeatures extends MatrixFeatures, ActivationFeatures, Conso
 				groups, weights, biases, init, requirements);
 	}
 
-	/** Performs the norm operation. */
 	default CellularLayer norm(TraversalPolicy shape, int size, int groups,
 							   PackedCollection weights,
 							   PackedCollection biases,
@@ -1632,7 +1567,6 @@ public interface LayerFeatures extends MatrixFeatures, ActivationFeatures, Conso
 				Hardware.getLocalHardware().epsilon(), init, requirements);
 	}
 
-	/** Performs the norm operation. */
 	default CellularLayer norm(TraversalPolicy shape, int groups,
 							   PackedCollection weights,
 							   PackedCollection biases,
@@ -1642,7 +1576,6 @@ public interface LayerFeatures extends MatrixFeatures, ActivationFeatures, Conso
 				groups, weights, biases, eps, init, requirements);
 	}
 
-	/** Performs the norm operation. */
 	default CellularLayer norm(TraversalPolicy shape,
 							   int size, int groups,
 							   PackedCollection weights,
@@ -1687,12 +1620,10 @@ public interface LayerFeatures extends MatrixFeatures, ActivationFeatures, Conso
 		}, prop, setup, requirements);
 	}
 
-	/** Performs the rmsnorm operation. */
 	default Function<TraversalPolicy, CellularLayer> rmsnorm(int size, ComputeRequirement... requirements) {
 		return rmsnorm(size, true, requirements);
 	}
 
-	/** Performs the rmsnorm operation. */
 	default Function<TraversalPolicy, CellularLayer> rmsnorm(int size, boolean bias, ComputeRequirement... requirements) {
 		return shape -> rmsnorm(shape,
 				new PackedCollection(shape(size)).fill(1.0),
@@ -1701,27 +1632,23 @@ public interface LayerFeatures extends MatrixFeatures, ActivationFeatures, Conso
 	}
 
 
-	/** Performs the rmsnorm operation. */
 	default CellularLayer rmsnorm(PackedCollection weights,
 								  ComputeRequirement... requirements) {
 		return rmsnorm(weights.getShape(), weights, null, requirements);
 	}
 
-	/** Performs the rmsnorm operation. */
 	default CellularLayer rmsnorm(PackedCollection weights,
 								  double epsilon,
 								  ComputeRequirement... requirements) {
 		return rmsnorm(weights.getShape(), weights, null, epsilon, requirements);
 	}
 
-	/** Performs the rmsnorm operation. */
 	default CellularLayer rmsnorm(PackedCollection weights,
 								  PackedCollection biases,
 								  ComputeRequirement... requirements) {
 		return rmsnorm(weights.getShape(), weights, biases, requirements);
 	}
 
-	/** Performs the rmsnorm operation. */
 	default CellularLayer rmsnorm(PackedCollection weights,
 								  PackedCollection biases,
 								  double epsilon,
@@ -1729,14 +1656,12 @@ public interface LayerFeatures extends MatrixFeatures, ActivationFeatures, Conso
 		return rmsnorm(weights.getShape(), weights, biases, epsilon, requirements);
 	}
 
-	/** Performs the rmsnorm operation. */
 	default CellularLayer rmsnorm(TraversalPolicy shape,
 								  PackedCollection weights,
 								  ComputeRequirement... requirements) {
 		return rmsnorm(shape, weights, null, requirements);
 	}
 
-	/** Performs the rmsnorm operation. */
 	default CellularLayer rmsnorm(TraversalPolicy shape,
 								  PackedCollection weights,
 								  double epsilon,
@@ -1744,7 +1669,6 @@ public interface LayerFeatures extends MatrixFeatures, ActivationFeatures, Conso
 		return rmsnorm(shape, weights, null, epsilon, requirements);
 	}
 
-	/** Performs the rmsnorm operation. */
 	default CellularLayer rmsnorm(TraversalPolicy shape,
 								  PackedCollection weights,
 								  PackedCollection biases,
@@ -1794,7 +1718,6 @@ public interface LayerFeatures extends MatrixFeatures, ActivationFeatures, Conso
 		}, biases != null ? List.of(weights, biases) : List.of(weights), requirements);
 	}
 
-	/** Performs the randnInit operation. */
 	default Supplier<Runnable> randnInit(PackedCollection weights, double scale) {
 		OperationList setup = new OperationList();
 		Random randn = randn(shape(weights));
@@ -1803,6 +1726,5 @@ public interface LayerFeatures extends MatrixFeatures, ActivationFeatures, Conso
 		return setup;
 	}
 
-	/** The LearningCell interface. */
 	interface LearningCell extends Cell<PackedCollection>, Learning { }
 }

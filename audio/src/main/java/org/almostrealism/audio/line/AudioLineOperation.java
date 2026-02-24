@@ -37,7 +37,6 @@ import org.almostrealism.time.TemporalRunner;
  * @see AudioBuffer
  */
 public interface AudioLineOperation {
-	/** Performs the buffer operation. */
 	default BufferedOutputScheduler buffer(BufferedAudio line) {
 		return BufferedOutputScheduler.create(
 				line instanceof InputLine ? (InputLine) line : null,
@@ -45,7 +44,6 @@ public interface AudioLineOperation {
 				this);
 	}
 
-	/** Performs the process operation. */
 	default TemporalRunner process(AudioBuffer buffer) {
 		return process(
 				CollectionFeatures.getInstance().p(buffer.getInputBuffer()),
@@ -53,7 +51,6 @@ public interface AudioLineOperation {
 				buffer.getDetails().getFrames());
 	}
 
-	/** Performs the process operation. */
 	TemporalRunner process(Producer<PackedCollection> input,
 						   Producer<PackedCollection> output,
 						   int frames);

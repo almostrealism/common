@@ -27,7 +27,6 @@ import java.util.List;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
-/** The MultiCell class. */
 public class MultiCell<T> extends CellAdapter<T> {
 	private final List<Cell<T>> cells;
 	private final Gene<T> gene;
@@ -60,12 +59,10 @@ public class MultiCell<T> extends CellAdapter<T> {
 
 		return push;
 	}
-	/** Performs the split operation. */
 	public static <T> CellPair<T> split(Cell<T> source, Cell<T> adapter, List<Cell<T>> destinations, Gene<T> transmission) {
 		return split(source, adapter, destinations, transmission, null);
 	}
 
-	/** Performs the split operation. */
 	public static <T> CellPair<T> split(Cell<T> source, Cell<T> adapter, List<Cell<T>> destinations, Gene<T> transmission, Cell<T> passthrough) {
 		MultiCell<T> m = new MultiCell<>(destinations, transmission);
 

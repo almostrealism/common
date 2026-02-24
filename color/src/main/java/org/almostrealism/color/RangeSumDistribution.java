@@ -37,13 +37,11 @@ public class RangeSumDistribution extends ProbabilityDistribution {
 		this.children = children;
 	}
 	
-	/** Performs the addRange operation. */
 	public void addRange(double start, double end, double p) {
 		if (this.children.length <= 0) return;
 		this.children[0].addRange(start, end, p);
 	}
 	
-	/** Performs the getRanges operation. */
 	protected double[][] getRanges() {
 		if (this.children.length <= 0) return new double[0][0];
 		if (this.children.length == 1) return this.children[0].getRanges();
@@ -112,7 +110,6 @@ public class RangeSumDistribution extends ProbabilityDistribution {
 		return (double[][]) l.toArray(new double[0][3]);
 	}
 	
-	/** Performs the getSample operation. */
 	public double getSample(double r) {
 		// TODO
 		return 0.0;
@@ -123,7 +120,6 @@ public class RangeSumDistribution extends ProbabilityDistribution {
 		return null;
 	}
 	
-	/** Performs the getProbability operation. */
 	public double getProbability(double x) {
 		double p = 0.0;
 		
@@ -133,21 +129,18 @@ public class RangeSumDistribution extends ProbabilityDistribution {
 		return p;
 	}
 	
-	/** Performs the contains operation. */
 	public boolean contains(double start, double end) {
 		for (int i = 0; i < this.children.length; i++)
 			if (this.children[i].contains(start, end)) return true;
 		return false;
 	}
 	
-	/** Performs the loadFromFile operation. */
 	public void loadFromFile(String file, String div) throws IOException {
 		this.children = new ProbabilityDistribution[1];
 		this.children[0] = new ProbabilityDistribution();
 		this.children[0].loadFromFile(file, div);
 	}
 	
-	/** Performs the getOverlayMethod operation. */
 	public static Method getOverlayMethod() {
 		try {
 			return RangeSumDistribution.class.getMethod("createRangeSumDistribution",
@@ -157,7 +150,6 @@ public class RangeSumDistribution extends ProbabilityDistribution {
 		}
 	}
 	
-	/** This method. */
 	public static RangeSumDistribution
 				createRangeSumDistribution(ProbabilityDistribution children[]) {
 		return new RangeSumDistribution(children);

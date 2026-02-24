@@ -22,7 +22,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.net.Socket;
 
-/** The IOStreams class. */
 public class IOStreams {
 	public DataInputStream in;
 	public DataOutputStream out;
@@ -41,7 +40,6 @@ public class IOStreams {
 		this.host = s.getInetAddress().toString();
 	}
 	
-	/** Performs the close operation. */
 	public void close() throws IOException {
 		this.in.close();
 		this.out.close();

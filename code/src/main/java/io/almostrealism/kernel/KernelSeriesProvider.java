@@ -33,7 +33,6 @@ import java.util.Set;
 import java.util.function.IntSupplier;
 import java.util.function.Supplier;
 
-/** The KernelSeriesProvider interface. */
 public interface KernelSeriesProvider extends OperationInfo, Destroyable {
 	LanguageOperations lang = new LanguageOperationsStub();
 
@@ -41,7 +40,6 @@ public interface KernelSeriesProvider extends OperationInfo, Destroyable {
 		return Integer.MAX_VALUE;
 	}
 
-	/** Performs the getSeries operation. */
 	default <T> Expression<T> getSeries(Expression<T> exp) {
 		if (exp instanceof Index || exp.doubleValue().isPresent()) return exp;
 
@@ -57,7 +55,6 @@ public interface KernelSeriesProvider extends OperationInfo, Destroyable {
 		return getSeries(exp, c.orElse(k.orElse(indices.iterator().next())));
 	}
 
-	/** Performs the getSeries operation. */
 	default Expression getSeries(Expression exp, Index index) {
 		if (exp instanceof Index || exp.doubleValue().isPresent()) return exp;
 		if (!(index instanceof Expression)) return exp;
@@ -118,10 +115,8 @@ public interface KernelSeriesProvider extends OperationInfo, Destroyable {
 		return result == null ? exp : result;
 	}
 
-	/** Performs the getSeries operation. */
 	Expression getSeries(Expression index, Supplier<String> exp, Supplier<IndexSequence> seq, boolean isInt, IntSupplier nodes);
 
-	/** Performs the getMaximumLength operation. */
 	OptionalInt getMaximumLength();
 
 	@Override

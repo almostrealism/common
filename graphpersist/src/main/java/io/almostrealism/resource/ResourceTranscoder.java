@@ -18,8 +18,6 @@ package io.almostrealism.resource;
 
 import java.io.IOException;
 
-/** The ResourceTranscoder interface. */
 public interface ResourceTranscoder<IN extends Resource, OUT extends Resource> {
-	/** Performs the transcode operation. */
 	OUT transcode(IN r) throws IOException;
 }

@@ -20,7 +20,6 @@ import io.almostrealism.expression.Expression;
 
 import java.util.function.Function;
 
-/** The UniformConditionalExpression class. */
 public abstract class UniformConditionalExpression extends UniformCollectionExpression {
 	public UniformConditionalExpression(String name, TraversalPolicy shape,
 										Function<Expression[], Expression<?>> operation,

@@ -1,6 +1,5 @@
 package org.almostrealism.ml;
 
-/** The BPE class. */
 public class BPE {
 	/**
 	 * Find the first match for text in vocab,
@@ -16,7 +15,6 @@ public class BPE {
 		return -1;
 	}
 
-	/** Performs the encode operation. */
 	public static int encode(String text, String[] vocab, float[] vocabScores, int vocabSize, int[] tokens) {
 		int tokenCount = 0;
 

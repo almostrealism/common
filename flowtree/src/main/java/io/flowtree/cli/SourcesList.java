@@ -27,7 +27,6 @@ import org.jboss.aesh.console.command.invocation.CommandInvocation;
 
 import java.util.List;
 
-/** This type. */
 @CommandDefinition(name="sources", description = "List data sources")
 public class SourcesList implements Command {
 	@Arguments

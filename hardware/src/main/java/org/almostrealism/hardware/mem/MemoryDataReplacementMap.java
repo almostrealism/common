@@ -45,7 +45,6 @@ public class MemoryDataReplacementMap implements Destroyable {
 		this.replacements = new HashMap<>();
 	}
 
-	/** Performs the addReplacement operation. */
 	public void addReplacement(MemoryData original, Producer<MemoryData> replacement, int pos) {
 		MemoryDataRef ref = new MemoryDataRef(original);
 
@@ -56,7 +55,6 @@ public class MemoryDataReplacementMap implements Destroyable {
 		replacements.put(ref, new MemoryDataSource(replacement, pos, original.getMemLength()));
 	}
 
-	/** Performs the getPreprocess operation. */
 	public OperationList getPreprocess() {
 		OperationList prep = new OperationList("MemoryDataReplacementMap Preprocess");
 		replacements.forEach((original, replacement) -> {
@@ -65,7 +63,6 @@ public class MemoryDataReplacementMap implements Destroyable {
 		return prep;
 	}
 
-	/** Performs the getPostprocess operation. */
 	public OperationList getPostprocess() {
 		OperationList post = new OperationList("MemoryDataReplacementMap Postprocess");
 		replacements.forEach((original, replacement) -> {

@@ -26,7 +26,6 @@ import org.almostrealism.collect.PackedCollection;
 import java.util.Objects;
 import java.util.function.DoubleFunction;
 
-/** The PatternNoteLayer class. */
 public class PatternNoteLayer extends PatternNoteAudioAdapter implements KeyboardTuned {
 
 	private final PatternNoteAudio delegate;
@@ -59,7 +58,6 @@ public class PatternNoteLayer extends PatternNoteAudioAdapter implements Keyboar
 		throw new UnsupportedOperationException();
 	}
 
-	/** This method. */
 	@JsonIgnore
 	public PackedCollection getAudio() {
 		if (delegate != null) {
@@ -85,12 +83,10 @@ public class PatternNoteLayer extends PatternNoteAudioAdapter implements Keyboar
 		return Objects.hashCode(delegate);
 	}
 
-	/** Performs the create operation. */
 	public static PatternNoteLayer create(PatternNoteAudio delegate, NoteAudioFilter filter) {
 		return new PatternNoteLayer(delegate, filter);
 	}
 
-	/** Performs the create operation. */
 	public static PatternNoteLayer create(PatternNoteAudio delegate, Factor<PackedCollection> factor) {
 		return new PatternNoteLayer(delegate, (audio, duration, automationLevel) -> factor.getResultant(audio));
 	}

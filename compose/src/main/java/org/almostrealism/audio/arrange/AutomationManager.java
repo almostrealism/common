@@ -28,7 +28,6 @@ import org.almostrealism.heredity.ProjectedChromosome;
 import java.util.function.DoubleSupplier;
 import java.util.function.Supplier;
 
-/** The AutomationManager class. */
 public class AutomationManager implements Setup, CellFeatures {
 	public static final int GENE_LENGTH = 6;
 
@@ -50,18 +49,15 @@ public class AutomationManager implements Setup, CellFeatures {
 		this.scale = PackedCollection.factory().apply(1);
 	}
 
-	/** Performs the time operation. */
 	protected Producer<PackedCollection> time(Producer<PackedCollection> position, Producer<PackedCollection> phase) {
 		phase = c(2.0).multiply(phase).subtract(c(1.0)).multiply(c(p));
 		return add(position, phase);
 	}
 
-	/** Performs the time operation. */
 	protected Producer<PackedCollection> time(Producer<PackedCollection> phase) {
 		return time(divide(clock.time(sampleRate), cp(scale)), phase);
 	}
 
-	/** Performs the getAggregatedValue operation. */
 	public Producer<PackedCollection> getAggregatedValue(Gene<PackedCollection> gene,
 															Producer<PackedCollection> scale,
 															double offset) {
@@ -75,7 +71,6 @@ public class AutomationManager implements Setup, CellFeatures {
 				c(offset));
 	}
 
-	/** Performs the getAggregatedValueAt operation. */
 	public Producer<PackedCollection> getAggregatedValueAt(Producer<PackedCollection> position,
 															  Gene<PackedCollection> gene, double offset) {
 		return getAggregatedValueAt(
@@ -89,7 +84,6 @@ public class AutomationManager implements Setup, CellFeatures {
 				c(offset));
 	}
 
-	/** Performs the getAggregatedValue operation. */
 	public Producer<PackedCollection> getAggregatedValue(
 			Producer<PackedCollection> shortPeriodPhase,
 			Producer<PackedCollection> longPeriodPhase,
@@ -105,7 +99,6 @@ public class AutomationManager implements Setup, CellFeatures {
 		return multiply(main, multiply(shortPeriod, longPeriod));
 	}
 
-	/** Performs the getAggregatedValueAt operation. */
 	public Producer<PackedCollection> getAggregatedValueAt(
 			Producer<PackedCollection> position,
 			Producer<PackedCollection> shortPeriodPhase,
@@ -122,62 +115,51 @@ public class AutomationManager implements Setup, CellFeatures {
 		return multiply(main, multiply(shortPeriod, longPeriod));
 	}
 
-	/** Performs the applyMagnitude operation. */
 	protected Producer<PackedCollection> applyMagnitude(Producer<PackedCollection> magnitude,
 														   Producer<PackedCollection> value) {
 		return multiply(value, magnitude).add(c(1.0).subtract(magnitude));
 	}
 
-	/** Performs the applyScale operation. */
 	protected Producer<PackedCollection> applyScale(Producer<PackedCollection> value, Producer<PackedCollection> scale) {
 		return scale == null ? value : multiply(value, scale);
 	}
 
-	/** Performs the getMainValue operation. */
 	public Producer<PackedCollection> getMainValue(Producer<PackedCollection> phase, Producer<PackedCollection> offset) {
 		return getMainValueAt(time(phase), offset);
 	}
 
-	/** Performs the getMainValueAt operation. */
 	public Producer<PackedCollection> getMainValueAt(Producer<PackedCollection> position,
 														Producer<PackedCollection> phase,
 														Producer<PackedCollection> offset) {
 		return getMainValueAt(time(position, phase), offset);
 	}
 
-	/** Performs the getMainValueAt operation. */
 	public Producer<PackedCollection> getMainValueAt(Producer<PackedCollection> time, Producer<PackedCollection> offset) {
 		Producer<PackedCollection> v = c(0.1 * r).multiply(time).pow(c(3.0));
 		v = rectify(add(v, offset));
 		return multiply(v, c(0.01));
 	}
 
-	/** Performs the getLongPeriodValue operation. */
 	public Producer<PackedCollection> getLongPeriodValue(Producer<PackedCollection> phase) {
 		return getLongPeriodValueAt(time(phase));
 	}
 
-	/** Performs the getLongPeriodValueAt operation. */
 	public Producer<PackedCollection> getLongPeriodValueAt(Producer<PackedCollection> position, Producer<PackedCollection> phase) {
 		return getLongPeriodValueAt(time(position, phase));
 	}
 
-	/** Performs the getLongPeriodValueAt operation. */
 	public Producer<PackedCollection> getLongPeriodValueAt(Producer<PackedCollection> time) {
 		return c(0.95).add(sin(multiply(time, c(2.0 * r)))).multiply(c(0.05));
 	}
 
-	/** Performs the getShortPeriodValue operation. */
 	public Producer<PackedCollection> getShortPeriodValue(Producer<PackedCollection> phase) {
 		return getShortPeriodValueAt(time(phase));
 	}
 
-	/** Performs the getShortPeriodValueAt operation. */
 	public Producer<PackedCollection> getShortPeriodValueAt(Producer<PackedCollection> position, Producer<PackedCollection> phase) {
 		return getShortPeriodValueAt(time(position, phase));
 	}
 
-	/** Performs the getShortPeriodValueAt operation. */
 	public Producer<PackedCollection> getShortPeriodValueAt(Producer<PackedCollection> time) {
 		return c(1.0).add(sin(multiply(time, c(16.0 * r))).multiply(c(-0.04)));
 	}

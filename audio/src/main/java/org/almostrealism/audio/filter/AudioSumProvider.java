@@ -70,7 +70,6 @@ public class AudioSumProvider implements CellFeatures {
 		}
 	}
 
-	/** Performs the sum operation. */
 	public PackedCollection sum(PackedCollection dest, PackedCollection in) {
 		long start = System.nanoTime();
 
@@ -87,7 +86,6 @@ public class AudioSumProvider implements CellFeatures {
 		}
 	}
 
-	/** Performs the adjustVolume operation. */
 	public PackedCollection adjustVolume(PackedCollection dest, PackedCollection volume) {
 		long start = System.nanoTime();
 

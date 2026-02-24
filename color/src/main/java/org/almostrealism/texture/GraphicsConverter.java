@@ -109,7 +109,6 @@ public class GraphicsConverter {
 		        		(float)Math.min(1.0, Math.abs(color.getBlue())));
 	}
 	
-	/** Performs the extract32BitImage operation. */
 	public static int[] extract32BitImage(RenderedImage im) {
 		int w = im.getWidth();
 		int h = im.getHeight();
@@ -131,7 +130,6 @@ public class GraphicsConverter {
 		return rgb;
 	}
 	
-	/** Performs the extract8BitImage operation. */
 	public static byte[] extract8BitImage(RenderedImage im) {
 		int w = im.getWidth();
 		int h = im.getHeight();
@@ -171,7 +169,6 @@ public class GraphicsConverter {
 		return rgb;
 	}
 	
-	/** Performs the convertToRGBArray operation. */
 	public static RGB[][] convertToRGBArray(int[] pixel, int off, int x, int y, int w, int h, int imageW) {
 		RGB[][] rgb = new RGB[w][h];
 		
@@ -194,18 +191,15 @@ public class GraphicsConverter {
 		return rgb;
 	}
 
-	/** Performs the loadRgb operation. */
 	public static PackedCollection loadRgb(File file) throws IOException {
 		// TODO Delegate to to the PackedCollection, and apply an RGB postprocessor for the elements
 		return loadRgb(file, false);
 	}
 
-	/** Performs the loadChannels operation. */
 	public static PackedCollection loadChannels(File file) throws IOException {
 		return loadRgb(file, true);
 	}
 
-	/** Performs the loadRgb operation. */
 	public static PackedCollection loadRgb(File file, boolean channelsFirst) throws IOException {
 		BufferedImage image = ImageIO.read(file);
 
@@ -221,7 +215,6 @@ public class GraphicsConverter {
 		return dest;
 	}
 
-	/** Performs the loadRgb operation. */
 	public static void loadRgb(PackedCollection rgbDestination,
 							   BufferedImage bufferedImage,
 							   int xOff, int yOff, int w, int h,
@@ -253,7 +246,6 @@ public class GraphicsConverter {
 		}
 	}
 
-	/** Performs the loadGrayscale operation. */
 	public static PackedCollection loadGrayscale(File file) throws IOException {
 		BufferedImage image = ImageIO.read(file);
 
@@ -266,7 +258,6 @@ public class GraphicsConverter {
 		return dest;
 	}
 
-	/** Performs the loadGrayscale operation. */
 	public static void loadGrayscale(
 								PackedCollection rgbDestination,
 							    BufferedImage bufferedImage,
@@ -294,7 +285,6 @@ public class GraphicsConverter {
 		}
 	}
 
-	/** Performs the histogram operation. */
 	public static double[] histogram(BufferedImage bufferedImage,
 									 int xoff, int yoff, int w, int h,
 									 int buckets) {
@@ -489,7 +479,6 @@ public class GraphicsConverter {
 	}
 
 	// TODO  Accelerated
-	/** Performs the convertToAWTImage operation. */
 	public static BufferedImage convertToAWTImage(PackedCollection values, boolean channelsFirst) {
 		int axis = channelsFirst ? 1 : 0;
 		int h = values.getShape().length(axis);

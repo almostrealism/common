@@ -591,12 +591,10 @@ public interface MemoryData extends TraversableExpression<Double>, Delegated<Mem
 		return toFloatArray(0, getMemLength());
 	}
 
-	/** Performs the toArrayString operation. */
 	default String toArrayString(int offset, int length) {
 		return Arrays.toString(toArray(offset, length));
 	}
 
-	/** Performs the toArrayString operation. */
 	default String toArrayString() {
 		return Arrays.toString(toArray());
 	}

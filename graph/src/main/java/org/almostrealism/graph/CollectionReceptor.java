@@ -5,7 +5,6 @@ import org.almostrealism.collect.PackedCollection;
 
 import java.util.function.Supplier;
 
-/** The CollectionReceptor class. */
 public class CollectionReceptor implements Receptor<PackedCollection> {
 	private final PackedCollection dest;
 	private final Producer<PackedCollection> pos;

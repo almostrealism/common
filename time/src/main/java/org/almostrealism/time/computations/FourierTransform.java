@@ -282,14 +282,12 @@ public class FourierTransform extends CollectionProducerComputationBase {
 		return new FourierTransform(getShape().length(0), getShape().length(2), inverse, (Producer) children.get(1));
 	}
 
-	/** Performs the addParameter operation. */
 	protected ArrayVariable<Double> addParameter(Scope<?> method, String name, int size) {
 		ArrayVariable<Double> source = new ArrayVariable<>(Double.class, name, e(size));
 		method.getParameters().add(source);
 		return source;
 	}
 
-	/** Performs the calculateTransform operation. */
 	protected Scope<?> calculateTransform(Expression<Integer> outputPosition, int size, int totalSize) {
 		OperationMetadata calculateTransformMetadata = new OperationMetadata
 				(getFunctionName() + "_calculateTransform", "Calculate Transform");
@@ -312,7 +310,6 @@ public class FourierTransform extends CollectionProducerComputationBase {
 							outputPosition, size, totalSize);
 	}
 
-	/** Performs the populateCalculateTransform operation. */
 	protected Scope<?> populateCalculateTransform(Scope<?> calculateTransform,
 												 ArrayVariable<Double> output, ArrayVariable<Double> input,
 												 Expression<?> len, Variable<Integer, ?> inverseTransform,
@@ -511,7 +508,6 @@ public class FourierTransform extends CollectionProducerComputationBase {
 		return calculateTransform;
 	}
 
-	/** Performs the recursion operation. */
 	protected Scope recursion(Scope<?> calculateTransform,
 								 ArrayVariable<Double> radix2,
 								 ArrayVariable<Double> radix4Part1, ArrayVariable<Double> radix4Part2,
@@ -557,7 +553,6 @@ public class FourierTransform extends CollectionProducerComputationBase {
 	}
 
 
-	/** Performs the radix2 operation. */
 	protected Scope<?> radix2(Expression<Integer> outputPosition, int size, int totalSize) {
 		OperationMetadata radix2Metadata = new OperationMetadata
 				(getFunctionName() + "_radix2", "Radix 2");
@@ -578,7 +573,6 @@ public class FourierTransform extends CollectionProducerComputationBase {
 		return populateRadix2(radix2, output, input, len.ref(), inverseTransform, isFirstSplit.ref(), size);
 	}
 
-	/** Performs the populateRadix2 operation. */
 	protected <T> Scope<T> populateRadix2(Scope<T> radix2, ArrayVariable<Double> output, ArrayVariable<Double> input,
 							  Expression<?> len, Variable<Integer, ?> inverseTransform,
 							  Expression<?> isFirstSplit, int size) {
@@ -686,7 +680,6 @@ public class FourierTransform extends CollectionProducerComputationBase {
 		return radix2;
 	}
 
-	/** Performs the recursionRadix2 operation. */
 	protected Scope recursionRadix2(Scope<?> radix2,
 									ArrayVariable<Double> evenFft, ArrayVariable<Double> even,
 									ArrayVariable<Double> oddFft, ArrayVariable<Double> odd,

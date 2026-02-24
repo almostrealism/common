@@ -8,7 +8,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
-/** The Meitnerium class. */
 public class Meitnerium implements Element {
 	public int getAtomicNumber() { return 109; }
 

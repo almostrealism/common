@@ -37,25 +37,21 @@ import java.util.Iterator;
  */
 public class SpanningTreePotentialMap implements PotentialMapSet {
 
-	/** Performs the addPotentialMap operation. */
 	public int addPotentialMap(PotentialMap m, double[] x) {
 		// TODO Auto-generated method stub
 		return 0;
 	}
 
-	/** Performs the removePotentialMaps operation. */
 	public int removePotentialMaps(double[] x, double radius) {
 		// TODO Auto-generated method stub
 		return 0;
 	}
 
-	/** Performs the removePotentialMap operation. */
 	public int removePotentialMap(PotentialMap m) {
 		// TODO Auto-generated method stub
 		return 0;
 	}
 
-	/** Performs the setMaxProximity operation. */
 	public void setMaxProximity(double radius) {
 		// TODO Auto-generated method stub
 
@@ -66,13 +62,11 @@ public class SpanningTreePotentialMap implements PotentialMapSet {
 		return 0;
 	}
 
-	/** Performs the getPotential operation. */
 	public double getPotential(double[] p) {
 		// TODO Auto-generated method stub
 		return 0;
 	}
 
-	/** Performs the size operation. */
 	public int size() {
 		// TODO Auto-generated method stub
 		return 0;
@@ -83,67 +77,56 @@ public class SpanningTreePotentialMap implements PotentialMapSet {
 		return false;
 	}
 
-	/** Performs the contains operation. */
 	public boolean contains(Object arg0) {
 		// TODO Auto-generated method stub
 		return false;
 	}
 
-	/** Performs the iterator operation. */
 	public Iterator iterator() {
 		// TODO Auto-generated method stub
 		return null;
 	}
 
-	/** Performs the toArray operation. */
 	public Object[] toArray() {
 		// TODO Auto-generated method stub
 		return null;
 	}
 
-	/** Performs the toArray operation. */
 	public Object[] toArray(Object[] arg0) {
 		// TODO Auto-generated method stub
 		return null;
 	}
 
-	/** Performs the add operation. */
 	public boolean add(Object arg0) {
 		// TODO Auto-generated method stub
 		return false;
 	}
 
-	/** Performs the remove operation. */
 	public boolean remove(Object arg0) {
 		// TODO Auto-generated method stub
 		return false;
 	}
 
-	/** Performs the containsAll operation. */
 	public boolean containsAll(Collection arg0) {
 		// TODO Auto-generated method stub
 		return false;
 	}
 
-	/** Performs the addAll operation. */
 	public boolean addAll(Collection arg0) {
 		// TODO Auto-generated method stub
 		return false;
 	}
 
-	/** Performs the retainAll operation. */
 	public boolean retainAll(Collection arg0) {
 		// TODO Auto-generated method stub
 		return false;
 	}
 
-	/** Performs the removeAll operation. */
 	public boolean removeAll(Collection arg0) {
 		// TODO Auto-generated method stub
 		return false;
 	}
 
-	/** Performs the clear operation. */
 	public void clear() {
 		// TODO Auto-generated method stub
 

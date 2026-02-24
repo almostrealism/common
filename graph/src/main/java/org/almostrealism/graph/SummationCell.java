@@ -21,7 +21,6 @@ import org.almostrealism.collect.PackedCollection;
 
 import java.util.function.Supplier;
 
-/** The SummationCell class. */
 public class SummationCell extends CollectionCachedStateCell {
 	@Override
 	public Supplier<Runnable> push(Producer<PackedCollection> protein) {

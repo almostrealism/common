@@ -23,7 +23,6 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.stream.Stream;
 
-/** The IndexValues class. */
 public class IndexValues {
 	private Integer kernelIndex;
 	private Map<String, Integer> values;
@@ -42,23 +41,19 @@ public class IndexValues {
 
 	public Integer getKernelIndex() { return kernelIndex; }
 
-	/** Performs the getIndex operation. */
 	public Integer getIndex(String name) {
 		return values.get(name);
 	}
 
-	/** Performs the containsIndex operation. */
 	public boolean containsIndex(String name) {
 		return values.containsKey(name);
 	}
 
-	/** Performs the addIndex operation. */
 	public IndexValues addIndex(String name, Integer index) {
 		values.put(name, index);
 		return this;
 	}
 
-	/** Performs the put operation. */
 	public IndexValues put(Index idx, Integer value) {
 		if (idx instanceof KernelIndex) {
 			kernelIndex = value;
@@ -79,7 +74,6 @@ public class IndexValues {
 		return this;
 	}
 
-	/** Performs the apply operation. */
 	public Expression apply(Expression exp) {
 		for (Map.Entry<String, Integer> entry : values.entrySet()) {
 			exp = exp.withValue(entry.getKey(), entry.getValue());
@@ -92,17 +86,14 @@ public class IndexValues {
 		return exp;
 	}
 
-	/** Performs the of operation. */
 	public static IndexValues of(Index... indices) {
 		return of(Stream.of(indices));
 	}
 
-	/** Performs the of operation. */
 	public static IndexValues of(Collection<Index> indices) {
 		return of(indices.stream());
 	}
 
-	/** Performs the of operation. */
 	public static IndexValues of(Stream<Index> indices) {
 		IndexValues values = new IndexValues();
 		indices.forEach(idx -> values.put(idx, 0));

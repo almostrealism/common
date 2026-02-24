@@ -128,7 +128,6 @@ public class InstanceReference<T, V> extends Expression<V> implements Expression
 				target, e(1), e(0));
 	}
 
-	/** Performs the recreate operation. */
 	public InstanceReference<T, V> recreate(List<Expression<?>> children) {
 		if (children.isEmpty()) {
 			return new InstanceReference<>(var);

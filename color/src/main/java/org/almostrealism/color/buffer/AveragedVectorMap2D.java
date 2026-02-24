@@ -23,10 +23,7 @@ import org.almostrealism.collect.PackedCollection;
  * @author  Mike Murray
  */
 public interface AveragedVectorMap2D {
-	/** Performs the addVector operation. */
 	void addVector(double u, double v, Producer<PackedCollection> e, boolean front);
-	/** Performs the getVector operation. */
 	double[] getVector(double u, double v, boolean front);
-	/** Performs the getSampleCount operation. */
 	int getSampleCount(double u, double v, boolean front);
 }

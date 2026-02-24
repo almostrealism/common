@@ -19,7 +19,6 @@ package io.almostrealism.collect;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
 
-/** The WeightedSumExpression class. */
 public class WeightedSumExpression extends BinaryGroupExpression {
 	public static boolean enableCollectionExpression = true;
 	public static int simplifyThreshold = 1 << 16;

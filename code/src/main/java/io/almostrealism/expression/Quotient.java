@@ -35,7 +35,6 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
-/** The Quotient class. */
 public class Quotient<T extends Number> extends NAryExpression<T> {
 	public static boolean enableProductModSimplify = true;
 	public static boolean enableArithmeticGenerator = true;
@@ -48,7 +47,6 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 
 	public Expression<?> getNumerator() { return getChildren().get(0); }
 
-	/** Performs the getDenominator operation. */
 	public Expression<?> getDenominator() {
 		// TODO  This should be supported
 		if (getChildren().size() > 2)
@@ -246,12 +244,10 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 		return quotient(target.getShape(), List.of(derivativeNumerator, derivativeDenominator));
 	}
 
-	/** Performs the of operation. */
 	public static Expression<?> of(Expression<?>... values) {
 		return Expression.process(create(values));
 	}
 
-	/** Performs the create operation. */
 	protected static Expression<?> create(Expression<?>... values) {
 		if (values.length == 0) throw new IllegalArgumentException();
 		if (values.length == 1) return values[0];

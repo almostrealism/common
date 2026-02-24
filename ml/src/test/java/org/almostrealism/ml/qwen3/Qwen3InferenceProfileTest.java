@@ -17,34 +17,12 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Random;
 
-/**
- * Profiling test for Qwen3 inference performance analysis.
- *
- * <p>This test builds a Qwen3 model with synthetic (random) weights using
- * a representative 0.6B-scale configuration and profiles multiple forward
- * passes. The resulting profile XML can be analyzed with the
- * ar-profile-analyzer MCP tool to identify performance bottlenecks.</p>
- *
- * <p>The forward pass operations (attention projections, RoPE, RMSNorm,
- * SwiGLU FFN, etc.) have the same computational cost regardless of weight
- * values, making synthetic weights valid for performance profiling.</p>
- *
- * @see Qwen3
- * @see Qwen3Config
- */
 public class Qwen3InferenceProfileTest extends TestSuiteBase implements ConsoleFeatures {
 
 	private static final String RESULTS_DIR = "ml/results";
 	private static final String PROFILE_PATH = RESULTS_DIR + "/qwen3_inference_profile.xml";
 	private static final String LOG_PATH = RESULTS_DIR + "/qwen3_inference_profile.txt";
 
-	/**
-	 * Profile a representative Qwen3 forward pass using reduced config.
-	 *
-	 * <p>Uses dim=896, hiddenDim=4864, 2 layers, 14 query heads, 2 KV heads.
-	 * Vocab and layer count are reduced for CI; the per-layer profile is
-	 * representative of the full model since each layer has identical structure.</p>
-	 */
 	@Test(timeout = 300000)
 	public void profileInference() throws IOException {
 		new File(RESULTS_DIR).mkdirs();
@@ -140,9 +118,6 @@ public class Qwen3InferenceProfileTest extends TestSuiteBase implements ConsoleF
 		log("\n=== Profile Test Complete ===");
 	}
 
-	/**
-	 * Create input tensor from a token embedding.
-	 */
 	private PackedCollection createInput(PackedCollection embeddings, int token, int dim) {
 		PackedCollection input = new PackedCollection(shape(1, dim));
 		for (int i = 0; i < dim; i++) {
@@ -151,12 +126,6 @@ public class Qwen3InferenceProfileTest extends TestSuiteBase implements ConsoleF
 		return input;
 	}
 
-	/**
-	 * Create random weights with correct shapes for profiling.
-	 *
-	 * <p>Generates all weight tensors expected by Qwen3 with small random
-	 * values. The weight values do not affect operation timing.</p>
-	 */
 	private static StateDictionary createRandomWeights(Qwen3Config config, long seed) {
 		Random random = new Random(seed);
 		Map<String, PackedCollection> weights = new HashMap<>();

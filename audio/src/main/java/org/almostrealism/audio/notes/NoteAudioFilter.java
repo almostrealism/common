@@ -32,7 +32,6 @@ import org.almostrealism.collect.PackedCollection;
  * @see SamplingFeatures
  */
 public interface NoteAudioFilter extends SamplingFeatures {
-	/** Performs the apply operation. */
 	Producer<PackedCollection> apply(Producer<PackedCollection> input,
 										Producer<PackedCollection> noteDuration,
 										Producer<PackedCollection> automationLevel);

@@ -38,7 +38,6 @@ import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
-/** The TreeNoteSource class. */
 public class TreeNoteSource extends NoteAudioSourceBase implements Named, ConsoleFeatures {
 
 	private FileWaveDataProviderTree<? extends Supplier<FileWaveDataProvider>> tree;
@@ -79,7 +78,6 @@ public class TreeNoteSource extends NoteAudioSourceBase implements Named, Consol
 	public void setRoot(KeyPosition<?> root) { this.root = root; }
 
 	public Double getBpm() { return bpm; }
-	/** Performs the setBpm operation. */
 	public void setBpm(Double bpm) {
 		if (!Objects.equals(this.bpm, bpm)) {
 			this.bpm = bpm;
@@ -93,7 +91,6 @@ public class TreeNoteSource extends NoteAudioSourceBase implements Named, Consol
 	}
 
 	public Double getSplitDurationBeats() { return splitDurationBeats; }
-	/** Performs the setSplitDurationBeats operation. */
 	public void setSplitDurationBeats(Double splitDurationBeats) {
 		if (!Objects.equals(this.splitDurationBeats, splitDurationBeats)) {
 			this.splitDurationBeats = splitDurationBeats;
@@ -104,14 +101,12 @@ public class TreeNoteSource extends NoteAudioSourceBase implements Named, Consol
 	@JsonIgnore
 	public FileWaveDataProviderTree<?> getTree() { return tree; }
 
-	/** This method. */
 	@JsonIgnore
 	public void setTree(FileWaveDataProviderTree tree) {
 		this.tree = tree;
 		if (!isUpdated()) computeProviders();
 	}
 
-	/** Performs the isUpdated operation. */
 	public boolean isUpdated() {
 		if (tree == null)
 			return true;
@@ -149,7 +144,6 @@ public class TreeNoteSource extends NoteAudioSourceBase implements Named, Consol
 
 	public String getOrigin() { return tree instanceof Named ? ((Named) tree).getName() : ""; }
 
-	/** This method. */
 	@JsonIgnore
 	public List<NoteAudio> getNotes() {
 		if (!isUpdated()) computeProviders();
@@ -188,7 +182,6 @@ public class TreeNoteSource extends NoteAudioSourceBase implements Named, Consol
 		this.reversePlayback = reversePlayback;
 	}
 
-	/** Performs the refresh operation. */
 	public void refresh() {
 		computeProviders();
 	}
@@ -250,7 +243,6 @@ public class TreeNoteSource extends NoteAudioSourceBase implements Named, Consol
 		}
 	}
 
-	/** Performs the checkResourceUsed operation. */
 	public boolean checkResourceUsed(String canonicalPath) {
 		if (providers == null) computeProviders();
 
@@ -271,14 +263,12 @@ public class TreeNoteSource extends NoteAudioSourceBase implements Named, Consol
 		return CellFeatures.console;
 	}
 
-	/** Performs the fromFile operation. */
 	public static TreeNoteSource fromFile(File root, FileWaveDataProviderFilter filter) {
 		TreeNoteSource t = new TreeNoteSource(new FileWaveDataProviderNode(root));
 		t.getFilters().add(filter);
 		return t;
 	}
 
-	/** The Provider class. */
 	protected class Provider implements Comparable<Provider> {
 		private final NoteAudioProvider provider;
 		private final BooleanSupplier active;

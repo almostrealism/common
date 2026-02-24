@@ -20,7 +20,6 @@ import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
-/** The MultipleParameterFunction class. */
 public class MultipleParameterFunction {
 	private List<ParameterFunction> functions;
 
@@ -39,14 +38,12 @@ public class MultipleParameterFunction {
 		this.functions = functions;
 	}
 
-	/** Performs the apply operation. */
 	public List<Double> apply(ParameterSet params) {
 		return functions.stream()
 						.map(f -> f.positive().apply(params))
 						.collect(Collectors.toList());
 	}
 
-	/** Performs the random operation. */
 	public static MultipleParameterFunction random(int count) {
 		return new MultipleParameterFunction(
 				IntStream.range(0, count)

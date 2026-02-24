@@ -103,10 +103,8 @@ public class AudioProcessingUtils {
 		return filterEnv;
 	}
 
-	/** Performs the init operation. */
 	public static void init() { }
 
-	/** Performs the destroy operation. */
 	public static void destroy() {
 		if (filterEnv instanceof Destroyable) {
 			((Destroyable) filterEnv).destroy();

@@ -18,7 +18,6 @@ package org.almostrealism.color;
 
 import org.almostrealism.geometry.BasicGeometry;
 
-/** The ColoredGeometry class. */
 public class ColoredGeometry extends BasicGeometry {
 	private RGB color;
 

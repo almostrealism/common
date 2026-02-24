@@ -40,7 +40,6 @@ public class FrequencyRescalingSourceAggregator implements SourceAggregator, Cel
 
 	private final int fftBins = WaveData.FFT_BINS;
 
-	/** Performs the fft operation. */
 	protected FourierTransform fft(CollectionProducer input) {
 		int frames = shape(input).getTotalSize();
 		int slices = frames / fftBins;
@@ -55,7 +54,6 @@ public class FrequencyRescalingSourceAggregator implements SourceAggregator, Cel
 		return fft(fftBins, input, ComputeRequirement.CPU);
 	}
 
-	/** Performs the ifft operation. */
 	protected FourierTransform ifft(CollectionProducer input) {
 		return ifft(fftBins, input, ComputeRequirement.CPU);
 	}
@@ -87,7 +85,6 @@ public class FrequencyRescalingSourceAggregator implements SourceAggregator, Cel
 		return result.flatten();
 	}
 
-	/** Performs the extractFilter operation. */
 	protected CollectionProducer extractFilter(CollectionProducer input) {
 		CollectionProducer filter = fft(input);
 		filter = filter.transpose(2).magnitude(2);

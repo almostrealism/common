@@ -422,7 +422,6 @@ public interface AudioTestFeatures extends GeometryFeatures {
 
 		private TestWavFileHolder() {}
 
-		/** Performs the getTestWavFile operation. */
 		static File getTestWavFile() {
 			if (cachedFile == null) {
 				synchronized (TestWavFileHolder.class) {
@@ -434,7 +433,6 @@ public interface AudioTestFeatures extends GeometryFeatures {
 			return cachedFile;
 		}
 
-		/** Performs the createTestWavFile operation. */
 		static File createTestWavFile(double frequency, double durationSeconds) {
 			if (durationSeconds > 5.0) {
 				throw new IllegalArgumentException("Test WAV duration must be <= 5 seconds");

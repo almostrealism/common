@@ -8,7 +8,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
-/** The Mercury class. */
 public class Mercury implements Element {
 	public int getAtomicNumber() { return 80; }
 

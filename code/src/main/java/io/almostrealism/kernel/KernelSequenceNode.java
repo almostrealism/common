@@ -26,7 +26,6 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-/** The KernelSequenceNode class. */
 public class KernelSequenceNode implements Tree<KernelSequenceNode> {
 	private String index;
 	private KernelSequenceNode children[];
@@ -47,14 +46,12 @@ public class KernelSequenceNode implements Tree<KernelSequenceNode> {
 		return children == null ? Collections.emptyList() : List.of(children);
 	}
 
-	/** Performs the generateTree operation. */
 	public static KernelSequenceNode generateTree(Expression<?> expression, int len) {
 		Set<Index> indices = expression.getIndices().stream()
 				.filter(i -> !(i instanceof KernelIndex)).collect(Collectors.toSet());
 		return generateTree(expression, new IndexValues(), indices, len);
 	}
 
-	/** Performs the generateTree operation. */
 	public static KernelSequenceNode generateTree(Expression<?> exp, IndexValues values, Set<Index> indices, int len) {
 		if (indices.isEmpty()) {
 			return new KernelSequenceNode(ArrayIndexSequence.of(exp, values, len));

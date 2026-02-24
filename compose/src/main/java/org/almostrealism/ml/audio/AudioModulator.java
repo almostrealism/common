@@ -73,17 +73,14 @@ public class AudioModulator implements AutoCloseable, CodeFeatures {
 		this.audioDuration = Math.min(composer.getMaximumAudioDuration(), seconds);
 	}
 
-	/** Performs the addAudio operation. */
 	public void addAudio(PackedCollection audio) {
 		composer.addAudio(cp(audio));
 	}
 
-	/** Performs the addFeatures operation. */
 	public void addFeatures(PackedCollection features) {
 		composer.addSource(cp(features));
 	}
 
-	/** Performs the project operation. */
 	public PackedCollection project(PackedCollection position) {
 		try (PackedCollection result = composer.getResultant(cp(position)).evaluate()) {
 			double[] data = result.toArray();
@@ -101,12 +98,10 @@ public class AudioModulator implements AutoCloseable, CodeFeatures {
 		}
 	}
 
-	/** Performs the generateAudio operation. */
 	public void generateAudio(PackedCollection position, String destination) {
 		generateAudio(position, new File(destination));
 	}
 
-	/** Performs the generateAudio operation. */
 	public void generateAudio(PackedCollection position, File destination) {
 		PackedCollection result = project(position);
 		WaveData out = new WaveData(result, (int) composer.getSampleRate());

@@ -16,7 +16,6 @@
 
 package io.almostrealism.collect;
 
-/** The SubsetTraversalWeightedSumExpression class. */
 public class SubsetTraversalWeightedSumExpression extends WeightedSumExpression {
 
 	public SubsetTraversalWeightedSumExpression(TraversalPolicy inputPositions,

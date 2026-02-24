@@ -25,7 +25,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
-/** The AudioChoiceNode class. */
 public class AudioChoiceNode implements NoteAudioNode {
 	private NoteAudioChoice choice;
 	private String name;
@@ -50,21 +49,18 @@ public class AudioChoiceNode implements NoteAudioNode {
 		return choice.getName();
 	}
 
-	/** Performs the setPatternElements operation. */
 	public void setPatternElements(Map<NoteAudioChoice, List<PatternElement>> elements) {
 		if (choice != null) {
 			setPatternElements(elements.get(choice));
 		}
 	}
 
-	/** Performs the setPatternElements operation. */
 	public void setPatternElements(List<PatternElement> patternElements) {
 		this.patternElements = patternElements;
 		children = null;
 		initChildren();
 	}
 
-	/** Performs the initChildren operation. */
 	protected void initChildren() {
 		if (children != null) return;
 

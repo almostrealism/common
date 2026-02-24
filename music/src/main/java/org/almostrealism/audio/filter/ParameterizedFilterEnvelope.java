@@ -26,7 +26,6 @@ import org.almostrealism.collect.PackedCollection;
 
 import java.util.List;
 
-/** The ParameterizedFilterEnvelope class. */
 public class ParameterizedFilterEnvelope extends ParameterizedEnvelopeAdapter {
 	public static double adjustmentBase = 0.8;
 	public static double adjustmentAutomation = 0.5;
@@ -53,7 +52,6 @@ public class ParameterizedFilterEnvelope extends ParameterizedEnvelopeAdapter {
 		return new Filter(params, voicing);
 	}
 
-	/** The Filter class. */
 	public class Filter implements NoteAudioFilter {
 		private final ParameterSet params;
 		private final ChannelInfo.Voicing voicing;
@@ -131,11 +129,9 @@ public class ParameterizedFilterEnvelope extends ParameterizedEnvelopeAdapter {
 		}
 	}
 
-	/** The Mode enumeration. */
 	public enum Mode {
 		STANDARD_NOTE, NOTE_LAYER;
 
-		/** Performs the getMaxAttack operation. */
 		public double getMaxAttack(ChannelInfo.Voicing voicing) {
 			switch (this) {
 				case NOTE_LAYER:
@@ -146,7 +142,6 @@ public class ParameterizedFilterEnvelope extends ParameterizedEnvelopeAdapter {
 			}
 		}
 
-		/** Performs the getMaxDecay operation. */
 		public double getMaxDecay(ChannelInfo.Voicing voicing) {
 			switch (this) {
 				case NOTE_LAYER:
@@ -157,7 +152,6 @@ public class ParameterizedFilterEnvelope extends ParameterizedEnvelopeAdapter {
 			}
 		}
 
-		/** Performs the getMaxSustain operation. */
 		public double getMaxSustain(ChannelInfo.Voicing voicing) {
 			switch (this) {
 				case NOTE_LAYER:
@@ -168,7 +162,6 @@ public class ParameterizedFilterEnvelope extends ParameterizedEnvelopeAdapter {
 			}
 		}
 
-		/** Performs the getMaxRelease operation. */
 		public double getMaxRelease(ChannelInfo.Voicing voicing) {
 			switch (this) {
 				case NOTE_LAYER:
@@ -180,7 +173,6 @@ public class ParameterizedFilterEnvelope extends ParameterizedEnvelopeAdapter {
 		}
 	}
 
-	/** Performs the random operation. */
 	public static ParameterizedFilterEnvelope random(Mode mode) {
 		return new ParameterizedFilterEnvelope(mode,
 				ParameterFunction.random(), ParameterFunction.random(),

@@ -36,15 +36,12 @@ import java.util.function.Supplier;
  * @see org.almostrealism.audio.AudioLibrary
  */
 public interface FileWaveDataProviderTree<T extends Tree<? extends Supplier<FileWaveDataProvider>>> extends Tree<T>, PathResource, Signature {
-	/** Performs the active operation. */
 	default BooleanSupplier active() {
 		return () -> true;
 	}
 
-	/** Performs the getRelativePath operation. */
 	String getRelativePath(String path);
 
-	/** Performs the getRelativePath operation. */
 	static String getRelativePath(File root, String path) {
 		String rootPath = root.getAbsolutePath();
 

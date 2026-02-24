@@ -10,7 +10,6 @@ import org.almostrealism.texture.GraphicsConverter;
 import javax.swing.JPanel;
 import java.awt.Graphics;
 
-/** The SpectralLineDiagram class. */
 public class SpectralLineDiagram extends BlackBody {
     private long[] absorbed;
     private RGB[][] image;
@@ -75,13 +74,11 @@ public class SpectralLineDiagram extends BlackBody {
         return true;
     }
 
-	/** Performs the getImage operation. */
 	public RGB[][] getImage() {
 		if (this.image == null) return new RGB[1][0];
 		return this.image;
 	}
 
-	/** Performs the drawImage operation. */
 	public void drawImage(Graphics g) {
     	System.out.println("SpectralLineDiagram.drawImage");
 		g.drawImage(GraphicsConverter.convertToAWTImage(getImage()), 0, 0, display);
@@ -90,7 +87,6 @@ public class SpectralLineDiagram extends BlackBody {
 	public void enableDisplay() { this.noDisplay = false; }
 	public void disableDisplay() { this.noDisplay = true; }
 
-	/** Performs the getDisplay operation. */
 	public JPanel getDisplay() {
 		if (this.display != null) return this.display;
 

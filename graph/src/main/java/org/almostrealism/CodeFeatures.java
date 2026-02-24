@@ -119,7 +119,6 @@ public interface CodeFeatures extends LayerFeatures,
 								TemporalFeatures, ComputerFeatures {
 	boolean enableFixedCollections = true;
 
-	/** Performs the v operation. */
 	default <T> Producer<T> v(T v) {
 		if (v instanceof TraversalPolicy) {
 			warn("TraversalPolicy provided as Producer value");
@@ -129,38 +128,31 @@ public interface CodeFeatures extends LayerFeatures,
 		return value(v);
 	}
 
-	/** This method. */
 	@Deprecated
 	default <T> Producer<T> v(int memLength, int argIndex) {
 		return value(memLength, argIndex);
 	}
 
-	/** Performs the v operation. */
 	default <T> Producer<T> v(TraversalPolicy shape, int argIndex) {
 		return value(shape, argIndex);
 	}
 
-	/** Performs the x operation. */
 	default CollectionProducer x(int... dims) {
 		return c(value(dims.length == 0 ? shape(-1, 1) : shape(dims), 0));
 	}
 
-	/** Performs the y operation. */
 	default CollectionProducer y(int... dims) {
 		return c(value(dims.length == 0 ? shape(-1, 1) : shape(dims), 1));
 	}
 
-	/** Performs the z operation. */
 	default CollectionProducer z(int... dims) {
 		return c(value(dims.length == 0 ? shape(-1, 1) : shape(dims), 2));
 	}
 
-	/** Performs the cv operation. */
 	default <T extends PackedCollection> CollectionProducer cv(TraversalPolicy shape, int argIndex) {
 		return c(value(shape, argIndex));
 	}
 
-	/** Performs the v operation. */
 	default <T> Producer<T> v(Function<Object[], T> function) {
 		return new DynamicProducer<>(function);
 	}
@@ -171,7 +163,6 @@ public interface CodeFeatures extends LayerFeatures,
 
 	default Producer<PackedCollection> points(int argIndex) { return value(shape(3, 3), argIndex); }
 
-	/** Performs the value operation. */
 	default <T> Producer<T> value(T v) {
 		if (v instanceof Pair) {
 			return (ProducerComputation<T>) PairFeatures.getInstance().value((Pair) v);
@@ -190,12 +181,10 @@ public interface CodeFeatures extends LayerFeatures,
 		}
 	}
 
-	/** Performs the value operation. */
 	default <T> Producer<T> value(TraversalPolicy shape, int argIndex) {
 		return Input.value(shape, argIndex);
 	}
 
-	/** Performs the value operation. */
 	default <T> Producer<T> value(int memLength, int argIndex) {
 		return Input.value(memLength, argIndex);
 	}
@@ -221,42 +210,34 @@ public interface CodeFeatures extends LayerFeatures,
 		}
 	}
 
-	/** Performs the choice operation. */
 	default <T> Switch choice(Producer<PackedCollection> decision, Computation<T>... choices) {
 		return new Switch(decision, Arrays.asList(choices));
 	}
 
-	/** Performs the dc operation. */
 	default DataContext dc() {
 		return Hardware.getLocalHardware().getDataContext();
 	}
 
-	/** Performs the dc operation. */
 	default void dc(Runnable r) {
 		dc(() -> { r.run(); return null; });
 	}
 
-	/** Performs the dc operation. */
 	default <T> T dc(Callable<T> exec) {
 		return Hardware.getLocalHardware().dataContext(exec);
 	}
 
-	/** Performs the cc operation. */
 	default ComputeContext cc() {
 		return Hardware.getLocalHardware().getComputeContext();
 	}
 
-	/** Performs the cc operation. */
 	default void cc(Runnable r, ComputeRequirement... expectations) {
 		cc(() -> { r.run(); return new Void[0]; }, expectations);
 	}
 
-	/** Performs the cc operation. */
 	default <T> T cc(Callable<T> exec, ComputeRequirement... expectations) {
 		return Hardware.getLocalHardware().computeContext(exec, expectations);
 	}
 
-	/** Performs the profile operation. */
 	default <T extends OperationProfile> T profile(T profile, Runnable r) {
 		try {
 			Hardware.getLocalHardware().assignProfile(profile);
@@ -267,12 +248,10 @@ public interface CodeFeatures extends LayerFeatures,
 		}
 	}
 
-	/** Performs the profile operation. */
 	default OperationProfileNode profile(String name, Supplier<Runnable> op) {
 		return profile(new OperationProfileNode(name), op);
 	}
 
-	/** Performs the profile operation. */
 	default OperationProfileNode profile(OperationProfileNode profile, Supplier<Runnable> op) {
 		Runnable r;
 
@@ -285,7 +264,6 @@ public interface CodeFeatures extends LayerFeatures,
 		return profile(profile, r);
 	}
 
-	/** Performs the profile operation. */
 	default OperationProfileNode profile(String name, Runnable r) {
 		return profile(name, () -> r);
 	}

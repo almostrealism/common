@@ -206,7 +206,6 @@ public class Shell {
 		return third(s, pp[0], pp[1], pp[2], dd[0], dd[1], dd[2], dd[3], dd[4]);
 	}
 	
-	/** Performs the third operation. */
 	public static Shell third(int s, int px, int py, int pz, int da, int db, int dc, int dd, int de) {
 		if (s == 0) {
 			if (px != 0 || py != 0 || pz != 0) {
@@ -239,7 +238,6 @@ public class Shell {
 		}
 	}
 	
-	/** Performs the fourth operation. */
 	public static Shell fourth(int s, int p, int d, int f) {
 		int pp[] = p(p);
 		int dd[] = d(d);
@@ -248,7 +246,6 @@ public class Shell {
 						ff[0], ff[1], ff[2], ff[3], ff[4], ff[5], ff[6]);
 	}
 	
-	/** Performs the fourth operation. */
 	public static Shell fourth(int s, int px, int py, int pz, int da, int db, int dc, int dd, int de,
 								int fa, int fb, int fc, int fd, int fe, int ff, int fg) {
 		List<Shell> sl = new ArrayList<>();
@@ -259,7 +256,6 @@ public class Shell {
 		return merge(sl);
 	}
 	
-	/** Performs the fifth operation. */
 	public static Shell fifth(int s, int p, int d, int f) {
 		int pp[] = p(p);
 		int dd[] = d(d);
@@ -268,7 +264,6 @@ public class Shell {
 						ff[0], ff[1], ff[2], ff[3], ff[4], ff[5], ff[6]);
 	}
 	
-	/** Performs the fifth operation. */
 	public static Shell fifth(int s, int px, int py, int pz, int da, int db, int dc, int dd, int de,
 								int fa, int fb, int fc, int fd, int fe, int ff, int fg) {
 		List<Shell> sl = new ArrayList<>();
@@ -279,7 +274,6 @@ public class Shell {
 		return merge(sl);
 	}
 	
-	/** Performs the sixth operation. */
 	public static Shell sixth(int s, int p, int d, int f) {
 		int pp[] = p(p);
 		int dd[] = d(d);
@@ -288,7 +282,6 @@ public class Shell {
 						ff[0], ff[1], ff[2], ff[3], ff[4], ff[5], ff[6]);
 	}
 	
-	/** Performs the sixth operation. */
 	public static Shell sixth(int s, int px, int py, int pz, int da, int db, int dc, int dd, int de,
 								int fa, int fb, int fc, int fd, int fe, int ff, int fg) {
 		List<Shell> sl = new ArrayList<>();
@@ -299,7 +292,6 @@ public class Shell {
 		return merge(sl);
 	}
 	
-	/** Performs the seventh operation. */
 	public static Shell seventh(int s, int p, int d, int f) {
 		int pp[] = p(p);
 		int dd[] = d(d);
@@ -308,7 +300,6 @@ public class Shell {
 						ff[0], ff[1], ff[2], ff[3], ff[4], ff[5], ff[6]);
 	}
 	
-	/** Performs the seventh operation. */
 	public static Shell seventh(int s, int px, int py, int pz, int da, int db, int dc, int dd, int de,
 								int fa, int fb, int fc, int fd, int fe, int ff, int fg) {
 		List<Shell> sl = new ArrayList<>();
@@ -327,49 +318,42 @@ public class Shell {
 	public static Shell s6(int electrons) { return new Shell(Orbital.s6().populate(electrons)); }
 	public static Shell s7(int electrons) { return new Shell(Orbital.s7().populate(electrons)); }
 	
-	/** Performs the p2 operation. */
 	public static Shell p2(int x, int y, int z) {
 		return new Shell(Orbital.p2x().populate(x),
 						Orbital.p2y().populate(y),
 						Orbital.p2z().populate(z));
 	}
 	
-	/** Performs the p3 operation. */
 	public static Shell p3(int x, int y, int z) {
 		return new Shell(Orbital.p3x().populate(x),
 						Orbital.p3y().populate(y),
 						Orbital.p3z().populate(z));
 	}
 	
-	/** Performs the p4 operation. */
 	public static Shell p4(int x, int y, int z) {
 		return new Shell(Orbital.p4x().populate(x),
 						Orbital.p4y().populate(y),
 						Orbital.p4z().populate(z));
 	}
 
-	/** Performs the p5 operation. */
 	public static Shell p5(int x, int y, int z) {
 		return new Shell(Orbital.p5x().populate(x),
 						Orbital.p5y().populate(y),
 						Orbital.p5z().populate(z));
 	}
 	
-	/** Performs the p6 operation. */
 	public static Shell p6(int x, int y, int z) {
 		return new Shell(Orbital.p6x().populate(x),
 						Orbital.p6y().populate(y),
 						Orbital.p6z().populate(z));
 	}
 	
-	/** Performs the p7 operation. */
 	public static Shell p7(int x, int y, int z) {
 		return new Shell(Orbital.p7x().populate(x),
 						Orbital.p7y().populate(y),
 						Orbital.p7z().populate(z));
 	}
 	
-	/** Performs the d3 operation. */
 	public static Shell d3(int a, int b, int c, int d, int e) {
 		List<SubShell> s = new ArrayList<>();
 		if (a > 0) s.add(Orbital.d3a().populate(a));
@@ -380,7 +364,6 @@ public class Shell {
 		return new Shell(s.toArray(new SubShell[0]));
 	}
 	
-	/** Performs the d4 operation. */
 	public static Shell d4(int a, int b, int c, int d, int e) {
 		return new Shell(Orbital.d4a().populate(a),
 						Orbital.d4b().populate(b),
@@ -389,7 +372,6 @@ public class Shell {
 						Orbital.d4e().populate(e));
 	}
 	
-	/** Performs the d5 operation. */
 	public static Shell d5(int a, int b, int c, int d, int e) {
 		return new Shell(Orbital.d5a().populate(a),
 						Orbital.d5b().populate(b),
@@ -398,7 +380,6 @@ public class Shell {
 						Orbital.d5e().populate(e));
 	}
 	
-	/** Performs the d6 operation. */
 	public static Shell d6(int a, int b, int c, int d, int e) {
 		return new Shell(Orbital.d6a().populate(a),
 						Orbital.d6b().populate(b),
@@ -407,7 +388,6 @@ public class Shell {
 						Orbital.d6e().populate(e));
 	}
 	
-	/** Performs the d7 operation. */
 	public static Shell d7(int a, int b, int c, int d, int e) {
 		return new Shell(Orbital.d7a().populate(a),
 						Orbital.d7b().populate(b),
@@ -416,7 +396,6 @@ public class Shell {
 						Orbital.d7e().populate(e));
 	}
 	
-	/** Performs the f4 operation. */
 	public static Shell f4(int a, int b, int c, int d, int e, int f, int g) {
 		return new Shell(Orbital.f4a().populate(a),
 						Orbital.f4b().populate(b),
@@ -427,7 +406,6 @@ public class Shell {
 						Orbital.f4g().populate(g));
 	}
 	
-	/** Performs the f5 operation. */
 	public static Shell f5(int a, int b, int c, int d, int e, int f, int g) {
 		return new Shell(Orbital.f5a().populate(a),
 						Orbital.f5b().populate(b),
@@ -438,7 +416,6 @@ public class Shell {
 						Orbital.f5g().populate(g));
 	}
 	
-	/** Performs the f6 operation. */
 	public static Shell f6(int a, int b, int c, int d, int e, int f, int g) {
 		return new Shell(Orbital.f6a().populate(a),
 						Orbital.f6b().populate(b),
@@ -449,7 +426,6 @@ public class Shell {
 						Orbital.f6g().populate(g));
 	}
 	
-	/** Performs the f7 operation. */
 	public static Shell f7(int a, int b, int c, int d, int e, int f, int g) {
 		return new Shell(Orbital.f7a().populate(a),
 						Orbital.f7b().populate(b),
@@ -558,7 +534,6 @@ public class Shell {
 		return new int[] { fa, fb, fc, fd, fe, ff, fg };
 	}
 
-	/** Performs the merge operation. */
 	protected static Shell merge(List<Shell> s) {
 		if (s.size() == 0) return null;
 		if (s.size() == 1) return s.get(0);

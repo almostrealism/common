@@ -30,7 +30,6 @@ import org.dcache.oncrpc4j.rpc.OncRpcSvcBuilder;
 
 import java.io.IOException;
 
-/** The NetworkFileSystemServer class. */
 public class NetworkFileSystemServer {
 	private final int port = 2049;
 	
@@ -54,7 +53,6 @@ public class NetworkFileSystemServer {
 	
 	public int getPort() { return port; }
 
-	/** Performs the start operation. */
 	public void start() throws IOException {
 		nfs.start();
 	}

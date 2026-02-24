@@ -18,18 +18,13 @@ package io.almostrealism.concurrent;
 
 import io.almostrealism.profile.OperationMetadata;
 
-/** The Semaphore interface. */
 public interface Semaphore {
-	/** Performs the getRequester operation. */
 	OperationMetadata getRequester();
 
-	/** Performs the waitFor operation. */
 	void waitFor();
 
-	/** Performs the withRequester operation. */
 	Semaphore withRequester(OperationMetadata requester);
 
-	/** Performs the onComplete operation. */
 	default void onComplete(Runnable r) {
 		new Thread(() -> {
 			waitFor();

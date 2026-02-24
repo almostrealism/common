@@ -32,7 +32,6 @@ import java.util.Collections;
 import java.util.List;
 import java.util.function.Supplier;
 
-/** The DefaultCellularLayer class. */
 public class DefaultCellularLayer implements CellularLayer, CodeFeatures, Learning, Nameable {
 	public static boolean enableMemoryDataCopy = true;
 
@@ -108,21 +107,8 @@ public class DefaultCellularLayer implements CellularLayer, CodeFeatures, Learni
 
 	public void setComputeRequirements(List<ComputeRequirement> requirements) { this.requirements = requirements; }
 
-	/**
-	 * Enables process optimization during forward pass execution.
-	 * When true, {@link #getForward()} wraps the forward operation
-	 * with an {@code optimize()} call to trigger process isolation
-	 * for computations that require it (e.g., native loop generation).
-	 *
-	 * <p>This should be set for layers that contain computations with
-	 * {@code isIsolationTarget() == true}, such as those using
-	 * {@code LoopedWeightedSumComputation}. For layers compiled
-	 * through {@code CompiledModel}, the top-level optimize() handles
-	 * isolation, making this unnecessary.</p>
-	 */
 	public void setOptimizeOnForward(boolean optimize) { this.optimizeOnForward = optimize; }
 
-	/** Performs the init operation. */
 	public void init(TraversalPolicy inputShape, boolean inputTracking, boolean outputTracking) {
 		this.inputShape = inputShape;
 
@@ -175,10 +161,6 @@ public class DefaultCellularLayer implements CellularLayer, CodeFeatures, Learni
 		return op;
 	}
 
-	/**
-	 * Returns the input buffer for this layer, allocating it lazily
-	 * if input tracking is enabled but the buffer has not yet been created.
-	 */
 	public PackedCollection getInput() {
 		if (input == null && inputTrackingEnabled) {
 			this.input = new PackedCollection(this.inputShape);
@@ -198,17 +180,6 @@ public class DefaultCellularLayer implements CellularLayer, CodeFeatures, Learni
 		this.monitor = monitor;
 	}
 
-	/**
-	 * Disables input tracking for this layer by nulling the input buffer.
-	 * When the input buffer is null, the entry cell skips the input copy
-	 * operation, passing data directly to the forward cell. The exit copy
-	 * to the output buffer is preserved to maintain expression tree
-	 * isolation boundaries between layers.
-	 *
-	 * <p>This has the same effect as calling {@code init(inputShape, false, true)},
-	 * which is the path used when {@code Layer.ioTracking} is disabled via
-	 * the {@code AR_GRAPH_IO_TRACKING} system property.</p>
-	 */
 	@Override
 	public void disableTracking() {
 		this.inputTrackingEnabled = false;

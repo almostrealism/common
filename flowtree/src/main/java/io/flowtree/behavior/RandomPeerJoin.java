@@ -22,10 +22,8 @@ import io.flowtree.node.Node;
 import java.io.IOException;
 import java.io.PrintStream;
 
-/** The RandomPeerJoin class. */
 public class RandomPeerJoin implements ServerBehavior {
 
-	/** Performs the behave operation. */
 	public void behave(Server s, PrintStream out) {
 		try {
 			int i = Node.random.nextInt(s.getPeers().length);

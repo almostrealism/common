@@ -8,7 +8,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
-/** The Arsenic class. */
 public class Arsenic implements Element {
 	public int getAtomicNumber() { return 33; }
 	

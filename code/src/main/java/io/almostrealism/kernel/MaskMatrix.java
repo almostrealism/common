@@ -23,7 +23,6 @@ import io.almostrealism.expression.Mask;
 import java.util.Optional;
 import java.util.OptionalInt;
 
-/** The MaskMatrix class. */
 public class MaskMatrix<T> extends ExpressionMatrix<T> {
 	private ExpressionMatrix<?> mask;
 	private ExpressionMatrix<T> expression;

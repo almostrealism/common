@@ -41,7 +41,6 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
-/** The Sum class. */
 public class Sum<T extends Number> extends NAryExpression<T> {
 	public static boolean enableGenerateReordering = false;
 
@@ -229,12 +228,10 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 		}
 	}
 
-	/** Performs the of operation. */
 	public static <T> Expression<T> of(Expression... values) {
 		return Expression.process(create(values));
 	}
 
-	/** Performs the checkRepeated operation. */
 	protected static <T> Expression<T> checkRepeated(Expression<?>... values) {
 		if (values.length != 2) return null;
 
@@ -269,7 +266,6 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 		return null;
 	}
 
-	/** Performs the create operation. */
 	protected static <T> Expression<T> create(Expression<?>... values) {
 		if (values.length >= 2 &&
 				values[0] instanceof ArithmeticGenerator &&

@@ -110,13 +110,11 @@ public class MemoryBankProvider<T extends MemoryData> implements IntFunction<Mem
 		this.supplier = supplier;
 	}
 
-	/** Performs the updateLast operation. */
 	protected void updateLast(int size) {
 		last = supplier.apply(last, size);
 		lastSize = size;
 	}
 
-	/** Performs the apply operation. */
 	public MemoryBank<T> apply(int size) {
 		if (lastSize == size && last != null && last.getMem() != null) {
 			return last;
@@ -126,7 +124,6 @@ public class MemoryBankProvider<T extends MemoryData> implements IntFunction<Mem
 		return last;
 	}
 
-	/** Performs the destroy operation. */
 	public void destroy() {
 		updateLast(0);
 	}

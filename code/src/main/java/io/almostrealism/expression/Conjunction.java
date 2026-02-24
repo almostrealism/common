@@ -19,7 +19,6 @@ package io.almostrealism.expression;
 import java.util.List;
 import java.util.stream.Collectors;
 
-/** The Conjunction class. */
 public class Conjunction extends NAryExpression<Boolean> {
 	protected Conjunction(List<Expression<?>> values) { super(Boolean.class, "&", values); }
 
@@ -37,12 +36,10 @@ public class Conjunction extends NAryExpression<Boolean> {
 		return Conjunction.of(children);
 	}
 
-	/** Performs the of operation. */
 	public static Expression<Boolean> of(Expression<Boolean>... values) {
 		return of(List.of(values));
 	}
 
-	/** Performs the of operation. */
 	public static Expression<Boolean> of(List<Expression<?>> values) {
 		values = values.stream().filter(e -> !e.booleanValue()
 							.orElse(false)).collect(Collectors.toList());

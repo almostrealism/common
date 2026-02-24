@@ -35,12 +35,10 @@ import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
-/** The OptimizeFactorFeatures interface. */
 public interface OptimizeFactorFeatures extends HeredityFeatures, CodeFeatures {
 	int ADJUSTMENT_CHROMOSOME_SIZE = 6;
 	int POLYCYCLIC_CHROMOSOME_SIZE = 6;
 
-	/** Performs the initializeAdjustment operation. */
 	default List<ProjectedGene> initializeAdjustment(int channels, ProjectedChromosome chromosome) {
 		return IntStream.range(0, channels).mapToObj(i -> {
 			ProjectedGene g = chromosome.addGene(ADJUSTMENT_CHROMOSOME_SIZE);
@@ -54,7 +52,6 @@ public interface OptimizeFactorFeatures extends HeredityFeatures, CodeFeatures {
 		}).collect(Collectors.toList());
 	}
 
-	/** Performs the initializePolycyclic operation. */
 	default List<ProjectedGene> initializePolycyclic(int channels, ProjectedChromosome chromosome) {
 		return IntStream.range(0, channels).mapToObj(i -> {
 			ProjectedGene g = chromosome.addGene(POLYCYCLIC_CHROMOSOME_SIZE);
@@ -68,13 +65,11 @@ public interface OptimizeFactorFeatures extends HeredityFeatures, CodeFeatures {
 		}).collect(Collectors.toList());
 	}
 
-	/** Performs the toAdjustmentGene operation. */
 	default Gene<PackedCollection> toAdjustmentGene(TimeCell clock, int sampleRate,
 													   Chromosome<PackedCollection> chromosome, int i) {
 		return toAdjustmentGene(clock, sampleRate, null, chromosome, i);
 	}
 
-	/** Performs the toAdjustmentGene operation. */
 	default Gene<PackedCollection> toAdjustmentGene(TimeCell clock, int sampleRate, Producer<PackedCollection> scale,
 													   Chromosome<PackedCollection> chromosome, int i) {
 		return new Gene<>() {
@@ -100,7 +95,6 @@ public interface OptimizeFactorFeatures extends HeredityFeatures, CodeFeatures {
 		};
 	}
 
-	/** Performs the toPolycyclicGene operation. */
 	default Gene<PackedCollection> toPolycyclicGene(TimeCell clock, int sampleRate, Chromosome<PackedCollection> chromosome, int i) {
 		return new Gene<>() {
 			@Override
@@ -121,7 +115,6 @@ public interface OptimizeFactorFeatures extends HeredityFeatures, CodeFeatures {
 		};
 	}
 
-	/** Performs the valueForFactor operation. */
 	default double valueForFactor(Factor<PackedCollection> value) {
 		if (value instanceof ScaleFactor) {
 			return ((ScaleFactor) value).getScaleValue();
@@ -130,7 +123,6 @@ public interface OptimizeFactorFeatures extends HeredityFeatures, CodeFeatures {
 		}
 	}
 
-	/** Performs the valueForFactor operation. */
 	default double valueForFactor(Factor<PackedCollection> value, double exp, double multiplier) {
 		if (value instanceof ScaleFactor) {
 			return oneToInfinity(((ScaleFactor) value).getScaleValue(), exp) * multiplier;
@@ -140,7 +132,6 @@ public interface OptimizeFactorFeatures extends HeredityFeatures, CodeFeatures {
 		}
 	}
 
-	/** Performs the repeatForFactor operation. */
 	default double[] repeatForFactor(Factor<PackedCollection> f) {
 		double v = 16 * (valueForFactor(f) - 0.5);
 
@@ -155,123 +146,99 @@ public interface OptimizeFactorFeatures extends HeredityFeatures, CodeFeatures {
 		return null;
 	}
 
-	/** Performs the factorForRepeat operation. */
 	default double factorForRepeat(double beats) {
 		return ((Math.log(beats) / Math.log(2)) / 16) + 0.5;
 	}
 
-	/** Performs the factorForRepeatSpeedUpDuration operation. */
 	default double factorForRepeatSpeedUpDuration(double seconds) {
 		return invertOneToInfinity(seconds, 60, 3);
 	}
 
-	/** Performs the repeatSpeedUpDurationForFactor operation. */
 	default double repeatSpeedUpDurationForFactor(Factor<PackedCollection> f) {
 		return valueForFactor(f, 3, 60);
 	}
 
-	/** Performs the factorForDelay operation. */
 	default double factorForDelay(double seconds) {
 		return invertOneToInfinity(seconds, 60, 3);
 	}
 
-	/** Performs the delayForFactor operation. */
 	default double delayForFactor(Factor<PackedCollection> f) {
 		return valueForFactor(f, 3, 60);
 	}
 
-	/** Performs the factorForExponent operation. */
 	default double factorForExponent(double exp) {
 		return invertOneToInfinity(exp, 10, 1);
 	}
 
-	/** Performs the factorForPeriodicAdjustmentDuration operation. */
 	default double factorForPeriodicAdjustmentDuration(double seconds) {
 		return invertOneToInfinity(seconds, 60, 3);
 	}
 
-	/** Performs the factorForPolyAdjustmentDuration operation. */
 	default double factorForPolyAdjustmentDuration(double seconds) {
 		return invertOneToInfinity(seconds, 60, 3);
 	}
 
-	/** Performs the factorForPolyAdjustmentExponent operation. */
 	default double factorForPolyAdjustmentExponent(double exp) {
 		return invertOneToInfinity(exp, 10, 1);
 	}
 
-	/** Performs the factorForAdjustmentInitial operation. */
 	default double factorForAdjustmentInitial(double value) {
 		return invertOneToInfinity(value, 10, 1);
 	}
 
-	/** Performs the factorForAdjustmentOffset operation. */
 	default double factorForAdjustmentOffset(double value) {
 		return invertOneToInfinity(value, 60, 3);
 	}
 
 
-	/** Performs the factorForSpeedUpDuration operation. */
 	default double factorForSpeedUpDuration(double seconds) {
 		return invertOneToInfinity(seconds, 60, 3);
 	}
 
-	/** Performs the speedUpDurationForFactor operation. */
 	default double speedUpDurationForFactor(Factor<PackedCollection> f) {
 		return valueForFactor(f, 3, 60);
 	}
 
-	/** Performs the factorForSpeedUpPercentage operation. */
 	default double factorForSpeedUpPercentage(double decimal) {
 		return invertOneToInfinity(decimal, 10, 0.5);
 	}
 
-	/** Performs the speedUpPercentageForFactor operation. */
 	default double speedUpPercentageForFactor(Factor<PackedCollection> f) {
 		return valueForFactor(f, 0.5, 10);
 	}
 
-	/** Performs the factorForSlowDownDuration operation. */
 	default double factorForSlowDownDuration(double seconds) {
 		return invertOneToInfinity(seconds, 60, 3);
 	}
 
-	/** Performs the slowDownDurationForFactor operation. */
 	default double slowDownDurationForFactor(Factor<PackedCollection> f) {
 		return valueForFactor(f, 3, 60);
 	}
 
-	/** Performs the factorForSlowDownPercentage operation. */
 	default double factorForSlowDownPercentage(double decimal) {
 		return decimal;
 	}
 
-	/** Performs the slowDownPercentageForFactor operation. */
 	default double slowDownPercentageForFactor(Factor<PackedCollection> f) {
 		return valueForFactor(f);
 	}
 
-	/** Performs the factorForPolySpeedUpDuration operation. */
 	default double factorForPolySpeedUpDuration(double seconds) {
 		return invertOneToInfinity(seconds, 60, 3);
 	}
 
-	/** Performs the polySpeedUpDurationForFactor operation. */
 	default double polySpeedUpDurationForFactor(Factor<PackedCollection> f) {
 		return valueForFactor(f, 3, 60);
 	}
 
-	/** Performs the factorForPolySpeedUpExponent operation. */
 	default double factorForPolySpeedUpExponent(double exp) {
 		return invertOneToInfinity(exp, 10, 1);
 	}
 
-	/** Performs the polySpeedUpExponentForFactor operation. */
 	default double polySpeedUpExponentForFactor(Factor<PackedCollection> f) {
 		return valueForFactor(f, 1, 10);
 	}
 
-	/** Performs the adjustment operation. */
 	default ProducerComputation<PackedCollection> adjustment(Producer<PackedCollection> periodicWavelength,
 																Producer<PackedCollection> polyWaveLength,
 																Producer<PackedCollection> polyExp,
@@ -293,7 +260,6 @@ public interface OptimizeFactorFeatures extends HeredityFeatures, CodeFeatures {
 				min, max);
 	}
 
-	/** Performs the polycyclic operation. */
 	default CollectionProducer polycyclic(Producer<PackedCollection> speedUpWavelength,
 										  Producer<PackedCollection> speedUpAmp,
 										  Producer<PackedCollection> slowDownWavelength,
@@ -307,7 +273,6 @@ public interface OptimizeFactorFeatures extends HeredityFeatures, CodeFeatures {
 						.multiply(time).pow(polySpeedUpExp)));
 	}
 
-	/** Performs the riseFall operation. */
 	default CollectionProducer riseFall(double minValue, double maxValue, double minScale,
 										Producer<PackedCollection> d,
 										Producer<PackedCollection> m,
@@ -342,7 +307,6 @@ public interface OptimizeFactorFeatures extends HeredityFeatures, CodeFeatures {
 		return add(start, multiply(end.subtract(start), pos));
 	}
 
-	/** Performs the durationAdjustment operation. */
 	default CollectionProducer durationAdjustment(Producer<PackedCollection> rp,
 												  Producer<PackedCollection> speedUpDuration,
 												  Producer<PackedCollection> speedUpOffset,

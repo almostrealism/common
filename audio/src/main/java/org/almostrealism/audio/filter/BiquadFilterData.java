@@ -42,7 +42,6 @@ import org.almostrealism.collect.PackedCollection;
 public interface BiquadFilterData extends CodeFeatures {
 	int SIZE = 9;
 
-	/** Performs the get operation. */
 	PackedCollection get(int index);
 
 	default PackedCollection b0() { return get(0); }

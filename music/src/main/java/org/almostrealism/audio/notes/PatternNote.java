@@ -105,7 +105,6 @@ public class PatternNote extends PatternNoteAudioAdapter {
 		this.filter = filter;
 	}
 
-	/** Performs the addLayer operation. */
 	public void addLayer(double noteAudioSelection) {
 		layers.add(new PatternNoteAudioChoice(noteAudioSelection));
 	}
@@ -122,7 +121,6 @@ public class PatternNote extends PatternNoteAudioAdapter {
 		this.aggregationChoice = aggregationChoice;
 	}
 
-	/** Performs the getProviders operation. */
 	public List<PatternNoteAudio> getProviders(KeyPosition<?> target, DoubleFunction<PatternNoteAudio> audioSelection) {
 		if (delegate instanceof PatternNote)
 			return ((PatternNote) delegate).getProviders(target, audioSelection);
@@ -133,7 +131,6 @@ public class PatternNote extends PatternNoteAudioAdapter {
 				.collect(Collectors.toList());
 	}
 
-	/** Performs the setTuning operation. */
 	public void setTuning(KeyboardTuning tuning) {
 		if (delegate == null) {
 			layers.forEach(l -> {
@@ -172,7 +169,6 @@ public class PatternNote extends PatternNoteAudioAdapter {
 		return combineLayers(target, channel, -1, null, audioSelection);
 	}
 
-	/** Performs the computeAudio operation. */
 	protected Producer<PackedCollection> computeAudio(KeyPosition<?> target, int channel,
 														 double noteDuration,
 														 Factor<PackedCollection> automationLevel,
@@ -187,7 +183,6 @@ public class PatternNote extends PatternNoteAudioAdapter {
 		return combineLayers(target, channel, noteDuration, automationLevel, audioSelection);
 	}
 
-	/** Performs the combineLayers operation. */
 	protected Producer<PackedCollection> combineLayers(KeyPosition<?> target, int channel,
 														  double noteDuration,
 														  Factor<PackedCollection> automationLevel,

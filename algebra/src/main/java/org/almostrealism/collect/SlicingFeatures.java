@@ -285,28 +285,24 @@ public interface SlicingFeatures extends CollectionCreationFeatures {
 		return new PackedCollectionPad(shape, position, collection);
 	}
 
-	/** Performs the map operation. */
 	default CollectionProducerComputation map(
 			Producer<?> collection,
 			Function<CollectionProducerComputation, CollectionProducer> mapper) {
 		return new PackedCollectionMap(collection, mapper);
 	}
 
-	/** Performs the map operation. */
 	default CollectionProducerComputation map(
 			TraversalPolicy itemShape, Producer<?> collection,
 			Function<CollectionProducerComputation, CollectionProducer> mapper) {
 		return new PackedCollectionMap(shape(collection).replace(itemShape), collection, mapper);
 	}
 
-	/** Performs the reduce operation. */
 	default CollectionProducerComputation reduce(
 			Producer<?> collection,
 			Function<CollectionProducerComputation, CollectionProducer> mapper) {
 		return map(shape(1), collection, mapper);
 	}
 
-	/** Performs the cumulativeProduct operation. */
 	default CollectionProducer cumulativeProduct(Producer<PackedCollection> input, boolean pad) {
 		return func(shape(input), inputs -> args -> {
 			PackedCollection in = inputs[0];

@@ -28,7 +28,6 @@ import org.almostrealism.audio.notes.PatternNoteAudioChoice;
 import java.util.ArrayList;
 import java.util.List;
 
-/** The PatternNoteFactory class. */
 public class PatternNoteFactory {
 	public static final int LAYER_COUNT = 3;
 
@@ -40,7 +39,6 @@ public class PatternNoteFactory {
 		initSelectionFunctions();
 	}
 
-	/** Performs the initSelectionFunctions operation. */
 	public void initSelectionFunctions() {
 		layerEnvelopes = ParameterizedEnvelopeLayers.random(LAYER_COUNT);
 	}
@@ -71,7 +69,6 @@ public class PatternNoteFactory {
 		this.filterEnvelope = filterEnvelope;
 	}
 
-	/** Performs the apply operation. */
 	public PatternNote apply(ParameterSet params, ChannelInfo.Voicing voicing, boolean blend, double... choices) {
 		List<PatternNoteAudio> layers = new ArrayList<>();
 

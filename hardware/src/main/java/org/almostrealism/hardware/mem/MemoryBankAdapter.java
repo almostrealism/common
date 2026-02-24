@@ -275,7 +275,6 @@ public abstract class MemoryBankAdapter<T extends MemoryData> extends MemoryData
 				getAtomicMemLength());
 	}
 
-	/** Performs the set operation. */
 	public void set(int index, double... values) {
 		setMem(index * getAtomicMemLength(), values, 0, values.length);
 	}
@@ -289,17 +288,14 @@ public abstract class MemoryBankAdapter<T extends MemoryData> extends MemoryData
 	@Override
 	public long getCountLong() { return count; }
 
-	/** Performs the stream operation. */
 	public Stream<T> stream() {
 		return IntStream.range(0, getCount()).mapToObj(this::get);
 	}
 
-	/** Performs the forEach operation. */
 	public void forEach(Consumer<T> consumer) {
 		stream().forEach(consumer);
 	}
 
-	/** The DelegateSpec class. */
 	public class DelegateSpec {
 		private int offset;
 
@@ -313,7 +309,6 @@ public abstract class MemoryBankAdapter<T extends MemoryData> extends MemoryData
 		public void setOffset(int offset) { this.offset = offset; }
 	}
 
-	/** The CacheLevel enumeration. */
 	public enum CacheLevel {
 		NONE, ACCESSED, ALL
 	}

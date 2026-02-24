@@ -16,8 +16,6 @@
 
 package io.almostrealism.nfs;
 
-/** The DirectoryNotifier interface. */
 public interface DirectoryNotifier {
-	/** Performs the newDirectory operation. */
 	boolean newDirectory(String path);
 }

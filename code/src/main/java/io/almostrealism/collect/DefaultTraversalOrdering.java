@@ -20,7 +20,6 @@ import io.almostrealism.expression.Expression;
 
 import java.util.OptionalInt;
 
-/** The DefaultTraversalOrdering class. */
 public class DefaultTraversalOrdering implements TraversalOrdering {
 	private OptionalInt length;
 

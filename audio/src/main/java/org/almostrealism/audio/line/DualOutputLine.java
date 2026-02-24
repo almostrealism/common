@@ -24,13 +24,9 @@ package org.almostrealism.audio.line;
  * @see OutputLine
  */
 public interface DualOutputLine {
-	/** Performs the setMix operation. */
 	void setMix(double m);
-	/** Performs the getMix operation. */
 	double getMix();
 	
-	/** Performs the getLeftLine operation. */
 	OutputLine getLeftLine();
-	/** Performs the getRightLine operation. */
 	OutputLine getRightLine();
 }

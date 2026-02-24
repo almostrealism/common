@@ -8,7 +8,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
-/** The Rhodium class. */
 public class Rhodium implements Element {
 	public int getAtomicNumber() { return 45; }
 	

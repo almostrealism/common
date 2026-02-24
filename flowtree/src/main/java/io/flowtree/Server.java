@@ -86,11 +86,8 @@ import java.util.concurrent.CompletableFuture;
  * @author  Michael Murrays
  */
 public class Server implements JobFactory, Runnable, ConsoleFeatures {
-	/** The ResourceProvider interface. */
 	public interface ResourceProvider {
-		/** Performs the loadResource operation. */
 		Resource loadResource(String uri);
-		/** Performs the loadResource operation. */
 		Resource loadResource(String uri, String exclude);
 	}
 	
@@ -140,13 +137,11 @@ public class Server implements JobFactory, Runnable, ConsoleFeatures {
 		}
 	}
 	
-	/** The ResourceServerThread class. */
 	protected class ResourceServerThread extends Thread implements Runnable {
 		private final IOStreams io;
 		
 		public ResourceServerThread(IOStreams io) { this.io = io; }
 		
-		/** Performs the run operation. */
 		public void run() {
 			try {
 				int hi = io.host.lastIndexOf("/");
@@ -431,7 +426,6 @@ public class Server implements JobFactory, Runnable, ConsoleFeatures {
 		if (s != null) this.startWritingStatus(s, sl, slr);
 	}
 	
-	/** Performs the setParam operation. */
 	public void setParam(Properties p) {
 		Iterator itr = p.entrySet().iterator();
 		while (itr.hasNext()) {
@@ -440,7 +434,6 @@ public class Server implements JobFactory, Runnable, ConsoleFeatures {
 		}
 	}
 	
-	/** Performs the setParam operation. */
 	public boolean setParam(String name, String value) {
 		if (this.group.setParam(name, value)) {
 			//
@@ -477,14 +470,12 @@ public class Server implements JobFactory, Runnable, ConsoleFeatures {
 		return true;
 	}
 	
-	/** Performs the getHttpIOStreams operation. */
 	public static IOStreams getHttpIOStreams(String uri) throws IOException {
 		IOStreams io = new IOStreams();
 		io.in = new DataInputStream(new URL(uri).openStream());
 		return io;
 	}
 	
-	/** Performs the getObject operation. */
 	public Object getObject(String key) {
 		if (key.equals("server")) {
 			return this;
@@ -669,7 +660,6 @@ public class Server implements JobFactory, Runnable, ConsoleFeatures {
 	
 	public ThreadGroup getThreadGroup() { return this.threads; }
 	
-	/** Performs the getThreadList operation. */
 	public String[] getThreadList() {
 		Thread[] list = new Thread[this.threads.activeCount()];
 		int j = threads.enumerate(list);
@@ -691,7 +681,6 @@ public class Server implements JobFactory, Runnable, ConsoleFeatures {
 	 */
 	public void addLogItem(String title, Object o) { this.logItems.put(o, title); }
 	
-	/** Performs the startWritingStatus operation. */
 	public void startWritingStatus(final String file, final int sleep, int r) {
 		Server.this.getNodeGroup().startMonitor(Server.MODERATE_PRIORITY, (1000 * sleep) / r);
 		
@@ -719,7 +708,6 @@ public class Server implements JobFactory, Runnable, ConsoleFeatures {
 		t.start();
 	}
 	
-	/** Performs the writeStatus operation. */
 	public void writeStatus(String file) throws IOException {
 		PrintStream p = new PrintStream(new FileOutputStream(file + "-stat.html"));
 		this.printStatus(p);
@@ -746,7 +734,6 @@ public class Server implements JobFactory, Runnable, ConsoleFeatures {
 		}
 	}
 	
-	/** Performs the addTask operation. */
 	public boolean addTask(JobFactory task) {
 		if (this.rserver != null && task instanceof ResourceProvider) {
 			this.addResourceProvider((ResourceProvider) task);
@@ -921,7 +908,6 @@ public class Server implements JobFactory, Runnable, ConsoleFeatures {
 		return this.group.getPeerActivityRatio();
 	}
 	
-	/** Performs the getStatusMessage operation. */
 	public Message getStatusMessage() throws IOException {
 
 		String stat = "jobtime:" +
@@ -938,7 +924,6 @@ public class Server implements JobFactory, Runnable, ConsoleFeatures {
 	public void setMaxCache(int max) { this.maxCache = max; }
 	public int getMaxCache() { return this.maxCache; }
 	
-	/** Performs the loadFromCache operation. */
 	public Object loadFromCache(String uri) {
 		Object s = null;
 
@@ -995,7 +980,6 @@ public class Server implements JobFactory, Runnable, ConsoleFeatures {
 	
 	public void addResourceProvider(ResourceProvider p) { this.rserver.addProvider(p); }
 	
-	/** Performs the isDirectory operation. */
 	public boolean isDirectory(String uri) {
 		ResourceDistributionTask t = ResourceDistributionTask.getCurrentTask();
 		if (t == null)
@@ -1004,7 +988,6 @@ public class Server implements JobFactory, Runnable, ConsoleFeatures {
 			return t.isDirectory(uri);
 	}
 	
-	/** Performs the getChildren operation. */
 	public String[] getChildren(String uri) {
 		ResourceDistributionTask t = ResourceDistributionTask.getCurrentTask();
 		if (t == null)
@@ -1013,7 +996,6 @@ public class Server implements JobFactory, Runnable, ConsoleFeatures {
 			return t.getChildren(uri);
 	}
 	
-	/** Performs the loadResource operation. */
 	public Resource loadResource(String uri) throws IOException {
 		IOStreams io = this.getResourceStream(uri, null);
 		Resource res = ResourceDistributionTask.getCurrentTask().getResource(uri);
@@ -1024,7 +1006,6 @@ public class Server implements JobFactory, Runnable, ConsoleFeatures {
 //		return this.loadResource(uri, false);
 	}
 	
-	/** Performs the loadResource operation. */
 	public Resource loadResource(String uri, boolean tryLocal) {
 		Resource res = ResourceDistributionTask.getCurrentTask().getResource(uri);
 		if (res != null) return res;
@@ -1041,17 +1022,14 @@ public class Server implements JobFactory, Runnable, ConsoleFeatures {
 		}
 	}
 	
-	/** Performs the loadResource operation. */
 	public Resource loadResource(Resource r) throws IOException {
 		return this.loadResource(r, null, false);
 	}
 	
-	/** Performs the loadResource operation. */
 	public Resource loadResource(Resource r, boolean noCache) throws IOException {
 		return this.loadResource(r, null, noCache);
 	}
 	
-	/** Performs the loadResource operation. */
 	public Resource loadResource(Resource r, String exclude, boolean noCache)
 						throws IOException {
 		if (r instanceof DistributedResource && this.loading.contains(r.getURI()))
@@ -1066,7 +1044,6 @@ public class Server implements JobFactory, Runnable, ConsoleFeatures {
 		return this.loadResourceFromIO(r, io, noCache);
 	}
 	
-	/** Performs the loadResourceFromIO operation. */
 	protected Resource loadResourceFromIO(Resource r, IOStreams io, boolean noCache) throws IOException {
 		if (io != null) {
 			r.load(io);
@@ -1106,17 +1083,14 @@ public class Server implements JobFactory, Runnable, ConsoleFeatures {
 		return r;
 	}
 	
-	/** Performs the loadImage operation. */
 	public RGB[][] loadImage(String uri) {
 		return this.loadImage(uri, 0, 0, 0, 0, false, false);
 	}
 	
-	/** Performs the loadImage operation. */
 	public RGB[][] loadImage(String uri, boolean noReturn) {
 		return this.loadImage(uri, 0, 0, 0, 0, noReturn, false);
 	}
 	
-	/** Performs the loadImage operation. */
 	public RGB[][] loadImage(String uri, int x, int y, int w, int h) {
 		return this.loadImage(uri, x, y, w, h, false, false);
 	}
@@ -1170,12 +1144,10 @@ public class Server implements JobFactory, Runnable, ConsoleFeatures {
 	}
 
 	
-	/** Performs the getResourceStream operation. */
 	public IOStreams getResourceStream(String uri) {
 		return this.getResourceStream(uri, null);
 	}
 	
-	/** Performs the getResourceStream operation. */
 	public IOStreams getResourceStream(String uri, String exclude) {
 		IOStreams io = null;
 		
@@ -1205,7 +1177,6 @@ public class Server implements JobFactory, Runnable, ConsoleFeatures {
 		return io;
 	}
 	
-	/** Performs the getResourceStream operation. */
 	public IOStreams getResourceStream(String host, int port, String uri) throws IOException {
 		if (host == null || host.equals("") || host.equals("localhost"))
 			return null;
@@ -1228,7 +1199,6 @@ public class Server implements JobFactory, Runnable, ConsoleFeatures {
 			return null;
 	}
 	
-	/** Performs the parseResourceUri operation. */
 	public IOStreams parseResourceUri(String uri) throws IOException {
 		int index = uri.indexOf("/", 11);
 		
@@ -1245,7 +1215,6 @@ public class Server implements JobFactory, Runnable, ConsoleFeatures {
 		return this.getResourceStream(host, port, uri.substring(index + 1));
 	}
 	
-	/** Performs the getResourceUri operation. */
 	public String getResourceUri(String uri) {
 		if (this.rserver == null)
 			return null;
@@ -1253,17 +1222,14 @@ public class Server implements JobFactory, Runnable, ConsoleFeatures {
 			return this.rserver.getUri(uri);
 	}
 	
-	/** Performs the executeQuery operation. */
 	public Message executeQuery(Query q) throws IOException {
 		return executeQuery(q, NodeProxy.queryTimeout);
 	}
 	
-	/** Performs the executeQuery operation. */
 	public Message executeQuery(Query q, long timeout) throws IOException {
 		return executeQuery(q, null, timeout);
 	}
 	
-	/** Performs the executeQuery operation. */
 	public Message executeQuery(Query q, NodeProxy p, long timeout) throws IOException {
 		io.flowtree.fs.OutputServer dbs = io.flowtree.fs.OutputServer.getCurrentServer();
 		
@@ -1319,12 +1285,10 @@ public class Server implements JobFactory, Runnable, ConsoleFeatures {
 		return m;
 	}
 
-	/** Performs the startResourceDist operation. */
 	public ResourceDistributionTask startResourceDist(OutputServer server) {
 		return startResourceDist(server, 10, 10000);
 	}
 
-	/** Performs the startResourceDist operation. */
 	public ResourceDistributionTask startResourceDist(OutputServer server, int jobs, int jsleep) {
 		if (ResourceDistributionTask.getCurrentTask() != null) return ResourceDistributionTask.getCurrentTask();
 		ResourceDistributionTask rtask = new ResourceDistributionTask(server, jobs, jsleep);
@@ -1333,7 +1297,6 @@ public class Server implements JobFactory, Runnable, ConsoleFeatures {
 		return rtask;
 	}
 	
-	/** Performs the run operation. */
 	public void run() {
 		if (socket == null) return;
 

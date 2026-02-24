@@ -22,7 +22,6 @@ import org.almostrealism.audio.data.ParameterSet;
 
 import java.util.List;
 
-/** The ParameterizedEnvelopeLayers class. */
 public class ParameterizedEnvelopeLayers {
 	private ParameterFunction attackSelection;
 	private ParameterFunction sustainSelection;
@@ -51,27 +50,22 @@ public class ParameterizedEnvelopeLayers {
 		this.volume3 = volume3;
 	}
 
-	/** Performs the getEnvelope operation. */
 	public ParameterizedLayerEnvelope getEnvelope(int layer) {
 		return new ParameterizedLayerEnvelope(this, layer);
 	}
 
-	/** Performs the getAttack operation. */
 	public double getAttack(int layer, ParameterSet params) {
 		return attackSelection.positive().apply(params);
 	}
 
-	/** Performs the getSustain operation. */
 	public double getSustain(int layer, ParameterSet params) {
 		return sustainSelection.positive().apply(params);
 	}
 
-	/** Performs the getRelease operation. */
 	public double getRelease(int layer, ParameterSet params) {
 		return releaseSelection.positive().apply(params);
 	}
 
-	/** Performs the getVolume operation. */
 	public double getVolume(int layer, int index, ParameterSet params) {
 		return getVolume(switch (index) {
 			case 0 -> volume0;
@@ -159,7 +153,6 @@ public class ParameterizedEnvelopeLayers {
 		this.volume3 = volume3;
 	}
 
-	/** Performs the random operation. */
 	public static ParameterizedEnvelopeLayers random(int layers) {
 		return new ParameterizedEnvelopeLayers(
 				ParameterFunction.random(),

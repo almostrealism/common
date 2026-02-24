@@ -147,7 +147,6 @@ public class WaveData implements Destroyable, SamplingFeatures, CollectionFeatur
 
 	public PackedCollection getData() { return collection; }
 
-	/** Performs the getChannelData operation. */
 	public PackedCollection getChannelData(int channel) {
 		if (channel < 0) {
 			throw new IndexOutOfBoundsException();
@@ -169,7 +168,6 @@ public class WaveData implements Destroyable, SamplingFeatures, CollectionFeatur
 		return getFrameCount() / (double) sampleRate;
 	}
 
-	/** Performs the getChannelCount operation. */
 	public int getChannelCount() {
 		if (getData().getShape().getDimensions() == 1) {
 			return 1;
@@ -178,7 +176,6 @@ public class WaveData implements Destroyable, SamplingFeatures, CollectionFeatur
 		return getData().getShape().length(0);
 	}
 
-	/** Performs the getFrameCount operation. */
 	public int getFrameCount() {
 		if (getData().getShape().getDimensions() == 1) {
 			return getData().getMemLength();
@@ -191,22 +188,18 @@ public class WaveData implements Destroyable, SamplingFeatures, CollectionFeatur
 		return new BufferDetails(getSampleRate(), getDuration());
 	}
 
-	/** Performs the range operation. */
 	public WaveData range(int channel, double start, double length) {
 		return range(channel, (int) (start * sampleRate), (int) (length * sampleRate));
 	}
 
-	/** Performs the range operation. */
 	public WaveData range(int channel, int start, int length) {
 		return new WaveData(getChannelData(channel).range(new TraversalPolicy(length), start), sampleRate);
 	}
 
-	/** Performs the sample operation. */
 	public WaveData sample(int channel, Factor<PackedCollection> processor) {
 		return sample(channel, () -> processor);
 	}
 
-	/** Performs the sample operation. */
 	public WaveData sample(int channel, Supplier<Factor<PackedCollection>> processor) {
 		PackedCollection result = new PackedCollection(getChannelData(channel).getShape());
 		sampling(getSampleRate(), getDuration(),
@@ -252,7 +245,6 @@ public class WaveData implements Destroyable, SamplingFeatures, CollectionFeatur
 		return fft(-1, false, true, includeAll);
 	}
 
-	/** Performs the fft operation. */
 	protected PackedCollection fft(int channel, boolean pooling, boolean sum, boolean includeAll) {
 		PackedCollection inRoot = new PackedCollection(FFT_BINS * FFT_BINS);
 		PackedCollection outRoot = new PackedCollection(POOL_BATCH_OUT * POOL_BATCH_OUT);
@@ -353,7 +345,6 @@ public class WaveData implements Destroyable, SamplingFeatures, CollectionFeatur
 		}
 	}
 
-	/** Performs the save operation. */
 	public boolean save(File file) {
 		if (getFrameCount() <= 0) {
 			Console.root.features(WavFile.class).log("No frames to write");
@@ -384,22 +375,18 @@ public class WaveData implements Destroyable, SamplingFeatures, CollectionFeatur
 		}
 	}
 
-	/** Performs the toCell operation. */
 	public WaveCell toCell(TimeCell clock) {
 		return toCell(clock, 0);
 	}
 
-	/** Performs the toCell operation. */
 	public WaveCell toCell(TimeCell clock, int channel) {
 		return toCell(clock.frame(), channel);
 	}
 
-	/** Performs the toCell operation. */
 	public WaveCell toCell(Producer<PackedCollection> frame, int channel) {
 		return new WaveCell(getChannelData(channel), frame);
 	}
 
-	/** Performs the toCell operation. */
 	public Function<WaveCellData, WaveCell> toCell(int channel, double amplitude,
 												   Producer<PackedCollection> offset,
 												   Producer<PackedCollection> repeat) {
@@ -496,10 +483,8 @@ public class WaveData implements Destroyable, SamplingFeatures, CollectionFeatur
 		collection = null;
 	}
 
-	/** Performs the init operation. */
 	public static void init() { }
 
-	/** Performs the load operation. */
 	public static WaveData load(File f) throws IOException {
 		try (WavFile w = WavFile.openWavFile(f)) {
 			int channelCount = w.getNumChannels();

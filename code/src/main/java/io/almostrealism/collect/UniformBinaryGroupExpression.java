@@ -22,7 +22,6 @@ import java.util.List;
 import java.util.function.BiFunction;
 import java.util.function.IntFunction;
 
-/** The UniformBinaryGroupExpression class. */
 public class UniformBinaryGroupExpression extends BinaryGroupExpression {
 	public UniformBinaryGroupExpression(TraversalPolicy shape, int memberCount,
 										TraversableExpression a,

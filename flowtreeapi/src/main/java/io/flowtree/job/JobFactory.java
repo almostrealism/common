@@ -33,7 +33,6 @@ public interface JobFactory {
     String ENTRY_SEPARATOR = JobOutput.ENTRY_SEPARATOR;
     String KEY_VALUE_SEPARATOR = ":=";
 
-	/** Performs the getTaskId operation. */
 	String getTaskId();
 	
     /**

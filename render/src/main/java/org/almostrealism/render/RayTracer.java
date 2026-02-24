@@ -60,7 +60,6 @@ public class RayTracer {
 		this.pool = pool;
 	}
 
-	/** Performs the trace operation. */
 	public Future<Producer<PackedCollection>> trace(Producer<Ray> r) {
 		if (enableThreadPool) {
 			Callable<Producer<PackedCollection>> c = () -> engine.trace(r);

@@ -89,7 +89,6 @@ public class MercuryXenonLamp extends LightBulb implements PhysicalConstants {
 		System.out.println("MercuryXenonLamp: Constructed!");
 	}
 	
-	/** Performs the getSpecAvg operation. */
 	public double getSpecAvg(){
 		double count = 0;
 		
@@ -100,7 +99,6 @@ public class MercuryXenonLamp extends LightBulb implements PhysicalConstants {
 		return count/(EnergyTable.size()-1);
 	}
 	
-	/** Performs the GetAverageIndex operation. */
 	public int GetAverageIndex(ArrayList Al){
 		//First, get the sum
 		double sum=0;
@@ -123,7 +121,6 @@ public class MercuryXenonLamp extends LightBulb implements PhysicalConstants {
 	}
 	
 	
-	/** Performs the GetValue operation. */
 	public double[][] GetValue() {
 		ArrayList TempList = (ArrayList) EnergyTable.clone();
 		ArrayList Value = new ArrayList();

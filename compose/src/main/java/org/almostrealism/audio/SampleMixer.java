@@ -22,7 +22,6 @@ import org.almostrealism.graph.temporal.WaveCell;
 
 import java.util.function.IntFunction;
 
-/** The SampleMixer class. */
 public class SampleMixer implements CellFeatures {
 	private final Mixer mixer;
 	private WaveCell[] samples;
@@ -31,7 +30,6 @@ public class SampleMixer implements CellFeatures {
 		this.mixer = new Mixer(channels);
 	}
 
-	/** Performs the init operation. */
 	public void init(IntFunction<WaveCell> factory) {
 		this.samples = new WaveCell[mixer.getChannelCount()];
 
@@ -41,7 +39,6 @@ public class SampleMixer implements CellFeatures {
 		}
 	}
 
-	/** Performs the setFrame operation. */
 	public void setFrame(double frame) {
 		for (WaveCell sample : samples) {
 			sample.getClock().setFrame(frame);
@@ -53,13 +50,11 @@ public class SampleMixer implements CellFeatures {
 	public Mixer getChannelMixer() { return mixer; }
 	public int getChannelCount() { return getChannelMixer().getChannelCount(); }
 
-	/** Performs the toCellList operation. */
 	public CellList toCellList() {
 		CellList sampler = cells(samples.length, i -> samples[i]);
 		return mixer.getCells().addRequirements(sampler);
 	}
 
-	/** Performs the buffer operation. */
 	public BufferedOutputScheduler buffer(OutputLine out) {
 		if (samples == null) {
 			throw new UnsupportedOperationException("No samples have been initialized");

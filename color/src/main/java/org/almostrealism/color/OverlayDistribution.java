@@ -33,19 +33,16 @@ public class OverlayDistribution extends ProbabilityDistribution {
 		this.children = children;
 	}
 	
-	/** Performs the addRange operation. */
 	public void addRange(double start, double end, double p) {
 		if (this.children.length <= 0) return;
 		this.children[0].addRange(start, end, p);
 	}
 	
-	/** Performs the getRanges operation. */
 	protected double[][] getRanges() {
 		if (this.children.length <= 0) return new double[0][3];
 		return this.children[0].getRanges();
 	}
 	
-	/** Performs the integrate operation. */
 	public double integrate(double limit) {
 		double v = 0.0;
 		
@@ -55,7 +52,6 @@ public class OverlayDistribution extends ProbabilityDistribution {
 		return v;
 	}
 	
-	/** Performs the getSample operation. */
 	public double getSample(double r) {
 		if (this.children.length <= 0) return 0.0;
 		if (this.children.length == 1) return this.children[0].getSample(r);
@@ -71,7 +67,6 @@ public class OverlayDistribution extends ProbabilityDistribution {
 		return v;
 	}
 	
-	/** Performs the getIntegrated operation. */
 	public RGB getIntegrated() {
 		RGB c = new RGB();
 		
@@ -81,7 +76,6 @@ public class OverlayDistribution extends ProbabilityDistribution {
 		return c;
 	}
 	
-	/** Performs the getProbability operation. */
 	public double getProbability(double x) {
 		double p = 0.0;
 		
@@ -91,21 +85,18 @@ public class OverlayDistribution extends ProbabilityDistribution {
 		return p;
 	}
 	
-	/** Performs the contains operation. */
 	public boolean contains(double start, double end) {
 		for (int i = 0; i < this.children.length; i++)
 			if (this.children[i].contains(start, end)) return true;
 		return false;
 	}
 	
-	/** Performs the loadFromFile operation. */
 	public void loadFromFile(String file, String div) throws IOException {
 		this.children = new ProbabilityDistribution[1];
 		this.children[0] = new ProbabilityDistribution();
 		this.children[0].loadFromFile(file, div);
 	}
 	
-	/** Performs the getOverlayMethod operation. */
 	public static Method getOverlayMethod() {
 		try {
 			return OverlayDistribution.class.getMethod("createOverlayDistribution",
@@ -115,7 +106,6 @@ public class OverlayDistribution extends ProbabilityDistribution {
 		}
 	}
 	
-	/** This method. */
 	public static OverlayDistribution
 				createOverlayDistribution(ProbabilityDistribution children[]) {
 		return new OverlayDistribution(children);

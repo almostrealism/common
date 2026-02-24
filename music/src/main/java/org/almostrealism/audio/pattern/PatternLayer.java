@@ -96,14 +96,12 @@ public class PatternLayer {
 		this.elements = elements;
 	}
 
-	/** Performs the getElements operation. */
 	public List<PatternElement> getElements(double start, double end) {
 		return elements.stream()
 				.filter(e -> e.getPosition() >= start && e.getPosition() < end)
 				.collect(Collectors.toList());
 	}
 
-	/** Performs the putAllElementsByChoice operation. */
 	public void putAllElementsByChoice(Map<NoteAudioChoice, List<PatternElement>> result,
 									   double start, double end) {
 		if (elements == null || elements.isEmpty()) return;
@@ -117,7 +115,6 @@ public class PatternLayer {
 			child.putAllElementsByChoice(result, start, end);
 	}
 
-	/** Performs the getAllElements operation. */
 	public List<PatternElement> getAllElements(double start, double end) {
 		List<PatternElement> result = new ArrayList<>();
 		result.addAll(getElements(start, end));
@@ -126,7 +123,6 @@ public class PatternLayer {
 		return result;
 	}
 
-	/** Performs the setAutomationParameters operation. */
 	public void setAutomationParameters(PackedCollection parameters) {
 		getElements().forEach(e -> e.setAutomationParameters(parameters));
 	}
@@ -135,31 +131,26 @@ public class PatternLayer {
 
 	public void setChild(PatternLayer child) { this.child = child; }
 
-	/** Performs the getTail operation. */
 	public PatternLayer getTail() {
 		if (child == null) return this;
 		return child.getTail();
 	}
 
-	/** Performs the getLastParent operation. */
 	public PatternLayer getLastParent() {
 		if (child == null) return null;
 		if (child.getChild() == null) return this;
 		return child.getLastParent();
 	}
 
-	/** Performs the depth operation. */
 	public int depth() {
 		if (child == null) return 1;
 		return child.depth() + 1;
 	}
 
-	/** Performs the trim operation. */
 	public void trim(double duration) {
 		trim(0.0, duration);
 	}
 
-	/** Performs the trim operation. */
 	public void trim(double start, double end) {
 		Iterator<PatternElement> itr = elements.iterator();
 		while (itr.hasNext()) {

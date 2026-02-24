@@ -21,7 +21,6 @@ import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;
 
-/** The AudioPlayerBase class. */
 public abstract class AudioPlayerBase implements AudioPlayer {
 	public static boolean enableStemsExport = false;
 
@@ -59,7 +58,6 @@ public abstract class AudioPlayerBase implements AudioPlayer {
 		return file;
 	}
 
-	/** Performs the getFile operation. */
 	public File getFile() {
 		if (file.startsWith("file://")) {
 			return new File(file.substring(7));
@@ -68,7 +66,6 @@ public abstract class AudioPlayerBase implements AudioPlayer {
 		}
 	}
 
-	/** Performs the getExportFiles operation. */
 	public List<File> getExportFiles() {
 		if (getStems() == null || !enableStemsExport) {
 			return List.of(getFile());
@@ -77,7 +74,6 @@ public abstract class AudioPlayerBase implements AudioPlayer {
 		}
 	}
 
-	/** Performs the getExportFiles operation. */
 	public List<File> getExportFiles(int channel) {
 		if (getStems() == null || getStems().isEmpty()) {
 			return Collections.emptyList();

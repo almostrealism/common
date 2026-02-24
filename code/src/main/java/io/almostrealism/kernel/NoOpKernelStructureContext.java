@@ -18,7 +18,6 @@ package io.almostrealism.kernel;
 
 import java.util.OptionalLong;
 
-/** The NoOpKernelStructureContext class. */
 public class NoOpKernelStructureContext implements KernelStructureContext {
 	private OptionalLong kernelMaximum;
 

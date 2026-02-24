@@ -8,7 +8,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
-/** The Nickel class. */
 public class Nickel implements Element {
 	public int getAtomicNumber() { return 28; }
 

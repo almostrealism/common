@@ -1518,12 +1518,10 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
 
     // ==================== Encoding ====================
 
-    /** Performs the base64Encode operation. */
     protected static String base64Encode(String s) {
         return s == null ? "" : Base64.getEncoder().encodeToString(s.getBytes(StandardCharsets.UTF_8));
     }
 
-    /** Performs the base64Decode operation. */
     protected static String base64Decode(String s) {
         return s == null || s.isEmpty() ? null : new String(Base64.getDecoder().decode(s), StandardCharsets.UTF_8);
     }

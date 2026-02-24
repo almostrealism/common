@@ -52,12 +52,10 @@ package org.almostrealism.audio.tone;
 public class WesternScales {
 	private WesternScales() { }
 
-	/** Performs the major operation. */
 	public static Scale<WesternChromatic> major(WesternChromatic root, int octaves) {
 		return new SetIntervalScale<>(root, octaves, 2, 2, 1, 2, 2, 2, 1);
 	}
 
-	/** Performs the minor operation. */
 	public static Scale<WesternChromatic> minor(WesternChromatic root, int octaves) {
 		return new SetIntervalScale<>(root, octaves, 2, 1, 2, 2, 1, 2, 2);
 	}

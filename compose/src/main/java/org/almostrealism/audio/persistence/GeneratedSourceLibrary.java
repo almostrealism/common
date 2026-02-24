@@ -37,7 +37,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.DoubleStream;
 
-/** The GeneratedSourceLibrary class. */
 public class GeneratedSourceLibrary {
 	private final LibraryDestination library;
 	private final Map<String, AudioSynthesisModel> models;
@@ -47,12 +46,10 @@ public class GeneratedSourceLibrary {
 		this.models = new HashMap<>();
 	}
 
-	/** Performs the add operation. */
 	public void add(String key, AudioSynthesisModel model) {
 		models.put(key, model);
 	}
 
-	/** Performs the getSource operation. */
 	public StatelessSource getSource(String key) {
 		AudioSynthesizer synth = new AudioSynthesizer();
 
@@ -65,7 +62,6 @@ public class GeneratedSourceLibrary {
 
 	public AudioSynthesisModel getModel(String key) { return models.get(key); }
 
-	/** Performs the getModel operation. */
 	public AudioSynthesisModel getModel(NoteAudioProvider provider) {
 		KeyboardTuning tuning = provider.getTuning();
 		KeyPosition<?> root = provider.getRoot();
@@ -83,7 +79,6 @@ public class GeneratedSourceLibrary {
 		return getModel(key);
 	}
 
-	/** Performs the getSynthesizer operation. */
 	public StatelessSource getSynthesizer(NoteAudio modelInput) {
 		if (!(modelInput instanceof NoteAudioProvider provider)) {
 			throw new UnsupportedOperationException();
@@ -94,7 +89,6 @@ public class GeneratedSourceLibrary {
 		return synth;
 	}
 
-	/** Performs the save operation. */
 	public void save() throws IOException {
 		try (LibraryDestination.Writer out = library.out()) {
 			Audio.AudioLibraryData.Builder data = Audio.AudioLibraryData.newBuilder();
@@ -129,13 +123,11 @@ public class GeneratedSourceLibrary {
 		}
 	}
 
-	/** Performs the load operation. */
 	public void load() {
 		library.load().stream().map(Audio.AudioLibraryData::getModelsList).flatMap(List::stream)
 				.forEach(d -> models.put(d.getKey(), convert(d)));
 	}
 
-	/** Performs the convert operation. */
 	public Audio.SynthesizerModelData convert(String key, InterpolatedAudioSynthesisModel model) {
 		Audio.SynthesizerModelData.Builder data = Audio.SynthesizerModelData.newBuilder();
 		data.setKey(key);
@@ -145,7 +137,6 @@ public class GeneratedSourceLibrary {
 		return data.build();
 	}
 
-	/** Performs the convert operation. */
 	public InterpolatedAudioSynthesisModel convert(Audio.SynthesizerModelData data) {
 		return new InterpolatedAudioSynthesisModel(
 				data.getFrequencyRatiosList().stream().mapToDouble(Double::doubleValue).toArray(),

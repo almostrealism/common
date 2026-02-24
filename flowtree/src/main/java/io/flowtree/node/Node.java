@@ -73,15 +73,10 @@ public class Node implements Runnable, ThreadFactory {
 	private double parentalRelayP = 0.0;
 	private final double parentalSleepP = 0.0;
 	
-	/** The ActivityListener interface. */
 	public interface ActivityListener {
-		/** Performs the iteration operation. */
 		void iteration(Node n);
-		/** Performs the startedWorking operation. */
 		void startedWorking();
-		/** Performs the stoppedWorking operation. */
 		void stoppedWorking();
-		/** Performs the becameIsolated operation. */
 		void becameIsolated();
 	}
 	
@@ -385,7 +380,6 @@ public class Node implements Runnable, ThreadFactory {
 	// TODO Add jobs, failed, listeners, current, parent,
 	//      name, thread, worker, and isWorking object
 	//      values to documentation.
-	/** Performs the getObject operation. */
 	public Object getObject(String key) {
 		if (key.equals("jobs")) {
 			return this.jobs;
@@ -426,7 +420,6 @@ public class Node implements Runnable, ThreadFactory {
 	
 	public void setMaxJobs(int m) { this.maxJobs = m; }
 
-	/** Performs the getMaxSleepC operation. */
 	public double getMaxSleepC() {
 		if (getParent() != null) return getParent().getMaxSleepC();
 		return maxSleepC;
@@ -442,7 +435,6 @@ public class Node implements Runnable, ThreadFactory {
 	
 	public void setPeerRelayC(double prc) { this.peerRelayC = prc; }
 	
-	/** Performs the setMinimumJobP operation. */
 	public void setMinimumJobP(double mjp) {
 		this.minJobP = mjp;
 		this.activitySleepO = - this.minJobP;
@@ -601,7 +593,6 @@ public class Node implements Runnable, ThreadFactory {
 	
 	public Job getCurrentJob() { return this.currentJob; }
 	
-	/** Performs the sendKill operation. */
 	public void sendKill(String task, int relay) {
 		synchronized (this.jobs) {
 			this.jobs.removeIf(o -> o.getTaskId().equals(task));
@@ -812,7 +803,6 @@ public class Node implements Runnable, ThreadFactory {
 		out.println(this.getStatus("<br>\n"));
 	}
 	
-	/** Performs the getStatus operation. */
 	public String getStatus(String nl) {
 		StringBuffer buf = new StringBuffer();
 		
@@ -915,7 +905,6 @@ public class Node implements Runnable, ThreadFactory {
 		return buf.toString();
 	}
 	
-	/** Performs the writeLogFile operation. */
 	public void writeLogFile(int ttl) {
 		if (this.rssfile == null || this.log == null) return;
 		
@@ -928,7 +917,6 @@ public class Node implements Runnable, ThreadFactory {
 		}
 	}
 	
-	/** Performs the iteration operation. */
 	public void iteration(Node n) {
 		double a = n.getActivityRating();
 		double s = n.getSleep() * (
@@ -945,7 +933,6 @@ public class Node implements Runnable, ThreadFactory {
 		}
 	}
 
-	/** Performs the startedWorking operation. */
 	public void startedWorking() {
 		synchronized (this.listeners) {
 			Iterator itr = this.listeners.iterator();
@@ -955,7 +942,6 @@ public class Node implements Runnable, ThreadFactory {
 		}
 	}
 
-	/** Performs the stoppedWorking operation. */
 	public void stoppedWorking() {
 		synchronized (this.listeners) {
 			Iterator itr = this.listeners.iterator();
@@ -965,7 +951,6 @@ public class Node implements Runnable, ThreadFactory {
 		}
 	}
 
-	/** Performs the becameIsolated operation. */
 	public void becameIsolated() {
 		synchronized (this.listeners) {
 			Iterator itr = this.listeners.iterator();
@@ -975,7 +960,6 @@ public class Node implements Runnable, ThreadFactory {
 		}
 	}
 	
-	/** Performs the formatTime operation. */
 	public static String formatTime(double msec) {
 		int min = (int) Math.floor(msec / 60000);
 		double sec = Math.floor(msec % 60000);
@@ -996,7 +980,6 @@ public class Node implements Runnable, ThreadFactory {
 		return b.toString();
 	}
 	
-	/** Performs the run operation. */
 	public void run() {
 		while (!this.stop) {
 			this.iteration(this);

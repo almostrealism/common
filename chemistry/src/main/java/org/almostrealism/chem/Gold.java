@@ -8,7 +8,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
-/** The Gold class. */
 public class Gold implements Element {
 	public int getAtomicNumber() { return 79; }
 

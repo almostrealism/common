@@ -32,7 +32,6 @@ import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
-/** The ChordProgressionManager class. */
 public class ChordProgressionManager implements CodeFeatures {
 	public static final int MAX_SIZE = 64;
 
@@ -71,7 +70,6 @@ public class ChordProgressionManager implements CodeFeatures {
 		chromosome.addGene(3);
 	}
 
-	/** Performs the getParams operation. */
 	protected ParameterSet getParams() {
 		chromosome.getResultant(0, 0, c(1.0)).evaluate().toDouble();
 
@@ -82,7 +80,6 @@ public class ChordProgressionManager implements CodeFeatures {
 		return params;
 	}
 
-	/** Performs the getRegionLength operation. */
 	protected double getRegionLength(int index) {
 		List<Double> choices = new ArrayList<>();
 		int last = 1;
@@ -97,7 +94,6 @@ public class ChordProgressionManager implements CodeFeatures {
 		return choices.get((int) (choice * choices.size()));
 	}
 
-	/** Performs the getScale operation. */
 	protected Scale<?> getScale(int index, double position) {
 		List<KeyPosition<?>> notes = new ArrayList<>();
 		getKey().forEach(notes::add);
@@ -112,7 +108,6 @@ public class ChordProgressionManager implements CodeFeatures {
 		return new StaticScale<>(result.toArray(new KeyPosition[0]));
 	}
 
-	/** Performs the refreshParameters operation. */
 	public void refreshParameters() {
 		regions = new ArrayList<>();
 		double length = 0.0;
@@ -126,7 +121,6 @@ public class ChordProgressionManager implements CodeFeatures {
 		}
 	}
 
-	/** Performs the getSettings operation. */
 	public Settings getSettings() {
 		Settings settings = new Settings();
 
@@ -144,7 +138,6 @@ public class ChordProgressionManager implements CodeFeatures {
 		return settings;
 	}
 
-	/** Performs the setSettings operation. */
 	public void setSettings(Settings settings) {
 		WesternChromatic root = settings.getRoot();
 
@@ -170,7 +163,6 @@ public class ChordProgressionManager implements CodeFeatures {
 	public void setChordDepth(int chordDepth) { this.chordDepth = chordDepth; }
 
 	public int getSize() { return size; }
-	/** Performs the setSize operation. */
 	public void setSize(int size) {
 		if (size > MAX_SIZE) throw new IllegalArgumentException();
 		this.size = size;
@@ -195,7 +187,6 @@ public class ChordProgressionManager implements CodeFeatures {
 		this.chordSelection = chordSelection;
 	}
 
-	/** Performs the forPosition operation. */
 	public Scale<?> forPosition(double position) {
 		while (position >= duration) position -= duration;
 		for (Region region : regions) {
@@ -208,7 +199,6 @@ public class ChordProgressionManager implements CodeFeatures {
 		return getKey();
 	}
 
-	/** Performs the getRegionString operation. */
 	public String getRegionString() {
 		StringBuilder sb = new StringBuilder();
 		for (Region region : regions) {
@@ -219,7 +209,6 @@ public class ChordProgressionManager implements CodeFeatures {
 		return sb.toString();
 	}
 
-	/** The Region class. */
 	public class Region {
 		private final double start;
 		private final double length;
@@ -235,13 +224,11 @@ public class ChordProgressionManager implements CodeFeatures {
 			return scale;
 		}
 
-		/** Performs the contains operation. */
 		public boolean contains(double position) {
 			return position >= start && position < start + length;
 		}
 	}
 
-	/** The Settings class. */
 	public static class Settings {
 		private ScaleType scaleType;
 		private WesternChromatic root;
@@ -286,7 +273,6 @@ public class ChordProgressionManager implements CodeFeatures {
 			this.chordSelection = chordSelection;
 		}
 
-		/** Performs the defaultSettings operation. */
 		public static Settings defaultSettings() {
 			Settings settings = new Settings();
 			settings.setScaleType(ScaleType.MINOR);
@@ -304,7 +290,6 @@ public class ChordProgressionManager implements CodeFeatures {
 		}
 	}
 
-	/** The ScaleType enumeration. */
 	public enum ScaleType {
 		MAJOR, MINOR
 	}

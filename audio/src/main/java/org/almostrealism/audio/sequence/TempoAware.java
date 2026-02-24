@@ -21,6 +21,5 @@ package org.almostrealism.audio.sequence;
  * Enables dynamic tempo adjustment for audio sequences and temporal operations.
  */
 public interface TempoAware {
-	/** Performs the setBpm operation. */
 	void setBpm(double bpm);
 }

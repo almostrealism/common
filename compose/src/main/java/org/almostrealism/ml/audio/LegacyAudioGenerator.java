@@ -82,13 +82,11 @@ public class LegacyAudioGenerator extends ConditionalAudioSystem {
 	}
 
 	public DoubleConsumer getProgressMonitor() { return progressMonitor; }
-	/** Performs the setProgressMonitor operation. */
 	public void setProgressMonitor(DoubleConsumer monitor) {
 		this.progressMonitor = monitor;
 		sampler.setProgressCallback(monitor);
 	}
 
-	/** Performs the setStrength operation. */
 	public void setStrength(double strength) {
 		if (strength < 0.0 || strength > 1.0) {
 			throw new IllegalArgumentException("Strength must be between 0.0 and 1.0");
@@ -102,22 +100,18 @@ public class LegacyAudioGenerator extends ConditionalAudioSystem {
 
 	public int getComposerDimension() { return composer.getEmbeddingDimension(); }
 
-	/** Performs the addAudio operation. */
 	public void addAudio(PackedCollection audio) {
 		composer.addAudio(cp(audio));
 	}
 
-	/** Performs the addFeatures operation. */
 	public void addFeatures(PackedCollection features) {
 		composer.addSource(cp(features));
 	}
 
-	/** Performs the generateAudio operation. */
 	public void generateAudio(String prompt, long seed, String outputPath) throws IOException {
 		generateAudio(null, prompt, seed, outputPath);
 	}
 
-	/** Performs the generateAudio operation. */
 	public void generateAudio(PackedCollection position, String prompt,
 							  long seed, String outputPath) throws IOException {
 		double[][] audio = generateAudio(position, prompt, seed);
@@ -126,7 +120,6 @@ public class LegacyAudioGenerator extends ConditionalAudioSystem {
 		}
 	}
 
-	/** Performs the generateAudio operation. */
 	public double[][] generateAudio(PackedCollection position, String prompt, long seed) {
 		try {
 			return generateAudio(position, getTokenizer().encodeAsLong(prompt), seed);
@@ -137,7 +130,6 @@ public class LegacyAudioGenerator extends ConditionalAudioSystem {
 		}
 	}
 
-	/** Performs the generateAudio operation. */
 	public double[][] generateAudio(PackedCollection position, long[] tokenIds, long seed) {
 		try {
 			if (position == null) {

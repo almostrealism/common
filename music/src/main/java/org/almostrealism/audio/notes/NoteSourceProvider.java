@@ -18,8 +18,6 @@ package org.almostrealism.audio.notes;
 
 import java.util.List;
 
-/** The NoteSourceProvider interface. */
 public interface NoteSourceProvider {
-	/** Performs the getSource operation. */
 	List<NoteAudioSource> getSource(String id);
 }

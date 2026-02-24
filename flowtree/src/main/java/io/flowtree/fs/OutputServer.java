@@ -50,7 +50,6 @@ public class OutputServer implements Runnable, Consumer<JobOutput> {
 	private ServerSocket socket;
 	private DatabaseConnection db;
 	
-	/** Performs the main operation. */
 	public static void main(String[] args) {
 		try {
 			Properties p = new Properties();
@@ -69,7 +68,6 @@ public class OutputServer implements Runnable, Consumer<JobOutput> {
 	public OutputServer(Properties p) throws IOException { init(p, Client.getCurrentClient().getServer()); }
 	public OutputServer(Properties p, io.flowtree.Server s) throws IOException { init(p, s); }
 	
-	/** Performs the init operation. */
 	public void init(Properties p, io.flowtree.Server s) throws IOException {
 		this.nodeServer = s;
 
@@ -156,7 +154,6 @@ public class OutputServer implements Runnable, Consumer<JobOutput> {
 
 	public io.flowtree.Server getNodeServer() { return this.nodeServer; }
 
-	/** Performs the addOutputHandler operation. */
 	public void addOutputHandler(OutputHandler handler) {
 		this.db.addOutputHandler(handler);
 	}
@@ -167,12 +164,10 @@ public class OutputServer implements Runnable, Consumer<JobOutput> {
 	@Deprecated
 	public void storeOutput(Hashtable h) { this.db.storeOutput(h); }
 	
-	/** Performs the removeHandler operation. */
 	public boolean removeHandler(OutputHandler handler) {
 		return this.db.removeOutputHandler(handler);
 	}
 	
-	/** Performs the removeHandler operation. */
 	public boolean removeHandler(QueryHandler handler) {
 		return this.db.removeQueryHandler(handler);
 	}

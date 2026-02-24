@@ -52,9 +52,7 @@ package org.almostrealism.physics;
  */
 public interface PhotonField {
 	
-	/** Performs the setClock operation. */
 	void setClock(Clock c);
-	/** Performs the getClock operation. */
 	Clock getClock();
 	
 	/**

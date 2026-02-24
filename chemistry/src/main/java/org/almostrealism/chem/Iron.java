@@ -8,7 +8,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
-/** The Iron class. */
 public class Iron implements Element {
 	public int getAtomicNumber() { return 26; }
 

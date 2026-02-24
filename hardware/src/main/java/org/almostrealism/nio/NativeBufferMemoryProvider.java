@@ -28,7 +28,6 @@ import java.nio.ShortBuffer;
 import java.util.HashMap;
 import java.util.Map;
 
-/** The NativeBufferMemoryProvider class. */
 public class NativeBufferMemoryProvider extends HardwareMemoryProvider<NativeBuffer> {
 	private static final Map<Class, NativeBufferAllocator> allocationAdapters = new HashMap<>();
 	private static final Map<Class, NativeBufferWriter> writeAdapters = new HashMap<>();
@@ -186,12 +185,10 @@ public class NativeBufferMemoryProvider extends HardwareMemoryProvider<NativeBuf
 		}
 	}
 
-	/** Performs the registerAdapter operation. */
 	public static <T extends Memory> void registerAdapter(Class<T> cls, NativeBufferAllocator<T> allocator) {
 		allocationAdapters.put(cls, allocator);
 	}
 
-	/** Performs the registerAdapter operation. */
 	public static <T extends Memory> void registerAdapter(Class<T> cls, NativeBufferWriter<T> writer) {
 		writeAdapters.put(cls, writer);
 	}

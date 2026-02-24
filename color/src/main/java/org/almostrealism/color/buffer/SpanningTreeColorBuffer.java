@@ -24,18 +24,15 @@ import org.almostrealism.color.RGB;
 public class SpanningTreeColorBuffer implements ColorBuffer {
 	private double m = 1.0;
 	
-	/** Performs the addColor operation. */
 	public void addColor(double u, double v, boolean front, RGB c) {
 		// TODO Auto-generated method stub
 	}
 	
-	/** Performs the getColorAt operation. */
 	public RGB getColorAt(double u, double v, boolean front) {
 		// TODO Auto-generated method stub
 		return null;
 	}
 	
-	/** Performs the clear operation. */
 	public void clear() {
 		// TODO Auto-generated method stub	
 	}

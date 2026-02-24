@@ -179,17 +179,14 @@ public class DelayNetwork implements TemporalFactor<PackedCollection>, Lifecycle
 		this.bufferIndices.fill(0.0);
 	}
 
-	/** Performs the randomHouseholderMatrix operation. */
 	public double[][] randomHouseholderMatrix(int size, double scale) {
 		return householderMatrix(rand(size), scale / size);
 	}
 
-	/** Performs the householderMatrix operation. */
 	public double[][] householderMatrix(Producer<PackedCollection> v, double scale) {
 		return householderMatrix((normalize(v).evaluate()).toArray(), scale);
 	}
 
-	/** Performs the householderMatrix operation. */
 	public double[][] householderMatrix(double[] v, double scale) {
 		int size = v.length;
 		double[][] householder = new double[size][size];
@@ -216,7 +213,6 @@ public class DelayNetwork implements TemporalFactor<PackedCollection>, Lifecycle
 	}
 
 	// Method to calculate transpose of a matrix
-	/** Performs the transpose operation. */
 	public static double[][] transpose(double[][] matrix) {
 		int rows = matrix.length;
 		int columns = matrix[0].length;
@@ -232,7 +228,6 @@ public class DelayNetwork implements TemporalFactor<PackedCollection>, Lifecycle
 	}
 
 	// Method to multiply two matrices
-	/** Performs the multiplyMatrices operation. */
 	public static double[][] multiplyMatrices(double[][] firstMatrix, double[][] secondMatrix) {
 		int r1 = firstMatrix.length;
 		int c1 = firstMatrix[0].length;

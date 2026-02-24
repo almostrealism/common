@@ -8,7 +8,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
-/** The Osmium class. */
 public class Osmium implements Element {
 	public int getAtomicNumber() { return 76; }
 	

@@ -26,7 +26,6 @@ import java.util.Optional;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 
-/** The SupplierArgumentMap class. */
 public class SupplierArgumentMap<S, A> implements ArgumentMap<Supplier, ArrayVariable<A>> {
 	protected ScopeInputManager delegateProvider;
 	private final Map<Supplier<S>, ArrayVariable<A>> arguments;
@@ -39,7 +38,6 @@ public class SupplierArgumentMap<S, A> implements ArgumentMap<Supplier, ArrayVar
 		this.delegateProvider = provider;
 	}
 
-	/** Performs the getDelegateProvider operation. */
 	public ScopeInputManager getDelegateProvider() {
 		if (delegateProvider == null) {
 			delegateProvider = DefaultScopeInputManager.getInstance(null);
@@ -48,7 +46,6 @@ public class SupplierArgumentMap<S, A> implements ArgumentMap<Supplier, ArrayVar
 		return delegateProvider;
 	}
 	
-	/** Performs the put operation. */
 	public void put(Supplier<S> key, ArrayVariable<A> value) {
 		arguments.put(key, value);
 	}
@@ -61,7 +58,6 @@ public class SupplierArgumentMap<S, A> implements ArgumentMap<Supplier, ArrayVar
 		return arguments.get(key);
 	}
 
-	/** Performs the get operation. */
 	protected Optional<ArrayVariable<A>> get(Predicate<Supplier> filter, NameProvider p) {
 		Optional<Supplier<S>> existing = arguments.keySet().stream().filter(filter).findAny();
 		if (existing.isEmpty()) return Optional.empty();

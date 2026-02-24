@@ -28,7 +28,6 @@ import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.OptionalLong;
 
-/** The LongConstant class. */
 public class LongConstant extends Constant<Long> {
 	private long value;
 

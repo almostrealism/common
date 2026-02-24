@@ -8,7 +8,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
-/** The Actinium class. */
 public class Actinium implements Element {
 	public int getAtomicNumber() { return 89; }
 	

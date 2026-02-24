@@ -17,7 +17,6 @@
 package org.almostrealism.texture;
 
 // TODO  Move to rings
-/** The Turbulence class. */
 public class Turbulence implements IntensityMap {
 	private final Noise noise;
 	private int itr = 8;
@@ -26,7 +25,6 @@ public class Turbulence implements IntensityMap {
 	
 	public Turbulence(Noise noise, int itr) { this.noise = noise; this.itr = itr; }
 	
-	/** Performs the getIntensity operation. */
 	public double getIntensity(double u, double v, double w) {
 		double n = 0.0;
 		

@@ -27,7 +27,6 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
-/** The HybridScope class. */
 public class HybridScope<T> extends Scope<T> {
 	private final ExplicitScope<T> explicit;
 	private CodeGenerator codeGenerator;
@@ -48,7 +47,6 @@ public class HybridScope<T> extends Scope<T> {
 
 	public void setArguments(List<Argument<?>> arguments) { explicit.setArguments(arguments); }
 
-	/** Performs the setDependencies operation. */
 	public void setDependencies(Collection<Variable<?, ?>> dependencies) {
 		explicit.setArguments(Scope.extractArgumentDependencies(dependencies));
 	}

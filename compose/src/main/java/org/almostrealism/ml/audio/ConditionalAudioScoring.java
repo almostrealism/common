@@ -53,14 +53,12 @@ public class ConditionalAudioScoring extends ConditionalAudioSystem {
 		super(tokenizer, conditioner, autoencoder, ditStates, true);
 	}
 
-	/** Performs the computeScore operation. */
 	public double computeScore(String prompt, WaveData audio) {
 		long[] tokens = getTokenizer().encodeAsLong(prompt);
 		log("\t\"" + prompt + "\" (" + tokens.length + " tokens)");
 		return computeScore(tokens, audio);
 	}
 
-	/** Performs the computeScore operation. */
 	public double computeScore(long[] promptTokenIds, WaveData audio) {
 		// return computeScore(promptTokenIds, audio.getData(), audio.getDuration());
 		// return computeDenoisingScore(promptTokenIds, audio.getData(), audio.getDuration());
@@ -141,7 +139,6 @@ public class ConditionalAudioScoring extends ConditionalAudioSystem {
 		return dotProduct / (normA * normB + 1e-6);
 	}
 
-	/** Performs the computeScore operation. */
 	public double computeScore(long[] promptTokenIds, PackedCollection audio, double duration) {
 		// 1. Process tokens through conditioners
 		AudioAttentionConditioner.ConditionerOutput conditionerOutputs =

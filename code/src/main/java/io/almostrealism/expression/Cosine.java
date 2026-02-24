@@ -25,13 +25,11 @@ import java.util.List;
 import java.util.OptionalDouble;
 import java.util.OptionalLong;
 
-/** The Cosine class. */
 public class Cosine extends Expression<Double> {
 	protected Cosine(Expression<Double> input) {
 		super(Double.class, input);
 	}
 
-	/** Performs the getExpression operation. */
 	public String getExpression(LanguageOperations lang) {
 		return "cos(" + getChildren().get(0).getExpression(lang) + ")";
 	}
@@ -64,7 +62,6 @@ public class Cosine extends Expression<Double> {
 		return product(target.getShape(), List.of(childDelta, cofactor));
 	}
 
-	/** Performs the of operation. */
 	public static Expression<Double> of(Expression<Double> input) {
 		OptionalDouble d = input.doubleValue();
 

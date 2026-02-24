@@ -38,16 +38,12 @@ public interface RigidBody {
 	 * @return {intersection point, normal to intersection} or a zero length array if there is no intersection.
 	 */
 	Vector[] intersect(RigidBody b);
-	/** Performs the draw operation. */
 	void draw(Camera c, Graphics g, double ox, double oy, double scale);
 
-	/** Performs the updateModel operation. */
 	void updateModel();
 	
-	/** Performs the getState operation. */
 	State getState();
 	
-	/** The State class. */
 	class State {
 		private boolean inited = false;
 		private double elapsed = -1.0;
@@ -124,7 +120,6 @@ public interface RigidBody {
 			for (Temporal t : listeners) t.tick().get().run();
 		}
 		
-		/** Performs the linearImpulse operation. */
 		public void linearImpulse(Vector impulse) {
 			System.out.print(this.toString() + ": " + impulse.toString() + " (" + this.p.toString() + " -->");
 			
@@ -134,7 +129,6 @@ public interface RigidBody {
 			System.out.println(this.p +") " + this.v);
 		}
 		
-		/** Performs the angularImpulse operation. */
 		public void angularImpulse(Vector impulse) {
 			this.l.addTo(impulse);
 			this.w = this.in.getInverse().transformAsOffset(this.l);
@@ -142,7 +136,6 @@ public interface RigidBody {
 		
 		public void addUpdateListener(Temporal l) { this.listeners.add(l); }
 		
-		/** Performs the setMass operation. */
 		public void setMass(double mass) {
 			this.mass = mass;
 			this.p = this.v.multiply(this.mass);
@@ -156,13 +149,11 @@ public interface RigidBody {
 		public void setLocation(Vector x) { this.x = x; }
 		public void setRotation(Vector r) { this.r = r; }
 		
-		/** Performs the setLinearVelocity operation. */
 		public void setLinearVelocity(Vector v) {
 			this.v = v;
 			this.p = this.v.multiply(this.mass);
 		}
 		
-		/** Performs the setAngularVelocity operation. */
 		public void setAngularVelocity(Vector w) {
 			this.w = w;
 			this.l = this.w.multiply(this.mass);
@@ -180,7 +171,6 @@ public interface RigidBody {
 		public Vector getForce() { return this.f; }
 		public Vector getTorque() { return this.t; }
 		
-		/** Performs the toString operation. */
 		public String toString() {
 			return "{" + this.x + " " + this.p + " " + this.v + " " + this.f + "}";
 		}

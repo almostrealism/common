@@ -112,7 +112,6 @@ public class NoteAudioContext implements ConsoleFeatures {
 		this.audioSelection = audioSelection;
 	}
 
-	/** Performs the selectAudio operation. */
 	public PatternNoteAudio selectAudio(double selection) {
 		return getAudioSelection().apply(selection);
 	}
@@ -125,12 +124,10 @@ public class NoteAudioContext implements ConsoleFeatures {
 		this.nextNotePosition = nextNotePosition;
 	}
 
-	/** Performs the nextNotePosition operation. */
 	public double nextNotePosition(double pos) {
 		return nextNotePosition == null ? 0.0 : nextNotePosition.applyAsDouble(pos);
 	}
 
-	/** Performs the createVoicingDetails operation. */
 	public ElementVoicingDetails createVoicingDetails(boolean melodic, KeyPosition<?> target, double position) {
 		return new ElementVoicingDetails(
 				voicing, audioChannel, melodic, target,

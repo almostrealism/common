@@ -8,7 +8,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
-/** The Scandium class. */
 public class Scandium implements Element {
 	public int getAtomicNumber() { return 21; }
 	

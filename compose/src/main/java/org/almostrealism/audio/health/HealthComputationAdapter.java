@@ -35,7 +35,6 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
-/** The HealthComputationAdapter class. */
 public abstract class HealthComputationAdapter implements AudioHealthComputation<TemporalCellular> {
 	public static final int MEASURE_COUNT = 2;
 	public static int standardDurationSeconds = 230;
@@ -61,7 +60,6 @@ public abstract class HealthComputationAdapter implements AudioHealthComputation
 		initOutput(stereo);
 	}
 
-	/** Performs the initOutput operation. */
 	protected void initOutput(boolean stereo) {
 		out = new WaveOutput(() ->
 							Optional.ofNullable(outputFileSupplier).map(s -> {
@@ -99,7 +97,6 @@ public abstract class HealthComputationAdapter implements AudioHealthComputation
 	public List<WaveOutput> getStems() { return stems; }
 	public MultiChannelAudioOutput getOutput() { return output; }
 
-	/** Performs the configureMeasures operation. */
 	protected void configureMeasures(Map<ChannelInfo, AudioMeter> measures) { }
 
 	public void setStemFile(IntFunction<String> file) { this.stemFileSupplier = file; }
@@ -134,13 +131,11 @@ public abstract class HealthComputationAdapter implements AudioHealthComputation
 		if (stems != null) stems.forEach(WaveOutput::destroy);
 	}
 
-	/** Performs the setStandardDuration operation. */
 	public static void setStandardDuration(int sec) {
 		standardDurationSeconds = sec;
 		standardDurationFrames = standardDurationSeconds * OutputLine.sampleRate;
 	}
 
-	/** Performs the getAuxFile operation. */
 	public static File getAuxFile(File file, String suffix) {
 		if (file == null) return null;
 		return new File(file.getParentFile(), file.getName().replace(".wav", "." + suffix));

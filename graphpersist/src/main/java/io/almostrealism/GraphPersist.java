@@ -8,7 +8,6 @@ import org.hsqldb.Server;
 
 import java.util.Properties;
 
-/** The GraphPersist class. */
 public class GraphPersist {
 	private static Properties properties = new Properties();
 	private static final GraphPersist local;
@@ -54,12 +53,10 @@ public class GraphPersist {
 		this.db = db;
 	}
 
-	/** Performs the save operation. */
 	public void save(String key, PackedCollection value) {
 		db.storeOutput(System.currentTimeMillis(), value.persist(), key, 0);
 	}
 
-	/** Performs the read operation. */
 	public PackedCollection read(String key, TraversalPolicy shape) {
 		String table = db.getTable();
 		Query q = new Query(table, DatabaseConnection.indexColumn,
@@ -70,12 +67,10 @@ public class GraphPersist {
 		return r;
 	}
 
-	/** Performs the local operation. */
 	public static GraphPersist local() {
 		return local;
 	}
 
-	/** Performs the loadProperties operation. */
 	public static void loadProperties(Properties p) {
 		properties = p;
 	}

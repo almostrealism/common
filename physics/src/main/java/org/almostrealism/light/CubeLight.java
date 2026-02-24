@@ -23,7 +23,6 @@ import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorFeatures;
 import org.almostrealism.collect.PackedCollection;
 
-/** The CubeLight class. */
 public class CubeLight extends LightBulb implements VectorFeatures {
 	private IntensityMap map;
 	private double width, height, depth;

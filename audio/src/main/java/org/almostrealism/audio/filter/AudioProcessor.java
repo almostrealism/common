@@ -35,11 +35,9 @@ import java.util.function.Supplier;
  * @see EnvelopeProcessor
  */
 public interface AudioProcessor extends Lifecycle {
-	/** Performs the process operation. */
 	Supplier<Runnable> process(Producer<PackedCollection> destination,
 							   Producer<PackedCollection> source);
 
-	/** Performs the fromWave operation. */
 	static AudioProcessor fromWave(WaveData data, int channel) {
 		PackedCollection position = new PackedCollection(1);
 

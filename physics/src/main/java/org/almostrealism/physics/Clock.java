@@ -89,7 +89,6 @@ public class Clock implements Temporal {
 	 */
 	public double getTickInterval() { return this.interval; }
 
-	/** Performs the setFrequency operation. */
 	public void setFrequency(Frequency f) {
 		// TODO  Set the tick interval based on the specified frequency
 	}

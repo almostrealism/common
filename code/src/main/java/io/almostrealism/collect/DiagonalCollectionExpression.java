@@ -22,7 +22,6 @@ import io.almostrealism.kernel.Index;
 
 import java.util.OptionalLong;
 
-/** The DiagonalCollectionExpression class. */
 public class DiagonalCollectionExpression extends CollectionExpressionAdapter {
 	public static boolean enableIndexSimplification = true;
 	public static boolean enableAutomaticPosition = true;
@@ -52,7 +51,6 @@ public class DiagonalCollectionExpression extends CollectionExpressionAdapter {
 		this.positionShape = positionShape;
 	}
 
-	/** Performs the getPosition operation. */
 	protected Expression[] getPosition(Expression index) {
 		return getPositionShape().flatten(true).position(index);
 	}

@@ -71,7 +71,6 @@ public class NoteAudioSourceAggregator implements CodeFeatures {
 		return aggregators.stream().mapToDouble(AggregatorChoice::getWeight).sum();
 	}
 
-	/** Performs the getAggregator operation. */
 	public SourceAggregator getAggregator(Producer<PackedCollection> choice) {
 		return (buffer, params, frequency, sources) -> () -> {
 			Evaluable<PackedCollection> c = choice.get();
@@ -99,7 +98,6 @@ public class NoteAudioSourceAggregator implements CodeFeatures {
 		};
 	}
 
-	/** The AggregatorChoice class. */
 	protected static class AggregatorChoice {
 		private final SourceAggregator aggregator;
 		private final double weight;

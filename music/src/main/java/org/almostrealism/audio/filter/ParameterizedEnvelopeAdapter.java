@@ -18,7 +18,6 @@ package org.almostrealism.audio.filter;
 
 import org.almostrealism.audio.data.ParameterFunction;
 
-/** The ParameterizedEnvelopeAdapter class. */
 public abstract class ParameterizedEnvelopeAdapter implements ParameterizedEnvelope {
 	private ParameterFunction attackSelection;
 	private ParameterFunction decaySelection;

@@ -22,7 +22,6 @@ import org.almostrealism.audio.tone.WesternChromatic;
 
 import java.util.List;
 
-/** The FileNoteSource class. */
 public class FileNoteSource implements NoteAudioSource {
 	private String source;
 	private KeyPosition<?> root;
@@ -57,7 +56,6 @@ public class FileNoteSource implements NoteAudioSource {
 	public KeyPosition<?> getRoot() { return root; }
 	public void setRoot(KeyPosition<?> root) { this.root = root; }
 
-	/** Performs the getNotes operation. */
 	public List<NoteAudio> getNotes() {
 		if (note == null) {
 			note = NoteAudioProvider.create(source, root);

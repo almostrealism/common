@@ -44,7 +44,6 @@ import java.security.spec.PKCS8EncodedKeySpec;
 import java.security.spec.X509EncodedKeySpec;
 import java.util.Map;
 
-/** The Encryptor class. */
 public class Encryptor implements EncryptionMaterialsProvider, AWSCredentialsProvider {
     public static final boolean enable509 = false;
     public static final boolean enableS3 = false;
@@ -133,7 +132,6 @@ public class Encryptor implements EncryptionMaterialsProvider, AWSCredentialsPro
         doCrypt("airflowtest", "test", "public.key");
     }
 
-    /** Performs the doCrypt operation. */
     public void doCrypt(String bucket, String key, String file)
             throws NoSuchAlgorithmException {
         this.kms = new KMSEngine(null,this);

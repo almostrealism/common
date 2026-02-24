@@ -8,7 +8,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
-/** The Thorium class. */
 public class Thorium implements Element {
 	public int getAtomicNumber() { return 90; }
 	

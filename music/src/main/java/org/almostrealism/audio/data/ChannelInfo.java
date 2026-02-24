@@ -111,12 +111,10 @@ public class ChannelInfo {
 		return Objects.hash(getPatternChannel(), getVoicing());
 	}
 
-	/** The Voicing enumeration. */
 	public enum Voicing {
 		MAIN, WET
 	}
 
-	/** The StereoChannel enumeration. */
 	public enum StereoChannel {
 		LEFT, RIGHT;
 
@@ -125,7 +123,6 @@ public class ChannelInfo {
 		}
 	}
 
-	/** The Type enumeration. */
 	public enum Type {
 		PATTERN, RISE
 	}

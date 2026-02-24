@@ -18,6 +18,5 @@ package io.almostrealism.code;
 
 import io.almostrealism.relation.Producer;
 
-/** The ProducerComputation interface. */
 public interface ProducerComputation<T> extends Computation<T>, Producer<T> {
 }

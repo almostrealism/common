@@ -23,7 +23,6 @@ import io.almostrealism.scope.ArrayVariable;
 
 import java.util.OptionalLong;
 
-/** The SizeValue class. */
 public class SizeValue extends StaticReference<Integer> {
 
 	public SizeValue(ArrayVariable<?> referent) {

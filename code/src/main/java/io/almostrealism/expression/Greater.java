@@ -21,7 +21,6 @@ import io.almostrealism.lang.LanguageOperations;
 import java.util.List;
 import java.util.OptionalDouble;
 
-/** The Greater class. */
 public class Greater extends Comparison {
 	private boolean orEqual;
 
@@ -56,12 +55,10 @@ public class Greater extends Comparison {
 		return new Greater(children.get(0), children.get(1), orEqual);
 	}
 
-	/** Performs the of operation. */
 	public static Expression<Boolean> of(Expression<?> left, Expression<?> right) {
 		return Greater.of(left, right, false);
 	}
 
-	/** Performs the of operation. */
 	public static Expression<Boolean> of(Expression<?> left, Expression<?> right, boolean orEqual) {
 		OptionalDouble ld = left.doubleValue();
 		OptionalDouble rd = right.doubleValue();

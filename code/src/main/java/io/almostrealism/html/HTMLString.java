@@ -1,6 +1,5 @@
 package io.almostrealism.html;
 
-/** The HTMLString class. */
 public class HTMLString implements HTMLContent {
 	private String content;
 	

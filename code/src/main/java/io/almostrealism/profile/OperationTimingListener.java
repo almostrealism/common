@@ -16,15 +16,12 @@
 
 package io.almostrealism.profile;
 
-/** This type. */
 @FunctionalInterface
 public interface OperationTimingListener {
-	/** Performs the recordDuration operation. */
 	default long recordDuration(Runnable r) {
 		return recordDuration(null, r);
 	}
 
-	/** Performs the recordDuration operation. */
 	default long recordDuration(OperationMetadata requester, Runnable r) {
 		long start = System.nanoTime();
 		r.run();
@@ -47,6 +44,5 @@ public interface OperationTimingListener {
 		return end - start;
 	}
 
-	/** Performs the recordDuration operation. */
 	void recordDuration(OperationMetadata requesterMetadata, OperationMetadata operationMetadata, long nanos);
 }

@@ -41,7 +41,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Supplier;
 
-/** The RiseManager class. */
 public class RiseManager implements Setup, PatternFeatures, CellFeatures {
 	public static final double riseDuration = HealthComputationAdapter.standardDurationSeconds;
 
@@ -88,7 +87,6 @@ public class RiseManager implements Setup, PatternFeatures, CellFeatures {
 	@Override
 	public Supplier<Runnable> setup() { return setup; }
 
-	/** Performs the getRise operation. */
 	public CellList getRise(int frames) {
 		Producer<PackedCollection> audio =
 				func(shape(frames), args -> destination, false);

@@ -25,7 +25,6 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
-/** This type. */
 @Deprecated
 public class ExplicitScope<T> extends Scope<T> {
 	private StringBuffer code;

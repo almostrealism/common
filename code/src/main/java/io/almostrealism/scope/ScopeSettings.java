@@ -30,7 +30,6 @@ import java.util.List;
 import java.util.Objects;
 import java.util.stream.IntStream;
 
-/** The ScopeSettings class. */
 public class ScopeSettings {
 	public static final boolean enableReplacements = true;
 
@@ -138,7 +137,6 @@ public class ScopeSettings {
 		}
 	}
 
-	/** Performs the reviewChildren operation. */
 	public static void reviewChildren(List<Expression<?>> children) {
 		if (!enableExpressionReview) return;
 
@@ -160,13 +158,11 @@ public class ScopeSettings {
 		}
 	}
 
-	/** Performs the reviewSimplification operation. */
 	public static <T> Expression<T> reviewSimplification(Expression<?> expression, Expression<T> simplified) {
 		Index target = simplified.getIndices().stream().findFirst().orElse(null);
 		return reviewSimplification(target, expression, simplified);
 	}
 
-	/** Performs the reviewSimplification operation. */
 	public static <T> Expression<T> reviewSimplification(Index target, Expression<?> expression, Expression<T> simplified) {
 		if (!enableSequenceValidation || target == null) return simplified;
 
@@ -181,7 +177,6 @@ public class ScopeSettings {
 		return simplified;
 	}
 
-	/** Performs the reviewSimplification operation. */
 	public static <T> Expression<T> reviewSimplification(IndexValues values, Expression<?> expression, Expression<T> simplified) {
 		if (!enableSequenceValidation || values == null) return simplified;
 
@@ -197,7 +192,6 @@ public class ScopeSettings {
 		return simplified;
 	}
 
-	/** Performs the isSeriesSimplificationTarget operation. */
 	public static boolean isSeriesSimplificationTarget(Expression<?> expression, int depth) {
 		boolean s = simplification.isSeriesSimplificationTarget(expression, depth);
 		if (s) {
@@ -215,7 +209,6 @@ public class ScopeSettings {
 
 	public static int getExpressionCacheFrequencyThreshold() { return 10; }
 
-	/** Performs the isExpressionCacheTarget operation. */
 	public static boolean isExpressionCacheTarget(Expression<?> expression) {
 		boolean c = caching.isExpressionCacheTarget(expression);
 		if (c) {
@@ -228,14 +221,12 @@ public class ScopeSettings {
 		return 12;
 	}
 
-	/** Performs the printStats operation. */
 	public static void printStats() {
 		Scope.console.features(ScopeSettings.class)
 				.log("Simplification Count = " + simplificationCount +
 						" | Cache Count = " + cacheCount);
 	}
 
-	/** Performs the shortDesc operation. */
 	public static String shortDesc() {
 		return caching.shortDesc() + "_" + simplification.shortDesc();
 	}

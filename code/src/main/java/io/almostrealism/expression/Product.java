@@ -36,7 +36,6 @@ import java.util.OptionalLong;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-/** The Product class. */
 public class Product<T extends Number> extends NAryExpression<T> {
 	public static boolean enableMinusDetection = true;
 	public static boolean enableConstantExtraction = true;
@@ -244,12 +243,10 @@ public class Product<T extends Number> extends NAryExpression<T> {
 		return children;
 	}
 
-	/** Performs the of operation. */
 	public static Expression<?> of(Expression<?>... values) {
 		return Expression.process(create(values));
 	}
 
-	/** Performs the create operation. */
 	protected static Expression<?> create(Expression<?>... values) {
 		if (values.length == 0) throw new IllegalArgumentException();
 		if (values.length == 1) return values[0];

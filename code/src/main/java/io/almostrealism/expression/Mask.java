@@ -23,7 +23,6 @@ import io.almostrealism.kernel.KernelStructureContext;
 import java.util.List;
 import java.util.Optional;
 
-/** The Mask class. */
 public class Mask<T extends Number> extends Conditional<T> {
 	protected Mask(Expression<Boolean> mask, Expression<T> value) {
 		super(value.getType(), mask, (Expression) value, (Expression) new IntegerConstant(0));
@@ -65,7 +64,6 @@ public class Mask<T extends Number> extends Conditional<T> {
 	@Override
 	public boolean isMasked() { return true; }
 
-	/** Performs the of operation. */
 	public static <T> Expression<T> of(Expression<Boolean> mask, Expression<T> value) {
 		Optional<Boolean> b = mask.booleanValue();
 

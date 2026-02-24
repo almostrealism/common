@@ -10,7 +10,6 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 
-/** The CascadingQuery class. */
 public abstract class CascadingQuery<D extends SQLConnectionProvider, K, V extends Cacheable> extends CacheableQuery<D, K, V> {
 	@Override
 	public Collection<V> execute(D database, K key, Map<Class, List<CascadingQuery>> cascades) {
@@ -35,19 +34,14 @@ public abstract class CascadingQuery<D extends SQLConnectionProvider, K, V exten
 	
 	public boolean isRoot() { return false; }
 	
-	/** Performs the init operation. */
 	public abstract void init(K key);
 	
-	/** Performs the getQuery operation. */
 	public abstract String getQuery(K key);
 	
-	/** Performs the getReturnValue operation. */
 	public abstract Collection<V> getReturnValue(K key);
 	
-	/** Performs the process operation. */
 	public abstract V process(ResultSet rs, K arguments, Map<Class, List<CascadingQuery>> cascades) throws SQLException;
 	
-	/** Performs the processCascades operation. */
 	public void processCascades(ResultSet rs, V value, Map<Class, List<CascadingQuery>> cascades) throws SQLException {
 		if (value == null || cascades == null) return;
 		List<CascadingQuery> l = cascades.get(value.getClass());

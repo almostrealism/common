@@ -193,7 +193,6 @@ public interface Block extends Component, CellularPropagation<PackedCollection>,
 				requirements));
 	}
 
-	/** Performs the enumerate operation. */
 	default Block enumerate(TraversalPolicy shape, ComputeRequirement... requirements) {
 		if (getOutputShape().getTotalSize() % shape.getTotalSize() != 0) {
 			throw new IllegalArgumentException();
@@ -306,12 +305,10 @@ public interface Block extends Component, CellularPropagation<PackedCollection>,
 		return next;
 	}
 
-	/** Performs the andThen operation. */
 	default <T extends Block> Block andThen(Function<TraversalPolicy, T> next) {
 		return andThen(next.apply(getOutputShape()));
 	}
 
-	/** Performs the andThen operation. */
 	default <T extends Receptor<PackedCollection>> T andThen(T next) {
 		if (Layer.propagationWarnings)
 			warn("andThen(" + next + ") may not support backpropagation");
@@ -326,7 +323,6 @@ public interface Block extends Component, CellularPropagation<PackedCollection>,
 		return next;
 	}
 
-	/** Performs the andThen operation. */
 	default CollectionReceptor andThen(PackedCollection destination) {
 		if (Layer.propagationWarnings)
 			warn("andThen(" + destination + ") may not support backpropagation");
@@ -341,18 +337,6 @@ public interface Block extends Component, CellularPropagation<PackedCollection>,
 		return r;
 	}
 
-	/**
-	 * Disables I/O tracking for this block.
-	 *
-	 * <p>When I/O tracking is disabled, layer entry and exit memory copy operations
-	 * are bypassed during the forward pass, reducing overhead when backpropagation
-	 * is not needed (inference mode).</p>
-	 *
-	 * <p>The default implementation is a no-op. Subclasses that perform I/O tracking
-	 * (such as {@link org.almostrealism.layers.DefaultCellularLayer}) should override
-	 * this method. Container blocks (such as {@link SequentialBlock}) should propagate
-	 * the call to their children.</p>
-	 */
 	default void disableTracking() { }
 
 	@Override

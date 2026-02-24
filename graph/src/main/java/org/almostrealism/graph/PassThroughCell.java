@@ -22,7 +22,6 @@ import org.almostrealism.hardware.OperationList;
 
 import java.util.function.Supplier;
 
-/** The PassThroughCell class. */
 public class PassThroughCell<T> implements Cell<T> {
 	private Receptor<T> r;
 

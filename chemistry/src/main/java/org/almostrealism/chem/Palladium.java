@@ -8,7 +8,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
-/** The Palladium class. */
 public class Palladium implements Element {
 	public int getAtomicNumber() { return 46; }
 	

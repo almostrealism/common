@@ -256,7 +256,6 @@ public class PackedCollection extends MemoryDataAdapter
 		}
 	}
 
-	/** Performs the get operation. */
 	public PackedCollection get(int index, TraversalPolicy memberShape) {
 		return range(memberShape, index * memberShape.getTotalSize());
 	}
@@ -266,7 +265,6 @@ public class PackedCollection extends MemoryDataAdapter
 		set(index, value.toArray(0, value.getMemLength()));
 	}
 
-	/** Performs the set operation. */
 	public void set(int index, double... values) {
 		if (index * getAtomicMemLength() + values.length > getMemLength()) {
 			throw new IllegalArgumentException("Range exceeds collection size");
@@ -314,12 +312,10 @@ public class PackedCollection extends MemoryDataAdapter
 		super.setDelegate(m, offset, order);
 	}
 
-	/** Performs the doubleStream operation. */
 	public DoubleStream doubleStream() {
 		return doubleStream(0, getShape().getTotalSize());
 	}
 
-	/** Performs the doubleStream operation. */
 	public DoubleStream doubleStream(int offset, int length) {
 		if (getDelegateOrdering() == null && getShape().isRegular()) {
 			return DoubleStream.of(toArray(offset, length));
@@ -328,7 +324,6 @@ public class PackedCollection extends MemoryDataAdapter
 		}
 	}
 
-	/** Performs the toDouble operation. */
 	public double toDouble() {
 		if (getShape().getTotalSizeLong() != 1) {
 			throw new UnsupportedOperationException();
@@ -343,42 +338,35 @@ public class PackedCollection extends MemoryDataAdapter
 		return super.toDouble(getShape().inputIndex(index));
 	}
 
-	/** Performs the stream operation. */
 	public Stream<PackedCollection> stream() {
 		return IntStream.range(0, getCount()).mapToObj(this::get);
 	}
 
-	/** Performs the stringStream operation. */
 	public Stream<String> stringStream() {
 		int colWidth = getShape().getSize();
 		return IntStream.range(0, getCount()).mapToObj(r -> toArrayString(r * colWidth, colWidth));
 	}
 
-	/** Performs the print operation. */
 	public void print(Consumer<String> out) {
 		stringStream().forEach(out);
 	}
 
-	/** Performs the print operation. */
 	public void print() {
 		print(System.out::println);
 	}
 
-	/** Performs the fill operation. */
 	public PackedCollection fill(double... value) {
 		double[] data = IntStream.range(0, getMemLength()).mapToDouble(i -> value[i % value.length]).toArray();
 		setMem(0, data);
 		return this;
 	}
 
-	/** Performs the fill operation. */
 	public PackedCollection fill(DoubleSupplier values) {
 		double[] data = IntStream.range(0, getMemLength()).mapToDouble(i -> values.getAsDouble()).toArray();
 		setMem(0, data);
 		return this;
 	}
 
-	/** Performs the fill operation. */
 	public PackedCollection fill(Function<int[], Double> f) {
 		double[] data = new double[getMemLength()];
 		getShape().stream().forEach(pos -> data[getShape().index(pos)] = f.apply(pos));
@@ -386,7 +374,6 @@ public class PackedCollection extends MemoryDataAdapter
 		return this;
 	}
 
-	/** Performs the replace operation. */
 	public PackedCollection replace(DoubleUnaryOperator f) {
 		double[] in = toArray(0, getMemLength());
 		double[] data = IntStream.range(0, getMemLength()).mapToDouble(i -> f.applyAsDouble(in[i])).toArray();
@@ -394,7 +381,6 @@ public class PackedCollection extends MemoryDataAdapter
 		return this;
 	}
 
-	/** Performs the identityFill operation. */
 	public PackedCollection identityFill() {
 		return fill(pos -> {
 			for (int i = 0; i < pos.length; i++) {
@@ -407,36 +393,30 @@ public class PackedCollection extends MemoryDataAdapter
 		});
 	}
 
-	/** Performs the randFill operation. */
 	public PackedCollection randFill() {
 		rand(getShape()).get().into(this).evaluate();
 		return this;
 	}
 
-	/** Performs the randFill operation. */
 	public PackedCollection randFill(Random source) {
 		rand(getShape(), source).get().into(this).evaluate();
 		return this;
 	}
 
-	/** Performs the randnFill operation. */
 	public PackedCollection randnFill() {
 		randn(getShape()).get().into(this).evaluate();
 		return this;
 	}
 
-	/** Performs the randnFill operation. */
 	public PackedCollection randnFill(Random source) {
 		randn(getShape(), source).get().into(this).evaluate();
 		return this;
 	}
 
-	/** Performs the forEach operation. */
 	public void forEach(Consumer<PackedCollection> consumer) {
 		stream().forEach(consumer);
 	}
 
-	/** Performs the transpose operation. */
 	public PackedCollection transpose() {
 		if (getShape().getDimensions() != 2) {
 			throw new IllegalArgumentException();
@@ -454,17 +434,14 @@ public class PackedCollection extends MemoryDataAdapter
 		return result;
 	}
 
-	/** Performs the clear operation. */
 	public void clear() {
 		clear.into(this.traverseEach()).evaluate();
 	}
 
-	/** Performs the range operation. */
 	public PackedCollection range(TraversalPolicy shape) {
 		return range(shape, 0);
 	}
 
-	/** Performs the range operation. */
 	public PackedCollection range(TraversalPolicy shape, int start) {
 		int required = shape.getOrder() == null ? shape.getTotalInputSize() :
 				shape.getOrder().getLength().orElse(shape.getTotalInputSize());
@@ -535,23 +512,19 @@ public class PackedCollection extends MemoryDataAdapter
 		return range(shape);
 	}
 
-	/** Performs the value operation. */
 	public PackedCollection value(int pos) {
 		return range(new TraversalPolicy(1), pos);
 	}
 
-	/** Performs the valueAt operation. */
 	public double valueAt(int... pos) {
 		return toDouble(getShape().extentShape().index(pos));
 	}
 
-	/** Performs the setValueAt operation. */
 	public void setValueAt(double value, int... pos) {
 		setMem(getShape().index(pos), value);
 	}
 
 	// TODO  Accelerated version
-	/** This method. */
 	@Deprecated
 	public double lengthSq() {
 		double[] data = toArray(0, getMemLength());
@@ -562,13 +535,11 @@ public class PackedCollection extends MemoryDataAdapter
 	}
 
 	// TODO  Accelerated version
-	/** This method. */
 	@Deprecated
 	public double length() {
 		return Math.sqrt(lengthSq());
 	}
 
-	/** Performs the argmax operation. */
 	public int argmax() {
 		return IntStream.range(0, getMemLength())
 				.reduce((a, b) -> toDouble(a) > toDouble(b) ? a : b)
@@ -606,7 +577,6 @@ public class PackedCollection extends MemoryDataAdapter
 		}
 	}
 
-	/** Performs the extract operation. */
 	public <T extends MemoryData> Stream<T> extract(IntFunction<T> factory) {
 		AtomicInteger idx = new AtomicInteger();
 
@@ -625,17 +595,14 @@ public class PackedCollection extends MemoryDataAdapter
 		}).limit(getMemLength() / getAtomicMemLength());
 	}
 
-	/** Performs the delegate operation. */
 	public PackedCollection delegate(int offset, int length) {
 		return new PackedCollection(new TraversalPolicy(length), 0, this, offset);
 	}
 
-	/** Performs the save operation. */
 	public void save(File f) throws IOException {
 		save(new FileOutputStream(f));
 	}
 
-	/** Performs the save operation. */
 	public void save(OutputStream out) throws IOException {
 		try (DataOutputStream dos = new DataOutputStream(out)) {
 			getShape().store(dos);
@@ -682,32 +649,27 @@ public class PackedCollection extends MemoryDataAdapter
 		}
 	}
 
-	/** Performs the clone operation. */
 	public PackedCollection clone() {
 		PackedCollection clone = new PackedCollection(getShape(), getShape().getTraversalAxis());
 		clone.setMem(0, toArray(0, getMemLength()), 0, getMemLength());
 		return clone;
 	}
 
-	/** Performs the of operation. */
 	public static PackedCollection of(List<Double> values) {
 		return of(values.stream().mapToDouble(d -> d).toArray());
 	}
 
-	/** Performs the of operation. */
 	public static PackedCollection of(double... values) {
 		PackedCollection collection = factory().apply(values.length);
 		collection.setMem(0, values, 0, values.length);
 		return collection;
 	}
 
-	/** Performs the factory operation. */
 	public static IntFunction<PackedCollection> factory() {
 		Heap heap = Heap.getDefault();
 		return heap == null ? PackedCollection::new : factory(heap::allocate);
 	}
 
-	/** Performs the factory operation. */
 	public static IntFunction<PackedCollection> factory(IntFunction<Bytes> allocator) {
 		return len -> {
 			Bytes data = allocator.apply(len);
@@ -715,7 +677,6 @@ public class PackedCollection extends MemoryDataAdapter
 		};
 	}
 
-	/** Performs the range operation. */
 	public static PackedCollection range(MemoryData data, TraversalPolicy shape, int start) {
 		if (start + shape.getTotalSize() > data.getMemLength()) {
 			throw new IllegalArgumentException("Range exceeds collection size");
@@ -724,7 +685,6 @@ public class PackedCollection extends MemoryDataAdapter
 		return new PackedCollection(shape, shape.getTraversalAxis(), data, start);
 	}
 
-	/** Performs the loadCollections operation. */
 	public static Iterable<PackedCollection> loadCollections(File src) {
 		try {
 			return loadCollections(new FileInputStream(src));
@@ -733,7 +693,6 @@ public class PackedCollection extends MemoryDataAdapter
 		}
 	}
 
-	/** Performs the loadCollections operation. */
 	public static Iterable<PackedCollection> loadCollections(InputStream in) {
 		DataInputStream dis = new DataInputStream(in);
 
@@ -803,22 +762,18 @@ public class PackedCollection extends MemoryDataAdapter
 		return new DynamicCollectionProducer(shape, args -> new PackedCollection(shape));
 	}
 
-	/** Performs the bank operation. */
 	public static IntFunction<MemoryBank<PackedCollection>> bank(TraversalPolicy atomicShape) {
 		return len -> new PackedCollection(atomicShape.prependDimension(len));
 	}
 
-	/** Performs the table operation. */
 	public static BiFunction<Integer, Integer, MemoryBank<PackedCollection>> table(TraversalPolicy atomicShape) {
 		return (width, count) -> new PackedCollection(atomicShape.prependDimension(width).prependDimension(count));
 	}
 
-	/** Performs the table operation. */
 	public static BiFunction<Integer, Integer, MemoryBank<PackedCollection>> table(TraversalPolicy atomicShape, BiFunction<DelegateSpec, Integer, PackedCollection> supply) {
 		return (width, count) -> new PackedCollection(atomicShape.prependDimension(width).prependDimension(count), 1, delegateSpec -> supply.apply(delegateSpec, width));
 	}
 
-	/** The DelegateSpec class. */
 	public static class DelegateSpec {
 		private final MemoryData data;
 		private int offset;

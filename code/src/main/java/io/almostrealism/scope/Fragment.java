@@ -16,6 +16,5 @@
 
 package io.almostrealism.scope;
 
-/** The Fragment interface. */
 public interface Fragment {
 }

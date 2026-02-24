@@ -26,7 +26,6 @@ import org.jboss.aesh.console.command.invocation.CommandInvocation;
 import java.io.IOException;
 import java.util.List;
 
-/** This type. */
 @CommandDefinition(name="install", description = "Install a repository on the underlying system.")
 public class InstallRepository implements Command {
 	@Arguments

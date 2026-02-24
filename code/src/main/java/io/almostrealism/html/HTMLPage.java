@@ -19,7 +19,6 @@ package io.almostrealism.html;
 import java.util.ArrayList;
 import java.util.List;
 
-/** The HTMLPage class. */
 public class HTMLPage implements HTMLContent {
 	private List<HTMLFragment> head;
 	private List<HTMLFragment> body;
@@ -31,7 +30,6 @@ public class HTMLPage implements HTMLContent {
 		script = new ArrayList<HTMLFragment>();
 	}
 	
-	/** Performs the add operation. */
 	public void add(HTMLFragment f) {
 		if (f.getType() == HTMLFragment.Type.HEAD) {
 			head.add(f);

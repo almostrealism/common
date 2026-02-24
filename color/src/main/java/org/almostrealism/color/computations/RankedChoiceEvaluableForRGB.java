@@ -26,7 +26,6 @@ import org.almostrealism.hardware.NullProcessor;
 
 import java.util.function.IntFunction;
 
-/** The RankedChoiceEvaluableForRGB class. */
 public class RankedChoiceEvaluableForRGB extends RankedChoiceEvaluableForMemoryData<PackedCollection> implements NullProcessor<PackedCollection>, RGBFeatures {
 	public RankedChoiceEvaluableForRGB(double e) {
 		super(e);

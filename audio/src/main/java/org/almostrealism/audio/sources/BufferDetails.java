@@ -54,7 +54,6 @@ public class BufferDetails {
 		return (double) frames / sampleRate;
 	}
 
-	/** Performs the createWaveData operation. */
 	public WaveData createWaveData() {
 		return new WaveData(new PackedCollection(getFrames()).traverseEach(), getSampleRate());
 	}

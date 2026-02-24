@@ -16,8 +16,6 @@
 
 package io.almostrealism.html;
 
-/** The HTMLContent interface. */
 public interface HTMLContent {
-	/** Performs the toHTML operation. */
 	String toHTML();
 }

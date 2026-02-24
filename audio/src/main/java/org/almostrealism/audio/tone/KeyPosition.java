@@ -47,13 +47,10 @@ package org.almostrealism.audio.tone;
  * @see KeyboardTuning
  */
 public interface KeyPosition<T extends KeyPosition<T>> {
-	/** Performs the position operation. */
 	int position();
 
-	/** Performs the next operation. */
 	T next();
 
-	/** Performs the none operation. */
 	static KeyPosition<?> none() {
 		return new KeyPosition() {
 			@Override
@@ -66,7 +63,6 @@ public interface KeyPosition<T extends KeyPosition<T>> {
 		};
 	}
 
-	/** Performs the of operation. */
 	static KeyPosition of(String name) {
 		return WesternChromatic.valueOf(name);
 	}

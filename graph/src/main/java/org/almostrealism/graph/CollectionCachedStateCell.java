@@ -22,7 +22,6 @@ import org.almostrealism.collect.PackedCollection;
 
 import java.util.function.Supplier;
 
-/** The CollectionCachedStateCell class. */
 public class CollectionCachedStateCell extends CachedStateCell<PackedCollection> implements CodeFeatures {
 	public CollectionCachedStateCell() {
 		super(PackedCollection.blank(1).get());

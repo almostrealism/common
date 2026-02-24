@@ -179,7 +179,6 @@ public class TransformMatrix extends PackedCollection implements TransformMatrix
 	@Override
 	public Heap getDefaultDelegate() { return Heap.getDefault(); }
 
-	/** Performs the transform operation. */
 	public Producer<PackedCollection> transform(Producer<PackedCollection> vector, int type) {
 		if (this.isIdentity) return vector;
 
@@ -195,7 +194,6 @@ public class TransformMatrix extends PackedCollection implements TransformMatrix
 		}
 	}
 
-	/** Performs the transform operation. */
 	public double[] transform(double x, double y, double z, int type) {
 		if (this.isIdentity) return new double[] {x, y, z};
 
@@ -238,7 +236,6 @@ public class TransformMatrix extends PackedCollection implements TransformMatrix
 		return Vector.view(transform(v(vector), TRANSFORM_AS_NORMAL).get().evaluate());
 	}
 
-	/** Performs the transform operation. */
 	public CollectionProducer transform(Producer<?> ray) {
 		return RayFeatures.getInstance().transform(this, ray);
 	}
@@ -367,7 +364,6 @@ public class TransformMatrix extends PackedCollection implements TransformMatrix
 	@Override
 	public int getMemLength() { return 16; }
 
-	/** Performs the toArray operation. */
 	public double[] toArray() {
 		double[] m = new double[16];
 		getMem(0, m, 0, 16);
@@ -388,13 +384,11 @@ public class TransformMatrix extends PackedCollection implements TransformMatrix
 		return data;
 	}
 
-	/** Performs the bank operation. */
 	public static PackedCollection bank(int count) {
 		return new PackedCollection(new TraversalPolicy(count, 16), 1, delegateSpec ->
 				new TransformMatrix(delegateSpec.getDelegate(), delegateSpec.getOffset()));
 	}
 
-	/** Performs the postprocessor operation. */
 	public static BiFunction<MemoryData, Integer, TransformMatrix> postprocessor() {
 		return (output, offset) -> new TransformMatrix(false, output, offset);
 	}
@@ -517,7 +511,6 @@ public class TransformMatrix extends PackedCollection implements TransformMatrix
 		return rotateTransform;
 	}
 
-	/** Performs the createRotateMatrix operation. */
 	public static TransformMatrix createRotateMatrix(double angle, Vector v) {
 		v = v.clone();
 		v.normalize();

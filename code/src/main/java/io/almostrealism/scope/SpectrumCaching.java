@@ -23,7 +23,6 @@ import org.almostrealism.io.ConsoleFeatures;
 import java.util.ArrayList;
 import java.util.List;
 
-/** The SpectrumCaching class. */
 public class SpectrumCaching implements CachingSettings, ConsoleFeatures {
 	private final List<Integer> depths;
 

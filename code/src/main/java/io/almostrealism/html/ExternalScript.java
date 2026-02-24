@@ -1,6 +1,5 @@
 package io.almostrealism.html;
 
-/** The ExternalScript class. */
 public class ExternalScript implements HTMLContent {
 	private String file;
 	

@@ -20,15 +20,12 @@ import io.almostrealism.uml.Named;
 
 import java.util.OptionalLong;
 
-/** The Index interface. */
 public interface Index extends SequenceGenerator, Named {
 
-	/** Performs the child operation. */
 	static IndexChild child(Index parent, Index child) {
 		return child(parent, child, null);
 	}
 
-	/** Performs the child operation. */
 	static IndexChild child(Index parent, Index child, Long limitMax) {
 		IndexChild result;
 

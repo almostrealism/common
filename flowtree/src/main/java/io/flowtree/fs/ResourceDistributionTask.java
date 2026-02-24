@@ -75,8 +75,6 @@ public class ResourceDistributionTask extends AbstractJobFactory implements Outp
 	private static ResourceDistributionTask current;
 	private static final List resourceTypes = new ArrayList();
 	
-	/** This method. */
-	/** The InvalidateListener interface. */
 	public interface InvalidateListener { void fireInvalidate(); }
 	private class Directory {
 		String uri;
@@ -145,7 +143,6 @@ public class ResourceDistributionTask extends AbstractJobFactory implements Outp
 		}
 	}
 	
-	/** The ResourceDistributionJob class. */
 	protected static class ResourceDistributionJob implements Job {
 		private String id;
 		private int sleep;
@@ -263,14 +260,12 @@ public class ResourceDistributionTask extends AbstractJobFactory implements Outp
 		this.initJobs(jobs);
 	}
 	
-	/** Performs the initDefaultResourceTypes operation. */
 	protected void initDefaultResourceTypes() {
 		ResourceDistributionTask.addResourceClass(
 				new ConcatenatedResource.ConcatenatedResourceHeaderParser());
 		System.out.println("ResourceDistributionTask: Added ConcatenatedResource type.");
 	}
 	
-	/** Performs the initFiles operation. */
 	protected void initFiles(OutputServer server) {
 		Directory fdir = new Directory();
 		fdir.uri = "/files/";
@@ -313,7 +308,6 @@ public class ResourceDistributionTask extends AbstractJobFactory implements Outp
 		db.executeQuery(q);
 	}
 	
-	/** Performs the initJobs operation. */
 	protected void initJobs(int tot) {
 		this.jobs.clear();
 		
@@ -330,7 +324,6 @@ public class ResourceDistributionTask extends AbstractJobFactory implements Outp
 	 */
 	protected void put(String uri, DistributedResource d) { this.items.put(uri, d); }
 	
-	/** Performs the loadJob operation. */
 	protected boolean loadJob(ResourceDistributionJob j) {
 		String table = this.server.getDatabaseConnection().getTable();
 		Query q = new Query(table, DatabaseConnection.toaColumn,
@@ -347,7 +340,6 @@ public class ResourceDistributionTask extends AbstractJobFactory implements Outp
 		return db.configureProperties(j, toa);
 	}
 	
-	/** Performs the createResource operation. */
 	public synchronized DistributedResource createResource(String uri) {
 		if (this.items.containsKey(uri)) return null;
 		
@@ -359,7 +351,6 @@ public class ResourceDistributionTask extends AbstractJobFactory implements Outp
 		return res;
 	}
 	
-	/** Performs the createDirectory operation. */
 	public synchronized String createDirectory(String uri) {
 		if (!uri.endsWith("/")) uri = uri + "/";
 		if (this.items.containsKey(uri)) return null;
@@ -374,7 +365,6 @@ public class ResourceDistributionTask extends AbstractJobFactory implements Outp
 		return uri;
 	}
 	
-	/** Performs the setResourceProvider operation. */
 	public synchronized boolean setResourceProvider(String dir, ResourceProvider p) {
 		Object o = null;
 		
@@ -392,7 +382,6 @@ public class ResourceDistributionTask extends AbstractJobFactory implements Outp
 		return true;
 	}
 
-	/** Performs the deleteResource operation. */
 	public synchronized boolean deleteResource(String uri) {
 		if (!this.items.containsKey(uri)) return false;
 		if (uri.equals("/")) return false;
@@ -430,7 +419,6 @@ public class ResourceDistributionTask extends AbstractJobFactory implements Outp
 		return deleted;
 	}
 	
-	/** Performs the getParent operation. */
 	public synchronized String getParent(String uri) {
 		if (uri.equals("/")) return null;
 		
@@ -440,7 +428,6 @@ public class ResourceDistributionTask extends AbstractJobFactory implements Outp
 		return uri.substring(0, uri.lastIndexOf("/"));
 	}
 	
-	/** Performs the getChildren operation. */
 	public synchronized String[] getChildren(String uri) {
 		List names = new ArrayList();
 		Iterator itr = this.items.keySet().iterator();
@@ -480,7 +467,6 @@ public class ResourceDistributionTask extends AbstractJobFactory implements Outp
 		throw new UnsupportedOperationException();
 	}
 
-	/** Performs the isDirectory operation. */
 	public synchronized boolean isDirectory(String uri) {
 		if (ResourceDistributionTask.verbose)
 			System.out.println("ResourceDistributionTask: Is dir? " + uri);
@@ -515,7 +501,6 @@ public class ResourceDistributionTask extends AbstractJobFactory implements Outp
 		return this.getResource(uri, exclude);
 	}
 	
-	/** Performs the getOutputStream operation. */
 	public OutputStream getOutputStream(String uri) throws IOException {
 		DistributedResource res = this.getResource(uri);
 		if (res == null) res = this.createResource(uri);
@@ -530,7 +515,6 @@ public class ResourceDistributionTask extends AbstractJobFactory implements Outp
 		return out;
 	}
 	
-	/** Performs the checkFull operation. */
 	protected void checkFull() {
 		//TODO Add intelligent clutter removal...
 		
@@ -545,7 +529,6 @@ public class ResourceDistributionTask extends AbstractJobFactory implements Outp
 	protected void addCache(long tot) { this.cacheTot += tot; }
 	protected void subtractCache(long tot) { this.cacheTot -= tot; }
 	
-	/** Performs the removeFromLocalDB operation. */
 	protected void removeFromLocalDB(String uri) {
 		OutputServer s = OutputServer.getCurrentServer();
 		
@@ -558,12 +541,10 @@ public class ResourceDistributionTask extends AbstractJobFactory implements Outp
 		s.getDatabaseConnection().deleteUri(uri);
 	}
 	
-	/** Performs the getResource operation. */
 	public synchronized DistributedResource getResource(String uri) {
 		return this.getResource(uri, null);
 	}
 	
-	/** Performs the getResource operation. */
 	public synchronized DistributedResource getResource(String uri, String exclude) {
 		if (ResourceDistributionTask.verbose)
 			System.out.println("ResourceDistributionTask: Get " + uri);
@@ -590,7 +571,6 @@ public class ResourceDistributionTask extends AbstractJobFactory implements Outp
 		return dres;
 	}
 	
-	/** Performs the notifyPeers operation. */
 	public int notifyPeers() {
 		Iterator itr = this.items.entrySet().iterator();
 		
@@ -611,13 +591,11 @@ public class ResourceDistributionTask extends AbstractJobFactory implements Outp
 	
 	public void setInvalidateListener(InvalidateListener listener) { this.inListen = listener; }
 	
-	/** Performs the fireInvalidate operation. */
 	protected void fireInvalidate() {
 		if (this.inListen != null)
 			this.inListen.fireInvalidate();
 	}
 	
-	/** Performs the notifyPeers operation. */
 	protected int notifyPeers(String uri, int type) {
 		this.fireInvalidate();
 		
@@ -636,7 +614,6 @@ public class ResourceDistributionTask extends AbstractJobFactory implements Outp
 		return tot;
 	}
 	
-	/** Performs the notifyPeer operation. */
 	protected boolean notifyPeer(String uri, int type, NodeProxy np) {
 		try {
 			if (Message.verbose)
@@ -661,7 +638,6 @@ public class ResourceDistributionTask extends AbstractJobFactory implements Outp
 	@Override
 	public String encode() { return null; }
 	
-	/** Performs the setPriority operation. */
 	public void setPriority(double p) { }
 	public double getPriority() { return 1.0; }
 
@@ -714,7 +690,6 @@ public class ResourceDistributionTask extends AbstractJobFactory implements Outp
 	public void storeOutput(long time, int uid, JobOutput output) {
 	}
 
-	/** Performs the executeQuery operation. */
 	public Hashtable executeQuery(Query q) {
 		if (!DatabaseConnection.uriColumn.equals(q.getColumn(0))) return null;
 		String uri = q.getValue(0);
@@ -771,7 +746,6 @@ public class ResourceDistributionTask extends AbstractJobFactory implements Outp
 		return ResourceDistributionTask.current;
 	}
 	
-	/** Performs the connect operation. */
 	public void connect(NodeProxy p) {
 		synchronized (this.items) {
 			Iterator itr = this.items.entrySet().iterator();
@@ -836,7 +810,6 @@ public class ResourceDistributionTask extends AbstractJobFactory implements Outp
 		return true;
 	}
 	
-	/** Performs the toString operation. */
 	public String toString() {
 		return "ResourceDistributionTask (" + this.jobs.size() + ", " + this.sleep + ")";
 	}

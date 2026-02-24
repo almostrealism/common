@@ -58,7 +58,6 @@ public class PointerAndObject<T> {
 
 	public Pointer getPointer() { return ptr; }
 
-	/** Performs the of operation. */
 	public static PointerAndObject<RAM> of(RAM ram) {
 		if (!(ram instanceof NativeBuffer)) {
 			throw new UnsupportedOperationException();
@@ -67,17 +66,14 @@ public class PointerAndObject<T> {
 		return new PointerAndObject<>(ram, Pointer.to(((NativeBuffer) ram).getBuffer()));
 	}
 
-	/** Performs the of operation. */
 	public static PointerAndObject<double[]> of(double d[]) {
 		return new PointerAndObject<>(d, Pointer.to(d));
 	}
 
-	/** Performs the of operation. */
 	public static PointerAndObject<float[]> of(float f[]) {
 		return new PointerAndObject<>(f, Pointer.to(f));
 	}
 
-	/** Performs the forLength operation. */
 	public static PointerAndObject<?> forLength(int size, int len) {
 		if (size == 4) {
 			return PointerAndObject.of(new float[len]);

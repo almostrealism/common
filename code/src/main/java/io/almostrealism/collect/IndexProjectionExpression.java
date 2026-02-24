@@ -21,7 +21,6 @@ import io.almostrealism.kernel.Index;
 
 import java.util.function.UnaryOperator;
 
-/** The IndexProjectionExpression class. */
 public class IndexProjectionExpression extends OperandCollectionExpression {
 	private UnaryOperator<Expression<?>> indexProjection;
 
