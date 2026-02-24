@@ -17,6 +17,7 @@
 package org.almostrealism.audio.similarity;
 
 import java.util.List;
+import java.util.Objects;
 
 /**
  * In-memory representation of a persisted prototype index, containing the
@@ -34,6 +35,11 @@ import java.util.List;
  */
 public record PrototypeIndexData(long computedAt, List<Community> communities) {
 
+	/** Compact constructor ensuring an unmodifiable, non-null community list. */
+	public PrototypeIndexData {
+		communities = List.copyOf(communities);
+	}
+
 	/**
 	 * A single community discovered by Louvain, with its PageRank-selected
 	 * prototype and full membership list.
@@ -44,6 +50,12 @@ public record PrototypeIndexData(long computedAt, List<Community> communities) {
 	 */
 	public record Community(String prototypeIdentifier, double centrality,
 							List<String> memberIdentifiers) {
+
+		/** Compact constructor ensuring non-null fields and an unmodifiable member list. */
+		public Community {
+			Objects.requireNonNull(prototypeIdentifier, "prototypeIdentifier");
+			memberIdentifiers = List.copyOf(memberIdentifiers);
+		}
 	}
 
 	/**

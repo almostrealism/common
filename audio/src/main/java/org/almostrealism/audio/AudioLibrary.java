@@ -179,7 +179,7 @@ public class AudioLibrary implements ConsoleFeatures {
 			CompletableFuture.completedFuture(null);
 
 	/** Persisted prototype index loaded from protobuf at startup. */
-	private PrototypeIndexData prototypeIndex;
+	private volatile PrototypeIndexData prototypeIndex;
 
 	public AudioLibrary(File root, int sampleRate) {
 		this(new FileWaveDataProviderNode(root), sampleRate);

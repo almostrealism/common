@@ -153,6 +153,20 @@ public class AudioLibraryPersistence {
 
 		int byteCount = 0;
 
+		if (details.isEmpty() && library.getPrototypeIndex() != null) {
+			data.setPrototypeIndex(encodePrototypeIndex(library.getPrototypeIndex()));
+			OutputStream o = out.get();
+
+			try {
+				data.build().writeTo(o);
+				o.flush();
+			} finally {
+				o.close();
+			}
+
+			return;
+		}
+
 		for (int i = 0; i < details.size(); i++) {
 			if (byteCount > batchSize || i == details.size() - 1) {
 				if (i == details.size() - 1 && library.getPrototypeIndex() != null) {
