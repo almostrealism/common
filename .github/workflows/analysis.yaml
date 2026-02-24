@@ -581,7 +581,7 @@ jobs:
 
   auto-resolve:
     needs: [build, test, test-media, javadoc-check, test-timeout-check, duplicate-code-check, test-integrity-check]
-    if: ${{ !cancelled() && github.ref != 'refs/heads/master' && contains(needs.*.result, 'failure') }}
+    if: ${{ !cancelled() && github.ref != 'refs/heads/master' }}
     runs-on: [self-hosted, macos, ar-ci]
     concurrency:
       group: auto-resolve-${{ github.ref }}
@@ -665,6 +665,21 @@ jobs:
             echo "::notice::No test failures found"
           fi
 
+      - name: Check for incomplete test execution
+        if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true'
+        id: test-completeness
+        run: |
+          INCOMPLETE="false"
+          if [ "${{ needs.test.result }}" != "success" ]; then
+            echo "::warning::test job result: ${{ needs.test.result }}"
+            INCOMPLETE="true"
+          fi
+          if [ "${{ needs.test-media.result }}" != "success" ]; then
+            echo "::warning::test-media job result: ${{ needs.test-media.result }}"
+            INCOMPLETE="true"
+          fi
+          echo "incomplete=$INCOMPLETE" >> "$GITHUB_OUTPUT"
+
       - name: Upload failure summary
         if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures == 'true'
         uses: actions/upload-artifact@v4
@@ -695,13 +710,37 @@ jobs:
         run: |
           ./tools/ci/submit-agent-job.sh /tmp/agent-prompt.txt
 
+      # ── Incomplete test execution path ─────────────────────────────
+      # When test jobs failed or were cancelled but produced no
+      # surefire failures (e.g. build failure inside a test job,
+      # fail-fast cancellation), treat it like a build failure.
+
+      - name: Build prompt (incomplete tests)
+        if: steps.build-check.outputs.build_failed != 'true' && steps.test-completeness.outputs.incomplete == 'true'
+        env:
+          BRANCH: ${{ steps.ctx.outputs.branch }}
+          COMMIT_SHA: ${{ github.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          ./tools/ci/build-build-failure-prompt.sh /tmp/agent-prompt.txt
+
+      - name: Submit agent job (incomplete tests)
+        if: steps.build-check.outputs.build_failed != 'true' && steps.test-completeness.outputs.incomplete == 'true'
+        env:
+          CONTROLLER_HOST: ${{ secrets.FLOWTREE_CONTROLLER_HOST || 'mac-studio' }}
+          CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
+          BRANCH: ${{ steps.ctx.outputs.branch }}
+          BASE_BRANCH: ${{ steps.ctx.outputs.base }}
+        run: |
+          ./tools/ci/submit-agent-job.sh /tmp/agent-prompt.txt
+
       # ── Quality gate fallback ──────────────────────────────────────
       # When no test failures exist, check quality gates and submit
       # those for auto-resolution instead. This ensures style and
       # reusability issues are addressed only after correctness.
 
       - name: Check quality gates
-        if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true'
+        if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.incomplete != 'true'
         id: quality
         env:
           JAVADOC_PASSED: ${{ needs.javadoc-check.outputs.passed }}
@@ -745,7 +784,7 @@ jobs:
       # documentation, and consistency with existing patterns.
 
       - name: Build prompt (general review)
-        if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.quality.outputs.has_failures != 'true'
+        if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.incomplete != 'true' && steps.quality.outputs.has_failures != 'true'
         env:
           BRANCH: ${{ steps.ctx.outputs.branch }}
           BASE_BRANCH: ${{ steps.ctx.outputs.base }}
@@ -754,7 +793,7 @@ jobs:
           ./tools/ci/build-review-prompt.sh /tmp/agent-prompt.txt
 
       - name: Submit agent job (general review)
-        if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.quality.outputs.has_failures != 'true'
+        if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.incomplete != 'true' && steps.quality.outputs.has_failures != 'true'
         env:
           CONTROLLER_HOST: ${{ secrets.FLOWTREE_CONTROLLER_HOST || 'mac-studio' }}
           CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
@@ -779,6 +818,9 @@ jobs:
             echo '```' >> "$GITHUB_STEP_SUMMARY"
             cat /tmp/test-failures.txt >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || echo "(no failure file)" >> "$GITHUB_STEP_SUMMARY"
             echo '```' >> "$GITHUB_STEP_SUMMARY"
+          elif [ "${{ steps.test-completeness.outputs.incomplete }}" = "true" ]; then
+            echo "**Test execution incomplete** — some test jobs failed or were cancelled without producing results." >> "$GITHUB_STEP_SUMMARY"
+            echo "A FlowTree coding agent job was submitted to investigate." >> "$GITHUB_STEP_SUMMARY"
           elif [ "${{ steps.quality.outputs.has_failures }}" = "true" ]; then
             echo "No test failures. Found **${{ steps.quality.outputs.failure_count }}** quality gate failure(s)." >> "$GITHUB_STEP_SUMMARY"
             echo "A FlowTree coding agent job was submitted to resolve quality issues." >> "$GITHUB_STEP_SUMMARY"
