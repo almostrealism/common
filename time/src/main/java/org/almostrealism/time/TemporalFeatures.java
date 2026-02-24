@@ -1383,7 +1383,8 @@ public interface TemporalFeatures extends GeometryFeatures {
 
 		// Each stage is evaluated separately to prevent the entire pipeline
 		// from compiling into a single monolithic native code file, which
-		// causes C compilation timeouts for large FFT sizes
+		// causes C compilation timeouts for large FFT sizes.
+		// Intermediate collections are destroyed to avoid memory pressure.
 
 		// Stage 1: Forward FFT of signal (pad, convert to complex, transform)
 		PackedCollection signalFFT = fft(fftSize,
@@ -1397,15 +1398,19 @@ public interface TemporalFeatures extends GeometryFeatures {
 
 		// Stage 3: Complex multiplication in frequency domain
 		PackedCollection product = multiplyComplex(cp(signalFFT), cp(kernelFFT)).evaluate();
+		signalFFT.destroy();
+		kernelFFT.destroy();
 
 		// Stage 4: Inverse FFT
 		PackedCollection ifftResult = ifft(fftSize, cp(product), requirements).evaluate();
+		product.destroy();
 
 		// Stage 5: Extract real parts from interleaved complex format and trim
 		PackedCollection result = new PackedCollection(outputShape);
 		for (int i = 0; i < outputLength; i++) {
 			result.setMem(i, ifftResult.toDouble(i * 2));
 		}
+		ifftResult.destroy();
 
 		return c(result);
 	}
