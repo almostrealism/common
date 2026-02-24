@@ -87,7 +87,7 @@ module test suite. If it passes, your fix works. If it fails, keep investigating
 ## ABSOLUTE RULE: DO NOT MODIFY EXISTING TESTS TO HIDE FAILURES
 
 Before you touch ANY test file, you MUST determine whether the test existed on the
-base branch (master/develop) before this branch was created. Run:
+base branch (master) before this branch was created. Run:
 
     git log --oneline origin/master -- <path/to/TestFile.java>
 

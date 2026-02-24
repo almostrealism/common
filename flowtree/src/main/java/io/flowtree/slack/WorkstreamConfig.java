@@ -57,6 +57,7 @@ import java.util.UUID;
 public class WorkstreamConfig {
 
     private String defaultWorkspacePath;
+    private String channelOwnerUserId;
     private Map<String, McpServerEntry> mcpServers = new LinkedHashMap<>();
     private Map<String, PushedToolEntry> pushedTools = new LinkedHashMap<>();
     private List<WorkstreamEntry> workstreams = new ArrayList<>();
@@ -241,6 +242,15 @@ public class WorkstreamConfig {
      */
     public String getDefaultWorkspacePath() { return defaultWorkspacePath; }
     public void setDefaultWorkspacePath(String defaultWorkspacePath) { this.defaultWorkspacePath = defaultWorkspacePath; }
+
+    /**
+     * Returns the Slack user ID to invite to auto-created channels.
+     *
+     * <p>When set, newly created workstream channels will automatically
+     * invite this user. This is typically the project owner's Slack user ID.</p>
+     */
+    public String getChannelOwnerUserId() { return channelOwnerUserId; }
+    public void setChannelOwnerUserId(String channelOwnerUserId) { this.channelOwnerUserId = channelOwnerUserId; }
 
     /** Returns the centralized MCP server configurations. */
     public Map<String, McpServerEntry> getMcpServers() { return mcpServers; }

@@ -1,6 +1,20 @@
 You are verifying that the work on branch "${BRANCH}" (commit ${COMMIT_SHA}) actually
 achieves the original goal described in the plan file below.
 
+## Important Context
+
+You may be the first agent to work on this branch. If the only changes from
+${BASE_BRANCH} are the plan document itself (and possibly supporting files like the
+manager log), this is expected — your job is to **implement the plan**, not merely
+report it as incomplete. Read the plan carefully and begin the work described in it.
+
+If substantial implementation work has already been done on this branch, then your
+job is to **verify completeness** as described below.
+
+In either case, the completion criteria below define what "done" looks like. Use them
+as your implementation target or your verification checklist, depending on the current
+state of the branch.
+
 ## Original Plan
 
 The following file contains the original plan that motivated the changes on this branch:

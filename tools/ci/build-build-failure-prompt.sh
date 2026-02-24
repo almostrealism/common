@@ -39,7 +39,7 @@ cat > "$OUTPUT_FILE" <<PROMPT
 **THIS IS THE MOST IMPORTANT RULE. VIOLATING IT IS WORSE THAN NOT FIXING ANYTHING.**
 
 Before you touch ANY test file, you MUST determine whether the test existed on the
-base branch (master/develop) before this branch was created. Run:
+base branch (master) before this branch was created. Run:
 
     git log --oneline master -- <path/to/TestFile.java>
 
