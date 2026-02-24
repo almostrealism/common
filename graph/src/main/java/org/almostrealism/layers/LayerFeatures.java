@@ -923,28 +923,82 @@ public interface LayerFeatures extends MatrixFeatures, ActivationFeatures, Conso
 
 		Factor<PackedCollection> operator = input -> {
 			CollectionProducer in = c(input);
-			CollectionProducer conv =
-					in.reshape(-1, 1, channels, height, width);
-			CollectionProducer filter =
-					cp(filters.reshape(1, filterCount, channels, size, size));
 
-			int bs = conv.getShape().length(0);
+			int groupSize = channels * size * size;
+			CollectionProducer result;
 
-			TraversalPolicy resultShape = shape(batch, filterCount, 1, outHeight, outWidth);
-			TraversalPolicy inputPositions = resultShape
-					.withRate(1, 1, filterCount)
-					.withRate(2, channels, 1);
-			TraversalPolicy filterPositions = resultShape
-					.withRate(0, 1, batch)
-					.withRate(2, channels, 1)
-					.withRate(3, size, outHeight)
-					.withRate(4, size, outWidth);
-			TraversalPolicy groupShape =
-					shape(1, 1, channels, size, size);
-			CollectionProducer result =
-					weightedSum("convolutionFilter",
-							inputPositions, filterPositions,
-							groupShape, conv, filter);
+			if (groupSize >= 64) {
+				TraversalPolicy loopedOutputShape =
+						shape(batch, filterCount, outHeight, outWidth).traverseEach();
+				TraversalPolicy inputDataShape = shape(batch, channels, height, width);
+
+				final int oH = outHeight;
+				final int oW = outWidth;
+				final int fCount = filterCount;
+				final int ch = channels;
+				final int sz = size;
+				final int hh = height;
+				final int ww = width;
+
+				LoopedWeightedSumComputation.InputIndexer inputIndexer =
+						(outputIdx, outerIdx, innerIdx) -> {
+					Expression<?> b = outputIdx.divide(fCount * oH * oW);
+					Expression<?> oh = outputIdx.divide(oW).imod(oH);
+					Expression<?> ow = outputIdx.imod(oW);
+					Expression<?> kh = innerIdx.divide(sz);
+					Expression<?> kw = innerIdx.imod(sz);
+					return b.multiply(ch * hh * ww)
+							.add(outerIdx.multiply(hh * ww))
+							.add(oh.add(kh).multiply(ww))
+							.add(ow).add(kw);
+				};
+
+				LoopedWeightedSumComputation.WeightIndexer weightIndexer =
+						(outputIdx, outerIdx, innerIdx) -> {
+					Expression<?> f = outputIdx.divide(oH * oW).imod(fCount);
+					return f.multiply(ch * sz * sz)
+							.add(outerIdx.multiply(sz * sz))
+							.add(innerIdx);
+				};
+
+				LoopedWeightedSumComputation computation =
+						new LoopedWeightedSumComputation(
+								"convolution2dLooped",
+								loopedOutputShape,
+								channels,
+								size * size,
+								inputDataShape,
+								filterShape,
+								inputIndexer,
+								weightIndexer,
+								in,
+								cp(filters));
+
+				result = c(computation)
+						.reshape(batch, filterCount, outHeight, outWidth);
+			} else {
+				CollectionProducer conv =
+						in.reshape(-1, 1, channels, height, width);
+				CollectionProducer filter =
+						cp(filters.reshape(1, filterCount, channels, size, size));
+
+				TraversalPolicy resultShape = shape(batch, filterCount, 1, outHeight, outWidth);
+				TraversalPolicy inputPositions = resultShape
+						.withRate(1, 1, filterCount)
+						.withRate(2, channels, 1);
+				TraversalPolicy filterPositions = resultShape
+						.withRate(0, 1, batch)
+						.withRate(2, channels, 1)
+						.withRate(3, size, outHeight)
+						.withRate(4, size, outWidth);
+				TraversalPolicy groupShape =
+						shape(1, 1, channels, size, size);
+				result = weightedSum("convolutionFilter",
+						inputPositions, filterPositions,
+						groupShape, conv, filter);
+			}
+
+			int bs = in.getShape().length(0);
 
 			if (biases != null) {
 				int t = outHeight * outWidth;
