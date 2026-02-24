@@ -114,8 +114,29 @@ public class SlackListener implements ConsoleFeatures {
      */
     public void registerWorkstream(SlackWorkstream workstream) {
         notifier.registerWorkstream(workstream);
-        channelToWorkstream.put(workstream.getChannelId(), workstream);
+        if (workstream.getChannelId() != null) {
+            channelToWorkstream.put(workstream.getChannelId(), workstream);
+        }
         log("Registered workstream: " + workstream);
+    }
+
+    /**
+     * Registers a workstream and persists the configuration to the YAML file.
+     *
+     * <p>This method is intended for programmatic registration via the HTTP API.
+     * It registers the workstream in memory, adds it to the configuration model,
+     * and persists the updated configuration to disk.</p>
+     *
+     * @param workstream the workstream to register and persist
+     */
+    public void registerAndPersistWorkstream(SlackWorkstream workstream) {
+        registerWorkstream(workstream);
+
+        if (workstreamConfig != null) {
+            workstreamConfig.addWorkstream(workstream);
+        }
+
+        persistConfig();
     }
 
     /**

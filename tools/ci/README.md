@@ -297,6 +297,38 @@ For macOS self-hosted runners (no Docker), see [macos/README.md](macos/README.md
 The macOS runner uses a simple shell script loop instead of Docker Compose,
 and registers with labels `[self-hosted, macos, ar-ci]`.
 
+## Verify-Completion Pipeline
+
+The `verify-completion.yaml` workflow implements plan-driven development.
+When triggered manually on a feature branch, it detects the plan document,
+optionally registers a new workstream (with a private Slack channel), and
+submits an agent job to implement and verify the plan's goals.
+
+```
+workflow_dispatch (on feature branch)
+         │
+         ▼
+    detect-plan job
+    ├── scan docs/plans/ for new .md files vs master
+    └── output: plan_file, is_new_plan
+         │
+         ▼ (only if is_new_plan=true)
+    register-workstream job
+    ├── register-workstream.sh
+    └── POST /api/workstreams (creates private Slack channel)
+         │
+         ▼
+    verify job
+    ├── build-verify-prompt.sh    → assemble prompt from plan
+    └── submit-agent-job.sh       → POST to FlowTree controller
+```
+
+| Script                         | Purpose                                          |
+|--------------------------------|--------------------------------------------------|
+| `register-workstream.sh`       | POST to `/api/workstreams` with branch, plan, channel name |
+| `build-verify-prompt.sh`       | Build prompt from plan document for verification |
+| `submit-agent-job.sh`          | Submit the job to FlowTree controller            |
+
 ## Auto-Resolve Pipeline
 
 When tests fail in the `analysis.yaml` workflow, the `auto-resolve` job
@@ -335,9 +367,11 @@ tools/ci/
 ├── Dockerfile                  # Runner image (Ubuntu 22.04 + JDK 17 + Maven + GH runner)
 ├── entrypoint.sh               # Container entrypoint (register, run, cleanup)
 ├── settings.xml                # Maven settings (shared local repo)
+├── register-workstream.sh      # Register a workstream with the FlowTree controller
 ├── parse-surefire-failures.sh  # Extract failing tests from Surefire XML reports
 ├── build-resolve-prompt.sh     # Build natural-language prompt for auto-resolve agent
-├── submit-agent-job.sh         # Submit auto-resolve job to FlowTree controller
+├── build-verify-prompt.sh      # Build prompt from plan document for verify-completion
+├── submit-agent-job.sh         # Submit agent job to FlowTree controller
 ├── README.md                   # This file
 └── macos/
     ├── .env.example            # macOS runner configuration template

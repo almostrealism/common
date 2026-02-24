@@ -67,11 +67,16 @@ public class JobStatsStore implements ConsoleFeatures {
     private static final String CREATE_INDEX =
         "CREATE INDEX IF NOT EXISTS idx_timing_ws_started ON job_timing (workstream_id, started_at)";
 
-    /** ALTER TABLE statements to add new columns to existing databases. */
+    /**
+     * ALTER TABLE statements to add new columns to existing databases.
+     * HSQLDB 2.x does not support {@code IF NOT EXISTS} on {@code ADD COLUMN},
+     * so these statements will throw if the column already exists. The
+     * initialization loop catches and ignores those errors.
+     */
     private static final String[] SCHEMA_MIGRATIONS = {
-        "ALTER TABLE job_timing ADD COLUMN IF NOT EXISTS subtype VARCHAR(64)",
-        "ALTER TABLE job_timing ADD COLUMN IF NOT EXISTS session_error BOOLEAN",
-        "ALTER TABLE job_timing ADD COLUMN IF NOT EXISTS permission_denials INTEGER"
+        "ALTER TABLE job_timing ADD COLUMN subtype VARCHAR(64)",
+        "ALTER TABLE job_timing ADD COLUMN session_error BOOLEAN",
+        "ALTER TABLE job_timing ADD COLUMN permission_denials INTEGER"
     };
 
     private static final String CLEAN_ORPHANS =
