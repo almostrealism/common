@@ -371,7 +371,7 @@ jobs:
     needs: [test]
     runs-on: [self-hosted, macos, ar-ci]
     concurrency:
-      group: test-mac-${{ github.ref }}
+      group: test-mac-${{ github.ref }}-${{ matrix.group }}
       cancel-in-progress: true
     strategy:
       fail-fast: true

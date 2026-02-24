@@ -67,6 +67,12 @@ import java.util.regex.Pattern;
  *   <tr><td>POST</td><td>/api/submit</td>
  *       <td>{@code {"prompt":"...","targetBranch":"..."}}</td>
  *       <td>Submit a job, resolving the workstream from the request body</td></tr>
+ *   <tr><td>POST</td><td>/api/workstreams</td>
+ *       <td>{@code {"defaultBranch":"...","baseBranch":"...","planningDocument":"..."}}</td>
+ *       <td>Register a new workstream (auto-creates Slack channel)</td></tr>
+ *   <tr><td>POST</td><td>/api/workstreams/{id}/update</td>
+ *       <td>{@code {"channelId":"...","channelName":"..."}}</td>
+ *       <td>Update an existing workstream</td></tr>
  *   <tr><td>POST</td><td>/api/workstreams/{id}</td>
  *       <td>{@code {"jobId":"...","status":"..."}}</td>
  *       <td>Receive a status event for the workstream</td></tr>
@@ -91,9 +97,9 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
     /** Default port for the API endpoint. */
     public static final int DEFAULT_PORT = 7780;
 
-    /** Matches /api/workstreams/{wsId} with optional /jobs/{jobId} and optional /messages or /submit suffix. */
+    /** Matches /api/workstreams/{wsId} with optional /jobs/{jobId} and optional /messages, /submit, or /update suffix. */
     private static final Pattern WORKSTREAM_PATTERN = Pattern.compile(
-        "/api/workstreams/([^/]+)(?:/jobs/([^/]+))?(/messages|/submit)?"
+        "/api/workstreams/([^/]+)(?:/jobs/([^/]+))?(/messages|/submit|/update)?"
     );
 
     private final SlackNotifier notifier;
@@ -176,6 +182,10 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
                 return handleSubmit(session, null);
             }
 
+            if ("/api/workstreams".equals(uri)) {
+                return handleRegisterWorkstream(session);
+            }
+
             Matcher m = WORKSTREAM_PATTERN.matcher(uri);
             if (m.matches()) {
                 String workstreamId = m.group(1);
@@ -186,6 +196,8 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
                     return handleMessage(session, workstreamId, jobId);
                 } else if ("/submit".equals(suffix)) {
                     return handleSubmit(session, workstreamId);
+                } else if ("/update".equals(suffix)) {
+                    return handleUpdateWorkstream(session, workstreamId);
                 } else {
                     return handleStatusEvent(session, workstreamId);
                 }
@@ -265,6 +277,155 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
     }
 
     /**
+     * Handles {@code POST /api/workstreams} to register a new workstream.
+     *
+     * <p>Request body:</p>
+     * <pre>{@code
+     * {
+     *   "defaultBranch": "project/plan-20260223-foo",
+     *   "baseBranch": "master",
+     *   "repoUrl": "https://github.com/org/repo.git",
+     *   "planningDocument": "docs/plans/PLAN-20260223-foo.md",
+     *   "channelName": "project-plan-20260223-foo"
+     * }
+     * }</pre>
+     *
+     * <p>If a {@code channelName} is provided and Slack is available, a new
+     * channel is created automatically. If Slack is not available (simulation
+     * mode), the workstream is registered without a channel.</p>
+     *
+     * @param session the HTTP session
+     * @return JSON response with {@code workstreamId}, {@code channelId},
+     *         and {@code channelName}
+     */
+    private Response handleRegisterWorkstream(IHTTPSession session) {
+        String body = readBody(session);
+        if (body == null) {
+            return errorResponse("Failed to read request body");
+        }
+
+        String defaultBranch = extractJsonField(body, "defaultBranch");
+        if (defaultBranch == null || defaultBranch.isEmpty()) {
+            return errorResponse("Missing required field: defaultBranch");
+        }
+
+        String baseBranch = extractJsonField(body, "baseBranch");
+        String repoUrl = extractJsonField(body, "repoUrl");
+        String planningDocument = extractJsonField(body, "planningDocument");
+        String channelName = extractJsonField(body, "channelName");
+
+        // Auto-create Slack channel if a name is provided
+        String channelId = null;
+        if (channelName != null && !channelName.isEmpty()) {
+            channelId = notifier.createChannel(channelName);
+        }
+
+        SlackWorkstream workstream;
+        if (channelId != null) {
+            workstream = new SlackWorkstream(channelId, "#" + channelName);
+        } else {
+            workstream = new SlackWorkstream(null, channelName);
+        }
+
+        workstream.setDefaultBranch(defaultBranch);
+
+        if (baseBranch != null && !baseBranch.isEmpty()) {
+            workstream.setBaseBranch(baseBranch);
+        }
+
+        if (repoUrl != null && !repoUrl.isEmpty()) {
+            workstream.setRepoUrl(repoUrl);
+        }
+
+        if (planningDocument != null && !planningDocument.isEmpty()) {
+            workstream.setPlanningDocument(planningDocument);
+        }
+
+        workstream.setPushToOrigin(true);
+
+        if (listener != null) {
+            listener.registerAndPersistWorkstream(workstream);
+        } else {
+            notifier.registerWorkstream(workstream);
+        }
+
+        log("Registered workstream via API: " + workstream.getWorkstreamId()
+            + " (branch=" + defaultBranch + ", channel=" + channelName + ")");
+
+        StringBuilder json = new StringBuilder();
+        json.append("{\"ok\":true");
+        json.append(",\"workstreamId\":\"").append(escapeJson(workstream.getWorkstreamId())).append("\"");
+        if (channelId != null) {
+            json.append(",\"channelId\":\"").append(escapeJson(channelId)).append("\"");
+        }
+        if (channelName != null) {
+            json.append(",\"channelName\":\"").append(escapeJson(channelName)).append("\"");
+        }
+        json.append("}");
+
+        return newFixedLengthResponse(Response.Status.OK,
+                "application/json", json.toString());
+    }
+
+    /**
+     * Handles {@code POST /api/workstreams/{id}/update} to update an existing workstream.
+     *
+     * <p>Supports updating any combination of: {@code channelId}, {@code channelName},
+     * {@code defaultBranch}, {@code baseBranch}, {@code repoUrl},
+     * {@code planningDocument}.</p>
+     *
+     * @param session      the HTTP session
+     * @param workstreamId the workstream identifier from the URL path
+     * @return JSON response confirming the update
+     */
+    private Response handleUpdateWorkstream(IHTTPSession session, String workstreamId) {
+        String body = readBody(session);
+        if (body == null) {
+            return errorResponse("Failed to read request body");
+        }
+
+        SlackWorkstream workstream = notifier.getWorkstream(workstreamId);
+        if (workstream == null) {
+            return errorResponse("Unknown workstream: " + workstreamId);
+        }
+
+        String channelId = extractJsonField(body, "channelId");
+        String channelName = extractJsonField(body, "channelName");
+        String defaultBranch = extractJsonField(body, "defaultBranch");
+        String baseBranch = extractJsonField(body, "baseBranch");
+        String repoUrl = extractJsonField(body, "repoUrl");
+        String planningDocument = extractJsonField(body, "planningDocument");
+
+        if (channelId != null && !channelId.isEmpty()) {
+            workstream.setChannelId(channelId);
+        }
+        if (channelName != null && !channelName.isEmpty()) {
+            workstream.setChannelName(channelName);
+        }
+        if (defaultBranch != null && !defaultBranch.isEmpty()) {
+            workstream.setDefaultBranch(defaultBranch);
+        }
+        if (baseBranch != null && !baseBranch.isEmpty()) {
+            workstream.setBaseBranch(baseBranch);
+        }
+        if (repoUrl != null && !repoUrl.isEmpty()) {
+            workstream.setRepoUrl(repoUrl);
+        }
+        if (planningDocument != null && !planningDocument.isEmpty()) {
+            workstream.setPlanningDocument(planningDocument);
+        }
+
+        if (listener != null) {
+            listener.registerAndPersistWorkstream(workstream);
+        }
+
+        log("Updated workstream via API: " + workstreamId);
+
+        return newFixedLengthResponse(Response.Status.OK,
+                "application/json", "{\"ok\":true,\"workstreamId\":\"" + escapeJson(workstreamId) + "\"}");
+    }
+
+    /**
      * Handles {@code POST /api/workstreams/{id}/submit} for programmatic
      * job submission from external systems (e.g., GitHub Actions).
      *
@@ -273,7 +434,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
      * {
      *   "prompt": "Post a comment on PR #42...",
      *   "targetBranch": "feature/pipeline-agents",
-     *   "baseBranch": "develop",
+     *   "baseBranch": "master",
      *   "workstreamId": "ws-rings",
      *   "maxTurns": 30,
      *   "maxBudgetUsd": 5.0

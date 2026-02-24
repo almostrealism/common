@@ -28,6 +28,7 @@ import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
+import java.net.URI;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -1315,6 +1316,255 @@ public class SlackIntegrationTest extends TestSuiteBase {
         String result = io.flowtree.JsonFieldExtractor.extractLastJsonObject(ndjson, null);
         assertNotNull(result);
         assertTrue("Should be the last line", result.contains("\"b\""));
+    }
+
+    // ── Workstream registration API tests ──────────────────────────
+
+    /**
+     * Tests that POST /api/workstreams registers a new workstream and returns
+     * its ID. Uses a null bot token so no real Slack channel is created.
+     */
+    @Test(timeout = 10000)
+    public void testApiRegisterWorkstream() throws Exception {
+        SlackNotifier notifier = new SlackNotifier(null);
+        SlackListener listener = new SlackListener(notifier);
+
+        FlowTreeApiEndpoint endpoint = new FlowTreeApiEndpoint(0, notifier);
+        endpoint.setListener(listener);
+        endpoint.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false);
+
+        try {
+            int port = endpoint.getListeningPort();
+            String body = "{\"defaultBranch\":\"project/plan-20260223-test\","
+                + "\"baseBranch\":\"master\","
+                + "\"planningDocument\":\"docs/plans/PLAN-20260223-test.md\","
+                + "\"channelName\":\"w-project-plan-20260223-test\"}";
+
+            HttpURLConnection conn = (HttpURLConnection) new URL(
+                    "http://localhost:" + port + "/api/workstreams").openConnection();
+            conn.setRequestMethod("POST");
+            conn.setDoOutput(true);
+            conn.setRequestProperty("Content-Type", "application/json");
+
+            try (OutputStream os = conn.getOutputStream()) {
+                os.write(body.getBytes(StandardCharsets.UTF_8));
+            }
+
+            assertEquals(200, conn.getResponseCode());
+
+            String response = new String(conn.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+            assertTrue(response.contains("\"ok\":true"));
+            assertTrue(response.contains("\"workstreamId\""));
+            assertTrue(response.contains("\"channelName\":\"w-project-plan-20260223-test\""));
+
+            // Verify the workstream was actually registered and is findable by branch
+            SlackWorkstream registered = notifier.findWorkstreamByBranch("project/plan-20260223-test");
+            assertNotNull("Workstream should be findable by branch", registered);
+            assertEquals("master", registered.getBaseBranch());
+            assertEquals("docs/plans/PLAN-20260223-test.md", registered.getPlanningDocument());
+            assertTrue(registered.isPushToOrigin());
+        } finally {
+            endpoint.stop();
+        }
+    }
+
+    /**
+     * Tests that POST /api/workstreams requires defaultBranch.
+     */
+    @Test(timeout = 10000)
+    public void testApiRegisterWorkstreamMissingBranch() throws Exception {
+        SlackNotifier notifier = new SlackNotifier(null);
+
+        FlowTreeApiEndpoint endpoint = new FlowTreeApiEndpoint(0, notifier);
+        endpoint.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false);
+
+        try {
+            int port = endpoint.getListeningPort();
+            String body = "{\"baseBranch\":\"master\"}";
+
+            HttpURLConnection conn = (HttpURLConnection) new URL(
+                    "http://localhost:" + port + "/api/workstreams").openConnection();
+            conn.setRequestMethod("POST");
+            conn.setDoOutput(true);
+            conn.setRequestProperty("Content-Type", "application/json");
+
+            try (OutputStream os = conn.getOutputStream()) {
+                os.write(body.getBytes(StandardCharsets.UTF_8));
+            }
+
+            assertEquals(400, conn.getResponseCode());
+
+            String error = new String(conn.getErrorStream().readAllBytes(), StandardCharsets.UTF_8);
+            assertTrue(error.contains("defaultBranch"));
+        } finally {
+            endpoint.stop();
+        }
+    }
+
+    /**
+     * Tests that POST /api/workstreams/{id}/update updates an existing workstream.
+     */
+    @Test(timeout = 10000)
+    public void testApiUpdateWorkstream() throws Exception {
+        SlackNotifier notifier = new SlackNotifier(null);
+        SlackListener listener = new SlackListener(notifier);
+
+        SlackWorkstream workstream = new SlackWorkstream(null, "w-test");
+        workstream.setDefaultBranch("project/test");
+        notifier.registerWorkstream(workstream);
+
+        FlowTreeApiEndpoint endpoint = new FlowTreeApiEndpoint(0, notifier);
+        endpoint.setListener(listener);
+        endpoint.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false);
+
+        try {
+            int port = endpoint.getListeningPort();
+            String body = "{\"channelId\":\"C_NEW_123\",\"channelName\":\"#w-test-updated\","
+                + "\"planningDocument\":\"docs/plans/PLAN-updated.md\"}";
+
+            URL url = URI.create("http://localhost:" + port
+                + "/api/workstreams/" + workstream.getWorkstreamId() + "/update").toURL();
+            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+            conn.setRequestMethod("POST");
+            conn.setRequestProperty("Content-Type", "application/json");
+            conn.setDoOutput(true);
+            conn.getOutputStream().write(body.getBytes(StandardCharsets.UTF_8));
+
+            assertEquals(200, conn.getResponseCode());
+            String response = new String(conn.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+            assertTrue(response.contains("\"ok\":true"));
+
+            assertEquals("C_NEW_123", workstream.getChannelId());
+            assertEquals("#w-test-updated", workstream.getChannelName());
+            assertEquals("docs/plans/PLAN-updated.md", workstream.getPlanningDocument());
+        } finally {
+            endpoint.stop();
+        }
+    }
+
+    /**
+     * Tests that POST /api/workstreams/{id}/update returns 400 for unknown ID.
+     */
+    @Test(timeout = 10000)
+    public void testApiUpdateWorkstreamNotFound() throws Exception {
+        SlackNotifier notifier = new SlackNotifier(null);
+
+        FlowTreeApiEndpoint endpoint = new FlowTreeApiEndpoint(0, notifier);
+        endpoint.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false);
+
+        try {
+            int port = endpoint.getListeningPort();
+            String body = "{\"channelId\":\"C_NEW\"}";
+
+            URL url = URI.create("http://localhost:" + port
+                + "/api/workstreams/nonexistent/update").toURL();
+            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+            conn.setRequestMethod("POST");
+            conn.setRequestProperty("Content-Type", "application/json");
+            conn.setDoOutput(true);
+            conn.getOutputStream().write(body.getBytes(StandardCharsets.UTF_8));
+
+            assertEquals(400, conn.getResponseCode());
+            String response = new String(conn.getErrorStream().readAllBytes(), StandardCharsets.UTF_8);
+            assertTrue(response.contains("Unknown workstream"));
+        } finally {
+            endpoint.stop();
+        }
+    }
+
+    /**
+     * Tests that postMessage and postMessageInThread gracefully handle null channelId.
+     */
+    @Test(timeout = 10000)
+    public void testPostMessageNullChannelId() {
+        SlackNotifier notifier = new SlackNotifier(null);
+
+        // Should not throw NPE
+        assertNull(notifier.postMessage(null, "test"));
+        assertNull(notifier.postMessage("", "test"));
+        assertNull(notifier.postMessageInThread(null, "test", "thread123"));
+        assertNull(notifier.postMessageInThread("", "test", "thread123"));
+    }
+
+    /**
+     * Tests that a workstream created without a channelId can be registered
+     * and that job notifications are silently skipped (not NPE).
+     */
+    @Test(timeout = 10000)
+    public void testChannellessWorkstreamJobNotification() {
+        SlackNotifier notifier = new SlackNotifier(null);
+
+        SlackWorkstream workstream = new SlackWorkstream(null, "w-test");
+        workstream.setDefaultBranch("project/test");
+        notifier.registerWorkstream(workstream);
+
+        // Job start and complete should not throw even with null channelId
+        JobCompletionEvent startEvent = JobCompletionEvent.started("job-1", "Test job");
+        notifier.onJobStarted(workstream.getWorkstreamId(), startEvent);
+
+        JobCompletionEvent completeEvent = JobCompletionEvent.success("job-1", "Test job");
+        notifier.onJobCompleted(workstream.getWorkstreamId(), completeEvent);
+    }
+
+    /**
+     * Tests that channelOwnerUserId is loaded from YAML configuration.
+     */
+    @Test(timeout = 10000)
+    public void testChannelOwnerUserIdFromYaml() throws IOException {
+        String yaml = "channelOwnerUserId: U0123456789\n"
+            + "workstreams:\n"
+            + "  - channelId: \"C111\"\n"
+            + "    channelName: \"#test\"\n"
+            + "    defaultBranch: \"feature/test\"\n";
+
+        WorkstreamConfig config = WorkstreamConfig.loadFromYamlString(yaml);
+        assertEquals("U0123456789", config.getChannelOwnerUserId());
+    }
+
+    /**
+     * Tests that registerAndPersistWorkstream adds the workstream to both
+     * the in-memory registry and the configuration model.
+     */
+    @Test(timeout = 10000)
+    public void testRegisterAndPersistWorkstream() throws IOException {
+        SlackNotifier notifier = new SlackNotifier(null);
+        SlackListener listener = new SlackListener(notifier);
+
+        // Set up a config file so persistence has somewhere to write
+        String yaml = "workstreams:\n"
+            + "  - channelId: \"C_EXISTING\"\n"
+            + "    channelName: \"#existing\"\n"
+            + "    defaultBranch: \"feature/existing\"\n";
+
+        File tempFile = File.createTempFile("workstream-test", ".yaml");
+        tempFile.deleteOnExit();
+        Files.write(tempFile.toPath(), yaml.getBytes());
+
+        WorkstreamConfig config = WorkstreamConfig.loadFromYaml(tempFile);
+        config.ensureWorkstreamIds();
+        listener.setWorkstreamConfig(config, tempFile);
+
+        // Register the existing workstream first
+        for (SlackWorkstream ws : config.toWorkstreams()) {
+            listener.registerWorkstream(ws);
+        }
+
+        // Now register a new workstream via the API path
+        SlackWorkstream newWs = new SlackWorkstream(null, "w-new-project");
+        newWs.setDefaultBranch("project/plan-test");
+        newWs.setBaseBranch("master");
+        newWs.setPlanningDocument("docs/plans/PLAN-test.md");
+
+        listener.registerAndPersistWorkstream(newWs);
+
+        // Verify it's findable in the notifier
+        SlackWorkstream found = notifier.findWorkstreamByBranch("project/plan-test");
+        assertNotNull("New workstream should be registered", found);
+        assertEquals("docs/plans/PLAN-test.md", found.getPlanningDocument());
+
+        // Verify it was persisted to the file
+        WorkstreamConfig reloaded = WorkstreamConfig.loadFromYaml(tempFile);
+        assertEquals(2, reloaded.getWorkstreams().size());
     }
 
 }

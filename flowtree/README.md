@@ -33,7 +33,8 @@ Servers discover each other through explicit connection (host + port) or through
 ## Capabilities
 
 - **[Coding Agent Integration](docs/coding-agent.md)** -- Execute Claude Code prompts as distributed jobs, with automatic git management for committing and pushing changes.
-- **[Slack Integration](docs/slack-integration.md)** -- Operate coding agents through Slack, with real-time status updates and bidirectional messaging via MCP tools.
+- **[Slack Integration](docs/slack-integration.md)** -- Operate coding agents through Slack, with real-time status updates and bidirectional messaging via MCP tools. Includes dynamic workstream registration with auto-created private Slack channels.
+- **[CI Integration](docs/ci-integration.md)** -- Auto-resolve CI failures and implement plan goals via the verify-completion workflow, with workstream registration, prompt generation, and quality gates.
 
 ## Running
 
