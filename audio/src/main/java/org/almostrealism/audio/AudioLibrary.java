@@ -676,8 +676,8 @@ public class AudioLibrary implements ConsoleFeatures {
 
 			WaveDetailsJob last = new WaveDetailsJob(this::processJob, null, false, -1.0);
 			last.getFuture().thenRun(() -> future.complete(null));
-			executor.execute(last);
 			latestRefresh = future;
+			executor.execute(last);
 			return future;
 		} finally {
 			reportProgress();
