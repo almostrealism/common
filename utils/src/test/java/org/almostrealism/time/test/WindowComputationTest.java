@@ -281,8 +281,11 @@ public class WindowComputationTest extends TestSuiteBase {
 
 		// Bartlett window should be linear (triangular)
 		// Check that first half is monotonically increasing
+		// (small epsilon tolerance for GPU floating-point precision)
 		for (int i = 1; i <= size / 2; i++) {
-			assertTrue(window.toDouble(i) >= window.toDouble(i - 1));
+			assertTrue("Expected monotonically increasing at index " + i +
+					" but " + window.toDouble(i) + " < " + window.toDouble(i - 1),
+					window.toDouble(i) >= window.toDouble(i - 1) - 1e-6);
 		}
 	}
 

@@ -7,15 +7,17 @@ This document describes how Flowtree integrates with CI/CD pipelines to automati
 ## Table of Contents
 
 1. [Overview](#overview)
-2. [Auto-Resolve Workflow](#auto-resolve-workflow)
-3. [Failure Detection](#failure-detection)
-4. [Prompt Generation](#prompt-generation)
-5. [Job Submission API](#job-submission-api)
-6. [Quality Gate Evaluation](#quality-gate-evaluation)
-7. [Concurrency Model](#concurrency-model)
-8. [Test File Protection](#test-file-protection)
-9. [Surefire Report Parsing](#surefire-report-parsing)
-10. [End-to-End Flow Diagram](#end-to-end-flow-diagram)
+2. [Verify-Completion Workflow](#verify-completion-workflow)
+3. [Auto-Resolve Workflow](#auto-resolve-workflow)
+4. [Failure Detection](#failure-detection)
+5. [Prompt Generation](#prompt-generation)
+6. [Job Submission API](#job-submission-api)
+7. [Workstream Registration API](#workstream-registration-api)
+8. [Quality Gate Evaluation](#quality-gate-evaluation)
+9. [Concurrency Model](#concurrency-model)
+10. [Test File Protection](#test-file-protection)
+11. [Surefire Report Parsing](#surefire-report-parsing)
+12. [End-to-End Flow Diagram](#end-to-end-flow-diagram)
 
 ---
 
@@ -31,6 +33,55 @@ The key components involved are:
 - **ClaudeCodeJob.Factory**: Constructs the job that will execute on an agent
 - **ClaudeCodeJob**: Executes the Claude Code prompt and manages git operations
 - **detect-test-hiding.sh**: A validation script that audits changes before commit
+
+---
+
+## Verify-Completion Workflow
+
+The verify-completion workflow (`verify-completion.yaml`) implements a self-improvement loop where coding agents implement and verify plan goals on feature branches. It is triggered manually via `workflow_dispatch` on any non-master branch.
+
+### Three-Phase Pipeline
+
+The workflow runs as a three-job pipeline with conditional execution:
+
+```
+detect-plan  ──>  register-workstream (conditional)  ──>  verify
+```
+
+**Phase 1: Detect Plan** (`detect-plan`)
+
+Identifies the plan document for the branch. The plan file can be provided explicitly via the `plan_file` workflow input, or auto-detected by scanning for new `.md` files in `docs/plans/` relative to master. The job outputs:
+- `plan_file`: Path to the detected plan document
+- `is_new_plan`: Whether the plan file is newly added on this branch
+
+**Phase 2: Register Workstream** (`register-workstream`, conditional)
+
+Runs only when `is_new_plan` is `true`. Calls `tools/ci/register-workstream.sh` which POSTs to the controller's `POST /api/workstreams` endpoint. This:
+- Creates a new `SlackWorkstream` with the branch name, base branch, repo URL, and plan document path
+- Auto-creates a **private** Slack channel named `w-<branch>` (with slashes replaced by hyphens)
+- Invites the configured `channelOwnerUserId` to the new channel
+- Persists the workstream to the YAML config file
+
+**Phase 3: Verify** (`verify`)
+
+Runs after detect-plan succeeds, even if register-workstream was skipped (but not if it failed). Builds a prompt from the plan document via `build-verify-prompt.sh` and submits it as a job via `submit-agent-job.sh`. The agent then implements any unfinished goals, verifies all goals are complete, and ensures each goal has meaningful test coverage.
+
+### Register Workstream Script
+
+The `tools/ci/register-workstream.sh` script handles workstream registration from CI:
+
+**Required environment variables:**
+- `BRANCH` -- target branch for the workstream
+- `BASE_BRANCH` -- base branch (e.g., `master`)
+- `PLAN_FILE` -- path to the planning document
+
+**Optional environment variables:**
+- `CONTROLLER_HOST` -- FlowTree controller hostname (default: `localhost`)
+- `CONTROLLER_PORT` -- FlowTree controller port (default: `7780`)
+- `REPO_URL` -- repository clone URL
+
+**Channel name derivation:**
+The channel name is derived from the branch name: `project/plan-20260223-foo` becomes `w-project-plan-20260223-foo`. The `w-` prefix is always added (idempotently) to distinguish workstream channels from other channels.
 
 ---
 
@@ -284,6 +335,53 @@ The JSON payload includes all fields from `JobCompletionEvent` and `ClaudeCodeJo
 | `sessionIsError` | `boolean` | Whether the session ended in error |
 | `permissionDenials` | `int` | Number of tool permission denials |
 | `deniedToolNames` | `string[]` | Names of denied tools |
+
+---
+
+## Workstream Registration API
+
+The controller provides endpoints for dynamic workstream management, used by CI pipelines to create and update workstreams at runtime.
+
+### Register Endpoint
+
+```
+POST /api/workstreams
+Content-Type: application/json
+```
+
+Creates a new workstream. When a `channelName` is provided and Slack is configured, a private channel is created automatically.
+
+**Request Body:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `defaultBranch` | `string` | Yes | The git branch for this workstream |
+| `baseBranch` | `string` | No | Base branch (default: `"master"`) |
+| `repoUrl` | `string` | No | Repository clone URL |
+| `planningDocument` | `string` | No | Path to the plan document relative to repo root |
+| `channelName` | `string` | No | Slack channel name (private channel auto-created) |
+
+**Response (200):**
+
+```json
+{
+  "ok": true,
+  "workstreamId": "ws-abc123",
+  "channelId": "C0123456789",
+  "channelName": "w-project-plan-foo"
+}
+```
+
+The workstream is registered in memory and persisted to the YAML config file via `SlackListener.registerAndPersistWorkstream()`.
+
+### Update Endpoint
+
+```
+POST /api/workstreams/{id}/update
+Content-Type: application/json
+```
+
+Updates fields on an existing workstream. All fields are optional; only provided non-empty fields are applied. Supports updating: `channelId`, `channelName`, `defaultBranch`, `baseBranch`, `repoUrl`, `planningDocument`.
 
 ### Health Check Endpoint
 
