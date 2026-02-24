@@ -155,15 +155,7 @@ public class AudioLibraryPersistence {
 
 		if (details.isEmpty() && library.getPrototypeIndex() != null) {
 			data.setPrototypeIndex(encodePrototypeIndex(library.getPrototypeIndex()));
-			OutputStream o = out.get();
-
-			try {
-				data.build().writeTo(o);
-				o.flush();
-			} finally {
-				o.close();
-			}
-
+			writeBatch(data, out);
 			return;
 		}
 
@@ -177,16 +169,9 @@ public class AudioLibraryPersistence {
 					data.setPrototypeIndex(encodePrototypeIndex(library.getPrototypeIndex()));
 				}
 
-				OutputStream o = out.get();
-
-				try {
-					data.build().writeTo(o);
-					data = Audio.AudioLibraryData.newBuilder();
-					byteCount = 0;
-					o.flush();
-				} finally {
-					o.close();
-				}
+				writeBatch(data, out);
+				data = Audio.AudioLibraryData.newBuilder();
+				byteCount = 0;
 			}
 		}
 	}
@@ -438,6 +423,21 @@ public class AudioLibraryPersistence {
 		details.getSimilarities().putAll(data.getSimilaritiesMap());
 		if (data.hasData()) details.setData(CollectionEncoder.decode(data.getData()));
 		return details;
+	}
+
+	/**
+	 * Writes a serialized {@link Audio.AudioLibraryData} to the next output stream
+	 * provided by the given supplier and closes the stream.
+	 */
+	private static void writeBatch(Audio.AudioLibraryData.Builder data, Supplier<OutputStream> out) throws IOException {
+		OutputStream o = out.get();
+
+		try {
+			data.build().writeTo(o);
+			o.flush();
+		} finally {
+			o.close();
+		}
 	}
 
 	/**
