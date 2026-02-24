@@ -105,6 +105,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
     private final SlackNotifier notifier;
     private final Map<String, Path> toolFiles = new HashMap<>();
     private JobStatsStore statsStore;
+    private String githubToken;
 
     private Server server;
     private SlackListener listener;
@@ -136,6 +137,17 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
      */
     public void setListener(SlackListener listener) {
         this.listener = listener;
+    }
+
+    /**
+     * Sets the GitHub API token used by the GitHub proxy endpoint.
+     * This takes precedence over the {@code GITHUB_TOKEN} environment
+     * variable.
+     *
+     * @param token the GitHub personal access token
+     */
+    public void setGithubToken(String token) {
+        this.githubToken = token;
     }
 
     /**
@@ -880,8 +892,11 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
      * @return JSON response wrapping the GitHub API response
      */
     private Response handleGitHubProxy(IHTTPSession session, Method method) {
-        String githubToken = System.getenv("GITHUB_TOKEN");
-        if (githubToken == null || githubToken.trim().isEmpty()) {
+        String token = this.githubToken;
+        if (token == null || token.trim().isEmpty()) {
+            token = System.getenv("GITHUB_TOKEN");
+        }
+        if (token == null || token.trim().isEmpty()) {
             return errorResponse("GITHUB_TOKEN not configured on controller");
         }
 
@@ -912,7 +927,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             URL url = URI.create(fullUrl).toURL();
             HttpURLConnection conn = (HttpURLConnection) url.openConnection();
             conn.setRequestMethod(githubMethod);
-            conn.setRequestProperty("Authorization", "Bearer " + githubToken.trim());
+            conn.setRequestProperty("Authorization", "Bearer " + token.trim());
             conn.setRequestProperty("Accept", "application/vnd.github+json");
             conn.setRequestProperty("X-GitHub-Api-Version", "2022-11-28");
             conn.setConnectTimeout(15000);
