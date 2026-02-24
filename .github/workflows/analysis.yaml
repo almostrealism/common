@@ -26,8 +26,11 @@ jobs:
           distribution: 'adopt'
           cache: 'maven'
 
-      - name: Build (skip tests)
+      - name: Build
         run: mvn install -DskipTests
+
+      - name: Flowtree Tests
+        run: mvn test -pl flowtree
 
       - name: Code Policy Enforcement
         run: |
