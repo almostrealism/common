@@ -363,12 +363,9 @@ jobs:
           retention-days: 1
 
   # ─── macOS Test Jobs ────────────────────────────────────────────────
-  # Each macOS job depends on its Linux counterpart passing, but does
-  # NOT block subsequent Linux jobs. This creates a trailing verification
-  # pattern where macOS tests run in parallel with the next Linux stage.
 
   test-mac:
-    needs: [test]
+    needs: [test-media]
     runs-on: [self-hosted, macos, ar-ci]
     concurrency:
       group: test-mac-${{ github.ref }}-${{ matrix.group }}
