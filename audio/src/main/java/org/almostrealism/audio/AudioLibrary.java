@@ -627,7 +627,7 @@ public class AudioLibrary implements ConsoleFeatures {
 	public WaveDetails computeSimilarities(WaveDetails details) {
 		try {
 			allDetails()
-					.filter(d -> details == null || !Objects.equals(d.getIdentifier(), details.getIdentifier()))
+					.filter(d -> !Objects.equals(d.getIdentifier(), details.getIdentifier()))
 					.filter(d -> !details.getSimilarities().containsKey(d.getIdentifier()))
 					.forEach(d -> {
 						double similarity = factory.similarity(details, d);

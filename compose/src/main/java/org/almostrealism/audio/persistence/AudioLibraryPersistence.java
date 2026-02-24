@@ -466,7 +466,7 @@ public class AudioLibraryPersistence {
 				.map(c -> new PrototypeIndexData.Community(
 						c.getPrototypeIdentifier(),
 						c.getCentrality(),
-						List.copyOf(c.getMemberIdentifiersList())))
+						c.getMemberIdentifiersList()))
 				.toList();
 
 		return new PrototypeIndexData(proto.getComputedAt(), communities);
