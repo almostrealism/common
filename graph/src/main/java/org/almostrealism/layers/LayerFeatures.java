@@ -869,11 +869,9 @@ public interface LayerFeatures extends MatrixFeatures, ActivationFeatures, Conso
 			return result.traverseEach();
 		};
 
-		CellularLayer layer = layer("convTranspose1d", inputShape.traverseEach(), outputShape.traverseEach(),
+		return layer("convTranspose1d", inputShape.traverseEach(), outputShape.traverseEach(),
 					operator, bias != null ? List.of(filters, bias) : List.of(filters),
 					new OperationList(), requirements);
-		((DefaultCellularLayer) layer).setOptimizeOnForward(true);
-		return layer;
 	}
 
 	/** Performs the convolution2d operation. */
