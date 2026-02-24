@@ -923,11 +923,12 @@ public interface LayerFeatures extends MatrixFeatures, ActivationFeatures, Conso
 
 		Factor<PackedCollection> operator = input -> {
 			CollectionProducer in = c(input);
-
 			CollectionProducer conv =
 					in.reshape(-1, 1, channels, height, width);
 			CollectionProducer filter =
 					cp(filters.reshape(1, filterCount, channels, size, size));
+
+			int bs = conv.getShape().length(0);
 
 			TraversalPolicy resultShape = shape(batch, filterCount, 1, outHeight, outWidth);
 			TraversalPolicy inputPositions = resultShape
@@ -944,8 +945,6 @@ public interface LayerFeatures extends MatrixFeatures, ActivationFeatures, Conso
 					weightedSum("convolutionFilter",
 							inputPositions, filterPositions,
 							groupShape, conv, filter);
-
-			int bs = in.getShape().length(0);
 
 			if (biases != null) {
 				int t = outHeight * outWidth;
