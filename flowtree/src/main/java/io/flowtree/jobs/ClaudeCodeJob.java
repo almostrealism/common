@@ -84,6 +84,8 @@ public class ClaudeCodeJob extends GitManagedJob {
     private String pushedToolsConfig;
     private Map<String, String> workstreamEnv;
     private String planningDocument;
+    private boolean enforceChanges;
+    private int enforcementAttempt;
 
     private final McpConfigBuilder mcpConfigBuilder = new McpConfigBuilder();
     private final ManagedToolsDownloader toolsDownloader = new ManagedToolsDownloader(mcpConfigBuilder);
@@ -251,6 +253,45 @@ public class ClaudeCodeJob extends GitManagedJob {
     }
 
     /**
+     * Returns whether this job enforces that code changes must be produced.
+     *
+     * <p>When enabled, the instruction prompt replaces the permissive
+     * "non-code requests" and "justifying no code changes" sections with
+     * a strict message requiring code changes. Used by the enforcement
+     * loop in {@link #doWork()} to prevent agents from dismissing test
+     * failures without investigation.</p>
+     */
+    public boolean isEnforceChanges() {
+        return enforceChanges;
+    }
+
+    /**
+     * Sets whether this job enforces code changes.
+     *
+     * @param enforceChanges true to require code changes for completion
+     */
+    public void setEnforceChanges(boolean enforceChanges) {
+        this.enforceChanges = enforceChanges;
+    }
+
+    /**
+     * Returns the current enforcement attempt counter.
+     * Zero means this is the first attempt (no retries yet).
+     */
+    public int getEnforcementAttempt() {
+        return enforcementAttempt;
+    }
+
+    /**
+     * Sets the enforcement attempt counter.
+     *
+     * @param enforcementAttempt the number of prior failed attempts
+     */
+    public void setEnforcementAttempt(int enforcementAttempt) {
+        this.enforcementAttempt = enforcementAttempt;
+    }
+
+    /**
      * Returns the Claude Code session ID from the last execution.
      * Can be used to resume the session later.
      */
@@ -287,6 +328,8 @@ public class ClaudeCodeJob extends GitManagedJob {
                 .setPrompt(prompt)
                 .setWorkstreamUrl(getWorkstreamUrl())
                 .setProtectTestFiles(isProtectTestFiles())
+                .setEnforceChanges(enforceChanges)
+                .setEnforcementAttempt(enforcementAttempt)
                 .setBaseBranch(getBaseBranch())
                 .setTargetBranch(getTargetBranch())
                 .setWorkingDirectory(getWorkingDirectory())
@@ -313,8 +356,41 @@ public class ClaudeCodeJob extends GitManagedJob {
         mcpConfigBuilder.setWorkingDirectory(workDir);
     }
 
+    /** Maximum number of enforcement retries before giving up. */
+    private static final int MAX_ENFORCEMENT_RETRIES = 5;
+
     @Override
     protected void doWork() {
+        executeSingleRun();
+
+        // Enforcement loop: when enforceChanges is enabled and the agent
+        // produced no file changes, restart the session with an escalating
+        // counter so the agent cannot simply declare "no fix needed."
+        if (enforceChanges) {
+            while (enforcementAttempt < MAX_ENFORCEMENT_RETRIES && !hasUncommittedChanges()) {
+                enforcementAttempt++;
+                log("Enforcement loop: attempt " + enforcementAttempt
+                    + " produced no changes -- restarting (attempt "
+                    + (enforcementAttempt + 1) + ")");
+                executeSingleRun();
+            }
+
+            if (!hasUncommittedChanges()) {
+                warn("Enforcement loop: exhausted " + MAX_ENFORCEMENT_RETRIES
+                    + " retries without producing changes");
+            }
+        }
+    }
+
+    /**
+     * Executes a single Claude Code session.
+     *
+     * <p>This method encapsulates the full lifecycle of one agent invocation:
+     * tool download, command construction, process execution, and output
+     * parsing. It is called once in normal mode and potentially multiple
+     * times when enforcement mode is active.</p>
+     */
+    private void executeSingleRun() {
         // Download pushed tools from the controller if needed
         toolsDownloader.ensurePushedTools(pushedToolsConfig);
 
@@ -355,6 +431,9 @@ public class ClaudeCodeJob extends GitManagedJob {
         log("Tools: " + allowedTools);
         if (getTargetBranch() != null) {
             log("Target branch: " + getTargetBranch());
+        }
+        if (enforcementAttempt > 0) {
+            log("Enforcement attempt: " + (enforcementAttempt + 1));
         }
 
         // Verify MCP tool server files exist before launching Claude Code
@@ -428,6 +507,51 @@ public class ClaudeCodeJob extends GitManagedJob {
         } catch (IOException | InterruptedException e) {
             warn("Error: " + e.getMessage(), e);
             exitCode = -1;
+        }
+    }
+
+    /**
+     * Checks whether the working directory has uncommitted changes
+     * (excluding files in the standard exclusion patterns).
+     *
+     * <p>Used by the enforcement loop to determine whether the agent
+     * produced any meaningful code changes during its session.</p>
+     *
+     * @return true if there are uncommitted changes to non-excluded files
+     */
+    private boolean hasUncommittedChanges() {
+        try {
+            ProcessBuilder pb = new ProcessBuilder("git", "status", "--porcelain");
+            String workDir = getWorkingDirectory();
+            if (workDir != null) {
+                pb.directory(new File(workDir));
+            }
+            pb.redirectErrorStream(true);
+            Process process = pb.start();
+            String statusOutput = new String(
+                process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+            process.waitFor();
+
+            // Filter out excluded patterns (claude-output, .claude, target, etc.)
+            for (String line : statusOutput.split("\n")) {
+                if (line.length() > 3) {
+                    String file = line.substring(3).trim();
+                    if (file.contains(" -> ")) {
+                        file = file.split(" -> ")[1];
+                    }
+                    if (!file.isEmpty()
+                            && !file.startsWith("claude-output/")
+                            && !file.startsWith(".claude/")
+                            && !file.startsWith("target/")
+                            && !file.equals("commit.txt")) {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        } catch (IOException | InterruptedException e) {
+            warn("Failed to check for uncommitted changes: " + e.getMessage());
+            return false;
         }
     }
 
@@ -658,6 +782,7 @@ public class ClaudeCodeJob extends GitManagedJob {
             sb.append("::planDoc:=").append(base64Encode(planningDocument));
         }
         sb.append("::protectTests:=").append(isProtectTestFiles());
+        sb.append("::enforceChanges:=").append(enforceChanges);
         return sb.toString();
     }
 
@@ -690,6 +815,9 @@ public class ClaudeCodeJob extends GitManagedJob {
                 break;
             case "protectTests":
                 setProtectTestFiles(Boolean.parseBoolean(value));
+                break;
+            case "enforceChanges":
+                this.enforceChanges = Boolean.parseBoolean(value);
                 break;
             default:
                 // Delegate to parent for git-related properties
@@ -740,6 +868,7 @@ public class ClaudeCodeJob extends GitManagedJob {
         private String pushedToolsConfig;
         private Map<String, String> workstreamEnv;
         private String planningDocument;
+        private boolean enforceChanges;
 
         /**
          * Default constructor for deserialization.
@@ -1058,6 +1187,26 @@ public class ClaudeCodeJob extends GitManagedJob {
             set("protectTests", String.valueOf(protectTestFiles));
         }
 
+        /**
+         * Returns whether enforcement mode is enabled for jobs.
+         * When enabled, jobs will loop until code changes are produced.
+         */
+        public boolean isEnforceChanges() {
+            return "true".equals(get("enforceChanges"));
+        }
+
+        /**
+         * Sets whether enforcement mode is enabled for jobs.
+         * When enabled, the agent session restarts with escalating warnings
+         * if it finishes without producing any code changes.
+         *
+         * @param enforceChanges true to require code changes for completion
+         */
+        public void setEnforceChanges(boolean enforceChanges) {
+            this.enforceChanges = enforceChanges;
+            set("enforceChanges", String.valueOf(enforceChanges));
+        }
+
         @Override
         public Job nextJob() {
             List<String> p = getPrompts();
@@ -1129,6 +1278,9 @@ public class ClaudeCodeJob extends GitManagedJob {
             // Test file protection
             job.setProtectTestFiles(isProtectTestFiles());
 
+            // Enforcement mode
+            job.setEnforceChanges(isEnforceChanges());
+
             return job;
         }
 
@@ -1177,6 +1329,9 @@ public class ClaudeCodeJob extends GitManagedJob {
                     break;
                 case "planDoc":
                     this.planningDocument = base64Decode(value);
+                    break;
+                case "enforceChanges":
+                    this.enforceChanges = Boolean.parseBoolean(value);
                     break;
             }
         }

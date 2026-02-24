@@ -208,6 +208,11 @@ public class FlowTreeController implements ConsoleFeatures {
             listener.setDefaultWorkspacePath(config.getDefaultWorkspacePath());
         }
 
+        // Pass channel owner user ID to notifier for auto-inviting to new channels
+        if (config.getChannelOwnerUserId() != null) {
+            notifier.setChannelOwnerUserId(config.getChannelOwnerUserId());
+        }
+
         // Pass config and file reference to listener for /flowtree setup persistence
         listener.setWorkstreamConfig(config, configFile);
 
