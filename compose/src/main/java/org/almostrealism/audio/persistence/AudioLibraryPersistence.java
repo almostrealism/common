@@ -168,6 +168,10 @@ public class AudioLibraryPersistence {
 		}
 
 		for (int i = 0; i < details.size(); i++) {
+			Audio.WaveDetailData d = encode(details.get(i), includeAudio);
+			byteCount += d.getSerializedSize();
+			data.putInfo(d.getIdentifier(), d);
+
 			if (byteCount > batchSize || i == details.size() - 1) {
 				if (i == details.size() - 1 && library.getPrototypeIndex() != null) {
 					data.setPrototypeIndex(encodePrototypeIndex(library.getPrototypeIndex()));
@@ -184,10 +188,6 @@ public class AudioLibraryPersistence {
 					o.close();
 				}
 			}
-
-			Audio.WaveDetailData d = encode(details.get(i), includeAudio);
-			byteCount += d.getSerializedSize();
-			data.putInfo(d.getIdentifier(), d);
 		}
 	}
 
