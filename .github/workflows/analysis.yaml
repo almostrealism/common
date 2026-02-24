@@ -580,7 +580,7 @@ jobs:
   # from starting until it completes.
 
   auto-resolve:
-    needs: [build, javadoc-check, test-timeout-check, duplicate-code-check, test-integrity-check]
+    needs: [build, test, test-media, javadoc-check, test-timeout-check, duplicate-code-check, test-integrity-check]
     if: ${{ !cancelled() && github.ref != 'refs/heads/master' && contains(needs.*.result, 'failure') }}
     runs-on: [self-hosted, macos, ar-ci]
     concurrency:
