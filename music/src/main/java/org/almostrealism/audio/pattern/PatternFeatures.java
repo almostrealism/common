@@ -176,6 +176,13 @@ public interface PatternFeatures extends CodeFeatures {
 	/**
 	 * Sums cached or fully-evaluated note audio to the destination buffer,
 	 * computing the overlap region between the note and the target frame range.
+	 *
+	 * @param destination buffer to sum audio into
+	 * @param audio the fully-evaluated note audio
+	 * @param noteStart absolute frame position where the note begins
+	 * @param startFrame starting frame of the target range
+	 * @param endFrame ending frame of the target range (exclusive)
+	 * @param frameCount length of the target range ({@code endFrame - startFrame})
 	 */
 	private void sumToDestination(PackedCollection destination, PackedCollection audio,
 								  int noteStart, int startFrame, int endFrame, int frameCount) {

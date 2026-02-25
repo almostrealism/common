@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -61,10 +61,6 @@ public class RenderedNoteAudio {
 	private int expectedFrameCount;
 	private PackedCollection offsetArg;
 	private IntFunction<Producer<PackedCollection>> producerFactory;
-
-	public RenderedNoteAudio() {
-		this(0, 0);
-	}
 
 	/**
 	 * Creates a RenderedNoteAudio with an expected frame count for pre-filtering.
