@@ -1,5 +1,5 @@
 You are verifying that the work on branch "${BRANCH}" (commit ${COMMIT_SHA}) actually
-achieves the original goal described in the plan file below.
+achieves the original goal described in the planning document for this workstream.
 
 ## Important Context
 
@@ -14,14 +14,6 @@ job is to **verify completeness** as described below.
 In either case, the completion criteria below define what "done" looks like. Use them
 as your implementation target or your verification checklist, depending on the current
 state of the branch.
-
-## Original Plan
-
-The following file contains the original plan that motivated the changes on this branch:
-
---- BEGIN PLAN (from ${PLAN_FILE}) ---
-${PLAN_CONTENT}
---- END PLAN ---
 
 ## Your Task
 

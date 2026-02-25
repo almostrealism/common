@@ -92,7 +92,7 @@ jobs:
           BRANCH: ${{ github.ref_name }}
           BASE_BRANCH: master
           PLAN_FILE: ${{ needs.detect-plan.outputs.plan_file }}
-          REPO_URL: ${{ github.server_url }}/${{ github.repository }}.git
+          REPO_URL: git@github.com:${{ github.repository }}.git
         run: |
           chmod +x ./tools/ci/register-workstream.sh
           ./tools/ci/register-workstream.sh
@@ -129,7 +129,7 @@ jobs:
           COMMIT_SHA: ${{ github.sha }}
         run: |
           chmod +x ./tools/ci/build-verify-prompt.sh
-          ./tools/ci/build-verify-prompt.sh "${{ needs.detect-plan.outputs.plan_file }}" /tmp/agent-prompt.txt
+          ./tools/ci/build-verify-prompt.sh /tmp/agent-prompt.txt
 
       - name: Submit agent job
         env:
