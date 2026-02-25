@@ -340,6 +340,21 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         String planningDocument = extractJsonField(body, "planningDocument");
         String channelName = extractJsonField(body, "channelName");
 
+        // Check for an existing workstream with the same branch and repo
+        SlackWorkstream existing = notifier.findWorkstreamByBranchAndRepo(defaultBranch, repoUrl);
+        if (existing != null) {
+            log("Workstream already exists for branch " + defaultBranch
+                + ": " + existing.getWorkstreamId() + " — returning existing");
+
+            StringBuilder json = new StringBuilder();
+            json.append("{\"ok\":true,\"existing\":true");
+            json.append(",\"workstreamId\":\"").append(escapeJson(existing.getWorkstreamId())).append("\"");
+            json.append("}");
+
+            return newFixedLengthResponse(Response.Status.OK,
+                    "application/json", json.toString());
+        }
+
         // Auto-create Slack channel if a name is provided
         String channelId = null;
         if (channelName != null && !channelName.isEmpty()) {
