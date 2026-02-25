@@ -1,0 +1,13 @@
+Revert enableRedundantCompilation to hardcoded default to fix Qwen3 test failures
+
+The static initializer for enableRedundantCompilation was changed to read
+from the AR_REDUNDANT_COMPILATION environment variable via SystemUtils.isEnabled().
+On CI self-hosted runners where this env var may be set to "disabled" from
+real-time audio scene testing, the flag becomes false, causing model compilation
+to silently reuse incompatible instruction sets. This broke Qwen3SyntheticTest
+(testTinyModelConstruction and testModelCompilation) which depend on independent
+compilation of evaluables with matching signatures.
+
+Reverted to the hardcoded default (true) so the flag is not affected by stray
+environment variables. Callers who need to disable redundant compilation should
+set the field programmatically in their specific context.
