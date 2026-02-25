@@ -847,6 +847,8 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 	 *   <li><strong>Tick phase</strong> - The per-frame loop applies effects, advances
 	 *       cursors, and writes to output. This <em>must</em> be a compilable
 	 *       {@link io.almostrealism.code.Computation} for real-time performance.</li>
+	 *   <li><strong>Advance phase</strong> - Increments the frame counter by bufferSize.</li>
+	 * </ul>
 	 *
 	 * <p><b>Genome independence:</b> The compiled kernel produced by this runner is
 	 * structurally independent of the genome parameters. All genome-derived values
@@ -854,8 +856,6 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 	 * by {@link #assignGenome}. This means the runner can be built once and reused
 	 * across genome changes without recompilation &mdash; only the underlying
 	 * {@link PackedCollection} values change.</p>
-	 *   <li><strong>Advance phase</strong> - Increments the frame counter by bufferSize.</li>
-	 * </ul>
 	 *
 	 * @param output     the audio output to write to
 	 * @param channels   channel indices to render, or null for all

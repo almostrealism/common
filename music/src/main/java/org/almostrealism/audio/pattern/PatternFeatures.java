@@ -119,31 +119,12 @@ public interface PatternFeatures extends CodeFeatures {
 						return;
 					}
 
-					// Calculate overlap region for evaluation
-					int overlapStart = Math.max(noteStart, startFrame);
-					int overlapEnd = (note.getExpectedFrameCount() > 0)
-							? Math.min(noteStart + note.getExpectedFrameCount(), endFrame)
-							: endFrame;
-					int overlapLength = overlapEnd - overlapStart;
-					int sourceOffset = overlapStart - noteStart;
-					int destOffset = overlapStart - startFrame;
-
-					if (overlapLength <= 0) return;
-
-					// Set the offset for this evaluation
-					note.getOffsetArg().setMem(0, sourceOffset);
-
-					try {
-						Producer<PackedCollection> producer = note.getProducer(overlapLength);
-						PackedCollection evaluated = traverse(1, producer).get().evaluate();
-
-						if (evaluated == null) return;
-
-						// Store in cache for reuse across buffer ticks
-						if (cache != null) {
-							// For caching, evaluate the full note so future ticks
-							// get a cache hit instead of re-evaluating
-							note.getOffsetArg().setMem(0, 0);
+					// When a cache is available, evaluate the full note so future
+					// buffer ticks get a cache hit. Without a cache, evaluate only
+					// the overlap region for minimal work.
+					if (cache != null) {
+						note.getOffsetArg().setMem(0, 0);
+						try {
 							Producer<PackedCollection> fullProducer =
 									note.getProducer(note.getExpectedFrameCount());
 							PackedCollection fullAudio =
@@ -152,23 +133,42 @@ public interface PatternFeatures extends CodeFeatures {
 								cache.put(noteStart, fullAudio);
 								sumToDestination(destination, fullAudio, noteStart,
 										startFrame, endFrame, frameCount);
-								return;
 							}
+						} catch (Exception e) {
+							// Skip notes that fail during evaluation
 						}
+					} else {
+						int overlapStart = Math.max(noteStart, startFrame);
+						int overlapEnd = (note.getExpectedFrameCount() > 0)
+								? Math.min(noteStart + note.getExpectedFrameCount(), endFrame)
+								: endFrame;
+						int overlapLength = overlapEnd - overlapStart;
+						int sourceOffset = overlapStart - noteStart;
+						int destOffset = overlapStart - startFrame;
 
-						// Sum partial evaluation directly
-						int actualLen = Math.min(overlapLength,
-								evaluated.getShape().getCount());
-						if (actualLen > 0 && destOffset >= 0
-								&& destOffset + actualLen <= frameCount) {
-							TraversalPolicy shape = shape(actualLen);
-							sizes.addEntry(actualLen);
-							AudioProcessingUtils.getSum().sum(
-									destination.range(shape, destOffset),
-									evaluated.range(shape, 0));
+						if (overlapLength <= 0) return;
+
+						note.getOffsetArg().setMem(0, sourceOffset);
+
+						try {
+							Producer<PackedCollection> producer = note.getProducer(overlapLength);
+							PackedCollection evaluated = traverse(1, producer).get().evaluate();
+
+							if (evaluated == null) return;
+
+							int actualLen = Math.min(overlapLength,
+									evaluated.getShape().getCount());
+							if (actualLen > 0 && destOffset >= 0
+									&& destOffset + actualLen <= frameCount) {
+								TraversalPolicy shape = shape(actualLen);
+								sizes.addEntry(actualLen);
+								AudioProcessingUtils.getSum().sum(
+										destination.range(shape, destOffset),
+										evaluated.range(shape, 0));
+							}
+						} catch (Exception e) {
+							// Skip notes that fail during evaluation
 						}
-					} catch (Exception e) {
-						// Skip notes that fail during evaluation
 					}
 				});
 	}

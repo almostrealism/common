@@ -24,6 +24,7 @@ import org.almostrealism.audio.tone.KeyPosition;
 import org.almostrealism.collect.PackedCollection;
 
 import java.util.function.DoubleFunction;
+import java.util.function.Supplier;
 
 public abstract class PatternNoteAudioAdapter implements
 		PatternNoteAudio, CellFeatures, SamplingFeatures {
@@ -88,20 +89,18 @@ public abstract class PatternNoteAudioAdapter implements
 
 			return p.getAudio(target, channel, audioSelection);
 		} else if (noteDuration > 0) {
+			int sampleRate = getSampleRate(target, audioSelection);
+			Supplier<Producer<PackedCollection>> filtered = () ->
+					getFilter().apply(getDelegate()
+									.getAudio(target, channel, noteDuration,
+											automationLevel, audioSelection,
+											offset, frameCount),
+								c(noteDuration), automationLevel.getResultant(c(0.0)));
+
 			if (offset != null) {
-				return sampling(getSampleRate(target, audioSelection), offset, frameCount,
-						() -> getFilter().apply(getDelegate()
-										.getAudio(target, channel, noteDuration,
-												automationLevel, audioSelection,
-												offset, frameCount),
-													c(noteDuration), automationLevel.getResultant(c(0.0))));
+				return sampling(sampleRate, offset, frameCount, filtered);
 			} else {
-				return sampling(getSampleRate(target, audioSelection), getDuration(target, audioSelection),
-						() -> getFilter().apply(getDelegate()
-										.getAudio(target, channel, noteDuration,
-												automationLevel, audioSelection,
-												null, -1),
-													c(noteDuration), automationLevel.getResultant(c(0.0))));
+				return sampling(sampleRate, getDuration(target, audioSelection), filtered);
 			}
 		} else {
 			throw new UnsupportedOperationException();
