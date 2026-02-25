@@ -1029,19 +1029,8 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 
 					for (RenderedNoteAudio note : notes) {
 						if (note.getExpectedFrameCount() <= 0) continue;
-
-						note.getOffsetArg().setMem(0, 0); // nopolicy - scalar reset for warmup
-						Producer<PackedCollection> producer =
-								note.getProducer(note.getExpectedFrameCount());
-						if (producer != null) {
-							try {
-								PackedCollection audio = traverse(1, producer).get().evaluate();
-								if (audio != null) {
-									notesEvaluated++;
-								}
-							} catch (Exception e) {
-								// Skip notes that fail evaluation during warmup
-							}
+						if (prepareAndEvaluateNote(note)) {
+							notesEvaluated++;
 						}
 					}
 				}
@@ -1049,6 +1038,27 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 		}
 
 		return notesEvaluated;
+	}
+
+	/**
+	 * Initializes a note's offset argument and evaluates its producer to
+	 * trigger kernel compilation during warmup.
+	 *
+	 * @return true if the note was successfully evaluated
+	 */
+	private boolean prepareAndEvaluateNote(RenderedNoteAudio note) {
+		note.getOffsetArg().setMem(0, 0);
+		Producer<PackedCollection> producer =
+				note.getProducer(note.getExpectedFrameCount());
+		if (producer != null) {
+			try {
+				PackedCollection audio = traverse(1, producer).get().evaluate();
+				return audio != null;
+			} catch (Exception e) {
+				// Skip notes that fail evaluation during warmup
+			}
+		}
+		return false;
 	}
 
 	public void saveSettings(File file) throws IOException {
